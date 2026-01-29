@@ -1,6 +1,6 @@
 import { describe, it } from 'bun:test';
 import assert from 'node:assert';
-import { runCLI } from '../../test-utils/index.js';
+import { runCLI } from '../src/test-utils/index.js';
 
 const COMMANDS = [
   'create',

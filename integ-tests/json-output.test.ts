@@ -4,7 +4,7 @@ import { rm, mkdir } from 'node:fs/promises';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { randomUUID } from 'node:crypto';
-import { runCLI } from '../../test-utils/index.js';
+import { runCLI } from '../src/test-utils/index.js';
 
 describe('JSON output structure', () => {
   let testDir: string;
