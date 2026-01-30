@@ -9,6 +9,7 @@ export const AgentCoreDeployedStateSchema = z.object({
   runtimeId: z.string().min(1),
   runtimeArn: z.string().min(1),
   roleArn: z.string().min(1),
+  sessionId: z.string().optional(),
   memoryIds: z.array(z.string()).optional(),
   browserId: z.string().optional(),
   codeInterpreterId: z.string().optional(),
