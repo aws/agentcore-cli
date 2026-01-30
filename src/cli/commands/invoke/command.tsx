@@ -114,8 +114,8 @@ export const registerInvoke = (program: Command) => {
           // --prompt flag takes precedence over positional argument
           const prompt = cliOptions.prompt ?? positionalPrompt;
 
-          if (prompt) {
-            // Prompt provided - use CLI handler for clean output
+          // CLI mode if any CLI-specific options provided (follows deploy command pattern)
+          if (prompt || cliOptions.json || cliOptions.target || cliOptions.stream) {
             await handleInvokeCLI({
               prompt,
               agentName: cliOptions.agent,
@@ -124,7 +124,7 @@ export const registerInvoke = (program: Command) => {
               stream: cliOptions.stream,
             });
           } else {
-            // No prompt - interactive TUI mode
+            // No CLI options - interactive TUI mode
             const { waitUntilExit } = render(
               <InvokeScreen
                 isInteractive={true}
