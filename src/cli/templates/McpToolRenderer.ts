@@ -44,7 +44,12 @@ export const LAMBDA_TEMPLATE_TOOLS: ToolDefinition[] = [
  */
 export function getTemplateToolDefinitions(toolName: string, host: ComputeHost): ToolDefinition[] {
   if (host === 'Lambda') {
-    return LAMBDA_TEMPLATE_TOOLS;
+    // Prefix template tool names with the MCP tool name to avoid conflicts
+    // when adding multiple Lambda tools to the same project
+    return LAMBDA_TEMPLATE_TOOLS.map(tool => ({
+      ...tool,
+      name: `${toolName}_${tool.name}`,
+    }));
   }
   // AgentCoreRuntime - single tool with generic schema
   return [

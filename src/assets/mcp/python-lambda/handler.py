@@ -68,7 +68,7 @@ def _fetch_json(url: str) -> Optional[Dict[str, Any]]:
         return None
 
 
-@tool("lookup_ip")
+@tool("{{Name}}_lookup_ip")
 def lookup_ip(event: Dict[str, Any]) -> str:
     """Look up geolocation and network info for an IP address.
 
@@ -95,7 +95,7 @@ def lookup_ip(event: Dict[str, Any]) -> str:
     )
 
 
-@tool("get_random_user")
+@tool("{{Name}}_get_random_user")
 def get_random_user(event: Dict[str, Any]) -> str:
     """Generate a random user profile for testing or mock data."""
     data = _fetch_json("https://randomuser.me/api/")
@@ -114,7 +114,7 @@ def get_random_user(event: Dict[str, Any]) -> str:
     )
 
 
-@tool("fetch_post")
+@tool("{{Name}}_fetch_post")
 def fetch_post(event: Dict[str, Any]) -> str:
     """Fetch a post by ID from JSONPlaceholder API.
 
