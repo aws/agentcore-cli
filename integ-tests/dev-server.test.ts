@@ -1,11 +1,11 @@
 import { exists, runCLI } from '../src/test-utils/index.js';
-import { afterAll, afterEach, beforeAll, describe, it } from 'bun:test';
-import assert from 'node:assert';
 import { type ChildProcess, execSync, spawn } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
 import { mkdir, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { afterAll, afterEach, beforeAll, describe, it } from 'vitest';
+import { expect } from 'vitest';
 
 function hasCommand(cmd: string): boolean {
   try {
@@ -88,7 +88,7 @@ describe('integration: dev server', () => {
   it.skipIf(!hasNpm || !hasGit || !hasUv)(
     'starts dev server and responds to health check',
     async () => {
-      assert.ok(projectPath, 'Project should have been created');
+      expect(projectPath, 'Project should have been created').toBeTruthy();
 
       const cliPath = join(__dirname, '..', 'src', 'cli', 'index.ts');
       const port = 8000 + Math.floor(Math.random() * 1000);
@@ -99,7 +99,7 @@ describe('integration: dev server', () => {
       });
 
       const serverReady = await waitForServer(port, 20000);
-      assert.ok(serverReady, 'Dev server should respond to ping within 20s');
+      expect(serverReady, 'Dev server should respond to ping within 20s').toBeTruthy();
 
       // Clean shutdown
       devProcess.kill('SIGTERM');

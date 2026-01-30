@@ -15,7 +15,7 @@ This directory contains real AWS integration tests that actually deploy resource
 npm run test:integ
 
 # Run a specific test
-bun test --timeout 300000 integ-tests/integ.deploy.ts
+npx vitest run integ-tests/deploy.test.ts --testTimeout=300000
 ```
 
 ## Test Naming Convention
@@ -38,14 +38,14 @@ Integration tests are NOT run automatically on every PR. They can be triggered:
 ## Writing Integration Tests
 
 ```typescript
-import { runCLI } from '../src/test-utils';
-import { after, before, describe, it } from 'node:test';
+import { runCLI } from '../src/test-utils/cli-runner';
+import { afterAll, describe, expect, it } from 'vitest';
 
 describe('integ: deploy', () => {
   // Use unique stack names to avoid conflicts
   const stackName = `test-${Date.now()}`;
 
-  after(async () => {
+  afterAll(async () => {
     // ALWAYS clean up - destroy the stack
     await runCLI(['destroy', '--target', stackName, '--force'], projectDir);
   });

@@ -92,10 +92,10 @@ export function spawnDevServer(options: SpawnDevServerOptions): ChildProcess | n
   }
 
   // For Python, use the venv's uvicorn directly to avoid PATH issues
-  const cmd = isPython ? join(cwd, '.venv', 'bin', 'uvicorn') : 'bun';
+  const cmd = isPython ? join(cwd, '.venv', 'bin', 'uvicorn') : 'npx';
   const args = isPython
     ? [convertEntrypointToModule(module), '--reload', '--host', '127.0.0.1', '--port', String(port)]
-    : ['run', '--watch', (module.split(':')[0] ?? module).replace(/\./g, '/') + '.ts'];
+    : ['tsx', 'watch', (module.split(':')[0] ?? module).replace(/\./g, '/') + '.ts'];
 
   const child = spawn(cmd, args, {
     cwd,

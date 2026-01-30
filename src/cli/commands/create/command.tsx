@@ -26,7 +26,7 @@ async function handleCreateCLI(options: CreateOptions): Promise<void> {
   }
 
   const cwd = options.outputDir ?? getWorkingDirectory();
-  
+
   // Handle dry-run mode
   if (options.dryRun) {
     const result = getDryRunInfo({ name: options.name!, cwd, language: options.language });
@@ -40,10 +40,10 @@ async function handleCreateCLI(options: CreateOptions): Promise<void> {
     }
     process.exit(0);
   }
-  
+
   // Commander.js --no-agent sets agent=false, not noAgent=true
   const skipAgent = options.agent === false;
-  
+
   const result = skipAgent
     ? await createProject({ name: options.name!, cwd, skipGit: options.skipGit })
     : await createProjectWithAgent({
@@ -65,7 +65,7 @@ async function handleCreateCLI(options: CreateOptions): Promise<void> {
   } else {
     console.error(result.error);
   }
-  
+
   process.exit(result.success ? 0 : 1);
 }
 
@@ -77,7 +77,10 @@ export const registerCreate = (program: Command) => {
     .option('--no-agent', 'Skip agent creation')
     .option('--defaults', 'Use defaults (Python, Strands, Bedrock, no memory)')
     .option('--language <language>', 'Target language (Python, TypeScript)')
-    .option('--framework <framework>', 'Agent framework (Strands, LangChain_LangGraph, AutoGen, CrewAI, GoogleADK, OpenAIAgents)')
+    .option(
+      '--framework <framework>',
+      'Agent framework (Strands, LangChain_LangGraph, AutoGen, CrewAI, GoogleADK, OpenAIAgents)'
+    )
     .option('--model-provider <provider>', 'Model provider (Bedrock, Anthropic, OpenAI, Gemini)')
     .option('--api-key <key>', 'API key for non-Bedrock providers')
     .option('--memory <option>', 'Memory option (none, shortTerm, longAndShortTerm)')
@@ -95,7 +98,7 @@ export const registerCreate = (program: Command) => {
           options.modelProvider = options.modelProvider ?? 'Bedrock';
           options.memory = options.memory ?? 'none';
         }
-        
+
         if (options.name) {
           await handleCreateCLI(options as CreateOptions);
         } else {

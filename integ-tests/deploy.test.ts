@@ -1,11 +1,11 @@
 import { runCLI } from '../src/test-utils/index.js';
-import { afterAll, beforeAll, describe, it } from 'bun:test';
-import assert from 'node:assert';
 import { execSync } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
 import { mkdir, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { afterAll, beforeAll, describe, it } from 'vitest';
+import { expect } from 'vitest';
 
 function hasCommand(cmd: string): boolean {
   try {
@@ -89,9 +89,9 @@ describe('integration: deploy', () => {
       const result = await runCLI(['destroy', '--target', targetName, '--yes', '--json'], projectPath, false);
 
       // Assert destroy succeeded
-      assert.strictEqual(result.exitCode, 0, `Destroy failed: ${result.stderr}`);
+      expect(result.exitCode, `Destroy failed: ${result.stderr}`).toBe(0);
       const json = JSON.parse(result.stdout);
-      assert.strictEqual(json.success, true, 'Destroy should report success');
+      expect(json.success, 'Destroy should report success').toBe(true);
     }
     await rm(testDir, { recursive: true, force: true });
   }, 120000);
@@ -99,7 +99,7 @@ describe('integration: deploy', () => {
   it.skipIf(!hasNpm || !hasGit || !hasUv || !hasAws)(
     'deploys to AWS successfully',
     async () => {
-      assert.ok(projectPath, 'Project should have been created');
+      expect(projectPath, 'Project should have been created').toBeTruthy();
 
       const result = await runCLI(['deploy', '--target', targetName, '--yes', '--json'], projectPath, false);
 
@@ -108,10 +108,10 @@ describe('integration: deploy', () => {
         console.log('Deploy stderr:', result.stderr);
       }
 
-      assert.strictEqual(result.exitCode, 0, `Deploy failed: ${result.stderr}`);
+      expect(result.exitCode, `Deploy failed: ${result.stderr}`).toBe(0);
 
       const json = JSON.parse(result.stdout);
-      assert.strictEqual(json.success, true, 'Deploy should report success');
+      expect(json.success, 'Deploy should report success').toBe(true);
     },
     180000
   );

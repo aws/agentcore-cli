@@ -15,11 +15,11 @@ export interface RunResult {
 
 /**
  * Get the path to the CLI entry point.
- * Works from any test file location within the project.
+ * Uses the built bundle - run `npm run build` before tests.
  */
 function getCLIPath(): string {
-  // Navigate from src/test-utils to src/cli/index.ts
-  return join(__dirname, '..', 'cli', 'index.ts');
+  // Navigate from src/test-utils to dist/cli/index.mjs
+  return join(__dirname, '..', '..', 'dist', 'cli', 'index.mjs');
 }
 
 /**
@@ -39,7 +39,7 @@ export async function runCLI(args: string[], cwd: string, skipInstall = true): P
   const cliPath = getCLIPath();
 
   return new Promise(resolve => {
-    const proc = spawn('bun', ['run', cliPath, ...args], {
+    const proc = spawn('node', [cliPath, ...args], {
       cwd,
       env: { ...process.env, INIT_CWD: undefined, ...(skipInstall ? { AGENTCORE_SKIP_INSTALL: '1' } : {}) },
     });

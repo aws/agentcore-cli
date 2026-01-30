@@ -1,6 +1,6 @@
-import { describe, it } from 'bun:test';
-import assert from 'node:assert';
 import { runCLI } from '../src/test-utils/index.js';
+import { describe, it } from 'vitest';
+import { expect } from 'vitest';
 
 const COMMANDS = [
   'create',
@@ -24,10 +24,10 @@ describe('CLI help', () => {
   describe('main help', () => {
     it('shows all commands', async () => {
       const result = await runCLI(['--help']);
-      
-      assert.strictEqual(result.exitCode, 0);
-      assert.ok(result.stdout.includes('Usage:'), 'Should show usage');
-      assert.ok(result.stdout.includes('Commands:'), 'Should list commands');
+
+      expect(result.exitCode).toBe(0);
+      expect(result.stdout.includes('Usage:'), 'Should show usage').toBeTruthy();
+      expect(result.stdout.includes('Commands:'), 'Should list commands').toBeTruthy();
     });
   });
 
@@ -35,9 +35,9 @@ describe('CLI help', () => {
     for (const cmd of COMMANDS) {
       it(`${cmd} --help exits 0`, async () => {
         const result = await runCLI([cmd, '--help']);
-        
-        assert.strictEqual(result.exitCode, 0, `${cmd} --help failed: ${result.stderr}`);
-        assert.ok(result.stdout.includes('Usage:'), `${cmd} should show usage`);
+
+        expect(result.exitCode, `${cmd} --help failed: ${result.stderr}`).toBe(0);
+        expect(result.stdout.includes('Usage:'), `${cmd} should show usage`).toBeTruthy();
       });
     }
   });

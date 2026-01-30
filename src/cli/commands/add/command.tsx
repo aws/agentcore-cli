@@ -1,13 +1,7 @@
 import { COMMAND_DESCRIPTIONS } from '../../tui/copy';
 import { requireProject } from '../../tui/guards';
 import { AddFlow } from '../../tui/screens/add/AddFlow';
-import {
-  handleAddAgent,
-  handleAddGateway,
-  handleAddIdentity,
-  handleAddMcpTool,
-  handleAddMemory,
-} from './actions';
+import { handleAddAgent, handleAddGateway, handleAddIdentity, handleAddMcpTool, handleAddMemory } from './actions';
 import { handleAddTarget } from './target-action';
 import type {
   AddAgentOptions,
@@ -77,7 +71,7 @@ async function handleAddAgentCLI(options: AddAgentOptions): Promise<void> {
 
   const result = await handleAddAgent({
     name: options.name!,
-    type: (options.type as 'create' | 'byo') ?? 'create',
+    type: (options.type!) ?? 'create',
     language: options.language!,
     framework: options.framework!,
     modelProvider: options.modelProvider!,
@@ -148,10 +142,10 @@ async function handleAddMcpToolCLI(options: AddMcpToolOptions): Promise<void> {
     name: options.name!,
     description: options.description,
     language: options.language! as 'Python' | 'TypeScript',
-    exposure: options.exposure! as 'mcp-runtime' | 'behind-gateway',
+    exposure: options.exposure!,
     agents: options.agents,
     gateway: options.gateway,
-    host: options.host as 'Lambda' | 'AgentCoreRuntime' | undefined,
+    host: options.host,
   });
 
   if (options.json) {

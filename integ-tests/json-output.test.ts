@@ -1,10 +1,10 @@
-import { describe, it, beforeAll, afterAll } from 'bun:test';
-import assert from 'node:assert';
-import { rm, mkdir } from 'node:fs/promises';
-import { join } from 'node:path';
-import { tmpdir } from 'node:os';
-import { randomUUID } from 'node:crypto';
 import { runCLI } from '../src/test-utils/index.js';
+import { randomUUID } from 'node:crypto';
+import { mkdir, rm } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { afterAll, beforeAll, describe, it } from 'vitest';
+import { expect } from 'vitest';
 
 describe('JSON output structure', () => {
   let testDir: string;
@@ -22,50 +22,58 @@ describe('JSON output structure', () => {
     it('error response has success:false and error string', async () => {
       // 'Test' is a reserved name, so this will fail validation
       const result = await runCLI(['create', '--name', 'Test', '--json'], testDir);
-      
-      assert.strictEqual(result.exitCode, 1);
+
+      expect(result.exitCode).toBe(1);
       const json = JSON.parse(result.stdout);
-      assert.strictEqual(json.success, false, 'success should be false');
-      assert.strictEqual(typeof json.error, 'string', 'error should be a string');
-      assert.ok(json.error.length > 0, 'error should not be empty');
+      expect(json.success, 'success should be false').toBe(false);
+      expect(typeof json.error, 'error should be a string').toBe('string');
+      expect(json.error.length > 0, 'error should not be empty').toBeTruthy();
     });
 
     it('validation error mentions the issue', async () => {
       const result = await runCLI(['create', '--name', 'Test', '--json'], testDir);
       const json = JSON.parse(result.stdout);
-      
+
       // Error should mention why 'Test' is invalid (reserved/conflicts)
-      assert.ok(
-        json.error.toLowerCase().includes('reserved') || 
-        json.error.toLowerCase().includes('conflict'),
+      expect(
+        json.error.toLowerCase().includes('reserved') || json.error.toLowerCase().includes('conflict'),
         `Error should explain the issue: ${json.error}`
-      );
+      ).toBeTruthy();
     });
 
     it('missing required options returns error JSON', async () => {
       // Missing --language, --framework, etc without --no-agent
       const result = await runCLI(['create', '--name', 'ValidName', '--json'], testDir);
-      
-      assert.strictEqual(result.exitCode, 1);
+
+      expect(result.exitCode).toBe(1);
       const json = JSON.parse(result.stdout);
-      assert.strictEqual(json.success, false);
-      assert.strictEqual(typeof json.error, 'string');
+      expect(json.success).toBe(false);
+      expect(typeof json.error).toBe('string');
     });
 
     it('invalid framework returns error JSON', async () => {
-      const result = await runCLI([
-        'create', '--name', 'TestProj',
-        '--language', 'Python',
-        '--framework', 'InvalidFramework',
-        '--model-provider', 'Bedrock',
-        '--memory', 'none',
-        '--json'
-      ], testDir);
-      
-      assert.strictEqual(result.exitCode, 1);
+      const result = await runCLI(
+        [
+          'create',
+          '--name',
+          'TestProj',
+          '--language',
+          'Python',
+          '--framework',
+          'InvalidFramework',
+          '--model-provider',
+          'Bedrock',
+          '--memory',
+          'none',
+          '--json',
+        ],
+        testDir
+      );
+
+      expect(result.exitCode).toBe(1);
       const json = JSON.parse(result.stdout);
-      assert.strictEqual(json.success, false);
-      assert.ok(json.error.toLowerCase().includes('framework'));
+      expect(json.success).toBe(false);
+      expect(json.error.toLowerCase().includes('framework')).toBeTruthy();
     });
   });
 

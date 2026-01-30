@@ -1,4 +1,10 @@
-import { ProjectNameSchema, getSupportedModelProviders, SDKFrameworkSchema, ModelProviderSchema, TargetLanguageSchema } from '../../../schema';
+import {
+  ModelProviderSchema,
+  ProjectNameSchema,
+  SDKFrameworkSchema,
+  TargetLanguageSchema,
+  getSupportedModelProviders,
+} from '../../../schema';
 import type { CreateOptions } from './types';
 
 export interface ValidationResult {
@@ -27,11 +33,11 @@ export function validateCreateOptions(options: CreateOptions): ValidationResult 
 
   // Without --no-agent, all agent options are required
   const hasAllAgentOptions = options.language && options.framework && options.modelProvider && options.memory;
-  
+
   if (!hasAllAgentOptions) {
-    return { 
-      valid: false, 
-      error: 'Use --no-agent for project-only, or provide all: --language, --framework, --model-provider, --memory' 
+    return {
+      valid: false,
+      error: 'Use --no-agent for project-only, or provide all: --language, --framework, --model-provider, --memory',
     };
   }
 
@@ -80,8 +86,11 @@ export function validateCreateOptions(options: CreateOptions): ValidationResult 
     }
 
     // Validate memory option
-    if (!MEMORY_OPTIONS.includes(options.memory as typeof MEMORY_OPTIONS[number])) {
-      return { valid: false, error: `Invalid memory option: ${options.memory}. Use none, shortTerm, or longAndShortTerm` };
+    if (!MEMORY_OPTIONS.includes(options.memory as (typeof MEMORY_OPTIONS)[number])) {
+      return {
+        valid: false,
+        error: `Invalid memory option: ${options.memory}. Use none, shortTerm, or longAndShortTerm`,
+      };
     }
   }
 

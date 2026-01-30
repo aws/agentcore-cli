@@ -19,5 +19,12 @@
     "noImplicitOverride": true
   },
   "include": ["src/index.ts", "src/schema/**/*", "src/lib/**/*", "src/cdk/**/*"],
-  "exclude": ["node_modules", "dist", "src/cli/**/*", "src/schema/llm-compacted/**/*"]
+  "exclude": [
+    "node_modules",
+    "dist",
+    "src/cli/**/*",
+    "src/schema/llm-compacted/**/*",
+    "**/__tests__/**/*",
+    "**/*.test.ts"
+  ]
 }

@@ -1,16 +1,16 @@
 import { ConfigIO } from '../../../lib';
-import {
-  validateProject,
-  buildCdkProject,
-  synthesizeCdk,
-  checkBootstrapNeeded,
-  bootstrapEnvironment,
-  checkStackDeployability,
-} from '../../operations/deploy';
 import { createSwitchableIoHost } from '../../cdk/toolkit-lib';
-import { getStackOutputs, parseAgentOutputs, buildDeployedState } from '../../cloudformation';
+import { buildDeployedState, getStackOutputs, parseAgentOutputs } from '../../cloudformation';
 import { getErrorMessage } from '../../errors';
 import { ExecLogger } from '../../logging';
+import {
+  bootstrapEnvironment,
+  buildCdkProject,
+  checkBootstrapNeeded,
+  checkStackDeployability,
+  synthesizeCdk,
+  validateProject,
+} from '../../operations/deploy';
 import type { DeployResult } from './types';
 
 export interface ValidatedDeployOptions {
@@ -50,7 +50,11 @@ export async function handleDeploy(options: ValidatedDeployOptions): Promise<Dep
     if (!target) {
       endStep('error', `Target "${options.target}" not found`);
       logger.finalize(false);
-      return { success: false, error: `Target "${options.target}" not found in aws-targets.json`, logPath: logger.getRelativeLogPath() };
+      return {
+        success: false,
+        error: `Target "${options.target}" not found in aws-targets.json`,
+        logPath: logger.getRelativeLogPath(),
+      };
     }
     endStep('success');
 
@@ -67,7 +71,8 @@ export async function handleDeploy(options: ValidatedDeployOptions): Promise<Dep
     // Synthesize CloudFormation templates
     startStep('Synthesize CloudFormation');
     const switchableIoHost = options.verbose ? createSwitchableIoHost() : undefined;
-    const synthResult = await synthesizeCdk(context.cdkProject, 
+    const synthResult = await synthesizeCdk(
+      context.cdkProject,
       switchableIoHost ? { ioHost: switchableIoHost.ioHost } : undefined
     );
     toolkitWrapper = synthResult.toolkitWrapper;
@@ -77,7 +82,7 @@ export async function handleDeploy(options: ValidatedDeployOptions): Promise<Dep
       logger.finalize(false);
       return { success: false, error: 'No stacks found to deploy', logPath: logger.getRelativeLogPath() };
     }
-    const stackName = stackNames[0] as string;
+    const stackName = stackNames[0]!;
     endStep('success');
 
     // Check if bootstrap needed
@@ -115,7 +120,7 @@ export async function handleDeploy(options: ValidatedDeployOptions): Promise<Dep
 
     // Deploy
     startStep('Deploy to AWS');
-    
+
     // Enable verbose output for resource-level events
     if (switchableIoHost && options.onResourceEvent) {
       switchableIoHost.setOnMessage(msg => {
@@ -123,15 +128,15 @@ export async function handleDeploy(options: ValidatedDeployOptions): Promise<Dep
       });
       switchableIoHost.setVerbose(true);
     }
-    
+
     await toolkitWrapper.deploy();
-    
+
     // Disable verbose output
     if (switchableIoHost) {
       switchableIoHost.setVerbose(false);
       switchableIoHost.setOnMessage(null);
     }
-    
+
     endStep('success');
 
     // Get stack outputs and persist state

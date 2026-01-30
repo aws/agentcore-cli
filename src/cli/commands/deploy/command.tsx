@@ -49,29 +49,33 @@ async function handleDeployCLI(options: DeployOptions): Promise<void> {
   let spinner: NodeJS.Timeout | undefined;
 
   // Progress callback for --progress mode
-  const onProgress = options.progress ? (step: string, status: 'start' | 'success' | 'error') => {
-    if (spinner) {
-      clearInterval(spinner);
-      process.stdout.write('\r\x1b[K'); // Clear line
-    }
-    
-    if (status === 'start') {
-      let i = 0;
-      process.stdout.write(`${SPINNER_FRAMES[0]} ${step}...`);
-      spinner = setInterval(() => {
-        i = (i + 1) % SPINNER_FRAMES.length;
-        process.stdout.write(`\r${SPINNER_FRAMES[i]} ${step}...`);
-      }, 80);
-    } else if (status === 'success') {
-      console.log(`✓ ${step}`);
-    } else {
-      console.log(`✗ ${step}`);
-    }
-  } : undefined;
+  const onProgress = options.progress
+    ? (step: string, status: 'start' | 'success' | 'error') => {
+        if (spinner) {
+          clearInterval(spinner);
+          process.stdout.write('\r\x1b[K'); // Clear line
+        }
 
-  const onResourceEvent = options.verbose ? (message: string) => {
-    console.log(message);
-  } : undefined;
+        if (status === 'start') {
+          let i = 0;
+          process.stdout.write(`${SPINNER_FRAMES[0]} ${step}...`);
+          spinner = setInterval(() => {
+            i = (i + 1) % SPINNER_FRAMES.length;
+            process.stdout.write(`\r${SPINNER_FRAMES[i]} ${step}...`);
+          }, 80);
+        } else if (status === 'success') {
+          console.log(`✓ ${step}`);
+        } else {
+          console.log(`✗ ${step}`);
+        }
+      }
+    : undefined;
+
+  const onResourceEvent = options.verbose
+    ? (message: string) => {
+        console.log(message);
+      }
+    : undefined;
 
   const result = await handleDeploy({
     target: options.target!,
@@ -90,7 +94,7 @@ async function handleDeployCLI(options: DeployOptions): Promise<void> {
     console.log(JSON.stringify(result));
   } else if (result.success) {
     console.log(`\n✓ Deployed to '${result.targetName}' (stack: ${result.stackName})`);
-    
+
     // Show stack outputs in non-JSON mode
     if (result.outputs && Object.keys(result.outputs).length > 0) {
       console.log('\nOutputs:');
@@ -98,7 +102,7 @@ async function handleDeployCLI(options: DeployOptions): Promise<void> {
         console.log(`  ${key}: ${value}`);
       }
     }
-    
+
     if (result.logPath) {
       console.log(`\nLog: ${result.logPath}`);
     }

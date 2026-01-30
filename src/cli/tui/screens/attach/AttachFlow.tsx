@@ -1,5 +1,4 @@
-import { ErrorPrompt, type NextStep, NextSteps, Panel, Screen, SelectScreen } from '../../components';
-import type { SelectableItem } from '../../components';
+import { ErrorPrompt, type NextStep, NextSteps, Panel, Screen, SelectScreen , SelectableItem } from '../../components';
 import {
   useAgentAttachments,
   useAgents,
@@ -353,9 +352,7 @@ export function AttachFlow(props: { onExit: () => void }) {
   }
 
   if (flow.name === 'success') {
-    const attachSuccessSteps: NextStep[] = [
-      { command: 'attach', label: 'Attach another resource' },
-    ];
+    const attachSuccessSteps: NextStep[] = [{ command: 'attach', label: 'Attach another resource' }];
 
     const handleSuccessSelect = (step: NextStep) => {
       if (step.command === 'attach') {
@@ -369,10 +366,19 @@ export function AttachFlow(props: { onExit: () => void }) {
       <Screen title="Success" onExit={props.onExit}>
         <Box flexDirection="column" gap={1}>
           <Box flexDirection="column">
-            <Text color="green">✓ Attached {flow.resourceType}: {flow.resourceName}</Text>
-            <Text>{flow.resourceType} attached to agent &quot;{flow.sourceAgent}&quot;. Deploy with `agentcore deploy`.</Text>
+            <Text color="green">
+              ✓ Attached {flow.resourceType}: {flow.resourceName}
+            </Text>
+            <Text>
+              {flow.resourceType} attached to agent &quot;{flow.sourceAgent}&quot;. Deploy with `agentcore deploy`.
+            </Text>
           </Box>
-          <NextSteps steps={attachSuccessSteps} isInteractive={true} onSelect={handleSuccessSelect} onBack={props.onExit} />
+          <NextSteps
+            steps={attachSuccessSteps}
+            isInteractive={true}
+            onSelect={handleSuccessSelect}
+            onBack={props.onExit}
+          />
         </Box>
       </Screen>
     );

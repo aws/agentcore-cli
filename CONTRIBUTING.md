@@ -63,7 +63,6 @@ public github issue.
 ### Prerequisites
 
 - Node.js 20+
-- Bun (for CLI bundling)
 - npm
 
 ### Building
@@ -72,6 +71,15 @@ public github issue.
 npm install
 npm run build
 ```
+
+### Testing
+
+```bash
+npm test           # Run all tests
+npm run test:watch # Run tests in watch mode
+```
+
+See [docs/TESTING.md](docs/TESTING.md) for detailed testing guidelines.
 
 ### Local Development with CDK Package
 

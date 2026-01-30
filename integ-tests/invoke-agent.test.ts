@@ -1,11 +1,11 @@
 import { runCLI } from '../src/test-utils/index.js';
-import { afterAll, beforeAll, describe, it } from 'bun:test';
-import assert from 'node:assert';
 import { execSync } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
 import { mkdir, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { afterAll, beforeAll, describe, it } from 'vitest';
+import { expect } from 'vitest';
 
 function hasCommand(cmd: string): boolean {
   try {
@@ -64,7 +64,7 @@ describe('integration: invoke agent', () => {
   it.skipIf(!hasNpm || !hasGit || !hasUv)(
     'invokes agent and receives response',
     async () => {
-      assert.ok(projectPath, 'Project should have been created');
+      expect(projectPath, 'Project should have been created').toBeTruthy();
 
       const result = await runCLI(
         ['invoke', '--agent', agentName, '--prompt', 'Say hello', '--json'],
@@ -74,7 +74,7 @@ describe('integration: invoke agent', () => {
 
       // Invoke may fail if no AWS credentials, but should at least attempt
       // For now, just verify the command runs and produces output
-      assert.ok(result.stdout.length > 0 || result.stderr.length > 0, 'Should produce some output');
+      expect(result.stdout.length > 0 || result.stderr.length > 0, 'Should produce some output').toBeTruthy();
     },
     60000
   );

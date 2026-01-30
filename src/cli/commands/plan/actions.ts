@@ -1,14 +1,14 @@
 import { ConfigIO } from '../../../lib';
-import {
-  validateProject,
-  buildCdkProject,
-  synthesizeCdk,
-  checkBootstrapNeeded,
-  bootstrapEnvironment,
-  checkStackDeployability,
-} from '../../operations/deploy';
-import { getStackOutputs, parseAgentOutputs, buildDeployedState } from '../../cloudformation';
+import { buildDeployedState, getStackOutputs, parseAgentOutputs } from '../../cloudformation';
 import { getErrorMessage } from '../../errors';
+import {
+  bootstrapEnvironment,
+  buildCdkProject,
+  checkBootstrapNeeded,
+  checkStackDeployability,
+  synthesizeCdk,
+  validateProject,
+} from '../../operations/deploy';
 import type { PlanResult } from './types';
 
 export interface ValidatedPlanOptions {
@@ -45,7 +45,7 @@ export async function handlePlan(options: ValidatedPlanOptions): Promise<PlanRes
       return { success: false, error: 'No stacks found to deploy' };
     }
 
-    const stackName = stackNames[0] as string;
+    const stackName = stackNames[0]!;
 
     // If --deploy flag is set, continue to deploy
     if (options.deploy) {

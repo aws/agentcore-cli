@@ -59,9 +59,7 @@ export async function detectAccount(): Promise<string | null> {
     if (code === 'ExpiredTokenException' || code === 'ExpiredToken') {
       throw new AwsCredentialsError(
         'AWS credentials expired.',
-        'AWS credentials expired.\n\n' +
-          'To fix this:\n' +
-          '  Run: aws login'
+        'AWS credentials expired.\n\n' + 'To fix this:\n' + '  Run: aws login'
       );
     }
 

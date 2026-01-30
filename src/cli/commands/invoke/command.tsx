@@ -40,14 +40,14 @@ async function handleInvokeCLI(options: InvokeOptions): Promise<void> {
 
   try {
     const context = await loadInvokeConfig();
-    
+
     // Show spinner for non-streaming, non-json invocations
     if (!options.stream && !options.json) {
       spinner = startSpinner('Invoking agent...');
     }
-    
+
     const result = await handleInvoke(context, options);
-    
+
     if (spinner) {
       stopSpinner(spinner);
     }
@@ -96,40 +96,53 @@ export const registerInvoke = (program: Command) => {
     .option('--new-session', 'Start a new session (ignores existing session)')
     .option('--json', 'Output as JSON')
     .option('--stream', 'Stream response in real-time')
-    .action(async (positionalPrompt: string | undefined, cliOptions: { prompt?: string; agent?: string; target?: string; sessionId?: string; newSession?: boolean; json?: boolean; stream?: boolean }) => {
-      try {
-        requireProject();
-        // --prompt flag takes precedence over positional argument
-        const prompt = cliOptions.prompt ?? positionalPrompt;
+    .action(
+      async (
+        positionalPrompt: string | undefined,
+        cliOptions: {
+          prompt?: string;
+          agent?: string;
+          target?: string;
+          sessionId?: string;
+          newSession?: boolean;
+          json?: boolean;
+          stream?: boolean;
+        }
+      ) => {
+        try {
+          requireProject();
+          // --prompt flag takes precedence over positional argument
+          const prompt = cliOptions.prompt ?? positionalPrompt;
 
-        if (prompt) {
-          // Prompt provided - use CLI handler for clean output
-          await handleInvokeCLI({
-            prompt,
-            agentName: cliOptions.agent,
-            targetName: cliOptions.target ?? 'default',
-            json: cliOptions.json,
-            stream: cliOptions.stream,
-          });
-        } else {
-          // No prompt - interactive TUI mode
-          const { waitUntilExit } = render(
-            <InvokeScreen
-              isInteractive={true}
-              onExit={() => process.exit(0)}
-              initialSessionId={cliOptions.sessionId}
-              forceNewSession={cliOptions.newSession}
-            />
-          );
-          await waitUntilExit();
+          if (prompt) {
+            // Prompt provided - use CLI handler for clean output
+            await handleInvokeCLI({
+              prompt,
+              agentName: cliOptions.agent,
+              targetName: cliOptions.target ?? 'default',
+              json: cliOptions.json,
+              stream: cliOptions.stream,
+            });
+          } else {
+            // No prompt - interactive TUI mode
+            const { waitUntilExit } = render(
+              <InvokeScreen
+                isInteractive={true}
+                onExit={() => process.exit(0)}
+                initialSessionId={cliOptions.sessionId}
+                forceNewSession={cliOptions.newSession}
+              />
+            );
+            await waitUntilExit();
+          }
+        } catch (error) {
+          if (cliOptions.json) {
+            console.log(JSON.stringify({ success: false, error: getErrorMessage(error) }));
+          } else {
+            render(<Text color="red">Error: {getErrorMessage(error)}</Text>);
+          }
+          process.exit(1);
         }
-      } catch (error) {
-        if (cliOptions.json) {
-          console.log(JSON.stringify({ success: false, error: getErrorMessage(error) }));
-        } else {
-          render(<Text color="red">Error: {getErrorMessage(error)}</Text>);
-        }
-        process.exit(1);
       }
-    });
+    );
 };

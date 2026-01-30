@@ -1,5 +1,5 @@
-import { discoverDeployedTargets, destroyTarget, getCdkProjectDir } from '../../operations/destroy';
 import { getErrorMessage } from '../../errors';
+import { destroyTarget, discoverDeployedTargets, getCdkProjectDir } from '../../operations/destroy';
 import type { DestroyResult } from './types';
 
 export interface ValidatedDestroyOptions {

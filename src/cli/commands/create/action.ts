@@ -1,5 +1,13 @@
 import { APP_DIR, CONFIG_DIR, ConfigIO, setEnvVar, setSessionProjectRoot } from '../../../lib';
-import type { AgentCoreCliMcpDefs, AgentCoreMcpSpec, AgentCoreProjectSpec, DeployedState, ModelProvider, SDKFramework, TargetLanguage } from '../../../schema';
+import type {
+  AgentCoreCliMcpDefs,
+  AgentCoreMcpSpec,
+  AgentCoreProjectSpec,
+  DeployedState,
+  ModelProvider,
+  SDKFramework,
+  TargetLanguage,
+} from '../../../schema';
 import { getErrorMessage } from '../../errors';
 import { initGitRepo, setupPythonProject, writeEnvFile, writeGitignore } from '../../operations';
 import { mapGenerateConfigToAgentEnvSpec, writeAgentToProject } from '../../operations/agent/generate';
@@ -140,7 +148,7 @@ export async function createProjectWithAgent(options: CreateWithAgentOptions): P
 export function getDryRunInfo(options: { name: string; cwd: string; language?: string }): CreateResult {
   const { name, cwd, language } = options;
   const projectRoot = join(cwd, name);
-  
+
   const wouldCreate = [
     `${projectRoot}/`,
     `${projectRoot}/agentcore/`,
@@ -149,13 +157,13 @@ export function getDryRunInfo(options: { name: string; cwd: string; language?: s
     `${projectRoot}/agentcore/.env.local`,
     `${projectRoot}/cdk/`,
   ];
-  
+
   if (language === 'Python') {
     wouldCreate.push(`${projectRoot}/app/${name}/`);
     wouldCreate.push(`${projectRoot}/app/${name}/main.py`);
     wouldCreate.push(`${projectRoot}/app/${name}/pyproject.toml`);
   }
-  
+
   return {
     success: true,
     dryRun: true,

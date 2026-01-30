@@ -1,6 +1,6 @@
-import { toPascalId } from './logical-ids';
 import type { AgentCoreDeployedState, DeployedState, TargetDeployedState } from '../../schema';
 import { getCredentialProvider } from '../aws';
+import { toPascalId } from './logical-ids';
 import { getStackName } from './stack-discovery';
 import { CloudFormationClient, DescribeStacksCommand } from '@aws-sdk/client-cloudformation';
 

@@ -52,7 +52,7 @@ export const registerDev = (program: Command) => {
       if (opts.invoke) {
         const { getAgentPort } = await import('../../operations/dev');
         const invokeProject = await loadProjectConfig(getWorkingDirectory());
-        
+
         // Determine which agent/port to invoke
         let invokePort = port;
         if (opts.agent && invokeProject) {
@@ -63,7 +63,7 @@ export const registerDev = (program: Command) => {
           console.error(`Available: ${names}`);
           process.exit(1);
         }
-        
+
         await invokeDevServer(invokePort, opts.invoke, opts.stream ?? false);
         return;
       }
@@ -86,7 +86,7 @@ export const registerDev = (program: Command) => {
         const { findAvailablePort, getDevConfig, getAgentPort, spawnDevServer } = await import('../../operations/dev');
         const { findConfigRoot, readEnvFile } = await import('../../../lib');
         const { ExecLogger } = await import('../../logging');
-        
+
         // Require --agent if multiple agents
         if (project.agents.length > 1 && !opts.agent) {
           const names = project.agents.map(a => a.name).join(', ');
@@ -94,28 +94,28 @@ export const registerDev = (program: Command) => {
           console.error(`Available: ${names}`);
           process.exit(1);
         }
-        
+
         const agentName = opts.agent ?? project.agents[0]?.name;
         const configRoot = findConfigRoot(workingDir);
         const envVars = configRoot ? await readEnvFile(configRoot) : {};
         const config = getDevConfig(workingDir, project, configRoot ?? undefined, agentName);
-        
+
         // Create logger for log file path
         const logger = new ExecLogger({ command: 'dev' });
-        
+
         // Calculate port based on agent index
         const basePort = getAgentPort(project, config.agentName, port);
         const actualPort = await findAvailablePort(basePort);
         if (actualPort !== basePort) {
           console.log(`Port ${basePort} in use, using ${actualPort}`);
         }
-        
+
         console.log(`Starting dev server...`);
         console.log(`Agent: ${config.agentName}`);
         console.log(`Server: http://localhost:${actualPort}/invocations`);
         console.log(`Log: ${logger.getRelativeLogPath()}`);
         console.log(`Press Ctrl+C to stop\n`);
-        
+
         const child = spawnDevServer({
           module: config.module,
           cwd: config.directory,
@@ -128,20 +128,20 @@ export const registerDev = (program: Command) => {
               console.log(`${prefix} ${msg}`);
               logger.log(msg, level === 'error' ? 'error' : 'info');
             },
-            onExit: (code) => {
+            onExit: code => {
               console.log(`\nServer exited with code ${code ?? 0}`);
               logger.finalize(code === 0);
               process.exit(code ?? 0);
             },
           },
         });
-        
+
         // Handle Ctrl+C
         process.on('SIGINT', () => {
           console.log('\nStopping server...');
           child.kill('SIGTERM');
         });
-        
+
         // Keep process alive
         await new Promise(() => {});
       }

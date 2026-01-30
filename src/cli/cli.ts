@@ -89,7 +89,7 @@ export function createProgram(): Command {
   // Custom help only for main program
   program.addHelpCommand(false); // Disable default help subcommand
   program.helpOption('-h, --help', 'Display help');
-  
+
   // Override help action for main program only
   program.on('option:help', () => {
     renderHelp(program);

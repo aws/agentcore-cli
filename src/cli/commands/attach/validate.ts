@@ -1,4 +1,10 @@
-import type { AttachAgentOptions, AttachMemoryOptions, AttachIdentityOptions, AttachMcpRuntimeOptions, AttachGatewayOptions } from './types';
+import type {
+  AttachAgentOptions,
+  AttachGatewayOptions,
+  AttachIdentityOptions,
+  AttachMcpRuntimeOptions,
+  AttachMemoryOptions,
+} from './types';
 
 export interface ValidationResult {
   valid: boolean;
