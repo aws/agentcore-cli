@@ -4,8 +4,7 @@ import { randomUUID } from 'node:crypto';
 import { mkdir, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { afterAll, beforeAll, describe, it } from 'vitest';
-import { expect } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
 function hasCommand(cmd: string): boolean {
   try {

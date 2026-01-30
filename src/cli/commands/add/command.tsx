@@ -71,7 +71,7 @@ async function handleAddAgentCLI(options: AddAgentOptions): Promise<void> {
 
   const result = await handleAddAgent({
     name: options.name!,
-    type: (options.type!) ?? 'create',
+    type: options.type! ?? 'create',
     language: options.language!,
     framework: options.framework!,
     modelProvider: options.modelProvider!,

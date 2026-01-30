@@ -17,7 +17,7 @@ import {
   mapModelProviderToIdentityProviders,
   writeAgentToProject,
 } from '../../operations/agent/generate';
-import { computeDefaultIdentityEnvVarName , createIdentityFromWizard } from '../../operations/identity/create-identity';
+import { computeDefaultIdentityEnvVarName, createIdentityFromWizard } from '../../operations/identity/create-identity';
 import { createGatewayFromWizard, createToolFromWizard } from '../../operations/mcp/create-mcp';
 import { createMemoryFromWizard } from '../../operations/memory/create-memory';
 import { createRenderer } from '../../templates';

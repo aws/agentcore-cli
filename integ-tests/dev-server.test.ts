@@ -1,11 +1,10 @@
-import { exists, runCLI } from '../src/test-utils/index.js';
+import { runCLI } from '../src/test-utils/index.js';
 import { type ChildProcess, execSync, spawn } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
 import { mkdir, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { afterAll, afterEach, beforeAll, describe, it } from 'vitest';
-import { expect } from 'vitest';
+import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
 
 function hasCommand(cmd: string): boolean {
   try {

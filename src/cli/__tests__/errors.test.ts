@@ -1,5 +1,5 @@
 import { getErrorMessage, isExpiredTokenError, isNoCredentialsError, isStackInProgressError } from '../errors.js';
-import { describe, it , expect } from 'vitest';
+import { describe, expect, it } from 'vitest';
 
 describe('errors', () => {
   describe('getErrorMessage', () => {
