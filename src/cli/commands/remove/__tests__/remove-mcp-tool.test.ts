@@ -3,7 +3,7 @@ import { randomUUID } from 'node:crypto';
 import { mkdir, readFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { afterAll, beforeAll, describe, it , expect } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
 describe('remove mcp-tool command', () => {
   let testDir: string;
@@ -124,7 +124,7 @@ describe('remove mcp-tool command', () => {
   describe('remove mcp-runtime tool', () => {
     it('removes mcp-runtime tool and cleans up agent references', async () => {
       // Add a temp tool to remove
-      const tempTool = `temp-rt-${Date.now()}`;
+      const tempTool = `tempRt${Date.now()}`;
       await runCLI(
         [
           'add',
@@ -162,9 +162,14 @@ describe('remove mcp-tool command', () => {
 
   describe('remove behind-gateway tool', () => {
     it('removes behind-gateway tool from gateway targets', async () => {
-      // Add a temp tool to remove
-      const tempTool = `temp-gw-${Date.now()}`;
-      await runCLI(
+      // Create a fresh gateway for this test to avoid conflicts with existing tools
+      const tempGateway = `TempGw${Date.now()}`;
+      const gwResult = await runCLI(['add', 'gateway', '--name', tempGateway, '--json'], projectDir);
+      expect(gwResult.exitCode, `gateway add failed: ${gwResult.stdout}`).toBe(0);
+
+      // Add a tool to the fresh gateway
+      const tempTool = `tempTool${Date.now()}`;
+      const addResult = await runCLI(
         [
           'add',
           'mcp-tool',
@@ -175,13 +180,14 @@ describe('remove mcp-tool command', () => {
           '--exposure',
           'behind-gateway',
           '--gateway',
-          gatewayName,
+          tempGateway,
           '--host',
           'Lambda',
           '--json',
         ],
         projectDir
       );
+      expect(addResult.exitCode, `add failed: ${addResult.stdout} ${addResult.stderr}`).toBe(0);
 
       const result = await runCLI(['remove', 'mcp-tool', '--name', tempTool, '--json'], projectDir);
       expect(result.exitCode, `stdout: ${result.stdout}`).toBe(0);
@@ -190,7 +196,7 @@ describe('remove mcp-tool command', () => {
 
       // Verify tool is removed from gateway targets
       const mcpSpec = JSON.parse(await readFile(join(projectDir, 'agentcore/mcp.json'), 'utf-8'));
-      const gateway = mcpSpec.agentCoreGateways?.find((g: { name: string }) => g.name === gatewayName);
+      const gateway = mcpSpec.agentCoreGateways?.find((g: { name: string }) => g.name === tempGateway);
       const target = gateway?.targets?.find((t: { name: string }) => t.name === tempTool);
       expect(!target, 'Tool should be removed from gateway targets').toBeTruthy();
     });

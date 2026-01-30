@@ -3,7 +3,7 @@ import { randomUUID } from 'node:crypto';
 import { mkdir, readFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { afterAll, beforeAll, describe, it , expect } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
 describe('remove identity command', () => {
   let testDir: string;
@@ -117,7 +117,7 @@ describe('remove identity command', () => {
   describe('remove operations', () => {
     it('removes identity without users', async () => {
       // Add a temp identity to remove
-      const tempId = `temp-id-${Date.now()}`;
+      const tempId = `tempId${Date.now()}`;
       await runCLI(
         [
           'add',
@@ -147,19 +147,22 @@ describe('remove identity command', () => {
       expect(!identity, 'Identity should be removed from owner').toBeTruthy();
     });
 
-    it('blocks removal when identity has users', async () => {
+    it('removes identity with users using cascade policy (default)', async () => {
       // Attach identity to user agent
       await runCLI(['attach', 'identity', '--agent', userAgent, '--identity', identityName, '--json'], projectDir);
 
-      // Try to remove - should fail with restrict policy
+      // Remove with cascade policy (default) - should succeed and clean up references
       const result = await runCLI(['remove', 'identity', '--name', identityName, '--json'], projectDir);
-      expect(result.exitCode).toBe(1);
+      expect(result.exitCode, `stdout: ${result.stdout}`).toBe(0);
       const json = JSON.parse(result.stdout);
-      expect(json.success).toBe(false);
-      expect(
-        json.error.toLowerCase().includes('use') || json.error.toLowerCase().includes('attached'),
-        `Error: ${json.error}`
-      ).toBeTruthy();
+      expect(json.success).toBe(true);
+
+      // Verify identity is removed from both owner and user
+      const projectSpec = JSON.parse(await readFile(join(projectDir, 'agentcore/agentcore.json'), 'utf-8'));
+      const owner = projectSpec.agents.find((a: { name: string }) => a.name === ownerAgent);
+      const user = projectSpec.agents.find((a: { name: string }) => a.name === userAgent);
+      expect(owner?.identityProviders?.find((i: { name: string }) => i.name === identityName)).toBeUndefined();
+      expect(user?.identityProviders?.find((i: { name: string }) => i.name === identityName)).toBeUndefined();
     });
   });
 });

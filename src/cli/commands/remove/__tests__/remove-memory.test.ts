@@ -3,7 +3,7 @@ import { randomUUID } from 'node:crypto';
 import { mkdir, readFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { afterAll, beforeAll, describe, it , expect } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
 describe('remove memory command', () => {
   let testDir: string;
@@ -105,11 +105,12 @@ describe('remove memory command', () => {
   describe('remove operations', () => {
     it('removes memory without users', async () => {
       // Add a temp memory to remove
-      const tempMem = `temp-mem-${Date.now()}`;
-      await runCLI(
+      const tempMem = `tempMem${Date.now()}`;
+      const addResult = await runCLI(
         ['add', 'memory', '--name', tempMem, '--strategies', 'SEMANTIC', '--owner', ownerAgent, '--json'],
         projectDir
       );
+      expect(addResult.exitCode, `Add failed: ${addResult.stdout} ${addResult.stderr}`).toBe(0);
 
       const result = await runCLI(['remove', 'memory', '--name', tempMem, '--json'], projectDir);
       expect(result.exitCode, `stdout: ${result.stdout}`).toBe(0);
@@ -123,19 +124,22 @@ describe('remove memory command', () => {
       expect(!memory, 'Memory should be removed from owner').toBeTruthy();
     });
 
-    it('blocks removal when memory has users', async () => {
+    it('removes memory with users using cascade policy (default)', async () => {
       // Attach memory to user agent
       await runCLI(['attach', 'memory', '--agent', userAgent, '--memory', memoryName, '--json'], projectDir);
 
-      // Try to remove - should fail with restrict policy
+      // Remove with cascade policy (default) - should succeed and clean up references
       const result = await runCLI(['remove', 'memory', '--name', memoryName, '--json'], projectDir);
-      expect(result.exitCode).toBe(1);
+      expect(result.exitCode, `stdout: ${result.stdout}`).toBe(0);
       const json = JSON.parse(result.stdout);
-      expect(json.success).toBe(false);
-      expect(
-        json.error.toLowerCase().includes('use') || json.error.toLowerCase().includes('attached'),
-        `Error: ${json.error}`
-      ).toBeTruthy();
+      expect(json.success).toBe(true);
+
+      // Verify memory is removed from both owner and user
+      const projectSpec = JSON.parse(await readFile(join(projectDir, 'agentcore/agentcore.json'), 'utf-8'));
+      const owner = projectSpec.agents.find((a: { name: string }) => a.name === ownerAgent);
+      const user = projectSpec.agents.find((a: { name: string }) => a.name === userAgent);
+      expect(owner?.memoryProviders?.find((m: { name: string }) => m.name === memoryName)).toBeUndefined();
+      expect(user?.memoryProviders?.find((m: { name: string }) => m.name === memoryName)).toBeUndefined();
     });
   });
 });

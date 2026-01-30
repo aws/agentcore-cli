@@ -3,7 +3,7 @@ import { randomUUID } from 'node:crypto';
 import { mkdir, readFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { afterAll, beforeAll, describe, it , expect } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
 describe('remove gateway command', () => {
   let testDir: string;
@@ -78,7 +78,7 @@ describe('remove gateway command', () => {
   describe('remove operations', () => {
     it('removes gateway without dependencies', async () => {
       // Add a second gateway to remove
-      const tempGateway = `temp-gw-${Date.now()}`;
+      const tempGateway = `tempGw${Date.now()}`;
       await runCLI(['add', 'gateway', '--name', tempGateway, '--json'], projectDir);
 
       const result = await runCLI(['remove', 'gateway', '--name', tempGateway, '--json'], projectDir);
@@ -92,19 +92,19 @@ describe('remove gateway command', () => {
       expect(!gateway, 'Gateway should be removed').toBeTruthy();
     });
 
-    it('blocks removal when gateway has attached agents', async () => {
+    it('removes gateway with attached agents using cascade policy (default)', async () => {
       // Attach gateway to agent
       await runCLI(['attach', 'gateway', '--agent', agentName, '--gateway', gatewayName, '--json'], projectDir);
 
-      // Try to remove - should fail with restrict policy
+      // Remove with cascade policy (default) - should succeed and clean up references
       const result = await runCLI(['remove', 'gateway', '--name', gatewayName, '--json'], projectDir);
-      expect(result.exitCode).toBe(1);
+      expect(result.exitCode, `stdout: ${result.stdout}`).toBe(0);
       const json = JSON.parse(result.stdout);
-      expect(json.success).toBe(false);
-      expect(
-        json.error.toLowerCase().includes('attached') || json.error.toLowerCase().includes('use'),
-        `Error: ${json.error}`
-      ).toBeTruthy();
+      expect(json.success).toBe(true);
+
+      // Verify gateway is removed from mcp.json
+      const mcpSpec = JSON.parse(await readFile(join(projectDir, 'agentcore/mcp.json'), 'utf-8'));
+      expect(mcpSpec.agentCoreGateways?.find((g: { name: string }) => g.name === gatewayName)).toBeUndefined();
     });
   });
 });
