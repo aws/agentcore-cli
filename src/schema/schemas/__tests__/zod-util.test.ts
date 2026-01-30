@@ -1,5 +1,5 @@
 import { uniqueBy } from '../zod-util.js';
-import { describe, it , expect } from 'vitest';
+import { describe, expect, it } from 'vitest';
 import { z } from 'zod';
 
 describe('zod-util', () => {
@@ -22,7 +22,7 @@ describe('zod-util', () => {
       expect(result.success).toBe(false);
       if (!result.success) {
         expect(result.error.issues.length).toBe(1);
-        expect(result.error.issues[0].path).toEqual([2]);
+        expect(result.error.issues[0]!.path).toEqual([2]);
       }
     });
 
@@ -32,7 +32,7 @@ describe('zod-util', () => {
       const result = schema.safeParse([{ name: 'foo' }, { name: 'foo' }]);
       expect(result.success).toBe(false);
       if (!result.success) {
-        expect(result.error.issues[0].message).toBe('Duplicate name: foo');
+        expect(result.error.issues[0]!.message).toBe('Duplicate name: foo');
       }
     });
 
@@ -95,8 +95,8 @@ describe('zod-util', () => {
       expect(result.success).toBe(false);
       if (!result.success) {
         expect(result.error.issues.length).toBe(1);
-        expect(result.error.issues[0].path).toEqual([2]);
-        expect(result.error.issues[0].message).toBe('Duplicate id: 1');
+        expect(result.error.issues[0]!.path).toEqual([2]);
+        expect(result.error.issues[0]!.message).toBe('Duplicate id: 1');
       }
     });
 

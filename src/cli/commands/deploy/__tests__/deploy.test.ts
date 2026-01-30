@@ -3,18 +3,18 @@ import { randomUUID } from 'node:crypto';
 import { mkdir, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { afterAll, beforeAll, describe, it , expect } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
 describe('deploy --help', () => {
   it('shows verbose option', async () => {
-    const result = await runCLI(['deploy', '--help']);
+    const result = await runCLI(['deploy', '--help'], process.cwd());
     expect(result.exitCode).toBe(0);
     expect(result.stdout.includes('--verbose'), 'Should show --verbose option').toBeTruthy();
     expect(result.stdout.includes('resource-level'), 'Should describe resource-level events').toBeTruthy();
   });
 
   it('shows all deploy options', async () => {
-    const result = await runCLI(['deploy', '--help']);
+    const result = await runCLI(['deploy', '--help'], process.cwd());
     expect(result.stdout.includes('--target')).toBeTruthy();
     expect(result.stdout.includes('--yes')).toBeTruthy();
     expect(result.stdout.includes('--progress')).toBeTruthy();

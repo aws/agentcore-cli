@@ -3,7 +3,7 @@ import { randomUUID } from 'node:crypto';
 import { mkdir, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { afterAll, beforeAll, describe, it , expect } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
 describe('invoke command', () => {
   let testDir: string;
@@ -67,13 +67,7 @@ describe('invoke command', () => {
       expect(json.error.includes('Prompt'), `Error should mention Prompt: ${json.error}`).toBeTruthy();
     });
 
-    it('requires target for JSON output', async () => {
-      const result = await runCLI(['invoke', 'hello', '--json'], projectDir);
-      expect(result.exitCode).toBe(1);
-      const json = JSON.parse(result.stdout);
-      expect(json.success).toBe(false);
-      expect(json.error.includes('--target'), `Error should mention --target: ${json.error}`).toBeTruthy();
-    });
+    // Target defaults to 'default' so no validation needed
   });
 
   describe('agent/target validation', () => {

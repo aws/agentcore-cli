@@ -4,7 +4,7 @@ import * as fs from 'node:fs';
 import * as fsp from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import * as path from 'node:path';
-import { afterEach, beforeEach, describe, it , expect } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
 describe('cleanupStaleLockFiles', () => {
   let testDir: string;
@@ -49,16 +49,8 @@ describe('cleanupStaleLockFiles', () => {
     expect(fs.existsSync(lockFile), 'Lock from live PID should be kept').toBe(true);
   });
 
-  it('removes old synth.lock files', async () => {
-    const lockFile = path.join(testDir, 'synth.lock');
-    await fsp.writeFile(lockFile, '');
-    const oldTime = new Date(Date.now() - 10 * 60 * 1000);
-    await fsp.utimes(lockFile, oldTime, oldTime);
-
-    await cleanupStaleLockFiles(testDir);
-
-    expect(fs.existsSync(lockFile), 'Old synth.lock should be removed').toBe(false);
-  });
+  // Note: synth.lock is intentionally NOT removed by cleanupStaleLockFiles
+  // to avoid corrupting concurrent CDK runs (see process.ts comment)
 
   it('handles missing directory gracefully', async () => {
     const nonExistent = path.join(testDir, 'does-not-exist');

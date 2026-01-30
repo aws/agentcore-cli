@@ -4,15 +4,15 @@ import type {
   AddIdentityOptions,
   AddMcpToolOptions,
   AddMemoryOptions,
-} from './types.js';
+} from '../types.js';
 import {
   validateAddAgentOptions,
   validateAddGatewayOptions,
   validateAddIdentityOptions,
   validateAddMcpToolOptions,
   validateAddMemoryOptions,
-} from './validate.js';
-import { describe, it , expect } from 'vitest';
+} from '../validate.js';
+import { describe, expect, it } from 'vitest';
 
 // Helper: valid base options for each type
 const validAgentOptionsByo: AddAgentOptions = {
@@ -88,7 +88,7 @@ describe('validate', () => {
       for (const { field, error } of requiredFields) {
         const opts = { ...validAgentOptionsByo, [field]: undefined };
         const result = validateAddAgentOptions(opts);
-        expect(result.valid, `Should fail for missing ${field}`).toBe(false);
+        expect(result.valid, `Should fail for missing ${String(field)}`).toBe(false);
         expect(result.error).toBe(error);
       }
     });
@@ -200,7 +200,7 @@ describe('validate', () => {
       for (const { field, error } of jwtFields) {
         const opts = { ...validGatewayOptionsJwt, [field]: undefined };
         const result = validateAddGatewayOptions(opts);
-        expect(result.valid, `Should fail for missing ${field}`).toBe(false);
+        expect(result.valid, `Should fail for missing ${String(field)}`).toBe(false);
         expect(result.error).toBe(error);
       }
     });
@@ -248,7 +248,7 @@ describe('validate', () => {
       for (const { field, error } of requiredFields) {
         const opts = { ...validMcpToolOptionsMcpRuntime, [field]: undefined };
         const result = validateAddMcpToolOptions(opts);
-        expect(result.valid, `Should fail for missing ${field}`).toBe(false);
+        expect(result.valid, `Should fail for missing ${String(field)}`).toBe(false);
         expect(result.error).toBe(error);
       }
     });
@@ -309,7 +309,7 @@ describe('validate', () => {
       for (const { field, error } of requiredFields) {
         const opts = { ...validMemoryOptions, [field]: undefined };
         const result = validateAddMemoryOptions(opts);
-        expect(result.valid, `Should fail for missing ${field}`).toBe(false);
+        expect(result.valid, `Should fail for missing ${String(field)}`).toBe(false);
         expect(result.error).toBe(error);
       }
     });
@@ -349,7 +349,7 @@ describe('validate', () => {
       for (const { field, error } of requiredFields) {
         const opts = { ...validIdentityOptions, [field]: undefined };
         const result = validateAddIdentityOptions(opts);
-        expect(result.valid, `Should fail for missing ${field}`).toBe(false);
+        expect(result.valid, `Should fail for missing ${String(field)}`).toBe(false);
         expect(result.error).toBe(error);
       }
     });

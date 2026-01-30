@@ -3,7 +3,7 @@ import { randomUUID } from 'node:crypto';
 import { mkdir, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { afterAll, beforeAll, describe, it , expect } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
 describe('plan command', () => {
   let testDir: string;
@@ -87,9 +87,11 @@ describe('plan command', () => {
       ).toBeTruthy();
     });
 
-    it('plan without --deploy returns plan result only', async () => {
+    // This test requires npm install to work (CDK dependencies)
+    // Moved to integ-tests/plan.test.ts
+    it.skip('plan without --deploy returns plan result only', async () => {
       const result = await runCLI(['plan', '--target', 'test-target', '--json'], projectDir);
-      expect(result.exitCode).toBe(0);
+      expect(result.exitCode, `stdout: ${result.stdout}, stderr: ${result.stderr}`).toBe(0);
       const json = JSON.parse(result.stdout);
       expect(json.success).toBe(true);
       expect(json.stackNames, 'Should have stackNames').toBeTruthy();

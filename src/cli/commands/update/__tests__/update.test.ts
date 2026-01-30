@@ -1,5 +1,5 @@
-import { compareVersions } from './action.js';
-import { describe, it , expect } from 'vitest';
+import { compareVersions } from '../action.js';
+import { describe, expect, it } from 'vitest';
 
 describe('update', () => {
   describe('compareVersions', () => {

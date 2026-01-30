@@ -1,10 +1,10 @@
 import { runCLI } from '../../../../test-utils/index.js';
-import { describe, it , expect } from 'vitest';
+import { describe, expect, it } from 'vitest';
 
 describe('dev command', () => {
   describe('--help', () => {
     it('shows all options', async () => {
-      const result = await runCLI(['dev', '--help']);
+      const result = await runCLI(['dev', '--help'], process.cwd());
 
       expect(result.exitCode).toBe(0);
       expect(result.stdout.includes('--port'), 'Should show --port option').toBeTruthy();
@@ -18,7 +18,7 @@ describe('dev command', () => {
 
   describe('requires project context', () => {
     it('exits with error when run outside project', async () => {
-      const result = await runCLI(['dev']);
+      const result = await runCLI(['dev'], process.cwd());
 
       expect(result.exitCode).toBe(1);
       expect(
@@ -30,19 +30,19 @@ describe('dev command', () => {
 
   describe('flag validation', () => {
     it('rejects invalid port number', async () => {
-      const result = await runCLI(['dev', '--port', 'abc']);
+      const result = await runCLI(['dev', '--port', 'abc'], process.cwd());
 
       expect(result.exitCode).toBe(1);
     });
 
     it('rejects negative port number', async () => {
-      const result = await runCLI(['dev', '--port', '-1']);
+      const result = await runCLI(['dev', '--port', '-1'], process.cwd());
 
       expect(result.exitCode).toBe(1);
     });
 
     it('stream flag is documented in help', async () => {
-      const result = await runCLI(['dev', '--help']);
+      const result = await runCLI(['dev', '--help'], process.cwd());
 
       expect(result.exitCode).toBe(0);
       expect(result.stdout.includes('--stream'), 'Should show --stream option').toBeTruthy();
