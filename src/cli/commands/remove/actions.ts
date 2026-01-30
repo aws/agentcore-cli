@@ -89,7 +89,7 @@ export async function handleRemove(options: ValidatedRemoveOptions): Promise<Rem
         return { success: true, resourceType, resourceName: name, message: `Removed target '${name}'` };
       }
       default:
-        return { success: false, error: `Unknown resource type: ${resourceType}` };
+        return { success: false, error: `Unknown resource type: ${resourceType as string}` };
     }
   } catch (err) {
     return { success: false, error: getErrorMessage(err) };

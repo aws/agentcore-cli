@@ -29,7 +29,7 @@ async function invokeDevServer(port: number, prompt: string, stream: boolean): P
       console.error(`Error: Dev server not running on port ${port}`);
       console.error('Start it with: agentcore dev');
     } else {
-      console.error(`Error: ${err instanceof Error ? err.message : err}`);
+      console.error(`Error: ${err instanceof Error ? err.message : String(err)}`);
     }
     process.exit(1);
   }
@@ -139,10 +139,11 @@ export const registerDev = (program: Command) => {
         // Handle Ctrl+C
         process.on('SIGINT', () => {
           console.log('\nStopping server...');
-          child.kill('SIGTERM');
+          child?.kill('SIGTERM');
         });
 
         // Keep process alive
+        // eslint-disable-next-line @typescript-eslint/no-empty-function
         await new Promise(() => {});
       }
 

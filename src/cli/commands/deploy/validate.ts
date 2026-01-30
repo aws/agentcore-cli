@@ -5,7 +5,7 @@ export interface ValidationResult {
   error?: string;
 }
 
-export function validateDeployOptions(options: DeployOptions): ValidationResult {
+export function validateDeployOptions(_options: DeployOptions): ValidationResult {
   // Target should always be set (defaulted to 'default' by command handler)
   return { valid: true };
 }

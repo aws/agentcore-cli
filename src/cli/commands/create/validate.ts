@@ -80,8 +80,8 @@ export function validateCreateOptions(options: CreateOptions): ValidationResult 
     }
 
     // Validate framework/model compatibility
-    const supportedProviders = getSupportedModelProviders(options.framework);
-    if (!supportedProviders.includes(options.modelProvider)) {
+    const supportedProviders = getSupportedModelProviders(fwResult.data);
+    if (!supportedProviders.includes(mpResult.data)) {
       return { valid: false, error: `${options.framework} does not support ${options.modelProvider}` };
     }
 

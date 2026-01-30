@@ -1,7 +1,7 @@
 import { GradientText, LogLink, Panel, Screen, ScrollableText, SelectList, TextInput } from '../../components';
 import { useInvokeFlow } from './useInvokeFlow';
 import { Box, Text, useInput } from 'ink';
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useState } from 'react';
 
 interface InvokeScreenProps {
   /** Whether running in interactive TUI mode (from App.tsx) vs CLI mode */
@@ -15,7 +15,7 @@ interface InvokeScreenProps {
 type Mode = 'select-agent' | 'chat' | 'input';
 
 export function InvokeScreen({
-  isInteractive,
+  isInteractive: _isInteractive,
   onExit,
   initialPrompt,
   initialSessionId,

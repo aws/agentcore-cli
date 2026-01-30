@@ -49,8 +49,11 @@ export function AddSuccessScreen({
   };
 
   // Disable exit while loading
-  // eslint-disable-next-line @typescript-eslint/no-empty-function
-  const handleExit = loading ? () => {} : onExit;
+  const handleExit = loading
+    ? () => {
+        /* noop while loading */
+      }
+    : onExit;
 
   // Non-interactive mode - just show success message
   if (!isInteractive) {

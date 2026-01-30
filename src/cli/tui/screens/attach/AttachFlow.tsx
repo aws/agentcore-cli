@@ -1,4 +1,12 @@
-import { ErrorPrompt, type NextStep, NextSteps, Panel, Screen, SelectScreen , SelectableItem } from '../../components';
+import {
+  ErrorPrompt,
+  type NextStep,
+  NextSteps,
+  Panel,
+  Screen,
+  SelectScreen,
+  type SelectableItem,
+} from '../../components';
 import {
   useAgentAttachments,
   useAgents,

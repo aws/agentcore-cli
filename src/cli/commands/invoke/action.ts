@@ -121,13 +121,13 @@ export async function handleInvoke(context: InvokeContext, options: InvokeOption
     payload: options.prompt,
   });
 
-  logger.logResponse(response);
+  logger.logResponse(response.content);
 
   return {
     success: true,
     agentName: agentSpec.name,
     targetName: selectedTargetName,
-    response,
+    response: response.content,
     logFilePath: logger.logFilePath,
   };
 }
