@@ -67,7 +67,7 @@ describe('integration: dev server', () => {
       const json = JSON.parse(result.stdout);
       projectPath = json.projectPath;
     }
-  }, 60000);
+  }, 120000);
 
   afterEach(() => {
     // Kill dev server if running
@@ -89,12 +89,13 @@ describe('integration: dev server', () => {
     async () => {
       expect(projectPath, 'Project should have been created').toBeTruthy();
 
-      const cliPath = join(__dirname, '..', 'src', 'cli', 'index.ts');
+      const cliPath = join(__dirname, '..', 'dist', 'cli', 'index.mjs');
       const port = 8000 + Math.floor(Math.random() * 1000);
 
-      devProcess = spawn('bun', ['run', cliPath, 'dev', '--port', String(port), '--logs'], {
+      devProcess = spawn('node', [cliPath, 'dev', '--port', String(port), '--logs'], {
         cwd: projectPath,
         stdio: 'pipe',
+        env: { ...process.env, INIT_CWD: undefined },
       });
 
       const serverReady = await waitForServer(port, 20000);

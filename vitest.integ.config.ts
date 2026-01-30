@@ -12,7 +12,6 @@ export default defineConfig({
     {
       name: 'text-loader',
       transform(code, id) {
-        // Handle .ts files in llm-compacted as text
         if (id.includes('llm-compacted') && id.endsWith('.ts')) {
           const text = fs.readFileSync(id, 'utf-8');
           return {
@@ -20,7 +19,6 @@ export default defineConfig({
             map: null,
           };
         }
-        // Handle .md files as text
         if (id.endsWith('.md')) {
           const text = fs.readFileSync(id, 'utf-8');
           return {
@@ -32,10 +30,9 @@ export default defineConfig({
     },
   ],
   test: {
-    include: ['src/**/*.test.ts', '__tests__/**/*.test.ts'],
-    exclude: ['src/assets/**/*.test.ts'],
-    testTimeout: 15000,
-    hookTimeout: 60000,
+    include: ['integ-tests/**/*.test.ts'],
+    testTimeout: 120000,
+    hookTimeout: 120000,
     globals: false,
     reporters: ['verbose'],
   },

@@ -32,7 +32,8 @@
     "clean": "rm -rf dist",
     "prepare": "husky",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "test:integ": "vitest run --config vitest.integ.config.ts"
   },
   "dependencies": {
     "@aws-cdk/toolkit-lib": "^1.13.0",

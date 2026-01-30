@@ -133,21 +133,37 @@ export class CDKRenderer {
   /**
    * Updates the generated package.json with distro-specific configuration.
    * Adjusts the postinstall script to link the correct package name.
+   *
+   * If LOCAL_L3_PATH env var is set, uses file: dependency instead of npm link.
    */
   private async updatePackageJson(outputDir: string): Promise<void> {
     const packageJsonPath = path.join(outputDir, 'package.json');
     const content = await fs.readFile(packageJsonPath, 'utf-8');
     const pkg = JSON.parse(content) as {
       scripts?: { postinstall?: string };
+      dependencies?: Record<string, string>;
       [key: string]: unknown;
     };
 
-    const distroConfig = getDistroConfig();
-    const packageName = distroConfig.packageName;
+    const localL3Path = process.env.LOCAL_L3_PATH;
 
-    // Update postinstall script to use the correct package name
-    if (pkg.scripts?.postinstall) {
-      pkg.scripts.postinstall = `npm link ${packageName} 2>/dev/null || echo 'Note: If CDK synth fails, run: npm link ${packageName}'`;
+    if (localL3Path) {
+      // Use local file: dependency for development
+      if (pkg.dependencies) {
+        pkg.dependencies['@aws/agentcore-l3-cdk-constructs'] = `file:${localL3Path}`;
+      }
+      // Remove postinstall npm link since we're using file: dependency
+      if (pkg.scripts?.postinstall) {
+        delete pkg.scripts.postinstall;
+      }
+    } else {
+      // Production: use npm link
+      const distroConfig = getDistroConfig();
+      const packageName = distroConfig.packageName;
+
+      if (pkg.scripts?.postinstall) {
+        pkg.scripts.postinstall = `npm link ${packageName} 2>/dev/null || echo 'Note: If CDK synth fails, run: npm link ${packageName}'`;
+      }
     }
 
     await fs.writeFile(packageJsonPath, JSON.stringify(pkg, null, 2) + '\n', 'utf-8');
