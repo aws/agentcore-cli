@@ -78,3 +78,46 @@ There should not be significant logic defined in the `commands/` directory.
 
 Bias towards initial values over placeholders. Unless a field is optional, the initial value allows the user to just
 accept the value and keep moving. For something like an AWS accountID, an initial value would be inappropriate.
+
+## Cross-Platform Development
+
+The CLI is designed to work seamlessly on both Windows and Unix-like systems (Linux, macOS). All code should be
+cross-platform compatible.
+
+### Platform Abstraction
+
+Use utilities from `lib/utils/platform.ts` to handle platform differences:
+
+```typescript
+import { getVenvExecutable, isWindows } from '../../lib/utils/platform';
+
+// Get correct path to Python venv executables
+const uvicorn = getVenvExecutable('.venv', 'uvicorn');
+// Unix: .venv/bin/uvicorn
+// Windows: .venv\Scripts\uvicorn.exe
+```
+
+### Cross-Platform Guidelines
+
+1. **Never hardcode Unix-specific paths or commands**
+   - ❌ `.venv/bin/python`, `rm -rf`, `rsync`
+   - ✅ Use `getVenvExecutable()`, Node.js `fs` APIs, or cross-platform npm packages
+
+2. **Use platform utilities instead of direct checks**
+   - ❌ `process.platform === 'win32'`
+   - ✅ `import { isWindows } from '../../lib/utils/platform'`
+
+3. **Test on both platforms**
+   - Windows has different path separators, executable extensions, and shell commands
+   - Python venv structure differs (bin/ vs Scripts/)
+   - PTY/terminal features may not be available on Windows
+
+4. **Handle platform-specific features gracefully**
+   - Example: PTY via `script` command is Unix-only, fall back to one-shot execution on Windows
+   - Document platform limitations in code comments
+
+5. **Use Node.js built-ins for file operations**
+   - Prefer `fs`, `path`, `child_process` over shell commands
+   - These are cross-platform by design
+
+See `src/lib/AGENTS.md` for detailed documentation on platform utilities and examples.

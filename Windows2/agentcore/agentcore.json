@@ -1,0 +1,26 @@
+{
+  "name": "Windows2",
+  "version": "0.1",
+  "description": "AgentCore project: Windows2",
+  "agents": [
+    {
+      "name": "WinAgent2",
+      "id": "WinAgent2Agent",
+      "sdkFramework": "Strands",
+      "targetLanguage": "Python",
+      "modelProvider": "Bedrock",
+      "runtime": {
+        "artifact": "CodeZip",
+        "name": "WinAgent2",
+        "pythonVersion": "PYTHON_3_12",
+        "entrypoint": "main.py",
+        "codeLocation": "app/WinAgent2/",
+        "networkMode": "PUBLIC"
+      },
+      "mcpProviders": [],
+      "memoryProviders": [],
+      "identityProviders": [],
+      "remoteTools": []
+    }
+  ]
+}

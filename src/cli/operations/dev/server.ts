@@ -2,6 +2,7 @@ import { type ChildProcess, spawn, spawnSync } from 'child_process';
 import { existsSync } from 'fs';
 import { createServer } from 'net';
 import { join } from 'path';
+import { getVenvExecutable } from '../../../lib/utils/platform';
 
 export type LogLevel = 'info' | 'warn' | 'error' | 'system';
 
@@ -35,7 +36,7 @@ function convertEntrypointToModule(entrypoint: string): string {
  */
 function ensurePythonVenv(cwd: string, onLog: (level: LogLevel, message: string) => void): boolean {
   const venvPath = join(cwd, '.venv');
-  const uvicornPath = join(venvPath, 'bin', 'uvicorn');
+  const uvicornPath = getVenvExecutable(venvPath, 'uvicorn');
 
   // Check if venv and uvicorn already exist
   if (existsSync(uvicornPath)) {
@@ -92,7 +93,7 @@ export function spawnDevServer(options: SpawnDevServerOptions): ChildProcess | n
   }
 
   // For Python, use the venv's uvicorn directly to avoid PATH issues
-  const cmd = isPython ? join(cwd, '.venv', 'bin', 'uvicorn') : 'npx';
+  const cmd = isPython ? getVenvExecutable(join(cwd, '.venv'), 'uvicorn') : 'npx';
   const args = isPython
     ? [convertEntrypointToModule(module), '--reload', '--host', '127.0.0.1', '--port', String(port)]
     : ['tsx', 'watch', (module.split(':')[0] ?? module).replace(/\./g, '/') + '.ts'];
