@@ -10,3 +10,5 @@ export { useAvailableAgents, useCreateGateway, useCreateMcpTool, useExistingGate
 export { useDevServer } from './useDevServer';
 export { useProject } from './useProject';
 export type { UseProjectResult, ProjectContext } from './useProject';
+export { useTextInput } from './useTextInput';
+export type { UseTextInputOptions, UseTextInputResult } from './useTextInput';

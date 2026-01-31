@@ -1,5 +1,6 @@
+import { useTextInput } from '../hooks';
 import { Cursor } from './Cursor';
-import { Box, Text, useInput } from 'ink';
+import { Box, Text } from 'ink';
 import { useState } from 'react';
 import type { ZodString } from 'zod';
 
@@ -55,58 +56,45 @@ export function TextInput({
   mask,
   hideArrow = false,
 }: TextInputProps) {
-  const [value, setValue] = useState(initialValue);
   const [showError, setShowError] = useState(false);
+
+  const { value, cursor } = useTextInput({
+    initialValue,
+    onSubmit: val => {
+      const trimmed = val.trim();
+      const hasValue = allowEmpty || trimmed;
+      const validationError = validateValue(trimmed, schema, customValidation);
+      if (hasValue && !validationError) {
+        onSubmit(trimmed);
+      } else {
+        setShowError(true);
+      }
+    },
+    onCancel,
+  });
 
   const trimmed = value.trim();
   const validationErrorMsg = validateValue(trimmed, schema, customValidation);
   const isValid = !validationErrorMsg;
-
-  useInput((input, key) => {
-    if (key.escape) {
-      onCancel();
-      return;
-    }
-
-    if (key.return) {
-      const trimmedValue = value.trim();
-      const hasValue = allowEmpty || trimmedValue;
-      const validationError = validateValue(trimmedValue, schema, customValidation);
-
-      if (hasValue && !validationError) {
-        onSubmit(trimmedValue);
-      } else {
-        setShowError(true);
-      }
-      return;
-    }
-
-    if (key.backspace || key.delete) {
-      setValue(v => v.slice(0, -1));
-      setShowError(false);
-      return;
-    }
-
-    if (input && !key.ctrl && !key.meta) {
-      setValue(v => v + input);
-      setShowError(false);
-    }
-  });
 
   const hasInput = trimmed.length > 0;
   const hasValidation = Boolean(schema ?? customValidation);
   const showCheckmark = hasInput && isValid && hasValidation;
   const showInvalidMark = hasInput && !isValid && hasValidation;
 
-  const displayValue = mask ? mask.repeat(value.length) : value;
+  // Display with cursor position
+  const beforeCursor = mask ? mask.repeat(cursor) : value.slice(0, cursor);
+  const afterCursor = mask ? mask.repeat(value.length - cursor) : value.slice(cursor);
 
   return (
     <Box flexDirection="column">
       {prompt && <Text>{prompt}</Text>}
       <Box>
         {!hideArrow && <Text color="cyan">&gt; </Text>}
-        <Text>{displayValue ?? (placeholder ? <Text dimColor>{placeholder}</Text> : null)}</Text>
+        <Text>{beforeCursor}</Text>
         <Cursor />
+        <Text>{afterCursor}</Text>
+        {!value && placeholder && <Text dimColor>{placeholder}</Text>}
         {showCheckmark && <Text color="green"> ✓</Text>}
         {showInvalidMark && <Text color="red"> ✗</Text>}
       </Box>

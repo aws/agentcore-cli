@@ -1,5 +1,7 @@
+import { useTextInput } from '../hooks';
+import { Cursor } from './Cursor';
 import { Box, Text, useInput } from 'ink';
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import type { ZodString } from 'zod';
 
 /** Custom validation beyond schema - returns true if valid, or error message string if invalid */
@@ -76,99 +78,76 @@ export function SecretInput({
   maskChar = '*',
   revealChars = 0,
 }: SecretInputProps) {
-  const [value, setValue] = useState(initialValue);
   const [showValue, setShowValue] = useState(false);
   const [showError, setShowError] = useState(false);
-  const [cursorVisible, setCursorVisible] = useState(true);
 
-  // Cursor blink effect
-  useEffect(() => {
-    const timer = setInterval(() => setCursorVisible(prev => !prev), 500);
-    return () => clearInterval(timer);
-  }, []);
-
-  const trimmed = value.trim();
-  const validationErrorMsg = validateValue(trimmed, schema, customValidation);
-  const isValid = !validationErrorMsg;
-
-  useInput(
-    (input, key) => {
-      if (key.escape) {
-        onCancel();
-        return;
-      }
-
-      if (key.return) {
-        const trimmedValue = value.trim();
-
-        // Empty value handling
-        if (!trimmedValue) {
-          if (onSkip) {
-            onSkip();
-          } else {
-            onCancel();
-          }
-          return;
-        }
-
-        // Validate non-empty value
-        const validationError = validateValue(trimmedValue, schema, customValidation);
-        if (!validationError) {
-          onSubmit(trimmedValue);
+  const { value, cursor } = useTextInput({
+    initialValue,
+    onSubmit: val => {
+      const trimmed = val.trim();
+      if (!trimmed) {
+        if (onSkip) {
+          onSkip();
         } else {
-          setShowError(true);
+          onCancel();
         }
         return;
       }
+      const validationError = validateValue(trimmed, schema, customValidation);
+      if (!validationError) {
+        onSubmit(trimmed);
+      } else {
+        setShowError(true);
+      }
+    },
+    onCancel,
+    isActive,
+  });
 
-      // Toggle show/hide with Tab
+  // Handle Tab separately for show/hide toggle
+  useInput(
+    (_input, key) => {
       if (key.tab) {
         setShowValue(s => !s);
-        return;
-      }
-
-      if (key.backspace || key.delete) {
-        setValue(v => v.slice(0, -1));
-        setShowError(false);
-        return;
-      }
-
-      if (input && !key.ctrl && !key.meta) {
-        setValue(v => v + input);
-        setShowError(false);
       }
     },
     { isActive }
   );
 
-  // Generate masked display value
-  const getDisplayValue = (): string => {
+  const trimmed = value.trim();
+  const validationErrorMsg = validateValue(trimmed, schema, customValidation);
+  const isValid = !validationErrorMsg;
+
+  // Generate masked display value with cursor position
+  const getMaskedSegments = (): { before: string; after: string } => {
     if (showValue) {
-      return value;
+      return { before: value.slice(0, cursor), after: value.slice(cursor) };
     }
 
     if (value.length === 0) {
-      return '';
+      return { before: '', after: '' };
     }
 
-    // Full mask
-    if (revealChars === 0) {
-      return maskChar.repeat(value.length);
+    const cursorAtEnd = cursor === value.length;
+
+    // Editing (cursor not at end) - show actual value so user can see what they're doing
+    if (!cursorAtEnd) {
+      return { before: value.slice(0, cursor), after: value.slice(cursor) };
     }
 
-    // Partial reveal (show first and last N chars)
-    if (value.length <= revealChars * 2) {
-      // Value too short for partial reveal, just mask all
-      return maskChar.repeat(value.length);
+    // Done typing (cursor at end) - show partial reveal if configured
+    if (revealChars > 0 && value.length > revealChars * 2) {
+      const start = value.slice(0, revealChars);
+      const end = value.slice(-revealChars);
+      const middleLength = value.length - revealChars * 2;
+      return { before: `${start}${maskChar.repeat(middleLength)}${end}`, after: '' };
     }
 
-    const start = value.slice(0, revealChars);
-    const end = value.slice(-revealChars);
-    const middleLength = value.length - revealChars * 2;
-    return `${start}${maskChar.repeat(middleLength)}${end}`;
+    // Full mask (no reveal configured or value too short)
+    return { before: maskChar.repeat(value.length), after: '' };
   };
 
-  const displayValue = getDisplayValue();
+  const { before, after } = getMaskedSegments();
   const hasInput = trimmed.length > 0;
   const hasValidation = Boolean(schema ?? customValidation);
   const showCheckmark = hasInput && isValid && hasValidation;
@@ -183,28 +162,23 @@ export function SecretInput({
         </Box>
       )}
       <Box marginTop={1}>
-        <Text>
-          <Text color="cyan">&gt; </Text>
-          {displayValue ? (
-            <>
-              {displayValue}
-              <Text color="white">{cursorVisible ? '▋' : ' '}</Text>
-            </>
-          ) : placeholder ? (
-            cursorVisible ? (
-              <>
-                <Text color="white">▋</Text>
-                <Text dimColor>{placeholder.slice(1)}</Text>
-              </>
-            ) : (
-              <Text dimColor>{placeholder}</Text>
-            )
-          ) : (
-            <Text color="white">{cursorVisible ? '▋' : ' '}</Text>
-          )}
-          {showCheckmark && <Text color="green"> ✓</Text>}
-          {showInvalidMark && <Text color="red"> ✗</Text>}
-        </Text>
+        <Text color="cyan">&gt; </Text>
+        {value ? (
+          <>
+            <Text>{before}</Text>
+            <Cursor />
+            <Text>{after}</Text>
+          </>
+        ) : placeholder ? (
+          <>
+            <Cursor />
+            <Text dimColor>{placeholder}</Text>
+          </>
+        ) : (
+          <Cursor />
+        )}
+        {showCheckmark && <Text color="green"> ✓</Text>}
+        {showInvalidMark && <Text color="red"> ✗</Text>}
       </Box>
       {(showError || showInvalidMark) && validationErrorMsg && (
         <Box marginTop={1}>
