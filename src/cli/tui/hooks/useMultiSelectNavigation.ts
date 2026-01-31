@@ -12,6 +12,8 @@ interface UseMultiSelectNavigationOptions<T> {
   onExit?: () => void;
   /** Whether navigation is active (default: true) */
   isActive?: boolean;
+  /** Whether a text input is currently focused - disables j/k keys (default: false) */
+  textInputActive?: boolean;
   /** Whether to require at least one selection before confirm (default: false) */
   requireSelection?: boolean;
 }
@@ -52,6 +54,7 @@ export function useMultiSelectNavigation<T>({
   onConfirm,
   onExit,
   isActive = true,
+  textInputActive = false,
   requireSelection = false,
 }: UseMultiSelectNavigationOptions<T>): UseMultiSelectNavigationResult {
   const [cursorIndex, setCursorIndex] = useState(0);
@@ -85,13 +88,13 @@ export function useMultiSelectNavigation<T>({
         return;
       }
 
-      // Handle arrow navigation
-      if (key.upArrow && items.length > 0) {
+      // Handle arrow navigation (and j/k when no text input)
+      if ((key.upArrow || (!textInputActive && input === 'k')) && items.length > 0) {
         setCursorIndex(i => Math.max(0, i - 1));
         return;
       }
 
-      if (key.downArrow && items.length > 0) {
+      if ((key.downArrow || (!textInputActive && input === 'j')) && items.length > 0) {
         setCursorIndex(i => Math.min(items.length - 1, i + 1));
         return;
       }

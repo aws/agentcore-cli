@@ -10,6 +10,8 @@ interface UseListNavigationOptions<T> {
   onExit?: () => void;
   /** Whether navigation is active (default: true) */
   isActive?: boolean;
+  /** Whether a text input is currently focused - disables j/k keys (default: false) */
+  textInputActive?: boolean;
   /** Optional hotkey extractor - return hotkeys for an item */
   getHotkeys?: (item: T) => string[] | undefined;
   /** Callback when a hotkey matches an item */
@@ -52,6 +54,7 @@ export function useListNavigation<T>({
   onSelect,
   onExit,
   isActive = true,
+  textInputActive = false,
   getHotkeys,
   onHotkeySelect,
   isDisabled,
@@ -87,13 +90,13 @@ export function useListNavigation<T>({
         return;
       }
 
-      // Handle arrow navigation
-      if (key.upArrow && items.length > 0) {
+      // Handle arrow navigation (and j/k when no text input)
+      if ((key.upArrow || (!textInputActive && input === 'k')) && items.length > 0) {
         setSelectedIndex(i => findNextIndex(i, -1));
         return;
       }
 
-      if (key.downArrow && items.length > 0) {
+      if ((key.downArrow || (!textInputActive && input === 'j')) && items.length > 0) {
         setSelectedIndex(i => findNextIndex(i, 1));
         return;
       }
