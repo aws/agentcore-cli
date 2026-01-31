@@ -101,6 +101,7 @@ export function SecretInput({
       }
     },
     onCancel,
+    onChange: () => setShowError(false),
     isActive,
   });
 

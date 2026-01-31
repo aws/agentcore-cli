@@ -1,5 +1,5 @@
 import { useInput } from 'ink';
-import { useCallback, useState } from 'react';
+import React, { useCallback, useState } from 'react';
 
 /** Find the position of the previous word boundary */
 function findPrevWordBoundary(text: string, cursor: number): number {
@@ -23,6 +23,8 @@ export interface UseTextInputOptions {
   onSubmit?: (value: string) => void;
   /** Called when Escape is pressed */
   onCancel?: () => void;
+  /** Called when value changes */
+  onChange?: (value: string) => void;
   /** Whether input is active (default: true) */
   isActive?: boolean;
 }
@@ -45,7 +47,7 @@ export interface UseTextInputResult {
  * - Alt+B / Alt+←: Cursor back one word
  * - Alt+F / Alt+→: Cursor forward one word
  * - Backspace: Delete char before cursor
- * - Ctrl+W / Alt+Backspace: Delete previous word
+ * - Ctrl+W / Cmd+Backspace: Delete previous word
  * - Ctrl+U / Cmd+Backspace: Delete to start
  * - Ctrl+K: Delete to end
  */
@@ -53,6 +55,7 @@ export function useTextInput({
   initialValue = '',
   onSubmit,
   onCancel,
+  onChange,
   isActive = true,
 }: UseTextInputOptions = {}): UseTextInputResult {
   const [state, setState] = useState({ text: initialValue, cursor: initialValue.length });
@@ -64,6 +67,15 @@ export function useTextInput({
   const clear = useCallback(() => {
     setState({ text: '', cursor: 0 });
   }, []);
+
+  // Notify on text changes (skip initial value)
+  const prevText = React.useRef(initialValue);
+  React.useEffect(() => {
+    if (state.text !== prevText.current) {
+      prevText.current = state.text;
+      onChange?.(state.text);
+    }
+  }, [state.text, onChange]);
 
   useInput(
     (input, key) => {
