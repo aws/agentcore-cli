@@ -157,13 +157,9 @@ export class CDKRenderer {
         delete pkg.scripts.postinstall;
       }
     } else {
-      // Production: use npm link
-      const distroConfig = getDistroConfig();
-      const packageName = distroConfig.packageName;
-
-      if (pkg.scripts?.postinstall) {
-        pkg.scripts.postinstall = `npm link ${packageName} 2>/dev/null || echo 'Note: If CDK synth fails, run: npm link ${packageName}'`;
-      }
+      // Production: use npm link with the L3 constructs package
+      // Note: The template already has the correct postinstall script, so we don't need to modify it
+      // Just leave it as-is from the template
     }
 
     await fs.writeFile(packageJsonPath, JSON.stringify(pkg, null, 2) + '\n', 'utf-8');
