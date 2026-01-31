@@ -1,5 +1,6 @@
 export {
   findAvailablePort,
+  waitForPort,
   spawnDevServer,
   killServer,
   type LogLevel,

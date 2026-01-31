@@ -9,6 +9,7 @@ import {
   killServer,
   loadProjectConfig,
   spawnDevServer,
+  waitForPort,
 } from '../../operations/dev';
 import type { ChildProcess } from 'child_process';
 import { useEffect, useMemo, useRef, useState } from 'react';
@@ -39,6 +40,7 @@ export function useDevServer(options: { workingDir: string; port: number; agentN
   const [configLoaded, setConfigLoaded] = useState(false);
   const [targetPort] = useState(options.port);
   const [actualPort, setActualPort] = useState(targetPort);
+  const actualPortRef = useRef(targetPort);
   const [restartTrigger, setRestartTrigger] = useState(0);
 
   const serverRef = useRef<ChildProcess | null>(null);
@@ -93,10 +95,21 @@ export function useDevServer(options: { workingDir: string; port: number; agentN
         agentName: config.agentName,
       });
 
-      const port = await findAvailablePort(targetPort);
-      if (port !== targetPort) {
+      // On restart, reuse the same port. On initial start, find an available port.
+      // If restart times out waiting for port, fall back to finding a new one.
+      const isRestart = restartTrigger > 0;
+      let portFree = true;
+      if (isRestart) {
+        portFree = await waitForPort(actualPortRef.current);
+        if (!portFree) {
+          addLog('warn', `Port ${actualPortRef.current} not released, finding new port`);
+        }
+      }
+      const port = isRestart && portFree ? actualPortRef.current : await findAvailablePort(targetPort);
+      if (!isRestart && port !== targetPort) {
         addLog('warn', `Port ${targetPort} in use, using ${port}`);
       }
+      actualPortRef.current = port;
       setActualPort(port);
 
       let serverReady = false;

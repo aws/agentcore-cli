@@ -295,7 +295,7 @@ export function DevScreen(props: DevScreenProps) {
             setUserScrolled(false);
             return;
           }
-          if (input === 'r') {
+          if (key.ctrl && input === 'r') {
             restart();
             return;
           }
@@ -324,8 +324,8 @@ export function DevScreen(props: DevScreenProps) {
         : isStreaming
           ? '↑↓ scroll'
           : conversation.length > 0
-            ? `↑↓ scroll · Enter invoke · C clear · R restart · ${supportedAgents.length > 1 ? 'Esc back' : 'Esc quit'}`
-            : `Enter to send a message · R restart · ${supportedAgents.length > 1 ? 'Esc back' : 'Esc quit'}`;
+            ? `↑↓ scroll · Enter invoke · C clear · Ctrl+R restart · ${supportedAgents.length > 1 ? 'Esc back' : 'Esc quit'}`
+            : `Enter to send a message · Ctrl+R restart · ${supportedAgents.length > 1 ? 'Esc back' : 'Esc quit'}`;
 
   // Agent selection screen
   if (mode === 'select-agent') {
