@@ -1,5 +1,6 @@
 import { getWorkingDirectory } from '../../lib';
 import { createProgram } from '../cli';
+import { destroyShell, warmupShell } from '../shell';
 import { LayoutProvider } from './context';
 import { MissingProjectMessage, projectExists } from './guards';
 import { PlaceholderScreen } from './screens/PlaceholderScreen';
@@ -20,13 +21,13 @@ import { StatusScreen } from './screens/status/StatusScreen';
 import { UpdateScreen } from './screens/update';
 import { ValidateScreen } from './screens/validate';
 import { type CommandMeta, getCommandsForUI } from './utils/commands';
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 
 // Capture cwd once at app initialization
 const cwd = getWorkingDirectory();
 
 type Route =
-  | { name: 'home' }
+  | { name: 'home'; initialShellCommand?: string; returnTo?: 'deploy' | 'plan' }
   | { name: 'help'; initialQuery?: string }
   | { name: 'command'; command: CommandMeta }
   | { name: 'dev' }
@@ -46,8 +47,16 @@ type Route =
   | { name: 'update' };
 
 function AppContent() {
-  const [route, setRoute] = useState<Route>({ name: 'home' });
+  // Start on help screen if project exists (show commands), otherwise home (show Quick Start)
+  const initialRoute: Route = projectExists() ? { name: 'help' } : { name: 'home' };
+  const [route, setRoute] = useState<Route>(initialRoute);
   const [helpNotice, setHelpNotice] = useState<React.ReactNode | null>(null);
+
+  // Pre-warm shell during idle time (sources config once)
+  useEffect(() => {
+    warmupShell();
+    return () => destroyShell();
+  }, []);
 
   // Get commands from commander program
   const program = createProgram();
@@ -105,7 +114,10 @@ function AppContent() {
       <HomeScreen
         cwd={cwd}
         version={program.version() ?? '0.0.0'}
+        initialShellCommand={route.initialShellCommand}
         onShowHelp={initialQuery => setRoute({ name: 'help', initialQuery })}
+        onSelectCreate={() => setRoute({ name: 'create' })}
+        onShellComplete={route.returnTo ? () => setRoute({ name: route.returnTo } as Route) : undefined}
       />
     );
   }
@@ -135,6 +147,7 @@ function AppContent() {
       <DeployScreen
         isInteractive={true}
         onExit={() => setRoute({ name: 'home' })}
+        onShellCommand={cmd => setRoute({ name: 'home', initialShellCommand: cmd, returnTo: 'deploy' })}
         onNavigate={command => setRoute({ name: command } as Route)}
       />
     );
@@ -153,7 +166,13 @@ function AppContent() {
   }
 
   if (route.name === 'plan') {
-    return <PlanScreen isInteractive={true} onExit={() => setRoute({ name: 'home' })} />;
+    return (
+      <PlanScreen
+        isInteractive={true}
+        onExit={() => setRoute({ name: 'home' })}
+        onShellCommand={cmd => setRoute({ name: 'home', initialShellCommand: cmd, returnTo: 'plan' })}
+      />
+    );
   }
 
   if (route.name === 'edit') {
