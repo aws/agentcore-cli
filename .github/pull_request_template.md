@@ -8,13 +8,13 @@
 <!-- Link to related associated PR in the agent-docs repo -->
 
 ## Type of Change
-<!-- Choose one of the following types of changes, delete the rest -->
+<!-- Check all that apply -->
 
-Bug fix
-New feature
-Breaking change
-Documentation update
-Other (please describe):
+- [ ] Bug fix
+- [ ] New feature
+- [ ] Breaking change
+- [ ] Documentation update
+- [ ] Other (please describe):
 
 ## Testing
 
