@@ -69,7 +69,7 @@ export function getModelProviderOptionsForSdk(sdk: SDKFramework) {
 }
 
 export const MEMORY_OPTIONS = [
-  { id: 'none', title: 'None' },
-  { id: 'shortTerm', title: 'Short-term memory' },
-  { id: 'longAndShortTerm', title: 'Long-term and short-term' },
+  { id: 'none', title: 'None', description: 'No memory' },
+  { id: 'shortTerm', title: 'Short-term memory', description: 'Context within a session' },
+  { id: 'longAndShortTerm', title: 'Long-term and short-term', description: 'Persists across sessions' },
 ] as const;
