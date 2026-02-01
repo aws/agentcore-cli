@@ -37,7 +37,7 @@ export function GenerateWizardUI({ wizard, onBack, onConfirm, isActive }: Genera
   const getItems = (): SelectableItem[] => {
     switch (wizard.step) {
       case 'language':
-        return LANGUAGE_OPTIONS.map(o => ({ id: o.id, title: o.title, disabled: o.disabled }));
+        return LANGUAGE_OPTIONS.map(o => ({ id: o.id, title: o.title, disabled: 'disabled' in o ? o.disabled : undefined }));
       case 'sdk':
         return SDK_OPTIONS.map(o => ({ id: o.id, title: o.title, description: o.description }));
       case 'modelProvider':
