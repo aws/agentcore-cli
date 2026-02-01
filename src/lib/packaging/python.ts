@@ -3,6 +3,8 @@ import { UV_INSTALL_HINT, getArtifactZipName } from '../constants';
 import { runSubprocessCapture, runSubprocessCaptureSync } from '../utils/subprocess';
 import { PackagingError } from './errors';
 import {
+  convertWindowsScriptsToLinux,
+  convertWindowsScriptsToLinuxSync,
   copySourceTree,
   copySourceTreeSync,
   createZipFromDir,
@@ -110,6 +112,8 @@ export class PythonCodeZipPackager implements RuntimePackager {
 
       if (result.code === 0) {
         await copySourceTree(srcDir, stagingDir);
+        // Convert Windows .exe scripts to Linux shell scripts for cross-platform deployment
+        await convertWindowsScriptsToLinux(stagingDir);
         return stagingDir;
       } else {
         const platformIssue = detectUnavailablePlatform(result);
@@ -219,6 +223,8 @@ export class PythonCodeZipPackagerSync implements CodeZipPackager {
 
       if (result.code === 0) {
         copySourceTreeSync(srcDir, stagingDir);
+        // Convert Windows .exe scripts to Linux shell scripts for cross-platform deployment
+        convertWindowsScriptsToLinuxSync(stagingDir);
         return stagingDir;
       } else {
         const platformIssue = detectUnavailablePlatform(result);

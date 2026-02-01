@@ -15,9 +15,10 @@ import {
   readdirSync,
   rmSync,
   statSync,
+  unlinkSync,
   writeFileSync,
 } from 'fs';
-import { mkdir, readFile, readdir, rm, stat, writeFile } from 'fs/promises';
+import { mkdir, readFile, readdir, rm, stat, unlink, writeFile } from 'fs/promises';
 import { dirname, isAbsolute, join, parse, resolve } from 'path';
 import { pipeline } from 'stream/promises';
 
@@ -348,4 +349,111 @@ export function enforceZipSizeLimitSync(zipPath: string): number {
     throw new ArtifactSizeError(MAX_ZIP_SIZE_BYTES, size);
   }
   return size;
+}
+
+/**
+ * Generates a Linux-compatible shell script for a Python console entry point.
+ * This is needed when packaging on Windows for Linux targets, as uv generates
+ * .exe files based on the host OS rather than the target platform.
+ */
+function generateLinuxConsoleScript(modulePath: string, funcName: string): string {
+  return `#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+import re
+import sys
+from ${modulePath} import ${funcName}
+if __name__ == '__main__':
+    sys.argv[0] = re.sub(r'(-script\\.pyw|\\.exe)?$', '', sys.argv[0])
+    sys.exit(${funcName}())
+`;
+}
+
+/**
+ * Known console script entry points that need to be converted from Windows .exe
+ * to Linux shell scripts when cross-compiling.
+ * Format: { 'script-name': ['module.path', 'function_name'] }
+ */
+const KNOWN_CONSOLE_SCRIPTS: Record<string, [string, string]> = {
+  'opentelemetry-instrument': ['opentelemetry.instrumentation.auto_instrumentation', 'run'],
+  'opentelemetry-bootstrap': ['opentelemetry.instrumentation.bootstrap', 'run'],
+};
+
+/**
+ * Converts Windows .exe console scripts to Linux-compatible shell scripts.
+ * This is necessary when packaging Python dependencies on Windows for deployment
+ * to Linux-based AWS runtimes.
+ *
+ * @param stagingDir The directory containing installed Python packages
+ */
+export async function convertWindowsScriptsToLinux(stagingDir: string): Promise<void> {
+  if (!isWindows) {
+    return; // Only needed when building on Windows
+  }
+
+  const binDir = join(stagingDir, 'bin');
+  if (!(await pathExists(binDir))) {
+    return;
+  }
+
+  const entries = await readdir(binDir);
+
+  for (const entry of entries) {
+    if (!entry.endsWith('.exe')) {
+      continue;
+    }
+
+    const scriptName = entry.slice(0, -4); // Remove .exe extension
+    const entryPoint = KNOWN_CONSOLE_SCRIPTS[scriptName];
+
+    if (entryPoint) {
+      const [modulePath, funcName] = entryPoint;
+      const exePath = join(binDir, entry);
+      const scriptPath = join(binDir, scriptName);
+
+      // Remove the Windows .exe file
+      await unlink(exePath);
+
+      // Create Linux-compatible shell script
+      const scriptContent = generateLinuxConsoleScript(modulePath, funcName);
+      await writeFile(scriptPath, scriptContent, { mode: 0o755 });
+    }
+  }
+}
+
+/**
+ * Synchronous version of convertWindowsScriptsToLinux.
+ */
+export function convertWindowsScriptsToLinuxSync(stagingDir: string): void {
+  if (!isWindows) {
+    return; // Only needed when building on Windows
+  }
+
+  const binDir = join(stagingDir, 'bin');
+  if (!pathExistsSync(binDir)) {
+    return;
+  }
+
+  const entries = readdirSync(binDir);
+
+  for (const entry of entries) {
+    if (!entry.endsWith('.exe')) {
+      continue;
+    }
+
+    const scriptName = entry.slice(0, -4); // Remove .exe extension
+    const entryPoint = KNOWN_CONSOLE_SCRIPTS[scriptName];
+
+    if (entryPoint) {
+      const [modulePath, funcName] = entryPoint;
+      const exePath = join(binDir, entry);
+      const scriptPath = join(binDir, scriptName);
+
+      // Remove the Windows .exe file
+      unlinkSync(exePath);
+
+      // Create Linux-compatible shell script
+      const scriptContent = generateLinuxConsoleScript(modulePath, funcName);
+      writeFileSync(scriptPath, scriptContent, { mode: 0o755 });
+    }
+  }
 }
