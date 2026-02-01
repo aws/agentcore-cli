@@ -1,5 +1,5 @@
 import { CONFIG_DIR, runSubprocessCapture } from '../../lib';
-import { CDK_PROJECT_DIR, getDistroConfig } from '../constants';
+import { CDK_PROJECT_DIR } from '../constants';
 import type { CreateLogger } from '../logging';
 import { copyDir } from './render';
 import { LLM_CONTEXT_FILES } from './schema-assets';

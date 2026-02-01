@@ -25,6 +25,10 @@ export interface UseTextInputOptions {
   onCancel?: () => void;
   /** Called when value changes */
   onChange?: (value: string) => void;
+  /** Called when up arrow is pressed */
+  onUpArrow?: () => void;
+  /** Called when down arrow is pressed */
+  onDownArrow?: () => void;
   /** Whether input is active (default: true) */
   isActive?: boolean;
 }
@@ -56,6 +60,8 @@ export function useTextInput({
   onSubmit,
   onCancel,
   onChange,
+  onUpArrow,
+  onDownArrow,
   isActive = true,
 }: UseTextInputOptions = {}): UseTextInputResult {
   const [state, setState] = useState({ text: initialValue, cursor: initialValue.length });
@@ -142,6 +148,16 @@ export function useTextInput({
           ...prev,
           cursor: key.meta ? prev.text.length : Math.min(prev.text.length, prev.cursor + 1),
         }));
+        return;
+      }
+
+      // Up/down arrows - pass to callbacks
+      if (key.upArrow) {
+        onUpArrow?.();
+        return;
+      }
+      if (key.downArrow) {
+        onDownArrow?.();
         return;
       }
 

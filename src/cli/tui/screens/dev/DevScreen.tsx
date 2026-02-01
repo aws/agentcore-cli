@@ -125,7 +125,7 @@ export function DevScreen(props: DevScreenProps) {
         const found = agents.find(a => a.name === props.agentName);
         if (found) {
           setSelectedAgentName(props.agentName);
-          setMode('chat');
+          setMode('input');
         } else if (agents.length > 0) {
           // Agent not found or not supported, show selection
           setSelectedAgentName(undefined);
@@ -133,10 +133,10 @@ export function DevScreen(props: DevScreenProps) {
       } else if (agents.length === 1 && agents[0]) {
         // Auto-select if only one agent
         setSelectedAgentName(agents[0].name);
-        setMode('chat');
+        setMode('input');
       } else if (agents.length === 0) {
         // No supported agents, will show error via useDevServer
-        setMode('chat');
+        setMode('input');
       }
 
       setAgentsLoaded(true);
@@ -196,9 +196,14 @@ export function DevScreen(props: DevScreenProps) {
     (amount = 1) => {
       if (!needsScroll) return;
       setUserScrolled(true);
-      setScrollOffset(prev => Math.max(0, prev - amount));
+      setScrollOffset(prev => {
+        // scrollOffset state starts at 0, but the view shows the bottom when userScrolled is false.
+        // So on first scroll up, we need to start from maxScroll (bottom) not prev (which is 0).
+        const current = userScrolled ? prev : maxScroll;
+        return Math.max(0, current - amount);
+      });
     },
-    [needsScroll]
+    [needsScroll, userScrolled, maxScroll]
   );
 
   const scrollDown = useCallback(
@@ -219,6 +224,7 @@ export function DevScreen(props: DevScreenProps) {
     setMode('chat');
     setUserScrolled(false); // Auto-scroll for new message
     await invoke(message);
+    setMode('input'); // Return to input mode after invoke completes
   };
 
   useInput(
@@ -239,7 +245,7 @@ export function DevScreen(props: DevScreenProps) {
           const agent = supportedAgents[selectedAgentIndex];
           if (agent) {
             setSelectedAgentName(agent.name);
-            setMode('chat');
+            setMode('input');
           }
         }
         return;
@@ -369,7 +375,7 @@ export function DevScreen(props: DevScreenProps) {
       <Box flexDirection="column" flexGrow={1}>
         {/* Conversation display - always visible when there's content */}
         {(conversation.length > 0 || isStreaming) && (
-          <Box flexDirection="column" height={displayHeight}>
+          <Box flexDirection="column" height={needsScroll ? displayHeight : undefined}>
             {visibleLines.map((line, idx) => {
               // Detect user messages (start with "> ")
               const isUserMessage = line.startsWith('> ');
@@ -416,6 +422,8 @@ export function DevScreen(props: DevScreenProps) {
                 justCancelledRef.current = true;
                 setMode('chat');
               }}
+              onUpArrow={() => scrollUp(1)}
+              onDownArrow={() => scrollDown(1)}
             />
           </Box>
         )}

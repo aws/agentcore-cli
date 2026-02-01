@@ -31,7 +31,7 @@ export function InvokeScreen({
       if (config.agents.length === 1 && mode === 'select-agent') {
         // Defer setState to avoid cascading renders within effect
         queueMicrotask(() => {
-          setMode('chat');
+          setMode('input');
         });
         if (initialPrompt && messages.length === 0) {
           void invoke(initialPrompt);
@@ -42,10 +42,19 @@ export function InvokeScreen({
 
   // Auto-exit when prompt was provided upfront and response completes
   useEffect(() => {
-    if (initialPrompt && phase === 'ready' && mode === 'chat' && messages.length > 0) {
+    if (initialPrompt && phase === 'ready' && messages.length > 0) {
       onExit();
     }
-  }, [initialPrompt, phase, mode, messages.length, onExit]);
+  }, [initialPrompt, phase, messages.length, onExit]);
+
+  // Return to input mode after invoke completes
+  const prevPhaseRef = React.useRef(phase);
+  useEffect(() => {
+    if (prevPhaseRef.current === 'invoking' && phase === 'ready' && !initialPrompt) {
+      queueMicrotask(() => setMode('input'));
+    }
+    prevPhaseRef.current = phase;
+  }, [phase, initialPrompt]);
 
   useInput((input, key) => {
     if (phase === 'loading' || phase === 'error' || !config) return;
@@ -64,7 +73,7 @@ export function InvokeScreen({
     if (mode === 'select-agent') {
       if (key.upArrow) selectAgent((selectedAgent - 1 + config.agents.length) % config.agents.length);
       if (key.downArrow) selectAgent((selectedAgent + 1) % config.agents.length);
-      if (key.return) setMode('chat');
+      if (key.return) setMode('input');
     }
 
     if (mode === 'chat' && input === 'i' && phase === 'ready') {
@@ -97,13 +106,10 @@ export function InvokeScreen({
     description: `Runtime: ${a.state.runtimeId}`,
   }));
 
-  // Dynamic help text - show agent name after response
-  const hasResponse = messages.length > 0 && phase === 'ready';
+  // Dynamic help text
   const helpText = {
-    'select-agent': '↑↓ select · Enter confirm · q quit',
-    chat: hasResponse
-      ? `↑↓ scroll · i invoke ${agent?.name} again · n new session · q back`
-      : 'i invoke · n new session · q back',
+    'select-agent': '↑↓ select · Enter confirm · Esc quit',
+    chat: '↑↓ scroll · Esc back',
     input: 'Enter send · Esc cancel',
   }[mode];
 
@@ -147,8 +153,8 @@ export function InvokeScreen({
   const userMessage = messages.find(m => m.role === 'user');
   const assistantMessage = messages.find(m => m.role === 'assistant');
 
-  // Don't show previous messages when in input mode (fresh start)
-  const showMessages = mode === 'chat';
+  // Show messages in both chat and input modes so user can see conversation while typing
+  const showMessages = mode === 'chat' || mode === 'input';
 
   return (
     <Screen title="AgentCore Invoke" onExit={onExit} helpText={helpText} headerContent={headerContent}>
@@ -178,7 +184,7 @@ export function InvokeScreen({
         {phase === 'invoking' && <GradientText text="Invoking..." />}
 
         {/* Log file link after response */}
-        {logFilePath && hasResponse && mode === 'chat' && (
+        {logFilePath && messages.length > 0 && phase === 'ready' && (
           <Box marginTop={1}>
             <LogLink filePath={logFilePath} />
           </Box>

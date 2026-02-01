@@ -22,6 +22,10 @@ interface TextInputProps {
   mask?: string;
   /** Hide the built-in "> " prompt arrow (default false) */
   hideArrow?: boolean;
+  /** Called when up arrow is pressed */
+  onUpArrow?: () => void;
+  /** Called when down arrow is pressed */
+  onDownArrow?: () => void;
 }
 
 function validateValue(value: string, schema?: ZodString, customValidation?: CustomValidation): string | undefined {
@@ -55,11 +59,15 @@ export function TextInput({
   allowEmpty = false,
   mask,
   hideArrow = false,
+  onUpArrow,
+  onDownArrow,
 }: TextInputProps) {
   const [showError, setShowError] = useState(false);
 
   const { value, cursor } = useTextInput({
     initialValue,
+    onUpArrow,
+    onDownArrow,
     onSubmit: val => {
       const trimmed = val.trim();
       const hasValue = allowEmpty || trimmed;
