@@ -29,8 +29,8 @@ export function useGenerateWizard(options?: UseGenerateWizardOptions) {
   }));
   const [error, setError] = useState<string | null>(null);
 
-  // Steps depend on model provider and whether we have an initial name
-  // Filter out apiKey for Bedrock, and projectName if we have initialName
+  // Steps depend on SDK, model provider, and whether we have an initial name
+  // Filter out: projectName if initialName, apiKey for Bedrock, memory for non-Strands SDKs
   const steps = useMemo(() => {
     let filtered = BASE_GENERATE_STEPS;
     if (hasInitialName) {
@@ -39,8 +39,11 @@ export function useGenerateWizard(options?: UseGenerateWizardOptions) {
     if (config.modelProvider === 'Bedrock') {
       filtered = filtered.filter(s => s !== 'apiKey');
     }
+    if (config.sdk !== 'Strands') {
+      filtered = filtered.filter(s => s !== 'memory');
+    }
     return filtered;
-  }, [config.modelProvider, hasInitialName]);
+  }, [config.modelProvider, config.sdk, hasInitialName]);
 
   const currentIndex = steps.indexOf(step);
 
@@ -67,29 +70,47 @@ export function useGenerateWizard(options?: UseGenerateWizardOptions) {
       const supportedProviders = getModelProviderOptionsForSdk(sdk);
       const isCurrentProviderSupported = supportedProviders.some(p => p.id === c.modelProvider);
       const newModelProvider = isCurrentProviderSupported ? c.modelProvider : (supportedProviders[0]?.id ?? 'Bedrock');
-      return { ...c, sdk, modelProvider: newModelProvider };
+      // Reset memory to 'none' for non-Strands SDKs
+      const newMemory = sdk === 'Strands' ? c.memory : 'none';
+      return { ...c, sdk, modelProvider: newModelProvider, memory: newMemory };
     });
     setStep('modelProvider');
   }, []);
 
-  const setModelProvider = useCallback((modelProvider: GenerateConfig['modelProvider']) => {
-    setConfig(c => ({ ...c, modelProvider }));
-    // Non-Bedrock providers need API key step
-    if (modelProvider !== 'Bedrock') {
-      setStep('apiKey');
-    } else {
-      setStep('memory');
-    }
-  }, []);
+  const setModelProvider = useCallback(
+    (modelProvider: GenerateConfig['modelProvider']) => {
+      setConfig(c => ({ ...c, modelProvider }));
+      // Non-Bedrock providers need API key step
+      if (modelProvider !== 'Bedrock') {
+        setStep('apiKey');
+      } else if (config.sdk === 'Strands') {
+        setStep('memory');
+      } else {
+        setStep('confirm');
+      }
+    },
+    [config.sdk]
+  );
 
-  const setApiKey = useCallback((apiKey: string | undefined) => {
-    setConfig(c => ({ ...c, apiKey }));
-    setStep('memory');
-  }, []);
+  const setApiKey = useCallback(
+    (apiKey: string | undefined) => {
+      setConfig(c => ({ ...c, apiKey }));
+      if (config.sdk === 'Strands') {
+        setStep('memory');
+      } else {
+        setStep('confirm');
+      }
+    },
+    [config.sdk]
+  );
 
   const skipApiKey = useCallback(() => {
-    setStep('memory');
-  }, []);
+    if (config.sdk === 'Strands') {
+      setStep('memory');
+    } else {
+      setStep('confirm');
+    }
+  }, [config.sdk]);
 
   const setMemory = useCallback((memory: MemoryOption) => {
     setConfig(c => ({ ...c, memory }));
