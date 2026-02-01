@@ -22,15 +22,6 @@ function handleDeployTUI(options: { autoConfirm?: boolean } = {}): void {
         unmount();
         process.exit(0);
       }}
-      onShellCommand={command => {
-        unmount();
-        if (command) {
-          console.log(`\nRun: ${command}\n`);
-        } else {
-          console.log('\nSet your AWS credentials and re-run `agentcore deploy`\n');
-        }
-        process.exit(0);
-      }}
     />
   );
 }

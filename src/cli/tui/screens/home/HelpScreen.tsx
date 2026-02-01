@@ -1,17 +1,10 @@
-import {
-  Cursor,
-  ScreenLayout,
-  ShellCommandText,
-  ShellEscapeContainer,
-  ShellPrompt,
-  useShellContext,
-} from '../../components';
+import { Cursor, ScreenLayout } from '../../components';
 import { useLayout } from '../../context';
 import { HINTS } from '../../copy';
 import { useTextInput } from '../../hooks';
 import type { CommandMeta } from '../../utils/commands';
 import { Box, Text, useInput } from 'ink';
-import React, { useMemo } from 'react';
+import React, { useMemo, useState } from 'react';
 
 const MAX_DESC_WIDTH = 50;
 
@@ -34,7 +27,6 @@ interface HelpDisplayProps {
 }
 
 function HelpDisplay({ items, query, cursor, clampedIndex, notice }: HelpDisplayProps) {
-  const { isActive } = useShellContext();
   const { contentWidth } = useLayout();
   const divider = '─'.repeat(contentWidth);
 
@@ -45,80 +37,68 @@ function HelpDisplay({ items, query, cursor, clampedIndex, notice }: HelpDisplay
         Commands
       </Text>
 
-      {/* Input line - changes based on shell mode */}
+      {/* Input line */}
       <Box marginTop={1} flexShrink={0}>
-        <ShellPrompt />
-        {isActive ? (
-          <ShellCommandText />
+        <Text color="cyan">&gt; </Text>
+        <Text>{query.slice(0, cursor)}</Text>
+        <Cursor />
+        <Text>{query.slice(cursor)}</Text>
+      </Box>
+
+      {/* Commands list */}
+      <Box marginTop={1} flexDirection="column">
+        {items.length === 0 ? (
+          <Box flexDirection="column">
+            <Text dimColor>No commands match &quot;{query}&quot;</Text>
+            <Text dimColor>Esc to clear</Text>
+          </Box>
         ) : (
-          <>
-            <Text>{query.slice(0, cursor)}</Text>
-            <Cursor />
-            <Text>{query.slice(cursor)}</Text>
-          </>
+          items.map((item, idx) => {
+            const selected = idx === clampedIndex;
+            const itemKey = item.matchedSubcommand ? `${item.command.id}-${item.matchedSubcommand}` : item.command.id;
+            const desc = truncateDescription(item.command.description, MAX_DESC_WIDTH);
+            return (
+              <Box key={itemKey}>
+                <Text color={selected ? 'cyan' : 'white'}>{selected ? '❯' : ' '} </Text>
+                <Text bold={selected} color={selected ? 'cyan' : undefined}>
+                  {item.command.title}
+                </Text>
+                {item.matchedSubcommand && (
+                  <>
+                    <Text dimColor> → </Text>
+                    <Text bold={selected} color={selected ? 'cyan' : undefined}>
+                      {item.matchedSubcommand}
+                    </Text>
+                  </>
+                )}
+                <Text dimColor> {desc}</Text>
+              </Box>
+            );
+          })
         )}
       </Box>
 
-      {/* Commands list - only visible when NOT in shell mode */}
-      {!isActive && (
-        <Box marginTop={1} flexDirection="column">
-          {items.length === 0 ? (
-            <Box flexDirection="column">
-              <Text dimColor>No commands match &quot;{query}&quot;</Text>
-              <Text dimColor>Esc to clear</Text>
-            </Box>
-          ) : (
-            items.map((item, idx) => {
-              const selected = idx === clampedIndex;
-              const itemKey = item.matchedSubcommand ? `${item.command.id}-${item.matchedSubcommand}` : item.command.id;
-              const desc = truncateDescription(item.command.description, MAX_DESC_WIDTH);
-              return (
-                <Box key={itemKey}>
-                  <Text color={selected ? 'cyan' : 'white'}>{selected ? '❯' : ' '} </Text>
-                  <Text bold={selected} color={selected ? 'cyan' : undefined}>
-                    {item.command.title}
-                  </Text>
-                  {item.matchedSubcommand && (
-                    <>
-                      <Text dimColor> → </Text>
-                      <Text bold={selected} color={selected ? 'cyan' : undefined}>
-                        {item.matchedSubcommand}
-                      </Text>
-                    </>
-                  )}
-                  <Text dimColor> {desc}</Text>
-                </Box>
-              );
-            })
-          )}
-        </Box>
-      )}
-
-      {!isActive && notice && <Box marginTop={1}>{notice}</Box>}
+      {notice && <Box marginTop={1}>{notice}</Box>}
 
       {/* Divider and hints at bottom */}
-      {!isActive && (
-        <Box marginTop={1} flexDirection="column">
-          <Text dimColor>{divider}</Text>
-          <Text dimColor>{HINTS.COMMANDS}</Text>
-        </Box>
-      )}
+      <Box marginTop={1} flexDirection="column">
+        <Text dimColor>{divider}</Text>
+        <Text dimColor>{HINTS.COMMANDS}</Text>
+      </Box>
     </Box>
   );
 }
 
-interface HelpContentProps {
+export function HelpScreen(props: {
   commands: CommandMeta[];
   initialQuery?: string;
   notice?: React.ReactNode;
   onNoticeDismiss?: () => void;
   onSelect: (id: string) => void;
   onBack: () => void;
-}
-
-function HelpContent({ commands, initialQuery, notice, onNoticeDismiss, onSelect, onBack }: HelpContentProps) {
-  const { isActive } = useShellContext();
-  const [index, setIndex] = React.useState(0);
+}) {
+  const { commands, initialQuery, notice, onNoticeDismiss, onSelect, onBack } = props;
+  const [index, setIndex] = useState(0);
 
   const {
     value: query,
@@ -126,7 +106,7 @@ function HelpContent({ commands, initialQuery, notice, onNoticeDismiss, onSelect
     clear,
   } = useTextInput({
     initialValue: initialQuery ?? '',
-    isActive: !isActive,
+    isActive: true,
   });
 
   const items = useMemo((): DisplayItem[] => {
@@ -162,11 +142,6 @@ function HelpContent({ commands, initialQuery, notice, onNoticeDismiss, onSelect
   const clampedIndex = Math.min(index, Math.max(0, items.length - 1));
 
   useInput((input, key) => {
-    // When shell mode is active, don't handle normal screen input
-    if (isActive) {
-      return;
-    }
-
     if (notice && onNoticeDismiss) {
       onNoticeDismiss();
     }
@@ -201,27 +176,5 @@ function HelpContent({ commands, initialQuery, notice, onNoticeDismiss, onSelect
     <ScreenLayout>
       <HelpDisplay items={items} query={query} cursor={cursor} clampedIndex={clampedIndex} notice={notice} />
     </ScreenLayout>
-  );
-}
-
-export function HelpScreen(props: {
-  commands: CommandMeta[];
-  initialQuery?: string;
-  notice?: React.ReactNode;
-  onNoticeDismiss?: () => void;
-  onSelect: (id: string) => void;
-  onBack: () => void;
-}) {
-  return (
-    <ShellEscapeContainer>
-      <HelpContent
-        commands={props.commands}
-        initialQuery={props.initialQuery}
-        notice={props.notice}
-        onNoticeDismiss={props.onNoticeDismiss}
-        onSelect={props.onSelect}
-        onBack={props.onBack}
-      />
-    </ShellEscapeContainer>
   );
 }

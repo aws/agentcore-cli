@@ -21,15 +21,6 @@ function handlePlanTUI(options: TUIOptions = {}): void {
         unmount();
         process.exit(0);
       }}
-      onShellCommand={command => {
-        unmount();
-        if (command) {
-          console.log(`\nRun: ${command}\n`);
-        } else {
-          console.log('\nSet your AWS credentials and re-run `agentcore plan`\n');
-        }
-        process.exit(0);
-      }}
     />
   );
 }
