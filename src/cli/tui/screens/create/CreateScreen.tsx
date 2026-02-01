@@ -10,7 +10,7 @@ import { useCreateFlow } from './useCreateFlow';
 import { Box, Text } from 'ink';
 import { join } from 'path';
 
-type NextCommand = 'dev' | 'deploy';
+type NextCommand = 'dev' | 'deploy' | 'add';
 
 interface NavigateParams {
   command: NextCommand;
@@ -26,10 +26,15 @@ interface CreateScreenProps {
 }
 
 /** Next steps shown after successful project creation */
-const CREATE_NEXT_STEPS: NextStep[] = [
-  { command: 'dev', label: 'Run agent locally' },
-  { command: 'deploy', label: 'Deploy to AWS' },
-];
+function getCreateNextSteps(hasAgent: boolean): NextStep[] {
+  if (hasAgent) {
+    return [
+      { command: 'dev', label: 'Run agent locally' },
+      { command: 'deploy', label: 'Deploy to AWS' },
+    ];
+  }
+  return [{ command: 'add', label: 'Add an agent' }];
+}
 
 const CREATE_PROMPT_ITEMS = [
   { id: 'yes', title: 'Yes, add an agent' },
@@ -188,7 +193,7 @@ export function CreateScreen({ cwd, isInteractive, onExit, onNavigate }: CreateS
             </Box>
           )}
           <NextSteps
-            steps={CREATE_NEXT_STEPS}
+            steps={getCreateNextSteps(flow.addAgentConfig !== null)}
             isInteractive={isInteractive}
             onSelect={step => {
               if (onNavigate) {
