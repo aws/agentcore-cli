@@ -21,6 +21,7 @@ import { UpdateScreen } from './screens/update';
 import { ValidateScreen } from './screens/validate';
 import { type CommandMeta, getCommandsForUI } from './utils/commands';
 import React, { useState } from 'react';
+import { useApp } from 'ink';
 
 // Capture cwd once at app initialization
 const cwd = getWorkingDirectory();
@@ -46,6 +47,7 @@ type Route =
   | { name: 'update' };
 
 function AppContent() {
+  const { exit } = useApp();
   // Start on help screen if project exists (show commands), otherwise home (show Quick Start)
   const initialRoute: Route = projectExists() ? { name: 'help' } : { name: 'home' };
   const [route, setRoute] = useState<Route>(initialRoute);
@@ -123,47 +125,47 @@ function AppContent() {
         onSelect={onSelectCommand}
         onBack={() => {
           setHelpNotice(null);
-          setRoute({ name: 'home' });
+          exit();
         }}
       />
     );
   }
 
   if (route.name === 'dev') {
-    return <DevScreen onBack={() => setRoute({ name: 'home' })} />;
+    return <DevScreen onBack={() => setRoute({ name: 'help' })} />;
   }
 
   if (route.name === 'deploy') {
     return (
       <DeployScreen
         isInteractive={true}
-        onExit={() => setRoute({ name: 'home' })}
+        onExit={() => setRoute({ name: 'help' })}
         onNavigate={command => setRoute({ name: command } as Route)}
       />
     );
   }
 
   if (route.name === 'invoke') {
-    return <InvokeScreen isInteractive={true} onExit={() => setRoute({ name: 'home' })} />;
+    return <InvokeScreen isInteractive={true} onExit={() => setRoute({ name: 'help' })} />;
   }
 
   if (route.name === 'outline') {
-    return <OutlineScreen isInteractive={true} onExit={() => setRoute({ name: 'home' })} />;
+    return <OutlineScreen isInteractive={true} onExit={() => setRoute({ name: 'help' })} />;
   }
 
   if (route.name === 'status') {
-    return <StatusScreen isInteractive={true} onExit={() => setRoute({ name: 'home' })} />;
+    return <StatusScreen isInteractive={true} onExit={() => setRoute({ name: 'help' })} />;
   }
 
   if (route.name === 'plan') {
-    return <PlanScreen isInteractive={true} onExit={() => setRoute({ name: 'home' })} />;
+    return <PlanScreen isInteractive={true} onExit={() => setRoute({ name: 'help' })} />;
   }
 
   if (route.name === 'edit') {
     return (
       <EditFlow
         isInteractive={true}
-        onExit={() => setRoute({ name: 'home' })}
+        onExit={() => setRoute({ name: 'help' })}
         onRequestAdd={() => setRoute({ name: 'add' })}
       />
     );
@@ -173,21 +175,21 @@ function AppContent() {
     return (
       <AddFlow
         isInteractive={true}
-        onExit={() => setRoute({ name: 'home' })}
+        onExit={() => setRoute({ name: 'help' })}
         onNavigate={command => setRoute({ name: command } as Route)}
       />
     );
   }
 
   if (route.name === 'attach') {
-    return <AttachFlow onExit={() => setRoute({ name: 'home' })} />;
+    return <AttachFlow onExit={() => setRoute({ name: 'help' })} />;
   }
 
   if (route.name === 'remove') {
     return (
       <RemoveFlow
         isInteractive={true}
-        onExit={() => setRoute({ name: 'home' })}
+        onExit={() => setRoute({ name: 'help' })}
         onRequestDestroy={() => setRoute({ name: 'destroy' })}
         onNavigate={command => setRoute({ name: command } as Route)}
       />
@@ -195,7 +197,7 @@ function AppContent() {
   }
 
   if (route.name === 'destroy') {
-    return <DestroyScreen isInteractive={true} onExit={() => setRoute({ name: 'home' })} />;
+    return <DestroyScreen isInteractive={true} onExit={() => setRoute({ name: 'help' })} />;
   }
 
   if (route.name === 'create') {
@@ -203,7 +205,7 @@ function AppContent() {
       <CreateScreen
         cwd={cwd}
         isInteractive={true}
-        onExit={() => setRoute({ name: 'home' })}
+        onExit={() => setRoute({ name: 'help' })}
         onNavigate={({ command, workingDir }) => {
           process.chdir(workingDir);
           setRoute({ name: command } as Route);
@@ -216,21 +218,21 @@ function AppContent() {
     return (
       <ValidateScreen
         isInteractive={true}
-        onExit={() => setRoute({ name: 'home' })}
+        onExit={() => setRoute({ name: 'help' })}
         onNavigate={command => setRoute({ name: command } as Route)}
       />
     );
   }
 
   if (route.name === 'package') {
-    return <PackageScreen isInteractive={true} onExit={() => setRoute({ name: 'home' })} />;
+    return <PackageScreen isInteractive={true} onExit={() => setRoute({ name: 'help' })} />;
   }
 
   if (route.name === 'update') {
-    return <UpdateScreen isInteractive={true} onExit={() => setRoute({ name: 'home' })} />;
+    return <UpdateScreen isInteractive={true} onExit={() => setRoute({ name: 'help' })} />;
   }
 
-  return <PlaceholderScreen command={route.command} onBack={() => setRoute({ name: 'home' })} />;
+  return <PlaceholderScreen command={route.command} onBack={() => setRoute({ name: 'help' })} />;
 }
 
 export function App() {
