@@ -2,8 +2,9 @@ import { SecureCredentials, readEnvFile } from '../../../lib';
 import type { AgentCoreProjectSpec, AgentEnvSpec, OwnedIdentityProvider } from '../../../schema';
 import { getCredentialProvider } from '../../aws';
 import { isNoCredentialsError } from '../../errors';
-import { apiKeyProviderExists, createApiKeyProvider } from '../identity';
+import { apiKeyProviderExists, createApiKeyProvider, setTokenVaultKmsKey } from '../identity';
 import { BedrockAgentCoreControlClient } from '@aws-sdk/client-bedrock-agentcore-control';
+import { CreateKeyCommand, KMSClient } from '@aws-sdk/client-kms';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Types
@@ -19,6 +20,7 @@ export interface ApiKeyProviderSetupResult {
 export interface PreDeployIdentityResult {
   results: ApiKeyProviderSetupResult[];
   hasErrors: boolean;
+  kmsKeyArn?: string;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -31,6 +33,8 @@ export interface SetupApiKeyProvidersOptions {
   region: string;
   /** Runtime credentials that override .env.local values (not persisted to disk) */
   runtimeCredentials?: SecureCredentials;
+  /** Enable KMS encryption for the token vault (creates key if needed) */
+  enableKmsEncryption?: boolean;
 }
 
 /**
@@ -39,15 +43,36 @@ export interface SetupApiKeyProvidersOptions {
  * Runtime credentials (if provided) take precedence over .env.local values.
  */
 export async function setupApiKeyProviders(options: SetupApiKeyProvidersOptions): Promise<PreDeployIdentityResult> {
-  const { projectSpec, configBaseDir, region, runtimeCredentials } = options;
+  const { projectSpec, configBaseDir, region, runtimeCredentials, enableKmsEncryption } = options;
   const results: ApiKeyProviderSetupResult[] = [];
+  const credentials = getCredentialProvider();
 
   const envVars = await readEnvFile(configBaseDir);
   // Wrap env vars in SecureCredentials and merge with runtime credentials
   const envCredentials = SecureCredentials.fromEnvVars(envVars);
   const allCredentials = runtimeCredentials ? envCredentials.merge(runtimeCredentials) : envCredentials;
 
-  const client = new BedrockAgentCoreControlClient({ region, credentials: getCredentialProvider() });
+  const client = new BedrockAgentCoreControlClient({ region, credentials });
+
+  // Configure KMS encryption for token vault if enabled
+  let kmsKeyArn: string | undefined;
+  if (enableKmsEncryption || projectSpec.identityKmsKeyArn) {
+    const kmsResult = await setupTokenVaultKms(region, credentials, projectSpec);
+    if (!kmsResult.success) {
+      return {
+        results: [
+          {
+            agentName: '',
+            providerName: 'TokenVault',
+            status: 'error',
+            error: `Failed to configure KMS: ${kmsResult.error}`,
+          },
+        ],
+        hasErrors: true,
+      };
+    }
+    kmsKeyArn = kmsResult.keyArn;
+  }
 
   for (const agent of projectSpec.agents) {
     const agentResults = await setupAgentIdentityProviders(client, agent, allCredentials);
@@ -57,7 +82,44 @@ export async function setupApiKeyProviders(options: SetupApiKeyProvidersOptions)
   return {
     results,
     hasErrors: results.some(r => r.status === 'error'),
+    kmsKeyArn,
   };
+}
+
+async function setupTokenVaultKms(
+  region: string,
+  credentials: ReturnType<typeof getCredentialProvider>,
+  projectSpec: AgentCoreProjectSpec
+): Promise<{ success: boolean; keyArn?: string; error?: string }> {
+  try {
+    let keyArn = projectSpec.identityKmsKeyArn;
+
+    // Create KMS key if not provided
+    if (!keyArn) {
+      const kmsClient = new KMSClient({ region, credentials });
+      const response = await kmsClient.send(
+        new CreateKeyCommand({
+          Description: `AgentCore Identity encryption key for ${projectSpec.name}`,
+          Tags: [{ TagKey: 'agentcore:project', TagValue: projectSpec.name }],
+        })
+      );
+      keyArn = response.KeyMetadata?.Arn;
+      if (!keyArn) {
+        return { success: false, error: 'Failed to create KMS key' };
+      }
+    }
+
+    // Configure token vault to use the key
+    const client = new BedrockAgentCoreControlClient({ region, credentials });
+    const result = await setTokenVaultKmsKey(client, keyArn);
+    if (!result.success) {
+      return { success: false, error: result.error };
+    }
+
+    return { success: true, keyArn };
+  } catch (error) {
+    return { success: false, error: error instanceof Error ? error.message : String(error) };
+  }
 }
 
 async function setupAgentIdentityProviders(

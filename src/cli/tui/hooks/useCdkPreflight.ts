@@ -488,7 +488,13 @@ export function useCdkPreflight(options: PreflightOptions): PreflightResult {
           configBaseDir,
           region: target.region,
           runtimeCredentials: runtimeCredentials ?? undefined,
+          enableKmsEncryption: true,
         });
+
+        // Log KMS setup
+        if (identityResult.kmsKeyArn) {
+          logger.log(`Token vault encrypted with KMS key: ${identityResult.kmsKeyArn}`);
+        }
 
         // Log results
         for (const result of identityResult.results) {

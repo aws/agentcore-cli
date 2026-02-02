@@ -10,6 +10,7 @@ import {
   CreateApiKeyCredentialProviderCommand,
   GetApiKeyCredentialProviderCommand,
   ResourceNotFoundException,
+  SetTokenVaultCMKCommand,
 } from '@aws-sdk/client-bedrock-agentcore-control';
 
 /**
@@ -52,6 +53,35 @@ export async function createApiKeyProvider(
     if (errorName === 'ConflictException' || errorName === 'ResourceAlreadyExistsException') {
       return { success: true };
     }
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : String(error),
+    };
+  }
+}
+
+
+/**
+ * Configure KMS encryption for the token vault.
+ * This encrypts all API key credential providers stored in the vault.
+ */
+export async function setTokenVaultKmsKey(
+  client: BedrockAgentCoreControlClient,
+  kmsKeyArn: string,
+  tokenVaultId?: string
+): Promise<{ success: boolean; error?: string }> {
+  try {
+    await client.send(
+      new SetTokenVaultCMKCommand({
+        tokenVaultId,
+        kmsConfiguration: {
+          keyType: 'CustomerManagedKey',
+          kmsKeyArn,
+        },
+      })
+    );
+    return { success: true };
+  } catch (error) {
     return {
       success: false,
       error: error instanceof Error ? error.message : String(error),

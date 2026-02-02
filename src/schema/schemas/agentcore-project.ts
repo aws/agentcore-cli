@@ -55,6 +55,8 @@ export const AgentCoreProjectSpecSchema = z
       )
     ),
     mcp: AgentCoreMcpSpecSchema.optional(),
+    /** KMS key ARN for encrypting identity credentials in the token vault */
+    identityKmsKeyArn: z.string().optional(),
   })
   .strict();
 
