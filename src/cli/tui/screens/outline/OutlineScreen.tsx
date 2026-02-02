@@ -73,7 +73,7 @@ export function OutlineScreen({ isInteractive: _isInteractive, onExit }: Outline
       }
       if (key.escape) setMode('select-scope');
     } else if (mode === 'view') {
-      if (key.escape || input === 'q') setMode('select-scope');
+      if (key.escape || (key.ctrl && input === 'q')) setMode('select-scope');
     }
   });
 

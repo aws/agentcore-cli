@@ -38,7 +38,7 @@ export function FullScreenLogView({ logs, logFilePath, onExit }: FullScreenLogVi
   }, [scrollUpOffset, maxScrollPos]);
 
   useInput((input, key) => {
-    if (key.escape || input === 'q' || input === 'l') {
+    if (key.escape || (key.ctrl && input === 'q') || input === 'l') {
       onExit();
       return;
     }

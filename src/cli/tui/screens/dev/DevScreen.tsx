@@ -231,7 +231,7 @@ export function DevScreen(props: DevScreenProps) {
     (input, key) => {
       // Agent selection mode
       if (mode === 'select-agent') {
-        if (key.escape || input === 'q') {
+        if (key.escape || (key.ctrl && input === 'q')) {
           props.onBack();
           return;
         }
@@ -253,8 +253,8 @@ export function DevScreen(props: DevScreenProps) {
 
       // In chat mode
       if (mode === 'chat') {
-        // Esc or q to quit (but skip if we just cancelled from input mode)
-        if (key.escape || input === 'q' || (key.ctrl && input === 'c')) {
+        // Esc or Ctrl+Q to quit (but skip if we just cancelled from input mode)
+        if (key.escape || (key.ctrl && input === 'q') || (key.ctrl && input === 'c')) {
           if (justCancelledRef.current) {
             // Skip this escape - it's from the input cancel
             justCancelledRef.current = false;

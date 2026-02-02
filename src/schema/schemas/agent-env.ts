@@ -98,11 +98,11 @@ export type Instrumentation = z.infer<typeof InstrumentationSchema>;
  */
 const AgentRuntimeNameSchema = z
   .string()
-  .min(1)
-  .max(48)
+  .min(1, 'Runtime name is required')
+  .max(23, 'Runtime name must be 23 characters or less (AWS runtime name limit)')
   .regex(
-    /^[a-zA-Z][a-zA-Z0-9_]{0,47}$/,
-    'Must begin with a letter and contain only alphanumeric characters and underscores (max 48 chars)'
+    /^[a-zA-Z][a-zA-Z0-9_]{0,22}$/,
+    'Runtime name must start with a letter and contain only alphanumeric characters and underscores'
   );
 
 const CodeZipRuntimeSchema = z.object({

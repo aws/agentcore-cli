@@ -18,7 +18,7 @@ interface SelectScreenProps<T extends SelectableItem> {
   items: T[];
   /** Called when an item is selected */
   onSelect: (item: T, index: number) => void;
-  /** Called when exiting (Escape or 'q') */
+  /** Called when exiting (Escape or Ctrl+Q) */
   onExit: () => void;
   /** Whether navigation is active (default: true) */
   isActive?: boolean;
