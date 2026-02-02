@@ -85,7 +85,7 @@ export function useListNavigation<T>({
   useInput(
     (input, key) => {
       // Handle exit
-      if (key.escape || input === 'q') {
+      if (key.escape || (key.ctrl && input === 'q')) {
         onExit?.();
         return;
       }

@@ -13,7 +13,7 @@ interface PromptScreenProps {
   onConfirm?: () => void;
   /** Called when secondary/back action is triggered (Enter or 'b') */
   onBack?: () => void;
-  /** Called when exit is triggered (Escape or 'q' or 'n') */
+  /** Called when exit is triggered (Escape or Ctrl+Q or 'n') */
   onExit?: () => void;
   /** Panel border color (default: undefined, no color) */
   borderColor?: string;
@@ -49,7 +49,7 @@ export function PromptScreen({
     if (!inputEnabled) {
       return;
     }
-    if (key.escape || input === 'q' || input === 'n') {
+    if (key.escape || (key.ctrl && input === 'q') || input === 'n') {
       onExit?.();
       return;
     }
@@ -120,7 +120,7 @@ export function ErrorPrompt({
   onExit?: () => void;
 }) {
   useInput((input, key) => {
-    if (key.escape || input === 'q' || input === 'n') {
+    if (key.escape || (key.ctrl && input === 'q') || input === 'n') {
       onExit?.();
       return;
     }

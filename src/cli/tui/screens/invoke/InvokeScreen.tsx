@@ -59,7 +59,7 @@ export function InvokeScreen({
   useInput((input, key) => {
     if (phase === 'loading' || phase === 'error' || !config) return;
 
-    if (key.escape || input === 'q') {
+    if (key.escape || (key.ctrl && input === 'q')) {
       if (mode === 'input') {
         setMode('chat');
       } else if (mode === 'chat' && config.agents.length > 1) {

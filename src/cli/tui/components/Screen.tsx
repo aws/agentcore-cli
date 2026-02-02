@@ -20,7 +20,7 @@ interface ScreenProps {
  * Standard screen wrapper that provides:
  * - ScreenLayout with responsive padding
  * - ScreenHeader with title
- * - Exit handling (Escape / 'q')
+ * - Exit handling (Escape / Ctrl+Q)
  * - Help text at the bottom
  */
 export function Screen({ title, color, onExit, helpText, headerContent, footerContent, children }: ScreenProps) {

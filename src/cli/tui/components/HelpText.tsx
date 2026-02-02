@@ -20,5 +20,5 @@ export function HelpText({ text }: HelpTextProps) {
  * Standard exit help text.
  */
 export function ExitHelpText() {
-  return <HelpText text="Press ESC or 'q' to exit" />;
+  return <HelpText text="Press ESC or Ctrl+Q to exit" />;
 }
