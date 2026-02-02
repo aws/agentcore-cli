@@ -19,11 +19,11 @@ import { z } from 'zod';
  */
 export const ProjectNameSchema = z
   .string()
-  .min(1)
-  .max(23)
+  .min(1, 'Project name is required')
+  .max(23, 'Project name must be 23 characters or less (AWS runtime name limit)')
   .regex(
     /^[A-Za-z][A-Za-z0-9]{0,22}$/,
-    'Must start with a letter and contain only alphanumeric characters (max 23 chars)'
+    'Project name must start with a letter and contain only alphanumeric characters'
   )
   .refine(name => !isReservedProjectName(name), {
     message: 'This name conflicts with a Python package dependency. Please choose a different name.',
