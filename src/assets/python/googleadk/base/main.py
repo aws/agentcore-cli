@@ -54,7 +54,7 @@ async def call_agent_async(query, user_id, session_id):
     content = types.Content(role="user", parts=[types.Part(text=query)])
     session, runner = await setup_session_and_runner(user_id, session_id)
     events = runner.run_async(
-        user_id=user_id, session_id=session_id, new_message=content
+        user_id=user_id, session_id=session.id, new_message=content
     )
 
     final_response = None
