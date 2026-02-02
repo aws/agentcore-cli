@@ -55,6 +55,8 @@ export function formatError(err: unknown): string {
  * Also validates AWS credentials are configured before proceeding.
  * Returns the project context needed for subsequent steps.
  */
+const MAX_RUNTIME_NAME_LENGTH = 48;
+
 export async function validateProject(): Promise<PreflightContext> {
   // Find the agentcore config directory, walking up from cwd if needed
   const configRoot = requireConfigRoot();
@@ -68,10 +70,33 @@ export async function validateProject(): Promise<PreflightContext> {
   const projectSpec = await configIO.readProjectSpec();
   const awsTargets = await configIO.readAWSDeploymentTargets();
 
+  // Validate runtime names don't exceed AWS limits
+  validateRuntimeNames(projectSpec);
+
   // Validate AWS credentials before proceeding with build/synth
   await validateAwsCredentials();
 
   return { projectSpec, awsTargets, cdkProject };
+}
+
+/**
+ * Validates that combined runtime names (projectName_runtimeName) don't exceed AWS limits.
+ */
+function validateRuntimeNames(projectSpec: AgentCoreProjectSpec): void {
+  const projectName = projectSpec.name;
+  for (const agent of projectSpec.agents) {
+    const runtimeName = agent.runtime?.name;
+    if (runtimeName) {
+      const combinedName = `${projectName}_${runtimeName}`;
+      if (combinedName.length > MAX_RUNTIME_NAME_LENGTH) {
+        throw new Error(
+          `Runtime name too long: "${combinedName}" (${combinedName.length} chars). ` +
+            `AWS limits runtime names to ${MAX_RUNTIME_NAME_LENGTH} characters. ` +
+            `Shorten the project name or runtime.name in agentcore.json.`
+        );
+      }
+    }
+  }
 }
 
 /**
