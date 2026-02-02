@@ -31,7 +31,7 @@ describe('integration: create without agent', () => {
   });
 
   it.skipIf(!hasNpm || !hasGit)('creates project with real npm install and git init', async () => {
-    const name = `IntegNoAgent${Date.now()}`;
+    const name = `NoAgent${Date.now().toString().slice(-6)}`;
     const result = await runCLI(['create', '--name', name, '--no-agent', '--json'], testDir, false);
 
     expect(result.exitCode, `stderr: ${result.stderr}`).toBe(0);

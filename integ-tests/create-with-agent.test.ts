@@ -32,7 +32,7 @@ describe('integration: create with Python agent', () => {
   });
 
   it.skipIf(!hasNpm || !hasGit || !hasUv)('creates project with real uv venv and sync', async () => {
-    const name = `IntegWithAgent${Date.now()}`;
+    const name = `PyAgent${Date.now().toString().slice(-6)}`;
     const result = await runCLI(
       [
         'create',
