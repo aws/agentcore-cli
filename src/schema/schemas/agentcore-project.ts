@@ -11,7 +11,8 @@ import { z } from 'zod';
 /**
  * Project name validation (CloudFormation logical ID compatible).
  * Used in CloudFormation stack naming - must start with letter, alphanumeric only.
- * Max 36 chars to allow room for suffixes in generated resource names.
+ * Max 23 chars because runtime names are generated as {projectName}_{runtimeName}
+ * and AWS limits agentRuntimeName to 48 characters total.
  *
  * Also validates against reserved names that would conflict with Python packages
  * when creating virtual environments (e.g., 'openai', 'anthropic', 'langchain').
@@ -19,10 +20,10 @@ import { z } from 'zod';
 export const ProjectNameSchema = z
   .string()
   .min(1)
-  .max(36)
+  .max(23)
   .regex(
-    /^[A-Za-z][A-Za-z0-9]{0,35}$/,
-    'Must start with a letter and contain only alphanumeric characters (max 36 chars)'
+    /^[A-Za-z][A-Za-z0-9]{0,22}$/,
+    'Must start with a letter and contain only alphanumeric characters (max 23 chars)'
   )
   .refine(name => !isReservedProjectName(name), {
     message: 'This name conflicts with a Python package dependency. Please choose a different name.',

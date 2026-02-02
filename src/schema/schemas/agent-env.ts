@@ -99,10 +99,10 @@ export type Instrumentation = z.infer<typeof InstrumentationSchema>;
 const AgentRuntimeNameSchema = z
   .string()
   .min(1)
-  .max(48)
+  .max(23)
   .regex(
-    /^[a-zA-Z][a-zA-Z0-9_]{0,47}$/,
-    'Must begin with a letter and contain only alphanumeric characters and underscores (max 48 chars)'
+    /^[a-zA-Z][a-zA-Z0-9_]{0,22}$/,
+    'Must begin with a letter and contain only alphanumeric characters and underscores (max 23 chars)'
   );
 
 const CodeZipRuntimeSchema = z.object({
