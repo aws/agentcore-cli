@@ -42,46 +42,6 @@ export const AwsAccountIdSchema = z
   .describe('AWS account ID');
 
 // ============================================================================
-// Referenced Resources
-// ============================================================================
-
-/**
- * Schema for image reference name.
- * Must match keys used in agent-env.json imageRef fields.
- */
-const ImageRefNameSchema = z
-  .string()
-  .min(1)
-  .max(64)
-  .regex(
-    /^[a-zA-Z][a-zA-Z0-9_-]*$/,
-    'Image ref name must start with letter, contain only alphanumeric characters, hyphens, and underscores'
-  );
-
-/**
- * Schema for ECR image URI.
- * Format: {account}.dkr.ecr.{region}.amazonaws.com/{repository}:{tag}
- */
-const EcrImageUriSchema = z
-  .string()
-  .min(1)
-  .regex(
-    /^[0-9]+\.dkr\.ecr\.[a-z0-9-]+\.amazonaws\.com\/.+$/,
-    'Must be a valid ECR image URI (e.g., 123456789012.dkr.ecr.us-east-1.amazonaws.com/repo:tag)'
-  );
-
-/**
- * External resources referenced by this deployment target.
- * These resources exist outside the project and are not managed by CDK.
- */
-export const ReferencedResourcesSchema = z.object({
-  /** Map of image reference names to ECR URIs */
-  ecrImages: z.record(ImageRefNameSchema, EcrImageUriSchema).optional(),
-});
-
-export type ReferencedResources = z.infer<typeof ReferencedResourcesSchema>;
-
-// ============================================================================
 // AWS Deployment Target
 // ============================================================================
 
@@ -90,9 +50,6 @@ export const AwsDeploymentTargetSchema = z.object({
   description: z.string().max(256).optional(),
   account: AwsAccountIdSchema,
   region: AgentCoreRegionSchema,
-
-  /** External resources referenced by this deployment target (not managed by CDK) */
-  referencedResources: ReferencedResourcesSchema.optional(),
 });
 
 export type AwsDeploymentTarget = z.infer<typeof AwsDeploymentTargetSchema>;

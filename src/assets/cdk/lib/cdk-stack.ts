@@ -7,12 +7,6 @@ export interface AgentCoreStackProps extends StackProps {
    * The complete AgentCore workspace specification containing all agents and MCP config.
    */
   spec: AgentCoreProjectSpec;
-
-  /**
-   * Map of image reference names to ECR URIs.
-   * From aws-targets.json referencedResources.ecrImages for the deployment target.
-   */
-  ecrImages?: Record<string, string>;
 }
 
 /**
@@ -31,12 +25,11 @@ export class AgentCoreStack extends Stack {
   constructor(scope: Construct, id: string, props: AgentCoreStackProps) {
     super(scope, id, props);
 
-    const { spec, ecrImages } = props;
+    const { spec } = props;
 
     // Create AgentCoreApplication with all agents
     this.application = new AgentCoreApplication(this, 'Application', {
       spec,
-      ecrImages,
     });
 
     // Instantiate AgentCoreMcp if MCP is defined

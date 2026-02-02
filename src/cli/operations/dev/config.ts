@@ -21,7 +21,6 @@ interface DevSupportResult {
  * Requirements:
  * - Agent must target Python (TypeScript support not yet implemented)
  * - CodeZip agents must have entrypoint
- * - ContainerImage agents must have entrypoint (optional field)
  */
 function isDevSupported(agent: AgentEnvSpec): DevSupportResult {
   // Currently only Python is supported for dev mode
@@ -33,17 +32,10 @@ function isDevSupported(agent: AgentEnvSpec): DevSupportResult {
     };
   }
 
-  if (agent.runtime.artifact === 'ContainerImage') {
+  if (!agent.runtime.entrypoint) {
     return {
       supported: false,
-      reason: `ContainerImage agent "${agent.name}" does not support dev mode.`,
-    };
-  }
-
-  if (agent.runtime.artifact === 'CodeZip' && !agent.runtime.entrypoint) {
-    return {
-      supported: false,
-      reason: `CodeZip agent "${agent.name}" is missing entrypoint.`,
+      reason: `Agent "${agent.name}" is missing entrypoint.`,
     };
   }
 
@@ -136,16 +128,13 @@ export function getDevConfig(
   }
 
   const directory =
-    configRoot && targetAgent.runtime.artifact === 'CodeZip' && targetAgent.runtime.codeLocation
+    configRoot && targetAgent.runtime.codeLocation
       ? resolveCodeDirectory(targetAgent.runtime.codeLocation, configRoot)
       : workingDir;
 
-  // At this point we know it's CodeZip (ContainerImage is rejected above)
-  const runtime = targetAgent.runtime as { entrypoint: string };
-
   return {
     agentName: targetAgent.name,
-    module: runtime.entrypoint,
+    module: targetAgent.runtime.entrypoint,
     directory,
     hasConfig: true,
     isPython: targetAgent.targetLanguage === 'Python',

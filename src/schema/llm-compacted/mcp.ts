@@ -105,23 +105,13 @@ interface AgentCoreRuntimeComputeConfig {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// TOOL IMPLEMENTATION BINDING (discriminated union on 'language')
+// TOOL IMPLEMENTATION BINDING
 // ─────────────────────────────────────────────────────────────────────────────
 
-type ToolImplementationBinding = CodeToolBinding | ContainerToolBinding;
-
-interface CodeToolBinding {
+interface ToolImplementationBinding {
   language: 'TypeScript' | 'Python';
   path: string; // @min 1 - relative path to source file
   handler: string; // @min 1 - function name
-}
-
-interface ContainerToolBinding {
-  language: 'Other';
-  buildMode: ContainerBuildMode;
-  buildContextPath: string; // Directory path
-  dockerfilePath: string; // @min 1
-  imageUri?: string; // Required for REMOTE build
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -156,4 +146,3 @@ type GatewayTargetType = 'lambda' | 'mcpServer' | 'openApiSchema' | 'smithyModel
 type PythonRuntime = 'PYTHON_3_10' | 'PYTHON_3_11' | 'PYTHON_3_12' | 'PYTHON_3_13';
 type NodeRuntime = 'NODE_18' | 'NODE_20' | 'NODE_22';
 type NetworkMode = 'PUBLIC' | 'PRIVATE';
-type ContainerBuildMode = 'LOCAL' | 'REMOTE';

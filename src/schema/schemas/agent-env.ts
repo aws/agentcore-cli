@@ -1,5 +1,4 @@
 import {
-  ContainerBuildModeSchema,
   ModelProviderSchema,
   NetworkModeSchema,
   PythonRuntimeSchema,
@@ -18,20 +17,13 @@ export type { AgentCoreMemoryConfig, MemoryStrategy, MemoryStrategyType } from '
 export type { DirectoryPath, FilePath, PathType } from '../types';
 
 // Re-export constant types for convenience
-export type {
-  ContainerBuildMode,
-  NetworkMode,
-  PythonRuntime,
-  SDKFramework,
-  TargetLanguage,
-  ModelProvider,
-} from '../constants';
+export type { NetworkMode, PythonRuntime, SDKFramework, TargetLanguage, ModelProvider } from '../constants';
 
 // ============================================================================
 // Artifact Types
 // ============================================================================
 
-export const ArtifactTypeSchema = z.enum(['CodeZip', 'ContainerImage', 'ReferencedEcrImage']);
+export const ArtifactTypeSchema = z.enum(['CodeZip']);
 export type ArtifactType = z.infer<typeof ArtifactTypeSchema>;
 
 // ============================================================================
@@ -105,7 +97,7 @@ const AgentRuntimeNameSchema = z
     'Runtime name must start with a letter and contain only alphanumeric characters and underscores'
   );
 
-const CodeZipRuntimeSchema = z.object({
+export const RuntimeSchema = z.object({
   artifact: z.literal('CodeZip'),
   name: AgentRuntimeNameSchema,
   pythonVersion: PythonRuntimeSchema,
@@ -123,62 +115,8 @@ const CodeZipRuntimeSchema = z.object({
   description: z.string().optional(),
 });
 
-const ContainerImageRuntimeSchema = z.object({
-  artifact: z.literal('ContainerImage'),
-  name: AgentRuntimeNameSchema,
-  buildMode: ContainerBuildModeSchema,
-
-  // Always required - paths for docker build
-  buildContextPath: DirectoryPathSchema,
-  dockerfilePath: z.string().min(1),
-
-  // REMOTE build fields (optional)
-  imageUri: z.string().optional(),
-
-  // Common fields
-  networkMode: NetworkModeSchema.optional().default('PUBLIC'),
-  description: z.string().optional(),
-});
-
-/**
- * Schema for image reference name.
- * References an ECR image defined in aws-targets.json referencedResources.ecrImages.
- */
-const ImageRefNameSchema = z
-  .string()
-  .min(1)
-  .max(64)
-  .regex(
-    /^[a-zA-Z][a-zA-Z0-9_-]*$/,
-    'Image ref must start with letter, contain only alphanumeric characters, hyphens, and underscores'
-  );
-
-/**
- * Runtime that references an external ECR image.
- * The actual image URI is defined in aws-targets.json per deployment target,
- * allowing different images for different environments (dev vs prod).
- */
-const ReferencedEcrImageRuntimeSchema = z.object({
-  artifact: z.literal('ReferencedEcrImage'),
-  name: AgentRuntimeNameSchema,
-
-  /** Reference to an image defined in aws-targets.json referencedResources.ecrImages */
-  imageRef: ImageRefNameSchema,
-
-  networkMode: NetworkModeSchema.optional().default('PUBLIC'),
-  description: z.string().optional(),
-});
-
-export const RuntimeSchema = z.discriminatedUnion('artifact', [
-  CodeZipRuntimeSchema,
-  ContainerImageRuntimeSchema,
-  ReferencedEcrImageRuntimeSchema,
-]);
-
 export type Runtime = z.infer<typeof RuntimeSchema>;
-export type CodeZipRuntime = z.infer<typeof CodeZipRuntimeSchema>;
-export type ContainerImageRuntime = z.infer<typeof ContainerImageRuntimeSchema>;
-export type ReferencedEcrImageRuntime = z.infer<typeof ReferencedEcrImageRuntimeSchema>;
+export type CodeZipRuntime = Runtime;
 
 // ============================================================================
 // Provider Schemas

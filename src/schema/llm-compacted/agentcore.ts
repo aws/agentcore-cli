@@ -50,7 +50,6 @@ type TargetLanguage = 'Python' | 'TypeScript' | 'Other';
 type ModelProvider = 'Bedrock' | 'Gemini' | 'OpenAI' | 'Anthropic';
 type PythonRuntime = 'PYTHON_3_10' | 'PYTHON_3_11' | 'PYTHON_3_12' | 'PYTHON_3_13';
 type NetworkMode = 'PUBLIC' | 'PRIVATE';
-type ContainerBuildMode = 'LOCAL' | 'REMOTE' | 'NO_OP_REFERENCE';
 type MemoryStrategyType = 'SEMANTIC' | 'SUMMARIZATION' | 'USER_PREFERENCE' | 'CUSTOM';
 
 // Provider type literals follow [System][Component] naming convention
@@ -64,12 +63,10 @@ type Access = 'read' | 'readwrite';
 type IdentityCredentialVariant = 'ApiKeyCredentialProvider';
 
 // ─────────────────────────────────────────────────────────────────────────────
-// RUNTIME (discriminated union on 'artifact')
+// RUNTIME
 // ─────────────────────────────────────────────────────────────────────────────
 
-type Runtime = CodeZipRuntime | ContainerImageRuntime | ReferencedEcrImageRuntime;
-
-interface CodeZipRuntime {
+interface Runtime {
   artifact: 'CodeZip';
   name: string; // @regex ^[a-zA-Z][a-zA-Z0-9_]{0,47}$ @max 48
   pythonVersion: PythonRuntime;
@@ -82,30 +79,6 @@ interface CodeZipRuntime {
 
 interface Instrumentation {
   enableOtel: boolean; // default true - wrap entrypoint with opentelemetry-instrument
-}
-
-interface ContainerImageRuntime {
-  artifact: 'ContainerImage';
-  name: string; // @regex ^[a-zA-Z][a-zA-Z0-9_]{0,47}$ @max 48
-  buildMode: ContainerBuildMode;
-  buildContextPath: string; // Directory path
-  dockerfilePath: string; // @min 1
-  imageUri?: string; // Required for REMOTE build
-  networkMode?: NetworkMode; // default 'PUBLIC'
-  description?: string;
-}
-
-/**
- * Runtime that references an external ECR image.
- * The actual image URI is defined in aws-targets.json referencedResources.ecrImages,
- * allowing different images for different deployment targets (dev vs prod).
- */
-interface ReferencedEcrImageRuntime {
-  artifact: 'ReferencedEcrImage';
-  name: string; // @regex ^[a-zA-Z][a-zA-Z0-9_]{0,47}$ @max 48
-  imageRef: string; // @regex ^[a-zA-Z][a-zA-Z0-9_-]*$ @max 64 - key in aws-targets.json referencedResources.ecrImages
-  networkMode?: NetworkMode; // default 'PUBLIC'
-  description?: string;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

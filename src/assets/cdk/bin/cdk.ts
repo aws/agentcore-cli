@@ -35,7 +35,6 @@ async function main() {
 
     new AgentCoreStack(app, stackName, {
       spec,
-      ecrImages: target.referencedResources?.ecrImages,
       env,
       description: `AgentCore stack for ${spec.name} deployed to ${target.name} (${target.region})`,
       tags: {

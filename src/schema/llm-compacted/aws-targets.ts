@@ -19,21 +19,6 @@ interface AwsDeploymentTarget {
   description?: string; // @max 256
   account: string; // @regex ^[0-9]{12}$ - AWS account ID (exactly 12 digits)
   region: AgentCoreRegion;
-  referencedResources?: ReferencedResources;
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// REFERENCED RESOURCES
-// External resources referenced by this target (not managed by CDK)
-// ─────────────────────────────────────────────────────────────────────────────
-
-interface ReferencedResources {
-  /**
-   * Map of image reference names to ECR URIs.
-   * Keys are referenced by agent-env runtime.imageRef fields.
-   * Values must be valid ECR URIs: {account}.dkr.ecr.{region}.amazonaws.com/{repo}:{tag}
-   */
-  ecrImages?: Record<string, string>; // key: @regex ^[a-zA-Z][a-zA-Z0-9_-]*$ @max 64, value: @regex ^[0-9]+\.dkr\.ecr\.[a-z0-9-]+\.amazonaws\.com\/.+$
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

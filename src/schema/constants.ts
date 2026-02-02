@@ -134,12 +134,3 @@ export type NodeRuntime = z.infer<typeof NodeRuntimeSchema>;
 
 export const NetworkModeSchema = z.enum(['PUBLIC', 'PRIVATE']);
 export type NetworkMode = z.infer<typeof NetworkModeSchema>;
-
-/**
- * Container build modes:
- * - LOCAL: Build from local Dockerfile
- * - REMOTE: Build remotely (not yet implemented)
- * - NO_OP_REFERENCE: Reference an existing image URI without building
- */
-export const ContainerBuildModeSchema = z.enum(['LOCAL', 'REMOTE', 'NO_OP_REFERENCE']);
-export type ContainerBuildMode = z.infer<typeof ContainerBuildModeSchema>;

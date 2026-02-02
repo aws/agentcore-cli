@@ -1,4 +1,4 @@
-import { ContainerBuildModeSchema, NetworkModeSchema, NodeRuntimeSchema, PythonRuntimeSchema } from '../constants';
+import { NetworkModeSchema, NodeRuntimeSchema, PythonRuntimeSchema } from '../constants';
 import type { DirectoryPath, FilePath } from '../types';
 import { EnvVarNameSchema, GatewayNameSchema } from './agent-env';
 import { ToolDefinitionSchema } from './mcp-defs';
@@ -57,7 +57,7 @@ export const GatewayAuthorizerConfigSchema = z.object({
 
 export type GatewayAuthorizerConfig = z.infer<typeof GatewayAuthorizerConfigSchema>;
 
-export const McpImplLanguageSchema = z.enum(['TypeScript', 'Python', 'Other']);
+export const McpImplLanguageSchema = z.enum(['TypeScript', 'Python']);
 export type McpImplementationLanguage = z.infer<typeof McpImplLanguageSchema>;
 
 export const ComputeHostSchema = z.enum(['Lambda', 'AgentCoreRuntime']);
@@ -83,7 +83,7 @@ const DirectoryPathSchema = z.string().min(1) as unknown as z.ZodType<DirectoryP
  * - creating a zip artifact
  * - uploading artifacts to S3
  */
-const CodeToolImplementationBindingSchema = z
+export const ToolImplementationBindingSchema = z
   .object({
     language: z.enum(['TypeScript', 'Python']),
     path: z.string().min(1),
@@ -91,35 +91,7 @@ const CodeToolImplementationBindingSchema = z
   })
   .strict();
 
-/**
- * Container-based tool implementation (Other language).
- *
- * The CLI is responsible for:
- * - building Docker image (LOCAL mode)
- * - pushing image to ECR
- */
-const ContainerToolImplementationBindingSchema = z
-  .object({
-    language: z.literal('Other'),
-    buildMode: ContainerBuildModeSchema,
-    buildContextPath: DirectoryPathSchema,
-    dockerfilePath: z.string().min(1),
-    imageUri: z.string().optional(),
-  })
-  .strict();
-
-/**
- * Declarative source binding for a tool implementation.
- * Supports either code-based (Python, TypeScript) or container-based (Other) implementations.
- */
-export const ToolImplementationBindingSchema = z.union([
-  CodeToolImplementationBindingSchema,
-  ContainerToolImplementationBindingSchema,
-]);
-
 export type ToolImplementationBinding = z.infer<typeof ToolImplementationBindingSchema>;
-export type CodeToolImplementationBinding = z.infer<typeof CodeToolImplementationBindingSchema>;
-export type ContainerToolImplementationBinding = z.infer<typeof ContainerToolImplementationBindingSchema>;
 
 // ============================================================================
 // IAM Policy Document
