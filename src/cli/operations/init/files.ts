@@ -43,38 +43,35 @@ export interface InitGitRepoResult {
  * Skips if already in a git repo or if git is not available.
  */
 export async function initGitRepo(projectRoot: string): Promise<InitGitRepoResult> {
+  // All git commands use shell: false to avoid Windows cmd argument parsing issues
+  const gitOptions = { cwd: projectRoot, stdio: 'pipe' as const, shell: false };
+
   // Check if git is available
-  const gitCheck = await runSubprocessCapture('git', ['--version'], { cwd: projectRoot, stdio: 'pipe' });
+  const gitCheck = await runSubprocessCapture('git', ['--version'], gitOptions);
   if (gitCheck.code !== 0) {
     return { status: 'skipped', message: 'git not available' };
   }
 
   // Check if already in a git repo
-  const gitStatus = await runSubprocessCapture('git', ['rev-parse', '--is-inside-work-tree'], {
-    cwd: projectRoot,
-    stdio: 'pipe',
-  });
+  const gitStatus = await runSubprocessCapture('git', ['rev-parse', '--is-inside-work-tree'], gitOptions);
   if (gitStatus.code === 0) {
     return { status: 'skipped', message: 'already in a git repository' };
   }
 
   // Initialize git repo
-  const initResult = await runSubprocessCapture('git', ['init'], { cwd: projectRoot, stdio: 'pipe' });
+  const initResult = await runSubprocessCapture('git', ['init'], gitOptions);
   if (initResult.code !== 0) {
     return { status: 'error', message: initResult.stderr || 'git init failed' };
   }
 
   // Stage all files
-  const addResult = await runSubprocessCapture('git', ['add', '.'], { cwd: projectRoot, stdio: 'pipe' });
+  const addResult = await runSubprocessCapture('git', ['add', '.'], gitOptions);
   if (addResult.code !== 0) {
     return { status: 'error', message: addResult.stderr || 'git add failed' };
   }
 
-  // Create initial commit
-  const commitResult = await runSubprocessCapture('git', ['commit', '-m', 'Initial commit'], {
-    cwd: projectRoot,
-    stdio: 'pipe',
-  });
+  // prettier-ignore
+  const commitResult = await runSubprocessCapture('git', ['commit', '-m', "Initial commit"], gitOptions);
   if (commitResult.code !== 0) {
     return { status: 'error', message: commitResult.stderr || 'git commit failed' };
   }

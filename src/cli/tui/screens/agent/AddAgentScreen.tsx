@@ -167,7 +167,7 @@ export function AddAgentScreen({ existingAgentNames, onComplete, onExit }: AddAg
 
   // BYO language options (include "Other" for BYO path)
   const languageItems: SelectableItem[] = useMemo(
-    () => LANGUAGE_OPTIONS.map(o => ({ id: o.id, title: o.title, disabled: 'disabled' in o ? o.disabled : undefined })),
+    () => LANGUAGE_OPTIONS.map(o => ({ id: o.id, title: o.title, disabled: o.disabled })),
     []
   );
 
