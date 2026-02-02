@@ -1,5 +1,1 @@
-export {
-  apiKeyProviderExists,
-  createApiKeyProvider,
-  setTokenVaultKmsKey,
-} from './api-key-credential-provider';
+export { apiKeyProviderExists, createApiKeyProvider, setTokenVaultKmsKey } from './api-key-credential-provider';

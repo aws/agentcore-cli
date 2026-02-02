@@ -185,6 +185,7 @@ export async function checkBootstrapNeeded(awsTargets: AwsDeploymentTarget[]): P
 
 /**
  * Bootstraps the AWS environment using the CDK toolkit.
+ * CDK bootstrap automatically creates a KMS CMK for S3 bucket encryption.
  */
 export async function bootstrapEnvironment(
   toolkitWrapper: CdkToolkitWrapper,

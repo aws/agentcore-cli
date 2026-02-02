@@ -2,7 +2,13 @@ import { CONFIG_DIR } from '../../../lib';
 import { CDK_APP_ENTRY, CDK_PROJECT_DIR } from '../../constants';
 import { getErrorMessage } from '../../errors';
 import type { CdkToolkitWrapperOptions, DeployOptions, DestroyOptions, DiffOptions, ListOptions } from './types';
-import { BaseCredentials, BootstrapEnvironments, type ICloudAssemblySource, Toolkit } from '@aws-cdk/toolkit-lib';
+import {
+  BaseCredentials,
+  BootstrapEnvironments,
+  BootstrapStackParameters,
+  type ICloudAssemblySource,
+  Toolkit,
+} from '@aws-cdk/toolkit-lib';
 import * as path from 'node:path';
 
 // Type for the assembly returned by synth().produce() - has an async dispose method
@@ -258,11 +264,17 @@ export class CdkToolkitWrapper {
 
   /**
    * Bootstrap the CDK toolkit stack in the target environment.
+   * Creates a KMS CMK for S3 bucket encryption by default.
    * @param environments List of environment strings like `['aws://012345678912/us-east-1']`
+   * @param kmsKeyId Optional existing KMS key ID to use instead of creating a new one
    */
-  async bootstrap(environments: string[]) {
+  async bootstrap(environments: string[], kmsKeyId?: string) {
     const { toolkit } = this.ensureInitialized();
-    return withErrorContext('bootstrap', () => toolkit.bootstrap(BootstrapEnvironments.fromList(environments)));
+    const params = kmsKeyId ? { kmsKeyId } : { createCustomerMasterKey: true };
+    const options = { parameters: BootstrapStackParameters.withExisting(params) };
+    return withErrorContext('bootstrap', () =>
+      toolkit.bootstrap(BootstrapEnvironments.fromList(environments), options)
+    );
   }
 }
 

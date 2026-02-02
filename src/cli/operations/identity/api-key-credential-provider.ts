@@ -60,7 +60,6 @@ export async function createApiKeyProvider(
   }
 }
 
-
 /**
  * Configure KMS encryption for the token vault.
  * This encrypts all API key credential providers stored in the vault.
