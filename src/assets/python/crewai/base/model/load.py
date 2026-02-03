@@ -34,7 +34,7 @@ def _get_api_key() -> str:
         api_key = os.getenv(IDENTITY_ENV_VAR)
         if not api_key:
             raise RuntimeError(
-                f"{IDENTITY_ENV_VAR} not found. Run via 'agentcore dev' to load agentcore/.env"
+                f"{IDENTITY_ENV_VAR} not found. Add {IDENTITY_ENV_VAR}=your-key to .env.local"
             )
         return api_key
     return _agentcore_identity_api_key_provider()
@@ -72,7 +72,7 @@ def _get_api_key() -> str:
         api_key = os.getenv(IDENTITY_ENV_VAR)
         if not api_key:
             raise RuntimeError(
-                f"{IDENTITY_ENV_VAR} not found. Run via 'agentcore dev' to load agentcore/.env"
+                f"{IDENTITY_ENV_VAR} not found. Add {IDENTITY_ENV_VAR}=your-key to .env.local"
             )
         return api_key
     return _agentcore_identity_api_key_provider()
@@ -109,7 +109,7 @@ def _get_api_key() -> str:
         api_key = os.getenv(IDENTITY_ENV_VAR)
         if not api_key:
             raise RuntimeError(
-                f"{IDENTITY_ENV_VAR} not found. Run via 'agentcore dev' to load agentcore/.env"
+                f"{IDENTITY_ENV_VAR} not found. Add {IDENTITY_ENV_VAR}=your-key to .env.local"
             )
         return api_key
     return _agentcore_identity_api_key_provider()
