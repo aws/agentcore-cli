@@ -26,6 +26,10 @@ jobs:
       with:
         node-version: ${{ matrix.node-version }}
         cache: 'npm'
+    - name: Configure git for tests
+      run: |
+        git config --global user.email "bedrock-agentcore-npm+ci@amazon.com"
+        git config --global user.name "CI"
     - run: npm ci
     - run: npm run build --if-present
     - run: npm test
