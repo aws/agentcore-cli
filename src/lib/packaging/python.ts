@@ -29,7 +29,7 @@ const PLATFORM_CANDIDATES = ['aarch64-manylinux2014', 'aarch64-manylinux_2_28', 
 export class PythonCodeZipPackager implements RuntimePackager {
   async pack(spec: AgentEnvSpec, options: PackageOptions = {}): Promise<ArtifactResult> {
     this.validateSpec(spec);
-    const runtime = spec.runtime as CodeZipRuntime;
+    const runtime = spec.runtime;
 
     // Use agentName from options or fall back to spec.name for artifact naming
     const agentName = options.agentName ?? spec.name;
