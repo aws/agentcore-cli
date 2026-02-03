@@ -31,9 +31,10 @@
     "security:audit": "npm audit --audit-level=high",
     "clean": "node -e \"require('fs').rmSync('dist', {recursive: true, force: true})\"",
     "prepare": "husky",
-    "test": "vitest run",
+    "test:all": "vitest run",
     "test:watch": "vitest",
-    "test:integ": "vitest run --config vitest.integ.config.ts"
+    "test:integ": "vitest run --config vitest.integ.config.ts",
+    "test:unit": "vitest run --config vitest.unit.config.ts"
   },
   "dependencies": {
     "@aws-cdk/toolkit-lib": "^1.13.0",

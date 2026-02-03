@@ -47,6 +47,7 @@ export function DeployScreen({ isInteractive, onExit, autoConfirm, onNavigate, p
     hasTokenExpiredError,
     hasCredentialsError,
     isComplete,
+    hasStartedCfn,
     logFilePath,
     missingCredentials,
     startDeploy,
@@ -176,8 +177,8 @@ export function DeployScreen({ isInteractive, onExit, autoConfirm, onNavigate, p
 
   const targetDisplay = context?.awsTargets.map(t => `${t.region}:${t.account}`).join(', ');
 
-  // Show deploy status box during deploy phase (replaces "Deploy to AWS" step)
-  const showDeployStatus = phase === 'deploying' || isComplete;
+  // Show deploy status box once CloudFormation has started (after asset publishing)
+  const showDeployStatus = hasStartedCfn || isComplete;
 
   // Filter out "Deploy to AWS" step when deploy status box is showing
   const displaySteps = showDeployStatus ? steps.filter(s => s.label !== 'Deploy to AWS') : steps;

@@ -168,7 +168,7 @@ export function DeployStatus({ messages, isComplete, hasError }: DeployStatusPro
 
   return (
     <Box flexDirection="column" borderStyle="round" borderColor="gray" paddingX={1} minWidth={50}>
-      <GradientText text="Deploy to AWS" />
+      <GradientText text="Deploying to AWS" />
       {progress && (
         <Box marginTop={1}>
           <ProgressBar current={progress.current} total={progress.total} />

@@ -41,6 +41,8 @@ interface DeployFlowState {
   /** True if the error is due to missing AWS credentials (not configured) */
   hasCredentialsError: boolean;
   isComplete: boolean;
+  /** True if CloudFormation has started (received first resource event) */
+  hasStartedCfn: boolean;
   logFilePath: string;
   /** Missing credentials that need to be provided */
   missingCredentials: MissingCredential[];
@@ -76,19 +78,27 @@ export function useDeployFlow(options: DeployFlowOptions = {}): DeployFlowState 
   const switchableIoHost = preSynthesized?.switchableIoHost ?? preflight.switchableIoHost;
   const identityKmsKeyArn = preSynthesized?.identityKmsKeyArn ?? preflight.identityKmsKeyArn;
 
+  const [publishAssetsStep, setPublishAssetsStep] = useState<Step>({ label: 'Publish assets', status: 'pending' });
   const [deployStep, setDeployStep] = useState<Step>({ label: 'Deploy to AWS', status: 'pending' });
   const [deployOutput, setDeployOutput] = useState<string | null>(null);
   const [deployMessages, setDeployMessages] = useState<DeployMessage[]>([]);
   const [stackOutputs, setStackOutputs] = useState<Record<string, string>>({});
   const [shouldStartDeploy, setShouldStartDeploy] = useState(false);
   const [hasTokenExpiredError, setHasTokenExpiredError] = useState(false);
+  // Track if CloudFormation has started (received first resource event)
+  const [hasStartedCfn, setHasStartedCfn] = useState(false);
+  // Ref version for use in callbacks (avoids stale closure issues)
+  const hasReceivedCfnEvent = useRef(false);
   // Ref to capture outputs from I5900 stream message (for immediate access in persistDeployedState)
   const streamOutputsRef = useRef<Record<string, string> | null>(null);
 
   const startDeploy = useCallback(() => {
+    setPublishAssetsStep({ label: 'Publish assets', status: 'pending' });
     setDeployStep({ label: 'Deploy to AWS', status: 'pending' });
     setDeployOutput(null);
     setHasTokenExpiredError(false); // Reset token expired state when retrying
+    setHasStartedCfn(false);
+    hasReceivedCfnEvent.current = false;
     if (skipPreflight) {
       setShouldStartDeploy(true);
     } else {
@@ -152,11 +162,11 @@ export function useDeployFlow(options: DeployFlowOptions = {}): DeployFlowState 
     if (!cdkToolkitWrapper) return;
 
     const run = async () => {
-      setDeployStep(prev => ({ ...prev, status: 'running' }));
+      setPublishAssetsStep(prev => ({ ...prev, status: 'running' }));
       setShouldStartDeploy(false);
       setDeployMessages([]); // Clear previous messages
       streamOutputsRef.current = null; // Clear previous stream outputs
-      logger.startStep('Deploy to AWS');
+      logger.startStep('Publish assets');
 
       // Set up raw message callback to log ALL CDK output
       switchableIoHost?.setOnRawMessage((code, level, message) => {
@@ -166,6 +176,15 @@ export function useDeployFlow(options: DeployFlowOptions = {}): DeployFlowState 
       // Set up filtered message callback for TUI display
       switchableIoHost?.setOnMessage(msg => {
         setDeployMessages(prev => [...prev, msg]);
+        // When we receive the first CloudFormation event with progress, mark assets as published
+        if (!hasReceivedCfnEvent.current && msg.progress) {
+          hasReceivedCfnEvent.current = true;
+          setHasStartedCfn(true);
+          logger.endStep('success');
+          logger.startStep('Deploy to AWS');
+          setPublishAssetsStep(prev => ({ ...prev, status: 'success' }));
+          setDeployStep(prev => ({ ...prev, status: 'running' }));
+        }
         // Capture outputs from I5900 for immediate use in persistDeployedState
         if (msg.code === 'CDK_TOOLKIT_I5900' && msg.outputs) {
           streamOutputsRef.current = msg.outputs;
@@ -191,6 +210,8 @@ export function useDeployFlow(options: DeployFlowOptions = {}): DeployFlowState 
         logger.endStep('success');
         logger.finalize(true);
         setDeployOutput(`Deployed ${stackNames.length} stack(s): ${stackNames.join(', ')}`);
+        // Mark both steps as success (in case CFn events were never received)
+        setPublishAssetsStep(prev => ({ ...prev, status: 'success' }));
         setDeployStep(prev => ({ ...prev, status: 'success' }));
       } catch (err) {
         const errorMsg = getErrorMessage(err);
@@ -202,11 +223,20 @@ export function useDeployFlow(options: DeployFlowOptions = {}): DeployFlowState 
           setHasTokenExpiredError(true);
         }
 
-        setDeployStep(prev => ({
-          ...prev,
-          status: 'error',
-          error: logger.getFailureMessage('Deploy to AWS'),
-        }));
+        // Mark the appropriate step as error based on whether CFn started
+        if (hasReceivedCfnEvent.current) {
+          setDeployStep(prev => ({
+            ...prev,
+            status: 'error',
+            error: logger.getFailureMessage('Deploy to AWS'),
+          }));
+        } else {
+          setPublishAssetsStep(prev => ({
+            ...prev,
+            status: 'error',
+            error: logger.getFailureMessage('Publish assets'),
+          }));
+        }
       } finally {
         // Disable verbose output and clear callback after deploy
         switchableIoHost?.setVerbose(false);
@@ -239,8 +269,8 @@ export function useDeployFlow(options: DeployFlowOptions = {}): DeployFlowState 
   }, [preflight.phase, preflight.cdkToolkitWrapper, logger, skipPreflight]);
 
   const steps = useMemo(
-    () => (skipPreflight ? [deployStep] : [...preflight.steps, deployStep]),
-    [preflight.steps, deployStep, skipPreflight]
+    () => (skipPreflight ? [publishAssetsStep, deployStep] : [...preflight.steps, publishAssetsStep, deployStep]),
+    [preflight.steps, publishAssetsStep, deployStep, skipPreflight]
   );
 
   const phase: DeployPhase = useMemo(() => {
@@ -307,6 +337,7 @@ export function useDeployFlow(options: DeployFlowOptions = {}): DeployFlowState 
     hasTokenExpiredError: combinedTokenExpiredError,
     hasCredentialsError: preflight.hasCredentialsError,
     isComplete,
+    hasStartedCfn,
     logFilePath: logger.logFilePath,
     missingCredentials: preflight.missingCredentials,
     startDeploy,

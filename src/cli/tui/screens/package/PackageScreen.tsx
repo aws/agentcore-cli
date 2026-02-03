@@ -104,7 +104,7 @@ export function PackageScreen({ isInteractive: _isInteractive, onExit }: Package
             newSteps[i] = {
               label: agent.name,
               status: 'warn',
-              warn: `Skipped: ${agent.runtime.artifact} not supported`,
+              warn: `Skipped: ${String(agent.runtime.artifact)} not supported`,
             };
             skipped.push(agent.name);
             setState(prev => ({ ...prev, steps: [...newSteps], skipped }));
