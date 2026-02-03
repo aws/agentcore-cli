@@ -388,7 +388,7 @@ export function AddFlow(props: AddFlowProps) {
       <AddSuccessScreen
         isInteractive={props.isInteractive}
         message={`Added gateway: ${flow.gatewayName}`}
-        detail="Gateway defined in `agentcore/mcp.json`."
+        detail="Gateway defined in `agentcore/mcp.json`. Next: Use 'add tool' with 'Behind Gateway' exposure to route tools through this gateway."
         loading={flow.loading}
         loadingMessage={flow.loadingMessage}
         onAddAnother={() => {
