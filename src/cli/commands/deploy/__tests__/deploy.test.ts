@@ -76,17 +76,15 @@ describe('deploy command', () => {
   });
 
   describe('validation', () => {
-    it('accepts deploy without target (TUI mode)', async () => {
-      // Without --target, deploy goes to TUI mode
-      // We can't fully test TUI, but we can verify it doesn't crash immediately
+    it('validates target exists before deploying', async () => {
+      // Deploy with valid target should fail on AWS/CDK, not target validation
       const result = await runCLI(['deploy', '--target', 'test-target', '--json'], projectDir);
-      // This will fail because we don't have AWS credentials, but it validates the target exists
       expect(result.exitCode).toBe(1);
       const json = JSON.parse(result.stdout);
       expect(json.success).toBe(false);
       // Error should be about AWS/CDK, not about target not found
       expect(!json.error.includes('not found'), `Should find target, got: ${json.error}`).toBeTruthy();
-    });
+    }, 60000);
   });
 
   describe('target validation', () => {
