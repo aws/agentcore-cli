@@ -31,6 +31,7 @@ export default defineConfig({
   ],
   test: {
     include: ['src/**/*.test.ts'],
+    exclude: ['src/assets/**/*.test.ts'],
     testTimeout: 120000,
     hookTimeout: 120000,
     globals: false,
