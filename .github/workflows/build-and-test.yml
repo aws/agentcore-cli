@@ -34,4 +34,4 @@ jobs:
           git config --global user.name "CI"
       - run: npm ci
       - run: npm run build --if-present
-      - run: npm test
+      - run: npm run test:unit
