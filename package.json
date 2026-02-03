@@ -91,6 +91,9 @@
   "engines": {
     "node": ">=20"
   },
+  "overrides": {
+    "fast-xml-parser": "^5.3.4"
+  },
   "lint-staged": {
     "*.{ts,tsx}": [
       "eslint --max-warnings=10"
