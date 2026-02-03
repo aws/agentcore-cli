@@ -23,6 +23,6 @@
       "@/*": ["./src/*"]
     }
   },
-  "include": ["src/**/*", "integ-tests/**/*", "vitest.config.ts", "vitest.integ.config.ts"],
+  "include": ["src/**/*", "integ-tests/**/*", "vitest.config.ts", "vitest.integ.config.ts", "vitest.unit.config.ts"],
   "exclude": ["node_modules", "dist", "packages", "assets", "src/assets"]
 }
