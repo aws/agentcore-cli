@@ -1,26 +1,36 @@
 import { findConfigRoot } from '../../../../lib';
 import { Cursor, ScreenLayout } from '../../components';
 import { buildLogo, useLayout } from '../../context';
-import { HINTS, QUICK_START } from '../../copy';
+import { HINTS } from '../../copy';
 import { Box, Text, useApp, useInput } from 'ink';
 import React from 'react';
+
+function NoProjectMessage() {
+  return (
+    <Box marginTop={1} flexDirection="column">
+      <Text color="yellow">No AgentCore project found in this directory.</Text>
+      <Box marginTop={1} flexDirection="column">
+        <Text dimColor>You can:</Text>
+        <Box marginLeft={2} flexDirection="column">
+          <Text>
+            <Text color="cyan">create</Text>
+            <Text dimColor> - Create a new AgentCore project here</Text>
+          </Text>
+          <Text dimColor>or cd into an existing project directory</Text>
+        </Box>
+      </Box>
+    </Box>
+  );
+}
 
 function QuickStart() {
   return (
     <Box marginTop={1} flexDirection="column">
-      <Text bold color="cyan">
-        Quick Start
-      </Text>
-      <Box marginTop={1} flexDirection="column">
-        <Text>
-          <Text color="cyan">create</Text>
-          <Text dimColor> {QUICK_START.create}</Text>
-        </Text>
-      </Box>
+      <NoProjectMessage />
       <Box marginTop={1}>
         <Text>
           <Text color="cyan">⚑ </Text>
-          <Text dimColor>Run create to get started</Text>
+          <Text dimColor>Press Enter to create a new project</Text>
         </Text>
       </Box>
     </Box>
@@ -31,8 +41,8 @@ function hasProject(): boolean {
   return findConfigRoot() !== null;
 }
 
-// Quick start takes 8 lines: margin(1) + header(1) + margin(1) + 3 items + margin(1) + tip(1)
-const QUICK_START_LINES = 8;
+// Quick start takes 9 lines for the "no project" message plus tip
+const QUICK_START_LINES = 9;
 
 interface HomeScreenProps {
   cwd: string;

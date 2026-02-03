@@ -11,9 +11,15 @@ describe('buildDeployedState', () => {
       },
     };
 
-    const result = buildDeployedState('default', 'TestStack', agents, undefined, 'arn:aws:kms:us-east-1:123456789012:key/abc-123');
+    const result = buildDeployedState(
+      'default',
+      'TestStack',
+      agents,
+      undefined,
+      'arn:aws:kms:us-east-1:123456789012:key/abc-123'
+    );
 
-    expect(result.targets.default.resources?.identityKmsKeyArn).toBe('arn:aws:kms:us-east-1:123456789012:key/abc-123');
+    expect(result.targets.default?.resources?.identityKmsKeyArn).toBe('arn:aws:kms:us-east-1:123456789012:key/abc-123');
   });
 
   it('omits identityKmsKeyArn when not provided', () => {
@@ -27,7 +33,7 @@ describe('buildDeployedState', () => {
 
     const result = buildDeployedState('default', 'TestStack', agents);
 
-    expect(result.targets.default.resources?.identityKmsKeyArn).toBeUndefined();
+    expect(result.targets.default?.resources?.identityKmsKeyArn).toBeUndefined();
   });
 
   it('preserves existing state while adding new target with kmsKeyArn', () => {
@@ -42,9 +48,15 @@ describe('buildDeployedState', () => {
       },
     };
 
-    const result = buildDeployedState('dev', 'DevStack', {}, existingState, 'arn:aws:kms:us-east-1:123456789012:key/dev-key');
+    const result = buildDeployedState(
+      'dev',
+      'DevStack',
+      {},
+      existingState,
+      'arn:aws:kms:us-east-1:123456789012:key/dev-key'
+    );
 
-    expect(result.targets.prod.resources?.stackName).toBe('ProdStack');
-    expect(result.targets.dev.resources?.identityKmsKeyArn).toBe('arn:aws:kms:us-east-1:123456789012:key/dev-key');
+    expect(result.targets.prod?.resources?.stackName).toBe('ProdStack');
+    expect(result.targets.dev?.resources?.identityKmsKeyArn).toBe('arn:aws:kms:us-east-1:123456789012:key/dev-key');
   });
 });

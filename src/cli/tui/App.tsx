@@ -20,8 +20,8 @@ import { StatusScreen } from './screens/status/StatusScreen';
 import { UpdateScreen } from './screens/update';
 import { ValidateScreen } from './screens/validate';
 import { type CommandMeta, getCommandsForUI } from './utils/commands';
-import React, { useState } from 'react';
 import { useApp } from 'ink';
+import React, { useState } from 'react';
 
 // Capture cwd once at app initialization
 const cwd = getWorkingDirectory();
@@ -49,13 +49,14 @@ type Route =
 function AppContent() {
   const { exit } = useApp();
   // Start on help screen if project exists (show commands), otherwise home (show Quick Start)
-  const initialRoute: Route = projectExists() ? { name: 'help' } : { name: 'home' };
+  const inProject = projectExists();
+  const initialRoute: Route = inProject ? { name: 'help' } : { name: 'home' };
   const [route, setRoute] = useState<Route>(initialRoute);
   const [helpNotice, setHelpNotice] = useState<React.ReactNode | null>(null);
 
-  // Get commands from commander program
+  // Get commands from commander program (hide 'create' when in project)
   const program = createProgram();
-  const commands = getCommandsForUI(program);
+  const commands = getCommandsForUI(program, { inProject });
 
   const onSelectCommand = (id: string) => {
     const cmd = commands.find(c => c.id === id);

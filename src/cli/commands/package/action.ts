@@ -60,13 +60,15 @@ export async function handlePackage(context: PackageContext): Promise<PackageRes
   }
 
   // Filter only CodeZip artifacts
-  const packableAgents = agentsToPackage.filter((a): a is CodeZipAgent => {
-    if (!isCodeZipAgent(a)) {
-      skipped.push(a.name);
-      return false;
+  const packableAgents: CodeZipAgent[] = [];
+  for (const agent of agentsToPackage) {
+    const agentName = agent.name;
+    if (isCodeZipAgent(agent)) {
+      packableAgents.push(agent);
+    } else {
+      skipped.push(agentName);
     }
-    return true;
-  });
+  }
 
   if (packableAgents.length === 0) {
     return { success: true, results: [], skipped };
