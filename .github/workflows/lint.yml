@@ -19,7 +19,7 @@ jobs:
         node-version: 20.x
 
     - run: npm ci
-    - run: npm format:check
+    - run: npm run format:check
     - run: npm run lint
     - run: npm run security:audit
     - run: npm run secrets:check
