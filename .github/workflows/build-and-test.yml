@@ -2,33 +2,36 @@ name: Build and Test
 
 on:
   push:
-    branches: [ "main" ]
+    branches: ['main']
   pull_request:
-    branches: [ "main" ]
+    branches: ['main']
+
+# Cancel in-progress runs when a new commit is pushed
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   build:
-
     runs-on: ubuntu-latest
+    timeout-minutes: 15
 
     strategy:
       fail-fast: false
       matrix:
         node-version: [20.x, 22.x, 24.x]
-        # See supported Node.js release schedule at https://nodejs.org/en/about/releases/
 
     steps:
-    - uses: actions/checkout@v6
-    - name: Use Node.js ${{ matrix.node-version }}
-      uses: actions/setup-node@v6
-      with:
-        node-version: ${{ matrix.node-version }}
-        cache: 'npm'
-    - name: Configure git for tests
-      run: |
-        git config --global user.email "bedrock-agentcore-npm+ci@amazon.com"
-        git config --global user.name "CI"
-    - run: npm ci
-    - run: npm run build --if-present
-    - run: npm test
-
+      - uses: actions/checkout@v6
+      - name: Use Node.js ${{ matrix.node-version }}
+        uses: actions/setup-node@v6
+        with:
+          node-version: ${{ matrix.node-version }}
+          cache: 'npm'
+      - name: Configure git for tests
+        run: |
+          git config --global user.email "bedrock-agentcore-npm+ci@amazon.com"
+          git config --global user.name "CI"
+      - run: npm ci
+      - run: npm run build --if-present
+      - run: npm test

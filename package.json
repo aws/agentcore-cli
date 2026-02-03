@@ -98,7 +98,7 @@
     "*.{ts,tsx}": [
       "eslint --max-warnings=10"
     ],
-    "*.{ts,tsx,js,jsx,json,md,css,html}": [
+    "*.{ts,tsx,js,jsx,json,md,css,html,yml,yaml}": [
       "prettier --check"
     ],
     "*": [
