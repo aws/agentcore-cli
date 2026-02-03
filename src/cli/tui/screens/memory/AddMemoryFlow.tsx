@@ -44,6 +44,10 @@ export function AddMemoryFlow({ isInteractive = true, onExit, onBack }: AddMemor
   );
 
   if (flow.name === 'wizard') {
+    // Wait for agents to load before rendering wizard
+    if (agents.length === 0) {
+      return null;
+    }
     return (
       <AddMemoryScreen
         existingMemoryNames={existingNames}

@@ -363,6 +363,10 @@ export function AddFlow(props: AddFlowProps) {
   }
 
   if (flow.name === 'identity-wizard') {
+    // Wait for agents to load before rendering wizard
+    if (agents.length === 0) {
+      return null;
+    }
     return (
       <AddIdentityScreen
         existingIdentityNames={identityNames}
