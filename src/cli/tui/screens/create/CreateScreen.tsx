@@ -178,8 +178,7 @@ export function CreateScreen({ cwd, isInteractive, onExit, onNavigate }: CreateS
     </Box>
   );
 
-  const helpText =
-    allSuccess && isInteractive ? HELP_TEXT.NAVIGATE_SELECT : flow.hasError || allSuccess ? HELP_TEXT.EXIT : undefined;
+  const helpText = flow.hasError || allSuccess ? HELP_TEXT.EXIT : undefined;
 
   return (
     <Screen title="AgentCore Create" onExit={onExit} headerContent={headerContent} helpText={helpText}>
@@ -187,22 +186,37 @@ export function CreateScreen({ cwd, isInteractive, onExit, onNavigate }: CreateS
       {allSuccess && flow.outputDir && (
         <Box marginTop={1} flexDirection="column">
           <CreatedSummary projectName={flow.projectName} agentConfig={flow.addAgentConfig} />
-          {isInteractive && (
-            <Box marginTop={1}>
-              <Text dimColor>cd {flow.projectName}</Text>
+          {isInteractive ? (
+            <Box marginTop={1} flexDirection="column">
+              <Text color="green">Project created successfully!</Text>
+              <Box marginTop={1} flexDirection="column">
+                <Text>To continue, exit and navigate to your new project:</Text>
+                <Box marginLeft={2} marginTop={1} flexDirection="column">
+                  <Text>
+                    <Text color="cyan">1.</Text> Press <Text color="cyan">Esc</Text> to exit
+                  </Text>
+                  <Text>
+                    <Text color="cyan">2.</Text> Run <Text color="cyan">cd {flow.projectName}</Text>
+                  </Text>
+                  <Text>
+                    <Text color="cyan">3.</Text> Run <Text color="cyan">agentcore</Text> to continue
+                  </Text>
+                </Box>
+              </Box>
             </Box>
+          ) : (
+            <NextSteps
+              steps={getCreateNextSteps(flow.addAgentConfig !== null)}
+              isInteractive={isInteractive}
+              onSelect={step => {
+                if (onNavigate) {
+                  onNavigate({ command: step.command as NextCommand, workingDir: projectRoot });
+                }
+              }}
+              onBack={onExit}
+              isActive={allSuccess}
+            />
           )}
-          <NextSteps
-            steps={getCreateNextSteps(flow.addAgentConfig !== null)}
-            isInteractive={isInteractive}
-            onSelect={step => {
-              if (onNavigate) {
-                onNavigate({ command: step.command as NextCommand, workingDir: projectRoot });
-              }
-            }}
-            onBack={onExit}
-            isActive={allSuccess}
-          />
         </Box>
       )}
       {flow.hasError && (

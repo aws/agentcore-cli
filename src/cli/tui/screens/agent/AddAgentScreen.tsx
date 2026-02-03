@@ -221,6 +221,7 @@ export function AddAgentScreen({ existingAgentNames, onComplete, onExit }: AddAg
     },
     onExit: handleByoBack,
     isActive: isByoPath && byoStep === 'language',
+    isDisabled: item => item.disabled ?? false,
   });
 
   const frameworkNav = useListNavigation({
