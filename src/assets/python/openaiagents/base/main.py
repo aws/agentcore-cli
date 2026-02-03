@@ -49,7 +49,7 @@ async def invoke(payload, context):
     result = await main(prompt)
 
     # Return result
-    yield {"result": result.final_output}
+    return {"result": result.final_output}
 
 
 if __name__ == "__main__":

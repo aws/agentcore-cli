@@ -127,6 +127,8 @@ export async function invokeAgentRuntimeStreaming(options: InvokeAgentRuntimeOpt
 
   async function* streamGenerator(): AsyncGenerator<string, void, unknown> {
     let buffer = '';
+    let fullResponse = '';
+    let yieldedContent = false;
     const { logger } = options;
 
     try {
@@ -134,7 +136,9 @@ export async function invokeAgentRuntimeStreaming(options: InvokeAgentRuntimeOpt
         const result = await reader.read();
         if (result.done) break;
 
-        buffer += decoder.decode(result.value as Uint8Array, { stream: true });
+        const decoded = decoder.decode(result.value as Uint8Array, { stream: true });
+        buffer += decoded;
+        fullResponse += decoded;
 
         // Process complete lines from the buffer
         const lines = buffer.split('\n');
@@ -153,6 +157,7 @@ export async function invokeAgentRuntimeStreaming(options: InvokeAgentRuntimeOpt
           }
           if (content) {
             yield content;
+            yieldedContent = true;
           }
         }
       }
@@ -168,7 +173,13 @@ export async function invokeAgentRuntimeStreaming(options: InvokeAgentRuntimeOpt
           yield `Error: ${error}`;
         } else if (content) {
           yield content;
+          yieldedContent = true;
         }
+      }
+
+      // Fallback for plain JSON responses (non-SSE)
+      if (!yieldedContent && fullResponse.trim()) {
+        yield extractResult(fullResponse.trim());
       }
     } finally {
       reader.releaseLock();
