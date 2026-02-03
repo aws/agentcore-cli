@@ -132,12 +132,14 @@ export function buildDeployedState(
   targetName: string,
   stackName: string,
   agents: Record<string, AgentCoreDeployedState>,
-  existingState?: DeployedState
+  existingState?: DeployedState,
+  identityKmsKeyArn?: string
 ): DeployedState {
   const targetState: TargetDeployedState = {
     resources: {
       agents,
       stackName,
+      identityKmsKeyArn,
     },
   };
 

@@ -18,6 +18,7 @@ export interface PreSynthesized {
   context: PreflightContext;
   stackNames: string[];
   switchableIoHost?: SwitchableIoHost;
+  identityKmsKeyArn?: string;
 }
 
 interface DeployFlowOptions {
@@ -73,6 +74,7 @@ export function useDeployFlow(options: DeployFlowOptions = {}): DeployFlowState 
   const context = preSynthesized?.context ?? preflight.context;
   const stackNames = preSynthesized?.stackNames ?? preflight.stackNames;
   const switchableIoHost = preSynthesized?.switchableIoHost ?? preflight.switchableIoHost;
+  const identityKmsKeyArn = preSynthesized?.identityKmsKeyArn ?? preflight.identityKmsKeyArn;
 
   const [deployStep, setDeployStep] = useState<Step>({ label: 'Deploy to AWS', status: 'pending' });
   const [deployOutput, setDeployOutput] = useState<string | null>(null);
@@ -138,9 +140,9 @@ export function useDeployFlow(options: DeployFlowOptions = {}): DeployFlowState 
     setStackOutputs(outputs);
 
     const existingState = await configIO.readDeployedState().catch(() => undefined);
-    const deployedState = buildDeployedState(target.name, currentStackName, agents, existingState);
+    const deployedState = buildDeployedState(target.name, currentStackName, agents, existingState, identityKmsKeyArn);
     await configIO.writeDeployedState(deployedState);
-  }, [context, stackNames, logger]);
+  }, [context, stackNames, logger, identityKmsKeyArn]);
 
   // Start deploy when preflight completes OR when shouldStartDeploy is set
   useEffect(() => {

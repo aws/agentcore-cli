@@ -104,6 +104,7 @@ export const DeployedResourceStateSchema = z.object({
   mcp: McpDeployedStateSchema.optional(),
   externallyManaged: ExternallyManagedStateSchema.optional(),
   stackName: z.string().optional(),
+  identityKmsKeyArn: z.string().optional(),
 });
 
 export type DeployedResourceState = z.infer<typeof DeployedResourceStateSchema>;

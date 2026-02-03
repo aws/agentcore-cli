@@ -8,6 +8,8 @@ import {
   buildCdkProject,
   checkBootstrapNeeded,
   checkStackDeployability,
+  hasOwnedIdentityApiProviders,
+  setupApiKeyProviders,
   synthesizeCdk,
   validateProject,
 } from '../../operations/deploy';
@@ -123,6 +125,26 @@ export async function handleDeploy(options: ValidatedDeployOptions): Promise<Dep
     }
     endStep('success');
 
+    // Set up identity providers if needed
+    let identityKmsKeyArn: string | undefined;
+    if (hasOwnedIdentityApiProviders(context.projectSpec)) {
+      startStep('Set up API key providers');
+      const identityResult = await setupApiKeyProviders({
+        projectSpec: context.projectSpec,
+        configBaseDir: configIO.baseDir,
+        region: target.region,
+        enableKmsEncryption: true,
+      });
+      if (identityResult.hasErrors) {
+        const errorMsg = identityResult.results.find(r => r.status === 'error')?.error ?? 'Identity setup failed';
+        endStep('error', errorMsg);
+        logger.finalize(false);
+        return { success: false, error: errorMsg, logPath: logger.getRelativeLogPath() };
+      }
+      identityKmsKeyArn = identityResult.kmsKeyArn;
+      endStep('success');
+    }
+
     // Deploy
     startStep('Deploy to AWS');
 
@@ -150,7 +172,7 @@ export async function handleDeploy(options: ValidatedDeployOptions): Promise<Dep
     const agentNames = context.projectSpec.agents.map(a => a.name);
     const agents = parseAgentOutputs(outputs, agentNames, stackName);
     const existingState = await configIO.readDeployedState().catch(() => undefined);
-    const deployedState = buildDeployedState(target.name, stackName, agents, existingState);
+    const deployedState = buildDeployedState(target.name, stackName, agents, existingState, identityKmsKeyArn);
     await configIO.writeDeployedState(deployedState);
     endStep('success');
 
