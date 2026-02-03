@@ -11,7 +11,7 @@ export interface CommandMeta {
 /**
  * Commands hidden from TUI help but still available via CLI.
  */
-const HIDDEN_FROM_TUI = ['update', 'package'] as const;
+const HIDDEN_FROM_TUI = ['update', 'package', 'edit', 'plan'] as const;
 
 export function getCommandsForUI(program: Command): CommandMeta[] {
   return program.commands
