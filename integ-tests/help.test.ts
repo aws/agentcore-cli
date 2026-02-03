@@ -7,7 +7,6 @@ const COMMANDS = [
   'dev',
   'invoke',
   'destroy',
-  'plan',
   'status',
   'validate',
   'add',

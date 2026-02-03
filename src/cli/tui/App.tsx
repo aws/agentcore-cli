@@ -14,7 +14,6 @@ import { HelpScreen, HomeScreen } from './screens/home';
 import { InvokeScreen } from './screens/invoke';
 import { OutlineScreen } from './screens/outline';
 import { PackageScreen } from './screens/package';
-import { PlanScreen } from './screens/plan/PlanScreen';
 import { RemoveFlow } from './screens/remove';
 import { StatusScreen } from './screens/status/StatusScreen';
 import { UpdateScreen } from './screens/update';
@@ -35,7 +34,6 @@ type Route =
   | { name: 'destroy' }
   | { name: 'invoke' }
   | { name: 'outline' }
-  | { name: 'plan' }
   | { name: 'edit' }
   | { name: 'create' }
   | { name: 'add' }
@@ -74,8 +72,6 @@ function AppContent() {
       setRoute({ name: 'invoke' });
     } else if (id === 'outline') {
       setRoute({ name: 'outline' });
-    } else if (id === 'plan') {
-      setRoute({ name: 'plan' });
     } else if (id === 'status') {
       setRoute({ name: 'status' });
     } else if (id === 'edit') {
@@ -156,10 +152,6 @@ function AppContent() {
 
   if (route.name === 'status') {
     return <StatusScreen isInteractive={true} onExit={() => setRoute({ name: 'help' })} />;
-  }
-
-  if (route.name === 'plan') {
-    return <PlanScreen isInteractive={true} onExit={() => setRoute({ name: 'help' })} />;
   }
 
   if (route.name === 'edit') {

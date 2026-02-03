@@ -8,7 +8,6 @@ export { registerCreate } from './create';
 export { registerInvoke } from './invoke';
 export { registerOutline } from './outline';
 export { registerPackage } from './package';
-export { registerPlan } from './plan';
 export { registerRemove } from './remove';
 export { registerStatus } from './status';
 export { registerStopSession } from './stop-session';

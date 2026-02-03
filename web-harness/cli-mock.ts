@@ -15,7 +15,6 @@ export function createProgram(): MockCommand {
     { name: () => 'create', description: () => 'Create a new agent or tool', commands: [] },
     { name: () => 'dev', description: () => 'Start local development server', commands: [] },
     { name: () => 'deploy', description: () => 'Deploy to AWS', commands: [] },
-    { name: () => 'plan', description: () => 'Preview deployment changes', commands: [] },
     { name: () => 'edit', description: () => 'Edit workspace configuration', commands: [] },
     { name: () => 'add', description: () => 'Add MCP tools or gateways', commands: [] },
     { name: () => 'status', description: () => 'Show workspace status', commands: [] },
