@@ -1,5 +1,6 @@
 import type {
   AgentCoreAgentInvocation,
+  AgentCoreDeployedState,
   AgentCoreGateway,
   AgentCoreMcpRuntimeTool,
   AgentCoreMcpSpec,
@@ -63,11 +64,20 @@ function LegendRows() {
   );
 }
 
+export interface AgentStatusInfo {
+  runtimeStatus?: string; // "READY", "ACTIVE", etc.
+  error?: string;
+}
+
 interface ResourceGraphProps {
   project: AgentCoreProjectSpec;
   mcp?: AgentCoreMcpSpec;
   /** If provided, only show this agent */
   agentName?: string;
+  /** Runtime status info per agent name */
+  agentStatuses?: Record<string, AgentStatusInfo>;
+  /** Deployed agent state per agent name (for showing ARNs/IDs) */
+  deployedAgents?: Record<string, AgentCoreDeployedState>;
 }
 
 function GatewayTools({ gateway, isLast, indent }: { gateway: AgentCoreGateway; isLast: boolean; indent: string }) {
@@ -97,7 +107,24 @@ function GatewayTools({ gateway, isLast, indent }: { gateway: AgentCoreGateway; 
   );
 }
 
-export function ResourceGraph({ project, mcp, agentName }: ResourceGraphProps) {
+function getStatusColor(status?: string): string {
+  if (!status) return 'gray';
+  switch (status.toUpperCase()) {
+    case 'READY':
+      return 'green';
+    case 'ACTIVE':
+      return 'cyan';
+    case 'CREATING':
+    case 'UPDATING':
+      return 'yellow';
+    case 'FAILED':
+      return 'red';
+    default:
+      return 'yellow';
+  }
+}
+
+export function ResourceGraph({ project, mcp, agentName, agentStatuses, deployedAgents }: ResourceGraphProps) {
   const allAgents = project.agents ?? [];
   const agents = agentName ? allAgents.filter(a => a.name === agentName) : allAgents;
   const gateways = mcp?.agentCoreGateways ?? [];
@@ -132,11 +159,29 @@ export function ResourceGraph({ project, mcp, agentName }: ResourceGraphProps) {
 
         const totalItems = agentGateways.length + memNames.length + agentLinks.length;
 
+        const statusInfo = agentStatuses?.[agent.name];
+        const statusText = statusInfo?.error ? 'error' : statusInfo?.runtimeStatus;
+        // Only show deployed state if we didn't get an error (error likely means resource doesn't exist)
+        const deployedState = statusInfo?.error ? undefined : deployedAgents?.[agent.name];
+
         return (
           <Box key={agent.name} flexDirection="column" marginTop={1}>
-            <Text color="green" bold>
-              {RESOURCE_ICONS.agent} {agent.name}
+            <Text>
+              <Text color="green" bold>
+                {RESOURCE_ICONS.agent} {agent.name}
+              </Text>
+              {statusText && (
+                <Text color={statusInfo?.error ? 'red' : getStatusColor(statusText)}> [{statusText}]</Text>
+              )}
             </Text>
+            {deployedState && (
+              <Box flexDirection="column" marginLeft={2}>
+                <Text dimColor>arn: {deployedState.runtimeArn}</Text>
+                {deployedState.memoryIds && deployedState.memoryIds.length > 0 && (
+                  <Text dimColor>memory: {deployedState.memoryIds.join(', ')}</Text>
+                )}
+              </Box>
+            )}
             {agentGateways.map((gw, idx) => (
               <GatewayTools key={gw.name} gateway={gw} isLast={idx === totalItems - 1} indent="    " />
             ))}
