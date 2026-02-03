@@ -1,0 +1,27 @@
+name: Quality and Safety Checks
+
+on:
+  push:
+    branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
+
+jobs:
+  build:
+
+    runs-on: ubuntu-latest
+    
+    steps:
+    - uses: actions/checkout@v6
+    - name: Install Node.js
+      uses: actions/setup-node@v6
+      with:
+        node-version: 20.x
+
+    - run: npm ci
+    - run: npx format:check
+    - run: npm run lint
+    - run: npm run security:audit
+    - run: npm run secrets:check
+    - run: npm run typecheck
+
