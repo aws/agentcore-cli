@@ -37,4 +37,4 @@ def load_model() -> None:
     # Use Google AI Studios API Key Authentication.
     # https://google.github.io/adk-docs/agents/models/#google-ai-studio
     os.environ["GOOGLE_API_KEY"] = api_key
-    os.environ["GOOGLE_GENAI_USE_VERTEXAI"] = "FALSE"
+    os.environ["GOOGLE_GENAI_USE_VERTEXAI"] = "TRUE"

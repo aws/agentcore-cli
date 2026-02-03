@@ -11,10 +11,9 @@ app = BedrockAgentCoreApp()
 log = app.logger
 
 APP_NAME = "{{ name }}"
-USER_ID = "user1234"
 
 # https://google.github.io/adk-docs/agents/models/
-MODEL_ID = "gemini-2.0-flash"
+MODEL_ID = "gemini-2.5-flash"
 
 
 # Define a simple function tool
@@ -71,8 +70,8 @@ async def invoke(payload, context):
 
     # Process the user prompt
     prompt = payload.get("prompt", "What can you help me with?")
-    session_id = getattr(context, "session_id", "session_id_1")
-    user_id = payload.get("user_id", USER_ID)
+    session_id = getattr(context, "session_id", "default_session")
+    user_id = payload.get("user_id", "default_user")
 
     # Run the agent
     result = await call_agent_async(prompt, user_id, session_id)

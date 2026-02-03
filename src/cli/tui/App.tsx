@@ -20,8 +20,8 @@ import { StatusScreen } from './screens/status/StatusScreen';
 import { UpdateScreen } from './screens/update';
 import { ValidateScreen } from './screens/validate';
 import { type CommandMeta, getCommandsForUI } from './utils/commands';
-import React, { useState } from 'react';
 import { useApp } from 'ink';
+import React, { useState } from 'react';
 
 // Capture cwd once at app initialization
 const cwd = getWorkingDirectory();

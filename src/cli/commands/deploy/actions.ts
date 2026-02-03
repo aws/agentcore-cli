@@ -131,7 +131,7 @@ export async function handleDeploy(options: ValidatedDeployOptions): Promise<Dep
       startStep('Set up API key providers');
       const identityResult = await setupApiKeyProviders({
         projectSpec: context.projectSpec,
-        configBaseDir: configIO.baseDir,
+        configBaseDir: configIO.getConfigRoot(),
         region: target.region,
         enableKmsEncryption: true,
       });
