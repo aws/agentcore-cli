@@ -28,11 +28,13 @@ export class DevLogger {
   constructor(options: DevLoggerOptions = {}) {
     this.startTime = new Date();
 
-    // Use provided baseDir, or auto-discover project root, or fall back to cwd
+    // Find config root - require valid project to exist
     const configRoot = options.baseDir ? path.join(options.baseDir, CONFIG_DIR) : findConfigRoot();
-    const logsDir = configRoot
-      ? path.join(configRoot, CLI_SYSTEM_DIR, CLI_LOGS_DIR, 'dev')
-      : path.join(process.cwd(), CONFIG_DIR, CLI_SYSTEM_DIR, CLI_LOGS_DIR, 'dev');
+    if (!configRoot || !existsSync(configRoot)) {
+      throw new Error('No agentcore project found. Cannot create dev logs.');
+    }
+
+    const logsDir = path.join(configRoot, CLI_SYSTEM_DIR, CLI_LOGS_DIR, 'dev');
 
     // Ensure logs directory exists
     if (!existsSync(logsDir)) {
