@@ -72,6 +72,7 @@ async function handleDeployCLI(options: DeployOptions): Promise<void> {
     target: options.target!,
     autoConfirm: options.yes,
     verbose: options.verbose,
+    plan: options.plan,
     onProgress,
     onResourceEvent,
   });
@@ -84,21 +85,27 @@ async function handleDeployCLI(options: DeployOptions): Promise<void> {
   if (options.json) {
     console.log(JSON.stringify(result));
   } else if (result.success) {
-    console.log(`\n✓ Deployed to '${result.targetName}' (stack: ${result.stackName})`);
+    if (options.plan) {
+      console.log(`\n✓ Plan complete for '${result.targetName}' (stack: ${result.stackName})`);
+      console.log('\nRun `agentcore deploy` to deploy.');
+    } else {
+      console.log(`\n✓ Deployed to '${result.targetName}' (stack: ${result.stackName})`);
 
-    // Show stack outputs in non-JSON mode
-    if (result.outputs && Object.keys(result.outputs).length > 0) {
-      console.log('\nOutputs:');
-      for (const [key, value] of Object.entries(result.outputs)) {
-        console.log(`  ${key}: ${value}`);
+      // Show stack outputs in non-JSON mode
+      if (result.outputs && Object.keys(result.outputs).length > 0) {
+        console.log('\nOutputs:');
+        for (const [key, value] of Object.entries(result.outputs)) {
+          console.log(`  ${key}: ${value}`);
+        }
+      }
+
+      if (result.nextSteps && result.nextSteps.length > 0) {
+        console.log(`Next: ${result.nextSteps.join(' | ')}`);
       }
     }
 
     if (result.logPath) {
       console.log(`\nLog: ${result.logPath}`);
-    }
-    if (result.nextSteps && result.nextSteps.length > 0) {
-      console.log(`Next: ${result.nextSteps.join(' | ')}`);
     }
   } else {
     console.error(result.error);
@@ -120,23 +127,26 @@ export const registerDeploy = (program: Command) => {
     .option('--progress', 'Show deployment progress in real-time')
     .option('-v, --verbose', 'Show resource-level deployment events')
     .option('--json', 'Output as JSON')
-    .action(async (cliOptions: { target?: string; yes?: boolean; progress?: boolean; json?: boolean }) => {
-      try {
-        requireProject();
-        if (cliOptions.json || cliOptions.target || cliOptions.progress) {
-          // Default to "default" target in CLI mode
-          const options = { ...cliOptions, target: cliOptions.target ?? 'default' };
-          await handleDeployCLI(options as DeployOptions);
-        } else {
-          handleDeployTUI({ autoConfirm: cliOptions.yes });
+    .option('--plan', 'Preview deployment without deploying (dry-run)')
+    .action(
+      async (cliOptions: { target?: string; yes?: boolean; progress?: boolean; json?: boolean; plan?: boolean }) => {
+        try {
+          requireProject();
+          if (cliOptions.json || cliOptions.target || cliOptions.progress || cliOptions.plan) {
+            // Default to "default" target in CLI mode
+            const options = { ...cliOptions, target: cliOptions.target ?? 'default' };
+            await handleDeployCLI(options as DeployOptions);
+          } else {
+            handleDeployTUI({ autoConfirm: cliOptions.yes });
+          }
+        } catch (error) {
+          if (cliOptions.json) {
+            console.log(JSON.stringify({ success: false, error: getErrorMessage(error) }));
+          } else {
+            render(<Text color="red">Error: {getErrorMessage(error)}</Text>);
+          }
+          process.exit(1);
         }
-      } catch (error) {
-        if (cliOptions.json) {
-          console.log(JSON.stringify({ success: false, error: getErrorMessage(error) }));
-        } else {
-          render(<Text color="red">Error: {getErrorMessage(error)}</Text>);
-        }
-        process.exit(1);
       }
-    });
+    );
 };

@@ -7,7 +7,6 @@ import { registerDev } from './commands/dev';
 import { registerInvoke } from './commands/invoke';
 import { registerOutline } from './commands/outline';
 import { registerPackage } from './commands/package';
-import { registerPlan } from './commands/plan';
 import { registerRemove } from './commands/remove';
 import { registerStatus } from './commands/status';
 import { registerStopSession } from './commands/stop-session';
@@ -110,7 +109,6 @@ export function registerCommands(program: Command) {
   registerInvoke(program);
   registerOutline(program);
   registerPackage(program);
-  registerPlan(program);
   registerRemove(program);
   registerStatus(program);
   registerStopSession(program);

@@ -39,7 +39,6 @@ export const COMMAND_DESCRIPTIONS = {
   invoke: 'Invoke Bedrock AgentCore endpoint.',
   outline: 'Display project resource tree from schema.',
   package: 'Package Bedrock AgentCore runtime artifacts.',
-  plan: 'Prepare deployment and show planned changes.',
   remove: 'Remove AgentCore resources and project',
   status: 'Retrieve details of deployed AgentCore resources.',
   stopSession: 'Stop an active runtime session.',

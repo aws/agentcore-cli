@@ -19,6 +19,7 @@ export interface ValidatedDeployOptions {
   target: string;
   autoConfirm?: boolean;
   verbose?: boolean;
+  plan?: boolean;
   onProgress?: (step: string, status: 'start' | 'success' | 'error') => void;
   onResourceEvent?: (message: string) => void;
 }
@@ -124,6 +125,19 @@ export async function handleDeploy(options: ValidatedDeployOptions): Promise<Dep
       };
     }
     endStep('success');
+
+    // Plan mode: stop after synth and checks, don't deploy
+    if (options.plan) {
+      logger.finalize(true);
+      await toolkitWrapper.dispose();
+      toolkitWrapper = null;
+      return {
+        success: true,
+        targetName: target.name,
+        stackName,
+        logPath: logger.getRelativeLogPath(),
+      };
+    }
 
     // Set up identity providers if needed
     let identityKmsKeyArn: string | undefined;

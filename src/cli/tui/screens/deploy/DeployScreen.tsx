@@ -1,3 +1,5 @@
+import { ConfigIO } from '../../../../lib';
+import type { AgentCoreMcpSpec } from '../../../../schema';
 import {
   AwsTargetConfigUI,
   ConfirmPrompt,
@@ -6,6 +8,7 @@ import {
   LogLink,
   type NextStep,
   NextSteps,
+  ResourceGraph,
   Screen,
   StepProgress,
   getAwsConfigHelpText,
@@ -14,8 +17,8 @@ import { BOOTSTRAP, HELP_TEXT } from '../../constants';
 import { useAwsTargetConfig } from '../../hooks';
 import { InvokeScreen } from '../invoke';
 import { type PreSynthesized, useDeployFlow } from './useDeployFlow';
-import { Box, Text } from 'ink';
-import React, { useEffect, useState } from 'react';
+import { Box, Text, useInput } from 'ink';
+import React, { useEffect, useMemo, useState } from 'react';
 
 interface DeployScreenProps {
   /** Whether running in interactive TUI mode (from App.tsx) vs CLI mode */
@@ -37,6 +40,12 @@ const DEPLOY_NEXT_STEPS: NextStep[] = [
 export function DeployScreen({ isInteractive, onExit, autoConfirm, onNavigate, preSynthesized }: DeployScreenProps) {
   const awsConfig = useAwsTargetConfig();
   const [showInvoke, setShowInvoke] = useState(false);
+  const [showResourceGraph, setShowResourceGraph] = useState(false);
+  const [mcpSpec, setMcpSpec] = useState<AgentCoreMcpSpec | undefined>();
+
+  // Load MCP spec for ResourceGraph
+  const configIO = useMemo(() => new ConfigIO(), []);
+
   const {
     phase,
     steps,
@@ -61,6 +70,27 @@ export function DeployScreen({ isInteractive, onExit, autoConfirm, onNavigate, p
   } = useDeployFlow({ preSynthesized, isInteractive });
   const allSuccess = !hasError && isComplete;
   const skipPreflight = !!preSynthesized;
+
+  // Load MCP spec when context is available
+  useEffect(() => {
+    if (!context) return;
+    if (configIO.configExists('mcp')) {
+      configIO
+        .readMcpSpec()
+        .then(setMcpSpec)
+        .catch(() => setMcpSpec(undefined));
+    }
+  }, [context, configIO]);
+
+  // Toggle ResourceGraph with Ctrl+G
+  useInput(
+    (input, key) => {
+      if (input === 'g' && key.ctrl && context) {
+        setShowResourceGraph(prev => !prev);
+      }
+    },
+    { isActive: isInteractive && !!context }
+  );
 
   // Auto-start deploy when AWS target is configured (or immediately when preSynthesized)
   useEffect(() => {
@@ -198,11 +228,23 @@ export function DeployScreen({ isInteractive, onExit, autoConfirm, onNavigate, p
     </Box>
   );
 
-  const helpText = allSuccess && isInteractive ? HELP_TEXT.NAVIGATE_SELECT : HELP_TEXT.EXIT;
+  // Build help text with Ctrl+G toggle hint when context is available
+  const baseHelpText = allSuccess && isInteractive ? HELP_TEXT.NAVIGATE_SELECT : HELP_TEXT.EXIT;
+  const helpText =
+    context && isInteractive
+      ? `Ctrl+G ${showResourceGraph ? 'hide' : 'show'} resource graph · ${baseHelpText}`
+      : baseHelpText;
 
   return (
     <Screen title="AgentCore Deploy" onExit={onExit} helpText={helpText} headerContent={headerContent}>
       <StepProgress steps={displaySteps} />
+
+      {/* Toggleable ResourceGraph view */}
+      {showResourceGraph && context && (
+        <Box marginTop={1}>
+          <ResourceGraph project={context.projectSpec} mcp={mcpSpec} />
+        </Box>
+      )}
 
       {/* Show deploy status when deploying or complete */}
       {showDeployStatus && (

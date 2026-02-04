@@ -1,10 +1,17 @@
-import type { AgentCoreProjectSpec, AwsDeploymentTargets, DeployedState } from '../../../../schema';
-import type { StatusContext, StatusResult } from '../../../commands/status/action';
-import { handleStatus, loadStatusConfig } from '../../../commands/status/action';
+import { ConfigIO } from '../../../../lib';
+import type {
+  AgentCoreMcpSpec,
+  AgentCoreProjectSpec,
+  AwsDeploymentTargets,
+  DeployedResourceState,
+  DeployedState,
+} from '../../../../schema';
+import type { StatusContext, StatusEntry } from '../../../commands/status/action';
+import { handleStatusAll, loadStatusConfig } from '../../../commands/status/action';
 import { getErrorMessage } from '../../../errors';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 
-type StatusPhase = 'loading' | 'ready' | 'checking' | 'error';
+type StatusPhase = 'loading' | 'ready' | 'fetching-statuses' | 'error';
 
 interface AgentEntry {
   name: string;
@@ -18,21 +25,28 @@ interface StatusState {
   project?: AgentCoreProjectSpec;
   deployedState?: DeployedState;
   awsTargets?: AwsDeploymentTargets;
+  mcpSpec?: AgentCoreMcpSpec;
   targetIndex: number;
-  statusDetails?: StatusResult;
-  statusError?: string;
+  allStatuses: Record<string, StatusEntry>;
+  statusesLoaded: boolean;
+  statusesError?: string;
 }
 
 export function useStatusFlow() {
   const [state, setState] = useState<StatusState>({
     phase: 'loading',
     targetIndex: 0,
+    allStatuses: {},
+    statusesLoaded: false,
   });
 
+  const configIO = useMemo(() => new ConfigIO(), []);
+
+  // Initial load of project config, deployed state, and MCP spec
   useEffect(() => {
     let active = true;
     loadStatusConfig()
-      .then(context => {
+      .then(async context => {
         if (!active) return;
 
         // Validate before setting ready
@@ -51,12 +65,23 @@ export function useStatusFlow() {
           return;
         }
 
+        // Load MCP spec if it exists
+        let mcpSpec: AgentCoreMcpSpec | undefined;
+        if (configIO.configExists('mcp')) {
+          try {
+            mcpSpec = await configIO.readMcpSpec();
+          } catch {
+            // Ignore MCP load errors
+          }
+        }
+
         setState(prev => ({
           ...prev,
           phase: 'ready',
           project: context.project,
           deployedState: context.deployedState,
           awsTargets: context.awsTargets,
+          mcpSpec,
         }));
       })
       .catch((error: Error) => {
@@ -67,7 +92,7 @@ export function useStatusFlow() {
     return () => {
       active = false;
     };
-  }, []);
+  }, [configIO]);
 
   const context = useMemo<StatusContext | null>(() => {
     if (!state.project || !state.deployedState || !state.awsTargets) return null;
@@ -103,94 +128,97 @@ export function useStatusFlow() {
     });
   }, [state.deployedState, state.project, targetName]);
 
+  // Get deployed resources for current target
+  const deployedResources = useMemo<DeployedResourceState | undefined>(() => {
+    if (!state.deployedState || !targetName) return undefined;
+    return state.deployedState.targets[targetName]?.resources;
+  }, [state.deployedState, targetName]);
+
+  // Fetch all statuses when ready and target changes
+  const fetchAllStatuses = useCallback(async () => {
+    if (!context || !targetName) return;
+
+    setState(prev => ({
+      ...prev,
+      phase: 'fetching-statuses',
+      statusesError: undefined,
+    }));
+
+    try {
+      const result = await handleStatusAll(context, { targetName });
+
+      if (!result.success) {
+        setState(prev => ({
+          ...prev,
+          phase: 'ready',
+          statusesLoaded: true,
+          statusesError: result.error,
+        }));
+        return;
+      }
+
+      // Convert entries array to record keyed by agent name
+      const statusMap: Record<string, StatusEntry> = {};
+      for (const entry of result.entries ?? []) {
+        statusMap[entry.agentName] = entry;
+      }
+
+      setState(prev => ({
+        ...prev,
+        phase: 'ready',
+        allStatuses: statusMap,
+        statusesLoaded: true,
+        statusesError: undefined,
+      }));
+    } catch (error) {
+      setState(prev => ({
+        ...prev,
+        phase: 'ready',
+        statusesLoaded: true,
+        statusesError: getErrorMessage(error),
+      }));
+    }
+  }, [context, targetName]);
+
+  // Fetch statuses when ready and target changes
+  useEffect(() => {
+    if (state.phase === 'ready' && context && !state.statusesLoaded) {
+      void fetchAllStatuses();
+    }
+  }, [state.phase, context, state.statusesLoaded, fetchAllStatuses]);
+
+  // Refresh statuses function
+  const refreshStatuses = useCallback(() => {
+    if (state.phase !== 'ready' && state.phase !== 'fetching-statuses') return;
+    setState(prev => ({ ...prev, statusesLoaded: false }));
+  }, [state.phase]);
+
   const cycleTarget = useCallback(() => {
     if (!targetNames.length) return;
     setState(prev => ({
       ...prev,
       targetIndex: (prev.targetIndex + 1) % targetNames.length,
-      statusDetails: undefined,
-      statusError: undefined,
+      allStatuses: {},
+      statusesLoaded: false,
+      statusesError: undefined,
     }));
   }, [targetNames.length]);
-
-  const resetStatus = useCallback(() => {
-    setState(prev => ({ ...prev, statusDetails: undefined, statusError: undefined }));
-  }, []);
-
-  const checkStatus = useCallback(
-    async (agentName: string) => {
-      if (!context) {
-        setState(prev => ({ ...prev, phase: 'error', error: 'Status context not loaded.' }));
-        return;
-      }
-
-      if (targetNames.length === 0) {
-        setState(prev => ({
-          ...prev,
-          phase: 'error',
-          error: 'No deployed targets found. Run `agentcore deploy` first.',
-        }));
-        return;
-      }
-
-      const agent = state.project?.agents.find(item => item.name === agentName);
-      if (!agent) {
-        setState(prev => ({
-          ...prev,
-          phase: 'error',
-          error: 'No agents defined in configuration.',
-        }));
-        return;
-      }
-
-      setState(prev => ({ ...prev, phase: 'checking', statusError: undefined }));
-
-      try {
-        const result = await handleStatus(context, {
-          agentName: agent.name,
-          targetName,
-        });
-
-        if (!result.success) {
-          setState(prev => ({
-            ...prev,
-            phase: 'ready',
-            statusDetails: undefined,
-            statusError: result.error ?? 'Failed to fetch status.',
-          }));
-          return;
-        }
-
-        setState(prev => ({
-          ...prev,
-          phase: 'ready',
-          statusDetails: result,
-          statusError: undefined,
-        }));
-      } catch (error) {
-        setState(prev => ({
-          ...prev,
-          phase: 'ready',
-          statusDetails: undefined,
-          statusError: getErrorMessage(error),
-        }));
-      }
-    },
-    [context, state.project, targetName, targetNames.length]
-  );
 
   return {
     phase: state.phase,
     error: state.error,
+    project: state.project,
     projectName: state.project?.name ?? 'Unknown',
     targetName: targetName ?? 'Unknown',
     targetRegion: targetConfig?.region,
     agents,
     hasMultipleTargets: targetNames.length > 1,
-    statusDetails: state.statusDetails,
-    statusError: state.statusError,
+    mcpSpec: state.mcpSpec,
+    allStatuses: state.allStatuses,
+    statusesLoading: state.phase === 'fetching-statuses',
+    statusesError: state.statusesError,
+    deployedResources,
     cycleTarget,
-    resetStatus,
-    checkStatus,
+    refreshStatuses,
   };
 }

@@ -24,6 +24,6 @@ export { TextInput } from './TextInput';
 export { TwoColumn } from './TwoColumn';
 export { WizardSelect, WizardMultiSelect } from './WizardSelect';
 export { AwsTargetConfigUI, getAwsConfigHelpText } from './AwsTargetConfigUI';
-export { ResourceGraph } from './ResourceGraph';
+export { ResourceGraph, type AgentStatusInfo } from './ResourceGraph';
 export { LogLink } from './LogLink';
 export { ScrollableText } from './ScrollableText';

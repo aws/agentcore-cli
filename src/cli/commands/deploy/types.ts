@@ -4,6 +4,7 @@ export interface DeployOptions {
   progress?: boolean;
   verbose?: boolean;
   json?: boolean;
+  plan?: boolean;
 }
 
 export interface DeployResult {
