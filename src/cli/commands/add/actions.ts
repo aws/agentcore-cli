@@ -199,10 +199,12 @@ function buildGatewayConfig(options: ValidatedAddGatewayOptions): AddGatewayConf
   if (options.authorizerType === 'CUSTOM_JWT' && options.discoveryUrl) {
     config.jwtConfig = {
       discoveryUrl: options.discoveryUrl,
-      allowedAudience: options
-        .allowedAudience!.split(',')
-        .map(s => s.trim())
-        .filter(Boolean),
+      allowedAudience: options.allowedAudience
+        ? options.allowedAudience
+            .split(',')
+            .map(s => s.trim())
+            .filter(Boolean)
+        : [],
       allowedClients: options
         .allowedClients!.split(',')
         .map(s => s.trim())

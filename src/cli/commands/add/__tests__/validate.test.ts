@@ -189,11 +189,10 @@ describe('validate', () => {
       expect(result.error?.includes('Invalid authorizer type')).toBeTruthy();
     });
 
-    // AC11: CUSTOM_JWT requires all fields
+    // AC11: CUSTOM_JWT requires discoveryUrl and allowedClients (allowedAudience is optional)
     it('returns error for CUSTOM_JWT missing required fields', () => {
       const jwtFields: { field: keyof AddGatewayOptions; error: string }[] = [
         { field: 'discoveryUrl', error: '--discovery-url is required for CUSTOM_JWT authorizer' },
-        { field: 'allowedAudience', error: '--allowed-audience is required for CUSTOM_JWT authorizer' },
         { field: 'allowedClients', error: '--allowed-clients is required for CUSTOM_JWT authorizer' },
       ];
 
@@ -203,6 +202,13 @@ describe('validate', () => {
         expect(result.valid, `Should fail for missing ${String(field)}`).toBe(false);
         expect(result.error).toBe(error);
       }
+    });
+
+    // AC11b: allowedAudience is optional
+    it('allows CUSTOM_JWT without allowedAudience', () => {
+      const opts = { ...validGatewayOptionsJwt, allowedAudience: undefined };
+      const result = validateAddGatewayOptions(opts);
+      expect(result.valid).toBe(true);
     });
 
     // AC12: discoveryUrl validation
@@ -218,13 +224,9 @@ describe('validate', () => {
       expect(result.error?.includes('.well-known/openid-configuration')).toBeTruthy();
     });
 
-    // AC13: Empty comma-separated values rejected
-    it('returns error for empty audience or clients', () => {
-      let result = validateAddGatewayOptions({ ...validGatewayOptionsJwt, allowedAudience: ',,,' });
-      expect(result.valid).toBe(false);
-      expect(result.error).toBe('At least one audience value is required');
-
-      result = validateAddGatewayOptions({ ...validGatewayOptionsJwt, allowedClients: '  ,  ' });
+    // AC13: Empty comma-separated clients rejected (audience can be empty)
+    it('returns error for empty clients', () => {
+      const result = validateAddGatewayOptions({ ...validGatewayOptionsJwt, allowedClients: '  ,  ' });
       expect(result.valid).toBe(false);
       expect(result.error).toBe('At least one client value is required');
     });

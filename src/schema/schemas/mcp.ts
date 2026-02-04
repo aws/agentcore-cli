@@ -40,8 +40,8 @@ const OidcDiscoveryUrlSchema = z
 export const CustomJwtAuthorizerConfigSchema = z.object({
   /** OIDC discovery URL (e.g., https://cognito-idp.{region}.amazonaws.com/{userPoolId}/.well-known/openid-configuration) */
   discoveryUrl: OidcDiscoveryUrlSchema,
-  /** List of allowed audiences (typically client IDs) */
-  allowedAudience: z.array(z.string().min(1)).min(1),
+  /** List of allowed audiences (typically client IDs). Empty array means no audience validation. */
+  allowedAudience: z.array(z.string().min(1)),
   /** List of allowed client IDs */
   allowedClients: z.array(z.string().min(1)).min(1),
 });

@@ -244,10 +244,11 @@ function JwtConfigInput({ subStep, onDiscoveryUrl, onAudience, onClients, onCanc
         {subStep === 1 && (
           <TextInput
             prompt="Allowed Audience (comma-separated, e.g., 7abc123def456)"
+            placeholder="press Enter for none"
             initialValue=""
             onSubmit={onAudience}
             onCancel={onCancel}
-            customValidation={value => validateCommaSeparatedList(value, 'audience')}
+            allowEmpty
           />
         )}
         {subStep === 2 && (

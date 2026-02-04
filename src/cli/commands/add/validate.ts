@@ -126,17 +126,7 @@ export function validateAddGatewayOptions(options: AddGatewayOptions): Validatio
       return { valid: false, error: `Discovery URL must end with ${OIDC_WELL_KNOWN_SUFFIX}` };
     }
 
-    if (!options.allowedAudience) {
-      return { valid: false, error: '--allowed-audience is required for CUSTOM_JWT authorizer' };
-    }
-
-    const audiences = options.allowedAudience
-      .split(',')
-      .map(s => s.trim())
-      .filter(Boolean);
-    if (audiences.length === 0) {
-      return { valid: false, error: 'At least one audience value is required' };
-    }
+    // allowedAudience is optional - empty means no audience validation
 
     if (!options.allowedClients) {
       return { valid: false, error: '--allowed-clients is required for CUSTOM_JWT authorizer' };
