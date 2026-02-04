@@ -86,17 +86,8 @@ export function getDevConfig(
   configRoot?: string,
   agentName?: string
 ): DevConfig {
-  const dirName = workingDir.split('/').pop() ?? 'unknown';
-
-  // If project hasn't loaded yet, return default config
   if (!project) {
-    return {
-      agentName: agentName ?? `${dirName}_Agent`,
-      module: 'src.main:app',
-      directory: workingDir,
-      hasConfig: false,
-      isPython: true,
-    };
+    throw new Error('No project configuration found');
   }
 
   // Find the target agent
@@ -113,13 +104,7 @@ export function getDevConfig(
   }
 
   if (!targetAgent) {
-    return {
-      agentName: `${dirName}_Agent`,
-      module: 'src.main:app',
-      directory: workingDir,
-      hasConfig: false,
-      isPython: true,
-    };
+    throw new Error('No dev-supported agents found. Dev mode requires Python agents.');
   }
 
   const supportResult = isDevSupported(targetAgent);

@@ -1,5 +1,5 @@
 import { getWorkingDirectory } from '../../../lib';
-import { invokeAgent, invokeAgentStreaming, loadProjectConfig } from '../../operations/dev';
+import { getDevSupportedAgents, invokeAgent, invokeAgentStreaming, loadProjectConfig } from '../../operations/dev';
 import { FatalError } from '../../tui/components';
 import { LayoutProvider } from '../../tui/context';
 import { COMMAND_DESCRIPTIONS } from '../../tui/copy';
@@ -78,6 +78,14 @@ export const registerDev = (program: Command) => {
 
       if (!project.agents || project.agents.length === 0) {
         render(<FatalError message="No agents defined in project." suggestedCommand="agentcore add agent" />);
+        process.exit(1);
+      }
+
+      const supportedAgents = getDevSupportedAgents(project);
+      if (supportedAgents.length === 0) {
+        render(
+          <FatalError message="No agents support dev mode. Dev mode requires Python agents with an entrypoint." />
+        );
         process.exit(1);
       }
 
