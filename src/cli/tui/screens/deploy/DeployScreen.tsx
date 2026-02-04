@@ -231,7 +231,9 @@ export function DeployScreen({ isInteractive, onExit, autoConfirm, onNavigate, p
   // Build help text with Ctrl+G toggle hint when context is available
   const baseHelpText = allSuccess && isInteractive ? HELP_TEXT.NAVIGATE_SELECT : HELP_TEXT.EXIT;
   const helpText =
-    context && isInteractive ? `Ctrl+G ${showResourceGraph ? 'hide' : 'show'} graph · ${baseHelpText}` : baseHelpText;
+    context && isInteractive
+      ? `Ctrl+G ${showResourceGraph ? 'hide' : 'show'} resource graph · ${baseHelpText}`
+      : baseHelpText;
 
   return (
     <Screen title="AgentCore Deploy" onExit={onExit} helpText={helpText} headerContent={headerContent}>
