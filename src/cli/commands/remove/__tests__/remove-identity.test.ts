@@ -8,16 +8,17 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 describe('remove identity command', () => {
   let testDir: string;
   let projectDir: string;
+  const projectName = 'RemoveIdentityProj';
   const ownerAgent = 'OwnerAgent';
   const userAgent = 'UserAgent';
   const identityName = 'TestIdentity';
+  const qualifiedIdentityName = `${projectName}${identityName}`; // Provider names are qualified with project name
 
   beforeAll(async () => {
     testDir = join(tmpdir(), `agentcore-remove-identity-${randomUUID()}`);
     await mkdir(testDir, { recursive: true });
 
     // Create project
-    const projectName = 'RemoveIdentityProj';
     let result = await runCLI(['create', '--name', projectName, '--no-agent'], testDir);
     if (result.exitCode !== 0) {
       throw new Error(`Failed to create project: ${result.stdout} ${result.stderr}`);
@@ -118,6 +119,7 @@ describe('remove identity command', () => {
     it('removes identity without users', async () => {
       // Add a temp identity to remove
       const tempId = `tempId${Date.now()}`;
+      const qualifiedTempId = `${projectName}${tempId}`; // Provider names are qualified with project name
       await runCLI(
         [
           'add',
@@ -135,7 +137,8 @@ describe('remove identity command', () => {
         projectDir
       );
 
-      const result = await runCLI(['remove', 'identity', '--name', tempId, '--json'], projectDir);
+      // Remove using qualified name
+      const result = await runCLI(['remove', 'identity', '--name', qualifiedTempId, '--json'], projectDir);
       expect(result.exitCode, `stdout: ${result.stdout}`).toBe(0);
       const json = JSON.parse(result.stdout);
       expect(json.success).toBe(true);
@@ -143,16 +146,19 @@ describe('remove identity command', () => {
       // Verify identity is removed from owner
       const projectSpec = JSON.parse(await readFile(join(projectDir, 'agentcore/agentcore.json'), 'utf-8'));
       const agent = projectSpec.agents.find((a: { name: string }) => a.name === ownerAgent);
-      const identity = agent?.identityProviders?.find((i: { name: string }) => i.name === tempId);
+      const identity = agent?.identityProviders?.find((i: { name: string }) => i.name === qualifiedTempId);
       expect(!identity, 'Identity should be removed from owner').toBeTruthy();
     });
 
     it('removes identity with users using cascade policy (default)', async () => {
-      // Attach identity to user agent
-      await runCLI(['attach', 'identity', '--agent', userAgent, '--identity', identityName, '--json'], projectDir);
+      // Attach identity to user agent using qualified name
+      await runCLI(
+        ['attach', 'identity', '--agent', userAgent, '--identity', qualifiedIdentityName, '--json'],
+        projectDir
+      );
 
       // Remove with cascade policy (default) - should succeed and clean up references
-      const result = await runCLI(['remove', 'identity', '--name', identityName, '--json'], projectDir);
+      const result = await runCLI(['remove', 'identity', '--name', qualifiedIdentityName, '--json'], projectDir);
       expect(result.exitCode, `stdout: ${result.stdout}`).toBe(0);
       const json = JSON.parse(result.stdout);
       expect(json.success).toBe(true);
@@ -161,8 +167,8 @@ describe('remove identity command', () => {
       const projectSpec = JSON.parse(await readFile(join(projectDir, 'agentcore/agentcore.json'), 'utf-8'));
       const owner = projectSpec.agents.find((a: { name: string }) => a.name === ownerAgent);
       const user = projectSpec.agents.find((a: { name: string }) => a.name === userAgent);
-      expect(owner?.identityProviders?.find((i: { name: string }) => i.name === identityName)).toBeUndefined();
-      expect(user?.identityProviders?.find((i: { name: string }) => i.name === identityName)).toBeUndefined();
+      expect(owner?.identityProviders?.find((i: { name: string }) => i.name === qualifiedIdentityName)).toBeUndefined();
+      expect(user?.identityProviders?.find((i: { name: string }) => i.name === qualifiedIdentityName)).toBeUndefined();
     });
   });
 });

@@ -8,6 +8,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 describe('add identity command', () => {
   let testDir: string;
   let projectDir: string;
+  const projectName = 'IdentityProj';
   const ownerAgent = 'OwnerAgent';
   const userAgent = 'UserAgent';
 
@@ -16,7 +17,6 @@ describe('add identity command', () => {
     await mkdir(testDir, { recursive: true });
 
     // Create project
-    const projectName = 'IdentityProj';
     let result = await runCLI(['create', '--name', projectName, '--no-agent'], testDir);
     if (result.exitCode !== 0) {
       throw new Error(`Failed to create project: ${result.stdout} ${result.stderr}`);
@@ -128,6 +128,7 @@ describe('add identity command', () => {
   describe('identity creation', () => {
     it('creates identity with owner', async () => {
       const identityName = `id${Date.now()}`;
+      const qualifiedName = `${projectName}${identityName}`; // Provider names are qualified with project name
       const result = await runCLI(
         [
           'add',
@@ -148,19 +149,20 @@ describe('add identity command', () => {
       expect(result.exitCode, `stdout: ${result.stdout}, stderr: ${result.stderr}`).toBe(0);
       const json = JSON.parse(result.stdout);
       expect(json.success).toBe(true);
-      expect(json.identityName).toBe(identityName);
+      expect(json.identityName).toBe(qualifiedName);
       expect(json.ownerAgent).toBe(ownerAgent);
 
       // Verify in agentcore.json
       const projectSpec = JSON.parse(await readFile(join(projectDir, 'agentcore/agentcore.json'), 'utf-8'));
       const agent = projectSpec.agents.find((a: { name: string }) => a.name === ownerAgent);
-      const identity = agent?.identityProviders?.find((i: { name: string }) => i.name === identityName);
+      const identity = agent?.identityProviders?.find((i: { name: string }) => i.name === qualifiedName);
       expect(identity, 'Identity should be on owner agent').toBeTruthy();
       expect(identity.relation).toBe('own');
     });
 
     it('creates identity with owner and users', async () => {
       const identityName = `shared${Date.now()}`;
+      const qualifiedName = `${projectName}${identityName}`; // Provider names are qualified with project name
       const result = await runCLI(
         [
           'add',
@@ -189,11 +191,11 @@ describe('add identity command', () => {
       const projectSpec = JSON.parse(await readFile(join(projectDir, 'agentcore/agentcore.json'), 'utf-8'));
 
       const owner = projectSpec.agents.find((a: { name: string }) => a.name === ownerAgent);
-      const ownerIdentity = owner?.identityProviders?.find((i: { name: string }) => i.name === identityName);
+      const ownerIdentity = owner?.identityProviders?.find((i: { name: string }) => i.name === qualifiedName);
       expect(ownerIdentity?.relation).toBe('own');
 
       const user = projectSpec.agents.find((a: { name: string }) => a.name === userAgent);
-      const userIdentity = user?.identityProviders?.find((i: { name: string }) => i.name === identityName);
+      const userIdentity = user?.identityProviders?.find((i: { name: string }) => i.name === qualifiedName);
       expect(userIdentity?.relation).toBe('use');
     });
   });
