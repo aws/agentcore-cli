@@ -4,6 +4,9 @@ import { Box, Text, useInput } from 'ink';
 import { useState } from 'react';
 import type { ZodString } from 'zod';
 
+// Width for each line of input display (account for borders, padding, prompt)
+const LINE_WIDTH = 52;
+
 /** Custom validation beyond schema - returns true if valid, or error message string if invalid */
 type CustomValidation = (value: string) => true | string;
 
@@ -119,21 +122,21 @@ export function SecretInput({
   const validationErrorMsg = validateValue(trimmed, schema, customValidation);
   const isValid = !validationErrorMsg;
 
-  // Generate masked display value with cursor position
-  const getMaskedSegments = (): { before: string; after: string } => {
+  // Generate display value (masked or plain)
+  const getDisplayValue = (): string => {
     if (showValue) {
-      return { before: value.slice(0, cursor), after: value.slice(cursor) };
+      return value;
     }
 
     if (value.length === 0) {
-      return { before: '', after: '' };
+      return '';
     }
 
     const cursorAtEnd = cursor === value.length;
 
     // Editing (cursor not at end) - show actual value so user can see what they're doing
     if (!cursorAtEnd) {
-      return { before: value.slice(0, cursor), after: value.slice(cursor) };
+      return value;
     }
 
     // Done typing (cursor at end) - show partial reveal if configured
@@ -141,18 +144,67 @@ export function SecretInput({
       const start = value.slice(0, revealChars);
       const end = value.slice(-revealChars);
       const middleLength = value.length - revealChars * 2;
-      return { before: `${start}${maskChar.repeat(middleLength)}${end}`, after: '' };
+      return `${start}${maskChar.repeat(middleLength)}${end}`;
     }
 
     // Full mask (no reveal configured or value too short)
-    return { before: maskChar.repeat(value.length), after: '' };
+    return maskChar.repeat(value.length);
   };
 
-  const { before, after } = getMaskedSegments();
+  // Split text into lines and determine which line has the cursor
+  const getLines = (): { lines: string[]; cursorLine: number; cursorCol: number } => {
+    const displayValue = getDisplayValue();
+    if (displayValue.length === 0) {
+      return { lines: [], cursorLine: 0, cursorCol: 0 };
+    }
+
+    const lines: string[] = [];
+    for (let i = 0; i < displayValue.length; i += LINE_WIDTH) {
+      lines.push(displayValue.slice(i, i + LINE_WIDTH));
+    }
+
+    const cursorLine = Math.floor(cursor / LINE_WIDTH);
+    const cursorCol = cursor % LINE_WIDTH;
+
+    return { lines, cursorLine, cursorCol };
+  };
+
+  const { lines, cursorLine, cursorCol } = getLines();
   const hasInput = trimmed.length > 0;
   const hasValidation = Boolean(schema ?? customValidation);
   const showCheckmark = hasInput && isValid && hasValidation;
   const showInvalidMark = hasInput && !isValid && hasValidation;
+
+  // Render a line with cursor if this is the cursor line
+  // Cursor overlays the character at position (or shows space at end)
+  const renderLine = (line: string, lineIndex: number, isFirstLine: boolean) => {
+    const isCursorLine = lineIndex === cursorLine;
+    const prefix = isFirstLine ? <Text color="cyan">&gt; </Text> : <Text> </Text>;
+
+    if (isCursorLine) {
+      const before = line.slice(0, cursorCol);
+      const charAtCursor = line[cursorCol] ?? ' '; // Space if at end of line
+      const after = line.slice(cursorCol + 1);
+
+      return (
+        <Text key={lineIndex}>
+          {prefix}
+          <Text>{before}</Text>
+          <Cursor char={charAtCursor} />
+          <Text>{after}</Text>
+          {isFirstLine && showCheckmark && <Text color="green"> ✓</Text>}
+          {isFirstLine && showInvalidMark && <Text color="red"> ✗</Text>}
+        </Text>
+      );
+    }
+
+    return (
+      <Text key={lineIndex}>
+        {prefix}
+        <Text>{line}</Text>
+      </Text>
+    );
+  };
 
   return (
     <Box flexDirection="column">
@@ -162,24 +214,21 @@ export function SecretInput({
           <Text dimColor>{description}</Text>
         </Box>
       )}
-      <Box marginTop={1}>
-        <Text color="cyan">&gt; </Text>
+      <Box flexDirection="column" marginTop={1}>
         {value ? (
-          <>
-            <Text>{before}</Text>
-            <Cursor />
-            <Text>{after}</Text>
-          </>
+          lines.map((line, i) => renderLine(line, i, i === 0))
         ) : placeholder ? (
-          <>
-            <Cursor />
-            <Text dimColor>{placeholder}</Text>
-          </>
+          <Text>
+            <Text color="cyan">&gt; </Text>
+            <Cursor char={placeholder[0] ?? ' '} />
+            <Text dimColor>{placeholder.slice(1)}</Text>
+          </Text>
         ) : (
-          <Cursor />
+          <Text>
+            <Text color="cyan">&gt; </Text>
+            <Cursor />
+          </Text>
         )}
-        {showCheckmark && <Text color="green"> ✓</Text>}
-        {showInvalidMark && <Text color="red"> ✗</Text>}
       </Box>
       {(showError || showInvalidMark) && validationErrorMsg && (
         <Box marginTop={1}>

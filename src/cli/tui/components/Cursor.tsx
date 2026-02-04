@@ -2,11 +2,18 @@ import { Text } from 'ink';
 import { useEffect, useState } from 'react';
 
 interface CursorProps {
+  /** Character to display at cursor position (default: space) */
+  char?: string;
   /** Blink interval in milliseconds (default: 500) */
   interval?: number;
 }
 
-export function Cursor({ interval = 500 }: CursorProps) {
+/**
+ * Blinking cursor that highlights the character at cursor position.
+ * When visible, shows the character with inverted colors (white bg, black text).
+ * When hidden, shows the character normally.
+ */
+export function Cursor({ char = ' ', interval = 500 }: CursorProps) {
   const [visible, setVisible] = useState(true);
 
   useEffect(() => {
@@ -14,5 +21,13 @@ export function Cursor({ interval = 500 }: CursorProps) {
     return () => clearInterval(timer);
   }, [interval]);
 
-  return <Text color="white">{visible ? '▋' : ' '}</Text>;
+  if (visible) {
+    return (
+      <Text backgroundColor="white" color="black">
+        {char}
+      </Text>
+    );
+  }
+
+  return <Text>{char}</Text>;
 }

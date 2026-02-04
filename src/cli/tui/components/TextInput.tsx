@@ -1,6 +1,6 @@
 import { useTextInput } from '../hooks';
 import { Cursor } from './Cursor';
-import { Box, Text } from 'ink';
+import { Box, Text, useStdout } from 'ink';
 import { useState } from 'react';
 import type { ZodString } from 'zod';
 
@@ -63,6 +63,7 @@ export function TextInput({
   onDownArrow,
 }: TextInputProps) {
   const [showError, setShowError] = useState(false);
+  const { stdout } = useStdout();
 
   const { value, cursor } = useTextInput({
     initialValue,
@@ -90,22 +91,69 @@ export function TextInput({
   const showCheckmark = hasInput && isValid && hasValidation;
   const showInvalidMark = hasInput && !isValid && hasValidation;
 
-  // Display with cursor position
-  const beforeCursor = mask ? mask.repeat(cursor) : value.slice(0, cursor);
-  const afterCursor = mask ? mask.repeat(value.length - cursor) : value.slice(cursor);
+  // Calculate available width for text display
+  // Account for: arrow (2 chars), cursor (1 char), checkmark/x (2 chars), padding (2 chars)
+  const terminalWidth = stdout?.columns ?? 80;
+  const reservedChars = (hideArrow ? 0 : 2) + 1 + 2 + 2;
+  const maxDisplayWidth = Math.max(20, terminalWidth - reservedChars);
+
+  // Get display value (masked or plain)
+  const displayValue = mask ? mask.repeat(value.length) : value;
+
+  // Calculate windowed view if text is too long
+  let beforeCursor: string;
+  let charAtCursor: string;
+  let afterCursor: string;
+  let showEllipsisBefore = false;
+  let showEllipsisAfter = false;
+
+  if (displayValue.length <= maxDisplayWidth) {
+    // Text fits - show everything
+    beforeCursor = displayValue.slice(0, cursor);
+    charAtCursor = displayValue[cursor] ?? ' ';
+    afterCursor = displayValue.slice(cursor + 1);
+  } else {
+    // Text too long - create a window around cursor
+    const windowSize = maxDisplayWidth - 2; // Reserve space for ellipsis indicators
+    const halfWindow = Math.floor(windowSize / 2);
+
+    let windowStart = Math.max(0, cursor - halfWindow);
+    let windowEnd = Math.min(displayValue.length, windowStart + windowSize);
+
+    // Adjust window if we're near the end
+    if (windowEnd === displayValue.length) {
+      windowStart = Math.max(0, displayValue.length - windowSize);
+    }
+
+    // Adjust if we're near the start
+    if (windowStart === 0) {
+      windowEnd = Math.min(displayValue.length, windowSize);
+    }
+
+    showEllipsisBefore = windowStart > 0;
+    showEllipsisAfter = windowEnd < displayValue.length;
+
+    const cursorInWindow = cursor - windowStart;
+    const windowedText = displayValue.slice(windowStart, windowEnd);
+    beforeCursor = windowedText.slice(0, cursorInWindow);
+    charAtCursor = windowedText[cursorInWindow] ?? ' ';
+    afterCursor = windowedText.slice(cursorInWindow + 1);
+  }
 
   return (
     <Box flexDirection="column">
       {prompt && <Text>{prompt}</Text>}
-      <Box>
+      <Text wrap="truncate-end">
         {!hideArrow && <Text color="cyan">&gt; </Text>}
+        {showEllipsisBefore && <Text dimColor>…</Text>}
         <Text>{beforeCursor}</Text>
-        <Cursor />
+        <Cursor char={charAtCursor} />
         <Text>{afterCursor}</Text>
-        {!value && placeholder && <Text dimColor>{placeholder}</Text>}
+        {showEllipsisAfter && <Text dimColor>…</Text>}
+        {!value && placeholder && <Text dimColor>{placeholder.slice(1)}</Text>}
         {showCheckmark && <Text color="green"> ✓</Text>}
         {showInvalidMark && <Text color="red"> ✗</Text>}
-      </Box>
+      </Text>
       {(showError || showInvalidMark) && validationErrorMsg && <Text color="red">{validationErrorMsg}</Text>}
     </Box>
   );
