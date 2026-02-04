@@ -4,7 +4,6 @@ import { registerCreate } from './commands/create';
 import { registerDeploy } from './commands/deploy';
 import { registerDestroy } from './commands/destroy';
 import { registerDev } from './commands/dev';
-import { registerEdit } from './commands/edit';
 import { registerInvoke } from './commands/invoke';
 import { registerOutline } from './commands/outline';
 import { registerPackage } from './commands/package';
@@ -107,7 +106,6 @@ export function registerCommands(program: Command) {
   registerDev(program);
   registerDeploy(program);
   registerDestroy(program);
-  registerEdit(program);
   registerCreate(program);
   registerInvoke(program);
   registerOutline(program);

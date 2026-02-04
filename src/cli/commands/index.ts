@@ -3,7 +3,6 @@ export { registerAdd } from './add';
 export { registerDeploy } from './deploy';
 export { registerDestroy } from './destroy';
 export { registerDev } from './dev';
-export { registerEdit } from './edit';
 export { registerCreate } from './create';
 export { registerInvoke } from './invoke';
 export { registerOutline } from './outline';

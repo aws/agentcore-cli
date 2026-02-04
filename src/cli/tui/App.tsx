@@ -9,7 +9,6 @@ import { CreateScreen } from './screens/create';
 import { DeployScreen } from './screens/deploy/DeployScreen';
 import { DestroyScreen } from './screens/destroy';
 import { DevScreen } from './screens/dev/DevScreen';
-import { EditFlow } from './screens/edit';
 import { HelpScreen, HomeScreen } from './screens/home';
 import { InvokeScreen } from './screens/invoke';
 import { OutlineScreen } from './screens/outline';
@@ -36,7 +35,6 @@ type Route =
   | { name: 'invoke' }
   | { name: 'outline' }
   | { name: 'plan' }
-  | { name: 'edit' }
   | { name: 'create' }
   | { name: 'add' }
   | { name: 'attach' }
@@ -78,8 +76,6 @@ function AppContent() {
       setRoute({ name: 'plan' });
     } else if (id === 'status') {
       setRoute({ name: 'status' });
-    } else if (id === 'edit') {
-      setRoute({ name: 'edit' });
     } else if (id === 'create') {
       setRoute({ name: 'create' });
     } else if (id === 'add') {
@@ -160,16 +156,6 @@ function AppContent() {
 
   if (route.name === 'plan') {
     return <PlanScreen isInteractive={true} onExit={() => setRoute({ name: 'help' })} />;
-  }
-
-  if (route.name === 'edit') {
-    return (
-      <EditFlow
-        isInteractive={true}
-        onExit={() => setRoute({ name: 'help' })}
-        onRequestAdd={() => setRoute({ name: 'add' })}
-      />
-    );
   }
 
   if (route.name === 'add') {

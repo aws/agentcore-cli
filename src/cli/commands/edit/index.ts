@@ -1,1 +1,0 @@
-export { registerEdit } from './command';
