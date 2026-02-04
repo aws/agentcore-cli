@@ -14,6 +14,8 @@ interface ScreenProps {
   /** Optional content to display above the help text at the bottom */
   footerContent?: ReactNode;
   children: ReactNode;
+  /** Whether Escape key triggers onExit (default: true). Set to false when sub-components handle their own back navigation. */
+  exitEnabled?: boolean;
 }
 
 /**
@@ -23,8 +25,17 @@ interface ScreenProps {
  * - Exit handling (Escape / Ctrl+Q)
  * - Help text at the bottom
  */
-export function Screen({ title, color, onExit, helpText, headerContent, footerContent, children }: ScreenProps) {
-  useExitHandler(onExit);
+export function Screen({
+  title,
+  color,
+  onExit,
+  helpText,
+  headerContent,
+  footerContent,
+  children,
+  exitEnabled = true,
+}: ScreenProps) {
+  useExitHandler(onExit, exitEnabled);
 
   const displayHelpText = helpText ?? HELP_TEXT.EXIT;
 

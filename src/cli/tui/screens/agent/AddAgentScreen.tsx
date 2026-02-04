@@ -356,8 +356,16 @@ export function AddAgentScreen({ existingAgentNames, onComplete, onExit }: AddAg
   }
 
   // BYO path
+  // Disable Screen's exit handler when not on first step (sub-components handle back navigation)
+  const byoExitEnabled = byoCurrentIndex === 0;
   return (
-    <Screen title="Add Agent" onExit={onExit} helpText={getHelpText()} headerContent={renderStepIndicator()}>
+    <Screen
+      title="Add Agent"
+      onExit={onExit}
+      helpText={getHelpText()}
+      headerContent={renderStepIndicator()}
+      exitEnabled={byoExitEnabled}
+    >
       <Panel>
         {byoStep === 'codeLocation' && (
           <CodeLocationInput
