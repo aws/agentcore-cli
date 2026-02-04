@@ -1,21 +1,12 @@
 import type { AwsDeploymentTarget } from '../../../../schema';
 import { ErrorPrompt } from '../../components';
-import {
-  useAvailableAgents,
-  useCreateGateway,
-  useCreateMcpTool,
-  useExistingGateways,
-  useExistingToolNames,
-} from '../../hooks/useCreateMcp';
-import { AddAgentScreen } from '../agent/AddAgentScreen';
+import { useAvailableAgents } from '../../hooks/useCreateMcp';
+import { AddAgentFlow } from '../agent/AddAgentFlow';
 import type { AddAgentConfig } from '../agent/types';
 import { FRAMEWORK_OPTIONS } from '../agent/types';
 import { useAddAgent } from '../agent/useAddAgent';
-import { AddIdentityScreen, useCreateIdentity, useExistingIdentityNames } from '../identity';
-import type { AddIdentityConfig } from '../identity';
-import { AddGatewayScreen } from '../mcp/AddGatewayScreen';
-import { AddMcpToolScreen } from '../mcp/AddMcpToolScreen';
-import type { AddGatewayConfig, AddMcpToolConfig } from '../mcp/types';
+import { AddIdentityFlow } from '../identity';
+import { AddGatewayFlow, AddMcpToolFlow } from '../mcp';
 import { AddMemoryFlow } from '../memory/AddMemoryFlow';
 import type { AddResourceType } from './AddScreen';
 import { AddScreen } from './AddScreen';
@@ -42,9 +33,6 @@ type FlowState =
       loadingMessage?: string;
     }
   | { name: 'agent-byo-success'; agentName: string; config: AddAgentConfig; loading?: boolean; loadingMessage?: string }
-  | { name: 'gateway-success'; gatewayName: string; loading?: boolean; loadingMessage?: string }
-  | { name: 'tool-success'; toolName: string; projectPath: string; loading?: boolean; loadingMessage?: string }
-  | { name: 'identity-success'; identityName: string; loading?: boolean; loadingMessage?: string }
   | { name: 'target-success'; targetName: string; loading?: boolean; loadingMessage?: string }
   | { name: 'error'; message: string };
 
@@ -100,20 +88,12 @@ interface AddFlowProps {
   /** Whether running in interactive TUI mode (from App.tsx) vs CLI mode */
   isInteractive: boolean;
   onExit: () => void;
-  /** Navigate to another command (e.g., 'attach') */
-  onNavigate?: (command: string) => void;
 }
 
 export function AddFlow(props: AddFlowProps) {
   const { addAgent, reset: resetAgent } = useAddAgent();
-  const { createGateway, reset: resetGateway } = useCreateGateway();
-  const { createTool, reset: resetTool } = useCreateMcpTool();
-  const { createIdentity, reset: resetIdentity } = useCreateIdentity();
   const { addTarget, reset: resetTarget } = useAddTarget();
-  const { gateways, refresh } = useExistingGateways();
   const { agents, isLoading: isLoadingAgents, refresh: refreshAgents } = useAvailableAgents();
-  const { toolNames } = useExistingToolNames();
-  const { identityNames, refresh: refreshIdentityNames } = useExistingIdentityNames();
   const { targets, refresh: refreshTargets } = useExistingTargets();
   const [flow, setFlow] = useState<FlowState>({ name: 'select' });
 
@@ -125,14 +105,7 @@ export function AddFlow(props: AddFlowProps) {
   // In non-interactive mode, exit after success (but not while loading)
   useEffect(() => {
     if (!props.isInteractive) {
-      const successStates = [
-        'agent-create-success',
-        'agent-byo-success',
-        'gateway-success',
-        'tool-success',
-        'identity-success',
-        'target-success',
-      ];
+      const successStates = ['agent-create-success', 'agent-byo-success', 'target-success'];
       if (successStates.includes(flow.name) && !('loading' in flow && flow.loading)) {
         props.onExit();
       }
@@ -194,46 +167,6 @@ export function AddFlow(props: AddFlowProps) {
     [addAgent]
   );
 
-  const handleCreateGateway = useCallback(
-    (config: AddGatewayConfig) => {
-      setFlow({
-        name: 'gateway-success',
-        gatewayName: config.name,
-        loading: true,
-        loadingMessage: 'Creating gateway...',
-      });
-      void createGateway(config).then(result => {
-        if (result.ok) {
-          setFlow({ name: 'gateway-success', gatewayName: result.result.name });
-        } else {
-          setFlow({ name: 'error', message: result.error });
-        }
-      });
-    },
-    [createGateway]
-  );
-
-  const handleCreateTool = useCallback(
-    (config: AddMcpToolConfig) => {
-      setFlow({
-        name: 'tool-success',
-        toolName: config.name,
-        projectPath: '',
-        loading: true,
-        loadingMessage: 'Creating MCP tool...',
-      });
-      void createTool(config).then(res => {
-        if (res.ok) {
-          const { toolName, projectPath } = res.result;
-          setFlow({ name: 'tool-success', toolName, projectPath });
-        } else {
-          setFlow({ name: 'error', message: res.error });
-        }
-      });
-    },
-    [createTool]
-  );
-
   const handleAddTarget = useCallback(
     (target: AwsDeploymentTarget) => {
       setFlow({
@@ -253,25 +186,6 @@ export function AddFlow(props: AddFlowProps) {
     [addTarget]
   );
 
-  const handleCreateIdentity = useCallback(
-    (config: AddIdentityConfig) => {
-      setFlow({
-        name: 'identity-success',
-        identityName: config.name,
-        loading: true,
-        loadingMessage: 'Creating identity...',
-      });
-      void createIdentity(config).then(result => {
-        if (result.ok) {
-          setFlow({ name: 'identity-success', identityName: result.result.name });
-        } else {
-          setFlow({ name: 'error', message: result.error });
-        }
-      });
-    },
-    [createIdentity]
-  );
-
   if (flow.name === 'select') {
     // Show screen immediately - loading is instant for local files
     return (
@@ -283,12 +197,15 @@ export function AddFlow(props: AddFlowProps) {
     );
   }
 
+  // Agent wizard - now uses AddAgentFlow with mode selection
   if (flow.name === 'agent-wizard') {
     return (
-      <AddAgentScreen
+      <AddAgentFlow
+        isInteractive={props.isInteractive}
         existingAgentNames={agents}
         onComplete={handleAddAgent}
-        onExit={() => setFlow({ name: 'select' })}
+        onExit={props.onExit}
+        onBack={() => setFlow({ name: 'select' })}
       />
     );
   }
@@ -305,7 +222,6 @@ export function AddFlow(props: AddFlowProps) {
         onAddAnother={() => {
           void refreshAgents().then(() => setFlow({ name: 'select' }));
         }}
-        onAttach={() => props.onNavigate?.('attach')}
         onExit={props.onExit}
       />
     );
@@ -323,35 +239,36 @@ export function AddFlow(props: AddFlowProps) {
         onAddAnother={() => {
           void refreshAgents().then(() => setFlow({ name: 'select' }));
         }}
-        onAttach={() => props.onNavigate?.('attach')}
         onExit={props.onExit}
       />
     );
   }
 
+  // Gateway wizard - now uses AddGatewayFlow with mode selection
   if (flow.name === 'gateway-wizard') {
     return (
-      <AddGatewayScreen
-        existingGateways={gateways}
+      <AddGatewayFlow
+        isInteractive={props.isInteractive}
         availableAgents={agents}
-        onComplete={handleCreateGateway}
-        onExit={() => setFlow({ name: 'select' })}
+        onExit={props.onExit}
+        onBack={() => setFlow({ name: 'select' })}
       />
     );
   }
 
+  // MCP Tool wizard - now uses AddMcpToolFlow with mode selection
   if (flow.name === 'tool-wizard') {
     return (
-      <AddMcpToolScreen
-        existingGateways={gateways}
+      <AddMcpToolFlow
+        isInteractive={props.isInteractive}
         existingAgents={agents}
-        existingToolNames={toolNames}
-        onComplete={handleCreateTool}
-        onExit={() => setFlow({ name: 'select' })}
+        onExit={props.onExit}
+        onBack={() => setFlow({ name: 'select' })}
       />
     );
   }
 
+  // Memory wizard - already uses AddMemoryFlow with mode selection
   if (flow.name === 'memory-wizard') {
     return (
       <AddMemoryFlow
@@ -362,17 +279,18 @@ export function AddFlow(props: AddFlowProps) {
     );
   }
 
+  // Identity wizard - now uses AddIdentityFlow with mode selection
   if (flow.name === 'identity-wizard') {
     // Wait for agents to load before rendering wizard
     if (agents.length === 0) {
       return null;
     }
     return (
-      <AddIdentityScreen
-        existingIdentityNames={identityNames}
+      <AddIdentityFlow
+        isInteractive={props.isInteractive}
         availableAgents={agents}
-        onComplete={handleCreateIdentity}
-        onExit={() => setFlow({ name: 'select' })}
+        onExit={props.onExit}
+        onBack={() => setFlow({ name: 'select' })}
       />
     );
   }
@@ -383,55 +301,6 @@ export function AddFlow(props: AddFlowProps) {
         existingTargetNames={targets}
         onComplete={handleAddTarget}
         onExit={() => setFlow({ name: 'select' })}
-      />
-    );
-  }
-
-  if (flow.name === 'gateway-success') {
-    return (
-      <AddSuccessScreen
-        isInteractive={props.isInteractive}
-        message={`Added gateway: ${flow.gatewayName}`}
-        detail="Gateway defined in `agentcore/mcp.json`. Next: Use 'add tool' with 'Behind Gateway' exposure to route tools through this gateway."
-        loading={flow.loading}
-        loadingMessage={flow.loadingMessage}
-        onAddAnother={() => {
-          void refresh().then(() => setFlow({ name: 'select' }));
-        }}
-        onAttach={() => props.onNavigate?.('attach')}
-        onExit={props.onExit}
-      />
-    );
-  }
-
-  if (flow.name === 'tool-success') {
-    return (
-      <AddSuccessScreen
-        isInteractive={props.isInteractive}
-        message={`Added MCP tool: ${flow.toolName}`}
-        detail={`Project created at ${flow.projectPath}`}
-        loading={flow.loading}
-        loadingMessage={flow.loadingMessage}
-        onAddAnother={() => setFlow({ name: 'select' })}
-        onAttach={() => props.onNavigate?.('attach')}
-        onExit={props.onExit}
-      />
-    );
-  }
-
-  if (flow.name === 'identity-success') {
-    return (
-      <AddSuccessScreen
-        isInteractive={props.isInteractive}
-        message={`Added identity: ${flow.identityName}`}
-        detail="`agentcore/.env` updated."
-        loading={flow.loading}
-        loadingMessage={flow.loadingMessage}
-        onAddAnother={() => {
-          void refreshIdentityNames().then(() => setFlow({ name: 'select' }));
-        }}
-        onAttach={() => props.onNavigate?.('attach')}
-        onExit={props.onExit}
       />
     );
   }
@@ -447,7 +316,6 @@ export function AddFlow(props: AddFlowProps) {
         onAddAnother={() => {
           void refreshTargets().then(() => setFlow({ name: 'select' }));
         }}
-        onAttach={() => props.onNavigate?.('attach')}
         onExit={props.onExit}
       />
     );
@@ -459,9 +327,6 @@ export function AddFlow(props: AddFlowProps) {
       detail={flow.message}
       onBack={() => {
         resetAgent();
-        resetGateway();
-        resetTool();
-        resetIdentity();
         resetTarget();
         setFlow({ name: 'select' });
       }}

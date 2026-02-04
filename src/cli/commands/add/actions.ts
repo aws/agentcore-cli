@@ -17,6 +17,13 @@ import {
   mapModelProviderToIdentityProviders,
   writeAgentToProject,
 } from '../../operations/agent/generate';
+import {
+  attachAgentToAgent,
+  attachGatewayToAgent,
+  attachIdentityToAgent,
+  attachMemoryToAgent,
+  bindMcpRuntimeToAgent,
+} from '../../operations/attach';
 import { computeDefaultIdentityEnvVarName, createIdentityFromWizard } from '../../operations/identity/create-identity';
 import { createGatewayFromWizard, createToolFromWizard } from '../../operations/mcp/create-mcp';
 import { createMemoryFromWizard } from '../../operations/memory/create-memory';
@@ -26,7 +33,18 @@ import type { AddIdentityConfig } from '../../tui/screens/identity/types';
 import type { AddGatewayConfig, AddMcpToolConfig } from '../../tui/screens/mcp/types';
 import type { AddMemoryConfig, AddMemoryStrategyConfig } from '../../tui/screens/memory/types';
 import { DEFAULT_EVENT_EXPIRY } from '../../tui/screens/memory/types';
-import type { AddAgentResult, AddGatewayResult, AddIdentityResult, AddMcpToolResult, AddMemoryResult } from './types';
+import type {
+  AddAgentResult,
+  AddGatewayResult,
+  AddIdentityResult,
+  AddMcpToolResult,
+  AddMemoryResult,
+  BindAgentResult,
+  BindGatewayResult,
+  BindIdentityResult,
+  BindMcpRuntimeResult,
+  BindMemoryResult,
+} from './types';
 import { dirname, join } from 'path';
 
 // Validated option interfaces
@@ -332,6 +350,115 @@ export async function handleAddIdentity(options: ValidatedAddIdentityOptions): P
       identityName: result.name,
       ownerAgent: result.ownerAgent,
       userAgents: result.userAgents,
+    };
+  } catch (err) {
+    return { success: false, error: getErrorMessage(err) };
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Bind handlers (for --bind flag)
+// ─────────────────────────────────────────────────────────────────────────────
+
+export interface ValidatedBindMemoryOptions {
+  agent: string;
+  memory: string;
+  access: 'read' | 'readwrite';
+  envVar: string;
+}
+
+export async function handleBindMemory(options: ValidatedBindMemoryOptions): Promise<BindMemoryResult> {
+  try {
+    await attachMemoryToAgent(options.agent, {
+      memoryName: options.memory,
+      access: options.access,
+      envVarName: options.envVar,
+    });
+    return { success: true, memoryName: options.memory, targetAgent: options.agent };
+  } catch (err) {
+    return { success: false, error: getErrorMessage(err) };
+  }
+}
+
+export interface ValidatedBindIdentityOptions {
+  agent: string;
+  identity: string;
+  envVar: string;
+}
+
+export async function handleBindIdentity(options: ValidatedBindIdentityOptions): Promise<BindIdentityResult> {
+  try {
+    await attachIdentityToAgent(options.agent, {
+      identityName: options.identity,
+      envVarName: options.envVar,
+    });
+    return { success: true, identityName: options.identity, targetAgent: options.agent };
+  } catch (err) {
+    return { success: false, error: getErrorMessage(err) };
+  }
+}
+
+export interface ValidatedBindGatewayOptions {
+  agent: string;
+  gateway: string;
+  name: string;
+  description: string;
+  envVar: string;
+}
+
+export async function handleBindGateway(options: ValidatedBindGatewayOptions): Promise<BindGatewayResult> {
+  try {
+    await attachGatewayToAgent(options.agent, {
+      gatewayName: options.gateway,
+      name: options.name,
+      description: options.description,
+      envVarName: options.envVar,
+    });
+    return { success: true, gatewayName: options.gateway, targetAgent: options.agent };
+  } catch (err) {
+    return { success: false, error: getErrorMessage(err) };
+  }
+}
+
+export interface ValidatedBindMcpRuntimeOptions {
+  agent: string;
+  runtime: string;
+  envVar: string;
+}
+
+export async function handleBindMcpRuntime(options: ValidatedBindMcpRuntimeOptions): Promise<BindMcpRuntimeResult> {
+  try {
+    await bindMcpRuntimeToAgent(options.runtime, {
+      agentName: options.agent,
+      envVarName: options.envVar,
+    });
+    return { success: true, runtimeName: options.runtime, targetAgent: options.agent };
+  } catch (err) {
+    return { success: false, error: getErrorMessage(err) };
+  }
+}
+
+export interface ValidatedBindAgentOptions {
+  source: string;
+  target: string;
+  name: string;
+  description: string;
+  envVar: string;
+}
+
+export async function handleBindAgent(options: ValidatedBindAgentOptions): Promise<BindAgentResult> {
+  try {
+    await attachAgentToAgent(options.source, {
+      targetAgent: options.target,
+      name: options.name,
+      description: options.description,
+      envVarName: options.envVar,
+    });
+    return {
+      success: true,
+      toolName: options.name,
+      sourceAgent: options.source,
+      targetAgent: options.target,
     };
   } catch (err) {
     return { success: false, error: getErrorMessage(err) };

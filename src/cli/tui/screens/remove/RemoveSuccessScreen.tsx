@@ -2,10 +2,7 @@ import { LogLink, type NextStep, NextSteps, Screen } from '../../components';
 import { Box, Text } from 'ink';
 import React from 'react';
 
-const REMOVE_SUCCESS_STEPS: NextStep[] = [
-  { command: 'remove', label: 'Remove another resource' },
-  { command: 'attach', label: 'Attach resources' },
-];
+const REMOVE_SUCCESS_STEPS: NextStep[] = [{ command: 'remove', label: 'Remove another resource' }];
 
 interface RemoveSuccessScreenProps {
   /** Whether running in interactive TUI mode */
@@ -18,8 +15,6 @@ interface RemoveSuccessScreenProps {
   logFilePath?: string | null;
   /** Called when "Remove another resource" is selected */
   onRemoveAnother: () => void;
-  /** Called when "Attach resources" is selected */
-  onAttach?: () => void;
   /** Called when "return" is selected to go back to main menu, or in non-interactive exit */
   onExit: () => void;
 }
@@ -30,14 +25,11 @@ export function RemoveSuccessScreen({
   detail,
   logFilePath,
   onRemoveAnother,
-  onAttach,
   onExit,
 }: RemoveSuccessScreenProps) {
   const handleSelect = (step: NextStep) => {
     if (step.command === 'remove') {
       onRemoveAnother();
-    } else if (step.command === 'attach') {
-      onAttach?.();
     }
   };
 

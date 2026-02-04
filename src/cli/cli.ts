@@ -1,5 +1,4 @@
 import { registerAdd } from './commands/add';
-import { registerAttach } from './commands/attach';
 import { registerCreate } from './commands/create';
 import { registerDeploy } from './commands/deploy';
 import { registerDestroy } from './commands/destroy';
@@ -101,7 +100,6 @@ export function createProgram(): Command {
 
 export function registerCommands(program: Command) {
   registerAdd(program);
-  registerAttach(program);
   registerDev(program);
   registerDeploy(program);
   registerDestroy(program);
