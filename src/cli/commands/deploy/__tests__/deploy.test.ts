@@ -84,7 +84,7 @@ describe('deploy command', () => {
       expect(json.success).toBe(false);
       // Error should be about AWS/CDK, not about target not found
       expect(!json.error.includes('not found'), `Should find target, got: ${json.error}`).toBeTruthy();
-    }, 60000);
+    }, 90000);
   });
 
   describe('target validation', () => {

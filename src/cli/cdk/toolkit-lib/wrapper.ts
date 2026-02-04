@@ -97,9 +97,9 @@ export class CdkToolkitWrapper {
    */
   async initialize(): Promise<void> {
     return withErrorContext(`initialize (project: ${this.projectDir})`, async () => {
-      const sdkConfig = this.options.profile
-        ? { baseCredentials: BaseCredentials.awsCliCompatible({ profile: this.options.profile }) }
-        : undefined;
+      // Use explicit profile, fall back to AWS_PROFILE env var per AWS SDK precedence
+      const profile = this.options.profile ?? process.env.AWS_PROFILE;
+      const sdkConfig = profile ? { baseCredentials: BaseCredentials.awsCliCompatible({ profile }) } : undefined;
 
       this.toolkit = new Toolkit({
         ioHost: this.options.ioHost,

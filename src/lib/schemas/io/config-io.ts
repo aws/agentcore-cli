@@ -9,6 +9,7 @@ import {
   AgentCoreCliMcpDefsSchema,
   AgentCoreMcpSpecSchema,
   AgentCoreProjectSpecSchema,
+  AgentCoreRegionSchema,
   AwsDeploymentTargetsSchema,
   createValidatedDeployedStateSchema,
 } from '../../../schema';
@@ -20,6 +21,7 @@ import {
   ConfigWriteError,
 } from '../../errors';
 import { type PathConfig, PathResolver, findConfigRoot } from './path-resolver';
+import { loadSharedConfigFiles } from '@smithy/shared-ini-file-loader';
 import { existsSync } from 'fs';
 import { mkdir, readFile, writeFile } from 'fs/promises';
 import { dirname } from 'path';
@@ -103,11 +105,35 @@ export class ConfigIO {
   }
 
   /**
-   * Read and validate the AWS configuration file
+   * Read and validate the AWS configuration file.
+   * Applies region override following AWS SDK precedence:
+   * 1. AWS_REGION env var
+   * 2. AWS_DEFAULT_REGION env var
+   * 3. Region from AWS_PROFILE in ~/.aws/config
    */
   async readAWSDeploymentTargets(): Promise<AwsDeploymentTarget[]> {
     const filePath = this.pathResolver.getAWSTargetsConfigPath();
-    return this.readAndValidate(filePath, 'AWS Targets', AwsDeploymentTargetsSchema);
+    const targets = await this.readAndValidate(filePath, 'AWS Targets', AwsDeploymentTargetsSchema);
+
+    // Check env vars first
+    const envRegion = process.env.AWS_REGION ?? process.env.AWS_DEFAULT_REGION;
+    if (envRegion && AgentCoreRegionSchema.safeParse(envRegion).success) {
+      return targets.map(t => ({ ...t, region: envRegion as AwsDeploymentTarget['region'] }));
+    }
+
+    // Check profile config
+    try {
+      const profile = process.env.AWS_PROFILE ?? 'default';
+      const config = await loadSharedConfigFiles();
+      const profileRegion = config.configFile?.[profile]?.region;
+      if (profileRegion && AgentCoreRegionSchema.safeParse(profileRegion).success) {
+        return targets.map(t => ({ ...t, region: profileRegion as AwsDeploymentTarget['region'] }));
+      }
+    } catch {
+      // Config file not available or parse error - use saved targets as-is
+    }
+
+    return targets;
   }
 
   /**
