@@ -11,7 +11,6 @@ import { registerPackage } from './commands/package';
 import { registerPlan } from './commands/plan';
 import { registerRemove } from './commands/remove';
 import { registerStatus } from './commands/status';
-import { registerStopSession } from './commands/stop-session';
 import { registerUpdate } from './commands/update';
 import { registerValidate } from './commands/validate';
 import { PACKAGE_VERSION } from './constants';
@@ -115,7 +114,6 @@ export function registerCommands(program: Command) {
   registerPlan(program);
   registerRemove(program);
   registerStatus(program);
-  registerStopSession(program);
   registerUpdate(program);
   registerValidate(program);
 }

@@ -4,10 +4,10 @@ import type {
   AwsDeploymentTarget,
   AgentCoreProjectSpec as _AgentCoreProjectSpec,
 } from '../../../../schema';
-import { invokeAgentRuntimeStreaming } from '../../../aws';
+import { invokeAgentRuntimeStreaming, stopRuntimeSession } from '../../../aws';
 import { getErrorMessage } from '../../../errors';
 import { InvokeLogger } from '../../../logging';
-import { generateSessionId, saveSessionId } from '../../../operations/session';
+import { generateSessionId } from '../../../operations/session';
 import { useCallback, useEffect, useRef, useState } from 'react';
 
 export interface InvokeConfig {
@@ -19,7 +19,6 @@ export interface InvokeConfig {
 
 export interface InvokeFlowOptions {
   initialSessionId?: string;
-  forceNewSession?: boolean;
 }
 
 export interface InvokeFlowState {
@@ -36,7 +35,7 @@ export interface InvokeFlowState {
 }
 
 export function useInvokeFlow(options: InvokeFlowOptions = {}): InvokeFlowState {
-  const { initialSessionId, forceNewSession } = options;
+  const { initialSessionId } = options;
   const [phase, setPhase] = useState<'loading' | 'ready' | 'invoking' | 'error'>('loading');
   const [config, setConfig] = useState<InvokeConfig | null>(null);
   const [selectedAgent, setSelectedAgent] = useState(0);
@@ -90,24 +89,14 @@ export function useInvokeFlow(options: InvokeFlowOptions = {}): InvokeFlowState 
 
         setConfig({ agents, target: targetConfig, targetName, projectName: project.name });
 
-        // Initialize session ID
-        if (forceNewSession) {
-          // Generate new session when --new-session flag is used
-          const newId = generateSessionId();
-          setSessionId(newId);
-        } else if (initialSessionId) {
+        // Initialize session ID - always generate fresh unless explicitly provided
+        if (initialSessionId) {
           // Use provided session ID from --session-id flag
           setSessionId(initialSessionId);
         } else {
-          // Use existing session from first agent's deployed state, or generate new
-          const firstAgent = agents[0];
-          const existingSessionId = firstAgent?.state.sessionId;
-          if (existingSessionId) {
-            setSessionId(existingSessionId);
-          } else {
-            const newId = generateSessionId();
-            setSessionId(newId);
-          }
+          // Always generate a new session for fresh invocations
+          const newId = generateSessionId();
+          setSessionId(newId);
         }
 
         setPhase('ready');
@@ -117,7 +106,7 @@ export function useInvokeFlow(options: InvokeFlowOptions = {}): InvokeFlowState 
       }
     };
     void load();
-  }, [initialSessionId, forceNewSession]);
+  }, [initialSessionId]);
 
   // Track current streaming content to avoid stale closure issues
   const streamingContentRef = useRef('');
@@ -162,14 +151,10 @@ export function useInvokeFlow(options: InvokeFlowOptions = {}): InvokeFlowState 
           logger, // Pass logger for SSE event debugging
         });
 
-        // Update session ID from response if available
+        // Update session ID from response if available (for logging purposes)
         if (result.sessionId) {
           setSessionId(result.sessionId);
           logger.updateSessionId(result.sessionId);
-          // Persist session ID to deployed state
-          void saveSessionId(agent.name, result.sessionId, config.targetName).catch(() => {
-            // Silently ignore save errors - session will still work for current invocation
-          });
         }
 
         for await (const chunk of result.stream) {
@@ -187,6 +172,19 @@ export function useInvokeFlow(options: InvokeFlowOptions = {}): InvokeFlowState 
         }
 
         logger.logResponse(streamingContentRef.current);
+
+        // Stop the session after invoke completes (cleanup)
+        const finalSessionId = result.sessionId ?? sessionId;
+        if (finalSessionId) {
+          void stopRuntimeSession({
+            region: config.target.region,
+            runtimeArn: agent.state.runtimeArn,
+            sessionId: finalSessionId,
+          }).catch(() => {
+            // Silently ignore stop errors - session will expire anyway
+          });
+        }
+
         setPhase('ready');
       } catch (err) {
         const errMsg = getErrorMessage(err);

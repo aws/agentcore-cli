@@ -9,7 +9,6 @@ interface InvokeScreenProps {
   onExit: () => void;
   initialPrompt?: string;
   initialSessionId?: string;
-  forceNewSession?: boolean;
 }
 
 type Mode = 'select-agent' | 'chat' | 'input';
@@ -19,10 +18,9 @@ export function InvokeScreen({
   onExit,
   initialPrompt,
   initialSessionId,
-  forceNewSession,
 }: InvokeScreenProps) {
   const { phase, config, selectedAgent, messages, error, logFilePath, sessionId, selectAgent, invoke, newSession } =
-    useInvokeFlow({ initialSessionId, forceNewSession });
+    useInvokeFlow({ initialSessionId });
   const [mode, setMode] = useState<Mode>('select-agent');
 
   // Handle initial prompt - skip agent selection if only one agent

@@ -11,7 +11,6 @@ export { registerPackage } from './package';
 export { registerPlan } from './plan';
 export { registerRemove } from './remove';
 export { registerStatus } from './status';
-export { registerStopSession } from './stop-session';
 export { registerUpdate } from './update';
 
 // Dev server utilities (re-exported from operations)

@@ -93,7 +93,6 @@ export const registerInvoke = (program: Command) => {
     .option('--agent <name>', 'Select specific agent')
     .option('--target <name>', 'Select deployment target')
     .option('--session-id <id>', 'Use specific session ID for conversation continuity')
-    .option('--new-session', 'Start a new session (ignores existing session)')
     .option('--json', 'Output as JSON')
     .option('--stream', 'Stream response in real-time')
     .action(
@@ -104,7 +103,6 @@ export const registerInvoke = (program: Command) => {
           agent?: string;
           target?: string;
           sessionId?: string;
-          newSession?: boolean;
           json?: boolean;
           stream?: boolean;
         }
@@ -130,7 +128,6 @@ export const registerInvoke = (program: Command) => {
                 isInteractive={true}
                 onExit={() => process.exit(0)}
                 initialSessionId={cliOptions.sessionId}
-                forceNewSession={cliOptions.newSession}
               />
             );
             await waitUntilExit();
