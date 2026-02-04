@@ -37,7 +37,6 @@ export const COMMAND_DESCRIPTIONS = {
   dev: 'Launch local development server.',
   edit: 'Open schema editor.',
   invoke: 'Invoke Bedrock AgentCore endpoint.',
-  outline: 'Display project resource tree from schema.',
   package: 'Package Bedrock AgentCore runtime artifacts.',
   remove: 'Remove AgentCore resources and project',
   status: 'Retrieve details of deployed AgentCore resources.',

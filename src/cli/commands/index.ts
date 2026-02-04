@@ -5,7 +5,6 @@ export { registerDestroy } from './destroy';
 export { registerDev } from './dev';
 export { registerCreate } from './create';
 export { registerInvoke } from './invoke';
-export { registerOutline } from './outline';
 export { registerPackage } from './package';
 export { registerRemove } from './remove';
 export { registerStatus } from './status';

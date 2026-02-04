@@ -11,7 +11,6 @@ import { DestroyScreen } from './screens/destroy';
 import { DevScreen } from './screens/dev/DevScreen';
 import { HelpScreen, HomeScreen } from './screens/home';
 import { InvokeScreen } from './screens/invoke';
-import { OutlineScreen } from './screens/outline';
 import { PackageScreen } from './screens/package';
 import { RemoveFlow } from './screens/remove';
 import { StatusScreen } from './screens/status/StatusScreen';
@@ -32,7 +31,6 @@ type Route =
   | { name: 'deploy' }
   | { name: 'destroy' }
   | { name: 'invoke' }
-  | { name: 'outline' }
   | { name: 'create' }
   | { name: 'add' }
   | { name: 'attach' }
@@ -68,8 +66,6 @@ function AppContent() {
       setRoute({ name: 'deploy' });
     } else if (id === 'invoke') {
       setRoute({ name: 'invoke' });
-    } else if (id === 'outline') {
-      setRoute({ name: 'outline' });
     } else if (id === 'status') {
       setRoute({ name: 'status' });
     } else if (id === 'create') {
@@ -140,10 +136,6 @@ function AppContent() {
 
   if (route.name === 'invoke') {
     return <InvokeScreen isInteractive={true} onExit={() => setRoute({ name: 'help' })} />;
-  }
-
-  if (route.name === 'outline') {
-    return <OutlineScreen isInteractive={true} onExit={() => setRoute({ name: 'help' })} />;
   }
 
   if (route.name === 'status') {

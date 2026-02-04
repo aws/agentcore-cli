@@ -85,11 +85,10 @@ agentcore-cli invoke --stream
 
 ### Utilities
 
-| Command   | Description                   |
-| --------- | ----------------------------- |
-| `outline` | Display project resource tree |
-| `edit`    | Interactive schema editor     |
-| `update`  | Check for CLI updates         |
+| Command  | Description               |
+| -------- | ------------------------- |
+| `edit`   | Interactive schema editor |
+| `update` | Check for CLI updates     |
 
 ## Project Structure
 
