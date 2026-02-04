@@ -20,6 +20,7 @@ import {
   ConfigValidationError,
   ConfigWriteError,
 } from '../../errors';
+import { detectAwsAccount } from '../../utils';
 import { type PathConfig, PathResolver, findConfigRoot } from './path-resolver';
 import { loadSharedConfigFiles } from '@smithy/shared-ini-file-loader';
 import { existsSync } from 'fs';
@@ -106,22 +107,29 @@ export class ConfigIO {
 
   /**
    * Read and validate the AWS configuration file.
-   * Applies region override following AWS SDK precedence:
-   * 1. AWS_REGION env var
-   * 2. AWS_DEFAULT_REGION env var
-   * 3. Region from AWS_PROFILE in ~/.aws/config
+   * Applies overrides following AWS SDK precedence:
+   * - Account: from current credentials if AWS_PROFILE is set
+   * - Region: AWS_REGION > AWS_DEFAULT_REGION > profile config > saved value
    */
   async readAWSDeploymentTargets(): Promise<AwsDeploymentTarget[]> {
     const filePath = this.pathResolver.getAWSTargetsConfigPath();
-    const targets = await this.readAndValidate(filePath, 'AWS Targets', AwsDeploymentTargetsSchema);
+    let targets = await this.readAndValidate(filePath, 'AWS Targets', AwsDeploymentTargetsSchema);
 
-    // Check env vars first
+    // Override account from credentials if AWS_PROFILE is set
+    if (process.env.AWS_PROFILE) {
+      const account = await detectAwsAccount();
+      if (account) {
+        targets = targets.map(t => ({ ...t, account }));
+      }
+    }
+
+    // Override region from env vars
     const envRegion = process.env.AWS_REGION ?? process.env.AWS_DEFAULT_REGION;
     if (envRegion && AgentCoreRegionSchema.safeParse(envRegion).success) {
       return targets.map(t => ({ ...t, region: envRegion as AwsDeploymentTarget['region'] }));
     }
 
-    // Check profile config
+    // Check profile config for region
     try {
       const profile = process.env.AWS_PROFILE ?? 'default';
       const config = await loadSharedConfigFiles();
@@ -130,7 +138,7 @@ export class ConfigIO {
         return targets.map(t => ({ ...t, region: profileRegion as AwsDeploymentTarget['region'] }));
       }
     } catch {
-      // Config file not available or parse error - use saved targets as-is
+      // Config file not available - use current targets
     }
 
     return targets;
