@@ -49,7 +49,7 @@ export type AddAgentOutcome = AddAgentCreateResult | AddAgentByoResult | AddAgen
  * Unlike the create flow, this does NOT generate template files.
  * It only creates the schema entry pointing to existing code.
  */
-export function mapByoConfigToAgentEnvSpec(config: AddAgentConfig): AgentEnvSpec {
+export function mapByoConfigToAgentEnvSpec(config: AddAgentConfig, projectName: string): AgentEnvSpec {
   return {
     name: config.name,
     id: `${config.name}Agent`,
@@ -66,7 +66,7 @@ export function mapByoConfigToAgentEnvSpec(config: AddAgentConfig): AgentEnvSpec
     },
     mcpProviders: [],
     memoryProviders: [],
-    identityProviders: mapModelProviderToIdentityProviders(config.modelProvider),
+    identityProviders: mapModelProviderToIdentityProviders(config.modelProvider, projectName),
     remoteTools: [],
   };
 }
@@ -186,10 +186,9 @@ async function handleByoPath(
   configIO: ConfigIO,
   configBaseDir: string
 ): Promise<AddAgentByoResult | AddAgentError> {
-  const agentEnvSpec = mapByoConfigToAgentEnvSpec(config);
-
-  // Read existing project
+  // Read project first to get project name for qualified identity provider names
   const project = await configIO.readProjectSpec();
+  const agentEnvSpec = mapByoConfigToAgentEnvSpec(config, project.name);
 
   // Append new agent
   project.agents.push(agentEnvSpec);

@@ -7,6 +7,15 @@ import type { AddIdentityConfig } from '../../tui/screens/identity/types';
 // ─────────────────────────────────────────────────────────────────────────────
 
 /**
+ * Compute the qualified provider name for AWS resources.
+ * Format: {projectName}{providerName} (no separator to comply with alphanumeric-only schema)
+ * This ensures provider names are unique per project.
+ */
+export function computeQualifiedProviderName(projectName: string, providerName: string): string {
+  return `${projectName}${providerName}`;
+}
+
+/**
  * Compute the default runtime env var name for an identity provider.
  * Pattern: AGENTCORE_IDENTITY_{NAME}
  */
@@ -17,35 +26,47 @@ export function computeDefaultIdentityEnvVarName(providerName: string): string {
 /**
  * Build an owned identity provider object.
  * Used by both add agent and add identity flows.
+ * @param providerName - Simple provider name (e.g., "OpenAI")
+ * @param projectName - Project name for creating qualified AWS resource name
+ * @param variant - Identity credential variant
  */
 export function buildOwnedIdentityProvider(
-  name: string,
+  providerName: string,
+  projectName: string,
   variant: IdentityCredentialVariant = 'ApiKeyCredentialProvider'
 ): OwnedIdentityProvider {
+  // Qualified name is used for AWS resource naming (unique per project)
+  const qualifiedName = computeQualifiedProviderName(projectName, providerName);
   return {
     type: 'AgentCoreIdentity',
     variant,
     relation: 'own',
-    name,
-    description: `API key credential provider for ${name}`,
-    envVarName: computeDefaultIdentityEnvVarName(name),
+    name: qualifiedName,
+    description: `API key credential provider for ${providerName}`,
+    envVarName: computeDefaultIdentityEnvVarName(providerName),
   };
 }
 
 /**
  * Build a referenced identity provider object (for agents that use but don't own).
+ * @param providerName - Simple provider name (e.g., "OpenAI")
+ * @param projectName - Project name for creating qualified AWS resource name
+ * @param variant - Identity credential variant
  */
 export function buildReferencedIdentityProvider(
-  name: string,
+  providerName: string,
+  projectName: string,
   variant: IdentityCredentialVariant = 'ApiKeyCredentialProvider'
 ): ReferencedIdentityProvider {
+  // Qualified name is used for AWS resource naming (unique per project)
+  const qualifiedName = computeQualifiedProviderName(projectName, providerName);
   return {
     type: 'AgentCoreIdentity',
     variant,
     relation: 'use',
-    name,
-    description: `API key credential provider for ${name}`,
-    envVarName: computeDefaultIdentityEnvVarName(name),
+    name: qualifiedName,
+    description: `API key credential provider for ${providerName}`,
+    envVarName: computeDefaultIdentityEnvVarName(providerName),
   };
 }
 
@@ -88,17 +109,20 @@ export async function createIdentityFromWizard(config: AddIdentityConfig): Promi
   const configIO = new ConfigIO();
   const project = await configIO.readProjectSpec();
 
+  // Compute qualified name for AWS resource (unique per project)
+  const qualifiedName = computeQualifiedProviderName(project.name, config.name);
+
   // Add owned identity provider to owner agent
   const ownerAgent = project.agents.find(a => a.name === config.ownerAgent);
   if (!ownerAgent) {
     throw new Error(`Owner agent "${config.ownerAgent}" not found in agentcore.json.`);
   }
 
-  if (ownerAgent.identityProviders.some(p => p.name === config.name)) {
+  if (ownerAgent.identityProviders.some(p => p.name === qualifiedName)) {
     throw new Error(`Identity provider "${config.name}" already exists on agent "${config.ownerAgent}".`);
   }
 
-  ownerAgent.identityProviders.push(buildOwnedIdentityProvider(config.name, config.identityType));
+  ownerAgent.identityProviders.push(buildOwnedIdentityProvider(config.name, project.name, config.identityType));
 
   // Add referenced identity provider to user agents
   for (const userAgentName of config.userAgents) {
@@ -107,11 +131,11 @@ export async function createIdentityFromWizard(config: AddIdentityConfig): Promi
       throw new Error(`User agent "${userAgentName}" not found in agentcore.json.`);
     }
 
-    if (userAgent.identityProviders.some(p => p.name === config.name)) {
+    if (userAgent.identityProviders.some(p => p.name === qualifiedName)) {
       throw new Error(`Identity provider "${config.name}" already exists on agent "${userAgentName}".`);
     }
 
-    userAgent.identityProviders.push(buildReferencedIdentityProvider(config.name, config.identityType));
+    userAgent.identityProviders.push(buildReferencedIdentityProvider(config.name, project.name, config.identityType));
   }
 
   // Write updated project spec
@@ -122,7 +146,7 @@ export async function createIdentityFromWizard(config: AddIdentityConfig): Promi
   await setEnvVar(envVarName, config.apiKey);
 
   return {
-    name: config.name,
+    name: qualifiedName,
     ownerAgent: config.ownerAgent,
     userAgents: config.userAgents,
   };

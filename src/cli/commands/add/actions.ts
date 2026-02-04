@@ -147,6 +147,9 @@ async function handleByoPath(
 ): Promise<AddAgentResult> {
   const codeLocation = options.codeLocation!.endsWith('/') ? options.codeLocation! : `${options.codeLocation!}/`;
 
+  // Read project first to get project name for qualified identity provider names
+  const project = await configIO.readProjectSpec();
+
   const agentEnvSpec: AgentEnvSpec = {
     name: options.name,
     id: `${options.name}Agent`,
@@ -163,11 +166,10 @@ async function handleByoPath(
     },
     mcpProviders: [],
     memoryProviders: [],
-    identityProviders: mapModelProviderToIdentityProviders(options.modelProvider),
+    identityProviders: mapModelProviderToIdentityProviders(options.modelProvider, project.name),
     remoteTools: [],
   };
 
-  const project = await configIO.readProjectSpec();
   project.agents.push(agentEnvSpec);
   await configIO.writeProjectSpec(project);
 

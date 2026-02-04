@@ -90,13 +90,16 @@ export function mapGenerateInputToMemoryProviders(
  * For non-Bedrock providers, creates an owned identity provider entry.
  * Bedrock uses IAM, so no identity provider is needed.
  */
-export function mapModelProviderToIdentityProviders(modelProvider: ModelProvider): OwnedIdentityProvider[] {
+export function mapModelProviderToIdentityProviders(
+  modelProvider: ModelProvider,
+  projectName: string
+): OwnedIdentityProvider[] {
   if (modelProvider === 'Bedrock') {
     return [];
   }
 
-  // Provider name matches the model provider (e.g., "OpenAI", "Anthropic")
-  return [buildOwnedIdentityProvider(modelProvider)];
+  // Provider name is qualified with project name for uniqueness (e.g., "myProjectOpenAI")
+  return [buildOwnedIdentityProvider(modelProvider, projectName)];
 }
 
 /**
@@ -135,7 +138,7 @@ export function mapGenerateConfigToAgentEnvSpec(config: GenerateConfig): AgentEn
     },
     mcpProviders: [],
     memoryProviders: mapGenerateInputToMemoryProviders(config.memory, config.projectName),
-    identityProviders: mapModelProviderToIdentityProviders(config.modelProvider),
+    identityProviders: mapModelProviderToIdentityProviders(config.modelProvider, config.projectName),
     remoteTools: [],
   };
 }

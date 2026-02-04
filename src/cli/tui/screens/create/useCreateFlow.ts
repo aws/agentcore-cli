@@ -301,7 +301,7 @@ export function useCreateFlow(cwd: string): CreateFlowState {
                 logger.logSubStep('Writing BYO agent config to project...');
                 const configIO = new ConfigIO({ baseDir: configBaseDir });
                 const project = await configIO.readProjectSpec();
-                const agentEnvSpec = mapByoConfigToAgentEnvSpec(addAgentConfig);
+                const agentEnvSpec = mapByoConfigToAgentEnvSpec(addAgentConfig, project.name);
                 project.agents.push(agentEnvSpec);
                 await configIO.writeProjectSpec(project);
               }
