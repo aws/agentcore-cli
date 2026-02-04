@@ -59,8 +59,6 @@ interface RemoveFlowProps {
   isInteractive: boolean;
   onExit: () => void;
   onRequestDestroy?: () => void;
-  /** Navigate to another command (e.g., 'attach') */
-  onNavigate?: (command: string) => void;
   /** Force mode - skip confirmation */
   force?: boolean;
   /** Initial resource type to start at (for CLI subcommands) */
@@ -71,7 +69,6 @@ export function RemoveFlow({
   isInteractive,
   onExit,
   onRequestDestroy,
-  onNavigate,
   force = false,
   initialResourceType,
 }: RemoveFlowProps) {
@@ -625,7 +622,6 @@ export function RemoveFlow({
           resetAll();
           void refreshAll().then(() => setFlow({ name: 'select' }));
         }}
-        onAttach={() => onNavigate?.('attach')}
         onExit={onExit}
       />
     );
@@ -642,7 +638,6 @@ export function RemoveFlow({
           resetAll();
           void refreshAll().then(() => setFlow({ name: 'select' }));
         }}
-        onAttach={() => onNavigate?.('attach')}
         onExit={onExit}
       />
     );
@@ -659,7 +654,6 @@ export function RemoveFlow({
           resetAll();
           void refreshAll().then(() => setFlow({ name: 'select' }));
         }}
-        onAttach={() => onNavigate?.('attach')}
         onExit={onExit}
       />
     );
@@ -676,7 +670,6 @@ export function RemoveFlow({
           resetAll();
           void refreshAll().then(() => setFlow({ name: 'select' }));
         }}
-        onAttach={() => onNavigate?.('attach')}
         onExit={onExit}
       />
     );
@@ -693,7 +686,6 @@ export function RemoveFlow({
           resetAll();
           void refreshAll().then(() => setFlow({ name: 'select' }));
         }}
-        onAttach={() => onNavigate?.('attach')}
         onExit={onExit}
       />
     );
@@ -710,7 +702,6 @@ export function RemoveFlow({
           resetAll();
           void refreshAll().then(() => setFlow({ name: 'select' }));
         }}
-        onAttach={() => onNavigate?.('attach')}
         onExit={onExit}
       />
     );
