@@ -1,8 +1,16 @@
-# @aws/agentcore-cli
+<div align="center">
+  <h1>AgentCore CLI</h1>
+  <h2>Create, develop, and deploy AI agents to Amazon Bedrock AgentCore</h2>
+</div>
 
-CLI tool for Amazon Bedrock AgentCore. Create, develop, and deploy agentic applications on AWS.
+## Overview
 
-## Prerequisites
+Amazon Bedrock AgentCore enables you to deploy and operate AI agents securely at scale using any framework and model.
+AgentCore provides tools and capabilities to make agents more effective, purpose-built infrastructure to securely scale
+agents, and controls to operate trustworthy agents. This CLI helps you create, develop locally, and deploy agents to
+AgentCore with minimal configuration.
+
+## 🚀 Jump Into AgentCore
 
 - **Node.js** 20.x or later
 - **AWS CLI** configured with credentials
