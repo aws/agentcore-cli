@@ -94,7 +94,6 @@ agentcore invoke --stream
 | -------- | --------------------------------------- |
 | `add`    | Add agents, memory, identity, MCP tools |
 | `remove` | Remove resources from project           |
-| `attach` | Connect resources to agents             |
 
 ### Development
 
@@ -117,7 +116,6 @@ my-project/
 ├── agentcore/
 │   ├── agentcore.json      # Agent specifications
 │   ├── aws-targets.json    # Deployment targets
-│   ├── mcp.json            # MCP tool config
 │   └── cdk/                # CDK infrastructure
 ├── app/                    # Agent code
 └── .env.local              # API keys (gitignored)
@@ -129,15 +127,12 @@ Projects use JSON schema files in the `agentcore/` directory:
 
 - `agentcore.json` - Agent specifications, memory, identity, remote tools
 - `aws-targets.json` - Deployment targets (account, region)
-- `mcp.json` - MCP tool definitions
 - `deployed-state.json` - Runtime state (auto-managed)
 
 ## Primitives
 
 - **Memory** - Semantic, summarization, and user preference strategies
 - **Identity** - Secure API key management via Secrets Manager
-- **MCP Tools** - Extend agent capabilities with custom tools
-- **MCP Runtime Tools** - Direct agent-to-tool connections
 - **Agent-to-Agent** - Agents invoking other agents as tools
 
 ## Invoking Agents
