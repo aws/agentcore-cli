@@ -36,7 +36,6 @@ export {
   semVerGte,
   formatSemVer,
   NODE_MIN_VERSION,
-  UV_MIN_VERSION,
   type DependencyCheckResult,
   type SemVer,
   type VersionCheckResult,

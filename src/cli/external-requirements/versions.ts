@@ -59,6 +59,3 @@ export function formatSemVer(v: SemVer): string {
 
 /** Minimum Node.js version required for CDK synth (ES2022 target) */
 export const NODE_MIN_VERSION: SemVer = { major: 18, minor: 0, patch: 0 };
-
-/** Minimum uv version required for Python CodeZip packaging */
-export const UV_MIN_VERSION: SemVer = { major: 0, minor: 9, patch: 2 };

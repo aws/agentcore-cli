@@ -266,7 +266,7 @@ export function useCdkPreflight(options: PreflightOptions): PreflightResult {
           return;
         }
 
-        // Step: Check dependencies (Node >= 18, uv >= 0.9.2 for Python CodeZip)
+        // Step: Check dependencies (Node >= 18, uv for Python CodeZip)
         updateStep(STEP_DEPS, { status: 'running' });
         logger.startStep('Check dependencies');
         try {

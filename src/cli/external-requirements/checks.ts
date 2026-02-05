@@ -3,7 +3,7 @@
  */
 import { checkSubprocess, isWindows, runSubprocessCapture } from '../../lib';
 import type { AgentCoreProjectSpec, TargetLanguage } from '../../schema';
-import { NODE_MIN_VERSION, UV_MIN_VERSION, formatSemVer, parseSemVer, semVerGte } from './versions';
+import { NODE_MIN_VERSION, formatSemVer, parseSemVer, semVerGte } from './versions';
 
 /**
  * Result of a version check.
@@ -21,15 +21,6 @@ export interface VersionCheckResult {
  */
 function parseNodeVersion(output: string): string | null {
   const match = /v?(\d+\.\d+\.\d+)/.exec(output.trim());
-  return match?.[1] ?? null;
-}
-
-/**
- * Extract version from `uv --version` output.
- * Expected format: "uv 0.9.2" or "uv 0.9.2 (abc123 2024-01-01)"
- */
-function parseUvVersion(output: string): string | null {
-  const match = /uv\s+(\d+\.\d+\.\d+)/.exec(output.trim());
   return match?.[1] ?? null;
 }
 
@@ -63,32 +54,19 @@ export async function checkNodeVersion(): Promise<VersionCheckResult> {
 }
 
 /**
- * Check that uv meets minimum version requirement.
+ * Check that uv is available in PATH.
  */
 export async function checkUvVersion(): Promise<VersionCheckResult> {
-  const required = formatSemVer(UV_MIN_VERSION);
-
   const result = await runSubprocessCapture('uv', ['--version']);
   if (result.code !== 0) {
-    return { satisfied: false, current: null, required, binary: 'uv' };
+    return { satisfied: false, current: null, required: 'any', binary: 'uv' };
   }
 
-  const versionStr = parseUvVersion(result.stdout);
-  if (!versionStr) {
-    return { satisfied: false, current: null, required, binary: 'uv' };
-  }
+  // Extract version for display in preflight logs
+  const match = /uv\s+(\d+\.\d+\.\d+)/.exec(result.stdout.trim());
+  const current = match?.[1] ?? 'unknown';
 
-  const current = parseSemVer(versionStr);
-  if (!current) {
-    return { satisfied: false, current: versionStr, required, binary: 'uv' };
-  }
-
-  return {
-    satisfied: semVerGte(current, UV_MIN_VERSION),
-    current: versionStr,
-    required,
-    binary: 'uv',
-  };
+  return { satisfied: true, current, required: 'any', binary: 'uv' };
 }
 
 /**
@@ -97,7 +75,7 @@ export async function checkUvVersion(): Promise<VersionCheckResult> {
 export function formatVersionError(result: VersionCheckResult): string {
   if (result.current === null) {
     if (result.binary === 'uv') {
-      return `'${result.binary}' not found. Install uv >= ${result.required} from https://github.com/astral-sh/uv#installation`;
+      return `'uv' not found. Install from https://github.com/astral-sh/uv#installation`;
     }
     return `'${result.binary}' not found. Install ${result.binary} >= ${result.required}`;
   }
@@ -124,7 +102,7 @@ export interface DependencyCheckResult {
 /**
  * Check that required dependency versions are met.
  * - Node >= 18 is always required for CDK synth
- * - uv >= 0.9.2 is required when there are Python CodeZip agents
+ * - uv is required when there are Python CodeZip agents
  */
 export async function checkDependencyVersions(projectSpec: AgentCoreProjectSpec): Promise<DependencyCheckResult> {
   const errors: string[] = [];
