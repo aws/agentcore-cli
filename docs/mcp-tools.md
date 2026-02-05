@@ -7,7 +7,7 @@ MCP (Model Context Protocol) tools extend agent capabilities.
 Deploy tools as AgentCore Runtimes bound directly to agents.
 
 ```bash
-agentcore-cli add mcp-tool --exposure mcp-runtime
+agentcore add mcp-tool --exposure mcp-runtime
 ```
 
 ### mcp.json Configuration
@@ -49,7 +49,7 @@ agentcore-cli add mcp-tool --exposure mcp-runtime
 After creating an MCP runtime tool, bind it to agents:
 
 ```bash
-agentcore-cli add bind mcp-runtime --agent MyAgent --runtime MyTool
+agentcore add bind mcp-runtime --agent MyAgent --runtime MyTool
 ```
 
 This adds a reference in `agentcore.json`:

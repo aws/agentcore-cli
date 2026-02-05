@@ -37,23 +37,23 @@ Use the terminal UI to walk through all commands interactively, or run each comm
 
 ```bash
 # Launch terminal UI
-agentcore-cli
+agentcore
 
 # Create a new project (wizard guides you through agent setup)
-agentcore-cli create
+agentcore create
 cd my-project
 
 # Test locally
-agentcore-cli dev
+agentcore dev
 
 # In another terminal:
-agentcore-cli invoke
+agentcore invoke
 
 # Deploy to AWS
-agentcore-cli deploy
+agentcore deploy
 
 # Invoke deployed agent
-agentcore-cli invoke --stream
+agentcore invoke --stream
 ```
 
 ## Supported Frameworks
@@ -144,14 +144,14 @@ Projects use JSON schema files in the `agentcore/` directory:
 
 ```bash
 # Interactive mode
-agentcore-cli invoke
+agentcore invoke
 
 # With prompt and streaming
-agentcore-cli invoke "What can you do?" --stream
+agentcore invoke "What can you do?" --stream
 
 # Session management
-agentcore-cli invoke --session-id <id>   # Continue conversation
-agentcore-cli invoke --new-session       # Start fresh
+agentcore invoke --session-id <id>   # Continue conversation
+agentcore invoke --new-session       # Start fresh
 ```
 
 ## Documentation

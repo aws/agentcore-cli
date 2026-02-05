@@ -99,7 +99,7 @@ npm link @aws/agentcore-l3-cdk-constructs
 
 ```bash
 cd /tmp && mkdir test-project && cd test-project
-agentcore-cli create
+agentcore create
 ```
 
 2. Link local CDK package in vended CDK:

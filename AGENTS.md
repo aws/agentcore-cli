@@ -30,7 +30,7 @@ Note: CDK L3 constructs are in a separate package `@aws/agentcore-l3-cdk-constru
 
 ## Vended CDK Project
 
-When users run `agentcore-cli create`, we vend a CDK project at `agentcore/cdk/` that:
+When users run `agentcore create`, we vend a CDK project at `agentcore/cdk/` that:
 
 - Imports `@aws/agentcore-l3-cdk-constructs` for L3 constructs
 - Reads schema files and synthesizes CloudFormation

@@ -6,16 +6,16 @@ The `dev` command runs your agent locally for testing before deployment.
 
 ```bash
 # Start dev server (auto-selects agent if only one)
-agentcore-cli dev
+agentcore dev
 
 # Specify agent
-agentcore-cli dev --agent MyAgent
+agentcore dev --agent MyAgent
 
 # Custom port
-agentcore-cli dev --port 3000
+agentcore dev --port 3000
 
 # Non-interactive mode (logs to stdout)
-agentcore-cli dev --logs
+agentcore dev --logs
 ```
 
 ## Invoking Local Agents
@@ -24,16 +24,16 @@ With the dev server running, open another terminal:
 
 ```bash
 # Interactive chat
-agentcore-cli invoke
+agentcore invoke
 
 # Single prompt
-agentcore-cli invoke "What can you do?"
+agentcore invoke "What can you do?"
 
 # With streaming
-agentcore-cli invoke "Tell me a story" --stream
+agentcore invoke "Tell me a story" --stream
 
 # Direct invoke to running server
-agentcore-cli dev --invoke "Hello" --stream
+agentcore dev --invoke "Hello" --stream
 ```
 
 ## Environment Setup
@@ -74,7 +74,7 @@ agentcore/.cli/logs/
 
 ```bash
 # Dev server with stdout logging
-agentcore-cli dev --logs
+agentcore dev --logs
 ```
 
 ### Common Issues
@@ -82,7 +82,7 @@ agentcore-cli dev --logs
 **Port already in use:**
 
 ```bash
-agentcore-cli dev --port 8081
+agentcore dev --port 8081
 ```
 
 **Missing dependencies:**

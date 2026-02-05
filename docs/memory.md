@@ -5,13 +5,13 @@ AgentCore Memory provides persistent context for agents across conversations.
 ## Adding Memory
 
 ```bash
-agentcore-cli add memory
+agentcore add memory
 ```
 
 Or with options:
 
 ```bash
-agentcore-cli add memory \
+agentcore add memory \
   --name SharedMemory \
   --strategies SEMANTIC,SUMMARIZATION \
   --expiry 30 \
@@ -117,10 +117,10 @@ To share memory between agents:
 
 ```bash
 # Create memory owned by AgentA
-agentcore-cli add memory --name SharedMemory --owner AgentA
+agentcore add memory --name SharedMemory --owner AgentA
 
 # Bind to AgentB with read access
-agentcore-cli add bind memory --agent AgentB --memory SharedMemory --access read
+agentcore add bind memory --agent AgentB --memory SharedMemory --access read
 ```
 
 ## Removal Policy

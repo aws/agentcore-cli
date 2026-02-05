@@ -5,7 +5,7 @@
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
   "bin": {
-    "agentcore-cli": "dist/cli/index.mjs"
+    "agentcore": "dist/cli/index.mjs"
   },
   "exports": {
     ".": {
