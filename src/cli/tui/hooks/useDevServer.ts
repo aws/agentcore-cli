@@ -75,10 +75,20 @@ export function useDevServer(options: { workingDir: string; port: number; agentN
     void load();
   }, [options.workingDir]);
 
-  const config: DevConfig = useMemo(
-    () => getDevConfig(options.workingDir, project, configRoot, options.agentName),
-    [options.workingDir, project, configRoot, options.agentName]
-  );
+  const config: DevConfig = useMemo(() => {
+    // Return a placeholder config while project is loading
+    // The actual config will be computed once configLoaded is true
+    if (!project) {
+      return {
+        agentName: options.agentName ?? 'loading',
+        module: '',
+        directory: options.workingDir,
+        hasConfig: false,
+        isPython: true,
+      };
+    }
+    return getDevConfig(options.workingDir, project, configRoot, options.agentName);
+  }, [options.workingDir, project, configRoot, options.agentName]);
 
   // Start server when config is loaded
   useEffect(() => {
