@@ -94,7 +94,12 @@ export const TARGET_LANGUAGE_OPTIONS = [
 
 export const EXPOSURE_MODE_OPTIONS = [
   { id: 'mcp-runtime', title: 'Direct', description: 'Deploy as AgentCore MCP Runtime (select agents to attach)' },
-  { id: 'behind-gateway', title: 'Behind Gateway', description: 'Route through AgentCore Gateway' },
+  {
+    id: 'behind-gateway',
+    title: 'Behind Gateway (coming soon)',
+    description: 'Route through AgentCore Gateway',
+    disabled: true,
+  },
 ] as const;
 
 export const COMPUTE_HOST_OPTIONS = [

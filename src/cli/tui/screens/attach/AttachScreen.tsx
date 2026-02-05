@@ -7,7 +7,7 @@ const ATTACH_RESOURCES = [
   { id: 'memory', title: 'Memory', description: 'Reference shared memory' },
   { id: 'identity', title: 'Identity', description: 'Reference shared credentials' },
   { id: 'mcp-runtime', title: 'MCP Runtime', description: 'Invoke MCP runtime tool' },
-  { id: 'gateway', title: 'Gateway', description: 'Access MCP gateway' },
+  { id: 'gateway', title: 'Gateway (coming soon)', description: 'Access MCP gateway', disabled: true },
 ] as const;
 
 export type AttachResourceType = (typeof ATTACH_RESOURCES)[number]['id'];
@@ -36,11 +36,12 @@ export function AttachScreen({
   availableMemories,
   availableIdentities,
   availableMcpRuntimes,
-  availableGateways,
+  // Gateway disabled - prefix with underscore until feature is re-enabled
+  availableGateways: _availableGateways,
 }: AttachScreenProps) {
   const items: SelectableItem[] = useMemo(() => {
     return ATTACH_RESOURCES.map(r => {
-      let disabled = false;
+      let disabled = ('disabled' in r && r.disabled) || false;
       let description: string = r.description;
 
       switch (r.id) {
@@ -68,17 +69,11 @@ export function AttachScreen({
             description = 'No MCP runtimes defined in mcp.json';
           }
           break;
-        case 'gateway':
-          if (availableGateways.length === 0) {
-            disabled = true;
-            description = 'No gateways defined in mcp.json';
-          }
-          break;
       }
 
       return { ...r, disabled, description };
     });
-  }, [otherAgents, availableMemories, availableIdentities, availableMcpRuntimes, availableGateways]);
+  }, [otherAgents, availableMemories, availableIdentities, availableMcpRuntimes]);
 
   const isDisabled = (item: SelectableItem) => item.disabled ?? false;
 

@@ -136,7 +136,8 @@ async function handleAttachMcpRuntimeCLI(options: AttachMcpRuntimeOptions): Prom
   process.exit(result.success ? 0 : 1);
 }
 
-async function handleAttachGatewayCLI(options: AttachGatewayOptions): Promise<void> {
+// Gateway disabled - rename to _handleAttachGatewayCLI until feature is re-enabled
+async function _handleAttachGatewayCLI(options: AttachGatewayOptions): Promise<void> {
   const validation = validateAttachGatewayOptions(options);
   if (!validation.valid) {
     if (options.json) {
@@ -230,15 +231,15 @@ export function registerAttach(program: Command) {
       await handleAttachMcpRuntimeCLI(options as AttachMcpRuntimeOptions);
     });
 
-  // Subcommand: attach gateway
+  // Subcommand: attach gateway (disabled - coming soon)
   attachCmd
     .command('gateway')
     .description('Attach an MCP gateway to an agent')
     .option('--agent <agent>', 'Agent to attach gateway to')
     .option('--gateway <gateway>', 'Gateway name to attach')
     .option('--json', 'Output as JSON')
-    .action(async options => {
-      requireProject();
-      await handleAttachGatewayCLI(options as AttachGatewayOptions);
+    .action(() => {
+      console.error('AgentCore Gateway integration is coming soon.');
+      process.exit(1);
     });
 }

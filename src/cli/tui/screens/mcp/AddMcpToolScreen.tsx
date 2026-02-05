@@ -41,7 +41,13 @@ export function AddMcpToolScreen({
   );
 
   const exposureItems: SelectableItem[] = useMemo(
-    () => EXPOSURE_MODE_OPTIONS.map(o => ({ id: o.id, title: o.title, description: o.description })),
+    () =>
+      EXPOSURE_MODE_OPTIONS.map(o => ({
+        id: o.id,
+        title: o.title,
+        description: o.description,
+        disabled: 'disabled' in o ? o.disabled : undefined,
+      })),
     []
   );
 

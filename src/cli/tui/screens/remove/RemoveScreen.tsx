@@ -4,11 +4,11 @@ import { useMemo } from 'react';
 
 const REMOVE_RESOURCES = [
   { id: 'agent', title: 'Agent', description: 'Remove an agent from the project' },
-  { id: 'gateway', title: 'Gateway', description: 'Remove an MCP gateway' },
   { id: 'mcp-tool', title: 'MCP Tool', description: 'Remove an MCP tool' },
   { id: 'memory', title: 'Memory', description: 'Remove a memory provider' },
   { id: 'identity', title: 'Identity', description: 'Remove an identity provider' },
   { id: 'target', title: 'Target', description: 'Remove an AWS deployment target' },
+  { id: 'gateway', title: 'Gateway (coming soon)', description: 'Remove an MCP gateway', disabled: true },
   { id: 'all', title: 'All', description: 'Reset entire agentcore project' },
 ] as const;
 
@@ -35,7 +35,8 @@ export function RemoveScreen({
   onSelect,
   onExit,
   agentCount,
-  gatewayCount,
+  // Gateway disabled - prefix with underscore until feature is re-enabled
+  gatewayCount: _gatewayCount,
   mcpToolCount,
   memoryCount,
   identityCount,
@@ -43,7 +44,7 @@ export function RemoveScreen({
 }: RemoveScreenProps) {
   const items: SelectableItem[] = useMemo(() => {
     return REMOVE_RESOURCES.map(r => {
-      let disabled = false;
+      let disabled = ('disabled' in r && r.disabled) || false;
       let description: string = r.description;
 
       switch (r.id) {
@@ -51,12 +52,6 @@ export function RemoveScreen({
           if (agentCount === 0) {
             disabled = true;
             description = 'No agents to remove';
-          }
-          break;
-        case 'gateway':
-          if (gatewayCount === 0) {
-            disabled = true;
-            description = 'No gateways to remove';
           }
           break;
         case 'mcp-tool':
@@ -90,7 +85,7 @@ export function RemoveScreen({
 
       return { ...r, disabled, description };
     });
-  }, [agentCount, gatewayCount, mcpToolCount, memoryCount, identityCount, targetCount]);
+  }, [agentCount, mcpToolCount, memoryCount, identityCount, targetCount]);
 
   const isDisabled = (item: SelectableItem) => item.disabled ?? false;
 

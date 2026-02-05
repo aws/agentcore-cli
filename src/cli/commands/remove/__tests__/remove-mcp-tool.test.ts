@@ -9,9 +9,7 @@ describe('remove mcp-tool command', () => {
   let testDir: string;
   let projectDir: string;
   const agentName = 'TestAgent';
-  const gatewayName = 'TestGateway';
   const runtimeToolName = 'RuntimeTool';
-  const gatewayToolName = 'GatewayTool';
 
   beforeAll(async () => {
     testDir = join(tmpdir(), `agentcore-remove-mcp-tool-${randomUUID()}`);
@@ -48,12 +46,6 @@ describe('remove mcp-tool command', () => {
       throw new Error(`Failed to create agent: ${result.stdout} ${result.stderr}`);
     }
 
-    // Add gateway
-    result = await runCLI(['add', 'gateway', '--name', gatewayName, '--json'], projectDir);
-    if (result.exitCode !== 0) {
-      throw new Error(`Failed to create gateway: ${result.stdout} ${result.stderr}`);
-    }
-
     // Add mcp-runtime tool
     result = await runCLI(
       [
@@ -73,29 +65,6 @@ describe('remove mcp-tool command', () => {
     );
     if (result.exitCode !== 0) {
       throw new Error(`Failed to create runtime tool: ${result.stdout} ${result.stderr}`);
-    }
-
-    // Add behind-gateway tool
-    result = await runCLI(
-      [
-        'add',
-        'mcp-tool',
-        '--name',
-        gatewayToolName,
-        '--language',
-        'Python',
-        '--exposure',
-        'behind-gateway',
-        '--gateway',
-        gatewayName,
-        '--host',
-        'Lambda',
-        '--json',
-      ],
-      projectDir
-    );
-    if (result.exitCode !== 0) {
-      throw new Error(`Failed to create gateway tool: ${result.stdout} ${result.stderr}`);
     }
   });
 
@@ -160,7 +129,8 @@ describe('remove mcp-tool command', () => {
     });
   });
 
-  describe('remove behind-gateway tool', () => {
+  // Gateway disabled - skip behind-gateway tests until gateway feature is enabled
+  describe.skip('remove behind-gateway tool', () => {
     it('removes behind-gateway tool from gateway targets', async () => {
       // Create a fresh gateway for this test to avoid conflicts with existing tools
       const tempGateway = `TempGw${Date.now()}`;

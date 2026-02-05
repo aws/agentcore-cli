@@ -95,7 +95,8 @@ async function handleAddAgentCLI(options: AddAgentOptions): Promise<void> {
   process.exit(result.success ? 0 : 1);
 }
 
-async function handleAddGatewayCLI(options: AddGatewayOptions): Promise<void> {
+// Gateway disabled - rename to _handleAddGatewayCLI until feature is re-enabled
+async function _handleAddGatewayCLI(options: AddGatewayOptions): Promise<void> {
   const validation = validateAddGatewayOptions(options);
   if (!validation.valid) {
     if (options.json) {
@@ -280,7 +281,7 @@ export function registerAdd(program: Command) {
       await handleAddAgentCLI(options as AddAgentOptions);
     });
 
-  // Subcommand: add gateway
+  // Subcommand: add gateway (disabled - coming soon)
   addCmd
     .command('gateway')
     .description('Add an MCP gateway to the project')
@@ -292,9 +293,9 @@ export function registerAdd(program: Command) {
     .option('--allowed-clients <values>', 'Comma-separated allowed client IDs (required for CUSTOM_JWT)')
     .option('--agents <names>', 'Comma-separated agent names to attach gateway to')
     .option('--json', 'Output as JSON')
-    .action(async options => {
-      requireProject();
-      await handleAddGatewayCLI(options as AddGatewayOptions);
+    .action(() => {
+      console.error("AgentCore Gateway integration is coming soon. Use 'add mcp-tool' with Direct exposure instead.");
+      process.exit(1);
     });
 
   // Subcommand: add mcp-tool

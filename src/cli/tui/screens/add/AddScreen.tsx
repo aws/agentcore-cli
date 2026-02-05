@@ -4,11 +4,11 @@ import { useMemo } from 'react';
 
 const ADD_RESOURCES = [
   { id: 'agent', title: 'Agent', description: 'New or existing agent code' },
-  { id: 'gateway', title: 'Gateway', description: 'Route and manage MCP tools' },
   { id: 'mcp-tool', title: 'MCP Tool', description: 'Extend agent capabilities' },
   { id: 'memory', title: 'Memory', description: 'Persistent context storage' },
   { id: 'identity', title: 'Identity', description: 'API key credential providers' },
   { id: 'target', title: 'Target', description: 'AWS deployment target' },
+  { id: 'gateway', title: 'Gateway (coming soon)', description: 'Route and manage MCP tools', disabled: true },
 ] as const;
 
 export type AddResourceType = (typeof ADD_RESOURCES)[number]['id'];
@@ -25,7 +25,7 @@ export function AddScreen({ onSelect, onExit, hasAgents }: AddScreenProps) {
     () =>
       ADD_RESOURCES.map(r => ({
         ...r,
-        disabled: (r.id === 'memory' || r.id === 'identity') && !hasAgents,
+        disabled: ('disabled' in r && r.disabled) || ((r.id === 'memory' || r.id === 'identity') && !hasAgents),
         description: (r.id === 'memory' || r.id === 'identity') && !hasAgents ? 'Add an agent first' : r.description,
       })),
     [hasAgents]
