@@ -125,8 +125,12 @@ describe('remove memory command', () => {
     });
 
     it('removes memory with users using cascade policy (default)', async () => {
-      // Attach memory to user agent
-      await runCLI(['attach', 'memory', '--agent', userAgent, '--memory', memoryName, '--json'], projectDir);
+      // Bind memory to user agent
+      const bindResult = await runCLI(
+        ['add', 'bind', 'memory', '--agent', userAgent, '--memory', memoryName, '--json'],
+        projectDir
+      );
+      expect(bindResult.exitCode, `bind failed: ${bindResult.stdout}`).toBe(0);
 
       // Remove with cascade policy (default) - should succeed and clean up references
       const result = await runCLI(['remove', 'memory', '--name', memoryName, '--json'], projectDir);

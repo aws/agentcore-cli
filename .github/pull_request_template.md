@@ -24,7 +24,7 @@
 
 How have you tested the change?
 
-- [ ] I ran `npm test`
+- [ ] I ran `npm run test:all`
 - [ ] I ran `npm run typecheck`
 - [ ] I ran `npm run lint`
 

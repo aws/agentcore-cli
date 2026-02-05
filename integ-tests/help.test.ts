@@ -13,7 +13,6 @@ const COMMANDS = [
   'attach',
   'remove',
   'edit',
-  'outline',
   'package',
   'update',
 ];

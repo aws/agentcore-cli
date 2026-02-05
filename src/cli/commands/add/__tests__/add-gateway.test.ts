@@ -5,7 +5,8 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
-describe('add gateway command', () => {
+// Gateway disabled - skip until gateway feature is enabled
+describe.skip('add gateway command', () => {
   let testDir: string;
   let projectDir: string;
 

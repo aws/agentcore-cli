@@ -1,10 +1,18 @@
-# @aws/agentcore-cli
+<div align="center">
+  <h1>AgentCore CLI</h1>
+  <h2>Create, develop, and deploy AI agents to Amazon Bedrock AgentCore</h2>
+</div>
 
-CLI tool for Amazon Bedrock AgentCore. Create, develop, and deploy agentic applications on AWS.
+## Overview
 
-## Prerequisites
+Amazon Bedrock AgentCore enables you to deploy and operate AI agents securely at scale using any framework and model.
+AgentCore provides tools and capabilities to make agents more effective, purpose-built infrastructure to securely scale
+agents, and controls to operate trustworthy agents. This CLI helps you create, develop locally, and deploy agents to
+AgentCore with minimal configuration.
 
-- **Node.js** 18.x or later
+## 🚀 Jump Into AgentCore
+
+- **Node.js** 20.x or later
 - **AWS CLI** configured with credentials
 - **uv** for Python agents ([install](https://docs.astral.sh/uv/getting-started/installation/))
 - **AWS CDK** bootstrapped: `npx cdk bootstrap aws://ACCOUNT_ID/REGION`
@@ -15,23 +23,37 @@ CLI tool for Amazon Bedrock AgentCore. Create, develop, and deploy agentic appli
 npm install -g @aws/agentcore-cli
 ```
 
+> **Public Preview**: If you previously used the
+> [Bedrock AgentCore Starter Toolkit](https://github.com/aws/bedrock-agentcore-starter-toolkit), uninstall it before
+> using this CLI:
+>
+> ```bash
+> pip uninstall bedrock-agentcore-starter-toolkit
+> ```
+
 ## Quick Start
 
+Use the terminal UI to walk through all commands interactively, or run each command individually:
+
 ```bash
+# Launch terminal UI
+agentcore
+
 # Create a new project (wizard guides you through agent setup)
-agentcore-cli create
+agentcore create
 cd my-project
 
 # Test locally
-agentcore-cli dev
+agentcore dev
+
 # In another terminal:
-agentcore-cli invoke
+agentcore invoke
 
 # Deploy to AWS
-agentcore-cli deploy
+agentcore deploy
 
 # Invoke deployed agent
-agentcore-cli invoke --stream
+agentcore invoke --stream
 ```
 
 ## Supported Frameworks
@@ -42,17 +64,17 @@ agentcore-cli invoke --stream
 | LangChain/LangGraph | Graph-based workflows         |
 | AutoGen             | Multi-agent conversations     |
 | CrewAI              | Role-based agent teams        |
-| Google ADK          | Gemini only                   |
-| OpenAI Agents       | OpenAI only                   |
+| Google ADK          | Gemini models only            |
+| OpenAI Agents       | OpenAI models only            |
 
 ## Supported Model Providers
 
-| Provider       | API Key Required          | Default Model              |
-| -------------- | ------------------------- | -------------------------- |
-| Amazon Bedrock | No (uses AWS credentials) | Claude Sonnet 4.5          |
-| Anthropic      | Yes                       | claude-sonnet-4-5-20250929 |
-| Google Gemini  | Yes                       | gemini-2.0-flash           |
-| OpenAI         | Yes                       | gpt-4o                     |
+| Provider       | API Key Required          | Default Model                 |
+| -------------- | ------------------------- | ----------------------------- |
+| Amazon Bedrock | No (uses AWS credentials) | claude-sonnet-4-5-20250929-v1 |
+| Anthropic      | Yes                       | claude-sonnet-4-5-20250929    |
+| Google Gemini  | Yes                       | gemini-2.5-flash              |
+| OpenAI         | Yes                       | gpt-4o                        |
 
 ## Commands
 
@@ -62,18 +84,16 @@ agentcore-cli invoke --stream
 | ---------- | ------------------------------ |
 | `create`   | Create a new AgentCore project |
 | `validate` | Validate configuration files   |
-| `plan`     | Preview infrastructure changes |
 | `deploy`   | Deploy infrastructure to AWS   |
 | `status`   | Check deployment status        |
 | `destroy`  | Tear down deployed resources   |
 
 ### Resource Management
 
-| Command  | Description                                       |
-| -------- | ------------------------------------------------- |
-| `add`    | Add agents, memory, identity, MCP tools, gateways |
-| `remove` | Remove resources from project                     |
-| `attach` | Connect resources to agents                       |
+| Command  | Description                             |
+| -------- | --------------------------------------- |
+| `add`    | Add agents, memory, identity, MCP tools |
+| `remove` | Remove resources from project           |
 
 ### Development
 
@@ -85,11 +105,9 @@ agentcore-cli invoke --stream
 
 ### Utilities
 
-| Command   | Description                   |
-| --------- | ----------------------------- |
-| `outline` | Display project resource tree |
-| `edit`    | Interactive schema editor     |
-| `update`  | Check for CLI updates         |
+| Command  | Description           |
+| -------- | --------------------- |
+| `update` | Check for CLI updates |
 
 ## Project Structure
 
@@ -98,7 +116,6 @@ my-project/
 ├── agentcore/
 │   ├── agentcore.json      # Agent specifications
 │   ├── aws-targets.json    # Deployment targets
-│   ├── mcp.json            # MCP gateway/tool config
 │   └── cdk/                # CDK infrastructure
 ├── app/                    # Agent code
 └── .env.local              # API keys (gitignored)
@@ -110,36 +127,33 @@ Projects use JSON schema files in the `agentcore/` directory:
 
 - `agentcore.json` - Agent specifications, memory, identity, remote tools
 - `aws-targets.json` - Deployment targets (account, region)
-- `mcp.json` - MCP gateway and tool definitions
 - `deployed-state.json` - Runtime state (auto-managed)
 
 ## Primitives
 
 - **Memory** - Semantic, summarization, and user preference strategies
 - **Identity** - Secure API key management via Secrets Manager
-- **MCP Gateway** - HTTP endpoints exposing tools to agents
-- **MCP Runtime Tools** - Direct agent-to-tool connections
 - **Agent-to-Agent** - Agents invoking other agents as tools
 
 ## Invoking Agents
 
 ```bash
 # Interactive mode
-agentcore-cli invoke
+agentcore invoke
 
 # With prompt and streaming
-agentcore-cli invoke "What can you do?" --stream
+agentcore invoke "What can you do?" --stream
 
 # Session management
-agentcore-cli invoke --session-id <id>   # Continue conversation
-agentcore-cli invoke --new-session       # Start fresh
+agentcore invoke --session-id <id>   # Continue conversation
+agentcore invoke --new-session       # Start fresh
 ```
 
 ## Documentation
 
 - [CLI Commands Reference](docs/commands.md) - Full command reference for scripting and CI/CD
 - [Configuration](docs/configuration.md) - Schema reference for config files
-- [MCP Tools](docs/mcp-tools.md) - MCP runtime vs gateway modes
+- [MCP Tools](docs/mcp-tools.md) - MCP runtime tools
 - [Memory](docs/memory.md) - Memory strategies and sharing
 - [Local Development](docs/local-development.md) - Dev server and debugging
 

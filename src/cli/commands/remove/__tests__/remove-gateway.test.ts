@@ -5,7 +5,8 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
-describe('remove gateway command', () => {
+// Gateway disabled - skip until gateway feature is enabled
+describe.skip('remove gateway command', () => {
   let testDir: string;
   let projectDir: string;
   const gatewayName = 'TestGateway';
@@ -93,8 +94,12 @@ describe('remove gateway command', () => {
     });
 
     it('removes gateway with attached agents using cascade policy (default)', async () => {
-      // Attach gateway to agent
-      await runCLI(['attach', 'gateway', '--agent', agentName, '--gateway', gatewayName, '--json'], projectDir);
+      // Bind gateway to agent
+      const bindResult = await runCLI(
+        ['add', 'bind', 'gateway', '--agent', agentName, '--gateway', gatewayName, '--name', 'GatewayTool', '--json'],
+        projectDir
+      );
+      expect(bindResult.exitCode, `bind failed: ${bindResult.stdout}`).toBe(0);
 
       // Remove with cascade policy (default) - should succeed and clean up references
       const result = await runCLI(['remove', 'gateway', '--name', gatewayName, '--json'], projectDir);

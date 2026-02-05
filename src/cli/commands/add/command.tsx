@@ -103,7 +103,8 @@ async function handleAddAgentCLI(options: AddAgentOptions): Promise<void> {
   process.exit(result.success ? 0 : 1);
 }
 
-async function handleAddGatewayCLI(options: AddGatewayOptions): Promise<void> {
+// Gateway disabled - rename to _handleAddGatewayCLI until feature is re-enabled
+async function _handleAddGatewayCLI(options: AddGatewayOptions): Promise<void> {
   const validation = validateAddGatewayOptions(options);
   if (!validation.valid) {
     if (options.json) {
@@ -257,6 +258,165 @@ async function handleBindMcpRuntimeCLI(options: BindMcpRuntimeOptions): Promise<
   process.exit(result.success ? 0 : 1);
 }
 
+// Bind CLI handlers
+async function handleBindMemoryCLI(options: BindMemoryOptions): Promise<void> {
+  if (!options.agent || !options.memory) {
+    const error = 'Required: --agent, --memory';
+    if (options.json) {
+      console.log(JSON.stringify({ success: false, error }));
+    } else {
+      console.error(error);
+    }
+    process.exit(1);
+  }
+
+  const envVar = options.envVar ?? `${options.memory.toUpperCase().replace(/[^A-Z0-9]/g, '_')}_MEMORY_ID`;
+  const result = await handleBindMemory({
+    agent: options.agent,
+    memory: options.memory,
+    access: options.access! ?? 'read',
+    envVar,
+  });
+
+  if (options.json) {
+    console.log(JSON.stringify(result));
+  } else if (result.success) {
+    console.log(`Bound memory '${result.memoryName}' to agent '${result.targetAgent}'`);
+  } else {
+    console.error(result.error);
+  }
+
+  process.exit(result.success ? 0 : 1);
+}
+
+async function handleBindIdentityCLI(options: BindIdentityOptions): Promise<void> {
+  if (!options.agent || !options.identity) {
+    const error = 'Required: --agent, --identity';
+    if (options.json) {
+      console.log(JSON.stringify({ success: false, error }));
+    } else {
+      console.error(error);
+    }
+    process.exit(1);
+  }
+
+  const envVar = options.envVar ?? `${options.identity.toUpperCase().replace(/[^A-Z0-9]/g, '_')}_CREDENTIAL_ID`;
+  const result = await handleBindIdentity({
+    agent: options.agent,
+    identity: options.identity,
+    envVar,
+  });
+
+  if (options.json) {
+    console.log(JSON.stringify(result));
+  } else if (result.success) {
+    console.log(`Bound identity '${result.identityName}' to agent '${result.targetAgent}'`);
+  } else {
+    console.error(result.error);
+  }
+
+  process.exit(result.success ? 0 : 1);
+}
+
+async function handleBindGatewayCLI(options: BindGatewayOptions): Promise<void> {
+  if (!options.agent || !options.gateway) {
+    const error = 'Required: --agent, --gateway';
+    if (options.json) {
+      console.log(JSON.stringify({ success: false, error }));
+    } else {
+      console.error(error);
+    }
+    process.exit(1);
+  }
+
+  const name = options.name ?? `${options.gateway}-provider`;
+  const description = options.description ?? `Tools provided by ${options.gateway} gateway`;
+  const envVar = options.envVar ?? `${name.toUpperCase().replace(/[^A-Z0-9]/g, '_')}_URL`;
+
+  const result = await handleBindGateway({
+    agent: options.agent,
+    gateway: options.gateway,
+    name,
+    description,
+    envVar,
+  });
+
+  if (options.json) {
+    console.log(JSON.stringify(result));
+  } else if (result.success) {
+    console.log(`Bound gateway '${result.gatewayName}' to agent '${result.targetAgent}'`);
+  } else {
+    console.error(result.error);
+  }
+
+  process.exit(result.success ? 0 : 1);
+}
+
+async function handleBindMcpRuntimeCLI(options: BindMcpRuntimeOptions): Promise<void> {
+  if (!options.agent || !options.runtime) {
+    const error = 'Required: --agent, --runtime';
+    if (options.json) {
+      console.log(JSON.stringify({ success: false, error }));
+    } else {
+      console.error(error);
+    }
+    process.exit(1);
+  }
+
+  const envVar = options.envVar ?? `${options.runtime.toUpperCase().replace(/[^A-Z0-9]/g, '_')}_MCP_RUNTIME_URL`;
+  const result = await handleBindMcpRuntime({
+    agent: options.agent,
+    runtime: options.runtime,
+    envVar,
+  });
+
+  if (options.json) {
+    console.log(JSON.stringify(result));
+  } else if (result.success) {
+    console.log(`Bound MCP runtime '${result.runtimeName}' to agent '${result.targetAgent}'`);
+  } else {
+    console.error(result.error);
+  }
+
+  process.exit(result.success ? 0 : 1);
+}
+
+async function handleBindAgentCLI(options: BindAgentOptions): Promise<void> {
+  if (!options.source || !options.target) {
+    const error = 'Required: --source, --target';
+    if (options.json) {
+      console.log(JSON.stringify({ success: false, error }));
+    } else {
+      console.error(error);
+    }
+    process.exit(1);
+  }
+
+  const name = options.name ?? `invoke${options.target.replace(/[^a-zA-Z0-9]/g, '')}`;
+  const description = options.description ?? `Invoke the ${options.target} agent`;
+  const envVar = options.envVar ?? `${name.toUpperCase().replace(/[^A-Z0-9]/g, '_')}_AGENT_ID`;
+
+  const result = await handleBindAgent({
+    source: options.source,
+    target: options.target,
+    name,
+    description,
+    envVar,
+  });
+
+  if (options.json) {
+    console.log(JSON.stringify(result));
+  } else if (result.success) {
+    console.log(
+      `Bound agent '${result.targetAgent}' as remote tool '${result.toolName}' to agent '${result.sourceAgent}'`
+    );
+  } else {
+    console.error(result.error);
+  }
+
+  process.exit(result.success ? 0 : 1);
+}
+
 export function registerAdd(program: Command) {
   const addCmd = program
     .command('add')
@@ -308,7 +468,7 @@ export function registerAdd(program: Command) {
       await handleAddAgentCLI(options as AddAgentOptions);
     });
 
-  // Subcommand: add gateway
+  // Subcommand: add gateway (disabled - coming soon)
   addCmd
     .command('gateway')
     .description('Add an MCP gateway to the project')
@@ -320,9 +480,9 @@ export function registerAdd(program: Command) {
     .option('--allowed-clients <values>', 'Comma-separated allowed client IDs (required for CUSTOM_JWT)')
     .option('--agents <names>', 'Comma-separated agent names to attach gateway to')
     .option('--json', 'Output as JSON')
-    .action(async options => {
-      requireProject();
-      await handleAddGatewayCLI(options as AddGatewayOptions);
+    .action(() => {
+      console.error("AgentCore Gateway integration is coming soon. Use 'add mcp-tool' with Direct exposure instead.");
+      process.exit(1);
     });
 
   // Subcommand: add mcp-tool
@@ -355,7 +515,11 @@ export function registerAdd(program: Command) {
     .option('--json', 'Output as JSON')
     .action(async options => {
       requireProject();
-      await handleAddMemoryCLI(options as AddMemoryOptions);
+      if (options.bind) {
+        await handleBindMemoryCLI(options as BindMemoryOptions);
+      } else {
+        await handleAddMemoryCLI(options as AddMemoryOptions);
+      }
     });
 
   // Subcommand: add identity (v2: top-level credential resource)
@@ -367,7 +531,7 @@ export function registerAdd(program: Command) {
     .option('--json', 'Output as JSON')
     .action(async options => {
       requireProject();
-      await handleAddIdentityCLI(options as AddIdentityOptions);
+      await handleBindAgentCLI(options as BindAgentOptions);
     });
 
   // Subcommand: add bind (only MCP runtime binding in v2)

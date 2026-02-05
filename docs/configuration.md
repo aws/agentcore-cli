@@ -8,7 +8,7 @@ AgentCore projects use JSON configuration files in the `agentcore/` directory.
 | --------------------- | ------------------------------------------- |
 | `agentcore.json`      | Project and agent definitions               |
 | `aws-targets.json`    | Deployment targets                          |
-| `mcp.json`            | MCP gateways and runtime tools              |
+| `mcp.json`            | MCP runtime tools                           |
 | `deployed-state.json` | Runtime state (auto-managed, do not edit)   |
 | `.env.local`          | API keys for local development (gitignored) |
 
@@ -62,7 +62,7 @@ Main project configuration containing agents and their capabilities.
 | `targetLanguage`    | Yes      | `Python` or `TypeScript`                                                           |
 | `modelProvider`     | Yes      | `Bedrock`, `Anthropic`, `OpenAI`, `Gemini`                                         |
 | `runtime`           | Yes      | Runtime configuration                                                              |
-| `mcpProviders`      | Yes      | MCP gateway references                                                             |
+| `mcpProviders`      | Yes      | MCP tool references                                                                |
 | `memoryProviders`   | Yes      | Memory configurations                                                              |
 | `identityProviders` | Yes      | Identity/API key configurations                                                    |
 | `remoteTools`       | Yes      | Agent-to-agent and MCP runtime references                                          |
@@ -215,11 +215,10 @@ current list.
 
 ## mcp.json
 
-MCP gateway and runtime tool definitions. See [MCP Tools](./mcp-tools.md) for details.
+MCP runtime tool definitions. See [MCP Tools](./mcp-tools.md) for details.
 
 ```json
 {
-  "agentCoreGateways": [...],
   "mcpRuntimeTools": [...]
 }
 ```

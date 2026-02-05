@@ -9,7 +9,7 @@ describe('add mcp-tool command', () => {
   let testDir: string;
   let projectDir: string;
   const agentName = 'TestAgent';
-  const gatewayName = 'test-gateway';
+  const gatewayName = 'test-gateway'; // Used in skipped behind-gateway tests
 
   beforeAll(async () => {
     testDir = join(tmpdir(), `agentcore-add-mcp-tool-${randomUUID()}`);
@@ -44,12 +44,6 @@ describe('add mcp-tool command', () => {
     );
     if (result.exitCode !== 0) {
       throw new Error(`Failed to create agent: ${result.stdout} ${result.stderr}`);
-    }
-
-    // Add gateway for behind-gateway tests
-    result = await runCLI(['add', 'gateway', '--name', gatewayName, '--json'], projectDir);
-    if (result.exitCode !== 0) {
-      throw new Error(`Failed to create gateway: ${result.stdout} ${result.stderr}`);
     }
   });
 
@@ -202,7 +196,8 @@ describe('add mcp-tool command', () => {
     });
   });
 
-  describe('behind-gateway', () => {
+  // Gateway disabled - skip behind-gateway tests until gateway feature is enabled
+  describe.skip('behind-gateway', () => {
     it('creates behind-gateway tool', async () => {
       const toolName = `gwtool${Date.now()}`;
       const result = await runCLI(

@@ -142,9 +142,20 @@ export const registerRemove = (program: Command) => {
     });
 
   registerResourceRemove(removeCommand, 'agent', 'agent', 'Remove an agent from the project');
-  registerResourceRemove(removeCommand, 'gateway', 'gateway', 'Remove a gateway from the project');
   registerResourceRemove(removeCommand, 'mcp-tool', 'mcp-tool', 'Remove an MCP tool from the project');
   registerResourceRemove(removeCommand, 'memory', 'memory', 'Remove a memory provider from the project');
   registerResourceRemove(removeCommand, 'identity', 'identity', 'Remove an identity provider from the project');
   registerResourceRemove(removeCommand, 'target', 'target', 'Remove a deployment target from the project');
+
+  // Gateway disabled - replace with registerResourceRemove() call when enabling
+  removeCommand
+    .command('gateway')
+    .description('Remove a gateway from the project')
+    .option('--name <name>', 'Name of resource to remove')
+    .option('--force', 'Skip confirmation prompt')
+    .option('--json', 'Output as JSON')
+    .action(() => {
+      console.error('AgentCore Gateway integration is coming soon.');
+      process.exit(1);
+    });
 };

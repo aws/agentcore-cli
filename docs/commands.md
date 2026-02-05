@@ -10,13 +10,13 @@ Create a new AgentCore project.
 
 ```bash
 # Interactive wizard
-agentcore-cli create
+agentcore create
 
 # Fully non-interactive with defaults
-agentcore-cli create --name MyProject --defaults
+agentcore create --name MyProject --defaults
 
 # Custom configuration
-agentcore-cli create \
+agentcore create \
   --name MyProject \
   --framework Strands \
   --model-provider Bedrock \
@@ -24,10 +24,10 @@ agentcore-cli create \
   --output-dir ./projects
 
 # Skip agent creation
-agentcore-cli create --name MyProject --no-agent
+agentcore create --name MyProject --no-agent
 
 # Preview without creating
-agentcore-cli create --name MyProject --defaults --dry-run
+agentcore create --name MyProject --defaults --dry-run
 ```
 
 | Flag                   | Description                                                                        |
@@ -46,33 +46,15 @@ agentcore-cli create --name MyProject --defaults --dry-run
 | `--dry-run`            | Preview without creating                                                           |
 | `--json`               | JSON output                                                                        |
 
-### plan
-
-Preview infrastructure changes before deploying.
-
-```bash
-agentcore-cli plan
-agentcore-cli plan --target production
-agentcore-cli plan --target dev --deploy  # Plan then deploy
-agentcore-cli plan -y --json              # Auto-confirm, JSON output
-```
-
-| Flag              | Description                  |
-| ----------------- | ---------------------------- |
-| `--target <name>` | Deployment target            |
-| `-y, --yes`       | Auto-confirm prompts         |
-| `--deploy`        | Deploy after successful plan |
-| `--json`          | JSON output                  |
-
 ### deploy
 
 Deploy infrastructure to AWS.
 
 ```bash
-agentcore-cli deploy
-agentcore-cli deploy --target production
-agentcore-cli deploy -y --progress        # Auto-confirm with progress
-agentcore-cli deploy -v --json            # Verbose JSON output
+agentcore deploy
+agentcore deploy --target production
+agentcore deploy -y --progress        # Auto-confirm with progress
+agentcore deploy -v --json            # Verbose JSON output
 ```
 
 | Flag              | Description           |
@@ -88,8 +70,8 @@ agentcore-cli deploy -v --json            # Verbose JSON output
 Tear down deployed resources.
 
 ```bash
-agentcore-cli destroy
-agentcore-cli destroy --target dev -y     # Auto-confirm
+agentcore destroy
+agentcore destroy --target dev -y     # Auto-confirm
 ```
 
 | Flag              | Description       |
@@ -103,9 +85,9 @@ agentcore-cli destroy --target dev -y     # Auto-confirm
 Check deployment status.
 
 ```bash
-agentcore-cli status
-agentcore-cli status --agent MyAgent
-agentcore-cli status --target production
+agentcore status
+agentcore status --agent MyAgent
+agentcore status --target production
 ```
 
 | Flag                      | Description         |
@@ -119,8 +101,8 @@ agentcore-cli status --target production
 Validate configuration files.
 
 ```bash
-agentcore-cli validate
-agentcore-cli validate -d ./my-project
+agentcore validate
+agentcore validate -d ./my-project
 ```
 
 | Flag                     | Description       |
@@ -137,14 +119,14 @@ Add an agent to the project.
 
 ```bash
 # Create new agent from template
-agentcore-cli add agent \
+agentcore add agent \
   --name MyAgent \
   --framework Strands \
   --model-provider Bedrock \
   --memory shortTerm
 
 # Bring your own code
-agentcore-cli add agent \
+agentcore add agent \
   --name MyAgent \
   --type byo \
   --code-location ./my-agent \
@@ -172,7 +154,7 @@ agentcore-cli add agent \
 Add a memory resource.
 
 ```bash
-agentcore-cli add memory \
+agentcore add memory \
   --name SharedMemory \
   --strategies SEMANTIC,SUMMARIZATION \
   --expiry 30 \
@@ -195,7 +177,7 @@ agentcore-cli add memory \
 Add an identity provider (API key).
 
 ```bash
-agentcore-cli add identity \
+agentcore add identity \
   --name OpenAI \
   --type ApiKeyCredentialProvider \
   --api-key sk-... \
@@ -211,74 +193,33 @@ agentcore-cli add identity \
 | `--users <agents>` | Comma-separated users      |
 | `--json`           | JSON output                |
 
-### add gateway
-
-Add an MCP gateway.
-
-```bash
-# Basic gateway
-agentcore-cli add gateway \
-  --name main-gateway \
-  --agents MyAgent
-
-# With JWT authorization
-agentcore-cli add gateway \
-  --name secure-gateway \
-  --authorizer-type CUSTOM_JWT \
-  --discovery-url "https://cognito-idp.us-west-2.amazonaws.com/xxx/.well-known/openid-configuration" \
-  --allowed-audience client-id \
-  --allowed-clients client-id
-```
-
-| Flag                        | Description                          |
-| --------------------------- | ------------------------------------ |
-| `--name <name>`             | Gateway name                         |
-| `--description <desc>`      | Description                          |
-| `--authorizer-type <type>`  | `NONE` (default) or `CUSTOM_JWT`     |
-| `--discovery-url <url>`     | OIDC discovery URL (for JWT)         |
-| `--allowed-audience <vals>` | Comma-separated audiences (for JWT)  |
-| `--allowed-clients <vals>`  | Comma-separated client IDs (for JWT) |
-| `--agents <names>`          | Comma-separated agents to attach     |
-| `--json`                    | JSON output                          |
-
 ### add mcp-tool
 
 Add an MCP tool.
 
 ```bash
-# Direct runtime tool
-agentcore-cli add mcp-tool \
+agentcore add mcp-tool \
   --name MyTool \
   --language Python \
   --exposure mcp-runtime \
   --agents MyAgent
-
-# Behind gateway
-agentcore-cli add mcp-tool \
-  --name MyTool \
-  --language Python \
-  --exposure behind-gateway \
-  --gateway main-gateway \
-  --host Lambda
 ```
 
-| Flag                   | Description                                         |
-| ---------------------- | --------------------------------------------------- |
-| `--name <name>`        | Tool name                                           |
-| `--description <desc>` | Description                                         |
-| `--language <lang>`    | `Python` or `TypeScript`                            |
-| `--exposure <mode>`    | `mcp-runtime` or `behind-gateway`                   |
-| `--agents <names>`     | Agents (for mcp-runtime)                            |
-| `--gateway <name>`     | Gateway (for behind-gateway)                        |
-| `--host <host>`        | `Lambda` or `AgentCoreRuntime` (for behind-gateway) |
-| `--json`               | JSON output                                         |
+| Flag                   | Description              |
+| ---------------------- | ------------------------ |
+| `--name <name>`        | Tool name                |
+| `--description <desc>` | Description              |
+| `--language <lang>`    | `Python` or `TypeScript` |
+| `--exposure <mode>`    | `mcp-runtime`            |
+| `--agents <names>`     | Agents to attach         |
+| `--json`               | JSON output              |
 
 ### add target
 
 Add a deployment target.
 
 ```bash
-agentcore-cli add target \
+agentcore add target \
   --name production \
   --account 123456789012 \
   --region us-west-2 \
@@ -293,25 +234,22 @@ agentcore-cli add target \
 | `--description <desc>` | Description    |
 | `--json`               | JSON output    |
 
-### attach
+### add bind
 
 Connect resources to agents.
 
 ```bash
 # Agent-to-agent
-agentcore-cli attach agent --source CallerAgent --target HelperAgent
+agentcore add bind agent --source CallerAgent --target HelperAgent
 
 # Memory
-agentcore-cli attach memory --agent MyAgent --memory SharedMemory --access read
+agentcore add bind memory --agent MyAgent --memory SharedMemory --access read
 
 # Identity
-agentcore-cli attach identity --agent MyAgent --identity OpenAI
+agentcore add bind identity --agent MyAgent --identity OpenAI
 
 # MCP runtime
-agentcore-cli attach mcp-runtime --agent MyAgent --runtime MyTool
-
-# Gateway
-agentcore-cli attach gateway --agent MyAgent --gateway main-gateway
+agentcore add bind mcp-runtime --agent MyAgent --runtime MyTool
 ```
 
 ### remove
@@ -319,16 +257,15 @@ agentcore-cli attach gateway --agent MyAgent --gateway main-gateway
 Remove resources from project.
 
 ```bash
-agentcore-cli remove agent --name MyAgent --force
-agentcore-cli remove memory --name SharedMemory
-agentcore-cli remove gateway --name main-gateway
-agentcore-cli remove mcp-tool --name MyTool
-agentcore-cli remove identity --name OpenAI
-agentcore-cli remove target --name dev
+agentcore remove agent --name MyAgent --force
+agentcore remove memory --name SharedMemory
+agentcore remove mcp-tool --name MyTool
+agentcore remove identity --name OpenAI
+agentcore remove target --name dev
 
 # Reset everything
-agentcore-cli remove all --force
-agentcore-cli remove all --dry-run  # Preview
+agentcore remove all --force
+agentcore remove all --dry-run  # Preview
 ```
 
 | Flag            | Description               |
@@ -347,10 +284,10 @@ agentcore-cli remove all --dry-run  # Preview
 Start local development server.
 
 ```bash
-agentcore-cli dev
-agentcore-cli dev --agent MyAgent --port 3000
-agentcore-cli dev --logs                      # Non-interactive
-agentcore-cli dev --invoke "Hello" --stream   # Direct invoke
+agentcore dev
+agentcore dev --agent MyAgent --port 3000
+agentcore dev --logs                      # Non-interactive
+agentcore dev --invoke "Hello" --stream   # Direct invoke
 ```
 
 | Flag                    | Description                     |
@@ -366,12 +303,12 @@ agentcore-cli dev --invoke "Hello" --stream   # Direct invoke
 Invoke local or deployed agents.
 
 ```bash
-agentcore-cli invoke "What can you do?"
-agentcore-cli invoke --prompt "Hello" --stream
-agentcore-cli invoke --agent MyAgent --target production
-agentcore-cli invoke --session-id abc123      # Continue session
-agentcore-cli invoke --new-session            # Fresh session
-agentcore-cli invoke --json                   # JSON output
+agentcore invoke "What can you do?"
+agentcore invoke --prompt "Hello" --stream
+agentcore invoke --agent MyAgent --target production
+agentcore invoke --session-id abc123      # Continue session
+agentcore invoke --new-session            # Fresh session
+agentcore invoke --json                   # JSON output
 ```
 
 | Flag                | Description               |
@@ -384,21 +321,6 @@ agentcore-cli invoke --json                   # JSON output
 | `--stream`          | Stream response           |
 | `--json`            | JSON output               |
 
-### stop-session
-
-Stop an active runtime session.
-
-```bash
-agentcore-cli stop-session
-agentcore-cli stop-session --agent MyAgent --session-id abc123
-```
-
-| Flag                | Description       |
-| ------------------- | ----------------- |
-| `--agent <name>`    | Specific agent    |
-| `--target <name>`   | Deployment target |
-| `--session-id <id>` | Session to stop   |
-
 ---
 
 ## Utilities
@@ -408,9 +330,9 @@ agentcore-cli stop-session --agent MyAgent --session-id abc123
 Package agent artifacts without deploying.
 
 ```bash
-agentcore-cli package
-agentcore-cli package --agent MyAgent
-agentcore-cli package -d ./my-project
+agentcore package
+agentcore package --agent MyAgent
+agentcore package -d ./my-project
 ```
 
 | Flag                     | Description            |
@@ -423,8 +345,8 @@ agentcore-cli package -d ./my-project
 Display project resource tree.
 
 ```bash
-agentcore-cli outline
-agentcore-cli outline agent MyAgent
+agentcore outline
+agentcore outline agent MyAgent
 ```
 
 ### update
@@ -432,8 +354,8 @@ agentcore-cli outline agent MyAgent
 Check for CLI updates.
 
 ```bash
-agentcore-cli update           # Check and install
-agentcore-cli update --check   # Check only
+agentcore update           # Check and install
+agentcore update --check   # Check only
 ```
 
 | Flag          | Description              |
@@ -447,20 +369,19 @@ agentcore-cli update --check   # Check only
 ### CI/CD Pipeline
 
 ```bash
-# Validate, plan, and deploy with auto-confirm
-agentcore-cli validate
-agentcore-cli plan --target production -y --json
-agentcore-cli deploy --target production -y --json
+# Validate and deploy with auto-confirm
+agentcore validate
+agentcore deploy --target production -y --json
 ```
 
 ### Scripted Project Setup
 
 ```bash
-agentcore-cli create --name MyProject --defaults
+agentcore create --name MyProject --defaults
 cd MyProject
-agentcore-cli add memory --name SharedMemory --strategies SEMANTIC --owner MyProject
-agentcore-cli add target --name dev --account 123456789012 --region us-west-2
-agentcore-cli deploy --target dev -y
+agentcore add memory --name SharedMemory --strategies SEMANTIC --owner MyProject
+agentcore add target --name dev --account 123456789012 --region us-west-2
+agentcore deploy --target dev -y
 ```
 
 ### JSON Output for Automation
@@ -468,6 +389,6 @@ agentcore-cli deploy --target dev -y
 All commands with `--json` output structured data:
 
 ```bash
-agentcore-cli status --json | jq '.agents[0].runtimeArn'
-agentcore-cli invoke "Hello" --json | jq '.response'
+agentcore status --json | jq '.agents[0].runtimeArn'
+agentcore invoke "Hello" --json | jq '.response'
 ```

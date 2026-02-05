@@ -9,6 +9,7 @@ import {
   AgentCoreCliMcpDefsSchema,
   AgentCoreMcpSpecSchema,
   AgentCoreProjectSpecSchema,
+  AgentCoreRegionSchema,
   AwsDeploymentTargetsSchema,
   createValidatedDeployedStateSchema,
 } from '../../../schema';
@@ -19,7 +20,9 @@ import {
   ConfigValidationError,
   ConfigWriteError,
 } from '../../errors';
+import { detectAwsAccount } from '../../utils';
 import { type PathConfig, PathResolver, findConfigRoot } from './path-resolver';
+import { loadSharedConfigFiles } from '@smithy/shared-ini-file-loader';
 import { existsSync } from 'fs';
 import { mkdir, readFile, writeFile } from 'fs/promises';
 import { dirname } from 'path';
@@ -91,11 +94,42 @@ export class ConfigIO {
   }
 
   /**
-   * Read and validate the AWS configuration file
+   * Read and validate the AWS configuration file.
+   * Applies overrides following AWS SDK precedence:
+   * - Account: from current credentials if AWS_PROFILE is set
+   * - Region: AWS_REGION > AWS_DEFAULT_REGION > profile config > saved value
    */
   async readAWSDeploymentTargets(): Promise<AwsDeploymentTarget[]> {
     const filePath = this.pathResolver.getAWSTargetsConfigPath();
-    return this.readAndValidate(filePath, 'AWS Targets', AwsDeploymentTargetsSchema);
+    let targets = await this.readAndValidate(filePath, 'AWS Targets', AwsDeploymentTargetsSchema);
+
+    // Override account from credentials if AWS_PROFILE is set
+    if (process.env.AWS_PROFILE) {
+      const account = await detectAwsAccount();
+      if (account) {
+        targets = targets.map(t => ({ ...t, account }));
+      }
+    }
+
+    // Override region from env vars
+    const envRegion = process.env.AWS_REGION ?? process.env.AWS_DEFAULT_REGION;
+    if (envRegion && AgentCoreRegionSchema.safeParse(envRegion).success) {
+      return targets.map(t => ({ ...t, region: envRegion as AwsDeploymentTarget['region'] }));
+    }
+
+    // Check profile config for region
+    try {
+      const profile = process.env.AWS_PROFILE ?? 'default';
+      const config = await loadSharedConfigFiles();
+      const profileRegion = config.configFile?.[profile]?.region;
+      if (profileRegion && AgentCoreRegionSchema.safeParse(profileRegion).success) {
+        return targets.map(t => ({ ...t, region: profileRegion as AwsDeploymentTarget['region'] }));
+      }
+    } catch {
+      // Config file not available - use current targets
+    }
+
+    return targets;
   }
 
   /**

@@ -314,3 +314,112 @@ export async function handleBindMcpRuntime(options: ValidatedBindMcpRuntimeOptio
     return { success: false, error: getErrorMessage(err) };
   }
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Bind handlers (for --bind flag)
+// ─────────────────────────────────────────────────────────────────────────────
+
+export interface ValidatedBindMemoryOptions {
+  agent: string;
+  memory: string;
+  access: 'read' | 'readwrite';
+  envVar: string;
+}
+
+export async function handleBindMemory(options: ValidatedBindMemoryOptions): Promise<BindMemoryResult> {
+  try {
+    await attachMemoryToAgent(options.agent, {
+      memoryName: options.memory,
+      access: options.access,
+      envVarName: options.envVar,
+    });
+    return { success: true, memoryName: options.memory, targetAgent: options.agent };
+  } catch (err) {
+    return { success: false, error: getErrorMessage(err) };
+  }
+}
+
+export interface ValidatedBindIdentityOptions {
+  agent: string;
+  identity: string;
+  envVar: string;
+}
+
+export async function handleBindIdentity(options: ValidatedBindIdentityOptions): Promise<BindIdentityResult> {
+  try {
+    await attachIdentityToAgent(options.agent, {
+      identityName: options.identity,
+      envVarName: options.envVar,
+    });
+    return { success: true, identityName: options.identity, targetAgent: options.agent };
+  } catch (err) {
+    return { success: false, error: getErrorMessage(err) };
+  }
+}
+
+export interface ValidatedBindGatewayOptions {
+  agent: string;
+  gateway: string;
+  name: string;
+  description: string;
+  envVar: string;
+}
+
+export async function handleBindGateway(options: ValidatedBindGatewayOptions): Promise<BindGatewayResult> {
+  try {
+    await attachGatewayToAgent(options.agent, {
+      gatewayName: options.gateway,
+      name: options.name,
+      description: options.description,
+      envVarName: options.envVar,
+    });
+    return { success: true, gatewayName: options.gateway, targetAgent: options.agent };
+  } catch (err) {
+    return { success: false, error: getErrorMessage(err) };
+  }
+}
+
+export interface ValidatedBindMcpRuntimeOptions {
+  agent: string;
+  runtime: string;
+  envVar: string;
+}
+
+export async function handleBindMcpRuntime(options: ValidatedBindMcpRuntimeOptions): Promise<BindMcpRuntimeResult> {
+  try {
+    await bindMcpRuntimeToAgent(options.runtime, {
+      agentName: options.agent,
+      envVarName: options.envVar,
+    });
+    return { success: true, runtimeName: options.runtime, targetAgent: options.agent };
+  } catch (err) {
+    return { success: false, error: getErrorMessage(err) };
+  }
+}
+
+export interface ValidatedBindAgentOptions {
+  source: string;
+  target: string;
+  name: string;
+  description: string;
+  envVar: string;
+}
+
+export async function handleBindAgent(options: ValidatedBindAgentOptions): Promise<BindAgentResult> {
+  try {
+    await attachAgentToAgent(options.source, {
+      targetAgent: options.target,
+      name: options.name,
+      description: options.description,
+      envVarName: options.envVar,
+    });
+    return {
+      success: true,
+      toolName: options.name,
+      sourceAgent: options.source,
+      targetAgent: options.target,
+    };
+  } catch (err) {
+    return { success: false, error: getErrorMessage(err) };
+  }
+}
