@@ -4,7 +4,7 @@ CLI tool for Amazon Bedrock AgentCore. Create, develop, and deploy agentic appli
 
 ## Prerequisites
 
-- **Node.js** 18.x or later
+- **Node.js** 20.x or later
 - **AWS CLI** configured with credentials
 - **uv** for Python agents ([install](https://docs.astral.sh/uv/getting-started/installation/))
 - **AWS CDK** bootstrapped: `npx cdk bootstrap aws://ACCOUNT_ID/REGION`
@@ -15,15 +15,29 @@ CLI tool for Amazon Bedrock AgentCore. Create, develop, and deploy agentic appli
 npm install -g @aws/agentcore-cli
 ```
 
+> **Public Preview**: If you previously used the
+> [Bedrock AgentCore Starter Toolkit](https://github.com/aws/bedrock-agentcore-starter-toolkit), uninstall it before
+> using this CLI:
+>
+> ```bash
+> pip uninstall bedrock-agentcore-starter-toolkit
+> ```
+
 ## Quick Start
 
+Use the terminal UI to walk through all commands interactively, or run each command individually:
+
 ```bash
+# Launch terminal UI
+agentcore-cli
+
 # Create a new project (wizard guides you through agent setup)
 agentcore-cli create
 cd my-project
 
 # Test locally
 agentcore-cli dev
+
 # In another terminal:
 agentcore-cli invoke
 
@@ -42,17 +56,17 @@ agentcore-cli invoke --stream
 | LangChain/LangGraph | Graph-based workflows         |
 | AutoGen             | Multi-agent conversations     |
 | CrewAI              | Role-based agent teams        |
-| Google ADK          | Gemini only                   |
-| OpenAI Agents       | OpenAI only                   |
+| Google ADK          | Gemini models only            |
+| OpenAI Agents       | OpenAI models only            |
 
 ## Supported Model Providers
 
-| Provider       | API Key Required          | Default Model              |
-| -------------- | ------------------------- | -------------------------- |
-| Amazon Bedrock | No (uses AWS credentials) | Claude Sonnet 4.5          |
-| Anthropic      | Yes                       | claude-sonnet-4-5-20250929 |
-| Google Gemini  | Yes                       | gemini-2.0-flash           |
-| OpenAI         | Yes                       | gpt-4o                     |
+| Provider       | API Key Required          | Default Model                 |
+| -------------- | ------------------------- | ----------------------------- |
+| Amazon Bedrock | No (uses AWS credentials) | claude-sonnet-4-5-20250929-v1 |
+| Anthropic      | Yes                       | claude-sonnet-4-5-20250929    |
+| Google Gemini  | Yes                       | gemini-2.5-flash              |
+| OpenAI         | Yes                       | gpt-4o                        |
 
 ## Commands
 
@@ -62,7 +76,6 @@ agentcore-cli invoke --stream
 | ---------- | ------------------------------ |
 | `create`   | Create a new AgentCore project |
 | `validate` | Validate configuration files   |
-| `plan`     | Preview infrastructure changes |
 | `deploy`   | Deploy infrastructure to AWS   |
 | `status`   | Check deployment status        |
 | `destroy`  | Tear down deployed resources   |
@@ -85,10 +98,10 @@ agentcore-cli invoke --stream
 
 ### Utilities
 
-| Command  | Description               |
-| -------- | ------------------------- |
-| `edit`   | Interactive schema editor |
-| `update` | Check for CLI updates     |
+| Command        | Description                    |
+| -------------- | ------------------------------ |
+| `stop-session` | Stop an active runtime session |
+| `update`       | Check for CLI updates          |
 
 ## Project Structure
 
