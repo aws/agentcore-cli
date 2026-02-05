@@ -23,7 +23,9 @@ interface AgentCoreProjectSpec {
 // ─────────────────────────────────────────────────────────────────────────────
 
 type BuildType = 'CodeZip' | 'Container';
-type RuntimeVersion = 'PYTHON_3_10' | 'PYTHON_3_11' | 'PYTHON_3_12' | 'PYTHON_3_13';
+type PythonRuntime = 'PYTHON_3_10' | 'PYTHON_3_11' | 'PYTHON_3_12' | 'PYTHON_3_13';
+type NodeRuntime = 'NODE_18' | 'NODE_20' | 'NODE_22';
+type RuntimeVersion = PythonRuntime | NodeRuntime;
 type NetworkMode = 'PUBLIC' | 'VPC';
 type MemoryStrategyType = 'SEMANTIC' | 'SUMMARIZATION' | 'USER_PREFERENCE' | 'CUSTOM';
 
@@ -35,11 +37,16 @@ interface AgentEnvSpec {
   type: 'AgentCoreRuntime';
   name: string; // @regex ^[a-zA-Z][a-zA-Z0-9_]{0,47}$ @max 48
   build: BuildType;
-  entrypoint: string; // @regex ^[a-zA-Z0-9_][a-zA-Z0-9_/.-]*\.py(:[a-zA-Z_][a-zA-Z0-9_]*)?$ e.g. "main.py:handler"
+  entrypoint: string; // @regex ^[a-zA-Z0-9_][a-zA-Z0-9_/.-]*\.(py|ts|js)(:[a-zA-Z_][a-zA-Z0-9_]*)?$ e.g. "main.py:handler" or "index.ts"
   codeLocation: string; // Directory path
   runtimeVersion: RuntimeVersion;
   envVars?: EnvVar[];
   networkMode?: NetworkMode; // default 'PUBLIC'
+  instrumentation?: Instrumentation; // OTel settings
+}
+
+interface Instrumentation {
+  enableOtel: boolean; // default true - wrap entrypoint with opentelemetry-instrument
 }
 
 interface EnvVar {

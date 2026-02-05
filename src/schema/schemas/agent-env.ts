@@ -82,6 +82,19 @@ export const EnvVarSchema = z.object({
 export type EnvVar = z.infer<typeof EnvVarSchema>;
 
 /**
+ * Instrumentation configuration for runtime observability.
+ */
+export const InstrumentationSchema = z.object({
+  /**
+   * Enable OpenTelemetry instrumentation using aws-opentelemetry-distro.
+   * When enabled, the runtime entrypoint is wrapped with opentelemetry-instrument.
+   * Defaults to true for new runtimes.
+   */
+  enableOtel: z.boolean().default(true),
+});
+export type Instrumentation = z.infer<typeof InstrumentationSchema>;
+
+/**
  * AgentEnvSpec - represents an AgentCore Runtime.
  * This is a top-level resource in the schema.
  */
@@ -96,6 +109,8 @@ export const AgentEnvSpecSchema = z.object({
   envVars: z.array(EnvVarSchema).optional(),
   /** Network mode for the runtime. Defaults to PUBLIC. */
   networkMode: NetworkModeSchema.optional(),
+  /** Instrumentation settings for observability. Defaults to OTel enabled. */
+  instrumentation: InstrumentationSchema.optional(),
 });
 
 export type AgentEnvSpec = z.infer<typeof AgentEnvSpecSchema>;
