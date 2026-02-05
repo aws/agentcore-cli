@@ -19,7 +19,7 @@ interface AddIdentityFlowProps {
 
 export function AddIdentityFlow({ isInteractive = true, onExit, onBack }: AddIdentityFlowProps) {
   const { createIdentity, reset: resetCreate } = useCreateIdentity();
-  const { identityNames: existingNames } = useExistingIdentityNames();
+  const { names: existingNames } = useExistingIdentityNames();
   const [flow, setFlow] = useState<FlowState>({ name: 'create-wizard' });
 
   // In non-interactive mode, exit after success

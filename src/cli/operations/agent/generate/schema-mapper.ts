@@ -8,7 +8,7 @@ import type {
   MemoryStrategy,
   ModelProvider,
 } from '../../../../schema';
-import type { AgentRenderConfig } from '../../../templates/types';
+import type { AgentRenderConfig, IdentityProviderRenderConfig } from '../../../templates/types';
 import {
   DEFAULT_MEMORY_EXPIRY_DAYS,
   DEFAULT_NETWORK_MODE,
@@ -16,6 +16,7 @@ import {
   DEFAULT_PYTHON_VERSION,
 } from '../../../tui/screens/generate/defaults';
 import type { GenerateConfig, MemoryOption } from '../../../tui/screens/generate/types';
+import { computeDefaultCredentialEnvVarName } from '../../identity/create-identity';
 
 /**
  * Result of mapping GenerateConfig to v2 schema.
@@ -28,10 +29,11 @@ export interface GenerateConfigMappingResult {
 }
 
 /**
- * Compute the qualified credential name for AWS resources.
+ * Compute the credential name for a model provider.
+ * Scoped to project (not agent) to avoid conflicts across projects.
  * Format: {projectName}{providerName}
  */
-function computeQualifiedCredentialName(projectName: string, providerName: string): string {
+function computeCredentialName(projectName: string, providerName: string): string {
   return `${projectName}${providerName}`;
 }
 
@@ -79,7 +81,7 @@ export function mapModelProviderToCredentials(modelProvider: ModelProvider, proj
   return [
     {
       type: 'ApiKeyCredentialProvider',
-      name: computeQualifiedCredentialName(projectName, modelProvider),
+      name: computeCredentialName(projectName, modelProvider),
     },
   ];
 }
@@ -113,9 +115,33 @@ export function mapGenerateConfigToResources(config: GenerateConfig): GenerateCo
 }
 
 /**
- * Maps GenerateConfig to AgentRenderConfig for template rendering.
+ * Maps model provider to identity providers for template rendering.
  */
-export function mapGenerateConfigToRenderConfig(config: GenerateConfig): AgentRenderConfig {
+function mapModelProviderToIdentityProviders(
+  modelProvider: ModelProvider,
+  projectName: string
+): IdentityProviderRenderConfig[] {
+  if (modelProvider === 'Bedrock') {
+    return [];
+  }
+
+  const credentialName = computeCredentialName(projectName, modelProvider);
+  return [
+    {
+      name: credentialName,
+      envVarName: computeDefaultCredentialEnvVarName(credentialName),
+    },
+  ];
+}
+
+/**
+ * Maps GenerateConfig to AgentRenderConfig for template rendering.
+ * @param config - Generate config (note: config.projectName is actually the agent name)
+ * @param actualProjectName - Optional actual project name for credential naming (defaults to config.projectName)
+ */
+export function mapGenerateConfigToRenderConfig(config: GenerateConfig, actualProjectName?: string): AgentRenderConfig {
+  // Use actualProjectName for credential naming, fallback to config.projectName (agent name) for standalone generate
+  const projectNameForCredentials = actualProjectName ?? config.projectName;
   return {
     name: config.projectName,
     sdkFramework: config.sdk,
@@ -123,5 +149,6 @@ export function mapGenerateConfigToRenderConfig(config: GenerateConfig): AgentRe
     modelProvider: config.modelProvider,
     hasMemory: config.memory !== 'none',
     hasIdentity: config.modelProvider !== 'Bedrock',
+    identityProviders: mapModelProviderToIdentityProviders(config.modelProvider, projectNameForCredentials),
   };
 }

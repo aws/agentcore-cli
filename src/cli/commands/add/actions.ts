@@ -110,6 +110,8 @@ export async function handleAddAgent(options: ValidatedAddAgentOptions): Promise
 
 async function handleCreatePath(options: ValidatedAddAgentOptions, configBaseDir: string): Promise<AddAgentResult> {
   const projectRoot = dirname(configBaseDir);
+  const configIO = new ConfigIO({ baseDir: configBaseDir });
+  const project = await configIO.readProjectSpec();
 
   const generateConfig = {
     projectName: options.name,
@@ -121,7 +123,8 @@ async function handleCreatePath(options: ValidatedAddAgentOptions, configBaseDir
 
   const agentPath = join(projectRoot, APP_DIR, options.name);
 
-  const renderConfig = mapGenerateConfigToRenderConfig(generateConfig);
+  // Pass actual project name for credential naming in templates
+  const renderConfig = mapGenerateConfigToRenderConfig(generateConfig, project.name);
   const renderer = createRenderer(renderConfig);
   await renderer.render({ outputDir: projectRoot });
 
@@ -132,7 +135,9 @@ async function handleCreatePath(options: ValidatedAddAgentOptions, configBaseDir
   }
 
   if (options.apiKey && options.modelProvider !== 'Bedrock') {
-    const envVarName = computeDefaultCredentialEnvVarName(options.modelProvider);
+    // Use project-scoped credential name: {projectName}{modelProvider}
+    const credentialName = `${project.name}${options.modelProvider}`;
+    const envVarName = computeDefaultCredentialEnvVarName(credentialName);
     await setEnvVar(envVarName, options.apiKey, configBaseDir);
   }
 
@@ -167,7 +172,9 @@ async function handleByoPath(
   await configIO.writeProjectSpec(project);
 
   if (options.apiKey && options.modelProvider !== 'Bedrock') {
-    const envVarName = computeDefaultCredentialEnvVarName(options.modelProvider);
+    // Use project-scoped credential name: {projectName}{modelProvider}
+    const credentialName = `${project.name}${options.modelProvider}`;
+    const envVarName = computeDefaultCredentialEnvVarName(credentialName);
     await setEnvVar(envVarName, options.apiKey, configBaseDir);
   }
 
