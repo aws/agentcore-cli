@@ -148,7 +148,7 @@ export const registerRemove = (program: Command) => {
 
   // MCP Tool disabled - replace with registerResourceRemove() call when enabling
   removeCommand
-    .command('mcp-tool')
+    .command('mcp-tool', { hidden: true })
     .description('Remove an MCP tool from the project')
     .option('--name <name>', 'Name of resource to remove')
     .option('--force', 'Skip confirmation prompt')
@@ -160,7 +160,7 @@ export const registerRemove = (program: Command) => {
 
   // Gateway disabled - replace with registerResourceRemove() call when enabling
   removeCommand
-    .command('gateway')
+    .command('gateway', { hidden: true })
     .description('Remove a gateway from the project')
     .option('--name <name>', 'Name of resource to remove')
     .option('--force', 'Skip confirmation prompt')
