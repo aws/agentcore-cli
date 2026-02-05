@@ -16,6 +16,13 @@ interface DevSupportResult {
 }
 
 /**
+ * Checks if the agent is a Python agent by looking at the entrypoint.
+ */
+function isPythonAgent(agent: AgentEnvSpec): boolean {
+  return agent.entrypoint?.endsWith('.py') || agent.entrypoint?.includes('.py:');
+}
+
+/**
  * Checks if dev mode is supported for the given agent.
  *
  * Requirements:
@@ -24,15 +31,14 @@ interface DevSupportResult {
  */
 function isDevSupported(agent: AgentEnvSpec): DevSupportResult {
   // Currently only Python is supported for dev mode
-  // TODO: Add TypeScript support
-  if (agent.targetLanguage !== 'Python') {
+  if (!isPythonAgent(agent)) {
     return {
       supported: false,
-      reason: `Dev mode only supports Python agents. Agent "${agent.name}" targets ${agent.targetLanguage}.`,
+      reason: `Dev mode only supports Python agents. Agent "${agent.name}" does not appear to be a Python agent.`,
     };
   }
 
-  if (!agent.runtime.entrypoint) {
+  if (!agent.entrypoint) {
     return {
       supported: false,
       reason: `Agent "${agent.name}" is missing entrypoint.`,
@@ -113,16 +119,14 @@ export function getDevConfig(
   }
 
   const directory =
-    configRoot && targetAgent.runtime.codeLocation
-      ? resolveCodeDirectory(targetAgent.runtime.codeLocation, configRoot)
-      : workingDir;
+    configRoot && targetAgent.codeLocation ? resolveCodeDirectory(targetAgent.codeLocation, configRoot) : workingDir;
 
   return {
     agentName: targetAgent.name,
-    module: targetAgent.runtime.entrypoint,
+    module: targetAgent.entrypoint,
     directory,
     hasConfig: true,
-    isPython: targetAgent.targetLanguage === 'Python',
+    isPython: isPythonAgent(targetAgent),
   };
 }
 

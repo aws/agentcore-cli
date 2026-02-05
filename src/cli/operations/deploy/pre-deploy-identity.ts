@@ -1,5 +1,5 @@
 import { SecureCredentials, readEnvFile } from '../../../lib';
-import type { AgentCoreProjectSpec, AgentEnvSpec, OwnedIdentityProvider } from '../../../schema';
+import type { AgentCoreProjectSpec, Credential } from '../../../schema';
 import { getCredentialProvider } from '../../aws';
 import { isNoCredentialsError } from '../../errors';
 import { apiKeyProviderExists, createApiKeyProvider, setTokenVaultKmsKey } from '../identity';
@@ -11,7 +11,6 @@ import { CreateKeyCommand, KMSClient } from '@aws-sdk/client-kms';
 // ─────────────────────────────────────────────────────────────────────────────
 
 export interface ApiKeyProviderSetupResult {
-  agentName: string;
   providerName: string;
   status: 'created' | 'exists' | 'skipped' | 'error';
   error?: string;
@@ -38,8 +37,8 @@ export interface SetupApiKeyProvidersOptions {
 }
 
 /**
- * Set up API key credential providers for all owned identity providers.
- * Reads API keys from agentcore/.env.local (keyed by envVarName) and creates providers in AgentCore Identity.
+ * Set up API key credential providers for all credentials in the project.
+ * Reads API keys from agentcore/.env.local and creates providers in AgentCore Identity.
  * Runtime credentials (if provided) take precedence over .env.local values.
  */
 export async function setupApiKeyProviders(options: SetupApiKeyProvidersOptions): Promise<PreDeployIdentityResult> {
@@ -56,13 +55,12 @@ export async function setupApiKeyProviders(options: SetupApiKeyProvidersOptions)
 
   // Configure KMS encryption for token vault if enabled
   let kmsKeyArn: string | undefined;
-  if (enableKmsEncryption || projectSpec.identityKmsKeyArn) {
+  if (enableKmsEncryption) {
     const kmsResult = await setupTokenVaultKms(region, credentials, projectSpec);
     if (!kmsResult.success) {
       return {
         results: [
           {
-            agentName: '',
             providerName: 'TokenVault',
             status: 'error',
             error: `Failed to configure KMS: ${kmsResult.error}`,
@@ -74,9 +72,12 @@ export async function setupApiKeyProviders(options: SetupApiKeyProvidersOptions)
     kmsKeyArn = kmsResult.keyArn;
   }
 
-  for (const agent of projectSpec.agents) {
-    const agentResults = await setupAgentIdentityProviders(client, agent, allCredentials);
-    results.push(...agentResults);
+  // Set up each credential in the project
+  for (const credential of projectSpec.credentials) {
+    if (credential.type === 'ApiKeyCredentialProvider') {
+      const result = await setupApiKeyCredentialProvider(client, credential, allCredentials);
+      results.push(result);
+    }
   }
 
   return {
@@ -92,21 +93,17 @@ async function setupTokenVaultKms(
   projectSpec: AgentCoreProjectSpec
 ): Promise<{ success: boolean; keyArn?: string; error?: string }> {
   try {
-    let keyArn = projectSpec.identityKmsKeyArn;
-
-    // Create KMS key if not provided
+    // Create KMS key for this project
+    const kmsClient = new KMSClient({ region, credentials });
+    const response = await kmsClient.send(
+      new CreateKeyCommand({
+        Description: `AgentCore Identity encryption key for ${projectSpec.name}`,
+        Tags: [{ TagKey: 'agentcore:project', TagValue: projectSpec.name }],
+      })
+    );
+    const keyArn = response.KeyMetadata?.Arn;
     if (!keyArn) {
-      const kmsClient = new KMSClient({ region, credentials });
-      const response = await kmsClient.send(
-        new CreateKeyCommand({
-          Description: `AgentCore Identity encryption key for ${projectSpec.name}`,
-          Tags: [{ TagKey: 'agentcore:project', TagValue: projectSpec.name }],
-        })
-      );
-      keyArn = response.KeyMetadata?.Arn;
-      if (!keyArn) {
-        return { success: false, error: 'Failed to create KMS key' };
-      }
+      return { success: false, error: 'Failed to create KMS key' };
     }
 
     // Configure token vault to use the key
@@ -122,53 +119,43 @@ async function setupTokenVaultKms(
   }
 }
 
-async function setupAgentIdentityProviders(
-  client: BedrockAgentCoreControlClient,
-  agent: AgentEnvSpec,
-  credentials: SecureCredentials
-): Promise<ApiKeyProviderSetupResult[]> {
-  const results: ApiKeyProviderSetupResult[] = [];
-
-  const ownedProviders = agent.identityProviders.filter((p): p is OwnedIdentityProvider => p.relation === 'own');
-
-  for (const provider of ownedProviders) {
-    if (provider.variant === 'ApiKeyCredentialProvider') {
-      const result = await setupApiKeyCredentialProvider(client, agent.name, provider, credentials);
-      results.push(result);
-    }
+/**
+ * Get the environment variable name for a credential.
+ * Uses the first envVar in the credential's envVars array, or generates a default.
+ */
+function getCredentialEnvVarName(credential: Credential): string {
+  if (credential.envVars && credential.envVars.length > 0 && credential.envVars[0]) {
+    return credential.envVars[0].name;
   }
-
-  return results;
+  // Default naming convention
+  return `AGENTCORE_IDENTITY_${credential.name.toUpperCase().replace(/[^A-Z0-9]/g, '_')}`;
 }
 
 async function setupApiKeyCredentialProvider(
   client: BedrockAgentCoreControlClient,
-  agentName: string,
-  provider: OwnedIdentityProvider,
+  credential: Credential,
   credentials: SecureCredentials
 ): Promise<ApiKeyProviderSetupResult> {
-  // envVarName is the SOT - read API key from secure credentials using this key
-  const apiKey = credentials.get(provider.envVarName);
+  const envVarName = getCredentialEnvVarName(credential);
+  const apiKey = credentials.get(envVarName);
 
   if (!apiKey) {
     return {
-      agentName,
-      providerName: provider.name,
+      providerName: credential.name,
       status: 'skipped',
-      error: `No ${provider.envVarName} found in agentcore/.env.local`,
+      error: `No ${envVarName} found in agentcore/.env.local`,
     };
   }
 
   try {
-    const exists = await apiKeyProviderExists(client, provider.name);
+    const exists = await apiKeyProviderExists(client, credential.name);
     if (exists) {
-      return { agentName, providerName: provider.name, status: 'exists' };
+      return { providerName: credential.name, status: 'exists' };
     }
 
-    const createResult = await createApiKeyProvider(client, provider.name, apiKey);
+    const createResult = await createApiKeyProvider(client, credential.name, apiKey);
     return {
-      agentName,
-      providerName: provider.name,
+      providerName: credential.name,
       status: createResult.success ? 'created' : 'error',
       error: createResult.error,
     };
@@ -182,8 +169,7 @@ async function setupApiKeyCredentialProvider(
     }
 
     return {
-      agentName,
-      providerName: provider.name,
+      providerName: credential.name,
       status: 'error',
       error: errorMessage,
     };
@@ -191,22 +177,19 @@ async function setupApiKeyCredentialProvider(
 }
 
 /**
- * Check if any agents have owned API key identity providers that need setup.
+ * Check if the project has any API key credentials that need setup.
  */
 export function hasOwnedIdentityApiProviders(projectSpec: AgentCoreProjectSpec): boolean {
-  return projectSpec.agents.some(agent =>
-    agent.identityProviders.some(p => p.relation === 'own' && p.variant === 'ApiKeyCredentialProvider')
-  );
+  return projectSpec.credentials.some(c => c.type === 'ApiKeyCredentialProvider');
 }
 
 export interface MissingCredential {
   providerName: string;
   envVarName: string;
-  agentName: string;
 }
 
 /**
- * Get list of identity providers that are missing API keys in .env.local.
+ * Get list of credentials that are missing API keys in .env.local.
  */
 export async function getMissingCredentials(
   projectSpec: AgentCoreProjectSpec,
@@ -215,17 +198,13 @@ export async function getMissingCredentials(
   const envVars = await readEnvFile(configBaseDir);
   const missing: MissingCredential[] = [];
 
-  for (const agent of projectSpec.agents) {
-    const ownedProviders = agent.identityProviders.filter(
-      (p): p is OwnedIdentityProvider => p.relation === 'own' && p.variant === 'ApiKeyCredentialProvider'
-    );
-
-    for (const provider of ownedProviders) {
-      if (!envVars[provider.envVarName]) {
+  for (const credential of projectSpec.credentials) {
+    if (credential.type === 'ApiKeyCredentialProvider') {
+      const envVarName = getCredentialEnvVarName(credential);
+      if (!envVars[envVarName]) {
         missing.push({
-          providerName: provider.name,
-          envVarName: provider.envVarName,
-          agentName: agent.name,
+          providerName: credential.name,
+          envVarName,
         });
       }
     }

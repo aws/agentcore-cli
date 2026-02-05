@@ -1,7 +1,7 @@
 import { APP_DIR } from '../../../../lib';
 import { getErrorMessage } from '../../../errors';
 import { type PythonSetupResult, setupPythonProject } from '../../../operations';
-import { mapGenerateConfigToAgentEnvSpec, writeAgentToProject } from '../../../operations/agent/generate';
+import { mapGenerateConfigToRenderConfig, writeAgentToProject } from '../../../operations/agent/generate';
 import { createRenderer } from '../../../templates';
 import type { Step } from '../../components';
 import { useProject } from '../../hooks';
@@ -64,8 +64,8 @@ export function useGenerateFlow(): GenerateFlowState {
       // Step 0: Generate project files and update project config
       updateStep(0, { status: 'running' });
       try {
-        const agentSpec = mapGenerateConfigToAgentEnvSpec(config);
-        const renderer = createRenderer(agentSpec);
+        const renderConfig = mapGenerateConfigToRenderConfig(config);
+        const renderer = createRenderer(renderConfig);
         await renderer.render({ outputDir: project.projectRoot });
         await writeAgentToProject(config);
         setOutputDir(projectDir);

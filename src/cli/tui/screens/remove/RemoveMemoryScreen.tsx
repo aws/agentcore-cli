@@ -12,15 +12,11 @@ interface RemoveMemoryScreenProps {
 }
 
 export function RemoveMemoryScreen({ memories, onSelect, onExit }: RemoveMemoryScreenProps) {
-  const items = memories.map(memory => {
-    const userInfo = memory.userAgents.length > 0 ? ` • ${memory.userAgents.length} users` : '';
-    const policyInfo = memory.removalPolicy === 'restrict' ? ' [restrict]' : '';
-    return {
-      id: memory.name,
-      title: `${memory.name}${policyInfo}`,
-      description: `owner: ${memory.ownerAgent}${userInfo}`,
-    };
-  });
+  const items = memories.map(memory => ({
+    id: memory.name,
+    title: memory.name,
+    description: 'AgentCore Memory',
+  }));
 
   return (
     <SelectScreen title="Select Memory to Remove" items={items} onSelect={item => onSelect(item.id)} onExit={onExit} />

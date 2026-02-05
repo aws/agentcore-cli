@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 import { AgentCoreStack } from '../lib/cdk-stack';
-import { ConfigIO, type AwsDeploymentTarget } from '@aws/agentcore-l3-cdk-constructs';
+import { ConfigIO, type AgentCoreMcpSpec, type AwsDeploymentTarget } from '@aws/agentcore-l3-cdk-constructs';
 import { App, type Environment } from 'aws-cdk-lib';
 import * as path from 'path';
 
@@ -23,6 +23,12 @@ async function main() {
   const spec = await configIO.readProjectSpec();
   const targets = await configIO.readAWSDeploymentTargets();
 
+  // Read MCP spec if it exists (stored separately in mcp.json)
+  let mcpSpec: AgentCoreMcpSpec | undefined;
+  if (configIO.configExists('mcp')) {
+    mcpSpec = await configIO.readMcpSpec();
+  }
+
   if (targets.length === 0) {
     throw new Error('No deployment targets configured. Please define targets in agentcore/aws-targets.json');
   }
@@ -35,6 +41,7 @@ async function main() {
 
     new AgentCoreStack(app, stackName, {
       spec,
+      mcpSpec,
       env,
       description: `AgentCore stack for ${spec.name} deployed to ${target.name} (${target.region})`,
       tags: {

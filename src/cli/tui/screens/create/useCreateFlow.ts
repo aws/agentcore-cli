@@ -3,12 +3,16 @@ import type { AgentCoreCliMcpDefs, AgentCoreMcpSpec, AgentCoreProjectSpec, Deplo
 import { getErrorMessage } from '../../../errors';
 import { CreateLogger } from '../../../logging';
 import { initGitRepo, setupPythonProject, writeEnvFile, writeGitignore } from '../../../operations';
-import { mapGenerateConfigToAgentEnvSpec, writeAgentToProject } from '../../../operations/agent/generate';
-import { computeDefaultIdentityEnvVarName } from '../../../operations/identity/create-identity';
+import {
+  mapGenerateConfigToRenderConfig,
+  mapModelProviderToCredentials,
+  writeAgentToProject,
+} from '../../../operations/agent/generate';
+import { computeDefaultCredentialEnvVarName } from '../../../operations/identity/create-identity';
 import { CDKRenderer, createRenderer } from '../../../templates';
 import { type Step, areStepsComplete, hasStepError } from '../../components';
 import { withMinDuration } from '../../utils';
-import { mapByoConfigToAgentEnvSpec } from '../agent';
+import { mapByoConfigToAgent } from '../agent';
 import type { AddAgentConfig } from '../agent/types';
 import type { GenerateConfig } from '../generate/types';
 import { mkdir } from 'fs/promises';
@@ -64,9 +68,10 @@ function getCreateSteps(projectName: string, agentConfig: AddAgentConfig | null)
 function createDefaultProjectSpec(projectName: string): AgentCoreProjectSpec {
   return {
     name: projectName,
-    version: '0.1',
-    description: `AgentCore project: ${projectName}`,
+    version: 1,
     agents: [],
+    memories: [],
+    credentials: [],
   };
 }
 
@@ -290,8 +295,8 @@ export function useCreateFlow(cwd: string): CreateFlowState {
                 };
 
                 logger.logSubStep(`Framework: ${generateConfig.sdk}`);
-                const agentSpec = mapGenerateConfigToAgentEnvSpec(generateConfig);
-                const renderer = createRenderer(agentSpec);
+                const renderConfig = mapGenerateConfigToRenderConfig(generateConfig);
+                const renderer = createRenderer(renderConfig);
                 logger.logSubStep('Rendering agent template...');
                 await renderer.render({ outputDir: projectRoot });
                 logger.logSubStep('Writing agent to project...');
@@ -301,15 +306,18 @@ export function useCreateFlow(cwd: string): CreateFlowState {
                 logger.logSubStep('Writing BYO agent config to project...');
                 const configIO = new ConfigIO({ baseDir: configBaseDir });
                 const project = await configIO.readProjectSpec();
-                const agentEnvSpec = mapByoConfigToAgentEnvSpec(addAgentConfig, project.name);
-                project.agents.push(agentEnvSpec);
+                const agent = mapByoConfigToAgent(addAgentConfig);
+                project.agents.push(agent);
+                // Add credentials for non-Bedrock providers
+                const credentials = mapModelProviderToCredentials(addAgentConfig.modelProvider, project.name);
+                project.credentials.push(...credentials);
                 await configIO.writeProjectSpec(project);
               }
 
               // Write API key to agentcore/.env for non-Bedrock providers
               if (addAgentConfig.apiKey && addAgentConfig.modelProvider !== 'Bedrock') {
                 logger.logSubStep('Writing API key to .env...');
-                const envVarName = computeDefaultIdentityEnvVarName(addAgentConfig.modelProvider);
+                const envVarName = computeDefaultCredentialEnvVarName(addAgentConfig.modelProvider);
                 await setEnvVar(envVarName, addAgentConfig.apiKey, configBaseDir);
               }
             });

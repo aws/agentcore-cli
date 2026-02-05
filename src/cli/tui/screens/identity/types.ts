@@ -1,27 +1,21 @@
-import type { IdentityCredentialVariant } from '../../../../schema';
+import type { CredentialType } from '../../../../schema';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Identity Flow Types
 // ─────────────────────────────────────────────────────────────────────────────
 
-export type AddIdentityStep = 'type' | 'name' | 'apiKey' | 'ownerAgent' | 'userAgents' | 'confirm';
+export type AddIdentityStep = 'type' | 'name' | 'apiKey' | 'confirm';
 
 export interface AddIdentityConfig {
-  identityType: IdentityCredentialVariant;
+  identityType: CredentialType;
   name: string;
   apiKey: string;
-  /** Agent that owns and manages this identity (relation: 'own') */
-  ownerAgent: string;
-  /** Agents granted read-only access (relation: 'use') */
-  userAgents: string[];
 }
 
 export const IDENTITY_STEP_LABELS: Record<AddIdentityStep, string> = {
   type: 'Type',
   name: 'Name',
   apiKey: 'API Key',
-  ownerAgent: 'Owner',
-  userAgents: 'Grant Access',
   confirm: 'Confirm',
 };
 

@@ -1,58 +1,35 @@
-import type { IdentityCredentialVariant } from '../../../../schema';
+import type { CredentialType } from '../../../../schema';
 import type { AddIdentityConfig, AddIdentityStep } from './types';
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useState } from 'react';
 
-const ALL_STEPS: AddIdentityStep[] = ['type', 'name', 'apiKey', 'ownerAgent', 'userAgents', 'confirm'];
+const ALL_STEPS: AddIdentityStep[] = ['type', 'name', 'apiKey', 'confirm'];
 
-function getDefaultConfig(singleAgentName?: string): AddIdentityConfig {
+function getDefaultConfig(): AddIdentityConfig {
   return {
     identityType: 'ApiKeyCredentialProvider',
     name: '',
     apiKey: '',
-    ownerAgent: singleAgentName ?? '',
-    userAgents: [],
   };
 }
 
-export interface UseAddIdentityWizardOptions {
-  /** Available agents in the project */
-  availableAgents: string[];
-}
-
-export function useAddIdentityWizard(options: UseAddIdentityWizardOptions) {
-  const { availableAgents } = options;
-  const isSingleAgent = availableAgents.length === 1;
-
-  // Compute steps based on agent count - skip agent steps if single agent
-  const steps = useMemo<AddIdentityStep[]>(() => {
-    if (isSingleAgent) {
-      return ALL_STEPS.filter(s => s !== 'ownerAgent' && s !== 'userAgents');
-    }
-    return ALL_STEPS;
-  }, [isSingleAgent]);
-
-  const [config, setConfig] = useState<AddIdentityConfig>(() =>
-    getDefaultConfig(isSingleAgent ? availableAgents[0] : undefined)
-  );
+export function useAddIdentityWizard() {
+  const [config, setConfig] = useState<AddIdentityConfig>(getDefaultConfig);
   const [step, setStep] = useState<AddIdentityStep>('type');
 
-  const currentIndex = steps.indexOf(step);
+  const currentIndex = ALL_STEPS.indexOf(step);
 
   const goBack = useCallback(() => {
-    const prevStep = steps[currentIndex - 1];
+    const prevStep = ALL_STEPS[currentIndex - 1];
     if (prevStep) setStep(prevStep);
-  }, [steps, currentIndex]);
+  }, [currentIndex]);
 
-  const nextStep = useCallback(
-    (currentStep: AddIdentityStep): AddIdentityStep | undefined => {
-      const idx = steps.indexOf(currentStep);
-      return steps[idx + 1];
-    },
-    [steps]
-  );
+  const nextStep = useCallback((currentStep: AddIdentityStep): AddIdentityStep | undefined => {
+    const idx = ALL_STEPS.indexOf(currentStep);
+    return ALL_STEPS[idx + 1];
+  }, []);
 
   const setIdentityType = useCallback(
-    (identityType: IdentityCredentialVariant) => {
+    (identityType: CredentialType) => {
       setConfig(c => ({ ...c, identityType }));
       const next = nextStep('type');
       if (next) setStep(next);
@@ -78,41 +55,20 @@ export function useAddIdentityWizard(options: UseAddIdentityWizardOptions) {
     [nextStep]
   );
 
-  const setOwnerAgent = useCallback(
-    (ownerAgent: string) => {
-      setConfig(c => ({ ...c, ownerAgent, userAgents: [] }));
-      const next = nextStep('ownerAgent');
-      if (next) setStep(next);
-    },
-    [nextStep]
-  );
-
-  const setUserAgents = useCallback(
-    (userAgents: string[]) => {
-      setConfig(c => ({ ...c, userAgents }));
-      const next = nextStep('userAgents');
-      if (next) setStep(next);
-    },
-    [nextStep]
-  );
-
   const reset = useCallback(() => {
-    setConfig(getDefaultConfig(isSingleAgent ? availableAgents[0] : undefined));
+    setConfig(getDefaultConfig());
     setStep('type');
-  }, [isSingleAgent, availableAgents]);
+  }, []);
 
   return {
     config,
     step,
-    steps,
+    steps: ALL_STEPS,
     currentIndex,
-    isSingleAgent,
     goBack,
     setIdentityType,
     setName,
     setApiKey,
-    setOwnerAgent,
-    setUserAgents,
     reset,
   };
 }

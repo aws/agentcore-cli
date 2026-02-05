@@ -32,9 +32,10 @@ function getRemoveSteps(): Step[] {
 function createDefaultProjectSpec(projectName: string): AgentCoreProjectSpec {
   return {
     name: projectName,
-    version: '0.1',
-    description: `AgentCore project: ${projectName}`,
+    version: 1,
     agents: [],
+    memories: [],
+    credentials: [],
   };
 }
 

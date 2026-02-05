@@ -1,4 +1,4 @@
-import { CONFIG_DIR, ConfigIO, packRuntime, resolveCodeLocation, validateAgentExists } from '../../../lib';
+import { CONFIG_DIR, ConfigIO, packCodeZipSync, resolveCodeLocation, validateAgentExists } from '../../../lib';
 import type { AgentCoreProjectSpec, AgentEnvSpec } from '../../../schema';
 import { join, resolve } from 'path';
 
@@ -54,13 +54,12 @@ export async function handlePackage(context: PackageContext): Promise<PackageRes
   const agentsToPackage = targetAgent ? project.agents.filter(a => a.name === targetAgent) : project.agents;
 
   // Type guard for CodeZip agents
-  type CodeZipAgent = AgentEnvSpec & { runtime: { artifact: 'CodeZip' } };
-  function isCodeZipAgent(agent: AgentEnvSpec): agent is CodeZipAgent {
-    return agent.runtime.artifact === 'CodeZip';
+  function isCodeZipAgent(agent: AgentEnvSpec): boolean {
+    return agent.build === 'CodeZip';
   }
 
   // Filter only CodeZip artifacts
-  const packableAgents: CodeZipAgent[] = [];
+  const packableAgents: AgentEnvSpec[] = [];
   for (const agent of agentsToPackage) {
     const agentName = agent.name;
     if (isCodeZipAgent(agent)) {
@@ -76,10 +75,10 @@ export async function handlePackage(context: PackageContext): Promise<PackageRes
 
   // Package each agent (fail-fast: throw on first error)
   for (const agent of packableAgents) {
-    const codeLocation = resolveCodeLocation(agent.runtime.codeLocation, configBaseDir);
+    const codeLocation = resolveCodeLocation(agent.codeLocation, configBaseDir);
 
     // This will throw if packaging fails - satisfies fail-fast requirement
-    const { artifactPath, sizeBytes } = await packRuntime(agent, {
+    const { artifactPath, sizeBytes } = packCodeZipSync(agent, {
       projectRoot: codeLocation,
       agentName: agent.name,
       artifactDir: configBaseDir,

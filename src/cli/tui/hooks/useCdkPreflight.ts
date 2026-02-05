@@ -1,5 +1,4 @@
 import { SecureCredentials } from '../../../lib';
-import type { OwnedIdentityProvider } from '../../../schema';
 import { AwsCredentialsError } from '../../aws/account';
 import { type CdkToolkitWrapper, type SwitchableIoHost, createSwitchableIoHost } from '../../cdk/toolkit-lib';
 import { getErrorMessage, isExpiredTokenError, isNoCredentialsError } from '../../errors';
@@ -379,25 +378,12 @@ export function useCdkPreflight(options: PreflightOptions): PreflightResult {
         const needsApiKeySetup = !skipIdentityCheck && hasOwnedIdentityApiProviders(preflightContext.projectSpec);
         if (needsApiKeySetup) {
           const configBaseDir = path.dirname(preflightContext.cdkProject.projectDir);
-          const _allCredentials = await getMissingCredentials(preflightContext.projectSpec, configBaseDir);
 
-          // Get all identity providers (not just missing ones) for the prompt
-          const allProviders: MissingCredential[] = [];
-          for (const agent of preflightContext.projectSpec.agents) {
-            const ownedProviders = agent.identityProviders.filter(
-              (p): p is OwnedIdentityProvider => p.relation === 'own' && p.variant === 'ApiKeyCredentialProvider'
-            );
-            for (const provider of ownedProviders) {
-              allProviders.push({
-                providerName: provider.name,
-                envVarName: provider.envVarName,
-                agentName: agent.name,
-              });
-            }
-          }
+          // Get all credentials for the prompt
+          const allCredentials = await getMissingCredentials(preflightContext.projectSpec, configBaseDir);
 
-          // Always show dialog when identity providers exist
-          setMissingCredentials(allProviders);
+          // Always show dialog when credentials exist
+          setMissingCredentials(allCredentials);
           setPhase('credentials-prompt');
           return;
         }

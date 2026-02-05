@@ -11,7 +11,7 @@ import type {
 import { getErrorMessage } from '../../errors';
 import { checkCreateDependencies } from '../../external-requirements';
 import { initGitRepo, setupPythonProject, writeEnvFile, writeGitignore } from '../../operations';
-import { mapGenerateConfigToAgentEnvSpec, writeAgentToProject } from '../../operations/agent/generate';
+import { mapGenerateConfigToRenderConfig, writeAgentToProject } from '../../operations/agent/generate';
 import { CDKRenderer, createRenderer } from '../../templates';
 import type { CreateResult } from './types';
 import { mkdir } from 'fs/promises';
@@ -20,9 +20,10 @@ import { join } from 'path';
 function createDefaultProjectSpec(projectName: string): AgentCoreProjectSpec {
   return {
     name: projectName,
-    version: '0.1',
-    description: `AgentCore project: ${projectName}`,
+    version: 1,
     agents: [],
+    memories: [],
+    credentials: [],
   };
 }
 
@@ -152,8 +153,8 @@ export async function createProjectWithAgent(options: CreateWithAgentOptions): P
     };
 
     // Generate agent code
-    const agentSpec = mapGenerateConfigToAgentEnvSpec(generateConfig);
-    const renderer = createRenderer(agentSpec);
+    const renderConfig = mapGenerateConfigToRenderConfig(generateConfig);
+    const renderer = createRenderer(renderConfig);
     await renderer.render({ outputDir: projectRoot });
     await writeAgentToProject(generateConfig, { configBaseDir });
 

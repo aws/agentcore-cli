@@ -4,7 +4,6 @@ import type {
   DirectoryPath,
   FilePath,
   GatewayAuthorizerType,
-  IdentityCredentialVariant,
   MemoryStrategyType,
   ModelProvider,
   SDKFramework,
@@ -13,25 +12,17 @@ import type {
 import { getErrorMessage } from '../../errors';
 import { setupPythonProject } from '../../operations';
 import {
-  mapGenerateConfigToAgentEnvSpec,
-  mapModelProviderToIdentityProviders,
+  mapGenerateConfigToRenderConfig,
+  mapModelProviderToCredentials,
   writeAgentToProject,
 } from '../../operations/agent/generate';
-import {
-  attachAgentToAgent,
-  attachGatewayToAgent,
-  attachIdentityToAgent,
-  attachMemoryToAgent,
-  bindMcpRuntimeToAgent,
-} from '../../operations/attach';
-import { computeDefaultIdentityEnvVarName, createIdentityFromWizard } from '../../operations/identity/create-identity';
+import { bindMcpRuntimeToAgent } from '../../operations/attach';
+import { computeDefaultCredentialEnvVarName, createCredential } from '../../operations/identity/create-identity';
 import { createGatewayFromWizard, createToolFromWizard } from '../../operations/mcp/create-mcp';
-import { createMemoryFromWizard } from '../../operations/memory/create-memory';
+import { createMemory } from '../../operations/memory/create-memory';
 import { createRenderer } from '../../templates';
 import type { MemoryOption } from '../../tui/screens/generate/types';
-import type { AddIdentityConfig } from '../../tui/screens/identity/types';
 import type { AddGatewayConfig, AddMcpToolConfig } from '../../tui/screens/mcp/types';
-import type { AddMemoryConfig, AddMemoryStrategyConfig } from '../../tui/screens/memory/types';
 import { DEFAULT_EVENT_EXPIRY } from '../../tui/screens/memory/types';
 import type {
   AddAgentResult,
@@ -39,11 +30,7 @@ import type {
   AddIdentityResult,
   AddMcpToolResult,
   AddMemoryResult,
-  BindAgentResult,
-  BindGatewayResult,
-  BindIdentityResult,
   BindMcpRuntimeResult,
-  BindMemoryResult,
 } from './types';
 import { dirname, join } from 'path';
 
@@ -82,19 +69,13 @@ export interface ValidatedAddMcpToolOptions {
 
 export interface ValidatedAddMemoryOptions {
   name: string;
-  description?: string;
   strategies: string;
   expiry?: number;
-  owner: string;
-  users?: string;
 }
 
 export interface ValidatedAddIdentityOptions {
   name: string;
-  type: string;
   apiKey: string;
-  owner: string;
-  users?: string;
 }
 
 // Agent handlers
@@ -140,8 +121,8 @@ async function handleCreatePath(options: ValidatedAddAgentOptions, configBaseDir
 
   const agentPath = join(projectRoot, APP_DIR, options.name);
 
-  const agentSpec = mapGenerateConfigToAgentEnvSpec(generateConfig);
-  const renderer = createRenderer(agentSpec);
+  const renderConfig = mapGenerateConfigToRenderConfig(generateConfig);
+  const renderer = createRenderer(renderConfig);
   await renderer.render({ outputDir: projectRoot });
 
   await writeAgentToProject(generateConfig, { configBaseDir });
@@ -151,7 +132,7 @@ async function handleCreatePath(options: ValidatedAddAgentOptions, configBaseDir
   }
 
   if (options.apiKey && options.modelProvider !== 'Bedrock') {
-    const envVarName = computeDefaultIdentityEnvVarName(options.modelProvider);
+    const envVarName = computeDefaultCredentialEnvVarName(options.modelProvider);
     await setEnvVar(envVarName, options.apiKey, configBaseDir);
   }
 
@@ -165,34 +146,28 @@ async function handleByoPath(
 ): Promise<AddAgentResult> {
   const codeLocation = options.codeLocation!.endsWith('/') ? options.codeLocation! : `${options.codeLocation!}/`;
 
-  // Read project first to get project name for qualified identity provider names
   const project = await configIO.readProjectSpec();
 
-  const agentEnvSpec: AgentEnvSpec = {
+  const agent: AgentEnvSpec = {
+    type: 'AgentCoreRuntime',
     name: options.name,
-    id: `${options.name}Agent`,
-    sdkFramework: options.framework,
-    targetLanguage: options.language,
-    modelProvider: options.modelProvider,
-    runtime: {
-      artifact: 'CodeZip',
-      name: options.name,
-      entrypoint: (options.entrypoint ?? 'main.py') as FilePath,
-      codeLocation: codeLocation as DirectoryPath,
-      pythonVersion: 'PYTHON_3_12',
-      networkMode: 'PUBLIC',
-    },
-    mcpProviders: [],
-    memoryProviders: [],
-    identityProviders: mapModelProviderToIdentityProviders(options.modelProvider, project.name),
-    remoteTools: [],
+    build: 'CodeZip',
+    entrypoint: (options.entrypoint ?? 'main.py') as FilePath,
+    codeLocation: codeLocation as DirectoryPath,
+    runtimeVersion: 'PYTHON_3_12',
+    networkMode: 'PUBLIC',
   };
 
-  project.agents.push(agentEnvSpec);
+  project.agents.push(agent);
+
+  // Add credential for non-Bedrock providers
+  const credentials = mapModelProviderToCredentials(options.modelProvider, project.name);
+  project.credentials.push(...credentials);
+
   await configIO.writeProjectSpec(project);
 
   if (options.apiKey && options.modelProvider !== 'Bedrock') {
-    const envVarName = computeDefaultIdentityEnvVarName(options.modelProvider);
+    const envVarName = computeDefaultCredentialEnvVarName(options.modelProvider);
     await setEnvVar(envVarName, options.apiKey, configBaseDir);
   }
 
@@ -283,142 +258,44 @@ export async function handleAddMcpTool(options: ValidatedAddMcpToolOptions): Pro
   }
 }
 
-// Memory handler
-function buildMemoryConfig(options: ValidatedAddMemoryOptions): AddMemoryConfig {
-  const userAgents = options.users
-    ? options.users
-        .split(',')
-        .map(s => s.trim())
-        .filter(Boolean)
-    : [];
-
-  const strategies: AddMemoryStrategyConfig[] = options.strategies
-    .split(',')
-    .map(s => s.trim())
-    .filter(Boolean)
-    .map(type => ({ type: type as MemoryStrategyType }));
-
-  return {
-    name: options.name,
-    description: options.description ?? `Memory for ${options.name}`,
-    eventExpiryDuration: options.expiry ?? DEFAULT_EVENT_EXPIRY,
-    strategies,
-    ownerAgent: options.owner,
-    userAgents,
-  };
-}
-
+// Memory handler (v2: top-level resource, no owner/user)
 export async function handleAddMemory(options: ValidatedAddMemoryOptions): Promise<AddMemoryResult> {
   try {
-    const config = buildMemoryConfig(options);
-    const result = await createMemoryFromWizard(config);
-    return {
-      success: true,
-      memoryName: result.name,
-      ownerAgent: result.ownerAgent,
-      userAgents: result.userAgents,
-    };
+    const strategies = options.strategies
+      .split(',')
+      .map(s => s.trim())
+      .filter(Boolean)
+      .map(type => ({ type: type as MemoryStrategyType }));
+
+    const result = await createMemory({
+      name: options.name,
+      eventExpiryDuration: options.expiry ?? DEFAULT_EVENT_EXPIRY,
+      strategies,
+    });
+
+    return { success: true, memoryName: result.name };
   } catch (err) {
     return { success: false, error: getErrorMessage(err) };
   }
 }
 
-// Identity handler
-function buildIdentityConfig(options: ValidatedAddIdentityOptions): AddIdentityConfig {
-  const userAgents = options.users
-    ? options.users
-        .split(',')
-        .map(s => s.trim())
-        .filter(Boolean)
-    : [];
-
-  return {
-    identityType: options.type as IdentityCredentialVariant,
-    name: options.name,
-    apiKey: options.apiKey,
-    ownerAgent: options.owner,
-    userAgents,
-  };
-}
-
+// Identity handler (v2: top-level credential resource, no owner/user)
 export async function handleAddIdentity(options: ValidatedAddIdentityOptions): Promise<AddIdentityResult> {
   try {
-    const config = buildIdentityConfig(options);
-    const result = await createIdentityFromWizard(config);
-    return {
-      success: true,
-      identityName: result.name,
-      ownerAgent: result.ownerAgent,
-      userAgents: result.userAgents,
-    };
-  } catch (err) {
-    return { success: false, error: getErrorMessage(err) };
-  }
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Bind handlers (for --bind flag)
-// ─────────────────────────────────────────────────────────────────────────────
-
-export interface ValidatedBindMemoryOptions {
-  agent: string;
-  memory: string;
-  access: 'read' | 'readwrite';
-  envVar: string;
-}
-
-export async function handleBindMemory(options: ValidatedBindMemoryOptions): Promise<BindMemoryResult> {
-  try {
-    await attachMemoryToAgent(options.agent, {
-      memoryName: options.memory,
-      access: options.access,
-      envVarName: options.envVar,
-    });
-    return { success: true, memoryName: options.memory, targetAgent: options.agent };
-  } catch (err) {
-    return { success: false, error: getErrorMessage(err) };
-  }
-}
-
-export interface ValidatedBindIdentityOptions {
-  agent: string;
-  identity: string;
-  envVar: string;
-}
-
-export async function handleBindIdentity(options: ValidatedBindIdentityOptions): Promise<BindIdentityResult> {
-  try {
-    await attachIdentityToAgent(options.agent, {
-      identityName: options.identity,
-      envVarName: options.envVar,
-    });
-    return { success: true, identityName: options.identity, targetAgent: options.agent };
-  } catch (err) {
-    return { success: false, error: getErrorMessage(err) };
-  }
-}
-
-export interface ValidatedBindGatewayOptions {
-  agent: string;
-  gateway: string;
-  name: string;
-  description: string;
-  envVar: string;
-}
-
-export async function handleBindGateway(options: ValidatedBindGatewayOptions): Promise<BindGatewayResult> {
-  try {
-    await attachGatewayToAgent(options.agent, {
-      gatewayName: options.gateway,
+    const result = await createCredential({
       name: options.name,
-      description: options.description,
-      envVarName: options.envVar,
+      apiKey: options.apiKey,
     });
-    return { success: true, gatewayName: options.gateway, targetAgent: options.agent };
+
+    return { success: true, credentialName: result.name };
   } catch (err) {
     return { success: false, error: getErrorMessage(err) };
   }
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// MCP Runtime Bind handler (still relevant in v2)
+// ─────────────────────────────────────────────────────────────────────────────
 
 export interface ValidatedBindMcpRuntimeOptions {
   agent: string;
@@ -433,33 +310,6 @@ export async function handleBindMcpRuntime(options: ValidatedBindMcpRuntimeOptio
       envVarName: options.envVar,
     });
     return { success: true, runtimeName: options.runtime, targetAgent: options.agent };
-  } catch (err) {
-    return { success: false, error: getErrorMessage(err) };
-  }
-}
-
-export interface ValidatedBindAgentOptions {
-  source: string;
-  target: string;
-  name: string;
-  description: string;
-  envVar: string;
-}
-
-export async function handleBindAgent(options: ValidatedBindAgentOptions): Promise<BindAgentResult> {
-  try {
-    await attachAgentToAgent(options.source, {
-      targetAgent: options.target,
-      name: options.name,
-      description: options.description,
-      envVarName: options.envVar,
-    });
-    return {
-      success: true,
-      toolName: options.name,
-      sourceAgent: options.source,
-      targetAgent: options.target,
-    };
   } catch (err) {
     return { success: false, error: getErrorMessage(err) };
   }

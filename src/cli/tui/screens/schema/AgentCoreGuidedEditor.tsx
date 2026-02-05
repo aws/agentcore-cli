@@ -1,11 +1,8 @@
 import {
   AgentCoreProjectSpecSchema,
-  ArtifactTypeSchema,
-  ModelProviderSchema,
+  BuildTypeSchema,
   NetworkModeSchema,
   PythonRuntimeSchema,
-  SDKFrameworkSchema,
-  TargetLanguageSchema,
 } from '../../../../schema';
 import type { AgentCoreProjectSpec, PathType } from '../../../../schema';
 import { Cursor, Header, Panel, PathInput, ScreenLayout, SelectList } from '../../components';
@@ -288,11 +285,11 @@ function AgentCoreGuidedEditorBody(props: {
         title: 'Runtime',
         fields: [
           {
-            id: 'runtime-artifact',
-            label: 'Artifact Type',
+            id: 'runtime-build',
+            label: 'Build Type',
             type: 'enum',
-            path: ['agents', agentIndex, 'runtime', 'artifact'],
-            enumValues: ArtifactTypeSchema.options,
+            path: ['agents', agentIndex, 'build'],
+            enumValues: BuildTypeSchema.options,
           },
           {
             id: 'runtime-entrypoint',

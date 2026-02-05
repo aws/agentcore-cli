@@ -1,9 +1,9 @@
-import type { AgentEnvSpec } from '../../schema';
 import { BaseRenderer } from './BaseRenderer';
 import { TEMPLATE_ROOT } from './templateRoot';
+import type { AgentRenderConfig } from './types';
 
 export class StrandsRenderer extends BaseRenderer {
-  constructor(agentSpec: AgentEnvSpec) {
-    super(agentSpec, 'strands', TEMPLATE_ROOT);
+  constructor(config: AgentRenderConfig) {
+    super(config, 'strands', TEMPLATE_ROOT);
   }
 }

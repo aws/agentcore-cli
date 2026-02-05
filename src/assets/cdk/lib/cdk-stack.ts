@@ -1,12 +1,23 @@
-import { AgentCoreApplication, AgentCoreMcp, type AgentCoreProjectSpec } from '@aws/agentcore-l3-cdk-constructs';
+import {
+  AgentCoreApplication,
+  AgentCoreMcp,
+  type AgentCoreProjectSpec,
+  type AgentCoreMcpSpec,
+} from '@aws/agentcore-l3-cdk-constructs';
 import { CfnOutput, Stack, type StackProps } from 'aws-cdk-lib';
 import { Construct } from 'constructs';
 
 export interface AgentCoreStackProps extends StackProps {
   /**
-   * The complete AgentCore workspace specification containing all agents and MCP config.
+   * The AgentCore project specification containing agents, memories, and credentials.
    */
   spec: AgentCoreProjectSpec;
+
+  /**
+   * Optional MCP specification for gateways and runtime tools.
+   * MCP is stored separately in mcp.json.
+   */
+  mcpSpec?: AgentCoreMcpSpec;
 }
 
 /**
@@ -25,17 +36,18 @@ export class AgentCoreStack extends Stack {
   constructor(scope: Construct, id: string, props: AgentCoreStackProps) {
     super(scope, id, props);
 
-    const { spec } = props;
+    const { spec, mcpSpec } = props;
 
     // Create AgentCoreApplication with all agents
     this.application = new AgentCoreApplication(this, 'Application', {
       spec,
     });
 
-    // Instantiate AgentCoreMcp if MCP is defined
-    if (spec.mcp) {
+    // Instantiate AgentCoreMcp if MCP spec is provided
+    if (mcpSpec) {
       this.mcp = new AgentCoreMcp(this, 'Mcp', {
-        spec,
+        projectName: spec.name,
+        mcpSpec,
         agentCoreApplication: this.application,
       });
     }

@@ -1,13 +1,14 @@
 import { APP_DIR } from '../../../../lib';
 import type {
-  AgentCoreMemoryProvider,
   AgentEnvSpec,
+  Credential,
   DirectoryPath,
   FilePath,
+  Memory,
   MemoryStrategy,
   ModelProvider,
-  OwnedIdentityProvider,
 } from '../../../../schema';
+import type { AgentRenderConfig } from '../../../templates/types';
 import {
   DEFAULT_MEMORY_EXPIRY_DAYS,
   DEFAULT_NETWORK_MODE,
@@ -15,130 +16,112 @@ import {
   DEFAULT_PYTHON_VERSION,
 } from '../../../tui/screens/generate/defaults';
 import type { GenerateConfig, MemoryOption } from '../../../tui/screens/generate/types';
-import { buildOwnedIdentityProvider } from '../../identity/create-identity';
-import { computeDefaultMemoryEnvVarName } from '../../memory/create-memory';
 
 /**
- * Maps GenerateConfig memory option to AgentCore MemoryProviders array.
+ * Result of mapping GenerateConfig to v2 schema.
+ * Returns separate agent, memory, and credential resources.
+ */
+export interface GenerateConfigMappingResult {
+  agent: AgentEnvSpec;
+  memories: Memory[];
+  credentials: Credential[];
+}
+
+/**
+ * Compute the qualified credential name for AWS resources.
+ * Format: {projectName}{providerName}
+ */
+function computeQualifiedCredentialName(projectName: string, providerName: string): string {
+  return `${projectName}${providerName}`;
+}
+
+/**
+ * Maps GenerateConfig memory option to v2 Memory resources.
  *
  * Memory mapping:
  * - "none" -> empty array
- * - "shortTerm" -> [AgentCoreMemoryProvider with Summarization strategy]
- * - "longAndShortTerm" -> [AgentCoreMemoryProvider with Semantic + Summarization + UserPreference strategies]
- *
- * Namespace patterns use {actorId} and {sessionId} placeholders for runtime substitution.
+ * - "shortTerm" -> [Memory with Summarization strategy]
+ * - "longAndShortTerm" -> [Memory with Semantic + Summarization + UserPreference strategies]
  */
-export function mapGenerateInputToMemoryProviders(
-  memory: MemoryOption,
-  projectName: string
-): AgentCoreMemoryProvider[] {
+export function mapGenerateInputToMemories(memory: MemoryOption, projectName: string): Memory[] {
   if (memory === 'none') {
     return [];
   }
 
-  const memoryStrategies: MemoryStrategy[] = [];
+  const strategies: MemoryStrategy[] = [];
 
-  // Long-term memory strategies
   if (memory === 'longAndShortTerm') {
-    // Semantic memory for facts
-    memoryStrategies.push({
-      type: 'SEMANTIC',
-      name: `${projectName}SemanticMemory`,
-      description: 'Long-term semantic memory for the agent',
-      namespaces: ['/users/{actorId}/facts'],
-    });
-
-    // User preferences memory
-    memoryStrategies.push({
-      type: 'USER_PREFERENCE',
-      name: `${projectName}UserPreferenceMemory`,
-      description: 'User preference memory for the agent',
-      namespaces: ['/users/{actorId}/preferences'],
-    });
+    strategies.push({ type: 'SEMANTIC' });
+    strategies.push({ type: 'USER_PREFERENCE' });
   }
 
-  // Short-term memory uses Summarization strategy
-  memoryStrategies.push({
-    type: 'SUMMARIZATION',
-    name: `${projectName}SummaryMemory`,
-    description: 'Short-term summarization memory for the agent',
-    namespaces: ['/summaries/{actorId}/{sessionId}'],
-  });
+  strategies.push({ type: 'SUMMARIZATION' });
 
-  const memoryName = `${projectName}Memory`;
-  const memoryProvider: AgentCoreMemoryProvider = {
-    type: 'AgentCoreMemory',
-    relation: 'own',
-    name: memoryName,
-    description: `Memory provider for ${projectName}`,
-    config: {
+  return [
+    {
+      type: 'AgentCoreMemory',
+      name: `${projectName}Memory`,
       eventExpiryDuration: DEFAULT_MEMORY_EXPIRY_DAYS,
-      memoryStrategies,
+      strategies,
     },
-    envVarName: computeDefaultMemoryEnvVarName(memoryName),
-  };
-
-  return [memoryProvider];
+  ];
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Identity Provider Mapping
-// ─────────────────────────────────────────────────────────────────────────────
-
 /**
- * Maps model provider to identity providers array.
- * For non-Bedrock providers, creates an owned identity provider entry.
- * Bedrock uses IAM, so no identity provider is needed.
+ * Maps model provider to v2 Credential resources.
+ * Bedrock uses IAM, so no credential is needed.
  */
-export function mapModelProviderToIdentityProviders(
-  modelProvider: ModelProvider,
-  projectName: string
-): OwnedIdentityProvider[] {
+export function mapModelProviderToCredentials(modelProvider: ModelProvider, projectName: string): Credential[] {
   if (modelProvider === 'Bedrock') {
     return [];
   }
 
-  // Provider name is qualified with project name for uniqueness (e.g., "myProjectOpenAI")
-  return [buildOwnedIdentityProvider(modelProvider, projectName)];
+  return [
+    {
+      type: 'ApiKeyCredentialProvider',
+      name: computeQualifiedCredentialName(projectName, modelProvider),
+    },
+  ];
 }
 
 /**
- * Maps GenerateConfig to AgentEnvSpec for schema persistence.
- *
- * Field mappings:
- * - name: from projectName (used as CloudFormation logical ID)
- * - id: generated as "{projectName}Agent"
- * - sdkFramework: direct mapping from sdk field
- * - targetLanguage: direct mapping from language field
- * - modelProvider: direct mapping from modelProvider field
- * - runtime: CodeZipRuntime with codeLocation from projectPath/projectName
- * - mcpProviders: empty array (user adds via `add mcp` command)
- * - memoryProviders: mapped from memory option
- * - identityProviders: mapped from modelProvider (non-Bedrock gets API key provider)
- * - remoteTools: empty array
+ * Maps GenerateConfig to v2 AgentEnvSpec resource.
  */
-export function mapGenerateConfigToAgentEnvSpec(config: GenerateConfig): AgentEnvSpec {
-  // CodeLocation is relative to the project root (parent of agentcore/ directory)
-  // Agents are placed in app/<agentName>/ directory
+export function mapGenerateConfigToAgent(config: GenerateConfig): AgentEnvSpec {
   const codeLocation = `${APP_DIR}/${config.projectName}/`;
 
   return {
+    type: 'AgentCoreRuntime',
     name: config.projectName,
-    id: `${config.projectName}Agent`,
+    build: 'CodeZip',
+    entrypoint: DEFAULT_PYTHON_ENTRYPOINT as FilePath,
+    codeLocation: codeLocation as DirectoryPath,
+    runtimeVersion: DEFAULT_PYTHON_VERSION,
+    networkMode: DEFAULT_NETWORK_MODE,
+  };
+}
+
+/**
+ * Maps GenerateConfig to v2 schema resources (AgentEnvSpec, Memory[], Credential[]).
+ */
+export function mapGenerateConfigToResources(config: GenerateConfig): GenerateConfigMappingResult {
+  return {
+    agent: mapGenerateConfigToAgent(config),
+    memories: mapGenerateInputToMemories(config.memory, config.projectName),
+    credentials: mapModelProviderToCredentials(config.modelProvider, config.projectName),
+  };
+}
+
+/**
+ * Maps GenerateConfig to AgentRenderConfig for template rendering.
+ */
+export function mapGenerateConfigToRenderConfig(config: GenerateConfig): AgentRenderConfig {
+  return {
+    name: config.projectName,
     sdkFramework: config.sdk,
     targetLanguage: config.language,
     modelProvider: config.modelProvider,
-    runtime: {
-      artifact: 'CodeZip',
-      name: config.projectName,
-      entrypoint: DEFAULT_PYTHON_ENTRYPOINT as FilePath,
-      codeLocation: codeLocation as DirectoryPath,
-      pythonVersion: DEFAULT_PYTHON_VERSION,
-      networkMode: DEFAULT_NETWORK_MODE,
-    },
-    mcpProviders: [],
-    memoryProviders: mapGenerateInputToMemoryProviders(config.memory, config.projectName),
-    identityProviders: mapModelProviderToIdentityProviders(config.modelProvider, config.projectName),
-    remoteTools: [],
+    hasMemory: config.memory !== 'none',
+    hasIdentity: config.modelProvider !== 'Bedrock',
   };
 }

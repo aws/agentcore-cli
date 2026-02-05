@@ -1,1 +1,1 @@
-export type { ArtifactResult, PackageOptions, RuntimePackager } from './packaging';
+export type { ArtifactResult, CodeBundleConfig, CodeZipPackager, PackageOptions, RuntimePackager } from './packaging';

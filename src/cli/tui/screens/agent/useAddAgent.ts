@@ -3,11 +3,11 @@ import type { AgentEnvSpec, DirectoryPath, FilePath } from '../../../../schema';
 import { getErrorMessage } from '../../../errors';
 import { type PythonSetupResult, setupPythonProject } from '../../../operations';
 import {
-  mapGenerateConfigToAgentEnvSpec,
-  mapModelProviderToIdentityProviders,
+  mapGenerateConfigToRenderConfig,
+  mapModelProviderToCredentials,
   writeAgentToProject,
 } from '../../../operations/agent/generate';
-import { computeDefaultIdentityEnvVarName } from '../../../operations/identity/create-identity';
+import { computeDefaultCredentialEnvVarName } from '../../../operations/identity/create-identity';
 import { createRenderer } from '../../../templates';
 import type { GenerateConfig } from '../generate/types';
 import type { AddAgentConfig } from './types';
@@ -44,30 +44,17 @@ export type AddAgentOutcome = AddAgentCreateResult | AddAgentByoResult | AddAgen
 // ─────────────────────────────────────────────────────────────────────────────
 
 /**
- * Maps AddAgentConfig (from BYO wizard) to AgentEnvSpec for schema persistence.
- *
- * Unlike the create flow, this does NOT generate template files.
- * It only creates the schema entry pointing to existing code.
+ * Maps AddAgentConfig (from BYO wizard) to v2 AgentEnvSpec for schema persistence.
  */
-export function mapByoConfigToAgentEnvSpec(config: AddAgentConfig, projectName: string): AgentEnvSpec {
+export function mapByoConfigToAgent(config: AddAgentConfig): AgentEnvSpec {
   return {
+    type: 'AgentCoreRuntime',
     name: config.name,
-    id: `${config.name}Agent`,
-    sdkFramework: config.framework,
-    targetLanguage: config.language,
-    modelProvider: config.modelProvider,
-    runtime: {
-      artifact: 'CodeZip',
-      name: config.name,
-      entrypoint: config.entrypoint as FilePath,
-      codeLocation: config.codeLocation as DirectoryPath,
-      pythonVersion: config.pythonVersion,
-      networkMode: 'PUBLIC',
-    },
-    mcpProviders: [],
-    memoryProviders: [],
-    identityProviders: mapModelProviderToIdentityProviders(config.modelProvider, projectName),
-    remoteTools: [],
+    build: 'CodeZip',
+    entrypoint: config.entrypoint as FilePath,
+    codeLocation: config.codeLocation as DirectoryPath,
+    runtimeVersion: config.pythonVersion,
+    networkMode: 'PUBLIC',
   };
 }
 
@@ -150,8 +137,8 @@ async function handleCreatePath(
   const agentPath = join(projectRoot, config.name);
 
   // Generate agent files
-  const agentSpec = mapGenerateConfigToAgentEnvSpec(generateConfig);
-  const renderer = createRenderer(agentSpec);
+  const renderConfig = mapGenerateConfigToRenderConfig(generateConfig);
+  const renderer = createRenderer(renderConfig);
   await renderer.render({ outputDir: projectRoot });
 
   // Write agent to project config
@@ -165,7 +152,7 @@ async function handleCreatePath(
 
   // Write API key to agentcore/.env for non-Bedrock providers
   if (config.apiKey && config.modelProvider !== 'Bedrock') {
-    const envVarName = computeDefaultIdentityEnvVarName(config.modelProvider);
+    const envVarName = computeDefaultCredentialEnvVarName(config.modelProvider);
     await setEnvVar(envVarName, config.apiKey, configBaseDir);
   }
 
@@ -186,19 +173,22 @@ async function handleByoPath(
   configIO: ConfigIO,
   configBaseDir: string
 ): Promise<AddAgentByoResult | AddAgentError> {
-  // Read project first to get project name for qualified identity provider names
   const project = await configIO.readProjectSpec();
-  const agentEnvSpec = mapByoConfigToAgentEnvSpec(config, project.name);
+  const agent = mapByoConfigToAgent(config);
 
   // Append new agent
-  project.agents.push(agentEnvSpec);
+  project.agents.push(agent);
+
+  // Add credentials for non-Bedrock providers
+  const credentials = mapModelProviderToCredentials(config.modelProvider, project.name);
+  project.credentials.push(...credentials);
 
   // Write updated project
   await configIO.writeProjectSpec(project);
 
   // Write API key to agentcore/.env for non-Bedrock providers
   if (config.apiKey && config.modelProvider !== 'Bedrock') {
-    const envVarName = computeDefaultIdentityEnvVarName(config.modelProvider);
+    const envVarName = computeDefaultCredentialEnvVarName(config.modelProvider);
     await setEnvVar(envVarName, config.apiKey, configBaseDir);
   }
 

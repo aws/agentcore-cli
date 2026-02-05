@@ -132,5 +132,9 @@ export type PythonRuntime = z.infer<typeof PythonRuntimeSchema>;
 export const NodeRuntimeSchema = z.enum(['NODE_18', 'NODE_20', 'NODE_22']);
 export type NodeRuntime = z.infer<typeof NodeRuntimeSchema>;
 
+/** Combined runtime version schema supporting both Python and Node/TypeScript runtimes */
+export const RuntimeVersionSchema = z.union([PythonRuntimeSchema, NodeRuntimeSchema]);
+export type RuntimeVersion = z.infer<typeof RuntimeVersionSchema>;
+
 export const NetworkModeSchema = z.enum(['PUBLIC', 'PRIVATE']);
 export type NetworkMode = z.infer<typeof NetworkModeSchema>;

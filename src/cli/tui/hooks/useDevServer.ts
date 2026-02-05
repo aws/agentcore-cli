@@ -75,14 +75,14 @@ export function useDevServer(options: { workingDir: string; port: number; agentN
     void load();
   }, [options.workingDir]);
 
-  const config: DevConfig = useMemo(
-    () => getDevConfig(options.workingDir, project, configRoot, options.agentName),
-    [options.workingDir, project, configRoot, options.agentName]
-  );
+  const config: DevConfig | null = useMemo(() => {
+    if (!project) return null;
+    return getDevConfig(options.workingDir, project, configRoot, options.agentName);
+  }, [options.workingDir, project, configRoot, options.agentName]);
 
   // Start server when config is loaded
   useEffect(() => {
-    if (!configLoaded) return;
+    if (!configLoaded || !config) return;
 
     // Increment instance ID to track this server instance
     instanceIdRef.current += 1;
@@ -158,16 +158,7 @@ export function useDevServer(options: { workingDir: string; port: number; agentN
       killServer(serverRef.current);
       loggerRef.current?.finalize();
     };
-  }, [
-    configLoaded,
-    config.agentName,
-    config.module,
-    config.directory,
-    config.isPython,
-    targetPort,
-    restartTrigger,
-    envVars,
-  ]);
+  }, [configLoaded, config, targetPort, restartTrigger, envVars, options.workingDir]);
 
   const invoke = async (message: string) => {
     // Add user message to conversation

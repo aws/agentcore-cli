@@ -312,7 +312,7 @@ export function DevScreen(props: DevScreenProps) {
   );
 
   // Return null while loading
-  if (!agentsLoaded || (mode !== 'select-agent' && !configLoaded)) {
+  if (!agentsLoaded || (mode !== 'select-agent' && (!configLoaded || !config))) {
     return null;
   }
 
@@ -338,7 +338,7 @@ export function DevScreen(props: DevScreenProps) {
     const agentItems = supportedAgents.map((agent, i) => ({
       id: String(i),
       title: agent.name,
-      description: `${agent.targetLanguage} · ${agent.runtime.artifact}`,
+      description: `${agent.runtimeVersion} · ${agent.build}`,
     }));
 
     return (

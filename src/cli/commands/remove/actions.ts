@@ -112,9 +112,10 @@ export async function handleRemoveAll(_options: RemoveAllOptions): Promise<Remov
     // Reset agentcore.json (keep project name)
     await configIO.writeProjectSpec({
       name: projectName,
-      version: '0.1',
-      description: `AgentCore project: ${projectName}`,
+      version: 1,
       agents: [],
+      memories: [],
+      credentials: [],
     });
 
     // Reset aws-targets.json
