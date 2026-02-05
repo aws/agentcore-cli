@@ -352,35 +352,6 @@ async function handleBindGatewayCLI(options: BindGatewayOptions): Promise<void> 
   process.exit(result.success ? 0 : 1);
 }
 
-async function handleBindMcpRuntimeCLI(options: BindMcpRuntimeOptions): Promise<void> {
-  if (!options.agent || !options.runtime) {
-    const error = 'Required: --agent, --runtime';
-    if (options.json) {
-      console.log(JSON.stringify({ success: false, error }));
-    } else {
-      console.error(error);
-    }
-    process.exit(1);
-  }
-
-  const envVar = options.envVar ?? `${options.runtime.toUpperCase().replace(/[^A-Z0-9]/g, '_')}_MCP_RUNTIME_URL`;
-  const result = await handleBindMcpRuntime({
-    agent: options.agent,
-    runtime: options.runtime,
-    envVar,
-  });
-
-  if (options.json) {
-    console.log(JSON.stringify(result));
-  } else if (result.success) {
-    console.log(`Bound MCP runtime '${result.runtimeName}' to agent '${result.targetAgent}'`);
-  } else {
-    console.error(result.error);
-  }
-
-  process.exit(result.success ? 0 : 1);
-}
-
 async function handleBindAgentCLI(options: BindAgentOptions): Promise<void> {
   if (!options.source || !options.target) {
     const error = 'Required: --source, --target';

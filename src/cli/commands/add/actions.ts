@@ -379,24 +379,6 @@ export async function handleBindGateway(options: ValidatedBindGatewayOptions): P
   }
 }
 
-export interface ValidatedBindMcpRuntimeOptions {
-  agent: string;
-  runtime: string;
-  envVar: string;
-}
-
-export async function handleBindMcpRuntime(options: ValidatedBindMcpRuntimeOptions): Promise<BindMcpRuntimeResult> {
-  try {
-    await bindMcpRuntimeToAgent(options.runtime, {
-      agentName: options.agent,
-      envVarName: options.envVar,
-    });
-    return { success: true, runtimeName: options.runtime, targetAgent: options.agent };
-  } catch (err) {
-    return { success: false, error: getErrorMessage(err) };
-  }
-}
-
 export interface ValidatedBindAgentOptions {
   source: string;
   target: string;
