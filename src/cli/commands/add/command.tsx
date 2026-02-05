@@ -136,7 +136,8 @@ async function _handleAddGatewayCLI(options: AddGatewayOptions): Promise<void> {
   process.exit(result.success ? 0 : 1);
 }
 
-async function handleAddMcpToolCLI(options: AddMcpToolOptions): Promise<void> {
+// MCP Tool disabled - prefix with underscore until feature is re-enabled
+async function _handleAddMcpToolCLI(options: AddMcpToolOptions): Promise<void> {
   const validation = validateAddMcpToolOptions(options);
   if (!validation.valid) {
     if (options.json) {
@@ -352,6 +353,7 @@ async function handleBindGatewayCLI(options: BindGatewayOptions): Promise<void> 
   process.exit(result.success ? 0 : 1);
 }
 
+
 async function handleBindAgentCLI(options: BindAgentOptions): Promise<void> {
   if (!options.source || !options.target) {
     const error = 'Required: --source, --target';
@@ -456,7 +458,7 @@ export function registerAdd(program: Command) {
       process.exit(1);
     });
 
-  // Subcommand: add mcp-tool
+  // Subcommand: add mcp-tool (disabled - coming soon)
   addCmd
     .command('mcp-tool')
     .description('Add an MCP tool to the project')
@@ -468,9 +470,9 @@ export function registerAdd(program: Command) {
     .option('--gateway <name>', 'Gateway name (for behind-gateway)')
     .option('--host <host>', 'Compute host: Lambda or AgentCoreRuntime (for behind-gateway)')
     .option('--json', 'Output as JSON')
-    .action(async options => {
-      requireProject();
-      await handleAddMcpToolCLI(options as AddMcpToolOptions);
+    .action(() => {
+      console.error('MCP Tool integration is coming soon.');
+      process.exit(1);
     });
 
   // Subcommand: add memory (v2: top-level resource)
@@ -508,7 +510,7 @@ export function registerAdd(program: Command) {
   // Subcommand: add bind (only MCP runtime binding in v2)
   const bindCmd = addCmd.command('bind').description('Bind MCP resources to agents');
 
-  // bind mcp-runtime
+  // bind mcp-runtime (disabled - coming soon)
   bindCmd
     .command('mcp-runtime')
     .description('Bind existing MCP runtime to an agent')
@@ -516,8 +518,8 @@ export function registerAdd(program: Command) {
     .requiredOption('--runtime <name>', 'MCP runtime name to bind')
     .option('--env-var <name>', 'Environment variable name')
     .option('--json', 'Output as JSON')
-    .action(async options => {
-      requireProject();
-      await handleBindMcpRuntimeCLI(options as BindMcpRuntimeOptions);
+    .action(() => {
+      console.error('MCP Tool integration is coming soon.');
+      process.exit(1);
     });
 }
