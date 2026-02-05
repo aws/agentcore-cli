@@ -46,24 +46,6 @@ agentcore-cli create --name MyProject --defaults --dry-run
 | `--dry-run`            | Preview without creating                                                           |
 | `--json`               | JSON output                                                                        |
 
-### plan
-
-Preview infrastructure changes before deploying.
-
-```bash
-agentcore-cli plan
-agentcore-cli plan --target production
-agentcore-cli plan --target dev --deploy  # Plan then deploy
-agentcore-cli plan -y --json              # Auto-confirm, JSON output
-```
-
-| Flag              | Description                  |
-| ----------------- | ---------------------------- |
-| `--target <name>` | Deployment target            |
-| `-y, --yes`       | Auto-confirm prompts         |
-| `--deploy`        | Deploy after successful plan |
-| `--json`          | JSON output                  |
-
 ### deploy
 
 Deploy infrastructure to AWS.
@@ -339,21 +321,6 @@ agentcore-cli invoke --json                   # JSON output
 | `--stream`          | Stream response           |
 | `--json`            | JSON output               |
 
-### stop-session
-
-Stop an active runtime session.
-
-```bash
-agentcore-cli stop-session
-agentcore-cli stop-session --agent MyAgent --session-id abc123
-```
-
-| Flag                | Description       |
-| ------------------- | ----------------- |
-| `--agent <name>`    | Specific agent    |
-| `--target <name>`   | Deployment target |
-| `--session-id <id>` | Session to stop   |
-
 ---
 
 ## Utilities
@@ -402,9 +369,8 @@ agentcore-cli update --check   # Check only
 ### CI/CD Pipeline
 
 ```bash
-# Validate, plan, and deploy with auto-confirm
+# Validate and deploy with auto-confirm
 agentcore-cli validate
-agentcore-cli plan --target production -y --json
 agentcore-cli deploy --target production -y --json
 ```
 

@@ -106,10 +106,9 @@ agentcore-cli invoke --stream
 
 ### Utilities
 
-| Command        | Description                    |
-| -------------- | ------------------------------ |
-| `stop-session` | Stop an active runtime session |
-| `update`       | Check for CLI updates          |
+| Command  | Description           |
+| -------- | --------------------- |
+| `update` | Check for CLI updates |
 
 ## Project Structure
 
