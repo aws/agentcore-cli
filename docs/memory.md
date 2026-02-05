@@ -119,8 +119,8 @@ To share memory between agents:
 # Create memory owned by AgentA
 agentcore-cli add memory --name SharedMemory --owner AgentA
 
-# Attach to AgentB with read access
-agentcore-cli attach memory --agent AgentB --memory SharedMemory --access read
+# Bind to AgentB with read access
+agentcore-cli add bind memory --agent AgentB --memory SharedMemory --access read
 ```
 
 ## Removal Policy

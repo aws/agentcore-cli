@@ -252,22 +252,22 @@ agentcore-cli add target \
 | `--description <desc>` | Description    |
 | `--json`               | JSON output    |
 
-### attach
+### add bind
 
 Connect resources to agents.
 
 ```bash
 # Agent-to-agent
-agentcore-cli attach agent --source CallerAgent --target HelperAgent
+agentcore-cli add bind agent --source CallerAgent --target HelperAgent
 
 # Memory
-agentcore-cli attach memory --agent MyAgent --memory SharedMemory --access read
+agentcore-cli add bind memory --agent MyAgent --memory SharedMemory --access read
 
 # Identity
-agentcore-cli attach identity --agent MyAgent --identity OpenAI
+agentcore-cli add bind identity --agent MyAgent --identity OpenAI
 
 # MCP runtime
-agentcore-cli attach mcp-runtime --agent MyAgent --runtime MyTool
+agentcore-cli add bind mcp-runtime --agent MyAgent --runtime MyTool
 ```
 
 ### remove

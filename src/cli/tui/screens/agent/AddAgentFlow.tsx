@@ -208,7 +208,7 @@ export function AddAgentFlow({
 
   // Bind flow - enter tool name
   if (flow.name === 'bind-enter-name') {
-    const defaultName = `invoke_${flow.targetAgent.toLowerCase().replace(/[^a-z0-9]/g, '_')}`;
+    const defaultName = `invoke${flow.targetAgent.replace(/[^a-zA-Z0-9]/g, '')}`;
     return (
       <Screen
         title="Bind as Remote Tool"

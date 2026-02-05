@@ -380,7 +380,7 @@ async function handleBindAgentCLI(options: BindAgentOptions): Promise<void> {
     process.exit(1);
   }
 
-  const name = options.name ?? `invoke_${options.target.toLowerCase().replace(/[^a-z0-9]/g, '_')}`;
+  const name = options.name ?? `invoke${options.target.replace(/[^a-zA-Z0-9]/g, '')}`;
   const description = options.description ?? `Invoke the ${options.target} agent`;
   const envVar = options.envVar ?? `${name.toUpperCase().replace(/[^A-Z0-9]/g, '_')}_AGENT_ID`;
 

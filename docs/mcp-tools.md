@@ -46,10 +46,10 @@ agentcore-cli add mcp-tool --exposure mcp-runtime
 
 ### Binding to Agents
 
-After creating an MCP runtime tool, attach it to agents:
+After creating an MCP runtime tool, bind it to agents:
 
 ```bash
-agentcore-cli attach mcp-runtime --agent MyAgent --runtime MyTool
+agentcore-cli add bind mcp-runtime --agent MyAgent --runtime MyTool
 ```
 
 This adds a reference in `agentcore.json`:

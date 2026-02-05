@@ -190,7 +190,12 @@ export function AddMemoryFlow({ isInteractive = true, onExit, onBack }: AddMemor
   // Create wizard
   if (flow.name === 'create-wizard') {
     if (createAgents.length === 0) {
-      return null;
+      return (
+        <ErrorPrompt
+          message="No agents available. Add an agent first before creating a memory."
+          onBack={() => setFlow({ name: 'mode-select' })}
+        />
+      );
     }
     return (
       <AddMemoryScreen
