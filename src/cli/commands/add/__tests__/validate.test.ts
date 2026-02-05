@@ -277,25 +277,16 @@ describe('validate', () => {
       expect(result.error).toBe('At least one agent is required');
     });
 
-    // AC18: behind-gateway exposure requires gateway and host
-    it('returns error for behind-gateway missing gateway, host, or invalid host', () => {
-      let result = validateAddMcpToolOptions({ ...validMcpToolOptionsBehindGateway, gateway: undefined });
+    // AC18: behind-gateway exposure is disabled (coming soon)
+    it('returns coming soon error for behind-gateway exposure', () => {
+      const result = validateAddMcpToolOptions({ ...validMcpToolOptionsBehindGateway });
       expect(result.valid).toBe(false);
-      expect(result.error).toBe('--gateway is required for behind-gateway exposure');
-
-      result = validateAddMcpToolOptions({ ...validMcpToolOptionsBehindGateway, host: undefined });
-      expect(result.valid).toBe(false);
-      expect(result.error).toBe('--host is required for behind-gateway exposure');
-
-      result = validateAddMcpToolOptions({ ...validMcpToolOptionsBehindGateway, host: 'InvalidHost' as any });
-      expect(result.valid).toBe(false);
-      expect(result.error?.includes('Invalid host')).toBeTruthy();
+      expect(result.error).toContain('coming soon');
     });
 
     // AC19: Valid options pass
-    it('passes for valid options', () => {
+    it('passes for valid mcp-runtime options', () => {
       expect(validateAddMcpToolOptions(validMcpToolOptionsMcpRuntime)).toEqual({ valid: true });
-      expect(validateAddMcpToolOptions(validMcpToolOptionsBehindGateway)).toEqual({ valid: true });
     });
   });
 

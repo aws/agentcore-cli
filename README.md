@@ -69,11 +69,11 @@ agentcore-cli invoke --stream
 
 ### Resource Management
 
-| Command  | Description                                       |
-| -------- | ------------------------------------------------- |
-| `add`    | Add agents, memory, identity, MCP tools, gateways |
-| `remove` | Remove resources from project                     |
-| `attach` | Connect resources to agents                       |
+| Command  | Description                             |
+| -------- | --------------------------------------- |
+| `add`    | Add agents, memory, identity, MCP tools |
+| `remove` | Remove resources from project           |
+| `attach` | Connect resources to agents             |
 
 ### Development
 
@@ -98,7 +98,7 @@ my-project/
 ├── agentcore/
 │   ├── agentcore.json      # Agent specifications
 │   ├── aws-targets.json    # Deployment targets
-│   ├── mcp.json            # MCP gateway/tool config
+│   ├── mcp.json            # MCP tool config
 │   └── cdk/                # CDK infrastructure
 ├── app/                    # Agent code
 └── .env.local              # API keys (gitignored)
@@ -110,14 +110,14 @@ Projects use JSON schema files in the `agentcore/` directory:
 
 - `agentcore.json` - Agent specifications, memory, identity, remote tools
 - `aws-targets.json` - Deployment targets (account, region)
-- `mcp.json` - MCP gateway and tool definitions
+- `mcp.json` - MCP tool definitions
 - `deployed-state.json` - Runtime state (auto-managed)
 
 ## Primitives
 
 - **Memory** - Semantic, summarization, and user preference strategies
 - **Identity** - Secure API key management via Secrets Manager
-- **MCP Gateway** - HTTP endpoints exposing tools to agents
+- **MCP Tools** - Extend agent capabilities with custom tools
 - **MCP Runtime Tools** - Direct agent-to-tool connections
 - **Agent-to-Agent** - Agents invoking other agents as tools
 
@@ -139,7 +139,7 @@ agentcore-cli invoke --new-session       # Start fresh
 
 - [CLI Commands Reference](docs/commands.md) - Full command reference for scripting and CI/CD
 - [Configuration](docs/configuration.md) - Schema reference for config files
-- [MCP Tools](docs/mcp-tools.md) - MCP runtime vs gateway modes
+- [MCP Tools](docs/mcp-tools.md) - MCP runtime tools
 - [Memory](docs/memory.md) - Memory strategies and sharing
 - [Local Development](docs/local-development.md) - Dev server and debugging
 

@@ -85,6 +85,7 @@ export function AddMcpToolScreen({
     onSelect: item => wizard.setExposure(item.id as ExposureMode),
     onExit: () => wizard.goBack(),
     isActive: isExposureStep,
+    isDisabled: item => item.disabled === true,
   });
 
   const gatewayNav = useListNavigation({
@@ -193,7 +194,7 @@ export function AddMcpToolScreen({
             fields={[
               { label: 'Name', value: wizard.config.name },
               { label: 'Language', value: wizard.config.language },
-              { label: 'Exposure', value: isMcpRuntime ? 'Direct' : 'Behind Gateway' },
+              { label: 'Exposure', value: isMcpRuntime ? 'MCP Runtime' : 'Behind Gateway' },
               ...(isMcpRuntime && wizard.config.selectedAgents.length > 0
                 ? [{ label: 'Agents', value: wizard.config.selectedAgents.join(', ') }]
                 : []),

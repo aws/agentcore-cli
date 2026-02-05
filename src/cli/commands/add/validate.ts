@@ -163,7 +163,15 @@ export function validateAddMcpToolOptions(options: AddMcpToolOptions): Validatio
   }
 
   if (options.exposure !== 'mcp-runtime' && options.exposure !== 'behind-gateway') {
-    return { valid: false, error: 'Invalid exposure. Use mcp-runtime or behind-gateway' };
+    return { valid: false, error: 'Invalid exposure. Use mcp-runtime' };
+  }
+
+  // Gateway feature is disabled
+  if (options.exposure === 'behind-gateway') {
+    return {
+      valid: false,
+      error: "Behind-gateway exposure is coming soon. Use 'mcp-runtime' exposure instead.",
+    };
   }
 
   if (options.exposure === 'mcp-runtime') {
@@ -176,16 +184,6 @@ export function validateAddMcpToolOptions(options: AddMcpToolOptions): Validatio
       .filter(Boolean);
     if (agents.length === 0) {
       return { valid: false, error: 'At least one agent is required' };
-    }
-  } else {
-    if (!options.gateway) {
-      return { valid: false, error: '--gateway is required for behind-gateway exposure' };
-    }
-    if (!options.host) {
-      return { valid: false, error: '--host is required for behind-gateway exposure' };
-    }
-    if (options.host !== 'Lambda' && options.host !== 'AgentCoreRuntime') {
-      return { valid: false, error: 'Invalid host. Use Lambda or AgentCoreRuntime' };
     }
   }
 

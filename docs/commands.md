@@ -211,67 +211,26 @@ agentcore-cli add identity \
 | `--users <agents>` | Comma-separated users      |
 | `--json`           | JSON output                |
 
-### add gateway
-
-Add an MCP gateway.
-
-```bash
-# Basic gateway
-agentcore-cli add gateway \
-  --name main-gateway \
-  --agents MyAgent
-
-# With JWT authorization
-agentcore-cli add gateway \
-  --name secure-gateway \
-  --authorizer-type CUSTOM_JWT \
-  --discovery-url "https://cognito-idp.us-west-2.amazonaws.com/xxx/.well-known/openid-configuration" \
-  --allowed-audience client-id \
-  --allowed-clients client-id
-```
-
-| Flag                        | Description                          |
-| --------------------------- | ------------------------------------ |
-| `--name <name>`             | Gateway name                         |
-| `--description <desc>`      | Description                          |
-| `--authorizer-type <type>`  | `NONE` (default) or `CUSTOM_JWT`     |
-| `--discovery-url <url>`     | OIDC discovery URL (for JWT)         |
-| `--allowed-audience <vals>` | Comma-separated audiences (for JWT)  |
-| `--allowed-clients <vals>`  | Comma-separated client IDs (for JWT) |
-| `--agents <names>`          | Comma-separated agents to attach     |
-| `--json`                    | JSON output                          |
-
 ### add mcp-tool
 
 Add an MCP tool.
 
 ```bash
-# Direct runtime tool
 agentcore-cli add mcp-tool \
   --name MyTool \
   --language Python \
   --exposure mcp-runtime \
   --agents MyAgent
-
-# Behind gateway
-agentcore-cli add mcp-tool \
-  --name MyTool \
-  --language Python \
-  --exposure behind-gateway \
-  --gateway main-gateway \
-  --host Lambda
 ```
 
-| Flag                   | Description                                         |
-| ---------------------- | --------------------------------------------------- |
-| `--name <name>`        | Tool name                                           |
-| `--description <desc>` | Description                                         |
-| `--language <lang>`    | `Python` or `TypeScript`                            |
-| `--exposure <mode>`    | `mcp-runtime` or `behind-gateway`                   |
-| `--agents <names>`     | Agents (for mcp-runtime)                            |
-| `--gateway <name>`     | Gateway (for behind-gateway)                        |
-| `--host <host>`        | `Lambda` or `AgentCoreRuntime` (for behind-gateway) |
-| `--json`               | JSON output                                         |
+| Flag                   | Description              |
+| ---------------------- | ------------------------ |
+| `--name <name>`        | Tool name                |
+| `--description <desc>` | Description              |
+| `--language <lang>`    | `Python` or `TypeScript` |
+| `--exposure <mode>`    | `mcp-runtime`            |
+| `--agents <names>`     | Agents to attach         |
+| `--json`               | JSON output              |
 
 ### add target
 
@@ -309,9 +268,6 @@ agentcore-cli attach identity --agent MyAgent --identity OpenAI
 
 # MCP runtime
 agentcore-cli attach mcp-runtime --agent MyAgent --runtime MyTool
-
-# Gateway
-agentcore-cli attach gateway --agent MyAgent --gateway main-gateway
 ```
 
 ### remove
@@ -321,7 +277,6 @@ Remove resources from project.
 ```bash
 agentcore-cli remove agent --name MyAgent --force
 agentcore-cli remove memory --name SharedMemory
-agentcore-cli remove gateway --name main-gateway
 agentcore-cli remove mcp-tool --name MyTool
 agentcore-cli remove identity --name OpenAI
 agentcore-cli remove target --name dev

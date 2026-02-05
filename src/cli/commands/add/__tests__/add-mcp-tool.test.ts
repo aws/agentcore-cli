@@ -9,6 +9,7 @@ describe('add mcp-tool command', () => {
   let testDir: string;
   let projectDir: string;
   const agentName = 'TestAgent';
+  const gatewayName = 'test-gateway'; // Used in skipped behind-gateway tests
 
   beforeAll(async () => {
     testDir = join(tmpdir(), `agentcore-add-mcp-tool-${randomUUID()}`);
