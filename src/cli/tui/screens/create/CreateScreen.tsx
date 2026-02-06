@@ -1,5 +1,14 @@
 import { ProjectNameSchema } from '../../../../schema';
-import { LogLink, type NextStep, NextSteps, Screen, SelectList, StepProgress, TextInput } from '../../components';
+import {
+  LogLink,
+  type NextStep,
+  NextSteps,
+  Screen,
+  SelectList,
+  type Step,
+  StepProgress,
+  TextInput,
+} from '../../components';
 import { HELP_TEXT } from '../../constants';
 import { setExitMessage } from '../../exit-message';
 import { useListNavigation } from '../../hooks';
@@ -10,7 +19,55 @@ import { FRAMEWORK_OPTIONS } from '../agent/types';
 import { useCreateFlow } from './useCreateFlow';
 import { Box, Text, useApp } from 'ink';
 import { join } from 'path';
-import { useCallback } from 'react';
+import { useCallback, useEffect } from 'react';
+
+/** Build a text representation of the completion screen for terminal output */
+function buildExitMessage(
+  projectName: string,
+  steps: Step[],
+  agentConfig: AddAgentConfig | null
+): string {
+  const lines: string[] = [];
+
+  // Title
+  lines.push('\x1b[1mAgentCore Create\x1b[0m');
+  lines.push('');
+
+  // Project name
+  lines.push(`Project: \x1b[32m${projectName}\x1b[0m`);
+  lines.push('');
+
+  // Steps
+  for (const step of steps) {
+    const statusLabel = step.status === 'success' ? '\x1b[32m[done]\x1b[0m' : `[${step.status}]`;
+    lines.push(`${statusLabel}  ${step.label}`);
+  }
+  lines.push('');
+
+  // Created summary
+  lines.push('\x1b[2mCreated:\x1b[0m');
+  lines.push(`  ${projectName}/`);
+  if (agentConfig?.agentType === 'create') {
+    const frameworkOption = FRAMEWORK_OPTIONS.find(o => o.id === agentConfig.framework);
+    const frameworkLabel = frameworkOption?.title ?? agentConfig.framework;
+    lines.push(`    app/${agentConfig.name}/  \x1b[2m${agentConfig.language} agent (${frameworkLabel})\x1b[0m`);
+  }
+  lines.push(`    agentcore/           \x1b[2mConfig and CDK project\x1b[0m`);
+  lines.push('');
+
+  // Success message
+  lines.push('\x1b[32mProject created successfully!\x1b[0m');
+  lines.push('');
+
+  // Instructions
+  lines.push('To continue, navigate to your new project:');
+  lines.push('');
+  lines.push(`  cd ${projectName}`);
+  lines.push('  agentcore');
+  lines.push('');
+
+  return lines.join('\n');
+}
 
 type NextCommand = 'dev' | 'deploy' | 'add';
 
@@ -85,16 +142,23 @@ export function CreateScreen({ cwd, isInteractive, onExit, onNavigate }: CreateS
   // Completion state for next steps
   const allSuccess = !flow.hasError && flow.isComplete;
 
-  // Handle exit - if successful, exit app completely and print instructions
+  // Handle exit - if successful, exit app completely and print completion screen
   const handleExit = useCallback(() => {
     if (allSuccess && isInteractive) {
-      // Set message to be printed after TUI exits
-      setExitMessage(`\nTo continue, navigate to your new project:\n\n  cd ${flow.projectName}\n  agentcore\n`);
+      // Set message to be printed after TUI exits (full completion screen)
+      setExitMessage(buildExitMessage(flow.projectName, flow.steps, flow.addAgentConfig));
       exit();
     } else {
       onExit();
     }
-  }, [allSuccess, isInteractive, flow.projectName, exit, onExit]);
+  }, [allSuccess, isInteractive, flow.projectName, flow.steps, flow.addAgentConfig, exit, onExit]);
+
+  // Auto-exit when project creation completes successfully
+  useEffect(() => {
+    if (allSuccess && isInteractive) {
+      handleExit();
+    }
+  }, [allSuccess, isInteractive, handleExit]);
 
   // Create prompt navigation
   const { selectedIndex: createPromptIndex } = useListNavigation({
@@ -202,22 +266,8 @@ export function CreateScreen({ cwd, isInteractive, onExit, onNavigate }: CreateS
         <Box marginTop={1} flexDirection="column">
           <CreatedSummary projectName={flow.projectName} agentConfig={flow.addAgentConfig} />
           {isInteractive ? (
-            <Box marginTop={1} flexDirection="column">
+            <Box marginTop={1}>
               <Text color="green">Project created successfully!</Text>
-              <Box marginTop={1} flexDirection="column">
-                <Text>To continue, exit and navigate to your new project:</Text>
-                <Box marginLeft={2} marginTop={1} flexDirection="column">
-                  <Text>
-                    <Text color="cyan">1.</Text> Press <Text color="cyan">Esc</Text> to exit
-                  </Text>
-                  <Text>
-                    <Text color="cyan">2.</Text> Run <Text color="cyan">cd {flow.projectName}</Text>
-                  </Text>
-                  <Text>
-                    <Text color="cyan">3.</Text> Run <Text color="cyan">agentcore</Text> to continue
-                  </Text>
-                </Box>
-              </Box>
             </Box>
           ) : (
             <NextSteps
