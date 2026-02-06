@@ -1,3 +1,4 @@
+import type { RuntimeVersion } from '../../schema';
 import { CONFIG_DIR } from '../constants';
 import { isWindows } from '../utils/platform';
 import { checkSubprocess, checkSubprocessSync, runSubprocess } from '../utils/subprocess';
@@ -21,6 +22,24 @@ import {
 import { mkdir, readFile, readdir, rm, stat, unlink, writeFile } from 'fs/promises';
 import { dirname, isAbsolute, join, parse, resolve } from 'path';
 import { pipeline } from 'stream/promises';
+
+// ============================================================================
+// Runtime Type Detection
+// ============================================================================
+
+/**
+ * Check if the runtime version is a Python runtime.
+ */
+export function isPythonRuntime(runtimeVersion: RuntimeVersion): boolean {
+  return runtimeVersion.startsWith('PYTHON_');
+}
+
+/**
+ * Check if the runtime version is a Node/TypeScript runtime.
+ */
+export function isNodeRuntime(runtimeVersion: RuntimeVersion): boolean {
+  return runtimeVersion.startsWith('NODE_');
+}
 
 interface ResolvedPaths {
   projectRoot: string;

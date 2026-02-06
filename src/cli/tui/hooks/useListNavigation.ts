@@ -1,5 +1,5 @@
 import { useInput } from 'ink';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 
 interface UseListNavigationOptions<T> {
   /** The list of items to navigate */
@@ -18,6 +18,8 @@ interface UseListNavigationOptions<T> {
   onHotkeySelect?: (item: T, index: number) => void;
   /** Optional function to check if an item is disabled */
   isDisabled?: (item: T) => boolean;
+  /** Optional key to reset selection when changed */
+  resetKey?: string | number;
 }
 
 interface UseListNavigationResult {
@@ -58,6 +60,7 @@ export function useListNavigation<T>({
   getHotkeys,
   onHotkeySelect,
   isDisabled,
+  resetKey,
 }: UseListNavigationOptions<T>): UseListNavigationResult {
   // Initialize with first enabled index (parent should ensure data is loaded before mounting)
   const [selectedIndex, setSelectedIndex] = useState(() => {
@@ -65,6 +68,14 @@ export function useListNavigation<T>({
     const idx = items.findIndex(item => !isDisabled(item));
     return idx >= 0 ? idx : 0;
   });
+
+  // Reset selection when resetKey changes
+  useEffect(() => {
+    if (resetKey !== undefined) {
+      const idx = isDisabled ? items.findIndex(item => !isDisabled(item)) : 0;
+      setSelectedIndex(idx >= 0 ? idx : 0);
+    }
+  }, [resetKey]);
 
   // Find next non-disabled index in given direction
   const findNextIndex = (current: number, direction: 1 | -1): number => {

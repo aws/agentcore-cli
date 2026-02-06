@@ -1,10 +1,10 @@
-import { AgentCoreApplication, AgentCoreMcp, type AgentCoreProjectSpec } from '@aws/agentcore-l3-cdk-constructs';
+import { AgentCoreApplication, type AgentCoreProjectSpec } from '@aws/agentcore-l3-cdk-constructs';
 import { CfnOutput, Stack, type StackProps } from 'aws-cdk-lib';
 import { Construct } from 'constructs';
 
 export interface AgentCoreStackProps extends StackProps {
   /**
-   * The complete AgentCore workspace specification containing all agents and MCP config.
+   * The AgentCore project specification containing agents, memories, and credentials.
    */
   spec: AgentCoreProjectSpec;
 }
@@ -19,9 +19,6 @@ export class AgentCoreStack extends Stack {
   /** The AgentCore application containing all agent environments */
   public readonly application: AgentCoreApplication;
 
-  /** The MCP construct if MCP is configured */
-  public readonly mcp?: AgentCoreMcp;
-
   constructor(scope: Construct, id: string, props: AgentCoreStackProps) {
     super(scope, id, props);
 
@@ -31,14 +28,6 @@ export class AgentCoreStack extends Stack {
     this.application = new AgentCoreApplication(this, 'Application', {
       spec,
     });
-
-    // Instantiate AgentCoreMcp if MCP is defined
-    if (spec.mcp) {
-      this.mcp = new AgentCoreMcp(this, 'Mcp', {
-        spec,
-        agentCoreApplication: this.application,
-      });
-    }
 
     // Stack-level output
     new CfnOutput(this, 'StackNameOutput', {

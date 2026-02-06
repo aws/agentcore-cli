@@ -86,7 +86,7 @@ export function formatVersionError(result: VersionCheckResult): string {
  * Check if the project has any Python CodeZip agents that require uv.
  */
 export function requiresUv(projectSpec: AgentCoreProjectSpec): boolean {
-  return projectSpec.agents.some(agent => agent.targetLanguage === 'Python' && agent.runtime.artifact === 'CodeZip');
+  return projectSpec.agents.some(agent => agent.build === 'CodeZip');
 }
 
 /**

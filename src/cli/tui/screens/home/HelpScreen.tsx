@@ -4,7 +4,7 @@ import { HINTS } from '../../copy';
 import { useTextInput } from '../../hooks';
 import type { CommandMeta } from '../../utils/commands';
 import { Box, Text, useInput } from 'ink';
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 
 const MAX_DESC_WIDTH = 50;
 
@@ -99,6 +99,22 @@ export function HelpScreen(props: {
 }) {
   const { commands, initialQuery, notice, onNoticeDismiss, onSelect, onBack } = props;
   const [index, setIndex] = useState(0);
+  const [confirmExit, setConfirmExit] = useState(false);
+  const confirmTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+
+  // Clear confirm exit state after timeout
+  useEffect(() => {
+    if (confirmExit) {
+      confirmTimeoutRef.current = setTimeout(() => {
+        setConfirmExit(false);
+      }, 3000);
+    }
+    return () => {
+      if (confirmTimeoutRef.current) {
+        clearTimeout(confirmTimeoutRef.current);
+      }
+    };
+  }, [confirmExit]);
 
   const {
     value: query,
@@ -150,10 +166,20 @@ export function HelpScreen(props: {
       if (query) {
         clear();
         setIndex(0);
-      } else {
+        setConfirmExit(false);
+      } else if (confirmExit) {
+        // Second Esc - actually exit
         onBack();
+      } else {
+        // First Esc - show confirmation
+        setConfirmExit(true);
       }
       return;
+    }
+
+    // Any other input resets the confirm exit state
+    if (confirmExit) {
+      setConfirmExit(false);
     }
 
     if (key.upArrow && items.length > 0) {
@@ -174,7 +200,13 @@ export function HelpScreen(props: {
 
   return (
     <ScreenLayout>
-      <HelpDisplay items={items} query={query} cursor={cursor} clampedIndex={clampedIndex} notice={notice} />
+      <HelpDisplay
+        items={items}
+        query={query}
+        cursor={cursor}
+        clampedIndex={clampedIndex}
+        notice={confirmExit ? <Text color="yellow">Press Esc again to exit</Text> : notice}
+      />
     </ScreenLayout>
   );
 }

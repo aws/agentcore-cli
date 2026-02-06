@@ -1,2 +1,2 @@
-export type { MemoryStrategy, AgentCoreMemoryConfig, MemoryStrategyType } from './memory';
-export { MemoryStrategySchema, AgentCoreMemoryConfigSchema, MemoryStrategyTypeSchema } from './memory';
+export type { MemoryStrategy, MemoryStrategyType } from './memory';
+export { MemoryStrategySchema, MemoryStrategyNameSchema, MemoryStrategyTypeSchema } from './memory';

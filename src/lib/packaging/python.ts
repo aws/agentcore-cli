@@ -1,4 +1,4 @@
-import type { AgentEnvSpec, CodeZipRuntime, PythonRuntime } from '../../schema';
+import type { AgentEnvSpec, PythonRuntime, RuntimeVersion } from '../../schema';
 import { UV_INSTALL_HINT, getArtifactZipName } from '../constants';
 import { runSubprocessCapture, runSubprocessCaptureSync } from '../utils/subprocess';
 import { PackagingError } from './errors';
@@ -15,6 +15,7 @@ import {
   ensureBinaryAvailableSync,
   ensureDirClean,
   ensureDirCleanSync,
+  isPythonRuntime,
   resolveProjectPaths,
   resolveProjectPathsSync,
 } from './helpers';
@@ -23,15 +24,45 @@ import { detectUnavailablePlatform } from './uv';
 import { join } from 'path';
 
 const PYTHON_RUNTIME_REGEX = /PYTHON_(\d+)_?(\d+)?/;
+
+/**
+ * Type guard to check if runtime version is a Python runtime
+ */
+function isPythonRuntimeVersion(version: RuntimeVersion): version is PythonRuntime {
+  return isPythonRuntime(version);
+}
 // AC Runtime uses AL2023 with GLIBC 2.34, we can support any manylinux <= 2_34
 const PLATFORM_CANDIDATES = ['aarch64-manylinux2014', 'aarch64-manylinux_2_28', 'aarch64-manylinux_2_34'];
 
+/**
+ * Extracts Python version from runtime constant.
+ * Example: PYTHON_3_12 -> "3.12" (for use with uv --python-version)
+ */
+function extractPythonVersion(runtime: PythonRuntime): string {
+  const match = PYTHON_RUNTIME_REGEX.exec(runtime);
+  if (!match) {
+    throw new PackagingError(`Unsupported Python runtime value: ${runtime}`);
+  }
+  const [, major, minor] = match;
+  if (!major || !minor) {
+    throw new PackagingError(`Invalid Python runtime value: ${runtime}`);
+  }
+  return `${Number(major)}.${Number(minor)}`;
+}
+
+/**
+ * Async Python packager for CLI usage.
+ */
 export class PythonCodeZipPackager implements RuntimePackager {
   async pack(spec: AgentEnvSpec, options: PackageOptions = {}): Promise<ArtifactResult> {
-    this.validateSpec(spec);
-    const runtime = spec.runtime;
+    if (spec.build !== 'CodeZip') {
+      throw new PackagingError('Python packager only supports CodeZip build type.');
+    }
 
-    // Use agentName from options or fall back to spec.name for artifact naming
+    if (!isPythonRuntimeVersion(spec.runtimeVersion)) {
+      throw new PackagingError(`Python packager only supports Python runtimes. Received: ${spec.runtimeVersion}`);
+    }
+
     const agentName = options.agentName ?? spec.name;
     const { projectRoot, srcDir, stagingDir, artifactsDir, pyprojectPath } = await resolveProjectPaths(
       options,
@@ -40,20 +71,18 @@ export class PythonCodeZipPackager implements RuntimePackager {
     const pythonPlatforms = options.pythonPlatform ? [options.pythonPlatform] : PLATFORM_CANDIDATES;
 
     await ensureBinaryAvailable('uv', UV_INSTALL_HINT);
-
     await ensureDirClean(stagingDir);
 
     const finalStaging = await this.installWithRetries(
       projectRoot,
       srcDir,
       stagingDir,
-      runtime.pythonVersion,
+      spec.runtimeVersion,
       pythonPlatforms,
       pyprojectPath
     );
 
-    // Use agent-specific artifact name
-    const artifactPath = join(artifactsDir, getArtifactZipName(agentName));
+    const artifactPath = options.outputPath ?? join(artifactsDir, getArtifactZipName(agentName));
     await createZipFromDir(finalStaging, artifactPath);
     const sizeBytes = await enforceZipSizeLimit(artifactPath);
 
@@ -62,16 +91,6 @@ export class PythonCodeZipPackager implements RuntimePackager {
       sizeBytes,
       stagingPath: finalStaging,
     };
-  }
-
-  private validateSpec(spec: AgentEnvSpec): void {
-    if (spec.targetLanguage !== 'Python') {
-      throw new PackagingError('Python packager requires targetLanguage to be Python.');
-    }
-
-    if (spec.runtime.artifact !== 'CodeZip') {
-      throw new PackagingError('Python packager only supports CodeZip runtimes.');
-    }
   }
 
   private async installWithRetries(
@@ -88,7 +107,6 @@ export class PythonCodeZipPackager implements RuntimePackager {
       if (!platform) {
         throw new PackagingError('No platform candidate available for dependency installation.');
       }
-      // Clean and reuse the same staging directory for each attempt
       await ensureDirClean(stagingDir);
 
       const result = await runSubprocessCapture(
@@ -112,7 +130,6 @@ export class PythonCodeZipPackager implements RuntimePackager {
 
       if (result.code === 0) {
         await copySourceTree(srcDir, stagingDir);
-        // Convert Windows .exe scripts to Linux shell scripts for cross-platform deployment
         await convertWindowsScriptsToLinux(stagingDir);
         return stagingDir;
       } else {
@@ -133,27 +150,17 @@ export class PythonCodeZipPackager implements RuntimePackager {
 }
 
 /**
- * Extracts Python version from runtime constant.
- * Example: PYTHON_3_12 -> "3.12" (for use with uv --python-version)
+ * Sync Python packager for CDK bundling.
  */
-function extractPythonVersion(runtime: PythonRuntime): string {
-  const match = PYTHON_RUNTIME_REGEX.exec(runtime);
-  if (!match) {
-    throw new PackagingError(`Unsupported Python runtime value: ${runtime}`);
-  }
-  const [, major, minor] = match;
-  if (!major || !minor) {
-    throw new PackagingError(`Invalid Python runtime value: ${runtime}`);
-  }
-  return `${Number(major)}.${Number(minor)}`;
-}
-
 export class PythonCodeZipPackagerSync implements CodeZipPackager {
-  /**
-   * Package Python code for a CodeZip runtime.
-   */
-  packCodeZip(runtime: CodeZipRuntime, options: PackageOptions = {}): ArtifactResult {
-    const agentName = options.agentName ?? 'asset';
+  packCodeZip(config: AgentEnvSpec, options: PackageOptions = {}): ArtifactResult {
+    const runtimeVersion = config.runtimeVersion ?? 'PYTHON_3_12';
+
+    if (!isPythonRuntimeVersion(runtimeVersion)) {
+      throw new PackagingError(`Python packager only supports Python runtimes. Received: ${runtimeVersion}`);
+    }
+
+    const agentName = options.agentName ?? config.name ?? 'asset';
     const { projectRoot, srcDir, stagingDir, artifactsDir, pyprojectPath } = resolveProjectPathsSync(
       options,
       agentName
@@ -161,19 +168,17 @@ export class PythonCodeZipPackagerSync implements CodeZipPackager {
     const pythonPlatforms = options.pythonPlatform ? [options.pythonPlatform] : PLATFORM_CANDIDATES;
 
     ensureBinaryAvailableSync('uv', UV_INSTALL_HINT);
-
     ensureDirCleanSync(stagingDir);
 
     const finalStaging = this.installWithRetriesSync(
       projectRoot,
       srcDir,
       stagingDir,
-      runtime.pythonVersion,
+      runtimeVersion,
       pythonPlatforms,
       pyprojectPath
     );
 
-    // Use outputPath if provided, otherwise use default location
     const artifactPath = options.outputPath ?? join(artifactsDir, getArtifactZipName(agentName));
     createZipFromDirSync(finalStaging, artifactPath);
     const sizeBytes = enforceZipSizeLimitSync(artifactPath);
@@ -199,7 +204,6 @@ export class PythonCodeZipPackagerSync implements CodeZipPackager {
       if (!platform) {
         throw new PackagingError('No platform candidate available for dependency installation.');
       }
-      // Clean and reuse the same staging directory for each attempt
       ensureDirCleanSync(stagingDir);
 
       const result = runSubprocessCaptureSync(
@@ -223,7 +227,6 @@ export class PythonCodeZipPackagerSync implements CodeZipPackager {
 
       if (result.code === 0) {
         copySourceTreeSync(srcDir, stagingDir);
-        // Convert Windows .exe scripts to Linux shell scripts for cross-platform deployment
         convertWindowsScriptsToLinuxSync(stagingDir);
         return stagingDir;
       } else {

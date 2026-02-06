@@ -1,7 +1,7 @@
 import {
+  AgentNameSchema,
   GatewayNameSchema,
   ModelProviderSchema,
-  ProviderNameSchema,
   SDKFrameworkSchema,
   TargetLanguageSchema,
   getSupportedModelProviders,
@@ -22,7 +22,7 @@ export interface ValidationResult {
 // Constants
 const MEMORY_OPTIONS = ['none', 'shortTerm', 'longAndShortTerm'] as const;
 const OIDC_WELL_KNOWN_SUFFIX = '/.well-known/openid-configuration';
-const VALID_STRATEGIES = ['SEMANTIC', 'SUMMARIZATION', 'USER_PREFERENCE', 'CUSTOM'];
+const VALID_STRATEGIES = ['SEMANTIC', 'SUMMARIZATION', 'USER_PREFERENCE', 'EPISODIC', 'CUSTOM'];
 
 // Agent validation
 export function validateAddAgentOptions(options: AddAgentOptions): ValidationResult {
@@ -30,7 +30,7 @@ export function validateAddAgentOptions(options: AddAgentOptions): ValidationRes
     return { valid: false, error: '--name is required' };
   }
 
-  const nameResult = ProviderNameSchema.safeParse(options.name);
+  const nameResult = AgentNameSchema.safeParse(options.name);
   if (!nameResult.success) {
     return { valid: false, error: nameResult.error.issues[0]?.message ?? 'Invalid agent name' };
   }
@@ -190,7 +190,7 @@ export function validateAddMcpToolOptions(options: AddMcpToolOptions): Validatio
   return { valid: true };
 }
 
-// Memory validation
+// Memory validation (v2: top-level resource, no owner)
 export function validateAddMemoryOptions(options: AddMemoryOptions): ValidationResult {
   if (!options.name) {
     return { valid: false, error: '--name is required' };
@@ -214,33 +214,17 @@ export function validateAddMemoryOptions(options: AddMemoryOptions): ValidationR
     }
   }
 
-  if (!options.owner) {
-    return { valid: false, error: '--owner is required' };
-  }
-
   return { valid: true };
 }
 
-// Identity validation
+// Identity validation (v2: credential resource, no owner)
 export function validateAddIdentityOptions(options: AddIdentityOptions): ValidationResult {
   if (!options.name) {
     return { valid: false, error: '--name is required' };
   }
 
-  if (!options.type) {
-    return { valid: false, error: '--type is required' };
-  }
-
-  if (options.type !== 'ApiKeyCredentialProvider') {
-    return { valid: false, error: 'Invalid type. Only ApiKeyCredentialProvider is supported' };
-  }
-
   if (!options.apiKey) {
     return { valid: false, error: '--api-key is required' };
-  }
-
-  if (!options.owner) {
-    return { valid: false, error: '--owner is required' };
   }
 
   return { valid: true };

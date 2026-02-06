@@ -1,6 +1,6 @@
 import { ConfigIO, findConfigRoot } from '../../../../lib';
 import { NextSteps, Screen, StepProgress } from '../../components';
-import type { NextStep, Step } from '../../components';
+import type { Step } from '../../components';
 import { STATUS_COLORS } from '../../theme';
 import { Box, Text } from 'ink';
 import React, { useEffect, useState } from 'react';
@@ -8,7 +8,6 @@ import React, { useEffect, useState } from 'react';
 interface ValidateScreenProps {
   isInteractive: boolean;
   onExit: () => void;
-  onNavigate?: (command: string) => void;
 }
 
 type Phase = 'validating' | 'success' | 'error';
@@ -28,7 +27,7 @@ const SCHEMA_FILES = [
   { key: 'state', label: '.cli/state.json', required: false },
 ] as const;
 
-export function ValidateScreen({ isInteractive, onExit, onNavigate }: ValidateScreenProps) {
+export function ValidateScreen({ isInteractive, onExit }: ValidateScreenProps) {
   const [state, setState] = useState<ValidationState>({
     phase: 'validating',
     steps: SCHEMA_FILES.map(f => ({ label: f.label, status: 'pending' })),
@@ -125,14 +124,6 @@ export function ValidateScreen({ isInteractive, onExit, onNavigate }: ValidateSc
     void runValidation();
   }, []);
 
-  const nextSteps: NextStep[] = [{ command: 'edit', label: 'Edit schema files' }];
-
-  const handleSelectNextStep = (step: NextStep) => {
-    if (onNavigate) {
-      onNavigate(step.command);
-    }
-  };
-
   const headerContent = state.projectName ? (
     <Box>
       <Text>Project: </Text>
@@ -158,13 +149,7 @@ export function ValidateScreen({ isInteractive, onExit, onNavigate }: ValidateSc
         )}
 
         {(state.phase === 'success' || state.phase === 'error') && (
-          <NextSteps
-            steps={nextSteps}
-            isInteractive={isInteractive}
-            onSelect={handleSelectNextStep}
-            onBack={onExit}
-            isActive={true}
-          />
+          <NextSteps steps={[]} isInteractive={isInteractive} onBack={onExit} isActive={true} />
         )}
       </Box>
     </Screen>

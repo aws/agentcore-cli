@@ -34,4 +34,5 @@ export function getArtifactZipName(name: string): string {
 
 export const UV_INSTALL_HINT =
   'Install uv from https://github.com/astral-sh/uv#installation and ensure it is on your PATH.';
+export const NPM_INSTALL_HINT = 'Install npm from https://nodejs.org/ and ensure it is on your PATH.';
 export const DEFAULT_PYTHON_PLATFORM = 'aarch64-manylinux2014';

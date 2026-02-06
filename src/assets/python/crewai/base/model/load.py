@@ -42,9 +42,12 @@ def _get_api_key() -> str:
 
 def load_model() -> LLM:
     """Get authenticated Anthropic model client."""
+    api_key = _get_api_key()
+    # CrewAI requires ANTHROPIC_API_KEY env var (ignores api_key parameter)
+    os.environ["ANTHROPIC_API_KEY"] = api_key
     return LLM(
         model="anthropic/claude-sonnet-4-5-20250929",
-        api_key=_get_api_key(),
+        api_key=api_key,
         max_tokens=4096
     )
 {{/if}}
@@ -80,9 +83,12 @@ def _get_api_key() -> str:
 
 def load_model() -> LLM:
     """Get authenticated OpenAI model client."""
+    api_key = _get_api_key()
+    # CrewAI requires OPENAI_API_KEY env var (ignores api_key parameter)
+    os.environ["OPENAI_API_KEY"] = api_key
     return LLM(
         model="openai/gpt-4o",
-        api_key=_get_api_key()
+        api_key=api_key
     )
 {{/if}}
 {{#if (eq modelProvider "Gemini")}}
@@ -117,8 +123,11 @@ def _get_api_key() -> str:
 
 def load_model() -> LLM:
     """Get authenticated Gemini model client."""
+    api_key = _get_api_key()
+    # CrewAI requires GEMINI_API_KEY env var (ignores api_key parameter)
+    os.environ["GEMINI_API_KEY"] = api_key
     return LLM(
         model="gemini/gemini-2.0-flash",
-        api_key=_get_api_key()
+        api_key=api_key
     )
 {{/if}}

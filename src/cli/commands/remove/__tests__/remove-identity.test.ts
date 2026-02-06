@@ -8,84 +8,23 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 describe('remove identity command', () => {
   let testDir: string;
   let projectDir: string;
-  const projectName = 'RemoveIdentityProj';
-  const ownerAgent = 'OwnerAgent';
-  const userAgent = 'UserAgent';
   const identityName = 'TestIdentity';
-  const qualifiedIdentityName = `${projectName}${identityName}`; // Provider names are qualified with project name
 
   beforeAll(async () => {
     testDir = join(tmpdir(), `agentcore-remove-identity-${randomUUID()}`);
     await mkdir(testDir, { recursive: true });
 
     // Create project
+    const projectName = 'RemoveIdentityProj';
     let result = await runCLI(['create', '--name', projectName, '--no-agent'], testDir);
     if (result.exitCode !== 0) {
       throw new Error(`Failed to create project: ${result.stdout} ${result.stderr}`);
     }
     projectDir = join(testDir, projectName);
 
-    // Add owner agent
+    // Add identity as top-level credential
     result = await runCLI(
-      [
-        'add',
-        'agent',
-        '--name',
-        ownerAgent,
-        '--language',
-        'Python',
-        '--framework',
-        'Strands',
-        '--model-provider',
-        'Bedrock',
-        '--memory',
-        'none',
-        '--json',
-      ],
-      projectDir
-    );
-    if (result.exitCode !== 0) {
-      throw new Error(`Failed to create owner agent: ${result.stdout} ${result.stderr}`);
-    }
-
-    // Add user agent
-    result = await runCLI(
-      [
-        'add',
-        'agent',
-        '--name',
-        userAgent,
-        '--language',
-        'Python',
-        '--framework',
-        'Strands',
-        '--model-provider',
-        'Bedrock',
-        '--memory',
-        'none',
-        '--json',
-      ],
-      projectDir
-    );
-    if (result.exitCode !== 0) {
-      throw new Error(`Failed to create user agent: ${result.stdout} ${result.stderr}`);
-    }
-
-    // Add identity
-    result = await runCLI(
-      [
-        'add',
-        'identity',
-        '--name',
-        identityName,
-        '--type',
-        'ApiKeyCredentialProvider',
-        '--api-key',
-        'test-key-123',
-        '--owner',
-        ownerAgent,
-        '--json',
-      ],
+      ['add', 'identity', '--name', identityName, '--api-key', 'test-key-123', '--json'],
       projectDir
     );
     if (result.exitCode !== 0) {
@@ -116,59 +55,31 @@ describe('remove identity command', () => {
   });
 
   describe('remove operations', () => {
-    it('removes identity without users', async () => {
-      // Add a temp identity to remove
+    it('removes credential without dependents', async () => {
+      // Add a temp credential to remove
       const tempId = `tempId${Date.now()}`;
-      const qualifiedTempId = `${projectName}${tempId}`; // Provider names are qualified with project name
-      await runCLI(
-        [
-          'add',
-          'identity',
-          '--name',
-          tempId,
-          '--type',
-          'ApiKeyCredentialProvider',
-          '--api-key',
-          'temp-key',
-          '--owner',
-          ownerAgent,
-          '--json',
-        ],
-        projectDir
-      );
+      await runCLI(['add', 'identity', '--name', tempId, '--api-key', 'temp-key', '--json'], projectDir);
 
-      // Remove using qualified name
-      const result = await runCLI(['remove', 'identity', '--name', qualifiedTempId, '--json'], projectDir);
+      const result = await runCLI(['remove', 'identity', '--name', tempId, '--json'], projectDir);
       expect(result.exitCode, `stdout: ${result.stdout}`).toBe(0);
       const json = JSON.parse(result.stdout);
       expect(json.success).toBe(true);
 
-      // Verify identity is removed from owner
+      // Verify credential is removed from project
       const projectSpec = JSON.parse(await readFile(join(projectDir, 'agentcore/agentcore.json'), 'utf-8'));
-      const agent = projectSpec.agents.find((a: { name: string }) => a.name === ownerAgent);
-      const identity = agent?.identityProviders?.find((i: { name: string }) => i.name === qualifiedTempId);
-      expect(!identity, 'Identity should be removed from owner').toBeTruthy();
+      const credential = projectSpec.credentials.find((c: { name: string }) => c.name === tempId);
+      expect(!credential, 'Credential should be removed from project').toBeTruthy();
     });
 
-    it('removes identity with users using cascade policy (default)', async () => {
-      // Attach identity to user agent using qualified name
-      await runCLI(
-        ['attach', 'identity', '--agent', userAgent, '--identity', qualifiedIdentityName, '--json'],
-        projectDir
-      );
-
-      // Remove with cascade policy (default) - should succeed and clean up references
-      const result = await runCLI(['remove', 'identity', '--name', qualifiedIdentityName, '--json'], projectDir);
+    it('removes the setup credential', async () => {
+      const result = await runCLI(['remove', 'identity', '--name', identityName, '--json'], projectDir);
       expect(result.exitCode, `stdout: ${result.stdout}`).toBe(0);
       const json = JSON.parse(result.stdout);
       expect(json.success).toBe(true);
 
-      // Verify identity is removed from both owner and user
+      // Verify credential is removed
       const projectSpec = JSON.parse(await readFile(join(projectDir, 'agentcore/agentcore.json'), 'utf-8'));
-      const owner = projectSpec.agents.find((a: { name: string }) => a.name === ownerAgent);
-      const user = projectSpec.agents.find((a: { name: string }) => a.name === userAgent);
-      expect(owner?.identityProviders?.find((i: { name: string }) => i.name === qualifiedIdentityName)).toBeUndefined();
-      expect(user?.identityProviders?.find((i: { name: string }) => i.name === qualifiedIdentityName)).toBeUndefined();
+      expect(projectSpec.credentials.find((c: { name: string }) => c.name === identityName)).toBeUndefined();
     });
   });
 });

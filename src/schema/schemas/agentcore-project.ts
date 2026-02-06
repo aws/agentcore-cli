@@ -1,26 +1,29 @@
+/**
+ * AgentCore Project Schema - Resource-centric model
+ *
+ * Flat resource model where agents, memories, and credentials are top-level.
+ * All resources within a project implicitly have access to each other.
+ *
+ * @module agentcore-project
+ */
 import { isReservedProjectName } from '../constants';
 import { AgentEnvSpecSchema } from './agent-env';
-import { AgentCoreMcpSpecSchema } from './mcp';
+import { MemoryStrategySchema, MemoryStrategyTypeSchema } from './primitives/memory';
 import { uniqueBy } from './zod-util';
 import { z } from 'zod';
+
+// Re-export for convenience
+export { MemoryStrategySchema, MemoryStrategyTypeSchema };
+export type { MemoryStrategy, MemoryStrategyType } from './primitives/memory';
 
 // ============================================================================
 // Project Name Schema
 // ============================================================================
 
-/**
- * Project name validation (CloudFormation logical ID compatible).
- * Used in CloudFormation stack naming - must start with letter, alphanumeric only.
- * Max 23 chars because runtime names are generated as {projectName}_{runtimeName}
- * and AWS limits agentRuntimeName to 48 characters total.
- *
- * Also validates against reserved names that would conflict with Python packages
- * when creating virtual environments (e.g., 'openai', 'anthropic', 'langchain').
- */
 export const ProjectNameSchema = z
   .string()
   .min(1, 'Project name is required')
-  .max(23, 'Project name must be 23 characters or less (AWS runtime name limit)')
+  .max(23, 'Project name must be 23 characters or less')
   .regex(
     /^[A-Za-z][A-Za-z0-9]{0,22}$/,
     'Project name must start with a letter and contain only alphanumeric characters'
@@ -30,34 +33,98 @@ export const ProjectNameSchema = z
   });
 
 // ============================================================================
-// Project Spec
+// Memory Schema
 // ============================================================================
 
-/**
- * Top level Spec for the Project
- *
- * Only this Spec maintains a version
- * All other specs within it take the same version
- * Version transforms happen at this top level so there is never
- * mismatched schema versions of sub-specs.
- * The main AgentEnvSpec and AgentCoreMcpSpec are 1:1 with the L3
- * CDK constructs
- */
-export const AgentCoreProjectSpecSchema = z
-  .object({
-    name: ProjectNameSchema,
-    version: z.string(),
-    description: z.string(),
-    agents: z.array(AgentEnvSpecSchema).superRefine(
+export const MemoryTypeSchema = z.literal('AgentCoreMemory');
+export type MemoryType = z.infer<typeof MemoryTypeSchema>;
+
+export const MemoryNameSchema = z
+  .string()
+  .min(1, 'Name is required')
+  .max(48)
+  .regex(
+    /^[a-zA-Z][a-zA-Z0-9_]{0,47}$/,
+    'Must begin with a letter and contain only alphanumeric characters and underscores (max 48 chars)'
+  );
+
+export const MemorySchema = z.object({
+  type: MemoryTypeSchema,
+  name: MemoryNameSchema,
+  eventExpiryDuration: z.number().int().min(7).max(365),
+  strategies: z
+    .array(MemoryStrategySchema)
+    .min(1, 'At least one memory strategy is required')
+    .superRefine(
+      uniqueBy(
+        strategy => strategy.type,
+        type => `Duplicate memory strategy type: ${type}`
+      )
+    ),
+});
+
+export type Memory = z.infer<typeof MemorySchema>;
+
+// ============================================================================
+// Credential Schema
+// ============================================================================
+
+export const CredentialTypeSchema = z.literal('ApiKeyCredentialProvider');
+export type CredentialType = z.infer<typeof CredentialTypeSchema>;
+
+export const CredentialNameSchema = z
+  .string()
+  .min(3, 'Credential name must be at least 3 characters')
+  .max(255)
+  .regex(
+    /^[A-Za-z0-9_.-]+$/,
+    'Must contain only alphanumeric characters, underscores, dots, and hyphens (3-255 chars)'
+  );
+
+export const CredentialSchema = z.object({
+  type: CredentialTypeSchema,
+  name: CredentialNameSchema,
+});
+
+export type Credential = z.infer<typeof CredentialSchema>;
+
+// ============================================================================
+// Project Schema (Top Level)
+// ============================================================================
+
+export const AgentCoreProjectSpecSchema = z.object({
+  name: ProjectNameSchema,
+  version: z.number().int(),
+
+  agents: z
+    .array(AgentEnvSpecSchema)
+    .default([])
+    .superRefine(
       uniqueBy(
         agent => agent.name,
         name => `Duplicate agent name: ${name}`
       )
     ),
-    mcp: AgentCoreMcpSpecSchema.optional(),
-    /** KMS key ARN for encrypting identity credentials in the token vault */
-    identityKmsKeyArn: z.string().optional(),
-  })
-  .strict();
+
+  memories: z
+    .array(MemorySchema)
+    .default([])
+    .superRefine(
+      uniqueBy(
+        memory => memory.name,
+        name => `Duplicate memory name: ${name}`
+      )
+    ),
+
+  credentials: z
+    .array(CredentialSchema)
+    .default([])
+    .superRefine(
+      uniqueBy(
+        credential => credential.name,
+        name => `Duplicate credential name: ${name}`
+      )
+    ),
+});
 
 export type AgentCoreProjectSpec = z.infer<typeof AgentCoreProjectSpecSchema>;

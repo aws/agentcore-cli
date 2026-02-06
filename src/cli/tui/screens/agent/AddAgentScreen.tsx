@@ -1,5 +1,5 @@
 import type { ModelProvider, SDKFramework, TargetLanguage } from '../../../../schema';
-import { ProviderNameSchema } from '../../../../schema';
+import { AgentNameSchema } from '../../../../schema';
 import {
   ApiKeySecretInput,
   ConfirmReview,
@@ -317,7 +317,7 @@ export function AddAgentScreen({ existingAgentNames, onComplete, onExit }: AddAg
             initialValue={generateUniqueName('MyAgent', existingAgentNames)}
             onSubmit={handleSetName}
             onCancel={onExit}
-            schema={ProviderNameSchema}
+            schema={AgentNameSchema}
             customValidation={value => !existingAgentNames.includes(value) || 'Agent name already exists'}
           />
         </Panel>

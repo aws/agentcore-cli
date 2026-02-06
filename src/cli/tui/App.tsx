@@ -4,7 +4,6 @@ import { LayoutProvider } from './context';
 import { MissingProjectMessage, projectExists } from './guards';
 import { PlaceholderScreen } from './screens/PlaceholderScreen';
 import { AddFlow } from './screens/add/AddFlow';
-import { AttachFlow } from './screens/attach/AttachFlow';
 import { CreateScreen } from './screens/create';
 import { DeployScreen } from './screens/deploy/DeployScreen';
 import { DestroyScreen } from './screens/destroy';
@@ -33,7 +32,6 @@ type Route =
   | { name: 'invoke' }
   | { name: 'create' }
   | { name: 'add' }
-  | { name: 'attach' }
   | { name: 'status' }
   | { name: 'remove' }
   | { name: 'validate' }
@@ -76,8 +74,6 @@ function AppContent() {
         return;
       }
       setRoute({ name: 'add' });
-    } else if (id === 'attach') {
-      setRoute({ name: 'attach' });
     } else if (id === 'remove') {
       setRoute({ name: 'remove' });
     } else if (id === 'destroy') {
@@ -143,17 +139,7 @@ function AppContent() {
   }
 
   if (route.name === 'add') {
-    return (
-      <AddFlow
-        isInteractive={true}
-        onExit={() => setRoute({ name: 'help' })}
-        onNavigate={command => setRoute({ name: command } as Route)}
-      />
-    );
-  }
-
-  if (route.name === 'attach') {
-    return <AttachFlow onExit={() => setRoute({ name: 'help' })} />;
+    return <AddFlow isInteractive={true} onExit={() => setRoute({ name: 'help' })} />;
   }
 
   if (route.name === 'remove') {
@@ -162,7 +148,6 @@ function AppContent() {
         isInteractive={true}
         onExit={() => setRoute({ name: 'help' })}
         onRequestDestroy={() => setRoute({ name: 'destroy' })}
-        onNavigate={command => setRoute({ name: command } as Route)}
       />
     );
   }

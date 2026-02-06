@@ -79,30 +79,18 @@ export class ConfigIO {
 
   /**
    * Read and validate the project configuration.
-   * Merges agentcore.json with mcp.json to provide a unified view.
    */
   async readProjectSpec(): Promise<AgentCoreProjectSpec> {
     const filePath = this.pathResolver.getAgentConfigPath();
-    const projectSpec = await this.readAndValidate(filePath, 'AgentCore Project Config', AgentCoreProjectSpecSchema);
-
-    // Merge MCP config if it exists
-    if (this.configExists('mcp')) {
-      const mcpSpec = await this.readMcpSpec();
-      return { ...projectSpec, mcp: mcpSpec };
-    }
-
-    return projectSpec;
+    return this.readAndValidate(filePath, 'AgentCore Project Config', AgentCoreProjectSpecSchema);
   }
 
   /**
    * Write and validate the project configuration file.
-   * Only writes to agentcore.json (mcp is stored separately in mcp.json).
    */
   async writeProjectSpec(data: AgentCoreProjectSpec): Promise<void> {
     const filePath = this.pathResolver.getAgentConfigPath();
-    // Strip mcp before writing - it's stored separately
-    const { mcp: _, ...projectOnly } = data;
-    await this.validateAndWrite(filePath, 'AgentCore Project Config', AgentCoreProjectSpecSchema, projectOnly);
+    await this.validateAndWrite(filePath, 'AgentCore Project Config', AgentCoreProjectSpecSchema, data);
   }
 
   /**

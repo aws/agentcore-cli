@@ -5,7 +5,7 @@ import { MemoryStrategyTypeSchema } from '../../../../schema';
 // Memory Flow Types
 // ─────────────────────────────────────────────────────────────────────────────
 
-export type AddMemoryStep = 'name' | 'description' | 'expiry' | 'strategies' | 'ownerAgent' | 'userAgents' | 'confirm';
+export type AddMemoryStep = 'name' | 'expiry' | 'strategies' | 'confirm';
 
 export interface AddMemoryStrategyConfig {
   type: MemoryStrategyType;
@@ -13,22 +13,14 @@ export interface AddMemoryStrategyConfig {
 
 export interface AddMemoryConfig {
   name: string;
-  description: string;
   eventExpiryDuration: number;
   strategies: AddMemoryStrategyConfig[];
-  /** Agent that owns and manages this memory (relation: 'own') */
-  ownerAgent: string;
-  /** Agents granted read-only access (relation: 'use') */
-  userAgents: string[];
 }
 
 export const MEMORY_STEP_LABELS: Record<AddMemoryStep, string> = {
   name: 'Name',
-  description: 'Description',
   expiry: 'Expiry',
   strategies: 'Strategies',
-  ownerAgent: 'Owner',
-  userAgents: 'Grant Access',
   confirm: 'Confirm',
 };
 

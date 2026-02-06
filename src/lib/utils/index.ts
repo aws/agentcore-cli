@@ -9,4 +9,4 @@ export {
   type SubprocessOptions,
   type SubprocessResult,
 } from './subprocess';
-export { validateAgentEnvSchema } from './zod';
+export { validateAgentSchema, validateProjectSchema } from './zod';

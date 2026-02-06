@@ -1,78 +1,38 @@
 import type { MemoryStrategyType } from '../../../../schema';
 import type { AddMemoryConfig, AddMemoryStep, AddMemoryStrategyConfig } from './types';
 import { DEFAULT_EVENT_EXPIRY } from './types';
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useState } from 'react';
 
-const ALL_STEPS: AddMemoryStep[] = [
-  'name',
-  'description',
-  'expiry',
-  'strategies',
-  'ownerAgent',
-  'userAgents',
-  'confirm',
-];
+const ALL_STEPS: AddMemoryStep[] = ['name', 'expiry', 'strategies', 'confirm'];
 
-function getDefaultConfig(singleAgentName?: string): AddMemoryConfig {
+function getDefaultConfig(): AddMemoryConfig {
   return {
     name: '',
-    description: '',
     eventExpiryDuration: DEFAULT_EVENT_EXPIRY,
     strategies: [],
-    ownerAgent: singleAgentName ?? '',
-    userAgents: [],
   };
 }
 
-interface UseAddMemoryWizardOptions {
-  availableAgents: string[];
-}
-
-export function useAddMemoryWizard(options: UseAddMemoryWizardOptions) {
-  const { availableAgents } = options;
-  const isSingleAgent = availableAgents.length === 1;
-
-  // Compute steps based on agent count - skip agent steps if single agent
-  const steps = useMemo<AddMemoryStep[]>(() => {
-    if (isSingleAgent) {
-      return ALL_STEPS.filter(s => s !== 'ownerAgent' && s !== 'userAgents');
-    }
-    return ALL_STEPS;
-  }, [isSingleAgent]);
-
-  const [config, setConfig] = useState<AddMemoryConfig>(() =>
-    getDefaultConfig(isSingleAgent ? availableAgents[0] : undefined)
-  );
+export function useAddMemoryWizard() {
+  const [config, setConfig] = useState<AddMemoryConfig>(getDefaultConfig);
   const [step, setStep] = useState<AddMemoryStep>('name');
 
-  const currentIndex = steps.indexOf(step);
+  const currentIndex = ALL_STEPS.indexOf(step);
 
   const goBack = useCallback(() => {
-    const prevStep = steps[currentIndex - 1];
+    const prevStep = ALL_STEPS[currentIndex - 1];
     if (prevStep) setStep(prevStep);
-  }, [steps, currentIndex]);
+  }, [currentIndex]);
 
-  const nextStep = useCallback(
-    (currentStep: AddMemoryStep): AddMemoryStep | undefined => {
-      const idx = steps.indexOf(currentStep);
-      return steps[idx + 1];
-    },
-    [steps]
-  );
+  const nextStep = useCallback((currentStep: AddMemoryStep): AddMemoryStep | undefined => {
+    const idx = ALL_STEPS.indexOf(currentStep);
+    return ALL_STEPS[idx + 1];
+  }, []);
 
   const setName = useCallback(
     (name: string) => {
       setConfig(c => ({ ...c, name }));
       const next = nextStep('name');
-      if (next) setStep(next);
-    },
-    [nextStep]
-  );
-
-  const setDescription = useCallback(
-    (description: string) => {
-      setConfig(c => ({ ...c, description }));
-      const next = nextStep('description');
       if (next) setStep(next);
     },
     [nextStep]
@@ -97,42 +57,20 @@ export function useAddMemoryWizard(options: UseAddMemoryWizardOptions) {
     [nextStep]
   );
 
-  const setOwnerAgent = useCallback(
-    (ownerAgent: string) => {
-      setConfig(c => ({ ...c, ownerAgent, userAgents: [] }));
-      const next = nextStep('ownerAgent');
-      if (next) setStep(next);
-    },
-    [nextStep]
-  );
-
-  const setUserAgents = useCallback(
-    (userAgents: string[]) => {
-      setConfig(c => ({ ...c, userAgents }));
-      const next = nextStep('userAgents');
-      if (next) setStep(next);
-    },
-    [nextStep]
-  );
-
   const reset = useCallback(() => {
-    setConfig(getDefaultConfig(isSingleAgent ? availableAgents[0] : undefined));
+    setConfig(getDefaultConfig());
     setStep('name');
-  }, [isSingleAgent, availableAgents]);
+  }, []);
 
   return {
     config,
     step,
-    steps,
+    steps: ALL_STEPS,
     currentIndex,
-    isSingleAgent,
     goBack,
     setName,
-    setDescription,
     setExpiry,
     setStrategyTypes,
-    setOwnerAgent,
-    setUserAgents,
     reset,
   };
 }

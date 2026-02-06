@@ -111,14 +111,13 @@ bun test --timeout 120000 src/cli/commands/
 
 ## Test Locations
 
-| Command        | Test File                                      |
-| -------------- | ---------------------------------------------- |
-| `create`       | `src/cli/commands/create/create.test.ts`       |
-| `add agent`    | `src/cli/commands/add/add-agent.test.ts`       |
-| `add gateway`  | `src/cli/commands/add/add-gateway.test.ts`     |
-| `attach agent` | `src/cli/commands/attach/attach-agent.test.ts` |
-| `remove agent` | `src/cli/commands/remove/remove.test.ts`       |
-| `deploy`       | `src/cli/commands/deploy/deploy.test.ts`       |
-| `invoke`       | `src/cli/commands/invoke/invoke.test.ts`       |
-| `plan`         | `src/cli/commands/plan/plan.test.ts`           |
-| `destroy`      | `src/cli/commands/destroy/destroy.test.ts`     |
+| Command        | Test File                                  |
+| -------------- | ------------------------------------------ |
+| `create`       | `src/cli/commands/create/create.test.ts`   |
+| `add agent`    | `src/cli/commands/add/add-agent.test.ts`   |
+| `add gateway`  | `src/cli/commands/add/add-gateway.test.ts` |
+| `remove agent` | `src/cli/commands/remove/remove.test.ts`   |
+| `deploy`       | `src/cli/commands/deploy/deploy.test.ts`   |
+| `invoke`       | `src/cli/commands/invoke/invoke.test.ts`   |
+| `plan`         | `src/cli/commands/plan/plan.test.ts`       |
+| `destroy`      | `src/cli/commands/destroy/destroy.test.ts` |

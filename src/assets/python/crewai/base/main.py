@@ -1,9 +1,7 @@
-import os
 from crewai import Agent, Crew, Task, Process
 from crewai.tools import tool
 from bedrock_agentcore.runtime import BedrockAgentCoreApp
 from model.load import load_model
-from mcp_client.client import get_streamable_http_mcp_client
 
 app = BedrockAgentCoreApp()
 log = app.logger
@@ -24,34 +22,33 @@ tools = [add_numbers]
 def invoke(payload, context):
     log.info("Invoking Agent.....")
 
-    with get_streamable_http_mcp_client() as mcp_tools:
-        # Define the Agent with Tools
-        agent = Agent(
-            role="Question Answering Assistant",
-            goal="Answer the users questions",
-            backstory="Always eager to answer any questions",
-            llm=load_model(),
-            tools=tools + mcp_tools,
-        )
+    # Define the Agent with Tools
+    agent = Agent(
+        role="Question Answering Assistant",
+        goal="Answer the users questions",
+        backstory="Always eager to answer any questions",
+        llm=load_model(),
+        tools=tools,
+    )
 
-        # Define the Task
-        task = Task(
-            agent=agent,
-            description="Answer the users question: {prompt}",
-            expected_output="An answer to the users question",
-        )
+    # Define the Task
+    task = Task(
+        agent=agent,
+        description="Answer the users question: {prompt}",
+        expected_output="An answer to the users question",
+    )
 
-        # Create the Crew
-        crew = Crew(agents=[agent], tasks=[task], process=Process.sequential)
+    # Create the Crew
+    crew = Crew(agents=[agent], tasks=[task], process=Process.sequential)
 
-        # Process the user prompt
-        prompt = payload.get("prompt", "What can you help me with?")
+    # Process the user prompt
+    prompt = payload.get("prompt", "What can you help me with?")
 
-        # Run the crew
-        result = crew.kickoff(inputs={"prompt": prompt})
+    # Run the crew
+    result = crew.kickoff(inputs={"prompt": prompt})
 
-        # Return result
-        return {"result": result.raw}
+    # Return result
+    return {"result": result.raw}
 
 
 if __name__ == "__main__":

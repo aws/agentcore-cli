@@ -1,14 +1,16 @@
 import { ProjectNameSchema } from '../../../../schema';
 import { LogLink, type NextStep, NextSteps, Screen, SelectList, StepProgress, TextInput } from '../../components';
 import { HELP_TEXT } from '../../constants';
+import { setExitMessage } from '../../exit-message';
 import { useListNavigation } from '../../hooks';
 import { STATUS_COLORS } from '../../theme';
 import { AddAgentScreen } from '../agent/AddAgentScreen';
 import type { AddAgentConfig } from '../agent/types';
 import { FRAMEWORK_OPTIONS } from '../agent/types';
 import { useCreateFlow } from './useCreateFlow';
-import { Box, Text } from 'ink';
+import { Box, Text, useApp } from 'ink';
 import { join } from 'path';
+import { useCallback } from 'react';
 
 type NextCommand = 'dev' | 'deploy' | 'add';
 
@@ -75,9 +77,24 @@ function CreatedSummary({ projectName, agentConfig }: { projectName: string; age
 }
 
 export function CreateScreen({ cwd, isInteractive, onExit, onNavigate }: CreateScreenProps) {
+  const { exit } = useApp();
   const flow = useCreateFlow(cwd);
   // Project root is cwd/projectName (new project directory)
   const projectRoot = join(cwd, flow.projectName);
+
+  // Completion state for next steps
+  const allSuccess = !flow.hasError && flow.isComplete;
+
+  // Handle exit - if successful, exit app completely and print instructions
+  const handleExit = useCallback(() => {
+    if (allSuccess && isInteractive) {
+      // Set message to be printed after TUI exits
+      setExitMessage(`\nTo continue, navigate to your new project:\n\n  cd ${flow.projectName}\n  agentcore\n`);
+      exit();
+    } else {
+      onExit();
+    }
+  }, [allSuccess, isInteractive, flow.projectName, exit, onExit]);
 
   // Create prompt navigation
   const { selectedIndex: createPromptIndex } = useListNavigation({
@@ -85,17 +102,14 @@ export function CreateScreen({ cwd, isInteractive, onExit, onNavigate }: CreateS
     onSelect: item => {
       flow.setWantsCreate(item.id === 'yes');
     },
-    onExit,
+    onExit: handleExit,
     isActive: flow.phase === 'create-prompt',
   });
-
-  // Completion state for next steps
-  const allSuccess = !flow.hasError && flow.isComplete;
 
   // Checking phase: brief loading state
   if (flow.phase === 'checking') {
     return (
-      <Screen title="AgentCore Create" onExit={onExit}>
+      <Screen title="AgentCore Create" onExit={handleExit}>
         <Text dimColor>Checking for existing project...</Text>
       </Screen>
     );
@@ -104,7 +118,7 @@ export function CreateScreen({ cwd, isInteractive, onExit, onNavigate }: CreateS
   // Existing project error phase
   if (flow.phase === 'existing-project-error') {
     return (
-      <Screen title="AgentCore Create" onExit={onExit} helpText="Press Esc to exit">
+      <Screen title="AgentCore Create" onExit={handleExit} helpText="Press Esc to exit">
         <Box marginBottom={1} flexDirection="column">
           <Text color="red">A project already exists at this location.</Text>
           {flow.existingProjectPath && <Text dimColor>Found: {flow.existingProjectPath}</Text>}
@@ -121,19 +135,20 @@ export function CreateScreen({ cwd, isInteractive, onExit, onNavigate }: CreateS
   // Input phase: ask for project name
   if (flow.phase === 'input') {
     return (
-      <Screen title="AgentCore Create" onExit={onExit} helpText={HELP_TEXT.TEXT_INPUT}>
-        <Box marginBottom={1}>
+      <Screen title="AgentCore Create" onExit={handleExit} helpText={HELP_TEXT.TEXT_INPUT}>
+        <Box marginBottom={1} flexDirection="column">
           <Text>Create a new AgentCore project</Text>
+          <Text dimColor>This will create a directory with your project name.</Text>
         </Box>
         <TextInput
           prompt="Project name"
-          initialValue={flow.projectName}
+          initialValue=""
           schema={ProjectNameSchema}
           onSubmit={name => {
             flow.setProjectName(name);
             flow.confirmProjectName();
           }}
-          onCancel={onExit}
+          onCancel={handleExit}
         />
       </Screen>
     );
@@ -142,7 +157,7 @@ export function CreateScreen({ cwd, isInteractive, onExit, onNavigate }: CreateS
   // Create prompt phase
   if (flow.phase === 'create-prompt') {
     return (
-      <Screen title="AgentCore Create" onExit={onExit} helpText={HELP_TEXT.NAVIGATE_SELECT}>
+      <Screen title="AgentCore Create" onExit={handleExit} helpText={HELP_TEXT.NAVIGATE_SELECT}>
         <Box marginBottom={1}>
           <Text>
             Project: <Text color={STATUS_COLORS.success}>{flow.projectName}</Text>
@@ -181,7 +196,7 @@ export function CreateScreen({ cwd, isInteractive, onExit, onNavigate }: CreateS
   const helpText = flow.hasError || allSuccess ? HELP_TEXT.EXIT : undefined;
 
   return (
-    <Screen title="AgentCore Create" onExit={onExit} headerContent={headerContent} helpText={helpText}>
+    <Screen title="AgentCore Create" onExit={handleExit} headerContent={headerContent} helpText={helpText}>
       <StepProgress steps={flow.steps} />
       {allSuccess && flow.outputDir && (
         <Box marginTop={1} flexDirection="column">
@@ -213,7 +228,7 @@ export function CreateScreen({ cwd, isInteractive, onExit, onNavigate }: CreateS
                   onNavigate({ command: step.command as NextCommand, workingDir: projectRoot });
                 }
               }}
-              onBack={onExit}
+              onBack={handleExit}
               isActive={allSuccess}
             />
           )}

@@ -1,5 +1,4 @@
 import { registerAdd } from './commands/add';
-import { registerAttach } from './commands/attach';
 import { registerCreate } from './commands/create';
 import { registerDeploy } from './commands/deploy';
 import { registerDestroy } from './commands/destroy';
@@ -14,6 +13,7 @@ import { PACKAGE_VERSION } from './constants';
 import { App } from './tui/App';
 import { LayoutProvider } from './tui/context';
 import { COMMAND_DESCRIPTIONS } from './tui/copy';
+import { clearExitMessage, getExitMessage } from './tui/exit-message';
 import { CommandListScreen } from './tui/screens/home';
 import { getCommandsForUI } from './tui/utils';
 import { Command } from '@commander-js/extra-typings';
@@ -64,6 +64,13 @@ function renderTUI() {
     inAltScreen = false;
     process.stdout.write(EXIT_ALT_SCREEN);
     process.stdout.write(SHOW_CURSOR);
+
+    // Print any exit message set by screens (e.g., after successful project creation)
+    const exitMessage = getExitMessage();
+    if (exitMessage) {
+      console.log(exitMessage);
+      clearExitMessage();
+    }
   });
 }
 
@@ -99,7 +106,6 @@ export function createProgram(): Command {
 
 export function registerCommands(program: Command) {
   registerAdd(program);
-  registerAttach(program);
   registerDev(program);
   registerDeploy(program);
   registerDestroy(program);

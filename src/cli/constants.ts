@@ -52,4 +52,4 @@ export const CDK_APP_ENTRY = 'dist/bin/cdk.js';
 /**
  * Current schema version for AgentCore configuration files.
  */
-export const SCHEMA_VERSION = '0.1';
+export const SCHEMA_VERSION = 1;

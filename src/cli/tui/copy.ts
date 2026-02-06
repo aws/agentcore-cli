@@ -30,7 +30,6 @@ export const COMMAND_DESCRIPTIONS = {
   program: 'Build and deploy Agentic AI applications on AgentCore',
   /** Command descriptions */
   add: 'Add resources to your project',
-  attach: 'Attach resources to an agent',
   create: 'Create a new AgentCore project',
   deploy: 'Deploy Bedrock AgentCore agent.',
   destroy: 'Destroy deployed AgentCore resources.',

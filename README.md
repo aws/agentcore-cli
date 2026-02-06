@@ -37,23 +37,23 @@ Use the terminal UI to walk through all commands interactively, or run each comm
 
 ```bash
 # Launch terminal UI
-agentcore-cli
+agentcore
 
 # Create a new project (wizard guides you through agent setup)
-agentcore-cli create
+agentcore create
 cd my-project
 
 # Test locally
-agentcore-cli dev
+agentcore dev
 
 # In another terminal:
-agentcore-cli invoke
+agentcore invoke
 
 # Deploy to AWS
-agentcore-cli deploy
+agentcore deploy
 
 # Invoke deployed agent
-agentcore-cli invoke --stream
+agentcore invoke --stream
 ```
 
 ## Supported Frameworks
@@ -90,11 +90,10 @@ agentcore-cli invoke --stream
 
 ### Resource Management
 
-| Command  | Description                             |
-| -------- | --------------------------------------- |
-| `add`    | Add agents, memory, identity, MCP tools |
-| `remove` | Remove resources from project           |
-| `attach` | Connect resources to agents             |
+| Command  | Description                           |
+| -------- | ------------------------------------- |
+| `add`    | Add agents, memory, identity, targets |
+| `remove` | Remove resources from project         |
 
 ### Development
 
@@ -106,10 +105,9 @@ agentcore-cli invoke --stream
 
 ### Utilities
 
-| Command        | Description                    |
-| -------------- | ------------------------------ |
-| `stop-session` | Stop an active runtime session |
-| `update`       | Check for CLI updates          |
+| Command  | Description           |
+| -------- | --------------------- |
+| `update` | Check for CLI updates |
 
 ## Project Structure
 
@@ -118,7 +116,6 @@ my-project/
 ├── agentcore/
 │   ├── agentcore.json      # Agent specifications
 │   ├── aws-targets.json    # Deployment targets
-│   ├── mcp.json            # MCP tool config
 │   └── cdk/                # CDK infrastructure
 ├── app/                    # Agent code
 └── .env.local              # API keys (gitignored)
@@ -130,36 +127,32 @@ Projects use JSON schema files in the `agentcore/` directory:
 
 - `agentcore.json` - Agent specifications, memory, identity, remote tools
 - `aws-targets.json` - Deployment targets (account, region)
-- `mcp.json` - MCP tool definitions
 - `deployed-state.json` - Runtime state (auto-managed)
 
 ## Primitives
 
 - **Memory** - Semantic, summarization, and user preference strategies
 - **Identity** - Secure API key management via Secrets Manager
-- **MCP Tools** - Extend agent capabilities with custom tools
-- **MCP Runtime Tools** - Direct agent-to-tool connections
 - **Agent-to-Agent** - Agents invoking other agents as tools
 
 ## Invoking Agents
 
 ```bash
 # Interactive mode
-agentcore-cli invoke
+agentcore invoke
 
 # With prompt and streaming
-agentcore-cli invoke "What can you do?" --stream
+agentcore invoke "What can you do?" --stream
 
 # Session management
-agentcore-cli invoke --session-id <id>   # Continue conversation
-agentcore-cli invoke --new-session       # Start fresh
+agentcore invoke --session-id <id>   # Continue conversation
+agentcore invoke --new-session       # Start fresh
 ```
 
 ## Documentation
 
 - [CLI Commands Reference](docs/commands.md) - Full command reference for scripting and CI/CD
 - [Configuration](docs/configuration.md) - Schema reference for config files
-- [MCP Tools](docs/mcp-tools.md) - MCP runtime tools
 - [Memory](docs/memory.md) - Memory strategies and sharing
 - [Local Development](docs/local-development.md) - Dev server and debugging
 

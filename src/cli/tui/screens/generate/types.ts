@@ -18,14 +18,13 @@ export interface GenerateConfig {
   language: TargetLanguage;
 }
 
-/** Base steps - apiKey is conditionally shown based on model provider */
+/** Base steps - apiKey and memory are conditionally added based on selections */
 export const BASE_GENERATE_STEPS: GenerateStep[] = [
   'projectName',
   'language',
   'sdk',
   'modelProvider',
   'apiKey',
-  'memory',
   'confirm',
 ];
 

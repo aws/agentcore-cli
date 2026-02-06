@@ -1,23 +1,12 @@
 import {
-  attachAgentToAgent,
-  attachGatewayToAgent,
-  attachIdentityToAgent,
-  attachMemoryToAgent,
   bindMcpRuntimeToAgent,
-  getAgentAttachments,
   getAvailableAgents,
+  getCredentials,
   getGateways,
   getMcpRuntimeTools,
-  getOwnedIdentities,
-  getOwnedMemories,
+  getMemories,
 } from '../../operations/attach';
-import type {
-  AttachAgentConfig,
-  AttachGatewayConfig,
-  AttachIdentityConfig,
-  AttachMemoryConfig,
-  BindMcpRuntimeConfig,
-} from '../../operations/attach';
+import type { BindMcpRuntimeConfig } from '../../operations/attach';
 import { useCallback, useEffect, useState } from 'react';
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -39,34 +28,34 @@ export function useAgents() {
   return { agents: agents ?? [], isLoading: agents === null, refresh };
 }
 
-export function useOwnedMemories() {
-  const [memories, setMemories] = useState<{ name: string; ownerAgent: string }[]>([]);
+export function useMemories() {
+  const [memories, setMemories] = useState<string[]>([]);
 
   useEffect(() => {
-    void getOwnedMemories().then(setMemories);
+    void getMemories().then(setMemories);
   }, []);
 
   const refresh = useCallback(async () => {
-    const result = await getOwnedMemories();
+    const result = await getMemories();
     setMemories(result);
   }, []);
 
   return { memories, refresh };
 }
 
-export function useOwnedIdentities() {
-  const [identities, setIdentities] = useState<{ name: string; ownerAgent: string }[]>([]);
+export function useCredentials() {
+  const [credentials, setCredentials] = useState<string[]>([]);
 
   useEffect(() => {
-    void getOwnedIdentities().then(setIdentities);
+    void getCredentials().then(setCredentials);
   }, []);
 
   const refresh = useCallback(async () => {
-    const result = await getOwnedIdentities();
-    setIdentities(result);
+    const result = await getCredentials();
+    setCredentials(result);
   }, []);
 
-  return { identities, refresh };
+  return { credentials, refresh };
 }
 
 export function useMcpRuntimeTools() {
@@ -99,52 +88,50 @@ export function useGateways() {
   return { gateways, refresh };
 }
 
-export function useAgentAttachments(agentName: string | null) {
-  const [attachments, setAttachments] = useState<{
-    memories: string[];
-    identities: string[];
-    remoteTools: string[];
-    mcpProviders: string[];
-  }>({
-    memories: [],
-    identities: [],
-    remoteTools: [],
-    mcpProviders: [],
-  });
-
-  useEffect(() => {
-    if (agentName) {
-      void getAgentAttachments(agentName).then(setAttachments);
-    }
-  }, [agentName]);
-
-  return attachments;
-}
-
 // ─────────────────────────────────────────────────────────────────────────────
-// Attach Operation Hooks
+// Legacy hooks (stubs for TUI screens, v2 doesn't use attach pattern)
 // ─────────────────────────────────────────────────────────────────────────────
 
+// Alias for old hook name
+export const useOwnedMemories = useMemories;
+export const useOwnedIdentities = useCredentials;
+
+// Stub attach hooks (no-op in v2, resources have implicit access)
 export function useAttachAgent() {
-  const [isLoading, setIsLoading] = useState(false);
-
-  const attach = useCallback(async (sourceAgent: string, config: AttachAgentConfig) => {
-    setIsLoading(true);
-    try {
-      await attachAgentToAgent(sourceAgent, config);
-      return { ok: true as const };
-    } catch (err) {
-      const message = err instanceof Error ? err.message : 'Failed to attach agent.';
-      return { ok: false as const, error: message };
-    } finally {
-      setIsLoading(false);
-    }
-  }, []);
-
-  const reset = useCallback(() => setIsLoading(false), []);
-
-  return { attach, isLoading, reset };
+  return {
+    attach: async () => ({ ok: true as const }),
+    isLoading: false,
+    reset: () => {},
+  };
 }
+
+export function useAttachMemory() {
+  return {
+    attach: async () => ({ ok: true as const }),
+    isLoading: false,
+    reset: () => {},
+  };
+}
+
+export function useAttachIdentity() {
+  return {
+    attach: async () => ({ ok: true as const }),
+    isLoading: false,
+    reset: () => {},
+  };
+}
+
+export function useAttachGateway() {
+  return {
+    attach: async () => ({ ok: true as const }),
+    isLoading: false,
+    reset: () => {},
+  };
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// MCP Binding Hook
+// ─────────────────────────────────────────────────────────────────────────────
 
 export function useBindMcpRuntime() {
   const [isLoading, setIsLoading] = useState(false);
@@ -165,67 +152,4 @@ export function useBindMcpRuntime() {
   const reset = useCallback(() => setIsLoading(false), []);
 
   return { bind, isLoading, reset };
-}
-
-export function useAttachMemory() {
-  const [isLoading, setIsLoading] = useState(false);
-
-  const attach = useCallback(async (agentName: string, config: AttachMemoryConfig) => {
-    setIsLoading(true);
-    try {
-      await attachMemoryToAgent(agentName, config);
-      return { ok: true as const };
-    } catch (err) {
-      const message = err instanceof Error ? err.message : 'Failed to attach memory.';
-      return { ok: false as const, error: message };
-    } finally {
-      setIsLoading(false);
-    }
-  }, []);
-
-  const reset = useCallback(() => setIsLoading(false), []);
-
-  return { attach, isLoading, reset };
-}
-
-export function useAttachIdentity() {
-  const [isLoading, setIsLoading] = useState(false);
-
-  const attach = useCallback(async (agentName: string, config: AttachIdentityConfig) => {
-    setIsLoading(true);
-    try {
-      await attachIdentityToAgent(agentName, config);
-      return { ok: true as const };
-    } catch (err) {
-      const message = err instanceof Error ? err.message : 'Failed to attach identity.';
-      return { ok: false as const, error: message };
-    } finally {
-      setIsLoading(false);
-    }
-  }, []);
-
-  const reset = useCallback(() => setIsLoading(false), []);
-
-  return { attach, isLoading, reset };
-}
-
-export function useAttachGateway() {
-  const [isLoading, setIsLoading] = useState(false);
-
-  const attach = useCallback(async (agentName: string, config: AttachGatewayConfig) => {
-    setIsLoading(true);
-    try {
-      await attachGatewayToAgent(agentName, config);
-      return { ok: true as const };
-    } catch (err) {
-      const message = err instanceof Error ? err.message : 'Failed to attach gateway.';
-      return { ok: false as const, error: message };
-    } finally {
-      setIsLoading(false);
-    }
-  }, []);
-
-  const reset = useCallback(() => setIsLoading(false), []);
-
-  return { attach, isLoading, reset };
 }

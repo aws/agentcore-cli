@@ -1,7 +1,14 @@
 import { COMMAND_DESCRIPTIONS } from '../../tui/copy';
 import { requireProject } from '../../tui/guards';
 import { AddFlow } from '../../tui/screens/add/AddFlow';
-import { handleAddAgent, handleAddGateway, handleAddIdentity, handleAddMcpTool, handleAddMemory } from './actions';
+import {
+  handleAddAgent,
+  handleAddGateway,
+  handleAddIdentity,
+  handleAddMcpTool,
+  handleAddMemory,
+  handleBindMcpRuntime,
+} from './actions';
 import { handleAddTarget } from './target-action';
 import type {
   AddAgentOptions,
@@ -9,6 +16,7 @@ import type {
   AddIdentityOptions,
   AddMcpToolOptions,
   AddMemoryOptions,
+  BindMcpRuntimeOptions,
 } from './types';
 import {
   validateAddAgentOptions,
@@ -128,7 +136,8 @@ async function _handleAddGatewayCLI(options: AddGatewayOptions): Promise<void> {
   process.exit(result.success ? 0 : 1);
 }
 
-async function handleAddMcpToolCLI(options: AddMcpToolOptions): Promise<void> {
+// MCP Tool disabled - prefix with underscore until feature is re-enabled
+async function _handleAddMcpToolCLI(options: AddMcpToolOptions): Promise<void> {
   const validation = validateAddMcpToolOptions(options);
   if (!validation.valid) {
     if (options.json) {
@@ -163,6 +172,7 @@ async function handleAddMcpToolCLI(options: AddMcpToolOptions): Promise<void> {
   process.exit(result.success ? 0 : 1);
 }
 
+// v2: Memory is a top-level resource (no owner/user)
 async function handleAddMemoryCLI(options: AddMemoryOptions): Promise<void> {
   const validation = validateAddMemoryOptions(options);
   if (!validation.valid) {
@@ -176,20 +186,14 @@ async function handleAddMemoryCLI(options: AddMemoryOptions): Promise<void> {
 
   const result = await handleAddMemory({
     name: options.name!,
-    description: options.description,
     strategies: options.strategies!,
     expiry: options.expiry,
-    owner: options.owner!,
-    users: options.users,
   });
 
   if (options.json) {
     console.log(JSON.stringify(result));
   } else if (result.success) {
-    console.log(`Added memory '${result.memoryName}' owned by '${result.ownerAgent}'`);
-    if (result.userAgents && result.userAgents.length > 0) {
-      console.log(`Shared with: ${result.userAgents.join(', ')}`);
-    }
+    console.log(`Added memory '${result.memoryName}'`);
   } else {
     console.error(result.error);
   }
@@ -197,6 +201,7 @@ async function handleAddMemoryCLI(options: AddMemoryOptions): Promise<void> {
   process.exit(result.success ? 0 : 1);
 }
 
+// v2: Identity/Credential is a top-level resource (no owner/user)
 async function handleAddIdentityCLI(options: AddIdentityOptions): Promise<void> {
   const validation = validateAddIdentityOptions(options);
   if (!validation.valid) {
@@ -210,19 +215,174 @@ async function handleAddIdentityCLI(options: AddIdentityOptions): Promise<void> 
 
   const result = await handleAddIdentity({
     name: options.name!,
-    type: options.type!,
     apiKey: options.apiKey!,
-    owner: options.owner!,
-    users: options.users,
   });
 
   if (options.json) {
     console.log(JSON.stringify(result));
   } else if (result.success) {
-    console.log(`Added identity '${result.identityName}' owned by '${result.ownerAgent}'`);
-    if (result.userAgents && result.userAgents.length > 0) {
-      console.log(`Shared with: ${result.userAgents.join(', ')}`);
+    console.log(`Added credential '${result.credentialName}'`);
+  } else {
+    console.error(result.error);
+  }
+
+  process.exit(result.success ? 0 : 1);
+}
+
+// MCP Runtime binding (still relevant in v2)
+async function handleBindMcpRuntimeCLI(options: BindMcpRuntimeOptions): Promise<void> {
+  if (!options.agent || !options.runtime) {
+    const error = 'Required: --agent, --runtime';
+    if (options.json) {
+      console.log(JSON.stringify({ success: false, error }));
+    } else {
+      console.error(error);
     }
+    process.exit(1);
+  }
+
+  const envVar = options.envVar ?? `${options.runtime.toUpperCase().replace(/[^A-Z0-9]/g, '_')}_MCP_RUNTIME_URL`;
+  const result = await handleBindMcpRuntime({
+    agent: options.agent,
+    runtime: options.runtime,
+    envVar,
+  });
+
+  if (options.json) {
+    console.log(JSON.stringify(result));
+  } else if (result.success) {
+    console.log(`Bound MCP runtime '${result.runtimeName}' to agent '${result.targetAgent}'`);
+  } else {
+    console.error(result.error);
+  }
+
+  process.exit(result.success ? 0 : 1);
+}
+
+// Bind CLI handlers
+async function handleBindMemoryCLI(options: BindMemoryOptions): Promise<void> {
+  if (!options.agent || !options.memory) {
+    const error = 'Required: --agent, --memory';
+    if (options.json) {
+      console.log(JSON.stringify({ success: false, error }));
+    } else {
+      console.error(error);
+    }
+    process.exit(1);
+  }
+
+  const envVar = options.envVar ?? `${options.memory.toUpperCase().replace(/[^A-Z0-9]/g, '_')}_MEMORY_ID`;
+  const result = await handleBindMemory({
+    agent: options.agent,
+    memory: options.memory,
+    access: options.access! ?? 'read',
+    envVar,
+  });
+
+  if (options.json) {
+    console.log(JSON.stringify(result));
+  } else if (result.success) {
+    console.log(`Bound memory '${result.memoryName}' to agent '${result.targetAgent}'`);
+  } else {
+    console.error(result.error);
+  }
+
+  process.exit(result.success ? 0 : 1);
+}
+
+async function handleBindIdentityCLI(options: BindIdentityOptions): Promise<void> {
+  if (!options.agent || !options.identity) {
+    const error = 'Required: --agent, --identity';
+    if (options.json) {
+      console.log(JSON.stringify({ success: false, error }));
+    } else {
+      console.error(error);
+    }
+    process.exit(1);
+  }
+
+  const envVar = options.envVar ?? `${options.identity.toUpperCase().replace(/[^A-Z0-9]/g, '_')}_CREDENTIAL_ID`;
+  const result = await handleBindIdentity({
+    agent: options.agent,
+    identity: options.identity,
+    envVar,
+  });
+
+  if (options.json) {
+    console.log(JSON.stringify(result));
+  } else if (result.success) {
+    console.log(`Bound identity '${result.identityName}' to agent '${result.targetAgent}'`);
+  } else {
+    console.error(result.error);
+  }
+
+  process.exit(result.success ? 0 : 1);
+}
+
+// Gateway disabled - prefix with underscore until feature is re-enabled
+async function _handleBindGatewayCLI(options: BindGatewayOptions): Promise<void> {
+  if (!options.agent || !options.gateway) {
+    const error = 'Required: --agent, --gateway';
+    if (options.json) {
+      console.log(JSON.stringify({ success: false, error }));
+    } else {
+      console.error(error);
+    }
+    process.exit(1);
+  }
+
+  const name = options.name ?? `${options.gateway}-provider`;
+  const description = options.description ?? `Tools provided by ${options.gateway} gateway`;
+  const envVar = options.envVar ?? `${name.toUpperCase().replace(/[^A-Z0-9]/g, '_')}_URL`;
+
+  const result = await handleBindGateway({
+    agent: options.agent,
+    gateway: options.gateway,
+    name,
+    description,
+    envVar,
+  });
+
+  if (options.json) {
+    console.log(JSON.stringify(result));
+  } else if (result.success) {
+    console.log(`Bound gateway '${result.gatewayName}' to agent '${result.targetAgent}'`);
+  } else {
+    console.error(result.error);
+  }
+
+  process.exit(result.success ? 0 : 1);
+}
+
+async function handleBindAgentCLI(options: BindAgentOptions): Promise<void> {
+  if (!options.source || !options.target) {
+    const error = 'Required: --source, --target';
+    if (options.json) {
+      console.log(JSON.stringify({ success: false, error }));
+    } else {
+      console.error(error);
+    }
+    process.exit(1);
+  }
+
+  const name = options.name ?? `invoke${options.target.replace(/[^a-zA-Z0-9]/g, '')}`;
+  const description = options.description ?? `Invoke the ${options.target} agent`;
+  const envVar = options.envVar ?? `${name.toUpperCase().replace(/[^A-Z0-9]/g, '_')}_AGENT_ID`;
+
+  const result = await handleBindAgent({
+    source: options.source,
+    target: options.target,
+    name,
+    description,
+    envVar,
+  });
+
+  if (options.json) {
+    console.log(JSON.stringify(result));
+  } else if (result.success) {
+    console.log(
+      `Bound agent '${result.targetAgent}' as remote tool '${result.toolName}' to agent '${result.sourceAgent}'`
+    );
   } else {
     console.error(result.error);
   }
@@ -283,7 +443,7 @@ export function registerAdd(program: Command) {
 
   // Subcommand: add gateway (disabled - coming soon)
   addCmd
-    .command('gateway')
+    .command('gateway', { hidden: true })
     .description('Add an MCP gateway to the project')
     .option('--name <name>', 'Gateway name')
     .option('--description <desc>', 'Gateway description')
@@ -294,13 +454,13 @@ export function registerAdd(program: Command) {
     .option('--agents <names>', 'Comma-separated agent names to attach gateway to')
     .option('--json', 'Output as JSON')
     .action(() => {
-      console.error("AgentCore Gateway integration is coming soon. Use 'add mcp-tool' with Direct exposure instead.");
+      console.error('AgentCore Gateway integration is coming soon.');
       process.exit(1);
     });
 
-  // Subcommand: add mcp-tool
+  // Subcommand: add mcp-tool (disabled - coming soon)
   addCmd
-    .command('mcp-tool')
+    .command('mcp-tool', { hidden: true })
     .description('Add an MCP tool to the project')
     .option('--name <name>', 'Tool name')
     .option('--description <desc>', 'Tool description')
@@ -310,39 +470,98 @@ export function registerAdd(program: Command) {
     .option('--gateway <name>', 'Gateway name (for behind-gateway)')
     .option('--host <host>', 'Compute host: Lambda or AgentCoreRuntime (for behind-gateway)')
     .option('--json', 'Output as JSON')
-    .action(async options => {
-      requireProject();
-      await handleAddMcpToolCLI(options as AddMcpToolOptions);
+    .action(() => {
+      console.error('MCP Tool integration is coming soon.');
+      process.exit(1);
     });
 
-  // Subcommand: add memory
+  // Subcommand: add memory (v2: top-level resource)
   addCmd
     .command('memory')
     .description('Add a memory resource to the project')
     .option('--name <name>', 'Memory name')
-    .option('--description <desc>', 'Memory description')
-    .option('--strategies <types>', 'Comma-separated strategies: SEMANTIC, SUMMARIZATION, USER_PREFERENCE, CUSTOM')
+    .option(
+      '--strategies <types>',
+      'Comma-separated strategies: SEMANTIC, SUMMARIZATION, USER_PREFERENCE, EPISODIC, CUSTOM'
+    )
     .option('--expiry <days>', 'Event expiry duration in days (default: 30)', parseInt)
-    .option('--owner <agent>', 'Agent that owns the memory')
-    .option('--users <agents>', 'Comma-separated agent names that can use the memory')
     .option('--json', 'Output as JSON')
     .action(async options => {
       requireProject();
-      await handleAddMemoryCLI(options as AddMemoryOptions);
+      if (options.bind) {
+        await handleBindMemoryCLI(options as BindMemoryOptions);
+      } else {
+        await handleAddMemoryCLI(options as AddMemoryOptions);
+      }
     });
 
-  // Subcommand: add identity
+  // Subcommand: add identity (v2: top-level credential resource)
   addCmd
     .command('identity')
-    .description('Add an identity provider to the project')
-    .option('--name <name>', 'Identity name')
-    .option('--type <type>', 'Identity type: ApiKeyCredentialProvider')
+    .description('Add a credential to the project')
+    .option('--name <name>', 'Credential name')
     .option('--api-key <key>', 'The API key value')
-    .option('--owner <agent>', 'Agent that owns the identity')
-    .option('--users <agents>', 'Comma-separated agent names that can use the identity')
     .option('--json', 'Output as JSON')
     .action(async options => {
       requireProject();
       await handleAddIdentityCLI(options as AddIdentityOptions);
+    });
+
+  // Subcommand: add bind (explicit bind commands)
+  const bindCmd = addCmd.command('bind').description('Bind existing resources to agents');
+
+  // bind memory
+  bindCmd
+    .command('memory')
+    .description('Bind existing memory to an agent')
+    .requiredOption('--agent <name>', 'Target agent')
+    .requiredOption('--memory <name>', 'Memory name to bind')
+    .option('--access <level>', 'Access level: read or readwrite', 'read')
+    .option('--env-var <name>', 'Environment variable name')
+    .option('--json', 'Output as JSON')
+    .action(async options => {
+      requireProject();
+      await handleBindMemoryCLI(options as BindMemoryOptions);
+    });
+
+  // bind identity
+  bindCmd
+    .command('identity')
+    .description('Bind existing identity to an agent')
+    .requiredOption('--agent <name>', 'Target agent')
+    .requiredOption('--identity <name>', 'Identity name to bind')
+    .option('--env-var <name>', 'Environment variable name')
+    .option('--json', 'Output as JSON')
+    .action(async options => {
+      requireProject();
+      await handleBindIdentityCLI(options as BindIdentityOptions);
+    });
+
+  // bind gateway (disabled - coming soon)
+  bindCmd
+    .command('gateway', { hidden: true })
+    .description('Bind existing gateway to an agent')
+    .requiredOption('--agent <name>', 'Target agent')
+    .requiredOption('--gateway <name>', 'Gateway name to bind')
+    .option('--name <name>', 'MCP provider name')
+    .option('--description <desc>', 'Description')
+    .option('--env-var <name>', 'Environment variable name')
+    .option('--json', 'Output as JSON')
+    .action(() => {
+      console.error('AgentCore Gateway integration is coming soon.');
+      process.exit(1);
+    });
+
+  // bind mcp-runtime (disabled - coming soon)
+  bindCmd
+    .command('mcp-runtime', { hidden: true })
+    .description('Bind existing MCP runtime to an agent')
+    .requiredOption('--agent <name>', 'Target agent')
+    .requiredOption('--runtime <name>', 'MCP runtime name to bind')
+    .option('--env-var <name>', 'Environment variable name')
+    .option('--json', 'Output as JSON')
+    .action(() => {
+      console.error('MCP Tool integration is coming soon.');
+      process.exit(1);
     });
 }
