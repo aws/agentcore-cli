@@ -8,7 +8,10 @@ import type {
   MemoryStrategy,
   ModelProvider,
 } from '../../../../schema';
-import type { AgentRenderConfig } from '../../../templates/types';
+import type {
+  AgentRenderConfig,
+  MemoryProviderRenderConfig,
+} from '../../../templates/types';
 import {
   DEFAULT_MEMORY_EXPIRY_DAYS,
   DEFAULT_NETWORK_MODE,
@@ -113,6 +116,33 @@ export function mapGenerateConfigToResources(config: GenerateConfig): GenerateCo
 }
 
 /**
+ * Compute the default env var name for a memory.
+ */
+function computeMemoryEnvVarName(memoryName: string): string {
+  return `AGENTCORE_MEMORY_${memoryName.toUpperCase()}`;
+}
+
+/**
+ * Maps memory option to memory providers for template rendering.
+ */
+function mapMemoryOptionToMemoryProviders(
+  memory: MemoryOption,
+  projectName: string
+): MemoryProviderRenderConfig[] {
+  if (memory === 'none') {
+    return [];
+  }
+
+  const memoryName = `${projectName}Memory`;
+  return [
+    {
+      name: memoryName,
+      envVarName: computeMemoryEnvVarName(memoryName),
+    },
+  ];
+}
+
+/**
  * Maps GenerateConfig to AgentRenderConfig for template rendering.
  */
 export function mapGenerateConfigToRenderConfig(config: GenerateConfig): AgentRenderConfig {
@@ -123,5 +153,6 @@ export function mapGenerateConfigToRenderConfig(config: GenerateConfig): AgentRe
     modelProvider: config.modelProvider,
     hasMemory: config.memory !== 'none',
     hasIdentity: config.modelProvider !== 'Bedrock',
+    memoryProviders: mapMemoryOptionToMemoryProviders(config.memory, config.projectName),
   };
 }
