@@ -7,7 +7,7 @@ name = "{{ name }}"
 version = "0.1.0"
 description = "AgentCore Runtime Application using CrewAI SDK"
 readme = "README.md"
-requires-python = ">=3.10"
+requires-python = ">=3.11"
 dependencies = [
     "opentelemetry-distro",
     "opentelemetry-exporter-otlp",
