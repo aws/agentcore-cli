@@ -28,6 +28,8 @@ interface AddAgentFlowProps {
   onComplete: (config: AddAgentConfig) => void;
   onExit: () => void;
   onBack: () => void;
+  /** Called when user selects deploy from success screen */
+  onDeploy?: () => void;
 }
 
 const MODE_OPTIONS: SelectableItem[] = [
@@ -41,6 +43,7 @@ export function AddAgentFlow({
   onComplete,
   onExit,
   onBack,
+  onDeploy,
 }: AddAgentFlowProps) {
   const [flow, setFlow] = useState<FlowState>({ name: 'mode-select' });
 
@@ -310,6 +313,7 @@ export function AddAgentFlow({
         message={`Added remote tool: ${flow.toolName}`}
         detail={`Agent "${flow.sourceAgent}" can now invoke agent "${flow.targetAgent}" as a remote tool.`}
         onAddAnother={onBack}
+        onDeploy={onDeploy}
         onExit={onExit}
       />
     );

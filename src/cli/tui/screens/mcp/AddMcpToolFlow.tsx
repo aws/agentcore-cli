@@ -26,6 +26,8 @@ interface AddMcpToolFlowProps {
   existingAgents: string[];
   onExit: () => void;
   onBack: () => void;
+  /** Called when user selects deploy from success screen */
+  onDeploy?: () => void;
 }
 
 const MODE_OPTIONS: SelectableItem[] = [
@@ -33,7 +35,7 @@ const MODE_OPTIONS: SelectableItem[] = [
   { id: 'bind', title: 'Bind existing MCP runtime', description: 'Add an agent to an existing MCP runtime' },
 ];
 
-export function AddMcpToolFlow({ isInteractive = true, existingAgents, onExit, onBack }: AddMcpToolFlowProps) {
+export function AddMcpToolFlow({ isInteractive = true, existingAgents, onExit, onBack, onDeploy }: AddMcpToolFlowProps) {
   const { createTool, reset: resetCreate } = useCreateMcpTool();
   const { gateways: existingGateways } = useExistingGateways();
   const { toolNames: existingToolNames } = useExistingToolNames();
@@ -254,6 +256,7 @@ export function AddMcpToolFlow({ isInteractive = true, existingAgents, onExit, o
         loading={flow.loading}
         loadingMessage={flow.loadingMessage}
         onAddAnother={onBack}
+        onDeploy={onDeploy}
         onExit={onExit}
       />
     );
@@ -267,6 +270,7 @@ export function AddMcpToolFlow({ isInteractive = true, existingAgents, onExit, o
         message={`Bound agent to MCP runtime`}
         detail={`Agent "${flow.targetAgent}" is now bound to MCP runtime "${flow.mcpRuntimeName}".`}
         onAddAnother={onBack}
+        onDeploy={onDeploy}
         onExit={onExit}
       />
     );
