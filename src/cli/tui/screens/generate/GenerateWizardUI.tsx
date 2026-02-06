@@ -87,6 +87,7 @@ export function GenerateWizardUI({ wizard, onBack, onConfirm, isActive }: Genera
     onExit: onBack,
     isActive: isActive && isSelectStep,
     isDisabled: item => item.disabled ?? false,
+    resetKey: wizard.step,
   });
 
   // Handle confirm step input
