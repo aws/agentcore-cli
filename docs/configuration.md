@@ -62,10 +62,9 @@ Main project configuration containing agents and their capabilities.
 | `targetLanguage`    | Yes      | `Python` or `TypeScript`                                                           |
 | `modelProvider`     | Yes      | `Bedrock`, `Anthropic`, `OpenAI`, `Gemini`                                         |
 | `runtime`           | Yes      | Runtime configuration                                                              |
-| `mcpProviders`      | Yes      | MCP tool references                                                                |
 | `memoryProviders`   | Yes      | Memory configurations                                                              |
 | `identityProviders` | Yes      | Identity/API key configurations                                                    |
-| `remoteTools`       | Yes      | Agent-to-agent and MCP runtime references                                          |
+| `remoteTools`       | Yes      | Agent-to-agent references                                                          |
 
 ### Runtime Configuration
 
@@ -210,18 +209,6 @@ Array of deployment targets.
 
 See [AgentCore Regions](https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/agentcore-regions.html) for the
 current list.
-
----
-
-## mcp.json
-
-MCP runtime tool definitions. See [MCP Tools](./mcp-tools.md) for details.
-
-```json
-{
-  "mcpRuntimeTools": [...]
-}
-```
 
 ---
 
