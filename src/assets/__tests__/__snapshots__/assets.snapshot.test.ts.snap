@@ -1,0 +1,3082 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`Assets Directory Snapshots > CDK assets > cdk/cdk/.prettierrc should match snapshot 1`] = `
+"{
+  "trailingComma": "es5",
+  "printWidth": 120,
+  "tabWidth": 2,
+  "semi": true,
+  "singleQuote": true,
+  "arrowParens": "avoid"
+}
+"
+`;
+
+exports[`Assets Directory Snapshots > CDK assets > cdk/cdk/README.md should match snapshot 1`] = `
+"# Welcome to your CDK TypeScript project
+
+This is a blank project for CDK development with TypeScript.
+
+The \`cdk.json\` file tells the CDK Toolkit how to execute your app.
+
+## Useful commands
+
+- \`npm run build\` compile typescript to js
+- \`npm run watch\` watch for changes and compile
+- \`npm run test\` perform the jest unit tests
+- \`npx cdk deploy\` deploy this stack to your default AWS account/region
+- \`npx cdk diff\` compare deployed stack with current state
+- \`npx cdk synth\` emits the synthesized CloudFormation template
+"
+`;
+
+exports[`Assets Directory Snapshots > CDK assets > cdk/cdk/bin/cdk.ts should match snapshot 1`] = `
+"#!/usr/bin/env node
+import { AgentCoreStack } from '../lib/cdk-stack';
+import { ConfigIO, type AwsDeploymentTarget } from '@aws/agentcore-l3-cdk-constructs';
+import { App, type Environment } from 'aws-cdk-lib';
+import * as path from 'path';
+
+function toEnvironment(target: AwsDeploymentTarget): Environment {
+  return {
+    account: target.account,
+    region: target.region,
+  };
+}
+
+function toStackName(projectName: string, targetName: string): string {
+  return \`AgentCore-\${projectName}-\${targetName}\`;
+}
+
+async function main() {
+  // Config root is parent of cdk/ directory. The CLI sets process.cwd() to agentcore/cdk/.
+  const configRoot = path.resolve(process.cwd(), '..');
+  const configIO = new ConfigIO({ baseDir: configRoot });
+
+  const spec = await configIO.readProjectSpec();
+  const targets = await configIO.readAWSDeploymentTargets();
+
+  if (targets.length === 0) {
+    throw new Error('No deployment targets configured. Please define targets in agentcore/aws-targets.json');
+  }
+
+  const app = new App();
+
+  for (const target of targets) {
+    const env = toEnvironment(target);
+    const stackName = toStackName(spec.name, target.name);
+
+    new AgentCoreStack(app, stackName, {
+      spec,
+      env,
+      description: \`AgentCore stack for \${spec.name} deployed to \${target.name} (\${target.region})\`,
+      tags: {
+        'agentcore:project-name': spec.name,
+        'agentcore:target-name': target.name,
+      },
+    });
+  }
+
+  app.synth();
+}
+
+main();
+"
+`;
+
+exports[`Assets Directory Snapshots > CDK assets > cdk/cdk/cdk.json should match snapshot 1`] = `
+"{
+  "app": "node dist/bin/cdk.js",
+  "watch": {
+    "include": ["**"],
+    "exclude": ["README.md", "cdk*.json", "tsconfig.json", "package*.json", "yarn.lock", "node_modules", "dist", "test"]
+  },
+  "context": {
+    "@aws-cdk/aws-signer:signingProfileNamePassedToCfn": true,
+    "@aws-cdk/aws-ecs-patterns:secGroupsDisablesImplicitOpenListener": true,
+    "@aws-cdk/aws-lambda:recognizeLayerVersion": true,
+    "@aws-cdk/core:checkSecretUsage": true,
+    "@aws-cdk/core:target-partitions": ["aws", "aws-cn"],
+    "@aws-cdk-containers/ecs-service-extensions:enableDefaultLogDriver": true,
+    "@aws-cdk/aws-ec2:uniqueImdsv2TemplateName": true,
+    "@aws-cdk/aws-ecs:arnFormatIncludesClusterName": true,
+    "@aws-cdk/aws-iam:minimizePolicies": true,
+    "@aws-cdk/core:validateSnapshotRemovalPolicy": true,
+    "@aws-cdk/aws-codepipeline:crossAccountKeyAliasStackSafeResourceName": true,
+    "@aws-cdk/aws-s3:createDefaultLoggingPolicy": true,
+    "@aws-cdk/aws-sns-subscriptions:restrictSqsDescryption": true,
+    "@aws-cdk/aws-apigateway:disableCloudWatchRole": true,
+    "@aws-cdk/core:enablePartitionLiterals": true,
+    "@aws-cdk/aws-events:eventsTargetQueueSameAccount": true,
+    "@aws-cdk/aws-ecs:disableExplicitDeploymentControllerForCircuitBreaker": true,
+    "@aws-cdk/aws-iam:importedRoleStackSafeDefaultPolicyName": true,
+    "@aws-cdk/aws-s3:serverAccessLogsUseBucketPolicy": true,
+    "@aws-cdk/aws-route53-patters:useCertificate": true,
+    "@aws-cdk/customresources:installLatestAwsSdkDefault": false,
+    "@aws-cdk/aws-rds:databaseProxyUniqueResourceName": true,
+    "@aws-cdk/aws-codedeploy:removeAlarmsFromDeploymentGroup": true,
+    "@aws-cdk/aws-apigateway:authorizerChangeDeploymentLogicalId": true,
+    "@aws-cdk/aws-ec2:launchTemplateDefaultUserData": true,
+    "@aws-cdk/aws-secretsmanager:useAttachedSecretResourcePolicyForSecretTargetAttachments": true,
+    "@aws-cdk/aws-redshift:columnId": true,
+    "@aws-cdk/aws-stepfunctions-tasks:enableEmrServicePolicyV2": true,
+    "@aws-cdk/aws-ec2:restrictDefaultSecurityGroup": true,
+    "@aws-cdk/aws-apigateway:requestValidatorUniqueId": true,
+    "@aws-cdk/aws-kms:aliasNameRef": true,
+    "@aws-cdk/aws-kms:applyImportedAliasPermissionsToPrincipal": true,
+    "@aws-cdk/aws-autoscaling:generateLaunchTemplateInsteadOfLaunchConfig": true,
+    "@aws-cdk/core:includePrefixInUniqueNameGeneration": true,
+    "@aws-cdk/aws-efs:denyAnonymousAccess": true,
+    "@aws-cdk/aws-opensearchservice:enableOpensearchMultiAzWithStandby": true,
+    "@aws-cdk/aws-lambda-nodejs:useLatestRuntimeVersion": true,
+    "@aws-cdk/aws-efs:mountTargetOrderInsensitiveLogicalId": true,
+    "@aws-cdk/aws-rds:auroraClusterChangeScopeOfInstanceParameterGroupWithEachParameters": true,
+    "@aws-cdk/aws-appsync:useArnForSourceApiAssociationIdentifier": true,
+    "@aws-cdk/aws-rds:preventRenderingDeprecatedCredentials": true,
+    "@aws-cdk/aws-codepipeline-actions:useNewDefaultBranchForCodeCommitSource": true,
+    "@aws-cdk/aws-cloudwatch-actions:changeLambdaPermissionLogicalIdForLambdaAction": true,
+    "@aws-cdk/aws-codepipeline:crossAccountKeysDefaultValueToFalse": true,
+    "@aws-cdk/aws-codepipeline:defaultPipelineTypeToV2": true,
+    "@aws-cdk/aws-kms:reduceCrossAccountRegionPolicyScope": true,
+    "@aws-cdk/aws-eks:nodegroupNameAttribute": true,
+    "@aws-cdk/aws-ec2:ebsDefaultGp3Volume": true,
+    "@aws-cdk/aws-ecs:removeDefaultDeploymentAlarm": true,
+    "@aws-cdk/custom-resources:logApiResponseDataPropertyTrueDefault": false,
+    "@aws-cdk/aws-s3:keepNotificationInImportedBucket": false,
+    "@aws-cdk/core:explicitStackTags": true,
+    "@aws-cdk/aws-ecs:enableImdsBlockingDeprecatedFeature": false,
+    "@aws-cdk/aws-ecs:disableEcsImdsBlocking": true,
+    "@aws-cdk/aws-ecs:reduceEc2FargateCloudWatchPermissions": true,
+    "@aws-cdk/aws-dynamodb:resourcePolicyPerReplica": true,
+    "@aws-cdk/aws-ec2:ec2SumTImeoutEnabled": true,
+    "@aws-cdk/aws-appsync:appSyncGraphQLAPIScopeLambdaPermission": true,
+    "@aws-cdk/aws-rds:setCorrectValueForDatabaseInstanceReadReplicaInstanceResourceId": true,
+    "@aws-cdk/core:cfnIncludeRejectComplexResourceUpdateCreatePolicyIntrinsics": true,
+    "@aws-cdk/aws-lambda-nodejs:sdkV3ExcludeSmithyPackages": true,
+    "@aws-cdk/aws-stepfunctions-tasks:fixRunEcsTaskPolicy": true,
+    "@aws-cdk/aws-ec2:bastionHostUseAmazonLinux2023ByDefault": true,
+    "@aws-cdk/aws-route53-targets:userPoolDomainNameMethodWithoutCustomResource": true,
+    "@aws-cdk/aws-elasticloadbalancingV2:albDualstackWithoutPublicIpv4SecurityGroupRulesDefault": true,
+    "@aws-cdk/aws-iam:oidcRejectUnauthorizedConnections": true,
+    "@aws-cdk/core:enableAdditionalMetadataCollection": true,
+    "@aws-cdk/aws-lambda:createNewPoliciesWithAddToRolePolicy": false,
+    "@aws-cdk/aws-s3:setUniqueReplicationRoleName": true,
+    "@aws-cdk/aws-events:requireEventBusPolicySid": true,
+    "@aws-cdk/core:aspectPrioritiesMutating": true,
+    "@aws-cdk/aws-dynamodb:retainTableReplica": true,
+    "@aws-cdk/aws-stepfunctions:useDistributedMapResultWriterV2": true,
+    "@aws-cdk/s3-notifications:addS3TrustKeyPolicyForSnsSubscriptions": true,
+    "@aws-cdk/aws-ec2:requirePrivateSubnetsForEgressOnlyInternetGateway": true,
+    "@aws-cdk/aws-s3:publicAccessBlockedByDefault": true,
+    "@aws-cdk/aws-lambda:useCdkManagedLogGroup": true,
+    "@aws-cdk/aws-elasticloadbalancingv2:networkLoadBalancerWithSecurityGroupByDefault": true,
+    "@aws-cdk/aws-ecs-patterns:uniqueTargetGroupId": true
+  }
+}
+"
+`;
+
+exports[`Assets Directory Snapshots > CDK assets > cdk/cdk/gitignore.template should match snapshot 1`] = `
+"# Build output
+dist/
+
+# Dependencies
+node_modules/
+
+# CDK asset staging directory
+.cdk.staging
+cdk.out
+"
+`;
+
+exports[`Assets Directory Snapshots > CDK assets > cdk/cdk/jest.config.js should match snapshot 1`] = `
+"module.exports = {
+  testEnvironment: 'node',
+  roots: ['<rootDir>/test'],
+  testMatch: ['**/*.test.ts'],
+  transform: {
+    '^.+\\\\.tsx?$': 'ts-jest',
+  },
+  setupFilesAfterEnv: ['aws-cdk-lib/testhelpers/jest-autoclean'],
+};
+"
+`;
+
+exports[`Assets Directory Snapshots > CDK assets > cdk/cdk/lib/cdk-stack.ts should match snapshot 1`] = `
+"import { AgentCoreApplication, type AgentCoreProjectSpec } from '@aws/agentcore-l3-cdk-constructs';
+import { CfnOutput, Stack, type StackProps } from 'aws-cdk-lib';
+import { Construct } from 'constructs';
+
+export interface AgentCoreStackProps extends StackProps {
+  /**
+   * The AgentCore project specification containing agents, memories, and credentials.
+   */
+  spec: AgentCoreProjectSpec;
+}
+
+/**
+ * CDK Stack that deploys AgentCore infrastructure.
+ *
+ * This is a thin wrapper that instantiates L3 constructs.
+ * All resource logic and outputs are contained within the L3 constructs.
+ */
+export class AgentCoreStack extends Stack {
+  /** The AgentCore application containing all agent environments */
+  public readonly application: AgentCoreApplication;
+
+  constructor(scope: Construct, id: string, props: AgentCoreStackProps) {
+    super(scope, id, props);
+
+    const { spec } = props;
+
+    // Create AgentCoreApplication with all agents
+    this.application = new AgentCoreApplication(this, 'Application', {
+      spec,
+    });
+
+    // Stack-level output
+    new CfnOutput(this, 'StackNameOutput', {
+      description: 'Name of the CloudFormation Stack',
+      value: this.stackName,
+    });
+  }
+}
+"
+`;
+
+exports[`Assets Directory Snapshots > CDK assets > cdk/cdk/npmignore.template should match snapshot 1`] = `
+"*.ts
+!*.d.ts
+
+# CDK asset staging directory
+.cdk.staging
+cdk.out
+"
+`;
+
+exports[`Assets Directory Snapshots > CDK assets > cdk/cdk/package.json should match snapshot 1`] = `
+"{
+  "name": "agentcore-cdk-app",
+  "version": "0.1.0",
+  "bin": {
+    "cdk": "dist/bin/cdk.js"
+  },
+  "scripts": {
+    "build": "tsc",
+    "watch": "tsc -w",
+    "test": "jest",
+    "cdk": "npm run build && cdk",
+    "clean": "rm -rf dist",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "postinstall": "npm link @aws/agentcore-l3-cdk-constructs 2>/dev/null || echo 'Note: If CDK synth fails, run: npm link @aws/agentcore-l3-cdk-constructs'"
+  },
+  "devDependencies": {
+    "@types/jest": "^29.5.14",
+    "@types/node": "^24.10.1",
+    "jest": "^29.7.0",
+    "ts-jest": "^29.2.5",
+    "aws-cdk": "2.1100.1",
+    "prettier": "^3.4.2",
+    "typescript": "~5.9.3"
+  },
+  "dependencies": {
+    "aws-cdk-lib": "2.234.1",
+    "constructs": "^10.0.0"
+  }
+}
+"
+`;
+
+exports[`Assets Directory Snapshots > CDK assets > cdk/cdk/test/cdk.test.ts should match snapshot 1`] = `
+"// import * as cdk from 'aws-cdk-lib/core';
+// import { Template } from 'aws-cdk-lib/assertions';
+// import * as Cdk from '../lib/cdk-stack';
+
+// example test. To run these tests, uncomment this file along with the
+// example resource in lib/cdk-stack.ts
+test('SQS Queue Created', () => {
+  //   const app = new cdk.App();
+  //     // WHEN
+  //   const stack = new Cdk.CdkStack(app, 'MyTestStack');
+  //     // THEN
+  //   const template = Template.fromStack(stack);
+  //   template.hasResourceProperties('AWS::SQS::Queue', {
+  //     VisibilityTimeout: 300
+  //   });
+});
+"
+`;
+
+exports[`Assets Directory Snapshots > CDK assets > cdk/cdk/tsconfig.json should match snapshot 1`] = `
+"{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "CommonJS",
+    "moduleResolution": "Node",
+    "lib": ["es2022"],
+    "declaration": true,
+    "strict": true,
+    "noImplicitAny": true,
+    "strictNullChecks": true,
+    "noImplicitThis": true,
+    "alwaysStrict": true,
+    "noUnusedLocals": false,
+    "noUnusedParameters": false,
+    "noImplicitReturns": true,
+    "noFallthroughCasesInSwitch": false,
+    "inlineSourceMap": true,
+    "inlineSources": true,
+    "experimentalDecorators": true,
+    "strictPropertyInitialization": false,
+    "skipLibCheck": true,
+    "typeRoots": ["./node_modules/@types"],
+    "rootDir": ".",
+    "outDir": "dist"
+  },
+  "include": ["bin/**/*", "lib/**/*", "test/**/*"],
+  "exclude": ["node_modules", "cdk.out", "dist"]
+}
+"
+`;
+
+exports[`Assets Directory Snapshots > File listing > should match the expected file structure > asset-file-listing 1`] = `
+[
+  "AGENTS.md",
+  "README.md",
+  "agents/AGENTS.md",
+  "cdk/.prettierrc",
+  "cdk/README.md",
+  "cdk/bin/cdk.ts",
+  "cdk/cdk.json",
+  "cdk/gitignore.template",
+  "cdk/jest.config.js",
+  "cdk/lib/cdk-stack.ts",
+  "cdk/npmignore.template",
+  "cdk/package.json",
+  "cdk/test/cdk.test.ts",
+  "cdk/tsconfig.json",
+  "mcp/python-lambda/README.md",
+  "mcp/python-lambda/handler.py",
+  "mcp/python-lambda/pyproject.toml",
+  "mcp/python/README.md",
+  "mcp/python/pyproject.toml",
+  "mcp/python/server.py",
+  "python/autogen/base/README.md",
+  "python/autogen/base/gitignore.template",
+  "python/autogen/base/main.py",
+  "python/autogen/base/mcp_client/client.py",
+  "python/autogen/base/model/load.py",
+  "python/autogen/base/pyproject.toml",
+  "python/crewai/base/README.md",
+  "python/crewai/base/gitignore.template",
+  "python/crewai/base/main.py",
+  "python/crewai/base/model/load.py",
+  "python/crewai/base/pyproject.toml",
+  "python/googleadk/base/README.md",
+  "python/googleadk/base/gitignore.template",
+  "python/googleadk/base/main.py",
+  "python/googleadk/base/mcp_client/client.py",
+  "python/googleadk/base/model/load.py",
+  "python/googleadk/base/pyproject.toml",
+  "python/langchain_langgraph/base/README.md",
+  "python/langchain_langgraph/base/gitignore.template",
+  "python/langchain_langgraph/base/main.py",
+  "python/langchain_langgraph/base/mcp_client/client.py",
+  "python/langchain_langgraph/base/model/load.py",
+  "python/langchain_langgraph/base/pyproject.toml",
+  "python/openaiagents/base/README.md",
+  "python/openaiagents/base/gitignore.template",
+  "python/openaiagents/base/main.py",
+  "python/openaiagents/base/mcp_client/client.py",
+  "python/openaiagents/base/model/load.py",
+  "python/openaiagents/base/pyproject.toml",
+  "python/strands/base/README.md",
+  "python/strands/base/gitignore.template",
+  "python/strands/base/main.py",
+  "python/strands/base/mcp_client/client.py",
+  "python/strands/base/model/load.py",
+  "python/strands/base/pyproject.toml",
+  "python/strands/capabilities/memory/session.py",
+  "static/strands-bedrock/README.md",
+  "static/strands-bedrock/pyproject.toml",
+  "static/strands-bedrock/src/main.py",
+  "static/strands-bedrock/src/mcp_client/client.py",
+  "static/strands-bedrock/src/model/load.py",
+  "static/strands-bedrock/test/__init__.py",
+  "static/strands-bedrock/test/test_main.py",
+  "typescript/.gitkeep",
+]
+`;
+
+exports[`Assets Directory Snapshots > MCP assets > mcp/mcp/python/README.md should match snapshot 1`] = `
+"# {{ name }}
+
+This is a template MCP server generated by the AgentCore CLI.
+
+Demonstrates HTTP tool patterns with proper error handling and retry logic.
+
+## Quick Start
+
+\`\`\`bash
+# Create and activate virtual environment
+uv venv
+source .venv/bin/activate  # or .venv\\Scripts\\activate on Windows
+
+# Install dependencies
+uv sync
+
+# Run the server
+uv run server.py
+\`\`\`
+
+## Available Tools
+
+| Tool              | Description                                            |
+| ----------------- | ------------------------------------------------------ |
+| \`lookup_ip\`       | Look up geolocation and network info for an IP address |
+| \`get_random_user\` | Generate a random user profile for testing             |
+| \`fetch_post\`      | Fetch a post by ID from JSONPlaceholder API            |
+"
+`;
+
+exports[`Assets Directory Snapshots > MCP assets > mcp/mcp/python/pyproject.toml should match snapshot 1`] = `
+"[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "{{ name }}"
+version = "0.1.0"
+description = "MCP Server demonstrating HTTP tool patterns"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    "mcp[cli] >= 1.2.0",
+    "httpx >= 0.27.0",
+    "opentelemetry-distro",
+    "opentelemetry-exporter-otlp",
+]
+
+[project.scripts]
+server = "server:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["."]
+"
+`;
+
+exports[`Assets Directory Snapshots > MCP assets > mcp/mcp/python/server.py should match snapshot 1`] = `
+""""
+MCP Server demonstrating HTTP tool patterns.
+
+This template shows:
+- Async HTTP boundaries with proper error handling
+- Retry logic and partial failure
+- Response parsing and validation
+
+Run with: uv run server.py
+"""
+
+import logging
+from typing import Any
+
+import httpx
+from mcp.server.fastmcp import FastMCP
+
+logging.basicConfig(level=logging.INFO, format="%(levelname)s - %(message)s")
+logger = logging.getLogger(__name__)
+
+mcp = FastMCP("tools")
+
+HTTP_TIMEOUT = 10.0
+MAX_RETRIES = 2
+
+
+async def fetch_json(url: str, headers: dict[str, str] | None = None) -> dict[str, Any] | None:
+    """Make an HTTP GET request with retry logic."""
+    async with httpx.AsyncClient() as client:
+        for attempt in range(MAX_RETRIES):
+            try:
+                response = await client.get(url, headers=headers, timeout=HTTP_TIMEOUT)
+                response.raise_for_status()
+                return response.json()
+            except httpx.TimeoutException:
+                logger.warning(f"Timeout on attempt {attempt + 1} for {url}")
+            except httpx.HTTPStatusError as e:
+                logger.error(f"HTTP {e.response.status_code} for {url}")
+                return None
+            except httpx.RequestError as e:
+                logger.error(f"Request failed: {e}")
+                return None
+    return None
+
+
+@mcp.tool()
+async def lookup_ip(ip_address: str) -> str:
+    """Look up geolocation and network info for an IP address.
+
+    Args:
+        ip_address: IPv4 or IPv6 address to look up
+    """
+    data = await fetch_json(f"http://ip-api.com/json/{ip_address}")
+
+    if not data:
+        return f"Failed to look up IP: {ip_address}"
+
+    if data.get("status") == "fail":
+        return f"Lookup failed: {data.get('message', 'unknown error')}"
+
+    return (
+        f"IP: {data['query']}\\n"
+        f"Location: {data['city']}, {data['regionName']}, {data['country']}\\n"
+        f"ISP: {data['isp']}\\n"
+        f"Organization: {data['org']}\\n"
+        f"Timezone: {data['timezone']}"
+    )
+
+
+@mcp.tool()
+async def get_random_user() -> str:
+    """Generate a random user profile for testing or mock data."""
+    data = await fetch_json("https://randomuser.me/api/")
+
+    if not data or "results" not in data:
+        return "Failed to generate random user."
+
+    user = data["results"][0]
+    name = user["name"]
+    location = user["location"]
+
+    return (
+        f"Name: {name['first']} {name['last']}\\n"
+        f"Email: {user['email']}\\n"
+        f"Location: {location['city']}, {location['country']}\\n"
+        f"Phone: {user['phone']}"
+    )
+
+
+@mcp.tool()
+async def fetch_post(post_id: int) -> str:
+    """Fetch a post by ID from JSONPlaceholder API.
+
+    Args:
+        post_id: The post ID (1-100)
+    """
+    if not 1 <= post_id <= 100:
+        return "Post ID must be between 1 and 100."
+
+    data = await fetch_json(f"https://jsonplaceholder.typicode.com/posts/{post_id}")
+
+    if not data:
+        return f"Failed to fetch post {post_id}."
+
+    return (
+        f"Post #{data['id']}\\n"
+        f"Title: {data['title']}\\n\\n"
+        f"{data['body']}"
+    )
+
+
+def main():
+    mcp.run(transport="stdio")
+
+
+if __name__ == "__main__":
+    main()
+"
+`;
+
+exports[`Assets Directory Snapshots > MCP assets > mcp/mcp/python-lambda/README.md should match snapshot 1`] = `
+"# {{ Name }}
+
+Lambda-based tools for AgentCore Gateway.
+
+## Tools
+
+- \`lookup_ip\` - Look up geolocation for an IP address
+- \`get_random_user\` - Generate random user profile
+- \`fetch_post\` - Fetch a post by ID
+
+## Gateway Integration
+
+Tools are invoked via AgentCore Gateway. The tool name is passed in:
+\`context.client_context.custom["bedrockAgentCoreToolName"]\`
+
+Format: \`{target_name}___{tool_name}\`
+
+## Adding New Tools
+
+1. Define the tool function with the \`@tool("tool_name")\` decorator
+2. Add the tool definition to \`mcp-defs.json\` in your agentcore project
+3. The tool will be automatically routed by the handler
+"
+`;
+
+exports[`Assets Directory Snapshots > MCP assets > mcp/mcp/python-lambda/handler.py should match snapshot 1`] = `
+""""
+Lambda handler for AgentCore Gateway tools.
+
+This template mirrors the FastMCP server tools but runs as a Lambda function
+behind an AgentCore Gateway.
+
+Tool routing uses bedrockAgentCoreToolName from client context:
+  Format: {target_name}___{tool_name}
+"""
+import json
+import logging
+import urllib.request
+import urllib.error
+from typing import Any, Dict, Optional
+
+logger = logging.getLogger()
+logger.setLevel(logging.INFO)
+
+HTTP_TIMEOUT = 10
+TOOLS = {}
+
+
+def tool(name: str):
+    """Decorator to register a tool handler."""
+    def decorator(func):
+        TOOLS[name] = func
+        return func
+    return decorator
+
+
+def lambda_handler(event: Dict[str, Any], context) -> Dict[str, Any]:
+    """Route incoming gateway requests to the appropriate tool."""
+    try:
+        extended_name = context.client_context.custom.get("bedrockAgentCoreToolName", "")
+        tool_name = None
+
+        if "___" in extended_name:
+            tool_name = extended_name.split("___", 1)[1]
+
+        if not tool_name:
+            return _response(400, {"error": "Missing tool name in bedrockAgentCoreToolName"})
+
+        handler = TOOLS.get(tool_name)
+        if not handler:
+            return _response(400, {"error": f"Unknown tool: {tool_name}"})
+
+        result = handler(event)
+        return _response(200, {"result": result})
+
+    except Exception as e:
+        logger.exception("Tool execution failed")
+        return _response(500, {"error": str(e)})
+
+
+def _response(status_code: int, body: Dict[str, Any]) -> Dict[str, Any]:
+    """Consistent JSON response wrapper."""
+    return {"statusCode": status_code, "body": json.dumps(body)}
+
+
+def _fetch_json(url: str) -> Optional[Dict[str, Any]]:
+    """Fetch JSON from URL with error handling."""
+    try:
+        req = urllib.request.Request(url, headers={"User-Agent": "AgentCore-Tool/1.0"})
+        with urllib.request.urlopen(req, timeout=HTTP_TIMEOUT) as resp:
+            return json.loads(resp.read().decode())
+    except (urllib.error.URLError, json.JSONDecodeError) as e:
+        logger.warning(f"Failed to fetch {url}: {e}")
+        return None
+
+
+@tool("{{Name}}_lookup_ip")
+def lookup_ip(event: Dict[str, Any]) -> str:
+    """Look up geolocation and network info for an IP address.
+
+    Args:
+        ip_address: IPv4 or IPv6 address to look up
+    """
+    ip_address = event.get("ip_address", "")
+    if not ip_address:
+        return "Missing required parameter: ip_address"
+
+    data = _fetch_json(f"http://ip-api.com/json/{ip_address}")
+    if not data:
+        return f"Failed to look up IP: {ip_address}"
+
+    if data.get("status") == "fail":
+        return f"Lookup failed: {data.get('message', 'unknown error')}"
+
+    return (
+        f"IP: {data['query']}\\n"
+        f"Location: {data['city']}, {data['regionName']}, {data['country']}\\n"
+        f"ISP: {data['isp']}\\n"
+        f"Organization: {data['org']}\\n"
+        f"Timezone: {data['timezone']}"
+    )
+
+
+@tool("{{Name}}_get_random_user")
+def get_random_user(event: Dict[str, Any]) -> str:
+    """Generate a random user profile for testing or mock data."""
+    data = _fetch_json("https://randomuser.me/api/")
+    if not data or "results" not in data:
+        return "Failed to generate random user."
+
+    user = data["results"][0]
+    name = user["name"]
+    location = user["location"]
+
+    return (
+        f"Name: {name['first']} {name['last']}\\n"
+        f"Email: {user['email']}\\n"
+        f"Location: {location['city']}, {location['country']}\\n"
+        f"Phone: {user['phone']}"
+    )
+
+
+@tool("{{Name}}_fetch_post")
+def fetch_post(event: Dict[str, Any]) -> str:
+    """Fetch a post by ID from JSONPlaceholder API.
+
+    Args:
+        post_id: The post ID (1-100)
+    """
+    post_id = event.get("post_id")
+    if post_id is None:
+        return "Missing required parameter: post_id"
+
+    try:
+        post_id = int(post_id)
+    except (TypeError, ValueError):
+        return "post_id must be an integer"
+
+    if not 1 <= post_id <= 100:
+        return "Post ID must be between 1 and 100."
+
+    data = _fetch_json(f"https://jsonplaceholder.typicode.com/posts/{post_id}")
+    if not data:
+        return f"Failed to fetch post {post_id}."
+
+    return (
+        f"Post #{data['id']}\\n"
+        f"Title: {data['title']}\\n\\n"
+        f"{data['body']}"
+    )
+"
+`;
+
+exports[`Assets Directory Snapshots > MCP assets > mcp/mcp/python-lambda/pyproject.toml should match snapshot 1`] = `
+"[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "{{ name }}"
+version = "0.1.0"
+description = "Lambda tools for AgentCore Gateway"
+readme = "README.md"
+requires-python = ">=3.10"
+# No external dependencies - uses stdlib only
+dependencies = []
+
+[tool.hatch.build.targets.wheel]
+packages = ["."]
+"
+`;
+
+exports[`Assets Directory Snapshots > Python framework assets > python/python/autogen/base/README.md should match snapshot 1`] = `
+"This is a project generated by the agentcore create CLI tool!
+
+# Layout
+
+There is one directory with generated application code, \`src/\` . At the root, there is a \`.gitignore\` file, a
+\`.agentcore\` folder which represents the configurations and state associated with this project. Other \`agentcore\`
+commands like \`deploy\`, \`dev\`, and \`invoke\` rely on the configuration stored here.
+
+## src/
+
+The main entrypoint to your app is defined in \`src/main.py\`. Using the AgentCore SDK \`@app.entrypoint\` decorator, this
+file defines a Starlette ASGI app with the AutoGen framework running within.
+
+\`src/model/load.py\` instantiates your chosen model provider.
+
+## Environment Variables
+
+| Variable                       | Required        | Description                                                      |
+| ------------------------------ | --------------- | ---------------------------------------------------------------- |
+| \`AGENTCORE_IDENTITY_OPENAI\`    | Yes (OpenAI)    | OpenAI API key (local) or Identity provider name (deployed)      |
+| \`AGENTCORE_IDENTITY_ANTHROPIC\` | Yes (Anthropic) | Anthropic API key (local) or Identity provider name (deployed)   |
+| \`AGENTCORE_IDENTITY_GEMINI\`    | Yes (Gemini)    | Gemini API key (local) or Identity provider name (deployed)      |
+| \`LOCAL_DEV\`                    | No              | Set to \`1\` to use \`agentcore/.env\` instead of AgentCore Identity |
+
+# Developing locally
+
+If installation was successful, a virtual environment is already created with dependencies installed.
+
+Run \`source .venv/bin/activate\` before developing.
+
+\`agentcore dev\` will start a local server on 0.0.0.0:8080.
+
+In a new terminal, you can invoke that server with:
+
+\`agentcore invoke --dev "What can you do"\`
+
+# Deployment
+
+After providing credentials, \`agentcore deploy\` will deploy your project into Amazon Bedrock AgentCore.
+
+Use \`agentcore invoke\` to invoke your deployed agent.
+"
+`;
+
+exports[`Assets Directory Snapshots > Python framework assets > python/python/autogen/base/gitignore.template should match snapshot 1`] = `
+"# Environment variables
+.env
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Virtual environments
+venv/
+ENV/
+env/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+"
+`;
+
+exports[`Assets Directory Snapshots > Python framework assets > python/python/autogen/base/main.py should match snapshot 1`] = `
+"import os
+from autogen_agentchat.agents import AssistantAgent
+from autogen_core.tools import FunctionTool
+from bedrock_agentcore.runtime import BedrockAgentCoreApp
+from model.load import load_model
+from mcp_client.client import get_streamable_http_mcp_tools
+
+app = BedrockAgentCoreApp()
+log = app.logger
+
+
+# Define a simple function tool
+def add_numbers(a: int, b: int) -> int:
+    """Return the sum of two numbers"""
+    return a + b
+
+
+add_numbers_tool = FunctionTool(
+    add_numbers, description="Return the sum of two numbers"
+)
+
+# Define a collection of tools used by the model
+tools = [add_numbers_tool]
+
+
+@app.entrypoint
+async def invoke(payload, context):
+    log.info("Invoking Agent.....")
+
+    # Get MCP Tools
+    mcp_tools = await get_streamable_http_mcp_tools()
+
+    # Define an AssistantAgent with the model and tools
+    agent = AssistantAgent(
+        name="{{ name }}",
+        model_client=load_model(),
+        tools=tools + mcp_tools,
+        system_message="You are a helpful assistant. Use tools when appropriate.",
+    )
+
+    # Process the user prompt
+    prompt = payload.get("prompt", "What can you help me with?")
+
+    # Run the agent
+    result = await agent.run(task=prompt)
+
+    # Return result
+    return {"result": result.messages[-1].content}
+
+
+if __name__ == "__main__":
+    app.run()
+"
+`;
+
+exports[`Assets Directory Snapshots > Python framework assets > python/python/autogen/base/mcp_client/client.py should match snapshot 1`] = `
+"from typing import List
+from autogen_ext.tools.mcp import (
+    StreamableHttpMcpToolAdapter,
+    StreamableHttpServerParams,
+    mcp_server_tools,
+)
+
+# ExaAI provides information about code through web searches, crawling and code context searches through their platform. Requires no authentication
+EXAMPLE_MCP_ENDPOINT = "https://mcp.exa.ai/mcp"
+
+
+async def get_streamable_http_mcp_tools() -> List[StreamableHttpMcpToolAdapter]:
+    """
+    Returns MCP Tools compatible with AutoGen.
+    """
+    # to use an MCP server that supports bearer authentication, add headers={"Authorization": f"Bearer {access_token}"}
+    server_params = StreamableHttpServerParams(url=EXAMPLE_MCP_ENDPOINT)
+    return await mcp_server_tools(server_params)
+"
+`;
+
+exports[`Assets Directory Snapshots > Python framework assets > python/python/autogen/base/model/load.py should match snapshot 1`] = `
+"{{#if (eq modelProvider "Bedrock")}}
+import os
+from autogen_ext.models.anthropic import AnthropicBedrockChatCompletionClient
+from autogen_core.models import ModelInfo, ModelFamily
+
+# Uses global inference profile for Claude Sonnet 4.5
+# https://docs.aws.amazon.com/bedrock/latest/userguide/inference-profiles-support.html
+MODEL_ID = "global.anthropic.claude-sonnet-4-5-20250929-v1:0"
+
+
+def load_model() -> AnthropicBedrockChatCompletionClient:
+    """Get Bedrock model client using IAM credentials."""
+    return AnthropicBedrockChatCompletionClient(
+        model=MODEL_ID,
+        model_info=ModelInfo(
+            vision=False,
+            function_calling=True,
+            json_output=False,
+            family=ModelFamily.CLAUDE_4_SONNET,
+            structured_output=True
+        ),
+        bedrock_info={"aws_region": os.environ.get("AWS_REGION", "us-east-1")}
+    )
+{{/if}}
+{{#if (eq modelProvider "Anthropic")}}
+import os
+from autogen_ext.models.anthropic import AnthropicChatCompletionClient
+from bedrock_agentcore.identity.auth import requires_api_key
+
+IDENTITY_PROVIDER_NAME = "{{identityProviders.[0].name}}"
+IDENTITY_ENV_VAR = "{{identityProviders.[0].envVarName}}"
+
+
+@requires_api_key(provider_name=IDENTITY_PROVIDER_NAME)
+def _agentcore_identity_api_key_provider(api_key: str) -> str:
+    """Fetch API key from AgentCore Identity."""
+    return api_key
+
+
+def _get_api_key() -> str:
+    """
+    Uses AgentCore Identity for API key management in deployed environments.
+    For local development, run via 'agentcore dev' which loads agentcore/.env.
+    """
+    if os.getenv("LOCAL_DEV") == "1":
+        api_key = os.getenv(IDENTITY_ENV_VAR)
+        if not api_key:
+            raise RuntimeError(
+                f"{IDENTITY_ENV_VAR} not found. Add {IDENTITY_ENV_VAR}=your-key to .env.local"
+            )
+        return api_key
+    return _agentcore_identity_api_key_provider()
+
+
+def load_model() -> AnthropicChatCompletionClient:
+    """Get authenticated Anthropic model client."""
+    return AnthropicChatCompletionClient(
+        model="claude-sonnet-4-5-20250929",
+        api_key=_get_api_key()
+    )
+{{/if}}
+{{#if (eq modelProvider "OpenAI")}}
+import os
+from autogen_ext.models.openai import OpenAIChatCompletionClient
+from bedrock_agentcore.identity.auth import requires_api_key
+
+IDENTITY_PROVIDER_NAME = "{{identityProviders.[0].name}}"
+IDENTITY_ENV_VAR = "{{identityProviders.[0].envVarName}}"
+
+
+@requires_api_key(provider_name=IDENTITY_PROVIDER_NAME)
+def _agentcore_identity_api_key_provider(api_key: str) -> str:
+    """Fetch API key from AgentCore Identity."""
+    return api_key
+
+
+def _get_api_key() -> str:
+    """
+    Uses AgentCore Identity for API key management in deployed environments.
+    For local development, run via 'agentcore dev' which loads agentcore/.env.
+    """
+    if os.getenv("LOCAL_DEV") == "1":
+        api_key = os.getenv(IDENTITY_ENV_VAR)
+        if not api_key:
+            raise RuntimeError(
+                f"{IDENTITY_ENV_VAR} not found. Add {IDENTITY_ENV_VAR}=your-key to .env.local"
+            )
+        return api_key
+    return _agentcore_identity_api_key_provider()
+
+
+def load_model() -> OpenAIChatCompletionClient:
+    """Get authenticated OpenAI model client."""
+    return OpenAIChatCompletionClient(
+        model="gpt-4o",
+        api_key=_get_api_key()
+    )
+{{/if}}
+{{#if (eq modelProvider "Gemini")}}
+import os
+from autogen_ext.models.openai import OpenAIChatCompletionClient
+from bedrock_agentcore.identity.auth import requires_api_key
+
+IDENTITY_PROVIDER_NAME = "{{identityProviders.[0].name}}"
+IDENTITY_ENV_VAR = "{{identityProviders.[0].envVarName}}"
+
+
+@requires_api_key(provider_name=IDENTITY_PROVIDER_NAME)
+def _agentcore_identity_api_key_provider(api_key: str) -> str:
+    """Fetch API key from AgentCore Identity."""
+    return api_key
+
+
+def _get_api_key() -> str:
+    """
+    Uses AgentCore Identity for API key management in deployed environments.
+    For local development, run via 'agentcore dev' which loads agentcore/.env.
+    """
+    if os.getenv("LOCAL_DEV") == "1":
+        api_key = os.getenv(IDENTITY_ENV_VAR)
+        if not api_key:
+            raise RuntimeError(
+                f"{IDENTITY_ENV_VAR} not found. Add {IDENTITY_ENV_VAR}=your-key to .env.local"
+            )
+        return api_key
+    return _agentcore_identity_api_key_provider()
+
+
+def load_model() -> OpenAIChatCompletionClient:
+    """Get authenticated Gemini model client via OpenAI-compatible API."""
+    return OpenAIChatCompletionClient(
+        model="gemini-2.0-flash",
+        api_key=_get_api_key(),
+        base_url="https://generativelanguage.googleapis.com/v1beta/openai/"
+    )
+{{/if}}
+"
+`;
+
+exports[`Assets Directory Snapshots > Python framework assets > python/python/autogen/base/pyproject.toml should match snapshot 1`] = `
+"[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "{{ name }}"
+version = "0.1.0"
+description = "AgentCore Runtime Application using AutoGen SDK"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    "autogen-agentchat >= 0.7.5",
+    "autogen-ext[mcp] >= 0.7.5",
+    "opentelemetry-distro",
+    "opentelemetry-exporter-otlp",
+    "bedrock-agentcore >= 1.0.3",
+    "botocore[crt] >= 1.35.0",
+    "python-dotenv >= 1.0.1",
+    "tiktoken",
+{{#if (eq modelProvider "Bedrock")}}
+    "autogen-ext[anthropic] >= 0.7.5",
+{{/if}}
+{{#if (eq modelProvider "Anthropic")}}
+    "autogen-ext[anthropic] >= 0.7.5",
+{{/if}}
+{{#if (eq modelProvider "OpenAI")}}
+    "autogen-ext[openai] >= 0.7.5",
+{{/if}}
+{{#if (eq modelProvider "Gemini")}}
+    "autogen-ext[openai] >= 0.7.5",
+{{/if}}
+]
+
+[tool.hatch.build.targets.wheel]
+packages = ["."]
+"
+`;
+
+exports[`Assets Directory Snapshots > Python framework assets > python/python/crewai/base/README.md should match snapshot 1`] = `
+"This is a project generated by the agentcore create CLI tool!
+
+# Layout
+
+There is one directory with generated application code, \`src/\` . At the root, there is a \`.gitignore\` file, a
+\`.agentcore\` folder which represents the configurations and state associated with this project. Other \`agentcore\`
+commands like \`deploy\`, \`dev\`, and \`invoke\` rely on the configuration stored here.
+
+## src/
+
+The main entrypoint to your app is defined in \`src/main.py\`. Using the AgentCore SDK \`@app.entrypoint\` decorator, this
+file defines a Starlette ASGI app with the CrewAI framework running within.
+
+\`src/model/load.py\` instantiates your chosen model provider.
+
+## Environment Variables
+
+| Variable                       | Required        | Description                                                      |
+| ------------------------------ | --------------- | ---------------------------------------------------------------- |
+| \`AGENTCORE_IDENTITY_OPENAI\`    | Yes (OpenAI)    | OpenAI API key (local) or Identity provider name (deployed)      |
+| \`AGENTCORE_IDENTITY_ANTHROPIC\` | Yes (Anthropic) | Anthropic API key (local) or Identity provider name (deployed)   |
+| \`AGENTCORE_IDENTITY_GEMINI\`    | Yes (Gemini)    | Gemini API key (local) or Identity provider name (deployed)      |
+| \`LOCAL_DEV\`                    | No              | Set to \`1\` to use \`agentcore/.env\` instead of AgentCore Identity |
+
+# Developing locally
+
+If installation was successful, a virtual environment is already created with dependencies installed.
+
+Run \`source .venv/bin/activate\` before developing.
+
+\`agentcore dev\` will start a local server on 0.0.0.0:8080.
+
+In a new terminal, you can invoke that server with:
+
+\`agentcore invoke --dev "What can you do"\`
+
+# Deployment
+
+After providing credentials, \`agentcore deploy\` will deploy your project into Amazon Bedrock AgentCore.
+
+Use \`agentcore invoke\` to invoke your deployed agent.
+"
+`;
+
+exports[`Assets Directory Snapshots > Python framework assets > python/python/crewai/base/gitignore.template should match snapshot 1`] = `
+"# Environment variables
+.env
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Virtual environments
+venv/
+ENV/
+env/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+"
+`;
+
+exports[`Assets Directory Snapshots > Python framework assets > python/python/crewai/base/main.py should match snapshot 1`] = `
+"from crewai import Agent, Crew, Task, Process
+from crewai.tools import tool
+from bedrock_agentcore.runtime import BedrockAgentCoreApp
+from model.load import load_model
+
+app = BedrockAgentCoreApp()
+log = app.logger
+
+
+# Define a simple function tool
+@tool
+def add_numbers(a: int, b: int) -> int:
+    """Return the sum of two numbers"""
+    return a + b
+
+
+# Define a collection of tools used by the model
+tools = [add_numbers]
+
+
+@app.entrypoint
+def invoke(payload, context):
+    log.info("Invoking Agent.....")
+
+    # Define the Agent with Tools
+    agent = Agent(
+        role="Question Answering Assistant",
+        goal="Answer the users questions",
+        backstory="Always eager to answer any questions",
+        llm=load_model(),
+        tools=tools,
+    )
+
+    # Define the Task
+    task = Task(
+        agent=agent,
+        description="Answer the users question: {prompt}",
+        expected_output="An answer to the users question",
+    )
+
+    # Create the Crew
+    crew = Crew(agents=[agent], tasks=[task], process=Process.sequential)
+
+    # Process the user prompt
+    prompt = payload.get("prompt", "What can you help me with?")
+
+    # Run the crew
+    result = crew.kickoff(inputs={"prompt": prompt})
+
+    # Return result
+    return {"result": result.raw}
+
+
+if __name__ == "__main__":
+    app.run()
+"
+`;
+
+exports[`Assets Directory Snapshots > Python framework assets > python/python/crewai/base/model/load.py should match snapshot 1`] = `
+"{{#if (eq modelProvider "Bedrock")}}
+from crewai import LLM
+
+# Uses global inference profile for Claude Sonnet 4.5
+# https://docs.aws.amazon.com/bedrock/latest/userguide/inference-profiles-support.html
+MODEL_ID = "bedrock/global.anthropic.claude-sonnet-4-5-20250929-v1:0"
+
+
+def load_model() -> LLM:
+    """Get Bedrock model client using IAM credentials."""
+    return LLM(model=MODEL_ID)
+{{/if}}
+{{#if (eq modelProvider "Anthropic")}}
+import os
+from crewai import LLM
+from bedrock_agentcore.identity.auth import requires_api_key
+
+IDENTITY_PROVIDER_NAME = "{{identityProviders.[0].name}}"
+IDENTITY_ENV_VAR = "{{identityProviders.[0].envVarName}}"
+
+
+@requires_api_key(provider_name=IDENTITY_PROVIDER_NAME)
+def _agentcore_identity_api_key_provider(api_key: str) -> str:
+    """Fetch API key from AgentCore Identity."""
+    return api_key
+
+
+def _get_api_key() -> str:
+    """
+    Uses AgentCore Identity for API key management in deployed environments.
+    For local development, run via 'agentcore dev' which loads agentcore/.env.
+    """
+    if os.getenv("LOCAL_DEV") == "1":
+        api_key = os.getenv(IDENTITY_ENV_VAR)
+        if not api_key:
+            raise RuntimeError(
+                f"{IDENTITY_ENV_VAR} not found. Add {IDENTITY_ENV_VAR}=your-key to .env.local"
+            )
+        return api_key
+    return _agentcore_identity_api_key_provider()
+
+
+def load_model() -> LLM:
+    """Get authenticated Anthropic model client."""
+    api_key = _get_api_key()
+    # CrewAI requires ANTHROPIC_API_KEY env var (ignores api_key parameter)
+    os.environ["ANTHROPIC_API_KEY"] = api_key
+    return LLM(
+        model="anthropic/claude-sonnet-4-5-20250929",
+        api_key=api_key,
+        max_tokens=4096
+    )
+{{/if}}
+{{#if (eq modelProvider "OpenAI")}}
+import os
+from crewai import LLM
+from bedrock_agentcore.identity.auth import requires_api_key
+
+IDENTITY_PROVIDER_NAME = "{{identityProviders.[0].name}}"
+IDENTITY_ENV_VAR = "{{identityProviders.[0].envVarName}}"
+
+
+@requires_api_key(provider_name=IDENTITY_PROVIDER_NAME)
+def _agentcore_identity_api_key_provider(api_key: str) -> str:
+    """Fetch API key from AgentCore Identity."""
+    return api_key
+
+
+def _get_api_key() -> str:
+    """
+    Uses AgentCore Identity for API key management in deployed environments.
+    For local development, run via 'agentcore dev' which loads agentcore/.env.
+    """
+    if os.getenv("LOCAL_DEV") == "1":
+        api_key = os.getenv(IDENTITY_ENV_VAR)
+        if not api_key:
+            raise RuntimeError(
+                f"{IDENTITY_ENV_VAR} not found. Add {IDENTITY_ENV_VAR}=your-key to .env.local"
+            )
+        return api_key
+    return _agentcore_identity_api_key_provider()
+
+
+def load_model() -> LLM:
+    """Get authenticated OpenAI model client."""
+    api_key = _get_api_key()
+    # CrewAI requires OPENAI_API_KEY env var (ignores api_key parameter)
+    os.environ["OPENAI_API_KEY"] = api_key
+    return LLM(
+        model="openai/gpt-4o",
+        api_key=api_key
+    )
+{{/if}}
+{{#if (eq modelProvider "Gemini")}}
+import os
+from crewai import LLM
+from bedrock_agentcore.identity.auth import requires_api_key
+
+IDENTITY_PROVIDER_NAME = "{{identityProviders.[0].name}}"
+IDENTITY_ENV_VAR = "{{identityProviders.[0].envVarName}}"
+
+
+@requires_api_key(provider_name=IDENTITY_PROVIDER_NAME)
+def _agentcore_identity_api_key_provider(api_key: str) -> str:
+    """Fetch API key from AgentCore Identity."""
+    return api_key
+
+
+def _get_api_key() -> str:
+    """
+    Uses AgentCore Identity for API key management in deployed environments.
+    For local development, run via 'agentcore dev' which loads agentcore/.env.
+    """
+    if os.getenv("LOCAL_DEV") == "1":
+        api_key = os.getenv(IDENTITY_ENV_VAR)
+        if not api_key:
+            raise RuntimeError(
+                f"{IDENTITY_ENV_VAR} not found. Add {IDENTITY_ENV_VAR}=your-key to .env.local"
+            )
+        return api_key
+    return _agentcore_identity_api_key_provider()
+
+
+def load_model() -> LLM:
+    """Get authenticated Gemini model client."""
+    api_key = _get_api_key()
+    # CrewAI requires GEMINI_API_KEY env var (ignores api_key parameter)
+    os.environ["GEMINI_API_KEY"] = api_key
+    return LLM(
+        model="gemini/gemini-2.0-flash",
+        api_key=api_key
+    )
+{{/if}}
+"
+`;
+
+exports[`Assets Directory Snapshots > Python framework assets > python/python/crewai/base/pyproject.toml should match snapshot 1`] = `
+"[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "{{ name }}"
+version = "0.1.0"
+description = "AgentCore Runtime Application using CrewAI SDK"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    "opentelemetry-distro",
+    "opentelemetry-exporter-otlp",
+    "bedrock-agentcore >= 1.0.3",
+    "botocore[crt] >= 1.35.0",
+    "python-dotenv >= 1.0.1",
+{{#if (eq modelProvider "Bedrock")}}
+    "crewai[tools,bedrock] >= 1.3.0",
+{{/if}}
+{{#if (eq modelProvider "Anthropic")}}
+    "crewai[tools,anthropic] >= 1.3.0",
+{{/if}}
+{{#if (eq modelProvider "OpenAI")}}
+    "crewai[tools,openai] >= 1.3.0",
+{{/if}}
+{{#if (eq modelProvider "Gemini")}}
+    "crewai[tools,google-genai] >= 1.3.0",
+{{/if}}
+]
+
+[tool.hatch.build.targets.wheel]
+packages = ["."]
+"
+`;
+
+exports[`Assets Directory Snapshots > Python framework assets > python/python/googleadk/base/README.md should match snapshot 1`] = `
+"This is a project generated by the agentcore create CLI tool!
+
+# Layout
+
+There is one directory with generated application code, \`src/\` . At the root, there is a \`.gitignore\` file, a
+\`.agentcore\` folder which represents the configurations and state associated with this project. Other \`agentcore\`
+commands like \`deploy\`, \`dev\`, and \`invoke\` rely on the configuration stored here.
+
+## src/
+
+The main entrypoint to your app is defined in \`src/main.py\`. Using the AgentCore SDK \`@app.entrypoint\` decorator, this
+file defines a Starlette ASGI app with the Google ADK framework running within.
+
+\`src/model/load.py\` instantiates your chosen model provider (Gemini).
+
+## Environment Variables
+
+| Variable                    | Required | Description                                                      |
+| --------------------------- | -------- | ---------------------------------------------------------------- |
+| \`AGENTCORE_IDENTITY_GEMINI\` | Yes      | Gemini API key (local) or Identity provider name (deployed)      |
+| \`LOCAL_DEV\`                 | No       | Set to \`1\` to use \`agentcore/.env\` instead of AgentCore Identity |
+
+# Developing locally
+
+If installation was successful, a virtual environment is already created with dependencies installed.
+
+Run \`source .venv/bin/activate\` before developing.
+
+\`agentcore dev\` will start a local server on 0.0.0.0:8080.
+
+In a new terminal, you can invoke that server with:
+
+\`agentcore invoke --dev "What can you do"\`
+
+# Deployment
+
+After providing credentials, \`agentcore deploy\` will deploy your project into Amazon Bedrock AgentCore.
+
+Use \`agentcore invoke\` to invoke your deployed agent.
+"
+`;
+
+exports[`Assets Directory Snapshots > Python framework assets > python/python/googleadk/base/gitignore.template should match snapshot 1`] = `
+"# Environment variables
+.env
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Virtual environments
+venv/
+ENV/
+env/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+"
+`;
+
+exports[`Assets Directory Snapshots > Python framework assets > python/python/googleadk/base/main.py should match snapshot 1`] = `
+"import os
+from google.adk.agents import Agent
+from google.adk.runners import Runner
+from google.adk.sessions import InMemorySessionService
+from google.genai import types
+from bedrock_agentcore.runtime import BedrockAgentCoreApp
+from model.load import load_model
+from mcp_client.client import get_streamable_http_mcp_client
+
+app = BedrockAgentCoreApp()
+log = app.logger
+
+APP_NAME = "{{ name }}"
+
+# https://google.github.io/adk-docs/agents/models/
+MODEL_ID = "gemini-2.5-flash"
+
+
+# Define a simple function tool
+def add_numbers(a: int, b: int) -> int:
+    """Return the sum of two numbers"""
+    return a + b
+
+
+# Set environment variables for model authentication
+load_model()
+
+# Get MCP Toolset
+mcp_toolset = [get_streamable_http_mcp_client()]
+
+# Agent Definition
+agent = Agent(
+    model=MODEL_ID,
+    name="{{ name }}",
+    description="Agent to answer questions",
+    instruction="I can answer your questions using the knowledge I have!",
+    tools=mcp_toolset + [add_numbers],
+)
+
+
+# Session and Runner
+async def setup_session_and_runner(user_id, session_id):
+    session_service = InMemorySessionService()
+    session = await session_service.create_session(
+        app_name=APP_NAME, user_id=user_id, session_id=session_id
+    )
+    runner = Runner(agent=agent, app_name=APP_NAME, session_service=session_service)
+    return session, runner
+
+
+# Agent Interaction
+async def call_agent_async(query, user_id, session_id):
+    content = types.Content(role="user", parts=[types.Part(text=query)])
+    session, runner = await setup_session_and_runner(user_id, session_id)
+    events = runner.run_async(
+        user_id=user_id, session_id=session.id, new_message=content
+    )
+
+    final_response = None
+    async for event in events:
+        if event.is_final_response():
+            final_response = event.content.parts[0].text
+
+    return final_response
+
+
+@app.entrypoint
+async def invoke(payload, context):
+    log.info("Invoking Agent.....")
+
+    # Process the user prompt
+    prompt = payload.get("prompt", "What can you help me with?")
+    session_id = getattr(context, "session_id", "default_session")
+    user_id = payload.get("user_id", "default_user")
+
+    # Run the agent
+    result = await call_agent_async(prompt, user_id, session_id)
+
+    # Return result
+    return {"result": result}
+
+
+if __name__ == "__main__":
+    app.run()
+"
+`;
+
+exports[`Assets Directory Snapshots > Python framework assets > python/python/googleadk/base/mcp_client/client.py should match snapshot 1`] = `
+"from google.adk.tools.mcp_tool.mcp_toolset import MCPToolset
+from google.adk.tools.mcp_tool.mcp_session_manager import StreamableHTTPConnectionParams
+
+# ExaAI provides information about code through web searches, crawling and code context searches through their platform. Requires no authentication
+EXAMPLE_MCP_ENDPOINT = "https://mcp.exa.ai/mcp"
+
+
+def get_streamable_http_mcp_client() -> MCPToolset:
+    """
+    Returns an MCP Toolset compatible with Google ADK.
+    """
+    # to use an MCP server that supports bearer authentication, add headers={"Authorization": f"Bearer {access_token}"}
+    return MCPToolset(
+        connection_params=StreamableHTTPConnectionParams(url=EXAMPLE_MCP_ENDPOINT)
+    )
+"
+`;
+
+exports[`Assets Directory Snapshots > Python framework assets > python/python/googleadk/base/model/load.py should match snapshot 1`] = `
+"import os
+from bedrock_agentcore.identity.auth import requires_api_key
+
+IDENTITY_PROVIDER_NAME = "{{identityProviders.[0].name}}"
+IDENTITY_ENV_VAR = "{{identityProviders.[0].envVarName}}"
+
+
+@requires_api_key(provider_name=IDENTITY_PROVIDER_NAME)
+def _agentcore_identity_api_key_provider(api_key: str) -> str:
+    """Fetch API key from AgentCore Identity."""
+    return api_key
+
+
+def _get_api_key() -> str:
+    """
+    Uses AgentCore Identity for API key management in deployed environments.
+    For local development, run via 'agentcore dev' which loads agentcore/.env.
+    """
+    if os.getenv("LOCAL_DEV") == "1":
+        api_key = os.getenv(IDENTITY_ENV_VAR)
+        if not api_key:
+            raise RuntimeError(
+                f"{IDENTITY_ENV_VAR} not found. Add {IDENTITY_ENV_VAR}=your-key to .env.local"
+            )
+        return api_key
+    return _agentcore_identity_api_key_provider()
+
+
+def load_model() -> None:
+    """
+    Set up Gemini API key authentication.
+    Uses AgentCore Identity for API key management in deployed environments,
+    and falls back to .env file for local development.
+    Sets the GOOGLE_API_KEY environment variable for the Google ADK.
+    """
+    api_key = _get_api_key()
+    # Use Google AI Studios API Key Authentication.
+    # https://google.github.io/adk-docs/agents/models/#google-ai-studio
+    os.environ["GOOGLE_API_KEY"] = api_key
+    # Set to TRUE is using Google Vertex AI, Set to FALSE for Google AI Studio
+    os.environ["GOOGLE_GENAI_USE_VERTEXAI"] = "FALSE"
+"
+`;
+
+exports[`Assets Directory Snapshots > Python framework assets > python/python/googleadk/base/pyproject.toml should match snapshot 1`] = `
+"[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "{{ name }}"
+version = "0.1.0"
+description = "AgentCore Runtime Application using Google ADK"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    "opentelemetry-distro",
+    "opentelemetry-exporter-otlp",
+    "google-adk >= 1.17.0",
+    "bedrock-agentcore >= 1.0.3",
+    "botocore[crt] >= 1.35.0",
+    "python-dotenv >= 1.0.1",
+]
+
+[tool.hatch.build.targets.wheel]
+packages = ["."]
+"
+`;
+
+exports[`Assets Directory Snapshots > Python framework assets > python/python/langchain_langgraph/base/README.md should match snapshot 1`] = `
+"This is a project generated by the agentcore create CLI tool!
+
+# Layout
+
+There is one directory with generated application code, \`src/\` . At the root, there is a \`.gitignore\` file, a
+\`.agentcore\` folder which represents the configurations and state associated with this project. Other \`agentcore\`
+commands like \`deploy\`, \`dev\`, and \`invoke\` rely on the configuration stored here.
+
+## src/
+
+The main entrypoint to your app is defined in \`src/main.py\`. Using the AgentCore SDK \`@app.entrypoint\` decorator, this
+file defines a Starlette ASGI app with the LangChain/LangGraph framework running within.
+
+\`src/model/load.py\` instantiates your chosen model provider.
+
+## Environment Variables
+
+| Variable                       | Required        | Description                                                      |
+| ------------------------------ | --------------- | ---------------------------------------------------------------- |
+| \`AGENTCORE_IDENTITY_OPENAI\`    | Yes (OpenAI)    | OpenAI API key (local) or Identity provider name (deployed)      |
+| \`AGENTCORE_IDENTITY_ANTHROPIC\` | Yes (Anthropic) | Anthropic API key (local) or Identity provider name (deployed)   |
+| \`AGENTCORE_IDENTITY_GEMINI\`    | Yes (Gemini)    | Gemini API key (local) or Identity provider name (deployed)      |
+| \`LOCAL_DEV\`                    | No              | Set to \`1\` to use \`agentcore/.env\` instead of AgentCore Identity |
+
+# Developing locally
+
+If installation was successful, a virtual environment is already created with dependencies installed.
+
+Run \`source .venv/bin/activate\` before developing.
+
+\`agentcore dev\` will start a local server on 0.0.0.0:8080.
+
+In a new terminal, you can invoke that server with:
+
+\`agentcore invoke --dev "What can you do"\`
+
+# Deployment
+
+After providing credentials, \`agentcore deploy\` will deploy your project into Amazon Bedrock AgentCore.
+
+Use \`agentcore invoke\` to invoke your deployed agent.
+"
+`;
+
+exports[`Assets Directory Snapshots > Python framework assets > python/python/langchain_langgraph/base/gitignore.template should match snapshot 1`] = `
+"# Environment variables
+.env
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Virtual environments
+venv/
+ENV/
+env/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+"
+`;
+
+exports[`Assets Directory Snapshots > Python framework assets > python/python/langchain_langgraph/base/main.py should match snapshot 1`] = `
+"import os
+from langchain_core.messages import HumanMessage
+from langgraph.prebuilt import create_react_agent
+from langchain.tools import tool
+from bedrock_agentcore.runtime import BedrockAgentCoreApp
+from model.load import load_model
+from mcp_client.client import get_streamable_http_mcp_client
+
+app = BedrockAgentCoreApp()
+log = app.logger
+
+# Instantiate model
+llm = load_model()
+
+
+# Define a simple function tool
+@tool
+def add_numbers(a: int, b: int) -> int:
+    """Return the sum of two numbers"""
+    return a + b
+
+
+# Define a collection of tools used by the model
+tools = [add_numbers]
+
+
+@app.entrypoint
+async def invoke(payload, context):
+    log.info("Invoking Agent.....")
+
+    # Get MCP Client
+    mcp_client = get_streamable_http_mcp_client()
+
+    # Load MCP Tools
+    mcp_tools = await mcp_client.get_tools()
+
+    # Define the agent using create_react_agent
+    graph = create_react_agent(llm, tools=mcp_tools + tools)
+
+    # Process the user prompt
+    prompt = payload.get("prompt", "What can you help me with?")
+
+    # Run the agent
+    result = await graph.ainvoke({"messages": [HumanMessage(content=prompt)]})
+
+    # Return result
+    return {"result": result["messages"][-1].content}
+
+
+if __name__ == "__main__":
+    app.run()
+"
+`;
+
+exports[`Assets Directory Snapshots > Python framework assets > python/python/langchain_langgraph/base/mcp_client/client.py should match snapshot 1`] = `
+"from langchain_mcp_adapters.client import MultiServerMCPClient
+
+# ExaAI provides information about code through web searches, crawling and code context searches through their platform. Requires no authentication
+EXAMPLE_MCP_ENDPOINT = "https://mcp.exa.ai/mcp"
+
+
+def get_streamable_http_mcp_client() -> MultiServerMCPClient:
+    """
+    Returns an MCP Client compatible with LangChain/LangGraph.
+    """
+    # to use an MCP server that supports bearer authentication, add headers={"Authorization": f"Bearer {access_token}"}
+    return MultiServerMCPClient(
+        {
+            "agentcore_gateway": {
+                "transport": "streamable_http",
+                "url": EXAMPLE_MCP_ENDPOINT,
+            }
+        }
+    )
+"
+`;
+
+exports[`Assets Directory Snapshots > Python framework assets > python/python/langchain_langgraph/base/model/load.py should match snapshot 1`] = `
+"{{#if (eq modelProvider "Bedrock")}}
+from langchain_aws import ChatBedrock
+
+# Uses global inference profile for Claude Sonnet 4.5
+# https://docs.aws.amazon.com/bedrock/latest/userguide/inference-profiles-support.html
+MODEL_ID = "global.anthropic.claude-sonnet-4-5-20250929-v1:0"
+
+
+def load_model() -> ChatBedrock:
+    """Get Bedrock model client using IAM credentials."""
+    return ChatBedrock(model_id=MODEL_ID)
+{{/if}}
+{{#if (eq modelProvider "Anthropic")}}
+import os
+from langchain_anthropic import ChatAnthropic
+from bedrock_agentcore.identity.auth import requires_api_key
+
+IDENTITY_PROVIDER_NAME = "{{identityProviders.[0].name}}"
+IDENTITY_ENV_VAR = "{{identityProviders.[0].envVarName}}"
+
+
+@requires_api_key(provider_name=IDENTITY_PROVIDER_NAME)
+def _agentcore_identity_api_key_provider(api_key: str) -> str:
+    """Fetch API key from AgentCore Identity."""
+    return api_key
+
+
+def _get_api_key() -> str:
+    """
+    Uses AgentCore Identity for API key management in deployed environments.
+    For local development, run via 'agentcore dev' which loads agentcore/.env.
+    """
+    if os.getenv("LOCAL_DEV") == "1":
+        api_key = os.getenv(IDENTITY_ENV_VAR)
+        if not api_key:
+            raise RuntimeError(
+                f"{IDENTITY_ENV_VAR} not found. Add {IDENTITY_ENV_VAR}=your-key to .env.local"
+            )
+        return api_key
+    return _agentcore_identity_api_key_provider()
+
+
+def load_model() -> ChatAnthropic:
+    """Get authenticated Anthropic model client."""
+    return ChatAnthropic(
+        model="claude-sonnet-4-5-20250929",
+        api_key=_get_api_key()
+    )
+{{/if}}
+{{#if (eq modelProvider "OpenAI")}}
+import os
+from langchain_openai import ChatOpenAI
+from bedrock_agentcore.identity.auth import requires_api_key
+
+IDENTITY_PROVIDER_NAME = "{{identityProviders.[0].name}}"
+IDENTITY_ENV_VAR = "{{identityProviders.[0].envVarName}}"
+
+
+@requires_api_key(provider_name=IDENTITY_PROVIDER_NAME)
+def _agentcore_identity_api_key_provider(api_key: str) -> str:
+    """Fetch API key from AgentCore Identity."""
+    return api_key
+
+
+def _get_api_key() -> str:
+    """
+    Uses AgentCore Identity for API key management in deployed environments.
+    For local development, run via 'agentcore dev' which loads agentcore/.env.
+    """
+    if os.getenv("LOCAL_DEV") == "1":
+        api_key = os.getenv(IDENTITY_ENV_VAR)
+        if not api_key:
+            raise RuntimeError(
+                f"{IDENTITY_ENV_VAR} not found. Add {IDENTITY_ENV_VAR}=your-key to .env.local"
+            )
+        return api_key
+    return _agentcore_identity_api_key_provider()
+
+
+def load_model() -> ChatOpenAI:
+    """Get authenticated OpenAI model client."""
+    return ChatOpenAI(
+        model="gpt-4o",
+        api_key=_get_api_key()
+    )
+{{/if}}
+{{#if (eq modelProvider "Gemini")}}
+import os
+from langchain_google_genai import ChatGoogleGenerativeAI
+from bedrock_agentcore.identity.auth import requires_api_key
+
+IDENTITY_PROVIDER_NAME = "{{identityProviders.[0].name}}"
+IDENTITY_ENV_VAR = "{{identityProviders.[0].envVarName}}"
+
+
+@requires_api_key(provider_name=IDENTITY_PROVIDER_NAME)
+def _agentcore_identity_api_key_provider(api_key: str) -> str:
+    """Fetch API key from AgentCore Identity."""
+    return api_key
+
+
+def _get_api_key() -> str:
+    """
+    Uses AgentCore Identity for API key management in deployed environments.
+    For local development, run via 'agentcore dev' which loads agentcore/.env.
+    """
+    if os.getenv("LOCAL_DEV") == "1":
+        api_key = os.getenv(IDENTITY_ENV_VAR)
+        if not api_key:
+            raise RuntimeError(
+                f"{IDENTITY_ENV_VAR} not found. Add {IDENTITY_ENV_VAR}=your-key to .env.local"
+            )
+        return api_key
+    return _agentcore_identity_api_key_provider()
+
+
+def load_model() -> ChatGoogleGenerativeAI:
+    """Get authenticated Gemini model client."""
+    return ChatGoogleGenerativeAI(
+        model="gemini-2.0-flash",
+        api_key=_get_api_key()
+    )
+{{/if}}
+"
+`;
+
+exports[`Assets Directory Snapshots > Python framework assets > python/python/langchain_langgraph/base/pyproject.toml should match snapshot 1`] = `
+"[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "{{ name }}"
+version = "0.1.0"
+description = "AgentCore Runtime Application using LangChain/LangGraph"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    "opentelemetry-distro",
+    "opentelemetry-exporter-otlp",
+    "langgraph >= 1.0.2",
+    "mcp >= 1.19.0",
+    "langchain-mcp-adapters >= 0.1.11",
+    "langchain >= 1.0.3",
+    "tiktoken == 0.11.0",
+    "bedrock-agentcore >= 1.0.3",
+    "botocore[crt] >= 1.35.0",
+    "python-dotenv >= 1.0.1",
+{{#if (eq modelProvider "Bedrock")}}
+    "langchain-aws >= 1.0.0",
+{{/if}}
+{{#if (eq modelProvider "Anthropic")}}
+    "langchain-anthropic >= 1.1.0",
+{{/if}}
+{{#if (eq modelProvider "OpenAI")}}
+    "langchain-openai >= 1.0.3",
+{{/if}}
+{{#if (eq modelProvider "Gemini")}}
+    "langchain-google-genai >= 3.0.3",
+{{/if}}
+]
+
+[tool.hatch.build.targets.wheel]
+packages = ["."]
+"
+`;
+
+exports[`Assets Directory Snapshots > Python framework assets > python/python/openaiagents/base/README.md should match snapshot 1`] = `
+"This is a project generated by the agentcore create CLI tool!
+
+# Layout
+
+There is one directory with generated application code, \`src/\` . At the root, there is a \`.gitignore\` file, a
+\`.agentcore\` folder which represents the configurations and state associated with this project. Other \`agentcore\`
+commands like \`deploy\`, \`dev\`, and \`invoke\` rely on the configuration stored here.
+
+## src/
+
+The main entrypoint to your app is defined in \`src/main.py\`. Using the AgentCore SDK \`@app.entrypoint\` decorator, this
+file defines a Starlette ASGI app with the OpenAI Agents SDK framework running within.
+
+\`src/model/load.py\` instantiates your chosen model provider (OpenAI).
+
+## Environment Variables
+
+| Variable                    | Required | Description                                                      |
+| --------------------------- | -------- | ---------------------------------------------------------------- |
+| \`AGENTCORE_IDENTITY_OPENAI\` | Yes      | OpenAI API key (local) or Identity provider name (deployed)      |
+| \`LOCAL_DEV\`                 | No       | Set to \`1\` to use \`agentcore/.env\` instead of AgentCore Identity |
+
+# Developing locally
+
+If installation was successful, a virtual environment is already created with dependencies installed.
+
+Run \`source .venv/bin/activate\` before developing.
+
+\`agentcore dev\` will start a local server on 0.0.0.0:8080.
+
+In a new terminal, you can invoke that server with:
+
+\`agentcore invoke --dev "What can you do"\`
+
+# Deployment
+
+After providing credentials, \`agentcore deploy\` will deploy your project into Amazon Bedrock AgentCore.
+
+Use \`agentcore invoke\` to invoke your deployed agent.
+"
+`;
+
+exports[`Assets Directory Snapshots > Python framework assets > python/python/openaiagents/base/gitignore.template should match snapshot 1`] = `
+"# Environment variables
+.env
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Virtual environments
+venv/
+ENV/
+env/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+"
+`;
+
+exports[`Assets Directory Snapshots > Python framework assets > python/python/openaiagents/base/main.py should match snapshot 1`] = `
+"import os
+from agents import Agent, Runner, function_tool
+from bedrock_agentcore.runtime import BedrockAgentCoreApp
+from model.load import load_model
+from mcp_client.client import get_streamable_http_mcp_client
+
+app = BedrockAgentCoreApp()
+log = app.logger
+
+# Set environment variables for model authentication
+load_model()
+
+# Get MCP Server
+mcp_server = get_streamable_http_mcp_client()
+
+
+# Define a simple function tool
+@function_tool
+def add_numbers(a: int, b: int) -> int:
+    """Return the sum of two numbers"""
+    return a + b
+
+
+# Define the agent execution
+async def main(query):
+    try:
+        async with mcp_server as server:
+            active_servers = [server] if server else []
+            # Currently defaults to GPT-4.1
+            # https://openai.github.io/openai-agents-python/models/
+            agent = Agent(
+                name="{{ name }}", mcp_servers=active_servers, tools=[add_numbers]
+            )
+            result = await Runner.run(agent, query)
+            return result
+    except Exception as e:
+        log.error(f"Error during agent execution: {e}", exc_info=True)
+        raise e
+
+
+@app.entrypoint
+async def invoke(payload, context):
+    log.info("Invoking Agent.....")
+
+    # Process the user prompt
+    prompt = payload.get("prompt", "What can you help me with?")
+
+    # Run the agent
+    result = await main(prompt)
+
+    # Return result
+    return {"result": result.final_output}
+
+
+if __name__ == "__main__":
+    app.run()
+"
+`;
+
+exports[`Assets Directory Snapshots > Python framework assets > python/python/openaiagents/base/mcp_client/client.py should match snapshot 1`] = `
+"from agents.mcp import MCPServerStreamableHttp
+
+# ExaAI provides information about code through web searches, crawling and code context searches through their platform. Requires no authentication
+EXAMPLE_MCP_ENDPOINT = "https://mcp.exa.ai/mcp"
+
+
+def get_streamable_http_mcp_client() -> MCPServerStreamableHttp:
+    """
+    Returns an MCP Client compatible with OpenAI Agents SDK.
+    """
+    # to use an MCP server that supports bearer authentication, add headers={"Authorization": f"Bearer {access_token}"}
+    return MCPServerStreamableHttp(
+        name="AgentCore Gateway MCP", params={"url": EXAMPLE_MCP_ENDPOINT}
+    )
+"
+`;
+
+exports[`Assets Directory Snapshots > Python framework assets > python/python/openaiagents/base/model/load.py should match snapshot 1`] = `
+"import os
+from bedrock_agentcore.identity.auth import requires_api_key
+
+IDENTITY_PROVIDER_NAME = "{{identityProviders.[0].name}}"
+IDENTITY_ENV_VAR = "{{identityProviders.[0].envVarName}}"
+
+
+@requires_api_key(provider_name=IDENTITY_PROVIDER_NAME)
+def _agentcore_identity_api_key_provider(api_key: str) -> str:
+    """Fetch API key from AgentCore Identity."""
+    return api_key
+
+
+def _get_api_key() -> str:
+    """
+    Uses AgentCore Identity for API key management in deployed environments.
+    For local development, run via 'agentcore dev' which loads agentcore/.env.
+    """
+    if os.getenv("LOCAL_DEV") == "1":
+        api_key = os.getenv(IDENTITY_ENV_VAR)
+        if not api_key:
+            raise RuntimeError(
+                f"{IDENTITY_ENV_VAR} not found. Add {IDENTITY_ENV_VAR}=your-key to .env.local"
+            )
+        return api_key
+    return _agentcore_identity_api_key_provider()
+
+
+def load_model() -> None:
+    """
+    Set up OpenAI API key authentication.
+    Uses AgentCore Identity for API key management in deployed environments,
+    and falls back to .env file for local development.
+    Sets the OPENAI_API_KEY environment variable for the OpenAI Agents SDK.
+    """
+    api_key = _get_api_key()
+    os.environ["OPENAI_API_KEY"] = api_key if api_key else ""
+"
+`;
+
+exports[`Assets Directory Snapshots > Python framework assets > python/python/openaiagents/base/pyproject.toml should match snapshot 1`] = `
+"[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "{{ name }}"
+version = "0.1.0"
+description = "AgentCore Runtime Application using OpenAI Agents SDK"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    "opentelemetry-distro",
+    "opentelemetry-exporter-otlp",
+    "openai-agents >= 0.4.2",
+    "bedrock-agentcore >= 1.0.3",
+    "botocore[crt] >= 1.35.0",
+    "python-dotenv >= 1.0.1",
+]
+
+[tool.hatch.build.targets.wheel]
+packages = ["."]
+"
+`;
+
+exports[`Assets Directory Snapshots > Python framework assets > python/python/strands/base/README.md should match snapshot 1`] = `
+"This is a project generated by the agentcore create basic CLI tool!
+
+# Layout
+
+There is one directory with generated application code, \`src/\` . At the root, there is a \`.gitignore\` file, a
+\`.agentcore\` folder which represents the configurations and state associated with this project. Other \`agentcore\`
+commands like \`deploy\`, \`dev\`, and \`invoke\` rely on the configuration stored here.
+
+## src/
+
+The main entrypoint to your app is defined in \`src/main.py\`. Using the AgentCore SDK \`@app.entrypoint\` decorator, this
+file defines a Starlette ASGI app with the chosen Agent framework SDK running within.
+
+\`src/model/load.py\` instantiates your chosen model provider.
+
+## Environment Variables
+
+| Variable                       | Required        | Description                                                      |
+| ------------------------------ | --------------- | ---------------------------------------------------------------- |
+| \`AGENTCORE_IDENTITY_OPENAI\`    | Yes (OpenAI)    | OpenAI API key (local) or Identity provider name (deployed)      |
+| \`AGENTCORE_IDENTITY_ANTHROPIC\` | Yes (Anthropic) | Anthropic API key (local) or Identity provider name (deployed)   |
+| \`AGENTCORE_IDENTITY_GEMINI\`    | Yes (Gemini)    | Gemini API key (local) or Identity provider name (deployed)      |
+| \`LOCAL_DEV\`                    | No              | Set to \`1\` to use \`agentcore/.env\` instead of AgentCore Identity |
+
+# Developing locally
+
+If installation was successful, a virtual environment is already created with dependencies installed.
+
+Run \`source .venv/bin/activate\` before developing.
+
+\`agentcore dev\` will start a local server on 0.0.0.0:8080.
+
+In a new terminal, you can invoke that server with:
+
+\`agentcore invoke --dev "What can you do"\`
+
+# Deployment
+
+After providing credentials, \`agentcore deploy\` will deploy your project into Amazon Bedrock AgentCore.
+
+Use \`agentcore invoke\` to invoke your deployed agent.
+"
+`;
+
+exports[`Assets Directory Snapshots > Python framework assets > python/python/strands/base/gitignore.template should match snapshot 1`] = `
+"# Environment variables
+.env
+.env
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Virtual environments
+venv/
+ENV/
+env/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db"
+`;
+
+exports[`Assets Directory Snapshots > Python framework assets > python/python/strands/base/main.py should match snapshot 1`] = `
+"import os
+from strands import Agent, tool
+from bedrock_agentcore.runtime import BedrockAgentCoreApp
+from model.load import load_model
+from mcp_client.client import get_streamable_http_mcp_client
+{{#if hasMemory}}
+from memory.session import get_memory_session_manager
+{{/if}}
+
+app = BedrockAgentCoreApp()
+log = app.logger
+
+REGION = os.getenv("AWS_REGION")
+
+# Define a Streamable HTTP MCP Client
+mcp_client = get_streamable_http_mcp_client()
+
+# Define a collection of tools used by the model
+tools = []
+
+# Define a simple function tool
+@tool
+def add_numbers(a: int, b: int) -> int:
+    """Return the sum of two numbers"""
+    return a+b
+tools.append(add_numbers)
+
+@app.entrypoint
+async def invoke(payload, context):
+    log.info("Invoking Agent.....")
+{{#if hasMemory}}
+    session_id = getattr(context, 'session_id', 'default-session')
+    user_id = getattr(context, 'user_id', 'default-user')
+    session_manager = get_memory_session_manager(session_id, user_id)
+{{/if}}
+
+    with mcp_client as client:
+        # Get MCP Tools
+        mcp_tools = client.list_tools_sync()
+
+        # Create agent
+        agent = Agent(
+            model=load_model(),
+{{#if hasMemory}}
+            session_manager=session_manager,
+{{/if}}
+            system_prompt="""
+                You are a helpful assistant. Use tools when appropriate.
+            """,
+            tools=tools+mcp_tools
+        )
+
+        # Execute and format response
+        stream = agent.stream_async(payload.get("prompt"))
+
+        async for event in stream:
+            # Handle Text parts of the response
+            if "data" in event and isinstance(event["data"], str):
+                yield event["data"]
+
+
+if __name__ == "__main__":
+    app.run()"
+`;
+
+exports[`Assets Directory Snapshots > Python framework assets > python/python/strands/base/mcp_client/client.py should match snapshot 1`] = `
+"from mcp.client.streamable_http import streamablehttp_client
+from strands.tools.mcp.mcp_client import MCPClient
+
+# ExaAI provides information about code through web searches, crawling and code context searches through their platform. Requires no authentication
+EXAMPLE_MCP_ENDPOINT = "https://mcp.exa.ai/mcp"
+
+def get_streamable_http_mcp_client() -> MCPClient:
+    """
+    Returns an MCP Client compatible with Strands
+    """
+    # to use an MCP server that supports bearer authentication, add headers={"Authorization": f"Bearer {access_token}"}
+    return MCPClient(lambda: streamablehttp_client(EXAMPLE_MCP_ENDPOINT))"
+`;
+
+exports[`Assets Directory Snapshots > Python framework assets > python/python/strands/base/model/load.py should match snapshot 1`] = `
+"{{#if (eq modelProvider "Bedrock")}}
+from strands.models.bedrock import BedrockModel
+
+
+def load_model() -> BedrockModel:
+    """Get Bedrock model client using IAM credentials."""
+    return BedrockModel(model_id="global.anthropic.claude-sonnet-4-5-20250929-v1:0")
+{{/if}}
+{{#if (eq modelProvider "Anthropic")}}
+import os
+
+from strands.models.anthropic import AnthropicModel
+from bedrock_agentcore.identity.auth import requires_api_key
+
+IDENTITY_PROVIDER_NAME = "{{identityProviders.[0].name}}"
+IDENTITY_ENV_VAR = "{{identityProviders.[0].envVarName}}"
+
+
+@requires_api_key(provider_name=IDENTITY_PROVIDER_NAME)
+def _agentcore_identity_api_key_provider(api_key: str) -> str:
+    """Fetch API key from AgentCore Identity."""
+    return api_key
+
+
+def _get_api_key() -> str:
+    """
+    Uses AgentCore Identity for API key management in deployed environments.
+    For local development, run via 'agentcore dev' which loads agentcore/.env.
+    """
+    if os.getenv("LOCAL_DEV") == "1":
+        api_key = os.getenv(IDENTITY_ENV_VAR)
+        if not api_key:
+            raise RuntimeError(
+                f"{IDENTITY_ENV_VAR} not found. Add {IDENTITY_ENV_VAR}=your-key to .env.local"
+            )
+        return api_key
+    return _agentcore_identity_api_key_provider()
+
+
+def load_model() -> AnthropicModel:
+    """Get authenticated Anthropic model client."""
+    return AnthropicModel(
+        client_args={"api_key": _get_api_key()},
+        model_id="claude-sonnet-4-5-20250929",
+        max_tokens=5000,
+    )
+{{/if}}
+{{#if (eq modelProvider "OpenAI")}}
+import os
+
+from strands.models.openai import OpenAIModel
+from bedrock_agentcore.identity.auth import requires_api_key
+
+IDENTITY_PROVIDER_NAME = "{{identityProviders.[0].name}}"
+IDENTITY_ENV_VAR = "{{identityProviders.[0].envVarName}}"
+
+
+@requires_api_key(provider_name=IDENTITY_PROVIDER_NAME)
+def _agentcore_identity_api_key_provider(api_key: str) -> str:
+    """Fetch API key from AgentCore Identity."""
+    return api_key
+
+
+def _get_api_key() -> str:
+    """
+    Uses AgentCore Identity for API key management in deployed environments.
+    For local development, run via 'agentcore dev' which loads agentcore/.env.
+    """
+    if os.getenv("LOCAL_DEV") == "1":
+        api_key = os.getenv(IDENTITY_ENV_VAR)
+        if not api_key:
+            raise RuntimeError(
+                f"{IDENTITY_ENV_VAR} not found. Add {IDENTITY_ENV_VAR}=your-key to .env.local"
+            )
+        return api_key
+    return _agentcore_identity_api_key_provider()
+
+
+def load_model() -> OpenAIModel:
+    """Get authenticated OpenAI model client."""
+    return OpenAIModel(
+        client_args={"api_key": _get_api_key()},
+        model_id="gpt-4o",
+    )
+{{/if}}
+{{#if (eq modelProvider "Gemini")}}
+import os
+
+from strands.models.gemini import GeminiModel
+from bedrock_agentcore.identity.auth import requires_api_key
+
+IDENTITY_PROVIDER_NAME = "{{identityProviders.[0].name}}"
+IDENTITY_ENV_VAR = "{{identityProviders.[0].envVarName}}"
+
+
+@requires_api_key(provider_name=IDENTITY_PROVIDER_NAME)
+def _agentcore_identity_api_key_provider(api_key: str) -> str:
+    """Fetch API key from AgentCore Identity."""
+    return api_key
+
+
+def _get_api_key() -> str:
+    """
+    Uses AgentCore Identity for API key management in deployed environments.
+    For local development, run via 'agentcore dev' which loads agentcore/.env.
+    """
+    if os.getenv("LOCAL_DEV") == "1":
+        api_key = os.getenv(IDENTITY_ENV_VAR)
+        if not api_key:
+            raise RuntimeError(
+                f"{IDENTITY_ENV_VAR} not found. Add {IDENTITY_ENV_VAR}=your-key to .env.local"
+            )
+        return api_key
+    return _agentcore_identity_api_key_provider()
+
+
+def load_model() -> GeminiModel:
+    """Get authenticated Gemini model client."""
+    return GeminiModel(
+        client_args={"api_key": _get_api_key()},
+        model_id="gemini-2.0-flash",
+    )
+{{/if}}
+"
+`;
+
+exports[`Assets Directory Snapshots > Python framework assets > python/python/strands/base/pyproject.toml should match snapshot 1`] = `
+"[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "{{ name }}"
+version = "0.1.0"
+description = "AgentCore Runtime Application using Strands SDK"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    "anthropic >= 0.30.0",
+    "opentelemetry-distro",
+    "opentelemetry-exporter-otlp",
+    "bedrock-agentcore >= 1.0.3",
+    "botocore[crt] >= 1.35.0",
+    "google-generativeai >= 0.5.0",
+    "openai >= 1.0.0",
+    "python-dotenv >= 1.0.1",
+    "strands-agents >= 1.13.0",
+]
+
+[tool.hatch.build.targets.wheel]
+packages = ["."]
+"
+`;
+
+exports[`Assets Directory Snapshots > Python framework assets > python/python/strands/capabilities/memory/session.py should match snapshot 1`] = `
+"import os
+from typing import Optional
+
+from bedrock_agentcore.memory.integrations.strands.config import AgentCoreMemoryConfig, RetrievalConfig
+from bedrock_agentcore.memory.integrations.strands.session_manager import AgentCoreMemorySessionManager
+
+MEMORY_ID = os.getenv("{{memoryProviders.[0].envVarName}}")
+REGION = os.getenv("AWS_REGION")
+
+def get_memory_session_manager(session_id: str, actor_id: str) -> Optional[AgentCoreMemorySessionManager]:
+    if not MEMORY_ID:
+        return None
+
+    return AgentCoreMemorySessionManager(
+        AgentCoreMemoryConfig(
+            memory_id=MEMORY_ID,
+            session_id=session_id,
+            actor_id=actor_id,
+            retrieval_config={
+                f"/users/{actor_id}/facts": RetrievalConfig(top_k=3, relevance_score=0.5),
+                f"/users/{actor_id}/preferences": RetrievalConfig(top_k=3, relevance_score=0.5),
+                f"/summaries/{actor_id}/{session_id}": RetrievalConfig(top_k=3, relevance_score=0.5),
+            }
+        ),
+        REGION
+    )
+
+"
+`;
+
+exports[`Assets Directory Snapshots > Root-level assets > AGENTS.md should match snapshot 1`] = `
+"## AgentCore Templates
+
+This directory stores:
+
+- Template assets for agents written in different Languages, SDKs and having different configurations
+
+The rendering logic is rooted in the \`AgentEnvSpec\` and must ALWAYS respect the configuration in the Spec
+
+## Guidance for template changes
+
+- Always make sure the templates are as close to working code as possible
+- AVOID as much as possible using any conditionals within the templates
+
+# How to use the assets in this directory
+
+- These assets are rendered by the CLI's template renderer in \`packages/agentcore-cli/src/templates\`.
+"
+`;
+
+exports[`Assets Directory Snapshots > Root-level assets > README.md should match snapshot 1`] = `
+"# AgentCore Project
+
+This project was created with the [AgentCore CLI](https://github.com/aws/agentcore-cli).
+
+## Project Structure
+
+\`\`\`
+.
+├── agentcore/              # AgentCore configuration directory
+│   ├── agentcore.json      # Main workspace config
+│   ├── mcp.json            # MCP gateways and tools
+│   ├── mcp-defs.json       # Tool definitions
+│   └── cdk/                # AWS CDK project for deployment
+├── app/                    # Application code (if agents were created)
+└── AGENTS.md               # AI coding assistant context
+\`\`\`
+
+## Getting Started
+
+### Prerequisites
+
+- [Node.js](https://nodejs.org/) (v18 or later)
+- [AWS CLI](https://aws.amazon.com/cli/) configured with credentials
+- [AgentCore CLI](https://github.com/awslabs/amazon-bedrock-agentcore) installed globally
+
+### Development
+
+Run your agent locally:
+
+\`\`\`bash
+agentcore dev
+\`\`\`
+
+### Deployment
+
+Deploy to AWS:
+
+\`\`\`bash
+agentcore deploy
+\`\`\`
+
+Or use CDK directly:
+
+\`\`\`bash
+cd agentcore/cdk
+npx cdk deploy
+\`\`\`
+
+## Configuration
+
+Edit the JSON files in \`agentcore/\` to configure your agents, memory, identity, and tools. See \`agentcore/.llm-context/\`
+for type definitions and validation constraints.
+
+## Commands
+
+| Command              | Description                         |
+| -------------------- | ----------------------------------- |
+| \`agentcore dev\`      | Run agent locally                   |
+| \`agentcore deploy\`   | Deploy to AWS                       |
+| \`agentcore status\`   | Show deployment status              |
+| \`agentcore invoke\`   | Invoke deployed agent               |
+| \`agentcore add\`      | Add agents, memory, identity, tools |
+| \`agentcore remove\`   | Remove resources                    |
+| \`agentcore validate\` | Validate configuration              |
+
+## Documentation
+
+- [AgentCore CLI Documentation](https://github.com/aws/agentcore-cli)
+- [Amazon Bedrock AgentCore](https://aws.amazon.com/bedrock/agentcore/)
+"
+`;
+
+exports[`Assets Directory Snapshots > Root-level assets > agents/AGENTS.md should match snapshot 1`] = `
+"# AgentCore Project
+
+This project contains configuration and infrastructure for an Amazon Bedrock AgentCore application.
+
+The \`agentcore/\` directory serves as a declarative model of an AgentCore project along with a concrete implementation
+through the \`agentcore/cdk/\` project which is modeled to take the configs as input. The project models Agents and MCP
+setups with their own overloaded constructs. Agents are first-class.
+
+## Mental Model
+
+A good mental model for how this project works is a directed graph. We have a set of nodes: agents, memories,
+identities, gateways, tools, mcp servers, and future resources supported. There are rules about which nodes can connect
+to others in what direction.
+
+For example, stand-alone memory or identity resources cannot be modeled--they need to be owned by an agent and can be
+used by other agents.
+
+Wiring nodes creates an infrastructure and trust relationship but is not enough to complete end-to-end functionality.
+For example, attaching agentB as a remote tool for agentA means that agentA has permission to invoke agentB and that
+agentA has the ARN for agentB as an environment variable with the name specified in the agentcore.json schema.
+
+To complete a functional connection, the application code in agentA needs to construct the appropriate call to
+\`invoke_agent_runtime\` which will succeed based on the wiring declared in the schema and implemented in the \`cdk/\`
+directory.
+
+## Critical Invariants
+
+1. **Schema-First Authority:** The \`.json\` files are the absolute source of truth. Do not attempt to modify agent
+   behavior by editing the generated CDK code in \`cdk/\`.
+2. **Resource Identity:** The \`name\` field in the schema determines the CloudFormation Logical ID.
+   - **Renaming** an agent, gateway, or target will **destroy and recreate** that resource.
+   - **Modifying** other fields (descriptions, prompts, runtime config) will update the resource **in-place**.
+3. **1:1 Validation:** The schema maps directly to valid CloudFormation. If your JSON conforms to the types in
+   \`.llm-context/\`, it will deploy successfully.
+
+## Directory Structure
+
+\`\`\`
+myNewProject/
+├── AGENTS.md               # This file - AI coding assistant context
+├── agentcore/              # AgentCore configuration directory
+│   ├── agentcore.json      # Main workspace config (AgentCoreWorkspaceSpec)
+│   ├── mcp.json            # MCP gateways and tools (AgentCoreMcpSpec)
+│   ├── mcp-defs.json       # Tool definitions (AgentCoreCliMcpDefs)
+│   ├── .llm-context/       # TypeScript type definitions for AI coding assistants
+│   │   ├── README.md       # Guide to using the schema files
+│   │   ├── agentcore.ts    # AgentCoreWorkspaceSpec types
+│   │   ├── agent-env.ts    # AgentEnvSpec and runtime types
+│   │   ├── mcp.ts          # MCP gateway and tool types
+│   │   └── aws-targets.ts  # AWS deployment target types
+│   └── cdk/                # AWS CDK project for deployment
+└── ... (your application code)
+\`\`\`
+
+## Schema Reference
+
+The \`agentcore/.llm-context/\` directory contains TypeScript type definitions optimized for AI coding assistants. Each
+file maps to a JSON config file and includes validation constraints as comments.
+
+| JSON Config                | Schema File                             | Root Type                |
+| -------------------------- | --------------------------------------- | ------------------------ |
+| \`agentcore/agentcore.json\` | \`agentcore/.llm-context/agentcore.ts\`   | \`AgentCoreWorkspaceSpec\` |
+| \`agentcore/mcp.json\`       | \`agentcore/.llm-context/mcp.ts\`         | \`AgentCoreMcpSpec\`       |
+| \`agentcore/mcp-defs.json\`  | \`agentcore/.llm-context/mcp.ts\`         | \`AgentCoreCliMcpDefs\`    |
+| (aws-targets)              | \`agentcore/.llm-context/aws-targets.ts\` | \`AWSDeploymentTarget[]\`  |
+
+### Key Types
+
+- **AgentEnvSpec**: Agent configuration (runtime, memory, identity, tools)
+- **Runtime**: Discriminated union of \`CodeZipRuntime\` | \`ContainerImageRuntime\`
+- **MemoryProvider**: \`OwnedMemoryProvider\` (creates memory) | \`ReferencedMemoryProvider\` (uses existing)
+- **AgentCoreGateway**: MCP gateway with tool targets
+- **ToolDefinition**: Tool name, description, input/output schemas
+
+### Common Enum Values
+
+- **ArtifactType**: \`'CodeZip'\` | \`'ContainerImage'\`
+- **NetworkMode**: \`'PUBLIC'\` | \`'PRIVATE'\`
+- **Relation**: \`'own'\` | \`'use'\` (for memory providers)
+- **ModelProvider**: \`'Bedrock'\` | \`'Anthropic'\` | \`'OpenAI'\` | \`'Gemini'\`
+- **ComputeHost**: \`'Lambda'\` | \`'AgentCoreRuntime'\`
+
+### Specific Context
+
+Directory pathing to local projects is required for runtimes and tools backed by a modeled compute. Only Python offers a
+zip based direct code deploy option. All other programming languages are required to be containerized and provide a path
+do a \`Dockerfile\` definition.
+
+MCP tools offer Lambda compute and AgentCore runtime compute. If something like a \`FastMCP\` server is desired, AgentCore
+runtime is a better fit. When using Lambda, the input schema needs to be modeled in \`mcp-defs.json\` and the lambda
+handler needs to be a traditional (context, event) style input shape.
+
+## Deployment
+
+The \`agentcore/cdk/\` subdirectory contains an AWS CDK node project.
+
+Deployments of this project are primarily intended to be orchestrated through the \`agentcore deploy\` command in the CLI.
+
+Alternatively, the project can be deployed directly as a traditional CDK project:
+
+\`\`\`bash
+cd agentcore/cdk
+npm install
+npx cdk synth   # Preview CloudFormation template
+npx cdk deploy  # Deploy to AWS
+\`\`\`
+
+Both CLI and direct deployment have the same source of truth and are safe to be substituted interchangeably.
+
+## Editing Schemas
+
+When modifying JSON config files:
+
+1. Read the corresponding \`agentcore/.llm-context/*.ts\` file for type definitions
+2. Check validation constraint comments (\`@regex\`, \`@min\`, \`@max\`)
+3. Use exact enum values as string literals
+4. Use CloudFormation-safe names (alphanumeric, start with letter)
+5. Run \`agentcore validate\` command to verify changes.
+"
+`;
+
+exports[`Assets Directory Snapshots > Static assets > static/static/strands-bedrock/README.md should match snapshot 1`] = `
+"This is a project generated by the agentcore create --template basic CLI tool!
+
+# Layout
+
+There are two directories generated, \`src/\` and \`test/\`. At the root, there is a \`.gitignore\` file, a
+\`.bedrock_agentcore.yaml\` file which is used for other \`agentcore\` commands like \`deploy\`, \`dev\`, and \`invoke\`.
+
+## src/
+
+The main entrypoint to your app is defined in \`src/main.py\`. Using the AgentCore SDK \`@app.entrypoint\` decorator, this
+file defines a Starlette ASGI app with the chosen Agent framework SDK running within.
+
+\`src/mcp_client/client.py\` implements an MCP client using the library from your chosen Agent framework SDK.
+
+\`src/model/load.py\` instantiates your chosen model provider.
+
+## test/
+
+Tests are not defined by default. Add your own pytest definitions here.
+
+# Developing locally
+
+If installation was successful, a virtual environment is already created with dependencies installed.
+
+Run \`source .venv/bin/activate\` before developing.
+
+\`agentcore dev\` will start a local server on 0.0.0.0:8080.
+
+In a new terminal, you can invoke that server with:
+
+\`agentcore invoke --dev "What can you do"\`
+
+# Deployment
+
+If you want to customize your project, you can first run \`agentcore configure\` before deploying. Otherwise, the default
+project settings will work out of the box.
+
+After providing credentials, \`agentcore deploy\` will deploy your project into Amazon Bedrock AgentCore.
+
+Use \`agentcore invoke\` to invoke your deployed agent.
+"
+`;
+
+exports[`Assets Directory Snapshots > Static assets > static/static/strands-bedrock/pyproject.toml should match snapshot 1`] = `
+"
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "novaLime"
+version = "0.1.0"
+requires-python = ">=3.10"
+
+dependencies = [
+    "opentelemetry-distro",
+    "opentelemetry-exporter-otlp",
+    "bedrock-agentcore >= 1.0.3",
+    "botocore[crt] >= 1.35.0",
+    "mcp >= 1.19.0",
+    "pytest >= 7.0.0",
+    "pytest-asyncio >= 0.21.0",
+    "python-dotenv >= 1.2.1",
+    "strands-agents >= 1.13.0",
+    "strands-agents-tools >= 0.2.16"
+]"
+`;
+
+exports[`Assets Directory Snapshots > Static assets > static/static/strands-bedrock/src/main.py should match snapshot 1`] = `
+"import os
+from strands import Agent, tool
+from strands_tools.code_interpreter import AgentCoreCodeInterpreter
+from bedrock_agentcore.runtime import BedrockAgentCoreApp
+from mcp_client.client import get_streamable_http_mcp_client
+from model.load import load_model
+
+app = BedrockAgentCoreApp()
+log = app.logger
+
+REGION = os.getenv("AWS_REGION")
+
+# Import AgentCore Gateway as Streamable HTTP MCP Client
+mcp_client = get_streamable_http_mcp_client()
+
+# Define a simple function tool
+@tool
+def add_numbers(a: int, b: int) -> int:
+    """Return the sum of two numbers"""
+    return a+b
+
+@app.entrypoint
+async def invoke(payload, context):
+    session_id = getattr(context, 'session_id', 'default')
+    
+    # Create code interpreter
+    code_interpreter = AgentCoreCodeInterpreter(
+        region=REGION,
+        session_name=session_id,
+        auto_create=True,
+        persist_sessions=True
+    )
+
+    with mcp_client as client:
+        # Get MCP Tools
+        tools = client.list_tools_sync()
+
+        # Create agent
+        agent = Agent(
+            model=load_model(),
+            system_prompt="""
+                You are a helpful assistant with code execution capabilities. Use tools when appropriate.
+            """,
+            tools=[code_interpreter.code_interpreter, add_numbers] + tools
+        )
+
+        # Execute and format response
+        stream = agent.stream_async(payload.get("prompt"))
+
+        async for event in stream:
+            # Handle Text parts of the response
+            if "data" in event and isinstance(event["data"], str):
+                yield event["data"]
+
+            # Implement additional handling for other events
+            # if "toolUse" in event:
+            #   # Process toolUse
+
+            # Handle end of stream
+            # if "result" in event:
+            #    yield(format_response(event["result"]))
+
+def format_response(result) -> str:
+    """Extract code from metrics and format with LLM response."""
+    parts = []
+
+    # Extract executed code from metrics
+    try:
+        tool_metrics = result.metrics.tool_metrics.get('code_interpreter')
+        if tool_metrics and hasattr(tool_metrics, 'tool'):
+            action = tool_metrics.tool['input']['code_interpreter_input']['action']
+            if 'code' in action:
+                parts.append(f"## Executed Code:\\n\`\`\`{action.get('language', 'python')}\\n{action['code']}\\n\`\`\`\\n---\\n")
+    except (AttributeError, KeyError):
+        pass  # No code to extract
+
+    # Add LLM response
+    parts.append(f"## 📊 Result:\\n{str(result)}")
+    return "\\n".join(parts)
+
+if __name__ == "__main__":
+    app.run()"
+`;
+
+exports[`Assets Directory Snapshots > Static assets > static/static/strands-bedrock/src/mcp_client/client.py should match snapshot 1`] = `
+"from mcp.client.streamable_http import streamablehttp_client
+from strands.tools.mcp.mcp_client import MCPClient
+
+# ExaAI provides information about code through web searches, crawling and code context searches through their platform. Requires no authentication
+EXAMPLE_MCP_ENDPOINT = "https://mcp.exa.ai/mcp"
+
+def get_streamable_http_mcp_client() -> MCPClient:
+    """
+    Returns an MCP Client compatible with Strands
+    """
+    # to use an MCP server that supports bearer authentication, add headers={"Authorization": f"Bearer {access_token}"}
+    return MCPClient(lambda: streamablehttp_client(EXAMPLE_MCP_ENDPOINT))"
+`;
+
+exports[`Assets Directory Snapshots > Static assets > static/static/strands-bedrock/src/model/load.py should match snapshot 1`] = `
+"from strands.models import BedrockModel
+
+# Uses global inference profile for Claude Sonnet 4.5
+# https://docs.aws.amazon.com/bedrock/latest/userguide/inference-profiles-support.html
+MODEL_ID = "global.anthropic.claude-sonnet-4-5-20250929-v1:0"
+
+def load_model() -> BedrockModel:
+    """
+    Get Bedrock model client.
+    Uses IAM authentication via the execution role.
+    """
+    return BedrockModel(model_id=MODEL_ID)"
+`;
+
+exports[`Assets Directory Snapshots > Static assets > static/static/strands-bedrock/test/__init__.py should match snapshot 1`] = `"# Test package"`;
+
+exports[`Assets Directory Snapshots > Static assets > static/static/strands-bedrock/test/test_main.py should match snapshot 1`] = `
+"# import pytest
+# from unittest.mock import Mock, patch, AsyncMock, MagicMock
+# import sys
+# from pathlib import Path
+
+# # Add src to path for imports
+# sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
+# # Mock MCP client to prevent Gateway connection attempts
+# mock_mcp_client = Mock()
+# mock_mcp_client.list_tools_sync.return_value = []
+# mock_mcp_client.__enter__ = Mock(return_value=mock_mcp_client)
+# mock_mcp_client.__exit__ = Mock(return_value=False)
+# with patch('mcp_client.client.get_streamable_http_mcp_client', return_value=mock_mcp_client):
+#     from main import app, invoke
+
+# class TestAgent:
+
+#     @patch('main.load_model')
+#     @patch('main.Agent')
+#     def test_invoke_with_prompt(self, mock_agent_class, mock_load_model):
+#         """Test invoke function with user prompt"""
+#         mock_agent = Mock()
+#         mock_agent.return_value = "Test response"
+#         mock_agent_class.return_value = mock_agent
+
+#         payload = {"prompt": "Hello, how are you?"}
+#         result = invoke(payload)
+
+#         mock_agent.assert_called_once_with("Hello, how are you?")
+#         assert result == {"response": "Test response"}
+
+# class TestBedrockAgentCoreApp:
+#     def test_app_initialization(self):
+#         """Test that BedrockAgentCoreApp is properly initialized"""
+#         assert app is not None
+#         assert hasattr(app, 'entrypoint')
+
+#     def test_entrypoint_decorator(self):
+#         """Test that entrypoint function is properly decorated"""
+
+#         assert hasattr(invoke, '__name__')
+#         assert invoke.__name__ == 'invoke'"
+`;
+
+exports[`Assets Directory Snapshots > TypeScript assets > typescript/typescript/.gitkeep should match snapshot 1`] = `""`;

@@ -40,15 +40,18 @@ function createDefaultMcpDefs(): AgentCoreCliMcpDefs {
   return { tools: {} };
 }
 
+export type ProgressCallback = (step: string, status: 'start' | 'done' | 'error') => void;
+
 export interface CreateProjectOptions {
   name: string;
   cwd: string;
   skipGit?: boolean;
   skipDependencyCheck?: boolean;
+  onProgress?: ProgressCallback;
 }
 
 export async function createProject(options: CreateProjectOptions): Promise<CreateResult> {
-  const { name, cwd, skipGit, skipDependencyCheck } = options;
+  const { name, cwd, skipGit, skipDependencyCheck, onProgress } = options;
   const projectRoot = join(cwd, name);
   const configBaseDir = join(projectRoot, CONFIG_DIR);
 
@@ -66,10 +69,13 @@ export async function createProject(options: CreateProjectOptions): Promise<Crea
 
   try {
     // Create project directory
+    onProgress?.(`Create ${name}/ project directory`, 'start');
     // eslint-disable-next-line security/detect-non-literal-fs-filename
     await mkdir(projectRoot, { recursive: true });
+    onProgress?.(`Create ${name}/ project directory`, 'done');
 
     // Initialize config directory
+    onProgress?.('Prepare agentcore/ directory', 'start');
     const configIO = new ConfigIO({ baseDir: configBaseDir });
     await configIO.initializeBaseDir();
 
@@ -87,13 +93,17 @@ export async function createProject(options: CreateProjectOptions): Promise<Crea
     // Create CDK project
     const cdkRenderer = new CDKRenderer();
     await cdkRenderer.render({ projectRoot });
+    onProgress?.('Prepare agentcore/ directory', 'done');
 
     // Initialize git (unless skipped)
     if (!skipGit) {
+      onProgress?.('Initialize git repository', 'start');
       const gitResult = await initGitRepo(projectRoot);
       if (gitResult.status === 'error') {
+        onProgress?.('Initialize git repository', 'error');
         return { success: false, error: gitResult.message, warnings: depWarnings };
       }
+      onProgress?.('Initialize git repository', 'done');
     }
 
     return {
@@ -118,10 +128,12 @@ export interface CreateWithAgentOptions {
   memory: MemoryOption;
   skipGit?: boolean;
   skipPythonSetup?: boolean;
+  onProgress?: ProgressCallback;
 }
 
 export async function createProjectWithAgent(options: CreateWithAgentOptions): Promise<CreateResult> {
-  const { name, cwd, language, framework, modelProvider, apiKey, memory, skipGit, skipPythonSetup } = options;
+  const { name, cwd, language, framework, modelProvider, apiKey, memory, skipGit, skipPythonSetup, onProgress } =
+    options;
   const projectRoot = join(cwd, name);
   const configBaseDir = join(projectRoot, CONFIG_DIR);
 
@@ -135,7 +147,7 @@ export async function createProjectWithAgent(options: CreateWithAgentOptions): P
   }
 
   // First create the base project (skip dependency check since we already did it)
-  const projectResult = await createProject({ name, cwd, skipGit, skipDependencyCheck: true });
+  const projectResult = await createProject({ name, cwd, skipGit, skipDependencyCheck: true, onProgress });
   if (!projectResult.success) {
     // Merge warnings from both checks
     const allWarnings = [...depWarnings, ...(projectResult.warnings ?? [])];
@@ -145,6 +157,7 @@ export async function createProjectWithAgent(options: CreateWithAgentOptions): P
   try {
     // Build GenerateConfig for agent creation
     // Note: In this context, agent name = project name since we're creating a project with a single agent
+    onProgress?.('Add agent to project', 'start');
     const agentName = name;
     const generateConfig = {
       projectName: agentName,
@@ -168,11 +181,14 @@ export async function createProjectWithAgent(options: CreateWithAgentOptions): P
       const envVarName = computeDefaultCredentialEnvVarName(credentialName);
       await setEnvVar(envVarName, apiKey, configBaseDir);
     }
+    onProgress?.('Add agent to project', 'done');
 
     // Set up Python environment if needed (unless skipped)
     if (language === 'Python' && !skipPythonSetup) {
+      onProgress?.('Set up Python environment', 'start');
       const agentDir = join(projectRoot, APP_DIR, name);
       await setupPythonProject({ projectDir: agentDir });
+      onProgress?.('Set up Python environment', 'done');
     }
 
     return {

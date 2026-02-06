@@ -33,10 +33,12 @@
     "security:audit": "npm audit --audit-level=high",
     "clean": "node -e \"require('fs').rmSync('dist', {recursive: true, force: true})\"",
     "prepare": "husky",
+    "test": "vitest run --project unit",
     "test:all": "vitest run",
-    "test:watch": "vitest",
-    "test:integ": "vitest run --config vitest.integ.config.ts",
-    "test:unit": "vitest run --config vitest.unit.config.ts --coverage"
+    "test:watch": "vitest --project unit",
+    "test:integ": "vitest run --project integ",
+    "test:unit": "vitest run --project unit --coverage",
+    "test:update-snapshots": "vitest run --project unit --update"
   },
   "dependencies": {
     "@aws-cdk/toolkit-lib": "^1.13.0",
@@ -71,6 +73,7 @@
     "@types/react": "^19.2.7",
     "@typescript-eslint/eslint-plugin": "^8.50.0",
     "@typescript-eslint/parser": "^8.50.0",
+    "@vitest/coverage-v8": "^4.0.18",
     "aws-cdk-lib": "^2.234.1",
     "constructs": "^10.4.4",
     "esbuild": "^0.27.2",
@@ -89,7 +92,6 @@
     "tsx": "^4.21.0",
     "typescript": "^5",
     "typescript-eslint": "^8.50.1",
-    "@vitest/coverage-v8": "^4.0.18",
     "vitest": "^4.0.18"
   },
   "engines": {

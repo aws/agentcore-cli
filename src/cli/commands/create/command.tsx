@@ -3,17 +3,53 @@ import type { ModelProvider, SDKFramework, TargetLanguage } from '../../../schem
 import { getErrorMessage } from '../../errors';
 import { COMMAND_DESCRIPTIONS } from '../../tui/copy';
 import { CreateScreen } from '../../tui/screens/create';
-import { createProject, createProjectWithAgent, getDryRunInfo } from './action';
+import { createProject, createProjectWithAgent, getDryRunInfo, type ProgressCallback } from './action';
 import type { CreateOptions } from './types';
 import { validateCreateOptions } from './validate';
 import type { Command } from '@commander-js/extra-typings';
 import { Text, render } from 'ink';
 
+/** Render CreateScreen for interactive TUI mode */
 function handleCreateTUI(): void {
   const cwd = getWorkingDirectory();
   const { unmount } = render(<CreateScreen cwd={cwd} isInteractive={false} onExit={() => unmount()} />);
 }
 
+/** Print completion summary after successful create */
+function printCreateSummary(
+  projectName: string,
+  agentName: string | undefined,
+  language: string | undefined,
+  framework: string | undefined
+): void {
+  const green = '\x1b[32m';
+  const cyan = '\x1b[36m';
+  const dim = '\x1b[2m';
+  const reset = '\x1b[0m';
+
+  console.log('');
+
+  // Created summary
+  console.log(`${dim}Created:${reset}`);
+  console.log(`  ${projectName}/`);
+  if (agentName) {
+    const frameworkLabel = framework ?? 'agent';
+    console.log(`    app/${agentName}/  ${dim}${language} agent (${frameworkLabel})${reset}`);
+  }
+  console.log(`    agentcore/           ${dim}Config and CDK project${reset}`);
+  console.log('');
+
+  // Success and next steps
+  console.log(`${green}Project created successfully!${reset}`);
+  console.log('');
+  console.log('To continue, navigate to your new project:');
+  console.log('');
+  console.log(`  ${cyan}cd ${projectName}${reset}`);
+  console.log(`  ${cyan}agentcore${reset}`);
+  console.log('');
+}
+
+/** Handle CLI mode with progress output */
 async function handleCreateCLI(options: CreateOptions): Promise<void> {
   const validation = validateCreateOptions(options);
   if (!validation.valid) {
@@ -41,11 +77,26 @@ async function handleCreateCLI(options: CreateOptions): Promise<void> {
     process.exit(0);
   }
 
+  const green = '\x1b[32m';
+  const reset = '\x1b[0m';
+
+  // Progress callback for real-time output
+  const onProgress: ProgressCallback | undefined = options.json
+    ? undefined
+    : (step, status) => {
+        if (status === 'done') {
+          console.log(`${green}[done]${reset}  ${step}`);
+        } else if (status === 'error') {
+          console.log(`\x1b[31m[error]${reset} ${step}`);
+        }
+        // 'start' is silent - we only show when done
+      };
+
   // Commander.js --no-agent sets agent=false, not noAgent=true
   const skipAgent = options.agent === false;
 
   const result = skipAgent
-    ? await createProject({ name: options.name!, cwd, skipGit: options.skipGit })
+    ? await createProject({ name: options.name!, cwd, skipGit: options.skipGit, onProgress })
     : await createProjectWithAgent({
         name: options.name!,
         cwd,
@@ -56,12 +107,13 @@ async function handleCreateCLI(options: CreateOptions): Promise<void> {
         memory: options.memory as 'none' | 'shortTerm' | 'longAndShortTerm',
         skipGit: options.skipGit,
         skipPythonSetup: options.skipPythonSetup,
+        onProgress,
       });
 
   if (options.json) {
     console.log(JSON.stringify(result));
   } else if (result.success) {
-    console.log(`Created project at ${result.projectPath}`);
+    printCreateSummary(options.name!, result.agentName, options.language, options.framework);
   } else {
     console.error(result.error);
   }

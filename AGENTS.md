@@ -43,6 +43,26 @@ This package exports utilities for programmatic use:
 - Schema types - `AgentEnvSpec`, `AgentCoreProjectSpec`, etc.
 - `findConfigRoot()` - Locate agentcore/ directory
 
+## Testing
+
+### Unit Tests
+
+```bash
+npm test              # Run unit tests
+npm run test:unit     # Same as above
+npm run test:integ    # Run integration tests
+```
+
+### Snapshot Tests
+
+Asset files in `src/assets/` are protected by snapshot tests. When modifying templates:
+
+```bash
+npm run test:update-snapshots  # Update snapshots after intentional changes
+```
+
+See `docs/TESTING.md` for details.
+
 ## Related Package
 
 - `@aws/agentcore-l3-cdk-constructs` - CDK constructs used by vended projects
