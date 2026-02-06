@@ -493,9 +493,9 @@ export function useCdkPreflight(options: PreflightOptions): PreflightResult {
           } else if (result.status === 'exists') {
             logger.log(`API key provider exists: ${result.providerName}`);
           } else if (result.status === 'skipped') {
-            logger.log(`Skipped ${result.agentName}: ${result.error}`);
+            logger.log(`Skipped ${result.providerName}: ${result.error}`);
           } else if (result.status === 'error') {
-            logger.log(`Error for ${result.agentName}: ${result.error}`);
+            logger.log(`Error for ${result.providerName}: ${result.error}`);
           }
         }
 

@@ -177,13 +177,7 @@ function AppContent() {
   }
 
   if (route.name === 'validate') {
-    return (
-      <ValidateScreen
-        isInteractive={true}
-        onExit={() => setRoute({ name: 'help' })}
-        onNavigate={command => setRoute({ name: command } as Route)}
-      />
-    );
+    return <ValidateScreen isInteractive={true} onExit={() => setRoute({ name: 'help' })} />;
   }
 
   if (route.name === 'package') {

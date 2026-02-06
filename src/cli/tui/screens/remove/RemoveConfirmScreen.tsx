@@ -216,11 +216,8 @@ function ScrollableDiff({ changes, maxHeight = 30, minHeight = 6 }: ScrollableDi
 }
 
 export function RemoveConfirmScreen({ title, preview, onConfirm, onCancel }: RemoveConfirmScreenProps) {
-  const hasBlockers = preview.blockers && preview.blockers.length > 0;
-
   useInput((input, key) => {
-    // Only allow confirm if no blockers
-    if (key.return && !hasBlockers) {
+    if (key.return) {
       onConfirm();
     }
     if (key.escape) {
@@ -263,32 +260,6 @@ export function RemoveConfirmScreen({ title, preview, onConfirm, onCancel }: Rem
       })}
     </Box>
   );
-
-  // If blocked, show a different view
-  if (hasBlockers) {
-    return (
-      <Screen title={title} onExit={onCancel} helpText="Esc back" headerContent={headerContent}>
-        <Box flexDirection="column">
-          <Text bold color="red">
-            Removal Blocked
-          </Text>
-          <Text> </Text>
-          {preview.blockers!.map((blocker, idx) => (
-            <Box key={idx} flexDirection="column" marginBottom={1}>
-              <Text color="yellow">
-                {blocker.resourceType} &quot;{blocker.resourceName}&quot; has removalPolicy: {blocker.policy}
-              </Text>
-              <Text>Used by: {blocker.dependents.join(', ')}</Text>
-            </Box>
-          ))}
-          <Text> </Text>
-          <Text dimColor>To proceed, either:</Text>
-          <Text dimColor> - Remove references from the dependent agents first</Text>
-          <Text dimColor> - Change removalPolicy to &quot;cascade&quot; in the schema</Text>
-        </Box>
-      </Screen>
-    );
-  }
 
   return (
     <Screen title={title} onExit={onCancel} helpText={HELP_TEXT.CONFIRM_CANCEL} headerContent={headerContent}>

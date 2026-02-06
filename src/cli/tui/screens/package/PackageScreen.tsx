@@ -100,11 +100,11 @@ export function PackageScreen({ isInteractive: _isInteractive, onExit }: Package
           // Small delay to show progress
           await new Promise(resolve => setTimeout(resolve, 100));
 
-          if (agent.runtime.artifact !== 'CodeZip') {
+          if (agent.build !== 'CodeZip') {
             newSteps[i] = {
               label: agent.name,
               status: 'warn',
-              warn: `Skipped: ${String(agent.runtime.artifact)} not supported`,
+              warn: `Skipped: ${String(agent.build)} not supported`,
             };
             skipped.push(agent.name);
             setState(prev => ({ ...prev, steps: [...newSteps], skipped }));

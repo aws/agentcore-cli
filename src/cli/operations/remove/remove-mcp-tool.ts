@@ -1,5 +1,5 @@
 import { ConfigIO } from '../../../lib';
-import type { AgentCoreCliMcpDefs, AgentCoreMcpSpec, AgentCoreProjectSpec } from '../../../schema';
+import type { AgentCoreCliMcpDefs, AgentCoreMcpSpec } from '../../../schema';
 import type { RemovalPreview, RemovalResult, SchemaChange } from './types';
 import { existsSync } from 'fs';
 import { rm } from 'fs/promises';
@@ -55,7 +55,6 @@ export async function previewRemoveMcpTool(tool: RemovableMcpTool): Promise<Remo
   const configIO = new ConfigIO();
   const mcpSpec = await configIO.readMcpSpec();
   const mcpDefs = configIO.configExists('mcpDefs') ? await configIO.readMcpDefs() : { tools: {} };
-  const projectSpec = await configIO.readProjectSpec();
 
   const summary: string[] = [];
   const directoriesToDelete: string[] = [];
@@ -79,16 +78,6 @@ export async function previewRemoveMcpTool(tool: RemovableMcpTool): Promise<Remo
         directoriesToDelete.push(toolDir);
         summary.push(`Deleting directory: ${toolPath}`);
       }
-    }
-
-    // Check for agent references
-    let refCount = 0;
-    for (const agent of projectSpec.agents) {
-      const hasRef = agent.remoteTools.some(t => t.type === 'AgentCoreMcpRuntime' && t.mcpRuntimeName === tool.name);
-      if (hasRef) refCount++;
-    }
-    if (refCount > 0) {
-      summary.push(`Removing references from ${refCount} agent(s)`);
     }
 
     // Tool definition in mcp-defs
@@ -142,17 +131,6 @@ export async function previewRemoveMcpTool(tool: RemovableMcpTool): Promise<Remo
       before: mcpDefs,
       after: afterMcpDefs,
     });
-  }
-
-  if (tool.type === 'mcp-runtime') {
-    const afterProjectSpec = computeRemovedToolProjectSpec(projectSpec, tool.name);
-    if (JSON.stringify(projectSpec) !== JSON.stringify(afterProjectSpec)) {
-      schemaChanges.push({
-        file: 'agentcore/agentcore.json',
-        before: projectSpec,
-        after: afterProjectSpec,
-      });
-    }
   }
 
   return { summary, directoriesToDelete, schemaChanges };
@@ -216,23 +194,6 @@ function computeRemovedToolMcpDefs(
 }
 
 /**
- * Compute the project spec after removing MCP runtime references.
- */
-function computeRemovedToolProjectSpec(
-  projectSpec: AgentCoreProjectSpec,
-  mcpRuntimeName: string
-): AgentCoreProjectSpec {
-  const agents = projectSpec.agents.map(agent => ({
-    ...agent,
-    remoteTools: agent.remoteTools.filter(
-      t => !(t.type === 'AgentCoreMcpRuntime' && t.mcpRuntimeName === mcpRuntimeName)
-    ),
-  }));
-
-  return { ...projectSpec, agents };
-}
-
-/**
  * Remove an MCP tool from the project.
  */
 export async function removeMcpTool(tool: RemovableMcpTool): Promise<RemovalResult> {
@@ -273,13 +234,6 @@ export async function removeMcpTool(tool: RemovableMcpTool): Promise<RemovalResu
     // Update MCP defs
     const newMcpDefs = computeRemovedToolMcpDefs(mcpSpec, mcpDefs, tool);
     await configIO.writeMcpDefs(newMcpDefs);
-
-    // Update project spec (for MCP runtime references)
-    if (tool.type === 'mcp-runtime') {
-      const projectSpec = await configIO.readProjectSpec();
-      const newProjectSpec = computeRemovedToolProjectSpec(projectSpec, tool.name);
-      await configIO.writeProjectSpec(newProjectSpec);
-    }
 
     // Delete tool directory if it exists
     if (toolPath) {

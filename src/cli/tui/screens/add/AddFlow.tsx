@@ -296,7 +296,6 @@ export function AddFlow(props: AddFlowProps) {
     return (
       <AddIdentityFlow
         isInteractive={props.isInteractive}
-        availableAgents={agents}
         onExit={props.onExit}
         onBack={() => setFlow({ name: 'select' })}
         onDeploy={props.onDeploy}

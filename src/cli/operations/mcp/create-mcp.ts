@@ -2,9 +2,7 @@ import { ConfigIO, requireConfigRoot } from '../../../lib';
 import type {
   AgentCoreCliMcpDefs,
   AgentCoreGateway,
-  AgentCoreGatewayProvider,
   AgentCoreGatewayTarget,
-  AgentCoreMcpRuntimeRef,
   AgentCoreMcpRuntimeTool,
   AgentCoreMcpSpec,
   CodeZipRuntimeConfig,
@@ -56,19 +54,6 @@ async function writeMcpDefs(filePath: string, data: AgentCoreCliMcpDefs): Promis
   await writeFile(filePath, content, 'utf-8');
 }
 
-function resolveGatewayProviderName(agentName: string, existingProviders: { name: string }[]): string {
-  const baseName = `${agentName}Gateway`;
-  if (!existingProviders.some(provider => provider.name === baseName)) {
-    return baseName;
-  }
-
-  let suffix = 2;
-  while (existingProviders.some(provider => provider.name === `${baseName}${suffix}`)) {
-    suffix += 1;
-  }
-  return `${baseName}${suffix}`;
-}
-
 export function computeDefaultGatewayEnvVarName(gatewayName: string): string {
   const sanitized = gatewayName.toUpperCase().replace(/-/g, '_');
   return `AGENTCORE_GATEWAY_${sanitized}_URL`;
@@ -89,20 +74,6 @@ function buildAuthorizerConfiguration(config: AddGatewayConfig): AgentCoreGatewa
       allowedAudience: config.jwtConfig.allowedAudience,
       allowedClients: config.jwtConfig.allowedClients,
     },
-  };
-}
-
-function buildGatewayProvider(
-  agentName: string,
-  gatewayName: string,
-  existingProviders: { name: string }[]
-): AgentCoreGatewayProvider {
-  return {
-    type: 'AgentCoreGateway',
-    name: resolveGatewayProviderName(agentName, existingProviders),
-    description: `Gateway provider for ${gatewayName}`,
-    gatewayName,
-    envVarName: computeDefaultGatewayEnvVarName(gatewayName),
   };
 }
 
@@ -172,33 +143,6 @@ export function computeDefaultMcpRuntimeEnvVarName(runtimeName: string): string 
   return `AGENTCORE_MCPRUNTIME_${sanitized}_URL`;
 }
 
-function resolveMcpRuntimeRefName(agentName: string, existingRemoteTools: { name: string }[]): string {
-  const baseName = `${agentName}McpRuntime`;
-  if (!existingRemoteTools.some(tool => tool.name === baseName)) {
-    return baseName;
-  }
-
-  let suffix = 2;
-  while (existingRemoteTools.some(tool => tool.name === `${baseName}${suffix}`)) {
-    suffix += 1;
-  }
-  return `${baseName}${suffix}`;
-}
-
-function buildMcpRuntimeRef(
-  agentName: string,
-  mcpRuntimeName: string,
-  existingRemoteTools: { name: string }[]
-): AgentCoreMcpRuntimeRef {
-  return {
-    type: 'AgentCoreMcpRuntime',
-    name: resolveMcpRuntimeRefName(agentName, existingRemoteTools),
-    description: `MCP runtime reference for ${mcpRuntimeName}`,
-    mcpRuntimeName,
-    envVarName: computeDefaultMcpRuntimeEnvVarName(mcpRuntimeName),
-  };
-}
-
 /**
  * Create a gateway (no tools attached).
  */
@@ -223,26 +167,6 @@ export async function createGatewayFromWizard(config: AddGatewayConfig): Promise
 
   mcpSpec.agentCoreGateways.push(gateway);
   await configIO.writeMcpSpec(mcpSpec);
-
-  if (config.agents.length > 0) {
-    const project = await configIO.readProjectSpec();
-
-    for (const agentName of config.agents) {
-      const agent = project.agents.find(candidate => candidate.name === agentName);
-      if (!agent) {
-        throw new Error(`Agent "${agentName}" not found in agentcore.json.`);
-      }
-      const alreadyLinked = agent.mcpProviders.some(
-        provider => provider.type === 'AgentCoreGateway' && provider.gatewayName === config.name
-      );
-      if (alreadyLinked) {
-        continue;
-      }
-      agent.mcpProviders.push(buildGatewayProvider(agent.name, config.name, agent.mcpProviders));
-    }
-
-    await configIO.writeProjectSpec(project);
-  }
 
   return { name: config.name };
 }
@@ -311,30 +235,8 @@ export async function createToolFromWizard(config: AddMcpToolConfig): Promise<Cr
     }
     mcpSpec.mcpRuntimeTools = [...mcpRuntimeTools, mcpRuntimeTool];
 
-    // Write mcp.json first
+    // Write mcp.json
     await configIO.writeMcpSpec(mcpSpec);
-
-    // If agents are selected, add AgentCoreMcpRuntime refs to their remoteTools
-    if (config.selectedAgents.length > 0) {
-      const project = await configIO.readProjectSpec();
-
-      for (const agentName of config.selectedAgents) {
-        const agent = project.agents.find(candidate => candidate.name === agentName);
-        if (!agent) {
-          throw new Error(`Agent "${agentName}" not found in agentcore.json.`);
-        }
-        // Check if agent already has this MCP runtime linked
-        const alreadyLinked = agent.remoteTools.some(
-          tool => tool.type === 'AgentCoreMcpRuntime' && tool.mcpRuntimeName === config.name
-        );
-        if (alreadyLinked) {
-          continue;
-        }
-        agent.remoteTools.push(buildMcpRuntimeRef(agent.name, config.name, agent.remoteTools));
-      }
-
-      await configIO.writeProjectSpec(project);
-    }
   } else {
     // Behind gateway
     if (!config.gateway) {

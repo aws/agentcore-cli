@@ -129,20 +129,15 @@ export function AddGatewayFlow({
   );
 
   const handleBindComplete = useCallback(
-    async (envVarName: string) => {
+    async (_envVarName: string) => {
       if (flow.name !== 'bind-enter-envvar') return;
 
-      const result = await attachGateway(flow.targetAgent, {
-        gatewayName: flow.gatewayName,
-        name: flow.mcpProviderName,
-        description: flow.description,
-        envVarName,
-      });
+      const result = await attachGateway();
 
       if (result.ok) {
         setFlow({ name: 'bind-success', gatewayName: flow.gatewayName, targetAgent: flow.targetAgent });
       } else {
-        setFlow({ name: 'error', message: result.error });
+        setFlow({ name: 'error', message: 'Failed to bind gateway' });
       }
     },
     [flow, attachGateway]

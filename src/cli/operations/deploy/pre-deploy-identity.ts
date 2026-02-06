@@ -121,13 +121,9 @@ async function setupTokenVaultKms(
 
 /**
  * Get the environment variable name for a credential.
- * Uses the first envVar in the credential's envVars array, or generates a default.
+ * Generates a default based on the credential name.
  */
 function getCredentialEnvVarName(credential: Credential): string {
-  if (credential.envVars && credential.envVars.length > 0 && credential.envVars[0]) {
-    return credential.envVars[0].name;
-  }
-  // Default naming convention
   return `AGENTCORE_IDENTITY_${credential.name.toUpperCase().replace(/[^A-Z0-9]/g, '_')}`;
 }
 

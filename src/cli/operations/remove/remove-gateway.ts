@@ -1,5 +1,5 @@
 import { ConfigIO } from '../../../lib';
-import type { AgentCoreMcpSpec, AgentCoreProjectSpec } from '../../../schema';
+import type { AgentCoreMcpSpec } from '../../../schema';
 import type { RemovalPreview, RemovalResult, SchemaChange } from './types';
 
 /**
@@ -24,7 +24,6 @@ export async function getRemovableGateways(): Promise<string[]> {
 export async function previewRemoveGateway(gatewayName: string): Promise<RemovalPreview> {
   const configIO = new ConfigIO();
   const mcpSpec = await configIO.readMcpSpec();
-  const projectSpec = await configIO.readProjectSpec();
 
   const gateway = mcpSpec.agentCoreGateways.find(g => g.name === gatewayName);
   if (!gateway) {
@@ -33,19 +32,6 @@ export async function previewRemoveGateway(gatewayName: string): Promise<Removal
 
   const summary: string[] = [`Removing gateway: ${gatewayName}`];
   const schemaChanges: SchemaChange[] = [];
-
-  // Count agents that reference this gateway
-  let agentRefCount = 0;
-  for (const agent of projectSpec.agents) {
-    const hasRef = agent.mcpProviders.some(p => p.type === 'AgentCoreGateway' && p.gatewayName === gatewayName);
-    if (hasRef) {
-      agentRefCount++;
-    }
-  }
-
-  if (agentRefCount > 0) {
-    summary.push(`Removing gateway references from ${agentRefCount} agent(s)`);
-  }
 
   if (gateway.targets.length > 0) {
     summary.push(`Note: ${gateway.targets.length} target(s) behind this gateway will become orphaned`);
@@ -59,15 +45,6 @@ export async function previewRemoveGateway(gatewayName: string): Promise<Removal
     after: afterMcpSpec,
   });
 
-  const afterProjectSpec = computeRemovedGatewayProjectSpec(projectSpec, gatewayName);
-  if (JSON.stringify(projectSpec) !== JSON.stringify(afterProjectSpec)) {
-    schemaChanges.push({
-      file: 'agentcore/agentcore.json',
-      before: projectSpec,
-      after: afterProjectSpec,
-    });
-  }
-
   return { summary, directoriesToDelete: [], schemaChanges };
 }
 
@@ -79,21 +56,6 @@ function computeRemovedGatewayMcpSpec(mcpSpec: AgentCoreMcpSpec, gatewayName: st
     ...mcpSpec,
     agentCoreGateways: mcpSpec.agentCoreGateways.filter(g => g.name !== gatewayName),
   };
-}
-
-/**
- * Compute the project spec after removing gateway references.
- */
-function computeRemovedGatewayProjectSpec(
-  projectSpec: AgentCoreProjectSpec,
-  gatewayName: string
-): AgentCoreProjectSpec {
-  const agents = projectSpec.agents.map(agent => ({
-    ...agent,
-    mcpProviders: agent.mcpProviders.filter(p => !(p.type === 'AgentCoreGateway' && p.gatewayName === gatewayName)),
-  }));
-
-  return { ...projectSpec, agents };
 }
 
 /**
@@ -112,11 +74,6 @@ export async function removeGateway(gatewayName: string): Promise<RemovalResult>
     // Remove gateway from MCP spec
     const newMcpSpec = computeRemovedGatewayMcpSpec(mcpSpec, gatewayName);
     await configIO.writeMcpSpec(newMcpSpec);
-
-    // Remove gateway references from agents
-    const projectSpec = await configIO.readProjectSpec();
-    const newProjectSpec = computeRemovedGatewayProjectSpec(projectSpec, gatewayName);
-    await configIO.writeProjectSpec(newProjectSpec);
 
     return { ok: true };
   } catch (err) {

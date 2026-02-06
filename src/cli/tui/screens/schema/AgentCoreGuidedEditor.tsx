@@ -1,8 +1,11 @@
 import {
   AgentCoreProjectSpecSchema,
   BuildTypeSchema,
+  ModelProviderSchema,
   NetworkModeSchema,
   PythonRuntimeSchema,
+  SDKFrameworkSchema,
+  TargetLanguageSchema,
 } from '../../../../schema';
 import type { AgentCoreProjectSpec, PathType } from '../../../../schema';
 import { Cursor, Header, Panel, PathInput, ScreenLayout, SelectList } from '../../components';
@@ -239,7 +242,7 @@ function AgentCoreGuidedEditorBody(props: {
         issues: [] as IssueEntry[],
       };
     }
-    const runtimeArtifact = agent.runtime.artifact;
+    const runtimeArtifact = agent.build;
 
     const tabs: TabDef[] = [
       {
@@ -713,7 +716,7 @@ function AgentCoreGuidedEditorBody(props: {
           <Box flexDirection="row" gap={1}>
             {draft.agents.map((agent, idx) => (
               <Text
-                key={agent.id || idx}
+                key={agent.name || idx}
                 color={idx === agentIndex ? 'cyan' : undefined}
                 dimColor={idx !== agentIndex}
                 bold={idx === agentIndex}

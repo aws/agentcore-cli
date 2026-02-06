@@ -128,16 +128,6 @@ export class RemoveLogger {
     }
     lines.push('');
 
-    // Blockers (if any)
-    if (preview.blockers && preview.blockers.length > 0) {
-      lines.push('--- BLOCKERS ---');
-      for (const blocker of preview.blockers) {
-        lines.push(`${blocker.resourceType} "${blocker.resourceName}" [${blocker.policy}]`);
-        lines.push(`  Dependents: ${blocker.dependents.join(', ')}`);
-      }
-      lines.push('');
-    }
-
     // Schema diff
     if (preview.schemaChanges.length > 0) {
       lines.push('--- SCHEMA DIFF ---');

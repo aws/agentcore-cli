@@ -4,7 +4,7 @@ import { AddSuccessScreen } from '../add/AddSuccessScreen';
 import { AddMemoryScreen } from './AddMemoryScreen';
 import type { AddMemoryConfig } from './types';
 import { Text } from 'ink';
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 
 type FlowState =
   | { name: 'create-wizard' }
@@ -19,16 +19,6 @@ interface AddMemoryFlowProps {
   /** Called when user selects deploy from success screen */
   onDeploy?: () => void;
 }
-
-const MODE_OPTIONS: SelectableItem[] = [
-  { id: 'create', title: 'Create new memory', description: 'Define a new memory provider for an agent' },
-  { id: 'bind', title: 'Bind existing memory', description: 'Grant another agent access to an existing memory' },
-];
-
-const ACCESS_OPTIONS: SelectableItem[] = [
-  { id: 'read', title: 'Read-only', description: 'Agent can only read from memory' },
-  { id: 'readwrite', title: 'Read/Write', description: 'Agent can read and write to memory' },
-];
 
 export function AddMemoryFlow({ isInteractive = true, onExit, onBack, onDeploy }: AddMemoryFlowProps) {
   const { createMemory, reset: resetCreate } = useCreateMemory();
