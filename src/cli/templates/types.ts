@@ -1,4 +1,4 @@
-import type { ModelProvider, SDKFramework, TargetLanguage } from '../../schema';
+import type { MemoryStrategyType, ModelProvider, SDKFramework, TargetLanguage } from '../../schema';
 
 /**
  * Identity provider info for template rendering.
@@ -6,6 +6,16 @@ import type { ModelProvider, SDKFramework, TargetLanguage } from '../../schema';
 export interface IdentityProviderRenderConfig {
   name: string;
   envVarName: string;
+}
+
+/**
+ * Memory provider info for template rendering.
+ */
+export interface MemoryProviderRenderConfig {
+  name: string;
+  envVarName: string;
+  /** Strategy types configured for this memory */
+  strategies: MemoryStrategyType[];
 }
 
 /**
@@ -21,4 +31,6 @@ export interface AgentRenderConfig {
   hasIdentity: boolean;
   /** Identity providers for template rendering (maps to credentials in schema) */
   identityProviders: IdentityProviderRenderConfig[];
+  /** Memory providers for template rendering */
+  memoryProviders: MemoryProviderRenderConfig[];
 }

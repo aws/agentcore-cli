@@ -8,7 +8,11 @@ import type {
   MemoryStrategy,
   ModelProvider,
 } from '../../../../schema';
-import type { AgentRenderConfig, IdentityProviderRenderConfig } from '../../../templates/types';
+import type {
+  AgentRenderConfig,
+  IdentityProviderRenderConfig,
+  MemoryProviderRenderConfig,
+} from '../../../templates/types';
 import {
   DEFAULT_MEMORY_EXPIRY_DAYS,
   DEFAULT_NETWORK_MODE,
@@ -41,8 +45,8 @@ function computeCredentialName(projectName: string, providerName: string): strin
  * Maps GenerateConfig memory option to v2 Memory resources.
  *
  * Memory mapping:
- * - "none" -> empty array
- * - "shortTerm" -> [Memory with Summarization strategy]
+ * - "none" -> empty array (no memory)
+ * - "shortTerm" -> [Memory with no strategies] (just base memory with expiration)
  * - "longAndShortTerm" -> [Memory with Semantic + Summarization + UserPreference strategies]
  */
 export function mapGenerateInputToMemories(memory: MemoryOption, projectName: string): Memory[] {
@@ -52,12 +56,13 @@ export function mapGenerateInputToMemories(memory: MemoryOption, projectName: st
 
   const strategies: MemoryStrategy[] = [];
 
+  // Short term memory has no strategies - just base memory with expiration time
+  // Long term memory includes strategies for semantic search, summarization, and user preferences
   if (memory === 'longAndShortTerm') {
     strategies.push({ type: 'SEMANTIC' });
     strategies.push({ type: 'USER_PREFERENCE' });
+    strategies.push({ type: 'SUMMARIZATION' });
   }
-
-  strategies.push({ type: 'SUMMARIZATION' });
 
   return [
     {
@@ -135,6 +140,34 @@ function mapModelProviderToIdentityProviders(
 }
 
 /**
+ * Compute the memory env var name for a memory resource.
+ * Pattern: MEMORY_{NAME}_ID (matches CDK construct pattern)
+ */
+function computeMemoryEnvVarName(memoryName: string): string {
+  return `MEMORY_${memoryName.toUpperCase()}_ID`;
+}
+
+/**
+ * Maps memory option to memory providers for template rendering.
+ */
+function mapMemoryOptionToMemoryProviders(memory: MemoryOption, projectName: string): MemoryProviderRenderConfig[] {
+  if (memory === 'none') {
+    return [];
+  }
+
+  const memoryName = `${projectName}Memory`;
+  const strategies = mapGenerateInputToMemories(memory, projectName)[0]?.strategies ?? [];
+
+  return [
+    {
+      name: memoryName,
+      envVarName: computeMemoryEnvVarName(memoryName),
+      strategies: strategies.map(s => s.type),
+    },
+  ];
+}
+
+/**
  * Maps GenerateConfig to AgentRenderConfig for template rendering.
  * @param config - Generate config (note: config.projectName is actually the agent name)
  * @param actualProjectName - Optional actual project name for credential naming (defaults to config.projectName)
@@ -150,5 +183,6 @@ export function mapGenerateConfigToRenderConfig(config: GenerateConfig, actualPr
     hasMemory: config.memory !== 'none',
     hasIdentity: config.modelProvider !== 'Bedrock',
     identityProviders: mapModelProviderToIdentityProviders(config.modelProvider, projectNameForCredentials),
+    memoryProviders: mapMemoryOptionToMemoryProviders(config.memory, config.projectName),
   };
 }

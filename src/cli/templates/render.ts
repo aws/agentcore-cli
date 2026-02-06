@@ -4,6 +4,10 @@ import * as path from 'node:path';
 
 // Register custom Handlebars helpers
 Handlebars.registerHelper('eq', (a: unknown, b: unknown) => a === b);
+Handlebars.registerHelper('includes', (array: unknown[], value: unknown) => {
+  if (!Array.isArray(array)) return false;
+  return array.includes(value);
+});
 
 /**
  * Renames template files to their actual names.

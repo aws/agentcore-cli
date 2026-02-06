@@ -52,9 +52,11 @@ export const MemorySchema = z.object({
   type: MemoryTypeSchema,
   name: MemoryNameSchema,
   eventExpiryDuration: z.number().int().min(7).max(365),
+  // Strategies array can be empty for short-term memory (just base memory with expiration)
+  // Long-term memory includes strategies like SEMANTIC, SUMMARIZATION, USER_PREFERENCE
   strategies: z
     .array(MemoryStrategySchema)
-    .min(1, 'At least one memory strategy is required')
+    .default([])
     .superRefine(
       uniqueBy(
         strategy => strategy.type,
