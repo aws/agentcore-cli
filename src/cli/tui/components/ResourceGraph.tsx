@@ -204,9 +204,7 @@ export function ResourceGraph({ project, mcp, agentName, agentStatuses, deployed
         <Text>
           <Text color="green">{ICONS.agent}</Text> agent{'  '}
           <Text color="blue">{ICONS.memory}</Text> memory{'  '}
-          <Text color="yellow">{ICONS.credential}</Text> credential{'  '}
-          <Text color="magenta">{ICONS.gateway}</Text> gateway{'  '}
-          <Text color="cyan">{ICONS.tool}</Text> tool
+          <Text color="yellow">{ICONS.credential}</Text> credential
         </Text>
       </Box>
     </Box>
