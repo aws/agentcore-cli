@@ -235,5 +235,6 @@ export function useDevServer(options: { workingDir: string; port: number; agentN
     restart,
     stop,
     logFilePath: loggerRef.current?.getRelativeLogPath(),
+    hasMemory: (project?.memories?.length ?? 0) > 0,
   };
 }

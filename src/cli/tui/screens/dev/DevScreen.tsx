@@ -157,6 +157,7 @@ export function DevScreen(props: DevScreenProps) {
     restart,
     stop,
     logFilePath,
+    hasMemory,
   } = useDevServer({
     workingDir,
     port: props.port ?? 8080,
@@ -367,6 +368,11 @@ export function DevScreen(props: DevScreenProps) {
         </Box>
       )}
       {logFilePath && <LogLink filePath={logFilePath} />}
+      {hasMemory && (
+        <Text color="yellow">
+          AgentCore memory is not available when running locally. To test memory, deploy and use invoke.
+        </Text>
+      )}
     </Box>
   );
 
