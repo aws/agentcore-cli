@@ -29,8 +29,12 @@ export function useGenerateWizard(options?: UseGenerateWizardOptions) {
   }));
   const [error, setError] = useState<string | null>(null);
 
+  // Track if user has selected a framework (moved past sdk step)
+  const [sdkSelected, setSdkSelected] = useState(false);
+
   // Steps depend on SDK, model provider, and whether we have an initial name
-  // Filter out: projectName if initialName, apiKey for Bedrock, memory for non-Strands SDKs
+  // Filter out: projectName if initialName, apiKey for Bedrock
+  // Add memory step only for Strands SDK after user has selected it
   const steps = useMemo(() => {
     let filtered = BASE_GENERATE_STEPS;
     if (hasInitialName) {
@@ -39,11 +43,12 @@ export function useGenerateWizard(options?: UseGenerateWizardOptions) {
     if (config.modelProvider === 'Bedrock') {
       filtered = filtered.filter(s => s !== 'apiKey');
     }
-    if (config.sdk !== 'Strands') {
-      filtered = filtered.filter(s => s !== 'memory');
+    if (sdkSelected && config.sdk === 'Strands') {
+      const confirmIndex = filtered.indexOf('confirm');
+      filtered = [...filtered.slice(0, confirmIndex), 'memory', ...filtered.slice(confirmIndex)];
     }
     return filtered;
-  }, [config.modelProvider, config.sdk, hasInitialName]);
+  }, [config.modelProvider, config.sdk, hasInitialName, sdkSelected]);
 
   const currentIndex = steps.indexOf(step);
 
@@ -65,6 +70,7 @@ export function useGenerateWizard(options?: UseGenerateWizardOptions) {
   }, []);
 
   const setSdk = useCallback((sdk: GenerateConfig['sdk']) => {
+    setSdkSelected(true);
     setConfig(c => {
       // Reset modelProvider if it's not supported by the new SDK
       const supportedProviders = getModelProviderOptionsForSdk(sdk);
@@ -127,6 +133,7 @@ export function useGenerateWizard(options?: UseGenerateWizardOptions) {
     setStep('projectName');
     setConfig(getDefaultConfig());
     setError(null);
+    setSdkSelected(false);
   }, []);
 
   /**
