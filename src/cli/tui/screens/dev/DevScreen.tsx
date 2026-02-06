@@ -235,10 +235,10 @@ export function DevScreen(props: DevScreenProps) {
           props.onBack();
           return;
         }
-        if (key.upArrow) {
+        if (key.upArrow || input === 'k') {
           setSelectedAgentIndex(prev => (prev - 1 + supportedAgents.length) % supportedAgents.length);
         }
-        if (key.downArrow) {
+        if (key.downArrow || input === 'j') {
           setSelectedAgentIndex(prev => (prev + 1) % supportedAgents.length);
         }
         if (key.return) {
