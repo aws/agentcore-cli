@@ -365,7 +365,7 @@ export function DevScreen(props: DevScreenProps) {
     <Box flexDirection="column">
       <Box>
         <Text>Agent: </Text>
-        <Text color="green">{config.agentName}</Text>
+        <Text color="green">{config?.agentName}</Text>
       </Box>
       <Box>
         <Text>Server: </Text>

@@ -10,8 +10,10 @@ interface AddAgentFlowProps {
   onComplete: (config: AddAgentConfig) => void;
   onExit: () => void;
   onBack: () => void;
+  /** Called when user selects deploy from success screen */
+  onDeploy?: () => void;
 }
 
-export function AddAgentFlow({ existingAgentNames, onComplete, onBack }: AddAgentFlowProps) {
+export function AddAgentFlow({ existingAgentNames, onComplete, onBack, onDeploy }: AddAgentFlowProps) {
   return <AddAgentScreen existingAgentNames={existingAgentNames} onComplete={onComplete} onExit={onBack} />;
 }

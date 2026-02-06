@@ -34,6 +34,8 @@ interface AddGatewayFlowProps {
   availableAgents: string[];
   onExit: () => void;
   onBack: () => void;
+  /** Called when user selects deploy from success screen */
+  onDeploy?: () => void;
 }
 
 const MODE_OPTIONS: SelectableItem[] = [
@@ -41,7 +43,7 @@ const MODE_OPTIONS: SelectableItem[] = [
   { id: 'bind', title: 'Bind existing gateway', description: 'Attach an existing gateway to an agent' },
 ];
 
-export function AddGatewayFlow({ isInteractive = true, availableAgents, onExit, onBack }: AddGatewayFlowProps) {
+export function AddGatewayFlow({ isInteractive = true, availableAgents, onExit, onBack, onDeploy }: AddGatewayFlowProps) {
   const { createGateway, reset: resetCreate } = useCreateGateway();
   const { gateways: existingGateways, refresh: refreshGateways } = useExistingGateways();
   const [flow, setFlow] = useState<FlowState>({ name: 'mode-select' });
@@ -332,6 +334,7 @@ export function AddGatewayFlow({ isInteractive = true, availableAgents, onExit, 
         onAddAnother={() => {
           void refreshGateways().then(() => onBack());
         }}
+        onDeploy={onDeploy}
         onExit={onExit}
       />
     );
@@ -345,6 +348,7 @@ export function AddGatewayFlow({ isInteractive = true, availableAgents, onExit, 
         message={`Bound gateway: ${flow.gatewayName}`}
         detail={`Agent "${flow.targetAgent}" now uses gateway "${flow.gatewayName}".`}
         onAddAnother={onBack}
+        onDeploy={onDeploy}
         onExit={onExit}
       />
     );

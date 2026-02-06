@@ -76,7 +76,9 @@ export function useDevServer(options: { workingDir: string; port: number; agentN
   }, [options.workingDir]);
 
   const config: DevConfig | null = useMemo(() => {
-    if (!project) return null;
+    if (!project) {
+      return null;
+    }
     return getDevConfig(options.workingDir, project, configRoot, options.agentName);
   }, [options.workingDir, project, configRoot, options.agentName]);
 
@@ -158,7 +160,17 @@ export function useDevServer(options: { workingDir: string; port: number; agentN
       killServer(serverRef.current);
       loggerRef.current?.finalize();
     };
-  }, [configLoaded, config, targetPort, restartTrigger, envVars, options.workingDir]);
+  }, [
+    configLoaded,
+    config,
+    config?.agentName,
+    config?.module,
+    config?.directory,
+    config?.isPython,
+    targetPort,
+    restartTrigger,
+    envVars,
+  ]);
 
   const invoke = async (message: string) => {
     // Add user message to conversation
