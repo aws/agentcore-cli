@@ -43,7 +43,13 @@ const MODE_OPTIONS: SelectableItem[] = [
   { id: 'bind', title: 'Bind existing gateway', description: 'Attach an existing gateway to an agent' },
 ];
 
-export function AddGatewayFlow({ isInteractive = true, availableAgents, onExit, onBack, onDeploy }: AddGatewayFlowProps) {
+export function AddGatewayFlow({
+  isInteractive = true,
+  availableAgents,
+  onExit,
+  onBack,
+  onDeploy,
+}: AddGatewayFlowProps) {
   const { createGateway, reset: resetCreate } = useCreateGateway();
   const { gateways: existingGateways, refresh: refreshGateways } = useExistingGateways();
   const [flow, setFlow] = useState<FlowState>({ name: 'mode-select' });

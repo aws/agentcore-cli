@@ -22,11 +22,7 @@ import { join } from 'path';
 import { useCallback, useEffect } from 'react';
 
 /** Build a text representation of the completion screen for terminal output */
-function buildExitMessage(
-  projectName: string,
-  steps: Step[],
-  agentConfig: AddAgentConfig | null
-): string {
+function buildExitMessage(projectName: string, steps: Step[], agentConfig: AddAgentConfig | null): string {
   const lines: string[] = [];
 
   // Title

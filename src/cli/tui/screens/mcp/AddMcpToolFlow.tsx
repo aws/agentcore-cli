@@ -35,7 +35,13 @@ const MODE_OPTIONS: SelectableItem[] = [
   { id: 'bind', title: 'Bind existing MCP runtime', description: 'Add an agent to an existing MCP runtime' },
 ];
 
-export function AddMcpToolFlow({ isInteractive = true, existingAgents, onExit, onBack, onDeploy }: AddMcpToolFlowProps) {
+export function AddMcpToolFlow({
+  isInteractive = true,
+  existingAgents,
+  onExit,
+  onBack,
+  onDeploy,
+}: AddMcpToolFlowProps) {
   const { createTool, reset: resetCreate } = useCreateMcpTool();
   const { gateways: existingGateways } = useExistingGateways();
   const { toolNames: existingToolNames } = useExistingToolNames();

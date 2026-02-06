@@ -120,33 +120,6 @@ export function mapGenerateConfigToResources(config: GenerateConfig): GenerateCo
 }
 
 /**
- * Compute the default env var name for a memory.
- */
-function computeMemoryEnvVarName(memoryName: string): string {
-  return `AGENTCORE_MEMORY_${memoryName.toUpperCase()}`;
-}
-
-/**
- * Maps memory option to memory providers for template rendering.
- */
-function mapMemoryOptionToMemoryProviders(
-  memory: MemoryOption,
-  projectName: string
-): MemoryProviderRenderConfig[] {
-  if (memory === 'none') {
-    return [];
-  }
-
-  const memoryName = `${projectName}Memory`;
-  return [
-    {
-      name: memoryName,
-      envVarName: computeMemoryEnvVarName(memoryName),
-    },
-  ];
-}
-
-/**
  * Compute the memory env var name for a memory resource.
  * Pattern: MEMORY_{NAME}_ID (matches CDK construct pattern)
  */
@@ -175,6 +148,27 @@ function mapMemoryOptionToMemoryProviders(memory: MemoryOption, projectName: str
 }
 
 /**
+ * Maps model provider to identity providers for template rendering.
+ * Bedrock uses IAM, so no identity provider is needed.
+ */
+function mapModelProviderToIdentityProviders(
+  modelProvider: ModelProvider,
+  projectName: string
+): IdentityProviderRenderConfig[] {
+  if (modelProvider === 'Bedrock') {
+    return [];
+  }
+
+  const credentialName = computeCredentialName(projectName, modelProvider);
+  return [
+    {
+      name: credentialName,
+      envVarName: computeDefaultCredentialEnvVarName(credentialName),
+    },
+  ];
+}
+
+/**
  * Maps GenerateConfig to AgentRenderConfig for template rendering.
  * @param config - Generate config (note: config.projectName is actually the agent name)
  * @param actualProjectName - Optional actual project name for credential naming (defaults to config.projectName)
@@ -191,6 +185,5 @@ export function mapGenerateConfigToRenderConfig(config: GenerateConfig, actualPr
     hasIdentity: config.modelProvider !== 'Bedrock',
     memoryProviders: mapMemoryOptionToMemoryProviders(config.memory, config.projectName),
     identityProviders: mapModelProviderToIdentityProviders(config.modelProvider, projectNameForCredentials),
-    memoryProviders: mapMemoryOptionToMemoryProviders(config.memory, config.projectName),
   };
 }

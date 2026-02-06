@@ -139,7 +139,13 @@ function AppContent() {
   }
 
   if (route.name === 'add') {
-    return <AddFlow isInteractive={true} onExit={() => setRoute({ name: 'help' })} onDeploy={() => setRoute({ name: 'deploy' })} />;
+    return (
+      <AddFlow
+        isInteractive={true}
+        onExit={() => setRoute({ name: 'help' })}
+        onDeploy={() => setRoute({ name: 'deploy' })}
+      />
+    );
   }
 
   if (route.name === 'remove') {
