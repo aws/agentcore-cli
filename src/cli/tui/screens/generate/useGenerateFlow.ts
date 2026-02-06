@@ -1,4 +1,4 @@
-import { APP_DIR } from '../../../../lib';
+import { APP_DIR, ConfigIO } from '../../../../lib';
 import { getErrorMessage } from '../../../errors';
 import { type PythonSetupResult, setupPythonProject } from '../../../operations';
 import { mapGenerateConfigToRenderConfig, writeAgentToProject } from '../../../operations/agent/generate';
@@ -64,7 +64,12 @@ export function useGenerateFlow(): GenerateFlowState {
       // Step 0: Generate project files and update project config
       updateStep(0, { status: 'running' });
       try {
-        const renderConfig = mapGenerateConfigToRenderConfig(config);
+        // Read project spec to get the actual project name for credential naming
+        const configIO = new ConfigIO({ baseDir: project.configRoot });
+        const projectSpec = await configIO.readProjectSpec();
+
+        // Pass actual project name for credential naming in templates
+        const renderConfig = mapGenerateConfigToRenderConfig(config, projectSpec.name);
         const renderer = createRenderer(renderConfig);
         await renderer.render({ outputDir: project.projectRoot });
         await writeAgentToProject(config);

@@ -1,14 +1,73 @@
 import { ProjectNameSchema } from '../../../../schema';
-import { LogLink, type NextStep, NextSteps, Screen, SelectList, StepProgress, TextInput } from '../../components';
+import {
+  LogLink,
+  type NextStep,
+  NextSteps,
+  Screen,
+  SelectList,
+  type Step,
+  StepProgress,
+  TextInput,
+} from '../../components';
 import { HELP_TEXT } from '../../constants';
+import { setExitMessage } from '../../exit-message';
 import { useListNavigation } from '../../hooks';
 import { STATUS_COLORS } from '../../theme';
 import { AddAgentScreen } from '../agent/AddAgentScreen';
 import type { AddAgentConfig } from '../agent/types';
 import { FRAMEWORK_OPTIONS } from '../agent/types';
 import { useCreateFlow } from './useCreateFlow';
-import { Box, Text } from 'ink';
+import { Box, Text, useApp } from 'ink';
 import { join } from 'path';
+import { useCallback, useEffect } from 'react';
+
+/** Build a text representation of the completion screen for terminal output */
+function buildExitMessage(
+  projectName: string,
+  steps: Step[],
+  agentConfig: AddAgentConfig | null
+): string {
+  const lines: string[] = [];
+
+  // Title
+  lines.push('\x1b[1mAgentCore Create\x1b[0m');
+  lines.push('');
+
+  // Project name
+  lines.push(`Project: \x1b[32m${projectName}\x1b[0m`);
+  lines.push('');
+
+  // Steps
+  for (const step of steps) {
+    const statusLabel = step.status === 'success' ? '\x1b[32m[done]\x1b[0m' : `[${step.status}]`;
+    lines.push(`${statusLabel}  ${step.label}`);
+  }
+  lines.push('');
+
+  // Created summary
+  lines.push('\x1b[2mCreated:\x1b[0m');
+  lines.push(`  ${projectName}/`);
+  if (agentConfig?.agentType === 'create') {
+    const frameworkOption = FRAMEWORK_OPTIONS.find(o => o.id === agentConfig.framework);
+    const frameworkLabel = frameworkOption?.title ?? agentConfig.framework;
+    lines.push(`    app/${agentConfig.name}/  \x1b[2m${agentConfig.language} agent (${frameworkLabel})\x1b[0m`);
+  }
+  lines.push(`    agentcore/           \x1b[2mConfig and CDK project\x1b[0m`);
+  lines.push('');
+
+  // Success message
+  lines.push('\x1b[32mProject created successfully!\x1b[0m');
+  lines.push('');
+
+  // Instructions
+  lines.push('To continue, navigate to your new project:');
+  lines.push('');
+  lines.push(`  cd ${projectName}`);
+  lines.push('  agentcore');
+  lines.push('');
+
+  return lines.join('\n');
+}
 
 type NextCommand = 'dev' | 'deploy' | 'add';
 
@@ -75,9 +134,31 @@ function CreatedSummary({ projectName, agentConfig }: { projectName: string; age
 }
 
 export function CreateScreen({ cwd, isInteractive, onExit, onNavigate }: CreateScreenProps) {
+  const { exit } = useApp();
   const flow = useCreateFlow(cwd);
   // Project root is cwd/projectName (new project directory)
   const projectRoot = join(cwd, flow.projectName);
+
+  // Completion state for next steps
+  const allSuccess = !flow.hasError && flow.isComplete;
+
+  // Handle exit - if successful, exit app completely and print completion screen
+  const handleExit = useCallback(() => {
+    if (allSuccess && isInteractive) {
+      // Set message to be printed after TUI exits (full completion screen)
+      setExitMessage(buildExitMessage(flow.projectName, flow.steps, flow.addAgentConfig));
+      exit();
+    } else {
+      onExit();
+    }
+  }, [allSuccess, isInteractive, flow.projectName, flow.steps, flow.addAgentConfig, exit, onExit]);
+
+  // Auto-exit when project creation completes successfully
+  useEffect(() => {
+    if (allSuccess && isInteractive) {
+      handleExit();
+    }
+  }, [allSuccess, isInteractive, handleExit]);
 
   // Create prompt navigation
   const { selectedIndex: createPromptIndex } = useListNavigation({
@@ -85,17 +166,14 @@ export function CreateScreen({ cwd, isInteractive, onExit, onNavigate }: CreateS
     onSelect: item => {
       flow.setWantsCreate(item.id === 'yes');
     },
-    onExit,
+    onExit: handleExit,
     isActive: flow.phase === 'create-prompt',
   });
-
-  // Completion state for next steps
-  const allSuccess = !flow.hasError && flow.isComplete;
 
   // Checking phase: brief loading state
   if (flow.phase === 'checking') {
     return (
-      <Screen title="AgentCore Create" onExit={onExit}>
+      <Screen title="AgentCore Create" onExit={handleExit}>
         <Text dimColor>Checking for existing project...</Text>
       </Screen>
     );
@@ -104,7 +182,7 @@ export function CreateScreen({ cwd, isInteractive, onExit, onNavigate }: CreateS
   // Existing project error phase
   if (flow.phase === 'existing-project-error') {
     return (
-      <Screen title="AgentCore Create" onExit={onExit} helpText="Press Esc to exit">
+      <Screen title="AgentCore Create" onExit={handleExit} helpText="Press Esc to exit">
         <Box marginBottom={1} flexDirection="column">
           <Text color="red">A project already exists at this location.</Text>
           {flow.existingProjectPath && <Text dimColor>Found: {flow.existingProjectPath}</Text>}
@@ -121,19 +199,20 @@ export function CreateScreen({ cwd, isInteractive, onExit, onNavigate }: CreateS
   // Input phase: ask for project name
   if (flow.phase === 'input') {
     return (
-      <Screen title="AgentCore Create" onExit={onExit} helpText={HELP_TEXT.TEXT_INPUT}>
-        <Box marginBottom={1}>
+      <Screen title="AgentCore Create" onExit={handleExit} helpText={HELP_TEXT.TEXT_INPUT}>
+        <Box marginBottom={1} flexDirection="column">
           <Text>Create a new AgentCore project</Text>
+          <Text dimColor>This will create a directory with your project name.</Text>
         </Box>
         <TextInput
           prompt="Project name"
-          initialValue={flow.projectName}
+          initialValue=""
           schema={ProjectNameSchema}
           onSubmit={name => {
             flow.setProjectName(name);
             flow.confirmProjectName();
           }}
-          onCancel={onExit}
+          onCancel={handleExit}
         />
       </Screen>
     );
@@ -142,7 +221,7 @@ export function CreateScreen({ cwd, isInteractive, onExit, onNavigate }: CreateS
   // Create prompt phase
   if (flow.phase === 'create-prompt') {
     return (
-      <Screen title="AgentCore Create" onExit={onExit} helpText={HELP_TEXT.NAVIGATE_SELECT}>
+      <Screen title="AgentCore Create" onExit={handleExit} helpText={HELP_TEXT.NAVIGATE_SELECT}>
         <Box marginBottom={1}>
           <Text>
             Project: <Text color={STATUS_COLORS.success}>{flow.projectName}</Text>
@@ -181,28 +260,14 @@ export function CreateScreen({ cwd, isInteractive, onExit, onNavigate }: CreateS
   const helpText = flow.hasError || allSuccess ? HELP_TEXT.EXIT : undefined;
 
   return (
-    <Screen title="AgentCore Create" onExit={onExit} headerContent={headerContent} helpText={helpText}>
+    <Screen title="AgentCore Create" onExit={handleExit} headerContent={headerContent} helpText={helpText}>
       <StepProgress steps={flow.steps} />
       {allSuccess && flow.outputDir && (
         <Box marginTop={1} flexDirection="column">
           <CreatedSummary projectName={flow.projectName} agentConfig={flow.addAgentConfig} />
           {isInteractive ? (
-            <Box marginTop={1} flexDirection="column">
+            <Box marginTop={1}>
               <Text color="green">Project created successfully!</Text>
-              <Box marginTop={1} flexDirection="column">
-                <Text>To continue, exit and navigate to your new project:</Text>
-                <Box marginLeft={2} marginTop={1} flexDirection="column">
-                  <Text>
-                    <Text color="cyan">1.</Text> Press <Text color="cyan">Esc</Text> to exit
-                  </Text>
-                  <Text>
-                    <Text color="cyan">2.</Text> Run <Text color="cyan">cd {flow.projectName}</Text>
-                  </Text>
-                  <Text>
-                    <Text color="cyan">3.</Text> Run <Text color="cyan">agentcore</Text> to continue
-                  </Text>
-                </Box>
-              </Box>
             </Box>
           ) : (
             <NextSteps
@@ -213,7 +278,7 @@ export function CreateScreen({ cwd, isInteractive, onExit, onNavigate }: CreateS
                   onNavigate({ command: step.command as NextCommand, workingDir: projectRoot });
                 }
               }}
-              onBack={onExit}
+              onBack={handleExit}
               isActive={allSuccess}
             />
           )}

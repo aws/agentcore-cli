@@ -7,6 +7,13 @@ export interface MemoryProviderRenderConfig {
   name: string;
   envVarName: string;
 }
+/**
+ * Identity provider info for template rendering.
+ */
+export interface IdentityProviderRenderConfig {
+  name: string;
+  envVarName: string;
+}
 
 /**
  * Configuration needed by template renderers.
@@ -20,4 +27,6 @@ export interface AgentRenderConfig {
   hasMemory: boolean;
   hasIdentity: boolean;
   memoryProviders: MemoryProviderRenderConfig[];
+  /** Identity providers for template rendering (maps to credentials in schema) */
+  identityProviders: IdentityProviderRenderConfig[];
 }

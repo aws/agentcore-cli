@@ -132,12 +132,14 @@ async function handleCreatePath(
 ): Promise<AddAgentCreateResult | AddAgentError> {
   // configBaseDir is the agentcore/ directory, project root is its parent
   const projectRoot = dirname(configBaseDir);
+  const configIO = new ConfigIO({ baseDir: configBaseDir });
+  const project = await configIO.readProjectSpec();
 
   const generateConfig = mapAddAgentConfigToGenerateConfig(config);
   const agentPath = join(projectRoot, config.name);
 
-  // Generate agent files
-  const renderConfig = mapGenerateConfigToRenderConfig(generateConfig);
+  // Generate agent files - pass actual project name for credential naming
+  const renderConfig = mapGenerateConfigToRenderConfig(generateConfig, project.name);
   const renderer = createRenderer(renderConfig);
   await renderer.render({ outputDir: projectRoot });
 
@@ -152,7 +154,9 @@ async function handleCreatePath(
 
   // Write API key to agentcore/.env for non-Bedrock providers
   if (config.apiKey && config.modelProvider !== 'Bedrock') {
-    const envVarName = computeDefaultCredentialEnvVarName(config.modelProvider);
+    // Use project-scoped credential name: {projectName}{modelProvider}
+    const credentialName = `${project.name}${config.modelProvider}`;
+    const envVarName = computeDefaultCredentialEnvVarName(credentialName);
     await setEnvVar(envVarName, config.apiKey, configBaseDir);
   }
 
@@ -188,7 +192,9 @@ async function handleByoPath(
 
   // Write API key to agentcore/.env for non-Bedrock providers
   if (config.apiKey && config.modelProvider !== 'Bedrock') {
-    const envVarName = computeDefaultCredentialEnvVarName(config.modelProvider);
+    // Use project-scoped credential name: {projectName}{modelProvider}
+    const credentialName = `${project.name}${config.modelProvider}`;
+    const envVarName = computeDefaultCredentialEnvVarName(credentialName);
     await setEnvVar(envVarName, config.apiKey, configBaseDir);
   }
 

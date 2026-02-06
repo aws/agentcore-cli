@@ -193,27 +193,6 @@ agentcore add identity \
 | `--users <agents>` | Comma-separated users      |
 | `--json`           | JSON output                |
 
-### add mcp-tool
-
-Add an MCP tool.
-
-```bash
-agentcore add mcp-tool \
-  --name MyTool \
-  --language Python \
-  --exposure mcp-runtime \
-  --agents MyAgent
-```
-
-| Flag                   | Description              |
-| ---------------------- | ------------------------ |
-| `--name <name>`        | Tool name                |
-| `--description <desc>` | Description              |
-| `--language <lang>`    | `Python` or `TypeScript` |
-| `--exposure <mode>`    | `mcp-runtime`            |
-| `--agents <names>`     | Agents to attach         |
-| `--json`               | JSON output              |
-
 ### add target
 
 Add a deployment target.
@@ -247,9 +226,6 @@ agentcore add bind memory --agent MyAgent --memory SharedMemory --access read
 
 # Identity
 agentcore add bind identity --agent MyAgent --identity OpenAI
-
-# MCP runtime
-agentcore add bind mcp-runtime --agent MyAgent --runtime MyTool
 ```
 
 ### remove
@@ -259,7 +235,6 @@ Remove resources from project.
 ```bash
 agentcore remove agent --name MyAgent --force
 agentcore remove memory --name SharedMemory
-agentcore remove mcp-tool --name MyTool
 agentcore remove identity --name OpenAI
 agentcore remove target --name dev
 

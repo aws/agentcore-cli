@@ -64,14 +64,11 @@ const validMcpToolOptionsBehindGateway: AddMcpToolOptions = {
 const validMemoryOptions: AddMemoryOptions = {
   name: 'test-memory',
   strategies: 'SEMANTIC,SUMMARIZATION',
-  owner: 'TestAgent',
 };
 
 const validIdentityOptions: AddIdentityOptions = {
   name: 'test-identity',
-  type: 'ApiKeyCredentialProvider',
   apiKey: 'test-key',
-  owner: 'TestAgent',
 };
 
 describe('validate', () => {
@@ -296,7 +293,6 @@ describe('validate', () => {
       const requiredFields: { field: keyof AddMemoryOptions; error: string }[] = [
         { field: 'name', error: '--name is required' },
         { field: 'strategies', error: '--strategies is required' },
-        { field: 'owner', error: '--owner is required' },
       ];
 
       for (const { field, error } of requiredFields) {
@@ -334,9 +330,7 @@ describe('validate', () => {
     it('returns error for missing required fields', () => {
       const requiredFields: { field: keyof AddIdentityOptions; error: string }[] = [
         { field: 'name', error: '--name is required' },
-        { field: 'type', error: '--type is required' },
         { field: 'apiKey', error: '--api-key is required' },
-        { field: 'owner', error: '--owner is required' },
       ];
 
       for (const { field, error } of requiredFields) {
@@ -345,13 +339,6 @@ describe('validate', () => {
         expect(result.valid, `Should fail for missing ${String(field)}`).toBe(false);
         expect(result.error).toBe(error);
       }
-    });
-
-    // AC24: Only ApiKeyCredentialProvider supported
-    it('returns error for unsupported type', () => {
-      const result = validateAddIdentityOptions({ ...validIdentityOptions, type: 'OtherType' });
-      expect(result.valid).toBe(false);
-      expect(result.error?.includes('Only ApiKeyCredentialProvider is supported')).toBeTruthy();
     });
 
     // AC25: Valid options pass

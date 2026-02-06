@@ -36,5 +36,13 @@ export default defineConfig({
     hookTimeout: 120000,
     globals: false,
     reporters: ['verbose'],
+    coverage: {
+      provider: 'v8',
+      reporter: ['text', 'text-summary', 'json', 'json-summary', 'html', 'lcov'],
+      reportsDirectory: './coverage',
+      reportOnFailure: true,
+      include: ['src/**/*.ts'],
+      exclude: ['src/**/*.test.ts', 'src/**/__tests__/**', 'src/assets/**', 'src/**/*.d.ts'],
+    },
   },
 });

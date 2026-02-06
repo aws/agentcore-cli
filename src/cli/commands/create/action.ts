@@ -12,6 +12,7 @@ import { getErrorMessage } from '../../errors';
 import { checkCreateDependencies } from '../../external-requirements';
 import { initGitRepo, setupPythonProject, writeEnvFile, writeGitignore } from '../../operations';
 import { mapGenerateConfigToRenderConfig, writeAgentToProject } from '../../operations/agent/generate';
+import { computeDefaultCredentialEnvVarName } from '../../operations/identity/create-identity';
 import { CDKRenderer, createRenderer } from '../../templates';
 import type { CreateResult } from './types';
 import { mkdir } from 'fs/promises';
@@ -143,8 +144,10 @@ export async function createProjectWithAgent(options: CreateWithAgentOptions): P
 
   try {
     // Build GenerateConfig for agent creation
+    // Note: In this context, agent name = project name since we're creating a project with a single agent
+    const agentName = name;
     const generateConfig = {
-      projectName: name,
+      projectName: agentName,
       sdk: framework,
       modelProvider,
       apiKey,
@@ -152,15 +155,17 @@ export async function createProjectWithAgent(options: CreateWithAgentOptions): P
       language,
     };
 
-    // Generate agent code
-    const renderConfig = mapGenerateConfigToRenderConfig(generateConfig);
+    // Generate agent code - pass actual project name for credential naming
+    const renderConfig = mapGenerateConfigToRenderConfig(generateConfig, name);
     const renderer = createRenderer(renderConfig);
     await renderer.render({ outputDir: projectRoot });
     await writeAgentToProject(generateConfig, { configBaseDir });
 
     // Store API key for non-Bedrock providers
     if (apiKey && modelProvider !== 'Bedrock') {
-      const envVarName = `AGENTCORE_IDENTITY_${modelProvider.toUpperCase()}`;
+      // Use project-scoped credential name: {projectName}{modelProvider}
+      const credentialName = `${name}${modelProvider}`;
+      const envVarName = computeDefaultCredentialEnvVarName(credentialName);
       await setEnvVar(envVarName, apiKey, configBaseDir);
     }
 

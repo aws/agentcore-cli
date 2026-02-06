@@ -295,7 +295,8 @@ export function useCreateFlow(cwd: string): CreateFlowState {
                 };
 
                 logger.logSubStep(`Framework: ${generateConfig.sdk}`);
-                const renderConfig = mapGenerateConfigToRenderConfig(generateConfig);
+                // Pass actual project name for credential naming in templates
+                const renderConfig = mapGenerateConfigToRenderConfig(generateConfig, projectName);
                 const renderer = createRenderer(renderConfig);
                 logger.logSubStep('Rendering agent template...');
                 await renderer.render({ outputDir: projectRoot });
@@ -317,7 +318,9 @@ export function useCreateFlow(cwd: string): CreateFlowState {
               // Write API key to agentcore/.env for non-Bedrock providers
               if (addAgentConfig.apiKey && addAgentConfig.modelProvider !== 'Bedrock') {
                 logger.logSubStep('Writing API key to .env...');
-                const envVarName = computeDefaultCredentialEnvVarName(addAgentConfig.modelProvider);
+                // Use project-scoped credential name: {projectName}{modelProvider}
+                const credentialName = `${projectName}${addAgentConfig.modelProvider}`;
+                const envVarName = computeDefaultCredentialEnvVarName(credentialName);
                 await setEnvVar(envVarName, addAgentConfig.apiKey, configBaseDir);
               }
             });

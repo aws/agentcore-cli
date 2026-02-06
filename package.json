@@ -36,7 +36,7 @@
     "test:all": "vitest run",
     "test:watch": "vitest",
     "test:integ": "vitest run --config vitest.integ.config.ts",
-    "test:unit": "vitest run --config vitest.unit.config.ts"
+    "test:unit": "vitest run --config vitest.unit.config.ts --coverage"
   },
   "dependencies": {
     "@aws-cdk/toolkit-lib": "^1.13.0",
@@ -89,6 +89,7 @@
     "tsx": "^4.21.0",
     "typescript": "^5",
     "typescript-eslint": "^8.50.1",
+    "@vitest/coverage-v8": "^4.0.18",
     "vitest": "^4.0.18"
   },
   "engines": {

@@ -241,7 +241,7 @@ describe('add agent command', () => {
       const projectSpec = JSON.parse(await readFile(join(projectDir, 'agentcore/agentcore.json'), 'utf-8'));
       const agent = projectSpec.agents.find((a: { name: string }) => a.name === agentName);
       expect(agent, 'Agent should be in agentcore.json').toBeTruthy();
-      expect(agent.runtime.codeLocation.includes(codeDir), `codeLocation should reference ${codeDir}`).toBeTruthy();
+      expect(agent.codeLocation.includes(codeDir), `codeLocation should reference ${codeDir}`).toBeTruthy();
     });
 
     it('requires code-location for BYO path', async () => {

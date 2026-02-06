@@ -90,10 +90,10 @@ agentcore invoke --stream
 
 ### Resource Management
 
-| Command  | Description                             |
-| -------- | --------------------------------------- |
-| `add`    | Add agents, memory, identity, MCP tools |
-| `remove` | Remove resources from project           |
+| Command  | Description                           |
+| -------- | ------------------------------------- |
+| `add`    | Add agents, memory, identity, targets |
+| `remove` | Remove resources from project         |
 
 ### Development
 
@@ -153,7 +153,6 @@ agentcore invoke --new-session       # Start fresh
 
 - [CLI Commands Reference](docs/commands.md) - Full command reference for scripting and CI/CD
 - [Configuration](docs/configuration.md) - Schema reference for config files
-- [MCP Tools](docs/mcp-tools.md) - MCP runtime tools
 - [Memory](docs/memory.md) - Memory strategies and sharing
 - [Local Development](docs/local-development.md) - Dev server and debugging
 

@@ -173,7 +173,7 @@ export function InvokeScreen({
               content={assistantMessage.content}
               color="green"
               isStreaming={phase === 'invoking'}
-              isActive={mode === 'chat'}
+              isActive={mode === 'chat' || mode === 'input'}
             />
           </Box>
         )}

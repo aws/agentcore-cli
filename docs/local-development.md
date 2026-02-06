@@ -106,8 +106,6 @@ immediately.
 | ---------- | ------------- | ------------------------ |
 | API Keys   | `.env.local`  | AWS Secrets Manager      |
 | Memory     | Not available | AgentCore Memory service |
-| MCP Tools  | Local server  | AgentCore Runtime/Lambda |
 | Networking | localhost     | VPC/Public               |
 
-Memory and MCP tools require deployment to test fully. For local testing, you can mock these dependencies in your agent
-code.
+Memory requires deployment to test fully. For local testing, you can mock these dependencies in your agent code.

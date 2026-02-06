@@ -5,7 +5,8 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
-describe('remove mcp-tool command', () => {
+// MCP Tool feature is disabled (coming soon) - skip all tests
+describe.skip('remove mcp-tool command', () => {
   let testDir: string;
   let projectDir: string;
   const agentName = 'TestAgent';

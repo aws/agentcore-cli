@@ -136,7 +136,8 @@ async function _handleAddGatewayCLI(options: AddGatewayOptions): Promise<void> {
   process.exit(result.success ? 0 : 1);
 }
 
-async function handleAddMcpToolCLI(options: AddMcpToolOptions): Promise<void> {
+// MCP Tool disabled - prefix with underscore until feature is re-enabled
+async function _handleAddMcpToolCLI(options: AddMcpToolOptions): Promise<void> {
   const validation = validateAddMcpToolOptions(options);
   if (!validation.valid) {
     if (options.json) {
@@ -318,7 +319,8 @@ async function handleBindIdentityCLI(options: BindIdentityOptions): Promise<void
   process.exit(result.success ? 0 : 1);
 }
 
-async function handleBindGatewayCLI(options: BindGatewayOptions): Promise<void> {
+// Gateway disabled - prefix with underscore until feature is re-enabled
+async function _handleBindGatewayCLI(options: BindGatewayOptions): Promise<void> {
   if (!options.agent || !options.gateway) {
     const error = 'Required: --agent, --gateway';
     if (options.json) {
@@ -441,7 +443,7 @@ export function registerAdd(program: Command) {
 
   // Subcommand: add gateway (disabled - coming soon)
   addCmd
-    .command('gateway')
+    .command('gateway', { hidden: true })
     .description('Add an MCP gateway to the project')
     .option('--name <name>', 'Gateway name')
     .option('--description <desc>', 'Gateway description')
@@ -452,13 +454,13 @@ export function registerAdd(program: Command) {
     .option('--agents <names>', 'Comma-separated agent names to attach gateway to')
     .option('--json', 'Output as JSON')
     .action(() => {
-      console.error("AgentCore Gateway integration is coming soon. Use 'add mcp-tool' with Direct exposure instead.");
+      console.error('AgentCore Gateway integration is coming soon.');
       process.exit(1);
     });
 
-  // Subcommand: add mcp-tool
+  // Subcommand: add mcp-tool (disabled - coming soon)
   addCmd
-    .command('mcp-tool')
+    .command('mcp-tool', { hidden: true })
     .description('Add an MCP tool to the project')
     .option('--name <name>', 'Tool name')
     .option('--description <desc>', 'Tool description')
@@ -468,9 +470,9 @@ export function registerAdd(program: Command) {
     .option('--gateway <name>', 'Gateway name (for behind-gateway)')
     .option('--host <host>', 'Compute host: Lambda or AgentCoreRuntime (for behind-gateway)')
     .option('--json', 'Output as JSON')
-    .action(async options => {
-      requireProject();
-      await handleAddMcpToolCLI(options as AddMcpToolOptions);
+    .action(() => {
+      console.error('MCP Tool integration is coming soon.');
+      process.exit(1);
     });
 
   // Subcommand: add memory (v2: top-level resource)
@@ -502,22 +504,64 @@ export function registerAdd(program: Command) {
     .option('--json', 'Output as JSON')
     .action(async options => {
       requireProject();
-      await handleBindAgentCLI(options as BindAgentOptions);
+      await handleAddIdentityCLI(options as AddIdentityOptions);
     });
 
-  // Subcommand: add bind (only MCP runtime binding in v2)
-  const bindCmd = addCmd.command('bind').description('Bind MCP resources to agents');
+  // Subcommand: add bind (explicit bind commands)
+  const bindCmd = addCmd.command('bind').description('Bind existing resources to agents');
 
-  // bind mcp-runtime
+  // bind memory
   bindCmd
-    .command('mcp-runtime')
+    .command('memory')
+    .description('Bind existing memory to an agent')
+    .requiredOption('--agent <name>', 'Target agent')
+    .requiredOption('--memory <name>', 'Memory name to bind')
+    .option('--access <level>', 'Access level: read or readwrite', 'read')
+    .option('--env-var <name>', 'Environment variable name')
+    .option('--json', 'Output as JSON')
+    .action(async options => {
+      requireProject();
+      await handleBindMemoryCLI(options as BindMemoryOptions);
+    });
+
+  // bind identity
+  bindCmd
+    .command('identity')
+    .description('Bind existing identity to an agent')
+    .requiredOption('--agent <name>', 'Target agent')
+    .requiredOption('--identity <name>', 'Identity name to bind')
+    .option('--env-var <name>', 'Environment variable name')
+    .option('--json', 'Output as JSON')
+    .action(async options => {
+      requireProject();
+      await handleBindIdentityCLI(options as BindIdentityOptions);
+    });
+
+  // bind gateway (disabled - coming soon)
+  bindCmd
+    .command('gateway', { hidden: true })
+    .description('Bind existing gateway to an agent')
+    .requiredOption('--agent <name>', 'Target agent')
+    .requiredOption('--gateway <name>', 'Gateway name to bind')
+    .option('--name <name>', 'MCP provider name')
+    .option('--description <desc>', 'Description')
+    .option('--env-var <name>', 'Environment variable name')
+    .option('--json', 'Output as JSON')
+    .action(() => {
+      console.error('AgentCore Gateway integration is coming soon.');
+      process.exit(1);
+    });
+
+  // bind mcp-runtime (disabled - coming soon)
+  bindCmd
+    .command('mcp-runtime', { hidden: true })
     .description('Bind existing MCP runtime to an agent')
     .requiredOption('--agent <name>', 'Target agent')
     .requiredOption('--runtime <name>', 'MCP runtime name to bind')
     .option('--env-var <name>', 'Environment variable name')
     .option('--json', 'Output as JSON')
-    .action(async options => {
-      requireProject();
-      await handleBindMcpRuntimeCLI(options as BindMcpRuntimeOptions);
+    .action(() => {
+      console.error('MCP Tool integration is coming soon.');
+      process.exit(1);
     });
 }

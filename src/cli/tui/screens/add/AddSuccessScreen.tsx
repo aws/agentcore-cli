@@ -3,7 +3,10 @@ import { Box, Text } from 'ink';
 import type { ReactNode } from 'react';
 import React from 'react';
 
-const ADD_SUCCESS_STEPS: NextStep[] = [{ command: 'add', label: 'Add another resource' }];
+const ADD_SUCCESS_STEPS: NextStep[] = [
+  { command: 'deploy', label: 'Deploy to AWS' },
+  { command: 'add', label: 'Add another resource' },
+];
 
 interface AddSuccessScreenProps {
   /** Whether running in interactive TUI mode */
@@ -20,6 +23,8 @@ interface AddSuccessScreenProps {
   loadingMessage?: string;
   /** Called when "Add another resource" is selected */
   onAddAnother: () => void;
+  /** Called when "Deploy" is selected */
+  onDeploy?: () => void;
   /** Called when "return" is selected to go back to main menu, or in non-interactive exit */
   onExit: () => void;
 }
@@ -32,11 +37,14 @@ export function AddSuccessScreen({
   loading,
   loadingMessage,
   onAddAnother,
+  onDeploy,
   onExit,
 }: AddSuccessScreenProps) {
   const handleSelect = (step: NextStep) => {
     if (step.command === 'add') {
       onAddAnother();
+    } else if (step.command === 'deploy') {
+      onDeploy?.();
     }
   };
 

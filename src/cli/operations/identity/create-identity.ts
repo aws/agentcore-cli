@@ -35,23 +35,30 @@ export async function getAllCredentialNames(): Promise<string[]> {
 /**
  * Create a credential resource and add it to the project.
  * Also writes the API key to the .env file.
+ *
+ * If the credential already exists (e.g., created during agent generation),
+ * just updates the API key in the .env file.
  */
 export async function createCredential(config: CreateCredentialConfig): Promise<Credential> {
   const configIO = new ConfigIO();
   const project = await configIO.readProjectSpec();
 
-  // Check for duplicate
-  if (project.credentials.some(c => c.name === config.name)) {
-    throw new Error(`Credential "${config.name}" already exists.`);
+  // Check if credential already exists
+  const existingCredential = project.credentials.find(c => c.name === config.name);
+
+  let credential: Credential;
+  if (existingCredential) {
+    // updates credentital
+    credential = existingCredential;
+  } else {
+    // Create new credential entry
+    credential = {
+      type: 'ApiKeyCredentialProvider',
+      name: config.name,
+    };
+    project.credentials.push(credential);
+    await configIO.writeProjectSpec(project);
   }
-
-  const credential: Credential = {
-    type: 'ApiKeyCredentialProvider',
-    name: config.name,
-  };
-
-  project.credentials.push(credential);
-  await configIO.writeProjectSpec(project);
 
   // Write API key to .env file
   const envVarName = computeDefaultCredentialEnvVarName(config.name);

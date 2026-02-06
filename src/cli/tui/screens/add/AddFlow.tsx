@@ -88,6 +88,8 @@ interface AddFlowProps {
   /** Whether running in interactive TUI mode (from App.tsx) vs CLI mode */
   isInteractive: boolean;
   onExit: () => void;
+  /** Called when user selects deploy from success screen */
+  onDeploy?: () => void;
 }
 
 export function AddFlow(props: AddFlowProps) {
@@ -206,6 +208,7 @@ export function AddFlow(props: AddFlowProps) {
         onComplete={handleAddAgent}
         onExit={props.onExit}
         onBack={() => setFlow({ name: 'select' })}
+        onDeploy={props.onDeploy}
       />
     );
   }
@@ -222,6 +225,7 @@ export function AddFlow(props: AddFlowProps) {
         onAddAnother={() => {
           void refreshAgents().then(() => setFlow({ name: 'select' }));
         }}
+        onDeploy={props.onDeploy}
         onExit={props.onExit}
       />
     );
@@ -239,6 +243,7 @@ export function AddFlow(props: AddFlowProps) {
         onAddAnother={() => {
           void refreshAgents().then(() => setFlow({ name: 'select' }));
         }}
+        onDeploy={props.onDeploy}
         onExit={props.onExit}
       />
     );
@@ -252,6 +257,7 @@ export function AddFlow(props: AddFlowProps) {
         availableAgents={agents}
         onExit={props.onExit}
         onBack={() => setFlow({ name: 'select' })}
+        onDeploy={props.onDeploy}
       />
     );
   }
@@ -264,6 +270,7 @@ export function AddFlow(props: AddFlowProps) {
         existingAgents={agents}
         onExit={props.onExit}
         onBack={() => setFlow({ name: 'select' })}
+        onDeploy={props.onDeploy}
       />
     );
   }
@@ -275,6 +282,7 @@ export function AddFlow(props: AddFlowProps) {
         isInteractive={props.isInteractive}
         onBack={() => setFlow({ name: 'select' })}
         onExit={props.onExit}
+        onDeploy={props.onDeploy}
       />
     );
   }
@@ -291,6 +299,7 @@ export function AddFlow(props: AddFlowProps) {
         availableAgents={agents}
         onExit={props.onExit}
         onBack={() => setFlow({ name: 'select' })}
+        onDeploy={props.onDeploy}
       />
     );
   }
@@ -316,6 +325,7 @@ export function AddFlow(props: AddFlowProps) {
         onAddAnother={() => {
           void refreshTargets().then(() => setFlow({ name: 'select' }));
         }}
+        onDeploy={props.onDeploy}
         onExit={props.onExit}
       />
     );

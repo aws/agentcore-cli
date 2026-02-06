@@ -71,7 +71,6 @@ export function AddIdentityScreen({ onComplete, onExit, existingIdentityNames }:
             onSubmit={wizard.setName}
             onCancel={() => wizard.goBack()}
             schema={CredentialNameSchema}
-            customValidation={value => !existingIdentityNames.includes(value) || 'Credential name already exists'}
           />
         )}
 

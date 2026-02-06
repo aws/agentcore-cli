@@ -35,3 +35,33 @@ jobs:
       - run: npm ci
       - run: npm run build --if-present
       - run: npm run test:unit
+      - name: Upload coverage artifact
+        if: matrix.node-version == '20.x'
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-report
+          path: coverage/
+
+  coverage:
+    needs: build
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request'
+    permissions:
+      contents: read
+      pull-requests: write
+
+    steps:
+      - uses: actions/checkout@v6
+      - name: Download coverage artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: coverage-report
+          path: coverage/
+      - name: Coverage Report
+        uses: davelosert/vitest-coverage-report-action@v2
+        with:
+          json-summary-path: coverage/coverage-summary.json
+          json-final-path: coverage/coverage-final.json
+          vite-config-path: vitest.unit.config.ts
+          file-coverage-mode: none
+          coverage-thresholds: '{ "lines": 50, "branches": 50, "functions": 50, "statements": 50 }'

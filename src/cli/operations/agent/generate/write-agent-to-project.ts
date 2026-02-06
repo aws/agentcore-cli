@@ -3,7 +3,7 @@ import type { AgentCoreProjectSpec } from '../../../../schema';
 import { SCHEMA_VERSION } from '../../../constants';
 import { AgentAlreadyExistsError } from '../../../errors';
 import type { GenerateConfig } from '../../../tui/screens/generate/types';
-import { mapGenerateConfigToResources } from './schema-mapper';
+import { mapGenerateConfigToAgent, mapGenerateInputToMemories, mapModelProviderToCredentials } from './schema-mapper';
 
 export interface WriteAgentOptions {
   configBaseDir?: string;
@@ -20,15 +20,23 @@ export interface WriteAgentOptions {
 export async function writeAgentToProject(config: GenerateConfig, options?: WriteAgentOptions): Promise<void> {
   const configBaseDir = options?.configBaseDir ?? requireConfigRoot();
   const configIO = new ConfigIO({ baseDir: configBaseDir });
-  const { agent, memories, credentials } = mapGenerateConfigToResources(config);
+
+  // Map agent config to resources
+  // Note: config.projectName is actually the agent name (GenerateConfig naming is confusing)
+  const agentName = config.projectName;
+  const agent = mapGenerateConfigToAgent(config);
+  const memories = mapGenerateInputToMemories(config.memory, agentName);
 
   if (configIO.configExists('project')) {
     const project = await configIO.readProjectSpec();
 
     // Check for duplicate agent name
-    if (project.agents.some(a => a.name === config.projectName)) {
-      throw new AgentAlreadyExistsError(config.projectName);
+    if (project.agents.some(a => a.name === agentName)) {
+      throw new AgentAlreadyExistsError(agentName);
     }
+
+    // Use actual project name for credential naming (not agent name)
+    const credentials = mapModelProviderToCredentials(config.modelProvider, project.name);
 
     // Add resources to project
     project.agents.push(agent);
@@ -37,9 +45,10 @@ export async function writeAgentToProject(config: GenerateConfig, options?: Writ
 
     await configIO.writeProjectSpec(project);
   } else {
-    // Create new project
+    // Create new project - use agent name as project name (fallback for standalone generate)
+    const credentials = mapModelProviderToCredentials(config.modelProvider, agentName);
     const project: AgentCoreProjectSpec = {
-      name: config.projectName,
+      name: agentName,
       version: SCHEMA_VERSION,
       agents: [agent],
       memories,
