@@ -354,7 +354,6 @@ async function _handleBindGatewayCLI(options: BindGatewayOptions): Promise<void>
   process.exit(result.success ? 0 : 1);
 }
 
-
 async function handleBindAgentCLI(options: BindAgentOptions): Promise<void> {
   if (!options.source || !options.target) {
     const error = 'Required: --source, --target';
@@ -505,7 +504,7 @@ export function registerAdd(program: Command) {
     .option('--json', 'Output as JSON')
     .action(async options => {
       requireProject();
-      await handleBindAgentCLI(options as BindAgentOptions);
+      await handleAddIdentityCLI(options as AddIdentityOptions);
     });
 
   // Subcommand: add bind (explicit bind commands)

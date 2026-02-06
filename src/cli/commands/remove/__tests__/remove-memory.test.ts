@@ -8,8 +8,6 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 describe('remove memory command', () => {
   let testDir: string;
   let projectDir: string;
-  const ownerAgent = 'OwnerAgent';
-  const userAgent = 'UserAgent';
   const memoryName = 'TestMemory';
 
   beforeAll(async () => {
@@ -24,57 +22,8 @@ describe('remove memory command', () => {
     }
     projectDir = join(testDir, projectName);
 
-    // Add owner agent
-    result = await runCLI(
-      [
-        'add',
-        'agent',
-        '--name',
-        ownerAgent,
-        '--language',
-        'Python',
-        '--framework',
-        'Strands',
-        '--model-provider',
-        'Bedrock',
-        '--memory',
-        'none',
-        '--json',
-      ],
-      projectDir
-    );
-    if (result.exitCode !== 0) {
-      throw new Error(`Failed to create owner agent: ${result.stdout} ${result.stderr}`);
-    }
-
-    // Add user agent
-    result = await runCLI(
-      [
-        'add',
-        'agent',
-        '--name',
-        userAgent,
-        '--language',
-        'Python',
-        '--framework',
-        'Strands',
-        '--model-provider',
-        'Bedrock',
-        '--memory',
-        'none',
-        '--json',
-      ],
-      projectDir
-    );
-    if (result.exitCode !== 0) {
-      throw new Error(`Failed to create user agent: ${result.stdout} ${result.stderr}`);
-    }
-
-    // Add memory
-    result = await runCLI(
-      ['add', 'memory', '--name', memoryName, '--strategies', 'SEMANTIC', '--owner', ownerAgent, '--json'],
-      projectDir
-    );
+    // Add memory as top-level resource
+    result = await runCLI(['add', 'memory', '--name', memoryName, '--strategies', 'SEMANTIC', '--json'], projectDir);
     if (result.exitCode !== 0) {
       throw new Error(`Failed to create memory: ${result.stdout} ${result.stderr}`);
     }
@@ -103,11 +52,11 @@ describe('remove memory command', () => {
   });
 
   describe('remove operations', () => {
-    it('removes memory without users', async () => {
+    it('removes memory from project', async () => {
       // Add a temp memory to remove
       const tempMem = `tempMem${Date.now()}`;
       const addResult = await runCLI(
-        ['add', 'memory', '--name', tempMem, '--strategies', 'SEMANTIC', '--owner', ownerAgent, '--json'],
+        ['add', 'memory', '--name', tempMem, '--strategies', 'SEMANTIC', '--json'],
         projectDir
       );
       expect(addResult.exitCode, `Add failed: ${addResult.stdout} ${addResult.stderr}`).toBe(0);
@@ -117,33 +66,21 @@ describe('remove memory command', () => {
       const json = JSON.parse(result.stdout);
       expect(json.success).toBe(true);
 
-      // Verify memory is removed from owner
+      // Verify memory is removed from project
       const projectSpec = JSON.parse(await readFile(join(projectDir, 'agentcore/agentcore.json'), 'utf-8'));
-      const agent = projectSpec.agents.find((a: { name: string }) => a.name === ownerAgent);
-      const memory = agent?.memoryProviders?.find((m: { name: string }) => m.name === tempMem);
-      expect(!memory, 'Memory should be removed from owner').toBeTruthy();
+      const memory = projectSpec.memories.find((m: { name: string }) => m.name === tempMem);
+      expect(!memory, 'Memory should be removed from project').toBeTruthy();
     });
 
-    it('removes memory with users using cascade policy (default)', async () => {
-      // Bind memory to user agent
-      const bindResult = await runCLI(
-        ['add', 'bind', 'memory', '--agent', userAgent, '--memory', memoryName, '--json'],
-        projectDir
-      );
-      expect(bindResult.exitCode, `bind failed: ${bindResult.stdout}`).toBe(0);
-
-      // Remove with cascade policy (default) - should succeed and clean up references
+    it('removes the setup memory', async () => {
       const result = await runCLI(['remove', 'memory', '--name', memoryName, '--json'], projectDir);
       expect(result.exitCode, `stdout: ${result.stdout}`).toBe(0);
       const json = JSON.parse(result.stdout);
       expect(json.success).toBe(true);
 
-      // Verify memory is removed from both owner and user
+      // Verify memory is removed
       const projectSpec = JSON.parse(await readFile(join(projectDir, 'agentcore/agentcore.json'), 'utf-8'));
-      const owner = projectSpec.agents.find((a: { name: string }) => a.name === ownerAgent);
-      const user = projectSpec.agents.find((a: { name: string }) => a.name === userAgent);
-      expect(owner?.memoryProviders?.find((m: { name: string }) => m.name === memoryName)).toBeUndefined();
-      expect(user?.memoryProviders?.find((m: { name: string }) => m.name === memoryName)).toBeUndefined();
+      expect(projectSpec.memories.find((m: { name: string }) => m.name === memoryName)).toBeUndefined();
     });
   });
 });
