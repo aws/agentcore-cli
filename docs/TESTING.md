@@ -3,8 +3,10 @@
 ## Quick Start
 
 ```bash
-npm test           # Run all tests
+npm test           # Run unit tests
 npm run test:watch # Run tests in watch mode
+npm run test:integ # Run integration tests
+npm run test:all   # Run all tests (unit + integ)
 ```
 
 ## Test Organization
@@ -93,13 +95,44 @@ const result = await runCLI(['create', '--name', 'test'], tempDir);
 expect(result.exitCode).toBe(0);
 ```
 
+## Snapshot Tests
+
+The `src/assets/` directory contains template files vended to users when they create projects. Snapshot tests ensure
+these templates don't change unexpectedly.
+
+### Running Snapshot Tests
+
+Snapshot tests run as part of unit tests:
+
+```bash
+npm test           # Runs all unit tests including snapshots
+npm run test:unit  # Same as above
+```
+
+### Updating Snapshots
+
+When you intentionally modify asset files (templates, configs, etc.), update snapshots:
+
+```bash
+npm run test:update-snapshots
+```
+
+Review the changes in `src/assets/__tests__/__snapshots__/` before committing.
+
+### What's Tested
+
+- File structure of `src/assets/`
+- Contents of all template files (CDK, Python frameworks, MCP, static assets)
+- Any file addition or removal
+
 ## Configuration
 
-Test configuration is in `vitest.config.ts`:
+Test configuration is in `vitest.config.ts` using Vitest projects:
 
-- Test timeout: 15 seconds
-- Hook timeout: 60 seconds
-- Test patterns: `src/**/*.test.ts`, `integ-tests/**/*.test.ts`
+- **unit** project: `src/**/*.test.ts` (includes snapshot tests)
+- **integ** project: `integ-tests/**/*.test.ts`
+- Test timeout: 120 seconds
+- Hook timeout: 120 seconds
 
 ## Integration Tests
 
