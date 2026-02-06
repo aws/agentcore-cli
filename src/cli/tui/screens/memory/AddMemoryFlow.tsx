@@ -3,6 +3,7 @@ import { useCreateMemory, useExistingMemoryNames } from '../../hooks/useCreateMe
 import { AddSuccessScreen } from '../add/AddSuccessScreen';
 import { AddMemoryScreen } from './AddMemoryScreen';
 import type { AddMemoryConfig } from './types';
+import { Text } from 'ink';
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 
 type FlowState =
@@ -64,6 +65,12 @@ export function AddMemoryFlow({ isInteractive = true, onExit, onBack }: AddMemor
         isInteractive={isInteractive}
         message={`Added memory: ${flow.memoryName}`}
         detail="Memory added to project in `agentcore/agentcore.json`."
+        summary={
+          <Text color="yellow">
+            Note: Once you deploy, the memory resource will be created in your account, but it is not automatically
+            connected to your agent. You must configure your agent code to use this memory.
+          </Text>
+        }
         onAddAnother={onBack}
         onExit={onExit}
       />
