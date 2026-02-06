@@ -98,6 +98,7 @@ function wrapText(text: string, maxWidth: number): string[] {
 
 export function DevScreen(props: DevScreenProps) {
   const [mode, setMode] = useState<Mode>('select-agent');
+  const [isExiting, setIsExiting] = useState(false);
   const [scrollOffset, setScrollOffset] = useState(0);
   // Track if user manually scrolled up (false = auto-scroll to bottom)
   const [userScrolled, setUserScrolled] = useState(false);
@@ -162,6 +163,16 @@ export function DevScreen(props: DevScreenProps) {
     port: props.port ?? 8080,
     agentName: selectedAgentName,
   });
+
+  // Handle exit with brief "stopping" message
+  const handleExit = useCallback(() => {
+    if (isExiting) return; // Prevent double-exit
+    setIsExiting(true);
+    stop();
+    setTimeout(() => {
+      props.onBack();
+    }, 1000);
+  }, [props, stop, isExiting]);
 
   // Calculate available height for conversation display
   const terminalHeight = stdout?.rows ?? 24;
@@ -232,7 +243,7 @@ export function DevScreen(props: DevScreenProps) {
       // Agent selection mode
       if (mode === 'select-agent') {
         if (key.escape || (key.ctrl && input === 'q')) {
-          props.onBack();
+          handleExit();
           return;
         }
         if (key.upArrow) {
@@ -268,8 +279,7 @@ export function DevScreen(props: DevScreenProps) {
             clearConversation();
             return;
           }
-          stop();
-          props.onBack();
+          handleExit();
           return;
         }
 
@@ -342,7 +352,7 @@ export function DevScreen(props: DevScreenProps) {
     }));
 
     return (
-      <Screen title="Dev Server" onExit={props.onBack} helpText={helpText}>
+      <Screen title="Dev Server" onExit={handleExit} helpText={helpText}>
         <Panel title="Select Agent" fullWidth>
           <SelectList items={agentItems} selectedIndex={selectedAgentIndex} />
         </Panel>
@@ -360,10 +370,15 @@ export function DevScreen(props: DevScreenProps) {
         <Text>Server: </Text>
         <Text color="cyan">http://localhost:{actualPort}/invocations</Text>
       </Box>
-      {status !== 'starting' && (
+      {status !== 'starting' && !isExiting && (
         <Box>
           <Text>Status: </Text>
           <Text color={statusColor}>{status}</Text>
+        </Box>
+      )}
+      {isExiting && (
+        <Box>
+          <Text color="yellow">Stopping server...</Text>
         </Box>
       )}
       {logFilePath && <LogLink filePath={logFilePath} />}
@@ -371,7 +386,7 @@ export function DevScreen(props: DevScreenProps) {
   );
 
   return (
-    <Screen title="Dev Server" onExit={props.onBack} helpText={helpText} headerContent={headerContent}>
+    <Screen title="Dev Server" onExit={handleExit} helpText={helpText} headerContent={headerContent}>
       <Box flexDirection="column" flexGrow={1}>
         {/* Conversation display - always visible when there's content */}
         {(conversation.length > 0 || isStreaming) && (

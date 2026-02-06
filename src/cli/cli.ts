@@ -13,6 +13,7 @@ import { PACKAGE_VERSION } from './constants';
 import { App } from './tui/App';
 import { LayoutProvider } from './tui/context';
 import { COMMAND_DESCRIPTIONS } from './tui/copy';
+import { clearExitMessage, getExitMessage } from './tui/exit-message';
 import { CommandListScreen } from './tui/screens/home';
 import { getCommandsForUI } from './tui/utils';
 import { Command } from '@commander-js/extra-typings';
@@ -63,6 +64,13 @@ function renderTUI() {
     inAltScreen = false;
     process.stdout.write(EXIT_ALT_SCREEN);
     process.stdout.write(SHOW_CURSOR);
+
+    // Print any exit message set by screens (e.g., after successful project creation)
+    const exitMessage = getExitMessage();
+    if (exitMessage) {
+      console.log(exitMessage);
+      clearExitMessage();
+    }
   });
 }
 
