@@ -312,7 +312,7 @@ export function DevScreen(props: DevScreenProps) {
   );
 
   // Return null while loading
-  if (!agentsLoaded || (mode !== 'select-agent' && !configLoaded)) {
+  if (!agentsLoaded || (mode !== 'select-agent' && (!configLoaded || !config))) {
     return null;
   }
 
@@ -354,7 +354,7 @@ export function DevScreen(props: DevScreenProps) {
     <Box flexDirection="column">
       <Box>
         <Text>Agent: </Text>
-        <Text color="green">{config.agentName}</Text>
+        <Text color="green">{config?.agentName}</Text>
       </Box>
       <Box>
         <Text>Server: </Text>
