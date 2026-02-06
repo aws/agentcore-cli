@@ -14,6 +14,51 @@ function handleCreateTUI(): void {
   const { unmount } = render(<CreateScreen cwd={cwd} isInteractive={false} onExit={() => unmount()} />);
 }
 
+/** Print CLI completion output with progress and next steps */
+function printCreateSuccess(
+  projectName: string,
+  projectPath: string,
+  agentName: string | undefined,
+  language: string | undefined,
+  framework: string | undefined
+): void {
+  const green = '\x1b[32m';
+  const cyan = '\x1b[36m';
+  const dim = '\x1b[2m';
+  const reset = '\x1b[0m';
+
+  console.log('');
+  console.log(`${green}[done]${reset}  Create ${projectName}/ project directory`);
+  if (agentName) {
+    console.log(`${green}[done]${reset}  Add agent to project`);
+    if (language === 'Python') {
+      console.log(`${green}[done]${reset}  Set up Python environment`);
+    }
+  }
+  console.log(`${green}[done]${reset}  Prepare agentcore/ directory`);
+  console.log(`${green}[done]${reset}  Initialize git repository`);
+  console.log('');
+
+  // Created summary
+  console.log(`${dim}Created:${reset}`);
+  console.log(`  ${projectName}/`);
+  if (agentName) {
+    const frameworkLabel = framework ?? 'agent';
+    console.log(`    app/${agentName}/  ${dim}${language} agent (${frameworkLabel})${reset}`);
+  }
+  console.log(`    agentcore/           ${dim}Config and CDK project${reset}`);
+  console.log('');
+
+  // Success and next steps
+  console.log(`${green}Project created successfully!${reset}`);
+  console.log('');
+  console.log('To continue, navigate to your new project:');
+  console.log('');
+  console.log(`  ${cyan}cd ${projectName}${reset}`);
+  console.log(`  ${cyan}agentcore${reset}`);
+  console.log('');
+}
+
 async function handleCreateCLI(options: CreateOptions): Promise<void> {
   const validation = validateCreateOptions(options);
   if (!validation.valid) {
@@ -61,7 +106,7 @@ async function handleCreateCLI(options: CreateOptions): Promise<void> {
   if (options.json) {
     console.log(JSON.stringify(result));
   } else if (result.success) {
-    console.log(`Created project at ${result.projectPath}`);
+    printCreateSuccess(options.name!, result.projectPath!, result.agentName, options.language, options.framework);
   } else {
     console.error(result.error);
   }
