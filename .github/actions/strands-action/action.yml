@@ -1,0 +1,169 @@
+name: 'Strands Action'
+description: 'AI-powered GitHub automation with Strands Agents'
+author: 'Strands Agents'
+
+branding:
+  icon: 'cpu'
+  color: 'blue'
+
+inputs:
+  prompt:
+    description: 'Task for the AI agent to perform'
+    required: true
+  
+  provider:
+    description: 'AI provider (bedrock, github, openai, anthropic)'
+    required: false
+    default: 'bedrock'
+  
+  model:
+    description: 'Model ID (e.g., us.anthropic.claude-sonnet-4-5-20250929-v1:0)'
+    required: false
+    default: 'us.anthropic.claude-sonnet-4-5-20250929-v1:0'
+  
+  tools:
+    description: 'Tool config string (e.g., strands_tools:shell,file_read;strands_action:gist)'
+    required: false
+    default: ''
+  
+  system_prompt:
+    description: 'Additional system prompt instructions'
+    required: false
+    default: ''
+  
+  max_tokens:
+    description: 'Maximum tokens for model response'
+    required: false
+    default: '10000'
+  
+  mcp_servers:
+    description: 'MCP servers config JSON (e.g., {"mcpServers": {...}})'
+    required: false
+    default: ''
+  
+  agent_runner:
+    description: 'Custom agent runner URL (falls back to AGENT_RUNNER variable)'
+    required: false
+    default: ''
+  
+  dependencies:
+    description: 'Custom pip dependencies (space-separated)'
+    required: false
+    default: ''
+  
+  git_user_name:
+    description: 'Git user name for commits'
+    required: false
+    default: 'Strands Action'
+  
+  git_user_email:
+    description: 'Git user email for commits'
+    required: false
+    default: 'action@strandsagents.com'
+  
+  skip_git_config:
+    description: 'Skip git configuration (set to "true" to skip)'
+    required: false
+    default: 'false'
+  
+  additional_request_fields:
+    description: 'Additional request fields JSON (e.g., {"thinking": {"type": "enabled"}})'
+    required: false
+    default: ''
+  
+  aws_role_arn:
+    description: 'AWS role ARN for OIDC authentication (required for bedrock provider)'
+    required: false
+    default: ''
+  
+  aws_region:
+    description: 'AWS region for Bedrock'
+    required: false
+    default: 'us-west-2'
+  
+  pat_token:
+    description: 'GitHub API key for GitHub Models (defaults to github.token if not provided)'
+    required: false
+    default: ''
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Checkout
+      uses: actions/checkout@v6
+      with:
+        fetch-depth: 0
+
+    - name: Configure Git
+      if: inputs.skip_git_config != 'true'
+      shell: bash
+      run: |
+        git config --global user.name "${{ inputs.git_user_name }}"
+        git config --global user.email "${{ inputs.git_user_email }}"
+
+    - name: Configure AWS (Bedrock only)
+      if: inputs.provider == 'bedrock' && inputs.aws_role_arn != ''
+      uses: aws-actions/configure-aws-credentials@v5
+      with:
+        role-to-assume: ${{ inputs.aws_role_arn }}
+        aws-region: ${{ inputs.aws_region }}
+        mask-aws-account-id: true
+
+    - name: Set up Python
+      uses: actions/setup-python@v6
+      with:
+        python-version: '3.13'
+
+    - name: Setup Python & uv
+      uses: astral-sh/setup-uv@v7
+      with:
+        enable-cache: true
+
+    - name: Install dependencies
+      shell: bash
+      working-directory: ${{ github.action_path }}
+      env:
+        SETUPTOOLS_SCM_PRETEND_VERSION: "0.1.0"
+      run: |
+        uv venv
+        echo "📦 Installing strands-action"
+        uv pip install strands-agents[all] strands-agents-tools colorama requests
+        if [ -n "${{ inputs.dependencies }}" ]; then
+          echo "📦 Installing custom dependencies: ${{ inputs.dependencies }}"
+          uv pip install ${{ inputs.dependencies }}
+        fi
+
+    - name: Download Custom Agent Runner
+      if: inputs.agent_runner != ''
+      shell: bash
+      working-directory: ${{ github.action_path }}
+      run: |
+        echo "📥 Downloading custom agent runner from ${{ inputs.agent_runner }}"
+        curl -fsSL "${{ inputs.agent_runner }}" -o custom_agent_runner.py
+        echo "✅ Custom agent runner downloaded"
+
+    - name: Agent
+      shell: bash
+      working-directory: ${{ github.workspace }}
+      env:
+        PAT_TOKEN: ${{ inputs.pat_token }}
+        GITHUB_TOKEN: ${{ inputs.pat_token || github.token }}
+        GITHUB_REPOSITORY: ${{ github.repository }}
+        GITHUB_WRITE: "true"
+        GITHUB_CONTEXT: ${{ toJSON(github) }}
+        STRANDS_PROVIDER: ${{ inputs.provider }}
+        STRANDS_MODEL_ID: ${{ inputs.model }}
+        STRANDS_MAX_TOKENS: ${{ inputs.max_tokens }}
+        STRANDS_ADDITIONAL_REQUEST_FIELDS: ${{ inputs.additional_request_fields }}
+        STRANDS_TOOLS: ${{ inputs.tools }}
+        SYSTEM_PROMPT: ${{ inputs.system_prompt }}
+        MCP_SERVERS: ${{ inputs.mcp_servers }}
+        STRANDS_PROMPT: ${{ inputs.prompt }}
+        PYTHONPATH: ${{ github.action_path }}:${{ github.workspace }}/.github/scripts/python
+        VIRTUAL_ENV: ${{ github.action_path }}/.venv
+      run: |
+        if [ -f "${{ github.action_path }}/custom_agent_runner.py" ]; then
+          "${{ github.action_path }}/.venv/bin/python" "${{ github.action_path }}/custom_agent_runner.py"
+        else
+          "${{ github.action_path }}/.venv/bin/python" "${{ github.workspace }}/.github/scripts/python/agent_runner.py"
+        fi
