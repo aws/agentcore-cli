@@ -1,6 +1,8 @@
-/** Logger interface for SSE events */
+/** Logger interface for SSE events and error logging */
 export interface SSELogger {
   logSSEEvent(rawLine: string): void;
+  /** Optional method to log errors and debug info */
+  log?(level: 'error' | 'warn' | 'system', message: string): void;
 }
 
 /**
@@ -167,15 +169,35 @@ export async function* invokeAgentStreaming(
       return;
     } catch (err) {
       lastError = err instanceof Error ? err : new Error(String(err));
-      if (lastError.message.includes('fetch') || lastError.message.includes('ECONNREFUSED')) {
-        await sleep(baseDelay * Math.pow(2, attempt));
+      const isConnectionError = lastError.message.includes('fetch') || lastError.message.includes('ECONNREFUSED');
+
+      if (isConnectionError) {
+        const delay = baseDelay * Math.pow(2, attempt);
+        logger?.log?.(
+          'warn',
+          `Connection failed (attempt ${attempt + 1}/${maxRetries}): ${lastError.message}. Retrying in ${delay}ms...`
+        );
+        await sleep(delay);
         continue;
       }
+
+      // Log non-connection errors with full stack trace before throwing
+      logger?.log?.('error', `Request failed: ${lastError.stack ?? lastError.message}`);
       throw lastError;
     }
   }
 
-  throw lastError ?? new Error('Failed to connect to dev server after retries');
+  // Log final failure after all retries exhausted with full details
+  const finalError = lastError ?? new Error('Failed to connect to dev server after retries');
+  logger?.log?.('error', `Failed to connect after ${maxRetries} attempts: ${finalError.stack ?? finalError.message}`);
+  throw finalError;
+}
+
+export interface InvokeOptions {
+  port: number;
+  message: string;
+  /** Optional logger for error logging */
+  logger?: SSELogger;
 }
 
 /**
@@ -183,7 +205,12 @@ export async function* invokeAgentStreaming(
  * Handles both JSON and streaming text responses.
  * Includes retry logic for server startup race conditions.
  */
-export async function invokeAgent(port: number, message: string): Promise<string> {
+export async function invokeAgent(portOrOptions: number | InvokeOptions, message?: string): Promise<string> {
+  // Support both old signature (port, message) and new signature (options)
+  const options: InvokeOptions =
+    typeof portOrOptions === 'number' ? { port: portOrOptions, message: message! } : portOrOptions;
+  const { port, message: msg, logger } = options;
+
   const maxRetries = 5;
   const baseDelay = 500; // ms
   let lastError: Error | null = null;
@@ -193,7 +220,7 @@ export async function invokeAgent(port: number, message: string): Promise<string
       const res = await fetch(`http://localhost:${port}/invocations`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ prompt: message }),
+        body: JSON.stringify({ prompt: msg }),
       });
 
       const text = await res.text();
@@ -210,16 +237,26 @@ export async function invokeAgent(port: number, message: string): Promise<string
       return extractResult(text);
     } catch (err) {
       lastError = err instanceof Error ? err : new Error(String(err));
-      // Only retry on connection errors (server not ready)
-      if (lastError.message.includes('fetch') || lastError.message.includes('ECONNREFUSED')) {
+      const isConnectionError = lastError.message.includes('fetch') || lastError.message.includes('ECONNREFUSED');
+
+      if (isConnectionError) {
         const delay = baseDelay * Math.pow(2, attempt);
+        logger?.log?.(
+          'warn',
+          `Connection failed (attempt ${attempt + 1}/${maxRetries}): ${lastError.message}. Retrying in ${delay}ms...`
+        );
         await sleep(delay);
         continue;
       }
-      // For other errors, throw immediately
+
+      // Log non-connection errors with full stack trace before throwing
+      logger?.log?.('error', `Request failed: ${lastError.stack ?? lastError.message}`);
       throw lastError;
     }
   }
 
-  throw lastError ?? new Error('Failed to connect to dev server after retries');
+  // Log final failure after all retries exhausted with full details
+  const finalError = lastError ?? new Error('Failed to connect to dev server after retries');
+  logger?.log?.('error', `Failed to connect after ${maxRetries} attempts: ${finalError.stack ?? finalError.message}`);
+  throw finalError;
 }
