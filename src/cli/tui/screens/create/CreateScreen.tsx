@@ -46,9 +46,14 @@ function buildExitMessage(projectName: string, steps: Step[], agentConfig: AddAg
   if (agentConfig?.agentType === 'create') {
     const frameworkOption = FRAMEWORK_OPTIONS.find(o => o.id === agentConfig.framework);
     const frameworkLabel = frameworkOption?.title ?? agentConfig.framework;
-    lines.push(`    app/${agentConfig.name}/  \x1b[2m${agentConfig.language} agent (${frameworkLabel})\x1b[0m`);
+    const agentPath = `app/${agentConfig.name}/`;
+    const agentcorePath = 'agentcore/';
+    const maxPathLen = Math.max(agentPath.length, agentcorePath.length);
+    lines.push(`    ${agentPath.padEnd(maxPathLen)}  \x1b[2m${agentConfig.language} agent (${frameworkLabel})\x1b[0m`);
+    lines.push(`    ${agentcorePath.padEnd(maxPathLen)}  \x1b[2mConfig and CDK project\x1b[0m`);
+  } else {
+    lines.push(`    agentcore/  \x1b[2mConfig and CDK project\x1b[0m`);
   }
-  lines.push(`    agentcore/           \x1b[2mConfig and CDK project\x1b[0m`);
   lines.push('');
 
   // Success message
@@ -103,15 +108,19 @@ function CreatedSummary({ projectName, agentConfig }: { projectName: string; age
     return option?.title ?? framework;
   };
 
+  const agentPath = agentConfig?.agentType === 'create' ? `app/${agentConfig.name}/` : null;
+  const agentcorePath = 'agentcore/';
+  const maxPathLen = agentPath ? Math.max(agentPath.length, agentcorePath.length) : agentcorePath.length;
+
   return (
     <Box flexDirection="column" marginTop={1}>
       <Text dimColor>Created:</Text>
       <Box flexDirection="column" marginLeft={2}>
         <Text>{projectName}/</Text>
-        {agentConfig?.agentType === 'create' && (
+        {agentConfig?.agentType === 'create' && agentPath && (
           <Box marginLeft={2}>
             <Text>
-              app/{agentConfig.name}/
+              {agentPath.padEnd(maxPathLen)}
               <Text dimColor>
                 {'  '}
                 {agentConfig.language} agent ({getFrameworkLabel(agentConfig.framework)})
@@ -121,7 +130,8 @@ function CreatedSummary({ projectName, agentConfig }: { projectName: string; age
         )}
         <Box marginLeft={2}>
           <Text>
-            agentcore/<Text dimColor>{'         '}Config and CDK project</Text>
+            {agentcorePath.padEnd(maxPathLen)}
+            <Text dimColor>{'  '}Config and CDK project</Text>
           </Text>
         </Box>
       </Box>
