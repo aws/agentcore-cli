@@ -42,7 +42,7 @@ jobs:
               console.log('✅ Manual workflow dispatch - authorized');
               return;
             }
-            
+
             // Check collaborator permissions for comment triggers
             try {
               const permissionResponse = await github.rest.repos.getCollaboratorPermissionLevel({
