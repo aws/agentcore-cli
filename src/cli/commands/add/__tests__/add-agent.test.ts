@@ -201,6 +201,36 @@ describe('add agent command', () => {
     });
   });
 
+  describe('API key handling', () => {
+    it('writes env var to .env.local for non-Bedrock provider without API key', async () => {
+      const agentName = `OpenAIAgent${Date.now()}`;
+      const result = await runCLI(
+        [
+          'add',
+          'agent',
+          '--name',
+          agentName,
+          '--language',
+          'Python',
+          '--framework',
+          'OpenAIAgents',
+          '--model-provider',
+          'OpenAI',
+          '--memory',
+          'none',
+          '--json',
+        ],
+        projectDir
+      );
+
+      expect(result.exitCode, `stdout: ${result.stdout}, stderr: ${result.stderr}`).toBe(0);
+
+      // Verify env var is written to .env.local (even without API key)
+      const envContent = await readFile(join(projectDir, 'agentcore/.env.local'), 'utf-8');
+      expect(envContent.includes('AGENTCORE_CREDENTIAL_TESTPROJOPENAI=')).toBeTruthy();
+    });
+  });
+
   describe('BYO path', () => {
     it('registers BYO agent', async () => {
       const agentName = `ByoAgent${Date.now()}`;

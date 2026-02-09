@@ -17,7 +17,11 @@ import {
   mapModelProviderToIdentityProviders,
   writeAgentToProject,
 } from '../../operations/agent/generate';
-import { createCredential, resolveCredentialStrategy } from '../../operations/identity/create-identity';
+import {
+  computeDefaultCredentialEnvVarName,
+  createCredential,
+  resolveCredentialStrategy,
+} from '../../operations/identity/create-identity';
 import { createGatewayFromWizard, createToolFromWizard } from '../../operations/mcp/create-mcp';
 import { createMemory } from '../../operations/memory/create-memory';
 import { createRenderer } from '../../templates';
@@ -148,9 +152,11 @@ async function handleCreatePath(options: ValidatedAddAgentOptions, configBaseDir
   if (strategy) {
     await writeAgentToProject(generateConfig, { configBaseDir, credentialStrategy: strategy });
 
-    if (options.apiKey) {
-      await setEnvVar(strategy.envVarName, options.apiKey, configBaseDir);
-    }
+    // Always write env var (empty if skipped) so users can easily find and fill it in
+    // Use project-scoped name if strategy returned empty (no API key case)
+    const envVarName =
+      strategy.envVarName || computeDefaultCredentialEnvVarName(`${project.name}${options.modelProvider}`);
+    await setEnvVar(envVarName, options.apiKey ?? '', configBaseDir);
   } else {
     await writeAgentToProject(generateConfig, { configBaseDir });
   }
@@ -202,9 +208,11 @@ async function handleByoPath(
       }
     }
 
-    if (options.apiKey) {
-      await setEnvVar(strategy.envVarName, options.apiKey, configBaseDir);
-    }
+    // Always write env var (empty if skipped) so users can easily find and fill it in
+    // Use project-scoped name if strategy returned empty (no API key case)
+    const envVarName =
+      strategy.envVarName || computeDefaultCredentialEnvVarName(`${project.name}${options.modelProvider}`);
+    await setEnvVar(envVarName, options.apiKey ?? '', configBaseDir);
   }
 
   await configIO.writeProjectSpec(project);

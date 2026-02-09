@@ -1,5 +1,7 @@
+import { ConfigIO } from '../../../../lib';
 import type { ModelProvider } from '../../../../schema';
 import { AgentNameSchema } from '../../../../schema';
+import { computeDefaultCredentialEnvVarName } from '../../../operations/identity/create-identity';
 import {
   ApiKeySecretInput,
   ConfirmReview,
@@ -24,7 +26,7 @@ import {
   MODEL_PROVIDER_OPTIONS,
 } from './types';
 import { Box, Text, useInput } from 'ink';
-import React, { useCallback, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 
 // Helper to get provider display name and env var name from ModelProvider
 function getProviderInfo(provider: ModelProvider): { name: string; envVarName: string } {
@@ -74,6 +76,23 @@ export function AddAgentScreen({ existingAgentNames, onComplete, onExit }: AddAg
   });
 
   const { project } = useProject();
+
+  // State for project name (fetched from project spec for credential naming)
+  const [projectName, setProjectName] = useState<string>('');
+
+  // Fetch project name when component mounts
+  useEffect(() => {
+    const fetchProjectName = async () => {
+      try {
+        const configIO = new ConfigIO();
+        const projectSpec = await configIO.readProjectSpec();
+        setProjectName(projectSpec.name);
+      } catch {
+        // Ignore errors - project name will remain empty
+      }
+    };
+    void fetchProjectName();
+  }, []);
 
   // Determine which phase/path we're in
   const isInitialPhase = agentType === null;
@@ -311,6 +330,7 @@ export function AddAgentScreen({ existingAgentNames, onComplete, onExit }: AddAg
           onBack={handleGenerateBack}
           onConfirm={handleGenerateComplete}
           isActive={true}
+          credentialProjectName={projectName}
         />
       </Screen>
     );
@@ -378,7 +398,10 @@ export function AddAgentScreen({ existingAgentNames, onComplete, onExit }: AddAg
                       value: byoConfig.apiKey ? (
                         <Text color="green">Configured</Text>
                       ) : (
-                        <Text color="yellow">Not set (add to .env later)</Text>
+                        <Text color="yellow">
+                          Not set - fill in{' '}
+                          {computeDefaultCredentialEnvVarName(`${projectName}${byoConfig.modelProvider}`)} in .env.local
+                        </Text>
                       ),
                     },
                   ]

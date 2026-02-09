@@ -8,7 +8,10 @@ import {
   mapModelProviderToIdentityProviders,
   writeAgentToProject,
 } from '../../../operations/agent/generate';
-import { resolveCredentialStrategy } from '../../../operations/identity/create-identity';
+import {
+  computeDefaultCredentialEnvVarName,
+  resolveCredentialStrategy,
+} from '../../../operations/identity/create-identity';
 import { createRenderer } from '../../../templates';
 import type { GenerateConfig } from '../generate/types';
 import type { AddAgentConfig } from './types';
@@ -23,6 +26,7 @@ export interface AddAgentCreateResult {
   ok: true;
   type: 'create';
   agentName: string;
+  projectName: string;
   projectPath: string;
   pythonSetupResult?: PythonSetupResult;
 }
@@ -31,6 +35,7 @@ export interface AddAgentByoResult {
   ok: true;
   type: 'byo';
   agentName: string;
+  projectName: string;
 }
 
 export interface AddAgentError {
@@ -171,9 +176,11 @@ async function handleCreatePath(
   if (strategy) {
     await writeAgentToProject(generateConfig, { configBaseDir, credentialStrategy: strategy });
 
-    if (config.apiKey) {
-      await setEnvVar(strategy.envVarName, config.apiKey, configBaseDir);
-    }
+    // Always write env var (empty if skipped) so users can easily find and fill it in
+    // Use project-scoped name if strategy returned empty (no API key case)
+    const envVarName =
+      strategy.envVarName || computeDefaultCredentialEnvVarName(`${project.name}${config.modelProvider}`);
+    await setEnvVar(envVarName, config.apiKey ?? '', configBaseDir);
   } else {
     // Bedrock: no credentials needed
     await writeAgentToProject(generateConfig, { configBaseDir });
@@ -189,6 +196,7 @@ async function handleCreatePath(
     ok: true,
     type: 'create',
     agentName: config.name,
+    projectName: project.name,
     projectPath: agentPath,
     pythonSetupResult,
   };
@@ -230,13 +238,15 @@ async function handleByoPath(
     // Write updated project
     await configIO.writeProjectSpec(project);
 
-    if (config.apiKey) {
-      await setEnvVar(strategy.envVarName, config.apiKey, configBaseDir);
-    }
+    // Always write env var (empty if skipped) so users can easily find and fill it in
+    // Use project-scoped name if strategy returned empty (no API key case)
+    const envVarName =
+      strategy.envVarName || computeDefaultCredentialEnvVarName(`${project.name}${config.modelProvider}`);
+    await setEnvVar(envVarName, config.apiKey ?? '', configBaseDir);
   } else {
     // Bedrock: no credentials needed
     await configIO.writeProjectSpec(project);
   }
 
-  return { ok: true, type: 'byo', agentName: config.name };
+  return { ok: true, type: 'byo', agentName: config.name, projectName: project.name };
 }

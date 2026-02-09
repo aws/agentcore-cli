@@ -1,5 +1,6 @@
 import type { ModelProvider } from '../../../../schema';
 import { ProjectNameSchema } from '../../../../schema';
+import { computeDefaultCredentialEnvVarName } from '../../../operations/identity/create-identity';
 import { ApiKeySecretInput, Panel, SelectList, StepIndicator, TextInput } from '../../components';
 import type { SelectableItem } from '../../components';
 import { useListNavigation } from '../../hooks';
@@ -27,13 +28,20 @@ interface GenerateWizardUIProps {
   onBack: () => void;
   onConfirm: () => void;
   isActive: boolean;
+  credentialProjectName?: string; // Override for credential naming (add agent flow)
 }
 
 /**
  * Reusable wizard UI component for agent generation.
  * Used by the create command flow (embedded in create flow).
  */
-export function GenerateWizardUI({ wizard, onBack, onConfirm, isActive }: GenerateWizardUIProps) {
+export function GenerateWizardUI({
+  wizard,
+  onBack,
+  onConfirm,
+  isActive,
+  credentialProjectName,
+}: GenerateWizardUIProps) {
   const getItems = (): SelectableItem[] => {
     switch (wizard.step) {
       case 'language':
@@ -134,7 +142,7 @@ export function GenerateWizardUI({ wizard, onBack, onConfirm, isActive }: Genera
         />
       )}
 
-      {isConfirmStep && <ConfirmView config={wizard.config} />}
+      {isConfirmStep && <ConfirmView config={wizard.config} credentialProjectName={credentialProjectName} />}
     </Panel>
   );
 }
@@ -167,9 +175,14 @@ function getMemoryLabel(memory: MemoryOption): string {
   }
 }
 
-function ConfirmView({ config }: { config: GenerateConfig }) {
+function ConfirmView({ config, credentialProjectName }: { config: GenerateConfig; credentialProjectName?: string }) {
   const languageLabel = LANGUAGE_OPTIONS.find(o => o.id === config.language)?.title ?? config.language;
   const memoryLabel = getMemoryLabel(config.memory);
+
+  // Use credentialProjectName if provided, otherwise use config.projectName
+  const projectNameForCredential = credentialProjectName ?? config.projectName;
+  const credentialName = `${projectNameForCredential}${config.modelProvider}`;
+  const envVarName = computeDefaultCredentialEnvVarName(credentialName);
 
   return (
     <Box flexDirection="column">
@@ -195,7 +208,7 @@ function ConfirmView({ config }: { config: GenerateConfig }) {
           <Text>
             <Text dimColor>API Key: </Text>
             <Text color={config.apiKey ? 'green' : 'yellow'}>
-              {config.apiKey ? 'Configured' : 'Not set (add to .env later)'}
+              {config.apiKey ? 'Configured' : `Not set - fill in ${envVarName} in .env.local`}
             </Text>
           </Text>
         )}

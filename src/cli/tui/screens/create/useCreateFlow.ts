@@ -9,7 +9,10 @@ import {
   mapModelProviderToIdentityProviders,
   writeAgentToProject,
 } from '../../../operations/agent/generate';
-import { resolveCredentialStrategy } from '../../../operations/identity/create-identity';
+import {
+  computeDefaultCredentialEnvVarName,
+  resolveCredentialStrategy,
+} from '../../../operations/identity/create-identity';
 import { CDKRenderer, createRenderer } from '../../../templates';
 import { type Step, areStepsComplete, hasStepError } from '../../components';
 import { withMinDuration } from '../../utils';
@@ -329,10 +332,13 @@ export function useCreateFlow(cwd: string): CreateFlowState {
                 if (strategy) {
                   await writeAgentToProject(generateConfig, { configBaseDir, credentialStrategy: strategy });
 
-                  if (addAgentConfig.apiKey) {
-                    logger.logSubStep('Writing API key to .env...');
-                    await setEnvVar(strategy.envVarName, addAgentConfig.apiKey, configBaseDir);
-                  }
+                  // Always write env var (empty if skipped) so users can easily find and fill it in
+                  // Use project-scoped name if strategy returned empty (no API key case)
+                  const envVarName =
+                    strategy.envVarName ||
+                    computeDefaultCredentialEnvVarName(`${projectName}${addAgentConfig.modelProvider}`);
+                  logger.logSubStep('Writing API key env var to .env.local...');
+                  await setEnvVar(envVarName, addAgentConfig.apiKey ?? '', configBaseDir);
                 } else {
                   await writeAgentToProject(generateConfig, { configBaseDir });
                 }
@@ -363,10 +369,13 @@ export function useCreateFlow(cwd: string): CreateFlowState {
                     }
                   }
 
-                  if (addAgentConfig.apiKey) {
-                    logger.logSubStep('Writing API key to .env...');
-                    await setEnvVar(strategy.envVarName, addAgentConfig.apiKey, configBaseDir);
-                  }
+                  // Always write env var (empty if skipped) so users can easily find and fill it in
+                  // Use project-scoped name if strategy returned empty (no API key case)
+                  const envVarName =
+                    strategy.envVarName ||
+                    computeDefaultCredentialEnvVarName(`${projectName}${addAgentConfig.modelProvider}`);
+                  logger.logSubStep('Writing API key env var to .env.local...');
+                  await setEnvVar(envVarName, addAgentConfig.apiKey ?? '', configBaseDir);
                 }
 
                 await configIO.writeProjectSpec(project);

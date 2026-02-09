@@ -1,4 +1,5 @@
 import { ProjectNameSchema } from '../../../../schema';
+import { computeDefaultCredentialEnvVarName } from '../../../operations/identity/create-identity';
 import {
   LogLink,
   type NextStep,
@@ -55,6 +56,15 @@ function buildExitMessage(projectName: string, steps: Step[], agentConfig: AddAg
     lines.push(`    agentcore/  \x1b[2mConfig and CDK project\x1b[0m`);
   }
   lines.push('');
+
+  // API key reminder if skipped
+  if (agentConfig && agentConfig.modelProvider !== 'Bedrock' && !agentConfig.apiKey) {
+    const credentialName = `${projectName}${agentConfig.modelProvider}`;
+    const envVarName = computeDefaultCredentialEnvVarName(credentialName);
+    lines.push('\x1b[33mNote:\x1b[0m API key not configured.');
+    lines.push(`Fill in \x1b[36m${envVarName}\x1b[0m in agentcore/.env.local before running.`);
+    lines.push('');
+  }
 
   // Success message
   lines.push('\x1b[32mProject created successfully!\x1b[0m');

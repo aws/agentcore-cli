@@ -1,4 +1,5 @@
 import type { AwsDeploymentTarget } from '../../../../schema';
+import { computeDefaultCredentialEnvVarName } from '../../../operations/identity/create-identity';
 import { ErrorPrompt } from '../../components';
 import { useAvailableAgents } from '../../hooks/useCreateMcp';
 import { AddAgentFlow } from '../agent/AddAgentFlow';
@@ -27,23 +28,45 @@ type FlowState =
   | {
       name: 'agent-create-success';
       agentName: string;
+      projectName: string;
       projectPath: string;
       config: AddAgentConfig;
       loading?: boolean;
       loadingMessage?: string;
     }
-  | { name: 'agent-byo-success'; agentName: string; config: AddAgentConfig; loading?: boolean; loadingMessage?: string }
+  | {
+      name: 'agent-byo-success';
+      agentName: string;
+      projectName: string;
+      config: AddAgentConfig;
+      loading?: boolean;
+      loadingMessage?: string;
+    }
   | { name: 'target-success'; targetName: string; loading?: boolean; loadingMessage?: string }
   | { name: 'error'; message: string };
 
 /** Tree-style display of added agent details */
-function AgentAddedSummary({ config, projectPath }: { config: AddAgentConfig; projectPath?: string }) {
+function AgentAddedSummary({
+  config,
+  projectName,
+  projectPath,
+}: {
+  config: AddAgentConfig;
+  projectName: string;
+  projectPath?: string;
+}) {
   const getFrameworkLabel = (framework: string) => {
     const option = FRAMEWORK_OPTIONS.find(o => o.id === framework);
     return option?.title ?? framework;
   };
 
   const isCreate = config.agentType === 'create';
+
+  // Show env var reminder if API key was skipped for non-Bedrock providers
+  const showEnvVarReminder = config.modelProvider !== 'Bedrock' && !config.apiKey;
+  const envVarName = showEnvVarReminder
+    ? computeDefaultCredentialEnvVarName(`${projectName}${config.modelProvider}`)
+    : null;
 
   return (
     <Box flexDirection="column" marginTop={1}>
@@ -80,6 +103,14 @@ function AgentAddedSummary({ config, projectPath }: { config: AddAgentConfig; pr
           </Text>
         )}
       </Box>
+      {showEnvVarReminder && envVarName && (
+        <Box flexDirection="column" marginTop={1}>
+          <Text color="yellow">Note: API key not configured.</Text>
+          <Text>
+            Fill in <Text color="cyan">{envVarName}</Text> in agentcore/.env.local before running.
+          </Text>
+        </Box>
+      )}
     </Box>
   );
 }
@@ -146,6 +177,7 @@ export function AddFlow(props: AddFlowProps) {
       setFlow({
         name: 'agent-create-success',
         agentName: config.name,
+        projectName: '',
         projectPath: '',
         config,
         loading: true,
@@ -157,11 +189,17 @@ export function AddFlow(props: AddFlowProps) {
             setFlow({
               name: 'agent-create-success',
               agentName: result.agentName,
+              projectName: result.projectName,
               projectPath: result.projectPath,
               config,
             });
           } else {
-            setFlow({ name: 'agent-byo-success', agentName: result.agentName, config });
+            setFlow({
+              name: 'agent-byo-success',
+              agentName: result.agentName,
+              projectName: result.projectName,
+              config,
+            });
           }
         } else {
           setFlow({ name: 'error', message: result.error });
@@ -220,7 +258,11 @@ export function AddFlow(props: AddFlowProps) {
       <AddSuccessScreen
         isInteractive={props.isInteractive}
         message={`Created agent: ${flow.agentName}`}
-        summary={!flow.loading && <AgentAddedSummary config={flow.config} projectPath={flow.projectPath} />}
+        summary={
+          !flow.loading && (
+            <AgentAddedSummary config={flow.config} projectName={flow.projectName} projectPath={flow.projectPath} />
+          )
+        }
         detail="Deploy with `agentcore deploy`."
         loading={flow.loading}
         loadingMessage={flow.loadingMessage}
@@ -240,7 +282,7 @@ export function AddFlow(props: AddFlowProps) {
       <AddSuccessScreen
         isInteractive={props.isInteractive}
         message={`Added agent: ${flow.agentName}`}
-        summary={!flow.loading && <AgentAddedSummary config={flow.config} />}
+        summary={!flow.loading && <AgentAddedSummary config={flow.config} projectName={flow.projectName} />}
         detail="Deploy with `agentcore deploy`."
         loading={flow.loading}
         loadingMessage={flow.loadingMessage}
