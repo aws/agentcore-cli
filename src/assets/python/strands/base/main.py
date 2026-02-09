@@ -1,4 +1,3 @@
-import os
 from strands import Agent, tool
 from bedrock_agentcore.runtime import BedrockAgentCoreApp
 from model.load import load_model
@@ -9,8 +8,6 @@ from memory.session import get_memory_session_manager
 
 app = BedrockAgentCoreApp()
 log = app.logger
-
-REGION = os.getenv("AWS_REGION")
 
 # Define a Streamable HTTP MCP Client
 mcp_client = get_streamable_http_mcp_client()
@@ -25,38 +22,34 @@ def add_numbers(a: int, b: int) -> int:
     return a+b
 tools.append(add_numbers)
 
+{{#if hasMemory}}
+session_manager = get_memory_session_manager('default-memory-session', 'default-memory-user')
+{{/if}}
+
+# Create agent
+agent = Agent(
+    model=load_model(),
+{{#if hasMemory}}
+    session_manager=session_manager,
+{{/if}}
+    system_prompt="""
+        You are a helpful assistant. Use tools when appropriate.
+    """,
+    tools=tools+[mcp_client]
+)
+
+
 @app.entrypoint
 async def invoke(payload, context):
     log.info("Invoking Agent.....")
-{{#if hasMemory}}
-    session_id = getattr(context, 'session_id', 'default-session')
-    user_id = getattr(context, 'user_id', 'default-user')
-    session_manager = get_memory_session_manager(session_id, user_id)
-{{/if}}
 
-    with mcp_client as client:
-        # Get MCP Tools
-        mcp_tools = client.list_tools_sync()
+    # Execute and format response
+    stream = agent.stream_async(payload.get("prompt"))
 
-        # Create agent
-        agent = Agent(
-            model=load_model(),
-{{#if hasMemory}}
-            session_manager=session_manager,
-{{/if}}
-            system_prompt="""
-                You are a helpful assistant. Use tools when appropriate.
-            """,
-            tools=tools+mcp_tools
-        )
-
-        # Execute and format response
-        stream = agent.stream_async(payload.get("prompt"))
-
-        async for event in stream:
-            # Handle Text parts of the response
-            if "data" in event and isinstance(event["data"], str):
-                yield event["data"]
+    async for event in stream:
+        # Handle Text parts of the response
+        if "data" in event and isinstance(event["data"], str):
+            yield event["data"]
 
 
 if __name__ == "__main__":
