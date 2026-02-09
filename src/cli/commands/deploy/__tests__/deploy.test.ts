@@ -17,8 +17,9 @@ describe('deploy --help', () => {
     const result = await runCLI(['deploy', '--help'], process.cwd());
     expect(result.stdout.includes('--target')).toBeTruthy();
     expect(result.stdout.includes('--yes')).toBeTruthy();
-    expect(result.stdout.includes('--progress')).toBeTruthy();
+    expect(result.stdout.includes('--verbose')).toBeTruthy();
     expect(result.stdout.includes('--json')).toBeTruthy();
+    expect(result.stdout.includes('--plan')).toBeTruthy();
   });
 });
 

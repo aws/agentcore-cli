@@ -1,4 +1,4 @@
-import { ConfigIO } from '../../../lib';
+import { ConfigIO, SecureCredentials } from '../../../lib';
 import { createSwitchableIoHost } from '../../cdk/toolkit-lib';
 import { buildDeployedState, getStackOutputs, parseAgentOutputs } from '../../cloudformation';
 import { getErrorMessage } from '../../errors';
@@ -8,6 +8,7 @@ import {
   buildCdkProject,
   checkBootstrapNeeded,
   checkStackDeployability,
+  getAllCredentials,
   hasOwnedIdentityApiProviders,
   setupApiKeyProviders,
   synthesizeCdk,
@@ -143,10 +144,24 @@ export async function handleDeploy(options: ValidatedDeployOptions): Promise<Dep
     let identityKmsKeyArn: string | undefined;
     if (hasOwnedIdentityApiProviders(context.projectSpec)) {
       startStep('Set up API key providers');
+
+      // In CLI mode, also check process.env for credentials (enables non-interactive deploy with -y)
+      const neededCredentials = getAllCredentials(context.projectSpec);
+      const envCredentials: Record<string, string> = {};
+      for (const cred of neededCredentials) {
+        const value = process.env[cred.envVarName];
+        if (value) {
+          envCredentials[cred.envVarName] = value;
+        }
+      }
+      const runtimeCredentials =
+        Object.keys(envCredentials).length > 0 ? new SecureCredentials(envCredentials) : undefined;
+
       const identityResult = await setupApiKeyProviders({
         projectSpec: context.projectSpec,
         configBaseDir: configIO.getConfigRoot(),
         region: target.region,
+        runtimeCredentials,
         enableKmsEncryption: true,
       });
       if (identityResult.hasErrors) {

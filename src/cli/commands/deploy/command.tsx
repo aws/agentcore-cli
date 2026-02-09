@@ -122,22 +122,25 @@ export const registerDeploy = (program: Command) => {
     .command('deploy')
     .alias('p')
     .description(COMMAND_DESCRIPTIONS.deploy)
-    .option('--target <target>', 'Deployment target name')
-    .option('-y, --yes', 'Auto-confirm prompts (e.g., bootstrap)')
-    .option('--progress', 'Show deployment progress in real-time')
-    .option('-v, --verbose', 'Show resource-level deployment events')
-    .option('--json', 'Output as JSON')
-    .option('--plan', 'Preview deployment without deploying (dry-run)')
+    .option('--target <target>', 'Deployment target name (default: "default") [non-interactive]')
+    .option('-y, --yes', 'Auto-confirm prompts, read credentials from env [non-interactive]')
+    .option('-v, --verbose', 'Show resource-level deployment events [non-interactive]')
+    .option('--json', 'Output as JSON [non-interactive]')
+    .option('--plan', 'Preview deployment without deploying (dry-run) [non-interactive]')
     .action(
-      async (cliOptions: { target?: string; yes?: boolean; progress?: boolean; json?: boolean; plan?: boolean }) => {
+      async (cliOptions: { target?: string; yes?: boolean; verbose?: boolean; json?: boolean; plan?: boolean }) => {
         try {
           requireProject();
-          if (cliOptions.json || cliOptions.target || cliOptions.progress || cliOptions.plan) {
-            // Default to "default" target in CLI mode
-            const options = { ...cliOptions, target: cliOptions.target ?? 'default' };
+          if (cliOptions.json || cliOptions.target || cliOptions.plan || cliOptions.yes || cliOptions.verbose) {
+            // CLI mode - any flag triggers non-interactive mode
+            const options = {
+              ...cliOptions,
+              target: cliOptions.target ?? 'default',
+              progress: !cliOptions.json,
+            };
             await handleDeployCLI(options as DeployOptions);
           } else {
-            handleDeployTUI({ autoConfirm: cliOptions.yes });
+            handleDeployTUI();
           }
         } catch (error) {
           if (cliOptions.json) {
