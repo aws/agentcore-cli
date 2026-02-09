@@ -1,4 +1,4 @@
-import type { ModelProvider, SDKFramework, TargetLanguage } from '../../../../schema';
+import type { ModelProvider } from '../../../../schema';
 import { AgentNameSchema } from '../../../../schema';
 import {
   ApiKeySecretInput,
@@ -21,9 +21,7 @@ import {
   AGENT_TYPE_OPTIONS,
   DEFAULT_ENTRYPOINT,
   DEFAULT_PYTHON_VERSION,
-  FRAMEWORK_OPTIONS,
-  LANGUAGE_OPTIONS,
-  getModelProviderOptionsForSdk,
+  MODEL_PROVIDER_OPTIONS,
 } from './types';
 import { Box, Text, useInput } from 'ink';
 import React, { useCallback, useMemo, useState } from 'react';
@@ -50,11 +48,11 @@ interface AddAgentScreenProps {
 
 // Steps for the initial phase (before branching to create or byo)
 type InitialStep = 'name' | 'agentType';
-// Steps for BYO path only
-type ByoStep = 'codeLocation' | 'language' | 'framework' | 'modelProvider' | 'apiKey' | 'confirm';
+// Steps for BYO path only (no framework/language - user's code already has these baked in)
+type ByoStep = 'codeLocation' | 'modelProvider' | 'apiKey' | 'confirm';
 
 const INITIAL_STEPS: InitialStep[] = ['name', 'agentType'];
-const BYO_STEPS: ByoStep[] = ['codeLocation', 'language', 'framework', 'modelProvider', 'apiKey', 'confirm'];
+const BYO_STEPS: ByoStep[] = ['codeLocation', 'modelProvider', 'apiKey', 'confirm'];
 
 export function AddAgentScreen({ existingAgentNames, onComplete, onExit }: AddAgentScreenProps) {
   // Phase 1: name + agentType selection
@@ -66,12 +64,11 @@ export function AddAgentScreen({ existingAgentNames, onComplete, onExit }: AddAg
   const generateWizard = useGenerateWizard({ initialName: name });
 
   // Phase 2 (byo path): BYO-specific state
+  // Note: language/framework not needed for BYO - user's code already has these
   const [byoStep, setByoStep] = useState<ByoStep>('codeLocation');
   const [byoConfig, setByoConfig] = useState({
     codeLocation: '',
     entrypoint: DEFAULT_ENTRYPOINT,
-    language: 'Python' as TargetLanguage,
-    framework: 'Strands' as SDKFramework,
     modelProvider: 'Bedrock' as ModelProvider,
     apiKey: undefined as string | undefined,
   });
@@ -165,25 +162,15 @@ export function AddAgentScreen({ existingAgentNames, onComplete, onExit }: AddAg
 
   const byoCurrentIndex = byoSteps.indexOf(byoStep);
 
-  // BYO language options (include "Other" for BYO path)
-  const languageItems: SelectableItem[] = useMemo(
-    () => LANGUAGE_OPTIONS.map(o => ({ id: o.id, title: o.title, disabled: 'disabled' in o ? o.disabled : undefined })),
-    []
-  );
-
-  const frameworkItems: SelectableItem[] = useMemo(
-    () => FRAMEWORK_OPTIONS.map(o => ({ id: o.id, title: o.title, description: o.description })),
-    []
-  );
-
+  // BYO model provider options - show ALL providers since we don't know the framework
   const modelProviderItems: SelectableItem[] = useMemo(
     () =>
-      getModelProviderOptionsForSdk(byoConfig.framework).map(o => ({
+      MODEL_PROVIDER_OPTIONS.map(o => ({
         id: o.id,
         title: o.title,
         description: o.description,
       })),
-    [byoConfig.framework]
+    []
   );
 
   const handleByoBack = useCallback(() => {
@@ -198,13 +185,15 @@ export function AddAgentScreen({ existingAgentNames, onComplete, onExit }: AddAg
   }, [byoCurrentIndex, byoSteps]);
 
   const handleByoComplete = useCallback(() => {
+    // For BYO, language/framework are not asked - we default to Python/Strands
+    // since the actual values don't matter for BYO (code already exists)
     const config: AddAgentConfig = {
       name,
       agentType: 'byo',
       codeLocation: byoConfig.codeLocation,
       entrypoint: byoConfig.entrypoint,
-      language: byoConfig.language,
-      framework: byoConfig.framework,
+      language: 'Python', // Default - not used for BYO agents
+      framework: 'Strands', // Default - not used for BYO agents
       modelProvider: byoConfig.modelProvider,
       apiKey: byoConfig.apiKey,
       pythonVersion: DEFAULT_PYTHON_VERSION,
@@ -212,34 +201,6 @@ export function AddAgentScreen({ existingAgentNames, onComplete, onExit }: AddAg
     };
     onComplete(config);
   }, [name, byoConfig, onComplete]);
-
-  const languageNav = useListNavigation({
-    items: languageItems,
-    onSelect: item => {
-      setByoConfig(c => ({ ...c, language: item.id as TargetLanguage }));
-      setByoStep('framework');
-    },
-    onExit: handleByoBack,
-    isActive: isByoPath && byoStep === 'language',
-    isDisabled: item => item.disabled ?? false,
-  });
-
-  const frameworkNav = useListNavigation({
-    items: frameworkItems,
-    onSelect: item => {
-      const newFramework = item.id as SDKFramework;
-      // Reset modelProvider if it's not supported by the new framework
-      const supportedProviders = getModelProviderOptionsForSdk(newFramework);
-      const isCurrentProviderSupported = supportedProviders.some(p => p.id === byoConfig.modelProvider);
-      const newModelProvider = isCurrentProviderSupported
-        ? byoConfig.modelProvider
-        : (supportedProviders[0]?.id ?? 'Bedrock');
-      setByoConfig(c => ({ ...c, framework: newFramework, modelProvider: newModelProvider }));
-      setByoStep('modelProvider');
-    },
-    onExit: handleByoBack,
-    isActive: isByoPath && byoStep === 'framework',
-  });
 
   const modelProviderNav = useListNavigation({
     items: modelProviderItems,
@@ -374,19 +335,11 @@ export function AddAgentScreen({ existingAgentNames, onComplete, onExit }: AddAg
             initialEntrypoint={byoConfig.entrypoint}
             onSubmit={(codeLocation, entrypoint) => {
               setByoConfig(c => ({ ...c, codeLocation, entrypoint }));
-              setByoStep('language');
+              setByoStep('modelProvider');
               return true;
             }}
             onCancel={handleByoBack}
           />
-        )}
-
-        {byoStep === 'language' && (
-          <WizardSelect title="Select language" items={languageItems} selectedIndex={languageNav.selectedIndex} />
-        )}
-
-        {byoStep === 'framework' && (
-          <WizardSelect title="Select framework" items={frameworkItems} selectedIndex={frameworkNav.selectedIndex} />
         )}
 
         {byoStep === 'modelProvider' && (
@@ -417,11 +370,6 @@ export function AddAgentScreen({ existingAgentNames, onComplete, onExit }: AddAg
               { label: 'Type', value: 'Bring my own code' },
               { label: 'Code Location', value: byoConfig.codeLocation },
               { label: 'Entrypoint', value: byoConfig.entrypoint },
-              { label: 'Language', value: byoConfig.language },
-              {
-                label: 'Framework',
-                value: FRAMEWORK_OPTIONS.find(o => o.id === byoConfig.framework)?.title ?? byoConfig.framework,
-              },
               { label: 'Model Provider', value: byoConfig.modelProvider },
               ...(byoConfig.modelProvider !== 'Bedrock'
                 ? [

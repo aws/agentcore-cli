@@ -1,0 +1,83 @@
+name: Restricted Agent
+
+# RESTRICTED ACCESS VERSION
+# Only specific users can trigger this workflow manually
+
+on:
+  workflow_dispatch:
+    inputs:
+      prompt:
+        description: 'Prompt for the agent'
+        required: true
+        default: 'What are my active pull requests?'
+        type: string
+      system_prompt:
+        description: 'System prompt'
+        required: false
+        type: string
+      provider:
+        description: 'Provider'
+        default: 'bedrock'
+        required: false
+        type: choice
+        options:
+          - bedrock
+          - github
+          - openai
+          - anthropic
+      model:
+        description: 'Model ID (e.g., us.anthropic.claude-sonnet-4-5-20250929-v1:0)'
+        required: false
+        default: 'us.anthropic.claude-sonnet-4-5-20250929-v1:0'
+        type: string
+      max_tokens:
+        description: 'Maximum tokens for model response'
+        required: false
+        default: '10000'
+        type: string
+      tools:
+        description: 'Tool config (e.g., strands_tools:shell;strands_action:use_github)'
+        required: false
+        default: 'strands_tools:shell;tools:use_github'
+        type: string
+      agent_runner:
+        description: 'Custom agent runner URL'
+        required: false
+        type: string
+
+permissions:
+  id-token: write
+  contents: write
+  pull-requests: write
+  issues: write
+
+jobs:
+  agent:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check authorization
+        run: |
+          AUTHORIZED_USERS="${{ secrets.AUTHORIZED_USERS }}"
+          if [[ ",$AUTHORIZED_USERS," != *",${{ github.actor }},"* ]]; then
+            echo "❌ User ${{ github.actor }} is NOT authorized"
+            exit 1
+          fi
+          echo "✅ User ${{ github.actor }} is authorized"
+
+      - uses: actions/checkout@v6
+
+      - name: Run Strands Agent
+        uses: ./
+        with:
+          prompt: ${{ inputs.prompt }}
+          provider: ${{ inputs.provider }}
+          model: ${{ inputs.model }}
+          max_tokens: ${{ inputs.max_tokens }}
+          system_prompt: ${{ inputs.system_prompt }}
+          tools: ${{ inputs.tools }}
+          agent_runner: ${{ inputs.agent_runner }}
+          aws_role_arn: ${{ secrets.AWS_ROLE_ARN }}
+          aws_region: 'us-west-2'
+          pat_token: ${{ secrets.PAT_TOKEN }}
+        env:
+          STRANDS_TOOLS_DIRECTORY: "true"

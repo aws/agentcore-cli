@@ -34,9 +34,14 @@ function printCreateSummary(
   console.log(`  ${projectName}/`);
   if (agentName) {
     const frameworkLabel = framework ?? 'agent';
-    console.log(`    app/${agentName}/  ${dim}${language} agent (${frameworkLabel})${reset}`);
+    const agentPath = `app/${agentName}/`;
+    const agentcorePath = 'agentcore/';
+    const maxPathLen = Math.max(agentPath.length, agentcorePath.length);
+    console.log(`    ${agentPath.padEnd(maxPathLen)}  ${dim}${language} agent (${frameworkLabel})${reset}`);
+    console.log(`    ${agentcorePath.padEnd(maxPathLen)}  ${dim}Config and CDK project${reset}`);
+  } else {
+    console.log(`    agentcore/  ${dim}Config and CDK project${reset}`);
   }
-  console.log(`    agentcore/           ${dim}Config and CDK project${reset}`);
   console.log('');
 
   // Success and next steps

@@ -20,7 +20,8 @@ export type AgentType = 'create' | 'byo';
  * - language → framework → modelProvider → [apiKey] → memory → confirm
  *
  * BYO path (agentType = 'byo'):
- * - codeLocation → language → framework → modelProvider → [apiKey] → confirm
+ * - codeLocation → modelProvider → [apiKey] → confirm
+ * (language/framework not needed for BYO - user's code already has these)
  *
  * Note: apiKey step only appears for non-Bedrock model providers
  */

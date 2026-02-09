@@ -3,6 +3,7 @@ import type { AgentCoreProjectSpec, Credential } from '../../../schema';
 import { getCredentialProvider } from '../../aws';
 import { isNoCredentialsError } from '../../errors';
 import { apiKeyProviderExists, createApiKeyProvider, setTokenVaultKmsKey } from '../identity';
+import { computeDefaultCredentialEnvVarName } from '../identity/create-identity';
 import { BedrockAgentCoreControlClient } from '@aws-sdk/client-bedrock-agentcore-control';
 import { CreateKeyCommand, KMSClient } from '@aws-sdk/client-kms';
 
@@ -119,20 +120,12 @@ async function setupTokenVaultKms(
   }
 }
 
-/**
- * Get the environment variable name for a credential.
- * Generates a default based on the credential name.
- */
-function getCredentialEnvVarName(credential: Credential): string {
-  return `AGENTCORE_IDENTITY_${credential.name.toUpperCase().replace(/[^A-Z0-9]/g, '_')}`;
-}
-
 async function setupApiKeyCredentialProvider(
   client: BedrockAgentCoreControlClient,
   credential: Credential,
   credentials: SecureCredentials
 ): Promise<ApiKeyProviderSetupResult> {
-  const envVarName = getCredentialEnvVarName(credential);
+  const envVarName = computeDefaultCredentialEnvVarName(credential.name);
   const apiKey = credentials.get(envVarName);
 
   if (!apiKey) {
@@ -196,7 +189,7 @@ export async function getMissingCredentials(
 
   for (const credential of projectSpec.credentials) {
     if (credential.type === 'ApiKeyCredentialProvider') {
-      const envVarName = getCredentialEnvVarName(credential);
+      const envVarName = computeDefaultCredentialEnvVarName(credential.name);
       if (!envVars[envVarName]) {
         missing.push({
           providerName: credential.name,
