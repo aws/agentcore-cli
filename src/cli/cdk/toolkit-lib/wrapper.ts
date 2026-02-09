@@ -1,6 +1,6 @@
 import { CONFIG_DIR } from '../../../lib';
 import { CDK_APP_ENTRY, CDK_PROJECT_DIR } from '../../constants';
-import { getErrorMessage } from '../../errors';
+import { getErrorMessage, isChangesetInProgressError } from '../../errors';
 import type { CdkToolkitWrapperOptions, DeployOptions, DestroyOptions, DiffOptions, ListOptions } from './types';
 import {
   BaseCredentials,
@@ -21,6 +21,11 @@ interface DisposableAssembly {
 interface SynthResult {
   produce(): Promise<DisposableAssembly>;
   dispose?: () => Promise<void>;
+}
+
+/** Sleep helper for retry delays */
+function sleep(ms: number): Promise<void> {
+  return new Promise(resolve => setTimeout(resolve, ms));
 }
 
 /**
@@ -228,11 +233,45 @@ export class CdkToolkitWrapper {
 
   /**
    * Deploy stacks to AWS.
+   * Includes retry logic for transient changeset conflicts that can occur
+   * when multiple operations race on the same stack.
    */
   async deploy(options: DeployOptions = {}) {
     const { toolkit } = this.ensureInitialized();
     const source = await this.getSourceForOperation();
-    return withErrorContext('deploy', () => toolkit.deploy(source, { stacks: options.stacks }));
+
+    const maxRetries = 3;
+    const baseDelayMs = 5000; // 5 seconds base delay
+    let lastError: Error | null = null;
+
+    for (let attempt = 0; attempt < maxRetries; attempt++) {
+      try {
+        return await withErrorContext('deploy', () => toolkit.deploy(source, { stacks: options.stacks }));
+      } catch (err) {
+        lastError = err instanceof Error ? err : new Error(String(err));
+
+        // Only retry on changeset-in-progress errors
+        if (isChangesetInProgressError(err) && attempt < maxRetries - 1) {
+          const delayMs = baseDelayMs * Math.pow(2, attempt); // Exponential backoff: 5s, 10s, 20s
+          void this.options.ioHost?.notify?.({
+            level: 'warn',
+            code: 'CDK_TOOLKIT_W0001',
+            message: `Changeset operation in progress, retrying in ${delayMs / 1000}s (attempt ${attempt + 1}/${maxRetries})...`,
+            time: new Date(),
+            action: 'deploy',
+            data: undefined,
+          });
+          await sleep(delayMs);
+          continue;
+        }
+
+        // For other errors or final retry, throw immediately
+        throw lastError;
+      }
+    }
+
+    // Should not reach here, but throw last error if we do
+    throw lastError ?? new Error('Deploy failed after retries');
   }
 
   /**

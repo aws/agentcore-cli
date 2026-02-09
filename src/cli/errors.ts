@@ -125,3 +125,23 @@ export function isStackInProgressError(err: unknown): boolean {
 
   return false;
 }
+
+/**
+ * Checks if an error indicates a CloudFormation changeset operation is in progress.
+ * This typically occurs when multiple deploys race and one tries to create/delete
+ * a changeset while another operation is already using it.
+ */
+export function isChangesetInProgressError(err: unknown): boolean {
+  const message = getErrorMessage(err).toLowerCase();
+
+  // CloudFormation changeset conflict patterns
+  if (
+    message.includes('invalidchangesetstatus') ||
+    message.includes('changeset is currently in progress') ||
+    message.includes('an operation on this changeset is currently in progress')
+  ) {
+    return true;
+  }
+
+  return false;
+}
