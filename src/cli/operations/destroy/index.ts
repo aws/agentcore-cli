@@ -46,7 +46,7 @@ export interface DestroyTargetOptions {
 }
 
 /**
- * Destroy a specific target's CloudFormation stack.
+ * Destroy a specific target's CloudFormation stack and clean up local state.
  */
 export async function destroyTarget(options: DestroyTargetOptions): Promise<void> {
   const { target, cdkProjectDir } = options;
@@ -67,6 +67,18 @@ export async function destroyTarget(options: DestroyTargetOptions): Promise<void
       patterns: [target.stack.stackName],
     },
   });
+
+  // Clean up deployed-state.json after successful destroy
+  const configIO = new ConfigIO();
+  try {
+    const deployedState = await configIO.readDeployedState();
+    if (deployedState.targets[target.target.name]) {
+      delete deployedState.targets[target.target.name];
+      await configIO.writeDeployedState(deployedState);
+    }
+  } catch {
+    // Ignore errors reading/writing deployed state
+  }
 }
 
 /**
