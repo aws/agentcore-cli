@@ -40,7 +40,7 @@ export interface PackageResult {
   error?: string;
 }
 
-export async function handlePackage(context: PackageContext): Promise<PackageResult> {
+export function handlePackage(context: PackageContext): PackageResult {
   const { project, configBaseDir, targetAgent } = context;
   const results: PackageAgentResult[] = [];
   const skipped: string[] = [];

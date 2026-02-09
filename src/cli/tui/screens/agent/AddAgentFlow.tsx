@@ -14,6 +14,6 @@ interface AddAgentFlowProps {
   onDeploy?: () => void;
 }
 
-export function AddAgentFlow({ existingAgentNames, onComplete, onBack, onDeploy }: AddAgentFlowProps) {
+export function AddAgentFlow({ existingAgentNames, onComplete, onBack, onDeploy: _onDeploy }: AddAgentFlowProps) {
   return <AddAgentScreen existingAgentNames={existingAgentNames} onComplete={onComplete} onExit={onBack} />;
 }

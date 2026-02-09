@@ -1,5 +1,5 @@
 import { useInput } from 'ink';
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 
 interface UseListNavigationOptions<T> {
   /** The list of items to navigate */
@@ -69,13 +69,13 @@ export function useListNavigation<T>({
     return idx >= 0 ? idx : 0;
   });
 
-  // Reset selection when resetKey changes
-  useEffect(() => {
-    if (resetKey !== undefined) {
-      const idx = isDisabled ? items.findIndex(item => !isDisabled(item)) : 0;
-      setSelectedIndex(idx >= 0 ? idx : 0);
-    }
-  }, [resetKey]);
+  // Reset selection when resetKey changes (using state sync pattern to avoid setState in effect)
+  const [prevResetKey, setPrevResetKey] = useState(resetKey);
+  if (resetKey !== undefined && resetKey !== prevResetKey) {
+    setPrevResetKey(resetKey);
+    const idx = isDisabled ? items.findIndex(item => !isDisabled(item)) : 0;
+    setSelectedIndex(idx >= 0 ? idx : 0);
+  }
 
   // Find next non-disabled index in given direction
   const findNextIndex = (current: number, direction: 1 | -1): number => {

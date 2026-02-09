@@ -1,6 +1,5 @@
 import type {
   AgentCoreDeployedState,
-  AgentCoreGateway,
   AgentCoreMcpRuntimeTool,
   AgentCoreMcpSpec,
   AgentCoreProjectSpec,
@@ -80,7 +79,13 @@ function ResourceRow({
   );
 }
 
-export function ResourceGraph({ project, mcp, agentName, agentStatuses, deployedAgents }: ResourceGraphProps) {
+export function ResourceGraph({
+  project,
+  mcp,
+  agentName,
+  agentStatuses,
+  deployedAgents: _deployedAgents,
+}: ResourceGraphProps) {
   const allAgents = project.agents ?? [];
   const agents = agentName ? allAgents.filter(a => a.name === agentName) : allAgents;
   const memories = project.memories ?? [];

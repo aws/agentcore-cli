@@ -114,7 +114,7 @@ export function PackageScreen({ isInteractive: _isInteractive, onExit }: Package
           try {
             // Package this specific agent
             const singleAgentContext = { ...context, targetAgent: agent.name };
-            const result = await handlePackage(singleAgentContext);
+            const result = handlePackage(singleAgentContext);
 
             const agentResult = result.results[0];
             if (agentResult) {

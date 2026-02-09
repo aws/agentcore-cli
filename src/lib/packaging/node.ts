@@ -33,7 +33,7 @@ function isNodeRuntimeVersion(version: RuntimeVersion): version is NodeRuntime {
  * Extracts Node version from runtime constant.
  * Example: NODE_20 -> "20" (for use with node version checks)
  */
-function extractNodeVersion(runtime: NodeRuntime): string {
+function _extractNodeVersion(runtime: NodeRuntime): string {
   const match = NODE_RUNTIME_REGEX.exec(runtime);
   if (!match) {
     throw new PackagingError(`Unsupported Node runtime value: ${runtime}`);

@@ -97,35 +97,39 @@ export const useOwnedMemories = useMemories;
 export const useOwnedIdentities = useCredentials;
 
 // Stub attach hooks (no-op in v2, resources have implicit access)
+const noop = () => {
+  /* no-op */
+};
+
 export function useAttachAgent() {
   return {
-    attach: async () => ({ ok: true as const }),
+    attach: () => Promise.resolve({ ok: true as const }),
     isLoading: false,
-    reset: () => {},
+    reset: noop,
   };
 }
 
 export function useAttachMemory() {
   return {
-    attach: async () => ({ ok: true as const }),
+    attach: () => Promise.resolve({ ok: true as const }),
     isLoading: false,
-    reset: () => {},
+    reset: noop,
   };
 }
 
 export function useAttachIdentity() {
   return {
-    attach: async () => ({ ok: true as const }),
+    attach: () => Promise.resolve({ ok: true as const }),
     isLoading: false,
-    reset: () => {},
+    reset: noop,
   };
 }
 
 export function useAttachGateway() {
   return {
-    attach: async () => ({ ok: true as const }),
+    attach: () => Promise.resolve({ ok: true as const }),
     isLoading: false,
-    reset: () => {},
+    reset: noop,
   };
 }
 
