@@ -65,7 +65,6 @@ export function AddMemoryFlow({ isInteractive = true, onExit, onBack, onDev, onD
             connected to your agent. You must configure your agent code to use this memory.
           </Text>
         }
-        showDevOption={true}
         onAddAnother={onBack}
         onDev={onDev}
         onDeploy={onDeploy}
