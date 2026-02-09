@@ -5,7 +5,7 @@ import { describe, expect, it } from 'vitest';
 describe('getAgentScopedCredentials', () => {
   const projectName = 'MyProject';
 
-  const makeCredential = (name: string): Credential => ({ name, type: 'ApiKey' });
+  const makeCredential = (name: string): Credential => ({ name, type: 'ApiKeyCredentialProvider' });
 
   describe('matches agent-scoped credentials', () => {
     it('matches credential for the specified agent', () => {
@@ -14,7 +14,7 @@ describe('getAgentScopedCredentials', () => {
       const result = getAgentScopedCredentials(projectName, 'Agent2', credentials);
 
       expect(result).toHaveLength(1);
-      expect(result[0].name).toBe('MyProjectAgent2Gemini');
+      expect(result[0]!.name).toBe('MyProjectAgent2Gemini');
     });
 
     it('matches multiple providers for same agent', () => {
@@ -76,7 +76,7 @@ describe('getAgentScopedCredentials', () => {
       const result = getAgentScopedCredentials(projectName, 'TestA', credentials);
 
       expect(result).toHaveLength(1);
-      expect(result[0].name).toBe('MyProjectTestAGemini');
+      expect(result[0]!.name).toBe('MyProjectTestAGemini');
     });
 
     it('TestAB does NOT match TestA credentials', () => {
@@ -85,7 +85,7 @@ describe('getAgentScopedCredentials', () => {
       const result = getAgentScopedCredentials(projectName, 'TestAB', credentials);
 
       expect(result).toHaveLength(1);
-      expect(result[0].name).toBe('MyProjectTestABGemini');
+      expect(result[0]!.name).toBe('MyProjectTestABGemini');
     });
 
     it('handles agent names with numbers', () => {

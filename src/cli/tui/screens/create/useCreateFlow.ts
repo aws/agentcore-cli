@@ -358,7 +358,7 @@ export function useCreateFlow(cwd: string): CreateFlowState {
                   if (!strategy.reuse) {
                     const credentials = mapModelProviderToCredentials(addAgentConfig.modelProvider, project.name);
                     if (credentials.length > 0) {
-                      credentials[0].name = strategy.credentialName;
+                      credentials[0]!.name = strategy.credentialName;
                       project.credentials.push(...credentials);
                     }
                   }

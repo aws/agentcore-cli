@@ -95,7 +95,7 @@ describe('resolveCredentialStrategy', () => {
   });
 
   describe('credential exists - key comparison', () => {
-    const existingCredentials: Credential[] = [{ name: 'MyProjectGemini', type: 'ApiKey' }];
+    const existingCredentials: Credential[] = [{ name: 'MyProjectGemini', type: 'ApiKeyCredentialProvider' }];
 
     it('reuses credential when API keys match', async () => {
       mockGetEnvVar.mockResolvedValue('same-key');
@@ -164,7 +164,7 @@ describe('resolveCredentialStrategy', () => {
       mockGetEnvVar.mockResolvedValue('old-key');
 
       const result = await resolveCredentialStrategy('TestProject', 'MyAgent', 'OpenAI', 'new-key', configBaseDir, [
-        { name: 'TestProjectOpenAI', type: 'ApiKey' },
+        { name: 'TestProjectOpenAI', type: 'ApiKeyCredentialProvider' },
       ]);
 
       expect(result.credentialName).toBe('TestProjectMyAgentOpenAI');
