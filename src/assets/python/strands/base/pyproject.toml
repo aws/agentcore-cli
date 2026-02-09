@@ -14,7 +14,7 @@ dependencies = [
     "opentelemetry-exporter-otlp",
     "bedrock-agentcore >= 1.0.3",
     "botocore[crt] >= 1.35.0",
-    "google-generativeai >= 0.5.0",
+    "google-genai >= 1.0.0",
     "openai >= 1.0.0",
     "python-dotenv >= 1.0.1",
     "strands-agents >= 1.13.0",
