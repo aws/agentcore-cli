@@ -52,6 +52,11 @@ export async function handleInvoke(context: InvokeContext, options: InvokeOption
 
   // Resolve agent
   const agentNames = project.agents.map(a => a.name);
+
+  if (!options.agentName && project.agents.length > 1) {
+    return { success: false, error: `Multiple agents found. Use --agent to specify one: ${agentNames.join(', ')}` };
+  }
+
   const agentSpec = options.agentName ? project.agents.find(a => a.name === options.agentName) : project.agents[0];
 
   if (options.agentName && !agentSpec) {

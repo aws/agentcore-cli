@@ -84,6 +84,48 @@ describe('invoke command', () => {
         `Error should mention not found: ${json.error}`
       ).toBeTruthy();
     });
+
+    it('requires --agent when multiple agents exist', async () => {
+      // Add a second agent
+      await runCLI(
+        [
+          'add',
+          'agent',
+          '--name',
+          'SecondAgent',
+          '--language',
+          'Python',
+          '--framework',
+          'Strands',
+          '--model-provider',
+          'Bedrock',
+          '--memory',
+          'none',
+          '--json',
+        ],
+        projectDir
+      );
+
+      // Write a mock deployed state - target name must match aws-targets.json
+      const { writeFile, mkdir } = await import('node:fs/promises');
+      const cliDir = join(projectDir, 'agentcore', '.cli');
+      await mkdir(cliDir, { recursive: true });
+      await writeFile(
+        join(cliDir, 'deployed-state.json'),
+        JSON.stringify({
+          targets: {
+            'test-target': { resources: { agents: {} } },
+          },
+        })
+      );
+
+      const result = await runCLI(['invoke', 'hello', '--target', 'test-target', '--json'], projectDir);
+      expect(result.exitCode).toBe(1);
+      const json = JSON.parse(result.stdout);
+      expect(json.success).toBe(false);
+      expect(json.error).toContain('Multiple agents found');
+      expect(json.error).toContain('--agent');
+    });
   });
 
   // Merged from invoke-streaming.test.ts
