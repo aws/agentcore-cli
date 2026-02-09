@@ -311,10 +311,7 @@ export function registerAdd(program: Command) {
     .command('memory')
     .description('Add a memory resource to the project')
     .option('--name <name>', 'Memory name')
-    .option(
-      '--strategies <types>',
-      'Comma-separated strategies: SEMANTIC, SUMMARIZATION, USER_PREFERENCE, EPISODIC, CUSTOM'
-    )
+    .option('--strategies <types>', 'Comma-separated strategies: SEMANTIC, SUMMARIZATION, USER_PREFERENCE, CUSTOM')
     .option('--expiry <days>', 'Event expiry duration in days (default: 30)', parseInt)
     .option('--json', 'Output as JSON')
     .action(async options => {
