@@ -3,7 +3,7 @@ import { ScreenLayout } from './ScreenLayout';
 import { SecretInput } from './SecretInput';
 import { SelectList, type SelectableItem } from './SelectList';
 import { Box, Text, useInput } from 'ink';
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 
 export type CredentialSource = 'env-local' | 'manual' | 'skip';
 
@@ -53,6 +53,15 @@ export function CredentialSourcePrompt({
   const [phase, setPhase] = useState<'select' | 'manual-entry'>('select');
   const [manualCredentials, setManualCredentials] = useState<Record<string, string>>({});
   const [currentCredentialIndex, setCurrentCredentialIndex] = useState(0);
+  const submittedRef = useRef(false);
+
+  // Submit manual credentials when all collected (avoids setState during render)
+  useEffect(() => {
+    if (phase === 'manual-entry' && currentCredentialIndex >= missingCredentials.length && !submittedRef.current) {
+      submittedRef.current = true;
+      onManualEntry(manualCredentials);
+    }
+  }, [phase, currentCredentialIndex, missingCredentials.length, manualCredentials, onManualEntry]);
 
   useInput((input, key) => {
     if (phase !== 'select') return;
@@ -77,8 +86,7 @@ export function CredentialSourcePrompt({
   if (phase === 'manual-entry') {
     const currentCredential = missingCredentials[currentCredentialIndex];
     if (!currentCredential || currentCredentialIndex >= missingCredentials.length) {
-      // All credentials collected, submit
-      onManualEntry(manualCredentials);
+      // All credentials collected - use effect to submit to avoid setState during render
       return null;
     }
 
@@ -95,6 +103,7 @@ export function CredentialSourcePrompt({
       setPhase('select');
       setManualCredentials({});
       setCurrentCredentialIndex(0);
+      submittedRef.current = false;
     };
 
     return (
@@ -108,6 +117,7 @@ export function CredentialSourcePrompt({
               Provider: <Text color="cyan">{currentCredential.providerName}</Text>
             </Text>
             <SecretInput
+              key={currentCredential.envVarName}
               prompt="API Key"
               onSubmit={handleSubmit}
               onCancel={handleCancel}

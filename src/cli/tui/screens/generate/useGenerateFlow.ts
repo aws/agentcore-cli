@@ -1,7 +1,11 @@
 import { APP_DIR, ConfigIO } from '../../../../lib';
 import { getErrorMessage } from '../../../errors';
 import { type PythonSetupResult, setupPythonProject } from '../../../operations';
-import { mapGenerateConfigToRenderConfig, writeAgentToProject } from '../../../operations/agent/generate';
+import {
+  mapGenerateConfigToRenderConfig,
+  mapModelProviderToIdentityProviders,
+  writeAgentToProject,
+} from '../../../operations/agent/generate';
 import { createRenderer } from '../../../templates';
 import type { Step } from '../../components';
 import { useProject } from '../../hooks';
@@ -68,8 +72,9 @@ export function useGenerateFlow(): GenerateFlowState {
         const configIO = new ConfigIO({ baseDir: project.configRoot });
         const projectSpec = await configIO.readProjectSpec();
 
-        // Pass actual project name for credential naming in templates
-        const renderConfig = mapGenerateConfigToRenderConfig(config, projectSpec.name);
+        // Build identity providers for template rendering
+        const identityProviders = mapModelProviderToIdentityProviders(config.modelProvider, projectSpec.name);
+        const renderConfig = mapGenerateConfigToRenderConfig(config, identityProviders);
         const renderer = createRenderer(renderConfig);
         await renderer.render({ outputDir: project.projectRoot });
         await writeAgentToProject(config);

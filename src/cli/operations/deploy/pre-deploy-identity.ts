@@ -2,7 +2,7 @@ import { SecureCredentials, readEnvFile } from '../../../lib';
 import type { AgentCoreProjectSpec, Credential } from '../../../schema';
 import { getCredentialProvider } from '../../aws';
 import { isNoCredentialsError } from '../../errors';
-import { apiKeyProviderExists, createApiKeyProvider, setTokenVaultKmsKey } from '../identity';
+import { apiKeyProviderExists, createApiKeyProvider, setTokenVaultKmsKey, updateApiKeyProvider } from '../identity';
 import { computeDefaultCredentialEnvVarName } from '../identity/create-identity';
 import { BedrockAgentCoreControlClient } from '@aws-sdk/client-bedrock-agentcore-control';
 import { CreateKeyCommand, KMSClient } from '@aws-sdk/client-kms';
@@ -13,7 +13,7 @@ import { CreateKeyCommand, KMSClient } from '@aws-sdk/client-kms';
 
 export interface ApiKeyProviderSetupResult {
   providerName: string;
-  status: 'created' | 'exists' | 'skipped' | 'error';
+  status: 'created' | 'updated' | 'exists' | 'skipped' | 'error';
   error?: string;
 }
 
@@ -139,7 +139,13 @@ async function setupApiKeyCredentialProvider(
   try {
     const exists = await apiKeyProviderExists(client, credential.name);
     if (exists) {
-      return { providerName: credential.name, status: 'exists' };
+      // Always update to ensure provider has current credentials
+      const updateResult = await updateApiKeyProvider(client, credential.name, apiKey);
+      return {
+        providerName: credential.name,
+        status: updateResult.success ? 'updated' : 'error',
+        error: updateResult.error,
+      };
     }
 
     const createResult = await createApiKeyProvider(client, credential.name, apiKey);
@@ -200,4 +206,22 @@ export async function getMissingCredentials(
   }
 
   return missing;
+}
+
+/**
+ * Get list of all API key credentials in the project (for manual entry prompt).
+ */
+export function getAllCredentials(projectSpec: AgentCoreProjectSpec): MissingCredential[] {
+  const credentials: MissingCredential[] = [];
+
+  for (const credential of projectSpec.credentials) {
+    if (credential.type === 'ApiKeyCredentialProvider') {
+      credentials.push({
+        providerName: credential.name,
+        envVarName: computeDefaultCredentialEnvVarName(credential.name),
+      });
+    }
+  }
+
+  return credentials;
 }

@@ -5,9 +5,10 @@ import { type PythonSetupResult, setupPythonProject } from '../../../operations'
 import {
   mapGenerateConfigToRenderConfig,
   mapModelProviderToCredentials,
+  mapModelProviderToIdentityProviders,
   writeAgentToProject,
 } from '../../../operations/agent/generate';
-import { computeDefaultCredentialEnvVarName } from '../../../operations/identity/create-identity';
+import { resolveCredentialStrategy } from '../../../operations/identity/create-identity';
 import { createRenderer } from '../../../templates';
 import type { GenerateConfig } from '../generate/types';
 import type { AddAgentConfig } from './types';
@@ -138,26 +139,50 @@ async function handleCreatePath(
   const generateConfig = mapAddAgentConfigToGenerateConfig(config);
   const agentPath = join(projectRoot, config.name);
 
-  // Generate agent files - pass actual project name for credential naming
-  const renderConfig = mapGenerateConfigToRenderConfig(generateConfig, project.name);
+  // Resolve credential strategy FIRST to determine correct credential name
+  let identityProviders: ReturnType<typeof mapModelProviderToIdentityProviders> = [];
+  let strategy: Awaited<ReturnType<typeof resolveCredentialStrategy>> | undefined;
+
+  if (config.modelProvider !== 'Bedrock') {
+    strategy = await resolveCredentialStrategy(
+      project.name,
+      config.name,
+      config.modelProvider,
+      config.apiKey,
+      configBaseDir,
+      project.credentials
+    );
+
+    // Build identity providers with the correct credential name from strategy
+    identityProviders = [
+      {
+        name: strategy.credentialName,
+        envVarName: strategy.envVarName,
+      },
+    ];
+  }
+
+  // Generate agent files with correct identity provider
+  const renderConfig = mapGenerateConfigToRenderConfig(generateConfig, identityProviders);
   const renderer = createRenderer(renderConfig);
   await renderer.render({ outputDir: projectRoot });
 
   // Write agent to project config
-  await writeAgentToProject(generateConfig, { configBaseDir });
+  if (strategy) {
+    await writeAgentToProject(generateConfig, { configBaseDir, credentialStrategy: strategy });
+
+    if (config.apiKey) {
+      await setEnvVar(strategy.envVarName, config.apiKey, configBaseDir);
+    }
+  } else {
+    // Bedrock: no credentials needed
+    await writeAgentToProject(generateConfig, { configBaseDir });
+  }
 
   // Set up Python environment if applicable
   let pythonSetupResult: PythonSetupResult | undefined;
   if (config.language === 'Python') {
     pythonSetupResult = await setupPythonProject({ projectDir: agentPath });
-  }
-
-  // Write API key to agentcore/.env for non-Bedrock providers
-  if (config.apiKey && config.modelProvider !== 'Bedrock') {
-    // Use project-scoped credential name: {projectName}{modelProvider}
-    const credentialName = `${project.name}${config.modelProvider}`;
-    const envVarName = computeDefaultCredentialEnvVarName(credentialName);
-    await setEnvVar(envVarName, config.apiKey, configBaseDir);
   }
 
   return {
@@ -183,19 +208,34 @@ async function handleByoPath(
   // Append new agent
   project.agents.push(agent);
 
-  // Add credentials for non-Bedrock providers
-  const credentials = mapModelProviderToCredentials(config.modelProvider, project.name);
-  project.credentials.push(...credentials);
+  // Handle credential creation with smart reuse detection
+  if (config.modelProvider !== 'Bedrock') {
+    const strategy = await resolveCredentialStrategy(
+      project.name,
+      config.name,
+      config.modelProvider,
+      config.apiKey,
+      configBaseDir,
+      project.credentials
+    );
 
-  // Write updated project
-  await configIO.writeProjectSpec(project);
+    if (!strategy.reuse) {
+      const credentials = mapModelProviderToCredentials(config.modelProvider, project.name);
+      if (credentials.length > 0) {
+        credentials[0].name = strategy.credentialName;
+        project.credentials.push(...credentials);
+      }
+    }
 
-  // Write API key to agentcore/.env for non-Bedrock providers
-  if (config.apiKey && config.modelProvider !== 'Bedrock') {
-    // Use project-scoped credential name: {projectName}{modelProvider}
-    const credentialName = `${project.name}${config.modelProvider}`;
-    const envVarName = computeDefaultCredentialEnvVarName(credentialName);
-    await setEnvVar(envVarName, config.apiKey, configBaseDir);
+    // Write updated project
+    await configIO.writeProjectSpec(project);
+
+    if (config.apiKey) {
+      await setEnvVar(strategy.envVarName, config.apiKey, configBaseDir);
+    }
+  } else {
+    // Bedrock: no credentials needed
+    await configIO.writeProjectSpec(project);
   }
 
   return { ok: true, type: 'byo', agentName: config.name };

@@ -12,7 +12,7 @@ import {
   checkDependencyVersions,
   checkStackDeployability,
   formatError,
-  getMissingCredentials,
+  getAllCredentials,
   hasOwnedIdentityApiProviders,
   setupApiKeyProviders,
   synthesizeCdk,
@@ -377,14 +377,13 @@ export function useCdkPreflight(options: PreflightOptions): PreflightResult {
         // Skip this check if skipIdentityCheck is true (e.g., plan command only synthesizes)
         const needsApiKeySetup = !skipIdentityCheck && hasOwnedIdentityApiProviders(preflightContext.projectSpec);
         if (needsApiKeySetup) {
-          const configBaseDir = path.dirname(preflightContext.cdkProject.projectDir);
-
-          // Get all credentials for the prompt
-          const allCredentials = await getMissingCredentials(preflightContext.projectSpec, configBaseDir);
+          // Get all credentials for the prompt (not just missing ones)
+          const allCredentials = getAllCredentials(preflightContext.projectSpec);
 
           // Always show dialog when credentials exist
           setMissingCredentials(allCredentials);
           setPhase('credentials-prompt');
+          isRunningRef.current = false; // Reset so identity-setup can run after user input
           return;
         }
 
@@ -427,11 +426,13 @@ export function useCdkPreflight(options: PreflightOptions): PreflightResult {
     return () => {
       process.off('unhandledRejection', handleUnhandledRejection);
     };
-  }, [phase, logger, switchableIoHost, isInteractive]);
+  }, [phase, logger, switchableIoHost, isInteractive, skipIdentityCheck]);
 
   // Handle identity-setup phase (after user provides credentials)
   useEffect(() => {
     if (phase !== 'identity-setup' || !context) return;
+    if (isRunningRef.current) return; // Prevent duplicate runs
+    isRunningRef.current = true;
 
     const runIdentitySetup = async () => {
       // If user chose to skip, go directly to bootstrap check
@@ -490,6 +491,8 @@ export function useCdkPreflight(options: PreflightOptions): PreflightResult {
         for (const result of identityResult.results) {
           if (result.status === 'created') {
             logger.log(`Created API key provider: ${result.providerName}`);
+          } else if (result.status === 'updated') {
+            logger.log(`Updated API key provider: ${result.providerName}`);
           } else if (result.status === 'exists') {
             logger.log(`API key provider exists: ${result.providerName}`);
           } else if (result.status === 'skipped') {

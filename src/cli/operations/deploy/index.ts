@@ -18,6 +18,7 @@ export {
   setupApiKeyProviders,
   hasOwnedIdentityApiProviders,
   getMissingCredentials,
+  getAllCredentials,
   type SetupApiKeyProvidersOptions,
   type PreDeployIdentityResult,
   type ApiKeyProviderSetupResult,

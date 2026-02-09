@@ -11,6 +11,7 @@ import {
   GetApiKeyCredentialProviderCommand,
   ResourceNotFoundException,
   SetTokenVaultCMKCommand,
+  UpdateApiKeyCredentialProviderCommand,
 } from '@aws-sdk/client-bedrock-agentcore-control';
 
 /**
@@ -53,6 +54,30 @@ export async function createApiKeyProvider(
     if (errorName === 'ConflictException' || errorName === 'ResourceAlreadyExistsException') {
       return { success: true };
     }
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : String(error),
+    };
+  }
+}
+
+/**
+ * Update an existing API key credential provider with a new API key.
+ */
+export async function updateApiKeyProvider(
+  client: BedrockAgentCoreControlClient,
+  providerName: string,
+  apiKey: string
+): Promise<{ success: boolean; error?: string }> {
+  try {
+    await client.send(
+      new UpdateApiKeyCredentialProviderCommand({
+        name: providerName,
+        apiKey: apiKey,
+      })
+    );
+    return { success: true };
+  } catch (error) {
     return {
       success: false,
       error: error instanceof Error ? error.message : String(error),

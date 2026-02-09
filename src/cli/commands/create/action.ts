@@ -11,8 +11,12 @@ import type {
 import { getErrorMessage } from '../../errors';
 import { checkCreateDependencies } from '../../external-requirements';
 import { initGitRepo, setupPythonProject, writeEnvFile, writeGitignore } from '../../operations';
-import { mapGenerateConfigToRenderConfig, writeAgentToProject } from '../../operations/agent/generate';
-import { computeDefaultCredentialEnvVarName } from '../../operations/identity/create-identity';
+import {
+  mapGenerateConfigToRenderConfig,
+  mapModelProviderToIdentityProviders,
+  writeAgentToProject,
+} from '../../operations/agent/generate';
+import { resolveCredentialStrategy } from '../../operations/identity/create-identity';
 import { CDKRenderer, createRenderer } from '../../templates';
 import type { CreateResult } from './types';
 import { mkdir } from 'fs/promises';
@@ -168,18 +172,42 @@ export async function createProjectWithAgent(options: CreateWithAgentOptions): P
       language,
     };
 
-    // Generate agent code - pass actual project name for credential naming
-    const renderConfig = mapGenerateConfigToRenderConfig(generateConfig, name);
+    // Resolve credential strategy FIRST (new project has no existing credentials)
+    let identityProviders: ReturnType<typeof mapModelProviderToIdentityProviders> = [];
+    let strategy: Awaited<ReturnType<typeof resolveCredentialStrategy>> | undefined;
+
+    if (modelProvider !== 'Bedrock') {
+      strategy = await resolveCredentialStrategy(
+        name,
+        agentName,
+        modelProvider,
+        apiKey,
+        configBaseDir,
+        [] // New project has no existing credentials
+      );
+
+      identityProviders = [
+        {
+          name: strategy.credentialName,
+          envVarName: strategy.envVarName,
+        },
+      ];
+    }
+
+    // Generate agent code with correct identity provider
+    const renderConfig = mapGenerateConfigToRenderConfig(generateConfig, identityProviders);
     const renderer = createRenderer(renderConfig);
     await renderer.render({ outputDir: projectRoot });
-    await writeAgentToProject(generateConfig, { configBaseDir });
 
-    // Store API key for non-Bedrock providers
-    if (apiKey && modelProvider !== 'Bedrock') {
-      // Use project-scoped credential name: {projectName}{modelProvider}
-      const credentialName = `${name}${modelProvider}`;
-      const envVarName = computeDefaultCredentialEnvVarName(credentialName);
-      await setEnvVar(envVarName, apiKey, configBaseDir);
+    // Write agent to project config
+    if (strategy) {
+      await writeAgentToProject(generateConfig, { configBaseDir, credentialStrategy: strategy });
+
+      if (apiKey) {
+        await setEnvVar(strategy.envVarName, apiKey, configBaseDir);
+      }
+    } else {
+      await writeAgentToProject(generateConfig, { configBaseDir });
     }
     onProgress?.('Add agent to project', 'done');
 

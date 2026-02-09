@@ -1,5 +1,5 @@
-import { ConfigIO, setEnvVar } from '../../../lib';
-import type { Credential } from '../../../schema';
+import { ConfigIO, getEnvVar, setEnvVar } from '../../../lib';
+import type { Credential, ModelProvider } from '../../../schema';
 
 /**
  * Config for creating a credential resource.
@@ -10,10 +10,84 @@ export interface CreateCredentialConfig {
 }
 
 /**
+ * Result of resolving credential strategy for an agent.
+ */
+export interface CredentialStrategy {
+  /** True if reusing existing credential, false if creating new */
+  reuse: boolean;
+  /** Credential name to use (empty string if no credential needed) */
+  credentialName: string;
+  /** Environment variable name for the API key */
+  envVarName: string;
+  /** True if this is an agent-scoped credential */
+  isAgentScoped: boolean;
+}
+
+/**
  * Compute the default env var name for a credential.
  */
 export function computeDefaultCredentialEnvVarName(credentialName: string): string {
   return `AGENTCORE_CREDENTIAL_${credentialName.toUpperCase()}`;
+}
+
+/**
+ * Resolve credential strategy for adding an agent.
+ * Determines whether to reuse existing credential or create new one.
+ *
+ * Logic:
+ * - Bedrock uses IAM, no credential needed
+ * - No API key provided, no credential needed
+ * - No existing credential for provider → create project-scoped
+ * - Existing credential but can't read key → create project-scoped (treat as fresh)
+ * - Existing credential with matching key → reuse
+ * - Existing credential with different key → create agent-scoped
+ */
+export async function resolveCredentialStrategy(
+  projectName: string,
+  agentName: string,
+  modelProvider: ModelProvider,
+  newApiKey: string | undefined,
+  configBaseDir: string,
+  existingCredentials: Credential[]
+): Promise<CredentialStrategy> {
+  // Bedrock uses IAM, no credential needed
+  if (modelProvider === 'Bedrock') {
+    return { reuse: true, credentialName: '', envVarName: '', isAgentScoped: false };
+  }
+
+  // No API key provided, no credential needed
+  if (!newApiKey) {
+    return { reuse: true, credentialName: '', envVarName: '', isAgentScoped: false };
+  }
+
+  // Check for existing project-scoped credential
+  const projectScopedName = `${projectName}${modelProvider}`;
+  const existingCredential = existingCredentials.find(c => c.name === projectScopedName);
+
+  if (!existingCredential) {
+    // First agent with this provider - create project-scoped credential
+    const envVarName = computeDefaultCredentialEnvVarName(projectScopedName);
+    return { reuse: false, credentialName: projectScopedName, envVarName, isAgentScoped: false };
+  }
+
+  // Credential exists - compare API keys
+  const existingEnvVarName = computeDefaultCredentialEnvVarName(projectScopedName);
+  const existingApiKey = await getEnvVar(existingEnvVarName, configBaseDir);
+
+  if (existingApiKey === undefined) {
+    // Can't read existing key - treat as no existing credential
+    return { reuse: false, credentialName: projectScopedName, envVarName: existingEnvVarName, isAgentScoped: false };
+  }
+
+  if (existingApiKey === newApiKey) {
+    // Same key - reuse existing credential
+    return { reuse: true, credentialName: projectScopedName, envVarName: existingEnvVarName, isAgentScoped: false };
+  }
+
+  // Different key - create agent-scoped credential
+  const agentScopedName = `${projectName}${agentName}${modelProvider}`;
+  const agentScopedEnvVarName = computeDefaultCredentialEnvVarName(agentScopedName);
+  return { reuse: false, credentialName: agentScopedName, envVarName: agentScopedEnvVarName, isAgentScoped: true };
 }
 
 // Alias for old name

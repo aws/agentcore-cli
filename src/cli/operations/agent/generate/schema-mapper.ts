@@ -151,7 +151,7 @@ function mapMemoryOptionToMemoryProviders(memory: MemoryOption, projectName: str
  * Maps model provider to identity providers for template rendering.
  * Bedrock uses IAM, so no identity provider is needed.
  */
-function mapModelProviderToIdentityProviders(
+export function mapModelProviderToIdentityProviders(
   modelProvider: ModelProvider,
   projectName: string
 ): IdentityProviderRenderConfig[] {
@@ -171,19 +171,20 @@ function mapModelProviderToIdentityProviders(
 /**
  * Maps GenerateConfig to AgentRenderConfig for template rendering.
  * @param config - Generate config (note: config.projectName is actually the agent name)
- * @param actualProjectName - Optional actual project name for credential naming (defaults to config.projectName)
+ * @param identityProviders - Identity providers to include (caller controls credential naming)
  */
-export function mapGenerateConfigToRenderConfig(config: GenerateConfig, actualProjectName?: string): AgentRenderConfig {
-  // Use actualProjectName for credential naming, fallback to config.projectName (agent name) for standalone generate
-  const projectNameForCredentials = actualProjectName ?? config.projectName;
+export function mapGenerateConfigToRenderConfig(
+  config: GenerateConfig,
+  identityProviders: IdentityProviderRenderConfig[]
+): AgentRenderConfig {
   return {
     name: config.projectName,
     sdkFramework: config.sdk,
     targetLanguage: config.language,
     modelProvider: config.modelProvider,
     hasMemory: config.memory !== 'none',
-    hasIdentity: config.modelProvider !== 'Bedrock',
+    hasIdentity: identityProviders.length > 0,
     memoryProviders: mapMemoryOptionToMemoryProviders(config.memory, config.projectName),
-    identityProviders: mapModelProviderToIdentityProviders(config.modelProvider, projectNameForCredentials),
+    identityProviders,
   };
 }

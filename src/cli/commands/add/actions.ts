@@ -14,9 +14,14 @@ import { setupPythonProject } from '../../operations';
 import {
   mapGenerateConfigToRenderConfig,
   mapModelProviderToCredentials,
+  mapModelProviderToIdentityProviders,
   writeAgentToProject,
 } from '../../operations/agent/generate';
-import { computeDefaultCredentialEnvVarName, createCredential } from '../../operations/identity/create-identity';
+import {
+  computeDefaultCredentialEnvVarName,
+  createCredential,
+  resolveCredentialStrategy,
+} from '../../operations/identity/create-identity';
 import { createGatewayFromWizard, createToolFromWizard } from '../../operations/mcp/create-mcp';
 import { createMemory } from '../../operations/memory/create-memory';
 import { createRenderer } from '../../templates';
@@ -115,22 +120,47 @@ async function handleCreatePath(options: ValidatedAddAgentOptions, configBaseDir
 
   const agentPath = join(projectRoot, APP_DIR, options.name);
 
-  // Pass actual project name for credential naming in templates
-  const renderConfig = mapGenerateConfigToRenderConfig(generateConfig, project.name);
+  // Resolve credential strategy FIRST to determine correct credential name
+  let identityProviders: ReturnType<typeof mapModelProviderToIdentityProviders> = [];
+  let strategy: Awaited<ReturnType<typeof resolveCredentialStrategy>> | undefined;
+
+  if (options.modelProvider !== 'Bedrock') {
+    strategy = await resolveCredentialStrategy(
+      project.name,
+      options.name,
+      options.modelProvider,
+      options.apiKey,
+      configBaseDir,
+      project.credentials
+    );
+
+    // Build identity providers with the correct credential name from strategy
+    identityProviders = [
+      {
+        name: strategy.credentialName,
+        envVarName: strategy.envVarName,
+      },
+    ];
+  }
+
+  // Render templates with correct identity provider
+  const renderConfig = mapGenerateConfigToRenderConfig(generateConfig, identityProviders);
   const renderer = createRenderer(renderConfig);
   await renderer.render({ outputDir: projectRoot });
 
-  await writeAgentToProject(generateConfig, { configBaseDir });
+  // Write agent to project config
+  if (strategy) {
+    await writeAgentToProject(generateConfig, { configBaseDir, credentialStrategy: strategy });
+
+    if (options.apiKey) {
+      await setEnvVar(strategy.envVarName, options.apiKey, configBaseDir);
+    }
+  } else {
+    await writeAgentToProject(generateConfig, { configBaseDir });
+  }
 
   if (options.language === 'Python') {
     await setupPythonProject({ projectDir: agentPath });
-  }
-
-  if (options.apiKey && options.modelProvider !== 'Bedrock') {
-    // Use project-scoped credential name: {projectName}{modelProvider}
-    const credentialName = `${project.name}${options.modelProvider}`;
-    const envVarName = computeDefaultCredentialEnvVarName(credentialName);
-    await setEnvVar(envVarName, options.apiKey, configBaseDir);
   }
 
   return { success: true, agentName: options.name, agentPath };
@@ -157,18 +187,31 @@ async function handleByoPath(
 
   project.agents.push(agent);
 
-  // Add credential for non-Bedrock providers
-  const credentials = mapModelProviderToCredentials(options.modelProvider, project.name);
-  project.credentials.push(...credentials);
+  // Handle credential creation with smart reuse detection
+  if (options.modelProvider !== 'Bedrock') {
+    const strategy = await resolveCredentialStrategy(
+      project.name,
+      options.name,
+      options.modelProvider,
+      options.apiKey,
+      configBaseDir,
+      project.credentials
+    );
+
+    if (!strategy.reuse) {
+      const credentials = mapModelProviderToCredentials(options.modelProvider, project.name);
+      if (credentials.length > 0) {
+        credentials[0].name = strategy.credentialName;
+        project.credentials.push(...credentials);
+      }
+    }
+
+    if (options.apiKey) {
+      await setEnvVar(strategy.envVarName, options.apiKey, configBaseDir);
+    }
+  }
 
   await configIO.writeProjectSpec(project);
-
-  if (options.apiKey && options.modelProvider !== 'Bedrock') {
-    // Use project-scoped credential name: {projectName}{modelProvider}
-    const credentialName = `${project.name}${options.modelProvider}`;
-    const envVarName = computeDefaultCredentialEnvVarName(credentialName);
-    await setEnvVar(envVarName, options.apiKey, configBaseDir);
-  }
 
   return { success: true, agentName: options.name };
 }
