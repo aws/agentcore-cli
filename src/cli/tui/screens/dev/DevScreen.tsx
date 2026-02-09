@@ -197,12 +197,12 @@ export function DevScreen(props: DevScreenProps) {
   const maxScroll = Math.max(0, totalLines - displayHeight);
   const needsScroll = totalLines > displayHeight;
 
-  // Auto-scroll to bottom when streaming or user hasn't scrolled
+  // Auto-scroll to bottom when user hasn't manually scrolled up
   const effectiveOffset = useMemo(() => {
     if (totalLines === 0) return 0;
-    if ((isStreaming || !userScrolled) && totalLines > displayHeight) return maxScroll;
+    if (!userScrolled && totalLines > displayHeight) return maxScroll;
     return Math.min(scrollOffset, maxScroll);
-  }, [totalLines, isStreaming, userScrolled, scrollOffset, maxScroll, displayHeight]);
+  }, [totalLines, userScrolled, scrollOffset, maxScroll, displayHeight]);
 
   const scrollUp = useCallback(
     (amount = 1) => {
