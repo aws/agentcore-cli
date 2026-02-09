@@ -34,6 +34,8 @@ interface AddGatewayFlowProps {
   availableAgents: string[];
   onExit: () => void;
   onBack: () => void;
+  /** Called when user selects dev from success screen to run agent locally */
+  onDev?: () => void;
   /** Called when user selects deploy from success screen */
   onDeploy?: () => void;
 }
@@ -48,6 +50,7 @@ export function AddGatewayFlow({
   availableAgents,
   onExit,
   onBack,
+  onDev,
   onDeploy,
 }: AddGatewayFlowProps) {
   const { createGateway, reset: resetCreate } = useCreateGateway();
@@ -332,9 +335,11 @@ export function AddGatewayFlow({
         detail="Gateway defined in `agentcore/mcp.json`. Next: Use 'add tool' with 'Behind Gateway' exposure to route tools through this gateway."
         loading={flow.loading}
         loadingMessage={flow.loadingMessage}
+        showDevOption={true}
         onAddAnother={() => {
           void refreshGateways().then(() => onBack());
         }}
+        onDev={onDev}
         onDeploy={onDeploy}
         onExit={onExit}
       />
@@ -348,7 +353,9 @@ export function AddGatewayFlow({
         isInteractive={isInteractive}
         message={`Bound gateway: ${flow.gatewayName}`}
         detail={`Agent "${flow.targetAgent}" now uses gateway "${flow.gatewayName}".`}
+        showDevOption={true}
         onAddAnother={onBack}
+        onDev={onDev}
         onDeploy={onDeploy}
         onExit={onExit}
       />

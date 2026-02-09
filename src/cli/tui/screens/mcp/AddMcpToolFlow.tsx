@@ -26,6 +26,8 @@ interface AddMcpToolFlowProps {
   existingAgents: string[];
   onExit: () => void;
   onBack: () => void;
+  /** Called when user selects dev from success screen to run agent locally */
+  onDev?: () => void;
   /** Called when user selects deploy from success screen */
   onDeploy?: () => void;
 }
@@ -40,6 +42,7 @@ export function AddMcpToolFlow({
   existingAgents,
   onExit,
   onBack,
+  onDev,
   onDeploy,
 }: AddMcpToolFlowProps) {
   const { createTool, reset: resetCreate } = useCreateMcpTool();
@@ -261,7 +264,9 @@ export function AddMcpToolFlow({
         detail={`Project created at ${flow.projectPath}`}
         loading={flow.loading}
         loadingMessage={flow.loadingMessage}
+        showDevOption={true}
         onAddAnother={onBack}
+        onDev={onDev}
         onDeploy={onDeploy}
         onExit={onExit}
       />
@@ -275,7 +280,9 @@ export function AddMcpToolFlow({
         isInteractive={isInteractive}
         message={`Bound agent to MCP runtime`}
         detail={`Agent "${flow.targetAgent}" is now bound to MCP runtime "${flow.mcpRuntimeName}".`}
+        showDevOption={true}
         onAddAnother={onBack}
+        onDev={onDev}
         onDeploy={onDeploy}
         onExit={onExit}
       />

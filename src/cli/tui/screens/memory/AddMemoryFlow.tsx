@@ -16,11 +16,13 @@ interface AddMemoryFlowProps {
   isInteractive?: boolean;
   onExit: () => void;
   onBack: () => void;
+  /** Called when user selects dev from success screen to run agent locally */
+  onDev?: () => void;
   /** Called when user selects deploy from success screen */
   onDeploy?: () => void;
 }
 
-export function AddMemoryFlow({ isInteractive = true, onExit, onBack, onDeploy }: AddMemoryFlowProps) {
+export function AddMemoryFlow({ isInteractive = true, onExit, onBack, onDev, onDeploy }: AddMemoryFlowProps) {
   const { createMemory, reset: resetCreate } = useCreateMemory();
   const { names: existingNames } = useExistingMemoryNames();
   const [flow, setFlow] = useState<FlowState>({ name: 'create-wizard' });
@@ -63,7 +65,9 @@ export function AddMemoryFlow({ isInteractive = true, onExit, onBack, onDeploy }
             connected to your agent. You must configure your agent code to use this memory.
           </Text>
         }
+        showDevOption={true}
         onAddAnother={onBack}
+        onDev={onDev}
         onDeploy={onDeploy}
         onExit={onExit}
       />

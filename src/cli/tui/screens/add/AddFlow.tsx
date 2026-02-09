@@ -88,6 +88,8 @@ interface AddFlowProps {
   /** Whether running in interactive TUI mode (from App.tsx) vs CLI mode */
   isInteractive: boolean;
   onExit: () => void;
+  /** Called when user selects dev from success screen to run agent locally */
+  onDev?: () => void;
   /** Called when user selects deploy from success screen */
   onDeploy?: () => void;
 }
@@ -222,9 +224,11 @@ export function AddFlow(props: AddFlowProps) {
         detail="Deploy with `agentcore deploy`."
         loading={flow.loading}
         loadingMessage={flow.loadingMessage}
+        showDevOption={true}
         onAddAnother={() => {
           void refreshAgents().then(() => setFlow({ name: 'select' }));
         }}
+        onDev={props.onDev}
         onDeploy={props.onDeploy}
         onExit={props.onExit}
       />
@@ -240,9 +244,11 @@ export function AddFlow(props: AddFlowProps) {
         detail="Deploy with `agentcore deploy`."
         loading={flow.loading}
         loadingMessage={flow.loadingMessage}
+        showDevOption={true}
         onAddAnother={() => {
           void refreshAgents().then(() => setFlow({ name: 'select' }));
         }}
+        onDev={props.onDev}
         onDeploy={props.onDeploy}
         onExit={props.onExit}
       />
@@ -257,6 +263,7 @@ export function AddFlow(props: AddFlowProps) {
         availableAgents={agents}
         onExit={props.onExit}
         onBack={() => setFlow({ name: 'select' })}
+        onDev={props.onDev}
         onDeploy={props.onDeploy}
       />
     );
@@ -270,6 +277,7 @@ export function AddFlow(props: AddFlowProps) {
         existingAgents={agents}
         onExit={props.onExit}
         onBack={() => setFlow({ name: 'select' })}
+        onDev={props.onDev}
         onDeploy={props.onDeploy}
       />
     );
@@ -282,6 +290,7 @@ export function AddFlow(props: AddFlowProps) {
         isInteractive={props.isInteractive}
         onBack={() => setFlow({ name: 'select' })}
         onExit={props.onExit}
+        onDev={props.onDev}
         onDeploy={props.onDeploy}
       />
     );
@@ -298,6 +307,7 @@ export function AddFlow(props: AddFlowProps) {
         isInteractive={props.isInteractive}
         onExit={props.onExit}
         onBack={() => setFlow({ name: 'select' })}
+        onDev={props.onDev}
         onDeploy={props.onDeploy}
       />
     );

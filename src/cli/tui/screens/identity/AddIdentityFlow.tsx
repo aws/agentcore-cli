@@ -15,11 +15,13 @@ interface AddIdentityFlowProps {
   isInteractive?: boolean;
   onExit: () => void;
   onBack: () => void;
+  /** Called when user selects dev from success screen to run agent locally */
+  onDev?: () => void;
   /** Called when user selects deploy from success screen */
   onDeploy?: () => void;
 }
 
-export function AddIdentityFlow({ isInteractive = true, onExit, onBack, onDeploy }: AddIdentityFlowProps) {
+export function AddIdentityFlow({ isInteractive = true, onExit, onBack, onDev, onDeploy }: AddIdentityFlowProps) {
   const { createIdentity, reset: resetCreate } = useCreateIdentity();
   const { names: existingNames } = useExistingIdentityNames();
   const [flow, setFlow] = useState<FlowState>({ name: 'create-wizard' });
@@ -58,7 +60,9 @@ export function AddIdentityFlow({ isInteractive = true, onExit, onBack, onDeploy
         isInteractive={isInteractive}
         message={`Added credential: ${flow.identityName}`}
         detail="Credential added to project in `agentcore/agentcore.json`. API key stored in `agentcore/.env`."
+        showDevOption={true}
         onAddAnother={onBack}
+        onDev={onDev}
         onDeploy={onDeploy}
         onExit={onExit}
       />

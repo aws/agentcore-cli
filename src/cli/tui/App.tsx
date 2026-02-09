@@ -143,6 +143,7 @@ function AppContent() {
       <AddFlow
         isInteractive={true}
         onExit={() => setRoute({ name: 'help' })}
+        onDev={() => setRoute({ name: 'dev' })}
         onDeploy={() => setRoute({ name: 'deploy' })}
       />
     );
