@@ -138,7 +138,7 @@ describe('resolveCredentialStrategy', () => {
       });
     });
 
-    it('creates project-scoped credential when existing key is undefined', async () => {
+    it('creates agent-scoped credential when no existing keys can be read', async () => {
       mockGetEnvVar.mockResolvedValue(undefined);
 
       const result = await resolveCredentialStrategy(
@@ -150,11 +150,103 @@ describe('resolveCredentialStrategy', () => {
         existingCredentials
       );
 
+      // Can't verify existing key matches, so create agent-scoped to be safe
       expect(result).toEqual({
         reuse: false,
+        credentialName: 'MyProjectAgent1Gemini',
+        envVarName: 'AGENTCORE_CREDENTIAL_MYPROJECTAGENT1GEMINI',
+        isAgentScoped: true,
+      });
+    });
+  });
+
+  describe('reuses agent-scoped credential when keys match', () => {
+    it('agent3 reuses agent2 credential when both use same secondary key', async () => {
+      // Scenario: agent1 uses mainKey (project-scoped), agent2 uses secondaryKey (agent-scoped)
+      // agent3 also uses secondaryKey - should reuse agent2's credential
+      const existingCredentials: Credential[] = [
+        { name: 'MyProjectGemini', type: 'ApiKeyCredentialProvider' },
+        { name: 'MyProjectAgent2Gemini', type: 'ApiKeyCredentialProvider' },
+      ];
+
+      mockGetEnvVar.mockImplementation((envVar: string) => {
+        if (envVar === 'AGENTCORE_CREDENTIAL_MYPROJECTGEMINI') return Promise.resolve('main-key');
+        if (envVar === 'AGENTCORE_CREDENTIAL_MYPROJECTAGENT2GEMINI') return Promise.resolve('secondary-key');
+        return Promise.resolve(undefined);
+      });
+
+      const result = await resolveCredentialStrategy(
+        projectName,
+        'Agent3',
+        'Gemini',
+        'secondary-key',
+        configBaseDir,
+        existingCredentials
+      );
+
+      expect(result).toEqual({
+        reuse: true,
+        credentialName: 'MyProjectAgent2Gemini',
+        envVarName: 'AGENTCORE_CREDENTIAL_MYPROJECTAGENT2GEMINI',
+        isAgentScoped: true,
+      });
+    });
+
+    it('agent3 reuses project-scoped credential when using main key', async () => {
+      const existingCredentials: Credential[] = [
+        { name: 'MyProjectGemini', type: 'ApiKeyCredentialProvider' },
+        { name: 'MyProjectAgent2Gemini', type: 'ApiKeyCredentialProvider' },
+      ];
+
+      mockGetEnvVar.mockImplementation((envVar: string) => {
+        if (envVar === 'AGENTCORE_CREDENTIAL_MYPROJECTGEMINI') return Promise.resolve('main-key');
+        if (envVar === 'AGENTCORE_CREDENTIAL_MYPROJECTAGENT2GEMINI') return Promise.resolve('secondary-key');
+        return Promise.resolve(undefined);
+      });
+
+      const result = await resolveCredentialStrategy(
+        projectName,
+        'Agent3',
+        'Gemini',
+        'main-key',
+        configBaseDir,
+        existingCredentials
+      );
+
+      expect(result).toEqual({
+        reuse: true,
         credentialName: 'MyProjectGemini',
         envVarName: 'AGENTCORE_CREDENTIAL_MYPROJECTGEMINI',
         isAgentScoped: false,
+      });
+    });
+
+    it('creates new agent-scoped credential when key matches no existing credential', async () => {
+      const existingCredentials: Credential[] = [
+        { name: 'MyProjectGemini', type: 'ApiKeyCredentialProvider' },
+        { name: 'MyProjectAgent2Gemini', type: 'ApiKeyCredentialProvider' },
+      ];
+
+      mockGetEnvVar.mockImplementation((envVar: string) => {
+        if (envVar === 'AGENTCORE_CREDENTIAL_MYPROJECTGEMINI') return Promise.resolve('main-key');
+        if (envVar === 'AGENTCORE_CREDENTIAL_MYPROJECTAGENT2GEMINI') return Promise.resolve('secondary-key');
+        return Promise.resolve(undefined);
+      });
+
+      const result = await resolveCredentialStrategy(
+        projectName,
+        'Agent3',
+        'Gemini',
+        'third-key',
+        configBaseDir,
+        existingCredentials
+      );
+
+      expect(result).toEqual({
+        reuse: false,
+        credentialName: 'MyProjectAgent3Gemini',
+        envVarName: 'AGENTCORE_CREDENTIAL_MYPROJECTAGENT3GEMINI',
+        isAgentScoped: true,
       });
     });
   });

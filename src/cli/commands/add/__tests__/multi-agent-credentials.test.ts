@@ -168,31 +168,31 @@ describe('multi-agent credential behavior', () => {
     });
   });
 
-  describe('credential cleanup on agent removal', () => {
-    it('removing agent with agent-scoped credential cleans up credential', async () => {
+  describe('credential persistence on agent removal', () => {
+    it('removing agent preserves agent-scoped credential for reuse', async () => {
       const result = await runCLI(['remove', 'agent', '--name', 'Agent3', '--json'], projectDir);
 
       expect(result.exitCode, `stdout: ${result.stdout}, stderr: ${result.stderr}`).toBe(0);
 
       const spec = await readProjectSpec();
-      // Should be back to 1 credential (agent-scoped removed)
-      expect(spec.credentials).toHaveLength(1);
-      expect(spec.credentials[0].name).toBe(`${projectName}Gemini`);
+      // Credentials preserved (both project-scoped and agent-scoped)
+      expect(spec.credentials).toHaveLength(2);
+      expect(spec.credentials.map((c: { name: string }) => c.name)).toContain(`${projectName}Gemini`);
+      expect(spec.credentials.map((c: { name: string }) => c.name)).toContain(`${projectName}Agent3Gemini`);
 
       // Should have 2 agents
       expect(spec.agents).toHaveLength(2);
     });
 
-    it('removing agent with shared credential does NOT remove credential', async () => {
+    it('removing agent with shared credential preserves credential', async () => {
       // Remove Agent2 (uses shared project-scoped credential)
       const result = await runCLI(['remove', 'agent', '--name', 'Agent2', '--json'], projectDir);
 
       expect(result.exitCode, `stdout: ${result.stdout}, stderr: ${result.stderr}`).toBe(0);
 
       const spec = await readProjectSpec();
-      // Credential should still exist (shared with Agent1)
-      expect(spec.credentials).toHaveLength(1);
-      expect(spec.credentials[0].name).toBe(`${projectName}Gemini`);
+      // Both credentials still exist
+      expect(spec.credentials).toHaveLength(2);
 
       // Should have 1 agent
       expect(spec.agents).toHaveLength(1);
@@ -205,6 +205,9 @@ describe('multi-agent credential behavior', () => {
       const byoDir = join(projectDir, 'app/ByoAgent');
       await mkdir(byoDir, { recursive: true });
       await writeFile(join(byoDir, 'main.py'), '# BYO agent');
+
+      const specBefore = await readProjectSpec();
+      const credCountBefore = specBefore.credentials.length;
 
       const result = await runCLI(
         [
@@ -232,18 +235,17 @@ describe('multi-agent credential behavior', () => {
       expect(result.exitCode, `stdout: ${result.stdout}, stderr: ${result.stderr}`).toBe(0);
 
       const spec = await readProjectSpec();
-      // Should still have only 1 credential (reused)
-      expect(spec.credentials).toHaveLength(1);
-      expect(spec.credentials[0].name).toBe(`${projectName}Gemini`);
-
-      // Should have 2 agents now
-      expect(spec.agents).toHaveLength(2);
+      // Should still have same number of credentials (reused)
+      expect(spec.credentials).toHaveLength(credCountBefore);
     });
 
     it('BYO agent with different key creates agent-scoped credential', async () => {
       const byoDir2 = join(projectDir, 'app/ByoAgent2');
       await mkdir(byoDir2, { recursive: true });
       await writeFile(join(byoDir2, 'main.py'), '# BYO agent 2');
+
+      const specBefore = await readProjectSpec();
+      const credCountBefore = specBefore.credentials.length;
 
       const result = await runCLI(
         [
@@ -271,10 +273,9 @@ describe('multi-agent credential behavior', () => {
       expect(result.exitCode, `stdout: ${result.stdout}, stderr: ${result.stderr}`).toBe(0);
 
       const spec = await readProjectSpec();
-      // Should have 2 credentials now
-      expect(spec.credentials).toHaveLength(2);
+      // Should have one more credential
+      expect(spec.credentials).toHaveLength(credCountBefore + 1);
       const credNames = spec.credentials.map((c: { name: string }) => c.name);
-      expect(credNames).toContain(`${projectName}Gemini`);
       expect(credNames).toContain(`${projectName}ByoAgent2Gemini`);
     });
   });

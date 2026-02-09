@@ -17,11 +17,7 @@ import {
   mapModelProviderToIdentityProviders,
   writeAgentToProject,
 } from '../../operations/agent/generate';
-import {
-  computeDefaultCredentialEnvVarName,
-  createCredential,
-  resolveCredentialStrategy,
-} from '../../operations/identity/create-identity';
+import { createCredential, resolveCredentialStrategy } from '../../operations/identity/create-identity';
 import { createGatewayFromWizard, createToolFromWizard } from '../../operations/mcp/create-mcp';
 import { createMemory } from '../../operations/memory/create-memory';
 import { createRenderer } from '../../templates';

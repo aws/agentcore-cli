@@ -38,9 +38,8 @@ export function computeDefaultCredentialEnvVarName(credentialName: string): stri
  * - Bedrock uses IAM, no credential needed
  * - No API key provided, no credential needed
  * - No existing credential for provider → create project-scoped
- * - Existing credential but can't read key → create project-scoped (treat as fresh)
- * - Existing credential with matching key → reuse
- * - Existing credential with different key → create agent-scoped
+ * - Any existing credential with matching key → reuse it
+ * - No matching key → create agent-scoped (or project-scoped if first)
  */
 export async function resolveCredentialStrategy(
   projectName: string,
@@ -60,31 +59,27 @@ export async function resolveCredentialStrategy(
     return { reuse: true, credentialName: '', envVarName: '', isAgentScoped: false };
   }
 
-  // Check for existing project-scoped credential
-  const projectScopedName = `${projectName}${modelProvider}`;
-  const existingCredential = existingCredentials.find(c => c.name === projectScopedName);
+  // Check ALL existing credentials for a matching API key
+  for (const cred of existingCredentials) {
+    const envVarName = computeDefaultCredentialEnvVarName(cred.name);
+    const existingApiKey = await getEnvVar(envVarName, configBaseDir);
+    if (existingApiKey === newApiKey) {
+      const isAgentScoped = cred.name !== `${projectName}${modelProvider}`;
+      return { reuse: true, credentialName: cred.name, envVarName, isAgentScoped };
+    }
+  }
 
-  if (!existingCredential) {
-    // First agent with this provider - create project-scoped credential
+  // No matching key found - create new credential
+  const projectScopedName = `${projectName}${modelProvider}`;
+  const hasProjectScoped = existingCredentials.some(c => c.name === projectScopedName);
+
+  if (!hasProjectScoped) {
+    // First agent with this provider - create project-scoped
     const envVarName = computeDefaultCredentialEnvVarName(projectScopedName);
     return { reuse: false, credentialName: projectScopedName, envVarName, isAgentScoped: false };
   }
 
-  // Credential exists - compare API keys
-  const existingEnvVarName = computeDefaultCredentialEnvVarName(projectScopedName);
-  const existingApiKey = await getEnvVar(existingEnvVarName, configBaseDir);
-
-  if (existingApiKey === undefined) {
-    // Can't read existing key - treat as no existing credential
-    return { reuse: false, credentialName: projectScopedName, envVarName: existingEnvVarName, isAgentScoped: false };
-  }
-
-  if (existingApiKey === newApiKey) {
-    // Same key - reuse existing credential
-    return { reuse: true, credentialName: projectScopedName, envVarName: existingEnvVarName, isAgentScoped: false };
-  }
-
-  // Different key - create agent-scoped credential
+  // Project-scoped exists with different key - create agent-scoped
   const agentScopedName = `${projectName}${agentName}${modelProvider}`;
   const agentScopedEnvVarName = computeDefaultCredentialEnvVarName(agentScopedName);
   return { reuse: false, credentialName: agentScopedName, envVarName: agentScopedEnvVarName, isAgentScoped: true };
