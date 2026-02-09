@@ -52,7 +52,7 @@ agentcore invoke
 # Deploy to AWS
 agentcore deploy
 
-# Invoke deployed agent
+# Invoke deployed agent with streaming
 agentcore invoke --stream
 ```
 
@@ -133,7 +133,6 @@ Projects use JSON schema files in the `agentcore/` directory:
 
 - **Memory** - Semantic, summarization, and user preference strategies
 - **Identity** - Secure API key management via Secrets Manager
-- **Agent-to-Agent** - Agents invoking other agents as tools
 
 ## Invoking Agents
 
@@ -156,20 +155,19 @@ agentcore invoke --new-session       # Start fresh
 - [Memory](docs/memory.md) - Memory strategies and sharing
 - [Local Development](docs/local-development.md) - Dev server and debugging
 
-## Library Usage
-
-The CLI exports utilities for programmatic use:
-
-```typescript
-import { type AgentEnvSpec, ConfigIO } from '@aws/agentcore-cli';
-
-const configIO = new ConfigIO({ baseDir: './agentcore' });
-const spec = await configIO.readProjectSpec();
-```
-
 ## Related Package
 
 - `@aws/agentcore-l3-cdk-constructs` - CDK constructs for standalone infrastructure-as-code usage
+
+## Roadmap
+
+- **Gateway Support** - Integration with
+  [AgentCore Gateway](https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/gateway.html) to connect APIs,
+  Lambda functions, and services as MCP-compatible tools
+- **Observability** - Built-in tracing, debugging, and monitoring via
+  [AgentCore Observability](https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/observability.html) with
+  CloudWatch integration
+- **VPC Hosting** - Deploy agents within your VPC for private network access
 
 ## Security
 
