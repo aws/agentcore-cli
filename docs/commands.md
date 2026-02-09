@@ -30,21 +30,21 @@ agentcore create --name MyProject --no-agent
 agentcore create --name MyProject --defaults --dry-run
 ```
 
-| Flag                   | Description                                                                        |
-| ---------------------- | ---------------------------------------------------------------------------------- |
-| `--name <name>`        | Project name (alphanumeric, max 23 chars)                                          |
-| `--defaults`           | Use defaults (Python, Strands, Bedrock, no memory)                                 |
-| `--no-agent`           | Skip agent creation                                                                |
-| `--language <lang>`    | `Python` or `TypeScript`                                                           |
-| `--framework <fw>`     | `Strands`, `LangChain_LangGraph`, `AutoGen`, `CrewAI`, `GoogleADK`, `OpenAIAgents` |
-| `--model-provider <p>` | `Bedrock`, `Anthropic`, `OpenAI`, `Gemini`                                         |
-| `--api-key <key>`      | API key for non-Bedrock providers                                                  |
-| `--memory <opt>`       | `none`, `shortTerm`, `longAndShortTerm`                                            |
-| `--output-dir <dir>`   | Output directory                                                                   |
-| `--skip-git`           | Skip git initialization                                                            |
-| `--skip-python-setup`  | Skip venv setup                                                                    |
-| `--dry-run`            | Preview without creating                                                           |
-| `--json`               | JSON output                                                                        |
+| Flag                   | Description                                                              |
+| ---------------------- | ------------------------------------------------------------------------ |
+| `--name <name>`        | Project name (alphanumeric, max 23 chars)                                |
+| `--defaults`           | Use defaults (Python, Strands, Bedrock, no memory)                       |
+| `--no-agent`           | Skip agent creation                                                      |
+| `--language <lang>`    | `Python` or `TypeScript`                                                 |
+| `--framework <fw>`     | `Strands`, `LangChain_LangGraph`, `AutoGen`, `GoogleADK`, `OpenAIAgents` |
+| `--model-provider <p>` | `Bedrock`, `Anthropic`, `OpenAI`, `Gemini`                               |
+| `--api-key <key>`      | API key for non-Bedrock providers                                        |
+| `--memory <opt>`       | `none`, `shortTerm`, `longAndShortTerm`                                  |
+| `--output-dir <dir>`   | Output directory                                                         |
+| `--skip-git`           | Skip git initialization                                                  |
+| `--skip-python-setup`  | Skip venv setup                                                          |
+| `--dry-run`            | Preview without creating                                                 |
+| `--json`               | JSON output                                                              |
 
 ### deploy
 

@@ -54,17 +54,17 @@ Main project configuration containing agents and their capabilities.
 }
 ```
 
-| Field               | Required | Description                                                                        |
-| ------------------- | -------- | ---------------------------------------------------------------------------------- |
-| `name`              | Yes      | Agent name (1-64 chars, alphanumeric)                                              |
-| `id`                | Yes      | Unique identifier                                                                  |
-| `sdkFramework`      | Yes      | `Strands`, `LangChain_LangGraph`, `AutoGen`, `CrewAI`, `GoogleADK`, `OpenAIAgents` |
-| `targetLanguage`    | Yes      | `Python` or `TypeScript`                                                           |
-| `modelProvider`     | Yes      | `Bedrock`, `Anthropic`, `OpenAI`, `Gemini`                                         |
-| `runtime`           | Yes      | Runtime configuration                                                              |
-| `memoryProviders`   | Yes      | Memory configurations                                                              |
-| `identityProviders` | Yes      | Identity/API key configurations                                                    |
-| `remoteTools`       | Yes      | Agent-to-agent references                                                          |
+| Field               | Required | Description                                                              |
+| ------------------- | -------- | ------------------------------------------------------------------------ |
+| `name`              | Yes      | Agent name (1-64 chars, alphanumeric)                                    |
+| `id`                | Yes      | Unique identifier                                                        |
+| `sdkFramework`      | Yes      | `Strands`, `LangChain_LangGraph`, `AutoGen`, `GoogleADK`, `OpenAIAgents` |
+| `targetLanguage`    | Yes      | `Python` or `TypeScript`                                                 |
+| `modelProvider`     | Yes      | `Bedrock`, `Anthropic`, `OpenAI`, `Gemini`                               |
+| `runtime`           | Yes      | Runtime configuration                                                    |
+| `memoryProviders`   | Yes      | Memory configurations                                                    |
+| `identityProviders` | Yes      | Identity/API key configurations                                          |
+| `remoteTools`       | Yes      | Agent-to-agent references                                                |
 
 ### Runtime Configuration
 
