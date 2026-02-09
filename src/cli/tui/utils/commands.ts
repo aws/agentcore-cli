@@ -19,6 +19,13 @@ const HIDDEN_FROM_TUI = ['update', 'package'] as const;
  */
 const HIDDEN_WHEN_IN_PROJECT = ['create'] as const;
 
+/**
+ * Subcommands hidden from TUI suggestions.
+ * These are registered with { hidden: true } in commander but we track them
+ * here since commander doesn't expose a public API to check hidden status.
+ */
+const HIDDEN_SUBCOMMANDS = ['gateway', 'mcp-tool'] as const;
+
 interface GetCommandsOptions {
   /** Whether user is currently inside an AgentCore project */
   inProject?: boolean;
@@ -36,7 +43,9 @@ export function getCommandsForUI(program: Command, options: GetCommandsOptions =
       id: cmd.name(),
       title: cmd.name(),
       description: cmd.description(),
-      subcommands: cmd.commands.map(sub => sub.name()),
+      subcommands: cmd.commands
+        .filter(sub => !HIDDEN_SUBCOMMANDS.includes(sub.name() as (typeof HIDDEN_SUBCOMMANDS)[number]))
+        .map(sub => sub.name()),
       disabled: false,
     }));
 }
