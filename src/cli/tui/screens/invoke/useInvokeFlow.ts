@@ -4,7 +4,7 @@ import type {
   AwsDeploymentTarget,
   AgentCoreProjectSpec as _AgentCoreProjectSpec,
 } from '../../../../schema';
-import { invokeAgentRuntimeStreaming, stopRuntimeSession } from '../../../aws';
+import { invokeAgentRuntimeStreaming } from '../../../aws';
 import { getErrorMessage } from '../../../errors';
 import { InvokeLogger } from '../../../logging';
 import { generateSessionId } from '../../../operations/session';
@@ -172,18 +172,6 @@ export function useInvokeFlow(options: InvokeFlowOptions = {}): InvokeFlowState 
         }
 
         logger.logResponse(streamingContentRef.current);
-
-        // Stop the session after invoke completes (cleanup)
-        const finalSessionId = result.sessionId ?? sessionId;
-        if (finalSessionId) {
-          void stopRuntimeSession({
-            region: config.target.region,
-            runtimeArn: agent.state.runtimeArn,
-            sessionId: finalSessionId,
-          }).catch(() => {
-            // Silently ignore stop errors - session will expire anyway
-          });
-        }
 
         setPhase('ready');
       } catch (err) {

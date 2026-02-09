@@ -95,6 +95,7 @@ export async function handleInvoke(context: InvokeContext, options: InvokeOption
         region: targetConfig.region,
         runtimeArn: agentState.runtimeArn,
         payload: options.prompt,
+        sessionId: options.sessionId,
         logger, // Pass logger for SSE event debugging
       });
 
@@ -124,6 +125,7 @@ export async function handleInvoke(context: InvokeContext, options: InvokeOption
     region: targetConfig.region,
     runtimeArn: agentState.runtimeArn,
     payload: options.prompt,
+    sessionId: options.sessionId,
   });
 
   logger.logResponse(response.content);

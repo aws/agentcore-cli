@@ -2,6 +2,7 @@ export interface InvokeOptions {
   agentName?: string;
   targetName?: string;
   prompt?: string;
+  sessionId?: string;
   json?: boolean;
   stream?: boolean;
 }

@@ -120,6 +120,7 @@ export const registerInvoke = (program: Command) => {
               prompt,
               agentName: cliOptions.agent,
               targetName: cliOptions.target ?? 'default',
+              sessionId: cliOptions.sessionId,
               json: cliOptions.json,
               stream: cliOptions.stream,
             });
