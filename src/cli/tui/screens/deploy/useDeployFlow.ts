@@ -1,7 +1,7 @@
 import { ConfigIO } from '../../../../lib';
 import type { CdkToolkitWrapper, DeployMessage, SwitchableIoHost } from '../../../cdk/toolkit-lib';
 import { buildDeployedState, getStackOutputs, parseAgentOutputs } from '../../../cloudformation';
-import { getErrorMessage, isExpiredTokenError } from '../../../errors';
+import { getErrorMessage, isChangesetInProgressError, isExpiredTokenError } from '../../../errors';
 import { ExecLogger } from '../../../logging';
 import { type Step, areStepsComplete, hasStepError } from '../../components';
 import { type MissingCredential, type PreflightContext, useCdkPreflight } from '../../hooks';
@@ -127,13 +127,19 @@ export function useDeployFlow(options: DeployFlowOptions = {}): DeployFlowState 
     if (Object.keys(outputs).length === 0) {
       logger.log('Stream outputs not available, falling back to DescribeStacks API');
       for (let attempt = 1; attempt <= MAX_OUTPUT_POLL_ATTEMPTS; attempt += 1) {
+        logger.log(`Polling stack outputs (attempt ${attempt}/${MAX_OUTPUT_POLL_ATTEMPTS})...`);
         outputs = await getStackOutputs(target.region, currentStackName);
         if (Object.keys(outputs).length > 0) {
+          logger.log(`Retrieved ${Object.keys(outputs).length} output(s) from stack`);
           break;
         }
         if (attempt < MAX_OUTPUT_POLL_ATTEMPTS) {
+          logger.log(`No outputs yet, retrying in ${OUTPUT_POLL_DELAY_MS / 1000}s...`);
           await new Promise(resolve => setTimeout(resolve, OUTPUT_POLL_DELAY_MS));
         }
+      }
+      if (Object.keys(outputs).length === 0) {
+        logger.log('Warning: Could not retrieve stack outputs after polling', 'warn');
       }
     }
 
@@ -215,6 +221,13 @@ export function useDeployFlow(options: DeployFlowOptions = {}): DeployFlowState 
         setDeployStep(prev => ({ ...prev, status: 'success' }));
       } catch (err) {
         const errorMsg = getErrorMessage(err);
+
+        // Log additional context for changeset errors
+        if (isChangesetInProgressError(err)) {
+          logger.log('Changeset conflict detected - another deployment may be in progress', 'warn');
+          logger.log('The CDK wrapper will retry automatically with exponential backoff', 'info');
+        }
+
         logger.endStep('error', errorMsg);
         logger.finalize(false);
 

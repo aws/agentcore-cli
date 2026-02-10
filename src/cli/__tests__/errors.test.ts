@@ -1,4 +1,10 @@
-import { getErrorMessage, isExpiredTokenError, isNoCredentialsError, isStackInProgressError } from '../errors.js';
+import {
+  getErrorMessage,
+  isChangesetInProgressError,
+  isExpiredTokenError,
+  isNoCredentialsError,
+  isStackInProgressError,
+} from '../errors.js';
 import { describe, expect, it } from 'vitest';
 
 describe('errors', () => {
@@ -141,6 +147,35 @@ describe('errors', () => {
       expect(isStackInProgressError(null)).toBe(false);
       expect(isStackInProgressError(undefined)).toBe(false);
       expect(isStackInProgressError({})).toBe(false);
+    });
+  });
+
+  describe('isChangesetInProgressError', () => {
+    it('returns true for InvalidChangeSetStatus errors', () => {
+      expect(
+        isChangesetInProgressError(
+          new Error('InvalidChangeSetStatusException: An operation on this ChangeSet is currently in progress.')
+        )
+      ).toBe(true);
+    });
+
+    it('returns true for changeset in progress message patterns', () => {
+      expect(isChangesetInProgressError(new Error('ChangeSet is currently in progress'))).toBe(true);
+      expect(isChangesetInProgressError(new Error('An operation on this changeset is currently in progress'))).toBe(
+        true
+      );
+    });
+
+    it('returns false for other errors', () => {
+      expect(isChangesetInProgressError(new Error('Stack not found'))).toBe(false);
+      expect(isChangesetInProgressError(new Error('some other error'))).toBe(false);
+      expect(isChangesetInProgressError(new Error('UPDATE_IN_PROGRESS'))).toBe(false);
+    });
+
+    it('returns false for edge cases', () => {
+      expect(isChangesetInProgressError(null)).toBe(false);
+      expect(isChangesetInProgressError(undefined)).toBe(false);
+      expect(isChangesetInProgressError({})).toBe(false);
     });
   });
 });
