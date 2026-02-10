@@ -90,13 +90,13 @@ export const registerInvoke = (program: Command) => {
     .command('invoke')
     .alias('i')
     .description(COMMAND_DESCRIPTIONS.invoke)
-    .argument('[prompt]', 'Prompt to send to the agent')
-    .option('--prompt <text>', 'Prompt to send to the agent')
-    .option('--agent <name>', 'Select specific agent')
-    .option('--target <name>', 'Select deployment target')
+    .argument('[prompt]', 'Prompt to send to the agent [non-interactive]')
+    .option('--prompt <text>', 'Prompt to send to the agent [non-interactive]')
+    .option('--agent <name>', 'Select specific agent [non-interactive]')
+    .option('--target <name>', 'Select deployment target [non-interactive]')
     .option('--session-id <id>', 'Use specific session ID for conversation continuity')
-    .option('--json', 'Output as JSON')
-    .option('--stream', 'Stream response in real-time')
+    .option('--json', 'Output as JSON [non-interactive]')
+    .option('--stream', 'Stream response in real-time (TUI streams by default) [non-interactive]')
     .action(
       async (
         positionalPrompt: string | undefined,
@@ -115,7 +115,7 @@ export const registerInvoke = (program: Command) => {
           const prompt = cliOptions.prompt ?? positionalPrompt;
 
           // CLI mode if any CLI-specific options provided (follows deploy command pattern)
-          if (prompt || cliOptions.json || cliOptions.target || cliOptions.stream) {
+          if (prompt || cliOptions.json || cliOptions.target || cliOptions.stream || cliOptions.agent) {
             await handleInvokeCLI({
               prompt,
               agentName: cliOptions.agent,

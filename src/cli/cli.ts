@@ -3,6 +3,7 @@ import { registerCreate } from './commands/create';
 import { registerDeploy } from './commands/deploy';
 import { registerDestroy } from './commands/destroy';
 import { registerDev } from './commands/dev';
+import { registerHelp } from './commands/help';
 import { registerInvoke } from './commands/invoke';
 import { registerPackage } from './commands/package';
 import { registerRemove } from './commands/remove';
@@ -101,6 +102,17 @@ export function createProgram(): Command {
 
   registerCommands(program);
 
+  // Add help footer to all subcommands explaining interactive vs non-interactive
+  const helpFooter =
+    '\nRun without flags for interactive mode. Flags marked [non-interactive] trigger CLI mode.\nRun `agentcore help modes` for details.';
+  program.commands.forEach(cmd => {
+    cmd.addHelpText('after', helpFooter);
+    // Also add to nested subcommands (e.g., add agent, remove agent)
+    cmd.commands.forEach(subcmd => {
+      subcmd.addHelpText('after', helpFooter);
+    });
+  });
+
   return program;
 }
 
@@ -110,6 +122,7 @@ export function registerCommands(program: Command) {
   registerDeploy(program);
   registerDestroy(program);
   registerCreate(program);
+  registerHelp(program);
   registerInvoke(program);
   registerPackage(program);
   registerRemove(program);

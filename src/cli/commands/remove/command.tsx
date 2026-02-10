@@ -78,21 +78,22 @@ function registerResourceRemove(
   removeCommand
     .command(subcommand)
     .description(description)
-    .option('--name <name>', 'Name of resource to remove')
-    .option('--force', 'Skip confirmation prompt')
-    .option('--json', 'Output as JSON')
+    .option('--name <name>', 'Name of resource to remove [non-interactive]')
+    .option('--force', 'Skip confirmation prompt [non-interactive]')
+    .option('--json', 'Output as JSON [non-interactive]')
     .action(async (cliOptions: { name?: string; force?: boolean; json?: boolean }) => {
       try {
         requireProject();
-        if (cliOptions.json) {
+        // Any flag triggers non-interactive CLI mode
+        if (cliOptions.name || cliOptions.force || cliOptions.json) {
           await handleRemoveCLI({
             resourceType,
             name: cliOptions.name,
             force: cliOptions.force,
-            json: true,
+            json: cliOptions.json,
           });
         } else {
-          handleRemoveResourceTUI(resourceType, { force: cliOptions.force, name: cliOptions.name });
+          handleRemoveResourceTUI(resourceType, {});
         }
       } catch (error) {
         if (cliOptions.json) {
@@ -116,22 +117,20 @@ export const registerRemove = (program: Command) => {
   removeCommand
     .command('all')
     .description('Reset all agentcore schemas to empty state')
-    .option('--force', 'Skip confirmation prompts')
-    .option('--dry-run', 'Show what would be reset without actually resetting')
-    .option('--json', 'Output as JSON')
+    .option('--force', 'Skip confirmation prompts [non-interactive]')
+    .option('--dry-run', 'Show what would be reset without actually resetting [non-interactive]')
+    .option('--json', 'Output as JSON [non-interactive]')
     .action(async (cliOptions: { force?: boolean; dryRun?: boolean; json?: boolean }) => {
       try {
-        if (cliOptions.json) {
+        // Any flag triggers non-interactive CLI mode
+        if (cliOptions.force || cliOptions.dryRun || cliOptions.json) {
           await handleRemoveAllCLI({
             force: cliOptions.force,
             dryRun: cliOptions.dryRun,
-            json: true,
+            json: cliOptions.json,
           });
         } else {
-          handleRemoveAllTUI({
-            force: cliOptions.force,
-            dryRun: cliOptions.dryRun,
-          });
+          handleRemoveAllTUI({});
         }
       } catch (error) {
         if (cliOptions.json) {

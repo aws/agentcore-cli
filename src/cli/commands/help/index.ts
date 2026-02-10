@@ -1,0 +1,1 @@
+export { registerHelp } from './command';

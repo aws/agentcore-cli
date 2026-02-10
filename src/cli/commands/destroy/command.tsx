@@ -55,14 +55,19 @@ export const registerDestroy = (program: Command) => {
     .command('destroy')
     .alias('x')
     .description(COMMAND_DESCRIPTIONS.destroy)
-    .option('--target <target>', 'Deployment target name to destroy')
-    .option('-y, --yes', 'Skip confirmation prompt')
-    .option('--json', 'Output as JSON')
+    .option('--target <target>', 'Deployment target name to destroy [non-interactive]')
+    .option('-y, --yes', 'Skip confirmation prompt [non-interactive]')
+    .option('--json', 'Output as JSON [non-interactive]')
     .action(async (cliOptions: { target?: string; yes?: boolean; json?: boolean }) => {
       try {
         requireProject();
-        if (cliOptions.target) {
-          await handleDestroyCLI(cliOptions as DestroyOptions);
+        // Any flag triggers non-interactive CLI mode
+        if (cliOptions.target || cliOptions.yes || cliOptions.json) {
+          const options = {
+            ...cliOptions,
+            target: cliOptions.target ?? 'default',
+          };
+          await handleDestroyCLI(options as DestroyOptions);
         } else {
           handleDestroyTUI();
         }

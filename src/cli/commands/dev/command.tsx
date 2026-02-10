@@ -44,9 +44,9 @@ export const registerDev = (program: Command) => {
     .description(COMMAND_DESCRIPTIONS.dev)
     .option('-p, --port <port>', 'Port for development server', '8080')
     .option('-a, --agent <name>', 'Agent to run or invoke (required if multiple agents)')
-    .option('-i, --invoke <prompt>', 'Invoke the running dev server with a prompt')
-    .option('-s, --stream', 'Stream response when using --invoke')
-    .option('-l, --logs', 'Run dev server with logs to stdout (non-interactive)')
+    .option('-i, --invoke <prompt>', 'Invoke running dev server (use --agent if multiple) [non-interactive]')
+    .option('-s, --stream', 'Stream response when using --invoke [non-interactive]')
+    .option('-l, --logs', 'Run dev server with logs to stdout [non-interactive]')
     .action(async opts => {
       try {
         const port = parseInt(opts.port, 10);

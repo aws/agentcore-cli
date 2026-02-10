@@ -139,22 +139,22 @@ export const registerCreate = (program: Command) => {
   program
     .command('create')
     .description(COMMAND_DESCRIPTIONS.create)
-    .option('--name <name>', 'Project name (start with letter, alphanumeric only, max 36 chars)')
-    .option('--no-agent', 'Skip agent creation')
-    .option('--defaults', 'Use defaults (Python, Strands, Bedrock, no memory)')
-    .option('--language <language>', 'Target language (Python, TypeScript)')
+    .option('--name <name>', 'Project name (start with letter, alphanumeric only, max 36 chars) [non-interactive]')
+    .option('--no-agent', 'Skip agent creation [non-interactive]')
+    .option('--defaults', 'Use defaults (Python, Strands, Bedrock, no memory) [non-interactive]')
+    .option('--language <language>', 'Target language (Python, TypeScript) [non-interactive]')
     .option(
       '--framework <framework>',
-      'Agent framework (Strands, LangChain_LangGraph, CrewAI, GoogleADK, OpenAIAgents)'
+      'Agent framework (Strands, LangChain_LangGraph, CrewAI, GoogleADK, OpenAIAgents) [non-interactive]'
     )
-    .option('--model-provider <provider>', 'Model provider (Bedrock, Anthropic, OpenAI, Gemini)')
-    .option('--api-key <key>', 'API key for non-Bedrock providers')
-    .option('--memory <option>', 'Memory option (none, shortTerm, longAndShortTerm)')
-    .option('--output-dir <dir>', 'Output directory (default: current directory)')
-    .option('--skip-git', 'Skip git repository initialization')
-    .option('--skip-python-setup', 'Skip Python virtual environment setup')
-    .option('--dry-run', 'Preview what would be created without making changes')
-    .option('--json', 'Output as JSON')
+    .option('--model-provider <provider>', 'Model provider (Bedrock, Anthropic, OpenAI, Gemini) [non-interactive]')
+    .option('--api-key <key>', 'API key for non-Bedrock providers [non-interactive]')
+    .option('--memory <option>', 'Memory option (none, shortTerm, longAndShortTerm) [non-interactive]')
+    .option('--output-dir <dir>', 'Output directory (default: current directory) [non-interactive]')
+    .option('--skip-git', 'Skip git repository initialization [non-interactive]')
+    .option('--skip-python-setup', 'Skip Python virtual environment setup [non-interactive]')
+    .option('--dry-run', 'Preview what would be created without making changes [non-interactive]')
+    .option('--json', 'Output as JSON [non-interactive]')
     .action(async options => {
       try {
         // Apply defaults if --defaults flag is set
@@ -165,8 +165,24 @@ export const registerCreate = (program: Command) => {
           options.memory = options.memory ?? 'none';
         }
 
-        if (options.name || options.json || options.dryRun) {
-          // CLI mode - any non-interactive flag triggers CLI mode
+        // Any flag triggers non-interactive CLI mode
+        const hasAnyFlag = Boolean(
+          options.name ??
+          (options.agent === false ? true : null) ??
+          options.defaults ??
+          options.language ??
+          options.framework ??
+          options.modelProvider ??
+          options.apiKey ??
+          options.memory ??
+          options.outputDir ??
+          options.skipGit ??
+          options.skipPythonSetup ??
+          options.dryRun ??
+          options.json
+        );
+
+        if (hasAnyFlag) {
           await handleCreateCLI(options as CreateOptions);
         } else {
           handleCreateTUI();

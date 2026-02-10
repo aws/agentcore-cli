@@ -96,7 +96,7 @@ describe('remove command', () => {
       expect(json.success).toBe(false);
     });
 
-    it('removes existing agent with --name and --force (TUI mode)', async () => {
+    it('removes existing agent with --name and --force (non-interactive)', async () => {
       // Add another agent for this test
       const addResult = await runCLI(
         [
@@ -118,7 +118,7 @@ describe('remove command', () => {
       );
       expect(addResult.exitCode).toBe(0);
 
-      // Remove agent using TUI mode with --name and --force (no --json)
+      // Remove agent using non-interactive mode with --name and --force (no --json)
       const result = await runCLI(['remove', 'agent', '--name', 'TUITestAgent', '--force'], projectDir);
       expect(result.exitCode).toBe(0);
 

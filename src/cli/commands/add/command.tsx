@@ -243,11 +243,11 @@ export function registerAdd(program: Command) {
   addCmd
     .command('target')
     .description('Add a deployment target')
-    .option('--name <name>', 'Target name')
-    .option('--account <id>', 'AWS account ID')
-    .option('--region <region>', 'AWS region')
-    .option('--description <desc>', 'Optional description')
-    .option('--json', 'Output as JSON')
+    .option('--name <name>', 'Target name [non-interactive]')
+    .option('--account <id>', 'AWS account ID [non-interactive]')
+    .option('--region <region>', 'AWS region [non-interactive]')
+    .option('--description <desc>', 'Optional description [non-interactive]')
+    .option('--json', 'Output as JSON [non-interactive]')
     .action(async options => {
       requireProject();
       await handleAddTargetCLI(options);
@@ -257,16 +257,19 @@ export function registerAdd(program: Command) {
   addCmd
     .command('agent')
     .description('Add an agent to the project')
-    .option('--name <name>', 'Agent name (start with letter, alphanumeric only, max 64 chars)')
-    .option('--type <type>', 'Agent type: create or byo', 'create')
-    .option('--language <lang>', 'Language: Python (create), or Python/TypeScript/Other (BYO)')
-    .option('--framework <fw>', 'Framework: Strands, LangChain_LangGraph, CrewAI, GoogleADK, OpenAIAgents')
-    .option('--model-provider <provider>', 'Model provider: Bedrock, Anthropic, OpenAI, Gemini')
-    .option('--api-key <key>', 'API key for non-Bedrock providers')
-    .option('--memory <mem>', 'Memory: none, shortTerm, longAndShortTerm (create path only)')
-    .option('--code-location <path>', 'Path to existing code (BYO path only)')
-    .option('--entrypoint <file>', 'Entry file relative to code-location (BYO, default: main.py)')
-    .option('--json', 'Output as JSON')
+    .option('--name <name>', 'Agent name (start with letter, alphanumeric only, max 64 chars) [non-interactive]')
+    .option('--type <type>', 'Agent type: create or byo [non-interactive]', 'create')
+    .option('--language <lang>', 'Language: Python (create), or Python/TypeScript/Other (BYO) [non-interactive]')
+    .option(
+      '--framework <fw>',
+      'Framework: Strands, LangChain_LangGraph, CrewAI, GoogleADK, OpenAIAgents [non-interactive]'
+    )
+    .option('--model-provider <provider>', 'Model provider: Bedrock, Anthropic, OpenAI, Gemini [non-interactive]')
+    .option('--api-key <key>', 'API key for non-Bedrock providers [non-interactive]')
+    .option('--memory <mem>', 'Memory: none, shortTerm, longAndShortTerm (create path only) [non-interactive]')
+    .option('--code-location <path>', 'Path to existing code (BYO path only) [non-interactive]')
+    .option('--entrypoint <file>', 'Entry file relative to code-location (BYO, default: main.py) [non-interactive]')
+    .option('--json', 'Output as JSON [non-interactive]')
     .action(async options => {
       requireProject();
       await handleAddAgentCLI(options as AddAgentOptions);
@@ -310,10 +313,13 @@ export function registerAdd(program: Command) {
   addCmd
     .command('memory')
     .description('Add a memory resource to the project')
-    .option('--name <name>', 'Memory name')
-    .option('--strategies <types>', 'Comma-separated strategies: SEMANTIC, SUMMARIZATION, USER_PREFERENCE, CUSTOM')
-    .option('--expiry <days>', 'Event expiry duration in days (default: 30)', parseInt)
-    .option('--json', 'Output as JSON')
+    .option('--name <name>', 'Memory name [non-interactive]')
+    .option(
+      '--strategies <types>',
+      'Comma-separated strategies: SEMANTIC, SUMMARIZATION, USER_PREFERENCE, CUSTOM [non-interactive]'
+    )
+    .option('--expiry <days>', 'Event expiry duration in days (default: 30) [non-interactive]', parseInt)
+    .option('--json', 'Output as JSON [non-interactive]')
     .action(async options => {
       requireProject();
       await handleAddMemoryCLI(options as AddMemoryOptions);
@@ -323,9 +329,9 @@ export function registerAdd(program: Command) {
   addCmd
     .command('identity')
     .description('Add a credential to the project')
-    .option('--name <name>', 'Credential name')
-    .option('--api-key <key>', 'The API key value')
-    .option('--json', 'Output as JSON')
+    .option('--name <name>', 'Credential name [non-interactive]')
+    .option('--api-key <key>', 'The API key value [non-interactive]')
+    .option('--json', 'Output as JSON [non-interactive]')
     .action(async options => {
       requireProject();
       await handleAddIdentityCLI(options as AddIdentityOptions);
