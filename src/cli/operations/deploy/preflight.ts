@@ -72,10 +72,14 @@ export async function validateProject(): Promise<PreflightContext> {
   const projectSpec = await configIO.readProjectSpec();
   const awsTargets = await configIO.readAWSDeploymentTargets();
 
-  // Validate that at least one agent is defined, unless this is a teardown deploy
+  // Validate that at least one agent is defined, unless this is a teardown deploy.
+  //
+  // Teardown detection: when agents is empty but deployed-state.json records existing
+  // targets, the user has run `remove all` and wants to tear down AWS resources via deploy.
+  // deployed-state.json is written by the CLI after every successful deploy, so it is a
+  // reliable indicator of whether a CloudFormation stack exists for this project.
   let isTeardownDeploy = false;
   if (!projectSpec.agents || projectSpec.agents.length === 0) {
-    // Check if there's an existing deployed stack — if so, this is a teardown deploy
     let hasExistingStack = false;
     try {
       const deployedState = await configIO.readDeployedState();

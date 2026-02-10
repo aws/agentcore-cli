@@ -109,13 +109,20 @@ export async function performStackTeardown(targetName: string): Promise<StackTea
   }
 
   // Clean up deployed-state.json first (it validates against aws-targets.json),
-  // then remove the target from aws-targets.json
+  // then remove the target from aws-targets.json.
+  // readDeployedState throws if the file doesn't exist, which is fine — skip cleanup.
+  // But if the file exists and we fail to write, let that error propagate.
   try {
     const deployedState = await configIO.readDeployedState();
     delete deployedState.targets[targetName];
     await configIO.writeDeployedState(deployedState);
-  } catch {
-    // deployed-state may not exist — ignore
+  } catch (err) {
+    // Only ignore "file not found" — rethrow anything else (e.g. write failures)
+    if (err instanceof Error && (err.message.includes('ENOENT') || err.message.includes('not found'))) {
+      // No deployed-state file — nothing to clean up
+    } else {
+      throw err;
+    }
   }
   const remainingTargets = (await configIO.readAWSDeploymentTargets()).filter(t => t.name !== targetName);
   await configIO.writeAWSDeploymentTargets(remainingTargets);

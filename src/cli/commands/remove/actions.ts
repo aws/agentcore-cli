@@ -18,7 +18,7 @@ export interface ValidatedRemoveOptions {
 }
 
 const SOURCE_CODE_NOTE =
-  'Your source code has not been modified. Deploy with `agentcore deploy` to apply changes to AWS.';
+  'Your agent app source code has not been modified. Deploy with `agentcore deploy` to apply your removal changes to AWS.';
 
 export async function handleRemove(options: ValidatedRemoveOptions): Promise<RemoveResult> {
   const { resourceType, name } = options;
