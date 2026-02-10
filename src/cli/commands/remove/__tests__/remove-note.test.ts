@@ -13,7 +13,7 @@ describe('remove command note field', () => {
     testDir = join(tmpdir(), `agentcore-remove-note-${randomUUID()}`);
     await mkdir(testDir, { recursive: true });
 
-    // Create project with target
+    // Create project with agent
     const projectName = 'RemoveNoteTestProj';
     let result = await runCLI(['create', '--name', projectName, '--no-agent'], testDir);
     if (result.exitCode !== 0) {
@@ -21,13 +21,27 @@ describe('remove command note field', () => {
     }
     projectDir = join(testDir, projectName);
 
-    // Add a target
+    // Add an agent
     result = await runCLI(
-      ['add', 'target', '--name', 'test-target', '--account', '123456789012', '--region', 'us-east-1', '--json'],
+      [
+        'add',
+        'agent',
+        '--name',
+        'TestAgent',
+        '--language',
+        'Python',
+        '--framework',
+        'Strands',
+        '--model-provider',
+        'Bedrock',
+        '--memory',
+        'none',
+        '--json',
+      ],
       projectDir
     );
     if (result.exitCode !== 0) {
-      throw new Error(`Failed to create target: ${result.stdout} ${result.stderr}`);
+      throw new Error(`Failed to create agent: ${result.stdout} ${result.stderr}`);
     }
   });
 
@@ -35,8 +49,8 @@ describe('remove command note field', () => {
     await rm(testDir, { recursive: true, force: true });
   });
 
-  it('includes note about source code when removing a target', async () => {
-    const result = await runCLI(['remove', 'target', '--name', 'test-target', '--json'], projectDir);
+  it('includes note about source code when removing an agent', async () => {
+    const result = await runCLI(['remove', 'agent', '--name', 'TestAgent', '--json'], projectDir);
     expect(result.exitCode).toBe(0);
     const json = JSON.parse(result.stdout);
     expect(json.success).toBe(true);

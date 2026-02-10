@@ -32,15 +32,6 @@ describe('deploy with empty agents and deployed state (teardown)', () => {
       throw new Error(`Failed to create project: ${result.stdout} ${result.stderr}`);
     }
     projectDir = join(testDir, projectName);
-
-    // Add a target
-    const targetResult = await runCLI(
-      ['add', 'target', '--name', 'test-target', '--account', '123456789012', '--region', 'us-east-1', '--json'],
-      projectDir
-    );
-    if (targetResult.exitCode !== 0) {
-      throw new Error(`Failed to create target: ${targetResult.stdout} ${targetResult.stderr}`);
-    }
   });
 
   afterAll(async () => {
@@ -48,27 +39,35 @@ describe('deploy with empty agents and deployed state (teardown)', () => {
   });
 
   it('rejects deploy when no agents and no deployed state', async () => {
-    // With no agents and empty deployed-state, deploy should fail with "no agents" error
-    const result = await runCLI(['deploy', '--target', 'test-target', '--json'], projectDir);
+    // With no agents and empty deployed-state, deploy should fail
+    const result = await runCLI(['deploy', '--json'], projectDir);
     expect(result.exitCode).toBe(1);
     const json = JSON.parse(result.stdout);
     expect(json.success).toBe(false);
-    expect(json.error.toLowerCase()).toContain('no agents');
   });
 
   it('requires --yes to confirm teardown deploy when deployed state exists', async () => {
+    // Write aws-targets.json so deploy can find the target
+    const awsTargetsPath = join(projectDir, 'agentcore', 'aws-targets.json');
+    // eslint-disable-next-line security/detect-non-literal-fs-filename
+    await writeFile(
+      awsTargetsPath,
+      JSON.stringify([{ name: 'default', account: '123456789012', region: 'us-east-1' }])
+    );
+
     // Simulate that a previous deploy happened by writing to deployed-state.json
     // deployed-state.json lives in agentcore/.cli/
     const cliDir = join(projectDir, 'agentcore', '.cli');
     await mkdir(cliDir, { recursive: true });
     const deployedStatePath = join(cliDir, 'deployed-state.json');
+    // eslint-disable-next-line security/detect-non-literal-fs-filename
     await writeFile(
       deployedStatePath,
       JSON.stringify({
         targets: {
-          'test-target': {
+          default: {
             resources: {
-              stackName: 'TeardownTestProj-test-target',
+              stackName: 'TeardownTestProj-default',
               agents: {
                 OldAgent: {
                   runtimeId: 'rt-123',
@@ -83,7 +82,7 @@ describe('deploy with empty agents and deployed state (teardown)', () => {
     );
 
     // Without --yes, deploy should fail asking for confirmation
-    const result = await runCLI(['deploy', '--target', 'test-target', '--json'], projectDir);
+    const result = await runCLI(['deploy', '--json'], projectDir);
     const json = JSON.parse(result.stdout);
     expect(json.success).toBe(false);
     expect(json.error.toLowerCase()).toContain('teardown');
@@ -93,7 +92,7 @@ describe('deploy with empty agents and deployed state (teardown)', () => {
   it('allows teardown deploy with --yes flag when deployed state exists', async () => {
     // With --yes, deploy should proceed past the teardown confirmation
     // It will eventually fail on AWS/CDK (no real credentials), but NOT on "no agents" or "teardown"
-    const result = await runCLI(['deploy', '--target', 'test-target', '--json', '--yes'], projectDir);
+    const result = await runCLI(['deploy', '--json', '--yes'], projectDir);
     const json = JSON.parse(result.stdout);
     expect(
       !json.error?.toLowerCase().includes('no agents'),

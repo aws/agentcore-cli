@@ -59,9 +59,11 @@ export function useRemoveFlow({ force, dryRun }: RemoveFlowOptions): RemoveFlowS
 
       // Identify what will be reset
       const items: string[] = [];
+      let currentProjectName = '';
 
       try {
         const projectSpec = await configIO.readProjectSpec();
+        currentProjectName = projectSpec.name;
         setProjectName(projectSpec.name);
         items.push(`AgentCore project: ${projectSpec.name}`);
 
@@ -80,14 +82,20 @@ export function useRemoveFlow({ force, dryRun }: RemoveFlowOptions): RemoveFlowS
 
       setItemsToRemove(items);
 
-      // Check for deployed resources
-      try {
-        const stack = await findStack(cwd);
-        if (stack) {
-          setHasDeployedResources(true);
+      // Check for deployed stacks per target
+      if (currentProjectName) {
+        try {
+          const targets = await configIO.readAWSDeploymentTargets();
+          for (const target of targets) {
+            const stack = await findStack(target.region, currentProjectName, target.name);
+            if (stack) {
+              setHasDeployedResources(true);
+              break;
+            }
+          }
+        } catch {
+          // Ignore errors checking for deployed resources
         }
-      } catch {
-        // Ignore errors checking for deployed resources
       }
 
       if (dryRun) {
