@@ -1,4 +1,5 @@
 import { ConfigIO, SecureCredentials } from '../../../lib';
+import { validateAwsCredentials } from '../../aws/account';
 import { createSwitchableIoHost } from '../../cdk/toolkit-lib';
 import { buildDeployedState, getStackOutputs, parseAgentOutputs } from '../../cloudformation';
 import { getErrorMessage } from '../../errors';
@@ -79,6 +80,13 @@ export async function handleDeploy(options: ValidatedDeployOptions): Promise<Dep
           'This will delete all deployed resources and the CloudFormation stack. Run with --yes to confirm teardown.',
         logPath: logger.getRelativeLogPath(),
       };
+    }
+
+    // Validate AWS credentials (deferred for teardown deploys until after confirmation)
+    if (context.isTeardownDeploy) {
+      startStep('Validate AWS credentials');
+      await validateAwsCredentials();
+      endStep('success');
     }
 
     // Ensure L3 constructs are linked (for local development)

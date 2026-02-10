@@ -94,8 +94,11 @@ export async function validateProject(): Promise<PreflightContext> {
   // Validate runtime names don't exceed AWS limits
   validateRuntimeNames(projectSpec);
 
-  // Validate AWS credentials before proceeding with build/synth
-  await validateAwsCredentials();
+  // Validate AWS credentials before proceeding with build/synth.
+  // Skip for teardown deploys — callers validate after teardown confirmation.
+  if (!isTeardownDeploy) {
+    await validateAwsCredentials();
+  }
 
   return { projectSpec, awsTargets, cdkProject, isTeardownDeploy };
 }

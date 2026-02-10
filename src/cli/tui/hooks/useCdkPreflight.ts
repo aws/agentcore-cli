@@ -1,5 +1,5 @@
 import { SecureCredentials } from '../../../lib';
-import { AwsCredentialsError } from '../../aws/account';
+import { AwsCredentialsError, validateAwsCredentials } from '../../aws/account';
 import { type CdkToolkitWrapper, type SwitchableIoHost, createSwitchableIoHost } from '../../cdk/toolkit-lib';
 import { getErrorMessage, isExpiredTokenError, isNoCredentialsError } from '../../errors';
 import type { ExecLogger } from '../../logging';
@@ -286,6 +286,25 @@ export function useCdkPreflight(options: PreflightOptions): PreflightResult {
           setPhase('teardown-confirm');
           isRunningRef.current = false;
           return;
+        }
+
+        // Validate AWS credentials (deferred for teardown deploys until after confirmation)
+        if (preflightContext.isTeardownDeploy) {
+          try {
+            await validateAwsCredentials();
+          } catch (err) {
+            const errorMsg = formatError(err);
+            logger.endStep('error', errorMsg);
+            if (isNoCredentialsError(err)) {
+              setHasCredentialsError(true);
+            }
+            const userMessage =
+              isInteractive && err instanceof AwsCredentialsError ? err.shortMessage : getErrorMessage(err);
+            updateStep(STEP_VALIDATE, { status: 'error', error: userMessage });
+            setPhase('error');
+            isRunningRef.current = false;
+            return;
+          }
         }
 
         // Step: Check dependencies (Node >= 18, uv for Python CodeZip)
