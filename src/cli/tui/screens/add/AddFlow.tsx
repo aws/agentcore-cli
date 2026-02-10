@@ -62,6 +62,11 @@ function AgentAddedSummary({
 
   const isCreate = config.agentType === 'create';
 
+  // Compute path strings for alignment
+  const agentPath = isCreate ? `app/${config.name}/` : config.codeLocation;
+  const configPath = 'agentcore/agentcore.json';
+  const maxPathLen = Math.max(agentPath.length, configPath.length);
+
   // Show env var reminder if API key was skipped for non-Bedrock providers
   const showEnvVarReminder = config.modelProvider !== 'Bedrock' && !config.apiKey;
   const envVarName = showEnvVarReminder
@@ -74,7 +79,7 @@ function AgentAddedSummary({
       <Box flexDirection="column" marginLeft={2}>
         {isCreate && projectPath && (
           <Text>
-            app/{config.name}/
+            {agentPath.padEnd(maxPathLen)}
             <Text dimColor>
               {'  '}
               {config.language} agent ({getFrameworkLabel(config.framework)})
@@ -83,17 +88,17 @@ function AgentAddedSummary({
         )}
         {!isCreate && (
           <Text>
-            {config.codeLocation}
+            {agentPath.padEnd(maxPathLen)}
             <Text dimColor>{'  '}Agent code location</Text>
           </Text>
         )}
         <Text>
-          agentcore/agentcore.json
+          {configPath.padEnd(maxPathLen)}
           <Text dimColor>{'  '}Agent config added</Text>
         </Text>
         {config.memory !== 'none' && (
           <Text>
-            agentcore/agentcore.json
+            {configPath.padEnd(maxPathLen)}
             <Text dimColor>
               {'  '}Memory: {config.memory}
             </Text>
