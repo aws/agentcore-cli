@@ -161,9 +161,9 @@ describe('errors', () => {
 
     it('returns true for changeset in progress message patterns', () => {
       expect(isChangesetInProgressError(new Error('ChangeSet is currently in progress'))).toBe(true);
-      expect(
-        isChangesetInProgressError(new Error('An operation on this changeset is currently in progress'))
-      ).toBe(true);
+      expect(isChangesetInProgressError(new Error('An operation on this changeset is currently in progress'))).toBe(
+        true
+      );
     });
 
     it('returns false for other errors', () => {
