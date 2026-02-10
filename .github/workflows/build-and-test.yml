@@ -32,6 +32,8 @@ jobs:
         run: |
           git config --global user.email "bedrock-agentcore-npm+ci@amazon.com"
           git config --global user.name "CI"
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
       - run: npm ci
       - run: npm run build --if-present
       - run: npm run test:unit
