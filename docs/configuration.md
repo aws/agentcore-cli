@@ -6,9 +6,8 @@ AgentCore projects use JSON configuration files in the `agentcore/` directory.
 
 | File                  | Purpose                                     |
 | --------------------- | ------------------------------------------- |
-| `agentcore.json`      | Project and agent definitions               |
+| `agentcore.json`      | Project, agents, memories, and credentials  |
 | `aws-targets.json`    | Deployment targets                          |
-| `mcp.json`            | MCP runtime tools                           |
 | `deployed-state.json` | Runtime state (auto-managed, do not edit)   |
 | `.env.local`          | API keys for local development (gitignored) |
 
@@ -16,164 +15,153 @@ AgentCore projects use JSON configuration files in the `agentcore/` directory.
 
 ## agentcore.json
 
-Main project configuration containing agents and their capabilities.
+Main project configuration using a **flat resource model**. Agents, memories, and credentials are top-level arrays.
 
 ```json
 {
   "name": "MyProject",
-  "version": "0.1",
-  "description": "Project description",
-  "agents": [...]
+  "version": 1,
+  "agents": [
+    {
+      "type": "AgentCoreRuntime",
+      "name": "MyAgent",
+      "build": "CodeZip",
+      "entrypoint": "main.py",
+      "codeLocation": "app/MyAgent/",
+      "runtimeVersion": "PYTHON_3_12"
+    }
+  ],
+  "memories": [
+    {
+      "type": "AgentCoreMemory",
+      "name": "MyMemory",
+      "eventExpiryDuration": 30,
+      "strategies": [{ "type": "SEMANTIC" }]
+    }
+  ],
+  "credentials": [
+    {
+      "type": "ApiKeyCredentialProvider",
+      "name": "OpenAI"
+    }
+  ]
 }
 ```
 
 ### Project Fields
 
-| Field               | Required | Description                                                 |
-| ------------------- | -------- | ----------------------------------------------------------- |
-| `name`              | Yes      | Project name (1-23 chars, alphanumeric, starts with letter) |
-| `version`           | Yes      | Schema version (currently `"0.1"`)                          |
-| `description`       | Yes      | Project description                                         |
-| `agents`            | Yes      | Array of agent specifications                               |
-| `identityKmsKeyArn` | No       | KMS key ARN for encrypting identity credentials             |
+| Field         | Required | Description                                                 |
+| ------------- | -------- | ----------------------------------------------------------- |
+| `name`        | Yes      | Project name (1-23 chars, alphanumeric, starts with letter) |
+| `version`     | Yes      | Schema version (integer, currently `1`)                     |
+| `agents`      | Yes      | Array of agent specifications                               |
+| `memories`    | Yes      | Array of memory resources                                   |
+| `credentials` | Yes      | Array of credential providers                               |
 
-### Agent Specification
+---
+
+## Agent Specification (AgentEnvSpec)
 
 ```json
 {
+  "type": "AgentCoreRuntime",
   "name": "MyAgent",
-  "id": "my-agent-001",
-  "sdkFramework": "Strands",
-  "targetLanguage": "Python",
-  "modelProvider": "Bedrock",
-  "runtime": {...},
-  "mcpProviders": [],
-  "memoryProviders": [],
-  "identityProviders": [],
-  "remoteTools": []
-}
-```
-
-| Field               | Required | Description                                                              |
-| ------------------- | -------- | ------------------------------------------------------------------------ |
-| `name`              | Yes      | Agent name (1-64 chars, alphanumeric)                                    |
-| `id`                | Yes      | Unique identifier                                                        |
-| `sdkFramework`      | Yes      | `Strands`, `LangChain_LangGraph`, `AutoGen`, `GoogleADK`, `OpenAIAgents` |
-| `targetLanguage`    | Yes      | `Python` or `TypeScript`                                                 |
-| `modelProvider`     | Yes      | `Bedrock`, `Anthropic`, `OpenAI`, `Gemini`                               |
-| `runtime`           | Yes      | Runtime configuration                                                    |
-| `memoryProviders`   | Yes      | Memory configurations                                                    |
-| `identityProviders` | Yes      | Identity/API key configurations                                          |
-| `remoteTools`       | Yes      | Agent-to-agent references                                                |
-
-### Runtime Configuration
-
-```json
-{
-  "artifact": "CodeZip",
-  "name": "MyAgentRuntime",
-  "pythonVersion": "PYTHON_3_12",
+  "build": "CodeZip",
   "entrypoint": "main.py",
   "codeLocation": "app/MyAgent/",
-  "networkMode": "PUBLIC"
-}
-```
-
-| Field           | Required | Description                                    |
-| --------------- | -------- | ---------------------------------------------- |
-| `artifact`      | Yes      | Always `"CodeZip"`                             |
-| `name`          | Yes      | Runtime name (1-23 chars)                      |
-| `pythonVersion` | Yes      | `PYTHON_3_12` or `PYTHON_3_13`                 |
-| `entrypoint`    | Yes      | Python file (e.g., `main.py` or `main.py:app`) |
-| `codeLocation`  | Yes      | Directory containing agent code                |
-| `networkMode`   | No       | `PUBLIC` (default) or `PRIVATE`                |
-
-### Memory Provider
-
-Owned memory (agent creates and manages):
-
-```json
-{
-  "type": "AgentCoreMemory",
-  "relation": "own",
-  "name": "MyMemory",
-  "description": "Agent memory",
-  "envVarName": "AGENTCORE_MEMORY_MYMEMORY",
-  "config": {
-    "eventExpiryDuration": 30,
-    "memoryStrategies": [{ "type": "SEMANTIC" }, { "type": "SUMMARIZATION" }]
+  "runtimeVersion": "PYTHON_3_12",
+  "networkMode": "PUBLIC",
+  "envVars": [{ "name": "MY_VAR", "value": "my-value" }],
+  "instrumentation": {
+    "enableOtel": true
   }
 }
 ```
 
-Referenced memory (agent uses another agent's memory):
+| Field             | Required | Description                                        |
+| ----------------- | -------- | -------------------------------------------------- |
+| `type`            | Yes      | Always `"AgentCoreRuntime"`                        |
+| `name`            | Yes      | Agent name (1-48 chars, alphanumeric + underscore) |
+| `build`           | Yes      | `"CodeZip"` or `"Container"`                       |
+| `entrypoint`      | Yes      | Entry file (e.g., `main.py` or `main.py:handler`)  |
+| `codeLocation`    | Yes      | Directory containing agent code                    |
+| `runtimeVersion`  | Yes      | Runtime version (see below)                        |
+| `networkMode`     | No       | `"PUBLIC"` (default) or `"PRIVATE"`                |
+| `envVars`         | No       | Custom environment variables                       |
+| `instrumentation` | No       | OpenTelemetry settings                             |
+
+### Runtime Versions
+
+**Python:**
+
+- `PYTHON_3_10`
+- `PYTHON_3_11`
+- `PYTHON_3_12`
+- `PYTHON_3_13`
+
+**Node.js:**
+
+- `NODE_18`
+- `NODE_20`
+- `NODE_22`
+
+---
+
+## Memory Resource
 
 ```json
 {
   "type": "AgentCoreMemory",
-  "relation": "use",
-  "name": "SharedMemory",
-  "description": "Reference to shared memory",
-  "envVarName": "AGENTCORE_MEMORY_SHARED",
-  "access": "readwrite"
+  "name": "MyMemory",
+  "eventExpiryDuration": 30,
+  "strategies": [{ "type": "SEMANTIC" }, { "type": "SUMMARIZATION" }]
 }
 ```
 
-| Field        | Required | Description                               |
-| ------------ | -------- | ----------------------------------------- |
-| `type`       | Yes      | Always `"AgentCoreMemory"`                |
-| `relation`   | Yes      | `"own"` (creates) or `"use"` (references) |
-| `name`       | Yes      | Memory name                               |
-| `envVarName` | Yes      | Environment variable for memory ID        |
-| `config`     | Own only | Memory configuration                      |
-| `access`     | Use only | `"read"` or `"readwrite"`                 |
+| Field                 | Required | Description                             |
+| --------------------- | -------- | --------------------------------------- |
+| `type`                | Yes      | Always `"AgentCoreMemory"`              |
+| `name`                | Yes      | Memory name (1-48 chars)                |
+| `eventExpiryDuration` | Yes      | Days until events expire (7-365)        |
+| `strategies`          | Yes      | Array of memory strategies (at least 1) |
 
-### Identity Provider
+### Memory Strategies
+
+| Strategy          | Description                                         |
+| ----------------- | --------------------------------------------------- |
+| `SEMANTIC`        | Vector-based similarity search for relevant context |
+| `SUMMARIZATION`   | Compressed conversation history                     |
+| `USER_PREFERENCE` | Store user-specific preferences and settings        |
+| `CUSTOM`          | Custom strategy implementation                      |
+
+Strategy configuration:
 
 ```json
 {
-  "type": "AgentCoreIdentity",
-  "variant": "ApiKeyCredentialProvider",
-  "relation": "own",
-  "name": "OpenAI",
-  "description": "OpenAI API key",
-  "envVarName": "AGENTCORE_IDENTITY_OPENAI"
+  "type": "SEMANTIC",
+  "name": "custom_semantic",
+  "description": "Custom semantic memory",
+  "namespaces": ["/users/facts", "/users/preferences"]
 }
 ```
 
-| Field        | Required | Description                         |
-| ------------ | -------- | ----------------------------------- |
-| `type`       | Yes      | Always `"AgentCoreIdentity"`        |
-| `variant`    | Yes      | Always `"ApiKeyCredentialProvider"` |
-| `relation`   | Yes      | `"own"` or `"use"`                  |
-| `name`       | Yes      | Identity name                       |
-| `envVarName` | Yes      | Environment variable for API key    |
+---
 
-### Remote Tools
-
-Agent-to-agent invocation:
+## Credential Resource
 
 ```json
 {
-  "type": "AgentCoreAgentInvocation",
-  "name": "CallHelper",
-  "description": "Invoke helper agent",
-  "targetAgentName": "HelperAgent",
-  "envVarName": "AGENTCORE_AGENT_HELPER_ARN"
+  "type": "ApiKeyCredentialProvider",
+  "name": "OpenAI"
 }
 ```
 
-MCP runtime reference:
+| Field  | Required | Description                         |
+| ------ | -------- | ----------------------------------- |
+| `type` | Yes      | Always `"ApiKeyCredentialProvider"` |
+| `name` | Yes      | Credential name (3-255 chars)       |
 
-```json
-{
-  "type": "AgentCoreMcpRuntime",
-  "name": "MyMcpTool",
-  "description": "MCP runtime tool",
-  "mcpRuntimeName": "DirectTool",
-  "envVarName": "AGENTCORE_MCPRUNTIME_DIRECTTOOL_URL"
-}
-```
+The actual API key is stored in `.env.local` for local development and in AWS Secrets Manager for deployed environments.
 
 ---
 
@@ -217,9 +205,9 @@ current list.
 API keys for local development. This file is gitignored.
 
 ```bash
-AGENTCORE_IDENTITY_OPENAI=sk-...
-AGENTCORE_IDENTITY_ANTHROPIC=sk-ant-...
-AGENTCORE_IDENTITY_GEMINI=AI...
+OPENAI_API_KEY=sk-...
+ANTHROPIC_API_KEY=sk-ant-...
+GOOGLE_API_KEY=AI...
 ```
 
-The environment variable names must match the `envVarName` in your identity providers.
+Environment variable names should match the credential names in your configuration.

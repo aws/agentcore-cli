@@ -14,34 +14,37 @@ Or with options:
 agentcore add memory \
   --name SharedMemory \
   --strategies SEMANTIC,SUMMARIZATION \
-  --expiry 30 \
-  --owner MyAgent
+  --expiry 30
 ```
 
-## Swapping or Changing Memory (Strands)
+Memory is a **top-level resource** in the flat resource model. Memories are defined in the `memories` array of
+`agentcore.json`.
 
-For Strands agents, when you create an agent with memory, the CLI generates a `memory/session.py` file that references a
-specific memory via environment variable. To swap which memory your agent uses:
-
-### Step 1: Check Available Memories
-
-Look at your `agentcore/agentcore.json` to see defined memories:
+## Memory Configuration
 
 ```json
 {
   "memories": [
-    { "name": "MyAgentMemory", ... },
-    { "name": "SharedMemory", ... },
-    { "name": "UserPrefMemory", ... }
+    {
+      "type": "AgentCoreMemory",
+      "name": "MyMemory",
+      "eventExpiryDuration": 30,
+      "strategies": [{ "type": "SEMANTIC" }, { "type": "SUMMARIZATION" }]
+    }
   ]
 }
 ```
 
 Each memory gets an environment variable: `MEMORY_<NAME>_ID` (uppercase, underscores).
 
-### Step 2: Update session.py
+## Using Memory with Strands Agents
 
-Edit `app/<YourAgent>/memory/session.py` and change the `MEMORY_ID` line:
+For Strands agents created with memory, the CLI generates a `memory/session.py` file that references the memory via
+environment variable.
+
+### Switching Memory
+
+To change which memory your agent uses, edit `app/<YourAgent>/memory/session.py`:
 
 ```python
 # Before: using MyAgentMemory
@@ -51,13 +54,13 @@ MEMORY_ID = os.getenv("MEMORY_MYAGENTMEMORY_ID")
 MEMORY_ID = os.getenv("MEMORY_SHAREDMEMORY_ID")
 ```
 
-### Step 3: Redeploy
+Then redeploy:
 
 ```bash
 agentcore deploy
 ```
 
-### Adding Memory to an Agent Without Memory (Strands)
+### Adding Memory to an Agent Without Memory
 
 If you created an agent without memory and want to add it later:
 
@@ -140,7 +143,7 @@ You can combine multiple strategies:
 
 ```json
 {
-  "memoryStrategies": [{ "type": "SEMANTIC" }, { "type": "SUMMARIZATION" }, { "type": "USER_PREFERENCE" }]
+  "strategies": [{ "type": "SEMANTIC" }, { "type": "SUMMARIZATION" }, { "type": "USER_PREFERENCE" }]
 }
 ```
 
@@ -170,82 +173,10 @@ Memory events expire after a configurable duration (7-365 days, default 30):
 
 ```json
 {
-  "config": {
-    "eventExpiryDuration": 90,
-    "memoryStrategies": [...]
-  }
-}
-```
-
-## Ownership Model
-
-### Owned Memory
-
-The agent creates and manages the memory resource:
-
-```json
-{
   "type": "AgentCoreMemory",
-  "relation": "own",
   "name": "MyMemory",
-  "description": "Agent's private memory",
-  "envVarName": "AGENTCORE_MEMORY_MYMEMORY",
-  "config": {
-    "eventExpiryDuration": 30,
-    "memoryStrategies": [{ "type": "SEMANTIC" }]
-  }
-}
-```
-
-### Referenced Memory
-
-The agent uses another agent's memory:
-
-```json
-{
-  "type": "AgentCoreMemory",
-  "relation": "use",
-  "name": "SharedMemory",
-  "description": "Reference to shared memory",
-  "envVarName": "AGENTCORE_MEMORY_SHARED",
-  "access": "read"
-}
-```
-
-| Access Level | Description                      |
-| ------------ | -------------------------------- |
-| `read`       | Can retrieve from memory         |
-| `readwrite`  | Can retrieve and store (default) |
-
-## Sharing Memory
-
-To share memory between agents:
-
-1. One agent owns the memory (`relation: "own"`)
-2. Other agents reference it (`relation: "use"`)
-
-```bash
-# Create memory owned by AgentA
-agentcore add memory --name SharedMemory --owner AgentA
-
-# Bind to AgentB with read access
-agentcore add bind memory --agent AgentB --memory SharedMemory --access read
-```
-
-## Removal Policy
-
-When removing an agent that owns memory:
-
-| Policy     | Behavior                                        |
-| ---------- | ----------------------------------------------- |
-| `cascade`  | Delete memory and clean up references (default) |
-| `restrict` | Prevent removal if other agents use the memory  |
-
-```json
-{
-  "relation": "own",
-  "removalPolicy": "restrict",
-  ...
+  "eventExpiryDuration": 90,
+  "strategies": [{ "type": "SEMANTIC" }]
 }
 ```
 
@@ -257,7 +188,7 @@ The memory ID is available via environment variable:
 import os
 from bedrock_agentcore.memory import AgentCoreMemory
 
-memory_id = os.getenv("AGENTCORE_MEMORY_MYMEMORY")
+memory_id = os.getenv("MEMORY_MYMEMORY_ID")
 memory = AgentCoreMemory(memory_id=memory_id)
 ```
 

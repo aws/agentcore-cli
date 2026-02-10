@@ -23,10 +23,26 @@ Note: CDK L3 constructs are in a separate package `@aws/agentcore-l3-cdk-constru
 ## CLI Commands
 
 - `create` - Create new AgentCore project
+- `add` - Add resources (agent, memory, identity, target)
+- `remove` - Remove resources (agent, memory, identity, target, all)
 - `deploy` - Deploy infrastructure to AWS
-- `dev` - Local development server
-- `invoke` - Invoke deployed agents
+- `destroy` - Tear down deployed resources
 - `status` - Check deployment status
+- `dev` - Local development server
+- `invoke` - Invoke agents (local or deployed)
+- `package` - Package agent artifacts without deploying
+- `validate` - Validate configuration files
+- `update` - Check for CLI updates
+- `help` - Display help information
+
+### Agent Types
+
+- **Template agents**: Created from framework templates (Strands, LangChain_LangGraph, GoogleADK, OpenAIAgents)
+- **BYO agents**: Bring your own code with `agentcore add agent --type byo`
+
+### Coming Soon
+
+- MCP gateway and tool support (`add gateway`, `add mcp-tool`) - currently hidden
 
 ## Vended CDK Project
 

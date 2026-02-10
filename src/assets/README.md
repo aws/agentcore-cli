@@ -7,9 +7,8 @@ This project was created with the [AgentCore CLI](https://github.com/aws/agentco
 ```
 .
 ├── agentcore/              # AgentCore configuration directory
-│   ├── agentcore.json      # Main workspace config
-│   ├── mcp.json            # MCP gateways and tools
-│   ├── mcp-defs.json       # Tool definitions
+│   ├── agentcore.json      # Main project config (agents, memories, credentials)
+│   ├── aws-targets.json    # Deployment targets
 │   └── cdk/                # AWS CDK project for deployment
 ├── app/                    # Application code (if agents were created)
 └── AGENTS.md               # AI coding assistant context
@@ -48,20 +47,32 @@ npx cdk deploy
 
 ## Configuration
 
-Edit the JSON files in `agentcore/` to configure your agents, memory, identity, and tools. See `agentcore/.llm-context/`
-for type definitions and validation constraints.
+Edit the JSON files in `agentcore/` to configure your agents, memory, and credentials. See `agentcore/.llm-context/` for
+type definitions and validation constraints.
+
+The project uses a **flat resource model** where agents, memories, and credentials are top-level arrays in
+`agentcore.json`.
 
 ## Commands
 
-| Command              | Description                         |
-| -------------------- | ----------------------------------- |
-| `agentcore dev`      | Run agent locally                   |
-| `agentcore deploy`   | Deploy to AWS                       |
-| `agentcore status`   | Show deployment status              |
-| `agentcore invoke`   | Invoke deployed agent               |
-| `agentcore add`      | Add agents, memory, identity, tools |
-| `agentcore remove`   | Remove resources                    |
-| `agentcore validate` | Validate configuration              |
+| Command              | Description                                     |
+| -------------------- | ----------------------------------------------- |
+| `agentcore create`   | Create a new AgentCore project                  |
+| `agentcore add`      | Add resources (agent, memory, identity, target) |
+| `agentcore remove`   | Remove resources                                |
+| `agentcore dev`      | Run agent locally                               |
+| `agentcore deploy`   | Deploy to AWS                                   |
+| `agentcore destroy`  | Tear down deployed resources                    |
+| `agentcore status`   | Show deployment status                          |
+| `agentcore invoke`   | Invoke agent (local or deployed)                |
+| `agentcore package`  | Package agent artifacts                         |
+| `agentcore validate` | Validate configuration                          |
+| `agentcore update`   | Check for CLI updates                           |
+
+### Agent Types
+
+- **Template agents**: Created from framework templates (Strands, LangChain_LangGraph, GoogleADK, OpenAIAgents)
+- **BYO agents**: Bring your own code with `agentcore add agent --type byo`
 
 ## Documentation
 

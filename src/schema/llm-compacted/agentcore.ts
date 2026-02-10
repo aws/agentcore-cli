@@ -26,7 +26,7 @@ type BuildType = 'CodeZip' | 'Container';
 type PythonRuntime = 'PYTHON_3_10' | 'PYTHON_3_11' | 'PYTHON_3_12' | 'PYTHON_3_13';
 type NodeRuntime = 'NODE_18' | 'NODE_20' | 'NODE_22';
 type RuntimeVersion = PythonRuntime | NodeRuntime;
-type NetworkMode = 'PUBLIC' | 'VPC';
+type NetworkMode = 'PUBLIC' | 'PRIVATE';
 type MemoryStrategyType = 'SEMANTIC' | 'SUMMARIZATION' | 'USER_PREFERENCE' | 'CUSTOM';
 
 // ─────────────────────────────────────────────────────────────────────────────

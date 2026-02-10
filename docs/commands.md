@@ -30,21 +30,21 @@ agentcore create --name MyProject --no-agent
 agentcore create --name MyProject --defaults --dry-run
 ```
 
-| Flag                   | Description                                                              |
-| ---------------------- | ------------------------------------------------------------------------ |
-| `--name <name>`        | Project name (alphanumeric, max 23 chars)                                |
-| `--defaults`           | Use defaults (Python, Strands, Bedrock, no memory)                       |
-| `--no-agent`           | Skip agent creation                                                      |
-| `--language <lang>`    | `Python` or `TypeScript`                                                 |
-| `--framework <fw>`     | `Strands`, `LangChain_LangGraph`, `AutoGen`, `GoogleADK`, `OpenAIAgents` |
-| `--model-provider <p>` | `Bedrock`, `Anthropic`, `OpenAI`, `Gemini`                               |
-| `--api-key <key>`      | API key for non-Bedrock providers                                        |
-| `--memory <opt>`       | `none`, `shortTerm`, `longAndShortTerm`                                  |
-| `--output-dir <dir>`   | Output directory                                                         |
-| `--skip-git`           | Skip git initialization                                                  |
-| `--skip-python-setup`  | Skip venv setup                                                          |
-| `--dry-run`            | Preview without creating                                                 |
-| `--json`               | JSON output                                                              |
+| Flag                   | Description                                                   |
+| ---------------------- | ------------------------------------------------------------- |
+| `--name <name>`        | Project name (alphanumeric, max 23 chars)                     |
+| `--defaults`           | Use defaults (Python, Strands, Bedrock, no memory)            |
+| `--no-agent`           | Skip agent creation                                           |
+| `--language <lang>`    | `Python` or `TypeScript`                                      |
+| `--framework <fw>`     | `Strands`, `LangChain_LangGraph`, `GoogleADK`, `OpenAIAgents` |
+| `--model-provider <p>` | `Bedrock`, `Anthropic`, `OpenAI`, `Gemini`                    |
+| `--api-key <key>`      | API key for non-Bedrock providers                             |
+| `--memory <opt>`       | `none`, `shortTerm`, `longAndShortTerm`                       |
+| `--output-dir <dir>`   | Output directory                                              |
+| `--skip-git`           | Skip git initialization                                       |
+| `--skip-python-setup`  | Skip venv setup                                               |
+| `--dry-run`            | Preview without creating                                      |
+| `--json`               | JSON output                                                   |
 
 ### deploy
 
@@ -151,15 +151,13 @@ agentcore add agent \
 
 ### add memory
 
-Add a memory resource.
+Add a memory resource. Memory is a top-level resource in the flat resource model.
 
 ```bash
 agentcore add memory \
   --name SharedMemory \
   --strategies SEMANTIC,SUMMARIZATION \
-  --expiry 30 \
-  --owner MyAgent \
-  --users AgentA,AgentB
+  --expiry 30
 ```
 
 | Flag                   | Description                                                               |
@@ -168,30 +166,23 @@ agentcore add memory \
 | `--description <desc>` | Description                                                               |
 | `--strategies <types>` | Comma-separated: `SEMANTIC`, `SUMMARIZATION`, `USER_PREFERENCE`, `CUSTOM` |
 | `--expiry <days>`      | Event expiry (default: 30)                                                |
-| `--owner <agent>`      | Owning agent                                                              |
-| `--users <agents>`     | Comma-separated users                                                     |
 | `--json`               | JSON output                                                               |
 
 ### add identity
 
-Add an identity provider (API key).
+Add a credential provider (API key). Credentials are top-level resources in the flat resource model.
 
 ```bash
 agentcore add identity \
   --name OpenAI \
-  --type ApiKeyCredentialProvider \
-  --api-key sk-... \
-  --owner MyAgent
+  --api-key sk-...
 ```
 
-| Flag               | Description                |
-| ------------------ | -------------------------- |
-| `--name <name>`    | Identity name              |
-| `--type <type>`    | `ApiKeyCredentialProvider` |
-| `--api-key <key>`  | API key value              |
-| `--owner <agent>`  | Owning agent               |
-| `--users <agents>` | Comma-separated users      |
-| `--json`           | JSON output                |
+| Flag              | Description     |
+| ----------------- | --------------- |
+| `--name <name>`   | Credential name |
+| `--api-key <key>` | API key value   |
+| `--json`          | JSON output     |
 
 ### add target
 
@@ -212,21 +203,6 @@ agentcore add target \
 | `--region <region>`    | AWS region     |
 | `--description <desc>` | Description    |
 | `--json`               | JSON output    |
-
-### add bind
-
-Connect resources to agents.
-
-```bash
-# Agent-to-agent
-agentcore add bind agent --source CallerAgent --target HelperAgent
-
-# Memory
-agentcore add bind memory --agent MyAgent --memory SharedMemory --access read
-
-# Identity
-agentcore add bind identity --agent MyAgent --identity OpenAI
-```
 
 ### remove
 
@@ -315,15 +291,6 @@ agentcore package -d ./my-project
 | `-d, --directory <path>` | Project directory      |
 | `-a, --agent <name>`     | Package specific agent |
 
-### outline
-
-Display project resource tree.
-
-```bash
-agentcore outline
-agentcore outline agent MyAgent
-```
-
 ### update
 
 Check for CLI updates.
@@ -354,7 +321,7 @@ agentcore deploy --target production -y --json
 ```bash
 agentcore create --name MyProject --defaults
 cd MyProject
-agentcore add memory --name SharedMemory --strategies SEMANTIC --owner MyProject
+agentcore add memory --name SharedMemory --strategies SEMANTIC
 agentcore add target --name dev --account 123456789012 --region us-west-2
 agentcore deploy --target dev -y
 ```
