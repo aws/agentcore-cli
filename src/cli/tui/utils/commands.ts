@@ -11,7 +11,7 @@ export interface CommandMeta {
 /**
  * Commands hidden from TUI help but still available via CLI.
  */
-const HIDDEN_FROM_TUI = ['update', 'package'] as const;
+const HIDDEN_FROM_TUI = ['help', 'update', 'package'] as const;
 
 /**
  * Commands hidden from TUI when inside an existing project.
