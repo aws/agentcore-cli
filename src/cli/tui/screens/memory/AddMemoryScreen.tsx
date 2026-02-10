@@ -55,7 +55,7 @@ export function AddMemoryScreen({ onComplete, onExit, existingMemoryNames }: Add
     onConfirm: ids => wizard.setStrategyTypes(ids as MemoryStrategyType[]),
     onExit: () => wizard.goBack(),
     isActive: isStrategiesStep,
-    requireSelection: true,
+    requireSelection: false,
   });
 
   useListNavigation({
@@ -102,7 +102,7 @@ export function AddMemoryScreen({ onComplete, onExit, existingMemoryNames }: Add
         {isStrategiesStep && (
           <WizardMultiSelect
             title="Select memory strategies"
-            description="Choose one or more strategies for this memory"
+            description="Choose strategies for this memory (optional)"
             items={strategyItems}
             cursorIndex={strategiesNav.cursorIndex}
             selectedIds={strategiesNav.selectedIds}
@@ -114,7 +114,7 @@ export function AddMemoryScreen({ onComplete, onExit, existingMemoryNames }: Add
             fields={[
               { label: 'Name', value: wizard.config.name },
               { label: 'Event Expiry', value: `${wizard.config.eventExpiryDuration} days` },
-              { label: 'Strategies', value: wizard.config.strategies.map(s => s.type).join(', ') },
+              { label: 'Strategies', value: wizard.config.strategies.map(s => s.type).join(', ') || 'None' },
             ]}
           />
         )}

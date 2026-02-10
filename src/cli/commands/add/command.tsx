@@ -178,7 +178,7 @@ async function handleAddMemoryCLI(options: AddMemoryOptions): Promise<void> {
 
   const result = await handleAddMemory({
     name: options.name!,
-    strategies: options.strategies!,
+    strategies: options.strategies,
     expiry: options.expiry,
   });
 

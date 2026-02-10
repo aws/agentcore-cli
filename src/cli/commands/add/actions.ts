@@ -66,7 +66,7 @@ export interface ValidatedAddMcpToolOptions {
 
 export interface ValidatedAddMemoryOptions {
   name: string;
-  strategies: string;
+  strategies?: string;
   expiry?: number;
 }
 
@@ -308,10 +308,12 @@ export async function handleAddMcpTool(options: ValidatedAddMcpToolOptions): Pro
 export async function handleAddMemory(options: ValidatedAddMemoryOptions): Promise<AddMemoryResult> {
   try {
     const strategies = options.strategies
-      .split(',')
-      .map(s => s.trim())
-      .filter(Boolean)
-      .map(type => ({ type: type as MemoryStrategyType }));
+      ? options.strategies
+          .split(',')
+          .map(s => s.trim())
+          .filter(Boolean)
+          .map(type => ({ type: type as MemoryStrategyType }))
+      : [];
 
     const result = await createMemory({
       name: options.name,

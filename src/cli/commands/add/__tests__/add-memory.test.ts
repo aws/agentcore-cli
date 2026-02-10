@@ -35,12 +35,12 @@ describe('add memory command', () => {
       expect(json.error.includes('--name'), `Error: ${json.error}`).toBeTruthy();
     });
 
-    it('requires strategies flag', async () => {
-      const result = await runCLI(['add', 'memory', '--name', 'test', '--json'], projectDir);
-      expect(result.exitCode).toBe(1);
+    it('allows omitting strategies flag', async () => {
+      const memoryName = `noStrat${Date.now()}`;
+      const result = await runCLI(['add', 'memory', '--name', memoryName, '--json'], projectDir);
+      expect(result.exitCode, `stdout: ${result.stdout}, stderr: ${result.stderr}`).toBe(0);
       const json = JSON.parse(result.stdout);
-      expect(json.success).toBe(false);
-      expect(json.error.includes('--strategies'), `Error: ${json.error}`).toBeTruthy();
+      expect(json.success).toBe(true);
     });
 
     it('validates strategy types', async () => {

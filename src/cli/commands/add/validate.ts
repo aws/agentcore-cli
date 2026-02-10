@@ -196,21 +196,16 @@ export function validateAddMemoryOptions(options: AddMemoryOptions): ValidationR
     return { valid: false, error: '--name is required' };
   }
 
-  if (!options.strategies) {
-    return { valid: false, error: '--strategies is required' };
-  }
+  if (options.strategies) {
+    const strategies = options.strategies
+      .split(',')
+      .map(s => s.trim())
+      .filter(Boolean);
 
-  const strategies = options.strategies
-    .split(',')
-    .map(s => s.trim())
-    .filter(Boolean);
-  if (strategies.length === 0) {
-    return { valid: false, error: 'At least one strategy is required' };
-  }
-
-  for (const strategy of strategies) {
-    if (!VALID_STRATEGIES.includes(strategy)) {
-      return { valid: false, error: `Invalid strategy: ${strategy}. Must be one of: ${VALID_STRATEGIES.join(', ')}` };
+    for (const strategy of strategies) {
+      if (!VALID_STRATEGIES.includes(strategy)) {
+        return { valid: false, error: `Invalid strategy: ${strategy}. Must be one of: ${VALID_STRATEGIES.join(', ')}` };
+      }
     }
   }
 

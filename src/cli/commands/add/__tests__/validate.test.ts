@@ -289,30 +289,23 @@ describe('validate', () => {
 
   describe('validateAddMemoryOptions', () => {
     // AC20: Required fields validated
-    it('returns error for missing required fields', () => {
-      const requiredFields: { field: keyof AddMemoryOptions; error: string }[] = [
-        { field: 'name', error: '--name is required' },
-        { field: 'strategies', error: '--strategies is required' },
-      ];
-
-      for (const { field, error } of requiredFields) {
-        const opts = { ...validMemoryOptions, [field]: undefined };
-        const result = validateAddMemoryOptions(opts);
-        expect(result.valid, `Should fail for missing ${String(field)}`).toBe(false);
-        expect(result.error).toBe(error);
-      }
+    it('returns error for missing name', () => {
+      const result = validateAddMemoryOptions({ ...validMemoryOptions, name: undefined });
+      expect(result.valid).toBe(false);
+      expect(result.error).toBe('--name is required');
     });
 
-    // AC21: Invalid/empty strategies rejected
-    it('returns error for invalid or empty strategies', () => {
-      let result = validateAddMemoryOptions({ ...validMemoryOptions, strategies: 'INVALID' });
+    // AC21: Invalid strategies rejected, empty strategies allowed
+    it('returns error for invalid strategies', () => {
+      const result = validateAddMemoryOptions({ ...validMemoryOptions, strategies: 'INVALID' });
       expect(result.valid).toBe(false);
       expect(result.error?.includes('Invalid strategy')).toBeTruthy();
       expect(result.error?.includes('SEMANTIC')).toBeTruthy();
+    });
 
-      result = validateAddMemoryOptions({ ...validMemoryOptions, strategies: ',,,' });
-      expect(result.valid).toBe(false);
-      expect(result.error).toBe('At least one strategy is required');
+    it('allows empty strategies', () => {
+      expect(validateAddMemoryOptions({ ...validMemoryOptions, strategies: ',,,' })).toEqual({ valid: true });
+      expect(validateAddMemoryOptions({ ...validMemoryOptions, strategies: undefined })).toEqual({ valid: true });
     });
 
     // AC22: Valid options pass
