@@ -1,7 +1,7 @@
 import { getWorkingDirectory } from '../../lib';
 import { createProgram } from '../cli';
 import { LayoutProvider } from './context';
-import { MissingProjectMessage, projectExists } from './guards';
+import { MissingProjectMessage, WrongDirectoryMessage, getProjectRootMismatch, projectExists } from './guards';
 import { PlaceholderScreen } from './screens/PlaceholderScreen';
 import { AddFlow } from './screens/add/AddFlow';
 import { CreateScreen } from './screens/create';
@@ -38,10 +38,14 @@ type Route =
   | { name: 'package' }
   | { name: 'update' };
 
+// Commands that don't require being at the project root
+const PROJECT_ROOT_EXEMPT_COMMANDS = new Set(['create', 'update']);
+
 function AppContent() {
   const { exit } = useApp();
   // Start on help screen if project exists (show commands), otherwise home (show Quick Start)
   const inProject = projectExists();
+  const wrongDirProjectRoot = getProjectRootMismatch();
   const initialRoute: Route = inProject ? { name: 'help' } : { name: 'home' };
   const [route, setRoute] = useState<Route>(initialRoute);
   const [helpNotice, setHelpNotice] = useState<React.ReactNode | null>(null);
@@ -56,6 +60,12 @@ function AppContent() {
 
     if (id !== 'add') {
       setHelpNotice(null);
+    }
+
+    // Block commands that require project root when in a subdirectory
+    if (wrongDirProjectRoot && !PROJECT_ROOT_EXEMPT_COMMANDS.has(id)) {
+      setHelpNotice(<WrongDirectoryMessage projectRoot={wrongDirProjectRoot} />);
+      return;
     }
 
     if (id === 'dev') {

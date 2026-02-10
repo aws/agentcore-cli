@@ -1,1 +1,7 @@
-export { projectExists, requireProject, MissingProjectMessage } from './project';
+export {
+  projectExists,
+  getProjectRootMismatch,
+  requireProject,
+  MissingProjectMessage,
+  WrongDirectoryMessage,
+} from './project';
