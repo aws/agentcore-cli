@@ -2689,9 +2689,8 @@ This project was created with the [AgentCore CLI](https://github.com/aws/agentco
 \`\`\`
 .
 ├── agentcore/              # AgentCore configuration directory
-│   ├── agentcore.json      # Main workspace config
-│   ├── mcp.json            # MCP gateways and tools
-│   ├── mcp-defs.json       # Tool definitions
+│   ├── agentcore.json      # Main project config (agents, memories, credentials)
+│   ├── aws-targets.json    # Deployment targets
 │   └── cdk/                # AWS CDK project for deployment
 ├── app/                    # Application code (if agents were created)
 └── AGENTS.md               # AI coding assistant context
@@ -2730,20 +2729,32 @@ npx cdk deploy
 
 ## Configuration
 
-Edit the JSON files in \`agentcore/\` to configure your agents, memory, identity, and tools. See \`agentcore/.llm-context/\`
-for type definitions and validation constraints.
+Edit the JSON files in \`agentcore/\` to configure your agents, memory, and credentials. See \`agentcore/.llm-context/\` for
+type definitions and validation constraints.
+
+The project uses a **flat resource model** where agents, memories, and credentials are top-level arrays in
+\`agentcore.json\`.
 
 ## Commands
 
-| Command              | Description                         |
-| -------------------- | ----------------------------------- |
-| \`agentcore dev\`      | Run agent locally                   |
-| \`agentcore deploy\`   | Deploy to AWS                       |
-| \`agentcore status\`   | Show deployment status              |
-| \`agentcore invoke\`   | Invoke deployed agent               |
-| \`agentcore add\`      | Add agents, memory, identity, tools |
-| \`agentcore remove\`   | Remove resources                    |
-| \`agentcore validate\` | Validate configuration              |
+| Command              | Description                                     |
+| -------------------- | ----------------------------------------------- |
+| \`agentcore create\`   | Create a new AgentCore project                  |
+| \`agentcore add\`      | Add resources (agent, memory, identity, target) |
+| \`agentcore remove\`   | Remove resources                                |
+| \`agentcore dev\`      | Run agent locally                               |
+| \`agentcore deploy\`   | Deploy to AWS                                   |
+| \`agentcore destroy\`  | Tear down deployed resources                    |
+| \`agentcore status\`   | Show deployment status                          |
+| \`agentcore invoke\`   | Invoke agent (local or deployed)                |
+| \`agentcore package\`  | Package agent artifacts                         |
+| \`agentcore validate\` | Validate configuration                          |
+| \`agentcore update\`   | Check for CLI updates                           |
+
+### Agent Types
+
+- **Template agents**: Created from framework templates (Strands, LangChain_LangGraph, GoogleADK, OpenAIAgents)
+- **BYO agents**: Bring your own code with \`agentcore add agent --type byo\`
 
 ## Documentation
 
@@ -2758,33 +2769,25 @@ exports[`Assets Directory Snapshots > Root-level assets > agents/AGENTS.md shoul
 This project contains configuration and infrastructure for an Amazon Bedrock AgentCore application.
 
 The \`agentcore/\` directory serves as a declarative model of an AgentCore project along with a concrete implementation
-through the \`agentcore/cdk/\` project which is modeled to take the configs as input. The project models Agents and MCP
-setups with their own overloaded constructs. Agents are first-class.
+through the \`agentcore/cdk/\` project which is modeled to take the configs as input. The project uses a **flat resource
+model** where agents, memories, and credentials are top-level arrays.
 
 ## Mental Model
 
 A good mental model for how this project works is a directed graph. We have a set of nodes: agents, memories,
-identities, gateways, tools, mcp servers, and future resources supported. There are rules about which nodes can connect
-to others in what direction.
-
-For example, stand-alone memory or identity resources cannot be modeled--they need to be owned by an agent and can be
-used by other agents.
+credentials, and future resources supported. There are rules about which nodes can connect to others in what direction.
 
 Wiring nodes creates an infrastructure and trust relationship but is not enough to complete end-to-end functionality.
-For example, attaching agentB as a remote tool for agentA means that agentA has permission to invoke agentB and that
-agentA has the ARN for agentB as an environment variable with the name specified in the agentcore.json schema.
-
-To complete a functional connection, the application code in agentA needs to construct the appropriate call to
-\`invoke_agent_runtime\` which will succeed based on the wiring declared in the schema and implemented in the \`cdk/\`
-directory.
+For example, to use a memory from an agent, the application code needs to read the memory ID from an environment
+variable and construct the appropriate SDK calls.
 
 ## Critical Invariants
 
 1. **Schema-First Authority:** The \`.json\` files are the absolute source of truth. Do not attempt to modify agent
    behavior by editing the generated CDK code in \`cdk/\`.
 2. **Resource Identity:** The \`name\` field in the schema determines the CloudFormation Logical ID.
-   - **Renaming** an agent, gateway, or target will **destroy and recreate** that resource.
-   - **Modifying** other fields (descriptions, prompts, runtime config) will update the resource **in-place**.
+   - **Renaming** an agent or target will **destroy and recreate** that resource.
+   - **Modifying** other fields (descriptions, config) will update the resource **in-place**.
 3. **1:1 Validation:** The schema maps directly to valid CloudFormation. If your JSON conforms to the types in
    \`.llm-context/\`, it will deploy successfully.
 
@@ -2794,17 +2797,14 @@ directory.
 myNewProject/
 ├── AGENTS.md               # This file - AI coding assistant context
 ├── agentcore/              # AgentCore configuration directory
-│   ├── agentcore.json      # Main workspace config (AgentCoreWorkspaceSpec)
-│   ├── mcp.json            # MCP gateways and tools (AgentCoreMcpSpec)
-│   ├── mcp-defs.json       # Tool definitions (AgentCoreCliMcpDefs)
+│   ├── agentcore.json      # Main project config (AgentCoreProjectSpec)
+│   ├── aws-targets.json    # Deployment targets
 │   ├── .llm-context/       # TypeScript type definitions for AI coding assistants
 │   │   ├── README.md       # Guide to using the schema files
-│   │   ├── agentcore.ts    # AgentCoreWorkspaceSpec types
-│   │   ├── agent-env.ts    # AgentEnvSpec and runtime types
-│   │   ├── mcp.ts          # MCP gateway and tool types
+│   │   ├── agentcore.ts    # AgentCoreProjectSpec types
 │   │   └── aws-targets.ts  # AWS deployment target types
 │   └── cdk/                # AWS CDK project for deployment
-└── ... (your application code)
+└── app/                    # Application code (if agents were created)
 \`\`\`
 
 ## Schema Reference
@@ -2812,38 +2812,36 @@ myNewProject/
 The \`agentcore/.llm-context/\` directory contains TypeScript type definitions optimized for AI coding assistants. Each
 file maps to a JSON config file and includes validation constraints as comments.
 
-| JSON Config                | Schema File                             | Root Type                |
-| -------------------------- | --------------------------------------- | ------------------------ |
-| \`agentcore/agentcore.json\` | \`agentcore/.llm-context/agentcore.ts\`   | \`AgentCoreWorkspaceSpec\` |
-| \`agentcore/mcp.json\`       | \`agentcore/.llm-context/mcp.ts\`         | \`AgentCoreMcpSpec\`       |
-| \`agentcore/mcp-defs.json\`  | \`agentcore/.llm-context/mcp.ts\`         | \`AgentCoreCliMcpDefs\`    |
-| (aws-targets)              | \`agentcore/.llm-context/aws-targets.ts\` | \`AWSDeploymentTarget[]\`  |
+| JSON Config                  | Schema File                             | Root Type               |
+| ---------------------------- | --------------------------------------- | ----------------------- |
+| \`agentcore/agentcore.json\`   | \`agentcore/.llm-context/agentcore.ts\`   | \`AgentCoreProjectSpec\`  |
+| \`agentcore/aws-targets.json\` | \`agentcore/.llm-context/aws-targets.ts\` | \`AWSDeploymentTarget[]\` |
 
 ### Key Types
 
-- **AgentEnvSpec**: Agent configuration (runtime, memory, identity, tools)
-- **Runtime**: Discriminated union of \`CodeZipRuntime\` | \`ContainerImageRuntime\`
-- **MemoryProvider**: \`OwnedMemoryProvider\` (creates memory) | \`ReferencedMemoryProvider\` (uses existing)
-- **AgentCoreGateway**: MCP gateway with tool targets
-- **ToolDefinition**: Tool name, description, input/output schemas
+- **AgentCoreProjectSpec**: Root project configuration with \`agents\`, \`memories\`, \`credentials\` arrays
+- **AgentEnvSpec**: Agent configuration (runtime, entrypoint, code location)
+- **Memory**: Memory resource with strategies and expiry
+- **Credential**: API key credential provider
 
 ### Common Enum Values
 
-- **ArtifactType**: \`'CodeZip'\` | \`'ContainerImage'\`
+- **BuildType**: \`'CodeZip'\` | \`'Container'\`
 - **NetworkMode**: \`'PUBLIC'\` | \`'PRIVATE'\`
-- **Relation**: \`'own'\` | \`'use'\` (for memory providers)
-- **ModelProvider**: \`'Bedrock'\` | \`'Anthropic'\` | \`'OpenAI'\` | \`'Gemini'\`
-- **ComputeHost**: \`'Lambda'\` | \`'AgentCoreRuntime'\`
+- **RuntimeVersion**: \`'PYTHON_3_12'\` | \`'PYTHON_3_13'\` | \`'NODE_18'\` | \`'NODE_20'\` | \`'NODE_22'\`
+- **MemoryStrategyType**: \`'SEMANTIC'\` | \`'SUMMARIZATION'\` | \`'USER_PREFERENCE'\` | \`'CUSTOM'\`
+
+### Supported Frameworks (for template agents)
+
+- **Strands** - Works with Bedrock, Anthropic, OpenAI, Gemini
+- **LangChain_LangGraph** - Works with Bedrock, Anthropic, OpenAI, Gemini
+- **GoogleADK** - Gemini only
+- **OpenAIAgents** - OpenAI only
 
 ### Specific Context
 
-Directory pathing to local projects is required for runtimes and tools backed by a modeled compute. Only Python offers a
-zip based direct code deploy option. All other programming languages are required to be containerized and provide a path
-do a \`Dockerfile\` definition.
-
-MCP tools offer Lambda compute and AgentCore runtime compute. If something like a \`FastMCP\` server is desired, AgentCore
-runtime is a better fit. When using Lambda, the input schema needs to be modeled in \`mcp-defs.json\` and the lambda
-handler needs to be a traditional (context, event) style input shape.
+Directory pathing to local projects is required for runtimes. Only Python offers a zip based direct code deploy option.
+All other programming languages are required to be containerized and provide a path to a \`Dockerfile\` definition.
 
 ## Deployment
 
