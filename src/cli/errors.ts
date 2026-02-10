@@ -27,8 +27,9 @@ const EXPIRED_TOKEN_ERROR_CODES = new Set([
   'CredentialsExpired',
   'InvalidIdentityToken',
   'UnauthorizedAccess',
-  'AccessDenied',
-  'AccessDeniedException',
+  // Note: AccessDenied and AccessDeniedException are intentionally NOT included here.
+  // These are authorization errors (wrong account, missing IAM permissions, etc.),
+  // not authentication/token expiration errors.
   'InvalidClientTokenId',
   'SignatureDoesNotMatch',
   'RequestExpired',

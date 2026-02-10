@@ -31,8 +31,6 @@ describe('errors', () => {
       'CredentialsExpired',
       'InvalidIdentityToken',
       'UnauthorizedAccess',
-      'AccessDenied',
-      'AccessDeniedException',
       'InvalidClientTokenId',
       'SignatureDoesNotMatch',
       'RequestExpired',
@@ -59,7 +57,7 @@ describe('errors', () => {
     });
 
     it('returns true for nested cause with Code', () => {
-      expect(isExpiredTokenError({ cause: { Code: 'AccessDenied' } })).toBe(true);
+      expect(isExpiredTokenError({ cause: { Code: 'ExpiredToken' } })).toBe(true);
     });
 
     it('returns true for message patterns', () => {
@@ -79,6 +77,17 @@ describe('errors', () => {
       expect(isExpiredTokenError({ name: 'ValidationError' })).toBe(false);
       expect(isExpiredTokenError({ Code: 'ResourceNotFound' })).toBe(false);
       expect(isExpiredTokenError(new Error('some other error'))).toBe(false);
+    });
+
+    it('returns false for AccessDenied errors (authorization, not authentication)', () => {
+      // AccessDenied errors indicate authorization failures (wrong account, missing IAM permissions),
+      // NOT token expiration. Users should see the actual AccessDenied error, not "credentials expired".
+      expect(isExpiredTokenError({ name: 'AccessDenied' })).toBe(false);
+      expect(isExpiredTokenError({ name: 'AccessDeniedException' })).toBe(false);
+      expect(isExpiredTokenError({ Code: 'AccessDenied' })).toBe(false);
+      expect(isExpiredTokenError({ Code: 'AccessDeniedException' })).toBe(false);
+      expect(isExpiredTokenError({ cause: { name: 'AccessDenied' } })).toBe(false);
+      expect(isExpiredTokenError(new Error('AccessDenied: User is not authorized'))).toBe(false);
     });
 
     it('returns false for edge cases', () => {
