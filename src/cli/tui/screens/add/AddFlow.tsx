@@ -15,6 +15,7 @@ import { AddSuccessScreen } from './AddSuccessScreen';
 import { AddTargetScreen } from './AddTargetScreen';
 import { useAddTarget, useExistingTargets } from './useAddTarget';
 import { Box, Text } from 'ink';
+import Link from 'ink-link';
 import React, { useCallback, useEffect, useState } from 'react';
 
 type FlowState =
@@ -254,13 +255,29 @@ export function AddFlow(props: AddFlowProps) {
   }
 
   if (flow.name === 'agent-create-success') {
+    const memoryDocAnchor =
+      flow.config.memory !== 'none'
+        ? '#swapping-or-changing-memory-strands'
+        : '#adding-memory-to-an-agent-without-memory-strands';
+    const memoryNotePrefix =
+      flow.config.memory !== 'none' ? 'To swap or change memory later, see ' : 'To add memory later, see ';
     return (
       <AddSuccessScreen
         isInteractive={props.isInteractive}
         message={`Created agent: ${flow.agentName}`}
         summary={
           !flow.loading && (
-            <AgentAddedSummary config={flow.config} projectName={flow.projectName} projectPath={flow.projectPath} />
+            <Box flexDirection="column">
+              <AgentAddedSummary config={flow.config} projectName={flow.projectName} projectPath={flow.projectPath} />
+              <Box marginTop={1}>
+                <Text color="yellow">
+                  Note: {memoryNotePrefix}
+                  <Link url={`https://github.com/aws/agentcore-cli/blob/main/docs/memory.md${memoryDocAnchor}`}>
+                    <Text color="cyan">docs/memory.md</Text>
+                  </Link>
+                </Text>
+              </Box>
+            </Box>
           )
         }
         detail="Deploy with `agentcore deploy`."
@@ -278,11 +295,31 @@ export function AddFlow(props: AddFlowProps) {
   }
 
   if (flow.name === 'agent-byo-success') {
+    const memoryDocAnchor =
+      flow.config.memory !== 'none'
+        ? '#swapping-or-changing-memory-strands'
+        : '#adding-memory-to-an-agent-without-memory-strands';
+    const memoryNotePrefix =
+      flow.config.memory !== 'none' ? 'To swap or change memory later, see ' : 'To add memory later, see ';
     return (
       <AddSuccessScreen
         isInteractive={props.isInteractive}
         message={`Added agent: ${flow.agentName}`}
-        summary={!flow.loading && <AgentAddedSummary config={flow.config} projectName={flow.projectName} />}
+        summary={
+          !flow.loading && (
+            <Box flexDirection="column">
+              <AgentAddedSummary config={flow.config} projectName={flow.projectName} />
+              <Box marginTop={1}>
+                <Text color="yellow">
+                  Note: {memoryNotePrefix}
+                  <Link url={`https://github.com/aws/agentcore-cli/blob/main/docs/memory.md${memoryDocAnchor}`}>
+                    <Text color="cyan">docs/memory.md</Text>
+                  </Link>
+                </Text>
+              </Box>
+            </Box>
+          )
+        }
         detail="Deploy with `agentcore deploy`."
         loading={flow.loading}
         loadingMessage={flow.loadingMessage}

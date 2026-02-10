@@ -3,7 +3,8 @@ import { useCreateMemory, useExistingMemoryNames } from '../../hooks/useCreateMe
 import { AddSuccessScreen } from '../add/AddSuccessScreen';
 import { AddMemoryScreen } from './AddMemoryScreen';
 import type { AddMemoryConfig } from './types';
-import { Text } from 'ink';
+import { Box, Text } from 'ink';
+import Link from 'ink-link';
 import React, { useCallback, useEffect, useState } from 'react';
 
 type FlowState =
@@ -60,10 +61,19 @@ export function AddMemoryFlow({ isInteractive = true, onExit, onBack, onDev, onD
         message={`Added memory: ${flow.memoryName}`}
         detail="Memory added to project in `agentcore/agentcore.json`."
         summary={
-          <Text color="yellow">
-            Note: Once you deploy, the memory resource will be created in your account, but it is not automatically
-            connected to your agent. You must configure your agent code to use this memory.
-          </Text>
+          <Box flexDirection="column">
+            <Text color="yellow">
+              Note: See{' '}
+              <Link url="https://github.com/aws/agentcore-cli/blob/main/docs/memory.md#swapping-or-changing-memory-strands">
+                <Text color="cyan">docs/memory.md</Text>
+              </Link>{' '}
+              to learn how to connect memory to your agent.
+            </Text>
+            <Text color="yellow">
+              Once you deploy, the memory resource will be created in your account, but it is not automatically
+              connected to your agent. You must configure your agent code to use this memory.
+            </Text>
+          </Box>
         }
         onAddAnother={onBack}
         onDev={onDev}

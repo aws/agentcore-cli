@@ -18,6 +18,115 @@ agentcore add memory \
   --owner MyAgent
 ```
 
+## Swapping or Changing Memory (Strands)
+
+For Strands agents, when you create an agent with memory, the CLI generates a `memory/session.py` file that references a
+specific memory via environment variable. To swap which memory your agent uses:
+
+### Step 1: Check Available Memories
+
+Look at your `agentcore/agentcore.json` to see defined memories:
+
+```json
+{
+  "memories": [
+    { "name": "MyAgentMemory", ... },
+    { "name": "SharedMemory", ... },
+    { "name": "UserPrefMemory", ... }
+  ]
+}
+```
+
+Each memory gets an environment variable: `MEMORY_<NAME>_ID` (uppercase, underscores).
+
+### Step 2: Update session.py
+
+Edit `app/<YourAgent>/memory/session.py` and change the `MEMORY_ID` line:
+
+```python
+# Before: using MyAgentMemory
+MEMORY_ID = os.getenv("MEMORY_MYAGENTMEMORY_ID")
+
+# After: switch to SharedMemory
+MEMORY_ID = os.getenv("MEMORY_SHAREDMEMORY_ID")
+```
+
+### Step 3: Redeploy
+
+```bash
+agentcore deploy
+```
+
+### Adding Memory to an Agent Without Memory (Strands)
+
+If you created an agent without memory and want to add it later:
+
+1. Add a memory to your project:
+
+   ```bash
+   agentcore add memory --name MyMemory --strategies SEMANTIC
+   ```
+
+2. Create the `memory/` directory in your agent:
+
+   ```bash
+   mkdir -p app/MyAgent/memory
+   ```
+
+3. Create `app/MyAgent/memory/session.py`:
+
+   ```python
+   import os
+   from typing import Optional
+   from bedrock_agentcore.memory.integrations.strands.config import AgentCoreMemoryConfig, RetrievalConfig
+   from bedrock_agentcore.memory.integrations.strands.session_manager import AgentCoreMemorySessionManager
+
+   MEMORY_ID = os.getenv("MEMORY_MYMEMORY_ID")
+   REGION = os.getenv("AWS_REGION")
+
+   def get_memory_session_manager(session_id: str, actor_id: str) -> Optional[AgentCoreMemorySessionManager]:
+       if not MEMORY_ID:
+           return None
+
+       retrieval_config = {
+           f"/users/{actor_id}/facts": RetrievalConfig(top_k=3, relevance_score=0.5),
+           f"/users/{actor_id}/preferences": RetrievalConfig(top_k=3, relevance_score=0.5),
+       }
+
+       return AgentCoreMemorySessionManager(
+           AgentCoreMemoryConfig(
+               memory_id=MEMORY_ID,
+               session_id=session_id,
+               actor_id=actor_id,
+               retrieval_config=retrieval_config,
+           ),
+           REGION
+       )
+   ```
+
+4. Update `main.py` to use the session manager:
+
+   ```python
+   from memory.session import get_memory_session_manager
+
+   @app.entrypoint
+   async def invoke(payload, context):
+       session_id = getattr(context, 'session_id', 'default-session')
+       user_id = getattr(context, 'user_id', 'default-user')
+       session_manager = get_memory_session_manager(session_id, user_id)
+
+       agent = Agent(
+           model=load_model(),
+           session_manager=session_manager,  # Add this line
+           ...
+       )
+   ```
+
+5. Deploy:
+   ```bash
+   agentcore deploy
+   ```
+
 ## Memory Strategies
 
 | Strategy          | Description                                         |
