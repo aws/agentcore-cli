@@ -3,7 +3,7 @@ import type { CdkToolkitWrapper, DeployMessage, SwitchableIoHost } from '../../.
 import { buildDeployedState, getStackOutputs, parseAgentOutputs } from '../../../cloudformation';
 import { getErrorMessage, isChangesetInProgressError, isExpiredTokenError } from '../../../errors';
 import { ExecLogger } from '../../../logging';
-import { destroyTarget, discoverDeployedTargets, getCdkProjectDir } from '../../../operations/deploy';
+import { performStackTeardown } from '../../../operations/deploy';
 import { type Step, areStepsComplete, hasStepError } from '../../components';
 import { type MissingCredential, type PreflightContext, useCdkPreflight } from '../../hooks';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
@@ -218,31 +218,12 @@ export function useDeployFlow(options: DeployFlowOptions = {}): DeployFlowState 
 
         if (context?.isTeardownDeploy) {
           // After deploying the empty spec, destroy the stack entirely
-          try {
-            const cdkProjectDir = getCdkProjectDir();
-            const target = context?.awsTargets[0];
-            if (target) {
-              const discovered = await discoverDeployedTargets();
-              const deployedTarget = discovered.deployedTargets.find(dt => dt.target.name === target.name);
-              if (deployedTarget) {
-                await destroyTarget({ target: deployedTarget, cdkProjectDir });
-              }
-              // Clean up deployed-state.json first (it validates against aws-targets.json),
-              // then remove the target from aws-targets.json
-              const configIO = new ConfigIO();
-              try {
-                const deployedState = await configIO.readDeployedState();
-                delete deployedState.targets[target.name];
-                await configIO.writeDeployedState(deployedState);
-              } catch {
-                // deployed-state may not exist — ignore
-              }
-              const remainingTargets = (await configIO.readAWSDeploymentTargets()).filter(t => t.name !== target.name);
-              await configIO.writeAWSDeploymentTargets(remainingTargets);
+          const targetName = context.awsTargets[0]?.name;
+          if (targetName) {
+            const teardown = await performStackTeardown(targetName);
+            if (!teardown.success) {
+              throw new Error(`Stack teardown failed: ${teardown.error}`);
             }
-          } catch (error) {
-            const message = error instanceof Error ? error.message : 'Unknown error';
-            logger.log(`Warning: Stack teardown failed: ${message}`, 'warn');
           }
         } else {
           // Deploy succeeded - persist state
@@ -312,7 +293,6 @@ export function useDeployFlow(options: DeployFlowOptions = {}): DeployFlowState 
     persistDeployedState,
     switchableIoHost,
     context?.isTeardownDeploy,
-    context?.awsTargets,
   ]);
 
   // Finalize logger and dispose toolkit when preflight fails

@@ -30,9 +30,11 @@ export {
   discoverDeployedTargets,
   destroyTarget,
   getCdkProjectDir,
+  performStackTeardown,
   type DeployedTarget,
   type DiscoverDeployedResult,
   type DestroyTargetOptions,
+  type StackTeardownResult,
 } from './teardown';
 
 // Re-export external requirements for convenience

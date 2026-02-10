@@ -83,8 +83,17 @@ describe('integration: deploy', () => {
   }, 120000);
 
   afterAll(async () => {
+    // Tear down deployed resources: remove all agents, then deploy --yes to destroy the stack
+    if (projectPath && hasAws) {
+      await runCLI(['remove', 'all', '--json'], projectPath, false);
+      const result = await runCLI(['deploy', '--target', targetName, '--yes', '--json'], projectPath, false);
+
+      expect(result.exitCode, `Teardown failed: ${result.stderr}`).toBe(0);
+      const json = JSON.parse(result.stdout);
+      expect(json.success, 'Teardown should report success').toBe(true);
+    }
     await rm(testDir, { recursive: true, force: true });
-  }, 120000);
+  }, 300000);
 
   it.skipIf(!hasNpm || !hasGit || !hasUv || !hasAws)(
     'deploys to AWS successfully',

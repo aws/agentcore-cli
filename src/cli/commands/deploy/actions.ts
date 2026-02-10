@@ -9,11 +9,9 @@ import {
   buildCdkProject,
   checkBootstrapNeeded,
   checkStackDeployability,
-  destroyTarget,
-  discoverDeployedTargets,
   getAllCredentials,
-  getCdkProjectDir,
   hasOwnedIdentityApiProviders,
+  performStackTeardown,
   setupApiKeyProviders,
   synthesizeCdk,
   validateProject,
@@ -219,27 +217,16 @@ export async function handleDeploy(options: ValidatedDeployOptions): Promise<Dep
 
     if (context.isTeardownDeploy) {
       // After deploying the empty spec, destroy the stack entirely
-      startStep('Destroy empty stack');
-      try {
-        const cdkProjectDir = getCdkProjectDir();
-        const discovered = await discoverDeployedTargets();
-        const deployedTarget = discovered.deployedTargets.find(dt => dt.target.name === target.name);
-        if (deployedTarget) {
-          await destroyTarget({ target: deployedTarget, cdkProjectDir });
-        }
-        // Clean up deployed-state.json first (it validates against aws-targets.json),
-        // then remove the target from aws-targets.json
-        try {
-          const deployedState = await configIO.readDeployedState();
-          delete deployedState.targets[target.name];
-          await configIO.writeDeployedState(deployedState);
-        } catch {
-          // deployed-state may not exist — ignore
-        }
-        const remainingTargets = (await configIO.readAWSDeploymentTargets()).filter(t => t.name !== target.name);
-        await configIO.writeAWSDeploymentTargets(remainingTargets);
-      } catch (err) {
-        logger.log(`Warning: Stack teardown failed: ${getErrorMessage(err)}`, 'warn');
+      startStep('Tear down stack');
+      const teardown = await performStackTeardown(target.name);
+      if (!teardown.success) {
+        endStep('error', teardown.error);
+        logger.finalize(false);
+        return {
+          success: false,
+          error: `Stack teardown failed: ${teardown.error}`,
+          logPath: logger.getRelativeLogPath(),
+        };
       }
       endStep('success');
 

@@ -88,3 +88,37 @@ export function getCdkProjectDir(cwd?: string): string {
   const baseDir = cwd ?? process.cwd();
   return join(baseDir, CONFIG_DIR, 'cdk');
 }
+
+export interface StackTeardownResult {
+  success: boolean;
+  error?: string;
+}
+
+/**
+ * Perform full stack teardown for a target: destroy CloudFormation stack,
+ * remove deployed-state entry, and remove the target from aws-targets.json.
+ */
+export async function performStackTeardown(targetName: string): Promise<StackTeardownResult> {
+  const cdkProjectDir = getCdkProjectDir();
+  const configIO = new ConfigIO();
+
+  const discovered = await discoverDeployedTargets();
+  const deployedTarget = discovered.deployedTargets.find(dt => dt.target.name === targetName);
+  if (deployedTarget) {
+    await destroyTarget({ target: deployedTarget, cdkProjectDir });
+  }
+
+  // Clean up deployed-state.json first (it validates against aws-targets.json),
+  // then remove the target from aws-targets.json
+  try {
+    const deployedState = await configIO.readDeployedState();
+    delete deployedState.targets[targetName];
+    await configIO.writeDeployedState(deployedState);
+  } catch {
+    // deployed-state may not exist — ignore
+  }
+  const remainingTargets = (await configIO.readAWSDeploymentTargets()).filter(t => t.name !== targetName);
+  await configIO.writeAWSDeploymentTargets(remainingTargets);
+
+  return { success: true };
+}
