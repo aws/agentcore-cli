@@ -83,15 +83,6 @@ describe('integration: deploy', () => {
   }, 120000);
 
   afterAll(async () => {
-    // Destroy resources and verify it succeeds
-    if (projectPath && hasAws) {
-      const result = await runCLI(['destroy', '--target', targetName, '--yes', '--json'], projectPath, false);
-
-      // Assert destroy succeeded
-      expect(result.exitCode, `Destroy failed: ${result.stderr}`).toBe(0);
-      const json = JSON.parse(result.stdout);
-      expect(json.success, 'Destroy should report success').toBe(true);
-    }
     await rm(testDir, { recursive: true, force: true });
   }, 120000);
 

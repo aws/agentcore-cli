@@ -85,7 +85,6 @@ agentcore invoke --stream
 | `validate` | Validate configuration files   |
 | `deploy`   | Deploy infrastructure to AWS   |
 | `status`   | Check deployment status        |
-| `destroy`  | Tear down deployed resources   |
 
 ### Resource Management
 

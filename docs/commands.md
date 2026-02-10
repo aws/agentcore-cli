@@ -65,21 +65,6 @@ agentcore deploy -v --json            # Verbose JSON output
 | `-v, --verbose`   | Resource-level events |
 | `--json`          | JSON output           |
 
-### destroy
-
-Tear down deployed resources.
-
-```bash
-agentcore destroy
-agentcore destroy --target dev -y     # Auto-confirm
-```
-
-| Flag              | Description       |
-| ----------------- | ----------------- |
-| `--target <name>` | Target to destroy |
-| `-y, --yes`       | Skip confirmation |
-| `--json`          | JSON output       |
-
 ### status
 
 Check deployment status.

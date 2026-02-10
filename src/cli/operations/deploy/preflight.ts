@@ -12,6 +12,8 @@ export interface PreflightContext {
   projectSpec: AgentCoreProjectSpec;
   awsTargets: AwsDeploymentTarget[];
   cdkProject: LocalCdkProject;
+  /** True when agents array is empty but a deployed stack exists — deploy will tear down resources */
+  isTeardownDeploy: boolean;
 }
 
 export interface SynthResult {
@@ -70,11 +72,23 @@ export async function validateProject(): Promise<PreflightContext> {
   const projectSpec = await configIO.readProjectSpec();
   const awsTargets = await configIO.readAWSDeploymentTargets();
 
-  // Validate that at least one agent is defined
+  // Validate that at least one agent is defined, unless this is a teardown deploy
+  let isTeardownDeploy = false;
   if (!projectSpec.agents || projectSpec.agents.length === 0) {
-    throw new Error(
-      'No agents defined in project. Add at least one agent with "agentcore add agent" before deploying.'
-    );
+    // Check if there's an existing deployed stack — if so, this is a teardown deploy
+    let hasExistingStack = false;
+    try {
+      const deployedState = await configIO.readDeployedState();
+      hasExistingStack = Object.keys(deployedState.targets).length > 0;
+    } catch {
+      // No deployed state file — no existing stack
+    }
+    if (!hasExistingStack) {
+      throw new Error(
+        'No agents defined in project. Add at least one agent with "agentcore add agent" before deploying.'
+      );
+    }
+    isTeardownDeploy = true;
   }
 
   // Validate runtime names don't exceed AWS limits
@@ -83,7 +97,7 @@ export async function validateProject(): Promise<PreflightContext> {
   // Validate AWS credentials before proceeding with build/synth
   await validateAwsCredentials();
 
-  return { projectSpec, awsTargets, cdkProject };
+  return { projectSpec, awsTargets, cdkProject, isTeardownDeploy };
 }
 
 /**

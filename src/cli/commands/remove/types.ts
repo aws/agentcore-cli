@@ -18,5 +18,6 @@ export interface RemoveResult {
   resourceType?: ResourceType;
   resourceName?: string;
   message?: string;
+  note?: string;
   error?: string;
 }

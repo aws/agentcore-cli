@@ -60,6 +60,7 @@ export function DeployScreen({ isInteractive, onExit, autoConfirm, onNavigate, p
     logFilePath,
     missingCredentials,
     startDeploy,
+    confirmTeardown,
     confirmBootstrap,
     skipBootstrap,
     clearTokenExpiredError,
@@ -98,6 +99,13 @@ export function DeployScreen({ isInteractive, onExit, autoConfirm, onNavigate, p
       startDeploy();
     }
   }, [phase, awsConfig.isConfigured, startDeploy, skipPreflight]);
+
+  // Auto-confirm teardown when autoConfirm is enabled
+  useEffect(() => {
+    if (autoConfirm && phase === 'teardown-confirm') {
+      confirmTeardown();
+    }
+  }, [autoConfirm, phase, confirmTeardown]);
 
   // Auto-confirm bootstrap when autoConfirm is enabled
   useEffect(() => {
@@ -189,6 +197,18 @@ export function DeployScreen({ isInteractive, onExit, autoConfirm, onNavigate, p
         onUseEnvLocal={useEnvLocalCredentials}
         onManualEntry={useManualCredentials}
         onSkip={skipCredentials}
+      />
+    );
+  }
+
+  // Teardown confirmation phase (only shown if not auto-confirming)
+  if (phase === 'teardown-confirm' && !autoConfirm) {
+    return (
+      <ConfirmPrompt
+        message="Tear down all deployed resources?"
+        detail="This will delete all AWS resources and the CloudFormation stack for this target. This action cannot be undone."
+        onConfirm={confirmTeardown}
+        onCancel={onExit}
       />
     );
   }

@@ -58,7 +58,8 @@ interface RemoveFlowProps {
   /** Whether running in interactive TUI mode (from App.tsx) vs CLI mode */
   isInteractive: boolean;
   onExit: () => void;
-  onRequestDestroy?: () => void;
+  /** Callback when user selects a next step command (e.g. deploy) */
+  onNavigate?: (command: string) => void;
   /** Force mode - skip confirmation */
   force?: boolean;
   /** Initial resource type to start at (for CLI subcommands) */
@@ -70,7 +71,7 @@ interface RemoveFlowProps {
 export function RemoveFlow({
   isInteractive,
   onExit,
-  onRequestDestroy,
+  onNavigate,
   force = false,
   initialResourceType,
   initialResourceName,
@@ -771,7 +772,7 @@ export function RemoveFlow({
 
   // Remove all screen
   if (flow.name === 'remove-all') {
-    return <RemoveAllScreen isInteractive={isInteractive} onExit={onExit} onRequestDestroy={onRequestDestroy} />;
+    return <RemoveAllScreen isInteractive={isInteractive} onExit={onExit} onNavigate={onNavigate} />;
   }
 
   // Error screen

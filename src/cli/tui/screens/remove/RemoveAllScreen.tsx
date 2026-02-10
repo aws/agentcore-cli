@@ -1,4 +1,4 @@
-import { ConfirmPrompt, Screen, StepProgress } from '../../components';
+import { ConfirmPrompt, type NextStep, NextSteps, Screen, StepProgress } from '../../components';
 import { HELP_TEXT } from '../../constants';
 import { useRemoveFlow } from './useRemoveFlow';
 import { Box, Text, useInput } from 'ink';
@@ -10,15 +10,18 @@ interface RemoveAllScreenProps {
   force?: boolean;
   dryRun?: boolean;
   onExit: () => void;
-  onRequestDestroy?: () => void;
+  /** Callback when user selects a next step command (e.g. deploy) */
+  onNavigate?: (command: string) => void;
 }
+
+const REMOVE_ALL_NEXT_STEPS: NextStep[] = [{ command: 'deploy', label: 'Deploy changes to AWS' }];
 
 export function RemoveAllScreen({
   isInteractive = true,
   force = false,
   dryRun = false,
   onExit,
-  onRequestDestroy,
+  onNavigate,
 }: RemoveAllScreenProps) {
   const flow = useRemoveFlow({ force, dryRun });
 
@@ -29,18 +32,15 @@ export function RemoveAllScreen({
     }
   }, [isInteractive, flow.phase, onExit]);
 
-  // Handle key press for complete phase
+  // Handle key press for complete phase (only when NextSteps is not shown)
+  const showNextSteps = flow.phase === 'complete' && !flow.hasError && flow.hasDeployedResources;
   useInput(
-    (input, key) => {
-      if (key.return || input === ' ') {
+    (_input, key) => {
+      if (key.return || _input === ' ') {
         onExit();
       }
-      // 'd' to go to destroy if there are deployed resources
-      if (input === 'd' && flow.hasDeployedResources && onRequestDestroy) {
-        onRequestDestroy();
-      }
     },
-    { isActive: flow.phase === 'complete' }
+    { isActive: flow.phase === 'complete' && !showNextSteps }
   );
 
   // Show confirmation prompt for non-force mode
@@ -108,13 +108,17 @@ export function RemoveAllScreen({
             ) : (
               <>
                 <Text color="green">AgentCore schemas reset successfully</Text>
-                {flow.hasDeployedResources && onRequestDestroy ? (
-                  <>
-                    <Text color="yellow">Note: AWS resources are still deployed.</Text>
-                    <Text dimColor>Press d to destroy AWS resources, or Enter to exit</Text>
-                  </>
+                <Text dimColor>Your source code has not been modified.</Text>
+                {flow.hasDeployedResources ? (
+                  <NextSteps
+                    steps={REMOVE_ALL_NEXT_STEPS}
+                    isInteractive={isInteractive}
+                    onSelect={step => onNavigate?.(step.command)}
+                    onBack={onExit}
+                    isActive={showNextSteps}
+                  />
                 ) : (
-                  <Text dimColor>All schemas have been reset to empty state</Text>
+                  <Text dimColor>All schemas have been reset to empty state.</Text>
                 )}
               </>
             )}

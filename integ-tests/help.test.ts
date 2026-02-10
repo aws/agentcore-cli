@@ -6,7 +6,6 @@ const COMMANDS = [
   'deploy',
   'dev',
   'invoke',
-  'destroy',
   'status',
   'validate',
   'add',

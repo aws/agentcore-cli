@@ -6,7 +6,6 @@ import { PlaceholderScreen } from './screens/PlaceholderScreen';
 import { AddFlow } from './screens/add/AddFlow';
 import { CreateScreen } from './screens/create';
 import { DeployScreen } from './screens/deploy/DeployScreen';
-import { DestroyScreen } from './screens/destroy';
 import { DevScreen } from './screens/dev/DevScreen';
 import { HelpScreen, HomeScreen } from './screens/home';
 import { InvokeScreen } from './screens/invoke';
@@ -28,7 +27,6 @@ type Route =
   | { name: 'command'; command: CommandMeta }
   | { name: 'dev' }
   | { name: 'deploy' }
-  | { name: 'destroy' }
   | { name: 'invoke' }
   | { name: 'create' }
   | { name: 'add' }
@@ -86,8 +84,6 @@ function AppContent() {
       setRoute({ name: 'add' });
     } else if (id === 'remove') {
       setRoute({ name: 'remove' });
-    } else if (id === 'destroy') {
-      setRoute({ name: 'destroy' });
     } else if (id === 'validate') {
       setRoute({ name: 'validate' });
     } else if (id === 'package') {
@@ -164,13 +160,9 @@ function AppContent() {
       <RemoveFlow
         isInteractive={true}
         onExit={() => setRoute({ name: 'help' })}
-        onRequestDestroy={() => setRoute({ name: 'destroy' })}
+        onNavigate={command => setRoute({ name: command } as Route)}
       />
     );
-  }
-
-  if (route.name === 'destroy') {
-    return <DestroyScreen isInteractive={true} onExit={() => setRoute({ name: 'help' })} />;
   }
 
   if (route.name === 'create') {

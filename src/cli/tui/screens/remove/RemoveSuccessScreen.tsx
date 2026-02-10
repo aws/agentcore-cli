@@ -40,6 +40,7 @@ export function RemoveSuccessScreen({
         <Box flexDirection="column">
           <Text color="green">✓ {message}</Text>
           {detail && <Text>{detail}</Text>}
+          <Text dimColor>Your source code has not been modified.</Text>
           {logFilePath && <LogLink filePath={logFilePath} label="Diff" />}
         </Box>
       </Screen>
@@ -52,6 +53,7 @@ export function RemoveSuccessScreen({
         <Box flexDirection="column">
           <Text color="green">✓ {message}</Text>
           {detail && <Text>{detail}</Text>}
+          <Text dimColor>Your source code has not been modified.</Text>
           {logFilePath && <LogLink filePath={logFilePath} label="Diff" />}
         </Box>
         <NextSteps steps={REMOVE_SUCCESS_STEPS} isInteractive={true} onSelect={handleSelect} onBack={onExit} />

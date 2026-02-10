@@ -1,5 +1,5 @@
 import { CONFIG_DIR, ConfigIO, getWorkingDirectory } from '../../../../lib';
-import type { AgentCoreCliMcpDefs, AgentCoreMcpSpec, AgentCoreProjectSpec, DeployedState } from '../../../../schema';
+import type { AgentCoreCliMcpDefs, AgentCoreMcpSpec, AgentCoreProjectSpec } from '../../../../schema';
 import { findStack } from '../../../cloudformation/stack-discovery';
 import { getErrorMessage } from '../../../errors';
 import { type Step, areStepsComplete, hasStepError } from '../../components';
@@ -36,12 +36,6 @@ function createDefaultProjectSpec(projectName: string): AgentCoreProjectSpec {
     agents: [],
     memories: [],
     credentials: [],
-  };
-}
-
-function createDefaultDeployedState(): DeployedState {
-  return {
-    targets: {},
   };
 }
 
@@ -154,12 +148,8 @@ export function useRemoveFlow({ force, dryRun }: RemoveFlowOptions): RemoveFlowS
             const defaultProjectSpec = createDefaultProjectSpec(projectName || 'Project');
             await configIO.writeProjectSpec(defaultProjectSpec);
 
-            // Reset aws-targets.json
-            await configIO.writeAWSDeploymentTargets([]);
-
-            // Reset deployed-state.json
-            const defaultDeployedState = createDefaultDeployedState();
-            await configIO.writeDeployedState(defaultDeployedState);
+            // Preserve aws-targets.json and deployed-state.json so that
+            // a subsequent `agentcore deploy` can tear down existing stacks.
 
             // Reset mcp.json
             const defaultMcpSpec = createDefaultMcpSpec();

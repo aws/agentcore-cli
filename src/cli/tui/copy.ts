@@ -32,7 +32,6 @@ export const COMMAND_DESCRIPTIONS = {
   add: 'Add resources to your project',
   create: 'Create a new AgentCore project',
   deploy: 'Deploy Bedrock AgentCore agent.',
-  destroy: 'Destroy deployed AgentCore resources.',
   dev: 'Launch local development server.',
   edit: 'Open schema editor.',
   invoke: 'Invoke Bedrock AgentCore endpoint.',

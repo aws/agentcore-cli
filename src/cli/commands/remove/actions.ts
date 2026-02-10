@@ -17,6 +17,9 @@ export interface ValidatedRemoveOptions {
   force?: boolean;
 }
 
+const SOURCE_CODE_NOTE =
+  'Your source code has not been modified. Deploy with `agentcore deploy` to apply changes to AWS.';
+
 export async function handleRemove(options: ValidatedRemoveOptions): Promise<RemoveResult> {
   const { resourceType, name } = options;
 
@@ -25,12 +28,24 @@ export async function handleRemove(options: ValidatedRemoveOptions): Promise<Rem
       case 'agent': {
         const result = await removeAgent(name);
         if (!result.ok) return { success: false, error: result.error };
-        return { success: true, resourceType, resourceName: name, message: `Removed agent '${name}'` };
+        return {
+          success: true,
+          resourceType,
+          resourceName: name,
+          message: `Removed agent '${name}'`,
+          note: SOURCE_CODE_NOTE,
+        };
       }
       case 'gateway': {
         const result = await removeGateway(name);
         if (!result.ok) return { success: false, error: result.error };
-        return { success: true, resourceType, resourceName: name, message: `Removed gateway '${name}'` };
+        return {
+          success: true,
+          resourceType,
+          resourceName: name,
+          message: `Removed gateway '${name}'`,
+          note: SOURCE_CODE_NOTE,
+        };
       }
       case 'mcp-tool': {
         const tools = await getRemovableMcpTools();
@@ -38,22 +53,46 @@ export async function handleRemove(options: ValidatedRemoveOptions): Promise<Rem
         if (!tool) return { success: false, error: `MCP tool '${name}' not found` };
         const result = await removeMcpTool(tool);
         if (!result.ok) return { success: false, error: result.error };
-        return { success: true, resourceType, resourceName: name, message: `Removed MCP tool '${name}'` };
+        return {
+          success: true,
+          resourceType,
+          resourceName: name,
+          message: `Removed MCP tool '${name}'`,
+          note: SOURCE_CODE_NOTE,
+        };
       }
       case 'memory': {
         const result = await removeMemory(name);
         if (!result.ok) return { success: false, error: result.error };
-        return { success: true, resourceType, resourceName: name, message: `Removed memory '${name}'` };
+        return {
+          success: true,
+          resourceType,
+          resourceName: name,
+          message: `Removed memory '${name}'`,
+          note: SOURCE_CODE_NOTE,
+        };
       }
       case 'identity': {
         const result = await removeIdentity(name);
         if (!result.ok) return { success: false, error: result.error };
-        return { success: true, resourceType, resourceName: name, message: `Removed identity '${name}'` };
+        return {
+          success: true,
+          resourceType,
+          resourceName: name,
+          message: `Removed identity '${name}'`,
+          note: SOURCE_CODE_NOTE,
+        };
       }
       case 'target': {
         const result = await removeTarget(name);
         if (!result.ok) return { success: false, error: result.error };
-        return { success: true, resourceType, resourceName: name, message: `Removed target '${name}'` };
+        return {
+          success: true,
+          resourceType,
+          resourceName: name,
+          message: `Removed target '${name}'`,
+          note: SOURCE_CODE_NOTE,
+        };
       }
       default:
         return { success: false, error: `Unknown resource type: ${resourceType as string}` };
@@ -85,11 +124,8 @@ export async function handleRemoveAll(_options: RemoveAllOptions): Promise<Remov
       credentials: [],
     });
 
-    // Reset aws-targets.json
-    await configIO.writeAWSDeploymentTargets([]);
-
-    // Reset deployed-state.json
-    await configIO.writeDeployedState({ targets: {} });
+    // Preserve aws-targets.json and deployed-state.json so that
+    // a subsequent `agentcore deploy` can tear down existing stacks.
 
     // Reset mcp.json
     await configIO.writeMcpSpec({
@@ -100,7 +136,11 @@ export async function handleRemoveAll(_options: RemoveAllOptions): Promise<Remov
     // Reset mcp-defs.json
     await configIO.writeMcpDefs({ tools: {} });
 
-    return { success: true, message: 'All schemas reset to empty state' };
+    return {
+      success: true,
+      message: 'All schemas reset to empty state',
+      note: 'Your source code has not been modified. Run `agentcore deploy` to apply changes to AWS.',
+    };
   } catch (err) {
     return { success: false, error: getErrorMessage(err) };
   }

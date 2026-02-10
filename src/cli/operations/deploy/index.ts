@@ -25,6 +25,16 @@ export {
   type MissingCredential,
 } from './pre-deploy-identity';
 
+// Teardown utilities (moved from destroy operations)
+export {
+  discoverDeployedTargets,
+  destroyTarget,
+  getCdkProjectDir,
+  type DeployedTarget,
+  type DiscoverDeployedResult,
+  type DestroyTargetOptions,
+} from './teardown';
+
 // Re-export external requirements for convenience
 export {
   checkDependencyVersions,

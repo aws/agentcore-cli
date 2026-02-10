@@ -8,7 +8,10 @@ import {
   buildCdkProject,
   checkBootstrapNeeded,
   checkStackDeployability,
+  destroyTarget,
+  discoverDeployedTargets,
   getAllCredentials,
+  getCdkProjectDir,
   hasOwnedIdentityApiProviders,
   setupApiKeyProviders,
   synthesizeCdk,
@@ -66,6 +69,17 @@ export async function handleDeploy(options: ValidatedDeployOptions): Promise<Dep
     startStep('Validate project');
     const context = await validateProject();
     endStep('success');
+
+    // Teardown confirmation: if this is a teardown deploy, require --yes
+    if (context.isTeardownDeploy && !options.autoConfirm) {
+      logger.finalize(false);
+      return {
+        success: false,
+        error:
+          'This will delete all deployed resources and the CloudFormation stack. Run with --yes to confirm teardown.',
+        logPath: logger.getRelativeLogPath(),
+      };
+    }
 
     // Ensure L3 constructs are linked (for local development)
     startStep('Link L3 constructs');
@@ -194,6 +208,42 @@ export async function handleDeploy(options: ValidatedDeployOptions): Promise<Dep
     }
 
     endStep('success');
+
+    if (context.isTeardownDeploy) {
+      // After deploying the empty spec, destroy the stack entirely
+      startStep('Destroy empty stack');
+      try {
+        const cdkProjectDir = getCdkProjectDir();
+        const discovered = await discoverDeployedTargets();
+        const deployedTarget = discovered.deployedTargets.find(dt => dt.target.name === target.name);
+        if (deployedTarget) {
+          await destroyTarget({ target: deployedTarget, cdkProjectDir });
+        }
+        // Clean up deployed-state.json first (it validates against aws-targets.json),
+        // then remove the target from aws-targets.json
+        try {
+          const deployedState = await configIO.readDeployedState();
+          delete deployedState.targets[target.name];
+          await configIO.writeDeployedState(deployedState);
+        } catch {
+          // deployed-state may not exist — ignore
+        }
+        const remainingTargets = (await configIO.readAWSDeploymentTargets()).filter(t => t.name !== target.name);
+        await configIO.writeAWSDeploymentTargets(remainingTargets);
+      } catch (err) {
+        logger.log(`Warning: Stack teardown failed: ${getErrorMessage(err)}`, 'warn');
+      }
+      endStep('success');
+
+      logger.finalize(true);
+
+      return {
+        success: true,
+        targetName: target.name,
+        stackName,
+        logPath: logger.getRelativeLogPath(),
+      };
+    }
 
     // Get stack outputs and persist state
     startStep('Persist deployment state');
