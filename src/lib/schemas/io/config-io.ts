@@ -21,7 +21,7 @@ import {
   ConfigWriteError,
 } from '../../errors';
 import { detectAwsAccount } from '../../utils';
-import { type PathConfig, PathResolver, findConfigRoot } from './path-resolver';
+import { NoProjectError, type PathConfig, PathResolver, findConfigRoot } from './path-resolver';
 import { loadSharedConfigFiles } from '@smithy/shared-ini-file-loader';
 import { existsSync } from 'fs';
 import { mkdir, readFile, writeFile } from 'fs/promises';
@@ -33,20 +33,40 @@ import { type ZodType } from 'zod';
  */
 export class ConfigIO {
   private readonly pathResolver: PathResolver;
+  private readonly projectDiscovered: boolean;
 
   /**
    * Create a ConfigIO instance.
    * If no baseDir is provided, automatically discovers the project using findConfigRoot().
    */
   constructor(pathConfig?: Partial<PathConfig>) {
+    // Track if baseDir was explicitly provided
+    const baseDirProvided = !!pathConfig?.baseDir;
+
     // Auto-discover config root if no baseDir provided
-    if (!pathConfig?.baseDir) {
+    if (!baseDirProvided) {
       const discoveredRoot = findConfigRoot();
       if (discoveredRoot) {
         pathConfig = { ...pathConfig, baseDir: discoveredRoot };
+        this.projectDiscovered = true;
+      } else {
+        // No project found and no explicit baseDir - mark as not discovered
+        this.projectDiscovered = false;
       }
+    } else {
+      // baseDir was explicitly provided (e.g., during project creation)
+      this.projectDiscovered = true;
     }
+
     this.pathResolver = new PathResolver(pathConfig);
+  }
+
+  /**
+   * Check if this ConfigIO is associated with a discovered or explicitly configured project.
+   * Returns false if no baseDir was provided and no project was found via auto-discovery.
+   */
+  hasProject(): boolean {
+    return this.projectDiscovered;
   }
 
   /**
@@ -220,9 +240,15 @@ export class ConfigIO {
   }
 
   /**
-   * Initialize the base directory and CLI system subdirectory
+   * Initialize the base directory and CLI system subdirectory.
+   * Requires that a baseDir was explicitly provided or a project was discovered.
    */
   async initializeBaseDir(): Promise<void> {
+    // Prevent creating directories when no project was configured
+    if (!this.projectDiscovered) {
+      throw new NoProjectError();
+    }
+
     const baseDir = this.pathResolver.getBaseDir();
     const cliSystemDir = this.pathResolver.getCliSystemDir();
     try {
@@ -274,6 +300,11 @@ export class ConfigIO {
    * Generic validate and write method
    */
   private async validateAndWrite<T>(filePath: string, fileType: string, schema: ZodType<T>, data: T): Promise<void> {
+    // Prevent writing to non-existent projects
+    if (!this.projectDiscovered) {
+      throw new NoProjectError();
+    }
+
     // Validate data with Zod schema
     const result = schema.safeParse(data);
     if (!result.success) {
