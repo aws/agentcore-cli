@@ -142,7 +142,7 @@ export const registerCreate = (program: Command) => {
     .option('--name <name>', 'Project name (start with letter, alphanumeric only, max 36 chars) [non-interactive]')
     .option('--no-agent', 'Skip agent creation [non-interactive]')
     .option('--defaults', 'Use defaults (Python, Strands, Bedrock, no memory) [non-interactive]')
-    .option('--language <language>', 'Target language (Python, TypeScript) [non-interactive]')
+    .option('--language <language>', 'Target language (default: Python) [non-interactive]')
     .option(
       '--framework <framework>',
       'Agent framework (Strands, LangChain_LangGraph, CrewAI, GoogleADK, OpenAIAgents) [non-interactive]'
@@ -164,6 +164,9 @@ export const registerCreate = (program: Command) => {
           options.modelProvider = options.modelProvider ?? 'Bedrock';
           options.memory = options.memory ?? 'none';
         }
+
+        // Always default language to Python (only supported option)
+        options.language = options.language ?? 'Python';
 
         // Any flag triggers non-interactive CLI mode
         const hasAnyFlag = Boolean(

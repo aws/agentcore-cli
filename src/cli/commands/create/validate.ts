@@ -50,12 +50,12 @@ export function validateCreateOptions(options: CreateOptions, cwd?: string): Val
   }
 
   // Without --no-agent, all agent options are required
-  const hasAllAgentOptions = options.language && options.framework && options.modelProvider && options.memory;
+  const hasAllAgentOptions = options.framework && options.modelProvider && options.memory;
 
   if (!hasAllAgentOptions) {
     return {
       valid: false,
-      error: 'Use --no-agent for project-only, or provide all: --language, --framework, --model-provider, --memory',
+      error: 'Use --no-agent for project-only, or provide all: --framework, --model-provider, --memory',
     };
   }
 
@@ -77,7 +77,7 @@ export function validateCreateOptions(options: CreateOptions, cwd?: string): Val
     // Validate language
     const langResult = TargetLanguageSchema.safeParse(options.language);
     if (!langResult.success) {
-      return { valid: false, error: `Invalid language: ${options.language}. Use Python or TypeScript` };
+      return { valid: false, error: `Invalid language: ${options.language}. Use Python` };
     }
 
     // Validate framework
