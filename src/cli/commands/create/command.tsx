@@ -65,7 +65,9 @@ function printCreateSummary(
 
 /** Handle CLI mode with progress output */
 async function handleCreateCLI(options: CreateOptions): Promise<void> {
-  const validation = validateCreateOptions(options);
+  const cwd = options.outputDir ?? getWorkingDirectory();
+
+  const validation = validateCreateOptions(options, cwd);
   if (!validation.valid) {
     if (options.json) {
       console.log(JSON.stringify({ success: false, error: validation.error }));
@@ -74,8 +76,6 @@ async function handleCreateCLI(options: CreateOptions): Promise<void> {
     }
     process.exit(1);
   }
-
-  const cwd = options.outputDir ?? getWorkingDirectory();
 
   // Handle dry-run mode
   if (options.dryRun) {

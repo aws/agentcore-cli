@@ -1,4 +1,5 @@
 import { ProjectNameSchema } from '../../../../schema';
+import { validateFolderNotExists } from '../../../commands/create/validate';
 import { computeDefaultCredentialEnvVarName } from '../../../operations/identity/create-identity';
 import {
   LogLink,
@@ -257,6 +258,7 @@ export function CreateScreen({ cwd, isInteractive, onExit, onNavigate }: CreateS
           prompt="Project name"
           initialValue=""
           schema={ProjectNameSchema}
+          customValidation={name => validateFolderNotExists(name, cwd)}
           onSubmit={name => {
             flow.setProjectName(name);
             flow.confirmProjectName();

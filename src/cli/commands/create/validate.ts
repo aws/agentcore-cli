@@ -6,6 +6,8 @@ import {
   getSupportedModelProviders,
 } from '../../../schema';
 import type { CreateOptions } from './types';
+import { existsSync } from 'fs';
+import { join } from 'path';
 
 export interface ValidationResult {
   valid: boolean;
@@ -14,7 +16,17 @@ export interface ValidationResult {
 
 const MEMORY_OPTIONS = ['none', 'shortTerm', 'longAndShortTerm'] as const;
 
-export function validateCreateOptions(options: CreateOptions): ValidationResult {
+/** Check if a folder with the given name already exists in the directory */
+export function validateFolderNotExists(name: string, cwd: string): true | string {
+  const projectPath = join(cwd, name);
+  // eslint-disable-next-line security/detect-non-literal-fs-filename
+  if (existsSync(projectPath)) {
+    return `A folder named '${name}' already exists in this directory`;
+  }
+  return true;
+}
+
+export function validateCreateOptions(options: CreateOptions, cwd?: string): ValidationResult {
   // Name is required for non-interactive mode
   if (!options.name) {
     return { valid: false, error: '--name is required' };
@@ -24,6 +36,12 @@ export function validateCreateOptions(options: CreateOptions): ValidationResult 
   const nameResult = ProjectNameSchema.safeParse(options.name);
   if (!nameResult.success) {
     return { valid: false, error: nameResult.error.issues[0]?.message ?? 'Invalid project name' };
+  }
+
+  // Check if directory already exists
+  const folderCheck = validateFolderNotExists(options.name, cwd ?? process.cwd());
+  if (folderCheck !== true) {
+    return { valid: false, error: folderCheck };
   }
 
   // If --no-agent (agent === false), no further validation needed

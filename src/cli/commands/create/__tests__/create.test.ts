@@ -152,4 +152,19 @@ describe('create command', () => {
       expect(await exists(join(customDir, name)), 'Should create in custom dir').toBeTruthy();
     });
   });
+
+  describe('existing folder', () => {
+    it('rejects when folder already exists', async () => {
+      const name = `Existing${Date.now()}`;
+      // Create the folder first
+      await mkdir(join(testDir, name), { recursive: true });
+
+      const result = await runCLI(['create', '--name', name, '--no-agent', '--json'], testDir);
+
+      expect(result.exitCode).toBe(1);
+      const json = JSON.parse(result.stdout);
+      expect(json.success).toBe(false);
+      expect(json.error).toContain('already exists');
+    });
+  });
 });
