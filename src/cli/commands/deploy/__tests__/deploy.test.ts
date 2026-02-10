@@ -98,3 +98,42 @@ describe('deploy command', () => {
     });
   });
 });
+
+describe('deploy without agents (Issue #151)', () => {
+  let noAgentTestDir: string;
+  let noAgentProjectDir: string;
+
+  beforeAll(async () => {
+    noAgentTestDir = join(tmpdir(), `agentcore-deploy-noagent-${randomUUID()}`);
+    await mkdir(noAgentTestDir, { recursive: true });
+
+    // Create project without any agents
+    const projectName = 'NoAgentProject';
+    const result = await runCLI(['create', '--name', projectName, '--no-agent'], noAgentTestDir);
+    if (result.exitCode !== 0) {
+      throw new Error(`Failed to create project: ${result.stdout} ${result.stderr}`);
+    }
+    noAgentProjectDir = join(noAgentTestDir, projectName);
+
+    // Add a target but no agent
+    const targetResult = await runCLI(
+      ['add', 'target', '--name', 'test-target', '--account', '123456789012', '--region', 'us-east-1', '--json'],
+      noAgentProjectDir
+    );
+    if (targetResult.exitCode !== 0) {
+      throw new Error(`Failed to create target: ${targetResult.stdout} ${targetResult.stderr}`);
+    }
+  });
+
+  afterAll(async () => {
+    await rm(noAgentTestDir, { recursive: true, force: true });
+  });
+
+  it('rejects deploy when no agents are defined', async () => {
+    const result = await runCLI(['deploy', '--target', 'test-target', '--json'], noAgentProjectDir);
+    expect(result.exitCode).toBe(1);
+    const json = JSON.parse(result.stdout);
+    expect(json.success).toBe(false);
+    expect(json.error.toLowerCase()).toContain('no agents');
+  });
+});
