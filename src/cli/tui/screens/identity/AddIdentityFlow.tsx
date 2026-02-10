@@ -59,7 +59,7 @@ export function AddIdentityFlow({ isInteractive = true, onExit, onBack, onDev, o
       <AddSuccessScreen
         isInteractive={isInteractive}
         message={`Added credential: ${flow.identityName}`}
-        detail="Credential added to project in `agentcore/agentcore.json`. API key stored in `agentcore/.env`."
+        detail="Credential added to project in `agentcore/agentcore.json`. API key stored in `agentcore/.env.local`."
         showDevOption={true}
         onAddAnother={onBack}
         onDev={onDev}
