@@ -46,7 +46,6 @@ export const LANGUAGE_OPTIONS = [
 export const SDK_OPTIONS = [
   { id: 'Strands', title: 'Strands Agents SDK', description: 'AWS native agent framework' },
   { id: 'LangChain_LangGraph', title: 'LangChain + LangGraph', description: 'Popular open-source frameworks' },
-  { id: 'AutoGen', title: 'AutoGen', description: 'Microsoft multi-agent framework' },
   { id: 'GoogleADK', title: 'Google ADK', description: 'Google Agent Development Kit' },
   { id: 'OpenAIAgents', title: 'OpenAI Agents', description: 'OpenAI native agent SDK' },
 ] as const;

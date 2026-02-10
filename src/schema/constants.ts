@@ -4,14 +4,7 @@ import { z } from 'zod';
 // Feature Constants (shared across all schemas)
 // ============================================================================
 
-export const SDKFrameworkSchema = z.enum([
-  'Strands',
-  'LangChain_LangGraph',
-  'AutoGen',
-  'CrewAI',
-  'GoogleADK',
-  'OpenAIAgents',
-]);
+export const SDKFrameworkSchema = z.enum(['Strands', 'LangChain_LangGraph', 'CrewAI', 'GoogleADK', 'OpenAIAgents']);
 export type SDKFramework = z.infer<typeof SDKFrameworkSchema>;
 
 export const TargetLanguageSchema = z.enum(['Python', 'TypeScript', 'Other']);
@@ -29,7 +22,6 @@ export type ModelProvider = z.infer<typeof ModelProviderSchema>;
 export const SDK_MODEL_PROVIDER_MATRIX: Record<SDKFramework, readonly ModelProvider[]> = {
   Strands: ['Bedrock', 'Anthropic', 'OpenAI', 'Gemini'] as const,
   LangChain_LangGraph: ['Bedrock', 'Anthropic', 'OpenAI', 'Gemini'] as const,
-  AutoGen: ['Bedrock', 'Anthropic', 'OpenAI', 'Gemini'] as const,
   CrewAI: ['Bedrock', 'Anthropic', 'OpenAI', 'Gemini'] as const,
   GoogleADK: ['Gemini'] as const,
   OpenAIAgents: ['OpenAI'] as const,

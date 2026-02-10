@@ -260,7 +260,7 @@ export function registerAdd(program: Command) {
     .option('--name <name>', 'Agent name (start with letter, alphanumeric only, max 64 chars)')
     .option('--type <type>', 'Agent type: create or byo', 'create')
     .option('--language <lang>', 'Language: Python (create), or Python/TypeScript/Other (BYO)')
-    .option('--framework <fw>', 'Framework: Strands, LangChain_LangGraph, AutoGen, CrewAI, GoogleADK, OpenAIAgents')
+    .option('--framework <fw>', 'Framework: Strands, LangChain_LangGraph, CrewAI, GoogleADK, OpenAIAgents')
     .option('--model-provider <provider>', 'Model provider: Bedrock, Anthropic, OpenAI, Gemini')
     .option('--api-key <key>', 'API key for non-Bedrock providers')
     .option('--memory <mem>', 'Memory: none, shortTerm, longAndShortTerm (create path only)')

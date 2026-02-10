@@ -1,4 +1,3 @@
-import { AutoGenRenderer } from './AutoGenRenderer';
 import type { BaseRenderer } from './BaseRenderer';
 import { CrewAIRenderer } from './CrewAIRenderer';
 import { GoogleADKRenderer } from './GoogleADKRenderer';
@@ -10,7 +9,6 @@ import type { AgentRenderConfig } from './types';
 export { BaseRenderer, type RendererContext } from './BaseRenderer';
 export { CDKRenderer, type CDKRendererContext } from './CDKRenderer';
 export { renderMcpToolTemplate } from './McpToolRenderer';
-export { AutoGenRenderer } from './AutoGenRenderer';
 export { CrewAIRenderer } from './CrewAIRenderer';
 export { GoogleADKRenderer } from './GoogleADKRenderer';
 export { LangGraphRenderer } from './LangGraphRenderer';
@@ -25,8 +23,6 @@ export function createRenderer(config: AgentRenderConfig): BaseRenderer {
   switch (config.sdkFramework) {
     case 'Strands':
       return new StrandsRenderer(config);
-    case 'AutoGen':
-      return new AutoGenRenderer(config);
     case 'CrewAI':
       return new CrewAIRenderer(config);
     case 'GoogleADK':

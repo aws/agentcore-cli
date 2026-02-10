@@ -136,7 +136,7 @@ export const registerCreate = (program: Command) => {
     .option('--language <language>', 'Target language (Python, TypeScript)')
     .option(
       '--framework <framework>',
-      'Agent framework (Strands, LangChain_LangGraph, AutoGen, CrewAI, GoogleADK, OpenAIAgents)'
+      'Agent framework (Strands, LangChain_LangGraph, CrewAI, GoogleADK, OpenAIAgents)'
     )
     .option('--model-provider <provider>', 'Model provider (Bedrock, Anthropic, OpenAI, Gemini)')
     .option('--api-key <key>', 'API key for non-Bedrock providers')
