@@ -313,8 +313,50 @@ describe('validate', () => {
       expect(validateAddMemoryOptions(validMemoryOptions)).toEqual({ valid: true });
       // Test all valid strategies
       expect(
-        validateAddMemoryOptions({ ...validMemoryOptions, strategies: 'SEMANTIC,SUMMARIZATION,USER_PREFERENCE,CUSTOM' })
+        validateAddMemoryOptions({ ...validMemoryOptions, strategies: 'SEMANTIC,SUMMARIZATION,USER_PREFERENCE' })
       ).toEqual({ valid: true });
+    });
+
+    // AC23: CUSTOM strategy is not supported (Issue #235)
+    it('rejects CUSTOM strategy', () => {
+      const result = validateAddMemoryOptions({ ...validMemoryOptions, strategies: 'CUSTOM' });
+      expect(result.valid).toBe(false);
+      expect(result.error).toContain('Invalid strategy: CUSTOM');
+    });
+
+    it('rejects CUSTOM even when mixed with valid strategies', () => {
+      const result = validateAddMemoryOptions({ ...validMemoryOptions, strategies: 'SEMANTIC,CUSTOM' });
+      expect(result.valid).toBe(false);
+      expect(result.error).toContain('Invalid strategy: CUSTOM');
+    });
+
+    // AC24: Each individual valid strategy should pass
+    it('accepts each valid strategy individually', () => {
+      expect(validateAddMemoryOptions({ ...validMemoryOptions, strategies: 'SEMANTIC' })).toEqual({ valid: true });
+      expect(validateAddMemoryOptions({ ...validMemoryOptions, strategies: 'SUMMARIZATION' })).toEqual({ valid: true });
+      expect(validateAddMemoryOptions({ ...validMemoryOptions, strategies: 'USER_PREFERENCE' })).toEqual({
+        valid: true,
+      });
+    });
+
+    // AC25: Valid strategy combinations should pass
+    it('accepts valid strategy combinations', () => {
+      expect(validateAddMemoryOptions({ ...validMemoryOptions, strategies: 'SEMANTIC,SUMMARIZATION' })).toEqual({
+        valid: true,
+      });
+      expect(validateAddMemoryOptions({ ...validMemoryOptions, strategies: 'SEMANTIC,USER_PREFERENCE' })).toEqual({
+        valid: true,
+      });
+      expect(validateAddMemoryOptions({ ...validMemoryOptions, strategies: 'SUMMARIZATION,USER_PREFERENCE' })).toEqual({
+        valid: true,
+      });
+    });
+
+    // AC26: Strategies with whitespace should be handled
+    it('handles strategies with whitespace', () => {
+      expect(validateAddMemoryOptions({ ...validMemoryOptions, strategies: ' SEMANTIC , SUMMARIZATION ' })).toEqual({
+        valid: true,
+      });
     });
   });
 

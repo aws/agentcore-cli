@@ -22,7 +22,7 @@ export interface ValidationResult {
 // Constants
 const MEMORY_OPTIONS = ['none', 'shortTerm', 'longAndShortTerm'] as const;
 const OIDC_WELL_KNOWN_SUFFIX = '/.well-known/openid-configuration';
-const VALID_STRATEGIES = ['SEMANTIC', 'SUMMARIZATION', 'USER_PREFERENCE', 'CUSTOM'];
+const VALID_STRATEGIES = ['SEMANTIC', 'SUMMARIZATION', 'USER_PREFERENCE'];
 
 // Agent validation
 export function validateAddAgentOptions(options: AddAgentOptions): ValidationResult {

@@ -63,7 +63,7 @@ file maps to a JSON config file and includes validation constraints as comments.
 - **BuildType**: `'CodeZip'` | `'Container'`
 - **NetworkMode**: `'PUBLIC'` | `'PRIVATE'`
 - **RuntimeVersion**: `'PYTHON_3_12'` | `'PYTHON_3_13'` | `'NODE_18'` | `'NODE_20'` | `'NODE_22'`
-- **MemoryStrategyType**: `'SEMANTIC'` | `'SUMMARIZATION'` | `'USER_PREFERENCE'` | `'CUSTOM'`
+- **MemoryStrategyType**: `'SEMANTIC'` | `'SUMMARIZATION'` | `'USER_PREFERENCE'`
 
 ### Supported Frameworks (for template agents)
 

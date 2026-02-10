@@ -316,7 +316,7 @@ export function registerAdd(program: Command) {
     .option('--name <name>', 'Memory name [non-interactive]')
     .option(
       '--strategies <types>',
-      'Comma-separated strategies: SEMANTIC, SUMMARIZATION, USER_PREFERENCE, CUSTOM [non-interactive]'
+      'Comma-separated strategies: SEMANTIC, SUMMARIZATION, USER_PREFERENCE [non-interactive]'
     )
     .option('--expiry <days>', 'Event expiry duration in days (default: 30) [non-interactive]', parseInt)
     .option('--json', 'Output as JSON [non-interactive]')

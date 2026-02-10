@@ -10,16 +10,14 @@ import { z } from 'zod';
  * - SEMANTIC → SemanticMemoryStrategy
  * - SUMMARIZATION → SummaryMemoryStrategy (note: CloudFormation uses "Summary")
  * - USER_PREFERENCE → UserPreferenceMemoryStrategy
- * - CUSTOM → CustomMemoryStrategy
  * @see https://docs.aws.amazon.com/AWSCloudFormation/latest/TemplateReference/aws-properties-bedrockagentcore-memory-memorystrategy.html
  */
-export const MemoryStrategyTypeSchema = z.enum(['SEMANTIC', 'SUMMARIZATION', 'USER_PREFERENCE', 'CUSTOM']);
+export const MemoryStrategyTypeSchema = z.enum(['SEMANTIC', 'SUMMARIZATION', 'USER_PREFERENCE']);
 export type MemoryStrategyType = z.infer<typeof MemoryStrategyTypeSchema>;
 
 /**
  * Default namespaces for each memory strategy type.
  * These match the patterns generated in CLI session.py templates.
- * CUSTOM strategy intentionally has no default namespace.
  */
 export const DEFAULT_STRATEGY_NAMESPACES: Partial<Record<MemoryStrategyType, string[]>> = {
   SEMANTIC: ['/users/{actorId}/facts'],
