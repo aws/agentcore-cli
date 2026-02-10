@@ -1,6 +1,6 @@
 import { exists, runCLI } from '../../../../test-utils/index.js';
 import { randomUUID } from 'node:crypto';
-import { mkdir, rm } from 'node:fs/promises';
+import { mkdir, readFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
@@ -99,6 +99,45 @@ describe('create command', () => {
       expect(result.exitCode).toBe(1);
       const json = JSON.parse(result.stdout);
       expect(json.success).toBe(false);
+    });
+
+    it('sets default namespaces for longAndShortTerm memory', async () => {
+      const name = `MemNs${Date.now()}`;
+      const result = await runCLI(
+        [
+          'create',
+          '--name',
+          name,
+          '--language',
+          'Python',
+          '--framework',
+          'Strands',
+          '--model-provider',
+          'Bedrock',
+          '--memory',
+          'longAndShortTerm',
+          '--json',
+        ],
+        testDir
+      );
+
+      expect(result.exitCode, `stdout: ${result.stdout}`).toBe(0);
+
+      const json = JSON.parse(result.stdout);
+      expect(json.success).toBe(true);
+
+      // Verify namespaces are set for each strategy
+      const projectSpec = JSON.parse(await readFile(join(json.projectPath, 'agentcore/agentcore.json'), 'utf-8'));
+      const memory = projectSpec.memories[0];
+
+      const semantic = memory?.strategies?.find((s: { type: string }) => s.type === 'SEMANTIC');
+      expect(semantic?.namespaces).toEqual(['/users/{actorId}/facts']);
+
+      const userPref = memory?.strategies?.find((s: { type: string }) => s.type === 'USER_PREFERENCE');
+      expect(userPref?.namespaces).toEqual(['/users/{actorId}/preferences']);
+
+      const summarization = memory?.strategies?.find((s: { type: string }) => s.type === 'SUMMARIZATION');
+      expect(summarization?.namespaces).toEqual(['/summaries/{actorId}/{sessionId}']);
     });
   });
 

@@ -103,5 +103,28 @@ describe('add memory command', () => {
       const memory = projectSpec.memories.find((m: { name: string }) => m.name === memoryName);
       expect(memory?.eventExpiryDuration).toBe(90);
     });
+
+    it('sets default namespaces for each strategy type', async () => {
+      const memoryName = `ns${Date.now()}`;
+      const result = await runCLI(
+        ['add', 'memory', '--name', memoryName, '--strategies', 'SEMANTIC,USER_PREFERENCE,SUMMARIZATION', '--json'],
+        projectDir
+      );
+
+      expect(result.exitCode, `stdout: ${result.stdout}, stderr: ${result.stderr}`).toBe(0);
+
+      // Verify namespaces are set for each strategy
+      const projectSpec = JSON.parse(await readFile(join(projectDir, 'agentcore/agentcore.json'), 'utf-8'));
+      const memory = projectSpec.memories.find((m: { name: string }) => m.name === memoryName);
+
+      const semantic = memory?.strategies?.find((s: { type: string }) => s.type === 'SEMANTIC');
+      expect(semantic?.namespaces).toEqual(['/users/{actorId}/facts']);
+
+      const userPref = memory?.strategies?.find((s: { type: string }) => s.type === 'USER_PREFERENCE');
+      expect(userPref?.namespaces).toEqual(['/users/{actorId}/preferences']);
+
+      const summarization = memory?.strategies?.find((s: { type: string }) => s.type === 'SUMMARIZATION');
+      expect(summarization?.namespaces).toEqual(['/summaries/{actorId}/{sessionId}']);
+    });
   });
 });

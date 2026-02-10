@@ -8,12 +8,12 @@
  */
 import { isReservedProjectName } from '../constants';
 import { AgentEnvSpecSchema } from './agent-env';
-import { MemoryStrategySchema, MemoryStrategyTypeSchema } from './primitives/memory';
+import { DEFAULT_STRATEGY_NAMESPACES, MemoryStrategySchema, MemoryStrategyTypeSchema } from './primitives/memory';
 import { uniqueBy } from './zod-util';
 import { z } from 'zod';
 
 // Re-export for convenience
-export { MemoryStrategySchema, MemoryStrategyTypeSchema };
+export { DEFAULT_STRATEGY_NAMESPACES, MemoryStrategySchema, MemoryStrategyTypeSchema };
 export type { MemoryStrategy, MemoryStrategyType } from './primitives/memory';
 
 // ============================================================================

@@ -1,5 +1,6 @@
 import { ConfigIO } from '../../../lib';
-import type { Memory, MemoryStrategy } from '../../../schema';
+import type { Memory, MemoryStrategy, MemoryStrategyType } from '../../../schema';
+import { DEFAULT_STRATEGY_NAMESPACES } from '../../../schema';
 
 /**
  * Config for creating a memory resource.
@@ -35,11 +36,21 @@ export async function createMemory(config: CreateMemoryConfig): Promise<Memory> 
     throw new Error(`Memory "${config.name}" already exists.`);
   }
 
+  // Map strategies with their default namespaces
+  const strategies: MemoryStrategy[] = config.strategies.map(s => {
+    const strategyType = s.type as MemoryStrategyType;
+    const defaultNamespaces = DEFAULT_STRATEGY_NAMESPACES[strategyType];
+    return {
+      type: strategyType,
+      ...(defaultNamespaces && { namespaces: defaultNamespaces }),
+    };
+  });
+
   const memory: Memory = {
     type: 'AgentCoreMemory',
     name: config.name,
     eventExpiryDuration: config.eventExpiryDuration,
-    strategies: config.strategies as MemoryStrategy[],
+    strategies,
   };
 
   project.memories.push(memory);

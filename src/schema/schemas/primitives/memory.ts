@@ -17,6 +17,17 @@ export const MemoryStrategyTypeSchema = z.enum(['SEMANTIC', 'SUMMARIZATION', 'US
 export type MemoryStrategyType = z.infer<typeof MemoryStrategyTypeSchema>;
 
 /**
+ * Default namespaces for each memory strategy type.
+ * These match the patterns generated in CLI session.py templates.
+ * CUSTOM strategy intentionally has no default namespace.
+ */
+export const DEFAULT_STRATEGY_NAMESPACES: Partial<Record<MemoryStrategyType, string[]>> = {
+  SEMANTIC: ['/users/{actorId}/facts'],
+  USER_PREFERENCE: ['/users/{actorId}/preferences'],
+  SUMMARIZATION: ['/summaries/{actorId}/{sessionId}'],
+};
+
+/**
  * Memory strategy name validation.
  * Pattern: ^[a-zA-Z][a-zA-Z0-9_]{0,47}$
  * @see https://docs.aws.amazon.com/AWSCloudFormation/latest/TemplateReference/aws-resource-bedrockagentcore-memory.html#cfn-bedrockagentcore-memory-name

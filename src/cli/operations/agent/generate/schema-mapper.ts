@@ -6,8 +6,10 @@ import type {
   FilePath,
   Memory,
   MemoryStrategy,
+  MemoryStrategyType,
   ModelProvider,
 } from '../../../../schema';
+import { DEFAULT_STRATEGY_NAMESPACES } from '../../../../schema';
 import type {
   AgentRenderConfig,
   IdentityProviderRenderConfig,
@@ -59,9 +61,14 @@ export function mapGenerateInputToMemories(memory: MemoryOption, projectName: st
   // Short term memory has no strategies - just base memory with expiration time
   // Long term memory includes strategies for semantic search, summarization, and user preferences
   if (memory === 'longAndShortTerm') {
-    strategies.push({ type: 'SEMANTIC' });
-    strategies.push({ type: 'USER_PREFERENCE' });
-    strategies.push({ type: 'SUMMARIZATION' });
+    const strategyTypes: MemoryStrategyType[] = ['SEMANTIC', 'USER_PREFERENCE', 'SUMMARIZATION'];
+    for (const type of strategyTypes) {
+      const defaultNamespaces = DEFAULT_STRATEGY_NAMESPACES[type];
+      strategies.push({
+        type,
+        ...(defaultNamespaces && { namespaces: defaultNamespaces }),
+      });
+    }
   }
 
   return [
