@@ -111,6 +111,7 @@ export function DevScreen(props: DevScreenProps) {
   const [selectedAgentIndex, setSelectedAgentIndex] = useState(0);
   const [selectedAgentName, setSelectedAgentName] = useState<string | undefined>(props.agentName);
   const [agentsLoaded, setAgentsLoaded] = useState(false);
+  const [noAgentsError, setNoAgentsError] = useState(false);
 
   const workingDir = props.workingDir ?? process.cwd();
 
@@ -136,8 +137,8 @@ export function DevScreen(props: DevScreenProps) {
         setSelectedAgentName(agents[0].name);
         setMode('input');
       } else if (agents.length === 0) {
-        // No supported agents, will show error via useDevServer
-        setMode('input');
+        // No supported agents, show error screen
+        setNoAgentsError(true);
       }
 
       setAgentsLoaded(true);
@@ -323,8 +324,23 @@ export function DevScreen(props: DevScreenProps) {
   );
 
   // Return null while loading
-  if (!agentsLoaded || (mode !== 'select-agent' && (!configLoaded || !config))) {
+  if (!agentsLoaded || (mode !== 'select-agent' && !noAgentsError && (!configLoaded || !config))) {
     return null;
+  }
+
+  // Show error screen if no agents are defined
+  if (noAgentsError) {
+    return (
+      <Screen title="Dev Server" onExit={props.onBack} helpText="Esc quit">
+        <Box flexDirection="column">
+          <Text color="red">No agents defined in project.</Text>
+          <Text>Dev mode requires at least one Python agent with an entrypoint.</Text>
+          <Text>
+            Run <Text color="blue">agentcore add agent</Text> to create one.
+          </Text>
+        </Box>
+      </Screen>
+    );
   }
 
   const statusColor = { starting: 'yellow', running: 'green', error: 'red', stopped: 'gray' }[status];

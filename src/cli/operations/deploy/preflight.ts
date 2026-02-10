@@ -70,6 +70,13 @@ export async function validateProject(): Promise<PreflightContext> {
   const projectSpec = await configIO.readProjectSpec();
   const awsTargets = await configIO.readAWSDeploymentTargets();
 
+  // Validate that at least one agent is defined
+  if (!projectSpec.agents || projectSpec.agents.length === 0) {
+    throw new Error(
+      'No agents defined in project. Add at least one agent with "agentcore add agent" before deploying.'
+    );
+  }
+
   // Validate runtime names don't exceed AWS limits
   validateRuntimeNames(projectSpec);
 
