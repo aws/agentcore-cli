@@ -175,13 +175,9 @@ export async function copySourceTree(srcDir: string, destination: string): Promi
 
 export async function ensureBinaryAvailable(binary: string, installHint?: string): Promise<void> {
   const checks: (() => Promise<boolean>)[] = [
-    () =>
-      isWindows
-        ? checkSubprocess('where', [binary])
-        : checkSubprocess('sh', ['-c', `command -v ${binary}`], { shell: true }),
+    () => (isWindows ? checkSubprocess('where', [binary]) : checkSubprocess('which', [binary])),
     () => checkSubprocess(binary, ['--version']),
     () => checkSubprocess(binary, ['-v']),
-    () => (isWindows ? checkSubprocess('cmd', ['/c', 'where', binary]) : checkSubprocess('which', [binary])),
   ];
 
   for (const check of checks) {
@@ -316,13 +312,9 @@ export function copySourceTreeSync(srcDir: string, destination: string): void {
 
 export function ensureBinaryAvailableSync(binary: string, installHint?: string): void {
   const checks: (() => boolean)[] = [
-    () =>
-      isWindows
-        ? checkSubprocessSync('where', [binary])
-        : checkSubprocessSync('sh', ['-c', `command -v ${binary}`], { shell: true }),
+    () => (isWindows ? checkSubprocessSync('where', [binary]) : checkSubprocessSync('which', [binary])),
     () => checkSubprocessSync(binary, ['--version']),
     () => checkSubprocessSync(binary, ['-v']),
-    () => (isWindows ? checkSubprocessSync('cmd', ['/c', 'where', binary]) : checkSubprocessSync('which', [binary])),
   ];
 
   for (const check of checks) {

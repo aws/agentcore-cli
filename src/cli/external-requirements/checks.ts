@@ -232,11 +232,8 @@ export async function checkCreateDependencies(
 async function checkBinaryAvailable(binary: string): Promise<boolean> {
   // Try multiple detection strategies
   const checks = [
-    // Primary: use 'where' on Windows, 'command -v' on Unix
-    () =>
-      isWindows
-        ? checkSubprocess('where', [binary])
-        : checkSubprocess('sh', ['-c', `command -v ${binary}`], { shell: true }),
+    // Primary: use 'where' on Windows, 'which' on Unix
+    () => (isWindows ? checkSubprocess('where', [binary]) : checkSubprocess('which', [binary])),
     // Fallback: try running with --version
     () => checkSubprocess(binary, ['--version']),
     // Fallback: try running with -v
