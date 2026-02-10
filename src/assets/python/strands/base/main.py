@@ -22,27 +22,47 @@ def add_numbers(a: int, b: int) -> int:
     return a+b
 tools.append(add_numbers)
 
-{{#if hasMemory}}
-session_manager = get_memory_session_manager('default-memory-session', 'default-memory-user')
-{{/if}}
 
+{{#if hasMemory}}
+def agent_factory():
+    cache = {}
+    def get_or_create_agent(session_id, user_id):
+        key = f"{session_id}/{user_id}"
+        if key not in cache:
+            # Create an agent for the given session_id and user_id
+            cache[key] = Agent(
+                model=load_model(),
+                session_manager=get_memory_session_manager(session_id, user_id),
+                system_prompt="""
+                    You are a helpful assistant. Use tools when appropriate.
+                """,
+                tools=tools+[mcp_client]
+            )
+        return cache[key]
+    return get_or_create_agent
+get_or_create_agent = agent_factory()
+{{else}}
 # Create agent
 agent = Agent(
     model=load_model(),
-{{#if hasMemory}}
-    session_manager=session_manager,
-{{/if}}
     system_prompt="""
         You are a helpful assistant. Use tools when appropriate.
     """,
     tools=tools+[mcp_client]
 )
+{{/if}}
 
 
 @app.entrypoint
 async def invoke(payload, context):
     log.info("Invoking Agent.....")
 
+{{#if hasMemory}}
+    session_id = getattr(context, 'session_id', 'default-session')
+    user_id = getattr(context, 'user_id', 'default-user')
+    agent = get_or_create_agent(session_id, user_id)
+
+{{/if}}
     # Execute and format response
     stream = agent.stream_async(payload.get("prompt"))
 
