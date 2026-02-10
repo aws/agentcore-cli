@@ -1,6 +1,4 @@
-import { ConfigIO } from '../../../../lib';
 import type {
-  AgentCoreMcpSpec,
   AgentCoreProjectSpec,
   AwsDeploymentTargets,
   DeployedResourceState,
@@ -25,7 +23,6 @@ interface StatusState {
   project?: AgentCoreProjectSpec;
   deployedState?: DeployedState;
   awsTargets?: AwsDeploymentTargets;
-  mcpSpec?: AgentCoreMcpSpec;
   targetIndex: number;
   allStatuses: Record<string, StatusEntry>;
   statusesLoaded: boolean;
@@ -40,13 +37,11 @@ export function useStatusFlow() {
     statusesLoaded: false,
   });
 
-  const configIO = useMemo(() => new ConfigIO(), []);
-
-  // Initial load of project config, deployed state, and MCP spec
+  // Initial load of project config and deployed state
   useEffect(() => {
     let active = true;
     loadStatusConfig()
-      .then(async context => {
+      .then(context => {
         if (!active) return;
 
         // Validate before setting ready
@@ -65,23 +60,12 @@ export function useStatusFlow() {
           return;
         }
 
-        // Load MCP spec if it exists
-        let mcpSpec: AgentCoreMcpSpec | undefined;
-        if (configIO.configExists('mcp')) {
-          try {
-            mcpSpec = await configIO.readMcpSpec();
-          } catch {
-            // Ignore MCP load errors
-          }
-        }
-
         setState(prev => ({
           ...prev,
           phase: 'ready',
           project: context.project,
           deployedState: context.deployedState,
           awsTargets: context.awsTargets,
-          mcpSpec,
         }));
       })
       .catch((error: Error) => {
@@ -92,7 +76,7 @@ export function useStatusFlow() {
     return () => {
       active = false;
     };
-  }, [configIO]);
+  }, []);
 
   const context = useMemo<StatusContext | null>(() => {
     if (!state.project || !state.deployedState || !state.awsTargets) return null;
@@ -213,7 +197,6 @@ export function useStatusFlow() {
     targetRegion: targetConfig?.region,
     agents,
     hasMultipleTargets: targetNames.length > 1,
-    mcpSpec: state.mcpSpec,
     allStatuses: state.allStatuses,
     statusesLoading: state.phase === 'fetching-statuses',
     statusesError: state.statusesError,

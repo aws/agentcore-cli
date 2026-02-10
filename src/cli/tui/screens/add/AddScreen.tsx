@@ -6,7 +6,6 @@ const ADD_RESOURCES = [
   { id: 'agent', title: 'Agent', description: 'New or existing agent code' },
   { id: 'memory', title: 'Memory', description: 'Persistent context storage' },
   { id: 'identity', title: 'Identity', description: 'API key credential providers' },
-  { id: 'target', title: 'Target', description: 'AWS deployment target' },
   { id: 'gateway', title: 'Gateway (coming soon)', description: 'Route and manage MCP tools', disabled: true },
   { id: 'mcp-tool', title: 'MCP Tool (coming soon)', description: 'Extend agent capabilities', disabled: true },
 ] as const;

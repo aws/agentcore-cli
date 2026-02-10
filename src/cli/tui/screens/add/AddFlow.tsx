@@ -1,4 +1,3 @@
-import type { AwsDeploymentTarget } from '../../../../schema';
 import { computeDefaultCredentialEnvVarName } from '../../../operations/identity/create-identity';
 import { ErrorPrompt } from '../../components';
 import { useAvailableAgents } from '../../hooks/useCreateMcp';
@@ -12,8 +11,6 @@ import { AddMemoryFlow } from '../memory/AddMemoryFlow';
 import type { AddResourceType } from './AddScreen';
 import { AddScreen } from './AddScreen';
 import { AddSuccessScreen } from './AddSuccessScreen';
-import { AddTargetScreen } from './AddTargetScreen';
-import { useAddTarget, useExistingTargets } from './useAddTarget';
 import { Box, Text } from 'ink';
 import Link from 'ink-link';
 import React, { useCallback, useEffect, useState } from 'react';
@@ -25,7 +22,6 @@ type FlowState =
   | { name: 'tool-wizard' }
   | { name: 'memory-wizard' }
   | { name: 'identity-wizard' }
-  | { name: 'target-wizard' }
   | {
       name: 'agent-create-success';
       agentName: string;
@@ -43,7 +39,6 @@ type FlowState =
       loading?: boolean;
       loadingMessage?: string;
     }
-  | { name: 'target-success'; targetName: string; loading?: boolean; loadingMessage?: string }
   | { name: 'error'; message: string };
 
 /** Tree-style display of added agent details */
@@ -140,20 +135,13 @@ interface AddFlowProps {
 
 export function AddFlow(props: AddFlowProps) {
   const { addAgent, reset: resetAgent } = useAddAgent();
-  const { addTarget, reset: resetTarget } = useAddTarget();
   const { agents, isLoading: isLoadingAgents, refresh: refreshAgents } = useAvailableAgents();
-  const { targets, refresh: refreshTargets } = useExistingTargets();
   const [flow, setFlow] = useState<FlowState>({ name: 'select' });
-
-  // Load existing targets on mount
-  useEffect(() => {
-    void refreshTargets();
-  }, [refreshTargets]);
 
   // In non-interactive mode, exit after success (but not while loading)
   useEffect(() => {
     if (!props.isInteractive) {
-      const successStates = ['agent-create-success', 'agent-byo-success', 'target-success'];
+      const successStates = ['agent-create-success', 'agent-byo-success'];
       if (successStates.includes(flow.name) && !('loading' in flow && flow.loading)) {
         props.onExit();
       }
@@ -177,9 +165,6 @@ export function AddFlow(props: AddFlowProps) {
         break;
       case 'identity':
         setFlow({ name: 'identity-wizard' });
-        break;
-      case 'target':
-        setFlow({ name: 'target-wizard' });
         break;
     }
   }, []);
@@ -220,25 +205,6 @@ export function AddFlow(props: AddFlowProps) {
       });
     },
     [addAgent]
-  );
-
-  const handleAddTarget = useCallback(
-    (target: AwsDeploymentTarget) => {
-      setFlow({
-        name: 'target-success',
-        targetName: target.name,
-        loading: true,
-        loadingMessage: 'Adding target...',
-      });
-      void addTarget(target).then(result => {
-        if (result.ok) {
-          setFlow({ name: 'target-success', targetName: result.targetName });
-        } else {
-          setFlow({ name: 'error', message: result.error });
-        }
-      });
-    },
-    [addTarget]
   );
 
   if (flow.name === 'select') {
@@ -404,40 +370,12 @@ export function AddFlow(props: AddFlowProps) {
     );
   }
 
-  if (flow.name === 'target-wizard') {
-    return (
-      <AddTargetScreen
-        existingTargetNames={targets}
-        onComplete={handleAddTarget}
-        onExit={() => setFlow({ name: 'select' })}
-      />
-    );
-  }
-
-  if (flow.name === 'target-success') {
-    return (
-      <AddSuccessScreen
-        isInteractive={props.isInteractive}
-        message={`Added target: ${flow.targetName}`}
-        detail="Target defined in `agentcore/aws-targets.json`."
-        loading={flow.loading}
-        loadingMessage={flow.loadingMessage}
-        onAddAnother={() => {
-          void refreshTargets().then(() => setFlow({ name: 'select' }));
-        }}
-        onDeploy={props.onDeploy}
-        onExit={props.onExit}
-      />
-    );
-  }
-
   return (
     <ErrorPrompt
       message="Failed to add resource"
       detail={flow.message}
       onBack={() => {
         resetAgent();
-        resetTarget();
         setFlow({ name: 'select' });
       }}
       onExit={props.onExit}

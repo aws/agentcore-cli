@@ -7,7 +7,6 @@ import {
   removeIdentity,
   removeMcpTool,
   removeMemory,
-  removeTarget,
 } from '../../operations/remove';
 import type { RemoveAllOptions, RemoveResult, ResourceType } from './types';
 
@@ -83,17 +82,6 @@ export async function handleRemove(options: ValidatedRemoveOptions): Promise<Rem
           note: SOURCE_CODE_NOTE,
         };
       }
-      case 'target': {
-        const result = await removeTarget(name);
-        if (!result.ok) return { success: false, error: result.error };
-        return {
-          success: true,
-          resourceType,
-          resourceName: name,
-          message: `Removed target '${name}'`,
-          note: SOURCE_CODE_NOTE,
-        };
-      }
       default:
         return { success: false, error: `Unknown resource type: ${resourceType as string}` };
     }
@@ -127,20 +115,7 @@ export async function handleRemoveAll(_options: RemoveAllOptions): Promise<Remov
     // Preserve aws-targets.json and deployed-state.json so that
     // a subsequent `agentcore deploy` can tear down existing stacks.
 
-    // Reset mcp.json
-    await configIO.writeMcpSpec({
-      agentCoreGateways: [],
-      mcpRuntimeTools: [],
-    });
-
-    // Reset mcp-defs.json
-    await configIO.writeMcpDefs({ tools: {} });
-
-    return {
-      success: true,
-      message: 'All schemas reset to empty state',
-      note: 'Your source code has not been modified. Run `agentcore deploy` to apply changes to AWS.',
-    };
+    return { success: true, message: 'All schemas reset to empty state' };
   } catch (err) {
     return { success: false, error: getErrorMessage(err) };
   }

@@ -1,4 +1,4 @@
-export type ResourceType = 'agent' | 'gateway' | 'mcp-tool' | 'memory' | 'identity' | 'target';
+export type ResourceType = 'agent' | 'gateway' | 'mcp-tool' | 'memory' | 'identity';
 
 export interface RemoveOptions {
   resourceType: ResourceType;

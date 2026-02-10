@@ -1,4 +1,3 @@
-import type { AwsDeploymentTarget } from '../../../schema';
 import { RemoveLogger } from '../../logging';
 import type {
   RemovableIdentity,
@@ -13,19 +12,16 @@ import {
   getRemovableIdentities,
   getRemovableMcpTools,
   getRemovableMemories,
-  getRemovableTargets,
   previewRemoveAgent,
   previewRemoveGateway,
   previewRemoveIdentity,
   previewRemoveMcpTool,
   previewRemoveMemory,
-  previewRemoveTarget,
   removeAgent,
   removeGateway,
   removeIdentity,
   removeMcpTool,
   removeMemory,
-  removeTarget,
 } from '../../operations/remove';
 import { useCallback, useEffect, useState } from 'react';
 
@@ -128,25 +124,6 @@ export function useRemovableIdentities() {
   return { identities: identities ?? [], isLoading: identities === null, refresh };
 }
 
-export function useRemovableTargets() {
-  const [targets, setTargets] = useState<AwsDeploymentTarget[] | null>(null);
-
-  useEffect(() => {
-    async function load() {
-      const result = await getRemovableTargets();
-      setTargets(result);
-    }
-    void load();
-  }, []);
-
-  const refresh = useCallback(async () => {
-    const result = await getRemovableTargets();
-    setTargets(result);
-  }, []);
-
-  return { targets: targets ?? [], isLoading: targets === null, refresh };
-}
-
 // ============================================================================
 // Preview Hooks
 // ============================================================================
@@ -229,19 +206,6 @@ export function useRemovalPreview() {
     }
   }, []);
 
-  const loadTargetPreview = useCallback(async (targetName: string) => {
-    setState({ isLoading: true, preview: null, error: null });
-    try {
-      const preview = await previewRemoveTarget(targetName);
-      setState({ isLoading: false, preview, error: null });
-      return { ok: true as const, preview };
-    } catch (err) {
-      const message = err instanceof Error ? err.message : 'Failed to load preview';
-      setState({ isLoading: false, preview: null, error: message });
-      return { ok: false as const, error: message };
-    }
-  }, []);
-
   const reset = useCallback(() => {
     setState({ isLoading: false, preview: null, error: null });
   }, []);
@@ -253,7 +217,6 @@ export function useRemovalPreview() {
     loadMcpToolPreview,
     loadMemoryPreview,
     loadIdentityPreview,
-    loadTargetPreview,
     reset,
   };
 }
@@ -394,34 +357,6 @@ export function useRemoveIdentity() {
     let logPath: string | undefined;
     if (preview) {
       const logger = new RemoveLogger({ resourceType: 'identity', resourceName: identityName });
-      logger.logRemoval(preview, result.ok, result.ok ? undefined : result.error);
-      logPath = logger.getAbsoluteLogPath();
-      setLogFilePath(logPath);
-    }
-
-    return { ...result, logFilePath: logPath };
-  }, []);
-
-  const reset = useCallback(() => {
-    setState({ isLoading: false, result: null });
-    setLogFilePath(null);
-  }, []);
-
-  return { ...state, logFilePath, remove, reset };
-}
-
-export function useRemoveTarget() {
-  const [state, setState] = useState<RemovalState>({ isLoading: false, result: null });
-  const [logFilePath, setLogFilePath] = useState<string | null>(null);
-
-  const remove = useCallback(async (targetName: string, preview?: RemovalPreview): Promise<RemoveResult> => {
-    setState({ isLoading: true, result: null });
-    const result = await removeTarget(targetName);
-    setState({ isLoading: false, result });
-
-    let logPath: string | undefined;
-    if (preview) {
-      const logger = new RemoveLogger({ resourceType: 'target', resourceName: targetName });
       logger.logRemoval(preview, result.ok, result.ok ? undefined : result.error);
       logPath = logger.getAbsoluteLogPath();
       setLogFilePath(logPath);

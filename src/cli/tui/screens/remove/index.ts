@@ -8,4 +8,3 @@ export { RemoveMcpToolScreen } from './RemoveMcpToolScreen';
 export { RemoveMemoryScreen } from './RemoveMemoryScreen';
 export { RemoveScreen, type RemoveResourceType } from './RemoveScreen';
 export { RemoveSuccessScreen } from './RemoveSuccessScreen';
-export { RemoveTargetScreen } from './RemoveTargetScreen';

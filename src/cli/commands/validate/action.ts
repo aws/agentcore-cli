@@ -49,24 +49,6 @@ export async function handleValidate(options: ValidateOptions): Promise<Validate
     return { success: false, error: formatError(err, 'aws-targets.json') };
   }
 
-  // Validate MCP config if it exists (mcp.json)
-  if (configIO.configExists('mcp')) {
-    try {
-      await configIO.readMcpSpec();
-    } catch (err) {
-      return { success: false, error: formatError(err, 'mcp.json') };
-    }
-  }
-
-  // Validate MCP definitions if it exists (mcp-defs.json)
-  if (configIO.configExists('mcpDefs')) {
-    try {
-      await configIO.readMcpDefs();
-    } catch (err) {
-      return { success: false, error: formatError(err, 'mcp-defs.json') };
-    }
-  }
-
   // Validate deployed state if it exists (.cli/state.json)
   if (configIO.configExists('state')) {
     try {

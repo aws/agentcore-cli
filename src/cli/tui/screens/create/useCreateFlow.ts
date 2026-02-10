@@ -1,5 +1,5 @@
 import { APP_DIR, CONFIG_DIR, ConfigIO, findConfigRoot, setEnvVar, setSessionProjectRoot } from '../../../../lib';
-import type { AgentCoreCliMcpDefs, AgentCoreMcpSpec, AgentCoreProjectSpec, DeployedState } from '../../../../schema';
+import type { AgentCoreProjectSpec, DeployedState } from '../../../../schema';
 import { getErrorMessage } from '../../../errors';
 import { CreateLogger } from '../../../logging';
 import { initGitRepo, setupPythonProject, writeEnvFile, writeGitignore } from '../../../operations';
@@ -82,19 +82,6 @@ function createDefaultProjectSpec(projectName: string): AgentCoreProjectSpec {
 function createDefaultDeployedState(): DeployedState {
   return {
     targets: {},
-  };
-}
-
-function createDefaultMcpSpec(): AgentCoreMcpSpec {
-  return {
-    agentCoreGateways: [],
-    mcpRuntimeTools: [],
-  };
-}
-
-function createDefaultMcpDefs(): AgentCoreCliMcpDefs {
-  return {
-    tools: {},
   };
 }
 
@@ -256,16 +243,6 @@ export function useCreateFlow(cwd: string): CreateFlowState {
             logger.logSubStep('Creating deployed-state.json...');
             const deployedState = createDefaultDeployedState();
             await configIO.writeDeployedState(deployedState);
-
-            // Create mcp.json
-            logger.logSubStep('Creating mcp.json...');
-            const mcpSpec = createDefaultMcpSpec();
-            await configIO.writeMcpSpec(mcpSpec);
-
-            // Create mcp-defs.json
-            logger.logSubStep('Creating mcp-defs.json...');
-            const mcpDefs = createDefaultMcpDefs();
-            await configIO.writeMcpDefs(mcpDefs);
           });
           logger.endStep('success');
           updateStep(stepIndex, { status: 'success' });

@@ -18,7 +18,6 @@ export function StatusScreen({ isInteractive: _isInteractive, onExit }: StatusSc
     targetName,
     targetRegion,
     hasMultipleTargets,
-    mcpSpec,
     allStatuses,
     statusesLoading,
     statusesError,
@@ -107,12 +106,7 @@ export function StatusScreen({ isInteractive: _isInteractive, onExit }: StatusSc
 
       {project && (
         <Box marginTop={1}>
-          <ResourceGraph
-            project={project}
-            mcp={mcpSpec}
-            agentStatuses={graphStatuses}
-            deployedAgents={deployedResources?.agents}
-          />
+          <ResourceGraph project={project} agentStatuses={graphStatuses} deployedAgents={deployedResources?.agents} />
         </Box>
       )}
 

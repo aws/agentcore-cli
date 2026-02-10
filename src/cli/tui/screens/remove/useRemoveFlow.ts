@@ -1,11 +1,9 @@
-import { CONFIG_DIR, ConfigIO, getWorkingDirectory } from '../../../../lib';
-import type { AgentCoreCliMcpDefs, AgentCoreMcpSpec, AgentCoreProjectSpec } from '../../../../schema';
+import { ConfigIO, getWorkingDirectory } from '../../../../lib';
+import type { AgentCoreProjectSpec } from '../../../../schema';
 import { findStack } from '../../../cloudformation/stack-discovery';
 import { getErrorMessage } from '../../../errors';
 import { type Step, areStepsComplete, hasStepError } from '../../components';
 import { withMinDuration } from '../../utils';
-import { existsSync } from 'fs';
-import { join } from 'path';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 
 type RemovePhase = 'checking' | 'not-found' | 'confirm' | 'dry-run' | 'removing' | 'complete';
@@ -39,19 +37,6 @@ function createDefaultProjectSpec(projectName: string): AgentCoreProjectSpec {
   };
 }
 
-function createDefaultMcpSpec(): AgentCoreMcpSpec {
-  return {
-    agentCoreGateways: [],
-    mcpRuntimeTools: [],
-  };
-}
-
-function createDefaultMcpDefs(): AgentCoreCliMcpDefs {
-  return {
-    tools: {},
-  };
-}
-
 export function useRemoveFlow({ force, dryRun }: RemoveFlowOptions): RemoveFlowState {
   const [phase, setPhase] = useState<RemovePhase>('checking');
   const [steps, setSteps] = useState<Step[]>([]);
@@ -60,14 +45,14 @@ export function useRemoveFlow({ force, dryRun }: RemoveFlowOptions): RemoveFlowS
   const [projectName, setProjectName] = useState<string>('');
 
   const cwd = useMemo(() => getWorkingDirectory(), []);
-  const configDir = useMemo(() => join(cwd, CONFIG_DIR), [cwd]);
 
   // Check for existing project on mount
   useEffect(() => {
     if (phase !== 'checking') return;
 
     const checkProject = async () => {
-      if (!existsSync(configDir)) {
+      const configIO = new ConfigIO();
+      if (!configIO.configExists('project')) {
         setPhase('not-found');
         return;
       }
@@ -76,35 +61,34 @@ export function useRemoveFlow({ force, dryRun }: RemoveFlowOptions): RemoveFlowS
       const items: string[] = [];
 
       try {
-        const configIO = new ConfigIO();
         const projectSpec = await configIO.readProjectSpec();
         setProjectName(projectSpec.name);
         items.push(`AgentCore project: ${projectSpec.name}`);
 
-        // Check for deployed stacks per target
-        try {
-          const targets = await configIO.readAWSDeploymentTargets();
-          for (const target of targets) {
-            const stack = await findStack(target.region, projectSpec.name, target.name);
-            if (stack) {
-              setHasDeployedResources(true);
-              break;
-            }
-          }
-        } catch {
-          // No targets or error checking stacks
+        if (projectSpec.agents.length > 0) {
+          items.push(`${projectSpec.agents.length} agent(s)`);
         }
-
-        if (projectSpec.agents && projectSpec.agents.length > 0) {
-          items.push(`${projectSpec.agents.length} agent definition${projectSpec.agents.length > 1 ? 's' : ''}`);
+        if (projectSpec.memories.length > 0) {
+          items.push(`${projectSpec.memories.length} memory provider(s)`);
+        }
+        if (projectSpec.credentials.length > 0) {
+          items.push(`${projectSpec.credentials.length} credential(s)`);
         }
       } catch {
-        // Project exists but has issues - still allow reset
-        items.push('AgentCore project (corrupted or incomplete)');
+        // Continue even if we can't read the project spec
       }
 
-      items.push('All schemas will be reset to empty state');
       setItemsToRemove(items);
+
+      // Check for deployed resources
+      try {
+        const stack = await findStack(cwd);
+        if (stack) {
+          setHasDeployedResources(true);
+        }
+      } catch {
+        // Ignore errors checking for deployed resources
+      }
 
       if (dryRun) {
         setPhase('dry-run');
@@ -117,7 +101,7 @@ export function useRemoveFlow({ force, dryRun }: RemoveFlowOptions): RemoveFlowS
     };
 
     void checkProject();
-  }, [cwd, configDir, phase, dryRun, force]);
+  }, [cwd, phase, dryRun, force]);
 
   const confirmRemoval = useCallback(() => {
     setSteps(getRemoveSteps());
@@ -150,14 +134,6 @@ export function useRemoveFlow({ force, dryRun }: RemoveFlowOptions): RemoveFlowS
 
             // Preserve aws-targets.json and deployed-state.json so that
             // a subsequent `agentcore deploy` can tear down existing stacks.
-
-            // Reset mcp.json
-            const defaultMcpSpec = createDefaultMcpSpec();
-            await configIO.writeMcpSpec(defaultMcpSpec);
-
-            // Reset mcp-defs.json
-            const defaultMcpDefs = createDefaultMcpDefs();
-            await configIO.writeMcpDefs(defaultMcpDefs);
           });
           updateStep(0, { status: 'success' });
         } catch (err) {

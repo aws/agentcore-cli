@@ -1,13 +1,5 @@
 import { APP_DIR, CONFIG_DIR, ConfigIO, setEnvVar, setSessionProjectRoot } from '../../../lib';
-import type {
-  AgentCoreCliMcpDefs,
-  AgentCoreMcpSpec,
-  AgentCoreProjectSpec,
-  DeployedState,
-  ModelProvider,
-  SDKFramework,
-  TargetLanguage,
-} from '../../../schema';
+import type { AgentCoreProjectSpec, DeployedState, ModelProvider, SDKFramework, TargetLanguage } from '../../../schema';
 import { getErrorMessage } from '../../errors';
 import { checkCreateDependencies } from '../../external-requirements';
 import { initGitRepo, setupPythonProject, writeEnvFile, writeGitignore } from '../../operations';
@@ -34,14 +26,6 @@ function createDefaultProjectSpec(projectName: string): AgentCoreProjectSpec {
 
 function createDefaultDeployedState(): DeployedState {
   return { targets: {} };
-}
-
-function createDefaultMcpSpec(): AgentCoreMcpSpec {
-  return { agentCoreGateways: [], mcpRuntimeTools: [] };
-}
-
-function createDefaultMcpDefs(): AgentCoreCliMcpDefs {
-  return { tools: {} };
 }
 
 export type ProgressCallback = (step: string, status: 'start' | 'done' | 'error') => void;
@@ -91,8 +75,6 @@ export async function createProject(options: CreateProjectOptions): Promise<Crea
     await configIO.writeProjectSpec(createDefaultProjectSpec(name));
     await configIO.writeAWSDeploymentTargets([]);
     await configIO.writeDeployedState(createDefaultDeployedState());
-    await configIO.writeMcpSpec(createDefaultMcpSpec());
-    await configIO.writeMcpDefs(createDefaultMcpDefs());
 
     // Create CDK project
     const cdkRenderer = new CDKRenderer();

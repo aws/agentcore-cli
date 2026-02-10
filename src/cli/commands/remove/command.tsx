@@ -145,7 +145,6 @@ export const registerRemove = (program: Command) => {
   registerResourceRemove(removeCommand, 'agent', 'agent', 'Remove an agent from the project');
   registerResourceRemove(removeCommand, 'memory', 'memory', 'Remove a memory provider from the project');
   registerResourceRemove(removeCommand, 'identity', 'identity', 'Remove an identity provider from the project');
-  registerResourceRemove(removeCommand, 'target', 'target', 'Remove a deployment target from the project');
 
   // MCP Tool disabled - replace with registerResourceRemove() call when enabling
   removeCommand

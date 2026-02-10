@@ -2,7 +2,6 @@ import { COMMAND_DESCRIPTIONS } from '../../tui/copy';
 import { requireProject } from '../../tui/guards';
 import { AddFlow } from '../../tui/screens/add/AddFlow';
 import { handleAddAgent, handleAddGateway, handleAddIdentity, handleAddMcpTool, handleAddMemory } from './actions';
-import { handleAddTarget } from './target-action';
 import type {
   AddAgentOptions,
   AddGatewayOptions,
@@ -20,43 +19,6 @@ import {
 import type { Command } from '@commander-js/extra-typings';
 import { render } from 'ink';
 import React from 'react';
-
-interface AddTargetCliOptions {
-  name?: string;
-  account?: string;
-  region?: string;
-  description?: string;
-  json?: boolean;
-}
-
-async function handleAddTargetCLI(options: AddTargetCliOptions): Promise<void> {
-  if (!options.name || !options.account || !options.region) {
-    const error = 'Required: --name, --account, --region';
-    if (options.json) {
-      console.log(JSON.stringify({ success: false, error }));
-    } else {
-      console.error(error);
-    }
-    process.exit(1);
-  }
-
-  const result = await handleAddTarget({
-    name: options.name,
-    account: options.account,
-    region: options.region,
-    description: options.description,
-  });
-
-  if (options.json) {
-    console.log(JSON.stringify(result));
-  } else if (result.success) {
-    console.log(`Added target '${options.name}'`);
-  } else {
-    console.error(result.error);
-  }
-
-  process.exit(result.success ? 0 : 1);
-}
 
 async function handleAddAgentCLI(options: AddAgentOptions): Promise<void> {
   const validation = validateAddAgentOptions(options);
@@ -237,20 +199,6 @@ export function registerAdd(program: Command) {
           }}
         />
       );
-    });
-
-  // Subcommand: add target
-  addCmd
-    .command('target')
-    .description('Add a deployment target')
-    .option('--name <name>', 'Target name [non-interactive]')
-    .option('--account <id>', 'AWS account ID [non-interactive]')
-    .option('--region <region>', 'AWS region [non-interactive]')
-    .option('--description <desc>', 'Optional description [non-interactive]')
-    .option('--json', 'Output as JSON [non-interactive]')
-    .action(async options => {
-      requireProject();
-      await handleAddTargetCLI(options);
     });
 
   // Subcommand: add agent

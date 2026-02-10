@@ -43,15 +43,6 @@ describe('remove command', () => {
     if (result.exitCode !== 0) {
       throw new Error(`Failed to create agent: ${result.stdout} ${result.stderr}`);
     }
-
-    // Add a target
-    result = await runCLI(
-      ['add', 'target', '--name', 'test-target', '--account', '123456789012', '--region', 'us-east-1', '--json'],
-      projectDir
-    );
-    if (result.exitCode !== 0) {
-      throw new Error(`Failed to create target: ${result.stdout} ${result.stderr}`);
-    }
   });
 
   afterAll(async () => {
@@ -65,26 +56,6 @@ describe('remove command', () => {
       const json = JSON.parse(result.stdout);
       expect(json.success).toBe(false);
       expect(json.error.includes('--name'), `Error should mention --name: ${json.error}`).toBeTruthy();
-    });
-  });
-
-  describe('remove target', () => {
-    it('rejects non-existent target', async () => {
-      const result = await runCLI(['remove', 'target', '--name', 'nonexistent', '--json'], projectDir);
-      expect(result.exitCode).toBe(1);
-      const json = JSON.parse(result.stdout);
-      expect(json.success).toBe(false);
-    });
-
-    it('removes existing target', async () => {
-      const result = await runCLI(['remove', 'target', '--name', 'test-target', '--json'], projectDir);
-      expect(result.exitCode).toBe(0);
-      const json = JSON.parse(result.stdout);
-      expect(json.success).toBe(true);
-
-      // Verify target is removed from schema
-      const targets = JSON.parse(await readFile(join(projectDir, 'agentcore', 'aws-targets.json'), 'utf-8'));
-      expect(targets.length, 'Target should be removed from schema').toBe(0);
     });
   });
 

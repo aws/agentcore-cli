@@ -6,7 +6,6 @@ const REMOVE_RESOURCES = [
   { id: 'agent', title: 'Agent', description: 'Remove an agent from the project' },
   { id: 'memory', title: 'Memory', description: 'Remove a memory provider' },
   { id: 'identity', title: 'Identity', description: 'Remove an identity provider' },
-  { id: 'target', title: 'Target', description: 'Remove an AWS deployment target' },
   { id: 'gateway', title: 'Gateway (coming soon)', description: 'Remove an MCP gateway', disabled: true },
   { id: 'mcp-tool', title: 'MCP Tool (coming soon)', description: 'Remove an MCP tool', disabled: true },
   { id: 'all', title: 'All', description: 'Reset entire agentcore project' },
@@ -27,8 +26,6 @@ interface RemoveScreenProps {
   memoryCount: number;
   /** Number of identities available for removal */
   identityCount: number;
-  /** Number of targets available for removal */
-  targetCount: number;
 }
 
 export function RemoveScreen({
@@ -41,7 +38,6 @@ export function RemoveScreen({
   mcpToolCount: _mcpToolCount,
   memoryCount,
   identityCount,
-  targetCount,
 }: RemoveScreenProps) {
   const items: SelectableItem[] = useMemo(() => {
     return REMOVE_RESOURCES.map(r => {
@@ -67,12 +63,6 @@ export function RemoveScreen({
             description = 'No identities to remove';
           }
           break;
-        case 'target':
-          if (targetCount === 0) {
-            disabled = true;
-            description = 'No targets to remove';
-          }
-          break;
         case 'all':
           // 'all' is always available
           break;
@@ -80,7 +70,7 @@ export function RemoveScreen({
 
       return { ...r, disabled, description };
     });
-  }, [agentCount, memoryCount, identityCount, targetCount]);
+  }, [agentCount, memoryCount, identityCount]);
 
   const isDisabled = (item: SelectableItem) => item.disabled ?? false;
 

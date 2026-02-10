@@ -4,4 +4,3 @@ export * from './remove-gateway';
 export * from './remove-mcp-tool';
 export * from './remove-memory';
 export * from './remove-identity';
-export * from './remove-target';

@@ -6,14 +6,12 @@ import {
   useRemovableIdentities,
   useRemovableMcpTools,
   useRemovableMemories,
-  useRemovableTargets,
   useRemovalPreview,
   useRemoveAgent,
   useRemoveGateway,
   useRemoveIdentity,
   useRemoveMcpTool,
   useRemoveMemory,
-  useRemoveTarget,
 } from '../../hooks/useRemove';
 import { RemoveAgentScreen } from './RemoveAgentScreen';
 import { RemoveAllScreen } from './RemoveAllScreen';
@@ -25,7 +23,6 @@ import { RemoveMemoryScreen } from './RemoveMemoryScreen';
 import type { RemoveResourceType } from './RemoveScreen';
 import { RemoveScreen } from './RemoveScreen';
 import { RemoveSuccessScreen } from './RemoveSuccessScreen';
-import { RemoveTargetScreen } from './RemoveTargetScreen';
 import { Text } from 'ink';
 import Spinner from 'ink-spinner';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
@@ -37,20 +34,17 @@ type FlowState =
   | { name: 'select-mcp-tool' }
   | { name: 'select-memory' }
   | { name: 'select-identity' }
-  | { name: 'select-target' }
   | { name: 'confirm-agent'; agentName: string; preview: RemovalPreview }
   | { name: 'confirm-gateway'; gatewayName: string; preview: RemovalPreview }
   | { name: 'confirm-mcp-tool'; tool: RemovableMcpTool; preview: RemovalPreview }
   | { name: 'confirm-memory'; memoryName: string; preview: RemovalPreview }
   | { name: 'confirm-identity'; identityName: string; preview: RemovalPreview }
-  | { name: 'confirm-target'; targetName: string; preview: RemovalPreview }
   | { name: 'loading'; message: string }
   | { name: 'agent-success'; agentName: string; logFilePath?: string }
   | { name: 'gateway-success'; gatewayName: string; logFilePath?: string }
   | { name: 'tool-success'; toolName: string; logFilePath?: string }
   | { name: 'memory-success'; memoryName: string; logFilePath?: string }
   | { name: 'identity-success'; identityName: string; logFilePath?: string }
-  | { name: 'target-success'; targetName: string; logFilePath?: string }
   | { name: 'remove-all' }
   | { name: 'error'; message: string };
 
@@ -63,7 +57,7 @@ interface RemoveFlowProps {
   /** Force mode - skip confirmation */
   force?: boolean;
   /** Initial resource type to start at (for CLI subcommands) */
-  initialResourceType?: 'agent' | 'gateway' | 'mcp-tool' | 'memory' | 'identity' | 'target';
+  initialResourceType?: 'agent' | 'gateway' | 'mcp-tool' | 'memory' | 'identity';
   /** Initial resource name to auto-select (for CLI --name flag) */
   initialResourceName?: string;
 }
@@ -89,8 +83,6 @@ export function RemoveFlow({
         return { name: 'select-memory' };
       case 'identity':
         return { name: 'select-identity' };
-      case 'target':
-        return { name: 'select-target' };
       default:
         return { name: 'select' };
     }
@@ -103,16 +95,9 @@ export function RemoveFlow({
   const { tools: mcpTools, isLoading: isLoadingTools, refresh: refreshTools } = useRemovableMcpTools();
   const { memories, isLoading: isLoadingMemories, refresh: refreshMemories } = useRemovableMemories();
   const { identities, isLoading: isLoadingIdentities, refresh: refreshIdentities } = useRemovableIdentities();
-  const { targets, isLoading: isLoadingTargets, refresh: refreshTargets } = useRemovableTargets();
 
   // Check if any data is still loading
-  const isLoading =
-    isLoadingAgents ||
-    isLoadingGateways ||
-    isLoadingTools ||
-    isLoadingMemories ||
-    isLoadingIdentities ||
-    isLoadingTargets;
+  const isLoading = isLoadingAgents || isLoadingGateways || isLoadingTools || isLoadingMemories || isLoadingIdentities;
 
   // Preview hook
   const {
@@ -121,7 +106,6 @@ export function RemoveFlow({
     loadMcpToolPreview,
     loadMemoryPreview,
     loadIdentityPreview,
-    loadTargetPreview,
     reset: resetPreview,
   } = useRemovalPreview();
 
@@ -131,7 +115,6 @@ export function RemoveFlow({
   const { remove: removeMcpToolOp, reset: resetRemoveMcpTool } = useRemoveMcpTool();
   const { remove: removeMemoryOp, reset: resetRemoveMemory } = useRemoveMemory();
   const { remove: removeIdentityOp, reset: resetRemoveIdentity } = useRemoveIdentity();
-  const { remove: removeTargetOp, reset: resetRemoveTarget } = useRemoveTarget();
 
   // Track pending result state
   const pendingResultRef = useRef<FlowState | null>(null);
@@ -152,14 +135,7 @@ export function RemoveFlow({
   // In non-interactive mode, exit after success
   useEffect(() => {
     if (!isInteractive) {
-      const successStates = [
-        'agent-success',
-        'gateway-success',
-        'tool-success',
-        'memory-success',
-        'identity-success',
-        'target-success',
-      ];
+      const successStates = ['agent-success', 'gateway-success', 'tool-success', 'memory-success', 'identity-success'];
       if (successStates.includes(flow.name)) {
         onExit();
       }
@@ -185,9 +161,6 @@ export function RemoveFlow({
         break;
       case 'identity':
         setFlow({ name: 'select-identity' });
-        break;
-      case 'target':
-        setFlow({ name: 'select-target' });
         break;
       case 'all':
         setFlow({ name: 'remove-all' });
@@ -308,28 +281,6 @@ export function RemoveFlow({
     [loadIdentityPreview, force, removeIdentityOp]
   );
 
-  const handleSelectTarget = useCallback(
-    async (targetName: string) => {
-      const result = await loadTargetPreview(targetName);
-      if (result.ok) {
-        if (force) {
-          setFlow({ name: 'loading', message: `Removing target ${targetName}...` });
-          const removeResult = await removeTargetOp(targetName, result.preview);
-          if (removeResult.ok) {
-            setFlow({ name: 'target-success', targetName });
-          } else {
-            setFlow({ name: 'error', message: removeResult.error });
-          }
-        } else {
-          setFlow({ name: 'confirm-target', targetName, preview: result.preview });
-        }
-      } else {
-        setFlow({ name: 'error', message: result.error });
-      }
-    },
-    [loadTargetPreview, force, removeTargetOp]
-  );
-
   // Auto-select resource when initialResourceName is provided and data is loaded
   useEffect(() => {
     if (!initialResourceName || isLoading || hasTriggeredInitialSelection.current) {
@@ -354,9 +305,6 @@ export function RemoveFlow({
         case 'identity':
           void handleSelectIdentity(initialResourceName);
           break;
-        case 'target':
-          void handleSelectTarget(initialResourceName);
-          break;
       }
     }, 0);
   }, [
@@ -367,7 +315,6 @@ export function RemoveFlow({
     handleSelectGateway,
     handleSelectMemory,
     handleSelectIdentity,
-    handleSelectTarget,
   ]);
 
   // Confirm handlers - pass preview for logging
@@ -451,22 +398,6 @@ export function RemoveFlow({
     [removeIdentityOp]
   );
 
-  const handleConfirmTarget = useCallback(
-    async (targetName: string, preview: RemovalPreview) => {
-      pendingResultRef.current = null;
-      setResultReady(false);
-      setFlow({ name: 'loading', message: `Removing target ${targetName}...` });
-      const result = await removeTargetOp(targetName, preview);
-      if (result.ok) {
-        pendingResultRef.current = { name: 'target-success', targetName, logFilePath: result.logFilePath };
-      } else {
-        pendingResultRef.current = { name: 'error', message: result.error };
-      }
-      setResultReady(true);
-    },
-    [removeTargetOp]
-  );
-
   const resetAll = useCallback(() => {
     resetPreview();
     resetRemoveAgent();
@@ -474,27 +405,11 @@ export function RemoveFlow({
     resetRemoveMcpTool();
     resetRemoveMemory();
     resetRemoveIdentity();
-    resetRemoveTarget();
-  }, [
-    resetPreview,
-    resetRemoveAgent,
-    resetRemoveGateway,
-    resetRemoveMcpTool,
-    resetRemoveMemory,
-    resetRemoveIdentity,
-    resetRemoveTarget,
-  ]);
+  }, [resetPreview, resetRemoveAgent, resetRemoveGateway, resetRemoveMcpTool, resetRemoveMemory, resetRemoveIdentity]);
 
   const refreshAll = useCallback(async () => {
-    await Promise.all([
-      refreshAgents(),
-      refreshGateways(),
-      refreshTools(),
-      refreshMemories(),
-      refreshIdentities(),
-      refreshTargets(),
-    ]);
-  }, [refreshAgents, refreshGateways, refreshTools, refreshMemories, refreshIdentities, refreshTargets]);
+    await Promise.all([refreshAgents(), refreshGateways(), refreshTools(), refreshMemories(), refreshIdentities()]);
+  }, [refreshAgents, refreshGateways, refreshTools, refreshMemories, refreshIdentities]);
 
   // Select screen - wait for data to load to avoid arrow position issues
   if (flow.name === 'select') {
@@ -510,7 +425,6 @@ export function RemoveFlow({
         mcpToolCount={mcpTools.length}
         memoryCount={memories.length}
         identityCount={identities.length}
-        targetCount={targets.length}
       />
     );
   }
@@ -593,19 +507,6 @@ export function RemoveFlow({
     );
   }
 
-  if (flow.name === 'select-target') {
-    if (initialResourceName && isLoading) {
-      return null;
-    }
-    return (
-      <RemoveTargetScreen
-        targets={targets}
-        onSelect={(name: string) => void handleSelectTarget(name)}
-        onExit={() => setFlow({ name: 'select' })}
-      />
-    );
-  }
-
   // Confirmation screens
   if (flow.name === 'confirm-agent') {
     return (
@@ -658,17 +559,6 @@ export function RemoveFlow({
         preview={flow.preview}
         onConfirm={() => void handleConfirmIdentity(flow.identityName, flow.preview)}
         onCancel={() => setFlow({ name: 'select-identity' })}
-      />
-    );
-  }
-
-  if (flow.name === 'confirm-target') {
-    return (
-      <RemoveConfirmScreen
-        title={`Remove Target: ${flow.targetName}`}
-        preview={flow.preview}
-        onConfirm={() => void handleConfirmTarget(flow.targetName, flow.preview)}
-        onCancel={() => setFlow({ name: 'select-target' })}
       />
     );
   }
@@ -744,22 +634,6 @@ export function RemoveFlow({
         isInteractive={isInteractive}
         message={`Removed identity: ${flow.identityName}`}
         detail="Identity provider removed from agentcore.json. Deploy with `agentcore deploy` to apply changes."
-        logFilePath={flow.logFilePath}
-        onRemoveAnother={() => {
-          resetAll();
-          void refreshAll().then(() => setFlow({ name: 'select' }));
-        }}
-        onExit={onExit}
-      />
-    );
-  }
-
-  if (flow.name === 'target-success') {
-    return (
-      <RemoveSuccessScreen
-        isInteractive={isInteractive}
-        message={`Removed target: ${flow.targetName}`}
-        detail="Deployment target removed from aws-targets.json."
         logFilePath={flow.logFilePath}
         onRemoveAnother={() => {
           resetAll();

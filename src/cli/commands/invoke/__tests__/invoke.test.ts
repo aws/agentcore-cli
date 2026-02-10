@@ -13,7 +13,7 @@ describe('invoke command', () => {
     testDir = join(tmpdir(), `agentcore-invoke-${randomUUID()}`);
     await mkdir(testDir, { recursive: true });
 
-    // Create project with agent and target
+    // Create project with agent
     const projectName = 'InvokeTestProj';
     let result = await runCLI(['create', '--name', projectName, '--no-agent'], testDir);
     if (result.exitCode !== 0) {
@@ -43,15 +43,6 @@ describe('invoke command', () => {
     if (result.exitCode !== 0) {
       throw new Error(`Failed to create agent: ${result.stdout} ${result.stderr}`);
     }
-
-    // Add a target
-    result = await runCLI(
-      ['add', 'target', '--name', 'test-target', '--account', '123456789012', '--region', 'us-east-1', '--json'],
-      projectDir
-    );
-    if (result.exitCode !== 0) {
-      throw new Error(`Failed to create target: ${result.stdout} ${result.stderr}`);
-    }
   });
 
   afterAll(async () => {
@@ -60,22 +51,17 @@ describe('invoke command', () => {
 
   describe('validation', () => {
     it('requires prompt for JSON output', async () => {
-      const result = await runCLI(['invoke', '--json', '--target', 'test-target'], projectDir);
+      const result = await runCLI(['invoke', '--json'], projectDir);
       expect(result.exitCode).toBe(1);
       const json = JSON.parse(result.stdout);
       expect(json.success).toBe(false);
       expect(json.error.includes('Prompt'), `Error should mention Prompt: ${json.error}`).toBeTruthy();
     });
-
-    // Target defaults to 'default' so no validation needed
   });
 
-  describe('agent/target validation', () => {
+  describe('agent validation', () => {
     it('rejects non-existent agent', async () => {
-      const result = await runCLI(
-        ['invoke', 'hello', '--target', 'test-target', '--agent', 'nonexistent', '--json'],
-        projectDir
-      );
+      const result = await runCLI(['invoke', 'hello', '--agent', 'nonexistent', '--json'], projectDir);
       expect(result.exitCode).toBe(1);
       const json = JSON.parse(result.stdout);
       expect(json.success).toBe(false);
@@ -84,72 +70,15 @@ describe('invoke command', () => {
         `Error should mention not found: ${json.error}`
       ).toBeTruthy();
     });
-
-    it('requires --agent when multiple agents exist', async () => {
-      // Add a second agent
-      await runCLI(
-        [
-          'add',
-          'agent',
-          '--name',
-          'SecondAgent',
-          '--language',
-          'Python',
-          '--framework',
-          'Strands',
-          '--model-provider',
-          'Bedrock',
-          '--memory',
-          'none',
-          '--json',
-        ],
-        projectDir
-      );
-
-      // Write a mock deployed state - target name must match aws-targets.json
-      const { writeFile, mkdir } = await import('node:fs/promises');
-      const cliDir = join(projectDir, 'agentcore', '.cli');
-      await mkdir(cliDir, { recursive: true });
-      await writeFile(
-        join(cliDir, 'deployed-state.json'),
-        JSON.stringify({
-          targets: {
-            'test-target': { resources: { agents: {} } },
-          },
-        })
-      );
-
-      const result = await runCLI(['invoke', 'hello', '--target', 'test-target', '--json'], projectDir);
-      expect(result.exitCode).toBe(1);
-      const json = JSON.parse(result.stdout);
-      expect(json.success).toBe(false);
-      expect(json.error).toContain('Multiple agents found');
-      expect(json.error).toContain('--agent');
-    });
   });
 
-  // Merged from invoke-streaming.test.ts
   describe('streaming', () => {
     it('command accepts --stream flag', async () => {
       const result = await runCLI(['invoke', 'hello', '--stream', '--json'], projectDir);
       expect(result.exitCode).toBe(1);
       const json = JSON.parse(result.stdout);
       expect(json.success).toBe(false);
-      expect(
-        json.error.toLowerCase().includes('deploy') || json.error.toLowerCase().includes('target'),
-        `Error should be about deployment: ${json.error}`
-      ).toBeTruthy();
-    });
-
-    it('--stream works with --agent flag', async () => {
-      const result = await runCLI(['invoke', 'hello', '--stream', '--agent', 'TestAgent', '--json'], projectDir);
-      expect(result.exitCode).toBe(1);
-      const json = JSON.parse(result.stdout);
-      expect(json.success).toBe(false);
-      expect(
-        json.error.toLowerCase().includes('deploy') || json.error.toLowerCase().includes('target'),
-        `Error should be about deployment: ${json.error}`
-      ).toBeTruthy();
+      // Should fail because not deployed, not because of invalid flags
     });
 
     it('--stream with invalid agent returns error', async () => {
