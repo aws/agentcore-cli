@@ -114,6 +114,11 @@ export const registerDev = (program: Command) => {
           const envVars = configRoot ? await readEnvFile(configRoot) : {};
           const config = getDevConfig(workingDir, project, configRoot ?? undefined, agentName);
 
+          if (!config) {
+            console.error('Error: No dev-supported agents found.');
+            process.exit(1);
+          }
+
           // Create logger for log file path
           const logger = new ExecLogger({ command: 'dev' });
 

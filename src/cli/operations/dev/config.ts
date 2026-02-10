@@ -91,7 +91,7 @@ export function getDevConfig(
   project: AgentCoreProjectSpec | null,
   configRoot?: string,
   agentName?: string
-): DevConfig {
+): DevConfig | null {
   if (!project) {
     throw new Error('No project configuration found');
   }
@@ -110,7 +110,8 @@ export function getDevConfig(
   }
 
   if (!targetAgent) {
-    throw new Error('No dev-supported agents found. Dev mode requires Python agents.');
+    // Return null instead of throwing - let caller handle the UI for no agents
+    return null;
   }
 
   const supportResult = isDevSupported(targetAgent);
