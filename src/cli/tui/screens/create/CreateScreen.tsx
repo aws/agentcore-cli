@@ -171,10 +171,10 @@ export function CreateScreen({ cwd, isInteractive, onExit, onNavigate }: CreateS
 
   // Auto-exit when project creation completes successfully
   useEffect(() => {
-    if (allSuccess && isInteractive) {
+    if (allSuccess) {
       handleExit();
     }
-  }, [allSuccess, isInteractive, handleExit]);
+  }, [allSuccess, handleExit]);
 
   // Create prompt navigation
   const { selectedIndex: createPromptIndex } = useListNavigation({

@@ -12,7 +12,16 @@ import { Text, render } from 'ink';
 /** Render CreateScreen for interactive TUI mode */
 function handleCreateTUI(): void {
   const cwd = getWorkingDirectory();
-  const { unmount } = render(<CreateScreen cwd={cwd} isInteractive={false} onExit={() => unmount()} />);
+  const { unmount } = render(
+    <CreateScreen
+      cwd={cwd}
+      isInteractive={false}
+      onExit={() => {
+        unmount();
+        process.exit(0);
+      }}
+    />
+  );
 }
 
 /** Print completion summary after successful create */
@@ -156,7 +165,8 @@ export const registerCreate = (program: Command) => {
           options.memory = options.memory ?? 'none';
         }
 
-        if (options.name) {
+        if (options.name || options.json || options.dryRun) {
+          // CLI mode - any non-interactive flag triggers CLI mode
           await handleCreateCLI(options as CreateOptions);
         } else {
           handleCreateTUI();
