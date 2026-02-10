@@ -345,6 +345,11 @@ export function useCreateFlow(cwd: string): CreateFlowState {
               } else {
                 // BYO path: just write config to project (no file generation)
                 logger.logSubStep('Writing BYO agent config to project...');
+
+                // Create the agent code directory so users know where to put their code
+                const codeDir = join(projectRoot, addAgentConfig.codeLocation.replace(/\/$/, ''));
+                await mkdir(codeDir, { recursive: true });
+
                 const configIO = new ConfigIO({ baseDir: configBaseDir });
                 const project = await configIO.readProjectSpec();
                 const agent = mapByoConfigToAgent(addAgentConfig);

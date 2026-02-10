@@ -29,6 +29,7 @@ import type { MemoryOption } from '../../tui/screens/generate/types';
 import type { AddGatewayConfig, AddMcpToolConfig } from '../../tui/screens/mcp/types';
 import { DEFAULT_EVENT_EXPIRY } from '../../tui/screens/memory/types';
 import type { AddAgentResult, AddGatewayResult, AddIdentityResult, AddMcpToolResult, AddMemoryResult } from './types';
+import { mkdirSync } from 'fs';
 import { dirname, join } from 'path';
 
 // Validated option interfaces
@@ -174,6 +175,11 @@ async function handleByoPath(
   configBaseDir: string
 ): Promise<AddAgentResult> {
   const codeLocation = options.codeLocation!.endsWith('/') ? options.codeLocation! : `${options.codeLocation!}/`;
+
+  // Create the agent code directory so users know where to put their code
+  const projectRoot = dirname(configBaseDir);
+  const codeDir = join(projectRoot, codeLocation.replace(/\/$/, ''));
+  mkdirSync(codeDir, { recursive: true });
 
   const project = await configIO.readProjectSpec();
 

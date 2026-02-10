@@ -52,6 +52,12 @@ function buildExitMessage(projectName: string, steps: Step[], agentConfig: AddAg
     const maxPathLen = Math.max(agentPath.length, agentcorePath.length);
     lines.push(`    ${agentPath.padEnd(maxPathLen)}  \x1b[2m${agentConfig.language} agent (${frameworkLabel})\x1b[0m`);
     lines.push(`    ${agentcorePath.padEnd(maxPathLen)}  \x1b[2mConfig and CDK project\x1b[0m`);
+  } else if (agentConfig?.agentType === 'byo') {
+    const agentPath = agentConfig.codeLocation;
+    const agentcorePath = 'agentcore/';
+    const maxPathLen = Math.max(agentPath.length, agentcorePath.length);
+    lines.push(`    ${agentPath.padEnd(maxPathLen)}  \x1b[2mAgent code location (empty)\x1b[0m`);
+    lines.push(`    ${agentcorePath.padEnd(maxPathLen)}  \x1b[2mConfig and CDK project\x1b[0m`);
   } else {
     lines.push(`    agentcore/  \x1b[2mConfig and CDK project\x1b[0m`);
   }
@@ -63,6 +69,13 @@ function buildExitMessage(projectName: string, steps: Step[], agentConfig: AddAg
     const envVarName = computeDefaultCredentialEnvVarName(credentialName);
     lines.push('\x1b[33mNote:\x1b[0m API key not configured.');
     lines.push(`Fill in \x1b[36m${envVarName}\x1b[0m in agentcore/.env.local before running.`);
+    lines.push('');
+  }
+
+  // BYO code location reminder
+  if (agentConfig?.agentType === 'byo') {
+    lines.push(`\x1b[33mCopy your agent code to \x1b[36m${agentConfig.codeLocation}\x1b[33m before deploying.\x1b[0m`);
+    lines.push(`\x1b[2mEnsure \x1b[36m${agentConfig.entrypoint}\x1b[2m is the entrypoint file in that folder.\x1b[0m`);
     lines.push('');
   }
 
@@ -118,7 +131,9 @@ function CreatedSummary({ projectName, agentConfig }: { projectName: string; age
     return option?.title ?? framework;
   };
 
-  const agentPath = agentConfig?.agentType === 'create' ? `app/${agentConfig.name}/` : null;
+  const isCreate = agentConfig?.agentType === 'create';
+  const isByo = agentConfig?.agentType === 'byo';
+  const agentPath = isCreate ? `app/${agentConfig.name}/` : isByo ? agentConfig.codeLocation : null;
   const agentcorePath = 'agentcore/';
   const maxPathLen = agentPath ? Math.max(agentPath.length, agentcorePath.length) : agentcorePath.length;
 
@@ -127,7 +142,7 @@ function CreatedSummary({ projectName, agentConfig }: { projectName: string; age
       <Text dimColor>Created:</Text>
       <Box flexDirection="column" marginLeft={2}>
         <Text>{projectName}/</Text>
-        {agentConfig?.agentType === 'create' && agentPath && (
+        {isCreate && agentPath && (
           <Box marginLeft={2}>
             <Text>
               {agentPath.padEnd(maxPathLen)}
@@ -138,6 +153,14 @@ function CreatedSummary({ projectName, agentConfig }: { projectName: string; age
             </Text>
           </Box>
         )}
+        {isByo && agentPath && (
+          <Box marginLeft={2}>
+            <Text>
+              {agentPath.padEnd(maxPathLen)}
+              <Text dimColor>{'  '}Agent code location</Text>
+            </Text>
+          </Box>
+        )}
         <Box marginLeft={2}>
           <Text>
             {agentcorePath.padEnd(maxPathLen)}
@@ -145,6 +168,16 @@ function CreatedSummary({ projectName, agentConfig }: { projectName: string; age
           </Text>
         </Box>
       </Box>
+      {isByo && agentConfig && (
+        <Box flexDirection="column" marginTop={1}>
+          <Text color="yellow">
+            Copy your agent code to <Text color="cyan">{agentConfig.codeLocation}</Text> before deploying.
+          </Text>
+          <Text dimColor>
+            Ensure <Text color="cyan">{agentConfig.entrypoint}</Text> is the entrypoint file in that folder.
+          </Text>
+        </Box>
+      )}
     </Box>
   );
 }

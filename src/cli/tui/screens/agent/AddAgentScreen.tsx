@@ -1,4 +1,4 @@
-import { ConfigIO } from '../../../../lib';
+import { APP_DIR, ConfigIO } from '../../../../lib';
 import type { ModelProvider } from '../../../../schema';
 import { AgentNameSchema } from '../../../../schema';
 import { computeDefaultCredentialEnvVarName } from '../../../operations/identity/create-identity';
@@ -120,8 +120,8 @@ export function AddAgentScreen({ existingAgentNames, onComplete, onExit }: AddAg
         // Initialize generate wizard with the agent name
         generateWizard.initWithName(name);
       } else if (type === 'byo') {
-        // Initialize BYO code location with agent name
-        setByoConfig(c => ({ ...c, codeLocation: `${name}/` }));
+        // Initialize BYO code location with app/<name>/ to match project convention
+        setByoConfig(c => ({ ...c, codeLocation: `${APP_DIR}/${name}/` }));
       }
     },
     [name, generateWizard]
@@ -313,6 +313,7 @@ export function AddAgentScreen({ existingAgentNames, onComplete, onExit }: AddAg
         onExit={onExit}
         helpText={HELP_TEXT.NAVIGATE_SELECT}
         headerContent={renderStepIndicator()}
+        exitEnabled={false}
       >
         <Panel>
           <WizardSelect title="Select agent type" items={agentTypeItems} selectedIndex={agentTypeNav.selectedIndex} />
@@ -322,9 +323,16 @@ export function AddAgentScreen({ existingAgentNames, onComplete, onExit }: AddAg
   }
 
   // Create path: delegate to GenerateWizardUI
+  // Disable Screen's exit handler - GenerateWizardUI handles its own back navigation
   if (isCreatePath) {
     return (
-      <Screen title="Add Agent" onExit={onExit} helpText={getHelpText()} headerContent={renderStepIndicator()}>
+      <Screen
+        title="Add Agent"
+        onExit={onExit}
+        helpText={getHelpText()}
+        headerContent={renderStepIndicator()}
+        exitEnabled={false}
+      >
         <GenerateWizardUI
           wizard={generateWizard}
           onBack={handleGenerateBack}
@@ -337,8 +345,8 @@ export function AddAgentScreen({ existingAgentNames, onComplete, onExit }: AddAg
   }
 
   // BYO path
-  // Disable Screen's exit handler when not on first step (sub-components handle back navigation)
-  const byoExitEnabled = byoCurrentIndex === 0;
+  // Disable Screen's exit handler - sub-components handle their own back navigation via handleByoBack
+  const byoExitEnabled = false;
   return (
     <Screen
       title="Add Agent"
@@ -493,19 +501,22 @@ function CodeLocationInput({
     <Box flexDirection="column">
       <Text bold>Code Location</Text>
       <Box marginTop={1}>
-        <Text dimColor>Your agent code must already exist in the project.</Text>
+        <Text dimColor>Set the folder where your agent code will live.</Text>
       </Box>
       <Box>
+        <Text dimColor>The folder will be created if it doesn&apos;t exist yet.</Text>
+      </Box>
+      <Box marginTop={1}>
         <Text dimColor>Project: </Text>
         <Text color="blue">{displayPath}</Text>
       </Box>
 
       <Box marginTop={1} flexDirection="column">
-        <Text dimColor>Agent folder (relative to project):</Text>
+        <Text dimColor>Agent folder (relative to project root):</Text>
         <Box>
           <Text color={activeField === 'codeLocation' ? 'cyan' : 'gray'}>&gt; </Text>
           <Text color={activeField === 'codeLocation' ? undefined : 'gray'}>
-            {codeLocation || <Text dimColor>my-agent/</Text>}
+            {codeLocation || <Text dimColor>app/my-agent/</Text>}
           </Text>
           {activeField === 'codeLocation' && <Cursor />}
         </Box>
@@ -530,7 +541,6 @@ function CodeLocationInput({
 
       <Box marginTop={1} flexDirection="column">
         <Text dimColor>Tab switch fields · Enter continue</Text>
-        <Text dimColor>No code yet? Go back and select &quot;Create new agent&quot; instead.</Text>
       </Box>
     </Box>
   );

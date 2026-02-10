@@ -15,6 +15,7 @@ import {
 import { createRenderer } from '../../../templates';
 import type { GenerateConfig } from '../generate/types';
 import type { AddAgentConfig } from './types';
+import { mkdirSync } from 'fs';
 import { dirname, join } from 'path';
 import { useCallback, useState } from 'react';
 
@@ -210,6 +211,11 @@ async function handleByoPath(
   configIO: ConfigIO,
   configBaseDir: string
 ): Promise<AddAgentByoResult | AddAgentError> {
+  // Ensure the code folder exists (create if it doesn't)
+  const projectRoot = dirname(configBaseDir);
+  const codeDir = join(projectRoot, config.codeLocation.replace(/\/$/, ''));
+  mkdirSync(codeDir, { recursive: true });
+
   const project = await configIO.readProjectSpec();
   const agent = mapByoConfigToAgent(config);
 

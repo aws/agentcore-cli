@@ -84,10 +84,7 @@ function AgentAddedSummary({
         {!isCreate && (
           <Text>
             {config.codeLocation}
-            <Text dimColor>
-              {'  '}
-              {config.language} agent ({getFrameworkLabel(config.framework)})
-            </Text>
+            <Text dimColor>{'  '}Agent code location</Text>
           </Text>
         )}
         <Text>
@@ -108,6 +105,16 @@ function AgentAddedSummary({
           <Text color="yellow">Note: API key not configured.</Text>
           <Text>
             Fill in <Text color="cyan">{envVarName}</Text> in agentcore/.env.local before running.
+          </Text>
+        </Box>
+      )}
+      {!isCreate && (
+        <Box flexDirection="column" marginTop={1}>
+          <Text color="yellow">
+            Copy your agent code to <Text color="cyan">{config.codeLocation}</Text> before deploying.
+          </Text>
+          <Text dimColor>
+            Ensure <Text color="cyan">{config.entrypoint}</Text> is the entrypoint file in that folder.
           </Text>
         </Box>
       )}
