@@ -30,6 +30,18 @@ function HelpDisplay({ items, query, cursor, clampedIndex, notice }: HelpDisplay
   const { contentWidth } = useLayout();
   const divider = '─'.repeat(contentWidth);
 
+  // Calculate max label length for description alignment
+  const maxLabelLen = useMemo(() => {
+    if (items.length === 0) return 0;
+    return Math.max(
+      ...items.map(item =>
+        item.matchedSubcommand
+          ? item.command.title.length + 3 + item.matchedSubcommand.length
+          : item.command.title.length
+      )
+    );
+  }, [items]);
+
   return (
     <Box flexDirection="column">
       {/* Header */}
@@ -57,6 +69,10 @@ function HelpDisplay({ items, query, cursor, clampedIndex, notice }: HelpDisplay
             const selected = idx === clampedIndex;
             const itemKey = item.matchedSubcommand ? `${item.command.id}-${item.matchedSubcommand}` : item.command.id;
             const desc = truncateDescription(item.command.description, MAX_DESC_WIDTH);
+            const labelLen = item.matchedSubcommand
+              ? item.command.title.length + 3 + item.matchedSubcommand.length
+              : item.command.title.length;
+            const padding = ' '.repeat(Math.max(1, maxLabelLen - labelLen + 2));
             return (
               <Box key={itemKey}>
                 <Text color={selected ? 'cyan' : 'white'}>{selected ? '❯' : ' '} </Text>
@@ -71,7 +87,8 @@ function HelpDisplay({ items, query, cursor, clampedIndex, notice }: HelpDisplay
                     </Text>
                   </>
                 )}
-                <Text dimColor> {desc}</Text>
+                <Text>{padding}</Text>
+                <Text dimColor>{desc}</Text>
               </Box>
             );
           })
