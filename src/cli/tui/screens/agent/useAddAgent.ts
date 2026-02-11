@@ -1,4 +1,4 @@
-import { ConfigIO, NoProjectError, findConfigRoot, setEnvVar } from '../../../../lib';
+import { APP_DIR, ConfigIO, NoProjectError, findConfigRoot, setEnvVar } from '../../../../lib';
 import type { AgentEnvSpec, DirectoryPath, FilePath } from '../../../../schema';
 import { getErrorMessage } from '../../../errors';
 import { type PythonSetupResult, setupPythonProject } from '../../../operations';
@@ -143,7 +143,7 @@ async function handleCreatePath(
   const project = await configIO.readProjectSpec();
 
   const generateConfig = mapAddAgentConfigToGenerateConfig(config);
-  const agentPath = join(projectRoot, config.name);
+  const agentPath = join(projectRoot, APP_DIR, config.name);
 
   // Resolve credential strategy FIRST to determine correct credential name
   let identityProviders: ReturnType<typeof mapModelProviderToIdentityProviders> = [];
