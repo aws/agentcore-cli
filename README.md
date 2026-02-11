@@ -44,11 +44,11 @@ cd my-project
 # Test locally
 agentcore dev
 
-# In another terminal:
-agentcore invoke
-
 # Deploy to AWS
 agentcore deploy
+
+# Test deployed agent
+agentcore invoke
 
 ```
 
@@ -88,6 +88,8 @@ agentcore deploy
 | `add`    | Add agents, memory, identity, targets |
 | `remove` | Remove resources from project         |
 
+> **Note**: Run `agentcore deploy` after `add` or `remove` to update resources in AWS.
+
 ## Project Structure
 
 ```
@@ -100,6 +102,16 @@ my-project/
 ├── app/                    # Application code
 ```
 
+### App Structure
+
+```
+├── app/                    # Application code
+│   └── <AgentName>/        # Agent directory
+│       ├── main.py         # Agent entry point
+│       ├── pyproject.toml  # Python dependencies
+│       └── model/          # Model configuration
+```
+
 ## Configuration
 
 Projects use JSON schema files in the `agentcore/` directory:
@@ -110,6 +122,7 @@ Projects use JSON schema files in the `agentcore/` directory:
 
 ## Capabilities
 
+- **Runtime** - Managed execution environment for deployed agents
 - **Memory** - Semantic, summarization, and user preference strategies
 - **Identity** - Secure API key management via Secrets Manager
 
