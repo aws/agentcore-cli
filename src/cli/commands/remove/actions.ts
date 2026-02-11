@@ -115,7 +115,11 @@ export async function handleRemoveAll(_options: RemoveAllOptions): Promise<Remov
     // Preserve aws-targets.json and deployed-state.json so that
     // a subsequent `agentcore deploy` can tear down existing stacks.
 
-    return { success: true, message: 'All schemas reset to empty state' };
+    return {
+      success: true,
+      message: 'All schemas reset to empty state',
+      note: 'Your source code has not been modified. Run `agentcore deploy` to apply changes to AWS.',
+    };
   } catch (err) {
     return { success: false, error: getErrorMessage(err) };
   }

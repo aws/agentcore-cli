@@ -107,13 +107,9 @@ function registerResourceRemove(
 }
 
 export const registerRemove = (program: Command) => {
-  const removeCommand = program
-    .command('remove')
-    .description(COMMAND_DESCRIPTIONS.remove)
-    .action(() => {
-      removeCommand.help();
-    });
+  const removeCommand = program.command('remove').description(COMMAND_DESCRIPTIONS.remove);
 
+  // Register subcommands BEFORE adding argument to parent (preserves type compatibility)
   removeCommand
     .command('all')
     .description('Reset all agentcore schemas to empty state')
@@ -169,4 +165,29 @@ export const registerRemove = (program: Command) => {
       console.error('AgentCore Gateway integration is coming soon.');
       process.exit(1);
     });
+
+  // Add argument and action for parent command AFTER registering subcommands
+  removeCommand
+    .argument('[subcommand]')
+    .action((subcommand: string | undefined, _options, cmd) => {
+      if (subcommand) {
+        console.error(`error: '${subcommand}' is not a valid subcommand.`);
+        cmd.outputHelp();
+        process.exit(1);
+      }
+
+      requireProject();
+
+      const { clear, unmount } = render(
+        <RemoveFlow
+          isInteractive={false}
+          onExit={() => {
+            clear();
+            unmount();
+          }}
+        />
+      );
+    })
+    .showHelpAfterError()
+    .showSuggestionAfterError();
 };

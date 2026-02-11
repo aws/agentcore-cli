@@ -187,7 +187,14 @@ export function registerAdd(program: Command) {
   const addCmd = program
     .command('add')
     .description(COMMAND_DESCRIPTIONS.add)
-    .action(() => {
+    .argument('[subcommand]')
+    .action((subcommand: string | undefined, _options, cmd) => {
+      if (subcommand) {
+        console.error(`error: '${subcommand}' is not a valid subcommand.`);
+        cmd.outputHelp();
+        process.exit(1);
+      }
+
       requireProject();
 
       const { clear, unmount } = render(
@@ -199,7 +206,9 @@ export function registerAdd(program: Command) {
           }}
         />
       );
-    });
+    })
+    .showHelpAfterError()
+    .showSuggestionAfterError();
 
   // Subcommand: add agent
   addCmd
