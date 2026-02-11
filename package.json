@@ -1,6 +1,6 @@
 {
-  "name": "@aws/agentcore-cli",
-  "version": "0.1.1",
+  "name": "agentcore",
+  "version": "0.3.0-preview1.0",
   "description": "CLI for Amazon Bedrock AgentCore",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
@@ -96,9 +96,6 @@
   },
   "engines": {
     "node": ">=20"
-  },
-  "overrides": {
-    "fast-xml-parser": "^5.3.4"
   },
   "lint-staged": {
     "*.{ts,tsx}": [

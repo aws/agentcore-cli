@@ -20,7 +20,7 @@ AgentCore with minimal configuration.
 ## Installation
 
 ```bash
-npm install -g @aws/agentcore-cli
+npm install -g agentcore
 ```
 
 > **Public Preview**: If you previously used the
