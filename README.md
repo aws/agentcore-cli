@@ -134,22 +134,6 @@ Projects use JSON schema files in the `agentcore/` directory:
 - [Memory](docs/memory.md) - Memory strategies and sharing
 - [Local Development](docs/local-development.md) - Dev server and debugging
 
-## Related Package
-
-- `agentcore-cdk` - CDK constructs for standalone infrastructure-as-code usage
-
-## Roadmap
-
-- **Gateway Support** - Integration with
-  [AgentCore Gateway](https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/gateway.html) to connect APIs,
-  Lambda functions, and services as MCP-compatible tools
-- **Observability** - Improvements in built-in tracing, debugging, and monitoring via
-  [AgentCore Observability](https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/observability.html) with
-  CloudWatch integration
-- **VPC Hosting** - Deploy agents within your VPC for private network access
-- **Migration Path for Starter Toolkit** - Tooling to migrate existing
-  [Bedrock AgentCore Starter Toolkit](https://github.com/aws/bedrock-agentcore-starter-toolkit) projects to the CLI
-
 ## Feedback & Issues
 
 Found a bug or have a feature request? [Open an issue](https://github.com/aws/agentcore-cli/issues/new) on GitHub.

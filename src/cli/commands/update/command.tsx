@@ -37,9 +37,7 @@ export const registerUpdate = (program: Command) => {
             render(<Text color="green">Successfully updated to {result.latestVersion}</Text>);
             break;
           case 'update-failed':
-            render(
-              <Text color="red">Failed to install update. Try running: npm install -g @aws/agentcore-cli@latest</Text>
-            );
+            render(<Text color="red">Failed to install update. Try running: npm install -g agentcore@latest</Text>);
             process.exit(1);
             break;
         }
