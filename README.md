@@ -123,7 +123,7 @@ Projects use JSON schema files in the `agentcore/` directory:
 
 ## Related Package
 
-- `/agentcore-cdk` CDK constructs for standalone infrastructure-as-code usage
+- `agentcore-cdk` - CDK constructs for standalone infrastructure-as-code usage
 
 ## Roadmap
 

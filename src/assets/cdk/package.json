@@ -11,8 +11,7 @@
     "cdk": "npm run build && cdk",
     "clean": "rm -rf dist",
     "format": "prettier --write .",
-    "format:check": "prettier --check .",
-    "postinstall": "npm link @aws/agentcore-l3-cdk-constructs 2>/dev/null || echo 'Note: If CDK synth fails, run: npm link @aws/agentcore-l3-cdk-constructs'"
+    "format:check": "prettier --check ."
   },
   "devDependencies": {
     "@types/jest": "^29.5.14",
@@ -24,6 +23,7 @@
     "typescript": "~5.9.3"
   },
   "dependencies": {
+    "agentcore-cdk": "^0.1.0-alpha1.0",
     "aws-cdk-lib": "2.234.1",
     "constructs": "^10.0.0"
   }
