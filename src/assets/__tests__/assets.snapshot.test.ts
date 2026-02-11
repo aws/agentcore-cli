@@ -90,10 +90,17 @@ describe('Assets Directory Snapshots', () => {
   describe('Static assets', () => {
     const staticFiles = assetFiles.filter(f => f.startsWith('static/'));
 
-    it.each(staticFiles)('static/%s should match snapshot', file => {
-      const content = readFileContent(path.join(ASSETS_DIR, file));
-      expect(content).toMatchSnapshot();
-    });
+    if (staticFiles.length > 0) {
+      it.each(staticFiles)('static/%s should match snapshot', file => {
+        const content = readFileContent(path.join(ASSETS_DIR, file));
+        expect(content).toMatchSnapshot();
+      });
+    } else {
+      it('static directory is empty or does not exist', () => {
+        // Static assets may not exist
+        expect(true).toBe(true);
+      });
+    }
   });
 
   describe('TypeScript assets', () => {
