@@ -211,9 +211,9 @@ describe('create command', () => {
     it('launches TUI when no flags provided', async () => {
       const result = await runCLI(['create'], testDir);
 
-      // CLI mode would show "--name is required" error
+      // CLI mode would show "--name is required" error in stderr
       // TUI mode does not - it launches the interactive wizard
-      expect(result.stdout).not.toContain('--name is required');
+      expect(result.stderr).not.toContain('--name is required');
     });
   });
 });
