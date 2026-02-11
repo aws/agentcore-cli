@@ -280,7 +280,7 @@ exports[`Assets Directory Snapshots > CDK assets > cdk/cdk/package.json should m
     "typescript": "~5.9.3"
   },
   "dependencies": {
-    "agentcore-cdk": "^0.1.0-alpha1.0",
+    "agentcore-cdk": "^0.1.0-alpha.1",
     "aws-cdk-lib": "2.234.1",
     "constructs": "^10.0.0"
   }
