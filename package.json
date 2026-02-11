@@ -1,6 +1,6 @@
 {
   "name": "agentcore",
-  "version": "0.3.0-preview.1.1",
+  "version": "0.3.0-preview.1.2",
   "description": "CLI for Amazon Bedrock AgentCore",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
