@@ -51,11 +51,6 @@ export class CDKRenderer {
     await copyDir(this.templateDir, outputDir);
     logger?.logSubStep('CDK template copied');
 
-    // Update package.json with distro-specific configuration
-    logger?.logSubStep('Updating package.json with distro config...');
-    await this.updatePackageJson(outputDir);
-    logger?.logSubStep('package.json updated');
-
     // Copy AGENTS.md template to project root
     logger?.logSubStep('Copying AGENTS.md template...');
     await this.copyAgentsTemplate(context.projectRoot);
@@ -74,7 +69,7 @@ export class CDKRenderer {
     // Skip slow npm operations in test mode
     if (process.env.AGENTCORE_SKIP_INSTALL) return outputDir;
 
-    // Install CDK project dependencies (postinstall script will link agentcore)
+    // Install CDK project dependencies
     logger?.logSubStep('Running npm install (this may take a while)...');
     logger?.logCommand('npm', ['install']);
     const installStart = Date.now();
@@ -128,40 +123,5 @@ export class CDKRenderer {
     for (const [filename, content] of Object.entries(LLM_CONTEXT_FILES)) {
       await fs.writeFile(path.join(llmContextDir, filename), content, 'utf-8');
     }
-  }
-
-  /**
-   * Updates the generated package.json with distro-specific configuration.
-   * Adjusts the postinstall script to link the correct package name.
-   *
-   * If LOCAL_L3_PATH env var is set, uses file: dependency instead of npm link.
-   */
-  private async updatePackageJson(outputDir: string): Promise<void> {
-    const packageJsonPath = path.join(outputDir, 'package.json');
-    const content = await fs.readFile(packageJsonPath, 'utf-8');
-    const pkg = JSON.parse(content) as {
-      scripts?: { postinstall?: string };
-      dependencies?: Record<string, string>;
-      [key: string]: unknown;
-    };
-
-    const localL3Path = process.env.LOCAL_L3_PATH;
-
-    if (localL3Path) {
-      // Use local file: dependency for development
-      if (pkg.dependencies) {
-        pkg.dependencies['@aws/agentcore-l3-cdk-constructs'] = `file:${localL3Path}`;
-      }
-      // Remove postinstall npm link since we're using file: dependency
-      if (pkg.scripts?.postinstall) {
-        delete pkg.scripts.postinstall;
-      }
-    } else {
-      // Production: use npm link with the L3 constructs package
-      // Note: The template already has the correct postinstall script, so we don't need to modify it
-      // Just leave it as-is from the template
-    }
-
-    await fs.writeFile(packageJsonPath, JSON.stringify(pkg, null, 2) + '\n', 'utf-8');
   }
 }

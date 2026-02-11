@@ -3,7 +3,7 @@
  *
  * This is a minimal copy of the logical ID utilities needed by the CLI
  * for parsing stack outputs. The full implementation lives in
- * @aws/agentcore-l3-cdk-constructs.
+ * agentcore-cdk.
  */
 
 const LOGICAL_ID_PATTERN = /^[a-zA-Z][a-zA-Z0-9]*$/;

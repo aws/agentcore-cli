@@ -155,7 +155,7 @@ agentcore invoke --new-session       # Start fresh
 
 ## Related Package
 
-- `@aws/agentcore-l3-cdk-constructs` - CDK constructs for standalone infrastructure-as-code usage
+- `agentcore-cdk` - CDK constructs for standalone infrastructure-as-code usage
 
 ## Roadmap
 
