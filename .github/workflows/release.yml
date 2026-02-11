@@ -229,11 +229,11 @@ jobs:
       - name: Run type check
         run: npm run typecheck
 
-      - name: Run tests
-        run: npm run test:unit
-
       - name: Build package
         run: npm run build
+
+      - name: Run tests
+        run: npm run test:unit
 
       - name: Pack for verification
         run: npm pack
