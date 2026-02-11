@@ -223,6 +223,14 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      - name: Configure git for tests
+        run: |
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+
+      - name: Install uv for Python tests
+        run: curl -LsSf https://astral.sh/uv/install.sh | sh
+
       - name: Run linter
         run: npm run lint
 
