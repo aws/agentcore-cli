@@ -15,8 +15,8 @@
  *   --dry-run              Show what would be done without making changes
  *
  * Preview bumps (internal format):
- *   - 0.3.0 -> 0.3.0-preview1.0
- *   - 0.3.0-preview1.0 -> 0.3.0-preview1.1
+ *   - 0.3.0 -> 0.3.0-preview.1.0
+ *   - 0.3.0-preview.1.0 -> 0.3.0-preview.1.1
  */
 import { execSync } from 'child_process';
 import { existsSync, readFileSync, writeFileSync } from 'fs';
@@ -57,8 +57,8 @@ interface PackageLockJson {
 // ===========================
 
 function parseVersion(version: string): ParsedVersion {
-  // First try to match preview format: X.Y.Z-previewN.M (e.g., 0.3.0-preview1.0)
-  const previewMatch = /^(\d+)\.(\d+)\.(\d+)-preview(\d+)\.(\d+)$/.exec(version);
+  // First try to match preview format: X.Y.Z-preview.N.M (e.g., 0.3.0-preview.1.0)
+  const previewMatch = /^(\d+)\.(\d+)\.(\d+)-preview\.(\d+)\.(\d+)$/.exec(version);
   if (previewMatch) {
     return {
       major: parseInt(previewMatch[1]!, 10),
@@ -88,9 +88,9 @@ function parseVersion(version: string): ParsedVersion {
 function formatVersion(parsed: ParsedVersion): string {
   const base = `${parsed.major}.${parsed.minor}.${parsed.patch}`;
 
-  // Handle preview format: X.Y.Z-previewN.M
+  // Handle preview format: X.Y.Z-preview.N.M
   if (parsed.previewMajor !== undefined && parsed.previewMinor !== undefined) {
-    return `${base}-preview${parsed.previewMajor}.${parsed.previewMinor}`;
+    return `${base}-preview.${parsed.previewMajor}.${parsed.previewMinor}`;
   }
 
   // Handle standard prerelease format: X.Y.Z-tag.N
@@ -166,7 +166,7 @@ function bumpVersion(current: string, bumpType: BumpType, prereleaseTag = 'beta'
           previewMinor: parsed.previewMinor + 1,
         });
       }
-      // Otherwise, start at preview1.0
+      // Otherwise, start at preview.1.0
       return formatVersion({
         major: parsed.major,
         minor: parsed.minor,
@@ -380,8 +380,8 @@ Options:
   --help, -h                Show this help message
 
 Preview bumps:
-  - 0.3.0 -> 0.3.0-preview1.0
-  - 0.3.0-preview1.0 -> 0.3.0-preview1.1
+  - 0.3.0 -> 0.3.0-preview.1.0
+  - 0.3.0-preview.1.0 -> 0.3.0-preview.1.1
 `);
     process.exit(0);
   }
