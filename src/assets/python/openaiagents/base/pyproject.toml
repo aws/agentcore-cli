@@ -9,8 +9,7 @@ description = "AgentCore Runtime Application using OpenAI Agents SDK"
 readme = "README.md"
 requires-python = ">=3.10"
 dependencies = [
-    "opentelemetry-distro",
-    "opentelemetry-exporter-otlp",
+    "aws-opentelemetry-distro",
     "openai-agents >= 0.4.2",
     "bedrock-agentcore >= 1.0.3",
     "botocore[crt] >= 1.35.0",

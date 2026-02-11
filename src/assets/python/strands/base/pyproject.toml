@@ -10,8 +10,7 @@ readme = "README.md"
 requires-python = ">=3.10"
 dependencies = [
     "anthropic >= 0.30.0",
-    "opentelemetry-distro",
-    "opentelemetry-exporter-otlp",
+    "aws-opentelemetry-distro",
     "bedrock-agentcore >= 1.0.3",
     "botocore[crt] >= 1.35.0",
     "google-genai >= 1.0.0",
