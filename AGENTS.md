@@ -26,7 +26,6 @@ Note: CDK L3 constructs are in a separate package `@aws/agentcore-l3-cdk-constru
 - `add` - Add resources (agent, memory, identity, target)
 - `remove` - Remove resources (agent, memory, identity, target, all)
 - `deploy` - Deploy infrastructure to AWS
-- `destroy` - Tear down deployed resources
 - `status` - Check deployment status
 - `dev` - Local development server
 - `invoke` - Invoke agents (local or deployed)
