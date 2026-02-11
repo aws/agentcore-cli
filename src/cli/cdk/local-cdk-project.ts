@@ -74,5 +74,4 @@ export class LocalCdkProject {
       throw new Error(errorOutput);
     }
   }
-
 }
