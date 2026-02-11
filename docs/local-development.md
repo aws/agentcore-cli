@@ -51,12 +51,10 @@ The dev server automatically:
 For non-Bedrock providers, add keys to `agentcore/.env.local`:
 
 ```bash
-AGENTCORE_IDENTITY_OPENAI=sk-...
-AGENTCORE_IDENTITY_ANTHROPIC=sk-ant-...
-AGENTCORE_IDENTITY_GEMINI=AI...
+AGENTCORE_CREDENTIAL_{projectName}OPENAI=sk-...
+AGENTCORE_CREDENTIAL_{projectName}ANTHROPIC=sk-ant-...
+AGENTCORE_CREDENTIAL_{projectName}GEMINI=...
 ```
-
-The variable names must match `envVarName` in your identity providers.
 
 ## Debugging
 
@@ -92,9 +90,6 @@ cd app/MyAgent
 uv sync
 ```
 
-**API key not found:** Check that `.env.local` has the correct variable name matching your identity provider's
-`envVarName`.
-
 ## Hot Reload
 
 The dev server watches for file changes and automatically reloads. Edit your agent code and the changes take effect
@@ -102,10 +97,10 @@ immediately.
 
 ## Dev vs Deployed Behavior
 
-| Aspect     | Local Dev     | Deployed                 |
-| ---------- | ------------- | ------------------------ |
-| API Keys   | `.env.local`  | AWS Secrets Manager      |
-| Memory     | Not available | AgentCore Memory service |
-| Networking | localhost     | VPC/Public               |
+| Aspect     | Local Dev     | Deployed                   |
+| ---------- | ------------- | -------------------------- |
+| API Keys   | `.env.local`  | AgentCore Identity service |
+| Memory     | Not available | AgentCore Memory service   |
+| Networking | localhost     | Public                     |
 
 Memory requires deployment to test fully. For local testing, you can mock these dependencies in your agent code.

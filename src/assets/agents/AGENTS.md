@@ -8,12 +8,10 @@ model** where agents, memories, and credentials are top-level arrays.
 
 ## Mental Model
 
-A good mental model for how this project works is a directed graph. We have a set of nodes: agents, memories,
-credentials, and future resources supported. There are rules about which nodes can connect to others in what direction.
-
-Wiring nodes creates an infrastructure and trust relationship but is not enough to complete end-to-end functionality.
-For example, to use a memory from an agent, the application code needs to read the memory ID from an environment
-variable and construct the appropriate SDK calls.
+The project uses a **flat resource model**. Agents, memories, and credentials are independent top-level arrays in
+`agentcore.json`. There is no binding or attachment between resources in the schema — each resource is provisioned
+independently. To use a memory or credential from an agent, the application code discovers the resource at runtime
+(e.g., via environment variables or SDK calls).
 
 ## Critical Invariants
 
@@ -24,6 +22,8 @@ variable and construct the appropriate SDK calls.
    - **Modifying** other fields (descriptions, config) will update the resource **in-place**.
 3. **1:1 Validation:** The schema maps directly to valid CloudFormation. If your JSON conforms to the types in
    `.llm-context/`, it will deploy successfully.
+4. **Resource Removal:** To remove all resources, use `agentcore remove all`. To tear down deployed infrastructure, run
+   `agentcore deploy` after removal — it will detect the empty state and offer a teardown flow.
 
 ## Directory Structure
 
@@ -60,9 +60,9 @@ file maps to a JSON config file and includes validation constraints as comments.
 
 ### Common Enum Values
 
-- **BuildType**: `'CodeZip'` | `'Container'`
-- **NetworkMode**: `'PUBLIC'` | `'PRIVATE'`
-- **RuntimeVersion**: `'PYTHON_3_12'` | `'PYTHON_3_13'` | `'NODE_18'` | `'NODE_20'` | `'NODE_22'`
+- **BuildType**: `'CodeZip'`
+- **NetworkMode**: `'PUBLIC'`
+- **RuntimeVersion**: `'PYTHON_3_10'` | `'PYTHON_3_11'` | `'PYTHON_3_12'` | `'PYTHON_3_13'`
 - **MemoryStrategyType**: `'SEMANTIC'` | `'SUMMARIZATION'` | `'USER_PREFERENCE'`
 
 ### Supported Frameworks (for template agents)
@@ -75,7 +75,6 @@ file maps to a JSON config file and includes validation constraints as comments.
 ### Specific Context
 
 Directory pathing to local projects is required for runtimes. Only Python offers a zip based direct code deploy option.
-All other programming languages are required to be containerized and provide a path to a `Dockerfile` definition.
 
 ## Deployment
 
@@ -91,8 +90,6 @@ npm install
 npx cdk synth   # Preview CloudFormation template
 npx cdk deploy  # Deploy to AWS
 ```
-
-Both CLI and direct deployment have the same source of truth and are safe to be substituted interchangeably.
 
 ## Editing Schemas
 

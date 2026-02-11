@@ -93,7 +93,7 @@ agentcore add agent \
 
 1. **Entrypoint**: Your code must expose an HTTP endpoint that accepts agent invocation requests
 2. **Code location**: Directory containing your agent code
-3. **Language**: Python, TypeScript, or Other (requires container build)
+3. **Language**: Python
 
 ### BYO Options
 
@@ -102,7 +102,7 @@ agentcore add agent \
 | `--type byo`             | Use BYO mode (required)                    |
 | `--code-location <path>` | Directory containing your agent code       |
 | `--entrypoint <file>`    | Entry file (e.g., `main.py` or `index.ts`) |
-| `--language <lang>`      | `Python`, `TypeScript`, or `Other`         |
+| `--language <lang>`      | `Python`                                   |
 
 ## Framework Comparison
 
@@ -112,23 +112,3 @@ agentcore add agent \
 | AWS Bedrock native     | Yes     | No        | No        | No           |
 | Tool ecosystem         | Growing | Extensive | Moderate  | Moderate     |
 | Memory integration     | Native  | Via libs  | Via libs  | Via libs     |
-
-## Changing Frameworks
-
-To switch frameworks for an existing project, you'll need to:
-
-1. Create a new agent with the desired framework:
-
-   ```bash
-   agentcore add agent --name NewAgent --framework LangChain_LangGraph
-   ```
-
-2. Migrate your agent logic to the new framework's structure
-
-3. Remove the old agent (optional):
-   ```bash
-   agentcore remove agent --name OldAgent
-   ```
-
-Agent framework and model provider are only used during template generation. The generated code can be modified to use
-any compatible SDK or model.

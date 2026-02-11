@@ -62,12 +62,12 @@ agentcore deploy
 
 ### Adding Memory to an Agent Without Memory
 
-If you created an agent without memory and want to add it later:
+If you created an Strands agent without memory and want to integrate it with your agent later:
 
 1. Add a memory to your project:
 
    ```bash
-   agentcore add memory --name MyMemory --strategies SEMANTIC
+   agentcore add memory --name MyMemory --strategies SEMANTIC,SUMMARIZATION
    ```
 
 2. Create the `memory/` directory in your agent:
@@ -93,7 +93,7 @@ If you created an agent without memory and want to add it later:
 
        retrieval_config = {
            f"/users/{actor_id}/facts": RetrievalConfig(top_k=3, relevance_score=0.5),
-           f"/users/{actor_id}/preferences": RetrievalConfig(top_k=3, relevance_score=0.5),
+           f"/summaries/{actor_id}/{session_id}": RetrievalConfig(top_k=3, relevance_score=0.5)
        }
 
        return AgentCoreMemorySessionManager(
@@ -109,25 +109,44 @@ If you created an agent without memory and want to add it later:
 
 4. Update `main.py` to use the session manager:
 
-   ```python
-   from memory.session import get_memory_session_manager
+```python
+from memory.session import get_memory_session_manager
 
-   @app.entrypoint
-   async def invoke(payload, context):
-       session_id = getattr(context, 'session_id', 'default-session')
-       user_id = getattr(context, 'user_id', 'default-user')
-       session_manager = get_memory_session_manager(session_id, user_id)
+def agent_factory():
+  cache = {}
+    def get_or_create_agent(session_id, user_id):
+      key = f"{session_id}/{user_id}"
+      if key not in cache:
+        # Create an agent for the given session_id and user_id
+        cache[key] = Agent(
+          model=load_model(),
+          session_manager=get_memory_session_manager(session_id, user_id),
+          system_prompt="""
+            You are a helpful assistant. Use tools when appropriate.
+          """,
+          tools=tools+[mcp_client]
+        )
+      return cache[key]
+    return get_or_create_agent
+get_or_create_agent = agent_factory()
 
-       agent = Agent(
-           model=load_model(),
-           session_manager=session_manager,  # Add this line
-           ...
-       )
-   ```
+@app.entrypoint
+async def invoke(payload, context):
+  session_id = getattr(context, 'session_id', 'default-session')
+  user_id = getattr(context, 'user_id', 'default-user')
+  agent = get_or_create_agent(session_id, user_id)
+  session_manager = get_memory_session_manager(session_id, user_id)
+
+  agent = Agent(
+    model=load_model(),
+    session_manager=session_manager,  # Add this line
+    ...
+  )
+```
 
 5. Deploy:
    ```bash
-   agentcore deploy
+    agentcore deploy
    ```
 
 ## Memory Strategies
@@ -137,7 +156,6 @@ If you created an agent without memory and want to add it later:
 | `SEMANTIC`        | Vector-based similarity search for relevant context |
 | `SUMMARIZATION`   | Compressed conversation history                     |
 | `USER_PREFERENCE` | Store user-specific preferences and settings        |
-| `CUSTOM`          | Custom strategy implementation                      |
 
 You can combine multiple strategies:
 

@@ -52,18 +52,16 @@ Deploy infrastructure to AWS.
 
 ```bash
 agentcore deploy
-agentcore deploy --target production
 agentcore deploy -y --progress        # Auto-confirm with progress
 agentcore deploy -v --json            # Verbose JSON output
 ```
 
-| Flag              | Description           |
-| ----------------- | --------------------- |
-| `--target <name>` | Deployment target     |
-| `-y, --yes`       | Auto-confirm prompts  |
-| `--progress`      | Real-time progress    |
-| `-v, --verbose`   | Resource-level events |
-| `--json`          | JSON output           |
+| Flag            | Description           |
+| --------------- | --------------------- |
+| `-y, --yes`     | Auto-confirm prompts  |
+| `--progress`    | Real-time progress    |
+| `-v, --verbose` | Resource-level events |
+| `--json`        | JSON output           |
 
 ### status
 
@@ -72,14 +70,12 @@ Check deployment status.
 ```bash
 agentcore status
 agentcore status --agent MyAgent
-agentcore status --target production
 ```
 
 | Flag                      | Description         |
 | ------------------------- | ------------------- |
 | `--agent <name>`          | Specific agent      |
 | `--agent-runtime-id <id>` | Specific runtime ID |
-| `--target <name>`         | Deployment target   |
 
 ### validate
 
@@ -169,26 +165,6 @@ agentcore add identity \
 | `--api-key <key>` | API key value   |
 | `--json`          | JSON output     |
 
-### add target
-
-Add a deployment target.
-
-```bash
-agentcore add target \
-  --name production \
-  --account 123456789012 \
-  --region us-west-2 \
-  --description "Production environment"
-```
-
-| Flag                   | Description    |
-| ---------------------- | -------------- |
-| `--name <name>`        | Target name    |
-| `--account <id>`       | AWS account ID |
-| `--region <region>`    | AWS region     |
-| `--description <desc>` | Description    |
-| `--json`               | JSON output    |
-
 ### remove
 
 Remove resources from project.
@@ -197,7 +173,6 @@ Remove resources from project.
 agentcore remove agent --name MyAgent --force
 agentcore remove memory --name SharedMemory
 agentcore remove identity --name OpenAI
-agentcore remove target --name dev
 
 # Reset everything
 agentcore remove all --force
@@ -241,7 +216,7 @@ Invoke local or deployed agents.
 ```bash
 agentcore invoke "What can you do?"
 agentcore invoke --prompt "Hello" --stream
-agentcore invoke --agent MyAgent --target production
+agentcore invoke --agent MyAgent
 agentcore invoke --session-id abc123      # Continue session
 agentcore invoke --new-session            # Fresh session
 agentcore invoke --json                   # JSON output
@@ -251,7 +226,6 @@ agentcore invoke --json                   # JSON output
 | ------------------- | ------------------------- |
 | `--prompt <text>`   | Prompt text               |
 | `--agent <name>`    | Specific agent            |
-| `--target <name>`   | Deployment target         |
 | `--session-id <id>` | Continue specific session |
 | `--new-session`     | Start fresh session       |
 | `--stream`          | Stream response           |
@@ -282,12 +256,7 @@ Check for CLI updates.
 
 ```bash
 agentcore update           # Check and install
-agentcore update --check   # Check only
 ```
-
-| Flag          | Description              |
-| ------------- | ------------------------ |
-| `-c, --check` | Check without installing |
 
 ---
 
@@ -298,7 +267,7 @@ agentcore update --check   # Check only
 ```bash
 # Validate and deploy with auto-confirm
 agentcore validate
-agentcore deploy --target production -y --json
+agentcore deploy -y --json
 ```
 
 ### Scripted Project Setup
@@ -307,8 +276,7 @@ agentcore deploy --target production -y --json
 agentcore create --name MyProject --defaults
 cd MyProject
 agentcore add memory --name SharedMemory --strategies SEMANTIC
-agentcore add target --name dev --account 123456789012 --region us-west-2
-agentcore deploy --target dev -y
+agentcore deploy -y
 ```
 
 ### JSON Output for Automation

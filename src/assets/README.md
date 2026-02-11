@@ -6,21 +6,21 @@ This project was created with the [AgentCore CLI](https://github.com/aws/agentco
 
 ```
 .
-├── agentcore/              # AgentCore configuration directory
-│   ├── agentcore.json      # Main project config (agents, memories, credentials)
+my-project/
+├── agentcore/
+│   ├── .env.local          # API keys (gitignored)
+│   ├── agentcore.json      # Resource specifications
 │   ├── aws-targets.json    # Deployment targets
-│   └── cdk/                # AWS CDK project for deployment
-├── app/                    # Application code (if agents were created)
-└── AGENTS.md               # AI coding assistant context
+│   └── cdk/                # CDK infrastructure
+├── app/                    # Application code
 ```
 
 ## Getting Started
 
 ### Prerequisites
 
-- [Node.js](https://nodejs.org/) (v18 or later)
-- [AWS CLI](https://aws.amazon.com/cli/) configured with credentials
-- [AgentCore CLI](https://github.com/awslabs/amazon-bedrock-agentcore) installed globally
+- **Node.js** 20.x or later
+- **uv** for Python agents ([install](https://docs.astral.sh/uv/getting-started/installation/))
 
 ### Development
 
@@ -62,7 +62,6 @@ The project uses a **flat resource model** where agents, memories, and credentia
 | `agentcore remove`   | Remove resources                                |
 | `agentcore dev`      | Run agent locally                               |
 | `agentcore deploy`   | Deploy to AWS                                   |
-| `agentcore destroy`  | Tear down deployed resources                    |
 | `agentcore status`   | Show deployment status                          |
 | `agentcore invoke`   | Invoke agent (local or deployed)                |
 | `agentcore package`  | Package agent artifacts                         |

@@ -99,12 +99,6 @@ Main project configuration using a **flat resource model**. Agents, memories, an
 - `PYTHON_3_12`
 - `PYTHON_3_13`
 
-**Node.js:**
-
-- `NODE_18`
-- `NODE_20`
-- `NODE_22`
-
 ---
 
 ## Memory Resource
@@ -132,7 +126,6 @@ Main project configuration using a **flat resource model**. Agents, memories, an
 | `SEMANTIC`        | Vector-based similarity search for relevant context |
 | `SUMMARIZATION`   | Compressed conversation history                     |
 | `USER_PREFERENCE` | Store user-specific preferences and settings        |
-| `CUSTOM`          | Custom strategy implementation                      |
 
 Strategy configuration:
 
@@ -161,13 +154,14 @@ Strategy configuration:
 | `type` | Yes      | Always `"ApiKeyCredentialProvider"` |
 | `name` | Yes      | Credential name (3-255 chars)       |
 
-The actual API key is stored in `.env.local` for local development and in AWS Secrets Manager for deployed environments.
+The actual API key is stored in `.env.local` for local development and in AgentCore Identity service for deployed
+environments.
 
 ---
 
 ## aws-targets.json
 
-Array of deployment targets.
+Deployment target
 
 ```json
 [
@@ -176,12 +170,6 @@ Array of deployment targets.
     "description": "Production (us-west-2)",
     "account": "123456789012",
     "region": "us-west-2"
-  },
-  {
-    "name": "dev",
-    "description": "Development (us-east-1)",
-    "account": "123456789012",
-    "region": "us-east-1"
   }
 ]
 ```
@@ -205,9 +193,9 @@ current list.
 API keys for local development. This file is gitignored.
 
 ```bash
-OPENAI_API_KEY=sk-...
-ANTHROPIC_API_KEY=sk-ant-...
-GOOGLE_API_KEY=AI...
+AGENTCORE_CREDENTIAL_{projectName}OPENAI=sk-...
+AGENTCORE_CREDENTIAL_{projectName}ANTHROPIC=sk-ant-...
+AGENTCORE_CREDENTIAL_{projectName}GEMINI=...
 ```
 
 Environment variable names should match the credential names in your configuration.
