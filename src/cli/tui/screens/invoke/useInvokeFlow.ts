@@ -132,11 +132,8 @@ export function useInvokeFlow(options: InvokeFlowOptions = {}): InvokeFlowState 
 
       const logger = loggerRef.current;
 
-      // Clear previous messages and start fresh with new user message and empty assistant message
-      setMessages([
-        { role: 'user', content: prompt },
-        { role: 'assistant', content: '' },
-      ]);
+      // Append new user message and empty assistant message (conversation history is preserved)
+      setMessages(prev => [...prev, { role: 'user', content: prompt }, { role: 'assistant', content: '' }]);
       setPhase('invoking');
       streamingContentRef.current = '';
 
