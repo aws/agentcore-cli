@@ -26,7 +26,6 @@ on:
 permissions:
   contents: write
   pull-requests: write
-  packages: write
 
 jobs:
   prepare-release:
@@ -179,7 +178,7 @@ jobs:
           ### 🔄 Release Process
           After merging this PR:
           1. Package will be built and tested
-          2. **Manual approval required** before publishing to GitHub Packages
+          2. **Manual approval required** before publishing to npm
           3. GitHub release and tag created after publication
 
           ### 🚨 Running from: $GITHUB_REF
@@ -259,42 +258,39 @@ jobs:
     needs: test-and-build
     runs-on: ubuntu-latest
     environment:
-      name: github-packages-approval
+      name: npm-publish-approval
 
     steps:
       - name: Approval checkpoint
         run: |
           echo "✅ Build and tests successful"
-          echo "📦 Package ready for GitHub Packages publication"
+          echo "📦 Package ready for npm publication"
           echo ""
           echo "⚠️  MANUAL APPROVAL REQUIRED"
           echo ""
           echo "Before approving:"
           echo "1. Verify the PR has been merged to main"
           echo "2. Check that version number is correct"
-          echo "3. Review the CHANGELOG.md entries"
-          echo "4. Ensure no duplicate version exists on GitHub Packages"
+          echo "3. Ensure no duplicate version exists on npm"
           echo ""
           echo "🚨 Only approve if everything is correct!"
 
-  publish-github-packages:
-    name: Publish to GitHub Packages
+  publish-npm:
+    name: Publish to npm
     needs: [prepare-release, release-approval]
     runs-on: ubuntu-latest
-    # CRITICAL: Only run from main branch
     if: github.ref == 'refs/heads/main'
     environment:
-      name: github-packages
-      url: https://github.com/${{ github.repository }}/packages
+      name: npm-publish
+      url: https://www.npmjs.com/package/agentcore
     permissions:
       contents: write
-      packages: write
 
     steps:
       - name: Checkout latest main (AFTER PR merge)
         uses: actions/checkout@v4
         with:
-          ref: main # CRITICAL: Always checkout main, not the original trigger commit
+          ref: main
           fetch-depth: 0
 
       - name: Verify we have the merged code
@@ -310,7 +306,7 @@ jobs:
         with:
           node-version: 20.x
           cache: 'npm'
-          registry-url: 'https://npm.pkg.github.com'
+          registry-url: 'https://registry.npmjs.org'
 
       - name: Download artifacts
         uses: actions/download-artifact@v4
@@ -353,10 +349,10 @@ jobs:
       - name: Build package
         run: npm run build
 
-      - name: Publish to GitHub Packages
+      - name: Publish to npm
         run: npm publish
         env:
-          NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_SECRET }}
 
       - name: Create and push tag
         env:
@@ -381,10 +377,9 @@ jobs:
           body: |
             ## Installation
 
-            Configure npm for GitHub Packages, then install:
             ```bash
-            npm install agentcore@${{ steps.version.outputs.version }}
+            npm install -g agentcore@${{ steps.version.outputs.version }}
             ```
 
             ## What's Changed
-            See [CHANGELOG.md](https://github.com/${{ github.repository }}/blob/v${{ steps.version.outputs.version }}/CHANGELOG.md) for details.
+            See the [full changelog](https://github.com/${{ github.repository }}/compare/v${{ steps.version.outputs.version }}...main) for details.

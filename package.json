@@ -1,10 +1,7 @@
 {
-  "name": "@aws/agentcore",
-  "version": "0.3.0-preview.1.4",
+  "name": "agentcore",
+  "version": "0.3.0-preview1.0",
   "description": "CLI for Amazon Bedrock AgentCore",
-  "publishConfig": {
-    "registry": "https://npm.pkg.github.com"
-  },
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
   "bin": {
