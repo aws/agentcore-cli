@@ -2,9 +2,11 @@
 
 <!-- Provide a detailed description of the changes in this PR -->
 
-## Related Issues
+## Related Issue
 
-<!-- Link to related issues using #issue-number format -->
+<!-- Every PR must be associated with an issue. Link it below using #issue-number format. -->
+
+Closes #
 
 ## Documentation PR
 
