@@ -303,18 +303,10 @@ function updateChangelog(newVersion: string, customChanges?: string): void {
   const changelogPath = 'CHANGELOG.md';
   const date = new Date().toISOString().split('T')[0];
 
-  let content: string;
-  if (existsSync(changelogPath)) {
-    content = readFileSync(changelogPath, 'utf-8');
-  } else {
-    content = '# Changelog\n\nAll notable changes to this project will be documented in this file.\n\n';
-  }
-
-  let entry = `\n## [${newVersion}] - ${date}\n\n`;
-
+  // Build the new entry
+  let entryContent = '';
   if (customChanges) {
-    entry += '### Changes\n\n';
-    entry += customChanges + '\n';
+    entryContent = `### Changes\n\n${customChanges}`;
   } else {
     console.log('\n⚠️  No changelog provided. Auto-generating from commits.');
     console.log('💡 Tip: Use --changelog to provide meaningful release notes');
@@ -323,35 +315,45 @@ function updateChangelog(newVersion: string, customChanges?: string): void {
     if (gitLog) {
       const categorized = categorizeCommits(gitLog);
       const formatted = formatChangelog(categorized);
-      if (formatted) {
-        entry += formatted + '\n';
-      } else {
-        entry += '### Changes\n\n' + gitLog + '\n';
-      }
+      entryContent = formatted || `### Changes\n\n${gitLog}`;
     }
   }
 
-  // Insert after header
-  if (content.includes('# Changelog')) {
-    const parts = content.split('\n');
-    const headerEndIndex = parts.findIndex((line, i) => i > 0 && line.startsWith('## '));
+  const entry = `## [${newVersion}] - ${date}\n\n${entryContent}`;
 
-    if (headerEndIndex > 0) {
-      parts.splice(headerEndIndex, 0, entry);
-      content = parts.join('\n');
-    } else {
-      // No existing versions, append after header section
-      const insertIndex = parts.findIndex((line, i) => i > 0 && line.trim() === '');
-      if (insertIndex > 0) {
-        parts.splice(insertIndex + 1, 0, entry);
-        content = parts.join('\n');
-      } else {
-        content += entry;
+  let content: string;
+  if (existsSync(changelogPath)) {
+    content = readFileSync(changelogPath, 'utf-8');
+
+    // Find where to insert (after # Changelog header line)
+    const lines = content.split('\n');
+    const headerIndex = lines.findIndex(line => line.startsWith('# Changelog'));
+
+    if (headerIndex !== -1) {
+      // Find the next ## or end of preamble (first non-empty line after a blank line)
+      let insertAt = headerIndex + 1;
+
+      // Skip blank lines and description text until we hit an existing ## or end
+      while (insertAt < lines.length && !lines[insertAt]?.startsWith('## ')) {
+        insertAt++;
       }
+
+      // Insert the new entry
+      lines.splice(insertAt, 0, '', entry, '');
+      content = lines.join('\n');
+    } else {
+      // No header found, prepend everything
+      content = `# Changelog\n\n${entry}\n\n${content}`;
     }
   } else {
-    content = '# Changelog\n' + entry + '\n' + content;
+    content = `# Changelog\n\nAll notable changes to this project will be documented in this file.\n\n${entry}\n`;
   }
+
+  // Clean up multiple consecutive blank lines
+  content = content.replace(/\n{3,}/g, '\n\n');
+
+  // Ensure single trailing newline
+  content = content.trimEnd() + '\n';
 
   writeFileSync(changelogPath, content);
   console.log('✓ Updated CHANGELOG.md');
