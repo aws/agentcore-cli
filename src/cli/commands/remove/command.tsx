@@ -166,7 +166,7 @@ export const registerRemove = (program: Command) => {
       process.exit(1);
     });
 
-  // Add argument and action for parent command AFTER registering subcommands
+  // IMPORTANT: Register the catch-all argument LAST. No subcommands should be registered after this point.
   removeCommand
     .argument('[subcommand]')
     .action((subcommand: string | undefined, _options, cmd) => {

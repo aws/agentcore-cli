@@ -1,3 +1,4 @@
+/* eslint-disable security/detect-object-injection, security/detect-non-literal-fs-filename */
 import { CLI_LOGS_DIR, CLI_SYSTEM_DIR, CONFIG_DIR, findConfigRoot } from '../../lib';
 import type { RemovalPreview } from '../operations/remove';
 import { existsSync, mkdirSync, writeFileSync } from 'node:fs';
@@ -7,7 +8,7 @@ const REMOVE_LOGS_SUBDIR = 'remove';
 
 export interface RemoveLoggerOptions {
   /** Type of resource being removed */
-  resourceType: 'agent' | 'memory' | 'identity' | 'gateway' | 'mcp-tool' | 'target';
+  resourceType: 'agent' | 'memory' | 'identity' | 'gateway' | 'mcp-tool';
   /** Name of the resource being removed */
   resourceName: string;
 }

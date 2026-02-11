@@ -1,6 +1,6 @@
 import { runCLI } from '../../../../test-utils/index.js';
 import { randomUUID } from 'node:crypto';
-import { mkdir, rm } from 'node:fs/promises';
+import { mkdir, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
@@ -22,12 +22,13 @@ describe('deploy --help', () => {
   });
 });
 
-describe('deploy validation', () => {
+describe('deploy without agents', () => {
   let noAgentTestDir: string;
   let noAgentProjectDir: string;
 
   beforeAll(async () => {
     noAgentTestDir = join(tmpdir(), `agentcore-deploy-noagent-${randomUUID()}`);
+    // eslint-disable-next-line security/detect-non-literal-fs-filename
     await mkdir(noAgentTestDir, { recursive: true });
 
     // Create project without any agents
@@ -37,19 +38,26 @@ describe('deploy validation', () => {
       throw new Error(`Failed to create project: ${result.stdout} ${result.stderr}`);
     }
     noAgentProjectDir = join(noAgentTestDir, projectName);
+
+    // Write aws-targets.json directly (replaces old 'add target' command)
+    const awsTargetsPath = join(noAgentProjectDir, 'agentcore', 'aws-targets.json');
+    // eslint-disable-next-line security/detect-non-literal-fs-filename
+    await writeFile(
+      awsTargetsPath,
+      JSON.stringify([{ name: 'default', account: '123456789012', region: 'us-east-1' }])
+    );
   });
 
   afterAll(async () => {
     await rm(noAgentTestDir, { recursive: true, force: true });
   });
 
-  it('rejects deploy when project is not properly configured', async () => {
-    // Deploy without agents or targets should fail with a validation error
+  it('rejects deploy when no agents are defined', async () => {
     const result = await runCLI(['deploy', '--json'], noAgentProjectDir);
     expect(result.exitCode).toBe(1);
     const json = JSON.parse(result.stdout);
     expect(json.success).toBe(false);
-    // Error could be about missing agents or missing target configuration
-    expect(json.error.length > 0).toBeTruthy();
+    expect(json.error).toBeDefined();
+    expect(json.error.toLowerCase()).toContain('no agents');
   });
 });

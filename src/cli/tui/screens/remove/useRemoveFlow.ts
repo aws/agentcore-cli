@@ -67,19 +67,21 @@ export function useRemoveFlow({ force, dryRun }: RemoveFlowOptions): RemoveFlowS
         setProjectName(projectSpec.name);
         items.push(`AgentCore project: ${projectSpec.name}`);
 
-        if (projectSpec.agents.length > 0) {
-          items.push(`${projectSpec.agents.length} agent(s)`);
+        if (projectSpec.agents && projectSpec.agents.length > 0) {
+          items.push(`${projectSpec.agents.length} agent definition${projectSpec.agents.length > 1 ? 's' : ''}`);
         }
-        if (projectSpec.memories.length > 0) {
-          items.push(`${projectSpec.memories.length} memory provider(s)`);
+        if (projectSpec.memories && projectSpec.memories.length > 0) {
+          items.push(`${projectSpec.memories.length} memory provider${projectSpec.memories.length > 1 ? 's' : ''}`);
         }
-        if (projectSpec.credentials.length > 0) {
-          items.push(`${projectSpec.credentials.length} credential(s)`);
+        if (projectSpec.credentials && projectSpec.credentials.length > 0) {
+          items.push(`${projectSpec.credentials.length} credential${projectSpec.credentials.length > 1 ? 's' : ''}`);
         }
       } catch {
-        // Continue even if we can't read the project spec
+        // Project exists but has issues - still allow reset
+        items.push('AgentCore project (corrupted or incomplete)');
       }
 
+      items.push('All schemas will be reset to empty state');
       setItemsToRemove(items);
 
       // Check for deployed stacks per target

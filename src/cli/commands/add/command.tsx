@@ -187,6 +187,7 @@ export function registerAdd(program: Command) {
   const addCmd = program
     .command('add')
     .description(COMMAND_DESCRIPTIONS.add)
+    // Catch-all argument for invalid subcommands - Commander matches subcommands first
     .argument('[subcommand]')
     .action((subcommand: string | undefined, _options, cmd) => {
       if (subcommand) {
