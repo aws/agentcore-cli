@@ -165,9 +165,6 @@ export const registerCreate = (program: Command) => {
           options.memory = options.memory ?? 'none';
         }
 
-        // Always default language to Python (only supported option)
-        options.language = options.language ?? 'Python';
-
         // Any flag triggers non-interactive CLI mode
         const hasAnyFlag = Boolean(
           options.name ??
@@ -186,6 +183,8 @@ export const registerCreate = (program: Command) => {
         );
 
         if (hasAnyFlag) {
+          // Default language to Python (only supported option) for CLI mode
+          options.language = options.language ?? 'Python';
           await handleCreateCLI(options as CreateOptions);
         } else {
           handleCreateTUI();

@@ -206,4 +206,13 @@ describe('create command', () => {
       expect(json.error).toContain('already exists');
     });
   });
+
+  describe('no flags', () => {
+    it('launches TUI when no flags provided', async () => {
+      const result = await runCLI(['create'], testDir);
+
+      // TUI outputs "AgentCore Create" header
+      expect(result.stdout).toContain('AgentCore Create');
+    });
+  });
 });
