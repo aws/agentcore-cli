@@ -11,7 +11,7 @@ requires-python = ">=3.10"
 dependencies = [
     "aws-opentelemetry-distro",
     "openai-agents >= 0.4.2",
-    "bedrock-agentcore >= 1.0.3",
+    "bedrock-agentcore >= 1.3.0",
     "botocore[crt] >= 1.35.0",
     "python-dotenv >= 1.0.1",
 ]
