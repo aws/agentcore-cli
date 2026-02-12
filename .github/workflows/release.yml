@@ -285,6 +285,7 @@ jobs:
       url: https://www.npmjs.com/package/@aws/agentcore
     permissions:
       contents: write
+      id-token: write
 
     steps:
       - name: Checkout latest main (AFTER PR merge)
@@ -350,9 +351,7 @@ jobs:
         run: npm run build
 
       - name: Publish to npm
-        run: npm publish --access=public
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_SECRET }}
+        run: npm publish --access=public --provenance
 
       - name: Create and push tag
         env:
