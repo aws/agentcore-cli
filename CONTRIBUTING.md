@@ -85,14 +85,14 @@ See [docs/TESTING.md](docs/TESTING.md) for detailed testing guidelines.
 
 ### Local Development with CDK Package
 
-If you're also developing the CDK package (`agentcore-cdk`):
+If you're also developing the CDK package (`@aws/agentcore-cdk`):
 
 ```bash
 # In the CDK package directory
 npm link
 
 # In this directory
-npm link agentcore-cdk
+npm link @aws/agentcore-cdk
 ```
 
 ### Testing End-to-End
@@ -108,7 +108,7 @@ agentcore create
 
 ```bash
 cd agentcore/cdk
-npm link agentcore-cdk
+npm link @aws/agentcore-cdk
 ```
 
 3. Test synth:
@@ -119,7 +119,7 @@ npm run cdk synth
 
 ## Related Packages
 
-- `agentcore-cdk` - CDK constructs used by vended projects
+- `@aws/agentcore-cdk` - CDK constructs used by vended projects
 
 ## Licensing
 

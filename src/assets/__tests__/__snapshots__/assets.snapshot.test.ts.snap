@@ -33,7 +33,7 @@ The \`cdk.json\` file tells the CDK Toolkit how to execute your app.
 exports[`Assets Directory Snapshots > CDK assets > cdk/cdk/bin/cdk.ts should match snapshot 1`] = `
 "#!/usr/bin/env node
 import { AgentCoreStack } from '../lib/cdk-stack';
-import { ConfigIO, type AwsDeploymentTarget } from 'agentcore-cdk';
+import { ConfigIO, type AwsDeploymentTarget } from '@aws/agentcore-cdk';
 import { App, type Environment } from 'aws-cdk-lib';
 import * as path from 'path';
 
@@ -203,7 +203,7 @@ exports[`Assets Directory Snapshots > CDK assets > cdk/cdk/jest.config.js should
 `;
 
 exports[`Assets Directory Snapshots > CDK assets > cdk/cdk/lib/cdk-stack.ts should match snapshot 1`] = `
-"import { AgentCoreApplication, type AgentCoreProjectSpec } from 'agentcore-cdk';
+"import { AgentCoreApplication, type AgentCoreProjectSpec } from '@aws/agentcore-cdk';
 import { CfnOutput, Stack, type StackProps } from 'aws-cdk-lib';
 import { Construct } from 'constructs';
 
@@ -280,7 +280,7 @@ exports[`Assets Directory Snapshots > CDK assets > cdk/cdk/package.json should m
     "typescript": "~5.9.3"
   },
   "dependencies": {
-    "agentcore-cdk": "^0.1.0-alpha.1",
+    "@aws/agentcore-cdk": "^0.1.0-alpha.1",
     "aws-cdk-lib": "2.234.1",
     "constructs": "^10.0.0"
   }

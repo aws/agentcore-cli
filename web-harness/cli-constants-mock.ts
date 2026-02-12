@@ -12,9 +12,9 @@ export const DISTRO_MODE: DistroMode = 'PROD_DISTRO';
 
 export const DISTRO_CONFIG = {
   PROD_DISTRO: {
-    packageName: 'agentcore',
+    packageName: '@aws/agentcore',
     registryUrl: 'https://registry.npmjs.org',
-    installCommand: 'npm install -g agentcore@latest',
+    installCommand: 'npm install -g @aws/agentcore@latest',
   },
   PRIVATE_DEV_DISTRO: {
     packageName: '@aws/agentcore',

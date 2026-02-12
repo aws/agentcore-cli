@@ -1,4 +1,4 @@
-import { AgentCoreApplication, type AgentCoreProjectSpec } from 'agentcore-cdk';
+import { AgentCoreApplication, type AgentCoreProjectSpec } from '@aws/agentcore-cdk';
 import { CfnOutput, Stack, type StackProps } from 'aws-cdk-lib';
 import { Construct } from 'constructs';
 

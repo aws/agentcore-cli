@@ -282,7 +282,7 @@ jobs:
     if: github.ref == 'refs/heads/main'
     environment:
       name: npm-publish
-      url: https://www.npmjs.com/package/agentcore
+      url: https://www.npmjs.com/package/@aws/agentcore
     permissions:
       contents: write
 
@@ -378,7 +378,7 @@ jobs:
             ## Installation
 
             ```bash
-            npm install -g agentcore@${{ steps.version.outputs.version }}
+            npm install -g @aws/agentcore@${{ steps.version.outputs.version }}
             ```
 
             ## What's Changed

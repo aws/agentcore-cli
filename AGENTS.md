@@ -18,7 +18,7 @@ src/
 └── assets/            # Template assets vended to users
 ```
 
-Note: CDK L3 constructs are in a separate package `agentcore-cdk`.
+Note: CDK L3 constructs are in a separate package `@aws/agentcore-cdk`.
 
 ## CLI Commands
 
@@ -47,7 +47,7 @@ Note: CDK L3 constructs are in a separate package `agentcore-cdk`.
 
 When users run `agentcore create`, we vend a CDK project at `agentcore/cdk/` that:
 
-- Imports `agentcore-cdk` for L3 constructs
+- Imports `@aws/agentcore-cdk` for L3 constructs
 - Reads schema files and synthesizes CloudFormation
 
 ## Library Exports
@@ -80,4 +80,4 @@ See `docs/TESTING.md` for details.
 
 ## Related Package
 
-- `agentcore-cdk` - CDK constructs used by vended projects
+- `@aws/agentcore-cdk` - CDK constructs used by vended projects
