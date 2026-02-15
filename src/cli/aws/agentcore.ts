@@ -44,7 +44,7 @@ export interface StopRuntimeSessionResult {
  * Parse a single SSE data line and extract the content.
  * Returns null if the line is not a data line or contains an error.
  */
-function parseSSELine(line: string): { content: string | null; error: string | null } {
+export function parseSSELine(line: string): { content: string | null; error: string | null } {
   if (!line.startsWith('data: ')) {
     return { content: null, error: null };
   }
@@ -65,7 +65,7 @@ function parseSSELine(line: string): { content: string | null; error: string | n
 /**
  * Parse SSE response into combined text.
  */
-function parseSSE(text: string): string {
+export function parseSSE(text: string): string {
   const parts: string[] = [];
   for (const line of text.split('\n')) {
     const { content, error } = parseSSELine(line);
@@ -83,7 +83,7 @@ function parseSSE(text: string): string {
  * Extract result from a JSON response object.
  * Handles both {"result": "..."} and plain text responses.
  */
-function extractResult(text: string): string {
+export function extractResult(text: string): string {
   try {
     const parsed: unknown = JSON.parse(text);
     if (parsed && typeof parsed === 'object' && 'result' in parsed) {

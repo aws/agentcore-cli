@@ -32,6 +32,30 @@ interface UseListNavigationResult {
 }
 
 /**
+ * Find the next non-disabled index in the given direction, wrapping around.
+ * Extracted from the hook for standalone testability.
+ */
+export function findNextEnabledIndex<T>(
+  items: T[],
+  current: number,
+  direction: 1 | -1,
+  isDisabled?: (item: T) => boolean
+): number {
+  if (!isDisabled) {
+    return (current + direction + items.length) % items.length;
+  }
+  let next = current;
+  for (const _ of items) {
+    next = (next + direction + items.length) % items.length;
+    const item = items[next];
+    if (item !== undefined && !isDisabled(item)) {
+      return next;
+    }
+  }
+  return current; // All items disabled, stay in place
+}
+
+/**
  * Hook for managing list navigation with arrow keys, Enter, Escape, and optional hotkeys.
  * Reduces boilerplate for screens with selectable lists.
  *
@@ -77,21 +101,9 @@ export function useListNavigation<T>({
     setSelectedIndex(idx >= 0 ? idx : 0);
   }
 
-  // Find next non-disabled index in given direction
-  const findNextIndex = (current: number, direction: 1 | -1): number => {
-    if (!isDisabled) {
-      return (current + direction + items.length) % items.length;
-    }
-    let next = current;
-    for (const _ of items) {
-      next = (next + direction + items.length) % items.length;
-      const item = items[next];
-      if (item !== undefined && !isDisabled(item)) {
-        return next;
-      }
-    }
-    return current; // All items disabled, stay in place
-  };
+  // Find next non-disabled index in given direction (delegates to standalone function)
+  const findNextIndex = (current: number, direction: 1 | -1): number =>
+    findNextEnabledIndex(items, current, direction, isDisabled);
 
   useInput(
     (input, key) => {

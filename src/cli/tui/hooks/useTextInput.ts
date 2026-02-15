@@ -2,7 +2,7 @@ import { useInput } from 'ink';
 import React, { useCallback, useState } from 'react';
 
 /** Find the position of the previous word boundary */
-function findPrevWordBoundary(text: string, cursor: number): number {
+export function findPrevWordBoundary(text: string, cursor: number): number {
   let pos = cursor;
   while (pos > 0 && text.charAt(pos - 1) === ' ') pos--;
   while (pos > 0 && text.charAt(pos - 1) !== ' ') pos--;
@@ -10,7 +10,7 @@ function findPrevWordBoundary(text: string, cursor: number): number {
 }
 
 /** Find the position of the next word boundary */
-function findNextWordBoundary(text: string, cursor: number): number {
+export function findNextWordBoundary(text: string, cursor: number): number {
   let pos = cursor;
   while (pos < text.length && text.charAt(pos) !== ' ') pos++;
   while (pos < text.length && text.charAt(pos) === ' ') pos++;

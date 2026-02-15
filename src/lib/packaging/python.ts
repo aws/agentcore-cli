@@ -32,13 +32,13 @@ function isPythonRuntimeVersion(version: RuntimeVersion): version is PythonRunti
   return isPythonRuntime(version);
 }
 // AC Runtime uses AL2023 with GLIBC 2.34, we can support any manylinux <= 2_34
-const PLATFORM_CANDIDATES = ['aarch64-manylinux2014', 'aarch64-manylinux_2_28', 'aarch64-manylinux_2_34'];
+export const PLATFORM_CANDIDATES = ['aarch64-manylinux2014', 'aarch64-manylinux_2_28', 'aarch64-manylinux_2_34'];
 
 /**
  * Extracts Python version from runtime constant.
  * Example: PYTHON_3_12 -> "3.12" (for use with uv --python-version)
  */
-function extractPythonVersion(runtime: PythonRuntime): string {
+export function extractPythonVersion(runtime: PythonRuntime): string {
   const match = PYTHON_RUNTIME_REGEX.exec(runtime);
   if (!match) {
     throw new PackagingError(`Unsupported Python runtime value: ${runtime}`);
