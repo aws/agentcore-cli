@@ -115,6 +115,39 @@ describe('readEnvFile + writeEnvFile', () => {
       rmSync(dir, { recursive: true, force: true });
     }
   });
+
+  it('skips null and undefined values', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'env-test-nulls-'));
+    try {
+      await writeEnvFile(
+        {
+          KEEP: 'value',
+          SKIP_NULL: null as unknown as string,
+          SKIP_UNDEF: undefined as unknown as string,
+        },
+        dir,
+        false
+      );
+      const result = await readEnvFile(dir);
+      expect(result.KEEP).toBe('value');
+      expect(result.SKIP_NULL).toBeUndefined();
+      expect(result.SKIP_UNDEF).toBeUndefined();
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('escapes newlines and carriage returns', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'env-test-newlines-'));
+    try {
+      await writeEnvFile({ KEY: 'line1\nline2\rline3' }, dir, false);
+      const raw = readFileSync(join(dir, '.env.local'), 'utf-8');
+      expect(raw).toContain('\\n');
+      expect(raw).toContain('\\r');
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
 });
 
 describe('getEnvVar', () => {

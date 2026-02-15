@@ -146,4 +146,64 @@ describe('ConfigValidationError', () => {
       expect(err).toBeInstanceOf(Error);
     }
   });
+
+  it('formats invalid_literal errors', () => {
+    const schema = z.object({ version: z.literal(1) });
+    const result = schema.safeParse({ version: 2 });
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      const err = new ConfigValidationError('/path', 'project', result.error);
+      expect(err.message).toContain('version');
+    }
+  });
+
+  it('formats discriminated union errors', () => {
+    const schema = z.object({
+      mode: z.enum(['fast', 'slow']),
+    });
+    const result = schema.safeParse({ mode: 'invalid' });
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      const err = new ConfigValidationError('/path', 'project', result.error);
+      expect(err.message).toContain('mode');
+    }
+  });
+
+  it('formats nested path errors', () => {
+    const schema = z.object({
+      agents: z.array(z.object({ name: z.string() })),
+    });
+    const result = schema.safeParse({ agents: [{ name: 123 }] });
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      const err = new ConfigValidationError('/path', 'project', result.error);
+      // Path should show agents[0].name or similar
+      expect(err.message).toContain('agents');
+      expect(err.message).toContain('name');
+    }
+  });
+
+  it('formats root-level error path', () => {
+    const schema = z.string();
+    const result = schema.safeParse(123);
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      const err = new ConfigValidationError('/path', 'project', result.error);
+      expect(err.message).toContain('root');
+    }
+  });
+
+  it('formats multiple errors', () => {
+    const schema = z.object({
+      name: z.string(),
+      version: z.number(),
+    });
+    const result = schema.safeParse({ name: 123, version: 'abc' });
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      const err = new ConfigValidationError('/path', 'project', result.error);
+      expect(err.message).toContain('name');
+      expect(err.message).toContain('version');
+    }
+  });
 });

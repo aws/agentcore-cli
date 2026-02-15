@@ -1,4 +1,5 @@
 import {
+  AgentAlreadyExistsError,
   getErrorMessage,
   isChangesetInProgressError,
   isExpiredTokenError,
@@ -8,6 +9,22 @@ import {
 import { describe, expect, it } from 'vitest';
 
 describe('errors', () => {
+  describe('AgentAlreadyExistsError', () => {
+    it('has correct message with agent name', () => {
+      const err = new AgentAlreadyExistsError('my-agent');
+      expect(err.message).toBe('An agent named "my-agent" already exists in the schema.');
+    });
+
+    it('has correct name', () => {
+      const err = new AgentAlreadyExistsError('test');
+      expect(err.name).toBe('AgentAlreadyExistsError');
+    });
+
+    it('is instance of Error', () => {
+      expect(new AgentAlreadyExistsError('test')).toBeInstanceOf(Error);
+    });
+  });
+
   describe('getErrorMessage', () => {
     it('returns message from Error instance', () => {
       const err = new Error('test error');

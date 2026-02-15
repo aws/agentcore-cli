@@ -1,5 +1,5 @@
 import type { AgentCoreProjectSpec, DirectoryPath, FilePath } from '../../../../schema';
-import { getDevConfig, getDevSupportedAgents } from '../config';
+import { getAgentPort, getDevConfig, getDevSupportedAgents } from '../config';
 import { describe, expect, it } from 'vitest';
 
 // Helper to cast strings to branded path types for testing
@@ -93,6 +93,146 @@ describe('getDevConfig', () => {
     expect(() => getDevConfig(workingDir, project, undefined, 'NonExistentAgent')).toThrow(
       'Agent "NonExistentAgent" not found'
     );
+  });
+
+  it('throws when specified agent is not Python', () => {
+    const project: AgentCoreProjectSpec = {
+      name: 'TestProject',
+      version: 1,
+      agents: [
+        {
+          type: 'AgentCoreRuntime',
+          name: 'NodeAgent',
+          build: 'CodeZip',
+          runtimeVersion: 'NODE_20',
+          entrypoint: filePath('index.js'),
+          codeLocation: dirPath('./agents/node'),
+        },
+      ],
+      memories: [],
+      credentials: [],
+    };
+
+    expect(() => getDevConfig(workingDir, project, undefined, 'NodeAgent')).toThrow('Dev mode only supports Python');
+  });
+
+  it('resolves directory from codeLocation relative to configRoot', () => {
+    const project: AgentCoreProjectSpec = {
+      name: 'TestProject',
+      version: 1,
+      agents: [
+        {
+          type: 'AgentCoreRuntime',
+          name: 'PythonAgent',
+          build: 'CodeZip',
+          runtimeVersion: 'PYTHON_3_12',
+          entrypoint: filePath('main.py'),
+          codeLocation: dirPath('app/PythonAgent/'),
+        },
+      ],
+      memories: [],
+      credentials: [],
+    };
+
+    const config = getDevConfig(workingDir, project, '/test/project/agentcore');
+    expect(config).not.toBeNull();
+    // codeLocation is relative, so it should resolve relative to project root (parent of configRoot)
+    expect(config!.directory).toContain('app/PythonAgent');
+  });
+
+  it('uses workingDir when no configRoot or codeLocation', () => {
+    const project: AgentCoreProjectSpec = {
+      name: 'TestProject',
+      version: 1,
+      agents: [
+        {
+          type: 'AgentCoreRuntime',
+          name: 'PythonAgent',
+          build: 'CodeZip',
+          runtimeVersion: 'PYTHON_3_12',
+          entrypoint: filePath('main.py'),
+          codeLocation: dirPath('./agents/python'),
+        },
+      ],
+      memories: [],
+      credentials: [],
+    };
+
+    // No configRoot provided
+    const config = getDevConfig(workingDir, project);
+    expect(config).not.toBeNull();
+    expect(config!.directory).toBe(workingDir);
+  });
+
+  it('handles .py: entrypoint format (module:function)', () => {
+    const project: AgentCoreProjectSpec = {
+      name: 'TestProject',
+      version: 1,
+      agents: [
+        {
+          type: 'AgentCoreRuntime',
+          name: 'FastAPIAgent',
+          build: 'CodeZip',
+          runtimeVersion: 'PYTHON_3_12',
+          entrypoint: filePath('app.py:handler'),
+          codeLocation: dirPath('./agents/fastapi'),
+        },
+      ],
+      memories: [],
+      credentials: [],
+    };
+
+    const config = getDevConfig(workingDir, project, '/test/project/agentcore');
+    expect(config).not.toBeNull();
+    expect(config!.isPython).toBe(true);
+  });
+});
+
+describe('getAgentPort', () => {
+  it('returns basePort when project is null', () => {
+    expect(getAgentPort(null, 'any', 8080)).toBe(8080);
+  });
+
+  it('returns basePort + index for found agent', () => {
+    const project: AgentCoreProjectSpec = {
+      name: 'TestProject',
+      version: 1,
+      agents: [
+        {
+          type: 'AgentCoreRuntime',
+          name: 'Agent1',
+          build: 'CodeZip',
+          runtimeVersion: 'PYTHON_3_12',
+          entrypoint: filePath('main.py'),
+          codeLocation: dirPath('./agents/a1'),
+        },
+        {
+          type: 'AgentCoreRuntime',
+          name: 'Agent2',
+          build: 'CodeZip',
+          runtimeVersion: 'PYTHON_3_12',
+          entrypoint: filePath('main.py'),
+          codeLocation: dirPath('./agents/a2'),
+        },
+      ],
+      memories: [],
+      credentials: [],
+    };
+
+    expect(getAgentPort(project, 'Agent1', 8080)).toBe(8080);
+    expect(getAgentPort(project, 'Agent2', 8080)).toBe(8081);
+  });
+
+  it('returns basePort when agent not found', () => {
+    const project: AgentCoreProjectSpec = {
+      name: 'TestProject',
+      version: 1,
+      agents: [],
+      memories: [],
+      credentials: [],
+    };
+
+    expect(getAgentPort(project, 'NonExistent', 9000)).toBe(9000);
   });
 });
 
