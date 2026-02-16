@@ -19,12 +19,16 @@ const hasNpm = hasCommand('npm');
 const hasGit = hasCommand('git');
 const hasUv = hasCommand('uv');
 
+const canRun = hasNpm && hasGit && hasUv;
+
 describe('integration: invoke agent', () => {
   let testDir: string;
   let projectPath: string;
   let agentName: string;
 
   beforeAll(async () => {
+    if (!canRun) return;
+
     testDir = join(tmpdir(), `agentcore-integ-invoke-${randomUUID()}`);
     await mkdir(testDir, { recursive: true });
 
@@ -57,10 +61,10 @@ describe('integration: invoke agent', () => {
   }, 60000);
 
   afterAll(async () => {
-    await rm(testDir, { recursive: true, force: true });
+    if (testDir) await rm(testDir, { recursive: true, force: true });
   });
 
-  it.skipIf(!hasNpm || !hasGit || !hasUv)(
+  it.skipIf(!canRun)(
     'invokes agent and receives response',
     async () => {
       expect(projectPath, 'Project should have been created').toBeTruthy();

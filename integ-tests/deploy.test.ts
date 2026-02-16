@@ -29,12 +29,16 @@ const hasGit = hasCommand('git');
 const hasUv = hasCommand('uv');
 const hasAws = hasAwsCredentials();
 
+const canRun = hasNpm && hasGit && hasUv && hasAws;
+
 describe('integration: deploy', () => {
   let testDir: string;
   let projectPath: string;
   const targetName = `integ-${Date.now()}`;
 
   beforeAll(async () => {
+    if (!canRun) return;
+
     testDir = join(tmpdir(), `agentcore-integ-deploy-${randomUUID()}`);
     await mkdir(testDir, { recursive: true });
 
@@ -92,10 +96,10 @@ describe('integration: deploy', () => {
       const json = JSON.parse(result.stdout);
       expect(json.success, 'Teardown should report success').toBe(true);
     }
-    await rm(testDir, { recursive: true, force: true });
+    if (testDir) await rm(testDir, { recursive: true, force: true });
   }, 300000);
 
-  it.skipIf(!hasNpm || !hasGit || !hasUv || !hasAws)(
+  it.skipIf(!canRun)(
     'deploys to AWS successfully',
     async () => {
       expect(projectPath, 'Project should have been created').toBeTruthy();
