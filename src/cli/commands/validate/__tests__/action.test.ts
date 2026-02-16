@@ -23,6 +23,32 @@ vi.mock('../../../../lib/index.js', () => {
     }
   }
 
+  class ConfigValidationError extends Error {}
+  class ConfigParseError extends Error {
+    constructor(
+      public readonly filePath: string,
+      public override readonly cause: unknown
+    ) {
+      super(`Parse error at ${filePath}`);
+    }
+  }
+  class ConfigReadError extends Error {
+    constructor(
+      public readonly filePath: string,
+      public override readonly cause: unknown
+    ) {
+      super(`Read error at ${filePath}`);
+    }
+  }
+  class ConfigNotFoundError extends Error {
+    constructor(
+      public readonly filePath: string,
+      public readonly fileType: string
+    ) {
+      super(`${fileType} not found at ${filePath}`);
+    }
+  }
+
   return {
     ConfigIO: class {
       readProjectSpec = mockReadProjectSpec;
@@ -30,10 +56,10 @@ vi.mock('../../../../lib/index.js', () => {
       readDeployedState = mockReadDeployedState;
       configExists = mockConfigExists;
     },
-    ConfigValidationError: class extends Error {},
-    ConfigParseError: class extends Error {},
-    ConfigReadError: class extends Error {},
-    ConfigNotFoundError: class extends Error {},
+    ConfigValidationError,
+    ConfigParseError,
+    ConfigReadError,
+    ConfigNotFoundError,
     NoProjectError,
     findConfigRoot: mockFindConfigRoot,
   };
@@ -119,5 +145,64 @@ describe('handleValidate', () => {
 
     expect(result.success).toBe(true);
     expect(mockFindConfigRoot).toHaveBeenCalledWith('/custom');
+  });
+
+  it('formats ConfigValidationError with its message', async () => {
+    mockFindConfigRoot.mockReturnValue('/project/agentcore');
+    const { ConfigValidationError } = await import('../../../../lib/index.js');
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-argument, @typescript-eslint/no-explicit-any
+    mockReadProjectSpec.mockRejectedValue(new (ConfigValidationError as any)('field "name" is required'));
+
+    const result = await handleValidate({});
+
+    expect(result.success).toBe(false);
+    expect(result.error).toBe('field "name" is required');
+  });
+
+  it('formats ConfigParseError with cause', async () => {
+    mockFindConfigRoot.mockReturnValue('/project/agentcore');
+    const { ConfigParseError } = await import('../../../../lib/index.js');
+    mockReadProjectSpec.mockRejectedValue(new ConfigParseError('agentcore.json', new Error('Unexpected token')));
+
+    const result = await handleValidate({});
+
+    expect(result.success).toBe(false);
+    expect(result.error).toContain('Invalid JSON in agentcore.json');
+    expect(result.error).toContain('Unexpected token');
+  });
+
+  it('formats ConfigReadError with cause', async () => {
+    mockFindConfigRoot.mockReturnValue('/project/agentcore');
+    const { ConfigReadError } = await import('../../../../lib/index.js');
+    mockReadProjectSpec.mockRejectedValue(
+      new ConfigReadError('agentcore.json', new Error('EACCES: permission denied'))
+    );
+
+    const result = await handleValidate({});
+
+    expect(result.success).toBe(false);
+    expect(result.error).toContain('Failed to read agentcore.json');
+    expect(result.error).toContain('EACCES');
+  });
+
+  it('formats ConfigNotFoundError with file name', async () => {
+    mockFindConfigRoot.mockReturnValue('/project/agentcore');
+    const { ConfigNotFoundError } = await import('../../../../lib/index.js');
+    mockReadProjectSpec.mockRejectedValue(new ConfigNotFoundError('/path/agentcore.json', 'project'));
+
+    const result = await handleValidate({});
+
+    expect(result.success).toBe(false);
+    expect(result.error).toBe('Required file not found: agentcore.json');
+  });
+
+  it('formats non-Error values as strings', async () => {
+    mockFindConfigRoot.mockReturnValue('/project/agentcore');
+    mockReadProjectSpec.mockRejectedValue('string error');
+
+    const result = await handleValidate({});
+
+    expect(result.success).toBe(false);
+    expect(result.error).toBe('string error');
   });
 });

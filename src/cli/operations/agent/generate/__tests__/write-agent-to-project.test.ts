@@ -110,6 +110,32 @@ describe('writeAgentToProject with credentialStrategy', () => {
     });
   });
 
+  describe('duplicate agent detection', () => {
+    it('throws AgentAlreadyExistsError for duplicate name', async () => {
+      const writeAgentToProject = await getWriteAgentToProject();
+      // First write an agent, then try to write the same one again
+      await writeAgentToProject(baseConfig, { configBaseDir });
+
+      await expect(writeAgentToProject(baseConfig, { configBaseDir })).rejects.toThrow('TestAgent');
+    });
+  });
+
+  describe('new project creation (no existing config)', () => {
+    it('creates project spec when config does not exist', async () => {
+      const writeAgentToProject = await getWriteAgentToProject();
+      // Remove the existing config so configExists('project') returns false
+      const { rm: rmFile } = await import('node:fs/promises');
+      await rmFile(join(configBaseDir, 'agentcore.json'));
+
+      await writeAgentToProject(baseConfig, { configBaseDir });
+
+      const project = await readProject();
+      expect(project.name).toBe('TestAgent');
+      expect(project.agents).toHaveLength(1);
+      expect(project.agents[0].name).toBe('TestAgent');
+    });
+  });
+
   describe('without credentialStrategy (backward compatibility)', () => {
     it('uses mapModelProviderToCredentials behavior', async () => {
       const writeAgentToProject = await getWriteAgentToProject();

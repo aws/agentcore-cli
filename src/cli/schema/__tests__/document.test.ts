@@ -95,4 +95,15 @@ describe('saveSchemaDocument', () => {
     expect(result.ok).toBe(false);
     expect(result.error).toBeDefined();
   });
+
+  it('returns error when write fails', async () => {
+    // Try to write to a path under a non-existent directory
+    const filePath = join(dir, 'no-such-dir', 'nested', 'file.json');
+    const content = JSON.stringify({ name: 'test', value: 1 });
+
+    const result = await saveSchemaDocument(filePath, content, TestSchema);
+
+    expect(result.ok).toBe(false);
+    expect(result.error).toBeDefined();
+  });
 });
