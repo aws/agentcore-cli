@@ -31,5 +31,4 @@ export const prereqs = {
   npm: hasCommand('npm'),
   git: hasCommand('git'),
   uv: hasCommand('uv'),
-  aws: hasAwsCredentials(),
 };

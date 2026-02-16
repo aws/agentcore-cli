@@ -6,13 +6,10 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
-describe('integration: create edge cases', () => {
+describe.skipIf(!prereqs.npm || !prereqs.git)('integration: create edge cases', () => {
   let testDir: string;
 
   beforeAll(async () => {
-    if (!prereqs.npm || !prereqs.git) {
-      throw new Error('Required prerequisites (npm, git) not found');
-    }
     testDir = join(tmpdir(), `agentcore-integ-edge-${randomUUID()}`);
     await mkdir(testDir, { recursive: true });
   });
