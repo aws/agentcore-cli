@@ -38,7 +38,7 @@ export default defineConfig({
         extends: true,
         test: {
           name: 'unit',
-          include: ['src/**/*.test.ts'],
+          include: ['src/**/*.test.ts', 'src/**/*.test.tsx'],
           exclude: ['src/assets/cdk/test/*.test.ts'],
         },
       },
