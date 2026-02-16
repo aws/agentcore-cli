@@ -1,0 +1,42 @@
+name: E2E Tests
+on:
+  workflow_dispatch:
+    inputs:
+      aws_region:
+        description: 'AWS region for deployment'
+        default: 'us-east-1'
+
+permissions:
+  id-token: write # OIDC — lets GitHub assume an AWS IAM role via short-lived token (no stored keys)
+  contents: read
+
+jobs:
+  etoe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '20.x'
+          cache: 'npm'
+      - name: Configure git
+        run: |
+          git config --global user.email "ci@amazon.com"
+          git config --global user.name "CI"
+      - uses: astral-sh/setup-uv@v5
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.ETOE_AWS_ROLE_ARN }}
+          aws-region: ${{ inputs.aws_region }}
+      - name: Get AWS Account ID
+        id: aws
+        run: echo "account_id=$(aws sts get-caller-identity --query Account --output text)" >> "$GITHUB_OUTPUT"
+      - run: npm ci
+      - run: npm run build
+      - name: Run E2E tests
+        env:
+          AWS_ACCOUNT_ID: ${{ steps.aws.outputs.account_id }}
+          AWS_REGION: ${{ inputs.aws_region }}
+        run: npm run test:etoe

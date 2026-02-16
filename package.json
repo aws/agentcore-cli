@@ -63,6 +63,7 @@
     "test:watch": "vitest --project unit",
     "test:integ": "vitest run --project integ",
     "test:unit": "vitest run --project unit --coverage",
+    "test:etoe": "vitest run --project etoe",
     "test:update-snapshots": "vitest run --project unit --update"
   },
   "dependencies": {

@@ -49,6 +49,15 @@ export default defineConfig({
           include: ['integ-tests/**/*.test.ts'],
         },
       },
+      {
+        extends: true,
+        test: {
+          name: 'etoe',
+          include: ['etoe-tests/**/*.test.ts'],
+          testTimeout: 600000,
+          hookTimeout: 600000,
+        },
+      },
     ],
     testTimeout: 120000,
     hookTimeout: 120000,
