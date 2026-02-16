@@ -1,8 +1,4 @@
-import {
-  createCredential,
-  getAllCredentialNames,
-  resolveCredentialStrategy,
-} from '../create-identity.js';
+import { createCredential, getAllCredentialNames, resolveCredentialStrategy } from '../create-identity.js';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 const mockReadProjectSpec = vi.fn();
