@@ -9,7 +9,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 const hasAws = hasAwsCredentials();
 const canRun = prereqs.npm && prereqs.git && prereqs.uv && hasAws;
 
-describe('e2e: create → deploy → invoke', () => {
+describe.sequential('e2e: create → deploy → invoke', () => {
   let testDir: string;
   let projectPath: string;
   let agentName: string;
