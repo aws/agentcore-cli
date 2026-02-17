@@ -845,6 +845,7 @@ wheels/
 *.egg
 
 # Virtual environments
+.venv/
 venv/
 ENV/
 env/
@@ -1191,6 +1192,7 @@ wheels/
 *.egg
 
 # Virtual environments
+.venv/
 venv/
 ENV/
 env/
@@ -1510,6 +1512,7 @@ wheels/
 *.egg
 
 # Virtual environments
+.venv/
 venv/
 ENV/
 env/
@@ -1776,6 +1779,7 @@ wheels/
 *.egg
 
 # Virtual environments
+.venv/
 venv/
 ENV/
 env/
@@ -2109,6 +2113,7 @@ wheels/
 *.egg
 
 # Virtual environments
+.venv/
 venv/
 ENV/
 env/
@@ -2317,7 +2322,6 @@ Use \`agentcore invoke\` to invoke your deployed agent.
 exports[`Assets Directory Snapshots > Python framework assets > python/python/strands/base/gitignore.template should match snapshot 1`] = `
 "# Environment variables
 .env
-.env
 
 # Python
 __pycache__/
@@ -2342,6 +2346,7 @@ wheels/
 *.egg
 
 # Virtual environments
+.venv/
 venv/
 ENV/
 env/

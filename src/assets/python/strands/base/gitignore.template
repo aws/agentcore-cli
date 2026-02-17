@@ -1,6 +1,5 @@
 # Environment variables
 .env
-.env
 
 # Python
 __pycache__/
@@ -25,6 +24,7 @@ wheels/
 *.egg
 
 # Virtual environments
+.venv/
 venv/
 ENV/
 env/
