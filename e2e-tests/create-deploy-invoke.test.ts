@@ -44,6 +44,7 @@ describe.sequential('e2e: create → deploy → invoke', () => {
     const json = JSON.parse(result.stdout);
     projectPath = json.projectPath;
 
+    // TODO: Replace with `agentcore add target` once the CLI command is re-introduced
     const account =
       process.env.AWS_ACCOUNT_ID ||
       execSync('aws sts get-caller-identity --query Account --output text').toString().trim();
