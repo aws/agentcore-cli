@@ -87,7 +87,7 @@ def load_model() -> LLM:
     # CrewAI requires OPENAI_API_KEY env var (ignores api_key parameter)
     os.environ["OPENAI_API_KEY"] = api_key
     return LLM(
-        model="openai/gpt-4o",
+        model="openai/gpt-4.1",
         api_key=api_key
     )
 {{/if}}
@@ -127,7 +127,7 @@ def load_model() -> LLM:
     # CrewAI requires GEMINI_API_KEY env var (ignores api_key parameter)
     os.environ["GEMINI_API_KEY"] = api_key
     return LLM(
-        model="gemini/gemini-2.0-flash",
+        model="gemini/gemini-2.5-flash",
         api_key=api_key
     )
 {{/if}}

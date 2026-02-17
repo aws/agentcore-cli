@@ -160,6 +160,7 @@ export function DevScreen(props: DevScreenProps) {
     stop,
     logFilePath,
     hasMemory,
+    modelProvider,
   } = useDevServer({
     workingDir,
     port: props.port ?? 8080,
@@ -383,6 +384,12 @@ export function DevScreen(props: DevScreenProps) {
         <Text>Agent: </Text>
         <Text color="green">{config?.agentName}</Text>
       </Box>
+      {modelProvider && (
+        <Box>
+          <Text>Provider: </Text>
+          <Text color="green">{modelProvider}</Text>
+        </Box>
+      )}
       <Box>
         <Text>Server: </Text>
         <Text color="cyan">http://localhost:{actualPort}/invocations</Text>

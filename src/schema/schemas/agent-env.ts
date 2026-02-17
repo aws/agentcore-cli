@@ -3,7 +3,11 @@
  *
  * @module agent-env
  */
-import { NetworkModeSchema, RuntimeVersionSchema as RuntimeVersionSchemaFromConstants } from '../constants';
+import {
+  ModelProviderSchema,
+  NetworkModeSchema,
+  RuntimeVersionSchema as RuntimeVersionSchemaFromConstants,
+} from '../constants';
 import type { DirectoryPath, FilePath } from '../types';
 import { z } from 'zod';
 
@@ -111,6 +115,8 @@ export const AgentEnvSpecSchema = z.object({
   networkMode: NetworkModeSchema.optional(),
   /** Instrumentation settings for observability. Defaults to OTel enabled. */
   instrumentation: InstrumentationSchema.optional(),
+  /** Model provider used by this agent. Optional for backwards compatibility. */
+  modelProvider: ModelProviderSchema.optional(),
 });
 
 export type AgentEnvSpec = z.infer<typeof AgentEnvSpecSchema>;

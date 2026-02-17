@@ -1,5 +1,5 @@
 import type { ModelProvider, PythonRuntime, SDKFramework, TargetLanguage } from '../../../../schema';
-import { getSupportedModelProviders } from '../../../../schema';
+import { DEFAULT_MODEL_IDS, getSupportedModelProviders } from '../../../../schema';
 import type { MemoryOption } from '../generate/types';
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -89,10 +89,14 @@ export const FRAMEWORK_OPTIONS = [
 ] as const;
 
 export const MODEL_PROVIDER_OPTIONS = [
-  { id: 'Bedrock', title: 'Amazon Bedrock', description: 'AWS managed model inference' },
-  { id: 'Anthropic', title: 'Anthropic', description: 'Claude models via Anthropic API' },
-  { id: 'OpenAI', title: 'OpenAI', description: 'GPT models via OpenAI API' },
-  { id: 'Gemini', title: 'Google Gemini', description: 'Gemini models via Google API' },
+  { id: 'Bedrock', title: `Amazon Bedrock (${DEFAULT_MODEL_IDS.Bedrock})`, description: 'AWS managed model inference' },
+  {
+    id: 'Anthropic',
+    title: `Anthropic (${DEFAULT_MODEL_IDS.Anthropic})`,
+    description: 'Claude models via Anthropic API',
+  },
+  { id: 'OpenAI', title: `OpenAI (${DEFAULT_MODEL_IDS.OpenAI})`, description: 'GPT models via OpenAI API' },
+  { id: 'Gemini', title: `Google Gemini (${DEFAULT_MODEL_IDS.Gemini})`, description: 'Gemini models via Google API' },
 ] as const;
 
 /**

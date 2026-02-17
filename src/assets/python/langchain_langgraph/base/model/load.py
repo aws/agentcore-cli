@@ -80,7 +80,7 @@ def _get_api_key() -> str:
 def load_model() -> ChatOpenAI:
     """Get authenticated OpenAI model client."""
     return ChatOpenAI(
-        model="gpt-4o",
+        model="gpt-4.1",
         api_key=_get_api_key()
     )
 {{/if}}
@@ -117,7 +117,7 @@ def _get_api_key() -> str:
 def load_model() -> ChatGoogleGenerativeAI:
     """Get authenticated Gemini model client."""
     return ChatGoogleGenerativeAI(
-        model="gemini-2.0-flash",
+        model="gemini-2.5-flash",
         api_key=_get_api_key()
     )
 {{/if}}

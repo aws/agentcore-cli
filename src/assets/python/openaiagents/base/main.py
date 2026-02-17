@@ -26,10 +26,11 @@ async def main(query):
     try:
         async with mcp_server as server:
             active_servers = [server] if server else []
-            # Currently defaults to GPT-4.1
-            # https://openai.github.io/openai-agents-python/models/
             agent = Agent(
-                name="{{ name }}", mcp_servers=active_servers, tools=[add_numbers]
+                name="{{ name }}",
+                model="gpt-4.1",
+                mcp_servers=active_servers,
+                tools=[add_numbers]
             )
             result = await Runner.run(agent, query)
             return result

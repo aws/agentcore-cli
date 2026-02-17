@@ -80,7 +80,7 @@ def load_model() -> OpenAIModel:
     """Get authenticated OpenAI model client."""
     return OpenAIModel(
         client_args={"api_key": _get_api_key()},
-        model_id="gpt-4o",
+        model_id="gpt-4.1",
     )
 {{/if}}
 {{#if (eq modelProvider "Gemini")}}
@@ -118,6 +118,6 @@ def load_model() -> GeminiModel:
     """Get authenticated Gemini model client."""
     return GeminiModel(
         client_args={"api_key": _get_api_key()},
-        model_id="gemini-2.0-flash",
+        model_id="gemini-2.5-flash",
     )
 {{/if}}

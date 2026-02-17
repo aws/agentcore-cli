@@ -1,3 +1,4 @@
+import { DEFAULT_MODEL_IDS } from '../../../../schema';
 import { computeDefaultCredentialEnvVarName } from '../../../operations/identity/create-identity';
 import { ErrorPrompt } from '../../components';
 import { useAvailableAgents } from '../../hooks/useCreateMcp';
@@ -100,6 +101,11 @@ function AgentAddedSummary({
             </Text>
           </Text>
         )}
+      </Box>
+      <Box marginTop={1}>
+        <Text dimColor>Model: </Text>
+        <Text>{DEFAULT_MODEL_IDS[config.modelProvider]}</Text>
+        <Text dimColor> via {config.modelProvider}</Text>
       </Box>
       {showEnvVarReminder && envVarName && (
         <Box flexDirection="column" marginTop={1}>

@@ -1357,7 +1357,7 @@ def load_model() -> LLM:
     # CrewAI requires OPENAI_API_KEY env var (ignores api_key parameter)
     os.environ["OPENAI_API_KEY"] = api_key
     return LLM(
-        model="openai/gpt-4o",
+        model="openai/gpt-4.1",
         api_key=api_key
     )
 {{/if}}
@@ -1397,7 +1397,7 @@ def load_model() -> LLM:
     # CrewAI requires GEMINI_API_KEY env var (ignores api_key parameter)
     os.environ["GEMINI_API_KEY"] = api_key
     return LLM(
-        model="gemini/gemini-2.0-flash",
+        model="gemini/gemini-2.5-flash",
         api_key=api_key
     )
 {{/if}}
@@ -1954,7 +1954,7 @@ def _get_api_key() -> str:
 def load_model() -> ChatOpenAI:
     """Get authenticated OpenAI model client."""
     return ChatOpenAI(
-        model="gpt-4o",
+        model="gpt-4.1",
         api_key=_get_api_key()
     )
 {{/if}}
@@ -1991,7 +1991,7 @@ def _get_api_key() -> str:
 def load_model() -> ChatGoogleGenerativeAI:
     """Get authenticated Gemini model client."""
     return ChatGoogleGenerativeAI(
-        model="gemini-2.0-flash",
+        model="gemini-2.5-flash",
         api_key=_get_api_key()
     )
 {{/if}}
@@ -2155,10 +2155,11 @@ async def main(query):
     try:
         async with mcp_server as server:
             active_servers = [server] if server else []
-            # Currently defaults to GPT-4.1
-            # https://openai.github.io/openai-agents-python/models/
             agent = Agent(
-                name="{{ name }}", mcp_servers=active_servers, tools=[add_numbers]
+                name="{{ name }}",
+                model="gpt-4.1",
+                mcp_servers=active_servers,
+                tools=[add_numbers]
             )
             result = await Runner.run(agent, query)
             return result
@@ -2536,7 +2537,7 @@ def load_model() -> OpenAIModel:
     """Get authenticated OpenAI model client."""
     return OpenAIModel(
         client_args={"api_key": _get_api_key()},
-        model_id="gpt-4o",
+        model_id="gpt-4.1",
     )
 {{/if}}
 {{#if (eq modelProvider "Gemini")}}
@@ -2574,7 +2575,7 @@ def load_model() -> GeminiModel:
     """Get authenticated Gemini model client."""
     return GeminiModel(
         client_args={"api_key": _get_api_key()},
-        model_id="gemini-2.0-flash",
+        model_id="gemini-2.5-flash",
     )
 {{/if}}
 "

@@ -60,7 +60,10 @@ async function handleInvokeCLI(options: InvokeOptions): Promise<void> {
         console.error(`\nLog: ${result.logFilePath}`);
       }
     } else {
-      // Non-streaming, non-json: print response or error
+      // Non-streaming, non-json: print provider info and response or error
+      if (result.providerInfo) {
+        console.error(`Provider: ${result.providerInfo}`);
+      }
       if (result.success && result.response) {
         console.log(result.response);
       } else if (!result.success && result.error) {

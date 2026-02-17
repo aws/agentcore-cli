@@ -1,5 +1,5 @@
 import type { ModelProvider } from '../../../../schema';
-import { ProjectNameSchema } from '../../../../schema';
+import { DEFAULT_MODEL_IDS, ProjectNameSchema } from '../../../../schema';
 import { computeDefaultCredentialEnvVarName } from '../../../operations/identity/create-identity';
 import { ApiKeySecretInput, Panel, SelectList, StepIndicator, TextInput } from '../../components';
 import type { SelectableItem } from '../../components';
@@ -202,7 +202,9 @@ function ConfirmView({ config, credentialProjectName }: { config: GenerateConfig
         </Text>
         <Text>
           <Text dimColor>Model Provider: </Text>
-          <Text>{config.modelProvider}</Text>
+          <Text>
+            {config.modelProvider} ({DEFAULT_MODEL_IDS[config.modelProvider]})
+          </Text>
         </Text>
         {config.modelProvider !== 'Bedrock' && (
           <Text>

@@ -58,13 +58,20 @@ export const registerDev = (program: Command) => {
 
           // Determine which agent/port to invoke
           let invokePort = port;
+          let targetAgent = invokeProject?.agents[0];
           if (opts.agent && invokeProject) {
             invokePort = getAgentPort(invokeProject, opts.agent, port);
+            targetAgent = invokeProject.agents.find(a => a.name === opts.agent);
           } else if (invokeProject && invokeProject.agents.length > 1 && !opts.agent) {
             const names = invokeProject.agents.map(a => a.name).join(', ');
             console.error(`Error: Multiple agents found. Use --agent to specify which one.`);
             console.error(`Available: ${names}`);
             process.exit(1);
+          }
+
+          // Show model info if available
+          if (targetAgent?.modelProvider) {
+            console.log(`Provider: ${targetAgent.modelProvider}`);
           }
 
           await invokeDevServer(invokePort, opts.invoke, opts.stream ?? false);
@@ -129,8 +136,13 @@ export const registerDev = (program: Command) => {
             console.log(`Port ${basePort} in use, using ${actualPort}`);
           }
 
+          // Get provider info from agent config
+          const targetAgent = project.agents.find(a => a.name === config.agentName);
+          const providerInfo = targetAgent?.modelProvider ?? '(see agent code)';
+
           console.log(`Starting dev server...`);
           console.log(`Agent: ${config.agentName}`);
+          console.log(`Provider: ${providerInfo}`);
           console.log(`Server: http://localhost:${actualPort}/invocations`);
           console.log(`Log: ${logger.getRelativeLogPath()}`);
           console.log(`Press Ctrl+C to stop\n`);

@@ -1,4 +1,4 @@
-import { ProjectNameSchema } from '../../../../schema';
+import { DEFAULT_MODEL_IDS, ProjectNameSchema } from '../../../../schema';
 import { validateFolderNotExists } from '../../../commands/create/validate';
 import { computeDefaultCredentialEnvVarName } from '../../../operations/identity/create-identity';
 import {
@@ -48,11 +48,14 @@ function buildExitMessage(projectName: string, steps: Step[], agentConfig: AddAg
   if (agentConfig?.agentType === 'create') {
     const frameworkOption = FRAMEWORK_OPTIONS.find(o => o.id === agentConfig.framework);
     const frameworkLabel = frameworkOption?.title ?? agentConfig.framework;
+    const modelName = DEFAULT_MODEL_IDS[agentConfig.modelProvider];
     const agentPath = `app/${agentConfig.name}/`;
     const agentcorePath = 'agentcore/';
     const maxPathLen = Math.max(agentPath.length, agentcorePath.length);
     lines.push(`    ${agentPath.padEnd(maxPathLen)}  \x1b[2m${agentConfig.language} agent (${frameworkLabel})\x1b[0m`);
     lines.push(`    ${agentcorePath.padEnd(maxPathLen)}  \x1b[2mConfig and CDK project\x1b[0m`);
+    lines.push('');
+    lines.push(`\x1b[2mModel:\x1b[0m ${modelName} \x1b[2mvia ${agentConfig.modelProvider}\x1b[0m`);
   } else if (agentConfig?.agentType === 'byo') {
     const agentPath = agentConfig.codeLocation;
     const agentcorePath = 'agentcore/';
@@ -169,6 +172,13 @@ function CreatedSummary({ projectName, agentConfig }: { projectName: string; age
           </Text>
         </Box>
       </Box>
+      {isCreate && agentConfig && (
+        <Box marginTop={1}>
+          <Text dimColor>Model: </Text>
+          <Text>{DEFAULT_MODEL_IDS[agentConfig.modelProvider]}</Text>
+          <Text dimColor> via {agentConfig.modelProvider}</Text>
+        </Box>
+      )}
       {isByo && agentConfig && (
         <Box flexDirection="column" marginTop={1}>
           <Text color="yellow">

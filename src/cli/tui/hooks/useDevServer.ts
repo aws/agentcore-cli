@@ -248,5 +248,6 @@ export function useDevServer(options: { workingDir: string; port: number; agentN
     stop,
     logFilePath: loggerRef.current?.getRelativeLogPath(),
     hasMemory: (project?.memories?.length ?? 0) > 0,
+    modelProvider: project?.agents.find(a => a.name === config?.agentName)?.modelProvider,
   };
 }

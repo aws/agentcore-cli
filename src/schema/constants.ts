@@ -14,6 +14,17 @@ export const ModelProviderSchema = z.enum(['Bedrock', 'Gemini', 'OpenAI', 'Anthr
 export type ModelProvider = z.infer<typeof ModelProviderSchema>;
 
 /**
+ * Default model IDs used for each provider.
+ * These are the models generated in agent templates.
+ */
+export const DEFAULT_MODEL_IDS: Record<ModelProvider, string> = {
+  Bedrock: 'us.anthropic.claude-sonnet-4-5-20250514-v1:0',
+  Anthropic: 'claude-sonnet-4-5-20250514',
+  OpenAI: 'gpt-4.1',
+  Gemini: 'gemini-2.5-flash',
+};
+
+/**
  * Matrix defining which model providers are supported for each SDK framework.
  * - Most SDKs support all 4 providers (Bedrock, Anthropic, OpenAI, Gemini)
  * - GoogleADK only supports Gemini (uses Google's native API)

@@ -1,6 +1,6 @@
 import { APP_DIR, ConfigIO } from '../../../../lib';
 import type { ModelProvider } from '../../../../schema';
-import { AgentNameSchema } from '../../../../schema';
+import { AgentNameSchema, DEFAULT_MODEL_IDS } from '../../../../schema';
 import { computeDefaultCredentialEnvVarName } from '../../../operations/identity/create-identity';
 import {
   ApiKeySecretInput,
@@ -398,7 +398,10 @@ export function AddAgentScreen({ existingAgentNames, onComplete, onExit }: AddAg
               { label: 'Type', value: 'Bring my own code' },
               { label: 'Code Location', value: byoConfig.codeLocation },
               { label: 'Entrypoint', value: byoConfig.entrypoint },
-              { label: 'Model Provider', value: byoConfig.modelProvider },
+              {
+                label: 'Model Provider',
+                value: `${byoConfig.modelProvider} (${DEFAULT_MODEL_IDS[byoConfig.modelProvider]})`,
+              },
               ...(byoConfig.modelProvider !== 'Bedrock'
                 ? [
                     {

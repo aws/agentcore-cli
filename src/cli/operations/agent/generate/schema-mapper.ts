@@ -112,6 +112,7 @@ export function mapGenerateConfigToAgent(config: GenerateConfig): AgentEnvSpec {
     codeLocation: codeLocation as DirectoryPath,
     runtimeVersion: DEFAULT_PYTHON_VERSION,
     networkMode: DEFAULT_NETWORK_MODE,
+    modelProvider: config.modelProvider,
   };
 }
 

@@ -78,6 +78,9 @@ export async function handleInvoke(context: InvokeContext, options: InvokeOption
     return { success: false, error: 'No prompt provided. Usage: agentcore invoke "your prompt"' };
   }
 
+  // Get provider info if available
+  const providerInfo = agentSpec.modelProvider;
+
   // Create logger for this invocation
   const logger = new InvokeLogger({
     agentName: agentSpec.name,
@@ -113,6 +116,7 @@ export async function handleInvoke(context: InvokeContext, options: InvokeOption
         targetName: selectedTargetName,
         response: fullResponse,
         logFilePath: logger.logFilePath,
+        providerInfo,
       };
     } catch (err) {
       logger.logError(err, 'invoke streaming failed');
@@ -136,5 +140,6 @@ export async function handleInvoke(context: InvokeContext, options: InvokeOption
     targetName: selectedTargetName,
     response: response.content,
     logFilePath: logger.logFilePath,
+    providerInfo,
   };
 }
