@@ -1,9 +1,10 @@
 /* eslint-disable security/detect-non-literal-fs-filename */
+import { ConfigNotFoundError, ConfigParseError, ConfigValidationError } from '../../../errors/config.js';
 import { ConfigIO } from '../config-io.js';
 import { NoProjectError } from '../path-resolver.js';
 import { randomUUID } from 'node:crypto';
-import { existsSync } from 'node:fs';
-import { mkdir, rm, writeFile } from 'node:fs/promises';
+import { existsSync, mkdirSync, writeFileSync } from 'node:fs';
+import { mkdir, rm, unlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
@@ -39,7 +40,6 @@ describe('ConfigIO', () => {
 
   describe('hasProject()', () => {
     it('returns false when no project exists and no baseDir provided', async () => {
-      // Create a directory with no agentcore project
       const emptyDir = join(testDir, `empty-${randomUUID()}`);
       await mkdir(emptyDir, { recursive: true });
       changeWorkingDir(emptyDir);
@@ -55,7 +55,6 @@ describe('ConfigIO', () => {
     });
 
     it('returns true when project is discovered', async () => {
-      // Create a valid project structure
       const projectDir = join(testDir, `project-${randomUUID()}`);
       const agentcoreDir = join(projectDir, 'agentcore');
       await mkdir(agentcoreDir, { recursive: true });
@@ -68,11 +67,10 @@ describe('ConfigIO', () => {
     });
   });
 
-  describe('issue #94: prevents agentcore directory creation when no project found', () => {
+  describe('NoProjectError prevention (issue #94)', () => {
     let emptyDir: string;
 
     beforeEach(async () => {
-      // Create a fresh empty directory for each test
       emptyDir = join(testDir, `empty-${randomUUID()}`);
       await mkdir(emptyDir, { recursive: true });
       changeWorkingDir(emptyDir);
@@ -80,40 +78,24 @@ describe('ConfigIO', () => {
 
     it('initializeBaseDir() throws NoProjectError when no project exists', async () => {
       const configIO = new ConfigIO();
-
       await expect(configIO.initializeBaseDir()).rejects.toThrow(NoProjectError);
       expect(existsSync(join(emptyDir, 'agentcore'))).toBe(false);
     });
 
     it('writeProjectSpec() throws NoProjectError when no project exists', async () => {
       const configIO = new ConfigIO();
-
-      const projectSpec = {
-        version: '1.0',
-        agents: [],
-      };
-
-      await expect(configIO.writeProjectSpec(projectSpec as never)).rejects.toThrow(NoProjectError);
+      await expect(configIO.writeProjectSpec({ version: '1.0', agents: [] } as never)).rejects.toThrow(NoProjectError);
       expect(existsSync(join(emptyDir, 'agentcore'))).toBe(false);
     });
 
     it('writeMcpSpec() throws NoProjectError when no project exists', async () => {
       const configIO = new ConfigIO();
-
-      // Minimal valid MCP spec structure (validation happens after project check)
-      const mcpSpec = {
-        agentCoreGateways: [],
-      };
-
-      await expect(configIO.writeMcpSpec(mcpSpec)).rejects.toThrow(NoProjectError);
+      await expect(configIO.writeMcpSpec({ agentCoreGateways: [] })).rejects.toThrow(NoProjectError);
       expect(existsSync(join(emptyDir, 'agentcore'))).toBe(false);
     });
 
     it('does not create agentcore directory on any write operation', async () => {
       const configIO = new ConfigIO();
-
-      // Try all write operations - all should fail with NoProjectError without creating directory
-      // Note: NoProjectError is thrown before schema validation, so data shape doesn't matter
       const operations = [
         () => configIO.initializeBaseDir(),
         () => configIO.writeProjectSpec({ version: '1.0', agents: [] } as never),
@@ -133,17 +115,197 @@ describe('ConfigIO', () => {
     });
   });
 
-  describe('allows operations when project is explicitly configured', () => {
-    it('initializeBaseDir() succeeds when baseDir is provided', async () => {
+  describe('initializeBaseDir', () => {
+    it('creates base and cli system directories when baseDir is provided', async () => {
       const projectDir = join(testDir, `new-project-${randomUUID()}`);
       const agentcoreDir = join(projectDir, 'agentcore');
 
       const configIO = new ConfigIO({ baseDir: agentcoreDir });
-
       await configIO.initializeBaseDir();
 
       expect(existsSync(agentcoreDir)).toBe(true);
       expect(existsSync(join(agentcoreDir, '.cli'))).toBe(true);
+    });
+  });
+
+  describe('readProjectSpec error paths', () => {
+    it('throws ConfigNotFoundError when agentcore.json does not exist', async () => {
+      const projectDir = join(testDir, `missing-config-${randomUUID()}`);
+      const agentcoreDir = join(projectDir, 'agentcore');
+      mkdirSync(agentcoreDir, { recursive: true });
+      writeFileSync(join(agentcoreDir, 'agentcore.json'), '{}');
+      changeWorkingDir(projectDir);
+
+      const configIO = new ConfigIO();
+      // Delete the file after ConfigIO discovers the root
+      await unlink(join(agentcoreDir, 'agentcore.json'));
+
+      await expect(configIO.readProjectSpec()).rejects.toThrow(ConfigNotFoundError);
+    });
+
+    it('throws ConfigParseError for invalid JSON', async () => {
+      const projectDir = join(testDir, `bad-json-${randomUUID()}`);
+      const agentcoreDir = join(projectDir, 'agentcore');
+      mkdirSync(agentcoreDir, { recursive: true });
+      writeFileSync(join(agentcoreDir, 'agentcore.json'), '{not valid json!!!}');
+      changeWorkingDir(projectDir);
+
+      const configIO = new ConfigIO();
+      await expect(configIO.readProjectSpec()).rejects.toThrow(ConfigParseError);
+    });
+
+    it('throws ConfigValidationError for valid JSON that fails schema', async () => {
+      const projectDir = join(testDir, `bad-schema-${randomUUID()}`);
+      const agentcoreDir = join(projectDir, 'agentcore');
+      mkdirSync(agentcoreDir, { recursive: true });
+      writeFileSync(join(agentcoreDir, 'agentcore.json'), JSON.stringify({ invalid: true }));
+      changeWorkingDir(projectDir);
+
+      const configIO = new ConfigIO();
+      await expect(configIO.readProjectSpec()).rejects.toThrow(ConfigValidationError);
+    });
+  });
+
+  describe('writeProjectSpec', () => {
+    it('throws ConfigValidationError for invalid project data', async () => {
+      const projectDir = join(testDir, `invalid-write-${randomUUID()}`);
+      const agentcoreDir = join(projectDir, 'agentcore');
+      mkdirSync(agentcoreDir, { recursive: true });
+
+      const configIO = new ConfigIO({ baseDir: agentcoreDir });
+      await expect(configIO.writeProjectSpec({ bad: 'data' } as any)).rejects.toThrow(ConfigValidationError);
+    });
+
+    it('writes and round-trips a valid project spec', async () => {
+      const projectDir = join(testDir, `write-valid-${randomUUID()}`);
+      const agentcoreDir = join(projectDir, 'agentcore');
+      mkdirSync(agentcoreDir, { recursive: true });
+
+      const configIO = new ConfigIO({ baseDir: agentcoreDir });
+
+      // Use 'as any' to avoid branded type issues with FilePath/DirectoryPath
+      const validSpec = {
+        name: 'TestProject',
+        version: 1,
+        agents: [
+          {
+            type: 'AgentCoreRuntime',
+            name: 'myagent',
+            build: 'CodeZip',
+            entrypoint: 'main.py',
+            codeLocation: './app',
+            runtimeVersion: 'PYTHON_3_13',
+          },
+        ],
+      } as any;
+
+      await configIO.writeProjectSpec(validSpec);
+      expect(existsSync(join(agentcoreDir, 'agentcore.json'))).toBe(true);
+
+      const readBack = await configIO.readProjectSpec();
+      expect(readBack.version).toBe(1);
+      expect(readBack.agents).toHaveLength(1);
+      expect(readBack.agents[0]!.name).toBe('myagent');
+    });
+  });
+
+  describe('configExists', () => {
+    it('returns true when agentcore.json exists', () => {
+      const projectDir = join(testDir, `exists-${randomUUID()}`);
+      const agentcoreDir = join(projectDir, 'agentcore');
+      mkdirSync(agentcoreDir, { recursive: true });
+      writeFileSync(join(agentcoreDir, 'agentcore.json'), '{}');
+      changeWorkingDir(projectDir);
+
+      const configIO = new ConfigIO();
+      expect(configIO.configExists('project')).toBe(true);
+    });
+
+    it('returns false for config types that do not exist', () => {
+      const projectDir = join(testDir, `no-targets-${randomUUID()}`);
+      const agentcoreDir = join(projectDir, 'agentcore');
+      mkdirSync(agentcoreDir, { recursive: true });
+      writeFileSync(join(agentcoreDir, 'agentcore.json'), '{}');
+      changeWorkingDir(projectDir);
+
+      const configIO = new ConfigIO();
+      expect(configIO.configExists('awsTargets')).toBe(false);
+      expect(configIO.configExists('state')).toBe(false);
+      expect(configIO.configExists('mcp')).toBe(false);
+      expect(configIO.configExists('mcpDefs')).toBe(false);
+    });
+  });
+
+  describe('baseDirExists', () => {
+    it('returns true when base dir exists', () => {
+      const projectDir = join(testDir, `basedir-exists-${randomUUID()}`);
+      const agentcoreDir = join(projectDir, 'agentcore');
+      mkdirSync(agentcoreDir, { recursive: true });
+
+      const configIO = new ConfigIO({ baseDir: agentcoreDir });
+      expect(configIO.baseDirExists()).toBe(true);
+    });
+
+    it('returns false when base dir does not exist', () => {
+      const configIO = new ConfigIO({ baseDir: join(testDir, 'nonexistent') });
+      expect(configIO.baseDirExists()).toBe(false);
+    });
+  });
+
+  describe('getPathResolver, getProjectRoot, getConfigRoot', () => {
+    it('returns the path resolver, project root, and config root', () => {
+      const projectDir = join(testDir, `paths-${randomUUID()}`);
+      const agentcoreDir = join(projectDir, 'agentcore');
+      mkdirSync(agentcoreDir, { recursive: true });
+
+      const configIO = new ConfigIO({ baseDir: agentcoreDir });
+      expect(configIO.getPathResolver()).toBeDefined();
+      expect(configIO.getProjectRoot()).toBe(projectDir);
+      expect(configIO.getConfigRoot()).toBe(agentcoreDir);
+    });
+  });
+
+  describe('setBaseDir', () => {
+    it('updates the base directory', () => {
+      const configIO = new ConfigIO({ baseDir: '/original' });
+      expect(configIO.getConfigRoot()).toBe('/original');
+
+      configIO.setBaseDir('/updated');
+      expect(configIO.getConfigRoot()).toBe('/updated');
+    });
+  });
+
+  describe('writeMcpSpec and readMcpSpec', () => {
+    it('round-trips a valid MCP spec', async () => {
+      const projectDir = join(testDir, `mcp-rt-${randomUUID()}`);
+      const agentcoreDir = join(projectDir, 'agentcore');
+      mkdirSync(agentcoreDir, { recursive: true });
+
+      const configIO = new ConfigIO({ baseDir: agentcoreDir });
+
+      const mcpSpec = { agentCoreGateways: [] };
+      await configIO.writeMcpSpec(mcpSpec);
+      expect(configIO.configExists('mcp')).toBe(true);
+
+      const readBack = await configIO.readMcpSpec();
+      expect(readBack.agentCoreGateways).toEqual([]);
+    });
+  });
+
+  describe('writeMcpDefs and readMcpDefs', () => {
+    it('round-trips valid MCP definitions', async () => {
+      const projectDir = join(testDir, `mcpdefs-rt-${randomUUID()}`);
+      const agentcoreDir = join(projectDir, 'agentcore');
+      mkdirSync(agentcoreDir, { recursive: true });
+
+      const configIO = new ConfigIO({ baseDir: agentcoreDir });
+
+      const mcpDefs = { tools: {} };
+      await configIO.writeMcpDefs(mcpDefs);
+      expect(configIO.configExists('mcpDefs')).toBe(true);
+
+      const readBack = await configIO.readMcpDefs();
+      expect(readBack.tools).toEqual({});
     });
   });
 });

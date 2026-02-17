@@ -1,3 +1,4 @@
+/* eslint-disable security/detect-non-literal-fs-filename */
 import {
   MAX_ZIP_SIZE_BYTES,
   convertWindowsScriptsToLinux,
@@ -353,5 +354,38 @@ describe('convertWindowsScriptsToLinux (shebang rewriting on non-Windows)', () =
     convertWindowsScriptsToLinuxSync(staging);
     const content = readFileSync(join(binDir, 'script'), 'utf-8');
     expect(content).toMatch(/^#!\/usr\/bin\/env python3/);
+  });
+
+  it('async version skips subdirectories in bin (only processes files)', async () => {
+    const staging = join(root, 'staging-subdir-async');
+    const binDir = join(staging, 'bin');
+    mkdirSync(join(binDir, 'subdir'), { recursive: true });
+    writeFileSync(join(binDir, 'myscript'), '#!/Users/dev/.venv/bin/python3\nimport os');
+
+    await convertWindowsScriptsToLinux(staging);
+
+    const content = readFileSync(join(binDir, 'myscript'), 'utf-8');
+    expect(content).toMatch(/^#!\/usr\/bin\/env python3/);
+    expect(existsSync(join(binDir, 'subdir'))).toBe(true);
+  });
+
+  it('sync version skips subdirectories in bin (only processes files)', () => {
+    const staging = join(root, 'staging-subdir-sync');
+    const binDir = join(staging, 'bin');
+    mkdirSync(join(binDir, 'subdir'), { recursive: true });
+    writeFileSync(join(binDir, 'myscript'), '#!/Users/dev/.venv/bin/python3\nimport os');
+
+    convertWindowsScriptsToLinuxSync(staging);
+
+    const content = readFileSync(join(binDir, 'myscript'), 'utf-8');
+    expect(content).toMatch(/^#!\/usr\/bin\/env python3/);
+    expect(existsSync(join(binDir, 'subdir'))).toBe(true);
+  });
+
+  it('sync version handles missing bin directory gracefully', () => {
+    const staging = join(root, 'staging-no-bin-sync');
+    mkdirSync(staging, { recursive: true });
+    convertWindowsScriptsToLinuxSync(staging);
+    expect(existsSync(join(staging, 'bin'))).toBe(false);
   });
 });
