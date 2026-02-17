@@ -5,6 +5,8 @@ on:
       aws_region:
         description: 'AWS region for deployment'
         default: 'us-east-1'
+  pull_request:
+    branches: [main]
 
 permissions:
   id-token: write # OIDC — lets GitHub assume an AWS IAM role via short-lived token (no stored keys)
@@ -13,6 +15,7 @@ permissions:
 jobs:
   e2e:
     runs-on: ubuntu-latest
+    environment: e2e-testing
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v6
@@ -29,7 +32,7 @@ jobs:
         uses: aws-actions/configure-aws-credentials@v4
         with:
           role-to-assume: ${{ secrets.E2E_AWS_ROLE_ARN }}
-          aws-region: ${{ inputs.aws_region }}
+          aws-region: ${{ inputs.aws_region || 'us-east-1' }}
       - name: Get AWS Account ID
         id: aws
         run: echo "account_id=$(aws sts get-caller-identity --query Account --output text)" >> "$GITHUB_OUTPUT"
@@ -38,5 +41,5 @@ jobs:
       - name: Run E2E tests
         env:
           AWS_ACCOUNT_ID: ${{ steps.aws.outputs.account_id }}
-          AWS_REGION: ${{ inputs.aws_region }}
+          AWS_REGION: ${{ inputs.aws_region || 'us-east-1' }}
         run: npm run test:e2e
