@@ -7,6 +7,8 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 const ENTER = '\r';
 const ESCAPE = '\x1B';
 const BACKSPACE = '\x7f';
+const LEFT = '\x1B[D';
+const RIGHT = '\x1B[C';
 
 afterEach(() => vi.restoreAllMocks());
 
@@ -84,18 +86,36 @@ function TextInputHarness({
   onSubmit,
   onCancel,
   onChange,
+  onUpArrow,
+  onDownArrow,
+  isActive,
 }: {
   initialValue?: string;
   onSubmit?: (value: string) => void;
   onCancel?: () => void;
   onChange?: (value: string) => void;
+  onUpArrow?: () => void;
+  onDownArrow?: () => void;
+  isActive?: boolean;
 }) {
-  const { value, cursor } = useTextInput({ initialValue, onSubmit, onCancel, onChange });
+  const { value, cursor } = useTextInput({
+    initialValue,
+    onSubmit,
+    onCancel,
+    onChange,
+    onUpArrow,
+    onDownArrow,
+    isActive,
+  });
   return (
     <Text>
       val:[{value}] cur:{cursor}
     </Text>
   );
+}
+
+function delay(ms = 50) {
+  return new Promise(resolve => setTimeout(resolve, ms));
 }
 
 describe('useTextInput hook', () => {
@@ -116,9 +136,9 @@ describe('useTextInput hook', () => {
   it('accepts character input', async () => {
     const { lastFrame, stdin } = render(<TextInputHarness />);
 
-    await new Promise(resolve => setTimeout(resolve, 50));
+    await delay();
     stdin.write('a');
-    await new Promise(resolve => setTimeout(resolve, 50));
+    await delay();
 
     expect(lastFrame()).toContain('val:[a]');
     expect(lastFrame()).toContain('cur:1');
@@ -127,10 +147,10 @@ describe('useTextInput hook', () => {
   it('accepts multiple characters', async () => {
     const { lastFrame, stdin } = render(<TextInputHarness />);
 
-    await new Promise(resolve => setTimeout(resolve, 50));
+    await delay();
     stdin.write('h');
     stdin.write('i');
-    await new Promise(resolve => setTimeout(resolve, 50));
+    await delay();
 
     expect(lastFrame()).toContain('val:[hi]');
     expect(lastFrame()).toContain('cur:2');
@@ -139,21 +159,32 @@ describe('useTextInput hook', () => {
   it('handles backspace', async () => {
     const { lastFrame, stdin } = render(<TextInputHarness initialValue="abc" />);
 
-    await new Promise(resolve => setTimeout(resolve, 50));
+    await delay();
     stdin.write(BACKSPACE);
-    await new Promise(resolve => setTimeout(resolve, 50));
+    await delay();
 
     expect(lastFrame()).toContain('val:[ab]');
     expect(lastFrame()).toContain('cur:2');
   });
 
-  it('calls onSubmit on Enter', async () => {
+  it('backspace at start does nothing', async () => {
+    const { lastFrame, stdin } = render(<TextInputHarness initialValue="" />);
+
+    await delay();
+    stdin.write(BACKSPACE);
+    await delay();
+
+    expect(lastFrame()).toContain('val:[]');
+    expect(lastFrame()).toContain('cur:0');
+  });
+
+  it('calls onSubmit on Enter with current text', async () => {
     const onSubmit = vi.fn();
     const { stdin } = render(<TextInputHarness initialValue="test" onSubmit={onSubmit} />);
 
-    await new Promise(resolve => setTimeout(resolve, 50));
+    await delay();
     stdin.write(ENTER);
-    await new Promise(resolve => setTimeout(resolve, 50));
+    await delay();
 
     expect(onSubmit).toHaveBeenCalledWith('test');
   });
@@ -162,9 +193,9 @@ describe('useTextInput hook', () => {
     const onCancel = vi.fn();
     const { stdin } = render(<TextInputHarness onCancel={onCancel} />);
 
-    await new Promise(resolve => setTimeout(resolve, 50));
+    await delay();
     stdin.write(ESCAPE);
-    await new Promise(resolve => setTimeout(resolve, 50));
+    await delay();
 
     expect(onCancel).toHaveBeenCalledTimes(1);
   });
@@ -172,9 +203,9 @@ describe('useTextInput hook', () => {
   it('moves cursor left with arrow key', async () => {
     const { lastFrame, stdin } = render(<TextInputHarness initialValue="abc" />);
 
-    await new Promise(resolve => setTimeout(resolve, 50));
-    stdin.write('\x1B[D'); // left arrow
-    await new Promise(resolve => setTimeout(resolve, 50));
+    await delay();
+    stdin.write(LEFT);
+    await delay();
 
     expect(lastFrame()).toContain('val:[abc]');
     expect(lastFrame()).toContain('cur:2');
@@ -183,29 +214,47 @@ describe('useTextInput hook', () => {
   it('moves cursor right with arrow key', async () => {
     const { lastFrame, stdin } = render(<TextInputHarness initialValue="abc" />);
 
-    // Move left first, then right
-    await new Promise(resolve => setTimeout(resolve, 50));
-    stdin.write('\x1B[D'); // left
-    stdin.write('\x1B[D'); // left
-    await new Promise(resolve => setTimeout(resolve, 50));
-
+    await delay();
+    stdin.write(LEFT);
+    stdin.write(LEFT);
+    await delay();
     expect(lastFrame()).toContain('cur:1');
 
-    stdin.write('\x1B[C'); // right arrow
-    await new Promise(resolve => setTimeout(resolve, 50));
+    stdin.write(RIGHT);
+    await delay();
+    expect(lastFrame()).toContain('cur:2');
+  });
+
+  it('cursor does not go below 0', async () => {
+    const { lastFrame, stdin } = render(<TextInputHarness initialValue="ab" />);
+
+    await delay();
+    stdin.write(LEFT);
+    stdin.write(LEFT);
+    stdin.write(LEFT); // try to go past 0
+    await delay();
+
+    expect(lastFrame()).toContain('cur:0');
+  });
+
+  it('cursor does not go past text length', async () => {
+    const { lastFrame, stdin } = render(<TextInputHarness initialValue="ab" />);
+
+    await delay();
+    stdin.write(RIGHT); // already at end (2)
+    await delay();
 
     expect(lastFrame()).toContain('cur:2');
   });
 
-  it('inserts character at cursor position', async () => {
+  it('inserts character at cursor position (middle of text)', async () => {
     const { lastFrame, stdin } = render(<TextInputHarness initialValue="ac" />);
 
-    // Move cursor left once (between a and c), then insert b
-    await new Promise(resolve => setTimeout(resolve, 50));
-    stdin.write('\x1B[D'); // left, cursor now at 1
-    await new Promise(resolve => setTimeout(resolve, 50));
+    await delay();
+    stdin.write(LEFT); // cursor at 1
+    await delay();
     stdin.write('b');
-    await new Promise(resolve => setTimeout(resolve, 50));
+    await delay();
 
     expect(lastFrame()).toContain('val:[abc]');
     expect(lastFrame()).toContain('cur:2');
@@ -215,10 +264,106 @@ describe('useTextInput hook', () => {
     const onChange = vi.fn();
     const { stdin } = render(<TextInputHarness onChange={onChange} />);
 
-    await new Promise(resolve => setTimeout(resolve, 50));
+    await delay();
     stdin.write('x');
-    await new Promise(resolve => setTimeout(resolve, 100));
+    await delay(100);
 
     expect(onChange).toHaveBeenCalledWith('x');
+  });
+
+  it('calls onUpArrow on up arrow key', async () => {
+    const onUpArrow = vi.fn();
+    const { stdin } = render(<TextInputHarness onUpArrow={onUpArrow} />);
+
+    await delay();
+    stdin.write('\x1B[A'); // up arrow
+    await delay();
+
+    expect(onUpArrow).toHaveBeenCalledTimes(1);
+  });
+
+  it('calls onDownArrow on down arrow key', async () => {
+    const onDownArrow = vi.fn();
+    const { stdin } = render(<TextInputHarness onDownArrow={onDownArrow} />);
+
+    await delay();
+    stdin.write('\x1B[B'); // down arrow
+    await delay();
+
+    expect(onDownArrow).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('useTextInput keyboard shortcuts', () => {
+  it('Ctrl+A moves cursor to start', async () => {
+    const { lastFrame, stdin } = render(<TextInputHarness initialValue="hello world" />);
+
+    await delay();
+    stdin.write('\x01'); // Ctrl+A
+    await delay();
+
+    expect(lastFrame()).toContain('val:[hello world]');
+    expect(lastFrame()).toContain('cur:0');
+  });
+
+  it('Ctrl+E moves cursor to end', async () => {
+    const { lastFrame, stdin } = render(<TextInputHarness initialValue="hello world" />);
+
+    // Move to start first, then Ctrl+E
+    await delay();
+    stdin.write('\x01'); // Ctrl+A → cursor:0
+    await delay();
+    stdin.write('\x05'); // Ctrl+E
+    await delay();
+
+    expect(lastFrame()).toContain('cur:11');
+  });
+
+  it('Ctrl+W deletes previous word', async () => {
+    const { lastFrame, stdin } = render(<TextInputHarness initialValue="hello world" />);
+
+    await delay();
+    stdin.write('\x17'); // Ctrl+W
+    await delay();
+
+    expect(lastFrame()).toContain('val:[hello ]');
+    expect(lastFrame()).toContain('cur:6');
+  });
+
+  it('Ctrl+U deletes from cursor to start', async () => {
+    const { lastFrame, stdin } = render(<TextInputHarness initialValue="hello world" />);
+
+    // Move cursor to middle first
+    await delay();
+    stdin.write(LEFT);
+    stdin.write(LEFT);
+    stdin.write(LEFT);
+    stdin.write(LEFT);
+    stdin.write(LEFT); // cursor at 6
+    await delay();
+    stdin.write('\x15'); // Ctrl+U
+    await delay();
+
+    expect(lastFrame()).toContain('val:[world]');
+    expect(lastFrame()).toContain('cur:0');
+  });
+
+  it('Ctrl+K deletes from cursor to end', async () => {
+    const { lastFrame, stdin } = render(<TextInputHarness initialValue="hello world" />);
+
+    // Move cursor to position 5
+    await delay();
+    stdin.write(LEFT);
+    stdin.write(LEFT);
+    stdin.write(LEFT);
+    stdin.write(LEFT);
+    stdin.write(LEFT);
+    stdin.write(LEFT); // cursor at 5
+    await delay();
+    stdin.write('\x0B'); // Ctrl+K
+    await delay();
+
+    expect(lastFrame()).toContain('val:[hello]');
+    expect(lastFrame()).toContain('cur:5');
   });
 });
