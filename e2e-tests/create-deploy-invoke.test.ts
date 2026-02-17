@@ -1,4 +1,4 @@
-import { hasAwsCredentials, prereqs, runCLI } from '../src/test-utils/index.js';
+import { hasAwsCredentials, parseJsonOutput, prereqs, runCLI } from '../src/test-utils/index.js';
 import { execSync } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
 import { mkdir, rm, writeFile } from 'node:fs/promises';
@@ -41,7 +41,7 @@ describe.sequential('e2e: create → deploy → invoke', () => {
     );
 
     expect(result.exitCode, `Create failed: ${result.stderr}`).toBe(0);
-    const json = JSON.parse(result.stdout);
+    const json = parseJsonOutput(result.stdout) as { projectPath: string };
     projectPath = json.projectPath;
 
     // TODO: Replace with `agentcore add target` once the CLI command is re-introduced
@@ -80,7 +80,7 @@ describe.sequential('e2e: create → deploy → invoke', () => {
 
       expect(result.exitCode, `Deploy failed: ${result.stderr}`).toBe(0);
 
-      const json = JSON.parse(result.stdout);
+      const json = parseJsonOutput(result.stdout) as { success: boolean };
       expect(json.success, 'Deploy should report success').toBe(true);
     },
     300000
@@ -104,7 +104,7 @@ describe.sequential('e2e: create → deploy → invoke', () => {
 
       expect(result.exitCode, `Invoke failed: ${result.stderr}`).toBe(0);
 
-      const json = JSON.parse(result.stdout);
+      const json = parseJsonOutput(result.stdout) as { success: boolean };
       expect(json.success, 'Invoke should report success').toBe(true);
     },
     120000
