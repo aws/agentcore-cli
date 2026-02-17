@@ -15,7 +15,6 @@ dependencies = [
     "opentelemetry-exporter-otlp",
     "bedrock-agentcore >= 1.0.3",
     "botocore[crt] >= 1.35.0",
-    "python-dotenv >= 1.0.1",
     "tiktoken",
 {{#if (eq modelProvider "Bedrock")}}
     "autogen-ext[anthropic] >= 0.7.5",

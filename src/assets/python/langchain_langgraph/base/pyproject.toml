@@ -18,7 +18,6 @@ dependencies = [
     "tiktoken == 0.11.0",
     "bedrock-agentcore >= 1.0.3",
     "botocore[crt] >= 1.35.0",
-    "python-dotenv >= 1.0.1",
 {{#if (eq modelProvider "Bedrock")}}
     "langchain-aws >= 1.0.0",
 {{/if}}
