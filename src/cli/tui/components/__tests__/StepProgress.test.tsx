@@ -80,31 +80,36 @@ describe('StepProgress', () => {
     expect(lastFrame()).toContain('Deploying stack');
   });
 
-  it('shows done label for success steps', () => {
+  it('shows [done] on the same line as the success step label', () => {
     const steps: Step[] = [{ label: 'Build', status: 'success' }];
 
     const { lastFrame } = render(<StepProgress steps={steps} />);
+    const lines = lastFrame()!.split('\n');
+    const buildLine = lines.find(l => l.includes('Build'))!;
 
-    expect(lastFrame()).toContain('[done]');
-    expect(lastFrame()).toContain('Build');
+    expect(buildLine).toContain('[done]');
   });
 
-  it('shows error label and message for error steps', () => {
+  it('shows [error] on the same line as the error step label', () => {
     const steps: Step[] = [{ label: 'Deploy', status: 'error', error: 'Stack creation failed' }];
 
     const { lastFrame } = render(<StepProgress steps={steps} />);
+    const lines = lastFrame()!.split('\n');
+    const deployLine = lines.find(l => l.includes('Deploy'))!;
 
-    expect(lastFrame()).toContain('[error]');
-    expect(lastFrame()).toContain('Deploy');
+    expect(deployLine).toContain('[error]');
+    // Error message should appear in the output
     expect(lastFrame()).toContain('Stack creation failed');
   });
 
-  it('shows warning label and message for warn steps', () => {
+  it('shows [warning] on the same line as the warn step label', () => {
     const steps: Step[] = [{ label: 'Validate', status: 'warn', warn: 'Deprecated config field' }];
 
     const { lastFrame } = render(<StepProgress steps={steps} />);
+    const lines = lastFrame()!.split('\n');
+    const validateLine = lines.find(l => l.includes('Validate'))!;
 
-    expect(lastFrame()).toContain('[warning]');
+    expect(validateLine).toContain('[warning]');
     expect(lastFrame()).toContain('Deprecated config field');
   });
 

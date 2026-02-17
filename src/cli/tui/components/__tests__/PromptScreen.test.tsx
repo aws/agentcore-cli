@@ -23,7 +23,7 @@ describe('PromptScreen', () => {
     expect(lastFrame()).toContain('Press Enter');
   });
 
-  it('calls onConfirm on Enter key', async () => {
+  it('calls onConfirm on Enter key', () => {
     const onConfirm = vi.fn();
     const { stdin } = render(
       <PromptScreen helpText="help" onConfirm={onConfirm}>
@@ -31,14 +31,12 @@ describe('PromptScreen', () => {
       </PromptScreen>
     );
 
-    await new Promise(resolve => setTimeout(resolve, 50));
     stdin.write(ENTER);
-    await new Promise(resolve => setTimeout(resolve, 50));
 
     expect(onConfirm).toHaveBeenCalledTimes(1);
   });
 
-  it('calls onConfirm on y key', async () => {
+  it('calls onConfirm on y key', () => {
     const onConfirm = vi.fn();
     const { stdin } = render(
       <PromptScreen helpText="help" onConfirm={onConfirm}>
@@ -46,14 +44,12 @@ describe('PromptScreen', () => {
       </PromptScreen>
     );
 
-    await new Promise(resolve => setTimeout(resolve, 50));
     stdin.write('y');
-    await new Promise(resolve => setTimeout(resolve, 50));
 
     expect(onConfirm).toHaveBeenCalledTimes(1);
   });
 
-  it('calls onExit on Escape key', async () => {
+  it('calls onExit on Escape key', () => {
     const onExit = vi.fn();
     const { stdin } = render(
       <PromptScreen helpText="help" onExit={onExit}>
@@ -61,14 +57,12 @@ describe('PromptScreen', () => {
       </PromptScreen>
     );
 
-    await new Promise(resolve => setTimeout(resolve, 50));
     stdin.write(ESCAPE);
-    await new Promise(resolve => setTimeout(resolve, 50));
 
     expect(onExit).toHaveBeenCalledTimes(1);
   });
 
-  it('calls onExit on n key', async () => {
+  it('calls onExit on n key', () => {
     const onExit = vi.fn();
     const { stdin } = render(
       <PromptScreen helpText="help" onExit={onExit}>
@@ -76,14 +70,12 @@ describe('PromptScreen', () => {
       </PromptScreen>
     );
 
-    await new Promise(resolve => setTimeout(resolve, 50));
     stdin.write('n');
-    await new Promise(resolve => setTimeout(resolve, 50));
 
     expect(onExit).toHaveBeenCalledTimes(1);
   });
 
-  it('calls onBack on b key', async () => {
+  it('calls onBack on b key', () => {
     const onBack = vi.fn();
     const { stdin } = render(
       <PromptScreen helpText="help" onBack={onBack}>
@@ -91,14 +83,12 @@ describe('PromptScreen', () => {
       </PromptScreen>
     );
 
-    await new Promise(resolve => setTimeout(resolve, 50));
     stdin.write('b');
-    await new Promise(resolve => setTimeout(resolve, 50));
 
     expect(onBack).toHaveBeenCalledTimes(1);
   });
 
-  it('ignores input when inputEnabled is false', async () => {
+  it('ignores input when inputEnabled is false', () => {
     const onConfirm = vi.fn();
     const onExit = vi.fn();
     const { stdin } = render(
@@ -107,13 +97,27 @@ describe('PromptScreen', () => {
       </PromptScreen>
     );
 
-    await new Promise(resolve => setTimeout(resolve, 50));
     stdin.write(ENTER);
     stdin.write(ESCAPE);
-    await new Promise(resolve => setTimeout(resolve, 50));
+    stdin.write('y');
+    stdin.write('n');
 
     expect(onConfirm).not.toHaveBeenCalled();
     expect(onExit).not.toHaveBeenCalled();
+  });
+
+  it('does not call absent callbacks', () => {
+    // PromptScreen with no onConfirm/onExit/onBack should not throw
+    const { stdin } = render(
+      <PromptScreen helpText="help">
+        <Text>msg</Text>
+      </PromptScreen>
+    );
+
+    // These should not throw
+    stdin.write(ENTER);
+    stdin.write(ESCAPE);
+    stdin.write('b');
   });
 });
 
@@ -130,11 +134,12 @@ describe('SuccessPrompt', () => {
     expect(lastFrame()).toContain('3 agents deployed');
   });
 
-  it('shows confirm and exit help text when onConfirm provided', () => {
+  it('shows continue/exit help text when onConfirm provided', () => {
     const { lastFrame } = render(<SuccessPrompt message="Done" onConfirm={vi.fn()} onExit={vi.fn()} />);
+    const frame = lastFrame()!;
 
-    expect(lastFrame()).toContain('continue');
-    expect(lastFrame()).toContain('exit');
+    expect(frame).toContain('continue');
+    expect(frame).toContain('exit');
   });
 
   it('shows any key help text when no onConfirm', () => {
@@ -147,18 +152,20 @@ describe('SuccessPrompt', () => {
     const { lastFrame } = render(
       <SuccessPrompt message="Done" onConfirm={vi.fn()} confirmText="Deploy" exitText="Cancel" />
     );
+    const frame = lastFrame()!.toLowerCase();
 
-    expect(lastFrame()).toContain('deploy');
-    expect(lastFrame()).toContain('cancel');
+    expect(frame).toContain('deploy');
+    expect(frame).toContain('cancel');
   });
 });
 
 describe('ErrorPrompt', () => {
   it('renders error message with cross mark', () => {
     const { lastFrame } = render(<ErrorPrompt message="Something failed" />);
+    const frame = lastFrame()!;
 
-    expect(lastFrame()).toContain('✗');
-    expect(lastFrame()).toContain('Something failed');
+    expect(frame).toContain('✗');
+    expect(frame).toContain('Something failed');
   });
 
   it('renders detail text when provided', () => {
@@ -169,51 +176,44 @@ describe('ErrorPrompt', () => {
 
   it('shows back and exit help text', () => {
     const { lastFrame } = render(<ErrorPrompt message="Failed" onBack={vi.fn()} onExit={vi.fn()} />);
+    const frame = lastFrame()!;
 
-    expect(lastFrame()).toContain('Enter/B to go back');
-    expect(lastFrame()).toContain('Esc/Q to exit');
+    expect(frame).toContain('Enter/B to go back');
+    expect(frame).toContain('Esc/Q to exit');
   });
 
-  it('calls onBack on Enter key', async () => {
+  it('calls onBack on Enter key', () => {
     const onBack = vi.fn();
     const { stdin } = render(<ErrorPrompt message="Failed" onBack={onBack} />);
 
-    await new Promise(resolve => setTimeout(resolve, 50));
     stdin.write(ENTER);
-    await new Promise(resolve => setTimeout(resolve, 50));
 
     expect(onBack).toHaveBeenCalledTimes(1);
   });
 
-  it('calls onBack on b key', async () => {
+  it('calls onBack on b key', () => {
     const onBack = vi.fn();
     const { stdin } = render(<ErrorPrompt message="Failed" onBack={onBack} />);
 
-    await new Promise(resolve => setTimeout(resolve, 50));
     stdin.write('b');
-    await new Promise(resolve => setTimeout(resolve, 50));
 
     expect(onBack).toHaveBeenCalledTimes(1);
   });
 
-  it('calls onExit on Escape key', async () => {
+  it('calls onExit on Escape key', () => {
     const onExit = vi.fn();
     const { stdin } = render(<ErrorPrompt message="Failed" onExit={onExit} />);
 
-    await new Promise(resolve => setTimeout(resolve, 50));
     stdin.write(ESCAPE);
-    await new Promise(resolve => setTimeout(resolve, 50));
 
     expect(onExit).toHaveBeenCalledTimes(1);
   });
 
-  it('calls onExit on n key', async () => {
+  it('calls onExit on n key', () => {
     const onExit = vi.fn();
     const { stdin } = render(<ErrorPrompt message="Failed" onExit={onExit} />);
 
-    await new Promise(resolve => setTimeout(resolve, 50));
     stdin.write('n');
-    await new Promise(resolve => setTimeout(resolve, 50));
 
     expect(onExit).toHaveBeenCalledTimes(1);
   });
@@ -236,9 +236,10 @@ describe('ConfirmPrompt', () => {
 
   it('shows keyboard help when showInput is false', () => {
     const { lastFrame } = render(<ConfirmPrompt message="Delete?" onConfirm={vi.fn()} onCancel={vi.fn()} />);
+    const frame = lastFrame()!;
 
-    expect(lastFrame()).toContain('Enter/Y confirm');
-    expect(lastFrame()).toContain('Esc/N cancel');
+    expect(frame).toContain('Enter/Y confirm');
+    expect(frame).toContain('Esc/N cancel');
   });
 
   it('shows input help when showInput is true', () => {
@@ -247,24 +248,38 @@ describe('ConfirmPrompt', () => {
     expect(lastFrame()).toContain('Type y/n');
   });
 
-  it('calls onConfirm on Enter key (no showInput)', async () => {
+  it('calls onConfirm on Enter key', () => {
     const onConfirm = vi.fn();
     const { stdin } = render(<ConfirmPrompt message="Delete?" onConfirm={onConfirm} onCancel={vi.fn()} />);
 
-    await new Promise(resolve => setTimeout(resolve, 50));
     stdin.write(ENTER);
-    await new Promise(resolve => setTimeout(resolve, 50));
 
     expect(onConfirm).toHaveBeenCalledTimes(1);
   });
 
-  it('calls onCancel on Escape key', async () => {
+  it('calls onCancel on Escape key', () => {
     const onCancel = vi.fn();
     const { stdin } = render(<ConfirmPrompt message="Delete?" onConfirm={vi.fn()} onCancel={onCancel} />);
 
-    await new Promise(resolve => setTimeout(resolve, 50));
     stdin.write(ESCAPE);
-    await new Promise(resolve => setTimeout(resolve, 50));
+
+    expect(onCancel).toHaveBeenCalledTimes(1);
+  });
+
+  it('calls onConfirm on y key', () => {
+    const onConfirm = vi.fn();
+    const { stdin } = render(<ConfirmPrompt message="Delete?" onConfirm={onConfirm} onCancel={vi.fn()} />);
+
+    stdin.write('y');
+
+    expect(onConfirm).toHaveBeenCalledTimes(1);
+  });
+
+  it('calls onCancel on n key', () => {
+    const onCancel = vi.fn();
+    const { stdin } = render(<ConfirmPrompt message="Delete?" onConfirm={vi.fn()} onCancel={onCancel} />);
+
+    stdin.write('n');
 
     expect(onCancel).toHaveBeenCalledTimes(1);
   });
