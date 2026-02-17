@@ -5,7 +5,7 @@ on:
       aws_region:
         description: 'AWS region for deployment'
         default: 'us-east-1'
-  pull_request:
+  pull_request_target:
     branches: [main]
 
 permissions:
@@ -19,6 +19,8 @@ jobs:
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v6
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
       - uses: actions/setup-node@v6
         with:
           node-version: '20.x'
