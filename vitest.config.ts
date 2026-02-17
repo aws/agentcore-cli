@@ -52,8 +52,8 @@ export default defineConfig({
       {
         extends: true,
         test: {
-          name: 'etoe',
-          include: ['etoe-tests/**/*.test.ts'],
+          name: 'e2e',
+          include: ['e2e-tests/**/*.test.ts'],
           testTimeout: 600000,
           hookTimeout: 600000,
         },

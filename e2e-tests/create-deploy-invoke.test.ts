@@ -17,10 +17,10 @@ describe('e2e: create → deploy → invoke', () => {
   beforeAll(async () => {
     if (!canRun) return;
 
-    testDir = join(tmpdir(), `agentcore-etoe-${randomUUID()}`);
+    testDir = join(tmpdir(), `agentcore-e2e-${randomUUID()}`);
     await mkdir(testDir, { recursive: true });
 
-    agentName = `Etoe${Date.now()}`;
+    agentName = `E2e${Date.now()}`;
     const result = await runCLI(
       [
         'create',
