@@ -7,11 +7,16 @@ from mcp_client.client import get_streamable_http_mcp_client
 app = BedrockAgentCoreApp()
 log = app.logger
 
-# Set environment variables for model authentication
-load_model()
-
 # Get MCP Server
 mcp_server = get_streamable_http_mcp_client()
+
+_credentials_loaded = False
+
+def ensure_credentials_loaded():
+    global _credentials_loaded
+    if not _credentials_loaded:
+        load_model()
+        _credentials_loaded = True
 
 
 # Define a simple function tool
@@ -23,6 +28,7 @@ def add_numbers(a: int, b: int) -> int:
 
 # Define the agent execution
 async def main(query):
+    ensure_credentials_loaded()
     try:
         async with mcp_server as server:
             active_servers = [server] if server else []

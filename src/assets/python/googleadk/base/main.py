@@ -22,11 +22,17 @@ def add_numbers(a: int, b: int) -> int:
     return a + b
 
 
-# Set environment variables for model authentication
-load_model()
-
 # Get MCP Toolset
 mcp_toolset = [get_streamable_http_mcp_client()]
+
+_credentials_loaded = False
+
+def ensure_credentials_loaded():
+    global _credentials_loaded
+    if not _credentials_loaded:
+        load_model()
+        _credentials_loaded = True
+
 
 # Agent Definition
 agent = Agent(
@@ -40,6 +46,7 @@ agent = Agent(
 
 # Session and Runner
 async def setup_session_and_runner(user_id, session_id):
+    ensure_credentials_loaded()
     session_service = InMemorySessionService()
     session = await session_service.create_session(
         app_name=APP_NAME, user_id=user_id, session_id=session_id

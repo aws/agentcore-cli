@@ -42,14 +42,19 @@ def agent_factory():
     return get_or_create_agent
 get_or_create_agent = agent_factory()
 {{else}}
-# Create agent
-agent = Agent(
-    model=load_model(),
-    system_prompt="""
-        You are a helpful assistant. Use tools when appropriate.
-    """,
-    tools=tools+[mcp_client]
-)
+_agent = None
+
+def get_or_create_agent():
+    global _agent
+    if _agent is None:
+        _agent = Agent(
+            model=load_model(),
+            system_prompt="""
+                You are a helpful assistant. Use tools when appropriate.
+            """,
+            tools=tools+[mcp_client]
+        )
+    return _agent
 {{/if}}
 
 
@@ -61,8 +66,10 @@ async def invoke(payload, context):
     session_id = getattr(context, 'session_id', 'default-session')
     user_id = getattr(context, 'user_id', 'default-user')
     agent = get_or_create_agent(session_id, user_id)
-
+{{else}}
+    agent = get_or_create_agent()
 {{/if}}
+
     # Execute and format response
     stream = agent.stream_async(payload.get("prompt"))
 
