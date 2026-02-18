@@ -136,9 +136,7 @@ describe('ScrollableText', () => {
 
   it('does not respond to input when isActive is false', async () => {
     const content = makeContent(20);
-    const { lastFrame, stdin } = render(
-      <ScrollableText content={content} height={5} isActive={false} />
-    );
+    const { lastFrame, stdin } = render(<ScrollableText content={content} height={5} isActive={false} />);
 
     const before = lastFrame();
     await delay();

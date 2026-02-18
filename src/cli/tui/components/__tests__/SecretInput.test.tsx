@@ -1,8 +1,8 @@
 import { ApiKeySecretInput, SecretInput } from '../SecretInput.js';
 import { render } from 'ink-testing-library';
 import React from 'react';
-import { z } from 'zod';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { z } from 'zod';
 
 const ENTER = '\r';
 const ESCAPE = '\x1B';
@@ -16,9 +16,7 @@ afterEach(() => vi.restoreAllMocks());
 
 describe('SecretInput', () => {
   it('renders prompt text in bold', () => {
-    const { lastFrame } = render(
-      <SecretInput prompt="API Key" onSubmit={vi.fn()} onCancel={vi.fn()} />
-    );
+    const { lastFrame } = render(<SecretInput prompt="API Key" onSubmit={vi.fn()} onCancel={vi.fn()} />);
 
     expect(lastFrame()).toContain('API Key');
   });
@@ -40,9 +38,7 @@ describe('SecretInput', () => {
   });
 
   it('masks input with default * character', async () => {
-    const { lastFrame, stdin } = render(
-      <SecretInput prompt="Key" onSubmit={vi.fn()} onCancel={vi.fn()} />
-    );
+    const { lastFrame, stdin } = render(<SecretInput prompt="Key" onSubmit={vi.fn()} onCancel={vi.fn()} />);
 
     await delay();
     stdin.write('secret');
@@ -66,9 +62,7 @@ describe('SecretInput', () => {
   });
 
   it('toggles show/hide on Tab', async () => {
-    const { lastFrame, stdin } = render(
-      <SecretInput prompt="Key" onSubmit={vi.fn()} onCancel={vi.fn()} />
-    );
+    const { lastFrame, stdin } = render(<SecretInput prompt="Key" onSubmit={vi.fn()} onCancel={vi.fn()} />);
 
     await delay();
     stdin.write('mykey');
@@ -92,17 +86,13 @@ describe('SecretInput', () => {
   });
 
   it('shows "Tab to show" when masked', () => {
-    const { lastFrame } = render(
-      <SecretInput prompt="Key" onSubmit={vi.fn()} onCancel={vi.fn()} />
-    );
+    const { lastFrame } = render(<SecretInput prompt="Key" onSubmit={vi.fn()} onCancel={vi.fn()} />);
 
     expect(lastFrame()).toContain('Tab to show');
   });
 
   it('shows "Tab to hide" after toggling', async () => {
-    const { lastFrame, stdin } = render(
-      <SecretInput prompt="Key" onSubmit={vi.fn()} onCancel={vi.fn()} />
-    );
+    const { lastFrame, stdin } = render(<SecretInput prompt="Key" onSubmit={vi.fn()} onCancel={vi.fn()} />);
 
     await delay();
     stdin.write(TAB);
@@ -113,9 +103,7 @@ describe('SecretInput', () => {
 
   it('calls onSubmit with trimmed value on Enter', async () => {
     const onSubmit = vi.fn();
-    const { stdin } = render(
-      <SecretInput prompt="Key" onSubmit={onSubmit} onCancel={vi.fn()} />
-    );
+    const { stdin } = render(<SecretInput prompt="Key" onSubmit={onSubmit} onCancel={vi.fn()} />);
 
     await delay();
     stdin.write('  mykey  ');
@@ -128,9 +116,7 @@ describe('SecretInput', () => {
 
   it('calls onCancel on Escape', async () => {
     const onCancel = vi.fn();
-    const { stdin } = render(
-      <SecretInput prompt="Key" onSubmit={vi.fn()} onCancel={onCancel} />
-    );
+    const { stdin } = render(<SecretInput prompt="Key" onSubmit={vi.fn()} onCancel={onCancel} />);
 
     await delay();
     stdin.write(ESCAPE);
@@ -142,9 +128,7 @@ describe('SecretInput', () => {
   it('calls onSkip when submitting empty value with onSkip provided', async () => {
     const onSkip = vi.fn();
     const onCancel = vi.fn();
-    const { stdin } = render(
-      <SecretInput prompt="Key" onSubmit={vi.fn()} onCancel={onCancel} onSkip={onSkip} />
-    );
+    const { stdin } = render(<SecretInput prompt="Key" onSubmit={vi.fn()} onCancel={onCancel} onSkip={onSkip} />);
 
     await delay();
     stdin.write(ENTER);
@@ -156,9 +140,7 @@ describe('SecretInput', () => {
 
   it('calls onCancel when submitting empty value without onSkip', async () => {
     const onCancel = vi.fn();
-    const { stdin } = render(
-      <SecretInput prompt="Key" onSubmit={vi.fn()} onCancel={onCancel} />
-    );
+    const { stdin } = render(<SecretInput prompt="Key" onSubmit={vi.fn()} onCancel={onCancel} />);
 
     await delay();
     stdin.write(ENTER);
@@ -168,17 +150,13 @@ describe('SecretInput', () => {
   });
 
   it('shows skip hint when onSkip is provided', () => {
-    const { lastFrame } = render(
-      <SecretInput prompt="Key" onSubmit={vi.fn()} onCancel={vi.fn()} onSkip={vi.fn()} />
-    );
+    const { lastFrame } = render(<SecretInput prompt="Key" onSubmit={vi.fn()} onCancel={vi.fn()} onSkip={vi.fn()} />);
 
     expect(lastFrame()).toContain('Leave empty to skip');
   });
 
   it('shows "go back" instead of "cancel" when onSkip is provided', () => {
-    const { lastFrame } = render(
-      <SecretInput prompt="Key" onSubmit={vi.fn()} onCancel={vi.fn()} onSkip={vi.fn()} />
-    );
+    const { lastFrame } = render(<SecretInput prompt="Key" onSubmit={vi.fn()} onCancel={vi.fn()} onSkip={vi.fn()} />);
 
     expect(lastFrame()).toContain('go back');
     expect(lastFrame()).not.toContain('cancel');
@@ -187,9 +165,7 @@ describe('SecretInput', () => {
   it('does not submit when schema validation fails', async () => {
     const onSubmit = vi.fn();
     const schema = z.string().min(10, 'Too short');
-    const { stdin } = render(
-      <SecretInput prompt="Key" schema={schema} onSubmit={onSubmit} onCancel={vi.fn()} />
-    );
+    const { stdin } = render(<SecretInput prompt="Key" schema={schema} onSubmit={onSubmit} onCancel={vi.fn()} />);
 
     await delay();
     stdin.write('abc');
@@ -243,8 +219,7 @@ describe('SecretInput', () => {
 
   it('supports custom validation', async () => {
     const onSubmit = vi.fn();
-    const customValidation = (val: string) =>
-      val.startsWith('sk-') ? true : 'Must start with sk-';
+    const customValidation = (val: string) => (val.startsWith('sk-') ? true : 'Must start with sk-');
     const { lastFrame, stdin } = render(
       <SecretInput prompt="Key" customValidation={customValidation} onSubmit={onSubmit} onCancel={vi.fn()} />
     );

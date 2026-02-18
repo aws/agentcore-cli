@@ -1,8 +1,8 @@
 import { TextInput } from '../TextInput.js';
 import { render } from 'ink-testing-library';
 import React from 'react';
-import { z } from 'zod';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { z } from 'zod';
 
 const ENTER = '\r';
 const ESCAPE = '\x1B';
@@ -15,9 +15,7 @@ afterEach(() => vi.restoreAllMocks());
 
 describe('TextInput', () => {
   it('renders prompt text', () => {
-    const { lastFrame } = render(
-      <TextInput prompt="Enter name:" onSubmit={vi.fn()} onCancel={vi.fn()} />
-    );
+    const { lastFrame } = render(<TextInput prompt="Enter name:" onSubmit={vi.fn()} onCancel={vi.fn()} />);
 
     expect(lastFrame()).toContain('Enter name:');
   });
@@ -40,17 +38,13 @@ describe('TextInput', () => {
   });
 
   it('shows > arrow by default', () => {
-    const { lastFrame } = render(
-      <TextInput prompt="Name" onSubmit={vi.fn()} onCancel={vi.fn()} />
-    );
+    const { lastFrame } = render(<TextInput prompt="Name" onSubmit={vi.fn()} onCancel={vi.fn()} />);
 
     expect(lastFrame()).toContain('>');
   });
 
   it('hides arrow when hideArrow is true', () => {
-    const { lastFrame } = render(
-      <TextInput prompt="Name" hideArrow onSubmit={vi.fn()} onCancel={vi.fn()} />
-    );
+    const { lastFrame } = render(<TextInput prompt="Name" hideArrow onSubmit={vi.fn()} onCancel={vi.fn()} />);
     const lines = lastFrame()!.split('\n');
     // The input line should not start with >
     const inputLine = lines.find(l => !l.includes('Name'))!;
@@ -58,9 +52,7 @@ describe('TextInput', () => {
   });
 
   it('accepts character input and displays it', async () => {
-    const { lastFrame, stdin } = render(
-      <TextInput prompt="Name" onSubmit={vi.fn()} onCancel={vi.fn()} />
-    );
+    const { lastFrame, stdin } = render(<TextInput prompt="Name" onSubmit={vi.fn()} onCancel={vi.fn()} />);
 
     await delay();
     stdin.write('a');
@@ -86,9 +78,7 @@ describe('TextInput', () => {
 
   it('does not call onSubmit when value is empty and allowEmpty is false', async () => {
     const onSubmit = vi.fn();
-    const { stdin } = render(
-      <TextInput prompt="Name" onSubmit={onSubmit} onCancel={vi.fn()} />
-    );
+    const { stdin } = render(<TextInput prompt="Name" onSubmit={onSubmit} onCancel={vi.fn()} />);
 
     await delay();
     stdin.write(ENTER);
@@ -99,9 +89,7 @@ describe('TextInput', () => {
 
   it('calls onSubmit with empty value when allowEmpty is true', async () => {
     const onSubmit = vi.fn();
-    const { stdin } = render(
-      <TextInput prompt="Name" allowEmpty onSubmit={onSubmit} onCancel={vi.fn()} />
-    );
+    const { stdin } = render(<TextInput prompt="Name" allowEmpty onSubmit={onSubmit} onCancel={vi.fn()} />);
 
     await delay();
     stdin.write(ENTER);
@@ -113,9 +101,7 @@ describe('TextInput', () => {
 
   it('calls onCancel on Escape', async () => {
     const onCancel = vi.fn();
-    const { stdin } = render(
-      <TextInput prompt="Name" onSubmit={vi.fn()} onCancel={onCancel} />
-    );
+    const { stdin } = render(<TextInput prompt="Name" onSubmit={vi.fn()} onCancel={onCancel} />);
 
     await delay();
     stdin.write(ESCAPE);
@@ -125,9 +111,7 @@ describe('TextInput', () => {
   });
 
   it('masks input when mask character is provided', async () => {
-    const { lastFrame, stdin } = render(
-      <TextInput prompt="Password" mask="*" onSubmit={vi.fn()} onCancel={vi.fn()} />
-    );
+    const { lastFrame, stdin } = render(<TextInput prompt="Password" mask="*" onSubmit={vi.fn()} onCancel={vi.fn()} />);
 
     await delay();
     stdin.write('abc');
@@ -167,9 +151,7 @@ describe('TextInput', () => {
   it('does not submit when schema validation fails', async () => {
     const onSubmit = vi.fn();
     const schema = z.string().min(5);
-    const { stdin } = render(
-      <TextInput prompt="Name" schema={schema} onSubmit={onSubmit} onCancel={vi.fn()} />
-    );
+    const { stdin } = render(<TextInput prompt="Name" schema={schema} onSubmit={onSubmit} onCancel={vi.fn()} />);
 
     await delay();
     stdin.write('hi');
@@ -225,9 +207,7 @@ describe('TextInput', () => {
   });
 
   it('does not show checkmark/crossmark when no schema or customValidation', async () => {
-    const { lastFrame, stdin } = render(
-      <TextInput prompt="Name" onSubmit={vi.fn()} onCancel={vi.fn()} />
-    );
+    const { lastFrame, stdin } = render(<TextInput prompt="Name" onSubmit={vi.fn()} onCancel={vi.fn()} />);
 
     await delay();
     stdin.write('hello');

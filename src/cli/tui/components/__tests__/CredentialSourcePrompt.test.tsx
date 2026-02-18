@@ -60,9 +60,7 @@ describe('CredentialSourcePrompt', () => {
 
   it('calls onUseEnvLocal when first option selected', () => {
     const onUseEnvLocal = vi.fn();
-    const { stdin } = render(
-      <CredentialSourcePrompt {...defaultProps} onUseEnvLocal={onUseEnvLocal} />
-    );
+    const { stdin } = render(<CredentialSourcePrompt {...defaultProps} onUseEnvLocal={onUseEnvLocal} />);
 
     // First option is already selected
     stdin.write(ENTER);

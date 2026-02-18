@@ -1,8 +1,8 @@
 import {
   useRemovableAgents,
   useRemovableGateways,
-  useRemovableMemories,
   useRemovableIdentities,
+  useRemovableMemories,
   useRemoveAgent,
 } from '../useRemove.js';
 import { Text } from 'ink';

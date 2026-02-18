@@ -1,5 +1,5 @@
-import type { LogEntry } from '../LogPanel.js';
 import { FullScreenLogView } from '../FullScreenLogView.js';
+import type { LogEntry } from '../LogPanel.js';
 import { render } from 'ink-testing-library';
 import React from 'react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
@@ -17,15 +17,14 @@ function makeLogs(count: number): LogEntry[] {
   return Array.from({ length: count }, (_, i) => ({
     level: 'info' as const,
     message: `Log message ${i + 1}`,
-    timestamp: new Date(2024, 0, 1, 0, 0, i),
   }));
 }
 
 describe('FullScreenLogView', () => {
   it('renders log entries', () => {
     const logs: LogEntry[] = [
-      { level: 'info', message: 'Starting deploy', timestamp: new Date() },
-      { level: 'error', message: 'Deploy failed', timestamp: new Date() },
+      { level: 'info', message: 'Starting deploy' },
+      { level: 'error', message: 'Deploy failed' },
     ];
     const { lastFrame } = render(<FullScreenLogView logs={logs} onExit={vi.fn()} />);
     const frame = lastFrame()!;
@@ -43,9 +42,7 @@ describe('FullScreenLogView', () => {
 
   it('renders log file path when provided', () => {
     const logs = makeLogs(2);
-    const { lastFrame } = render(
-      <FullScreenLogView logs={logs} logFilePath="/tmp/deploy.log" onExit={vi.fn()} />
-    );
+    const { lastFrame } = render(<FullScreenLogView logs={logs} logFilePath="/tmp/deploy.log" onExit={vi.fn()} />);
 
     expect(lastFrame()).toContain('/tmp/deploy.log');
   });
@@ -84,7 +81,7 @@ describe('FullScreenLogView', () => {
   });
 
   it('renders error log with level label', () => {
-    const logs: LogEntry[] = [{ level: 'error', message: 'Something broke', timestamp: new Date() }];
+    const logs: LogEntry[] = [{ level: 'error', message: 'Something broke' }];
     const { lastFrame } = render(<FullScreenLogView logs={logs} onExit={vi.fn()} />);
     const frame = lastFrame()!;
 
@@ -93,7 +90,7 @@ describe('FullScreenLogView', () => {
   });
 
   it('renders response log with special formatting', () => {
-    const logs: LogEntry[] = [{ level: 'response', message: 'Agent response text', timestamp: new Date() }];
+    const logs: LogEntry[] = [{ level: 'response', message: 'Agent response text' }];
     const { lastFrame } = render(<FullScreenLogView logs={logs} onExit={vi.fn()} />);
     const frame = lastFrame()!;
 
