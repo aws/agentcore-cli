@@ -120,6 +120,12 @@
     "typescript-eslint": "^8.50.1",
     "vitest": "^4.0.18"
   },
+  "overridesComments": {
+    "fast-xml-parser": "CVE-2026-26278: @aws-sdk/xml-builder pins fast-xml-parser@5.3.4 which is vulnerable to DoS via entity expansion. Remove this override once @aws-sdk/xml-builder updates its pin to >=5.3.6."
+  },
+  "overrides": {
+    "fast-xml-parser": "5.3.6"
+  },
   "engines": {
     "node": ">=20"
   },
