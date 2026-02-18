@@ -4,7 +4,7 @@ import { getCredentialProvider } from '../../aws';
 import { isNoCredentialsError } from '../../errors';
 import { apiKeyProviderExists, createApiKeyProvider, setTokenVaultKmsKey, updateApiKeyProvider } from '../identity';
 import { computeDefaultCredentialEnvVarName } from '../identity/create-identity';
-import { BedrockAgentCoreControlClient } from '@aws-sdk/client-bedrock-agentcore-control';
+import { BedrockAgentCoreControlClient, GetTokenVaultCommand } from '@aws-sdk/client-bedrock-agentcore-control';
 import { CreateKeyCommand, KMSClient } from '@aws-sdk/client-kms';
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -94,7 +94,22 @@ async function setupTokenVaultKms(
   projectSpec: AgentCoreProjectSpec
 ): Promise<{ success: boolean; keyArn?: string; error?: string }> {
   try {
-    // Create KMS key for this project
+    const controlClient = new BedrockAgentCoreControlClient({ region, credentials });
+
+    // Check if the token vault already has a customer-managed key
+    try {
+      const vaultResponse = await controlClient.send(new GetTokenVaultCommand({}));
+      if (
+        vaultResponse.kmsConfiguration?.keyType === 'CustomerManagedKey' &&
+        vaultResponse.kmsConfiguration.kmsKeyArn
+      ) {
+        return { success: true, keyArn: vaultResponse.kmsConfiguration.kmsKeyArn };
+      }
+    } catch {
+      // Vault may not exist yet or access denied — fall through to create key
+    }
+
+    // No CMK configured — create a new KMS key and set it on the vault
     const kmsClient = new KMSClient({ region, credentials });
     const response = await kmsClient.send(
       new CreateKeyCommand({
@@ -107,9 +122,7 @@ async function setupTokenVaultKms(
       return { success: false, error: 'Failed to create KMS key' };
     }
 
-    // Configure token vault to use the key
-    const client = new BedrockAgentCoreControlClient({ region, credentials });
-    const result = await setTokenVaultKmsKey(client, keyArn);
+    const result = await setTokenVaultKmsKey(controlClient, keyArn);
     if (!result.success) {
       return { success: false, error: result.error };
     }
