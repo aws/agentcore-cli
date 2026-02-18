@@ -11,6 +11,7 @@ import { describe, expect, it } from 'vitest';
 
 const baseConfig: GenerateConfig = {
   projectName: 'TestProject',
+  buildType: 'CodeZip',
   sdk: 'Strands',
   modelProvider: 'Bedrock',
   memory: 'none',
