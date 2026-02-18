@@ -26,7 +26,7 @@ Closes #
 
 How have you tested the change?
 
-- [ ] I ran `npm run test:all`
+- [ ] I ran `npm run test:unit` and `npm run test:integ`
 - [ ] I ran `npm run typecheck`
 - [ ] I ran `npm run lint`
 - [ ] If I modified `src/assets/`, I ran `npm run test:update-snapshots` and committed the updated snapshots

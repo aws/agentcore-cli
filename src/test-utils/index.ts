@@ -5,6 +5,9 @@
 
 export { runCLI, type RunResult } from './cli-runner.js';
 export { exists } from './fs-helpers.js';
+export { hasCommand, hasAwsCredentials, prereqs } from './prereqs.js';
+export { createTestProject, type TestProject, type CreateTestProjectOptions } from './project-factory.js';
+export { readProjectConfig } from './config-reader.js';
 
 /**
  * Strip ANSI escape codes from a string.

@@ -56,7 +56,7 @@ agentcore invoke
 
 | Framework           | Notes                         |
 | ------------------- | ----------------------------- |
-| Strands             | AWS-native, streaming support |
+| Strands Agents      | AWS-native, streaming support |
 | LangChain/LangGraph | Graph-based workflows         |
 | Google ADK          | Gemini models only            |
 | OpenAI Agents       | OpenAI models only            |

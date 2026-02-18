@@ -26,6 +26,7 @@
   "include": [
     "src/**/*",
     "integ-tests/**/*",
+    "e2e-tests/**/*",
     "scripts/**/*",
     "vitest.config.ts",
     "vitest.integ.config.ts",

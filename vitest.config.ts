@@ -49,6 +49,15 @@ export default defineConfig({
           include: ['integ-tests/**/*.test.ts'],
         },
       },
+      {
+        extends: true,
+        test: {
+          name: 'e2e',
+          include: ['e2e-tests/**/*.test.ts'],
+          testTimeout: 600000,
+          hookTimeout: 600000,
+        },
+      },
     ],
     testTimeout: 120000,
     hookTimeout: 120000,

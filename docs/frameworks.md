@@ -7,14 +7,14 @@ for existing code.
 
 | Framework               | Supported Model Providers          |
 | ----------------------- | ---------------------------------- |
-| **Strands**             | Bedrock, Anthropic, OpenAI, Gemini |
+| **Strands Agents**      | Bedrock, Anthropic, OpenAI, Gemini |
 | **LangChain_LangGraph** | Bedrock, Anthropic, OpenAI, Gemini |
 | **GoogleADK**           | Gemini only                        |
 | **OpenAIAgents**        | OpenAI only                        |
 
 ## Framework Selection Guide
 
-### Strands
+### Strands Agents
 
 AWS's native agent framework designed for Amazon Bedrock.
 
