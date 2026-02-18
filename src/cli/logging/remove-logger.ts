@@ -1,4 +1,3 @@
-/* eslint-disable security/detect-object-injection, security/detect-non-literal-fs-filename */
 import { CLI_LOGS_DIR, CLI_SYSTEM_DIR, CONFIG_DIR, findConfigRoot } from '../../lib';
 import type { RemovalPreview } from '../operations/remove';
 import { existsSync, mkdirSync, writeFileSync } from 'node:fs';

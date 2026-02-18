@@ -8,6 +8,7 @@ import React from 'react';
  * Check if the agentcore/ project directory exists.
  * Walks up from baseDir to find the agentcore directory.
  */
+// eslint-disable-next-line react-refresh/only-export-components
 export function projectExists(baseDir: string = getWorkingDirectory()): boolean {
   return findConfigRoot(baseDir) !== null;
 }
@@ -17,6 +18,7 @@ export function projectExists(baseDir: string = getWorkingDirectory()): boolean 
  * Returns the project root path if cwd is a subdirectory, or null if at the root.
  * Returns null if no project is found at all (use projectExists for that check).
  */
+// eslint-disable-next-line react-refresh/only-export-components
 export function getProjectRootMismatch(baseDir: string = getWorkingDirectory()): string | null {
   const configRoot = findConfigRoot(baseDir);
   if (!configRoot) {
@@ -78,6 +80,7 @@ export function WrongDirectoryMessage({ projectRoot }: { projectRoot: string }) 
  *
  * @param inTui - If true, shows "create" instead of "agentcore create"
  */
+// eslint-disable-next-line react-refresh/only-export-components
 export function requireProject(inTui = false): void {
   const cwd = getWorkingDirectory();
   const configRoot = findConfigRoot(cwd);

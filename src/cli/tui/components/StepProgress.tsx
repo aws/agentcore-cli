@@ -12,10 +12,12 @@ export interface Step {
   info?: string;
 }
 
+// eslint-disable-next-line react-refresh/only-export-components
 export function hasStepError(steps: Step[]): boolean {
   return steps.some(s => s.status === 'error');
 }
 
+// eslint-disable-next-line react-refresh/only-export-components
 export function areStepsComplete(steps: Step[]): boolean {
   if (steps.length === 0) return false;
   return steps.every(s => s.status === 'success' || s.status === 'error' || s.status === 'warn' || s.status === 'info');

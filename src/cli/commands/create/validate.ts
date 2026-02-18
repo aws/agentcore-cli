@@ -19,7 +19,7 @@ const MEMORY_OPTIONS = ['none', 'shortTerm', 'longAndShortTerm'] as const;
 /** Check if a folder with the given name already exists in the directory */
 export function validateFolderNotExists(name: string, cwd: string): true | string {
   const projectPath = join(cwd, name);
-  // eslint-disable-next-line security/detect-non-literal-fs-filename
+
   if (existsSync(projectPath)) {
     return `A folder named '${name}' already exists in this directory`;
   }

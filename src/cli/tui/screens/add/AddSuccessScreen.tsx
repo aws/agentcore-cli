@@ -4,6 +4,7 @@ import type { ReactNode } from 'react';
 import React from 'react';
 
 /** Next steps shown after successfully adding a resource */
+// eslint-disable-next-line react-refresh/only-export-components
 export function getAddSuccessSteps(showDevOption: boolean): NextStep[] {
   if (showDevOption) {
     return [

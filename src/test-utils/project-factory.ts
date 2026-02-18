@@ -1,4 +1,3 @@
-/* eslint-disable security/detect-non-literal-fs-filename */
 import { runCLI } from './cli-runner.js';
 import { randomUUID } from 'node:crypto';
 import { mkdir, rm } from 'node:fs/promises';

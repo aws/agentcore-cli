@@ -293,6 +293,7 @@ export function useDeployFlow(options: DeployFlowOptions = {}): DeployFlowState 
     persistDeployedState,
     switchableIoHost,
     context?.isTeardownDeploy,
+    context?.awsTargets,
   ]);
 
   // Finalize logger and dispose toolkit when preflight fails

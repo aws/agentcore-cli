@@ -162,7 +162,6 @@ describe('SecureCredentials', () => {
 
     it('Node.js inspect is safe', () => {
       const creds = new SecureCredentials({ SECRET: 'mypassword' });
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const inspectFn = (creds as any)[Symbol.for('nodejs.util.inspect.custom')] as () => string;
       const str = inspectFn.call(creds);
 

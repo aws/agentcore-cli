@@ -13,6 +13,7 @@ const LayoutContext = createContext<LayoutContextValue>({
   contentWidth: MAX_CONTENT_WIDTH,
 });
 
+// eslint-disable-next-line react-refresh/only-export-components
 export function useLayout(): LayoutContextValue {
   return useContext(LayoutContext);
 }
@@ -22,6 +23,7 @@ export function useLayout(): LayoutContextValue {
  * The logo has fixed text "  >_ AgentCore" on left and version on right,
  * with padding in between to fill the width.
  */
+// eslint-disable-next-line react-refresh/only-export-components
 export function buildLogo(width: number, version?: string): string {
   const left = '│  >_ AgentCore';
   const right = version ? `v${version} │` : '│';

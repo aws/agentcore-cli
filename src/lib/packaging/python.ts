@@ -23,6 +23,7 @@ import type { ArtifactResult, CodeZipPackager, PackageOptions, RuntimePackager }
 import { detectUnavailablePlatform } from './uv';
 import { join } from 'path';
 
+// eslint-disable-next-line security/detect-unsafe-regex -- bounded input from RuntimeVersion enum, not user input
 const PYTHON_RUNTIME_REGEX = /PYTHON_(\d+)_?(\d+)?/;
 
 /**

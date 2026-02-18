@@ -35,6 +35,9 @@ export default tseslint.config(
       ...importPlugin.configs.recommended.rules,
       ...react.configs.recommended.rules,
       ...security.configs.recommended.rules,
+      // CLI inherently works with dynamic file paths and Record lookups — these are false positives
+      'security/detect-non-literal-fs-filename': 'off',
+      'security/detect-object-injection': 'off',
       ...react.configs['jsx-runtime'].rules,
       ...reactHooks.configs.recommended.rules,
       'react-hooks/preserve-manual-memoization': 'warn',

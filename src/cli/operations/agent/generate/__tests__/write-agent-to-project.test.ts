@@ -1,4 +1,3 @@
-/* eslint-disable security/detect-non-literal-fs-filename */
 import type { GenerateConfig } from '../../../../tui/screens/generate/types.js';
 import type { CredentialStrategy } from '../../../identity/create-identity.js';
 import { randomUUID } from 'node:crypto';

@@ -150,7 +150,6 @@ describe('handleValidate', () => {
   it('formats ConfigValidationError with its message', async () => {
     mockFindConfigRoot.mockReturnValue('/project/agentcore');
     const { ConfigValidationError } = await import('../../../../lib/index.js');
-    // eslint-disable-next-line @typescript-eslint/no-unsafe-argument, @typescript-eslint/no-explicit-any
     mockReadProjectSpec.mockRejectedValue(new (ConfigValidationError as any)('field "name" is required'));
 
     const result = await handleValidate({});

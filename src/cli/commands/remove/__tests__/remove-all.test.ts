@@ -11,7 +11,7 @@ describe('remove all command', () => {
 
   beforeAll(async () => {
     testDir = join(tmpdir(), `agentcore-remove-all-${randomUUID()}`);
-    // eslint-disable-next-line security/detect-non-literal-fs-filename
+
     await mkdir(testDir, { recursive: true });
 
     // Create project with agent
@@ -53,7 +53,7 @@ describe('remove all command', () => {
   it('preserves aws-targets.json and deployed-state.json after remove all', async () => {
     // Write aws-targets.json so we can verify it's preserved
     const awsTargetsPath = join(projectDir, 'agentcore', 'aws-targets.json');
-    // eslint-disable-next-line security/detect-non-literal-fs-filename
+
     await writeFile(
       awsTargetsPath,
       JSON.stringify([{ name: 'default', account: '123456789012', region: 'us-east-1' }])
@@ -62,10 +62,10 @@ describe('remove all command', () => {
     // Simulate a deployed state entry so we can verify it is preserved
     // deployed-state.json lives in agentcore/.cli/
     const cliDir = join(projectDir, 'agentcore', '.cli');
-    // eslint-disable-next-line security/detect-non-literal-fs-filename
+
     await mkdir(cliDir, { recursive: true });
     const deployedStatePath = join(cliDir, 'deployed-state.json');
-    // eslint-disable-next-line security/detect-non-literal-fs-filename
+
     await writeFile(
       deployedStatePath,
       JSON.stringify({ targets: { default: { resources: { stackName: 'TestStack' } } } })
@@ -78,12 +78,12 @@ describe('remove all command', () => {
     expect(json.success).toBe(true);
 
     // Verify aws-targets.json is preserved (NOT reset to empty)
-    // eslint-disable-next-line security/detect-non-literal-fs-filename
+
     const targetsAfter = JSON.parse(await readFile(awsTargetsPath, 'utf-8'));
     expect(targetsAfter.length, 'aws-targets.json should be preserved after remove all').toBe(1);
 
     // Verify deployed-state.json is preserved (NOT reset to empty)
-    // eslint-disable-next-line security/detect-non-literal-fs-filename
+
     const deployedStateAfter = JSON.parse(await readFile(deployedStatePath, 'utf-8'));
     expect(
       Object.keys(deployedStateAfter.targets).length,
@@ -91,7 +91,7 @@ describe('remove all command', () => {
     ).toBe(1);
 
     // Verify agentcore.json agents ARE cleared
-    // eslint-disable-next-line security/detect-non-literal-fs-filename
+
     const schema = JSON.parse(await readFile(join(projectDir, 'agentcore', 'agentcore.json'), 'utf-8'));
     expect(schema.agents.length, 'Agents should be cleared after remove all').toBe(0);
   });

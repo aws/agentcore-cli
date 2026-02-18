@@ -32,7 +32,7 @@ export class LocalCdkProject {
    */
   exists(): boolean {
     const packageJson = path.join(this.projectDir, 'package.json');
-    // eslint-disable-next-line security/detect-non-literal-fs-filename
+
     return fs.existsSync(this.projectDir) && fs.existsSync(packageJson);
   }
 
@@ -41,13 +41,12 @@ export class LocalCdkProject {
    * Throws an error if the project is missing or invalid.
    */
   validate(): void {
-    // eslint-disable-next-line security/detect-non-literal-fs-filename
     if (!fs.existsSync(this.projectDir)) {
       throw new Error(`CDK project not found at ${this.projectDir}. Run 'agentcore create' first.`);
     }
 
     const packageJson = path.join(this.projectDir, 'package.json');
-    // eslint-disable-next-line security/detect-non-literal-fs-filename
+
     if (!fs.existsSync(packageJson)) {
       throw new Error(`Invalid CDK project: missing package.json in ${this.projectDir}`);
     }

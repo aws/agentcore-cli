@@ -203,7 +203,6 @@ describe('createGatewayFromWizard', () => {
     } as Parameters<typeof createGatewayFromWizard>[0]);
 
     expect(result.name).toBe('new-gw');
-    // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
     expect(mockWriteMcpSpec.mock.calls[0]![0].agentCoreGateways).toHaveLength(2);
   });
 
@@ -237,7 +236,6 @@ describe('createGatewayFromWizard', () => {
       },
     } as Parameters<typeof createGatewayFromWizard>[0]);
 
-    // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
     expect(mockWriteMcpSpec.mock.calls[0]![0].agentCoreGateways[0].authorizerConfiguration).toEqual({
       customJwtAuthorizer: {
         discoveryUrl: 'https://example.com/.well-known/openid',

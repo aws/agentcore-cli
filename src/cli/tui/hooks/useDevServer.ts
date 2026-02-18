@@ -167,6 +167,7 @@ export function useDevServer(options: { workingDir: string; port: number; agentN
     config?.module,
     config?.directory,
     config?.isPython,
+    options.workingDir,
     targetPort,
     restartTrigger,
     envVars,

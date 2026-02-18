@@ -1,4 +1,3 @@
-/* eslint-disable security/detect-non-literal-fs-filename */
 import {
   MAX_ZIP_SIZE_BYTES,
   convertWindowsScriptsToLinux,

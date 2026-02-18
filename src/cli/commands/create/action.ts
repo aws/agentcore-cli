@@ -58,7 +58,7 @@ export async function createProject(options: CreateProjectOptions): Promise<Crea
   try {
     // Create project directory
     onProgress?.(`Create ${name}/ project directory`, 'start');
-    // eslint-disable-next-line security/detect-non-literal-fs-filename
+
     await mkdir(projectRoot, { recursive: true });
     onProgress?.(`Create ${name}/ project directory`, 'done');
 

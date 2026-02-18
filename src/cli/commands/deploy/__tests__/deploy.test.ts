@@ -28,7 +28,7 @@ describe('deploy without agents', () => {
 
   beforeAll(async () => {
     noAgentTestDir = join(tmpdir(), `agentcore-deploy-noagent-${randomUUID()}`);
-    // eslint-disable-next-line security/detect-non-literal-fs-filename
+
     await mkdir(noAgentTestDir, { recursive: true });
 
     // Create project without any agents
@@ -41,7 +41,7 @@ describe('deploy without agents', () => {
 
     // Write aws-targets.json directly (replaces old 'add target' command)
     const awsTargetsPath = join(noAgentProjectDir, 'agentcore', 'aws-targets.json');
-    // eslint-disable-next-line security/detect-non-literal-fs-filename
+
     await writeFile(
       awsTargetsPath,
       JSON.stringify([{ name: 'default', account: '123456789012', region: 'us-east-1' }])

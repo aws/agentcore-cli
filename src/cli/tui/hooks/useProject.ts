@@ -32,6 +32,7 @@ export interface UseProjectResult {
  * }
  */
 export function useProject(): UseProjectResult {
+  // eslint-disable-next-line react-hooks/preserve-manual-memoization -- intentionally empty deps; findConfigRoot() result is stable for the process lifetime
   return useMemo(() => {
     const configRoot = findConfigRoot();
 

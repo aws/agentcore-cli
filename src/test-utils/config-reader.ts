@@ -1,4 +1,3 @@
-/* eslint-disable security/detect-non-literal-fs-filename */
 import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 

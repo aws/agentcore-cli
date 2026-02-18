@@ -41,7 +41,11 @@ export const GatewayNameSchema = z
   .string()
   .min(1)
   .max(100)
-  .regex(/^([0-9a-zA-Z][-]?){1,100}$/, 'Gateway name must be alphanumeric with optional hyphens (max 100 chars)');
+  .regex(
+    // eslint-disable-next-line security/detect-unsafe-regex -- input bounded to 100 chars by .max(100) above
+    /^[0-9a-zA-Z](?:[0-9a-zA-Z-]*[0-9a-zA-Z])?$/,
+    'Gateway name must be alphanumeric with optional hyphens (max 100 chars)'
+  );
 
 // ============================================================================
 // Common Types
@@ -73,6 +77,7 @@ export const EntrypointSchema = z
   .string()
   .min(1)
   .regex(
+    // eslint-disable-next-line security/detect-unsafe-regex -- character class quantifiers don't cause backtracking
     /^[a-zA-Z0-9_][a-zA-Z0-9_/.-]*\.(py|ts|js)(:[a-zA-Z_][a-zA-Z0-9_]*)?$/,
     'Must be a Python (.py) or TypeScript (.ts/.js) file path with optional handler (e.g., "main.py:handler" or "index.ts")'
   ) as unknown as z.ZodType<FilePath>;

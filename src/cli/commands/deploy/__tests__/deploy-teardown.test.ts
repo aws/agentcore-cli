@@ -49,7 +49,7 @@ describe('deploy with empty agents and deployed state (teardown)', () => {
   it('requires --yes to confirm teardown deploy when deployed state exists', async () => {
     // Write aws-targets.json so deploy can find the target
     const awsTargetsPath = join(projectDir, 'agentcore', 'aws-targets.json');
-    // eslint-disable-next-line security/detect-non-literal-fs-filename
+
     await writeFile(
       awsTargetsPath,
       JSON.stringify([{ name: 'default', account: '123456789012', region: 'us-east-1' }])
@@ -60,7 +60,7 @@ describe('deploy with empty agents and deployed state (teardown)', () => {
     const cliDir = join(projectDir, 'agentcore', '.cli');
     await mkdir(cliDir, { recursive: true });
     const deployedStatePath = join(cliDir, 'deployed-state.json');
-    // eslint-disable-next-line security/detect-non-literal-fs-filename
+
     await writeFile(
       deployedStatePath,
       JSON.stringify({

@@ -150,6 +150,7 @@ export function GenerateWizardUI({
 /**
  * Returns the appropriate help text for the current wizard step.
  */
+// eslint-disable-next-line react-refresh/only-export-components
 export function getWizardHelpText(step: GenerateStep): string {
   if (step === 'confirm') return 'Enter/Y confirm · Esc back';
   if (step === 'projectName') return 'Enter submit · Esc cancel';

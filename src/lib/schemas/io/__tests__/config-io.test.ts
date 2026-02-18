@@ -1,4 +1,3 @@
-/* eslint-disable security/detect-non-literal-fs-filename */
 import { ConfigNotFoundError, ConfigParseError, ConfigValidationError } from '../../../errors/config.js';
 import { ConfigIO } from '../config-io.js';
 import { NoProjectError } from '../path-resolver.js';
