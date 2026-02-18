@@ -13,9 +13,12 @@ function checkPort(port: number, host: string): Promise<boolean> {
 
 /** Check if a port is available on both localhost and all interfaces. */
 async function isPortAvailable(port: number): Promise<boolean> {
-  // Check both: container runtimes bind on 0.0.0.0, local servers on 127.0.0.1
-  const [loopback, allInterfaces] = await Promise.all([checkPort(port, '127.0.0.1'), checkPort(port, '0.0.0.0')]);
-  return loopback && allInterfaces;
+  // Check sequentially: concurrent binds on overlapping addresses (0.0.0.0 includes 127.0.0.1)
+  // can cause false negatives because the first server hasn't released the port before the second tries.
+  const loopback = await checkPort(port, '127.0.0.1');
+  if (!loopback) return false;
+  const allInterfaces = await checkPort(port, '0.0.0.0');
+  return allInterfaces;
 }
 
 export async function findAvailablePort(startPort: number): Promise<number> {
