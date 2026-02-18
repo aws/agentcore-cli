@@ -164,6 +164,54 @@ describe('getDevConfig', () => {
     expect(config!.directory).toBe(workingDir);
   });
 
+  it('returns config for Container agent with buildType Container', () => {
+    const project: AgentCoreProjectSpec = {
+      name: 'TestProject',
+      version: 1,
+      agents: [
+        {
+          type: 'AgentCoreRuntime',
+          name: 'ContainerAgent',
+          build: 'Container',
+          runtimeVersion: 'PYTHON_3_12',
+          entrypoint: filePath('main.py'),
+          codeLocation: dirPath('./agents/container'),
+        },
+      ],
+      memories: [],
+      credentials: [],
+    };
+
+    const config = getDevConfig(workingDir, project, '/test/project/agentcore');
+    expect(config).not.toBeNull();
+    expect(config?.agentName).toBe('ContainerAgent');
+    expect(config?.buildType).toBe('Container');
+  });
+
+  it('returns config for Container agent regardless of runtime version', () => {
+    const project: AgentCoreProjectSpec = {
+      name: 'TestProject',
+      version: 1,
+      agents: [
+        {
+          type: 'AgentCoreRuntime',
+          name: 'ContainerAgent',
+          build: 'Container',
+          runtimeVersion: 'NODE_20',
+          entrypoint: filePath('index.js'),
+          codeLocation: dirPath('./agents/container'),
+        },
+      ],
+      memories: [],
+      credentials: [],
+    };
+
+    const config = getDevConfig(workingDir, project, '/test/project/agentcore');
+    expect(config).not.toBeNull();
+    expect(config?.agentName).toBe('ContainerAgent');
+    expect(config?.buildType).toBe('Container');
+  });
+
   it('handles .py: entrypoint format (module:function)', () => {
     const project: AgentCoreProjectSpec = {
       name: 'TestProject',
@@ -303,5 +351,58 @@ describe('getDevSupportedAgents', () => {
     const supported = getDevSupportedAgents(project);
     expect(supported).toHaveLength(1);
     expect(supported[0]?.name).toBe('PythonAgent');
+  });
+
+  it('includes Container agents with entrypoints', () => {
+    const project: AgentCoreProjectSpec = {
+      name: 'TestProject',
+      version: 1,
+      agents: [
+        {
+          type: 'AgentCoreRuntime',
+          name: 'ContainerAgent',
+          build: 'Container',
+          runtimeVersion: 'PYTHON_3_12',
+          entrypoint: filePath('main.py'),
+          codeLocation: dirPath('./agents/container'),
+        },
+      ],
+      memories: [],
+      credentials: [],
+    };
+
+    const supported = getDevSupportedAgents(project);
+    expect(supported).toHaveLength(1);
+    expect(supported[0]?.name).toBe('ContainerAgent');
+  });
+
+  it('returns both Python CodeZip and Container agents', () => {
+    const project: AgentCoreProjectSpec = {
+      name: 'TestProject',
+      version: 1,
+      agents: [
+        {
+          type: 'AgentCoreRuntime',
+          name: 'PythonAgent',
+          build: 'CodeZip',
+          runtimeVersion: 'PYTHON_3_12',
+          entrypoint: filePath('main.py'),
+          codeLocation: dirPath('./agents/python'),
+        },
+        {
+          type: 'AgentCoreRuntime',
+          name: 'ContainerAgent',
+          build: 'Container',
+          runtimeVersion: 'PYTHON_3_12',
+          entrypoint: filePath('app.py'),
+          codeLocation: dirPath('./agents/container'),
+        },
+      ],
+      memories: [],
+      credentials: [],
+    };
+
+    const supported = getDevSupportedAgents(project);
+    expect(supported).toHaveLength(2);
   });
 });

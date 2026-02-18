@@ -1,5 +1,11 @@
 import type { AgentCoreProjectSpec, DirectoryPath, FilePath } from '../../../schema';
-import { checkDependencyVersions, checkNodeVersion, formatVersionError, requiresUv } from '../checks.js';
+import {
+  checkDependencyVersions,
+  checkNodeVersion,
+  formatVersionError,
+  requiresContainerRuntime,
+  requiresUv,
+} from '../checks.js';
 import { describe, expect, it } from 'vitest';
 
 describe('formatVersionError', () => {
@@ -73,6 +79,87 @@ describe('requiresUv', () => {
       credentials: [],
     };
     expect(requiresUv(project)).toBe(false);
+  });
+});
+
+describe('requiresContainerRuntime', () => {
+  it('returns true when project has Container agents', () => {
+    const project: AgentCoreProjectSpec = {
+      name: 'Test',
+      version: 1,
+      agents: [
+        {
+          type: 'AgentCoreRuntime',
+          name: 'Agent1',
+          build: 'Container',
+          runtimeVersion: 'PYTHON_3_12',
+          entrypoint: 'main.py' as FilePath,
+          codeLocation: './app' as DirectoryPath,
+        },
+      ],
+      memories: [],
+      credentials: [],
+    };
+    expect(requiresContainerRuntime(project)).toBe(true);
+  });
+
+  it('returns false when project only has CodeZip agents', () => {
+    const project: AgentCoreProjectSpec = {
+      name: 'Test',
+      version: 1,
+      agents: [
+        {
+          type: 'AgentCoreRuntime',
+          name: 'Agent1',
+          build: 'CodeZip',
+          runtimeVersion: 'PYTHON_3_12',
+          entrypoint: 'main.py' as FilePath,
+          codeLocation: './app' as DirectoryPath,
+        },
+      ],
+      memories: [],
+      credentials: [],
+    };
+    expect(requiresContainerRuntime(project)).toBe(false);
+  });
+
+  it('returns false for empty agents array', () => {
+    const project: AgentCoreProjectSpec = {
+      name: 'Test',
+      version: 1,
+      agents: [],
+      memories: [],
+      credentials: [],
+    };
+    expect(requiresContainerRuntime(project)).toBe(false);
+  });
+
+  it('returns true with mixed Container and CodeZip agents', () => {
+    const project: AgentCoreProjectSpec = {
+      name: 'Test',
+      version: 1,
+      agents: [
+        {
+          type: 'AgentCoreRuntime',
+          name: 'Agent1',
+          build: 'CodeZip',
+          runtimeVersion: 'PYTHON_3_12',
+          entrypoint: 'main.py' as FilePath,
+          codeLocation: './app' as DirectoryPath,
+        },
+        {
+          type: 'AgentCoreRuntime',
+          name: 'Agent2',
+          build: 'Container',
+          runtimeVersion: 'PYTHON_3_12',
+          entrypoint: 'app.py' as FilePath,
+          codeLocation: './container-app' as DirectoryPath,
+        },
+      ],
+      memories: [],
+      credentials: [],
+    };
+    expect(requiresContainerRuntime(project)).toBe(true);
   });
 });
 

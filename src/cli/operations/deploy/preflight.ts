@@ -134,7 +134,7 @@ function validateRuntimeNames(projectSpec: AgentCoreProjectSpec): void {
 /**
  * Validates that Container agents have required Dockerfiles.
  */
-function validateContainerAgents(projectSpec: AgentCoreProjectSpec, configRoot: string): void {
+export function validateContainerAgents(projectSpec: AgentCoreProjectSpec, configRoot: string): void {
   const errors: string[] = [];
   for (const agent of projectSpec.agents) {
     if (agent.build === 'Container') {
