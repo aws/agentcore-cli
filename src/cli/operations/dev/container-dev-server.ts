@@ -1,4 +1,5 @@
 import { CONTAINER_INTERNAL_PORT, DOCKERFILE_NAME } from '../../../lib';
+import { detectContainerRuntime, getStartHint } from '../../external-requirements/detect';
 import { DevServer, type LogLevel, type SpawnConfig } from './dev-server';
 import { convertEntrypointToModule } from './utils';
 import { spawnSync } from 'child_process';
@@ -32,7 +33,6 @@ export class ContainerDevServer extends DevServer {
     const { onLog } = this.options.callbacks;
 
     // 1. Detect container runtime
-    const { detectContainerRuntime, getStartHint } = await import('../../external-requirements/detect');
     const { runtime, notReadyRuntimes } = await detectContainerRuntime();
     if (!runtime) {
       if (notReadyRuntimes.length > 0) {

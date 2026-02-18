@@ -1,3 +1,5 @@
+import { join } from 'path';
+
 // Re-export all schema constants from schema
 export * from '../schema';
 
@@ -60,5 +62,5 @@ export const START_HINTS: Record<ContainerRuntime, string> = {
  * Get the Dockerfile path for a given code location.
  */
 export function getDockerfilePath(codeLocation: string): string {
-  return `${codeLocation}/${DOCKERFILE_NAME}`;
+  return join(codeLocation, DOCKERFILE_NAME);
 }

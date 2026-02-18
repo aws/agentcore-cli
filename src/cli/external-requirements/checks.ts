@@ -135,8 +135,8 @@ export async function checkDependencyVersions(projectSpec: AgentCoreProjectSpec)
   let containerRuntimeAvailable = true;
   if (requiresContainerRuntime(projectSpec)) {
     const info = await detectContainerRuntime();
-    containerRuntimeAvailable = info !== null;
-    if (!info) {
+    containerRuntimeAvailable = info.runtime !== null;
+    if (!info.runtime) {
       // This is a warning, not an error - deploy still works via CodeBuild
       // We don't add to errors[] since it's not blocking
     }

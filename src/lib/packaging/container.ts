@@ -1,5 +1,5 @@
 import type { AgentEnvSpec } from '../../schema';
-import { DOCKERFILE_NAME, ONE_GB } from '../constants';
+import { CONTAINER_RUNTIMES, DOCKERFILE_NAME, ONE_GB } from '../constants';
 import { PackagingError } from './errors';
 import { resolveCodeLocation } from './helpers';
 import type { ArtifactResult, PackageOptions, RuntimePackager } from './types/packaging';
@@ -9,10 +9,10 @@ import { join } from 'path';
 
 /**
  * Detect container runtime synchronously.
- * Checks docker, podman, finch in order; returns the first available binary name.
+ * Checks runtimes in CONTAINER_RUNTIMES order; returns the first available binary name.
  */
 function detectContainerRuntimeSync(): string | null {
-  for (const runtime of ['docker', 'finch', 'podman']) {
+  for (const runtime of CONTAINER_RUNTIMES) {
     const result = spawnSync('which', [runtime], { stdio: 'pipe' });
     if (result.status === 0) {
       const versionResult = spawnSync(runtime, ['--version'], { stdio: 'pipe' });
