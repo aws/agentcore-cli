@@ -365,36 +365,47 @@ exports[`Assets Directory Snapshots > File listing > should match the expected f
   "python/autogen/base/README.md",
   "python/autogen/base/gitignore.template",
   "python/autogen/base/main.py",
+  "python/autogen/base/mcp_client/__init__.py",
   "python/autogen/base/mcp_client/client.py",
+  "python/autogen/base/model/__init__.py",
   "python/autogen/base/model/load.py",
   "python/autogen/base/pyproject.toml",
   "python/crewai/base/README.md",
   "python/crewai/base/gitignore.template",
   "python/crewai/base/main.py",
+  "python/crewai/base/model/__init__.py",
   "python/crewai/base/model/load.py",
   "python/crewai/base/pyproject.toml",
   "python/googleadk/base/README.md",
   "python/googleadk/base/gitignore.template",
   "python/googleadk/base/main.py",
+  "python/googleadk/base/mcp_client/__init__.py",
   "python/googleadk/base/mcp_client/client.py",
+  "python/googleadk/base/model/__init__.py",
   "python/googleadk/base/model/load.py",
   "python/googleadk/base/pyproject.toml",
   "python/langchain_langgraph/base/README.md",
   "python/langchain_langgraph/base/gitignore.template",
   "python/langchain_langgraph/base/main.py",
+  "python/langchain_langgraph/base/mcp_client/__init__.py",
   "python/langchain_langgraph/base/mcp_client/client.py",
+  "python/langchain_langgraph/base/model/__init__.py",
   "python/langchain_langgraph/base/model/load.py",
   "python/langchain_langgraph/base/pyproject.toml",
   "python/openaiagents/base/README.md",
   "python/openaiagents/base/gitignore.template",
   "python/openaiagents/base/main.py",
+  "python/openaiagents/base/mcp_client/__init__.py",
   "python/openaiagents/base/mcp_client/client.py",
+  "python/openaiagents/base/model/__init__.py",
   "python/openaiagents/base/model/load.py",
   "python/openaiagents/base/pyproject.toml",
   "python/strands/base/README.md",
   "python/strands/base/gitignore.template",
   "python/strands/base/main.py",
+  "python/strands/base/mcp_client/__init__.py",
   "python/strands/base/mcp_client/client.py",
+  "python/strands/base/model/__init__.py",
   "python/strands/base/model/load.py",
   "python/strands/base/pyproject.toml",
   "python/strands/capabilities/memory/session.py",
@@ -918,6 +929,11 @@ if __name__ == "__main__":
 "
 `;
 
+exports[`Assets Directory Snapshots > Python framework assets > python/python/autogen/base/mcp_client/__init__.py should match snapshot 1`] = `
+"
+"
+`;
+
 exports[`Assets Directory Snapshots > Python framework assets > python/python/autogen/base/mcp_client/client.py should match snapshot 1`] = `
 "from typing import List
 from autogen_ext.tools.mcp import (
@@ -937,6 +953,11 @@ async def get_streamable_http_mcp_tools() -> List[StreamableHttpMcpToolAdapter]:
     # to use an MCP server that supports bearer authentication, add headers={"Authorization": f"Bearer {access_token}"}
     server_params = StreamableHttpServerParams(url=EXAMPLE_MCP_ENDPOINT)
     return await mcp_server_tools(server_params)
+"
+`;
+
+exports[`Assets Directory Snapshots > Python framework assets > python/python/autogen/base/model/__init__.py should match snapshot 1`] = `
+"
 "
 `;
 
@@ -1264,6 +1285,11 @@ def invoke(payload, context):
 
 if __name__ == "__main__":
     app.run()
+"
+`;
+
+exports[`Assets Directory Snapshots > Python framework assets > python/python/crewai/base/model/__init__.py should match snapshot 1`] = `
+"
 "
 `;
 
@@ -1615,6 +1641,11 @@ if __name__ == "__main__":
 "
 `;
 
+exports[`Assets Directory Snapshots > Python framework assets > python/python/googleadk/base/mcp_client/__init__.py should match snapshot 1`] = `
+"
+"
+`;
+
 exports[`Assets Directory Snapshots > Python framework assets > python/python/googleadk/base/mcp_client/client.py should match snapshot 1`] = `
 "from google.adk.tools.mcp_tool.mcp_toolset import MCPToolset
 from google.adk.tools.mcp_tool.mcp_session_manager import StreamableHTTPConnectionParams
@@ -1631,6 +1662,11 @@ def get_streamable_http_mcp_client() -> MCPToolset:
     return MCPToolset(
         connection_params=StreamableHTTPConnectionParams(url=EXAMPLE_MCP_ENDPOINT)
     )
+"
+`;
+
+exports[`Assets Directory Snapshots > Python framework assets > python/python/googleadk/base/model/__init__.py should match snapshot 1`] = `
+"
 "
 `;
 
@@ -1848,6 +1884,11 @@ if __name__ == "__main__":
 "
 `;
 
+exports[`Assets Directory Snapshots > Python framework assets > python/python/langchain_langgraph/base/mcp_client/__init__.py should match snapshot 1`] = `
+"
+"
+`;
+
 exports[`Assets Directory Snapshots > Python framework assets > python/python/langchain_langgraph/base/mcp_client/client.py should match snapshot 1`] = `
 "from langchain_mcp_adapters.client import MultiServerMCPClient
 
@@ -1868,6 +1909,11 @@ def get_streamable_http_mcp_client() -> MultiServerMCPClient:
             }
         }
     )
+"
+`;
+
+exports[`Assets Directory Snapshots > Python framework assets > python/python/langchain_langgraph/base/model/__init__.py should match snapshot 1`] = `
+"
 "
 `;
 
@@ -2186,6 +2232,11 @@ if __name__ == "__main__":
 "
 `;
 
+exports[`Assets Directory Snapshots > Python framework assets > python/python/openaiagents/base/mcp_client/__init__.py should match snapshot 1`] = `
+"
+"
+`;
+
 exports[`Assets Directory Snapshots > Python framework assets > python/python/openaiagents/base/mcp_client/client.py should match snapshot 1`] = `
 "from agents.mcp import MCPServerStreamableHttp
 
@@ -2201,6 +2252,11 @@ def get_streamable_http_mcp_client() -> MCPServerStreamableHttp:
     return MCPServerStreamableHttp(
         name="AgentCore Gateway MCP", params={"url": EXAMPLE_MCP_ENDPOINT}
     )
+"
+`;
+
+exports[`Assets Directory Snapshots > Python framework assets > python/python/openaiagents/base/model/__init__.py should match snapshot 1`] = `
+"
 "
 `;
 
@@ -2438,6 +2494,11 @@ if __name__ == "__main__":
 "
 `;
 
+exports[`Assets Directory Snapshots > Python framework assets > python/python/strands/base/mcp_client/__init__.py should match snapshot 1`] = `
+"
+"
+`;
+
 exports[`Assets Directory Snapshots > Python framework assets > python/python/strands/base/mcp_client/client.py should match snapshot 1`] = `
 "from mcp.client.streamable_http import streamablehttp_client
 from strands.tools.mcp.mcp_client import MCPClient
@@ -2451,6 +2512,11 @@ def get_streamable_http_mcp_client() -> MCPClient:
     """
     # to use an MCP server that supports bearer authentication, add headers={"Authorization": f"Bearer {access_token}"}
     return MCPClient(lambda: streamablehttp_client(EXAMPLE_MCP_ENDPOINT))"
+`;
+
+exports[`Assets Directory Snapshots > Python framework assets > python/python/strands/base/model/__init__.py should match snapshot 1`] = `
+"
+"
 `;
 
 exports[`Assets Directory Snapshots > Python framework assets > python/python/strands/base/model/load.py should match snapshot 1`] = `
