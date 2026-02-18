@@ -65,6 +65,10 @@ In `agentcore.json`, set `"build": "Container"`:
 
 All other fields work the same as CodeZip agents.
 
+> **Converting an existing CodeZip agent?** Changing the `build` field in `agentcore.json` alone is not enough — you
+> must also add a `Dockerfile` and `.dockerignore` to the agent's code directory. The easiest way is to create a
+> throwaway container agent with `agentcore add agent --build Container` and copy the generated files.
+
 ## Local Development
 
 ```bash
