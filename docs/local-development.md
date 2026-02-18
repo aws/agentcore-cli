@@ -95,6 +95,13 @@ uv sync
 The dev server watches for file changes and automatically reloads. Edit your agent code and the changes take effect
 immediately.
 
+### Container Agents
+
+For container agents, the dev server builds a Docker image and runs it with your source directory mounted as a volume.
+Changes to your code are picked up by uvicorn's `--reload` inside the container — no image rebuild needed.
+
+See [Container Builds](container-builds.md) for full details on container development.
+
 ## Dev vs Deployed Behavior
 
 | Aspect     | Local Dev     | Deployed                   |

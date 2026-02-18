@@ -30,21 +30,22 @@ agentcore create --name MyProject --no-agent
 agentcore create --name MyProject --defaults --dry-run
 ```
 
-| Flag                   | Description                                                   |
-| ---------------------- | ------------------------------------------------------------- |
-| `--name <name>`        | Project name (alphanumeric, max 23 chars)                     |
-| `--defaults`           | Use defaults (Python, Strands, Bedrock, no memory)            |
-| `--no-agent`           | Skip agent creation                                           |
-| `--language <lang>`    | `Python` or `TypeScript`                                      |
-| `--framework <fw>`     | `Strands`, `LangChain_LangGraph`, `GoogleADK`, `OpenAIAgents` |
-| `--model-provider <p>` | `Bedrock`, `Anthropic`, `OpenAI`, `Gemini`                    |
-| `--api-key <key>`      | API key for non-Bedrock providers                             |
-| `--memory <opt>`       | `none`, `shortTerm`, `longAndShortTerm`                       |
-| `--output-dir <dir>`   | Output directory                                              |
-| `--skip-git`           | Skip git initialization                                       |
-| `--skip-python-setup`  | Skip venv setup                                               |
-| `--dry-run`            | Preview without creating                                      |
-| `--json`               | JSON output                                                   |
+| Flag                   | Description                                                                      |
+| ---------------------- | -------------------------------------------------------------------------------- |
+| `--name <name>`        | Project name (alphanumeric, max 23 chars)                                        |
+| `--defaults`           | Use defaults (Python, Strands, Bedrock, no memory)                               |
+| `--no-agent`           | Skip agent creation                                                              |
+| `--language <lang>`    | `Python` or `TypeScript`                                                         |
+| `--framework <fw>`     | `Strands`, `LangChain_LangGraph`, `GoogleADK`, `OpenAIAgents`                    |
+| `--model-provider <p>` | `Bedrock`, `Anthropic`, `OpenAI`, `Gemini`                                       |
+| `--build <type>`       | `CodeZip` (default) or `Container` (see [Container Builds](container-builds.md)) |
+| `--api-key <key>`      | API key for non-Bedrock providers                                                |
+| `--memory <opt>`       | `none`, `shortTerm`, `longAndShortTerm`                                          |
+| `--output-dir <dir>`   | Output directory                                                                 |
+| `--skip-git`           | Skip git initialization                                                          |
+| `--skip-python-setup`  | Skip venv setup                                                                  |
+| `--dry-run`            | Preview without creating                                                         |
+| `--json`               | JSON output                                                                      |
 
 ### deploy
 
@@ -117,18 +118,19 @@ agentcore add agent \
   --model-provider Bedrock
 ```
 
-| Flag                     | Description                           |
-| ------------------------ | ------------------------------------- |
-| `--name <name>`          | Agent name                            |
-| `--type <type>`          | `create` (default) or `byo`           |
-| `--language <lang>`      | `Python`, `TypeScript`, `Other` (BYO) |
-| `--framework <fw>`       | Agent framework                       |
-| `--model-provider <p>`   | Model provider                        |
-| `--api-key <key>`        | API key for non-Bedrock               |
-| `--memory <opt>`         | Memory option (create only)           |
-| `--code-location <path>` | Code path (BYO only)                  |
-| `--entrypoint <file>`    | Entry file (BYO only)                 |
-| `--json`                 | JSON output                           |
+| Flag                     | Description                                                                      |
+| ------------------------ | -------------------------------------------------------------------------------- |
+| `--name <name>`          | Agent name                                                                       |
+| `--type <type>`          | `create` (default) or `byo`                                                      |
+| `--build <type>`         | `CodeZip` (default) or `Container` (see [Container Builds](container-builds.md)) |
+| `--language <lang>`      | `Python`, `TypeScript`, `Other` (BYO)                                            |
+| `--framework <fw>`       | Agent framework                                                                  |
+| `--model-provider <p>`   | Model provider                                                                   |
+| `--api-key <key>`        | API key for non-Bedrock                                                          |
+| `--memory <opt>`         | Memory option (create only)                                                      |
+| `--code-location <path>` | Code path (BYO only)                                                             |
+| `--entrypoint <file>`    | Entry file (BYO only)                                                            |
+| `--json`                 | JSON output                                                                      |
 
 ### add memory
 
