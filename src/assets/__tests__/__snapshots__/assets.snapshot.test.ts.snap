@@ -408,6 +408,7 @@ exports[`Assets Directory Snapshots > File listing > should match the expected f
   "python/strands/base/model/__init__.py",
   "python/strands/base/model/load.py",
   "python/strands/base/pyproject.toml",
+  "python/strands/capabilities/memory/__init__.py",
   "python/strands/capabilities/memory/session.py",
   "typescript/.gitkeep",
 ]
@@ -2672,6 +2673,8 @@ dependencies = [
 packages = ["."]
 "
 `;
+
+exports[`Assets Directory Snapshots > Python framework assets > python/python/strands/capabilities/memory/__init__.py should match snapshot 1`] = `""`;
 
 exports[`Assets Directory Snapshots > Python framework assets > python/python/strands/capabilities/memory/session.py should match snapshot 1`] = `
 "import os
