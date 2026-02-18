@@ -3,6 +3,7 @@
  */
 import { checkSubprocess, isWindows, runSubprocessCapture } from '../../lib';
 import type { AgentCoreProjectSpec, TargetLanguage } from '../../schema';
+import { detectContainerRuntime } from './detect';
 import { NODE_MIN_VERSION, formatSemVer, parseSemVer, semVerGte } from './versions';
 
 /**
@@ -90,12 +91,20 @@ export function requiresUv(projectSpec: AgentCoreProjectSpec): boolean {
 }
 
 /**
+ * Check if the project has any Container agents that benefit from a local container runtime.
+ */
+export function requiresContainerRuntime(projectSpec: AgentCoreProjectSpec): boolean {
+  return projectSpec.agents.some(agent => agent.build === 'Container');
+}
+
+/**
  * Result of dependency version checks.
  */
 export interface DependencyCheckResult {
   passed: boolean;
   nodeCheck: VersionCheckResult;
   uvCheck: VersionCheckResult | null;
+  containerRuntimeAvailable: boolean;
   errors: string[];
 }
 
@@ -122,10 +131,22 @@ export async function checkDependencyVersions(projectSpec: AgentCoreProjectSpec)
     }
   }
 
+  // Check container runtime only if there are Container agents (warn only, not error)
+  let containerRuntimeAvailable = true;
+  if (requiresContainerRuntime(projectSpec)) {
+    const info = await detectContainerRuntime();
+    containerRuntimeAvailable = info !== null;
+    if (!info) {
+      // This is a warning, not an error - deploy still works via CodeBuild
+      // We don't add to errors[] since it's not blocking
+    }
+  }
+
   return {
     passed: errors.length === 0,
     nodeCheck,
     uvCheck,
+    containerRuntimeAvailable,
     errors,
   };
 }

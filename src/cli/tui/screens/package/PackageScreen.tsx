@@ -100,32 +100,31 @@ export function PackageScreen({ isInteractive: _isInteractive, onExit }: Package
           // Small delay to show progress
           await new Promise(resolve => setTimeout(resolve, 100));
 
-          if (agent.build !== 'CodeZip') {
-            newSteps[i] = {
-              label: agent.name,
-              status: 'warn',
-              warn: `Skipped: ${String(agent.build)} not supported`,
-            };
-            skipped.push(agent.name);
-            setState(prev => ({ ...prev, steps: [...newSteps], skipped }));
-            continue;
-          }
-
           try {
             // Package this specific agent
             const singleAgentContext = { ...context, targetAgent: agent.name };
-            const result = handlePackage(singleAgentContext);
+            const result = await handlePackage(singleAgentContext);
 
-            const agentResult = result.results[0];
-            if (agentResult) {
-              results.push(agentResult);
+            if (result.skipped.length > 0) {
+              skipped.push(...result.skipped);
               newSteps[i] = {
-                label: `${agent.name} → ${agentResult.artifactPath}`,
-                status: 'success',
-                info: `${agentResult.sizeMb} MB`,
+                label: agent.name,
+                status: 'warn',
+                warn: 'Skipped: no container runtime available',
               };
+              setState(prev => ({ ...prev, steps: [...newSteps], skipped }));
+            } else {
+              const agentResult = result.results[0];
+              if (agentResult) {
+                results.push(agentResult);
+                newSteps[i] = {
+                  label: `${agent.name} → ${agentResult.artifactPath}`,
+                  status: 'success',
+                  info: `${agentResult.sizeMb} MB`,
+                };
+              }
+              setState(prev => ({ ...prev, steps: [...newSteps], results }));
             }
-            setState(prev => ({ ...prev, steps: [...newSteps], results }));
           } catch (err) {
             const errorMsg = err instanceof Error ? err.message : String(err);
             newSteps[i] = {

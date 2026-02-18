@@ -98,6 +98,7 @@ export const registerInvoke = (program: Command) => {
     .option('--agent <name>', 'Select specific agent [non-interactive]')
     .option('--target <name>', 'Select deployment target [non-interactive]')
     .option('--session-id <id>', 'Use specific session ID for conversation continuity')
+    .option('--user-id <id>', 'User ID for runtime invocation (default: "default-user")')
     .option('--json', 'Output as JSON [non-interactive]')
     .option('--stream', 'Stream response in real-time (TUI streams by default) [non-interactive]')
     .action(
@@ -108,6 +109,7 @@ export const registerInvoke = (program: Command) => {
           agent?: string;
           target?: string;
           sessionId?: string;
+          userId?: string;
           json?: boolean;
           stream?: boolean;
         }
@@ -124,6 +126,7 @@ export const registerInvoke = (program: Command) => {
               agentName: cliOptions.agent,
               targetName: cliOptions.target ?? 'default',
               sessionId: cliOptions.sessionId,
+              userId: cliOptions.userId,
               json: cliOptions.json,
               stream: cliOptions.stream,
             });
@@ -134,6 +137,7 @@ export const registerInvoke = (program: Command) => {
                 isInteractive={true}
                 onExit={() => process.exit(0)}
                 initialSessionId={cliOptions.sessionId}
+                initialUserId={cliOptions.userId}
               />
             );
             await waitUntilExit();

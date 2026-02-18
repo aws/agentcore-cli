@@ -16,6 +16,7 @@ Handlebars.registerHelper('includes', (array: unknown[], value: unknown) => {
 function resolveTemplateName(filename: string): string {
   if (filename === 'gitignore.template') return '.gitignore';
   if (filename === 'npmignore.template') return '.npmignore';
+  if (filename === 'dockerignore.template') return '.dockerignore';
   return filename;
 }
 

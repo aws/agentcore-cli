@@ -1,11 +1,12 @@
 import { ProjectNameSchema } from '../../../../schema';
-import type { GenerateConfig, GenerateStep, MemoryOption } from './types';
+import type { BuildType, GenerateConfig, GenerateStep, MemoryOption } from './types';
 import { BASE_GENERATE_STEPS, getModelProviderOptionsForSdk } from './types';
 import { useCallback, useMemo, useState } from 'react';
 
 function getDefaultConfig(): GenerateConfig {
   return {
     projectName: '',
+    buildType: 'CodeZip',
     sdk: 'Strands',
     modelProvider: 'Bedrock',
     memory: 'none',
@@ -66,6 +67,11 @@ export function useGenerateWizard(options?: UseGenerateWizardOptions) {
 
   const setLanguage = useCallback((language: GenerateConfig['language']) => {
     setConfig(c => ({ ...c, language }));
+    setStep('buildType');
+  }, []);
+
+  const setBuildType = useCallback((buildType: BuildType) => {
+    setConfig(c => ({ ...c, buildType }));
     setStep('sdk');
   }, []);
 
@@ -156,6 +162,7 @@ export function useGenerateWizard(options?: UseGenerateWizardOptions) {
     hasInitialName,
     setProjectName,
     setLanguage,
+    setBuildType,
     setSdk,
     setModelProvider,
     setApiKey,

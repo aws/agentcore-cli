@@ -1,5 +1,12 @@
-import { CONFIG_DIR, ConfigIO, packCodeZipSync, resolveCodeLocation, validateAgentExists } from '../../../lib';
-import type { AgentCoreProjectSpec, AgentEnvSpec } from '../../../schema';
+import {
+  CONFIG_DIR,
+  ConfigIO,
+  packCodeZipSync,
+  packRuntime,
+  resolveCodeLocation,
+  validateAgentExists,
+} from '../../../lib';
+import type { AgentCoreProjectSpec } from '../../../schema';
 import { join, resolve } from 'path';
 
 export interface PackageOptions {
@@ -40,7 +47,7 @@ export interface PackageResult {
   error?: string;
 }
 
-export function handlePackage(context: PackageContext): PackageResult {
+export async function handlePackage(context: PackageContext): Promise<PackageResult> {
   const { project, configBaseDir, targetAgent } = context;
   const results: PackageAgentResult[] = [];
   const skipped: string[] = [];
@@ -53,39 +60,33 @@ export function handlePackage(context: PackageContext): PackageResult {
   // Filter agents based on --agent flag
   const agentsToPackage = targetAgent ? project.agents.filter(a => a.name === targetAgent) : project.agents;
 
-  // Type guard for CodeZip agents
-  function isCodeZipAgent(agent: AgentEnvSpec): boolean {
-    return agent.build === 'CodeZip';
-  }
-
-  // Filter only CodeZip artifacts
-  const packableAgents: AgentEnvSpec[] = [];
   for (const agent of agentsToPackage) {
-    const agentName = agent.name;
-    if (isCodeZipAgent(agent)) {
-      packableAgents.push(agent);
-    } else {
-      skipped.push(agentName);
+    if (agent.build === 'CodeZip') {
+      // Existing CodeZip packaging
+      const codeLocation = resolveCodeLocation(agent.codeLocation, configBaseDir);
+      const { artifactPath, sizeBytes } = packCodeZipSync(agent, {
+        projectRoot: codeLocation,
+        agentName: agent.name,
+        artifactDir: configBaseDir,
+      });
+      const sizeMb = (sizeBytes / (1024 * 1024)).toFixed(2);
+      results.push({ agentName: agent.name, artifactPath, sizeMb });
+    } else if (agent.build === 'Container') {
+      // Container packaging via ContainerPackager
+      const result = await packRuntime(agent, {
+        agentName: agent.name,
+        artifactDir: configBaseDir,
+      });
+
+      if (!result.artifactPath) {
+        // No container runtime available — skipped local build validation
+        console.warn('No container runtime found. Skipping local build validation. Deploy will use CodeBuild.');
+        skipped.push(agent.name);
+      } else {
+        const sizeMb = (result.sizeBytes / (1024 * 1024)).toFixed(2);
+        results.push({ agentName: agent.name, artifactPath: result.artifactPath, sizeMb });
+      }
     }
-  }
-
-  if (packableAgents.length === 0) {
-    return { success: true, results: [], skipped };
-  }
-
-  // Package each agent (fail-fast: throw on first error)
-  for (const agent of packableAgents) {
-    const codeLocation = resolveCodeLocation(agent.codeLocation, configBaseDir);
-
-    // This will throw if packaging fails - satisfies fail-fast requirement
-    const { artifactPath, sizeBytes } = packCodeZipSync(agent, {
-      projectRoot: codeLocation,
-      agentName: agent.name,
-      artifactDir: configBaseDir,
-    });
-
-    const sizeMb = (sizeBytes / (1024 * 1024)).toFixed(2);
-    results.push({ agentName: agent.name, artifactPath, sizeMb });
   }
 
   return { success: true, results, skipped };

@@ -3,6 +3,7 @@ export interface InvokeOptions {
   targetName?: string;
   prompt?: string;
   sessionId?: string;
+  userId?: string;
   json?: boolean;
   stream?: boolean;
 }

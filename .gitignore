@@ -58,3 +58,5 @@ workdir-tmp/
 
 # Bun
 bun.lock
+
+.agentreview

@@ -1,5 +1,5 @@
 import { ConfigIO, findConfigRoot } from '../../../lib';
-import type { AgentCoreProjectSpec, AgentEnvSpec } from '../../../schema';
+import type { AgentCoreProjectSpec, AgentEnvSpec, BuildType } from '../../../schema';
 import { dirname, isAbsolute, join } from 'node:path';
 
 export interface DevConfig {
@@ -8,6 +8,7 @@ export interface DevConfig {
   directory: string;
   hasConfig: boolean;
   isPython: boolean;
+  buildType: BuildType;
 }
 
 interface DevSupportResult {
@@ -30,18 +31,23 @@ function isPythonAgent(agent: AgentEnvSpec): boolean {
  * - CodeZip agents must have entrypoint
  */
 function isDevSupported(agent: AgentEnvSpec): DevSupportResult {
-  // Currently only Python is supported for dev mode
-  if (!isPythonAgent(agent)) {
-    return {
-      supported: false,
-      reason: `Dev mode only supports Python agents. Agent "${agent.name}" does not appear to be a Python agent.`,
-    };
-  }
-
   if (!agent.entrypoint) {
     return {
       supported: false,
       reason: `Agent "${agent.name}" is missing entrypoint.`,
+    };
+  }
+
+  // Container agents are supported for dev mode (requires local container runtime)
+  if (agent.build === 'Container') {
+    return { supported: true };
+  }
+
+  // Currently only Python is supported for CodeZip dev mode
+  if (!isPythonAgent(agent)) {
+    return {
+      supported: false,
+      reason: `Dev mode only supports Python agents. Agent "${agent.name}" does not appear to be a Python agent.`,
     };
   }
 
@@ -84,6 +90,9 @@ export function getAgentPort(project: AgentCoreProjectSpec | null, agentName: st
 /**
  * Derives dev server configuration from project config.
  * Falls back to sensible defaults if no config is available.
+ * @param workingDir
+ * @param project
+ * @param configRoot
  * @param agentName - Optional agent name. If not provided, uses the first dev-supported agent.
  */
 export function getDevConfig(
@@ -128,6 +137,7 @@ export function getDevConfig(
     directory,
     hasConfig: true,
     isPython: isPythonAgent(targetAgent),
+    buildType: targetAgent.build,
   };
 }
 

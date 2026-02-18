@@ -4,8 +4,15 @@ import { computeDefaultCredentialEnvVarName } from '../../../operations/identity
 import { ApiKeySecretInput, Panel, SelectList, StepIndicator, TextInput } from '../../components';
 import type { SelectableItem } from '../../components';
 import { useListNavigation } from '../../hooks';
-import type { GenerateConfig, GenerateStep, MemoryOption } from './types';
-import { LANGUAGE_OPTIONS, MEMORY_OPTIONS, SDK_OPTIONS, STEP_LABELS, getModelProviderOptionsForSdk } from './types';
+import type { BuildType, GenerateConfig, GenerateStep, MemoryOption } from './types';
+import {
+  BUILD_TYPE_OPTIONS,
+  LANGUAGE_OPTIONS,
+  MEMORY_OPTIONS,
+  SDK_OPTIONS,
+  STEP_LABELS,
+  getModelProviderOptionsForSdk,
+} from './types';
 import type { useGenerateWizard } from './useGenerateWizard';
 import { Box, Text, useInput } from 'ink';
 
@@ -50,6 +57,8 @@ export function GenerateWizardUI({
           title: o.title,
           disabled: 'disabled' in o ? o.disabled : undefined,
         }));
+      case 'buildType':
+        return BUILD_TYPE_OPTIONS.map(o => ({ id: o.id, title: o.title, description: o.description }));
       case 'sdk':
         return SDK_OPTIONS.map(o => ({ id: o.id, title: o.title, description: o.description }));
       case 'modelProvider':
@@ -76,6 +85,9 @@ export function GenerateWizardUI({
     switch (wizard.step) {
       case 'language':
         wizard.setLanguage(item.id as GenerateConfig['language']);
+        break;
+      case 'buildType':
+        wizard.setBuildType(item.id as BuildType);
         break;
       case 'sdk':
         wizard.setSdk(item.id as GenerateConfig['sdk']);
@@ -177,6 +189,7 @@ function getMemoryLabel(memory: MemoryOption): string {
 
 function ConfirmView({ config, credentialProjectName }: { config: GenerateConfig; credentialProjectName?: string }) {
   const languageLabel = LANGUAGE_OPTIONS.find(o => o.id === config.language)?.title ?? config.language;
+  const buildTypeLabel = BUILD_TYPE_OPTIONS.find(o => o.id === config.buildType)?.title ?? config.buildType;
   const memoryLabel = getMemoryLabel(config.memory);
 
   // Use credentialProjectName if provided, otherwise use config.projectName
@@ -195,6 +208,10 @@ function ConfirmView({ config, credentialProjectName }: { config: GenerateConfig
         <Text>
           <Text dimColor>Language: </Text>
           <Text>{languageLabel}</Text>
+        </Text>
+        <Text>
+          <Text dimColor>Build: </Text>
+          <Text>{buildTypeLabel}</Text>
         </Text>
         <Text>
           <Text dimColor>Framework: </Text>

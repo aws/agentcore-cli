@@ -1,5 +1,5 @@
 import { getWorkingDirectory } from '../../../lib';
-import type { ModelProvider, SDKFramework, TargetLanguage } from '../../../schema';
+import type { BuildType, ModelProvider, SDKFramework, TargetLanguage } from '../../../schema';
 import { getErrorMessage } from '../../errors';
 import { COMMAND_DESCRIPTIONS } from '../../tui/copy';
 import { CreateScreen } from '../../tui/screens/create';
@@ -114,6 +114,7 @@ async function handleCreateCLI(options: CreateOptions): Promise<void> {
     : await createProjectWithAgent({
         name: options.name!,
         cwd,
+        buildType: (options.build as BuildType) ?? 'CodeZip',
         language: options.language as TargetLanguage,
         framework: options.framework as SDKFramework,
         modelProvider: options.modelProvider as ModelProvider,
@@ -142,6 +143,7 @@ export const registerCreate = (program: Command) => {
     .option('--name <name>', 'Project name (start with letter, alphanumeric only, max 36 chars) [non-interactive]')
     .option('--no-agent', 'Skip agent creation [non-interactive]')
     .option('--defaults', 'Use defaults (Python, Strands, Bedrock, no memory) [non-interactive]')
+    .option('--build <type>', 'Build type: CodeZip or Container (default: CodeZip) [non-interactive]')
     .option('--language <language>', 'Target language (default: Python) [non-interactive]')
     .option(
       '--framework <framework>',
@@ -160,6 +162,7 @@ export const registerCreate = (program: Command) => {
         // Apply defaults if --defaults flag is set
         if (options.defaults) {
           options.language = options.language ?? 'Python';
+          options.build = options.build ?? 'CodeZip';
           options.framework = options.framework ?? 'Strands';
           options.modelProvider = options.modelProvider ?? 'Bedrock';
           options.memory = options.memory ?? 'none';
@@ -170,6 +173,7 @@ export const registerCreate = (program: Command) => {
           options.name ??
           (options.agent === false ? true : null) ??
           options.defaults ??
+          options.build ??
           options.language ??
           options.framework ??
           options.modelProvider ??

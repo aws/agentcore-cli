@@ -57,7 +57,7 @@ export function mapByoConfigToAgent(config: AddAgentConfig): AgentEnvSpec {
   return {
     type: 'AgentCoreRuntime',
     name: config.name,
-    build: 'CodeZip',
+    build: config.buildType,
     entrypoint: config.entrypoint as FilePath,
     codeLocation: config.codeLocation as DirectoryPath,
     runtimeVersion: config.pythonVersion,
@@ -71,6 +71,7 @@ export function mapByoConfigToAgent(config: AddAgentConfig): AgentEnvSpec {
 function mapAddAgentConfigToGenerateConfig(config: AddAgentConfig): GenerateConfig {
   return {
     projectName: config.name, // In create context, this is the agent name
+    buildType: config.buildType,
     sdk: config.framework,
     modelProvider: config.modelProvider,
     memory: config.memory,

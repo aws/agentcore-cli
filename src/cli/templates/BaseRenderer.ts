@@ -58,5 +58,15 @@ export abstract class BaseRenderer {
         await copyAndRenderDir(memoryCapabilityDir, memoryTargetDir, templateData);
       }
     }
+
+    // Generate Dockerfile and .dockerignore for Container builds
+    if (this.config.buildType === 'Container') {
+      const language = this.config.targetLanguage.toLowerCase();
+      const containerTemplateDir = path.join(this.baseTemplateDir, 'container', language);
+
+      if (existsSync(containerTemplateDir)) {
+        await copyAndRenderDir(containerTemplateDir, projectDir, { ...templateData, entrypoint: 'main' });
+      }
+    }
   }
 }

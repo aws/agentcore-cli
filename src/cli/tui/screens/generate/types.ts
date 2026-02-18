@@ -1,15 +1,24 @@
-import type { ModelProvider, SDKFramework, TargetLanguage } from '../../../../schema';
+import type { BuildType, ModelProvider, SDKFramework, TargetLanguage } from '../../../../schema';
 import { DEFAULT_MODEL_IDS, getSupportedModelProviders } from '../../../../schema';
 
-export type GenerateStep = 'projectName' | 'language' | 'sdk' | 'modelProvider' | 'apiKey' | 'memory' | 'confirm';
+export type GenerateStep =
+  | 'projectName'
+  | 'language'
+  | 'buildType'
+  | 'sdk'
+  | 'modelProvider'
+  | 'apiKey'
+  | 'memory'
+  | 'confirm';
 
 export type MemoryOption = 'none' | 'shortTerm' | 'longAndShortTerm';
 
 // Re-export types from schema for convenience
-export type { ModelProvider, SDKFramework, TargetLanguage };
+export type { BuildType, ModelProvider, SDKFramework, TargetLanguage };
 
 export interface GenerateConfig {
   projectName: string;
+  buildType: BuildType;
   sdk: SDKFramework;
   modelProvider: ModelProvider;
   /** API key for non-Bedrock model providers (optional - can be added later) */
@@ -22,6 +31,7 @@ export interface GenerateConfig {
 export const BASE_GENERATE_STEPS: GenerateStep[] = [
   'projectName',
   'language',
+  'buildType',
   'sdk',
   'modelProvider',
   'apiKey',
@@ -31,6 +41,7 @@ export const BASE_GENERATE_STEPS: GenerateStep[] = [
 export const STEP_LABELS: Record<GenerateStep, string> = {
   projectName: 'Name',
   language: 'Target Language',
+  buildType: 'Build',
   sdk: 'Framework',
   modelProvider: 'Model',
   apiKey: 'API Key',
@@ -41,6 +52,11 @@ export const STEP_LABELS: Record<GenerateStep, string> = {
 export const LANGUAGE_OPTIONS = [
   { id: 'Python', title: 'Python' },
   { id: 'TypeScript', title: 'TypeScript (coming soon)', disabled: true },
+] as const;
+
+export const BUILD_TYPE_OPTIONS = [
+  { id: 'CodeZip', title: 'Direct Code Deploy', description: 'Upload code directly to AgentCore' },
+  { id: 'Container', title: 'Container', description: 'Build and deploy a Docker container' },
 ] as const;
 
 export const SDK_OPTIONS = [

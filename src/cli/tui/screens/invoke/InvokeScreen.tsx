@@ -9,6 +9,7 @@ interface InvokeScreenProps {
   onExit: () => void;
   initialPrompt?: string;
   initialSessionId?: string;
+  initialUserId?: string;
 }
 
 type Mode = 'select-agent' | 'chat' | 'input';
@@ -93,9 +94,21 @@ export function InvokeScreen({
   onExit,
   initialPrompt,
   initialSessionId,
+  initialUserId,
 }: InvokeScreenProps) {
-  const { phase, config, selectedAgent, messages, error, logFilePath, sessionId, selectAgent, invoke, newSession } =
-    useInvokeFlow({ initialSessionId });
+  const {
+    phase,
+    config,
+    selectedAgent,
+    messages,
+    error,
+    logFilePath,
+    sessionId,
+    userId,
+    selectAgent,
+    invoke,
+    newSession,
+  } = useInvokeFlow({ initialSessionId, initialUserId });
   const [mode, setMode] = useState<Mode>('select-agent');
   const [scrollOffset, setScrollOffset] = useState(0);
   const [userScrolled, setUserScrolled] = useState(false);
@@ -299,6 +312,12 @@ export function InvokeScreen({
         <Box>
           <Text>Session: </Text>
           <Text color="magenta">{sessionId?.slice(0, 8) ?? 'none'}</Text>
+        </Box>
+      )}
+      {mode !== 'select-agent' && (
+        <Box>
+          <Text>User: </Text>
+          <Text color="white">{userId}</Text>
         </Box>
       )}
       {logFilePath && <LogLink filePath={logFilePath} />}

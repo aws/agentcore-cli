@@ -1,4 +1,4 @@
-import type { ModelProvider, PythonRuntime, SDKFramework, TargetLanguage } from '../../../../schema';
+import type { BuildType, ModelProvider, PythonRuntime, SDKFramework, TargetLanguage } from '../../../../schema';
 import { DEFAULT_MODEL_IDS, getSupportedModelProviders } from '../../../../schema';
 import type { MemoryOption } from '../generate/types';
 
@@ -29,6 +29,7 @@ export type AddAgentStep =
   | 'name'
   | 'agentType'
   | 'codeLocation'
+  | 'buildType'
   | 'language'
   | 'framework'
   | 'modelProvider'
@@ -44,6 +45,7 @@ export interface AddAgentConfig {
   /** Entrypoint file, relative to codeLocation (BYO only) */
   entrypoint: string;
   language: TargetLanguage;
+  buildType: BuildType;
   framework: SDKFramework;
   modelProvider: ModelProvider;
   /** API key for non-Bedrock model providers (optional - can be added later) */
@@ -58,6 +60,7 @@ export const ADD_AGENT_STEP_LABELS: Record<AddAgentStep, string> = {
   name: 'Name',
   agentType: 'Type',
   codeLocation: 'Code',
+  buildType: 'Build',
   language: 'Language',
   framework: 'Framework',
   modelProvider: 'Model',

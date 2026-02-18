@@ -1,4 +1,5 @@
 import {
+  BuildTypeSchema,
   ModelProviderSchema,
   ProjectNameSchema,
   SDKFrameworkSchema,
@@ -47,6 +48,14 @@ export function validateCreateOptions(options: CreateOptions, cwd?: string): Val
   // If --no-agent (agent === false), no further validation needed
   if (options.agent === false) {
     return { valid: true };
+  }
+
+  // Validate build type if provided
+  if (options.build) {
+    const buildResult = BuildTypeSchema.safeParse(options.build);
+    if (!buildResult.success) {
+      return { valid: false, error: `Invalid build type: ${options.build}. Use CodeZip or Container` };
+    }
   }
 
   // Without --no-agent, all agent options are required

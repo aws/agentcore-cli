@@ -14,6 +14,7 @@ export {
   type GetAgentRuntimeStatusOptions,
 } from './agentcore-control';
 export {
+  DEFAULT_RUNTIME_USER_ID,
   invokeAgentRuntime,
   invokeAgentRuntimeStreaming,
   stopRuntimeSession,

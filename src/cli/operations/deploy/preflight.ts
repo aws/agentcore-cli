@@ -1,4 +1,4 @@
-import { ConfigIO, requireConfigRoot } from '../../../lib';
+import { ConfigIO, DOCKERFILE_NAME, requireConfigRoot, resolveCodeLocation } from '../../../lib';
 import type { AgentCoreProjectSpec, AwsDeploymentTarget } from '../../../schema';
 import { validateAwsCredentials } from '../../aws/account';
 import { LocalCdkProject } from '../../cdk/local-cdk-project';
@@ -6,6 +6,7 @@ import { CdkToolkitWrapper, createCdkToolkitWrapper, silentIoHost } from '../../
 import { checkBootstrapStatus, checkStacksStatus, formatCdkEnvironment } from '../../cloudformation';
 import { cleanupStaleLockFiles } from '../../tui/utils';
 import type { IIoHost } from '@aws-cdk/toolkit-lib';
+import { existsSync } from 'node:fs';
 import * as path from 'node:path';
 
 export interface PreflightContext {
@@ -98,6 +99,9 @@ export async function validateProject(): Promise<PreflightContext> {
   // Validate runtime names don't exceed AWS limits
   validateRuntimeNames(projectSpec);
 
+  // Validate Container agents have Dockerfiles
+  validateContainerAgents(projectSpec, configRoot);
+
   // Validate AWS credentials before proceeding with build/synth.
   // Skip for teardown deploys — callers validate after teardown confirmation.
   if (!isTeardownDeploy) {
@@ -124,6 +128,28 @@ function validateRuntimeNames(projectSpec: AgentCoreProjectSpec): void {
         );
       }
     }
+  }
+}
+
+/**
+ * Validates that Container agents have required Dockerfiles.
+ */
+function validateContainerAgents(projectSpec: AgentCoreProjectSpec, configRoot: string): void {
+  const errors: string[] = [];
+  for (const agent of projectSpec.agents) {
+    if (agent.build === 'Container') {
+      const codeLocation = resolveCodeLocation(agent.codeLocation, configRoot);
+      const dockerfilePath = path.join(codeLocation, DOCKERFILE_NAME);
+
+      if (!existsSync(dockerfilePath)) {
+        errors.push(
+          `Agent "${agent.name}": Dockerfile not found at ${dockerfilePath}. Container agents require a Dockerfile.`
+        );
+      }
+    }
+  }
+  if (errors.length > 0) {
+    throw new Error(errors.join('\n'));
   }
 }
 

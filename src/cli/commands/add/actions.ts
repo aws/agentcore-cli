@@ -1,6 +1,7 @@
 import { APP_DIR, ConfigIO, MCP_APP_SUBDIR, NoProjectError, findConfigRoot, setEnvVar } from '../../../lib';
 import type {
   AgentEnvSpec,
+  BuildType,
   DirectoryPath,
   FilePath,
   GatewayAuthorizerType,
@@ -36,6 +37,7 @@ import { dirname, join } from 'path';
 export interface ValidatedAddAgentOptions {
   name: string;
   type: 'create' | 'byo';
+  buildType: BuildType;
   language: TargetLanguage;
   framework: SDKFramework;
   modelProvider: ModelProvider;
@@ -113,6 +115,7 @@ async function handleCreatePath(options: ValidatedAddAgentOptions, configBaseDir
 
   const generateConfig = {
     projectName: options.name,
+    buildType: options.buildType,
     sdk: options.framework,
     modelProvider: options.modelProvider,
     memory: options.memory!,
@@ -186,7 +189,7 @@ async function handleByoPath(
   const agent: AgentEnvSpec = {
     type: 'AgentCoreRuntime',
     name: options.name,
-    build: 'CodeZip',
+    build: options.buildType,
     entrypoint: (options.entrypoint ?? 'main.py') as FilePath,
     codeLocation: codeLocation as DirectoryPath,
     runtimeVersion: 'PYTHON_3_12',

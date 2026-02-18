@@ -88,7 +88,7 @@ export async function handleInvoke(context: InvokeContext, options: InvokeOption
     region: targetConfig.region,
   });
 
-  logger.logPrompt(options.prompt);
+  logger.logPrompt(options.prompt, undefined, options.userId);
 
   if (options.stream) {
     // Streaming mode
@@ -99,6 +99,7 @@ export async function handleInvoke(context: InvokeContext, options: InvokeOption
         runtimeArn: agentState.runtimeArn,
         payload: options.prompt,
         sessionId: options.sessionId,
+        userId: options.userId,
         logger, // Pass logger for SSE event debugging
       });
 
@@ -130,6 +131,7 @@ export async function handleInvoke(context: InvokeContext, options: InvokeOption
     runtimeArn: agentState.runtimeArn,
     payload: options.prompt,
     sessionId: options.sessionId,
+    userId: options.userId,
   });
 
   logger.logResponse(response.content);

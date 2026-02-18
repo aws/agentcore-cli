@@ -1,5 +1,6 @@
 import {
   AgentNameSchema,
+  BuildTypeSchema,
   GatewayNameSchema,
   ModelProviderSchema,
   SDKFrameworkSchema,
@@ -33,6 +34,14 @@ export function validateAddAgentOptions(options: AddAgentOptions): ValidationRes
   const nameResult = AgentNameSchema.safeParse(options.name);
   if (!nameResult.success) {
     return { valid: false, error: nameResult.error.issues[0]?.message ?? 'Invalid agent name' };
+  }
+
+  // Validate build type if provided
+  if (options.build) {
+    const buildResult = BuildTypeSchema.safeParse(options.build);
+    if (!buildResult.success) {
+      return { valid: false, error: `Invalid build type: ${options.build}. Use CodeZip or Container` };
+    }
   }
 
   if (!options.framework) {

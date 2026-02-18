@@ -1,6 +1,16 @@
-import { getWorkingDirectory } from '../../../lib';
+import { findConfigRoot, getWorkingDirectory, readEnvFile } from '../../../lib';
 import { getErrorMessage } from '../../errors';
-import { getDevSupportedAgents, invokeAgent, invokeAgentStreaming, loadProjectConfig } from '../../operations/dev';
+import { ExecLogger } from '../../logging';
+import {
+  createDevServer,
+  findAvailablePort,
+  getAgentPort,
+  getDevConfig,
+  getDevSupportedAgents,
+  invokeAgent,
+  invokeAgentStreaming,
+  loadProjectConfig,
+} from '../../operations/dev';
 import { FatalError } from '../../tui/components';
 import { LayoutProvider } from '../../tui/context';
 import { COMMAND_DESCRIPTIONS } from '../../tui/copy';
@@ -53,7 +63,6 @@ export const registerDev = (program: Command) => {
 
         // If --invoke provided, call the dev server and exit
         if (opts.invoke) {
-          const { getAgentPort } = await import('../../operations/dev');
           const invokeProject = await loadProjectConfig(getWorkingDirectory());
 
           // Determine which agent/port to invoke
@@ -103,11 +112,6 @@ export const registerDev = (program: Command) => {
 
         // If --logs provided, run non-interactive mode
         if (opts.logs) {
-          const { findAvailablePort, getDevConfig, getAgentPort, spawnDevServer } =
-            await import('../../operations/dev');
-          const { findConfigRoot, readEnvFile } = await import('../../../lib');
-          const { ExecLogger } = await import('../../logging');
-
           // Require --agent if multiple agents
           if (project.agents.length > 1 && !opts.agent) {
             const names = project.agents.map(a => a.name).join(', ');
@@ -147,30 +151,26 @@ export const registerDev = (program: Command) => {
           console.log(`Log: ${logger.getRelativeLogPath()}`);
           console.log(`Press Ctrl+C to stop\n`);
 
-          const child = spawnDevServer({
-            module: config.module,
-            cwd: config.directory,
-            port: actualPort,
-            isPython: config.isPython,
-            envVars,
-            callbacks: {
-              onLog: (level, msg) => {
-                const prefix = level === 'error' ? '❌' : level === 'warn' ? '⚠️' : '→';
-                console.log(`${prefix} ${msg}`);
-                logger.log(msg, level === 'error' ? 'error' : 'info');
-              },
-              onExit: code => {
-                console.log(`\nServer exited with code ${code ?? 0}`);
-                logger.finalize(code === 0);
-                process.exit(code ?? 0);
-              },
+          const devCallbacks = {
+            onLog: (level: string, msg: string) => {
+              const prefix = level === 'error' ? '❌' : level === 'warn' ? '⚠️' : '→';
+              console.log(`${prefix} ${msg}`);
+              logger.log(msg, level === 'error' ? 'error' : 'info');
             },
-          });
+            onExit: (code: number | null) => {
+              console.log(`\nServer exited with code ${code ?? 0}`);
+              logger.finalize(code === 0);
+              process.exit(code ?? 0);
+            },
+          };
 
-          // Handle Ctrl+C
+          const server = createDevServer(config, { port: actualPort, envVars, callbacks: devCallbacks });
+          await server.start();
+
+          // Handle Ctrl+C — use server.kill() for proper container cleanup
           process.on('SIGINT', () => {
             console.log('\nStopping server...');
-            child?.kill('SIGTERM');
+            server.kill();
           });
 
           // Keep process alive

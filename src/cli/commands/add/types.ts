@@ -5,6 +5,7 @@ import type { MemoryOption } from '../../tui/screens/generate/types';
 export interface AddAgentOptions {
   name?: string;
   type?: 'create' | 'byo';
+  build?: string;
   language?: TargetLanguage;
   framework?: SDKFramework;
   modelProvider?: ModelProvider;

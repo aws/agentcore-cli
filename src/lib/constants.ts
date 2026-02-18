@@ -36,3 +36,29 @@ export const UV_INSTALL_HINT =
   'Install uv from https://github.com/astral-sh/uv#installation and ensure it is on your PATH.';
 export const NPM_INSTALL_HINT = 'Install npm from https://nodejs.org/ and ensure it is on your PATH.';
 export const DEFAULT_PYTHON_PLATFORM = 'aarch64-manylinux2014';
+
+// Container constants
+export const ONE_GB = 1024 * 1024 * 1024;
+export const DOCKERFILE_NAME = 'Dockerfile';
+export const CONTAINER_INTERNAL_PORT = 8080;
+
+/** Supported container runtimes in order of preference. */
+export type ContainerRuntime = 'docker' | 'podman' | 'finch';
+export const CONTAINER_RUNTIMES: ContainerRuntime[] = ['docker', 'podman', 'finch'];
+
+/** Platform-aware start hints for container runtimes. */
+export const START_HINTS: Record<ContainerRuntime, string> = {
+  docker:
+    process.platform === 'win32'
+      ? 'Start Docker Desktop or run: Start-Service docker'
+      : 'Start Docker Desktop or run: sudo systemctl start docker',
+  podman: 'Run: podman machine start',
+  finch: 'Run: finch vm init && finch vm start',
+};
+
+/**
+ * Get the Dockerfile path for a given code location.
+ */
+export function getDockerfilePath(codeLocation: string): string {
+  return `${codeLocation}/${DOCKERFILE_NAME}`;
+}

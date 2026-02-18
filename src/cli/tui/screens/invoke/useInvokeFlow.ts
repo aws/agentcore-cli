@@ -5,7 +5,7 @@ import type {
   ModelProvider,
   AgentCoreProjectSpec as _AgentCoreProjectSpec,
 } from '../../../../schema';
-import { invokeAgentRuntimeStreaming } from '../../../aws';
+import { DEFAULT_RUNTIME_USER_ID, invokeAgentRuntimeStreaming } from '../../../aws';
 import { getErrorMessage } from '../../../errors';
 import { InvokeLogger } from '../../../logging';
 import { generateSessionId } from '../../../operations/session';
@@ -20,6 +20,7 @@ export interface InvokeConfig {
 
 export interface InvokeFlowOptions {
   initialSessionId?: string;
+  initialUserId?: string;
 }
 
 export interface InvokeFlowState {
@@ -30,13 +31,15 @@ export interface InvokeFlowState {
   error: string | null;
   logFilePath: string | null;
   sessionId: string | null;
+  userId: string;
   selectAgent: (index: number) => void;
+  setUserId: (id: string) => void;
   invoke: (prompt: string) => Promise<void>;
   newSession: () => void;
 }
 
 export function useInvokeFlow(options: InvokeFlowOptions = {}): InvokeFlowState {
-  const { initialSessionId } = options;
+  const { initialSessionId, initialUserId } = options;
   const [phase, setPhase] = useState<'loading' | 'ready' | 'invoking' | 'error'>('loading');
   const [config, setConfig] = useState<InvokeConfig | null>(null);
   const [selectedAgent, setSelectedAgent] = useState(0);
@@ -44,6 +47,7 @@ export function useInvokeFlow(options: InvokeFlowOptions = {}): InvokeFlowState 
   const [error, setError] = useState<string | null>(null);
   const [logFilePath, setLogFilePath] = useState<string | null>(null);
   const [sessionId, setSessionId] = useState<string | null>(null);
+  const [userId, setUserId] = useState<string>(initialUserId ?? DEFAULT_RUNTIME_USER_ID);
 
   // Persistent logger for the session
   const loggerRef = useRef<InvokeLogger | null>(null);
@@ -138,7 +142,7 @@ export function useInvokeFlow(options: InvokeFlowOptions = {}): InvokeFlowState 
       setPhase('invoking');
       streamingContentRef.current = '';
 
-      logger.logPrompt(prompt, sessionId ?? undefined);
+      logger.logPrompt(prompt, sessionId ?? undefined, userId);
 
       try {
         const result = await invokeAgentRuntimeStreaming({
@@ -146,6 +150,7 @@ export function useInvokeFlow(options: InvokeFlowOptions = {}): InvokeFlowState 
           runtimeArn: agent.state.runtimeArn,
           payload: prompt,
           sessionId: sessionId ?? undefined,
+          userId,
           logger, // Pass logger for SSE event debugging
         });
 
@@ -188,7 +193,7 @@ export function useInvokeFlow(options: InvokeFlowOptions = {}): InvokeFlowState 
         setPhase('ready');
       }
     },
-    [config, selectedAgent, phase, sessionId]
+    [config, selectedAgent, phase, sessionId, userId]
   );
 
   const newSession = useCallback(() => {
@@ -205,7 +210,9 @@ export function useInvokeFlow(options: InvokeFlowOptions = {}): InvokeFlowState 
     error,
     logFilePath,
     sessionId,
+    userId,
     selectAgent: setSelectedAgent,
+    setUserId,
     invoke,
     newSession,
   };

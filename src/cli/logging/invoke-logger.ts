@@ -21,6 +21,7 @@ interface InvokeRequestLog {
   runtimeArn: string;
   region: string;
   sessionId?: string;
+  userId?: string;
   prompt: string;
 }
 
@@ -135,7 +136,7 @@ ${separator}
   /**
    * Log a prompt being sent with full request details
    */
-  logPrompt(prompt: string, sessionId?: string): void {
+  logPrompt(prompt: string, sessionId?: string, userId?: string): void {
     this.promptStartTime = Date.now();
     const currentSessionId = sessionId ?? this.options.sessionId;
     this.requestLog = {
@@ -144,6 +145,7 @@ ${separator}
       runtimeArn: this.options.runtimeArn,
       region: this.options.region,
       sessionId: currentSessionId,
+      userId,
       prompt,
     };
 

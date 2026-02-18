@@ -1,4 +1,5 @@
 import type { AgentCoreProjectSpec, AgentEnvSpec, RuntimeVersion } from '../../schema';
+import { ContainerPackager } from './container';
 import { PackagingError } from './errors';
 import { isNodeRuntime, isPythonRuntime } from './helpers';
 import { NodeCodeZipPackager, NodeCodeZipPackagerSync } from './node';
@@ -54,12 +55,19 @@ export function getCodeZipPackager(runtimeVersion: RuntimeVersion): CodeZipPacka
 }
 
 /**
+ * Get the async runtime packager for Container agents.
+ */
+export function getContainerPackager(): RuntimePackager {
+  return new ContainerPackager();
+}
+
+/**
  * Package a runtime asynchronously.
  * This is the primary API for CLI usage.
- * Automatically selects the appropriate packager based on runtime version.
+ * Automatically selects the appropriate packager based on build type and runtime version.
  */
 export async function packRuntime(spec: AgentEnvSpec, options?: PackageOptions): Promise<ArtifactResult> {
-  const packager = getRuntimePackager(spec.runtimeVersion);
+  const packager = spec.build === 'Container' ? getContainerPackager() : getRuntimePackager(spec.runtimeVersion);
   return packager.pack(spec, options);
 }
 

@@ -268,6 +268,7 @@ export function useCreateFlow(cwd: string): CreateFlowState {
                 // Create path: generate agent from template
                 const generateConfig: GenerateConfig = {
                   projectName: addAgentConfig.name,
+                  buildType: addAgentConfig.buildType,
                   sdk: addAgentConfig.framework,
                   modelProvider: addAgentConfig.modelProvider,
                   memory: addAgentConfig.memory,

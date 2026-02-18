@@ -3,15 +3,15 @@ import type { AgentCoreProjectSpec } from '../../../schema';
 import { DevLogger } from '../../logging/dev-logger';
 import {
   type DevConfig,
+  DevServer,
+  type LogLevel,
+  createDevServer,
   findAvailablePort,
   getDevConfig,
   invokeAgentStreaming,
-  killServer,
   loadProjectConfig,
-  spawnDevServer,
   waitForPort,
 } from '../../operations/dev';
-import type { ChildProcess } from 'child_process';
 import { useEffect, useMemo, useRef, useState } from 'react';
 
 type ServerStatus = 'starting' | 'running' | 'error' | 'stopped';
@@ -43,7 +43,7 @@ export function useDevServer(options: { workingDir: string; port: number; agentN
   const actualPortRef = useRef(targetPort);
   const [restartTrigger, setRestartTrigger] = useState(0);
 
-  const serverRef = useRef<ChildProcess | null>(null);
+  const serverRef = useRef<DevServer | null>(null);
   const loggerRef = useRef<DevLogger | null>(null);
   // Track instance ID to ignore callbacks from stale server instances
   const instanceIdRef = useRef(0);
@@ -115,49 +115,46 @@ export function useDevServer(options: { workingDir: string; port: number; agentN
       setActualPort(port);
 
       let serverReady = false;
-      serverRef.current = spawnDevServer({
-        module: config.module,
-        cwd: config.directory,
-        port,
-        isPython: config.isPython,
-        envVars,
-        callbacks: {
-          onLog: (level, message) => {
-            // Ignore callbacks from stale server instances
-            if (instanceIdRef.current !== currentInstanceId) return;
+      const callbacks = {
+        onLog: (level: LogLevel, message: string) => {
+          // Ignore callbacks from stale server instances
+          if (instanceIdRef.current !== currentInstanceId) return;
 
-            // Detect when server is actually ready (only once)
-            if (
-              !serverReady &&
-              (message.includes('Application startup complete') || message.includes('Uvicorn running'))
-            ) {
-              serverReady = true;
-              setStatus('running');
-              addLog('system', `Server ready at http://localhost:${port}/invocations`);
-            } else {
-              addLog(level, message);
-            }
-          },
-          onExit: code => {
-            // Ignore exit events from stale server instances
-            if (instanceIdRef.current !== currentInstanceId) return;
-
-            // Ignore exit events when intentionally restarting
-            if (isRestartingRef.current) {
-              isRestartingRef.current = false;
-              return;
-            }
-
-            setStatus(code === 0 ? 'stopped' : 'error');
-            addLog('system', `Server exited (code ${code})`);
-          },
+          // Detect when server is actually ready (only once)
+          if (
+            !serverReady &&
+            (message.includes('Application startup complete') || message.includes('Uvicorn running'))
+          ) {
+            serverReady = true;
+            setStatus('running');
+            addLog('system', `Server ready at http://localhost:${port}/invocations`);
+          } else {
+            addLog(level, message);
+          }
         },
-      });
+        onExit: (code: number | null) => {
+          // Ignore exit events from stale server instances
+          if (instanceIdRef.current !== currentInstanceId) return;
+
+          // Ignore exit events when intentionally restarting
+          if (isRestartingRef.current) {
+            isRestartingRef.current = false;
+            return;
+          }
+
+          setStatus(code === 0 ? 'stopped' : 'error');
+          addLog('system', `Server exited (code ${code})`);
+        },
+      };
+
+      const server = createDevServer(config, { port, envVars, callbacks });
+      serverRef.current = server;
+      await server.start();
     };
 
     void startServer();
     return () => {
-      killServer(serverRef.current);
+      serverRef.current?.kill();
       loggerRef.current?.finalize();
     };
   }, [
@@ -216,13 +213,13 @@ export function useDevServer(options: { workingDir: string; port: number; agentN
   const restart = () => {
     addLog('system', 'Restarting server...');
     isRestartingRef.current = true;
-    killServer(serverRef.current);
+    serverRef.current?.kill();
     setStatus('starting');
     setRestartTrigger(t => t + 1);
   };
 
   const stop = () => {
-    killServer(serverRef.current);
+    serverRef.current?.kill();
     loggerRef.current?.finalize();
     setStatus('stopped');
   };

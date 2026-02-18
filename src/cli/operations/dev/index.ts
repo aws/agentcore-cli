@@ -1,11 +1,11 @@
 export {
   findAvailablePort,
   waitForPort,
-  spawnDevServer,
-  killServer,
+  createDevServer,
+  DevServer,
   type LogLevel,
   type DevServerCallbacks,
-  type SpawnDevServerOptions,
+  type DevServerOptions,
 } from './server';
 
 export { getDevConfig, getDevSupportedAgents, getAgentPort, loadProjectConfig, type DevConfig } from './config';

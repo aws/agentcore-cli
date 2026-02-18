@@ -10,11 +10,16 @@ export interface SSELogger {
   logSSEEvent(rawLine: string): void;
 }
 
+/** Default user ID sent with invocations. Container agents require this to obtain workload access tokens. */
+export const DEFAULT_RUNTIME_USER_ID = 'default-user';
+
 export interface InvokeAgentRuntimeOptions {
   region: string;
   runtimeArn: string;
   payload: string;
   sessionId?: string;
+  /** User ID for the runtime invocation. Defaults to 'default-user'. Required for Container agents using identity providers. */
+  userId?: string;
   /** Optional logger for SSE event debugging */
   logger?: SSELogger;
 }
@@ -112,6 +117,7 @@ export async function invokeAgentRuntimeStreaming(options: InvokeAgentRuntimeOpt
     contentType: 'application/json',
     accept: 'application/json',
     runtimeSessionId: options.sessionId,
+    runtimeUserId: options.userId ?? DEFAULT_RUNTIME_USER_ID,
   });
 
   const response = await client.send(command);
@@ -207,6 +213,7 @@ export async function invokeAgentRuntime(options: InvokeAgentRuntimeOptions): Pr
     contentType: 'application/json',
     accept: 'application/json',
     runtimeSessionId: options.sessionId,
+    runtimeUserId: options.userId ?? DEFAULT_RUNTIME_USER_ID,
   });
 
   const response = await client.send(command);

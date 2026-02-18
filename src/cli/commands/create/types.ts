@@ -2,6 +2,7 @@ export interface CreateOptions {
   name?: string;
   agent?: boolean;
   defaults?: boolean;
+  build?: string;
   language?: string;
   framework?: string;
   modelProvider?: string;

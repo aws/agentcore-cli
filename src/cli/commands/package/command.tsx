@@ -14,7 +14,7 @@ export const registerPackage = (program: Command) => {
     .action(async options => {
       try {
         const context = await loadPackageConfig(options);
-        const result = handlePackage(context);
+        const result = await handlePackage(context);
 
         // Report skipped agents
         for (const name of result.skipped) {

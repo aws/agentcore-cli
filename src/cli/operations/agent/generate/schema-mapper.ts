@@ -107,7 +107,7 @@ export function mapGenerateConfigToAgent(config: GenerateConfig): AgentEnvSpec {
   return {
     type: 'AgentCoreRuntime',
     name: config.projectName,
-    build: 'CodeZip',
+    build: config.buildType ?? 'CodeZip',
     entrypoint: DEFAULT_PYTHON_ENTRYPOINT as FilePath,
     codeLocation: codeLocation as DirectoryPath,
     runtimeVersion: DEFAULT_PYTHON_VERSION,
@@ -192,6 +192,7 @@ export function mapGenerateConfigToRenderConfig(
     modelProvider: config.modelProvider,
     hasMemory: config.memory !== 'none',
     hasIdentity: identityProviders.length > 0,
+    buildType: config.buildType,
     memoryProviders: mapMemoryOptionToMemoryProviders(config.memory, config.projectName),
     identityProviders,
   };

@@ -1,4 +1,4 @@
-import type { MemoryStrategyType, ModelProvider, SDKFramework, TargetLanguage } from '../../schema';
+import type { BuildType, MemoryStrategyType, ModelProvider, SDKFramework, TargetLanguage } from '../../schema';
 
 /**
  * Identity provider info for template rendering.
@@ -29,6 +29,8 @@ export interface AgentRenderConfig {
   modelProvider: ModelProvider;
   hasMemory: boolean;
   hasIdentity: boolean;
+  /** Build type: CodeZip (default) or Container */
+  buildType?: BuildType;
   /** Memory providers for template rendering */
   memoryProviders: MemoryProviderRenderConfig[];
   /** Identity providers for template rendering (maps to credentials in schema) */

@@ -16,7 +16,8 @@ import type { SelectableItem } from '../../components';
 import { HELP_TEXT } from '../../constants';
 import { useListNavigation, useProject } from '../../hooks';
 import { generateUniqueName } from '../../utils';
-import { GenerateWizardUI, getWizardHelpText, useGenerateWizard } from '../generate';
+import { BUILD_TYPE_OPTIONS, GenerateWizardUI, getWizardHelpText, useGenerateWizard } from '../generate';
+import type { BuildType } from '../generate';
 import type { AddAgentConfig, AgentType } from './types';
 import {
   ADD_AGENT_STEP_LABELS,
@@ -51,10 +52,10 @@ interface AddAgentScreenProps {
 // Steps for the initial phase (before branching to create or byo)
 type InitialStep = 'name' | 'agentType';
 // Steps for BYO path only (no framework/language - user's code already has these baked in)
-type ByoStep = 'codeLocation' | 'modelProvider' | 'apiKey' | 'confirm';
+type ByoStep = 'codeLocation' | 'buildType' | 'modelProvider' | 'apiKey' | 'confirm';
 
 const INITIAL_STEPS: InitialStep[] = ['name', 'agentType'];
-const BYO_STEPS: ByoStep[] = ['codeLocation', 'modelProvider', 'apiKey', 'confirm'];
+const BYO_STEPS: ByoStep[] = ['codeLocation', 'buildType', 'modelProvider', 'apiKey', 'confirm'];
 
 export function AddAgentScreen({ existingAgentNames, onComplete, onExit }: AddAgentScreenProps) {
   // Phase 1: name + agentType selection
@@ -71,6 +72,7 @@ export function AddAgentScreen({ existingAgentNames, onComplete, onExit }: AddAg
   const [byoConfig, setByoConfig] = useState({
     codeLocation: '',
     entrypoint: DEFAULT_ENTRYPOINT,
+    buildType: 'CodeZip' as BuildType,
     modelProvider: 'Bedrock' as ModelProvider,
     apiKey: undefined as string | undefined,
   });
@@ -148,6 +150,7 @@ export function AddAgentScreen({ existingAgentNames, onComplete, onExit }: AddAg
       codeLocation: `${name}/`,
       entrypoint: 'main.py',
       language: generateWizard.config.language,
+      buildType: generateWizard.config.buildType,
       framework: generateWizard.config.sdk,
       modelProvider: generateWizard.config.modelProvider,
       apiKey: generateWizard.config.apiKey,
@@ -181,6 +184,17 @@ export function AddAgentScreen({ existingAgentNames, onComplete, onExit }: AddAg
 
   const byoCurrentIndex = byoSteps.indexOf(byoStep);
 
+  // BYO build type options
+  const buildTypeItems: SelectableItem[] = useMemo(
+    () =>
+      BUILD_TYPE_OPTIONS.map(o => ({
+        id: o.id,
+        title: o.title,
+        description: o.description,
+      })),
+    []
+  );
+
   // BYO model provider options - show ALL providers since we don't know the framework
   const modelProviderItems: SelectableItem[] = useMemo(
     () =>
@@ -212,6 +226,7 @@ export function AddAgentScreen({ existingAgentNames, onComplete, onExit }: AddAg
       codeLocation: byoConfig.codeLocation,
       entrypoint: byoConfig.entrypoint,
       language: 'Python', // Default - not used for BYO agents
+      buildType: byoConfig.buildType,
       framework: 'Strands', // Default - not used for BYO agents
       modelProvider: byoConfig.modelProvider,
       apiKey: byoConfig.apiKey,
@@ -220,6 +235,16 @@ export function AddAgentScreen({ existingAgentNames, onComplete, onExit }: AddAg
     };
     onComplete(config);
   }, [name, byoConfig, onComplete]);
+
+  const buildTypeNav = useListNavigation({
+    items: buildTypeItems,
+    onSelect: item => {
+      setByoConfig(c => ({ ...c, buildType: item.id as BuildType }));
+      setByoStep('modelProvider');
+    },
+    onExit: handleByoBack,
+    isActive: isByoPath && byoStep === 'buildType',
+  });
 
   const modelProviderNav = useListNavigation({
     items: modelProviderItems,
@@ -363,11 +388,15 @@ export function AddAgentScreen({ existingAgentNames, onComplete, onExit }: AddAg
             initialEntrypoint={byoConfig.entrypoint}
             onSubmit={(codeLocation, entrypoint) => {
               setByoConfig(c => ({ ...c, codeLocation, entrypoint }));
-              setByoStep('modelProvider');
+              setByoStep('buildType');
               return true;
             }}
             onCancel={handleByoBack}
           />
+        )}
+
+        {byoStep === 'buildType' && (
+          <WizardSelect title="Select build type" items={buildTypeItems} selectedIndex={buildTypeNav.selectedIndex} />
         )}
 
         {byoStep === 'modelProvider' && (
@@ -398,6 +427,10 @@ export function AddAgentScreen({ existingAgentNames, onComplete, onExit }: AddAg
               { label: 'Type', value: 'Bring my own code' },
               { label: 'Code Location', value: byoConfig.codeLocation },
               { label: 'Entrypoint', value: byoConfig.entrypoint },
+              {
+                label: 'Build',
+                value: BUILD_TYPE_OPTIONS.find(o => o.id === byoConfig.buildType)?.title ?? byoConfig.buildType,
+              },
               {
                 label: 'Model Provider',
                 value: `${byoConfig.modelProvider} (${DEFAULT_MODEL_IDS[byoConfig.modelProvider]})`,

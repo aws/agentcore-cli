@@ -1,5 +1,12 @@
 import { APP_DIR, CONFIG_DIR, ConfigIO, setEnvVar, setSessionProjectRoot } from '../../../lib';
-import type { AgentCoreProjectSpec, DeployedState, ModelProvider, SDKFramework, TargetLanguage } from '../../../schema';
+import type {
+  AgentCoreProjectSpec,
+  BuildType,
+  DeployedState,
+  ModelProvider,
+  SDKFramework,
+  TargetLanguage,
+} from '../../../schema';
 import { getErrorMessage } from '../../errors';
 import { checkCreateDependencies } from '../../external-requirements';
 import { initGitRepo, setupPythonProject, writeEnvFile, writeGitignore } from '../../operations';
@@ -107,6 +114,7 @@ type MemoryOption = 'none' | 'shortTerm' | 'longAndShortTerm';
 export interface CreateWithAgentOptions {
   name: string;
   cwd: string;
+  buildType?: BuildType;
   language: TargetLanguage;
   framework: SDKFramework;
   modelProvider: ModelProvider;
@@ -118,8 +126,19 @@ export interface CreateWithAgentOptions {
 }
 
 export async function createProjectWithAgent(options: CreateWithAgentOptions): Promise<CreateResult> {
-  const { name, cwd, language, framework, modelProvider, apiKey, memory, skipGit, skipPythonSetup, onProgress } =
-    options;
+  const {
+    name,
+    cwd,
+    buildType,
+    language,
+    framework,
+    modelProvider,
+    apiKey,
+    memory,
+    skipGit,
+    skipPythonSetup,
+    onProgress,
+  } = options;
   const projectRoot = join(cwd, name);
   const configBaseDir = join(projectRoot, CONFIG_DIR);
 
@@ -147,6 +166,7 @@ export async function createProjectWithAgent(options: CreateWithAgentOptions): P
     const agentName = name;
     const generateConfig = {
       projectName: agentName,
+      buildType: buildType ?? ('CodeZip' as BuildType),
       sdk: framework,
       modelProvider,
       apiKey,
