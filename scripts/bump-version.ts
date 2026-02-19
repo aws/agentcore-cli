@@ -7,7 +7,7 @@
  *   npx tsx scripts/bump-version.ts <bump_type> [options]
  *
  * Arguments:
- *   bump_type: major | minor | patch | prerelease | preview
+ *   bump_type: major | minor | patch | prerelease | preview | preview-major
  *
  * Options:
  *   --changelog <text>     Custom changelog entry
@@ -16,7 +16,8 @@
  *
  * Preview bumps (internal format):
  *   - 0.3.0 -> 0.3.0-preview.1.0
- *   - 0.3.0-preview.1.0 -> 0.3.0-preview.1.1
+ *   - 0.3.0-preview.1.0 -> 0.3.0-preview.1.1 (preview)
+ *   - 0.3.0-preview.1.0 -> 0.3.0-preview.2.0 (preview-major)
  */
 import { execSync } from 'child_process';
 import { existsSync, readFileSync, writeFileSync } from 'fs';
@@ -25,7 +26,7 @@ import { existsSync, readFileSync, writeFileSync } from 'fs';
 // Types
 // ===========================
 
-type BumpType = 'major' | 'minor' | 'patch' | 'prerelease' | 'preview';
+type BumpType = 'major' | 'minor' | 'patch' | 'prerelease' | 'preview' | 'preview-major';
 
 interface ParsedVersion {
   major: number;
@@ -164,6 +165,26 @@ function bumpVersion(current: string, bumpType: BumpType, prereleaseTag = 'beta'
           patch: parsed.patch,
           previewMajor: parsed.previewMajor,
           previewMinor: parsed.previewMinor + 1,
+        });
+      }
+      // Otherwise, start at preview.1.0
+      return formatVersion({
+        major: parsed.major,
+        minor: parsed.minor,
+        patch: parsed.patch,
+        previewMajor: 1,
+        previewMinor: 0,
+      });
+
+    case 'preview-major':
+      // Increment the major preview number and reset minor to 0
+      if (parsed.previewMajor !== undefined && parsed.previewMinor !== undefined) {
+        return formatVersion({
+          major: parsed.major,
+          minor: parsed.minor,
+          patch: parsed.patch,
+          previewMajor: parsed.previewMajor + 1,
+          previewMinor: 0,
         });
       }
       // Otherwise, start at preview.1.0
@@ -371,7 +392,7 @@ function parseArgs(): { bumpType: BumpType; changelog?: string; prereleaseTag: s
 Usage: npx tsx scripts/bump-version.ts <bump_type> [options]
 
 Arguments:
-  bump_type: major | minor | patch | prerelease | preview
+  bump_type: major | minor | patch | prerelease | preview | preview-major
 
 Options:
   --changelog <text>        Custom changelog entry
@@ -381,14 +402,17 @@ Options:
 
 Preview bumps:
   - 0.3.0 -> 0.3.0-preview.1.0
-  - 0.3.0-preview.1.0 -> 0.3.0-preview.1.1
+  - 0.3.0-preview.1.0 -> 0.3.0-preview.1.1  (preview)
+  - 0.3.0-preview.1.0 -> 0.3.0-preview.2.0  (preview-major)
 `);
     process.exit(0);
   }
 
   const bumpType = args[0] as BumpType;
-  if (!['major', 'minor', 'patch', 'prerelease', 'preview'].includes(bumpType)) {
-    console.error(`Error: Invalid bump type '${bumpType}'. Must be one of: major, minor, patch, prerelease, preview`);
+  if (!['major', 'minor', 'patch', 'prerelease', 'preview', 'preview-major'].includes(bumpType)) {
+    console.error(
+      `Error: Invalid bump type '${bumpType}'. Must be one of: major, minor, patch, prerelease, preview, preview-major`
+    );
     process.exit(1);
   }
 

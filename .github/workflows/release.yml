@@ -9,6 +9,7 @@ on:
         type: choice
         options:
           - preview
+          - preview-major
           - patch
           - minor
           - major
