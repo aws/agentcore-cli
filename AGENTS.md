@@ -27,17 +27,24 @@ Note: CDK L3 constructs are in a separate package `@aws/agentcore-cdk`.
 - `remove` - Remove resources (agent, memory, identity, target, all)
 - `deploy` - Deploy infrastructure to AWS
 - `status` - Check deployment status
-- `dev` - Local development server
+- `dev` - Local development server (CodeZip: uvicorn with hot-reload; Container: Docker build + run with volume mount)
 - `invoke` - Invoke agents (local or deployed)
-- `package` - Package agent artifacts without deploying
+- `package` - Package agent artifacts without deploying (zip for CodeZip, container image build for Container)
 - `validate` - Validate configuration files
 - `update` - Check for CLI updates
 - `help` - Display help information
 
 ### Agent Types
 
-- **Template agents**: Created from framework templates (Strands, LangChain_LangGraph, GoogleADK, OpenAIAgents)
+- **Template agents**: Created from framework templates (Strands, LangChain_LangGraph, CrewAI, GoogleADK, OpenAIAgents,
+  AutoGen)
 - **BYO agents**: Bring your own code with `agentcore add agent --type byo`
+
+### Build Types
+
+- **CodeZip**: Python source is packaged into a zip artifact and deployed to AgentCore Runtime (default)
+- **Container**: Agent is built as a Docker container image, deployed via ECR and CodeBuild. Requires a `Dockerfile` in
+  the agent's code directory. Supported container runtimes: Docker, Podman, Finch.
 
 ### Coming Soon
 

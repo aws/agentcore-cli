@@ -28,6 +28,7 @@ type NodeRuntime = 'NODE_18' | 'NODE_20' | 'NODE_22';
 type RuntimeVersion = PythonRuntime | NodeRuntime;
 type NetworkMode = 'PUBLIC' | 'PRIVATE';
 type MemoryStrategyType = 'SEMANTIC' | 'SUMMARIZATION' | 'USER_PREFERENCE';
+type ModelProvider = 'Bedrock' | 'Gemini' | 'OpenAI' | 'Anthropic';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // AGENT
@@ -43,6 +44,7 @@ interface AgentEnvSpec {
   envVars?: EnvVar[];
   networkMode?: NetworkMode; // default 'PUBLIC'
   instrumentation?: Instrumentation; // OTel settings
+  modelProvider?: ModelProvider; // Model provider used by this agent
 }
 
 interface Instrumentation {

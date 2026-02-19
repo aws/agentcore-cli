@@ -5,9 +5,16 @@ module serves the important goal of making sure that the CDK implementations don
 
 ## Functions
 
-**Packaging**: Installing dependencies and then producing a `.zip` file artifact that is ready to be deployed on
-AgentCore runtime. This is surfaced as a modular function in the CLI and used as a bundling CDK asset in the CDK. A core
-problem this functionality solves is attempting to produce an artifact that can run on ARM64 arch hardware.
+**Packaging**: Producing deployment artifacts for AgentCore runtimes. Two packagers are available:
+
+- **PythonPackager / NodePackager** (CodeZip): Installs dependencies and produces a `.zip` artifact targeting ARM64
+  architecture.
+- **ContainerPackager** (Container): Validates the Dockerfile exists, detects a local container runtime
+  (Docker/Podman/Finch), builds the image locally, and validates the 1GB size limit. If no local runtime is available,
+  the local build is skipped (deploy uses CodeBuild).
+
+Container constants (`CONTAINER_RUNTIMES`, `DOCKERFILE_NAME`, `CONTAINER_INTERNAL_PORT`) and the `ContainerRuntime` type
+are in `lib/constants.ts`.
 
 **ConfigIO**: This module defines utilities to read and write configs which satisfy schemas to the local file system.
 Both the CLI and the CDK require this functionality.

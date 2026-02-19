@@ -65,6 +65,16 @@ appropriate to test the relevant surface area.
 
 If start up issues are encountered, read the console error to troubleshoot bugs and update the harness.
 
+## Dev Server Architecture
+
+The `dev` command uses a strategy pattern with a `DevServer` base class and two implementations:
+
+- **CodeZipDevServer**: Runs uvicorn locally with Python venv hot-reload
+- **ContainerDevServer**: Builds and runs a Docker container with volume mount for hot-reload. Detects
+  Docker/Podman/Finch via the `detectContainerRuntime()` utility.
+
+The server selection is based on `agent.build` (`CodeZip` or `Container`).
+
 ## Commands Directory Structure
 
 Commands live in `commands/`. Each command has its own directory with an `index.ts` barrel file and a file called

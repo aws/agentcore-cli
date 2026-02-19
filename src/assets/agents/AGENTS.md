@@ -60,21 +60,32 @@ file maps to a JSON config file and includes validation constraints as comments.
 
 ### Common Enum Values
 
-- **BuildType**: `'CodeZip'`
+- **BuildType**: `'CodeZip'` | `'Container'`
 - **NetworkMode**: `'PUBLIC'`
 - **RuntimeVersion**: `'PYTHON_3_10'` | `'PYTHON_3_11'` | `'PYTHON_3_12'` | `'PYTHON_3_13'`
 - **MemoryStrategyType**: `'SEMANTIC'` | `'SUMMARIZATION'` | `'USER_PREFERENCE'`
+
+### Build Types
+
+- **CodeZip**: Python source is packaged as a zip artifact and deployed directly to AgentCore Runtime.
+- **Container**: Agent code is built as a Docker container image. Requires a `Dockerfile` in the agent's `codeLocation`
+  directory. At deploy time, the source is uploaded to S3, built in CodeBuild (ARM64), pushed to a per-agent ECR
+  repository, and the container URI is provided to the AgentCore Runtime. For local development (`agentcore dev`), the
+  container is built and run locally with volume-mounted hot-reload.
 
 ### Supported Frameworks (for template agents)
 
 - **Strands** - Works with Bedrock, Anthropic, OpenAI, Gemini
 - **LangChain_LangGraph** - Works with Bedrock, Anthropic, OpenAI, Gemini
+- **CrewAI** - Works with Bedrock, Anthropic, OpenAI, Gemini
 - **GoogleADK** - Gemini only
 - **OpenAIAgents** - OpenAI only
+- **AutoGen** - Works with Bedrock, Anthropic, OpenAI, Gemini
 
 ### Specific Context
 
-Directory pathing to local projects is required for runtimes. Only Python offers a zip based direct code deploy option.
+Directory pathing to local projects is required for runtimes. Both CodeZip (Python zip) and Container (Docker image)
+deployment options are available.
 
 ## Deployment
 
