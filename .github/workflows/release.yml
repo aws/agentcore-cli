@@ -284,8 +284,8 @@ jobs:
       name: npm-publish
       url: https://www.npmjs.com/package/@aws/agentcore
     permissions:
-      contents: write
-      id-token: write
+      id-token: write # Required for OIDC trusted publishing
+      contents: write # Required to push git tags
 
     steps:
       - name: Checkout latest main (AFTER PR merge)
@@ -305,9 +305,15 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: 20.x
+          node-version: 22.x
           cache: 'npm'
           registry-url: 'https://registry.npmjs.org'
+
+      - name: Ensure npm 11.5.1+ for trusted publishing
+        run: |
+          echo "Current npm version: $(npm --version)"
+          npm install -g npm@latest
+          echo "Updated npm version: $(npm --version)"
 
       - name: Download artifacts
         uses: actions/download-artifact@v4
@@ -350,8 +356,11 @@ jobs:
       - name: Build package
         run: npm run build
 
-      - name: Publish to npm
-        run: npm publish --access=public --provenance
+      - name: Publish to npm (using OIDC trusted publishing)
+        run: |
+          echo "Publishing with OIDC trusted publishing..."
+          echo "No NPM_TOKEN needed - using GitHub OIDC"
+          npm publish --access public --provenance --tag latest
 
       - name: Create and push tag
         env:
