@@ -28,7 +28,7 @@ export interface ConversationMessage {
 
 const MAX_LOG_ENTRIES = 50;
 
-export function useDevServer(options: { workingDir: string; port: number; agentName?: string }) {
+export function useDevServer(options: { workingDir: string; port: number; agentName?: string; onReady?: () => void }) {
   const [logs, setLogs] = useState<LogEntry[]>([]);
   const [status, setStatus] = useState<ServerStatus>('starting');
   const [isStreaming, setIsStreaming] = useState(false);
@@ -45,6 +45,8 @@ export function useDevServer(options: { workingDir: string; port: number; agentN
 
   const serverRef = useRef<DevServer | null>(null);
   const loggerRef = useRef<DevLogger | null>(null);
+  const onReadyRef = useRef(options.onReady);
+  onReadyRef.current = options.onReady;
   // Track instance ID to ignore callbacks from stale server instances
   const instanceIdRef = useRef(0);
   // Track if we're intentionally restarting to ignore exit callbacks
@@ -127,6 +129,7 @@ export function useDevServer(options: { workingDir: string; port: number; agentN
           ) {
             serverReady = true;
             setStatus('running');
+            onReadyRef.current?.();
             addLog('system', `Server ready at http://localhost:${port}/invocations`);
           } else {
             addLog(level, message);

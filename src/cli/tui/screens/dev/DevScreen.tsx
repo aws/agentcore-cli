@@ -127,7 +127,7 @@ export function DevScreen(props: DevScreenProps) {
         const found = agents.find(a => a.name === props.agentName);
         if (found) {
           setSelectedAgentName(props.agentName);
-          setMode('input');
+          setMode('chat');
         } else if (agents.length > 0) {
           // Agent not found or not supported, show selection
           setSelectedAgentName(undefined);
@@ -135,7 +135,7 @@ export function DevScreen(props: DevScreenProps) {
       } else if (agents.length === 1 && agents[0]) {
         // Auto-select if only one agent
         setSelectedAgentName(agents[0].name);
-        setMode('input');
+        setMode('chat');
       } else if (agents.length === 0) {
         // No supported agents, show error screen
         setNoAgentsError(true);
@@ -146,7 +146,10 @@ export function DevScreen(props: DevScreenProps) {
     void load();
   }, [workingDir, props.agentName]);
 
+  const onServerReady = useCallback(() => setMode(prev => (prev === 'chat' ? 'input' : prev)), []);
+
   const {
+    logs,
     status,
     isStreaming,
     conversation,
@@ -165,6 +168,7 @@ export function DevScreen(props: DevScreenProps) {
     workingDir,
     port: props.port ?? 8080,
     agentName: selectedAgentName,
+    onReady: onServerReady,
   });
 
   // Handle exit with brief "stopping" message
@@ -259,7 +263,7 @@ export function DevScreen(props: DevScreenProps) {
           const agent = supportedAgents[selectedAgentIndex];
           if (agent) {
             setSelectedAgentName(agent.name);
-            setMode('input');
+            setMode('chat');
           }
         }
         return;
@@ -289,8 +293,8 @@ export function DevScreen(props: DevScreenProps) {
         // Clear the flag on any other key
         justCancelledRef.current = false;
 
-        // Enter to start typing (only when not streaming)
-        if (key.return && !isStreaming) {
+        // Enter to start typing (only when not streaming and server is running)
+        if (key.return && !isStreaming && status === 'running') {
           setMode('input');
           return;
         }
@@ -314,7 +318,7 @@ export function DevScreen(props: DevScreenProps) {
             setUserScrolled(false);
             return;
           }
-          if (key.ctrl && input === 'r') {
+          if (key.ctrl && input === 'r' && status !== 'starting') {
             restart();
             return;
           }
@@ -355,11 +359,13 @@ export function DevScreen(props: DevScreenProps) {
       ? '↑↓ select · Enter confirm · q quit'
       : mode === 'input'
         ? 'Enter send · Esc cancel'
-        : isStreaming
-          ? '↑↓ scroll'
-          : conversation.length > 0
-            ? `↑↓ scroll · Enter invoke · C clear · Ctrl+R restart · ${supportedAgents.length > 1 ? 'Esc back' : 'Esc quit'}`
-            : `Enter to send a message · Ctrl+R restart · ${supportedAgents.length > 1 ? 'Esc back' : 'Esc quit'}`;
+        : status === 'starting'
+          ? `${supportedAgents.length > 1 ? 'Esc back' : 'Esc quit'}`
+          : isStreaming
+            ? '↑↓ scroll'
+            : conversation.length > 0
+              ? `↑↓ scroll · Enter invoke · C clear · Ctrl+R restart · ${supportedAgents.length > 1 ? 'Esc back' : 'Esc quit'}`
+              : `Enter to send a message · Ctrl+R restart · ${supportedAgents.length > 1 ? 'Esc back' : 'Esc quit'}`;
 
   // Agent selection screen
   if (mode === 'select-agent') {
@@ -394,12 +400,25 @@ export function DevScreen(props: DevScreenProps) {
         <Text>Server: </Text>
         <Text color="cyan">http://localhost:{actualPort}/invocations</Text>
       </Box>
-      {status !== 'starting' && !isExiting && (
+      {!isExiting && (
         <Box>
           <Text>Status: </Text>
-          <Text color={statusColor}>{status}</Text>
+          {status === 'starting' ? (
+            <Text color="yellow">{config?.buildType === 'Container' ? 'Starting container...' : 'Starting...'}</Text>
+          ) : (
+            <Text color={statusColor}>{status}</Text>
+          )}
         </Box>
       )}
+      {status === 'error' &&
+        logs
+          .filter(l => l.level === 'error')
+          .slice(-3)
+          .map((l, i) => (
+            <Text key={i} color="red">
+              {l.message}
+            </Text>
+          ))}
       {isExiting && (
         <Box>
           <Text color="yellow">Stopping server...</Text>
@@ -444,12 +463,12 @@ export function DevScreen(props: DevScreenProps) {
         {/* Input line - always visible at bottom */}
         {/* Unfocused: dim arrow, press Enter to focus */}
         {/* Focused: blue arrow with cursor, type and press Enter to send */}
-        {mode === 'chat' && !isStreaming && (
+        {status === 'running' && mode === 'chat' && !isStreaming && (
           <Box>
             <Text dimColor>&gt; </Text>
           </Box>
         )}
-        {mode === 'input' && (
+        {status === 'running' && mode === 'input' && (
           <Box>
             <Text color="blue">&gt; </Text>
             <TextInput
