@@ -18,7 +18,7 @@ file defines a Starlette ASGI app with the chosen Agent framework SDK running wi
 | Variable | Required | Description |
 | --- | --- | --- |
 {{#if hasIdentity}}| `{{identityProviders.[0].envVarName}}` | Yes | {{modelProvider}} API key (local) or Identity provider name (deployed) |
-{{/if}}| `LOCAL_DEV` | No | Set to `1` to use `agentcore/.env` instead of AgentCore Identity |
+{{/if}}| `LOCAL_DEV` | No | Set to `1` to use `.env.local` instead of AgentCore Identity |
 
 # Developing locally
 

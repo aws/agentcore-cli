@@ -808,7 +808,7 @@ file defines a Starlette ASGI app with the AutoGen framework running within.
 | Variable | Required | Description |
 | --- | --- | --- |
 {{#if hasIdentity}}| \`{{identityProviders.[0].envVarName}}\` | Yes | {{modelProvider}} API key (local) or Identity provider name (deployed) |
-{{/if}}| \`LOCAL_DEV\` | No | Set to \`1\` to use \`agentcore/.env\` instead of AgentCore Identity |
+{{/if}}| \`LOCAL_DEV\` | No | Set to \`1\` to use \`.env.local\` instead of AgentCore Identity |
 
 # Developing locally
 
@@ -1162,7 +1162,7 @@ file defines a Starlette ASGI app with the CrewAI framework running within.
 | Variable | Required | Description |
 | --- | --- | --- |
 {{#if hasIdentity}}| \`{{identityProviders.[0].envVarName}}\` | Yes | {{modelProvider}} API key (local) or Identity provider name (deployed) |
-{{/if}}| \`LOCAL_DEV\` | No | Set to \`1\` to use \`agentcore/.env\` instead of AgentCore Identity |
+{{/if}}| \`LOCAL_DEV\` | No | Set to \`1\` to use \`.env.local\` instead of AgentCore Identity |
 
 # Developing locally
 
@@ -1486,7 +1486,7 @@ file defines a Starlette ASGI app with the Google ADK framework running within.
 | Variable | Required | Description |
 | --- | --- | --- |
 {{#if hasIdentity}}| \`{{identityProviders.[0].envVarName}}\` | Yes | {{modelProvider}} API key (local) or Identity provider name (deployed) |
-{{/if}}| \`LOCAL_DEV\` | No | Set to \`1\` to use \`agentcore/.env\` instead of AgentCore Identity |
+{{/if}}| \`LOCAL_DEV\` | No | Set to \`1\` to use \`.env.local\` instead of AgentCore Identity |
 
 # Developing locally
 
@@ -1767,7 +1767,7 @@ file defines a Starlette ASGI app with the LangChain/LangGraph framework running
 | Variable | Required | Description |
 | --- | --- | --- |
 {{#if hasIdentity}}| \`{{identityProviders.[0].envVarName}}\` | Yes | {{modelProvider}} API key (local) or Identity provider name (deployed) |
-{{/if}}| \`LOCAL_DEV\` | No | Set to \`1\` to use \`agentcore/.env\` instead of AgentCore Identity |
+{{/if}}| \`LOCAL_DEV\` | No | Set to \`1\` to use \`.env.local\` instead of AgentCore Identity |
 
 # Developing locally
 
@@ -2115,7 +2115,7 @@ file defines a Starlette ASGI app with the OpenAI Agents SDK framework running w
 | Variable | Required | Description |
 | --- | --- | --- |
 {{#if hasIdentity}}| \`{{identityProviders.[0].envVarName}}\` | Yes | {{modelProvider}} API key (local) or Identity provider name (deployed) |
-{{/if}}| \`LOCAL_DEV\` | No | Set to \`1\` to use \`agentcore/.env\` instead of AgentCore Identity |
+{{/if}}| \`LOCAL_DEV\` | No | Set to \`1\` to use \`.env.local\` instead of AgentCore Identity |
 
 # Developing locally
 
@@ -2362,7 +2362,7 @@ file defines a Starlette ASGI app with the chosen Agent framework SDK running wi
 | Variable | Required | Description |
 | --- | --- | --- |
 {{#if hasIdentity}}| \`{{identityProviders.[0].envVarName}}\` | Yes | {{modelProvider}} API key (local) or Identity provider name (deployed) |
-{{/if}}| \`LOCAL_DEV\` | No | Set to \`1\` to use \`agentcore/.env\` instead of AgentCore Identity |
+{{/if}}| \`LOCAL_DEV\` | No | Set to \`1\` to use \`.env.local\` instead of AgentCore Identity |
 
 # Developing locally
 
