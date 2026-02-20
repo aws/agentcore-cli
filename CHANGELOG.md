@@ -2,6 +2,24 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.3.0-preview.2.1] - 2026-02-20
+
+### Added
+- feat: add docker container deployment e2e test for Strands/Bedrock (#362) (5de204a)
+
+### Fixed
+- fix: remove stale fast-xml-parser override, upgrade aws-cdk-lib (#368) (4a02d94)
+- fix: correct path references and env var names in agent README templates (#364) (592af45)
+- fix: use lockfile for reproducible builds and correct Dockerfile port comments (#365) (4da0591)
+- fix: add package marker comment to __init__.py template files (#363) (993e695)
+- fix: add mcp as explicit dependency in strands template (#366) (c6d0735)
+- fix: add .env and .git exclusions to dockerignore template (#361) (df4eebc)
+- fix: add --chown to Dockerfile COPY so app files are owned by bedrock_agentcore (#358) (be9b99b)
+- fix: handle pre-release versions in compareVersions (#357) (6bf7a92)
+
+### Other Changes
+- Add pull_request_target trigger to CodeQL workflow (#355) (3d1231d)
+
 ## [0.3.0-preview.2.0] - 2026-02-19
 
 ### Added
