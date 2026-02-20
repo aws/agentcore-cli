@@ -15,6 +15,13 @@ build/
 .coverage
 htmlcov/
 
+# Secrets and environment files
+.env
+.env.*
+
+# Version control
+.git/
+
 # AgentCore build artifacts
 .agentcore/artifacts/
 *.zip
