@@ -13,6 +13,7 @@ interface E2EConfig {
   framework: string;
   modelProvider: string;
   requiredEnvVar?: string;
+  build?: string;
 }
 
 /**
@@ -63,6 +64,10 @@ export function createE2ESuite(cfg: E2EConfig) {
         'none',
         '--json',
       ];
+
+      if (cfg.build) {
+        createArgs.push('--build', cfg.build);
+      }
 
       // Pass API key so the credential is registered in the project and .env.local
       const apiKey = cfg.requiredEnvVar ? process.env[cfg.requiredEnvVar] : undefined;
