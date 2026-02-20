@@ -14,7 +14,8 @@ dependencies = [
     "bedrock-agentcore >= 1.0.3",
     "botocore[crt] >= 1.35.0",
     {{#if (eq modelProvider "Gemini")}}"google-genai >= 1.0.0",
-    {{/if}}{{#if (eq modelProvider "OpenAI")}}"openai >= 1.0.0",
+    {{/if}}"mcp >= 1.19.0",
+    {{#if (eq modelProvider "OpenAI")}}"openai >= 1.0.0",
     {{/if}}"strands-agents >= 1.13.0",
 ]
 
