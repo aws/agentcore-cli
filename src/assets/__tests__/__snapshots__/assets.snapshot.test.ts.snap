@@ -792,25 +792,23 @@ exports[`Assets Directory Snapshots > Python framework assets > python/python/au
 
 # Layout
 
-There is one directory with generated application code, \`src/\` . At the root, there is a \`.gitignore\` file, a
-\`.agentcore\` folder which represents the configurations and state associated with this project. Other \`agentcore\`
+The generated application code lives at the agent root directory. At the root, there is a \`.gitignore\` file, an
+\`agentcore/\` folder which represents the configurations and state associated with this project. Other \`agentcore\`
 commands like \`deploy\`, \`dev\`, and \`invoke\` rely on the configuration stored here.
 
-## src/
+## Agent Root
 
-The main entrypoint to your app is defined in \`src/main.py\`. Using the AgentCore SDK \`@app.entrypoint\` decorator, this
+The main entrypoint to your app is defined in \`main.py\`. Using the AgentCore SDK \`@app.entrypoint\` decorator, this
 file defines a Starlette ASGI app with the AutoGen framework running within.
 
-\`src/model/load.py\` instantiates your chosen model provider.
+\`model/load.py\` instantiates your chosen model provider.
 
 ## Environment Variables
 
-| Variable                       | Required        | Description                                                      |
-| ------------------------------ | --------------- | ---------------------------------------------------------------- |
-| \`AGENTCORE_IDENTITY_OPENAI\`    | Yes (OpenAI)    | OpenAI API key (local) or Identity provider name (deployed)      |
-| \`AGENTCORE_IDENTITY_ANTHROPIC\` | Yes (Anthropic) | Anthropic API key (local) or Identity provider name (deployed)   |
-| \`AGENTCORE_IDENTITY_GEMINI\`    | Yes (Gemini)    | Gemini API key (local) or Identity provider name (deployed)      |
-| \`LOCAL_DEV\`                    | No              | Set to \`1\` to use \`agentcore/.env\` instead of AgentCore Identity |
+| Variable | Required | Description |
+| --- | --- | --- |
+{{#if hasIdentity}}| \`{{identityProviders.[0].envVarName}}\` | Yes | {{modelProvider}} API key (local) or Identity provider name (deployed) |
+{{/if}}| \`LOCAL_DEV\` | No | Set to \`1\` to use \`agentcore/.env\` instead of AgentCore Identity |
 
 # Developing locally
 
@@ -1148,25 +1146,23 @@ exports[`Assets Directory Snapshots > Python framework assets > python/python/cr
 
 # Layout
 
-There is one directory with generated application code, \`src/\` . At the root, there is a \`.gitignore\` file, a
-\`.agentcore\` folder which represents the configurations and state associated with this project. Other \`agentcore\`
+The generated application code lives at the agent root directory. At the root, there is a \`.gitignore\` file, an
+\`agentcore/\` folder which represents the configurations and state associated with this project. Other \`agentcore\`
 commands like \`deploy\`, \`dev\`, and \`invoke\` rely on the configuration stored here.
 
-## src/
+## Agent Root
 
-The main entrypoint to your app is defined in \`src/main.py\`. Using the AgentCore SDK \`@app.entrypoint\` decorator, this
+The main entrypoint to your app is defined in \`main.py\`. Using the AgentCore SDK \`@app.entrypoint\` decorator, this
 file defines a Starlette ASGI app with the CrewAI framework running within.
 
-\`src/model/load.py\` instantiates your chosen model provider.
+\`model/load.py\` instantiates your chosen model provider.
 
 ## Environment Variables
 
-| Variable                       | Required        | Description                                                      |
-| ------------------------------ | --------------- | ---------------------------------------------------------------- |
-| \`AGENTCORE_IDENTITY_OPENAI\`    | Yes (OpenAI)    | OpenAI API key (local) or Identity provider name (deployed)      |
-| \`AGENTCORE_IDENTITY_ANTHROPIC\` | Yes (Anthropic) | Anthropic API key (local) or Identity provider name (deployed)   |
-| \`AGENTCORE_IDENTITY_GEMINI\`    | Yes (Gemini)    | Gemini API key (local) or Identity provider name (deployed)      |
-| \`LOCAL_DEV\`                    | No              | Set to \`1\` to use \`agentcore/.env\` instead of AgentCore Identity |
+| Variable | Required | Description |
+| --- | --- | --- |
+{{#if hasIdentity}}| \`{{identityProviders.[0].envVarName}}\` | Yes | {{modelProvider}} API key (local) or Identity provider name (deployed) |
+{{/if}}| \`LOCAL_DEV\` | No | Set to \`1\` to use \`agentcore/.env\` instead of AgentCore Identity |
 
 # Developing locally
 
@@ -1474,23 +1470,23 @@ exports[`Assets Directory Snapshots > Python framework assets > python/python/go
 
 # Layout
 
-There is one directory with generated application code, \`src/\` . At the root, there is a \`.gitignore\` file, a
-\`.agentcore\` folder which represents the configurations and state associated with this project. Other \`agentcore\`
+The generated application code lives at the agent root directory. At the root, there is a \`.gitignore\` file, an
+\`agentcore/\` folder which represents the configurations and state associated with this project. Other \`agentcore\`
 commands like \`deploy\`, \`dev\`, and \`invoke\` rely on the configuration stored here.
 
-## src/
+## Agent Root
 
-The main entrypoint to your app is defined in \`src/main.py\`. Using the AgentCore SDK \`@app.entrypoint\` decorator, this
+The main entrypoint to your app is defined in \`main.py\`. Using the AgentCore SDK \`@app.entrypoint\` decorator, this
 file defines a Starlette ASGI app with the Google ADK framework running within.
 
-\`src/model/load.py\` instantiates your chosen model provider (Gemini).
+\`model/load.py\` instantiates your chosen model provider (Gemini).
 
 ## Environment Variables
 
-| Variable                    | Required | Description                                                      |
-| --------------------------- | -------- | ---------------------------------------------------------------- |
-| \`AGENTCORE_IDENTITY_GEMINI\` | Yes      | Gemini API key (local) or Identity provider name (deployed)      |
-| \`LOCAL_DEV\`                 | No       | Set to \`1\` to use \`agentcore/.env\` instead of AgentCore Identity |
+| Variable | Required | Description |
+| --- | --- | --- |
+{{#if hasIdentity}}| \`{{identityProviders.[0].envVarName}}\` | Yes | {{modelProvider}} API key (local) or Identity provider name (deployed) |
+{{/if}}| \`LOCAL_DEV\` | No | Set to \`1\` to use \`agentcore/.env\` instead of AgentCore Identity |
 
 # Developing locally
 
@@ -1755,25 +1751,23 @@ exports[`Assets Directory Snapshots > Python framework assets > python/python/la
 
 # Layout
 
-There is one directory with generated application code, \`src/\` . At the root, there is a \`.gitignore\` file, a
-\`.agentcore\` folder which represents the configurations and state associated with this project. Other \`agentcore\`
+The generated application code lives at the agent root directory. At the root, there is a \`.gitignore\` file, an
+\`agentcore/\` folder which represents the configurations and state associated with this project. Other \`agentcore\`
 commands like \`deploy\`, \`dev\`, and \`invoke\` rely on the configuration stored here.
 
-## src/
+## Agent Root
 
-The main entrypoint to your app is defined in \`src/main.py\`. Using the AgentCore SDK \`@app.entrypoint\` decorator, this
+The main entrypoint to your app is defined in \`main.py\`. Using the AgentCore SDK \`@app.entrypoint\` decorator, this
 file defines a Starlette ASGI app with the LangChain/LangGraph framework running within.
 
-\`src/model/load.py\` instantiates your chosen model provider.
+\`model/load.py\` instantiates your chosen model provider.
 
 ## Environment Variables
 
-| Variable                       | Required        | Description                                                      |
-| ------------------------------ | --------------- | ---------------------------------------------------------------- |
-| \`AGENTCORE_IDENTITY_OPENAI\`    | Yes (OpenAI)    | OpenAI API key (local) or Identity provider name (deployed)      |
-| \`AGENTCORE_IDENTITY_ANTHROPIC\` | Yes (Anthropic) | Anthropic API key (local) or Identity provider name (deployed)   |
-| \`AGENTCORE_IDENTITY_GEMINI\`    | Yes (Gemini)    | Gemini API key (local) or Identity provider name (deployed)      |
-| \`LOCAL_DEV\`                    | No              | Set to \`1\` to use \`agentcore/.env\` instead of AgentCore Identity |
+| Variable | Required | Description |
+| --- | --- | --- |
+{{#if hasIdentity}}| \`{{identityProviders.[0].envVarName}}\` | Yes | {{modelProvider}} API key (local) or Identity provider name (deployed) |
+{{/if}}| \`LOCAL_DEV\` | No | Set to \`1\` to use \`agentcore/.env\` instead of AgentCore Identity |
 
 # Developing locally
 
@@ -2105,23 +2099,23 @@ exports[`Assets Directory Snapshots > Python framework assets > python/python/op
 
 # Layout
 
-There is one directory with generated application code, \`src/\` . At the root, there is a \`.gitignore\` file, a
-\`.agentcore\` folder which represents the configurations and state associated with this project. Other \`agentcore\`
+The generated application code lives at the agent root directory. At the root, there is a \`.gitignore\` file, an
+\`agentcore/\` folder which represents the configurations and state associated with this project. Other \`agentcore\`
 commands like \`deploy\`, \`dev\`, and \`invoke\` rely on the configuration stored here.
 
-## src/
+## Agent Root
 
-The main entrypoint to your app is defined in \`src/main.py\`. Using the AgentCore SDK \`@app.entrypoint\` decorator, this
+The main entrypoint to your app is defined in \`main.py\`. Using the AgentCore SDK \`@app.entrypoint\` decorator, this
 file defines a Starlette ASGI app with the OpenAI Agents SDK framework running within.
 
-\`src/model/load.py\` instantiates your chosen model provider (OpenAI).
+\`model/load.py\` instantiates your chosen model provider (OpenAI).
 
 ## Environment Variables
 
-| Variable                    | Required | Description                                                      |
-| --------------------------- | -------- | ---------------------------------------------------------------- |
-| \`AGENTCORE_IDENTITY_OPENAI\` | Yes      | OpenAI API key (local) or Identity provider name (deployed)      |
-| \`LOCAL_DEV\`                 | No       | Set to \`1\` to use \`agentcore/.env\` instead of AgentCore Identity |
+| Variable | Required | Description |
+| --- | --- | --- |
+{{#if hasIdentity}}| \`{{identityProviders.[0].envVarName}}\` | Yes | {{modelProvider}} API key (local) or Identity provider name (deployed) |
+{{/if}}| \`LOCAL_DEV\` | No | Set to \`1\` to use \`agentcore/.env\` instead of AgentCore Identity |
 
 # Developing locally
 
@@ -2352,25 +2346,23 @@ exports[`Assets Directory Snapshots > Python framework assets > python/python/st
 
 # Layout
 
-There is one directory with generated application code, \`src/\` . At the root, there is a \`.gitignore\` file, a
-\`.agentcore\` folder which represents the configurations and state associated with this project. Other \`agentcore\`
+The generated application code lives at the agent root directory. At the root, there is a \`.gitignore\` file, an
+\`agentcore/\` folder which represents the configurations and state associated with this project. Other \`agentcore\`
 commands like \`deploy\`, \`dev\`, and \`invoke\` rely on the configuration stored here.
 
-## src/
+## Agent Root
 
-The main entrypoint to your app is defined in \`src/main.py\`. Using the AgentCore SDK \`@app.entrypoint\` decorator, this
+The main entrypoint to your app is defined in \`main.py\`. Using the AgentCore SDK \`@app.entrypoint\` decorator, this
 file defines a Starlette ASGI app with the chosen Agent framework SDK running within.
 
-\`src/model/load.py\` instantiates your chosen model provider.
+\`model/load.py\` instantiates your chosen model provider.
 
 ## Environment Variables
 
-| Variable                       | Required        | Description                                                      |
-| ------------------------------ | --------------- | ---------------------------------------------------------------- |
-| \`AGENTCORE_IDENTITY_OPENAI\`    | Yes (OpenAI)    | OpenAI API key (local) or Identity provider name (deployed)      |
-| \`AGENTCORE_IDENTITY_ANTHROPIC\` | Yes (Anthropic) | Anthropic API key (local) or Identity provider name (deployed)   |
-| \`AGENTCORE_IDENTITY_GEMINI\`    | Yes (Gemini)    | Gemini API key (local) or Identity provider name (deployed)      |
-| \`LOCAL_DEV\`                    | No              | Set to \`1\` to use \`agentcore/.env\` instead of AgentCore Identity |
+| Variable | Required | Description |
+| --- | --- | --- |
+{{#if hasIdentity}}| \`{{identityProviders.[0].envVarName}}\` | Yes | {{modelProvider}} API key (local) or Identity provider name (deployed) |
+{{/if}}| \`LOCAL_DEV\` | No | Set to \`1\` to use \`agentcore/.env\` instead of AgentCore Identity |
 
 # Developing locally
 
