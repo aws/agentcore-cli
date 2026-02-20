@@ -8,17 +8,19 @@ ENV UV_SYSTEM_PYTHON=1 \
     PYTHONUNBUFFERED=1 \
     DOCKER_CONTAINER=1
 
-COPY pyproject.toml uv.lock* ./
-RUN uv pip install -r pyproject.toml
+COPY pyproject.toml uv.lock ./
+RUN uv sync --frozen --no-dev
 
 RUN useradd -m -u 1000 bedrock_agentcore
 USER bedrock_agentcore
 
 COPY --chown=bedrock_agentcore:bedrock_agentcore . .
 
-# 8080: AgentCore runtime endpoint
-# 8000: Local dev server (uvicorn)
-# 9000: OpenTelemetry collector
+# AgentCore Runtime service contract ports
+# https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/runtime-service-contract.html
+# 8080: HTTP Mode
+# 8000: MCP Mode
+# 9000: A2A Mode
 EXPOSE 8080 8000 9000
 
 CMD ["opentelemetry-instrument", "python", "-m", "{{entrypoint}}"]
