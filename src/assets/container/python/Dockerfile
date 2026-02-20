@@ -8,13 +8,15 @@ ENV UV_SYSTEM_PYTHON=1 \
     PYTHONUNBUFFERED=1 \
     DOCKER_CONTAINER=1
 
-COPY pyproject.toml uv.lock ./
-RUN uv sync --frozen --no-dev
-
 RUN useradd -m -u 1000 bedrock_agentcore
-USER bedrock_agentcore
+
+COPY pyproject.toml uv.lock ./
+RUN uv sync --frozen --no-dev --no-install-project
 
 COPY --chown=bedrock_agentcore:bedrock_agentcore . .
+RUN uv sync --frozen --no-dev
+
+USER bedrock_agentcore
 
 # AgentCore Runtime service contract ports
 # https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/runtime-service-contract.html
