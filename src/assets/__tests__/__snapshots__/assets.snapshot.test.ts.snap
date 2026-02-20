@@ -934,7 +934,7 @@ if __name__ == "__main__":
 `;
 
 exports[`Assets Directory Snapshots > Python framework assets > python/python/autogen/base/mcp_client/__init__.py should match snapshot 1`] = `
-"
+"# Package marker
 "
 `;
 
@@ -961,7 +961,7 @@ async def get_streamable_http_mcp_tools() -> List[StreamableHttpMcpToolAdapter]:
 `;
 
 exports[`Assets Directory Snapshots > Python framework assets > python/python/autogen/base/model/__init__.py should match snapshot 1`] = `
-"
+"# Package marker
 "
 `;
 
@@ -1293,7 +1293,7 @@ if __name__ == "__main__":
 `;
 
 exports[`Assets Directory Snapshots > Python framework assets > python/python/crewai/base/model/__init__.py should match snapshot 1`] = `
-"
+"# Package marker
 "
 `;
 
@@ -1653,7 +1653,7 @@ if __name__ == "__main__":
 `;
 
 exports[`Assets Directory Snapshots > Python framework assets > python/python/googleadk/base/mcp_client/__init__.py should match snapshot 1`] = `
-"
+"# Package marker
 "
 `;
 
@@ -1677,7 +1677,7 @@ def get_streamable_http_mcp_client() -> MCPToolset:
 `;
 
 exports[`Assets Directory Snapshots > Python framework assets > python/python/googleadk/base/model/__init__.py should match snapshot 1`] = `
-"
+"# Package marker
 "
 `;
 
@@ -1901,7 +1901,7 @@ if __name__ == "__main__":
 `;
 
 exports[`Assets Directory Snapshots > Python framework assets > python/python/langchain_langgraph/base/mcp_client/__init__.py should match snapshot 1`] = `
-"
+"# Package marker
 "
 `;
 
@@ -1929,7 +1929,7 @@ def get_streamable_http_mcp_client() -> MultiServerMCPClient:
 `;
 
 exports[`Assets Directory Snapshots > Python framework assets > python/python/langchain_langgraph/base/model/__init__.py should match snapshot 1`] = `
-"
+"# Package marker
 "
 `;
 
@@ -2256,7 +2256,7 @@ if __name__ == "__main__":
 `;
 
 exports[`Assets Directory Snapshots > Python framework assets > python/python/openaiagents/base/mcp_client/__init__.py should match snapshot 1`] = `
-"
+"# Package marker
 "
 `;
 
@@ -2279,7 +2279,7 @@ def get_streamable_http_mcp_client() -> MCPServerStreamableHttp:
 `;
 
 exports[`Assets Directory Snapshots > Python framework assets > python/python/openaiagents/base/model/__init__.py should match snapshot 1`] = `
-"
+"# Package marker
 "
 `;
 
@@ -2524,7 +2524,7 @@ if __name__ == "__main__":
 `;
 
 exports[`Assets Directory Snapshots > Python framework assets > python/python/strands/base/mcp_client/__init__.py should match snapshot 1`] = `
-"
+"# Package marker
 "
 `;
 
@@ -2544,7 +2544,7 @@ def get_streamable_http_mcp_client() -> MCPClient:
 `;
 
 exports[`Assets Directory Snapshots > Python framework assets > python/python/strands/base/model/__init__.py should match snapshot 1`] = `
-"
+"# Package marker
 "
 `;
 
@@ -2701,7 +2701,10 @@ packages = ["."]
 "
 `;
 
-exports[`Assets Directory Snapshots > Python framework assets > python/python/strands/capabilities/memory/__init__.py should match snapshot 1`] = `""`;
+exports[`Assets Directory Snapshots > Python framework assets > python/python/strands/capabilities/memory/__init__.py should match snapshot 1`] = `
+"# Package marker
+"
+`;
 
 exports[`Assets Directory Snapshots > Python framework assets > python/python/strands/capabilities/memory/session.py should match snapshot 1`] = `
 "import os
