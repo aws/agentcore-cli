@@ -14,7 +14,7 @@ RUN uv pip install -r pyproject.toml
 RUN useradd -m -u 1000 bedrock_agentcore
 USER bedrock_agentcore
 
-COPY . .
+COPY --chown=bedrock_agentcore:bedrock_agentcore . .
 
 # 8080: AgentCore runtime endpoint
 # 8000: Local dev server (uvicorn)
