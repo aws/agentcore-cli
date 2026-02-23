@@ -11,8 +11,10 @@ import {
   checkStackDeployability,
   getAllCredentials,
   hasOwnedIdentityApiProviders,
+  hasOwnedIdentityOAuthProviders,
   performStackTeardown,
   setupApiKeyProviders,
+  setupOAuth2Providers,
   synthesizeCdk,
   validateProject,
 } from '../../operations/deploy';
@@ -166,20 +168,21 @@ export async function handleDeploy(options: ValidatedDeployOptions): Promise<Dep
 
     // Set up identity providers if needed
     let identityKmsKeyArn: string | undefined;
+
+    // Read runtime credentials from process.env (enables non-interactive deploy with -y)
+    const neededCredentials = getAllCredentials(context.projectSpec);
+    const envCredentials: Record<string, string> = {};
+    for (const cred of neededCredentials) {
+      const value = process.env[cred.envVarName];
+      if (value) {
+        envCredentials[cred.envVarName] = value;
+      }
+    }
+    const runtimeCredentials =
+      Object.keys(envCredentials).length > 0 ? new SecureCredentials(envCredentials) : undefined;
+
     if (hasOwnedIdentityApiProviders(context.projectSpec)) {
       startStep('Creating credentials...');
-
-      // In CLI mode, also check process.env for credentials (enables non-interactive deploy with -y)
-      const neededCredentials = getAllCredentials(context.projectSpec);
-      const envCredentials: Record<string, string> = {};
-      for (const cred of neededCredentials) {
-        const value = process.env[cred.envVarName];
-        if (value) {
-          envCredentials[cred.envVarName] = value;
-        }
-      }
-      const runtimeCredentials =
-        Object.keys(envCredentials).length > 0 ? new SecureCredentials(envCredentials) : undefined;
 
       const identityResult = await setupApiKeyProviders({
         projectSpec: context.projectSpec,
@@ -197,6 +200,41 @@ export async function handleDeploy(options: ValidatedDeployOptions): Promise<Dep
         return { success: false, error: errorMsg, logPath: logger.getRelativeLogPath() };
       }
       identityKmsKeyArn = identityResult.kmsKeyArn;
+      endStep('success');
+    }
+
+    // Set up OAuth credential providers if needed
+    const oauthCredentials: Record<
+      string,
+      { credentialProviderArn: string; clientSecretArn?: string; callbackUrl?: string }
+    > = {};
+    if (hasOwnedIdentityOAuthProviders(context.projectSpec)) {
+      startStep('Creating OAuth credentials...');
+
+      const oauthResult = await setupOAuth2Providers({
+        projectSpec: context.projectSpec,
+        configBaseDir: configIO.getConfigRoot(),
+        region: target.region,
+        runtimeCredentials,
+      });
+      if (oauthResult.hasErrors) {
+        const errorResult = oauthResult.results.find(r => r.status === 'error');
+        const errorMsg = errorResult?.error ?? 'OAuth credential setup failed';
+        endStep('error', errorMsg);
+        logger.finalize(false);
+        return { success: false, error: errorMsg, logPath: logger.getRelativeLogPath() };
+      }
+
+      // Collect credential ARNs for deployed state
+      for (const result of oauthResult.results) {
+        if (result.credentialProviderArn) {
+          oauthCredentials[result.providerName] = {
+            credentialProviderArn: result.credentialProviderArn,
+            clientSecretArn: result.clientSecretArn,
+            callbackUrl: result.callbackUrl,
+          };
+        }
+      }
       endStep('success');
     }
 
@@ -273,7 +311,8 @@ export async function handleDeploy(options: ValidatedDeployOptions): Promise<Dep
       agents,
       gateways,
       existingState,
-      identityKmsKeyArn
+      identityKmsKeyArn,
+      oauthCredentials
     );
     await configIO.writeDeployedState(deployedState);
 

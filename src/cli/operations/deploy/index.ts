@@ -16,12 +16,17 @@ export {
 // Pre-deploy identity setup for non-Bedrock model providers
 export {
   setupApiKeyProviders,
+  setupOAuth2Providers,
   hasOwnedIdentityApiProviders,
+  hasOwnedIdentityOAuthProviders,
   getMissingCredentials,
   getAllCredentials,
   type SetupApiKeyProvidersOptions,
+  type SetupOAuth2ProvidersOptions,
   type PreDeployIdentityResult,
+  type PreDeployOAuth2Result,
   type ApiKeyProviderSetupResult,
+  type OAuth2ProviderSetupResult,
   type MissingCredential,
 } from './pre-deploy-identity';
 

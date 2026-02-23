@@ -5,6 +5,11 @@ import { isNoCredentialsError } from '../../errors';
 import { getAwsLoginGuidance } from '../../external-requirements/checks';
 import { apiKeyProviderExists, createApiKeyProvider, setTokenVaultKmsKey, updateApiKeyProvider } from '../identity';
 import { computeDefaultCredentialEnvVarName } from '../identity/create-identity';
+import {
+  createOAuth2Provider,
+  oAuth2ProviderExists,
+  updateOAuth2Provider,
+} from '../identity/oauth2-credential-provider';
 import { BedrockAgentCoreControlClient, GetTokenVaultCommand } from '@aws-sdk/client-bedrock-agentcore-control';
 import { CreateKeyCommand, KMSClient } from '@aws-sdk/client-kms';
 
@@ -223,7 +228,7 @@ export async function getMissingCredentials(
 }
 
 /**
- * Get list of all API key credentials in the project (for manual entry prompt).
+ * Get list of all credentials in the project that need env vars (for manual entry prompt and runtime credential reading).
  */
 export function getAllCredentials(projectSpec: AgentCoreProjectSpec): MissingCredential[] {
   const credentials: MissingCredential[] = [];
@@ -234,8 +239,141 @@ export function getAllCredentials(projectSpec: AgentCoreProjectSpec): MissingCre
         providerName: credential.name,
         envVarName: computeDefaultCredentialEnvVarName(credential.name),
       });
+    } else if (credential.type === 'OAuthCredentialProvider') {
+      const nameKey = credential.name.toUpperCase().replace(/-/g, '_');
+      credentials.push(
+        { providerName: credential.name, envVarName: `AGENTCORE_CREDENTIAL_${nameKey}_CLIENT_ID` },
+        { providerName: credential.name, envVarName: `AGENTCORE_CREDENTIAL_${nameKey}_CLIENT_SECRET` }
+      );
     }
   }
 
   return credentials;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// OAuth2 Credential Provider Setup
+// ─────────────────────────────────────────────────────────────────────────────
+
+export interface OAuth2ProviderSetupResult {
+  providerName: string;
+  status: 'created' | 'updated' | 'skipped' | 'error';
+  error?: string;
+  credentialProviderArn?: string;
+  clientSecretArn?: string;
+  callbackUrl?: string;
+}
+
+export interface SetupOAuth2ProvidersOptions {
+  projectSpec: AgentCoreProjectSpec;
+  configBaseDir: string;
+  region: string;
+  runtimeCredentials?: SecureCredentials;
+}
+
+export interface PreDeployOAuth2Result {
+  results: OAuth2ProviderSetupResult[];
+  hasErrors: boolean;
+}
+
+/**
+ * Set up OAuth2 credential providers for all OAuth credentials in the project.
+ * Reads client credentials from agentcore/.env.local and creates providers in AgentCore Identity.
+ */
+export async function setupOAuth2Providers(options: SetupOAuth2ProvidersOptions): Promise<PreDeployOAuth2Result> {
+  const { projectSpec, configBaseDir, region, runtimeCredentials } = options;
+  const results: OAuth2ProviderSetupResult[] = [];
+  const credentials = getCredentialProvider();
+
+  const envVars = await readEnvFile(configBaseDir);
+  const envCredentials = SecureCredentials.fromEnvVars(envVars);
+  const allCredentials = runtimeCredentials ? envCredentials.merge(runtimeCredentials) : envCredentials;
+
+  const client = new BedrockAgentCoreControlClient({ region, credentials });
+
+  for (const credential of projectSpec.credentials) {
+    if (credential.type === 'OAuthCredentialProvider') {
+      const result = await setupSingleOAuth2Provider(client, credential, allCredentials);
+      results.push(result);
+    }
+  }
+
+  return {
+    results,
+    hasErrors: results.some(r => r.status === 'error'),
+  };
+}
+
+/**
+ * Check if the project has any OAuth credentials that need setup.
+ */
+export function hasOwnedIdentityOAuthProviders(projectSpec: AgentCoreProjectSpec): boolean {
+  return projectSpec.credentials.some(c => c.type === 'OAuthCredentialProvider');
+}
+
+async function setupSingleOAuth2Provider(
+  client: BedrockAgentCoreControlClient,
+  credential: Credential,
+  credentials: SecureCredentials
+): Promise<OAuth2ProviderSetupResult> {
+  if (credential.type !== 'OAuthCredentialProvider') {
+    return { providerName: credential.name, status: 'error', error: 'Invalid credential type' };
+  }
+
+  const nameKey = credential.name.toUpperCase().replace(/-/g, '_');
+  const clientIdEnvVar = `AGENTCORE_CREDENTIAL_${nameKey}_CLIENT_ID`;
+  const clientSecretEnvVar = `AGENTCORE_CREDENTIAL_${nameKey}_CLIENT_SECRET`;
+
+  const clientId = credentials.get(clientIdEnvVar);
+  const clientSecret = credentials.get(clientSecretEnvVar);
+
+  if (!clientId || !clientSecret) {
+    return {
+      providerName: credential.name,
+      status: 'skipped',
+      error: `Missing ${clientIdEnvVar} or ${clientSecretEnvVar} in agentcore/.env.local`,
+    };
+  }
+
+  const params = {
+    name: credential.name,
+    vendor: credential.vendor,
+    discoveryUrl: credential.discoveryUrl,
+    clientId,
+    clientSecret,
+  };
+
+  try {
+    const exists = await oAuth2ProviderExists(client, credential.name);
+
+    if (exists) {
+      const updateResult = await updateOAuth2Provider(client, params);
+      return {
+        providerName: credential.name,
+        status: updateResult.success ? 'updated' : 'error',
+        error: updateResult.error,
+        credentialProviderArn: updateResult.result?.credentialProviderArn,
+        clientSecretArn: updateResult.result?.clientSecretArn,
+        callbackUrl: updateResult.result?.callbackUrl,
+      };
+    }
+
+    const createResult = await createOAuth2Provider(client, params);
+    return {
+      providerName: credential.name,
+      status: createResult.success ? 'created' : 'error',
+      error: createResult.error,
+      credentialProviderArn: createResult.result?.credentialProviderArn,
+      clientSecretArn: createResult.result?.clientSecretArn,
+      callbackUrl: createResult.result?.callbackUrl,
+    };
+  } catch (error) {
+    let errorMessage: string;
+    if (isNoCredentialsError(error)) {
+      errorMessage = 'AWS credentials not found. Run `aws sso login` or set AWS_ACCESS_KEY_ID/AWS_SECRET_ACCESS_KEY.';
+    } else {
+      errorMessage = error instanceof Error ? error.message : String(error);
+    }
+    return { providerName: credential.name, status: 'error', error: errorMessage };
+  }
 }

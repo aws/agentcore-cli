@@ -96,6 +96,18 @@ export const ExternallyManagedStateSchema = z.object({
 export type ExternallyManagedState = z.infer<typeof ExternallyManagedStateSchema>;
 
 // ============================================================================
+// Credential Deployed State
+// ============================================================================
+
+export const CredentialDeployedStateSchema = z.object({
+  credentialProviderArn: z.string(),
+  clientSecretArn: z.string().optional(),
+  callbackUrl: z.string().optional(),
+});
+
+export type CredentialDeployedState = z.infer<typeof CredentialDeployedStateSchema>;
+
+// ============================================================================
 // Deployed Resource State
 // ============================================================================
 
@@ -103,6 +115,7 @@ export const DeployedResourceStateSchema = z.object({
   agents: z.record(z.string(), AgentCoreDeployedStateSchema).optional(),
   mcp: McpDeployedStateSchema.optional(),
   externallyManaged: ExternallyManagedStateSchema.optional(),
+  credentials: z.record(z.string(), CredentialDeployedStateSchema).optional(),
   stackName: z.string().optional(),
   identityKmsKeyArn: z.string().optional(),
 });

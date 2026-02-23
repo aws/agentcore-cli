@@ -175,7 +175,8 @@ export function buildDeployedState(
   agents: Record<string, AgentCoreDeployedState>,
   gateways: Record<string, { gatewayId: string; gatewayArn: string }>,
   existingState?: DeployedState,
-  identityKmsKeyArn?: string
+  identityKmsKeyArn?: string,
+  credentials?: Record<string, { credentialProviderArn: string; clientSecretArn?: string; callbackUrl?: string }>
 ): DeployedState {
   const targetState: TargetDeployedState = {
     resources: {
@@ -190,6 +191,11 @@ export function buildDeployedState(
     targetState.resources!.mcp = {
       gateways,
     };
+  }
+
+  // Add credential state if credentials exist
+  if (credentials && Object.keys(credentials).length > 0) {
+    targetState.resources!.credentials = credentials;
   }
 
   return {
