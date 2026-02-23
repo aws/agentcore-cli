@@ -71,9 +71,6 @@ export type Memory = z.infer<typeof MemorySchema>;
 // Credential Schema
 // ============================================================================
 
-export const CredentialTypeSchema = z.literal('ApiKeyCredentialProvider');
-export type CredentialType = z.infer<typeof CredentialTypeSchema>;
-
 export const CredentialNameSchema = z
   .string()
   .min(3, 'Credential name must be at least 3 characters')
@@ -83,10 +80,32 @@ export const CredentialNameSchema = z
     'Must contain only alphanumeric characters, underscores, dots, and hyphens (3-255 chars)'
   );
 
-export const CredentialSchema = z.object({
-  type: CredentialTypeSchema,
+export const CredentialTypeSchema = z.enum(['ApiKeyCredentialProvider', 'OAuthCredentialProvider']);
+export type CredentialType = z.infer<typeof CredentialTypeSchema>;
+
+export const ApiKeyCredentialSchema = z.object({
+  type: z.literal('ApiKeyCredentialProvider'),
   name: CredentialNameSchema,
 });
+
+export type ApiKeyCredential = z.infer<typeof ApiKeyCredentialSchema>;
+
+export const OAuthCredentialSchema = z.object({
+  type: z.literal('OAuthCredentialProvider'),
+  name: CredentialNameSchema,
+  /** OIDC discovery URL for the OAuth provider */
+  discoveryUrl: z.string().url(),
+  /** Scopes this credential provider supports */
+  scopes: z.array(z.string()).optional(),
+  /** Credential provider vendor type */
+  vendor: z.string().default('CustomOauth2'),
+  /** Whether this credential was auto-created by the CLI (e.g., for CUSTOM_JWT inbound auth) */
+  managed: z.boolean().optional(),
+});
+
+export type OAuthCredential = z.infer<typeof OAuthCredentialSchema>;
+
+export const CredentialSchema = z.discriminatedUnion('type', [ApiKeyCredentialSchema, OAuthCredentialSchema]);
 
 export type Credential = z.infer<typeof CredentialSchema>;
 

@@ -5,6 +5,7 @@ import { useCallback, useMemo, useState } from 'react';
 /** Maps authorizer type to the next step after authorizer selection */
 const AUTHORIZER_NEXT_STEP: Record<GatewayAuthorizerType, AddGatewayStep> = {
   NONE: 'agents',
+  AWS_IAM: 'agents',
   CUSTOM_JWT: 'jwt-config',
 };
 

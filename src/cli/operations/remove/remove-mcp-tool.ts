@@ -109,7 +109,7 @@ export async function previewRemoveMcpTool(tool: RemovableMcpTool): Promise<Remo
     }
 
     // Tool definitions in mcp-defs
-    for (const toolDef of target.toolDefinitions) {
+    for (const toolDef of target.toolDefinitions ?? []) {
       if (mcpDefs.tools[toolDef.name]) {
         summary.push(`Removing tool definition: ${toolDef.name}`);
       }
@@ -179,7 +179,7 @@ function computeRemovedToolMcpDefs(
     const gateway = mcpSpec.agentCoreGateways.find(g => g.name === tool.gatewayName);
     const target = gateway?.targets.find(t => t.name === tool.name);
     if (target) {
-      for (const toolDef of target.toolDefinitions) {
+      for (const toolDef of target.toolDefinitions ?? []) {
         toolNamesToRemove.push(toolDef.name);
       }
     }

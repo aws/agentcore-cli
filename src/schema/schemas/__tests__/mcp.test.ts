@@ -261,6 +261,11 @@ describe('AgentCoreGatewayTargetSchema', () => {
       name: 'myTarget',
       targetType: 'lambda',
       toolDefinitions: [validToolDef],
+      compute: {
+        host: 'Lambda',
+        implementation: { language: 'Python', path: 'tools', handler: 'h' },
+        pythonVersion: 'PYTHON_3_12',
+      },
     });
     expect(result.success).toBe(true);
   });
@@ -270,6 +275,11 @@ describe('AgentCoreGatewayTargetSchema', () => {
       name: 'myTarget',
       targetType: 'lambda',
       toolDefinitions: [],
+      compute: {
+        host: 'Lambda',
+        implementation: { language: 'Python', path: 'tools', handler: 'h' },
+        pythonVersion: 'PYTHON_3_12',
+      },
     });
     expect(result.success).toBe(false);
   });
@@ -303,6 +313,11 @@ describe('AgentCoreGatewaySchema', () => {
         name: 'target1',
         targetType: 'lambda',
         toolDefinitions: [validToolDef],
+        compute: {
+          host: 'Lambda',
+          implementation: { language: 'Python', path: 'tools', handler: 'h' },
+          pythonVersion: 'PYTHON_3_12',
+        },
       },
     ],
   };
@@ -387,7 +402,18 @@ describe('AgentCoreMcpSpecSchema', () => {
       agentCoreGateways: [
         {
           name: 'gw1',
-          targets: [{ name: 't1', targetType: 'lambda', toolDefinitions: [validToolDef] }],
+          targets: [
+            {
+              name: 't1',
+              targetType: 'lambda',
+              toolDefinitions: [validToolDef],
+              compute: {
+                host: 'Lambda',
+                implementation: { language: 'Python', path: 'tools', handler: 'h' },
+                pythonVersion: 'PYTHON_3_12',
+              },
+            },
+          ],
         },
       ],
     });

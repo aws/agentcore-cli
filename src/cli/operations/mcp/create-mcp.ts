@@ -126,7 +126,7 @@ export async function getExistingToolNames(): Promise<string[]> {
     // Gateway targets
     for (const gateway of mcpSpec.agentCoreGateways) {
       for (const target of gateway.targets) {
-        for (const toolDef of target.toolDefinitions) {
+        for (const toolDef of target.toolDefinitions ?? []) {
           toolNames.push(toolDef.name);
         }
       }
@@ -256,7 +256,7 @@ export async function createToolFromWizard(config: AddMcpToolConfig): Promise<Cr
     // Check for duplicate tool names
     for (const toolDef of toolDefs) {
       for (const existingTarget of gateway.targets) {
-        if (existingTarget.toolDefinitions.some(t => t.name === toolDef.name)) {
+        if ((existingTarget.toolDefinitions ?? []).some(t => t.name === toolDef.name)) {
           throw new Error(`Tool "${toolDef.name}" already exists in gateway "${gateway.name}".`);
         }
       }
