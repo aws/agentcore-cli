@@ -92,7 +92,7 @@
     "constructs": "^10.0.0"
   },
   "devDependencies": {
-    "@eslint/js": "^9.39.2",
+    "@eslint/js": "^10.0.1",
     "@secretlint/secretlint-rule-preset-recommend": "^11.3.0",
     "@trivago/prettier-plugin-sort-imports": "6.0.0",
     "@types/node": "^25.0.3",
