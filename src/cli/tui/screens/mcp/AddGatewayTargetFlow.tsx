@@ -1,3 +1,4 @@
+import { createExternalGatewayTarget } from '../../../operations/mcp/create-mcp';
 import { ErrorPrompt, Panel, Screen, TextInput, WizardSelect } from '../../components';
 import type { SelectableItem } from '../../components';
 import { HELP_TEXT } from '../../constants';
@@ -114,14 +115,25 @@ export function AddGatewayTargetFlow({
         loading: true,
         loadingMessage: 'Creating MCP tool...',
       });
-      void createTool(config).then(result => {
-        if (result.ok) {
-          const { toolName, projectPath } = result.result;
-          setFlow({ name: 'create-success', toolName, projectPath });
-          return;
-        }
-        setFlow({ name: 'error', message: result.error });
-      });
+
+      if (config.source === 'existing-endpoint') {
+        void createExternalGatewayTarget(config)
+          .then((result: { toolName: string; projectPath: string }) => {
+            setFlow({ name: 'create-success', toolName: result.toolName, projectPath: result.projectPath });
+          })
+          .catch((err: unknown) => {
+            setFlow({ name: 'error', message: err instanceof Error ? err.message : 'Unknown error' });
+          });
+      } else {
+        void createTool(config).then(result => {
+          if (result.ok) {
+            const { toolName, projectPath } = result.result;
+            setFlow({ name: 'create-success', toolName, projectPath });
+            return;
+          }
+          setFlow({ name: 'error', message: result.error });
+        });
+      }
     },
     [createTool]
   );

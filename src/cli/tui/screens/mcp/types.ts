@@ -47,7 +47,16 @@ export type ComputeHost = 'Lambda' | 'AgentCoreRuntime';
  * - host: Select compute host (only if behind-gateway)
  * - confirm: Review and confirm
  */
-export type AddGatewayTargetStep = 'name' | 'language' | 'exposure' | 'agents' | 'gateway' | 'host' | 'confirm';
+export type AddGatewayTargetStep =
+  | 'name'
+  | 'source'
+  | 'endpoint'
+  | 'language'
+  | 'exposure'
+  | 'agents'
+  | 'gateway'
+  | 'host'
+  | 'confirm';
 
 export type TargetLanguage = 'Python' | 'TypeScript' | 'Other';
 
@@ -57,6 +66,10 @@ export interface AddGatewayTargetConfig {
   sourcePath: string;
   language: TargetLanguage;
   exposure: ExposureMode;
+  /** Source type for external endpoints */
+  source?: 'existing-endpoint' | 'create-new';
+  /** External endpoint URL */
+  endpoint?: string;
   /** Gateway name (only when exposure = behind-gateway) */
   gateway?: string;
   /** Compute host (AgentCoreRuntime for mcp-runtime, Lambda or AgentCoreRuntime for behind-gateway) */
@@ -75,6 +88,8 @@ export interface AddGatewayTargetConfig {
 
 export const MCP_TOOL_STEP_LABELS: Record<AddGatewayTargetStep, string> = {
   name: 'Name',
+  source: 'Source',
+  endpoint: 'Endpoint',
   language: 'Language',
   exposure: 'Exposure',
   agents: 'Agents',
@@ -91,6 +106,13 @@ export const AUTHORIZER_TYPE_OPTIONS = [
   { id: 'AWS_IAM', title: 'AWS IAM', description: 'AWS Identity and Access Management authorization' },
   { id: 'CUSTOM_JWT', title: 'Custom JWT', description: 'JWT-based authorization via OIDC provider' },
   { id: 'NONE', title: 'None', description: 'No authorization required — gateway is publicly accessible' },
+] as const;
+
+export const SKIP_FOR_NOW = 'skip-for-now' as const;
+
+export const SOURCE_OPTIONS = [
+  { id: 'existing-endpoint', title: 'Existing endpoint', description: 'Connect to an existing MCP server' },
+  { id: 'create-new', title: 'Create new', description: 'Scaffold a new MCP server' },
 ] as const;
 
 export const TARGET_LANGUAGE_OPTIONS = [

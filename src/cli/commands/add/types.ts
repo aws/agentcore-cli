@@ -45,6 +45,9 @@ export interface AddGatewayResult {
 export interface AddGatewayTargetOptions {
   name?: string;
   description?: string;
+  type?: string;
+  source?: string;
+  endpoint?: string;
   language?: 'Python' | 'TypeScript' | 'Other';
   exposure?: 'mcp-runtime' | 'behind-gateway';
   agents?: string;

@@ -1,18 +1,23 @@
 import { APP_DIR, MCP_APP_SUBDIR } from '../../../../lib';
 import type { ToolDefinition } from '../../../../schema';
 import type { AddGatewayTargetConfig, AddGatewayTargetStep, ComputeHost, ExposureMode, TargetLanguage } from './types';
+import { SKIP_FOR_NOW } from './types';
 import { useCallback, useMemo, useState } from 'react';
 
 /**
- * Dynamic steps based on exposure mode.
- * - MCP Runtime: name → language → exposure → agents → confirm
- * - Behind gateway: name → language → exposure → gateway → host → confirm
+ * Dynamic steps based on exposure mode and source.
+ * - Existing endpoint: name → source → endpoint → gateway → confirm
+ * - Create new MCP Runtime: name → source → language → exposure → agents → confirm
+ * - Create new Behind gateway: name → source → language → exposure → gateway → host → confirm
  */
-function getSteps(exposure: ExposureMode): AddGatewayTargetStep[] {
-  if (exposure === 'mcp-runtime') {
-    return ['name', 'language', 'exposure', 'agents', 'confirm'];
+function getSteps(exposure: ExposureMode, source?: 'existing-endpoint' | 'create-new'): AddGatewayTargetStep[] {
+  if (source === 'existing-endpoint') {
+    return ['name', 'source', 'endpoint', 'gateway', 'confirm'];
   }
-  return ['name', 'language', 'exposure', 'gateway', 'host', 'confirm'];
+  if (exposure === 'mcp-runtime') {
+    return ['name', 'source', 'language', 'exposure', 'agents', 'confirm'];
+  }
+  return ['name', 'source', 'language', 'exposure', 'gateway', 'host', 'confirm'];
 }
 
 function deriveToolDefinition(name: string): ToolDefinition {
@@ -40,16 +45,16 @@ export function useAddGatewayTargetWizard(existingGateways: string[] = [], exist
   const [config, setConfig] = useState<AddGatewayTargetConfig>(getDefaultConfig);
   const [step, setStep] = useState<AddGatewayTargetStep>('name');
 
-  const steps = useMemo(() => getSteps(config.exposure), [config.exposure]);
+  const steps = useMemo(() => getSteps(config.exposure, config.source), [config.exposure, config.source]);
   const currentIndex = steps.indexOf(step);
 
   const goBack = useCallback(() => {
-    // Recalculate steps in case exposure changed
-    const currentSteps = getSteps(config.exposure);
+    // Recalculate steps in case exposure or source changed
+    const currentSteps = getSteps(config.exposure, config.source);
     const idx = currentSteps.indexOf(step);
     const prevStep = currentSteps[idx - 1];
     if (prevStep) setStep(prevStep);
-  }, [config.exposure, step]);
+  }, [config.exposure, config.source, step]);
 
   const setName = useCallback((name: string) => {
     setConfig(c => ({
@@ -59,7 +64,27 @@ export function useAddGatewayTargetWizard(existingGateways: string[] = [], exist
       sourcePath: `${APP_DIR}/${MCP_APP_SUBDIR}/${name}`,
       toolDefinition: deriveToolDefinition(name),
     }));
-    setStep('language');
+    setStep('source');
+  }, []);
+
+  const setSource = useCallback((source: 'existing-endpoint' | 'create-new') => {
+    setConfig(c => ({
+      ...c,
+      source,
+    }));
+    if (source === 'existing-endpoint') {
+      setStep('endpoint');
+    } else {
+      setStep('language');
+    }
+  }, []);
+
+  const setEndpoint = useCallback((endpoint: string) => {
+    setConfig(c => ({
+      ...c,
+      endpoint,
+    }));
+    setStep('gateway');
   }, []);
 
   const setLanguage = useCallback((language: TargetLanguage) => {
@@ -101,11 +126,16 @@ export function useAddGatewayTargetWizard(existingGateways: string[] = [], exist
   }, []);
 
   const setGateway = useCallback((gateway: string) => {
-    setConfig(c => ({
-      ...c,
-      gateway,
-    }));
-    setStep('host');
+    setConfig(c => {
+      const isExternal = c.source === 'existing-endpoint';
+      const isSkipped = gateway === SKIP_FOR_NOW;
+      if (isExternal || isSkipped) {
+        setStep('confirm');
+      } else {
+        setStep('host');
+      }
+      return { ...c, gateway: isSkipped ? undefined : gateway };
+    });
   }, []);
 
   const setHost = useCallback((host: ComputeHost) => {
@@ -130,6 +160,8 @@ export function useAddGatewayTargetWizard(existingGateways: string[] = [], exist
     existingAgents,
     goBack,
     setName,
+    setSource,
+    setEndpoint,
     setLanguage,
     setExposure,
     setAgents,

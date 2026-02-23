@@ -66,6 +66,9 @@ export interface ValidatedAddGatewayOptions {
 export interface ValidatedAddGatewayTargetOptions {
   name: string;
   description?: string;
+  type?: string;
+  source?: 'existing-endpoint' | 'create-new';
+  endpoint?: string;
   language: 'Python' | 'TypeScript' | 'Other';
   exposure: 'mcp-runtime' | 'behind-gateway';
   agents?: string;
@@ -304,6 +307,8 @@ function buildGatewayTargetConfig(options: ValidatedAddGatewayTargetOptions): Ad
     sourcePath,
     language: options.language,
     exposure: options.exposure,
+    source: options.source,
+    endpoint: options.endpoint,
     host: options.exposure === 'mcp-runtime' ? 'AgentCoreRuntime' : options.host!,
     toolDefinition: {
       name: options.name,

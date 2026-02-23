@@ -13,7 +13,14 @@ import { HELP_TEXT } from '../../constants';
 import { useListNavigation, useMultiSelectNavigation } from '../../hooks';
 import { generateUniqueName } from '../../utils';
 import type { AddGatewayTargetConfig, ComputeHost, ExposureMode, TargetLanguage } from './types';
-import { COMPUTE_HOST_OPTIONS, EXPOSURE_MODE_OPTIONS, MCP_TOOL_STEP_LABELS, TARGET_LANGUAGE_OPTIONS } from './types';
+import {
+  COMPUTE_HOST_OPTIONS,
+  EXPOSURE_MODE_OPTIONS,
+  MCP_TOOL_STEP_LABELS,
+  SKIP_FOR_NOW,
+  SOURCE_OPTIONS,
+  TARGET_LANGUAGE_OPTIONS,
+} from './types';
 import { useAddGatewayTargetWizard } from './useAddGatewayTargetWizard';
 import { Box, Text } from 'ink';
 import React, { useMemo } from 'react';
@@ -35,6 +42,11 @@ export function AddGatewayTargetScreen({
 }: AddGatewayTargetScreenProps) {
   const wizard = useAddGatewayTargetWizard(existingGateways, existingAgents);
 
+  const sourceItems: SelectableItem[] = useMemo(
+    () => SOURCE_OPTIONS.map(o => ({ id: o.id, title: o.title, description: o.description })),
+    []
+  );
+
   const languageItems: SelectableItem[] = useMemo(
     () => TARGET_LANGUAGE_OPTIONS.map(o => ({ id: o.id, title: o.title, description: o.description })),
     []
@@ -52,7 +64,10 @@ export function AddGatewayTargetScreen({
   );
 
   const gatewayItems: SelectableItem[] = useMemo(
-    () => existingGateways.map(g => ({ id: g, title: g })),
+    () => [
+      ...existingGateways.map(g => ({ id: g, title: g })),
+      { id: SKIP_FOR_NOW, title: 'Skip for now', description: 'Create unassigned target' },
+    ],
     [existingGateways]
   );
 
@@ -63,15 +78,23 @@ export function AddGatewayTargetScreen({
 
   const agentItems: SelectableItem[] = useMemo(() => existingAgents.map(a => ({ id: a, title: a })), [existingAgents]);
 
+  const isSourceStep = wizard.step === 'source';
   const isLanguageStep = wizard.step === 'language';
   const isExposureStep = wizard.step === 'exposure';
   const isAgentsStep = wizard.step === 'agents';
   const isGatewayStep = wizard.step === 'gateway';
   const isHostStep = wizard.step === 'host';
-  const isTextStep = wizard.step === 'name';
+  const isTextStep = wizard.step === 'name' || wizard.step === 'endpoint';
   const isConfirmStep = wizard.step === 'confirm';
   const noGatewaysAvailable = isGatewayStep && existingGateways.length === 0;
   const noAgentsAvailable = isAgentsStep && existingAgents.length === 0;
+
+  const sourceNav = useListNavigation({
+    items: sourceItems,
+    onSelect: item => wizard.setSource(item.id as 'existing-endpoint' | 'create-new'),
+    onExit: () => wizard.goBack(),
+    isActive: isSourceStep,
+  });
 
   const languageNav = useListNavigation({
     items: languageItems,
@@ -132,6 +155,15 @@ export function AddGatewayTargetScreen({
   return (
     <Screen title="Add MCP Tool" onExit={onExit} helpText={helpText} headerContent={headerContent}>
       <Panel>
+        {isSourceStep && (
+          <WizardSelect
+            title="Select source"
+            description="How would you like to create this MCP tool?"
+            items={sourceItems}
+            selectedIndex={sourceNav.selectedIndex}
+          />
+        )}
+
         {isLanguageStep && (
           <WizardSelect title="Select language" items={languageItems} selectedIndex={languageNav.selectedIndex} />
         )}
@@ -180,12 +212,29 @@ export function AddGatewayTargetScreen({
         {isTextStep && (
           <TextInput
             key={wizard.step}
-            prompt={MCP_TOOL_STEP_LABELS[wizard.step]}
-            initialValue={generateUniqueName('mytool', existingToolNames)}
-            onSubmit={wizard.setName}
+            prompt={wizard.step === 'endpoint' ? 'MCP server endpoint URL' : MCP_TOOL_STEP_LABELS[wizard.step]}
+            initialValue={wizard.step === 'endpoint' ? undefined : generateUniqueName('mytool', existingToolNames)}
+            placeholder={wizard.step === 'endpoint' ? 'https://example.com/mcp' : undefined}
+            onSubmit={wizard.step === 'endpoint' ? wizard.setEndpoint : wizard.setName}
             onCancel={() => (wizard.currentIndex === 0 ? onExit() : wizard.goBack())}
-            schema={ToolNameSchema}
-            customValidation={value => !existingToolNames.includes(value) || 'Tool name already exists'}
+            schema={wizard.step === 'name' ? ToolNameSchema : undefined}
+            customValidation={
+              wizard.step === 'name'
+                ? value => !existingToolNames.includes(value) || 'Tool name already exists'
+                : wizard.step === 'endpoint'
+                  ? value => {
+                      try {
+                        const url = new URL(value);
+                        if (url.protocol !== 'http:' && url.protocol !== 'https:') {
+                          return 'Endpoint must use http:// or https:// protocol';
+                        }
+                        return true;
+                      } catch {
+                        return 'Must be a valid URL (e.g. https://example.com/mcp)';
+                      }
+                    }
+                  : undefined
+            }
           />
         )}
 
@@ -193,14 +242,24 @@ export function AddGatewayTargetScreen({
           <ConfirmReview
             fields={[
               { label: 'Name', value: wizard.config.name },
-              { label: 'Language', value: wizard.config.language },
-              { label: 'Exposure', value: isMcpRuntime ? 'MCP Runtime' : 'Behind Gateway' },
+              {
+                label: 'Source',
+                value: wizard.config.source === 'existing-endpoint' ? 'Existing endpoint' : 'Create new',
+              },
+              ...(wizard.config.endpoint ? [{ label: 'Endpoint', value: wizard.config.endpoint }] : []),
+              ...(wizard.config.source === 'create-new' ? [{ label: 'Language', value: wizard.config.language }] : []),
+              ...(wizard.config.source === 'create-new'
+                ? [{ label: 'Exposure', value: isMcpRuntime ? 'MCP Runtime' : 'Behind Gateway' }]
+                : []),
               ...(isMcpRuntime && wizard.config.selectedAgents.length > 0
                 ? [{ label: 'Agents', value: wizard.config.selectedAgents.join(', ') }]
                 : []),
               ...(!isMcpRuntime && wizard.config.gateway ? [{ label: 'Gateway', value: wizard.config.gateway }] : []),
-              { label: 'Host', value: wizard.config.host },
-              { label: 'Source', value: wizard.config.sourcePath },
+              ...(!isMcpRuntime && !wizard.config.gateway
+                ? [{ label: 'Gateway', value: '(none - assign later)' }]
+                : []),
+              ...(wizard.config.source === 'create-new' ? [{ label: 'Host', value: wizard.config.host }] : []),
+              ...(wizard.config.source === 'create-new' ? [{ label: 'Source', value: wizard.config.sourcePath }] : []),
             ]}
           />
         )}

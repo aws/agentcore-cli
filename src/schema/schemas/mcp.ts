@@ -403,6 +403,7 @@ export const AgentCoreMcpSpecSchema = z
   .object({
     agentCoreGateways: z.array(AgentCoreGatewaySchema),
     mcpRuntimeTools: z.array(AgentCoreMcpRuntimeToolSchema).optional(),
+    unassignedTargets: z.array(AgentCoreGatewayTargetSchema).optional(),
   })
   .strict();
 

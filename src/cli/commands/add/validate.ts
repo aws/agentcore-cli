@@ -189,6 +189,36 @@ export async function validateAddGatewayTargetOptions(options: AddGatewayTargetO
     return { valid: false, error: '--name is required' };
   }
 
+  if (options.type && options.type !== 'mcpServer' && options.type !== 'lambda') {
+    return { valid: false, error: 'Invalid type. Valid options: mcpServer, lambda' };
+  }
+
+  if (options.source && options.source !== 'existing-endpoint' && options.source !== 'create-new') {
+    return { valid: false, error: 'Invalid source. Valid options: existing-endpoint, create-new' };
+  }
+
+  if (options.source === 'existing-endpoint') {
+    if (!options.endpoint) {
+      return { valid: false, error: '--endpoint is required when source is existing-endpoint' };
+    }
+
+    try {
+      const url = new URL(options.endpoint);
+      if (url.protocol !== 'http:' && url.protocol !== 'https:') {
+        return { valid: false, error: 'Endpoint must use http:// or https:// protocol' };
+      }
+    } catch {
+      return { valid: false, error: 'Endpoint must be a valid URL (e.g. https://example.com/mcp)' };
+    }
+
+    // Populate defaults for fields skipped by external endpoint flow
+    options.language ??= 'Other';
+    options.exposure ??= 'behind-gateway';
+    options.gateway ??= undefined;
+
+    return { valid: true };
+  }
+
   if (!options.language) {
     return { valid: false, error: '--language is required' };
   }
