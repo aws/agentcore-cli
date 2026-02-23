@@ -8,7 +8,7 @@ import type { AgentRenderConfig } from './types';
 
 export { BaseRenderer, type RendererContext } from './BaseRenderer';
 export { CDKRenderer, type CDKRendererContext } from './CDKRenderer';
-export { renderMcpToolTemplate } from './McpToolRenderer';
+export { renderGatewayTargetTemplate } from './GatewayTargetRenderer';
 export { CrewAIRenderer } from './CrewAIRenderer';
 export { GoogleADKRenderer } from './GoogleADKRenderer';
 export { LangGraphRenderer } from './LangGraphRenderer';

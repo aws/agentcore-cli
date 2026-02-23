@@ -27,9 +27,15 @@ import { createGatewayFromWizard, createToolFromWizard } from '../../operations/
 import { createMemory } from '../../operations/memory/create-memory';
 import { createRenderer } from '../../templates';
 import type { MemoryOption } from '../../tui/screens/generate/types';
-import type { AddGatewayConfig, AddMcpToolConfig } from '../../tui/screens/mcp/types';
+import type { AddGatewayConfig, AddGatewayTargetConfig } from '../../tui/screens/mcp/types';
 import { DEFAULT_EVENT_EXPIRY } from '../../tui/screens/memory/types';
-import type { AddAgentResult, AddGatewayResult, AddIdentityResult, AddMcpToolResult, AddMemoryResult } from './types';
+import type {
+  AddAgentResult,
+  AddGatewayResult,
+  AddGatewayTargetResult,
+  AddIdentityResult,
+  AddMemoryResult,
+} from './types';
 import { mkdirSync } from 'fs';
 import { dirname, join } from 'path';
 
@@ -57,7 +63,7 @@ export interface ValidatedAddGatewayOptions {
   agents?: string;
 }
 
-export interface ValidatedAddMcpToolOptions {
+export interface ValidatedAddGatewayTargetOptions {
   name: string;
   description?: string;
   language: 'Python' | 'TypeScript' | 'Other';
@@ -276,7 +282,7 @@ export async function handleAddGateway(options: ValidatedAddGatewayOptions): Pro
 }
 
 // MCP Tool handler
-function buildMcpToolConfig(options: ValidatedAddMcpToolOptions): AddMcpToolConfig {
+function buildGatewayTargetConfig(options: ValidatedAddGatewayTargetOptions): AddGatewayTargetConfig {
   const sourcePath = `${APP_DIR}/${MCP_APP_SUBDIR}/${options.name}`;
 
   const description = options.description ?? `Tool for ${options.name}`;
@@ -303,9 +309,11 @@ function buildMcpToolConfig(options: ValidatedAddMcpToolOptions): AddMcpToolConf
   };
 }
 
-export async function handleAddMcpTool(options: ValidatedAddMcpToolOptions): Promise<AddMcpToolResult> {
+export async function handleAddGatewayTarget(
+  options: ValidatedAddGatewayTargetOptions
+): Promise<AddGatewayTargetResult> {
   try {
-    const config = buildMcpToolConfig(options);
+    const config = buildGatewayTargetConfig(options);
     const result = await createToolFromWizard(config);
     return { success: true, toolName: result.toolName, sourcePath: result.projectPath };
   } catch (err) {

@@ -12,28 +12,28 @@ import type { SelectableItem } from '../../components';
 import { HELP_TEXT } from '../../constants';
 import { useListNavigation, useMultiSelectNavigation } from '../../hooks';
 import { generateUniqueName } from '../../utils';
-import type { AddMcpToolConfig, ComputeHost, ExposureMode, TargetLanguage } from './types';
+import type { AddGatewayTargetConfig, ComputeHost, ExposureMode, TargetLanguage } from './types';
 import { COMPUTE_HOST_OPTIONS, EXPOSURE_MODE_OPTIONS, MCP_TOOL_STEP_LABELS, TARGET_LANGUAGE_OPTIONS } from './types';
-import { useAddMcpToolWizard } from './useAddMcpWizard';
+import { useAddGatewayTargetWizard } from './useAddGatewayTargetWizard';
 import { Box, Text } from 'ink';
 import React, { useMemo } from 'react';
 
-interface AddMcpToolScreenProps {
+interface AddGatewayTargetScreenProps {
   existingGateways: string[];
   existingAgents: string[];
   existingToolNames: string[];
-  onComplete: (config: AddMcpToolConfig) => void;
+  onComplete: (config: AddGatewayTargetConfig) => void;
   onExit: () => void;
 }
 
-export function AddMcpToolScreen({
+export function AddGatewayTargetScreen({
   existingGateways,
   existingAgents,
   existingToolNames,
   onComplete,
   onExit,
-}: AddMcpToolScreenProps) {
-  const wizard = useAddMcpToolWizard(existingGateways, existingAgents);
+}: AddGatewayTargetScreenProps) {
+  const wizard = useAddGatewayTargetWizard(existingGateways, existingAgents);
 
   const languageItems: SelectableItem[] = useMemo(
     () => TARGET_LANGUAGE_OPTIONS.map(o => ({ id: o.id, title: o.title, description: o.description })),

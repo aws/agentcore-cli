@@ -198,7 +198,7 @@ function McpEditorBody(props: {
         return;
       }
       if (key.return && targets.length > 0) {
-        setEditingTargetFieldId('toolName');
+        setEditingTargetFieldId('targetName');
         setScreenMode('edit-target-field');
         return;
       }

@@ -24,7 +24,7 @@ const HIDDEN_WHEN_IN_PROJECT = ['create'] as const;
  * These are registered with { hidden: true } in commander but we track them
  * here since commander doesn't expose a public API to check hidden status.
  */
-const HIDDEN_SUBCOMMANDS = ['gateway', 'mcp-tool'] as const;
+const HIDDEN_SUBCOMMANDS = ['gateway', 'gateway-target'] as const;
 
 interface GetCommandsOptions {
   /** Whether user is currently inside an AgentCore project */

@@ -42,7 +42,7 @@ export interface AddGatewayResult {
 }
 
 // MCP Tool types
-export interface AddMcpToolOptions {
+export interface AddGatewayTargetOptions {
   name?: string;
   description?: string;
   language?: 'Python' | 'TypeScript' | 'Other';
@@ -53,7 +53,7 @@ export interface AddMcpToolOptions {
   json?: boolean;
 }
 
-export interface AddMcpToolResult {
+export interface AddGatewayTargetResult {
   success: boolean;
   toolName?: string;
   sourcePath?: string;

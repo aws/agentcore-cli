@@ -1,26 +1,26 @@
 import { RemoveLogger } from '../../logging';
 import type {
+  RemovableGatewayTarget,
   RemovableIdentity,
-  RemovableMcpTool,
   RemovableMemory,
   RemovalPreview,
   RemovalResult,
 } from '../../operations/remove';
 import {
   getRemovableAgents,
+  getRemovableGatewayTargets,
   getRemovableGateways,
   getRemovableIdentities,
-  getRemovableMcpTools,
   getRemovableMemories,
   previewRemoveAgent,
   previewRemoveGateway,
+  previewRemoveGatewayTarget,
   previewRemoveIdentity,
-  previewRemoveMcpTool,
   previewRemoveMemory,
   removeAgent,
   removeGateway,
+  removeGatewayTarget,
   removeIdentity,
-  removeMcpTool,
   removeMemory,
 } from '../../operations/remove';
 import { useCallback, useEffect, useState } from 'react';
@@ -67,19 +67,19 @@ export function useRemovableGateways() {
   return { gateways: gateways ?? [], isLoading: gateways === null, refresh };
 }
 
-export function useRemovableMcpTools() {
-  const [tools, setTools] = useState<RemovableMcpTool[] | null>(null);
+export function useRemovableGatewayTargets() {
+  const [tools, setTools] = useState<RemovableGatewayTarget[] | null>(null);
 
   useEffect(() => {
     async function load() {
-      const result = await getRemovableMcpTools();
+      const result = await getRemovableGatewayTargets();
       setTools(result);
     }
     void load();
   }, []);
 
   const refresh = useCallback(async () => {
-    const result = await getRemovableMcpTools();
+    const result = await getRemovableGatewayTargets();
     setTools(result);
   }, []);
 
@@ -167,10 +167,10 @@ export function useRemovalPreview() {
     }
   }, []);
 
-  const loadMcpToolPreview = useCallback(async (tool: RemovableMcpTool) => {
+  const loadGatewayTargetPreview = useCallback(async (tool: RemovableGatewayTarget) => {
     setState({ isLoading: true, preview: null, error: null });
     try {
-      const preview = await previewRemoveMcpTool(tool);
+      const preview = await previewRemoveGatewayTarget(tool);
       setState({ isLoading: false, preview, error: null });
       return { ok: true as const, preview };
     } catch (err) {
@@ -214,7 +214,7 @@ export function useRemovalPreview() {
     ...state,
     loadAgentPreview,
     loadGatewayPreview,
-    loadMcpToolPreview,
+    loadGatewayTargetPreview,
     loadMemoryPreview,
     loadIdentityPreview,
     reset,
@@ -289,18 +289,18 @@ export function useRemoveGateway() {
   return { ...state, logFilePath, remove, reset };
 }
 
-export function useRemoveMcpTool() {
+export function useRemoveGatewayTarget() {
   const [state, setState] = useState<RemovalState>({ isLoading: false, result: null });
   const [logFilePath, setLogFilePath] = useState<string | null>(null);
 
-  const remove = useCallback(async (tool: RemovableMcpTool, preview?: RemovalPreview): Promise<RemoveResult> => {
+  const remove = useCallback(async (tool: RemovableGatewayTarget, preview?: RemovalPreview): Promise<RemoveResult> => {
     setState({ isLoading: true, result: null });
-    const result = await removeMcpTool(tool);
+    const result = await removeGatewayTarget(tool);
     setState({ isLoading: false, result });
 
     let logPath: string | undefined;
     if (preview) {
-      const logger = new RemoveLogger({ resourceType: 'mcp-tool', resourceName: tool.name });
+      const logger = new RemoveLogger({ resourceType: 'gateway-target', resourceName: tool.name });
       logger.logRemoval(preview, result.ok, result.ok ? undefined : result.error);
       logPath = logger.getAbsoluteLogPath();
       setLogFilePath(logPath);

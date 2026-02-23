@@ -6,7 +6,7 @@ import {
   getExistingGateways,
   getExistingToolNames,
 } from '../../operations/mcp/create-mcp';
-import type { AddGatewayConfig, AddMcpToolConfig } from '../screens/mcp/types';
+import type { AddGatewayConfig, AddGatewayTargetConfig } from '../screens/mcp/types';
 import { useCallback, useEffect, useState } from 'react';
 
 interface CreateStatus<T> {
@@ -38,10 +38,10 @@ export function useCreateGateway() {
   return { status, createGateway, reset };
 }
 
-export function useCreateMcpTool() {
+export function useCreateGatewayTarget() {
   const [status, setStatus] = useState<CreateStatus<CreateToolResult>>({ state: 'idle' });
 
-  const createTool = useCallback(async (config: AddMcpToolConfig) => {
+  const createTool = useCallback(async (config: AddGatewayTargetConfig) => {
     setStatus({ state: 'loading' });
     try {
       const result = await createToolFromWizard(config);

@@ -68,7 +68,7 @@ export function getTemplateToolDefinitions(toolName: string, host: ComputeHost):
  * @param language - Target language ('Python' or 'TypeScript')
  * @param host - Compute host ('Lambda' or 'AgentCoreRuntime')
  */
-export async function renderMcpToolTemplate(
+export async function renderGatewayTargetTemplate(
   toolName: string,
   outputDir: string,
   language: TargetLanguage,

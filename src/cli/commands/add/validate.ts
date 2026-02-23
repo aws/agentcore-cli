@@ -10,8 +10,8 @@ import {
 import type {
   AddAgentOptions,
   AddGatewayOptions,
+  AddGatewayTargetOptions,
   AddIdentityOptions,
-  AddMcpToolOptions,
   AddMemoryOptions,
 } from './types';
 
@@ -154,7 +154,7 @@ export function validateAddGatewayOptions(options: AddGatewayOptions): Validatio
 }
 
 // MCP Tool validation
-export function validateAddMcpToolOptions(options: AddMcpToolOptions): ValidationResult {
+export function validateAddGatewayTargetOptions(options: AddGatewayTargetOptions): ValidationResult {
   if (!options.name) {
     return { valid: false, error: '--name is required' };
   }

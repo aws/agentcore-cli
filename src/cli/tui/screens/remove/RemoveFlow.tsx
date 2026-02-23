@@ -1,24 +1,24 @@
-import type { RemovableMcpTool, RemovalPreview } from '../../../operations/remove';
+import type { RemovableGatewayTarget, RemovalPreview } from '../../../operations/remove';
 import { ErrorPrompt, Panel, Screen } from '../../components';
 import {
   useRemovableAgents,
+  useRemovableGatewayTargets,
   useRemovableGateways,
   useRemovableIdentities,
-  useRemovableMcpTools,
   useRemovableMemories,
   useRemovalPreview,
   useRemoveAgent,
   useRemoveGateway,
+  useRemoveGatewayTarget,
   useRemoveIdentity,
-  useRemoveMcpTool,
   useRemoveMemory,
 } from '../../hooks/useRemove';
 import { RemoveAgentScreen } from './RemoveAgentScreen';
 import { RemoveAllScreen } from './RemoveAllScreen';
 import { RemoveConfirmScreen } from './RemoveConfirmScreen';
 import { RemoveGatewayScreen } from './RemoveGatewayScreen';
+import { RemoveGatewayTargetScreen } from './RemoveGatewayTargetScreen';
 import { RemoveIdentityScreen } from './RemoveIdentityScreen';
-import { RemoveMcpToolScreen } from './RemoveMcpToolScreen';
 import { RemoveMemoryScreen } from './RemoveMemoryScreen';
 import type { RemoveResourceType } from './RemoveScreen';
 import { RemoveScreen } from './RemoveScreen';
@@ -31,12 +31,12 @@ type FlowState =
   | { name: 'select' }
   | { name: 'select-agent' }
   | { name: 'select-gateway' }
-  | { name: 'select-mcp-tool' }
+  | { name: 'select-gateway-target' }
   | { name: 'select-memory' }
   | { name: 'select-identity' }
   | { name: 'confirm-agent'; agentName: string; preview: RemovalPreview }
   | { name: 'confirm-gateway'; gatewayName: string; preview: RemovalPreview }
-  | { name: 'confirm-mcp-tool'; tool: RemovableMcpTool; preview: RemovalPreview }
+  | { name: 'confirm-gateway-target'; tool: RemovableGatewayTarget; preview: RemovalPreview }
   | { name: 'confirm-memory'; memoryName: string; preview: RemovalPreview }
   | { name: 'confirm-identity'; identityName: string; preview: RemovalPreview }
   | { name: 'loading'; message: string }
@@ -57,7 +57,7 @@ interface RemoveFlowProps {
   /** Force mode - skip confirmation */
   force?: boolean;
   /** Initial resource type to start at (for CLI subcommands) */
-  initialResourceType?: 'agent' | 'gateway' | 'mcp-tool' | 'memory' | 'identity';
+  initialResourceType?: 'agent' | 'gateway' | 'gateway-target' | 'memory' | 'identity';
   /** Initial resource name to auto-select (for CLI --name flag) */
   initialResourceName?: string;
 }
@@ -77,8 +77,8 @@ export function RemoveFlow({
         return { name: 'select-agent' };
       case 'gateway':
         return { name: 'select-gateway' };
-      case 'mcp-tool':
-        return { name: 'select-mcp-tool' };
+      case 'gateway-target':
+        return { name: 'select-gateway-target' };
       case 'memory':
         return { name: 'select-memory' };
       case 'identity':
@@ -92,7 +92,7 @@ export function RemoveFlow({
   // Data hooks - need isLoading to avoid showing screen before data loads
   const { agents, isLoading: isLoadingAgents, refresh: refreshAgents } = useRemovableAgents();
   const { gateways, isLoading: isLoadingGateways, refresh: refreshGateways } = useRemovableGateways();
-  const { tools: mcpTools, isLoading: isLoadingTools, refresh: refreshTools } = useRemovableMcpTools();
+  const { tools: mcpTools, isLoading: isLoadingTools, refresh: refreshTools } = useRemovableGatewayTargets();
   const { memories, isLoading: isLoadingMemories, refresh: refreshMemories } = useRemovableMemories();
   const { identities, isLoading: isLoadingIdentities, refresh: refreshIdentities } = useRemovableIdentities();
 
@@ -103,7 +103,7 @@ export function RemoveFlow({
   const {
     loadAgentPreview,
     loadGatewayPreview,
-    loadMcpToolPreview,
+    loadGatewayTargetPreview,
     loadMemoryPreview,
     loadIdentityPreview,
     reset: resetPreview,
@@ -112,7 +112,7 @@ export function RemoveFlow({
   // Removal hooks
   const { remove: removeAgentOp, reset: resetRemoveAgent } = useRemoveAgent();
   const { remove: removeGatewayOp, reset: resetRemoveGateway } = useRemoveGateway();
-  const { remove: removeMcpToolOp, reset: resetRemoveMcpTool } = useRemoveMcpTool();
+  const { remove: removeGatewayTargetOp, reset: resetRemoveGatewayTarget } = useRemoveGatewayTarget();
   const { remove: removeMemoryOp, reset: resetRemoveMemory } = useRemoveMemory();
   const { remove: removeIdentityOp, reset: resetRemoveIdentity } = useRemoveIdentity();
 
@@ -153,8 +153,8 @@ export function RemoveFlow({
       case 'gateway':
         setFlow({ name: 'select-gateway' });
         break;
-      case 'mcp-tool':
-        setFlow({ name: 'select-mcp-tool' });
+      case 'gateway-target':
+        setFlow({ name: 'select-gateway-target' });
         break;
       case 'memory':
         setFlow({ name: 'select-memory' });
@@ -215,26 +215,26 @@ export function RemoveFlow({
     [loadGatewayPreview, force, removeGatewayOp]
   );
 
-  const handleSelectMcpTool = useCallback(
-    async (tool: RemovableMcpTool) => {
-      const result = await loadMcpToolPreview(tool);
+  const handleSelectGatewayTarget = useCallback(
+    async (tool: RemovableGatewayTarget) => {
+      const result = await loadGatewayTargetPreview(tool);
       if (result.ok) {
         if (force) {
           setFlow({ name: 'loading', message: `Removing MCP tool ${tool.name}...` });
-          const removeResult = await removeMcpToolOp(tool, result.preview);
+          const removeResult = await removeGatewayTargetOp(tool, result.preview);
           if (removeResult.ok) {
             setFlow({ name: 'tool-success', toolName: tool.name });
           } else {
             setFlow({ name: 'error', message: removeResult.error });
           }
         } else {
-          setFlow({ name: 'confirm-mcp-tool', tool, preview: result.preview });
+          setFlow({ name: 'confirm-gateway-target', tool, preview: result.preview });
         }
       } else {
         setFlow({ name: 'error', message: result.error });
       }
     },
-    [loadMcpToolPreview, force, removeMcpToolOp]
+    [loadGatewayTargetPreview, force, removeGatewayTargetOp]
   );
 
   const handleSelectMemory = useCallback(
@@ -350,12 +350,12 @@ export function RemoveFlow({
     [removeGatewayOp]
   );
 
-  const handleConfirmMcpTool = useCallback(
-    async (tool: RemovableMcpTool, preview: RemovalPreview) => {
+  const handleConfirmGatewayTarget = useCallback(
+    async (tool: RemovableGatewayTarget, preview: RemovalPreview) => {
       pendingResultRef.current = null;
       setResultReady(false);
       setFlow({ name: 'loading', message: `Removing MCP tool ${tool.name}...` });
-      const result = await removeMcpToolOp(tool, preview);
+      const result = await removeGatewayTargetOp(tool, preview);
       if (result.ok) {
         pendingResultRef.current = { name: 'tool-success', toolName: tool.name, logFilePath: result.logFilePath };
       } else {
@@ -363,7 +363,7 @@ export function RemoveFlow({
       }
       setResultReady(true);
     },
-    [removeMcpToolOp]
+    [removeGatewayTargetOp]
   );
 
   const handleConfirmMemory = useCallback(
@@ -402,10 +402,17 @@ export function RemoveFlow({
     resetPreview();
     resetRemoveAgent();
     resetRemoveGateway();
-    resetRemoveMcpTool();
+    resetRemoveGatewayTarget();
     resetRemoveMemory();
     resetRemoveIdentity();
-  }, [resetPreview, resetRemoveAgent, resetRemoveGateway, resetRemoveMcpTool, resetRemoveMemory, resetRemoveIdentity]);
+  }, [
+    resetPreview,
+    resetRemoveAgent,
+    resetRemoveGateway,
+    resetRemoveGatewayTarget,
+    resetRemoveMemory,
+    resetRemoveIdentity,
+  ]);
 
   const refreshAll = useCallback(async () => {
     await Promise.all([refreshAgents(), refreshGateways(), refreshTools(), refreshMemories(), refreshIdentities()]);
@@ -471,11 +478,11 @@ export function RemoveFlow({
     );
   }
 
-  if (flow.name === 'select-mcp-tool') {
+  if (flow.name === 'select-gateway-target') {
     return (
-      <RemoveMcpToolScreen
+      <RemoveGatewayTargetScreen
         tools={mcpTools}
-        onSelect={(tool: RemovableMcpTool) => void handleSelectMcpTool(tool)}
+        onSelect={(tool: RemovableGatewayTarget) => void handleSelectGatewayTarget(tool)}
         onExit={() => setFlow({ name: 'select' })}
       />
     );
@@ -530,13 +537,13 @@ export function RemoveFlow({
     );
   }
 
-  if (flow.name === 'confirm-mcp-tool') {
+  if (flow.name === 'confirm-gateway-target') {
     return (
       <RemoveConfirmScreen
         title={`Remove MCP Tool: ${flow.tool.name}`}
         preview={flow.preview}
-        onConfirm={() => void handleConfirmMcpTool(flow.tool, flow.preview)}
-        onCancel={() => setFlow({ name: 'select-mcp-tool' })}
+        onConfirm={() => void handleConfirmGatewayTarget(flow.tool, flow.preview)}
+        onCancel={() => setFlow({ name: 'select-gateway-target' })}
       />
     );
   }

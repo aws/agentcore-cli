@@ -4,7 +4,7 @@ export { RemoveConfirmScreen } from './RemoveConfirmScreen';
 export { RemoveFlow } from './RemoveFlow';
 export { RemoveGatewayScreen } from './RemoveGatewayScreen';
 export { RemoveIdentityScreen } from './RemoveIdentityScreen';
-export { RemoveMcpToolScreen } from './RemoveMcpToolScreen';
+export { RemoveGatewayTargetScreen } from './RemoveGatewayTargetScreen';
 export { RemoveMemoryScreen } from './RemoveMemoryScreen';
 export { RemoveScreen, type RemoveResourceType } from './RemoveScreen';
 export { RemoveSuccessScreen } from './RemoveSuccessScreen';

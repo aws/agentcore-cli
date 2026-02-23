@@ -6,18 +6,18 @@ import { join } from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
 // MCP Tool feature is disabled (coming soon) - skip all tests
-describe.skip('remove mcp-tool command', () => {
+describe.skip('remove gateway-target command', () => {
   let testDir: string;
   let projectDir: string;
   const agentName = 'TestAgent';
   const runtimeToolName = 'RuntimeTool';
 
   beforeAll(async () => {
-    testDir = join(tmpdir(), `agentcore-remove-mcp-tool-${randomUUID()}`);
+    testDir = join(tmpdir(), `agentcore-remove-gateway-target-${randomUUID()}`);
     await mkdir(testDir, { recursive: true });
 
     // Create project
-    const projectName = 'RemoveMcpToolProj';
+    const projectName = 'RemoveGatewayTargetProj';
     let result = await runCLI(['create', '--name', projectName, '--no-agent'], testDir);
     if (result.exitCode !== 0) {
       throw new Error(`Failed to create project: ${result.stdout} ${result.stderr}`);
@@ -51,7 +51,7 @@ describe.skip('remove mcp-tool command', () => {
     result = await runCLI(
       [
         'add',
-        'mcp-tool',
+        'gateway-target',
         '--name',
         runtimeToolName,
         '--language',
@@ -75,7 +75,7 @@ describe.skip('remove mcp-tool command', () => {
 
   describe('validation', () => {
     it('requires name flag', async () => {
-      const result = await runCLI(['remove', 'mcp-tool', '--json'], projectDir);
+      const result = await runCLI(['remove', 'gateway-target', '--json'], projectDir);
       expect(result.exitCode).toBe(1);
       const json = JSON.parse(result.stdout);
       expect(json.success).toBe(false);
@@ -83,7 +83,7 @@ describe.skip('remove mcp-tool command', () => {
     });
 
     it('rejects non-existent tool', async () => {
-      const result = await runCLI(['remove', 'mcp-tool', '--name', 'nonexistent', '--json'], projectDir);
+      const result = await runCLI(['remove', 'gateway-target', '--name', 'nonexistent', '--json'], projectDir);
       expect(result.exitCode).toBe(1);
       const json = JSON.parse(result.stdout);
       expect(json.success).toBe(false);
@@ -98,7 +98,7 @@ describe.skip('remove mcp-tool command', () => {
       await runCLI(
         [
           'add',
-          'mcp-tool',
+          'gateway-target',
           '--name',
           tempTool,
           '--language',
@@ -112,7 +112,7 @@ describe.skip('remove mcp-tool command', () => {
         projectDir
       );
 
-      const result = await runCLI(['remove', 'mcp-tool', '--name', tempTool, '--json'], projectDir);
+      const result = await runCLI(['remove', 'gateway-target', '--name', tempTool, '--json'], projectDir);
       expect(result.exitCode, `stdout: ${result.stdout}`).toBe(0);
       const json = JSON.parse(result.stdout);
       expect(json.success).toBe(true);
@@ -143,7 +143,7 @@ describe.skip('remove mcp-tool command', () => {
       const addResult = await runCLI(
         [
           'add',
-          'mcp-tool',
+          'gateway-target',
           '--name',
           tempTool,
           '--language',
@@ -160,7 +160,7 @@ describe.skip('remove mcp-tool command', () => {
       );
       expect(addResult.exitCode, `add failed: ${addResult.stdout} ${addResult.stderr}`).toBe(0);
 
-      const result = await runCLI(['remove', 'mcp-tool', '--name', tempTool, '--json'], projectDir);
+      const result = await runCLI(['remove', 'gateway-target', '--name', tempTool, '--json'], projectDir);
       expect(result.exitCode, `stdout: ${result.stdout}`).toBe(0);
       const json = JSON.parse(result.stdout);
       expect(json.success).toBe(true);

@@ -6,18 +6,18 @@ import { join } from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
 // MCP Tool feature is disabled (coming soon) - skip all tests
-describe.skip('add mcp-tool command', () => {
+describe.skip('add gateway-target command', () => {
   let testDir: string;
   let projectDir: string;
   const agentName = 'TestAgent';
   const gatewayName = 'test-gateway'; // Used in skipped behind-gateway tests
 
   beforeAll(async () => {
-    testDir = join(tmpdir(), `agentcore-add-mcp-tool-${randomUUID()}`);
+    testDir = join(tmpdir(), `agentcore-add-gateway-target-${randomUUID()}`);
     await mkdir(testDir, { recursive: true });
 
     // Create project with agent
-    const projectName = 'McpToolProj';
+    const projectName = 'GatewayTargetProj';
     let result = await runCLI(['create', '--name', projectName, '--no-agent'], testDir);
     if (result.exitCode !== 0) {
       throw new Error(`Failed to create project: ${result.stdout} ${result.stderr}`);
@@ -54,7 +54,7 @@ describe.skip('add mcp-tool command', () => {
 
   describe('validation', () => {
     it('requires name flag', async () => {
-      const result = await runCLI(['add', 'mcp-tool', '--json'], projectDir);
+      const result = await runCLI(['add', 'gateway-target', '--json'], projectDir);
       expect(result.exitCode).toBe(1);
       const json = JSON.parse(result.stdout);
       expect(json.success).toBe(false);
@@ -62,7 +62,10 @@ describe.skip('add mcp-tool command', () => {
     });
 
     it('requires exposure flag', async () => {
-      const result = await runCLI(['add', 'mcp-tool', '--name', 'test', '--language', 'Python', '--json'], projectDir);
+      const result = await runCLI(
+        ['add', 'gateway-target', '--name', 'test', '--language', 'Python', '--json'],
+        projectDir
+      );
       expect(result.exitCode).toBe(1);
       const json = JSON.parse(result.stdout);
       expect(json.success).toBe(false);
@@ -73,7 +76,7 @@ describe.skip('add mcp-tool command', () => {
       const result = await runCLI(
         [
           'add',
-          'mcp-tool',
+          'gateway-target',
           '--name',
           'test',
           '--language',
@@ -99,7 +102,7 @@ describe.skip('add mcp-tool command', () => {
       const result = await runCLI(
         [
           'add',
-          'mcp-tool',
+          'gateway-target',
           '--name',
           'container-tool',
           '--language',
@@ -130,7 +133,7 @@ describe.skip('add mcp-tool command', () => {
       const result = await runCLI(
         [
           'add',
-          'mcp-tool',
+          'gateway-target',
           '--name',
           toolName,
           '--language',
@@ -163,7 +166,7 @@ describe.skip('add mcp-tool command', () => {
 
     it('requires agents for mcp-runtime', async () => {
       const result = await runCLI(
-        ['add', 'mcp-tool', '--name', 'no-agents', '--language', 'Python', '--exposure', 'mcp-runtime', '--json'],
+        ['add', 'gateway-target', '--name', 'no-agents', '--language', 'Python', '--exposure', 'mcp-runtime', '--json'],
         projectDir
       );
       expect(result.exitCode).toBe(1);
@@ -176,7 +179,7 @@ describe.skip('add mcp-tool command', () => {
       const result = await runCLI(
         [
           'add',
-          'mcp-tool',
+          'gateway-target',
           '--name',
           'runtime-container',
           '--language',
@@ -204,7 +207,7 @@ describe.skip('add mcp-tool command', () => {
       const result = await runCLI(
         [
           'add',
-          'mcp-tool',
+          'gateway-target',
           '--name',
           toolName,
           '--language',
@@ -236,7 +239,7 @@ describe.skip('add mcp-tool command', () => {
       const result = await runCLI(
         [
           'add',
-          'mcp-tool',
+          'gateway-target',
           '--name',
           'no-gw',
           '--language',
@@ -259,7 +262,7 @@ describe.skip('add mcp-tool command', () => {
       const result = await runCLI(
         [
           'add',
-          'mcp-tool',
+          'gateway-target',
           '--name',
           'no-host',
           '--language',
@@ -282,7 +285,7 @@ describe.skip('add mcp-tool command', () => {
       const result = await runCLI(
         [
           'add',
-          'mcp-tool',
+          'gateway-target',
           '--name',
           'gateway-container',
           '--language',

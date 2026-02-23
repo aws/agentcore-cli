@@ -1,19 +1,25 @@
 import { COMMAND_DESCRIPTIONS } from '../../tui/copy';
 import { requireProject } from '../../tui/guards';
 import { AddFlow } from '../../tui/screens/add/AddFlow';
-import { handleAddAgent, handleAddGateway, handleAddIdentity, handleAddMcpTool, handleAddMemory } from './actions';
+import {
+  handleAddAgent,
+  handleAddGateway,
+  handleAddGatewayTarget,
+  handleAddIdentity,
+  handleAddMemory,
+} from './actions';
 import type {
   AddAgentOptions,
   AddGatewayOptions,
+  AddGatewayTargetOptions,
   AddIdentityOptions,
-  AddMcpToolOptions,
   AddMemoryOptions,
 } from './types';
 import {
   validateAddAgentOptions,
   validateAddGatewayOptions,
+  validateAddGatewayTargetOptions,
   validateAddIdentityOptions,
-  validateAddMcpToolOptions,
   validateAddMemoryOptions,
 } from './validate';
 import type { Command } from '@commander-js/extra-typings';
@@ -92,8 +98,8 @@ async function _handleAddGatewayCLI(options: AddGatewayOptions): Promise<void> {
 }
 
 // MCP Tool disabled - prefix with underscore until feature is re-enabled
-async function _handleAddMcpToolCLI(options: AddMcpToolOptions): Promise<void> {
-  const validation = validateAddMcpToolOptions(options);
+async function _handleAddGatewayTargetCLI(options: AddGatewayTargetOptions): Promise<void> {
+  const validation = validateAddGatewayTargetOptions(options);
   if (!validation.valid) {
     if (options.json) {
       console.log(JSON.stringify({ success: false, error: validation.error }));
@@ -103,7 +109,7 @@ async function _handleAddMcpToolCLI(options: AddMcpToolOptions): Promise<void> {
     process.exit(1);
   }
 
-  const result = await handleAddMcpTool({
+  const result = await handleAddGatewayTarget({
     name: options.name!,
     description: options.description,
     language: options.language! as 'Python' | 'TypeScript',
@@ -252,10 +258,10 @@ export function registerAdd(program: Command) {
       process.exit(1);
     });
 
-  // Subcommand: add mcp-tool (disabled - coming soon)
+  // Subcommand: add gateway-target (disabled - coming soon)
   addCmd
-    .command('mcp-tool', { hidden: true })
-    .description('Add an MCP tool to the project')
+    .command('gateway-target', { hidden: true })
+    .description('Add a gateway target to the project')
     .option('--name <name>', 'Tool name')
     .option('--description <desc>', 'Tool description')
     .option('--language <lang>', 'Language: Python or TypeScript')

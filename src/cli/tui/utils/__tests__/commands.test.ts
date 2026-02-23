@@ -22,7 +22,7 @@ function makeProgram(cmds: Command[]) {
 describe('getCommandsForUI', () => {
   const program = makeProgram([
     makeCmd('create', 'Create a new project'),
-    makeCmd('add', 'Add a resource', ['agent', 'memory', 'gateway', 'mcp-tool']),
+    makeCmd('add', 'Add a resource', ['agent', 'memory', 'gateway', 'gateway-target']),
     makeCmd('deploy', 'Deploy to AWS'),
     makeCmd('status', 'Check status'),
     makeCmd('help', 'Show help'),
@@ -60,14 +60,14 @@ describe('getCommandsForUI', () => {
     expect(names).toContain('create');
   });
 
-  it('filters hidden subcommands (gateway, mcp-tool)', () => {
+  it('filters hidden subcommands (gateway, gateway-target)', () => {
     const cmds = getCommandsForUI(program);
     const addCmd = cmds.find(c => c.id === 'add');
     expect(addCmd).toBeDefined();
     expect(addCmd!.subcommands).toContain('agent');
     expect(addCmd!.subcommands).toContain('memory');
     expect(addCmd!.subcommands).not.toContain('gateway');
-    expect(addCmd!.subcommands).not.toContain('mcp-tool');
+    expect(addCmd!.subcommands).not.toContain('gateway-target');
   });
 
   it('returns command metadata shape', () => {

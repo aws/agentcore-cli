@@ -10,8 +10,8 @@ import type {
   FilePath,
 } from '../../../schema';
 import { AgentCoreCliMcpDefsSchema, ToolDefinitionSchema } from '../../../schema';
-import { getTemplateToolDefinitions, renderMcpToolTemplate } from '../../templates/McpToolRenderer';
-import type { AddGatewayConfig, AddMcpToolConfig } from '../../tui/screens/mcp/types';
+import { getTemplateToolDefinitions, renderGatewayTargetTemplate } from '../../templates/GatewayTargetRenderer';
+import type { AddGatewayConfig, AddGatewayTargetConfig } from '../../tui/screens/mcp/types';
 import { DEFAULT_HANDLER, DEFAULT_NODE_VERSION, DEFAULT_PYTHON_VERSION } from '../../tui/screens/mcp/types';
 import { existsSync } from 'fs';
 import { mkdir, readFile, writeFile } from 'fs/promises';
@@ -171,7 +171,7 @@ export async function createGatewayFromWizard(config: AddGatewayConfig): Promise
   return { name: config.name };
 }
 
-function validateMcpToolLanguage(language: string): asserts language is 'Python' | 'TypeScript' | 'Other' {
+function validateGatewayTargetLanguage(language: string): asserts language is 'Python' | 'TypeScript' | 'Other' {
   if (language !== 'Python' && language !== 'TypeScript' && language !== 'Other') {
     throw new Error(`MCP tools for language "${language}" are not yet supported.`);
   }
@@ -180,8 +180,8 @@ function validateMcpToolLanguage(language: string): asserts language is 'Python'
 /**
  * Create an MCP tool (MCP runtime or behind gateway).
  */
-export async function createToolFromWizard(config: AddMcpToolConfig): Promise<CreateToolResult> {
-  validateMcpToolLanguage(config.language);
+export async function createToolFromWizard(config: AddGatewayTargetConfig): Promise<CreateToolResult> {
+  validateGatewayTargetLanguage(config.language);
 
   const configIO = new ConfigIO();
   const mcpSpec: AgentCoreMcpSpec = configIO.configExists('mcp')
@@ -330,7 +330,7 @@ export async function createToolFromWizard(config: AddMcpToolConfig): Promise<Cr
   const configRoot = requireConfigRoot();
   const projectRoot = dirname(configRoot);
   const absoluteSourcePath = join(projectRoot, config.sourcePath);
-  await renderMcpToolTemplate(config.name, absoluteSourcePath, config.language, config.host);
+  await renderGatewayTargetTemplate(config.name, absoluteSourcePath, config.language, config.host);
 
   return { mcpDefsPath, toolName: config.name, projectPath: config.sourcePath };
 }

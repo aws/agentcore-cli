@@ -8,7 +8,7 @@ import { join } from 'path';
 /**
  * Represents an MCP tool that can be removed.
  */
-export interface RemovableMcpTool {
+export interface RemovableGatewayTarget {
   name: string;
   type: 'mcp-runtime' | 'gateway-target';
   gatewayName?: string;
@@ -17,14 +17,14 @@ export interface RemovableMcpTool {
 /**
  * Get list of MCP tools available for removal.
  */
-export async function getRemovableMcpTools(): Promise<RemovableMcpTool[]> {
+export async function getRemovableGatewayTargets(): Promise<RemovableGatewayTarget[]> {
   try {
     const configIO = new ConfigIO();
     if (!configIO.configExists('mcp')) {
       return [];
     }
     const mcpSpec = await configIO.readMcpSpec();
-    const tools: RemovableMcpTool[] = [];
+    const tools: RemovableGatewayTarget[] = [];
 
     // MCP Runtime tools
     for (const tool of mcpSpec.mcpRuntimeTools ?? []) {
@@ -51,7 +51,7 @@ export async function getRemovableMcpTools(): Promise<RemovableMcpTool[]> {
 /**
  * Compute the preview of what will be removed when removing an MCP tool.
  */
-export async function previewRemoveMcpTool(tool: RemovableMcpTool): Promise<RemovalPreview> {
+export async function previewRemoveGatewayTarget(tool: RemovableGatewayTarget): Promise<RemovalPreview> {
   const configIO = new ConfigIO();
   const mcpSpec = await configIO.readMcpSpec();
   const mcpDefs = configIO.configExists('mcpDefs') ? await configIO.readMcpDefs() : { tools: {} };
@@ -139,7 +139,7 @@ export async function previewRemoveMcpTool(tool: RemovableMcpTool): Promise<Remo
 /**
  * Compute the MCP spec after removing a tool.
  */
-function computeRemovedToolMcpSpec(mcpSpec: AgentCoreMcpSpec, tool: RemovableMcpTool): AgentCoreMcpSpec {
+function computeRemovedToolMcpSpec(mcpSpec: AgentCoreMcpSpec, tool: RemovableGatewayTarget): AgentCoreMcpSpec {
   if (tool.type === 'mcp-runtime') {
     return {
       ...mcpSpec,
@@ -166,7 +166,7 @@ function computeRemovedToolMcpSpec(mcpSpec: AgentCoreMcpSpec, tool: RemovableMcp
 function computeRemovedToolMcpDefs(
   mcpSpec: AgentCoreMcpSpec,
   mcpDefs: AgentCoreCliMcpDefs,
-  tool: RemovableMcpTool
+  tool: RemovableGatewayTarget
 ): AgentCoreCliMcpDefs {
   const toolNamesToRemove: string[] = [];
 
@@ -196,7 +196,7 @@ function computeRemovedToolMcpDefs(
 /**
  * Remove an MCP tool from the project.
  */
-export async function removeMcpTool(tool: RemovableMcpTool): Promise<RemovalResult> {
+export async function removeGatewayTarget(tool: RemovableGatewayTarget): Promise<RemovalResult> {
   try {
     const configIO = new ConfigIO();
     const mcpSpec = await configIO.readMcpSpec();

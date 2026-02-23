@@ -1,6 +1,6 @@
 import { APP_DIR, MCP_APP_SUBDIR } from '../../../../lib';
 import type { ToolDefinition } from '../../../../schema';
-import type { AddMcpToolConfig, AddMcpToolStep, ComputeHost, ExposureMode, TargetLanguage } from './types';
+import type { AddGatewayTargetConfig, AddGatewayTargetStep, ComputeHost, ExposureMode, TargetLanguage } from './types';
 import { useCallback, useMemo, useState } from 'react';
 
 /**
@@ -8,7 +8,7 @@ import { useCallback, useMemo, useState } from 'react';
  * - MCP Runtime: name → language → exposure → agents → confirm
  * - Behind gateway: name → language → exposure → gateway → host → confirm
  */
-function getSteps(exposure: ExposureMode): AddMcpToolStep[] {
+function getSteps(exposure: ExposureMode): AddGatewayTargetStep[] {
   if (exposure === 'mcp-runtime') {
     return ['name', 'language', 'exposure', 'agents', 'confirm'];
   }
@@ -23,7 +23,7 @@ function deriveToolDefinition(name: string): ToolDefinition {
   };
 }
 
-function getDefaultConfig(): AddMcpToolConfig {
+function getDefaultConfig(): AddGatewayTargetConfig {
   return {
     name: '',
     description: '',
@@ -36,9 +36,9 @@ function getDefaultConfig(): AddMcpToolConfig {
   };
 }
 
-export function useAddMcpToolWizard(existingGateways: string[] = [], existingAgents: string[] = []) {
-  const [config, setConfig] = useState<AddMcpToolConfig>(getDefaultConfig);
-  const [step, setStep] = useState<AddMcpToolStep>('name');
+export function useAddGatewayTargetWizard(existingGateways: string[] = [], existingAgents: string[] = []) {
+  const [config, setConfig] = useState<AddGatewayTargetConfig>(getDefaultConfig);
+  const [step, setStep] = useState<AddGatewayTargetStep>('name');
 
   const steps = useMemo(() => getSteps(config.exposure), [config.exposure]);
   const currentIndex = steps.indexOf(step);

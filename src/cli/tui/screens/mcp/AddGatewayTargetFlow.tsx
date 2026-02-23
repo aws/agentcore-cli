@@ -3,10 +3,10 @@ import type { SelectableItem } from '../../components';
 import { HELP_TEXT } from '../../constants';
 import { useListNavigation } from '../../hooks';
 import { useAgents, useBindMcpRuntime, useMcpRuntimeTools } from '../../hooks/useAttach';
-import { useCreateMcpTool, useExistingGateways, useExistingToolNames } from '../../hooks/useCreateMcp';
+import { useCreateGatewayTarget, useExistingGateways, useExistingToolNames } from '../../hooks/useCreateMcp';
 import { AddSuccessScreen } from '../add/AddSuccessScreen';
-import { AddMcpToolScreen } from './AddMcpToolScreen';
-import type { AddMcpToolConfig } from './types';
+import { AddGatewayTargetScreen } from './AddGatewayTargetScreen';
+import type { AddGatewayTargetConfig } from './types';
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 
 type FlowState =
@@ -19,7 +19,7 @@ type FlowState =
   | { name: 'bind-success'; mcpRuntimeName: string; targetAgent: string }
   | { name: 'error'; message: string };
 
-interface AddMcpToolFlowProps {
+interface AddGatewayTargetFlowProps {
   /** Whether running in interactive TUI mode */
   isInteractive?: boolean;
   /** Available agents */
@@ -37,15 +37,15 @@ const MODE_OPTIONS: SelectableItem[] = [
   { id: 'bind', title: 'Bind existing MCP runtime', description: 'Add an agent to an existing MCP runtime' },
 ];
 
-export function AddMcpToolFlow({
+export function AddGatewayTargetFlow({
   isInteractive = true,
   existingAgents,
   onExit,
   onBack,
   onDev,
   onDeploy,
-}: AddMcpToolFlowProps) {
-  const { createTool, reset: resetCreate } = useCreateMcpTool();
+}: AddGatewayTargetFlowProps) {
+  const { createTool, reset: resetCreate } = useCreateGatewayTarget();
   const { gateways: existingGateways } = useExistingGateways();
   const { toolNames: existingToolNames } = useExistingToolNames();
   const [flow, setFlow] = useState<FlowState>({ name: 'mode-select' });
@@ -106,7 +106,7 @@ export function AddMcpToolFlow({
   });
 
   const handleCreateComplete = useCallback(
-    (config: AddMcpToolConfig) => {
+    (config: AddGatewayTargetConfig) => {
       setFlow({
         name: 'create-success',
         toolName: config.name,
@@ -152,7 +152,7 @@ export function AddMcpToolFlow({
     // If no MCP runtimes exist to bind, skip to create
     if (!hasRuntimesToBind) {
       return (
-        <AddMcpToolScreen
+        <AddGatewayTargetScreen
           existingGateways={existingGateways}
           existingAgents={existingAgents}
           existingToolNames={existingToolNames}
@@ -179,7 +179,7 @@ export function AddMcpToolFlow({
   // Create wizard
   if (flow.name === 'create-wizard') {
     return (
-      <AddMcpToolScreen
+      <AddGatewayTargetScreen
         existingGateways={existingGateways}
         existingAgents={existingAgents}
         existingToolNames={existingToolNames}

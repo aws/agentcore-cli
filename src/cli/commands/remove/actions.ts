@@ -1,11 +1,11 @@
 import { ConfigIO } from '../../../lib';
 import { getErrorMessage } from '../../errors';
 import {
-  getRemovableMcpTools,
+  getRemovableGatewayTargets,
   removeAgent,
   removeGateway,
+  removeGatewayTarget,
   removeIdentity,
-  removeMcpTool,
   removeMemory,
 } from '../../operations/remove';
 import type { RemoveAllOptions, RemoveResult, ResourceType } from './types';
@@ -46,11 +46,11 @@ export async function handleRemove(options: ValidatedRemoveOptions): Promise<Rem
           note: SOURCE_CODE_NOTE,
         };
       }
-      case 'mcp-tool': {
-        const tools = await getRemovableMcpTools();
+      case 'gateway-target': {
+        const tools = await getRemovableGatewayTargets();
         const tool = tools.find(t => t.name === name);
         if (!tool) return { success: false, error: `MCP tool '${name}' not found` };
-        const result = await removeMcpTool(tool);
+        const result = await removeGatewayTarget(tool);
         if (!result.ok) return { success: false, error: result.error };
         return {
           success: true,

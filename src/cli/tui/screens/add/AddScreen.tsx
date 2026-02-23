@@ -7,7 +7,7 @@ const ADD_RESOURCES = [
   { id: 'memory', title: 'Memory', description: 'Persistent context storage' },
   { id: 'identity', title: 'Identity', description: 'API key credential providers' },
   { id: 'gateway', title: 'Gateway (coming soon)', description: 'Route and manage MCP tools', disabled: true },
-  { id: 'mcp-tool', title: 'MCP Tool (coming soon)', description: 'Extend agent capabilities', disabled: true },
+  { id: 'gateway-target', title: 'MCP Tool (coming soon)', description: 'Extend agent capabilities', disabled: true },
 ] as const;
 
 export type AddResourceType = (typeof ADD_RESOURCES)[number]['id'];

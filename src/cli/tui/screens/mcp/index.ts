@@ -1,14 +1,14 @@
 export { AddGatewayFlow } from './AddGatewayFlow';
 export { AddGatewayScreen } from './AddGatewayScreen';
-export { AddMcpToolFlow } from './AddMcpToolFlow';
-export { AddMcpToolScreen } from './AddMcpToolScreen';
+export { AddGatewayTargetFlow } from './AddGatewayTargetFlow';
+export { AddGatewayTargetScreen } from './AddGatewayTargetScreen';
 export { useAddGatewayWizard } from './useAddGatewayWizard';
-export { useAddMcpToolWizard } from './useAddMcpWizard';
+export { useAddGatewayTargetWizard } from './useAddGatewayTargetWizard';
 export type {
   AddGatewayConfig,
   AddGatewayStep,
-  AddMcpToolConfig,
-  AddMcpToolStep,
+  AddGatewayTargetConfig,
+  AddGatewayTargetStep,
   ComputeHost,
   ExposureMode,
 } from './types';

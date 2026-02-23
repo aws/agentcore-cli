@@ -144,7 +144,7 @@ export const registerRemove = (program: Command) => {
 
   // MCP Tool disabled - replace with registerResourceRemove() call when enabling
   removeCommand
-    .command('mcp-tool', { hidden: true })
+    .command('gateway-target', { hidden: true })
     .description('Remove an MCP tool from the project')
     .option('--name <name>', 'Name of resource to remove')
     .option('--force', 'Skip confirmation prompt')

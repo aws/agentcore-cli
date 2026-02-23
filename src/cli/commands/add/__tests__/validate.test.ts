@@ -1,15 +1,15 @@
 import type {
   AddAgentOptions,
   AddGatewayOptions,
+  AddGatewayTargetOptions,
   AddIdentityOptions,
-  AddMcpToolOptions,
   AddMemoryOptions,
 } from '../types.js';
 import {
   validateAddAgentOptions,
   validateAddGatewayOptions,
+  validateAddGatewayTargetOptions,
   validateAddIdentityOptions,
-  validateAddMcpToolOptions,
   validateAddMemoryOptions,
 } from '../validate.js';
 import { describe, expect, it } from 'vitest';
@@ -46,14 +46,14 @@ const validGatewayOptionsJwt: AddGatewayOptions = {
   allowedClients: 'client1,client2',
 };
 
-const validMcpToolOptionsMcpRuntime: AddMcpToolOptions = {
+const validGatewayTargetOptionsMcpRuntime: AddGatewayTargetOptions = {
   name: 'test-tool',
   language: 'Python',
   exposure: 'mcp-runtime',
   agents: 'Agent1,Agent2',
 };
 
-const validMcpToolOptionsBehindGateway: AddMcpToolOptions = {
+const validGatewayTargetOptionsBehindGateway: AddGatewayTargetOptions = {
   name: 'test-tool',
   language: 'Python',
   exposure: 'behind-gateway',
@@ -235,18 +235,18 @@ describe('validate', () => {
     });
   });
 
-  describe('validateAddMcpToolOptions', () => {
+  describe('validateAddGatewayTargetOptions', () => {
     // AC15: Required fields validated
     it('returns error for missing required fields', () => {
-      const requiredFields: { field: keyof AddMcpToolOptions; error: string }[] = [
+      const requiredFields: { field: keyof AddGatewayTargetOptions; error: string }[] = [
         { field: 'name', error: '--name is required' },
         { field: 'language', error: '--language is required' },
         { field: 'exposure', error: '--exposure is required' },
       ];
 
       for (const { field, error } of requiredFields) {
-        const opts = { ...validMcpToolOptionsMcpRuntime, [field]: undefined };
-        const result = validateAddMcpToolOptions(opts);
+        const opts = { ...validGatewayTargetOptionsMcpRuntime, [field]: undefined };
+        const result = validateAddGatewayTargetOptions(opts);
         expect(result.valid, `Should fail for missing ${String(field)}`).toBe(false);
         expect(result.error).toBe(error);
       }
@@ -254,36 +254,36 @@ describe('validate', () => {
 
     // AC16: Invalid values rejected
     it('returns error for invalid values', () => {
-      let result = validateAddMcpToolOptions({ ...validMcpToolOptionsMcpRuntime, language: 'Java' as any });
+      let result = validateAddGatewayTargetOptions({ ...validGatewayTargetOptionsMcpRuntime, language: 'Java' as any });
       expect(result.valid).toBe(false);
       expect(result.error?.includes('Invalid language')).toBeTruthy();
 
-      result = validateAddMcpToolOptions({ ...validMcpToolOptionsMcpRuntime, exposure: 'invalid' as any });
+      result = validateAddGatewayTargetOptions({ ...validGatewayTargetOptionsMcpRuntime, exposure: 'invalid' as any });
       expect(result.valid).toBe(false);
       expect(result.error?.includes('Invalid exposure')).toBeTruthy();
     });
 
     // AC17: mcp-runtime exposure requires agents
     it('returns error for mcp-runtime without agents', () => {
-      let result = validateAddMcpToolOptions({ ...validMcpToolOptionsMcpRuntime, agents: undefined });
+      let result = validateAddGatewayTargetOptions({ ...validGatewayTargetOptionsMcpRuntime, agents: undefined });
       expect(result.valid).toBe(false);
       expect(result.error).toBe('--agents is required for mcp-runtime exposure');
 
-      result = validateAddMcpToolOptions({ ...validMcpToolOptionsMcpRuntime, agents: ',,,' });
+      result = validateAddGatewayTargetOptions({ ...validGatewayTargetOptionsMcpRuntime, agents: ',,,' });
       expect(result.valid).toBe(false);
       expect(result.error).toBe('At least one agent is required');
     });
 
     // AC18: behind-gateway exposure is disabled (coming soon)
     it('returns coming soon error for behind-gateway exposure', () => {
-      const result = validateAddMcpToolOptions({ ...validMcpToolOptionsBehindGateway });
+      const result = validateAddGatewayTargetOptions({ ...validGatewayTargetOptionsBehindGateway });
       expect(result.valid).toBe(false);
       expect(result.error).toContain('coming soon');
     });
 
     // AC19: Valid options pass
     it('passes for valid mcp-runtime options', () => {
-      expect(validateAddMcpToolOptions(validMcpToolOptionsMcpRuntime)).toEqual({ valid: true });
+      expect(validateAddGatewayTargetOptions(validGatewayTargetOptionsMcpRuntime)).toEqual({ valid: true });
     });
   });
 

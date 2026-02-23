@@ -47,11 +47,11 @@ export type ComputeHost = 'Lambda' | 'AgentCoreRuntime';
  * - host: Select compute host (only if behind-gateway)
  * - confirm: Review and confirm
  */
-export type AddMcpToolStep = 'name' | 'language' | 'exposure' | 'agents' | 'gateway' | 'host' | 'confirm';
+export type AddGatewayTargetStep = 'name' | 'language' | 'exposure' | 'agents' | 'gateway' | 'host' | 'confirm';
 
 export type TargetLanguage = 'Python' | 'TypeScript' | 'Other';
 
-export interface AddMcpToolConfig {
+export interface AddGatewayTargetConfig {
   name: string;
   description: string;
   sourcePath: string;
@@ -67,7 +67,7 @@ export interface AddMcpToolConfig {
   selectedAgents: string[];
 }
 
-export const MCP_TOOL_STEP_LABELS: Record<AddMcpToolStep, string> = {
+export const MCP_TOOL_STEP_LABELS: Record<AddGatewayTargetStep, string> = {
   name: 'Name',
   language: 'Language',
   exposure: 'Exposure',
