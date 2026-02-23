@@ -8,6 +8,10 @@ on:
   pull_request_target:
     branches: [main]
 
+concurrency:
+  group: e2e-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: false
+
 permissions:
   id-token: write # OIDC — lets GitHub assume an AWS IAM role via short-lived token (no stored keys)
   contents: read

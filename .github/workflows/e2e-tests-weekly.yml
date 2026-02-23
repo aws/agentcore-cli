@@ -8,6 +8,10 @@ on:
   schedule:
     - cron: '0 14 * * 1' # Every Monday at 9 AM EST (14:00 UTC)
 
+concurrency:
+  group: e2e-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: false
+
 permissions:
   id-token: write # OIDC — lets GitHub assume an AWS IAM role via short-lived token (no stored keys)
   contents: read
