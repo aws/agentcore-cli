@@ -1,9 +1,11 @@
 import {
   type AgentCoreGateway,
+  type AgentCoreGatewayTarget,
   type AgentCoreMcpRuntimeTool,
   type AgentCoreMcpSpec,
   AgentCoreMcpSpecSchema,
   GatewayNameSchema,
+  type OutboundAuth,
 } from '../../../../schema';
 import { Header, Panel, ScreenLayout, TextInput } from '../../components';
 import { useSchemaDocument } from '../../hooks/useSchemaDocument';
@@ -48,7 +50,10 @@ export function McpGuidedEditor(props: McpGuidedEditorProps) {
     );
   }
 
-  let mcpSpec: AgentCoreMcpSpec = { agentCoreGateways: [] };
+  let mcpSpec: AgentCoreMcpSpec & { unassignedTargets?: AgentCoreGatewayTarget[] } = {
+    agentCoreGateways: [],
+    unassignedTargets: [],
+  };
   try {
     const parsed: unknown = JSON.parse(content);
     const result = AgentCoreMcpSpecSchema.safeParse(parsed);
@@ -79,7 +84,7 @@ type ScreenMode = 'list' | 'confirm-exit' | 'edit-item' | 'edit-field' | 'edit-t
 
 function McpEditorBody(props: {
   schema: SchemaOption;
-  initialSpec: AgentCoreMcpSpec;
+  initialSpec: AgentCoreMcpSpec & { unassignedTargets?: AgentCoreGatewayTarget[] };
   baseline: string;
   onBack: () => void;
   onSave: (content: string) => Promise<{ ok: boolean; error?: string }>;
@@ -88,6 +93,9 @@ function McpEditorBody(props: {
   const [gateways, setGateways] = useState<AgentCoreGateway[]>(props.initialSpec.agentCoreGateways);
   const [mcpRuntimeTools, setMcpRuntimeTools] = useState<AgentCoreMcpRuntimeTool[]>(
     props.initialSpec.mcpRuntimeTools ?? []
+  );
+  const [unassignedTargets, _setUnassignedTargets] = useState<AgentCoreGatewayTarget[]>(
+    props.initialSpec.unassignedTargets ?? []
   );
   const [viewMode, setViewMode] = useState<ViewMode>('gateways');
   const [selectedIndex, setSelectedIndex] = useState(0);
@@ -116,12 +124,19 @@ function McpEditorBody(props: {
   const currentFields = viewMode === 'gateways' ? gatewayFields : mcpRuntimeFields;
 
   // Target fields
-  const targetFields = [{ id: 'targetName', label: 'Target Name' }];
+  const currentTarget = currentGateway?.targets?.[selectedTargetIndex];
+  const targetFields = [
+    { id: 'targetName', label: 'Target Name' },
+    { id: 'targetType', label: 'Target Type' },
+    ...(currentTarget?.targetType === 'mcpServer' ? [{ id: 'endpoint', label: 'Endpoint URL' }] : []),
+    { id: 'outboundAuth', label: 'Outbound Auth' },
+  ];
 
   async function commitChanges() {
-    const spec: AgentCoreMcpSpec = {
+    const spec: AgentCoreMcpSpec & { unassignedTargets?: AgentCoreGatewayTarget[] } = {
       agentCoreGateways: gateways,
       ...(mcpRuntimeTools.length > 0 ? { mcpRuntimeTools: mcpRuntimeTools } : {}),
+      ...(unassignedTargets.length > 0 ? { unassignedTargets: unassignedTargets } : {}),
     };
     const content = JSON.stringify(spec, null, 2);
     const result = await props.onSave(content);
@@ -417,7 +432,9 @@ function McpEditorBody(props: {
                 const selected = idx === selectedTargetIndex;
                 const targetName = target.name ?? `Target ${idx + 1}`;
                 const toolCount = target.toolDefinitions?.length ?? 0;
-                const host = target.compute?.host ?? target.targetType;
+                const targetType = target.targetType;
+                const endpoint = target.endpoint;
+                const displayInfo = endpoint ?? target.compute?.host ?? targetType;
                 return (
                   <Box key={idx} gap={1}>
                     <Text color={selected ? 'cyan' : undefined}>{selected ? '❯' : ' '}</Text>
@@ -425,7 +442,7 @@ function McpEditorBody(props: {
                       {targetName}
                     </Text>
                     <Text dimColor>
-                      ({toolCount} tools · {host})
+                      ({toolCount} tools · {targetType} · {displayInfo})
                     </Text>
                   </Box>
                 );
@@ -451,17 +468,42 @@ function McpEditorBody(props: {
     let initialValue = '';
     if (editingTargetFieldId === 'targetName') {
       initialValue = target.name ?? '';
+    } else if (editingTargetFieldId === 'targetType') {
+      initialValue = target.targetType ?? '';
+    } else if (editingTargetFieldId === 'endpoint') {
+      initialValue = target.endpoint ?? '';
+    } else if (editingTargetFieldId === 'outboundAuth') {
+      const auth = target.outboundAuth;
+      initialValue = auth ? `${auth.type}${auth.credentialName ? `:${auth.credentialName}` : ''}` : 'NONE';
     }
 
     const handleSubmit = (value: string) => {
       if (viewMode === 'gateways' && gateway) {
         const updatedTargets = [...(gateway.targets ?? [])];
         const targetToUpdate = updatedTargets[selectedTargetIndex];
-        if (targetToUpdate && editingTargetFieldId === 'targetName') {
-          updatedTargets[selectedTargetIndex] = {
-            ...targetToUpdate,
-            name: value,
-          };
+        if (targetToUpdate) {
+          if (editingTargetFieldId === 'targetName') {
+            updatedTargets[selectedTargetIndex] = { ...targetToUpdate, name: value };
+          } else if (editingTargetFieldId === 'targetType') {
+            const validTypes = ['mcpServer', 'lambda', 'openApiSchema', 'smithyModel'] as const;
+            const targetType = validTypes.includes(value as (typeof validTypes)[number])
+              ? (value as (typeof validTypes)[number])
+              : targetToUpdate.targetType;
+            updatedTargets[selectedTargetIndex] = { ...targetToUpdate, targetType };
+          } else if (editingTargetFieldId === 'endpoint') {
+            updatedTargets[selectedTargetIndex] = { ...targetToUpdate, endpoint: value || undefined };
+          } else if (editingTargetFieldId === 'outboundAuth') {
+            const [type, credentialName] = value.split(':');
+            const validAuthTypes = ['NONE', 'OAUTH', 'API_KEY'] as const;
+            const authType = validAuthTypes.includes(type as (typeof validAuthTypes)[number])
+              ? (type as (typeof validAuthTypes)[number])
+              : 'NONE';
+            const outboundAuth: OutboundAuth = {
+              type: authType,
+              ...(credentialName ? { credentialName } : {}),
+            };
+            updatedTargets[selectedTargetIndex] = { ...targetToUpdate, outboundAuth };
+          }
           const next = gateways.map((g, idx) => (idx === selectedIndex ? { ...g, targets: updatedTargets } : g));
           setGateways(next);
           setDirty(true);
@@ -478,7 +520,17 @@ function McpEditorBody(props: {
           <TextInput
             prompt={field.label}
             initialValue={initialValue}
-            placeholder="Tool name"
+            placeholder={
+              editingTargetFieldId === 'targetName'
+                ? 'Target name'
+                : editingTargetFieldId === 'targetType'
+                  ? 'lambda, mcpServer, openApiSchema, smithyModel'
+                  : editingTargetFieldId === 'endpoint'
+                    ? 'https://example.com/mcp'
+                    : editingTargetFieldId === 'outboundAuth'
+                      ? 'NONE, API_KEY:credName, OAUTH:credName'
+                      : undefined
+            }
             onSubmit={handleSubmit}
             onCancel={() => {
               setEditingTargetFieldId(null);
@@ -492,9 +544,10 @@ function McpEditorBody(props: {
 
   // Confirm exit screen
   if (screenMode === 'confirm-exit') {
-    const spec: AgentCoreMcpSpec = {
+    const spec: AgentCoreMcpSpec & { unassignedTargets?: AgentCoreGatewayTarget[] } = {
       agentCoreGateways: gateways,
       ...(mcpRuntimeTools.length > 0 ? { mcpRuntimeTools: mcpRuntimeTools } : {}),
+      ...(unassignedTargets.length > 0 ? { unassignedTargets: unassignedTargets } : {}),
     };
     const currentText = JSON.stringify(spec, null, 2);
     const diffOps = diffLines(props.baseline.split('\n'), currentText.split('\n'));
@@ -645,6 +698,31 @@ function McpEditorBody(props: {
           </Panel>
         )}
       </Box>
+
+      {/* Unassigned Targets */}
+      {unassignedTargets.length > 0 && (
+        <Box marginTop={1}>
+          <Panel title={`⚠ Unassigned Targets (${unassignedTargets.length})`} fullWidth>
+            <Box flexDirection="column">
+              {unassignedTargets.map((target, idx) => {
+                const targetName = target.name ?? `Target ${idx + 1}`;
+                const targetType = target.targetType;
+                const endpoint = target.endpoint;
+                const displayInfo = endpoint ?? target.compute?.host ?? targetType;
+                return (
+                  <Box key={idx} flexDirection="row" gap={1}>
+                    <Text color="yellow">⚠</Text>
+                    <Text color="yellow">{targetName}</Text>
+                    <Text dimColor>
+                      ({targetType} · {displayInfo})
+                    </Text>
+                  </Box>
+                );
+              })}
+            </Box>
+          </Panel>
+        </Box>
+      )}
 
       {dirty && (
         <Box marginTop={1}>

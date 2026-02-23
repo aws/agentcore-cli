@@ -73,14 +73,25 @@ export async function validateProject(): Promise<PreflightContext> {
   const projectSpec = await configIO.readProjectSpec();
   const awsTargets = await configIO.readAWSDeploymentTargets();
 
-  // Validate that at least one agent is defined, unless this is a teardown deploy.
+  // Validate that at least one agent or gateway is defined, unless this is a teardown deploy.
   //
   // Teardown detection: when agents is empty but deployed-state.json records existing
   // targets, the user has run `remove all` and wants to tear down AWS resources via deploy.
   // deployed-state.json is written by the CLI after every successful deploy, so it is a
   // reliable indicator of whether a CloudFormation stack exists for this project.
   let isTeardownDeploy = false;
-  if (!projectSpec.agents || projectSpec.agents.length === 0) {
+  const hasAgents = projectSpec.agents && projectSpec.agents.length > 0;
+
+  // Check for gateways in mcp.json
+  let hasGateways = false;
+  try {
+    const mcpSpec = await configIO.readMcpSpec();
+    hasGateways = mcpSpec.agentCoreGateways && mcpSpec.agentCoreGateways.length > 0;
+  } catch {
+    // No mcp.json or invalid — no gateways
+  }
+
+  if (!hasAgents && !hasGateways) {
     let hasExistingStack = false;
     try {
       const deployedState = await configIO.readDeployedState();
@@ -90,7 +101,7 @@ export async function validateProject(): Promise<PreflightContext> {
     }
     if (!hasExistingStack) {
       throw new Error(
-        'No agents defined in project. Add at least one agent with "agentcore add agent" before deploying.'
+        'No agents or gateways defined in project. Add at least one agent with "agentcore add agent" or gateway with "agentcore add gateway" before deploying.'
       );
     }
     isTeardownDeploy = true;
@@ -116,7 +127,7 @@ export async function validateProject(): Promise<PreflightContext> {
  */
 function validateRuntimeNames(projectSpec: AgentCoreProjectSpec): void {
   const projectName = projectSpec.name;
-  for (const agent of projectSpec.agents) {
+  for (const agent of projectSpec.agents || []) {
     const agentName = agent.name;
     if (agentName) {
       const combinedName = `${projectName}_${agentName}`;
@@ -136,7 +147,7 @@ function validateRuntimeNames(projectSpec: AgentCoreProjectSpec): void {
  */
 export function validateContainerAgents(projectSpec: AgentCoreProjectSpec, configRoot: string): void {
   const errors: string[] = [];
-  for (const agent of projectSpec.agents) {
+  for (const agent of projectSpec.agents || []) {
     if (agent.build === 'Container') {
       const codeLocation = resolveCodeLocation(agent.codeLocation, configRoot);
       const dockerfilePath = path.join(codeLocation, DOCKERFILE_NAME);

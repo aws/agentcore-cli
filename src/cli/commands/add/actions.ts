@@ -71,6 +71,8 @@ export interface ValidatedAddGatewayTargetOptions {
   agents?: string;
   gateway?: string;
   host?: 'Lambda' | 'AgentCoreRuntime';
+  outboundAuthType?: 'OAUTH' | 'API_KEY' | 'NONE';
+  credentialName?: string;
 }
 
 export interface ValidatedAddMemoryOptions {
@@ -286,6 +288,16 @@ function buildGatewayTargetConfig(options: ValidatedAddGatewayTargetOptions): Ad
   const sourcePath = `${APP_DIR}/${MCP_APP_SUBDIR}/${options.name}`;
 
   const description = options.description ?? `Tool for ${options.name}`;
+
+  // Build outboundAuth configuration if provided
+  const outboundAuth =
+    options.outboundAuthType && options.outboundAuthType !== 'NONE'
+      ? {
+          type: options.outboundAuthType,
+          credentialName: options.credentialName,
+        }
+      : undefined;
+
   return {
     name: options.name,
     description,
@@ -306,6 +318,7 @@ function buildGatewayTargetConfig(options: ValidatedAddGatewayTargetOptions): Ad
             .filter(Boolean)
         : [],
     gateway: options.exposure === 'behind-gateway' ? options.gateway : undefined,
+    outboundAuth,
   };
 }
 

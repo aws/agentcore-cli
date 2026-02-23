@@ -1,7 +1,7 @@
 import { ConfigIO, SecureCredentials } from '../../../lib';
 import { validateAwsCredentials } from '../../aws/account';
 import { createSwitchableIoHost } from '../../cdk/toolkit-lib';
-import { buildDeployedState, getStackOutputs, parseAgentOutputs } from '../../cloudformation';
+import { buildDeployedState, getStackOutputs, parseAgentOutputs, parseGatewayOutputs } from '../../cloudformation';
 import { getErrorMessage } from '../../errors';
 import { ExecLogger } from '../../logging';
 import {
@@ -63,6 +63,15 @@ export async function handleDeploy(options: ValidatedDeployOptions): Promise<Dep
       };
     }
     endStep('success');
+
+    // Read MCP spec for gateway information
+    let mcpSpec;
+    try {
+      mcpSpec = await configIO.readMcpSpec();
+    } catch {
+      // No mcp.json or invalid — no gateways
+      mcpSpec = null;
+    }
 
     // Preflight: validate project
     startStep('Validate project');
@@ -158,7 +167,7 @@ export async function handleDeploy(options: ValidatedDeployOptions): Promise<Dep
     // Set up identity providers if needed
     let identityKmsKeyArn: string | undefined;
     if (hasOwnedIdentityApiProviders(context.projectSpec)) {
-      startStep('Set up API key providers');
+      startStep('Creating credentials...');
 
       // In CLI mode, also check process.env for credentials (enables non-interactive deploy with -y)
       const neededCredentials = getAllCredentials(context.projectSpec);
@@ -180,7 +189,9 @@ export async function handleDeploy(options: ValidatedDeployOptions): Promise<Dep
         enableKmsEncryption: true,
       });
       if (identityResult.hasErrors) {
-        const errorMsg = identityResult.results.find(r => r.status === 'error')?.error ?? 'Identity setup failed';
+        const errorResult = identityResult.results.find(r => r.status === 'error');
+        const errorMsg =
+          errorResult?.error && typeof errorResult.error === 'string' ? errorResult.error : 'Identity setup failed';
         endStep('error', errorMsg);
         logger.finalize(false);
         return { success: false, error: errorMsg, logPath: logger.getRelativeLogPath() };
@@ -190,7 +201,9 @@ export async function handleDeploy(options: ValidatedDeployOptions): Promise<Dep
     }
 
     // Deploy
-    startStep('Deploy to AWS');
+    const hasGateways = mcpSpec?.agentCoreGateways && mcpSpec.agentCoreGateways.length > 0;
+    const deployStepName = hasGateways ? 'Deploying gateways...' : 'Deploy to AWS';
+    startStep(deployStepName);
 
     // Enable verbose output for resource-level events
     if (switchableIoHost && options.onResourceEvent) {
@@ -215,11 +228,12 @@ export async function handleDeploy(options: ValidatedDeployOptions): Promise<Dep
       startStep('Tear down stack');
       const teardown = await performStackTeardown(target.name);
       if (!teardown.success) {
-        endStep('error', teardown.error);
+        const teardownError = typeof teardown.error === 'string' ? teardown.error : 'Unknown teardown error';
+        endStep('error', teardownError);
         logger.finalize(false);
         return {
           success: false,
-          error: `Stack teardown failed: ${teardown.error}`,
+          error: `Stack teardown failed: ${teardownError}`,
           logPath: logger.getRelativeLogPath(),
         };
       }
@@ -238,11 +252,39 @@ export async function handleDeploy(options: ValidatedDeployOptions): Promise<Dep
     // Get stack outputs and persist state
     startStep('Persist deployment state');
     const outputs = await getStackOutputs(target.region, stackName);
-    const agentNames = context.projectSpec.agents.map(a => a.name);
+    const agentNames = context.projectSpec.agents?.map(a => a.name) || [];
     const agents = parseAgentOutputs(outputs, agentNames, stackName);
+
+    // Parse gateway outputs
+    const gatewaySpecs =
+      mcpSpec?.agentCoreGateways?.reduce(
+        (acc, gateway) => {
+          acc[gateway.name] = gateway;
+          return acc;
+        },
+        {} as Record<string, unknown>
+      ) ?? {};
+    const gateways = parseGatewayOutputs(outputs, gatewaySpecs);
+
     const existingState = await configIO.readDeployedState().catch(() => undefined);
-    const deployedState = buildDeployedState(target.name, stackName, agents, existingState, identityKmsKeyArn);
+    const deployedState = buildDeployedState(
+      target.name,
+      stackName,
+      agents,
+      gateways,
+      existingState,
+      identityKmsKeyArn
+    );
     await configIO.writeDeployedState(deployedState);
+
+    // Show gateway URLs if any were deployed
+    if (Object.keys(gateways).length > 0) {
+      const gatewayUrls = Object.entries(gateways)
+        .map(([name, gateway]) => `${name}: ${gateway.gatewayArn}`)
+        .join(', ');
+      logger.log(`Gateway URLs: ${gatewayUrls}`);
+    }
+
     endStep('success');
 
     logger.finalize(true);
@@ -255,7 +297,7 @@ export async function handleDeploy(options: ValidatedDeployOptions): Promise<Dep
       logPath: logger.getRelativeLogPath(),
       nextSteps: NEXT_STEPS,
     };
-  } catch (err) {
+  } catch (err: unknown) {
     logger.log(getErrorMessage(err), 'error');
     logger.finalize(false);
     return { success: false, error: getErrorMessage(err), logPath: logger.getRelativeLogPath() };

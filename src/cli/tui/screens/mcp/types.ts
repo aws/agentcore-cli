@@ -65,6 +65,12 @@ export interface AddGatewayTargetConfig {
   toolDefinition: ToolDefinition;
   /** Agent names to attach (only when exposure = mcp-runtime) */
   selectedAgents: string[];
+  /** Outbound auth configuration */
+  outboundAuth?: {
+    type: 'OAUTH' | 'API_KEY' | 'NONE';
+    credentialName?: string;
+    scopes?: string[];
+  };
 }
 
 export const MCP_TOOL_STEP_LABELS: Record<AddGatewayTargetStep, string> = {
@@ -82,8 +88,9 @@ export const MCP_TOOL_STEP_LABELS: Record<AddGatewayTargetStep, string> = {
 // ─────────────────────────────────────────────────────────────────────────────
 
 export const AUTHORIZER_TYPE_OPTIONS = [
-  { id: 'NONE', title: 'None', description: 'No authorization required' },
+  { id: 'AWS_IAM', title: 'AWS IAM', description: 'AWS Identity and Access Management authorization' },
   { id: 'CUSTOM_JWT', title: 'Custom JWT', description: 'JWT-based authorization via OIDC provider' },
+  { id: 'NONE', title: 'None', description: 'No authorization required — gateway is publicly accessible' },
 ] as const;
 
 export const TARGET_LANGUAGE_OPTIONS = [
@@ -96,9 +103,8 @@ export const EXPOSURE_MODE_OPTIONS = [
   { id: 'mcp-runtime', title: 'MCP Runtime', description: 'Deploy as AgentCore MCP Runtime (select agents to attach)' },
   {
     id: 'behind-gateway',
-    title: 'Behind Gateway (coming soon)',
+    title: 'Behind Gateway',
     description: 'Route through AgentCore Gateway',
-    disabled: true,
   },
 ] as const;
 

@@ -142,29 +142,9 @@ export const registerRemove = (program: Command) => {
   registerResourceRemove(removeCommand, 'memory', 'memory', 'Remove a memory provider from the project');
   registerResourceRemove(removeCommand, 'identity', 'identity', 'Remove an identity provider from the project');
 
-  // MCP Tool disabled - replace with registerResourceRemove() call when enabling
-  removeCommand
-    .command('gateway-target', { hidden: true })
-    .description('Remove an MCP tool from the project')
-    .option('--name <name>', 'Name of resource to remove')
-    .option('--force', 'Skip confirmation prompt')
-    .option('--json', 'Output as JSON')
-    .action(() => {
-      console.error('MCP Tool integration is coming soon.');
-      process.exit(1);
-    });
+  registerResourceRemove(removeCommand, 'gateway-target', 'gateway-target', 'Remove an MCP tool from the project');
 
-  // Gateway disabled - replace with registerResourceRemove() call when enabling
-  removeCommand
-    .command('gateway', { hidden: true })
-    .description('Remove a gateway from the project')
-    .option('--name <name>', 'Name of resource to remove')
-    .option('--force', 'Skip confirmation prompt')
-    .option('--json', 'Output as JSON')
-    .action(() => {
-      console.error('AgentCore Gateway integration is coming soon.');
-      process.exit(1);
-    });
+  registerResourceRemove(removeCommand, 'gateway', 'gateway', 'Remove a gateway from the project');
 
   // IMPORTANT: Register the catch-all argument LAST. No subcommands should be registered after this point.
   removeCommand

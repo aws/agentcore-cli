@@ -105,7 +105,7 @@ describe('ResourceGraph', () => {
       agentCoreGateways: [
         {
           name: 'my-gateway',
-          targets: [{ toolDefinitions: [{ name: 'tool-a' }, { name: 'tool-b' }] }],
+          targets: [{ name: 'target-a', toolDefinitions: [{ name: 'tool-a' }, { name: 'tool-b' }] }],
         },
       ],
     } as unknown as AgentCoreMcpSpec;
@@ -115,7 +115,7 @@ describe('ResourceGraph', () => {
     expect(lastFrame()).toContain('Gateways');
     expect(lastFrame()).toContain('my-gateway');
     expect(lastFrame()).toContain('2 tools');
-    expect(lastFrame()).toContain('tool-a');
+    expect(lastFrame()).toContain('target-a');
   });
 
   it('renders MCP runtime tools', () => {

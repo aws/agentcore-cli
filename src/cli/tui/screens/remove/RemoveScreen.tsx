@@ -6,8 +6,8 @@ const REMOVE_RESOURCES = [
   { id: 'agent', title: 'Agent', description: 'Remove an agent from the project' },
   { id: 'memory', title: 'Memory', description: 'Remove a memory provider' },
   { id: 'identity', title: 'Identity', description: 'Remove an identity provider' },
-  { id: 'gateway', title: 'Gateway (coming soon)', description: 'Remove an MCP gateway', disabled: true },
-  { id: 'gateway-target', title: 'MCP Tool (coming soon)', description: 'Remove an MCP tool', disabled: true },
+  { id: 'gateway', title: 'Gateway', description: 'Remove an MCP gateway' },
+  { id: 'gateway-target', title: 'MCP Tool', description: 'Remove an MCP tool' },
   { id: 'all', title: 'All', description: 'Reset entire agentcore project' },
 ] as const;
 
@@ -32,16 +32,14 @@ export function RemoveScreen({
   onSelect,
   onExit,
   agentCount,
-  // Gateway disabled - prefix with underscore until feature is re-enabled
-  gatewayCount: _gatewayCount,
-  // MCP Tool disabled - prefix with underscore until feature is re-enabled
-  mcpToolCount: _mcpToolCount,
+  gatewayCount,
+  mcpToolCount,
   memoryCount,
   identityCount,
 }: RemoveScreenProps) {
   const items: SelectableItem[] = useMemo(() => {
     return REMOVE_RESOURCES.map(r => {
-      let disabled = ('disabled' in r && r.disabled) || false;
+      let disabled = Boolean('disabled' in r && r.disabled);
       let description: string = r.description;
 
       switch (r.id) {
@@ -49,6 +47,18 @@ export function RemoveScreen({
           if (agentCount === 0) {
             disabled = true;
             description = 'No agents to remove';
+          }
+          break;
+        case 'gateway':
+          if (gatewayCount === 0) {
+            disabled = true;
+            description = 'No gateways to remove';
+          }
+          break;
+        case 'gateway-target':
+          if (mcpToolCount === 0) {
+            disabled = true;
+            description = 'No gateway targets to remove';
           }
           break;
         case 'memory':
@@ -70,7 +80,7 @@ export function RemoveScreen({
 
       return { ...r, disabled, description };
     });
-  }, [agentCount, memoryCount, identityCount]);
+  }, [agentCount, gatewayCount, mcpToolCount, memoryCount, identityCount]);
 
   const isDisabled = (item: SelectableItem) => item.disabled ?? false;
 

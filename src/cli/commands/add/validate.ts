@@ -1,3 +1,4 @@
+import { ConfigIO } from '../../../lib';
 import {
   AgentNameSchema,
   BuildTypeSchema,
@@ -24,6 +25,35 @@ export interface ValidationResult {
 const MEMORY_OPTIONS = ['none', 'shortTerm', 'longAndShortTerm'] as const;
 const OIDC_WELL_KNOWN_SUFFIX = '/.well-known/openid-configuration';
 const VALID_STRATEGIES = ['SEMANTIC', 'SUMMARIZATION', 'USER_PREFERENCE'];
+
+/**
+ * Validate that a credential name exists in the project spec.
+ */
+async function validateCredentialExists(credentialName: string): Promise<ValidationResult> {
+  try {
+    const configIO = new ConfigIO();
+    const project = await configIO.readProjectSpec();
+
+    const credentialExists = project.credentials.some(c => c.name === credentialName);
+    if (!credentialExists) {
+      const availableCredentials = project.credentials.map(c => c.name);
+      if (availableCredentials.length === 0) {
+        return {
+          valid: false,
+          error: `Credential "${credentialName}" not found. No credentials are configured. Add credentials using 'agentcore add identity'.`,
+        };
+      }
+      return {
+        valid: false,
+        error: `Credential "${credentialName}" not found. Available credentials: ${availableCredentials.join(', ')}`,
+      };
+    }
+
+    return { valid: true };
+  } catch {
+    return { valid: false, error: 'Failed to read project configuration' };
+  }
+}
 
 // Agent validation
 export function validateAddAgentOptions(options: AddAgentOptions): ValidationResult {
@@ -154,7 +184,7 @@ export function validateAddGatewayOptions(options: AddGatewayOptions): Validatio
 }
 
 // MCP Tool validation
-export function validateAddGatewayTargetOptions(options: AddGatewayTargetOptions): ValidationResult {
+export async function validateAddGatewayTargetOptions(options: AddGatewayTargetOptions): Promise<ValidationResult> {
   if (!options.name) {
     return { valid: false, error: '--name is required' };
   }
@@ -172,15 +202,7 @@ export function validateAddGatewayTargetOptions(options: AddGatewayTargetOptions
   }
 
   if (options.exposure !== 'mcp-runtime' && options.exposure !== 'behind-gateway') {
-    return { valid: false, error: 'Invalid exposure. Use mcp-runtime' };
-  }
-
-  // Gateway feature is disabled
-  if (options.exposure === 'behind-gateway') {
-    return {
-      valid: false,
-      error: "Behind-gateway exposure is coming soon. Use 'mcp-runtime' exposure instead.",
-    };
+    return { valid: false, error: "Invalid exposure. Use 'mcp-runtime' or 'behind-gateway'" };
   }
 
   if (options.exposure === 'mcp-runtime') {
@@ -193,6 +215,22 @@ export function validateAddGatewayTargetOptions(options: AddGatewayTargetOptions
       .filter(Boolean);
     if (agents.length === 0) {
       return { valid: false, error: 'At least one agent is required' };
+    }
+  }
+
+  // Validate outbound auth configuration
+  if (options.outboundAuthType && options.outboundAuthType !== 'NONE') {
+    if (!options.credentialName) {
+      return {
+        valid: false,
+        error: `--credential-name is required when outbound auth type is ${options.outboundAuthType}`,
+      };
+    }
+
+    // Validate that the credential exists
+    const credentialValidation = await validateCredentialExists(options.credentialName);
+    if (!credentialValidation.valid) {
+      return credentialValidation;
     }
   }
 

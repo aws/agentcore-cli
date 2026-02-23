@@ -46,7 +46,7 @@ export function AddGatewayTargetScreen({
         id: o.id,
         title: o.title,
         description: o.description,
-        disabled: 'disabled' in o ? o.disabled : undefined,
+        disabled: 'disabled' in o ? Boolean(o.disabled) : undefined,
       })),
     []
   );

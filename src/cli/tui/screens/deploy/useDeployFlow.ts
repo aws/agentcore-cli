@@ -129,7 +129,7 @@ export function useDeployFlow(options: DeployFlowOptions = {}): DeployFlowState 
     if (!ctx || !currentStackName || !target) return;
 
     const configIO = new ConfigIO();
-    const agentNames = ctx.projectSpec.agents.map((a: { name: string }) => a.name);
+    const agentNames = ctx.projectSpec.agents?.map((a: { name: string }) => a.name) || [];
 
     // Try to get outputs from CDK stream first (immediate, no API call)
     let outputs = streamOutputsRef.current ?? {};
@@ -167,7 +167,14 @@ export function useDeployFlow(options: DeployFlowOptions = {}): DeployFlowState 
     setStackOutputs(outputs);
 
     const existingState = await configIO.readDeployedState().catch(() => undefined);
-    const deployedState = buildDeployedState(target.name, currentStackName, agents, existingState, identityKmsKeyArn);
+    const deployedState = buildDeployedState(
+      target.name,
+      currentStackName,
+      agents,
+      {},
+      existingState,
+      identityKmsKeyArn
+    );
     await configIO.writeDeployedState(deployedState);
   }, [context, stackNames, logger, identityKmsKeyArn]);
 

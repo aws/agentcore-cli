@@ -50,6 +50,8 @@ export interface AddGatewayTargetOptions {
   agents?: string;
   gateway?: string;
   host?: 'Lambda' | 'AgentCoreRuntime';
+  outboundAuthType?: 'OAUTH' | 'API_KEY' | 'NONE';
+  credentialName?: string;
   json?: boolean;
 }
 

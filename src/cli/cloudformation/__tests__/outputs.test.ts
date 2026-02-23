@@ -15,6 +15,7 @@ describe('buildDeployedState', () => {
       'default',
       'TestStack',
       agents,
+      {},
       undefined,
       'arn:aws:kms:us-east-1:123456789012:key/abc-123'
     );
@@ -31,7 +32,7 @@ describe('buildDeployedState', () => {
       },
     };
 
-    const result = buildDeployedState('default', 'TestStack', agents);
+    const result = buildDeployedState('default', 'TestStack', agents, {});
 
     expect(result.targets.default!.resources?.identityKmsKeyArn).toBeUndefined();
   });
@@ -51,6 +52,7 @@ describe('buildDeployedState', () => {
     const result = buildDeployedState(
       'dev',
       'DevStack',
+      {},
       {},
       existingState,
       'arn:aws:kms:us-east-1:123456789012:key/dev-key'

@@ -64,8 +64,7 @@ async function handleAddAgentCLI(options: AddAgentOptions): Promise<void> {
   process.exit(result.success ? 0 : 1);
 }
 
-// Gateway disabled - rename to _handleAddGatewayCLI until feature is re-enabled
-async function _handleAddGatewayCLI(options: AddGatewayOptions): Promise<void> {
+async function handleAddGatewayCLI(options: AddGatewayOptions): Promise<void> {
   const validation = validateAddGatewayOptions(options);
   if (!validation.valid) {
     if (options.json) {
@@ -97,9 +96,8 @@ async function _handleAddGatewayCLI(options: AddGatewayOptions): Promise<void> {
   process.exit(result.success ? 0 : 1);
 }
 
-// MCP Tool disabled - prefix with underscore until feature is re-enabled
-async function _handleAddGatewayTargetCLI(options: AddGatewayTargetOptions): Promise<void> {
-  const validation = validateAddGatewayTargetOptions(options);
+async function handleAddGatewayTargetCLI(options: AddGatewayTargetOptions): Promise<void> {
+  const validation = await validateAddGatewayTargetOptions(options);
   if (!validation.valid) {
     if (options.json) {
       console.log(JSON.stringify({ success: false, error: validation.error }));
@@ -241,9 +239,9 @@ export function registerAdd(program: Command) {
       await handleAddAgentCLI(options as AddAgentOptions);
     });
 
-  // Subcommand: add gateway (disabled - coming soon)
+  // Subcommand: add gateway
   addCmd
-    .command('gateway', { hidden: true })
+    .command('gateway')
     .description('Add an MCP gateway to the project')
     .option('--name <name>', 'Gateway name')
     .option('--description <desc>', 'Gateway description')
@@ -253,14 +251,14 @@ export function registerAdd(program: Command) {
     .option('--allowed-clients <values>', 'Comma-separated allowed client IDs (required for CUSTOM_JWT)')
     .option('--agents <names>', 'Comma-separated agent names to attach gateway to')
     .option('--json', 'Output as JSON')
-    .action(() => {
-      console.error('AgentCore Gateway integration is coming soon.');
-      process.exit(1);
+    .action(async options => {
+      requireProject();
+      await handleAddGatewayCLI(options as AddGatewayOptions);
     });
 
-  // Subcommand: add gateway-target (disabled - coming soon)
+  // Subcommand: add gateway-target
   addCmd
-    .command('gateway-target', { hidden: true })
+    .command('gateway-target')
     .description('Add a gateway target to the project')
     .option('--name <name>', 'Tool name')
     .option('--description <desc>', 'Tool description')
@@ -270,9 +268,9 @@ export function registerAdd(program: Command) {
     .option('--gateway <name>', 'Gateway name (for behind-gateway)')
     .option('--host <host>', 'Compute host: Lambda or AgentCoreRuntime (for behind-gateway)')
     .option('--json', 'Output as JSON')
-    .action(() => {
-      console.error('MCP Tool integration is coming soon.');
-      process.exit(1);
+    .action(async options => {
+      requireProject();
+      await handleAddGatewayTargetCLI(options as AddGatewayTargetOptions);
     });
 
   // Subcommand: add memory (v2: top-level resource)

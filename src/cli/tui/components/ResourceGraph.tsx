@@ -1,5 +1,6 @@
 import type {
   AgentCoreDeployedState,
+  AgentCoreGatewayTarget,
   AgentCoreMcpRuntimeTool,
   AgentCoreMcpSpec,
   AgentCoreProjectSpec,
@@ -23,7 +24,7 @@ export interface AgentStatusInfo {
 
 interface ResourceGraphProps {
   project: AgentCoreProjectSpec;
-  mcp?: AgentCoreMcpSpec;
+  mcp?: AgentCoreMcpSpec & { unassignedTargets?: AgentCoreGatewayTarget[] };
   agentName?: string;
   agentStatuses?: Record<string, AgentStatusInfo>;
   deployedAgents?: Record<string, AgentCoreDeployedState>;
@@ -92,13 +93,15 @@ export function ResourceGraph({
   const credentials = project.credentials ?? [];
   const gateways = mcp?.agentCoreGateways ?? [];
   const mcpRuntimeTools = mcp?.mcpRuntimeTools ?? [];
+  const unassignedTargets = mcp?.unassignedTargets ?? [];
 
   const hasContent =
     agents.length > 0 ||
     memories.length > 0 ||
     credentials.length > 0 ||
     gateways.length > 0 ||
-    mcpRuntimeTools.length > 0;
+    mcpRuntimeTools.length > 0 ||
+    unassignedTargets.length > 0;
 
   return (
     <Box flexDirection="column">
@@ -173,12 +176,19 @@ export function ResourceGraph({
                   name={gateway.name}
                   detail={tools.length > 0 ? `${tools.length} tools` : undefined}
                 />
-                {tools.map(tool => (
-                  <Text key={tool.name}>
-                    {'    '}
-                    <Text color="cyan">{ICONS.tool}</Text> {tool.name}
-                  </Text>
-                ))}
+                {targets.map(target => {
+                  const displayText =
+                    target.targetType === 'mcpServer' && target.endpoint ? target.endpoint : target.name;
+                  return (
+                    <Text key={target.name}>
+                      {'    '}
+                      <Text color="cyan">{ICONS.tool}</Text> {displayText}
+                      {target.targetType === 'mcpServer' && target.endpoint && (
+                        <Text color="gray"> [{target.targetType}]</Text>
+                      )}
+                    </Text>
+                  );
+                })}
               </Box>
             );
           })}
@@ -197,6 +207,20 @@ export function ResourceGraph({
               name={tool.toolDefinition?.name ?? tool.name}
             />
           ))}
+        </Box>
+      )}
+
+      {/* Unassigned Targets */}
+      {unassignedTargets.length > 0 && (
+        <Box flexDirection="column">
+          <SectionHeader>⚠ Unassigned Targets</SectionHeader>
+          {unassignedTargets.map((target, idx) => {
+            const displayText =
+              target.targetType === 'mcpServer' && target.endpoint
+                ? target.endpoint
+                : (target.name ?? `Target ${idx + 1}`);
+            return <ResourceRow key={idx} icon="⚠" color="yellow" name={displayText} detail={target.targetType} />;
+          })}
         </Box>
       )}
 

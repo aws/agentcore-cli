@@ -42,6 +42,30 @@ export async function previewRemoveCredential(credentialName: string): Promise<R
     `Type: ${credential.type}`,
     `Note: .env file will not be modified`,
   ];
+
+  // Check for references in gateway targets
+  const referencingTargets: string[] = [];
+  try {
+    if (configIO.configExists('mcp')) {
+      const mcpSpec = await configIO.readMcpSpec();
+      for (const gateway of mcpSpec.agentCoreGateways) {
+        for (const target of gateway.targets) {
+          if (target.outboundAuth?.credentialName === credentialName) {
+            referencingTargets.push(`${gateway.name}/${target.name}`);
+          }
+        }
+      }
+    }
+  } catch {
+    // MCP config doesn't exist or is invalid - no references to check
+  }
+
+  if (referencingTargets.length > 0) {
+    summary.push(
+      `Warning: Credential "${credentialName}" is referenced by gateway targets: ${referencingTargets.join(', ')}. Removing it may break these targets.`
+    );
+  }
+
   const schemaChanges: SchemaChange[] = [];
 
   const afterSpec = {
@@ -69,6 +93,29 @@ export async function removeCredential(credentialName: string): Promise<RemovalR
     const credentialIndex = project.credentials.findIndex(c => c.name === credentialName);
     if (credentialIndex === -1) {
       return { ok: false, error: `Credential "${credentialName}" not found.` };
+    }
+
+    // Check for references in gateway targets and warn
+    const referencingTargets: string[] = [];
+    try {
+      if (configIO.configExists('mcp')) {
+        const mcpSpec = await configIO.readMcpSpec();
+        for (const gateway of mcpSpec.agentCoreGateways) {
+          for (const target of gateway.targets) {
+            if (target.outboundAuth?.credentialName === credentialName) {
+              referencingTargets.push(`${gateway.name}/${target.name}`);
+            }
+          }
+        }
+      }
+    } catch {
+      // MCP config doesn't exist or is invalid - no references to check
+    }
+
+    if (referencingTargets.length > 0) {
+      console.warn(
+        `Warning: Credential "${credentialName}" is referenced by gateway targets: ${referencingTargets.join(', ')}. Removing it may break these targets.`
+      );
     }
 
     project.credentials.splice(credentialIndex, 1);

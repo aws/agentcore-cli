@@ -237,7 +237,7 @@ describe('validate', () => {
 
   describe('validateAddGatewayTargetOptions', () => {
     // AC15: Required fields validated
-    it('returns error for missing required fields', () => {
+    it('returns error for missing required fields', async () => {
       const requiredFields: { field: keyof AddGatewayTargetOptions; error: string }[] = [
         { field: 'name', error: '--name is required' },
         { field: 'language', error: '--language is required' },
@@ -246,44 +246,49 @@ describe('validate', () => {
 
       for (const { field, error } of requiredFields) {
         const opts = { ...validGatewayTargetOptionsMcpRuntime, [field]: undefined };
-        const result = validateAddGatewayTargetOptions(opts);
+        const result = await validateAddGatewayTargetOptions(opts);
         expect(result.valid, `Should fail for missing ${String(field)}`).toBe(false);
         expect(result.error).toBe(error);
       }
     });
 
     // AC16: Invalid values rejected
-    it('returns error for invalid values', () => {
-      let result = validateAddGatewayTargetOptions({ ...validGatewayTargetOptionsMcpRuntime, language: 'Java' as any });
+    it('returns error for invalid values', async () => {
+      let result = await validateAddGatewayTargetOptions({
+        ...validGatewayTargetOptionsMcpRuntime,
+        language: 'Java' as any,
+      });
       expect(result.valid).toBe(false);
       expect(result.error?.includes('Invalid language')).toBeTruthy();
 
-      result = validateAddGatewayTargetOptions({ ...validGatewayTargetOptionsMcpRuntime, exposure: 'invalid' as any });
+      result = await validateAddGatewayTargetOptions({
+        ...validGatewayTargetOptionsMcpRuntime,
+        exposure: 'invalid' as any,
+      });
       expect(result.valid).toBe(false);
       expect(result.error?.includes('Invalid exposure')).toBeTruthy();
     });
 
     // AC17: mcp-runtime exposure requires agents
-    it('returns error for mcp-runtime without agents', () => {
-      let result = validateAddGatewayTargetOptions({ ...validGatewayTargetOptionsMcpRuntime, agents: undefined });
+    it('returns error for mcp-runtime without agents', async () => {
+      let result = await validateAddGatewayTargetOptions({ ...validGatewayTargetOptionsMcpRuntime, agents: undefined });
       expect(result.valid).toBe(false);
       expect(result.error).toBe('--agents is required for mcp-runtime exposure');
 
-      result = validateAddGatewayTargetOptions({ ...validGatewayTargetOptionsMcpRuntime, agents: ',,,' });
+      result = await validateAddGatewayTargetOptions({ ...validGatewayTargetOptionsMcpRuntime, agents: ',,,' });
       expect(result.valid).toBe(false);
       expect(result.error).toBe('At least one agent is required');
     });
 
-    // AC18: behind-gateway exposure is disabled (coming soon)
-    it('returns coming soon error for behind-gateway exposure', () => {
-      const result = validateAddGatewayTargetOptions({ ...validGatewayTargetOptionsBehindGateway });
-      expect(result.valid).toBe(false);
-      expect(result.error).toContain('coming soon');
+    // AC18: behind-gateway exposure is enabled
+    it('passes for valid behind-gateway options', async () => {
+      const result = await validateAddGatewayTargetOptions({ ...validGatewayTargetOptionsBehindGateway });
+      expect(result.valid).toBe(true);
     });
 
     // AC19: Valid options pass
-    it('passes for valid mcp-runtime options', () => {
-      expect(validateAddGatewayTargetOptions(validGatewayTargetOptionsMcpRuntime)).toEqual({ valid: true });
+    it('passes for valid mcp-runtime options', async () => {
+      expect(await validateAddGatewayTargetOptions(validGatewayTargetOptionsMcpRuntime)).toEqual({ valid: true });
     });
   });
 

@@ -178,10 +178,36 @@ function validateGatewayTargetLanguage(language: string): asserts language is 'P
 }
 
 /**
+ * Validate that a credential name exists in the project spec.
+ */
+async function validateCredentialName(credentialName: string): Promise<void> {
+  const configIO = new ConfigIO();
+  const project = await configIO.readProjectSpec();
+
+  const credentialExists = project.credentials.some(c => c.name === credentialName);
+  if (!credentialExists) {
+    const availableCredentials = project.credentials.map(c => c.name);
+    if (availableCredentials.length === 0) {
+      throw new Error(
+        `Credential "${credentialName}" not found. No credentials are configured. Add credentials using 'agentcore add identity'.`
+      );
+    }
+    throw new Error(
+      `Credential "${credentialName}" not found. Available credentials: ${availableCredentials.join(', ')}`
+    );
+  }
+}
+
+/**
  * Create an MCP tool (MCP runtime or behind gateway).
  */
 export async function createToolFromWizard(config: AddGatewayTargetConfig): Promise<CreateToolResult> {
   validateGatewayTargetLanguage(config.language);
+
+  // Validate credential if outboundAuth is configured
+  if (config.outboundAuth?.credentialName) {
+    await validateCredentialName(config.outboundAuth.credentialName);
+  }
 
   const configIO = new ConfigIO();
   const mcpSpec: AgentCoreMcpSpec = configIO.configExists('mcp')
@@ -301,6 +327,7 @@ export async function createToolFromWizard(config: AddGatewayTargetConfig): Prom
                 networkMode: 'PUBLIC',
               },
             },
+      ...(config.outboundAuth && { outboundAuth: config.outboundAuth }),
     };
 
     gateway.targets.push(target);

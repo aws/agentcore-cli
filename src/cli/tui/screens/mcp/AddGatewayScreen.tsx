@@ -139,12 +139,19 @@ export function AddGatewayScreen({ onComplete, onExit, existingGateways, availab
         )}
 
         {isAuthorizerStep && (
-          <WizardSelect
-            title="Select authorizer type"
-            description="How will clients authenticate to this gateway?"
-            items={authorizerItems}
-            selectedIndex={authorizerNav.selectedIndex}
-          />
+          <Box flexDirection="column">
+            <WizardSelect
+              title="Select authorizer type"
+              description="How will clients authenticate to this gateway?"
+              items={authorizerItems}
+              selectedIndex={authorizerNav.selectedIndex}
+            />
+            {authorizerItems[authorizerNav.selectedIndex]?.id === 'NONE' && (
+              <Box marginTop={1}>
+                <Text color="yellow">⚠️ Warning: Gateway will be publicly accessible without authorization</Text>
+              </Box>
+            )}
+          </Box>
         )}
 
         {isJwtConfigStep && (
