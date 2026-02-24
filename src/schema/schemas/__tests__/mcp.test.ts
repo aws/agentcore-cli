@@ -238,8 +238,8 @@ describe('RuntimeConfigSchema', () => {
     }
   });
 
-  it('accepts explicit PRIVATE networkMode', () => {
-    const result = RuntimeConfigSchema.safeParse({ ...validRuntime, networkMode: 'PRIVATE' });
+  it('accepts explicit VPC networkMode', () => {
+    const result = RuntimeConfigSchema.safeParse({ ...validRuntime, networkMode: 'VPC' });
     expect(result.success).toBe(true);
   });
 

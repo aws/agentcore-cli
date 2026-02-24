@@ -74,12 +74,12 @@ describe('NetworkModeSchema', () => {
     expect(NetworkModeSchema.safeParse('PUBLIC').success).toBe(true);
   });
 
-  it('accepts PRIVATE', () => {
-    expect(NetworkModeSchema.safeParse('PRIVATE').success).toBe(true);
+  it('accepts VPC', () => {
+    expect(NetworkModeSchema.safeParse('VPC').success).toBe(true);
   });
 
   it('rejects other modes', () => {
-    expect(NetworkModeSchema.safeParse('VPC').success).toBe(false);
+    expect(NetworkModeSchema.safeParse('PRIVATE').success).toBe(false);
   });
 });
 
