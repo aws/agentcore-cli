@@ -24,10 +24,17 @@ interface AddGatewayScreenProps {
   onExit: () => void;
   existingGateways: string[];
   availableAgents: string[];
+  unassignedTargets: string[];
 }
 
-export function AddGatewayScreen({ onComplete, onExit, existingGateways, availableAgents }: AddGatewayScreenProps) {
-  const wizard = useAddGatewayWizard();
+export function AddGatewayScreen({
+  onComplete,
+  onExit,
+  existingGateways,
+  availableAgents,
+  unassignedTargets,
+}: AddGatewayScreenProps) {
+  const wizard = useAddGatewayWizard(unassignedTargets.length);
 
   // JWT config sub-step tracking (0 = discoveryUrl, 1 = audience, 2 = clients)
   const [jwtSubStep, setJwtSubStep] = useState(0);
@@ -39,6 +46,11 @@ export function AddGatewayScreen({ onComplete, onExit, existingGateways, availab
     [availableAgents]
   );
 
+  const unassignedTargetItems: SelectableItem[] = useMemo(
+    () => unassignedTargets.map(name => ({ id: name, title: name })),
+    [unassignedTargets]
+  );
+
   const authorizerItems: SelectableItem[] = useMemo(
     () => AUTHORIZER_TYPE_OPTIONS.map(o => ({ id: o.id, title: o.title, description: o.description })),
     []
@@ -48,6 +60,7 @@ export function AddGatewayScreen({ onComplete, onExit, existingGateways, availab
   const isAuthorizerStep = wizard.step === 'authorizer';
   const isJwtConfigStep = wizard.step === 'jwt-config';
   const isAgentsStep = wizard.step === 'agents';
+  const isIncludeTargetsStep = wizard.step === 'include-targets';
   const isConfirmStep = wizard.step === 'confirm';
 
   const authorizerNav = useListNavigation({
@@ -63,6 +76,15 @@ export function AddGatewayScreen({ onComplete, onExit, existingGateways, availab
     onConfirm: ids => wizard.setAgents(ids),
     onExit: () => wizard.goBack(),
     isActive: isAgentsStep,
+    requireSelection: false,
+  });
+
+  const targetsNav = useMultiSelectNavigation({
+    items: unassignedTargetItems,
+    getId: item => item.id,
+    onConfirm: ids => wizard.setSelectedTargets(ids),
+    onExit: () => wizard.goBack(),
+    isActive: isIncludeTargetsStep,
     requireSelection: false,
   });
 
@@ -113,13 +135,14 @@ export function AddGatewayScreen({ onComplete, onExit, existingGateways, availab
     }
   };
 
-  const helpText = isAgentsStep
-    ? 'Space toggle · Enter confirm · Esc back'
-    : isConfirmStep
-      ? HELP_TEXT.CONFIRM_CANCEL
-      : isAuthorizerStep
-        ? HELP_TEXT.NAVIGATE_SELECT
-        : HELP_TEXT.TEXT_INPUT;
+  const helpText =
+    isAgentsStep || isIncludeTargetsStep
+      ? 'Space toggle · Enter confirm · Esc back'
+      : isConfirmStep
+        ? HELP_TEXT.CONFIRM_CANCEL
+        : isAuthorizerStep
+          ? HELP_TEXT.NAVIGATE_SELECT
+          : HELP_TEXT.TEXT_INPUT;
 
   const headerContent = <StepIndicator steps={wizard.steps} currentStep={wizard.step} labels={GATEWAY_STEP_LABELS} />;
 
@@ -178,6 +201,18 @@ export function AddGatewayScreen({ onComplete, onExit, existingGateways, availab
             </Text>
           ))}
 
+        {isIncludeTargetsStep &&
+          (unassignedTargetItems.length > 0 ? (
+            <WizardMultiSelect
+              title="Select unassigned targets to include in this gateway"
+              items={unassignedTargetItems}
+              cursorIndex={targetsNav.cursorIndex}
+              selectedIds={targetsNav.selectedIds}
+            />
+          ) : (
+            <Text dimColor>No unassigned targets available. Press Enter to continue.</Text>
+          ))}
+
         {isConfirmStep && (
           <ConfirmReview
             fields={[
@@ -192,6 +227,13 @@ export function AddGatewayScreen({ onComplete, onExit, existingGateways, availab
                   ]
                 : []),
               { label: 'Agents', value: wizard.config.agents.length > 0 ? wizard.config.agents.join(', ') : '(none)' },
+              {
+                label: 'Targets',
+                value:
+                  wizard.config.selectedTargets && wizard.config.selectedTargets.length > 0
+                    ? wizard.config.selectedTargets.join(', ')
+                    : '(none)',
+              },
             ]}
           />
         )}

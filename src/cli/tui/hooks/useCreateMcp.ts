@@ -5,6 +5,7 @@ import {
   getAvailableAgents,
   getExistingGateways,
   getExistingToolNames,
+  getUnassignedTargets,
 } from '../../operations/mcp/create-mcp';
 import type { AddGatewayConfig, AddGatewayTargetConfig } from '../screens/mcp/types';
 import { useCallback, useEffect, useState } from 'react';
@@ -116,4 +117,23 @@ export function useExistingToolNames() {
   }, []);
 
   return { toolNames, refresh };
+}
+
+export function useUnassignedTargets() {
+  const [targets, setTargets] = useState<string[]>([]);
+
+  useEffect(() => {
+    async function load() {
+      const result = await getUnassignedTargets();
+      setTargets(result.map(t => t.name));
+    }
+    void load();
+  }, []);
+
+  const refresh = useCallback(async () => {
+    const result = await getUnassignedTargets();
+    setTargets(result.map(t => t.name));
+  }, []);
+
+  return { targets, refresh };
 }

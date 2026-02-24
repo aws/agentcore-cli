@@ -3,7 +3,7 @@ import type { SelectableItem } from '../../components';
 import { HELP_TEXT } from '../../constants';
 import { useListNavigation } from '../../hooks';
 import { useAgents, useAttachGateway, useGateways } from '../../hooks/useAttach';
-import { useCreateGateway, useExistingGateways } from '../../hooks/useCreateMcp';
+import { useCreateGateway, useExistingGateways, useUnassignedTargets } from '../../hooks/useCreateMcp';
 import { AddSuccessScreen } from '../add/AddSuccessScreen';
 import { AddGatewayScreen } from './AddGatewayScreen';
 import type { AddGatewayConfig } from './types';
@@ -55,6 +55,7 @@ export function AddGatewayFlow({
 }: AddGatewayFlowProps) {
   const { createGateway, reset: resetCreate } = useCreateGateway();
   const { gateways: existingGateways, refresh: refreshGateways } = useExistingGateways();
+  const { targets: unassignedTargets } = useUnassignedTargets();
   const [flow, setFlow] = useState<FlowState>({ name: 'mode-select' });
 
   // Bind flow hooks
@@ -157,6 +158,7 @@ export function AddGatewayFlow({
         <AddGatewayScreen
           existingGateways={existingGateways}
           availableAgents={availableAgents}
+          unassignedTargets={unassignedTargets}
           onComplete={handleCreateComplete}
           onExit={onBack}
         />
@@ -183,6 +185,7 @@ export function AddGatewayFlow({
       <AddGatewayScreen
         existingGateways={existingGateways}
         availableAgents={availableAgents}
+        unassignedTargets={unassignedTargets}
         onComplete={handleCreateComplete}
         onExit={() => setFlow({ name: 'mode-select' })}
       />

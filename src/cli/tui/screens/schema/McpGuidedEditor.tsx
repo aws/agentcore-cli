@@ -90,7 +90,7 @@ function McpEditorBody(props: {
   onRequestAdd?: () => void;
 }) {
   const [gateways, setGateways] = useState<AgentCoreGateway[]>(props.initialSpec.agentCoreGateways);
-  const [unassignedTargets, _setUnassignedTargets] = useState<AgentCoreGatewayTarget[]>(
+  const [unassignedTargets, setUnassignedTargets] = useState<AgentCoreGatewayTarget[]>(
     props.initialSpec.unassignedTargets ?? []
   );
   // Only gateways view mode
@@ -105,6 +105,9 @@ function McpEditorBody(props: {
   // Target editing state
   const [selectedTargetIndex, setSelectedTargetIndex] = useState(0);
   const [editingTargetFieldId, setEditingTargetFieldId] = useState<string | null>(null);
+  // Unassigned target assignment state
+  const [selectedUnassignedIndex, setSelectedUnassignedIndex] = useState(0);
+  const [assigningTarget, setAssigningTarget] = useState(false);
 
   // Define editable fields for the current item
   const currentGateway = gateways[selectedIndex];
@@ -137,6 +140,28 @@ function McpEditorBody(props: {
     } else {
       setSaveError(result.error ?? 'Failed to save');
     }
+  }
+
+  function assignTargetToGateway(targetIndex: number, gatewayIndex: number) {
+    const target = unassignedTargets[targetIndex];
+    if (!target) return;
+
+    // Remove from unassigned targets
+    const newUnassignedTargets = unassignedTargets.filter((_, idx) => idx !== targetIndex);
+    setUnassignedTargets(newUnassignedTargets);
+
+    // Add to selected gateway
+    const newGateways = gateways.map((gateway, idx) => {
+      if (idx === gatewayIndex) {
+        return {
+          ...gateway,
+          targets: [...gateway.targets, target],
+        };
+      }
+      return gateway;
+    });
+    setGateways(newGateways);
+    setDirty(true);
   }
 
   useInput((input, key) => {
@@ -219,6 +244,10 @@ function McpEditorBody(props: {
 
     // List mode keys
     if (key.escape) {
+      if (assigningTarget) {
+        setAssigningTarget(false);
+        return;
+      }
       if (expandedIndex !== null) {
         setExpandedIndex(null);
         return;
@@ -229,6 +258,51 @@ function McpEditorBody(props: {
       }
       props.onBack();
       return;
+    }
+
+    // Handle unassigned target assignment mode
+    if (assigningTarget) {
+      if (key.upArrow && gateways.length > 0) {
+        setSelectedIndex(idx => Math.max(0, idx - 1));
+        return;
+      }
+      if (key.downArrow && gateways.length > 0) {
+        setSelectedIndex(idx => Math.min(gateways.length - 1, idx + 1));
+        return;
+      }
+      if (key.return && gateways.length > 0) {
+        assignTargetToGateway(selectedUnassignedIndex, selectedIndex);
+        setAssigningTarget(false);
+        setSelectedUnassignedIndex(0);
+        return;
+      }
+      return;
+    }
+
+    // Handle unassigned targets navigation (when not in assignment mode)
+    if (unassignedTargets.length > 0 && !assigningTarget) {
+      // U key to focus unassigned targets
+      if (input.toLowerCase() === 'u') {
+        setSelectedUnassignedIndex(0);
+        return;
+      }
+
+      // When focused on unassigned targets, use left/right arrows to navigate
+      if (key.leftArrow && unassignedTargets.length > 0) {
+        setSelectedUnassignedIndex(idx => Math.max(0, idx - 1));
+        return;
+      }
+      if (key.rightArrow && unassignedTargets.length > 0) {
+        setSelectedUnassignedIndex(idx => Math.min(unassignedTargets.length - 1, idx + 1));
+        return;
+      }
+
+      // Enter to start assignment when focused on unassigned target
+      if (key.return && selectedUnassignedIndex < unassignedTargets.length) {
+        setAssigningTarget(true);
+        setSelectedIndex(0);
+        return;
+      }
     }
 
     // A to add (works in both views)
@@ -612,21 +686,50 @@ function McpEditorBody(props: {
         <Box marginTop={1}>
           <Panel title={`⚠ Unassigned Targets (${unassignedTargets.length})`} fullWidth>
             <Box flexDirection="column">
-              {unassignedTargets.map((target, idx) => {
-                const targetName = target.name ?? `Target ${idx + 1}`;
-                const targetType = target.targetType;
-                const endpoint = target.endpoint;
-                const displayInfo = endpoint ?? target.compute?.host ?? targetType;
-                return (
-                  <Box key={idx} flexDirection="row" gap={1}>
-                    <Text color="yellow">⚠</Text>
-                    <Text color="yellow">{targetName}</Text>
-                    <Text dimColor>
-                      ({targetType} · {displayInfo})
-                    </Text>
-                  </Box>
-                );
-              })}
+              {assigningTarget && (
+                <Box marginBottom={1}>
+                  <Text color="cyan">
+                    Assign &quot;{unassignedTargets[selectedUnassignedIndex]?.name}&quot; to gateway:
+                  </Text>
+                </Box>
+              )}
+              {assigningTarget
+                ? // Show gateway selection for assignment
+                  gateways.map((gateway, idx) => (
+                    <Box key={idx} flexDirection="row" gap={1}>
+                      <Text color={idx === selectedIndex ? 'cyan' : 'white'}>{idx === selectedIndex ? '>' : ' '}</Text>
+                      <Text color={idx === selectedIndex ? 'cyan' : 'white'}>{gateway.name}</Text>
+                    </Box>
+                  ))
+                : // Show unassigned targets
+                  unassignedTargets.map((target, idx) => {
+                    const targetName = target.name ?? `Target ${idx + 1}`;
+                    const targetType = target.targetType;
+                    const endpoint = target.endpoint;
+                    const displayInfo = endpoint ?? target.compute?.host ?? targetType;
+                    const isSelected = idx === selectedUnassignedIndex;
+                    return (
+                      <Box key={idx} flexDirection="row" gap={1}>
+                        <Text color="yellow">⚠</Text>
+                        <Text color={isSelected ? 'cyan' : 'yellow'}>
+                          {isSelected ? '>' : ' '} {targetName}
+                        </Text>
+                        <Text dimColor>
+                          ({targetType} · {displayInfo})
+                        </Text>
+                      </Box>
+                    );
+                  })}
+              {!assigningTarget && unassignedTargets.length > 0 && (
+                <Box marginTop={1}>
+                  <Text dimColor>U select · ←→ navigate · Enter assign</Text>
+                </Box>
+              )}
+              {assigningTarget && (
+                <Box marginTop={1}>
+                  <Text dimColor>↑↓ select gateway · Enter confirm · Esc cancel</Text>
+                </Box>
+              )}
             </Box>
           </Panel>
         </Box>

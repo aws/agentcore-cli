@@ -34,7 +34,7 @@ export async function previewRemoveGateway(gatewayName: string): Promise<Removal
   const schemaChanges: SchemaChange[] = [];
 
   if (gateway.targets.length > 0) {
-    summary.push(`Note: ${gateway.targets.length} target(s) behind this gateway will become orphaned`);
+    summary.push(`Note: ${gateway.targets.length} target(s) will become unassigned`);
   }
 
   // Compute schema changes
@@ -52,9 +52,17 @@ export async function previewRemoveGateway(gatewayName: string): Promise<Removal
  * Compute the MCP spec after removing a gateway.
  */
 function computeRemovedGatewayMcpSpec(mcpSpec: AgentCoreMcpSpec, gatewayName: string): AgentCoreMcpSpec {
+  const gatewayToRemove = mcpSpec.agentCoreGateways.find(g => g.name === gatewayName);
+  const targetsToPreserve = gatewayToRemove?.targets ?? [];
+
   return {
     ...mcpSpec,
     agentCoreGateways: mcpSpec.agentCoreGateways.filter(g => g.name !== gatewayName),
+    // Preserve gateway's targets as unassigned so the user doesn't lose them.
+    // Only add the field if there are targets to preserve or unassignedTargets already exists.
+    ...(targetsToPreserve.length > 0 || mcpSpec.unassignedTargets
+      ? { unassignedTargets: [...(mcpSpec.unassignedTargets ?? []), ...targetsToPreserve] }
+      : {}),
   };
 }
 

@@ -16,20 +16,32 @@ function getDefaultConfig(): AddGatewayConfig {
     agents: [],
     authorizerType: 'NONE',
     jwtConfig: undefined,
+    selectedTargets: [],
   };
 }
 
-export function useAddGatewayWizard() {
+export function useAddGatewayWizard(unassignedTargetsCount = 0) {
   const [config, setConfig] = useState<AddGatewayConfig>(getDefaultConfig);
   const [step, setStep] = useState<AddGatewayStep>('name');
 
-  // Dynamic steps based on authorizer type
+  // Dynamic steps based on authorizer type and unassigned targets
   const steps = useMemo<AddGatewayStep[]>(() => {
+    const baseSteps: AddGatewayStep[] = ['name', 'authorizer'];
+
     if (config.authorizerType === 'CUSTOM_JWT') {
-      return ['name', 'authorizer', 'jwt-config', 'agents', 'confirm'];
+      baseSteps.push('jwt-config');
     }
-    return ['name', 'authorizer', 'agents', 'confirm'];
-  }, [config.authorizerType]);
+
+    baseSteps.push('agents');
+
+    if (unassignedTargetsCount > 0) {
+      baseSteps.push('include-targets');
+    }
+
+    baseSteps.push('confirm');
+
+    return baseSteps;
+  }, [config.authorizerType, unassignedTargetsCount]);
 
   const currentIndex = steps.indexOf(step);
 
@@ -69,10 +81,21 @@ export function useAddGatewayWizard() {
     []
   );
 
-  const setAgents = useCallback((agents: string[]) => {
+  const setAgents = useCallback(
+    (agents: string[]) => {
+      setConfig(c => ({
+        ...c,
+        agents,
+      }));
+      setStep(unassignedTargetsCount > 0 ? 'include-targets' : 'confirm');
+    },
+    [unassignedTargetsCount]
+  );
+
+  const setSelectedTargets = useCallback((selectedTargets: string[]) => {
     setConfig(c => ({
       ...c,
-      agents,
+      selectedTargets,
     }));
     setStep('confirm');
   }, []);
@@ -92,6 +115,7 @@ export function useAddGatewayWizard() {
     setAuthorizerType,
     setJwtConfig,
     setAgents,
+    setSelectedTargets,
     reset,
   };
 }

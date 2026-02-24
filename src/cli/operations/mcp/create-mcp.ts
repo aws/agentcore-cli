@@ -81,6 +81,22 @@ function buildAuthorizerConfiguration(config: AddGatewayConfig): AgentCoreGatewa
 }
 
 /**
+ * Get list of unassigned targets from MCP spec.
+ */
+export async function getUnassignedTargets(): Promise<AgentCoreGatewayTarget[]> {
+  try {
+    const configIO = new ConfigIO();
+    if (!configIO.configExists('mcp')) {
+      return [];
+    }
+    const mcpSpec = await configIO.readMcpSpec();
+    return mcpSpec.unassignedTargets ?? [];
+  } catch {
+    return [];
+  }
+}
+
+/**
  * Get list of existing gateway names from project spec.
  */
 export async function getExistingGateways(): Promise<string[]> {
@@ -160,15 +176,34 @@ export async function createGatewayFromWizard(config: AddGatewayConfig): Promise
     throw new Error(`Gateway "${config.name}" already exists.`);
   }
 
+  // Collect selected unassigned targets
+  const selectedTargets: AgentCoreGatewayTarget[] = [];
+  if (config.selectedTargets && config.selectedTargets.length > 0) {
+    const unassignedTargets = mcpSpec.unassignedTargets ?? [];
+    for (const targetName of config.selectedTargets) {
+      const target = unassignedTargets.find(t => t.name === targetName);
+      if (target) {
+        selectedTargets.push(target);
+      }
+    }
+  }
+
   const gateway: AgentCoreGateway = {
     name: config.name,
     description: config.description,
-    targets: [],
+    targets: selectedTargets,
     authorizerType: config.authorizerType,
     authorizerConfiguration: buildAuthorizerConfiguration(config),
   };
 
   mcpSpec.agentCoreGateways.push(gateway);
+
+  // Remove selected targets from unassigned targets
+  if (config.selectedTargets && config.selectedTargets.length > 0) {
+    const selected = config.selectedTargets;
+    mcpSpec.unassignedTargets = (mcpSpec.unassignedTargets ?? []).filter(t => !selected.includes(t.name));
+  }
+
   await configIO.writeMcpSpec(mcpSpec);
 
   return { name: config.name };
