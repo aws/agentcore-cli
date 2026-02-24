@@ -6,6 +6,7 @@ import {
   TargetLanguageSchema,
   getSupportedModelProviders,
 } from '../../../schema';
+import { validateVpcOptions } from '../shared/vpc-utils';
 import type { CreateOptions } from './types';
 import { existsSync } from 'fs';
 import { join } from 'path';
@@ -120,6 +121,9 @@ export function validateCreateOptions(options: CreateOptions, cwd?: string): Val
       };
     }
   }
+
+  const vpcResult = validateVpcOptions(options);
+  if (!vpcResult.valid) return vpcResult;
 
   return { valid: true };
 }
