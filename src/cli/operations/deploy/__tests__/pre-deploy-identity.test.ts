@@ -1,14 +1,30 @@
-import { setupApiKeyProviders } from '../pre-deploy-identity.js';
+import {
+  getAllCredentials,
+  hasOwnedIdentityOAuthProviders,
+  setupApiKeyProviders,
+  setupOAuth2Providers,
+} from '../pre-deploy-identity.js';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-const { mockKmsSend, mockControlSend, mockSetTokenVaultKmsKey, mockReadEnvFile, mockGetCredentialProvider } =
-  vi.hoisted(() => ({
-    mockKmsSend: vi.fn(),
-    mockControlSend: vi.fn(),
-    mockSetTokenVaultKmsKey: vi.fn(),
-    mockReadEnvFile: vi.fn(),
-    mockGetCredentialProvider: vi.fn(),
-  }));
+const {
+  mockKmsSend,
+  mockControlSend,
+  mockSetTokenVaultKmsKey,
+  mockReadEnvFile,
+  mockGetCredentialProvider,
+  mockOAuth2ProviderExists,
+  mockCreateOAuth2Provider,
+  mockUpdateOAuth2Provider,
+} = vi.hoisted(() => ({
+  mockKmsSend: vi.fn(),
+  mockControlSend: vi.fn(),
+  mockSetTokenVaultKmsKey: vi.fn(),
+  mockReadEnvFile: vi.fn(),
+  mockGetCredentialProvider: vi.fn(),
+  mockOAuth2ProviderExists: vi.fn(),
+  mockCreateOAuth2Provider: vi.fn(),
+  mockUpdateOAuth2Provider: vi.fn(),
+}));
 
 vi.mock('@aws-sdk/client-kms', () => ({
   KMSClient: class {
@@ -35,17 +51,27 @@ vi.mock('../../identity/index.js', () => ({
   updateApiKeyProvider: vi.fn(),
 }));
 
+vi.mock('../../identity/oauth2-credential-provider.js', () => ({
+  oAuth2ProviderExists: mockOAuth2ProviderExists,
+  createOAuth2Provider: mockCreateOAuth2Provider,
+  updateOAuth2Provider: mockUpdateOAuth2Provider,
+}));
+
 vi.mock('../../identity/create-identity.js', () => ({
-  computeDefaultCredentialEnvVarName: vi.fn((name: string) => `${name}_API_KEY`),
+  computeDefaultCredentialEnvVarName: vi.fn((name: string) => `AGENTCORE_CREDENTIAL_${name.toUpperCase()}`),
 }));
 
 vi.mock('../../../../lib/index.js', () => ({
   SecureCredentials: class {
-    static fromEnvVars() {
-      return {
-        merge: () => ({}),
-        get: () => undefined,
-      };
+    constructor(private envVars: Record<string, string>) {}
+    static fromEnvVars(envVars: Record<string, string>) {
+      return new this(envVars);
+    }
+    merge(_other: any) {
+      return this;
+    }
+    get(key: string) {
+      return this.envVars[key];
     }
   },
   readEnvFile: mockReadEnvFile,
@@ -171,5 +197,187 @@ describe('setupApiKeyProviders - KMS key reuse via GetTokenVault', () => {
     expect(result.hasErrors).toBe(false);
     expect(mockControlSend).not.toHaveBeenCalled();
     expect(mockKmsSend).not.toHaveBeenCalled();
+  });
+});
+
+describe('hasOwnedIdentityOAuthProviders', () => {
+  it('returns true when OAuthCredentialProvider exists', () => {
+    const projectSpec = {
+      credentials: [
+        { name: 'oauth-cred', type: 'OAuthCredentialProvider' },
+        { name: 'api-cred', type: 'ApiKeyCredentialProvider' },
+      ],
+    };
+    expect(hasOwnedIdentityOAuthProviders(projectSpec as any)).toBe(true);
+  });
+
+  it('returns false when only ApiKey credentials exist', () => {
+    const projectSpec = {
+      credentials: [{ name: 'api-cred', type: 'ApiKeyCredentialProvider' }],
+    };
+    expect(hasOwnedIdentityOAuthProviders(projectSpec as any)).toBe(false);
+  });
+
+  it('returns false when no credentials exist', () => {
+    const projectSpec = { credentials: [] };
+    expect(hasOwnedIdentityOAuthProviders(projectSpec as any)).toBe(false);
+  });
+});
+
+describe('getAllCredentials', () => {
+  it('returns API key env var for ApiKeyCredentialProvider', () => {
+    const projectSpec = {
+      credentials: [{ name: 'test-api', type: 'ApiKeyCredentialProvider' }],
+    };
+    const result = getAllCredentials(projectSpec as any);
+    expect(result).toEqual([{ providerName: 'test-api', envVarName: 'AGENTCORE_CREDENTIAL_TEST-API' }]);
+  });
+
+  it('returns CLIENT_ID and CLIENT_SECRET vars for OAuthCredentialProvider', () => {
+    const projectSpec = {
+      credentials: [{ name: 'oauth-provider', type: 'OAuthCredentialProvider' }],
+    };
+    const result = getAllCredentials(projectSpec as any);
+    expect(result).toEqual([
+      { providerName: 'oauth-provider', envVarName: 'AGENTCORE_CREDENTIAL_OAUTH_PROVIDER_CLIENT_ID' },
+      { providerName: 'oauth-provider', envVarName: 'AGENTCORE_CREDENTIAL_OAUTH_PROVIDER_CLIENT_SECRET' },
+    ]);
+  });
+
+  it('handles both credential types together', () => {
+    const projectSpec = {
+      credentials: [
+        { name: 'api-key', type: 'ApiKeyCredentialProvider' },
+        { name: 'oauth-cred', type: 'OAuthCredentialProvider' },
+      ],
+    };
+    const result = getAllCredentials(projectSpec as any);
+    expect(result).toEqual([
+      { providerName: 'api-key', envVarName: 'AGENTCORE_CREDENTIAL_API-KEY' },
+      { providerName: 'oauth-cred', envVarName: 'AGENTCORE_CREDENTIAL_OAUTH_CRED_CLIENT_ID' },
+      { providerName: 'oauth-cred', envVarName: 'AGENTCORE_CREDENTIAL_OAUTH_CRED_CLIENT_SECRET' },
+    ]);
+  });
+
+  it('uppercases and replaces hyphens with underscores', () => {
+    const projectSpec = {
+      credentials: [{ name: 'my-oauth-provider', type: 'OAuthCredentialProvider' }],
+    };
+    const result = getAllCredentials(projectSpec as any);
+    expect(result[0]!.envVarName).toBe('AGENTCORE_CREDENTIAL_MY_OAUTH_PROVIDER_CLIENT_ID');
+    expect(result[1]!.envVarName).toBe('AGENTCORE_CREDENTIAL_MY_OAUTH_PROVIDER_CLIENT_SECRET');
+  });
+});
+
+describe('setupOAuth2Providers', () => {
+  afterEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it('creates OAuth2 provider when it does not exist', async () => {
+    mockReadEnvFile.mockResolvedValue({
+      AGENTCORE_CREDENTIAL_TEST_OAUTH_CLIENT_ID: 'client123',
+      AGENTCORE_CREDENTIAL_TEST_OAUTH_CLIENT_SECRET: 'secret456',
+    });
+    mockOAuth2ProviderExists.mockResolvedValue(false);
+    mockCreateOAuth2Provider.mockResolvedValue({
+      success: true,
+      result: { credentialProviderArn: 'arn:provider', clientSecretArn: 'arn:secret', callbackUrl: 'https://callback' },
+    });
+
+    const projectSpec = {
+      credentials: [
+        {
+          name: 'test-oauth',
+          type: 'OAuthCredentialProvider',
+          vendor: 'Google',
+          discoveryUrl: 'https://accounts.google.com/.well-known/openid_configuration',
+        },
+      ],
+    };
+
+    const result = await setupOAuth2Providers({
+      projectSpec: projectSpec as any,
+      configBaseDir: '/tmp',
+      region: 'us-east-1',
+    });
+
+    expect(result.hasErrors).toBe(false);
+    expect(result.results).toHaveLength(1);
+    expect(result.results[0]!.status).toBe('created');
+    expect(mockCreateOAuth2Provider).toHaveBeenCalledWith(expect.anything(), {
+      name: 'test-oauth',
+      vendor: 'Google',
+      discoveryUrl: 'https://accounts.google.com/.well-known/openid_configuration',
+      clientId: 'client123',
+      clientSecret: 'secret456',
+    });
+  });
+
+  it('updates OAuth2 provider when it exists', async () => {
+    mockReadEnvFile.mockResolvedValue({
+      AGENTCORE_CREDENTIAL_TEST_OAUTH_CLIENT_ID: 'client123',
+      AGENTCORE_CREDENTIAL_TEST_OAUTH_CLIENT_SECRET: 'secret456',
+    });
+    mockOAuth2ProviderExists.mockResolvedValue(true);
+    mockUpdateOAuth2Provider.mockResolvedValue({ success: true, result: {} });
+
+    const projectSpec = {
+      credentials: [{ name: 'test-oauth', type: 'OAuthCredentialProvider' }],
+    };
+
+    const result = await setupOAuth2Providers({
+      projectSpec: projectSpec as any,
+      configBaseDir: '/tmp',
+      region: 'us-east-1',
+    });
+
+    expect(result.hasErrors).toBe(false);
+    expect(result.results).toHaveLength(1);
+    expect(result.results[0]!.status).toBe('updated');
+    expect(mockUpdateOAuth2Provider).toHaveBeenCalled();
+  });
+
+  it('skips when env vars are missing', async () => {
+    mockReadEnvFile.mockResolvedValue({});
+
+    const projectSpec = {
+      credentials: [{ name: 'test-oauth', type: 'OAuthCredentialProvider' }],
+    };
+
+    const result = await setupOAuth2Providers({
+      projectSpec: projectSpec as any,
+      configBaseDir: '/tmp',
+      region: 'us-east-1',
+    });
+
+    expect(result.hasErrors).toBe(false);
+    expect(result.results).toHaveLength(1);
+    expect(result.results[0]!.status).toBe('skipped');
+    expect(result.results[0]!.error).toContain('Missing');
+  });
+
+  it('returns error on failure', async () => {
+    mockReadEnvFile.mockResolvedValue({
+      AGENTCORE_CREDENTIAL_TEST_OAUTH_CLIENT_ID: 'client123',
+      AGENTCORE_CREDENTIAL_TEST_OAUTH_CLIENT_SECRET: 'secret456',
+    });
+    mockOAuth2ProviderExists.mockResolvedValue(false);
+    mockCreateOAuth2Provider.mockResolvedValue({ success: false, error: 'Creation failed' });
+
+    const projectSpec = {
+      credentials: [{ name: 'test-oauth', type: 'OAuthCredentialProvider' }],
+    };
+
+    const result = await setupOAuth2Providers({
+      projectSpec: projectSpec as any,
+      configBaseDir: '/tmp',
+      region: 'us-east-1',
+    });
+
+    expect(result.hasErrors).toBe(true);
+    expect(result.results).toHaveLength(1);
+    expect(result.results[0]!.status).toBe('error');
+    expect(result.results[0]!.error).toBe('Creation failed');
   });
 });

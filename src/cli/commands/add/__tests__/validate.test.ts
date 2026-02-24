@@ -12,7 +12,15 @@ import {
   validateAddIdentityOptions,
   validateAddMemoryOptions,
 } from '../validate.js';
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+
+const mockReadProjectSpec = vi.fn();
+
+vi.mock('../../../../lib/index.js', () => ({
+  ConfigIO: class {
+    readProjectSpec = mockReadProjectSpec;
+  },
+}));
 
 // Helper: valid base options for each type
 const validAgentOptionsByo: AddAgentOptions = {
@@ -64,6 +72,8 @@ const validIdentityOptions: AddIdentityOptions = {
 };
 
 describe('validate', () => {
+  afterEach(() => vi.clearAllMocks());
+
   describe('validateAddAgentOptions', () => {
     // AC1: All required fields validated
     it('returns error for missing required fields', () => {
@@ -256,6 +266,107 @@ describe('validate', () => {
     // AC18: Valid options pass
     it('passes for valid gateway target options', async () => {
       const result = await validateAddGatewayTargetOptions({ ...validGatewayTargetOptions });
+      expect(result.valid).toBe(true);
+    });
+    // AC20: existing-endpoint source validation
+    it('passes for valid existing-endpoint with https', async () => {
+      const options: AddGatewayTargetOptions = {
+        name: 'test-tool',
+        source: 'existing-endpoint',
+        endpoint: 'https://example.com/mcp',
+      };
+      const result = await validateAddGatewayTargetOptions(options);
+      expect(result.valid).toBe(true);
+      expect(options.language).toBe('Other');
+    });
+
+    it('passes for valid existing-endpoint with http', async () => {
+      const options: AddGatewayTargetOptions = {
+        name: 'test-tool',
+        source: 'existing-endpoint',
+        endpoint: 'http://localhost:3000/mcp',
+      };
+      const result = await validateAddGatewayTargetOptions(options);
+      expect(result.valid).toBe(true);
+    });
+
+    it('returns error for existing-endpoint without endpoint', async () => {
+      const options: AddGatewayTargetOptions = {
+        name: 'test-tool',
+        source: 'existing-endpoint',
+      };
+      const result = await validateAddGatewayTargetOptions(options);
+      expect(result.valid).toBe(false);
+      expect(result.error).toBe('--endpoint is required when source is existing-endpoint');
+    });
+
+    it('returns error for existing-endpoint with non-http(s) URL', async () => {
+      const options: AddGatewayTargetOptions = {
+        name: 'test-tool',
+        source: 'existing-endpoint',
+        endpoint: 'ftp://example.com/mcp',
+      };
+      const result = await validateAddGatewayTargetOptions(options);
+      expect(result.valid).toBe(false);
+      expect(result.error).toBe('Endpoint must use http:// or https:// protocol');
+    });
+
+    it('returns error for existing-endpoint with invalid URL', async () => {
+      const options: AddGatewayTargetOptions = {
+        name: 'test-tool',
+        source: 'existing-endpoint',
+        endpoint: 'not-a-url',
+      };
+      const result = await validateAddGatewayTargetOptions(options);
+      expect(result.valid).toBe(false);
+      expect(result.error).toBe('Endpoint must be a valid URL (e.g. https://example.com/mcp)');
+    });
+
+    // AC21: credential validation through outbound auth
+    it('returns error when credential not found', async () => {
+      mockReadProjectSpec.mockResolvedValue({
+        credentials: [{ name: 'existing-cred', type: 'ApiKey' }],
+      });
+
+      const options: AddGatewayTargetOptions = {
+        name: 'test-tool',
+        language: 'Python',
+        outboundAuthType: 'API_KEY',
+        credentialName: 'missing-cred',
+      };
+      const result = await validateAddGatewayTargetOptions(options);
+      expect(result.valid).toBe(false);
+      expect(result.error).toContain('Credential "missing-cred" not found');
+    });
+
+    it('returns error when no credentials configured', async () => {
+      mockReadProjectSpec.mockResolvedValue({
+        credentials: [],
+      });
+
+      const options: AddGatewayTargetOptions = {
+        name: 'test-tool',
+        language: 'Python',
+        outboundAuthType: 'API_KEY',
+        credentialName: 'any-cred',
+      };
+      const result = await validateAddGatewayTargetOptions(options);
+      expect(result.valid).toBe(false);
+      expect(result.error).toContain('No credentials are configured');
+    });
+
+    it('passes when credential exists', async () => {
+      mockReadProjectSpec.mockResolvedValue({
+        credentials: [{ name: 'valid-cred', type: 'ApiKey' }],
+      });
+
+      const options: AddGatewayTargetOptions = {
+        name: 'test-tool',
+        language: 'Python',
+        outboundAuthType: 'API_KEY',
+        credentialName: 'valid-cred',
+      };
+      const result = await validateAddGatewayTargetOptions(options);
       expect(result.valid).toBe(true);
     });
   });

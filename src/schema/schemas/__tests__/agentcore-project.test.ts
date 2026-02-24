@@ -263,6 +263,60 @@ describe('CredentialSchema', () => {
     });
     expect(result.success).toBe(false);
   });
+
+  it('ApiKeyCredentialProvider with name passes', () => {
+    const result = CredentialSchema.safeParse({
+      type: 'ApiKeyCredentialProvider',
+      name: 'MyApiKey',
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it('OAuthCredentialProvider with name and discoveryUrl passes', () => {
+    const result = CredentialSchema.safeParse({
+      type: 'OAuthCredentialProvider',
+      name: 'MyOAuth',
+      discoveryUrl: 'https://example.com/.well-known/openid-configuration',
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it('OAuthCredentialProvider with scopes omitted passes', () => {
+    const result = CredentialSchema.safeParse({
+      type: 'OAuthCredentialProvider',
+      name: 'MyOAuth',
+      discoveryUrl: 'https://example.com/.well-known/openid-configuration',
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it('OAuthCredentialProvider without discoveryUrl fails', () => {
+    const result = CredentialSchema.safeParse({
+      type: 'OAuthCredentialProvider',
+      name: 'MyOAuth',
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it('invalid type fails discriminated union', () => {
+    const result = CredentialSchema.safeParse({
+      type: 'InvalidCredentialType',
+      name: 'MyCred',
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it('vendor defaults to CustomOauth2', () => {
+    const result = CredentialSchema.safeParse({
+      type: 'OAuthCredentialProvider',
+      name: 'MyOAuth',
+      discoveryUrl: 'https://example.com/.well-known/openid-configuration',
+    });
+    expect(result.success).toBe(true);
+    if (result.success && result.data.type === 'OAuthCredentialProvider') {
+      expect(result.data.vendor).toBe('CustomOauth2');
+    }
+  });
 });
 
 describe('AgentCoreProjectSpecSchema', () => {

@@ -390,6 +390,110 @@ describe('AgentCoreMcpRuntimeToolSchema', () => {
   });
 });
 
+describe('AgentCoreGatewayTargetSchema with outbound auth', () => {
+  const validToolDef = {
+    name: 'myTool',
+    description: 'A test tool',
+    inputSchema: { type: 'object' as const },
+  };
+
+  it('outboundAuth with type OAUTH but no credentialName fails', () => {
+    const result = AgentCoreGatewayTargetSchema.safeParse({
+      name: 'myTarget',
+      targetType: 'lambda',
+      toolDefinitions: [validToolDef],
+      compute: {
+        host: 'Lambda',
+        implementation: { language: 'Python', path: 'tools', handler: 'h' },
+        pythonVersion: 'PYTHON_3_12',
+      },
+      outboundAuth: { type: 'OAUTH' },
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it('outboundAuth with type NONE and no credentialName passes', () => {
+    const result = AgentCoreGatewayTargetSchema.safeParse({
+      name: 'myTarget',
+      targetType: 'lambda',
+      toolDefinitions: [validToolDef],
+      compute: {
+        host: 'Lambda',
+        implementation: { language: 'Python', path: 'tools', handler: 'h' },
+        pythonVersion: 'PYTHON_3_12',
+      },
+      outboundAuth: { type: 'NONE' },
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it('outboundAuth with type OAUTH and credentialName passes', () => {
+    const result = AgentCoreGatewayTargetSchema.safeParse({
+      name: 'myTarget',
+      targetType: 'lambda',
+      toolDefinitions: [validToolDef],
+      compute: {
+        host: 'Lambda',
+        implementation: { language: 'Python', path: 'tools', handler: 'h' },
+        pythonVersion: 'PYTHON_3_12',
+      },
+      outboundAuth: { type: 'OAUTH', credentialName: 'my-oauth-cred' },
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it('mcpServer target with endpoint and no compute passes', () => {
+    const result = AgentCoreGatewayTargetSchema.safeParse({
+      name: 'myTarget',
+      targetType: 'mcpServer',
+      endpoint: 'https://example.com/mcp',
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it('mcpServer target with compute and no endpoint passes', () => {
+    const result = AgentCoreGatewayTargetSchema.safeParse({
+      name: 'myTarget',
+      targetType: 'mcpServer',
+      compute: {
+        host: 'AgentCoreRuntime',
+        implementation: { language: 'Python', path: 'tools', handler: 'h' },
+      },
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it('mcpServer target with neither endpoint nor compute fails', () => {
+    const result = AgentCoreGatewayTargetSchema.safeParse({
+      name: 'myTarget',
+      targetType: 'mcpServer',
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it('Lambda target without compute fails', () => {
+    const result = AgentCoreGatewayTargetSchema.safeParse({
+      name: 'myTarget',
+      targetType: 'lambda',
+      toolDefinitions: [validToolDef],
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it('Lambda target without toolDefinitions fails', () => {
+    const result = AgentCoreGatewayTargetSchema.safeParse({
+      name: 'myTarget',
+      targetType: 'lambda',
+      compute: {
+        host: 'Lambda',
+        implementation: { language: 'Python', path: 'tools', handler: 'h' },
+        pythonVersion: 'PYTHON_3_12',
+      },
+    });
+    expect(result.success).toBe(false);
+  });
+});
+
 describe('AgentCoreMcpSpecSchema', () => {
   it('accepts valid MCP spec', () => {
     const validToolDef = {
@@ -426,5 +530,37 @@ describe('AgentCoreMcpSpecSchema', () => {
       unknownField: true,
     });
     expect(result.success).toBe(false);
+  });
+
+  it('spec with unassignedTargets array parses correctly', () => {
+    const validToolDef = {
+      name: 'tool',
+      description: 'A tool',
+      inputSchema: { type: 'object' as const },
+    };
+
+    const result = AgentCoreMcpSpecSchema.safeParse({
+      agentCoreGateways: [],
+      unassignedTargets: [
+        {
+          name: 'unassigned-target',
+          targetType: 'lambda',
+          toolDefinitions: [validToolDef],
+          compute: {
+            host: 'Lambda',
+            implementation: { language: 'Python', path: 'tools', handler: 'h' },
+            pythonVersion: 'PYTHON_3_12',
+          },
+        },
+      ],
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it('spec without unassignedTargets parses correctly', () => {
+    const result = AgentCoreMcpSpecSchema.safeParse({
+      agentCoreGateways: [],
+    });
+    expect(result.success).toBe(true);
   });
 });

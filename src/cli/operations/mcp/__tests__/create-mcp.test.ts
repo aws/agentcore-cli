@@ -1,42 +1,133 @@
-import { computeDefaultGatewayEnvVarName, computeDefaultMcpRuntimeEnvVarName } from '../create-mcp.js';
-import { describe, expect, it } from 'vitest';
+import { SKIP_FOR_NOW } from '../../../tui/screens/mcp/types.js';
+import type { AddGatewayTargetConfig } from '../../../tui/screens/mcp/types.js';
+import { createExternalGatewayTarget } from '../create-mcp.js';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 
-describe('computeDefaultGatewayEnvVarName', () => {
-  it('converts simple name to env var', () => {
-    expect(computeDefaultGatewayEnvVarName('mygateway')).toBe('AGENTCORE_GATEWAY_MYGATEWAY_URL');
+const { mockReadMcpSpec, mockWriteMcpSpec, mockConfigExists, mockReadProjectSpec } = vi.hoisted(() => ({
+  mockReadMcpSpec: vi.fn(),
+  mockWriteMcpSpec: vi.fn(),
+  mockConfigExists: vi.fn(),
+  mockReadProjectSpec: vi.fn(),
+}));
+
+vi.mock('../../../../lib/index.js', () => ({
+  ConfigIO: class {
+    configExists = mockConfigExists;
+    readMcpSpec = mockReadMcpSpec;
+    writeMcpSpec = mockWriteMcpSpec;
+    readProjectSpec = mockReadProjectSpec;
+  },
+}));
+
+function makeExternalConfig(overrides: Partial<AddGatewayTargetConfig> = {}): AddGatewayTargetConfig {
+  return {
+    name: 'test-target',
+    description: 'Test target',
+    sourcePath: '/tmp/test',
+    language: 'Other',
+    source: 'existing-endpoint',
+    endpoint: 'https://api.example.com',
+    gateway: 'test-gateway',
+    host: 'Lambda',
+    toolDefinition: { name: 'test-tool', description: 'Test tool' },
+    ...overrides,
+  } as AddGatewayTargetConfig;
+}
+
+describe('createExternalGatewayTarget', () => {
+  afterEach(() => vi.clearAllMocks());
+
+  it('creates target with endpoint and assigns to specified gateway', async () => {
+    const mockMcpSpec = {
+      agentCoreGateways: [{ name: 'test-gateway', targets: [] }],
+    };
+    mockConfigExists.mockReturnValue(true);
+    mockReadMcpSpec.mockResolvedValue(mockMcpSpec);
+
+    await createExternalGatewayTarget(makeExternalConfig());
+
+    expect(mockWriteMcpSpec).toHaveBeenCalled();
+    const written = mockWriteMcpSpec.mock.calls[0]![0];
+    const gateway = written.agentCoreGateways[0]!;
+    expect(gateway.targets).toHaveLength(1);
+    expect(gateway.targets[0]!.name).toBe('test-target');
+    expect(gateway.targets[0]!.endpoint).toBe('https://api.example.com');
+    expect(gateway.targets[0]!.targetType).toBe('mcpServer');
   });
 
-  it('replaces hyphens with underscores', () => {
-    expect(computeDefaultGatewayEnvVarName('my-gateway')).toBe('AGENTCORE_GATEWAY_MY_GATEWAY_URL');
+  it('stores target in unassignedTargets when gateway is skip-for-now', async () => {
+    const mockMcpSpec = { agentCoreGateways: [] };
+    mockConfigExists.mockReturnValue(true);
+    mockReadMcpSpec.mockResolvedValue(mockMcpSpec);
+
+    await createExternalGatewayTarget(makeExternalConfig({ gateway: SKIP_FOR_NOW }));
+
+    expect(mockWriteMcpSpec).toHaveBeenCalled();
+    const written = mockWriteMcpSpec.mock.calls[0]![0];
+    expect(written.unassignedTargets).toHaveLength(1);
+    expect(written.unassignedTargets[0]!.name).toBe('test-target');
+    expect(written.unassignedTargets[0]!.endpoint).toBe('https://api.example.com');
   });
 
-  it('uppercases the name', () => {
-    expect(computeDefaultGatewayEnvVarName('MyGateway')).toBe('AGENTCORE_GATEWAY_MYGATEWAY_URL');
+  it('initializes unassignedTargets array if it does not exist in mcp spec', async () => {
+    const mockMcpSpec = { agentCoreGateways: [] };
+    mockConfigExists.mockReturnValue(true);
+    mockReadMcpSpec.mockResolvedValue(mockMcpSpec);
+
+    await createExternalGatewayTarget(makeExternalConfig({ gateway: SKIP_FOR_NOW }));
+
+    const written = mockWriteMcpSpec.mock.calls[0]![0];
+    expect(Array.isArray(written.unassignedTargets)).toBe(true);
   });
 
-  it('handles multiple hyphens', () => {
-    expect(computeDefaultGatewayEnvVarName('my-cool-gateway')).toBe('AGENTCORE_GATEWAY_MY_COOL_GATEWAY_URL');
+  it('throws on duplicate target name in gateway', async () => {
+    const mockMcpSpec = {
+      agentCoreGateways: [{ name: 'test-gateway', targets: [{ name: 'test-target' }] }],
+    };
+    mockConfigExists.mockReturnValue(true);
+    mockReadMcpSpec.mockResolvedValue(mockMcpSpec);
+
+    await expect(createExternalGatewayTarget(makeExternalConfig())).rejects.toThrow(
+      'Target "test-target" already exists in gateway "test-gateway"'
+    );
   });
 
-  it('handles already uppercase name', () => {
-    expect(computeDefaultGatewayEnvVarName('GW')).toBe('AGENTCORE_GATEWAY_GW_URL');
-  });
-});
+  it('throws on duplicate target name in unassigned targets', async () => {
+    const mockMcpSpec = {
+      agentCoreGateways: [],
+      unassignedTargets: [{ name: 'test-target' }],
+    };
+    mockConfigExists.mockReturnValue(true);
+    mockReadMcpSpec.mockResolvedValue(mockMcpSpec);
 
-describe('computeDefaultMcpRuntimeEnvVarName', () => {
-  it('converts simple name to env var', () => {
-    expect(computeDefaultMcpRuntimeEnvVarName('myruntime')).toBe('AGENTCORE_MCPRUNTIME_MYRUNTIME_URL');
-  });
-
-  it('replaces hyphens with underscores', () => {
-    expect(computeDefaultMcpRuntimeEnvVarName('my-runtime')).toBe('AGENTCORE_MCPRUNTIME_MY_RUNTIME_URL');
-  });
-
-  it('uppercases the name', () => {
-    expect(computeDefaultMcpRuntimeEnvVarName('MyRuntime')).toBe('AGENTCORE_MCPRUNTIME_MYRUNTIME_URL');
+    await expect(createExternalGatewayTarget(makeExternalConfig({ gateway: SKIP_FOR_NOW }))).rejects.toThrow(
+      'Unassigned target "test-target" already exists'
+    );
   });
 
-  it('handles multiple hyphens', () => {
-    expect(computeDefaultMcpRuntimeEnvVarName('a-b-c')).toBe('AGENTCORE_MCPRUNTIME_A_B_C_URL');
+  it('throws when gateway not found', async () => {
+    const mockMcpSpec = { agentCoreGateways: [] };
+    mockConfigExists.mockReturnValue(true);
+    mockReadMcpSpec.mockResolvedValue(mockMcpSpec);
+
+    await expect(createExternalGatewayTarget(makeExternalConfig({ gateway: 'nonexistent' }))).rejects.toThrow(
+      'Gateway "nonexistent" not found'
+    );
+  });
+
+  it('includes outboundAuth when configured', async () => {
+    const mockMcpSpec = {
+      agentCoreGateways: [{ name: 'test-gateway', targets: [] }],
+    };
+    mockConfigExists.mockReturnValue(true);
+    mockReadMcpSpec.mockResolvedValue(mockMcpSpec);
+
+    await createExternalGatewayTarget(
+      makeExternalConfig({ outboundAuth: { type: 'API_KEY', credentialName: 'my-cred' } })
+    );
+
+    const written = mockWriteMcpSpec.mock.calls[0]![0];
+    const target = written.agentCoreGateways[0]!.targets[0]!;
+    expect(target.outboundAuth).toEqual({ type: 'API_KEY', credentialName: 'my-cred' });
   });
 });

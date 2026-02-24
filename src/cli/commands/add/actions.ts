@@ -285,7 +285,7 @@ export async function handleAddGateway(options: ValidatedAddGatewayOptions): Pro
 }
 
 // MCP Tool handler
-function buildGatewayTargetConfig(options: ValidatedAddGatewayTargetOptions): AddGatewayTargetConfig {
+export function buildGatewayTargetConfig(options: ValidatedAddGatewayTargetOptions): AddGatewayTargetConfig {
   const sourcePath = `${APP_DIR}/${MCP_APP_SUBDIR}/${options.name}`;
 
   const description = options.description ?? `Tool for ${options.name}`;

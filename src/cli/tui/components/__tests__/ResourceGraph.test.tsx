@@ -137,4 +137,42 @@ describe('ResourceGraph', () => {
     expect(lastFrame()).toContain('memory');
     expect(lastFrame()).toContain('credential');
   });
+
+  it('renders ⚠ indicator when unassigned targets exist in mcp spec', () => {
+    const mcp: AgentCoreMcpSpec = {
+      agentCoreGateways: [],
+      unassignedTargets: [{ name: 'unassigned-target', targetType: 'mcpServer' }],
+    } as unknown as AgentCoreMcpSpec;
+
+    const { lastFrame } = render(<ResourceGraph project={baseProject} mcp={mcp} />);
+
+    expect(lastFrame()).toContain('⚠ Unassigned Targets');
+    expect(lastFrame()).toContain('⚠');
+  });
+
+  it('shows unassigned target names', () => {
+    const mcp: AgentCoreMcpSpec = {
+      agentCoreGateways: [],
+      unassignedTargets: [
+        { name: 'target-1', targetType: 'mcpServer' },
+        { name: 'target-2', targetType: 'mcpServer' },
+      ],
+    } as unknown as AgentCoreMcpSpec;
+
+    const { lastFrame } = render(<ResourceGraph project={baseProject} mcp={mcp} />);
+
+    expect(lastFrame()).toContain('target-1');
+    expect(lastFrame()).toContain('target-2');
+  });
+
+  it('does not render unassigned section when no unassigned targets', () => {
+    const mcp: AgentCoreMcpSpec = {
+      agentCoreGateways: [],
+      unassignedTargets: [],
+    } as unknown as AgentCoreMcpSpec;
+
+    const { lastFrame } = render(<ResourceGraph project={baseProject} mcp={mcp} />);
+
+    expect(lastFrame()).not.toContain('⚠ Unassigned Targets');
+  });
 });

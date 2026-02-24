@@ -1,5 +1,6 @@
 import {
   AgentCoreDeployedStateSchema,
+  CredentialDeployedStateSchema,
   CustomJwtAuthorizerSchema,
   DeployedResourceStateSchema,
   DeployedStateSchema,
@@ -137,6 +138,47 @@ describe('VpcConfigSchema', () => {
   });
 });
 
+describe('CredentialDeployedStateSchema', () => {
+  it('accepts valid credential state with all fields', () => {
+    const result = CredentialDeployedStateSchema.safeParse({
+      credentialProviderArn: 'arn:aws:bedrock:us-east-1:123:credential-provider/my-cred',
+      clientSecretArn: 'arn:aws:secretsmanager:us-east-1:123:secret:my-secret',
+      callbackUrl: 'https://callback.example.com',
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it('accepts credential state with only required credentialProviderArn', () => {
+    const result = CredentialDeployedStateSchema.safeParse({
+      credentialProviderArn: 'arn:aws:bedrock:us-east-1:123:credential-provider/my-cred',
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it('accepts credential state with optional clientSecretArn', () => {
+    const result = CredentialDeployedStateSchema.safeParse({
+      credentialProviderArn: 'arn:aws:bedrock:us-east-1:123:credential-provider/my-cred',
+      clientSecretArn: 'arn:aws:secretsmanager:us-east-1:123:secret:my-secret',
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it('accepts credential state with optional callbackUrl', () => {
+    const result = CredentialDeployedStateSchema.safeParse({
+      credentialProviderArn: 'arn:aws:bedrock:us-east-1:123:credential-provider/my-cred',
+      callbackUrl: 'https://callback.example.com',
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it('rejects credential state without credentialProviderArn', () => {
+    const result = CredentialDeployedStateSchema.safeParse({
+      clientSecretArn: 'arn:aws:secretsmanager:us-east-1:123:secret:my-secret',
+    });
+    expect(result.success).toBe(false);
+  });
+});
+
 describe('DeployedResourceStateSchema', () => {
   it('accepts empty resource state', () => {
     expect(DeployedResourceStateSchema.safeParse({}).success).toBe(true);
@@ -159,6 +201,18 @@ describe('DeployedResourceStateSchema', () => {
   it('accepts resource state with identityKmsKeyArn', () => {
     const result = DeployedResourceStateSchema.safeParse({
       identityKmsKeyArn: 'arn:aws:kms:us-east-1:123:key/abc',
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it('accepts resource state with credentials', () => {
+    const result = DeployedResourceStateSchema.safeParse({
+      credentials: {
+        MyCred: {
+          credentialProviderArn: 'arn:aws:bedrock:us-east-1:123:credential-provider/my-cred',
+          clientSecretArn: 'arn:aws:secretsmanager:us-east-1:123:secret:my-secret',
+        },
+      },
     });
     expect(result.success).toBe(true);
   });
