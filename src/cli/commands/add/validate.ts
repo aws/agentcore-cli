@@ -228,7 +228,7 @@ export async function validateAddGatewayTargetOptions(options: AddGatewayTargetO
 
   // Validate outbound auth configuration
   if (options.outboundAuthType && options.outboundAuthType !== 'NONE') {
-    const hasInlineOAuth = !!(options.oauthClientId || options.oauthClientSecret || options.oauthDiscoveryUrl);
+    const hasInlineOAuth = !!(options.oauthClientId ?? options.oauthClientSecret ?? options.oauthDiscoveryUrl);
 
     // Reject inline OAuth fields with API_KEY auth type
     if (options.outboundAuthType === 'API_KEY' && hasInlineOAuth) {
