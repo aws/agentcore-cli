@@ -1,6 +1,6 @@
 import { ConfigIO } from '../../../../lib';
 import type { CdkToolkitWrapper, DeployMessage, SwitchableIoHost } from '../../../cdk/toolkit-lib';
-import { buildDeployedState, getStackOutputs, parseAgentOutputs } from '../../../cloudformation';
+import { buildDeployedState, getStackOutputs, parseAgentOutputs, parseGatewayOutputs } from '../../../cloudformation';
 import { getErrorMessage, isChangesetInProgressError, isExpiredTokenError } from '../../../errors';
 import { ExecLogger } from '../../../logging';
 import { performStackTeardown } from '../../../operations/deploy';
@@ -28,6 +28,7 @@ export interface PreSynthesized {
   stackNames: string[];
   switchableIoHost?: SwitchableIoHost;
   identityKmsKeyArn?: string;
+  oauthCredentials?: Record<string, { credentialProviderArn: string; clientSecretArn?: string; callbackUrl?: string }>;
 }
 
 interface DeployFlowOptions {
@@ -88,6 +89,7 @@ export function useDeployFlow(options: DeployFlowOptions = {}): DeployFlowState 
   const stackNames = preSynthesized?.stackNames ?? preflight.stackNames;
   const switchableIoHost = preSynthesized?.switchableIoHost ?? preflight.switchableIoHost;
   const identityKmsKeyArn = preSynthesized?.identityKmsKeyArn ?? preflight.identityKmsKeyArn;
+  const oauthCredentials = preSynthesized?.oauthCredentials ?? preflight.oauthCredentials;
 
   const [publishAssetsStep, setPublishAssetsStep] = useState<Step>({ label: 'Publish assets', status: 'pending' });
   const [deployStep, setDeployStep] = useState<Step>({ label: 'Deploy to AWS', status: 'pending' });
@@ -163,6 +165,23 @@ export function useDeployFlow(options: DeployFlowOptions = {}): DeployFlowState 
       );
     }
 
+    // Parse gateway outputs from CDK stack
+    let gateways: Record<string, { gatewayId: string; gatewayArn: string }> = {};
+    try {
+      const mcpSpec = await configIO.readMcpSpec();
+      const gatewaySpecs =
+        mcpSpec?.agentCoreGateways?.reduce(
+          (acc: Record<string, unknown>, gateway: { name: string }) => {
+            acc[gateway.name] = gateway;
+            return acc;
+          },
+          {} as Record<string, unknown>
+        ) ?? {};
+      gateways = parseGatewayOutputs(outputs, gatewaySpecs);
+    } catch (error) {
+      logger.log(`Failed to read gateway configuration: ${getErrorMessage(error)}`, 'warn');
+    }
+
     // Expose outputs to UI
     setStackOutputs(outputs);
 
@@ -171,12 +190,13 @@ export function useDeployFlow(options: DeployFlowOptions = {}): DeployFlowState 
       target.name,
       currentStackName,
       agents,
-      {},
+      gateways,
       existingState,
-      identityKmsKeyArn
+      identityKmsKeyArn,
+      Object.keys(oauthCredentials).length > 0 ? oauthCredentials : undefined
     );
     await configIO.writeDeployedState(deployedState);
-  }, [context, stackNames, logger, identityKmsKeyArn]);
+  }, [context, stackNames, logger, identityKmsKeyArn, oauthCredentials]);
 
   // Start deploy when preflight completes OR when shouldStartDeploy is set
   useEffect(() => {

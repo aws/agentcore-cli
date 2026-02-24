@@ -17,8 +17,8 @@ export {
 export {
   setupApiKeyProviders,
   setupOAuth2Providers,
-  hasOwnedIdentityApiProviders,
-  hasOwnedIdentityOAuthProviders,
+  hasIdentityApiProviders,
+  hasIdentityOAuthProviders,
   getMissingCredentials,
   getAllCredentials,
   type SetupApiKeyProvidersOptions,

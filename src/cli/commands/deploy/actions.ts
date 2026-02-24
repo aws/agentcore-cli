@@ -10,8 +10,8 @@ import {
   checkBootstrapNeeded,
   checkStackDeployability,
   getAllCredentials,
-  hasOwnedIdentityApiProviders,
-  hasOwnedIdentityOAuthProviders,
+  hasIdentityApiProviders,
+  hasIdentityOAuthProviders,
   performStackTeardown,
   setupApiKeyProviders,
   setupOAuth2Providers,
@@ -181,7 +181,7 @@ export async function handleDeploy(options: ValidatedDeployOptions): Promise<Dep
     const runtimeCredentials =
       Object.keys(envCredentials).length > 0 ? new SecureCredentials(envCredentials) : undefined;
 
-    if (hasOwnedIdentityApiProviders(context.projectSpec)) {
+    if (hasIdentityApiProviders(context.projectSpec)) {
       startStep('Creating credentials...');
 
       const identityResult = await setupApiKeyProviders({
@@ -208,7 +208,7 @@ export async function handleDeploy(options: ValidatedDeployOptions): Promise<Dep
       string,
       { credentialProviderArn: string; clientSecretArn?: string; callbackUrl?: string }
     > = {};
-    if (hasOwnedIdentityOAuthProviders(context.projectSpec)) {
+    if (hasIdentityOAuthProviders(context.projectSpec)) {
       startStep('Creating OAuth credentials...');
 
       const oauthResult = await setupOAuth2Providers({

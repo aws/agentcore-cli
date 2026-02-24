@@ -1,6 +1,6 @@
 import {
   getAllCredentials,
-  hasOwnedIdentityOAuthProviders,
+  hasIdentityOAuthProviders,
   setupApiKeyProviders,
   setupOAuth2Providers,
 } from '../pre-deploy-identity.js';
@@ -200,7 +200,7 @@ describe('setupApiKeyProviders - KMS key reuse via GetTokenVault', () => {
   });
 });
 
-describe('hasOwnedIdentityOAuthProviders', () => {
+describe('hasIdentityOAuthProviders', () => {
   it('returns true when OAuthCredentialProvider exists', () => {
     const projectSpec = {
       credentials: [
@@ -208,19 +208,19 @@ describe('hasOwnedIdentityOAuthProviders', () => {
         { name: 'api-cred', type: 'ApiKeyCredentialProvider' },
       ],
     };
-    expect(hasOwnedIdentityOAuthProviders(projectSpec as any)).toBe(true);
+    expect(hasIdentityOAuthProviders(projectSpec as any)).toBe(true);
   });
 
   it('returns false when only ApiKey credentials exist', () => {
     const projectSpec = {
       credentials: [{ name: 'api-cred', type: 'ApiKeyCredentialProvider' }],
     };
-    expect(hasOwnedIdentityOAuthProviders(projectSpec as any)).toBe(false);
+    expect(hasIdentityOAuthProviders(projectSpec as any)).toBe(false);
   });
 
   it('returns false when no credentials exist', () => {
     const projectSpec = { credentials: [] };
-    expect(hasOwnedIdentityOAuthProviders(projectSpec as any)).toBe(false);
+    expect(hasIdentityOAuthProviders(projectSpec as any)).toBe(false);
   });
 });
 
