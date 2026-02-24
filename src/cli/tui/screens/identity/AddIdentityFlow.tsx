@@ -35,7 +35,11 @@ export function AddIdentityFlow({ isInteractive = true, onExit, onBack, onDev, o
 
   const handleCreateComplete = useCallback(
     (config: AddIdentityConfig) => {
-      void createIdentity(config).then(result => {
+      void createIdentity({
+        type: 'ApiKeyCredentialProvider',
+        name: config.name,
+        apiKey: config.apiKey,
+      }).then(result => {
         if (result.ok) {
           setFlow({ name: 'create-success', identityName: result.result.name });
           return;

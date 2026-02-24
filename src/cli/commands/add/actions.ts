@@ -74,6 +74,10 @@ export interface ValidatedAddGatewayTargetOptions {
   host?: 'Lambda' | 'AgentCoreRuntime';
   outboundAuthType?: 'OAUTH' | 'API_KEY' | 'NONE';
   credentialName?: string;
+  oauthClientId?: string;
+  oauthClientSecret?: string;
+  oauthDiscoveryUrl?: string;
+  oauthScopes?: string;
 }
 
 export interface ValidatedAddMemoryOptions {
@@ -82,10 +86,9 @@ export interface ValidatedAddMemoryOptions {
   expiry?: number;
 }
 
-export interface ValidatedAddIdentityOptions {
-  name: string;
-  apiKey: string;
-}
+export type ValidatedAddIdentityOptions =
+  | { type: 'api-key'; name: string; apiKey: string }
+  | { type: 'oauth'; name: string; discoveryUrl: string; clientId: string; clientSecret: string; scopes?: string };
 
 // Agent handlers
 export async function handleAddAgent(options: ValidatedAddAgentOptions): Promise<AddAgentResult> {
@@ -321,6 +324,23 @@ export async function handleAddGatewayTarget(
   options: ValidatedAddGatewayTargetOptions
 ): Promise<AddGatewayTargetResult> {
   try {
+    // Auto-create OAuth credential when inline fields provided
+    if (options.oauthClientId && options.oauthClientSecret && options.oauthDiscoveryUrl && !options.credentialName) {
+      const credName = `${options.name}-oauth`;
+      await createCredential({
+        type: 'OAuthCredentialProvider',
+        name: credName,
+        discoveryUrl: options.oauthDiscoveryUrl,
+        clientId: options.oauthClientId,
+        clientSecret: options.oauthClientSecret,
+        scopes: options.oauthScopes
+          ?.split(',')
+          .map(s => s.trim())
+          .filter(Boolean),
+      });
+      options.credentialName = credName;
+    }
+
     const config = buildGatewayTargetConfig(options);
     const result = await createToolFromWizard(config);
     return { success: true, toolName: result.toolName, sourcePath: result.projectPath };
@@ -355,10 +375,24 @@ export async function handleAddMemory(options: ValidatedAddMemoryOptions): Promi
 // Identity handler (v2: top-level credential resource, no owner/user)
 export async function handleAddIdentity(options: ValidatedAddIdentityOptions): Promise<AddIdentityResult> {
   try {
-    const result = await createCredential({
-      name: options.name,
-      apiKey: options.apiKey,
-    });
+    const result =
+      options.type === 'oauth'
+        ? await createCredential({
+            type: 'OAuthCredentialProvider',
+            name: options.name,
+            discoveryUrl: options.discoveryUrl,
+            clientId: options.clientId,
+            clientSecret: options.clientSecret,
+            scopes: options.scopes
+              ?.split(',')
+              .map(s => s.trim())
+              .filter(Boolean),
+          })
+        : await createCredential({
+            type: 'ApiKeyCredentialProvider',
+            name: options.name,
+            apiKey: options.apiKey,
+          });
 
     return { success: true, credentialName: result.name };
   } catch (err) {

@@ -228,17 +228,47 @@ export async function validateAddGatewayTargetOptions(options: AddGatewayTargetO
 
   // Validate outbound auth configuration
   if (options.outboundAuthType && options.outboundAuthType !== 'NONE') {
-    if (!options.credentialName) {
+    const hasInlineOAuth = !!(options.oauthClientId || options.oauthClientSecret || options.oauthDiscoveryUrl);
+
+    // Reject inline OAuth fields with API_KEY auth type
+    if (options.outboundAuthType === 'API_KEY' && hasInlineOAuth) {
       return {
         valid: false,
-        error: `--credential-name is required when outbound auth type is ${options.outboundAuthType}`,
+        error: 'Inline OAuth fields cannot be used with API_KEY outbound auth. Use --credential-name instead.',
       };
     }
 
-    // Validate that the credential exists
-    const credentialValidation = await validateCredentialExists(options.credentialName);
-    if (!credentialValidation.valid) {
-      return credentialValidation;
+    if (!options.credentialName && !hasInlineOAuth) {
+      return {
+        valid: false,
+        error:
+          options.outboundAuthType === 'API_KEY'
+            ? '--credential-name is required when outbound auth type is API_KEY'
+            : `--credential-name or inline OAuth fields (--oauth-client-id, --oauth-client-secret, --oauth-discovery-url) required when outbound auth type is ${options.outboundAuthType}`,
+      };
+    }
+
+    // Validate inline OAuth fields are complete
+    if (hasInlineOAuth) {
+      if (!options.oauthClientId)
+        return { valid: false, error: '--oauth-client-id is required for inline OAuth credential creation' };
+      if (!options.oauthClientSecret)
+        return { valid: false, error: '--oauth-client-secret is required for inline OAuth credential creation' };
+      if (!options.oauthDiscoveryUrl)
+        return { valid: false, error: '--oauth-discovery-url is required for inline OAuth credential creation' };
+      try {
+        new URL(options.oauthDiscoveryUrl);
+      } catch {
+        return { valid: false, error: '--oauth-discovery-url must be a valid URL' };
+      }
+    }
+
+    // Validate that referenced credential exists
+    if (options.credentialName) {
+      const credentialValidation = await validateCredentialExists(options.credentialName);
+      if (!credentialValidation.valid) {
+        return credentialValidation;
+      }
     }
   }
 
@@ -271,6 +301,26 @@ export function validateAddMemoryOptions(options: AddMemoryOptions): ValidationR
 export function validateAddIdentityOptions(options: AddIdentityOptions): ValidationResult {
   if (!options.name) {
     return { valid: false, error: '--name is required' };
+  }
+
+  const identityType = options.type ?? 'api-key';
+
+  if (identityType === 'oauth') {
+    if (!options.discoveryUrl) {
+      return { valid: false, error: '--discovery-url is required for OAuth credentials' };
+    }
+    try {
+      new URL(options.discoveryUrl);
+    } catch {
+      return { valid: false, error: '--discovery-url must be a valid URL' };
+    }
+    if (!options.clientId) {
+      return { valid: false, error: '--client-id is required for OAuth credentials' };
+    }
+    if (!options.clientSecret) {
+      return { valid: false, error: '--client-secret is required for OAuth credentials' };
+    }
+    return { valid: true };
   }
 
   if (!options.apiKey) {

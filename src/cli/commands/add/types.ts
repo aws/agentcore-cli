@@ -53,6 +53,10 @@ export interface AddGatewayTargetOptions {
   host?: 'Lambda' | 'AgentCoreRuntime';
   outboundAuthType?: 'OAUTH' | 'API_KEY' | 'NONE';
   credentialName?: string;
+  oauthClientId?: string;
+  oauthClientSecret?: string;
+  oauthDiscoveryUrl?: string;
+  oauthScopes?: string;
   json?: boolean;
 }
 
@@ -80,7 +84,12 @@ export interface AddMemoryResult {
 // Identity types (v2: credential, no owner/user concept)
 export interface AddIdentityOptions {
   name?: string;
+  type?: 'api-key' | 'oauth';
   apiKey?: string;
+  discoveryUrl?: string;
+  clientId?: string;
+  clientSecret?: string;
+  scopes?: string;
   json?: boolean;
 }
 

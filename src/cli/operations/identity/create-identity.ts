@@ -4,10 +4,17 @@ import type { Credential, ModelProvider } from '../../../schema';
 /**
  * Config for creating a credential resource.
  */
-export interface CreateCredentialConfig {
-  name: string;
-  apiKey: string;
-}
+export type CreateCredentialConfig =
+  | { type: 'ApiKeyCredentialProvider'; name: string; apiKey: string }
+  | {
+      type: 'OAuthCredentialProvider';
+      name: string;
+      discoveryUrl: string;
+      clientId: string;
+      clientSecret: string;
+      scopes?: string[];
+      vendor?: string;
+    };
 
 /**
  * Result of resolving credential strategy for an agent.
@@ -27,7 +34,7 @@ export interface CredentialStrategy {
  * Compute the default env var name for a credential.
  */
 export function computeDefaultCredentialEnvVarName(credentialName: string): string {
-  return `AGENTCORE_CREDENTIAL_${credentialName.toUpperCase()}`;
+  return `AGENTCORE_CREDENTIAL_${credentialName.toUpperCase().replace(/-/g, '_')}`;
 }
 
 /**
@@ -103,10 +110,7 @@ export async function getAllCredentialNames(): Promise<string[]> {
 
 /**
  * Create a credential resource and add it to the project.
- * Also writes the API key to the .env file.
- *
- * If the credential already exists (e.g., created during agent generation),
- * just updates the API key in the .env file.
+ * Writes the credential config to agentcore.json and secrets to .env.local.
  */
 export async function createCredential(config: CreateCredentialConfig): Promise<Credential> {
   const configIO = new ConfigIO();
@@ -115,12 +119,34 @@ export async function createCredential(config: CreateCredentialConfig): Promise<
   // Check if credential already exists
   const existingCredential = project.credentials.find(c => c.name === config.name);
 
+  if (config.type === 'OAuthCredentialProvider') {
+    if (existingCredential) {
+      throw new Error(`Credential "${config.name}" already exists`);
+    }
+
+    const credential: Credential = {
+      type: 'OAuthCredentialProvider',
+      name: config.name,
+      discoveryUrl: config.discoveryUrl,
+      vendor: config.vendor ?? 'CustomOauth2',
+      ...(config.scopes && config.scopes.length > 0 ? { scopes: config.scopes } : {}),
+    };
+    project.credentials.push(credential);
+    await configIO.writeProjectSpec(project);
+
+    // Write client ID and secret to .env.local
+    const envBase = computeDefaultCredentialEnvVarName(config.name);
+    await setEnvVar(`${envBase}_CLIENT_ID`, config.clientId);
+    await setEnvVar(`${envBase}_CLIENT_SECRET`, config.clientSecret);
+
+    return credential;
+  }
+
+  // ApiKeyCredentialProvider
   let credential: Credential;
   if (existingCredential) {
-    // updates credentital
     credential = existingCredential;
   } else {
-    // Create new credential entry
     credential = {
       type: 'ApiKeyCredentialProvider',
       name: config.name,
@@ -129,7 +155,6 @@ export async function createCredential(config: CreateCredentialConfig): Promise<
     await configIO.writeProjectSpec(project);
   }
 
-  // Write API key to .env file
   const envVarName = computeDefaultCredentialEnvVarName(config.name);
   await setEnvVar(envVarName, config.apiKey);
 

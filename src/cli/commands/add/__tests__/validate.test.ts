@@ -369,6 +369,59 @@ describe('validate', () => {
       const result = await validateAddGatewayTargetOptions(options);
       expect(result.valid).toBe(true);
     });
+
+    // Outbound auth inline OAuth validation
+    it('passes for OAUTH with inline OAuth fields', async () => {
+      const result = await validateAddGatewayTargetOptions({
+        ...validGatewayTargetOptions,
+        outboundAuthType: 'OAUTH',
+        oauthClientId: 'cid',
+        oauthClientSecret: 'csec',
+        oauthDiscoveryUrl: 'https://auth.example.com',
+      });
+      expect(result.valid).toBe(true);
+    });
+
+    it('returns error for OAUTH without credential-name or inline fields', async () => {
+      const result = await validateAddGatewayTargetOptions({
+        ...validGatewayTargetOptions,
+        outboundAuthType: 'OAUTH',
+      });
+      expect(result.valid).toBe(false);
+      expect(result.error).toContain('--credential-name or inline OAuth fields');
+    });
+
+    it('returns error for incomplete inline OAuth (missing client-secret)', async () => {
+      const result = await validateAddGatewayTargetOptions({
+        ...validGatewayTargetOptions,
+        outboundAuthType: 'OAUTH',
+        oauthClientId: 'cid',
+        oauthDiscoveryUrl: 'https://auth.example.com',
+      });
+      expect(result.valid).toBe(false);
+      expect(result.error).toContain('--oauth-client-secret');
+    });
+
+    it('returns error for API_KEY with inline OAuth fields', async () => {
+      const result = await validateAddGatewayTargetOptions({
+        ...validGatewayTargetOptions,
+        outboundAuthType: 'API_KEY',
+        oauthClientId: 'cid',
+        oauthClientSecret: 'csec',
+        oauthDiscoveryUrl: 'https://auth.example.com',
+      });
+      expect(result.valid).toBe(false);
+      expect(result.error).toContain('cannot be used with API_KEY');
+    });
+
+    it('returns error for API_KEY without credential-name', async () => {
+      const result = await validateAddGatewayTargetOptions({
+        ...validGatewayTargetOptions,
+        outboundAuthType: 'API_KEY',
+      });
+      expect(result.valid).toBe(false);
+      expect(result.error).toContain('--credential-name is required');
+    });
   });
 
   describe('validateAddMemoryOptions', () => {
@@ -463,6 +516,58 @@ describe('validate', () => {
     // AC25: Valid options pass
     it('passes for valid options', () => {
       expect(validateAddIdentityOptions(validIdentityOptions)).toEqual({ valid: true });
+    });
+  });
+
+  describe('validateAddIdentityOptions OAuth', () => {
+    it('passes for valid OAuth identity', () => {
+      const result = validateAddIdentityOptions({
+        name: 'my-oauth',
+        type: 'oauth',
+        discoveryUrl: 'https://auth.example.com/.well-known/openid-configuration',
+        clientId: 'client123',
+        clientSecret: 'secret456',
+      });
+      expect(result.valid).toBe(true);
+    });
+
+    it('returns error for OAuth without discovery-url', () => {
+      const result = validateAddIdentityOptions({
+        name: 'my-oauth',
+        type: 'oauth',
+        clientId: 'client123',
+        clientSecret: 'secret456',
+      });
+      expect(result.valid).toBe(false);
+      expect(result.error).toContain('--discovery-url');
+    });
+
+    it('returns error for OAuth without client-id', () => {
+      const result = validateAddIdentityOptions({
+        name: 'my-oauth',
+        type: 'oauth',
+        discoveryUrl: 'https://auth.example.com',
+        clientSecret: 'secret456',
+      });
+      expect(result.valid).toBe(false);
+      expect(result.error).toContain('--client-id');
+    });
+
+    it('returns error for OAuth without client-secret', () => {
+      const result = validateAddIdentityOptions({
+        name: 'my-oauth',
+        type: 'oauth',
+        discoveryUrl: 'https://auth.example.com',
+        clientId: 'client123',
+      });
+      expect(result.valid).toBe(false);
+      expect(result.error).toContain('--client-secret');
+    });
+
+    it('still requires api-key for default type', () => {
+      const result = validateAddIdentityOptions({ name: 'my-key' });
+      expect(result.valid).toBe(false);
+      expect(result.error).toContain('--api-key');
     });
   });
 });

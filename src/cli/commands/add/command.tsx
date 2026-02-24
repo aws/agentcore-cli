@@ -107,12 +107,25 @@ async function handleAddGatewayTargetCLI(options: AddGatewayTargetOptions): Prom
     process.exit(1);
   }
 
+  // Map CLI flag values to internal types
+  const outboundAuthMap: Record<string, 'OAUTH' | 'API_KEY' | 'NONE'> = {
+    oauth: 'OAUTH',
+    'api-key': 'API_KEY',
+    none: 'NONE',
+  };
+
   const result = await handleAddGatewayTarget({
     name: options.name!,
     description: options.description,
     language: options.language! as 'Python' | 'TypeScript',
     gateway: options.gateway,
     host: options.host,
+    outboundAuthType: options.outboundAuthType ? outboundAuthMap[options.outboundAuthType.toLowerCase()] : undefined,
+    credentialName: options.credentialName,
+    oauthClientId: options.oauthClientId,
+    oauthClientSecret: options.oauthClientSecret,
+    oauthDiscoveryUrl: options.oauthDiscoveryUrl,
+    oauthScopes: options.oauthScopes,
   });
 
   if (options.json) {
@@ -170,10 +183,22 @@ async function handleAddIdentityCLI(options: AddIdentityOptions): Promise<void> 
     process.exit(1);
   }
 
-  const result = await handleAddIdentity({
-    name: options.name!,
-    apiKey: options.apiKey!,
-  });
+  const identityType = options.type ?? 'api-key';
+  const result =
+    identityType === 'oauth'
+      ? await handleAddIdentity({
+          type: 'oauth',
+          name: options.name!,
+          discoveryUrl: options.discoveryUrl!,
+          clientId: options.clientId!,
+          clientSecret: options.clientSecret!,
+          scopes: options.scopes,
+        })
+      : await handleAddIdentity({
+          type: 'api-key',
+          name: options.name!,
+          apiKey: options.apiKey!,
+        });
 
   if (options.json) {
     console.log(JSON.stringify(result));
@@ -266,6 +291,12 @@ export function registerAdd(program: Command) {
     .option('--language <lang>', 'Language: Python or TypeScript')
     .option('--gateway <name>', 'Gateway name')
     .option('--host <host>', 'Compute host: Lambda or AgentCoreRuntime')
+    .option('--outbound-auth <type>', 'Outbound auth type: oauth, api-key, or none')
+    .option('--credential-name <name>', 'Existing credential name for outbound auth')
+    .option('--oauth-client-id <id>', 'OAuth client ID (creates credential inline)')
+    .option('--oauth-client-secret <secret>', 'OAuth client secret (creates credential inline)')
+    .option('--oauth-discovery-url <url>', 'OAuth discovery URL (creates credential inline)')
+    .option('--oauth-scopes <scopes>', 'OAuth scopes, comma-separated')
     .option('--json', 'Output as JSON')
     .action(async options => {
       requireProject();
@@ -293,7 +324,12 @@ export function registerAdd(program: Command) {
     .command('identity')
     .description('Add a credential to the project')
     .option('--name <name>', 'Credential name [non-interactive]')
+    .option('--type <type>', 'Credential type: api-key (default) or oauth')
     .option('--api-key <key>', 'The API key value [non-interactive]')
+    .option('--discovery-url <url>', 'OAuth discovery URL')
+    .option('--client-id <id>', 'OAuth client ID')
+    .option('--client-secret <secret>', 'OAuth client secret')
+    .option('--scopes <scopes>', 'OAuth scopes, comma-separated')
     .option('--json', 'Output as JSON [non-interactive]')
     .action(async options => {
       requireProject();
