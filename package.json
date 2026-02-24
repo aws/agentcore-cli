@@ -67,7 +67,7 @@
     "test:update-snapshots": "vitest run --project unit --update"
   },
   "dependencies": {
-    "@aws-cdk/toolkit-lib": "^1.13.0",
+    "@aws-cdk/toolkit-lib": "^1.16.0",
     "@aws-sdk/client-bedrock-agentcore": "^3.893.0",
     "@aws-sdk/client-bedrock-agentcore-control": "^3.893.0",
     "@aws-sdk/client-bedrock-runtime": "^3.893.0",
@@ -100,7 +100,7 @@
     "@typescript-eslint/eslint-plugin": "^8.50.0",
     "@typescript-eslint/parser": "^8.50.0",
     "@vitest/coverage-v8": "^4.0.18",
-    "aws-cdk-lib": "^2.239.0",
+    "aws-cdk-lib": "^2.240.0",
     "constructs": "^10.4.4",
     "esbuild": "^0.27.2",
     "eslint": "^9.39.3",
@@ -120,6 +120,12 @@
     "typescript": "^5",
     "typescript-eslint": "^8.50.1",
     "vitest": "^4.0.18"
+  },
+  "overridesComments": {
+    "minimatch": "GHSA-3ppc-4f35-3m26: minimatch <10.2.1 has ReDoS via repeated wildcards. Multiple transitive deps (eslint, typescript-eslint, eslint-plugin-import, eslint-plugin-react, prettier-plugin-sort-imports) pin older versions. Remove this override once upstream packages update their minimatch dependency to >=10.2.1."
+  },
+  "overrides": {
+    "minimatch": "10.2.1"
   },
   "engines": {
     "node": ">=20"
