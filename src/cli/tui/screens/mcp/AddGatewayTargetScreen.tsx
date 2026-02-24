@@ -1,21 +1,12 @@
 import { ToolNameSchema } from '../../../../schema';
-import {
-  ConfirmReview,
-  Panel,
-  Screen,
-  StepIndicator,
-  TextInput,
-  WizardMultiSelect,
-  WizardSelect,
-} from '../../components';
+import { ConfirmReview, Panel, Screen, StepIndicator, TextInput, WizardSelect } from '../../components';
 import type { SelectableItem } from '../../components';
 import { HELP_TEXT } from '../../constants';
-import { useListNavigation, useMultiSelectNavigation } from '../../hooks';
+import { useListNavigation } from '../../hooks';
 import { generateUniqueName } from '../../utils';
-import type { AddGatewayTargetConfig, ComputeHost, ExposureMode, TargetLanguage } from './types';
+import type { AddGatewayTargetConfig, ComputeHost, TargetLanguage } from './types';
 import {
   COMPUTE_HOST_OPTIONS,
-  EXPOSURE_MODE_OPTIONS,
   MCP_TOOL_STEP_LABELS,
   SKIP_FOR_NOW,
   SOURCE_OPTIONS,
@@ -27,7 +18,6 @@ import React, { useMemo } from 'react';
 
 interface AddGatewayTargetScreenProps {
   existingGateways: string[];
-  existingAgents: string[];
   existingToolNames: string[];
   onComplete: (config: AddGatewayTargetConfig) => void;
   onExit: () => void;
@@ -35,12 +25,11 @@ interface AddGatewayTargetScreenProps {
 
 export function AddGatewayTargetScreen({
   existingGateways,
-  existingAgents,
   existingToolNames,
   onComplete,
   onExit,
 }: AddGatewayTargetScreenProps) {
-  const wizard = useAddGatewayTargetWizard(existingGateways, existingAgents);
+  const wizard = useAddGatewayTargetWizard(existingGateways);
 
   const sourceItems: SelectableItem[] = useMemo(
     () => SOURCE_OPTIONS.map(o => ({ id: o.id, title: o.title, description: o.description })),
@@ -49,17 +38,6 @@ export function AddGatewayTargetScreen({
 
   const languageItems: SelectableItem[] = useMemo(
     () => TARGET_LANGUAGE_OPTIONS.map(o => ({ id: o.id, title: o.title, description: o.description })),
-    []
-  );
-
-  const exposureItems: SelectableItem[] = useMemo(
-    () =>
-      EXPOSURE_MODE_OPTIONS.map(o => ({
-        id: o.id,
-        title: o.title,
-        description: o.description,
-        disabled: 'disabled' in o ? Boolean(o.disabled) : undefined,
-      })),
     []
   );
 
@@ -76,18 +54,13 @@ export function AddGatewayTargetScreen({
     []
   );
 
-  const agentItems: SelectableItem[] = useMemo(() => existingAgents.map(a => ({ id: a, title: a })), [existingAgents]);
-
   const isSourceStep = wizard.step === 'source';
   const isLanguageStep = wizard.step === 'language';
-  const isExposureStep = wizard.step === 'exposure';
-  const isAgentsStep = wizard.step === 'agents';
   const isGatewayStep = wizard.step === 'gateway';
   const isHostStep = wizard.step === 'host';
   const isTextStep = wizard.step === 'name' || wizard.step === 'endpoint';
   const isConfirmStep = wizard.step === 'confirm';
   const noGatewaysAvailable = isGatewayStep && existingGateways.length === 0;
-  const noAgentsAvailable = isAgentsStep && existingAgents.length === 0;
 
   const sourceNav = useListNavigation({
     items: sourceItems,
@@ -101,14 +74,6 @@ export function AddGatewayTargetScreen({
     onSelect: item => wizard.setLanguage(item.id as TargetLanguage),
     onExit: () => onExit(),
     isActive: isLanguageStep,
-  });
-
-  const exposureNav = useListNavigation({
-    items: exposureItems,
-    onSelect: item => wizard.setExposure(item.id as ExposureMode),
-    onExit: () => wizard.goBack(),
-    isActive: isExposureStep,
-    isDisabled: item => item.disabled === true,
   });
 
   const gatewayNav = useListNavigation({
@@ -125,14 +90,6 @@ export function AddGatewayTargetScreen({
     isActive: isHostStep,
   });
 
-  const agentsNav = useMultiSelectNavigation({
-    items: agentItems,
-    getId: item => item.id,
-    onConfirm: selected => wizard.setAgents(selected),
-    onExit: () => wizard.goBack(),
-    isActive: isAgentsStep && !noAgentsAvailable,
-  });
-
   useListNavigation({
     items: [{ id: 'confirm', title: 'Confirm' }],
     onSelect: () => onComplete(wizard.config),
@@ -144,13 +101,9 @@ export function AddGatewayTargetScreen({
     ? HELP_TEXT.CONFIRM_CANCEL
     : isTextStep
       ? HELP_TEXT.TEXT_INPUT
-      : isAgentsStep
-        ? HELP_TEXT.MULTI_SELECT
-        : HELP_TEXT.NAVIGATE_SELECT;
+      : HELP_TEXT.NAVIGATE_SELECT;
 
   const headerContent = <StepIndicator steps={wizard.steps} currentStep={wizard.step} labels={MCP_TOOL_STEP_LABELS} />;
-
-  const isMcpRuntime = wizard.config.exposure === 'mcp-runtime';
 
   return (
     <Screen title="Add MCP Tool" onExit={onExit} helpText={helpText} headerContent={headerContent}>
@@ -168,15 +121,6 @@ export function AddGatewayTargetScreen({
           <WizardSelect title="Select language" items={languageItems} selectedIndex={languageNav.selectedIndex} />
         )}
 
-        {isExposureStep && (
-          <WizardSelect
-            title="Select exposure mode"
-            description="How will this tool be accessed?"
-            items={exposureItems}
-            selectedIndex={exposureNav.selectedIndex}
-          />
-        )}
-
         {isGatewayStep && !noGatewaysAvailable && (
           <WizardSelect
             title="Select gateway"
@@ -187,18 +131,6 @@ export function AddGatewayTargetScreen({
         )}
 
         {noGatewaysAvailable && <NoGatewaysMessage />}
-
-        {isAgentsStep && !noAgentsAvailable && (
-          <WizardMultiSelect
-            title="Select agents to attach"
-            description="Which agents can invoke this MCP runtime?"
-            items={agentItems}
-            cursorIndex={agentsNav.cursorIndex}
-            selectedIds={agentsNav.selectedIds}
-          />
-        )}
-
-        {noAgentsAvailable && <NoAgentsMessage />}
 
         {isHostStep && (
           <WizardSelect
@@ -248,16 +180,8 @@ export function AddGatewayTargetScreen({
               },
               ...(wizard.config.endpoint ? [{ label: 'Endpoint', value: wizard.config.endpoint }] : []),
               ...(wizard.config.source === 'create-new' ? [{ label: 'Language', value: wizard.config.language }] : []),
-              ...(wizard.config.source === 'create-new'
-                ? [{ label: 'Exposure', value: isMcpRuntime ? 'MCP Runtime' : 'Behind Gateway' }]
-                : []),
-              ...(isMcpRuntime && wizard.config.selectedAgents.length > 0
-                ? [{ label: 'Agents', value: wizard.config.selectedAgents.join(', ') }]
-                : []),
-              ...(!isMcpRuntime && wizard.config.gateway ? [{ label: 'Gateway', value: wizard.config.gateway }] : []),
-              ...(!isMcpRuntime && !wizard.config.gateway
-                ? [{ label: 'Gateway', value: '(none - assign later)' }]
-                : []),
+              ...(wizard.config.gateway ? [{ label: 'Gateway', value: wizard.config.gateway }] : []),
+              ...(!wizard.config.gateway ? [{ label: 'Gateway', value: '(none - assign later)' }] : []),
               ...(wizard.config.source === 'create-new' ? [{ label: 'Host', value: wizard.config.host }] : []),
               ...(wizard.config.source === 'create-new' ? [{ label: 'Source', value: wizard.config.sourcePath }] : []),
             ]}
@@ -275,19 +199,6 @@ function NoGatewaysMessage() {
       <Text dimColor>Add a gateway first, then attach tools to it.</Text>
       <Box marginTop={1}>
         <Text dimColor>Esc back</Text>
-      </Box>
-    </Box>
-  );
-}
-
-function NoAgentsMessage() {
-  return (
-    <Box flexDirection="column">
-      <Text color="yellow">No agents found</Text>
-      <Text dimColor>Create an agent first to attach MCP runtime tools.</Text>
-      <Text dimColor>You can still create the tool and attach agents later.</Text>
-      <Box marginTop={1}>
-        <Text dimColor>Enter to continue without agents · Esc back</Text>
       </Box>
     </Box>
   );

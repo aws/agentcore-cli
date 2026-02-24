@@ -339,7 +339,6 @@ export function AddFlow(props: AddFlowProps) {
     return (
       <AddGatewayTargetFlow
         isInteractive={props.isInteractive}
-        existingAgents={agents}
         onExit={props.onExit}
         onBack={() => setFlow({ name: 'select' })}
         onDev={props.onDev}

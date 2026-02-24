@@ -33,30 +33,17 @@ export const GATEWAY_STEP_LABELS: Record<AddGatewayStep, string> = {
 // MCP Tool Flow Types
 // ─────────────────────────────────────────────────────────────────────────────
 
-export type ExposureMode = 'mcp-runtime' | 'behind-gateway';
-
 export type ComputeHost = 'Lambda' | 'AgentCoreRuntime';
 
 /**
  * MCP tool wizard steps.
  * - name: Tool name input
  * - language: Target language (Python or TypeScript)
- * - exposure: MCP Runtime (standalone) or behind-gateway
- * - agents: Select agents to attach (only if mcp-runtime)
- * - gateway: Select existing gateway (only if behind-gateway)
- * - host: Select compute host (only if behind-gateway)
+ * - gateway: Select existing gateway
+ * - host: Select compute host
  * - confirm: Review and confirm
  */
-export type AddGatewayTargetStep =
-  | 'name'
-  | 'source'
-  | 'endpoint'
-  | 'language'
-  | 'exposure'
-  | 'agents'
-  | 'gateway'
-  | 'host'
-  | 'confirm';
+export type AddGatewayTargetStep = 'name' | 'source' | 'endpoint' | 'language' | 'gateway' | 'host' | 'confirm';
 
 export type TargetLanguage = 'Python' | 'TypeScript' | 'Other';
 
@@ -65,19 +52,16 @@ export interface AddGatewayTargetConfig {
   description: string;
   sourcePath: string;
   language: TargetLanguage;
-  exposure: ExposureMode;
   /** Source type for external endpoints */
   source?: 'existing-endpoint' | 'create-new';
   /** External endpoint URL */
   endpoint?: string;
-  /** Gateway name (only when exposure = behind-gateway) */
+  /** Gateway name */
   gateway?: string;
-  /** Compute host (AgentCoreRuntime for mcp-runtime, Lambda or AgentCoreRuntime for behind-gateway) */
+  /** Compute host (Lambda or AgentCoreRuntime) */
   host: ComputeHost;
   /** Derived tool definition */
   toolDefinition: ToolDefinition;
-  /** Agent names to attach (only when exposure = mcp-runtime) */
-  selectedAgents: string[];
   /** Outbound auth configuration */
   outboundAuth?: {
     type: 'OAUTH' | 'API_KEY' | 'NONE';
@@ -91,8 +75,6 @@ export const MCP_TOOL_STEP_LABELS: Record<AddGatewayTargetStep, string> = {
   source: 'Source',
   endpoint: 'Endpoint',
   language: 'Language',
-  exposure: 'Exposure',
-  agents: 'Agents',
   gateway: 'Gateway',
   host: 'Host',
   confirm: 'Confirm',
@@ -119,15 +101,6 @@ export const TARGET_LANGUAGE_OPTIONS = [
   { id: 'Python', title: 'Python', description: 'FastMCP Python server' },
   { id: 'TypeScript', title: 'TypeScript', description: 'MCP TypeScript server' },
   { id: 'Other', title: 'Other', description: 'Container-based implementation' },
-] as const;
-
-export const EXPOSURE_MODE_OPTIONS = [
-  { id: 'mcp-runtime', title: 'MCP Runtime', description: 'Deploy as AgentCore MCP Runtime (select agents to attach)' },
-  {
-    id: 'behind-gateway',
-    title: 'Behind Gateway',
-    description: 'Route through AgentCore Gateway',
-  },
 ] as const;
 
 export const COMPUTE_HOST_OPTIONS = [

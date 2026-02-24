@@ -15,7 +15,7 @@ export function RemoveGatewayTargetScreen({ tools, onSelect, onExit }: RemoveGat
   const items = tools.map(tool => ({
     id: tool.name,
     title: tool.name,
-    description: tool.type === 'mcp-runtime' ? 'MCP Runtime tool' : `Gateway target (${tool.gatewayName})`,
+    description: `Gateway target (${tool.gatewayName})`,
   }));
 
   // Create a map for quick lookup

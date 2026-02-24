@@ -10,7 +10,7 @@ import { join } from 'path';
  */
 export interface RemovableGatewayTarget {
   name: string;
-  type: 'mcp-runtime' | 'gateway-target';
+  type: 'gateway-target';
   gatewayName?: string;
 }
 
@@ -25,11 +25,6 @@ export async function getRemovableGatewayTargets(): Promise<RemovableGatewayTarg
     }
     const mcpSpec = await configIO.readMcpSpec();
     const tools: RemovableGatewayTarget[] = [];
-
-    // MCP Runtime tools
-    for (const tool of mcpSpec.mcpRuntimeTools ?? []) {
-      tools.push({ name: tool.name, type: 'mcp-runtime' });
-    }
 
     // Gateway targets
     for (const gateway of mcpSpec.agentCoreGateways) {
@@ -61,58 +56,33 @@ export async function previewRemoveGatewayTarget(tool: RemovableGatewayTarget): 
   const schemaChanges: SchemaChange[] = [];
   const projectRoot = configIO.getProjectRoot();
 
-  if (tool.type === 'mcp-runtime') {
-    const mcpTool = mcpSpec.mcpRuntimeTools?.find(t => t.name === tool.name);
-    if (!mcpTool) {
-      throw new Error(`MCP Runtime tool "${tool.name}" not found.`);
+  // Gateway target
+  const gateway = mcpSpec.agentCoreGateways.find(g => g.name === tool.gatewayName);
+  if (!gateway) {
+    throw new Error(`Gateway "${tool.gatewayName}" not found.`);
+  }
+
+  const target = gateway.targets.find(t => t.name === tool.name);
+  if (!target) {
+    throw new Error(`Target "${tool.name}" not found in gateway "${tool.gatewayName}".`);
+  }
+
+  summary.push(`Removing gateway target: ${tool.name} (from ${tool.gatewayName})`);
+
+  // Check for directory to delete
+  if (target.compute?.implementation && 'path' in target.compute.implementation) {
+    const toolPath = target.compute.implementation.path;
+    const toolDir = join(projectRoot, toolPath);
+    if (existsSync(toolDir)) {
+      directoriesToDelete.push(toolDir);
+      summary.push(`Deleting directory: ${toolPath}`);
     }
+  }
 
-    summary.push(`Removing MCP Runtime tool: ${tool.name}`);
-
-    // Check for directory to delete
-    const implementation = mcpTool.compute.implementation;
-    const toolPath = 'path' in implementation ? implementation.path : undefined;
-    if (toolPath) {
-      const toolDir = join(projectRoot, toolPath);
-      if (existsSync(toolDir)) {
-        directoriesToDelete.push(toolDir);
-        summary.push(`Deleting directory: ${toolPath}`);
-      }
-    }
-
-    // Tool definition in mcp-defs
-    if (mcpDefs.tools[mcpTool.toolDefinition.name]) {
-      summary.push(`Removing tool definition: ${mcpTool.toolDefinition.name}`);
-    }
-  } else {
-    // Gateway target
-    const gateway = mcpSpec.agentCoreGateways.find(g => g.name === tool.gatewayName);
-    if (!gateway) {
-      throw new Error(`Gateway "${tool.gatewayName}" not found.`);
-    }
-
-    const target = gateway.targets.find(t => t.name === tool.name);
-    if (!target) {
-      throw new Error(`Target "${tool.name}" not found in gateway "${tool.gatewayName}".`);
-    }
-
-    summary.push(`Removing gateway target: ${tool.name} (from ${tool.gatewayName})`);
-
-    // Check for directory to delete
-    if (target.compute?.implementation && 'path' in target.compute.implementation) {
-      const toolPath = target.compute.implementation.path;
-      const toolDir = join(projectRoot, toolPath);
-      if (existsSync(toolDir)) {
-        directoriesToDelete.push(toolDir);
-        summary.push(`Deleting directory: ${toolPath}`);
-      }
-    }
-
-    // Tool definitions in mcp-defs
-    for (const toolDef of target.toolDefinitions ?? []) {
-      if (mcpDefs.tools[toolDef.name]) {
-        summary.push(`Removing tool definition: ${toolDef.name}`);
-      }
+  // Tool definitions in mcp-defs
+  for (const toolDef of target.toolDefinitions ?? []) {
+    if (mcpDefs.tools[toolDef.name]) {
+      summary.push(`Removing tool definition: ${toolDef.name}`);
     }
   }
 
@@ -140,13 +110,6 @@ export async function previewRemoveGatewayTarget(tool: RemovableGatewayTarget): 
  * Compute the MCP spec after removing a tool.
  */
 function computeRemovedToolMcpSpec(mcpSpec: AgentCoreMcpSpec, tool: RemovableGatewayTarget): AgentCoreMcpSpec {
-  if (tool.type === 'mcp-runtime') {
-    return {
-      ...mcpSpec,
-      mcpRuntimeTools: (mcpSpec.mcpRuntimeTools ?? []).filter(t => t.name !== tool.name),
-    };
-  }
-
   // Gateway target
   return {
     ...mcpSpec,
@@ -170,18 +133,11 @@ function computeRemovedToolMcpDefs(
 ): AgentCoreCliMcpDefs {
   const toolNamesToRemove: string[] = [];
 
-  if (tool.type === 'mcp-runtime') {
-    const mcpTool = mcpSpec.mcpRuntimeTools?.find(t => t.name === tool.name);
-    if (mcpTool) {
-      toolNamesToRemove.push(mcpTool.toolDefinition.name);
-    }
-  } else {
-    const gateway = mcpSpec.agentCoreGateways.find(g => g.name === tool.gatewayName);
-    const target = gateway?.targets.find(t => t.name === tool.name);
-    if (target) {
-      for (const toolDef of target.toolDefinitions ?? []) {
-        toolNamesToRemove.push(toolDef.name);
-      }
+  const gateway = mcpSpec.agentCoreGateways.find(g => g.name === tool.gatewayName);
+  const target = gateway?.targets.find(t => t.name === tool.name);
+  if (target) {
+    for (const toolDef of target.toolDefinitions ?? []) {
+      toolNamesToRemove.push(toolDef.name);
     }
   }
 
@@ -206,25 +162,16 @@ export async function removeGatewayTarget(tool: RemovableGatewayTarget): Promise
     // Find the tool path for deletion
     let toolPath: string | undefined;
 
-    if (tool.type === 'mcp-runtime') {
-      const mcpTool = mcpSpec.mcpRuntimeTools?.find(t => t.name === tool.name);
-      if (!mcpTool) {
-        return { ok: false, error: `MCP Runtime tool "${tool.name}" not found.` };
-      }
-      const impl = mcpTool.compute.implementation;
-      toolPath = 'path' in impl ? impl.path : undefined;
-    } else {
-      const gateway = mcpSpec.agentCoreGateways.find(g => g.name === tool.gatewayName);
-      if (!gateway) {
-        return { ok: false, error: `Gateway "${tool.gatewayName}" not found.` };
-      }
-      const target = gateway.targets.find(t => t.name === tool.name);
-      if (!target) {
-        return { ok: false, error: `Target "${tool.name}" not found in gateway "${tool.gatewayName}".` };
-      }
-      if (target.compute?.implementation && 'path' in target.compute.implementation) {
-        toolPath = target.compute.implementation.path;
-      }
+    const gateway = mcpSpec.agentCoreGateways.find(g => g.name === tool.gatewayName);
+    if (!gateway) {
+      return { ok: false, error: `Gateway "${tool.gatewayName}" not found.` };
+    }
+    const target = gateway.targets.find(t => t.name === tool.name);
+    if (!target) {
+      return { ok: false, error: `Target "${tool.name}" not found in gateway "${tool.gatewayName}".` };
+    }
+    if (target.compute?.implementation && 'path' in target.compute.implementation) {
+      toolPath = target.compute.implementation.path;
     }
 
     // Update MCP spec

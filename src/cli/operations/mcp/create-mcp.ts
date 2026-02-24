@@ -3,9 +3,7 @@ import type {
   AgentCoreCliMcpDefs,
   AgentCoreGateway,
   AgentCoreGatewayTarget,
-  AgentCoreMcpRuntimeTool,
   AgentCoreMcpSpec,
-  CodeZipRuntimeConfig,
   DirectoryPath,
   FilePath,
 } from '../../../schema';
@@ -255,7 +253,7 @@ export async function createExternalGatewayTarget(config: AddGatewayTargetConfig
 }
 
 /**
- * Create an MCP tool (MCP runtime or behind gateway).
+ * Create an MCP tool (behind gateway only).
  */
 export async function createToolFromWizard(config: AddGatewayTargetConfig): Promise<CreateToolResult> {
   validateGatewayTargetLanguage(config.language);
@@ -280,117 +278,76 @@ export async function createToolFromWizard(config: AddGatewayTargetConfig): Prom
     ToolDefinitionSchema.parse(toolDef);
   }
 
-  if (config.exposure === 'mcp-runtime') {
-    // MCP Runtime tool - always AgentCoreRuntime (single tool)
-    // Build explicit CodeZipRuntimeConfig - no CLI-managed placeholders
-    const runtimeConfig: CodeZipRuntimeConfig = {
-      artifact: 'CodeZip',
-      pythonVersion: DEFAULT_PYTHON_VERSION,
-      name: config.name,
-      entrypoint: 'server.py:main' as FilePath,
-      codeLocation: config.sourcePath as DirectoryPath,
-      networkMode: 'PUBLIC',
-    };
+  // Behind gateway
+  if (!config.gateway) {
+    throw new Error('Gateway name is required for tools behind a gateway.');
+  }
 
-    // 'Other' language requires container config - not supported for mcp-runtime yet
-    if (config.language === 'Other') {
-      throw new Error('Language "Other" is not yet supported for MCP runtime tools. Use Python or TypeScript.');
-    }
+  const gateway = mcpSpec.agentCoreGateways.find(g => g.name === config.gateway);
+  if (!gateway) {
+    throw new Error(`Gateway "${config.gateway}" not found.`);
+  }
 
-    const mcpRuntimeTool: AgentCoreMcpRuntimeTool = {
-      name: config.name,
-      toolDefinition: config.toolDefinition,
-      compute: {
-        host: 'AgentCoreRuntime',
-        implementation: {
-          path: config.sourcePath,
-          language: config.language,
-          handler: DEFAULT_HANDLER,
-        },
-        runtime: runtimeConfig,
-      },
-    };
+  // Check for duplicate target name
+  if (gateway.targets.some(t => t.name === config.name)) {
+    throw new Error(`Target "${config.name}" already exists in gateway "${gateway.name}".`);
+  }
 
-    const mcpRuntimeTools = mcpSpec.mcpRuntimeTools ?? [];
-    if (mcpRuntimeTools.some(tool => tool.name === mcpRuntimeTool.name)) {
-      throw new Error(`MCP runtime tool "${mcpRuntimeTool.name}" already exists.`);
-    }
-    mcpSpec.mcpRuntimeTools = [...mcpRuntimeTools, mcpRuntimeTool];
-
-    // Write mcp.json
-    await configIO.writeMcpSpec(mcpSpec);
-  } else {
-    // Behind gateway
-    if (!config.gateway) {
-      throw new Error('Gateway name is required for tools behind a gateway.');
-    }
-
-    const gateway = mcpSpec.agentCoreGateways.find(g => g.name === config.gateway);
-    if (!gateway) {
-      throw new Error(`Gateway "${config.gateway}" not found.`);
-    }
-
-    // Check for duplicate target name
-    if (gateway.targets.some(t => t.name === config.name)) {
-      throw new Error(`Target "${config.name}" already exists in gateway "${gateway.name}".`);
-    }
-
-    // Check for duplicate tool names
-    for (const toolDef of toolDefs) {
-      for (const existingTarget of gateway.targets) {
-        if ((existingTarget.toolDefinitions ?? []).some(t => t.name === toolDef.name)) {
-          throw new Error(`Tool "${toolDef.name}" already exists in gateway "${gateway.name}".`);
-        }
+  // Check for duplicate tool names
+  for (const toolDef of toolDefs) {
+    for (const existingTarget of gateway.targets) {
+      if ((existingTarget.toolDefinitions ?? []).some(t => t.name === toolDef.name)) {
+        throw new Error(`Tool "${toolDef.name}" already exists in gateway "${gateway.name}".`);
       }
     }
-
-    // 'Other' language requires container config - not supported for gateway tools yet
-    if (config.language === 'Other') {
-      throw new Error('Language "Other" is not yet supported for gateway tools. Use Python or TypeScript.');
-    }
-
-    // Create a single target with all tool definitions
-    const target: AgentCoreGatewayTarget = {
-      name: config.name,
-      targetType: config.host === 'AgentCoreRuntime' ? 'mcpServer' : 'lambda',
-      toolDefinitions: toolDefs,
-      compute:
-        config.host === 'Lambda'
-          ? {
-              host: 'Lambda',
-              implementation: {
-                path: config.sourcePath,
-                language: config.language,
-                handler: DEFAULT_HANDLER,
-              },
-              ...(config.language === 'Python'
-                ? { pythonVersion: DEFAULT_PYTHON_VERSION }
-                : { nodeVersion: DEFAULT_NODE_VERSION }),
-            }
-          : {
-              host: 'AgentCoreRuntime',
-              implementation: {
-                path: config.sourcePath,
-                language: 'Python',
-                handler: 'server.py:main',
-              },
-              runtime: {
-                artifact: 'CodeZip',
-                pythonVersion: DEFAULT_PYTHON_VERSION,
-                name: config.name,
-                entrypoint: 'server.py:main' as FilePath,
-                codeLocation: config.sourcePath as DirectoryPath,
-                networkMode: 'PUBLIC',
-              },
-            },
-      ...(config.outboundAuth && { outboundAuth: config.outboundAuth }),
-    };
-
-    gateway.targets.push(target);
-
-    // Write mcp.json for gateway case
-    await configIO.writeMcpSpec(mcpSpec);
   }
+
+  // 'Other' language requires container config - not supported for gateway tools yet
+  if (config.language === 'Other') {
+    throw new Error('Language "Other" is not yet supported for gateway tools. Use Python or TypeScript.');
+  }
+
+  // Create a single target with all tool definitions
+  const target: AgentCoreGatewayTarget = {
+    name: config.name,
+    targetType: config.host === 'AgentCoreRuntime' ? 'mcpServer' : 'lambda',
+    toolDefinitions: toolDefs,
+    compute:
+      config.host === 'Lambda'
+        ? {
+            host: 'Lambda',
+            implementation: {
+              path: config.sourcePath,
+              language: config.language,
+              handler: DEFAULT_HANDLER,
+            },
+            ...(config.language === 'Python'
+              ? { pythonVersion: DEFAULT_PYTHON_VERSION }
+              : { nodeVersion: DEFAULT_NODE_VERSION }),
+          }
+        : {
+            host: 'AgentCoreRuntime',
+            implementation: {
+              path: config.sourcePath,
+              language: 'Python',
+              handler: 'server.py:main',
+            },
+            runtime: {
+              artifact: 'CodeZip',
+              pythonVersion: DEFAULT_PYTHON_VERSION,
+              name: config.name,
+              entrypoint: 'server.py:main' as FilePath,
+              codeLocation: config.sourcePath as DirectoryPath,
+              networkMode: 'PUBLIC',
+            },
+          },
+    ...(config.outboundAuth && { outboundAuth: config.outboundAuth }),
+  };
+
+  gateway.targets.push(target);
+
+  // Write mcp.json for gateway case
+  await configIO.writeMcpSpec(mcpSpec);
 
   // Update mcp-defs.json with all tool definitions
   const mcpDefsPath = resolveMcpDefsPath();

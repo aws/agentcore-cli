@@ -10,5 +10,4 @@ export type {
   AddGatewayTargetConfig,
   AddGatewayTargetStep,
   ComputeHost,
-  ExposureMode,
 } from './types';

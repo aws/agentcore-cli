@@ -213,7 +213,6 @@ export async function validateAddGatewayTargetOptions(options: AddGatewayTargetO
 
     // Populate defaults for fields skipped by external endpoint flow
     options.language ??= 'Other';
-    options.exposure ??= 'behind-gateway';
     options.gateway ??= undefined;
 
     return { valid: true };
@@ -225,27 +224,6 @@ export async function validateAddGatewayTargetOptions(options: AddGatewayTargetO
 
   if (options.language !== 'Python' && options.language !== 'TypeScript' && options.language !== 'Other') {
     return { valid: false, error: 'Invalid language. Valid options: Python, TypeScript, Other' };
-  }
-
-  if (!options.exposure) {
-    return { valid: false, error: '--exposure is required' };
-  }
-
-  if (options.exposure !== 'mcp-runtime' && options.exposure !== 'behind-gateway') {
-    return { valid: false, error: "Invalid exposure. Use 'mcp-runtime' or 'behind-gateway'" };
-  }
-
-  if (options.exposure === 'mcp-runtime') {
-    if (!options.agents) {
-      return { valid: false, error: '--agents is required for mcp-runtime exposure' };
-    }
-    const agents = options.agents
-      .split(',')
-      .map(s => s.trim())
-      .filter(Boolean);
-    if (agents.length === 0) {
-      return { valid: false, error: 'At least one agent is required' };
-    }
   }
 
   // Validate outbound auth configuration

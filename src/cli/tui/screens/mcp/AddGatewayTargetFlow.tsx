@@ -23,8 +23,6 @@ type FlowState =
 interface AddGatewayTargetFlowProps {
   /** Whether running in interactive TUI mode */
   isInteractive?: boolean;
-  /** Available agents */
-  existingAgents: string[];
   onExit: () => void;
   onBack: () => void;
   /** Called when user selects dev from success screen to run agent locally */
@@ -40,7 +38,6 @@ const MODE_OPTIONS: SelectableItem[] = [
 
 export function AddGatewayTargetFlow({
   isInteractive = true,
-  existingAgents,
   onExit,
   onBack,
   onDev,
@@ -166,7 +163,6 @@ export function AddGatewayTargetFlow({
       return (
         <AddGatewayTargetScreen
           existingGateways={existingGateways}
-          existingAgents={existingAgents}
           existingToolNames={existingToolNames}
           onComplete={handleCreateComplete}
           onExit={onBack}
@@ -193,7 +189,6 @@ export function AddGatewayTargetFlow({
     return (
       <AddGatewayTargetScreen
         existingGateways={existingGateways}
-        existingAgents={existingAgents}
         existingToolNames={existingToolNames}
         onComplete={handleCreateComplete}
         onExit={() => setFlow({ name: 'mode-select' })}

@@ -1,7 +1,6 @@
 import {
   type AgentCoreGateway,
   type AgentCoreGatewayTarget,
-  type AgentCoreMcpRuntimeTool,
   type AgentCoreMcpSpec,
   AgentCoreMcpSpecSchema,
   GatewayNameSchema,
@@ -79,7 +78,7 @@ export function McpGuidedEditor(props: McpGuidedEditorProps) {
   );
 }
 
-type ViewMode = 'gateways' | 'mcp-runtime';
+// Gateways view is the only view mode
 type ScreenMode = 'list' | 'confirm-exit' | 'edit-item' | 'edit-field' | 'edit-targets' | 'edit-target-field';
 
 function McpEditorBody(props: {
@@ -91,13 +90,10 @@ function McpEditorBody(props: {
   onRequestAdd?: () => void;
 }) {
   const [gateways, setGateways] = useState<AgentCoreGateway[]>(props.initialSpec.agentCoreGateways);
-  const [mcpRuntimeTools, setMcpRuntimeTools] = useState<AgentCoreMcpRuntimeTool[]>(
-    props.initialSpec.mcpRuntimeTools ?? []
-  );
   const [unassignedTargets, _setUnassignedTargets] = useState<AgentCoreGatewayTarget[]>(
     props.initialSpec.unassignedTargets ?? []
   );
-  const [viewMode, setViewMode] = useState<ViewMode>('gateways');
+  // Only gateways view mode
   const [selectedIndex, setSelectedIndex] = useState(0);
   const [expandedIndex, setExpandedIndex] = useState<number | null>(null);
   const [dirty, setDirty] = useState(false);
@@ -110,18 +106,15 @@ function McpEditorBody(props: {
   const [selectedTargetIndex, setSelectedTargetIndex] = useState(0);
   const [editingTargetFieldId, setEditingTargetFieldId] = useState<string | null>(null);
 
-  const hasMcpRuntimeTools = mcpRuntimeTools.length > 0 || (props.initialSpec.mcpRuntimeTools?.length ?? 0) > 0;
-
   // Define editable fields for the current item
-  const currentGateway = viewMode === 'gateways' ? gateways[selectedIndex] : null;
+  const currentGateway = gateways[selectedIndex];
   const targetCount = currentGateway?.targets?.length ?? 0;
   const gatewayFields = [
     { id: 'name', label: 'Name' },
     { id: 'description', label: 'Description' },
     { id: 'targets', label: `Targets (${targetCount})` },
   ];
-  const mcpRuntimeFields = [{ id: 'name', label: 'Name' }];
-  const currentFields = viewMode === 'gateways' ? gatewayFields : mcpRuntimeFields;
+  const currentFields = gatewayFields;
 
   // Target fields
   const currentTarget = currentGateway?.targets?.[selectedTargetIndex];
@@ -135,7 +128,6 @@ function McpEditorBody(props: {
   async function commitChanges() {
     const spec: AgentCoreMcpSpec & { unassignedTargets?: AgentCoreGatewayTarget[] } = {
       agentCoreGateways: gateways,
-      ...(mcpRuntimeTools.length > 0 ? { mcpRuntimeTools: mcpRuntimeTools } : {}),
       ...(unassignedTargets.length > 0 ? { unassignedTargets: unassignedTargets } : {}),
     };
     const content = JSON.stringify(spec, null, 2);
@@ -239,14 +231,6 @@ function McpEditorBody(props: {
       return;
     }
 
-    // Tab to switch between gateways and mcp-runtime views
-    if (key.tab && hasMcpRuntimeTools) {
-      setViewMode(prev => (prev === 'gateways' ? 'mcp-runtime' : 'gateways'));
-      setSelectedIndex(0);
-      setExpandedIndex(null);
-      return;
-    }
-
     // A to add (works in both views)
     if (input.toLowerCase() === 'a' && props.onRequestAdd) {
       props.onRequestAdd();
@@ -254,7 +238,7 @@ function McpEditorBody(props: {
     }
 
     // View-specific navigation and actions
-    const items = viewMode === 'gateways' ? gateways : mcpRuntimeTools;
+    const items = gateways;
     const itemCount = items.length;
 
     if (key.upArrow && itemCount > 0) {
@@ -282,13 +266,8 @@ function McpEditorBody(props: {
 
     // D to delete
     if (input.toLowerCase() === 'd' && itemCount > 0) {
-      if (viewMode === 'gateways') {
-        const next = gateways.filter((_, idx) => idx !== selectedIndex);
-        setGateways(next);
-      } else {
-        const next = mcpRuntimeTools.filter((_, idx) => idx !== selectedIndex);
-        setMcpRuntimeTools(next);
-      }
+      const next = gateways.filter((_, idx) => idx !== selectedIndex);
+      setGateways(next);
       setSelectedIndex(prev => Math.max(0, Math.min(prev, itemCount - 2)));
       setExpandedIndex(null);
       setDirty(true);
@@ -298,24 +277,21 @@ function McpEditorBody(props: {
 
   // Edit item screen - shows list of editable fields
   if (screenMode === 'edit-item') {
-    const currentGateway = viewMode === 'gateways' ? gateways[selectedIndex] : null;
-    const currentTool = viewMode === 'mcp-runtime' ? mcpRuntimeTools[selectedIndex] : null;
-    const itemName = currentGateway?.name ?? currentTool?.name ?? 'Unknown';
+    const currentGateway = gateways[selectedIndex];
+    const itemName = currentGateway?.name ?? 'Unknown';
 
     return (
       <ScreenLayout>
-        <Header title={`Edit ${viewMode === 'gateways' ? 'Gateway' : 'Tool'}`} subtitle={itemName} />
+        <Header title="Edit Gateway" subtitle={itemName} />
         <Box flexDirection="column" marginTop={1}>
           <Text dimColor>↑↓ navigate · Enter edit · Esc back</Text>
           <Box marginTop={1} flexDirection="column">
             {currentFields.map((field, idx) => {
               const selected = idx === editFieldIndex;
               let value = '';
-              if (viewMode === 'gateways' && currentGateway) {
+              if (currentGateway) {
                 if (field.id === 'name') value = currentGateway.name;
                 if (field.id === 'description') value = currentGateway.description ?? '';
-              } else if (currentTool) {
-                if (field.id === 'name') value = currentTool.name;
               }
               return (
                 <Box key={field.id} gap={1}>
@@ -337,8 +313,7 @@ function McpEditorBody(props: {
 
   // Edit field screen - text input for the selected field
   if (screenMode === 'edit-field' && editingFieldId) {
-    const currentGateway = viewMode === 'gateways' ? gateways[selectedIndex] : null;
-    const currentTool = viewMode === 'mcp-runtime' ? mcpRuntimeTools[selectedIndex] : null;
+    const currentGateway = gateways[selectedIndex];
     const field = currentFields.find(f => f.id === editingFieldId);
 
     if (!field) {
@@ -347,51 +322,35 @@ function McpEditorBody(props: {
     }
 
     let initialValue = '';
-    if (viewMode === 'gateways' && currentGateway) {
+    if (currentGateway) {
       if (editingFieldId === 'name') initialValue = currentGateway.name;
       if (editingFieldId === 'description') initialValue = currentGateway.description ?? '';
-    } else if (currentTool) {
-      if (editingFieldId === 'name') initialValue = currentTool.name;
     }
 
     const handleSubmit = (value: string) => {
-      if (viewMode === 'gateways') {
-        if (editingFieldId === 'name') {
-          const next = gateways.map((g, idx) => (idx === selectedIndex ? { ...g, name: value } : g));
-          setGateways(next);
-        } else if (editingFieldId === 'description') {
-          const next = gateways.map((g, idx) =>
-            idx === selectedIndex ? { ...g, description: value || undefined } : g
-          );
-          setGateways(next);
-        }
-      } else {
-        if (editingFieldId === 'name') {
-          const next = mcpRuntimeTools.map((t, idx) => (idx === selectedIndex ? { ...t, name: value } : t));
-          setMcpRuntimeTools(next);
-        }
+      if (editingFieldId === 'name') {
+        const next = gateways.map((g, idx) => (idx === selectedIndex ? { ...g, name: value } : g));
+        setGateways(next);
+      } else if (editingFieldId === 'description') {
+        const next = gateways.map((g, idx) => (idx === selectedIndex ? { ...g, description: value || undefined } : g));
+        setGateways(next);
       }
       setDirty(true);
       setEditingFieldId(null);
       setScreenMode('edit-item');
     };
 
-    const isGatewayName = viewMode === 'gateways' && editingFieldId === 'name';
-    const isToolName = viewMode === 'mcp-runtime' && editingFieldId === 'name';
+    const isGatewayName = editingFieldId === 'name';
 
     // Get existing names (excluding current) for uniqueness check
     let existingNames: string[] = [];
     if (isGatewayName) {
       existingNames = gateways.filter((_, idx) => idx !== selectedIndex).map(g => g.name);
-    } else if (isToolName) {
-      existingNames = mcpRuntimeTools.filter((_, idx) => idx !== selectedIndex).map(t => t.name);
     }
 
-    const customValidation =
-      isGatewayName || isToolName
-        ? (value: string) =>
-            !existingNames.includes(value) || `${isGatewayName ? 'Gateway' : 'Tool'} name already exists`
-        : undefined;
+    const customValidation = isGatewayName
+      ? (value: string) => !existingNames.includes(value) || 'Gateway name already exists'
+      : undefined;
 
     return (
       <ScreenLayout>
@@ -416,7 +375,7 @@ function McpEditorBody(props: {
 
   // Edit targets screen - shows list of targets in the current gateway
   if (screenMode === 'edit-targets') {
-    const gateway = viewMode === 'gateways' ? gateways[selectedIndex] : null;
+    const gateway = gateways[selectedIndex];
     const targets = gateway?.targets ?? [];
 
     return (
@@ -456,7 +415,7 @@ function McpEditorBody(props: {
 
   // Edit target field screen - text input for the selected target field
   if (screenMode === 'edit-target-field' && editingTargetFieldId) {
-    const gateway = viewMode === 'gateways' ? gateways[selectedIndex] : null;
+    const gateway = gateways[selectedIndex];
     const target = gateway?.targets?.[selectedTargetIndex];
     const field = targetFields.find(f => f.id === editingTargetFieldId);
 
@@ -478,7 +437,7 @@ function McpEditorBody(props: {
     }
 
     const handleSubmit = (value: string) => {
-      if (viewMode === 'gateways' && gateway) {
+      if (gateway) {
         const updatedTargets = [...(gateway.targets ?? [])];
         const targetToUpdate = updatedTargets[selectedTargetIndex];
         if (targetToUpdate) {
@@ -546,7 +505,6 @@ function McpEditorBody(props: {
   if (screenMode === 'confirm-exit') {
     const spec: AgentCoreMcpSpec & { unassignedTargets?: AgentCoreGatewayTarget[] } = {
       agentCoreGateways: gateways,
-      ...(mcpRuntimeTools.length > 0 ? { mcpRuntimeTools: mcpRuntimeTools } : {}),
       ...(unassignedTargets.length > 0 ? { unassignedTargets: unassignedTargets } : {}),
     };
     const currentText = JSON.stringify(spec, null, 2);
@@ -595,108 +553,58 @@ function McpEditorBody(props: {
     <ScreenLayout>
       <Header title="Edit MCP Config" subtitle={props.schema.title} />
       <Box flexDirection="column">
-        <Text dimColor>
-          A add · D del · Space expand · Enter edit{hasMcpRuntimeTools ? ' · Tab switch' : ''} · Esc back
-        </Text>
+        <Text dimColor>A add · D del · Space expand · Enter edit · Esc back</Text>
       </Box>
 
-      {/* Tab bar */}
-      {hasMcpRuntimeTools && (
-        <Box marginTop={1} gap={2}>
-          <Text color={viewMode === 'gateways' ? 'cyan' : undefined} bold={viewMode === 'gateways'}>
-            [Gateways]
-          </Text>
-          <Text color={viewMode === 'mcp-runtime' ? 'cyan' : undefined} bold={viewMode === 'mcp-runtime'}>
-            [MCP Runtime]
-          </Text>
-        </Box>
-      )}
-
       <Box marginTop={1}>
-        {viewMode === 'gateways' ? (
-          <Panel title={`MCP Gateways (${gateways.length})`} fullWidth>
-            {gateways.length === 0 ? (
-              <Text dimColor>No gateways configured. Press A to add one.</Text>
-            ) : (
-              <Box flexDirection="column">
-                {gateways.map((gateway, idx) => {
-                  const selected = idx === selectedIndex;
-                  const expanded = expandedIndex === idx;
-                  const targetCount = gateway.targets?.length ?? 0;
-                  return (
-                    <Box key={gateway.name} flexDirection="column">
-                      <Box flexDirection="row" gap={1}>
-                        <Text color={selected ? 'cyan' : undefined}>{selected ? '>' : ' '}</Text>
-                        <Text color={selected ? 'cyan' : undefined}>{expanded ? '▼' : '▶'}</Text>
-                        <Text bold={selected} color={selected ? 'cyan' : undefined}>
-                          {gateway.name}
-                        </Text>
-                        <Text dimColor>
-                          ({targetCount} {targetCount === 1 ? 'target' : 'targets'})
-                        </Text>
-                        {gateway.description && <Text dimColor>· {gateway.description}</Text>}
-                      </Box>
-                      {expanded && (
-                        <Box flexDirection="column" marginLeft={4} marginTop={0}>
-                          {targetCount === 0 ? (
-                            <Text dimColor italic>
-                              No targets defined
-                            </Text>
-                          ) : (
-                            gateway.targets.map((target, tIdx) => (
-                              <Box key={tIdx} flexDirection="row" gap={1}>
-                                <Text dimColor>·</Text>
-                                <Text>{target.name ?? `Target ${tIdx + 1}`}</Text>
-                                <Text dimColor>
-                                  ({target.toolDefinitions?.length ?? 0} tools ·{' '}
-                                  {target.compute?.host ?? target.targetType})
-                                </Text>
-                              </Box>
-                            ))
-                          )}
-                        </Box>
-                      )}
+        <Panel title={`MCP Gateways (${gateways.length})`} fullWidth>
+          {gateways.length === 0 ? (
+            <Text dimColor>No gateways configured. Press A to add one.</Text>
+          ) : (
+            <Box flexDirection="column">
+              {gateways.map((gateway, idx) => {
+                const selected = idx === selectedIndex;
+                const expanded = expandedIndex === idx;
+                const targetCount = gateway.targets?.length ?? 0;
+                return (
+                  <Box key={gateway.name} flexDirection="column">
+                    <Box flexDirection="row" gap={1}>
+                      <Text color={selected ? 'cyan' : undefined}>{selected ? '>' : ' '}</Text>
+                      <Text color={selected ? 'cyan' : undefined}>{expanded ? '▼' : '▶'}</Text>
+                      <Text bold={selected} color={selected ? 'cyan' : undefined}>
+                        {gateway.name}
+                      </Text>
+                      <Text dimColor>
+                        ({targetCount} {targetCount === 1 ? 'target' : 'targets'})
+                      </Text>
+                      {gateway.description && <Text dimColor>· {gateway.description}</Text>}
                     </Box>
-                  );
-                })}
-              </Box>
-            )}
-          </Panel>
-        ) : (
-          <Panel title={`MCP Runtime Tools (${mcpRuntimeTools.length})`} fullWidth>
-            {mcpRuntimeTools.length === 0 ? (
-              <Text dimColor>No MCP runtime tools configured.</Text>
-            ) : (
-              <Box flexDirection="column">
-                {mcpRuntimeTools.map((tool, idx) => {
-                  const selected = idx === selectedIndex;
-                  const expanded = expandedIndex === idx;
-                  return (
-                    <Box key={tool.name} flexDirection="column">
-                      <Box flexDirection="row" gap={1}>
-                        <Text color={selected ? 'cyan' : undefined}>{selected ? '>' : ' '}</Text>
-                        <Text color={selected ? 'cyan' : undefined}>{expanded ? '▼' : '▶'}</Text>
-                        <Text bold={selected} color={selected ? 'cyan' : undefined}>
-                          {tool.name}
-                        </Text>
-                        <Text dimColor>[{tool.compute.host}]</Text>
+                    {expanded && (
+                      <Box flexDirection="column" marginLeft={4} marginTop={0}>
+                        {targetCount === 0 ? (
+                          <Text dimColor italic>
+                            No targets defined
+                          </Text>
+                        ) : (
+                          gateway.targets.map((target, tIdx) => (
+                            <Box key={tIdx} flexDirection="row" gap={1}>
+                              <Text dimColor>·</Text>
+                              <Text>{target.name ?? `Target ${tIdx + 1}`}</Text>
+                              <Text dimColor>
+                                ({target.toolDefinitions?.length ?? 0} tools ·{' '}
+                                {target.compute?.host ?? target.targetType})
+                              </Text>
+                            </Box>
+                          ))
+                        )}
                       </Box>
-                      {expanded && (
-                        <Box flexDirection="column" marginLeft={4}>
-                          <Text dimColor>Tool: {tool.toolDefinition?.name ?? '(unnamed)'}</Text>
-                          <Text dimColor>Language: {tool.compute.implementation.language}</Text>
-                          {'handler' in tool.compute.implementation && (
-                            <Text dimColor>Handler: {tool.compute.implementation.handler}</Text>
-                          )}
-                        </Box>
-                      )}
-                    </Box>
-                  );
-                })}
-              </Box>
-            )}
-          </Panel>
-        )}
+                    )}
+                  </Box>
+                );
+              })}
+            </Box>
+          )}
+        </Panel>
       </Box>
 
       {/* Unassigned Targets */}

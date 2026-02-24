@@ -49,8 +49,6 @@ export interface AddGatewayTargetOptions {
   source?: string;
   endpoint?: string;
   language?: 'Python' | 'TypeScript' | 'Other';
-  exposure?: 'mcp-runtime' | 'behind-gateway';
-  agents?: string;
   gateway?: string;
   host?: 'Lambda' | 'AgentCoreRuntime';
   outboundAuthType?: 'OAUTH' | 'API_KEY' | 'NONE';

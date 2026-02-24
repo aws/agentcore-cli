@@ -111,8 +111,6 @@ async function handleAddGatewayTargetCLI(options: AddGatewayTargetOptions): Prom
     name: options.name!,
     description: options.description,
     language: options.language! as 'Python' | 'TypeScript',
-    exposure: options.exposure!,
-    agents: options.agents,
     gateway: options.gateway,
     host: options.host,
   });
@@ -266,10 +264,8 @@ export function registerAdd(program: Command) {
     .option('--source <source>', 'Source: existing-endpoint or create-new')
     .option('--endpoint <url>', 'MCP server endpoint URL')
     .option('--language <lang>', 'Language: Python or TypeScript')
-    .option('--exposure <mode>', 'Exposure mode: mcp-runtime or behind-gateway')
-    .option('--agents <names>', 'Comma-separated agent names (for mcp-runtime)')
-    .option('--gateway <name>', 'Gateway name (for behind-gateway)')
-    .option('--host <host>', 'Compute host: Lambda or AgentCoreRuntime (for behind-gateway)')
+    .option('--gateway <name>', 'Gateway name')
+    .option('--host <host>', 'Compute host: Lambda or AgentCoreRuntime')
     .option('--json', 'Output as JSON')
     .action(async options => {
       requireProject();

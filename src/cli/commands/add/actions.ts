@@ -70,8 +70,6 @@ export interface ValidatedAddGatewayTargetOptions {
   source?: 'existing-endpoint' | 'create-new';
   endpoint?: string;
   language: 'Python' | 'TypeScript' | 'Other';
-  exposure: 'mcp-runtime' | 'behind-gateway';
-  agents?: string;
   gateway?: string;
   host?: 'Lambda' | 'AgentCoreRuntime';
   outboundAuthType?: 'OAUTH' | 'API_KEY' | 'NONE';
@@ -306,23 +304,15 @@ function buildGatewayTargetConfig(options: ValidatedAddGatewayTargetOptions): Ad
     description,
     sourcePath,
     language: options.language,
-    exposure: options.exposure,
     source: options.source,
     endpoint: options.endpoint,
-    host: options.exposure === 'mcp-runtime' ? 'AgentCoreRuntime' : options.host!,
+    host: options.host!,
     toolDefinition: {
       name: options.name,
       description,
       inputSchema: { type: 'object' },
     },
-    selectedAgents:
-      options.exposure === 'mcp-runtime'
-        ? options
-            .agents!.split(',')
-            .map(s => s.trim())
-            .filter(Boolean)
-        : [],
-    gateway: options.exposure === 'behind-gateway' ? options.gateway : undefined,
+    gateway: options.gateway,
     outboundAuth,
   };
 }
