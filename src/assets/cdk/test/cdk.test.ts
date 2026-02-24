@@ -1,16 +1,20 @@
-// import * as cdk from 'aws-cdk-lib/core';
-// import { Template } from 'aws-cdk-lib/assertions';
-// import * as Cdk from '../lib/cdk-stack';
+import * as cdk from 'aws-cdk-lib';
+import { Template } from 'aws-cdk-lib/assertions';
+import { AgentCoreStack } from '../lib/cdk-stack';
 
-// example test. To run these tests, uncomment this file along with the
-// example resource in lib/cdk-stack.ts
-test('SQS Queue Created', () => {
-  //   const app = new cdk.App();
-  //     // WHEN
-  //   const stack = new Cdk.CdkStack(app, 'MyTestStack');
-  //     // THEN
-  //   const template = Template.fromStack(stack);
-  //   template.hasResourceProperties('AWS::SQS::Queue', {
-  //     VisibilityTimeout: 300
-  //   });
+test('AgentCoreStack synthesizes with empty spec', () => {
+  const app = new cdk.App();
+  const stack = new AgentCoreStack(app, 'TestStack', {
+    spec: {
+      name: 'testproject',
+      version: 1,
+      agents: [],
+      memories: [],
+      credentials: [],
+    },
+  });
+  const template = Template.fromStack(stack);
+  template.hasOutput('StackNameOutput', {
+    Description: 'Name of the CloudFormation Stack',
+  });
 });

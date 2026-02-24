@@ -16,6 +16,7 @@ import { COMMAND_DESCRIPTIONS } from './tui/copy';
 import { clearExitMessage, getExitMessage } from './tui/exit-message';
 import { CommandListScreen } from './tui/screens/home';
 import { getCommandsForUI } from './tui/utils';
+import { type UpdateCheckResult, checkForUpdate, printUpdateNotification } from './update-notifier';
 import { Command } from '@commander-js/extra-typings';
 import { render } from 'ink';
 import React from 'react';
@@ -54,13 +55,13 @@ function setupGlobalCleanup() {
 /**
  * Render the TUI in alternate screen buffer mode.
  */
-function renderTUI() {
+function renderTUI(updateCheck: Promise<UpdateCheckResult | null>) {
   inAltScreen = true;
   process.stdout.write(ENTER_ALT_SCREEN);
 
   const { waitUntilExit } = render(React.createElement(App));
 
-  void waitUntilExit().then(() => {
+  void waitUntilExit().then(async () => {
     inAltScreen = false;
     process.stdout.write(EXIT_ALT_SCREEN);
     process.stdout.write(SHOW_CURSOR);
@@ -70,6 +71,12 @@ function renderTUI() {
     if (exitMessage) {
       console.log(exitMessage);
       clearExitMessage();
+    }
+
+    // Print update notification after TUI exits
+    const result = await updateCheck;
+    if (result?.updateAvailable) {
+      printUpdateNotification(result);
     }
   });
 }
@@ -135,12 +142,23 @@ export const main = async (argv: string[]) => {
 
   const program = createProgram();
 
-  // Show TUI for no arguments, commander handles --help via configureHelp()
   const args = argv.slice(2);
+
+  // Fire off non-blocking update check (skip for `update` command)
+  const isUpdateCommand = args[0] === 'update';
+  const updateCheck = isUpdateCommand ? Promise.resolve(null) : checkForUpdate();
+
+  // Show TUI for no arguments, commander handles --help via configureHelp()
   if (args.length === 0) {
-    renderTUI();
+    renderTUI(updateCheck);
     return;
   }
 
   await program.parseAsync(argv);
+
+  // Print notification after command finishes
+  const result = await updateCheck;
+  if (result?.updateAvailable) {
+    printUpdateNotification(result);
+  }
 };

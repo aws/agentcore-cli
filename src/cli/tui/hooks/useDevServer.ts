@@ -2,9 +2,11 @@ import { findConfigRoot, readEnvFile } from '../../../lib';
 import type { AgentCoreProjectSpec } from '../../../schema';
 import { DevLogger } from '../../logging/dev-logger';
 import {
+  ConnectionError,
   type DevConfig,
   DevServer,
   type LogLevel,
+  ServerError,
   createDevServer,
   findAvailablePort,
   getDevConfig,
@@ -24,6 +26,8 @@ export interface LogEntry {
 export interface ConversationMessage {
   role: 'user' | 'assistant';
   content: string;
+  isError?: boolean;
+  isHint?: boolean;
 }
 
 const MAX_LOG_ENTRIES = 50;
@@ -45,6 +49,7 @@ export function useDevServer(options: { workingDir: string; port: number; agentN
 
   const serverRef = useRef<DevServer | null>(null);
   const loggerRef = useRef<DevLogger | null>(null);
+  const logsRef = useRef<LogEntry[]>([]);
   const onReadyRef = useRef(options.onReady);
   onReadyRef.current = options.onReady;
   // Track instance ID to ignore callbacks from stale server instances
@@ -53,7 +58,11 @@ export function useDevServer(options: { workingDir: string; port: number; agentN
   const isRestartingRef = useRef(false);
 
   const addLog = (level: LogEntry['level'], message: string) => {
-    setLogs(prev => [...prev.slice(-MAX_LOG_ENTRIES), { level, message }]);
+    setLogs(prev => {
+      const next = [...prev.slice(-MAX_LOG_ENTRIES), { level, message }];
+      logsRef.current = next;
+      return next;
+    });
     // Also log to file (DevLogger filters to only important logs)
     loggerRef.current?.log(level, message);
   };
@@ -146,7 +155,12 @@ export function useDevServer(options: { workingDir: string; port: number; agentN
           }
 
           setStatus(code === 0 ? 'stopped' : 'error');
-          addLog('system', `Server exited (code ${code})`);
+          addLog(
+            'system',
+            code !== 0 && code !== null
+              ? `Server crashed (code ${code}) — check logs above for details`
+              : `Server exited (code ${code})`
+          );
         },
       };
 
@@ -202,17 +216,42 @@ export function useDevServer(options: { workingDir: string; port: number; agentN
       loggerRef.current?.log('system', `→ ${message}`);
       loggerRef.current?.log('response', responseContent);
     } catch (err) {
-      const errorMsg = `Failed: ${err instanceof Error ? err.message : 'Unknown error'}`;
-      addLog('error', errorMsg);
-      // Add error as assistant message
-      setConversation(prev => [...prev, { role: 'assistant', content: errorMsg }]);
+      const rawMsg = err instanceof Error ? err.message : 'Unknown error';
+
+      let errorMsg: string;
+      let showHint = false;
+      if (err instanceof ServerError) {
+        // HTTP error — use the response body directly (avoids stderr race condition)
+        errorMsg = err.message || `Server error (${err.statusCode})`;
+        showHint = true;
+      } else if (err instanceof ConnectionError) {
+        // Connection failed after retries — check stderr logs for crash context
+        const recentErrors = logsRef.current
+          .filter(l => l.level === 'error')
+          .slice(-5)
+          .map(l => l.message);
+        errorMsg = recentErrors.length > 0 ? recentErrors.join('\n') : `Connection failed: ${rawMsg}`;
+        showHint = recentErrors.length > 0;
+      } else {
+        errorMsg = `Failed: ${rawMsg}`;
+      }
+
+      addLog('error', `Failed: ${rawMsg}`);
+      const messages: ConversationMessage[] = [{ role: 'assistant', content: errorMsg, isError: true }];
+      if (showHint) {
+        messages.push({ role: 'assistant', content: 'See logs for full stack trace.', isHint: true });
+      }
+      setConversation(prev => [...prev, ...messages]);
       setStreamingResponse(null);
     } finally {
       setIsStreaming(false);
     }
   };
 
-  const clearLogs = () => setLogs([]);
+  const clearLogs = () => {
+    setLogs([]);
+    logsRef.current = [];
+  };
 
   const restart = () => {
     addLog('system', 'Restarting server...');

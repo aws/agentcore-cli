@@ -26,8 +26,30 @@ export interface SpawnConfig {
  * Handles process spawning, output parsing, and lifecycle management.
  * Subclasses implement prepare() and getSpawnConfig() for mode-specific behavior.
  */
+/** Keep the last 20 stderr lines so we can surface them if the process crashes.
+ *  20 lines is enough to capture a typical Python traceback or error context
+ *  without accumulating unbounded memory for long-running servers. */
+const STDERR_BUFFER_SIZE = 20;
+
+/** Paths that indicate internal framework frames (not user code) */
+const INTERNAL_FRAME_PATTERNS = [
+  '/site-packages/',
+  '<frozen ',
+  '/multiprocessing/',
+  '/asyncio/',
+  '/concurrent/',
+  '/importlib/',
+];
+
+function isInternalFrame(line: string): boolean {
+  return INTERNAL_FRAME_PATTERNS.some(p => line.includes(p));
+}
+
 export abstract class DevServer {
   protected child: ChildProcess | null = null;
+  private recentStderr: string[] = [];
+  private inTraceback = false;
+  private tracebackBuffer: string[] = [];
 
   constructor(
     protected readonly config: DevConfig,
@@ -71,6 +93,41 @@ export abstract class DevServer {
   /** Returns the command, args, cwd, and environment for the child process. */
   protected abstract getSpawnConfig(): SpawnConfig;
 
+  /**
+   * Emit a filtered Python traceback: only user code frames and the exception line.
+   * Internal frames (site-packages, frozen modules, asyncio, etc.) are stripped out.
+   */
+  private emitFilteredTraceback(onLog: (level: LogLevel, message: string) => void): void {
+    const buf = this.tracebackBuffer;
+    if (buf.length === 0) return;
+
+    // The last line is the exception (e.g., "ModuleNotFoundError: ...")
+    const exceptionLine = buf[buf.length - 1]!;
+
+    // Collect user-code frames: a "File ..." line followed by its code line.
+    // Frames come in pairs: "  File "path", line N, in func" + "    code_line"
+    const userFrames: string[] = [];
+    for (let i = 0; i < buf.length - 1; i++) {
+      const frameLine = buf[i]!;
+      const trimmed = frameLine.trimStart();
+      if (trimmed.startsWith('File ') && !isInternalFrame(frameLine)) {
+        userFrames.push(frameLine);
+        // Include the next line (source code) if it exists and is indented
+        const nextLine = buf[i + 1];
+        if (nextLine && nextLine.startsWith(' ') && !nextLine.trimStart().startsWith('File ')) {
+          userFrames.push(nextLine);
+        }
+      }
+    }
+
+    if (userFrames.length > 0) {
+      for (const frame of userFrames) {
+        onLog('error', frame);
+      }
+    }
+    onLog('error', exceptionLine);
+  }
+
   /** Attach stdout/stderr/error/exit handlers to the child process. */
   private attachHandlers(): void {
     const { onLog, onExit } = this.options.callbacks;
@@ -88,6 +145,31 @@ export abstract class DevServer {
       if (!output) return;
       for (const line of output.split('\n')) {
         if (!line) continue;
+        // Buffer recent stderr for crash context
+        this.recentStderr.push(line);
+        if (this.recentStderr.length > STDERR_BUFFER_SIZE) {
+          this.recentStderr.shift();
+        }
+        // Detect Python traceback blocks: buffer all lines, then emit a
+        // filtered version showing only user code frames + the exception.
+        if (line.startsWith('Traceback (most recent call last)')) {
+          this.inTraceback = true;
+          this.tracebackBuffer = [];
+        }
+        if (this.inTraceback) {
+          this.tracebackBuffer.push(line);
+          const isStackFrame = line.startsWith(' ') || line.startsWith('File ');
+          const isTracebackHeader = line.startsWith('Traceback ');
+          if (!isStackFrame && !isTracebackHeader) {
+            // Traceback ended — emit filtered summary and clear the
+            // stderr buffer so these lines aren't re-emitted on exit.
+            this.emitFilteredTraceback(onLog);
+            this.inTraceback = false;
+            this.tracebackBuffer = [];
+            this.recentStderr = [];
+          }
+          continue;
+        }
         const lower = line.toLowerCase();
         if (lower.includes('warning')) onLog('warn', line);
         else if (lower.includes('error')) onLog('error', line);
@@ -100,6 +182,14 @@ export abstract class DevServer {
       onExit(1);
     });
 
-    this.child?.on('exit', code => onExit(code));
+    this.child?.on('exit', code => {
+      if (code !== 0 && code !== null && this.recentStderr.length > 0) {
+        for (const line of this.recentStderr) {
+          onLog('error', line);
+        }
+        this.recentStderr = [];
+      }
+      onExit(code);
+    });
   }
 }

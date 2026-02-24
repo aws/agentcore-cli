@@ -11,8 +11,12 @@ function toEnvironment(target: AwsDeploymentTarget): Environment {
   };
 }
 
+function sanitize(name: string): string {
+  return name.replace(/_/g, '-');
+}
+
 function toStackName(projectName: string, targetName: string): string {
-  return `AgentCore-${projectName}-${targetName}`;
+  return `AgentCore-${sanitize(projectName)}-${sanitize(targetName)}`;
 }
 
 async function main() {
@@ -47,4 +51,7 @@ async function main() {
   app.synth();
 }
 
-main();
+main().catch((error: unknown) => {
+  console.error('AgentCore CDK synthesis failed:', error instanceof Error ? error.message : error);
+  process.exitCode = 1;
+});

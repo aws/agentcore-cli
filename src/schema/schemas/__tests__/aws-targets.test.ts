@@ -73,7 +73,10 @@ describe('DeploymentTargetNameSchema', () => {
     expect(DeploymentTargetNameSchema.safeParse('default').success).toBe(true);
     expect(DeploymentTargetNameSchema.safeParse('prod').success).toBe(true);
     expect(DeploymentTargetNameSchema.safeParse('dev-us-east').success).toBe(true);
-    expect(DeploymentTargetNameSchema.safeParse('staging_env').success).toBe(true);
+  });
+
+  it('rejects name with underscores', () => {
+    expect(DeploymentTargetNameSchema.safeParse('staging_env').success).toBe(false);
   });
 
   it('rejects name starting with digit', () => {

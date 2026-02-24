@@ -218,4 +218,105 @@ describe('DevServer', () => {
       expect(onExit).toHaveBeenCalledWith(0);
     });
   });
+
+  describe('Python traceback detection', () => {
+    const TRACEBACK = [
+      'Traceback (most recent call last):',
+      '  File "/app/.venv/lib/python3.12/site-packages/uvicorn/server.py", line 86, in _serve',
+      '    config.load()',
+      '  File "/app/myagent/main.py", line 1, in <module>',
+      '    import nonexistent_package',
+      "ModuleNotFoundError: No module named 'nonexistent_package'",
+    ].join('\n');
+
+    it('emits only user-code frames and exception line for tracebacks', async () => {
+      await server.start();
+
+      mockChild.stderr.emit('data', Buffer.from(TRACEBACK));
+
+      const errorCalls = (onLog as ReturnType<typeof vi.fn>).mock.calls.filter((c: unknown[]) => c[0] === 'error');
+      const errorMessages = errorCalls.map((c: unknown[]) => c[1]);
+
+      // Should include user frame + code + exception, but NOT site-packages frame
+      expect(errorMessages).toContain('  File "/app/myagent/main.py", line 1, in <module>');
+      expect(errorMessages).toContain('    import nonexistent_package');
+      expect(errorMessages).toContain("ModuleNotFoundError: No module named 'nonexistent_package'");
+      // Should NOT include internal frames
+      expect(errorMessages).not.toContain(
+        '  File "/app/.venv/lib/python3.12/site-packages/uvicorn/server.py", line 86, in _serve'
+      );
+    });
+
+    it('does not emit traceback lines as info', async () => {
+      await server.start();
+
+      mockChild.stderr.emit('data', Buffer.from(TRACEBACK));
+
+      const infoCalls = (onLog as ReturnType<typeof vi.fn>).mock.calls.filter((c: unknown[]) => c[0] === 'info');
+      // None of the traceback lines should leak as info
+      for (const [, msg] of infoCalls) {
+        expect(msg).not.toContain('Traceback');
+        expect(msg).not.toContain('nonexistent_package');
+      }
+    });
+
+    it('resumes normal classification after traceback ends', async () => {
+      await server.start();
+
+      mockChild.stderr.emit('data', Buffer.from(TRACEBACK + '\nINFO: some normal log'));
+
+      expect(onLog).toHaveBeenCalledWith('info', 'INFO: some normal log');
+    });
+  });
+
+  describe('stderr crash buffer', () => {
+    it('emits buffered stderr as errors on non-zero exit', async () => {
+      await server.start();
+
+      // Emit some non-traceback stderr lines
+      mockChild.stderr.emit('data', Buffer.from('some debug output'));
+      mockChild.stderr.emit('data', Buffer.from('another line'));
+
+      mockChild.emit('exit', 1);
+
+      const errorCalls = (onLog as ReturnType<typeof vi.fn>).mock.calls.filter((c: unknown[]) => c[0] === 'error');
+      const errorMessages = errorCalls.map((c: unknown[]) => c[1]);
+
+      expect(errorMessages).toContain('some debug output');
+      expect(errorMessages).toContain('another line');
+      expect(onExit).toHaveBeenCalledWith(1);
+    });
+
+    it('does not emit stderr buffer on clean exit (code 0)', async () => {
+      await server.start();
+
+      mockChild.stderr.emit('data', Buffer.from('some debug output'));
+      mockChild.emit('exit', 0);
+
+      const errorCalls = (onLog as ReturnType<typeof vi.fn>).mock.calls.filter((c: unknown[]) => c[0] === 'error');
+      expect(errorCalls).toHaveLength(0);
+      expect(onExit).toHaveBeenCalledWith(0);
+    });
+
+    it('clears stderr buffer after traceback to avoid duplication', async () => {
+      await server.start();
+
+      const traceback = [
+        'Traceback (most recent call last):',
+        '  File "/app/main.py", line 1, in <module>',
+        '    import bad',
+        "ModuleNotFoundError: No module named 'bad'",
+      ].join('\n');
+
+      mockChild.stderr.emit('data', Buffer.from(traceback));
+      vi.mocked(onLog).mockClear();
+
+      // Now exit — stderr buffer should be empty since traceback cleared it
+      mockChild.emit('exit', 1);
+
+      const errorCalls = (onLog as ReturnType<typeof vi.fn>).mock.calls.filter((c: unknown[]) => c[0] === 'error');
+      expect(errorCalls).toHaveLength(0);
+      expect(onExit).toHaveBeenCalledWith(1);
+    });
+  });
 });

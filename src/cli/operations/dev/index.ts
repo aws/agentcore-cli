@@ -10,4 +10,4 @@ export {
 
 export { getDevConfig, getDevSupportedAgents, getAgentPort, loadProjectConfig, type DevConfig } from './config';
 
-export { invokeAgent, invokeAgentStreaming } from './invoke';
+export { ConnectionError, ServerError, invokeAgent, invokeAgentStreaming } from './invoke';

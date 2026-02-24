@@ -27,8 +27,8 @@ export const DeploymentTargetNameSchema = z
   .min(1)
   .max(64)
   .regex(
-    /^[a-zA-Z][a-zA-Z0-9_-]*$/,
-    'Name must start with a letter and contain only alphanumeric characters, hyphens, and underscores'
+    /^[a-zA-Z][a-zA-Z0-9-]*$/,
+    'Name must start with a letter and contain only alphanumeric characters and hyphens'
   )
   .describe('Unique identifier for the deployment target');
 
