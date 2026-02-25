@@ -30,7 +30,9 @@ export function formatTargetStatus(status: string): string {
 export async function getGatewayTargetStatuses(gatewayId: string, region: string): Promise<TargetSyncStatus[]> {
   try {
     const client = new BedrockAgentCoreControlClient({ region });
-    const response = await client.send(new ListGatewayTargetsCommand({ gatewayIdentifier: gatewayId, maxResults: 100 }));
+    const response = await client.send(
+      new ListGatewayTargetsCommand({ gatewayIdentifier: gatewayId, maxResults: 100 })
+    );
 
     return (response.items ?? []).map(target => ({
       name: target.name ?? 'unknown',
