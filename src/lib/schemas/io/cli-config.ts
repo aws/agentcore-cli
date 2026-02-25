@@ -5,8 +5,8 @@ import { join } from 'path';
 const CONFIG_FILE = join(homedir(), '.agentcore', 'config.json');
 
 export interface CliConfig {
-  uvIndexUrl?: string;
-  uvExtraIndexUrl?: string;
+  uvDefaultIndex?: string;
+  uvIndex?: string;
 }
 
 /**
@@ -18,8 +18,8 @@ export function readCliConfig(): CliConfig {
     const data = readFileSync(CONFIG_FILE, 'utf-8');
     const parsed: Record<string, unknown> = JSON.parse(data) as Record<string, unknown>;
     const config: CliConfig = {};
-    if (typeof parsed.uvIndexUrl === 'string') config.uvIndexUrl = parsed.uvIndexUrl;
-    if (typeof parsed.uvExtraIndexUrl === 'string') config.uvExtraIndexUrl = parsed.uvExtraIndexUrl;
+    if (typeof parsed.uvDefaultIndex === 'string') config.uvDefaultIndex = parsed.uvDefaultIndex;
+    if (typeof parsed.uvIndex === 'string') config.uvIndex = parsed.uvIndex;
     return config;
   } catch {
     return {};

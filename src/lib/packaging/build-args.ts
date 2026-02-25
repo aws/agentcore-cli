@@ -1,4 +1,4 @@
-import { readCliConfig } from '../utils/cli-config';
+import { readCliConfig } from '../schemas/io/cli-config';
 
 /**
  * Return Docker --build-arg flags for UV index URLs configured in ~/.agentcore/config.json.
@@ -7,7 +7,7 @@ import { readCliConfig } from '../utils/cli-config';
 export function getUvBuildArgs(): string[] {
   const config = readCliConfig();
   const args: string[] = [];
-  if (config.uvIndexUrl) args.push('--build-arg', `UV_INDEX_URL=${config.uvIndexUrl}`);
-  if (config.uvExtraIndexUrl) args.push('--build-arg', `UV_EXTRA_INDEX_URL=${config.uvExtraIndexUrl}`);
+  if (config.uvDefaultIndex) args.push('--build-arg', `UV_DEFAULT_INDEX=${config.uvDefaultIndex}`);
+  if (config.uvIndex) args.push('--build-arg', `UV_INDEX=${config.uvIndex}`);
   return args;
 }
