@@ -301,7 +301,7 @@ export function useCreateFlow(cwd: string): CreateFlowState {
                 }
 
                 // Render with correct identity provider
-                const renderConfig = mapGenerateConfigToRenderConfig(generateConfig, identityProviders);
+                const renderConfig = await mapGenerateConfigToRenderConfig(generateConfig, identityProviders);
                 const renderer = createRenderer(renderConfig);
                 logger.logSubStep('Rendering agent template...');
                 await renderer.render({ outputDir: projectRoot });

@@ -19,6 +19,15 @@ export interface MemoryProviderRenderConfig {
 }
 
 /**
+ * Gateway provider info for template rendering.
+ */
+export interface GatewayProviderRenderConfig {
+  name: string;
+  envVarName: string;
+  authType: string; // AWS_IAM, CUSTOM_JWT, NONE
+}
+
+/**
  * Configuration needed by template renderers.
  * This is separate from the v2 Agent schema which only stores runtime config.
  */
@@ -29,10 +38,15 @@ export interface AgentRenderConfig {
   modelProvider: ModelProvider;
   hasMemory: boolean;
   hasIdentity: boolean;
+  hasGateway: boolean;
   /** Build type: CodeZip (default) or Container */
   buildType?: BuildType;
   /** Memory providers for template rendering */
   memoryProviders: MemoryProviderRenderConfig[];
   /** Identity providers for template rendering (maps to credentials in schema) */
   identityProviders: IdentityProviderRenderConfig[];
+  /** Gateway providers for template rendering */
+  gatewayProviders: GatewayProviderRenderConfig[];
+  /** Unique auth types across all gateways (for conditional imports) */
+  gatewayAuthTypes: string[];
 }

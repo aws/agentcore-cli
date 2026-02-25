@@ -5,7 +5,11 @@ from google.adk.sessions import InMemorySessionService
 from google.genai import types
 from bedrock_agentcore.runtime import BedrockAgentCoreApp
 from model.load import load_model
+{{#if hasGateway}}
+from mcp_client.client import get_all_gateway_mcp_toolsets
+{{else}}
 from mcp_client.client import get_streamable_http_mcp_client
+{{/if}}
 
 app = BedrockAgentCoreApp()
 log = app.logger
@@ -23,7 +27,12 @@ def add_numbers(a: int, b: int) -> int:
 
 
 # Get MCP Toolset
-mcp_toolset = [get_streamable_http_mcp_client()]
+{{#if hasGateway}}
+mcp_toolset = get_all_gateway_mcp_toolsets()
+{{else}}
+mcp_client = get_streamable_http_mcp_client()
+mcp_toolset = [mcp_client] if mcp_client else []
+{{/if}}
 
 _credentials_loaded = False
 

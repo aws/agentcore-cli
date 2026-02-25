@@ -74,7 +74,7 @@ export function useGenerateFlow(): GenerateFlowState {
 
         // Build identity providers for template rendering
         const identityProviders = mapModelProviderToIdentityProviders(config.modelProvider, projectSpec.name);
-        const renderConfig = mapGenerateConfigToRenderConfig(config, identityProviders);
+        const renderConfig = await mapGenerateConfigToRenderConfig(config, identityProviders);
         const renderer = createRenderer(renderConfig);
         await renderer.render({ outputDir: project.projectRoot });
         await writeAgentToProject(config);

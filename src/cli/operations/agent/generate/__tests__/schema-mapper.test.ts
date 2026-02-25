@@ -148,43 +148,45 @@ describe('mapModelProviderToIdentityProviders', () => {
 });
 
 describe('mapGenerateConfigToRenderConfig', () => {
-  it('maps config with no memory and no identity', () => {
-    const result = mapGenerateConfigToRenderConfig(baseConfig, []);
+  it('maps config with no memory and no identity', async () => {
+    const result = await mapGenerateConfigToRenderConfig(baseConfig, []);
     expect(result.name).toBe('TestProject');
     expect(result.sdkFramework).toBe('Strands');
     expect(result.targetLanguage).toBe('Python');
     expect(result.modelProvider).toBe('Bedrock');
     expect(result.hasMemory).toBe(false);
     expect(result.hasIdentity).toBe(false);
+    expect(result.hasGateway).toBe(false);
     expect(result.memoryProviders).toEqual([]);
     expect(result.identityProviders).toEqual([]);
+    expect(result.gatewayProviders).toEqual([]);
   });
 
-  it('sets hasMemory true when memory is not "none"', () => {
+  it('sets hasMemory true when memory is not "none"', async () => {
     const config: GenerateConfig = { ...baseConfig, memory: 'shortTerm' };
-    const result = mapGenerateConfigToRenderConfig(config, []);
+    const result = await mapGenerateConfigToRenderConfig(config, []);
     expect(result.hasMemory).toBe(true);
   });
 
-  it('sets hasIdentity true when identity providers exist', () => {
+  it('sets hasIdentity true when identity providers exist', async () => {
     const identityProviders = [{ name: 'ProjAnthropic', envVarName: 'AGENTCORE_CREDENTIAL_PROJANTHROPIC' }];
-    const result = mapGenerateConfigToRenderConfig(baseConfig, identityProviders);
+    const result = await mapGenerateConfigToRenderConfig(baseConfig, identityProviders);
     expect(result.hasIdentity).toBe(true);
     expect(result.identityProviders).toEqual(identityProviders);
   });
 
-  it('populates memoryProviders for shortTerm memory', () => {
+  it('populates memoryProviders for shortTerm memory', async () => {
     const config: GenerateConfig = { ...baseConfig, memory: 'shortTerm' };
-    const result = mapGenerateConfigToRenderConfig(config, []);
+    const result = await mapGenerateConfigToRenderConfig(config, []);
     expect(result.memoryProviders).toHaveLength(1);
     expect(result.memoryProviders[0]!.name).toBe('TestProjectMemory');
     expect(result.memoryProviders[0]!.envVarName).toBe('MEMORY_TESTPROJECTMEMORY_ID');
     expect(result.memoryProviders[0]!.strategies).toEqual([]);
   });
 
-  it('populates memoryProviders with strategy types for longAndShortTerm', () => {
+  it('populates memoryProviders with strategy types for longAndShortTerm', async () => {
     const config: GenerateConfig = { ...baseConfig, memory: 'longAndShortTerm' };
-    const result = mapGenerateConfigToRenderConfig(config, []);
+    const result = await mapGenerateConfigToRenderConfig(config, []);
     expect(result.memoryProviders[0]!.strategies).toEqual(['SEMANTIC', 'USER_PREFERENCE', 'SUMMARIZATION']);
   });
 });

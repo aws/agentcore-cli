@@ -14,6 +14,8 @@ dependencies = [
     "google-adk >= 1.17.0",
     "bedrock-agentcore >= 1.0.3",
     "botocore[crt] >= 1.35.0",
+    {{#if hasGateway}}{{#if (includes gatewayAuthTypes "AWS_IAM")}}"mcp-proxy-for-aws >= 1.1.0",
+    {{/if}}{{/if}}
 ]
 
 [tool.hatch.build.targets.wheel]

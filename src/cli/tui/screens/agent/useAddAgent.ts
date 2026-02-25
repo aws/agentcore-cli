@@ -170,7 +170,7 @@ async function handleCreatePath(
   }
 
   // Generate agent files with correct identity provider
-  const renderConfig = mapGenerateConfigToRenderConfig(generateConfig, identityProviders);
+  const renderConfig = await mapGenerateConfigToRenderConfig(generateConfig, identityProviders);
   const renderer = createRenderer(renderConfig);
   await renderer.render({ outputDir: projectRoot });
 

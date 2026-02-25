@@ -8,6 +8,9 @@ Handlebars.registerHelper('includes', (array: unknown[], value: unknown) => {
   if (!Array.isArray(array)) return false;
   return array.includes(value);
 });
+Handlebars.registerHelper('snakeCase', (str: string) => {
+  return str.replace(/[^a-zA-Z0-9]/g, '_').toLowerCase();
+});
 
 /**
  * Renames template files to their actual names.

@@ -197,7 +197,7 @@ export async function createProjectWithAgent(options: CreateWithAgentOptions): P
     }
 
     // Generate agent code with correct identity provider
-    const renderConfig = mapGenerateConfigToRenderConfig(generateConfig, identityProviders);
+    const renderConfig = await mapGenerateConfigToRenderConfig(generateConfig, identityProviders);
     const renderer = createRenderer(renderConfig);
     await renderer.render({ outputDir: projectRoot });
 

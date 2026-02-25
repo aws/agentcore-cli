@@ -1,7 +1,11 @@
 from strands import Agent, tool
 from bedrock_agentcore.runtime import BedrockAgentCoreApp
 from model.load import load_model
+{{#if hasGateway}}
+from mcp_client.client import get_all_gateway_mcp_clients
+{{else}}
 from mcp_client.client import get_streamable_http_mcp_client
+{{/if}}
 {{#if hasMemory}}
 from memory.session import get_memory_session_manager
 {{/if}}
@@ -10,7 +14,11 @@ app = BedrockAgentCoreApp()
 log = app.logger
 
 # Define a Streamable HTTP MCP Client
-mcp_client = get_streamable_http_mcp_client()
+{{#if hasGateway}}
+mcp_clients = get_all_gateway_mcp_clients()
+{{else}}
+mcp_clients = [get_streamable_http_mcp_client()]
+{{/if}}
 
 # Define a collection of tools used by the model
 tools = []
@@ -21,6 +29,11 @@ def add_numbers(a: int, b: int) -> int:
     """Return the sum of two numbers"""
     return a+b
 tools.append(add_numbers)
+
+# Add MCP client to tools if available
+for mcp_client in mcp_clients:
+    if mcp_client:
+        tools.append(mcp_client)
 
 
 {{#if hasMemory}}
@@ -36,7 +49,7 @@ def agent_factory():
                 system_prompt="""
                     You are a helpful assistant. Use tools when appropriate.
                 """,
-                tools=tools+[mcp_client]
+                tools=tools
             )
         return cache[key]
     return get_or_create_agent
@@ -52,7 +65,7 @@ def get_or_create_agent():
             system_prompt="""
                 You are a helpful assistant. Use tools when appropriate.
             """,
-            tools=tools+[mcp_client]
+            tools=tools
         )
     return _agent
 {{/if}}
