@@ -4,6 +4,7 @@ import { buildDeployedState, getStackOutputs, parseAgentOutputs, parseGatewayOut
 import { getErrorMessage, isChangesetInProgressError, isExpiredTokenError } from '../../../errors';
 import { ExecLogger } from '../../../logging';
 import { performStackTeardown } from '../../../operations/deploy';
+import { getGatewayTargetStatuses } from '../../../operations/deploy/gateway-status';
 import { type Step, areStepsComplete, hasStepError } from '../../components';
 import { type MissingCredential, type PreflightContext, useCdkPreflight } from '../../hooks';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
@@ -45,6 +46,7 @@ interface DeployFlowState {
   deployOutput: string | null;
   deployMessages: DeployMessage[];
   stackOutputs: Record<string, string>;
+  targetStatuses: { name: string; status: string }[];
   hasError: boolean;
   /** True if the error is specifically due to expired/invalid AWS credentials */
   hasTokenExpiredError: boolean;
@@ -96,6 +98,7 @@ export function useDeployFlow(options: DeployFlowOptions = {}): DeployFlowState 
   const [deployOutput, setDeployOutput] = useState<string | null>(null);
   const [deployMessages, setDeployMessages] = useState<DeployMessage[]>([]);
   const [stackOutputs, setStackOutputs] = useState<Record<string, string>>({});
+  const [targetStatuses, setTargetStatuses] = useState<{ name: string; status: string }[]>([]);
   const [shouldStartDeploy, setShouldStartDeploy] = useState(false);
   const [hasTokenExpiredError, setHasTokenExpiredError] = useState(false);
   // Track if CloudFormation has started (received first resource event)
@@ -196,6 +199,16 @@ export function useDeployFlow(options: DeployFlowOptions = {}): DeployFlowState 
       Object.keys(oauthCredentials).length > 0 ? oauthCredentials : undefined
     );
     await configIO.writeDeployedState(deployedState);
+
+    // Query gateway target sync statuses (non-blocking)
+    const allStatuses: { name: string; status: string }[] = [];
+    for (const [, gateway] of Object.entries(gateways)) {
+      const statuses = await getGatewayTargetStatuses(gateway.gatewayId, target.region);
+      allStatuses.push(...statuses);
+    }
+    if (allStatuses.length > 0) {
+      setTargetStatuses(allStatuses);
+    }
   }, [context, stackNames, logger, identityKmsKeyArn, oauthCredentials]);
 
   // Start deploy when preflight completes OR when shouldStartDeploy is set
@@ -400,6 +413,7 @@ export function useDeployFlow(options: DeployFlowOptions = {}): DeployFlowState 
     deployOutput,
     deployMessages,
     stackOutputs,
+    targetStatuses,
     hasError,
     hasTokenExpiredError: combinedTokenExpiredError,
     hasCredentialsError: preflight.hasCredentialsError,

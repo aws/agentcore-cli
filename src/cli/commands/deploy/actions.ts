@@ -18,6 +18,7 @@ import {
   synthesizeCdk,
   validateProject,
 } from '../../operations/deploy';
+import { formatTargetStatus, getGatewayTargetStatuses } from '../../operations/deploy/gateway-status';
 import type { DeployResult } from './types';
 
 export interface ValidatedDeployOptions {
@@ -316,12 +317,20 @@ export async function handleDeploy(options: ValidatedDeployOptions): Promise<Dep
     );
     await configIO.writeDeployedState(deployedState);
 
-    // Show gateway URLs if any were deployed
+    // Show gateway URLs and target sync status
     if (Object.keys(gateways).length > 0) {
       const gatewayUrls = Object.entries(gateways)
         .map(([name, gateway]) => `${name}: ${gateway.gatewayArn}`)
         .join(', ');
       logger.log(`Gateway URLs: ${gatewayUrls}`);
+
+      // Query target sync statuses (non-blocking)
+      for (const [, gateway] of Object.entries(gateways)) {
+        const statuses = await getGatewayTargetStatuses(gateway.gatewayId, target.region);
+        for (const targetStatus of statuses) {
+          logger.log(`  ${targetStatus.name}: ${formatTargetStatus(targetStatus.status)}`);
+        }
+      }
     }
 
     endStep('success');
