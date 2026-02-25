@@ -188,7 +188,7 @@ describe('ContainerDevServer', () => {
       expect(mockCallbacks.onLog).toHaveBeenCalledWith('system', 'Container image built successfully.');
     });
 
-    it('dev layer installs uvicorn and project deps via pip (not uv)', async () => {
+    it('dev layer prefers uv when available, falls back to pip', async () => {
       mockSuccessfulPrepare();
 
       const server = new ContainerDevServer(defaultConfig, defaultOptions);
@@ -198,10 +198,14 @@ describe('ContainerDevServer', () => {
       const devBuildCall = mockSpawnSync.mock.calls[2]!;
       expect(devBuildCall).toBeDefined();
       const input = devBuildCall[2]?.input as string;
+      // uv path tried first with --system flag
+      expect(input).toContain('uv pip install --system -q uvicorn');
+      expect(input).toContain('uv pip install --system /app');
+      // pip fallback
       expect(input).toContain('pip install -q uvicorn');
-      expect(input).toContain('pip install /app');
-      expect(input).toContain('pip install -r /app/requirements.txt');
-      expect(input).not.toContain('uv pip');
+      expect(input).toContain('pip install -q /app');
+      // No requirements.txt fallback — pip install /app reads pyproject.toml
+      expect(input).not.toContain('requirements.txt');
     });
 
     it('dev layer FROM references the base image name', async () => {

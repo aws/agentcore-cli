@@ -77,13 +77,14 @@ export class ContainerDevServer extends DevServer {
     // 5. Build dev layer on top with uvicorn and project deps installed to system Python.
     //    At runtime, `-v source:/app` hides any .venv created during the base build,
     //    so we need all packages in system site-packages where the volume mount can't hide them.
-    //    Uses pip (not uv) to avoid assuming the base image has uv installed.
+    //    Prefers uv when available (template images ship it), falls back to pip for BYO images.
     onLog('system', 'Preparing dev environment...');
     const devDockerfile = [
       `FROM ${baseImageName}`,
       'USER root',
-      'RUN pip install -q uvicorn' +
-        ' && (pip install /app 2>/dev/null || pip install -r /app/requirements.txt 2>/dev/null || true)',
+      'RUN (uv pip install --system -q uvicorn && uv pip install --system /app)' +
+        ' || (pip install -q uvicorn && pip install -q /app)' +
+        ' || true',
     ].join('\n');
 
     const devBuild = spawnSync(this.runtimeBinary, ['build', '-t', this.imageName, '-f', '-', this.config.directory], {
