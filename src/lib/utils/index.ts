@@ -10,3 +10,4 @@ export {
   type SubprocessResult,
 } from './subprocess';
 export { validateAgentSchema, validateProjectSchema } from './zod';
+export { readCliConfig, type CliConfig } from './cli-config';

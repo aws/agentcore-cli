@@ -1,5 +1,6 @@
 import type { AgentEnvSpec } from '../../schema';
 import { CONTAINER_RUNTIMES, DOCKERFILE_NAME, ONE_GB } from '../constants';
+import { getUvBuildArgs } from './build-args';
 import { PackagingError } from './errors';
 import { resolveCodeLocation } from './helpers';
 import type { ArtifactResult, PackageOptions, RuntimePackager } from './types/packaging';
@@ -57,9 +58,13 @@ export class ContainerPackager implements RuntimePackager {
 
     // Build locally
     const imageName = `agentcore-package-${agentName}`;
-    const buildResult = spawnSync(runtime, ['build', '-t', imageName, '-f', dockerfilePath, codeLocation], {
-      stdio: 'pipe',
-    });
+    const buildResult = spawnSync(
+      runtime,
+      ['build', '-t', imageName, '-f', dockerfilePath, ...getUvBuildArgs(), codeLocation],
+      {
+        stdio: 'pipe',
+      }
+    );
 
     if (buildResult.status !== 0) {
       return Promise.reject(new PackagingError(`Container build failed:\n${buildResult.stderr?.toString()}`));

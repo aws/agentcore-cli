@@ -1,12 +1,17 @@
 FROM ghcr.io/astral-sh/uv:python3.12-bookworm-slim
 
+ARG UV_INDEX_URL
+ARG UV_EXTRA_INDEX_URL
+
 WORKDIR /app
 
 ENV UV_SYSTEM_PYTHON=1 \
     UV_COMPILE_BYTECODE=1 \
     UV_NO_PROGRESS=1 \
     PYTHONUNBUFFERED=1 \
-    DOCKER_CONTAINER=1
+    DOCKER_CONTAINER=1 \
+    UV_INDEX_URL=${UV_INDEX_URL} \
+    UV_EXTRA_INDEX_URL=${UV_EXTRA_INDEX_URL}
 
 RUN useradd -m -u 1000 bedrock_agentcore
 

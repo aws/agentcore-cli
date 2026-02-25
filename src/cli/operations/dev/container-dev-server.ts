@@ -1,4 +1,5 @@
 import { CONTAINER_INTERNAL_PORT, DOCKERFILE_NAME } from '../../../lib';
+import { getUvBuildArgs } from '../../../lib/packaging/build-args';
 import { detectContainerRuntime, getStartHint } from '../../external-requirements/detect';
 import { DevServer, type LogLevel, type SpawnConfig } from './dev-server';
 import { convertEntrypointToModule } from './utils';
@@ -62,7 +63,7 @@ export class ContainerDevServer extends DevServer {
     onLog('system', `Building container image: ${this.imageName}...`);
     const buildResult = spawnSync(
       this.runtimeBinary,
-      ['build', '-t', baseImageName, '-f', dockerfilePath, this.config.directory],
+      ['build', '-t', baseImageName, '-f', dockerfilePath, ...getUvBuildArgs(), this.config.directory],
       { stdio: 'pipe' }
     );
 
@@ -86,10 +87,14 @@ export class ContainerDevServer extends DevServer {
         ' || (pip install -q uvicorn && pip install -q /app)',
     ].join('\n');
 
-    const devBuild = spawnSync(this.runtimeBinary, ['build', '-t', this.imageName, '-f', '-', this.config.directory], {
-      input: devDockerfile,
-      stdio: ['pipe', 'pipe', 'pipe'],
-    });
+    const devBuild = spawnSync(
+      this.runtimeBinary,
+      ['build', '-t', this.imageName, '-f', '-', ...getUvBuildArgs(), this.config.directory],
+      {
+        input: devDockerfile,
+        stdio: ['pipe', 'pipe', 'pipe'],
+      }
+    );
 
     this.logBuildOutput(devBuild.stdout, devBuild.stderr, onLog);
 
