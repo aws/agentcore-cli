@@ -83,8 +83,7 @@ export class ContainerDevServer extends DevServer {
       `FROM ${baseImageName}`,
       'USER root',
       'RUN (uv pip install --system -q uvicorn && uv pip install --system /app)' +
-        ' || (pip install -q uvicorn && pip install -q /app)' +
-        ' || true',
+        ' || (pip install -q uvicorn && pip install -q /app)',
     ].join('\n');
 
     const devBuild = spawnSync(this.runtimeBinary, ['build', '-t', this.imageName, '-f', '-', this.config.directory], {
