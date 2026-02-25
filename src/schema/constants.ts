@@ -95,7 +95,6 @@ export const RESERVED_PROJECT_NAMES: readonly string[] = [
   'pytest',
   'pytestasyncio',
   'pythondotenv',
-  'tiktoken',
   // Build tools
   'hatchling',
   'setuptools',

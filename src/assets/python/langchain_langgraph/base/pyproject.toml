@@ -15,7 +15,6 @@ dependencies = [
     "mcp >= 1.19.0",
     "langchain-mcp-adapters >= 0.1.11",
     "langchain >= 1.0.3",
-    "tiktoken == 0.11.0",
     "bedrock-agentcore >= 1.0.3",
     "botocore[crt] >= 1.35.0",
 {{#if (eq modelProvider "Bedrock")}}

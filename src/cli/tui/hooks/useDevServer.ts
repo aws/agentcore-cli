@@ -87,7 +87,7 @@ export function useDevServer(options: { workingDir: string; port: number; agentN
   }, [options.workingDir]);
 
   const config: DevConfig | null = useMemo(() => {
-    if (!project) {
+    if (!project || !options.agentName) {
       return null;
     }
     return getDevConfig(options.workingDir, project, configRoot, options.agentName);
