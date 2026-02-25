@@ -59,3 +59,6 @@ export function formatSemVer(v: SemVer): string {
 
 /** Minimum Node.js version required for CDK synth (ES2022 target) */
 export const NODE_MIN_VERSION: SemVer = { major: 18, minor: 0, patch: 0 };
+
+/** Minimum AWS CLI version required for `aws login` */
+export const AWS_CLI_MIN_VERSION: SemVer = { major: 2, minor: 32, patch: 0 };

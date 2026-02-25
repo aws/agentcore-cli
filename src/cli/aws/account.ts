@@ -1,3 +1,4 @@
+import { getAwsLoginGuidance } from '../external-requirements/checks';
 import { GetCallerIdentityCommand, STSClient } from '@aws-sdk/client-sts';
 import { fromEnv, fromNodeProviderChain } from '@aws-sdk/credential-providers';
 import type { AwsCredentialIdentityProvider } from '@smithy/types';
@@ -46,16 +47,18 @@ export async function detectAccount(): Promise<string | null> {
     const code = (err as { name?: string })?.name ?? (err as { Code?: string })?.Code;
 
     if (code === 'ExpiredTokenException' || code === 'ExpiredToken') {
+      const guidance = await getAwsLoginGuidance();
       throw new AwsCredentialsError(
         'AWS credentials expired.',
-        'AWS credentials expired.\n\nTo fix this:\n  Run: aws login'
+        `AWS credentials expired.\n\nTo fix this:\n  ${guidance}`
       );
     }
 
     if (code === 'InvalidClientTokenId' || code === 'SignatureDoesNotMatch') {
+      const guidance = await getAwsLoginGuidance();
       throw new AwsCredentialsError(
         'AWS credentials are invalid.',
-        'AWS credentials are invalid.\n\nTo fix this:\n  1. Check your AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY\n  2. Or run: aws login'
+        `AWS credentials are invalid.\n\nTo fix this:\n  1. Check your AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY\n  2. Or ${guidance}`
       );
     }
 
@@ -77,11 +80,12 @@ export async function detectAccount(): Promise<string | null> {
 export async function validateAwsCredentials(): Promise<void> {
   const account = await detectAccount();
   if (!account) {
+    const guidance = await getAwsLoginGuidance();
     throw new AwsCredentialsError(
       'No AWS credentials configured.',
       'No AWS credentials configured.\n\n' +
         'To fix this:\n' +
-        '  1. Run: aws login\n' +
+        `  1. ${guidance}\n` +
         '  2. Or set AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY environment variables'
     );
   }

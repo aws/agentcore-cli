@@ -1,8 +1,18 @@
-export { parseSemVer, compareSemVer, semVerGte, formatSemVer, NODE_MIN_VERSION, type SemVer } from './versions';
+export {
+  parseSemVer,
+  compareSemVer,
+  semVerGte,
+  formatSemVer,
+  NODE_MIN_VERSION,
+  AWS_CLI_MIN_VERSION,
+  type SemVer,
+} from './versions';
 
 export {
   checkNodeVersion,
   checkUvVersion,
+  checkAwsCliVersion,
+  getAwsLoginGuidance,
   formatVersionError,
   requiresUv,
   requiresContainerRuntime,

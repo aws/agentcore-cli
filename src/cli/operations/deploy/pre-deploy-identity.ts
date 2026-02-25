@@ -2,6 +2,7 @@ import { SecureCredentials, readEnvFile } from '../../../lib';
 import type { AgentCoreProjectSpec, Credential } from '../../../schema';
 import { getCredentialProvider } from '../../aws';
 import { isNoCredentialsError } from '../../errors';
+import { getAwsLoginGuidance } from '../../external-requirements/checks';
 import { apiKeyProviderExists, createApiKeyProvider, setTokenVaultKmsKey, updateApiKeyProvider } from '../identity';
 import { computeDefaultCredentialEnvVarName } from '../identity/create-identity';
 import { BedrockAgentCoreControlClient, GetTokenVaultCommand } from '@aws-sdk/client-bedrock-agentcore-control';
@@ -171,7 +172,7 @@ async function setupApiKeyCredentialProvider(
     // Provide clearer error message for AWS credentials issues
     let errorMessage: string;
     if (isNoCredentialsError(error)) {
-      errorMessage = 'AWS credentials not found. Run `aws sso login` or set AWS_ACCESS_KEY_ID/AWS_SECRET_ACCESS_KEY.';
+      errorMessage = `AWS credentials not found. ${await getAwsLoginGuidance()}`;
     } else {
       errorMessage = error instanceof Error ? error.message : String(error);
     }

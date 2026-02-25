@@ -4,7 +4,7 @@
 import { checkSubprocess, isWindows, runSubprocessCapture } from '../../lib';
 import type { AgentCoreProjectSpec, TargetLanguage } from '../../schema';
 import { detectContainerRuntime } from './detect';
-import { NODE_MIN_VERSION, formatSemVer, parseSemVer, semVerGte } from './versions';
+import { AWS_CLI_MIN_VERSION, NODE_MIN_VERSION, formatSemVer, parseSemVer, semVerGte } from './versions';
 
 /**
  * Result of a version check.
@@ -68,6 +68,73 @@ export async function checkUvVersion(): Promise<VersionCheckResult> {
   const current = match?.[1] ?? 'unknown';
 
   return { satisfied: true, current, required: 'any', binary: 'uv' };
+}
+
+const AWS_CLI_INSTALL_URL = 'https://docs.aws.amazon.com/cli/latest/userguide/getting-started-install.html';
+
+/**
+ * Extract version from `aws --version` output.
+ * Expected format: "aws-cli/2.32.0 Python/3.11.6 Darwin/23.3.0 ..."
+ */
+function parseAwsCliVersion(output: string): string | null {
+  const match = /aws-cli\/(\d+\.\d+\.\d+)/.exec(output.trim());
+  return match?.[1] ?? null;
+}
+
+/**
+ * Check that AWS CLI meets minimum version requirement for `aws login`.
+ */
+export async function checkAwsCliVersion(): Promise<VersionCheckResult> {
+  const required = formatSemVer(AWS_CLI_MIN_VERSION);
+
+  const result = await runSubprocessCapture('aws', ['--version']);
+  if (result.code !== 0) {
+    return { satisfied: false, current: null, required, binary: 'aws' };
+  }
+
+  const versionStr = parseAwsCliVersion(result.stdout);
+  if (!versionStr) {
+    return { satisfied: false, current: null, required, binary: 'aws' };
+  }
+
+  const current = parseSemVer(versionStr);
+  if (!current) {
+    return { satisfied: false, current: versionStr, required, binary: 'aws' };
+  }
+
+  return {
+    satisfied: semVerGte(current, AWS_CLI_MIN_VERSION),
+    current: versionStr,
+    required,
+    binary: 'aws',
+  };
+}
+
+/** Cached result for getAwsLoginGuidance */
+let _awsLoginGuidance: string | null = null;
+
+/**
+ * Get version-aware guidance for authenticating with AWS.
+ * Checks if AWS CLI is installed and whether it supports `aws login`.
+ * Result is cached for the lifetime of the process.
+ */
+export async function getAwsLoginGuidance(): Promise<string> {
+  if (_awsLoginGuidance) return _awsLoginGuidance;
+
+  const check = await checkAwsCliVersion();
+
+  if (check.current === null) {
+    // AWS CLI not installed
+    _awsLoginGuidance = `Install AWS CLI (v${formatSemVer(AWS_CLI_MIN_VERSION)}+) from ${AWS_CLI_INSTALL_URL} and run: aws login`;
+  } else if (!check.satisfied) {
+    // AWS CLI installed but too old for `aws login`
+    _awsLoginGuidance = `Update AWS CLI from v${check.current} to v${formatSemVer(AWS_CLI_MIN_VERSION)}+ (${AWS_CLI_INSTALL_URL}) and run: aws login`;
+  } else {
+    // AWS CLI is new enough
+    _awsLoginGuidance = 'Run: aws login';
+  }
+
+  return _awsLoginGuidance;
 }
 
 /**
@@ -234,7 +301,7 @@ export async function checkCreateDependencies(
   });
   if (!awsAvailable) {
     warnings.push(
-      "'aws' CLI not found. Required for 'aws sso login' and profile configuration. Install from https://aws.amazon.com/cli/"
+      `'aws' CLI not found. Required for 'aws login'. Install v${formatSemVer(AWS_CLI_MIN_VERSION)}+ from ${AWS_CLI_INSTALL_URL}`
     );
   }
 
