@@ -188,7 +188,7 @@ describe('ContainerDevServer', () => {
       expect(mockCallbacks.onLog).toHaveBeenCalledWith('system', 'Container image built successfully.');
     });
 
-    it('dev layer Dockerfile contains RUN uv pip install uvicorn', async () => {
+    it('dev layer installs uvicorn and project deps via pip (not uv)', async () => {
       mockSuccessfulPrepare();
 
       const server = new ContainerDevServer(defaultConfig, defaultOptions);
@@ -197,9 +197,11 @@ describe('ContainerDevServer', () => {
       // The dev build is the 3rd spawnSync call (rm, base build, dev build)
       const devBuildCall = mockSpawnSync.mock.calls[2]!;
       expect(devBuildCall).toBeDefined();
-      // The input option contains the dev Dockerfile
       const input = devBuildCall[2]?.input as string;
-      expect(input).toContain('RUN uv pip install uvicorn');
+      expect(input).toContain('pip install -q uvicorn');
+      expect(input).toContain('pip install /app');
+      expect(input).toContain('pip install -r /app/requirements.txt');
+      expect(input).not.toContain('uv pip');
     });
 
     it('dev layer FROM references the base image name', async () => {
@@ -211,6 +213,19 @@ describe('ContainerDevServer', () => {
       const devBuildCall = mockSpawnSync.mock.calls[2]!;
       const input = devBuildCall[2]?.input as string;
       expect(input).toContain('FROM agentcore-dev-testagent-base');
+    });
+
+    it('dev layer does not set USER (runs as root for dev)', async () => {
+      mockSuccessfulPrepare();
+
+      const server = new ContainerDevServer(defaultConfig, defaultOptions);
+      await server.start();
+
+      const devBuildCall = mockSpawnSync.mock.calls[2]!;
+      const input = devBuildCall[2]?.input as string;
+      // Should have USER root but not USER bedrock_agentcore
+      expect(input).toContain('USER root');
+      expect(input).not.toContain('USER bedrock_agentcore');
     });
 
     it('logs non-empty build output lines at system level', async () => {
@@ -279,6 +294,18 @@ describe('ContainerDevServer', () => {
       const entrypointIdx = spawnArgs.indexOf('--entrypoint');
       expect(entrypointIdx).toBeGreaterThan(-1);
       expect(spawnArgs[entrypointIdx + 1]).toBe('python');
+    });
+
+    it('runs as root to ensure system site-packages are accessible', async () => {
+      mockSuccessfulPrepare();
+
+      const server = new ContainerDevServer(defaultConfig, defaultOptions);
+      await server.start();
+
+      const spawnArgs = getSpawnArgs();
+      const userIdx = spawnArgs.indexOf('--user');
+      expect(userIdx).toBeGreaterThan(-1);
+      expect(spawnArgs[userIdx + 1]).toBe('root');
     });
 
     it('mounts source directory as /app volume', async () => {
@@ -364,7 +391,7 @@ describe('ContainerDevServer', () => {
       expect(awsArgs).toHaveLength(0);
     });
 
-    it('mounts ~/.aws when exists', async () => {
+    it('mounts ~/.aws to /root/.aws when exists', async () => {
       mockSuccessfulPrepare();
       // existsSync returns true for all calls (Dockerfile and ~/.aws)
 
@@ -372,7 +399,7 @@ describe('ContainerDevServer', () => {
       await server.start();
 
       const spawnArgs = getSpawnArgs();
-      expect(spawnArgs).toContain('/home/testuser/.aws:/home/bedrock_agentcore/.aws:ro');
+      expect(spawnArgs).toContain('/home/testuser/.aws:/root/.aws:ro');
     });
 
     it('skips ~/.aws mount when directory does not exist', async () => {

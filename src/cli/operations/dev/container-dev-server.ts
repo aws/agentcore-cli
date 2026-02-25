@@ -74,14 +74,16 @@ export class ContainerDevServer extends DevServer {
       return false;
     }
 
-    // 5. Build dev layer on top with uvicorn for hot-reload support.
-    //    The user's pyproject.toml may not include uvicorn, but dev mode needs it.
+    // 5. Build dev layer on top with uvicorn and project deps installed to system Python.
+    //    At runtime, `-v source:/app` hides any .venv created during the base build,
+    //    so we need all packages in system site-packages where the volume mount can't hide them.
+    //    Uses pip (not uv) to avoid assuming the base image has uv installed.
     onLog('system', 'Preparing dev environment...');
     const devDockerfile = [
       `FROM ${baseImageName}`,
       'USER root',
-      'RUN uv pip install uvicorn',
-      'USER bedrock_agentcore',
+      'RUN pip install -q uvicorn' +
+        ' && (pip install /app 2>/dev/null || pip install -r /app/requirements.txt 2>/dev/null || true)',
     ].join('\n');
 
     const devBuild = spawnSync(this.runtimeBinary, ['build', '-t', this.imageName, '-f', '-', this.config.directory], {
@@ -146,7 +148,7 @@ export class ContainerDevServer extends DevServer {
 
     // Mount ~/.aws for credential file / SSO / profile support
     const awsDir = join(homedir(), '.aws');
-    const awsMountArgs = existsSync(awsDir) ? ['-v', `${awsDir}:/home/bedrock_agentcore/.aws:ro`] : [];
+    const awsMountArgs = existsSync(awsDir) ? ['-v', `${awsDir}:/root/.aws:ro`] : [];
 
     return {
       cmd: this.runtimeBinary,
@@ -155,9 +157,10 @@ export class ContainerDevServer extends DevServer {
         '--rm',
         '--name',
         this.containerName,
-        // Override any ENTRYPOINT from the base image (e.g., uv images set ENTRYPOINT ["uv"])
         '--entrypoint',
         'python',
+        '--user',
+        'root',
         '-v',
         `${directory}:/app`,
         ...awsMountArgs,
@@ -165,7 +168,6 @@ export class ContainerDevServer extends DevServer {
         `${port}:${CONTAINER_INTERNAL_PORT}`,
         ...envArgs,
         this.imageName,
-        // Use python -m uvicorn instead of bare uvicorn to avoid PATH/permission issues
         '-m',
         'uvicorn',
         uvicornModule,
