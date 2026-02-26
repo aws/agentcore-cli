@@ -43,7 +43,15 @@ export type ComputeHost = 'Lambda' | 'AgentCoreRuntime';
  * - host: Select compute host
  * - confirm: Review and confirm
  */
-export type AddGatewayTargetStep = 'name' | 'source' | 'endpoint' | 'language' | 'gateway' | 'host' | 'confirm';
+export type AddGatewayTargetStep =
+  | 'name'
+  | 'source'
+  | 'endpoint'
+  | 'language'
+  | 'gateway'
+  | 'host'
+  | 'outbound-auth'
+  | 'confirm';
 
 export type TargetLanguage = 'Python' | 'TypeScript' | 'Other';
 
@@ -77,6 +85,7 @@ export const MCP_TOOL_STEP_LABELS: Record<AddGatewayTargetStep, string> = {
   language: 'Language',
   gateway: 'Gateway',
   host: 'Host',
+  'outbound-auth': 'Outbound Auth',
   confirm: 'Confirm',
 };
 
@@ -106,6 +115,11 @@ export const TARGET_LANGUAGE_OPTIONS = [
 export const COMPUTE_HOST_OPTIONS = [
   { id: 'Lambda', title: 'Lambda', description: 'AWS Lambda function' },
   { id: 'AgentCoreRuntime', title: 'AgentCore Runtime', description: 'AgentCore Runtime (Python only)' },
+] as const;
+
+export const OUTBOUND_AUTH_OPTIONS = [
+  { id: 'NONE', title: 'No authorization', description: 'No outbound authentication' },
+  { id: 'OAUTH', title: 'OAuth 2LO', description: 'OAuth 2.0 client credentials' },
 ] as const;
 
 export const PYTHON_VERSION_OPTIONS = [

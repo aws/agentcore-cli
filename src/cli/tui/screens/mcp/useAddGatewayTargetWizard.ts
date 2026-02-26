@@ -6,10 +6,10 @@ import { useCallback, useMemo, useState } from 'react';
 
 /**
  * Steps for adding a gateway target (existing endpoint only).
- * name → endpoint → gateway → confirm
+ * name → endpoint → gateway → outbound-auth → confirm
  */
 function getSteps(): AddGatewayTargetStep[] {
-  return ['name', 'endpoint', 'gateway', 'confirm'];
+  return ['name', 'endpoint', 'gateway', 'outbound-auth', 'confirm'];
 }
 
 function deriveToolDefinition(name: string): ToolDefinition {
@@ -68,10 +68,21 @@ export function useAddGatewayTargetWizard(existingGateways: string[] = []) {
   const setGateway = useCallback((gateway: string) => {
     setConfig(c => {
       const isSkipped = gateway === SKIP_FOR_NOW;
-      setStep('confirm');
       return { ...c, gateway: isSkipped ? undefined : gateway };
     });
+    setStep('outbound-auth');
   }, []);
+
+  const setOutboundAuth = useCallback(
+    (outboundAuth: { type: 'OAUTH' | 'API_KEY' | 'NONE'; credentialName?: string }) => {
+      setConfig(c => ({
+        ...c,
+        outboundAuth,
+      }));
+      setStep('confirm');
+    },
+    []
+  );
 
   const reset = useCallback(() => {
     setConfig(getDefaultConfig());
@@ -88,6 +99,7 @@ export function useAddGatewayTargetWizard(existingGateways: string[] = []) {
     setName,
     setEndpoint,
     setGateway,
+    setOutboundAuth,
     reset,
   };
 }
