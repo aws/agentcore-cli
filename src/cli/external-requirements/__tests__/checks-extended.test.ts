@@ -2,6 +2,8 @@ import type { AgentCoreProjectSpec, DirectoryPath, FilePath } from '../../../sch
 import {
   checkDependencyVersions,
   checkNodeVersion,
+  checkNpmCacheOwnership,
+  formatNpmCacheError,
   formatVersionError,
   requiresContainerRuntime,
   requiresUv,
@@ -174,6 +176,44 @@ describe('checkNodeVersion', () => {
   });
 });
 
+describe('checkNpmCacheOwnership', () => {
+  it('returns a result with expected structure', async () => {
+    const result = await checkNpmCacheOwnership();
+    expect(result).toHaveProperty('satisfied');
+    expect(result).toHaveProperty('owner');
+    expect(result).toHaveProperty('cacheDir');
+    expect(result.cacheDir).toContain('.npm');
+  });
+
+  it('is satisfied when cache is owned by current user', async () => {
+    // In a normal test environment, ~/.npm should be owned by the current user
+    const result = await checkNpmCacheOwnership();
+    expect(result.satisfied).toBe(true);
+  });
+});
+
+describe('formatNpmCacheError', () => {
+  it('includes cache directory path', () => {
+    const msg = formatNpmCacheError({ satisfied: false, owner: 'root', cacheDir: '/home/user/.npm' });
+    expect(msg).toContain('/home/user/.npm');
+  });
+
+  it('includes the wrong owner name', () => {
+    const msg = formatNpmCacheError({ satisfied: false, owner: 'root', cacheDir: '/home/user/.npm' });
+    expect(msg).toContain('root');
+  });
+
+  it('includes the fix command', () => {
+    const msg = formatNpmCacheError({ satisfied: false, owner: 'root', cacheDir: '/home/user/.npm' });
+    expect(msg).toContain('sudo chown -R $(whoami)');
+  });
+
+  it('mentions sudo npm install as likely cause', () => {
+    const msg = formatNpmCacheError({ satisfied: false, owner: 'root', cacheDir: '/home/user/.npm' });
+    expect(msg).toContain('sudo npm install');
+  });
+});
+
 describe('checkDependencyVersions', () => {
   it('passes when node meets requirements and no uv needed', async () => {
     const project: AgentCoreProjectSpec = {
@@ -188,6 +228,20 @@ describe('checkDependencyVersions', () => {
     expect(result.nodeCheck).toBeDefined();
     expect(result.nodeCheck.binary).toBe('node');
     expect(result.uvCheck).toBeNull();
+  });
+
+  it('includes npmCacheCheck in result', async () => {
+    const project: AgentCoreProjectSpec = {
+      name: 'Test',
+      version: 1,
+      agents: [],
+      memories: [],
+      credentials: [],
+    };
+
+    const result = await checkDependencyVersions(project);
+    expect(result.npmCacheCheck).toBeDefined();
+    expect(result.npmCacheCheck.cacheDir).toContain('.npm');
   });
 
   it('checks uv when project has CodeZip agents', async () => {

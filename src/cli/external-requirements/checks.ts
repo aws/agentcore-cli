@@ -5,6 +5,9 @@ import { checkSubprocess, isWindows, runSubprocessCapture } from '../../lib';
 import type { AgentCoreProjectSpec, TargetLanguage } from '../../schema';
 import { detectContainerRuntime } from './detect';
 import { AWS_CLI_MIN_VERSION, NODE_MIN_VERSION, formatSemVer, parseSemVer, semVerGte } from './versions';
+import { stat } from 'node:fs/promises';
+import { homedir } from 'node:os';
+import { join } from 'node:path';
 
 /**
  * Result of a version check.
@@ -151,6 +154,66 @@ export function formatVersionError(result: VersionCheckResult): string {
 }
 
 /**
+ * Result of checking npm cache directory ownership.
+ */
+export interface NpmCacheCheckResult {
+  /** true when the cache dir doesn't exist or is owned by the current user. */
+  satisfied: boolean;
+  /** Owner of ~/.npm, or null if the directory doesn't exist. */
+  owner: string | null;
+  /** The cache directory path that was checked. */
+  cacheDir: string;
+}
+
+/**
+ * Check that the npm cache directory (~/.npm) is owned by the current user.
+ *
+ * A previous `sudo npm install` can leave root-owned files in the cache,
+ * causing EACCES errors on subsequent `npm install` runs.
+ * Skipped on Windows where file ownership semantics differ.
+ */
+export async function checkNpmCacheOwnership(): Promise<NpmCacheCheckResult> {
+  const cacheDir = join(homedir(), '.npm');
+
+  // Skip on Windows - file ownership model is different
+  if (isWindows) {
+    return { satisfied: true, owner: null, cacheDir };
+  }
+
+  try {
+    const stats = await stat(cacheDir);
+    const currentUid = process.getuid?.();
+    if (currentUid === undefined) {
+      // getuid not available (e.g. some non-POSIX runtimes) — skip check
+      return { satisfied: true, owner: null, cacheDir };
+    }
+
+    if (stats.uid !== currentUid) {
+      // Resolve owner name for the error message
+      const ownerResult = await runSubprocessCapture('id', ['-un', String(stats.uid)]);
+      const owner = ownerResult.code === 0 ? ownerResult.stdout.trim() : `uid=${stats.uid}`;
+      return { satisfied: false, owner, cacheDir };
+    }
+
+    return { satisfied: true, owner: null, cacheDir };
+  } catch {
+    // Directory doesn't exist yet — not a problem
+    return { satisfied: true, owner: null, cacheDir };
+  }
+}
+
+/**
+ * Format an npm cache ownership failure as a user-friendly error message.
+ */
+export function formatNpmCacheError(result: NpmCacheCheckResult): string {
+  return (
+    `npm cache directory (${result.cacheDir}) is owned by '${result.owner}' instead of the current user. ` +
+    `This was likely caused by a previous 'sudo npm install'. ` +
+    `Fix: sudo chown -R $(whoami) ${result.cacheDir}`
+  );
+}
+
+/**
  * Check if the project has any Python CodeZip agents that require uv.
  */
 export function requiresUv(projectSpec: AgentCoreProjectSpec): boolean {
@@ -171,6 +234,7 @@ export interface DependencyCheckResult {
   passed: boolean;
   nodeCheck: VersionCheckResult;
   uvCheck: VersionCheckResult | null;
+  npmCacheCheck: NpmCacheCheckResult;
   containerRuntimeAvailable: boolean;
   errors: string[];
 }
@@ -198,6 +262,12 @@ export async function checkDependencyVersions(projectSpec: AgentCoreProjectSpec)
     }
   }
 
+  // Check npm cache ownership (root-owned cache causes EACCES on npm install)
+  const npmCacheCheck = await checkNpmCacheOwnership();
+  if (!npmCacheCheck.satisfied) {
+    errors.push(formatNpmCacheError(npmCacheCheck));
+  }
+
   // Check container runtime only if there are Container agents (warn only, not error)
   let containerRuntimeAvailable = true;
   if (requiresContainerRuntime(projectSpec)) {
@@ -213,6 +283,7 @@ export async function checkDependencyVersions(projectSpec: AgentCoreProjectSpec)
     passed: errors.length === 0,
     nodeCheck,
     uvCheck,
+    npmCacheCheck,
     containerRuntimeAvailable,
     errors,
   };
@@ -289,6 +360,14 @@ export async function checkCreateDependencies(
   });
   if (!npmAvailable) {
     errors.push("'npm' is required. Install Node.js from https://nodejs.org/");
+  }
+
+  // Check npm cache ownership (root-owned cache causes EACCES on npm install)
+  if (npmAvailable) {
+    const npmCacheCheck = await checkNpmCacheOwnership();
+    if (!npmCacheCheck.satisfied) {
+      errors.push(formatNpmCacheError(npmCacheCheck));
+    }
   }
 
   // Check aws (warn if missing)
