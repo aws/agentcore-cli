@@ -103,27 +103,17 @@ export function mapModelProviderToCredentials(modelProvider: ModelProvider, proj
  */
 export function mapGenerateConfigToAgent(config: GenerateConfig): AgentEnvSpec {
   const codeLocation = `${APP_DIR}/${config.projectName}/`;
-  const networkMode = config.networkMode ?? DEFAULT_NETWORK_MODE;
 
-  const agent: AgentEnvSpec = {
+  return {
     type: 'AgentCoreRuntime',
     name: config.projectName,
     build: config.buildType ?? 'CodeZip',
     entrypoint: DEFAULT_PYTHON_ENTRYPOINT as FilePath,
     codeLocation: codeLocation as DirectoryPath,
     runtimeVersion: DEFAULT_PYTHON_VERSION,
-    networkMode,
+    networkMode: DEFAULT_NETWORK_MODE,
     modelProvider: config.modelProvider,
   };
-
-  if (networkMode === 'VPC' && config.subnets && config.securityGroups) {
-    agent.networkConfig = {
-      subnets: config.subnets,
-      securityGroups: config.securityGroups,
-    };
-  }
-
-  return agent;
 }
 
 /**

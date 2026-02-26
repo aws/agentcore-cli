@@ -1,4 +1,4 @@
-import type { GatewayAuthorizerType, ModelProvider, NetworkMode, SDKFramework, TargetLanguage } from '../../../schema';
+import type { GatewayAuthorizerType, ModelProvider, SDKFramework, TargetLanguage } from '../../../schema';
 import type { MemoryOption } from '../../tui/screens/generate/types';
 
 // Agent types
@@ -11,9 +11,6 @@ export interface AddAgentOptions {
   modelProvider?: ModelProvider;
   apiKey?: string;
   memory?: MemoryOption;
-  networkMode?: NetworkMode;
-  subnets?: string;
-  securityGroups?: string;
   codeLocation?: string;
   entrypoint?: string;
   json?: boolean;

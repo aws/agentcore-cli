@@ -40,9 +40,6 @@ async function handleAddAgentCLI(options: AddAgentOptions): Promise<void> {
     modelProvider: options.modelProvider!,
     apiKey: options.apiKey,
     memory: options.memory,
-    networkMode: options.networkMode,
-    subnets: options.subnets,
-    securityGroups: options.securityGroups,
     codeLocation: options.codeLocation,
     entrypoint: options.entrypoint,
   });
@@ -230,9 +227,6 @@ export function registerAdd(program: Command) {
     .option('--model-provider <provider>', 'Model provider: Bedrock, Anthropic, OpenAI, Gemini [non-interactive]')
     .option('--api-key <key>', 'API key for non-Bedrock providers [non-interactive]')
     .option('--memory <mem>', 'Memory: none, shortTerm, longAndShortTerm (create path only) [non-interactive]')
-    .option('--network-mode <mode>', 'Network mode: PUBLIC or VPC (default: PUBLIC) [non-interactive]')
-    .option('--subnets <ids>', 'Comma-separated subnet IDs (required for VPC mode) [non-interactive]')
-    .option('--security-groups <ids>', 'Comma-separated security group IDs (required for VPC mode) [non-interactive]')
     .option('--code-location <path>', 'Path to existing code (BYO path only) [non-interactive]')
     .option('--entrypoint <file>', 'Entry file relative to code-location (BYO, default: main.py) [non-interactive]')
     .option('--json', 'Output as JSON [non-interactive]')

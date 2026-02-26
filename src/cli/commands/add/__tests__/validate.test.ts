@@ -162,52 +162,6 @@ describe('validate', () => {
       expect(validateAddAgentOptions(validAgentOptionsByo)).toEqual({ valid: true });
       expect(validateAddAgentOptions(validAgentOptionsCreate)).toEqual({ valid: true });
     });
-
-    // VPC validation tests
-    it('rejects invalid network mode', () => {
-      const result = validateAddAgentOptions({ ...validAgentOptionsCreate, networkMode: 'INVALID' as any });
-      expect(result.valid).toBe(false);
-      expect(result.error).toContain('Invalid network mode');
-    });
-
-    it('rejects VPC mode without subnets', () => {
-      const result = validateAddAgentOptions({
-        ...validAgentOptionsCreate,
-        networkMode: 'VPC',
-        securityGroups: 'sg-12345678',
-      });
-      expect(result.valid).toBe(false);
-      expect(result.error).toContain('--subnets is required');
-    });
-
-    it('rejects VPC mode without security groups', () => {
-      const result = validateAddAgentOptions({
-        ...validAgentOptionsCreate,
-        networkMode: 'VPC',
-        subnets: 'subnet-12345678',
-      });
-      expect(result.valid).toBe(false);
-      expect(result.error).toContain('--security-groups is required');
-    });
-
-    it('rejects subnets without VPC mode', () => {
-      const result = validateAddAgentOptions({
-        ...validAgentOptionsCreate,
-        subnets: 'subnet-12345678',
-      });
-      expect(result.valid).toBe(false);
-      expect(result.error).toContain('require --network-mode VPC');
-    });
-
-    it('passes for valid VPC options', () => {
-      const result = validateAddAgentOptions({
-        ...validAgentOptionsCreate,
-        networkMode: 'VPC',
-        subnets: 'subnet-12345678',
-        securityGroups: 'sg-12345678',
-      });
-      expect(result.valid).toBe(true);
-    });
   });
 
   describe('validateAddGatewayOptions', () => {

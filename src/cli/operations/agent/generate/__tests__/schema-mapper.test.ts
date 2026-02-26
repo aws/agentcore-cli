@@ -93,34 +93,6 @@ describe('mapGenerateConfigToAgent', () => {
     const result = mapGenerateConfigToAgent(baseConfig);
     expect(result.codeLocation).toBe('app/TestProject/');
   });
-
-  it('uses config.networkMode when provided', () => {
-    const config: GenerateConfig = {
-      ...baseConfig,
-      networkMode: 'VPC',
-      subnets: ['subnet-12345678'],
-      securityGroups: ['sg-12345678'],
-    };
-    const result = mapGenerateConfigToAgent(config);
-    expect(result.networkMode).toBe('VPC');
-    expect(result.networkConfig).toEqual({
-      subnets: ['subnet-12345678'],
-      securityGroups: ['sg-12345678'],
-    });
-  });
-
-  it('defaults to PUBLIC when networkMode is not provided', () => {
-    const result = mapGenerateConfigToAgent(baseConfig);
-    expect(result.networkMode).toBe('PUBLIC');
-    expect(result.networkConfig).toBeUndefined();
-  });
-
-  it('does not include networkConfig for PUBLIC mode', () => {
-    const config: GenerateConfig = { ...baseConfig, networkMode: 'PUBLIC' };
-    const result = mapGenerateConfigToAgent(config);
-    expect(result.networkMode).toBe('PUBLIC');
-    expect(result.networkConfig).toBeUndefined();
-  });
 });
 
 describe('mapGenerateConfigToResources', () => {

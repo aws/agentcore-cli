@@ -1,4 +1,4 @@
-import type { BuildType, ModelProvider, NetworkMode, SDKFramework, TargetLanguage } from '../../../../schema';
+import type { BuildType, ModelProvider, SDKFramework, TargetLanguage } from '../../../../schema';
 import { DEFAULT_MODEL_IDS, getSupportedModelProviders } from '../../../../schema';
 
 export type GenerateStep =
@@ -25,9 +25,6 @@ export interface GenerateConfig {
   apiKey?: string;
   memory: MemoryOption;
   language: TargetLanguage;
-  networkMode?: NetworkMode;
-  subnets?: string[];
-  securityGroups?: string[];
 }
 
 /** Base steps - apiKey and memory are conditionally added based on selections */

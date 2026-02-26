@@ -7,7 +7,6 @@ import type {
   GatewayAuthorizerType,
   MemoryStrategyType,
   ModelProvider,
-  NetworkMode,
   SDKFramework,
   TargetLanguage,
 } from '../../../schema';
@@ -30,7 +29,6 @@ import { createRenderer } from '../../templates';
 import type { MemoryOption } from '../../tui/screens/generate/types';
 import type { AddGatewayConfig, AddMcpToolConfig } from '../../tui/screens/mcp/types';
 import { DEFAULT_EVENT_EXPIRY } from '../../tui/screens/memory/types';
-import { parseCommaSeparatedList } from '../shared/vpc-utils';
 import type { AddAgentResult, AddGatewayResult, AddIdentityResult, AddMcpToolResult, AddMemoryResult } from './types';
 import { mkdirSync } from 'fs';
 import { dirname, join } from 'path';
@@ -45,9 +43,6 @@ export interface ValidatedAddAgentOptions {
   modelProvider: ModelProvider;
   apiKey?: string;
   memory?: MemoryOption;
-  networkMode?: NetworkMode;
-  subnets?: string;
-  securityGroups?: string;
   codeLocation?: string;
   entrypoint?: string;
 }
@@ -125,9 +120,6 @@ async function handleCreatePath(options: ValidatedAddAgentOptions, configBaseDir
     modelProvider: options.modelProvider,
     memory: options.memory!,
     language: options.language,
-    networkMode: options.networkMode,
-    subnets: parseCommaSeparatedList(options.subnets),
-    securityGroups: parseCommaSeparatedList(options.securityGroups),
   };
 
   const agentPath = join(projectRoot, APP_DIR, options.name);
@@ -194,7 +186,6 @@ async function handleByoPath(
 
   const project = await configIO.readProjectSpec();
 
-  const networkMode = options.networkMode ?? 'PUBLIC';
   const agent: AgentEnvSpec = {
     type: 'AgentCoreRuntime',
     name: options.name,
@@ -202,15 +193,7 @@ async function handleByoPath(
     entrypoint: (options.entrypoint ?? 'main.py') as FilePath,
     codeLocation: codeLocation as DirectoryPath,
     runtimeVersion: 'PYTHON_3_12',
-    networkMode,
-    ...(networkMode === 'VPC' && options.subnets && options.securityGroups
-      ? {
-          networkConfig: {
-            subnets: parseCommaSeparatedList(options.subnets)!,
-            securityGroups: parseCommaSeparatedList(options.securityGroups)!,
-          },
-        }
-      : {}),
+    networkMode: 'PUBLIC',
   };
 
   project.agents.push(agent);

@@ -8,9 +8,6 @@ export interface CreateOptions {
   modelProvider?: string;
   apiKey?: string;
   memory?: string;
-  networkMode?: string;
-  subnets?: string;
-  securityGroups?: string;
   outputDir?: string;
   skipGit?: boolean;
   skipPythonSetup?: boolean;
