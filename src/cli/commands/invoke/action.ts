@@ -67,12 +67,6 @@ export async function handleInvoke(context: InvokeContext, options: InvokeOption
     return { success: false, error: 'No agents defined in configuration' };
   }
 
-  if (agentSpec.networkMode === 'VPC') {
-    console.warn(
-      'Warning: This agent uses VPC network mode. Invocation may require setting up VPC Endpoints for S3, ECR, Bedrock. If your agent uses a non-Bedrock model provider, VPC will require public internet access.'
-    );
-  }
-
   // Get the deployed state for this specific agent
   const agentState = targetState?.resources?.agents?.[agentSpec.name];
 

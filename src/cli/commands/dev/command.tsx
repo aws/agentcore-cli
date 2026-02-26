@@ -144,12 +144,6 @@ export const registerDev = (program: Command) => {
           const targetAgent = project.agents.find(a => a.name === config.agentName);
           const providerInfo = targetAgent?.modelProvider ?? '(see agent code)';
 
-          if (targetAgent?.networkMode === 'VPC') {
-            console.warn(
-              'Warning: This agent uses VPC network mode. Local dev server runs outside your VPC. Network behavior may differ from deployed environment.'
-            );
-          }
-
           console.log(`Starting dev server...`);
           console.log(`Agent: ${config.agentName}`);
           console.log(`Provider: ${providerInfo}`);
@@ -182,20 +176,6 @@ export const registerDev = (program: Command) => {
           // Keep process alive
           // eslint-disable-next-line @typescript-eslint/no-empty-function
           await new Promise(() => {});
-        }
-
-        // Warn if the target agent uses VPC mode
-        {
-          const vpcAgent = opts.agent
-            ? project.agents.find(a => a.name === opts.agent)
-            : project.agents.length === 1
-              ? project.agents[0]
-              : undefined;
-          if (vpcAgent?.networkMode === 'VPC') {
-            console.warn(
-              'Warning: This agent uses VPC network mode. Local dev server runs outside your VPC. Network behavior may differ from deployed environment.'
-            );
-          }
         }
 
         // Enter alternate screen buffer for fullscreen mode
