@@ -138,5 +138,5 @@ export type NodeRuntime = z.infer<typeof NodeRuntimeSchema>;
 export const RuntimeVersionSchema = z.union([PythonRuntimeSchema, NodeRuntimeSchema]);
 export type RuntimeVersion = z.infer<typeof RuntimeVersionSchema>;
 
-export const NetworkModeSchema = z.enum(['PUBLIC', 'VPC']);
+export const NetworkModeSchema = z.enum(['PUBLIC', 'PRIVATE']);
 export type NetworkMode = z.infer<typeof NetworkModeSchema>;

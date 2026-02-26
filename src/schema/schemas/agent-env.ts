@@ -104,59 +104,24 @@ export const InstrumentationSchema = z.object({
 export type Instrumentation = z.infer<typeof InstrumentationSchema>;
 
 /**
- * VPC network configuration for agents running in VPC mode.
- * Requires at least one subnet and one security group.
- */
-export const NetworkConfigSchema = z.object({
-  subnets: z
-    .array(z.string().regex(/^subnet-[0-9a-zA-Z]{8,17}$/))
-    .min(1)
-    .max(16),
-  securityGroups: z
-    .array(z.string().regex(/^sg-[0-9a-zA-Z]{8,17}$/))
-    .min(1)
-    .max(16),
-});
-export type NetworkConfig = z.infer<typeof NetworkConfigSchema>;
-
-/**
  * AgentEnvSpec - represents an AgentCore Runtime.
  * This is a top-level resource in the schema.
  */
-export const AgentEnvSpecSchema = z
-  .object({
-    type: AgentTypeSchema,
-    name: AgentNameSchema,
-    build: BuildTypeSchema,
-    entrypoint: EntrypointSchema,
-    codeLocation: DirectoryPathSchema,
-    runtimeVersion: RuntimeVersionSchemaFromConstants,
-    /** Environment variables to set on the runtime */
-    envVars: z.array(EnvVarSchema).optional(),
-    /** Network mode for the runtime. Defaults to PUBLIC. */
-    networkMode: NetworkModeSchema.optional(),
-    /** VPC network configuration. Required when networkMode is VPC. */
-    networkConfig: NetworkConfigSchema.optional(),
-    /** Instrumentation settings for observability. Defaults to OTel enabled. */
-    instrumentation: InstrumentationSchema.optional(),
-    /** Model provider used by this agent. Optional for backwards compatibility. */
-    modelProvider: ModelProviderSchema.optional(),
-  })
-  .superRefine((data, ctx) => {
-    if (data.networkMode === 'VPC' && !data.networkConfig) {
-      ctx.addIssue({
-        code: 'custom',
-        path: ['networkConfig'],
-        message: 'networkConfig is required when networkMode is VPC',
-      });
-    }
-    if (data.networkMode !== 'VPC' && data.networkConfig) {
-      ctx.addIssue({
-        code: 'custom',
-        path: ['networkConfig'],
-        message: 'networkConfig is only allowed when networkMode is VPC',
-      });
-    }
-  });
+export const AgentEnvSpecSchema = z.object({
+  type: AgentTypeSchema,
+  name: AgentNameSchema,
+  build: BuildTypeSchema,
+  entrypoint: EntrypointSchema,
+  codeLocation: DirectoryPathSchema,
+  runtimeVersion: RuntimeVersionSchemaFromConstants,
+  /** Environment variables to set on the runtime */
+  envVars: z.array(EnvVarSchema).optional(),
+  /** Network mode for the runtime. Defaults to PUBLIC. */
+  networkMode: NetworkModeSchema.optional(),
+  /** Instrumentation settings for observability. Defaults to OTel enabled. */
+  instrumentation: InstrumentationSchema.optional(),
+  /** Model provider used by this agent. Optional for backwards compatibility. */
+  modelProvider: ModelProviderSchema.optional(),
+});
 
 export type AgentEnvSpec = z.infer<typeof AgentEnvSpecSchema>;
