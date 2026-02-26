@@ -4,13 +4,11 @@ import type { GatewayAuthorizerType, NodeRuntime, PythonRuntime, ToolDefinition 
 // Gateway Flow Types
 // ─────────────────────────────────────────────────────────────────────────────
 
-export type AddGatewayStep = 'name' | 'authorizer' | 'jwt-config' | 'agents' | 'include-targets' | 'confirm';
+export type AddGatewayStep = 'name' | 'authorizer' | 'jwt-config' | 'include-targets' | 'confirm';
 
 export interface AddGatewayConfig {
   name: string;
   description: string;
-  /** Agent names that will use this gateway */
-  agents: string[];
   /** Authorization type for the gateway */
   authorizerType: GatewayAuthorizerType;
   /** JWT authorizer configuration (when authorizerType is 'CUSTOM_JWT') */
@@ -27,7 +25,6 @@ export const GATEWAY_STEP_LABELS: Record<AddGatewayStep, string> = {
   name: 'Name',
   authorizer: 'Authorizer',
   'jwt-config': 'JWT Config',
-  agents: 'Agents',
   'include-targets': 'Include Targets',
   confirm: 'Confirm',
 };

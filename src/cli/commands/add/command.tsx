@@ -272,7 +272,6 @@ export function registerAdd(program: Command) {
     .option('--discovery-url <url>', 'OIDC discovery URL (required for CUSTOM_JWT)')
     .option('--allowed-audience <values>', 'Comma-separated allowed audience values (required for CUSTOM_JWT)')
     .option('--allowed-clients <values>', 'Comma-separated allowed client IDs (required for CUSTOM_JWT)')
-    .option('--agents <names>', 'Comma-separated agent names to attach gateway to')
     .option('--json', 'Output as JSON')
     .action(async options => {
       requireProject();

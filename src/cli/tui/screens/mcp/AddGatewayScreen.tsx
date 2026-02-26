@@ -23,7 +23,6 @@ interface AddGatewayScreenProps {
   onComplete: (config: AddGatewayConfig) => void;
   onExit: () => void;
   existingGateways: string[];
-  availableAgents: string[];
   unassignedTargets: string[];
 }
 
@@ -31,7 +30,6 @@ export function AddGatewayScreen({
   onComplete,
   onExit,
   existingGateways,
-  availableAgents,
   unassignedTargets,
 }: AddGatewayScreenProps) {
   const wizard = useAddGatewayWizard(unassignedTargets.length);
@@ -40,11 +38,6 @@ export function AddGatewayScreen({
   const [jwtSubStep, setJwtSubStep] = useState(0);
   const [jwtDiscoveryUrl, setJwtDiscoveryUrl] = useState('');
   const [jwtAudience, setJwtAudience] = useState('');
-
-  const agentItems: SelectableItem[] = useMemo(
-    () => availableAgents.map(name => ({ id: name, title: name })),
-    [availableAgents]
-  );
 
   const unassignedTargetItems: SelectableItem[] = useMemo(
     () => unassignedTargets.map(name => ({ id: name, title: name })),
@@ -59,7 +52,6 @@ export function AddGatewayScreen({
   const isNameStep = wizard.step === 'name';
   const isAuthorizerStep = wizard.step === 'authorizer';
   const isJwtConfigStep = wizard.step === 'jwt-config';
-  const isAgentsStep = wizard.step === 'agents';
   const isIncludeTargetsStep = wizard.step === 'include-targets';
   const isConfirmStep = wizard.step === 'confirm';
 
@@ -68,15 +60,6 @@ export function AddGatewayScreen({
     onSelect: item => wizard.setAuthorizerType(item.id as GatewayAuthorizerType),
     onExit: () => wizard.goBack(),
     isActive: isAuthorizerStep,
-  });
-
-  const agentsNav = useMultiSelectNavigation({
-    items: agentItems,
-    getId: item => item.id,
-    onConfirm: ids => wizard.setAgents(ids),
-    onExit: () => wizard.goBack(),
-    isActive: isAgentsStep,
-    requireSelection: false,
   });
 
   const targetsNav = useMultiSelectNavigation({
@@ -135,14 +118,13 @@ export function AddGatewayScreen({
     }
   };
 
-  const helpText =
-    isAgentsStep || isIncludeTargetsStep
-      ? 'Space toggle · Enter confirm · Esc back'
-      : isConfirmStep
-        ? HELP_TEXT.CONFIRM_CANCEL
-        : isAuthorizerStep
-          ? HELP_TEXT.NAVIGATE_SELECT
-          : HELP_TEXT.TEXT_INPUT;
+  const helpText = isIncludeTargetsStep
+    ? 'Space toggle · Enter confirm · Esc back'
+    : isConfirmStep
+      ? HELP_TEXT.CONFIRM_CANCEL
+      : isAuthorizerStep
+        ? HELP_TEXT.NAVIGATE_SELECT
+        : HELP_TEXT.TEXT_INPUT;
 
   const headerContent = <StepIndicator steps={wizard.steps} currentStep={wizard.step} labels={GATEWAY_STEP_LABELS} />;
 
@@ -187,20 +169,6 @@ export function AddGatewayScreen({
           />
         )}
 
-        {isAgentsStep &&
-          (agentItems.length > 0 ? (
-            <WizardMultiSelect
-              title="Select agents to use this gateway"
-              items={agentItems}
-              cursorIndex={agentsNav.cursorIndex}
-              selectedIds={agentsNav.selectedIds}
-            />
-          ) : (
-            <Text dimColor>
-              No agents defined. Add agents first via `agentcore add agent`. Press Enter to continue.
-            </Text>
-          ))}
-
         {isIncludeTargetsStep &&
           (unassignedTargetItems.length > 0 ? (
             <WizardMultiSelect
@@ -226,7 +194,6 @@ export function AddGatewayScreen({
                     { label: 'Allowed Clients', value: wizard.config.jwtConfig.allowedClients.join(', ') },
                   ]
                 : []),
-              { label: 'Agents', value: wizard.config.agents.length > 0 ? wizard.config.agents.join(', ') : '(none)' },
               {
                 label: 'Targets',
                 value:

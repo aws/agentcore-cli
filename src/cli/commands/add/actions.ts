@@ -243,17 +243,9 @@ async function handleByoPath(
 
 // Gateway handler
 function buildGatewayConfig(options: ValidatedAddGatewayOptions): AddGatewayConfig {
-  const agents = options.agents
-    ? options.agents
-        .split(',')
-        .map(s => s.trim())
-        .filter(Boolean)
-    : [];
-
   const config: AddGatewayConfig = {
     name: options.name,
     description: options.description ?? `Gateway for ${options.name}`,
-    agents,
     authorizerType: options.authorizerType,
     jwtConfig: undefined,
   };

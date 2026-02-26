@@ -13,8 +13,6 @@ type FlowState =
 interface AddGatewayFlowProps {
   /** Whether running in interactive TUI mode */
   isInteractive?: boolean;
-  /** Available agents for the create wizard */
-  availableAgents: string[];
   onExit: () => void;
   onBack: () => void;
   /** Called when user selects dev from success screen to run agent locally */
@@ -25,7 +23,6 @@ interface AddGatewayFlowProps {
 
 export function AddGatewayFlow({
   isInteractive = true,
-  availableAgents,
   onExit,
   onBack,
   onDev,
@@ -69,7 +66,6 @@ export function AddGatewayFlow({
     return (
       <AddGatewayScreen
         existingGateways={existingGateways}
-        availableAgents={availableAgents}
         unassignedTargets={unassignedTargets}
         onComplete={handleCreateComplete}
         onExit={onBack}

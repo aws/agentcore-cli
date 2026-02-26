@@ -4,8 +4,8 @@ import { useCallback, useMemo, useState } from 'react';
 
 /** Maps authorizer type to the next step after authorizer selection */
 const AUTHORIZER_NEXT_STEP: Record<GatewayAuthorizerType, AddGatewayStep> = {
-  NONE: 'agents',
-  AWS_IAM: 'agents',
+  NONE: 'confirm',
+  AWS_IAM: 'confirm',
   CUSTOM_JWT: 'jwt-config',
 };
 
@@ -13,7 +13,6 @@ function getDefaultConfig(): AddGatewayConfig {
   return {
     name: '',
     description: '',
-    agents: [],
     authorizerType: 'NONE',
     jwtConfig: undefined,
     selectedTargets: [],
@@ -31,8 +30,6 @@ export function useAddGatewayWizard(unassignedTargetsCount = 0) {
     if (config.authorizerType === 'CUSTOM_JWT') {
       baseSteps.push('jwt-config');
     }
-
-    baseSteps.push('agents');
 
     if (unassignedTargetsCount > 0) {
       baseSteps.push('include-targets');
@@ -76,17 +73,6 @@ export function useAddGatewayWizard(unassignedTargetsCount = 0) {
         ...c,
         jwtConfig,
       }));
-      setStep('agents');
-    },
-    []
-  );
-
-  const setAgents = useCallback(
-    (agents: string[]) => {
-      setConfig(c => ({
-        ...c,
-        agents,
-      }));
       setStep(unassignedTargetsCount > 0 ? 'include-targets' : 'confirm');
     },
     [unassignedTargetsCount]
@@ -114,7 +100,6 @@ export function useAddGatewayWizard(unassignedTargetsCount = 0) {
     setName,
     setAuthorizerType,
     setJwtConfig,
-    setAgents,
     setSelectedTargets,
     reset,
   };
