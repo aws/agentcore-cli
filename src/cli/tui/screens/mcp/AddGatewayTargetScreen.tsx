@@ -61,7 +61,7 @@ export function AddGatewayTargetScreen({
   const headerContent = <StepIndicator steps={wizard.steps} currentStep={wizard.step} labels={MCP_TOOL_STEP_LABELS} />;
 
   return (
-    <Screen title="Add MCP Tool" onExit={onExit} helpText={helpText} headerContent={headerContent}>
+    <Screen title="Add Gateway Target" onExit={onExit} helpText={helpText} headerContent={headerContent}>
       <Panel>
         {isGatewayStep && !noGatewaysAvailable && (
           <WizardSelect

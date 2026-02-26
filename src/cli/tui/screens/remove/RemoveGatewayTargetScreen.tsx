@@ -3,7 +3,7 @@ import { SelectScreen } from '../../components';
 import React from 'react';
 
 interface RemoveGatewayTargetScreenProps {
-  /** List of MCP tools that can be removed */
+  /** List of gateway targets that can be removed */
   tools: RemovableGatewayTarget[];
   /** Called when a tool is selected for removal */
   onSelect: (tool: RemovableGatewayTarget) => void;
@@ -23,7 +23,7 @@ export function RemoveGatewayTargetScreen({ tools, onSelect, onExit }: RemoveGat
 
   return (
     <SelectScreen
-      title="Select MCP Tool to Remove"
+      title="Select Gateway Target to Remove"
       items={items}
       onSelect={item => {
         const tool = toolMap.get(item.id);

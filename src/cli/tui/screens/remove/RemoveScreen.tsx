@@ -7,7 +7,7 @@ const REMOVE_RESOURCES = [
   { id: 'memory', title: 'Memory', description: 'Remove a memory provider' },
   { id: 'identity', title: 'Identity', description: 'Remove an identity provider' },
   { id: 'gateway', title: 'Gateway', description: 'Remove an MCP gateway' },
-  { id: 'gateway-target', title: 'MCP Tool', description: 'Remove an MCP tool' },
+  { id: 'gateway-target', title: 'Gateway Target', description: 'Remove a gateway target' },
   { id: 'all', title: 'All', description: 'Reset entire agentcore project' },
 ] as const;
 
@@ -20,7 +20,7 @@ interface RemoveScreenProps {
   agentCount: number;
   /** Number of gateways available for removal */
   gatewayCount: number;
-  /** Number of MCP tools available for removal */
+  /** Number of gateway targets available for removal */
   mcpToolCount: number;
   /** Number of memories available for removal */
   memoryCount: number;

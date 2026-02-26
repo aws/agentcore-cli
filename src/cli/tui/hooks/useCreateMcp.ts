@@ -49,7 +49,7 @@ export function useCreateGatewayTarget() {
       setStatus({ state: 'success', result });
       return { ok: true as const, result };
     } catch (err) {
-      const message = err instanceof Error ? err.message : 'Failed to create MCP tool.';
+      const message = err instanceof Error ? err.message : 'Failed to create gateway target.';
       setStatus({ state: 'error', error: message });
       return { ok: false as const, error: message };
     }

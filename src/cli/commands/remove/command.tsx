@@ -142,7 +142,7 @@ export const registerRemove = (program: Command) => {
   registerResourceRemove(removeCommand, 'memory', 'memory', 'Remove a memory provider from the project');
   registerResourceRemove(removeCommand, 'identity', 'identity', 'Remove an identity provider from the project');
 
-  registerResourceRemove(removeCommand, 'gateway-target', 'gateway-target', 'Remove an MCP tool from the project');
+  registerResourceRemove(removeCommand, 'gateway-target', 'gateway-target', 'Remove a gateway target from the project');
 
   registerResourceRemove(removeCommand, 'gateway', 'gateway', 'Remove a gateway from the project');
 

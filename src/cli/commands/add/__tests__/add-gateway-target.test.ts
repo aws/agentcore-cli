@@ -5,7 +5,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
-// MCP Tool feature is disabled (coming soon) - skip all tests
+// Gateway Target feature is disabled (coming soon) - skip all tests
 describe.skip('add gateway-target command', () => {
   let testDir: string;
   let projectDir: string;

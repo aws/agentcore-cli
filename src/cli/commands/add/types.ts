@@ -41,7 +41,7 @@ export interface AddGatewayResult {
   error?: string;
 }
 
-// MCP Tool types
+// Gateway Target types
 export interface AddGatewayTargetOptions {
   name?: string;
   description?: string;

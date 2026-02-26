@@ -49,14 +49,14 @@ export async function handleRemove(options: ValidatedRemoveOptions): Promise<Rem
       case 'gateway-target': {
         const tools = await getRemovableGatewayTargets();
         const tool = tools.find(t => t.name === name);
-        if (!tool) return { success: false, error: `MCP tool '${name}' not found` };
+        if (!tool) return { success: false, error: `Gateway target '${name}' not found` };
         const result = await removeGatewayTarget(tool);
         if (!result.ok) return { success: false, error: result.error };
         return {
           success: true,
           resourceType,
           resourceName: name,
-          message: `Removed MCP tool '${name}'`,
+          message: `Removed gateway target '${name}'`,
           note: SOURCE_CODE_NOTE,
         };
       }

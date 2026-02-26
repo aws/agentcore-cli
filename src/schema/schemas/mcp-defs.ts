@@ -51,7 +51,7 @@ export const ToolNameSchema = z
   );
 
 /**
- * MCP Tool Definition schema.
+ * Gateway Target Definition schema.
  */
 export const ToolDefinitionSchema = z
   .object({

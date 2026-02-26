@@ -333,7 +333,7 @@ export function AddFlow(props: AddFlowProps) {
     );
   }
 
-  // MCP Tool wizard - now uses AddGatewayTargetFlow with mode selection
+  // Gateway Target wizard - uses AddGatewayTargetFlow
   if (flow.name === 'tool-wizard') {
     return (
       <AddGatewayTargetFlow

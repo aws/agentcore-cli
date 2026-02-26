@@ -44,7 +44,7 @@ export const LAMBDA_TEMPLATE_TOOLS: ToolDefinition[] = [
  */
 export function getTemplateToolDefinitions(toolName: string, host: ComputeHost): ToolDefinition[] {
   if (host === 'Lambda') {
-    // Prefix template tool names with the MCP tool name to avoid conflicts
+    // Prefix template tool names with the gateway target name to avoid conflicts
     // when adding multiple Lambda tools to the same project
     return LAMBDA_TEMPLATE_TOOLS.map(tool => ({
       ...tool,
@@ -62,7 +62,7 @@ export function getTemplateToolDefinitions(toolName: string, host: ComputeHost):
 }
 
 /**
- * Renders an MCP tool project template to the specified output directory.
+ * Renders a gateway target project template to the specified output directory.
  * @param toolName - Name of the tool (used for {{ Name }} substitution)
  * @param outputDir - Target directory for the project
  * @param language - Target language ('Python' or 'TypeScript')
@@ -75,7 +75,7 @@ export async function renderGatewayTargetTemplate(
   host: ComputeHost = 'AgentCoreRuntime'
 ): Promise<void> {
   if (language !== 'Python') {
-    throw new Error(`MCP tool templates for ${language} are not yet supported.`);
+    throw new Error(`Gateway target templates for ${language} are not yet supported.`);
   }
 
   // Select template based on compute host

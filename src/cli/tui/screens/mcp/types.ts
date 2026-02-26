@@ -30,13 +30,13 @@ export const GATEWAY_STEP_LABELS: Record<AddGatewayStep, string> = {
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
-// MCP Tool Flow Types
+// Gateway Target Flow Types
 // ─────────────────────────────────────────────────────────────────────────────
 
 export type ComputeHost = 'Lambda' | 'AgentCoreRuntime';
 
 /**
- * MCP tool wizard steps.
+ * Gateway target wizard steps.
  * - name: Tool name input
  * - language: Target language (Python or TypeScript)
  * - gateway: Select existing gateway

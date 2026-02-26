@@ -220,7 +220,7 @@ export function RemoveFlow({
       const result = await loadGatewayTargetPreview(tool);
       if (result.ok) {
         if (force) {
-          setFlow({ name: 'loading', message: `Removing MCP tool ${tool.name}...` });
+          setFlow({ name: 'loading', message: `Removing gateway target ${tool.name}...` });
           const removeResult = await removeGatewayTargetOp(tool, result.preview);
           if (removeResult.ok) {
             setFlow({ name: 'tool-success', toolName: tool.name });
@@ -354,7 +354,7 @@ export function RemoveFlow({
     async (tool: RemovableGatewayTarget, preview: RemovalPreview) => {
       pendingResultRef.current = null;
       setResultReady(false);
-      setFlow({ name: 'loading', message: `Removing MCP tool ${tool.name}...` });
+      setFlow({ name: 'loading', message: `Removing gateway target ${tool.name}...` });
       const result = await removeGatewayTargetOp(tool, preview);
       if (result.ok) {
         pendingResultRef.current = { name: 'tool-success', toolName: tool.name, logFilePath: result.logFilePath };
@@ -540,7 +540,7 @@ export function RemoveFlow({
   if (flow.name === 'confirm-gateway-target') {
     return (
       <RemoveConfirmScreen
-        title={`Remove MCP Tool: ${flow.tool.name}`}
+        title={`Remove Gateway Target: ${flow.tool.name}`}
         preview={flow.preview}
         onConfirm={() => void handleConfirmGatewayTarget(flow.tool, flow.preview)}
         onCancel={() => setFlow({ name: 'select-gateway-target' })}
@@ -607,8 +607,8 @@ export function RemoveFlow({
     return (
       <RemoveSuccessScreen
         isInteractive={isInteractive}
-        message={`Removed MCP tool: ${flow.toolName}`}
-        detail="MCP tool removed. Deploy with `agentcore deploy` to apply changes."
+        message={`Removed gateway target: ${flow.toolName}`}
+        detail="Gateway target removed. Deploy with `agentcore deploy` to apply changes."
         logFilePath={flow.logFilePath}
         onRemoveAnother={() => {
           resetAll();

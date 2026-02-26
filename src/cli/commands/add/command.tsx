@@ -131,7 +131,7 @@ async function handleAddGatewayTargetCLI(options: AddGatewayTargetOptions): Prom
   if (options.json) {
     console.log(JSON.stringify(result));
   } else if (result.success) {
-    console.log(`Added MCP tool '${result.toolName}'`);
+    console.log(`Added gateway target '${result.toolName}'`);
     if (result.sourcePath) {
       console.log(`Tool code: ${result.sourcePath}`);
     }

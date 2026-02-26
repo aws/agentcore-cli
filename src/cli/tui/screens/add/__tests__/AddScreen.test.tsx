@@ -11,7 +11,7 @@ describe('AddScreen', () => {
     const { lastFrame } = render(<AddScreen onSelect={onSelect} onExit={onExit} hasAgents={true} />);
 
     expect(lastFrame()).toContain('Gateway');
-    expect(lastFrame()).toContain('MCP Tool');
+    expect(lastFrame()).toContain('Gateway Target');
     expect(lastFrame()).not.toContain('Add an agent first');
   });
 });

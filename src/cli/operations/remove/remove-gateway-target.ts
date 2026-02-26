@@ -6,7 +6,7 @@ import { rm } from 'fs/promises';
 import { join } from 'path';
 
 /**
- * Represents an MCP tool that can be removed.
+ * Represents a gateway target that can be removed.
  */
 export interface RemovableGatewayTarget {
   name: string;
@@ -15,7 +15,7 @@ export interface RemovableGatewayTarget {
 }
 
 /**
- * Get list of MCP tools available for removal.
+ * Get list of gateway targets available for removal.
  */
 export async function getRemovableGatewayTargets(): Promise<RemovableGatewayTarget[]> {
   try {
@@ -44,7 +44,7 @@ export async function getRemovableGatewayTargets(): Promise<RemovableGatewayTarg
 }
 
 /**
- * Compute the preview of what will be removed when removing an MCP tool.
+ * Compute the preview of what will be removed when removing a gateway target.
  */
 export async function previewRemoveGatewayTarget(tool: RemovableGatewayTarget): Promise<RemovalPreview> {
   const configIO = new ConfigIO();
@@ -150,7 +150,7 @@ function computeRemovedToolMcpDefs(
 }
 
 /**
- * Remove an MCP tool from the project.
+ * Remove a gateway target from the project.
  */
 export async function removeGatewayTarget(tool: RemovableGatewayTarget): Promise<RemovalResult> {
   try {

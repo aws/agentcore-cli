@@ -45,7 +45,7 @@ async function readMcpDefs(filePath: string): Promise<AgentCoreCliMcpDefs> {
   const parsed = JSON.parse(raw) as unknown;
   const result = AgentCoreCliMcpDefsSchema.safeParse(parsed);
   if (!result.success) {
-    throw new Error('Invalid mcp-defs.json. Fix it before adding a new MCP tool.');
+    throw new Error('Invalid mcp-defs.json. Fix it before adding a new gateway target.');
   }
   return result.data;
 }
@@ -211,7 +211,7 @@ export async function createGatewayFromWizard(config: AddGatewayConfig): Promise
 
 function validateGatewayTargetLanguage(language: string): asserts language is 'Python' | 'TypeScript' | 'Other' {
   if (language !== 'Python' && language !== 'TypeScript' && language !== 'Other') {
-    throw new Error(`MCP tools for language "${language}" are not yet supported.`);
+    throw new Error(`Gateway targets for language "${language}" are not yet supported.`);
   }
 }
 
@@ -288,7 +288,7 @@ export async function createExternalGatewayTarget(config: AddGatewayTargetConfig
 }
 
 /**
- * Create an MCP tool (behind gateway only).
+ * Create a gateway target (behind gateway only).
  */
 export async function createToolFromWizard(config: AddGatewayTargetConfig): Promise<CreateToolResult> {
   validateGatewayTargetLanguage(config.language);
@@ -400,7 +400,7 @@ export async function createToolFromWizard(config: AddGatewayTargetConfig): Prom
     throw new Error(`MCP saved, but failed to update mcp-defs.json: ${message}`);
   }
 
-  // Render MCP tool project template
+  // Render gateway target project template
   // Resolve absolute path from project root
   const configRoot = requireConfigRoot();
   const projectRoot = dirname(configRoot);

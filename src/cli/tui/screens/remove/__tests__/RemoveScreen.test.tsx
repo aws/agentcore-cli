@@ -21,7 +21,7 @@ describe('RemoveScreen', () => {
     );
 
     expect(lastFrame()).toContain('Gateway');
-    expect(lastFrame()).toContain('MCP Tool');
+    expect(lastFrame()).toContain('Gateway Target');
     expect(lastFrame()).not.toContain('No gateways to remove');
     expect(lastFrame()).not.toContain('No gateway targets to remove');
   });

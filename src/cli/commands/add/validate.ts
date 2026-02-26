@@ -183,7 +183,7 @@ export function validateAddGatewayOptions(options: AddGatewayOptions): Validatio
   return { valid: true };
 }
 
-// MCP Tool validation
+// Gateway Target validation
 export async function validateAddGatewayTargetOptions(options: AddGatewayTargetOptions): Promise<ValidationResult> {
   if (!options.name) {
     return { valid: false, error: '--name is required' };
