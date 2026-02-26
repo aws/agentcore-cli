@@ -56,17 +56,6 @@ The TUI is defined using ink, a library that converts React definitions to termi
 
 Ink supports a subset of React features and components should be directly imported from ink.
 
-## Testing UI changes E2E
-
-At the top level `web-harness/` directory a shim over Ink, as well as a mock of Node API and CLI business logic is
-defined. By running the vite local host dev server, a web app based on the same visual source of truth as the terminal
-is hosted. Always launch a web-harness web server and use the browser MCP tool to test changes E2E. Create mocks as
-appropriate to test the relevant surface area.
-
-If start up issues are encountered, read the console error to troubleshoot bugs and update the harness.
-
-## Dev Server Architecture
-
 The `dev` command uses a strategy pattern with a `DevServer` base class and two implementations:
 
 - **CodeZipDevServer**: Runs uvicorn locally with Python venv hot-reload

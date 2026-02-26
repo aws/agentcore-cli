@@ -83,7 +83,6 @@ export default tseslint.config(
       'node_modules',
       'src/assets',
       'src/schema/llm-compacted',
-      'web-harness',
       '.agentcore',
       '**/.agentcore/**',
       '.venv',
