@@ -40,7 +40,7 @@ export async function createApiKeyProvider(
   client: BedrockAgentCoreControlClient,
   providerName: string,
   apiKey: string
-): Promise<{ success: boolean; error?: string }> {
+): Promise<{ success: boolean; credentialProviderArn?: string; error?: string }> {
   try {
     await client.send(
       new CreateApiKeyCredentialProviderCommand({
@@ -48,11 +48,18 @@ export async function createApiKeyProvider(
         apiKey: apiKey,
       })
     );
-    return { success: true };
+    // Create response doesn't include credentialProviderArn — fetch it
+    const getResponse = await client.send(new GetApiKeyCredentialProviderCommand({ name: providerName }));
+    return { success: true, credentialProviderArn: getResponse.credentialProviderArn };
   } catch (error) {
     const errorName = (error as { name?: string }).name;
     if (errorName === 'ConflictException' || errorName === 'ResourceAlreadyExistsException') {
-      return { success: true };
+      try {
+        const getResponse = await client.send(new GetApiKeyCredentialProviderCommand({ name: providerName }));
+        return { success: true, credentialProviderArn: getResponse.credentialProviderArn };
+      } catch {
+        return { success: true };
+      }
     }
     return {
       success: false,
@@ -68,7 +75,7 @@ export async function updateApiKeyProvider(
   client: BedrockAgentCoreControlClient,
   providerName: string,
   apiKey: string
-): Promise<{ success: boolean; error?: string }> {
+): Promise<{ success: boolean; credentialProviderArn?: string; error?: string }> {
   try {
     await client.send(
       new UpdateApiKeyCredentialProviderCommand({
@@ -76,7 +83,9 @@ export async function updateApiKeyProvider(
         apiKey: apiKey,
       })
     );
-    return { success: true };
+    // Update response doesn't include credentialProviderArn — fetch it
+    const getResponse = await client.send(new GetApiKeyCredentialProviderCommand({ name: providerName }));
+    return { success: true, credentialProviderArn: getResponse.credentialProviderArn };
   } catch (error) {
     return {
       success: false,

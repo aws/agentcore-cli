@@ -96,7 +96,12 @@ export async function createOAuth2Provider(
 ): Promise<{ success: boolean; result?: OAuth2ProviderResult; error?: string }> {
   try {
     const response = await client.send(new CreateOauth2CredentialProviderCommand(buildOAuth2Config(params)));
-    const result = extractResult(response);
+    let result = extractResult(response);
+    if (!result) {
+      // Create response may not include credentialProviderArn — fetch it
+      const getResult = await getOAuth2Provider(client, params.name);
+      result = getResult.result;
+    }
     if (!result) {
       return { success: false, error: 'No credential provider ARN in response' };
     }
@@ -146,7 +151,11 @@ export async function updateOAuth2Provider(
 ): Promise<{ success: boolean; result?: OAuth2ProviderResult; error?: string }> {
   try {
     const response = await client.send(new UpdateOauth2CredentialProviderCommand(buildOAuth2Config(params)));
-    const result = extractResult(response);
+    let result = extractResult(response);
+    if (!result) {
+      const getResult = await getOAuth2Provider(client, params.name);
+      result = getResult.result;
+    }
     if (!result) {
       return { success: false, error: 'No credential provider ARN in response' };
     }

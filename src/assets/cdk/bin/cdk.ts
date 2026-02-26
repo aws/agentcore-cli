@@ -30,13 +30,18 @@ async function main() {
 
   // Read MCP configuration if it exists
   let mcpSpec;
-  let mcpDeployedState;
   try {
     mcpSpec = await configIO.readMcpSpec();
-    const deployedState = JSON.parse(fs.readFileSync(path.join(configRoot, '.cli', 'deployed-state.json'), 'utf8'));
-    mcpDeployedState = deployedState?.mcp;
   } catch {
     // MCP config is optional
+  }
+
+  // Read deployed state for credential ARNs (populated by pre-deploy identity setup)
+  let deployedState: Record<string, unknown> | undefined;
+  try {
+    deployedState = JSON.parse(fs.readFileSync(path.join(configRoot, '.cli', 'deployed-state.json'), 'utf8'));
+  } catch {
+    // Deployed state may not exist on first deploy
   }
 
   if (targets.length === 0) {
@@ -49,10 +54,15 @@ async function main() {
     const env = toEnvironment(target);
     const stackName = toStackName(spec.name, target.name);
 
+    // Extract credentials from deployed state for this target
+    const targetState = (deployedState as Record<string, unknown>)?.targets as Record<string, Record<string, unknown>> | undefined;
+    const targetResources = targetState?.[target.name]?.resources as Record<string, unknown> | undefined;
+    const credentials = targetResources?.credentials as Record<string, { credentialProviderArn: string; clientSecretArn?: string }> | undefined;
+
     new AgentCoreStack(app, stackName, {
       spec,
       mcpSpec,
-      mcpDeployedState,
+      credentials,
       env,
       description: `AgentCore stack for ${spec.name} deployed to ${target.name} (${target.region})`,
       tags: {

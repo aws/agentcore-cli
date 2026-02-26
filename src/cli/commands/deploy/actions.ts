@@ -20,6 +20,7 @@ import {
 } from '../../operations/deploy';
 import { formatTargetStatus, getGatewayTargetStatuses } from '../../operations/deploy/gateway-status';
 import type { DeployResult } from './types';
+import type { DeployedState } from '../../../schema';
 
 export interface ValidatedDeployOptions {
   target: string;
@@ -104,6 +105,102 @@ export async function handleDeploy(options: ValidatedDeployOptions): Promise<Dep
     await buildCdkProject(context.cdkProject);
     endStep('success');
 
+    // Set up identity providers before CDK synth (CDK needs credential ARNs)
+    let identityKmsKeyArn: string | undefined;
+
+    // Read runtime credentials from process.env (enables non-interactive deploy with -y)
+    const neededCredentials = getAllCredentials(context.projectSpec);
+    const envCredentials: Record<string, string> = {};
+    for (const cred of neededCredentials) {
+      const value = process.env[cred.envVarName];
+      if (value) {
+        envCredentials[cred.envVarName] = value;
+      }
+    }
+    const runtimeCredentials =
+      Object.keys(envCredentials).length > 0 ? new SecureCredentials(envCredentials) : undefined;
+
+    // Unified credentials map for deployed state (both API Key and OAuth)
+    const deployedCredentials: Record<
+      string,
+      { credentialProviderArn: string; clientSecretArn?: string; callbackUrl?: string }
+    > = {};
+
+    if (hasIdentityApiProviders(context.projectSpec)) {
+      startStep('Creating credentials...');
+
+      const identityResult = await setupApiKeyProviders({
+        projectSpec: context.projectSpec,
+        configBaseDir: configIO.getConfigRoot(),
+        region: target.region,
+        runtimeCredentials,
+        enableKmsEncryption: true,
+      });
+      if (identityResult.hasErrors) {
+        const errorResult = identityResult.results.find(r => r.status === 'error');
+        const errorMsg =
+          errorResult?.error && typeof errorResult.error === 'string' ? errorResult.error : 'Identity setup failed';
+        endStep('error', errorMsg);
+        logger.finalize(false);
+        return { success: false, error: errorMsg, logPath: logger.getRelativeLogPath() };
+      }
+      identityKmsKeyArn = identityResult.kmsKeyArn;
+
+      // Collect API Key credential ARNs for deployed state
+      for (const result of identityResult.results) {
+        if (result.credentialProviderArn) {
+          deployedCredentials[result.providerName] = {
+            credentialProviderArn: result.credentialProviderArn,
+          };
+        }
+      }
+      endStep('success');
+    }
+
+    // Set up OAuth credential providers if needed
+    if (hasIdentityOAuthProviders(context.projectSpec)) {
+      startStep('Creating OAuth credentials...');
+
+      const oauthResult = await setupOAuth2Providers({
+        projectSpec: context.projectSpec,
+        configBaseDir: configIO.getConfigRoot(),
+        region: target.region,
+        runtimeCredentials,
+      });
+      if (oauthResult.hasErrors) {
+        const errorResult = oauthResult.results.find(r => r.status === 'error');
+        const errorMsg = errorResult?.error ?? 'OAuth credential setup failed';
+        endStep('error', errorMsg);
+        logger.finalize(false);
+        return { success: false, error: errorMsg, logPath: logger.getRelativeLogPath() };
+      }
+
+      // Collect OAuth credential ARNs for deployed state
+      for (const result of oauthResult.results) {
+        if (result.credentialProviderArn) {
+          deployedCredentials[result.providerName] = {
+            credentialProviderArn: result.credentialProviderArn,
+            clientSecretArn: result.clientSecretArn,
+            callbackUrl: result.callbackUrl,
+          };
+        }
+      }
+      endStep('success');
+    }
+
+    // Write credential ARNs to deployed state before CDK synth so the template can read them
+    if (Object.keys(deployedCredentials).length > 0) {
+      const existingPreSynthState = await configIO.readDeployedState().catch(() => ({targets: {}} as DeployedState));
+      const targetState = existingPreSynthState.targets?.[target.name] ?? { resources: {} };
+      targetState.resources ??= {};
+      targetState.resources.credentials = deployedCredentials;
+      if (identityKmsKeyArn) targetState.resources.identityKmsKeyArn = identityKmsKeyArn;
+      await configIO.writeDeployedState({
+        ...existingPreSynthState,
+        targets: { ...existingPreSynthState.targets, [target.name]: targetState },
+      });
+    }
+
     // Synthesize CloudFormation templates
     startStep('Synthesize CloudFormation');
     const switchableIoHost = options.verbose ? createSwitchableIoHost() : undefined;
@@ -165,78 +262,6 @@ export async function handleDeploy(options: ValidatedDeployOptions): Promise<Dep
         stackName,
         logPath: logger.getRelativeLogPath(),
       };
-    }
-
-    // Set up identity providers if needed
-    let identityKmsKeyArn: string | undefined;
-
-    // Read runtime credentials from process.env (enables non-interactive deploy with -y)
-    const neededCredentials = getAllCredentials(context.projectSpec);
-    const envCredentials: Record<string, string> = {};
-    for (const cred of neededCredentials) {
-      const value = process.env[cred.envVarName];
-      if (value) {
-        envCredentials[cred.envVarName] = value;
-      }
-    }
-    const runtimeCredentials =
-      Object.keys(envCredentials).length > 0 ? new SecureCredentials(envCredentials) : undefined;
-
-    if (hasIdentityApiProviders(context.projectSpec)) {
-      startStep('Creating credentials...');
-
-      const identityResult = await setupApiKeyProviders({
-        projectSpec: context.projectSpec,
-        configBaseDir: configIO.getConfigRoot(),
-        region: target.region,
-        runtimeCredentials,
-        enableKmsEncryption: true,
-      });
-      if (identityResult.hasErrors) {
-        const errorResult = identityResult.results.find(r => r.status === 'error');
-        const errorMsg =
-          errorResult?.error && typeof errorResult.error === 'string' ? errorResult.error : 'Identity setup failed';
-        endStep('error', errorMsg);
-        logger.finalize(false);
-        return { success: false, error: errorMsg, logPath: logger.getRelativeLogPath() };
-      }
-      identityKmsKeyArn = identityResult.kmsKeyArn;
-      endStep('success');
-    }
-
-    // Set up OAuth credential providers if needed
-    const oauthCredentials: Record<
-      string,
-      { credentialProviderArn: string; clientSecretArn?: string; callbackUrl?: string }
-    > = {};
-    if (hasIdentityOAuthProviders(context.projectSpec)) {
-      startStep('Creating OAuth credentials...');
-
-      const oauthResult = await setupOAuth2Providers({
-        projectSpec: context.projectSpec,
-        configBaseDir: configIO.getConfigRoot(),
-        region: target.region,
-        runtimeCredentials,
-      });
-      if (oauthResult.hasErrors) {
-        const errorResult = oauthResult.results.find(r => r.status === 'error');
-        const errorMsg = errorResult?.error ?? 'OAuth credential setup failed';
-        endStep('error', errorMsg);
-        logger.finalize(false);
-        return { success: false, error: errorMsg, logPath: logger.getRelativeLogPath() };
-      }
-
-      // Collect credential ARNs for deployed state
-      for (const result of oauthResult.results) {
-        if (result.credentialProviderArn) {
-          oauthCredentials[result.providerName] = {
-            credentialProviderArn: result.credentialProviderArn,
-            clientSecretArn: result.clientSecretArn,
-            callbackUrl: result.callbackUrl,
-          };
-        }
-      }
-      endStep('success');
     }
 
     // Deploy
@@ -313,7 +338,7 @@ export async function handleDeploy(options: ValidatedDeployOptions): Promise<Dep
       gateways,
       existingState,
       identityKmsKeyArn,
-      oauthCredentials
+      deployedCredentials
     );
     await configIO.writeDeployedState(deployedState);
 

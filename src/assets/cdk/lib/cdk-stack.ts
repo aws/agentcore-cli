@@ -2,8 +2,7 @@ import {
   AgentCoreApplication,
   AgentCoreMcp,
   type AgentCoreProjectSpec,
-  type McpSpec,
-  type McpDeployedState,
+  type AgentCoreMcpSpec,
 } from '@aws/agentcore-cdk';
 import { CfnOutput, Stack, type StackProps } from 'aws-cdk-lib';
 import { Construct } from 'constructs';
@@ -16,11 +15,11 @@ export interface AgentCoreStackProps extends StackProps {
   /**
    * The MCP specification containing gateways and servers.
    */
-  mcpSpec?: McpSpec;
+  mcpSpec?: AgentCoreMcpSpec;
   /**
-   * The MCP deployed state.
+   * Credential provider ARNs from deployed state, keyed by credential name.
    */
-  mcpDeployedState?: McpDeployedState;
+  credentials?: Record<string, { credentialProviderArn: string; clientSecretArn?: string }>;
 }
 
 /**
@@ -36,7 +35,7 @@ export class AgentCoreStack extends Stack {
   constructor(scope: Construct, id: string, props: AgentCoreStackProps) {
     super(scope, id, props);
 
-    const { spec, mcpSpec, mcpDeployedState } = props;
+    const { spec, mcpSpec, credentials } = props;
 
     // Create AgentCoreApplication with all agents
     this.application = new AgentCoreApplication(this, 'Application', {
@@ -46,9 +45,10 @@ export class AgentCoreStack extends Stack {
     // Create AgentCoreMcp if there are gateways configured
     if (mcpSpec?.agentCoreGateways && mcpSpec.agentCoreGateways.length > 0) {
       new AgentCoreMcp(this, 'Mcp', {
-        spec: mcpSpec,
-        deployedState: mcpDeployedState,
-        application: this.application,
+        projectName: spec.name,
+        mcpSpec,
+        agentCoreApplication: this.application,
+        credentials,
       });
     }
 

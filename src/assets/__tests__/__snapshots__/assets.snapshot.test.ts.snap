@@ -75,13 +75,18 @@ async function main() {
 
   // Read MCP configuration if it exists
   let mcpSpec;
-  let mcpDeployedState;
   try {
     mcpSpec = await configIO.readMcpSpec();
-    const deployedState = JSON.parse(fs.readFileSync(path.join(configRoot, '.cli', 'deployed-state.json'), 'utf8'));
-    mcpDeployedState = deployedState?.mcp;
   } catch {
     // MCP config is optional
+  }
+
+  // Read deployed state for credential ARNs (populated by pre-deploy identity setup)
+  let deployedState: Record<string, unknown> | undefined;
+  try {
+    deployedState = JSON.parse(fs.readFileSync(path.join(configRoot, '.cli', 'deployed-state.json'), 'utf8'));
+  } catch {
+    // Deployed state may not exist on first deploy
   }
 
   if (targets.length === 0) {
@@ -94,10 +99,15 @@ async function main() {
     const env = toEnvironment(target);
     const stackName = toStackName(spec.name, target.name);
 
+    // Extract credentials from deployed state for this target
+    const targetState = (deployedState as Record<string, unknown>)?.targets as Record<string, Record<string, unknown>> | undefined;
+    const targetResources = targetState?.[target.name]?.resources as Record<string, unknown> | undefined;
+    const credentials = targetResources?.credentials as Record<string, { credentialProviderArn: string; clientSecretArn?: string }> | undefined;
+
     new AgentCoreStack(app, stackName, {
       spec,
       mcpSpec,
-      mcpDeployedState,
+      credentials,
       env,
       description: \`AgentCore stack for \${spec.name} deployed to \${target.name} (\${target.region})\`,
       tags: {
@@ -240,8 +250,7 @@ exports[`Assets Directory Snapshots > CDK assets > cdk/cdk/lib/cdk-stack.ts shou
   AgentCoreApplication,
   AgentCoreMcp,
   type AgentCoreProjectSpec,
-  type McpSpec,
-  type McpDeployedState,
+  type AgentCoreMcpSpec,
 } from '@aws/agentcore-cdk';
 import { CfnOutput, Stack, type StackProps } from 'aws-cdk-lib';
 import { Construct } from 'constructs';
@@ -254,11 +263,11 @@ export interface AgentCoreStackProps extends StackProps {
   /**
    * The MCP specification containing gateways and servers.
    */
-  mcpSpec?: McpSpec;
+  mcpSpec?: AgentCoreMcpSpec;
   /**
-   * The MCP deployed state.
+   * Credential provider ARNs from deployed state, keyed by credential name.
    */
-  mcpDeployedState?: McpDeployedState;
+  credentials?: Record<string, { credentialProviderArn: string; clientSecretArn?: string }>;
 }
 
 /**
@@ -274,7 +283,7 @@ export class AgentCoreStack extends Stack {
   constructor(scope: Construct, id: string, props: AgentCoreStackProps) {
     super(scope, id, props);
 
-    const { spec, mcpSpec, mcpDeployedState } = props;
+    const { spec, mcpSpec, credentials } = props;
 
     // Create AgentCoreApplication with all agents
     this.application = new AgentCoreApplication(this, 'Application', {
@@ -284,9 +293,10 @@ export class AgentCoreStack extends Stack {
     // Create AgentCoreMcp if there are gateways configured
     if (mcpSpec?.agentCoreGateways && mcpSpec.agentCoreGateways.length > 0) {
       new AgentCoreMcp(this, 'Mcp', {
-        spec: mcpSpec,
-        deployedState: mcpDeployedState,
-        application: this.application,
+        projectName: spec.name,
+        mcpSpec,
+        agentCoreApplication: this.application,
+        credentials,
       });
     }
 
@@ -337,7 +347,7 @@ exports[`Assets Directory Snapshots > CDK assets > cdk/cdk/package.json should m
   },
   "dependencies": {
     "@aws/agentcore-cdk": "^0.1.0-alpha.1",
-    "aws-cdk-lib": "2.234.1",
+    "aws-cdk-lib": "2.239.0",
     "constructs": "^10.0.0"
   }
 }

@@ -1,4 +1,5 @@
-import { SecureCredentials } from '../../../lib';
+import { ConfigIO, SecureCredentials } from '../../../lib';
+import type { DeployedState } from '../../../schema';
 import { AwsCredentialsError, validateAwsCredentials } from '../../aws/account';
 import { type CdkToolkitWrapper, type SwitchableIoHost, createSwitchableIoHost } from '../../cdk/toolkit-lib';
 import { getErrorMessage, isExpiredTokenError, isNoCredentialsError } from '../../errors';
@@ -361,6 +362,20 @@ export function useCdkPreflight(options: PreflightOptions): PreflightResult {
           return;
         }
 
+        // Check if API key providers need setup before CDK synth (CDK needs credential ARNs)
+        // Skip this check if skipIdentityCheck is true (e.g., plan command only synthesizes)
+        const needsCredentialSetup = !skipIdentityCheck && (hasIdentityApiProviders(preflightContext.projectSpec) || hasIdentityOAuthProviders(preflightContext.projectSpec));
+        if (needsCredentialSetup) {
+          // Get all credentials for the prompt (not just missing ones)
+          const allCredentials = getAllCredentials(preflightContext.projectSpec);
+
+          // Always show dialog when credentials exist
+          setMissingCredentials(allCredentials);
+          setPhase('credentials-prompt');
+          isRunningRef.current = false; // Reset so identity-setup can run after user input
+          return;
+        }
+
         // Step: Synthesize CloudFormation
         updateStep(STEP_SYNTH, { status: 'running' });
         logger.startStep('Synthesize CloudFormation');
@@ -420,20 +435,6 @@ export function useCdkPreflight(options: PreflightOptions): PreflightResult {
         } else {
           // Skip stack status check if no target or no stacks
           updateStep(STEP_STACK_STATUS, { status: 'success' });
-        }
-
-        // Check if API key providers need setup - always prompt user for credential source
-        // Skip this check if skipIdentityCheck is true (e.g., plan command only synthesizes)
-        const needsApiKeySetup = !skipIdentityCheck && hasIdentityApiProviders(preflightContext.projectSpec);
-        if (needsApiKeySetup) {
-          // Get all credentials for the prompt (not just missing ones)
-          const allCredentials = getAllCredentials(preflightContext.projectSpec);
-
-          // Always show dialog when credentials exist
-          setMissingCredentials(allCredentials);
-          setPhase('credentials-prompt');
-          isRunningRef.current = false; // Reset so identity-setup can run after user input
-          return;
         }
 
         // Check if bootstrap is needed
@@ -566,6 +567,19 @@ export function useCdkPreflight(options: PreflightOptions): PreflightResult {
         logger.endStep('success');
         setSteps(prev => prev.map((s, i) => (i === prev.length - 1 ? { ...s, status: 'success' } : s)));
 
+        // Collect API Key credential ARNs for deployed state
+        const deployedCredentials: Record<
+          string,
+          { credentialProviderArn: string; clientSecretArn?: string; callbackUrl?: string }
+        > = {};
+        for (const result of identityResult.results) {
+          if (result.credentialProviderArn) {
+            deployedCredentials[result.providerName] = {
+              credentialProviderArn: result.credentialProviderArn,
+            };
+          }
+        }
+
         // Set up OAuth credential providers if needed
         if (hasIdentityOAuthProviders(context.projectSpec)) {
           setSteps(prev => [...prev, { label: 'Set up OAuth providers', status: 'running' }]);
@@ -617,19 +631,57 @@ export function useCdkPreflight(options: PreflightOptions): PreflightResult {
             }
           }
           setOauthCredentials(creds);
+          Object.assign(deployedCredentials, creds);
 
           logger.endStep('success');
           setSteps(prev => prev.map((s, i) => (i === prev.length - 1 ? { ...s, status: 'success' } : s)));
         }
 
+        // Write partial deployed state with credential ARNs before CDK synth
+        if (Object.keys(deployedCredentials).length > 0) {
+          const configIO = new ConfigIO();
+          const target = context.awsTargets[0];
+          const existingState = await configIO.readDeployedState().catch(() => ({ targets: {} } as DeployedState));
+          const targetState = existingState.targets?.[target!.name] ?? { resources: {} };
+          targetState.resources ??= {};
+          targetState.resources.credentials = deployedCredentials;
+          if (identityResult.kmsKeyArn) targetState.resources.identityKmsKeyArn = identityResult.kmsKeyArn;
+          await configIO.writeDeployedState({
+            ...existingState,
+            targets: { ...existingState.targets, [target!.name]: targetState },
+          });
+        }
+
         // Clear runtime credentials
         setRuntimeCredentials(null);
+
+        // Re-synth now that credentials are in deployed state
+        updateStep(STEP_SYNTH, { status: 'running' });
+        logger.startStep('Synthesize CloudFormation');
+        try {
+          const synthResult = await synthesizeCdk(context.cdkProject, {
+            ioHost: switchableIoHost.ioHost,
+            previousWrapper: wrapperRef.current,
+          });
+          wrapperRef.current = synthResult.toolkitWrapper;
+          setCdkToolkitWrapper(synthResult.toolkitWrapper);
+          setStackNames(synthResult.stackNames);
+          logger.endStep('success');
+          updateStep(STEP_SYNTH, { status: 'success' });
+        } catch (err) {
+          const errorMsg = formatError(err);
+          logger.endStep('error', errorMsg);
+          updateStep(STEP_SYNTH, { status: 'error', error: logger.getFailureMessage('Synthesize CloudFormation') });
+          setPhase('error');
+          isRunningRef.current = false;
+          return;
+        }
 
         // Check if bootstrap is needed
         const bootstrapCheck = await checkBootstrapNeeded(context.awsTargets);
         if (bootstrapCheck.needsBootstrap && bootstrapCheck.target) {
           setBootstrapContext({
-            toolkitWrapper: wrapperRef.current!,
+            toolkitWrapper: wrapperRef.current,
             target: bootstrapCheck.target,
           });
           setPhase('bootstrap-confirm');

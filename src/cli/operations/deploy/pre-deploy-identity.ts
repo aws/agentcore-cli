@@ -20,6 +20,7 @@ import { CreateKeyCommand, KMSClient } from '@aws-sdk/client-kms';
 export interface ApiKeyProviderSetupResult {
   providerName: string;
   status: 'created' | 'updated' | 'exists' | 'skipped' | 'error';
+  credentialProviderArn?: string;
   error?: string;
 }
 
@@ -163,6 +164,7 @@ async function setupApiKeyCredentialProvider(
       return {
         providerName: credential.name,
         status: updateResult.success ? 'updated' : 'error',
+        credentialProviderArn: updateResult.credentialProviderArn,
         error: updateResult.error,
       };
     }
@@ -171,6 +173,7 @@ async function setupApiKeyCredentialProvider(
     return {
       providerName: credential.name,
       status: createResult.success ? 'created' : 'error',
+      credentialProviderArn: createResult.credentialProviderArn,
       error: createResult.error,
     };
   } catch (error) {
