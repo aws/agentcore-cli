@@ -422,6 +422,18 @@ describe('validate', () => {
       expect(result.valid).toBe(false);
       expect(result.error).toContain('--credential-name is required');
     });
+
+    it('rejects --host with existing-endpoint', async () => {
+      const options: AddGatewayTargetOptions = {
+        name: 'test-tool',
+        source: 'existing-endpoint',
+        endpoint: 'https://example.com/mcp',
+        host: 'Lambda',
+      };
+      const result = await validateAddGatewayTargetOptions(options);
+      expect(result.valid).toBe(false);
+      expect(result.error).toBe('--host is not applicable for existing endpoint targets');
+    });
   });
 
   describe('validateAddMemoryOptions', () => {

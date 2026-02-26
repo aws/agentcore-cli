@@ -4,14 +4,8 @@ import type { SelectableItem } from '../../components';
 import { HELP_TEXT } from '../../constants';
 import { useListNavigation } from '../../hooks';
 import { generateUniqueName } from '../../utils';
-import type { AddGatewayTargetConfig, ComputeHost, TargetLanguage } from './types';
-import {
-  COMPUTE_HOST_OPTIONS,
-  MCP_TOOL_STEP_LABELS,
-  SKIP_FOR_NOW,
-  SOURCE_OPTIONS,
-  TARGET_LANGUAGE_OPTIONS,
-} from './types';
+import type { AddGatewayTargetConfig } from './types';
+import { MCP_TOOL_STEP_LABELS, SKIP_FOR_NOW } from './types';
 import { useAddGatewayTargetWizard } from './useAddGatewayTargetWizard';
 import { Box, Text } from 'ink';
 import React, { useMemo } from 'react';
@@ -31,16 +25,6 @@ export function AddGatewayTargetScreen({
 }: AddGatewayTargetScreenProps) {
   const wizard = useAddGatewayTargetWizard(existingGateways);
 
-  const sourceItems: SelectableItem[] = useMemo(
-    () => SOURCE_OPTIONS.map(o => ({ id: o.id, title: o.title, description: o.description })),
-    []
-  );
-
-  const languageItems: SelectableItem[] = useMemo(
-    () => TARGET_LANGUAGE_OPTIONS.map(o => ({ id: o.id, title: o.title, description: o.description })),
-    []
-  );
-
   const gatewayItems: SelectableItem[] = useMemo(
     () => [
       ...existingGateways.map(g => ({ id: g, title: g })),
@@ -49,45 +33,16 @@ export function AddGatewayTargetScreen({
     [existingGateways]
   );
 
-  const hostItems: SelectableItem[] = useMemo(
-    () => COMPUTE_HOST_OPTIONS.map(o => ({ id: o.id, title: o.title, description: o.description })),
-    []
-  );
-
-  const isSourceStep = wizard.step === 'source';
-  const isLanguageStep = wizard.step === 'language';
   const isGatewayStep = wizard.step === 'gateway';
-  const isHostStep = wizard.step === 'host';
   const isTextStep = wizard.step === 'name' || wizard.step === 'endpoint';
   const isConfirmStep = wizard.step === 'confirm';
   const noGatewaysAvailable = isGatewayStep && existingGateways.length === 0;
-
-  const sourceNav = useListNavigation({
-    items: sourceItems,
-    onSelect: item => wizard.setSource(item.id as 'existing-endpoint' | 'create-new'),
-    onExit: () => wizard.goBack(),
-    isActive: isSourceStep,
-  });
-
-  const languageNav = useListNavigation({
-    items: languageItems,
-    onSelect: item => wizard.setLanguage(item.id as TargetLanguage),
-    onExit: () => onExit(),
-    isActive: isLanguageStep,
-  });
 
   const gatewayNav = useListNavigation({
     items: gatewayItems,
     onSelect: item => wizard.setGateway(item.id),
     onExit: () => wizard.goBack(),
     isActive: isGatewayStep && !noGatewaysAvailable,
-  });
-
-  const hostNav = useListNavigation({
-    items: hostItems,
-    onSelect: item => wizard.setHost(item.id as ComputeHost),
-    onExit: () => wizard.goBack(),
-    isActive: isHostStep,
   });
 
   useListNavigation({
@@ -108,19 +63,6 @@ export function AddGatewayTargetScreen({
   return (
     <Screen title="Add MCP Tool" onExit={onExit} helpText={helpText} headerContent={headerContent}>
       <Panel>
-        {isSourceStep && (
-          <WizardSelect
-            title="Select source"
-            description="How would you like to create this MCP tool?"
-            items={sourceItems}
-            selectedIndex={sourceNav.selectedIndex}
-          />
-        )}
-
-        {isLanguageStep && (
-          <WizardSelect title="Select language" items={languageItems} selectedIndex={languageNav.selectedIndex} />
-        )}
-
         {isGatewayStep && !noGatewaysAvailable && (
           <WizardSelect
             title="Select gateway"
@@ -131,15 +73,6 @@ export function AddGatewayTargetScreen({
         )}
 
         {noGatewaysAvailable && <NoGatewaysMessage />}
-
-        {isHostStep && (
-          <WizardSelect
-            title="Select compute host"
-            description="Where will this tool run?"
-            items={hostItems}
-            selectedIndex={hostNav.selectedIndex}
-          />
-        )}
 
         {isTextStep && (
           <TextInput

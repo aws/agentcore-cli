@@ -198,6 +198,9 @@ export async function validateAddGatewayTargetOptions(options: AddGatewayTargetO
   }
 
   if (options.source === 'existing-endpoint') {
+    if (options.host) {
+      return { valid: false, error: '--host is not applicable for existing endpoint targets' };
+    }
     if (!options.endpoint) {
       return { valid: false, error: '--endpoint is required when source is existing-endpoint' };
     }

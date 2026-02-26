@@ -1,19 +1,15 @@
 import { APP_DIR, MCP_APP_SUBDIR } from '../../../../lib';
 import type { ToolDefinition } from '../../../../schema';
-import type { AddGatewayTargetConfig, AddGatewayTargetStep, ComputeHost, TargetLanguage } from './types';
+import type { AddGatewayTargetConfig, AddGatewayTargetStep } from './types';
 import { SKIP_FOR_NOW } from './types';
 import { useCallback, useMemo, useState } from 'react';
 
 /**
- * Dynamic steps based on source.
- * - Existing endpoint: name → source → endpoint → gateway → confirm
- * - Create new: name → source → language → gateway → host → confirm
+ * Steps for adding a gateway target (existing endpoint only).
+ * name → endpoint → gateway → confirm
  */
-function getSteps(source?: 'existing-endpoint' | 'create-new'): AddGatewayTargetStep[] {
-  if (source === 'existing-endpoint') {
-    return ['name', 'source', 'endpoint', 'gateway', 'confirm'];
-  }
-  return ['name', 'source', 'language', 'gateway', 'host', 'confirm'];
+function getSteps(): AddGatewayTargetStep[] {
+  return ['name', 'endpoint', 'gateway', 'confirm'];
 }
 
 function deriveToolDefinition(name: string): ToolDefinition {
@@ -29,6 +25,7 @@ function getDefaultConfig(): AddGatewayTargetConfig {
     name: '',
     description: '',
     sourcePath: '',
+    source: 'existing-endpoint',
     language: 'Python',
     host: 'Lambda',
     toolDefinition: deriveToolDefinition(''),
@@ -39,16 +36,15 @@ export function useAddGatewayTargetWizard(existingGateways: string[] = []) {
   const [config, setConfig] = useState<AddGatewayTargetConfig>(getDefaultConfig);
   const [step, setStep] = useState<AddGatewayTargetStep>('name');
 
-  const steps = useMemo(() => getSteps(config.source), [config.source]);
+  const steps = useMemo(() => getSteps(), []);
   const currentIndex = steps.indexOf(step);
 
   const goBack = useCallback(() => {
-    // Recalculate steps in case source changed
-    const currentSteps = getSteps(config.source);
+    const currentSteps = getSteps();
     const idx = currentSteps.indexOf(step);
     const prevStep = currentSteps[idx - 1];
     if (prevStep) setStep(prevStep);
-  }, [config.source, step]);
+  }, [step]);
 
   const setName = useCallback((name: string) => {
     setConfig(c => ({
@@ -58,19 +54,7 @@ export function useAddGatewayTargetWizard(existingGateways: string[] = []) {
       sourcePath: `${APP_DIR}/${MCP_APP_SUBDIR}/${name}`,
       toolDefinition: deriveToolDefinition(name),
     }));
-    setStep('source');
-  }, []);
-
-  const setSource = useCallback((source: 'existing-endpoint' | 'create-new') => {
-    setConfig(c => ({
-      ...c,
-      source,
-    }));
-    if (source === 'existing-endpoint') {
-      setStep('endpoint');
-    } else {
-      setStep('language');
-    }
+    setStep('endpoint');
   }, []);
 
   const setEndpoint = useCallback((endpoint: string) => {
@@ -81,33 +65,12 @@ export function useAddGatewayTargetWizard(existingGateways: string[] = []) {
     setStep('gateway');
   }, []);
 
-  const setLanguage = useCallback((language: TargetLanguage) => {
-    setConfig(c => ({
-      ...c,
-      language,
-    }));
-    setStep('gateway');
-  }, []);
-
   const setGateway = useCallback((gateway: string) => {
     setConfig(c => {
-      const isExternal = c.source === 'existing-endpoint';
       const isSkipped = gateway === SKIP_FOR_NOW;
-      if (isExternal || isSkipped) {
-        setStep('confirm');
-      } else {
-        setStep('host');
-      }
+      setStep('confirm');
       return { ...c, gateway: isSkipped ? undefined : gateway };
     });
-  }, []);
-
-  const setHost = useCallback((host: ComputeHost) => {
-    setConfig(c => ({
-      ...c,
-      host,
-    }));
-    setStep('confirm');
   }, []);
 
   const reset = useCallback(() => {
@@ -123,11 +86,8 @@ export function useAddGatewayTargetWizard(existingGateways: string[] = []) {
     existingGateways,
     goBack,
     setName,
-    setSource,
     setEndpoint,
-    setLanguage,
     setGateway,
-    setHost,
     reset,
   };
 }

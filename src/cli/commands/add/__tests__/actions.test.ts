@@ -1,6 +1,15 @@
 import { buildGatewayTargetConfig } from '../actions.js';
 import type { ValidatedAddGatewayTargetOptions } from '../actions.js';
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+
+const mockCreateToolFromWizard = vi.fn().mockResolvedValue({ toolName: 'test', projectPath: '/tmp' });
+const mockCreateExternalGatewayTarget = vi.fn().mockResolvedValue({ toolName: 'test', projectPath: '' });
+
+vi.mock('../../../operations/mcp/create-mcp', () => ({
+  createToolFromWizard: (...args: unknown[]) => mockCreateToolFromWizard(...args),
+  createExternalGatewayTarget: (...args: unknown[]) => mockCreateExternalGatewayTarget(...args),
+  createGatewayFromWizard: vi.fn(),
+}));
 
 describe('buildGatewayTargetConfig', () => {
   it('maps name, gateway, language correctly', () => {
@@ -64,5 +73,28 @@ describe('buildGatewayTargetConfig', () => {
     const config = buildGatewayTargetConfig(options);
 
     expect(config.outboundAuth).toBeUndefined();
+  });
+});
+
+// Dynamic import to pick up mocks
+const { handleAddGatewayTarget } = await import('../actions.js');
+
+describe('handleAddGatewayTarget', () => {
+  afterEach(() => vi.clearAllMocks());
+
+  it('routes existing-endpoint to createExternalGatewayTarget', async () => {
+    const options: ValidatedAddGatewayTargetOptions = {
+      name: 'test-tool',
+      language: 'Other',
+      host: 'Lambda',
+      source: 'existing-endpoint',
+      endpoint: 'https://example.com/mcp',
+      gateway: 'my-gw',
+    };
+
+    await handleAddGatewayTarget(options);
+
+    expect(mockCreateExternalGatewayTarget).toHaveBeenCalledOnce();
+    expect(mockCreateToolFromWizard).not.toHaveBeenCalled();
   });
 });
