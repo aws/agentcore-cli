@@ -14,6 +14,7 @@ import {
   loadProjectConfig,
   waitForPort,
 } from '../../operations/dev';
+import { getGatewayEnvVars } from '../../operations/dev/gateway-env.js';
 import { useEffect, useMemo, useRef, useState } from 'react';
 
 type ServerStatus = 'starting' | 'running' | 'error' | 'stopped';
@@ -78,7 +79,10 @@ export function useDevServer(options: { workingDir: string; port: number; agentN
       // Load env vars from agentcore/.env
       if (root) {
         const vars = await readEnvFile(root);
-        setEnvVars(vars);
+        const gatewayEnvVars = await getGatewayEnvVars();
+        // Gateway env vars go first, .env.local overrides take precedence
+        const mergedEnvVars = { ...gatewayEnvVars, ...vars };
+        setEnvVars(mergedEnvVars);
       }
 
       setConfigLoaded(true);

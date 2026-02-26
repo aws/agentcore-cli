@@ -11,6 +11,7 @@ import {
   invokeAgentStreaming,
   loadProjectConfig,
 } from '../../operations/dev';
+import { getGatewayEnvVars } from '../../operations/dev/gateway-env.js';
 import { FatalError } from '../../tui/components';
 import { LayoutProvider } from '../../tui/context';
 import { COMMAND_DESCRIPTIONS } from '../../tui/copy';
@@ -123,6 +124,9 @@ export const registerDev = (program: Command) => {
           const agentName = opts.agent ?? project.agents[0]?.name;
           const configRoot = findConfigRoot(workingDir);
           const envVars = configRoot ? await readEnvFile(configRoot) : {};
+          const gatewayEnvVars = await getGatewayEnvVars();
+          // Gateway env vars go first, .env.local overrides take precedence
+          const mergedEnvVars = { ...gatewayEnvVars, ...envVars };
           const config = getDevConfig(workingDir, project, configRoot ?? undefined, agentName);
 
           if (!config) {
@@ -164,7 +168,7 @@ export const registerDev = (program: Command) => {
             },
           };
 
-          const server = createDevServer(config, { port: actualPort, envVars, callbacks: devCallbacks });
+          const server = createDevServer(config, { port: actualPort, envVars: mergedEnvVars, callbacks: devCallbacks });
           await server.start();
 
           // Handle Ctrl+C — use server.kill() for proper container cleanup

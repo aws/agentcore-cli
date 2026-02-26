@@ -24,6 +24,7 @@ export type AgentCoreDeployedState = z.infer<typeof AgentCoreDeployedStateSchema
 export const GatewayDeployedStateSchema = z.object({
   gatewayId: z.string().min(1),
   gatewayArn: z.string().min(1),
+  gatewayUrl: z.string().optional(),
 });
 
 export type GatewayDeployedState = z.infer<typeof GatewayDeployedStateSchema>;

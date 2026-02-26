@@ -112,9 +112,13 @@ describe('buildDeployedState', () => {
 });
 
 describe('parseGatewayOutputs', () => {
-  it('extracts gateway URL from outputs matching pattern', () => {
+  it('extracts gateway outputs matching pattern', () => {
     const outputs = {
+      GatewayMyGatewayIdOutput3E11FAB4: 'gw-123',
+      GatewayMyGatewayArnOutput3E11FAB4: 'arn:aws:bedrock:us-east-1:123:gateway/gw-123',
       GatewayMyGatewayUrlOutput3E11FAB4: 'https://api.gateway.url',
+      GatewayAnotherGatewayIdOutputABC123: 'gw-456',
+      GatewayAnotherGatewayArnOutputABC123: 'arn:aws:bedrock:us-east-1:123:gateway/gw-456',
       GatewayAnotherGatewayUrlOutputABC123: 'https://another.gateway.url',
       UnrelatedOutput: 'some-value',
     };
@@ -128,12 +132,14 @@ describe('parseGatewayOutputs', () => {
 
     expect(result).toEqual({
       'my-gateway': {
-        gatewayId: 'my-gateway',
-        gatewayArn: 'https://api.gateway.url',
+        gatewayId: 'gw-123',
+        gatewayArn: 'arn:aws:bedrock:us-east-1:123:gateway/gw-123',
+        gatewayUrl: 'https://api.gateway.url',
       },
       'another-gateway': {
-        gatewayId: 'another-gateway',
-        gatewayArn: 'https://another.gateway.url',
+        gatewayId: 'gw-456',
+        gatewayArn: 'arn:aws:bedrock:us-east-1:123:gateway/gw-456',
+        gatewayUrl: 'https://another.gateway.url',
       },
     });
   });
@@ -155,8 +161,11 @@ describe('parseGatewayOutputs', () => {
 
   it('maps multiple gateways correctly', () => {
     const outputs = {
+      GatewayFirstGatewayArnOutput123: 'arn:first',
       GatewayFirstGatewayUrlOutput123: 'https://first.url',
+      GatewaySecondGatewayArnOutput456: 'arn:second',
       GatewaySecondGatewayUrlOutput456: 'https://second.url',
+      GatewayThirdGatewayArnOutput789: 'arn:third',
       GatewayThirdGatewayUrlOutput789: 'https://third.url',
     };
 
@@ -169,8 +178,8 @@ describe('parseGatewayOutputs', () => {
     const result = parseGatewayOutputs(outputs, gatewaySpecs);
 
     expect(Object.keys(result)).toHaveLength(3);
-    expect(result['first-gateway']?.gatewayArn).toBe('https://first.url');
-    expect(result['second-gateway']?.gatewayArn).toBe('https://second.url');
-    expect(result['third-gateway']?.gatewayArn).toBe('https://third.url');
+    expect(result['first-gateway']?.gatewayUrl).toBe('https://first.url');
+    expect(result['second-gateway']?.gatewayUrl).toBe('https://second.url');
+    expect(result['third-gateway']?.gatewayUrl).toBe('https://third.url');
   });
 });

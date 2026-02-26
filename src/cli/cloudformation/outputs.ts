@@ -38,8 +38,8 @@ export async function getStackOutputs(region: string, stackName: string): Promis
 export function parseGatewayOutputs(
   outputs: StackOutputs,
   gatewaySpecs: Record<string, unknown>
-): Record<string, { gatewayId: string; gatewayArn: string }> {
-  const gateways: Record<string, { gatewayId: string; gatewayArn: string }> = {};
+): Record<string, { gatewayId: string; gatewayArn: string; gatewayUrl?: string }> {
+  const gateways: Record<string, { gatewayId: string; gatewayArn: string; gatewayUrl?: string }> = {};
 
   // Map PascalCase gateway names to original names for lookup
   const gatewayNames = Object.keys(gatewaySpecs);
@@ -53,15 +53,21 @@ export function parseGatewayOutputs(
     if (!match) continue;
 
     const logicalGateway = match[1];
-    if (!logicalGateway) continue;
+    const outputType = match[2];
+    if (!logicalGateway || !outputType) continue;
 
     // Look up original gateway name from PascalCase version
     const gatewayName = gatewayIdMap.get(logicalGateway) ?? logicalGateway;
 
-    gateways[gatewayName] = {
-      gatewayId: gatewayName,
-      gatewayArn: value,
-    };
+    gateways[gatewayName] ??= { gatewayId: gatewayName, gatewayArn: '' };
+
+    if (outputType === 'Id') {
+      gateways[gatewayName].gatewayId = value;
+    } else if (outputType === 'Arn') {
+      gateways[gatewayName].gatewayArn = value;
+    } else if (outputType === 'Url') {
+      gateways[gatewayName].gatewayUrl = value;
+    }
   }
 
   return gateways;
@@ -173,7 +179,7 @@ export function buildDeployedState(
   targetName: string,
   stackName: string,
   agents: Record<string, AgentCoreDeployedState>,
-  gateways: Record<string, { gatewayId: string; gatewayArn: string }>,
+  gateways: Record<string, { gatewayId: string; gatewayArn: string; gatewayUrl?: string }>,
   existingState?: DeployedState,
   identityKmsKeyArn?: string,
   credentials?: Record<string, { credentialProviderArn: string; clientSecretArn?: string; callbackUrl?: string }>
