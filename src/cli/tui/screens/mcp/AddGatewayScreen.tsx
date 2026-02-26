@@ -26,12 +26,7 @@ interface AddGatewayScreenProps {
   unassignedTargets: string[];
 }
 
-export function AddGatewayScreen({
-  onComplete,
-  onExit,
-  existingGateways,
-  unassignedTargets,
-}: AddGatewayScreenProps) {
+export function AddGatewayScreen({ onComplete, onExit, existingGateways, unassignedTargets }: AddGatewayScreenProps) {
   const wizard = useAddGatewayWizard(unassignedTargets.length);
 
   // JWT config sub-step tracking (0 = discoveryUrl, 1 = audience, 2 = clients)

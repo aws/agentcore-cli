@@ -1,4 +1,5 @@
 import { ConfigIO, SecureCredentials } from '../../../lib';
+import type { DeployedState } from '../../../schema';
 import { validateAwsCredentials } from '../../aws/account';
 import { createSwitchableIoHost } from '../../cdk/toolkit-lib';
 import { buildDeployedState, getStackOutputs, parseAgentOutputs, parseGatewayOutputs } from '../../cloudformation';
@@ -20,7 +21,6 @@ import {
 } from '../../operations/deploy';
 import { formatTargetStatus, getGatewayTargetStatuses } from '../../operations/deploy/gateway-status';
 import type { DeployResult } from './types';
-import type { DeployedState } from '../../../schema';
 
 export interface ValidatedDeployOptions {
   target: string;
@@ -190,7 +190,7 @@ export async function handleDeploy(options: ValidatedDeployOptions): Promise<Dep
 
     // Write credential ARNs to deployed state before CDK synth so the template can read them
     if (Object.keys(deployedCredentials).length > 0) {
-      const existingPreSynthState = await configIO.readDeployedState().catch(() => ({targets: {}} as DeployedState));
+      const existingPreSynthState = await configIO.readDeployedState().catch(() => ({ targets: {} }) as DeployedState);
       const targetState = existingPreSynthState.targets?.[target.name] ?? { resources: {} };
       targetState.resources ??= {};
       targetState.resources.credentials = deployedCredentials;

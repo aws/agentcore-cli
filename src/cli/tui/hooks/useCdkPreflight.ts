@@ -364,7 +364,10 @@ export function useCdkPreflight(options: PreflightOptions): PreflightResult {
 
         // Check if API key providers need setup before CDK synth (CDK needs credential ARNs)
         // Skip this check if skipIdentityCheck is true (e.g., plan command only synthesizes)
-        const needsCredentialSetup = !skipIdentityCheck && (hasIdentityApiProviders(preflightContext.projectSpec) || hasIdentityOAuthProviders(preflightContext.projectSpec));
+        const needsCredentialSetup =
+          !skipIdentityCheck &&
+          (hasIdentityApiProviders(preflightContext.projectSpec) ||
+            hasIdentityOAuthProviders(preflightContext.projectSpec));
         if (needsCredentialSetup) {
           // Get all credentials for the prompt (not just missing ones)
           const allCredentials = getAllCredentials(preflightContext.projectSpec);
@@ -641,7 +644,7 @@ export function useCdkPreflight(options: PreflightOptions): PreflightResult {
         if (Object.keys(deployedCredentials).length > 0) {
           const configIO = new ConfigIO();
           const target = context.awsTargets[0];
-          const existingState = await configIO.readDeployedState().catch(() => ({ targets: {} } as DeployedState));
+          const existingState = await configIO.readDeployedState().catch(() => ({ targets: {} }) as DeployedState);
           const targetState = existingState.targets?.[target!.name] ?? { resources: {} };
           targetState.resources ??= {};
           targetState.resources.credentials = deployedCredentials;

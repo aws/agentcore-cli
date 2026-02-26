@@ -21,13 +21,7 @@ interface AddGatewayFlowProps {
   onDeploy?: () => void;
 }
 
-export function AddGatewayFlow({
-  isInteractive = true,
-  onExit,
-  onBack,
-  onDev,
-  onDeploy,
-}: AddGatewayFlowProps) {
+export function AddGatewayFlow({ isInteractive = true, onExit, onBack, onDev, onDeploy }: AddGatewayFlowProps) {
   const { createGateway, reset: resetCreate } = useCreateGateway();
   const { gateways: existingGateways, refresh: refreshGateways } = useExistingGateways();
   const { targets: unassignedTargets } = useUnassignedTargets();
