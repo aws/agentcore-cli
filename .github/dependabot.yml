@@ -5,6 +5,14 @@ updates:
     schedule:
       interval: 'weekly'
     groups:
+      aws-sdk:
+        patterns:
+          - '@aws-sdk/*'
+          - '@smithy/*'
+      aws-cdk:
+        patterns:
+          - '@aws-cdk/*'
+          - 'aws-cdk-lib'
       dev-dependencies:
         dependency-type: 'development'
         patterns:
@@ -13,14 +21,20 @@ updates:
           - 'prettier*'
           - 'vitest*'
           - '@trivago/*'
+          - '@typescript-eslint/*'
+          - 'typescript-eslint'
     commit-message:
       prefix: 'chore'
       include: 'scope'
-    open-pull-requests-limit: 20
+    open-pull-requests-limit: 10
 
   - package-ecosystem: 'github-actions'
     directory: '/'
     schedule:
       interval: 'weekly'
+    groups:
+      github-actions:
+        patterns:
+          - '*'
     commit-message:
       prefix: 'ci'

@@ -5,6 +5,9 @@ on:
     branches: [main, feat/gateway-integration]
     types: [opened, edited, synchronize, reopened]
 
+permissions:
+  statuses: write
+
 jobs:
   validate-pr-title:
     runs-on: ubuntu-latest
