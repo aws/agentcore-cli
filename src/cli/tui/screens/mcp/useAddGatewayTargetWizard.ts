@@ -1,7 +1,6 @@
 import { APP_DIR, MCP_APP_SUBDIR } from '../../../../lib';
 import type { ToolDefinition } from '../../../../schema';
 import type { AddGatewayTargetConfig, AddGatewayTargetStep } from './types';
-import { SKIP_FOR_NOW } from './types';
 import { useCallback, useMemo, useState } from 'react';
 
 /**
@@ -66,10 +65,7 @@ export function useAddGatewayTargetWizard(existingGateways: string[] = []) {
   }, []);
 
   const setGateway = useCallback((gateway: string) => {
-    setConfig(c => {
-      const isSkipped = gateway === SKIP_FOR_NOW;
-      return { ...c, gateway: isSkipped ? undefined : gateway };
-    });
+    setConfig(c => ({ ...c, gateway }));
     setStep('outbound-auth');
   }, []);
 

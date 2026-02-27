@@ -12,14 +12,19 @@ import {
   validateAddIdentityOptions,
   validateAddMemoryOptions,
 } from '../validate.js';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const mockReadProjectSpec = vi.fn();
+const mockGetExistingGateways = vi.fn();
 
 vi.mock('../../../../lib/index.js', () => ({
   ConfigIO: class {
     readProjectSpec = mockReadProjectSpec;
   },
+}));
+
+vi.mock('../../../operations/mcp/create-mcp.js', () => ({
+  getExistingGateways: (...args: unknown[]) => mockGetExistingGateways(...args),
 }));
 
 // Helper: valid base options for each type
@@ -238,19 +243,48 @@ describe('validate', () => {
   });
 
   describe('validateAddGatewayTargetOptions', () => {
-    // AC15: Required fields validated
-    it('returns error for missing required fields', async () => {
-      const requiredFields: { field: keyof AddGatewayTargetOptions; error: string }[] = [
-        { field: 'name', error: '--name is required' },
-        { field: 'language', error: '--language is required' },
-      ];
+    beforeEach(() => {
+      // By default, mock that the gateway from validGatewayTargetOptions exists
+      mockGetExistingGateways.mockResolvedValue(['my-gateway']);
+    });
 
-      for (const { field, error } of requiredFields) {
-        const opts = { ...validGatewayTargetOptions, [field]: undefined };
-        const result = await validateAddGatewayTargetOptions(opts);
-        expect(result.valid, `Should fail for missing ${String(field)}`).toBe(false);
-        expect(result.error).toBe(error);
-      }
+    // AC15: Required fields validated
+    it('returns error for missing name', async () => {
+      const opts = { ...validGatewayTargetOptions, name: undefined };
+      const result = await validateAddGatewayTargetOptions(opts);
+      expect(result.valid).toBe(false);
+      expect(result.error).toBe('--name is required');
+    });
+
+    it('returns error for missing language (non-existing-endpoint)', async () => {
+      const opts = { ...validGatewayTargetOptions, language: undefined };
+      const result = await validateAddGatewayTargetOptions(opts);
+      expect(result.valid).toBe(false);
+      expect(result.error).toBe('--language is required');
+    });
+
+    // Gateway is required
+    it('returns error when --gateway is missing', async () => {
+      const opts = { ...validGatewayTargetOptions, gateway: undefined };
+      const result = await validateAddGatewayTargetOptions(opts);
+      expect(result.valid).toBe(false);
+      expect(result.error).toContain('--gateway is required');
+    });
+
+    it('returns error when no gateways exist', async () => {
+      mockGetExistingGateways.mockResolvedValue([]);
+      const result = await validateAddGatewayTargetOptions(validGatewayTargetOptions);
+      expect(result.valid).toBe(false);
+      expect(result.error).toContain('No gateways found');
+      expect(result.error).toContain('agentcore add gateway');
+    });
+
+    it('returns error when specified gateway does not exist', async () => {
+      mockGetExistingGateways.mockResolvedValue(['other-gateway']);
+      const result = await validateAddGatewayTargetOptions(validGatewayTargetOptions);
+      expect(result.valid).toBe(false);
+      expect(result.error).toContain('Gateway "my-gateway" not found');
+      expect(result.error).toContain('other-gateway');
     });
 
     // AC16: Invalid values rejected
@@ -274,6 +308,7 @@ describe('validate', () => {
         name: 'test-tool',
         source: 'existing-endpoint',
         endpoint: 'https://example.com/mcp',
+        gateway: 'my-gateway',
       };
       const result = await validateAddGatewayTargetOptions(options);
       expect(result.valid).toBe(true);
@@ -285,6 +320,7 @@ describe('validate', () => {
         name: 'test-tool',
         source: 'existing-endpoint',
         endpoint: 'http://localhost:3000/mcp',
+        gateway: 'my-gateway',
       };
       const result = await validateAddGatewayTargetOptions(options);
       expect(result.valid).toBe(true);
@@ -294,6 +330,7 @@ describe('validate', () => {
       const options: AddGatewayTargetOptions = {
         name: 'test-tool',
         source: 'existing-endpoint',
+        gateway: 'my-gateway',
       };
       const result = await validateAddGatewayTargetOptions(options);
       expect(result.valid).toBe(false);
@@ -305,6 +342,7 @@ describe('validate', () => {
         name: 'test-tool',
         source: 'existing-endpoint',
         endpoint: 'ftp://example.com/mcp',
+        gateway: 'my-gateway',
       };
       const result = await validateAddGatewayTargetOptions(options);
       expect(result.valid).toBe(false);
@@ -316,6 +354,7 @@ describe('validate', () => {
         name: 'test-tool',
         source: 'existing-endpoint',
         endpoint: 'not-a-url',
+        gateway: 'my-gateway',
       };
       const result = await validateAddGatewayTargetOptions(options);
       expect(result.valid).toBe(false);
@@ -331,6 +370,7 @@ describe('validate', () => {
       const options: AddGatewayTargetOptions = {
         name: 'test-tool',
         language: 'Python',
+        gateway: 'my-gateway',
         outboundAuthType: 'API_KEY',
         credentialName: 'missing-cred',
       };
@@ -347,6 +387,7 @@ describe('validate', () => {
       const options: AddGatewayTargetOptions = {
         name: 'test-tool',
         language: 'Python',
+        gateway: 'my-gateway',
         outboundAuthType: 'API_KEY',
         credentialName: 'any-cred',
       };
@@ -363,6 +404,7 @@ describe('validate', () => {
       const options: AddGatewayTargetOptions = {
         name: 'test-tool',
         language: 'Python',
+        gateway: 'my-gateway',
         outboundAuthType: 'API_KEY',
         credentialName: 'valid-cred',
       };
@@ -429,6 +471,7 @@ describe('validate', () => {
         source: 'existing-endpoint',
         endpoint: 'https://example.com/mcp',
         host: 'Lambda',
+        gateway: 'my-gateway',
       };
       const result = await validateAddGatewayTargetOptions(options);
       expect(result.valid).toBe(false);

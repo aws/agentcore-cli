@@ -1,4 +1,3 @@
-import { SKIP_FOR_NOW } from '../../../tui/screens/mcp/types.js';
 import type { AddGatewayConfig, AddGatewayTargetConfig } from '../../../tui/screens/mcp/types.js';
 import { createExternalGatewayTarget, createGatewayFromWizard, getUnassignedTargets } from '../create-mcp.js';
 import { afterEach, describe, expect, it, vi } from 'vitest';
@@ -55,29 +54,14 @@ describe('createExternalGatewayTarget', () => {
     expect(gateway.targets[0]!.targetType).toBe('mcpServer');
   });
 
-  it('stores target in unassignedTargets when gateway is skip-for-now', async () => {
-    const mockMcpSpec = { agentCoreGateways: [] };
+  it('throws when gateway is not provided', async () => {
+    const mockMcpSpec = { agentCoreGateways: [{ name: 'test-gateway', targets: [] }] };
     mockConfigExists.mockReturnValue(true);
     mockReadMcpSpec.mockResolvedValue(mockMcpSpec);
 
-    await createExternalGatewayTarget(makeExternalConfig({ gateway: SKIP_FOR_NOW }));
-
-    expect(mockWriteMcpSpec).toHaveBeenCalled();
-    const written = mockWriteMcpSpec.mock.calls[0]![0];
-    expect(written.unassignedTargets).toHaveLength(1);
-    expect(written.unassignedTargets[0]!.name).toBe('test-target');
-    expect(written.unassignedTargets[0]!.endpoint).toBe('https://api.example.com');
-  });
-
-  it('initializes unassignedTargets array if it does not exist in mcp spec', async () => {
-    const mockMcpSpec = { agentCoreGateways: [] };
-    mockConfigExists.mockReturnValue(true);
-    mockReadMcpSpec.mockResolvedValue(mockMcpSpec);
-
-    await createExternalGatewayTarget(makeExternalConfig({ gateway: SKIP_FOR_NOW }));
-
-    const written = mockWriteMcpSpec.mock.calls[0]![0];
-    expect(Array.isArray(written.unassignedTargets)).toBe(true);
+    await expect(createExternalGatewayTarget(makeExternalConfig({ gateway: undefined }))).rejects.toThrow(
+      'Gateway is required'
+    );
   });
 
   it('throws on duplicate target name in gateway', async () => {
@@ -89,19 +73,6 @@ describe('createExternalGatewayTarget', () => {
 
     await expect(createExternalGatewayTarget(makeExternalConfig())).rejects.toThrow(
       'Target "test-target" already exists in gateway "test-gateway"'
-    );
-  });
-
-  it('throws on duplicate target name in unassigned targets', async () => {
-    const mockMcpSpec = {
-      agentCoreGateways: [],
-      unassignedTargets: [{ name: 'test-target' }],
-    };
-    mockConfigExists.mockReturnValue(true);
-    mockReadMcpSpec.mockResolvedValue(mockMcpSpec);
-
-    await expect(createExternalGatewayTarget(makeExternalConfig({ gateway: SKIP_FOR_NOW }))).rejects.toThrow(
-      'Unassigned target "test-target" already exists'
     );
   });
 
