@@ -202,7 +202,8 @@ export async function validateAddGatewayTargetOptions(options: AddGatewayTargetO
   if (!options.gateway) {
     return {
       valid: false,
-      error: "--gateway is required. A gateway target must be attached to a gateway. Create a gateway first with 'agentcore add gateway'.",
+      error:
+        "--gateway is required. A gateway target must be attached to a gateway. Create a gateway first with 'agentcore add gateway'.",
     };
   }
 
