@@ -8,6 +8,7 @@ import {
   TargetLanguageSchema,
   getSupportedModelProviders,
 } from '../../../schema';
+import { getExistingGateways } from '../../operations/mcp/create-mcp';
 import type {
   AddAgentOptions,
   AddGatewayOptions,
@@ -197,6 +198,30 @@ export async function validateAddGatewayTargetOptions(options: AddGatewayTargetO
     return { valid: false, error: 'Invalid source. Valid options: existing-endpoint, create-new' };
   }
 
+  // Gateway is required — a gateway target must be attached to a gateway
+  if (!options.gateway) {
+    return {
+      valid: false,
+      error:
+        "--gateway is required. A gateway target must be attached to a gateway. Create a gateway first with 'agentcore add gateway'.",
+    };
+  }
+
+  // Validate the specified gateway exists
+  const existingGateways = await getExistingGateways();
+  if (existingGateways.length === 0) {
+    return {
+      valid: false,
+      error: "No gateways found. Create a gateway first with 'agentcore add gateway' before adding a gateway target.",
+    };
+  }
+  if (!existingGateways.includes(options.gateway)) {
+    return {
+      valid: false,
+      error: `Gateway "${options.gateway}" not found. Available gateways: ${existingGateways.join(', ')}`,
+    };
+  }
+
   if (options.source === 'existing-endpoint') {
     if (options.host) {
       return { valid: false, error: '--host is not applicable for existing endpoint targets' };
@@ -216,7 +241,6 @@ export async function validateAddGatewayTargetOptions(options: AddGatewayTargetO
 
     // Populate defaults for fields skipped by external endpoint flow
     options.language ??= 'Other';
-    options.gateway ??= undefined;
 
     return { valid: true };
   }

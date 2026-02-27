@@ -6,7 +6,7 @@ import { useListNavigation } from '../../hooks';
 import { generateUniqueName } from '../../utils';
 import { useCreateIdentity, useExistingCredentialNames } from '../identity/useCreateIdentity.js';
 import type { AddGatewayTargetConfig } from './types';
-import { MCP_TOOL_STEP_LABELS, OUTBOUND_AUTH_OPTIONS, SKIP_FOR_NOW } from './types';
+import { MCP_TOOL_STEP_LABELS, OUTBOUND_AUTH_OPTIONS } from './types';
 import { useAddGatewayTargetWizard } from './useAddGatewayTargetWizard';
 import { Box, Text } from 'ink';
 import React, { useMemo, useState } from 'react';
@@ -38,10 +38,7 @@ export function AddGatewayTargetScreen({
   const [apiKeyFields, setApiKeyFields] = useState({ name: '', apiKey: '' });
 
   const gatewayItems: SelectableItem[] = useMemo(
-    () => [
-      ...existingGateways.map(g => ({ id: g, title: g })),
-      { id: SKIP_FOR_NOW, title: 'Skip for now', description: 'Create unassigned target' },
-    ],
+    () => existingGateways.map(g => ({ id: g, title: g })),
     [existingGateways]
   );
 
@@ -388,8 +385,7 @@ export function AddGatewayTargetScreen({
             fields={[
               { label: 'Name', value: wizard.config.name },
               ...(wizard.config.endpoint ? [{ label: 'Endpoint', value: wizard.config.endpoint }] : []),
-              ...(wizard.config.gateway ? [{ label: 'Gateway', value: wizard.config.gateway }] : []),
-              ...(!wizard.config.gateway ? [{ label: 'Gateway', value: '(none - assign later)' }] : []),
+              { label: 'Gateway', value: wizard.config.gateway ?? '' },
               ...(wizard.config.outboundAuth
                 ? [
                     { label: 'Auth Type', value: wizard.config.outboundAuth.type },

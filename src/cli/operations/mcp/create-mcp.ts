@@ -10,12 +10,7 @@ import type {
 import { AgentCoreCliMcpDefsSchema, ToolDefinitionSchema } from '../../../schema';
 import { getTemplateToolDefinitions, renderGatewayTargetTemplate } from '../../templates/GatewayTargetRenderer';
 import type { AddGatewayConfig, AddGatewayTargetConfig } from '../../tui/screens/mcp/types';
-import {
-  DEFAULT_HANDLER,
-  DEFAULT_NODE_VERSION,
-  DEFAULT_PYTHON_VERSION,
-  SKIP_FOR_NOW,
-} from '../../tui/screens/mcp/types';
+import { DEFAULT_HANDLER, DEFAULT_NODE_VERSION, DEFAULT_PYTHON_VERSION } from '../../tui/screens/mcp/types';
 import { existsSync } from 'fs';
 import { mkdir, readFile, writeFile } from 'fs/promises';
 import { dirname, join } from 'path';
@@ -257,30 +252,23 @@ export async function createExternalGatewayTarget(config: AddGatewayTargetConfig
     ...(config.outboundAuth && { outboundAuth: config.outboundAuth }),
   };
 
-  if (config.gateway && config.gateway !== SKIP_FOR_NOW) {
-    // Assign to specific gateway
-    const gateway = mcpSpec.agentCoreGateways.find(g => g.name === config.gateway);
-    if (!gateway) {
-      throw new Error(`Gateway "${config.gateway}" not found.`);
-    }
-
-    // Check for duplicate target name
-    if (gateway.targets.some(t => t.name === config.name)) {
-      throw new Error(`Target "${config.name}" already exists in gateway "${gateway.name}".`);
-    }
-
-    gateway.targets.push(target);
-  } else {
-    // Add to unassigned targets
-    mcpSpec.unassignedTargets ??= [];
-
-    // Check for duplicate target name in unassigned targets
-    if (mcpSpec.unassignedTargets.some((t: AgentCoreGatewayTarget) => t.name === config.name)) {
-      throw new Error(`Unassigned target "${config.name}" already exists.`);
-    }
-
-    mcpSpec.unassignedTargets.push(target);
+  if (!config.gateway) {
+    throw new Error(
+      "Gateway is required. A gateway target must be attached to a gateway. Create a gateway first with 'agentcore add gateway'."
+    );
   }
+
+  const gateway = mcpSpec.agentCoreGateways.find(g => g.name === config.gateway);
+  if (!gateway) {
+    throw new Error(`Gateway "${config.gateway}" not found.`);
+  }
+
+  // Check for duplicate target name
+  if (gateway.targets.some(t => t.name === config.name)) {
+    throw new Error(`Target "${config.name}" already exists in gateway "${gateway.name}".`);
+  }
+
+  gateway.targets.push(target);
 
   await configIO.writeMcpSpec(mcpSpec);
 
