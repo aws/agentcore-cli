@@ -1,5 +1,5 @@
 import { setEnvVar } from '../../lib';
-import type { AgentCoreGateway, AgentCoreGatewayTarget, AgentCoreMcpSpec } from '../../schema';
+import type { AgentCoreGateway, AgentCoreGatewayTarget, AgentCoreMcpSpec, GatewayAuthorizerType } from '../../schema';
 import { AgentCoreGatewaySchema } from '../../schema';
 import { getErrorMessage } from '../errors';
 import type { RemovalPreview, RemovalResult, SchemaChange } from '../operations/remove/types';
@@ -15,7 +15,7 @@ import type { Command } from '@commander-js/extra-typings';
 export interface AddGatewayOptions {
   name: string;
   description?: string;
-  authorizerType: 'NONE' | 'CUSTOM_JWT';
+  authorizerType: GatewayAuthorizerType;
   discoveryUrl?: string;
   allowedAudience?: string;
   allowedClients?: string;

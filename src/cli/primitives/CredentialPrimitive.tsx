@@ -10,12 +10,31 @@ import type { AddResult, AddScreenComponent, RemovableResource } from './types';
 import type { Command } from '@commander-js/extra-typings';
 
 /**
- * Options for adding a credential resource.
+ * Options for adding an API Key credential.
  */
-export interface AddCredentialOptions {
+export interface AddApiKeyCredentialOptions {
+  type: 'ApiKeyCredentialProvider';
   name: string;
   apiKey: string;
 }
+
+/**
+ * Options for adding an OAuth credential.
+ */
+export interface AddOAuthCredentialOptions {
+  type: 'OAuthCredentialProvider';
+  name: string;
+  discoveryUrl: string;
+  clientId: string;
+  clientSecret: string;
+  scopes?: string[];
+}
+
+/**
+ * Options for adding a credential resource.
+ * Union type supporting both API Key and OAuth credential configurations.
+ */
+export type AddCredentialOptions = AddApiKeyCredentialOptions | AddOAuthCredentialOptions;
 
 /**
  * Represents a credential that can be removed.
@@ -262,6 +281,7 @@ export class CredentialPrimitive extends BasePrimitive<AddCredentialOptions, Rem
             }
 
             const result = await this.add({
+              type: 'ApiKeyCredentialProvider',
               name: cliOptions.name!,
               apiKey: cliOptions.apiKey!,
             });
@@ -311,7 +331,7 @@ export class CredentialPrimitive extends BasePrimitive<AddCredentialOptions, Rem
 
   /**
    * Core credential creation logic (absorbed from create-identity.ts).
-   * Creates credential in project config and writes API key to .env.
+   * Creates credential in project config and writes secrets to .env.
    */
   private async createCredential(config: AddCredentialOptions): Promise<Credential> {
     const project = await this.readProjectSpec();
@@ -322,6 +342,16 @@ export class CredentialPrimitive extends BasePrimitive<AddCredentialOptions, Rem
     let credential: Credential;
     if (existingCredential) {
       credential = existingCredential;
+    } else if (config.type === 'OAuthCredentialProvider') {
+      credential = {
+        type: 'OAuthCredentialProvider',
+        name: config.name,
+        discoveryUrl: config.discoveryUrl,
+        vendor: 'CustomOauth2',
+        scopes: config.scopes,
+      };
+      project.credentials.push(credential);
+      await this.writeProjectSpec(project);
     } else {
       credential = {
         type: 'ApiKeyCredentialProvider',
@@ -331,9 +361,16 @@ export class CredentialPrimitive extends BasePrimitive<AddCredentialOptions, Rem
       await this.writeProjectSpec(project);
     }
 
-    // Write API key to .env file
-    const envVarName = CredentialPrimitive.computeDefaultCredentialEnvVarName(config.name);
-    await setEnvVar(envVarName, config.apiKey);
+    // Write secrets to .env file
+    if (config.type === 'OAuthCredentialProvider') {
+      const clientIdEnvVar = `${CredentialPrimitive.computeDefaultCredentialEnvVarName(config.name)}_CLIENT_ID`;
+      const clientSecretEnvVar = `${CredentialPrimitive.computeDefaultCredentialEnvVarName(config.name)}_CLIENT_SECRET`;
+      await setEnvVar(clientIdEnvVar, config.clientId);
+      await setEnvVar(clientSecretEnvVar, config.clientSecret);
+    } else {
+      const envVarName = CredentialPrimitive.computeDefaultCredentialEnvVarName(config.name);
+      await setEnvVar(envVarName, config.apiKey);
+    }
 
     return credential;
   }

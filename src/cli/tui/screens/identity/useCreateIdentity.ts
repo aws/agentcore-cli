@@ -1,12 +1,8 @@
 import { ConfigIO } from '../../../../lib';
 import type { Credential } from '../../../../schema';
+import type { AddCredentialOptions } from '../../../primitives/CredentialPrimitive';
 import { credentialPrimitive } from '../../../primitives/registry';
 import { useCallback, useEffect, useState } from 'react';
-
-interface CreateCredentialConfig {
-  name: string;
-  apiKey: string;
-}
 
 interface CreateStatus<T> {
   state: 'idle' | 'loading' | 'success' | 'error';
@@ -17,7 +13,7 @@ interface CreateStatus<T> {
 export function useCreateIdentity() {
   const [status, setStatus] = useState<CreateStatus<Credential>>({ state: 'idle' });
 
-  const create = useCallback(async (config: CreateCredentialConfig) => {
+  const create = useCallback(async (config: AddCredentialOptions) => {
     setStatus({ state: 'loading' });
     try {
       const result = await credentialPrimitive.add(config);

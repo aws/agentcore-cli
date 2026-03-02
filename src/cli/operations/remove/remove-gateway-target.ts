@@ -12,6 +12,7 @@ export interface RemovableGatewayTarget {
   name: string;
   type: 'gateway-target';
   gatewayName?: string;
+  [key: string]: unknown;
 }
 
 /**
@@ -164,11 +165,11 @@ export async function removeGatewayTarget(tool: RemovableGatewayTarget): Promise
 
     const gateway = mcpSpec.agentCoreGateways.find(g => g.name === tool.gatewayName);
     if (!gateway) {
-      return { ok: false, error: `Gateway "${tool.gatewayName}" not found.` };
+      return { success: false, error: `Gateway "${tool.gatewayName}" not found.` };
     }
     const target = gateway.targets.find(t => t.name === tool.name);
     if (!target) {
-      return { ok: false, error: `Target "${tool.name}" not found in gateway "${tool.gatewayName}".` };
+      return { success: false, error: `Target "${tool.name}" not found in gateway "${tool.gatewayName}".` };
     }
     if (target.compute?.implementation && 'path' in target.compute.implementation) {
       toolPath = target.compute.implementation.path;
@@ -190,9 +191,9 @@ export async function removeGatewayTarget(tool: RemovableGatewayTarget): Promise
       }
     }
 
-    return { ok: true };
+    return { success: true };
   } catch (err) {
     const message = err instanceof Error ? err.message : 'Unknown error';
-    return { ok: false, error: message };
+    return { success: false, error: message };
   }
 }

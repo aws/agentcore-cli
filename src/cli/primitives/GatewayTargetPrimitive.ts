@@ -258,6 +258,52 @@ export class GatewayTargetPrimitive extends BasePrimitive<AddGatewayTargetOption
     return null;
   }
 
+  /**
+   * Create an external gateway target that connects to an existing MCP server endpoint.
+   * Unlike `add()` which scaffolds new code, this registers an existing endpoint URL.
+   */
+  async createExternalGatewayTarget(
+    config: AddGatewayTargetConfig
+  ): Promise<{ toolName: string; projectPath: string }> {
+    if (!config.endpoint) {
+      throw new Error('Endpoint URL is required for external MCP server targets.');
+    }
+
+    const mcpSpec: AgentCoreMcpSpec = this.configIO.configExists('mcp')
+      ? await this.configIO.readMcpSpec()
+      : { agentCoreGateways: [] };
+
+    const target: AgentCoreGatewayTarget = {
+      name: config.name,
+      targetType: 'mcpServer',
+      endpoint: config.endpoint,
+      toolDefinitions: [config.toolDefinition],
+      ...(config.outboundAuth && { outboundAuth: config.outboundAuth }),
+    };
+
+    if (!config.gateway) {
+      throw new Error(
+        "Gateway is required. A gateway target must be attached to a gateway. Create a gateway first with 'agentcore add gateway'."
+      );
+    }
+
+    const gateway = mcpSpec.agentCoreGateways.find(g => g.name === config.gateway);
+    if (!gateway) {
+      throw new Error(`Gateway "${config.gateway}" not found.`);
+    }
+
+    // Check for duplicate target name
+    if (gateway.targets.some(t => t.name === config.name)) {
+      throw new Error(`Target "${config.name}" already exists in gateway "${gateway.name}".`);
+    }
+
+    gateway.targets.push(target);
+
+    await this.configIO.writeMcpSpec(mcpSpec);
+
+    return { toolName: config.name, projectPath: '' };
+  }
+
   // ═══════════════════════════════════════════════════════════════════
   // Private helpers
   // ═══════════════════════════════════════════════════════════════════

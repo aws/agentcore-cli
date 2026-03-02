@@ -1,4 +1,4 @@
-import { createExternalGatewayTarget } from '../../../operations/mcp/create-mcp';
+import { gatewayTargetPrimitive } from '../../../primitives/registry';
 import { ErrorPrompt } from '../../components';
 import { useCreateGatewayTarget, useExistingGateways, useExistingToolNames } from '../../hooks/useCreateMcp';
 import { AddSuccessScreen } from '../add/AddSuccessScreen';
@@ -64,7 +64,8 @@ export function AddGatewayTargetFlow({
       });
 
       if (config.source === 'existing-endpoint') {
-        void createExternalGatewayTarget(config)
+        void gatewayTargetPrimitive
+          .createExternalGatewayTarget(config)
           .then((result: { toolName: string; projectPath: string }) => {
             setFlow({ name: 'create-success', toolName: result.toolName, projectPath: result.projectPath });
           })

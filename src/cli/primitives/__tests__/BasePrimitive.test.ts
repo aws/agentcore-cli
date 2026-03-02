@@ -44,7 +44,7 @@ describe('BasePrimitive', () => {
   const primitive = new StubPrimitive();
 
   it('exposes kind and label', () => {
-    expect(primitive.kind).toBe('stub');
+    expect(primitive.kind).toBe('agent');
     expect(primitive.label).toBe('Stub');
   });
 

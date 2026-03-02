@@ -15,16 +15,15 @@ import {
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const mockReadProjectSpec = vi.fn();
-const mockGetExistingGateways = vi.fn();
+const mockConfigExists = vi.fn().mockReturnValue(true);
+const mockReadMcpSpec = vi.fn();
 
 vi.mock('../../../../lib/index.js', () => ({
   ConfigIO: class {
     readProjectSpec = mockReadProjectSpec;
+    configExists = mockConfigExists;
+    readMcpSpec = mockReadMcpSpec;
   },
-}));
-
-vi.mock('../../../operations/mcp/create-mcp.js', () => ({
-  getExistingGateways: (...args: unknown[]) => mockGetExistingGateways(...args),
 }));
 
 // Helper: valid base options for each type
@@ -307,7 +306,7 @@ describe('validate', () => {
   describe('validateAddGatewayTargetOptions', () => {
     beforeEach(() => {
       // By default, mock that the gateway from validGatewayTargetOptions exists
-      mockGetExistingGateways.mockResolvedValue(['my-gateway']);
+      mockReadMcpSpec.mockResolvedValue({ agentCoreGateways: [{ name: 'my-gateway' }] });
     });
 
     // AC15: Required fields validated
@@ -326,7 +325,7 @@ describe('validate', () => {
     });
 
     it('returns error when no gateways exist', async () => {
-      mockGetExistingGateways.mockResolvedValue([]);
+      mockReadMcpSpec.mockResolvedValue({ agentCoreGateways: [] });
       const result = await validateAddGatewayTargetOptions(validGatewayTargetOptions);
       expect(result.valid).toBe(false);
       expect(result.error).toContain('No gateways found');
@@ -334,7 +333,7 @@ describe('validate', () => {
     });
 
     it('returns error when specified gateway does not exist', async () => {
-      mockGetExistingGateways.mockResolvedValue(['other-gateway']);
+      mockReadMcpSpec.mockResolvedValue({ agentCoreGateways: [{ name: 'other-gateway' }] });
       const result = await validateAddGatewayTargetOptions(validGatewayTargetOptions);
       expect(result.valid).toBe(false);
       expect(result.error).toContain('Gateway "my-gateway" not found');

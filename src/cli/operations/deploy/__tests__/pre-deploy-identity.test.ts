@@ -49,16 +49,15 @@ vi.mock('../../identity/index.js', () => ({
   createApiKeyProvider: vi.fn(),
   setTokenVaultKmsKey: mockSetTokenVaultKmsKey,
   updateApiKeyProvider: vi.fn(),
-}));
-
-vi.mock('../../identity/oauth2-credential-provider.js', () => ({
   oAuth2ProviderExists: mockOAuth2ProviderExists,
   createOAuth2Provider: mockCreateOAuth2Provider,
   updateOAuth2Provider: mockUpdateOAuth2Provider,
 }));
 
-vi.mock('../../identity/create-identity.js', () => ({
-  computeDefaultCredentialEnvVarName: vi.fn((name: string) => `AGENTCORE_CREDENTIAL_${name.toUpperCase()}`),
+vi.mock('../../../primitives/credential-utils.js', () => ({
+  computeDefaultCredentialEnvVarName: vi.fn(
+    (name: string) => `AGENTCORE_CREDENTIAL_${name.replace(/-/g, '_').toUpperCase()}`
+  ),
 }));
 
 vi.mock('../../../../lib/index.js', () => ({
@@ -230,7 +229,7 @@ describe('getAllCredentials', () => {
       credentials: [{ name: 'test-api', type: 'ApiKeyCredentialProvider' }],
     };
     const result = getAllCredentials(projectSpec as any);
-    expect(result).toEqual([{ providerName: 'test-api', envVarName: 'AGENTCORE_CREDENTIAL_TEST-API' }]);
+    expect(result).toEqual([{ providerName: 'test-api', envVarName: 'AGENTCORE_CREDENTIAL_TEST_API' }]);
   });
 
   it('returns CLIENT_ID and CLIENT_SECRET vars for OAuthCredentialProvider', () => {
@@ -253,7 +252,7 @@ describe('getAllCredentials', () => {
     };
     const result = getAllCredentials(projectSpec as any);
     expect(result).toEqual([
-      { providerName: 'api-key', envVarName: 'AGENTCORE_CREDENTIAL_API-KEY' },
+      { providerName: 'api-key', envVarName: 'AGENTCORE_CREDENTIAL_API_KEY' },
       { providerName: 'oauth-cred', envVarName: 'AGENTCORE_CREDENTIAL_OAUTH_CRED_CLIENT_ID' },
       { providerName: 'oauth-cred', envVarName: 'AGENTCORE_CREDENTIAL_OAUTH_CRED_CLIENT_SECRET' },
     ]);

@@ -14,6 +14,8 @@ vi.mock('../../../../lib/index.js', () => ({
   ConfigIO: class {
     readProjectSpec = mockReadProjectSpec;
     writeProjectSpec = mockWriteProjectSpec;
+    configExists = vi.fn().mockReturnValue(false);
+    readMcpSpec = vi.fn().mockResolvedValue({ agentCoreGateways: [] });
   },
 }));
 

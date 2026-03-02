@@ -20,8 +20,6 @@ vi.mock('../../../../lib/index.js', () => ({
 }));
 
 const computeDefaultGatewayEnvVarName = (name: string) => GatewayPrimitive.computeDefaultGatewayEnvVarName(name);
-const computeDefaultMcpRuntimeEnvVarName = (name: string) =>
-  GatewayTargetPrimitive.computeDefaultMcpRuntimeEnvVarName(name);
 
 describe('computeDefaultGatewayEnvVarName', () => {
   it('uppercases and wraps gateway name', () => {
@@ -34,20 +32,6 @@ describe('computeDefaultGatewayEnvVarName', () => {
 
   it('handles name with no hyphens', () => {
     expect(computeDefaultGatewayEnvVarName('simple')).toBe('AGENTCORE_GATEWAY_SIMPLE_URL');
-  });
-});
-
-describe('computeDefaultMcpRuntimeEnvVarName', () => {
-  it('uppercases and wraps runtime name', () => {
-    expect(computeDefaultMcpRuntimeEnvVarName('my-runtime')).toBe('AGENTCORE_MCPRUNTIME_MY_RUNTIME_URL');
-  });
-
-  it('replaces hyphens with underscores', () => {
-    expect(computeDefaultMcpRuntimeEnvVarName('a-b-c')).toBe('AGENTCORE_MCPRUNTIME_A_B_C_URL');
-  });
-
-  it('handles name with no hyphens', () => {
-    expect(computeDefaultMcpRuntimeEnvVarName('runtime')).toBe('AGENTCORE_MCPRUNTIME_RUNTIME_URL');
   });
 });
 
@@ -99,10 +83,9 @@ describe('getExistingToolNames', () => {
     expect(result).toEqual([]);
   });
 
-  it('returns tool names from runtime tools and gateway targets', async () => {
+  it('returns tool names from gateway targets', async () => {
     mockConfigExists.mockReturnValue(true);
     mockReadMcpSpec.mockResolvedValue({
-      mcpRuntimeTools: [{ name: 'rt-tool-1' }],
       agentCoreGateways: [
         {
           name: 'gw-1',
@@ -118,10 +101,10 @@ describe('getExistingToolNames', () => {
 
     const result = await gatewayTargetPrimitive.getExistingToolNames();
 
-    expect(result).toEqual(['rt-tool-1', 'gw-tool-1', 'gw-tool-2']);
+    expect(result).toEqual(['gw-tool-1', 'gw-tool-2']);
   });
 
-  it('returns empty array when no runtime tools defined', async () => {
+  it('returns empty array when no gateway targets have tool definitions', async () => {
     mockConfigExists.mockReturnValue(true);
     mockReadMcpSpec.mockResolvedValue({
       agentCoreGateways: [{ name: 'gw', targets: [] }],

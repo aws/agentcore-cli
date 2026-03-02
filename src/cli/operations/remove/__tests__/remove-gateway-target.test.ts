@@ -196,7 +196,7 @@ describe('removeGatewayTarget', () => {
     const target = { name: 'target-1', type: 'gateway-target' as const, gatewayName: 'test-gateway' };
     const result = await removeGatewayTarget(target);
 
-    expect(result.ok).toBe(true);
+    expect(result.success).toBe(true);
     expect(mockWriteMcpSpec).toHaveBeenCalledWith({
       agentCoreGateways: [
         {
@@ -224,7 +224,7 @@ describe('removeGatewayTarget', () => {
     const target = { name: 'last-target', type: 'gateway-target' as const, gatewayName: 'test-gateway' };
     const result = await removeGatewayTarget(target);
 
-    expect(result.ok).toBe(true);
+    expect(result.success).toBe(true);
     expect(mockWriteMcpSpec).toHaveBeenCalledWith({
       agentCoreGateways: [
         {

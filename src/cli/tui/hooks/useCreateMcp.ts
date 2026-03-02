@@ -28,7 +28,6 @@ export function useCreateGateway() {
         name: config.name,
         description: config.description,
         authorizerType: config.authorizerType,
-        agents: config.agents?.join(','),
         discoveryUrl: config.jwtConfig?.discoveryUrl,
         allowedAudience: config.jwtConfig?.allowedAudience?.join(','),
         allowedClients: config.jwtConfig?.allowedClients?.join(','),
@@ -63,8 +62,6 @@ export function useCreateGatewayTarget() {
         name: config.name,
         description: config.description,
         language: config.language,
-        exposure: config.exposure,
-        agents: config.selectedAgents?.join(','),
         gateway: config.gateway,
         host: config.host,
       });
@@ -169,7 +166,7 @@ export function useUnassignedTargets() {
   }, []);
 
   const refresh = useCallback(async () => {
-    const result = await getUnassignedTargets();
+    const result = await gatewayPrimitive.getUnassignedTargets();
     setTargets(result.map(t => t.name));
   }, []);
 

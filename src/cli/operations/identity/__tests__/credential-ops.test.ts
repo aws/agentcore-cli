@@ -48,7 +48,7 @@ describe('createCredential', () => {
     mockWriteProjectSpec.mockResolvedValue(undefined);
     mockSetEnvVar.mockResolvedValue(undefined);
 
-    const result = await primitive.add({ name: 'NewCred', apiKey: 'key123' });
+    const result = await primitive.add({ type: 'ApiKeyCredentialProvider', name: 'NewCred', apiKey: 'key123' });
 
     expect(result).toEqual(expect.objectContaining({ success: true, credentialName: 'NewCred' }));
     expect(mockWriteProjectSpec).toHaveBeenCalled();
@@ -60,7 +60,7 @@ describe('createCredential', () => {
     mockReadProjectSpec.mockResolvedValue({ credentials: [existing] });
     mockSetEnvVar.mockResolvedValue(undefined);
 
-    const result = await primitive.add({ name: 'ExistCred', apiKey: 'newkey' });
+    const result = await primitive.add({ type: 'ApiKeyCredentialProvider', name: 'ExistCred', apiKey: 'newkey' });
 
     expect(result).toEqual(expect.objectContaining({ success: true, credentialName: 'ExistCred' }));
     expect(mockWriteProjectSpec).not.toHaveBeenCalled();

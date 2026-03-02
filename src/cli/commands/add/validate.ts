@@ -9,7 +9,6 @@ import {
   getSupportedModelProviders,
   matchEnumValue,
 } from '../../../schema';
-import { getExistingGateways } from '../../operations/mcp/create-mcp';
 import type {
   AddAgentOptions,
   AddGatewayOptions,
@@ -238,7 +237,16 @@ export async function validateAddGatewayTargetOptions(options: AddGatewayTargetO
   }
 
   // Validate the specified gateway exists
-  const existingGateways = await getExistingGateways();
+  const gatewayConfigIO = new ConfigIO();
+  let existingGateways: string[] = [];
+  try {
+    if (gatewayConfigIO.configExists('mcp')) {
+      const mcpSpec = await gatewayConfigIO.readMcpSpec();
+      existingGateways = mcpSpec.agentCoreGateways.map(g => g.name);
+    }
+  } catch {
+    // If we can't read the config, treat as no gateways
+  }
   if (existingGateways.length === 0) {
     return {
       valid: false,
