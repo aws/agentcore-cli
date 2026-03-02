@@ -18,6 +18,8 @@
  *   - 0.3.0 -> 0.3.0-preview.1.0
  *   - 0.3.0-preview.1.0 -> 0.3.0-preview.1.1 (preview)
  *   - 0.3.0-preview.1.0 -> 0.3.0-preview.2.0 (preview-major)
+ *   - 0.3.0-preview.3 -> 0.3.0-preview.3.1   (preview, single-number compat)
+ *   - 0.3.0-preview.3 -> 0.3.0-preview.4.0   (preview-major, single-number compat)
  */
 import { execSync } from 'child_process';
 import { existsSync, readFileSync, writeFileSync } from 'fs';
@@ -67,6 +69,19 @@ function parseVersion(version: string): ParsedVersion {
       patch: parseInt(previewMatch[3]!, 10),
       previewMajor: parseInt(previewMatch[4]!, 10),
       previewMinor: parseInt(previewMatch[5]!, 10),
+    };
+  }
+
+  // Match single-number preview format: X.Y.Z-preview.N (e.g., 0.3.0-preview.3)
+  // Treat as preview.N.0 for compatibility with the two-part format
+  const singlePreviewMatch = /^(\d+)\.(\d+)\.(\d+)-preview\.(\d+)$/.exec(version);
+  if (singlePreviewMatch) {
+    return {
+      major: parseInt(singlePreviewMatch[1]!, 10),
+      minor: parseInt(singlePreviewMatch[2]!, 10),
+      patch: parseInt(singlePreviewMatch[3]!, 10),
+      previewMajor: parseInt(singlePreviewMatch[4]!, 10),
+      previewMinor: 0,
     };
   }
 
