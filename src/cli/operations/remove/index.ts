@@ -1,6 +1,4 @@
 export * from './types';
-export * from './remove-agent';
-export * from './remove-gateway';
+// Primitives handle remove for agent, gateway, memory, and identity.
+// Gateway-target removal still lives here as it has not been fully absorbed into GatewayTargetPrimitive.
 export * from './remove-gateway-target';
-export * from './remove-memory';
-export * from './remove-identity';

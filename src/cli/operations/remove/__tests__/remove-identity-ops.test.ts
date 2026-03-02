@@ -1,12 +1,11 @@
-import {
-  getRemovableCredentials,
-  getRemovableIdentities,
-  previewRemoveCredential,
-  previewRemoveIdentity,
-  removeCredential,
-  removeIdentity,
-} from '../remove-identity.js';
+import { CredentialPrimitive } from '../../../primitives/CredentialPrimitive.js';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+
+// Mock registry to break circular dependency: CredentialPrimitive → AddFlow → hooks → registry → primitives
+vi.mock('../../../primitives/registry', () => ({
+  credentialPrimitive: {},
+  ALL_PRIMITIVES: [],
+}));
 
 const mockReadProjectSpec = vi.fn();
 const mockWriteProjectSpec = vi.fn();
@@ -26,13 +25,15 @@ const makeProject = (credNames: string[]) => ({
   credentials: credNames.map(name => ({ name, type: 'ApiKeyCredentialProvider' })),
 });
 
-describe('getRemovableCredentials', () => {
+const primitive = new CredentialPrimitive();
+
+describe('getRemovable', () => {
   afterEach(() => vi.clearAllMocks());
 
   it('returns credentials from project', async () => {
     mockReadProjectSpec.mockResolvedValue(makeProject(['Cred1', 'Cred2']));
 
-    const result = await getRemovableCredentials();
+    const result = await primitive.getRemovable();
 
     expect(result).toEqual([
       { name: 'Cred1', type: 'ApiKeyCredentialProvider' },
@@ -43,17 +44,17 @@ describe('getRemovableCredentials', () => {
   it('returns empty array on error', async () => {
     mockReadProjectSpec.mockRejectedValue(new Error('fail'));
 
-    expect(await getRemovableCredentials()).toEqual([]);
+    expect(await primitive.getRemovable()).toEqual([]);
   });
 });
 
-describe('previewRemoveCredential', () => {
+describe('previewRemove', () => {
   afterEach(() => vi.clearAllMocks());
 
   it('returns preview with type and env note', async () => {
     mockReadProjectSpec.mockResolvedValue(makeProject(['MyCred']));
 
-    const preview = await previewRemoveCredential('MyCred');
+    const preview = await primitive.previewRemove('MyCred');
 
     expect(preview.summary).toContain('Removing credential: MyCred');
     expect(preview.summary).toContain('Type: ApiKeyCredentialProvider');
@@ -63,11 +64,11 @@ describe('previewRemoveCredential', () => {
   it('throws when credential not found', async () => {
     mockReadProjectSpec.mockResolvedValue(makeProject([]));
 
-    await expect(previewRemoveCredential('Missing')).rejects.toThrow('Credential "Missing" not found');
+    await expect(primitive.previewRemove('Missing')).rejects.toThrow('Credential "Missing" not found');
   });
 });
 
-describe('removeCredential', () => {
+describe('remove', () => {
   afterEach(() => vi.clearAllMocks());
 
   it('removes credential and writes spec', async () => {
@@ -75,39 +76,25 @@ describe('removeCredential', () => {
     mockReadProjectSpec.mockResolvedValue(project);
     mockWriteProjectSpec.mockResolvedValue(undefined);
 
-    const result = await removeCredential('Cred1');
+    const result = await primitive.remove('Cred1');
 
-    expect(result).toEqual({ ok: true });
+    expect(result).toEqual({ success: true });
     expect(mockWriteProjectSpec).toHaveBeenCalled();
   });
 
   it('returns error when credential not found', async () => {
     mockReadProjectSpec.mockResolvedValue(makeProject([]));
 
-    const result = await removeCredential('Missing');
+    const result = await primitive.remove('Missing');
 
-    expect(result).toEqual({ ok: false, error: 'Credential "Missing" not found.' });
+    expect(result).toEqual({ success: false, error: 'Credential "Missing" not found.' });
   });
 
   it('returns error on exception', async () => {
     mockReadProjectSpec.mockRejectedValue(new Error('read fail'));
 
-    const result = await removeCredential('Cred1');
+    const result = await primitive.remove('Cred1');
 
-    expect(result).toEqual({ ok: false, error: 'read fail' });
-  });
-});
-
-describe('aliases', () => {
-  it('getRemovableIdentities is getRemovableCredentials', () => {
-    expect(getRemovableIdentities).toBe(getRemovableCredentials);
-  });
-
-  it('previewRemoveIdentity is previewRemoveCredential', () => {
-    expect(previewRemoveIdentity).toBe(previewRemoveCredential);
-  });
-
-  it('removeIdentity is removeCredential', () => {
-    expect(removeIdentity).toBe(removeCredential);
+    expect(result).toEqual({ success: false, error: 'read fail' });
   });
 });

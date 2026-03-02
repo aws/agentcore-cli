@@ -1,5 +1,5 @@
 import { DEFAULT_MODEL_IDS } from '../../../../schema';
-import { computeDefaultCredentialEnvVarName } from '../../../operations/identity/create-identity';
+import { computeDefaultCredentialEnvVarName } from '../../../primitives/credential-utils';
 import { ErrorPrompt } from '../../components';
 import { useAvailableAgents } from '../../hooks/useCreateMcp';
 import { AddAgentFlow } from '../agent/AddAgentFlow';

@@ -1,6 +1,6 @@
 import { DEFAULT_MODEL_IDS, ProjectNameSchema } from '../../../../schema';
 import { validateFolderNotExists } from '../../../commands/create/validate';
-import { computeDefaultCredentialEnvVarName } from '../../../operations/identity/create-identity';
+import { computeDefaultCredentialEnvVarName } from '../../../primitives/credential-utils';
 import {
   LogLink,
   type NextStep,

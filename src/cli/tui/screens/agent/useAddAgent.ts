@@ -8,10 +8,8 @@ import {
   mapModelProviderToIdentityProviders,
   writeAgentToProject,
 } from '../../../operations/agent/generate';
-import {
-  computeDefaultCredentialEnvVarName,
-  resolveCredentialStrategy,
-} from '../../../operations/identity/create-identity';
+import { computeDefaultCredentialEnvVarName } from '../../../primitives/credential-utils';
+import { credentialPrimitive } from '../../../primitives/registry';
 import { createRenderer } from '../../../templates';
 import type { GenerateConfig } from '../generate/types';
 import type { AddAgentConfig } from './types';
@@ -148,10 +146,10 @@ async function handleCreatePath(
 
   // Resolve credential strategy FIRST to determine correct credential name
   let identityProviders: ReturnType<typeof mapModelProviderToIdentityProviders> = [];
-  let strategy: Awaited<ReturnType<typeof resolveCredentialStrategy>> | undefined;
+  let strategy: Awaited<ReturnType<typeof credentialPrimitive.resolveCredentialStrategy>> | undefined;
 
   if (config.modelProvider !== 'Bedrock') {
-    strategy = await resolveCredentialStrategy(
+    strategy = await credentialPrimitive.resolveCredentialStrategy(
       project.name,
       config.name,
       config.modelProvider,
@@ -225,7 +223,7 @@ async function handleByoPath(
 
   // Handle credential creation with smart reuse detection
   if (config.modelProvider !== 'Bedrock') {
-    const strategy = await resolveCredentialStrategy(
+    const strategy = await credentialPrimitive.resolveCredentialStrategy(
       project.name,
       config.name,
       config.modelProvider,

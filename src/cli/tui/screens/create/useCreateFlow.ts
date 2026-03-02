@@ -9,10 +9,8 @@ import {
   mapModelProviderToIdentityProviders,
   writeAgentToProject,
 } from '../../../operations/agent/generate';
-import {
-  computeDefaultCredentialEnvVarName,
-  resolveCredentialStrategy,
-} from '../../../operations/identity/create-identity';
+import { computeDefaultCredentialEnvVarName } from '../../../primitives/credential-utils';
+import { credentialPrimitive } from '../../../primitives/registry';
 import { CDKRenderer, createRenderer } from '../../../templates';
 import { type Step, areStepsComplete, hasStepError } from '../../components';
 import { withMinDuration } from '../../utils';
@@ -280,10 +278,10 @@ export function useCreateFlow(cwd: string): CreateFlowState {
 
                 // Resolve credential strategy FIRST (new project has no existing credentials)
                 let identityProviders: ReturnType<typeof mapModelProviderToIdentityProviders> = [];
-                let strategy: Awaited<ReturnType<typeof resolveCredentialStrategy>> | undefined;
+                let strategy: Awaited<ReturnType<typeof credentialPrimitive.resolveCredentialStrategy>> | undefined;
 
                 if (addAgentConfig.modelProvider !== 'Bedrock') {
-                  strategy = await resolveCredentialStrategy(
+                  strategy = await credentialPrimitive.resolveCredentialStrategy(
                     projectName,
                     addAgentConfig.name,
                     addAgentConfig.modelProvider,
@@ -335,7 +333,7 @@ export function useCreateFlow(cwd: string): CreateFlowState {
 
                 // Handle credentials for BYO (new project, so always project-scoped)
                 if (addAgentConfig.modelProvider !== 'Bedrock') {
-                  const strategy = await resolveCredentialStrategy(
+                  const strategy = await credentialPrimitive.resolveCredentialStrategy(
                     projectName,
                     addAgentConfig.name,
                     addAgentConfig.modelProvider,

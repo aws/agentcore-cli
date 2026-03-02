@@ -1,7 +1,7 @@
 import { APP_DIR, ConfigIO } from '../../../../lib';
 import type { ModelProvider } from '../../../../schema';
 import { AgentNameSchema, DEFAULT_MODEL_IDS } from '../../../../schema';
-import { computeDefaultCredentialEnvVarName } from '../../../operations/identity/create-identity';
+import { computeDefaultCredentialEnvVarName } from '../../../primitives/credential-utils';
 import {
   ApiKeySecretInput,
   ConfirmReview,

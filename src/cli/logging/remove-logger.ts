@@ -1,5 +1,5 @@
 import { CLI_LOGS_DIR, CLI_SYSTEM_DIR, CONFIG_DIR, findConfigRoot } from '../../lib';
-import type { RemovalPreview } from '../operations/remove';
+import type { RemovalPreview } from '../operations/remove/types';
 import { existsSync, mkdirSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 

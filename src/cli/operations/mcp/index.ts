@@ -1,7 +1,1 @@
-export {
-  createGatewayFromWizard,
-  createToolFromWizard,
-  getExistingGateways,
-  type CreateGatewayResult,
-  type CreateToolResult,
-} from './create-mcp';
+// MCP operations - facades removed, use primitives directly

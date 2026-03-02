@@ -1,0 +1,368 @@
+import { findConfigRoot, getEnvVar, setEnvVar } from '../../lib';
+import type { AgentCoreMcpSpec, Credential, ModelProvider } from '../../schema';
+import { CredentialSchema } from '../../schema';
+import { validateAddIdentityOptions } from '../commands/add/validate';
+import { getErrorMessage } from '../errors';
+import type { RemovalPreview, RemovalResult, SchemaChange } from '../operations/remove/types';
+import { BasePrimitive } from './BasePrimitive';
+import { computeDefaultCredentialEnvVarName } from './credential-utils';
+import type { AddResult, AddScreenComponent, RemovableResource } from './types';
+import type { Command } from '@commander-js/extra-typings';
+
+/**
+ * Options for adding a credential resource.
+ */
+export interface AddCredentialOptions {
+  name: string;
+  apiKey: string;
+}
+
+/**
+ * Represents a credential that can be removed.
+ */
+export interface RemovableCredential extends RemovableResource {
+  name: string;
+  type: string;
+}
+
+/**
+ * Result of resolving credential strategy for an agent.
+ */
+export interface CredentialStrategy {
+  /** True if reusing existing credential, false if creating new */
+  reuse: boolean;
+  /** Credential name to use (empty string if no credential needed) */
+  credentialName: string;
+  /** Environment variable name for the API key */
+  envVarName: string;
+  /** True if this is an agent-scoped credential */
+  isAgentScoped: boolean;
+}
+
+/**
+ * CredentialPrimitive handles all credential add/remove operations.
+ * Absorbs logic from create-identity.ts and remove-identity.ts.
+ */
+export class CredentialPrimitive extends BasePrimitive<AddCredentialOptions, RemovableCredential> {
+  readonly kind = 'identity';
+  readonly label = 'Identity';
+  readonly primitiveSchema = CredentialSchema;
+
+  protected override readonly article: string = 'an';
+
+  async add(options: AddCredentialOptions): Promise<AddResult<{ credentialName: string }>> {
+    try {
+      const credential = await this.createCredential(options);
+      return { success: true, credentialName: credential.name };
+    } catch (err) {
+      return { success: false, error: getErrorMessage(err) };
+    }
+  }
+
+  async remove(credentialName: string, options?: { force?: boolean }): Promise<RemovalResult> {
+    try {
+      const project = await this.readProjectSpec();
+
+      const credentialIndex = project.credentials.findIndex(c => c.name === credentialName);
+      if (credentialIndex === -1) {
+        return { success: false, error: `Credential "${credentialName}" not found.` };
+      }
+
+      const credential = project.credentials[credentialIndex]!;
+
+      // Block removal of managed credentials unless force is passed
+      if ('managed' in credential && credential.managed && !options?.force) {
+        return {
+          success: false,
+          error: `Credential "${credentialName}" is managed by the CLI and cannot be removed. Use force to override.`,
+        };
+      }
+
+      // Warn about gateway targets referencing this credential
+      const referencingTargets = await this.findReferencingGatewayTargets(credentialName);
+      if (referencingTargets.length > 0 && !options?.force) {
+        const targetList = referencingTargets.map(t => t.name).join(', ');
+        return {
+          success: false,
+          error: `Credential "${credentialName}" is referenced by gateway target(s): ${targetList}. Use force to override.`,
+        };
+      }
+
+      project.credentials.splice(credentialIndex, 1);
+      await this.writeProjectSpec(project);
+
+      return { success: true };
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Unknown error';
+      return { success: false, error: message };
+    }
+  }
+
+  async previewRemove(credentialName: string): Promise<RemovalPreview> {
+    const project = await this.readProjectSpec();
+
+    const credential = project.credentials.find(c => c.name === credentialName);
+    if (!credential) {
+      throw new Error(`Credential "${credentialName}" not found.`);
+    }
+
+    const summary: string[] = [
+      `Removing credential: ${credentialName}`,
+      `Type: ${credential.type}`,
+      `Note: .env file will not be modified`,
+    ];
+
+    // Warn if this is a managed credential
+    if ('managed' in credential && credential.managed) {
+      summary.push(`Warning: This credential is managed by the CLI. Removing it may break gateway authentication.`);
+    }
+
+    // Warn about gateway targets that reference this credential
+    const referencingTargets = await this.findReferencingGatewayTargets(credentialName);
+    if (referencingTargets.length > 0) {
+      const targetList = referencingTargets.map(t => t.name).join(', ');
+      summary.push(`Warning: Referenced by gateway target(s): ${targetList}`);
+    }
+
+    const schemaChanges: SchemaChange[] = [];
+
+    const afterSpec = {
+      ...project,
+      credentials: project.credentials.filter(c => c.name !== credentialName),
+    };
+
+    schemaChanges.push({
+      file: 'agentcore/agentcore.json',
+      before: project,
+      after: afterSpec,
+    });
+
+    return { summary, directoriesToDelete: [], schemaChanges };
+  }
+
+  async getRemovable(): Promise<RemovableCredential[]> {
+    try {
+      const project = await this.readProjectSpec();
+      return project.credentials.map(c => ({ name: c.name, type: c.type }));
+    } catch {
+      return [];
+    }
+  }
+
+  /**
+   * Get all credentials as full Credential objects.
+   */
+  async getAllCredentials(): Promise<Credential[]> {
+    try {
+      const project = await this.readProjectSpec();
+      return project.credentials;
+    } catch {
+      return [];
+    }
+  }
+
+  /**
+   * Get list of existing credential names.
+   */
+  async getAllNames(): Promise<string[]> {
+    try {
+      const project = await this.configIO.readProjectSpec();
+      return project.credentials.map(c => c.name);
+    } catch {
+      return [];
+    }
+  }
+
+  static computeDefaultCredentialEnvVarName = computeDefaultCredentialEnvVarName;
+  static computeDefaultIdentityEnvVarName = computeDefaultCredentialEnvVarName;
+
+  /**
+   * Resolve credential strategy for adding an agent.
+   * Determines whether to reuse existing credential or create new one.
+   *
+   * Logic:
+   * - Bedrock uses IAM, no credential needed
+   * - No API key provided, no credential needed
+   * - No existing credential for provider → create project-scoped
+   * - Any existing credential with matching key → reuse it
+   * - No matching key → create agent-scoped (or project-scoped if first)
+   */
+  async resolveCredentialStrategy(
+    projectName: string,
+    agentName: string,
+    modelProvider: ModelProvider,
+    newApiKey: string | undefined,
+    configBaseDir: string,
+    existingCredentials: Credential[]
+  ): Promise<CredentialStrategy> {
+    // Bedrock uses IAM, no credential needed
+    if (modelProvider === 'Bedrock') {
+      return { reuse: true, credentialName: '', envVarName: '', isAgentScoped: false };
+    }
+
+    // No API key provided, no credential needed
+    if (!newApiKey) {
+      return { reuse: true, credentialName: '', envVarName: '', isAgentScoped: false };
+    }
+
+    // Check ALL existing credentials for a matching API key
+    for (const cred of existingCredentials) {
+      const envVarName = CredentialPrimitive.computeDefaultCredentialEnvVarName(cred.name);
+      const existingApiKey = await getEnvVar(envVarName, configBaseDir);
+      if (existingApiKey === newApiKey) {
+        const isAgentScoped = cred.name !== `${projectName}${modelProvider}`;
+        return { reuse: true, credentialName: cred.name, envVarName, isAgentScoped };
+      }
+    }
+
+    // No matching key found - create new credential
+    const projectScopedName = `${projectName}${modelProvider}`;
+    const hasProjectScoped = existingCredentials.some(c => c.name === projectScopedName);
+
+    if (!hasProjectScoped) {
+      // First agent with this provider - create project-scoped
+      const envVarName = CredentialPrimitive.computeDefaultCredentialEnvVarName(projectScopedName);
+      return { reuse: false, credentialName: projectScopedName, envVarName, isAgentScoped: false };
+    }
+
+    // Project-scoped exists with different key - create agent-scoped
+    const agentScopedName = `${projectName}${agentName}${modelProvider}`;
+    const agentScopedEnvVarName = CredentialPrimitive.computeDefaultCredentialEnvVarName(agentScopedName);
+    return { reuse: false, credentialName: agentScopedName, envVarName: agentScopedEnvVarName, isAgentScoped: true };
+  }
+
+  registerCommands(addCmd: Command, removeCmd: Command): void {
+    addCmd
+      .command('identity')
+      .description('Add an identity (credential) to the project')
+      .option('--name <name>', 'Credential name [non-interactive]')
+      .option('--api-key <key>', 'The API key value [non-interactive]')
+      .option('--json', 'Output as JSON [non-interactive]')
+      .action(async (cliOptions: { name?: string; apiKey?: string; json?: boolean }) => {
+        try {
+          if (!findConfigRoot()) {
+            console.error('No agentcore project found. Run `agentcore create` first.');
+            process.exit(1);
+          }
+
+          if (cliOptions.name || cliOptions.apiKey || cliOptions.json) {
+            // CLI mode
+            const validation = validateAddIdentityOptions({
+              name: cliOptions.name,
+              apiKey: cliOptions.apiKey,
+            });
+
+            if (!validation.valid) {
+              if (cliOptions.json) {
+                console.log(JSON.stringify({ success: false, error: validation.error }));
+              } else {
+                console.error(validation.error);
+              }
+              process.exit(1);
+            }
+
+            const result = await this.add({
+              name: cliOptions.name!,
+              apiKey: cliOptions.apiKey!,
+            });
+
+            if (cliOptions.json) {
+              console.log(JSON.stringify(result));
+            } else if (result.success) {
+              console.log(`Added credential '${result.credentialName}'`);
+            } else {
+              console.error(result.error);
+            }
+            process.exit(result.success ? 0 : 1);
+          } else {
+            // TUI fallback — dynamic imports to avoid pulling ink (async) into registry
+            const [{ render }, { default: React }, { AddFlow }] = await Promise.all([
+              import('ink'),
+              import('react'),
+              import('../tui/screens/add/AddFlow'),
+            ]);
+            const { clear, unmount } = render(
+              React.createElement(AddFlow, {
+                isInteractive: false,
+                onExit: () => {
+                  clear();
+                  unmount();
+                  process.exit(0);
+                },
+              })
+            );
+          }
+        } catch (error) {
+          if (cliOptions.json) {
+            console.log(JSON.stringify({ success: false, error: getErrorMessage(error) }));
+          } else {
+            console.error(getErrorMessage(error));
+          }
+          process.exit(1);
+        }
+      });
+
+    this.registerRemoveSubcommand(removeCmd);
+  }
+
+  addScreen(): AddScreenComponent {
+    return null;
+  }
+
+  /**
+   * Core credential creation logic (absorbed from create-identity.ts).
+   * Creates credential in project config and writes API key to .env.
+   */
+  private async createCredential(config: AddCredentialOptions): Promise<Credential> {
+    const project = await this.readProjectSpec();
+
+    // Check if credential already exists
+    const existingCredential = project.credentials.find(c => c.name === config.name);
+
+    let credential: Credential;
+    if (existingCredential) {
+      credential = existingCredential;
+    } else {
+      credential = {
+        type: 'ApiKeyCredentialProvider',
+        name: config.name,
+      };
+      project.credentials.push(credential);
+      await this.writeProjectSpec(project);
+    }
+
+    // Write API key to .env file
+    const envVarName = CredentialPrimitive.computeDefaultCredentialEnvVarName(config.name);
+    await setEnvVar(envVarName, config.apiKey);
+
+    return credential;
+  }
+
+  /**
+   * Find gateway targets that reference the given credential via outboundAuth.
+   * Returns an array of target objects with a `name` field, or empty if mcp.json doesn't exist.
+   */
+  private async findReferencingGatewayTargets(credentialName: string): Promise<{ name: string }[]> {
+    if (!this.configIO.configExists('mcp')) {
+      return [];
+    }
+
+    let mcpSpec: AgentCoreMcpSpec;
+    try {
+      mcpSpec = await this.configIO.readMcpSpec();
+    } catch {
+      return [];
+    }
+
+    const referencingTargets: { name: string }[] = [];
+    for (const gateway of mcpSpec.agentCoreGateways) {
+      for (const target of gateway.targets) {
+        if (target.outboundAuth?.credentialName === credentialName) {
+          referencingTargets.push({ name: target.name });
+        }
+      }
+    }
+
+    return referencingTargets;
+  }
+}

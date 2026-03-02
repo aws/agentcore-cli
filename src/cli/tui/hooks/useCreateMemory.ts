@@ -1,7 +1,14 @@
+import { ConfigIO } from '../../../lib';
 import type { Memory } from '../../../schema';
 import { getAvailableAgents } from '../../operations/attach';
-import { type CreateMemoryConfig, createMemory, getAllMemoryNames } from '../../operations/memory/create-memory';
+import { memoryPrimitive } from '../../primitives/registry';
 import { useCallback, useEffect, useState } from 'react';
+
+interface CreateMemoryConfig {
+  name: string;
+  eventExpiryDuration: number;
+  strategies: { type: string }[];
+}
 
 interface CreateStatus<T> {
   state: 'idle' | 'loading' | 'success' | 'error';
@@ -15,9 +22,24 @@ export function useCreateMemory() {
   const create = useCallback(async (config: CreateMemoryConfig) => {
     setStatus({ state: 'loading' });
     try {
-      const result = await createMemory(config);
-      setStatus({ state: 'success', result });
-      return { ok: true as const, result };
+      const strategiesStr = config.strategies.map(s => s.type).join(',');
+      const addResult = await memoryPrimitive.add({
+        name: config.name,
+        expiry: config.eventExpiryDuration,
+        strategies: strategiesStr || undefined,
+      });
+      if (!addResult.success) {
+        throw new Error(addResult.error ?? 'Failed to create memory');
+      }
+      // Read back the memory object
+      const configIO = new ConfigIO();
+      const project = await configIO.readProjectSpec();
+      const memory = project.memories.find(m => m.name === config.name);
+      if (!memory) {
+        throw new Error(`Memory "${config.name}" not found after creation`);
+      }
+      setStatus({ state: 'success', result: memory });
+      return { ok: true as const, result: memory };
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Failed to create memory.';
       setStatus({ state: 'error', error: message });
@@ -36,11 +58,11 @@ export function useExistingMemoryNames() {
   const [names, setNames] = useState<string[]>([]);
 
   useEffect(() => {
-    void getAllMemoryNames().then(setNames);
+    void memoryPrimitive.getAllNames().then(setNames);
   }, []);
 
   const refresh = useCallback(async () => {
-    const result = await getAllMemoryNames();
+    const result = await memoryPrimitive.getAllNames();
     setNames(result);
   }, []);
 

@@ -1,11 +1,12 @@
+import { ConfigIO } from '../../../../lib';
 import type { Credential } from '../../../../schema';
-import {
-  type CreateCredentialConfig,
-  createCredential,
-  getAllCredentialNames,
-  getAllCredentials,
-} from '../../../operations/identity/create-identity';
+import { credentialPrimitive } from '../../../primitives/registry';
 import { useCallback, useEffect, useState } from 'react';
+
+interface CreateCredentialConfig {
+  name: string;
+  apiKey: string;
+}
 
 interface CreateStatus<T> {
   state: 'idle' | 'loading' | 'success' | 'error';
@@ -19,9 +20,19 @@ export function useCreateIdentity() {
   const create = useCallback(async (config: CreateCredentialConfig) => {
     setStatus({ state: 'loading' });
     try {
-      const result = await createCredential(config);
-      setStatus({ state: 'success', result });
-      return { ok: true as const, result };
+      const result = await credentialPrimitive.add(config);
+      if (!result.success) {
+        throw new Error(result.error ?? 'Failed to create credential');
+      }
+      // Read back the credential object
+      const configIO = new ConfigIO();
+      const project = await configIO.readProjectSpec();
+      const credential = project.credentials.find(c => c.name === config.name);
+      if (!credential) {
+        throw new Error(`Credential "${config.name}" not found after creation`);
+      }
+      setStatus({ state: 'success', result: credential });
+      return { ok: true as const, result: credential };
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Failed to create credential.';
       setStatus({ state: 'error', error: message });
@@ -40,11 +51,11 @@ export function useExistingCredentialNames() {
   const [names, setNames] = useState<string[]>([]);
 
   useEffect(() => {
-    void getAllCredentialNames().then(setNames);
+    void credentialPrimitive.getAllNames().then(setNames);
   }, []);
 
   const refresh = useCallback(async () => {
-    const result = await getAllCredentialNames();
+    const result = await credentialPrimitive.getAllNames();
     setNames(result);
   }, []);
 
@@ -55,11 +66,11 @@ export function useExistingCredentials() {
   const [credentials, setCredentials] = useState<Credential[]>([]);
 
   useEffect(() => {
-    void getAllCredentials().then(setCredentials);
+    void credentialPrimitive.getAllCredentials().then(setCredentials);
   }, []);
 
   const refresh = useCallback(async () => {
-    const result = await getAllCredentials();
+    const result = await credentialPrimitive.getAllCredentials();
     setCredentials(result);
   }, []);
 

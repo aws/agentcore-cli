@@ -1,4 +1,4 @@
-import { computeDefaultCredentialEnvVarName } from '../create-identity';
+import { computeDefaultCredentialEnvVarName } from '../../../primitives/credential-utils';
 import { describe, expect, it } from 'vitest';
 
 describe('computeDefaultCredentialEnvVarName', () => {

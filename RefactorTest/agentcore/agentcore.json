@@ -1,0 +1,69 @@
+{
+  "name": "RefactorTest",
+  "version": 1,
+  "agents": [
+    {
+      "type": "AgentCoreRuntime",
+      "name": "RefactorTestAgent",
+      "build": "CodeZip",
+      "entrypoint": "main.py",
+      "codeLocation": "app/RefactorTestAgent/",
+      "runtimeVersion": "PYTHON_3_12",
+      "networkMode": "PUBLIC",
+      "modelProvider": "Bedrock"
+    },
+    {
+      "type": "AgentCoreRuntime",
+      "name": "MyAgent",
+      "build": "Container",
+      "entrypoint": "main.py",
+      "codeLocation": "app/MyAgent/",
+      "runtimeVersion": "PYTHON_3_12",
+      "networkMode": "PUBLIC",
+      "modelProvider": "Anthropic"
+    },
+    {
+      "type": "AgentCoreRuntime",
+      "name": "TestingAgent",
+      "build": "CodeZip",
+      "entrypoint": "main.py",
+      "codeLocation": "app/TestingAgent/",
+      "runtimeVersion": "PYTHON_3_12",
+      "networkMode": "PUBLIC",
+      "modelProvider": "Bedrock"
+    }
+  ],
+  "memories": [
+    {
+      "type": "AgentCoreMemory",
+      "name": "MyMemory",
+      "eventExpiryDuration": 7,
+      "strategies": [
+        {
+          "type": "SEMANTIC",
+          "namespaces": [
+            "/users/{actorId}/facts"
+          ]
+        },
+        {
+          "type": "SUMMARIZATION",
+          "namespaces": [
+            "/summaries/{actorId}/{sessionId}"
+          ]
+        },
+        {
+          "type": "USER_PREFERENCE",
+          "namespaces": [
+            "/users/{actorId}/preferences"
+          ]
+        }
+      ]
+    }
+  ],
+  "credentials": [
+    {
+      "type": "ApiKeyCredentialProvider",
+      "name": "MyApiKey"
+    }
+  ]
+}

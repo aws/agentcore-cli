@@ -1,5 +1,5 @@
+import type { CredentialStrategy } from '../../../../primitives/CredentialPrimitive.js';
 import type { GenerateConfig } from '../../../../tui/screens/generate/types.js';
-import type { CredentialStrategy } from '../../../identity/create-identity.js';
 import { randomUUID } from 'node:crypto';
 import { mkdir, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';

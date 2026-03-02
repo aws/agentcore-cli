@@ -10,9 +10,10 @@ src/
 ├── schema/            # Schema definitions with Zod validators
 ├── lib/               # Shared utilities (ConfigIO, packaging)
 ├── cli/               # CLI implementation
-│   ├── commands/      # CLI commands
+│   ├── primitives/    # Resource primitives (add/remove logic per resource type)
+│   ├── commands/      # CLI commands (thin Commander registration)
 │   ├── tui/           # Terminal UI (Ink/React)
-│   ├── operations/    # Business logic
+│   ├── operations/    # Shared business logic (schema mapping, deploy, etc.)
 │   ├── cdk/           # CDK toolkit wrapper for programmatic CDK operations
 │   └── templates/     # Project templating
 └── assets/            # Template assets vended to users
@@ -49,6 +50,25 @@ Note: CDK L3 constructs are in a separate package `@aws/agentcore-cdk`.
 ### Coming Soon
 
 - MCP gateway and tool support (`add gateway`, `add mcp-tool`) - currently hidden
+
+## Primitives Architecture
+
+All resource types (agent, memory, identity, gateway, mcp-tool) are modeled as **primitives** — self-contained classes
+in `src/cli/primitives/` that own the full add/remove lifecycle for their resource type.
+
+Each primitive extends `BasePrimitive` and implements: `add()`, `remove()`, `previewRemove()`, `getRemovable()`,
+`registerCommands()`, and `addScreen()`.
+
+Current primitives:
+
+- `AgentPrimitive` — agent creation (template + BYO), removal, credential resolution
+- `MemoryPrimitive` — memory creation with strategies, removal
+- `CredentialPrimitive` — credential/identity creation, .env management, removal
+- `GatewayPrimitive` — MCP gateway creation/removal (hidden, coming soon)
+- `GatewayTargetPrimitive` — MCP tool creation/removal with code generation (hidden, coming soon)
+
+Singletons are created in `registry.ts` and wired into CLI commands via `cli.ts`. See `src/cli/AGENTS.md` for details on
+adding new primitives.
 
 ## Vended CDK Project
 
@@ -88,3 +108,16 @@ See `docs/TESTING.md` for details.
 ## Related Package
 
 - `@aws/agentcore-cdk` - CDK constructs used by vended projects
+
+## Code Style
+
+- Never use inline imports. Imports must always go at the top of the file.
+- Wheverever there is a requirement to use something that returns a success result and an error message you must use
+  this format
+
+```javascript
+{ success: Boolean, error?:string}
+```
+
+- Always look for existing types before creating a new type inline.
+- Re-usable constants must be defined in a constants file in the closest sensible subdirectory.

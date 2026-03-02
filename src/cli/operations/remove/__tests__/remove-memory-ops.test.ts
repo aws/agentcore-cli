@@ -1,5 +1,11 @@
-import { getRemovableMemories, previewRemoveMemory, removeMemory } from '../remove-memory.js';
+import { MemoryPrimitive } from '../../../primitives/MemoryPrimitive.js';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+
+// Mock registry to break circular dependency: MemoryPrimitive → AddFlow → hooks → registry → primitives
+vi.mock('../../../primitives/registry', () => ({
+  credentialPrimitive: {},
+  ALL_PRIMITIVES: [],
+}));
 
 const mockReadProjectSpec = vi.fn();
 const mockWriteProjectSpec = vi.fn();
@@ -19,13 +25,15 @@ const makeProject = (memoryNames: string[]) => ({
   credentials: [],
 });
 
-describe('getRemovableMemories', () => {
+const primitive = new MemoryPrimitive();
+
+describe('getRemovable', () => {
   afterEach(() => vi.clearAllMocks());
 
-  it('returns memory names from project', async () => {
+  it('returns memory resources from project', async () => {
     mockReadProjectSpec.mockResolvedValue(makeProject(['Mem1', 'Mem2']));
 
-    const result = await getRemovableMemories();
+    const result = await primitive.getRemovable();
 
     expect(result).toEqual([{ name: 'Mem1' }, { name: 'Mem2' }]);
   });
@@ -33,17 +41,17 @@ describe('getRemovableMemories', () => {
   it('returns empty array on error', async () => {
     mockReadProjectSpec.mockRejectedValue(new Error('fail'));
 
-    expect(await getRemovableMemories()).toEqual([]);
+    expect(await primitive.getRemovable()).toEqual([]);
   });
 });
 
-describe('previewRemoveMemory', () => {
+describe('previewRemove', () => {
   afterEach(() => vi.clearAllMocks());
 
   it('returns preview for existing memory', async () => {
     mockReadProjectSpec.mockResolvedValue(makeProject(['Mem1']));
 
-    const preview = await previewRemoveMemory('Mem1');
+    const preview = await primitive.previewRemove('Mem1');
 
     expect(preview.summary).toContain('Removing memory: Mem1');
     expect(preview.schemaChanges).toHaveLength(1);
@@ -52,11 +60,11 @@ describe('previewRemoveMemory', () => {
   it('throws when memory not found', async () => {
     mockReadProjectSpec.mockResolvedValue(makeProject(['Mem1']));
 
-    await expect(previewRemoveMemory('Missing')).rejects.toThrow('Memory "Missing" not found');
+    await expect(primitive.previewRemove('Missing')).rejects.toThrow('Memory "Missing" not found');
   });
 });
 
-describe('removeMemory', () => {
+describe('remove', () => {
   afterEach(() => vi.clearAllMocks());
 
   it('removes memory and writes spec', async () => {
@@ -64,25 +72,25 @@ describe('removeMemory', () => {
     mockReadProjectSpec.mockResolvedValue(project);
     mockWriteProjectSpec.mockResolvedValue(undefined);
 
-    const result = await removeMemory('Mem1');
+    const result = await primitive.remove('Mem1');
 
-    expect(result).toEqual({ ok: true });
+    expect(result).toEqual({ success: true });
     expect(mockWriteProjectSpec).toHaveBeenCalled();
   });
 
   it('returns error when memory not found', async () => {
     mockReadProjectSpec.mockResolvedValue(makeProject([]));
 
-    const result = await removeMemory('Missing');
+    const result = await primitive.remove('Missing');
 
-    expect(result).toEqual({ ok: false, error: 'Memory "Missing" not found.' });
+    expect(result).toEqual({ success: false, error: 'Memory "Missing" not found.' });
   });
 
   it('returns error on exception', async () => {
     mockReadProjectSpec.mockRejectedValue(new Error('read fail'));
 
-    const result = await removeMemory('Mem1');
+    const result = await primitive.remove('Mem1');
 
-    expect(result).toEqual({ ok: false, error: 'read fail' });
+    expect(result).toEqual({ success: false, error: 'read fail' });
   });
 });

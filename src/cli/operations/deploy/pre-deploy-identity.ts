@@ -3,13 +3,16 @@ import type { AgentCoreProjectSpec, Credential } from '../../../schema';
 import { getCredentialProvider } from '../../aws';
 import { isNoCredentialsError } from '../../errors';
 import { getAwsLoginGuidance } from '../../external-requirements/checks';
-import { apiKeyProviderExists, createApiKeyProvider, setTokenVaultKmsKey, updateApiKeyProvider } from '../identity';
-import { computeDefaultCredentialEnvVarName } from '../identity/create-identity';
+import { computeDefaultCredentialEnvVarName } from '../../primitives/credential-utils';
 import {
+  apiKeyProviderExists,
+  createApiKeyProvider,
   createOAuth2Provider,
   oAuth2ProviderExists,
+  setTokenVaultKmsKey,
+  updateApiKeyProvider,
   updateOAuth2Provider,
-} from '../identity/oauth2-credential-provider';
+} from '../identity';
 import { BedrockAgentCoreControlClient, GetTokenVaultCommand } from '@aws-sdk/client-bedrock-agentcore-control';
 import { CreateKeyCommand, KMSClient } from '@aws-sdk/client-kms';
 

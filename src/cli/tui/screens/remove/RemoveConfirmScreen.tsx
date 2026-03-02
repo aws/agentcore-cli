@@ -1,4 +1,4 @@
-import type { RemovalPreview, SchemaChange } from '../../../operations/remove';
+import type { RemovalPreview, SchemaChange } from '../../../operations/remove/types';
 import { Screen } from '../../components';
 import { HELP_TEXT } from '../../constants';
 import { Box, Text, useInput, useStdout } from 'ink';

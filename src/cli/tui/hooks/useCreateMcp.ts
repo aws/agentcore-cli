@@ -1,14 +1,16 @@
-import type { CreateGatewayResult, CreateToolResult } from '../../operations/mcp/create-mcp';
-import {
-  createGatewayFromWizard,
-  createToolFromWizard,
-  getAvailableAgents,
-  getExistingGateways,
-  getExistingToolNames,
-  getUnassignedTargets,
-} from '../../operations/mcp/create-mcp';
+import { agentPrimitive, gatewayPrimitive, gatewayTargetPrimitive } from '../../primitives/registry';
 import type { AddGatewayConfig, AddGatewayTargetConfig } from '../screens/mcp/types';
 import { useCallback, useEffect, useState } from 'react';
+
+interface CreateGatewayResult {
+  name: string;
+}
+
+interface CreateToolResult {
+  mcpDefsPath: string;
+  toolName: string;
+  projectPath: string;
+}
 
 interface CreateStatus<T> {
   state: 'idle' | 'loading' | 'success' | 'error';
@@ -22,7 +24,19 @@ export function useCreateGateway() {
   const createGateway = useCallback(async (config: AddGatewayConfig) => {
     setStatus({ state: 'loading' });
     try {
-      const result = await createGatewayFromWizard(config);
+      const addResult = await gatewayPrimitive.add({
+        name: config.name,
+        description: config.description,
+        authorizerType: config.authorizerType,
+        agents: config.agents?.join(','),
+        discoveryUrl: config.jwtConfig?.discoveryUrl,
+        allowedAudience: config.jwtConfig?.allowedAudience?.join(','),
+        allowedClients: config.jwtConfig?.allowedClients?.join(','),
+      });
+      if (!addResult.success) {
+        throw new Error(addResult.error ?? 'Failed to create gateway');
+      }
+      const result: CreateGatewayResult = { name: config.name };
       setStatus({ state: 'success', result });
       return { ok: true as const, result };
     } catch (err) {
@@ -45,7 +59,23 @@ export function useCreateGatewayTarget() {
   const createTool = useCallback(async (config: AddGatewayTargetConfig) => {
     setStatus({ state: 'loading' });
     try {
-      const result = await createToolFromWizard(config);
+      const addResult = await gatewayTargetPrimitive.add({
+        name: config.name,
+        description: config.description,
+        language: config.language,
+        exposure: config.exposure,
+        agents: config.selectedAgents?.join(','),
+        gateway: config.gateway,
+        host: config.host,
+      });
+      if (!addResult.success) {
+        throw new Error(addResult.error ?? 'Failed to create MCP tool');
+      }
+      const result: CreateToolResult = {
+        mcpDefsPath: '',
+        toolName: addResult.toolName,
+        projectPath: addResult.sourcePath,
+      };
       setStatus({ state: 'success', result });
       return { ok: true as const, result };
     } catch (err) {
@@ -67,14 +97,14 @@ export function useExistingGateways() {
 
   useEffect(() => {
     async function load() {
-      const result = await getExistingGateways();
+      const result = await gatewayPrimitive.getExistingGateways();
       setGateways(result);
     }
     void load();
   }, []);
 
   const refresh = useCallback(async () => {
-    const result = await getExistingGateways();
+    const result = await gatewayPrimitive.getExistingGateways();
     setGateways(result);
   }, []);
 
@@ -86,15 +116,23 @@ export function useAvailableAgents() {
 
   useEffect(() => {
     async function load() {
-      const result = await getAvailableAgents();
-      setAgents(result);
+      try {
+        const removable = await agentPrimitive.getRemovable();
+        setAgents(removable.map(a => a.name));
+      } catch {
+        setAgents([]);
+      }
     }
     void load();
   }, []);
 
   const refresh = useCallback(async () => {
-    const result = await getAvailableAgents();
-    setAgents(result);
+    try {
+      const removable = await agentPrimitive.getRemovable();
+      setAgents(removable.map(a => a.name));
+    } catch {
+      setAgents([]);
+    }
   }, []);
 
   return { agents: agents ?? [], isLoading: agents === null, refresh };
@@ -105,14 +143,14 @@ export function useExistingToolNames() {
 
   useEffect(() => {
     async function load() {
-      const result = await getExistingToolNames();
+      const result = await gatewayTargetPrimitive.getExistingToolNames();
       setToolNames(result);
     }
     void load();
   }, []);
 
   const refresh = useCallback(async () => {
-    const result = await getExistingToolNames();
+    const result = await gatewayTargetPrimitive.getExistingToolNames();
     setToolNames(result);
   }, []);
 
@@ -124,7 +162,7 @@ export function useUnassignedTargets() {
 
   useEffect(() => {
     async function load() {
-      const result = await getUnassignedTargets();
+      const result = await gatewayPrimitive.getUnassignedTargets();
       setTargets(result.map(t => t.name));
     }
     void load();

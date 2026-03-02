@@ -1,5 +1,11 @@
-import { createMemory, getAllMemoryNames } from '../create-memory.js';
+import { MemoryPrimitive } from '../../../primitives/MemoryPrimitive.js';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+
+// Mock registry to break circular dependency: MemoryPrimitive → AddFlow → hooks → registry → primitives
+vi.mock('../../../primitives/registry', () => ({
+  credentialPrimitive: {},
+  ALL_PRIMITIVES: [],
+}));
 
 const mockReadProjectSpec = vi.fn();
 const mockWriteProjectSpec = vi.fn();
@@ -24,42 +30,49 @@ const makeProject = (memoryNames: string[]) => ({
   credentials: [],
 });
 
-describe('getAllMemoryNames', () => {
+const primitive = new MemoryPrimitive();
+
+describe('getAllNames', () => {
   afterEach(() => vi.clearAllMocks());
 
   it('returns memory names', async () => {
     mockReadProjectSpec.mockResolvedValue(makeProject(['Mem1', 'Mem2']));
 
-    expect(await getAllMemoryNames()).toEqual(['Mem1', 'Mem2']);
+    expect(await primitive.getAllNames()).toEqual(['Mem1', 'Mem2']);
   });
 
   it('returns empty array on error', async () => {
     mockReadProjectSpec.mockRejectedValue(new Error('fail'));
 
-    expect(await getAllMemoryNames()).toEqual([]);
+    expect(await primitive.getAllNames()).toEqual([]);
   });
 });
 
-describe('createMemory', () => {
+describe('add', () => {
   afterEach(() => vi.clearAllMocks());
 
-  it('creates memory with strategies and default namespaces', async () => {
+  it('creates memory with strategies and writes spec', async () => {
     const project = makeProject([]);
     mockReadProjectSpec.mockResolvedValue(project);
     mockWriteProjectSpec.mockResolvedValue(undefined);
 
-    const result = await createMemory({
+    const result = await primitive.add({
       name: 'NewMem',
-      eventExpiryDuration: 60,
-      strategies: [{ type: 'SEMANTIC' }],
+      strategies: 'SEMANTIC',
+      expiry: 60,
     });
 
-    expect(result.name).toBe('NewMem');
-    expect(result.type).toBe('AgentCoreMemory');
-    expect(result.eventExpiryDuration).toBe(60);
-    expect(result.strategies[0]!.type).toBe('SEMANTIC');
-    expect(result.strategies[0]!.namespaces).toEqual(['/users/{actorId}/facts']);
+    expect(result).toEqual(expect.objectContaining({ success: true, memoryName: 'NewMem' }));
     expect(mockWriteProjectSpec).toHaveBeenCalled();
+
+    // Verify the written spec contains the correct memory
+    const writtenSpec = mockWriteProjectSpec.mock.calls[0]![0];
+    const addedMemory = writtenSpec.memories.find((m: { name: string }) => m.name === 'NewMem');
+    expect(addedMemory).toBeDefined();
+    expect(addedMemory.type).toBe('AgentCoreMemory');
+    expect(addedMemory.eventExpiryDuration).toBe(60);
+    expect(addedMemory.strategies[0]!.type).toBe('SEMANTIC');
+    expect(addedMemory.strategies[0]!.namespaces).toEqual(['/users/{actorId}/facts']);
   });
 
   it('creates memory with strategy without default namespaces', async () => {
@@ -67,20 +80,24 @@ describe('createMemory', () => {
     mockReadProjectSpec.mockResolvedValue(project);
     mockWriteProjectSpec.mockResolvedValue(undefined);
 
-    const result = await createMemory({
+    await primitive.add({
       name: 'NewMem',
-      eventExpiryDuration: 30,
-      strategies: [{ type: 'CUSTOM' }],
+      strategies: 'CUSTOM',
+      expiry: 30,
     });
 
-    expect(result.strategies[0]!.namespaces).toBeUndefined();
+    const writtenSpec = mockWriteProjectSpec.mock.calls[0]![0];
+    const addedMemory = writtenSpec.memories.find((m: { name: string }) => m.name === 'NewMem');
+    expect(addedMemory.strategies[0]!.namespaces).toBeUndefined();
   });
 
-  it('throws on duplicate memory name', async () => {
+  it('returns error on duplicate memory name', async () => {
     mockReadProjectSpec.mockResolvedValue(makeProject(['Existing']));
 
-    await expect(createMemory({ name: 'Existing', eventExpiryDuration: 30, strategies: [] })).rejects.toThrow(
-      'Memory "Existing" already exists'
+    const result = await primitive.add({ name: 'Existing', strategies: '', expiry: 30 });
+
+    expect(result).toEqual(
+      expect.objectContaining({ success: false, error: expect.stringContaining('Memory "Existing" already exists') })
     );
   });
 });

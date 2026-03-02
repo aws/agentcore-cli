@@ -1,4 +1,4 @@
-import type { RemovableMemory } from '../../../operations/remove';
+import type { RemovableMemory } from '../../../primitives/MemoryPrimitive';
 import { SelectScreen } from '../../components';
 import React from 'react';
 

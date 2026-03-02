@@ -1,5 +1,11 @@
-import { getRemovableAgents, previewRemoveAgent, removeAgent } from '../remove-agent.js';
+import { AgentPrimitive } from '../../../primitives/AgentPrimitive.js';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+
+// Mock registry to break circular dependency: AgentPrimitive → AddFlow → hooks → registry → AgentPrimitive
+vi.mock('../../../primitives/registry', () => ({
+  credentialPrimitive: {},
+  ALL_PRIMITIVES: [],
+}));
 
 const mockReadProjectSpec = vi.fn();
 const mockWriteProjectSpec = vi.fn();
@@ -19,31 +25,33 @@ const makeProject = (agentNames: string[]) => ({
   credentials: [],
 });
 
-describe('getRemovableAgents', () => {
+const primitive = new AgentPrimitive();
+
+describe('getRemovable', () => {
   afterEach(() => vi.clearAllMocks());
 
-  it('returns agent names from project', async () => {
+  it('returns agent resources from project', async () => {
     mockReadProjectSpec.mockResolvedValue(makeProject(['Agent1', 'Agent2']));
 
-    const result = await getRemovableAgents();
+    const result = await primitive.getRemovable();
 
-    expect(result).toEqual(['Agent1', 'Agent2']);
+    expect(result).toEqual([{ name: 'Agent1' }, { name: 'Agent2' }]);
   });
 
   it('returns empty array on error', async () => {
     mockReadProjectSpec.mockRejectedValue(new Error('fail'));
 
-    expect(await getRemovableAgents()).toEqual([]);
+    expect(await primitive.getRemovable()).toEqual([]);
   });
 });
 
-describe('previewRemoveAgent', () => {
+describe('previewRemove', () => {
   afterEach(() => vi.clearAllMocks());
 
   it('returns preview for existing agent', async () => {
     mockReadProjectSpec.mockResolvedValue(makeProject(['Agent1', 'Agent2']));
 
-    const preview = await previewRemoveAgent('Agent1');
+    const preview = await primitive.previewRemove('Agent1');
 
     expect(preview.summary).toContain('Removing agent: Agent1');
     expect(preview.schemaChanges).toHaveLength(1);
@@ -53,11 +61,11 @@ describe('previewRemoveAgent', () => {
   it('throws when agent not found', async () => {
     mockReadProjectSpec.mockResolvedValue(makeProject(['Agent1']));
 
-    await expect(previewRemoveAgent('NonExistent')).rejects.toThrow('Agent "NonExistent" not found');
+    await expect(primitive.previewRemove('NonExistent')).rejects.toThrow('Agent "NonExistent" not found');
   });
 });
 
-describe('removeAgent', () => {
+describe('remove', () => {
   afterEach(() => vi.clearAllMocks());
 
   it('removes agent and writes spec', async () => {
@@ -65,9 +73,9 @@ describe('removeAgent', () => {
     mockReadProjectSpec.mockResolvedValue(project);
     mockWriteProjectSpec.mockResolvedValue(undefined);
 
-    const result = await removeAgent('Agent1');
+    const result = await primitive.remove('Agent1');
 
-    expect(result).toEqual({ ok: true });
+    expect(result).toEqual({ success: true });
     expect(mockWriteProjectSpec).toHaveBeenCalled();
     expect(project.agents).toHaveLength(1);
     expect(project.agents[0]!.name).toBe('Agent2');
@@ -76,16 +84,16 @@ describe('removeAgent', () => {
   it('returns error when agent not found', async () => {
     mockReadProjectSpec.mockResolvedValue(makeProject(['Agent1']));
 
-    const result = await removeAgent('Missing');
+    const result = await primitive.remove('Missing');
 
-    expect(result).toEqual({ ok: false, error: 'Agent "Missing" not found.' });
+    expect(result).toEqual({ success: false, error: 'Agent "Missing" not found.' });
   });
 
   it('returns error on exception', async () => {
     mockReadProjectSpec.mockRejectedValue(new Error('read fail'));
 
-    const result = await removeAgent('Agent1');
+    const result = await primitive.remove('Agent1');
 
-    expect(result).toEqual({ ok: false, error: 'read fail' });
+    expect(result).toEqual({ success: false, error: 'read fail' });
   });
 });

@@ -1,4 +1,4 @@
-import { getRemovableGateways, previewRemoveGateway, removeGateway } from '../remove-gateway.js';
+import { GatewayPrimitive } from '../../../primitives/GatewayPrimitive.js';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 const mockReadMcpSpec = vi.fn();
@@ -24,39 +24,41 @@ const makeMcpSpec = (gatewayNames: string[], targetsPerGateway = 0) => ({
   })),
 });
 
-describe('getRemovableGateways', () => {
+const primitive = new GatewayPrimitive();
+
+describe('getRemovable', () => {
   afterEach(() => vi.clearAllMocks());
 
-  it('returns gateway names', async () => {
+  it('returns gateway resources', async () => {
     mockConfigExists.mockReturnValue(true);
     mockReadMcpSpec.mockResolvedValue(makeMcpSpec(['gw1', 'gw2']));
 
-    const result = await getRemovableGateways();
+    const result = await primitive.getRemovable();
 
-    expect(result).toEqual(['gw1', 'gw2']);
+    expect(result).toEqual([{ name: 'gw1' }, { name: 'gw2' }]);
   });
 
   it('returns empty when no mcp config', async () => {
     mockConfigExists.mockReturnValue(false);
 
-    expect(await getRemovableGateways()).toEqual([]);
+    expect(await primitive.getRemovable()).toEqual([]);
   });
 
   it('returns empty on error', async () => {
     mockConfigExists.mockReturnValue(true);
     mockReadMcpSpec.mockRejectedValue(new Error('fail'));
 
-    expect(await getRemovableGateways()).toEqual([]);
+    expect(await primitive.getRemovable()).toEqual([]);
   });
 });
 
-describe('previewRemoveGateway', () => {
+describe('previewRemove', () => {
   afterEach(() => vi.clearAllMocks());
 
   it('returns preview for gateway without targets', async () => {
     mockReadMcpSpec.mockResolvedValue(makeMcpSpec(['myGw']));
 
-    const preview = await previewRemoveGateway('myGw');
+    const preview = await primitive.previewRemove('myGw');
 
     expect(preview.summary).toContain('Removing gateway: myGw');
     expect(preview.schemaChanges).toHaveLength(1);
@@ -65,28 +67,28 @@ describe('previewRemoveGateway', () => {
   it('notes orphaned targets when gateway has targets', async () => {
     mockReadMcpSpec.mockResolvedValue(makeMcpSpec(['myGw'], 3));
 
-    const preview = await previewRemoveGateway('myGw');
+    const preview = await primitive.previewRemove('myGw');
 
-    expect(preview.summary.some(s => s.includes('3 target(s)'))).toBe(true);
+    expect(preview.summary.some((s: string) => s.includes('3 target(s)'))).toBe(true);
   });
 
   it('throws when gateway not found', async () => {
     mockReadMcpSpec.mockResolvedValue(makeMcpSpec(['other']));
 
-    await expect(previewRemoveGateway('missing')).rejects.toThrow('Gateway "missing" not found');
+    await expect(primitive.previewRemove('missing')).rejects.toThrow('Gateway "missing" not found');
   });
 });
 
-describe('removeGateway', () => {
+describe('remove', () => {
   afterEach(() => vi.clearAllMocks());
 
   it('removes gateway and writes spec', async () => {
     mockReadMcpSpec.mockResolvedValue(makeMcpSpec(['gw1', 'gw2']));
     mockWriteMcpSpec.mockResolvedValue(undefined);
 
-    const result = await removeGateway('gw1');
+    const result = await primitive.remove('gw1');
 
-    expect(result).toEqual({ ok: true });
+    expect(result).toEqual({ success: true });
     expect(mockWriteMcpSpec).toHaveBeenCalledWith(
       expect.objectContaining({
         agentCoreGateways: [expect.objectContaining({ name: 'gw2' })],
@@ -97,16 +99,16 @@ describe('removeGateway', () => {
   it('returns error when gateway not found', async () => {
     mockReadMcpSpec.mockResolvedValue(makeMcpSpec([]));
 
-    const result = await removeGateway('missing');
+    const result = await primitive.remove('missing');
 
-    expect(result).toEqual({ ok: false, error: 'Gateway "missing" not found.' });
+    expect(result).toEqual({ success: false, error: 'Gateway "missing" not found.' });
   });
 
   it('returns error on exception', async () => {
     mockReadMcpSpec.mockRejectedValue(new Error('read fail'));
 
-    const result = await removeGateway('gw1');
+    const result = await primitive.remove('gw1');
 
-    expect(result).toEqual({ ok: false, error: 'read fail' });
+    expect(result).toEqual({ success: false, error: 'read fail' });
   });
 });

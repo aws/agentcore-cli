@@ -1,7 +1,13 @@
 import * as lib from '../../../../lib/index.js';
 import type { Credential } from '../../../../schema/index.js';
-import { resolveCredentialStrategy } from '../create-identity.js';
+import { CredentialPrimitive } from '../../../primitives/CredentialPrimitive.js';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+
+// Mock registry to break circular dependency: CredentialPrimitive → AddFlow → hooks → registry → primitives
+vi.mock('../../../primitives/registry', () => ({
+  credentialPrimitive: {},
+  ALL_PRIMITIVES: [],
+}));
 
 vi.mock('../../../../lib/index.js', async () => {
   const actual = await vi.importActual('../../../../lib/index.js');
@@ -12,6 +18,8 @@ vi.mock('../../../../lib/index.js', async () => {
 });
 
 const mockGetEnvVar = vi.mocked(lib.getEnvVar);
+
+const primitive = new CredentialPrimitive();
 
 describe('resolveCredentialStrategy', () => {
   beforeEach(() => {
@@ -24,7 +32,14 @@ describe('resolveCredentialStrategy', () => {
 
   describe('early returns', () => {
     it('returns reuse=true with empty credential for Bedrock provider', async () => {
-      const result = await resolveCredentialStrategy(projectName, agentName, 'Bedrock', 'some-key', configBaseDir, []);
+      const result = await primitive.resolveCredentialStrategy(
+        projectName,
+        agentName,
+        'Bedrock',
+        'some-key',
+        configBaseDir,
+        []
+      );
 
       expect(result).toEqual({
         reuse: true,
@@ -36,7 +51,14 @@ describe('resolveCredentialStrategy', () => {
     });
 
     it('returns reuse=true with empty credential when no API key provided', async () => {
-      const result = await resolveCredentialStrategy(projectName, agentName, 'Gemini', undefined, configBaseDir, []);
+      const result = await primitive.resolveCredentialStrategy(
+        projectName,
+        agentName,
+        'Gemini',
+        undefined,
+        configBaseDir,
+        []
+      );
 
       expect(result).toEqual({
         reuse: true,
@@ -48,7 +70,7 @@ describe('resolveCredentialStrategy', () => {
     });
 
     it('returns reuse=true with empty credential when API key is empty string', async () => {
-      const result = await resolveCredentialStrategy(projectName, agentName, 'Gemini', '', configBaseDir, []);
+      const result = await primitive.resolveCredentialStrategy(projectName, agentName, 'Gemini', '', configBaseDir, []);
 
       expect(result).toEqual({
         reuse: true,
@@ -61,7 +83,14 @@ describe('resolveCredentialStrategy', () => {
 
   describe('first agent (no existing credential)', () => {
     it('creates project-scoped credential when no existing credentials', async () => {
-      const result = await resolveCredentialStrategy(projectName, agentName, 'Gemini', 'my-api-key', configBaseDir, []);
+      const result = await primitive.resolveCredentialStrategy(
+        projectName,
+        agentName,
+        'Gemini',
+        'my-api-key',
+        configBaseDir,
+        []
+      );
 
       expect(result).toEqual({
         reuse: false,
@@ -73,14 +102,21 @@ describe('resolveCredentialStrategy', () => {
     });
 
     it('creates project-scoped credential for OpenAI', async () => {
-      const result = await resolveCredentialStrategy(projectName, agentName, 'OpenAI', 'my-api-key', configBaseDir, []);
+      const result = await primitive.resolveCredentialStrategy(
+        projectName,
+        agentName,
+        'OpenAI',
+        'my-api-key',
+        configBaseDir,
+        []
+      );
 
       expect(result.credentialName).toBe('MyProjectOpenAI');
       expect(result.envVarName).toBe('AGENTCORE_CREDENTIAL_MYPROJECTOPENAI');
     });
 
     it('creates project-scoped credential for Anthropic', async () => {
-      const result = await resolveCredentialStrategy(
+      const result = await primitive.resolveCredentialStrategy(
         projectName,
         agentName,
         'Anthropic',
@@ -100,7 +136,7 @@ describe('resolveCredentialStrategy', () => {
     it('reuses credential when API keys match', async () => {
       mockGetEnvVar.mockResolvedValue('same-key');
 
-      const result = await resolveCredentialStrategy(
+      const result = await primitive.resolveCredentialStrategy(
         projectName,
         agentName,
         'Gemini',
@@ -121,7 +157,7 @@ describe('resolveCredentialStrategy', () => {
     it('creates agent-scoped credential when API keys differ', async () => {
       mockGetEnvVar.mockResolvedValue('existing-key');
 
-      const result = await resolveCredentialStrategy(
+      const result = await primitive.resolveCredentialStrategy(
         projectName,
         'Agent2',
         'Gemini',
@@ -141,7 +177,7 @@ describe('resolveCredentialStrategy', () => {
     it('creates agent-scoped credential when no existing keys can be read', async () => {
       mockGetEnvVar.mockResolvedValue(undefined);
 
-      const result = await resolveCredentialStrategy(
+      const result = await primitive.resolveCredentialStrategy(
         projectName,
         agentName,
         'Gemini',
@@ -175,7 +211,7 @@ describe('resolveCredentialStrategy', () => {
         return Promise.resolve(undefined);
       });
 
-      const result = await resolveCredentialStrategy(
+      const result = await primitive.resolveCredentialStrategy(
         projectName,
         'Agent3',
         'Gemini',
@@ -204,7 +240,7 @@ describe('resolveCredentialStrategy', () => {
         return Promise.resolve(undefined);
       });
 
-      const result = await resolveCredentialStrategy(
+      const result = await primitive.resolveCredentialStrategy(
         projectName,
         'Agent3',
         'Gemini',
@@ -233,7 +269,7 @@ describe('resolveCredentialStrategy', () => {
         return Promise.resolve(undefined);
       });
 
-      const result = await resolveCredentialStrategy(
+      const result = await primitive.resolveCredentialStrategy(
         projectName,
         'Agent3',
         'Gemini',
@@ -255,16 +291,28 @@ describe('resolveCredentialStrategy', () => {
     it('concatenates project name, agent name, and provider correctly', async () => {
       mockGetEnvVar.mockResolvedValue('old-key');
 
-      const result = await resolveCredentialStrategy('TestProject', 'MyAgent', 'OpenAI', 'new-key', configBaseDir, [
-        { name: 'TestProjectOpenAI', type: 'ApiKeyCredentialProvider' },
-      ]);
+      const result = await primitive.resolveCredentialStrategy(
+        'TestProject',
+        'MyAgent',
+        'OpenAI',
+        'new-key',
+        configBaseDir,
+        [{ name: 'TestProjectOpenAI', type: 'ApiKeyCredentialProvider' }]
+      );
 
       expect(result.credentialName).toBe('TestProjectMyAgentOpenAI');
       expect(result.isAgentScoped).toBe(true);
     });
 
     it('handles project names with numbers', async () => {
-      const result = await resolveCredentialStrategy('Project123', 'Agent1', 'Gemini', 'key', configBaseDir, []);
+      const result = await primitive.resolveCredentialStrategy(
+        'Project123',
+        'Agent1',
+        'Gemini',
+        'key',
+        configBaseDir,
+        []
+      );
 
       expect(result.credentialName).toBe('Project123Gemini');
     });
@@ -272,7 +320,14 @@ describe('resolveCredentialStrategy', () => {
 
   describe('env var name format', () => {
     it('uppercases credential name in env var', async () => {
-      const result = await resolveCredentialStrategy('myproject', 'agent', 'Gemini', 'key', configBaseDir, []);
+      const result = await primitive.resolveCredentialStrategy(
+        'myproject',
+        'agent',
+        'Gemini',
+        'key',
+        configBaseDir,
+        []
+      );
 
       expect(result.envVarName).toBe('AGENTCORE_CREDENTIAL_MYPROJECTGEMINI');
     });

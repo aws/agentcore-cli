@@ -1,131 +1,124 @@
+import type { ResourceType } from '../../commands/remove/types';
 import { RemoveLogger } from '../../logging';
-import type {
-  RemovableGatewayTarget,
-  RemovableIdentity,
-  RemovableMemory,
-  RemovalPreview,
-  RemovalResult,
-} from '../../operations/remove';
+import type { RemovableGatewayTarget, RemovalPreview, RemovalResult } from '../../operations/remove';
+import type { RemovableCredential } from '../../primitives/CredentialPrimitive';
+import type { RemovableMemory } from '../../primitives/MemoryPrimitive';
 import {
-  getRemovableAgents,
-  getRemovableGatewayTargets,
-  getRemovableGateways,
-  getRemovableIdentities,
-  getRemovableMemories,
-  previewRemoveAgent,
-  previewRemoveGateway,
-  previewRemoveGatewayTarget,
-  previewRemoveIdentity,
-  previewRemoveMemory,
-  removeAgent,
-  removeGateway,
-  removeGatewayTarget,
-  removeIdentity,
-  removeMemory,
-} from '../../operations/remove';
-import { useCallback, useEffect, useState } from 'react';
+  agentPrimitive,
+  credentialPrimitive,
+  gatewayPrimitive,
+  gatewayTargetPrimitive,
+  memoryPrimitive,
+} from '../../primitives/registry';
+import { useCallback, useEffect, useRef, useState } from 'react';
+
+// Re-export types for consumers
+export type { RemovableMemory, RemovableCredential as RemovableIdentity, RemovableGatewayTarget };
+
+// ============================================================================
+// Generic Hooks
+// ============================================================================
+
+/**
+ * Generic hook for loading removable resources from a primitive.
+ * All useRemovable* hooks delegate to this.
+ */
+function useRemovableResources<T>(loader: () => Promise<T[]>) {
+  // Ref captures the initial loader; all callers pass stable functions referencing singletons
+  const loaderRef = useRef(loader);
+
+  const [items, setItems] = useState<T[] | null>(null);
+
+  useEffect(() => {
+    void loaderRef.current().then(setItems);
+  }, []);
+
+  const refresh = useCallback(async () => {
+    setItems(await loaderRef.current());
+  }, []);
+
+  return { items: items ?? [], isLoading: items === null, refresh };
+}
+
+/**
+ * Generic hook for removing a resource with logging.
+ * All useRemove* hooks delegate to this.
+ */
+function useRemoveResource<TIdentifier>(
+  removeFn: (id: TIdentifier) => Promise<RemovalResult>,
+  resourceType: ResourceType,
+  getResourceName: (id: TIdentifier) => string
+) {
+  // Refs capture initial values; all callers pass stable functions referencing singletons
+  const removeFnRef = useRef(removeFn);
+  const resourceTypeRef = useRef(resourceType);
+  const getNameRef = useRef(getResourceName);
+
+  const [state, setState] = useState<RemovalState>({ isLoading: false, result: null });
+  const [logFilePath, setLogFilePath] = useState<string | null>(null);
+
+  const remove = useCallback(async (id: TIdentifier, preview?: RemovalPreview): Promise<RemoveResult> => {
+    setState({ isLoading: true, result: null });
+    const result = await removeFnRef.current(id);
+    setState({ isLoading: false, result });
+
+    let logPath: string | undefined;
+    if (preview) {
+      const logger = new RemoveLogger({
+        resourceType: resourceTypeRef.current,
+        resourceName: getNameRef.current(id),
+      });
+      logger.logRemoval(preview, result.success, result.success ? undefined : result.error);
+      logPath = logger.getAbsoluteLogPath();
+      setLogFilePath(logPath);
+    }
+
+    return { ...result, logFilePath: logPath };
+  }, []);
+
+  const reset = useCallback(() => {
+    setState({ isLoading: false, result: null });
+    setLogFilePath(null);
+  }, []);
+
+  return { ...state, logFilePath, remove, reset };
+}
 
 // ============================================================================
 // Removable Resources Hooks
 // ============================================================================
 
 export function useRemovableAgents() {
-  const [agents, setAgents] = useState<string[] | null>(null);
-
-  useEffect(() => {
-    async function load() {
-      const result = await getRemovableAgents();
-      setAgents(result);
-    }
-    void load();
-  }, []);
-
-  const refresh = useCallback(async () => {
-    const result = await getRemovableAgents();
-    setAgents(result);
-  }, []);
-
-  return { agents: agents ?? [], isLoading: agents === null, refresh };
+  const { items: agents, ...rest } = useRemovableResources(() =>
+    agentPrimitive.getRemovable().then(r => r.map(a => a.name))
+  );
+  return { agents, ...rest };
 }
 
 export function useRemovableGateways() {
-  const [gateways, setGateways] = useState<string[] | null>(null);
-
-  useEffect(() => {
-    async function load() {
-      const result = await getRemovableGateways();
-      setGateways(result);
-    }
-    void load();
-  }, []);
-
-  const refresh = useCallback(async () => {
-    const result = await getRemovableGateways();
-    setGateways(result);
-  }, []);
-
-  return { gateways: gateways ?? [], isLoading: gateways === null, refresh };
+  const { items: gateways, ...rest } = useRemovableResources(() =>
+    gatewayPrimitive.getRemovable().then(r => r.map(g => g.name))
+  );
+  return { gateways, ...rest };
 }
 
 export function useRemovableGatewayTargets() {
-  const [tools, setTools] = useState<RemovableGatewayTarget[] | null>(null);
-
-  useEffect(() => {
-    async function load() {
-      const result = await getRemovableGatewayTargets();
-      setTools(result);
-    }
-    void load();
-  }, []);
-
-  const refresh = useCallback(async () => {
-    const result = await getRemovableGatewayTargets();
-    setTools(result);
-  }, []);
-
-  return { tools: tools ?? [], isLoading: tools === null, refresh };
+  const { items: tools, ...rest } = useRemovableResources(() => gatewayTargetPrimitive.getRemovable());
+  return { tools, ...rest };
 }
 
 export function useRemovableMemories() {
-  const [memories, setMemories] = useState<RemovableMemory[] | null>(null);
-
-  useEffect(() => {
-    async function load() {
-      const result = await getRemovableMemories();
-      setMemories(result);
-    }
-    void load();
-  }, []);
-
-  const refresh = useCallback(async () => {
-    const result = await getRemovableMemories();
-    setMemories(result);
-  }, []);
-
-  return { memories: memories ?? [], isLoading: memories === null, refresh };
+  const { items: memories, ...rest } = useRemovableResources(() => memoryPrimitive.getRemovable());
+  return { memories, ...rest };
 }
 
 export function useRemovableIdentities() {
-  const [identities, setIdentities] = useState<RemovableIdentity[] | null>(null);
-
-  useEffect(() => {
-    async function load() {
-      const result = await getRemovableIdentities();
-      setIdentities(result);
-    }
-    void load();
-  }, []);
-
-  const refresh = useCallback(async () => {
-    const result = await getRemovableIdentities();
-    setIdentities(result);
-  }, []);
-
-  return { identities: identities ?? [], isLoading: identities === null, refresh };
+  const { items: identities, ...rest } = useRemovableResources(() => credentialPrimitive.getRemovable());
+  return { identities, ...rest };
 }
 
 // ============================================================================
-// Preview Hooks
+// Preview Hook
 // ============================================================================
 
 interface PreviewState {
@@ -134,6 +127,8 @@ interface PreviewState {
   error: string | null;
 }
 
+type PreviewResult = { ok: true; preview: RemovalPreview } | { ok: false; error: string };
+
 export function useRemovalPreview() {
   const [state, setState] = useState<PreviewState>({
     isLoading: false,
@@ -141,70 +136,42 @@ export function useRemovalPreview() {
     error: null,
   });
 
-  const loadAgentPreview = useCallback(async (agentName: string) => {
-    setState({ isLoading: true, preview: null, error: null });
-    try {
-      const preview = await previewRemoveAgent(agentName);
-      setState({ isLoading: false, preview, error: null });
-      return { ok: true as const, preview };
-    } catch (err) {
-      const message = err instanceof Error ? err.message : 'Failed to load preview';
-      setState({ isLoading: false, preview: null, error: message });
-      return { ok: false as const, error: message };
-    }
-  }, []);
+  const loadPreview = useCallback(
+    async <T>(previewFn: (id: T) => Promise<RemovalPreview>, id: T): Promise<PreviewResult> => {
+      setState({ isLoading: true, preview: null, error: null });
+      try {
+        const preview = await previewFn(id);
+        setState({ isLoading: false, preview, error: null });
+        return { ok: true, preview };
+      } catch (err) {
+        const message = err instanceof Error ? err.message : 'Failed to load preview';
+        setState({ isLoading: false, preview: null, error: message });
+        return { ok: false, error: message };
+      }
+    },
+    []
+  );
 
-  const loadGatewayPreview = useCallback(async (gatewayName: string) => {
-    setState({ isLoading: true, preview: null, error: null });
-    try {
-      const preview = await previewRemoveGateway(gatewayName);
-      setState({ isLoading: false, preview, error: null });
-      return { ok: true as const, preview };
-    } catch (err) {
-      const message = err instanceof Error ? err.message : 'Failed to load preview';
-      setState({ isLoading: false, preview: null, error: message });
-      return { ok: false as const, error: message };
-    }
-  }, []);
-
-  const loadGatewayTargetPreview = useCallback(async (tool: RemovableGatewayTarget) => {
-    setState({ isLoading: true, preview: null, error: null });
-    try {
-      const preview = await previewRemoveGatewayTarget(tool);
-      setState({ isLoading: false, preview, error: null });
-      return { ok: true as const, preview };
-    } catch (err) {
-      const message = err instanceof Error ? err.message : 'Failed to load preview';
-      setState({ isLoading: false, preview: null, error: message });
-      return { ok: false as const, error: message };
-    }
-  }, []);
-
-  const loadMemoryPreview = useCallback(async (memoryName: string) => {
-    setState({ isLoading: true, preview: null, error: null });
-    try {
-      const preview = await previewRemoveMemory(memoryName);
-      setState({ isLoading: false, preview, error: null });
-      return { ok: true as const, preview };
-    } catch (err) {
-      const message = err instanceof Error ? err.message : 'Failed to load preview';
-      setState({ isLoading: false, preview: null, error: message });
-      return { ok: false as const, error: message };
-    }
-  }, []);
-
-  const loadIdentityPreview = useCallback(async (identityName: string) => {
-    setState({ isLoading: true, preview: null, error: null });
-    try {
-      const preview = await previewRemoveIdentity(identityName);
-      setState({ isLoading: false, preview, error: null });
-      return { ok: true as const, preview };
-    } catch (err) {
-      const message = err instanceof Error ? err.message : 'Failed to load preview';
-      setState({ isLoading: false, preview: null, error: message });
-      return { ok: false as const, error: message };
-    }
-  }, []);
+  const loadAgentPreview = useCallback(
+    (name: string) => loadPreview(n => agentPrimitive.previewRemove(n), name),
+    [loadPreview]
+  );
+  const loadGatewayPreview = useCallback(
+    (name: string) => loadPreview(n => gatewayPrimitive.previewRemove(n), name),
+    [loadPreview]
+  );
+  const loadGatewayTargetPreview = useCallback(
+    (tool: RemovableGatewayTarget) => loadPreview(t => gatewayTargetPrimitive.previewRemoveGatewayTarget(t), tool),
+    [loadPreview]
+  );
+  const loadMemoryPreview = useCallback(
+    (name: string) => loadPreview(n => memoryPrimitive.previewRemove(n), name),
+    [loadPreview]
+  );
+  const loadIdentityPreview = useCallback(
+    (name: string) => loadPreview(n => credentialPrimitive.previewRemove(n), name),
+    [loadPreview]
+  );
 
   const reset = useCallback(() => {
     setState({ isLoading: false, preview: null, error: null });
@@ -233,142 +200,41 @@ interface RemovalState {
 type RemoveResult = RemovalResult & { logFilePath?: string };
 
 export function useRemoveAgent() {
-  const [state, setState] = useState<RemovalState>({ isLoading: false, result: null });
-  const [logFilePath, setLogFilePath] = useState<string | null>(null);
-
-  const remove = useCallback(async (agentName: string, preview?: RemovalPreview): Promise<RemoveResult> => {
-    setState({ isLoading: true, result: null });
-    const result = await removeAgent(agentName);
-    setState({ isLoading: false, result });
-
-    // Log the removal if preview is provided
-    let logPath: string | undefined;
-    if (preview) {
-      const logger = new RemoveLogger({ resourceType: 'agent', resourceName: agentName });
-      logger.logRemoval(preview, result.ok, result.ok ? undefined : result.error);
-      logPath = logger.getAbsoluteLogPath();
-      setLogFilePath(logPath);
-    }
-
-    return { ...result, logFilePath: logPath };
-  }, []);
-
-  const reset = useCallback(() => {
-    setState({ isLoading: false, result: null });
-    setLogFilePath(null);
-  }, []);
-
-  return { ...state, logFilePath, remove, reset };
+  return useRemoveResource(
+    (name: string) => agentPrimitive.remove(name),
+    'agent',
+    name => name
+  );
 }
 
 export function useRemoveGateway() {
-  const [state, setState] = useState<RemovalState>({ isLoading: false, result: null });
-  const [logFilePath, setLogFilePath] = useState<string | null>(null);
-
-  const remove = useCallback(async (gatewayName: string, preview?: RemovalPreview): Promise<RemoveResult> => {
-    setState({ isLoading: true, result: null });
-    const result = await removeGateway(gatewayName);
-    setState({ isLoading: false, result });
-
-    let logPath: string | undefined;
-    if (preview) {
-      const logger = new RemoveLogger({ resourceType: 'gateway', resourceName: gatewayName });
-      logger.logRemoval(preview, result.ok, result.ok ? undefined : result.error);
-      logPath = logger.getAbsoluteLogPath();
-      setLogFilePath(logPath);
-    }
-
-    return { ...result, logFilePath: logPath };
-  }, []);
-
-  const reset = useCallback(() => {
-    setState({ isLoading: false, result: null });
-    setLogFilePath(null);
-  }, []);
-
-  return { ...state, logFilePath, remove, reset };
+  return useRemoveResource(
+    (name: string) => gatewayPrimitive.remove(name),
+    'gateway',
+    name => name
+  );
 }
 
 export function useRemoveGatewayTarget() {
-  const [state, setState] = useState<RemovalState>({ isLoading: false, result: null });
-  const [logFilePath, setLogFilePath] = useState<string | null>(null);
-
-  const remove = useCallback(async (tool: RemovableGatewayTarget, preview?: RemovalPreview): Promise<RemoveResult> => {
-    setState({ isLoading: true, result: null });
-    const result = await removeGatewayTarget(tool);
-    setState({ isLoading: false, result });
-
-    let logPath: string | undefined;
-    if (preview) {
-      const logger = new RemoveLogger({ resourceType: 'gateway-target', resourceName: tool.name });
-      logger.logRemoval(preview, result.ok, result.ok ? undefined : result.error);
-      logPath = logger.getAbsoluteLogPath();
-      setLogFilePath(logPath);
-    }
-
-    return { ...result, logFilePath: logPath };
-  }, []);
-
-  const reset = useCallback(() => {
-    setState({ isLoading: false, result: null });
-    setLogFilePath(null);
-  }, []);
-
-  return { ...state, logFilePath, remove, reset };
+  return useRemoveResource(
+    (tool: RemovableGatewayTarget) => gatewayTargetPrimitive.removeGatewayTarget(tool),
+    'gateway-target',
+    tool => tool.name
+  );
 }
 
 export function useRemoveMemory() {
-  const [state, setState] = useState<RemovalState>({ isLoading: false, result: null });
-  const [logFilePath, setLogFilePath] = useState<string | null>(null);
-
-  const remove = useCallback(async (memoryName: string, preview?: RemovalPreview): Promise<RemoveResult> => {
-    setState({ isLoading: true, result: null });
-    const result = await removeMemory(memoryName);
-    setState({ isLoading: false, result });
-
-    let logPath: string | undefined;
-    if (preview) {
-      const logger = new RemoveLogger({ resourceType: 'memory', resourceName: memoryName });
-      logger.logRemoval(preview, result.ok, result.ok ? undefined : result.error);
-      logPath = logger.getAbsoluteLogPath();
-      setLogFilePath(logPath);
-    }
-
-    return { ...result, logFilePath: logPath };
-  }, []);
-
-  const reset = useCallback(() => {
-    setState({ isLoading: false, result: null });
-    setLogFilePath(null);
-  }, []);
-
-  return { ...state, logFilePath, remove, reset };
+  return useRemoveResource(
+    (name: string) => memoryPrimitive.remove(name),
+    'memory',
+    name => name
+  );
 }
 
 export function useRemoveIdentity() {
-  const [state, setState] = useState<RemovalState>({ isLoading: false, result: null });
-  const [logFilePath, setLogFilePath] = useState<string | null>(null);
-
-  const remove = useCallback(async (identityName: string, preview?: RemovalPreview): Promise<RemoveResult> => {
-    setState({ isLoading: true, result: null });
-    const result = await removeIdentity(identityName, { force: true });
-    setState({ isLoading: false, result });
-
-    let logPath: string | undefined;
-    if (preview) {
-      const logger = new RemoveLogger({ resourceType: 'identity', resourceName: identityName });
-      logger.logRemoval(preview, result.ok, result.ok ? undefined : result.error);
-      logPath = logger.getAbsoluteLogPath();
-      setLogFilePath(logPath);
-    }
-
-    return { ...result, logFilePath: logPath };
-  }, []);
-
-  const reset = useCallback(() => {
-    setState({ isLoading: false, result: null });
-    setLogFilePath(null);
-  }, []);
-
-  return { ...state, logFilePath, remove, reset };
+  return useRemoveResource(
+    (name: string) => credentialPrimitive.remove(name),
+    'identity',
+    name => name
+  );
 }

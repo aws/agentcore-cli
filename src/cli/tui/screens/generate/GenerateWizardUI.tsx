@@ -1,6 +1,6 @@
 import type { ModelProvider } from '../../../../schema';
 import { DEFAULT_MODEL_IDS, ProjectNameSchema } from '../../../../schema';
-import { computeDefaultCredentialEnvVarName } from '../../../operations/identity/create-identity';
+import { computeDefaultCredentialEnvVarName } from '../../../primitives/credential-utils';
 import { ApiKeySecretInput, Panel, SelectList, StepIndicator, TextInput } from '../../components';
 import type { SelectableItem } from '../../components';
 import { useListNavigation } from '../../hooks';

@@ -64,6 +64,107 @@ The `dev` command uses a strategy pattern with a `DevServer` base class and two 
 
 The server selection is based on `agent.build` (`CodeZip` or `Container`).
 
+## Primitives Architecture
+
+All resource types are modeled as **primitives** in `primitives/`. Each primitive is a self-contained class that owns
+the full add/remove lifecycle for one resource type. CLI commands and TUI flows consume primitives polymorphically.
+
+### Directory Structure
+
+```
+primitives/
+├── BasePrimitive.ts           # Abstract base class with shared helpers
+├── AgentPrimitive.tsx         # Agent add/remove (template + BYO paths)
+├── MemoryPrimitive.tsx        # Memory add/remove
+├── CredentialPrimitive.tsx    # Credential/identity add/remove + .env management
+├── GatewayPrimitive.ts        # MCP gateway add/remove (hidden, coming soon)
+├── GatewayTargetPrimitive.ts  # MCP tool add/remove + code gen (hidden, coming soon)
+├── registry.ts                # Singleton instances + ALL_PRIMITIVES array
+├── credential-utils.ts        # Shared credential env var name computation
+├── constants.ts               # SOURCE_CODE_NOTE and other shared constants
+├── types.ts                   # AddResult, RemovableResource, RemovalResult, etc.
+└── index.ts                   # Barrel exports
+```
+
+### BasePrimitive Contract
+
+Every primitive extends `BasePrimitive<TAddOptions, TRemovable>` and implements:
+
+- `kind` — resource identifier (`'agent'`, `'memory'`, `'identity'`, `'gateway'`, `'mcp-tool'`)
+- `label` — human-readable name (`'Agent'`, `'Memory'`, `'Identity'`)
+- `add(options)` — create a resource, returns `AddResult`
+- `remove(name)` — remove a resource, returns `RemovalResult`
+- `previewRemove(name)` — preview what removal will do
+- `getRemovable()` — list resources available for removal
+- `registerCommands(addCmd, removeCmd)` — register CLI subcommands
+
+BasePrimitive provides shared helpers:
+
+- `configIO` — shared ConfigIO instance for agentcore.json
+- `readProjectSpec()` / `writeProjectSpec()` — read/write agentcore.json
+- `checkDuplicate()` — validate name uniqueness
+- `article` — indefinite article for grammar (`'a'` or `'an'`)
+- `registerRemoveSubcommand(removeCmd)` — standard remove CLI handler (CLI mode + TUI fallback)
+
+### Adding a New Primitive
+
+1. Create `src/cli/primitives/NewPrimitive.ts` extending `BasePrimitive`
+2. Implement all abstract methods (`add`, `remove`, `previewRemove`, `getRemovable`, `registerCommands`, `addScreen`)
+3. Add a singleton to `registry.ts` and include it in `ALL_PRIMITIVES`
+4. Export from `index.ts`
+5. The primitive auto-registers its CLI subcommands via the loop in `cli.ts`
+
+### Key Design Rules
+
+- **Absorb, don't wrap.** Each primitive owns its logic directly. Do not create facade files that delegate to
+  primitives.
+- **No backward-compatibility shims.** This is a CLI, not a library. If the CLI functions the same, delete old files.
+- **Use `{ success, error? }` result format** throughout (never `{ ok, error }`). See `AddResult` and `RemovalResult`.
+- **Dynamic imports for ink/React only.** TUI components (ink, react, screen components) must be dynamically imported
+  inside Commander action handlers to prevent esbuild async module propagation issues. All other imports go at the top
+  of the file. See the esbuild section below.
+
+### esbuild Async Module Constraint
+
+ink uses top-level `await` (via yoga-wasm). Any module that imports ink at the top level becomes async in esbuild's ESM
+bundle. If the async propagation fails (e.g., through circular dependencies), esbuild generates `await` inside non-async
+functions, causing a runtime `SyntaxError`. To prevent this:
+
+- **Never import ink, react, or TUI screen components at the top of primitive files.**
+- Use `await Promise.all([import('ink'), import('react'), import('...')])` inside Commander `.action()` handlers.
+- This is the one exception to the "no inline imports" rule in the root AGENTS.md.
+- `registry.ts` imports all primitive classes — if any primitive pulls in ink at the top level, all modules that import
+  from registry become async, causing cascading failures.
+
+### Registry and Wiring
+
+`registry.ts` creates singleton instances of all primitives:
+
+```typescript
+export const agentPrimitive = new AgentPrimitive();
+export const memoryPrimitive = new MemoryPrimitive();
+// ...
+export const ALL_PRIMITIVES = [agentPrimitive, memoryPrimitive, ...];
+```
+
+`cli.ts` wires them into Commander:
+
+```typescript
+for (const primitive of ALL_PRIMITIVES) {
+  primitive.registerCommands(addCmd, removeCmd);
+}
+```
+
+### TUI Hooks
+
+TUI remove hooks in `tui/hooks/useRemove.ts` use generic helpers:
+
+- `useRemovableResources<T>(loader)` — generic hook for loading removable resources from any primitive
+- `useRemoveResource<TIdentifier>(removeFn, resourceType, getName)` — generic hook for removing any resource with
+  logging
+
+Each resource-specific hook (e.g., `useRemovableAgents`, `useRemoveMemory`) is a thin wrapper around the generic.
+
 ## Commands Directory Structure
 
 Commands live in `commands/`. Each command has its own directory with an `index.ts` barrel file and a file called

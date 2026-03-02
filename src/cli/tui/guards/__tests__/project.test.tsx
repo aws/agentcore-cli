@@ -3,6 +3,12 @@ import { render } from 'ink-testing-library';
 import React from 'react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
+// Mock registry to break circular dependency: components → hooks → useCreateMcp → registry → primitives → ConfigIO
+vi.mock('../../../primitives/registry', () => ({
+  credentialPrimitive: {},
+  ALL_PRIMITIVES: [],
+}));
+
 const { mockFindConfigRoot, mockGetWorkingDirectory } = vi.hoisted(() => ({
   mockFindConfigRoot: vi.fn(),
   mockGetWorkingDirectory: vi.fn(() => '/project'),

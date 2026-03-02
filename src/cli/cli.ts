@@ -11,6 +11,7 @@ import { registerStatus } from './commands/status';
 import { registerUpdate } from './commands/update';
 import { registerValidate } from './commands/validate';
 import { PACKAGE_VERSION } from './constants';
+import { ALL_PRIMITIVES } from './primitives';
 import { App } from './tui/App';
 import { LayoutProvider } from './tui/context';
 import { COMMAND_DESCRIPTIONS } from './tui/copy';
@@ -124,7 +125,7 @@ export function createProgram(): Command {
 }
 
 export function registerCommands(program: Command) {
-  registerAdd(program);
+  const addCmd = registerAdd(program);
   registerDev(program);
   registerDeploy(program);
   registerCreate(program);
@@ -132,10 +133,15 @@ export function registerCommands(program: Command) {
   registerInvoke(program);
   registerLogs(program);
   registerPackage(program);
-  registerRemove(program);
+  const removeCmd = registerRemove(program);
   registerStatus(program);
   registerUpdate(program);
   registerValidate(program);
+
+  // Register primitive subcommands (add agent, remove agent, add memory, etc.)
+  for (const primitive of ALL_PRIMITIVES) {
+    primitive.registerCommands(addCmd, removeCmd);
+  }
 }
 
 export const main = async (argv: string[]) => {

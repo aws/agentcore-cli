@@ -1,0 +1,401 @@
+import { APP_DIR, ConfigIO, NoProjectError, findConfigRoot, setEnvVar } from '../../lib';
+import type {
+  AgentEnvSpec,
+  BuildType,
+  DirectoryPath,
+  FilePath,
+  ModelProvider,
+  NetworkMode,
+  SDKFramework,
+  TargetLanguage,
+} from '../../schema';
+import { AgentEnvSpecSchema, CREDENTIAL_PROVIDERS } from '../../schema';
+import type { AddAgentOptions as CLIAddAgentOptions } from '../commands/add/types';
+import { validateAddAgentOptions } from '../commands/add/validate';
+import { parseCommaSeparatedList } from '../commands/shared/vpc-utils';
+import { getErrorMessage } from '../errors';
+import {
+  mapGenerateConfigToRenderConfig,
+  mapModelProviderToCredentials,
+  mapModelProviderToIdentityProviders,
+  writeAgentToProject,
+} from '../operations/agent/generate';
+import { setupPythonProject } from '../operations/python';
+import type { RemovalPreview, RemovalResult, SchemaChange } from '../operations/remove/types';
+import { createRenderer } from '../templates';
+import type { MemoryOption } from '../tui/screens/generate/types';
+import { BasePrimitive } from './BasePrimitive';
+import { CredentialPrimitive } from './CredentialPrimitive';
+import { computeDefaultCredentialEnvVarName } from './credential-utils';
+import type { AddResult, AddScreenComponent, RemovableResource } from './types';
+import type { Command } from '@commander-js/extra-typings';
+import { mkdirSync } from 'fs';
+import { dirname, join } from 'path';
+
+/**
+ * Options for adding an agent resource.
+ */
+export interface AddAgentOptions {
+  name: string;
+  type: 'create' | 'byo';
+  buildType: BuildType;
+  language: TargetLanguage;
+  framework: SDKFramework;
+  modelProvider: ModelProvider;
+  apiKey?: string;
+  memory?: MemoryOption;
+  networkMode?: NetworkMode;
+  subnets?: string;
+  securityGroups?: string;
+  codeLocation?: string;
+  entrypoint?: string;
+}
+
+/**
+ * AgentPrimitive handles all agent add/remove operations.
+ * Absorbs logic from actions.ts handleAddAgent/handleCreatePath/handleByoPath and remove-agent.ts.
+ */
+export class AgentPrimitive extends BasePrimitive<AddAgentOptions, RemovableResource> {
+  readonly kind = 'agent';
+  readonly label = 'Agent';
+  readonly primitiveSchema = AgentEnvSpecSchema;
+
+  /** Local instance to avoid circular dependency with registry. */
+  private readonly credentialPrimitive = new CredentialPrimitive();
+
+  async add(options: AddAgentOptions): Promise<AddResult<{ agentName: string; agentPath?: string }>> {
+    try {
+      const configBaseDir = findConfigRoot();
+      if (!configBaseDir) {
+        return { success: false, error: new NoProjectError().message };
+      }
+
+      const configIO = new ConfigIO({ baseDir: configBaseDir });
+
+      if (!configIO.configExists('project')) {
+        return { success: false, error: new NoProjectError().message };
+      }
+
+      const project = await configIO.readProjectSpec();
+      const existingAgent = project.agents.find(agent => agent.name === options.name);
+      if (existingAgent) {
+        return { success: false, error: `Agent "${options.name}" already exists in this project.` };
+      }
+
+      if (options.type === 'byo') {
+        return await this.handleByoPath(options, configIO, configBaseDir);
+      } else {
+        return await this.handleCreatePath(options, configBaseDir);
+      }
+    } catch (err) {
+      return { success: false, error: getErrorMessage(err) };
+    }
+  }
+
+  async remove(agentName: string): Promise<RemovalResult> {
+    try {
+      const project = await this.readProjectSpec();
+
+      const agentIndex = project.agents.findIndex(a => a.name === agentName);
+      if (agentIndex === -1) {
+        return { success: false, error: `Agent "${agentName}" not found.` };
+      }
+
+      // Remove agent (credentials preserved for potential reuse)
+      project.agents.splice(agentIndex, 1);
+      await this.writeProjectSpec(project);
+
+      return { success: true };
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Unknown error';
+      return { success: false, error: message };
+    }
+  }
+
+  async previewRemove(agentName: string): Promise<RemovalPreview> {
+    const project = await this.readProjectSpec();
+
+    const agent = project.agents.find(a => a.name === agentName);
+    if (!agent) {
+      throw new Error(`Agent "${agentName}" not found.`);
+    }
+
+    const summary: string[] = [`Removing agent: ${agentName}`];
+    const schemaChanges: SchemaChange[] = [];
+
+    const afterSpec = {
+      ...project,
+      agents: project.agents.filter(a => a.name !== agentName),
+    };
+
+    schemaChanges.push({
+      file: 'agentcore/agentcore.json',
+      before: project,
+      after: afterSpec,
+    });
+
+    return { summary, directoriesToDelete: [], schemaChanges };
+  }
+
+  async getRemovable(): Promise<RemovableResource[]> {
+    try {
+      const project = await this.readProjectSpec();
+      return project.agents.map(a => ({ name: a.name }));
+    } catch {
+      return [];
+    }
+  }
+
+  /**
+   * Find agent-scoped credentials for a given agent.
+   * Pattern: {projectName}{agentName}{provider}
+   */
+  static getAgentScopedCredentials(
+    projectName: string,
+    agentName: string,
+    credentials: { name: string }[]
+  ): { name: string }[] {
+    const prefix = `${projectName}${agentName}`;
+    return credentials.filter(c => {
+      if (!c.name.startsWith(prefix)) return false;
+      const suffix = c.name.slice(prefix.length);
+      return CREDENTIAL_PROVIDERS.includes(suffix as (typeof CREDENTIAL_PROVIDERS)[number]);
+    });
+  }
+
+  registerCommands(addCmd: Command, removeCmd: Command): void {
+    addCmd
+      .command('agent')
+      .description('Add an agent to the project')
+      .option('--name <name>', 'Agent name (start with letter, alphanumeric only, max 64 chars) [non-interactive]')
+      .option('--type <type>', 'Agent type: create or byo [non-interactive]', 'create')
+      .option('--build <type>', 'Build type: CodeZip or Container (default: CodeZip) [non-interactive]')
+      .option('--language <lang>', 'Language: Python (create), or Python/TypeScript/Other (BYO) [non-interactive]')
+      .option(
+        '--framework <fw>',
+        'Framework: Strands, LangChain_LangGraph, CrewAI, GoogleADK, OpenAIAgents [non-interactive]'
+      )
+      .option('--model-provider <provider>', 'Model provider: Bedrock, Anthropic, OpenAI, Gemini [non-interactive]')
+      .option('--api-key <key>', 'API key for non-Bedrock providers [non-interactive]')
+      .option('--memory <mem>', 'Memory: none, shortTerm, longAndShortTerm (create path only) [non-interactive]')
+      .option('--network-mode <mode>', 'Network mode: PUBLIC or VPC (default: PUBLIC) [non-interactive]')
+      .option('--subnets <ids>', 'Comma-separated subnet IDs (required for VPC mode) [non-interactive]')
+      .option('--security-groups <ids>', 'Comma-separated security group IDs (required for VPC mode) [non-interactive]')
+      .option('--code-location <path>', 'Path to existing code (BYO path only) [non-interactive]')
+      .option('--entrypoint <file>', 'Entry file relative to code-location (BYO, default: main.py) [non-interactive]')
+      .option('--json', 'Output as JSON [non-interactive]')
+      .action(async options => {
+        if (!findConfigRoot()) {
+          console.error('No agentcore project found. Run `agentcore create` first.');
+          process.exit(1);
+        }
+
+        const cliOptions = options as CLIAddAgentOptions;
+
+        // Any flag triggers non-interactive CLI mode
+        if (cliOptions.name || cliOptions.framework || cliOptions.json) {
+          const validation = validateAddAgentOptions(cliOptions);
+          if (!validation.valid) {
+            if (cliOptions.json) {
+              console.log(JSON.stringify({ success: false, error: validation.error }));
+            } else {
+              console.error(validation.error);
+            }
+            process.exit(1);
+          }
+
+          const result = await this.add({
+            name: cliOptions.name!,
+            type: cliOptions.type ?? 'create',
+            buildType: (cliOptions.build as BuildType) ?? 'CodeZip',
+            language: cliOptions.language!,
+            framework: cliOptions.framework!,
+            modelProvider: cliOptions.modelProvider!,
+            apiKey: cliOptions.apiKey,
+            memory: cliOptions.memory,
+            networkMode: cliOptions.networkMode,
+            subnets: cliOptions.subnets,
+            securityGroups: cliOptions.securityGroups,
+            codeLocation: cliOptions.codeLocation,
+            entrypoint: cliOptions.entrypoint,
+          });
+
+          if (cliOptions.json) {
+            console.log(JSON.stringify(result));
+          } else if (result.success) {
+            console.log(`Added agent '${result.agentName}'`);
+            if (result.agentPath) {
+              console.log(`Agent code: ${result.agentPath}`);
+            }
+          } else {
+            console.error(result.error);
+          }
+
+          process.exit(result.success ? 0 : 1);
+        } else {
+          // TUI fallback — dynamic imports to avoid pulling ink (async) into registry
+          const [{ render }, { default: React }, { AddFlow }] = await Promise.all([
+            import('ink'),
+            import('react'),
+            import('../tui/screens/add/AddFlow'),
+          ]);
+          const { clear, unmount } = render(
+            React.createElement(AddFlow, {
+              isInteractive: false,
+              onExit: () => {
+                clear();
+                unmount();
+                process.exit(0);
+              },
+            })
+          );
+        }
+      });
+
+    this.registerRemoveSubcommand(removeCmd);
+  }
+
+  addScreen(): AddScreenComponent {
+    return null;
+  }
+
+  /**
+   * Handle "create" path: generate agent from template.
+   */
+  private async handleCreatePath(
+    options: AddAgentOptions,
+    configBaseDir: string
+  ): Promise<AddResult<{ agentName: string; agentPath?: string }>> {
+    const projectRoot = dirname(configBaseDir);
+    const configIO = new ConfigIO({ baseDir: configBaseDir });
+    const project = await configIO.readProjectSpec();
+
+    const generateConfig = {
+      projectName: options.name,
+      buildType: options.buildType,
+      sdk: options.framework,
+      modelProvider: options.modelProvider,
+      memory: options.memory!,
+      language: options.language,
+      networkMode: options.networkMode,
+      subnets: parseCommaSeparatedList(options.subnets),
+      securityGroups: parseCommaSeparatedList(options.securityGroups),
+    };
+
+    const agentPath = join(projectRoot, APP_DIR, options.name);
+
+    // Resolve credential strategy FIRST to determine correct credential name
+    let identityProviders: ReturnType<typeof mapModelProviderToIdentityProviders> = [];
+    let strategy: Awaited<ReturnType<CredentialPrimitive['resolveCredentialStrategy']>> | undefined;
+
+    if (options.modelProvider !== 'Bedrock') {
+      strategy = await this.credentialPrimitive.resolveCredentialStrategy(
+        project.name,
+        options.name,
+        options.modelProvider,
+        options.apiKey,
+        configBaseDir,
+        project.credentials
+      );
+
+      // Build identity providers with the correct credential name from strategy
+      identityProviders = [
+        {
+          name: strategy.credentialName,
+          envVarName: strategy.envVarName,
+        },
+      ];
+    }
+
+    // Render templates with correct identity provider
+    const renderConfig = mapGenerateConfigToRenderConfig(generateConfig, identityProviders);
+    const renderer = createRenderer(renderConfig);
+    await renderer.render({ outputDir: projectRoot });
+
+    // Write agent to project config
+    if (strategy) {
+      await writeAgentToProject(generateConfig, { configBaseDir, credentialStrategy: strategy });
+
+      // Always write env var (empty if skipped) so users can easily find and fill it in
+      const envVarName =
+        strategy.envVarName || computeDefaultCredentialEnvVarName(`${project.name}${options.modelProvider}`);
+      await setEnvVar(envVarName, options.apiKey ?? '', configBaseDir);
+    } else {
+      await writeAgentToProject(generateConfig, { configBaseDir });
+    }
+
+    if (options.language === 'Python') {
+      await setupPythonProject({ projectDir: agentPath });
+    }
+
+    return { success: true, agentName: options.name, agentPath };
+  }
+
+  /**
+   * Handle "byo" path: bring your own code.
+   */
+  private async handleByoPath(
+    options: AddAgentOptions,
+    configIO: ConfigIO,
+    configBaseDir: string
+  ): Promise<AddResult<{ agentName: string; agentPath?: string }>> {
+    const codeLocation = options.codeLocation!.endsWith('/') ? options.codeLocation! : `${options.codeLocation!}/`;
+
+    // Create the agent code directory so users know where to put their code
+    const projectRoot = dirname(configBaseDir);
+    const codeDir = join(projectRoot, codeLocation.replace(/\/$/, ''));
+    mkdirSync(codeDir, { recursive: true });
+
+    const project = await configIO.readProjectSpec();
+
+    const networkMode = options.networkMode ?? 'PUBLIC';
+    const agent: AgentEnvSpec = {
+      type: 'AgentCoreRuntime',
+      name: options.name,
+      build: options.buildType,
+      entrypoint: (options.entrypoint ?? 'main.py') as FilePath,
+      codeLocation: codeLocation as DirectoryPath,
+      runtimeVersion: 'PYTHON_3_12',
+      networkMode,
+      ...(networkMode === 'VPC' && options.subnets && options.securityGroups
+        ? {
+            networkConfig: {
+              subnets: parseCommaSeparatedList(options.subnets)!,
+              securityGroups: parseCommaSeparatedList(options.securityGroups)!,
+            },
+          }
+        : {}),
+    };
+
+    project.agents.push(agent);
+
+    // Handle credential creation with smart reuse detection
+    if (options.modelProvider !== 'Bedrock') {
+      const strategy = await this.credentialPrimitive.resolveCredentialStrategy(
+        project.name,
+        options.name,
+        options.modelProvider,
+        options.apiKey,
+        configBaseDir,
+        project.credentials
+      );
+
+      if (!strategy.reuse) {
+        const credentials = mapModelProviderToCredentials(options.modelProvider, project.name);
+        if (credentials.length > 0) {
+          credentials[0]!.name = strategy.credentialName;
+          project.credentials.push(...credentials);
+        }
+      }
+
+      // Always write env var (empty if skipped) so users can easily find and fill it in
+      const envVarName =
+        strategy.envVarName || computeDefaultCredentialEnvVarName(`${project.name}${options.modelProvider}`);
+      await setEnvVar(envVarName, options.apiKey ?? '', configBaseDir);
+    }
+
+    await configIO.writeProjectSpec(project);
+
+    return { success: true, agentName: options.name };
+  }
+}

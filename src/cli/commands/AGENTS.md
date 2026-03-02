@@ -30,16 +30,22 @@ If removing a command file would remove behavior, the design is wrong.
    - Commander registration only
    - Parses CLI args and invokes handler or TUI
 
-2. **Action File** (`commands/{name}/action.ts`)
-   - Contains business logic specific to this command
+2. **Primitives** (`primitives/`) — for resource add/remove commands
+   - Each resource type (agent, memory, identity, gateway, mcp-tool) has a primitive class
+   - Primitives own add/remove logic, CLI subcommand registration, and TUI screen routing
+   - `add` and `remove` commands delegate to primitives via `primitive.registerCommands()`
+   - See `src/cli/AGENTS.md` for the full primitives architecture
+
+3. **Action File** (`commands/{name}/action.ts`) — for non-resource commands
+   - Contains business logic specific to this command (e.g., deploy, invoke, package)
    - Defines interfaces (e.g., `InvokeContext`, `PackageResult`)
    - Implements handlers (e.g., `handleInvoke`, `loadPackageConfig`)
    - Must be UI-agnostic where possible
 
-3. **Operation** (`operations/{domain}/`)
-   - Own all shared decisions, sequencing, validation, side effects
+4. **Operation** (`operations/{domain}/`)
+   - Shared utilities consumed by primitives and commands (schema mapping, template rendering)
    - Must be UI-agnostic (no Ink, no process.exit)
-   - Reusable by TUI screens and command handlers alike
+   - Reusable by TUI screens, primitives, and command handlers alike
 
 ## Good vs Bad Examples
 

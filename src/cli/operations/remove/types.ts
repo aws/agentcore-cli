@@ -24,7 +24,7 @@ export interface RemovalPreview {
 /**
  * Result of a removal operation.
  */
-export type RemovalResult = { ok: true } | { ok: false; error: string };
+export type RemovalResult = { success: true } | { success: false; error: string };
 
 /**
  * Snapshot of all schemas before removal (for diff computation).

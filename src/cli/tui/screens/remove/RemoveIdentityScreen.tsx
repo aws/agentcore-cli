@@ -1,4 +1,4 @@
-import type { RemovableIdentity } from '../../../operations/remove';
+import type { RemovableCredential as RemovableIdentity } from '../../../primitives/CredentialPrimitive';
 import { SelectScreen } from '../../components';
 import React from 'react';
 

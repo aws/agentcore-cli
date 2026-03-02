@@ -178,7 +178,7 @@ export function RemoveFlow({
           // Skip confirmation in force mode
           setFlow({ name: 'loading', message: `Removing agent ${agentName}...` });
           const removeResult = await removeAgentOp(agentName, result.preview);
-          if (removeResult.ok) {
+          if (removeResult.success) {
             setFlow({ name: 'agent-success', agentName });
           } else {
             setFlow({ name: 'error', message: removeResult.error });
@@ -200,7 +200,7 @@ export function RemoveFlow({
         if (force) {
           setFlow({ name: 'loading', message: `Removing gateway ${gatewayName}...` });
           const removeResult = await removeGatewayOp(gatewayName, result.preview);
-          if (removeResult.ok) {
+          if (removeResult.success) {
             setFlow({ name: 'gateway-success', gatewayName });
           } else {
             setFlow({ name: 'error', message: removeResult.error });
@@ -222,7 +222,7 @@ export function RemoveFlow({
         if (force) {
           setFlow({ name: 'loading', message: `Removing gateway target ${tool.name}...` });
           const removeResult = await removeGatewayTargetOp(tool, result.preview);
-          if (removeResult.ok) {
+          if (removeResult.success) {
             setFlow({ name: 'tool-success', toolName: tool.name });
           } else {
             setFlow({ name: 'error', message: removeResult.error });
@@ -244,7 +244,7 @@ export function RemoveFlow({
         if (force) {
           setFlow({ name: 'loading', message: `Removing memory ${memoryName}...` });
           const removeResult = await removeMemoryOp(memoryName, result.preview);
-          if (removeResult.ok) {
+          if (removeResult.success) {
             setFlow({ name: 'memory-success', memoryName });
           } else {
             setFlow({ name: 'error', message: removeResult.error });
@@ -266,7 +266,7 @@ export function RemoveFlow({
         if (force) {
           setFlow({ name: 'loading', message: `Removing identity ${identityName}...` });
           const removeResult = await removeIdentityOp(identityName, result.preview);
-          if (removeResult.ok) {
+          if (removeResult.success) {
             setFlow({ name: 'identity-success', identityName });
           } else {
             setFlow({ name: 'error', message: removeResult.error });
@@ -324,7 +324,7 @@ export function RemoveFlow({
       setResultReady(false);
       setFlow({ name: 'loading', message: `Removing agent ${agentName}...` });
       const result = await removeAgentOp(agentName, preview);
-      if (result.ok) {
+      if (result.success) {
         pendingResultRef.current = { name: 'agent-success', agentName, logFilePath: result.logFilePath };
       } else {
         pendingResultRef.current = { name: 'error', message: result.error };
@@ -340,7 +340,7 @@ export function RemoveFlow({
       setResultReady(false);
       setFlow({ name: 'loading', message: `Removing gateway ${gatewayName}...` });
       const result = await removeGatewayOp(gatewayName, preview);
-      if (result.ok) {
+      if (result.success) {
         pendingResultRef.current = { name: 'gateway-success', gatewayName, logFilePath: result.logFilePath };
       } else {
         pendingResultRef.current = { name: 'error', message: result.error };
@@ -356,7 +356,7 @@ export function RemoveFlow({
       setResultReady(false);
       setFlow({ name: 'loading', message: `Removing gateway target ${tool.name}...` });
       const result = await removeGatewayTargetOp(tool, preview);
-      if (result.ok) {
+      if (result.success) {
         pendingResultRef.current = { name: 'tool-success', toolName: tool.name, logFilePath: result.logFilePath };
       } else {
         pendingResultRef.current = { name: 'error', message: result.error };
@@ -372,7 +372,7 @@ export function RemoveFlow({
       setResultReady(false);
       setFlow({ name: 'loading', message: `Removing memory ${memoryName}...` });
       const result = await removeMemoryOp(memoryName, preview);
-      if (result.ok) {
+      if (result.success) {
         pendingResultRef.current = { name: 'memory-success', memoryName, logFilePath: result.logFilePath };
       } else {
         pendingResultRef.current = { name: 'error', message: result.error };
@@ -388,7 +388,7 @@ export function RemoveFlow({
       setResultReady(false);
       setFlow({ name: 'loading', message: `Removing identity ${identityName}...` });
       const result = await removeIdentityOp(identityName, preview);
-      if (result.ok) {
+      if (result.success) {
         pendingResultRef.current = { name: 'identity-success', identityName, logFilePath: result.logFilePath };
       } else {
         pendingResultRef.current = { name: 'error', message: result.error };

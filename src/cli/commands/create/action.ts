@@ -15,7 +15,7 @@ import {
   mapModelProviderToIdentityProviders,
   writeAgentToProject,
 } from '../../operations/agent/generate';
-import { resolveCredentialStrategy } from '../../operations/identity/create-identity';
+import { credentialPrimitive } from '../../primitives/registry';
 import { CDKRenderer, createRenderer } from '../../templates';
 import type { CreateResult } from './types';
 import { mkdir } from 'fs/promises';
@@ -176,10 +176,10 @@ export async function createProjectWithAgent(options: CreateWithAgentOptions): P
 
     // Resolve credential strategy FIRST (new project has no existing credentials)
     let identityProviders: ReturnType<typeof mapModelProviderToIdentityProviders> = [];
-    let strategy: Awaited<ReturnType<typeof resolveCredentialStrategy>> | undefined;
+    let strategy: Awaited<ReturnType<typeof credentialPrimitive.resolveCredentialStrategy>> | undefined;
 
     if (modelProvider !== 'Bedrock') {
-      strategy = await resolveCredentialStrategy(
+      strategy = await credentialPrimitive.resolveCredentialStrategy(
         name,
         agentName,
         modelProvider,

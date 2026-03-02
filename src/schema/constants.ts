@@ -13,6 +13,9 @@ export type TargetLanguage = z.infer<typeof TargetLanguageSchema>;
 export const ModelProviderSchema = z.enum(['Bedrock', 'Gemini', 'OpenAI', 'Anthropic']);
 export type ModelProvider = z.infer<typeof ModelProviderSchema>;
 
+/** Providers that use credentials (Bedrock uses IAM, no credential needed). */
+export const CREDENTIAL_PROVIDERS = ['Gemini', 'OpenAI', 'Anthropic'] as const;
+
 /**
  * Case-insensitively match a user-provided value against a Zod enum's options.
  * Returns the canonical (correctly-cased) value, or undefined if no match.

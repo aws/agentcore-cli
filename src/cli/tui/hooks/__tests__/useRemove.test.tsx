@@ -10,29 +10,49 @@ import { render } from 'ink-testing-library';
 import React, { useEffect } from 'react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
-// Mock the operations/remove module
-const mockGetRemovableAgents = vi.fn();
-const mockGetRemovableGateways = vi.fn();
-const mockGetRemovableMemories = vi.fn();
-const mockGetRemovableIdentities = vi.fn();
-const mockRemoveAgent = vi.fn();
+// Mock the primitives registry module (useRemove.ts now imports from here)
+const mockAgentGetRemovable = vi.fn();
+const mockAgentRemove = vi.fn();
+const mockAgentPreviewRemove = vi.fn();
+const mockGatewayGetRemovable = vi.fn();
+const mockGatewayRemove = vi.fn();
+const mockGatewayPreviewRemove = vi.fn();
+const mockGatewayTargetGetRemovable = vi.fn();
+const mockGatewayTargetRemoveMcpTool = vi.fn();
+const mockGatewayTargetPreviewRemoveMcpTool = vi.fn();
+const mockMemoryGetRemovable = vi.fn();
+const mockMemoryRemove = vi.fn();
+const mockMemoryPreviewRemove = vi.fn();
+const mockCredentialGetRemovable = vi.fn();
+const mockCredentialRemove = vi.fn();
+const mockCredentialPreviewRemove = vi.fn();
 
-vi.mock('../../../operations/remove', () => ({
-  getRemovableAgents: (...args: unknown[]) => mockGetRemovableAgents(...args),
-  getRemovableGateways: (...args: unknown[]) => mockGetRemovableGateways(...args),
-  getRemovableGatewayTargets: vi.fn().mockResolvedValue([]),
-  getRemovableMemories: (...args: unknown[]) => mockGetRemovableMemories(...args),
-  getRemovableIdentities: (...args: unknown[]) => mockGetRemovableIdentities(...args),
-  previewRemoveAgent: vi.fn(),
-  previewRemoveGateway: vi.fn(),
-  previewRemoveGatewayTarget: vi.fn(),
-  previewRemoveMemory: vi.fn(),
-  previewRemoveIdentity: vi.fn(),
-  removeAgent: (...args: unknown[]) => mockRemoveAgent(...args),
-  removeGateway: vi.fn(),
-  removeGatewayTarget: vi.fn(),
-  removeMemory: vi.fn(),
-  removeIdentity: vi.fn(),
+vi.mock('../../../primitives/registry', () => ({
+  agentPrimitive: {
+    getRemovable: (...args: unknown[]) => mockAgentGetRemovable(...args),
+    remove: (...args: unknown[]) => mockAgentRemove(...args),
+    previewRemove: (...args: unknown[]) => mockAgentPreviewRemove(...args),
+  },
+  gatewayPrimitive: {
+    getRemovable: (...args: unknown[]) => mockGatewayGetRemovable(...args),
+    remove: (...args: unknown[]) => mockGatewayRemove(...args),
+    previewRemove: (...args: unknown[]) => mockGatewayPreviewRemove(...args),
+  },
+  gatewayTargetPrimitive: {
+    getRemovable: (...args: unknown[]) => mockGatewayTargetGetRemovable(...args),
+    removeGatewayTarget: (...args: unknown[]) => mockGatewayTargetRemoveMcpTool(...args),
+    previewRemoveGatewayTarget: (...args: unknown[]) => mockGatewayTargetPreviewRemoveMcpTool(...args),
+  },
+  memoryPrimitive: {
+    getRemovable: (...args: unknown[]) => mockMemoryGetRemovable(...args),
+    remove: (...args: unknown[]) => mockMemoryRemove(...args),
+    previewRemove: (...args: unknown[]) => mockMemoryPreviewRemove(...args),
+  },
+  credentialPrimitive: {
+    getRemovable: (...args: unknown[]) => mockCredentialGetRemovable(...args),
+    remove: (...args: unknown[]) => mockCredentialRemove(...args),
+    previewRemove: (...args: unknown[]) => mockCredentialPreviewRemove(...args),
+  },
 }));
 
 // Mock the logging module
@@ -98,7 +118,7 @@ function RemoveAgentHarness({ agentName }: { agentName?: string }) {
 
   return (
     <Text>
-      loading:{String(isLoading)} result:{result ? (result.ok ? 'ok' : 'fail') : 'null'}
+      loading:{String(isLoading)} result:{result ? (result.success ? 'ok' : 'fail') : 'null'}
     </Text>
   );
 }
@@ -107,7 +127,7 @@ function RemoveAgentHarness({ agentName }: { agentName?: string }) {
 
 describe('useRemovableAgents', () => {
   it('starts in loading state with empty agents array', () => {
-    mockGetRemovableAgents.mockReturnValue(
+    mockAgentGetRemovable.mockReturnValue(
       new Promise(() => {
         /* never resolves */
       })
@@ -119,7 +139,8 @@ describe('useRemovableAgents', () => {
   });
 
   it('loads agents and exits loading state', async () => {
-    mockGetRemovableAgents.mockResolvedValue(['agent-a', 'agent-b']);
+    // getRemovable returns RemovableResource[] (objects with name), hook maps to names
+    mockAgentGetRemovable.mockResolvedValue([{ name: 'agent-a' }, { name: 'agent-b' }]);
     const { lastFrame } = render(<RemovableAgentsHarness />);
 
     await delay();
@@ -129,7 +150,7 @@ describe('useRemovableAgents', () => {
   });
 
   it('returns empty array when backend returns empty', async () => {
-    mockGetRemovableAgents.mockResolvedValue([]);
+    mockAgentGetRemovable.mockResolvedValue([]);
     const { lastFrame } = render(<RemovableAgentsHarness />);
 
     await delay();
@@ -141,7 +162,7 @@ describe('useRemovableAgents', () => {
 
 describe('useRemovableGateways', () => {
   it('loads gateways', async () => {
-    mockGetRemovableGateways.mockResolvedValue(['gw-1']);
+    mockGatewayGetRemovable.mockResolvedValue([{ name: 'gw-1' }]);
     const { lastFrame } = render(<RemovableGatewaysHarness />);
 
     await delay();
@@ -153,7 +174,7 @@ describe('useRemovableGateways', () => {
 
 describe('useRemovableMemories', () => {
   it('loads memories', async () => {
-    mockGetRemovableMemories.mockResolvedValue([
+    mockMemoryGetRemovable.mockResolvedValue([
       { name: 'mem-1', type: 'knowledge_base' },
       { name: 'mem-2', type: 'knowledge_base' },
     ]);
@@ -168,7 +189,7 @@ describe('useRemovableMemories', () => {
 
 describe('useRemovableIdentities', () => {
   it('loads identities', async () => {
-    mockGetRemovableIdentities.mockResolvedValue([{ name: 'id-1', type: 'api_key' }]);
+    mockCredentialGetRemovable.mockResolvedValue([{ name: 'id-1', type: 'api_key' }]);
     const { lastFrame } = render(<RemovableIdentitiesHarness />);
 
     await delay();
@@ -187,22 +208,22 @@ describe('useRemoveAgent', () => {
   });
 
   it('calls removeAgent and shows success result', async () => {
-    mockRemoveAgent.mockResolvedValue({ ok: true });
+    mockAgentRemove.mockResolvedValue({ success: true });
     const { lastFrame } = render(<RemoveAgentHarness agentName="my-agent" />);
 
     await delay();
 
-    expect(mockRemoveAgent).toHaveBeenCalledWith('my-agent');
+    expect(mockAgentRemove).toHaveBeenCalledWith('my-agent');
     expect(lastFrame()).toContain('result:ok');
   });
 
   it('calls removeAgent and shows failure result', async () => {
-    mockRemoveAgent.mockResolvedValue({ ok: false, error: 'Not found' });
+    mockAgentRemove.mockResolvedValue({ success: false, error: 'Not found' });
     const { lastFrame } = render(<RemoveAgentHarness agentName="bad-agent" />);
 
     await delay();
 
-    expect(mockRemoveAgent).toHaveBeenCalledWith('bad-agent');
+    expect(mockAgentRemove).toHaveBeenCalledWith('bad-agent');
     expect(lastFrame()).toContain('result:fail');
   });
 });
