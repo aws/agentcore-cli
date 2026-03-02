@@ -1,8 +1,9 @@
-import { previewRemoveCredential } from '../remove-identity.js';
+import { previewRemoveCredential, removeCredential } from '../remove-identity.js';
 import { describe, expect, it, vi } from 'vitest';
 
-const { mockReadProjectSpec, mockConfigExists, mockReadMcpSpec } = vi.hoisted(() => ({
+const { mockReadProjectSpec, mockWriteProjectSpec, mockConfigExists, mockReadMcpSpec } = vi.hoisted(() => ({
   mockReadProjectSpec: vi.fn(),
+  mockWriteProjectSpec: vi.fn(),
   mockConfigExists: vi.fn(),
   mockReadMcpSpec: vi.fn(),
 }));
@@ -10,6 +11,7 @@ const { mockReadProjectSpec, mockConfigExists, mockReadMcpSpec } = vi.hoisted(()
 vi.mock('../../../../lib/index.js', () => ({
   ConfigIO: class {
     readProjectSpec = mockReadProjectSpec;
+    writeProjectSpec = mockWriteProjectSpec;
     configExists = mockConfigExists;
     readMcpSpec = mockReadMcpSpec;
   },
@@ -117,5 +119,58 @@ describe('previewRemoveCredential', () => {
     expect(result.summary).toContain(
       'Warning: Credential "test-cred" is referenced by gateway targets: gateway2/target2. Removing it may break these targets.'
     );
+  });
+
+  it('shows managed credential warning in preview', async () => {
+    mockReadProjectSpec.mockResolvedValue({
+      credentials: [{ name: 'gw-agent-oauth', type: 'OAuthCredentialProvider', managed: true, usage: 'inbound' }],
+    });
+    mockConfigExists.mockReturnValue(false);
+
+    const result = await previewRemoveCredential('gw-agent-oauth');
+
+    const warning = result.summary.find(s => s.includes('auto-created'));
+    expect(warning).toBeTruthy();
+  });
+});
+
+describe('removeCredential', () => {
+  it('blocks removal of managed credential without force', async () => {
+    mockReadProjectSpec.mockResolvedValue({
+      credentials: [{ name: 'gw-agent-oauth', type: 'OAuthCredentialProvider', managed: true, usage: 'inbound' }],
+    });
+    mockConfigExists.mockReturnValue(false);
+
+    const result = await removeCredential('gw-agent-oauth');
+
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.error).toContain('auto-created');
+      expect(result.error).toContain('--force');
+    }
+  });
+
+  it('allows removal of managed credential with force', async () => {
+    mockReadProjectSpec.mockResolvedValue({
+      credentials: [{ name: 'gw-agent-oauth', type: 'OAuthCredentialProvider', managed: true, usage: 'inbound' }],
+    });
+    mockConfigExists.mockReturnValue(false);
+    mockWriteProjectSpec.mockResolvedValue(undefined);
+
+    const result = await removeCredential('gw-agent-oauth', { force: true });
+
+    expect(result.ok).toBe(true);
+  });
+
+  it('allows removal of non-managed credential without force', async () => {
+    mockReadProjectSpec.mockResolvedValue({
+      credentials: [{ name: 'regular-cred', type: 'OAuthCredentialProvider' }],
+    });
+    mockConfigExists.mockReturnValue(false);
+    mockWriteProjectSpec.mockResolvedValue(undefined);
+
+    const result = await removeCredential('regular-cred');
+
+    expect(result.ok).toBe(true);
   });
 });

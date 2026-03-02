@@ -82,6 +82,9 @@ async function handleAddGatewayCLI(options: AddGatewayOptions): Promise<void> {
     discoveryUrl: options.discoveryUrl,
     allowedAudience: options.allowedAudience,
     allowedClients: options.allowedClients,
+    allowedScopes: options.allowedScopes,
+    agentClientId: options.agentClientId,
+    agentClientSecret: options.agentClientSecret,
     agents: options.agents,
   });
 
@@ -272,6 +275,9 @@ export function registerAdd(program: Command) {
     .option('--discovery-url <url>', 'OIDC discovery URL (required for CUSTOM_JWT)')
     .option('--allowed-audience <values>', 'Comma-separated allowed audience values (required for CUSTOM_JWT)')
     .option('--allowed-clients <values>', 'Comma-separated allowed client IDs (required for CUSTOM_JWT)')
+    .option('--allowed-scopes <scopes>', 'Comma-separated allowed scopes (optional for CUSTOM_JWT)')
+    .option('--agent-client-id <id>', 'Agent OAuth client ID for Bearer token auth (CUSTOM_JWT)')
+    .option('--agent-client-secret <secret>', 'Agent OAuth client secret (CUSTOM_JWT)')
     .option('--json', 'Output as JSON')
     .action(async options => {
       requireProject();

@@ -188,11 +188,32 @@ async function mapMcpGatewaysToGatewayProviders(): Promise<GatewayProviderRender
       return [];
     }
     const mcpSpec = await configIO.readMcpSpec();
-    return mcpSpec.agentCoreGateways.map(gateway => ({
-      name: gateway.name,
-      envVarName: computeDefaultGatewayEnvVarName(gateway.name),
-      authType: gateway.authorizerType,
-    }));
+    const project = await configIO.readProjectSpec();
+
+    return mcpSpec.agentCoreGateways.map(gateway => {
+      const config: GatewayProviderRenderConfig = {
+        name: gateway.name,
+        envVarName: computeDefaultGatewayEnvVarName(gateway.name),
+        authType: gateway.authorizerType,
+      };
+
+      if (gateway.authorizerType === 'CUSTOM_JWT' && gateway.authorizerConfiguration?.customJwtAuthorizer) {
+        const jwtConfig = gateway.authorizerConfiguration.customJwtAuthorizer;
+        const credName = `${gateway.name}-agent-oauth`;
+        const credential = project.credentials.find(c => c.name === credName);
+
+        if (credential) {
+          config.credentialProviderName = credName;
+          config.discoveryUrl = jwtConfig.discoveryUrl;
+          const scopes = 'allowedScopes' in jwtConfig ? (jwtConfig as { allowedScopes?: string[] }).allowedScopes : undefined;
+          if (scopes?.length) {
+            config.scopes = scopes.join(' ');
+          }
+        }
+      }
+
+      return config;
+    });
   } catch {
     return [];
   }

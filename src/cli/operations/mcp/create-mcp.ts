@@ -11,6 +11,7 @@ import { AgentCoreCliMcpDefsSchema, ToolDefinitionSchema } from '../../../schema
 import { getTemplateToolDefinitions, renderGatewayTargetTemplate } from '../../templates/GatewayTargetRenderer';
 import type { AddGatewayConfig, AddGatewayTargetConfig } from '../../tui/screens/mcp/types';
 import { DEFAULT_HANDLER, DEFAULT_NODE_VERSION, DEFAULT_PYTHON_VERSION } from '../../tui/screens/mcp/types';
+import { createCredential } from '../identity/create-identity';
 import { existsSync } from 'fs';
 import { mkdir, readFile, writeFile } from 'fs/promises';
 import { dirname, join } from 'path';
@@ -71,6 +72,7 @@ function buildAuthorizerConfiguration(config: AddGatewayConfig): AgentCoreGatewa
       discoveryUrl: config.jwtConfig.discoveryUrl,
       allowedAudience: config.jwtConfig.allowedAudience,
       allowedClients: config.jwtConfig.allowedClients,
+      ...(config.jwtConfig.allowedScopes?.length && { allowedScopes: config.jwtConfig.allowedScopes }),
     },
   };
 }
@@ -200,6 +202,20 @@ export async function createGatewayFromWizard(config: AddGatewayConfig): Promise
   }
 
   await configIO.writeMcpSpec(mcpSpec);
+
+  // Auto-create managed credential if agent OAuth credentials provided
+  if (config.jwtConfig?.agentClientId && config.jwtConfig?.agentClientSecret) {
+    const credName = `${config.name}-agent-oauth`;
+    await createCredential({
+      type: 'OAuthCredentialProvider',
+      name: credName,
+      discoveryUrl: config.jwtConfig.discoveryUrl,
+      clientId: config.jwtConfig.agentClientId,
+      clientSecret: config.jwtConfig.agentClientSecret,
+      vendor: 'CustomOauth2',
+      managed: true,
+    });
+  }
 
   return { name: config.name };
 }

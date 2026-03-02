@@ -10,6 +10,23 @@ logger = logging.getLogger(__name__)
 import httpx
 from mcp_proxy_for_aws.sigv4_helper import SigV4HTTPXAuth, create_aws_session
 {{/if}}
+{{#if (includes gatewayAuthTypes "CUSTOM_JWT")}}
+from bedrock_agentcore.identity import requires_access_token
+{{/if}}
+
+{{#each gatewayProviders}}
+{{#if (eq authType "CUSTOM_JWT")}}
+@requires_access_token(
+    provider_name="{{credentialProviderName}}",
+    scopes=[{{#if scopes}}"{{scopes}}"{{/if}}],
+    auth_flow="M2M",
+)
+def _get_bearer_token_{{snakeCase name}}(*, access_token: str):
+    """Obtain OAuth access token via AgentCore Identity for {{name}}."""
+    return access_token
+
+{{/if}}
+{{/each}}
 
 def get_all_gateway_mcp_toolsets() -> list[MCPToolset]:
     """Returns MCP Toolsets for all configured gateways."""
@@ -24,6 +41,10 @@ def get_all_gateway_mcp_toolsets() -> list[MCPToolset]:
             url=url,
             httpx_client_factory=lambda **kwargs: httpx.AsyncClient(auth=auth, **kwargs)
         )))
+        {{else if (eq authType "CUSTOM_JWT")}}
+        token = _get_bearer_token_{{snakeCase name}}()
+        headers = {"Authorization": f"Bearer {token}"} if token else None
+        toolsets.append(MCPToolset(connection_params=StreamableHTTPConnectionParams(url=url, headers=headers)))
         {{else}}
         toolsets.append(MCPToolset(connection_params=StreamableHTTPConnectionParams(url=url)))
         {{/if}}

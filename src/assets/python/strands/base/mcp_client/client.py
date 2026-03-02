@@ -9,7 +9,23 @@ logger = logging.getLogger(__name__)
 {{#if (includes gatewayAuthTypes "AWS_IAM")}}
 from mcp_proxy_for_aws.client import aws_iam_streamablehttp_client
 {{/if}}
+{{#if (includes gatewayAuthTypes "CUSTOM_JWT")}}
+from bedrock_agentcore.identity import requires_access_token
+{{/if}}
 
+{{#each gatewayProviders}}
+{{#if (eq authType "CUSTOM_JWT")}}
+@requires_access_token(
+    provider_name="{{credentialProviderName}}",
+    scopes=[{{#if scopes}}"{{scopes}}"{{/if}}],
+    auth_flow="M2M",
+)
+def _get_bearer_token_{{snakeCase name}}(*, access_token: str):
+    """Obtain OAuth access token via AgentCore Identity for {{name}}."""
+    return access_token
+
+{{/if}}
+{{/each}}
 {{#each gatewayProviders}}
 def get_{{snakeCase name}}_mcp_client() -> MCPClient | None:
     """Returns an MCP Client connected to the {{name}} gateway."""
@@ -19,6 +35,10 @@ def get_{{snakeCase name}}_mcp_client() -> MCPClient | None:
         return None
     {{#if (eq authType "AWS_IAM")}}
     return MCPClient(lambda: aws_iam_streamablehttp_client(url, aws_service="bedrock-agentcore", aws_region=os.environ.get("AWS_REGION", os.environ.get("AWS_DEFAULT_REGION"))))
+    {{else if (eq authType "CUSTOM_JWT")}}
+    token = _get_bearer_token_{{snakeCase name}}()
+    headers = {"Authorization": f"Bearer {token}"} if token else {}
+    return MCPClient(lambda: streamablehttp_client(url, headers=headers))
     {{else}}
     return MCPClient(lambda: streamablehttp_client(url))
     {{/if}}

@@ -14,6 +14,7 @@ export type CreateCredentialConfig =
       clientSecret: string;
       scopes?: string[];
       vendor?: string;
+      managed?: boolean;
     };
 
 /**
@@ -143,6 +144,7 @@ export async function createCredential(config: CreateCredentialConfig): Promise<
       discoveryUrl: config.discoveryUrl,
       vendor: config.vendor ?? 'CustomOauth2',
       ...(config.scopes && config.scopes.length > 0 ? { scopes: config.scopes } : {}),
+      ...(config.managed ? { managed: true } : {}),
     };
     project.credentials.push(credential);
     await configIO.writeProjectSpec(project);

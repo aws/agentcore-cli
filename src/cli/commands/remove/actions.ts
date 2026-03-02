@@ -72,7 +72,7 @@ export async function handleRemove(options: ValidatedRemoveOptions): Promise<Rem
         };
       }
       case 'identity': {
-        const result = await removeIdentity(name);
+        const result = await removeIdentity(name, { force: options.force });
         if (!result.ok) return { success: false, error: result.error };
         return {
           success: true,

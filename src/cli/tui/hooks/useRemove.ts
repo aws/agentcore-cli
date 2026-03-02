@@ -351,7 +351,7 @@ export function useRemoveIdentity() {
 
   const remove = useCallback(async (identityName: string, preview?: RemovalPreview): Promise<RemoveResult> => {
     setState({ isLoading: true, result: null });
-    const result = await removeIdentity(identityName);
+    const result = await removeIdentity(identityName, { force: true });
     setState({ isLoading: false, result });
 
     let logPath: string | undefined;

@@ -43,6 +43,12 @@ export async function previewRemoveCredential(credentialName: string): Promise<R
     `Note: .env file will not be modified`,
   ];
 
+  if ('managed' in credential && credential.managed) {
+    summary.push(
+      `⚠️  Warning: This credential was auto-created for CUSTOM_JWT gateway auth. Removing it will break agent authentication.`
+    );
+  }
+
   // Check for references in gateway targets
   const referencingTargets: string[] = [];
   try {
@@ -85,7 +91,7 @@ export async function previewRemoveCredential(credentialName: string): Promise<R
 /**
  * Remove a credential from the project.
  */
-export async function removeCredential(credentialName: string): Promise<RemovalResult> {
+export async function removeCredential(credentialName: string, options?: { force?: boolean }): Promise<RemovalResult> {
   try {
     const configIO = new ConfigIO();
     const project = await configIO.readProjectSpec();
@@ -93,6 +99,16 @@ export async function removeCredential(credentialName: string): Promise<RemovalR
     const credentialIndex = project.credentials.findIndex(c => c.name === credentialName);
     if (credentialIndex === -1) {
       return { ok: false, error: `Credential "${credentialName}" not found.` };
+    }
+
+    const credential = project.credentials[credentialIndex];
+
+    // Block removal of managed credentials unless --force is used
+    if (credential && 'managed' in credential && credential.managed && !options?.force) {
+      return {
+        ok: false,
+        error: `Credential "${credentialName}" was auto-created for CUSTOM_JWT gateway auth. Use --force to remove it.`,
+      };
     }
 
     // Check for references in gateway targets and warn

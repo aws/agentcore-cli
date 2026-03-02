@@ -25,6 +25,12 @@ export interface GatewayProviderRenderConfig {
   name: string;
   envVarName: string;
   authType: string; // AWS_IAM, CUSTOM_JWT, NONE
+  /** Credential provider name for @requires_access_token (CUSTOM_JWT only) */
+  credentialProviderName?: string;
+  /** OIDC discovery URL for token endpoint lookup (CUSTOM_JWT only) */
+  discoveryUrl?: string;
+  /** Space-separated scopes for token request (CUSTOM_JWT only) */
+  scopes?: string;
 }
 
 /**

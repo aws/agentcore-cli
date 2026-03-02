@@ -16,6 +16,9 @@ export interface AddGatewayConfig {
     discoveryUrl: string;
     allowedAudience: string[];
     allowedClients: string[];
+    allowedScopes?: string[];
+    agentClientId?: string;
+    agentClientSecret?: string;
   };
   /** Selected unassigned targets to include in this gateway */
   selectedTargets?: string[];

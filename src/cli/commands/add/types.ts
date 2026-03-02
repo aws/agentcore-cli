@@ -31,6 +31,9 @@ export interface AddGatewayOptions {
   discoveryUrl?: string;
   allowedAudience?: string;
   allowedClients?: string;
+  allowedScopes?: string;
+  agentClientId?: string;
+  agentClientSecret?: string;
   agents?: string;
   json?: boolean;
 }

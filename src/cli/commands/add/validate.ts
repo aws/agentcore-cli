@@ -181,6 +181,17 @@ export function validateAddGatewayOptions(options: AddGatewayOptions): Validatio
     }
   }
 
+  // Validate agent OAuth credentials
+  if (options.agentClientId && !options.agentClientSecret) {
+    return { valid: false, error: 'Both --agent-client-id and --agent-client-secret must be provided together' };
+  }
+  if (options.agentClientSecret && !options.agentClientId) {
+    return { valid: false, error: 'Both --agent-client-id and --agent-client-secret must be provided together' };
+  }
+  if (options.agentClientId && options.authorizerType !== 'CUSTOM_JWT') {
+    return { valid: false, error: 'Agent OAuth credentials are only valid with CUSTOM_JWT authorizer' };
+  }
+
   return { valid: true };
 }
 

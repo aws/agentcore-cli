@@ -240,6 +240,47 @@ describe('validate', () => {
       expect(validateAddGatewayOptions(validGatewayOptionsNone)).toEqual({ valid: true });
       expect(validateAddGatewayOptions(validGatewayOptionsJwt)).toEqual({ valid: true });
     });
+
+    // AC15: agentClientId and agentClientSecret must be provided together
+    it('returns error when agentClientId provided without agentClientSecret', () => {
+      const result = validateAddGatewayOptions({
+        ...validGatewayOptionsJwt,
+        agentClientId: 'my-client-id',
+      });
+      expect(result.valid).toBe(false);
+      expect(result.error).toBe('Both --agent-client-id and --agent-client-secret must be provided together');
+    });
+
+    it('returns error when agentClientSecret provided without agentClientId', () => {
+      const result = validateAddGatewayOptions({
+        ...validGatewayOptionsJwt,
+        agentClientSecret: 'my-secret',
+      });
+      expect(result.valid).toBe(false);
+      expect(result.error).toBe('Both --agent-client-id and --agent-client-secret must be provided together');
+    });
+
+    // AC16: agent credentials only valid with CUSTOM_JWT
+    it('returns error when agent credentials used with non-CUSTOM_JWT authorizer', () => {
+      const result = validateAddGatewayOptions({
+        ...validGatewayOptionsNone,
+        agentClientId: 'my-client-id',
+        agentClientSecret: 'my-secret',
+      });
+      expect(result.valid).toBe(false);
+      expect(result.error).toBe('Agent OAuth credentials are only valid with CUSTOM_JWT authorizer');
+    });
+
+    // AC17: valid CUSTOM_JWT with agent credentials passes
+    it('passes for CUSTOM_JWT with agent credentials', () => {
+      const result = validateAddGatewayOptions({
+        ...validGatewayOptionsJwt,
+        agentClientId: 'my-client-id',
+        agentClientSecret: 'my-secret',
+        allowedScopes: 'scope1,scope2',
+      });
+      expect(result.valid).toBe(true);
+    });
   });
 
   describe('validateAddGatewayTargetOptions', () => {

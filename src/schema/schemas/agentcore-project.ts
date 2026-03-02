@@ -101,6 +101,8 @@ export const OAuthCredentialSchema = z.object({
   vendor: z.string().default('CustomOauth2'),
   /** Whether this credential was auto-created by the CLI (e.g., for CUSTOM_JWT inbound auth) */
   managed: z.boolean().optional(),
+  /** Whether this credential is used for inbound or outbound auth */
+  usage: z.enum(['inbound', 'outbound']).optional(),
 });
 
 export type OAuthCredential = z.infer<typeof OAuthCredentialSchema>;

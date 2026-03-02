@@ -64,6 +64,9 @@ export interface ValidatedAddGatewayOptions {
   discoveryUrl?: string;
   allowedAudience?: string;
   allowedClients?: string;
+  allowedScopes?: string;
+  agentClientId?: string;
+  agentClientSecret?: string;
   agents?: string;
 }
 
@@ -267,6 +270,14 @@ function buildGatewayConfig(options: ValidatedAddGatewayOptions): AddGatewayConf
         .allowedClients!.split(',')
         .map(s => s.trim())
         .filter(Boolean),
+      allowedScopes: options.allowedScopes
+        ? options.allowedScopes
+            .split(',')
+            .map(s => s.trim())
+            .filter(Boolean)
+        : undefined,
+      agentClientId: options.agentClientId,
+      agentClientSecret: options.agentClientSecret,
     };
   }
 
