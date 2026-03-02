@@ -280,7 +280,7 @@ function McpEditorBody(props: {
     }
 
     // Handle unassigned targets navigation (when not in assignment mode)
-    if (unassignedTargets.length > 0 && !assigningTarget) {
+    if (unassignedTargets.length > 0) {
       // U key to focus unassigned targets
       if (input.toLowerCase() === 'u') {
         setSelectedUnassignedIndex(0);

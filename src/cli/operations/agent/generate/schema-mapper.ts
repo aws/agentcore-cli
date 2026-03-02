@@ -205,7 +205,8 @@ async function mapMcpGatewaysToGatewayProviders(): Promise<GatewayProviderRender
         if (credential) {
           config.credentialProviderName = credName;
           config.discoveryUrl = jwtConfig.discoveryUrl;
-          const scopes = 'allowedScopes' in jwtConfig ? (jwtConfig as { allowedScopes?: string[] }).allowedScopes : undefined;
+          const scopes =
+            'allowedScopes' in jwtConfig ? (jwtConfig as { allowedScopes?: string[] }).allowedScopes : undefined;
           if (scopes?.length) {
             config.scopes = scopes.join(' ');
           }
