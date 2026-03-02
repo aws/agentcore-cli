@@ -631,7 +631,7 @@ function McpEditorBody(props: {
       </Box>
 
       <Box marginTop={1}>
-        <Panel title={`MCP Gateways (${gateways.length})`} fullWidth>
+        <Panel title={`Gateways (${gateways.length})`} fullWidth>
           {gateways.length === 0 ? (
             <Text dimColor>No gateways configured. Press A to add one.</Text>
           ) : (

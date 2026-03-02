@@ -14,10 +14,11 @@ interface AddIdentityScreenProps {
   onComplete: (config: AddIdentityConfig) => void;
   onExit: () => void;
   existingIdentityNames: string[];
+  initialType?: CredentialType;
 }
 
-export function AddIdentityScreen({ onComplete, onExit, existingIdentityNames }: AddIdentityScreenProps) {
-  const wizard = useAddIdentityWizard();
+export function AddIdentityScreen({ onComplete, onExit, existingIdentityNames, initialType }: AddIdentityScreenProps) {
+  const wizard = useAddIdentityWizard(initialType);
 
   const typeItems: SelectableItem[] = useMemo(
     () => IDENTITY_TYPE_OPTIONS.map(opt => ({ id: opt.id, title: opt.title, description: opt.description })),
@@ -27,7 +28,12 @@ export function AddIdentityScreen({ onComplete, onExit, existingIdentityNames }:
   const isTypeStep = wizard.step === 'type';
   const isNameStep = wizard.step === 'name';
   const isApiKeyStep = wizard.step === 'apiKey';
+  const isDiscoveryUrlStep = wizard.step === 'discoveryUrl';
+  const isClientIdStep = wizard.step === 'clientId';
+  const isClientSecretStep = wizard.step === 'clientSecret';
+  const isScopesStep = wizard.step === 'scopes';
   const isConfirmStep = wizard.step === 'confirm';
+  const isOAuth = wizard.config.identityType === 'OAuthCredentialProvider';
 
   const typeNav = useListNavigation({
     items: typeItems,
@@ -51,6 +57,10 @@ export function AddIdentityScreen({ onComplete, onExit, existingIdentityNames }:
 
   const headerContent = <StepIndicator steps={wizard.steps} currentStep={wizard.step} labels={IDENTITY_STEP_LABELS} />;
 
+  const defaultName = isOAuth
+    ? generateUniqueName('MyOAuth', existingIdentityNames)
+    : generateUniqueName('MyApiKey', existingIdentityNames);
+
   return (
     <Screen title="Add Credential" onExit={onExit} helpText={helpText} headerContent={headerContent}>
       <Panel>
@@ -67,10 +77,11 @@ export function AddIdentityScreen({ onComplete, onExit, existingIdentityNames }:
           <TextInput
             key="name"
             prompt="Credential name"
-            initialValue={generateUniqueName('MyApiKey', existingIdentityNames)}
+            initialValue={defaultName}
             onSubmit={wizard.setName}
             onCancel={() => wizard.goBack()}
             schema={CredentialNameSchema}
+            customValidation={value => !existingIdentityNames.includes(value) || 'Credential name already exists'}
           />
         )}
 
@@ -85,13 +96,81 @@ export function AddIdentityScreen({ onComplete, onExit, existingIdentityNames }:
           />
         )}
 
+        {isDiscoveryUrlStep && (
+          <TextInput
+            key="discoveryUrl"
+            prompt="Discovery URL (OIDC well-known endpoint)"
+            placeholder="https://example.com/.well-known/openid-configuration"
+            onSubmit={wizard.setDiscoveryUrl}
+            onCancel={() => wizard.goBack()}
+            customValidation={value => {
+              try {
+                new URL(value);
+              } catch {
+                return 'Must be a valid URL';
+              }
+              if (!value.endsWith('/.well-known/openid-configuration')) {
+                return "URL must end with '/.well-known/openid-configuration'";
+              }
+              return true;
+            }}
+          />
+        )}
+
+        {isClientIdStep && (
+          <SecretInput
+            key="clientId"
+            prompt="Client ID"
+            onSubmit={wizard.setClientId}
+            onCancel={() => wizard.goBack()}
+            customValidation={value => value.trim().length > 0 || 'Client ID is required'}
+            revealChars={4}
+          />
+        )}
+
+        {isClientSecretStep && (
+          <SecretInput
+            key="clientSecret"
+            prompt="Client Secret"
+            onSubmit={wizard.setClientSecret}
+            onCancel={() => wizard.goBack()}
+            customValidation={value => value.trim().length > 0 || 'Client secret is required'}
+            revealChars={4}
+          />
+        )}
+
+        {isScopesStep && (
+          <TextInput
+            key="scopes"
+            prompt="Scopes (comma-separated, optional)"
+            placeholder="press Enter to skip"
+            initialValue=""
+            onSubmit={wizard.setScopes}
+            onCancel={() => wizard.goBack()}
+            allowEmpty
+          />
+        )}
+
         {isConfirmStep && (
           <ConfirmReview
-            fields={[
-              { label: 'Type', value: 'API Key' },
-              { label: 'Name', value: wizard.config.name },
-              { label: 'API Key', value: '*'.repeat(Math.min(wizard.config.apiKey.length, 20)) },
-            ]}
+            fields={
+              isOAuth
+                ? [
+                    { label: 'Type', value: 'OAuth' },
+                    { label: 'Name', value: wizard.config.name },
+                    { label: 'Discovery URL', value: wizard.config.discoveryUrl ?? '' },
+                    {
+                      label: 'Client ID',
+                      value: wizard.config.clientId ? '****' + wizard.config.clientId.slice(-4) : '',
+                    },
+                    ...(wizard.config.scopes ? [{ label: 'Scopes', value: wizard.config.scopes }] : []),
+                  ]
+                : [
+                    { label: 'Type', value: 'API Key' },
+                    { label: 'Name', value: wizard.config.name },
+                    { label: 'API Key', value: '*'.repeat(Math.min(wizard.config.apiKey.length, 20)) },
+                  ]
+            }
           />
         )}
       </Panel>

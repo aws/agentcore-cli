@@ -24,8 +24,8 @@ export function AddScreen({ onSelect, onExit, hasAgents }: AddScreenProps) {
     () =>
       ADD_RESOURCES.map(r => ({
         ...r,
-        disabled: Boolean('disabled' in r && r.disabled) || ((r.id === 'memory' || r.id === 'identity') && !hasAgents),
-        description: (r.id === 'memory' || r.id === 'identity') && !hasAgents ? 'Add an agent first' : r.description,
+        disabled: Boolean('disabled' in r && r.disabled) || (r.id === 'memory' && !hasAgents),
+        description: r.id === 'memory' && !hasAgents ? 'Add an agent first' : r.description,
       })),
     [hasAgents]
   );

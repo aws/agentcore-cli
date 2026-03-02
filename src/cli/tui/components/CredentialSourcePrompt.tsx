@@ -137,17 +137,18 @@ export function CredentialSourcePrompt({
         <Box flexDirection="column" gap={1}>
           <Text bold>Identity Provider Setup</Text>
           <Text dimColor>
-            {missingCredentials.length} identity provider{missingCredentials.length > 1 ? 's' : ''} configured:
+            {new Set(missingCredentials.map(c => c.providerName)).size} identity provider
+            {new Set(missingCredentials.map(c => c.providerName)).size > 1 ? 's' : ''} configured:
           </Text>
           <Box flexDirection="column" marginLeft={2}>
-            {missingCredentials.map(cred => (
-              <Text key={cred.envVarName} dimColor>
-                • {cred.providerName}
+            {[...new Set(missingCredentials.map(c => c.providerName))].map(name => (
+              <Text key={name} dimColor>
+                • {name}
               </Text>
             ))}
           </Box>
           <Box marginTop={1}>
-            <Text dimColor>How would you like to provide the API keys?</Text>
+            <Text dimColor>How would you like to provide the credentials?</Text>
           </Box>
           <Box marginTop={1}>
             <SelectList items={SOURCE_OPTIONS} selectedIndex={selectedIndex} />

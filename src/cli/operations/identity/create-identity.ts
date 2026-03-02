@@ -109,6 +109,19 @@ export async function getAllCredentialNames(): Promise<string[]> {
 }
 
 /**
+ * Get list of existing credentials with full type information from the project.
+ */
+export async function getAllCredentials(): Promise<Credential[]> {
+  try {
+    const configIO = new ConfigIO();
+    const project = await configIO.readProjectSpec();
+    return project.credentials;
+  } catch {
+    return [];
+  }
+}
+
+/**
  * Create a credential resource and add it to the project.
  * Writes the credential config to agentcore.json and secrets to .env.local.
  */

@@ -265,7 +265,7 @@ export function registerAdd(program: Command) {
   // Subcommand: add gateway
   addCmd
     .command('gateway')
-    .description('Add an MCP gateway to the project')
+    .description('Add a gateway to the project')
     .option('--name <name>', 'Gateway name')
     .option('--description <desc>', 'Gateway description')
     .option('--authorizer-type <type>', 'Authorizer type: NONE or CUSTOM_JWT', 'NONE')

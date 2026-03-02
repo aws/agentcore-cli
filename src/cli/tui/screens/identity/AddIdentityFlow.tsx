@@ -35,11 +35,26 @@ export function AddIdentityFlow({ isInteractive = true, onExit, onBack, onDev, o
 
   const handleCreateComplete = useCallback(
     (config: AddIdentityConfig) => {
-      void createIdentity({
-        type: 'ApiKeyCredentialProvider',
-        name: config.name,
-        apiKey: config.apiKey,
-      }).then(result => {
+      const createConfig =
+        config.identityType === 'OAuthCredentialProvider'
+          ? {
+              type: 'OAuthCredentialProvider' as const,
+              name: config.name,
+              discoveryUrl: config.discoveryUrl!,
+              clientId: config.clientId!,
+              clientSecret: config.clientSecret!,
+              scopes: config.scopes
+                ?.split(',')
+                .map(s => s.trim())
+                .filter(Boolean),
+            }
+          : {
+              type: 'ApiKeyCredentialProvider' as const,
+              name: config.name,
+              apiKey: config.apiKey,
+            };
+
+      void createIdentity(createConfig).then(result => {
         if (result.ok) {
           setFlow({ name: 'create-success', identityName: result.result.name });
           return;
@@ -63,7 +78,7 @@ export function AddIdentityFlow({ isInteractive = true, onExit, onBack, onDev, o
       <AddSuccessScreen
         isInteractive={isInteractive}
         message={`Added credential: ${flow.identityName}`}
-        detail="Credential added to project in `agentcore/agentcore.json`. API key stored in `agentcore/.env.local`."
+        detail="Credential added to project in `agentcore/agentcore.json`. Secrets stored in `agentcore/.env.local`."
         showDevOption={true}
         onAddAnother={onBack}
         onDev={onDev}

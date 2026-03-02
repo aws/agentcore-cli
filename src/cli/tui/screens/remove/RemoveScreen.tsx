@@ -6,7 +6,7 @@ const REMOVE_RESOURCES = [
   { id: 'agent', title: 'Agent', description: 'Remove an agent from the project' },
   { id: 'memory', title: 'Memory', description: 'Remove a memory provider' },
   { id: 'identity', title: 'Identity', description: 'Remove an identity provider' },
-  { id: 'gateway', title: 'Gateway', description: 'Remove an MCP gateway' },
+  { id: 'gateway', title: 'Gateway', description: 'Remove a gateway' },
   { id: 'gateway-target', title: 'Gateway Target', description: 'Remove a gateway target' },
   { id: 'all', title: 'All', description: 'Reset entire agentcore project' },
 ] as const;

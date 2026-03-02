@@ -3,6 +3,7 @@ import {
   type CreateCredentialConfig,
   createCredential,
   getAllCredentialNames,
+  getAllCredentials,
 } from '../../../operations/identity/create-identity';
 import { useCallback, useEffect, useState } from 'react';
 
@@ -48,6 +49,21 @@ export function useExistingCredentialNames() {
   }, []);
 
   return { names, refresh };
+}
+
+export function useExistingCredentials() {
+  const [credentials, setCredentials] = useState<Credential[]>([]);
+
+  useEffect(() => {
+    void getAllCredentials().then(setCredentials);
+  }, []);
+
+  const refresh = useCallback(async () => {
+    const result = await getAllCredentials();
+    setCredentials(result);
+  }, []);
+
+  return { credentials, refresh };
 }
 
 // Alias for old name

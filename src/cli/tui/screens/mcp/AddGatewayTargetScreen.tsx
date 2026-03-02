@@ -1,10 +1,9 @@
 import { ToolNameSchema } from '../../../../schema';
-import { ConfirmReview, Panel, Screen, SecretInput, StepIndicator, TextInput, WizardSelect } from '../../components';
+import { ConfirmReview, Panel, Screen, StepIndicator, TextInput, WizardSelect } from '../../components';
 import type { SelectableItem } from '../../components';
 import { HELP_TEXT } from '../../constants';
 import { useListNavigation } from '../../hooks';
 import { generateUniqueName } from '../../utils';
-import { useCreateIdentity, useExistingCredentialNames } from '../identity/useCreateIdentity.js';
 import type { AddGatewayTargetConfig } from './types';
 import { MCP_TOOL_STEP_LABELS, OUTBOUND_AUTH_OPTIONS } from './types';
 import { useAddGatewayTargetWizard } from './useAddGatewayTargetWizard';
@@ -14,28 +13,23 @@ import React, { useMemo, useState } from 'react';
 interface AddGatewayTargetScreenProps {
   existingGateways: string[];
   existingToolNames: string[];
+  existingOAuthCredentialNames: string[];
   onComplete: (config: AddGatewayTargetConfig) => void;
+  onCreateCredential: (pendingConfig: AddGatewayTargetConfig) => void;
   onExit: () => void;
 }
 
 export function AddGatewayTargetScreen({
   existingGateways,
   existingToolNames,
+  existingOAuthCredentialNames,
   onComplete,
+  onCreateCredential,
   onExit,
 }: AddGatewayTargetScreenProps) {
   const wizard = useAddGatewayTargetWizard(existingGateways);
-  const { names: existingCredentialNames } = useExistingCredentialNames();
-  const { createIdentity } = useCreateIdentity();
 
-  // Outbound auth sub-step state
   const [outboundAuthType, setOutboundAuthTypeLocal] = useState<string | null>(null);
-  const [credentialName, setCredentialNameLocal] = useState<string | null>(null);
-  const [isCreatingCredential, setIsCreatingCredential] = useState(false);
-  const [oauthSubStep, setOauthSubStep] = useState<'name' | 'client-id' | 'client-secret' | 'discovery-url'>('name');
-  const [oauthFields, setOauthFields] = useState({ name: '', clientId: '', clientSecret: '', discoveryUrl: '' });
-  const [apiKeySubStep, setApiKeySubStep] = useState<'name' | 'api-key'>('name');
-  const [apiKeyFields, setApiKeyFields] = useState({ name: '', apiKey: '' });
 
   const gatewayItems: SelectableItem[] = useMemo(
     () => existingGateways.map(g => ({ id: g, title: g })),
@@ -48,14 +42,14 @@ export function AddGatewayTargetScreen({
   );
 
   const credentialItems: SelectableItem[] = useMemo(() => {
-    const items: SelectableItem[] = [
-      { id: 'create-new', title: 'Create new credential', description: 'Create a new credential inline' },
-    ];
-    existingCredentialNames.forEach(name => {
-      items.push({ id: name, title: name, description: 'Use existing credential' });
-    });
+    const items: SelectableItem[] = existingOAuthCredentialNames.map(name => ({
+      id: name,
+      title: name,
+      description: 'Use existing OAuth credential',
+    }));
+    items.push({ id: 'create-new', title: 'Create new credential', description: 'Create a new OAuth credential' });
     return items;
-  }, [existingCredentialNames]);
+  }, [existingOAuthCredentialNames]);
 
   const isGatewayStep = wizard.step === 'gateway';
   const isOutboundAuthStep = wizard.step === 'outbound-auth';
@@ -73,10 +67,14 @@ export function AddGatewayTargetScreen({
   const outboundAuthNav = useListNavigation({
     items: outboundAuthItems,
     onSelect: item => {
-      const authType = item.id as 'OAUTH' | 'API_KEY' | 'NONE';
-      setOutboundAuthTypeLocal(authType);
+      const authType = item.id as 'OAUTH' | 'NONE';
       if (authType === 'NONE') {
         wizard.setOutboundAuth({ type: 'NONE' });
+      } else if (existingOAuthCredentialNames.length === 0) {
+        // No existing OAuth credentials — go straight to creation
+        onCreateCredential(wizard.config);
+      } else {
+        setOutboundAuthTypeLocal(authType);
       }
     },
     onExit: () => wizard.goBack(),
@@ -87,28 +85,15 @@ export function AddGatewayTargetScreen({
     items: credentialItems,
     onSelect: item => {
       if (item.id === 'create-new') {
-        setIsCreatingCredential(true);
-        if (outboundAuthType === 'OAUTH') {
-          setOauthSubStep('name');
-        } else {
-          setApiKeySubStep('name');
-        }
+        onCreateCredential(wizard.config);
       } else {
-        setCredentialNameLocal(item.id);
-        wizard.setOutboundAuth({ type: outboundAuthType as 'OAUTH' | 'API_KEY', credentialName: item.id });
+        wizard.setOutboundAuth({ type: 'OAUTH', credentialName: item.id });
       }
     },
     onExit: () => {
       setOutboundAuthTypeLocal(null);
-      setCredentialNameLocal(null);
-      setIsCreatingCredential(false);
     },
-    isActive:
-      isOutboundAuthStep &&
-      !!outboundAuthType &&
-      outboundAuthType !== 'NONE' &&
-      !credentialName &&
-      !isCreatingCredential,
+    isActive: isOutboundAuthStep && outboundAuthType === 'OAUTH',
   });
 
   useListNavigation({
@@ -116,121 +101,14 @@ export function AddGatewayTargetScreen({
     onSelect: () => onComplete(wizard.config),
     onExit: () => {
       setOutboundAuthTypeLocal(null);
-      setCredentialNameLocal(null);
-      setIsCreatingCredential(false);
-      setOauthSubStep('name');
-      setOauthFields({ name: '', clientId: '', clientSecret: '', discoveryUrl: '' });
-      setApiKeySubStep('name');
-      setApiKeyFields({ name: '', apiKey: '' });
       wizard.goBack();
     },
     isActive: isConfirmStep,
   });
 
-  // OAuth creation handlers
-  const handleOauthFieldSubmit = (value: string) => {
-    const newFields = { ...oauthFields };
-
-    if (oauthSubStep === 'name') {
-      newFields.name = value;
-      setOauthFields(newFields);
-      setOauthSubStep('client-id');
-    } else if (oauthSubStep === 'client-id') {
-      newFields.clientId = value;
-      setOauthFields(newFields);
-      setOauthSubStep('client-secret');
-    } else if (oauthSubStep === 'client-secret') {
-      newFields.clientSecret = value;
-      setOauthFields(newFields);
-      setOauthSubStep('discovery-url');
-    } else if (oauthSubStep === 'discovery-url') {
-      newFields.discoveryUrl = value;
-      setOauthFields(newFields);
-
-      // Create the credential
-      void createIdentity({
-        type: 'OAuthCredentialProvider',
-        name: newFields.name,
-        clientId: newFields.clientId,
-        clientSecret: newFields.clientSecret,
-        discoveryUrl: newFields.discoveryUrl,
-      })
-        .then(result => {
-          if (result.ok) {
-            wizard.setOutboundAuth({ type: 'OAUTH', credentialName: newFields.name });
-          } else {
-            setIsCreatingCredential(false);
-            setOauthSubStep('name');
-            setOauthFields({ name: '', clientId: '', clientSecret: '', discoveryUrl: '' });
-          }
-        })
-        .catch(() => {
-          setIsCreatingCredential(false);
-          setOauthSubStep('name');
-          setOauthFields({ name: '', clientId: '', clientSecret: '', discoveryUrl: '' });
-        });
-    }
-  };
-
-  const handleOauthFieldCancel = () => {
-    if (oauthSubStep === 'name') {
-      setIsCreatingCredential(false);
-      setOauthFields({ name: '', clientId: '', clientSecret: '', discoveryUrl: '' });
-    } else if (oauthSubStep === 'client-id') {
-      setOauthSubStep('name');
-    } else if (oauthSubStep === 'client-secret') {
-      setOauthSubStep('client-id');
-    } else if (oauthSubStep === 'discovery-url') {
-      setOauthSubStep('client-secret');
-    }
-  };
-
-  // API Key creation handlers
-  const handleApiKeyFieldSubmit = (value: string) => {
-    const newFields = { ...apiKeyFields };
-
-    if (apiKeySubStep === 'name') {
-      newFields.name = value;
-      setApiKeyFields(newFields);
-      setApiKeySubStep('api-key');
-    } else if (apiKeySubStep === 'api-key') {
-      newFields.apiKey = value;
-      setApiKeyFields(newFields);
-
-      void createIdentity({
-        type: 'ApiKeyCredentialProvider',
-        name: newFields.name,
-        apiKey: newFields.apiKey,
-      })
-        .then(result => {
-          if (result.ok) {
-            wizard.setOutboundAuth({ type: 'API_KEY', credentialName: newFields.name });
-          } else {
-            setIsCreatingCredential(false);
-            setApiKeySubStep('name');
-            setApiKeyFields({ name: '', apiKey: '' });
-          }
-        })
-        .catch(() => {
-          setIsCreatingCredential(false);
-          setApiKeySubStep('name');
-          setApiKeyFields({ name: '', apiKey: '' });
-        });
-    }
-  };
-
-  const handleApiKeyFieldCancel = () => {
-    if (apiKeySubStep === 'name') {
-      setIsCreatingCredential(false);
-      setApiKeyFields({ name: '', apiKey: '' });
-    } else if (apiKeySubStep === 'api-key') {
-      setApiKeySubStep('name');
-    }
-  };
-
   const helpText = isConfirmStep
     ? HELP_TEXT.CONFIRM_CANCEL
-    : isTextStep || isCreatingCredential
+    : isTextStep
       ? HELP_TEXT.TEXT_INPUT
       : HELP_TEXT.NAVIGATE_SELECT;
 
@@ -259,96 +137,13 @@ export function AddGatewayTargetScreen({
           />
         )}
 
-        {isOutboundAuthStep &&
-          outboundAuthType &&
-          outboundAuthType !== 'NONE' &&
-          !credentialName &&
-          !isCreatingCredential && (
-            <WizardSelect
-              title="Select credential"
-              description={`Choose a credential for ${outboundAuthType} authentication`}
-              items={credentialItems}
-              selectedIndex={credentialNav.selectedIndex}
-            />
-          )}
-
-        {isOutboundAuthStep && isCreatingCredential && outboundAuthType === 'OAUTH' && (
-          <>
-            {oauthSubStep === 'name' && (
-              <TextInput
-                key="oauth-name"
-                prompt="Credential name"
-                initialValue={generateUniqueName('MyOAuth', existingCredentialNames)}
-                onSubmit={handleOauthFieldSubmit}
-                onCancel={handleOauthFieldCancel}
-                customValidation={value => !existingCredentialNames.includes(value) || 'Credential name already exists'}
-              />
-            )}
-            {oauthSubStep === 'client-id' && (
-              <TextInput
-                key="oauth-client-id"
-                prompt="Client ID"
-                onSubmit={handleOauthFieldSubmit}
-                onCancel={handleOauthFieldCancel}
-                customValidation={value => value.trim().length > 0 || 'Client ID is required'}
-              />
-            )}
-            {oauthSubStep === 'client-secret' && (
-              <SecretInput
-                key="oauth-client-secret"
-                prompt="Client Secret"
-                onSubmit={handleOauthFieldSubmit}
-                onCancel={handleOauthFieldCancel}
-                customValidation={value => value.trim().length > 0 || 'Client secret is required'}
-                revealChars={4}
-              />
-            )}
-            {oauthSubStep === 'discovery-url' && (
-              <TextInput
-                key="oauth-discovery-url"
-                prompt="Discovery URL"
-                placeholder="https://example.com/.well-known/openid_configuration"
-                onSubmit={handleOauthFieldSubmit}
-                onCancel={handleOauthFieldCancel}
-                customValidation={value => {
-                  try {
-                    const url = new URL(value);
-                    if (url.protocol !== 'http:' && url.protocol !== 'https:') {
-                      return 'Discovery URL must use http:// or https:// protocol';
-                    }
-                    return true;
-                  } catch {
-                    return 'Must be a valid URL';
-                  }
-                }}
-              />
-            )}
-          </>
-        )}
-
-        {isOutboundAuthStep && isCreatingCredential && outboundAuthType === 'API_KEY' && (
-          <>
-            {apiKeySubStep === 'name' && (
-              <TextInput
-                key="apikey-name"
-                prompt="Credential name"
-                initialValue={generateUniqueName('MyApiKey', existingCredentialNames)}
-                onSubmit={handleApiKeyFieldSubmit}
-                onCancel={handleApiKeyFieldCancel}
-                customValidation={value => !existingCredentialNames.includes(value) || 'Credential name already exists'}
-              />
-            )}
-            {apiKeySubStep === 'api-key' && (
-              <SecretInput
-                key="apikey-value"
-                prompt="API Key"
-                onSubmit={handleApiKeyFieldSubmit}
-                onCancel={handleApiKeyFieldCancel}
-                customValidation={value => value.trim().length > 0 || 'API key is required'}
-                revealChars={4}
-              />
-            )}
-          </>
+        {isOutboundAuthStep && outboundAuthType === 'OAUTH' && (
+          <WizardSelect
+            title="Select credential"
+            description="Choose an OAuth credential for authentication"
+            items={credentialItems}
+            selectedIndex={credentialNav.selectedIndex}
+          />
         )}
 
         {isTextStep && (

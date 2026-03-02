@@ -44,7 +44,7 @@ export function EditSchemaScreen(props: EditSchemaScreenProps) {
       {
         id: 'mcp',
         title: 'mcp.json',
-        description: `MCP gateways and tools${mcpMissing}`,
+        description: `Gateways and tools${mcpMissing}`,
         filePath: mcpPath,
         schema: AgentCoreMcpSpecSchema,
       },
