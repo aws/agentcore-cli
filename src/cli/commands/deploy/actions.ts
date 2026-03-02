@@ -168,8 +168,10 @@ export async function handleDeploy(options: ValidatedDeployOptions): Promise<Dep
         runtimeCredentials,
       });
       if (oauthResult.hasErrors) {
+        // Log detailed error internally, return sanitized message to avoid leaking OAuth details
         const errorResult = oauthResult.results.find(r => r.status === 'error');
-        const errorMsg = errorResult?.error ?? 'OAuth credential setup failed';
+        logger.log(`OAuth setup error: ${errorResult?.error ?? 'unknown'}`, 'error');
+        const errorMsg = 'OAuth credential setup failed. Check the log for details.';
         endStep('error', errorMsg);
         logger.finalize(false);
         return { success: false, error: errorMsg, logPath: logger.getRelativeLogPath() };
