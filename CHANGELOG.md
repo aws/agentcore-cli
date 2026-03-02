@@ -2,6 +2,59 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.3.0-preview.3.0] - 2026-03-02
+
+### Added
+- feat: add npm cache ownership preflight check (#462) (f2942dd)
+- feat: implement gateway integration (#472) (3cf1342)
+- feat: add version-aware AWS CLI guidance to credential error messages (#452) (0e036a8)
+- feat: support custom package index (UV_DEFAULT_INDEX) for Container builds (#453) (478fde8)
+- feat: add VPC CLI flags to create and add commands [2/3] (#425) (c75f4cd)
+- feat: add VPC info messages to dev and invoke commands [3/3] (#426) (7a81b02)
+- feat: add VPC network mode to schema (#424) (4180646)
+- feat: show version update notification on CLI startup (#380) (dd17167)
+
+### Fixed
+- fix: revert version to 0.3.0-preview.2.1 (accidentally bumped in #472) (#479) (f5cf41c)
+- fix: drop wip and statuses write from PR title workflow (#476) (d5a7a3b)
+- fix: add statuses write permission to PR title workflow (#475) (6d88468)
+- fix: add .venv/bin to PATH in container Dockerfile (#471) (571a610)
+- fix: prevent spurious agent startup in dev mode and remove tiktoken dep (#454) (ac62c4e)
+- fix: resolve all npm audit vulnerabilities (#422) (33523a6)
+- fix: container dev mode no longer assumes uv or bedrock_agentcore user (#433) (7c5b2f3)
+- fix: disallow underscores in deployment target names and sanitize stack names (#412) (5f2fbda)
+- fix: replace dead CDK test and update stale READMEs; enable strict tsconfig flags in vended CDK project (#379) (47da675)
+- fix: handle unhandled promise rejection in vended CDK main() (#409) (ecaedf8)
+- fix: surface Python errors during agentcore dev (#359) (c7eead8)
+- fix: avoid DEP0190 warning when spawning subprocesses with shell mode (#360) (e1d1e9b)
+- fix: e2e testing workflow with orphaned e2e deployments (#381) (c41b738)
+
+### Other Changes
+- chore: remove VPC feature from CLI (#466) (3e8a72f)
+- chore: remove web-harness and update rollup to fix vulnerability (#463) (10272d2)
+- chore: disable npm caching in release workflow (#460) (ca5644f)
+- chore(deps): bump @aws-sdk/client-bedrock-agentcore from 3.993.0 to 3.995.0 (#398) (0b39e45)
+- chore(deps-dev): bump dev-dependencies group with 4 updates (#386) (515785d)
+- chore(deps): bump @aws-cdk/toolkit-lib from 1.15.1 to 1.16.0 (#388) (122bc65)
+- chore(deps): bump @aws-sdk/credential-providers from 3.993.0 to 3.995.0 (#387) (f44e250)
+- chore(deps): bump @smithy/shared-ini-file-loader from 4.4.3 to 4.4.4 (#393) (7806cd8)
+- chore(deps): bump @aws-sdk/client-resource-groups-tagging-api from 3.993.0 to 3.995.0 (#397) (15b33b6)
+- chore(deps): bump @aws-sdk/client-cloudformation from 3.993.0 to 3.995.0 (#399) (60f52d8)
+- chore(deps): bump @aws-sdk/client-bedrock-runtime from 3.993.0 to 3.995.0 (#400) (0aa8a30)
+- chore(deps-dev): bump typescript-eslint from 8.56.0 to 8.56.1 (#401) (d683b29)
+- chore(deps): bump @aws-sdk/client-sts from 3.993.0 to 3.995.0 (#402) (21953a1)
+- chore(deps-dev): bump @typescript-eslint/parser from 8.56.0 to 8.56.1 (#404) (7dad5d3)
+- chore(deps): bump @aws-sdk/client-bedrock-agentcore-control from 3.993.0 to 3.995.0 (#403) (7741d44)
+- ci: bump slackapi/slack-github-action from 2.0.0 to 2.1.1 (#394) (a267244)
+- ci: bump actions/checkout from 4 to 6 (#391) (99d3f29)
+- ci: bump actions/setup-node from 4 to 6 (#396) (81d1626)
+- ci: bump actions/download-artifact from 4 to 7 (#392) (bce7bc6)
+- ci: bump actions/cache from 4 to 5 (#389) (5424f89)
+- chore: add Dependabot configuration (#372) (fd5c9a9)
+- ci: add Slack notification workflow for new issues (#383) (53159e3)
+- ci: add feat/gateway-integration branch to workflow triggers (#376) (bbfcdc4)
+- chore: split e2e workflow into PR-focused and weekly full suite (#367) (fe1283a)
+
 ## [0.3.0-preview.2.1] - 2026-02-20
 
 ### Added
