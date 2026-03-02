@@ -73,7 +73,7 @@ export function AddGatewayFlow({ isInteractive = true, onExit, onBack, onDev, on
       <AddSuccessScreen
         isInteractive={isInteractive}
         message={`Added gateway: ${flow.gatewayName}`}
-        detail="Gateway defined in `agentcore/mcp.json`. Next: Use 'add tool' to route tools through this gateway."
+        detail="Gateway defined in `agentcore/mcp.json`. Next: Use 'add gateway-target' to route targets through this gateway."
         loading={flow.loading}
         loadingMessage={flow.loadingMessage}
         showDevOption={true}
