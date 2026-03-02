@@ -11,7 +11,8 @@ ENV UV_SYSTEM_PYTHON=1 \
     PYTHONUNBUFFERED=1 \
     DOCKER_CONTAINER=1 \
     UV_DEFAULT_INDEX=${UV_DEFAULT_INDEX} \
-    UV_INDEX=${UV_INDEX}
+    UV_INDEX=${UV_INDEX} \
+    PATH="/app/.venv/bin:$PATH"
 
 RUN useradd -m -u 1000 bedrock_agentcore
 
