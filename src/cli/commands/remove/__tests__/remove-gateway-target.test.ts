@@ -5,8 +5,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
-// Gateway Target feature is disabled (coming soon) - skip all tests
-describe.skip('remove gateway-target command', () => {
+describe('remove gateway-target command', () => {
   let testDir: string;
   let projectDir: string;
 
@@ -45,15 +44,14 @@ describe.skip('remove gateway-target command', () => {
     });
   });
 
-  // Gateway disabled - skip behind-gateway tests until gateway feature is enabled
-  describe.skip('remove behind-gateway tool', () => {
-    it('removes behind-gateway tool from gateway targets', async () => {
-      // Create a fresh gateway for this test to avoid conflicts with existing tools
+  describe('remove existing-endpoint target', () => {
+    it('removes target from gateway', async () => {
+      // Create a fresh gateway
       const tempGateway = `TempGw${Date.now()}`;
       const gwResult = await runCLI(['add', 'gateway', '--name', tempGateway, '--json'], projectDir);
       expect(gwResult.exitCode, `gateway add failed: ${gwResult.stdout}`).toBe(0);
 
-      // Add a tool to the fresh gateway
+      // Add a target to the gateway
       const tempTool = `tempTool${Date.now()}`;
       const addResult = await runCLI(
         [
@@ -61,12 +59,10 @@ describe.skip('remove gateway-target command', () => {
           'gateway-target',
           '--name',
           tempTool,
-          '--language',
-          'Python',
+          '--endpoint',
+          'https://example.com/mcp',
           '--gateway',
           tempGateway,
-          '--host',
-          'Lambda',
           '--json',
         ],
         projectDir

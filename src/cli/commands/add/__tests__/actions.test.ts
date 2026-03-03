@@ -4,11 +4,18 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 
 const mockCreateToolFromWizard = vi.fn().mockResolvedValue({ toolName: 'test', projectPath: '/tmp' });
 const mockCreateExternalGatewayTarget = vi.fn().mockResolvedValue({ toolName: 'test', projectPath: '' });
+const mockCreateCredential = vi.fn().mockResolvedValue(undefined);
 
 vi.mock('../../../operations/mcp/create-mcp', () => ({
   createToolFromWizard: (...args: unknown[]) => mockCreateToolFromWizard(...args),
   createExternalGatewayTarget: (...args: unknown[]) => mockCreateExternalGatewayTarget(...args),
   createGatewayFromWizard: vi.fn(),
+}));
+
+vi.mock('../../../operations/identity/create-identity', () => ({
+  createCredential: (...args: unknown[]) => mockCreateCredential(...args),
+  computeDefaultCredentialEnvVarName: vi.fn(),
+  resolveCredentialStrategy: vi.fn(),
 }));
 
 describe('buildGatewayTargetConfig', () => {
@@ -96,5 +103,32 @@ describe('handleAddGatewayTarget', () => {
 
     expect(mockCreateExternalGatewayTarget).toHaveBeenCalledOnce();
     expect(mockCreateToolFromWizard).not.toHaveBeenCalled();
+  });
+
+  it('auto-creates OAuth credential when inline fields provided', async () => {
+    const options: ValidatedAddGatewayTargetOptions = {
+      name: 'my-tool',
+      language: 'Other',
+      host: 'Lambda',
+      source: 'existing-endpoint',
+      endpoint: 'https://example.com/mcp',
+      gateway: 'my-gw',
+      oauthClientId: 'cid',
+      oauthClientSecret: 'csec',
+      oauthDiscoveryUrl: 'https://auth.example.com',
+      oauthScopes: 'read,write',
+    };
+
+    await handleAddGatewayTarget(options);
+
+    expect(mockCreateCredential).toHaveBeenCalledWith({
+      type: 'OAuthCredentialProvider',
+      name: 'my-tool-oauth',
+      discoveryUrl: 'https://auth.example.com',
+      clientId: 'cid',
+      clientSecret: 'csec',
+      scopes: ['read', 'write'],
+    });
+    expect(options.credentialName).toBe('my-tool-oauth');
   });
 });

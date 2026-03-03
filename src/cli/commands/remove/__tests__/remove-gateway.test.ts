@@ -5,8 +5,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
-// Gateway disabled - skip until gateway feature is enabled
-describe.skip('remove gateway command', () => {
+describe('remove gateway command', () => {
   let testDir: string;
   let projectDir: string;
   const gatewayName = 'TestGateway';
@@ -93,15 +92,29 @@ describe.skip('remove gateway command', () => {
       expect(!gateway, 'Gateway should be removed').toBeTruthy();
     });
 
-    it('removes gateway with attached agents using cascade policy (default)', async () => {
-      // Bind gateway to agent
-      const bindResult = await runCLI(
-        ['add', 'bind', 'gateway', '--agent', agentName, '--gateway', gatewayName, '--name', 'GatewayTool', '--json'],
+    it('removes gateway with targets attached', async () => {
+      // Re-add gateway since previous test may have removed it
+      await runCLI(['add', 'gateway', '--name', gatewayName, '--json'], projectDir);
+
+      // Add a target to the gateway
+      const targetName = `target${Date.now()}`;
+      const addResult = await runCLI(
+        [
+          'add',
+          'gateway-target',
+          '--name',
+          targetName,
+          '--endpoint',
+          'https://example.com/mcp',
+          '--gateway',
+          gatewayName,
+          '--json',
+        ],
         projectDir
       );
-      expect(bindResult.exitCode, `bind failed: ${bindResult.stdout}`).toBe(0);
+      expect(addResult.exitCode, `add target failed: ${addResult.stdout}`).toBe(0);
 
-      // Remove with cascade policy (default) - should succeed and clean up references
+      // Remove gateway - should succeed and clean up targets
       const result = await runCLI(['remove', 'gateway', '--name', gatewayName, '--json'], projectDir);
       expect(result.exitCode, `stdout: ${result.stdout}`).toBe(0);
       const json = JSON.parse(result.stdout);
