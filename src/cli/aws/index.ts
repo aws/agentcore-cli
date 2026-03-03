@@ -13,6 +13,7 @@ export {
   type AgentRuntimeStatusResult,
   type GetAgentRuntimeStatusOptions,
 } from './agentcore-control';
+export { streamLogs, searchLogs, type LogEvent, type StreamLogsOptions, type SearchLogsOptions } from './cloudwatch';
 export {
   DEFAULT_RUNTIME_USER_ID,
   invokeAgentRuntime,
