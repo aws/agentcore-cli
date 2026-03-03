@@ -61,9 +61,9 @@ const validGatewayOptionsJwt: AddGatewayOptions = {
 
 const validGatewayTargetOptions: AddGatewayTargetOptions = {
   name: 'test-tool',
-  language: 'Python',
+  source: 'existing-endpoint',
+  endpoint: 'https://example.com/mcp',
   gateway: 'my-gateway',
-  host: 'Lambda',
 };
 
 const validMemoryOptions: AddMemoryOptions = {
@@ -297,14 +297,6 @@ describe('validate', () => {
       expect(result.error).toBe('--name is required');
     });
 
-    it('returns error for missing language (non-existing-endpoint)', async () => {
-      const opts = { ...validGatewayTargetOptions, language: undefined };
-      const result = await validateAddGatewayTargetOptions(opts);
-      expect(result.valid).toBe(false);
-      expect(result.error).toBe('--language is required');
-    });
-
-    // Gateway is required
     it('returns error when --gateway is missing', async () => {
       const opts = { ...validGatewayTargetOptions, gateway: undefined };
       const result = await validateAddGatewayTargetOptions(opts);
@@ -328,22 +320,23 @@ describe('validate', () => {
       expect(result.error).toContain('other-gateway');
     });
 
-    // AC16: Invalid values rejected
-    it('returns error for invalid values', async () => {
-      const result = await validateAddGatewayTargetOptions({
-        ...validGatewayTargetOptions,
-        language: 'Java' as any,
-      });
-      expect(result.valid).toBe(false);
-      expect(result.error?.includes('Invalid language')).toBeTruthy();
-    });
-
     // AC18: Valid options pass
     it('passes for valid gateway target options', async () => {
       const result = await validateAddGatewayTargetOptions({ ...validGatewayTargetOptions });
       expect(result.valid).toBe(true);
     });
     // AC20: existing-endpoint source validation
+    it('rejects create-new source', async () => {
+      const options: AddGatewayTargetOptions = {
+        name: 'test-tool',
+        source: 'create-new' as any,
+        gateway: 'my-gateway',
+      };
+      const result = await validateAddGatewayTargetOptions(options);
+      expect(result.valid).toBe(false);
+      expect(result.error).toBe("Only 'existing-endpoint' source is currently supported");
+    });
+
     it('passes for valid existing-endpoint with https', async () => {
       const options: AddGatewayTargetOptions = {
         name: 'test-tool',
@@ -410,7 +403,7 @@ describe('validate', () => {
 
       const options: AddGatewayTargetOptions = {
         name: 'test-tool',
-        language: 'Python',
+        endpoint: 'https://example.com/mcp',
         gateway: 'my-gateway',
         outboundAuthType: 'API_KEY',
         credentialName: 'missing-cred',
@@ -427,7 +420,7 @@ describe('validate', () => {
 
       const options: AddGatewayTargetOptions = {
         name: 'test-tool',
-        language: 'Python',
+        endpoint: 'https://example.com/mcp',
         gateway: 'my-gateway',
         outboundAuthType: 'API_KEY',
         credentialName: 'any-cred',
@@ -444,7 +437,7 @@ describe('validate', () => {
 
       const options: AddGatewayTargetOptions = {
         name: 'test-tool',
-        language: 'Python',
+        endpoint: 'https://example.com/mcp',
         gateway: 'my-gateway',
         outboundAuthType: 'API_KEY',
         credentialName: 'valid-cred',
@@ -504,6 +497,18 @@ describe('validate', () => {
       });
       expect(result.valid).toBe(false);
       expect(result.error).toContain('--credential-name is required');
+    });
+
+    it('returns error for invalid OAuth discovery URL', async () => {
+      const result = await validateAddGatewayTargetOptions({
+        ...validGatewayTargetOptions,
+        outboundAuthType: 'OAUTH',
+        oauthClientId: 'cid',
+        oauthClientSecret: 'csec',
+        oauthDiscoveryUrl: 'not-a-url',
+      });
+      expect(result.valid).toBe(false);
+      expect(result.error).toBe('--oauth-discovery-url must be a valid URL');
     });
 
     it('rejects --host with existing-endpoint', async () => {

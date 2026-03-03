@@ -120,6 +120,9 @@ async function handleAddGatewayTargetCLI(options: AddGatewayTargetOptions): Prom
   const result = await handleAddGatewayTarget({
     name: options.name!,
     description: options.description,
+    type: options.type,
+    source: options.source as 'existing-endpoint' | 'create-new' | undefined,
+    endpoint: options.endpoint,
     language: options.language! as 'Python' | 'TypeScript',
     gateway: options.gateway,
     host: options.host,
