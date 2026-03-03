@@ -12,7 +12,6 @@ export const registerLogs = (program: Command) => {
     .alias('l')
     .description(COMMAND_DESCRIPTIONS.logs)
     .option('--agent <name>', 'Select specific agent')
-    .option('--agent-id <id>', 'Specify agent runtime ID directly')
     .option('--since <time>', 'Start time (e.g. "1h", "30m", "2d", ISO 8601)')
     .option('--until <time>', 'End time (e.g. "now", ISO 8601)')
     .option('--level <level>', 'Filter by log level (error, warn, info, debug)')

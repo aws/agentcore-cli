@@ -122,11 +122,58 @@ describe('resolveAgentContext', () => {
     }
   });
 
-  it('selects correct agent with --agent flag', () => {
-    const result = resolveAgentContext(makeContext(), { agent: 'MyAgent' });
+  it('selects correct agent with --agent flag from multiple agents', () => {
+    const context = makeContext({
+      project: {
+        name: 'TestProject',
+        version: 1,
+        agents: [
+          {
+            type: 'AgentCoreRuntime' as const,
+            name: 'AgentA',
+            build: 'CodeZip' as const,
+            entrypoint: 'main.py' as any,
+            codeLocation: './agents/a' as any,
+            runtimeVersion: 'PYTHON_3_12' as const,
+          },
+          {
+            type: 'AgentCoreRuntime' as const,
+            name: 'AgentB',
+            build: 'CodeZip' as const,
+            entrypoint: 'main.py' as any,
+            codeLocation: './agents/b' as any,
+            runtimeVersion: 'PYTHON_3_12' as const,
+          },
+        ],
+        memories: [],
+        credentials: [],
+      },
+      deployedState: {
+        targets: {
+          default: {
+            resources: {
+              agents: {
+                AgentA: {
+                  runtimeId: 'rt-aaa',
+                  runtimeArn: 'arn:aws:bedrock:us-east-1:123:runtime/rt-aaa',
+                  roleArn: 'arn:aws:iam::123:role/test',
+                },
+                AgentB: {
+                  runtimeId: 'rt-bbb',
+                  runtimeArn: 'arn:aws:bedrock:us-east-1:123:runtime/rt-bbb',
+                  roleArn: 'arn:aws:iam::123:role/test',
+                },
+              },
+            },
+          },
+        },
+      },
+    });
+    const result = resolveAgentContext(context, { agent: 'AgentB' });
     expect(result.success).toBe(true);
     if (result.success) {
-      expect(result.agentContext.agentName).toBe('MyAgent');
+      expect(result.agentContext.agentName).toBe('AgentB');
+      expect(result.agentContext.agentId).toBe('rt-bbb');
     }
   });
 

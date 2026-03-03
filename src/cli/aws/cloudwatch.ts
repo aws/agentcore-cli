@@ -4,7 +4,6 @@ import { CloudWatchLogsClient, FilterLogEventsCommand, StartLiveTailCommand } fr
 export interface LogEvent {
   timestamp: number;
   message: string;
-  logStreamName?: string;
 }
 
 export interface StreamLogsOptions {
@@ -65,7 +64,6 @@ export async function* streamLogs(options: StreamLogsOptions): AsyncGenerator<Lo
             yield {
               timestamp: logEvent.timestamp ?? Date.now(),
               message: logEvent.message ?? '',
-              logStreamName: logEvent.logStreamName,
             };
           }
         }
@@ -123,7 +121,6 @@ export async function* searchLogs(options: SearchLogsOptions): AsyncGenerator<Lo
       yield {
         timestamp: event.timestamp ?? Date.now(),
         message: event.message ?? '',
-        logStreamName: event.logStreamName,
       };
       yielded++;
     }
