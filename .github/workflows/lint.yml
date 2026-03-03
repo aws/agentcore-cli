@@ -2,17 +2,17 @@ name: Quality and Safety Checks
 
 on:
   push:
-    branches: ['main', 'feat/gateway-integration']
+    branches: ['main']
   pull_request:
-    branches: ['main', 'feat/gateway-integration']
+    branches: ['main']
 
 permissions:
   contents: read
 
-# Cancel in-progress runs when a new commit is pushed
+# Cancel in-progress runs for PRs; never cancel runs on main (merges should not abort each other)
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
 
 jobs:
   setup:
