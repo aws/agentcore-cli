@@ -10,6 +10,7 @@ import type {
   ModelProvider,
 } from '../../../../schema';
 import { DEFAULT_STRATEGY_NAMESPACES } from '../../../../schema';
+import { GatewayPrimitive } from '../../../primitives/GatewayPrimitive';
 import { computeDefaultCredentialEnvVarName } from '../../../primitives/credential-utils';
 import type {
   AgentRenderConfig,
@@ -24,7 +25,6 @@ import {
   DEFAULT_PYTHON_VERSION,
 } from '../../../tui/screens/generate/defaults';
 import type { GenerateConfig, MemoryOption } from '../../../tui/screens/generate/types';
-import { GatewayPrimitive } from '../../../primitives/GatewayPrimitive';
 
 /**
  * Result of mapping GenerateConfig to v2 schema.
