@@ -60,7 +60,7 @@ export async function listTraces(options: ListTracesOptions): Promise<ListTraces
     let status = 'Running';
     let results: TraceEntry[] = [];
 
-    for (let i = 0; i < 30; i++) {
+    for (let i = 0; i < 60; i++) {
       await new Promise(resolve => setTimeout(resolve, 1000));
 
       const queryResults = await client.send(new GetQueryResultsCommand({ queryId: startQuery.queryId }));
@@ -91,7 +91,7 @@ export async function listTraces(options: ListTracesOptions): Promise<ListTraces
     }
 
     if (status === 'Running') {
-      return { success: false, error: 'Query timed out after 30 seconds' };
+      return { success: false, error: 'Query timed out after 60 seconds' };
     }
 
     return { success: true, traces: results };
