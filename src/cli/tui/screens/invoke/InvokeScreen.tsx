@@ -269,6 +269,15 @@ export function InvokeScreen({
   }
 
   const agent = config.agents[selectedAgent];
+  const traceUrl =
+    mode !== 'select-agent' && agent
+      ? buildTraceConsoleUrl({
+          region: config.target.region,
+          accountId: config.target.account,
+          runtimeId: agent.state.runtimeId,
+          agentName: agent.name,
+        })
+      : undefined;
   const agentItems = config.agents.map((a, i) => ({
     id: String(i),
     title: a.name,
@@ -322,21 +331,11 @@ export function InvokeScreen({
         </Box>
       )}
       {logFilePath && <LogLink filePath={logFilePath} />}
-      {mode !== 'select-agent' &&
-        agent &&
-        (() => {
-          const traceUrl = buildTraceConsoleUrl({
-            region: config.target.region,
-            accountId: config.target.account,
-            runtimeId: agent.state.runtimeId,
-            agentName: agent.name,
-          });
-          return (
-            <Text color="gray">
-              Traces: <Text color="cyan">{traceUrl}</Text>
-            </Text>
-          );
-        })()}
+      {traceUrl && (
+        <Text color="gray">
+          Traces: <Text color="cyan">{traceUrl}</Text>
+        </Text>
+      )}
     </Box>
   );
 
