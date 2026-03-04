@@ -23,7 +23,6 @@ export const registerTraces = (program: Command) => {
     .command('list')
     .description('List recent traces for a deployed agent')
     .option('--agent <name>', 'Select specific agent')
-    .option('--target <name>', 'Select deployment target')
     .option('--limit <n>', 'Maximum number of traces to display', '20')
     .action(async (cliOptions: TracesListOptions) => {
       requireProject();
@@ -93,7 +92,6 @@ export const registerTraces = (program: Command) => {
     .command('get <traceId>')
     .description('Download a trace to a JSON file')
     .option('--agent <name>', 'Select specific agent')
-    .option('--target <name>', 'Select deployment target')
     .option('--output <path>', 'Output file path')
     .action(async (traceId: string, cliOptions: TracesGetOptions) => {
       requireProject();

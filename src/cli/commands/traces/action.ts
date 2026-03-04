@@ -25,10 +25,7 @@ interface ResolvedAgent {
   targetName: string;
 }
 
-function resolveAgent(
-  context: TracesContext,
-  options: { agent?: string; target?: string }
-): ResolvedAgent | { error: string } {
+function resolveAgent(context: TracesContext, options: { agent?: string }): ResolvedAgent | { error: string } {
   const { project, deployedState, awsTargets } = context;
 
   const targetNames = Object.keys(deployedState.targets);
@@ -36,11 +33,7 @@ function resolveAgent(
     return { error: 'No deployed targets found. Run `agentcore deploy` first.' };
   }
 
-  const selectedTargetName = options.target ?? targetNames[0]!;
-  if (options.target && !targetNames.includes(options.target)) {
-    return { error: `Target '${options.target}' not found. Available: ${targetNames.join(', ')}` };
-  }
-
+  const selectedTargetName = targetNames[0]!;
   const targetState = deployedState.targets[selectedTargetName];
   const targetConfig = awsTargets.find(t => t.name === selectedTargetName);
   if (!targetConfig) {
