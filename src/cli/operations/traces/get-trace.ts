@@ -55,17 +55,18 @@ export async function getTrace(options: GetTraceOptions): Promise<GetTraceResult
 
     // Poll for results
     let traceData: Record<string, string>[] = [];
+    let queryStatus = 'Running';
 
-    for (let i = 0; i < 30; i++) {
+    for (let i = 0; i < 60; i++) {
       await new Promise(resolve => setTimeout(resolve, 1000));
 
       const queryResults = await client.send(new GetQueryResultsCommand({ queryId: startQuery.queryId }));
 
-      const status = queryResults.status ?? 'Unknown';
+      queryStatus = queryResults.status ?? 'Unknown';
 
-      if (status === 'Complete' || status === 'Failed' || status === 'Cancelled') {
-        if (status !== 'Complete') {
-          return { success: false, error: `Query ${status.toLowerCase()}` };
+      if (queryStatus === 'Complete' || queryStatus === 'Failed' || queryStatus === 'Cancelled') {
+        if (queryStatus !== 'Complete') {
+          return { success: false, error: `Query ${queryStatus.toLowerCase()}` };
         }
 
         traceData = (queryResults.results ?? []).map(row => {
@@ -79,6 +80,10 @@ export async function getTrace(options: GetTraceOptions): Promise<GetTraceResult
         });
         break;
       }
+    }
+
+    if (queryStatus === 'Running') {
+      return { success: false, error: 'Query timed out after 60 seconds' };
     }
 
     if (traceData.length === 0) {
