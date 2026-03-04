@@ -6,3 +6,4 @@ export * from './mcp';
 export * from './python';
 export * from './remove';
 export * from './session';
+export * from './traces';

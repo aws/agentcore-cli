@@ -7,4 +7,5 @@ export { registerInvoke } from './invoke';
 export { registerPackage } from './package';
 export { registerRemove } from './remove';
 export { registerStatus } from './status';
+export { registerTraces } from './traces';
 export { registerUpdate } from './update';
