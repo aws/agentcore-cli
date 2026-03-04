@@ -64,13 +64,13 @@ export const registerTraces = (program: Command) => {
                 {result.traces.map((trace, i) => (
                   <Box key={i}>
                     <Box width={34}>
-                      <Text color="cyan">{trace.traceId.slice(0, 32)}</Text>
+                      <Text color="cyan">{trace.traceId}</Text>
                     </Box>
                     <Box width={22}>
                       <Text>{formatTimestamp(trace.timestamp)}</Text>
                     </Box>
                     <Box width={38}>
-                      <Text color="magenta">{trace.sessionId?.slice(0, 36) ?? '-'}</Text>
+                      <Text color="magenta">{trace.sessionId ?? '-'}</Text>
                     </Box>
                   </Box>
                 ))}
