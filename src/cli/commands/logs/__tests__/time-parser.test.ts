@@ -1,4 +1,4 @@
-import { parseTimeString } from '../time-parser';
+import { parseTimeString } from '../../../../lib/utils/time-parser';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 describe('parseTimeString', () => {

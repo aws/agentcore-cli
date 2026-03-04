@@ -1,15 +1,11 @@
-import { ConfigIO } from '../../../lib';
-import type { AgentCoreProjectSpec, AwsDeploymentTargets, DeployedState } from '../../../schema';
+import { parseTimeString } from '../../../lib/utils';
 import { searchLogs, streamLogs } from '../../aws/cloudwatch';
+import type { DeployedProjectConfig } from '../../operations/resolve-agent';
+import { loadDeployedProjectConfig, resolveAgent } from '../../operations/resolve-agent';
 import { VALID_LEVELS, buildFilterPattern } from './filter-pattern';
-import { parseTimeString } from './time-parser';
 import type { LogsOptions } from './types';
 
-export interface LogsContext {
-  project: AgentCoreProjectSpec;
-  deployedState: DeployedState;
-  awsTargets: AwsDeploymentTargets;
-}
+export type { DeployedProjectConfig };
 
 export interface AgentContext {
   agentId: string;
@@ -23,17 +19,6 @@ export interface AgentContext {
 export interface LogsResult {
   success: boolean;
   error?: string;
-}
-
-/**
- * Loads configuration required for logs
- */
-export async function loadLogsConfig(configIO: ConfigIO = new ConfigIO()): Promise<LogsContext> {
-  return {
-    project: await configIO.readProjectSpec(),
-    deployedState: await configIO.readDeployedState(),
-    awsTargets: await configIO.readAWSDeploymentTargets(),
-  };
 }
 
 /**
@@ -61,73 +46,23 @@ export function formatLogLine(event: { timestamp: number; message: string }, jso
  * Resolve agent context from config + options
  */
 export function resolveAgentContext(
-  context: LogsContext,
+  context: DeployedProjectConfig,
   options: LogsOptions
 ): { success: true; agentContext: AgentContext } | { success: false; error: string } {
-  const { project, deployedState, awsTargets } = context;
-
-  if (project.agents.length === 0) {
-    return { success: false, error: 'No agents defined in agentcore.json' };
+  const result = resolveAgent(context, options);
+  if (!result.success) {
+    return { success: false, error: result.error };
   }
-
-  // Resolve agent
-  const agentNames = project.agents.map(a => a.name);
-
-  if (!options.agent && project.agents.length > 1) {
-    return {
-      success: false,
-      error: `Multiple agents found. Use --agent to specify one: ${agentNames.join(', ')}`,
-    };
-  }
-
-  const agentSpec = options.agent ? project.agents.find(a => a.name === options.agent) : project.agents[0];
-
-  if (options.agent && !agentSpec) {
-    return {
-      success: false,
-      error: `Agent '${options.agent}' not found. Available: ${agentNames.join(', ')}`,
-    };
-  }
-
-  if (!agentSpec) {
-    return { success: false, error: 'No agents defined in agentcore.json' };
-  }
-
-  // Resolve target
-  const targetNames = Object.keys(deployedState.targets);
-  if (targetNames.length === 0) {
-    return { success: false, error: 'No deployed targets found. Run `agentcore deploy` first.' };
-  }
-  const selectedTargetName = targetNames[0]!;
-
-  const targetState = deployedState.targets[selectedTargetName];
-  const targetConfig = awsTargets.find(t => t.name === selectedTargetName);
-
-  if (!targetConfig) {
-    return { success: false, error: `Target config '${selectedTargetName}' not found in aws-targets` };
-  }
-
-  // Get the deployed state for this specific agent
-  const agentState = targetState?.resources?.agents?.[agentSpec.name];
-
-  if (!agentState) {
-    return {
-      success: false,
-      error: `Agent '${agentSpec.name}' is not deployed to target '${selectedTargetName}'. Run 'agentcore deploy' first.`,
-    };
-  }
-
-  const agentId = agentState.runtimeId;
+  const { agent } = result;
   const endpointName = 'DEFAULT';
-  const logGroupName = `/aws/bedrock-agentcore/runtimes/${agentId}-${endpointName}`;
-
+  const logGroupName = `/aws/bedrock-agentcore/runtimes/${agent.runtimeId}-${endpointName}`;
   return {
     success: true,
     agentContext: {
-      agentId,
-      agentName: agentSpec.name,
-      accountId: targetConfig.account,
-      region: targetConfig.region,
+      agentId: agent.runtimeId,
+      agentName: agent.agentName,
+      accountId: agent.accountId,
+      region: agent.region,
       endpointName,
       logGroupName,
     },
@@ -146,7 +81,7 @@ export async function handleLogs(options: LogsOptions): Promise<LogsResult> {
     };
   }
 
-  const context = await loadLogsConfig();
+  const context = await loadDeployedProjectConfig();
   const resolution = resolveAgentContext(context, options);
 
   if (!resolution.success) {

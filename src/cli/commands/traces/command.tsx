@@ -1,7 +1,8 @@
 import { getErrorMessage } from '../../errors';
+import { loadDeployedProjectConfig } from '../../operations/resolve-agent';
 import { COMMAND_DESCRIPTIONS } from '../../tui/copy';
 import { requireProject } from '../../tui/guards';
-import { handleTracesGet, handleTracesList, loadTracesConfig } from './action';
+import { handleTracesGet, handleTracesList } from './action';
 import type { TracesGetOptions, TracesListOptions } from './types';
 import type { Command } from '@commander-js/extra-typings';
 import { Box, Text, render } from 'ink';
@@ -24,11 +25,13 @@ export const registerTraces = (program: Command) => {
     .description('List recent traces for a deployed agent')
     .option('--agent <name>', 'Select specific agent')
     .option('--limit <n>', 'Maximum number of traces to display', '20')
+    .option('--since <time>', 'Start time (e.g. 5m, 1h, 2d, ISO 8601, epoch ms)')
+    .option('--until <time>', 'End time (e.g. now, 1h, ISO 8601, epoch ms)')
     .action(async (cliOptions: TracesListOptions) => {
       requireProject();
 
       try {
-        const context = await loadTracesConfig();
+        const context = await loadDeployedProjectConfig();
         const result = await handleTracesList(context, cliOptions);
 
         if (!result.success) {
@@ -76,7 +79,7 @@ export const registerTraces = (program: Command) => {
                 ))}
               </>
             ) : (
-              <Text color="yellow">No traces found in the last 12 hours.</Text>
+              <Text color="yellow">No traces found in the specified time range.</Text>
             )}
             <Text> </Text>
             {result.consoleUrl && <Text color="gray">Console: {result.consoleUrl}</Text>}
@@ -93,11 +96,13 @@ export const registerTraces = (program: Command) => {
     .description('Download a trace to a JSON file')
     .option('--agent <name>', 'Select specific agent')
     .option('--output <path>', 'Output file path')
+    .option('--since <time>', 'Start time (e.g. 5m, 1h, 2d, ISO 8601, epoch ms)')
+    .option('--until <time>', 'End time (e.g. now, 1h, ISO 8601, epoch ms)')
     .action(async (traceId: string, cliOptions: TracesGetOptions) => {
       requireProject();
 
       try {
-        const context = await loadTracesConfig();
+        const context = await loadDeployedProjectConfig();
         const result = await handleTracesGet(context, traceId, cliOptions);
 
         if (!result.success) {

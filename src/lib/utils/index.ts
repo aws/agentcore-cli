@@ -9,4 +9,5 @@ export {
   type SubprocessOptions,
   type SubprocessResult,
 } from './subprocess';
+export { parseTimeString } from './time-parser';
 export { validateAgentSchema, validateProjectSchema } from './zod';

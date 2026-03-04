@@ -9,6 +9,8 @@ export interface GetTraceOptions {
   agentName: string;
   traceId: string;
   outputPath?: string;
+  startTime?: number;
+  endTime?: number;
 }
 
 export interface GetTraceResult {
@@ -34,14 +36,15 @@ export async function getTrace(options: GetTraceOptions): Promise<GetTraceResult
   const logGroupName = `/aws/bedrock-agentcore/runtimes/${runtimeId}-DEFAULT`;
 
   const now = Date.now();
-  const startTime = now - 24 * 60 * 60 * 1000; // last 24 hours
+  const endTime = options.endTime ?? now;
+  const startTime = options.startTime ?? endTime - 12 * 60 * 60 * 1000; // default: last 12 hours
 
   try {
     const startQuery = await client.send(
       new StartQueryCommand({
         logGroupName,
         startTime: Math.floor(startTime / 1000),
-        endTime: Math.floor(now / 1000),
+        endTime: Math.floor(endTime / 1000),
         queryString: `fields @timestamp, @message
 | filter traceId = '${traceId}'
 | sort @timestamp asc

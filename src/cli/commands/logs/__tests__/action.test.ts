@@ -1,5 +1,5 @@
 import { detectMode, formatLogLine, resolveAgentContext } from '../action';
-import type { LogsContext } from '../action';
+import type { DeployedProjectConfig } from '../action';
 import { describe, expect, it } from 'vitest';
 
 describe('detectMode', () => {
@@ -39,7 +39,7 @@ describe('formatLogLine', () => {
 
 describe('resolveAgentContext', () => {
   // Use 'as any' to avoid branded type issues with FilePath/DirectoryPath
-  const makeContext = (overrides?: Partial<LogsContext>): LogsContext => ({
+  const makeContext = (overrides?: Partial<DeployedProjectConfig>): DeployedProjectConfig => ({
     project: {
       name: 'TestProject',
       version: 1,

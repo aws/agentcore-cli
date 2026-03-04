@@ -1,4 +1,4 @@
-import { buildTraceConsoleUrl, parseRuntimeArn } from '../../../operations/traces';
+import { buildTraceConsoleUrl } from '../../../operations/traces';
 import { GradientText, LogLink, Panel, Screen, SelectList, TextInput } from '../../components';
 import { useInvokeFlow } from './useInvokeFlow';
 import { Box, Text, useInput, useStdout } from 'ink';
@@ -325,12 +325,10 @@ export function InvokeScreen({
       {mode !== 'select-agent' &&
         agent &&
         (() => {
-          const parsed = parseRuntimeArn(agent.state.runtimeArn);
-          if (!parsed) return null;
           const traceUrl = buildTraceConsoleUrl({
             region: config.target.region,
-            accountId: parsed.accountId,
-            runtimeId: parsed.runtimeId,
+            accountId: config.target.account,
+            runtimeId: agent.state.runtimeId,
             agentName: agent.name,
           });
           return (
