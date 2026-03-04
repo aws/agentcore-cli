@@ -1,4 +1,5 @@
 import { getCredentialProvider } from '../../aws';
+import { DEFAULT_ENDPOINT_NAME } from '../../constants';
 import { CloudWatchLogsClient, GetQueryResultsCommand, StartQueryCommand } from '@aws-sdk/client-cloudwatch-logs';
 
 export interface TraceEntry {
@@ -37,7 +38,7 @@ export async function listTraces(options: ListTracesOptions): Promise<ListTraces
     region,
   });
 
-  const logGroupName = `/aws/bedrock-agentcore/runtimes/${runtimeId}-DEFAULT`;
+  const logGroupName = `/aws/bedrock-agentcore/runtimes/${runtimeId}-${DEFAULT_ENDPOINT_NAME}`;
 
   const now = Date.now();
   const endTime = options.endTime ?? now;

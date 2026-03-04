@@ -1,5 +1,6 @@
 import { parseTimeString } from '../../../lib/utils';
 import { searchLogs, streamLogs } from '../../aws/cloudwatch';
+import { DEFAULT_ENDPOINT_NAME } from '../../constants';
 import type { DeployedProjectConfig } from '../../operations/resolve-agent';
 import { loadDeployedProjectConfig, resolveAgent } from '../../operations/resolve-agent';
 import { VALID_LEVELS, buildFilterPattern } from './filter-pattern';
@@ -54,7 +55,7 @@ export function resolveAgentContext(
     return { success: false, error: result.error };
   }
   const { agent } = result;
-  const endpointName = 'DEFAULT';
+  const endpointName = DEFAULT_ENDPOINT_NAME;
   const logGroupName = `/aws/bedrock-agentcore/runtimes/${agent.runtimeId}-${endpointName}`;
   return {
     success: true,

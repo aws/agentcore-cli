@@ -53,3 +53,8 @@ export const CDK_APP_ENTRY = 'dist/bin/cdk.js';
  * Current schema version for AgentCore configuration files.
  */
 export const SCHEMA_VERSION = 1;
+
+/**
+ * Default runtime endpoint name used in log group paths and console URLs.
+ */
+export const DEFAULT_ENDPOINT_NAME = 'DEFAULT';
