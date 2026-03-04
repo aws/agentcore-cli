@@ -17,7 +17,33 @@ permissions:
   contents: read
 
 jobs:
+  authorize:
+    runs-on: ubuntu-latest
+    if: github.event_name == 'workflow_dispatch' || github.event_name == 'pull_request_target'
+    outputs:
+      is_authorized: ${{ steps.check.outputs.is_authorized }}
+    steps:
+      - name: Check authorization
+        id: check
+        run: |
+          if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
+            echo "✅ Manual workflow dispatch — authorized"
+            echo "is_authorized=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          AUTHORIZED_USERS="${{ secrets.AUTHORIZED_USERS }}"
+          if [[ ",$AUTHORIZED_USERS," == *",${{ github.actor }},"* ]]; then
+            echo "✅ User ${{ github.actor }} is authorized"
+            echo "is_authorized=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "⏭️ User ${{ github.actor }} is not in AUTHORIZED_USERS — skipping E2E tests."
+            echo "ℹ️ External contributors: ask a maintainer to run the E2E tests manually via workflow_dispatch."
+            echo "is_authorized=false" >> "$GITHUB_OUTPUT"
+          fi
+
   e2e:
+    needs: authorize
+    if: needs.authorize.outputs.is_authorized == 'true'
     runs-on: ubuntu-latest
     environment: e2e-testing
     timeout-minutes: 30
