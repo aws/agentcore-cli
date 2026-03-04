@@ -1,4 +1,4 @@
-import { APP_DIR, MCP_APP_SUBDIR, requireConfigRoot } from '../../lib';
+import { APP_DIR, MCP_APP_SUBDIR, findConfigRoot, requireConfigRoot } from '../../lib';
 import type {
   AgentCoreCliMcpDefs,
   AgentCoreGatewayTarget,
@@ -7,6 +7,8 @@ import type {
   FilePath,
 } from '../../schema';
 import { AgentCoreCliMcpDefsSchema, AgentCoreGatewayTargetSchema, ToolDefinitionSchema } from '../../schema';
+import type { AddGatewayTargetOptions as CLIAddGatewayTargetOptions } from '../commands/add/types';
+import { validateAddGatewayTargetOptions } from '../commands/add/validate';
 import { getErrorMessage } from '../errors';
 import type { RemovableGatewayTarget } from '../operations/remove/remove-gateway-target';
 import type { RemovalPreview, RemovalResult, SchemaChange } from '../operations/remove/types';
@@ -14,6 +16,7 @@ import { getTemplateToolDefinitions, renderGatewayTargetTemplate } from '../temp
 import type { AddGatewayTargetConfig } from '../tui/screens/mcp/types';
 import { DEFAULT_HANDLER, DEFAULT_NODE_VERSION, DEFAULT_PYTHON_VERSION } from '../tui/screens/mcp/types';
 import { BasePrimitive } from './BasePrimitive';
+import { SOURCE_CODE_NOTE } from './constants';
 import type { AddResult, AddScreenComponent } from './types';
 import type { Command } from '@commander-js/extra-typings';
 import { existsSync } from 'fs';
@@ -233,13 +236,107 @@ export class GatewayTargetPrimitive extends BasePrimitive<AddGatewayTargetOption
       .description('Add a gateway target to the project')
       .option('--name <name>', 'Target name')
       .option('--description <desc>', 'Target description')
+      .option('--type <type>', 'Target type: mcpServer or lambda')
+      .option('--source <source>', 'Source: existing-endpoint or create-new')
+      .option('--endpoint <url>', 'MCP server endpoint URL')
       .option('--language <lang>', 'Language: Python, TypeScript, Other')
       .option('--gateway <name>', 'Gateway name')
-      .option('--host <host>', 'Host type: Lambda or AgentCoreRuntime')
+      .option('--host <host>', 'Compute host: Lambda or AgentCoreRuntime')
+      .option('--outbound-auth <type>', 'Outbound auth type: oauth, api-key, or none')
+      .option('--credential-name <name>', 'Existing credential name for outbound auth')
+      .option('--oauth-client-id <id>', 'OAuth client ID (creates credential inline)')
+      .option('--oauth-client-secret <secret>', 'OAuth client secret (creates credential inline)')
+      .option('--oauth-discovery-url <url>', 'OAuth discovery URL (creates credential inline)')
+      .option('--oauth-scopes <scopes>', 'OAuth scopes, comma-separated')
       .option('--json', 'Output as JSON')
-      .action(() => {
-        console.error('Gateway target integration is coming soon.');
-        process.exit(1);
+      .action(async (rawOptions: Record<string, string | boolean | undefined>) => {
+        const cliOptions = rawOptions as unknown as CLIAddGatewayTargetOptions;
+        try {
+          if (!findConfigRoot()) {
+            console.error('No agentcore project found. Run `agentcore create` first.');
+            process.exit(1);
+          }
+
+          const validation = await validateAddGatewayTargetOptions(cliOptions);
+          if (!validation.valid) {
+            if (cliOptions.json) {
+              console.log(JSON.stringify({ success: false, error: validation.error }));
+            } else {
+              console.error(validation.error);
+            }
+            process.exit(1);
+          }
+
+          // Map CLI flag values to internal types
+          const outboundAuthMap: Record<string, 'OAUTH' | 'API_KEY' | 'NONE'> = {
+            oauth: 'OAUTH',
+            'api-key': 'API_KEY',
+            none: 'NONE',
+          };
+
+          // Handle existing-endpoint targets differently (no code generation)
+          if (cliOptions.source === 'existing-endpoint' && cliOptions.endpoint) {
+            const config: AddGatewayTargetConfig = {
+              name: cliOptions.name!,
+              description: cliOptions.description ?? `Tool for ${cliOptions.name!}`,
+              sourcePath: '',
+              language: cliOptions.language ?? 'Other',
+              host: 'AgentCoreRuntime',
+              toolDefinition: {
+                name: cliOptions.name!,
+                description: cliOptions.description ?? `Tool for ${cliOptions.name!}`,
+                inputSchema: { type: 'object' },
+              },
+              gateway: cliOptions.gateway,
+              endpoint: cliOptions.endpoint,
+              source: 'existing-endpoint',
+              ...(cliOptions.outboundAuthType
+                ? {
+                    outboundAuth: {
+                      type: outboundAuthMap[cliOptions.outboundAuthType.toLowerCase()] ?? 'NONE',
+                      credentialName: cliOptions.credentialName,
+                    },
+                  }
+                : {}),
+            };
+            const result = await this.createExternalGatewayTarget(config);
+            const output = { success: true, toolName: result.toolName, sourcePath: result.projectPath || undefined };
+            if (cliOptions.json) {
+              console.log(JSON.stringify(output));
+            } else {
+              console.log(`Added gateway target '${result.toolName}'`);
+            }
+            process.exit(0);
+          }
+
+          const result = await this.add({
+            name: cliOptions.name!,
+            description: cliOptions.description,
+            language: cliOptions.language ?? 'Python',
+            gateway: cliOptions.gateway,
+            host: cliOptions.host,
+          });
+
+          if (cliOptions.json) {
+            console.log(JSON.stringify(result));
+          } else if (result.success) {
+            console.log(`Added gateway target '${result.toolName}'`);
+            if (result.sourcePath) {
+              console.log(`Tool code: ${result.sourcePath}`);
+            }
+          } else {
+            console.error(result.error);
+          }
+
+          process.exit(result.success ? 0 : 1);
+        } catch (error) {
+          if (cliOptions.json) {
+            console.log(JSON.stringify({ success: false, error: getErrorMessage(error) }));
+          } else {
+            console.error(`Error: ${getErrorMessage(error)}`);
+          }
+          process.exit(1);
+        }
       });
 
     removeCmd
@@ -248,9 +345,59 @@ export class GatewayTargetPrimitive extends BasePrimitive<AddGatewayTargetOption
       .option('--name <name>', 'Name of resource to remove')
       .option('--force', 'Skip confirmation prompt')
       .option('--json', 'Output as JSON')
-      .action(() => {
-        console.error('Gateway target integration is coming soon.');
-        process.exit(1);
+      .action(async (cliOptions: { name?: string; force?: boolean; json?: boolean }) => {
+        try {
+          if (!findConfigRoot()) {
+            console.error('No agentcore project found. Run `agentcore create` first.');
+            process.exit(1);
+          }
+
+          if (cliOptions.name || cliOptions.force || cliOptions.json) {
+            if (!cliOptions.name) {
+              console.log(JSON.stringify({ success: false, error: '--name is required' }));
+              process.exit(1);
+            }
+
+            const result = await this.remove(cliOptions.name);
+            console.log(
+              JSON.stringify({
+                success: result.success,
+                resourceType: this.kind,
+                resourceName: cliOptions.name,
+                message: result.success ? `Removed gateway target '${cliOptions.name}'` : undefined,
+                note: result.success ? SOURCE_CODE_NOTE : undefined,
+                error: !result.success ? result.error : undefined,
+              })
+            );
+            process.exit(result.success ? 0 : 1);
+          } else {
+            const [{ render }, { default: React }, { RemoveFlow }] = await Promise.all([
+              import('ink'),
+              import('react'),
+              import('../tui/screens/remove'),
+            ]);
+            const { clear, unmount } = render(
+              React.createElement(RemoveFlow, {
+                isInteractive: false,
+                force: cliOptions.force,
+                initialResourceType: this.kind,
+                initialResourceName: cliOptions.name,
+                onExit: () => {
+                  clear();
+                  unmount();
+                  process.exit(0);
+                },
+              })
+            );
+          }
+        } catch (error) {
+          if (cliOptions.json) {
+            console.log(JSON.stringify({ success: false, error: getErrorMessage(error) }));
+          } else {
+            console.error(`Error: ${getErrorMessage(error)}`);
+          }
+          process.exit(1);
+        }
       });
   }
 

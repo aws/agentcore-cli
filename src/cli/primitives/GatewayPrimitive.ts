@@ -1,10 +1,13 @@
-import { setEnvVar } from '../../lib';
+import { findConfigRoot, setEnvVar } from '../../lib';
 import type { AgentCoreGateway, AgentCoreGatewayTarget, AgentCoreMcpSpec, GatewayAuthorizerType } from '../../schema';
 import { AgentCoreGatewaySchema } from '../../schema';
+import type { AddGatewayOptions as CLIAddGatewayOptions } from '../commands/add/types';
+import { validateAddGatewayOptions } from '../commands/add/validate';
 import { getErrorMessage } from '../errors';
 import type { RemovalPreview, RemovalResult, SchemaChange } from '../operations/remove/types';
 import type { AddGatewayConfig } from '../tui/screens/mcp/types';
 import { BasePrimitive } from './BasePrimitive';
+import { SOURCE_CODE_NOTE } from './constants';
 import { computeDefaultCredentialEnvVarName } from './credential-utils';
 import type { AddResult, AddScreenComponent, RemovableResource } from './types';
 import type { Command } from '@commander-js/extra-typings';
@@ -146,11 +149,56 @@ export class GatewayPrimitive extends BasePrimitive<AddGatewayOptions, Removable
       .option('--discovery-url <url>', 'OIDC discovery URL (for CUSTOM_JWT)')
       .option('--allowed-audience <audience>', 'Comma-separated allowed audiences (for CUSTOM_JWT)')
       .option('--allowed-clients <clients>', 'Comma-separated allowed client IDs (for CUSTOM_JWT)')
+      .option('--allowed-scopes <scopes>', 'Comma-separated allowed scopes (for CUSTOM_JWT)')
+      .option('--agent-client-id <id>', 'Agent OAuth client ID')
+      .option('--agent-client-secret <secret>', 'Agent OAuth client secret')
       .option('--agents <agents>', 'Comma-separated agent names')
       .option('--json', 'Output as JSON')
-      .action(() => {
-        console.error('AgentCore Gateway integration is coming soon.');
-        process.exit(1);
+      .action(async (rawOptions: Record<string, string | boolean | undefined>) => {
+        const cliOptions = rawOptions as unknown as CLIAddGatewayOptions;
+        try {
+          if (!findConfigRoot()) {
+            console.error('No agentcore project found. Run `agentcore create` first.');
+            process.exit(1);
+          }
+
+          const validation = validateAddGatewayOptions(cliOptions);
+          if (!validation.valid) {
+            if (cliOptions.json) {
+              console.log(JSON.stringify({ success: false, error: validation.error }));
+            } else {
+              console.error(validation.error);
+            }
+            process.exit(1);
+          }
+
+          const result = await this.add({
+            name: cliOptions.name!,
+            description: cliOptions.description,
+            authorizerType: cliOptions.authorizerType ?? 'NONE',
+            discoveryUrl: cliOptions.discoveryUrl,
+            allowedAudience: cliOptions.allowedAudience,
+            allowedClients: cliOptions.allowedClients,
+            agents: cliOptions.agents,
+          });
+
+          if (cliOptions.json) {
+            console.log(JSON.stringify(result));
+          } else if (result.success) {
+            console.log(`Added gateway '${result.gatewayName}'`);
+          } else {
+            console.error(result.error);
+          }
+
+          process.exit(result.success ? 0 : 1);
+        } catch (error) {
+          if (cliOptions.json) {
+            console.log(JSON.stringify({ success: false, error: getErrorMessage(error) }));
+          } else {
+            console.error(`Error: ${getErrorMessage(error)}`);
+          }
+          process.exit(1);
+        }
       });
 
     removeCmd
@@ -159,9 +207,59 @@ export class GatewayPrimitive extends BasePrimitive<AddGatewayOptions, Removable
       .option('--name <name>', 'Name of resource to remove')
       .option('--force', 'Skip confirmation prompt')
       .option('--json', 'Output as JSON')
-      .action(() => {
-        console.error('AgentCore Gateway integration is coming soon.');
-        process.exit(1);
+      .action(async (cliOptions: { name?: string; force?: boolean; json?: boolean }) => {
+        try {
+          if (!findConfigRoot()) {
+            console.error('No agentcore project found. Run `agentcore create` first.');
+            process.exit(1);
+          }
+
+          if (cliOptions.name || cliOptions.force || cliOptions.json) {
+            if (!cliOptions.name) {
+              console.log(JSON.stringify({ success: false, error: '--name is required' }));
+              process.exit(1);
+            }
+
+            const result = await this.remove(cliOptions.name);
+            console.log(
+              JSON.stringify({
+                success: result.success,
+                resourceType: this.kind,
+                resourceName: cliOptions.name,
+                message: result.success ? `Removed gateway '${cliOptions.name}'` : undefined,
+                note: result.success ? SOURCE_CODE_NOTE : undefined,
+                error: !result.success ? result.error : undefined,
+              })
+            );
+            process.exit(result.success ? 0 : 1);
+          } else {
+            const [{ render }, { default: React }, { RemoveFlow }] = await Promise.all([
+              import('ink'),
+              import('react'),
+              import('../tui/screens/remove'),
+            ]);
+            const { clear, unmount } = render(
+              React.createElement(RemoveFlow, {
+                isInteractive: false,
+                force: cliOptions.force,
+                initialResourceType: this.kind,
+                initialResourceName: cliOptions.name,
+                onExit: () => {
+                  clear();
+                  unmount();
+                  process.exit(0);
+                },
+              })
+            );
+          }
+        } catch (error) {
+          if (cliOptions.json) {
+            console.log(JSON.stringify({ success: false, error: getErrorMessage(error) }));
+          } else {
+            console.error(`Error: ${getErrorMessage(error)}`);
+          }
+          process.exit(1);
+        }
       });
   }
 
