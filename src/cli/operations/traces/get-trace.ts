@@ -29,6 +29,10 @@ export interface GetTraceResult {
 export async function getTrace(options: GetTraceOptions): Promise<GetTraceResult> {
   const { region, runtimeId, agentName, traceId, outputPath } = options;
 
+  if (!/^[a-fA-F0-9-]+$/.test(traceId)) {
+    return { success: false, error: 'Invalid trace ID format. Expected a hex string (e.g., abc123def456).' };
+  }
+
   const client = new CloudWatchLogsClient({
     credentials: getCredentialProvider(),
     region,
