@@ -4,6 +4,7 @@ import { CredentialPrimitive } from './CredentialPrimitive';
 import { GatewayPrimitive } from './GatewayPrimitive';
 import { GatewayTargetPrimitive } from './GatewayTargetPrimitive';
 import { MemoryPrimitive } from './MemoryPrimitive';
+import type { RemovableResource } from './types';
 
 /**
  * Singleton instances of all primitives.
@@ -17,8 +18,7 @@ export const gatewayTargetPrimitive = new GatewayTargetPrimitive();
 /**
  * All primitives in display order.
  */
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-export const ALL_PRIMITIVES: BasePrimitive<any, any>[] = [
+export const ALL_PRIMITIVES: BasePrimitive<unknown, RemovableResource>[] = [
   agentPrimitive,
   memoryPrimitive,
   credentialPrimitive,
@@ -29,8 +29,7 @@ export const ALL_PRIMITIVES: BasePrimitive<any, any>[] = [
 /**
  * Look up a primitive by its kind.
  */
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-export function getPrimitive(kind: string): BasePrimitive<any, any> {
+export function getPrimitive(kind: string): BasePrimitive<unknown, RemovableResource> {
   const primitive = ALL_PRIMITIVES.find(p => p.kind === kind);
   if (!primitive) {
     throw new Error(`Unknown primitive kind: ${kind}`);

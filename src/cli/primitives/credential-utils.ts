@@ -6,6 +6,3 @@
 export function computeDefaultCredentialEnvVarName(credentialName: string): string {
   return `AGENTCORE_CREDENTIAL_${credentialName.replace(/-/g, '_').toUpperCase()}`;
 }
-
-// Alias for backward compatibility
-export const computeDefaultIdentityEnvVarName = computeDefaultCredentialEnvVarName;

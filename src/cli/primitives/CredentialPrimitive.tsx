@@ -193,7 +193,6 @@ export class CredentialPrimitive extends BasePrimitive<AddCredentialOptions, Rem
   }
 
   static computeDefaultCredentialEnvVarName = computeDefaultCredentialEnvVarName;
-  static computeDefaultIdentityEnvVarName = computeDefaultCredentialEnvVarName;
 
   /**
    * Resolve credential strategy for adding an agent.
