@@ -32,6 +32,9 @@ export async function handleTracesList(
   });
 
   const limit = options.limit ? parseInt(options.limit, 10) : 20;
+  if (isNaN(limit)) {
+    return { success: false, error: '--limit must be a number' };
+  }
 
   // Parse time options
   let startTime: number | undefined;
