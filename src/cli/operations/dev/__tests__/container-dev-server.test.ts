@@ -40,6 +40,24 @@ function createMockChildProcess() {
   return proc;
 }
 
+/** Create a mock child process that auto-closes with the given exit code (for build). */
+function createMockBuildProcess(exitCode = 0, stdoutData?: string) {
+  const proc = createMockChildProcess();
+  // Emit 'close' after the listener is attached to guarantee correct ordering
+  const origOn = proc.on.bind(proc);
+  proc.on = function (event: string, fn: (...args: any[]) => void) {
+    origOn(event, fn);
+    if (event === 'close') {
+      process.nextTick(() => {
+        if (stdoutData) proc.stdout.emit('data', Buffer.from(stdoutData));
+        proc.emit('close', exitCode);
+      });
+    }
+    return proc;
+  };
+  return proc;
+}
+
 function mockSuccessfulPrepare() {
   // Runtime detected
   mockDetectContainerRuntime.mockResolvedValue({
@@ -48,11 +66,12 @@ function mockSuccessfulPrepare() {
   });
   // Dockerfile exists (first call), ~/.aws exists (second call in getSpawnConfig)
   mockExistsSync.mockReturnValue(true);
-  // rm, base build, dev build all succeed
+  // rm succeeds (spawnSync)
   mockSpawnSync.mockReturnValue({ status: 0, stdout: Buffer.from(''), stderr: Buffer.from('') });
-  // spawn for the actual server
+  // spawn: first call = build (auto-closes with 0), second call = server run
+  const mockBuild = createMockBuildProcess(0);
   const mockChild = createMockChildProcess();
-  mockSpawn.mockReturnValue(mockChild);
+  mockSpawn.mockReturnValueOnce(mockBuild).mockReturnValueOnce(mockChild);
   return mockChild;
 }
 
@@ -141,16 +160,16 @@ describe('ContainerDevServer', () => {
       expect(rmCall![1]).toEqual(['rm', '-f', 'agentcore-dev-testagent']);
     });
 
-    it('returns null when base image build fails', async () => {
+    it('returns null when image build fails', async () => {
       mockDetectContainerRuntime.mockResolvedValue({
         runtime: { runtime: 'docker', binary: 'docker', version: 'Docker 24.0' },
         notReadyRuntimes: [],
       });
       mockExistsSync.mockReturnValue(true);
-      // rm succeeds, base build fails
-      mockSpawnSync
-        .mockReturnValueOnce({ status: 0, stdout: Buffer.from(''), stderr: Buffer.from('') }) // rm
-        .mockReturnValueOnce({ status: 1, stdout: Buffer.from(''), stderr: Buffer.from('build error') }); // base build
+      // rm succeeds (spawnSync)
+      mockSpawnSync.mockReturnValue({ status: 0, stdout: Buffer.from(''), stderr: Buffer.from('') });
+      // build fails (spawn, auto-closes with exit code 1)
+      mockSpawn.mockReturnValue(createMockBuildProcess(1));
 
       const server = new ContainerDevServer(defaultConfig, defaultOptions);
       const result = await server.start();
@@ -159,26 +178,7 @@ describe('ContainerDevServer', () => {
       expect(mockCallbacks.onLog).toHaveBeenCalledWith('error', expect.stringContaining('Container build failed'));
     });
 
-    it('returns null when dev layer build fails', async () => {
-      mockDetectContainerRuntime.mockResolvedValue({
-        runtime: { runtime: 'docker', binary: 'docker', version: 'Docker 24.0' },
-        notReadyRuntimes: [],
-      });
-      mockExistsSync.mockReturnValue(true);
-      // rm succeeds, base build succeeds, dev build fails
-      mockSpawnSync
-        .mockReturnValueOnce({ status: 0, stdout: Buffer.from(''), stderr: Buffer.from('') }) // rm
-        .mockReturnValueOnce({ status: 0, stdout: Buffer.from(''), stderr: Buffer.from('') }) // base build
-        .mockReturnValueOnce({ status: 1, stdout: Buffer.from(''), stderr: Buffer.from('dev error') }); // dev build
-
-      const server = new ContainerDevServer(defaultConfig, defaultOptions);
-      const result = await server.start();
-
-      expect(result).toBeNull();
-      expect(mockCallbacks.onLog).toHaveBeenCalledWith('error', expect.stringContaining('Dev layer build failed'));
-    });
-
-    it('succeeds when both builds pass and logs success message', async () => {
+    it('succeeds when build passes and logs success message', async () => {
       mockSuccessfulPrepare();
 
       const server = new ContainerDevServer(defaultConfig, defaultOptions);
@@ -188,67 +188,49 @@ describe('ContainerDevServer', () => {
       expect(mockCallbacks.onLog).toHaveBeenCalledWith('system', 'Container image built successfully.');
     });
 
-    it('dev layer prefers uv when available, falls back to pip', async () => {
+    it('logs system-level start message and triggers TUI readiness after container is spawned', async () => {
       mockSuccessfulPrepare();
 
       const server = new ContainerDevServer(defaultConfig, defaultOptions);
       await server.start();
 
-      // The dev build is the 3rd spawnSync call (rm, base build, dev build)
-      const devBuildCall = mockSpawnSync.mock.calls[2]!;
-      expect(devBuildCall).toBeDefined();
-      const input = devBuildCall[2]?.input as string;
-      // uv path tried first with --system flag
-      expect(input).toContain('uv pip install --system -q uvicorn');
-      expect(input).toContain('uv pip install --system /app');
-      // pip fallback
-      expect(input).toContain('pip install -q uvicorn');
-      expect(input).toContain('pip install -q /app');
-      // No requirements.txt fallback — pip install /app reads pyproject.toml
-      expect(input).not.toContain('requirements.txt');
+      expect(mockCallbacks.onLog).toHaveBeenCalledWith(
+        'system',
+        'Container agentcore-dev-testagent started on port 9000.'
+      );
+      // Emits readiness trigger for TUI detection
+      expect(mockCallbacks.onLog).toHaveBeenCalledWith('info', 'Application startup complete');
     });
 
-    it('dev layer FROM references the base image name', async () => {
+    it('builds image directly without a dev layer', async () => {
       mockSuccessfulPrepare();
 
       const server = new ContainerDevServer(defaultConfig, defaultOptions);
       await server.start();
 
-      const devBuildCall = mockSpawnSync.mock.calls[2]!;
-      const input = devBuildCall[2]?.input as string;
-      expect(input).toContain('FROM agentcore-dev-testagent-base');
+      // spawnSync only called once for rm (build uses async spawn)
+      expect(mockSpawnSync).toHaveBeenCalledTimes(1);
+      // First spawn call is the build
+      const buildCall = mockSpawn.mock.calls[0]!;
+      const buildArgs = buildCall[1] as string[];
+      // Image is built directly as agentcore-dev-testagent (no -base suffix)
+      expect(buildArgs).toContain('-t');
+      const tagIdx = buildArgs.indexOf('-t');
+      expect(buildArgs[tagIdx + 1]).toBe('agentcore-dev-testagent');
     });
 
-    it('dev layer does not set USER (runs as root for dev)', async () => {
-      mockSuccessfulPrepare();
-
-      const server = new ContainerDevServer(defaultConfig, defaultOptions);
-      await server.start();
-
-      const devBuildCall = mockSpawnSync.mock.calls[2]!;
-      const input = devBuildCall[2]?.input as string;
-      // Should have USER root but not USER bedrock_agentcore
-      expect(input).toContain('USER root');
-      expect(input).not.toContain('USER bedrock_agentcore');
-    });
-
-    it('logs non-empty build output lines at system level', async () => {
+    it('streams build output lines at system level in real-time', async () => {
       mockDetectContainerRuntime.mockResolvedValue({
         runtime: { runtime: 'docker', binary: 'docker', version: 'Docker 24.0' },
         notReadyRuntimes: [],
       });
       mockExistsSync.mockReturnValue(true);
-      mockSpawnSync
-        .mockReturnValueOnce({ status: 0, stdout: Buffer.from(''), stderr: Buffer.from('') }) // rm
-        .mockReturnValueOnce({
-          status: 0,
-          stdout: Buffer.from('Step 1/3: FROM python\nStep 2/3: COPY . .\n'),
-          stderr: Buffer.from(''),
-        }) // base build
-        .mockReturnValueOnce({ status: 0, stdout: Buffer.from(''), stderr: Buffer.from('') }); // dev build
+      mockSpawnSync.mockReturnValue({ status: 0, stdout: Buffer.from(''), stderr: Buffer.from('') }); // rm
 
-      const mockChild = createMockChildProcess();
-      mockSpawn.mockReturnValue(mockChild);
+      // Build process that emits stdout lines then closes
+      const buildProc = createMockBuildProcess(0, 'Step 1/3: FROM python\nStep 2/3: COPY . .\n');
+      const serverProc = createMockChildProcess();
+      mockSpawn.mockReturnValueOnce(buildProc).mockReturnValueOnce(serverProc);
 
       const server = new ContainerDevServer(defaultConfig, defaultOptions);
       await server.start();
@@ -258,9 +240,9 @@ describe('ContainerDevServer', () => {
     });
   });
 
-  /** Extract the args array from the first mockSpawn call. */
+  /** Extract the args array from the server run spawn call (second spawn — first is the build). */
   function getSpawnArgs(): string[] {
-    return mockSpawn.mock.calls[0]![1] as string[];
+    return mockSpawn.mock.calls[1]![1] as string[];
   }
 
   describe('getSpawnConfig() — verified via spawn args', () => {
@@ -288,39 +270,36 @@ describe('ContainerDevServer', () => {
       expect(spawnArgs[nameIdx + 1]).toBe('agentcore-dev-testagent');
     });
 
-    it('overrides entrypoint to python', async () => {
+    it('does not override entrypoint — uses Dockerfile CMD/ENTRYPOINT', async () => {
       mockSuccessfulPrepare();
 
       const server = new ContainerDevServer(defaultConfig, defaultOptions);
       await server.start();
 
       const spawnArgs = getSpawnArgs();
-      const entrypointIdx = spawnArgs.indexOf('--entrypoint');
-      expect(entrypointIdx).toBeGreaterThan(-1);
-      expect(spawnArgs[entrypointIdx + 1]).toBe('python');
+      expect(spawnArgs).not.toContain('--entrypoint');
     });
 
-    it('runs as root to ensure system site-packages are accessible', async () => {
+    it('does not override user', async () => {
       mockSuccessfulPrepare();
 
       const server = new ContainerDevServer(defaultConfig, defaultOptions);
       await server.start();
 
       const spawnArgs = getSpawnArgs();
-      const userIdx = spawnArgs.indexOf('--user');
-      expect(userIdx).toBeGreaterThan(-1);
-      expect(spawnArgs[userIdx + 1]).toBe('root');
+      expect(spawnArgs).not.toContain('--user');
     });
 
-    it('mounts source directory as /app volume', async () => {
+    it('does not mount source directory as volume', async () => {
       mockSuccessfulPrepare();
 
       const server = new ContainerDevServer(defaultConfig, defaultOptions);
       await server.start();
 
       const spawnArgs = getSpawnArgs();
-      expect(spawnArgs).toContain('-v');
-      expect(spawnArgs).toContain('/project/app:/app');
+      // No source:/app volume mount (only ~/.aws mount should be present)
+      const volumeArgs = spawnArgs.filter((arg: string) => arg.includes(':/app'));
+      expect(volumeArgs).toHaveLength(0);
     });
 
     it('maps host port to container internal port', async () => {
@@ -353,6 +332,16 @@ describe('ContainerDevServer', () => {
       const spawnArgs = getSpawnArgs();
       expect(spawnArgs).toContain('LOCAL_DEV=1');
       expect(spawnArgs).toContain(`PORT=${CONTAINER_INTERNAL_PORT}`);
+    });
+
+    it('disables OpenTelemetry SDK to avoid missing-collector errors', async () => {
+      mockSuccessfulPrepare();
+
+      const server = new ContainerDevServer(defaultConfig, defaultOptions);
+      await server.start();
+
+      const spawnArgs = getSpawnArgs();
+      expect(spawnArgs).toContain('OTEL_SDK_DISABLED=true');
     });
 
     it('forwards AWS env vars when present in process.env', async () => {
@@ -391,11 +380,12 @@ describe('ContainerDevServer', () => {
       await server.start();
 
       const spawnArgs = getSpawnArgs();
-      const awsArgs = spawnArgs.filter((arg: string) => arg.startsWith('AWS_'));
+      // Filter only forwarded AWS cred env vars, not AWS_CONFIG_FILE/CREDENTIALS_FILE
+      const awsArgs = spawnArgs.filter((arg: string) => arg.startsWith('AWS_') && !arg.includes('_FILE='));
       expect(awsArgs).toHaveLength(0);
     });
 
-    it('mounts ~/.aws to /root/.aws when exists', async () => {
+    it('mounts ~/.aws to /aws-config for any container user', async () => {
       mockSuccessfulPrepare();
       // existsSync returns true for all calls (Dockerfile and ~/.aws)
 
@@ -403,9 +393,19 @@ describe('ContainerDevServer', () => {
       await server.start();
 
       const spawnArgs = getSpawnArgs();
-      expect(spawnArgs).toContain('/home/testuser/.aws:/root/.aws:ro');
+      expect(spawnArgs).toContain('/home/testuser/.aws:/aws-config:ro');
     });
 
+    it('sets AWS_CONFIG_FILE and AWS_SHARED_CREDENTIALS_FILE when ~/.aws exists', async () => {
+      mockSuccessfulPrepare();
+
+      const server = new ContainerDevServer(defaultConfig, defaultOptions);
+      await server.start();
+
+      const spawnArgs = getSpawnArgs();
+      expect(spawnArgs).toContain('AWS_CONFIG_FILE=/aws-config/config');
+      expect(spawnArgs).toContain('AWS_SHARED_CREDENTIALS_FILE=/aws-config/credentials');
+    });
     it('skips ~/.aws mount when directory does not exist', async () => {
       mockDetectContainerRuntime.mockResolvedValue({
         runtime: { runtime: 'docker', binary: 'docker', version: 'Docker 24.0' },
@@ -417,8 +417,9 @@ describe('ContainerDevServer', () => {
         return true; // Dockerfile exists
       });
       mockSpawnSync.mockReturnValue({ status: 0, stdout: Buffer.from(''), stderr: Buffer.from('') });
+      const mockBuild = createMockBuildProcess(0);
       const mockChild = createMockChildProcess();
-      mockSpawn.mockReturnValue(mockChild);
+      mockSpawn.mockReturnValueOnce(mockBuild).mockReturnValueOnce(mockChild);
 
       const server = new ContainerDevServer(defaultConfig, defaultOptions);
       await server.start();
@@ -428,28 +429,16 @@ describe('ContainerDevServer', () => {
       expect(awsMountArg).toBeUndefined();
     });
 
-    it('uses uvicorn with --reload and --reload-dir /app', async () => {
+    it('does not include uvicorn or reload args', async () => {
       mockSuccessfulPrepare();
 
       const server = new ContainerDevServer(defaultConfig, defaultOptions);
       await server.start();
 
       const spawnArgs = getSpawnArgs();
-      expect(spawnArgs).toContain('-m');
-      expect(spawnArgs).toContain('uvicorn');
-      expect(spawnArgs).toContain('--reload');
-      expect(spawnArgs).toContain('--reload-dir');
-      expect(spawnArgs).toContain('/app');
-    });
-
-    it('converts entrypoint via convertEntrypointToModule (main.py -> main:app)', async () => {
-      mockSuccessfulPrepare();
-
-      const server = new ContainerDevServer(defaultConfig, defaultOptions);
-      await server.start();
-
-      const spawnArgs = getSpawnArgs();
-      expect(spawnArgs).toContain('main:app');
+      expect(spawnArgs).not.toContain('uvicorn');
+      expect(spawnArgs).not.toContain('--reload');
+      expect(spawnArgs).not.toContain('-m');
     });
   });
 
@@ -461,20 +450,22 @@ describe('ContainerDevServer', () => {
       const child = await server.start();
 
       // Clear mocks to isolate the kill call
-      mockSpawnSync.mockClear();
+      mockSpawn.mockClear();
 
       server.kill();
 
-      expect(mockSpawnSync).toHaveBeenCalledWith('docker', ['stop', 'agentcore-dev-testagent'], { stdio: 'ignore' });
+      // Container stop is async (spawn not spawnSync) so UI can render "Stopping..." message
+      expect(mockSpawn).toHaveBeenCalledWith('docker', ['stop', 'agentcore-dev-testagent'], { stdio: 'ignore' });
       expect(child!.kill).toHaveBeenCalledWith('SIGTERM'); // eslint-disable-line @typescript-eslint/unbound-method
     });
 
     it('does not call container stop when runtimeBinary is empty (prepare not called)', () => {
       const server = new ContainerDevServer(defaultConfig, defaultOptions);
+      mockSpawn.mockClear();
 
       server.kill();
 
-      expect(mockSpawnSync).not.toHaveBeenCalled();
+      expect(mockSpawn).not.toHaveBeenCalled();
     });
   });
 });

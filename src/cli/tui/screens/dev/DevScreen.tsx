@@ -435,7 +435,9 @@ export function DevScreen(props: DevScreenProps) {
           ))}
       {isExiting && (
         <Box>
-          <Text color="yellow">Stopping server...</Text>
+          <Text color="yellow">
+            {config?.buildType === 'Container' ? 'Stopping container...' : 'Stopping server...'}
+          </Text>
         </Box>
       )}
       {logFilePath && <LogLink filePath={logFilePath} />}

@@ -36,8 +36,14 @@ function parseSSELine(line: string): { content: string | null; error: string | n
     const parsed: unknown = JSON.parse(content);
     if (typeof parsed === 'string') {
       return { content: parsed, error: null };
-    } else if (parsed && typeof parsed === 'object' && 'error' in parsed) {
-      return { content: null, error: String((parsed as { error: unknown }).error) };
+    } else if (parsed && typeof parsed === 'object') {
+      if ('error' in parsed) {
+        return { content: null, error: String((parsed as { error: unknown }).error) };
+      }
+      // Handle {"text": "..."} format from bedrock-agentcore runtime
+      if ('text' in parsed) {
+        return { content: String((parsed as { text: unknown }).text), error: null };
+      }
     }
   } catch {
     return { content, error: null };
@@ -115,7 +121,11 @@ export async function* invokeAgentStreaming(
     try {
       const res = await fetch(`http://localhost:${port}/invocations`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          Accept: 'text/event-stream',
+          'x-amzn-bedrock-agentcore-runtime-session-id': 'local-dev-session',
+        },
         body: JSON.stringify({ prompt: msg }),
       });
 
@@ -249,7 +259,11 @@ export async function invokeAgent(portOrOptions: number | InvokeOptions, message
     try {
       const res = await fetch(`http://localhost:${port}/invocations`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          Accept: 'text/event-stream',
+          'x-amzn-bedrock-agentcore-runtime-session-id': 'local-dev-session',
+        },
         body: JSON.stringify({ prompt: msg }),
       });
 
