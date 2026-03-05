@@ -25,8 +25,8 @@ export const registerTraces = (program: Command) => {
     .description('List recent traces for a deployed agent')
     .option('--agent <name>', 'Select specific agent')
     .option('--limit <n>', 'Maximum number of traces to display', '20')
-    .option('--since <time>', 'Start time (e.g. 5m, 1h, 2d, ISO 8601, epoch ms)')
-    .option('--until <time>', 'End time (e.g. now, 1h, ISO 8601, epoch ms)')
+    .option('--since <time>', 'Start time — defaults to 12h ago (e.g. 5m, 1h, 2d, ISO 8601, epoch ms)')
+    .option('--until <time>', 'End time — defaults to now (e.g. now, 1h, ISO 8601, epoch ms)')
     .action(async (cliOptions: TracesListOptions) => {
       requireProject();
 
@@ -97,8 +97,8 @@ export const registerTraces = (program: Command) => {
     .description('Download a trace to a JSON file')
     .option('--agent <name>', 'Select specific agent')
     .option('--output <path>', 'Output file path')
-    .option('--since <time>', 'Start time (e.g. 5m, 1h, 2d, ISO 8601, epoch ms)')
-    .option('--until <time>', 'End time (e.g. now, 1h, ISO 8601, epoch ms)')
+    .option('--since <time>', 'Start time — defaults to 12h ago (e.g. 5m, 1h, 2d, ISO 8601, epoch ms)')
+    .option('--until <time>', 'End time — defaults to now (e.g. now, 1h, ISO 8601, epoch ms)')
     .action(async (traceId: string, cliOptions: TracesGetOptions) => {
       requireProject();
 
