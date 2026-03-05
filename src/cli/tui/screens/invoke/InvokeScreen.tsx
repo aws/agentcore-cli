@@ -336,6 +336,7 @@ export function InvokeScreen({
           Traces: <Text color="cyan">{traceUrl}</Text>
         </Text>
       )}
+      {traceUrl && <Text dimColor>Note: Traces may take 2-3 minutes to appear in CloudWatch</Text>}
     </Box>
   );
 

@@ -83,6 +83,7 @@ export const registerTraces = (program: Command) => {
             )}
             <Text> </Text>
             {result.consoleUrl && <Text color="gray">Console: {result.consoleUrl}</Text>}
+            {result.consoleUrl && <Text dimColor>Note: Traces may take 2-3 minutes to appear in CloudWatch</Text>}
           </Box>
         );
       } catch (error) {
