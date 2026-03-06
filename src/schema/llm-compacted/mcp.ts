@@ -142,7 +142,7 @@ interface IamPolicyDocument {
 // ENUMS
 // ─────────────────────────────────────────────────────────────────────────────
 
-type GatewayTargetType = 'lambda' | 'mcpServer' | 'openApiSchema' | 'smithyModel';
+type GatewayTargetType = 'lambda' | 'mcpServer' | 'openApiSchema' | 'smithyModel' | 'apiGateway';
 type PythonRuntime = 'PYTHON_3_10' | 'PYTHON_3_11' | 'PYTHON_3_12' | 'PYTHON_3_13';
 type NodeRuntime = 'NODE_18' | 'NODE_20' | 'NODE_22';
 type NetworkMode = 'PUBLIC' | 'PRIVATE';

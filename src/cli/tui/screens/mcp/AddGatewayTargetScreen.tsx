@@ -1,11 +1,11 @@
-import type { GatewayTargetType } from '../../../../schema';
+import type { ApiGatewayHttpMethod, GatewayTargetType } from '../../../../schema';
 import { ToolNameSchema } from '../../../../schema';
 import { ConfirmReview, Panel, Screen, StepIndicator, TextInput, WizardSelect } from '../../components';
 import type { SelectableItem } from '../../components';
 import { HELP_TEXT } from '../../constants';
 import { useListNavigation } from '../../hooks';
 import { generateUniqueName } from '../../utils';
-import type { AddGatewayTargetConfig } from './types';
+import type { AddGatewayTargetConfig, GatewayTargetWizardState } from './types';
 import { MCP_TOOL_STEP_LABELS, OUTBOUND_AUTH_OPTIONS, TARGET_TYPE_OPTIONS } from './types';
 import { useAddGatewayTargetWizard } from './useAddGatewayTargetWizard';
 import { Box, Text } from 'ink';
@@ -16,7 +16,7 @@ interface AddGatewayTargetScreenProps {
   existingToolNames: string[];
   existingOAuthCredentialNames: string[];
   onComplete: (config: AddGatewayTargetConfig) => void;
-  onCreateCredential: (pendingConfig: AddGatewayTargetConfig) => void;
+  onCreateCredential: (pendingConfig: GatewayTargetWizardState) => void;
   onExit: () => void;
 }
 
@@ -116,7 +116,29 @@ export function AddGatewayTargetScreen({
 
   useListNavigation({
     items: [{ id: 'confirm', title: 'Confirm' }],
-    onSelect: () => onComplete(wizard.config),
+    onSelect: () => {
+      const c = wizard.config;
+      if (c.targetType === 'apiGateway') {
+        onComplete({
+          targetType: 'apiGateway',
+          name: c.name,
+          gateway: c.gateway!,
+          restApiId: c.restApiId!,
+          stage: c.stage!,
+          toolFilters: c.toolFilters,
+        });
+      } else {
+        onComplete({
+          targetType: 'mcpServer',
+          name: c.name,
+          description: c.description ?? `Tool for ${c.name}`,
+          endpoint: c.endpoint!,
+          gateway: c.gateway!,
+          toolDefinition: c.toolDefinition!,
+          outboundAuth: c.outboundAuth,
+        });
+      }
+    },
     onExit: () => {
       setOutboundAuthTypeLocal(null);
       wizard.goBack();
@@ -220,6 +242,11 @@ export function AddGatewayTargetScreen({
           />
         )}
 
+        {/* Tool filters uses a two-phase input within a single wizard step:
+            Phase 1: collect filter path pattern
+            Phase 2: collect HTTP methods for that path
+            Managed via local state (filterPath) rather than separate wizard steps
+            because it's a single logical step from the user's perspective. */}
         {isToolFiltersStep && !filterPath && (
           <TextInput
             prompt="Filter path pattern"
@@ -237,11 +264,22 @@ export function AddGatewayTargetScreen({
               const methods = value
                 .split(',')
                 .map(m => m.trim().toUpperCase())
-                .filter(Boolean);
+                .filter(Boolean) as ApiGatewayHttpMethod[];
               wizard.setToolFilters([{ filterPath, methods: methods.length > 0 ? methods : ['GET'] }]);
               setFilterPathLocal(null);
             }}
             onCancel={() => setFilterPathLocal(null)}
+            customValidation={(value: string) => {
+              const methods = value
+                .split(',')
+                .map(m => m.trim().toUpperCase())
+                .filter(Boolean);
+              if (methods.length === 0) return true;
+              const valid = ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'HEAD', 'OPTIONS'];
+              const invalid = methods.filter(m => !valid.includes(m));
+              if (invalid.length > 0) return `Invalid method(s): ${invalid.join(', ')}. Valid: ${valid.join(', ')}`;
+              return true;
+            }}
           />
         )}
 

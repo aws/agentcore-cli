@@ -1,4 +1,5 @@
 import type {
+  ApiGatewayHttpMethod,
   GatewayAuthorizerType,
   GatewayTargetType,
   NodeRuntime,
@@ -67,22 +68,20 @@ export type AddGatewayTargetStep =
 
 export type TargetLanguage = 'Python' | 'TypeScript' | 'Other';
 
-export interface AddGatewayTargetConfig {
+/**
+ * Wizard-internal state — all fields optional, built incrementally as the user
+ * progresses through wizard steps. Not used outside the wizard/screen boundary.
+ */
+export interface GatewayTargetWizardState {
   name: string;
   description?: string;
   sourcePath?: string;
   language?: TargetLanguage;
-  /** Target type selected by user */
   targetType?: GatewayTargetType;
-  /** External endpoint URL */
   endpoint?: string;
-  /** Gateway name */
   gateway?: string;
-  /** Compute host (Lambda or AgentCoreRuntime) */
   host?: ComputeHost;
-  /** Derived tool definition */
   toolDefinition?: ToolDefinition;
-  /** Outbound auth configuration */
   outboundAuth?: {
     type: 'OAUTH' | 'API_KEY' | 'NONE';
     credentialName?: string;
@@ -90,8 +89,38 @@ export interface AddGatewayTargetConfig {
   };
   restApiId?: string;
   stage?: string;
-  toolFilters?: { filterPath: string; methods: string[] }[];
+  toolFilters?: { filterPath: string; methods: ApiGatewayHttpMethod[] }[];
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Discriminated union — fully-formed configs passed downstream of the wizard.
+// Each variant has required fields for its target type.
+// ─────────────────────────────────────────────────────────────────────────────
+
+export interface McpServerTargetConfig {
+  targetType: 'mcpServer';
+  name: string;
+  description: string;
+  endpoint: string;
+  gateway: string;
+  toolDefinition: ToolDefinition;
+  outboundAuth?: {
+    type: 'OAUTH' | 'API_KEY' | 'NONE';
+    credentialName?: string;
+    scopes?: string[];
+  };
+}
+
+export interface ApiGatewayTargetConfig {
+  targetType: 'apiGateway';
+  name: string;
+  gateway: string;
+  restApiId: string;
+  stage: string;
+  toolFilters?: { filterPath: string; methods: ApiGatewayHttpMethod[] }[];
+}
+
+export type AddGatewayTargetConfig = McpServerTargetConfig | ApiGatewayTargetConfig;
 
 export const MCP_TOOL_STEP_LABELS: Record<AddGatewayTargetStep, string> = {
   name: 'Name',

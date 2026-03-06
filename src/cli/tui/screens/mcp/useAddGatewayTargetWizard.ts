@@ -1,6 +1,6 @@
 import { APP_DIR, MCP_APP_SUBDIR } from '../../../../lib';
-import type { GatewayTargetType, ToolDefinition } from '../../../../schema';
-import type { AddGatewayTargetConfig, AddGatewayTargetStep } from './types';
+import type { ApiGatewayHttpMethod, GatewayTargetType, ToolDefinition } from '../../../../schema';
+import type { AddGatewayTargetStep, GatewayTargetWizardState } from './types';
 import { useCallback, useMemo, useState } from 'react';
 
 function deriveToolDefinition(name: string): ToolDefinition {
@@ -11,7 +11,7 @@ function deriveToolDefinition(name: string): ToolDefinition {
   };
 }
 
-function getDefaultConfig(): AddGatewayTargetConfig {
+function getDefaultConfig(): GatewayTargetWizardState {
   return {
     name: '',
     description: '',
@@ -23,7 +23,7 @@ function getDefaultConfig(): AddGatewayTargetConfig {
 }
 
 export function useAddGatewayTargetWizard(existingGateways: string[] = []) {
-  const [config, setConfig] = useState<AddGatewayTargetConfig>(getDefaultConfig);
+  const [config, setConfig] = useState<GatewayTargetWizardState>(getDefaultConfig);
   const [step, setStep] = useState<AddGatewayTargetStep>('name');
 
   // Dynamic steps — recomputes when targetType changes
@@ -141,7 +141,7 @@ export function useAddGatewayTargetWizard(existingGateways: string[] = []) {
   );
 
   const setToolFilters = useCallback(
-    (toolFilters: { filterPath: string; methods: string[] }[]) => {
+    (toolFilters: { filterPath: string; methods: ApiGatewayHttpMethod[] }[]) => {
       setConfig(c => ({ ...c, toolFilters }));
       goToNextStep();
     },

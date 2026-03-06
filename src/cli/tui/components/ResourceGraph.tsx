@@ -98,6 +98,13 @@ function ResourceRow({
   );
 }
 
+export function getTargetDisplayText(target: AgentCoreGatewayTarget): string {
+  if (target.targetType === 'mcpServer' && target.endpoint) return target.endpoint;
+  if (target.targetType === 'apiGateway' && target.apiGateway)
+    return `${target.apiGateway.restApiId}/${target.apiGateway.stage}`;
+  return target.name;
+}
+
 export function ResourceGraph({ project, mcp, agentName, resourceStatuses }: ResourceGraphProps) {
   const allAgents = project.agents ?? [];
   const agents = agentName ? allAgents.filter(a => a.name === agentName) : allAgents;
@@ -244,12 +251,7 @@ export function ResourceGraph({ project, mcp, agentName, resourceStatuses }: Res
                   identifier={rsEntry?.identifier}
                 />
                 {targets.map(target => {
-                  const displayText =
-                    target.targetType === 'mcpServer' && target.endpoint
-                      ? target.endpoint
-                      : target.targetType === 'apiGateway' && target.apiGateway
-                        ? `${target.apiGateway.restApiId}/${target.apiGateway.stage}`
-                        : target.name;
+                  const displayText = getTargetDisplayText(target);
                   return (
                     <Text key={target.name}>
                       {'    '}
@@ -287,12 +289,7 @@ export function ResourceGraph({ project, mcp, agentName, resourceStatuses }: Res
         <Box flexDirection="column">
           <SectionHeader>⚠ Unassigned Targets</SectionHeader>
           {unassignedTargets.map((target, idx) => {
-            const displayText =
-              target.targetType === 'mcpServer' && target.endpoint
-                ? target.endpoint
-                : target.targetType === 'apiGateway' && target.apiGateway
-                  ? `${target.apiGateway.restApiId}/${target.apiGateway.stage}`
-                  : (target.name ?? `Target ${idx + 1}`);
+            const displayText = getTargetDisplayText(target);
             return <ResourceRow key={idx} icon="⚠" color="yellow" name={displayText} detail={target.targetType} />;
           })}
         </Box>

@@ -8,6 +8,9 @@ export type {
   AddGatewayConfig,
   AddGatewayStep,
   AddGatewayTargetConfig,
+  McpServerTargetConfig,
+  ApiGatewayTargetConfig,
+  GatewayTargetWizardState,
   AddGatewayTargetStep,
   ComputeHost,
 } from './types';

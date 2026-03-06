@@ -1,15 +1,9 @@
 import { agentPrimitive, gatewayPrimitive, gatewayTargetPrimitive } from '../../primitives/registry';
-import type { AddGatewayConfig, AddGatewayTargetConfig } from '../screens/mcp/types';
+import type { AddGatewayConfig } from '../screens/mcp/types';
 import { useCallback, useEffect, useState } from 'react';
 
 interface CreateGatewayResult {
   name: string;
-}
-
-interface CreateToolResult {
-  mcpDefsPath: string;
-  toolName: string;
-  projectPath: string;
 }
 
 interface CreateStatus<T> {
@@ -50,43 +44,6 @@ export function useCreateGateway() {
   }, []);
 
   return { status, createGateway, reset };
-}
-
-export function useCreateGatewayTarget() {
-  const [status, setStatus] = useState<CreateStatus<CreateToolResult>>({ state: 'idle' });
-
-  const createTool = useCallback(async (config: AddGatewayTargetConfig) => {
-    setStatus({ state: 'loading' });
-    try {
-      const addResult = await gatewayTargetPrimitive.add({
-        name: config.name,
-        description: config.description,
-        language: config.language!,
-        gateway: config.gateway,
-        host: config.host,
-      });
-      if (!addResult.success) {
-        throw new Error(addResult.error ?? 'Failed to create MCP tool');
-      }
-      const result: CreateToolResult = {
-        mcpDefsPath: '',
-        toolName: addResult.toolName,
-        projectPath: addResult.sourcePath,
-      };
-      setStatus({ state: 'success', result });
-      return { ok: true as const, result };
-    } catch (err) {
-      const message = err instanceof Error ? err.message : 'Failed to create gateway target.';
-      setStatus({ state: 'error', error: message });
-      return { ok: false as const, error: message };
-    }
-  }, []);
-
-  const reset = useCallback(() => {
-    setStatus({ state: 'idle' });
-  }, []);
-
-  return { status, createTool, reset };
 }
 
 export function useExistingGateways() {

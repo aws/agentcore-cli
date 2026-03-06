@@ -1,6 +1,6 @@
 import type { AgentCoreMcpSpec, AgentCoreProjectSpec } from '../../../../schema/index.js';
 import type { ResourceStatusEntry } from '../../../commands/status/action.js';
-import { ResourceGraph } from '../ResourceGraph.js';
+import { ResourceGraph, getTargetDisplayText } from '../ResourceGraph.js';
 import { render } from 'ink-testing-library';
 import React from 'react';
 import { describe, expect, it } from 'vitest';
@@ -324,5 +324,36 @@ describe('ResourceGraph', () => {
       expect(lastFrame()).toContain('my-memory');
       expect(lastFrame()).toContain('[Deployed]');
     });
+  });
+});
+
+describe('getTargetDisplayText', () => {
+  it('returns endpoint for mcpServer with endpoint', () => {
+    const target = { name: 'my-tool', targetType: 'mcpServer', endpoint: 'https://example.com/mcp' } as any;
+    expect(getTargetDisplayText(target)).toBe('https://example.com/mcp');
+  });
+
+  it('returns restApiId/stage for apiGateway', () => {
+    const target = {
+      name: 'my-api',
+      targetType: 'apiGateway',
+      apiGateway: { restApiId: 'abc123', stage: 'prod' },
+    } as any;
+    expect(getTargetDisplayText(target)).toBe('abc123/prod');
+  });
+
+  it('returns name for mcpServer without endpoint', () => {
+    const target = { name: 'my-tool', targetType: 'mcpServer' } as any;
+    expect(getTargetDisplayText(target)).toBe('my-tool');
+  });
+
+  it('returns name for unknown target type', () => {
+    const target = { name: 'my-tool', targetType: 'lambda' } as any;
+    expect(getTargetDisplayText(target)).toBe('my-tool');
+  });
+
+  it('returns name for apiGateway without apiGateway config', () => {
+    const target = { name: 'my-api', targetType: 'apiGateway' } as any;
+    expect(getTargetDisplayText(target)).toBe('my-api');
   });
 });
