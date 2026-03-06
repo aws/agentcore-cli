@@ -8,7 +8,7 @@ import { z } from 'zod';
 // MCP-Specific Schemas
 // ============================================================================
 
-export const GatewayTargetTypeSchema = z.enum(['lambda', 'mcpServer', 'openApiSchema', 'smithyModel']);
+export const GatewayTargetTypeSchema = z.enum(['lambda', 'mcpServer', 'openApiSchema', 'smithyModel', 'apiGateway']);
 export type GatewayTargetType = z.infer<typeof GatewayTargetTypeSchema>;
 
 // ============================================================================
@@ -70,6 +70,45 @@ export const OutboundAuthSchema = z
   .strict();
 
 export type OutboundAuth = z.infer<typeof OutboundAuthSchema>;
+
+// ============================================================================
+// API Gateway Target Schemas
+// ============================================================================
+
+export const ApiGatewayHttpMethodSchema = z.enum(['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'HEAD', 'OPTIONS']);
+export type ApiGatewayHttpMethod = z.infer<typeof ApiGatewayHttpMethodSchema>;
+
+export const ApiGatewayToolFilterSchema = z
+  .object({
+    filterPath: z.string().min(1),
+    methods: z.array(ApiGatewayHttpMethodSchema).min(1),
+  })
+  .strict();
+
+export const ApiGatewayToolOverrideSchema = z
+  .object({
+    name: z.string().min(1),
+    path: z.string().min(1),
+    method: ApiGatewayHttpMethodSchema,
+    description: z.string().optional(),
+  })
+  .strict();
+
+export const ApiGatewayToolConfigurationSchema = z
+  .object({
+    toolFilters: z.array(ApiGatewayToolFilterSchema).min(1),
+    toolOverrides: z.array(ApiGatewayToolOverrideSchema).optional(),
+  })
+  .strict();
+
+export const ApiGatewayConfigSchema = z
+  .object({
+    restApiId: z.string().min(1),
+    stage: z.string().min(1),
+    apiGatewayToolConfiguration: ApiGatewayToolConfigurationSchema,
+  })
+  .strict();
+export type ApiGatewayConfig = z.infer<typeof ApiGatewayConfigSchema>;
 
 export const McpImplLanguageSchema = z.enum(['TypeScript', 'Python']);
 export type McpImplementationLanguage = z.infer<typeof McpImplLanguageSchema>;
@@ -284,9 +323,41 @@ export const AgentCoreGatewayTargetSchema = z
     endpoint: z.string().url().optional(),
     /** Outbound auth configuration for the target. */
     outboundAuth: OutboundAuthSchema.optional(),
+    /** API Gateway configuration. Required for apiGateway target type. */
+    apiGateway: ApiGatewayConfigSchema.optional(),
   })
   .strict()
   .superRefine((data, ctx) => {
+    if (data.targetType === 'apiGateway') {
+      if (!data.apiGateway) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: 'apiGateway config is required for apiGateway target type',
+          path: ['apiGateway'],
+        });
+      }
+      if (data.compute) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: 'compute is not applicable for apiGateway target type',
+          path: ['compute'],
+        });
+      }
+      if (data.endpoint) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: 'endpoint is not applicable for apiGateway target type',
+          path: ['endpoint'],
+        });
+      }
+      if (data.toolDefinitions && data.toolDefinitions.length > 0) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: 'toolDefinitions is not applicable for apiGateway target type (tools are auto-discovered)',
+          path: ['toolDefinitions'],
+        });
+      }
+    }
     if (data.targetType === 'mcpServer' && !data.compute && !data.endpoint) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
