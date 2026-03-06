@@ -59,6 +59,10 @@ export interface AddGatewayTargetOptions {
   oauthClientSecret?: string;
   oauthDiscoveryUrl?: string;
   oauthScopes?: string;
+  restApiId?: string;
+  stage?: string;
+  toolFilterPath?: string;
+  toolFilterMethods?: string;
   json?: boolean;
 }
 

@@ -85,6 +85,9 @@ export interface AddGatewayTargetConfig {
     credentialName?: string;
     scopes?: string[];
   };
+  restApiId?: string;
+  stage?: string;
+  toolFilters?: { filterPath: string; methods: string[] }[];
 }
 
 export const MCP_TOOL_STEP_LABELS: Record<AddGatewayTargetStep, string> = {

@@ -236,7 +236,7 @@ export class GatewayTargetPrimitive extends BasePrimitive<AddGatewayTargetOption
       .description('Add a gateway target to the project')
       .option('--name <name>', 'Target name')
       .option('--description <desc>', 'Target description')
-      .option('--type <type>', 'Target type (required): mcp-server')
+      .option('--type <type>', 'Target type (required): mcp-server, api-gateway')
       .option('--endpoint <url>', 'MCP server endpoint URL')
       .option('--language <lang>', 'Language: Python, TypeScript, Other')
       .option('--gateway <name>', 'Gateway name')
@@ -247,6 +247,10 @@ export class GatewayTargetPrimitive extends BasePrimitive<AddGatewayTargetOption
       .option('--oauth-client-secret <secret>', 'OAuth client secret (creates credential inline)')
       .option('--oauth-discovery-url <url>', 'OAuth discovery URL (creates credential inline)')
       .option('--oauth-scopes <scopes>', 'OAuth scopes, comma-separated')
+      .option('--rest-api-id <id>', 'API Gateway REST API ID (required for api-gateway type)')
+      .option('--stage <stage>', 'API Gateway deployment stage (required for api-gateway type)')
+      .option('--tool-filter-path <path>', 'Tool filter path pattern, e.g. /pets/*')
+      .option('--tool-filter-methods <methods>', 'Comma-separated HTTP methods, e.g. GET,POST')
       .option('--json', 'Output as JSON')
       .action(async (rawOptions: Record<string, string | boolean | undefined>) => {
         const cliOptions = rawOptions as unknown as CLIAddGatewayTargetOptions;
@@ -272,6 +276,42 @@ export class GatewayTargetPrimitive extends BasePrimitive<AddGatewayTargetOption
             'api-key': 'API_KEY',
             none: 'NONE',
           };
+
+          // Handle API Gateway targets (no code generation)
+          if (cliOptions.type === 'apiGateway') {
+            const config: AddGatewayTargetConfig = {
+              name: cliOptions.name!,
+              description: cliOptions.description ?? `API Gateway target for ${cliOptions.name!}`,
+              sourcePath: '',
+              language: 'Other',
+              host: 'AgentCoreRuntime',
+              targetType: 'apiGateway',
+              toolDefinition: {
+                name: cliOptions.name!,
+                description: cliOptions.description ?? `API Gateway target for ${cliOptions.name!}`,
+                inputSchema: { type: 'object' },
+              },
+              gateway: cliOptions.gateway,
+              restApiId: cliOptions.restApiId,
+              stage: cliOptions.stage,
+              toolFilters: cliOptions.toolFilterPath
+                ? [
+                    {
+                      filterPath: cliOptions.toolFilterPath,
+                      methods: cliOptions.toolFilterMethods?.split(',').map(m => m.trim()) ?? ['GET'],
+                    },
+                  ]
+                : undefined,
+            };
+            const result = await this.createApiGatewayTarget(config);
+            const output = { success: true, toolName: result.toolName };
+            if (cliOptions.json) {
+              console.log(JSON.stringify(output));
+            } else {
+              console.log(`Added gateway target '${result.toolName}'`);
+            }
+            process.exit(0);
+          }
 
           // Handle MCP server targets (existing endpoint, no code generation)
           if (cliOptions.type === 'mcpServer' && cliOptions.endpoint) {
@@ -448,6 +488,59 @@ export class GatewayTargetPrimitive extends BasePrimitive<AddGatewayTargetOption
     await this.configIO.writeMcpSpec(mcpSpec);
 
     return { toolName: config.name, projectPath: '' };
+  }
+
+  /**
+   * Create an API Gateway target that connects to an existing Amazon API Gateway REST API.
+   * Unlike `add()` which scaffolds new code, this registers an existing REST API.
+   */
+  async createApiGatewayTarget(config: AddGatewayTargetConfig): Promise<{ toolName: string }> {
+    if (!config.restApiId) {
+      throw new Error('REST API ID is required for API Gateway targets.');
+    }
+    if (!config.stage) {
+      throw new Error('Stage is required for API Gateway targets.');
+    }
+    if (!config.gateway) {
+      throw new Error('Gateway name is required.');
+    }
+
+    const mcpSpec: AgentCoreMcpSpec = this.configIO.configExists('mcp')
+      ? await this.configIO.readMcpSpec()
+      : { agentCoreGateways: [] };
+
+    const gateway = mcpSpec.agentCoreGateways.find(g => g.name === config.gateway);
+    if (!gateway) {
+      throw new Error(`Gateway "${config.gateway}" not found.`);
+    }
+
+    if (!gateway.targets) {
+      gateway.targets = [];
+    }
+
+    if (gateway.targets.some(t => t.name === config.name)) {
+      throw new Error(`Target "${config.name}" already exists in gateway "${gateway.name}".`);
+    }
+
+    const target: AgentCoreGatewayTarget = {
+      name: config.name,
+      targetType: 'apiGateway',
+      apiGateway: {
+        restApiId: config.restApiId,
+        stage: config.stage,
+        apiGatewayToolConfiguration: {
+          toolFilters: (config.toolFilters ?? [{ filterPath: '/*', methods: ['GET'] }]) as {
+            filterPath: string;
+            methods: ('GET' | 'POST' | 'PUT' | 'DELETE' | 'PATCH' | 'HEAD' | 'OPTIONS')[];
+          }[],
+        },
+      },
+    };
+
+    gateway.targets.push(target);
+    await this.configIO.writeMcpSpec(mcpSpec);
+
+    return { toolName: config.name };
   }
 
   // ═══════════════════════════════════════════════════════════════════

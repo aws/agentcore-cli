@@ -220,13 +220,13 @@ export async function validateAddGatewayTargetOptions(options: AddGatewayTargetO
   }
 
   if (!options.type) {
-    return { valid: false, error: '--type is required. Valid options: mcp-server' };
+    return { valid: false, error: '--type is required. Valid options: mcp-server, api-gateway' };
   }
 
-  const typeMap: Record<string, string> = { 'mcp-server': 'mcpServer' };
+  const typeMap: Record<string, string> = { 'mcp-server': 'mcpServer', 'api-gateway': 'apiGateway' };
   const mappedType = typeMap[options.type];
   if (!mappedType) {
-    return { valid: false, error: `Invalid type: ${options.type}. Valid options: mcp-server` };
+    return { valid: false, error: `Invalid type: ${options.type}. Valid options: mcp-server, api-gateway` };
   }
   options.type = mappedType;
 
@@ -307,6 +307,35 @@ export async function validateAddGatewayTargetOptions(options: AddGatewayTargetO
         return credentialValidation;
       }
     }
+  }
+
+  if (mappedType === 'apiGateway') {
+    if (!options.restApiId) {
+      return { valid: false, error: '--rest-api-id is required for api-gateway type' };
+    }
+    if (!options.stage) {
+      return { valid: false, error: '--stage is required for api-gateway type' };
+    }
+    if (options.endpoint) {
+      return { valid: false, error: '--endpoint is not applicable for api-gateway type' };
+    }
+    if (options.host) {
+      return { valid: false, error: '--host is not applicable for api-gateway type' };
+    }
+    if (options.language && options.language !== 'Other') {
+      return { valid: false, error: '--language is not applicable for api-gateway type' };
+    }
+    if (options.outboundAuthType) {
+      return { valid: false, error: '--outbound-auth is not applicable for api-gateway type' };
+    }
+    if (options.credentialName) {
+      return { valid: false, error: '--credential-name is not applicable for api-gateway type' };
+    }
+    if (options.oauthClientId || options.oauthClientSecret || options.oauthDiscoveryUrl || options.oauthScopes) {
+      return { valid: false, error: 'OAuth options are not applicable for api-gateway type' };
+    }
+    options.language = 'Other';
+    return { valid: true };
   }
 
   if (mappedType === 'mcpServer') {
