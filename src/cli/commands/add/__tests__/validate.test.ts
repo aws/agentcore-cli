@@ -555,6 +555,78 @@ describe('validate', () => {
       expect(result.error).toBe('--oauth-discovery-url must be a valid URL');
     });
 
+    it('accepts valid api-gateway options', async () => {
+      const result = await validateAddGatewayTargetOptions({
+        name: 'my-api',
+        type: 'api-gateway',
+        restApiId: 'abc123',
+        stage: 'prod',
+        gateway: 'my-gateway',
+      });
+      expect(result.valid).toBe(true);
+    });
+
+    it('rejects api-gateway without --rest-api-id', async () => {
+      const result = await validateAddGatewayTargetOptions({
+        name: 'my-api',
+        type: 'api-gateway',
+        stage: 'prod',
+        gateway: 'my-gateway',
+      });
+      expect(result.valid).toBe(false);
+      expect(result.error).toContain('--rest-api-id is required');
+    });
+
+    it('rejects api-gateway without --stage', async () => {
+      const result = await validateAddGatewayTargetOptions({
+        name: 'my-api',
+        type: 'api-gateway',
+        restApiId: 'abc123',
+        gateway: 'my-gateway',
+      });
+      expect(result.valid).toBe(false);
+      expect(result.error).toContain('--stage is required');
+    });
+
+    it('rejects --endpoint for api-gateway type', async () => {
+      const result = await validateAddGatewayTargetOptions({
+        name: 'my-api',
+        type: 'api-gateway',
+        restApiId: 'abc123',
+        stage: 'prod',
+        gateway: 'my-gateway',
+        endpoint: 'https://example.com',
+      });
+      expect(result.valid).toBe(false);
+      expect(result.error).toContain('not applicable');
+    });
+
+    it('rejects --host for api-gateway type', async () => {
+      const result = await validateAddGatewayTargetOptions({
+        name: 'my-api',
+        type: 'api-gateway',
+        restApiId: 'abc123',
+        stage: 'prod',
+        gateway: 'my-gateway',
+        host: 'Lambda',
+      });
+      expect(result.valid).toBe(false);
+      expect(result.error).toContain('not applicable');
+    });
+
+    it('rejects --outbound-auth for api-gateway type', async () => {
+      const result = await validateAddGatewayTargetOptions({
+        name: 'my-api',
+        type: 'api-gateway',
+        restApiId: 'abc123',
+        stage: 'prod',
+        gateway: 'my-gateway',
+        outboundAuthType: 'NONE',
+      });
+      expect(result.valid).toBe(false);
+      expect(result.error).toContain('not applicable');
+    });
+
     it('rejects --host with mcp-server type', async () => {
       const options: AddGatewayTargetOptions = {
         name: 'test-tool',

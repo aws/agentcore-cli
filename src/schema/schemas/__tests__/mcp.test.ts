@@ -3,6 +3,7 @@ import {
   AgentCoreGatewayTargetSchema,
   AgentCoreMcpRuntimeToolSchema,
   AgentCoreMcpSpecSchema,
+  ApiGatewayConfigSchema,
   CustomJwtAuthorizerConfigSchema,
   GatewayAuthorizerTypeSchema,
   GatewayTargetTypeSchema,
@@ -14,7 +15,7 @@ import {
 import { describe, expect, it } from 'vitest';
 
 describe('GatewayTargetTypeSchema', () => {
-  it.each(['lambda', 'mcpServer', 'openApiSchema', 'smithyModel'])('accepts "%s"', type => {
+  it.each(['lambda', 'mcpServer', 'openApiSchema', 'smithyModel', 'apiGateway'])('accepts "%s"', type => {
     expect(GatewayTargetTypeSchema.safeParse(type).success).toBe(true);
   });
 
@@ -387,6 +388,101 @@ describe('AgentCoreMcpRuntimeToolSchema', () => {
       bindings: [{ agentName: 'Agent1', envVarName: 'TOOL_ARN' }],
     });
     expect(result.success).toBe(true);
+  });
+});
+
+describe('ApiGatewayConfigSchema', () => {
+  it('accepts valid config', () => {
+    const result = ApiGatewayConfigSchema.safeParse({
+      restApiId: 'abc123',
+      stage: 'prod',
+      apiGatewayToolConfiguration: {
+        toolFilters: [{ filterPath: '/pets/*', methods: ['GET', 'POST'] }],
+      },
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it('rejects missing restApiId', () => {
+    const result = ApiGatewayConfigSchema.safeParse({
+      stage: 'prod',
+      apiGatewayToolConfiguration: {
+        toolFilters: [{ filterPath: '/*', methods: ['GET'] }],
+      },
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it('rejects empty toolFilters', () => {
+    const result = ApiGatewayConfigSchema.safeParse({
+      restApiId: 'abc123',
+      stage: 'prod',
+      apiGatewayToolConfiguration: {
+        toolFilters: [],
+      },
+    });
+    expect(result.success).toBe(false);
+  });
+});
+
+describe('AgentCoreGatewayTargetSchema with apiGateway', () => {
+  it('accepts valid apiGateway target', () => {
+    const result = AgentCoreGatewayTargetSchema.safeParse({
+      name: 'my-api',
+      targetType: 'apiGateway',
+      apiGateway: {
+        restApiId: 'abc123',
+        stage: 'prod',
+        apiGatewayToolConfiguration: {
+          toolFilters: [{ filterPath: '/pets/*', methods: ['GET', 'POST'] }],
+        },
+      },
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it('rejects apiGateway without config', () => {
+    const result = AgentCoreGatewayTargetSchema.safeParse({
+      name: 'my-api',
+      targetType: 'apiGateway',
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it('rejects apiGateway with compute', () => {
+    const result = AgentCoreGatewayTargetSchema.safeParse({
+      name: 'my-api',
+      targetType: 'apiGateway',
+      apiGateway: {
+        restApiId: 'abc123',
+        stage: 'prod',
+        apiGatewayToolConfiguration: {
+          toolFilters: [{ filterPath: '/*', methods: ['GET'] }],
+        },
+      },
+      compute: {
+        host: 'Lambda',
+        implementation: { language: 'Python', path: 'x', handler: 'x' },
+        pythonVersion: '3.13',
+      },
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it('rejects apiGateway with endpoint', () => {
+    const result = AgentCoreGatewayTargetSchema.safeParse({
+      name: 'my-api',
+      targetType: 'apiGateway',
+      apiGateway: {
+        restApiId: 'abc123',
+        stage: 'prod',
+        apiGatewayToolConfiguration: {
+          toolFilters: [{ filterPath: '/*', methods: ['GET'] }],
+        },
+      },
+      endpoint: 'https://example.com',
+    });
+    expect(result.success).toBe(false);
   });
 });
 
