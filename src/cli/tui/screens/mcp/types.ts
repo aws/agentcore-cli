@@ -69,9 +69,9 @@ export type TargetLanguage = 'Python' | 'TypeScript' | 'Other';
 
 export interface AddGatewayTargetConfig {
   name: string;
-  description: string;
-  sourcePath: string;
-  language: TargetLanguage;
+  description?: string;
+  sourcePath?: string;
+  language?: TargetLanguage;
   /** Target type selected by user */
   targetType?: GatewayTargetType;
   /** External endpoint URL */
@@ -79,9 +79,9 @@ export interface AddGatewayTargetConfig {
   /** Gateway name */
   gateway?: string;
   /** Compute host (Lambda or AgentCoreRuntime) */
-  host: ComputeHost;
+  host?: ComputeHost;
   /** Derived tool definition */
-  toolDefinition: ToolDefinition;
+  toolDefinition?: ToolDefinition;
   /** Outbound auth configuration */
   outboundAuth?: {
     type: 'OAUTH' | 'API_KEY' | 'NONE';

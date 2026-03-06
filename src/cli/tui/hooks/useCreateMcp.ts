@@ -61,7 +61,7 @@ export function useCreateGatewayTarget() {
       const addResult = await gatewayTargetPrimitive.add({
         name: config.name,
         description: config.description,
-        language: config.language,
+        language: config.language!,
         gateway: config.gateway,
         host: config.host,
       });

@@ -281,16 +281,6 @@ export class GatewayTargetPrimitive extends BasePrimitive<AddGatewayTargetOption
           if (cliOptions.type === 'apiGateway') {
             const config: AddGatewayTargetConfig = {
               name: cliOptions.name!,
-              description: cliOptions.description ?? `API Gateway target for ${cliOptions.name!}`,
-              sourcePath: '',
-              language: 'Other',
-              host: 'AgentCoreRuntime',
-              targetType: 'apiGateway',
-              toolDefinition: {
-                name: cliOptions.name!,
-                description: cliOptions.description ?? `API Gateway target for ${cliOptions.name!}`,
-                inputSchema: { type: 'object' },
-              },
               gateway: cliOptions.gateway,
               restApiId: cliOptions.restApiId,
               stage: cliOptions.stage,
@@ -463,7 +453,7 @@ export class GatewayTargetPrimitive extends BasePrimitive<AddGatewayTargetOption
       name: config.name,
       targetType: config.targetType ?? 'mcpServer',
       endpoint: config.endpoint,
-      toolDefinitions: [config.toolDefinition],
+      toolDefinitions: [config.toolDefinition!],
       ...(config.outboundAuth && { outboundAuth: config.outboundAuth }),
     };
 
@@ -568,14 +558,14 @@ export class GatewayTargetPrimitive extends BasePrimitive<AddGatewayTargetOption
   private async createToolFromWizard(
     config: AddGatewayTargetConfig
   ): Promise<{ mcpDefsPath: string; toolName: string; projectPath: string }> {
-    this.validateGatewayTargetLanguage(config.language);
+    this.validateGatewayTargetLanguage(config.language!);
 
     const mcpSpec: AgentCoreMcpSpec = this.configIO.configExists('mcp')
       ? await this.configIO.readMcpSpec()
       : { agentCoreGateways: [] };
 
     const toolDefs =
-      config.host === 'Lambda' ? getTemplateToolDefinitions(config.name, config.host) : [config.toolDefinition];
+      config.host === 'Lambda' ? getTemplateToolDefinitions(config.name, config.host) : [config.toolDefinition!];
 
     for (const toolDef of toolDefs) {
       ToolDefinitionSchema.parse(toolDef);
@@ -615,7 +605,7 @@ export class GatewayTargetPrimitive extends BasePrimitive<AddGatewayTargetOption
           ? {
               host: 'Lambda',
               implementation: {
-                path: config.sourcePath,
+                path: config.sourcePath!,
                 language: config.language,
                 handler: DEFAULT_HANDLER,
               },
@@ -626,7 +616,7 @@ export class GatewayTargetPrimitive extends BasePrimitive<AddGatewayTargetOption
           : {
               host: 'AgentCoreRuntime',
               implementation: {
-                path: config.sourcePath,
+                path: config.sourcePath!,
                 language: 'Python',
                 handler: 'server.py:main',
               },
@@ -635,7 +625,7 @@ export class GatewayTargetPrimitive extends BasePrimitive<AddGatewayTargetOption
                 pythonVersion: DEFAULT_PYTHON_VERSION,
                 name: config.name,
                 entrypoint: 'server.py:main' as FilePath,
-                codeLocation: config.sourcePath as DirectoryPath,
+                codeLocation: config.sourcePath! as DirectoryPath,
                 networkMode: 'PUBLIC',
               },
             },
@@ -663,10 +653,10 @@ export class GatewayTargetPrimitive extends BasePrimitive<AddGatewayTargetOption
     // Render gateway target project template
     const configRoot = requireConfigRoot();
     const projectRoot = dirname(configRoot);
-    const absoluteSourcePath = join(projectRoot, config.sourcePath);
+    const absoluteSourcePath = join(projectRoot, config.sourcePath!);
     await renderGatewayTargetTemplate(config.name, absoluteSourcePath, config.language, config.host);
 
-    return { mcpDefsPath, toolName: config.name, projectPath: config.sourcePath };
+    return { mcpDefsPath, toolName: config.name, projectPath: config.sourcePath! };
   }
 
   private validateGatewayTargetLanguage(language: string): asserts language is 'Python' | 'TypeScript' | 'Other' {

@@ -357,6 +357,13 @@ export const AgentCoreGatewayTargetSchema = z
           path: ['toolDefinitions'],
         });
       }
+      if (data.outboundAuth && data.outboundAuth.type !== 'NONE') {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: 'outboundAuth is not applicable for apiGateway target type',
+          path: ['outboundAuth'],
+        });
+      }
     }
     if (data.targetType === 'mcpServer' && !data.compute && !data.endpoint) {
       ctx.addIssue({
