@@ -263,6 +263,36 @@ export async function validateAddGatewayTargetOptions(options: AddGatewayTargetO
     };
   }
 
+  // API Gateway targets: validate early and return (skip outbound auth validation)
+  if (mappedType === 'apiGateway') {
+    if (!options.restApiId) {
+      return { valid: false, error: '--rest-api-id is required for api-gateway type' };
+    }
+    if (!options.stage) {
+      return { valid: false, error: '--stage is required for api-gateway type' };
+    }
+    if (options.endpoint) {
+      return { valid: false, error: '--endpoint is not applicable for api-gateway type' };
+    }
+    if (options.host) {
+      return { valid: false, error: '--host is not applicable for api-gateway type' };
+    }
+    if (options.language && options.language !== 'Other') {
+      return { valid: false, error: '--language is not applicable for api-gateway type' };
+    }
+    if (options.outboundAuthType) {
+      return { valid: false, error: '--outbound-auth is not applicable for api-gateway type' };
+    }
+    if (options.credentialName) {
+      return { valid: false, error: '--credential-name is not applicable for api-gateway type' };
+    }
+    if (options.oauthClientId || options.oauthClientSecret || options.oauthDiscoveryUrl || options.oauthScopes) {
+      return { valid: false, error: 'OAuth options are not applicable for api-gateway type' };
+    }
+    options.language = 'Other';
+    return { valid: true };
+  }
+
   // Validate outbound auth configuration
   if (options.outboundAuthType && options.outboundAuthType !== 'NONE') {
     const hasInlineOAuth = !!(options.oauthClientId ?? options.oauthClientSecret ?? options.oauthDiscoveryUrl);
@@ -307,35 +337,6 @@ export async function validateAddGatewayTargetOptions(options: AddGatewayTargetO
         return credentialValidation;
       }
     }
-  }
-
-  if (mappedType === 'apiGateway') {
-    if (!options.restApiId) {
-      return { valid: false, error: '--rest-api-id is required for api-gateway type' };
-    }
-    if (!options.stage) {
-      return { valid: false, error: '--stage is required for api-gateway type' };
-    }
-    if (options.endpoint) {
-      return { valid: false, error: '--endpoint is not applicable for api-gateway type' };
-    }
-    if (options.host) {
-      return { valid: false, error: '--host is not applicable for api-gateway type' };
-    }
-    if (options.language && options.language !== 'Other') {
-      return { valid: false, error: '--language is not applicable for api-gateway type' };
-    }
-    if (options.outboundAuthType) {
-      return { valid: false, error: '--outbound-auth is not applicable for api-gateway type' };
-    }
-    if (options.credentialName) {
-      return { valid: false, error: '--credential-name is not applicable for api-gateway type' };
-    }
-    if (options.oauthClientId || options.oauthClientSecret || options.oauthDiscoveryUrl || options.oauthScopes) {
-      return { valid: false, error: 'OAuth options are not applicable for api-gateway type' };
-    }
-    options.language = 'Other';
-    return { valid: true };
   }
 
   if (mappedType === 'mcpServer') {

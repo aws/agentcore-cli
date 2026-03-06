@@ -75,6 +75,9 @@ export function useAddGatewayTargetWizard(existingGateways: string[] = []) {
 
   const setTargetType = useCallback((targetType: GatewayTargetType) => {
     setConfig(c => ({ ...c, targetType }));
+    // Cannot use goToNextStep() here — config.targetType is changing, which triggers
+    // useMemo to recompute steps, but goToNextStep captures the OLD steps via closure.
+    // Must explicitly set the first type-specific step.
     switch (targetType) {
       case 'apiGateway':
         setStep('rest-api-id');

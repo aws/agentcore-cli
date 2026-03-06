@@ -167,10 +167,10 @@ export function AddGatewayTargetFlow({
       <AddSuccessScreen
         isInteractive={isInteractive}
         message={`Added gateway target: ${flow.toolName}`}
-        detail={`Project created at ${flow.projectPath}`}
+        detail={flow.projectPath ? `Project created at ${flow.projectPath}` : undefined}
         loading={flow.loading}
         loadingMessage={flow.loadingMessage}
-        showDevOption={true}
+        showDevOption={false}
         onAddAnother={onBack}
         onDev={onDev}
         onDeploy={onDeploy}
