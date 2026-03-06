@@ -60,6 +60,9 @@ export type AddGatewayTargetStep =
   | 'gateway'
   | 'host'
   | 'outbound-auth'
+  | 'rest-api-id'
+  | 'stage'
+  | 'tool-filters'
   | 'confirm';
 
 export type TargetLanguage = 'Python' | 'TypeScript' | 'Other';
@@ -98,6 +101,9 @@ export const MCP_TOOL_STEP_LABELS: Record<AddGatewayTargetStep, string> = {
   gateway: 'Gateway',
   host: 'Host',
   'outbound-auth': 'Outbound Auth',
+  'rest-api-id': 'REST API ID',
+  stage: 'Stage',
+  'tool-filters': 'Tool Filters',
   confirm: 'Confirm',
 };
 
@@ -115,6 +121,11 @@ export const SKIP_FOR_NOW = 'skip-for-now' as const;
 
 export const TARGET_TYPE_OPTIONS = [
   { id: 'mcpServer', title: 'MCP Server endpoint', description: 'Connect to an existing MCP-compatible server' },
+  {
+    id: 'apiGateway',
+    title: 'API Gateway REST API',
+    description: 'Connect to an existing Amazon API Gateway REST API',
+  },
 ] as const;
 
 export const TARGET_LANGUAGE_OPTIONS = [

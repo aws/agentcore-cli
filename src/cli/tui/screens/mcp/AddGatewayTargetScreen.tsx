@@ -31,6 +31,7 @@ export function AddGatewayTargetScreen({
   const wizard = useAddGatewayTargetWizard(existingGateways);
 
   const [outboundAuthType, setOutboundAuthTypeLocal] = useState<string | null>(null);
+  const [filterPath, setFilterPathLocal] = useState<string | null>(null);
 
   const gatewayItems: SelectableItem[] = useMemo(
     () => existingGateways.map(g => ({ id: g, title: g })),
@@ -61,6 +62,9 @@ export function AddGatewayTargetScreen({
   const isOutboundAuthStep = wizard.step === 'outbound-auth';
   const isTargetTypeStep = wizard.step === 'target-type';
   const isTextStep = wizard.step === 'name' || wizard.step === 'endpoint';
+  const isRestApiIdStep = wizard.step === 'rest-api-id';
+  const isStageStep = wizard.step === 'stage';
+  const isToolFiltersStep = wizard.step === 'tool-filters';
   const isConfirmStep = wizard.step === 'confirm';
   const noGatewaysAvailable = isGatewayStep && existingGateways.length === 0;
 
@@ -122,7 +126,7 @@ export function AddGatewayTargetScreen({
 
   const helpText = isConfirmStep
     ? HELP_TEXT.CONFIRM_CANCEL
-    : isTextStep
+    : isTextStep || isRestApiIdStep || isStageStep || isToolFiltersStep
       ? HELP_TEXT.TEXT_INPUT
       : HELP_TEXT.NAVIGATE_SELECT;
 
@@ -198,6 +202,49 @@ export function AddGatewayTargetScreen({
           />
         )}
 
+        {isRestApiIdStep && (
+          <TextInput
+            prompt="REST API ID"
+            placeholder="e.g. abc123def"
+            onSubmit={wizard.setRestApiId}
+            onCancel={() => wizard.goBack()}
+          />
+        )}
+
+        {isStageStep && (
+          <TextInput
+            prompt="Deployment Stage"
+            placeholder="e.g. prod"
+            onSubmit={wizard.setStage}
+            onCancel={() => wizard.goBack()}
+          />
+        )}
+
+        {isToolFiltersStep && !filterPath && (
+          <TextInput
+            prompt="Filter path pattern"
+            placeholder="e.g. /* or /pets/*"
+            onSubmit={(value: string) => setFilterPathLocal(value || '/*')}
+            onCancel={() => wizard.goBack()}
+          />
+        )}
+
+        {isToolFiltersStep && filterPath && (
+          <TextInput
+            prompt="HTTP methods (comma-separated)"
+            placeholder="e.g. GET,POST"
+            onSubmit={(value: string) => {
+              const methods = value
+                .split(',')
+                .map(m => m.trim().toUpperCase())
+                .filter(Boolean);
+              wizard.setToolFilters([{ filterPath, methods: methods.length > 0 ? methods : ['GET'] }]);
+              setFilterPathLocal(null);
+            }}
+            onCancel={() => setFilterPathLocal(null)}
+          />
+        )}
+
         {isConfirmStep && (
           <ConfirmReview
             fields={[
@@ -209,9 +256,22 @@ export function AddGatewayTargetScreen({
                   wizard.config.targetType ??
                   '',
               },
-              ...(wizard.config.endpoint ? [{ label: 'Endpoint', value: wizard.config.endpoint }] : []),
+              ...(wizard.config.targetType === 'apiGateway'
+                ? [
+                    { label: 'REST API ID', value: wizard.config.restApiId ?? '' },
+                    { label: 'Stage', value: wizard.config.stage ?? '' },
+                    {
+                      label: 'Tool Filters',
+                      value:
+                        wizard.config.toolFilters?.map(f => `${f.filterPath} ${f.methods.join(',')}`).join('; ') ?? '',
+                    },
+                  ]
+                : []),
+              ...(wizard.config.targetType !== 'apiGateway' && wizard.config.endpoint
+                ? [{ label: 'Endpoint', value: wizard.config.endpoint }]
+                : []),
               { label: 'Gateway', value: wizard.config.gateway ?? '' },
-              ...(wizard.config.outboundAuth
+              ...(wizard.config.targetType !== 'apiGateway' && wizard.config.outboundAuth
                 ? [
                     { label: 'Auth Type', value: wizard.config.outboundAuth.type },
                     { label: 'Credential', value: wizard.config.outboundAuth.credentialName ?? 'None' },

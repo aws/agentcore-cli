@@ -245,12 +245,17 @@ export function ResourceGraph({ project, mcp, agentName, resourceStatuses }: Res
                 />
                 {targets.map(target => {
                   const displayText =
-                    target.targetType === 'mcpServer' && target.endpoint ? target.endpoint : target.name;
+                    target.targetType === 'mcpServer' && target.endpoint
+                      ? target.endpoint
+                      : target.targetType === 'apiGateway' && target.apiGateway
+                        ? `${target.apiGateway.restApiId}/${target.apiGateway.stage}`
+                        : target.name;
                   return (
                     <Text key={target.name}>
                       {'    '}
                       <Text color="cyan">{ICONS.tool}</Text> {displayText}
-                      {target.targetType === 'mcpServer' && target.endpoint && (
+                      {(target.targetType === 'apiGateway' ||
+                        (target.targetType === 'mcpServer' && target.endpoint)) && (
                         <Text color="gray"> [{target.targetType}]</Text>
                       )}
                     </Text>
@@ -285,7 +290,9 @@ export function ResourceGraph({ project, mcp, agentName, resourceStatuses }: Res
             const displayText =
               target.targetType === 'mcpServer' && target.endpoint
                 ? target.endpoint
-                : (target.name ?? `Target ${idx + 1}`);
+                : target.targetType === 'apiGateway' && target.apiGateway
+                  ? `${target.apiGateway.restApiId}/${target.apiGateway.stage}`
+                  : (target.name ?? `Target ${idx + 1}`);
             return <ResourceRow key={idx} icon="⚠" color="yellow" name={displayText} detail={target.targetType} />;
           })}
         </Box>
