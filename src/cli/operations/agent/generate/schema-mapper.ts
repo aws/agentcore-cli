@@ -179,9 +179,9 @@ export function mapModelProviderToIdentityProviders(
 }
 
 /**
- * Maps MCP gateways to gateway providers for template rendering.
+ * Maps gateways to gateway providers for template rendering.
  */
-async function mapMcpGatewaysToGatewayProviders(): Promise<GatewayProviderRenderConfig[]> {
+async function mapGatewaysToGatewayProviders(): Promise<GatewayProviderRenderConfig[]> {
   try {
     const configIO = new ConfigIO();
     if (!configIO.configExists('mcp')) {
@@ -229,7 +229,7 @@ export async function mapGenerateConfigToRenderConfig(
   config: GenerateConfig,
   identityProviders: IdentityProviderRenderConfig[]
 ): Promise<AgentRenderConfig> {
-  const gatewayProviders = await mapMcpGatewaysToGatewayProviders();
+  const gatewayProviders = await mapGatewaysToGatewayProviders();
 
   return {
     name: config.projectName,

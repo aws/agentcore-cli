@@ -45,8 +45,8 @@ export function parseGatewayOutputs(
   const gatewayNames = Object.keys(gatewaySpecs);
   const gatewayIdMap = new Map(gatewayNames.map(name => [toPascalId(name), name]));
 
-  // Match patterns: Gateway{Name}{Type}Output or McpGateway{Name}{Type}Output
-  const outputPattern = /^(?:Mcp)?Gateway(.+?)(Id|Arn|Url)Output/;
+  // Match patterns: Gateway{Name}{Type}Output
+  const outputPattern = /^Gateway(.+?)(Id|Arn|Url)Output/;
 
   for (const [key, value] of Object.entries(outputs)) {
     const match = outputPattern.exec(key);
