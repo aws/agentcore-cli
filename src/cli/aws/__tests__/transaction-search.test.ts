@@ -130,7 +130,7 @@ describe('enableTransactionSearch', () => {
     });
   });
 
-  it('sets indexing to 100% on Default rule', async () => {
+  it('sets indexing to 100% on Default rule by default', async () => {
     setupAllSuccess();
 
     await enableTransactionSearch('us-east-1', '123456789012');
@@ -139,6 +139,18 @@ describe('enableTransactionSearch', () => {
     expect(lastXRayCall.input).toEqual({
       Name: 'Default',
       Rule: { Probabilistic: { DesiredSamplingPercentage: 100 } },
+    });
+  });
+
+  it('sets indexing to custom percentage when provided', async () => {
+    setupAllSuccess();
+
+    await enableTransactionSearch('us-east-1', '123456789012', 50);
+
+    const lastXRayCall = mockXRaySend.mock.calls[mockXRaySend.mock.calls.length - 1]![0];
+    expect(lastXRayCall.input).toEqual({
+      Name: 'Default',
+      Rule: { Probabilistic: { DesiredSamplingPercentage: 50 } },
     });
   });
 

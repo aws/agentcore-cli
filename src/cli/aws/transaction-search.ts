@@ -30,7 +30,8 @@ const RESOURCE_POLICY_NAME = 'TransactionSearchXRayAccess';
  */
 export async function enableTransactionSearch(
   region: string,
-  accountId: string
+  accountId: string,
+  indexPercentage = 100
 ): Promise<TransactionSearchEnableResult> {
   const credentials = getCredentialProvider();
 
@@ -106,7 +107,7 @@ export async function enableTransactionSearch(
     await xrayClient.send(
       new UpdateIndexingRuleCommand({
         Name: 'Default',
-        Rule: { Probabilistic: { DesiredSamplingPercentage: 100 } },
+        Rule: { Probabilistic: { DesiredSamplingPercentage: indexPercentage } },
       })
     );
   } catch (err: unknown) {

@@ -8,6 +8,7 @@ export interface CliConfig {
   uvDefaultIndex?: string;
   uvIndex?: string;
   disableTransactionSearch?: boolean;
+  transactionSearchIndexPercentage?: number;
 }
 
 /**
@@ -22,6 +23,12 @@ export function readCliConfig(): CliConfig {
     if (typeof parsed.uvDefaultIndex === 'string') config.uvDefaultIndex = parsed.uvDefaultIndex;
     if (typeof parsed.uvIndex === 'string') config.uvIndex = parsed.uvIndex;
     if (parsed.disableTransactionSearch === true) config.disableTransactionSearch = true;
+    if (typeof parsed.transactionSearchIndexPercentage === 'number') {
+      const pct = parsed.transactionSearchIndexPercentage;
+      if (pct >= 0 && pct <= 100) {
+        config.transactionSearchIndexPercentage = pct;
+      }
+    }
     return config;
   } catch {
     return {};

@@ -35,7 +35,8 @@ export async function setupTransactionSearch(
     return { success: true };
   }
 
-  const result = await enableTransactionSearch(region, accountId);
+  const indexPercentage = config.transactionSearchIndexPercentage ?? 100;
+  const result = await enableTransactionSearch(region, accountId, indexPercentage);
 
   if (!result.success) {
     return { success: false, error: result.error };
