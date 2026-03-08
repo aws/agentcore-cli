@@ -17,6 +17,18 @@ export function getErrorMessage(err: unknown): string {
 }
 
 /**
+ * Checks if an error is an AWS access denied error.
+ * Returns true for AccessDeniedException or AccessDenied error codes.
+ */
+export function isAccessDeniedError(err: unknown): boolean {
+  if (!err || typeof err !== 'object') {
+    return false;
+  }
+  const name = (err as { name?: string }).name;
+  return name === 'AccessDeniedException' || name === 'AccessDenied';
+}
+
+/**
  * AWS error codes that indicate expired or invalid credentials.
  * These errors can be recovered by re-authenticating.
  */
