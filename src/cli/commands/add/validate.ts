@@ -281,10 +281,13 @@ export async function validateAddGatewayTargetOptions(options: AddGatewayTargetO
       return { valid: false, error: '--language is not applicable for api-gateway type' };
     }
     if (options.outboundAuthType) {
-      return { valid: false, error: '--outbound-auth is not applicable for api-gateway type' };
-    }
-    if (options.credentialName) {
-      return { valid: false, error: '--credential-name is not applicable for api-gateway type' };
+      const authLower = options.outboundAuthType.toLowerCase();
+      if (authLower === 'oauth') {
+        return { valid: false, error: 'OAuth is not supported for api-gateway type' };
+      }
+      if ((authLower === 'api-key' || authLower === 'api_key') && !options.credentialName) {
+        return { valid: false, error: '--credential-name is required with --outbound-auth api-key' };
+      }
     }
     if (options.oauthClientId || options.oauthClientSecret || options.oauthDiscoveryUrl || options.oauthScopes) {
       return { valid: false, error: 'OAuth options are not applicable for api-gateway type' };

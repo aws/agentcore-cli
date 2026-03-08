@@ -357,10 +357,10 @@ export const AgentCoreGatewayTargetSchema = z
           path: ['toolDefinitions'],
         });
       }
-      if (data.outboundAuth && data.outboundAuth.type !== 'NONE') {
+      if (data.outboundAuth?.type === 'OAUTH') {
         ctx.addIssue({
           code: z.ZodIssueCode.custom,
-          message: 'outboundAuth is not applicable for apiGateway target type',
+          message: 'OAuth is not supported for apiGateway target type',
           path: ['outboundAuth'],
         });
       }

@@ -6,11 +6,11 @@ import { AddIdentityScreen } from '../identity/AddIdentityScreen';
 import type { AddIdentityConfig } from '../identity/types';
 import { useCreateIdentity, useExistingCredentials, useExistingIdentityNames } from '../identity/useCreateIdentity';
 import { AddGatewayTargetScreen } from './AddGatewayTargetScreen';
-import type { AddGatewayTargetConfig, GatewayTargetWizardState } from './types';
+import type { AddGatewayTargetConfig, AddGatewayTargetStep, GatewayTargetWizardState } from './types';
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 
 type FlowState =
-  | { name: 'create-wizard' }
+  | { name: 'create-wizard'; resumeConfig?: GatewayTargetWizardState; resumeStep?: AddGatewayTargetStep }
   | { name: 'creating-credential'; pendingConfig: GatewayTargetWizardState }
   | { name: 'create-success'; toolName: string; projectPath: string; loading?: boolean; loadingMessage?: string }
   | { name: 'error'; message: string };
@@ -42,6 +42,11 @@ export function AddGatewayTargetFlow({
 
   const oauthCredentialNames = useMemo(
     () => credentials.filter(c => c.type === 'OAuthCredentialProvider').map(c => c.name),
+    [credentials]
+  );
+
+  const apiKeyCredentialNames = useMemo(
+    () => credentials.filter(c => c.type === 'ApiKeyCredentialProvider').map(c => c.name),
     [credentials]
   );
 
@@ -110,22 +115,22 @@ export function AddGatewayTargetFlow({
       void createIdentity(createConfig).then(result => {
         if (result.ok && flow.name === 'creating-credential') {
           const pending = flow.pendingConfig;
-          // Credential creation is only reachable from the mcpServer outbound-auth step
-          handleCreateComplete({
-            targetType: 'mcpServer',
-            name: pending.name,
-            description: pending.description ?? `Tool for ${pending.name}`,
-            endpoint: pending.endpoint!,
-            gateway: pending.gateway!,
-            toolDefinition: pending.toolDefinition!,
-            outboundAuth: { type: 'OAUTH', credentialName: result.result.name },
+          const authType = pending.targetType === 'apiGateway' ? 'API_KEY' : 'OAUTH';
+          // Resume wizard at confirm step with the new credential attached
+          setFlow({
+            name: 'create-wizard',
+            resumeConfig: {
+              ...pending,
+              outboundAuth: { type: authType, credentialName: result.result.name },
+            },
+            resumeStep: 'confirm',
           });
         } else if (!result.ok) {
           setFlow({ name: 'error', message: result.error });
         }
       });
     },
-    [flow, createIdentity, handleCreateComplete]
+    [flow, createIdentity]
   );
 
   // Create wizard
@@ -135,21 +140,33 @@ export function AddGatewayTargetFlow({
         existingGateways={existingGateways}
         existingToolNames={existingToolNames}
         existingOAuthCredentialNames={oauthCredentialNames}
+        existingApiKeyCredentialNames={apiKeyCredentialNames}
         onComplete={handleCreateComplete}
         onCreateCredential={handleCreateCredential}
         onExit={onBack}
+        initialConfig={flow.resumeConfig}
+        initialStep={flow.resumeStep}
       />
     );
   }
 
   // Creating credential via identity screen
   if (flow.name === 'creating-credential') {
+    const resumeStep = flow.pendingConfig.targetType === 'apiGateway' ? 'api-gateway-auth' : 'outbound-auth';
     return (
       <AddIdentityScreen
         existingIdentityNames={existingIdentityNames}
         onComplete={handleIdentityComplete}
-        onExit={() => setFlow({ name: 'create-wizard' })}
-        initialType="OAuthCredentialProvider"
+        onExit={() =>
+          setFlow({
+            name: 'create-wizard',
+            resumeConfig: flow.pendingConfig,
+            resumeStep: resumeStep,
+          })
+        }
+        initialType={
+          flow.pendingConfig.targetType === 'apiGateway' ? 'ApiKeyCredentialProvider' : 'OAuthCredentialProvider'
+        }
       />
     );
   }

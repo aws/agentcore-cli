@@ -275,6 +275,7 @@ export class GatewayTargetPrimitive extends BasePrimitive<AddGatewayTargetOption
           const outboundAuthMap: Record<string, 'OAUTH' | 'API_KEY' | 'NONE'> = {
             oauth: 'OAUTH',
             'api-key': 'API_KEY',
+            api_key: 'API_KEY',
             none: 'NONE',
           };
 
@@ -296,6 +297,16 @@ export class GatewayTargetPrimitive extends BasePrimitive<AddGatewayTargetOption
                     },
                   ]
                 : undefined,
+              ...(cliOptions.outboundAuthType
+                ? {
+                    outboundAuth: {
+                      type: (outboundAuthMap[cliOptions.outboundAuthType.toLowerCase()] ?? 'NONE') as
+                        | 'API_KEY'
+                        | 'NONE',
+                      credentialName: cliOptions.credentialName,
+                    },
+                  }
+                : {}),
             };
             const result = await this.createApiGatewayTarget(config);
             const output = { success: true, toolName: result.toolName };
@@ -507,6 +518,7 @@ export class GatewayTargetPrimitive extends BasePrimitive<AddGatewayTargetOption
           toolFilters: config.toolFilters ?? [{ filterPath: '/*', methods: ['GET'] }],
         },
       },
+      ...(config.outboundAuth && { outboundAuth: config.outboundAuth }),
     };
 
     gateway.targets.push(target);

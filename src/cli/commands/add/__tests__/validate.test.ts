@@ -614,17 +614,43 @@ describe('validate', () => {
       expect(result.error).toContain('not applicable');
     });
 
-    it('rejects --outbound-auth for api-gateway type', async () => {
+    it('rejects --outbound-auth oauth for api-gateway type', async () => {
       const result = await validateAddGatewayTargetOptions({
         name: 'my-api',
         type: 'api-gateway',
         restApiId: 'abc123',
         stage: 'prod',
         gateway: 'my-gateway',
-        outboundAuthType: 'NONE',
+        outboundAuthType: 'OAUTH',
       });
       expect(result.valid).toBe(false);
-      expect(result.error).toContain('not applicable');
+      expect(result.error).toContain('OAuth is not supported');
+    });
+
+    it('accepts --outbound-auth api-key with --credential-name for api-gateway type', async () => {
+      const result = await validateAddGatewayTargetOptions({
+        name: 'my-api',
+        type: 'api-gateway',
+        restApiId: 'abc123',
+        stage: 'prod',
+        gateway: 'my-gateway',
+        outboundAuthType: 'API_KEY',
+        credentialName: 'my-key',
+      });
+      expect(result.valid).toBe(true);
+    });
+
+    it('rejects --outbound-auth api-key without --credential-name for api-gateway type', async () => {
+      const result = await validateAddGatewayTargetOptions({
+        name: 'my-api',
+        type: 'api-gateway',
+        restApiId: 'abc123',
+        stage: 'prod',
+        gateway: 'my-gateway',
+        outboundAuthType: 'API_KEY',
+      });
+      expect(result.valid).toBe(false);
+      expect(result.error).toContain('--credential-name is required');
     });
 
     it('rejects --host with mcp-server type', async () => {

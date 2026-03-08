@@ -5,8 +5,13 @@ import type { SelectableItem } from '../../components';
 import { HELP_TEXT } from '../../constants';
 import { useListNavigation } from '../../hooks';
 import { generateUniqueName } from '../../utils';
-import type { AddGatewayTargetConfig, GatewayTargetWizardState } from './types';
-import { MCP_TOOL_STEP_LABELS, OUTBOUND_AUTH_OPTIONS, TARGET_TYPE_OPTIONS } from './types';
+import type {
+  AddGatewayTargetConfig,
+  AddGatewayTargetStep,
+  ApiGatewayTargetConfig,
+  GatewayTargetWizardState,
+} from './types';
+import { API_GATEWAY_AUTH_OPTIONS, MCP_TOOL_STEP_LABELS, OUTBOUND_AUTH_OPTIONS, TARGET_TYPE_OPTIONS } from './types';
 import { useAddGatewayTargetWizard } from './useAddGatewayTargetWizard';
 import { Box, Text } from 'ink';
 import React, { useMemo, useState } from 'react';
@@ -15,20 +20,26 @@ interface AddGatewayTargetScreenProps {
   existingGateways: string[];
   existingToolNames: string[];
   existingOAuthCredentialNames: string[];
+  existingApiKeyCredentialNames: string[];
   onComplete: (config: AddGatewayTargetConfig) => void;
   onCreateCredential: (pendingConfig: GatewayTargetWizardState) => void;
   onExit: () => void;
+  initialConfig?: GatewayTargetWizardState;
+  initialStep?: AddGatewayTargetStep;
 }
 
 export function AddGatewayTargetScreen({
   existingGateways,
   existingToolNames,
   existingOAuthCredentialNames,
+  existingApiKeyCredentialNames,
   onComplete,
   onCreateCredential,
   onExit,
+  initialConfig,
+  initialStep,
 }: AddGatewayTargetScreenProps) {
-  const wizard = useAddGatewayTargetWizard(existingGateways);
+  const wizard = useAddGatewayTargetWizard(existingGateways, initialConfig, initialStep);
 
   const [outboundAuthType, setOutboundAuthTypeLocal] = useState<string | null>(null);
   const [filterPath, setFilterPathLocal] = useState<string | null>(null);
@@ -65,8 +76,26 @@ export function AddGatewayTargetScreen({
   const isRestApiIdStep = wizard.step === 'rest-api-id';
   const isStageStep = wizard.step === 'stage';
   const isToolFiltersStep = wizard.step === 'tool-filters';
+  const isApiGatewayAuthStep = wizard.step === 'api-gateway-auth';
   const isConfirmStep = wizard.step === 'confirm';
   const noGatewaysAvailable = isGatewayStep && existingGateways.length === 0;
+
+  const [apiKeyAuthSelected, setApiKeyAuthSelected] = useState(false);
+
+  const apiGatewayAuthItems: SelectableItem[] = useMemo(
+    () => API_GATEWAY_AUTH_OPTIONS.map(o => ({ id: o.id, title: o.title, description: o.description })),
+    []
+  );
+
+  const apiKeyCredentialItems: SelectableItem[] = useMemo(() => {
+    const items: SelectableItem[] = existingApiKeyCredentialNames.map(name => ({
+      id: name,
+      title: name,
+      description: 'Use existing API key credential',
+    }));
+    items.push({ id: 'create-new', title: 'Create new credential', description: 'Create a new API key credential' });
+    return items;
+  }, [existingApiKeyCredentialNames]);
 
   const targetTypeNav = useListNavigation({
     items: targetTypeItems,
@@ -114,6 +143,39 @@ export function AddGatewayTargetScreen({
     isActive: isOutboundAuthStep && outboundAuthType === 'OAUTH',
   });
 
+  const apiGatewayAuthNav = useListNavigation({
+    items: apiGatewayAuthItems,
+    onSelect: item => {
+      if (item.id === 'API_KEY') {
+        if (existingApiKeyCredentialNames.length === 0) {
+          onCreateCredential(wizard.config);
+        } else {
+          setApiKeyAuthSelected(true);
+        }
+      } else if (item.id === 'NONE') {
+        wizard.setApiGatewayAuth({ type: 'NONE' });
+      } else {
+        // IAM — no outboundAuth needed (default)
+        wizard.setApiGatewayAuth(undefined);
+      }
+    },
+    onExit: () => wizard.goBack(),
+    isActive: isApiGatewayAuthStep && !apiKeyAuthSelected,
+  });
+
+  const apiKeyCredentialNav = useListNavigation({
+    items: apiKeyCredentialItems,
+    onSelect: item => {
+      if (item.id === 'create-new') {
+        onCreateCredential(wizard.config);
+      } else {
+        wizard.setApiGatewayAuth({ type: 'API_KEY', credentialName: item.id });
+      }
+    },
+    onExit: () => setApiKeyAuthSelected(false),
+    isActive: isApiGatewayAuthStep && apiKeyAuthSelected,
+  });
+
   useListNavigation({
     items: [{ id: 'confirm', title: 'Confirm' }],
     onSelect: () => {
@@ -126,6 +188,7 @@ export function AddGatewayTargetScreen({
           restApiId: c.restApiId!,
           stage: c.stage!,
           toolFilters: c.toolFilters,
+          outboundAuth: c.outboundAuth as ApiGatewayTargetConfig['outboundAuth'],
         });
       } else {
         onComplete({
@@ -283,6 +346,24 @@ export function AddGatewayTargetScreen({
           />
         )}
 
+        {isApiGatewayAuthStep && !apiKeyAuthSelected && (
+          <WizardSelect
+            title="Select authorization"
+            description="How will this target authenticate to the API Gateway?"
+            items={apiGatewayAuthItems}
+            selectedIndex={apiGatewayAuthNav.selectedIndex}
+          />
+        )}
+
+        {isApiGatewayAuthStep && apiKeyAuthSelected && (
+          <WizardSelect
+            title="Select API key credential"
+            description="Choose an API key credential for authentication"
+            items={apiKeyCredentialItems}
+            selectedIndex={apiKeyCredentialNav.selectedIndex}
+          />
+        )}
+
         {isConfirmStep && (
           <ConfirmReview
             fields={[
@@ -309,12 +390,14 @@ export function AddGatewayTargetScreen({
                 ? [{ label: 'Endpoint', value: wizard.config.endpoint }]
                 : []),
               { label: 'Gateway', value: wizard.config.gateway ?? '' },
-              ...(wizard.config.targetType !== 'apiGateway' && wizard.config.outboundAuth
+              ...(wizard.config.outboundAuth
                 ? [
                     { label: 'Auth Type', value: wizard.config.outboundAuth.type },
                     { label: 'Credential', value: wizard.config.outboundAuth.credentialName ?? 'None' },
                   ]
-                : []),
+                : wizard.config.targetType === 'apiGateway'
+                  ? [{ label: 'Auth Type', value: 'IAM (default)' }]
+                  : []),
             ]}
           />
         )}

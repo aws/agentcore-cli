@@ -64,6 +64,7 @@ export type AddGatewayTargetStep =
   | 'rest-api-id'
   | 'stage'
   | 'tool-filters'
+  | 'api-gateway-auth'
   | 'confirm';
 
 export type TargetLanguage = 'Python' | 'TypeScript' | 'Other';
@@ -118,6 +119,10 @@ export interface ApiGatewayTargetConfig {
   restApiId: string;
   stage: string;
   toolFilters?: { filterPath: string; methods: ApiGatewayHttpMethod[] }[];
+  outboundAuth?: {
+    type: 'API_KEY' | 'NONE';
+    credentialName?: string;
+  };
 }
 
 export type AddGatewayTargetConfig = McpServerTargetConfig | ApiGatewayTargetConfig;
@@ -133,6 +138,7 @@ export const MCP_TOOL_STEP_LABELS: Record<AddGatewayTargetStep, string> = {
   'rest-api-id': 'REST API ID',
   stage: 'Stage',
   'tool-filters': 'Tool Filters',
+  'api-gateway-auth': 'Authorization',
   confirm: 'Confirm',
 };
 
@@ -171,6 +177,12 @@ export const COMPUTE_HOST_OPTIONS = [
 export const OUTBOUND_AUTH_OPTIONS = [
   { id: 'NONE', title: 'No authorization', description: 'No outbound authentication' },
   { id: 'OAUTH', title: 'OAuth 2LO', description: 'OAuth 2.0 client credentials' },
+] as const;
+
+export const API_GATEWAY_AUTH_OPTIONS = [
+  { id: 'IAM', title: 'IAM (recommended)', description: 'AWS IAM role-based authorization' },
+  { id: 'API_KEY', title: 'API Key', description: 'API key credential' },
+  { id: 'NONE', title: 'No authorization', description: 'No outbound authentication' },
 ] as const;
 
 export const PYTHON_VERSION_OPTIONS = [

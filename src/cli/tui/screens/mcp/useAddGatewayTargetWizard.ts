@@ -22,9 +22,13 @@ function getDefaultConfig(): GatewayTargetWizardState {
   };
 }
 
-export function useAddGatewayTargetWizard(existingGateways: string[] = []) {
-  const [config, setConfig] = useState<GatewayTargetWizardState>(getDefaultConfig);
-  const [step, setStep] = useState<AddGatewayTargetStep>('name');
+export function useAddGatewayTargetWizard(
+  existingGateways: string[] = [],
+  initialConfig?: GatewayTargetWizardState,
+  initialStep?: AddGatewayTargetStep
+) {
+  const [config, setConfig] = useState<GatewayTargetWizardState>(() => initialConfig ?? getDefaultConfig());
+  const [step, setStep] = useState<AddGatewayTargetStep>(initialStep ?? 'name');
 
   // Dynamic steps — recomputes when targetType changes
   const steps = useMemo<AddGatewayTargetStep[]>(() => {
@@ -32,7 +36,7 @@ export function useAddGatewayTargetWizard(existingGateways: string[] = []) {
     if (config.targetType) {
       switch (config.targetType) {
         case 'apiGateway':
-          baseSteps.push('rest-api-id', 'stage', 'tool-filters', 'gateway');
+          baseSteps.push('rest-api-id', 'stage', 'tool-filters', 'gateway', 'api-gateway-auth');
           break;
         case 'mcpServer':
         default:
@@ -148,6 +152,14 @@ export function useAddGatewayTargetWizard(existingGateways: string[] = []) {
     [goToNextStep]
   );
 
+  const setApiGatewayAuth = useCallback(
+    (outboundAuth?: { type: 'API_KEY' | 'NONE'; credentialName?: string }) => {
+      setConfig(c => ({ ...c, outboundAuth }));
+      goToNextStep();
+    },
+    [goToNextStep]
+  );
+
   return {
     config,
     step,
@@ -163,6 +175,7 @@ export function useAddGatewayTargetWizard(existingGateways: string[] = []) {
     setRestApiId,
     setStage,
     setToolFilters,
+    setApiGatewayAuth,
     reset,
   };
 }
