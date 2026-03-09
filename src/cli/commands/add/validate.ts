@@ -18,7 +18,7 @@ import type {
   AddMemoryOptions,
 } from './types';
 import { existsSync } from 'fs';
-import { extname, join, resolve } from 'path';
+import { dirname, extname, join, resolve } from 'path';
 
 export interface ValidationResult {
   valid: boolean;
@@ -393,14 +393,15 @@ export async function validateAddGatewayTargetOptions(options: AddGatewayTargetO
         return { valid: false, error: 'Invalid S3 URI format. Expected: s3://bucket-name/key' };
       }
     } else {
-      // Local file validation — resolve relative to agentcore/ directory
+      // Local file validation — resolve relative to project root (parent of agentcore/)
       const configRoot = findConfigRoot();
-      const resolvedPath = configRoot ? join(configRoot, options.schema) : resolve(options.schema);
+      const projectRoot = configRoot ? dirname(configRoot) : undefined;
+      const resolvedPath = projectRoot ? join(projectRoot, options.schema) : resolve(options.schema);
       if (!existsSync(resolvedPath)) {
         return {
           valid: false,
-          error: configRoot
-            ? `Schema file not found: ${options.schema} (resolved to ${resolvedPath}). Path should be relative to the agentcore/ directory.`
+          error: projectRoot
+            ? `Schema file not found: ${options.schema} (resolved to ${resolvedPath}). Path should be relative to the project root.`
             : `Schema file not found: ${options.schema}`,
         };
       }

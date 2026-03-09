@@ -377,8 +377,8 @@ export function AddGatewayTargetScreen({
           <TextInput
             prompt={
               wizard.config.targetType === 'smithyModel'
-                ? 'Smithy model JSON file (relative to agentcore/) or S3 URI'
-                : 'OpenAPI schema JSON file (relative to agentcore/) or S3 URI'
+                ? 'Smithy model JSON file (relative to project root) or S3 URI'
+                : 'OpenAPI schema JSON file (relative to project root) or S3 URI'
             }
             placeholder="specs/schema.json or s3://bucket/spec.json"
             onSubmit={(value: string) => {
@@ -473,7 +473,7 @@ export function AddGatewayTargetScreen({
                       label: 'Schema Source',
                       value:
                         'inline' in wizard.config.schemaSource
-                          ? `agentcore/${wizard.config.schemaSource.inline.path}`
+                          ? wizard.config.schemaSource.inline.path
                           : wizard.config.schemaSource.s3.uri,
                     },
                   ]

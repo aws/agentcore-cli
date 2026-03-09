@@ -1,6 +1,6 @@
 import { createTestProject, runCLI } from '../src/test-utils/index.js';
 import type { TestProject } from '../src/test-utils/index.js';
-import { readFile, writeFile } from 'node:fs/promises';
+import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
@@ -124,14 +124,17 @@ describe('integration: add and remove gateway with OpenAPI schema target', () =>
     });
 
     it('adds an OpenAPI schema target with a local file', async () => {
-      // Write a minimal OpenAPI schema file inside agentcore/ directory
+      // Write a minimal OpenAPI schema file at project root (alongside agentcore/)
+      const specsDir = join(project.projectPath, 'specs');
+      await mkdir(specsDir, { recursive: true });
       const schemaContent = JSON.stringify({
         openapi: '3.0.0',
         info: { title: 'Petstore', version: '1.0.0' },
         paths: { '/pets': { get: { summary: 'List pets', operationId: 'listPets' } } },
       });
-      await writeFile(join(project.projectPath, 'agentcore', schemaFileName), schemaContent, 'utf-8');
+      await writeFile(join(specsDir, schemaFileName), schemaContent, 'utf-8');
 
+      const schemaPath = `specs/${schemaFileName}`;
       const result = await runCLI(
         [
           'add',
@@ -141,7 +144,7 @@ describe('integration: add and remove gateway with OpenAPI schema target', () =>
           '--type',
           'open-api-schema',
           '--schema',
-          schemaFileName,
+          schemaPath,
           '--gateway',
           gatewayName,
           '--outbound-auth',
@@ -163,10 +166,11 @@ describe('integration: add and remove gateway with OpenAPI schema target', () =>
       const target = gateway?.targets?.find((t: { name: string }) => t.name === targetName);
       expect(target, `Target "${targetName}" should be in gateway targets`).toBeTruthy();
       expect(target.targetType).toBe('openApiSchema');
-      expect(target.schemaSource?.inline?.path).toBe(schemaFileName);
+      expect(target.schemaSource?.inline?.path).toBe(schemaPath);
     });
 
     it('rejects duplicate target name', async () => {
+      const schemaPath = `specs/${schemaFileName}`;
       const result = await runCLI(
         [
           'add',
@@ -176,7 +180,7 @@ describe('integration: add and remove gateway with OpenAPI schema target', () =>
           '--type',
           'open-api-schema',
           '--schema',
-          schemaFileName,
+          schemaPath,
           '--gateway',
           gatewayName,
           '--outbound-auth',
@@ -359,12 +363,16 @@ describe('integration: add gateway with Smithy model target', () => {
     });
 
     it('adds a Smithy model target with a local file', async () => {
+      // Write a minimal Smithy model file at project root (alongside agentcore/)
+      const specsDir = join(project.projectPath, 'specs');
+      await mkdir(specsDir, { recursive: true });
       const schemaContent = JSON.stringify({
         smithy: '2.0',
         shapes: { 'example#MyService': { type: 'service', version: '2024-01-01' } },
       });
-      await writeFile(join(project.projectPath, 'agentcore', schemaFileName), schemaContent, 'utf-8');
+      await writeFile(join(specsDir, schemaFileName), schemaContent, 'utf-8');
 
+      const schemaPath = `specs/${schemaFileName}`;
       const result = await runCLI(
         [
           'add',
@@ -374,7 +382,7 @@ describe('integration: add gateway with Smithy model target', () => {
           '--type',
           'smithy-model',
           '--schema',
-          schemaFileName,
+          schemaPath,
           '--gateway',
           gatewayName,
           '--json',
@@ -392,7 +400,7 @@ describe('integration: add gateway with Smithy model target', () => {
       const target = gateway?.targets?.find((t: { name: string }) => t.name === targetName);
       expect(target, `Target "${targetName}" should be in gateway targets`).toBeTruthy();
       expect(target.targetType).toBe('smithyModel');
-      expect(target.schemaSource?.inline?.path).toBe(schemaFileName);
+      expect(target.schemaSource?.inline?.path).toBe(schemaPath);
     });
 
     it('removes the Smithy model target', async () => {
@@ -455,7 +463,7 @@ describe('integration: schema-based target validation errors', () => {
   });
 
   it('rejects open-api-schema with non-JSON file', async () => {
-    await writeFile(join(project.projectPath, 'agentcore', 'spec.yaml'), 'openapi: 3.0.0', 'utf-8');
+    await writeFile(join(project.projectPath, 'spec.yaml'), 'openapi: 3.0.0', 'utf-8');
 
     const result = await runCLI(
       [
@@ -478,7 +486,7 @@ describe('integration: schema-based target validation errors', () => {
   });
 
   it('rejects --schema-s3-account with local file', async () => {
-    await writeFile(join(project.projectPath, 'agentcore', 'local.json'), '{}', 'utf-8');
+    await writeFile(join(project.projectPath, 'local.json'), '{}', 'utf-8');
 
     const result = await runCLI(
       [
