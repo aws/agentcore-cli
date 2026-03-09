@@ -115,14 +115,22 @@ describe('integration: add and remove gateway with OpenAPI schema target', () =>
       expect(json.success).toBe(true);
     });
 
+    it('creates an API key credential for outbound auth', async () => {
+      const result = await runCLI(
+        ['add', 'identity', '--name', 'TestApiKey', '--api-key', 'test-key-123', '--json'],
+        project.projectPath
+      );
+      expect(result.exitCode, `stdout: ${result.stdout}, stderr: ${result.stderr}`).toBe(0);
+    });
+
     it('adds an OpenAPI schema target with a local file', async () => {
-      // Write a minimal OpenAPI schema file in the project root
+      // Write a minimal OpenAPI schema file inside agentcore/ directory
       const schemaContent = JSON.stringify({
         openapi: '3.0.0',
         info: { title: 'Petstore', version: '1.0.0' },
         paths: { '/pets': { get: { summary: 'List pets', operationId: 'listPets' } } },
       });
-      await writeFile(join(project.projectPath, schemaFileName), schemaContent, 'utf-8');
+      await writeFile(join(project.projectPath, 'agentcore', schemaFileName), schemaContent, 'utf-8');
 
       const result = await runCLI(
         [
@@ -133,9 +141,13 @@ describe('integration: add and remove gateway with OpenAPI schema target', () =>
           '--type',
           'open-api-schema',
           '--schema',
-          `./${schemaFileName}`,
+          schemaFileName,
           '--gateway',
           gatewayName,
+          '--outbound-auth',
+          'api-key',
+          '--credential-name',
+          'TestApiKey',
           '--json',
         ],
         project.projectPath
@@ -151,7 +163,7 @@ describe('integration: add and remove gateway with OpenAPI schema target', () =>
       const target = gateway?.targets?.find((t: { name: string }) => t.name === targetName);
       expect(target, `Target "${targetName}" should be in gateway targets`).toBeTruthy();
       expect(target.targetType).toBe('openApiSchema');
-      expect(target.schemaSource?.inline?.path).toBe(`./${schemaFileName}`);
+      expect(target.schemaSource?.inline?.path).toBe(schemaFileName);
     });
 
     it('rejects duplicate target name', async () => {
@@ -164,9 +176,13 @@ describe('integration: add and remove gateway with OpenAPI schema target', () =>
           '--type',
           'open-api-schema',
           '--schema',
-          `./${schemaFileName}`,
+          schemaFileName,
           '--gateway',
           gatewayName,
+          '--outbound-auth',
+          'api-key',
+          '--credential-name',
+          'TestApiKey',
           '--json',
         ],
         project.projectPath
@@ -213,10 +229,15 @@ describe('integration: add gateway with S3 URI schema target', () => {
   });
 
   describe('S3 URI openApiSchema lifecycle', () => {
-    it('adds a gateway', async () => {
+    it('adds a gateway and credential', async () => {
       const result = await runCLI(['add', 'gateway', '--name', gatewayName, '--json'], project.projectPath);
-
       expect(result.exitCode, `stdout: ${result.stdout}, stderr: ${result.stderr}`).toBe(0);
+
+      const credResult = await runCLI(
+        ['add', 'identity', '--name', 'S3ApiKey', '--api-key', 'test-key', '--json'],
+        project.projectPath
+      );
+      expect(credResult.exitCode, `stdout: ${credResult.stdout}, stderr: ${credResult.stderr}`).toBe(0);
     });
 
     it('adds an OpenAPI schema target with an S3 URI', async () => {
@@ -232,6 +253,10 @@ describe('integration: add gateway with S3 URI schema target', () => {
           's3://my-bucket/specs/petstore.json',
           '--gateway',
           gatewayName,
+          '--outbound-auth',
+          'api-key',
+          '--credential-name',
+          'S3ApiKey',
           '--json',
         ],
         project.projectPath
@@ -275,6 +300,7 @@ describe('integration: add gateway with S3 URI and bucketOwnerAccountId', () => 
 
   it('adds a gateway and target with --schema-s3-account', async () => {
     await runCLI(['add', 'gateway', '--name', gatewayName, '--json'], project.projectPath);
+    await runCLI(['add', 'identity', '--name', 'CrossApiKey', '--api-key', 'test-key', '--json'], project.projectPath);
 
     const result = await runCLI(
       [
@@ -290,6 +316,10 @@ describe('integration: add gateway with S3 URI and bucketOwnerAccountId', () => 
         '123456789012',
         '--gateway',
         gatewayName,
+        '--outbound-auth',
+        'api-key',
+        '--credential-name',
+        'CrossApiKey',
         '--json',
       ],
       project.projectPath
@@ -333,7 +363,7 @@ describe('integration: add gateway with Smithy model target', () => {
         smithy: '2.0',
         shapes: { 'example#MyService': { type: 'service', version: '2024-01-01' } },
       });
-      await writeFile(join(project.projectPath, schemaFileName), schemaContent, 'utf-8');
+      await writeFile(join(project.projectPath, 'agentcore', schemaFileName), schemaContent, 'utf-8');
 
       const result = await runCLI(
         [
@@ -344,7 +374,7 @@ describe('integration: add gateway with Smithy model target', () => {
           '--type',
           'smithy-model',
           '--schema',
-          `./${schemaFileName}`,
+          schemaFileName,
           '--gateway',
           gatewayName,
           '--json',
@@ -362,7 +392,7 @@ describe('integration: add gateway with Smithy model target', () => {
       const target = gateway?.targets?.find((t: { name: string }) => t.name === targetName);
       expect(target, `Target "${targetName}" should be in gateway targets`).toBeTruthy();
       expect(target.targetType).toBe('smithyModel');
-      expect(target.schemaSource?.inline?.path).toBe(`./${schemaFileName}`);
+      expect(target.schemaSource?.inline?.path).toBe(schemaFileName);
     });
 
     it('removes the Smithy model target', async () => {
@@ -425,7 +455,7 @@ describe('integration: schema-based target validation errors', () => {
   });
 
   it('rejects open-api-schema with non-JSON file', async () => {
-    await writeFile(join(project.projectPath, 'spec.yaml'), 'openapi: 3.0.0', 'utf-8');
+    await writeFile(join(project.projectPath, 'agentcore', 'spec.yaml'), 'openapi: 3.0.0', 'utf-8');
 
     const result = await runCLI(
       [
@@ -436,7 +466,7 @@ describe('integration: schema-based target validation errors', () => {
         '--type',
         'open-api-schema',
         '--schema',
-        './spec.yaml',
+        'spec.yaml',
         '--gateway',
         gatewayName,
         '--json',
@@ -448,7 +478,7 @@ describe('integration: schema-based target validation errors', () => {
   });
 
   it('rejects --schema-s3-account with local file', async () => {
-    await writeFile(join(project.projectPath, 'local.json'), '{}', 'utf-8');
+    await writeFile(join(project.projectPath, 'agentcore', 'local.json'), '{}', 'utf-8');
 
     const result = await runCLI(
       [
@@ -459,7 +489,7 @@ describe('integration: schema-based target validation errors', () => {
         '--type',
         'open-api-schema',
         '--schema',
-        './local.json',
+        'local.json',
         '--schema-s3-account',
         '123456789012',
         '--gateway',
