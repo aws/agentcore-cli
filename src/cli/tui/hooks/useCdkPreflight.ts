@@ -68,8 +68,8 @@ export interface PreflightResult {
   missingCredentials: MissingCredential[];
   /** KMS key ARN used for identity token vault encryption */
   identityKmsKeyArn?: string;
-  /** OAuth credential ARNs from pre-deploy setup */
-  oauthCredentials: Record<string, { credentialProviderArn: string; clientSecretArn?: string; callbackUrl?: string }>;
+  /** Credential ARNs (API key + OAuth) from pre-deploy setup */
+  allCredentials: Record<string, { credentialProviderArn: string; clientSecretArn?: string; callbackUrl?: string }>;
   startPreflight: () => Promise<void>;
   confirmTeardown: () => void;
   cancelTeardown: () => void;
@@ -128,7 +128,7 @@ export function useCdkPreflight(options: PreflightOptions): PreflightResult {
   const [runtimeCredentials, setRuntimeCredentials] = useState<SecureCredentials | null>(null);
   const [skipIdentitySetup, setSkipIdentitySetup] = useState(false);
   const [identityKmsKeyArn, setIdentityKmsKeyArn] = useState<string | undefined>(undefined);
-  const [oauthCredentials, setOauthCredentials] = useState<
+  const [allCredentials, setAllCredentials] = useState<
     Record<string, { credentialProviderArn: string; clientSecretArn?: string; callbackUrl?: string }>
   >({});
   const [teardownConfirmed, setTeardownConfirmed] = useState(false);
@@ -723,7 +723,6 @@ export function useCdkPreflight(options: PreflightOptions): PreflightResult {
               };
             }
           }
-          setOauthCredentials(creds);
           Object.assign(deployedCredentials, creds);
 
           logger.endStep('success');
@@ -732,6 +731,7 @@ export function useCdkPreflight(options: PreflightOptions): PreflightResult {
 
         // Write partial deployed state with credential ARNs before CDK synth
         if (Object.keys(deployedCredentials).length > 0) {
+          setAllCredentials(deployedCredentials);
           const configIO = new ConfigIO();
           const target = context.awsTargets[0];
           const existingState = await configIO.readDeployedState().catch(() => ({ targets: {} }) as DeployedState);
@@ -890,7 +890,7 @@ export function useCdkPreflight(options: PreflightOptions): PreflightResult {
     hasCredentialsError,
     missingCredentials,
     identityKmsKeyArn,
-    oauthCredentials,
+    allCredentials,
     startPreflight,
     confirmTeardown,
     cancelTeardown,

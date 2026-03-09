@@ -42,7 +42,7 @@ export interface PreSynthesized {
   stackNames: string[];
   switchableIoHost?: SwitchableIoHost;
   identityKmsKeyArn?: string;
-  oauthCredentials?: Record<string, { credentialProviderArn: string; clientSecretArn?: string; callbackUrl?: string }>;
+  allCredentials?: Record<string, { credentialProviderArn: string; clientSecretArn?: string; callbackUrl?: string }>;
 }
 
 interface DeployFlowOptions {
@@ -114,7 +114,7 @@ export function useDeployFlow(options: DeployFlowOptions = {}): DeployFlowState 
   const stackNames = preSynthesized?.stackNames ?? preflight.stackNames;
   const switchableIoHost = preSynthesized?.switchableIoHost ?? preflight.switchableIoHost;
   const identityKmsKeyArn = preSynthesized?.identityKmsKeyArn ?? preflight.identityKmsKeyArn;
-  const oauthCredentials = preSynthesized?.oauthCredentials ?? preflight.oauthCredentials;
+  const allCredentials = preSynthesized?.allCredentials ?? preflight.allCredentials;
 
   const [publishAssetsStep, setPublishAssetsStep] = useState<Step>({ label: 'Publish assets', status: 'pending' });
   const [deployStep, setDeployStep] = useState<Step>({ label: 'Deploy to AWS', status: 'pending' });
@@ -269,7 +269,7 @@ export function useDeployFlow(options: DeployFlowOptions = {}): DeployFlowState 
       existingState,
       identityKmsKeyArn,
       memories,
-      credentials: Object.keys(oauthCredentials).length > 0 ? oauthCredentials : undefined,
+      credentials: Object.keys(allCredentials).length > 0 ? allCredentials : undefined,
     });
     await configIO.writeDeployedState(deployedState);
 
@@ -282,7 +282,7 @@ export function useDeployFlow(options: DeployFlowOptions = {}): DeployFlowState 
     if (allStatuses.length > 0) {
       setTargetStatuses(allStatuses);
     }
-  }, [context, stackNames, logger, identityKmsKeyArn, oauthCredentials]);
+  }, [context, stackNames, logger, identityKmsKeyArn, allCredentials]);
 
   // Start deploy when preflight completes OR when shouldStartDeploy is set
   useEffect(() => {
