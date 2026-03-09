@@ -22,6 +22,9 @@ export interface AddGatewayOptions {
   discoveryUrl?: string;
   allowedAudience?: string;
   allowedClients?: string;
+  allowedScopes?: string;
+  agentClientId?: string;
+  agentClientSecret?: string;
   agents?: string;
 }
 
@@ -179,6 +182,9 @@ export class GatewayPrimitive extends BasePrimitive<AddGatewayOptions, Removable
             discoveryUrl: cliOptions.discoveryUrl,
             allowedAudience: cliOptions.allowedAudience,
             allowedClients: cliOptions.allowedClients,
+            allowedScopes: cliOptions.allowedScopes,
+            agentClientId: cliOptions.agentClientId,
+            agentClientSecret: cliOptions.agentClientSecret,
             agents: cliOptions.agents,
           });
 
@@ -293,6 +299,16 @@ export class GatewayPrimitive extends BasePrimitive<AddGatewayOptions, Removable
               .map(s => s.trim())
               .filter(Boolean)
           : [],
+        ...(options.allowedScopes
+          ? {
+              allowedScopes: options.allowedScopes
+                .split(',')
+                .map(s => s.trim())
+                .filter(Boolean),
+            }
+          : {}),
+        ...(options.agentClientId ? { agentClientId: options.agentClientId } : {}),
+        ...(options.agentClientSecret ? { agentClientSecret: options.agentClientSecret } : {}),
       };
     }
 

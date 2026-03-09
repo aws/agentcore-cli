@@ -25,6 +25,9 @@ export function useCreateGateway() {
         discoveryUrl: config.jwtConfig?.discoveryUrl,
         allowedAudience: config.jwtConfig?.allowedAudience?.join(','),
         allowedClients: config.jwtConfig?.allowedClients?.join(','),
+        allowedScopes: config.jwtConfig?.allowedScopes?.join(','),
+        agentClientId: config.jwtConfig?.agentClientId,
+        agentClientSecret: config.jwtConfig?.agentClientSecret,
       });
       if (!addResult.success) {
         throw new Error(addResult.error ?? 'Failed to create gateway');

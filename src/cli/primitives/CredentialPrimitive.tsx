@@ -256,70 +256,115 @@ export class CredentialPrimitive extends BasePrimitive<AddCredentialOptions, Rem
       .option('--name <name>', 'Credential name [non-interactive]')
       .option('--api-key <key>', 'The API key value [non-interactive]')
       .option('--json', 'Output as JSON [non-interactive]')
-      .action(async (cliOptions: { name?: string; apiKey?: string; json?: boolean }) => {
-        try {
-          if (!findConfigRoot()) {
-            console.error('No agentcore project found. Run `agentcore create` first.');
-            process.exit(1);
-          }
-
-          if (cliOptions.name || cliOptions.apiKey || cliOptions.json) {
-            // CLI mode
-            const validation = validateAddIdentityOptions({
-              name: cliOptions.name,
-              apiKey: cliOptions.apiKey,
-            });
-
-            if (!validation.valid) {
-              if (cliOptions.json) {
-                console.log(JSON.stringify({ success: false, error: validation.error }));
-              } else {
-                console.error(validation.error);
-              }
+      .option('--type <type>', 'Credential type: api-key (default) or oauth [non-interactive]')
+      .option('--discovery-url <url>', 'OAuth discovery URL [non-interactive]')
+      .option('--client-id <id>', 'OAuth client ID [non-interactive]')
+      .option('--client-secret <secret>', 'OAuth client secret [non-interactive]')
+      .option('--scopes <scopes>', 'OAuth scopes, comma-separated [non-interactive]')
+      .action(
+        async (cliOptions: {
+          name?: string;
+          apiKey?: string;
+          json?: boolean;
+          type?: string;
+          discoveryUrl?: string;
+          clientId?: string;
+          clientSecret?: string;
+          scopes?: string;
+        }) => {
+          try {
+            if (!findConfigRoot()) {
+              console.error('No agentcore project found. Run `agentcore create` first.');
               process.exit(1);
             }
 
-            const result = await this.add({
-              type: 'ApiKeyCredentialProvider',
-              name: cliOptions.name!,
-              apiKey: cliOptions.apiKey!,
-            });
+            if (
+              cliOptions.name ||
+              cliOptions.apiKey ||
+              cliOptions.json ||
+              cliOptions.type ||
+              cliOptions.discoveryUrl ||
+              cliOptions.clientId ||
+              cliOptions.clientSecret ||
+              cliOptions.scopes
+            ) {
+              // CLI mode
+              const validation = validateAddIdentityOptions({
+                name: cliOptions.name,
+                type: cliOptions.type as 'api-key' | 'oauth' | undefined,
+                apiKey: cliOptions.apiKey,
+                discoveryUrl: cliOptions.discoveryUrl,
+                clientId: cliOptions.clientId,
+                clientSecret: cliOptions.clientSecret,
+                scopes: cliOptions.scopes,
+              });
 
-            if (cliOptions.json) {
-              console.log(JSON.stringify(result));
-            } else if (result.success) {
-              console.log(`Added credential '${result.credentialName}'`);
+              if (!validation.valid) {
+                if (cliOptions.json) {
+                  console.log(JSON.stringify({ success: false, error: validation.error }));
+                } else {
+                  console.error(validation.error);
+                }
+                process.exit(1);
+              }
+
+              const addOptions =
+                cliOptions.type === 'oauth'
+                  ? {
+                      type: 'OAuthCredentialProvider' as const,
+                      name: cliOptions.name!,
+                      discoveryUrl: cliOptions.discoveryUrl!,
+                      clientId: cliOptions.clientId!,
+                      clientSecret: cliOptions.clientSecret!,
+                      scopes: cliOptions.scopes
+                        ?.split(',')
+                        .map(s => s.trim())
+                        .filter(Boolean),
+                    }
+                  : {
+                      type: 'ApiKeyCredentialProvider' as const,
+                      name: cliOptions.name!,
+                      apiKey: cliOptions.apiKey!,
+                    };
+
+              const result = await this.add(addOptions);
+
+              if (cliOptions.json) {
+                console.log(JSON.stringify(result));
+              } else if (result.success) {
+                console.log(`Added credential '${result.credentialName}'`);
+              } else {
+                console.error(result.error);
+              }
+              process.exit(result.success ? 0 : 1);
             } else {
-              console.error(result.error);
+              // TUI fallback — dynamic imports to avoid pulling ink (async) into registry
+              const [{ render }, { default: React }, { AddFlow }] = await Promise.all([
+                import('ink'),
+                import('react'),
+                import('../tui/screens/add/AddFlow'),
+              ]);
+              const { clear, unmount } = render(
+                React.createElement(AddFlow, {
+                  isInteractive: false,
+                  onExit: () => {
+                    clear();
+                    unmount();
+                    process.exit(0);
+                  },
+                })
+              );
             }
-            process.exit(result.success ? 0 : 1);
-          } else {
-            // TUI fallback — dynamic imports to avoid pulling ink (async) into registry
-            const [{ render }, { default: React }, { AddFlow }] = await Promise.all([
-              import('ink'),
-              import('react'),
-              import('../tui/screens/add/AddFlow'),
-            ]);
-            const { clear, unmount } = render(
-              React.createElement(AddFlow, {
-                isInteractive: false,
-                onExit: () => {
-                  clear();
-                  unmount();
-                  process.exit(0);
-                },
-              })
-            );
+          } catch (error) {
+            if (cliOptions.json) {
+              console.log(JSON.stringify({ success: false, error: getErrorMessage(error) }));
+            } else {
+              console.error(getErrorMessage(error));
+            }
+            process.exit(1);
           }
-        } catch (error) {
-          if (cliOptions.json) {
-            console.log(JSON.stringify({ success: false, error: getErrorMessage(error) }));
-          } else {
-            console.error(getErrorMessage(error));
-          }
-          process.exit(1);
         }
-      });
+      );
 
     this.registerRemoveSubcommand(removeCmd);
   }
