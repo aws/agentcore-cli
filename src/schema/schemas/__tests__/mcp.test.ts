@@ -9,6 +9,7 @@ import {
   GatewayTargetTypeSchema,
   McpImplLanguageSchema,
   RuntimeConfigSchema,
+  SchemaSourceSchema,
   ToolComputeConfigSchema,
   ToolImplementationBindingSchema,
 } from '../mcp.js';
@@ -483,6 +484,131 @@ describe('AgentCoreGatewayTargetSchema with apiGateway', () => {
       endpoint: 'https://example.com',
     });
     expect(result.success).toBe(false);
+  });
+});
+
+describe('SchemaSourceSchema', () => {
+  it('accepts inline source', () => {
+    const result = SchemaSourceSchema.safeParse({ inline: { path: 'specs/petstore.json' } });
+    expect(result.success).toBe(true);
+  });
+
+  it('accepts S3 source', () => {
+    const result = SchemaSourceSchema.safeParse({ s3: { uri: 's3://bucket/key.json' } });
+    expect(result.success).toBe(true);
+  });
+
+  it('accepts S3 source with bucketOwnerAccountId', () => {
+    const result = SchemaSourceSchema.safeParse({
+      s3: { uri: 's3://bucket/key.json', bucketOwnerAccountId: '123456789012' },
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it('rejects S3 source without s3:// prefix', () => {
+    const result = SchemaSourceSchema.safeParse({ s3: { uri: 'https://bucket/key.json' } });
+    expect(result.success).toBe(false);
+  });
+
+  it('rejects empty inline path', () => {
+    const result = SchemaSourceSchema.safeParse({ inline: { path: '' } });
+    expect(result.success).toBe(false);
+  });
+
+  it('rejects object with both inline and s3', () => {
+    const result = SchemaSourceSchema.safeParse({
+      inline: { path: 'specs/petstore.json' },
+      s3: { uri: 's3://bucket/key.json' },
+    });
+    expect(result.success).toBe(false);
+  });
+});
+
+describe('AgentCoreGatewayTargetSchema with openApiSchema/smithyModel', () => {
+  it('accepts openApiSchema with inline schemaSource', () => {
+    const result = AgentCoreGatewayTargetSchema.safeParse({
+      name: 'petstore',
+      targetType: 'openApiSchema',
+      schemaSource: { inline: { path: 'specs/petstore.json' } },
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it('accepts openApiSchema with S3 schemaSource', () => {
+    const result = AgentCoreGatewayTargetSchema.safeParse({
+      name: 'petstore',
+      targetType: 'openApiSchema',
+      schemaSource: { s3: { uri: 's3://my-bucket/specs/petstore.json' } },
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it('accepts openApiSchema with S3 schemaSource and bucketOwnerAccountId', () => {
+    const result = AgentCoreGatewayTargetSchema.safeParse({
+      name: 'petstore',
+      targetType: 'openApiSchema',
+      schemaSource: { s3: { uri: 's3://my-bucket/specs/petstore.json', bucketOwnerAccountId: '123456789012' } },
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it('rejects openApiSchema without schemaSource', () => {
+    const result = AgentCoreGatewayTargetSchema.safeParse({
+      name: 'petstore',
+      targetType: 'openApiSchema',
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it('accepts smithyModel with inline schemaSource', () => {
+    const result = AgentCoreGatewayTargetSchema.safeParse({
+      name: 'my-service',
+      targetType: 'smithyModel',
+      schemaSource: { inline: { path: 'models/service.json' } },
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it('rejects smithyModel without schemaSource', () => {
+    const result = AgentCoreGatewayTargetSchema.safeParse({
+      name: 'my-service',
+      targetType: 'smithyModel',
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it('rejects openApiSchema with compute', () => {
+    const result = AgentCoreGatewayTargetSchema.safeParse({
+      name: 'petstore',
+      targetType: 'openApiSchema',
+      schemaSource: { inline: { path: 'specs/petstore.json' } },
+      compute: {
+        host: 'Lambda',
+        implementation: { language: 'Python', path: 'tools', handler: 'h' },
+        pythonVersion: 'PYTHON_3_12',
+      },
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it('rejects openApiSchema with endpoint', () => {
+    const result = AgentCoreGatewayTargetSchema.safeParse({
+      name: 'petstore',
+      targetType: 'openApiSchema',
+      schemaSource: { inline: { path: 'specs/petstore.json' } },
+      endpoint: 'https://example.com',
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it('accepts openApiSchema with outbound auth', () => {
+    const result = AgentCoreGatewayTargetSchema.safeParse({
+      name: 'petstore',
+      targetType: 'openApiSchema',
+      schemaSource: { inline: { path: 'specs/petstore.json' } },
+      outboundAuth: { type: 'OAUTH', credentialName: 'my-cred' },
+    });
+    expect(result.success).toBe(true);
   });
 });
 

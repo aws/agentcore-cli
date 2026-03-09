@@ -63,6 +63,8 @@ export interface AddGatewayTargetOptions {
   stage?: string;
   toolFilterPath?: string;
   toolFilterMethods?: string;
+  schema?: string;
+  schemaS3Account?: string;
   json?: boolean;
 }
 

@@ -29,6 +29,8 @@ interface AgentCoreGatewayTarget {
   targetType: GatewayTargetType;
   toolDefinition: ToolDefinition;
   compute?: ToolComputeConfig; // Omit for external/abstract tools
+  /** Schema source for openApiSchema / smithyModel targets. */
+  schemaSource?: { inline: { path: string } } | { s3: { uri: string; bucketOwnerAccountId?: string } };
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

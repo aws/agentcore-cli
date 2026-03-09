@@ -1,4 +1,9 @@
-import type { AddGatewayTargetConfig, ApiGatewayTargetConfig, McpServerTargetConfig } from '../types.js';
+import type {
+  AddGatewayTargetConfig,
+  ApiGatewayTargetConfig,
+  McpServerTargetConfig,
+  SchemaBasedTargetConfig,
+} from '../types.js';
 import { describe, expect, it } from 'vitest';
 
 describe('AddGatewayTargetConfig discriminated union', () => {
@@ -76,6 +81,43 @@ describe('AddGatewayTargetConfig discriminated union', () => {
     expect(config.outboundAuth?.type).toBe('OAUTH');
   });
 
+  it('narrows to SchemaBasedTargetConfig when targetType is openApiSchema', () => {
+    const config: AddGatewayTargetConfig = {
+      targetType: 'openApiSchema',
+      name: 'petstore',
+      gateway: 'my-gateway',
+      schemaSource: { inline: { path: 'specs/petstore.json' } },
+    };
+
+    if (config.targetType === 'openApiSchema' || config.targetType === 'smithyModel') {
+      expect(config.schemaSource).toEqual({ inline: { path: 'specs/petstore.json' } });
+      expect(config.gateway).toBe('my-gateway');
+    }
+  });
+
+  it('SchemaBasedTargetConfig requires all fields', () => {
+    const config: SchemaBasedTargetConfig = {
+      targetType: 'openApiSchema',
+      name: 'test',
+      gateway: 'gw',
+      schemaSource: { s3: { uri: 's3://bucket/key.json' } },
+    };
+    expect(config.targetType).toBe('openApiSchema');
+    expect(config.outboundAuth).toBeUndefined();
+  });
+
+  it('SchemaBasedTargetConfig accepts smithyModel', () => {
+    const config: SchemaBasedTargetConfig = {
+      targetType: 'smithyModel',
+      name: 'test',
+      gateway: 'gw',
+      schemaSource: { inline: { path: 'model.json' } },
+      outboundAuth: { type: 'OAUTH', credentialName: 'my-cred' },
+    };
+    expect(config.targetType).toBe('smithyModel');
+    expect(config.outboundAuth?.type).toBe('OAUTH');
+  });
+
   it('dispatches correctly based on targetType', () => {
     const configs: AddGatewayTargetConfig[] = [
       {
@@ -93,13 +135,21 @@ describe('AddGatewayTargetConfig discriminated union', () => {
         restApiId: 'id',
         stage: 'prod',
       },
+      {
+        targetType: 'openApiSchema',
+        name: 'openapi',
+        gateway: 'gw',
+        schemaSource: { inline: { path: 'spec.json' } },
+      },
     ];
 
     const results = configs.map(c => {
       if (c.targetType === 'mcpServer') return `mcp:${c.endpoint}`;
-      return `apigw:${c.restApiId}/${c.stage}`;
+      if (c.targetType === 'openApiSchema' || c.targetType === 'smithyModel') return `schema:${c.name}`;
+      if (c.targetType === 'apiGateway') return `apigw:${c.restApiId}/${c.stage}`;
+      return `unknown:${c.name}`;
     });
 
-    expect(results).toEqual(['mcp:https://e.com', 'apigw:id/prod']);
+    expect(results).toEqual(['mcp:https://e.com', 'apigw:id/prod', 'schema:openapi']);
   });
 });

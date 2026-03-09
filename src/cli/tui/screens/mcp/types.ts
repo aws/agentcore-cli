@@ -4,6 +4,7 @@ import type {
   GatewayTargetType,
   NodeRuntime,
   PythonRuntime,
+  SchemaSource,
   ToolDefinition,
 } from '../../../../schema';
 
@@ -91,6 +92,8 @@ export interface GatewayTargetWizardState {
   restApiId?: string;
   stage?: string;
   toolFilters?: { filterPath: string; methods: ApiGatewayHttpMethod[] }[];
+  /** Schema source for openApiSchema / smithyModel targets */
+  schemaSource?: SchemaSource;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -125,7 +128,19 @@ export interface ApiGatewayTargetConfig {
   };
 }
 
-export type AddGatewayTargetConfig = McpServerTargetConfig | ApiGatewayTargetConfig;
+export interface SchemaBasedTargetConfig {
+  targetType: 'openApiSchema' | 'smithyModel';
+  name: string;
+  gateway: string;
+  schemaSource: SchemaSource;
+  outboundAuth?: {
+    type: 'OAUTH' | 'API_KEY' | 'NONE';
+    credentialName?: string;
+    scopes?: string[];
+  };
+}
+
+export type AddGatewayTargetConfig = McpServerTargetConfig | ApiGatewayTargetConfig | SchemaBasedTargetConfig;
 
 export const MCP_TOOL_STEP_LABELS: Record<AddGatewayTargetStep, string> = {
   name: 'Name',
@@ -161,6 +176,8 @@ export const TARGET_TYPE_OPTIONS = [
     title: 'API Gateway REST API',
     description: 'Connect to an existing Amazon API Gateway REST API',
   },
+  { id: 'openApiSchema', title: 'OpenAPI Schema', description: 'Auto-derive tools from an OpenAPI JSON spec' },
+  { id: 'smithyModel', title: 'Smithy Model', description: 'Auto-derive tools from a Smithy JSON model' },
 ] as const;
 
 export const TARGET_LANGUAGE_OPTIONS = [

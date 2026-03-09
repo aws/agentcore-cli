@@ -14,7 +14,12 @@ import { getErrorMessage } from '../errors';
 import type { RemovableGatewayTarget } from '../operations/remove/remove-gateway-target';
 import type { RemovalPreview, RemovalResult, SchemaChange } from '../operations/remove/types';
 import { getTemplateToolDefinitions, renderGatewayTargetTemplate } from '../templates/GatewayTargetRenderer';
-import type { ApiGatewayTargetConfig, GatewayTargetWizardState, McpServerTargetConfig } from '../tui/screens/mcp/types';
+import type {
+  ApiGatewayTargetConfig,
+  GatewayTargetWizardState,
+  McpServerTargetConfig,
+  SchemaBasedTargetConfig,
+} from '../tui/screens/mcp/types';
 import { DEFAULT_HANDLER, DEFAULT_NODE_VERSION, DEFAULT_PYTHON_VERSION } from '../tui/screens/mcp/types';
 import { BasePrimitive } from './BasePrimitive';
 import { SOURCE_CODE_NOTE } from './constants';
@@ -252,6 +257,8 @@ export class GatewayTargetPrimitive extends BasePrimitive<AddGatewayTargetOption
       .option('--stage <stage>', 'API Gateway deployment stage (required for api-gateway type)')
       .option('--tool-filter-path <path>', 'Tool filter path pattern, e.g. /pets/*')
       .option('--tool-filter-methods <methods>', 'Comma-separated HTTP methods, e.g. GET,POST')
+      .option('--schema <path>', 'Path to schema file or S3 URI (for open-api-schema / smithy-model)')
+      .option('--schema-s3-account <id>', 'S3 bucket owner account ID (for cross-account access)')
       .option('--json', 'Output as JSON')
       .action(async (rawOptions: Record<string, string | boolean | undefined>) => {
         const cliOptions = rawOptions as unknown as CLIAddGatewayTargetOptions;
@@ -309,6 +316,42 @@ export class GatewayTargetPrimitive extends BasePrimitive<AddGatewayTargetOption
                 : {}),
             };
             const result = await this.createApiGatewayTarget(config);
+            const output = { success: true, toolName: result.toolName };
+            if (cliOptions.json) {
+              console.log(JSON.stringify(output));
+            } else {
+              console.log(`Added gateway target '${result.toolName}'`);
+            }
+            process.exit(0);
+          }
+
+          // Handle schema-based targets (OpenAPI / Smithy)
+          if ((cliOptions.type === 'openApiSchema' || cliOptions.type === 'smithyModel') && cliOptions.schema) {
+            const isS3 = cliOptions.schema.startsWith('s3://');
+            const schemaSource = isS3
+              ? {
+                  s3: {
+                    uri: cliOptions.schema,
+                    ...(cliOptions.schemaS3Account ? { bucketOwnerAccountId: cliOptions.schemaS3Account } : {}),
+                  },
+                }
+              : { inline: { path: cliOptions.schema } };
+
+            const config: SchemaBasedTargetConfig = {
+              name: cliOptions.name!,
+              targetType: cliOptions.type,
+              schemaSource,
+              gateway: cliOptions.gateway!,
+              ...(cliOptions.outboundAuthType
+                ? {
+                    outboundAuth: {
+                      type: outboundAuthMap[cliOptions.outboundAuthType.toLowerCase()] ?? 'NONE',
+                      credentialName: cliOptions.credentialName,
+                    },
+                  }
+                : {}),
+            };
+            const result = await this.createSchemaBasedGatewayTarget(config);
             const output = { success: true, toolName: result.toolName };
             if (cliOptions.json) {
               console.log(JSON.stringify(output));
@@ -518,6 +561,37 @@ export class GatewayTargetPrimitive extends BasePrimitive<AddGatewayTargetOption
           toolFilters: config.toolFilters ?? [{ filterPath: '/*', methods: ['GET'] }],
         },
       },
+      ...(config.outboundAuth && { outboundAuth: config.outboundAuth }),
+    };
+
+    gateway.targets.push(target);
+    await this.configIO.writeMcpSpec(mcpSpec);
+
+    return { toolName: config.name };
+  }
+
+  /**
+   * Create a schema-based gateway target (OpenAPI or Smithy).
+   * No code generation — tools are auto-derived from the schema by the service.
+   */
+  async createSchemaBasedGatewayTarget(config: SchemaBasedTargetConfig): Promise<{ toolName: string }> {
+    const mcpSpec: AgentCoreMcpSpec = this.configIO.configExists('mcp')
+      ? await this.configIO.readMcpSpec()
+      : { agentCoreGateways: [] };
+
+    const gateway = mcpSpec.agentCoreGateways.find(g => g.name === config.gateway);
+    if (!gateway) {
+      throw new Error(`Gateway "${config.gateway}" not found.`);
+    }
+
+    if (gateway.targets.some(t => t.name === config.name)) {
+      throw new Error(`Target "${config.name}" already exists in gateway "${gateway.name}".`);
+    }
+
+    const target: AgentCoreGatewayTarget = {
+      name: config.name,
+      targetType: config.targetType,
+      schemaSource: config.schemaSource,
       ...(config.outboundAuth && { outboundAuth: config.outboundAuth }),
     };
 

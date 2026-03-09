@@ -16,6 +16,8 @@ import type {
   AddIdentityOptions,
   AddMemoryOptions,
 } from './types';
+import { existsSync } from 'fs';
+import { extname, resolve } from 'path';
 
 export interface ValidationResult {
   valid: boolean;
@@ -220,13 +222,24 @@ export async function validateAddGatewayTargetOptions(options: AddGatewayTargetO
   }
 
   if (!options.type) {
-    return { valid: false, error: '--type is required. Valid options: mcp-server, api-gateway' };
+    return {
+      valid: false,
+      error: '--type is required. Valid options: mcp-server, api-gateway, open-api-schema, smithy-model',
+    };
   }
 
-  const typeMap: Record<string, string> = { 'mcp-server': 'mcpServer', 'api-gateway': 'apiGateway' };
+  const typeMap: Record<string, string> = {
+    'mcp-server': 'mcpServer',
+    'api-gateway': 'apiGateway',
+    'open-api-schema': 'openApiSchema',
+    'smithy-model': 'smithyModel',
+  };
   const mappedType = typeMap[options.type];
   if (!mappedType) {
-    return { valid: false, error: `Invalid type: ${options.type}. Valid options: mcp-server, api-gateway` };
+    return {
+      valid: false,
+      error: `Invalid type: ${options.type}. Valid options: mcp-server, api-gateway, open-api-schema, smithy-model`,
+    };
   }
   options.type = mappedType;
 
@@ -340,6 +353,45 @@ export async function validateAddGatewayTargetOptions(options: AddGatewayTargetO
         return credentialValidation;
       }
     }
+  }
+
+  // Schema-based targets (OpenAPI / Smithy)
+  if (mappedType === 'openApiSchema' || mappedType === 'smithyModel') {
+    if (!options.schema) {
+      return { valid: false, error: '--schema is required for schema-based target types' };
+    }
+    if (options.endpoint) {
+      return { valid: false, error: `--endpoint is not applicable for ${mappedType} target type` };
+    }
+    if (options.host) {
+      return { valid: false, error: `--host is not applicable for ${mappedType} target type` };
+    }
+
+    const isS3 = options.schema.startsWith('s3://');
+    if (isS3) {
+      // Validate S3 URI format: s3://bucket/key
+      const s3Path = options.schema.slice(5); // strip 's3://'
+      if (!s3Path.includes('/') || s3Path.startsWith('/')) {
+        return { valid: false, error: 'Invalid S3 URI format. Expected: s3://bucket-name/key' };
+      }
+    } else {
+      // Local file validation
+      const resolvedPath = resolve(options.schema);
+      if (!existsSync(resolvedPath)) {
+        return { valid: false, error: `Schema file not found: ${options.schema}` };
+      }
+      const ext = extname(resolvedPath).toLowerCase();
+      if (ext !== '.json') {
+        return { valid: false, error: `Schema file must be a JSON file (.json), got: ${ext}` };
+      }
+    }
+
+    if (options.schemaS3Account && !isS3) {
+      return { valid: false, error: '--schema-s3-account is only valid with S3 URIs' };
+    }
+
+    options.language = 'Other';
+    return { valid: true };
   }
 
   if (mappedType === 'mcpServer') {

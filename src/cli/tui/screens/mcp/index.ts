@@ -10,6 +10,7 @@ export type {
   AddGatewayTargetConfig,
   McpServerTargetConfig,
   ApiGatewayTargetConfig,
+  SchemaBasedTargetConfig,
   GatewayTargetWizardState,
   AddGatewayTargetStep,
   ComputeHost,

@@ -75,7 +75,16 @@ export function AddGatewayTargetFlow({
         .catch((err: unknown) => {
           setFlow({ name: 'error', message: err instanceof Error ? err.message : 'Unknown error' });
         });
-    } else {
+    } else if (config.targetType === 'openApiSchema' || config.targetType === 'smithyModel') {
+      void gatewayTargetPrimitive
+        .createSchemaBasedGatewayTarget(config)
+        .then((result: { toolName: string }) => {
+          setFlow({ name: 'create-success', toolName: result.toolName, projectPath: '' });
+        })
+        .catch((err: unknown) => {
+          setFlow({ name: 'error', message: err instanceof Error ? err.message : 'Unknown error' });
+        });
+    } else if (config.targetType === 'apiGateway') {
       void gatewayTargetPrimitive
         .createApiGatewayTarget(config)
         .then((result: { toolName: string }) => {

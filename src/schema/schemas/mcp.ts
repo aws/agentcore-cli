@@ -300,6 +300,32 @@ export const ToolComputeConfigSchema = z.discriminatedUnion('host', [
 export type ToolComputeConfig = z.infer<typeof ToolComputeConfigSchema>;
 
 // ============================================================================
+// Schema Source (for OpenAPI / Smithy targets)
+// ============================================================================
+
+/** S3 reference for an API schema file. */
+const SchemaS3SourceSchema = z
+  .object({
+    uri: z.string().min(1).startsWith('s3://'),
+    bucketOwnerAccountId: z.string().optional(),
+  })
+  .strict();
+
+/** Inline (local file) reference for an API schema file. Path is relative to project root. */
+const SchemaInlineSourceSchema = z
+  .object({
+    path: z.string().min(1),
+  })
+  .strict();
+
+/** Schema source: either a local file path (read at synth time) or an S3 URI. */
+export const SchemaSourceSchema = z.union([
+  z.object({ inline: SchemaInlineSourceSchema }).strict(),
+  z.object({ s3: SchemaS3SourceSchema }).strict(),
+]);
+export type SchemaSource = z.infer<typeof SchemaSourceSchema>;
+
+// ============================================================================
 // Gateway Target
 // ============================================================================
 
@@ -325,6 +351,8 @@ export const AgentCoreGatewayTargetSchema = z
     outboundAuth: OutboundAuthSchema.optional(),
     /** API Gateway configuration. Required for apiGateway target type. */
     apiGateway: ApiGatewayConfigSchema.optional(),
+    /** Schema source for openApiSchema / smithyModel targets. */
+    schemaSource: SchemaSourceSchema.optional(),
   })
   .strict()
   .superRefine((data, ctx) => {
@@ -362,6 +390,29 @@ export const AgentCoreGatewayTargetSchema = z
           code: z.ZodIssueCode.custom,
           message: 'OAuth is not supported for apiGateway target type',
           path: ['outboundAuth'],
+        });
+      }
+    }
+    if (data.targetType === 'openApiSchema' || data.targetType === 'smithyModel') {
+      if (!data.schemaSource) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: `${data.targetType} targets require a schemaSource.`,
+          path: ['schemaSource'],
+        });
+      }
+      if (data.compute) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: `compute is not applicable for ${data.targetType} target type`,
+          path: ['compute'],
+        });
+      }
+      if (data.endpoint) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: `endpoint is not applicable for ${data.targetType} target type`,
+          path: ['endpoint'],
         });
       }
     }
