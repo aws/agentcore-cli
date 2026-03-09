@@ -525,20 +525,22 @@ describe('SchemaSourceSchema', () => {
 });
 
 describe('AgentCoreGatewayTargetSchema with openApiSchema/smithyModel', () => {
-  it('accepts openApiSchema with inline schemaSource', () => {
+  it('accepts openApiSchema with inline schemaSource and auth', () => {
     const result = AgentCoreGatewayTargetSchema.safeParse({
       name: 'petstore',
       targetType: 'openApiSchema',
       schemaSource: { inline: { path: 'specs/petstore.json' } },
+      outboundAuth: { type: 'OAUTH', credentialName: 'my-cred' },
     });
     expect(result.success).toBe(true);
   });
 
-  it('accepts openApiSchema with S3 schemaSource', () => {
+  it('accepts openApiSchema with S3 schemaSource and auth', () => {
     const result = AgentCoreGatewayTargetSchema.safeParse({
       name: 'petstore',
       targetType: 'openApiSchema',
       schemaSource: { s3: { uri: 's3://my-bucket/specs/petstore.json' } },
+      outboundAuth: { type: 'API_KEY', credentialName: 'my-key' },
     });
     expect(result.success).toBe(true);
   });
@@ -548,8 +550,28 @@ describe('AgentCoreGatewayTargetSchema with openApiSchema/smithyModel', () => {
       name: 'petstore',
       targetType: 'openApiSchema',
       schemaSource: { s3: { uri: 's3://my-bucket/specs/petstore.json', bucketOwnerAccountId: '123456789012' } },
+      outboundAuth: { type: 'OAUTH', credentialName: 'my-cred' },
     });
     expect(result.success).toBe(true);
+  });
+
+  it('rejects openApiSchema without outbound auth', () => {
+    const result = AgentCoreGatewayTargetSchema.safeParse({
+      name: 'petstore',
+      targetType: 'openApiSchema',
+      schemaSource: { inline: { path: 'specs/petstore.json' } },
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it('rejects smithyModel with outbound auth', () => {
+    const result = AgentCoreGatewayTargetSchema.safeParse({
+      name: 'my-service',
+      targetType: 'smithyModel',
+      schemaSource: { inline: { path: 'models/service.json' } },
+      outboundAuth: { type: 'OAUTH', credentialName: 'my-cred' },
+    });
+    expect(result.success).toBe(false);
   });
 
   it('rejects openApiSchema without schemaSource', () => {

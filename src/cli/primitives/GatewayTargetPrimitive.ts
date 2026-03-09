@@ -257,7 +257,10 @@ export class GatewayTargetPrimitive extends BasePrimitive<AddGatewayTargetOption
       .option('--stage <stage>', 'API Gateway deployment stage (required for api-gateway type)')
       .option('--tool-filter-path <path>', 'Tool filter path pattern, e.g. /pets/*')
       .option('--tool-filter-methods <methods>', 'Comma-separated HTTP methods, e.g. GET,POST')
-      .option('--schema <path>', 'Path to schema file or S3 URI (for open-api-schema / smithy-model)')
+      .option(
+        '--schema <path>',
+        'Path to schema file (relative to agentcore/) or S3 URI (for open-api-schema / smithy-model)'
+      )
       .option('--schema-s3-account <id>', 'S3 bucket owner account ID (for cross-account access)')
       .option('--json', 'Output as JSON')
       .action(async (rawOptions: Record<string, string | boolean | undefined>) => {

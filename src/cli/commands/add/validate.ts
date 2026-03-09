@@ -1,10 +1,11 @@
-import { ConfigIO } from '../../../lib';
+import { ConfigIO, findConfigRoot } from '../../../lib';
 import {
   AgentNameSchema,
   BuildTypeSchema,
   GatewayNameSchema,
   ModelProviderSchema,
   SDKFrameworkSchema,
+  TARGET_TYPE_AUTH_CONFIG,
   TargetLanguageSchema,
   getSupportedModelProviders,
   matchEnumValue,
@@ -17,7 +18,7 @@ import type {
   AddMemoryOptions,
 } from './types';
 import { existsSync } from 'fs';
-import { extname, resolve } from 'path';
+import { extname, join, resolve } from 'path';
 
 export interface ValidationResult {
   valid: boolean;
@@ -294,11 +295,12 @@ export async function validateAddGatewayTargetOptions(options: AddGatewayTargetO
       return { valid: false, error: '--language is not applicable for api-gateway type' };
     }
     if (options.outboundAuthType) {
-      const authLower = options.outboundAuthType.toLowerCase();
-      if (authLower === 'oauth') {
-        return { valid: false, error: 'OAuth is not supported for api-gateway type' };
+      const apiGwAuth = TARGET_TYPE_AUTH_CONFIG.apiGateway;
+      const normalizedAuth = options.outboundAuthType.toUpperCase().replace('-', '_');
+      if (!apiGwAuth.validAuthTypes.includes(normalizedAuth as 'OAUTH' | 'API_KEY' | 'NONE')) {
+        return { valid: false, error: `${options.outboundAuthType} is not supported for api-gateway type` };
       }
-      if ((authLower === 'api-key' || authLower === 'api_key') && !options.credentialName) {
+      if (normalizedAuth === 'API_KEY' && !options.credentialName) {
         return { valid: false, error: '--credential-name is required with --outbound-auth api-key' };
       }
     }
@@ -367,6 +369,22 @@ export async function validateAddGatewayTargetOptions(options: AddGatewayTargetO
       return { valid: false, error: `--host is not applicable for ${mappedType} target type` };
     }
 
+    // Auth validation from centralized config
+    const authConfig = TARGET_TYPE_AUTH_CONFIG[mappedType as keyof typeof TARGET_TYPE_AUTH_CONFIG];
+    const providedAuth = options.outboundAuthType ?? 'NONE';
+    if (authConfig.authRequired && providedAuth === 'NONE') {
+      return {
+        valid: false,
+        error: `${mappedType} targets require outbound auth (${authConfig.validAuthTypes.join(' or ')})`,
+      };
+    }
+    if (authConfig.validAuthTypes.length === 0 && providedAuth !== 'NONE') {
+      return {
+        valid: false,
+        error: `${mappedType} targets use IAM role auth; --outbound-auth is not applicable`,
+      };
+    }
+
     const isS3 = options.schema.startsWith('s3://');
     if (isS3) {
       // Validate S3 URI format: s3://bucket/key
@@ -375,10 +393,16 @@ export async function validateAddGatewayTargetOptions(options: AddGatewayTargetO
         return { valid: false, error: 'Invalid S3 URI format. Expected: s3://bucket-name/key' };
       }
     } else {
-      // Local file validation
-      const resolvedPath = resolve(options.schema);
+      // Local file validation — resolve relative to agentcore/ directory
+      const configRoot = findConfigRoot();
+      const resolvedPath = configRoot ? join(configRoot, options.schema) : resolve(options.schema);
       if (!existsSync(resolvedPath)) {
-        return { valid: false, error: `Schema file not found: ${options.schema}` };
+        return {
+          valid: false,
+          error: configRoot
+            ? `Schema file not found: ${options.schema} (resolved to ${resolvedPath}). Path should be relative to the agentcore/ directory.`
+            : `Schema file not found: ${options.schema}`,
+        };
       }
       const ext = extname(resolvedPath).toLowerCase();
       if (ext !== '.json') {

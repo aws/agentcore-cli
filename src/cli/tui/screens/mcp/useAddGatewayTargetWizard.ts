@@ -1,5 +1,5 @@
 import { APP_DIR, MCP_APP_SUBDIR } from '../../../../lib';
-import type { ApiGatewayHttpMethod, GatewayTargetType, ToolDefinition } from '../../../../schema';
+import type { ApiGatewayHttpMethod, GatewayTargetType, SchemaSource, ToolDefinition } from '../../../../schema';
 import type { AddGatewayTargetStep, GatewayTargetWizardState } from './types';
 import { useCallback, useMemo, useState } from 'react';
 
@@ -37,6 +37,12 @@ export function useAddGatewayTargetWizard(
       switch (config.targetType) {
         case 'apiGateway':
           baseSteps.push('rest-api-id', 'stage', 'tool-filters', 'gateway', 'api-gateway-auth');
+          break;
+        case 'openApiSchema':
+          baseSteps.push('schema-source', 'gateway', 'outbound-auth');
+          break;
+        case 'smithyModel':
+          baseSteps.push('schema-source', 'gateway');
           break;
         case 'mcpServer':
         default:
@@ -86,6 +92,10 @@ export function useAddGatewayTargetWizard(
       case 'apiGateway':
         setStep('rest-api-id');
         break;
+      case 'openApiSchema':
+      case 'smithyModel':
+        setStep('schema-source');
+        break;
       case 'mcpServer':
       default:
         setStep('endpoint');
@@ -99,6 +109,14 @@ export function useAddGatewayTargetWizard(
         ...c,
         endpoint,
       }));
+      goToNextStep();
+    },
+    [goToNextStep]
+  );
+
+  const setSchemaSource = useCallback(
+    (schemaSource: SchemaSource) => {
+      setConfig(c => ({ ...c, schemaSource }));
       goToNextStep();
     },
     [goToNextStep]
@@ -170,6 +188,7 @@ export function useAddGatewayTargetWizard(
     setName,
     setTargetType,
     setEndpoint,
+    setSchemaSource,
     setGateway,
     setOutboundAuth,
     setRestApiId,

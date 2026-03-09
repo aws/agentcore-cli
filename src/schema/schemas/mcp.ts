@@ -72,6 +72,28 @@ export const OutboundAuthSchema = z
 export type OutboundAuth = z.infer<typeof OutboundAuthSchema>;
 
 // ============================================================================
+// Target Type → Auth Rules (single source of truth)
+// ============================================================================
+
+/**
+ * Outbound authentication rules per gateway target type.
+ *
+ * - `authRequired` — target cannot be created without outbound auth
+ * - `validAuthTypes` — allowed OutboundAuthType values (empty = no outbound auth applicable)
+ * - `iamRoleFallback` — CDK passes GATEWAY_IAM_ROLE when no auth configured
+ */
+export const TARGET_TYPE_AUTH_CONFIG: Record<
+  GatewayTargetType,
+  { authRequired: boolean; validAuthTypes: readonly OutboundAuthType[]; iamRoleFallback: boolean }
+> = {
+  openApiSchema: { authRequired: true, validAuthTypes: ['OAUTH', 'API_KEY'], iamRoleFallback: false },
+  smithyModel: { authRequired: false, validAuthTypes: [], iamRoleFallback: true },
+  apiGateway: { authRequired: false, validAuthTypes: ['API_KEY', 'NONE'], iamRoleFallback: true },
+  mcpServer: { authRequired: false, validAuthTypes: ['OAUTH', 'NONE'], iamRoleFallback: false },
+  lambda: { authRequired: false, validAuthTypes: ['OAUTH', 'NONE'], iamRoleFallback: false },
+};
+
+// ============================================================================
 // API Gateway Target Schemas
 // ============================================================================
 
@@ -385,13 +407,6 @@ export const AgentCoreGatewayTargetSchema = z
           path: ['toolDefinitions'],
         });
       }
-      if (data.outboundAuth?.type === 'OAUTH') {
-        ctx.addIssue({
-          code: z.ZodIssueCode.custom,
-          message: 'OAuth is not supported for apiGateway target type',
-          path: ['outboundAuth'],
-        });
-      }
     }
     if (data.targetType === 'openApiSchema' || data.targetType === 'smithyModel') {
       if (!data.schemaSource) {
@@ -448,6 +463,30 @@ export const AgentCoreGatewayTargetSchema = z
         code: z.ZodIssueCode.custom,
         message: 'Lambda targets require at least one tool definition.',
         path: ['toolDefinitions'],
+      });
+    }
+    // Centralized outbound auth validation (driven by TARGET_TYPE_AUTH_CONFIG)
+    const authConfig = TARGET_TYPE_AUTH_CONFIG[data.targetType];
+    const authType = data.outboundAuth?.type ?? 'NONE';
+    if (authConfig.authRequired && authType === 'NONE') {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: `${data.targetType} targets require outbound auth (${authConfig.validAuthTypes.join(' or ')})`,
+        path: ['outboundAuth'],
+      });
+    }
+    if (authConfig.validAuthTypes.length === 0 && authType !== 'NONE') {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: `${data.targetType} targets use IAM role auth; outboundAuth is not applicable`,
+        path: ['outboundAuth'],
+      });
+    }
+    if (authConfig.validAuthTypes.length > 0 && authType !== 'NONE' && !authConfig.validAuthTypes.includes(authType)) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: `${data.targetType} targets do not support ${authType} outbound auth`,
+        path: ['outboundAuth'],
       });
     }
     if (data.outboundAuth && data.outboundAuth.type !== 'NONE' && !data.outboundAuth.credentialName) {

@@ -624,7 +624,7 @@ describe('validate', () => {
         outboundAuthType: 'OAUTH',
       });
       expect(result.valid).toBe(false);
-      expect(result.error).toContain('OAuth is not supported');
+      expect(result.error).toContain('is not supported for api-gateway type');
     });
 
     it('accepts --outbound-auth api-key with --credential-name for api-gateway type', async () => {

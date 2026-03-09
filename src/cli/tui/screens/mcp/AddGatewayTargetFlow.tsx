@@ -124,7 +124,7 @@ export function AddGatewayTargetFlow({
       void createIdentity(createConfig).then(result => {
         if (result.ok && flow.name === 'creating-credential') {
           const pending = flow.pendingConfig;
-          const authType = pending.targetType === 'apiGateway' ? 'API_KEY' : 'OAUTH';
+          const authType = pending.outboundAuth?.type === 'API_KEY' ? 'API_KEY' : 'OAUTH';
           // Resume wizard at confirm step with the new credential attached
           setFlow({
             name: 'create-wizard',
@@ -174,7 +174,7 @@ export function AddGatewayTargetFlow({
           })
         }
         initialType={
-          flow.pendingConfig.targetType === 'apiGateway' ? 'ApiKeyCredentialProvider' : 'OAuthCredentialProvider'
+          flow.pendingConfig.outboundAuth?.type === 'API_KEY' ? 'ApiKeyCredentialProvider' : 'OAuthCredentialProvider'
         }
       />
     );

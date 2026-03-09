@@ -10,11 +10,32 @@ import type {
   AddGatewayTargetStep,
   ApiGatewayTargetConfig,
   GatewayTargetWizardState,
+  SchemaBasedTargetConfig,
 } from './types';
-import { API_GATEWAY_AUTH_OPTIONS, MCP_TOOL_STEP_LABELS, OUTBOUND_AUTH_OPTIONS, TARGET_TYPE_OPTIONS } from './types';
+import { API_GATEWAY_AUTH_OPTIONS, MCP_TOOL_STEP_LABELS, TARGET_TYPE_OPTIONS, getOutboundAuthOptions } from './types';
 import { useAddGatewayTargetWizard } from './useAddGatewayTargetWizard';
 import { Box, Text } from 'ink';
-import React, { useMemo, useState } from 'react';
+import React, { useCallback, useMemo, useState } from 'react';
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Helpers
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** Build the credential picker list for a given set of existing credential names. */
+function buildCredentialItems(names: string[], credentialLabel: string): SelectableItem[] {
+  return [
+    ...names.map(name => ({
+      id: name,
+      title: name,
+      description: `Use existing ${credentialLabel}`,
+    })),
+    { id: 'create-new', title: 'Create new credential', description: `Create a new ${credentialLabel}` },
+  ];
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Component
+// ─────────────────────────────────────────────────────────────────────────────
 
 interface AddGatewayTargetScreenProps {
   existingGateways: string[];
@@ -41,62 +62,83 @@ export function AddGatewayTargetScreen({
 }: AddGatewayTargetScreenProps) {
   const wizard = useAddGatewayTargetWizard(existingGateways, initialConfig, initialStep);
 
-  const [outboundAuthType, setOutboundAuthTypeLocal] = useState<string | null>(null);
+  // Tracks which credential type sub-step is active within either auth step.
+  // null = showing the auth type picker; 'OAUTH'/'API_KEY' = showing credential list.
+  const [pendingCredType, setPendingCredType] = useState<'OAUTH' | 'API_KEY' | null>(null);
   const [filterPath, setFilterPathLocal] = useState<string | null>(null);
 
-  const gatewayItems: SelectableItem[] = useMemo(
-    () => existingGateways.map(g => ({ id: g, title: g })),
-    [existingGateways]
-  );
-
-  const outboundAuthItems: SelectableItem[] = useMemo(
-    () => OUTBOUND_AUTH_OPTIONS.map(o => ({ id: o.id, title: o.title, description: o.description })),
-    []
-  );
-
-  const credentialItems: SelectableItem[] = useMemo(() => {
-    const items: SelectableItem[] = existingOAuthCredentialNames.map(name => ({
-      id: name,
-      title: name,
-      description: 'Use existing OAuth credential',
-    }));
-    items.push({ id: 'create-new', title: 'Create new credential', description: 'Create a new OAuth credential' });
-    return items;
-  }, [existingOAuthCredentialNames]);
-
-  const targetTypeItems: SelectableItem[] = useMemo(
-    () => TARGET_TYPE_OPTIONS.map(o => ({ id: o.id, title: o.title, description: o.description })),
-    []
-  );
-
+  // ── Step flags ──
   const isGatewayStep = wizard.step === 'gateway';
   const isOutboundAuthStep = wizard.step === 'outbound-auth';
+  const isApiGatewayAuthStep = wizard.step === 'api-gateway-auth';
   const isTargetTypeStep = wizard.step === 'target-type';
   const isTextStep = wizard.step === 'name' || wizard.step === 'endpoint';
   const isRestApiIdStep = wizard.step === 'rest-api-id';
   const isStageStep = wizard.step === 'stage';
   const isToolFiltersStep = wizard.step === 'tool-filters';
-  const isApiGatewayAuthStep = wizard.step === 'api-gateway-auth';
+  const isSchemaSourceStep = wizard.step === 'schema-source';
   const isConfirmStep = wizard.step === 'confirm';
+  const isAuthStep = isOutboundAuthStep || isApiGatewayAuthStep;
   const noGatewaysAvailable = isGatewayStep && existingGateways.length === 0;
 
-  const [apiKeyAuthSelected, setApiKeyAuthSelected] = useState(false);
-
+  // ── Selectable item lists ──
+  const gatewayItems: SelectableItem[] = useMemo(
+    () => existingGateways.map(g => ({ id: g, title: g })),
+    [existingGateways]
+  );
+  const targetTypeItems: SelectableItem[] = useMemo(
+    () => TARGET_TYPE_OPTIONS.map(o => ({ id: o.id, title: o.title, description: o.description })),
+    []
+  );
+  const outboundAuthItems: SelectableItem[] = useMemo(
+    () =>
+      getOutboundAuthOptions(wizard.config.targetType ?? 'mcpServer').map(o => ({
+        id: o.id,
+        title: o.title,
+        description: o.description,
+      })),
+    [wizard.config.targetType]
+  );
   const apiGatewayAuthItems: SelectableItem[] = useMemo(
     () => API_GATEWAY_AUTH_OPTIONS.map(o => ({ id: o.id, title: o.title, description: o.description })),
     []
   );
+  const oauthCredItems: SelectableItem[] = useMemo(
+    () => buildCredentialItems(existingOAuthCredentialNames, 'OAuth credential'),
+    [existingOAuthCredentialNames]
+  );
+  const apiKeyCredItems: SelectableItem[] = useMemo(
+    () => buildCredentialItems(existingApiKeyCredentialNames, 'API key credential'),
+    [existingApiKeyCredentialNames]
+  );
 
-  const apiKeyCredentialItems: SelectableItem[] = useMemo(() => {
-    const items: SelectableItem[] = existingApiKeyCredentialNames.map(name => ({
-      id: name,
-      title: name,
-      description: 'Use existing API key credential',
-    }));
-    items.push({ id: 'create-new', title: 'Create new credential', description: 'Create a new API key credential' });
-    return items;
-  }, [existingApiKeyCredentialNames]);
+  // ── Auth completion callbacks ──
+  // Shared handler that routes to the correct wizard setter based on the active step.
+  const completeAuth = useCallback(
+    (auth?: { type: 'OAUTH' | 'API_KEY' | 'NONE'; credentialName?: string }) => {
+      if (isApiGatewayAuthStep) {
+        wizard.setApiGatewayAuth(auth as ApiGatewayTargetConfig['outboundAuth']);
+      } else {
+        wizard.setOutboundAuth(auth ?? { type: 'NONE' });
+      }
+    },
+    [isApiGatewayAuthStep, wizard]
+  );
 
+  /** Enter credential selection sub-step, or go straight to creation if none exist. */
+  const selectAuthType = useCallback(
+    (type: 'OAUTH' | 'API_KEY') => {
+      const names = type === 'OAUTH' ? existingOAuthCredentialNames : existingApiKeyCredentialNames;
+      if (names.length === 0) {
+        onCreateCredential({ ...wizard.config, outboundAuth: { type } });
+      } else {
+        setPendingCredType(type);
+      }
+    },
+    [existingOAuthCredentialNames, existingApiKeyCredentialNames, onCreateCredential, wizard.config]
+  );
+
+  // ── Navigation hooks ──
   const targetTypeNav = useListNavigation({
     items: targetTypeItems,
     onSelect: item => wizard.setTargetType(item.id as GatewayTargetType),
@@ -111,71 +153,67 @@ export function AddGatewayTargetScreen({
     isActive: isGatewayStep && !noGatewaysAvailable,
   });
 
+  // Outbound auth type selection (for mcpServer, openApiSchema)
   const outboundAuthNav = useListNavigation({
     items: outboundAuthItems,
     onSelect: item => {
-      const authType = item.id as 'OAUTH' | 'NONE';
+      const authType = item.id as 'OAUTH' | 'API_KEY' | 'NONE';
       if (authType === 'NONE') {
-        wizard.setOutboundAuth({ type: 'NONE' });
-      } else if (existingOAuthCredentialNames.length === 0) {
-        // No existing OAuth credentials — go straight to creation
-        onCreateCredential(wizard.config);
+        completeAuth({ type: 'NONE' });
       } else {
-        setOutboundAuthTypeLocal(authType);
+        selectAuthType(authType);
       }
     },
     onExit: () => wizard.goBack(),
-    isActive: isOutboundAuthStep && !outboundAuthType,
+    isActive: isOutboundAuthStep && !pendingCredType,
   });
 
-  const credentialNav = useListNavigation({
-    items: credentialItems,
-    onSelect: item => {
-      if (item.id === 'create-new') {
-        onCreateCredential(wizard.config);
-      } else {
-        wizard.setOutboundAuth({ type: 'OAUTH', credentialName: item.id });
-      }
-    },
-    onExit: () => {
-      setOutboundAuthTypeLocal(null);
-    },
-    isActive: isOutboundAuthStep && outboundAuthType === 'OAUTH',
-  });
-
+  // API Gateway auth type selection (IAM / API_KEY / NONE)
   const apiGatewayAuthNav = useListNavigation({
     items: apiGatewayAuthItems,
     onSelect: item => {
       if (item.id === 'API_KEY') {
-        if (existingApiKeyCredentialNames.length === 0) {
-          onCreateCredential(wizard.config);
-        } else {
-          setApiKeyAuthSelected(true);
-        }
+        selectAuthType('API_KEY');
       } else if (item.id === 'NONE') {
-        wizard.setApiGatewayAuth({ type: 'NONE' });
+        completeAuth({ type: 'NONE' });
       } else {
         // IAM — no outboundAuth needed (default)
-        wizard.setApiGatewayAuth(undefined);
+        completeAuth(undefined);
       }
     },
     onExit: () => wizard.goBack(),
-    isActive: isApiGatewayAuthStep && !apiKeyAuthSelected,
+    isActive: isApiGatewayAuthStep && !pendingCredType,
   });
 
-  const apiKeyCredentialNav = useListNavigation({
-    items: apiKeyCredentialItems,
+  // Shared OAuth credential selection (active in either auth step when pendingCredType is OAUTH)
+  const oauthCredNav = useListNavigation({
+    items: oauthCredItems,
     onSelect: item => {
       if (item.id === 'create-new') {
-        onCreateCredential(wizard.config);
+        onCreateCredential({ ...wizard.config, outboundAuth: { type: 'OAUTH' } });
       } else {
-        wizard.setApiGatewayAuth({ type: 'API_KEY', credentialName: item.id });
+        completeAuth({ type: 'OAUTH', credentialName: item.id });
       }
     },
-    onExit: () => setApiKeyAuthSelected(false),
-    isActive: isApiGatewayAuthStep && apiKeyAuthSelected,
+    onExit: () => setPendingCredType(null),
+    isActive: isAuthStep && pendingCredType === 'OAUTH',
   });
 
+  // Shared API Key credential selection (active in either auth step when pendingCredType is API_KEY)
+  const apiKeyCredNav = useListNavigation({
+    items: apiKeyCredItems,
+    onSelect: item => {
+      if (item.id === 'create-new') {
+        onCreateCredential({ ...wizard.config, outboundAuth: { type: 'API_KEY' } });
+      } else {
+        completeAuth({ type: 'API_KEY', credentialName: item.id });
+      }
+    },
+    onExit: () => setPendingCredType(null),
+    isActive: isAuthStep && pendingCredType === 'API_KEY',
+  });
+
+  // Confirm step
   useListNavigation({
     items: [{ id: 'confirm', title: 'Confirm' }],
     onSelect: () => {
@@ -190,6 +228,14 @@ export function AddGatewayTargetScreen({
           toolFilters: c.toolFilters,
           outboundAuth: c.outboundAuth as ApiGatewayTargetConfig['outboundAuth'],
         });
+      } else if (c.targetType === 'openApiSchema' || c.targetType === 'smithyModel') {
+        onComplete({
+          targetType: c.targetType,
+          name: c.name,
+          gateway: c.gateway!,
+          schemaSource: c.schemaSource!,
+          outboundAuth: c.outboundAuth as SchemaBasedTargetConfig['outboundAuth'],
+        });
       } else {
         onComplete({
           targetType: 'mcpServer',
@@ -203,15 +249,16 @@ export function AddGatewayTargetScreen({
       }
     },
     onExit: () => {
-      setOutboundAuthTypeLocal(null);
+      setPendingCredType(null);
       wizard.goBack();
     },
     isActive: isConfirmStep,
   });
 
+  // ── Render ──
   const helpText = isConfirmStep
     ? HELP_TEXT.CONFIRM_CANCEL
-    : isTextStep || isRestApiIdStep || isStageStep || isToolFiltersStep
+    : isTextStep || isRestApiIdStep || isStageStep || isToolFiltersStep || isSchemaSourceStep
       ? HELP_TEXT.TEXT_INPUT
       : HELP_TEXT.NAVIGATE_SELECT;
 
@@ -240,7 +287,8 @@ export function AddGatewayTargetScreen({
 
         {noGatewaysAvailable && <NoGatewaysMessage />}
 
-        {isOutboundAuthStep && !outboundAuthType && (
+        {/* Auth type selection — outbound-auth step */}
+        {isOutboundAuthStep && !pendingCredType && (
           <WizardSelect
             title="Select outbound authentication"
             description="How will this tool authenticate to external services?"
@@ -249,12 +297,32 @@ export function AddGatewayTargetScreen({
           />
         )}
 
-        {isOutboundAuthStep && outboundAuthType === 'OAUTH' && (
+        {/* Auth type selection — api-gateway-auth step */}
+        {isApiGatewayAuthStep && !pendingCredType && (
+          <WizardSelect
+            title="Select authorization"
+            description="How will this target authenticate to the API Gateway?"
+            items={apiGatewayAuthItems}
+            selectedIndex={apiGatewayAuthNav.selectedIndex}
+          />
+        )}
+
+        {/* Credential selection — shared between both auth steps */}
+        {isAuthStep && pendingCredType === 'OAUTH' && (
           <WizardSelect
             title="Select credential"
             description="Choose an OAuth credential for authentication"
-            items={credentialItems}
-            selectedIndex={credentialNav.selectedIndex}
+            items={oauthCredItems}
+            selectedIndex={oauthCredNav.selectedIndex}
+          />
+        )}
+
+        {isAuthStep && pendingCredType === 'API_KEY' && (
+          <WizardSelect
+            title="Select API key credential"
+            description="Choose an API key credential for authentication"
+            items={apiKeyCredItems}
+            selectedIndex={apiKeyCredNav.selectedIndex}
           />
         )}
 
@@ -305,6 +373,34 @@ export function AddGatewayTargetScreen({
           />
         )}
 
+        {isSchemaSourceStep && (
+          <TextInput
+            prompt={
+              wizard.config.targetType === 'smithyModel'
+                ? 'Smithy model JSON file (relative to agentcore/) or S3 URI'
+                : 'OpenAPI schema JSON file (relative to agentcore/) or S3 URI'
+            }
+            placeholder="specs/schema.json or s3://bucket/spec.json"
+            onSubmit={(value: string) => {
+              if (value.startsWith('s3://')) {
+                wizard.setSchemaSource({ s3: { uri: value } });
+              } else {
+                wizard.setSchemaSource({ inline: { path: value } });
+              }
+            }}
+            onCancel={() => wizard.goBack()}
+            customValidation={(value: string) => {
+              if (!value.trim()) return 'Schema source is required';
+              if (value.startsWith('s3://')) {
+                if (value.length <= 5) return 'Invalid S3 URI (e.g. s3://bucket/key.json)';
+                return true;
+              }
+              if (!value.endsWith('.json')) return 'Schema file must be a .json file';
+              return true;
+            }}
+          />
+        )}
+
         {/* Tool filters uses a two-phase input within a single wizard step:
             Phase 1: collect filter path pattern
             Phase 2: collect HTTP methods for that path
@@ -346,24 +442,6 @@ export function AddGatewayTargetScreen({
           />
         )}
 
-        {isApiGatewayAuthStep && !apiKeyAuthSelected && (
-          <WizardSelect
-            title="Select authorization"
-            description="How will this target authenticate to the API Gateway?"
-            items={apiGatewayAuthItems}
-            selectedIndex={apiGatewayAuthNav.selectedIndex}
-          />
-        )}
-
-        {isApiGatewayAuthStep && apiKeyAuthSelected && (
-          <WizardSelect
-            title="Select API key credential"
-            description="Choose an API key credential for authentication"
-            items={apiKeyCredentialItems}
-            selectedIndex={apiKeyCredentialNav.selectedIndex}
-          />
-        )}
-
         {isConfirmStep && (
           <ConfirmReview
             fields={[
@@ -386,8 +464,19 @@ export function AddGatewayTargetScreen({
                     },
                   ]
                 : []),
-              ...(wizard.config.targetType !== 'apiGateway' && wizard.config.endpoint
+              ...(wizard.config.targetType === 'mcpServer' && wizard.config.endpoint
                 ? [{ label: 'Endpoint', value: wizard.config.endpoint }]
+                : []),
+              ...(wizard.config.schemaSource
+                ? [
+                    {
+                      label: 'Schema Source',
+                      value:
+                        'inline' in wizard.config.schemaSource
+                          ? `agentcore/${wizard.config.schemaSource.inline.path}`
+                          : wizard.config.schemaSource.s3.uri,
+                    },
+                  ]
                 : []),
               { label: 'Gateway', value: wizard.config.gateway ?? '' },
               ...(wizard.config.outboundAuth
@@ -397,7 +486,9 @@ export function AddGatewayTargetScreen({
                   ]
                 : wizard.config.targetType === 'apiGateway'
                   ? [{ label: 'Auth Type', value: 'IAM (default)' }]
-                  : []),
+                  : wizard.config.targetType === 'smithyModel'
+                    ? [{ label: 'Auth Type', value: 'IAM Role (automatic)' }]
+                    : []),
             ]}
           />
         )}

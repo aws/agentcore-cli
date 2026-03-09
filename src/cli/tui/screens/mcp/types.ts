@@ -7,6 +7,7 @@ import type {
   SchemaSource,
   ToolDefinition,
 } from '../../../../schema';
+import { TARGET_TYPE_AUTH_CONFIG } from '../../../../schema';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Gateway Flow Types
@@ -66,6 +67,7 @@ export type AddGatewayTargetStep =
   | 'stage'
   | 'tool-filters'
   | 'api-gateway-auth'
+  | 'schema-source'
   | 'confirm';
 
 export type TargetLanguage = 'Python' | 'TypeScript' | 'Other';
@@ -154,6 +156,7 @@ export const MCP_TOOL_STEP_LABELS: Record<AddGatewayTargetStep, string> = {
   stage: 'Stage',
   'tool-filters': 'Tool Filters',
   'api-gateway-auth': 'Authorization',
+  'schema-source': 'Schema Source',
   confirm: 'Confirm',
 };
 
@@ -191,10 +194,26 @@ export const COMPUTE_HOST_OPTIONS = [
   { id: 'AgentCoreRuntime', title: 'AgentCore Runtime', description: 'AgentCore Runtime (Python only)' },
 ] as const;
 
-export const OUTBOUND_AUTH_OPTIONS = [
-  { id: 'NONE', title: 'No authorization', description: 'No outbound authentication' },
-  { id: 'OAUTH', title: 'OAuth 2LO', description: 'OAuth 2.0 client credentials' },
-] as const;
+/** All possible outbound auth UI options, keyed by auth type. */
+const AUTH_OPTION_LABELS = {
+  NONE: { title: 'No authorization', description: 'No outbound authentication' },
+  OAUTH: { title: 'OAuth 2LO', description: 'OAuth 2.0 client credentials' },
+  API_KEY: { title: 'API Key', description: 'API key credential' },
+} as const;
+
+/** Derive the outbound auth UI options for a given target type from the centralized config. */
+export function getOutboundAuthOptions(
+  targetType: GatewayTargetType
+): { id: string; title: string; description: string }[] {
+  const config = TARGET_TYPE_AUTH_CONFIG[targetType];
+  return config.validAuthTypes.map(id => ({
+    id,
+    title: AUTH_OPTION_LABELS[id].title,
+    description: AUTH_OPTION_LABELS[id].description,
+  }));
+}
+
+export const OUTBOUND_AUTH_OPTIONS = getOutboundAuthOptions('mcpServer');
 
 export const API_GATEWAY_AUTH_OPTIONS = [
   { id: 'IAM', title: 'IAM (recommended)', description: 'AWS IAM role-based authorization' },
