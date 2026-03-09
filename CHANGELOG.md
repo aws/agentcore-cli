@@ -2,6 +2,29 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.3.0-preview.5.0] - 2026-03-09
+
+### Added
+- feat: add lambdaFunctionArn target type (#519) (fb6a4f7)
+- feat: add OpenAPI and Smithy model gateway target types (#516) (0d1021d)
+- feat: add API Key and No Auth support for API Gateway targets (#514) (763b937)
+- feat: configurable transaction search index percentage (#513) (c5edfeb)
+- feat: add API Gateway target TUI wizard and address review feedback (#511) (9ecf0fa)
+- feat: enable CloudWatch Transaction Search on deploy (#506) (315df61)
+- feat: add API Gateway REST API as new gateway target type (#509) (3b1df62)
+- feat: revamp agentcore status command to show all resources status (#504) (96e6691)
+- feat: add target type picker to gateway target wizard (#496) (#505) (b8bb758)
+- feat: make container dev mode language-agnostic (#500) (a158ffb)
+
+### Fixed
+- fix: wire identity OAuth and gateway auth CLI options through to primitives (#522) (32064ee)
+- fix: resolve schema paths relative to project root instead of agentcore/ (#523) (d4995cb)
+- fix: centralize auth rules, consolidate TUI flows, and clarify schema paths (#521) (2059bd1)
+- fix: conditionally show invoke in deploy next steps only when agents exist (#508) (baae06b)
+
+### Documentation
+- docs: update help text and docs for all gateway target types (#524) (a282d65)
+
 ## [0.3.0-preview.4.0] - 2026-03-05
 Known Issue
 For memory-only deployments, the agentcore status command printing out an error is a known bug for this release. We will follow up with a fix for the next release.
