@@ -264,6 +264,11 @@ export class GatewayTargetPrimitive extends BasePrimitive<AddGatewayTargetOption
       .option('--schema-s3-account <id>', 'S3 bucket owner account ID (for cross-account access)')
       .option('--json', 'Output as JSON')
       .action(async (rawOptions: Record<string, string | boolean | undefined>) => {
+        // Commander camelCases --outbound-auth to outboundAuth, but our types use outboundAuthType
+        if (rawOptions.outboundAuth && !rawOptions.outboundAuthType) {
+          rawOptions.outboundAuthType = rawOptions.outboundAuth;
+          delete rawOptions.outboundAuth;
+        }
         const cliOptions = rawOptions as unknown as CLIAddGatewayTargetOptions;
         try {
           if (!findConfigRoot()) {
