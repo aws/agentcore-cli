@@ -64,4 +64,50 @@ describe('add identity command', () => {
       expect(credential.type).toBe('ApiKeyCredentialProvider');
     });
   });
+
+  describe('oauth identity creation', () => {
+    it('creates OAuth credential with discovery URL and scopes', async () => {
+      const identityName = `oauth-${Date.now()}`;
+      const result = await runCLI(
+        [
+          'add',
+          'identity',
+          '--type',
+          'oauth',
+          '--name',
+          identityName,
+          '--discovery-url',
+          'https://idp.example.com/.well-known/openid-configuration',
+          '--client-id',
+          'my-client-id',
+          '--client-secret',
+          'my-client-secret',
+          '--scopes',
+          'read,write',
+          '--json',
+        ],
+        projectDir
+      );
+
+      expect(result.exitCode, `stdout: ${result.stdout}, stderr: ${result.stderr}`).toBe(0);
+      const json = JSON.parse(result.stdout);
+      expect(json.success).toBe(true);
+      expect(json.credentialName).toBe(identityName);
+
+      // Verify in agentcore.json
+      const projectSpec = JSON.parse(await readFile(join(projectDir, 'agentcore/agentcore.json'), 'utf-8'));
+      const credential = projectSpec.credentials.find((c: { name: string }) => c.name === identityName);
+      expect(credential, 'Credential should be in project credentials').toBeTruthy();
+      expect(credential.type).toBe('OAuthCredentialProvider');
+      expect(credential.discoveryUrl).toBe('https://idp.example.com/.well-known/openid-configuration');
+      expect(credential.vendor).toBe('CustomOauth2');
+      expect(credential.scopes).toEqual(['read', 'write']);
+
+      // Verify env vars in .env.local
+      const envContent = await readFile(join(projectDir, 'agentcore/.env.local'), 'utf-8');
+      const envPrefix = `AGENTCORE_CREDENTIAL_${identityName.toUpperCase().replace(/-/g, '_')}`;
+      expect(envContent).toContain(`${envPrefix}_CLIENT_ID=`);
+      expect(envContent).toContain(`${envPrefix}_CLIENT_SECRET=`);
+    });
+  });
 });

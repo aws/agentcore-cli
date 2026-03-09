@@ -150,5 +150,50 @@ describe('add gateway command', () => {
       expect(json.success).toBe(false);
       expect(json.error.includes('well-known'), `Error: ${json.error}`).toBeTruthy();
     });
+
+    it('creates gateway with allowedScopes and agent credentials', async () => {
+      const gatewayName = `scopes-gw-${Date.now()}`;
+      const result = await runCLI(
+        [
+          'add',
+          'gateway',
+          '--name',
+          gatewayName,
+          '--authorizer-type',
+          'CUSTOM_JWT',
+          '--discovery-url',
+          'https://example.com/.well-known/openid-configuration',
+          '--allowed-clients',
+          'client1',
+          '--allowed-scopes',
+          'scope1,scope2',
+          '--agent-client-id',
+          'agent-cid',
+          '--agent-client-secret',
+          'agent-secret',
+          '--json',
+        ],
+        projectDir
+      );
+
+      expect(result.exitCode, `stdout: ${result.stdout}, stderr: ${result.stderr}`).toBe(0);
+      const json = JSON.parse(result.stdout);
+      expect(json.success).toBe(true);
+
+      // Verify allowedScopes in mcp.json
+      const mcpSpec = JSON.parse(await readFile(join(projectDir, 'agentcore/mcp.json'), 'utf-8'));
+      const gateway = mcpSpec.agentCoreGateways.find((g: { name: string }) => g.name === gatewayName);
+      expect(gateway, 'Gateway should be in mcp.json').toBeTruthy();
+      expect(gateway.authorizerType).toBe('CUSTOM_JWT');
+      expect(gateway.authorizerConfiguration?.customJwtAuthorizer?.allowedScopes).toEqual(['scope1', 'scope2']);
+
+      // Verify managed OAuth credential in agentcore.json
+      const projectSpec = JSON.parse(await readFile(join(projectDir, 'agentcore/agentcore.json'), 'utf-8'));
+      const credential = projectSpec.credentials.find((c: { name: string }) => c.name === `${gatewayName}-oauth`);
+      expect(credential, 'Managed OAuth credential should exist').toBeTruthy();
+      expect(credential.type).toBe('OAuthCredentialProvider');
+      expect(credential.managed).toBe(true);
+      expect(credential.usage).toBe('inbound');
+    });
   });
 });
