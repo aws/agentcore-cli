@@ -415,6 +415,20 @@ export const AgentCoreGatewayTargetSchema = z
           path: ['endpoint'],
         });
       }
+      if (data.toolDefinitions && data.toolDefinitions.length > 0) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: `toolDefinitions is not applicable for ${data.targetType} target type`,
+          path: ['toolDefinitions'],
+        });
+      }
+      if (data.apiGateway) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: `apiGateway config is not applicable for ${data.targetType} target type`,
+          path: ['apiGateway'],
+        });
+      }
     }
     if (data.targetType === 'mcpServer' && !data.compute && !data.endpoint) {
       ctx.addIssue({
