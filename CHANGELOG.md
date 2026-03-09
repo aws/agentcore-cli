@@ -26,8 +26,7 @@ All notable changes to this project will be documented in this file.
 - docs: update help text and docs for all gateway target types (#524) (a282d65)
 
 ## [0.3.0-preview.4.0] - 2026-03-05
-Known Issue
-For memory-only deployments, the agentcore status command printing out an error is a known bug for this release. We will follow up with a fix for the next release.
+
 ## [0.3.0-preview.3.1] - 2026-03-05
 Known Issue
 For memory-only deployments, the agentcore status command printing out an error is a known bug for this release. We will follow up with a fix for the next release.
