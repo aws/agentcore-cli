@@ -199,6 +199,102 @@ describe('MemorySchema', () => {
     });
     expect(result.success).toBe(true);
   });
+
+  it('accepts memory with streamDeliveryResources', () => {
+    const result = MemorySchema.safeParse({
+      type: 'AgentCoreMemory',
+      name: 'StreamMemory',
+      eventExpiryDuration: 30,
+      strategies: [{ type: 'SEMANTIC' }],
+      streamDeliveryResources: {
+        resources: [
+          {
+            kinesis: {
+              dataStreamArn: 'arn:aws:kinesis:us-west-2:123456789012:stream/test',
+              contentConfigurations: [{ type: 'MEMORY_RECORDS', level: 'FULL_CONTENT' }],
+            },
+          },
+        ],
+      },
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it('accepts memory without streamDeliveryResources', () => {
+    const result = MemorySchema.safeParse({
+      type: 'AgentCoreMemory',
+      name: 'NoStream',
+      eventExpiryDuration: 30,
+      strategies: [],
+    });
+    expect(result.success).toBe(true);
+    expect(result.data?.streamDeliveryResources).toBeUndefined();
+  });
+
+  it('rejects streamDeliveryResources with empty resources array', () => {
+    const result = MemorySchema.safeParse({
+      type: 'AgentCoreMemory',
+      name: 'Test',
+      eventExpiryDuration: 30,
+      strategies: [],
+      streamDeliveryResources: { resources: [] },
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it('rejects streamDeliveryResources with empty contentConfigurations', () => {
+    const result = MemorySchema.safeParse({
+      type: 'AgentCoreMemory',
+      name: 'Test',
+      eventExpiryDuration: 30,
+      strategies: [],
+      streamDeliveryResources: {
+        resources: [
+          {
+            kinesis: { dataStreamArn: 'arn:aws:kinesis:us-west-2:123456789012:stream/test', contentConfigurations: [] },
+          },
+        ],
+      },
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it('rejects streamDeliveryResources with empty dataStreamArn', () => {
+    const result = MemorySchema.safeParse({
+      type: 'AgentCoreMemory',
+      name: 'Test',
+      eventExpiryDuration: 30,
+      strategies: [],
+      streamDeliveryResources: {
+        resources: [
+          {
+            kinesis: { dataStreamArn: '', contentConfigurations: [{ type: 'MEMORY_RECORDS', level: 'FULL_CONTENT' }] },
+          },
+        ],
+      },
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it('rejects invalid content level in streamDeliveryResources', () => {
+    const result = MemorySchema.safeParse({
+      type: 'AgentCoreMemory',
+      name: 'Test',
+      eventExpiryDuration: 30,
+      strategies: [],
+      streamDeliveryResources: {
+        resources: [
+          {
+            kinesis: {
+              dataStreamArn: 'arn:test',
+              contentConfigurations: [{ type: 'MEMORY_RECORDS', level: 'INVALID' }],
+            },
+          },
+        ],
+      },
+    });
+    expect(result.success).toBe(false);
+  });
 });
 
 describe('CredentialNameSchema', () => {

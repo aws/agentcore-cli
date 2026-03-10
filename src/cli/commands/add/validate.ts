@@ -35,6 +35,8 @@ export interface ValidationResult {
 // Constants
 const MEMORY_OPTIONS = ['none', 'shortTerm', 'longAndShortTerm'] as const;
 const VALID_STRATEGIES = ['SEMANTIC', 'SUMMARIZATION', 'USER_PREFERENCE', 'EPISODIC'];
+const VALID_STREAM_CONTENT_LEVELS = ['FULL_CONTENT', 'METADATA_ONLY'];
+const VALID_DELIVERY_TYPES = ['kinesis'];
 
 /**
  * Validate that a credential name exists in the project spec.
@@ -675,6 +677,35 @@ export function validateAddMemoryOptions(options: AddMemoryOptions): ValidationR
         return { valid: false, error: `Invalid strategy: ${strategy}. Must be one of: ${VALID_STRATEGIES.join(', ')}` };
       }
     }
+  }
+
+  if (options.streamDeliveryResources && (options.dataStreamArn || options.contentLevel)) {
+    return {
+      valid: false,
+      error: '--stream-delivery-resources cannot be combined with --data-stream-arn or --stream-content-level',
+    };
+  }
+
+  if (options.contentLevel && !options.dataStreamArn) {
+    return { valid: false, error: '--data-stream-arn is required when --stream-content-level is set' };
+  }
+
+  if (options.dataStreamArn && !options.dataStreamArn.startsWith('arn:')) {
+    return { valid: false, error: '--data-stream-arn must be a valid ARN (starts with arn:)' };
+  }
+
+  if (options.deliveryType && !VALID_DELIVERY_TYPES.includes(options.deliveryType)) {
+    return {
+      valid: false,
+      error: `Invalid delivery type. Must be one of: ${VALID_DELIVERY_TYPES.join(', ')}`,
+    };
+  }
+
+  if (options.contentLevel && !VALID_STREAM_CONTENT_LEVELS.includes(options.contentLevel)) {
+    return {
+      valid: false,
+      error: `Invalid content level. Must be one of: ${VALID_STREAM_CONTENT_LEVELS.join(', ')}`,
+    };
   }
 
   return { valid: true };

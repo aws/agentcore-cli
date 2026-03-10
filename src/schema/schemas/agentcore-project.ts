@@ -96,6 +96,34 @@ export const MemoryNameSchema = z
     'Must begin with a letter and contain only alphanumeric characters and underscores (max 48 chars)'
   );
 
+export const StreamContentLevelSchema = z.enum(['FULL_CONTENT', 'METADATA_ONLY']);
+export type StreamContentLevel = z.infer<typeof StreamContentLevelSchema>;
+
+// TODO: kinesis is currently the only supported delivery type. When additional types
+// (e.g. S3, EventBridge) are added, this should become a discriminated union.
+// Non-kinesis resources will produce a Zod error about the missing kinesis field.
+export const StreamDeliveryResourcesSchema = z.object({
+  resources: z
+    .array(
+      z.object({
+        kinesis: z.object({
+          dataStreamArn: z.string().min(1),
+          contentConfigurations: z
+            .array(
+              z.object({
+                type: z.literal('MEMORY_RECORDS'),
+                level: StreamContentLevelSchema,
+              })
+            )
+            .min(1),
+        }),
+      })
+    )
+    .min(1),
+});
+
+export type StreamDeliveryResources = z.infer<typeof StreamDeliveryResourcesSchema>;
+
 export const MemorySchema = z.object({
   name: MemoryNameSchema,
   eventExpiryDuration: z.number().int().min(7).max(365),
@@ -113,6 +141,7 @@ export const MemorySchema = z.object({
   tags: TagsSchema.optional(),
   encryptionKeyArn: z.string().optional(),
   executionRoleArn: z.string().optional(),
+  streamDeliveryResources: StreamDeliveryResourcesSchema.optional(),
 });
 
 export type Memory = z.infer<typeof MemorySchema>;

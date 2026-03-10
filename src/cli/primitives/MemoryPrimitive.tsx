@@ -1,6 +1,18 @@
 import { findConfigRoot } from '../../lib';
-import type { Memory, MemoryStrategy, MemoryStrategyType } from '../../schema';
-import { DEFAULT_EPISODIC_REFLECTION_NAMESPACES, DEFAULT_STRATEGY_NAMESPACES, MemorySchema } from '../../schema';
+import type {
+  Memory,
+  MemoryStrategy,
+  MemoryStrategyType,
+  StreamContentLevel,
+  StreamDeliveryResources,
+} from '../../schema';
+import {
+  DEFAULT_EPISODIC_REFLECTION_NAMESPACES,
+  DEFAULT_STRATEGY_NAMESPACES,
+  MemorySchema,
+  StreamContentLevelSchema,
+  StreamDeliveryResourcesSchema,
+} from '../../schema';
 import { validateAddMemoryOptions } from '../commands/add/validate';
 import { getErrorMessage } from '../errors';
 import type { RemovalPreview, RemovalResult, SchemaChange } from '../operations/remove/types';
@@ -16,6 +28,12 @@ export interface AddMemoryOptions {
   name: string;
   strategies?: string;
   expiry?: number;
+  deliveryType?: string;
+  // Flat flags for the simple single-stream case
+  dataStreamArn?: string;
+  contentLevel?: string;
+  // Raw JSON for advanced/multi-target configurations. Takes precedence over flat flags.
+  streamDeliveryResources?: string;
 }
 
 /**
@@ -42,10 +60,21 @@ export class MemoryPrimitive extends BasePrimitive<AddMemoryOptions, RemovableMe
             .map(type => ({ type: type as MemoryStrategyType }))
         : [];
 
+      const streamDeliveryResources = options.streamDeliveryResources
+        ? this.parseStreamDeliveryResources(options.streamDeliveryResources)
+        : options.dataStreamArn
+          ? this.buildStreamDeliveryResources({
+              deliveryType: options.deliveryType ?? 'kinesis',
+              dataStreamArn: options.dataStreamArn,
+              contentLevel: StreamContentLevelSchema.parse(options.contentLevel ?? 'FULL_CONTENT'),
+            })
+          : undefined;
+
       const memory = await this.createMemory({
         name: options.name,
         eventExpiryDuration: options.expiry ?? DEFAULT_EVENT_EXPIRY,
         strategies,
+        streamDeliveryResources,
       });
 
       return { success: true, memoryName: memory.name };
@@ -129,73 +158,102 @@ export class MemoryPrimitive extends BasePrimitive<AddMemoryOptions, RemovableMe
         'Comma-separated strategies: SEMANTIC, SUMMARIZATION, USER_PREFERENCE, EPISODIC [non-interactive]'
       )
       .option('--expiry <days>', 'Event expiry duration in days (default: 30) [non-interactive]')
+      .option('--delivery-type <type>', 'Delivery target type (default: kinesis) [non-interactive]')
+      .option('--data-stream-arn <arn>', 'Kinesis data stream ARN for memory record streaming [non-interactive]')
+      .option(
+        '--stream-content-level <level>',
+        'Stream content level: FULL_CONTENT or METADATA_ONLY (default: FULL_CONTENT) [non-interactive]'
+      )
+      .option(
+        '--stream-delivery-resources <json>',
+        'Stream delivery config as JSON string (advanced, overrides flat flags) [non-interactive]'
+      )
       .option('--json', 'Output as JSON [non-interactive]')
-      .action(async (cliOptions: { name?: string; strategies?: string; expiry?: string; json?: boolean }) => {
-        try {
-          if (!findConfigRoot()) {
-            console.error('No agentcore project found. Run `agentcore create` first.');
-            process.exit(1);
-          }
-
-          if (cliOptions.name || cliOptions.json) {
-            // CLI mode
-            const expiry = cliOptions.expiry ? parseInt(cliOptions.expiry, 10) : undefined;
-            const validation = validateAddMemoryOptions({
-              name: cliOptions.name,
-              strategies: cliOptions.strategies,
-              expiry,
-            });
-
-            if (!validation.valid) {
-              if (cliOptions.json) {
-                console.log(JSON.stringify({ success: false, error: validation.error }));
-              } else {
-                console.error(validation.error);
-              }
+      .action(
+        async (cliOptions: {
+          name?: string;
+          strategies?: string;
+          expiry?: string;
+          deliveryType?: string;
+          dataStreamArn?: string;
+          streamContentLevel?: string;
+          streamDeliveryResources?: string;
+          json?: boolean;
+        }) => {
+          try {
+            if (!findConfigRoot()) {
+              console.error('No agentcore project found. Run `agentcore create` first.');
               process.exit(1);
             }
 
-            const result = await this.add({
-              name: cliOptions.name!,
-              strategies: cliOptions.strategies,
-              expiry,
-            });
+            if (cliOptions.name || cliOptions.json) {
+              // CLI mode
+              const expiry = cliOptions.expiry ? parseInt(cliOptions.expiry, 10) : undefined;
+              const validation = validateAddMemoryOptions({
+                name: cliOptions.name,
+                strategies: cliOptions.strategies,
+                expiry,
+                deliveryType: cliOptions.deliveryType,
+                dataStreamArn: cliOptions.dataStreamArn,
+                contentLevel: cliOptions.streamContentLevel,
+                streamDeliveryResources: cliOptions.streamDeliveryResources,
+              });
 
-            if (cliOptions.json) {
-              console.log(JSON.stringify(result));
-            } else if (result.success) {
-              console.log(`Added memory '${result.memoryName}'`);
+              if (!validation.valid) {
+                if (cliOptions.json) {
+                  console.log(JSON.stringify({ success: false, error: validation.error }));
+                } else {
+                  console.error(validation.error);
+                }
+                process.exit(1);
+              }
+
+              const result = await this.add({
+                name: cliOptions.name!,
+                strategies: cliOptions.strategies,
+                expiry,
+                deliveryType: cliOptions.deliveryType,
+                dataStreamArn: cliOptions.dataStreamArn,
+                contentLevel: cliOptions.streamContentLevel,
+                streamDeliveryResources: cliOptions.streamDeliveryResources,
+              });
+
+              if (cliOptions.json) {
+                console.log(JSON.stringify(result));
+              } else if (result.success) {
+                console.log(`Added memory '${result.memoryName}'`);
+              } else {
+                console.error(result.error);
+              }
+              process.exit(result.success ? 0 : 1);
             } else {
-              console.error(result.error);
+              // TUI fallback — dynamic imports to avoid pulling ink (async) into registry
+              const [{ render }, { default: React }, { AddFlow }] = await Promise.all([
+                import('ink'),
+                import('react'),
+                import('../tui/screens/add/AddFlow'),
+              ]);
+              const { clear, unmount } = render(
+                React.createElement(AddFlow, {
+                  isInteractive: false,
+                  onExit: () => {
+                    clear();
+                    unmount();
+                    process.exit(0);
+                  },
+                })
+              );
             }
-            process.exit(result.success ? 0 : 1);
-          } else {
-            // TUI fallback — dynamic imports to avoid pulling ink (async) into registry
-            const [{ render }, { default: React }, { AddFlow }] = await Promise.all([
-              import('ink'),
-              import('react'),
-              import('../tui/screens/add/AddFlow'),
-            ]);
-            const { clear, unmount } = render(
-              React.createElement(AddFlow, {
-                isInteractive: false,
-                onExit: () => {
-                  clear();
-                  unmount();
-                  process.exit(0);
-                },
-              })
-            );
+          } catch (error) {
+            if (cliOptions.json) {
+              console.log(JSON.stringify({ success: false, error: getErrorMessage(error) }));
+            } else {
+              console.error(getErrorMessage(error));
+            }
+            process.exit(1);
           }
-        } catch (error) {
-          if (cliOptions.json) {
-            console.log(JSON.stringify({ success: false, error: getErrorMessage(error) }));
-          } else {
-            console.error(getErrorMessage(error));
-          }
-          process.exit(1);
         }
-      });
+      );
 
     this.registerRemoveSubcommand(removeCmd);
   }
@@ -211,6 +269,7 @@ export class MemoryPrimitive extends BasePrimitive<AddMemoryOptions, RemovableMe
     name: string;
     eventExpiryDuration: number;
     strategies: { type: string }[];
+    streamDeliveryResources?: StreamDeliveryResources;
   }): Promise<Memory> {
     const project = await this.readProjectSpec();
 
@@ -231,11 +290,46 @@ export class MemoryPrimitive extends BasePrimitive<AddMemoryOptions, RemovableMe
       name: config.name,
       eventExpiryDuration: config.eventExpiryDuration,
       strategies,
+      ...(config.streamDeliveryResources && { streamDeliveryResources: config.streamDeliveryResources }),
     };
 
     project.memories.push(memory);
     await this.writeProjectSpec(project);
 
     return memory;
+  }
+
+  private buildStreamDeliveryResources(config: {
+    deliveryType: string;
+    dataStreamArn: string;
+    contentLevel: StreamContentLevel;
+  }): StreamDeliveryResources {
+    switch (config.deliveryType) {
+      case 'kinesis':
+        return {
+          resources: [
+            {
+              kinesis: {
+                dataStreamArn: config.dataStreamArn,
+                contentConfigurations: [{ type: 'MEMORY_RECORDS', level: config.contentLevel }],
+              },
+            },
+          ],
+        };
+      default:
+        throw new Error('Unsupported delivery type. Supported types: kinesis');
+    }
+  }
+
+  private parseStreamDeliveryResources(input: string): StreamDeliveryResources {
+    try {
+      return StreamDeliveryResourcesSchema.parse(JSON.parse(input));
+    } catch (e) {
+      const message =
+        e instanceof SyntaxError
+          ? 'Invalid JSON in stream delivery config'
+          : 'Stream delivery config does not match the expected schema';
+      throw new Error(message);
+    }
   }
 }

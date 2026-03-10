@@ -994,6 +994,71 @@ describe('validate', () => {
         valid: true,
       });
     });
+
+    // Streaming validation
+    it('accepts valid streaming options', () => {
+      expect(
+        validateAddMemoryOptions({
+          ...validMemoryOptions,
+          dataStreamArn: 'arn:aws:kinesis:us-west-2:123456789012:stream/test',
+          contentLevel: 'FULL_CONTENT',
+        })
+      ).toEqual({ valid: true });
+    });
+
+    it('accepts dataStreamArn without contentLevel (defaults to FULL_CONTENT)', () => {
+      expect(
+        validateAddMemoryOptions({
+          ...validMemoryOptions,
+          dataStreamArn: 'arn:aws:kinesis:us-west-2:123456789012:stream/test',
+        })
+      ).toEqual({ valid: true });
+    });
+
+    it('rejects contentLevel without dataStreamArn', () => {
+      const result = validateAddMemoryOptions({ ...validMemoryOptions, contentLevel: 'FULL_CONTENT' });
+      expect(result.valid).toBe(false);
+      expect(result.error).toContain('--data-stream-arn is required');
+    });
+
+    it('rejects invalid contentLevel', () => {
+      const result = validateAddMemoryOptions({
+        ...validMemoryOptions,
+        dataStreamArn: 'arn:aws:kinesis:us-west-2:123456789012:stream/test',
+        contentLevel: 'INVALID',
+      });
+      expect(result.valid).toBe(false);
+      expect(result.error).toContain('Invalid content level');
+    });
+
+    it('rejects invalid deliveryType', () => {
+      const result = validateAddMemoryOptions({ ...validMemoryOptions, deliveryType: 'sqs' });
+      expect(result.valid).toBe(false);
+      expect(result.error).toContain('Invalid delivery type');
+    });
+
+    it('accepts valid deliveryType', () => {
+      expect(validateAddMemoryOptions({ ...validMemoryOptions, deliveryType: 'kinesis' })).toEqual({ valid: true });
+    });
+
+    it('rejects dataStreamArn not starting with arn:', () => {
+      const result = validateAddMemoryOptions({
+        ...validMemoryOptions,
+        dataStreamArn: 'not-an-arn',
+      });
+      expect(result.valid).toBe(false);
+      expect(result.error).toContain('valid ARN');
+    });
+
+    it('rejects combining streamDeliveryResources with flat flags', () => {
+      const result = validateAddMemoryOptions({
+        ...validMemoryOptions,
+        dataStreamArn: 'arn:aws:kinesis:us-west-2:123456789012:stream/test',
+        streamDeliveryResources: '{"resources":[]}',
+      });
+      expect(result.valid).toBe(false);
+      expect(result.error).toContain('cannot be combined');
+    });
   });
 
   describe('validateAddCredentialOptions', () => {

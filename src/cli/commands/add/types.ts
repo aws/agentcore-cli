@@ -109,6 +109,10 @@ export interface AddMemoryOptions {
   name?: string;
   strategies?: string;
   expiry?: number;
+  deliveryType?: string;
+  dataStreamArn?: string;
+  contentLevel?: string;
+  streamDeliveryResources?: string;
   json?: boolean;
 }
 
