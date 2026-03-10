@@ -2,13 +2,6 @@ import type { GatewayAuthorizerType } from '../../../../schema';
 import type { AddGatewayConfig, AddGatewayStep } from './types';
 import { useCallback, useMemo, useState } from 'react';
 
-/** Maps authorizer type to the next step after authorizer selection */
-const AUTHORIZER_NEXT_STEP: Record<GatewayAuthorizerType, AddGatewayStep> = {
-  NONE: 'confirm',
-  AWS_IAM: 'confirm',
-  CUSTOM_JWT: 'jwt-config',
-};
-
 function getDefaultConfig(): AddGatewayConfig {
   return {
     name: '',
@@ -16,6 +9,7 @@ function getDefaultConfig(): AddGatewayConfig {
     authorizerType: 'NONE',
     jwtConfig: undefined,
     selectedTargets: [],
+    enableSemanticSearch: true,
   };
 }
 
@@ -35,6 +29,7 @@ export function useAddGatewayWizard(unassignedTargetsCount = 0) {
       baseSteps.push('include-targets');
     }
 
+    baseSteps.push('advanced-config');
     baseSteps.push('confirm');
 
     return baseSteps;
@@ -56,16 +51,25 @@ export function useAddGatewayWizard(unassignedTargetsCount = 0) {
     setStep('authorizer');
   }, []);
 
-  const setAuthorizerType = useCallback((authorizerType: GatewayAuthorizerType) => {
-    setConfig(c => ({
-      ...c,
-      authorizerType,
-      // Clear JWT config if switching away from CUSTOM_JWT
-      jwtConfig: authorizerType === 'CUSTOM_JWT' ? c.jwtConfig : undefined,
-    }));
-    // Navigate to next step based on authorizer type
-    setStep(AUTHORIZER_NEXT_STEP[authorizerType]);
-  }, []);
+  const setAuthorizerType = useCallback(
+    (authorizerType: GatewayAuthorizerType) => {
+      setConfig(c => ({
+        ...c,
+        authorizerType,
+        // Clear JWT config if switching away from CUSTOM_JWT
+        jwtConfig: authorizerType === 'CUSTOM_JWT' ? c.jwtConfig : undefined,
+      }));
+      // Navigate to next step based on authorizer type
+      if (authorizerType === 'CUSTOM_JWT') {
+        setStep('jwt-config');
+      } else if (unassignedTargetsCount > 0) {
+        setStep('include-targets');
+      } else {
+        setStep('advanced-config');
+      }
+    },
+    [unassignedTargetsCount]
+  );
 
   const setJwtConfig = useCallback(
     (jwtConfig: {
@@ -80,7 +84,7 @@ export function useAddGatewayWizard(unassignedTargetsCount = 0) {
         ...c,
         jwtConfig,
       }));
-      setStep(unassignedTargetsCount > 0 ? 'include-targets' : 'confirm');
+      setStep(unassignedTargetsCount > 0 ? 'include-targets' : 'advanced-config');
     },
     [unassignedTargetsCount]
   );
@@ -90,6 +94,11 @@ export function useAddGatewayWizard(unassignedTargetsCount = 0) {
       ...c,
       selectedTargets,
     }));
+    setStep('advanced-config');
+  }, []);
+
+  const setAdvancedConfig = useCallback((opts: { enableSemanticSearch: boolean }) => {
+    setConfig(c => ({ ...c, enableSemanticSearch: opts.enableSemanticSearch }));
     setStep('confirm');
   }, []);
 
@@ -108,6 +117,7 @@ export function useAddGatewayWizard(unassignedTargetsCount = 0) {
     setAuthorizerType,
     setJwtConfig,
     setSelectedTargets,
+    setAdvancedConfig,
     reset,
   };
 }
