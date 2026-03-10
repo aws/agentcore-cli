@@ -122,7 +122,7 @@ export async function resolveProjectPaths(options: PackageOptions = {}, agentNam
   const pyprojectPath = candidatePyproject;
 
   const projectRoot = options.projectRoot ? resolve(options.projectRoot) : dirname(pyprojectPath);
-  const srcDir = resolve(projectRoot, options.srcDir ?? 'src');
+  const srcDir = resolve(projectRoot, options.srcDir ?? '.');
   const artifactDir = resolve(options.artifactDir ?? join(projectRoot, CONFIG_DIR));
 
   // Simplified staging structure: <artifactDir>/<name>/staging
@@ -261,7 +261,7 @@ export function resolveProjectPathsSync(options: PackageOptions = {}, agentName?
 
   const pyprojectPath = candidatePyproject;
   const projectRoot = options.projectRoot ? resolve(options.projectRoot) : dirname(pyprojectPath);
-  const srcDir = resolve(projectRoot, options.srcDir ?? 'src');
+  const srcDir = resolve(projectRoot, options.srcDir ?? '.');
   const artifactDir = resolve(options.artifactDir ?? join(projectRoot, CONFIG_DIR));
 
   // Simplified staging structure: <artifactDir>/<name>/staging

@@ -247,9 +247,9 @@ describe('resolveProjectPaths', () => {
 
   beforeAll(() => {
     root = mkdtempSync(join(tmpdir(), 'helpers-resolve-'));
-    // Create a minimal project structure with pyproject.toml
+    // Create a minimal project structure with pyproject.toml (source files live alongside it)
     writeFileSync(join(root, 'pyproject.toml'), '[project]\nname = "test"');
-    mkdirSync(join(root, 'src'), { recursive: true });
+    writeFileSync(join(root, 'main.py'), 'print("hello")');
   });
 
   afterAll(() => {
@@ -260,7 +260,7 @@ describe('resolveProjectPaths', () => {
     const paths = await resolveProjectPaths({ projectRoot: root });
     expect(paths.projectRoot).toBe(root);
     expect(paths.pyprojectPath).toBe(join(root, 'pyproject.toml'));
-    expect(paths.srcDir).toBe(join(root, 'src'));
+    expect(paths.srcDir).toBe(root);
   });
 
   it('uses agent name for build directory', async () => {
