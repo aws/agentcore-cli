@@ -103,6 +103,12 @@ async function handleDeployCLI(options: DeployOptions): Promise<void> {
         }
       }
 
+      if (result.notes && result.notes.length > 0) {
+        for (const note of result.notes) {
+          console.log(`\nNote: ${note}`);
+        }
+      }
+
       if (result.nextSteps && result.nextSteps.length > 0) {
         console.log(`Next: ${result.nextSteps.join(' | ')}`);
       }

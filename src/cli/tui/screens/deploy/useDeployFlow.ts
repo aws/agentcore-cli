@@ -77,6 +77,8 @@ interface DeployFlowState {
   diffSummaries: StackDiffSummary[];
   /** Number of stacks with changes (from overall diff result) */
   numStacksWithChanges?: number;
+  /** Notes to display after successful deploy (e.g., transaction search info) */
+  deployNotes: string[];
   /** Whether an on-demand diff is currently running */
   isDiffLoading: boolean;
   /** Request an on-demand diff (lazy: runs once, caches result) */
@@ -122,6 +124,7 @@ export function useDeployFlow(options: DeployFlowOptions = {}): DeployFlowState 
   const [diffSummaries, setDiffSummaries] = useState<StackDiffSummary[]>([]);
   const [numStacksWithChanges, setNumStacksWithChanges] = useState<number | undefined>();
   const [isDiffLoading, setIsDiffLoading] = useState(false);
+  const [deployNotes, setDeployNotes] = useState<string[]>([]);
   const isDiffRunningRef = useRef(false);
   const [deployOutput, setDeployOutput] = useState<string | null>(null);
   const [deployMessages, setDeployMessages] = useState<DeployMessage[]>([]);
@@ -386,6 +389,11 @@ export function useDeployFlow(options: DeployFlowOptions = {}): DeployFlowState 
               });
               if (tsResult.error) {
                 logger.log(`Transaction search setup warning: ${tsResult.error}`, 'warn');
+              } else {
+                setDeployNotes(prev => [
+                  ...prev,
+                  'Transaction search enabled. It takes ~10 minutes for transaction search to be fully active and for traces from invocations to be indexed.',
+                ]);
               }
             } catch (error) {
               const message = error instanceof Error ? error.message : 'Unknown error';
@@ -601,6 +609,7 @@ export function useDeployFlow(options: DeployFlowOptions = {}): DeployFlowState 
     deployMessages,
     diffSummaries,
     numStacksWithChanges,
+    deployNotes,
     isDiffLoading,
     requestDiff,
     stackOutputs,

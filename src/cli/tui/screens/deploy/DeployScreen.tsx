@@ -75,6 +75,7 @@ export function DeployScreen({
     deployMessages,
     diffSummaries,
     numStacksWithChanges,
+    deployNotes,
     isDiffLoading,
     requestDiff,
     hasError,
@@ -352,6 +353,16 @@ export function DeployScreen({
       {allSuccess && diffMode && (
         <Box flexDirection="column" marginTop={1}>
           <Text color="green">Diff complete</Text>
+        </Box>
+      )}
+
+      {allSuccess && deployNotes.length > 0 && (
+        <Box flexDirection="column" marginTop={1}>
+          {deployNotes.map((note, i) => (
+            <Text key={i} dimColor>
+              Note: {note}
+            </Text>
+          ))}
         </Box>
       )}
 

@@ -418,11 +418,16 @@ export async function handleDeploy(options: ValidatedDeployOptions): Promise<Dep
 
     // Post-deploy: Enable CloudWatch Transaction Search (non-blocking, silent)
     const nextSteps = agentNames.length > 0 ? [...AGENT_NEXT_STEPS] : [...MEMORY_ONLY_NEXT_STEPS];
+    const notes: string[] = [];
     if (agentNames.length > 0) {
       try {
         const tsResult = await setupTransactionSearch({ region: target.region, accountId: target.account, agentNames });
         if (tsResult.error) {
           logger.log(`Transaction search setup warning: ${tsResult.error}`, 'warn');
+        } else {
+          notes.push(
+            'Transaction search enabled. It takes ~10 minutes for transaction search to be fully active and for traces from invocations to be indexed.'
+          );
         }
       } catch (err: unknown) {
         logger.log(`Transaction search setup failed: ${getErrorMessage(err)}`, 'warn');
@@ -438,6 +443,7 @@ export async function handleDeploy(options: ValidatedDeployOptions): Promise<Dep
       outputs,
       logPath: logger.getRelativeLogPath(),
       nextSteps,
+      notes,
     };
   } catch (err: unknown) {
     logger.log(getErrorMessage(err), 'error');
