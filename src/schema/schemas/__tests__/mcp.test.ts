@@ -367,6 +367,44 @@ describe('AgentCoreGatewaySchema', () => {
     });
     expect(result.success).toBe(false);
   });
+
+  it('defaults enableSemanticSearch to true when omitted', () => {
+    const result = AgentCoreGatewaySchema.safeParse(validGateway);
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.enableSemanticSearch).toBe(true);
+    }
+  });
+
+  it('accepts explicit enableSemanticSearch true', () => {
+    const result = AgentCoreGatewaySchema.safeParse({
+      ...validGateway,
+      enableSemanticSearch: true,
+    });
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.enableSemanticSearch).toBe(true);
+    }
+  });
+
+  it('accepts explicit enableSemanticSearch false', () => {
+    const result = AgentCoreGatewaySchema.safeParse({
+      ...validGateway,
+      enableSemanticSearch: false,
+    });
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.enableSemanticSearch).toBe(false);
+    }
+  });
+
+  it('rejects non-boolean enableSemanticSearch', () => {
+    const result = AgentCoreGatewaySchema.safeParse({
+      ...validGateway,
+      enableSemanticSearch: 'yes',
+    });
+    expect(result.success).toBe(false);
+  });
 });
 
 describe('AgentCoreMcpRuntimeToolSchema', () => {
