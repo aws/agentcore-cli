@@ -10,6 +10,7 @@ import { useAddAgent } from '../agent/useAddAgent';
 import { AddIdentityFlow } from '../identity';
 import { AddGatewayFlow, AddGatewayTargetFlow } from '../mcp';
 import { AddMemoryFlow } from '../memory/AddMemoryFlow';
+import { AddPolicyFlow } from '../policy';
 import type { AddResourceType } from './AddScreen';
 import { AddScreen } from './AddScreen';
 import { AddSuccessScreen } from './AddSuccessScreen';
@@ -24,6 +25,7 @@ type FlowState =
   | { name: 'tool-wizard' }
   | { name: 'memory-wizard' }
   | { name: 'identity-wizard' }
+  | { name: 'policy-wizard' }
   | {
       name: 'agent-create-success';
       agentName: string;
@@ -177,6 +179,9 @@ export function AddFlow(props: AddFlowProps) {
         break;
       case 'identity':
         setFlow({ name: 'identity-wizard' });
+        break;
+      case 'policy':
+        setFlow({ name: 'policy-wizard' });
         break;
     }
   }, []);
@@ -363,6 +368,19 @@ export function AddFlow(props: AddFlowProps) {
   if (flow.name === 'identity-wizard') {
     return (
       <AddIdentityFlow
+        isInteractive={props.isInteractive}
+        onExit={props.onExit}
+        onBack={() => setFlow({ name: 'select' })}
+        onDev={props.onDev}
+        onDeploy={props.onDeploy}
+      />
+    );
+  }
+
+  // Policy wizard - picker for policy engine vs policy, then wizard
+  if (flow.name === 'policy-wizard') {
+    return (
+      <AddPolicyFlow
         isInteractive={props.isInteractive}
         onExit={props.onExit}
         onBack={() => setFlow({ name: 'select' })}

@@ -29,6 +29,7 @@ async function handleRemoveAll(_options: RemoveAllOptions): Promise<RemoveResult
       agents: [],
       memories: [],
       credentials: [],
+      policyEngines: [],
     });
 
     // Reset mcp.json gateways if it exists

@@ -1,4 +1,4 @@
-export type ResourceType = 'agent' | 'gateway' | 'gateway-target' | 'memory' | 'identity';
+export type ResourceType = 'agent' | 'gateway' | 'gateway-target' | 'memory' | 'identity' | 'policy-engine' | 'policy';
 
 export interface RemoveOptions {
   resourceType: ResourceType;

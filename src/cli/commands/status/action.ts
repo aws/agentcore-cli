@@ -14,7 +14,7 @@ import type { ResourceDeploymentState } from './constants';
 export type { ResourceDeploymentState };
 
 export interface ResourceStatusEntry {
-  resourceType: 'agent' | 'memory' | 'credential' | 'gateway';
+  resourceType: 'agent' | 'memory' | 'credential' | 'gateway' | 'policy-engine' | 'policy';
   name: string;
   deploymentState: ResourceDeploymentState;
   identifier?: string;
@@ -75,18 +75,21 @@ function diffResourceSet<TLocal extends { name: string }, TDeployed>({
   deployedRecord,
   getIdentifier,
   getLocalDetail,
+  getDeployedKey,
 }: {
   resourceType: ResourceStatusEntry['resourceType'];
   localItems: TLocal[];
   deployedRecord: Record<string, TDeployed>;
   getIdentifier: (deployed: TDeployed) => string | undefined;
   getLocalDetail?: (item: TLocal) => string | undefined;
+  getDeployedKey?: (item: TLocal) => string;
 }): ResourceStatusEntry[] {
   const entries: ResourceStatusEntry[] = [];
-  const localNames = new Set(localItems.map(item => item.name));
+  const localKeys = new Set(localItems.map(item => getDeployedKey ? getDeployedKey(item) : item.name));
 
   for (const item of localItems) {
-    const deployed = deployedRecord[item.name];
+    const key = getDeployedKey ? getDeployedKey(item) : item.name;
+    const deployed = deployedRecord[key];
     entries.push({
       resourceType,
       name: item.name,
@@ -97,7 +100,7 @@ function diffResourceSet<TLocal extends { name: string }, TDeployed>({
   }
 
   for (const [name, deployed] of Object.entries(deployedRecord)) {
-    if (!localNames.has(name)) {
+    if (!localKeys.has(name)) {
       entries.push({
         resourceType,
         name,
@@ -152,7 +155,35 @@ export function computeResourceStatuses(
     },
   });
 
-  return [...agents, ...credentials, ...memories, ...gateways];
+  const policyEngines = diffResourceSet({
+    resourceType: 'policy-engine',
+    localItems: project.policyEngines ?? [],
+    deployedRecord: resources?.policyEngines ?? {},
+    getIdentifier: deployed => deployed.policyEngineArn,
+    getLocalDetail: item => {
+      const count = item.policies?.length ?? 0;
+      return count > 0 ? `${count} polic${count !== 1 ? 'ies' : 'y'}` : undefined;
+    },
+  });
+
+  // Flatten all policies across all engines into a single list for diffing
+  const localPolicies: { name: string; engineName: string }[] = [];
+  for (const engine of project.policyEngines ?? []) {
+    for (const policy of engine.policies) {
+      localPolicies.push({ name: policy.name, engineName: engine.name });
+    }
+  }
+
+  const policies = diffResourceSet({
+    resourceType: 'policy',
+    localItems: localPolicies,
+    deployedRecord: resources?.policies ?? {},
+    getIdentifier: deployed => deployed.policyArn,
+    getLocalDetail: item => item.engineName,
+    getDeployedKey: item => `${item.engineName}/${item.name}`,
+  });
+
+  return [...agents, ...credentials, ...memories, ...gateways, ...policyEngines, ...policies];
 }
 
 export async function handleProjectStatus(

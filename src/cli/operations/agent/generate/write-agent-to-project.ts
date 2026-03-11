@@ -67,6 +67,7 @@ export async function writeAgentToProject(config: GenerateConfig, options?: Writ
       agents: [agent],
       memories,
       credentials,
+      policyEngines: [],
     };
 
     await configIO.writeProjectSpec(project);

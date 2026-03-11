@@ -9,12 +9,16 @@
 import { isReservedProjectName } from '../constants';
 import { AgentEnvSpecSchema } from './agent-env';
 import { DEFAULT_STRATEGY_NAMESPACES, MemoryStrategySchema, MemoryStrategyTypeSchema } from './primitives/memory';
+import { PolicyEngineSchema } from './primitives/policy';
 import { uniqueBy } from './zod-util';
 import { z } from 'zod';
 
 // Re-export for convenience
 export { DEFAULT_STRATEGY_NAMESPACES, MemoryStrategySchema, MemoryStrategyTypeSchema };
 export type { MemoryStrategy, MemoryStrategyType } from './primitives/memory';
+export { PolicyEngineSchema };
+export type { Policy, PolicyEngine, ValidationMode } from './primitives/policy';
+export { PolicyEngineNameSchema, PolicyNameSchema, PolicySchema, ValidationModeSchema } from './primitives/policy';
 
 // ============================================================================
 // Project Name Schema
@@ -146,6 +150,16 @@ export const AgentCoreProjectSpecSchema = z.object({
       uniqueBy(
         credential => credential.name,
         name => `Duplicate credential name: ${name}`
+      )
+    ),
+
+  policyEngines: z
+    .array(PolicyEngineSchema)
+    .default([])
+    .superRefine(
+      uniqueBy(
+        engine => engine.name,
+        name => `Duplicate policy engine name: ${name}`
       )
     ),
 });

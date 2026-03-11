@@ -108,6 +108,29 @@ export const ExternallyManagedStateSchema = z.object({
 export type ExternallyManagedState = z.infer<typeof ExternallyManagedStateSchema>;
 
 // ============================================================================
+// Policy Engine Deployed State
+// ============================================================================
+
+export const PolicyEngineDeployedStateSchema = z.object({
+  policyEngineId: z.string().min(1),
+  policyEngineArn: z.string().min(1),
+});
+
+export type PolicyEngineDeployedState = z.infer<typeof PolicyEngineDeployedStateSchema>;
+
+// ============================================================================
+// Policy Deployed State
+// ============================================================================
+
+export const PolicyDeployedStateSchema = z.object({
+  policyId: z.string().min(1),
+  policyArn: z.string().min(1),
+  engineName: z.string().min(1),
+});
+
+export type PolicyDeployedState = z.infer<typeof PolicyDeployedStateSchema>;
+
+// ============================================================================
 // Credential Deployed State
 // ============================================================================
 
@@ -129,6 +152,8 @@ export const DeployedResourceStateSchema = z.object({
   mcp: McpDeployedStateSchema.optional(),
   externallyManaged: ExternallyManagedStateSchema.optional(),
   credentials: z.record(z.string(), CredentialDeployedStateSchema).optional(),
+  policyEngines: z.record(z.string(), PolicyEngineDeployedStateSchema).optional(),
+  policies: z.record(z.string(), PolicyDeployedStateSchema).optional(),
   stackName: z.string().optional(),
   identityKmsKeyArn: z.string().optional(),
 });

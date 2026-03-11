@@ -49,6 +49,7 @@ describe('requiresUv', () => {
       ],
       memories: [],
       credentials: [],
+      policyEngines: [],
     };
     expect(requiresUv(project)).toBe(true);
   });
@@ -70,6 +71,7 @@ describe('requiresUv', () => {
       ],
       memories: [],
       credentials: [],
+      policyEngines: [],
     };
     expect(requiresUv(project)).toBe(false);
   });
@@ -81,6 +83,7 @@ describe('requiresUv', () => {
       agents: [],
       memories: [],
       credentials: [],
+      policyEngines: [],
     };
     expect(requiresUv(project)).toBe(false);
   });
@@ -104,6 +107,7 @@ describe('requiresContainerRuntime', () => {
       ],
       memories: [],
       credentials: [],
+      policyEngines: [],
     };
     expect(requiresContainerRuntime(project)).toBe(true);
   });
@@ -125,6 +129,7 @@ describe('requiresContainerRuntime', () => {
       ],
       memories: [],
       credentials: [],
+      policyEngines: [],
     };
     expect(requiresContainerRuntime(project)).toBe(false);
   });
@@ -136,6 +141,7 @@ describe('requiresContainerRuntime', () => {
       agents: [],
       memories: [],
       credentials: [],
+      policyEngines: [],
     };
     expect(requiresContainerRuntime(project)).toBe(false);
   });
@@ -166,6 +172,7 @@ describe('requiresContainerRuntime', () => {
       ],
       memories: [],
       credentials: [],
+      policyEngines: [],
     };
     expect(requiresContainerRuntime(project)).toBe(true);
   });
@@ -228,6 +235,7 @@ describe('checkDependencyVersions', () => {
       agents: [],
       memories: [],
       credentials: [],
+      policyEngines: [],
     };
 
     const result = await checkDependencyVersions(project);
@@ -243,6 +251,7 @@ describe('checkDependencyVersions', () => {
       agents: [],
       memories: [],
       credentials: [],
+      policyEngines: [],
     };
 
     const result = await checkDependencyVersions(project);
@@ -267,6 +276,7 @@ describe('checkDependencyVersions', () => {
       ],
       memories: [],
       credentials: [],
+      policyEngines: [],
     };
 
     const result = await checkDependencyVersions(project);

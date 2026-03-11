@@ -92,7 +92,9 @@ export async function validateProject(): Promise<PreflightContext> {
     // No mcp.json or invalid — no gateways
   }
 
-  if (!hasAgents && !hasGateways && !hasMemories) {
+  const hasPolicyEngines = projectSpec.policyEngines && projectSpec.policyEngines.length > 0;
+
+  if (!hasAgents && !hasGateways && !hasMemories && !hasPolicyEngines) {
     let hasExistingStack = false;
     try {
       const deployedState = await configIO.readDeployedState();

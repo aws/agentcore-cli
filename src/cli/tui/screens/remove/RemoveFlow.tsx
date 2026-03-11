@@ -57,7 +57,7 @@ interface RemoveFlowProps {
   /** Force mode - skip confirmation */
   force?: boolean;
   /** Initial resource type to start at (for CLI subcommands) */
-  initialResourceType?: 'agent' | 'gateway' | 'gateway-target' | 'memory' | 'identity';
+  initialResourceType?: 'agent' | 'gateway' | 'gateway-target' | 'memory' | 'identity' | 'policy-engine' | 'policy';
   /** Initial resource name to auto-select (for CLI --name flag) */
   initialResourceName?: string;
 }

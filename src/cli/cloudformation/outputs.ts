@@ -1,4 +1,11 @@
-import type { AgentCoreDeployedState, DeployedState, MemoryDeployedState, TargetDeployedState } from '../../schema';
+import type {
+  AgentCoreDeployedState,
+  DeployedState,
+  MemoryDeployedState,
+  PolicyDeployedState,
+  PolicyEngineDeployedState,
+  TargetDeployedState,
+} from '../../schema';
 import { getCredentialProvider } from '../aws';
 import { toPascalId } from './logical-ids';
 import { getStackName } from './stack-discovery';
@@ -45,8 +52,8 @@ export function parseGatewayOutputs(
   const gatewayNames = Object.keys(gatewaySpecs);
   const gatewayIdMap = new Map(gatewayNames.map(name => [toPascalId(name), name]));
 
-  // Match patterns: Gateway{Name}{Type}Output
-  const outputPattern = /^Gateway(.+?)(Id|Arn|Url)Output/;
+  // Match patterns: Gateway{Name}{Type}Output or McpGateway{Name}{Type}Output
+  const outputPattern = /^(?:Mcp)?Gateway(.+?)(Id|Arn|Url)Output/;
 
   for (const [key, value] of Object.entries(outputs)) {
     const match = outputPattern.exec(key);
@@ -202,6 +209,71 @@ export function parseMemoryOutputs(outputs: StackOutputs, memoryNames: string[])
   return memories;
 }
 
+/**
+ * Parse stack outputs into deployed state for policy engines.
+ *
+ * Output key pattern: ApplicationPolicyEngine{PascalName}(Id|Arn)Output{Hash}
+ */
+export function parsePolicyEngineOutputs(
+  outputs: StackOutputs,
+  engineNames: string[]
+): Record<string, PolicyEngineDeployedState> {
+  const engines: Record<string, PolicyEngineDeployedState> = {};
+  const outputKeys = Object.keys(outputs);
+
+  for (const engineName of engineNames) {
+    const pascal = toPascalId('PolicyEngine', engineName);
+    const idPrefix = `Application${pascal}IdOutput`;
+    const arnPrefix = `Application${pascal}ArnOutput`;
+
+    const idKey = outputKeys.find(k => k.startsWith(idPrefix));
+    const arnKey = outputKeys.find(k => k.startsWith(arnPrefix));
+
+    if (idKey && arnKey) {
+      engines[engineName] = {
+        policyEngineId: outputs[idKey]!,
+        policyEngineArn: outputs[arnKey]!,
+      };
+    }
+  }
+
+  return engines;
+}
+
+/**
+ * Parse stack outputs into deployed state for policies.
+ *
+ * Output key pattern: ApplicationPolicy{EnginePascal}{PolicyPascal}(Id|Arn)Output{Hash}
+ */
+export function parsePolicyOutputs(
+  outputs: StackOutputs,
+  policySpecs: Array<{ engineName: string; policyName: string }>
+): Record<string, PolicyDeployedState> {
+  const policies: Record<string, PolicyDeployedState> = {};
+  const outputKeys = Object.keys(outputs);
+
+  for (const { engineName, policyName } of policySpecs) {
+    const pascal = toPascalId('Policy', engineName, policyName);
+    const idPrefix = `Application${pascal}IdOutput`;
+    const arnPrefix = `Application${pascal}ArnOutput`;
+
+    const idKey = outputKeys.find(k => k.startsWith(idPrefix));
+    const arnKey = outputKeys.find(k => k.startsWith(arnPrefix));
+
+    if (idKey && arnKey) {
+      // Use engineName/policyName as the key for unique identification
+      const key = `${engineName}/${policyName}`;
+      policies[key] = {
+        policyId: outputs[idKey]!,
+        policyArn: outputs[arnKey]!,
+        engineName,
+      };
+    }
+  }
+
+  return policies;
+}
+
 export interface BuildDeployedStateOptions {
   targetName: string;
   stackName: string;
@@ -211,17 +283,32 @@ export interface BuildDeployedStateOptions {
   identityKmsKeyArn?: string;
   credentials?: Record<string, { credentialProviderArn: string; clientSecretArn?: string; callbackUrl?: string }>;
   memories?: Record<string, MemoryDeployedState>;
+  policyEngines?: Record<string, PolicyEngineDeployedState>;
+  policies?: Record<string, PolicyDeployedState>;
 }
 
 /**
  * Build deployed state from stack outputs.
  */
 export function buildDeployedState(opts: BuildDeployedStateOptions): DeployedState {
-  const { targetName, stackName, agents, gateways, existingState, identityKmsKeyArn, credentials, memories } = opts;
+  const {
+    targetName,
+    stackName,
+    agents,
+    gateways,
+    existingState,
+    identityKmsKeyArn,
+    credentials,
+    memories,
+    policyEngines,
+    policies,
+  } = opts;
   const targetState: TargetDeployedState = {
     resources: {
       agents: Object.keys(agents).length > 0 ? agents : undefined,
       memories: memories && Object.keys(memories).length > 0 ? memories : undefined,
+      policyEngines: policyEngines && Object.keys(policyEngines).length > 0 ? policyEngines : undefined,
+      policies: policies && Object.keys(policies).length > 0 ? policies : undefined,
       stackName,
       identityKmsKeyArn,
     },

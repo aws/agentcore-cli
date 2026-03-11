@@ -1,0 +1,369 @@
+import { findConfigRoot } from '../../lib';
+import type { Policy } from '../../schema';
+import { PolicySchema } from '../../schema';
+import { detectRegion } from '../aws';
+import { getPolicyGeneration, startPolicyGeneration } from '../aws/policy-generation';
+import { getErrorMessage } from '../errors';
+import type { RemovalPreview, RemovalResult, SchemaChange } from '../operations/remove/types';
+import { BasePrimitive } from './BasePrimitive';
+import { SOURCE_CODE_NOTE } from './constants';
+import type { AddResult, AddScreenComponent, RemovableResource } from './types';
+import type { Command } from '@commander-js/extra-typings';
+import { existsSync, readFileSync } from 'fs';
+
+export interface AddPolicyOptions {
+  name: string;
+  engine: string;
+  description?: string;
+  statement?: string;
+  source?: string;
+  generate?: string;
+  gateway?: string;
+  validationMode?: 'FAIL_ON_ANY_FINDINGS' | 'IGNORE_ALL_FINDINGS';
+}
+
+export interface RemovablePolicyResource extends RemovableResource {
+  engineName: string;
+}
+
+export class PolicyPrimitive extends BasePrimitive<AddPolicyOptions, RemovablePolicyResource> {
+  readonly kind = 'policy' as const;
+  readonly label = 'Policy';
+  readonly primitiveSchema = PolicySchema;
+
+  async add(options: AddPolicyOptions): Promise<AddResult<{ policyName: string; engineName: string }>> {
+    try {
+      const project = await this.readProjectSpec();
+
+      const engine = project.policyEngines.find(e => e.name === options.engine);
+      if (!engine) {
+        return { success: false, error: `Policy engine "${options.engine}" not found.` };
+      }
+
+      this.checkDuplicate(engine.policies, options.name, 'Policy');
+
+      let statement = options.statement ?? '';
+
+      if (options.source && !statement) {
+        if (!existsSync(options.source)) {
+          return { success: false, error: `Source file not found: ${options.source}` };
+        }
+        statement = readFileSync(options.source, 'utf-8').trim();
+        if (!statement) {
+          return { success: false, error: `Source file is empty: ${options.source}` };
+        }
+      }
+
+      if (options.generate && !statement) {
+        const deployedState = await this.configIO.readDeployedState();
+        let engineId: string | undefined;
+        let gatewayArn: string | undefined;
+
+        for (const target of Object.values(deployedState.targets)) {
+          if (!engineId) {
+            engineId = target.resources?.policyEngines?.[options.engine]?.policyEngineId;
+          }
+          const gateways = target.resources?.mcp?.gateways;
+          if (gateways) {
+            if (options.gateway) {
+              const gw = gateways[options.gateway];
+              if (gw?.gatewayArn) {
+                gatewayArn = gw.gatewayArn;
+              }
+            } else if (!gatewayArn) {
+              const firstGateway = Object.values(gateways)[0];
+              if (firstGateway?.gatewayArn) {
+                gatewayArn = firstGateway.gatewayArn;
+              }
+            }
+          }
+        }
+
+        if (!engineId) {
+          return { success: false, error: `Policy engine "${options.engine}" is not deployed. Run \`agentcore deploy\` first.` };
+        }
+        if (options.gateway && !gatewayArn) {
+          return { success: false, error: `Gateway "${options.gateway}" not found in deployed state.` };
+        }
+        if (!gatewayArn) {
+          return { success: false, error: 'No deployed gateway found. Policy generation requires a deployed gateway. Use --gateway <name> to specify one.' };
+        }
+
+        const { region } = await detectRegion();
+        const startResult = await startPolicyGeneration({
+          policyEngineId: engineId,
+          description: options.generate,
+          region,
+          resourceArn: gatewayArn,
+        });
+
+        const genResult = await getPolicyGeneration({
+          generationId: startResult.generationId,
+          policyEngineId: engineId,
+          region,
+        });
+
+        statement = genResult.statement;
+      }
+
+      if (!statement) {
+        return { success: false, error: 'Either --statement, --source, or --generate is required.' };
+      }
+
+      const policy: Policy = {
+        name: options.name,
+        ...(options.description && { description: options.description }),
+        statement,
+        ...(options.source && { sourceFile: options.source }),
+        validationMode: options.validationMode ?? 'FAIL_ON_ANY_FINDINGS',
+      };
+
+      engine.policies.push(policy);
+      await this.writeProjectSpec(project);
+
+      return { success: true, policyName: policy.name, engineName: options.engine };
+    } catch (err) {
+      return { success: false, error: getErrorMessage(err) };
+    }
+  }
+
+  async remove(name: string, engineName?: string): Promise<RemovalResult> {
+    try {
+      const project = await this.readProjectSpec();
+
+      for (const engine of project.policyEngines) {
+        if (engineName && engine.name !== engineName) continue;
+
+        const policyIndex = engine.policies.findIndex(p => p.name === name);
+        if (policyIndex !== -1) {
+          engine.policies.splice(policyIndex, 1);
+          await this.writeProjectSpec(project);
+          return { success: true };
+        }
+      }
+
+      return { success: false, error: `Policy "${name}" not found${engineName ? ` in engine "${engineName}"` : ''}.` };
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Unknown error';
+      return { success: false, error: message };
+    }
+  }
+
+  async previewRemove(name: string): Promise<RemovalPreview> {
+    const project = await this.readProjectSpec();
+
+    for (const engine of project.policyEngines) {
+      const policy = engine.policies.find(p => p.name === name);
+      if (policy) {
+        const summary = [`Removing policy: ${name} (from engine ${engine.name})`];
+        const schemaChanges: SchemaChange[] = [];
+
+        const afterSpec = {
+          ...project,
+          policyEngines: project.policyEngines.map(e => {
+            if (e.name !== engine.name) return e;
+            return {
+              ...e,
+              policies: e.policies.filter(p => p.name !== name),
+            };
+          }),
+        };
+        schemaChanges.push({
+          file: 'agentcore/agentcore.json',
+          before: project,
+          after: afterSpec,
+        });
+
+        return { summary, directoriesToDelete: [], schemaChanges };
+      }
+    }
+
+    throw new Error(`Policy "${name}" not found.`);
+  }
+
+  async getRemovable(): Promise<RemovablePolicyResource[]> {
+    try {
+      const project = await this.readProjectSpec();
+      const resources: RemovablePolicyResource[] = [];
+
+      for (const engine of project.policyEngines) {
+        for (const policy of engine.policies) {
+          resources.push({
+            name: policy.name,
+            engineName: engine.name,
+          });
+        }
+      }
+
+      return resources;
+    } catch {
+      return [];
+    }
+  }
+
+  registerCommands(addCmd: Command, removeCmd: Command): void {
+    addCmd
+      .command('policy')
+      .description('Add a policy to a policy engine')
+      .option('--name <name>', 'Policy name [non-interactive]')
+      .option('--engine <engine>', 'Policy engine name [non-interactive]')
+      .option('--description <desc>', 'Policy description [non-interactive]')
+      .option('--source <path>', 'Path to a Cedar policy file [non-interactive]')
+      .option('--statement <cedar>', 'Cedar policy statement [non-interactive]')
+      .option('-g, --generate <prompt>', 'Generate Cedar policy from natural language description [non-interactive]')
+      .option('--gateway <name>', 'Deployed gateway name for policy generation [non-interactive]')
+      .option(
+        '--validation-mode <mode>',
+        'Validation mode: FAIL_ON_ANY_FINDINGS or IGNORE_ALL_FINDINGS [non-interactive]'
+      )
+      .option('--json', 'Output as JSON [non-interactive]')
+      .action(
+        async (cliOptions: {
+          name?: string;
+          engine?: string;
+          description?: string;
+          source?: string;
+          statement?: string;
+          generate?: string;
+          gateway?: string;
+          validationMode?: string;
+          json?: boolean;
+        }) => {
+          try {
+            if (!findConfigRoot()) {
+              console.error('No agentcore project found. Run `agentcore create` first.');
+              process.exit(1);
+            }
+
+            if (cliOptions.name || cliOptions.engine || cliOptions.source || cliOptions.statement || cliOptions.generate || cliOptions.json) {
+              if (!cliOptions.name) {
+                if (cliOptions.json) {
+                  console.log(JSON.stringify({ success: false, error: '--name is required' }));
+                } else {
+                  console.error('--name is required');
+                }
+                process.exit(1);
+              }
+              if (!cliOptions.engine) {
+                if (cliOptions.json) {
+                  console.log(JSON.stringify({ success: false, error: '--engine is required' }));
+                } else {
+                  console.error('--engine is required');
+                }
+                process.exit(1);
+              }
+
+              const result = await this.add({
+                name: cliOptions.name,
+                engine: cliOptions.engine,
+                description: cliOptions.description,
+                source: cliOptions.source,
+                statement: cliOptions.statement,
+                generate: cliOptions.generate,
+                gateway: cliOptions.gateway,
+                validationMode: cliOptions.validationMode as AddPolicyOptions['validationMode'],
+              });
+
+              if (cliOptions.json) {
+                console.log(JSON.stringify(result));
+              } else if (result.success) {
+                console.log(`Added policy '${result.policyName}' to engine '${result.engineName}'`);
+              } else {
+                console.error(result.error);
+              }
+              process.exit(result.success ? 0 : 1);
+            } else {
+              const [{ render }, { default: React }, { AddFlow }] = await Promise.all([
+                import('ink'),
+                import('react'),
+                import('../tui/screens/add/AddFlow'),
+              ]);
+              const { clear, unmount } = render(
+                React.createElement(AddFlow, {
+                  isInteractive: false,
+                  onExit: () => {
+                    clear();
+                    unmount();
+                    process.exit(0);
+                  },
+                })
+              );
+            }
+          } catch (error) {
+            if (cliOptions.json) {
+              console.log(JSON.stringify({ success: false, error: getErrorMessage(error) }));
+            } else {
+              console.error(`Error: ${getErrorMessage(error)}`);
+            }
+            process.exit(1);
+          }
+        }
+      );
+
+    removeCmd
+      .command('policy')
+      .description('Remove a policy from a policy engine')
+      .option('--name <name>', 'Name of policy to remove [non-interactive]')
+      .option('--engine <engine>', 'Policy engine name [non-interactive]')
+      .option('--force', 'Skip confirmation prompt [non-interactive]')
+      .option('--json', 'Output as JSON [non-interactive]')
+      .action(async (cliOptions: { name?: string; engine?: string; force?: boolean; json?: boolean }) => {
+        try {
+          if (!findConfigRoot()) {
+            console.error('No agentcore project found. Run `agentcore create` first.');
+            process.exit(1);
+          }
+
+          if (cliOptions.name || cliOptions.force || cliOptions.json) {
+            if (!cliOptions.name) {
+              console.log(JSON.stringify({ success: false, error: '--name is required' }));
+              process.exit(1);
+            }
+
+            const result = await this.remove(cliOptions.name, cliOptions.engine);
+            console.log(
+              JSON.stringify({
+                success: result.success,
+                resourceType: this.kind,
+                resourceName: cliOptions.name,
+                message: result.success ? `Removed policy '${cliOptions.name}'` : undefined,
+                note: result.success ? SOURCE_CODE_NOTE : undefined,
+                error: !result.success ? result.error : undefined,
+              })
+            );
+            process.exit(result.success ? 0 : 1);
+          } else {
+            const [{ render }, { default: React }, { RemoveFlow }] = await Promise.all([
+              import('ink'),
+              import('react'),
+              import('../tui/screens/remove'),
+            ]);
+            const { clear, unmount } = render(
+              React.createElement(RemoveFlow, {
+                isInteractive: false,
+                force: cliOptions.force,
+                initialResourceType: this.kind,
+                initialResourceName: cliOptions.name,
+                onExit: () => {
+                  clear();
+                  unmount();
+                  process.exit(0);
+                },
+              })
+            );
+          }
+        } catch (error) {
+          if (cliOptions.json) {
+            console.log(JSON.stringify({ success: false, error: getErrorMessage(error) }));
+          } else {
+            console.error(`Error: ${getErrorMessage(error)}`);
+          }
+          process.exit(1);
+        }
+      });
+  }
+
+  addScreen(): AddScreenComponent {
+    return null;
+  }
+}

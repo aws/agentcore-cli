@@ -34,6 +34,7 @@ function createDefaultProjectSpec(projectName: string): AgentCoreProjectSpec {
     agents: [],
     memories: [],
     credentials: [],
+    policyEngines: [],
   };
 }
 

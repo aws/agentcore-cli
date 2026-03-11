@@ -7,6 +7,8 @@ import {
   NoProjectError,
   findConfigRoot,
 } from '../../../lib';
+import { existsSync } from 'fs';
+import { dirname, resolve } from 'path';
 
 export interface ValidateOptions {
   directory?: string;
@@ -56,6 +58,27 @@ export async function handleValidate(options: ValidateOptions): Promise<Validate
     } catch (err) {
       return { success: false, error: formatError(err, '.cli/state.json') };
     }
+  }
+
+  // Cross-validate policy source files
+  try {
+    const project = await configIO.readProjectSpec();
+    const projectRoot = dirname(configRoot);
+    for (const engine of project.policyEngines ?? []) {
+      for (const policy of engine.policies) {
+        if (policy.sourceFile) {
+          const resolvedPath = resolve(projectRoot, policy.sourceFile);
+          if (!existsSync(resolvedPath)) {
+            return {
+              success: false,
+              error: `Policy "${policy.name}" in engine "${engine.name}" references source file "${policy.sourceFile}" which does not exist.`,
+            };
+          }
+        }
+      }
+    }
+  } catch {
+    // Project spec already validated above, so this shouldn't fail
   }
 
   return { success: true };

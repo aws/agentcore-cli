@@ -8,6 +8,8 @@ import {
   parseAgentOutputs,
   parseGatewayOutputs,
   parseMemoryOutputs,
+  parsePolicyEngineOutputs,
+  parsePolicyOutputs,
 } from '../../cloudformation';
 import { getErrorMessage } from '../../errors';
 import { ExecLogger } from '../../logging';
@@ -374,6 +376,17 @@ export async function handleDeploy(options: ValidatedDeployOptions): Promise<Dep
       );
     }
 
+    // Parse policy engine outputs
+    const policyEngineSpecs = context.projectSpec.policyEngines ?? [];
+    const policyEngineNames = policyEngineSpecs.map(pe => pe.name);
+    const policyEngines = parsePolicyEngineOutputs(outputs, policyEngineNames);
+
+    // Parse policy outputs
+    const policySpecs = policyEngineSpecs.flatMap(pe =>
+      pe.policies.map(p => ({ engineName: pe.name, policyName: p.name }))
+    );
+    const policies = parsePolicyOutputs(outputs, policySpecs);
+
     // Parse gateway outputs
     const gatewaySpecs =
       mcpSpec?.agentCoreGateways?.reduce(
@@ -395,6 +408,8 @@ export async function handleDeploy(options: ValidatedDeployOptions): Promise<Dep
       identityKmsKeyArn,
       credentials: deployedCredentials,
       memories,
+      policyEngines,
+      policies,
     });
     await configIO.writeDeployedState(deployedState);
 
