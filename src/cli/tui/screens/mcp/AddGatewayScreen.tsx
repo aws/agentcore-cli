@@ -27,6 +27,8 @@ interface AddGatewayScreenProps {
   unassignedTargets: string[];
 }
 
+const INITIAL_ADVANCED_SELECTED = [SEMANTIC_SEARCH_ITEM_ID];
+
 export function AddGatewayScreen({ onComplete, onExit, existingGateways, unassignedTargets }: AddGatewayScreenProps) {
   const wizard = useAddGatewayWizard(unassignedTargets.length);
 
@@ -79,7 +81,7 @@ export function AddGatewayScreen({ onComplete, onExit, existingGateways, unassig
   const advancedNav = useMultiSelectNavigation({
     items: advancedConfigItems,
     getId: item => item.id,
-    initialSelectedIds: [SEMANTIC_SEARCH_ITEM_ID],
+    initialSelectedIds: INITIAL_ADVANCED_SELECTED,
     onConfirm: selectedIds =>
       wizard.setAdvancedConfig({ enableSemanticSearch: selectedIds.includes(SEMANTIC_SEARCH_ITEM_ID) }),
     onExit: () => wizard.goBack(),

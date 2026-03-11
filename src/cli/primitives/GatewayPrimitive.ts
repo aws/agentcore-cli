@@ -26,7 +26,7 @@ export interface AddGatewayOptions {
   agentClientId?: string;
   agentClientSecret?: string;
   agents?: string;
-  noSemanticSearch?: boolean;
+  enableSemanticSearch?: boolean;
 }
 
 /**
@@ -188,7 +188,7 @@ export class GatewayPrimitive extends BasePrimitive<AddGatewayOptions, Removable
             agentClientId: cliOptions.agentClientId,
             agentClientSecret: cliOptions.agentClientSecret,
             agents: cliOptions.agents,
-            noSemanticSearch: cliOptions.semanticSearch === false,
+            enableSemanticSearch: cliOptions.semanticSearch !== false,
           });
 
           if (cliOptions.json) {
@@ -285,7 +285,7 @@ export class GatewayPrimitive extends BasePrimitive<AddGatewayOptions, Removable
       description: options.description ?? `Gateway for ${options.name}`,
       authorizerType: options.authorizerType,
       jwtConfig: undefined,
-      enableSemanticSearch: !options.noSemanticSearch,
+      enableSemanticSearch: options.enableSemanticSearch ?? true,
     };
 
     if (options.authorizerType === 'CUSTOM_JWT' && options.discoveryUrl) {
