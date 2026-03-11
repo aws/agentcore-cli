@@ -5,6 +5,8 @@ export interface SelectableItem {
   title: string;
   description?: string;
   disabled?: boolean;
+  /** Add a blank line before this item */
+  spaceBefore?: boolean;
 }
 
 export function SelectList<T extends SelectableItem>(props: {
@@ -28,8 +30,8 @@ export function SelectList<T extends SelectableItem>(props: {
         const selected = idx === props.selectedIndex;
         const disabled = item.disabled ?? false;
         return (
-          <Box key={item.id}>
-            <Text wrap="wrap">
+          <Box key={item.id} marginTop={item.spaceBefore ? 1 : 0}>
+            <Text wrap="truncate">
               <Text color={selected && !disabled ? 'cyan' : undefined} dimColor={disabled}>
                 {selected ? '❯' : ' '}{' '}
               </Text>

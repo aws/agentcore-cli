@@ -32,6 +32,7 @@ function createDefaultProjectSpec(projectName: string): AgentCoreProjectSpec {
     credentials: [],
     evaluators: [],
     onlineEvalConfigs: [],
+    policyEngines: [],
   };
 }
 

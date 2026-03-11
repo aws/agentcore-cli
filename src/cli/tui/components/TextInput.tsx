@@ -22,6 +22,8 @@ interface TextInputProps {
   mask?: string;
   /** Hide the built-in "> " prompt arrow (default false) */
   hideArrow?: boolean;
+  /** Allow text to wrap across multiple lines instead of truncating (default false) */
+  expandable?: boolean;
   /** Called when up arrow is pressed */
   onUpArrow?: () => void;
   /** Called when down arrow is pressed */
@@ -59,6 +61,7 @@ export function TextInput({
   allowEmpty = false,
   mask,
   hideArrow = false,
+  expandable = false,
   onUpArrow,
   onDownArrow,
 }: TextInputProps) {
@@ -91,14 +94,37 @@ export function TextInput({
   const showCheckmark = hasInput && isValid && hasValidation;
   const showInvalidMark = hasInput && !isValid && hasValidation;
 
+  // Get display value (masked or plain)
+  const displayValue = mask ? mask.repeat(value.length) : value;
+
+  // Simple split for cursor positioning (used by both modes)
+  const beforeCursorFull = displayValue.slice(0, cursor);
+  const charAtCursorFull = displayValue[cursor] ?? ' ';
+  const afterCursorFull = displayValue.slice(cursor + 1);
+
+  if (expandable) {
+    return (
+      <Box flexDirection="column">
+        {prompt && <Text>{prompt}</Text>}
+        <Text wrap="wrap">
+          {!hideArrow && <Text color="cyan">&gt; </Text>}
+          <Text>{beforeCursorFull}</Text>
+          <Cursor char={charAtCursorFull} />
+          <Text>{afterCursorFull}</Text>
+          {!value && placeholder && <Text dimColor>{placeholder.slice(1)}</Text>}
+          {showCheckmark && <Text color="green"> ✓</Text>}
+          {showInvalidMark && <Text color="red"> ✗</Text>}
+        </Text>
+        {(showError || showInvalidMark) && validationErrorMsg && <Text color="red">{validationErrorMsg}</Text>}
+      </Box>
+    );
+  }
+
   // Calculate available width for text display
   // Account for: arrow (2 chars), cursor (1 char), checkmark/x (2 chars), padding (2 chars)
   const terminalWidth = stdout?.columns ?? 80;
   const reservedChars = (hideArrow ? 0 : 2) + 1 + 2 + 2;
   const maxDisplayWidth = Math.max(20, terminalWidth - reservedChars);
-
-  // Get display value (masked or plain)
-  const displayValue = mask ? mask.repeat(value.length) : value;
 
   // Calculate windowed view if text is too long
   let beforeCursor: string;
@@ -109,9 +135,9 @@ export function TextInput({
 
   if (displayValue.length <= maxDisplayWidth) {
     // Text fits - show everything
-    beforeCursor = displayValue.slice(0, cursor);
-    charAtCursor = displayValue[cursor] ?? ' ';
-    afterCursor = displayValue.slice(cursor + 1);
+    beforeCursor = beforeCursorFull;
+    charAtCursor = charAtCursorFull;
+    afterCursor = afterCursorFull;
   } else {
     // Text too long - create a window around cursor
     const windowSize = maxDisplayWidth - 2; // Reserve space for ellipsis indicators

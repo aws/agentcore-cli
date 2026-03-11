@@ -6,6 +6,8 @@ import { GatewayPrimitive } from './GatewayPrimitive';
 import { GatewayTargetPrimitive } from './GatewayTargetPrimitive';
 import { MemoryPrimitive } from './MemoryPrimitive';
 import { OnlineEvalConfigPrimitive } from './OnlineEvalConfigPrimitive';
+import { PolicyEnginePrimitive } from './PolicyEnginePrimitive';
+import { PolicyPrimitive } from './PolicyPrimitive';
 import type { RemovableResource } from './types';
 
 /**
@@ -18,6 +20,8 @@ export const evaluatorPrimitive = new EvaluatorPrimitive();
 export const onlineEvalConfigPrimitive = new OnlineEvalConfigPrimitive();
 export const gatewayPrimitive = new GatewayPrimitive();
 export const gatewayTargetPrimitive = new GatewayTargetPrimitive();
+export const policyEnginePrimitive = new PolicyEnginePrimitive();
+export const policyPrimitive = new PolicyPrimitive();
 
 /**
  * All primitives in display order.
@@ -30,6 +34,8 @@ export const ALL_PRIMITIVES: BasePrimitive<unknown, RemovableResource>[] = [
   onlineEvalConfigPrimitive,
   gatewayPrimitive,
   gatewayTargetPrimitive,
+  policyEnginePrimitive,
+  policyPrimitive,
 ];
 
 /**
