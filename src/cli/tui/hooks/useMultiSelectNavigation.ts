@@ -16,6 +16,8 @@ interface UseMultiSelectNavigationOptions<T> {
   textInputActive?: boolean;
   /** Whether to require at least one selection before confirm (default: false) */
   requireSelection?: boolean;
+  /** Initial set of selected item IDs (default: empty set) */
+  initialSelectedIds?: string[];
 }
 
 interface UseMultiSelectNavigationResult {
@@ -56,9 +58,10 @@ export function useMultiSelectNavigation<T>({
   isActive = true,
   textInputActive = false,
   requireSelection = false,
+  initialSelectedIds,
 }: UseMultiSelectNavigationOptions<T>): UseMultiSelectNavigationResult {
   const [cursorIndex, setCursorIndex] = useState(0);
-  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(() => new Set(initialSelectedIds ?? []));
 
   const toggleSelection = useCallback(() => {
     const item = items[cursorIndex];
@@ -77,8 +80,8 @@ export function useMultiSelectNavigation<T>({
 
   const reset = useCallback(() => {
     setCursorIndex(0);
-    setSelectedIds(new Set());
-  }, []);
+    setSelectedIds(new Set(initialSelectedIds ?? []));
+  }, [initialSelectedIds]);
 
   useInput(
     (input, key) => {

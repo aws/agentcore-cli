@@ -603,6 +603,8 @@ export const AgentCoreGatewaySchema = z
     authorizerType: GatewayAuthorizerTypeSchema.default('NONE'),
     /** Authorizer configuration. Required when authorizerType is 'CUSTOM_JWT'. */
     authorizerConfiguration: GatewayAuthorizerConfigSchema.optional(),
+    /** Whether to enable semantic search for tool discovery. Defaults to true. */
+    enableSemanticSearch: z.boolean().default(true),
   })
   .strict()
   .refine(

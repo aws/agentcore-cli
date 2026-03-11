@@ -1,7 +1,7 @@
 import { useMultiSelectNavigation } from '../useMultiSelectNavigation.js';
 import { Text } from 'ink';
 import { render } from 'ink-testing-library';
-import React from 'react';
+import React, { useImperativeHandle } from 'react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 const UP_ARROW = '\x1B[A';
@@ -34,6 +34,7 @@ function Harness({
   isActive,
   textInputActive,
   requireSelection,
+  initialSelectedIds,
 }: {
   testItems?: Item[];
   onConfirm?: (ids: string[]) => void;
@@ -41,6 +42,7 @@ function Harness({
   isActive?: boolean;
   textInputActive?: boolean;
   requireSelection?: boolean;
+  initialSelectedIds?: string[];
 }) {
   const { cursorIndex, selectedIds } = useMultiSelectNavigation({
     items: testItems,
@@ -50,6 +52,7 @@ function Harness({
     isActive,
     textInputActive,
     requireSelection,
+    initialSelectedIds,
   });
   return (
     <Text>
@@ -57,6 +60,27 @@ function Harness({
     </Text>
   );
 }
+
+interface ResetHarnessHandle {
+  reset: () => void;
+}
+
+const ResetHarness = React.forwardRef<ResetHarnessHandle, { initialSelectedIds?: string[] }>(
+  ({ initialSelectedIds }, ref) => {
+    const { cursorIndex, selectedIds, reset } = useMultiSelectNavigation({
+      items,
+      getId,
+      initialSelectedIds,
+    });
+    useImperativeHandle(ref, () => ({ reset }));
+    return (
+      <Text>
+        cursor:{cursorIndex} selected:{Array.from(selectedIds).sort().join(',')}
+      </Text>
+    );
+  }
+);
+ResetHarness.displayName = 'ResetHarness';
 
 describe('useMultiSelectNavigation', () => {
   it('starts with cursorIndex=0 and empty selectedIds', () => {
@@ -216,5 +240,44 @@ describe('useMultiSelectNavigation', () => {
     stdin.write(ESCAPE);
     await delay();
     expect(onExit).not.toHaveBeenCalled();
+  });
+
+  it('initialSelectedIds pre-selects items', () => {
+    const { lastFrame } = render(<Harness initialSelectedIds={['1', '3']} />);
+    expect(lastFrame()).toContain('cursor:0');
+    expect(lastFrame()).toContain('selected:1,3');
+  });
+
+  it('initialSelectedIds items can be toggled off', async () => {
+    const { lastFrame, stdin } = render(<Harness initialSelectedIds={['1']} />);
+    await delay();
+    expect(lastFrame()).toContain('selected:1');
+
+    // Cursor is at 0 (item id '1'), press Space to toggle it off
+    stdin.write(SPACE);
+    await delay();
+    expect(lastFrame()).not.toMatch(/selected:\S/);
+  });
+
+  it('reset restores initialSelectedIds', async () => {
+    const ref = React.createRef<ResetHarnessHandle>();
+    const { lastFrame, stdin } = render(<ResetHarness ref={ref} initialSelectedIds={['2']} />);
+    await delay();
+    expect(lastFrame()).toContain('selected:2');
+
+    // Move cursor to item '2' (index 1) and toggle it off
+    stdin.write(DOWN_ARROW);
+    await delay();
+    stdin.write(SPACE);
+    await delay();
+    expect(lastFrame()).not.toMatch(/selected:\S/);
+
+    // Trigger reset to restore initialSelectedIds
+    React.act(() => {
+      ref.current!.reset();
+    });
+    await delay();
+    expect(lastFrame()).toContain('selected:2');
+    expect(lastFrame()).toContain('cursor:0');
   });
 });

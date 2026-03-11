@@ -23,6 +23,8 @@ interface AgentCoreGateway {
   name: string; // @regex ^([0-9a-zA-Z][-]?){1,100}$ @max 100
   description?: string;
   targets: AgentCoreGatewayTarget[];
+  /** Enable semantic search for tool discovery. @default true */
+  enableSemanticSearch?: boolean; // default true
 }
 
 interface AgentCoreGatewayTarget {

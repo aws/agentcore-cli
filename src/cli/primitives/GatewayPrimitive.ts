@@ -26,6 +26,7 @@ export interface AddGatewayOptions {
   agentClientId?: string;
   agentClientSecret?: string;
   agents?: string;
+  enableSemanticSearch?: boolean;
 }
 
 /**
@@ -156,6 +157,7 @@ export class GatewayPrimitive extends BasePrimitive<AddGatewayOptions, Removable
       .option('--agent-client-id <id>', 'Agent OAuth client ID')
       .option('--agent-client-secret <secret>', 'Agent OAuth client secret')
       .option('--agents <agents>', 'Comma-separated agent names')
+      .option('--no-semantic-search', 'Disable semantic search for tool discovery')
       .option('--json', 'Output as JSON')
       .action(async (rawOptions: Record<string, string | boolean | undefined>) => {
         const cliOptions = rawOptions as unknown as CLIAddGatewayOptions;
@@ -186,6 +188,7 @@ export class GatewayPrimitive extends BasePrimitive<AddGatewayOptions, Removable
             agentClientId: cliOptions.agentClientId,
             agentClientSecret: cliOptions.agentClientSecret,
             agents: cliOptions.agents,
+            enableSemanticSearch: cliOptions.semanticSearch !== false,
           });
 
           if (cliOptions.json) {
@@ -282,6 +285,7 @@ export class GatewayPrimitive extends BasePrimitive<AddGatewayOptions, Removable
       description: options.description ?? `Gateway for ${options.name}`,
       authorizerType: options.authorizerType,
       jwtConfig: undefined,
+      enableSemanticSearch: options.enableSemanticSearch ?? true,
     };
 
     if (options.authorizerType === 'CUSTOM_JWT' && options.discoveryUrl) {
@@ -348,6 +352,7 @@ export class GatewayPrimitive extends BasePrimitive<AddGatewayOptions, Removable
       targets: movedTargets,
       authorizerType: config.authorizerType,
       authorizerConfiguration: this.buildAuthorizerConfiguration(config),
+      enableSemanticSearch: config.enableSemanticSearch,
     };
 
     mcpSpec.agentCoreGateways.push(gateway);

@@ -13,7 +13,7 @@ import { TARGET_TYPE_AUTH_CONFIG } from '../../../../schema';
 // Gateway Flow Types
 // ─────────────────────────────────────────────────────────────────────────────
 
-export type AddGatewayStep = 'name' | 'authorizer' | 'jwt-config' | 'include-targets' | 'confirm';
+export type AddGatewayStep = 'name' | 'authorizer' | 'jwt-config' | 'include-targets' | 'advanced-config' | 'confirm';
 
 export interface AddGatewayConfig {
   name: string;
@@ -31,13 +31,19 @@ export interface AddGatewayConfig {
   };
   /** Selected unassigned targets to include in this gateway */
   selectedTargets?: string[];
+  /** Whether to enable semantic search for tool discovery */
+  enableSemanticSearch: boolean;
 }
+
+/** Item ID for the semantic search toggle in the advanced config pane. */
+export const SEMANTIC_SEARCH_ITEM_ID = 'semantic-search';
 
 export const GATEWAY_STEP_LABELS: Record<AddGatewayStep, string> = {
   name: 'Name',
   authorizer: 'Authorizer',
   'jwt-config': 'JWT Config',
   'include-targets': 'Include Targets',
+  'advanced-config': 'Advanced',
   confirm: 'Confirm',
 };
 

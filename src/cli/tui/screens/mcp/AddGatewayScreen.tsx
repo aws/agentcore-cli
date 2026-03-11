@@ -15,7 +15,7 @@ import { HELP_TEXT } from '../../constants';
 import { useListNavigation, useMultiSelectNavigation } from '../../hooks';
 import { generateUniqueName } from '../../utils';
 import type { AddGatewayConfig } from './types';
-import { AUTHORIZER_TYPE_OPTIONS, GATEWAY_STEP_LABELS } from './types';
+import { AUTHORIZER_TYPE_OPTIONS, GATEWAY_STEP_LABELS, SEMANTIC_SEARCH_ITEM_ID } from './types';
 import { useAddGatewayWizard } from './useAddGatewayWizard';
 import { Box, Text } from 'ink';
 import React, { useMemo, useState } from 'react';
@@ -26,6 +26,8 @@ interface AddGatewayScreenProps {
   existingGateways: string[];
   unassignedTargets: string[];
 }
+
+const INITIAL_ADVANCED_SELECTED = [SEMANTIC_SEARCH_ITEM_ID];
 
 export function AddGatewayScreen({ onComplete, onExit, existingGateways, unassignedTargets }: AddGatewayScreenProps) {
   const wizard = useAddGatewayWizard(unassignedTargets.length);
@@ -48,10 +50,16 @@ export function AddGatewayScreen({ onComplete, onExit, existingGateways, unassig
     []
   );
 
+  const advancedConfigItems: SelectableItem[] = useMemo(
+    () => [{ id: SEMANTIC_SEARCH_ITEM_ID, title: 'Semantic Search' }],
+    []
+  );
+
   const isNameStep = wizard.step === 'name';
   const isAuthorizerStep = wizard.step === 'authorizer';
   const isJwtConfigStep = wizard.step === 'jwt-config';
   const isIncludeTargetsStep = wizard.step === 'include-targets';
+  const isAdvancedConfigStep = wizard.step === 'advanced-config';
   const isConfirmStep = wizard.step === 'confirm';
 
   const authorizerNav = useListNavigation({
@@ -67,6 +75,17 @@ export function AddGatewayScreen({ onComplete, onExit, existingGateways, unassig
     onConfirm: ids => wizard.setSelectedTargets(ids),
     onExit: () => wizard.goBack(),
     isActive: isIncludeTargetsStep,
+    requireSelection: false,
+  });
+
+  const advancedNav = useMultiSelectNavigation({
+    items: advancedConfigItems,
+    getId: item => item.id,
+    initialSelectedIds: INITIAL_ADVANCED_SELECTED,
+    onConfirm: selectedIds =>
+      wizard.setAdvancedConfig({ enableSemanticSearch: selectedIds.includes(SEMANTIC_SEARCH_ITEM_ID) }),
+    onExit: () => wizard.goBack(),
+    isActive: isAdvancedConfigStep,
     requireSelection: false,
   });
 
@@ -136,13 +155,14 @@ export function AddGatewayScreen({ onComplete, onExit, existingGateways, unassig
     }
   };
 
-  const helpText = isIncludeTargetsStep
-    ? 'Space toggle · Enter confirm · Esc back'
-    : isConfirmStep
-      ? HELP_TEXT.CONFIRM_CANCEL
-      : isAuthorizerStep
-        ? HELP_TEXT.NAVIGATE_SELECT
-        : HELP_TEXT.TEXT_INPUT;
+  const helpText =
+    isIncludeTargetsStep || isAdvancedConfigStep
+      ? 'Space toggle · Enter confirm · Esc back'
+      : isConfirmStep
+        ? HELP_TEXT.CONFIRM_CANCEL
+        : isAuthorizerStep
+          ? HELP_TEXT.NAVIGATE_SELECT
+          : HELP_TEXT.TEXT_INPUT;
 
   const headerContent = <StepIndicator steps={wizard.steps} currentStep={wizard.step} labels={GATEWAY_STEP_LABELS} />;
 
@@ -202,6 +222,30 @@ export function AddGatewayScreen({ onComplete, onExit, existingGateways, unassig
             <Text dimColor>No unassigned targets available. Press Enter to continue.</Text>
           ))}
 
+        {isAdvancedConfigStep && (
+          <Box flexDirection="column">
+            <Text bold>Advanced Configuration</Text>
+            <Text dimColor>Toggle options with Space, press Enter to continue</Text>
+            <Box marginTop={1} flexDirection="column">
+              {advancedConfigItems.map((item, idx) => {
+                const isCursor = idx === advancedNav.cursorIndex;
+                const isChecked = advancedNav.selectedIds.has(item.id);
+                const checkbox = isChecked ? '[✓]' : '[ ]';
+                return (
+                  <Box key={item.id}>
+                    <Text wrap="truncate">
+                      <Text color={isCursor ? 'cyan' : undefined}>{isCursor ? '❯' : ' '} </Text>
+                      <Text color={isChecked ? 'green' : undefined}>{checkbox} </Text>
+                      <Text color={isCursor ? 'cyan' : undefined}>{item.title}</Text>
+                    </Text>
+                    <Text dimColor> {isChecked ? 'Enabled' : 'Disabled'}</Text>
+                  </Box>
+                );
+              })}
+            </Box>
+          </Box>
+        )}
+
         {isConfirmStep && (
           <ConfirmReview
             fields={[
@@ -228,6 +272,7 @@ export function AddGatewayScreen({ onComplete, onExit, existingGateways, unassig
                     ? wizard.config.selectedTargets.join(', ')
                     : '(none)',
               },
+              { label: 'Semantic Search', value: wizard.config.enableSemanticSearch ? 'Enabled' : 'Disabled' },
             ]}
           />
         )}
