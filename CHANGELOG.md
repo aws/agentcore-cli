@@ -2,6 +2,25 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.3.0-preview.5.1] - 2026-03-12
+
+### Added
+- feat: add semantic search toggle for gateways (#533) (8d35d7f)
+
+### Fixed
+- fix: default srcDir to project root instead of non-existent src/ subdirectory (#530) (e954287)
+
+### Documentation
+- docs: add transaction search documentation and post-deploy note (#526) (3b6212a)
+
+### Other Changes
+- chore(deps-dev): bump lint-staged from 16.3.2 to 16.3.3 (#539) (5e64ea3)
+- chore(deps): bump the aws-sdk group with 10 updates (#536) (e4a3bbe)
+- chore(deps): bump the aws-cdk group with 2 updates (#537) (1dd60f6)
+- chore(deps-dev): bump the dev-dependencies group with 6 updates (#538) (5bca680)
+- ci: bump the github-actions group with 2 updates (#535) (50bff14)
+- Add daily Slack notification for open PRs (#527) (f0dc82e)
+
 ## [0.3.0-preview.5.0] - 2026-03-09
 
 ### Added
