@@ -4,6 +4,7 @@ All notable changes to this project will be documented in this file.
 
 ## [0.3.0-preview.5.1] - 2026-03-12
 
+
 ### Added
 - feat: add semantic search toggle for gateways (#533) (8d35d7f)
 
