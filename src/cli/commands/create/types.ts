@@ -1,4 +1,6 @@
-export interface CreateOptions {
+import type { VpcOptions } from '../shared/vpc-utils';
+
+export interface CreateOptions extends VpcOptions {
   name?: string;
   agent?: boolean;
   defaults?: boolean;
@@ -8,9 +10,6 @@ export interface CreateOptions {
   modelProvider?: string;
   apiKey?: string;
   memory?: string;
-  networkMode?: string;
-  subnets?: string;
-  securityGroups?: string;
   outputDir?: string;
   skipGit?: boolean;
   skipPythonSetup?: boolean;

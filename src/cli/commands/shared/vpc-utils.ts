@@ -69,6 +69,11 @@ export function validateVpcOptions(options: VpcOptions): VpcValidationResult {
     if (!options.securityGroups) {
       return { valid: false, error: '--security-groups is required when network mode is VPC' };
     }
+
+    const subnetResult = validateSubnetIds(options.subnets);
+    if (subnetResult !== true) return { valid: false, error: subnetResult };
+    const sgResult = validateSecurityGroupIds(options.securityGroups);
+    if (sgResult !== true) return { valid: false, error: sgResult };
   }
 
   if (options.networkMode !== 'VPC' && (options.subnets || options.securityGroups)) {

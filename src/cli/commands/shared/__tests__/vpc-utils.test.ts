@@ -1,4 +1,4 @@
-import { parseCommaSeparatedList, validateSecurityGroupIds, validateSubnetIds } from '../vpc-utils';
+import { parseCommaSeparatedList, validateSecurityGroupIds, validateSubnetIds, validateVpcOptions } from '../vpc-utils';
 import { describe, expect, it } from 'vitest';
 
 describe('parseCommaSeparatedList', () => {
@@ -77,5 +77,36 @@ describe('validateSecurityGroupIds', () => {
     const result = validateSecurityGroupIds('sg-12345678, bad-id');
     expect(result).not.toBe(true);
     expect(result).toContain('Invalid security group ID format');
+  });
+});
+
+describe('validateVpcOptions - format validation', () => {
+  it('rejects VPC mode with invalid subnet format', () => {
+    const result = validateVpcOptions({
+      networkMode: 'VPC',
+      subnets: 'not-a-subnet',
+      securityGroups: 'sg-12345678',
+    });
+    expect(result.valid).toBe(false);
+    expect(result.error).toContain('Invalid subnet ID format');
+  });
+
+  it('rejects VPC mode with invalid security group format', () => {
+    const result = validateVpcOptions({
+      networkMode: 'VPC',
+      subnets: 'subnet-12345678',
+      securityGroups: 'not-a-sg',
+    });
+    expect(result.valid).toBe(false);
+    expect(result.error).toContain('Invalid security group ID format');
+  });
+
+  it('accepts VPC mode with valid subnet and security group formats', () => {
+    const result = validateVpcOptions({
+      networkMode: 'VPC',
+      subnets: 'subnet-12345678, subnet-abcdef12',
+      securityGroups: 'sg-12345678',
+    });
+    expect(result.valid).toBe(true);
   });
 });

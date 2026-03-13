@@ -12,6 +12,7 @@ import type {
 import { AgentEnvSpecSchema, CREDENTIAL_PROVIDERS } from '../../schema';
 import type { AddAgentOptions as CLIAddAgentOptions } from '../commands/add/types';
 import { validateAddAgentOptions } from '../commands/add/validate';
+import type { VpcOptions } from '../commands/shared/vpc-utils';
 import { VPC_ENDPOINT_WARNING, parseCommaSeparatedList } from '../commands/shared/vpc-utils';
 import { getErrorMessage } from '../errors';
 import {
@@ -35,7 +36,7 @@ import { dirname, join } from 'path';
 /**
  * Options for adding an agent resource.
  */
-export interface AddAgentOptions {
+export interface AddAgentOptions extends VpcOptions {
   name: string;
   type: 'create' | 'byo';
   buildType: BuildType;
@@ -44,9 +45,6 @@ export interface AddAgentOptions {
   modelProvider: ModelProvider;
   apiKey?: string;
   memory?: MemoryOption;
-  networkMode?: string;
-  subnets?: string;
-  securityGroups?: string;
   codeLocation?: string;
   entrypoint?: string;
 }
