@@ -11,7 +11,10 @@ import type {
 } from '../../../../schema';
 import { DEFAULT_STRATEGY_NAMESPACES } from '../../../../schema';
 import { GatewayPrimitive } from '../../../primitives/GatewayPrimitive';
-import { computeDefaultCredentialEnvVarName } from '../../../primitives/credential-utils';
+import {
+  computeDefaultCredentialEnvVarName,
+  computeManagedOAuthCredentialName,
+} from '../../../primitives/credential-utils';
 import type {
   AgentRenderConfig,
   GatewayProviderRenderConfig,
@@ -208,7 +211,7 @@ async function mapGatewaysToGatewayProviders(): Promise<GatewayProviderRenderCon
 
       if (gateway.authorizerType === 'CUSTOM_JWT' && gateway.authorizerConfiguration?.customJwtAuthorizer) {
         const jwtConfig = gateway.authorizerConfiguration.customJwtAuthorizer;
-        const credName = `${gateway.name}-agent-oauth`;
+        const credName = computeManagedOAuthCredentialName(gateway.name);
         const credential = project.credentials.find(c => c.name === credName);
 
         if (credential) {

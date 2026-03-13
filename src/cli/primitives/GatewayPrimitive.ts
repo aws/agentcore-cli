@@ -8,7 +8,7 @@ import type { RemovalPreview, RemovalResult, SchemaChange } from '../operations/
 import type { AddGatewayConfig } from '../tui/screens/mcp/types';
 import { BasePrimitive } from './BasePrimitive';
 import { SOURCE_CODE_NOTE } from './constants';
-import { computeDefaultCredentialEnvVarName } from './credential-utils';
+import { computeDefaultCredentialEnvVarName, computeManagedOAuthCredentialName } from './credential-utils';
 import type { AddResult, AddScreenComponent, RemovableResource } from './types';
 import type { Command } from '@commander-js/extra-typings';
 
@@ -379,7 +379,7 @@ export class GatewayPrimitive extends BasePrimitive<AddGatewayOptions, Removable
     gatewayName: string,
     jwtConfig: NonNullable<AddGatewayConfig['jwtConfig']>
   ): Promise<void> {
-    const credentialName = `${gatewayName}-oauth`;
+    const credentialName = computeManagedOAuthCredentialName(gatewayName);
     const project = await this.readProjectSpec();
 
     // Skip if credential already exists

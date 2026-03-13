@@ -6,3 +6,12 @@
 export function computeDefaultCredentialEnvVarName(credentialName: string): string {
   return `AGENTCORE_CREDENTIAL_${credentialName.replace(/-/g, '_').toUpperCase()}`;
 }
+
+/**
+ * Compute the managed OAuth credential name for a gateway.
+ * Used when creating the credential (GatewayPrimitive) and when
+ * looking it up for code generation (schema-mapper).
+ */
+export function computeManagedOAuthCredentialName(gatewayName: string): string {
+  return `${gatewayName}-oauth`;
+}

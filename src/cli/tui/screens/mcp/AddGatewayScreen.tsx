@@ -1,5 +1,6 @@
 import type { GatewayAuthorizerType } from '../../../../schema';
 import { GatewayNameSchema } from '../../../../schema';
+import { computeManagedOAuthCredentialName } from '../../../primitives/credential-utils';
 import {
   ConfirmReview,
   Panel,
@@ -272,7 +273,7 @@ export function AddGatewayScreen({ onComplete, onExit, existingGateways, unassig
                       ? [{ label: 'Allowed Scopes', value: wizard.config.jwtConfig.allowedScopes.join(', ') }]
                       : []),
                     ...(wizard.config.jwtConfig.agentClientId
-                      ? [{ label: 'Agent Credential', value: `${wizard.config.name}-agent-oauth` }]
+                      ? [{ label: 'Agent Credential', value: computeManagedOAuthCredentialName(wizard.config.name) }]
                       : []),
                   ]
                 : []),

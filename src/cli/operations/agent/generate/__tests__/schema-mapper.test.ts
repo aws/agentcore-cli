@@ -1,3 +1,4 @@
+import { computeManagedOAuthCredentialName } from '../../../../primitives/credential-utils.js';
 import { mapByoConfigToAgent } from '../../../../tui/screens/agent/useAddAgent.js';
 import { mapGenerateConfigToAgent } from '../schema-mapper.js';
 import { describe, expect, it } from 'vitest';
@@ -100,5 +101,15 @@ describe('mapByoConfigToAgent - VPC support', () => {
     });
     expect(result.networkMode).toBe('PUBLIC');
     expect(result.networkConfig).toBeUndefined();
+  });
+});
+
+describe('gateway credential provider name mapping', () => {
+  it('computeManagedOAuthCredentialName produces the correct suffix', () => {
+    // Regression test: the managed credential name must use '-oauth' suffix.
+    // GatewayPrimitive creates it, schema-mapper looks it up, AddGatewayScreen displays it.
+    // All three now use computeManagedOAuthCredentialName to stay in sync.
+    expect(computeManagedOAuthCredentialName('my-gateway')).toBe('my-gateway-oauth');
+    expect(computeManagedOAuthCredentialName('test')).toBe('test-oauth');
   });
 });
