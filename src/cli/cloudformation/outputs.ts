@@ -247,7 +247,7 @@ export function parsePolicyEngineOutputs(
  */
 export function parsePolicyOutputs(
   outputs: StackOutputs,
-  policySpecs: Array<{ engineName: string; policyName: string }>
+  policySpecs: { engineName: string; policyName: string }[]
 ): Record<string, PolicyDeployedState> {
   const policies: Record<string, PolicyDeployedState> = {};
   const outputKeys = Object.keys(outputs);

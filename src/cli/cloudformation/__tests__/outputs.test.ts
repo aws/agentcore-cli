@@ -296,8 +296,7 @@ describe('parsePolicyEngineOutputs', () => {
   it('extracts policy engine outputs matching pattern', () => {
     const outputs = {
       ApplicationPolicyEngineMyEngineIdOutputABC123: 'pe-123',
-      ApplicationPolicyEngineMyEngineArnOutputDEF456:
-        'arn:aws:bedrock:us-east-1:123456789012:policy-engine/pe-123',
+      ApplicationPolicyEngineMyEngineArnOutputDEF456: 'arn:aws:bedrock:us-east-1:123456789012:policy-engine/pe-123',
       UnrelatedOutput: 'some-value',
     };
 
@@ -322,8 +321,8 @@ describe('parsePolicyEngineOutputs', () => {
     const result = parsePolicyEngineOutputs(outputs, ['FirstEngine', 'SecondEngine']);
 
     expect(Object.keys(result)).toHaveLength(2);
-    expect(result['FirstEngine']?.policyEngineId).toBe('pe-1');
-    expect(result['SecondEngine']?.policyEngineId).toBe('pe-2');
+    expect(result.FirstEngine?.policyEngineId).toBe('pe-1');
+    expect(result.SecondEngine?.policyEngineId).toBe('pe-2');
   });
 
   it('returns empty record when no policy engine outputs found', () => {
@@ -351,8 +350,7 @@ describe('parsePolicyOutputs', () => {
   it('extracts policy outputs matching pattern', () => {
     const outputs = {
       ApplicationPolicyMyEngineDenyAllIdOutputABC123: 'pol-123',
-      ApplicationPolicyMyEngineDenyAllArnOutputDEF456:
-        'arn:aws:bedrock:us-east-1:123456789012:policy/pol-123',
+      ApplicationPolicyMyEngineDenyAllArnOutputDEF456: 'arn:aws:bedrock:us-east-1:123456789012:policy/pol-123',
       UnrelatedOutput: 'some-value',
     };
 

@@ -125,9 +125,10 @@ export function ResourceGraph({ project, mcp, agentName, resourceStatuses }: Res
 
     if (resourceStatuses) {
       for (const entry of resourceStatuses) {
-        const key = entry.resourceType === 'policy' && entry.detail
-          ? `${entry.resourceType}:${entry.detail}/${entry.name}`
-          : `${entry.resourceType}:${entry.name}`;
+        const key =
+          entry.resourceType === 'policy' && entry.detail
+            ? `${entry.resourceType}:${entry.detail}/${entry.name}`
+            : `${entry.resourceType}:${entry.name}`;
         map.set(key, entry);
         if (entry.deploymentState === 'pending-removal') {
           pending.push(entry);
@@ -302,7 +303,8 @@ export function ResourceGraph({ project, mcp, agentName, resourceStatuses }: Res
                       <Text color="red">{ICONS.policy}</Text> {policy.name}
                       {policyEntry?.deploymentState && (
                         <Text color={DEPLOYMENT_STATE_COLORS[policyEntry.deploymentState]}>
-                          {' '}[{DEPLOYMENT_STATE_LABELS[policyEntry.deploymentState]}]
+                          {' '}
+                          [{DEPLOYMENT_STATE_LABELS[policyEntry.deploymentState]}]
                         </Text>
                       )}
                     </Text>

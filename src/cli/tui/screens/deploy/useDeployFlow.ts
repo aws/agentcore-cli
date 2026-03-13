@@ -268,7 +268,7 @@ export function useDeployFlow(options: DeployFlowOptions = {}): DeployFlowState 
     const policyEngines = parsePolicyEngineOutputs(outputs, policyEngineNames);
 
     // Parse policy outputs
-    const policySpecs = policyEngineSpecs.flatMap((pe: { name: string; policies: Array<{ name: string }> }) =>
+    const policySpecs = policyEngineSpecs.flatMap((pe: { name: string; policies: { name: string }[] }) =>
       pe.policies.map(p => ({ engineName: pe.name, policyName: p.name }))
     );
     const policies = parsePolicyOutputs(outputs, policySpecs);

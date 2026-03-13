@@ -8,7 +8,12 @@ const COMMON_SUFFIX: AddPolicyStep[] = ['validation-mode', 'confirm'];
 const SOURCE_STEPS: Record<PolicySourceMethod, AddPolicyStep[]> = {
   file: ['source-file'],
   inline: ['source-inline'],
-  generate: ['source-generate-gateway', 'source-generate-description', 'source-generate-loading', 'source-generate-review'],
+  generate: [
+    'source-generate-gateway',
+    'source-generate-description',
+    'source-generate-loading',
+    'source-generate-review',
+  ],
 };
 
 function getSteps(sourceMethod: PolicySourceMethod | null, skipEngine: boolean): AddPolicyStep[] {

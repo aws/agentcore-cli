@@ -85,7 +85,7 @@ function diffResourceSet<TLocal extends { name: string }, TDeployed>({
   getDeployedKey?: (item: TLocal) => string;
 }): ResourceStatusEntry[] {
   const entries: ResourceStatusEntry[] = [];
-  const localKeys = new Set(localItems.map(item => getDeployedKey ? getDeployedKey(item) : item.name));
+  const localKeys = new Set(localItems.map(item => (getDeployedKey ? getDeployedKey(item) : item.name)));
 
   for (const item of localItems) {
     const key = getDeployedKey ? getDeployedKey(item) : item.name;

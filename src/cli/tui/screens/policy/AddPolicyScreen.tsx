@@ -223,7 +223,13 @@ export function AddPolicyScreen({
     return () => {
       cancelled = true;
     };
-  }, [isGenerateLoadingStep, wizard.config.naturalLanguageDescription, wizard.config.engine, wizard.config.gatewayArn, wizard]);
+  }, [
+    isGenerateLoadingStep,
+    wizard.config.naturalLanguageDescription,
+    wizard.config.engine,
+    wizard.config.gatewayArn,
+    wizard,
+  ]);
 
   // Determine help text
   const helpText: string =
@@ -325,7 +331,7 @@ export function AddPolicyScreen({
               <Spinner type="dots" /> Generating Cedar policy from description...
             </Text>
             <Box marginTop={1}>
-              <Text dimColor>"{wizard.config.naturalLanguageDescription}"</Text>
+              <Text dimColor>&ldquo;{wizard.config.naturalLanguageDescription}&rdquo;</Text>
             </Box>
           </Box>
         )}
