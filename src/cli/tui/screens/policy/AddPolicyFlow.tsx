@@ -12,7 +12,12 @@ type FlowState =
   | { name: 'loading' }
   | { name: 'select' }
   | { name: 'engine-wizard' }
-  | { name: 'policy-wizard'; preSelectedEngine: string; isEngineDeployed: boolean; deployedGateways: Record<string, string> }
+  | {
+      name: 'policy-wizard';
+      preSelectedEngine: string;
+      isEngineDeployed: boolean;
+      deployedGateways: Record<string, string>;
+    }
   | { name: 'engine-success'; engineName: string }
   | { name: 'policy-success'; policyName: string; engineName: string }
   | { name: 'error'; message: string };
@@ -33,7 +38,7 @@ export function AddPolicyFlow({ isInteractive = true, onExit, onBack, onDev, onD
   // Load existing engines from disk on mount
   useEffect(() => {
     let cancelled = false;
-    policyEnginePrimitive.getExistingEngines().then(names => {
+    void policyEnginePrimitive.getExistingEngines().then(names => {
       if (cancelled) return;
       setEngineNames(names);
       if (names.length === 0) {
@@ -142,7 +147,12 @@ export function AddPolicyFlow({ isInteractive = true, onExit, onBack, onDev, onD
   // Engine select / create picker
   if (flow.name === 'select') {
     return (
-      <SelectScreen title="Add Policy" items={buildEngineSelectItems()} onSelect={handleSelectEngine} onExit={onBack} />
+      <SelectScreen
+        title="Add Policy"
+        items={buildEngineSelectItems()}
+        onSelect={(item: SelectableItem) => void handleSelectEngine(item)}
+        onExit={onBack}
+      />
     );
   }
 
@@ -151,7 +161,7 @@ export function AddPolicyFlow({ isInteractive = true, onExit, onBack, onDev, onD
     return (
       <AddPolicyEngineScreen
         existingEngineNames={engineNames}
-        onComplete={handleEngineComplete}
+        onComplete={(config: AddPolicyEngineConfig) => void handleEngineComplete(config)}
         onExit={() => {
           if (engineNames.length === 0) {
             onBack();
@@ -172,7 +182,7 @@ export function AddPolicyFlow({ isInteractive = true, onExit, onBack, onDev, onD
         preSelectedEngine={flow.preSelectedEngine}
         isEngineDeployed={flow.isEngineDeployed}
         deployedGateways={flow.deployedGateways}
-        onComplete={handlePolicyComplete}
+        onComplete={(config: AddPolicyConfig) => void handlePolicyComplete(config)}
         onExit={() => setFlow({ name: 'select' })}
       />
     );
@@ -204,14 +214,14 @@ export function AddPolicyFlow({ isInteractive = true, onExit, onBack, onDev, onD
             </Box>
             <Box marginTop={1}>
               <Text color="yellow">
-                Note: Natural language policy generation requires a deployed engine. Run `agentcore deploy` before
-                using the Generate option.
+                Note: Natural language policy generation requires a deployed engine. Run `agentcore deploy` before using
+                the Generate option.
               </Text>
             </Box>
             <Box marginBottom={1} />
           </Box>
         }
-        onAddAnother={() => handleAddPolicyToNewEngine(flow.engineName)}
+        onAddAnother={() => void handleAddPolicyToNewEngine(flow.engineName)}
         onDev={onDev}
         onDeploy={onDeploy}
         onExit={onExit}

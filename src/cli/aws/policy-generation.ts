@@ -4,8 +4,8 @@ import {
   GetPolicyGenerationCommand,
   ListPolicyGenerationAssetsCommand,
   StartPolicyGenerationCommand,
+  waitUntilPolicyGenerationCompleted,
 } from '@aws-sdk/client-bedrock-agentcore-control';
-import { waitUntilPolicyGenerationCompleted } from '@aws-sdk/client-bedrock-agentcore-control';
 
 export interface StartPolicyGenerationOptions {
   policyEngineId: string;
