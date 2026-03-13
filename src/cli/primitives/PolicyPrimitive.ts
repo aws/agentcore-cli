@@ -60,9 +60,7 @@ export class PolicyPrimitive extends BasePrimitive<AddPolicyOptions, RemovablePo
         let gatewayArn: string | undefined;
 
         for (const target of Object.values(deployedState.targets)) {
-          if (!engineId) {
-            engineId = target.resources?.policyEngines?.[options.engine]?.policyEngineId;
-          }
+          engineId ??= target.resources?.policyEngines?.[options.engine]?.policyEngineId;
           const gateways = target.resources?.mcp?.gateways;
           if (gateways) {
             if (options.gateway) {
@@ -80,13 +78,20 @@ export class PolicyPrimitive extends BasePrimitive<AddPolicyOptions, RemovablePo
         }
 
         if (!engineId) {
-          return { success: false, error: `Policy engine "${options.engine}" is not deployed. Run \`agentcore deploy\` first.` };
+          return {
+            success: false,
+            error: `Policy engine "${options.engine}" is not deployed. Run \`agentcore deploy\` first.`,
+          };
         }
         if (options.gateway && !gatewayArn) {
           return { success: false, error: `Gateway "${options.gateway}" not found in deployed state.` };
         }
         if (!gatewayArn) {
-          return { success: false, error: 'No deployed gateway found. Policy generation requires a deployed gateway. Use --gateway <name> to specify one.' };
+          return {
+            success: false,
+            error:
+              'No deployed gateway found. Policy generation requires a deployed gateway. Use --gateway <name> to specify one.',
+          };
         }
 
         const { region } = await detectRegion();
@@ -127,14 +132,29 @@ export class PolicyPrimitive extends BasePrimitive<AddPolicyOptions, RemovablePo
     }
   }
 
-  async remove(name: string, engineName?: string): Promise<RemovalResult> {
+  /**
+   * Remove a policy by composite key "engineName/policyName" or by separate name + engineName.
+   * The composite key format is used by getRemovable() and the generic TUI remove flow.
+   * The separate arguments form is used by the CLI --name + --engine flags.
+   */
+  async remove(nameOrCompositeKey: string, engineName?: string): Promise<RemovalResult> {
     try {
       const project = await this.readProjectSpec();
 
-      for (const engine of project.policyEngines) {
-        if (engineName && engine.name !== engineName) continue;
+      // Parse composite key if engineName not provided separately
+      let resolvedEngine: string | undefined = engineName;
+      let resolvedPolicy: string = nameOrCompositeKey;
 
-        const policyIndex = engine.policies.findIndex(p => p.name === name);
+      if (!resolvedEngine && nameOrCompositeKey.includes('/')) {
+        const slashIndex = nameOrCompositeKey.indexOf('/');
+        resolvedEngine = nameOrCompositeKey.slice(0, slashIndex);
+        resolvedPolicy = nameOrCompositeKey.slice(slashIndex + 1);
+      }
+
+      for (const engine of project.policyEngines) {
+        if (resolvedEngine && engine.name !== resolvedEngine) continue;
+
+        const policyIndex = engine.policies.findIndex(p => p.name === resolvedPolicy);
         if (policyIndex !== -1) {
           engine.policies.splice(policyIndex, 1);
           await this.writeProjectSpec(project);
@@ -142,20 +162,34 @@ export class PolicyPrimitive extends BasePrimitive<AddPolicyOptions, RemovablePo
         }
       }
 
-      return { success: false, error: `Policy "${name}" not found${engineName ? ` in engine "${engineName}"` : ''}.` };
+      return {
+        success: false,
+        error: `Policy "${resolvedPolicy}" not found${resolvedEngine ? ` in engine "${resolvedEngine}"` : ''}.`,
+      };
     } catch (err) {
-      const message = err instanceof Error ? err.message : 'Unknown error';
-      return { success: false, error: message };
+      return { success: false, error: getErrorMessage(err) };
     }
   }
 
-  async previewRemove(name: string): Promise<RemovalPreview> {
+  async previewRemove(nameOrCompositeKey: string): Promise<RemovalPreview> {
     const project = await this.readProjectSpec();
 
+    // Parse composite key "engineName/policyName"
+    let targetEngine: string | undefined;
+    let targetPolicy: string = nameOrCompositeKey;
+
+    if (nameOrCompositeKey.includes('/')) {
+      const slashIndex = nameOrCompositeKey.indexOf('/');
+      targetEngine = nameOrCompositeKey.slice(0, slashIndex);
+      targetPolicy = nameOrCompositeKey.slice(slashIndex + 1);
+    }
+
     for (const engine of project.policyEngines) {
-      const policy = engine.policies.find(p => p.name === name);
+      if (targetEngine && engine.name !== targetEngine) continue;
+
+      const policy = engine.policies.find(p => p.name === targetPolicy);
       if (policy) {
-        const summary = [`Removing policy: ${name} (from engine ${engine.name})`];
+        const summary = [`Removing policy: ${targetPolicy} (from engine ${engine.name})`];
         const schemaChanges: SchemaChange[] = [];
 
         const afterSpec = {
@@ -164,7 +198,7 @@ export class PolicyPrimitive extends BasePrimitive<AddPolicyOptions, RemovablePo
             if (e.name !== engine.name) return e;
             return {
               ...e,
-              policies: e.policies.filter(p => p.name !== name),
+              policies: e.policies.filter(p => p.name !== targetPolicy),
             };
           }),
         };
@@ -178,7 +212,7 @@ export class PolicyPrimitive extends BasePrimitive<AddPolicyOptions, RemovablePo
       }
     }
 
-    throw new Error(`Policy "${name}" not found.`);
+    throw new Error(`Policy "${targetPolicy}" not found${targetEngine ? ` in engine "${targetEngine}"` : ''}.`);
   }
 
   async getRemovable(): Promise<RemovablePolicyResource[]> {
@@ -189,7 +223,7 @@ export class PolicyPrimitive extends BasePrimitive<AddPolicyOptions, RemovablePo
       for (const engine of project.policyEngines) {
         for (const policy of engine.policies) {
           resources.push({
-            name: policy.name,
+            name: `${engine.name}/${policy.name}`,
             engineName: engine.name,
           });
         }
@@ -235,7 +269,14 @@ export class PolicyPrimitive extends BasePrimitive<AddPolicyOptions, RemovablePo
               process.exit(1);
             }
 
-            if (cliOptions.name || cliOptions.engine || cliOptions.source || cliOptions.statement || cliOptions.generate || cliOptions.json) {
+            if (
+              cliOptions.name ||
+              cliOptions.engine ||
+              cliOptions.source ||
+              cliOptions.statement ||
+              cliOptions.generate ||
+              cliOptions.json
+            ) {
               if (!cliOptions.name) {
                 if (cliOptions.json) {
                   console.log(JSON.stringify({ success: false, error: '--name is required' }));
@@ -320,7 +361,9 @@ export class PolicyPrimitive extends BasePrimitive<AddPolicyOptions, RemovablePo
               process.exit(1);
             }
 
-            const result = await this.remove(cliOptions.name, cliOptions.engine);
+            // Build composite key when --engine is provided for unambiguous removal
+            const removeKey = cliOptions.engine ? `${cliOptions.engine}/${cliOptions.name}` : cliOptions.name;
+            const result = await this.remove(removeKey);
             console.log(
               JSON.stringify({
                 success: result.success,
