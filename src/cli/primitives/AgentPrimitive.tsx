@@ -5,12 +5,14 @@ import type {
   DirectoryPath,
   FilePath,
   ModelProvider,
+  NetworkMode,
   SDKFramework,
   TargetLanguage,
 } from '../../schema';
 import { AgentEnvSpecSchema, CREDENTIAL_PROVIDERS } from '../../schema';
 import type { AddAgentOptions as CLIAddAgentOptions } from '../commands/add/types';
 import { validateAddAgentOptions } from '../commands/add/validate';
+import { VPC_ENDPOINT_WARNING, parseCommaSeparatedList } from '../commands/shared/vpc-utils';
 import { getErrorMessage } from '../errors';
 import {
   mapGenerateConfigToRenderConfig,
@@ -42,6 +44,9 @@ export interface AddAgentOptions {
   modelProvider: ModelProvider;
   apiKey?: string;
   memory?: MemoryOption;
+  networkMode?: string;
+  subnets?: string;
+  securityGroups?: string;
   codeLocation?: string;
   entrypoint?: string;
 }
@@ -175,6 +180,9 @@ export class AgentPrimitive extends BasePrimitive<AddAgentOptions, RemovableReso
       .option('--memory <mem>', 'Memory: none, shortTerm, longAndShortTerm (create path only) [non-interactive]')
       .option('--code-location <path>', 'Path to existing code (BYO path only) [non-interactive]')
       .option('--entrypoint <file>', 'Entry file relative to code-location (BYO, default: main.py) [non-interactive]')
+      .option('--network-mode <mode>', 'Network mode (PUBLIC, VPC) [non-interactive]')
+      .option('--subnets <ids>', 'Comma-separated subnet IDs (required for VPC mode) [non-interactive]')
+      .option('--security-groups <ids>', 'Comma-separated security group IDs (required for VPC mode) [non-interactive]')
       .option('--json', 'Output as JSON [non-interactive]')
       .action(async options => {
         if (!findConfigRoot()) {
@@ -205,6 +213,9 @@ export class AgentPrimitive extends BasePrimitive<AddAgentOptions, RemovableReso
             modelProvider: cliOptions.modelProvider!,
             apiKey: cliOptions.apiKey,
             memory: cliOptions.memory,
+            networkMode: cliOptions.networkMode,
+            subnets: cliOptions.subnets,
+            securityGroups: cliOptions.securityGroups,
             codeLocation: cliOptions.codeLocation,
             entrypoint: cliOptions.entrypoint,
           });
@@ -215,6 +226,9 @@ export class AgentPrimitive extends BasePrimitive<AddAgentOptions, RemovableReso
             console.log(`Added agent '${result.agentName}'`);
             if (result.agentPath) {
               console.log(`Agent code: ${result.agentPath}`);
+            }
+            if (cliOptions.networkMode === 'VPC') {
+              console.log(`\x1b[33mNote: ${VPC_ENDPOINT_WARNING}\x1b[0m`);
             }
           } else {
             console.error(result.error);
@@ -266,6 +280,9 @@ export class AgentPrimitive extends BasePrimitive<AddAgentOptions, RemovableReso
       modelProvider: options.modelProvider,
       memory: options.memory!,
       language: options.language,
+      networkMode: options.networkMode as NetworkMode | undefined,
+      subnets: parseCommaSeparatedList(options.subnets),
+      securityGroups: parseCommaSeparatedList(options.securityGroups),
     };
 
     const agentPath = join(projectRoot, APP_DIR, options.name);
@@ -334,6 +351,10 @@ export class AgentPrimitive extends BasePrimitive<AddAgentOptions, RemovableReso
 
     const project = await configIO.readProjectSpec();
 
+    const networkMode = (options.networkMode as NetworkMode | undefined) ?? 'PUBLIC';
+    const subnets = parseCommaSeparatedList(options.subnets);
+    const securityGroups = parseCommaSeparatedList(options.securityGroups);
+
     const agent: AgentEnvSpec = {
       type: 'AgentCoreRuntime',
       name: options.name,
@@ -341,6 +362,12 @@ export class AgentPrimitive extends BasePrimitive<AddAgentOptions, RemovableReso
       entrypoint: (options.entrypoint ?? 'main.py') as FilePath,
       codeLocation: codeLocation as DirectoryPath,
       runtimeVersion: 'PYTHON_3_12',
+      networkMode,
+      ...(networkMode === 'VPC' &&
+        subnets &&
+        securityGroups && {
+          networkConfig: { subnets, securityGroups },
+        }),
     };
 
     project.agents.push(agent);

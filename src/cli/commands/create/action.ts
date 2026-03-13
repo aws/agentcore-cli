@@ -4,6 +4,7 @@ import type {
   BuildType,
   DeployedState,
   ModelProvider,
+  NetworkMode,
   SDKFramework,
   TargetLanguage,
 } from '../../../schema';
@@ -120,6 +121,9 @@ export interface CreateWithAgentOptions {
   modelProvider: ModelProvider;
   apiKey?: string;
   memory: MemoryOption;
+  networkMode?: NetworkMode;
+  subnets?: string[];
+  securityGroups?: string[];
   skipGit?: boolean;
   skipPythonSetup?: boolean;
   onProgress?: ProgressCallback;
@@ -135,6 +139,9 @@ export async function createProjectWithAgent(options: CreateWithAgentOptions): P
     modelProvider,
     apiKey,
     memory,
+    networkMode,
+    subnets,
+    securityGroups,
     skipGit,
     skipPythonSetup,
     onProgress,
@@ -172,6 +179,9 @@ export async function createProjectWithAgent(options: CreateWithAgentOptions): P
       apiKey,
       memory,
       language,
+      networkMode,
+      subnets,
+      securityGroups,
     };
 
     // Resolve credential strategy FIRST (new project has no existing credentials)

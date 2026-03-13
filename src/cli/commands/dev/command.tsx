@@ -103,6 +103,14 @@ export const registerDev = (program: Command) => {
           process.exit(1);
         }
 
+        // Warn about VPC mode limitations in local dev
+        const targetDevAgent = opts.agent ? project.agents.find(a => a.name === opts.agent) : project.agents[0];
+        if (targetDevAgent?.networkMode === 'VPC') {
+          console.log(
+            '\x1b[33mWarning: This agent uses VPC network mode. Local dev server runs outside your VPC. Network behavior may differ from deployed environment.\x1b[0m\n'
+          );
+        }
+
         const supportedAgents = getDevSupportedAgents(project);
         if (supportedAgents.length === 0) {
           render(

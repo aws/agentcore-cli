@@ -1,6 +1,11 @@
 import { APP_DIR, ConfigIO } from '../../../../lib';
-import type { ModelProvider } from '../../../../schema';
+import type { ModelProvider, NetworkMode } from '../../../../schema';
 import { AgentNameSchema, DEFAULT_MODEL_IDS } from '../../../../schema';
+import {
+  parseCommaSeparatedList,
+  validateSecurityGroupIds,
+  validateSubnetIds,
+} from '../../../commands/shared/vpc-utils';
 import { computeDefaultCredentialEnvVarName } from '../../../primitives/credential-utils';
 import {
   ApiKeySecretInput,
@@ -25,6 +30,7 @@ import {
   DEFAULT_ENTRYPOINT,
   DEFAULT_PYTHON_VERSION,
   MODEL_PROVIDER_OPTIONS,
+  NETWORK_MODE_OPTIONS,
 } from './types';
 import { Box, Text, useInput } from 'ink';
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
@@ -52,10 +58,27 @@ interface AddAgentScreenProps {
 // Steps for the initial phase (before branching to create or byo)
 type InitialStep = 'name' | 'agentType';
 // Steps for BYO path only (no framework/language - user's code already has these baked in)
-type ByoStep = 'codeLocation' | 'buildType' | 'modelProvider' | 'apiKey' | 'confirm';
+type ByoStep =
+  | 'codeLocation'
+  | 'buildType'
+  | 'modelProvider'
+  | 'apiKey'
+  | 'networkMode'
+  | 'subnets'
+  | 'securityGroups'
+  | 'confirm';
 
 const INITIAL_STEPS: InitialStep[] = ['name', 'agentType'];
-const BYO_STEPS: ByoStep[] = ['codeLocation', 'buildType', 'modelProvider', 'apiKey', 'confirm'];
+const BYO_STEPS: ByoStep[] = [
+  'codeLocation',
+  'buildType',
+  'modelProvider',
+  'apiKey',
+  'networkMode',
+  'subnets',
+  'securityGroups',
+  'confirm',
+];
 
 export function AddAgentScreen({ existingAgentNames, onComplete, onExit }: AddAgentScreenProps) {
   // Phase 1: name + agentType selection
@@ -75,6 +98,9 @@ export function AddAgentScreen({ existingAgentNames, onComplete, onExit }: AddAg
     buildType: 'CodeZip' as BuildType,
     modelProvider: 'Bedrock' as ModelProvider,
     apiKey: undefined as string | undefined,
+    networkMode: 'PUBLIC' as NetworkMode,
+    subnets: '' as string,
+    securityGroups: '' as string,
   });
 
   const { project } = useProject();
@@ -154,6 +180,9 @@ export function AddAgentScreen({ existingAgentNames, onComplete, onExit }: AddAg
       framework: generateWizard.config.sdk,
       modelProvider: generateWizard.config.modelProvider,
       apiKey: generateWizard.config.apiKey,
+      networkMode: generateWizard.config.networkMode,
+      subnets: generateWizard.config.networkMode === 'VPC' ? generateWizard.config.subnets : undefined,
+      securityGroups: generateWizard.config.networkMode === 'VPC' ? generateWizard.config.securityGroups : undefined,
       pythonVersion: DEFAULT_PYTHON_VERSION,
       memory: generateWizard.config.memory,
     };
@@ -174,13 +203,17 @@ export function AddAgentScreen({ existingAgentNames, onComplete, onExit }: AddAg
   // BYO Path
   // ─────────────────────────────────────────────────────────────────────────────
 
-  // BYO steps filtering (remove apiKey for Bedrock)
+  // BYO steps filtering (remove apiKey for Bedrock, subnets/securityGroups for non-VPC)
   const byoSteps = useMemo(() => {
+    let steps = [...BYO_STEPS];
     if (byoConfig.modelProvider === 'Bedrock') {
-      return BYO_STEPS.filter(s => s !== 'apiKey');
+      steps = steps.filter(s => s !== 'apiKey');
     }
-    return BYO_STEPS;
-  }, [byoConfig.modelProvider]);
+    if (byoConfig.networkMode !== 'VPC') {
+      steps = steps.filter(s => s !== 'subnets' && s !== 'securityGroups');
+    }
+    return steps;
+  }, [byoConfig.modelProvider, byoConfig.networkMode]);
 
   const byoCurrentIndex = byoSteps.indexOf(byoStep);
 
@@ -230,6 +263,9 @@ export function AddAgentScreen({ existingAgentNames, onComplete, onExit }: AddAg
       framework: 'Strands', // Default - not used for BYO agents
       modelProvider: byoConfig.modelProvider,
       apiKey: byoConfig.apiKey,
+      networkMode: byoConfig.networkMode,
+      subnets: byoConfig.networkMode === 'VPC' ? parseCommaSeparatedList(byoConfig.subnets) : undefined,
+      securityGroups: byoConfig.networkMode === 'VPC' ? parseCommaSeparatedList(byoConfig.securityGroups) : undefined,
       pythonVersion: DEFAULT_PYTHON_VERSION,
       memory: 'none',
     };
@@ -254,11 +290,37 @@ export function AddAgentScreen({ existingAgentNames, onComplete, onExit }: AddAg
       if (provider !== 'Bedrock') {
         setByoStep('apiKey');
       } else {
-        setByoStep('confirm');
+        setByoStep('networkMode');
       }
     },
     onExit: handleByoBack,
     isActive: isByoPath && byoStep === 'modelProvider',
+  });
+
+  // Network mode options for BYO path
+  const networkModeItems: SelectableItem[] = useMemo(
+    () =>
+      NETWORK_MODE_OPTIONS.map(o => ({
+        id: o.id,
+        title: o.title,
+        description: o.description,
+      })),
+    []
+  );
+
+  const networkModeNav = useListNavigation({
+    items: networkModeItems,
+    onSelect: item => {
+      const mode = item.id as NetworkMode;
+      setByoConfig(c => ({ ...c, networkMode: mode }));
+      if (mode === 'VPC') {
+        setByoStep('subnets');
+      } else {
+        setByoStep('confirm');
+      }
+    },
+    onExit: handleByoBack,
+    isActive: isByoPath && byoStep === 'networkMode',
   });
 
   useListNavigation({
@@ -281,7 +343,7 @@ export function AddAgentScreen({ existingAgentNames, onComplete, onExit }: AddAg
       return getWizardHelpText(generateWizard.step);
     }
     // BYO path
-    if (byoStep === 'codeLocation' || byoStep === 'apiKey') {
+    if (byoStep === 'codeLocation' || byoStep === 'apiKey' || byoStep === 'subnets' || byoStep === 'securityGroups') {
       return HELP_TEXT.TEXT_INPUT;
     }
     if (byoStep === 'confirm') {
@@ -413,9 +475,43 @@ export function AddAgentScreen({ existingAgentNames, onComplete, onExit }: AddAg
             envVarName={getProviderInfo(byoConfig.modelProvider).envVarName}
             onSubmit={apiKey => {
               setByoConfig(c => ({ ...c, apiKey }));
+              setByoStep('networkMode');
+            }}
+            onSkip={() => setByoStep('networkMode')}
+            onCancel={handleByoBack}
+          />
+        )}
+
+        {byoStep === 'networkMode' && (
+          <WizardSelect
+            title="Select network mode"
+            items={networkModeItems}
+            selectedIndex={networkModeNav.selectedIndex}
+          />
+        )}
+
+        {byoStep === 'subnets' && (
+          <TextInput
+            prompt="Subnet IDs (comma-separated)"
+            initialValue={byoConfig.subnets}
+            customValidation={validateSubnetIds}
+            onSubmit={value => {
+              setByoConfig(c => ({ ...c, subnets: value }));
+              setByoStep('securityGroups');
+            }}
+            onCancel={handleByoBack}
+          />
+        )}
+
+        {byoStep === 'securityGroups' && (
+          <TextInput
+            prompt="Security group IDs (comma-separated)"
+            initialValue={byoConfig.securityGroups}
+            customValidation={validateSecurityGroupIds}
+            onSubmit={value => {
+              setByoConfig(c => ({ ...c, securityGroups: value }));
               setByoStep('confirm');
             }}
-            onSkip={() => setByoStep('confirm')}
             onCancel={handleByoBack}
           />
         )}
@@ -448,6 +544,13 @@ export function AddAgentScreen({ existingAgentNames, onComplete, onExit }: AddAg
                         </Text>
                       ),
                     },
+                  ]
+                : []),
+              { label: 'Network Mode', value: byoConfig.networkMode },
+              ...(byoConfig.networkMode === 'VPC'
+                ? [
+                    { label: 'Subnets', value: byoConfig.subnets || '(none)' },
+                    { label: 'Security Groups', value: byoConfig.securityGroups || '(none)' },
                   ]
                 : []),
             ]}

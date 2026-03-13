@@ -67,6 +67,13 @@ export async function handleInvoke(context: InvokeContext, options: InvokeOption
     return { success: false, error: 'No agents defined in configuration' };
   }
 
+  // Warn about VPC mode endpoint requirements
+  if (agentSpec.networkMode === 'VPC') {
+    console.log(
+      '\x1b[33mWarning: This agent uses VPC network mode. Ensure your VPC endpoints are configured for invocation.\x1b[0m'
+    );
+  }
+
   // Get the deployed state for this specific agent
   const agentState = targetState?.resources?.agents?.[agentSpec.name];
 

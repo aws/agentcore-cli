@@ -1,5 +1,6 @@
-import type { ModelProvider } from '../../../../schema';
+import type { ModelProvider, NetworkMode } from '../../../../schema';
 import { DEFAULT_MODEL_IDS, ProjectNameSchema } from '../../../../schema';
+import { validateSecurityGroupIds, validateSubnetIds } from '../../../commands/shared/vpc-utils';
 import { computeDefaultCredentialEnvVarName } from '../../../primitives/credential-utils';
 import { ApiKeySecretInput, Panel, SelectList, StepIndicator, TextInput } from '../../components';
 import type { SelectableItem } from '../../components';
@@ -9,6 +10,7 @@ import {
   BUILD_TYPE_OPTIONS,
   LANGUAGE_OPTIONS,
   MEMORY_OPTIONS,
+  NETWORK_MODE_OPTIONS,
   SDK_OPTIONS,
   STEP_LABELS,
   getModelProviderOptionsForSdk,
@@ -70,6 +72,8 @@ export function GenerateWizardUI({
         }));
       case 'memory':
         return MEMORY_OPTIONS.map(o => ({ id: o.id, title: o.title, description: o.description }));
+      case 'networkMode':
+        return NETWORK_MODE_OPTIONS.map(o => ({ id: o.id, title: o.title, description: o.description }));
       default:
         return [];
     }
@@ -79,6 +83,8 @@ export function GenerateWizardUI({
   const isSelectStep = items.length > 0;
   const isTextStep = wizard.step === 'projectName';
   const isApiKeyStep = wizard.step === 'apiKey';
+  const isSubnetsStep = wizard.step === 'subnets';
+  const isSecurityGroupsStep = wizard.step === 'securityGroups';
   const isConfirmStep = wizard.step === 'confirm';
 
   const handleSelect = (item: SelectableItem) => {
@@ -97,6 +103,9 @@ export function GenerateWizardUI({
         break;
       case 'memory':
         wizard.setMemory(item.id as MemoryOption);
+        break;
+      case 'networkMode':
+        wizard.setNetworkMode(item.id as NetworkMode);
         break;
     }
   };
@@ -154,6 +163,40 @@ export function GenerateWizardUI({
         />
       )}
 
+      {isSubnetsStep && (
+        <TextInput
+          prompt="Subnet IDs (comma-separated)"
+          initialValue={(wizard.config.subnets ?? []).join(', ')}
+          customValidation={validateSubnetIds}
+          onSubmit={value => {
+            wizard.setSubnets(
+              value
+                .split(',')
+                .map(s => s.trim())
+                .filter(Boolean)
+            );
+          }}
+          onCancel={onBack}
+        />
+      )}
+
+      {isSecurityGroupsStep && (
+        <TextInput
+          prompt="Security group IDs (comma-separated)"
+          initialValue={(wizard.config.securityGroups ?? []).join(', ')}
+          customValidation={validateSecurityGroupIds}
+          onSubmit={value => {
+            wizard.setSecurityGroups(
+              value
+                .split(',')
+                .map(s => s.trim())
+                .filter(Boolean)
+            );
+          }}
+          onCancel={onBack}
+        />
+      )}
+
       {isConfirmStep && <ConfirmView config={wizard.config} credentialProjectName={credentialProjectName} />}
     </Panel>
   );
@@ -165,7 +208,7 @@ export function GenerateWizardUI({
 // eslint-disable-next-line react-refresh/only-export-components
 export function getWizardHelpText(step: GenerateStep): string {
   if (step === 'confirm') return 'Enter/Y confirm · Esc back';
-  if (step === 'projectName') return 'Enter submit · Esc cancel';
+  if (step === 'projectName' || step === 'subnets' || step === 'securityGroups') return 'Enter submit · Esc cancel';
   if (step === 'apiKey') return 'Enter submit · Tab show/hide · Esc back';
   return '↑↓ navigate · Enter select · Esc back';
 }
@@ -236,6 +279,22 @@ function ConfirmView({ config, credentialProjectName }: { config: GenerateConfig
           <Text dimColor>Memory: </Text>
           <Text>{memoryLabel}</Text>
         </Text>
+        <Text>
+          <Text dimColor>Network: </Text>
+          <Text>{config.networkMode ?? 'PUBLIC'}</Text>
+        </Text>
+        {config.networkMode === 'VPC' && config.subnets && (
+          <Text>
+            <Text dimColor>Subnets: </Text>
+            <Text>{config.subnets.join(', ')}</Text>
+          </Text>
+        )}
+        {config.networkMode === 'VPC' && config.securityGroups && (
+          <Text>
+            <Text dimColor>Security Groups: </Text>
+            <Text>{config.securityGroups.join(', ')}</Text>
+          </Text>
+        )}
       </Box>
     </Box>
   );

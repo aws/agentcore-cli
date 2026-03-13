@@ -1,4 +1,4 @@
-import type { BuildType, ModelProvider, SDKFramework, TargetLanguage } from '../../../../schema';
+import type { BuildType, ModelProvider, NetworkMode, SDKFramework, TargetLanguage } from '../../../../schema';
 import { DEFAULT_MODEL_IDS, getSupportedModelProviders } from '../../../../schema';
 
 export type GenerateStep =
@@ -9,6 +9,9 @@ export type GenerateStep =
   | 'modelProvider'
   | 'apiKey'
   | 'memory'
+  | 'networkMode'
+  | 'subnets'
+  | 'securityGroups'
   | 'confirm';
 
 export type MemoryOption = 'none' | 'shortTerm' | 'longAndShortTerm';
@@ -25,9 +28,12 @@ export interface GenerateConfig {
   apiKey?: string;
   memory: MemoryOption;
   language: TargetLanguage;
+  networkMode?: NetworkMode;
+  subnets?: string[];
+  securityGroups?: string[];
 }
 
-/** Base steps - apiKey and memory are conditionally added based on selections */
+/** Base steps - apiKey, memory, subnets, securityGroups are conditionally added based on selections */
 export const BASE_GENERATE_STEPS: GenerateStep[] = [
   'projectName',
   'language',
@@ -35,6 +41,7 @@ export const BASE_GENERATE_STEPS: GenerateStep[] = [
   'sdk',
   'modelProvider',
   'apiKey',
+  'networkMode',
   'confirm',
 ];
 
@@ -46,6 +53,9 @@ export const STEP_LABELS: Record<GenerateStep, string> = {
   modelProvider: 'Model',
   apiKey: 'API Key',
   memory: 'Memory',
+  networkMode: 'Network',
+  subnets: 'Subnets',
+  securityGroups: 'Security Groups',
   confirm: 'Confirm',
 };
 
@@ -84,6 +94,11 @@ export function getModelProviderOptionsForSdk(sdk: SDKFramework) {
   const supportedProviders = getSupportedModelProviders(sdk);
   return MODEL_PROVIDER_OPTIONS.filter(option => supportedProviders.includes(option.id));
 }
+
+export const NETWORK_MODE_OPTIONS = [
+  { id: 'PUBLIC', title: 'Public', description: undefined },
+  { id: 'VPC', title: 'VPC', description: 'Attach to your VPC' },
+] as const;
 
 export const MEMORY_OPTIONS = [
   { id: 'none', title: 'None', description: 'No memory' },
