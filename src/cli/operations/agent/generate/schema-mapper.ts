@@ -108,7 +108,7 @@ export function mapModelProviderToCredentials(modelProvider: ModelProvider, proj
  */
 export function mapGenerateConfigToAgent(config: GenerateConfig): AgentEnvSpec {
   const codeLocation = `${APP_DIR}/${config.projectName}/`;
-  const protocolMode = config.protocolMode && config.protocolMode !== 'HTTP' ? config.protocolMode : undefined;
+  const protocolMode = config.protocolMode ?? 'HTTP';
 
   return {
     type: 'AgentCoreRuntime',
@@ -118,8 +118,8 @@ export function mapGenerateConfigToAgent(config: GenerateConfig): AgentEnvSpec {
     codeLocation: codeLocation as DirectoryPath,
     runtimeVersion: DEFAULT_PYTHON_VERSION,
     networkMode: DEFAULT_NETWORK_MODE,
-    ...(protocolMode && { protocolMode }),
-    ...(config.protocolMode !== 'MCP' && { modelProvider: config.modelProvider }),
+    protocolMode,
+    ...(protocolMode !== 'MCP' && { modelProvider: config.modelProvider }),
   };
 }
 

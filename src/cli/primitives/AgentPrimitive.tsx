@@ -341,7 +341,7 @@ export class AgentPrimitive extends BasePrimitive<AddAgentOptions, RemovableReso
 
     const project = await configIO.readProjectSpec();
 
-    const protocolMode = options.protocol && options.protocol !== 'HTTP' ? options.protocol : undefined;
+    const protocolMode = options.protocol ?? 'HTTP';
 
     const agent: AgentEnvSpec = {
       type: 'AgentCoreRuntime',
@@ -350,7 +350,7 @@ export class AgentPrimitive extends BasePrimitive<AddAgentOptions, RemovableReso
       entrypoint: (options.entrypoint ?? 'main.py') as FilePath,
       codeLocation: codeLocation as DirectoryPath,
       runtimeVersion: 'PYTHON_3_12',
-      ...(protocolMode && { protocolMode }),
+      protocolMode,
     };
 
     project.agents.push(agent);

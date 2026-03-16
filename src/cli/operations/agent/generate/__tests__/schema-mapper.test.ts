@@ -89,6 +89,7 @@ describe('mapGenerateConfigToAgent', () => {
     expect(result.entrypoint).toBe('main.py');
     expect(result.runtimeVersion).toBe('PYTHON_3_12');
     expect(result.networkMode).toBe('PUBLIC');
+    expect(result.protocolMode).toBe('HTTP');
   });
 
   it('uses projectName for codeLocation path', () => {
@@ -204,13 +205,13 @@ describe('mapGenerateConfigToAgent protocol mode', () => {
     expect(result).not.toHaveProperty('modelProvider');
   });
 
-  it('omits protocolMode for HTTP (backwards compat)', () => {
+  it('sets protocolMode to HTTP explicitly', () => {
     const httpConfig: GenerateConfig = {
       ...baseConfig,
       protocolMode: 'HTTP',
     };
     const result = mapGenerateConfigToAgent(httpConfig);
-    expect(result).not.toHaveProperty('protocolMode');
+    expect(result.protocolMode).toBe('HTTP');
     expect(result.modelProvider).toBe('Bedrock');
   });
 

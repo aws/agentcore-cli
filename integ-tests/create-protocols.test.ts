@@ -131,7 +131,7 @@ describe.skipIf(!prereqs.npm || !prereqs.git)('integration: create with protocol
     expect(agents[0]!.protocolMode).toBe('AGUI');
   });
 
-  it('creates HTTP project without protocolMode in config (backwards compat)', async () => {
+  it('creates HTTP project with explicit protocolMode HTTP', async () => {
     const name = `Http${Date.now().toString().slice(-6)}`;
     const result = await runCLI(
       [
@@ -155,11 +155,11 @@ describe.skipIf(!prereqs.npm || !prereqs.git)('integration: create with protocol
     const json = JSON.parse(result.stdout);
     expect(json.success).toBe(true);
 
-    // Verify config does NOT have protocolMode (backwards compat)
+    // Verify config has explicit protocolMode: HTTP
     const config = await readProjectConfig(json.projectPath);
     const agents = config.agents as Record<string, unknown>[];
     expect(agents.length).toBe(1);
-    expect(agents[0]!.protocolMode).toBeUndefined();
+    expect(agents[0]!.protocolMode).toBe('HTTP');
   });
 
   it('rejects invalid protocol', async () => {
