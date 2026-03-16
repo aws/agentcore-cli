@@ -267,6 +267,7 @@ export function useCreateFlow(cwd: string): CreateFlowState {
                 const generateConfig: GenerateConfig = {
                   projectName: addAgentConfig.name,
                   buildType: addAgentConfig.buildType,
+                  protocolMode: 'HTTP',
                   sdk: addAgentConfig.framework,
                   modelProvider: addAgentConfig.modelProvider,
                   memory: addAgentConfig.memory,

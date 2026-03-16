@@ -4,14 +4,16 @@ import { computeDefaultCredentialEnvVarName } from '../../../primitives/credenti
 import { ApiKeySecretInput, Panel, SelectList, StepIndicator, TextInput } from '../../components';
 import type { SelectableItem } from '../../components';
 import { useListNavigation } from '../../hooks';
-import type { BuildType, GenerateConfig, GenerateStep, MemoryOption } from './types';
+import type { BuildType, GenerateConfig, GenerateStep, MemoryOption, ProtocolMode } from './types';
 import {
   BUILD_TYPE_OPTIONS,
   LANGUAGE_OPTIONS,
   MEMORY_OPTIONS,
+  PROTOCOL_OPTIONS,
   SDK_OPTIONS,
   STEP_LABELS,
   getModelProviderOptionsForSdk,
+  getSDKOptionsForProtocol,
 } from './types';
 import type { useGenerateWizard } from './useGenerateWizard';
 import { Box, Text, useInput } from 'ink';
@@ -59,8 +61,14 @@ export function GenerateWizardUI({
         }));
       case 'buildType':
         return BUILD_TYPE_OPTIONS.map(o => ({ id: o.id, title: o.title, description: o.description }));
+      case 'protocol':
+        return PROTOCOL_OPTIONS.map(o => ({ id: o.id, title: o.title, description: o.description }));
       case 'sdk':
-        return SDK_OPTIONS.map(o => ({ id: o.id, title: o.title, description: o.description }));
+        return getSDKOptionsForProtocol(wizard.config.protocolMode).map(o => ({
+          id: o.id,
+          title: o.title,
+          description: o.description,
+        }));
       case 'modelProvider':
         // Filter model providers based on selected SDK
         return getModelProviderOptionsForSdk(wizard.config.sdk).map(o => ({
@@ -88,6 +96,9 @@ export function GenerateWizardUI({
         break;
       case 'buildType':
         wizard.setBuildType(item.id as BuildType);
+        break;
+      case 'protocol':
+        wizard.setProtocol(item.id as ProtocolMode);
         break;
       case 'sdk':
         wizard.setSdk(item.id as GenerateConfig['sdk']);
@@ -191,7 +202,9 @@ function getMemoryLabel(memory: MemoryOption): string {
 function ConfirmView({ config, credentialProjectName }: { config: GenerateConfig; credentialProjectName?: string }) {
   const languageLabel = LANGUAGE_OPTIONS.find(o => o.id === config.language)?.title ?? config.language;
   const buildTypeLabel = BUILD_TYPE_OPTIONS.find(o => o.id === config.buildType)?.title ?? config.buildType;
+  const protocolLabel = PROTOCOL_OPTIONS.find(o => o.id === config.protocolMode)?.title ?? config.protocolMode;
   const memoryLabel = getMemoryLabel(config.memory);
+  const isMcp = config.protocolMode === 'MCP';
 
   // Use credentialProjectName if provided, otherwise use config.projectName
   const projectNameForCredential = credentialProjectName ?? config.projectName;
@@ -215,27 +228,35 @@ function ConfirmView({ config, credentialProjectName }: { config: GenerateConfig
           <Text>{buildTypeLabel}</Text>
         </Text>
         <Text>
-          <Text dimColor>Framework: </Text>
-          <Text>{config.sdk}</Text>
+          <Text dimColor>Protocol: </Text>
+          <Text>{protocolLabel}</Text>
         </Text>
-        <Text>
-          <Text dimColor>Model Provider: </Text>
-          <Text>
-            {config.modelProvider} ({DEFAULT_MODEL_IDS[config.modelProvider]})
-          </Text>
-        </Text>
-        {config.modelProvider !== 'Bedrock' && (
-          <Text>
-            <Text dimColor>API Key: </Text>
-            <Text color={config.apiKey ? 'green' : 'yellow'}>
-              {config.apiKey ? 'Configured' : `Not set - fill in ${envVarName} in .env.local`}
+        {!isMcp && (
+          <>
+            <Text>
+              <Text dimColor>Framework: </Text>
+              <Text>{config.sdk}</Text>
             </Text>
-          </Text>
+            <Text>
+              <Text dimColor>Model Provider: </Text>
+              <Text>
+                {config.modelProvider} ({DEFAULT_MODEL_IDS[config.modelProvider]})
+              </Text>
+            </Text>
+            {config.modelProvider !== 'Bedrock' && (
+              <Text>
+                <Text dimColor>API Key: </Text>
+                <Text color={config.apiKey ? 'green' : 'yellow'}>
+                  {config.apiKey ? 'Configured' : `Not set - fill in ${envVarName} in .env.local`}
+                </Text>
+              </Text>
+            )}
+            <Text>
+              <Text dimColor>Memory: </Text>
+              <Text>{memoryLabel}</Text>
+            </Text>
+          </>
         )}
-        <Text>
-          <Text dimColor>Memory: </Text>
-          <Text>{memoryLabel}</Text>
-        </Text>
       </Box>
     </Box>
   );

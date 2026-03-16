@@ -6,6 +6,7 @@
 import {
   ModelProviderSchema,
   NetworkModeSchema,
+  ProtocolModeSchema,
   RuntimeVersionSchema as RuntimeVersionSchemaFromConstants,
 } from '../constants';
 import type { DirectoryPath, FilePath } from '../types';
@@ -13,7 +14,7 @@ import { z } from 'zod';
 
 // Re-export path types
 export type { DirectoryPath, FilePath, PathType } from '../types';
-export type { PythonRuntime, NodeRuntime, RuntimeVersion, NetworkMode } from '../constants';
+export type { PythonRuntime, NodeRuntime, RuntimeVersion, NetworkMode, ProtocolMode } from '../constants';
 
 // ============================================================================
 // Name Schemas
@@ -122,6 +123,8 @@ export const AgentEnvSpecSchema = z.object({
   instrumentation: InstrumentationSchema.optional(),
   /** Model provider used by this agent. Optional for backwards compatibility. */
   modelProvider: ModelProviderSchema.optional(),
+  /** Protocol mode for the runtime (HTTP, MCP, A2A, AGUI). Defaults to HTTP. */
+  protocolMode: ProtocolModeSchema.optional(),
 });
 
 export type AgentEnvSpec = z.infer<typeof AgentEnvSpecSchema>;

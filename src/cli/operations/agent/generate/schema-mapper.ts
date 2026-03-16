@@ -108,6 +108,7 @@ export function mapModelProviderToCredentials(modelProvider: ModelProvider, proj
  */
 export function mapGenerateConfigToAgent(config: GenerateConfig): AgentEnvSpec {
   const codeLocation = `${APP_DIR}/${config.projectName}/`;
+  const protocolMode = config.protocolMode && config.protocolMode !== 'HTTP' ? config.protocolMode : undefined;
 
   return {
     type: 'AgentCoreRuntime',
@@ -117,7 +118,8 @@ export function mapGenerateConfigToAgent(config: GenerateConfig): AgentEnvSpec {
     codeLocation: codeLocation as DirectoryPath,
     runtimeVersion: DEFAULT_PYTHON_VERSION,
     networkMode: DEFAULT_NETWORK_MODE,
-    modelProvider: config.modelProvider,
+    ...(protocolMode && { protocolMode }),
+    ...(config.protocolMode !== 'MCP' && { modelProvider: config.modelProvider }),
   };
 }
 
@@ -232,20 +234,22 @@ export async function mapGenerateConfigToRenderConfig(
   config: GenerateConfig,
   identityProviders: IdentityProviderRenderConfig[]
 ): Promise<AgentRenderConfig> {
-  const gatewayProviders = await mapGatewaysToGatewayProviders();
+  const isMcp = config.protocolMode === 'MCP';
+  const gatewayProviders = isMcp ? [] : await mapGatewaysToGatewayProviders();
 
   return {
     name: config.projectName,
     sdkFramework: config.sdk,
     targetLanguage: config.language,
     modelProvider: config.modelProvider,
-    hasMemory: config.memory !== 'none',
-    hasIdentity: identityProviders.length > 0,
+    hasMemory: isMcp ? false : config.memory !== 'none',
+    hasIdentity: isMcp ? false : identityProviders.length > 0,
     hasGateway: gatewayProviders.length > 0,
     buildType: config.buildType,
-    memoryProviders: mapMemoryOptionToMemoryProviders(config.memory, config.projectName),
-    identityProviders,
+    memoryProviders: isMcp ? [] : mapMemoryOptionToMemoryProviders(config.memory, config.projectName),
+    identityProviders: isMcp ? [] : identityProviders,
     gatewayProviders,
     gatewayAuthTypes: [...new Set(gatewayProviders.map(g => g.authType))],
+    protocolMode: config.protocolMode,
   };
 }

@@ -1,0 +1,20 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "{{ name }}"
+version = "0.1.0"
+description = "AgentCore A2A Agent using Google ADK"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    "aws-opentelemetry-distro",
+    "bedrock-agentcore >= 1.0.3",
+    "google-adk[a2a] >= 1.0.0",
+    "google-genai >= 1.0.0",
+    "uvicorn >= 0.30.0",
+]
+
+[tool.hatch.build.targets.wheel]
+packages = ["."]

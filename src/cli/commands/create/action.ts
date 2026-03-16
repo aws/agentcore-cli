@@ -4,6 +4,7 @@ import type {
   BuildType,
   DeployedState,
   ModelProvider,
+  ProtocolMode,
   SDKFramework,
   TargetLanguage,
 } from '../../../schema';
@@ -120,6 +121,7 @@ export interface CreateWithAgentOptions {
   modelProvider: ModelProvider;
   apiKey?: string;
   memory: MemoryOption;
+  protocol?: ProtocolMode;
   skipGit?: boolean;
   skipPythonSetup?: boolean;
   onProgress?: ProgressCallback;
@@ -135,6 +137,7 @@ export async function createProjectWithAgent(options: CreateWithAgentOptions): P
     modelProvider,
     apiKey,
     memory,
+    protocol,
     skipGit,
     skipPythonSetup,
     onProgress,
@@ -172,13 +175,16 @@ export async function createProjectWithAgent(options: CreateWithAgentOptions): P
       apiKey,
       memory,
       language,
+      protocolMode: protocol ?? 'HTTP',
     };
 
     // Resolve credential strategy FIRST (new project has no existing credentials)
     let identityProviders: ReturnType<typeof mapModelProviderToIdentityProviders> = [];
     let strategy: Awaited<ReturnType<typeof credentialPrimitive.resolveCredentialStrategy>> | undefined;
 
-    if (modelProvider !== 'Bedrock') {
+    const isMcp = protocol === 'MCP';
+
+    if (!isMcp && modelProvider !== 'Bedrock') {
       strategy = await credentialPrimitive.resolveCredentialStrategy(
         name,
         agentName,

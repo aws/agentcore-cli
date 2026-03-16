@@ -13,6 +13,7 @@ import { describe, expect, it } from 'vitest';
 const baseConfig: GenerateConfig = {
   projectName: 'TestProject',
   buildType: 'CodeZip',
+  protocolMode: 'HTTP',
   sdk: 'Strands',
   modelProvider: 'Bedrock',
   memory: 'none',
@@ -189,6 +190,38 @@ describe('mapGenerateConfigToRenderConfig', () => {
     const config: GenerateConfig = { ...baseConfig, memory: 'longAndShortTerm' };
     const result = await mapGenerateConfigToRenderConfig(config, []);
     expect(result.memoryProviders[0]!.strategies).toEqual(['SEMANTIC', 'USER_PREFERENCE', 'SUMMARIZATION']);
+  });
+});
+
+describe('mapGenerateConfigToAgent protocol mode', () => {
+  it('omits modelProvider and sets protocolMode for MCP', () => {
+    const mcpConfig: GenerateConfig = {
+      ...baseConfig,
+      protocolMode: 'MCP',
+    };
+    const result = mapGenerateConfigToAgent(mcpConfig);
+    expect(result.protocolMode).toBe('MCP');
+    expect(result).not.toHaveProperty('modelProvider');
+  });
+
+  it('omits protocolMode for HTTP (backwards compat)', () => {
+    const httpConfig: GenerateConfig = {
+      ...baseConfig,
+      protocolMode: 'HTTP',
+    };
+    const result = mapGenerateConfigToAgent(httpConfig);
+    expect(result).not.toHaveProperty('protocolMode');
+    expect(result.modelProvider).toBe('Bedrock');
+  });
+
+  it('sets protocolMode for A2A', () => {
+    const a2aConfig: GenerateConfig = {
+      ...baseConfig,
+      protocolMode: 'A2A',
+    };
+    const result = mapGenerateConfigToAgent(a2aConfig);
+    expect(result.protocolMode).toBe('A2A');
+    expect(result.modelProvider).toBe('Bedrock');
   });
 });
 

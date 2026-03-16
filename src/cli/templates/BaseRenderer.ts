@@ -19,16 +19,18 @@ export abstract class BaseRenderer {
   protected readonly config: AgentRenderConfig;
   protected readonly sdkName: string;
   protected readonly baseTemplateDir: string;
+  protected readonly protocolMode: string;
 
-  protected constructor(config: AgentRenderConfig, sdkName: string, baseTemplateDir: string) {
+  protected constructor(config: AgentRenderConfig, sdkName: string, baseTemplateDir: string, protocolMode?: string) {
     this.config = config;
     this.sdkName = sdkName;
     this.baseTemplateDir = baseTemplateDir;
+    this.protocolMode = (protocolMode ?? config.protocolMode ?? 'HTTP').toLowerCase();
   }
 
   protected getTemplateDir(): string {
     const language = this.config.targetLanguage.toLowerCase();
-    return path.join(this.baseTemplateDir, language, this.sdkName);
+    return path.join(this.baseTemplateDir, language, this.protocolMode, this.sdkName);
   }
 
   async render(context: RendererContext): Promise<void> {

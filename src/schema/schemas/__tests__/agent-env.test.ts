@@ -258,4 +258,21 @@ describe('AgentEnvSpecSchema', () => {
     expect(AgentEnvSpecSchema.safeParse({ type: 'AgentCoreRuntime' }).success).toBe(false);
     expect(AgentEnvSpecSchema.safeParse({ ...validPythonAgent, name: undefined }).success).toBe(false);
   });
+
+  describe('protocolMode', () => {
+    it.each(['HTTP', 'MCP', 'A2A', 'AGUI'])('accepts valid protocolMode "%s"', mode => {
+      const result = AgentEnvSpecSchema.safeParse({ ...validPythonAgent, protocolMode: mode });
+      expect(result.success, `Should accept protocolMode ${mode}`).toBe(true);
+    });
+
+    it('accepts agent without protocolMode (backwards compat)', () => {
+      const { protocolMode, ...agentWithoutProtocol } = { ...validPythonAgent, protocolMode: undefined };
+      expect(AgentEnvSpecSchema.safeParse(agentWithoutProtocol).success).toBe(true);
+    });
+
+    it('rejects invalid protocolMode', () => {
+      expect(AgentEnvSpecSchema.safeParse({ ...validPythonAgent, protocolMode: 'GRPC' }).success).toBe(false);
+      expect(AgentEnvSpecSchema.safeParse({ ...validPythonAgent, protocolMode: 'websocket' }).success).toBe(false);
+    });
+  });
 });

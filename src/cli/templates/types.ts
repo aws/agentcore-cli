@@ -1,4 +1,4 @@
-import type { BuildType, MemoryStrategyType, ModelProvider, SDKFramework, TargetLanguage } from '../../schema';
+import type { BuildType, MemoryStrategyType, ModelProvider, ProtocolMode, SDKFramework, TargetLanguage } from '../../schema';
 
 /**
  * Identity provider info for template rendering.
@@ -55,4 +55,6 @@ export interface AgentRenderConfig {
   gatewayProviders: GatewayProviderRenderConfig[];
   /** Unique auth types across all gateways (for conditional imports) */
   gatewayAuthTypes: string[];
+  /** Protocol mode (HTTP, MCP, A2A, AGUI). Defaults to HTTP. */
+  protocolMode?: ProtocolMode;
 }

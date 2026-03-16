@@ -1,12 +1,13 @@
 import { ProjectNameSchema } from '../../../../schema';
-import type { BuildType, GenerateConfig, GenerateStep, MemoryOption } from './types';
-import { BASE_GENERATE_STEPS, getModelProviderOptionsForSdk } from './types';
+import type { BuildType, GenerateConfig, GenerateStep, MemoryOption, ProtocolMode } from './types';
+import { BASE_GENERATE_STEPS, getModelProviderOptionsForSdk, getSDKOptionsForProtocol } from './types';
 import { useCallback, useMemo, useState } from 'react';
 
 function getDefaultConfig(): GenerateConfig {
   return {
     projectName: '',
     buildType: 'CodeZip',
+    protocolMode: 'HTTP',
     sdk: 'Strands',
     modelProvider: 'Bedrock',
     memory: 'none',
@@ -33,23 +34,26 @@ export function useGenerateWizard(options?: UseGenerateWizardOptions) {
   // Track if user has selected a framework (moved past sdk step)
   const [sdkSelected, setSdkSelected] = useState(false);
 
-  // Steps depend on SDK, model provider, and whether we have an initial name
-  // Filter out: projectName if initialName, apiKey for Bedrock
-  // Add memory step only for Strands SDK after user has selected it
+  // Steps depend on protocol, SDK, model provider, and whether we have an initial name
+  // MCP skips sdk, modelProvider, apiKey, memory
   const steps = useMemo(() => {
     let filtered = BASE_GENERATE_STEPS;
     if (hasInitialName) {
       filtered = filtered.filter(s => s !== 'projectName');
     }
-    if (config.modelProvider === 'Bedrock') {
-      filtered = filtered.filter(s => s !== 'apiKey');
-    }
-    if (sdkSelected && config.sdk === 'Strands') {
-      const confirmIndex = filtered.indexOf('confirm');
-      filtered = [...filtered.slice(0, confirmIndex), 'memory', ...filtered.slice(confirmIndex)];
+    if (config.protocolMode === 'MCP') {
+      filtered = filtered.filter(s => s !== 'sdk' && s !== 'modelProvider' && s !== 'apiKey');
+    } else {
+      if (config.modelProvider === 'Bedrock') {
+        filtered = filtered.filter(s => s !== 'apiKey');
+      }
+      if (sdkSelected && config.sdk === 'Strands') {
+        const confirmIndex = filtered.indexOf('confirm');
+        filtered = [...filtered.slice(0, confirmIndex), 'memory', ...filtered.slice(confirmIndex)];
+      }
     }
     return filtered;
-  }, [config.modelProvider, config.sdk, hasInitialName, sdkSelected]);
+  }, [config.modelProvider, config.sdk, config.protocolMode, hasInitialName, sdkSelected]);
 
   const currentIndex = steps.indexOf(step);
 
@@ -72,7 +76,16 @@ export function useGenerateWizard(options?: UseGenerateWizardOptions) {
 
   const setBuildType = useCallback((buildType: BuildType) => {
     setConfig(c => ({ ...c, buildType }));
-    setStep('sdk');
+    setStep('protocol');
+  }, []);
+
+  const setProtocol = useCallback((protocolMode: ProtocolMode) => {
+    setConfig(c => ({ ...c, protocolMode, memory: protocolMode === 'MCP' ? 'none' : c.memory }));
+    if (protocolMode === 'MCP') {
+      setStep('confirm');
+    } else {
+      setStep('sdk');
+    }
   }, []);
 
   const setSdk = useCallback((sdk: GenerateConfig['sdk']) => {
@@ -163,6 +176,7 @@ export function useGenerateWizard(options?: UseGenerateWizardOptions) {
     setProjectName,
     setLanguage,
     setBuildType,
+    setProtocol,
     setSdk,
     setModelProvider,
     setApiKey,
