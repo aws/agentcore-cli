@@ -54,12 +54,15 @@ async def invoke(payload, context):
 
     # Process the user prompt
     prompt = payload.get("prompt", "What can you help me with?")
+    log.info(f"Agent input: {prompt}")
 
     # Run the agent
     result = await graph.ainvoke({"messages": [HumanMessage(content=prompt)]})
 
     # Return result
-    return {"result": result["messages"][-1].content}
+    output = result["messages"][-1].content
+    log.info(f"Agent output: {output}")
+    return {"result": output}
 
 
 if __name__ == "__main__":

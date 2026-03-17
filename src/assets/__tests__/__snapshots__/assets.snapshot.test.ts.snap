@@ -2027,12 +2027,15 @@ async def invoke(payload, context):
 
     # Process the user prompt
     prompt = payload.get("prompt", "What can you help me with?")
+    log.info(f"Agent input: {prompt}")
 
     # Run the agent
     result = await graph.ainvoke({"messages": [HumanMessage(content=prompt)]})
 
     # Return result
-    return {"result": result["messages"][-1].content}
+    output = result["messages"][-1].content
+    log.info(f"Agent output: {output}")
+    return {"result": output}
 
 
 if __name__ == "__main__":
@@ -2261,8 +2264,7 @@ description = "AgentCore Runtime Application using LangChain/LangGraph"
 readme = "README.md"
 requires-python = ">=3.10"
 dependencies = [
-    "opentelemetry-distro",
-    "opentelemetry-exporter-otlp",
+    "aws-opentelemetry-distro",
     "langgraph >= 1.0.2",
     "mcp >= 1.19.0",
     "langchain-mcp-adapters >= 0.1.11",
