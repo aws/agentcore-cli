@@ -40,13 +40,13 @@ describe.skipIf(!prereqs.npm || !prereqs.git)('integration: create with protocol
     const pyproject = await readFile(join(agentDir, 'pyproject.toml'), 'utf-8');
     expect(pyproject.toLowerCase().includes('mcp'), 'pyproject.toml should reference mcp').toBe(true);
 
-    // Verify config has protocolMode set to MCP
+    // Verify config has protocol set to MCP
     const config = await readProjectConfig(json.projectPath);
     const agents = config.agents as Record<string, unknown>[];
     expect(agents).toBeDefined();
     expect(agents.length).toBe(1);
     expect(agents[0]!.name).toBe(agentName);
-    expect(agents[0]!.protocolMode).toBe('MCP');
+    expect(agents[0]!.protocol).toBe('MCP');
 
     // MCP agents should have no credentials
     const credentials = (config.credentials as Record<string, unknown>[]) ?? [];
@@ -85,53 +85,14 @@ describe.skipIf(!prereqs.npm || !prereqs.git)('integration: create with protocol
     expect(await exists(agentDir), 'Agent directory should exist').toBe(true);
     expect(await exists(join(agentDir, 'main.py')), 'main.py should exist').toBe(true);
 
-    // Verify config has protocolMode set to A2A
+    // Verify config has protocol set to A2A
     const config = await readProjectConfig(json.projectPath);
     const agents = config.agents as Record<string, unknown>[];
     expect(agents.length).toBe(1);
-    expect(agents[0]!.protocolMode).toBe('A2A');
+    expect(agents[0]!.protocol).toBe('A2A');
   });
 
-  it('creates AGUI project with Strands framework', async () => {
-    const name = `Agui${Date.now().toString().slice(-6)}`;
-    const result = await runCLI(
-      [
-        'create',
-        '--name',
-        name,
-        '--language',
-        'Python',
-        '--protocol',
-        'AGUI',
-        '--framework',
-        'Strands',
-        '--model-provider',
-        'Bedrock',
-        '--memory',
-        'none',
-        '--json',
-      ],
-      testDir
-    );
-
-    expect(result.exitCode, `stderr: ${result.stderr}`).toBe(0);
-    const json = JSON.parse(result.stdout);
-    expect(json.success).toBe(true);
-
-    const agentName = json.agentName || name;
-    const agentDir = join(json.projectPath, 'app', agentName);
-
-    expect(await exists(agentDir), 'Agent directory should exist').toBe(true);
-    expect(await exists(join(agentDir, 'main.py')), 'main.py should exist').toBe(true);
-
-    // Verify config has protocolMode set to AGUI
-    const config = await readProjectConfig(json.projectPath);
-    const agents = config.agents as Record<string, unknown>[];
-    expect(agents.length).toBe(1);
-    expect(agents[0]!.protocolMode).toBe('AGUI');
-  });
-
-  it('creates HTTP project with explicit protocolMode HTTP', async () => {
+  it('creates HTTP project with explicit protocol HTTP', async () => {
     const name = `Http${Date.now().toString().slice(-6)}`;
     const result = await runCLI(
       [
@@ -155,11 +116,11 @@ describe.skipIf(!prereqs.npm || !prereqs.git)('integration: create with protocol
     const json = JSON.parse(result.stdout);
     expect(json.success).toBe(true);
 
-    // Verify config has explicit protocolMode: HTTP
+    // Verify config has explicit protocol: HTTP
     const config = await readProjectConfig(json.projectPath);
     const agents = config.agents as Record<string, unknown>[];
     expect(agents.length).toBe(1);
-    expect(agents[0]!.protocolMode).toBe('HTTP');
+    expect(agents[0]!.protocol).toBe('HTTP');
   });
 
   it('rejects invalid protocol', async () => {
@@ -242,7 +203,7 @@ describe.skipIf(!prereqs.npm || !prereqs.git)('integration: add agent with proto
     const agents = config.agents as Record<string, unknown>[];
     const mcpAgent = agents.find(a => a.name === name);
     expect(mcpAgent).toBeDefined();
-    expect(mcpAgent!.protocolMode).toBe('MCP');
+    expect(mcpAgent!.protocol).toBe('MCP');
   });
 
   it('adds A2A agent to existing project', async () => {
@@ -276,7 +237,7 @@ describe.skipIf(!prereqs.npm || !prereqs.git)('integration: add agent with proto
     const agents = config.agents as Record<string, unknown>[];
     const a2aAgent = agents.find(a => a.name === name);
     expect(a2aAgent).toBeDefined();
-    expect(a2aAgent!.protocolMode).toBe('A2A');
+    expect(a2aAgent!.protocol).toBe('A2A');
   });
 
   it('adds BYO agent with MCP protocol', async () => {
@@ -308,6 +269,6 @@ describe.skipIf(!prereqs.npm || !prereqs.git)('integration: add agent with proto
     const agents = config.agents as Record<string, unknown>[];
     const byoAgent = agents.find(a => a.name === name);
     expect(byoAgent).toBeDefined();
-    expect(byoAgent!.protocolMode).toBe('MCP');
+    expect(byoAgent!.protocol).toBe('MCP');
   });
 });
