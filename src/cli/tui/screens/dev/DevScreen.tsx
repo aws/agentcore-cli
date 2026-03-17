@@ -177,6 +177,7 @@ export function DevScreen(props: DevScreenProps) {
     stop,
     logFilePath,
     hasMemory,
+    hasVpc,
     modelProvider,
   } = useDevServer({
     workingDir,
@@ -444,6 +445,12 @@ export function DevScreen(props: DevScreenProps) {
       {hasMemory && (
         <Text color="yellow">
           AgentCore memory is not available when running locally. To test memory, deploy and use invoke.
+        </Text>
+      )}
+      {hasVpc && (
+        <Text color="yellow">
+          This agent uses VPC network mode. Local dev server runs outside your VPC. Network behavior may differ from
+          deployed environment.
         </Text>
       )}
     </Box>

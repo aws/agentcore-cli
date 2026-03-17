@@ -3,6 +3,7 @@ import type {
   AgentCoreDeployedState,
   AwsDeploymentTarget,
   ModelProvider,
+  NetworkMode,
   AgentCoreProjectSpec as _AgentCoreProjectSpec,
 } from '../../../../schema';
 import { DEFAULT_RUNTIME_USER_ID, invokeAgentRuntimeStreaming } from '../../../aws';
@@ -12,7 +13,7 @@ import { generateSessionId } from '../../../operations/session';
 import { useCallback, useEffect, useRef, useState } from 'react';
 
 export interface InvokeConfig {
-  agents: { name: string; state: AgentCoreDeployedState; modelProvider?: ModelProvider }[];
+  agents: { name: string; state: AgentCoreDeployedState; modelProvider?: ModelProvider; networkMode?: NetworkMode }[];
   target: AwsDeploymentTarget;
   targetName: string;
   projectName: string;
@@ -82,7 +83,12 @@ export function useInvokeFlow(options: InvokeFlowOptions = {}): InvokeFlowState 
         for (const agent of project.agents) {
           const state = targetState?.resources?.agents?.[agent.name];
           if (state) {
-            agents.push({ name: agent.name, state, modelProvider: agent.modelProvider });
+            agents.push({
+              name: agent.name,
+              state,
+              modelProvider: agent.modelProvider,
+              networkMode: agent.networkMode,
+            });
           }
         }
 
