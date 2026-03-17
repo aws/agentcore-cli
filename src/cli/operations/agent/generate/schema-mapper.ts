@@ -108,7 +108,7 @@ export function mapModelProviderToCredentials(modelProvider: ModelProvider, proj
  */
 export function mapGenerateConfigToAgent(config: GenerateConfig): AgentEnvSpec {
   const codeLocation = `${APP_DIR}/${config.projectName}/`;
-  const protocolMode = config.protocolMode ?? 'HTTP';
+  const protocol = config.protocol ?? 'HTTP';
 
   return {
     type: 'AgentCoreRuntime',
@@ -118,8 +118,8 @@ export function mapGenerateConfigToAgent(config: GenerateConfig): AgentEnvSpec {
     codeLocation: codeLocation as DirectoryPath,
     runtimeVersion: DEFAULT_PYTHON_VERSION,
     networkMode: DEFAULT_NETWORK_MODE,
-    protocolMode,
-    ...(protocolMode !== 'MCP' && { modelProvider: config.modelProvider }),
+    protocol,
+    ...(protocol !== 'MCP' && { modelProvider: config.modelProvider }),
   };
 }
 
@@ -234,7 +234,7 @@ export async function mapGenerateConfigToRenderConfig(
   config: GenerateConfig,
   identityProviders: IdentityProviderRenderConfig[]
 ): Promise<AgentRenderConfig> {
-  const isMcp = config.protocolMode === 'MCP';
+  const isMcp = config.protocol === 'MCP';
   const gatewayProviders = isMcp ? [] : await mapGatewaysToGatewayProviders();
 
   return {
@@ -250,6 +250,6 @@ export async function mapGenerateConfigToRenderConfig(
     identityProviders: isMcp ? [] : identityProviders,
     gatewayProviders,
     gatewayAuthTypes: [...new Set(gatewayProviders.map(g => g.authType))],
-    protocolMode: config.protocolMode,
+    protocol: config.protocol,
   };
 }

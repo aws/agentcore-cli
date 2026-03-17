@@ -45,7 +45,7 @@ class LangGraphA2AExecutor(AgentExecutor):
 card = AgentCard(
     name="{{ name }}",
     description="A LangGraph agent on Bedrock AgentCore",
-    url="http://localhost:8080/",
+    url="http://localhost:9000/",
     version="0.1.0",
     capabilities=AgentCapabilities(streaming=True),
     skills=[

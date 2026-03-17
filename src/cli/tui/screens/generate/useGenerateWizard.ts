@@ -7,7 +7,7 @@ function getDefaultConfig(): GenerateConfig {
   return {
     projectName: '',
     buildType: 'CodeZip',
-    protocolMode: 'HTTP',
+    protocol: 'HTTP',
     sdk: 'Strands',
     modelProvider: 'Bedrock',
     memory: 'none',
@@ -41,7 +41,7 @@ export function useGenerateWizard(options?: UseGenerateWizardOptions) {
     if (hasInitialName) {
       filtered = filtered.filter(s => s !== 'projectName');
     }
-    if (config.protocolMode === 'MCP') {
+    if (config.protocol === 'MCP') {
       filtered = filtered.filter(s => s !== 'sdk' && s !== 'modelProvider' && s !== 'apiKey');
     } else {
       if (config.modelProvider === 'Bedrock') {
@@ -53,7 +53,7 @@ export function useGenerateWizard(options?: UseGenerateWizardOptions) {
       }
     }
     return filtered;
-  }, [config.modelProvider, config.sdk, config.protocolMode, hasInitialName, sdkSelected]);
+  }, [config.modelProvider, config.sdk, config.protocol, hasInitialName, sdkSelected]);
 
   const currentIndex = steps.indexOf(step);
 
@@ -79,9 +79,9 @@ export function useGenerateWizard(options?: UseGenerateWizardOptions) {
     setStep('protocol');
   }, []);
 
-  const setProtocol = useCallback((protocolMode: ProtocolMode) => {
-    setConfig(c => ({ ...c, protocolMode, memory: protocolMode === 'MCP' ? 'none' : c.memory }));
-    if (protocolMode === 'MCP') {
+  const setProtocol = useCallback((protocol: ProtocolMode) => {
+    setConfig(c => ({ ...c, protocol, memory: protocol === 'MCP' ? 'none' : c.memory }));
+    if (protocol === 'MCP') {
       setStep('confirm');
     } else {
       setStep('sdk');

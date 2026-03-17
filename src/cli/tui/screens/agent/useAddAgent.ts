@@ -70,7 +70,7 @@ function mapAddAgentConfigToGenerateConfig(config: AddAgentConfig): GenerateConf
   return {
     projectName: config.name, // In create context, this is the agent name
     buildType: config.buildType,
-    protocolMode: 'HTTP',
+    protocol: config.protocol,
     sdk: config.framework,
     modelProvider: config.modelProvider,
     memory: config.memory,

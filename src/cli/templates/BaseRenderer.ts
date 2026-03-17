@@ -25,7 +25,7 @@ export abstract class BaseRenderer {
     this.config = config;
     this.sdkName = sdkName;
     this.baseTemplateDir = baseTemplateDir;
-    this.protocolMode = (protocolMode ?? config.protocolMode ?? 'HTTP').toLowerCase();
+    this.protocolMode = (protocolMode ?? config.protocol ?? 'HTTP').toLowerCase();
   }
 
   protected getTemplateDir(): string {

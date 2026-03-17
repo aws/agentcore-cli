@@ -175,7 +175,7 @@ export class AgentPrimitive extends BasePrimitive<AddAgentOptions, RemovableReso
       .option('--model-provider <provider>', 'Model provider: Bedrock, Anthropic, OpenAI, Gemini [non-interactive]')
       .option('--api-key <key>', 'API key for non-Bedrock providers [non-interactive]')
       .option('--memory <mem>', 'Memory: none, shortTerm, longAndShortTerm (create path only) [non-interactive]')
-      .option('--protocol <protocol>', 'Protocol mode: HTTP, MCP, A2A, AGUI (default: HTTP) [non-interactive]')
+      .option('--protocol <protocol>', 'Protocol: HTTP, MCP, A2A (default: HTTP) [non-interactive]')
       .option('--code-location <path>', 'Path to existing code (BYO path only) [non-interactive]')
       .option('--entrypoint <file>', 'Entry file relative to code-location (BYO, default: main.py) [non-interactive]')
       .option('--json', 'Output as JSON [non-interactive]')
@@ -270,7 +270,7 @@ export class AgentPrimitive extends BasePrimitive<AddAgentOptions, RemovableReso
       modelProvider: options.modelProvider,
       memory: options.memory!,
       language: options.language,
-      protocolMode: options.protocol ?? 'HTTP',
+      protocol: options.protocol ?? 'HTTP',
     };
 
     const agentPath = join(projectRoot, APP_DIR, options.name);
@@ -341,7 +341,7 @@ export class AgentPrimitive extends BasePrimitive<AddAgentOptions, RemovableReso
 
     const project = await configIO.readProjectSpec();
 
-    const protocolMode = options.protocol ?? 'HTTP';
+    const protocol = options.protocol ?? 'HTTP';
 
     const agent: AgentEnvSpec = {
       type: 'AgentCoreRuntime',
@@ -350,7 +350,7 @@ export class AgentPrimitive extends BasePrimitive<AddAgentOptions, RemovableReso
       entrypoint: (options.entrypoint ?? 'main.py') as FilePath,
       codeLocation: codeLocation as DirectoryPath,
       runtimeVersion: 'PYTHON_3_12',
-      protocolMode,
+      protocol,
     };
 
     project.agents.push(agent);

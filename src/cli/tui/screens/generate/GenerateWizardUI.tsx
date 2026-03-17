@@ -64,7 +64,7 @@ export function GenerateWizardUI({
       case 'protocol':
         return PROTOCOL_OPTIONS.map(o => ({ id: o.id, title: o.title, description: o.description }));
       case 'sdk':
-        return getSDKOptionsForProtocol(wizard.config.protocolMode).map(o => ({
+        return getSDKOptionsForProtocol(wizard.config.protocol).map(o => ({
           id: o.id,
           title: o.title,
           description: o.description,
@@ -202,9 +202,9 @@ function getMemoryLabel(memory: MemoryOption): string {
 function ConfirmView({ config, credentialProjectName }: { config: GenerateConfig; credentialProjectName?: string }) {
   const languageLabel = LANGUAGE_OPTIONS.find(o => o.id === config.language)?.title ?? config.language;
   const buildTypeLabel = BUILD_TYPE_OPTIONS.find(o => o.id === config.buildType)?.title ?? config.buildType;
-  const protocolLabel = PROTOCOL_OPTIONS.find(o => o.id === config.protocolMode)?.title ?? config.protocolMode;
+  const protocolLabel = PROTOCOL_OPTIONS.find(o => o.id === config.protocol)?.title ?? config.protocol;
   const memoryLabel = getMemoryLabel(config.memory);
-  const isMcp = config.protocolMode === 'MCP';
+  const isMcp = config.protocol === 'MCP';
 
   // Use credentialProjectName if provided, otherwise use config.projectName
   const projectNameForCredential = credentialProjectName ?? config.projectName;

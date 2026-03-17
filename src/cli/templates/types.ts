@@ -55,6 +55,6 @@ export interface AgentRenderConfig {
   gatewayProviders: GatewayProviderRenderConfig[];
   /** Unique auth types across all gateways (for conditional imports) */
   gatewayAuthTypes: string[];
-  /** Protocol mode (HTTP, MCP, A2A, AGUI). Defaults to HTTP. */
-  protocolMode?: ProtocolMode;
+  /** Protocol (HTTP, MCP, A2A). Defaults to HTTP. */
+  protocol?: ProtocolMode;
 }

@@ -162,9 +162,9 @@ describe('isReservedProjectName', () => {
 });
 
 describe('PROTOCOL_FRAMEWORK_MATRIX', () => {
-  it('defines all four protocol modes', () => {
-    expect(Object.keys(PROTOCOL_FRAMEWORK_MATRIX)).toEqual(expect.arrayContaining(['HTTP', 'MCP', 'A2A', 'AGUI']));
-    expect(Object.keys(PROTOCOL_FRAMEWORK_MATRIX)).toHaveLength(4);
+  it('defines all protocol modes', () => {
+    expect(Object.keys(PROTOCOL_FRAMEWORK_MATRIX)).toEqual(expect.arrayContaining(['HTTP', 'MCP', 'A2A']));
+    expect(Object.keys(PROTOCOL_FRAMEWORK_MATRIX)).toHaveLength(3);
   });
 
   it('HTTP supports all frameworks', () => {
@@ -203,11 +203,6 @@ describe('getSupportedFrameworksForProtocol', () => {
     expect(frameworks.length).toBeGreaterThan(0);
   });
 
-  it('returns frameworks for AGUI', () => {
-    const frameworks = getSupportedFrameworksForProtocol('AGUI');
-    expect(frameworks).toContain('Strands');
-    expect(frameworks).toContain('GoogleADK');
-  });
 });
 
 describe('isFrameworkSupportedForProtocol', () => {
@@ -232,7 +227,4 @@ describe('isFrameworkSupportedForProtocol', () => {
     expect(isFrameworkSupportedForProtocol('MCP', 'CrewAI')).toBe(false);
   });
 
-  it('returns true for GoogleADK + AGUI', () => {
-    expect(isFrameworkSupportedForProtocol('AGUI', 'GoogleADK')).toBe(true);
-  });
 });

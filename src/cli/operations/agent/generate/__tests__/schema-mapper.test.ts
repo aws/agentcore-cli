@@ -13,7 +13,7 @@ import { describe, expect, it } from 'vitest';
 const baseConfig: GenerateConfig = {
   projectName: 'TestProject',
   buildType: 'CodeZip',
-  protocolMode: 'HTTP',
+  protocol: 'HTTP',
   sdk: 'Strands',
   modelProvider: 'Bedrock',
   memory: 'none',
@@ -89,7 +89,7 @@ describe('mapGenerateConfigToAgent', () => {
     expect(result.entrypoint).toBe('main.py');
     expect(result.runtimeVersion).toBe('PYTHON_3_12');
     expect(result.networkMode).toBe('PUBLIC');
-    expect(result.protocolMode).toBe('HTTP');
+    expect(result.protocol).toBe('HTTP');
   });
 
   it('uses projectName for codeLocation path', () => {
@@ -195,33 +195,33 @@ describe('mapGenerateConfigToRenderConfig', () => {
 });
 
 describe('mapGenerateConfigToAgent protocol mode', () => {
-  it('omits modelProvider and sets protocolMode for MCP', () => {
+  it('omits modelProvider and sets protocol for MCP', () => {
     const mcpConfig: GenerateConfig = {
       ...baseConfig,
-      protocolMode: 'MCP',
+      protocol: 'MCP',
     };
     const result = mapGenerateConfigToAgent(mcpConfig);
-    expect(result.protocolMode).toBe('MCP');
+    expect(result.protocol).toBe('MCP');
     expect(result).not.toHaveProperty('modelProvider');
   });
 
-  it('sets protocolMode to HTTP explicitly', () => {
+  it('sets protocol to HTTP explicitly', () => {
     const httpConfig: GenerateConfig = {
       ...baseConfig,
-      protocolMode: 'HTTP',
+      protocol: 'HTTP',
     };
     const result = mapGenerateConfigToAgent(httpConfig);
-    expect(result.protocolMode).toBe('HTTP');
+    expect(result.protocol).toBe('HTTP');
     expect(result.modelProvider).toBe('Bedrock');
   });
 
-  it('sets protocolMode for A2A', () => {
+  it('sets protocol for A2A', () => {
     const a2aConfig: GenerateConfig = {
       ...baseConfig,
-      protocolMode: 'A2A',
+      protocol: 'A2A',
     };
     const result = mapGenerateConfigToAgent(a2aConfig);
-    expect(result.protocolMode).toBe('A2A');
+    expect(result.protocol).toBe('A2A');
     expect(result.modelProvider).toBe('Bedrock');
   });
 });

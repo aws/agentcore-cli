@@ -23,7 +23,7 @@ export type { AgentRenderConfig } from './types';
  */
 export function createRenderer(config: AgentRenderConfig): BaseRenderer {
   // MCP protocol uses a standalone renderer regardless of sdkFramework
-  if (config.protocolMode === 'MCP') {
+  if (config.protocol === 'MCP') {
     return new McpRenderer(config);
   }
 

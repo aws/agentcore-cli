@@ -9,6 +9,7 @@ import {
   getSupportedModelProviders,
   matchEnumValue,
 } from '../../../schema';
+import type { ProtocolMode } from '../../../schema';
 import type { CreateOptions } from './types';
 import { existsSync } from 'fs';
 import { join } from 'path';
@@ -62,13 +63,14 @@ export function validateCreateOptions(options: CreateOptions, cwd?: string): Val
   if (options.build) options.build = matchEnumValue(BuildTypeSchema, options.build) ?? options.build;
 
   // Validate protocol if provided
+  let protocol: ProtocolMode = 'HTTP';
   if (options.protocol) {
     const protocolResult = ProtocolModeSchema.safeParse(options.protocol);
     if (!protocolResult.success) {
-      return { valid: false, error: `Invalid protocol: ${options.protocol}. Use HTTP, MCP, A2A, or AGUI` };
+      return { valid: false, error: `Invalid protocol: ${options.protocol}. Use HTTP, MCP, or A2A` };
     }
+    protocol = protocolResult.data;
   }
-  const protocol = options.protocol ?? 'HTTP';
 
   // MCP protocol: only name and language required
   if (protocol === 'MCP') {
@@ -80,6 +82,12 @@ export function validateCreateOptions(options: CreateOptions, cwd?: string): Val
     }
     if (options.memory && options.memory !== 'none') {
       return { valid: false, error: '--memory is not applicable for MCP protocol' };
+    }
+    if (options.language) {
+      const langResult = TargetLanguageSchema.safeParse(options.language);
+      if (!langResult.success) {
+        return { valid: false, error: `Invalid language: ${options.language}` };
+      }
     }
     return { valid: true };
   }
@@ -131,7 +139,7 @@ export function validateCreateOptions(options: CreateOptions, cwd?: string): Val
 
     // Validate framework is supported for the protocol
     if (protocol !== 'HTTP') {
-      const supportedFrameworks = getSupportedFrameworksForProtocol(protocol as 'A2A' | 'AGUI');
+      const supportedFrameworks = getSupportedFrameworksForProtocol(protocol);
       if (!supportedFrameworks.includes(fwResult.data)) {
         return { valid: false, error: `${options.framework} does not support ${protocol} protocol` };
       }

@@ -1025,32 +1025,6 @@ describe('validate', () => {
       expect(result.error).toContain('does not support A2A protocol');
     });
 
-    it('AGUI: succeeds with --framework Strands', () => {
-      const result = validateAddAgentOptions({
-        name: 'AguiAgent',
-        type: 'byo',
-        language: 'Python',
-        protocol: 'AGUI',
-        framework: 'Strands',
-        modelProvider: 'Bedrock',
-        codeLocation: '/path/to/code',
-      });
-      expect(result.valid).toBe(true);
-    });
-
-    it('AGUI: succeeds with --framework GoogleADK', () => {
-      const result = validateAddAgentOptions({
-        name: 'AguiAgent',
-        type: 'byo',
-        language: 'Python',
-        protocol: 'AGUI',
-        framework: 'GoogleADK',
-        modelProvider: 'Gemini',
-        codeLocation: '/path/to/code',
-      });
-      expect(result.valid).toBe(true);
-    });
-
     it('invalid protocol fails validation', () => {
       const result = validateAddAgentOptions({
         name: 'BadAgent',

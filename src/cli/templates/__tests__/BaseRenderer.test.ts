@@ -18,8 +18,8 @@ vi.mock('../../../lib', () => ({
 }));
 
 class TestRenderer extends BaseRenderer {
-  constructor(config: any, sdkName: string, baseTemplateDir: string, protocolMode?: string) {
-    super(config, sdkName, baseTemplateDir, protocolMode);
+  constructor(config: any, sdkName: string, baseTemplateDir: string, protocol?: string) {
+    super(config, sdkName, baseTemplateDir, protocol);
   }
 
   getTemplateDirPublic(): string {
@@ -42,7 +42,7 @@ describe('BaseRenderer', () => {
 
   it('getTemplateDir uses protocol from config', () => {
     const renderer = new TestRenderer(
-      { targetLanguage: 'Python', name: 'MyAgent', hasMemory: false, protocolMode: 'A2A' },
+      { targetLanguage: 'Python', name: 'MyAgent', hasMemory: false, protocol: 'A2A' },
       'strands',
       '/templates'
     );
@@ -52,7 +52,7 @@ describe('BaseRenderer', () => {
 
   it('getTemplateDir uses explicit protocol over config', () => {
     const renderer = new TestRenderer(
-      { targetLanguage: 'Python', name: 'MyAgent', hasMemory: false, protocolMode: 'A2A' },
+      { targetLanguage: 'Python', name: 'MyAgent', hasMemory: false, protocol: 'A2A' },
       'standalone',
       '/templates',
       'mcp'

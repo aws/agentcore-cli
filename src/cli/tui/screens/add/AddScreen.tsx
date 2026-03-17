@@ -2,7 +2,7 @@ import type { SelectableItem } from '../../components';
 import { SelectScreen } from '../../components';
 
 const ADD_RESOURCES = [
-  { id: 'agent', title: 'Agent', description: 'New or existing agent code' },
+  { id: 'agent', title: 'Agent', description: 'Deploy an HTTP, MCP, or A2A agent' },
   { id: 'memory', title: 'Memory', description: 'Persistent context storage' },
   { id: 'identity', title: 'Identity', description: 'API key credential providers' },
   { id: 'gateway', title: 'Gateway', description: 'Route and manage gateway targets' },

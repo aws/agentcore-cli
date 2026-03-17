@@ -101,7 +101,7 @@ export function validateAddAgentOptions(options: AddAgentOptions): ValidationRes
   const protocol = options.protocol ?? 'HTTP';
   const protocolResult = ProtocolModeSchema.safeParse(protocol);
   if (!protocolResult.success) {
-    return { valid: false, error: `Invalid protocol: ${protocol}. Use HTTP, MCP, A2A, or AGUI` };
+    return { valid: false, error: `Invalid protocol: ${protocol}. Use HTTP, MCP, or A2A` };
   }
   options.protocol = protocolResult.data;
 

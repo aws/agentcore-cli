@@ -20,7 +20,7 @@ export type { BuildType, ModelProvider, ProtocolMode, SDKFramework, TargetLangua
 export interface GenerateConfig {
   projectName: string;
   buildType: BuildType;
-  protocolMode: ProtocolMode;
+  protocol: ProtocolMode;
   sdk: SDKFramework;
   modelProvider: ModelProvider;
   /** API key for non-Bedrock model providers (optional - can be added later) */
@@ -67,7 +67,6 @@ export const PROTOCOL_OPTIONS = [
   { id: 'HTTP', title: 'HTTP', description: 'Standard HTTP agent (default)' },
   { id: 'MCP', title: 'MCP', description: 'Model Context Protocol tool server' },
   { id: 'A2A', title: 'A2A', description: 'Agent-to-Agent protocol' },
-  { id: 'AGUI', title: 'AG-UI', description: 'Agent GUI protocol with SSE streaming' },
 ] as const;
 
 export const SDK_OPTIONS = [

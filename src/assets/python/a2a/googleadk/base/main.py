@@ -29,7 +29,7 @@ runner = Runner(
 card = AgentCard(
     name=agent.name,
     description=agent.description,
-    url="http://localhost:8080/",
+    url="http://localhost:9000/",
     version="0.1.0",
     capabilities=AgentCapabilities(streaming=True),
     skills=[

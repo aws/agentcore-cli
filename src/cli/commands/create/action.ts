@@ -175,7 +175,7 @@ export async function createProjectWithAgent(options: CreateWithAgentOptions): P
       apiKey,
       memory,
       language,
-      protocolMode: protocol ?? 'HTTP',
+      protocol: protocol ?? 'HTTP',
     };
 
     // Resolve credential strategy FIRST (new project has no existing credentials)
