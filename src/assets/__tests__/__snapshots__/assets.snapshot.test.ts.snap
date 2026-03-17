@@ -441,16 +441,19 @@ exports[`Assets Directory Snapshots > File listing > should match the expected f
   "python/a2a/googleadk/base/README.md",
   "python/a2a/googleadk/base/gitignore.template",
   "python/a2a/googleadk/base/main.py",
+  "python/a2a/googleadk/base/model/__init__.py",
   "python/a2a/googleadk/base/model/load.py",
   "python/a2a/googleadk/base/pyproject.toml",
   "python/a2a/langchain_langgraph/base/README.md",
   "python/a2a/langchain_langgraph/base/gitignore.template",
   "python/a2a/langchain_langgraph/base/main.py",
+  "python/a2a/langchain_langgraph/base/model/__init__.py",
   "python/a2a/langchain_langgraph/base/model/load.py",
   "python/a2a/langchain_langgraph/base/pyproject.toml",
   "python/a2a/strands/base/README.md",
   "python/a2a/strands/base/gitignore.template",
   "python/a2a/strands/base/main.py",
+  "python/a2a/strands/base/model/__init__.py",
   "python/a2a/strands/base/model/load.py",
   "python/a2a/strands/base/pyproject.toml",
   "python/a2a/strands/capabilities/memory/__init__.py",
@@ -1005,6 +1008,11 @@ if __name__ == "__main__":
 "
 `;
 
+exports[`Assets Directory Snapshots > Python framework assets > python/python/a2a/googleadk/base/model/__init__.py should match snapshot 1`] = `
+"# Package marker
+"
+`;
+
 exports[`Assets Directory Snapshots > Python framework assets > python/python/a2a/googleadk/base/model/load.py should match snapshot 1`] = `
 "import os
 from bedrock_agentcore.identity.auth import requires_api_key
@@ -1210,6 +1218,11 @@ card = AgentCard(
 
 if __name__ == "__main__":
     serve_a2a(LangGraphA2AExecutor(graph), card)
+"
+`;
+
+exports[`Assets Directory Snapshots > Python framework assets > python/python/a2a/langchain_langgraph/base/model/__init__.py should match snapshot 1`] = `
+"# Package marker
 "
 `;
 
@@ -1484,6 +1497,11 @@ agent = Agent(
 
 if __name__ == "__main__":
     serve_a2a(StrandsA2AExecutor(agent))
+"
+`;
+
+exports[`Assets Directory Snapshots > Python framework assets > python/python/a2a/strands/base/model/__init__.py should match snapshot 1`] = `
+"# Package marker
 "
 `;
 

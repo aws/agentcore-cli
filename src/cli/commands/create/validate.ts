@@ -72,7 +72,15 @@ export function validateCreateOptions(options: CreateOptions, cwd?: string): Val
     protocol = protocolResult.data;
   }
 
-  // MCP protocol: only name and language required
+  // Validate build type if provided (applies to all protocols)
+  if (options.build) {
+    const buildResult = BuildTypeSchema.safeParse(options.build);
+    if (!buildResult.success) {
+      return { valid: false, error: `Invalid build type: ${options.build}. Use CodeZip or Container` };
+    }
+  }
+
+  // MCP protocol: only name, language, and build type required
   if (protocol === 'MCP') {
     if (options.framework) {
       return { valid: false, error: '--framework is not applicable for MCP protocol' };
@@ -90,14 +98,6 @@ export function validateCreateOptions(options: CreateOptions, cwd?: string): Val
       }
     }
     return { valid: true };
-  }
-
-  // Validate build type if provided
-  if (options.build) {
-    const buildResult = BuildTypeSchema.safeParse(options.build);
-    if (!buildResult.success) {
-      return { valid: false, error: `Invalid build type: ${options.build}. Use CodeZip or Container` };
-    }
   }
 
   // Without --no-agent, all agent options are required
