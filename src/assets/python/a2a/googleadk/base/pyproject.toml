@@ -9,11 +9,11 @@ description = "AgentCore A2A Agent using Google ADK"
 readme = "README.md"
 requires-python = ">=3.10"
 dependencies = [
+    "a2a-sdk >= 0.2.0",
     "aws-opentelemetry-distro",
-    "bedrock-agentcore >= 1.0.3",
-    "google-adk[a2a] >= 1.0.0",
+    "bedrock-agentcore[a2a] >= 1.0.3",
+    "google-adk >= 1.0.0",
     "google-genai >= 1.0.0",
-    "uvicorn >= 0.30.0",
 ]
 
 [tool.hatch.build.targets.wheel]

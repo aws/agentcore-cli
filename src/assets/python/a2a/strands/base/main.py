@@ -1,5 +1,6 @@
 from strands import Agent, tool
-from strands.agent.a2a import A2AAgent
+from strands.multiagent.a2a.executor import StrandsA2AExecutor
+from bedrock_agentcore.runtime import serve_a2a
 from model.load import load_model
 {{#if hasMemory}}
 from memory.session import get_memory_session_manager
@@ -39,8 +40,5 @@ agent = Agent(
 )
 {{/if}}
 
-a2a_agent = A2AAgent(agent)
-
 if __name__ == "__main__":
-    import uvicorn
-    uvicorn.run(a2a_agent.app, host="0.0.0.0", port=9000)
+    serve_a2a(StrandsA2AExecutor(agent))

@@ -9,12 +9,11 @@ description = "AgentCore AG-UI Agent using Google ADK"
 readme = "README.md"
 requires-python = ">=3.10"
 dependencies = [
-    "ag-ui-google-adk",
+    "ag-ui-protocol >= 0.1.10",
     "aws-opentelemetry-distro",
-    "bedrock-agentcore >= 1.0.3",
+    "bedrock-agentcore[ag-ui] >= 1.0.3",
     "google-adk >= 1.0.0",
     "google-genai >= 1.0.0",
-    "uvicorn >= 0.30.0",
 ]
 
 [tool.hatch.build.targets.wheel]

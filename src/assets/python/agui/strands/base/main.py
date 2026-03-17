@@ -1,5 +1,6 @@
 from strands import Agent, tool
-from ag_ui_strands import StrandsA2AServer
+from ag_ui_strands import StrandsAgent
+from bedrock_agentcore.runtime import serve_ag_ui
 from model.load import load_model
 {{#if hasMemory}}
 from memory.session import get_memory_session_manager
@@ -39,8 +40,11 @@ agent = Agent(
 )
 {{/if}}
 
-agui_server = StrandsA2AServer(agent)
+agui_agent = StrandsAgent(
+    agent=agent,
+    name="{{ name }}",
+    description="A helpful assistant",
+)
 
 if __name__ == "__main__":
-    import uvicorn
-    uvicorn.run(agui_server.app, host="0.0.0.0", port=8080)
+    serve_ag_ui(agui_agent)

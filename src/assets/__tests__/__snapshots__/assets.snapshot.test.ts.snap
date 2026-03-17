@@ -971,9 +971,12 @@ Thumbs.db
 `;
 
 exports[`Assets Directory Snapshots > Python framework assets > python/python/a2a/googleadk/base/main.py should match snapshot 1`] = `
-"import uvicorn
-from google.adk.agents import Agent
-from google.adk.a2a import A2AServer
+"from google.adk.agents import Agent
+from google.adk.a2a.executor.a2a_agent_executor import A2aAgentExecutor
+from google.adk.runners import Runner
+from google.adk.sessions import InMemorySessionService
+from a2a.types import AgentCapabilities, AgentCard, AgentSkill
+from bedrock_agentcore.runtime import serve_a2a
 from model.load import load_model
 
 
@@ -985,14 +988,37 @@ def add_numbers(a: int, b: int) -> int:
 agent = Agent(
     model=load_model(),
     name="{{ name }}",
+    description="A helpful assistant that can use tools.",
     instruction="You are a helpful assistant. Use tools when appropriate.",
     tools=[add_numbers],
 )
 
-a2a_server = A2AServer(agent)
+runner = Runner(
+    app_name=agent.name,
+    agent=agent,
+    session_service=InMemorySessionService(),
+)
+
+card = AgentCard(
+    name=agent.name,
+    description=agent.description,
+    url="http://localhost:8080/",
+    version="0.1.0",
+    capabilities=AgentCapabilities(streaming=True),
+    skills=[
+        AgentSkill(
+            id="tools",
+            name="tools",
+            description="Use tools to help answer questions",
+            tags=["tools"],
+        )
+    ],
+    default_input_modes=["text"],
+    default_output_modes=["text"],
+)
 
 if __name__ == "__main__":
-    uvicorn.run(a2a_server.app, host="0.0.0.0", port=9000)
+    serve_a2a(A2aAgentExecutor(runner=runner), card)
 "
 `;
 
@@ -1053,11 +1079,11 @@ description = "AgentCore A2A Agent using Google ADK"
 readme = "README.md"
 requires-python = ">=3.10"
 dependencies = [
+    "a2a-sdk >= 0.2.0",
     "aws-opentelemetry-distro",
-    "bedrock-agentcore >= 1.0.3",
-    "google-adk[a2a] >= 1.0.0",
+    "bedrock-agentcore[a2a] >= 1.0.3",
+    "google-adk >= 1.0.0",
     "google-genai >= 1.0.0",
-    "uvicorn >= 0.30.0",
 ]
 
 [tool.hatch.build.targets.wheel]
@@ -1137,11 +1163,14 @@ Thumbs.db
 `;
 
 exports[`Assets Directory Snapshots > Python framework assets > python/python/a2a/langchain_langgraph/base/main.py should match snapshot 1`] = `
-"import uvicorn
-from langchain_core.tools import tool
+"from langchain_core.tools import tool
 from langgraph.prebuilt import create_react_agent
-from copilotkit.langgraph import copilotkit_messages_to_langchain
-from langgraph_a2a import LangGraphA2AServer
+from a2a.server.agent_execution import AgentExecutor, RequestContext
+from a2a.server.events import EventQueue
+from a2a.server.tasks import TaskUpdater
+from a2a.types import AgentCapabilities, AgentCard, AgentSkill, Part, TextPart
+from a2a.utils import new_task
+from bedrock_agentcore.runtime import serve_a2a
 from model.load import load_model
 
 
@@ -1152,11 +1181,52 @@ def add_numbers(a: int, b: int) -> int:
 
 
 model = load_model()
-agent = create_react_agent(model, tools=[add_numbers])
-a2a_server = LangGraphA2AServer(agent)
+graph = create_react_agent(model, tools=[add_numbers])
+
+
+class LangGraphA2AExecutor(AgentExecutor):
+    """Wraps a LangGraph CompiledGraph as an a2a-sdk AgentExecutor."""
+
+    def __init__(self, graph):
+        self.graph = graph
+
+    async def execute(self, context: RequestContext, event_queue: EventQueue) -> None:
+        task = context.current_task or new_task(context.message)
+        if not context.current_task:
+            await event_queue.enqueue_event(task)
+        updater = TaskUpdater(event_queue, task.id, task.context_id)
+
+        user_text = context.get_user_input()
+        result = await self.graph.ainvoke({"messages": [("user", user_text)]})
+        response = result["messages"][-1].content
+
+        await updater.add_artifact([Part(root=TextPart(text=response))])
+        await updater.complete()
+
+    async def cancel(self, context: RequestContext, event_queue: EventQueue) -> None:
+        pass
+
+
+card = AgentCard(
+    name="{{ name }}",
+    description="A LangGraph agent on Bedrock AgentCore",
+    url="http://localhost:8080/",
+    version="0.1.0",
+    capabilities=AgentCapabilities(streaming=True),
+    skills=[
+        AgentSkill(
+            id="tools",
+            name="tools",
+            description="Use tools to help answer questions",
+            tags=["tools"],
+        )
+    ],
+    default_input_modes=["text"],
+    default_output_modes=["text"],
+)
 
 if __name__ == "__main__":
-    uvicorn.run(a2a_server.app, host="0.0.0.0", port=9000)
+    serve_a2a(LangGraphA2AExecutor(graph), card)
 "
 `;
 
@@ -1299,16 +1369,15 @@ description = "AgentCore A2A Agent using LangChain + LangGraph"
 readme = "README.md"
 requires-python = ">=3.10"
 dependencies = [
+    "a2a-sdk >= 0.2.0",
     {{#if (eq modelProvider "Anthropic")}}"langchain-anthropic >= 0.3.0",
     {{/if}}{{#if (eq modelProvider "Bedrock")}}"langchain-aws >= 0.2.0",
     {{/if}}{{#if (eq modelProvider "Gemini")}}"langchain-google-genai >= 2.0.0",
     {{/if}}{{#if (eq modelProvider "OpenAI")}}"langchain-openai >= 0.2.0",
     {{/if}}"aws-opentelemetry-distro",
-    "bedrock-agentcore >= 1.0.3",
+    "bedrock-agentcore[a2a] >= 1.0.3",
     "botocore[crt] >= 1.35.0",
     "langgraph >= 0.2.0",
-    "langgraph-a2a >= 0.1.0",
-    "uvicorn >= 0.30.0",
 ]
 
 [tool.hatch.build.targets.wheel]
@@ -1389,7 +1458,8 @@ Thumbs.db
 
 exports[`Assets Directory Snapshots > Python framework assets > python/python/a2a/strands/base/main.py should match snapshot 1`] = `
 "from strands import Agent, tool
-from strands.agent.a2a import A2AAgent
+from strands.multiagent.a2a.executor import StrandsA2AExecutor
+from bedrock_agentcore.runtime import serve_a2a
 from model.load import load_model
 {{#if hasMemory}}
 from memory.session import get_memory_session_manager
@@ -1429,11 +1499,8 @@ agent = Agent(
 )
 {{/if}}
 
-a2a_agent = A2AAgent(agent)
-
 if __name__ == "__main__":
-    import uvicorn
-    uvicorn.run(a2a_agent.app, host="0.0.0.0", port=9000)
+    serve_a2a(StrandsA2AExecutor(agent))
 "
 `;
 
@@ -1578,12 +1645,11 @@ requires-python = ">=3.10"
 dependencies = [
     {{#if (eq modelProvider "Anthropic")}}"anthropic >= 0.30.0",
     {{/if}}"aws-opentelemetry-distro",
-    "bedrock-agentcore >= 1.0.3",
+    "bedrock-agentcore[a2a] >= 1.0.3",
     "botocore[crt] >= 1.35.0",
     {{#if (eq modelProvider "Gemini")}}"google-genai >= 1.0.0",
     {{/if}}{{#if (eq modelProvider "OpenAI")}}"openai >= 1.0.0",
-    {{/if}}"strands-agents[a2a] >= 1.13.0",
-    "uvicorn >= 0.30.0",
+    {{/if}}"strands-agents >= 1.13.0",
 ]
 
 [tool.hatch.build.targets.wheel]
@@ -1710,9 +1776,19 @@ Thumbs.db
 `;
 
 exports[`Assets Directory Snapshots > Python framework assets > python/python/agui/googleadk/base/main.py should match snapshot 1`] = `
-"import uvicorn
-from google.adk.agents import Agent
-from ag_ui_google_adk import GoogleADKAGUIServer
+"from google.adk.agents import Agent
+from google.adk.runners import Runner
+from google.adk.sessions import InMemorySessionService
+from bedrock_agentcore.runtime import AGUIApp
+from bedrock_agentcore.runtime.context import RequestContext
+from ag_ui.core import (
+    RunAgentInput,
+    RunStartedEvent,
+    RunFinishedEvent,
+    TextMessageStartEvent,
+    TextMessageContentEvent,
+    TextMessageEndEvent,
+)
 from model.load import load_model
 
 
@@ -1724,14 +1800,57 @@ def add_numbers(a: int, b: int) -> int:
 agent = Agent(
     model=load_model(),
     name="{{ name }}",
+    description="A helpful assistant that can use tools.",
     instruction="You are a helpful assistant. Use tools when appropriate.",
     tools=[add_numbers],
 )
 
-agui_server = GoogleADKAGUIServer(agent)
+runner = Runner(
+    app_name=agent.name,
+    agent=agent,
+    session_service=InMemorySessionService(),
+)
+
+app = AGUIApp()
+
+
+@app.entrypoint
+async def handle(input_data: RunAgentInput, context: RequestContext):
+    yield RunStartedEvent(thread_id=input_data.thread_id, run_id=input_data.run_id)
+
+    user_text = ""
+    if input_data.messages:
+        last = input_data.messages[-1]
+        if hasattr(last, "content") and last.content:
+            user_text = last.content
+
+    session = await runner.session_service.create_session(
+        app_name=runner.app_name, user_id="default-user"
+    )
+    response = await runner.run_async(
+        user_id=session.user_id,
+        session_id=session.id,
+        new_message=user_text,
+    )
+
+    result_text = ""
+    if response and response.events:
+        for event in response.events:
+            if hasattr(event, "content") and event.content:
+                for part in event.content.parts:
+                    if hasattr(part, "text"):
+                        result_text += part.text
+
+    msg_id = "msg-1"
+    yield TextMessageStartEvent(message_id=msg_id, role="assistant")
+    yield TextMessageContentEvent(message_id=msg_id, delta=result_text)
+    yield TextMessageEndEvent(message_id=msg_id)
+
+    yield RunFinishedEvent(thread_id=input_data.thread_id, run_id=input_data.run_id)
+
 
 if __name__ == "__main__":
-    uvicorn.run(agui_server.app, host="0.0.0.0", port=8080)
+    app.run()
 "
 `;
 
@@ -1792,12 +1911,11 @@ description = "AgentCore AG-UI Agent using Google ADK"
 readme = "README.md"
 requires-python = ">=3.10"
 dependencies = [
-    "ag-ui-google-adk",
+    "ag-ui-protocol >= 0.1.10",
     "aws-opentelemetry-distro",
-    "bedrock-agentcore >= 1.0.3",
+    "bedrock-agentcore[ag-ui] >= 1.0.3",
     "google-adk >= 1.0.0",
     "google-genai >= 1.0.0",
-    "uvicorn >= 0.30.0",
 ]
 
 [tool.hatch.build.targets.wheel]
@@ -1877,10 +1995,18 @@ Thumbs.db
 `;
 
 exports[`Assets Directory Snapshots > Python framework assets > python/python/agui/langchain_langgraph/base/main.py should match snapshot 1`] = `
-"import uvicorn
-from langchain_core.tools import tool
+"from langchain_core.tools import tool
 from langgraph.prebuilt import create_react_agent
-from ag_ui_langgraph import LangGraphAGUIServer
+from bedrock_agentcore.runtime import AGUIApp
+from bedrock_agentcore.runtime.context import RequestContext
+from ag_ui.core import (
+    RunAgentInput,
+    RunStartedEvent,
+    RunFinishedEvent,
+    TextMessageStartEvent,
+    TextMessageContentEvent,
+    TextMessageEndEvent,
+)
 from model.load import load_model
 
 
@@ -1891,11 +2017,34 @@ def add_numbers(a: int, b: int) -> int:
 
 
 model = load_model()
-agent = create_react_agent(model, tools=[add_numbers])
-agui_server = LangGraphAGUIServer(agent)
+graph = create_react_agent(model, tools=[add_numbers])
+
+app = AGUIApp()
+
+
+@app.entrypoint
+async def handle(input_data: RunAgentInput, context: RequestContext):
+    yield RunStartedEvent(thread_id=input_data.thread_id, run_id=input_data.run_id)
+
+    user_text = ""
+    if input_data.messages:
+        last = input_data.messages[-1]
+        if hasattr(last, "content") and last.content:
+            user_text = last.content
+
+    result = await graph.ainvoke({"messages": [("user", user_text)]})
+    response = result["messages"][-1].content
+
+    msg_id = "msg-1"
+    yield TextMessageStartEvent(message_id=msg_id, role="assistant")
+    yield TextMessageContentEvent(message_id=msg_id, delta=response)
+    yield TextMessageEndEvent(message_id=msg_id)
+
+    yield RunFinishedEvent(thread_id=input_data.thread_id, run_id=input_data.run_id)
+
 
 if __name__ == "__main__":
-    uvicorn.run(agui_server.app, host="0.0.0.0", port=8080)
+    app.run()
 "
 `;
 
@@ -2038,16 +2187,15 @@ description = "AgentCore AG-UI Agent using LangChain + LangGraph"
 readme = "README.md"
 requires-python = ">=3.10"
 dependencies = [
+    "ag-ui-protocol >= 0.1.10",
     {{#if (eq modelProvider "Anthropic")}}"langchain-anthropic >= 0.3.0",
     {{/if}}{{#if (eq modelProvider "Bedrock")}}"langchain-aws >= 0.2.0",
     {{/if}}{{#if (eq modelProvider "Gemini")}}"langchain-google-genai >= 2.0.0",
     {{/if}}{{#if (eq modelProvider "OpenAI")}}"langchain-openai >= 0.2.0",
-    {{/if}}"ag-ui-langgraph",
-    "aws-opentelemetry-distro",
-    "bedrock-agentcore >= 1.0.3",
+    {{/if}}"aws-opentelemetry-distro",
+    "bedrock-agentcore[ag-ui] >= 1.0.3",
     "botocore[crt] >= 1.35.0",
     "langgraph >= 0.2.0",
-    "uvicorn >= 0.30.0",
 ]
 
 [tool.hatch.build.targets.wheel]
@@ -2128,7 +2276,8 @@ Thumbs.db
 
 exports[`Assets Directory Snapshots > Python framework assets > python/python/agui/strands/base/main.py should match snapshot 1`] = `
 "from strands import Agent, tool
-from ag_ui_strands import StrandsA2AServer
+from ag_ui_strands import StrandsAgent
+from bedrock_agentcore.runtime import serve_ag_ui
 from model.load import load_model
 {{#if hasMemory}}
 from memory.session import get_memory_session_manager
@@ -2168,11 +2317,14 @@ agent = Agent(
 )
 {{/if}}
 
-agui_server = StrandsA2AServer(agent)
+agui_agent = StrandsAgent(
+    agent=agent,
+    name="{{ name }}",
+    description="A helpful assistant",
+)
 
 if __name__ == "__main__":
-    import uvicorn
-    uvicorn.run(agui_server.app, host="0.0.0.0", port=8080)
+    serve_ag_ui(agui_agent)
 "
 `;
 
@@ -2318,12 +2470,11 @@ dependencies = [
     {{#if (eq modelProvider "Anthropic")}}"anthropic >= 0.30.0",
     {{/if}}"ag-ui-strands",
     "aws-opentelemetry-distro",
-    "bedrock-agentcore >= 1.0.3",
+    "bedrock-agentcore[ag-ui] >= 1.0.3",
     "botocore[crt] >= 1.35.0",
     {{#if (eq modelProvider "Gemini")}}"google-genai >= 1.0.0",
     {{/if}}{{#if (eq modelProvider "OpenAI")}}"openai >= 1.0.0",
     {{/if}}"strands-agents >= 1.13.0",
-    "uvicorn >= 0.30.0",
 ]
 
 [tool.hatch.build.targets.wheel]
