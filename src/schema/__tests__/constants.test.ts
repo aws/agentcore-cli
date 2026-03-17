@@ -202,7 +202,6 @@ describe('getSupportedFrameworksForProtocol', () => {
     expect(frameworks).toContain('Strands');
     expect(frameworks.length).toBeGreaterThan(0);
   });
-
 });
 
 describe('isFrameworkSupportedForProtocol', () => {
@@ -226,5 +225,4 @@ describe('isFrameworkSupportedForProtocol', () => {
     expect(isFrameworkSupportedForProtocol('MCP', 'Strands')).toBe(false);
     expect(isFrameworkSupportedForProtocol('MCP', 'CrewAI')).toBe(false);
   });
-
 });

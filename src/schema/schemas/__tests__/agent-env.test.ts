@@ -266,7 +266,7 @@ describe('AgentEnvSpecSchema', () => {
     });
 
     it('accepts agent without protocol (backwards compat)', () => {
-      const { protocol, ...agentWithoutProtocol } = { ...validPythonAgent, protocol: undefined };
+      const { protocol: _protocol, ...agentWithoutProtocol } = { ...validPythonAgent, protocol: undefined };
       expect(AgentEnvSpecSchema.safeParse(agentWithoutProtocol).success).toBe(true);
     });
 

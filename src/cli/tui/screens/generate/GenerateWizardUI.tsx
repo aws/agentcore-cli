@@ -10,7 +10,6 @@ import {
   LANGUAGE_OPTIONS,
   MEMORY_OPTIONS,
   PROTOCOL_OPTIONS,
-  SDK_OPTIONS,
   STEP_LABELS,
   getModelProviderOptionsForSdk,
   getSDKOptionsForProtocol,

@@ -175,18 +175,7 @@ describe.skipIf(!prereqs.npm || !prereqs.git)('integration: create with protocol
   it('rejects MCP with --framework flag', async () => {
     const name = `McpFw${Date.now().toString().slice(-6)}`;
     const result = await runCLI(
-      [
-        'create',
-        '--name',
-        name,
-        '--language',
-        'Python',
-        '--protocol',
-        'MCP',
-        '--framework',
-        'Strands',
-        '--json',
-      ],
+      ['create', '--name', name, '--language', 'Python', '--protocol', 'MCP', '--framework', 'Strands', '--json'],
       testDir
     );
 

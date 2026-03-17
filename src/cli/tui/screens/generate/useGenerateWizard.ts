@@ -1,6 +1,6 @@
 import { ProjectNameSchema } from '../../../../schema';
 import type { BuildType, GenerateConfig, GenerateStep, MemoryOption, ProtocolMode } from './types';
-import { BASE_GENERATE_STEPS, getModelProviderOptionsForSdk, getSDKOptionsForProtocol } from './types';
+import { BASE_GENERATE_STEPS, getModelProviderOptionsForSdk } from './types';
 import { useCallback, useMemo, useState } from 'react';
 
 function getDefaultConfig(): GenerateConfig {

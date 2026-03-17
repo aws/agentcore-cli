@@ -208,7 +208,7 @@ export class AgentPrimitive extends BasePrimitive<AddAgentOptions, RemovableReso
             modelProvider: cliOptions.modelProvider!,
             apiKey: cliOptions.apiKey,
             memory: cliOptions.memory,
-            protocol: cliOptions.protocol as ProtocolMode | undefined,
+            protocol: cliOptions.protocol,
             codeLocation: cliOptions.codeLocation,
             entrypoint: cliOptions.entrypoint,
           });
