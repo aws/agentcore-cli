@@ -272,6 +272,9 @@ export function useCreateFlow(cwd: string): CreateFlowState {
                   memory: addAgentConfig.memory,
                   language: addAgentConfig.language,
                   apiKey: addAgentConfig.apiKey,
+                  networkMode: addAgentConfig.networkMode,
+                  subnets: addAgentConfig.subnets,
+                  securityGroups: addAgentConfig.securityGroups,
                 };
 
                 logger.logSubStep(`Framework: ${generateConfig.sdk}`);
