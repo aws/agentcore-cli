@@ -187,6 +187,7 @@ describe('AgentEnvSpecSchema', () => {
     entrypoint: 'main.py:handler',
     codeLocation: './agents/test',
     runtimeVersion: 'PYTHON_3_12',
+    protocol: 'HTTP',
   };
 
   const validNodeAgent = {
@@ -196,6 +197,7 @@ describe('AgentEnvSpecSchema', () => {
     entrypoint: 'index.ts',
     codeLocation: './agents/node',
     runtimeVersion: 'NODE_20',
+    protocol: 'HTTP',
   };
 
   it('accepts valid Python agent', () => {
@@ -265,9 +267,9 @@ describe('AgentEnvSpecSchema', () => {
       expect(result.success, `Should accept protocol ${mode}`).toBe(true);
     });
 
-    it('accepts agent without protocol (backwards compat)', () => {
+    it('rejects agent without protocol', () => {
       const { protocol: _protocol, ...agentWithoutProtocol } = { ...validPythonAgent, protocol: undefined };
-      expect(AgentEnvSpecSchema.safeParse(agentWithoutProtocol).success).toBe(true);
+      expect(AgentEnvSpecSchema.safeParse(agentWithoutProtocol).success).toBe(false);
     });
 
     it('rejects invalid protocol', () => {

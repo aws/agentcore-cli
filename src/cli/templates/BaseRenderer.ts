@@ -28,6 +28,10 @@ export abstract class BaseRenderer {
     this.protocolMode = (protocolMode ?? config.protocol ?? 'HTTP').toLowerCase();
   }
 
+  protected shouldRenderMemory(): boolean {
+    return this.config.hasMemory;
+  }
+
   protected getTemplateDir(): string {
     const language = this.config.targetLanguage.toLowerCase();
     return path.join(this.baseTemplateDir, language, this.protocolMode, this.sdkName);
@@ -53,7 +57,7 @@ export abstract class BaseRenderer {
 
     // Render capability templates based on config
     // Only render if the capability directory exists (not all SDKs have all capabilities)
-    if (this.config.hasMemory) {
+    if (this.shouldRenderMemory()) {
       const memoryCapabilityDir = path.join(templateDir, 'capabilities', 'memory');
       if (existsSync(memoryCapabilityDir)) {
         const memoryTargetDir = path.join(projectDir, 'memory');

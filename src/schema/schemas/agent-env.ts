@@ -123,8 +123,8 @@ export const AgentEnvSpecSchema = z.object({
   instrumentation: InstrumentationSchema.optional(),
   /** Model provider used by this agent. Optional for backwards compatibility. */
   modelProvider: ModelProviderSchema.optional(),
-  /** Protocol for the runtime (HTTP, MCP, A2A). Defaults to HTTP. */
-  protocol: ProtocolModeSchema.optional(),
+  /** Protocol for the runtime (HTTP, MCP, A2A). */
+  protocol: ProtocolModeSchema,
 });
 
 export type AgentEnvSpec = z.infer<typeof AgentEnvSpecSchema>;

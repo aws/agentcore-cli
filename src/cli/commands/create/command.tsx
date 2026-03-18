@@ -116,9 +116,8 @@ async function handleCreateCLI(options: CreateOptions): Promise<void> {
         cwd,
         buildType: (options.build as BuildType) ?? 'CodeZip',
         language: options.language as TargetLanguage,
-        // Defaults are harmless for MCP: schema-mapper excludes modelProvider for MCP agents
-        framework: (options.framework as SDKFramework) ?? ('Strands' as SDKFramework),
-        modelProvider: (options.modelProvider as ModelProvider) ?? ('Bedrock' as ModelProvider),
+        framework: options.framework as SDKFramework | undefined,
+        modelProvider: options.modelProvider as ModelProvider | undefined,
         apiKey: options.apiKey,
         memory: (options.memory as 'none' | 'shortTerm' | 'longAndShortTerm') ?? 'none',
         protocol: options.protocol as ProtocolMode | undefined,
