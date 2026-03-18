@@ -124,4 +124,5 @@ See `docs/TESTING.md` for details.
 
 ## TUI Harness
 
-See `docs/tui-harness.md` for the full TUI harness usage guide (MCP tools, screen markers, examples, and error recovery).
+See `docs/tui-harness.md` for the full TUI harness usage guide (MCP tools, screen markers, examples, and error
+recovery).
