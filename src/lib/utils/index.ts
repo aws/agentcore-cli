@@ -10,4 +10,5 @@ export {
   type SubprocessResult,
 } from './subprocess';
 export { parseTimeString } from './time-parser';
+export { parseJsonRpcResponse } from './json-rpc';
 export { validateAgentSchema, validateProjectSchema } from './zod';

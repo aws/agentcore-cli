@@ -99,14 +99,21 @@ export async function handleInvoke(context: InvokeContext, options: InvokeOption
 
     // list-tools: list available MCP tools
     if (options.prompt === 'list-tools') {
-      const result = await mcpListTools(mcpOpts);
-      const response = formatMcpToolList(result.tools);
-      return {
-        success: true,
-        agentName: agentSpec.name,
-        targetName: selectedTargetName,
-        response,
-      };
+      try {
+        const result = await mcpListTools(mcpOpts);
+        const response = formatMcpToolList(result.tools);
+        return {
+          success: true,
+          agentName: agentSpec.name,
+          targetName: selectedTargetName,
+          response,
+        };
+      } catch (err) {
+        return {
+          success: false,
+          error: `Failed to list MCP tools: ${err instanceof Error ? err.message : String(err)}`,
+        };
+      }
     }
 
     // call-tool: call an MCP tool by name
@@ -125,15 +132,22 @@ export async function handleInvoke(context: InvokeContext, options: InvokeOption
           return { success: false, error: `Invalid JSON for --input: ${options.input}` };
         }
       }
-      // Lightweight init to get session ID (no tools/list round-trip)
-      const mcpSessionId = await mcpInitSession(mcpOpts);
-      const response = await mcpCallTool({ ...mcpOpts, mcpSessionId }, options.tool, args);
-      return {
-        success: true,
-        agentName: agentSpec.name,
-        targetName: selectedTargetName,
-        response,
-      };
+      try {
+        // Lightweight init to get session ID (no tools/list round-trip)
+        const mcpSessionId = await mcpInitSession(mcpOpts);
+        const response = await mcpCallTool({ ...mcpOpts, mcpSessionId }, options.tool, args);
+        return {
+          success: true,
+          agentName: agentSpec.name,
+          targetName: selectedTargetName,
+          response,
+        };
+      } catch (err) {
+        return {
+          success: false,
+          error: `Failed to call MCP tool: ${err instanceof Error ? err.message : String(err)}`,
+        };
+      }
     }
 
     if (!options.prompt) {
@@ -151,26 +165,30 @@ export async function handleInvoke(context: InvokeContext, options: InvokeOption
 
   // A2A protocol handling — send JSON-RPC message/send via InvokeAgentRuntime
   if (agentSpec.protocol === 'A2A') {
-    const a2aResult = await invokeA2ARuntime(
-      { region: targetConfig.region, runtimeArn: agentState.runtimeArn, userId: options.userId },
-      options.prompt
-    );
-    let response = '';
-    for await (const chunk of a2aResult.stream) {
-      response += chunk;
-      if (options.stream) {
-        process.stdout.write(chunk);
+    try {
+      const a2aResult = await invokeA2ARuntime(
+        { region: targetConfig.region, runtimeArn: agentState.runtimeArn, userId: options.userId },
+        options.prompt
+      );
+      let response = '';
+      for await (const chunk of a2aResult.stream) {
+        response += chunk;
+        if (options.stream) {
+          process.stdout.write(chunk);
+        }
       }
+      if (options.stream) {
+        process.stdout.write('\n');
+      }
+      return {
+        success: true,
+        agentName: agentSpec.name,
+        targetName: selectedTargetName,
+        response,
+      };
+    } catch (err) {
+      return { success: false, error: `A2A invoke failed: ${err instanceof Error ? err.message : String(err)}` };
     }
-    if (options.stream) {
-      process.stdout.write('\n');
-    }
-    return {
-      success: true,
-      agentName: agentSpec.name,
-      targetName: selectedTargetName,
-      response,
-    };
   }
 
   // Get provider info if available

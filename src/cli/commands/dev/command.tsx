@@ -90,7 +90,16 @@ async function handleMcpInvoke(port: number, invokeValue: string, toolName?: str
       }
       // Initialize session first, then call tool with the session ID
       const { sessionId } = await listMcpTools(port);
-      const args = input ? (JSON.parse(input) as Record<string, unknown>) : {};
+      let args: Record<string, unknown> = {};
+      if (input) {
+        try {
+          args = JSON.parse(input) as Record<string, unknown>;
+        } catch {
+          console.error(`Error: Invalid JSON for --input: ${input}`);
+          console.error('Expected format: --input \'{"key": "value"}\'');
+          process.exit(1);
+        }
+      }
       const result = await callMcpTool(port, toolName, args, sessionId);
       console.log(result);
     } else {

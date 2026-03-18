@@ -1,4 +1,4 @@
-import { parseJsonRpcResponse } from '../operations/dev/utils';
+import { parseJsonRpcResponse } from '../../lib/utils/json-rpc';
 import { getCredentialProvider } from './account';
 import {
   BedrockAgentCoreClient,
@@ -550,7 +550,7 @@ async function* singleValueStream(value: string): AsyncGenerator<string, void, u
 }
 
 /** Extract text content from A2A JSON-RPC response. Supports both kind:'text' and type:'text' part formats. */
-function parseA2AResponse(text: string): string {
+export function parseA2AResponse(text: string): string {
   try {
     const parsed: unknown = JSON.parse(text);
     if (!parsed || typeof parsed !== 'object') return text;

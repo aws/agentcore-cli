@@ -1,4 +1,4 @@
-import { extractResult, parseSSE, parseSSELine } from '../agentcore.js';
+import { extractResult, parseA2AResponse, parseSSE, parseSSELine } from '../agentcore.js';
 import { describe, expect, it } from 'vitest';
 
 describe('parseSSELine', () => {
@@ -95,5 +95,84 @@ describe('extractResult', () => {
 
   it('handles empty string', () => {
     expect(extractResult('')).toBe('');
+  });
+});
+
+describe('parseA2AResponse', () => {
+  it('extracts text from artifacts with kind:text parts', () => {
+    const response = JSON.stringify({
+      jsonrpc: '2.0',
+      id: 1,
+      result: {
+        artifacts: [{ parts: [{ kind: 'text', text: 'Hello from A2A' }] }],
+      },
+    });
+    expect(parseA2AResponse(response)).toBe('Hello from A2A');
+  });
+
+  it('extracts text from artifacts with type:text parts (backward compat)', () => {
+    const response = JSON.stringify({
+      jsonrpc: '2.0',
+      id: 1,
+      result: {
+        artifacts: [{ parts: [{ type: 'text', text: 'Hello' }] }],
+      },
+    });
+    expect(parseA2AResponse(response)).toBe('Hello');
+  });
+
+  it('concatenates text from multiple parts', () => {
+    const response = JSON.stringify({
+      jsonrpc: '2.0',
+      id: 1,
+      result: {
+        artifacts: [
+          {
+            parts: [
+              { kind: 'text', text: 'part1' },
+              { kind: 'text', text: 'part2' },
+            ],
+          },
+        ],
+      },
+    });
+    expect(parseA2AResponse(response)).toBe('part1part2');
+  });
+
+  it('returns error message for JSON-RPC error', () => {
+    const response = JSON.stringify({
+      jsonrpc: '2.0',
+      id: 1,
+      error: { code: -32600, message: 'Bad request' },
+    });
+    expect(parseA2AResponse(response)).toBe('Error: Bad request');
+  });
+
+  it('falls back to history for agent messages', () => {
+    const response = JSON.stringify({
+      jsonrpc: '2.0',
+      id: 1,
+      result: {
+        history: [
+          { role: 'user', parts: [{ kind: 'text', text: 'hi' }] },
+          { role: 'agent', parts: [{ kind: 'text', text: 'Hello!' }] },
+        ],
+      },
+    });
+    expect(parseA2AResponse(response)).toBe('Hello!');
+  });
+
+  it('returns stringified result when no text parts found', () => {
+    const response = JSON.stringify({
+      jsonrpc: '2.0',
+      id: 1,
+      result: { id: 'task-1', status: { state: 'completed' } },
+    });
+    const parsed = parseA2AResponse(response);
+    expect(parsed).toContain('task-1');
+  });
+
+  it('returns raw text for non-JSON input', () => {
+    expect(parseA2AResponse('not json')).toBe('not json');
   });
 });

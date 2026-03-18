@@ -76,31 +76,6 @@ export function getEndpointUrl(port: number, protocol: string): string {
   }
 }
 
-/** Parse a JSON-RPC response, handling both plain JSON and SSE-wrapped formats. */
-export function parseJsonRpcResponse(text: string): Record<string, unknown> {
-  const trimmed = text.trim();
-
-  try {
-    return JSON.parse(trimmed) as Record<string, unknown>;
-  } catch {
-    // Might be SSE format
-  }
-
-  const lines = trimmed.split('\n');
-  for (let i = lines.length - 1; i >= 0; i--) {
-    const line = lines[i]!;
-    if (line.startsWith('data: ')) {
-      try {
-        return JSON.parse(line.slice(6)) as Record<string, unknown>;
-      } catch {
-        continue;
-      }
-    }
-  }
-
-  return {};
-}
-
 /**
  * Format MCP tools into a displayable list string.
  */
