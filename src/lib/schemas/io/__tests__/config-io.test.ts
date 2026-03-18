@@ -194,6 +194,7 @@ describe('ConfigIO', () => {
             entrypoint: 'main.py',
             codeLocation: './app',
             runtimeVersion: 'PYTHON_3_13',
+            protocol: 'HTTP',
           },
         ],
       } as any;

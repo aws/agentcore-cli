@@ -59,6 +59,7 @@ export function mapByoConfigToAgent(config: AddAgentConfig): AgentEnvSpec {
     entrypoint: config.entrypoint as FilePath,
     codeLocation: config.codeLocation as DirectoryPath,
     runtimeVersion: config.pythonVersion,
+    protocol: 'HTTP',
     networkMode: 'PUBLIC',
   };
 }
