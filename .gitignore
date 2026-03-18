@@ -60,3 +60,4 @@ workdir-tmp/
 bun.lock
 
 .agentreview
+ProtocolTesting/
