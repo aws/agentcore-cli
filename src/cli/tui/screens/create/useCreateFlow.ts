@@ -71,6 +71,10 @@ function createDefaultProjectSpec(projectName: string): AgentCoreProjectSpec {
   return {
     name: projectName,
     version: 1,
+    tags: {
+      'agentcore:created-by': 'agentcore-cli',
+      'agentcore:project-name': projectName,
+    },
     agents: [],
     memories: [],
     credentials: [],

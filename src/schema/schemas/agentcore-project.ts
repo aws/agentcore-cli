@@ -12,6 +12,7 @@ import { EvaluationLevelSchema, EvaluatorConfigSchema, EvaluatorNameSchema } fro
 import { DEFAULT_STRATEGY_NAMESPACES, MemoryStrategySchema, MemoryStrategyTypeSchema } from './primitives/memory';
 import { OnlineEvalConfigSchema } from './primitives/online-eval-config';
 import { PolicyEngineSchema } from './primitives/policy';
+import { TagsSchema } from './primitives/tags';
 import { uniqueBy } from './zod-util';
 import { z } from 'zod';
 
@@ -74,6 +75,7 @@ export const MemorySchema = z.object({
         type => `Duplicate memory strategy type: ${type}`
       )
     ),
+  tags: TagsSchema,
 });
 
 export type Memory = z.infer<typeof MemorySchema>;
@@ -150,6 +152,7 @@ export const AgentCoreProjectSpecSchema = z
   .object({
     name: ProjectNameSchema,
     version: z.number().int(),
+    tags: TagsSchema,
 
     agents: z
       .array(AgentEnvSpecSchema)
