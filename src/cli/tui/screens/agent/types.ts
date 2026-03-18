@@ -17,7 +17,7 @@ import type { MemoryOption } from '../generate/types';
 /**
  * Agent type selection: Create new agent code or bring existing code.
  */
-export type AgentType = 'create' | 'byo';
+export type AgentType = 'create' | 'byo' | 'import';
 
 /**
  * Add agent wizard steps.
@@ -48,6 +48,9 @@ export type AddAgentStep =
   | 'subnets'
   | 'securityGroups'
   | 'memory'
+  | 'region'
+  | 'bedrockAgent'
+  | 'bedrockAlias'
   | 'confirm';
 
 export interface AddAgentConfig {
@@ -75,6 +78,12 @@ export interface AddAgentConfig {
   pythonVersion: PythonRuntime;
   /** Memory option (create path only) */
   memory: MemoryOption;
+  /** Bedrock Agent ID (import path only) */
+  bedrockAgentId?: string;
+  /** Bedrock Agent Alias ID (import path only) */
+  bedrockAliasId?: string;
+  /** AWS region for Bedrock Agent (import path only) */
+  bedrockRegion?: string;
 }
 
 export const ADD_AGENT_STEP_LABELS: Record<AddAgentStep, string> = {
@@ -92,6 +101,9 @@ export const ADD_AGENT_STEP_LABELS: Record<AddAgentStep, string> = {
   subnets: 'Subnets',
   securityGroups: 'Security Groups',
   memory: 'Memory',
+  region: 'Region',
+  bedrockAgent: 'Agent',
+  bedrockAlias: 'Alias',
   confirm: 'Confirm',
 };
 
@@ -102,6 +114,7 @@ export const ADD_AGENT_STEP_LABELS: Record<AddAgentStep, string> = {
 export const AGENT_TYPE_OPTIONS = [
   { id: 'create', title: 'Create new agent' },
   { id: 'byo', title: 'Bring my own code' },
+  { id: 'import', title: 'Import from Bedrock Agents' },
 ] as const;
 
 export const LANGUAGE_OPTIONS = [

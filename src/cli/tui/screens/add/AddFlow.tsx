@@ -64,7 +64,8 @@ function AgentAddedSummary({
     return option?.title ?? framework;
   };
 
-  const isCreate = config.agentType === 'create';
+  const isCreate = config.agentType === 'create' || config.agentType === 'import';
+  const isImport = config.agentType === 'import';
 
   // Compute path strings for alignment
   const agentPath = isCreate ? `app/${config.name}/` : config.codeLocation;
@@ -129,6 +130,13 @@ function AgentAddedSummary({
           </Text>
           <Text dimColor>
             Ensure <Text color="cyan">{config.entrypoint}</Text> is the entrypoint file in that folder.
+          </Text>
+        </Box>
+      )}
+      {isImport && config.bedrockAgentId && (
+        <Box marginTop={1}>
+          <Text dimColor>
+            Imported from: Bedrock Agent {config.bedrockAgentId} ({config.bedrockRegion})
           </Text>
         </Box>
       )}

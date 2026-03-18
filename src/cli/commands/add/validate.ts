@@ -107,6 +107,39 @@ export function validateAddAgentOptions(options: AddAgentOptions): ValidationRes
   options.protocol = protocolResult.data;
 
   const isByoPath = options.type === 'byo';
+  const isImportPath = options.type === 'import';
+
+  // Import path: validate import-specific options and return early
+  if (isImportPath) {
+    if (!options.agentId) {
+      return { valid: false, error: '--agent-id is required for import path' };
+    }
+    if (!options.agentAliasId) {
+      return { valid: false, error: '--agent-alias-id is required for import path' };
+    }
+    if (!options.region) {
+      return { valid: false, error: '--region is required for import path' };
+    }
+    if (!options.framework) {
+      return { valid: false, error: '--framework is required for import path' };
+    }
+    if (options.framework !== 'Strands' && options.framework !== 'LangChain_LangGraph') {
+      return { valid: false, error: 'Import path only supports Strands or LangChain_LangGraph frameworks' };
+    }
+    if (!options.memory) {
+      return { valid: false, error: '--memory is required for import path' };
+    }
+    if (!MEMORY_OPTIONS.includes(options.memory as (typeof MEMORY_OPTIONS)[number])) {
+      return {
+        valid: false,
+        error: `Invalid memory option: ${options.memory}. Use none, shortTerm, or longAndShortTerm`,
+      };
+    }
+    // Force import defaults
+    options.modelProvider = 'Bedrock' as typeof options.modelProvider;
+    options.language = 'Python' as typeof options.language;
+    return { valid: true };
+  }
 
   // MCP protocol: no framework, model provider, or memory
   if (protocol === 'MCP') {

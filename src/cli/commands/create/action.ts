@@ -1,4 +1,5 @@
 import { APP_DIR, CONFIG_DIR, ConfigIO, setEnvVar, setSessionProjectRoot } from '../../../lib';
+import { executeImportAgent } from '../../operations/agent/import';
 import type {
   AgentCoreProjectSpec,
   BuildType,
@@ -119,6 +120,7 @@ type MemoryOption = 'none' | 'shortTerm' | 'longAndShortTerm';
 export interface CreateWithAgentOptions {
   name: string;
   cwd: string;
+  type?: 'create' | 'import';
   buildType?: BuildType;
   language: TargetLanguage;
   framework?: SDKFramework;
@@ -129,6 +131,9 @@ export interface CreateWithAgentOptions {
   networkMode?: NetworkMode;
   subnets?: string[];
   securityGroups?: string[];
+  agentId?: string;
+  agentAliasId?: string;
+  region?: string;
   skipGit?: boolean;
   skipPythonSetup?: boolean;
   onProgress?: ProgressCallback;
@@ -170,6 +175,35 @@ export async function createProjectWithAgent(options: CreateWithAgentOptions): P
     // Merge warnings from both checks
     const allWarnings = [...depWarnings, ...(projectResult.warnings ?? [])];
     return { ...projectResult, warnings: allWarnings.length > 0 ? allWarnings : undefined };
+  }
+
+  // Import path: delegate to executeImportAgent after project scaffolding
+  if (options.type === 'import' && options.agentId && options.agentAliasId && options.region) {
+    try {
+      onProgress?.('Import agent from Bedrock', 'start');
+      const importResult = await executeImportAgent({
+        name,
+        framework: framework ?? 'Strands',
+        memory,
+        bedrockRegion: options.region,
+        bedrockAgentId: options.agentId,
+        bedrockAliasId: options.agentAliasId,
+        configBaseDir,
+      });
+      if (!importResult.success) {
+        onProgress?.('Import agent from Bedrock', 'error');
+        return { success: false, error: importResult.error, warnings: depWarnings };
+      }
+      onProgress?.('Import agent from Bedrock', 'done');
+      return {
+        success: true,
+        projectPath: projectRoot,
+        agentName: name,
+        warnings: depWarnings.length > 0 ? depWarnings : undefined,
+      };
+    } catch (err) {
+      return { success: false, error: getErrorMessage(err), warnings: depWarnings };
+    }
   }
 
   try {

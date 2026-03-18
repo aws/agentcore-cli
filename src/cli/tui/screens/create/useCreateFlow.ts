@@ -1,4 +1,5 @@
 import { APP_DIR, CONFIG_DIR, ConfigIO, findConfigRoot, setEnvVar, setSessionProjectRoot } from '../../../../lib';
+import { executeImportAgent } from '../../../operations/agent/import';
 import type { AgentCoreProjectSpec, DeployedState } from '../../../../schema';
 import { getErrorMessage } from '../../../errors';
 import { CreateLogger } from '../../../logging';
@@ -324,6 +325,21 @@ export function useCreateFlow(cwd: string): CreateFlowState {
                   await setEnvVar(envVarName, addAgentConfig.apiKey ?? '', configBaseDir);
                 } else {
                   await writeAgentToProject(generateConfig, { configBaseDir });
+                }
+              } else if (addAgentConfig.agentType === 'import') {
+                // Import path: delegate to executeImportAgent
+                logger.logSubStep(`Importing from Bedrock Agent: ${addAgentConfig.bedrockAgentId}`);
+                const importResult = await executeImportAgent({
+                  name: addAgentConfig.name,
+                  framework: addAgentConfig.framework,
+                  memory: addAgentConfig.memory,
+                  bedrockRegion: addAgentConfig.bedrockRegion!,
+                  bedrockAgentId: addAgentConfig.bedrockAgentId!,
+                  bedrockAliasId: addAgentConfig.bedrockAliasId!,
+                  configBaseDir,
+                });
+                if (!importResult.success) {
+                  throw new Error(importResult.error ?? 'Import failed');
                 }
               } else {
                 // BYO path: just write config to project (no file generation)

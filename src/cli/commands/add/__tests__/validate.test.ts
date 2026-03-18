@@ -937,6 +937,71 @@ describe('validate', () => {
     });
   });
 
+  describe('validateAddAgentOptions import validation', () => {
+    const validImportOptions: AddAgentOptions = {
+      name: 'ImportedAgent',
+      type: 'import',
+      framework: 'Strands',
+      memory: 'none',
+      agentId: 'AGENT123',
+      agentAliasId: 'ALIAS456',
+      region: 'us-east-1',
+    };
+
+    it('passes for valid import options', () => {
+      const result = validateAddAgentOptions({ ...validImportOptions });
+      expect(result).toEqual({ valid: true });
+    });
+
+    it('requires --agent-id for import path', () => {
+      const result = validateAddAgentOptions({ ...validImportOptions, agentId: undefined });
+      expect(result.valid).toBe(false);
+      expect(result.error).toContain('--agent-id');
+    });
+
+    it('requires --agent-alias-id for import path', () => {
+      const result = validateAddAgentOptions({ ...validImportOptions, agentAliasId: undefined });
+      expect(result.valid).toBe(false);
+      expect(result.error).toContain('--agent-alias-id');
+    });
+
+    it('requires --region for import path', () => {
+      const result = validateAddAgentOptions({ ...validImportOptions, region: undefined });
+      expect(result.valid).toBe(false);
+      expect(result.error).toContain('--region');
+    });
+
+    it('requires --framework for import path', () => {
+      const result = validateAddAgentOptions({ ...validImportOptions, framework: undefined });
+      expect(result.valid).toBe(false);
+      expect(result.error).toContain('--framework');
+    });
+
+    it('only allows Strands or LangChain_LangGraph for import', () => {
+      const result = validateAddAgentOptions({ ...validImportOptions, framework: 'GoogleADK' });
+      expect(result.valid).toBe(false);
+      expect(result.error).toContain('Strands or LangChain_LangGraph');
+    });
+
+    it('requires --memory for import path', () => {
+      const result = validateAddAgentOptions({ ...validImportOptions, memory: undefined });
+      expect(result.valid).toBe(false);
+      expect(result.error).toContain('--memory');
+    });
+
+    it('forces modelProvider to Bedrock and language to Python', () => {
+      const opts = { ...validImportOptions };
+      validateAddAgentOptions(opts);
+      expect(opts.modelProvider).toBe('Bedrock');
+      expect(opts.language).toBe('Python');
+    });
+
+    it('accepts LangChain_LangGraph framework', () => {
+      const result = validateAddAgentOptions({ ...validImportOptions, framework: 'LangChain_LangGraph' });
+      expect(result.valid).toBe(true);
+    });
+  });
+
   describe('validateAddAgentOptions protocol validation', () => {
     it('MCP: succeeds with just name and language', () => {
       const result = validateAddAgentOptions({
