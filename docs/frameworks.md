@@ -99,8 +99,8 @@ agentcore add agent \
 
 ### What gets imported
 
-The import process fetches your Bedrock Agent's full configuration and translates it into framework-specific Python
-code that runs on AgentCore:
+The import process fetches your Bedrock Agent's full configuration and translates it into framework-specific Python code
+that runs on AgentCore:
 
 - **Action groups** (function-schema and built-in) become `@tool` decorated functions
 - **Knowledge bases** become retrieval tool integrations
