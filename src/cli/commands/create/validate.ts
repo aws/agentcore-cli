@@ -10,6 +10,7 @@ import {
   matchEnumValue,
 } from '../../../schema';
 import type { ProtocolMode } from '../../../schema';
+import { validateVpcOptions } from '../shared/vpc-utils';
 import type { CreateOptions } from './types';
 import { existsSync } from 'fs';
 import { join } from 'path';
@@ -169,6 +170,12 @@ export function validateCreateOptions(options: CreateOptions, cwd?: string): Val
         error: `Invalid memory option: ${options.memory}. Use none, shortTerm, or longAndShortTerm`,
       };
     }
+  }
+
+  // Validate VPC options
+  const vpcResult = validateVpcOptions(options);
+  if (!vpcResult.valid) {
+    return { valid: false, error: vpcResult.error };
   }
 
   return { valid: true };

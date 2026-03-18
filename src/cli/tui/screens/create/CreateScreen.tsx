@@ -1,5 +1,6 @@
 import { DEFAULT_MODEL_IDS, ProjectNameSchema } from '../../../../schema';
 import { validateFolderNotExists } from '../../../commands/create/validate';
+import { VPC_ENDPOINT_WARNING } from '../../../commands/shared/vpc-utils';
 import { computeDefaultCredentialEnvVarName } from '../../../primitives/credential-utils';
 import {
   LogLink,
@@ -80,6 +81,12 @@ function buildExitMessage(projectName: string, steps: Step[], agentConfig: AddAg
   if (agentConfig?.agentType === 'byo') {
     lines.push(`\x1b[33mCopy your agent code to \x1b[36m${agentConfig.codeLocation}\x1b[33m before deploying.\x1b[0m`);
     lines.push(`\x1b[2mEnsure \x1b[36m${agentConfig.entrypoint}\x1b[2m is the entrypoint file in that folder.\x1b[0m`);
+    lines.push('');
+  }
+
+  // VPC endpoint warning
+  if (agentConfig?.networkMode === 'VPC') {
+    lines.push(`\x1b[33mNote: ${VPC_ENDPOINT_WARNING}\x1b[0m`);
     lines.push('');
   }
 

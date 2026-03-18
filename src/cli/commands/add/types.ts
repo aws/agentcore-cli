@@ -1,8 +1,9 @@
 import type { GatewayAuthorizerType, ModelProvider, ProtocolMode, SDKFramework, TargetLanguage } from '../../../schema';
 import type { MemoryOption } from '../../tui/screens/generate/types';
+import type { VpcOptions } from '../shared/vpc-utils';
 
 // Agent types
-export interface AddAgentOptions {
+export interface AddAgentOptions extends VpcOptions {
   name?: string;
   type?: 'create' | 'byo';
   build?: string;

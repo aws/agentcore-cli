@@ -1,8 +1,16 @@
 import { getWorkingDirectory } from '../../../lib';
-import type { BuildType, ModelProvider, ProtocolMode, SDKFramework, TargetLanguage } from '../../../schema';
+import type {
+  BuildType,
+  ModelProvider,
+  NetworkMode,
+  ProtocolMode,
+  SDKFramework,
+  TargetLanguage,
+} from '../../../schema';
 import { getErrorMessage } from '../../errors';
 import { COMMAND_DESCRIPTIONS } from '../../tui/copy';
 import { CreateScreen } from '../../tui/screens/create';
+import { parseCommaSeparatedList } from '../shared/vpc-utils';
 import { type ProgressCallback, createProject, createProjectWithAgent, getDryRunInfo } from './action';
 import type { CreateOptions } from './types';
 import { validateCreateOptions } from './validate';
@@ -121,6 +129,9 @@ async function handleCreateCLI(options: CreateOptions): Promise<void> {
         apiKey: options.apiKey,
         memory: (options.memory as 'none' | 'shortTerm' | 'longAndShortTerm') ?? 'none',
         protocol: options.protocol as ProtocolMode | undefined,
+        networkMode: options.networkMode as NetworkMode | undefined,
+        subnets: parseCommaSeparatedList(options.subnets),
+        securityGroups: parseCommaSeparatedList(options.securityGroups),
         skipGit: options.skipGit,
         skipPythonSetup: options.skipPythonSetup,
         onProgress,
@@ -154,6 +165,9 @@ export const registerCreate = (program: Command) => {
     .option('--api-key <key>', 'API key for non-Bedrock providers [non-interactive]')
     .option('--memory <option>', 'Memory option (none, shortTerm, longAndShortTerm) [non-interactive]')
     .option('--protocol <protocol>', 'Protocol: HTTP, MCP, A2A (default: HTTP) [non-interactive]')
+    .option('--network-mode <mode>', 'Network mode (PUBLIC, VPC) [non-interactive]')
+    .option('--subnets <ids>', 'Comma-separated subnet IDs (required for VPC mode) [non-interactive]')
+    .option('--security-groups <ids>', 'Comma-separated security group IDs (required for VPC mode) [non-interactive]')
     .option('--output-dir <dir>', 'Output directory (default: current directory) [non-interactive]')
     .option('--skip-git', 'Skip git repository initialization [non-interactive]')
     .option('--skip-python-setup', 'Skip Python virtual environment setup [non-interactive]')

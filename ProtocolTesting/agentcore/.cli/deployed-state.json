@@ -1,0 +1,38 @@
+{
+  "targets": {
+    "default": {
+      "resources": {
+        "agents": {
+          "A2AAgent": {
+            "runtimeId": "ProtocolTesting_A2AAgent-Z22BUr7dIc",
+            "runtimeArn": "arn:aws:bedrock-agentcore:us-east-1:637423344544:runtime/ProtocolTesting_A2AAgent-Z22BUr7dIc",
+            "roleArn": "arn:aws:iam::637423344544:role/AgentCore-ProtocolTesting-ApplicationAgentA2AAgentR-P4VCIE1kI5TW"
+          },
+          "RegularHTTPAgent": {
+            "runtimeId": "ProtocolTesting_RegularHTTPAgent-S4D3RWDEra",
+            "runtimeArn": "arn:aws:bedrock-agentcore:us-east-1:637423344544:runtime/ProtocolTesting_RegularHTTPAgent-S4D3RWDEra",
+            "roleArn": "arn:aws:iam::637423344544:role/AgentCore-ProtocolTesting-ApplicationAgentRegularHT-14760GgzpATw"
+          },
+          "MCPProtocol": {
+            "runtimeId": "ProtocolTesting_MCPProtocol-uRS5lWCWrv",
+            "runtimeArn": "arn:aws:bedrock-agentcore:us-east-1:637423344544:runtime/ProtocolTesting_MCPProtocol-uRS5lWCWrv",
+            "roleArn": "arn:aws:iam::637423344544:role/AgentCore-ProtocolTesting-ApplicationAgentMCPProtoc-D8koVzL1Uq21"
+          }
+        },
+        "memories": {
+          "A2AAgentMemory": {
+            "memoryId": "ProtocolTesting_A2AAgentMemory-YTcq6291qc",
+            "memoryArn": "arn:aws:bedrock-agentcore:us-east-1:637423344544:memory/ProtocolTesting_A2AAgentMemory-YTcq6291qc"
+          }
+        },
+        "credentials": {
+          "ProtocolTestingGemini": {
+            "credentialProviderArn": "arn:aws:bedrock-agentcore:us-east-1:637423344544:token-vault/default/apikeycredentialprovider/ProtocolTestingGemini"
+          }
+        },
+        "stackName": "AgentCore-ProtocolTesting-default",
+        "identityKmsKeyArn": "arn:aws:kms:us-east-1:637423344544:key/27a9f31d-4c55-41dd-be59-d9b9b283612f"
+      }
+    }
+  }
+}

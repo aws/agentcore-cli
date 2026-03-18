@@ -1,4 +1,5 @@
 import { DEFAULT_MODEL_IDS } from '../../../../schema';
+import { VPC_ENDPOINT_WARNING } from '../../../commands/shared/vpc-utils';
 import { computeDefaultCredentialEnvVarName } from '../../../primitives/credential-utils';
 import { ErrorPrompt } from '../../components';
 import { useAvailableAgents } from '../../hooks/useCreateMcp';
@@ -123,6 +124,11 @@ function AgentAddedSummary({
           <Text dimColor>
             Ensure <Text color="cyan">{config.entrypoint}</Text> is the entrypoint file in that folder.
           </Text>
+        </Box>
+      )}
+      {config.networkMode === 'VPC' && (
+        <Box flexDirection="column" marginTop={1}>
+          <Text color="yellow">Note: {VPC_ENDPOINT_WARNING}</Text>
         </Box>
       )}
     </Box>

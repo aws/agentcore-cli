@@ -13,6 +13,7 @@ import {
   getSupportedModelProviders,
   matchEnumValue,
 } from '../../../schema';
+import { validateVpcOptions } from '../shared/vpc-utils';
 import type {
   AddAgentOptions,
   AddGatewayOptions,
@@ -197,6 +198,12 @@ export function validateAddAgentOptions(options: AddAgentOptions): ValidationRes
         error: `Invalid memory option: ${options.memory}. Use none, shortTerm, or longAndShortTerm`,
       };
     }
+  }
+
+  // Validate VPC options
+  const vpcResult = validateVpcOptions(options);
+  if (!vpcResult.valid) {
+    return { valid: false, error: vpcResult.error };
   }
 
   return { valid: true };

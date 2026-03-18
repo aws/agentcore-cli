@@ -1,3 +1,4 @@
+import type { NetworkMode } from '../../../../schema';
 import { ProjectNameSchema } from '../../../../schema';
 import type { BuildType, GenerateConfig, GenerateStep, MemoryOption, ProtocolMode } from './types';
 import { BASE_GENERATE_STEPS, getModelProviderOptionsForSdk } from './types';
@@ -34,8 +35,9 @@ export function useGenerateWizard(options?: UseGenerateWizardOptions) {
   // Track if user has selected a framework (moved past sdk step)
   const [sdkSelected, setSdkSelected] = useState(false);
 
-  // Steps depend on protocol, SDK, model provider, and whether we have an initial name
+  // Steps depend on protocol, SDK, model provider, network mode, and whether we have an initial name
   // MCP skips sdk, modelProvider, apiKey, memory
+  // Filter out: projectName if initialName, apiKey for Bedrock, subnets/securityGroups for non-VPC
   const steps = useMemo(() => {
     let filtered = BASE_GENERATE_STEPS;
     if (hasInitialName) {
@@ -48,12 +50,16 @@ export function useGenerateWizard(options?: UseGenerateWizardOptions) {
         filtered = filtered.filter(s => s !== 'apiKey');
       }
       if (sdkSelected && config.sdk === 'Strands') {
-        const confirmIndex = filtered.indexOf('confirm');
-        filtered = [...filtered.slice(0, confirmIndex), 'memory', ...filtered.slice(confirmIndex)];
+        const networkModeIndex = filtered.indexOf('networkMode');
+        filtered = [...filtered.slice(0, networkModeIndex), 'memory', ...filtered.slice(networkModeIndex)];
       }
     }
+    if (config.networkMode === 'VPC') {
+      const confirmIndex = filtered.indexOf('confirm');
+      filtered = [...filtered.slice(0, confirmIndex), 'subnets', 'securityGroups', ...filtered.slice(confirmIndex)];
+    }
     return filtered;
-  }, [config.modelProvider, config.sdk, config.protocol, hasInitialName, sdkSelected]);
+  }, [config.modelProvider, config.sdk, config.protocol, config.networkMode, hasInitialName, sdkSelected]);
 
   const currentIndex = steps.indexOf(step);
 
@@ -111,7 +117,7 @@ export function useGenerateWizard(options?: UseGenerateWizardOptions) {
       } else if (config.sdk === 'Strands') {
         setStep('memory');
       } else {
-        setStep('confirm');
+        setStep('networkMode');
       }
     },
     [config.sdk]
@@ -123,7 +129,7 @@ export function useGenerateWizard(options?: UseGenerateWizardOptions) {
       if (config.sdk === 'Strands') {
         setStep('memory');
       } else {
-        setStep('confirm');
+        setStep('networkMode');
       }
     },
     [config.sdk]
@@ -133,12 +139,31 @@ export function useGenerateWizard(options?: UseGenerateWizardOptions) {
     if (config.sdk === 'Strands') {
       setStep('memory');
     } else {
-      setStep('confirm');
+      setStep('networkMode');
     }
   }, [config.sdk]);
 
   const setMemory = useCallback((memory: MemoryOption) => {
     setConfig(c => ({ ...c, memory }));
+    setStep('networkMode');
+  }, []);
+
+  const setNetworkMode = useCallback((networkMode: NetworkMode) => {
+    setConfig(c => ({ ...c, networkMode }));
+    if (networkMode === 'VPC') {
+      setStep('subnets');
+    } else {
+      setStep('confirm');
+    }
+  }, []);
+
+  const setSubnets = useCallback((subnets: string[]) => {
+    setConfig(c => ({ ...c, subnets }));
+    setStep('securityGroups');
+  }, []);
+
+  const setSecurityGroups = useCallback((securityGroups: string[]) => {
+    setConfig(c => ({ ...c, securityGroups }));
     setStep('confirm');
   }, []);
 
@@ -182,6 +207,9 @@ export function useGenerateWizard(options?: UseGenerateWizardOptions) {
     setApiKey,
     skipApiKey,
     setMemory,
+    setNetworkMode,
+    setSubnets,
+    setSecurityGroups,
     goBack,
     reset,
     initWithName,

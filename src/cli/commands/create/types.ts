@@ -1,4 +1,6 @@
-export interface CreateOptions {
+import type { VpcOptions } from '../shared/vpc-utils';
+
+export interface CreateOptions extends VpcOptions {
   name?: string;
   agent?: boolean;
   defaults?: boolean;

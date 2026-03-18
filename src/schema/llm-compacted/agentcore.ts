@@ -26,7 +26,12 @@ type BuildType = 'CodeZip' | 'Container';
 type PythonRuntime = 'PYTHON_3_10' | 'PYTHON_3_11' | 'PYTHON_3_12' | 'PYTHON_3_13';
 type NodeRuntime = 'NODE_18' | 'NODE_20' | 'NODE_22';
 type RuntimeVersion = PythonRuntime | NodeRuntime;
-type NetworkMode = 'PUBLIC' | 'PRIVATE';
+type NetworkMode = 'PUBLIC' | 'VPC';
+interface NetworkConfig {
+  subnets: string[]; // subnet-xxx IDs
+  securityGroups: string[]; // sg-xxx IDs
+}
+
 type MemoryStrategyType = 'SEMANTIC' | 'SUMMARIZATION' | 'USER_PREFERENCE';
 type ModelProvider = 'Bedrock' | 'Gemini' | 'OpenAI' | 'Anthropic';
 
@@ -43,6 +48,7 @@ interface AgentEnvSpec {
   runtimeVersion: RuntimeVersion;
   envVars?: EnvVar[];
   networkMode?: NetworkMode; // default 'PUBLIC'
+  networkConfig?: NetworkConfig; // Required when networkMode is 'VPC'
   instrumentation?: Instrumentation; // OTel settings
   modelProvider?: ModelProvider; // Model provider used by this agent
 }

@@ -50,6 +50,14 @@ def get_all_gateway_mcp_client() -> MultiServerMCPClient | None:
         return None
     return MultiServerMCPClient(servers)
 {{else}}
+{{#if isVpc}}
+# VPC mode: external MCP endpoints are not reachable without a NAT gateway.
+# Add an AgentCore Gateway with `agentcore add gateway`, or configure your own endpoint below.
+
+def get_streamable_http_mcp_client() -> MultiServerMCPClient | None:
+    """No MCP server configured. Add a gateway with `agentcore add gateway`."""
+    return None
+{{else}}
 # ExaAI provides information about code through web searches, crawling and code context searches through their platform. Requires no authentication
 EXAMPLE_MCP_ENDPOINT = "https://mcp.exa.ai/mcp"
 
@@ -65,4 +73,5 @@ def get_streamable_http_mcp_client() -> MultiServerMCPClient:
             }
         }
     )
+{{/if}}
 {{/if}}

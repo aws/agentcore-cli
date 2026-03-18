@@ -1,0 +1,25 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "RegularHTTPAgent"
+version = "0.1.0"
+description = "AgentCore Runtime Application using LangChain/LangGraph"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    "opentelemetry-distro",
+    "opentelemetry-exporter-otlp",
+    "langgraph >= 1.0.2",
+    "mcp >= 1.19.0",
+    "langchain-mcp-adapters >= 0.1.11",
+    "langchain >= 1.0.3",
+    "bedrock-agentcore >= 1.0.3",
+    "botocore[crt] >= 1.35.0",
+    "langchain-google-genai >= 3.0.3",
+    
+]
+
+[tool.hatch.build.targets.wheel]
+packages = ["."]
