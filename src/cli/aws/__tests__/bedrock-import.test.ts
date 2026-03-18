@@ -1,4 +1,5 @@
-import { describe, expect, it, vi, beforeEach } from 'vitest';
+import { getBedrockAgentConfig, listBedrockAgentAliases, listBedrockAgents } from '../bedrock-import';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const mockAgentSend = vi.fn();
 const mockBedrockSend = vi.fn();
@@ -7,7 +8,9 @@ const mockS3Send = vi.fn();
 // Mock the AWS SDK clients using class syntax for proper `new` support
 vi.mock('@aws-sdk/client-bedrock-agent', () => {
   return {
-    BedrockAgentClient: class { send = mockAgentSend; },
+    BedrockAgentClient: class {
+      send = mockAgentSend;
+    },
     ListAgentsCommand: class {},
     ListAgentAliasesCommand: class {},
     GetAgentCommand: class {},
@@ -22,7 +25,9 @@ vi.mock('@aws-sdk/client-bedrock-agent', () => {
 
 vi.mock('@aws-sdk/client-bedrock', () => {
   return {
-    BedrockClient: class { send = mockBedrockSend; },
+    BedrockClient: class {
+      send = mockBedrockSend;
+    },
     GetFoundationModelCommand: class {},
     GetGuardrailCommand: class {},
   };
@@ -30,7 +35,9 @@ vi.mock('@aws-sdk/client-bedrock', () => {
 
 vi.mock('@aws-sdk/client-s3', () => {
   return {
-    S3Client: class { send = mockS3Send; },
+    S3Client: class {
+      send = mockS3Send;
+    },
     GetObjectCommand: class {},
   };
 });
@@ -42,8 +49,6 @@ vi.mock('../account', () => ({
 vi.mock('js-yaml', () => ({
   default: { load: vi.fn((s: string) => JSON.parse(s)) },
 }));
-
-import { listBedrockAgents, listBedrockAgentAliases, getBedrockAgentConfig } from '../bedrock-import';
 
 describe('bedrock-import', () => {
   beforeEach(() => {
@@ -77,15 +82,11 @@ describe('bedrock-import', () => {
   describe('listBedrockAgentAliases', () => {
     it('returns mapped alias summaries', async () => {
       mockAgentSend.mockResolvedValueOnce({
-        agentAliasSummaries: [
-          { agentAliasId: 'alias-1', agentAliasName: 'prod', description: 'Production' },
-        ],
+        agentAliasSummaries: [{ agentAliasId: 'alias-1', agentAliasName: 'prod', description: 'Production' }],
       });
 
       const result = await listBedrockAgentAliases('us-east-1', 'agent-1');
-      expect(result).toEqual([
-        { aliasId: 'alias-1', aliasName: 'prod', description: 'Production' },
-      ]);
+      expect(result).toEqual([{ aliasId: 'alias-1', aliasName: 'prod', description: 'Production' }]);
     });
   });
 

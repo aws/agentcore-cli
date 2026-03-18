@@ -2,7 +2,7 @@
  * AWS SDK v3 wrapper for fetching Bedrock Agent configurations.
  * Port of the starter toolkit's agent_info.py.
  */
-
+import { getCredentialProvider } from './account';
 import type {
   ActionGroupInfo,
   BedrockAgentConfig,
@@ -12,11 +12,12 @@ import type {
   CollaboratorInfo,
   KnowledgeBaseInfo,
 } from './bedrock-import-types';
+import { BedrockClient, GetFoundationModelCommand, GetGuardrailCommand } from '@aws-sdk/client-bedrock';
 import {
   BedrockAgentClient,
+  GetAgentActionGroupCommand,
   GetAgentAliasCommand,
   GetAgentCommand,
-  GetAgentActionGroupCommand,
   GetKnowledgeBaseCommand,
   ListAgentActionGroupsCommand,
   ListAgentAliasesCommand,
@@ -24,9 +25,7 @@ import {
   ListAgentKnowledgeBasesCommand,
   ListAgentsCommand,
 } from '@aws-sdk/client-bedrock-agent';
-import { BedrockClient, GetFoundationModelCommand, GetGuardrailCommand } from '@aws-sdk/client-bedrock';
 import { GetObjectCommand, S3Client } from '@aws-sdk/client-s3';
-import { getCredentialProvider } from './account';
 import yaml from 'js-yaml';
 
 function createBedrockAgentClient(region: string): BedrockAgentClient {
@@ -172,9 +171,7 @@ async function fetchActionGroups(
   agentId: string,
   agentVersion: string
 ): Promise<ActionGroupInfo[]> {
-  const listResponse = await client.send(
-    new ListAgentActionGroupsCommand({ agentId, agentVersion })
-  );
+  const listResponse = await client.send(new ListAgentActionGroupsCommand({ agentId, agentVersion }));
   const summaries = listResponse.actionGroupSummaries ?? [];
   const actionGroups: ActionGroupInfo[] = [];
 
@@ -230,17 +227,13 @@ async function fetchKnowledgeBases(
   agentId: string,
   agentVersion: string
 ): Promise<KnowledgeBaseInfo[]> {
-  const listResponse = await client.send(
-    new ListAgentKnowledgeBasesCommand({ agentId, agentVersion })
-  );
+  const listResponse = await client.send(new ListAgentKnowledgeBasesCommand({ agentId, agentVersion }));
   const summaries = listResponse.agentKnowledgeBaseSummaries ?? [];
   const knowledgeBases: KnowledgeBaseInfo[] = [];
 
   for (const summary of summaries) {
     try {
-      const kbDetail = await client.send(
-        new GetKnowledgeBaseCommand({ knowledgeBaseId: summary.knowledgeBaseId! })
-      );
+      const kbDetail = await client.send(new GetKnowledgeBaseCommand({ knowledgeBaseId: summary.knowledgeBaseId! }));
       const kb = kbDetail.knowledgeBase;
       knowledgeBases.push({
         knowledgeBaseId: summary.knowledgeBaseId!,
@@ -276,9 +269,7 @@ async function fetchCollaborators(
   }
 
   try {
-    const listResponse = await agentClient.send(
-      new ListAgentCollaboratorsCommand({ agentId, agentVersion })
-    );
+    const listResponse = await agentClient.send(new ListAgentCollaboratorsCommand({ agentId, agentVersion }));
     const summaries = listResponse.agentCollaboratorSummaries ?? [];
     const collaborators: CollaboratorInfo[] = [];
 
@@ -295,9 +286,13 @@ async function fetchCollaborators(
       const collabConfig = await getBedrockAgentConfig(region, collabAgentId, collabAliasId);
       const collabInfo: CollaboratorInfo = {
         ...collabConfig,
-        collaboratorName: cleanVariableName((summary as unknown as { collaboratorName?: string }).collaboratorName ?? ''),
-        collaborationInstruction: (summary as unknown as { collaborationInstruction?: string }).collaborationInstruction ?? '',
-        relayConversationHistory: (summary as unknown as { relayConversationHistory?: string }).relayConversationHistory ?? 'DISABLED',
+        collaboratorName: cleanVariableName(
+          (summary as unknown as { collaboratorName?: string }).collaboratorName ?? ''
+        ),
+        collaborationInstruction:
+          (summary as unknown as { collaborationInstruction?: string }).collaborationInstruction ?? '',
+        relayConversationHistory:
+          (summary as unknown as { relayConversationHistory?: string }).relayConversationHistory ?? 'DISABLED',
       };
       collaborators.push(collabInfo);
     }

@@ -22,11 +22,11 @@ import {
   mapModelProviderToIdentityProviders,
   writeAgentToProject,
 } from '../operations/agent/generate';
+import { executeImportAgent } from '../operations/agent/import';
 import { setupPythonProject } from '../operations/python';
 import type { RemovalPreview, RemovalResult, SchemaChange } from '../operations/remove/types';
 import { createRenderer } from '../templates';
 import type { MemoryOption } from '../tui/screens/generate/types';
-import { executeImportAgent } from '../operations/agent/import';
 import { BasePrimitive } from './BasePrimitive';
 import { CredentialPrimitive } from './CredentialPrimitive';
 import { computeDefaultCredentialEnvVarName } from './credential-utils';

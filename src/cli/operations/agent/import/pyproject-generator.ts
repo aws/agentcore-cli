@@ -1,21 +1,12 @@
 /**
  * Generates pyproject.toml with conditional dependencies based on agent features and framework.
  */
-
-import type { ImportedFeatures } from './base-translator';
 import type { SDKFramework } from '../../../../schema';
+import type { ImportedFeatures } from './base-translator';
 
-const BASE_DEPS = [
-  'pydantic>=2.0.0',
-  'python-dotenv>=1.1.0',
-  'boto3>=1.38.0',
-  'bedrock-agentcore>=0.0.8',
-];
+const BASE_DEPS = ['pydantic>=2.0.0', 'python-dotenv>=1.1.0', 'boto3>=1.38.0', 'bedrock-agentcore>=0.0.8'];
 
-const STRANDS_DEPS = [
-  'strands-agents>=1.13.0',
-  'strands-agents-tools>=0.2.16',
-];
+const STRANDS_DEPS = ['strands-agents>=1.13.0', 'strands-agents-tools>=0.2.16'];
 
 const LANGGRAPH_DEPS = [
   'langgraph>=1.0.2',
@@ -25,15 +16,9 @@ const LANGGRAPH_DEPS = [
   'tiktoken==0.11.0',
 ];
 
-const MEMORY_DEPS = [
-  'bedrock-agentcore[memory]>=0.0.8',
-];
+const MEMORY_DEPS = ['bedrock-agentcore[memory]>=0.0.8'];
 
-export function generatePyprojectToml(
-  agentName: string,
-  framework: SDKFramework,
-  features: ImportedFeatures
-): string {
+export function generatePyprojectToml(agentName: string, framework: SDKFramework, features: ImportedFeatures): string {
   const deps = [...BASE_DEPS];
 
   if (framework === 'Strands') {

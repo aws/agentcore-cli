@@ -5,7 +5,6 @@
  * Generates Python code strings for action groups, KBs, multi-agent collaboration,
  * code interpreter, user input, guardrails, prompts, and memory wiring.
  */
-
 import type {
   ActionGroupInfo,
   BedrockAgentConfig,
@@ -76,9 +75,7 @@ export abstract class BaseBedrockTranslator {
     protected readonly collaboratorContext?: { name: string; instruction: string; relayHistory: string }
   ) {
     this.agentInfo = config.agent;
-    this.actionGroups = (config.action_groups ?? []).filter(
-      ag => (ag.actionGroupState ?? 'ENABLED') === 'ENABLED'
-    );
+    this.actionGroups = (config.action_groups ?? []).filter(ag => (ag.actionGroupState ?? 'ENABLED') === 'ENABLED');
     this.customActionGroups = this.actionGroups.filter(ag => !ag.parentActionSignature);
     this.knowledgeBases = config.knowledge_bases ?? [];
     this.collaborators = config.collaborators ?? [];
@@ -86,8 +83,7 @@ export abstract class BaseBedrockTranslator {
     this.modelId = this.agentInfo.foundationModel ?? '';
     this.agentRegion = this.agentInfo.agentArn?.split(':')[3] ?? 'us-east-1';
     this.instruction = this.agentInfo.instruction ?? '';
-    this.promptConfigs =
-      this.agentInfo.promptOverrideConfiguration?.promptConfigurations ?? [];
+    this.promptConfigs = this.agentInfo.promptOverrideConfiguration?.promptConfigurations ?? [];
     this.enabledPrompts = [];
 
     // Memory
@@ -111,7 +107,8 @@ export abstract class BaseBedrockTranslator {
     this.guardrailConfig = {};
     const gc = this.agentInfo.guardrailConfiguration;
     if (gc) {
-      const gId = (gc as Record<string, string>).guardrailId ?? (gc as Record<string, string>).guardrailIdentifier ?? '';
+      const gId =
+        (gc as Record<string, string>).guardrailId ?? (gc as Record<string, string>).guardrailIdentifier ?? '';
       const gVersion = (gc as Record<string, string>).version ?? (gc as Record<string, string>).guardrailVersion ?? '';
       if (gId) {
         this.guardrailConfig = { guardrailIdentifier: gId, guardrailVersion: gVersion };
@@ -221,7 +218,16 @@ load_dotenv()
     const params = fn.parameters ?? {};
     const paramList = Object.entries(params)
       .map(([name, info]) => {
-        const pyType = info.type === 'string' ? 'str' : info.type === 'integer' ? 'int' : info.type === 'number' ? 'float' : info.type === 'boolean' ? 'bool' : 'str';
+        const pyType =
+          info.type === 'string'
+            ? 'str'
+            : info.type === 'integer'
+              ? 'int'
+              : info.type === 'number'
+                ? 'float'
+                : info.type === 'boolean'
+                  ? 'bool'
+                  : 'str';
         return `${name}: ${pyType}`;
       })
       .join(', ');
@@ -286,13 +292,9 @@ memory_id = os.environ.get("MEMORY_ID", "")
       platform === 'strands'
         ? 'tools_used.update(list(agent_result.metrics.tool_metrics.keys()))'
         : 'tools_used.update([msg.name for msg in agent_result if isinstance(msg, ToolMessage)])';
-    const responseContent =
-      platform === 'strands' ? 'str(agent_result)' : 'agent_result[-1].content';
+    const responseContent = platform === 'strands' ? 'str(agent_result)' : 'agent_result[-1].content';
 
-    const lines = [
-      'def endpoint(payload, context):',
-      '    try:',
-    ];
+    const lines = ['def endpoint(payload, context):', '    try:'];
     if (this.agentcoreMemoryEnabled) {
       lines.push('        global user_id');
       lines.push('        user_id = user_id or payload.get("userId", uuid.uuid4().hex[:8])');
@@ -303,7 +305,7 @@ memory_id = os.environ.get("MEMORY_ID", "")
       '        tools_used.clear()',
       '        agent_query = payload.get("prompt", "")',
       '        if not agent_query:',
-      '            return {\'error\': "No query provided, please provide a \'prompt\' field in the payload."}',
+      "            return {'error': \"No query provided, please provide a 'prompt' field in the payload.\"}",
       '',
       '        agent_result = invoke_agent(agent_query)',
       '',
@@ -311,22 +313,22 @@ memory_id = os.environ.get("MEMORY_ID", "")
       '        response_content = ' + responseContent,
       '',
       '        sources = []',
-      '        urls = re.findall(r\'https?://[^\\s<>"{}|\\\\^`\\[\\]]+\', response_content)',
+      "        urls = re.findall(r'https?://[^\\s<>\"{}|\\\\^`\\[\\]]+', response_content)",
       '        source_tags = re.findall(r"<source>(.*?)</source>", response_content)',
       '        sources.extend(urls)',
       '        sources.extend(source_tags)',
       '        sources = list(set(sources))',
       '',
-      '        formatted_messages = [(agent_query, "USER"), (response_content if response_content else "No Response.", "ASSISTANT")]',
+      '        formatted_messages = [(agent_query, "USER"), (response_content if response_content else "No Response.", "ASSISTANT")]'
     );
     if (memoryEventCode) {
       lines.push(memoryEventCode);
     }
     lines.push(
       '',
-      '        return {\'result\': {\'response\': response_content, \'sources\': sources, \'tools_used\': list(tools_used), \'sessionId\': session_id, \'messages\': formatted_messages}}',
+      "        return {'result': {'response': response_content, 'sources': sources, 'tools_used': list(tools_used), 'sessionId': session_id, 'messages': formatted_messages}}",
       '    except Exception as e:',
-      '        return {\'error\': str(e)}',
+      "        return {'error': str(e)}"
     );
     code += lines.join('\n');
     return code;

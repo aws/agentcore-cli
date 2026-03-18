@@ -60,7 +60,8 @@ export function validateCreateOptions(options: CreateOptions, cwd?: string): Val
     if (!options.agentId) return { valid: false, error: '--agent-id is required for import' };
     if (!options.agentAliasId) return { valid: false, error: '--agent-alias-id is required for import' };
     if (!options.region) return { valid: false, error: '--region is required for import' };
-    if (!options.framework) return { valid: false, error: '--framework is required for import (Strands or LangChain_LangGraph)' };
+    if (!options.framework)
+      return { valid: false, error: '--framework is required for import (Strands or LangChain_LangGraph)' };
     const fw = matchEnumValue(SDKFrameworkSchema, options.framework) ?? options.framework;
     options.framework = fw;
     if (fw !== 'Strands' && fw !== 'LangChain_LangGraph') {
@@ -68,7 +69,10 @@ export function validateCreateOptions(options: CreateOptions, cwd?: string): Val
     }
     options.memory ??= 'none';
     if (!MEMORY_OPTIONS.includes(options.memory as (typeof MEMORY_OPTIONS)[number])) {
-      return { valid: false, error: `Invalid memory option: ${options.memory}. Use none, shortTerm, or longAndShortTerm` };
+      return {
+        valid: false,
+        error: `Invalid memory option: ${options.memory}. Use none, shortTerm, or longAndShortTerm`,
+      };
     }
     return { valid: true };
   }

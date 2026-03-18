@@ -2,10 +2,9 @@
  * Strands-specific translator for Bedrock Agent import.
  * Port of the starter toolkit's bedrock_to_strands.py.
  */
-
+import type { BedrockAgentConfig } from '../../../aws/bedrock-import-types';
 import type { TranslationResult, TranslatorOptions } from './base-translator';
 import { BaseBedrockTranslator } from './base-translator';
-import type { BedrockAgentConfig } from '../../../aws/bedrock-import-types';
 
 export class StrandsTranslator extends BaseBedrockTranslator {
   constructor(
@@ -135,15 +134,11 @@ def retrieve_${kbName}(query: str):
       const fileName = `strands_collaborator_${collabName}`;
 
       // Recursively translate collaborator
-      const collabTranslator = new StrandsTranslator(
-        collaborator as unknown as BedrockAgentConfig,
-        this.options,
-        {
-          name: collabName,
-          instruction: collaborator.collaborationInstruction ?? '',
-          relayHistory: collaborator.relayConversationHistory ?? 'DISABLED',
-        }
-      );
+      const collabTranslator = new StrandsTranslator(collaborator as unknown as BedrockAgentConfig, this.options, {
+        name: collabName,
+        instruction: collaborator.collaborationInstruction ?? '',
+        relayHistory: collaborator.relayConversationHistory ?? 'DISABLED',
+      });
       const collabResult = collabTranslator.translate();
       collaboratorFiles.set(`${fileName}.py`, collabResult.mainPyContent);
       for (const [k, v] of collabResult.collaboratorFiles) {
@@ -206,7 +201,8 @@ def invoke_${collabName}(query: str) -> str:
       '    return _agent',
     ];
 
-    code += `
+    code +=
+      `
 
 def make_msg(role, text):
     return {
@@ -236,7 +232,9 @@ first_turn = True
 last_input = ""
 user_id = ""
 
-` + getAgentLines.join('\n') + '\n';
+` +
+      getAgentLines.join('\n') +
+      '\n';
 
     // Build invoke_agent function
     const relayParamDef = this.isAcceptingRelays ? ', relayed_messages = []' : '';
@@ -248,7 +246,7 @@ user_id = ""
     if (this.enabledPrompts.includes('PRE_PROCESSING')) {
       preprocessLines.push(
         '    pre_process_output = inference(llm_PRE_PROCESSING, [make_msg("user", question)], system_prompt=PRE_PROCESSING_TEMPLATE)',
-        '    question += "\\n<PRE_PROCESSING>{}</PRE_PROCESSING>".format(pre_process_output)',
+        '    question += "\\n<PRE_PROCESSING>{}</PRE_PROCESSING>".format(pre_process_output)'
       );
     }
 

@@ -1,13 +1,13 @@
 import { APP_DIR, ConfigIO } from '../../../../lib';
 import type { ModelProvider, NetworkMode, SDKFramework } from '../../../../schema';
 import { AgentNameSchema, DEFAULT_MODEL_IDS } from '../../../../schema';
+import { listBedrockAgentAliases, listBedrockAgents } from '../../../aws/bedrock-import';
+import type { BedrockAgentSummary, BedrockAliasSummary } from '../../../aws/bedrock-import-types';
 import {
   parseCommaSeparatedList,
   validateSecurityGroupIds,
   validateSubnetIds,
 } from '../../../commands/shared/vpc-utils';
-import { listBedrockAgentAliases, listBedrockAgents } from '../../../aws/bedrock-import';
-import type { BedrockAgentSummary, BedrockAliasSummary } from '../../../aws/bedrock-import-types';
 import { BEDROCK_REGIONS, IMPORT_FRAMEWORK_OPTIONS } from '../../../operations/agent/import/constants';
 import { computeDefaultCredentialEnvVarName } from '../../../primitives/credential-utils';
 import {
@@ -663,18 +663,12 @@ export function AddAgentScreen({ existingAgentNames, onComplete, onExit }: AddAg
               <Text> Loading agents...</Text>
             </Box>
           )}
-          {importStep === 'bedrockAgent' && importError && (
-            <Text color="red">Error: {importError}</Text>
-          )}
+          {importStep === 'bedrockAgent' && importError && <Text color="red">Error: {importError}</Text>}
           {importStep === 'bedrockAgent' && !importLoading && !importError && agentItems.length === 0 && (
             <Text color="yellow">No agents found in {importConfig.region}. Press Esc to go back.</Text>
           )}
           {importStep === 'bedrockAgent' && !importLoading && !importError && agentItems.length > 0 && (
-            <WizardSelect
-              title="Select Bedrock Agent"
-              items={agentItems}
-              selectedIndex={agentNav.selectedIndex}
-            />
+            <WizardSelect title="Select Bedrock Agent" items={agentItems} selectedIndex={agentNav.selectedIndex} />
           )}
 
           {importStep === 'bedrockAlias' && importLoading && (
@@ -683,18 +677,12 @@ export function AddAgentScreen({ existingAgentNames, onComplete, onExit }: AddAg
               <Text> Loading aliases...</Text>
             </Box>
           )}
-          {importStep === 'bedrockAlias' && importError && (
-            <Text color="red">Error: {importError}</Text>
-          )}
+          {importStep === 'bedrockAlias' && importError && <Text color="red">Error: {importError}</Text>}
           {importStep === 'bedrockAlias' && !importLoading && !importError && aliasItems.length === 0 && (
             <Text color="yellow">No aliases found. Press Esc to go back.</Text>
           )}
           {importStep === 'bedrockAlias' && !importLoading && !importError && aliasItems.length > 0 && (
-            <WizardSelect
-              title="Select Agent Alias"
-              items={aliasItems}
-              selectedIndex={aliasNav.selectedIndex}
-            />
+            <WizardSelect title="Select Agent Alias" items={aliasItems} selectedIndex={aliasNav.selectedIndex} />
           )}
 
           {importStep === 'framework' && (
@@ -723,7 +711,9 @@ export function AddAgentScreen({ existingAgentNames, onComplete, onExit }: AddAg
                 { label: 'Alias', value: `${importConfig.bedrockAliasName} (${importConfig.bedrockAliasId})` },
                 {
                   label: 'Framework',
-                  value: IMPORT_FRAMEWORK_OPTIONS.find(o => o.id === importConfig.framework)?.title ?? importConfig.framework,
+                  value:
+                    IMPORT_FRAMEWORK_OPTIONS.find(o => o.id === importConfig.framework)?.title ??
+                    importConfig.framework,
                 },
                 {
                   label: 'Memory',

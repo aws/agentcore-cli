@@ -1,5 +1,4 @@
 import { APP_DIR, CONFIG_DIR, ConfigIO, findConfigRoot, setEnvVar, setSessionProjectRoot } from '../../../../lib';
-import { executeImportAgent } from '../../../operations/agent/import';
 import type { AgentCoreProjectSpec, DeployedState } from '../../../../schema';
 import { getErrorMessage } from '../../../errors';
 import { CreateLogger } from '../../../logging';
@@ -10,6 +9,7 @@ import {
   mapModelProviderToIdentityProviders,
   writeAgentToProject,
 } from '../../../operations/agent/generate';
+import { executeImportAgent } from '../../../operations/agent/import';
 import { computeDefaultCredentialEnvVarName } from '../../../primitives/credential-utils';
 import { credentialPrimitive } from '../../../primitives/registry';
 import { CDKRenderer, createRenderer } from '../../../templates';

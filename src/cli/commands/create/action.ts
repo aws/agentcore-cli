@@ -1,5 +1,4 @@
 import { APP_DIR, CONFIG_DIR, ConfigIO, setEnvVar, setSessionProjectRoot } from '../../../lib';
-import { executeImportAgent } from '../../operations/agent/import';
 import type {
   AgentCoreProjectSpec,
   BuildType,
@@ -18,6 +17,7 @@ import {
   mapModelProviderToIdentityProviders,
   writeAgentToProject,
 } from '../../operations/agent/generate';
+import { executeImportAgent } from '../../operations/agent/import';
 import { credentialPrimitive } from '../../primitives/registry';
 import { CDKRenderer, createRenderer } from '../../templates';
 import type { CreateResult } from './types';

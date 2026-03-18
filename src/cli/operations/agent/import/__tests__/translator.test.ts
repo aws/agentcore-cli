@@ -1,8 +1,8 @@
-import { describe, expect, it } from 'vitest';
 import type { BedrockAgentConfig } from '../../../../aws/bedrock-import-types';
-import { StrandsTranslator } from '../strands-translator';
 import { LangGraphTranslator } from '../langgraph-translator';
 import { generatePyprojectToml } from '../pyproject-generator';
+import { StrandsTranslator } from '../strands-translator';
+import { describe, expect, it } from 'vitest';
 
 function makeSimpleAgentConfig(overrides: Partial<BedrockAgentConfig> = {}): BedrockAgentConfig {
   return {

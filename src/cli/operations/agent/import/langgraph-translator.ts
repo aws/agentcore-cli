@@ -2,10 +2,9 @@
  * LangChain/LangGraph-specific translator for Bedrock Agent import.
  * Port of the starter toolkit's bedrock_to_langchain.py.
  */
-
+import type { BedrockAgentConfig } from '../../../aws/bedrock-import-types';
 import type { TranslationResult, TranslatorOptions } from './base-translator';
 import { BaseBedrockTranslator } from './base-translator';
-import type { BedrockAgentConfig } from '../../../aws/bedrock-import-types';
 
 export class LangGraphTranslator extends BaseBedrockTranslator {
   constructor(
@@ -164,15 +163,11 @@ retriever_tool_${kbName} = retriever_${kbName}.as_tool(name="kb_${kbName}", desc
       const fileName = `langchain_collaborator_${collabName}`;
 
       // Recursively translate collaborator
-      const collabTranslator = new LangGraphTranslator(
-        collaborator as unknown as BedrockAgentConfig,
-        this.options,
-        {
-          name: collabName,
-          instruction: collaborator.collaborationInstruction ?? '',
-          relayHistory: collaborator.relayConversationHistory ?? 'DISABLED',
-        }
-      );
+      const collabTranslator = new LangGraphTranslator(collaborator as unknown as BedrockAgentConfig, this.options, {
+        name: collabName,
+        instruction: collaborator.collaborationInstruction ?? '',
+        relayHistory: collaborator.relayConversationHistory ?? 'DISABLED',
+      });
       const collabResult = collabTranslator.translate();
       collaboratorFiles.set(`${fileName}.py`, collabResult.mainPyContent);
       for (const [k, v] of collabResult.collaboratorFiles) {
