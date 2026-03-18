@@ -6,6 +6,7 @@ import type {
   FilePath,
   ModelProvider,
   NetworkMode,
+  ProtocolMode,
   SDKFramework,
   TargetLanguage,
 } from '../../schema';
@@ -45,6 +46,7 @@ export interface AddAgentOptions extends VpcOptions {
   modelProvider: ModelProvider;
   apiKey?: string;
   memory?: MemoryOption;
+  protocol?: ProtocolMode;
   codeLocation?: string;
   entrypoint?: string;
 }
@@ -176,6 +178,7 @@ export class AgentPrimitive extends BasePrimitive<AddAgentOptions, RemovableReso
       .option('--model-provider <provider>', 'Model provider: Bedrock, Anthropic, OpenAI, Gemini [non-interactive]')
       .option('--api-key <key>', 'API key for non-Bedrock providers [non-interactive]')
       .option('--memory <mem>', 'Memory: none, shortTerm, longAndShortTerm (create path only) [non-interactive]')
+      .option('--protocol <protocol>', 'Protocol: HTTP, MCP, A2A (default: HTTP) [non-interactive]')
       .option('--code-location <path>', 'Path to existing code (BYO path only) [non-interactive]')
       .option('--entrypoint <file>', 'Entry file relative to code-location (BYO, default: main.py) [non-interactive]')
       .option('--network-mode <mode>', 'Network mode (PUBLIC, VPC) [non-interactive]')
@@ -211,6 +214,7 @@ export class AgentPrimitive extends BasePrimitive<AddAgentOptions, RemovableReso
             modelProvider: cliOptions.modelProvider!,
             apiKey: cliOptions.apiKey,
             memory: cliOptions.memory,
+            protocol: cliOptions.protocol,
             networkMode: cliOptions.networkMode,
             subnets: cliOptions.subnets,
             securityGroups: cliOptions.securityGroups,
@@ -278,6 +282,7 @@ export class AgentPrimitive extends BasePrimitive<AddAgentOptions, RemovableReso
       modelProvider: options.modelProvider,
       memory: options.memory!,
       language: options.language,
+      protocol: options.protocol ?? 'HTTP',
       networkMode: options.networkMode as NetworkMode | undefined,
       subnets: parseCommaSeparatedList(options.subnets),
       securityGroups: parseCommaSeparatedList(options.securityGroups),
@@ -289,7 +294,9 @@ export class AgentPrimitive extends BasePrimitive<AddAgentOptions, RemovableReso
     let identityProviders: ReturnType<typeof mapModelProviderToIdentityProviders> = [];
     let strategy: Awaited<ReturnType<CredentialPrimitive['resolveCredentialStrategy']>> | undefined;
 
-    if (options.modelProvider !== 'Bedrock') {
+    const isMcp = options.protocol === 'MCP';
+
+    if (!isMcp && options.modelProvider !== 'Bedrock') {
       strategy = await this.credentialPrimitive.resolveCredentialStrategy(
         project.name,
         options.name,
@@ -349,6 +356,7 @@ export class AgentPrimitive extends BasePrimitive<AddAgentOptions, RemovableReso
 
     const project = await configIO.readProjectSpec();
 
+    const protocol = options.protocol ?? 'HTTP';
     const networkMode = (options.networkMode as NetworkMode | undefined) ?? 'PUBLIC';
     const subnets = parseCommaSeparatedList(options.subnets);
     const securityGroups = parseCommaSeparatedList(options.securityGroups);
@@ -360,6 +368,7 @@ export class AgentPrimitive extends BasePrimitive<AddAgentOptions, RemovableReso
       entrypoint: (options.entrypoint ?? 'main.py') as FilePath,
       codeLocation: codeLocation as DirectoryPath,
       runtimeVersion: 'PYTHON_3_12',
+      protocol,
       networkMode,
       ...(networkMode === 'VPC' &&
         subnets &&
@@ -370,8 +379,8 @@ export class AgentPrimitive extends BasePrimitive<AddAgentOptions, RemovableReso
 
     project.agents.push(agent);
 
-    // Handle credential creation with smart reuse detection
-    if (options.modelProvider !== 'Bedrock') {
+    // Handle credential creation with smart reuse detection (skip for MCP)
+    if (options.protocol !== 'MCP' && options.modelProvider !== 'Bedrock') {
       const strategy = await this.credentialPrimitive.resolveCredentialStrategy(
         project.name,
         options.name,

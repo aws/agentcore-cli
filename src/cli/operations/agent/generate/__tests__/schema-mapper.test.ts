@@ -14,6 +14,7 @@ import { describe, expect, it } from 'vitest';
 const baseConfig: GenerateConfig = {
   projectName: 'TestProject',
   buildType: 'CodeZip',
+  protocol: 'HTTP',
   sdk: 'Strands',
   modelProvider: 'Bedrock',
   memory: 'none',
@@ -89,6 +90,7 @@ describe('mapGenerateConfigToAgent', () => {
     expect(result.entrypoint).toBe('main.py');
     expect(result.runtimeVersion).toBe('PYTHON_3_12');
     expect(result.networkMode).toBe('PUBLIC');
+    expect(result.protocol).toBe('HTTP');
   });
 
   it('uses projectName for codeLocation path', () => {
@@ -193,6 +195,38 @@ describe('mapGenerateConfigToRenderConfig', () => {
   });
 });
 
+describe('mapGenerateConfigToAgent protocol mode', () => {
+  it('omits modelProvider and sets protocol for MCP', () => {
+    const mcpConfig: GenerateConfig = {
+      ...baseConfig,
+      protocol: 'MCP',
+    };
+    const result = mapGenerateConfigToAgent(mcpConfig);
+    expect(result.protocol).toBe('MCP');
+    expect(result).not.toHaveProperty('modelProvider');
+  });
+
+  it('sets protocol to HTTP explicitly', () => {
+    const httpConfig: GenerateConfig = {
+      ...baseConfig,
+      protocol: 'HTTP',
+    };
+    const result = mapGenerateConfigToAgent(httpConfig);
+    expect(result.protocol).toBe('HTTP');
+    expect(result.modelProvider).toBe('Bedrock');
+  });
+
+  it('sets protocol for A2A', () => {
+    const a2aConfig: GenerateConfig = {
+      ...baseConfig,
+      protocol: 'A2A',
+    };
+    const result = mapGenerateConfigToAgent(a2aConfig);
+    expect(result.protocol).toBe('A2A');
+    expect(result.modelProvider).toBe('Bedrock');
+  });
+});
+
 describe('gateway credential provider name mapping', () => {
   it('computeManagedOAuthCredentialName produces the correct suffix', () => {
     // Regression test: the managed credential name must use '-oauth' suffix.
@@ -207,6 +241,7 @@ describe('mapGenerateConfigToAgent - VPC support', () => {
   const vpcBaseConfig = {
     projectName: 'TestAgent',
     buildType: 'CodeZip' as const,
+    protocol: 'HTTP' as const,
     sdk: 'Strands' as const,
     modelProvider: 'Bedrock' as const,
     memory: 'none' as const,
@@ -257,6 +292,7 @@ describe('mapByoConfigToAgent - VPC support', () => {
     entrypoint: 'main.py',
     language: 'Python' as const,
     buildType: 'CodeZip' as const,
+    protocol: 'HTTP' as const,
     framework: 'Strands' as const,
     modelProvider: 'Bedrock' as const,
     pythonVersion: 'PYTHON_3_12' as const,

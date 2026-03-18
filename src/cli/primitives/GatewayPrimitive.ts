@@ -146,7 +146,7 @@ export class GatewayPrimitive extends BasePrimitive<AddGatewayOptions, Removable
 
   registerCommands(addCmd: Command, removeCmd: Command): void {
     addCmd
-      .command('gateway', { hidden: true })
+      .command('gateway')
       .description('Add a gateway to the project')
       .option('--name <name>', 'Gateway name')
       .option('--description <desc>', 'Gateway description')
@@ -214,7 +214,7 @@ export class GatewayPrimitive extends BasePrimitive<AddGatewayOptions, Removable
       });
 
     removeCmd
-      .command('gateway', { hidden: true })
+      .command('gateway')
       .description('Remove a gateway from the project')
       .option('--name <name>', 'Name of resource to remove')
       .option('--force', 'Skip confirmation prompt')

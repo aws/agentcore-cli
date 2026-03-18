@@ -2,11 +2,14 @@ import {
   BuildTypeSchema,
   ModelProviderSchema,
   ProjectNameSchema,
+  ProtocolModeSchema,
   SDKFrameworkSchema,
   TargetLanguageSchema,
+  getSupportedFrameworksForProtocol,
   getSupportedModelProviders,
   matchEnumValue,
 } from '../../../schema';
+import type { ProtocolMode } from '../../../schema';
 import { validateVpcOptions } from '../shared/vpc-utils';
 import type { CreateOptions } from './types';
 import { existsSync } from 'fs';
@@ -53,18 +56,49 @@ export function validateCreateOptions(options: CreateOptions, cwd?: string): Val
   }
 
   // Normalize enum flag values (case-insensitive matching)
+  if (options.protocol) options.protocol = matchEnumValue(ProtocolModeSchema, options.protocol) ?? options.protocol;
   if (options.language) options.language = matchEnumValue(TargetLanguageSchema, options.language) ?? options.language;
   if (options.framework) options.framework = matchEnumValue(SDKFrameworkSchema, options.framework) ?? options.framework;
   if (options.modelProvider)
     options.modelProvider = matchEnumValue(ModelProviderSchema, options.modelProvider) ?? options.modelProvider;
   if (options.build) options.build = matchEnumValue(BuildTypeSchema, options.build) ?? options.build;
 
-  // Validate build type if provided
+  // Validate protocol if provided
+  let protocol: ProtocolMode = 'HTTP';
+  if (options.protocol) {
+    const protocolResult = ProtocolModeSchema.safeParse(options.protocol);
+    if (!protocolResult.success) {
+      return { valid: false, error: `Invalid protocol: ${options.protocol}. Use HTTP, MCP, or A2A` };
+    }
+    protocol = protocolResult.data;
+  }
+
+  // Validate build type if provided (applies to all protocols)
   if (options.build) {
     const buildResult = BuildTypeSchema.safeParse(options.build);
     if (!buildResult.success) {
       return { valid: false, error: `Invalid build type: ${options.build}. Use CodeZip or Container` };
     }
+  }
+
+  // MCP protocol: only name, language, and build type required
+  if (protocol === 'MCP') {
+    if (options.framework) {
+      return { valid: false, error: '--framework is not applicable for MCP protocol' };
+    }
+    if (options.modelProvider) {
+      return { valid: false, error: '--model-provider is not applicable for MCP protocol' };
+    }
+    if (options.memory && options.memory !== 'none') {
+      return { valid: false, error: '--memory is not applicable for MCP protocol' };
+    }
+    if (options.language) {
+      const langResult = TargetLanguageSchema.safeParse(options.language);
+      if (!langResult.success) {
+        return { valid: false, error: `Invalid language: ${options.language}` };
+      }
+    }
+    return { valid: true };
   }
 
   // Without --no-agent, all agent options are required
@@ -102,6 +136,14 @@ export function validateCreateOptions(options: CreateOptions, cwd?: string): Val
     const fwResult = SDKFrameworkSchema.safeParse(options.framework);
     if (!fwResult.success) {
       return { valid: false, error: `Invalid framework: ${options.framework}` };
+    }
+
+    // Validate framework is supported for the protocol
+    if (protocol !== 'HTTP') {
+      const supportedFrameworks = getSupportedFrameworksForProtocol(protocol);
+      if (!supportedFrameworks.includes(fwResult.data)) {
+        return { valid: false, error: `${options.framework} does not support ${protocol} protocol` };
+      }
     }
 
     // Validate model provider

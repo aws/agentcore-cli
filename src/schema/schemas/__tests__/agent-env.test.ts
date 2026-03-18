@@ -188,6 +188,7 @@ describe('AgentEnvSpecSchema', () => {
     entrypoint: 'main.py:handler',
     codeLocation: './agents/test',
     runtimeVersion: 'PYTHON_3_12',
+    protocol: 'HTTP',
   };
 
   const validNodeAgent = {
@@ -197,6 +198,7 @@ describe('AgentEnvSpecSchema', () => {
     entrypoint: 'index.ts',
     codeLocation: './agents/node',
     runtimeVersion: 'NODE_20',
+    protocol: 'HTTP',
   };
 
   it('accepts valid Python agent', () => {
@@ -286,6 +288,23 @@ describe('AgentEnvSpecSchema', () => {
   it('rejects missing required fields', () => {
     expect(AgentEnvSpecSchema.safeParse({ type: 'AgentCoreRuntime' }).success).toBe(false);
     expect(AgentEnvSpecSchema.safeParse({ ...validPythonAgent, name: undefined }).success).toBe(false);
+  });
+
+  describe('protocol', () => {
+    it.each(['HTTP', 'MCP', 'A2A'])('accepts valid protocol "%s"', mode => {
+      const result = AgentEnvSpecSchema.safeParse({ ...validPythonAgent, protocol: mode });
+      expect(result.success, `Should accept protocol ${mode}`).toBe(true);
+    });
+
+    it('rejects agent without protocol', () => {
+      const { protocol: _protocol, ...agentWithoutProtocol } = { ...validPythonAgent, protocol: undefined };
+      expect(AgentEnvSpecSchema.safeParse(agentWithoutProtocol).success).toBe(false);
+    });
+
+    it('rejects invalid protocol', () => {
+      expect(AgentEnvSpecSchema.safeParse({ ...validPythonAgent, protocol: 'GRPC' }).success).toBe(false);
+      expect(AgentEnvSpecSchema.safeParse({ ...validPythonAgent, protocol: 'websocket' }).success).toBe(false);
+    });
   });
 });
 

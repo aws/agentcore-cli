@@ -239,7 +239,7 @@ export class GatewayTargetPrimitive extends BasePrimitive<AddGatewayTargetOption
 
   registerCommands(addCmd: Command, removeCmd: Command): void {
     addCmd
-      .command('gateway-target', { hidden: true })
+      .command('gateway-target')
       .description('Add a gateway target to the project')
       .option('--name <name>', 'Target name')
       .option('--description <desc>', 'Target description')
@@ -457,7 +457,7 @@ export class GatewayTargetPrimitive extends BasePrimitive<AddGatewayTargetOption
       });
 
     removeCmd
-      .command('gateway-target', { hidden: true })
+      .command('gateway-target')
       .description('Remove a gateway target from the project')
       .option('--name <name>', 'Name of resource to remove')
       .option('--force', 'Skip confirmation prompt')

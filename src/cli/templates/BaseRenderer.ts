@@ -19,16 +19,22 @@ export abstract class BaseRenderer {
   protected readonly config: AgentRenderConfig;
   protected readonly sdkName: string;
   protected readonly baseTemplateDir: string;
+  protected readonly protocolMode: string;
 
-  protected constructor(config: AgentRenderConfig, sdkName: string, baseTemplateDir: string) {
+  protected constructor(config: AgentRenderConfig, sdkName: string, baseTemplateDir: string, protocolMode?: string) {
     this.config = config;
     this.sdkName = sdkName;
     this.baseTemplateDir = baseTemplateDir;
+    this.protocolMode = (protocolMode ?? config.protocol ?? 'HTTP').toLowerCase();
+  }
+
+  protected shouldRenderMemory(): boolean {
+    return this.config.hasMemory;
   }
 
   protected getTemplateDir(): string {
     const language = this.config.targetLanguage.toLowerCase();
-    return path.join(this.baseTemplateDir, language, this.sdkName);
+    return path.join(this.baseTemplateDir, language, this.protocolMode, this.sdkName);
   }
 
   async render(context: RendererContext): Promise<void> {
@@ -51,7 +57,7 @@ export abstract class BaseRenderer {
 
     // Render capability templates based on config
     // Only render if the capability directory exists (not all SDKs have all capabilities)
-    if (this.config.hasMemory) {
+    if (this.shouldRenderMemory()) {
       const memoryCapabilityDir = path.join(templateDir, 'capabilities', 'memory');
       if (existsSync(memoryCapabilityDir)) {
         const memoryTargetDir = path.join(projectDir, 'memory');

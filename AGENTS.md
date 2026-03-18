@@ -47,10 +47,6 @@ Note: CDK L3 constructs are in a separate package `@aws/agentcore-cdk`.
 - **Container**: Agent is built as a Docker container image, deployed via ECR and CodeBuild. Requires a `Dockerfile` in
   the agent's code directory. Supported container runtimes: Docker, Podman, Finch.
 
-### Coming Soon
-
-- MCP gateway and tool support (`add gateway`, `add mcp-tool`) - currently hidden
-
 ## Primitives Architecture
 
 All resource types (agent, memory, identity, gateway, mcp-tool) are modeled as **primitives** -- self-contained classes
@@ -61,11 +57,11 @@ Each primitive extends `BasePrimitive` and implements: `add()`, `remove()`, `pre
 
 Current primitives:
 
-- `AgentPrimitive` -- agent creation (template + BYO), removal, credential resolution
-- `MemoryPrimitive` -- memory creation with strategies, removal
-- `CredentialPrimitive` -- credential/identity creation, .env management, removal
-- `GatewayPrimitive` -- MCP gateway creation/removal (hidden, coming soon)
-- `GatewayTargetPrimitive` -- MCP tool creation/removal with code generation (hidden, coming soon)
+- `AgentPrimitive` — agent creation (template + BYO), removal, credential resolution
+- `MemoryPrimitive` — memory creation with strategies, removal
+- `CredentialPrimitive` — credential/identity creation, .env management, removal
+- `GatewayPrimitive` — MCP gateway creation/removal
+- `GatewayTargetPrimitive` — MCP tool creation/removal with code generation
 
 Singletons are created in `registry.ts` and wired into CLI commands via `cli.ts`. See `src/cli/AGENTS.md` for details on
 adding new primitives.

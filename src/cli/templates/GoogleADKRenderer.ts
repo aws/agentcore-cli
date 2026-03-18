@@ -4,6 +4,6 @@ import type { AgentRenderConfig } from './types';
 
 export class GoogleADKRenderer extends BaseRenderer {
   constructor(config: AgentRenderConfig) {
-    super(config, 'googleadk', TEMPLATE_ROOT);
+    super(config, 'googleadk', TEMPLATE_ROOT, config.protocol ?? 'http');
   }
 }

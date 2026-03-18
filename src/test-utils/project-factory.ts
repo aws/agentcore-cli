@@ -21,6 +21,7 @@ export interface CreateTestProjectOptions {
   framework?: string;
   modelProvider?: string;
   memory?: string;
+  protocol?: string;
   noAgent?: boolean;
   /** Defaults to true (skip npm install and uv sync for speed) */
   skipInstall?: boolean;
@@ -41,6 +42,7 @@ export async function createTestProject(options: CreateTestProjectOptions = {}):
     framework,
     modelProvider,
     memory,
+    protocol,
     noAgent = false,
     skipInstall = true,
     parentDir,
@@ -55,6 +57,7 @@ export async function createTestProject(options: CreateTestProjectOptions = {}):
     args.push('--no-agent');
   } else {
     if (language) args.push('--language', language);
+    if (protocol) args.push('--protocol', protocol);
     if (framework) args.push('--framework', framework);
     if (modelProvider) args.push('--model-provider', modelProvider);
     if (memory) args.push('--memory', memory);

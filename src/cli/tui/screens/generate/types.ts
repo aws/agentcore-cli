@@ -1,10 +1,18 @@
-import type { BuildType, ModelProvider, NetworkMode, SDKFramework, TargetLanguage } from '../../../../schema';
-import { DEFAULT_MODEL_IDS, getSupportedModelProviders } from '../../../../schema';
+import type {
+  BuildType,
+  ModelProvider,
+  NetworkMode,
+  ProtocolMode,
+  SDKFramework,
+  TargetLanguage,
+} from '../../../../schema';
+import { DEFAULT_MODEL_IDS, PROTOCOL_FRAMEWORK_MATRIX, getSupportedModelProviders } from '../../../../schema';
 
 export type GenerateStep =
   | 'projectName'
   | 'language'
   | 'buildType'
+  | 'protocol'
   | 'sdk'
   | 'modelProvider'
   | 'apiKey'
@@ -17,11 +25,12 @@ export type GenerateStep =
 export type MemoryOption = 'none' | 'shortTerm' | 'longAndShortTerm';
 
 // Re-export types from schema for convenience
-export type { BuildType, ModelProvider, SDKFramework, TargetLanguage };
+export type { BuildType, ModelProvider, ProtocolMode, SDKFramework, TargetLanguage };
 
 export interface GenerateConfig {
   projectName: string;
   buildType: BuildType;
+  protocol: ProtocolMode;
   sdk: SDKFramework;
   modelProvider: ModelProvider;
   /** API key for non-Bedrock model providers (optional - can be added later) */
@@ -38,6 +47,7 @@ export const BASE_GENERATE_STEPS: GenerateStep[] = [
   'projectName',
   'language',
   'buildType',
+  'protocol',
   'sdk',
   'modelProvider',
   'apiKey',
@@ -49,6 +59,7 @@ export const STEP_LABELS: Record<GenerateStep, string> = {
   projectName: 'Name',
   language: 'Target Language',
   buildType: 'Build',
+  protocol: 'Protocol',
   sdk: 'Framework',
   modelProvider: 'Model',
   apiKey: 'API Key',
@@ -69,12 +80,26 @@ export const BUILD_TYPE_OPTIONS = [
   { id: 'Container', title: 'Container', description: 'Build and deploy a Docker container' },
 ] as const;
 
+export const PROTOCOL_OPTIONS = [
+  { id: 'HTTP', title: 'HTTP', description: 'Standard HTTP agent (default)' },
+  { id: 'MCP', title: 'MCP', description: 'Model Context Protocol tool server' },
+  { id: 'A2A', title: 'A2A', description: 'Agent-to-Agent protocol' },
+] as const;
+
 export const SDK_OPTIONS = [
   { id: 'Strands', title: 'Strands Agents SDK', description: 'AWS native agent framework' },
   { id: 'LangChain_LangGraph', title: 'LangChain + LangGraph', description: 'Popular open-source frameworks' },
   { id: 'GoogleADK', title: 'Google ADK', description: 'Google Agent Development Kit' },
   { id: 'OpenAIAgents', title: 'OpenAI Agents', description: 'OpenAI native agent SDK' },
 ] as const;
+
+/**
+ * Get SDK options filtered by protocol compatibility.
+ */
+export function getSDKOptionsForProtocol(protocol: ProtocolMode) {
+  const supportedFrameworks = PROTOCOL_FRAMEWORK_MATRIX[protocol];
+  return SDK_OPTIONS.filter(option => supportedFrameworks.includes(option.id as SDKFramework));
+}
 
 export const MODEL_PROVIDER_OPTIONS = [
   { id: 'Bedrock', title: `Amazon Bedrock (${DEFAULT_MODEL_IDS.Bedrock})`, description: 'AWS managed model inference' },

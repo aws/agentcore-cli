@@ -4,6 +4,6 @@ import type { AgentRenderConfig } from './types';
 
 export class CrewAIRenderer extends BaseRenderer {
   constructor(config: AgentRenderConfig) {
-    super(config, 'crewai', TEMPLATE_ROOT);
+    super(config, 'crewai', TEMPLATE_ROOT, config.protocol ?? 'http');
   }
 }

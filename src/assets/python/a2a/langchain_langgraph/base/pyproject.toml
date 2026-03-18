@@ -1,0 +1,24 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "{{ name }}"
+version = "0.1.0"
+description = "AgentCore A2A Agent using LangChain + LangGraph"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    "a2a-sdk >= 0.2.0",
+    {{#if (eq modelProvider "Anthropic")}}"langchain-anthropic >= 0.3.0",
+    {{/if}}{{#if (eq modelProvider "Bedrock")}}"langchain-aws >= 0.2.0",
+    {{/if}}{{#if (eq modelProvider "Gemini")}}"langchain-google-genai >= 2.0.0",
+    {{/if}}{{#if (eq modelProvider "OpenAI")}}"langchain-openai >= 0.2.0",
+    {{/if}}"aws-opentelemetry-distro",
+    "bedrock-agentcore[a2a] >= 1.0.3",
+    "botocore[crt] >= 1.35.0",
+    "langgraph >= 0.2.0",
+]
+
+[tool.hatch.build.targets.wheel]
+packages = ["."]

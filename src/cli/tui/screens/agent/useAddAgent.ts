@@ -60,6 +60,7 @@ export function mapByoConfigToAgent(config: AddAgentConfig): AgentEnvSpec {
     entrypoint: config.entrypoint as FilePath,
     codeLocation: config.codeLocation as DirectoryPath,
     runtimeVersion: config.pythonVersion,
+    protocol: config.protocol ?? 'HTTP',
     networkMode,
     ...(networkMode === 'VPC' &&
       config.subnets &&
@@ -79,6 +80,7 @@ function mapAddAgentConfigToGenerateConfig(config: AddAgentConfig): GenerateConf
   return {
     projectName: config.name, // In create context, this is the agent name
     buildType: config.buildType,
+    protocol: config.protocol,
     sdk: config.framework,
     modelProvider: config.modelProvider,
     memory: config.memory,

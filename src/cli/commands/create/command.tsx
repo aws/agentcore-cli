@@ -1,5 +1,12 @@
 import { getWorkingDirectory } from '../../../lib';
-import type { BuildType, ModelProvider, NetworkMode, SDKFramework, TargetLanguage } from '../../../schema';
+import type {
+  BuildType,
+  ModelProvider,
+  NetworkMode,
+  ProtocolMode,
+  SDKFramework,
+  TargetLanguage,
+} from '../../../schema';
 import { getErrorMessage } from '../../errors';
 import { COMMAND_DESCRIPTIONS } from '../../tui/copy';
 import { CreateScreen } from '../../tui/screens/create';
@@ -117,10 +124,11 @@ async function handleCreateCLI(options: CreateOptions): Promise<void> {
         cwd,
         buildType: (options.build as BuildType) ?? 'CodeZip',
         language: options.language as TargetLanguage,
-        framework: options.framework as SDKFramework,
-        modelProvider: options.modelProvider as ModelProvider,
+        framework: options.framework as SDKFramework | undefined,
+        modelProvider: options.modelProvider as ModelProvider | undefined,
         apiKey: options.apiKey,
-        memory: options.memory as 'none' | 'shortTerm' | 'longAndShortTerm',
+        memory: (options.memory as 'none' | 'shortTerm' | 'longAndShortTerm') ?? 'none',
+        protocol: options.protocol as ProtocolMode | undefined,
         networkMode: options.networkMode as NetworkMode | undefined,
         subnets: parseCommaSeparatedList(options.subnets),
         securityGroups: parseCommaSeparatedList(options.securityGroups),
@@ -156,6 +164,7 @@ export const registerCreate = (program: Command) => {
     .option('--model-provider <provider>', 'Model provider (Bedrock, Anthropic, OpenAI, Gemini) [non-interactive]')
     .option('--api-key <key>', 'API key for non-Bedrock providers [non-interactive]')
     .option('--memory <option>', 'Memory option (none, shortTerm, longAndShortTerm) [non-interactive]')
+    .option('--protocol <protocol>', 'Protocol: HTTP, MCP, A2A (default: HTTP) [non-interactive]')
     .option('--network-mode <mode>', 'Network mode (PUBLIC, VPC) [non-interactive]')
     .option('--subnets <ids>', 'Comma-separated subnet IDs (required for VPC mode) [non-interactive]')
     .option('--security-groups <ids>', 'Comma-separated security group IDs (required for VPC mode) [non-interactive]')

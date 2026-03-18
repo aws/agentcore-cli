@@ -177,6 +177,7 @@ export function AddAgentScreen({ existingAgentNames, onComplete, onExit }: AddAg
       entrypoint: 'main.py',
       language: generateWizard.config.language,
       buildType: generateWizard.config.buildType,
+      protocol: generateWizard.config.protocol,
       framework: generateWizard.config.sdk,
       modelProvider: generateWizard.config.modelProvider,
       apiKey: generateWizard.config.apiKey,
@@ -260,6 +261,7 @@ export function AddAgentScreen({ existingAgentNames, onComplete, onExit }: AddAg
       entrypoint: byoConfig.entrypoint,
       language: 'Python', // Default - not used for BYO agents
       buildType: byoConfig.buildType,
+      protocol: 'HTTP', // Default for BYO agents
       framework: 'Strands', // Default - not used for BYO agents
       modelProvider: byoConfig.modelProvider,
       apiKey: byoConfig.apiKey,

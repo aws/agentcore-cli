@@ -5,9 +5,11 @@ import {
   GatewayExceptionLevelSchema,
   GatewayNameSchema,
   ModelProviderSchema,
+  ProtocolModeSchema,
   SDKFrameworkSchema,
   TARGET_TYPE_AUTH_CONFIG,
   TargetLanguageSchema,
+  getSupportedFrameworksForProtocol,
   getSupportedModelProviders,
   matchEnumValue,
 } from '../../../schema';
@@ -64,6 +66,9 @@ async function validateCredentialExists(credentialName: string): Promise<Validat
 // Agent validation
 export function validateAddAgentOptions(options: AddAgentOptions): ValidationResult {
   // Normalize enum flag values (case-insensitive matching)
+  if (options.protocol)
+    options.protocol =
+      (matchEnumValue(ProtocolModeSchema, options.protocol) as typeof options.protocol) ?? options.protocol;
   if (options.framework)
     options.framework =
       (matchEnumValue(SDKFrameworkSchema, options.framework) as typeof options.framework) ?? options.framework;
@@ -93,6 +98,44 @@ export function validateAddAgentOptions(options: AddAgentOptions): ValidationRes
     }
   }
 
+  // Validate and normalize protocol
+  const protocol = options.protocol ?? 'HTTP';
+  const protocolResult = ProtocolModeSchema.safeParse(protocol);
+  if (!protocolResult.success) {
+    return { valid: false, error: `Invalid protocol: ${protocol}. Use HTTP, MCP, or A2A` };
+  }
+  options.protocol = protocolResult.data;
+
+  const isByoPath = options.type === 'byo';
+
+  // MCP protocol: no framework, model provider, or memory
+  if (protocol === 'MCP') {
+    if (options.framework) {
+      return { valid: false, error: '--framework is not applicable for MCP protocol' };
+    }
+    if (options.modelProvider) {
+      return { valid: false, error: '--model-provider is not applicable for MCP protocol' };
+    }
+    if (options.memory && options.memory !== 'none') {
+      return { valid: false, error: '--memory is not applicable for MCP protocol' };
+    }
+
+    if (!options.language) {
+      return { valid: false, error: '--language is required' };
+    }
+    const langResult = TargetLanguageSchema.safeParse(options.language);
+    if (!langResult.success) {
+      return { valid: false, error: `Invalid language: ${options.language}` };
+    }
+
+    if (isByoPath && !options.codeLocation) {
+      return { valid: false, error: '--code-location is required for BYO path' };
+    }
+
+    return { valid: true };
+  }
+
+  // Non-MCP protocols: validate framework
   if (!options.framework) {
     return { valid: false, error: '--framework is required' };
   }
@@ -100,6 +143,14 @@ export function validateAddAgentOptions(options: AddAgentOptions): ValidationRes
   const fwResult = SDKFrameworkSchema.safeParse(options.framework);
   if (!fwResult.success) {
     return { valid: false, error: `Invalid framework: ${options.framework}` };
+  }
+
+  // Validate framework is supported for the protocol
+  if (protocol !== 'HTTP') {
+    const supportedFrameworks = getSupportedFrameworksForProtocol(protocol);
+    if (!supportedFrameworks.includes(options.framework)) {
+      return { valid: false, error: `${options.framework} does not support ${protocol} protocol` };
+    }
   }
 
   if (!options.modelProvider) {
@@ -124,8 +175,6 @@ export function validateAddAgentOptions(options: AddAgentOptions): ValidationRes
   if (!langResult.success) {
     return { valid: false, error: `Invalid language: ${options.language}` };
   }
-
-  const isByoPath = options.type === 'byo';
 
   if (isByoPath) {
     if (!options.codeLocation) {

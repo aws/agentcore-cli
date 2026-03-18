@@ -937,6 +937,116 @@ describe('validate', () => {
     });
   });
 
+  describe('validateAddAgentOptions protocol validation', () => {
+    it('MCP: succeeds with just name and language', () => {
+      const result = validateAddAgentOptions({
+        name: 'McpAgent',
+        type: 'create',
+        language: 'Python',
+        protocol: 'MCP',
+      });
+      expect(result.valid).toBe(true);
+    });
+
+    it('MCP: fails with --framework', () => {
+      const result = validateAddAgentOptions({
+        name: 'McpAgent',
+        type: 'create',
+        language: 'Python',
+        protocol: 'MCP',
+        framework: 'Strands',
+      });
+      expect(result.valid).toBe(false);
+      expect(result.error).toContain('not applicable for MCP protocol');
+    });
+
+    it('MCP: fails with --model-provider', () => {
+      const result = validateAddAgentOptions({
+        name: 'McpAgent',
+        type: 'create',
+        language: 'Python',
+        protocol: 'MCP',
+        modelProvider: 'Bedrock',
+      });
+      expect(result.valid).toBe(false);
+      expect(result.error).toContain('not applicable for MCP protocol');
+    });
+
+    it('MCP: fails with --memory (non-none)', () => {
+      const result = validateAddAgentOptions({
+        name: 'McpAgent',
+        type: 'create',
+        language: 'Python',
+        protocol: 'MCP',
+        memory: 'shortTerm',
+      });
+      expect(result.valid).toBe(false);
+      expect(result.error).toContain('not applicable for MCP protocol');
+    });
+
+    it('A2A: succeeds with --framework Strands', () => {
+      const result = validateAddAgentOptions({
+        name: 'A2aAgent',
+        type: 'byo',
+        language: 'Python',
+        protocol: 'A2A',
+        framework: 'Strands',
+        modelProvider: 'Bedrock',
+        codeLocation: '/path/to/code',
+      });
+      expect(result.valid).toBe(true);
+    });
+
+    it('A2A: fails with --framework CrewAI', () => {
+      const result = validateAddAgentOptions({
+        name: 'A2aAgent',
+        type: 'byo',
+        language: 'Python',
+        protocol: 'A2A',
+        framework: 'CrewAI',
+        modelProvider: 'Bedrock',
+        codeLocation: '/path/to/code',
+      });
+      expect(result.valid).toBe(false);
+      expect(result.error).toContain('does not support A2A protocol');
+    });
+
+    it('A2A: fails with --framework OpenAIAgents', () => {
+      const result = validateAddAgentOptions({
+        name: 'A2aAgent',
+        type: 'byo',
+        language: 'Python',
+        protocol: 'A2A',
+        framework: 'OpenAIAgents',
+        modelProvider: 'OpenAI',
+        codeLocation: '/path/to/code',
+      });
+      expect(result.valid).toBe(false);
+      expect(result.error).toContain('does not support A2A protocol');
+    });
+
+    it('invalid protocol fails validation', () => {
+      const result = validateAddAgentOptions({
+        name: 'BadAgent',
+        type: 'create',
+        language: 'Python',
+        protocol: 'GRPC' as any,
+        framework: 'Strands',
+        modelProvider: 'Bedrock',
+      });
+      expect(result.valid).toBe(false);
+      expect(result.error).toContain('Invalid protocol');
+    });
+
+    it('default (no --protocol) works as before (HTTP)', () => {
+      const result = validateAddAgentOptions({
+        ...validAgentOptionsByo,
+        protocol: undefined,
+      });
+      expect(result.valid).toBe(true);
+    });
+  });
+
   describe('validateAddIdentityOptions OAuth', () => {
     it('passes for valid OAuth identity', () => {
       const result = validateAddIdentityOptions({

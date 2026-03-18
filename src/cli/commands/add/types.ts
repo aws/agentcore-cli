@@ -1,4 +1,4 @@
-import type { GatewayAuthorizerType, ModelProvider, SDKFramework, TargetLanguage } from '../../../schema';
+import type { GatewayAuthorizerType, ModelProvider, ProtocolMode, SDKFramework, TargetLanguage } from '../../../schema';
 import type { MemoryOption } from '../../tui/screens/generate/types';
 import type { VpcOptions } from '../shared/vpc-utils';
 
@@ -12,6 +12,7 @@ export interface AddAgentOptions extends VpcOptions {
   modelProvider?: ModelProvider;
   apiKey?: string;
   memory?: MemoryOption;
+  protocol?: ProtocolMode;
   codeLocation?: string;
   entrypoint?: string;
   json?: boolean;

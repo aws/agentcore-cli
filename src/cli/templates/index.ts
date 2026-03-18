@@ -2,6 +2,7 @@ import type { BaseRenderer } from './BaseRenderer';
 import { CrewAIRenderer } from './CrewAIRenderer';
 import { GoogleADKRenderer } from './GoogleADKRenderer';
 import { LangGraphRenderer } from './LangGraphRenderer';
+import { McpRenderer } from './McpRenderer';
 import { OpenAIAgentsRenderer } from './OpenAIAgentsRenderer';
 import { StrandsRenderer } from './StrandsRenderer';
 import type { AgentRenderConfig } from './types';
@@ -12,6 +13,7 @@ export { renderGatewayTargetTemplate } from './GatewayTargetRenderer';
 export { CrewAIRenderer } from './CrewAIRenderer';
 export { GoogleADKRenderer } from './GoogleADKRenderer';
 export { LangGraphRenderer } from './LangGraphRenderer';
+export { McpRenderer } from './McpRenderer';
 export { OpenAIAgentsRenderer } from './OpenAIAgentsRenderer';
 export { StrandsRenderer } from './StrandsRenderer';
 export type { AgentRenderConfig } from './types';
@@ -20,6 +22,11 @@ export type { AgentRenderConfig } from './types';
  * Factory function to create the appropriate renderer based on config
  */
 export function createRenderer(config: AgentRenderConfig): BaseRenderer {
+  // MCP protocol uses a standalone renderer regardless of sdkFramework
+  if (config.protocol === 'MCP') {
+    return new McpRenderer(config);
+  }
+
   switch (config.sdkFramework) {
     case 'Strands':
       return new StrandsRenderer(config);

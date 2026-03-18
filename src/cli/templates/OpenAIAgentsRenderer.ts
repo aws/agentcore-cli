@@ -4,6 +4,6 @@ import type { AgentRenderConfig } from './types';
 
 export class OpenAIAgentsRenderer extends BaseRenderer {
   constructor(config: AgentRenderConfig) {
-    super(config, 'openaiagents', TEMPLATE_ROOT);
+    super(config, 'openaiagents', TEMPLATE_ROOT, config.protocol ?? 'http');
   }
 }
