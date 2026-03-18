@@ -227,7 +227,7 @@ load_dotenv()
       .join(', ');
 
     const description = fn.description ?? `Function from action group ${groupName}`;
-    const escapedDesc = description.replace(/"/g, '\\"');
+    const escapedDesc = description.replace(/\\/g, '\\\\').replace(/"/g, '\\"');
 
     return `
 @tool
