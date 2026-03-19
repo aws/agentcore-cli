@@ -3,6 +3,77 @@
 The TUI harness provides MCP tools for programmatically driving the AgentCore CLI terminal UI. The MCP server lives at
 `src/mcp-harness/` and the underlying library is at `src/test-utils/tui-harness/`.
 
+## Running in HTTP Mode (Recommended)
+
+The TUI harness supports two transport modes: **HTTP** and **stdio**. HTTP mode is the recommended way to run the server
+when using it from Claude Code.
+
+**Why HTTP mode?** In stdio mode, the MCP server runs inside Claude Code's sandbox, which blocks `posix_spawnp` -- the
+system call that `node-pty` needs to spawn PTY processes. This means `tui_launch` will fail when the server is connected
+via stdio. HTTP mode runs the server as an independent process outside the sandbox, so PTY spawning works normally.
+
+### Quick Start
+
+```bash
+# Build the harness
+npm run build:harness
+
+# Start the MCP server in HTTP mode (runs on port 24100)
+node dist/mcp-harness/index.mjs --http
+
+# Or use the convenience script
+./scripts/start-tui-harness.sh
+```
+
+### Configure Claude Code
+
+Add the HTTP server as an MCP source in Claude Code:
+
+```bash
+# Add via CLI
+claude mcp add --transport http -s project tui-harness http://127.0.0.1:24100/mcp
+```
+
+Or add directly to `.mcp.json`:
+
+```json
+{
+  "mcpServers": {
+    "tui-harness": {
+      "type": "http",
+      "url": "http://127.0.0.1:24100/mcp"
+    }
+  }
+}
+```
+
+### Custom Port
+
+The default port is `24100`. Override it with the `--port` flag or the `MCP_HARNESS_PORT` environment variable:
+
+```bash
+node dist/mcp-harness/index.mjs --http --port 3456
+
+# Or via environment variable
+MCP_HARNESS_PORT=3456 node dist/mcp-harness/index.mjs --http
+```
+
+### Verifying the Connection
+
+After starting the server and configuring Claude Code, verify the connection:
+
+```bash
+claude mcp list
+```
+
+The output should show `tui-harness` with a connected status.
+
+### Note on Stdio Mode
+
+Stdio transport is still supported for backward compatibility. However, PTY process spawning will not work inside Claude
+Code's sandbox -- `tui_launch` calls will fail with a spawn error. Stdio mode is useful for automated test pipelines
+where the test runner directly communicates with the server and no sandbox restrictions apply.
+
 ## Getting Started
 
 1. Run `npm run build:harness` to compile both the CLI and the MCP harness binary. The harness is dev-only tooling and
