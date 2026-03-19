@@ -4,6 +4,7 @@ import { validateAwsCredentials } from '../../aws/account';
 import { LocalCdkProject } from '../../cdk/local-cdk-project';
 import { silentIoHost } from '../../cdk/toolkit-lib';
 import { buildCdkProject, synthesizeCdk } from '../../operations/deploy';
+import { setupPythonProject } from '../../operations/python/setup';
 import { executePhase1, getDeployedTemplate } from './phase1-update';
 import { executePhase2 } from './phase2-import';
 import type { CfnTemplate } from './template-utils';
@@ -231,6 +232,22 @@ export async function handleImport(options: ImportOptions): Promise<ImportResult
           );
         }
       }
+
+      // Fix pyproject.toml for setuptools: starter toolkit projects may have
+      // multiple top-level directories (model/, mcp_client/, etc.) which causes
+      // setuptools auto-discovery to fail. Add py-modules = [] to suppress this.
+      fixPyprojectForSetuptools(path.join(appDir, 'pyproject.toml'));
+
+      // Set up Python environment (venv + install dependencies)
+      onProgress?.(`Setting up Python environment for ${agent.name}...`);
+      const setupResult = await setupPythonProject({ projectDir: appDir });
+      if (setupResult.status === 'success') {
+        onProgress?.(`Python environment ready for ${agent.name}`);
+      } else if (setupResult.status === 'uv_not_found') {
+        onProgress?.(`Warning: uv not found — run "uv sync" manually in ${APP_DIR}/${agent.name}`);
+      } else {
+        onProgress?.(`Warning: Python setup failed for ${agent.name}: ${setupResult.error ?? setupResult.status}`);
+      }
     }
 
     // 7. Determine which resources need importing (have physical IDs)
@@ -435,6 +452,24 @@ export async function handleImport(options: ImportOptions): Promise<ImportResult
     const message = err instanceof Error ? err.message : String(err);
     return { success: false, error: message };
   }
+}
+
+/**
+ * Fix pyproject.toml for setuptools auto-discovery issues.
+ * Starter toolkit projects may have multiple top-level directories (model/, mcp_client/)
+ * which causes setuptools to refuse building. Adding `py-modules = []` tells setuptools
+ * not to auto-discover packages.
+ */
+function fixPyprojectForSetuptools(pyprojectPath: string): void {
+  if (!fs.existsSync(pyprojectPath)) return;
+
+  const content = fs.readFileSync(pyprojectPath, 'utf-8');
+
+  // Already has [tool.setuptools] section — don't touch it
+  if (content.includes('[tool.setuptools]')) return;
+
+  // Append the fix
+  fs.writeFileSync(pyprojectPath, content.trimEnd() + '\n\n[tool.setuptools]\npy-modules = []\n');
 }
 
 /**
