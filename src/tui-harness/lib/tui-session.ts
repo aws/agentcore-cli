@@ -15,6 +15,8 @@ import { resolveKey } from './key-map.js';
 import { buildScreenState, getBufferType } from './screen.js';
 import { register, unregister } from './session-manager.js';
 import { SettlingMonitor } from './settling.js';
+import { renderTerminalToSvg } from './svg-renderer.js';
+import type { SvgRenderOptions } from './svg-renderer.js';
 import type { CloseResult, LaunchOptions, ReadOptions, ScreenState, SessionInfo, SpecialKey } from './types.js';
 import { LaunchError, WaitForTimeoutError } from './types.js';
 import xtermHeadless from '@xterm/headless';
@@ -284,6 +286,22 @@ export class TuiSession {
    */
   readScreen(options?: ReadOptions): ScreenState {
     return buildScreenState(this.terminal, options);
+  }
+
+  /**
+   * Render the current terminal screen as a self-contained SVG string.
+   *
+   * Walks the terminal buffer cell-by-cell, resolves colors and text
+   * attributes, and produces an SVG document suitable for embedding in
+   * markdown or saving to a file.
+   *
+   * @param options - Optional SVG rendering configuration (theme, font size, etc.).
+   * @returns A complete SVG document as a string.
+   * @throws {Error} If the session is no longer alive.
+   */
+  screenshot(options?: SvgRenderOptions): string {
+    this.assertAlive();
+    return renderTerminalToSvg(this.terminal, options);
   }
 
   // ---------------------------------------------------------------------------

@@ -8,7 +8,7 @@
  *   tui_send_keys     - Send keystrokes (text or special keys)
  *   tui_read_screen   - Read the current terminal screen
  *   tui_wait_for      - Wait for a pattern to appear on screen
- *   tui_screenshot    - Capture a bordered, numbered screenshot
+ *   tui_screenshot    - Capture a bordered, numbered screenshot (text or SVG)
  *   tui_close         - Close a session and terminate its process
  *   tui_list_sessions - List all active sessions
  *
@@ -16,10 +16,11 @@
  * McpServer.registerTool(). This module owns the runtime dispatch logic that
  * maps tool calls to TuiSession methods.
  */
-import { LaunchError, TuiSession, WaitForTimeoutError, closeAll } from '../index.js';
-import type { SpecialKey } from '../index.js';
+import { DARK_THEME, LIGHT_THEME, LaunchError, TuiSession, WaitForTimeoutError, closeAll } from '../index.js';
+import type { SpecialKey, SvgRenderOptions } from '../index.js';
 import { LAUNCH_DEFAULTS, SPECIAL_KEY_ENUM, TOOL_NAMES } from './tools.js';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
+import { writeFileSync } from 'fs';
 import { z } from 'zod';
 
 // ---------------------------------------------------------------------------
@@ -248,21 +249,57 @@ async function handleWaitFor(args: { sessionId: string; pattern: string; timeout
 /**
  * Handle the `tui_screenshot` tool call.
  *
- * Captures the current screen with line numbers and renders it inside a
- * Unicode-bordered box for easy visual inspection.
+ * Captures the current screen in the requested format:
+ * - `'text'` (default): line-numbered, Unicode-bordered text for visual inspection.
+ * - `'svg'`: a self-contained SVG document rendered via the session's screenshot method.
+ *
+ * When `savePath` is provided, the screenshot content is also written to disk.
  */
-function handleScreenshot(args: { sessionId: string }) {
+function handleScreenshot(args: {
+  sessionId: string;
+  format?: 'text' | 'svg';
+  theme?: 'dark' | 'light';
+  savePath?: string;
+}) {
   const { sessionId } = args;
   const session = getSession(sessionId);
   if (!session) {
     return errorResponse(`Session not found: ${sessionId}`);
   }
 
-  try {
-    const screen = session.readScreen({ numbered: true });
-    const { dimensions, cursor, bufferType } = screen;
+  const format = args.format ?? 'text';
 
-    // Build the bordered screenshot.
+  try {
+    const screen = session.readScreen({ numbered: format === 'text' });
+    const { dimensions, cursor, bufferType } = screen;
+    const metadata = {
+      cursor,
+      dimensions,
+      bufferType,
+      timestamp: new Date().toISOString(),
+    };
+
+    if (format === 'svg') {
+      // Build SVG render options from the theme parameter.
+      const svgOptions: SvgRenderOptions = {
+        theme: args.theme === 'light' ? LIGHT_THEME : DARK_THEME,
+      };
+
+      const svg = session.screenshot(svgOptions);
+
+      if (args.savePath) {
+        writeFileSync(args.savePath, svg, 'utf-8');
+      }
+
+      return jsonResponse({
+        format: 'svg',
+        svg,
+        ...(args.savePath ? { savePath: args.savePath } : {}),
+        metadata,
+      });
+    }
+
+    // Default: text format -- bordered screenshot with line numbers.
     const header = `TUI Screenshot (${dimensions.cols}x${dimensions.rows})`;
     const topBorder = `\u250C\u2500 ${header} ${'\u2500'.repeat(Math.max(0, dimensions.cols - header.length - 4))}\u2510`;
     const bottomBorder = `\u2514${'\u2500'.repeat(Math.max(0, dimensions.cols + 2))}\u2518`;
@@ -271,14 +308,15 @@ function handleScreenshot(args: { sessionId: string }) {
 
     const screenshot = `${topBorder}\n${body}\n${bottomBorder}`;
 
+    if (args.savePath) {
+      writeFileSync(args.savePath, screenshot, 'utf-8');
+    }
+
     return jsonResponse({
+      format: 'text',
       screenshot,
-      metadata: {
-        cursor,
-        dimensions,
-        bufferType,
-        timestamp: new Date().toISOString(),
-      },
+      ...(args.savePath ? { savePath: args.savePath } : {}),
+      metadata,
     });
   } catch (err) {
     return errorResponse(
@@ -457,9 +495,27 @@ export function createServer(): McpServer {
   server.registerTool(
     TOOL_NAMES.SCREENSHOT,
     {
-      description: 'Capture a formatted screenshot of the terminal with line numbers and borders for debugging.',
+      description:
+        'Capture a screenshot of the terminal. Supports text format (bordered, line-numbered) ' +
+        'or SVG format (rendered visual screenshot). Optionally saves the output to disk.',
       inputSchema: {
         sessionId: z.string().describe('The session ID returned by tui_launch.'),
+        format: z
+          .enum(['text', 'svg'])
+          .optional()
+          .describe(
+            'Output format. "text" returns a bordered text screenshot; "svg" returns a self-contained SVG document (default: "text").'
+          ),
+        theme: z
+          .enum(['dark', 'light'])
+          .optional()
+          .describe('Color theme for SVG rendering. Ignored when format is "text" (default: "dark").'),
+        savePath: z
+          .string()
+          .optional()
+          .describe(
+            'Absolute file path to write the screenshot content to disk. The file is written in UTF-8 encoding.'
+          ),
       },
       annotations: {
         readOnlyHint: true,

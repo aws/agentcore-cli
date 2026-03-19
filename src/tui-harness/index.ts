@@ -29,3 +29,7 @@ export { closeAll } from './lib/session-manager.js';
 // --- Test helpers ---
 export { createMinimalProjectDir } from './helpers.js';
 export type { CreateMinimalProjectDirOptions, MinimalProjectDirResult } from './helpers.js';
+
+// --- SVG Screenshots ---
+export { renderTerminalToSvg, DARK_THEME, LIGHT_THEME } from './lib/svg-renderer.js';
+export type { SvgRenderOptions, SvgTheme } from './lib/svg-renderer.js';
