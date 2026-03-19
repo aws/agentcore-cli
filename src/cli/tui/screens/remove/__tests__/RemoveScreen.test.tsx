@@ -17,6 +17,8 @@ describe('RemoveScreen', () => {
         mcpToolCount={1}
         memoryCount={1}
         identityCount={1}
+        policyEngineCount={1}
+        policyCount={1}
       />
     );
 
@@ -24,6 +26,10 @@ describe('RemoveScreen', () => {
     expect(lastFrame()).toContain('Gateway Target');
     expect(lastFrame()).not.toContain('No gateways to remove');
     expect(lastFrame()).not.toContain('No gateway targets to remove');
+    expect(lastFrame()).toContain('Policy Engine');
+    expect(lastFrame()).toContain('Policy');
+    expect(lastFrame()).not.toContain('No policy engines to remove');
+    expect(lastFrame()).not.toContain('No policies to remove');
   });
 
   it('gateway and gateway-target options disabled when counts = 0', () => {
@@ -39,10 +45,14 @@ describe('RemoveScreen', () => {
         mcpToolCount={0}
         memoryCount={0}
         identityCount={0}
+        policyEngineCount={0}
+        policyCount={0}
       />
     );
 
     expect(lastFrame()).toContain('No gateways to remove');
     expect(lastFrame()).toContain('No gateway targets to remove');
+    expect(lastFrame()).toContain('No policy engines to remove');
+    expect(lastFrame()).toContain('No policies to remove');
   });
 });

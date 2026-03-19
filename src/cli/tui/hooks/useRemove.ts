@@ -3,17 +3,20 @@ import { RemoveLogger } from '../../logging';
 import type { RemovableGatewayTarget, RemovalPreview, RemovalResult } from '../../operations/remove';
 import type { RemovableCredential } from '../../primitives/CredentialPrimitive';
 import type { RemovableMemory } from '../../primitives/MemoryPrimitive';
+import type { RemovablePolicyResource } from '../../primitives/PolicyPrimitive';
 import {
   agentPrimitive,
   credentialPrimitive,
   gatewayPrimitive,
   gatewayTargetPrimitive,
   memoryPrimitive,
+  policyEnginePrimitive,
+  policyPrimitive,
 } from '../../primitives/registry';
 import { useCallback, useEffect, useRef, useState } from 'react';
 
 // Re-export types for consumers
-export type { RemovableMemory, RemovableCredential as RemovableIdentity, RemovableGatewayTarget };
+export type { RemovableMemory, RemovableCredential as RemovableIdentity, RemovableGatewayTarget, RemovablePolicyResource };
 
 // ============================================================================
 // Generic Hooks
@@ -117,6 +120,16 @@ export function useRemovableIdentities() {
   return { identities, ...rest };
 }
 
+export function useRemovablePolicyEngines() {
+  const { items: policyEngines, ...rest } = useRemovableResources(() => policyEnginePrimitive.getRemovable());
+  return { policyEngines, ...rest };
+}
+
+export function useRemovablePolicies() {
+  const { items: policies, ...rest } = useRemovableResources(() => policyPrimitive.getRemovable());
+  return { policies, ...rest };
+}
+
 // ============================================================================
 // Preview Hook
 // ============================================================================
@@ -172,6 +185,14 @@ export function useRemovalPreview() {
     (name: string) => loadPreview(n => credentialPrimitive.previewRemove(n), name),
     [loadPreview]
   );
+  const loadPolicyEnginePreview = useCallback(
+    (name: string) => loadPreview(n => policyEnginePrimitive.previewRemove(n), name),
+    [loadPreview]
+  );
+  const loadPolicyPreview = useCallback(
+    (compositeKey: string) => loadPreview(k => policyPrimitive.previewRemove(k), compositeKey),
+    [loadPreview]
+  );
 
   const reset = useCallback(() => {
     setState({ isLoading: false, preview: null, error: null });
@@ -184,6 +205,8 @@ export function useRemovalPreview() {
     loadGatewayTargetPreview,
     loadMemoryPreview,
     loadIdentityPreview,
+    loadPolicyEnginePreview,
+    loadPolicyPreview,
     reset,
   };
 }
@@ -236,5 +259,21 @@ export function useRemoveIdentity() {
     (name: string) => credentialPrimitive.remove(name),
     'identity',
     name => name
+  );
+}
+
+export function useRemovePolicyEngine() {
+  return useRemoveResource(
+    (name: string) => policyEnginePrimitive.remove(name),
+    'policy-engine',
+    name => name
+  );
+}
+
+export function useRemovePolicy() {
+  return useRemoveResource(
+    (compositeKey: string) => policyPrimitive.remove(compositeKey),
+    'policy',
+    k => k
   );
 }
