@@ -182,8 +182,12 @@ export function parseStarterToolkitYaml(filePath: string): ParsedStarterToolkitC
         networkConfig:
           networkMode === 'VPC' && networkModeConfig
             ? {
-                subnets: (networkModeConfig.subnets as string[]) ?? [],
-                securityGroups: (networkModeConfig.security_groups as string[]) ?? [],
+                subnets: Array.isArray(networkModeConfig.subnets)
+                  ? (networkModeConfig.subnets as string[])
+                  : [],
+                securityGroups: Array.isArray(networkModeConfig.security_groups)
+                  ? (networkModeConfig.security_groups as string[])
+                  : [],
               }
             : undefined,
         protocol,
