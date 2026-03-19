@@ -89,7 +89,9 @@ if (process.env.BUILD_HARNESS === '1' && fs.existsSync(mcpEntryPoint)) {
     // @xterm/headless is CJS-only (no ESM exports map) — esbuild's CJS-to-ESM
     // conversion mangles its default export at runtime, so let Node handle it.
     // fsevents is macOS-only optional native module.
-    external: ['fsevents', 'node-pty', '@xterm/headless'],
+    // express is CJS-heavy (deeply nested require chains) — let Node.js resolve
+    // it at runtime from node_modules instead of bundling.
+    external: ['fsevents', 'node-pty', '@xterm/headless', 'express'],
     plugins: [textLoaderPlugin],
   });
 
