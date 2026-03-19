@@ -2,6 +2,22 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.3.0-preview.6.1] - 2026-03-19
+
+### Added
+- feat: add PR tarball workflow with direct download link (#576) (c0aeaae)
+
+### Fixed
+- fix: align aws-cdk-lib peer dependency with @aws/agentcore-cdk ^2.243.0 (#582) (9dc4507)
+- fix: bump fast-xml-parser override to 5.5.7 (CVE-2026-33036, CVE-2026-33349) (#577) (41570f0)
+
+### Documentation
+- docs: add evals documentation, update commands reference and configuration guide (#572) (df58b41)
+
+### Other Changes
+- feat(tui-harness): tui_action tool, bug fixes, SVG rendering (#575) (06ca9dd)
+- feat(tui-harness): add SVG screenshots and HTTP transport (#571) (9d964d5)
+
 ## [0.3.0-preview.6.0] - 2026-03-19
 
 ### Added
