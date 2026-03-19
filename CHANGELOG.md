@@ -2,6 +2,23 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.3.0-preview.6.0] - 2026-03-19
+
+### Added
+- feat: introduce evaluation feature (#518) (d970e26)
+- feat: add TUI agent harness with MCP server (#548) (c51b1e2)
+- feat: dev and invoke support for MCP and A2A protocols (#554) (c2c646c)
+- feat: unhide gateway and gateway-target CLI commands (#562) (5c8d1b4)
+- feat: add protocol mode support (HTTP, MCP, A2A) (#550) (3aaa062)
+- feat: add VPC network mode support (#545) (a61ebdd)
+
+### Fixed
+- fix: correct managed OAuth credential name lookup for gateway MCP clients (#543) (30e6a74)
+
+### Other Changes
+- Revert "chore: bump version to 0.3.0-preview.7.0 (#569)" (#573) (e1db6a5)
+- chore: bump version to 0.3.0-preview.7.0 (#569) (3ef8c07)
+
 ## [0.3.0-preview.5.1] - 2026-03-12
 
 ### Added
