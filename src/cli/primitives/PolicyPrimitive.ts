@@ -33,6 +33,14 @@ export class PolicyPrimitive extends BasePrimitive<AddPolicyOptions, RemovablePo
 
   async add(options: AddPolicyOptions): Promise<AddResult<{ policyName: string; engineName: string }>> {
     try {
+      const sourceFlags = [options.statement, options.source, options.generate].filter(Boolean);
+      if (sourceFlags.length > 1) {
+        return {
+          success: false,
+          error: 'Only one of --statement, --source, or --generate can be provided.',
+        };
+      }
+
       const project = await this.readProjectSpec();
 
       const engine = project.policyEngines.find(e => e.name === options.engine);

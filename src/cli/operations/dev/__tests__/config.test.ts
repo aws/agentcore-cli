@@ -245,6 +245,7 @@ describe('getDevConfig', () => {
       ],
       memories: [],
       credentials: [],
+      policyEngines: [],
     };
 
     const config = getDevConfig(workingDir, project, '/test/project/agentcore');
@@ -269,6 +270,7 @@ describe('getDevConfig', () => {
       ],
       memories: [],
       credentials: [],
+      policyEngines: [],
     };
 
     const config = getDevConfig(workingDir, project, '/test/project/agentcore');
@@ -293,6 +295,7 @@ describe('getDevConfig', () => {
       ],
       memories: [],
       credentials: [],
+      policyEngines: [],
     };
 
     const config = getDevConfig(workingDir, project, '/test/project/agentcore');
