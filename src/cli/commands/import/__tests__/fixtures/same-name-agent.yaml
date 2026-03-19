@@ -1,0 +1,32 @@
+default_agent: existing_agent
+agents:
+  existing_agent:
+    name: existing_agent
+    entrypoint: main.py
+    deployment_type: direct_code_deploy
+    runtime_type: PYTHON_3_12
+    source_path: null
+    aws:
+      account: '999888777666'
+      region: us-east-1
+      network_configuration:
+        network_mode: VPC
+        network_mode_config:
+          subnet_ids:
+            - subnet-aaaa1111
+          security_group_ids:
+            - sg-bbbb2222
+      protocol_configuration:
+        server_protocol: MCP
+      observability:
+        enabled: false
+    bedrock_agentcore:
+      agent_id: AGENT_EXISTING_999
+      agent_arn: arn:aws:bedrock-agentcore:us-east-1:999888777666:runtime/AGENT_EXISTING_999
+      agent_session_id: null
+    memory:
+      mode: STM_ONLY
+      memory_id: MEM_EXISTING_888
+      memory_arn: arn:aws:bedrock-agentcore:us-east-1:999888777666:memory/MEM_EXISTING_888
+      memory_name: existing_agent_memory
+      event_expiry_days: 14

@@ -1,0 +1,39 @@
+{
+  "name": "MyProject",
+  "version": 1,
+  "agents": [
+    {
+      "type": "AgentCoreRuntime",
+      "name": "existing_agent",
+      "build": "CodeZip",
+      "entrypoint": "main.py",
+      "codeLocation": "app/existing_agent",
+      "runtimeVersion": "PYTHON_3_12",
+      "protocol": "HTTP",
+      "networkMode": "PUBLIC",
+      "instrumentation": {
+        "enableOtel": true
+      }
+    }
+  ],
+  "memories": [
+    {
+      "type": "AgentCoreMemory",
+      "name": "existing_agent_memory",
+      "eventExpiryDuration": 30,
+      "strategies": [
+        {
+          "type": "SEMANTIC"
+        }
+      ]
+    }
+  ],
+  "credentials": [
+    {
+      "type": "ApiKeyCredentialProvider",
+      "name": "my_api_key"
+    }
+  ],
+  "evaluators": [],
+  "onlineEvalConfigs": []
+}

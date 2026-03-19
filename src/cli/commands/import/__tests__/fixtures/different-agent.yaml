@@ -1,0 +1,28 @@
+default_agent: new_toolkit_agent
+agents:
+  new_toolkit_agent:
+    name: new_toolkit_agent
+    entrypoint: main.py
+    deployment_type: direct_code_deploy
+    runtime_type: PYTHON_3_12
+    source_path: null
+    aws:
+      account: '123456789012'
+      region: us-west-2
+      network_configuration:
+        network_mode: PUBLIC
+      protocol_configuration:
+        server_protocol: HTTP
+      observability:
+        enabled: true
+    bedrock_agentcore:
+      agent_id: AGENT_NEW_123
+      agent_arn: arn:aws:bedrock-agentcore:us-west-2:123456789012:runtime/AGENT_NEW_123
+      agent_session_id: null
+    memory:
+      mode: STM_AND_LTM
+      memory_id: MEM_NEW_456
+      memory_arn: arn:aws:bedrock-agentcore:us-west-2:123456789012:memory/MEM_NEW_456
+      memory_name: new_toolkit_memory
+      event_expiry_days: 60
+    api_key_credential_provider_name: new_api_key_cred
