@@ -2,6 +2,7 @@ import { RUNTIME_TYPE_MAP } from './constants';
 import type {
   ParsedStarterToolkitAgent,
   ParsedStarterToolkitConfig,
+  ParsedStarterToolkitCredential,
   ParsedStarterToolkitMemory,
 } from './types';
 import * as fs from 'node:fs';
@@ -14,7 +15,7 @@ import * as fs from 'node:fs';
 function parseSimpleYaml(content: string): Record<string, unknown> {
   // Try JSON first
   try {
-    return JSON.parse(content);
+    return JSON.parse(content) as Record<string, unknown>;
   } catch {
     // Not JSON, parse YAML
   }
@@ -31,18 +32,44 @@ function parseSimpleYaml(content: string): Record<string, unknown> {
     // Calculate indent level
     const indent = rawLine.search(/\S/);
 
-    // Handle list items (- value)
+    // Handle list items (- value or - key: value)
     if (trimmed.startsWith('- ')) {
-      const parentEntry = findParent(stack, indent);
-      const parentObj = parentEntry.obj;
-      // Find the last key that was added to parent
-      const keys = Object.keys(parentObj);
-      const lastKey = keys[keys.length - 1];
+      let parentEntry = findParent(stack, indent);
+      let parentObj = parentEntry.obj;
+      let keys = Object.keys(parentObj);
+      let lastKey = keys[keys.length - 1];
+
+      // If parent is an empty object (created from "key:" with no value), go up one
+      // level and replace it with an array. This handles "credential_providers:\n  - name: X".
+      if (!lastKey && Object.keys(parentObj).length === 0 && stack.length > 1) {
+        stack.pop();
+        parentEntry = stack[stack.length - 1]!;
+        parentObj = parentEntry.obj;
+        keys = Object.keys(parentObj);
+        lastKey = keys[keys.length - 1];
+      }
+
       if (lastKey) {
         if (!Array.isArray(parentObj[lastKey])) {
           parentObj[lastKey] = [];
         }
-        (parentObj[lastKey] as unknown[]).push(parseYamlValue(trimmed.slice(2).trim()));
+        const itemContent = trimmed.slice(2).trim();
+        const itemColonIdx = itemContent.indexOf(':');
+        if (itemColonIdx > 0 && !itemContent.startsWith('http')) {
+          // List item is a key-value pair (e.g., "- name: Foo") — start a new object
+          const itemObj: Record<string, unknown> = {};
+          const itemKey = itemContent.slice(0, itemColonIdx).trim();
+          const itemVal = itemContent.slice(itemColonIdx + 1).trim();
+          itemObj[itemKey] = itemVal === '' ? {} : parseYamlValue(itemVal);
+          (parentObj[lastKey] as unknown[]).push(itemObj);
+          // Push onto stack so subsequent indented lines go into this object.
+          // Use the same indent as the "- " line so that lines indented further
+          // (e.g., arn: at indent+2) become children, while the next "- " at the
+          // same indent triggers findParent to pop this item and start a new one.
+          stack.push({ indent, obj: itemObj });
+        } else {
+          (parentObj[lastKey] as unknown[]).push(parseYamlValue(itemContent));
+        }
       }
       continue;
     }
@@ -98,10 +125,11 @@ function parseYamlValue(value: string): unknown {
  */
 export function parseStarterToolkitYaml(filePath: string): ParsedStarterToolkitConfig {
   const content = fs.readFileSync(filePath, 'utf-8');
-  const raw = parseSimpleYaml(content) as Record<string, unknown>;
+  const raw = parseSimpleYaml(content);
 
   const agents: ParsedStarterToolkitAgent[] = [];
   const memories: ParsedStarterToolkitMemory[] = [];
+  const credentials: ParsedStarterToolkitCredential[] = [];
   let awsTarget: { account?: string; region?: string } = {};
 
   const defaultAgent = raw.default_agent as string | undefined;
@@ -119,29 +147,29 @@ export function parseStarterToolkitYaml(filePath: string): ParsedStarterToolkitC
       // Extract AWS target from first agent
       if (awsConfig && (!awsTarget.account || !awsTarget.region)) {
         awsTarget = {
-          account: String(awsConfig.account ?? ''),
-          region: String(awsConfig.region ?? ''),
+          account: String((awsConfig.account as string) ?? ''),
+          region: String((awsConfig.region as string) ?? ''),
         };
       }
 
       // Map deployment_type
-      const deploymentType = String(agentConfig.deployment_type ?? 'container');
+      const deploymentType = String((agentConfig.deployment_type as string) ?? 'container');
       const build = deploymentType === 'direct_code_deploy' ? 'CodeZip' : 'Container';
 
       // Map runtime_type
-      const rawRuntimeType = String(agentConfig.runtime_type ?? 'PYTHON_3_12');
+      const rawRuntimeType = String((agentConfig.runtime_type as string) ?? 'PYTHON_3_12');
       const runtimeVersion = RUNTIME_TYPE_MAP[rawRuntimeType] ?? 'python3.12';
 
       // Map network mode
-      const networkMode = String(networkConfig?.network_mode ?? 'PUBLIC') as 'PUBLIC' | 'VPC';
+      const networkMode = String((networkConfig?.network_mode as string) ?? 'PUBLIC') as 'PUBLIC' | 'VPC';
       const networkModeConfig = networkConfig?.network_mode_config as Record<string, unknown> | undefined;
 
       // Map protocol
-      const protocol = String(protocolConfig?.server_protocol ?? 'HTTP') as 'HTTP' | 'MCP' | 'A2A';
+      const protocol = String((protocolConfig?.server_protocol as string) ?? 'HTTP') as 'HTTP' | 'MCP' | 'A2A';
 
       agents.push({
-        name: String(agentConfig.name ?? agentKey),
-        entrypoint: String(agentConfig.entrypoint ?? 'main.py'),
+        name: String((agentConfig.name as string) ?? agentKey),
+        entrypoint: String((agentConfig.entrypoint as string) ?? 'main.py'),
         build,
         runtimeVersion,
         language: (agentConfig.language as 'python' | 'typescript') ?? 'python',
@@ -162,7 +190,8 @@ export function parseStarterToolkitYaml(filePath: string): ParsedStarterToolkitC
 
       // Extract memory config per agent
       if (memoryConfig && memoryConfig.mode !== 'NO_MEMORY' && memoryConfig.mode) {
-        const memName = (memoryConfig.memory_name as string) ?? `${agentConfig.name ?? agentKey}_memory`;
+        const memName =
+          (memoryConfig.memory_name as string) ?? `${String((agentConfig.name as string) ?? agentKey)}_memory`;
         // Avoid duplicate memories
         if (!memories.find(m => m.name === memName)) {
           memories.push({
@@ -174,8 +203,28 @@ export function parseStarterToolkitYaml(filePath: string): ParsedStarterToolkitC
           });
         }
       }
+
+      // Extract credential providers (OAuth and API key)
+      const identityConfig = agentConfig.identity as Record<string, unknown> | undefined;
+      if (identityConfig) {
+        const providers = identityConfig.credential_providers as Record<string, unknown>[] | undefined;
+        if (Array.isArray(providers)) {
+          for (const provider of providers) {
+            const providerName = provider.name as string | undefined;
+            if (providerName && !credentials.find(c => c.name === providerName)) {
+              credentials.push({ name: providerName, providerType: 'oauth' });
+            }
+          }
+        }
+      }
+
+      // Extract API key credential provider
+      const apiKeyCredName = agentConfig.api_key_credential_provider_name as string | undefined;
+      if (apiKeyCredName && !credentials.find(c => c.name === apiKeyCredName)) {
+        credentials.push({ name: apiKeyCredName, providerType: 'api_key' });
+      }
     }
   }
 
-  return { defaultAgent, agents, memories, awsTarget };
+  return { defaultAgent, agents, memories, credentials, awsTarget };
 }

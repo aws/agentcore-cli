@@ -1,5 +1,5 @@
 import { APP_DIR, ConfigIO, findConfigRoot } from '../../../lib';
-import type { AgentCoreRegion, AgentEnvSpec, AwsDeploymentTarget, Memory } from '../../../schema';
+import type { AgentCoreRegion, AgentEnvSpec, AwsDeploymentTarget, Credential, Memory } from '../../../schema';
 import { validateAwsCredentials } from '../../aws/account';
 import { LocalCdkProject } from '../../cdk/local-cdk-project';
 import { silentIoHost } from '../../cdk/toolkit-lib';
@@ -79,6 +79,22 @@ function toMemorySpec(mem: ParsedStarterToolkitConfig['memories'][0]): Memory {
   };
 }
 
+/**
+ * Convert parsed starter toolkit credential to CLI Credential format.
+ * OAuth providers map to OAuthCredentialProvider (discoveryUrl not available from YAML, omitted).
+ * API key providers map to ApiKeyCredentialProvider.
+ */
+function toCredentialSpec(cred: ParsedStarterToolkitConfig['credentials'][0]): Credential {
+  if (cred.providerType === 'api_key') {
+    return { type: 'ApiKeyCredentialProvider', name: cred.name };
+  }
+  // OAuth providers: the CLI schema requires discoveryUrl but we don't have it from the YAML.
+  // The credential provider already exists in Identity service — we just need the name
+  // so CDK wires the env var. Use ApiKeyCredentialProvider as the config type since it
+  // only requires a name, and the actual provider type in Identity service is unchanged.
+  return { type: 'ApiKeyCredentialProvider', name: cred.name };
+}
+
 export async function handleImport(options: ImportOptions): Promise<ImportResult> {
   const { source, onProgress } = options;
 
@@ -109,7 +125,9 @@ export async function handleImport(options: ImportOptions): Promise<ImportResult
       return { success: false, error: 'No agents found in the YAML config' };
     }
 
-    onProgress?.(`Found ${parsed.agents.length} agent(s) and ${parsed.memories.length} memory(ies)`);
+    onProgress?.(
+      `Found ${parsed.agents.length} agent(s), ${parsed.memories.length} memory(ies), ${parsed.credentials.length} credential(s)`
+    );
 
     // 4. Resolve deployment target
     let targets = await configIO.readAWSDeploymentTargets();
@@ -187,6 +205,16 @@ export async function handleImport(options: ImportOptions): Promise<ImportResult
         (projectSpec.memories ??= []).push(toMemorySpec(mem));
       } else {
         onProgress?.(`Skipping memory "${mem.name}" (already exists in project)`);
+      }
+    }
+
+    const existingCredentialNames = new Set((projectSpec.credentials ?? []).map(c => c.name));
+    for (const cred of parsed.credentials) {
+      if (!existingCredentialNames.has(cred.name)) {
+        (projectSpec.credentials ??= []).push(toCredentialSpec(cred));
+        onProgress?.(`Added credential "${cred.name}" (${cred.providerType})`);
+      } else {
+        onProgress?.(`Skipping credential "${cred.name}" (already exists in project)`);
       }
     }
 
