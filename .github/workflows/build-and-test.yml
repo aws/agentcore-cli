@@ -5,7 +5,6 @@ on:
     branches: ['main']
   pull_request:
     branches: ['main']
-    types: [opened, synchronize, reopened, closed]
 
 permissions:
   contents: read
@@ -18,7 +17,6 @@ concurrency:
 jobs:
   build:
     runs-on: ubuntu-latest
-    if: github.event.action != 'closed'
     timeout-minutes: 15
 
     strategy:
@@ -62,7 +60,7 @@ jobs:
   coverage:
     needs: build
     runs-on: ubuntu-latest
-    if: github.event_name == 'pull_request' && github.event.action != 'closed'
+    if: github.event_name == 'pull_request'
     permissions:
       contents: read
       pull-requests: write
@@ -86,7 +84,7 @@ jobs:
   pr-tarball:
     needs: build
     runs-on: ubuntu-latest
-    if: github.event_name == 'pull_request' && github.event.action != 'closed'
+    if: github.event_name == 'pull_request'
     permissions:
       contents: write
       pull-requests: write
@@ -119,7 +117,7 @@ jobs:
           gh release create "$TAG" \
             "tarball/${TARBALL_NAME}" \
             --title "PR #${PR_NUMBER} Tarball" \
-            --notes "Auto-generated tarball for PR #${PR_NUMBER}. This release will be cleaned up when the PR is closed." \
+            --notes "Auto-generated tarball for PR #${PR_NUMBER}." \
             --prerelease \
             --target "${{ github.event.pull_request.head.sha }}"
 
@@ -139,19 +137,3 @@ jobs:
             ```bash
             npm install ${{ steps.release.outputs.url }}
             ```
-
-  cleanup-pr-tarball:
-    runs-on: ubuntu-latest
-    if: github.event_name == 'pull_request' && github.event.action == 'closed'
-    permissions:
-      contents: write
-
-    steps:
-      - uses: actions/checkout@v6
-      - name: Delete PR release
-        env:
-          GH_TOKEN: ${{ github.token }}
-          PR_NUMBER: ${{ github.event.pull_request.number }}
-        run: |
-          TAG="pr-${PR_NUMBER}-tarball"
-          gh release delete "$TAG" --yes --cleanup-tag 2>/dev/null || true
