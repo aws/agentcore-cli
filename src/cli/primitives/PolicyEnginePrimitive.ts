@@ -53,6 +53,21 @@ export class PolicyEnginePrimitive extends BasePrimitive<AddPolicyEngineOptions,
       project.policyEngines.splice(index, 1);
       await this.writeProjectSpec(project);
 
+      // Clean up any gateway references to this engine in mcp.json
+      if (this.configIO.configExists('mcp')) {
+        const mcpSpec = await this.configIO.readMcpSpec();
+        let changed = false;
+        for (const gw of mcpSpec.agentCoreGateways) {
+          if (gw.policyEngineConfiguration?.policyEngineName === engineName) {
+            delete gw.policyEngineConfiguration;
+            changed = true;
+          }
+        }
+        if (changed) {
+          await this.configIO.writeMcpSpec(mcpSpec);
+        }
+      }
+
       return { success: true };
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Unknown error';
@@ -83,6 +98,35 @@ export class PolicyEnginePrimitive extends BasePrimitive<AddPolicyEngineOptions,
       before: project,
       after: afterSpec,
     });
+
+    // Show mcp.json changes if any gateways reference this engine
+    if (this.configIO.configExists('mcp')) {
+      const mcpSpec = await this.configIO.readMcpSpec();
+      const affectedGateways = mcpSpec.agentCoreGateways.filter(
+        gw => gw.policyEngineConfiguration?.policyEngineName === engineName
+      );
+      if (affectedGateways.length > 0) {
+        summary.push(
+          `Note: ${affectedGateways.length} gateway(s) referencing this engine will have policyEngineConfiguration removed`
+        );
+        summary.push(
+          'Warning: this may grant agents escalated permissions to invoke gateway tools that were previously restricted'
+        );
+        const afterMcpSpec = {
+          ...mcpSpec,
+          agentCoreGateways: mcpSpec.agentCoreGateways.map(gw =>
+            gw.policyEngineConfiguration?.policyEngineName === engineName
+              ? { ...gw, policyEngineConfiguration: undefined }
+              : gw
+          ),
+        };
+        schemaChanges.push({
+          file: 'agentcore/mcp.json',
+          before: mcpSpec,
+          after: afterMcpSpec,
+        });
+      }
+    }
 
     return { summary, directoriesToDelete: [], schemaChanges };
   }

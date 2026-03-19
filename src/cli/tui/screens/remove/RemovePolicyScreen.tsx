@@ -1,5 +1,5 @@
-import type { RemovablePolicyResource } from '../../hooks/useRemove';
 import { SelectScreen } from '../../components';
+import type { RemovablePolicyResource } from '../../hooks/useRemove';
 import React from 'react';
 
 interface RemovePolicyScreenProps {
@@ -22,11 +22,6 @@ export function RemovePolicyScreen({ policies, onSelect, onExit }: RemovePolicyS
   });
 
   return (
-    <SelectScreen
-      title="Select Policy to Remove"
-      items={items}
-      onSelect={item => onSelect(item.id)}
-      onExit={onExit}
-    />
+    <SelectScreen title="Select Policy to Remove" items={items} onSelect={item => onSelect(item.id)} onExit={onExit} />
   );
 }

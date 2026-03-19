@@ -18,7 +18,12 @@ import {
 import { useCallback, useEffect, useRef, useState } from 'react';
 
 // Re-export types for consumers
-export type { RemovableMemory, RemovableCredential as RemovableIdentity, RemovableGatewayTarget, RemovablePolicyResource };
+export type {
+  RemovableMemory,
+  RemovableCredential as RemovableIdentity,
+  RemovableGatewayTarget,
+  RemovablePolicyResource,
+};
 
 // ============================================================================
 // Generic Hooks

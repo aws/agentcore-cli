@@ -430,7 +430,9 @@ export function RemoveFlow({
     async (compositeKey: string) => {
       const result = await loadPolicyPreview(compositeKey);
       if (result.ok) {
-        const policyName = compositeKey.includes('/') ? compositeKey.slice(compositeKey.indexOf('/') + 1) : compositeKey;
+        const policyName = compositeKey.includes('/')
+          ? compositeKey.slice(compositeKey.indexOf('/') + 1)
+          : compositeKey;
         if (force) {
           setFlow({ name: 'loading', message: `Removing policy ${policyName}...` });
           const removeResult = await removePolicyOp(compositeKey, result.preview);

@@ -39,6 +39,8 @@ export interface AddGatewayOptions {
   agents?: string;
   semanticSearch?: boolean;
   exceptionLevel?: string;
+  policyEngine?: string;
+  policyEngineMode?: string;
   json?: boolean;
 }
 

@@ -273,6 +273,17 @@ export function validateAddGatewayOptions(options: AddGatewayOptions): Validatio
     }
   }
 
+  // Validate policy engine options
+  if (options.policyEngine && !options.policyEngineMode) {
+    return { valid: false, error: '--policy-engine-mode is required when --policy-engine is specified' };
+  }
+  if (options.policyEngineMode && !options.policyEngine) {
+    return { valid: false, error: '--policy-engine is required when --policy-engine-mode is specified' };
+  }
+  if (options.policyEngineMode && !['LOG_ONLY', 'ENFORCE'].includes(options.policyEngineMode)) {
+    return { valid: false, error: `Invalid policy engine mode: ${options.policyEngineMode}. Use LOG_ONLY or ENFORCE` };
+  }
+
   return { valid: true };
 }
 
