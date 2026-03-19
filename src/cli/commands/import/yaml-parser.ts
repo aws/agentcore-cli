@@ -6,6 +6,7 @@ import type {
   ParsedStarterToolkitMemory,
 } from './types';
 import * as fs from 'node:fs';
+import * as path from 'node:path';
 
 /**
  * Minimal YAML parser for the starter toolkit config.
@@ -126,6 +127,7 @@ function parseYamlValue(value: string): unknown {
 export function parseStarterToolkitYaml(filePath: string): ParsedStarterToolkitConfig {
   const content = fs.readFileSync(filePath, 'utf-8');
   const raw = parseSimpleYaml(content);
+  const yamlDir = path.dirname(path.resolve(filePath));
 
   const agents: ParsedStarterToolkitAgent[] = [];
   const memories: ParsedStarterToolkitMemory[] = [];
@@ -158,7 +160,7 @@ export function parseStarterToolkitYaml(filePath: string): ParsedStarterToolkitC
 
       // Map runtime_type
       const rawRuntimeType = String((agentConfig.runtime_type as string) ?? 'PYTHON_3_12');
-      const runtimeVersion = RUNTIME_TYPE_MAP[rawRuntimeType] ?? 'python3.12';
+      const runtimeVersion = RUNTIME_TYPE_MAP[rawRuntimeType] ?? 'PYTHON_3_12';
 
       // Map network mode
       const networkMode = String((networkConfig?.network_mode as string) ?? 'PUBLIC') as 'PUBLIC' | 'VPC';
@@ -173,7 +175,9 @@ export function parseStarterToolkitYaml(filePath: string): ParsedStarterToolkitC
         build,
         runtimeVersion,
         language: (agentConfig.language as 'python' | 'typescript') ?? 'python',
-        sourcePath: agentConfig.source_path as string | undefined,
+        sourcePath: agentConfig.source_path
+          ? path.resolve(yamlDir, String(agentConfig.source_path as string))
+          : undefined,
         networkMode,
         networkConfig:
           networkMode === 'VPC' && networkModeConfig
@@ -188,8 +192,14 @@ export function parseStarterToolkitYaml(filePath: string): ParsedStarterToolkitC
         physicalAgentArn: bedrockConfig?.agent_arn as string | undefined,
       });
 
-      // Extract memory config per agent
-      if (memoryConfig && memoryConfig.mode !== 'NO_MEMORY' && memoryConfig.mode) {
+      // Extract memory config per agent — ensure mode is a non-empty string
+      // (the simple YAML parser turns bare "mode:" into an empty object {})
+      if (
+        memoryConfig &&
+        typeof memoryConfig.mode === 'string' &&
+        memoryConfig.mode !== 'NO_MEMORY' &&
+        memoryConfig.mode
+      ) {
         const memName =
           (memoryConfig.memory_name as string) ?? `${String((agentConfig.name as string) ?? agentKey)}_memory`;
         // Avoid duplicate memories
