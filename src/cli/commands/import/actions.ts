@@ -191,18 +191,22 @@ export async function handleImport(options: ImportOptions): Promise<ImportResult
     // 5. Merge agents/memories into existing project config
     onProgress?.('Merging into existing project...');
     const existingAgentNames = new Set(projectSpec.agents.map(a => a.name));
+    const newlyAddedAgentNames = new Set<string>();
     for (const agent of parsed.agents) {
       if (!existingAgentNames.has(agent.name)) {
         projectSpec.agents.push(toAgentEnvSpec(agent));
+        newlyAddedAgentNames.add(agent.name);
       } else {
         onProgress?.(`Skipping agent "${agent.name}" (already exists in project)`);
       }
     }
 
     const existingMemoryNames = new Set((projectSpec.memories ?? []).map(m => m.name));
+    const newlyAddedMemoryNames = new Set<string>();
     for (const mem of parsed.memories) {
       if (!existingMemoryNames.has(mem.name)) {
         (projectSpec.memories ??= []).push(toMemorySpec(mem));
+        newlyAddedMemoryNames.add(mem.name);
       } else {
         onProgress?.(`Skipping memory "${mem.name}" (already exists in project)`);
       }
@@ -278,9 +282,14 @@ export async function handleImport(options: ImportOptions): Promise<ImportResult
       }
     }
 
-    // 7. Determine which resources need importing (have physical IDs)
-    const agentsToImport = parsed.agents.filter(a => a.physicalAgentId);
-    const memoriesToImport = parsed.memories.filter(m => m.physicalMemoryId);
+    // 7. Determine which resources need importing (have physical IDs).
+    // Only import newly added resources — skip ones already in the project.
+    const agentsToImport = parsed.agents.filter(a => {
+      return a.physicalAgentId && newlyAddedAgentNames.has(a.name);
+    });
+    const memoriesToImport = parsed.memories.filter(m => {
+      return m.physicalMemoryId && newlyAddedMemoryNames.has(m.name);
+    });
     const targetName = target.name;
     const stackName = toStackName(projectName, targetName);
 
