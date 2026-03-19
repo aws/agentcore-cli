@@ -124,7 +124,7 @@ jobs:
           DOWNLOAD_URL="https://github.com/${{ github.repository }}/releases/download/${TAG}/${TARBALL_NAME}"
           echo "url=$DOWNLOAD_URL" >> $GITHUB_OUTPUT
       - name: Comment on PR
-        uses: marocchino/sticky-pull-request-comment@v2
+        uses: marocchino/sticky-pull-request-comment@v3
         with:
           header: tarball
           message: |
