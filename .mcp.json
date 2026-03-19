@@ -1,8 +1,8 @@
 {
   "mcpServers": {
     "tui-harness": {
-      "command": "node",
-      "args": ["dist/mcp-harness/index.mjs"]
+      "type": "http",
+      "url": "http://127.0.0.1:24100/mcp"
     }
   }
 }
