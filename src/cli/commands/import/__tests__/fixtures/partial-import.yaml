@@ -1,0 +1,44 @@
+default_agent: deployed_agent
+agents:
+  deployed_agent:
+    name: deployed_agent
+    entrypoint: main.py
+    deployment_type: direct_code_deploy
+    runtime_type: PYTHON_3_12
+    language: python
+    aws:
+      account: '111122223333'
+      region: us-west-2
+      network_configuration:
+        network_mode: PUBLIC
+      protocol_configuration:
+        server_protocol: HTTP
+      observability:
+        enabled: true
+    bedrock_agentcore:
+      agent_id: agent-deployed-111
+      agent_arn: arn:aws:bedrock-agentcore:us-west-2:111122223333:runtime/agent-deployed-111
+    memory:
+      mode: STM_ONLY
+      memory_id: null
+      memory_name: deployed_agent_memory
+      event_expiry_days: 14
+  new_agent:
+    name: new_agent
+    entrypoint: main.py
+    deployment_type: direct_code_deploy
+    runtime_type: PYTHON_3_12
+    language: python
+    aws:
+      account: '111122223333'
+      region: us-west-2
+      network_configuration:
+        network_mode: PUBLIC
+      protocol_configuration:
+        server_protocol: MCP
+      observability:
+        enabled: true
+    bedrock_agentcore:
+      agent_id: null
+    memory:
+      mode: NO_MEMORY

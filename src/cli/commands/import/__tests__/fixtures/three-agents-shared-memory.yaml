@@ -1,0 +1,65 @@
+default_agent: agent_alpha
+agents:
+  agent_alpha:
+    name: agent_alpha
+    entrypoint: main.py
+    deployment_type: direct_code_deploy
+    runtime_type: PYTHON_3_12
+    language: python
+    aws:
+      account: '111122223333'
+      region: us-west-2
+      network_configuration:
+        network_mode: PUBLIC
+      protocol_configuration:
+        server_protocol: HTTP
+      observability:
+        enabled: true
+    bedrock_agentcore:
+      agent_id: agent-aaa-111
+    memory:
+      mode: STM_AND_LTM
+      memory_id: mem-shared-001
+      memory_name: shared_memory
+      event_expiry_days: 30
+  agent_beta:
+    name: agent_beta
+    entrypoint: main.py
+    deployment_type: direct_code_deploy
+    runtime_type: PYTHON_3_13
+    language: python
+    aws:
+      account: '111122223333'
+      region: us-west-2
+      network_configuration:
+        network_mode: PUBLIC
+      protocol_configuration:
+        server_protocol: MCP
+      observability:
+        enabled: false
+    bedrock_agentcore:
+      agent_id: agent-bbb-222
+    memory:
+      mode: STM_AND_LTM
+      memory_id: mem-shared-001
+      memory_name: shared_memory
+      event_expiry_days: 30
+  agent_gamma:
+    name: agent_gamma
+    entrypoint: main.py
+    deployment_type: direct_code_deploy
+    runtime_type: PYTHON_3_11
+    language: python
+    aws:
+      account: '111122223333'
+      region: us-west-2
+      network_configuration:
+        network_mode: PUBLIC
+      protocol_configuration:
+        server_protocol: HTTP
+      observability:
+        enabled: true
+    bedrock_agentcore:
+      agent_id: agent-ccc-333
+    memory:
+      mode: NO_MEMORY

@@ -1,0 +1,40 @@
+default_agent: agent1
+agents:
+  agent1:
+    name: agent1
+    entrypoint: main.py
+    deployment_type: direct_code_deploy
+    runtime_type: PYTHON_3_12
+    language: python
+    aws:
+      account: '111122223333'
+      region: us-west-2
+      network_configuration:
+        network_mode: PUBLIC
+      protocol_configuration:
+        server_protocol: HTTP
+      observability:
+        enabled: true
+    bedrock_agentcore:
+      agent_id: agent-short-111
+    memory:
+      mode: NO_MEMORY
+  agent1_v2:
+    name: agent1_v2
+    entrypoint: main.py
+    deployment_type: direct_code_deploy
+    runtime_type: PYTHON_3_12
+    language: python
+    aws:
+      account: '111122223333'
+      region: us-west-2
+      network_configuration:
+        network_mode: PUBLIC
+      protocol_configuration:
+        server_protocol: MCP
+      observability:
+        enabled: true
+    bedrock_agentcore:
+      agent_id: agent-long-222
+    memory:
+      mode: NO_MEMORY
