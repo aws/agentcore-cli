@@ -23,7 +23,8 @@ The TUI harness provides MCP tools for programmatically driving the AgentCore CL
   specific UI elements), `includeScrollback: true` includes lines scrolled above the viewport.
 - `tui_wait_for` -- Wait for text or a regex pattern to appear on screen. Returns `{found: false}` on timeout, NOT an
   error.
-- `tui_screenshot` -- Capture a bordered screenshot with line numbers.
+- `tui_screenshot` -- Capture a screenshot. Supports `format: 'text'` (bordered text with line numbers, the default) or
+  `format: 'svg'` (visual SVG render). Optional `savePath` to write to disk, `theme` to select color scheme.
 - `tui_close` -- Close a session and terminate the underlying process.
 - `tui_list_sessions` -- List all active sessions.
 
@@ -51,6 +52,38 @@ The TUI harness provides MCP tools for programmatically driving the AgentCore CL
 
 The response also includes metadata: cursor position, terminal dimensions, buffer type, and timestamp. Use line numbers
 when referencing specific UI elements in your reasoning.
+
+## SVG Screenshots
+
+`tui_screenshot` can render the terminal buffer as a visual SVG image. SVGs are self-contained (all fonts and styles are
+inlined) with no external dependencies, making them safe to embed anywhere.
+
+### MCP Tool Usage
+
+```
+tui_screenshot({ sessionId: "abc", format: "svg", savePath: "./screenshot.svg" })
+tui_screenshot({ sessionId: "abc", format: "svg", theme: "light" })
+```
+
+### Library Usage
+
+```typescript
+const svg = session.screenshot();
+fs.writeFileSync('docs/screenshots/home-screen.svg', svg);
+```
+
+### Themes
+
+- **dark** (default) -- VS Code Dark+ colors. Best for terminal-style presentation.
+- **light** -- GitHub-friendly palette. Best for docs and PR descriptions where the page background is white.
+
+### Embedding in Markdown
+
+SVG files render natively in GitHub markdown:
+
+```markdown
+![Home Screen](docs/screenshots/home-screen.svg)
+```
 
 ## Screen Identification Markers
 
