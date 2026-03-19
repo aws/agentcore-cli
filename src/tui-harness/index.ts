@@ -10,7 +10,7 @@
  */
 
 // --- Core session class ---
-export { TuiSession } from './lib/TuiSession.js';
+export { TuiSession } from './lib/tui-session.js';
 
 // --- Types and error classes ---
 export type { LaunchOptions, ScreenState, ReadOptions, CloseResult, SessionInfo } from './lib/types.js';
