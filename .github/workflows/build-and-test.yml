@@ -5,6 +5,7 @@ on:
     branches: ['main']
   pull_request:
     branches: ['main']
+    types: [opened, synchronize, reopened, closed]
 
 permissions:
   contents: read
@@ -17,6 +18,7 @@ concurrency:
 jobs:
   build:
     runs-on: ubuntu-latest
+    if: github.event.action != 'closed'
     timeout-minutes: 15
 
     strategy:
@@ -47,11 +49,20 @@ jobs:
         with:
           name: coverage-report
           path: coverage/
+      - name: Pack tarball
+        if: matrix.node-version == '20.x'
+        run: npm pack
+      - name: Upload tarball artifact
+        if: matrix.node-version == '20.x'
+        uses: actions/upload-artifact@v7
+        with:
+          name: tarball
+          path: '*.tgz'
 
   coverage:
     needs: build
     runs-on: ubuntu-latest
-    if: github.event_name == 'pull_request'
+    if: github.event_name == 'pull_request' && github.event.action != 'closed'
     permissions:
       contents: read
       pull-requests: write
@@ -71,3 +82,76 @@ jobs:
           vite-config-path: vitest.unit.config.ts
           file-coverage-mode: none
           coverage-thresholds: '{ "lines": 50, "branches": 50, "functions": 50, "statements": 50 }'
+
+  pr-tarball:
+    needs: build
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request' && github.event.action != 'closed'
+    permissions:
+      contents: write
+      pull-requests: write
+
+    steps:
+      - uses: actions/checkout@v6
+      - name: Download tarball artifact
+        uses: actions/download-artifact@v8
+        with:
+          name: tarball
+          path: tarball/
+      - name: Get tarball info
+        id: tarball
+        run: |
+          TARBALL_NAME=$(ls tarball/*.tgz | head -1 | xargs basename)
+          echo "name=$TARBALL_NAME" >> $GITHUB_OUTPUT
+      - name: Create or update PR release
+        id: release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          TARBALL_NAME: ${{ steps.tarball.outputs.name }}
+        run: |
+          TAG="pr-${PR_NUMBER}-tarball"
+
+          # Delete existing release if it exists (to update the tarball)
+          gh release delete "$TAG" --yes --cleanup-tag 2>/dev/null || true
+
+          # Create a new pre-release with the tarball
+          gh release create "$TAG" \
+            "tarball/${TARBALL_NAME}" \
+            --title "PR #${PR_NUMBER} Tarball" \
+            --notes "Auto-generated tarball for PR #${PR_NUMBER}. This release will be cleaned up when the PR is closed." \
+            --prerelease \
+            --target "${{ github.event.pull_request.head.sha }}"
+
+          DOWNLOAD_URL="https://github.com/${{ github.repository }}/releases/download/${TAG}/${TARBALL_NAME}"
+          echo "url=$DOWNLOAD_URL" >> $GITHUB_OUTPUT
+      - name: Comment on PR
+        uses: marocchino/sticky-pull-request-comment@v2
+        with:
+          header: tarball
+          message: |
+            ## Package Tarball
+
+            **[${{ steps.tarball.outputs.name }}](${{ steps.release.outputs.url }})**
+
+            ### How to install
+
+            ```bash
+            npm install ${{ steps.release.outputs.url }}
+            ```
+
+  cleanup-pr-tarball:
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request' && github.event.action == 'closed'
+    permissions:
+      contents: write
+
+    steps:
+      - uses: actions/checkout@v6
+      - name: Delete PR release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          TAG="pr-${PR_NUMBER}-tarball"
+          gh release delete "$TAG" --yes --cleanup-tag 2>/dev/null || true
