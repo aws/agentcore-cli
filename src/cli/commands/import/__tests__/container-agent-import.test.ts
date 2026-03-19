@@ -55,19 +55,19 @@ describe('deployment_type mapping', () => {
   it('container -> Container', () => {
     const f = writeTempYaml(AGENT_YAML_TEMPLATE('deployment_type: container\n    runtime_type: PYTHON_3_12'));
     tempFiles.push(f);
-    expect(parseStarterToolkitYaml(f).agents[0].build).toBe('Container');
+    expect(parseStarterToolkitYaml(f).agents[0]!.build).toBe('Container');
   });
 
   it('direct_code_deploy -> CodeZip', () => {
     const f = writeTempYaml(AGENT_YAML_TEMPLATE('deployment_type: direct_code_deploy\n    runtime_type: PYTHON_3_12'));
     tempFiles.push(f);
-    expect(parseStarterToolkitYaml(f).agents[0].build).toBe('CodeZip');
+    expect(parseStarterToolkitYaml(f).agents[0]!.build).toBe('CodeZip');
   });
 
   it('missing -> Container (default)', () => {
     const f = writeTempYaml(AGENT_YAML_TEMPLATE('runtime_type: PYTHON_3_12'));
     tempFiles.push(f);
-    expect(parseStarterToolkitYaml(f).agents[0].build).toBe('Container');
+    expect(parseStarterToolkitYaml(f).agents[0]!.build).toBe('Container');
   });
 });
 
@@ -81,25 +81,25 @@ describe('runtime_type handling', () => {
   it('null -> PYTHON_3_12', () => {
     const f = writeTempYaml(AGENT_YAML_TEMPLATE('deployment_type: container\n    runtime_type: null'));
     tempFiles.push(f);
-    expect(parseStarterToolkitYaml(f).agents[0].runtimeVersion).toBe('PYTHON_3_12');
+    expect(parseStarterToolkitYaml(f).agents[0]!.runtimeVersion).toBe('PYTHON_3_12');
   });
 
   it('missing -> PYTHON_3_12', () => {
     const f = writeTempYaml(AGENT_YAML_TEMPLATE('deployment_type: container'));
     tempFiles.push(f);
-    expect(parseStarterToolkitYaml(f).agents[0].runtimeVersion).toBe('PYTHON_3_12');
+    expect(parseStarterToolkitYaml(f).agents[0]!.runtimeVersion).toBe('PYTHON_3_12');
   });
 
   it('PYTHON_3_13 -> PYTHON_3_13', () => {
     const f = writeTempYaml(AGENT_YAML_TEMPLATE('deployment_type: container\n    runtime_type: PYTHON_3_13'));
     tempFiles.push(f);
-    expect(parseStarterToolkitYaml(f).agents[0].runtimeVersion).toBe('PYTHON_3_13');
+    expect(parseStarterToolkitYaml(f).agents[0]!.runtimeVersion).toBe('PYTHON_3_13');
   });
 
   it('unrecognized -> PYTHON_3_12 (not python3.12)', () => {
     const f = writeTempYaml(AGENT_YAML_TEMPLATE('deployment_type: container\n    runtime_type: some_unknown'));
     tempFiles.push(f);
-    const rv = parseStarterToolkitYaml(f).agents[0].runtimeVersion;
+    const rv = parseStarterToolkitYaml(f).agents[0]!.runtimeVersion;
     expect(rv).toBe('PYTHON_3_12');
     expect(rv).not.toBe('python3.12');
   });
@@ -153,7 +153,7 @@ agents:
     const f = writeTempYaml(yaml);
     tempFiles.push(f);
     const parsed = parseStarterToolkitYaml(f);
-    const agent = parsed.agents[0];
+    const agent = parsed.agents[0]!;
     expect(agent.build).toBe('Container');
     expect(agent.runtimeVersion).toBe('PYTHON_3_12');
     expect(agent.physicalAgentId).toBe('abc123def456');
@@ -188,7 +188,7 @@ agents:
 `;
     const f = writeTempYaml(yaml);
     tempFiles.push(f);
-    const agent = parseStarterToolkitYaml(f).agents[0];
+    const agent = parseStarterToolkitYaml(f).agents[0]!;
     expect(agent.build).toBe('Container');
     expect(agent.networkMode).toBe('VPC');
     expect(agent.networkConfig!.subnets).toContain('subnet-12345678');
@@ -213,8 +213,8 @@ describe('import template for container agents', () => {
     };
     const result = buildImportTemplate(deployed, synth, ['RT']);
     expect(result.Resources.RT).toBeDefined();
-    expect(result.Resources.RT.DeletionPolicy).toBe('Retain');
-    expect(result.Resources.RT.DependsOn).toBeUndefined();
+    expect(result.Resources.RT!.DeletionPolicy).toBe('Retain');
+    expect(result.Resources.RT!.DependsOn).toBeUndefined();
     expect(result.Resources.CR).toBeUndefined();
   });
 

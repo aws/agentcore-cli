@@ -194,16 +194,27 @@ export function findLogicalIdByProperty(
   propertyName: string,
   propertyValue: string
 ): string | undefined {
+  // First pass: exact string match (highest confidence)
+  for (const [logicalId, resource] of Object.entries(template.Resources)) {
+    if (resource.Type === resourceType && resource.Properties) {
+      if (resource.Properties[propertyName] === propertyValue) {
+        return logicalId;
+      }
+    }
+  }
+
+  // Second pass: check intrinsic functions (Fn::Join, Fn::Sub, etc.)
+  // Use a regex boundary check to avoid false substring matches
+  // (e.g., "agent1" matching "agent1_v2")
+  const escaped = propertyValue.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  // eslint-disable-next-line security/detect-non-literal-regexp
+  const pattern = new RegExp(escaped + '(?=[^a-zA-Z0-9_]|$)');
+
   for (const [logicalId, resource] of Object.entries(template.Resources)) {
     if (resource.Type === resourceType && resource.Properties) {
       const propVal = resource.Properties[propertyName];
-      if (propVal === propertyValue) {
-        return logicalId;
-      }
-      // Also check Fn::Join and other intrinsic functions that might construct the name
       if (typeof propVal === 'object' && propVal !== null) {
-        const propJson = JSON.stringify(propVal);
-        if (propJson.includes(propertyValue)) {
+        if (pattern.test(JSON.stringify(propVal))) {
           return logicalId;
         }
       }
