@@ -397,9 +397,10 @@ export class GatewayPrimitive extends BasePrimitive<AddGatewayOptions, Removable
     });
     await this.writeProjectSpec(project);
 
-    // Write client secret to .env
-    const envVarName = computeDefaultCredentialEnvVarName(credentialName);
-    await setEnvVar(envVarName, jwtConfig.agentClientSecret!);
+    // Write client ID and client secret to .env
+    const envVarPrefix = computeDefaultCredentialEnvVarName(credentialName);
+    await setEnvVar(`${envVarPrefix}_CLIENT_ID`, jwtConfig.agentClientId!);
+    await setEnvVar(`${envVarPrefix}_CLIENT_SECRET`, jwtConfig.agentClientSecret!);
   }
 
   /**
