@@ -15,7 +15,15 @@ import type { ResourceDeploymentState } from './constants';
 export type { ResourceDeploymentState };
 
 export interface ResourceStatusEntry {
-  resourceType: 'agent' | 'memory' | 'credential' | 'gateway' | 'evaluator' | 'online-eval' | 'policy-engine' | 'policy';
+  resourceType:
+    | 'agent'
+    | 'memory'
+    | 'credential'
+    | 'gateway'
+    | 'evaluator'
+    | 'online-eval'
+    | 'policy-engine'
+    | 'policy';
   name: string;
   deploymentState: ResourceDeploymentState;
   identifier?: string;
@@ -201,7 +209,16 @@ export function computeResourceStatuses(
     getDeployedKey: item => `${item.engineName}/${item.name}`,
   });
 
-  return [...agents, ...credentials, ...memories, ...gateways, ...evaluators, ...onlineEvalConfigs, ...policyEngines, ...policies];
+  return [
+    ...agents,
+    ...credentials,
+    ...memories,
+    ...gateways,
+    ...evaluators,
+    ...onlineEvalConfigs,
+    ...policyEngines,
+    ...policies,
+  ];
 }
 
 export async function handleProjectStatus(

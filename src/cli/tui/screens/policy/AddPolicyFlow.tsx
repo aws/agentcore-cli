@@ -1,17 +1,38 @@
 import { policyEnginePrimitive, policyPrimitive } from '../../../primitives/registry';
-import { ErrorPrompt, SelectScreen } from '../../components';
+import {
+  ErrorPrompt,
+  Panel,
+  Screen,
+  SelectScreen,
+  StepIndicator,
+  WizardMultiSelect,
+  WizardSelect,
+} from '../../components';
 import type { SelectableItem } from '../../components';
+import { HELP_TEXT } from '../../constants';
+import { useListNavigation, useMultiSelectNavigation } from '../../hooks';
 import { AddSuccessScreen } from '../add/AddSuccessScreen';
+import { POLICY_ENGINE_MODE_OPTIONS } from '../mcp/types';
 import { AddPolicyEngineScreen } from './AddPolicyEngineScreen';
 import { AddPolicyScreen } from './AddPolicyScreen';
 import type { AddPolicyConfig, AddPolicyEngineConfig } from './types';
 import { Box, Text } from 'ink';
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
+
+type EngineCreationStep = 'name' | 'attach-gateways' | 'attach-mode';
+
+const ENGINE_STEP_LABELS: Record<EngineCreationStep, string> = {
+  name: 'Name',
+  'attach-gateways': 'Attach Gateways',
+  'attach-mode': 'Mode',
+};
 
 type FlowState =
   | { name: 'loading' }
   | { name: 'select' }
   | { name: 'engine-wizard' }
+  | { name: 'attach-gateways'; engineName: string; gateways: string[] }
+  | { name: 'attach-mode'; engineName: string; selectedGateways: string[]; allGateways: string[] }
   | {
       name: 'policy-wizard';
       preSelectedEngine: string;
@@ -34,19 +55,31 @@ export function AddPolicyFlow({ isInteractive = true, onExit, onBack, onDev, onD
   const [flow, setFlow] = useState<FlowState>({ name: 'loading' });
   const [engineNames, setEngineNames] = useState<string[]>([]);
   const [policyNames, setPolicyNames] = useState<string[]>([]);
+  const [hasUnprotectedGateways, setHasUnprotectedGateways] = useState(false);
+
+  const engineSteps = useMemo<EngineCreationStep[]>(() => {
+    const steps: EngineCreationStep[] = ['name'];
+    if (hasUnprotectedGateways) {
+      steps.push('attach-gateways', 'attach-mode');
+    }
+    return steps;
+  }, [hasUnprotectedGateways]);
 
   // Load existing engines from disk on mount
   useEffect(() => {
     let cancelled = false;
-    void policyEnginePrimitive.getExistingEngines().then(names => {
-      if (cancelled) return;
-      setEngineNames(names);
-      if (names.length === 0) {
-        setFlow({ name: 'engine-wizard' });
-      } else {
-        setFlow({ name: 'select' });
+    void Promise.all([policyEnginePrimitive.getExistingEngines(), policyEnginePrimitive.getUnprotectedGateways()]).then(
+      ([names, unprotected]) => {
+        if (cancelled) return;
+        setEngineNames(names);
+        setHasUnprotectedGateways(unprotected.length > 0);
+        if (names.length === 0) {
+          setFlow({ name: 'engine-wizard' });
+        } else {
+          setFlow({ name: 'select' });
+        }
       }
-    });
+    );
     return () => {
       cancelled = true;
     };
@@ -99,7 +132,12 @@ export function AddPolicyFlow({ isInteractive = true, onExit, onBack, onDev, onD
 
     if (result.success) {
       setEngineNames(prev => [...prev, config.name]);
-      setFlow({ name: 'engine-success', engineName: config.name });
+      const unprotected = await policyEnginePrimitive.getUnprotectedGateways();
+      if (unprotected.length > 0) {
+        setFlow({ name: 'attach-gateways', engineName: config.name, gateways: unprotected });
+      } else {
+        setFlow({ name: 'engine-success', engineName: config.name });
+      }
     } else {
       setFlow({ name: 'error', message: result.error });
     }
@@ -161,6 +199,7 @@ export function AddPolicyFlow({ isInteractive = true, onExit, onBack, onDev, onD
     return (
       <AddPolicyEngineScreen
         existingEngineNames={engineNames}
+        headerContent={<StepIndicator steps={engineSteps} currentStep="name" labels={ENGINE_STEP_LABELS} />}
         onComplete={(config: AddPolicyEngineConfig) => void handleEngineComplete(config)}
         onExit={() => {
           if (engineNames.length === 0) {
@@ -184,6 +223,55 @@ export function AddPolicyFlow({ isInteractive = true, onExit, onBack, onDev, onD
         deployedGateways={flow.deployedGateways}
         onComplete={(config: AddPolicyConfig) => void handlePolicyComplete(config)}
         onExit={() => setFlow({ name: 'select' })}
+      />
+    );
+  }
+
+  // Attach to gateways — multi-select
+  if (flow.name === 'attach-gateways') {
+    return (
+      <AttachGatewaysScreen
+        engineName={flow.engineName}
+        gateways={flow.gateways}
+        stepIndicator={<StepIndicator steps={engineSteps} currentStep="attach-gateways" labels={ENGINE_STEP_LABELS} />}
+        onConfirm={selected => {
+          if (selected.length === 0) {
+            setFlow({ name: 'engine-success', engineName: flow.engineName });
+          } else {
+            setFlow({
+              name: 'attach-mode',
+              engineName: flow.engineName,
+              selectedGateways: selected,
+              allGateways: flow.gateways,
+            });
+          }
+        }}
+        onSkip={() => setFlow({ name: 'engine-success', engineName: flow.engineName })}
+      />
+    );
+  }
+
+  // Attach to gateways — mode select
+  if (flow.name === 'attach-mode') {
+    return (
+      <AttachModeScreen
+        engineName={flow.engineName}
+        gatewayCount={flow.selectedGateways.length}
+        stepIndicator={<StepIndicator steps={engineSteps} currentStep="attach-mode" labels={ENGINE_STEP_LABELS} />}
+        onSelect={mode => {
+          void policyEnginePrimitive
+            .attachToGateways(flow.engineName, flow.selectedGateways, mode)
+            .then(() => setFlow({ name: 'engine-success', engineName: flow.engineName }))
+            .catch(err =>
+              setFlow({
+                name: 'error',
+                message: err instanceof Error ? err.message : 'Failed to attach policy engine',
+              })
+            );
+        }}
+        onBack={() => {
+          setFlow({ name: 'attach-gateways', engineName: flow.engineName, gateways: flow.allGateways });
+        }}
       />
     );
   }
@@ -263,5 +351,89 @@ export function AddPolicyFlow({ isInteractive = true, onExit, onBack, onDev, onD
       onBack={() => setFlow({ name: 'select' })}
       onExit={onExit}
     />
+  );
+}
+
+function AttachGatewaysScreen({
+  engineName,
+  gateways,
+  onConfirm,
+  onSkip,
+  stepIndicator,
+}: {
+  engineName: string;
+  gateways: string[];
+  onConfirm: (selected: string[]) => void;
+  onSkip: () => void;
+  stepIndicator?: React.ReactNode;
+}) {
+  const items: SelectableItem[] = useMemo(() => gateways.map(name => ({ id: name, title: name })), [gateways]);
+
+  const nav = useMultiSelectNavigation({
+    items,
+    getId: item => item.id,
+    onConfirm: ids => onConfirm([...ids]),
+    onExit: onSkip,
+    isActive: true,
+    requireSelection: false,
+  });
+
+  return (
+    <Screen
+      title="Attach Policy Engine"
+      onExit={onSkip}
+      helpText="Space toggle · Enter confirm · Esc skip · Ctrl+C quit"
+      headerContent={stepIndicator}
+    >
+      <Panel>
+        <WizardMultiSelect
+          title={`Attach "${engineName}" to gateways`}
+          description="These gateways have no policy engine. Select which ones to protect."
+          items={items}
+          cursorIndex={nav.cursorIndex}
+          selectedIds={nav.selectedIds}
+        />
+      </Panel>
+    </Screen>
+  );
+}
+
+function AttachModeScreen({
+  engineName,
+  gatewayCount,
+  onSelect,
+  onBack,
+  stepIndicator,
+}: {
+  engineName: string;
+  gatewayCount: number;
+  onSelect: (mode: 'LOG_ONLY' | 'ENFORCE') => void;
+  onBack: () => void;
+  stepIndicator?: React.ReactNode;
+}) {
+  const modeItems: SelectableItem[] = [...POLICY_ENGINE_MODE_OPTIONS];
+  const nav = useListNavigation({
+    items: modeItems,
+    onSelect: item => onSelect(item.id as 'LOG_ONLY' | 'ENFORCE'),
+    onExit: onBack,
+    isActive: true,
+  });
+
+  return (
+    <Screen
+      title="Attach Policy Engine"
+      onExit={onBack}
+      helpText={HELP_TEXT.NAVIGATE_SELECT}
+      headerContent={stepIndicator}
+    >
+      <Panel>
+        <WizardSelect
+          title="Select enforcement mode"
+          description={`Applies to ${gatewayCount} gateway${gatewayCount > 1 ? 's' : ''} using "${engineName}"`}
+          items={modeItems}
+          selectedIndex={nav.selectedIndex}
+        />
+      </Panel>
+    </Screen>
   );
 }

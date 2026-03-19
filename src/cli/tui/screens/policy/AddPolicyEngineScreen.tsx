@@ -9,11 +9,17 @@ interface AddPolicyEngineScreenProps {
   onComplete: (config: AddPolicyEngineConfig) => void;
   onExit: () => void;
   existingEngineNames: string[];
+  headerContent?: React.ReactNode;
 }
 
-export function AddPolicyEngineScreen({ onComplete, onExit, existingEngineNames }: AddPolicyEngineScreenProps) {
+export function AddPolicyEngineScreen({
+  onComplete,
+  onExit,
+  existingEngineNames,
+  headerContent,
+}: AddPolicyEngineScreenProps) {
   return (
-    <Screen title="Add Policy Engine" onExit={onExit} helpText={HELP_TEXT.TEXT_INPUT}>
+    <Screen title="Add Policy Engine" onExit={onExit} helpText={HELP_TEXT.TEXT_INPUT} headerContent={headerContent}>
       <Panel>
         <TextInput
           key="name"

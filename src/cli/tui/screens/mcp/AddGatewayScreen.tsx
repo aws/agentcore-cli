@@ -1,4 +1,4 @@
-import type { GatewayAuthorizerType } from '../../../../schema';
+import type { GatewayAuthorizerType, PolicyEngineMode } from '../../../../schema';
 import { GatewayNameSchema } from '../../../../schema';
 import { computeManagedOAuthCredentialName } from '../../../primitives/credential-utils';
 import {
@@ -20,6 +20,8 @@ import {
   AUTHORIZER_TYPE_OPTIONS,
   EXCEPTION_LEVEL_ITEM_ID,
   GATEWAY_STEP_LABELS,
+  NONE_SELECTION,
+  POLICY_ENGINE_MODE_OPTIONS,
   SEMANTIC_SEARCH_ITEM_ID,
 } from './types';
 import { useAddGatewayWizard } from './useAddGatewayWizard';
@@ -31,12 +33,19 @@ interface AddGatewayScreenProps {
   onExit: () => void;
   existingGateways: string[];
   unassignedTargets: string[];
+  existingPolicyEngines: string[];
 }
 
 const INITIAL_ADVANCED_SELECTED = [SEMANTIC_SEARCH_ITEM_ID];
 
-export function AddGatewayScreen({ onComplete, onExit, existingGateways, unassignedTargets }: AddGatewayScreenProps) {
-  const wizard = useAddGatewayWizard(unassignedTargets.length);
+export function AddGatewayScreen({
+  onComplete,
+  onExit,
+  existingGateways,
+  unassignedTargets,
+  existingPolicyEngines,
+}: AddGatewayScreenProps) {
+  const wizard = useAddGatewayWizard(unassignedTargets.length, existingPolicyEngines.length);
 
   // JWT config sub-step tracking (0=discoveryUrl, 1=audience, 2=clients, 3=scopes, 4=agentClientId, 5=agentClientSecret)
   const [jwtSubStep, setJwtSubStep] = useState(0);
@@ -64,10 +73,35 @@ export function AddGatewayScreen({ onComplete, onExit, existingGateways, unassig
     []
   );
 
+  // Policy engine sub-step: 0 = select engine, 1 = select mode
+  // Reset when re-entering the step (e.g., after navigating back)
+  const [policyEngineSubStep, setPolicyEngineSubStep] = useState(0);
+  const [selectedEngineName, setSelectedEngineName] = useState('');
+  React.useEffect(() => {
+    if (wizard.step === 'policy-engine') {
+      setPolicyEngineSubStep(0);
+      setSelectedEngineName('');
+    }
+  }, [wizard.step]);
+
+  const policyEngineItems: SelectableItem[] = useMemo(
+    () => [
+      { id: NONE_SELECTION, title: 'None', description: 'No policy engine' },
+      ...existingPolicyEngines.map(name => ({ id: name, title: name })),
+    ],
+    [existingPolicyEngines]
+  );
+
+  const policyEngineModeItems: SelectableItem[] = useMemo(
+    () => POLICY_ENGINE_MODE_OPTIONS.map(o => ({ id: o.id, title: o.title, description: o.description })),
+    []
+  );
+
   const isNameStep = wizard.step === 'name';
   const isAuthorizerStep = wizard.step === 'authorizer';
   const isJwtConfigStep = wizard.step === 'jwt-config';
   const isIncludeTargetsStep = wizard.step === 'include-targets';
+  const isPolicyEngineStep = wizard.step === 'policy-engine';
   const isAdvancedConfigStep = wizard.step === 'advanced-config';
   const isConfirmStep = wizard.step === 'confirm';
 
@@ -85,6 +119,36 @@ export function AddGatewayScreen({ onComplete, onExit, existingGateways, unassig
     onExit: () => wizard.goBack(),
     isActive: isIncludeTargetsStep,
     requireSelection: false,
+  });
+
+  const policyEngineNav = useListNavigation({
+    items: policyEngineItems,
+    onSelect: item => {
+      if (item.id === NONE_SELECTION) {
+        wizard.skipPolicyEngine();
+      } else {
+        setSelectedEngineName(item.id);
+        setPolicyEngineSubStep(1);
+      }
+    },
+    onExit: () => {
+      if (policyEngineSubStep === 0) {
+        wizard.goBack();
+      } else {
+        setPolicyEngineSubStep(0);
+      }
+    },
+    isActive: isPolicyEngineStep && policyEngineSubStep === 0,
+  });
+
+  const policyEngineModeNav = useListNavigation({
+    items: policyEngineModeItems,
+    onSelect: item => {
+      wizard.setPolicyEngineConfig(selectedEngineName, item.id as PolicyEngineMode);
+      setPolicyEngineSubStep(0);
+    },
+    onExit: () => setPolicyEngineSubStep(0),
+    isActive: isPolicyEngineStep && policyEngineSubStep === 1,
   });
 
   const advancedNav = useMultiSelectNavigation({
@@ -172,7 +236,7 @@ export function AddGatewayScreen({ onComplete, onExit, existingGateways, unassig
       ? 'Space toggle · Enter confirm · Esc back'
       : isConfirmStep
         ? HELP_TEXT.CONFIRM_CANCEL
-        : isAuthorizerStep
+        : isAuthorizerStep || isPolicyEngineStep
           ? HELP_TEXT.NAVIGATE_SELECT
           : HELP_TEXT.TEXT_INPUT;
 
@@ -234,6 +298,24 @@ export function AddGatewayScreen({ onComplete, onExit, existingGateways, unassig
             <Text dimColor>No unassigned targets available. Press Enter to continue.</Text>
           ))}
 
+        {isPolicyEngineStep && policyEngineSubStep === 0 && (
+          <WizardSelect
+            title="Select a policy engine"
+            description="Attach a Cedar policy engine to authorize tool calls on this gateway"
+            items={policyEngineItems}
+            selectedIndex={policyEngineNav.selectedIndex}
+          />
+        )}
+
+        {isPolicyEngineStep && policyEngineSubStep === 1 && (
+          <WizardSelect
+            title="Select enforcement mode"
+            description={`Policy engine: ${selectedEngineName}`}
+            items={policyEngineModeItems}
+            selectedIndex={policyEngineModeNav.selectedIndex}
+          />
+        )}
+
         {isAdvancedConfigStep && (
           <Box flexDirection="column">
             <Text bold>Advanced Configuration</Text>
@@ -286,6 +368,12 @@ export function AddGatewayScreen({ onComplete, onExit, existingGateways, unassig
               },
               { label: 'Semantic Search', value: wizard.config.enableSemanticSearch ? 'Enabled' : 'Disabled' },
               { label: 'Exception Level', value: wizard.config.exceptionLevel === 'DEBUG' ? 'Debug' : 'None' },
+              ...(wizard.config.policyEngineConfiguration
+                ? [
+                    { label: 'Policy Engine', value: wizard.config.policyEngineConfiguration.policyEngineName },
+                    { label: 'Enforcement Mode', value: wizard.config.policyEngineConfiguration.mode },
+                  ]
+                : []),
             ]}
           />
         )}

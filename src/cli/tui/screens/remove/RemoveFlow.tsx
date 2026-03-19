@@ -81,7 +81,16 @@ interface RemoveFlowProps {
   /** Force mode - skip confirmation */
   force?: boolean;
   /** Initial resource type to start at (for CLI subcommands) */
-  initialResourceType?: 'agent' | 'gateway' | 'gateway-target' | 'memory' | 'identity' | 'evaluator' | 'online-eval' | 'policy-engine' | 'policy';
+  initialResourceType?:
+    | 'agent'
+    | 'gateway'
+    | 'gateway-target'
+    | 'memory'
+    | 'identity'
+    | 'evaluator'
+    | 'online-eval'
+    | 'policy-engine'
+    | 'policy';
   /** Initial resource name to auto-select (for CLI --name flag) */
   initialResourceName?: string;
 }
@@ -133,7 +142,11 @@ export function RemoveFlow({
     isLoading: isLoadingOnlineEvals,
     refresh: refreshOnlineEvals,
   } = useRemovableOnlineEvalConfigs();
-  const { policyEngines, isLoading: isLoadingPolicyEngines, refresh: refreshPolicyEngines } = useRemovablePolicyEngines();
+  const {
+    policyEngines,
+    isLoading: isLoadingPolicyEngines,
+    refresh: refreshPolicyEngines,
+  } = useRemovablePolicyEngines();
   const { policies, isLoading: isLoadingPolicies, refresh: refreshPolicies } = useRemovablePolicies();
 
   // Check if any data is still loading

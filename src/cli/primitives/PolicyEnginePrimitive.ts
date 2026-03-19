@@ -1,6 +1,6 @@
 import { findConfigRoot } from '../../lib';
 import type { AgentCoreProjectSpec, PolicyEngine } from '../../schema';
-import { PolicyEngineSchema } from '../../schema';
+import { PolicyEngineModeSchema, PolicyEngineSchema } from '../../schema';
 import { getErrorMessage } from '../errors';
 import type { RemovalPreview, RemovalResult, SchemaChange } from '../operations/remove/types';
 import { BasePrimitive } from './BasePrimitive';
@@ -149,6 +149,34 @@ export class PolicyEnginePrimitive extends BasePrimitive<AddPolicyEngineOptions,
     }
   }
 
+  /**
+   * Get gateway names that don't have a policy engine attached.
+   */
+  async getUnprotectedGateways(): Promise<string[]> {
+    try {
+      if (!this.configIO.configExists('mcp')) return [];
+      const mcpSpec = await this.configIO.readMcpSpec();
+      return mcpSpec.agentCoreGateways.filter(gw => !gw.policyEngineConfiguration).map(gw => gw.name);
+    } catch {
+      return [];
+    }
+  }
+
+  /**
+   * Attach a policy engine to the specified gateways in mcp.json.
+   */
+  async attachToGateways(engineName: string, gatewayNames: string[], mode: 'LOG_ONLY' | 'ENFORCE'): Promise<void> {
+    if (gatewayNames.length === 0 || !this.configIO.configExists('mcp')) return;
+    const mcpSpec = await this.configIO.readMcpSpec();
+    const nameSet = new Set(gatewayNames);
+    for (const gw of mcpSpec.agentCoreGateways) {
+      if (nameSet.has(gw.name)) {
+        gw.policyEngineConfiguration = { policyEngineName: engineName, mode };
+      }
+    }
+    await this.configIO.writeMcpSpec(mcpSpec);
+  }
+
   async getDeployedEngineId(engineName: string): Promise<string | null> {
     try {
       const deployedState = await this.configIO.readDeployedState();
@@ -197,9 +225,18 @@ export class PolicyEnginePrimitive extends BasePrimitive<AddPolicyEngineOptions,
       .option('--name <name>', 'Policy engine name [non-interactive]')
       .option('--description <desc>', 'Policy engine description [non-interactive]')
       .option('--encryption-key-arn <arn>', 'KMS encryption key ARN [non-interactive]')
+      .option('--attach-to-gateways <gateways>', 'Comma-separated gateway names to attach this engine to')
+      .option('--attach-mode <mode>', 'Enforcement mode for attached gateways: LOG_ONLY or ENFORCE')
       .option('--json', 'Output as JSON [non-interactive]')
       .action(
-        async (cliOptions: { name?: string; description?: string; encryptionKeyArn?: string; json?: boolean }) => {
+        async (cliOptions: {
+          name?: string;
+          description?: string;
+          encryptionKeyArn?: string;
+          attachToGateways?: string;
+          attachMode?: string;
+          json?: boolean;
+        }) => {
           try {
             if (!findConfigRoot()) {
               console.error('No agentcore project found. Run `agentcore create` first.');
@@ -221,6 +258,16 @@ export class PolicyEnginePrimitive extends BasePrimitive<AddPolicyEngineOptions,
                 description: cliOptions.description,
                 encryptionKeyArn: cliOptions.encryptionKeyArn,
               });
+
+              // Attach to gateways if requested
+              if (result.success && cliOptions.attachToGateways) {
+                const mode = PolicyEngineModeSchema.parse(cliOptions.attachMode ?? 'LOG_ONLY');
+                const gateways = cliOptions.attachToGateways
+                  .split(',')
+                  .map(s => s.trim())
+                  .filter(Boolean);
+                await this.attachToGateways(cliOptions.name, gateways, mode);
+              }
 
               if (cliOptions.json) {
                 console.log(JSON.stringify(result));

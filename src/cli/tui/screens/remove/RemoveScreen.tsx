@@ -120,7 +120,17 @@ export function RemoveScreen({
 
       return { ...r, disabled, description };
     });
-  }, [agentCount, gatewayCount, mcpToolCount, memoryCount, identityCount, evaluatorCount, onlineEvalCount, policyEngineCount, policyCount]);
+  }, [
+    agentCount,
+    gatewayCount,
+    mcpToolCount,
+    memoryCount,
+    identityCount,
+    evaluatorCount,
+    onlineEvalCount,
+    policyEngineCount,
+    policyCount,
+  ]);
 
   const isDisabled = (item: SelectableItem) => item.disabled ?? false;
 

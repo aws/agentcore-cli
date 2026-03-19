@@ -1,4 +1,4 @@
-import type { GatewayAuthorizerType, GatewayExceptionLevel } from '../../../../schema';
+import type { GatewayAuthorizerType, GatewayExceptionLevel, PolicyEngineMode } from '../../../../schema';
 import type { AddGatewayConfig, AddGatewayStep } from './types';
 import { useCallback, useMemo, useState } from 'react';
 
@@ -14,11 +14,13 @@ function getDefaultConfig(): AddGatewayConfig {
   };
 }
 
-export function useAddGatewayWizard(unassignedTargetsCount = 0) {
+export function useAddGatewayWizard(unassignedTargetsCount = 0, policyEngineCount = 0) {
   const [config, setConfig] = useState<AddGatewayConfig>(getDefaultConfig);
   const [step, setStep] = useState<AddGatewayStep>('name');
 
-  // Dynamic steps based on authorizer type and unassigned targets
+  const nextAfterTargets = policyEngineCount > 0 ? 'policy-engine' : 'advanced-config';
+
+  // Dynamic steps based on authorizer type, unassigned targets, and policy engines
   const steps = useMemo<AddGatewayStep[]>(() => {
     const baseSteps: AddGatewayStep[] = ['name', 'authorizer'];
 
@@ -30,11 +32,15 @@ export function useAddGatewayWizard(unassignedTargetsCount = 0) {
       baseSteps.push('include-targets');
     }
 
+    if (policyEngineCount > 0) {
+      baseSteps.push('policy-engine');
+    }
+
     baseSteps.push('advanced-config');
     baseSteps.push('confirm');
 
     return baseSteps;
-  }, [config.authorizerType, unassignedTargetsCount]);
+  }, [config.authorizerType, unassignedTargetsCount, policyEngineCount]);
 
   const currentIndex = steps.indexOf(step);
 
@@ -66,10 +72,10 @@ export function useAddGatewayWizard(unassignedTargetsCount = 0) {
       } else if (unassignedTargetsCount > 0) {
         setStep('include-targets');
       } else {
-        setStep('advanced-config');
+        setStep(nextAfterTargets);
       }
     },
-    [unassignedTargetsCount]
+    [unassignedTargetsCount, nextAfterTargets]
   );
 
   const setJwtConfig = useCallback(
@@ -85,16 +91,32 @@ export function useAddGatewayWizard(unassignedTargetsCount = 0) {
         ...c,
         jwtConfig,
       }));
-      setStep(unassignedTargetsCount > 0 ? 'include-targets' : 'advanced-config');
+      setStep(unassignedTargetsCount > 0 ? 'include-targets' : nextAfterTargets);
     },
-    [unassignedTargetsCount]
+    [unassignedTargetsCount, nextAfterTargets]
   );
 
-  const setSelectedTargets = useCallback((selectedTargets: string[]) => {
+  const setSelectedTargets = useCallback(
+    (selectedTargets: string[]) => {
+      setConfig(c => ({
+        ...c,
+        selectedTargets,
+      }));
+      setStep(nextAfterTargets);
+    },
+    [nextAfterTargets]
+  );
+
+  const setPolicyEngineConfig = useCallback((policyEngineName: string, mode: PolicyEngineMode) => {
     setConfig(c => ({
       ...c,
-      selectedTargets,
+      policyEngineConfiguration: { policyEngineName, mode },
     }));
+    setStep('advanced-config');
+  }, []);
+
+  const skipPolicyEngine = useCallback(() => {
+    setConfig(c => ({ ...c, policyEngineConfiguration: undefined }));
     setStep('advanced-config');
   }, []);
 
@@ -125,6 +147,8 @@ export function useAddGatewayWizard(unassignedTargetsCount = 0) {
     setAuthorizerType,
     setJwtConfig,
     setSelectedTargets,
+    setPolicyEngineConfig,
+    skipPolicyEngine,
     setAdvancedConfig,
     reset,
   };

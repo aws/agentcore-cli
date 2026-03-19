@@ -1,4 +1,9 @@
-import { agentPrimitive, gatewayPrimitive, gatewayTargetPrimitive } from '../../primitives/registry';
+import {
+  agentPrimitive,
+  gatewayPrimitive,
+  gatewayTargetPrimitive,
+  policyEnginePrimitive,
+} from '../../primitives/registry';
 import type { AddGatewayConfig } from '../screens/mcp/types';
 import { useCallback, useEffect, useState } from 'react';
 
@@ -30,6 +35,8 @@ export function useCreateGateway() {
         agentClientSecret: config.jwtConfig?.agentClientSecret,
         enableSemanticSearch: config.enableSemanticSearch,
         exceptionLevel: config.exceptionLevel,
+        policyEngine: config.policyEngineConfiguration?.policyEngineName,
+        policyEngineMode: config.policyEngineConfiguration?.mode,
       });
       if (!addResult.success) {
         throw new Error(addResult.error ?? 'Failed to create gateway');
@@ -68,6 +75,25 @@ export function useExistingGateways() {
   }, []);
 
   return { gateways, refresh };
+}
+
+export function useExistingPolicyEngines() {
+  const [engines, setEngines] = useState<string[]>([]);
+
+  useEffect(() => {
+    async function load() {
+      const result = await policyEnginePrimitive.getExistingEngines();
+      setEngines(result);
+    }
+    void load();
+  }, []);
+
+  const refresh = useCallback(async () => {
+    const result = await policyEnginePrimitive.getExistingEngines();
+    setEngines(result);
+  }, []);
+
+  return { engines, refresh };
 }
 
 export function useAvailableAgents() {

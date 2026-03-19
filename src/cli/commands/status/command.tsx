@@ -7,7 +7,16 @@ import { DEPLOYMENT_STATE_COLORS, DEPLOYMENT_STATE_LABELS } from './constants';
 import type { Command } from '@commander-js/extra-typings';
 import { Box, Text, render } from 'ink';
 
-const VALID_RESOURCE_TYPES = ['agent', 'memory', 'credential', 'gateway', 'evaluator', 'online-eval', 'policy-engine', 'policy'] as const;
+const VALID_RESOURCE_TYPES = [
+  'agent',
+  'memory',
+  'credential',
+  'gateway',
+  'evaluator',
+  'online-eval',
+  'policy-engine',
+  'policy',
+] as const;
 const VALID_STATES = ['deployed', 'local-only', 'pending-removal'] as const;
 
 interface StatusCliOptions {
