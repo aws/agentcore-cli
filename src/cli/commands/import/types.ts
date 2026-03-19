@@ -1,4 +1,4 @@
-import type { AgentCoreProjectSpec, AgentEnvSpec, AwsDeploymentTarget, Memory } from '../../../schema';
+import type { AgentCoreProjectSpec } from '../../../schema';
 
 /**
  * Parsed representation of a starter toolkit agent from .bedrock_agentcore.yaml.
@@ -34,12 +34,23 @@ export interface ParsedStarterToolkitMemory {
 }
 
 /**
+ * Parsed representation of a starter toolkit credential provider.
+ */
+export interface ParsedStarterToolkitCredential {
+  /** Credential provider name in Identity service */
+  name: string;
+  /** Provider type: cognito, github, google, salesforce, or api_key */
+  providerType: 'oauth' | 'api_key';
+}
+
+/**
  * Full parsed result from the YAML file.
  */
 export interface ParsedStarterToolkitConfig {
   defaultAgent?: string;
   agents: ParsedStarterToolkitAgent[];
   memories: ParsedStarterToolkitMemory[];
+  credentials: ParsedStarterToolkitCredential[];
   awsTarget: {
     account?: string;
     region?: string;
