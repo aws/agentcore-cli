@@ -129,64 +129,82 @@ export async function handleImport(options: ImportOptions): Promise<ImportResult
       `Found ${parsed.agents.length} agent(s), ${parsed.memories.length} memory(ies), ${parsed.credentials.length} credential(s)`
     );
 
+    // Check early whether there are any physical IDs to import.
+    // This determines whether we need strict target resolution (account/region required).
+    const hasPhysicalIds = parsed.agents.some(a => a.physicalAgentId) || parsed.memories.some(m => m.physicalMemoryId);
+
     // 4. Resolve deployment target
-    let targets = await configIO.readAWSDeploymentTargets();
+    let target: AwsDeploymentTarget | undefined;
 
-    // If no targets exist (CLI-mode create leaves targets empty), create one from YAML info
-    if (targets.length === 0) {
-      if (!parsed.awsTarget.account || !parsed.awsTarget.region) {
-        return {
-          success: false,
-          error:
-            'No deployment targets found in project and YAML has no AWS account/region info.\nRun `agentcore deploy` first to set up a target, then re-run import.',
+    if (hasPhysicalIds) {
+      // Strict target resolution: we NEED a valid target for CloudFormation import
+      let targets = await configIO.readAWSDeploymentTargets();
+
+      // If no targets exist (CLI-mode create leaves targets empty), create one from YAML info
+      if (targets.length === 0) {
+        if (!parsed.awsTarget.account || !parsed.awsTarget.region) {
+          return {
+            success: false,
+            error:
+              'No deployment targets found in project and YAML has no AWS account/region info.\nRun `agentcore deploy` first to set up a target, then re-run import.',
+          };
+        }
+        const defaultTarget: AwsDeploymentTarget = {
+          name: 'default',
+          account: parsed.awsTarget.account,
+          region: parsed.awsTarget.region as AgentCoreRegion,
         };
+        await configIO.writeAWSDeploymentTargets([defaultTarget]);
+        targets = [defaultTarget];
+        onProgress?.(`Created default target from YAML: ${defaultTarget.region}, ${defaultTarget.account}`);
       }
-      const defaultTarget: AwsDeploymentTarget = {
-        name: 'default',
-        account: parsed.awsTarget.account,
-        region: parsed.awsTarget.region as AgentCoreRegion,
-      };
-      await configIO.writeAWSDeploymentTargets([defaultTarget]);
-      targets = [defaultTarget];
-      onProgress?.(`Created default target from YAML: ${defaultTarget.region}, ${defaultTarget.account}`);
-    }
 
-    let target: AwsDeploymentTarget;
-    if (options.target) {
-      const found = targets.find(t => t.name === options.target);
-      if (!found) {
+      if (options.target) {
+        const found = targets.find(t => t.name === options.target);
+        if (!found) {
+          const names = targets.map(t => `  - ${t.name} (${t.region}, ${t.account})`).join('\n');
+          return {
+            success: false,
+            error: `Target "${options.target}" not found. Available targets:\n${names}`,
+          };
+        }
+        target = found;
+      } else if (targets.length === 1) {
+        target = targets[0]!;
+      } else {
         const names = targets.map(t => `  - ${t.name} (${t.region}, ${t.account})`).join('\n');
         return {
           success: false,
-          error: `Target "${options.target}" not found. Available targets:\n${names}`,
+          error: `Multiple deployment targets found. Specify one with --target:\n${names}`,
         };
       }
-      target = found;
-    } else if (targets.length === 1) {
-      target = targets[0]!;
+
+      onProgress?.(`Using target: ${target.name} (${target.region}, ${target.account})`);
+
+      // Warn if YAML account/region differs from target
+      if (parsed.awsTarget.account && parsed.awsTarget.account !== target.account) {
+        onProgress?.(
+          `Warning: YAML account (${parsed.awsTarget.account}) differs from target account (${target.account})`
+        );
+      }
+      if (parsed.awsTarget.region && parsed.awsTarget.region !== target.region) {
+        onProgress?.(`Warning: YAML region (${parsed.awsTarget.region}) differs from target region (${target.region})`);
+      }
+
+      // Validate AWS credentials
+      onProgress?.('Validating AWS credentials...');
+      await validateAwsCredentials();
     } else {
-      const names = targets.map(t => `  - ${t.name} (${t.region}, ${t.account})`).join('\n');
-      return {
-        success: false,
-        error: `Multiple deployment targets found. Specify one with --target:\n${names}`,
-      };
+      // No physical IDs — target is only needed for stackName computation.
+      // Try to read existing targets gracefully; don't fail if none exist.
+      const targets = await configIO.readAWSDeploymentTargets().catch(() => [] as AwsDeploymentTarget[]);
+      if (targets.length === 1) {
+        target = targets[0];
+      } else if (options.target) {
+        target = targets.find(t => t.name === options.target);
+      }
+      // If still no target, that's fine — we'll use 'default' for the stackName
     }
-
-    onProgress?.(`Using target: ${target.name} (${target.region}, ${target.account})`);
-
-    // Warn if YAML account/region differs from target
-    if (parsed.awsTarget.account && parsed.awsTarget.account !== target.account) {
-      onProgress?.(
-        `Warning: YAML account (${parsed.awsTarget.account}) differs from target account (${target.account})`
-      );
-    }
-    if (parsed.awsTarget.region && parsed.awsTarget.region !== target.region) {
-      onProgress?.(`Warning: YAML region (${parsed.awsTarget.region}) differs from target region (${target.region})`);
-    }
-
-    // Validate AWS credentials
-    onProgress?.('Validating AWS credentials...');
-    await validateAwsCredentials();
 
     // 5. Merge agents/memories into existing project config
     onProgress?.('Merging into existing project...');
@@ -225,8 +243,12 @@ export async function handleImport(options: ImportOptions): Promise<ImportResult
     // Write updated project config
     await configIO.writeProjectSpec(projectSpec);
 
-    // 6. Copy agent source code to app/<name>/
+    // 6. Copy agent source code to app/<name>/ (only for newly added agents)
     for (const agent of parsed.agents) {
+      if (existingAgentNames.has(agent.name)) {
+        onProgress?.(`Skipping source copy for agent "${agent.name}" (already exists in project)`);
+        continue;
+      }
       const appDir = path.join(projectRoot, APP_DIR, agent.name);
       if (!fs.existsSync(appDir)) {
         fs.mkdirSync(appDir, { recursive: true });
@@ -290,7 +312,7 @@ export async function handleImport(options: ImportOptions): Promise<ImportResult
     const memoriesToImport = parsed.memories.filter(m => {
       return m.physicalMemoryId && newlyAddedMemoryNames.has(m.name);
     });
-    const targetName = target.name;
+    const targetName = target?.name ?? 'default';
     const stackName = toStackName(projectName, targetName);
 
     if (agentsToImport.length === 0 && memoriesToImport.length === 0) {
@@ -308,6 +330,11 @@ export async function handleImport(options: ImportOptions): Promise<ImportResult
     }
 
     onProgress?.(`Will import: ${agentsToImport.length} agent(s), ${memoriesToImport.length} memory(ies)`);
+
+    // At this point we know hasPhysicalIds is true, so target must be defined.
+    if (!target) {
+      return { success: false, error: 'No deployment target available for import.' };
+    }
 
     // 8. Build and synth CDK to get the full template
     onProgress?.('Building CDK project...');
