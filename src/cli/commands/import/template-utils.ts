@@ -34,8 +34,61 @@ function isPrimaryResourceType(type: string): boolean {
 }
 
 /**
+ * Recursively replace { "Ref": "<id>" } and { "Fn::GetAtt": ["<id>", ...] }
+ * references to removed logical IDs with a wildcard placeholder.
+ *
+ * Uses "*" because these references often end up in IAM policy Resource fields
+ * which require ARN format or "*". Phase 3 (agentcore deploy) replaces the
+ * entire template with the real synthesized values.
+ */
+function replaceDanglingRefs(value: unknown, removedIds: Set<string>): unknown {
+  if (value === null || value === undefined) return value;
+  if (typeof value !== 'object') return value;
+
+  if (Array.isArray(value)) {
+    return value.map(item => replaceDanglingRefs(item, removedIds));
+  }
+
+  const obj = value as Record<string, unknown>;
+
+  // Handle { "Ref": "LogicalId" }
+  if ('Ref' in obj && typeof obj.Ref === 'string' && removedIds.has(obj.Ref)) {
+    return '*';
+  }
+
+  // Handle { "Fn::GetAtt": ["LogicalId", "Attribute"] }
+  if ('Fn::GetAtt' in obj) {
+    const getAtt = obj['Fn::GetAtt'];
+    if (Array.isArray(getAtt) && getAtt.length >= 1 && removedIds.has(getAtt[0] as string)) {
+      return '*';
+    }
+  }
+
+  // Handle { "Fn::Sub": "...${LogicalId}..." } or { "Fn::Sub": ["...", { ... }] }
+  if ('Fn::Sub' in obj) {
+    const sub = obj['Fn::Sub'];
+    if (typeof sub === 'string') {
+      let replaced = sub;
+      for (const id of removedIds) {
+        // eslint-disable-next-line security/detect-non-literal-regexp -- id comes from template logical IDs
+        replaced = replaced.replace(new RegExp(`\\$\\{${id}[^}]*\\}`, 'g'), '*');
+      }
+      if (replaced !== sub) return { 'Fn::Sub': replaced };
+    }
+  }
+
+  // Recurse into all properties
+  const result: Record<string, unknown> = {};
+  for (const [key, val] of Object.entries(obj)) {
+    result[key] = replaceDanglingRefs(val, removedIds);
+  }
+  return result;
+}
+
+/**
  * Filter a synthesized CDK template to keep only companion resources.
  * Removes all AWS::BedrockAgentCore::* resources and their related Outputs.
+ * Replaces dangling Ref/Fn::GetAtt references with placeholders.
  *
  * Used for Phase 1 (UPDATE) to create companion IAM roles and policies
  * without the primary resources.
@@ -54,8 +107,14 @@ export function filterCompanionOnlyTemplate(synthTemplate: CfnTemplate): CfnTemp
     if (isPrimaryResourceType(resource.Type)) {
       removedLogicalIds.add(logicalId);
     } else {
-      filtered.Resources[logicalId] = { ...resource };
+      // Deep clone to avoid mutating original
+      filtered.Resources[logicalId] = JSON.parse(JSON.stringify(resource)) as CfnResource;
     }
+  }
+
+  // Replace dangling Ref/Fn::GetAtt references in companion resources
+  for (const [logicalId, resource] of Object.entries(filtered.Resources)) {
+    filtered.Resources[logicalId] = replaceDanglingRefs(resource, removedLogicalIds) as CfnResource;
   }
 
   // Keep outputs that don't reference removed resources
@@ -99,7 +158,7 @@ export function buildImportTemplate(
   synthTemplate: CfnTemplate,
   logicalIdsToImport: string[]
 ): CfnTemplate {
-  const importTemplate: CfnTemplate = JSON.parse(JSON.stringify(deployedTemplate));
+  const importTemplate = JSON.parse(JSON.stringify(deployedTemplate)) as CfnTemplate;
 
   for (const logicalId of logicalIdsToImport) {
     const resource = synthTemplate.Resources[logicalId];
@@ -108,7 +167,7 @@ export function buildImportTemplate(
     }
 
     // Deep clone and set DeletionPolicy: Retain
-    const importedResource: CfnResource = JSON.parse(JSON.stringify(resource));
+    const importedResource = JSON.parse(JSON.stringify(resource)) as CfnResource;
     importedResource.DeletionPolicy = 'Retain';
     importedResource.UpdateReplacePolicy = 'Retain';
 
