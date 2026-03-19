@@ -594,6 +594,21 @@ export const GatewayExceptionLevelSchema = z.enum(['NONE', 'DEBUG']);
 export type GatewayExceptionLevel = z.infer<typeof GatewayExceptionLevelSchema>;
 
 // ============================================================================
+// Gateway Policy Engine Configuration
+// ============================================================================
+
+export const PolicyEngineModeSchema = z.enum(['LOG_ONLY', 'ENFORCE']);
+export type PolicyEngineMode = z.infer<typeof PolicyEngineModeSchema>;
+
+export const GatewayPolicyEngineConfigurationSchema = z
+  .object({
+    policyEngineName: z.string().min(1),
+    mode: PolicyEngineModeSchema,
+  })
+  .strict();
+export type GatewayPolicyEngineConfiguration = z.infer<typeof GatewayPolicyEngineConfigurationSchema>;
+
+// ============================================================================
 // Gateway
 // ============================================================================
 
@@ -614,6 +629,8 @@ export const AgentCoreGatewaySchema = z
     enableSemanticSearch: z.boolean().default(true),
     /** Exception verbosity level. 'NONE' = generic errors (default), 'DEBUG' = verbose errors. */
     exceptionLevel: GatewayExceptionLevelSchema.default('NONE'),
+    /** Policy engine configuration for Cedar-based authorization of tool calls. */
+    policyEngineConfiguration: GatewayPolicyEngineConfigurationSchema.optional(),
   })
   .strict()
   .refine(

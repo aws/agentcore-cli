@@ -2,6 +2,7 @@ import type {
   ApiGatewayHttpMethod,
   GatewayAuthorizerType,
   GatewayExceptionLevel,
+  GatewayPolicyEngineConfiguration,
   GatewayTargetType,
   NodeRuntime,
   PythonRuntime,
@@ -36,6 +37,8 @@ export interface AddGatewayConfig {
   enableSemanticSearch: boolean;
   /** Exception verbosity level for the gateway */
   exceptionLevel: GatewayExceptionLevel;
+  /** Policy engine configuration for Cedar-based authorization */
+  policyEngineConfiguration?: GatewayPolicyEngineConfiguration;
 }
 
 /** Item ID for the semantic search toggle in the advanced config pane. */

@@ -111,11 +111,22 @@ export function RemoveFlow({
   const { tools: mcpTools, isLoading: isLoadingTools, refresh: refreshTools } = useRemovableGatewayTargets();
   const { memories, isLoading: isLoadingMemories, refresh: refreshMemories } = useRemovableMemories();
   const { identities, isLoading: isLoadingIdentities, refresh: refreshIdentities } = useRemovableIdentities();
-  const { policyEngines, isLoading: isLoadingPolicyEngines, refresh: refreshPolicyEngines } = useRemovablePolicyEngines();
+  const {
+    policyEngines,
+    isLoading: isLoadingPolicyEngines,
+    refresh: refreshPolicyEngines,
+  } = useRemovablePolicyEngines();
   const { policies, isLoading: isLoadingPolicies, refresh: refreshPolicies } = useRemovablePolicies();
 
   // Check if any data is still loading
-  const isLoading = isLoadingAgents || isLoadingGateways || isLoadingTools || isLoadingMemories || isLoadingIdentities || isLoadingPolicyEngines || isLoadingPolicies;
+  const isLoading =
+    isLoadingAgents ||
+    isLoadingGateways ||
+    isLoadingTools ||
+    isLoadingMemories ||
+    isLoadingIdentities ||
+    isLoadingPolicyEngines ||
+    isLoadingPolicies;
 
   // Preview hook
   const {
@@ -157,7 +168,15 @@ export function RemoveFlow({
   // In non-interactive mode, exit after success
   useEffect(() => {
     if (!isInteractive) {
-      const successStates = ['agent-success', 'gateway-success', 'tool-success', 'memory-success', 'identity-success', 'policy-engine-success', 'policy-success'];
+      const successStates = [
+        'agent-success',
+        'gateway-success',
+        'tool-success',
+        'memory-success',
+        'identity-success',
+        'policy-engine-success',
+        'policy-success',
+      ];
       if (successStates.includes(flow.name)) {
         onExit();
       }
@@ -335,7 +354,9 @@ export function RemoveFlow({
     async (compositeKey: string) => {
       const result = await loadPolicyPreview(compositeKey);
       if (result.ok) {
-        const policyName = compositeKey.includes('/') ? compositeKey.slice(compositeKey.indexOf('/') + 1) : compositeKey;
+        const policyName = compositeKey.includes('/')
+          ? compositeKey.slice(compositeKey.indexOf('/') + 1)
+          : compositeKey;
         if (force) {
           setFlow({ name: 'loading', message: `Removing policy ${policyName}...` });
           const removeResult = await removePolicyOp(compositeKey, result.preview);
@@ -532,8 +553,24 @@ export function RemoveFlow({
   ]);
 
   const refreshAll = useCallback(async () => {
-    await Promise.all([refreshAgents(), refreshGateways(), refreshTools(), refreshMemories(), refreshIdentities(), refreshPolicyEngines(), refreshPolicies()]);
-  }, [refreshAgents, refreshGateways, refreshTools, refreshMemories, refreshIdentities, refreshPolicyEngines, refreshPolicies]);
+    await Promise.all([
+      refreshAgents(),
+      refreshGateways(),
+      refreshTools(),
+      refreshMemories(),
+      refreshIdentities(),
+      refreshPolicyEngines(),
+      refreshPolicies(),
+    ]);
+  }, [
+    refreshAgents,
+    refreshGateways,
+    refreshTools,
+    refreshMemories,
+    refreshIdentities,
+    refreshPolicyEngines,
+    refreshPolicies,
+  ]);
 
   // Select screen - wait for data to load to avoid arrow position issues
   if (flow.name === 'select') {

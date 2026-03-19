@@ -1,6 +1,6 @@
 import { findConfigRoot, setEnvVar } from '../../lib';
 import type { AgentCoreGateway, AgentCoreGatewayTarget, AgentCoreMcpSpec, GatewayAuthorizerType } from '../../schema';
-import { AgentCoreGatewaySchema } from '../../schema';
+import { AgentCoreGatewaySchema, PolicyEngineModeSchema } from '../../schema';
 import type { AddGatewayOptions as CLIAddGatewayOptions } from '../commands/add/types';
 import { validateAddGatewayOptions } from '../commands/add/validate';
 import { getErrorMessage } from '../errors';
@@ -28,6 +28,8 @@ export interface AddGatewayOptions {
   agents?: string;
   enableSemanticSearch?: boolean;
   exceptionLevel?: string;
+  policyEngine?: string;
+  policyEngineMode?: string;
 }
 
 /**
@@ -160,6 +162,8 @@ export class GatewayPrimitive extends BasePrimitive<AddGatewayOptions, Removable
       .option('--agents <agents>', 'Comma-separated agent names')
       .option('--no-semantic-search', 'Disable semantic search for tool discovery')
       .option('--exception-level <level>', 'Exception verbosity level', 'NONE')
+      .option('--policy-engine <name>', 'Policy engine name for Cedar-based authorization')
+      .option('--policy-engine-mode <mode>', 'Policy engine mode: LOG_ONLY or ENFORCE')
       .option('--json', 'Output as JSON')
       .action(async (rawOptions: Record<string, string | boolean | undefined>) => {
         const cliOptions = rawOptions as unknown as CLIAddGatewayOptions;
@@ -192,6 +196,8 @@ export class GatewayPrimitive extends BasePrimitive<AddGatewayOptions, Removable
             agents: cliOptions.agents,
             enableSemanticSearch: cliOptions.semanticSearch !== false,
             exceptionLevel: cliOptions.exceptionLevel,
+            policyEngine: cliOptions.policyEngine,
+            policyEngineMode: cliOptions.policyEngineMode,
           });
 
           if (cliOptions.json) {
@@ -290,6 +296,10 @@ export class GatewayPrimitive extends BasePrimitive<AddGatewayOptions, Removable
       jwtConfig: undefined,
       enableSemanticSearch: options.enableSemanticSearch ?? true,
       exceptionLevel: options.exceptionLevel === 'DEBUG' ? 'DEBUG' : 'NONE',
+      policyEngineConfiguration:
+        options.policyEngine && options.policyEngineMode
+          ? { policyEngineName: options.policyEngine, mode: PolicyEngineModeSchema.parse(options.policyEngineMode) }
+          : undefined,
     };
 
     if (options.authorizerType === 'CUSTOM_JWT' && options.discoveryUrl) {
@@ -358,6 +368,7 @@ export class GatewayPrimitive extends BasePrimitive<AddGatewayOptions, Removable
       authorizerConfiguration: this.buildAuthorizerConfiguration(config),
       enableSemanticSearch: config.enableSemanticSearch,
       exceptionLevel: config.exceptionLevel,
+      policyEngineConfiguration: config.policyEngineConfiguration,
     };
 
     mcpSpec.agentCoreGateways.push(gateway);
