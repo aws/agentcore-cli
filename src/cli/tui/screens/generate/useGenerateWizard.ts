@@ -58,13 +58,20 @@ export function useGenerateWizard(options?: UseGenerateWizardOptions) {
     if (advancedSelected) {
       const advancedIndex = filtered.indexOf('advanced');
       const afterAdvanced = advancedIndex + 1;
-      const networkSteps: GenerateStep[] = config.networkMode === 'VPC'
-        ? ['networkMode', 'subnets', 'securityGroups']
-        : ['networkMode'];
+      const networkSteps: GenerateStep[] =
+        config.networkMode === 'VPC' ? ['networkMode', 'subnets', 'securityGroups'] : ['networkMode'];
       filtered = [...filtered.slice(0, afterAdvanced), ...networkSteps, ...filtered.slice(afterAdvanced)];
     }
     return filtered;
-  }, [config.modelProvider, config.sdk, config.protocol, config.networkMode, hasInitialName, sdkSelected, advancedSelected]);
+  }, [
+    config.modelProvider,
+    config.sdk,
+    config.protocol,
+    config.networkMode,
+    hasInitialName,
+    sdkSelected,
+    advancedSelected,
+  ]);
 
   const currentIndex = steps.indexOf(step);
 

@@ -22,8 +22,8 @@ import { HELP_TEXT } from '../../constants';
 import { useListNavigation, useProject } from '../../hooks';
 import { generateUniqueName } from '../../utils';
 import { BUILD_TYPE_OPTIONS, GenerateWizardUI, getWizardHelpText, useGenerateWizard } from '../generate';
-import { ADVANCED_OPTIONS } from '../generate/types';
 import type { BuildType } from '../generate';
+import { ADVANCED_OPTIONS } from '../generate/types';
 import type { AddAgentConfig, AgentType } from './types';
 import {
   ADD_AGENT_STEP_LABELS,
@@ -76,14 +76,7 @@ const ADVANCED_ITEMS: SelectableItem[] = ADVANCED_OPTIONS.map(o => ({
   title: o.title,
   description: o.description,
 }));
-const BYO_STEPS: ByoStep[] = [
-  'codeLocation',
-  'buildType',
-  'modelProvider',
-  'apiKey',
-  'advanced',
-  'confirm',
-];
+const BYO_STEPS: ByoStep[] = ['codeLocation', 'buildType', 'modelProvider', 'apiKey', 'advanced', 'confirm'];
 
 export function AddAgentScreen({ existingAgentNames, onComplete, onExit }: AddAgentScreenProps) {
   // Phase 1: name + agentType selection
@@ -219,9 +212,8 @@ export function AddAgentScreen({ existingAgentNames, onComplete, onExit }: AddAg
     if (byoAdvancedSelected) {
       const advancedIndex = steps.indexOf('advanced');
       const afterAdvanced = advancedIndex + 1;
-      const networkSteps: ByoStep[] = byoConfig.networkMode === 'VPC'
-        ? ['networkMode', 'subnets', 'securityGroups']
-        : ['networkMode'];
+      const networkSteps: ByoStep[] =
+        byoConfig.networkMode === 'VPC' ? ['networkMode', 'subnets', 'securityGroups'] : ['networkMode'];
       steps = [...steps.slice(0, afterAdvanced), ...networkSteps, ...steps.slice(afterAdvanced)];
     }
     return steps;
