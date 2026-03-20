@@ -43,6 +43,7 @@ describe('StrandsTranslator', () => {
     const translator = new StrandsTranslator(config, {
       agentConfig: config,
       enableMemory: false,
+      memoryOption: 'none',
       enableObservability: true,
     });
     const result = translator.translate();
@@ -68,6 +69,7 @@ describe('StrandsTranslator', () => {
     const translator = new StrandsTranslator(config, {
       agentConfig: config,
       enableMemory: true,
+      memoryOption: 'longAndShortTerm',
       enableObservability: false,
     });
     const result = translator.translate();
@@ -101,6 +103,7 @@ describe('StrandsTranslator', () => {
     const translator = new StrandsTranslator(config, {
       agentConfig: config,
       enableMemory: false,
+      memoryOption: 'none',
       enableObservability: false,
     });
     const result = translator.translate();
@@ -125,6 +128,7 @@ describe('StrandsTranslator', () => {
     const translator = new StrandsTranslator(config, {
       agentConfig: config,
       enableMemory: false,
+      memoryOption: 'none',
       enableObservability: false,
     });
     const result = translator.translate();
@@ -142,6 +146,7 @@ describe('LangGraphTranslator', () => {
     const translator = new LangGraphTranslator(config, {
       agentConfig: config,
       enableMemory: false,
+      memoryOption: 'none',
       enableObservability: true,
     });
     const result = translator.translate();
@@ -171,6 +176,7 @@ describe('LangGraphTranslator', () => {
     const translator = new LangGraphTranslator(config, {
       agentConfig: config,
       enableMemory: false,
+      memoryOption: 'none',
       enableObservability: false,
     });
     const result = translator.translate();
@@ -193,6 +199,7 @@ describe('LangGraphTranslator', () => {
     const translator = new LangGraphTranslator(config, {
       agentConfig: config,
       enableMemory: false,
+      memoryOption: 'none',
       enableObservability: false,
     });
     const result = translator.translate();

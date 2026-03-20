@@ -14,10 +14,12 @@ import type {
   KnowledgeBaseInfo,
   PromptConfiguration,
 } from '../../../aws/bedrock-import-types';
+import type { MemoryOption } from '../../../tui/screens/generate/types';
 
 export interface TranslatorOptions {
   agentConfig: BedrockAgentConfig;
   enableMemory: boolean;
+  memoryOption: MemoryOption;
   enableObservability: boolean;
 }
 
@@ -52,6 +54,7 @@ export abstract class BaseBedrockTranslator {
   protected readonly promptConfigs: PromptConfiguration[];
   protected readonly memoryEnabled: boolean;
   protected readonly agentcoreMemoryEnabled: boolean;
+  protected readonly hasLongTermStrategies: boolean;
   protected readonly codeInterpreterEnabled: boolean;
   protected readonly userInputEnabled: boolean;
   protected readonly multiAgentEnabled: boolean;
@@ -90,6 +93,7 @@ export abstract class BaseBedrockTranslator {
     const memoryConfig = this.agentInfo.memoryConfiguration;
     this.memoryEnabled = !!memoryConfig?.enabledMemoryTypes?.length;
     this.agentcoreMemoryEnabled = options.enableMemory && this.memoryEnabled;
+    this.hasLongTermStrategies = options.memoryOption === 'longAndShortTerm';
 
     // Features
     this.codeInterpreterEnabled = this.actionGroups.some(

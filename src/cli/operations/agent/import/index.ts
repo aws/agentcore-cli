@@ -43,6 +43,7 @@ export async function executeImportAgent(
     const translatorOptions = {
       agentConfig,
       enableMemory,
+      memoryOption: memory,
       enableObservability: true,
     };
 
