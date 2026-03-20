@@ -90,7 +90,7 @@ export function formatErrorMessage(detected) {
     '  npm install -g @aws/agentcore',
     '',
     'To bypass this check, set AGENTCORE_SKIP_CONFLICT_CHECK=1',
-    '',
+    ''
   );
 
   return lines.join('\n');
