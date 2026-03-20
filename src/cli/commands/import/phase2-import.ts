@@ -1,18 +1,19 @@
 import { getCredentialProvider } from '../../aws/account';
-import type { ResourceToImport } from './types';
 import type { CfnTemplate } from './template-utils';
 import { buildImportTemplate } from './template-utils';
+import type { ResourceToImport } from './types';
 import {
+  type ResourceToImport as CfnResourceToImport,
   CloudFormationClient,
   CreateChangeSetCommand,
   DescribeChangeSetCommand,
+  DescribeStacksCommand,
   ExecuteChangeSetCommand,
   waitUntilChangeSetCreateComplete,
-  DescribeStacksCommand,
-  type ResourceToImport as CfnResourceToImport,
 } from '@aws-sdk/client-cloudformation';
-import { S3Client, PutObjectCommand } from '@aws-sdk/client-s3';
-import { STSClient, AssumeRoleCommand } from '@aws-sdk/client-sts';
+import { PutObjectCommand, S3Client } from '@aws-sdk/client-s3';
+import { AssumeRoleCommand, STSClient } from '@aws-sdk/client-sts';
+import { execSync } from 'node:child_process';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 
@@ -43,7 +44,8 @@ export interface Phase2Result {
  * 3. Cannot add or modify Outputs
  */
 export async function executePhase2(options: Phase2Options): Promise<Phase2Result> {
-  const { region, stackName, deployedTemplate, synthTemplate, resourcesToImport, assemblyDirectory, onProgress } = options;
+  const { region, stackName, deployedTemplate, synthTemplate, resourcesToImport, assemblyDirectory, onProgress } =
+    options;
 
   if (resourcesToImport.length === 0) {
     onProgress?.('No resources to import');
@@ -98,9 +100,7 @@ export async function executePhase2(options: Phase2Options): Promise<Phase2Resul
       })
     );
 
-    onProgress?.(
-      `Change set has ${changeSetDescription.Changes?.length ?? 0} changes. Executing...`
-    );
+    onProgress?.(`Change set has ${changeSetDescription.Changes?.length ?? 0} changes. Executing...`);
 
     // Execute the change set
     await cfn.send(
@@ -148,9 +148,7 @@ async function waitForChangeSetReady(
     }
 
     if (status === 'FAILED') {
-      throw new Error(
-        `Change set creation failed: ${response.StatusReason ?? 'Unknown reason'}`
-      );
+      throw new Error(`Change set creation failed: ${response.StatusReason ?? 'Unknown reason'}`);
     }
 
     // CREATE_PENDING, CREATE_IN_PROGRESS — keep waiting
@@ -163,10 +161,7 @@ async function waitForChangeSetReady(
 /**
  * Wait for stack to reach IMPORT_COMPLETE status.
  */
-async function waitForStackImportComplete(
-  cfn: CloudFormationClient,
-  stackName: string
-): Promise<void> {
+async function waitForStackImportComplete(cfn: CloudFormationClient, stackName: string): Promise<void> {
   const maxAttempts = 120;
   const delay = 5000; // 5 seconds
 
@@ -199,7 +194,7 @@ async function waitForStackImportComplete(
  * Publish CDK file assets (code zips, templates) to the bootstrap S3 bucket.
  * Reads the assets manifest from the CDK assembly directory.
  */
-async function publishCdkAssets(
+export async function publishCdkAssets(
   assemblyDirectory: string,
   region: string,
   onProgress?: (message: string) => void
@@ -212,18 +207,22 @@ async function publishCdkAssets(
   }
 
   for (const manifestFile of manifestFiles) {
-    const manifest = JSON.parse(
-      fs.readFileSync(path.join(assemblyDirectory, manifestFile), 'utf-8')
-    ) as {
-      files?: Record<string, {
-        source: { path: string; packaging: string };
-        destinations: Record<string, {
-          bucketName: string;
-          objectKey: string;
-          region: string;
-          assumeRoleArn?: string;
-        }>;
-      }>;
+    const manifest = JSON.parse(fs.readFileSync(path.join(assemblyDirectory, manifestFile), 'utf-8')) as {
+      files?: Record<
+        string,
+        {
+          source: { path: string; packaging: string };
+          destinations: Record<
+            string,
+            {
+              bucketName: string;
+              objectKey: string;
+              region: string;
+              assumeRoleArn?: string;
+            }
+          >;
+        }
+      >;
     };
 
     if (!manifest.files) continue;
@@ -235,6 +234,25 @@ async function publishCdkAssets(
         continue;
       }
 
+      // Determine the file body to upload
+      let body: Buffer;
+      const stat = fs.statSync(sourcePath);
+      if (stat.isDirectory()) {
+        if (asset.source.packaging === 'zip') {
+          // Zip the directory contents
+          const zipPath = `${sourcePath}.zip`;
+          execSync(`cd "${sourcePath}" && zip -rq "${zipPath}" .`);
+          body = fs.readFileSync(zipPath);
+          fs.unlinkSync(zipPath);
+        } else {
+          // Skip directory assets that aren't zip packaging (e.g. Docker image contexts)
+          onProgress?.(`Skipping directory asset: ${asset.source.path} (packaging: ${asset.source.packaging})`);
+          continue;
+        }
+      } else {
+        body = fs.readFileSync(sourcePath);
+      }
+
       for (const dest of Object.values(asset.destinations)) {
         const destRegion = dest.region || region;
 
@@ -243,10 +261,12 @@ async function publishCdkAssets(
         if (dest.assumeRoleArn && !dest.assumeRoleArn.includes('${')) {
           try {
             const sts = new STSClient({ region: destRegion, credentials: getCredentialProvider() });
-            const assumed = await sts.send(new AssumeRoleCommand({
-              RoleArn: dest.assumeRoleArn,
-              RoleSessionName: 'agentcore-import-publish',
-            }));
+            const assumed = await sts.send(
+              new AssumeRoleCommand({
+                RoleArn: dest.assumeRoleArn,
+                RoleSessionName: 'agentcore-import-publish',
+              })
+            );
             if (assumed.Credentials) {
               s3Credentials = {
                 accessKeyId: assumed.Credentials.AccessKeyId!,
@@ -260,14 +280,15 @@ async function publishCdkAssets(
         }
 
         const s3 = new S3Client({ region: destRegion, credentials: s3Credentials });
-        const body = fs.readFileSync(sourcePath);
 
         onProgress?.(`Uploading ${asset.source.path} → s3://${dest.bucketName}/${dest.objectKey}`);
-        await s3.send(new PutObjectCommand({
-          Bucket: dest.bucketName,
-          Key: dest.objectKey,
-          Body: body,
-        }));
+        await s3.send(
+          new PutObjectCommand({
+            Bucket: dest.bucketName,
+            Key: dest.objectKey,
+            Body: body,
+          })
+        );
       }
     }
   }

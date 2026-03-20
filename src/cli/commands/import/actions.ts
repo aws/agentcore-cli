@@ -6,7 +6,7 @@ import { silentIoHost } from '../../cdk/toolkit-lib';
 import { buildCdkProject, synthesizeCdk } from '../../operations/deploy';
 import { setupPythonProject } from '../../operations/python/setup';
 import { executePhase1, getDeployedTemplate } from './phase1-update';
-import { executePhase2 } from './phase2-import';
+import { executePhase2, publishCdkAssets } from './phase2-import';
 import type { CfnTemplate } from './template-utils';
 import { findLogicalIdByProperty, findLogicalIdsByType } from './template-utils';
 import type { ImportResult, ParsedStarterToolkitConfig, ResourceToImport } from './types';
@@ -264,6 +264,52 @@ export async function handleImport(options: ImportOptions): Promise<ImportResult
         if (fs.existsSync(parentPyproject) && !fs.existsSync(destPyproject)) {
           fs.copyFileSync(parentPyproject, destPyproject);
         }
+
+        // For Container builds, copy the Dockerfile from the starter toolkit config dir
+        if (agent.build === 'Container') {
+          const destDockerfile = path.join(appDir, 'Dockerfile');
+          if (!fs.existsSync(destDockerfile)) {
+            // Starter toolkit stores Dockerfile at .bedrock_agentcore/<agentName>/Dockerfile
+            const toolkitProjectDir = path.dirname(agent.sourcePath);
+            const toolkitDockerfile = path.join(toolkitProjectDir, '.bedrock_agentcore', agent.name, 'Dockerfile');
+            if (fs.existsSync(toolkitDockerfile)) {
+              onProgress?.(`Copying Dockerfile from starter toolkit config`);
+              fs.copyFileSync(toolkitDockerfile, destDockerfile);
+            } else {
+              // Generate a minimal Dockerfile for Container builds
+              onProgress?.(`Generating Dockerfile for Container build`);
+              const entryModule = path.basename(agent.entrypoint, '.py');
+              fs.writeFileSync(
+                destDockerfile,
+                [
+                  'FROM ghcr.io/astral-sh/uv:python3.12-bookworm-slim',
+                  'WORKDIR /app',
+                  '',
+                  'ENV UV_SYSTEM_PYTHON=1 \\',
+                  '    UV_COMPILE_BYTECODE=1 \\',
+                  '    UV_NO_PROGRESS=1 \\',
+                  '    PYTHONUNBUFFERED=1 \\',
+                  '    DOCKER_CONTAINER=1',
+                  '',
+                  'RUN useradd -m -u 1000 bedrock_agentcore',
+                  '',
+                  'COPY pyproject.toml uv.lock ./',
+                  'RUN uv sync --frozen --no-dev --no-install-project',
+                  '',
+                  'COPY --chown=bedrock_agentcore:bedrock_agentcore . .',
+                  'RUN uv sync --frozen --no-dev',
+                  '',
+                  'USER bedrock_agentcore',
+                  '',
+                  'EXPOSE 8080 8000 9000',
+                  '',
+                  `CMD ["opentelemetry-instrument", "python", "-m", "${entryModule}"]`,
+                  '',
+                ].join('\n')
+              );
+            }
+          }
+        }
       } else {
         // Create a minimal pyproject.toml if no source path available
         const pyprojectPath = path.join(appDir, 'pyproject.toml');
@@ -364,6 +410,10 @@ export async function handleImport(options: ImportOptions): Promise<ImportResult
     }
 
     await toolkitWrapper.dispose();
+
+    // 8b. Publish CDK assets to S3 (source zips needed by CodeBuild during Phase 1)
+    onProgress?.('Publishing CDK assets to S3...');
+    await publishCdkAssets(assemblyDirectory, target.region, onProgress);
 
     // 9. Phase 1: UPDATE — deploy companion resources
     onProgress?.('Phase 1: Deploying companion resources (IAM roles, policies)...');
