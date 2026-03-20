@@ -121,24 +121,35 @@ export function createE2ESuite(cfg: E2EConfig) {
       if (testDir) await rm(testDir, { recursive: true, force: true, maxRetries: 3, retryDelay: 1000 });
     }, 600000);
 
+    // Container builds go through CodeBuild which is slower and more prone to transient failures.
+    const isContainerBuild = cfg.build === 'Container';
+    const deployRetries = isContainerBuild ? 3 : 1;
+    const deployTimeout = isContainerBuild ? 900000 : 600000;
+
     it.skipIf(!canRun)(
       'deploys to AWS successfully',
       async () => {
         expect(projectPath, 'Project should have been created').toBeTruthy();
 
-        const result = await runCLI(['deploy', '--yes', '--json'], projectPath, false);
+        await retry(
+          async () => {
+            const result = await runCLI(['deploy', '--yes', '--json'], projectPath, false);
 
-        if (result.exitCode !== 0) {
-          console.log('Deploy stdout:', result.stdout);
-          console.log('Deploy stderr:', result.stderr);
-        }
+            if (result.exitCode !== 0) {
+              console.log('Deploy stdout:', result.stdout);
+              console.log('Deploy stderr:', result.stderr);
+            }
 
-        expect(result.exitCode, `Deploy failed: ${result.stderr}`).toBe(0);
+            expect(result.exitCode, `Deploy failed (stderr: ${result.stderr}, stdout: ${result.stdout})`).toBe(0);
 
-        const json = parseJsonOutput(result.stdout) as { success: boolean };
-        expect(json.success, 'Deploy should report success').toBe(true);
+            const json = parseJsonOutput(result.stdout) as { success: boolean };
+            expect(json.success, 'Deploy should report success').toBe(true);
+          },
+          deployRetries,
+          30000
+        );
       },
-      600000
+      deployTimeout
     );
 
     it.skipIf(!canRun)(
