@@ -56,7 +56,7 @@ export function AddPolicyScreen({
         return {
           id: opt.id,
           title: opt.title,
-          description: disabled ? 'Requires deployed engine — run `deploy` first' : opt.description,
+          description: disabled ? 'Deploy engine first' : opt.description,
           disabled,
         };
       }),
