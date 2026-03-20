@@ -17,7 +17,7 @@ const INSTALLERS = [
 export function probeInstaller(cmd, label, uninstallCmd, execSyncFn) {
   try {
     const output = execSyncFn(cmd);
-    if (output.includes('bedrock-agentcore-starter-toolkit')) {
+    if (/^bedrock-agentcore-starter-toolkit\s/m.test(output)) {
       return { installer: label, uninstallCmd };
     }
   } catch {
@@ -33,10 +33,16 @@ export function probeInstaller(cmd, label, uninstallCmd, execSyncFn) {
  */
 export function probePath(execSyncFn, platform = process.platform) {
   const whichCmd = platform === 'win32' ? 'where agentcore' : 'command -v agentcore';
+  let binaryPath;
   try {
-    execSyncFn(whichCmd);
+    binaryPath = execSyncFn(whichCmd).trim();
   } catch {
     return null; // no agentcore binary on PATH
+  }
+  // Skip binaries installed via npm/node — a broken new CLI install would also
+  // fail --version, and we don't want to block reinstallation.
+  if (/node_modules|\/npm\/|\/nvm\/|\/fnm\/|\\npm\\/.test(binaryPath)) {
+    return null;
   }
   try {
     execSyncFn('agentcore --version');

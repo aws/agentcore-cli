@@ -5,6 +5,7 @@ import {
   probePath,
 } from '../../../../scripts/check-old-cli.lib.mjs';
 import { execSync } from 'node:child_process';
+import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { describe, expect, it } from 'vitest';
 
@@ -23,6 +24,12 @@ describe('probeInstaller', () => {
 
   it('returns null when the old toolkit is not in output', () => {
     const exec = () => 'some-other-pkg  1.0.0';
+    const result = probeInstaller('pip list', 'pip', 'pip uninstall bedrock-agentcore-starter-toolkit', exec);
+    expect(result).toBeNull();
+  });
+
+  it('does not match a package whose name is a superstring of the toolkit', () => {
+    const exec = () => 'bedrock-agentcore-starter-toolkit-extra  1.0.0';
     const result = probeInstaller('pip list', 'pip', 'pip uninstall bedrock-agentcore-starter-toolkit', exec);
     expect(result).toBeNull();
   });
@@ -83,6 +90,15 @@ describe('probePath', () => {
       installer: 'PATH',
       uninstallCmd: 'pip uninstall bedrock-agentcore-starter-toolkit',
     });
+  });
+
+  it('returns null when binary is inside node_modules (broken new CLI)', () => {
+    const exec = (cmd: string) => {
+      if (cmd === 'command -v agentcore') return '/usr/local/lib/node_modules/@aws/agentcore/bin/agentcore';
+      if (cmd === 'agentcore --version') throw new Error('exit code 1');
+      return '';
+    };
+    expect(probePath(exec)).toBeNull();
   });
 
   it('uses "command -v agentcore" on non-Windows', () => {
@@ -232,21 +248,32 @@ describe('check-old-cli.mjs entry point', () => {
     });
   });
 
-  it('exits 1 with error when old toolkit is detected', () => {
-    // If the old toolkit happens to be installed, verify exit 1 + stderr message.
-    // If not installed, verify exit 0 silently.
+  it('exits 1 with actionable error when old toolkit is detected', () => {
+    // Use a wrapper script that stubs pip to report the old toolkit, guaranteeing
+    // the exit-1 path is always exercised regardless of the test machine.
+    const scriptsDir = path.resolve(__dirname, '../../../../scripts');
+    const wrapperPath = path.join(scriptsDir, '_test-stub-detect.mjs');
+    fs.writeFileSync(
+      wrapperPath,
+      [
+        `import { detectOldToolkit, formatErrorMessage } from './check-old-cli.lib.mjs';`,
+        `const detected = detectOldToolkit((cmd) => {`,
+        `  if (cmd === 'pip list') return 'bedrock-agentcore-starter-toolkit 0.1.0';`,
+        `  throw new Error('not found');`,
+        `});`,
+        `if (detected.length > 0) { console.error(formatErrorMessage(detected)); process.exit(1); }`,
+      ].join('\n')
+    );
     try {
-      execSync(`node ${scriptPath}`, {
-        env: { ...process.env, AGENTCORE_SKIP_CONFLICT_CHECK: undefined },
-        stdio: 'pipe',
-        encoding: 'utf-8',
-      });
-      // Exited 0 — old toolkit not present, that's fine
+      execSync(`node ${wrapperPath}`, { stdio: 'pipe', encoding: 'utf-8' });
+      expect.unreachable('Should have exited with code 1');
     } catch (err: any) {
-      // Exited non-zero — old toolkit was detected
       expect(err.status).toBe(1);
       expect(err.stderr).toContain('bedrock-agentcore-starter-toolkit');
       expect(err.stderr).toContain('AGENTCORE_SKIP_CONFLICT_CHECK');
+      expect(err.stderr).toContain('pip uninstall');
+    } finally {
+      fs.unlinkSync(wrapperPath);
     }
   });
 });
