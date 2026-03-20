@@ -53,12 +53,25 @@ export async function executePhase1(options: Phase1Options): Promise<Phase1Resul
   const stackExists = await doesStackExist(cfn, stackName);
 
   if (stackExists) {
+    // When updating, preserve any primary resources that were already imported
+    // into the stack. filterCompanionOnlyTemplate strips all primary resources,
+    // but previously imported ones must be kept or CFN will try to delete them.
+    const deployedTemplate = await getDeployedTemplate(region, stackName);
+    if (deployedTemplate) {
+      for (const [logicalId, resource] of Object.entries(deployedTemplate.Resources)) {
+        if (!(logicalId in companionTemplate.Resources)) {
+          companionTemplate.Resources[logicalId] = resource;
+        }
+      }
+    }
+    const updateTemplateBody = JSON.stringify(companionTemplate);
+
     onProgress?.(`Updating stack ${stackName} with companion resources...`);
     try {
       await cfn.send(
         new UpdateStackCommand({
           StackName: stackName,
-          TemplateBody: templateBody,
+          TemplateBody: updateTemplateBody,
           Capabilities: ['CAPABILITY_IAM', 'CAPABILITY_NAMED_IAM'],
         })
       );
@@ -111,10 +124,7 @@ export async function executePhase1(options: Phase1Options): Promise<Phase1Resul
 /**
  * Get the currently deployed CloudFormation template.
  */
-export async function getDeployedTemplate(
-  region: string,
-  stackName: string
-): Promise<CfnTemplate | null> {
+export async function getDeployedTemplate(region: string, stackName: string): Promise<CfnTemplate | null> {
   const cfn = new CloudFormationClient({ region, credentials: getCredentialProvider() });
 
   try {
