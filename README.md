@@ -17,14 +17,17 @@ AgentCore with minimal configuration.
 
 ## Installation
 
-> **Upgrading from the Bedrock AgentCore Starter Toolkit?** The old Python CLI conflicts with this package. Uninstall it
-> first using whichever tool you used to install it:
+> **Upgrading from the Bedrock AgentCore Starter Toolkit?** The old Python CLI conflicts with this package. If it is
+> still installed, `npm install` will fail with an error telling you which package manager has it. Uninstall it first
+> using whichever tool you originally used:
 >
 > ```bash
 > pip uninstall bedrock-agentcore-starter-toolkit    # if installed via pip
 > pipx uninstall bedrock-agentcore-starter-toolkit   # if installed via pipx
 > uv tool uninstall bedrock-agentcore-starter-toolkit # if installed via uv
 > ```
+>
+> If you need to bypass the check (for example, in CI), set `AGENTCORE_SKIP_CONFLICT_CHECK=1` before installing.
 
 ```bash
 npm install -g @aws/agentcore
