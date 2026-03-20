@@ -11,7 +11,7 @@ import { POLICY_SOURCE_METHOD_OPTIONS, POLICY_STEP_LABELS, VALIDATION_MODE_OPTIO
 import { useAddPolicyWizard } from './useAddPolicyWizard';
 import { Box, Text } from 'ink';
 import Spinner from 'ink-spinner';
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 interface AddPolicyScreenProps {
   onComplete: (config: AddPolicyConfig) => void;
@@ -37,6 +37,7 @@ export function AddPolicyScreen({
   // Generation state
   const [generatedPolicy, setGeneratedPolicy] = useState<string | null>(null);
   const [generationError, setGenerationError] = useState<string | null>(null);
+  const skipGeneration = useRef(false);
 
   const engineItems: SelectableItem[] = useMemo(
     () =>
@@ -147,9 +148,8 @@ export function AddPolicyScreen({
       } else {
         setGeneratedPolicy(null);
         setGenerationError(null);
+        skipGeneration.current = true;
         wizard.goBack();
-        // Go back twice — past loading to description
-        setTimeout(() => wizard.goBack(), 0);
       }
     },
     [generatedPolicy, wizard]
@@ -161,8 +161,8 @@ export function AddPolicyScreen({
     onExit: () => {
       setGeneratedPolicy(null);
       setGenerationError(null);
+      skipGeneration.current = true;
       wizard.goBack();
-      setTimeout(() => wizard.goBack(), 0);
     },
     isActive: isGenerateReviewStep,
   });
@@ -170,6 +170,14 @@ export function AddPolicyScreen({
   // Real policy generation when entering the loading step
   useEffect(() => {
     if (!isGenerateLoadingStep) return undefined;
+    if (skipGeneration.current) {
+      skipGeneration.current = false;
+      // Navigate back past the loading step to the description step.
+      // This runs after React re-rendered with the loading step active,
+      // so goBack() correctly sees 'source-generate-loading' as current step.
+      wizard.goBack();
+      return undefined;
+    }
 
     let cancelled = false;
 
@@ -318,7 +326,7 @@ export function AddPolicyScreen({
           <TextInput
             key="generate-description"
             prompt="Describe your policy in natural language"
-            initialValue=""
+            initialValue={wizard.config.naturalLanguageDescription}
             expandable
             onSubmit={wizard.setNaturalLanguageDescription}
             onCancel={goBackOrExit}
