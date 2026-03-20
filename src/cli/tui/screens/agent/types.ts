@@ -43,6 +43,7 @@ export type AddAgentStep =
   | 'framework'
   | 'modelProvider'
   | 'apiKey'
+  | 'advanced'
   | 'networkMode'
   | 'subnets'
   | 'securityGroups'
@@ -86,6 +87,7 @@ export const ADD_AGENT_STEP_LABELS: Record<AddAgentStep, string> = {
   framework: 'Framework',
   modelProvider: 'Model',
   apiKey: 'API Key',
+  advanced: 'Advanced',
   networkMode: 'Network',
   subnets: 'Subnets',
   securityGroups: 'Security Groups',

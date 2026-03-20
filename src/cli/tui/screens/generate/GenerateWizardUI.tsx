@@ -7,6 +7,7 @@ import type { SelectableItem } from '../../components';
 import { useListNavigation } from '../../hooks';
 import type { BuildType, GenerateConfig, GenerateStep, MemoryOption, ProtocolMode } from './types';
 import {
+  ADVANCED_OPTIONS,
   BUILD_TYPE_OPTIONS,
   LANGUAGE_OPTIONS,
   MEMORY_OPTIONS,
@@ -79,6 +80,8 @@ export function GenerateWizardUI({
         }));
       case 'memory':
         return MEMORY_OPTIONS.map(o => ({ id: o.id, title: o.title, description: o.description }));
+      case 'advanced':
+        return ADVANCED_OPTIONS.map(o => ({ id: o.id, title: o.title, description: o.description }));
       case 'networkMode':
         return NETWORK_MODE_OPTIONS.map(o => ({ id: o.id, title: o.title, description: o.description }));
       default:
@@ -113,6 +116,9 @@ export function GenerateWizardUI({
         break;
       case 'memory':
         wizard.setMemory(item.id as MemoryOption);
+        break;
+      case 'advanced':
+        wizard.setAdvanced(item.id === 'yes');
         break;
       case 'networkMode':
         wizard.setNetworkMode(item.id as NetworkMode);

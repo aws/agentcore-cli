@@ -17,6 +17,7 @@ export type GenerateStep =
   | 'modelProvider'
   | 'apiKey'
   | 'memory'
+  | 'advanced'
   | 'networkMode'
   | 'subnets'
   | 'securityGroups'
@@ -51,7 +52,7 @@ export const BASE_GENERATE_STEPS: GenerateStep[] = [
   'sdk',
   'modelProvider',
   'apiKey',
-  'networkMode',
+  'advanced',
   'confirm',
 ];
 
@@ -64,6 +65,7 @@ export const STEP_LABELS: Record<GenerateStep, string> = {
   modelProvider: 'Model',
   apiKey: 'API Key',
   memory: 'Memory',
+  advanced: 'Advanced',
   networkMode: 'Network',
   subnets: 'Subnets',
   securityGroups: 'Security Groups',
@@ -123,6 +125,11 @@ export function getModelProviderOptionsForSdk(sdk: SDKFramework) {
 export const NETWORK_MODE_OPTIONS = [
   { id: 'PUBLIC', title: 'Public', description: undefined },
   { id: 'VPC', title: 'VPC', description: 'Attach to your VPC' },
+] as const;
+
+export const ADVANCED_OPTIONS = [
+  { id: 'no', title: 'No, use defaults', description: 'Public network, no VPC' },
+  { id: 'yes', title: 'Yes, customize', description: undefined },
 ] as const;
 
 export const MEMORY_OPTIONS = [
