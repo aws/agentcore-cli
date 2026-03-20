@@ -31,9 +31,10 @@ export function probeInstaller(cmd, label, uninstallCmd, execSyncFn) {
  * the old Python CLI (which doesn't support --version).
  * Returns `{ installer, uninstallCmd }` when the old CLI is found, or `null`.
  */
-export function probePath(execSyncFn) {
+export function probePath(execSyncFn, platform = process.platform) {
+  const whichCmd = platform === 'win32' ? 'where agentcore' : 'command -v agentcore';
   try {
-    execSyncFn('command -v agentcore');
+    execSyncFn(whichCmd);
   } catch {
     return null; // no agentcore binary on PATH
   }

@@ -68,6 +68,34 @@ describe('probePath', () => {
     };
     expect(probePath(exec)).toBeNull();
   });
+
+  it('uses "where agentcore" on Windows', () => {
+    const calls: string[] = [];
+    const exec = (cmd: string) => {
+      calls.push(cmd);
+      if (cmd === 'where agentcore') return 'C:\\Python\\Scripts\\agentcore';
+      if (cmd === 'agentcore --version') throw new Error('exit code 1');
+      return '';
+    };
+    const result = probePath(exec, 'win32');
+    expect(calls[0]).toBe('where agentcore');
+    expect(result).toEqual({
+      installer: 'PATH',
+      uninstallCmd: 'pip uninstall bedrock-agentcore-starter-toolkit',
+    });
+  });
+
+  it('uses "command -v agentcore" on non-Windows', () => {
+    const calls: string[] = [];
+    const exec = (cmd: string) => {
+      calls.push(cmd);
+      if (cmd === 'command -v agentcore') return '/usr/local/bin/agentcore';
+      if (cmd === 'agentcore --version') throw new Error('exit code 1');
+      return '';
+    };
+    probePath(exec, 'linux');
+    expect(calls[0]).toBe('command -v agentcore');
+  });
 });
 
 // ---------------------------------------------------------------------------
