@@ -113,8 +113,8 @@ export type ApiKeyCredential = z.infer<typeof ApiKeyCredentialSchema>;
 export const OAuthCredentialSchema = z.object({
   type: z.literal('OAuthCredentialProvider'),
   name: CredentialNameSchema,
-  /** OIDC discovery URL for the OAuth provider */
-  discoveryUrl: z.string().url(),
+  /** OIDC discovery URL for the OAuth provider (optional for imported providers that already exist in Identity service) */
+  discoveryUrl: z.string().url().optional(),
   /** Scopes this credential provider supports */
   scopes: z.array(z.string()).optional(),
   /** Credential provider vendor type */

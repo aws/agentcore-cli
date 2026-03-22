@@ -341,6 +341,16 @@ async function setupSingleOAuth2Provider(
     };
   }
 
+  // Imported OAuth providers may not have a discoveryUrl (provider already exists in Identity service).
+  // Skip create/update since we can't build a valid config without it.
+  if (!credential.discoveryUrl) {
+    return {
+      providerName: credential.name,
+      status: 'skipped',
+      error: `No discoveryUrl configured for "${credential.name}". Provider already exists in Identity service — credentials in .env.local will be ignored.`,
+    };
+  }
+
   const params = {
     name: credential.name,
     vendor: credential.vendor,

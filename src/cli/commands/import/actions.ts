@@ -81,18 +81,18 @@ function toMemorySpec(mem: ParsedStarterToolkitConfig['memories'][0]): Memory {
 
 /**
  * Convert parsed starter toolkit credential to CLI Credential format.
- * OAuth providers map to OAuthCredentialProvider (discoveryUrl not available from YAML, omitted).
+ * OAuth providers map to OAuthCredentialProvider (discoveryUrl omitted — provider already exists in Identity service).
  * API key providers map to ApiKeyCredentialProvider.
  */
 function toCredentialSpec(cred: ParsedStarterToolkitConfig['credentials'][0]): Credential {
   if (cred.providerType === 'api_key') {
     return { type: 'ApiKeyCredentialProvider', name: cred.name };
   }
-  // OAuth providers: the CLI schema requires discoveryUrl but we don't have it from the YAML.
-  // The credential provider already exists in Identity service — we just need the name
-  // so CDK wires the env var. Use ApiKeyCredentialProvider as the config type since it
-  // only requires a name, and the actual provider type in Identity service is unchanged.
-  return { type: 'ApiKeyCredentialProvider', name: cred.name };
+  // OAuth providers already exist in Identity service. We map them as OAuthCredentialProvider
+  // so the CLI correctly wires CLIENT_ID/CLIENT_SECRET env vars (not API_KEY).
+  // discoveryUrl is omitted since it's not available from the YAML and the provider
+  // already exists — pre-deploy will skip if no credentials are in .env.local.
+  return { type: 'OAuthCredentialProvider', name: cred.name, vendor: 'CustomOauth2' };
 }
 
 export async function handleImport(options: ImportOptions): Promise<ImportResult> {
@@ -137,7 +137,14 @@ export async function handleImport(options: ImportOptions): Promise<ImportResult
     let target: AwsDeploymentTarget | undefined;
 
     if (hasPhysicalIds) {
-      // Strict target resolution: we NEED a valid target for CloudFormation import
+      // Strict target resolution: we NEED a valid target for CloudFormation import.
+      // If the YAML specifies a region, override AWS_REGION before reading targets
+      // because readAWSDeploymentTargets() overrides file-based regions with AWS_REGION.
+      // The YAML region is authoritative — it's where the resources actually exist.
+      if (parsed.awsTarget.region) {
+        process.env.AWS_REGION = parsed.awsTarget.region;
+        process.env.AWS_DEFAULT_REGION = parsed.awsTarget.region;
+      }
       let targets = await configIO.readAWSDeploymentTargets();
 
       // If no targets exist (CLI-mode create leaves targets empty), create one from YAML info
