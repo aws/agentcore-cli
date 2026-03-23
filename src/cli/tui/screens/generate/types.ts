@@ -21,6 +21,7 @@ export type GenerateStep =
   | 'networkMode'
   | 'subnets'
   | 'securityGroups'
+  | 'requestHeaderAllowlist'
   | 'confirm';
 
 export type MemoryOption = 'none' | 'shortTerm' | 'longAndShortTerm';
@@ -41,6 +42,8 @@ export interface GenerateConfig {
   networkMode?: NetworkMode;
   subnets?: string[];
   securityGroups?: string[];
+  /** Allowed request headers for the runtime */
+  requestHeaderAllowlist?: string[];
 }
 
 /** Base steps - apiKey, memory, subnets, securityGroups are conditionally added based on selections */
@@ -69,6 +72,7 @@ export const STEP_LABELS: Record<GenerateStep, string> = {
   networkMode: 'Network',
   subnets: 'Subnets',
   securityGroups: 'Security Groups',
+  requestHeaderAllowlist: 'Headers',
   confirm: 'Confirm',
 };
 

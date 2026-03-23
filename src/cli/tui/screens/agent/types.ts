@@ -47,6 +47,7 @@ export type AddAgentStep =
   | 'networkMode'
   | 'subnets'
   | 'securityGroups'
+  | 'requestHeaderAllowlist'
   | 'memory'
   | 'region'
   | 'bedrockAgent'
@@ -74,6 +75,8 @@ export interface AddAgentConfig {
   subnets?: string[];
   /** Security group IDs for VPC mode */
   securityGroups?: string[];
+  /** Allowed request headers for the runtime */
+  requestHeaderAllowlist?: string[];
   /** Python version (only for Python agents) */
   pythonVersion: PythonRuntime;
   /** Memory option (create path only) */
@@ -100,6 +103,7 @@ export const ADD_AGENT_STEP_LABELS: Record<AddAgentStep, string> = {
   networkMode: 'Network',
   subnets: 'Subnets',
   securityGroups: 'Security Groups',
+  requestHeaderAllowlist: 'Headers',
   memory: 'Memory',
   region: 'Region',
   bedrockAgent: 'Agent',
