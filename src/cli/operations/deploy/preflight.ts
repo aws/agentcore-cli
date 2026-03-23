@@ -71,7 +71,7 @@ export async function validateProject(): Promise<PreflightContext> {
 
   const configIO = new ConfigIO({ baseDir: configRoot });
   const projectSpec = await configIO.readProjectSpec();
-  const awsTargets = await configIO.readAWSDeploymentTargets();
+  const awsTargets = await configIO.resolveAWSDeploymentTargets();
 
   // Validate that at least one agent or gateway is defined, unless this is a teardown deploy.
   //

@@ -110,7 +110,7 @@ export function useAwsTargetConfig(): AwsTargetConfigState {
         }
 
         const configIO = new ConfigIO({ baseDir: configRoot });
-        const targets = await configIO.readAWSDeploymentTargets();
+        const targets = await configIO.resolveAWSDeploymentTargets();
 
         if (targets.length > 1) {
           // Multiple targets - show selection

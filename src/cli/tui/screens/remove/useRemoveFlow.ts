@@ -109,7 +109,7 @@ export function useRemoveFlow({ force, dryRun }: RemoveFlowOptions): RemoveFlowS
       // Check for deployed stacks per target
       if (currentProjectName) {
         try {
-          const targets = await configIO.readAWSDeploymentTargets();
+          const targets = await configIO.resolveAWSDeploymentTargets();
           for (const target of targets) {
             const stack = await findStack(target.region, currentProjectName, target.name);
             if (stack) {

@@ -23,7 +23,7 @@ export interface DiscoverDeployedResult {
 export async function discoverDeployedTargets(configBaseDir?: string): Promise<DiscoverDeployedResult> {
   const configIO = new ConfigIO(configBaseDir ? { baseDir: configBaseDir } : undefined);
   const projectSpec = await configIO.readProjectSpec();
-  const targets = await configIO.readAWSDeploymentTargets();
+  const targets = await configIO.resolveAWSDeploymentTargets();
 
   const deployedTargets: DeployedTarget[] = [];
   for (const target of targets) {
@@ -124,7 +124,7 @@ export async function performStackTeardown(targetName: string): Promise<StackTea
       throw err;
     }
   }
-  const remainingTargets = (await configIO.readAWSDeploymentTargets()).filter(t => t.name !== targetName);
+  const remainingTargets = (await configIO.resolveAWSDeploymentTargets()).filter(t => t.name !== targetName);
   await configIO.writeAWSDeploymentTargets(remainingTargets);
 
   return { success: true };

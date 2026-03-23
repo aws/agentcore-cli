@@ -115,9 +115,7 @@ export class ConfigIO {
 
   /**
    * Read and validate the AWS configuration file.
-   * Applies overrides following AWS SDK precedence:
-   * - Account: from current credentials if AWS_PROFILE is set
-   * - Region: AWS_REGION > AWS_DEFAULT_REGION > profile config > saved value
+   * Region is preserved as saved. Use resolveAWSDeploymentTargets() for environment/profile overrides.
    */
   async readAWSDeploymentTargets(): Promise<AwsDeploymentTarget[]> {
     const filePath = this.pathResolver.getAWSTargetsConfigPath();
@@ -130,6 +128,16 @@ export class ConfigIO {
         targets = targets.map(t => ({ ...t, account }));
       }
     }
+
+    return targets;
+  }
+
+  /**
+   * Read AWS deployment targets with region overrides from environment/profile.
+   * Region precedence: AWS_REGION > AWS_DEFAULT_REGION > profile config > saved value.
+   */
+  async resolveAWSDeploymentTargets(): Promise<AwsDeploymentTarget[]> {
+    const targets = await this.readAWSDeploymentTargets();
 
     // Override region from env vars
     const envRegion = process.env.AWS_REGION ?? process.env.AWS_DEFAULT_REGION;

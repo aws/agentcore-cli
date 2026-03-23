@@ -66,7 +66,7 @@ export async function handleDeploy(options: ValidatedDeployOptions): Promise<Dep
 
     // Load targets and find the specified one
     startStep('Load deployment target');
-    const targets = await configIO.readAWSDeploymentTargets();
+    const targets = await configIO.resolveAWSDeploymentTargets();
     const target = targets.find(t => t.name === options.target);
     if (!target) {
       endStep('error', `Target "${options.target}" not found`);

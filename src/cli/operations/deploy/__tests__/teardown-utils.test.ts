@@ -27,6 +27,7 @@ vi.mock('../../../../lib/index.js', () => ({
   ConfigIO: class {
     readProjectSpec = mockReadProjectSpec;
     readAWSDeploymentTargets = mockReadAWSDeploymentTargets;
+    resolveAWSDeploymentTargets = mockReadAWSDeploymentTargets;
     readDeployedState = mockReadDeployedState;
     writeDeployedState = mockWriteDeployedState;
   },
