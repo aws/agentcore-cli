@@ -4,6 +4,8 @@ All notable changes to this project will be documented in this file.
 
 ## [0.3.0-preview.7.0] - 2026-03-23
 
+**Note:** Policy currently has issues with asscoiating a policy engine with a gateway that has No Auth or IAM Auth.
+
 ### Added
 - feat: add resource tagging support (#564) (dd9716c)
 - feat: add import from Bedrock Agents to add agent and create flows (#563) (f0e1af7)
