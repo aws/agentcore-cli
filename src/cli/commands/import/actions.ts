@@ -226,6 +226,15 @@ export async function handleImport(options: ImportOptions): Promise<ImportResult
       }
     }
 
+    for (const agent of parsed.agents) {
+      if (agent.hasAuthorizerConfig) {
+        onProgress?.(
+          `Warning: Agent "${agent.name}" has a custom JWT authorizer configured in the starter toolkit. ` +
+            `This is not automatically imported. To recreate it, run: agentcore add gateway --authorizer-type CUSTOM_JWT`
+        );
+      }
+    }
+
     const existingMemoryNames = new Set((projectSpec.memories ?? []).map(m => m.name));
     const newlyAddedMemoryNames = new Set<string>();
     for (const mem of parsed.memories) {
@@ -593,15 +602,28 @@ function fixPyprojectForSetuptools(pyprojectPath: string): void {
   fs.writeFileSync(pyprojectPath, content.trimEnd() + '\n\n[tool.setuptools]\npy-modules = []\n');
 }
 
+const COPY_EXCLUDE_DIRS = new Set([
+  '.venv',
+  '.git',
+  '__pycache__',
+  'node_modules',
+  '.pytest_cache',
+  '.bedrock_agentcore',
+  '.mypy_cache',
+  '.ruff_cache',
+]);
+
 /**
- * Recursively copy directory contents.
+ * Recursively copy directory contents, skipping excluded directories and symlinks.
  */
 function copyDirRecursive(src: string, dest: string): void {
   const entries = fs.readdirSync(src, { withFileTypes: true });
   for (const entry of entries) {
+    if (entry.isSymbolicLink()) continue;
     const srcPath = path.join(src, entry.name);
     const destPath = path.join(dest, entry.name);
     if (entry.isDirectory()) {
+      if (COPY_EXCLUDE_DIRS.has(entry.name)) continue;
       if (!fs.existsSync(destPath)) {
         fs.mkdirSync(destPath, { recursive: true });
       }

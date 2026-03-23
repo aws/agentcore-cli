@@ -18,6 +18,8 @@ export interface ParsedStarterToolkitAgent {
   physicalAgentId?: string;
   /** Physical agent runtime ARN */
   physicalAgentArn?: string;
+  /** Whether this agent has a custom JWT authorizer configured (not imported) */
+  hasAuthorizerConfig?: boolean;
 }
 
 /**
