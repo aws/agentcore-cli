@@ -76,6 +76,51 @@ OpenAI's native agent framework.
 agentcore create --framework OpenAIAgents --model-provider OpenAI --api-key sk-...
 ```
 
+## Import from Bedrock Agents
+
+If you have an existing Bedrock Agent, you can import its configuration and translate it into runnable Strands or
+LangChain/LangGraph code. The imported agent preserves your Bedrock Agent's action groups, knowledge bases, multi-agent
+collaboration, guardrails, prompts, and memory configuration.
+
+```bash
+# Interactive (select "Import from Bedrock Agents" in the wizard)
+agentcore add agent
+
+# Non-interactive
+agentcore add agent \
+  --name MyAgent \
+  --type import \
+  --agent-id AGENT123 \
+  --agent-alias-id ALIAS456 \
+  --region us-east-1 \
+  --framework Strands \
+  --memory none
+```
+
+### What gets imported
+
+The import process fetches your Bedrock Agent's full configuration and translates it into framework-specific Python code
+that runs on AgentCore:
+
+- **Action groups** (function-schema and built-in) become `@tool` decorated functions
+- **Knowledge bases** become retrieval tool integrations
+- **Multi-agent collaboration** produces separate collaborator files with recursive translation
+- **Code interpreter** wires to AgentCore's `code_interpreter_client`
+- **Guardrails** are configured in the model initialization
+- **Prompt overrides** are preserved as template variables
+- **Memory** integrates with AgentCore's memory service when enabled
+
+### Import options
+
+| Flag                    | Description                               |
+| ----------------------- | ----------------------------------------- |
+| `--type import`         | Use import mode (required)                |
+| `--agent-id <id>`       | Bedrock Agent ID                          |
+| `--agent-alias-id <id>` | Bedrock Agent Alias ID                    |
+| `--region <region>`     | AWS region where the Bedrock Agent exists |
+| `--framework <fw>`      | `Strands` or `LangChain_LangGraph`        |
+| `--memory <opt>`        | `none`, `shortTerm`, `longAndShortTerm`   |
+
 ## Bring Your Own (BYO) Agent
 
 For existing agent code or frameworks not listed above, use the BYO option:

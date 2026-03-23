@@ -86,8 +86,9 @@ export const ExternallyManagedResourceSchema = z.object({
 export type ExternallyManagedResource = z.infer<typeof ExternallyManagedResourceSchema>;
 
 export const CustomJwtAuthorizerSchema = ExternallyManagedResourceSchema.extend({
-  allowedAudience: z.array(z.string()),
-  allowedClients: z.array(z.string()),
+  allowedAudience: z.array(z.string()).optional(),
+  allowedClients: z.array(z.string()).optional(),
+  allowedScopes: z.array(z.string()).optional(),
   discoveryUrl: z.string(),
 });
 
@@ -106,6 +107,29 @@ export const ExternallyManagedStateSchema = z.object({
 });
 
 export type ExternallyManagedState = z.infer<typeof ExternallyManagedStateSchema>;
+
+// ============================================================================
+// Policy Engine Deployed State
+// ============================================================================
+
+export const PolicyEngineDeployedStateSchema = z.object({
+  policyEngineId: z.string().min(1),
+  policyEngineArn: z.string().min(1),
+});
+
+export type PolicyEngineDeployedState = z.infer<typeof PolicyEngineDeployedStateSchema>;
+
+// ============================================================================
+// Policy Deployed State
+// ============================================================================
+
+export const PolicyDeployedStateSchema = z.object({
+  policyId: z.string().min(1),
+  policyArn: z.string().min(1),
+  engineName: z.string().min(1),
+});
+
+export type PolicyDeployedState = z.infer<typeof PolicyDeployedStateSchema>;
 
 // ============================================================================
 // Credential Deployed State
@@ -154,6 +178,8 @@ export const DeployedResourceStateSchema = z.object({
   credentials: z.record(z.string(), CredentialDeployedStateSchema).optional(),
   evaluators: z.record(z.string(), EvaluatorDeployedStateSchema).optional(),
   onlineEvalConfigs: z.record(z.string(), OnlineEvalDeployedStateSchema).optional(),
+  policyEngines: z.record(z.string(), PolicyEngineDeployedStateSchema).optional(),
+  policies: z.record(z.string(), PolicyDeployedStateSchema).optional(),
   stackName: z.string().optional(),
   identityKmsKeyArn: z.string().optional(),
 });

@@ -39,6 +39,7 @@ Note: CDK L3 constructs are in a separate package `@aws/agentcore-cdk`.
 - `traces list` - List recent traces for a deployed agent
 - `traces get` - Download a trace to a JSON file
 - `package` - Package agent artifacts without deploying (zip for CodeZip, container image build for Container)
+- `tag` - Manage resource tags (list, add, remove, set-defaults, remove-defaults)
 - `validate` - Validate configuration files
 - `update` - Check for CLI updates
 - `help` - Display help information
@@ -48,6 +49,7 @@ Note: CDK L3 constructs are in a separate package `@aws/agentcore-cdk`.
 - **Template agents**: Created from framework templates (Strands, LangChain_LangGraph, CrewAI, GoogleADK, OpenAIAgents,
   AutoGen)
 - **BYO agents**: Bring your own code with `agentcore add agent --type byo`
+- **Imported agents**: Import from Bedrock Agents with `agentcore add agent --type import`
 
 ### Build Types
 

@@ -3,6 +3,8 @@ import {
   useRemovableGateways,
   useRemovableIdentities,
   useRemovableMemories,
+  useRemovablePolicies,
+  useRemovablePolicyEngines,
   useRemoveAgent,
 } from '../useRemove.js';
 import { Text } from 'ink';
@@ -26,6 +28,12 @@ const mockMemoryPreviewRemove = vi.fn();
 const mockCredentialGetRemovable = vi.fn();
 const mockCredentialRemove = vi.fn();
 const mockCredentialPreviewRemove = vi.fn();
+const mockPolicyEngineGetRemovable = vi.fn();
+const mockPolicyEngineRemove = vi.fn();
+const mockPolicyEnginePreviewRemove = vi.fn();
+const mockPolicyGetRemovable = vi.fn();
+const mockPolicyRemove = vi.fn();
+const mockPolicyPreviewRemove = vi.fn();
 
 vi.mock('../../../primitives/registry', () => ({
   agentPrimitive: {
@@ -52,6 +60,16 @@ vi.mock('../../../primitives/registry', () => ({
     getRemovable: (...args: unknown[]) => mockCredentialGetRemovable(...args),
     remove: (...args: unknown[]) => mockCredentialRemove(...args),
     previewRemove: (...args: unknown[]) => mockCredentialPreviewRemove(...args),
+  },
+  policyEnginePrimitive: {
+    getRemovable: (...args: unknown[]) => mockPolicyEngineGetRemovable(...args),
+    remove: (...args: unknown[]) => mockPolicyEngineRemove(...args),
+    previewRemove: (...args: unknown[]) => mockPolicyEnginePreviewRemove(...args),
+  },
+  policyPrimitive: {
+    getRemovable: (...args: unknown[]) => mockPolicyGetRemovable(...args),
+    remove: (...args: unknown[]) => mockPolicyRemove(...args),
+    previewRemove: (...args: unknown[]) => mockPolicyPreviewRemove(...args),
   },
 }));
 
@@ -119,6 +137,24 @@ function RemoveAgentHarness({ agentName }: { agentName?: string }) {
   return (
     <Text>
       loading:{String(isLoading)} result:{result ? (result.success ? 'ok' : 'fail') : 'null'}
+    </Text>
+  );
+}
+
+function RemovablePolicyEnginesHarness() {
+  const { policyEngines, isLoading } = useRemovablePolicyEngines();
+  return (
+    <Text>
+      loading:{String(isLoading)} count:{policyEngines.length}
+    </Text>
+  );
+}
+
+function RemovablePoliciesHarness() {
+  const { policies, isLoading } = useRemovablePolicies();
+  return (
+    <Text>
+      loading:{String(isLoading)} count:{policies.length}
     </Text>
   );
 }
@@ -196,6 +232,33 @@ describe('useRemovableIdentities', () => {
 
     expect(lastFrame()).toContain('loading:false');
     expect(lastFrame()).toContain('count:1');
+  });
+});
+
+describe('useRemovablePolicyEngines', () => {
+  it('loads policy engines', async () => {
+    mockPolicyEngineGetRemovable.mockResolvedValue([{ name: 'engine-1' }, { name: 'engine-2' }]);
+    const { lastFrame } = render(<RemovablePolicyEnginesHarness />);
+
+    await delay();
+
+    expect(lastFrame()).toContain('loading:false');
+    expect(lastFrame()).toContain('count:2');
+  });
+});
+
+describe('useRemovablePolicies', () => {
+  it('loads policies', async () => {
+    mockPolicyGetRemovable.mockResolvedValue([
+      { name: 'engine-1/policy-a', engineName: 'engine-1' },
+      { name: 'engine-1/policy-b', engineName: 'engine-1' },
+    ]);
+    const { lastFrame } = render(<RemovablePoliciesHarness />);
+
+    await delay();
+
+    expect(lastFrame()).toContain('loading:false');
+    expect(lastFrame()).toContain('count:2');
   });
 });
 

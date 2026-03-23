@@ -31,11 +31,16 @@ function createDefaultProjectSpec(projectName: string): AgentCoreProjectSpec {
   return {
     name: projectName,
     version: 1,
+    tags: {
+      'agentcore:created-by': 'agentcore-cli',
+      'agentcore:project-name': projectName,
+    },
     agents: [],
     memories: [],
     credentials: [],
     evaluators: [],
     onlineEvalConfigs: [],
+    policyEngines: [],
   };
 }
 
@@ -77,6 +82,15 @@ export function useRemoveFlow({ force, dryRun }: RemoveFlowOptions): RemoveFlowS
         }
         if (projectSpec.credentials && projectSpec.credentials.length > 0) {
           items.push(`${projectSpec.credentials.length} credential${projectSpec.credentials.length > 1 ? 's' : ''}`);
+        }
+        if (projectSpec.policyEngines && projectSpec.policyEngines.length > 0) {
+          items.push(
+            `${projectSpec.policyEngines.length} policy engine${projectSpec.policyEngines.length > 1 ? 's' : ''}`
+          );
+          const totalPolicies = projectSpec.policyEngines.reduce((sum, e) => sum + (e.policies?.length ?? 0), 0);
+          if (totalPolicies > 0) {
+            items.push(`${totalPolicies} polic${totalPolicies > 1 ? 'ies' : 'y'}`);
+          }
         }
       } catch {
         // Project exists but has issues - still allow reset

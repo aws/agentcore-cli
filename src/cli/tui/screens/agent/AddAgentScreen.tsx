@@ -1,11 +1,14 @@
 import { APP_DIR, ConfigIO } from '../../../../lib';
-import type { ModelProvider, NetworkMode } from '../../../../schema';
+import type { ModelProvider, NetworkMode, SDKFramework } from '../../../../schema';
 import { AgentNameSchema, DEFAULT_MODEL_IDS } from '../../../../schema';
+import { listBedrockAgentAliases, listBedrockAgents } from '../../../aws/bedrock-import';
+import type { BedrockAgentSummary, BedrockAliasSummary } from '../../../aws/bedrock-import-types';
 import {
   parseCommaSeparatedList,
   validateSecurityGroupIds,
   validateSubnetIds,
 } from '../../../commands/shared/vpc-utils';
+import { BEDROCK_REGIONS, IMPORT_FRAMEWORK_OPTIONS } from '../../../operations/agent/import/constants';
 import { computeDefaultCredentialEnvVarName } from '../../../primitives/credential-utils';
 import {
   ApiKeySecretInput,
@@ -22,8 +25,9 @@ import { HELP_TEXT } from '../../constants';
 import { useListNavigation, useProject } from '../../hooks';
 import { generateUniqueName } from '../../utils';
 import { BUILD_TYPE_OPTIONS, GenerateWizardUI, getWizardHelpText, useGenerateWizard } from '../generate';
-import type { BuildType } from '../generate';
-import type { AddAgentConfig, AgentType } from './types';
+import type { BuildType, MemoryOption } from '../generate';
+import { ADVANCED_OPTIONS, MEMORY_OPTIONS } from '../generate/types';
+import type { AddAgentConfig, AddAgentStep, AgentType } from './types';
 import {
   ADD_AGENT_STEP_LABELS,
   AGENT_TYPE_OPTIONS,
@@ -33,7 +37,8 @@ import {
   NETWORK_MODE_OPTIONS,
 } from './types';
 import { Box, Text, useInput } from 'ink';
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import Spinner from 'ink-spinner';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 // Helper to get provider display name and env var name from ModelProvider
 function getProviderInfo(provider: ModelProvider): { name: string; envVarName: string } {
@@ -63,22 +68,22 @@ type ByoStep =
   | 'buildType'
   | 'modelProvider'
   | 'apiKey'
+  | 'advanced'
   | 'networkMode'
   | 'subnets'
   | 'securityGroups'
   | 'confirm';
 
 const INITIAL_STEPS: InitialStep[] = ['name', 'agentType'];
-const BYO_STEPS: ByoStep[] = [
-  'codeLocation',
-  'buildType',
-  'modelProvider',
-  'apiKey',
-  'networkMode',
-  'subnets',
-  'securityGroups',
-  'confirm',
-];
+const ADVANCED_ITEMS: SelectableItem[] = ADVANCED_OPTIONS.map(o => ({
+  id: o.id,
+  title: o.title,
+  description: o.description,
+}));
+const BYO_STEPS: ByoStep[] = ['codeLocation', 'buildType', 'modelProvider', 'apiKey', 'advanced', 'confirm'];
+
+type ImportStep = 'region' | 'bedrockAgent' | 'bedrockAlias' | 'framework' | 'memory' | 'confirm';
+const IMPORT_STEPS: ImportStep[] = ['region', 'bedrockAgent', 'bedrockAlias', 'framework', 'memory', 'confirm'];
 
 export function AddAgentScreen({ existingAgentNames, onComplete, onExit }: AddAgentScreenProps) {
   // Phase 1: name + agentType selection
@@ -102,6 +107,7 @@ export function AddAgentScreen({ existingAgentNames, onComplete, onExit }: AddAg
     subnets: '' as string,
     securityGroups: '' as string,
   });
+  const [byoAdvancedSelected, setByoAdvancedSelected] = useState(false);
 
   const { project } = useProject();
 
@@ -122,10 +128,31 @@ export function AddAgentScreen({ existingAgentNames, onComplete, onExit }: AddAg
     void fetchProjectName();
   }, []);
 
+  // Phase 2 (import path): Import-specific state
+  const [importStep, setImportStep] = useState<ImportStep>('region');
+  const [importConfig, setImportConfig] = useState({
+    region: '',
+    bedrockAgentId: '',
+    bedrockAgentName: '',
+    bedrockAliasId: '',
+    bedrockAliasName: '',
+    framework: 'Strands' as SDKFramework,
+    memory: 'none' as MemoryOption,
+  });
+  const importConfigRef = useRef(importConfig);
+  useEffect(() => {
+    importConfigRef.current = importConfig;
+  }, [importConfig]);
+  const [bedrockAgents, setBedrockAgents] = useState<BedrockAgentSummary[]>([]);
+  const [bedrockAliases, setBedrockAliases] = useState<BedrockAliasSummary[]>([]);
+  const [importLoading, setImportLoading] = useState(false);
+  const [importError, setImportError] = useState<string | null>(null);
+
   // Determine which phase/path we're in
   const isInitialPhase = agentType === null;
   const isCreatePath = agentType === 'create';
   const isByoPath = agentType === 'byo';
+  const isImportPath = agentType === 'import';
 
   // ─────────────────────────────────────────────────────────────────────────────
   // Initial Phase: name + agentType
@@ -151,6 +178,7 @@ export function AddAgentScreen({ existingAgentNames, onComplete, onExit }: AddAg
         // Initialize BYO code location with app/<name>/ to match project convention
         setByoConfig(c => ({ ...c, codeLocation: `${APP_DIR}/${name}/` }));
       }
+      // Import path starts at 'region' step by default
     },
     [name, generateWizard]
   );
@@ -210,11 +238,15 @@ export function AddAgentScreen({ existingAgentNames, onComplete, onExit }: AddAg
     if (byoConfig.modelProvider === 'Bedrock') {
       steps = steps.filter(s => s !== 'apiKey');
     }
-    if (byoConfig.networkMode !== 'VPC') {
-      steps = steps.filter(s => s !== 'subnets' && s !== 'securityGroups');
+    if (byoAdvancedSelected) {
+      const advancedIndex = steps.indexOf('advanced');
+      const afterAdvanced = advancedIndex + 1;
+      const networkSteps: ByoStep[] =
+        byoConfig.networkMode === 'VPC' ? ['networkMode', 'subnets', 'securityGroups'] : ['networkMode'];
+      steps = [...steps.slice(0, afterAdvanced), ...networkSteps, ...steps.slice(afterAdvanced)];
     }
     return steps;
-  }, [byoConfig.modelProvider, byoConfig.networkMode]);
+  }, [byoConfig.modelProvider, byoConfig.networkMode, byoAdvancedSelected]);
 
   const byoCurrentIndex = byoSteps.indexOf(byoStep);
 
@@ -292,7 +324,7 @@ export function AddAgentScreen({ existingAgentNames, onComplete, onExit }: AddAg
       if (provider !== 'Bedrock') {
         setByoStep('apiKey');
       } else {
-        setByoStep('networkMode');
+        setByoStep('advanced');
       }
     },
     onExit: handleByoBack,
@@ -309,6 +341,22 @@ export function AddAgentScreen({ existingAgentNames, onComplete, onExit }: AddAg
       })),
     []
   );
+
+  const advancedNav = useListNavigation({
+    items: ADVANCED_ITEMS,
+    onSelect: item => {
+      if (item.id === 'yes') {
+        setByoAdvancedSelected(true);
+        setByoStep('networkMode');
+      } else {
+        setByoAdvancedSelected(false);
+        setByoConfig(c => ({ ...c, networkMode: 'PUBLIC' as NetworkMode, subnets: '', securityGroups: '' }));
+        setByoStep('confirm');
+      }
+    },
+    onExit: handleByoBack,
+    isActive: isByoPath && byoStep === 'advanced',
+  });
 
   const networkModeNav = useListNavigation({
     items: networkModeItems,
@@ -333,6 +381,163 @@ export function AddAgentScreen({ existingAgentNames, onComplete, onExit }: AddAg
   });
 
   // ─────────────────────────────────────────────────────────────────────────────
+  // Import Path
+  // ─────────────────────────────────────────────────────────────────────────────
+
+  const importCurrentIndex = IMPORT_STEPS.indexOf(importStep);
+
+  const handleImportBack = useCallback(() => {
+    if (importCurrentIndex === 0) {
+      setAgentType(null);
+      setInitialStep('agentType');
+    } else {
+      const prevStep = IMPORT_STEPS[importCurrentIndex - 1];
+      if (prevStep) setImportStep(prevStep);
+    }
+  }, [importCurrentIndex]);
+
+  // Region selection items
+  const regionItems: SelectableItem[] = useMemo(
+    () => BEDROCK_REGIONS.map(r => ({ id: r.id, title: `${r.title} (${r.id})` })),
+    []
+  );
+
+  const regionNav = useListNavigation({
+    items: regionItems,
+    onSelect: item => {
+      setImportConfig(c => ({ ...c, region: item.id }));
+      setImportStep('bedrockAgent');
+      setImportLoading(true);
+      setImportError(null);
+      void listBedrockAgents(item.id)
+        .then(agents => {
+          setBedrockAgents(agents);
+          setImportLoading(false);
+        })
+        .catch(err => {
+          setImportError(err instanceof Error ? err.message : 'Failed to list agents');
+          setImportLoading(false);
+        });
+    },
+    onExit: handleImportBack,
+    isActive: isImportPath && importStep === 'region',
+  });
+
+  // Agent selection items
+  const agentItems: SelectableItem[] = useMemo(
+    () =>
+      bedrockAgents.map(a => ({
+        id: a.agentId,
+        title: a.agentName || a.agentId,
+        description: a.description,
+      })),
+    [bedrockAgents]
+  );
+
+  const agentNav = useListNavigation({
+    items: agentItems,
+    onSelect: item => {
+      const selected = bedrockAgents.find(a => a.agentId === item.id);
+      setImportConfig(c => ({ ...c, bedrockAgentId: item.id, bedrockAgentName: selected?.agentName ?? item.id }));
+      setImportStep('bedrockAlias');
+      setImportLoading(true);
+      setImportError(null);
+      void listBedrockAgentAliases(importConfigRef.current.region, item.id)
+        .then(aliases => {
+          setBedrockAliases(aliases);
+          setImportLoading(false);
+        })
+        .catch(err => {
+          setImportError(err instanceof Error ? err.message : 'Failed to list aliases');
+          setImportLoading(false);
+        });
+    },
+    onExit: handleImportBack,
+    isActive: isImportPath && importStep === 'bedrockAgent' && !importLoading,
+  });
+
+  // Alias selection items
+  const aliasItems: SelectableItem[] = useMemo(
+    () =>
+      bedrockAliases.map(a => ({
+        id: a.aliasId,
+        title: a.aliasName || a.aliasId,
+        description: a.description,
+      })),
+    [bedrockAliases]
+  );
+
+  const aliasNav = useListNavigation({
+    items: aliasItems,
+    onSelect: item => {
+      const selected = bedrockAliases.find(a => a.aliasId === item.id);
+      setImportConfig(c => ({ ...c, bedrockAliasId: item.id, bedrockAliasName: selected?.aliasName ?? item.id }));
+      setImportStep('framework');
+    },
+    onExit: handleImportBack,
+    isActive: isImportPath && importStep === 'bedrockAlias' && !importLoading,
+  });
+
+  // Framework selection for import (subset)
+  const importFrameworkItems: SelectableItem[] = useMemo(
+    () => IMPORT_FRAMEWORK_OPTIONS.map(o => ({ id: o.id, title: o.title, description: o.description })),
+    []
+  );
+
+  const importFrameworkNav = useListNavigation({
+    items: importFrameworkItems,
+    onSelect: item => {
+      setImportConfig(c => ({ ...c, framework: item.id as SDKFramework }));
+      setImportStep('memory');
+    },
+    onExit: handleImportBack,
+    isActive: isImportPath && importStep === 'framework',
+  });
+
+  // Memory selection for import (reuse MEMORY_OPTIONS)
+  const importMemoryItems: SelectableItem[] = useMemo(
+    () => MEMORY_OPTIONS.map(o => ({ id: o.id, title: o.title, description: o.description })),
+    []
+  );
+
+  const importMemoryNav = useListNavigation({
+    items: importMemoryItems,
+    onSelect: item => {
+      setImportConfig(c => ({ ...c, memory: item.id as MemoryOption }));
+      setImportStep('confirm');
+    },
+    onExit: handleImportBack,
+    isActive: isImportPath && importStep === 'memory',
+  });
+
+  const handleImportComplete = useCallback(() => {
+    const config: AddAgentConfig = {
+      name,
+      agentType: 'import',
+      codeLocation: `${APP_DIR}/${name}/`,
+      entrypoint: 'main.py',
+      language: 'Python',
+      buildType: 'CodeZip',
+      protocol: 'HTTP',
+      framework: importConfig.framework,
+      modelProvider: 'Bedrock',
+      pythonVersion: DEFAULT_PYTHON_VERSION,
+      memory: importConfig.memory,
+      bedrockAgentId: importConfig.bedrockAgentId,
+      bedrockAliasId: importConfig.bedrockAliasId,
+      bedrockRegion: importConfig.region,
+    };
+    onComplete(config);
+  }, [name, importConfig, onComplete]);
+
+  useListNavigation({
+    items: [{ id: 'confirm', title: 'Confirm' }],
+    onSelect: handleImportComplete,
+    onExit: handleImportBack,
+    isActive: isImportPath && importStep === 'confirm',
+  });
+
+  // ─────────────────────────────────────────────────────────────────────────────
   // Render
   // ─────────────────────────────────────────────────────────────────────────────
 
@@ -343,6 +548,10 @@ export function AddAgentScreen({ existingAgentNames, onComplete, onExit }: AddAg
     }
     if (isCreatePath) {
       return getWizardHelpText(generateWizard.step);
+    }
+    if (isImportPath) {
+      if (importStep === 'confirm') return HELP_TEXT.CONFIRM_CANCEL;
+      return HELP_TEXT.NAVIGATE_SELECT;
     }
     // BYO path
     if (byoStep === 'codeLocation' || byoStep === 'apiKey' || byoStep === 'subnets' || byoStep === 'securityGroups') {
@@ -370,6 +579,10 @@ export function AddAgentScreen({ existingAgentNames, onComplete, onExit }: AddAg
           labels={{ ...ADD_AGENT_STEP_LABELS, sdk: 'Framework' }}
         />
       );
+    }
+    if (isImportPath) {
+      const allSteps: AddAgentStep[] = ['name', 'agentType', ...IMPORT_STEPS];
+      return <StepIndicator steps={allSteps} currentStep={importStep} labels={ADD_AGENT_STEP_LABELS} />;
     }
     // BYO path
     const allSteps = ['name', 'agentType', ...byoSteps] as const;
@@ -433,6 +646,91 @@ export function AddAgentScreen({ existingAgentNames, onComplete, onExit }: AddAg
     );
   }
 
+  // Import path
+  if (isImportPath) {
+    return (
+      <Screen
+        title="Add Agent"
+        onExit={onExit}
+        helpText={getHelpText()}
+        headerContent={renderStepIndicator()}
+        exitEnabled={false}
+      >
+        <Panel>
+          {importStep === 'region' && (
+            <WizardSelect title="Select AWS region" items={regionItems} selectedIndex={regionNav.selectedIndex} />
+          )}
+
+          {importStep === 'bedrockAgent' && importLoading && (
+            <Box>
+              <Spinner type="dots" />
+              <Text> Loading agents...</Text>
+            </Box>
+          )}
+          {importStep === 'bedrockAgent' && importError && <Text color="red">Error: {importError}</Text>}
+          {importStep === 'bedrockAgent' && !importLoading && !importError && agentItems.length === 0 && (
+            <Text color="yellow">No agents found in {importConfig.region}. Press Esc to go back.</Text>
+          )}
+          {importStep === 'bedrockAgent' && !importLoading && !importError && agentItems.length > 0 && (
+            <WizardSelect title="Select Bedrock Agent" items={agentItems} selectedIndex={agentNav.selectedIndex} />
+          )}
+
+          {importStep === 'bedrockAlias' && importLoading && (
+            <Box>
+              <Spinner type="dots" />
+              <Text> Loading aliases...</Text>
+            </Box>
+          )}
+          {importStep === 'bedrockAlias' && importError && <Text color="red">Error: {importError}</Text>}
+          {importStep === 'bedrockAlias' && !importLoading && !importError && aliasItems.length === 0 && (
+            <Text color="yellow">No aliases found. Press Esc to go back.</Text>
+          )}
+          {importStep === 'bedrockAlias' && !importLoading && !importError && aliasItems.length > 0 && (
+            <WizardSelect title="Select Agent Alias" items={aliasItems} selectedIndex={aliasNav.selectedIndex} />
+          )}
+
+          {importStep === 'framework' && (
+            <WizardSelect
+              title="Select framework"
+              items={importFrameworkItems}
+              selectedIndex={importFrameworkNav.selectedIndex}
+            />
+          )}
+
+          {importStep === 'memory' && (
+            <WizardSelect
+              title="Select memory configuration"
+              items={importMemoryItems}
+              selectedIndex={importMemoryNav.selectedIndex}
+            />
+          )}
+
+          {importStep === 'confirm' && (
+            <ConfirmReview
+              fields={[
+                { label: 'Name', value: name },
+                { label: 'Type', value: 'Import from Bedrock Agents' },
+                { label: 'Region', value: importConfig.region },
+                { label: 'Bedrock Agent', value: `${importConfig.bedrockAgentName} (${importConfig.bedrockAgentId})` },
+                { label: 'Alias', value: `${importConfig.bedrockAliasName} (${importConfig.bedrockAliasId})` },
+                {
+                  label: 'Framework',
+                  value:
+                    IMPORT_FRAMEWORK_OPTIONS.find(o => o.id === importConfig.framework)?.title ??
+                    importConfig.framework,
+                },
+                {
+                  label: 'Memory',
+                  value: MEMORY_OPTIONS.find(o => o.id === importConfig.memory)?.title ?? importConfig.memory,
+                },
+              ]}
+            />
+          )}
+        </Panel>
+      </Screen>
+    );
+  }
+
   // BYO path
   // Disable Screen's exit handler - sub-components handle their own back navigation via handleByoBack
   const byoExitEnabled = false;
@@ -477,10 +775,18 @@ export function AddAgentScreen({ existingAgentNames, onComplete, onExit }: AddAg
             envVarName={getProviderInfo(byoConfig.modelProvider).envVarName}
             onSubmit={apiKey => {
               setByoConfig(c => ({ ...c, apiKey }));
-              setByoStep('networkMode');
+              setByoStep('advanced');
             }}
-            onSkip={() => setByoStep('networkMode')}
+            onSkip={() => setByoStep('advanced')}
             onCancel={handleByoBack}
+          />
+        )}
+
+        {byoStep === 'advanced' && (
+          <WizardSelect
+            title="Configure advanced settings?"
+            items={ADVANCED_ITEMS}
+            selectedIndex={advancedNav.selectedIndex}
           />
         )}
 

@@ -85,18 +85,49 @@ describe('CustomJwtAuthorizerConfigSchema', () => {
     expect(result.success).toBe(false);
   });
 
-  it('rejects empty allowedClients', () => {
+  it('rejects HTTP discovery URL (HTTPS required)', () => {
     const result = CustomJwtAuthorizerConfigSchema.safeParse({
       ...validConfig,
-      allowedClients: [],
+      discoveryUrl: 'http://cognito-idp.us-east-1.amazonaws.com/pool123/.well-known/openid-configuration',
     });
     expect(result.success).toBe(false);
   });
 
-  it('accepts empty allowedAudience (no audience validation)', () => {
+  it('rejects unknown fields (strict)', () => {
     const result = CustomJwtAuthorizerConfigSchema.safeParse({
       ...validConfig,
-      allowedAudience: [],
+      unknownField: 'not allowed',
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it('accepts config with only allowedScopes (audience and clients optional)', () => {
+    const result = CustomJwtAuthorizerConfigSchema.safeParse({
+      discoveryUrl: validConfig.discoveryUrl,
+      allowedScopes: ['read', 'write'],
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it('rejects config with no audience, clients, or scopes', () => {
+    const result = CustomJwtAuthorizerConfigSchema.safeParse({
+      discoveryUrl: validConfig.discoveryUrl,
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it('accepts config with only allowedClients', () => {
+    const result = CustomJwtAuthorizerConfigSchema.safeParse({
+      discoveryUrl: validConfig.discoveryUrl,
+      allowedClients: ['client-id-1'],
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it('accepts config with only allowedAudience', () => {
+    const result = CustomJwtAuthorizerConfigSchema.safeParse({
+      discoveryUrl: validConfig.discoveryUrl,
+      allowedAudience: ['aud-1'],
     });
     expect(result.success).toBe(true);
   });

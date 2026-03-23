@@ -16,6 +16,14 @@ export {
 export { streamLogs, searchLogs, type LogEvent, type StreamLogsOptions, type SearchLogsOptions } from './cloudwatch';
 export { enableTransactionSearch, type TransactionSearchEnableResult } from './transaction-search';
 export {
+  startPolicyGeneration,
+  getPolicyGeneration,
+  type StartPolicyGenerationOptions,
+  type StartPolicyGenerationResult,
+  type GetPolicyGenerationOptions,
+  type GetPolicyGenerationResult,
+} from './policy-generation';
+export {
   DEFAULT_RUNTIME_USER_ID,
   invokeA2ARuntime,
   invokeAgentRuntime,

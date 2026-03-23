@@ -8,6 +8,8 @@ import {
   parseGatewayOutputs,
   parseMemoryOutputs,
   parseOnlineEvalOutputs,
+  parsePolicyEngineOutputs,
+  parsePolicyOutputs,
 } from '../../../cloudformation';
 import { getErrorMessage, isChangesetInProgressError, isExpiredTokenError } from '../../../errors';
 import { ExecLogger } from '../../../logging';
@@ -270,6 +272,17 @@ export function useDeployFlow(options: DeployFlowOptions = {}): DeployFlowState 
     const onlineEvalNames = (ctx.projectSpec.onlineEvalConfigs ?? []).map((c: { name: string }) => c.name);
     const onlineEvalConfigs = parseOnlineEvalOutputs(outputs, onlineEvalNames);
 
+    // Parse policy engine outputs
+    const policyEngineSpecs = ctx.projectSpec.policyEngines ?? [];
+    const policyEngineNames = policyEngineSpecs.map((pe: { name: string }) => pe.name);
+    const policyEngines = parsePolicyEngineOutputs(outputs, policyEngineNames);
+
+    // Parse policy outputs
+    const policySpecs = policyEngineSpecs.flatMap((pe: { name: string; policies: { name: string }[] }) =>
+      pe.policies.map(p => ({ engineName: pe.name, policyName: p.name }))
+    );
+    const policies = parsePolicyOutputs(outputs, policySpecs);
+
     // Expose outputs to UI
     setStackOutputs(outputs);
 
@@ -285,6 +298,8 @@ export function useDeployFlow(options: DeployFlowOptions = {}): DeployFlowState 
       evaluators,
       onlineEvalConfigs,
       credentials: Object.keys(allCredentials).length > 0 ? allCredentials : undefined,
+      policyEngines,
+      policies,
     });
     await configIO.writeDeployedState(deployedState);
 

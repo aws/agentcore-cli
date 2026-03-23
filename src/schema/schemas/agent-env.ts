@@ -10,6 +10,7 @@ import {
   RuntimeVersionSchema as RuntimeVersionSchemaFromConstants,
 } from '../constants';
 import type { DirectoryPath, FilePath } from '../types';
+import { TagsSchema } from './primitives/tags';
 import { z } from 'zod';
 
 // Re-export path types
@@ -144,6 +145,7 @@ export const AgentEnvSpecSchema = z
     modelProvider: ModelProviderSchema.optional(),
     /** Protocol for the runtime (HTTP, MCP, A2A). */
     protocol: ProtocolModeSchema.optional(),
+    tags: TagsSchema,
   })
   .superRefine((data, ctx) => {
     if (data.networkMode === 'VPC' && !data.networkConfig) {

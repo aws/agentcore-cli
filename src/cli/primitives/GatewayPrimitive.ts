@@ -1,6 +1,6 @@
 import { findConfigRoot, setEnvVar } from '../../lib';
 import type { AgentCoreGateway, AgentCoreGatewayTarget, AgentCoreMcpSpec, GatewayAuthorizerType } from '../../schema';
-import { AgentCoreGatewaySchema } from '../../schema';
+import { AgentCoreGatewaySchema, PolicyEngineModeSchema } from '../../schema';
 import type { AddGatewayOptions as CLIAddGatewayOptions } from '../commands/add/types';
 import { validateAddGatewayOptions } from '../commands/add/validate';
 import { getErrorMessage } from '../errors';
@@ -23,11 +23,13 @@ export interface AddGatewayOptions {
   allowedAudience?: string;
   allowedClients?: string;
   allowedScopes?: string;
-  agentClientId?: string;
-  agentClientSecret?: string;
+  clientId?: string;
+  clientSecret?: string;
   agents?: string;
   enableSemanticSearch?: boolean;
   exceptionLevel?: string;
+  policyEngine?: string;
+  policyEngineMode?: string;
 }
 
 /**
@@ -155,11 +157,13 @@ export class GatewayPrimitive extends BasePrimitive<AddGatewayOptions, Removable
       .option('--allowed-audience <audience>', 'Comma-separated allowed audiences (for CUSTOM_JWT)')
       .option('--allowed-clients <clients>', 'Comma-separated allowed client IDs (for CUSTOM_JWT)')
       .option('--allowed-scopes <scopes>', 'Comma-separated allowed scopes (for CUSTOM_JWT)')
-      .option('--agent-client-id <id>', 'Agent OAuth client ID')
-      .option('--agent-client-secret <secret>', 'Agent OAuth client secret')
+      .option('--client-id <id>', 'OAuth client ID for gateway bearer token')
+      .option('--client-secret <secret>', 'OAuth client secret')
       .option('--agents <agents>', 'Comma-separated agent names')
       .option('--no-semantic-search', 'Disable semantic search for tool discovery')
       .option('--exception-level <level>', 'Exception verbosity level', 'NONE')
+      .option('--policy-engine <name>', 'Policy engine name for Cedar-based authorization')
+      .option('--policy-engine-mode <mode>', 'Policy engine mode: LOG_ONLY or ENFORCE')
       .option('--json', 'Output as JSON')
       .action(async (rawOptions: Record<string, string | boolean | undefined>) => {
         const cliOptions = rawOptions as unknown as CLIAddGatewayOptions;
@@ -187,11 +191,13 @@ export class GatewayPrimitive extends BasePrimitive<AddGatewayOptions, Removable
             allowedAudience: cliOptions.allowedAudience,
             allowedClients: cliOptions.allowedClients,
             allowedScopes: cliOptions.allowedScopes,
-            agentClientId: cliOptions.agentClientId,
-            agentClientSecret: cliOptions.agentClientSecret,
+            clientId: cliOptions.clientId,
+            clientSecret: cliOptions.clientSecret,
             agents: cliOptions.agents,
             enableSemanticSearch: cliOptions.semanticSearch !== false,
             exceptionLevel: cliOptions.exceptionLevel,
+            policyEngine: cliOptions.policyEngine,
+            policyEngineMode: cliOptions.policyEngineMode,
           });
 
           if (cliOptions.json) {
@@ -290,33 +296,39 @@ export class GatewayPrimitive extends BasePrimitive<AddGatewayOptions, Removable
       jwtConfig: undefined,
       enableSemanticSearch: options.enableSemanticSearch ?? true,
       exceptionLevel: options.exceptionLevel === 'DEBUG' ? 'DEBUG' : 'NONE',
+      policyEngineConfiguration:
+        options.policyEngine && options.policyEngineMode
+          ? { policyEngineName: options.policyEngine, mode: PolicyEngineModeSchema.parse(options.policyEngineMode) }
+          : undefined,
     };
 
     if (options.authorizerType === 'CUSTOM_JWT' && options.discoveryUrl) {
+      const allowedAudience = options.allowedAudience
+        ? options.allowedAudience
+            .split(',')
+            .map(s => s.trim())
+            .filter(Boolean)
+        : undefined;
+      const allowedClients = options.allowedClients
+        ? options.allowedClients
+            .split(',')
+            .map(s => s.trim())
+            .filter(Boolean)
+        : undefined;
+      const allowedScopes = options.allowedScopes
+        ? options.allowedScopes
+            .split(',')
+            .map(s => s.trim())
+            .filter(Boolean)
+        : undefined;
+
       config.jwtConfig = {
         discoveryUrl: options.discoveryUrl,
-        allowedAudience: options.allowedAudience
-          ? options.allowedAudience
-              .split(',')
-              .map(s => s.trim())
-              .filter(Boolean)
-          : [],
-        allowedClients: options.allowedClients
-          ? options.allowedClients
-              .split(',')
-              .map(s => s.trim())
-              .filter(Boolean)
-          : [],
-        ...(options.allowedScopes
-          ? {
-              allowedScopes: options.allowedScopes
-                .split(',')
-                .map(s => s.trim())
-                .filter(Boolean),
-            }
-          : {}),
-        ...(options.agentClientId ? { agentClientId: options.agentClientId } : {}),
-        ...(options.agentClientSecret ? { agentClientSecret: options.agentClientSecret } : {}),
+        ...(allowedAudience?.length ? { allowedAudience } : {}),
+        ...(allowedClients?.length ? { allowedClients } : {}),
+        ...(allowedScopes?.length ? { allowedScopes } : {}),
+        ...(options.clientId ? { clientId: options.clientId } : {}),
+        ...(options.clientSecret ? { clientSecret: options.clientSecret } : {}),
       };
     }
 
@@ -358,13 +370,14 @@ export class GatewayPrimitive extends BasePrimitive<AddGatewayOptions, Removable
       authorizerConfiguration: this.buildAuthorizerConfiguration(config),
       enableSemanticSearch: config.enableSemanticSearch,
       exceptionLevel: config.exceptionLevel,
+      policyEngineConfiguration: config.policyEngineConfiguration,
     };
 
     mcpSpec.agentCoreGateways.push(gateway);
     await this.configIO.writeMcpSpec(mcpSpec);
 
-    // Auto-create OAuth credential if agent client credentials are provided
-    if (config.jwtConfig?.agentClientId && config.jwtConfig?.agentClientSecret) {
+    // Auto-create OAuth credential if client credentials are provided
+    if (config.jwtConfig?.clientId && config.jwtConfig?.clientSecret) {
       await this.createManagedOAuthCredential(config.name, config.jwtConfig);
     }
 
@@ -399,7 +412,7 @@ export class GatewayPrimitive extends BasePrimitive<AddGatewayOptions, Removable
 
     // Write client secret to .env
     const envVarName = computeDefaultCredentialEnvVarName(credentialName);
-    await setEnvVar(envVarName, jwtConfig.agentClientSecret!);
+    await setEnvVar(envVarName, jwtConfig.clientSecret!);
   }
 
   /**
@@ -413,11 +426,9 @@ export class GatewayPrimitive extends BasePrimitive<AddGatewayOptions, Removable
     return {
       customJwtAuthorizer: {
         discoveryUrl: config.jwtConfig.discoveryUrl,
-        allowedAudience: config.jwtConfig.allowedAudience,
-        allowedClients: config.jwtConfig.allowedClients,
-        ...(config.jwtConfig.allowedScopes && config.jwtConfig.allowedScopes.length > 0
-          ? { allowedScopes: config.jwtConfig.allowedScopes }
-          : {}),
+        ...(config.jwtConfig.allowedAudience?.length ? { allowedAudience: config.jwtConfig.allowedAudience } : {}),
+        ...(config.jwtConfig.allowedClients?.length ? { allowedClients: config.jwtConfig.allowedClients } : {}),
+        ...(config.jwtConfig.allowedScopes?.length ? { allowedScopes: config.jwtConfig.allowedScopes } : {}),
       },
     };
   }

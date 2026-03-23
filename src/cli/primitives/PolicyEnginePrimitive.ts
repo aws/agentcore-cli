@@ -1,0 +1,379 @@
+import { findConfigRoot } from '../../lib';
+import type { AgentCoreProjectSpec, PolicyEngine } from '../../schema';
+import { PolicyEngineModeSchema, PolicyEngineSchema } from '../../schema';
+import { getErrorMessage } from '../errors';
+import type { RemovalPreview, RemovalResult, SchemaChange } from '../operations/remove/types';
+import { BasePrimitive } from './BasePrimitive';
+import { SOURCE_CODE_NOTE } from './constants';
+import type { AddResult, AddScreenComponent, RemovableResource } from './types';
+import type { Command } from '@commander-js/extra-typings';
+
+export interface AddPolicyEngineOptions {
+  name: string;
+  description?: string;
+  encryptionKeyArn?: string;
+}
+
+export class PolicyEnginePrimitive extends BasePrimitive<AddPolicyEngineOptions, RemovableResource> {
+  readonly kind = 'policy-engine' as const;
+  readonly label = 'Policy Engine';
+  readonly primitiveSchema = PolicyEngineSchema;
+
+  async add(options: AddPolicyEngineOptions): Promise<AddResult<{ engineName: string }>> {
+    try {
+      const project = await this.readProjectSpec();
+
+      this.checkDuplicate(project.policyEngines, options.name);
+
+      const engine: PolicyEngine = {
+        name: options.name,
+        ...(options.description && { description: options.description }),
+        ...(options.encryptionKeyArn && { encryptionKeyArn: options.encryptionKeyArn }),
+        policies: [],
+      };
+
+      project.policyEngines.push(engine);
+      await this.writeProjectSpec(project);
+
+      return { success: true, engineName: engine.name };
+    } catch (err) {
+      return { success: false, error: getErrorMessage(err) };
+    }
+  }
+
+  async remove(engineName: string): Promise<RemovalResult> {
+    try {
+      const project = await this.readProjectSpec();
+
+      const index = project.policyEngines.findIndex(e => e.name === engineName);
+      if (index === -1) {
+        return { success: false, error: `Policy engine "${engineName}" not found.` };
+      }
+
+      project.policyEngines.splice(index, 1);
+      await this.writeProjectSpec(project);
+
+      // Clean up any gateway references to this engine in mcp.json
+      if (this.configIO.configExists('mcp')) {
+        const mcpSpec = await this.configIO.readMcpSpec();
+        let changed = false;
+        for (const gw of mcpSpec.agentCoreGateways) {
+          if (gw.policyEngineConfiguration?.policyEngineName === engineName) {
+            delete gw.policyEngineConfiguration;
+            changed = true;
+          }
+        }
+        if (changed) {
+          await this.configIO.writeMcpSpec(mcpSpec);
+        }
+      }
+
+      return { success: true };
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Unknown error';
+      return { success: false, error: message };
+    }
+  }
+
+  async previewRemove(engineName: string): Promise<RemovalPreview> {
+    const project = await this.readProjectSpec();
+
+    const engine = project.policyEngines.find(e => e.name === engineName);
+    if (!engine) {
+      throw new Error(`Policy engine "${engineName}" not found.`);
+    }
+
+    const summary: string[] = [`Removing policy engine: ${engineName}`];
+    if (engine.policies.length > 0) {
+      summary.push(`Note: ${engine.policies.length} policy(ies) within this engine will also be removed`);
+    }
+
+    const schemaChanges: SchemaChange[] = [];
+    const afterSpec: AgentCoreProjectSpec = {
+      ...project,
+      policyEngines: project.policyEngines.filter(e => e.name !== engineName),
+    };
+    schemaChanges.push({
+      file: 'agentcore/agentcore.json',
+      before: project,
+      after: afterSpec,
+    });
+
+    // Show mcp.json changes if any gateways reference this engine
+    if (this.configIO.configExists('mcp')) {
+      const mcpSpec = await this.configIO.readMcpSpec();
+      const affectedGateways = mcpSpec.agentCoreGateways.filter(
+        gw => gw.policyEngineConfiguration?.policyEngineName === engineName
+      );
+      if (affectedGateways.length > 0) {
+        summary.push(
+          `Note: ${affectedGateways.length} gateway(s) referencing this engine will have policyEngineConfiguration removed`
+        );
+        summary.push(
+          'Warning: this may grant agents escalated permissions to invoke gateway tools that were previously restricted'
+        );
+        const afterMcpSpec = {
+          ...mcpSpec,
+          agentCoreGateways: mcpSpec.agentCoreGateways.map(gw =>
+            gw.policyEngineConfiguration?.policyEngineName === engineName
+              ? { ...gw, policyEngineConfiguration: undefined }
+              : gw
+          ),
+        };
+        schemaChanges.push({
+          file: 'agentcore/mcp.json',
+          before: mcpSpec,
+          after: afterMcpSpec,
+        });
+      }
+    }
+
+    return { summary, directoriesToDelete: [], schemaChanges };
+  }
+
+  async getRemovable(): Promise<RemovableResource[]> {
+    try {
+      const project = await this.readProjectSpec();
+      return project.policyEngines.map(e => ({ name: e.name }));
+    } catch {
+      return [];
+    }
+  }
+
+  async getExistingEngines(): Promise<string[]> {
+    try {
+      const project = await this.readProjectSpec();
+      return project.policyEngines.map(e => e.name);
+    } catch {
+      return [];
+    }
+  }
+
+  /**
+   * Get gateway names that don't have a policy engine attached.
+   */
+  async getUnprotectedGateways(): Promise<string[]> {
+    try {
+      if (!this.configIO.configExists('mcp')) return [];
+      const mcpSpec = await this.configIO.readMcpSpec();
+      return mcpSpec.agentCoreGateways.filter(gw => !gw.policyEngineConfiguration).map(gw => gw.name);
+    } catch {
+      return [];
+    }
+  }
+
+  /**
+   * Attach a policy engine to the specified gateways in mcp.json.
+   */
+  async attachToGateways(engineName: string, gatewayNames: string[], mode: 'LOG_ONLY' | 'ENFORCE'): Promise<void> {
+    if (gatewayNames.length === 0 || !this.configIO.configExists('mcp')) return;
+    const mcpSpec = await this.configIO.readMcpSpec();
+    const nameSet = new Set(gatewayNames);
+    for (const gw of mcpSpec.agentCoreGateways) {
+      if (nameSet.has(gw.name)) {
+        gw.policyEngineConfiguration = { policyEngineName: engineName, mode };
+      }
+    }
+    await this.configIO.writeMcpSpec(mcpSpec);
+  }
+
+  async getDeployedEngineId(engineName: string): Promise<string | null> {
+    try {
+      const deployedState = await this.configIO.readDeployedState();
+      for (const target of Object.values(deployedState.targets)) {
+        const engineState = target.resources?.policyEngines?.[engineName];
+        if (engineState) {
+          return engineState.policyEngineId;
+        }
+      }
+      return null;
+    } catch {
+      return null;
+    }
+  }
+
+  async getDeployedGatewayArn(): Promise<string | null> {
+    const gateways = await this.getDeployedGateways();
+    const firstArn = Object.values(gateways)[0];
+    return firstArn ?? null;
+  }
+
+  async getDeployedGateways(): Promise<Record<string, string>> {
+    try {
+      const deployedState = await this.configIO.readDeployedState();
+      const result: Record<string, string> = {};
+      for (const target of Object.values(deployedState.targets)) {
+        const gateways = target.resources?.mcp?.gateways;
+        if (gateways) {
+          for (const [name, gw] of Object.entries(gateways)) {
+            if (gw?.gatewayArn) {
+              result[name] = gw.gatewayArn;
+            }
+          }
+        }
+      }
+      return result;
+    } catch {
+      return {};
+    }
+  }
+
+  registerCommands(addCmd: Command, removeCmd: Command): void {
+    addCmd
+      .command('policy-engine')
+      .description('Add a policy engine to the project')
+      .option('--name <name>', 'Policy engine name [non-interactive]')
+      .option('--description <desc>', 'Policy engine description [non-interactive]')
+      .option('--encryption-key-arn <arn>', 'KMS encryption key ARN [non-interactive]')
+      .option('--attach-to-gateways <gateways>', 'Comma-separated gateway names to attach this engine to')
+      .option('--attach-mode <mode>', 'Enforcement mode for attached gateways: LOG_ONLY or ENFORCE')
+      .option('--json', 'Output as JSON [non-interactive]')
+      .action(
+        async (cliOptions: {
+          name?: string;
+          description?: string;
+          encryptionKeyArn?: string;
+          attachToGateways?: string;
+          attachMode?: string;
+          json?: boolean;
+        }) => {
+          try {
+            if (!findConfigRoot()) {
+              console.error('No agentcore project found. Run `agentcore create` first.');
+              process.exit(1);
+            }
+
+            if (cliOptions.name || cliOptions.description || cliOptions.encryptionKeyArn || cliOptions.json) {
+              if (!cliOptions.name) {
+                if (cliOptions.json) {
+                  console.log(JSON.stringify({ success: false, error: '--name is required' }));
+                } else {
+                  console.error('--name is required');
+                }
+                process.exit(1);
+              }
+
+              const result = await this.add({
+                name: cliOptions.name,
+                description: cliOptions.description,
+                encryptionKeyArn: cliOptions.encryptionKeyArn,
+              });
+
+              // Attach to gateways if requested
+              if (result.success && cliOptions.attachToGateways) {
+                const mode = PolicyEngineModeSchema.parse(cliOptions.attachMode ?? 'LOG_ONLY');
+                const gateways = cliOptions.attachToGateways
+                  .split(',')
+                  .map(s => s.trim())
+                  .filter(Boolean);
+                await this.attachToGateways(cliOptions.name, gateways, mode);
+              }
+
+              if (cliOptions.json) {
+                console.log(JSON.stringify(result));
+              } else if (result.success) {
+                console.log(`Added policy engine '${result.engineName}'`);
+              } else {
+                console.error(result.error);
+              }
+              process.exit(result.success ? 0 : 1);
+            } else {
+              const [{ render }, { default: React }, { AddFlow }] = await Promise.all([
+                import('ink'),
+                import('react'),
+                import('../tui/screens/add/AddFlow'),
+              ]);
+              const { clear, unmount } = render(
+                React.createElement(AddFlow, {
+                  isInteractive: false,
+                  onExit: () => {
+                    clear();
+                    unmount();
+                    process.exit(0);
+                  },
+                })
+              );
+            }
+          } catch (error) {
+            if (cliOptions.json) {
+              console.log(JSON.stringify({ success: false, error: getErrorMessage(error) }));
+            } else {
+              console.error(`Error: ${getErrorMessage(error)}`);
+            }
+            process.exit(1);
+          }
+        }
+      );
+
+    removeCmd
+      .command('policy-engine')
+      .description('Remove a policy engine from the project')
+      .option('--name <name>', 'Name of resource to remove [non-interactive]')
+      .option('--force', 'Skip confirmation prompt [non-interactive]')
+      .option('--json', 'Output as JSON [non-interactive]')
+      .action(async (cliOptions: { name?: string; force?: boolean; json?: boolean }) => {
+        try {
+          if (!findConfigRoot()) {
+            console.error('No agentcore project found. Run `agentcore create` first.');
+            process.exit(1);
+          }
+
+          if (cliOptions.name || cliOptions.force || cliOptions.json) {
+            if (!cliOptions.name) {
+              console.log(JSON.stringify({ success: false, error: '--name is required' }));
+              process.exit(1);
+            }
+
+            const result = await this.remove(cliOptions.name);
+            if (cliOptions.json) {
+              console.log(
+                JSON.stringify({
+                  success: result.success,
+                  resourceType: this.kind,
+                  resourceName: cliOptions.name,
+                  message: result.success ? `Removed policy engine '${cliOptions.name}'` : undefined,
+                  note: result.success ? SOURCE_CODE_NOTE : undefined,
+                  error: !result.success ? result.error : undefined,
+                })
+              );
+            } else if (result.success) {
+              console.log(`Removed policy engine '${cliOptions.name}'`);
+            } else {
+              console.error(result.error);
+            }
+            process.exit(result.success ? 0 : 1);
+          } else {
+            const [{ render }, { default: React }, { RemoveFlow }] = await Promise.all([
+              import('ink'),
+              import('react'),
+              import('../tui/screens/remove'),
+            ]);
+            const { clear, unmount } = render(
+              React.createElement(RemoveFlow, {
+                isInteractive: false,
+                force: cliOptions.force,
+                initialResourceType: this.kind,
+                initialResourceName: cliOptions.name,
+                onExit: () => {
+                  clear();
+                  unmount();
+                  process.exit(0);
+                },
+              })
+            );
+          }
+        } catch (error) {
+          if (cliOptions.json) {
+            console.log(JSON.stringify({ success: false, error: getErrorMessage(error) }));
+          } else {
+            console.error(`Error: ${getErrorMessage(error)}`);
+          }
+          process.exit(1);
+        }
+      });
+  }
+
+  addScreen(): AddScreenComponent {
+    return null;
+  }
+}

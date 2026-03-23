@@ -8,6 +8,7 @@ import {
   mapModelProviderToIdentityProviders,
   writeAgentToProject,
 } from '../../../operations/agent/generate';
+import { executeImportAgent } from '../../../operations/agent/import';
 import { computeDefaultCredentialEnvVarName } from '../../../primitives/credential-utils';
 import { credentialPrimitive } from '../../../primitives/registry';
 import { createRenderer } from '../../../templates';
@@ -124,7 +125,9 @@ export function useAddAgent() {
       }
 
       // Branch based on agent type
-      if (config.agentType === 'create') {
+      if (config.agentType === 'import') {
+        return await handleImportPath(config, configBaseDir);
+      } else if (config.agentType === 'create') {
         return await handleCreatePath(config, configBaseDir);
       } else {
         return await handleByoPath(config, configIO, configBaseDir);
@@ -213,6 +216,41 @@ async function handleCreatePath(
     projectName: project.name,
     projectPath: agentPath,
     pythonSetupResult,
+  };
+}
+
+/**
+ * Handle the "import" path: import from Bedrock Agents.
+ */
+async function handleImportPath(
+  config: AddAgentConfig,
+  configBaseDir: string
+): Promise<AddAgentCreateResult | AddAgentError> {
+  const projectRoot = dirname(configBaseDir);
+  const configIO = new ConfigIO({ baseDir: configBaseDir });
+  const project = await configIO.readProjectSpec();
+  const agentPath = join(projectRoot, APP_DIR, config.name);
+
+  const result = await executeImportAgent({
+    name: config.name,
+    framework: config.framework,
+    memory: config.memory,
+    bedrockRegion: config.bedrockRegion!,
+    bedrockAgentId: config.bedrockAgentId!,
+    bedrockAliasId: config.bedrockAliasId!,
+    configBaseDir,
+  });
+
+  if (!result.success) {
+    return { ok: false, error: result.error ?? 'Unknown error' };
+  }
+
+  return {
+    ok: true,
+    type: 'create',
+    agentName: config.name,
+    projectName: project.name,
+    projectPath: agentPath,
   };
 }
 

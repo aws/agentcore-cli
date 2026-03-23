@@ -107,6 +107,39 @@ export function validateAddAgentOptions(options: AddAgentOptions): ValidationRes
   options.protocol = protocolResult.data;
 
   const isByoPath = options.type === 'byo';
+  const isImportPath = options.type === 'import';
+
+  // Import path: validate import-specific options and return early
+  if (isImportPath) {
+    if (!options.agentId) {
+      return { valid: false, error: '--agent-id is required for import path' };
+    }
+    if (!options.agentAliasId) {
+      return { valid: false, error: '--agent-alias-id is required for import path' };
+    }
+    if (!options.region) {
+      return { valid: false, error: '--region is required for import path' };
+    }
+    if (!options.framework) {
+      return { valid: false, error: '--framework is required for import path' };
+    }
+    if (options.framework !== 'Strands' && options.framework !== 'LangChain_LangGraph') {
+      return { valid: false, error: 'Import path only supports Strands or LangChain_LangGraph frameworks' };
+    }
+    if (!options.memory) {
+      return { valid: false, error: '--memory is required for import path' };
+    }
+    if (!MEMORY_OPTIONS.includes(options.memory as (typeof MEMORY_OPTIONS)[number])) {
+      return {
+        valid: false,
+        error: `Invalid memory option: ${options.memory}. Use none, shortTerm, or longAndShortTerm`,
+      };
+    }
+    // Force import defaults
+    options.modelProvider = 'Bedrock' as typeof options.modelProvider;
+    options.language = 'Python' as typeof options.language;
+    return { valid: true };
+  }
 
   // MCP protocol: no framework, model provider, or memory
   if (protocol === 'MCP') {
@@ -230,7 +263,10 @@ export function validateAddGatewayOptions(options: AddGatewayOptions): Validatio
     }
 
     try {
-      new URL(options.discoveryUrl);
+      const url = new URL(options.discoveryUrl);
+      if (url.protocol !== 'https:') {
+        return { valid: false, error: 'Discovery URL must use HTTPS' };
+      }
     } catch {
       return { valid: false, error: 'Discovery URL must be a valid URL' };
     }
@@ -239,30 +275,29 @@ export function validateAddGatewayOptions(options: AddGatewayOptions): Validatio
       return { valid: false, error: `Discovery URL must end with ${OIDC_WELL_KNOWN_SUFFIX}` };
     }
 
-    // allowedAudience is optional - empty means no audience validation
-
-    if (!options.allowedClients) {
-      return { valid: false, error: '--allowed-clients is required for CUSTOM_JWT authorizer' };
+    // allowedAudience, allowedClients, allowedScopes are all optional individually,
+    // but at least one must be provided
+    const hasAudience = !!options.allowedAudience?.trim();
+    const hasClients = !!options.allowedClients?.trim();
+    const hasScopes = !!options.allowedScopes?.trim();
+    if (!hasAudience && !hasClients && !hasScopes) {
+      return {
+        valid: false,
+        error:
+          'At least one of --allowed-audience, --allowed-clients, or --allowed-scopes must be provided for CUSTOM_JWT authorizer',
+      };
     }
-
-    const clients = options.allowedClients
-      .split(',')
-      .map(s => s.trim())
-      .filter(Boolean);
-    if (clients.length === 0) {
-      return { valid: false, error: 'At least one client value is required' };
-    }
   }
 
-  // Validate agent OAuth credentials
-  if (options.agentClientId && !options.agentClientSecret) {
-    return { valid: false, error: 'Both --agent-client-id and --agent-client-secret must be provided together' };
+  // Validate OAuth client credentials
+  if (options.clientId && !options.clientSecret) {
+    return { valid: false, error: 'Both --client-id and --client-secret must be provided together' };
   }
-  if (options.agentClientSecret && !options.agentClientId) {
-    return { valid: false, error: 'Both --agent-client-id and --agent-client-secret must be provided together' };
+  if (options.clientSecret && !options.clientId) {
+    return { valid: false, error: 'Both --client-id and --client-secret must be provided together' };
   }
-  if (options.agentClientId && options.authorizerType !== 'CUSTOM_JWT') {
-    return { valid: false, error: 'Agent OAuth credentials are only valid with CUSTOM_JWT authorizer' };
+  if (options.clientId && options.authorizerType !== 'CUSTOM_JWT') {
+    return { valid: false, error: 'OAuth client credentials are only valid with CUSTOM_JWT authorizer' };
   }
 
   // Validate exception level if provided
@@ -271,6 +306,17 @@ export function validateAddGatewayOptions(options: AddGatewayOptions): Validatio
     if (!levelResult.success) {
       return { valid: false, error: `Invalid exception level: ${options.exceptionLevel}. Use NONE or DEBUG` };
     }
+  }
+
+  // Validate policy engine options
+  if (options.policyEngine && !options.policyEngineMode) {
+    return { valid: false, error: '--policy-engine-mode is required when --policy-engine is specified' };
+  }
+  if (options.policyEngineMode && !options.policyEngine) {
+    return { valid: false, error: '--policy-engine is required when --policy-engine-mode is specified' };
+  }
+  if (options.policyEngineMode && !['LOG_ONLY', 'ENFORCE'].includes(options.policyEngineMode)) {
+    return { valid: false, error: `Invalid policy engine mode: ${options.policyEngineMode}. Use LOG_ONLY or ENFORCE` };
   }
 
   return { valid: true };

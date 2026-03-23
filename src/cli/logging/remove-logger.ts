@@ -7,7 +7,16 @@ const REMOVE_LOGS_SUBDIR = 'remove';
 
 export interface RemoveLoggerOptions {
   /** Type of resource being removed */
-  resourceType: 'agent' | 'memory' | 'identity' | 'gateway' | 'gateway-target' | 'evaluator' | 'online-eval';
+  resourceType:
+    | 'agent'
+    | 'memory'
+    | 'identity'
+    | 'gateway'
+    | 'gateway-target'
+    | 'evaluator'
+    | 'online-eval'
+    | 'policy-engine'
+    | 'policy';
   /** Name of the resource being removed */
   resourceName: string;
 }

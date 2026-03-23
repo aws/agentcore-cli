@@ -2,6 +2,7 @@ import type {
   ApiGatewayHttpMethod,
   GatewayAuthorizerType,
   GatewayExceptionLevel,
+  GatewayPolicyEngineConfiguration,
   GatewayTargetType,
   NodeRuntime,
   PythonRuntime,
@@ -14,7 +15,14 @@ import { TARGET_TYPE_AUTH_CONFIG } from '../../../../schema';
 // Gateway Flow Types
 // ─────────────────────────────────────────────────────────────────────────────
 
-export type AddGatewayStep = 'name' | 'authorizer' | 'jwt-config' | 'include-targets' | 'advanced-config' | 'confirm';
+export type AddGatewayStep =
+  | 'name'
+  | 'authorizer'
+  | 'jwt-config'
+  | 'include-targets'
+  | 'policy-engine'
+  | 'advanced-config'
+  | 'confirm';
 
 export interface AddGatewayConfig {
   name: string;
@@ -24,11 +32,11 @@ export interface AddGatewayConfig {
   /** JWT authorizer configuration (when authorizerType is 'CUSTOM_JWT') */
   jwtConfig?: {
     discoveryUrl: string;
-    allowedAudience: string[];
-    allowedClients: string[];
+    allowedAudience?: string[];
+    allowedClients?: string[];
     allowedScopes?: string[];
-    agentClientId?: string;
-    agentClientSecret?: string;
+    clientId?: string;
+    clientSecret?: string;
   };
   /** Selected unassigned targets to include in this gateway */
   selectedTargets?: string[];
@@ -36,6 +44,8 @@ export interface AddGatewayConfig {
   enableSemanticSearch: boolean;
   /** Exception verbosity level for the gateway */
   exceptionLevel: GatewayExceptionLevel;
+  /** Policy engine configuration for Cedar-based authorization */
+  policyEngineConfiguration?: GatewayPolicyEngineConfiguration;
 }
 
 /** Item ID for the semantic search toggle in the advanced config pane. */
@@ -49,6 +59,7 @@ export const GATEWAY_STEP_LABELS: Record<AddGatewayStep, string> = {
   authorizer: 'Authorizer',
   'jwt-config': 'JWT Config',
   'include-targets': 'Include Targets',
+  'policy-engine': 'Policy Engine',
   'advanced-config': 'Advanced',
   confirm: 'Confirm',
 };
@@ -202,6 +213,9 @@ export const AUTHORIZER_TYPE_OPTIONS = [
 
 export const SKIP_FOR_NOW = 'skip-for-now' as const;
 
+/** Sentinel ID for "no selection" in select lists (e.g., no policy engine). */
+export const NONE_SELECTION = '__none__' as const;
+
 export const TARGET_TYPE_OPTIONS = [
   { id: 'mcpServer', title: 'MCP Server endpoint', description: 'Connect to an existing MCP-compatible server' },
   {
@@ -254,6 +268,11 @@ export const API_GATEWAY_AUTH_OPTIONS = [
   { id: 'IAM', title: 'IAM (recommended)', description: 'AWS IAM role-based authorization' },
   { id: 'API_KEY', title: 'API Key', description: 'API key credential' },
   { id: 'NONE', title: 'No authorization', description: 'No outbound authentication' },
+] as const;
+
+export const POLICY_ENGINE_MODE_OPTIONS = [
+  { id: 'LOG_ONLY', title: 'Log Only', description: 'Log policy decisions without enforcing' },
+  { id: 'ENFORCE', title: 'Enforce', description: 'Enforce policy decisions and block unauthorized actions' },
 ] as const;
 
 export const PYTHON_VERSION_OPTIONS = [

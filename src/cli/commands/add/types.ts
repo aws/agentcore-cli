@@ -5,7 +5,7 @@ import type { VpcOptions } from '../shared/vpc-utils';
 // Agent types
 export interface AddAgentOptions extends VpcOptions {
   name?: string;
-  type?: 'create' | 'byo';
+  type?: 'create' | 'byo' | 'import';
   build?: string;
   language?: TargetLanguage;
   framework?: SDKFramework;
@@ -15,6 +15,9 @@ export interface AddAgentOptions extends VpcOptions {
   protocol?: ProtocolMode;
   codeLocation?: string;
   entrypoint?: string;
+  agentId?: string;
+  agentAliasId?: string;
+  region?: string;
   json?: boolean;
 }
 
@@ -34,11 +37,13 @@ export interface AddGatewayOptions {
   allowedAudience?: string;
   allowedClients?: string;
   allowedScopes?: string;
-  agentClientId?: string;
-  agentClientSecret?: string;
+  clientId?: string;
+  clientSecret?: string;
   agents?: string;
   semanticSearch?: boolean;
   exceptionLevel?: string;
+  policyEngine?: string;
+  policyEngineMode?: string;
   json?: boolean;
 }
 

@@ -12,6 +12,7 @@ import { registerRemove } from './commands/remove';
 import { registerResume } from './commands/resume';
 import { registerRun } from './commands/run';
 import { registerStatus } from './commands/status';
+import { registerTag } from './commands/tag';
 import { registerTraces } from './commands/traces';
 import { registerUpdate } from './commands/update';
 import { registerValidate } from './commands/validate';
@@ -144,6 +145,7 @@ export function registerCommands(program: Command) {
   registerResume(program);
   registerRun(program);
   registerStatus(program);
+  registerTag(program);
   registerTraces(program);
   registerUpdate(program);
   registerValidate(program);

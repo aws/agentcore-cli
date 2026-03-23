@@ -22,6 +22,11 @@ Main project configuration using a **flat resource model**. Agents, memories, an
 {
   "name": "MyProject",
   "version": 1,
+  "tags": {
+    "agentcore:created-by": "agentcore-cli",
+    "agentcore:project-name": "MyProject",
+    "environment": "dev"
+  },
   "agents": [
     {
       "type": "AgentCoreRuntime",
@@ -75,6 +80,7 @@ Main project configuration using a **flat resource model**. Agents, memories, an
 | ------------------- | -------- | ----------------------------------------------------------- |
 | `name`              | Yes      | Project name (1-23 chars, alphanumeric, starts with letter) |
 | `version`           | Yes      | Schema version (integer, currently `1`)                     |
+| `tags`              | No       | Project-level default tags (inherited by all resources)     |
 | `agents`            | Yes      | Array of agent specifications                               |
 | `memories`          | Yes      | Array of memory resources                                   |
 | `credentials`       | Yes      | Array of credential providers (API key or OAuth)            |
@@ -114,6 +120,7 @@ Main project configuration using a **flat resource model**. Agents, memories, an
 | `networkMode`     | No       | `"PUBLIC"` (default) or `"PRIVATE"`                |
 | `envVars`         | No       | Custom environment variables                       |
 | `instrumentation` | No       | OpenTelemetry settings                             |
+| `tags`            | No       | Per-agent tags (override project defaults)         |
 
 ### Runtime Versions
 
@@ -137,12 +144,13 @@ Main project configuration using a **flat resource model**. Agents, memories, an
 }
 ```
 
-| Field                 | Required | Description                             |
-| --------------------- | -------- | --------------------------------------- |
-| `type`                | Yes      | Always `"AgentCoreMemory"`              |
-| `name`                | Yes      | Memory name (1-48 chars)                |
-| `eventExpiryDuration` | Yes      | Days until events expire (7-365)        |
-| `strategies`          | Yes      | Array of memory strategies (at least 1) |
+| Field                 | Required | Description                                 |
+| --------------------- | -------- | ------------------------------------------- |
+| `type`                | Yes      | Always `"AgentCoreMemory"`                  |
+| `name`                | Yes      | Memory name (1-48 chars)                    |
+| `eventExpiryDuration` | Yes      | Days until events expire (7-365)            |
+| `strategies`          | Yes      | Array of memory strategies (at least 1)     |
+| `tags`                | No       | Per-memory tags (override project defaults) |
 
 ### Memory Strategies
 
@@ -329,6 +337,7 @@ Gateway and MCP tool configuration. Gateways, their targets, and standalone MCP 
 | `targets`                 | Yes      | Array of gateway targets                                     |
 | `authorizerType`          | No       | `"NONE"` (default), `"AWS_IAM"`, or `"CUSTOM_JWT"`           |
 | `authorizerConfiguration` | No       | Required when `authorizerType` is `"CUSTOM_JWT"` (see below) |
+| `tags`                    | No       | Per-gateway tags (override project defaults)                 |
 
 ### CUSTOM_JWT Authorizer Configuration
 

@@ -39,6 +39,7 @@ export const COMMAND_DESCRIPTIONS = {
   package: 'Package agent artifacts without deploying.',
   remove: 'Remove resources from project config.',
   status: 'Show deployed resource details and status.',
+  tag: 'Manage resource tags.',
   traces: 'View and download agent traces.',
   evals: 'View past eval run results. Also supports --agent-arn.',
   pause: 'Pause an online eval config. Supports --arn for configs outside the project.',
