@@ -127,7 +127,10 @@ export async function removeTag(resourceRefStr: string, key: string): Promise<{ 
       throw new Error(`${ref.type} "${ref.name}" not found in project.`);
     }
     if (!resource.tags || !(key in resource.tags)) {
-      throw new Error(`Tag key "${key}" not found on ${ref.type} "${ref.name}".`);
+      throw new Error(
+        `Tag key "${key}" not found on ${ref.type} "${ref.name}". ` +
+          `If this is an inherited project default, use "tag remove-defaults --key ${key}" instead.`
+      );
     }
     delete resource.tags[key];
     if (Object.keys(resource.tags).length === 0) {
@@ -141,7 +144,10 @@ export async function removeTag(resourceRefStr: string, key: string): Promise<{ 
       throw new Error(`gateway "${ref.name}" not found in MCP spec.`);
     }
     if (!gateway.tags || !(key in gateway.tags)) {
-      throw new Error(`Tag key "${key}" not found on gateway "${ref.name}".`);
+      throw new Error(
+        `Tag key "${key}" not found on gateway "${ref.name}". ` +
+          `If this is an inherited project default, use "tag remove-defaults --key ${key}" instead.`
+      );
     }
     delete gateway.tags[key];
     if (Object.keys(gateway.tags).length === 0) {

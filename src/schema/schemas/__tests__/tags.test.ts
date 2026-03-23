@@ -7,6 +7,7 @@ describe('TagKeySchema', () => {
     expect(TagKeySchema.parse('environment')).toBe('environment');
     expect(TagKeySchema.parse('agentcore:created-by')).toBe('agentcore:created-by');
     expect(TagKeySchema.parse('a'.repeat(128))).toHaveLength(128);
+    expect(TagKeySchema.parse('cost-center_v2')).toBe('cost-center_v2');
   });
 
   it('rejects empty string', () => {
@@ -15,6 +16,20 @@ describe('TagKeySchema', () => {
 
   it('rejects keys longer than 128 characters', () => {
     expect(() => TagKeySchema.parse('a'.repeat(129))).toThrow();
+  });
+
+  it('rejects whitespace-only keys', () => {
+    expect(() => TagKeySchema.parse(' ')).toThrow();
+    expect(() => TagKeySchema.parse('  \t  ')).toThrow();
+  });
+
+  it('rejects aws: prefixed keys', () => {
+    expect(() => TagKeySchema.parse('aws:internal')).toThrow();
+  });
+
+  it('rejects keys with invalid characters', () => {
+    expect(() => TagKeySchema.parse('key\x00null')).toThrow();
+    expect(() => TagKeySchema.parse('key{bracket}')).toThrow();
   });
 });
 
@@ -27,6 +42,10 @@ describe('TagValueSchema', () => {
 
   it('rejects values longer than 256 characters', () => {
     expect(() => TagValueSchema.parse('a'.repeat(257))).toThrow();
+  });
+
+  it('rejects values with invalid characters', () => {
+    expect(() => TagValueSchema.parse('val\x00ue')).toThrow();
   });
 });
 
@@ -42,6 +61,18 @@ describe('TagsSchema', () => {
 
   it('accepts empty object', () => {
     expect(TagsSchema.parse({})).toEqual({});
+  });
+
+  it('rejects more than 50 tags', () => {
+    const tags: Record<string, string> = {};
+    for (let i = 0; i < 51; i++) tags[`key${i}`] = `value${i}`;
+    expect(() => TagsSchema.parse(tags)).toThrow();
+  });
+
+  it('accepts 50 tags', () => {
+    const tags: Record<string, string> = {};
+    for (let i = 0; i < 50; i++) tags[`key${i}`] = `value${i}`;
+    expect(TagsSchema.parse(tags)).toEqual(tags);
   });
 });
 

@@ -134,6 +134,14 @@ describe('addTag', () => {
   it('rejects tag value exceeding 256 chars', async () => {
     await expect(addTag('agent:myAgent', 'key', 'v'.repeat(257))).rejects.toThrow('Invalid tag value');
   });
+
+  it('rejects tag key with invalid characters', async () => {
+    await expect(addTag('agent:myAgent', 'key\x00bad', 'value')).rejects.toThrow('Invalid tag key');
+  });
+
+  it('rejects tag value with invalid characters', async () => {
+    await expect(addTag('agent:myAgent', 'key', 'value\x00bad')).rejects.toThrow('Invalid tag value');
+  });
 });
 
 describe('removeTag', () => {
@@ -148,8 +156,8 @@ describe('removeTag', () => {
     expect(written.agents[0].tags).toEqual({ team: 'a' });
   });
 
-  it('throws when key not found', async () => {
-    await expect(removeTag('agent:myAgent', 'nonexistent')).rejects.toThrow('Tag key');
+  it('throws when key not found with hint about defaults', async () => {
+    await expect(removeTag('agent:myAgent', 'nonexistent')).rejects.toThrow('remove-defaults');
   });
 });
 
