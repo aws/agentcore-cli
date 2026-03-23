@@ -60,7 +60,12 @@ export function useGenerateWizard(options?: UseGenerateWizardOptions) {
       const afterAdvanced = advancedIndex + 1;
       const networkSteps: GenerateStep[] =
         config.networkMode === 'VPC' ? ['networkMode', 'subnets', 'securityGroups'] : ['networkMode'];
-      filtered = [...filtered.slice(0, afterAdvanced), ...networkSteps, ...filtered.slice(afterAdvanced)];
+      filtered = [
+        ...filtered.slice(0, afterAdvanced),
+        ...networkSteps,
+        'requestHeaderAllowlist',
+        ...filtered.slice(afterAdvanced),
+      ];
     }
     return filtered;
   }, [
@@ -166,7 +171,13 @@ export function useGenerateWizard(options?: UseGenerateWizardOptions) {
       setStep('networkMode');
     } else {
       setAdvancedSelected(false);
-      setConfig(c => ({ ...c, networkMode: 'PUBLIC', subnets: undefined, securityGroups: undefined }));
+      setConfig(c => ({
+        ...c,
+        networkMode: 'PUBLIC',
+        subnets: undefined,
+        securityGroups: undefined,
+        requestHeaderAllowlist: undefined,
+      }));
       setStep('confirm');
     }
   }, []);
@@ -176,7 +187,7 @@ export function useGenerateWizard(options?: UseGenerateWizardOptions) {
     if (networkMode === 'VPC') {
       setStep('subnets');
     } else {
-      setStep('confirm');
+      setStep('requestHeaderAllowlist');
     }
   }, []);
 
@@ -187,6 +198,15 @@ export function useGenerateWizard(options?: UseGenerateWizardOptions) {
 
   const setSecurityGroups = useCallback((securityGroups: string[]) => {
     setConfig(c => ({ ...c, securityGroups }));
+    setStep('requestHeaderAllowlist');
+  }, []);
+
+  const setRequestHeaderAllowlist = useCallback((requestHeaderAllowlist: string[]) => {
+    setConfig(c => ({ ...c, requestHeaderAllowlist }));
+    setStep('confirm');
+  }, []);
+
+  const skipRequestHeaderAllowlist = useCallback(() => {
     setStep('confirm');
   }, []);
 
@@ -236,6 +256,8 @@ export function useGenerateWizard(options?: UseGenerateWizardOptions) {
     setNetworkMode,
     setSubnets,
     setSecurityGroups,
+    setRequestHeaderAllowlist,
+    skipRequestHeaderAllowlist,
     goBack,
     reset,
     initWithName,
