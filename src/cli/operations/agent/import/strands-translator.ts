@@ -173,17 +173,18 @@ def invoke_${collabName}(query: str) -> str:
     // Memory retrieval code — must match the strategies written to agentcore.json:
     // shortTerm has no strategies (no namespace-specific retrieval)
     // longAndShortTerm has SEMANTIC, USER_PREFERENCE, and SUMMARIZATION strategies
-    const memoryRetrieveLines = this.agentcoreMemoryEnabled && this.hasLongTermStrategies
-      ? [
-          '        semantic_memories = memory_client.retrieve_memories(memory_id=memory_id, namespace=f\'/users/{user_id}/facts\', query="Retrieve relevant facts.", actor_id=user_id, top_k=3)',
-          '        pref_memories = memory_client.retrieve_memories(memory_id=memory_id, namespace=f\'/users/{user_id}/preferences\', query="Retrieve user preferences.", actor_id=user_id, top_k=3)',
-          '        summary_memories = memory_client.retrieve_memories(memory_id=memory_id, namespace=f\'/summaries/{user_id}/\', query="Retrieve the most recent session summaries.", actor_id=user_id, top_k=3)',
-          '        all_memories = semantic_memories + pref_memories + summary_memories',
-          '        memory_synopsis = "\\n".join([m.get("content", {}).get("text", "") for m in all_memories])',
-        ]
-      : this.memoryEnabled
-        ? ['        memory_synopsis = memory_manager.get_memory_synopsis()']
-        : [];
+    const memoryRetrieveLines =
+      this.agentcoreMemoryEnabled && this.hasLongTermStrategies
+        ? [
+            '        semantic_memories = memory_client.retrieve_memories(memory_id=memory_id, namespace=f\'/users/{user_id}/facts\', query="Retrieve relevant facts.", actor_id=user_id, top_k=3)',
+            '        pref_memories = memory_client.retrieve_memories(memory_id=memory_id, namespace=f\'/users/{user_id}/preferences\', query="Retrieve user preferences.", actor_id=user_id, top_k=3)',
+            '        summary_memories = memory_client.retrieve_memories(memory_id=memory_id, namespace=f\'/summaries/{user_id}/\', query="Retrieve the most recent session summaries.", actor_id=user_id, top_k=3)',
+            '        all_memories = semantic_memories + pref_memories + summary_memories',
+            '        memory_synopsis = "\\n".join([m.get("content", {}).get("text", "") for m in all_memories])',
+          ]
+        : this.memoryEnabled
+          ? ['        memory_synopsis = memory_manager.get_memory_synopsis()']
+          : [];
 
     const memoryReplaceLines = this.memoryEnabled
       ? ['        system_prompt = system_prompt.replace("$memory_synopsis$", memory_synopsis)']
