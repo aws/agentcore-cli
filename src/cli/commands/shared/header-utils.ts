@@ -1,5 +1,11 @@
-export const HEADER_ALLOWLIST_PREFIX = 'X-Amzn-Bedrock-AgentCore-Runtime-Custom-';
-export const MAX_HEADER_ALLOWLIST_SIZE = 20;
+import {
+  HEADER_ALLOWLIST_PREFIX as HEADER_ALLOWLIST_PREFIX_FROM_SCHEMA,
+  MAX_HEADER_ALLOWLIST_SIZE as MAX_HEADER_ALLOWLIST_SIZE_FROM_SCHEMA,
+} from '../../../schema/schemas/agent-env';
+
+// Re-export for backwards compatibility with existing test imports
+export const HEADER_ALLOWLIST_PREFIX = HEADER_ALLOWLIST_PREFIX_FROM_SCHEMA;
+export const MAX_HEADER_ALLOWLIST_SIZE = MAX_HEADER_ALLOWLIST_SIZE_FROM_SCHEMA;
 
 /**
  * Normalize a header name according to AgentCore Runtime rules:
