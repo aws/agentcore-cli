@@ -604,7 +604,7 @@ agents:
     expect(mockWriteDeployedState).not.toHaveBeenCalled();
   });
 
-  it('still runs Python setup for agents', async () => {
+  it('skips Python setup for container agents', async () => {
     mockReadProjectSpec.mockResolvedValue({
       name: 'myproject',
       version: 1,
@@ -618,7 +618,7 @@ agents:
     const { handleImport } = await import('../actions.js');
     await handleImport({ source: yamlPath });
 
-    expect(mockSetupPythonProject).toHaveBeenCalled();
+    expect(mockSetupPythonProject).not.toHaveBeenCalled();
   });
 
   it('returns correct stackName in result', async () => {

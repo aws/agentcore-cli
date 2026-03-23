@@ -349,20 +349,24 @@ export async function handleImport(options: ImportOptions): Promise<ImportResult
         }
       }
 
-      // Fix pyproject.toml for setuptools: starter toolkit projects may have
-      // multiple top-level directories (model/, mcp_client/, etc.) which causes
-      // setuptools auto-discovery to fail. Add py-modules = [] to suppress this.
-      fixPyprojectForSetuptools(path.join(appDir, 'pyproject.toml'));
+      // Container agents install dependencies inside the Docker image,
+      // so skip local Python environment setup for them.
+      if (agent.build !== 'Container') {
+        // Fix pyproject.toml for setuptools: starter toolkit projects may have
+        // multiple top-level directories (model/, mcp_client/, etc.) which causes
+        // setuptools auto-discovery to fail. Add py-modules = [] to suppress this.
+        fixPyprojectForSetuptools(path.join(appDir, 'pyproject.toml'));
 
-      // Set up Python environment (venv + install dependencies)
-      onProgress?.(`Setting up Python environment for ${agent.name}...`);
-      const setupResult = await setupPythonProject({ projectDir: appDir });
-      if (setupResult.status === 'success') {
-        onProgress?.(`Python environment ready for ${agent.name}`);
-      } else if (setupResult.status === 'uv_not_found') {
-        onProgress?.(`Warning: uv not found — run "uv sync" manually in ${APP_DIR}/${agent.name}`);
-      } else {
-        onProgress?.(`Warning: Python setup failed for ${agent.name}: ${setupResult.error ?? setupResult.status}`);
+        // Set up Python environment (venv + install dependencies)
+        onProgress?.(`Setting up Python environment for ${agent.name}...`);
+        const setupResult = await setupPythonProject({ projectDir: appDir });
+        if (setupResult.status === 'success') {
+          onProgress?.(`Python environment ready for ${agent.name}`);
+        } else if (setupResult.status === 'uv_not_found') {
+          onProgress?.(`Warning: uv not found — run "uv sync" manually in ${APP_DIR}/${agent.name}`);
+        } else {
+          onProgress?.(`Warning: Python setup failed for ${agent.name}: ${setupResult.error ?? setupResult.status}`);
+        }
       }
     }
 
@@ -487,6 +491,13 @@ export async function handleImport(options: ImportOptions): Promise<ImportResult
       let logicalId: string | undefined;
 
       logicalId = findLogicalIdByProperty(synthTemplate, 'AWS::BedrockAgentCore::Memory', 'Name', memory.name);
+
+      // CDK prefixes memory names with the project name (e.g. "myproject_Agent_mem"),
+      // so also try matching with the project name prefix.
+      if (!logicalId) {
+        const prefixedName = `${projectName}_${memory.name}`;
+        logicalId = findLogicalIdByProperty(synthTemplate, 'AWS::BedrockAgentCore::Memory', 'Name', prefixedName);
+      }
 
       if (!logicalId && memoryLogicalIds.length === 1) {
         logicalId = memoryLogicalIds[0];
