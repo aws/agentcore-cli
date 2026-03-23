@@ -3,6 +3,7 @@ import type { ModelProvider, NetworkMode, SDKFramework } from '../../../../schem
 import { AgentNameSchema, DEFAULT_MODEL_IDS } from '../../../../schema';
 import { listBedrockAgentAliases, listBedrockAgents } from '../../../aws/bedrock-import';
 import type { BedrockAgentSummary, BedrockAliasSummary } from '../../../aws/bedrock-import-types';
+import { parseAndNormalizeHeaders, validateHeaderAllowlist } from '../../../commands/shared/header-utils';
 import {
   parseCommaSeparatedList,
   validateSecurityGroupIds,
@@ -72,6 +73,7 @@ type ByoStep =
   | 'networkMode'
   | 'subnets'
   | 'securityGroups'
+  | 'requestHeaderAllowlist'
   | 'confirm';
 
 const INITIAL_STEPS: InitialStep[] = ['name', 'agentType'];
@@ -106,6 +108,7 @@ export function AddAgentScreen({ existingAgentNames, onComplete, onExit }: AddAg
     networkMode: 'PUBLIC' as NetworkMode,
     subnets: '' as string,
     securityGroups: '' as string,
+    requestHeaderAllowlist: '' as string,
   });
   const [byoAdvancedSelected, setByoAdvancedSelected] = useState(false);
 
@@ -212,6 +215,7 @@ export function AddAgentScreen({ existingAgentNames, onComplete, onExit }: AddAg
       networkMode: generateWizard.config.networkMode,
       subnets: generateWizard.config.networkMode === 'VPC' ? generateWizard.config.subnets : undefined,
       securityGroups: generateWizard.config.networkMode === 'VPC' ? generateWizard.config.securityGroups : undefined,
+      requestHeaderAllowlist: generateWizard.config.requestHeaderAllowlist,
       pythonVersion: DEFAULT_PYTHON_VERSION,
       memory: generateWizard.config.memory,
     };
@@ -243,7 +247,12 @@ export function AddAgentScreen({ existingAgentNames, onComplete, onExit }: AddAg
       const afterAdvanced = advancedIndex + 1;
       const networkSteps: ByoStep[] =
         byoConfig.networkMode === 'VPC' ? ['networkMode', 'subnets', 'securityGroups'] : ['networkMode'];
-      steps = [...steps.slice(0, afterAdvanced), ...networkSteps, ...steps.slice(afterAdvanced)];
+      steps = [
+        ...steps.slice(0, afterAdvanced),
+        ...networkSteps,
+        'requestHeaderAllowlist',
+        ...steps.slice(afterAdvanced),
+      ];
     }
     return steps;
   }, [byoConfig.modelProvider, byoConfig.networkMode, byoAdvancedSelected]);
@@ -286,6 +295,7 @@ export function AddAgentScreen({ existingAgentNames, onComplete, onExit }: AddAg
   const handleByoComplete = useCallback(() => {
     // For BYO, language/framework are not asked - we default to Python/Strands
     // since the actual values don't matter for BYO (code already exists)
+    const requestHeaderAllowlist = parseAndNormalizeHeaders(byoConfig.requestHeaderAllowlist);
     const config: AddAgentConfig = {
       name,
       agentType: 'byo',
@@ -300,6 +310,7 @@ export function AddAgentScreen({ existingAgentNames, onComplete, onExit }: AddAg
       networkMode: byoConfig.networkMode,
       subnets: byoConfig.networkMode === 'VPC' ? parseCommaSeparatedList(byoConfig.subnets) : undefined,
       securityGroups: byoConfig.networkMode === 'VPC' ? parseCommaSeparatedList(byoConfig.securityGroups) : undefined,
+      ...(requestHeaderAllowlist.length > 0 && { requestHeaderAllowlist }),
       pythonVersion: DEFAULT_PYTHON_VERSION,
       memory: 'none',
     };
@@ -366,7 +377,7 @@ export function AddAgentScreen({ existingAgentNames, onComplete, onExit }: AddAg
       if (mode === 'VPC') {
         setByoStep('subnets');
       } else {
-        setByoStep('confirm');
+        setByoStep('requestHeaderAllowlist');
       }
     },
     onExit: handleByoBack,
@@ -554,7 +565,13 @@ export function AddAgentScreen({ existingAgentNames, onComplete, onExit }: AddAg
       return HELP_TEXT.NAVIGATE_SELECT;
     }
     // BYO path
-    if (byoStep === 'codeLocation' || byoStep === 'apiKey' || byoStep === 'subnets' || byoStep === 'securityGroups') {
+    if (
+      byoStep === 'codeLocation' ||
+      byoStep === 'apiKey' ||
+      byoStep === 'subnets' ||
+      byoStep === 'securityGroups' ||
+      byoStep === 'requestHeaderAllowlist'
+    ) {
       return HELP_TEXT.TEXT_INPUT;
     }
     if (byoStep === 'confirm') {
@@ -818,10 +835,31 @@ export function AddAgentScreen({ existingAgentNames, onComplete, onExit }: AddAg
             customValidation={validateSecurityGroupIds}
             onSubmit={value => {
               setByoConfig(c => ({ ...c, securityGroups: value }));
-              setByoStep('confirm');
+              setByoStep('requestHeaderAllowlist');
             }}
             onCancel={handleByoBack}
           />
+        )}
+
+        {byoStep === 'requestHeaderAllowlist' && (
+          <Box flexDirection="column">
+            <TextInput
+              prompt="Allowed request headers (comma-separated, or press Enter to skip)"
+              initialValue={byoConfig.requestHeaderAllowlist}
+              customValidation={validateHeaderAllowlist}
+              onSubmit={value => {
+                setByoConfig(c => ({ ...c, requestHeaderAllowlist: value }));
+                setByoStep('confirm');
+              }}
+              onCancel={handleByoBack}
+            />
+            <Box marginTop={1}>
+              <Text dimColor>
+                Enter header suffixes or full names. We auto-prefix with X-Amzn-Bedrock-AgentCore-Runtime-Custom- if
+                needed. &apos;Authorization&apos; is also accepted.
+              </Text>
+            </Box>
+          </Box>
         )}
 
         {byoStep === 'confirm' && (
@@ -860,6 +898,9 @@ export function AddAgentScreen({ existingAgentNames, onComplete, onExit }: AddAg
                     { label: 'Subnets', value: byoConfig.subnets || '(none)' },
                     { label: 'Security Groups', value: byoConfig.securityGroups || '(none)' },
                   ]
+                : []),
+              ...(parseAndNormalizeHeaders(byoConfig.requestHeaderAllowlist).length > 0
+                ? [{ label: 'Headers', value: parseAndNormalizeHeaders(byoConfig.requestHeaderAllowlist).join(', ') }]
                 : []),
             ]}
           />
