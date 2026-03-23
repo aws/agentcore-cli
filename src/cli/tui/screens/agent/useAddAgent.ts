@@ -71,6 +71,9 @@ export function mapByoConfigToAgent(config: AddAgentConfig): AgentEnvSpec {
           securityGroups: config.securityGroups,
         },
       }),
+    ...(config.requestHeaderAllowlist?.length && {
+      requestHeaderAllowlist: config.requestHeaderAllowlist,
+    }),
   };
 }
 
@@ -89,6 +92,7 @@ function mapAddAgentConfigToGenerateConfig(config: AddAgentConfig): GenerateConf
     networkMode: config.networkMode,
     subnets: config.subnets,
     securityGroups: config.securityGroups,
+    requestHeaderAllowlist: config.requestHeaderAllowlist,
   };
 }
 

@@ -284,6 +284,67 @@ describe('mapGenerateConfigToAgent - VPC support', () => {
   });
 });
 
+describe('mapByoConfigToAgent - requestHeaderAllowlist', () => {
+  it('includes requestHeaderAllowlist when provided', () => {
+    const config = {
+      name: 'TestAgent',
+      agentType: 'byo' as const,
+      codeLocation: 'app/test/',
+      entrypoint: 'main.py',
+      language: 'Python' as const,
+      buildType: 'CodeZip' as const,
+      protocol: 'HTTP' as const,
+      framework: 'Strands' as const,
+      modelProvider: 'Bedrock' as const,
+      pythonVersion: 'PYTHON_3_12' as const,
+      memory: 'none' as const,
+      requestHeaderAllowlist: ['X-Amzn-Bedrock-AgentCore-Runtime-Custom-H1', 'Authorization'],
+    };
+    const result = mapByoConfigToAgent(config);
+    expect(result.requestHeaderAllowlist).toEqual(['X-Amzn-Bedrock-AgentCore-Runtime-Custom-H1', 'Authorization']);
+  });
+
+  it('omits requestHeaderAllowlist when not provided', () => {
+    const config = {
+      name: 'TestAgent',
+      agentType: 'byo' as const,
+      codeLocation: 'app/test/',
+      entrypoint: 'main.py',
+      language: 'Python' as const,
+      buildType: 'CodeZip' as const,
+      protocol: 'HTTP' as const,
+      framework: 'Strands' as const,
+      modelProvider: 'Bedrock' as const,
+      pythonVersion: 'PYTHON_3_12' as const,
+      memory: 'none' as const,
+    };
+    const result = mapByoConfigToAgent(config);
+    expect(result.requestHeaderAllowlist).toBeUndefined();
+  });
+});
+
+describe('mapGenerateConfigToAgent - requestHeaderAllowlist', () => {
+  it('includes requestHeaderAllowlist when provided', () => {
+    const config = {
+      ...baseConfig,
+      requestHeaderAllowlist: ['X-Amzn-Bedrock-AgentCore-Runtime-Custom-H1'],
+    };
+    const result = mapGenerateConfigToAgent(config);
+    expect(result.requestHeaderAllowlist).toEqual(['X-Amzn-Bedrock-AgentCore-Runtime-Custom-H1']);
+  });
+
+  it('omits requestHeaderAllowlist when empty array', () => {
+    const config = { ...baseConfig, requestHeaderAllowlist: [] as string[] };
+    const result = mapGenerateConfigToAgent(config);
+    expect(result.requestHeaderAllowlist).toBeUndefined();
+  });
+
+  it('omits requestHeaderAllowlist when undefined', () => {
+    const result = mapGenerateConfigToAgent(baseConfig);
+    expect(result.requestHeaderAllowlist).toBeUndefined();
+  });
+});
+
 describe('mapByoConfigToAgent - VPC support', () => {
   const baseByoConfig = {
     name: 'MyByo',

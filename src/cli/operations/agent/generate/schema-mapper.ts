@@ -128,6 +128,9 @@ export function mapGenerateConfigToAgent(config: GenerateConfig): AgentEnvSpec {
           securityGroups: config.securityGroups,
         },
       }),
+    ...(config.requestHeaderAllowlist?.length && {
+      requestHeaderAllowlist: config.requestHeaderAllowlist,
+    }),
     ...(protocol !== 'MCP' && { modelProvider: config.modelProvider }),
     // MCP uses mcp.run() which is incompatible with the opentelemetry-instrument wrapper
     ...(protocol === 'MCP' && { instrumentation: { enableOtel: false } }),
