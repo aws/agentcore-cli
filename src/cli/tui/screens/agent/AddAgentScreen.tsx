@@ -140,7 +140,9 @@ export function AddAgentScreen({ existingAgentNames, onComplete, onExit }: AddAg
     memory: 'none' as MemoryOption,
   });
   const importConfigRef = useRef(importConfig);
-  importConfigRef.current = importConfig;
+  useEffect(() => {
+    importConfigRef.current = importConfig;
+  }, [importConfig]);
   const [bedrockAgents, setBedrockAgents] = useState<BedrockAgentSummary[]>([]);
   const [bedrockAliases, setBedrockAliases] = useState<BedrockAliasSummary[]>([]);
   const [importLoading, setImportLoading] = useState(false);

@@ -97,7 +97,7 @@ export async function getBedrockAgentConfig(
   region: string,
   agentId: string,
   aliasId: string,
-  visitedAgents: Set<string> = new Set()
+  visitedAgents: Set<string> = new Set<string>()
 ): Promise<BedrockAgentConfig> {
   const visitKey = `${agentId}:${aliasId}`;
   if (visitedAgents.has(visitKey)) {
@@ -137,7 +137,7 @@ export async function getBedrockAgentConfig(
         guardrailVersion: guardrailResponse.version,
       } as unknown as typeof agentInfo.guardrailConfiguration;
     } catch (err) {
-      console.warn(`Warning: Failed to fetch guardrail details: ${err instanceof Error ? err.message : err}`);
+      console.warn(`Warning: Failed to fetch guardrail details: ${err instanceof Error ? err.message : String(err)}`);
     }
   }
 
@@ -153,7 +153,7 @@ export async function getBedrockAgentConfig(
       providerName: modelResponse.modelDetails?.providerName,
     };
   } catch (err) {
-    console.warn(`Warning: Failed to fetch model info: ${err instanceof Error ? err.message : err}`);
+    console.warn(`Warning: Failed to fetch model info: ${err instanceof Error ? err.message : String(err)}`);
     agentInfo.model = { providerName: 'anthropic' };
   }
 
@@ -222,7 +222,7 @@ async function fetchActionGroups(
         try {
           ag.apiSchema.payload = yaml.load(payload) as Record<string, unknown>;
         } catch (err) {
-          console.warn(`Warning: Failed to parse API schema: ${err instanceof Error ? err.message : err}`);
+          console.warn(`Warning: Failed to parse API schema: ${err instanceof Error ? err.message : String(err)}`);
         }
       } else if (ag.apiSchema.s3) {
         // S3-stored schema
@@ -239,7 +239,7 @@ async function fetchActionGroups(
             ag.apiSchema.payload = yaml.load(body) as Record<string, unknown>;
           }
         } catch (err) {
-          console.warn(`Warning: Failed to fetch S3 schema: ${err instanceof Error ? err.message : err}`);
+          console.warn(`Warning: Failed to fetch S3 schema: ${err instanceof Error ? err.message : String(err)}`);
         }
       }
     }
@@ -279,7 +279,7 @@ async function fetchKnowledgeBases(
       });
     } catch (err) {
       console.warn(
-        `Warning: Failed to fetch knowledge base ${summary.knowledgeBaseId}: ${err instanceof Error ? err.message : err}`
+        `Warning: Failed to fetch knowledge base ${summary.knowledgeBaseId}: ${err instanceof Error ? err.message : String(err)}`
       );
       knowledgeBases.push({
         knowledgeBaseId: summary.knowledgeBaseId,
@@ -323,7 +323,7 @@ async function fetchCollaborators(
       const aliasArn = (summary as { agentDescriptor?: { aliasArn?: string } }).agentDescriptor?.aliasArn;
       if (!aliasArn) continue;
 
-      const arnMatch = aliasArn.match(/^arn:aws:bedrock:[^:]+:[^:]+:agent-alias\/([^/]+)\/([^/]+)$/);
+      const arnMatch = /^arn:aws:bedrock:[^:]+:[^:]+:agent-alias\/([^/]+)\/([^/]+)$/.exec(aliasArn);
       if (!arnMatch) continue;
       const [, collabAgentId, collabAliasId] = arnMatch;
       if (!collabAgentId || !collabAliasId) continue;
@@ -347,7 +347,7 @@ async function fetchCollaborators(
 
     return collaborators;
   } catch (err) {
-    console.warn(`Warning: Failed to fetch collaborators: ${err instanceof Error ? err.message : err}`);
+    console.warn(`Warning: Failed to fetch collaborators: ${err instanceof Error ? err.message : String(err)}`);
     return [];
   }
 }
