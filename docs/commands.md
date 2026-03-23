@@ -465,46 +465,6 @@ agentcore remove all --dry-run  # Preview
 
 ---
 
-## Tagging
-
-### tag
-
-Manage AWS resource tags on your AgentCore project. Tags are applied to deployed CloudFormation resources (agents,
-memories, gateways). Credentials are not taggable since they're deployed via the AgentCore Identity API.
-
-```bash
-# List all tags (project defaults + per-resource)
-agentcore tag list
-agentcore tag list --json
-agentcore tag list --resource agent:MyAgent
-
-# Add a tag to a specific resource
-agentcore tag add --resource agent:MyAgent --key environment --value prod
-
-# Remove a tag from a resource
-agentcore tag remove --resource agent:MyAgent --key environment
-
-# Set a project-level default tag (inherited by all resources)
-agentcore tag set-defaults --key team --value platform
-
-# Remove a project-level default tag
-agentcore tag remove-defaults --key team
-```
-
-Resource references use `type:name` format. Taggable types: `agent`, `memory`, `gateway`.
-
-Per-resource tags override project-level defaults when keys conflict. Projects created with the CLI include
-`agentcore:created-by` and `agentcore:project-name` as defaults.
-
-| Flag               | Description                    |
-| ------------------ | ------------------------------ |
-| `--resource <ref>` | Resource reference (type:name) |
-| `--key <key>`      | Tag key (max 128 chars)        |
-| `--value <value>`  | Tag value (max 256 chars)      |
-| `--json`           | JSON output                    |
-
----
-
 ## Development
 
 ### dev

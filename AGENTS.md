@@ -39,7 +39,6 @@ Note: CDK L3 constructs are in a separate package `@aws/agentcore-cdk`.
 - `traces list` - List recent traces for a deployed agent
 - `traces get` - Download a trace to a JSON file
 - `package` - Package agent artifacts without deploying (zip for CodeZip, container image build for Container)
-- `tag` - Manage resource tags (list, add, remove, set-defaults, remove-defaults)
 - `validate` - Validate configuration files
 - `update` - Check for CLI updates
 - `help` - Display help information

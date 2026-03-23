@@ -2,7 +2,6 @@ import { NetworkModeSchema, NodeRuntimeSchema, PythonRuntimeSchema } from '../co
 import type { DirectoryPath, FilePath } from '../types';
 import { EnvVarNameSchema, GatewayNameSchema } from './agent-env';
 import { ToolDefinitionSchema } from './mcp-defs';
-import { TagsSchema } from './primitives/tags';
 import { z } from 'zod';
 
 // ============================================================================
@@ -653,7 +652,6 @@ export const AgentCoreGatewaySchema = z
     exceptionLevel: GatewayExceptionLevelSchema.default('NONE'),
     /** Policy engine configuration for Cedar-based authorization of tool calls. */
     policyEngineConfiguration: GatewayPolicyEngineConfigurationSchema.optional(),
-    tags: TagsSchema,
   })
   .strict()
   .refine(

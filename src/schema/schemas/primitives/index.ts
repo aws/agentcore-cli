@@ -37,5 +37,3 @@ export {
   PolicySchema,
   ValidationModeSchema,
 } from './policy';
-export type { Tags } from './tags';
-export { TagKeySchema, TagValueSchema, TagsSchema } from './tags';
