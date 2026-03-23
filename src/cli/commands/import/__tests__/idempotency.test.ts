@@ -533,7 +533,7 @@ describe('Import Idempotency (Test Group 7)', () => {
       mockConfigIOInstance.readProjectSpec.mockResolvedValue(makeProjectSpec());
 
       mockExistsSync.mockReturnValue(true);
-      mockReaddirSync.mockReturnValue([{ name: 'main.py', isDirectory: () => false }]);
+      mockReaddirSync.mockReturnValue([{ name: 'main.py', isDirectory: () => false, isSymbolicLink: () => false }]);
 
       await handleImport({ source: '/tmp/config.yaml' });
 

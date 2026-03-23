@@ -182,9 +182,7 @@ export function parseStarterToolkitYaml(filePath: string): ParsedStarterToolkitC
         networkConfig:
           networkMode === 'VPC' && networkModeConfig
             ? {
-                subnets: Array.isArray(networkModeConfig.subnets)
-                  ? (networkModeConfig.subnets as string[])
-                  : [],
+                subnets: Array.isArray(networkModeConfig.subnets) ? (networkModeConfig.subnets as string[]) : [],
                 securityGroups: Array.isArray(networkModeConfig.security_groups)
                   ? (networkModeConfig.security_groups as string[])
                   : [],
@@ -194,6 +192,8 @@ export function parseStarterToolkitYaml(filePath: string): ParsedStarterToolkitC
         enableOtel: (obsConfig?.enabled as boolean) ?? true,
         physicalAgentId: bedrockConfig?.agent_id as string | undefined,
         physicalAgentArn: bedrockConfig?.agent_arn as string | undefined,
+        hasAuthorizerConfig:
+          agentConfig.authorizer_configuration != null && agentConfig.authorizer_configuration !== 'null',
       });
 
       // Extract memory config per agent — ensure mode is a non-empty string
