@@ -4,7 +4,7 @@
  */
 import type { BedrockAgentConfig } from '../../../aws/bedrock-import-types';
 import type { TranslationResult, TranslatorOptions } from './base-translator';
-import { BaseBedrockTranslator } from './base-translator';
+import { BaseBedrockTranslator, sanitizePyIdentifier } from './base-translator';
 
 export class StrandsTranslator extends BaseBedrockTranslator {
   constructor(
@@ -29,8 +29,14 @@ export class StrandsTranslator extends BaseBedrockTranslator {
     const agentSetupCode = this.generateAgentSetup();
     const entrypointCode = this.generateEntrypointCode('strands');
 
+    const guardrailWarning =
+      Object.keys(this.guardrailConfig).length > 0
+        ? `\n# WARNING: Guardrails were configured on the Bedrock Agent but Strands SDK does not\n# natively support guardrails on BedrockModel. Consider using Bedrock Guardrails API directly.\n`
+        : '';
+
     const mainPyContent = this.assembleCode([
       importsCode,
+      guardrailWarning,
       modelsCode,
       promptsCode,
       collaborationCode,
@@ -99,8 +105,8 @@ llm_ORCHESTRATION = BedrockModel(
 
     let code = '\n# --- Knowledge Base Tools ---\n';
     for (const kb of this.knowledgeBases) {
-      const kbName = (kb.name ?? '').replace(/\s/g, '_');
-      const kbDescription = kb.description ?? '';
+      const kbName = sanitizePyIdentifier(kb.name ?? '');
+      const kbDescription = BaseBedrockTranslator.escapePyTripleQuote(kb.description ?? '');
       const kbId = kb.knowledgeBaseId;
       const kbRegion = kb.knowledgeBaseArn?.split(':')[3] ?? this.agentRegion;
 
@@ -130,7 +136,7 @@ def retrieve_${kbName}(query: str):
 
     for (let i = 0; i < this.collaborators.length; i++) {
       const collaborator = this.collaborators[i]!;
-      const collabName = collaborator.collaboratorName ?? '';
+      const collabName = sanitizePyIdentifier(collaborator.collaboratorName ?? '');
       const fileName = `strands_collaborator_${collabName}`;
 
       // Recursively translate collaborator
@@ -183,7 +189,7 @@ def invoke_${collabName}(query: str) -> str:
             '        memory_synopsis = "\\n".join([m.get("content", {}).get("text", "") for m in all_memories])',
           ]
         : this.memoryEnabled
-          ? ['        memory_synopsis = memory_manager.get_memory_synopsis()']
+          ? ['        memory_synopsis = ""  # TODO: Configure memory manager for local memory retrieval']
           : [];
 
     const memoryReplaceLines = this.memoryEnabled

@@ -40,6 +40,13 @@ export interface ImportedFeatures {
 }
 
 /**
+ * Sanitize a string to be a valid Python identifier.
+ */
+export function sanitizePyIdentifier(name: string): string {
+  return name.replace(/[^a-zA-Z0-9_]/g, '_').replace(/^(\d)/, '_$1');
+}
+
+/**
  * Base class with shared translation logic between Strands and LangChain translators.
  */
 export abstract class BaseBedrockTranslator {
@@ -124,7 +131,7 @@ export abstract class BaseBedrockTranslator {
     this.isAcceptingRelays = collaboratorContext?.relayHistory === 'TO_COLLABORATOR';
     this.collaboratorDescriptions = this.collaborators.map(
       c =>
-        `{'agentName': '${c.agent?.agentName ?? ''}', 'collaboratorName': 'invoke_${c.collaboratorName ?? ''}', 'collaboratorInstruction': '${c.collaborationInstruction ?? ''}'}`
+        `{'agentName': '${BaseBedrockTranslator.escapePySingleQuote(c.agent?.agentName ?? '')}', 'collaboratorName': 'invoke_${sanitizePyIdentifier(c.collaboratorName ?? '')}', 'collaboratorInstruction': '${BaseBedrockTranslator.escapePySingleQuote(c.collaborationInstruction ?? '')}'}`
     );
     this.collaboratorMap = new Map(this.collaborators.map(c => [c.collaboratorName ?? '', c]));
 
@@ -166,6 +173,21 @@ load_dotenv()
    */
   abstract translate(): TranslationResult;
 
+  /** Escape a string for use inside Python double-quoted strings. */
+  static escapePyDoubleQuote(s: string): string {
+    return s.replace(/\\/g, '\\\\').replace(/"/g, '\\"').replace(/\n/g, '\\n');
+  }
+
+  /** Escape a string for use inside Python single-quoted strings. */
+  static escapePySingleQuote(s: string): string {
+    return s.replace(/\\/g, '\\\\').replace(/'/g, "\\'").replace(/\n/g, '\\n');
+  }
+
+  /** Escape a string for use inside Python triple-quoted strings. */
+  static escapePyTripleQuote(s: string): string {
+    return s.replace(/\\/g, '\\\\').replace(/"""/g, '\\"\\"\\"');
+  }
+
   /**
    * Generate prompt variable assignments for enabled prompt overrides.
    */
@@ -186,13 +208,13 @@ load_dotenv()
       }
 
       // Escape for Python triple-quoted string
-      const escaped = processedTemplate.replace(/\\/g, '\\\\').replace(/"""/g, '\\"\\"\\"');
+      const escaped = BaseBedrockTranslator.escapePyTripleQuote(processedTemplate);
       code += `\n${promptType}_TEMPLATE = """${escaped}"""\n`;
     }
 
     // Ensure ORCHESTRATION_TEMPLATE always exists
     if (!this.enabledPrompts.includes('ORCHESTRATION')) {
-      const escaped = this.instruction.replace(/\\/g, '\\\\').replace(/"""/g, '\\"\\"\\"');
+      const escaped = BaseBedrockTranslator.escapePyTripleQuote(this.instruction);
       code += `\nORCHESTRATION_TEMPLATE = """${escaped}"""\n`;
       this.enabledPrompts.push('ORCHESTRATION');
     }
@@ -237,14 +259,14 @@ load_dotenv()
       .join(', ');
 
     const description = fn.description ?? `Function from action group ${groupName}`;
-    const escapedDesc = description.replace(/\\/g, '\\\\').replace(/"/g, '\\"');
+    const escapedDesc = BaseBedrockTranslator.escapePyTripleQuote(description);
 
     return `
 @tool
 def ${fnName}(${paramList}) -> str:
     """${escapedDesc}"""
     # TODO: Implement the logic for this action group function.
-    # This was imported from Bedrock Agent action group "${groupName}".
+    # This was imported from Bedrock Agent action group "${BaseBedrockTranslator.escapePyDoubleQuote(groupName)}".
     return json.dumps({"status": "not_implemented", "function": "${fnName}"})
 
 action_group_tools.append(${fnName})

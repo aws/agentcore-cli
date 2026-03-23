@@ -4,7 +4,7 @@
  */
 import type { BedrockAgentConfig } from '../../../aws/bedrock-import-types';
 import type { TranslationResult, TranslatorOptions } from './base-translator';
-import { BaseBedrockTranslator } from './base-translator';
+import { BaseBedrockTranslator, sanitizePyIdentifier } from './base-translator';
 
 export class LangGraphTranslator extends BaseBedrockTranslator {
   constructor(
@@ -133,8 +133,8 @@ llm_ORCHESTRATION = ChatBedrock(
 
     let code = '\n# --- Knowledge Base Tools ---\n';
     for (const kb of this.knowledgeBases) {
-      const kbName = (kb.name ?? '').replace(/\s/g, '_');
-      const kbDescription = kb.description ?? '';
+      const kbName = sanitizePyIdentifier(kb.name ?? '');
+      const kbDescription = BaseBedrockTranslator.escapePyDoubleQuote(kb.description ?? '');
       const kbId = kb.knowledgeBaseId;
       const kbRegion = kb.knowledgeBaseArn?.split(':')[3] ?? this.agentRegion;
 
@@ -159,7 +159,7 @@ retriever_tool_${kbName} = retriever_${kbName}.as_tool(name="kb_${kbName}", desc
 
     for (let i = 0; i < this.collaborators.length; i++) {
       const collaborator = this.collaborators[i]!;
-      const collabName = collaborator.collaboratorName ?? '';
+      const collabName = sanitizePyIdentifier(collaborator.collaboratorName ?? '');
       const fileName = `langchain_collaborator_${collabName}`;
 
       // Recursively translate collaborator
@@ -212,12 +212,14 @@ def invoke_${collabName}(query: str, state: Annotated[dict, InjectedState]) -> s
             all_memories = semantic_memories + pref_memories + summary_memories
             memory_synopsis = "\\n".join([m.get("content", {}).get("text", "") for m in all_memories])`
         : this.memoryEnabled
-          ? '    memory_synopsis = memory_manager.get_memory_synopsis()'
+          ? '    memory_synopsis = ""  # TODO: Configure memory manager for local memory retrieval'
           : '';
 
     const memoryReplaceCode = this.memoryEnabled
       ? '    system_prompt = system_prompt.replace("$memory_synopsis$", memory_synopsis)'
       : '';
+
+    const checkpointerLine = this.memoryEnabled ? '\n            checkpointer=checkpointer_STM,' : '';
 
     code += `
 config = {"configurable": {"thread_id": "1"}}
@@ -239,8 +241,7 @@ def get_agent():
         _agent = create_react_agent(
             model=llm_ORCHESTRATION,
             prompt=system_prompt,
-            tools=tools,
-            checkpointer=checkpointer_STM,
+            tools=tools,${checkpointerLine}
             debug=False
         )
     return _agent

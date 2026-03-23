@@ -38,7 +38,7 @@ import {
 } from './types';
 import { Box, Text, useInput } from 'ink';
 import Spinner from 'ink-spinner';
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 // Helper to get provider display name and env var name from ModelProvider
 function getProviderInfo(provider: ModelProvider): { name: string; envVarName: string } {
@@ -139,6 +139,8 @@ export function AddAgentScreen({ existingAgentNames, onComplete, onExit }: AddAg
     framework: 'Strands' as SDKFramework,
     memory: 'none' as MemoryOption,
   });
+  const importConfigRef = useRef(importConfig);
+  importConfigRef.current = importConfig;
   const [bedrockAgents, setBedrockAgents] = useState<BedrockAgentSummary[]>([]);
   const [bedrockAliases, setBedrockAliases] = useState<BedrockAliasSummary[]>([]);
   const [importLoading, setImportLoading] = useState(false);
@@ -438,7 +440,7 @@ export function AddAgentScreen({ existingAgentNames, onComplete, onExit }: AddAg
       setImportStep('bedrockAlias');
       setImportLoading(true);
       setImportError(null);
-      void listBedrockAgentAliases(importConfig.region, item.id)
+      void listBedrockAgentAliases(importConfigRef.current.region, item.id)
         .then(aliases => {
           setBedrockAliases(aliases);
           setImportLoading(false);

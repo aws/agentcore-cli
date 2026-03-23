@@ -52,13 +52,20 @@ function cleanVariableName(name: string): string {
  */
 export async function listBedrockAgents(region: string): Promise<BedrockAgentSummary[]> {
   const client = createBedrockAgentClient(region);
-  const response = await client.send(new ListAgentsCommand({ maxResults: 200 }));
-  const agents = response.agentSummaries ?? [];
-  return agents.map(agent => ({
-    agentId: agent.agentId ?? '',
-    agentName: agent.agentName ?? '',
-    description: agent.description ?? '',
-  }));
+  const agents: BedrockAgentSummary[] = [];
+  let nextToken: string | undefined;
+  do {
+    const response = await client.send(new ListAgentsCommand({ maxResults: 200, nextToken }));
+    for (const agent of response.agentSummaries ?? []) {
+      agents.push({
+        agentId: agent.agentId ?? '',
+        agentName: agent.agentName ?? '',
+        description: agent.description ?? '',
+      });
+    }
+    nextToken = response.nextToken;
+  } while (nextToken);
+  return agents;
 }
 
 /**
@@ -66,13 +73,20 @@ export async function listBedrockAgents(region: string): Promise<BedrockAgentSum
  */
 export async function listBedrockAgentAliases(region: string, agentId: string): Promise<BedrockAliasSummary[]> {
   const client = createBedrockAgentClient(region);
-  const response = await client.send(new ListAgentAliasesCommand({ agentId }));
-  const aliases = response.agentAliasSummaries ?? [];
-  return aliases.map(alias => ({
-    aliasId: alias.agentAliasId ?? '',
-    aliasName: alias.agentAliasName ?? '',
-    description: alias.description ?? '',
-  }));
+  const aliases: BedrockAliasSummary[] = [];
+  let nextToken: string | undefined;
+  do {
+    const response = await client.send(new ListAgentAliasesCommand({ agentId, nextToken }));
+    for (const alias of response.agentAliasSummaries ?? []) {
+      aliases.push({
+        aliasId: alias.agentAliasId ?? '',
+        aliasName: alias.agentAliasName ?? '',
+        description: alias.description ?? '',
+      });
+    }
+    nextToken = response.nextToken;
+  } while (nextToken);
+  return aliases;
 }
 
 /**
@@ -82,8 +96,14 @@ export async function listBedrockAgentAliases(region: string, agentId: string): 
 export async function getBedrockAgentConfig(
   region: string,
   agentId: string,
-  aliasId: string
+  aliasId: string,
+  visitedAgents: Set<string> = new Set()
 ): Promise<BedrockAgentConfig> {
+  const visitKey = `${agentId}:${aliasId}`;
+  if (visitedAgents.has(visitKey)) {
+    return { agent: {} as BedrockAgentInfo, action_groups: [], knowledge_bases: [], collaborators: [] };
+  }
+  visitedAgents.add(visitKey);
   const agentClient = createBedrockAgentClient(region);
   const bedrockClient = createBedrockClient(region);
 
@@ -116,8 +136,8 @@ export async function getBedrockAgentConfig(
         guardrailId: guardrailResponse.guardrailId,
         guardrailVersion: guardrailResponse.version,
       } as unknown as typeof agentInfo.guardrailConfiguration;
-    } catch {
-      // Guardrail fetch failed, continue without it
+    } catch (err) {
+      console.warn(`Warning: Failed to fetch guardrail details: ${err instanceof Error ? err.message : err}`);
     }
   }
 
@@ -132,8 +152,8 @@ export async function getBedrockAgentConfig(
       modelName: modelResponse.modelDetails?.modelName,
       providerName: modelResponse.modelDetails?.providerName,
     };
-  } catch {
-    // Model info fetch failed, use defaults
+  } catch (err) {
+    console.warn(`Warning: Failed to fetch model info: ${err instanceof Error ? err.message : err}`);
     agentInfo.model = { providerName: 'anthropic' };
   }
 
@@ -154,7 +174,8 @@ export async function getBedrockAgentConfig(
     agentId,
     agentVersion,
     aliasId,
-    agentInfo
+    agentInfo,
+    visitedAgents
   );
 
   return {
@@ -171,16 +192,23 @@ async function fetchActionGroups(
   agentId: string,
   agentVersion: string
 ): Promise<ActionGroupInfo[]> {
-  const listResponse = await client.send(new ListAgentActionGroupsCommand({ agentId, agentVersion }));
-  const summaries = listResponse.actionGroupSummaries ?? [];
+  const summaries: { actionGroupId?: string }[] = [];
+  let nextToken: string | undefined;
+  do {
+    const listResponse = await client.send(new ListAgentActionGroupsCommand({ agentId, agentVersion, nextToken }));
+    summaries.push(...(listResponse.actionGroupSummaries ?? []));
+    nextToken = listResponse.nextToken;
+  } while (nextToken);
+
   const actionGroups: ActionGroupInfo[] = [];
 
   for (const summary of summaries) {
+    if (!summary.actionGroupId) continue;
     const detail = await client.send(
       new GetAgentActionGroupCommand({
         agentId,
         agentVersion,
-        actionGroupId: summary.actionGroupId!,
+        actionGroupId: summary.actionGroupId,
       })
     );
     const ag = detail.agentActionGroup as unknown as ActionGroupInfo;
@@ -193,8 +221,8 @@ async function fetchActionGroups(
         // Inline YAML/JSON schema
         try {
           ag.apiSchema.payload = yaml.load(payload) as Record<string, unknown>;
-        } catch {
-          // Leave as-is if parsing fails
+        } catch (err) {
+          console.warn(`Warning: Failed to parse API schema: ${err instanceof Error ? err.message : err}`);
         }
       } else if (ag.apiSchema.s3) {
         // S3-stored schema
@@ -210,8 +238,8 @@ async function fetchActionGroups(
           if (body) {
             ag.apiSchema.payload = yaml.load(body) as Record<string, unknown>;
           }
-        } catch {
-          // S3 fetch failed, continue without schema
+        } catch (err) {
+          console.warn(`Warning: Failed to fetch S3 schema: ${err instanceof Error ? err.message : err}`);
         }
       }
     }
@@ -227,25 +255,34 @@ async function fetchKnowledgeBases(
   agentId: string,
   agentVersion: string
 ): Promise<KnowledgeBaseInfo[]> {
-  const listResponse = await client.send(new ListAgentKnowledgeBasesCommand({ agentId, agentVersion }));
-  const summaries = listResponse.agentKnowledgeBaseSummaries ?? [];
+  const summaries: { knowledgeBaseId?: string; knowledgeBaseState?: string; description?: string }[] = [];
+  let nextToken: string | undefined;
+  do {
+    const listResponse = await client.send(new ListAgentKnowledgeBasesCommand({ agentId, agentVersion, nextToken }));
+    summaries.push(...(listResponse.agentKnowledgeBaseSummaries ?? []));
+    nextToken = listResponse.nextToken;
+  } while (nextToken);
+
   const knowledgeBases: KnowledgeBaseInfo[] = [];
 
   for (const summary of summaries) {
+    if (!summary.knowledgeBaseId) continue;
     try {
-      const kbDetail = await client.send(new GetKnowledgeBaseCommand({ knowledgeBaseId: summary.knowledgeBaseId! }));
+      const kbDetail = await client.send(new GetKnowledgeBaseCommand({ knowledgeBaseId: summary.knowledgeBaseId }));
       const kb = kbDetail.knowledgeBase;
       knowledgeBases.push({
-        knowledgeBaseId: summary.knowledgeBaseId!,
+        knowledgeBaseId: summary.knowledgeBaseId,
         knowledgeBaseState: summary.knowledgeBaseState ?? 'ENABLED',
         description: summary.description ?? kb?.description ?? '',
-        name: cleanVariableName(kb?.name ?? summary.knowledgeBaseId!),
+        name: cleanVariableName(kb?.name ?? summary.knowledgeBaseId),
         knowledgeBaseArn: kb?.knowledgeBaseArn,
       });
-    } catch {
-      // KB fetch failed, skip it
+    } catch (err) {
+      console.warn(
+        `Warning: Failed to fetch knowledge base ${summary.knowledgeBaseId}: ${err instanceof Error ? err.message : err}`
+      );
       knowledgeBases.push({
-        knowledgeBaseId: summary.knowledgeBaseId!,
+        knowledgeBaseId: summary.knowledgeBaseId,
         knowledgeBaseState: summary.knowledgeBaseState ?? 'ENABLED',
         description: summary.description ?? '',
       });
@@ -262,37 +299,43 @@ async function fetchCollaborators(
   agentId: string,
   agentVersion: string,
   aliasId: string,
-  agentInfo: BedrockAgentInfo
+  agentInfo: BedrockAgentInfo,
+  visitedAgents: Set<string>
 ): Promise<CollaboratorInfo[]> {
   if (agentInfo.agentCollaboration === 'DISABLED' || !agentInfo.agentCollaboration) {
     return [];
   }
 
   try {
-    const listResponse = await agentClient.send(new ListAgentCollaboratorsCommand({ agentId, agentVersion }));
-    const summaries = listResponse.agentCollaboratorSummaries ?? [];
+    const summaries: unknown[] = [];
+    let nextToken: string | undefined;
+    do {
+      const listResponse = await agentClient.send(
+        new ListAgentCollaboratorsCommand({ agentId, agentVersion, nextToken })
+      );
+      summaries.push(...(listResponse.agentCollaboratorSummaries ?? []));
+      nextToken = listResponse.nextToken;
+    } while (nextToken);
+
     const collaborators: CollaboratorInfo[] = [];
 
     for (const summary of summaries) {
-      const aliasArn = (summary as unknown as { agentDescriptor?: { aliasArn?: string } }).agentDescriptor?.aliasArn;
+      const aliasArn = (summary as { agentDescriptor?: { aliasArn?: string } }).agentDescriptor?.aliasArn;
       if (!aliasArn) continue;
 
-      const arnParts = aliasArn.split('/');
-      const collabAgentId = arnParts[1];
-      const collabAliasId = arnParts[2];
-      if (!collabAgentId || !collabAliasId || collabAliasId === aliasId) continue;
+      const arnMatch = aliasArn.match(/^arn:aws:bedrock:[^:]+:[^:]+:agent-alias\/([^/]+)\/([^/]+)$/);
+      if (!arnMatch) continue;
+      const [, collabAgentId, collabAliasId] = arnMatch;
+      if (!collabAgentId || !collabAliasId) continue;
 
-      // Recursively fetch collaborator config
-      const collabConfig = await getBedrockAgentConfig(region, collabAgentId, collabAliasId);
+      // Recursively fetch collaborator config (passing visited set to prevent cycles)
+      const collabConfig = await getBedrockAgentConfig(region, collabAgentId, collabAliasId, visitedAgents);
       const collabInfo: CollaboratorInfo = {
         ...collabConfig,
-        collaboratorName: cleanVariableName(
-          (summary as unknown as { collaboratorName?: string }).collaboratorName ?? ''
-        ),
-        collaborationInstruction:
-          (summary as unknown as { collaborationInstruction?: string }).collaborationInstruction ?? '',
+        collaboratorName: cleanVariableName((summary as { collaboratorName?: string }).collaboratorName ?? ''),
+        collaborationInstruction: (summary as { collaborationInstruction?: string }).collaborationInstruction ?? '',
         relayConversationHistory:
-          (summary as unknown as { relayConversationHistory?: string }).relayConversationHistory ?? 'DISABLED',
+          (summary as { relayConversationHistory?: string }).relayConversationHistory ?? 'DISABLED',
       };
       collaborators.push(collabInfo);
     }
@@ -303,7 +346,8 @@ async function fetchCollaborators(
     }
 
     return collaborators;
-  } catch {
+  } catch (err) {
+    console.warn(`Warning: Failed to fetch collaborators: ${err instanceof Error ? err.message : err}`);
     return [];
   }
 }
