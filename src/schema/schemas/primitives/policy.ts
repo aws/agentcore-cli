@@ -1,3 +1,4 @@
+import { uniqueBy } from '../zod-util';
 import { z } from 'zod';
 
 // ============================================================================
@@ -67,7 +68,15 @@ export const PolicyEngineSchema = z.object({
   name: PolicyEngineNameSchema,
   description: z.string().min(1).max(4096).optional(),
   encryptionKeyArn: z.string().optional(),
-  policies: z.array(PolicySchema).default([]),
+  policies: z
+    .array(PolicySchema)
+    .default([])
+    .superRefine(
+      uniqueBy(
+        policy => policy.name,
+        name => `Duplicate policy name: ${name}`
+      )
+    ),
 });
 
 export type PolicyEngine = z.infer<typeof PolicyEngineSchema>;

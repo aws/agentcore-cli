@@ -325,16 +325,22 @@ export class PolicyEnginePrimitive extends BasePrimitive<AddPolicyEngineOptions,
             }
 
             const result = await this.remove(cliOptions.name);
-            console.log(
-              JSON.stringify({
-                success: result.success,
-                resourceType: this.kind,
-                resourceName: cliOptions.name,
-                message: result.success ? `Removed policy engine '${cliOptions.name}'` : undefined,
-                note: result.success ? SOURCE_CODE_NOTE : undefined,
-                error: !result.success ? result.error : undefined,
-              })
-            );
+            if (cliOptions.json) {
+              console.log(
+                JSON.stringify({
+                  success: result.success,
+                  resourceType: this.kind,
+                  resourceName: cliOptions.name,
+                  message: result.success ? `Removed policy engine '${cliOptions.name}'` : undefined,
+                  note: result.success ? SOURCE_CODE_NOTE : undefined,
+                  error: !result.success ? result.error : undefined,
+                })
+              );
+            } else if (result.success) {
+              console.log(`Removed policy engine '${cliOptions.name}'`);
+            } else {
+              console.error(result.error);
+            }
             process.exit(result.success ? 0 : 1);
           } else {
             const [{ render }, { default: React }, { RemoveFlow }] = await Promise.all([

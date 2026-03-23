@@ -1,6 +1,6 @@
 import { findConfigRoot } from '../../lib';
 import type { Policy } from '../../schema';
-import { PolicySchema } from '../../schema';
+import { PolicySchema, ValidationModeSchema } from '../../schema';
 import { detectRegion } from '../aws';
 import { getPolicyGeneration, startPolicyGeneration } from '../aws/policy-generation';
 import { getErrorMessage } from '../errors';
@@ -159,6 +159,16 @@ export class PolicyPrimitive extends BasePrimitive<AddPolicyOptions, RemovablePo
         resolvedPolicy = nameOrCompositeKey.slice(slashIndex + 1);
       }
 
+      if (!resolvedEngine) {
+        const matchingEngines = project.policyEngines.filter(e => e.policies.some(p => p.name === resolvedPolicy));
+        if (matchingEngines.length > 1) {
+          return {
+            success: false,
+            error: `Policy "${resolvedPolicy}" exists in multiple engines: ${matchingEngines.map(e => e.name).join(', ')}. Use --engine to specify which one.`,
+          };
+        }
+      }
+
       for (const engine of project.policyEngines) {
         if (resolvedEngine && engine.name !== resolvedEngine) continue;
 
@@ -190,6 +200,15 @@ export class PolicyPrimitive extends BasePrimitive<AddPolicyOptions, RemovablePo
       const slashIndex = nameOrCompositeKey.indexOf('/');
       targetEngine = nameOrCompositeKey.slice(0, slashIndex);
       targetPolicy = nameOrCompositeKey.slice(slashIndex + 1);
+    }
+
+    if (!targetEngine) {
+      const matchingEngines = project.policyEngines.filter(e => e.policies.some(p => p.name === targetPolicy));
+      if (matchingEngines.length > 1) {
+        throw new Error(
+          `Policy "${targetPolicy}" exists in multiple engines: ${matchingEngines.map(e => e.name).join(', ')}. Use --engine to specify which one.`
+        );
+      }
     }
 
     for (const engine of project.policyEngines) {
@@ -310,7 +329,9 @@ export class PolicyPrimitive extends BasePrimitive<AddPolicyOptions, RemovablePo
                 statement: cliOptions.statement,
                 generate: cliOptions.generate,
                 gateway: cliOptions.gateway,
-                validationMode: cliOptions.validationMode as AddPolicyOptions['validationMode'],
+                validationMode: cliOptions.validationMode
+                  ? ValidationModeSchema.parse(cliOptions.validationMode)
+                  : undefined,
               });
 
               if (cliOptions.json) {

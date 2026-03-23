@@ -74,7 +74,7 @@ export function AddPolicyScreen({
     [deployedGateways]
   );
 
-  const validationModeItems: SelectableItem[] = useMemo(
+  const validationModeItems = useMemo(
     () => VALIDATION_MODE_OPTIONS.map(opt => ({ id: opt.id, title: opt.title, description: opt.description })),
     []
   );
@@ -120,7 +120,7 @@ export function AddPolicyScreen({
 
   const validationNav = useListNavigation({
     items: validationModeItems,
-    onSelect: item => wizard.setValidationMode(item.id as AddPolicyConfig['validationMode']),
+    onSelect: item => wizard.setValidationMode(item.id),
     onExit: goBackOrExit,
     isActive: isValidationStep,
   });
@@ -164,7 +164,7 @@ export function AddPolicyScreen({
       skipGeneration.current = true;
       wizard.goBack();
     },
-    isActive: isGenerateReviewStep,
+    isActive: isGenerateReviewStep && !generationError,
   });
 
   // Real policy generation when entering the loading step
@@ -308,6 +308,7 @@ export function AddPolicyScreen({
             key="inline-statement"
             prompt="Enter Cedar policy statement"
             initialValue=""
+            expandable
             onSubmit={wizard.setInlineStatement}
             onCancel={goBackOrExit}
           />

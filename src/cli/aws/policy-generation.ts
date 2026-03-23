@@ -6,6 +6,7 @@ import {
   StartPolicyGenerationCommand,
   waitUntilPolicyGenerationCompleted,
 } from '@aws-sdk/client-bedrock-agentcore-control';
+import { WaiterState } from '@smithy/util-waiter';
 
 export interface StartPolicyGenerationOptions {
   policyEngineId: string;
@@ -62,10 +63,17 @@ export async function getPolicyGeneration(options: GetPolicyGenerationOptions): 
   });
 
   // Use the SDK waiter to poll until generation completes
-  await waitUntilPolicyGenerationCompleted(
+  const waiterResult = await waitUntilPolicyGenerationCompleted(
     { client, maxWaitTime: 120, minDelay: 2, maxDelay: 5 },
     { policyGenerationId: options.generationId, policyEngineId: options.policyEngineId }
   );
+
+  if (waiterResult.state !== WaiterState.SUCCESS) {
+    throw new Error(
+      `Policy generation did not complete within the timeout period (state: ${waiterResult.state}). ` +
+        `Generation ID: ${options.generationId}`
+    );
+  }
 
   // Check the final status
   const getCommand = new GetPolicyGenerationCommand({
