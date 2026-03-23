@@ -132,7 +132,14 @@ describe('useGenerateWizard — advanced config gate', () => {
 
       const steps = ref.current!.wizard.steps;
       const advIdx = steps.indexOf('advanced');
-      expect(steps.slice(advIdx)).toEqual(['advanced', 'networkMode', 'subnets', 'securityGroups', 'requestHeaderAllowlist', 'confirm']);
+      expect(steps.slice(advIdx)).toEqual([
+        'advanced',
+        'networkMode',
+        'subnets',
+        'securityGroups',
+        'requestHeaderAllowlist',
+        'confirm',
+      ]);
     });
   });
 
