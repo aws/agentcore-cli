@@ -304,6 +304,116 @@ describe('integration: add and remove policy engines and policies', () => {
       expect(json.error).toContain('--engine is required');
     });
 
+    it('rejects --statement and --source together', async () => {
+      const engineName = `EngMutex${Date.now().toString().slice(-6)}`;
+      await runCLI(['add', 'policy-engine', '--name', engineName, '--json'], project.projectPath);
+
+      const result = await runCLI(
+        [
+          'add',
+          'policy',
+          '--name',
+          'MutexPolicy',
+          '--engine',
+          engineName,
+          '--statement',
+          'permit(principal, action, resource);',
+          '--source',
+          'policy.cedar',
+          '--json',
+        ],
+        project.projectPath
+      );
+
+      expect(result.exitCode).toBe(1);
+      const json = JSON.parse(result.stdout);
+      expect(json.success).toBe(false);
+      expect(json.error).toContain('Only one of');
+    });
+
+    it('rejects --statement and --generate together', async () => {
+      const engineName = `EngMutex2${Date.now().toString().slice(-6)}`;
+      await runCLI(['add', 'policy-engine', '--name', engineName, '--json'], project.projectPath);
+
+      const result = await runCLI(
+        [
+          'add',
+          'policy',
+          '--name',
+          'MutexPolicy',
+          '--engine',
+          engineName,
+          '--statement',
+          'permit(principal, action, resource);',
+          '--generate',
+          'Allow all read access',
+          '--json',
+        ],
+        project.projectPath
+      );
+
+      expect(result.exitCode).toBe(1);
+      const json = JSON.parse(result.stdout);
+      expect(json.success).toBe(false);
+      expect(json.error).toContain('Only one of');
+    });
+
+    it('rejects --source and --generate together', async () => {
+      const engineName = `EngMutex3${Date.now().toString().slice(-6)}`;
+      await runCLI(['add', 'policy-engine', '--name', engineName, '--json'], project.projectPath);
+
+      const result = await runCLI(
+        [
+          'add',
+          'policy',
+          '--name',
+          'MutexPolicy',
+          '--engine',
+          engineName,
+          '--source',
+          'policy.cedar',
+          '--generate',
+          'Allow all read access',
+          '--json',
+        ],
+        project.projectPath
+      );
+
+      expect(result.exitCode).toBe(1);
+      const json = JSON.parse(result.stdout);
+      expect(json.success).toBe(false);
+      expect(json.error).toContain('Only one of');
+    });
+
+    it('rejects all three flags together', async () => {
+      const engineName = `EngMutex4${Date.now().toString().slice(-6)}`;
+      await runCLI(['add', 'policy-engine', '--name', engineName, '--json'], project.projectPath);
+
+      const result = await runCLI(
+        [
+          'add',
+          'policy',
+          '--name',
+          'MutexPolicy',
+          '--engine',
+          engineName,
+          '--statement',
+          'permit(principal, action, resource);',
+          '--source',
+          'policy.cedar',
+          '--generate',
+          'Allow all read access',
+          '--json',
+        ],
+        project.projectPath
+      );
+
+      expect(result.exitCode).toBe(1);
+      const json = JSON.parse(result.stdout);
+      expect(json.success).toBe(false);
+      expect(json.error).toContain('Only one of');
+    });
+
     it('requires --statement, --source, or --generate when adding a policy', async () => {
       // First ensure an engine exists
       const engineName = `EngErr${Date.now().toString().slice(-6)}`;
