@@ -13,10 +13,7 @@ export const TagKeySchema = z
 
 const TAG_VALUE_CHAR_PATTERN = /^[\p{L}\p{N}\s_.:/=+\-@]*$/u;
 
-export const TagValueSchema = z
-  .string()
-  .max(256)
-  .regex(TAG_VALUE_CHAR_PATTERN, `Tag value ${TAG_CHAR_MESSAGE}`);
+export const TagValueSchema = z.string().max(256).regex(TAG_VALUE_CHAR_PATTERN, `Tag value ${TAG_CHAR_MESSAGE}`);
 
 export const TagsSchema = z
   .record(TagKeySchema, TagValueSchema)

@@ -1,5 +1,5 @@
-import { TagKeySchema, TagValueSchema } from '../../../schema/schemas/primitives/tags';
 import { ConfigIO, NoProjectError, findConfigRoot } from '../../../lib';
+import { TagKeySchema, TagValueSchema } from '../../../schema/schemas/primitives/tags';
 import type { ResourceRef, ResourceTagInfo, TagListResult, TaggableResourceType } from './types';
 import { TAGGABLE_RESOURCE_TYPES } from './types';
 
