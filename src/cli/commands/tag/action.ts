@@ -1,3 +1,4 @@
+import { TagKeySchema, TagValueSchema } from '../../../schema/schemas/primitives/tags';
 import { ConfigIO, NoProjectError, findConfigRoot } from '../../../lib';
 import type { ResourceRef, ResourceTagInfo, TagListResult, TaggableResourceType } from './types';
 import { TAGGABLE_RESOURCE_TYPES } from './types';
@@ -76,7 +77,19 @@ export async function listTags(resourceFilter?: string): Promise<TagListResult> 
   return { projectDefaults, resources };
 }
 
+function validateTagKeyValue(key: string, value: string): void {
+  const keyResult = TagKeySchema.safeParse(key);
+  if (!keyResult.success) {
+    throw new Error(`Invalid tag key: ${keyResult.error.issues[0]?.message ?? 'validation failed'}`);
+  }
+  const valueResult = TagValueSchema.safeParse(value);
+  if (!valueResult.success) {
+    throw new Error(`Invalid tag value: ${valueResult.error.issues[0]?.message ?? 'validation failed'}`);
+  }
+}
+
 export async function addTag(resourceRefStr: string, key: string, value: string): Promise<{ success: boolean }> {
+  validateTagKeyValue(key, value);
   const ref = parseResourceRef(resourceRefStr);
   const configIO = getConfigIO();
 
@@ -141,6 +154,7 @@ export async function removeTag(resourceRefStr: string, key: string): Promise<{ 
 }
 
 export async function setDefaultTag(key: string, value: string): Promise<{ success: boolean }> {
+  validateTagKeyValue(key, value);
   const configIO = getConfigIO();
   const spec = await configIO.readProjectSpec();
   spec.tags = { ...(spec.tags ?? {}), [key]: value };

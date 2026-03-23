@@ -49,7 +49,7 @@ describe('integration: tag command', () => {
     const specPath = join(project.projectPath, 'agentcore', 'agentcore.json');
     const spec = JSON.parse(await readFile(specPath, 'utf-8'));
     const agentName = spec.agents[0]?.name;
-    if (!agentName) return; // Skip if no agent
+    expect(agentName, 'Expected at least one agent in the project').toBeDefined();
 
     const result = await runCLI(
       ['tag', 'add', '--resource', `agent:${agentName}`, '--key', 'cost-center', '--value', '12345', '--json'],
@@ -74,7 +74,8 @@ describe('integration: tag command', () => {
     const specPath = join(project.projectPath, 'agentcore', 'agentcore.json');
     const spec = JSON.parse(await readFile(specPath, 'utf-8'));
     const agentName = spec.agents[0]?.name;
-    if (!agentName || !spec.agents[0].tags?.['cost-center']) return;
+    expect(agentName, 'Expected at least one agent in the project').toBeDefined();
+    expect(spec.agents[0].tags?.['cost-center'], 'Expected cost-center tag from previous test').toBeDefined();
 
     const result = await runCLI(
       ['tag', 'remove', '--resource', `agent:${agentName}`, '--key', 'cost-center', '--json'],

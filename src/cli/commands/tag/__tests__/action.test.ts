@@ -122,6 +122,18 @@ describe('addTag', () => {
   it('throws for nonexistent resource', async () => {
     await expect(addTag('agent:noSuchAgent', 'key', 'value')).rejects.toThrow('not found');
   });
+
+  it('rejects empty tag key', async () => {
+    await expect(addTag('agent:myAgent', '', 'value')).rejects.toThrow('Invalid tag key');
+  });
+
+  it('rejects tag key exceeding 128 chars', async () => {
+    await expect(addTag('agent:myAgent', 'k'.repeat(129), 'value')).rejects.toThrow('Invalid tag key');
+  });
+
+  it('rejects tag value exceeding 256 chars', async () => {
+    await expect(addTag('agent:myAgent', 'key', 'v'.repeat(257))).rejects.toThrow('Invalid tag value');
+  });
 });
 
 describe('removeTag', () => {
