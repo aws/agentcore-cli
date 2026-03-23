@@ -365,23 +365,34 @@ export class PolicyPrimitive extends BasePrimitive<AddPolicyOptions, RemovablePo
 
           if (cliOptions.name || cliOptions.force || cliOptions.json) {
             if (!cliOptions.name) {
-              console.log(JSON.stringify({ success: false, error: '--name is required' }));
+              if (cliOptions.json) {
+                console.log(JSON.stringify({ success: false, error: '--name is required' }));
+              } else {
+                console.error('--name is required');
+              }
               process.exit(1);
             }
 
             // Build composite key when --engine is provided for unambiguous removal
             const removeKey = cliOptions.engine ? `${cliOptions.engine}/${cliOptions.name}` : cliOptions.name;
             const result = await this.remove(removeKey);
-            console.log(
-              JSON.stringify({
-                success: result.success,
-                resourceType: this.kind,
-                resourceName: cliOptions.name,
-                message: result.success ? `Removed policy '${cliOptions.name}'` : undefined,
-                note: result.success ? SOURCE_CODE_NOTE : undefined,
-                error: !result.success ? result.error : undefined,
-              })
-            );
+
+            if (cliOptions.json) {
+              console.log(
+                JSON.stringify({
+                  success: result.success,
+                  resourceType: this.kind,
+                  resourceName: cliOptions.name,
+                  message: result.success ? `Removed policy '${cliOptions.name}'` : undefined,
+                  note: result.success ? SOURCE_CODE_NOTE : undefined,
+                  error: !result.success ? result.error : undefined,
+                })
+              );
+            } else if (result.success) {
+              console.log(`Removed policy '${cliOptions.name}'`);
+            } else {
+              console.error(result.error);
+            }
             process.exit(result.success ? 0 : 1);
           } else {
             const [{ render }, { default: React }, { RemoveFlow }] = await Promise.all([
