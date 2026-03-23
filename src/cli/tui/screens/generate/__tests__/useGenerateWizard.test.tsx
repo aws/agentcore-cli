@@ -112,13 +112,15 @@ describe('useGenerateWizard — advanced config gate', () => {
       expect(frame).toContain('advancedSelected:true');
     });
 
-    it('setAdvanced(true) injects networkMode into steps', () => {
-      const { ref, lastFrame } = setup();
+    it('setAdvanced(true) injects networkMode and requestHeaderAllowlist into steps', () => {
+      const { ref } = setup();
       walkToAdvanced(ref);
 
       act(() => ref.current!.wizard.setAdvanced(true));
 
-      expect(lastFrame()).toMatch(/advanced,networkMode,confirm/);
+      const steps = ref.current!.wizard.steps;
+      const advIdx = steps.indexOf('advanced');
+      expect(steps.slice(advIdx)).toEqual(['advanced', 'networkMode', 'requestHeaderAllowlist', 'confirm']);
     });
 
     it('setAdvanced(true) then VPC injects subnets and securityGroups', () => {
@@ -130,7 +132,7 @@ describe('useGenerateWizard — advanced config gate', () => {
 
       const steps = ref.current!.wizard.steps;
       const advIdx = steps.indexOf('advanced');
-      expect(steps.slice(advIdx)).toEqual(['advanced', 'networkMode', 'subnets', 'securityGroups', 'confirm']);
+      expect(steps.slice(advIdx)).toEqual(['advanced', 'networkMode', 'subnets', 'securityGroups', 'requestHeaderAllowlist', 'confirm']);
     });
   });
 
