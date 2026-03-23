@@ -405,8 +405,6 @@ interface JwtConfigInputProps {
 /** OIDC well-known suffix for validation */
 const OIDC_WELL_KNOWN_SUFFIX = '/.well-known/openid-configuration';
 
-
-
 function JwtConfigInput({
   subStep,
   onDiscoveryUrl,
