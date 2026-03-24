@@ -101,6 +101,24 @@ describe('probePath', () => {
     expect(probePath(exec)).toBeNull();
   });
 
+  it('returns null when binary is inside .nvm directory (npm-managed via nvm)', () => {
+    const exec = (cmd: string) => {
+      if (cmd === 'command -v agentcore') return '/Users/rft/.nvm/versions/node/v25.1.0/bin/agentcore';
+      if (cmd === 'agentcore --version') throw new Error('exit code 1');
+      return '';
+    };
+    expect(probePath(exec)).toBeNull();
+  });
+
+  it('returns null when binary is inside .fnm directory (npm-managed via fnm)', () => {
+    const exec = (cmd: string) => {
+      if (cmd === 'command -v agentcore') return '/Users/dev/.fnm/node-versions/v20.0.0/installation/bin/agentcore';
+      if (cmd === 'agentcore --version') throw new Error('exit code 1');
+      return '';
+    };
+    expect(probePath(exec)).toBeNull();
+  });
+
   it('uses "command -v agentcore" on non-Windows', () => {
     const calls: string[] = [];
     const exec = (cmd: string) => {
