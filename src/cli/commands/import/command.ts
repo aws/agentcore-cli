@@ -2,6 +2,12 @@ import { handleImport } from './actions';
 import type { Command } from '@commander-js/extra-typings';
 import * as fs from 'node:fs';
 
+const green = '\x1b[32m';
+const yellow = '\x1b[33m';
+const cyan = '\x1b[36m';
+const dim = '\x1b[2m';
+const reset = '\x1b[0m';
+
 export const registerImport = (program: Command) => {
   program
     .command('import')
@@ -12,40 +18,71 @@ export const registerImport = (program: Command) => {
     .action(async (cliOptions: { source: string; target?: string; yes?: boolean }) => {
       // Validate source file exists
       if (!fs.existsSync(cliOptions.source)) {
-        console.error(`Error: Source file not found: ${cliOptions.source}`);
+        console.error(`\x1b[31m[error]${reset} Source file not found: ${cliOptions.source}`);
         process.exit(1);
       }
 
-      console.log('AgentCore Import: Migrating Starter Toolkit project to AgentCore CLI\n');
+      const warnings: string[] = [];
 
       const result = await handleImport({
         source: cliOptions.source,
         target: cliOptions.target,
         yes: cliOptions.yes,
         onProgress: (message: string) => {
-          console.log(`  ${message}`);
+          // Collect warnings for end-of-output display
+          if (message.includes('Warning') || message.includes('\x1b[33m')) {
+            warnings.push(message);
+            return;
+          }
+
+          // Skipped items shown dimmed
+          if (message.startsWith('Skipping')) {
+            console.log(`${dim}[skip]${reset}  ${message}`);
+            return;
+          }
+
+          // Normal progress steps shown as [done]
+          console.log(`${green}[done]${reset}  ${message}`);
         },
       });
 
       if (result.success) {
-        console.log('\n--- Import Summary ---');
+        // Summary
+        console.log('');
+        console.log(`${green}Import complete!${reset}`);
+
+        console.log('');
+        console.log(`${dim}Imported:${reset}`);
+        console.log(`  Stack: ${result.stackName}`);
         if (result.importedAgents && result.importedAgents.length > 0) {
-          console.log(`  Imported agents: ${result.importedAgents.join(', ')}`);
+          for (const agent of result.importedAgents) {
+            console.log(`  Agent: ${agent}`);
+          }
         }
         if (result.importedMemories && result.importedMemories.length > 0) {
-          console.log(`  Imported memories: ${result.importedMemories.join(', ')}`);
+          for (const mem of result.importedMemories) {
+            console.log(`  Memory: ${mem}`);
+          }
         }
-        console.log(`  Stack: ${result.stackName}`);
 
-        console.log('\n--- Next Steps ---');
-        console.log('  1. Review agentcore/agentcore.json');
-        console.log('  2. Run `agentcore deploy` to reconcile the stack (Phase 3)');
-        console.log('     This adds IAM policies, Outputs, and cross-references.');
-        console.log('  3. Verify: `agentcore invoke`');
-        console.log('\n  Note: Original IAM roles are unchanged. After deploy, resources use new');
-        console.log('  CDK-synthesized roles. Delete original roles once confirmed working.');
+        // Show collected warnings
+        if (warnings.length > 0) {
+          console.log('');
+          for (const w of warnings) {
+            console.log(`${yellow}[warn]${reset}  ${w}`);
+          }
+        }
+
+        // Next steps
+        console.log('');
+        console.log('To continue:');
+        console.log('');
+        console.log(`  ${cyan}agentcore deploy${reset}     ${dim}Deploy the imported stack${reset}`);
+        console.log(`  ${cyan}agentcore status${reset}     ${dim}Verify resource status${reset}`);
+        console.log(`  ${cyan}agentcore invoke${reset}     ${dim}Test your agent${reset}`);
+        console.log('');
       } else {
-        console.error(`\nImport failed: ${result.error}`);
+        console.error(`\n\x1b[31m[error]${reset} Import failed: ${result.error}`);
         process.exit(1);
       }
     });
