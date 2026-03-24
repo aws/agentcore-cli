@@ -82,7 +82,6 @@ export function mapGenerateInputToMemories(memory: MemoryOption, projectName: st
       name: `${projectName}Memory`,
       eventExpiryDuration: DEFAULT_MEMORY_EXPIRY_DAYS,
       strategies,
-      tags: {},
     },
   ];
 }
@@ -121,7 +120,6 @@ export function mapGenerateConfigToAgent(config: GenerateConfig): AgentEnvSpec {
     runtimeVersion: DEFAULT_PYTHON_VERSION,
     networkMode,
     protocol,
-    tags: {},
     ...(networkMode === 'VPC' &&
       config.subnets &&
       config.securityGroups && {

@@ -400,7 +400,6 @@ export class AgentPrimitive extends BasePrimitive<AddAgentOptions, RemovableReso
       runtimeVersion: 'PYTHON_3_12',
       protocol,
       networkMode,
-      tags: {},
       ...(networkMode === 'VPC' &&
         subnets &&
         securityGroups && {

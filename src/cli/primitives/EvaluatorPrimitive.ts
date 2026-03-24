@@ -288,7 +288,6 @@ export class EvaluatorPrimitive extends BasePrimitive<AddEvaluatorOptions, Remov
       level: options.level,
       ...(options.description && { description: options.description }),
       config: options.config,
-      tags: {},
     };
 
     project.evaluators.push(evaluator);

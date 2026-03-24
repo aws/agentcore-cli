@@ -231,7 +231,6 @@ export class MemoryPrimitive extends BasePrimitive<AddMemoryOptions, RemovableMe
       name: config.name,
       eventExpiryDuration: config.eventExpiryDuration,
       strategies,
-      tags: {},
     };
 
     project.memories.push(memory);

@@ -3,6 +3,9 @@ import { z } from 'zod';
 /**
  * Allowed characters for tag keys and values.
  * Matches AWS tagging constraints: Unicode letters, digits, whitespace, _ . : / = + - @
+ *
+ * NOTE: This schema is duplicated in @aws/agentcore-cdk (src/schema/schemas/primitives/tags.ts).
+ * If you change constraints here, update the CDK copy as well.
  */
 const TAG_CHAR_PATTERN = /^[\p{L}\p{N}\s_.:/=+\-@]*$/u;
 

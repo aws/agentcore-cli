@@ -23,6 +23,12 @@ describe('TagKeySchema', () => {
   it('rejects key exceeding 128 characters', () => {
     expect(TagKeySchema.safeParse('a'.repeat(129)).success).toBe(false);
   });
+
+  it('rejects key with invalid characters', () => {
+    expect(TagKeySchema.safeParse('key{invalid}').success).toBe(false);
+    expect(TagKeySchema.safeParse('key<html>').success).toBe(false);
+    expect(TagKeySchema.safeParse('key|pipe').success).toBe(false);
+  });
 });
 
 describe('TagValueSchema', () => {

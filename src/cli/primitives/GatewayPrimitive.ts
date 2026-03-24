@@ -386,7 +386,6 @@ export class GatewayPrimitive extends BasePrimitive<AddGatewayOptions, Removable
       enableSemanticSearch: config.enableSemanticSearch,
       exceptionLevel: config.exceptionLevel,
       policyEngineConfiguration: config.policyEngineConfiguration,
-      tags: {},
     };
 
     project.agentCoreGateways.push(gateway);
