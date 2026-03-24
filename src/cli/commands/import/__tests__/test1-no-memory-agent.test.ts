@@ -459,7 +459,7 @@ describe('Phase 1: filterCompanionOnlyTemplate', () => {
 
   it('replaces dangling Fn::GetAtt with "*"', () => {
     const filtered = filterCompanionOnlyTemplate(synthTemplate);
-    const logGroupProps = filtered.Resources.LogGroup?.Properties as Record<string, unknown> | undefined;
+    const logGroupProps = filtered.Resources.LogGroup?.Properties;
     const logGroupName = logGroupProps?.LogGroupName as Record<string, string> | undefined;
     if (logGroupName && 'Fn::Sub' in logGroupName) {
       expect(logGroupName['Fn::Sub']).toContain('*');
