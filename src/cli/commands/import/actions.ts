@@ -251,8 +251,9 @@ export async function handleImport(options: ImportOptions): Promise<ImportResult
       for (const mem of parsed.memories) {
         const cdkEnvVar = `MEMORY_${mem.name.toUpperCase().replace(/[.-]/g, '_')}_ID`;
         onProgress?.(
-          `\x1b[33mWarning: Memory "${mem.name}" will be injected as env var ${cdkEnvVar} by CDK.\n` +
-            `  If your agent code reads BEDROCK_AGENTCORE_MEMORY_ID, update it to use ${cdkEnvVar} instead.\x1b[0m`
+          `Warning: Memory "${mem.name}" env var must be updated in your agent code:\n` +
+            `  \x1b[31m- MEMORY_ID = os.getenv("BEDROCK_AGENTCORE_MEMORY_ID")\x1b[0m\n` +
+            `  \x1b[32m+ MEMORY_ID = os.getenv("${cdkEnvVar}")\x1b[0m`
         );
       }
     }
