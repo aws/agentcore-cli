@@ -29,6 +29,8 @@ export class StrandsTranslator extends BaseBedrockTranslator {
     const agentSetupCode = this.generateAgentSetup();
     const entrypointCode = this.generateEntrypointCode('strands');
 
+    const iamComment = this.generateIamPermissionsComment();
+
     const guardrailWarning =
       Object.keys(this.guardrailConfig).length > 0
         ? `\n# WARNING: Guardrails were configured on the Bedrock Agent but Strands SDK does not\n# natively support guardrails on BedrockModel. Consider using Bedrock Guardrails API directly.\n`
@@ -36,6 +38,7 @@ export class StrandsTranslator extends BaseBedrockTranslator {
 
     const mainPyContent = this.assembleCode([
       importsCode,
+      iamComment,
       guardrailWarning,
       modelsCode,
       promptsCode,

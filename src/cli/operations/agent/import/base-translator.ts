@@ -150,15 +150,10 @@ export abstract class BaseBedrockTranslator {
 # -------------------------------------------------------------------------------------------------
 
 import json, sys, os, re, io, uuid, asyncio
-from typing import Union, Optional, Annotated, Dict, List, Any, Literal
-from pydantic import BaseModel, Field
+from typing import Annotated
 import boto3
-from dotenv import load_dotenv
 
-from bedrock_agentcore.runtime.context import RequestContext
-from bedrock_agentcore import BedrockAgentCoreApp
-
-load_dotenv()
+from bedrock_agentcore.runtime import BedrockAgentCoreApp
 `;
 
     if (!this.isCollaborator) {
@@ -320,7 +315,7 @@ memory_id = os.environ.get("MEMORY_ID", "")
         : 'tools_used.update([msg.name for msg in agent_result if isinstance(msg, ToolMessage)])';
     const responseContent = platform === 'strands' ? 'str(agent_result)' : 'agent_result[-1].content';
 
-    const lines = ['def endpoint(payload, context):', '    try:'];
+    const lines = ['async def invoke(payload, context):', '    try:'];
     if (this.agentcoreMemoryEnabled) {
       lines.push('        global user_id');
       lines.push('        user_id = user_id or payload.get("userId", uuid.uuid4().hex[:8])');
@@ -331,32 +326,33 @@ memory_id = os.environ.get("MEMORY_ID", "")
       '        tools_used.clear()',
       '        agent_query = payload.get("prompt", "")',
       '        if not agent_query:',
-      "            return {'error': \"No query provided, please provide a 'prompt' field in the payload.\"}",
+      '            yield "No query provided, please provide a \'prompt\' field in the payload."',
+      '            return',
       '',
       '        agent_result = invoke_agent(agent_query)',
       '',
       '        ' + toolsUsedUpdate,
       '        response_content = ' + responseContent,
-      '',
-      '        sources = []',
-      "        urls = re.findall(r'https?://[^\\s<>\"{}|\\\\^`\\[\\]]+', response_content)",
-      '        source_tags = re.findall(r"<source>(.*?)</source>", response_content)',
-      '        sources.extend(urls)',
-      '        sources.extend(source_tags)',
-      '        sources = list(set(sources))',
-      '',
-      '        formatted_messages = [(agent_query, "USER"), (response_content if response_content else "No Response.", "ASSISTANT")]'
     );
     if (memoryEventCode) {
+      lines.push(
+        '',
+        '        formatted_messages = [(agent_query, "USER"), (response_content if response_content else "No Response.", "ASSISTANT")]'
+      );
       lines.push(memoryEventCode);
     }
     lines.push(
       '',
-      "        return {'result': {'response': response_content, 'sources': sources, 'tools_used': list(tools_used), 'sessionId': session_id, 'messages': formatted_messages}}",
+      '        yield response_content if response_content else "No response."',
       '    except Exception as e:',
-      "        return {'error': str(e)}"
+      '        yield f"Error: {e}"'
     );
     code += lines.join('\n');
+
+    if (!this.isCollaborator) {
+      code += '\n\n\nif __name__ == "__main__":\n    app.run()\n';
+    }
+
     return code;
   }
 
@@ -365,6 +361,52 @@ memory_id = os.environ.get("MEMORY_ID", "")
    */
   protected assembleCode(sections: string[]): string {
     return sections.filter(Boolean).join('\n');
+  }
+
+  /**
+   * Generate a comment block listing required IAM permissions and a CDK snippet
+   * showing how to grant them in the vended CDK stack.
+   */
+  protected generateIamPermissionsComment(): string {
+    const kbArns: string[] = [];
+    for (const kb of this.knowledgeBases) {
+      if (kb.knowledgeBaseArn) {
+        kbArns.push(kb.knowledgeBaseArn);
+      } else if (kb.knowledgeBaseId) {
+        kbArns.push(`arn:aws:bedrock:${this.agentRegion}:*:knowledge-base/${kb.knowledgeBaseId}`);
+      }
+    }
+
+    if (kbArns.length === 0) return '';
+
+    const arnLines = kbArns.map(arn => `#     "${arn}",`).join('\n');
+    return `
+# -------------------------------------------------------------------------------------------------
+# IMPORTANT: Additional IAM permissions required for deployment.
+#
+# This agent uses Bedrock Knowledge Base retrieval, which requires the
+# "bedrock:Retrieve" permission on the following resources:
+${arnLines}
+#
+# The vended CDK stack does not automatically grant these permissions.
+# To add them, edit agentcore/cdk/lib/cdk-stack.ts:
+#
+#   import * as iam from 'aws-cdk-lib/aws-iam';
+#
+#   // After: this.application = new AgentCoreApplication(this, 'Application', { spec });
+#   // Use the agent name from agentcore/agentcore.json (the "name" field under "agents").
+#   const agentEnv = this.application.environments.get('<YOUR_AGENT_NAME>');
+#   if (agentEnv) {
+#     agentEnv.runtime.addToPolicy(new iam.PolicyStatement({
+#       actions: ['bedrock:Retrieve'],
+#       resources: [
+${kbArns.map(arn => `#         '${arn}',`).join('\n')}
+#       ],
+#     }));
+#   }
+#
+# -------------------------------------------------------------------------------------------------
+`;
   }
 
   /**

@@ -53,10 +53,12 @@ describe('StrandsTranslator', () => {
     expect(result.mainPyContent).toContain('ORCHESTRATION_TEMPLATE');
     expect(result.mainPyContent).toContain('def invoke_agent(question: str');
     expect(result.mainPyContent).toContain('@app.entrypoint');
-    expect(result.mainPyContent).toContain('def endpoint(payload, context):');
+    expect(result.mainPyContent).toContain('async def invoke(payload, context):');
     expect(result.collaboratorFiles.size).toBe(0);
     expect(result.features.hasMemory).toBe(false);
     expect(result.features.hasActionGroups).toBe(false);
+    // No IAM comment when there are no KBs
+    expect(result.mainPyContent).not.toContain('Additional IAM permissions required');
   });
 
   it('includes memory code when memory is configured', () => {
@@ -137,6 +139,13 @@ describe('StrandsTranslator', () => {
     expect(result.mainPyContent).toContain('bedrock-agent-runtime');
     expect(result.mainPyContent).toContain('kb-123');
     expect(result.features.hasKnowledgeBases).toBe(true);
+    // IAM permissions comment with CDK snippet
+    expect(result.mainPyContent).toContain('Additional IAM permissions required');
+    expect(result.mainPyContent).toContain('bedrock:Retrieve');
+    expect(result.mainPyContent).toContain('arn:aws:bedrock:us-east-1:123456:knowledge-base/kb-123');
+    expect(result.mainPyContent).toContain('agentcore/cdk/lib/cdk-stack.ts');
+    expect(result.mainPyContent).toContain('addToPolicy');
+    expect(result.mainPyContent).toContain('<YOUR_AGENT_NAME>');
   });
 });
 
@@ -184,6 +193,10 @@ describe('LangGraphTranslator', () => {
     expect(result.mainPyContent).toContain('AmazonKnowledgeBasesRetriever');
     expect(result.mainPyContent).toContain('retriever_faq_kb');
     expect(result.mainPyContent).toContain('kb-456');
+    // IAM permissions comment with CDK snippet
+    expect(result.mainPyContent).toContain('Additional IAM permissions required');
+    expect(result.mainPyContent).toContain('arn:aws:bedrock:us-west-2:123456:knowledge-base/kb-456');
+    expect(result.mainPyContent).toContain('addToPolicy');
   });
 
   it('includes guardrails in model configuration', () => {

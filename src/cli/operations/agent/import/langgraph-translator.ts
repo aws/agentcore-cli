@@ -29,6 +29,8 @@ export class LangGraphTranslator extends BaseBedrockTranslator {
     const agentSetupCode = this.generateAgentSetup();
     const entrypointCode = this.generateEntrypointCode('langchain');
 
+    const iamComment = this.generateIamPermissionsComment();
+
     if (this.observabilityEnabled) {
       importsCode += `
 from opentelemetry.instrumentation.langchain import LangchainInstrumentor
@@ -38,6 +40,7 @@ LangchainInstrumentor().instrument()
 
     const mainPyContent = this.assembleCode([
       importsCode,
+      iamComment,
       modelsCode,
       promptsCode,
       collaborationCode,
