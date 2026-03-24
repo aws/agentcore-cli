@@ -59,7 +59,7 @@ Note: CDK L3 constructs are in a separate package `@aws/agentcore-cdk`.
 ## Primitives Architecture
 
 All resource types (agent, memory, identity, evaluator, online-eval, gateway, mcp-tool) are modeled as **primitives** --
-self-contained classes in `src/cli/primitives/` that own the full add/remove lifecycle for their resource type.
+self-contained classes in `src/cli/primitives/` that own the full add/remove lifecycle for their resource type. Resources support config-driven tagging via `agentcore.json` and `mcp.json`, with tags flowing through to deployed CloudFormation resources.
 
 Each primitive extends `BasePrimitive` and implements: `add()`, `remove()`, `previewRemove()`, `getRemovable()`,
 `registerCommands()`, and `addScreen()`.

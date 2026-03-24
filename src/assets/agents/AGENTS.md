@@ -11,7 +11,7 @@ model** where agents, memories, and credentials are top-level arrays.
 The project uses a **flat resource model**. Agents, memories, and credentials are independent top-level arrays in
 `agentcore.json`. There is no binding or attachment between resources in the schema — each resource is provisioned
 independently. To use a memory or credential from an agent, the application code discovers the resource at runtime
-(e.g., via environment variables or SDK calls).
+(e.g., via environment variables or SDK calls). Tags defined in `agentcore.json` flow through to deployed CloudFormation resources.
 
 ## Critical Invariants
 
