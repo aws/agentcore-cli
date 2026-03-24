@@ -21,6 +21,8 @@ const {
   mockValidateAwsCredentials,
   mockBuildCdkProject,
   mockSynthesizeCdk,
+  mockCheckBootstrapNeeded,
+  mockBootstrapEnvironment,
   mockSetupPythonProject,
   mockExecutePhase1,
   mockGetDeployedTemplate,
@@ -56,6 +58,8 @@ const {
     mockExecutePhase1: vi.fn(),
     mockGetDeployedTemplate: vi.fn(),
     mockExecutePhase2: vi.fn(),
+    mockCheckBootstrapNeeded: vi.fn(),
+    mockBootstrapEnvironment: vi.fn(),
     mockPublishCdkAssets: vi.fn(),
     mockParseStarterToolkitYaml: vi.fn(),
     mockExistsSync: vi.fn(),
@@ -82,6 +86,8 @@ vi.mock('../../../aws/account', () => ({
 vi.mock('../../../operations/deploy', () => ({
   buildCdkProject: (...args: unknown[]) => mockBuildCdkProject(...args),
   synthesizeCdk: (...args: unknown[]) => mockSynthesizeCdk(...args),
+  checkBootstrapNeeded: (...args: unknown[]) => mockCheckBootstrapNeeded(...args),
+  bootstrapEnvironment: (...args: unknown[]) => mockBootstrapEnvironment(...args),
 }));
 
 vi.mock('../../../cdk/local-cdk-project', () => ({
@@ -90,6 +96,17 @@ vi.mock('../../../cdk/local-cdk-project', () => ({
 
 vi.mock('../../../cdk/toolkit-lib', () => ({
   silentIoHost: {},
+}));
+
+vi.mock('../../../logging', () => ({
+  ExecLogger: class MockExecLogger {
+    startStep = vi.fn();
+    endStep = vi.fn();
+    log = vi.fn();
+    finalize = vi.fn();
+    getRelativeLogPath = vi.fn().mockReturnValue('agentcore/.cli/logs/import/import-mock.log');
+    logFilePath = 'agentcore/.cli/logs/import/import-mock.log';
+  },
 }));
 
 vi.mock('../../../operations/python/setup', () => ({
@@ -223,6 +240,8 @@ function setupCommonMocks() {
   mockReaddirSync.mockReturnValue([]);
   mockReadFileSync.mockReturnValue(JSON.stringify(synthTemplate));
 
+  mockCheckBootstrapNeeded.mockResolvedValue({ needsBootstrap: false });
+  mockBootstrapEnvironment.mockResolvedValue(undefined);
   mockBuildCdkProject.mockResolvedValue(undefined);
   mockSynthesizeCdk.mockResolvedValue({
     toolkitWrapper: {
