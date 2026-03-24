@@ -217,6 +217,7 @@ export class OnlineEvalConfigPrimitive extends BasePrimitive<AddOnlineEvalConfig
       evaluators: options.evaluators,
       samplingRate: options.samplingRate,
       ...(options.enableOnCreate !== undefined && { enableOnCreate: options.enableOnCreate }),
+      tags: {},
     };
 
     project.onlineEvalConfigs.push(config);

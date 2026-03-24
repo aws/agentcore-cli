@@ -30,6 +30,7 @@ export class PolicyEnginePrimitive extends BasePrimitive<AddPolicyEngineOptions,
         ...(options.description && { description: options.description }),
         ...(options.encryptionKeyArn && { encryptionKeyArn: options.encryptionKeyArn }),
         policies: [],
+        tags: {},
       };
 
       project.policyEngines.push(engine);
