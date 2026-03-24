@@ -58,7 +58,7 @@ describe('parseStarterToolkitYaml - 3 agents with shared memory', () => {
   it('parses a YAML file with 3 agents', () => {
     const r = parseStarterToolkitYaml(path.join(FIXTURES_DIR, 'three-agents-shared-memory.yaml'));
     expect(r.agents).toHaveLength(3);
-    expect(r.agents.map((a) => a.name)).toEqual(['agent_alpha', 'agent_beta', 'agent_gamma']);
+    expect(r.agents.map(a => a.name)).toEqual(['agent_alpha', 'agent_beta', 'agent_gamma']);
   });
 
   it('deduplicates shared memory', () => {
@@ -69,12 +69,12 @@ describe('parseStarterToolkitYaml - 3 agents with shared memory', () => {
 
   it('extracts different runtime versions', () => {
     const r = parseStarterToolkitYaml(path.join(FIXTURES_DIR, 'three-agents-shared-memory.yaml'));
-    expect(r.agents.map((a) => a.runtimeVersion)).toEqual(['PYTHON_3_12', 'PYTHON_3_13', 'PYTHON_3_11']);
+    expect(r.agents.map(a => a.runtimeVersion)).toEqual(['PYTHON_3_12', 'PYTHON_3_13', 'PYTHON_3_11']);
   });
 
   it('extracts different protocols', () => {
     const r = parseStarterToolkitYaml(path.join(FIXTURES_DIR, 'three-agents-shared-memory.yaml'));
-    expect(r.agents.map((a) => a.protocol)).toEqual(['HTTP', 'MCP', 'HTTP']);
+    expect(r.agents.map(a => a.protocol)).toEqual(['HTTP', 'MCP', 'HTTP']);
   });
 });
 
@@ -156,32 +156,17 @@ describe('findLogicalIdByProperty - multiple runtimes', () => {
   };
 
   it('finds correct logical ID for each agent', () => {
-    expect(
-      findLogicalIdByProperty(
-        template,
-        'AWS::BedrockAgentCore::Runtime',
-        'AgentRuntimeName',
-        'proj_search',
-      ),
-    ).toBe('SearchRT');
-    expect(
-      findLogicalIdByProperty(
-        template,
-        'AWS::BedrockAgentCore::Runtime',
-        'AgentRuntimeName',
-        'proj_chat',
-      ),
-    ).toBe('ChatRT');
+    expect(findLogicalIdByProperty(template, 'AWS::BedrockAgentCore::Runtime', 'AgentRuntimeName', 'proj_search')).toBe(
+      'SearchRT'
+    );
+    expect(findLogicalIdByProperty(template, 'AWS::BedrockAgentCore::Runtime', 'AgentRuntimeName', 'proj_chat')).toBe(
+      'ChatRT'
+    );
   });
 
   it('returns undefined for non-existent agent', () => {
     expect(
-      findLogicalIdByProperty(
-        template,
-        'AWS::BedrockAgentCore::Runtime',
-        'AgentRuntimeName',
-        'proj_missing',
-      ),
+      findLogicalIdByProperty(template, 'AWS::BedrockAgentCore::Runtime', 'AgentRuntimeName', 'proj_missing')
     ).toBeUndefined();
   });
 });
@@ -201,21 +186,11 @@ describe('findLogicalIdByProperty - similar names with direct string values', ()
   };
 
   it('exact match takes precedence', () => {
+    expect(findLogicalIdByProperty(template, 'AWS::BedrockAgentCore::Runtime', 'AgentRuntimeName', 'proj_agent1')).toBe(
+      'Agent1RT'
+    );
     expect(
-      findLogicalIdByProperty(
-        template,
-        'AWS::BedrockAgentCore::Runtime',
-        'AgentRuntimeName',
-        'proj_agent1',
-      ),
-    ).toBe('Agent1RT');
-    expect(
-      findLogicalIdByProperty(
-        template,
-        'AWS::BedrockAgentCore::Runtime',
-        'AgentRuntimeName',
-        'proj_agent1_v2',
-      ),
+      findLogicalIdByProperty(template, 'AWS::BedrockAgentCore::Runtime', 'AgentRuntimeName', 'proj_agent1_v2')
     ).toBe('Agent1V2RT');
   });
 });
@@ -235,14 +210,9 @@ describe('findLogicalIdByProperty - Fn::Sub false match fix', () => {
   };
 
   it('correctly matches Agent1RT for proj_agent1 (not Agent1V2RT)', () => {
-    expect(
-      findLogicalIdByProperty(
-        template,
-        'AWS::BedrockAgentCore::Runtime',
-        'AgentRuntimeName',
-        'proj_agent1',
-      ),
-    ).toBe('Agent1RT');
+    expect(findLogicalIdByProperty(template, 'AWS::BedrockAgentCore::Runtime', 'AgentRuntimeName', 'proj_agent1')).toBe(
+      'Agent1RT'
+    );
   });
 });
 
@@ -261,16 +231,9 @@ describe('findLogicalIdByProperty - fallback single-runtime logic', () => {
   };
 
   it('with multiple runtimes, fallback is NOT triggered', () => {
+    expect(findLogicalIdsByType(template, 'AWS::BedrockAgentCore::Runtime').length).toBeGreaterThan(1);
     expect(
-      findLogicalIdsByType(template, 'AWS::BedrockAgentCore::Runtime').length,
-    ).toBeGreaterThan(1);
-    expect(
-      findLogicalIdByProperty(
-        template,
-        'AWS::BedrockAgentCore::Runtime',
-        'AgentRuntimeName',
-        'proj_missing',
-      ),
+      findLogicalIdByProperty(template, 'AWS::BedrockAgentCore::Runtime', 'AgentRuntimeName', 'proj_missing')
     ).toBeUndefined();
   });
 });
@@ -363,8 +326,7 @@ describe('buildImportTemplate - multiple agents', () => {
 
 describe('sanitize and toStackName', () => {
   const sanitize = (n: string) => n.replace(/_/g, '-');
-  const toStackName = (p: string, t: string) =>
-    `AgentCore-${sanitize(p)}-${sanitize(t)}`;
+  const toStackName = (p: string, t: string) => `AgentCore-${sanitize(p)}-${sanitize(t)}`;
 
   it('replaces underscores with hyphens', () => {
     expect(sanitize('my_project')).toBe('my-project');
@@ -379,7 +341,7 @@ describe('credential deduplication', () => {
   it('deduplicates credentials with same name', () => {
     const creds: { name: string }[] = [];
     for (const n of ['shared', 'shared', 'unique']) {
-      if (!creds.find((c) => c.name === n)) creds.push({ name: n });
+      if (!creds.find(c => c.name === n)) creds.push({ name: n });
     }
     expect(creds).toHaveLength(2);
   });
@@ -387,9 +349,7 @@ describe('credential deduplication', () => {
 
 describe('source code directory structure', () => {
   it('each agent gets its own directory', () => {
-    const dirs = ['search_agent', 'chat_agent'].map((n) =>
-      path.join('/proj', 'app', n),
-    );
+    const dirs = ['search_agent', 'chat_agent'].map(n => path.join('/proj', 'app', n));
     expect(dirs[0]).toBe('/proj/app/search_agent');
     expect(dirs[1]).toBe('/proj/app/chat_agent');
     expect(new Set(dirs).size).toBe(2);

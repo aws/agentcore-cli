@@ -9,7 +9,6 @@ import {
   DescribeChangeSetCommand,
   DescribeStacksCommand,
   ExecuteChangeSetCommand,
-  waitUntilChangeSetCreateComplete,
 } from '@aws-sdk/client-cloudformation';
 import { PutObjectCommand, S3Client } from '@aws-sdk/client-s3';
 import { AssumeRoleCommand, STSClient } from '@aws-sdk/client-sts';
@@ -227,7 +226,7 @@ export async function publishCdkAssets(
 
     if (!manifest.files) continue;
 
-    for (const [assetHash, asset] of Object.entries(manifest.files)) {
+    for (const [_assetHash, asset] of Object.entries(manifest.files)) {
       const sourcePath = path.join(assemblyDirectory, asset.source.path);
       if (!fs.existsSync(sourcePath)) {
         onProgress?.(`Asset file not found: ${asset.source.path}, skipping`);
@@ -268,11 +267,13 @@ export async function publishCdkAssets(
               })
             );
             if (assumed.Credentials) {
+              /* eslint-disable @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-explicit-any */
               s3Credentials = {
                 accessKeyId: assumed.Credentials.AccessKeyId!,
                 secretAccessKey: assumed.Credentials.SecretAccessKey!,
                 sessionToken: assumed.Credentials.SessionToken,
               } as any;
+              /* eslint-enable @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-explicit-any */
             }
           } catch {
             // Fall back to default credentials if role assumption fails
