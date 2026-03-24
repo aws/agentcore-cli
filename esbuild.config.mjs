@@ -48,6 +48,7 @@ await esbuild.build({
   platform: 'node',
   format: 'esm',
   minify: true,
+  jsx: 'automatic',
   // Inject require shim for ESM compatibility with CommonJS dependencies
   banner: {
     js: `import { createRequire } from 'module'; const require = createRequire(import.meta.url);`,
