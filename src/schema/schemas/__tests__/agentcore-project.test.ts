@@ -290,12 +290,12 @@ describe('CredentialSchema', () => {
     expect(result.success).toBe(true);
   });
 
-  it('OAuthCredentialProvider without discoveryUrl fails', () => {
+  it('OAuthCredentialProvider without discoveryUrl succeeds (optional for imported providers)', () => {
     const result = CredentialSchema.safeParse({
       type: 'OAuthCredentialProvider',
       name: 'MyOAuth',
     });
-    expect(result.success).toBe(false);
+    expect(result.success).toBe(true);
   });
 
   it('invalid type fails discriminated union', () => {

@@ -322,7 +322,13 @@ describe('setupOAuth2Providers', () => {
     mockUpdateOAuth2Provider.mockResolvedValue({ success: true, result: {} });
 
     const projectSpec = {
-      credentials: [{ name: 'test-oauth', type: 'OAuthCredentialProvider' }],
+      credentials: [
+        {
+          name: 'test-oauth',
+          type: 'OAuthCredentialProvider',
+          discoveryUrl: 'https://accounts.google.com/.well-known/openid_configuration',
+        },
+      ],
     };
 
     const result = await setupOAuth2Providers({
@@ -365,7 +371,13 @@ describe('setupOAuth2Providers', () => {
     mockCreateOAuth2Provider.mockResolvedValue({ success: false, error: 'Creation failed' });
 
     const projectSpec = {
-      credentials: [{ name: 'test-oauth', type: 'OAuthCredentialProvider' }],
+      credentials: [
+        {
+          name: 'test-oauth',
+          type: 'OAuthCredentialProvider',
+          discoveryUrl: 'https://accounts.google.com/.well-known/openid_configuration',
+        },
+      ],
     };
 
     const result = await setupOAuth2Providers({
