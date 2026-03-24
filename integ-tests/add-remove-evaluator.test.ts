@@ -1,6 +1,25 @@
-import { createTestProject, readProjectConfig, runCLI } from '../src/test-utils/index.js';
+import { createTestProject, parseJsonOutput, readProjectConfig, runCLI } from '../src/test-utils/index.js';
 import type { TestProject } from '../src/test-utils/index.js';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+
+/** Run a CLI command and assert it succeeds, returning parsed JSON output. */
+async function runSuccess(args: string[], cwd: string) {
+  const result = await runCLI(args, cwd);
+  expect(result.exitCode, `stdout: ${result.stdout}, stderr: ${result.stderr}`).toBe(0);
+  const json: unknown = parseJsonOutput(result.stdout);
+  expect(json).toHaveProperty('success', true);
+  return json as Record<string, unknown>;
+}
+
+/** Run a CLI command and assert it fails, returning parsed JSON output. */
+async function runFailure(args: string[], cwd: string) {
+  const result = await runCLI(args, cwd);
+  expect(result.exitCode).toBe(1);
+  const json: unknown = parseJsonOutput(result.stdout);
+  expect(json).toHaveProperty('success', false);
+  expect(json).toHaveProperty('error');
+  return json as Record<string, unknown>;
+}
 
 describe('integration: add and remove evaluators and online eval configs', () => {
   let project: TestProject;
@@ -18,290 +37,142 @@ describe('integration: add and remove evaluators and online eval configs', () =>
     await project.cleanup();
   });
 
-  describe('evaluator lifecycle', () => {
+  describe('evaluator and online eval lifecycle', () => {
     const evalName = `IntegEval${Date.now().toString().slice(-6)}`;
+    const configName = `IntegCfg${Date.now().toString().slice(-6)}`;
     const model = 'us.anthropic.claude-sonnet-4-5-20250929-v1:0';
     const instructions = 'Evaluate the session quality. Context: {context}';
+    const addEvalArgs = [
+      'add',
+      'evaluator',
+      '--name',
+      evalName,
+      '--level',
+      'SESSION',
+      '--model',
+      model,
+      '--instructions',
+      instructions,
+      '--json',
+    ];
+    const addOnlineEvalArgs = [
+      'add',
+      'online-eval',
+      '--name',
+      configName,
+      '--agent',
+      project?.agentName,
+      '--evaluator',
+      evalName,
+      '--sampling-rate',
+      '50',
+      '--json',
+    ];
 
     it('adds an evaluator', async () => {
-      const result = await runCLI(
-        [
-          'add',
-          'evaluator',
-          '--name',
-          evalName,
-          '--level',
-          'SESSION',
-          '--model',
-          model,
-          '--instructions',
-          instructions,
-          '--json',
-        ],
-        project.projectPath
-      );
-
-      expect(result.exitCode, `stdout: ${result.stdout}, stderr: ${result.stderr}`).toBe(0);
-      const json = JSON.parse(result.stdout);
-      expect(json.success).toBe(true);
+      const json = await runSuccess(addEvalArgs, project.projectPath);
       expect(json.evaluatorName).toBe(evalName);
 
       const config = await readProjectConfig(project.projectPath);
-      const evaluators = config.evaluators as { name: string; level: string }[];
-      const found = evaluators.find(e => e.name === evalName);
-      expect(found, `Evaluator "${evalName}" should be in config`).toBeDefined();
+      const found = config.evaluators.find(e => e.name === evalName);
+      expect(found).toBeDefined();
       expect(found!.level).toBe('SESSION');
     });
 
     it('rejects duplicate evaluator name', async () => {
-      const result = await runCLI(
-        [
-          'add',
-          'evaluator',
-          '--name',
-          evalName,
-          '--level',
-          'SESSION',
-          '--model',
-          model,
-          '--instructions',
-          instructions,
-          '--json',
-        ],
-        project.projectPath
-      );
-
-      expect(result.exitCode).toBe(1);
-      const json = JSON.parse(result.stdout);
-      expect(json.success).toBe(false);
+      const json = await runFailure(addEvalArgs, project.projectPath);
       expect(json.error).toContain('already exists');
     });
 
-    it('removes the evaluator', async () => {
-      const result = await runCLI(['remove', 'evaluator', '--name', evalName, '--json'], project.projectPath);
-
-      expect(result.exitCode, `stdout: ${result.stdout}, stderr: ${result.stderr}`).toBe(0);
-      const json = JSON.parse(result.stdout);
-      expect(json.success).toBe(true);
-
-      const config = await readProjectConfig(project.projectPath);
-      const evaluators = (config.evaluators as { name: string }[]) ?? [];
-      expect(evaluators.find(e => e.name === evalName)).toBeUndefined();
-    });
-  });
-
-  describe('online eval config lifecycle', () => {
-    const evalName = `OeEval${Date.now().toString().slice(-6)}`;
-    const configName = `OeConfig${Date.now().toString().slice(-6)}`;
-    const model = 'us.anthropic.claude-sonnet-4-5-20250929-v1:0';
-    const instructions = 'Evaluate the session quality. Context: {context}';
-
-    it('adds an evaluator as prerequisite', async () => {
-      const result = await runCLI(
-        [
-          'add',
-          'evaluator',
-          '--name',
-          evalName,
-          '--level',
-          'SESSION',
-          '--model',
-          model,
-          '--instructions',
-          instructions,
-          '--json',
-        ],
-        project.projectPath
-      );
-      expect(result.exitCode, `stdout: ${result.stdout}, stderr: ${result.stderr}`).toBe(0);
-    });
-
-    it('adds an online eval config', async () => {
-      const result = await runCLI(
-        [
-          'add',
-          'online-eval',
-          '--name',
-          configName,
-          '--agent',
-          project.agentName,
-          '--evaluator',
-          evalName,
-          '--sampling-rate',
-          '50',
-          '--json',
-        ],
-        project.projectPath
-      );
-
-      expect(result.exitCode, `stdout: ${result.stdout}, stderr: ${result.stderr}`).toBe(0);
-      const json = JSON.parse(result.stdout);
-      expect(json.success).toBe(true);
+    it('adds an online eval config referencing the evaluator', async () => {
+      const args = [
+        'add',
+        'online-eval',
+        '--name',
+        configName,
+        '--agent',
+        project.agentName,
+        '--evaluator',
+        evalName,
+        '--sampling-rate',
+        '50',
+        '--json',
+      ];
+      const json = await runSuccess(args, project.projectPath);
       expect(json.configName).toBe(configName);
 
       const config = await readProjectConfig(project.projectPath);
-      const configs = config.onlineEvalConfigs as {
-        name: string;
-        agent: string;
-        evaluators: string[];
-        samplingRate: number;
-      }[];
-      const found = configs.find(c => c.name === configName);
-      expect(found, `Online eval config "${configName}" should be in config`).toBeDefined();
+      const found = config.onlineEvalConfigs.find(c => c.name === configName);
+      expect(found).toBeDefined();
       expect(found!.agent).toBe(project.agentName);
       expect(found!.evaluators).toContain(evalName);
       expect(found!.samplingRate).toBe(50);
     });
 
     it('rejects duplicate online eval config name', async () => {
-      const result = await runCLI(
-        [
-          'add',
-          'online-eval',
-          '--name',
-          configName,
-          '--agent',
-          project.agentName,
-          '--evaluator',
-          evalName,
-          '--sampling-rate',
-          '50',
-          '--json',
-        ],
-        project.projectPath
-      );
-
-      expect(result.exitCode).toBe(1);
-      const json = JSON.parse(result.stdout);
-      expect(json.success).toBe(false);
+      const args = [
+        'add',
+        'online-eval',
+        '--name',
+        configName,
+        '--agent',
+        project.agentName,
+        '--evaluator',
+        evalName,
+        '--sampling-rate',
+        '50',
+        '--json',
+      ];
+      const json = await runFailure(args, project.projectPath);
       expect(json.error).toContain('already exists');
     });
 
-    it('removes the online eval config', async () => {
-      const result = await runCLI(['remove', 'online-eval', '--name', configName, '--json'], project.projectPath);
-
-      expect(result.exitCode, `stdout: ${result.stdout}, stderr: ${result.stderr}`).toBe(0);
-      const json = JSON.parse(result.stdout);
-      expect(json.success).toBe(true);
-
-      const config = await readProjectConfig(project.projectPath);
-      const configs = (config.onlineEvalConfigs as { name: string }[]) ?? [];
-      expect(configs.find(c => c.name === configName)).toBeUndefined();
-    });
-
-    it('cleans up the evaluator', async () => {
-      const result = await runCLI(['remove', 'evaluator', '--name', evalName, '--json'], project.projectPath);
-      expect(result.exitCode, `stdout: ${result.stdout}, stderr: ${result.stderr}`).toBe(0);
-    });
-  });
-
-  describe('evaluator removal blocked by online eval reference', () => {
-    const evalName = `BlockEval${Date.now().toString().slice(-6)}`;
-    const configName = `BlockCfg${Date.now().toString().slice(-6)}`;
-    const model = 'us.anthropic.claude-sonnet-4-5-20250929-v1:0';
-
-    it('sets up evaluator and online eval config', async () => {
-      let result = await runCLI(
-        [
-          'add',
-          'evaluator',
-          '--name',
-          evalName,
-          '--level',
-          'TRACE',
-          '--model',
-          model,
-          '--instructions',
-          'Evaluate trace. Context: {context}. Turn: {assistant_turn}',
-          '--json',
-        ],
-        project.projectPath
-      );
-      expect(result.exitCode, `evaluator add: ${result.stderr}`).toBe(0);
-
-      result = await runCLI(
-        [
-          'add',
-          'online-eval',
-          '--name',
-          configName,
-          '--agent',
-          project.agentName,
-          '--evaluator',
-          evalName,
-          '--sampling-rate',
-          '10',
-          '--json',
-        ],
-        project.projectPath
-      );
-      expect(result.exitCode, `online-eval add: ${result.stderr}`).toBe(0);
-    });
-
     it('rejects evaluator removal while referenced by online eval', async () => {
-      const result = await runCLI(['remove', 'evaluator', '--name', evalName, '--json'], project.projectPath);
-
-      expect(result.exitCode).toBe(1);
-      const json = JSON.parse(result.stdout);
-      expect(json.success).toBe(false);
+      const json = await runFailure(['remove', 'evaluator', '--name', evalName, '--json'], project.projectPath);
       expect(json.error).toContain(configName);
     });
 
-    it('succeeds after removing the online eval config first', async () => {
-      let result = await runCLI(['remove', 'online-eval', '--name', configName, '--json'], project.projectPath);
-      expect(result.exitCode, `online-eval remove: ${result.stderr}`).toBe(0);
-
-      result = await runCLI(['remove', 'evaluator', '--name', evalName, '--json'], project.projectPath);
-      expect(result.exitCode, `evaluator remove: ${result.stderr}`).toBe(0);
+    it('removes the online eval config', async () => {
+      await runSuccess(['remove', 'online-eval', '--name', configName, '--json'], project.projectPath);
 
       const config = await readProjectConfig(project.projectPath);
-      const evaluators = (config.evaluators as { name: string }[]) ?? [];
-      expect(evaluators.find(e => e.name === evalName)).toBeUndefined();
+      expect(config.onlineEvalConfigs.find(c => c.name === configName)).toBeUndefined();
+    });
+
+    it('removes the evaluator after online eval is gone', async () => {
+      await runSuccess(['remove', 'evaluator', '--name', evalName, '--json'], project.projectPath);
+
+      const config = await readProjectConfig(project.projectPath);
+      expect(config.evaluators.find(e => e.name === evalName)).toBeUndefined();
     });
   });
 
   describe('error cases', () => {
     it('fails to remove non-existent evaluator', async () => {
-      const result = await runCLI(['remove', 'evaluator', '--name', 'NonExistent', '--json'], project.projectPath);
-
-      expect(result.exitCode).toBe(1);
-      const json = JSON.parse(result.stdout);
-      expect(json.success).toBe(false);
+      const json = await runFailure(['remove', 'evaluator', '--name', 'NonExistent', '--json'], project.projectPath);
       expect(json.error).toContain('not found');
     });
 
     it('fails to remove non-existent online eval config', async () => {
-      const result = await runCLI(['remove', 'online-eval', '--name', 'NonExistent', '--json'], project.projectPath);
-
-      expect(result.exitCode).toBe(1);
-      const json = JSON.parse(result.stdout);
-      expect(json.success).toBe(false);
+      const json = await runFailure(['remove', 'online-eval', '--name', 'NonExistent', '--json'], project.projectPath);
       expect(json.error).toContain('not found');
     });
 
     it('rejects evaluator with missing --level', async () => {
-      const result = await runCLI(['add', 'evaluator', '--name', 'SomeEval', '--json'], project.projectPath);
-
-      expect(result.exitCode).toBe(1);
-      const json = JSON.parse(result.stdout);
-      expect(json.success).toBe(false);
+      const json = await runFailure(['add', 'evaluator', '--name', 'SomeEval', '--json'], project.projectPath);
       expect(json.error).toContain('--level');
     });
 
     it('rejects evaluator without --model or --config', async () => {
-      const result = await runCLI(
+      const json = await runFailure(
         ['add', 'evaluator', '--name', 'SomeEval', '--level', 'SESSION', '--json'],
         project.projectPath
       );
-
-      expect(result.exitCode).toBe(1);
-      const json = JSON.parse(result.stdout);
-      expect(json.success).toBe(false);
       expect(json.error).toContain('--config');
     });
 
     it('rejects evaluator with instructions missing required placeholders', async () => {
-      const result = await runCLI(
+      const json = await runFailure(
         [
           'add',
           'evaluator',
@@ -317,24 +188,16 @@ describe('integration: add and remove evaluators and online eval configs', () =>
         ],
         project.projectPath
       );
-
-      expect(result.exitCode).toBe(1);
-      const json = JSON.parse(result.stdout);
-      expect(json.success).toBe(false);
       expect(json.error).toContain('placeholder');
     });
 
     it('rejects online eval with missing required flags', async () => {
-      const result = await runCLI(['add', 'online-eval', '--name', 'SomeConfig', '--json'], project.projectPath);
-
-      expect(result.exitCode).toBe(1);
-      const json = JSON.parse(result.stdout);
-      expect(json.success).toBe(false);
+      const json = await runFailure(['add', 'online-eval', '--name', 'SomeConfig', '--json'], project.projectPath);
       expect(json.error).toContain('--agent');
     });
 
     it('rejects online eval with invalid sampling rate', async () => {
-      const result = await runCLI(
+      const json = await runFailure(
         [
           'add',
           'online-eval',
@@ -350,10 +213,6 @@ describe('integration: add and remove evaluators and online eval configs', () =>
         ],
         project.projectPath
       );
-
-      expect(result.exitCode).toBe(1);
-      const json = JSON.parse(result.stdout);
-      expect(json.success).toBe(false);
       expect(json.error).toContain('sampling-rate');
     });
   });
