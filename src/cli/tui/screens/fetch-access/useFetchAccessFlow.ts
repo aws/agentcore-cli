@@ -27,9 +27,11 @@ export function useFetchAccessFlow() {
   });
 
   const mountedRef = useRef(true);
+  const copiedTimerRef = useRef<ReturnType<typeof setTimeout>>(undefined);
   useEffect(() => {
     return () => {
       mountedRef.current = false;
+      if (copiedTimerRef.current) clearTimeout(copiedTimerRef.current);
     };
   }, []);
 
@@ -139,7 +141,6 @@ export function useFetchAccessFlow() {
   }, []);
 
   const [copied, setCopied] = useState(false);
-  const copiedTimerRef = useRef<ReturnType<typeof setTimeout>>(undefined);
 
   const copyToken = useCallback(() => {
     const token = state.result?.token;
@@ -148,6 +149,8 @@ export function useFetchAccessFlow() {
     const cmd = isMacOS ? 'pbcopy' : isWindows ? 'clip' : 'xclip';
     const args = isMacOS || isWindows ? [] : ['-selection', 'clipboard'];
     const child = spawn(cmd, args, { stdio: ['pipe', 'ignore', 'ignore'] });
+    // eslint-disable-next-line @typescript-eslint/no-empty-function
+    child.on('error', () => {});
     child.stdin.write(token);
     child.stdin.end();
 
@@ -165,9 +168,12 @@ export function useFetchAccessFlow() {
     if (expiresIn === undefined || fetchedAt === undefined) return;
     const remaining = fetchedAt + expiresIn * 1000 - Date.now();
     if (remaining <= 0) return;
-    const timer = setTimeout(() => {
-      if (mountedRef.current) setTokenMayBeExpired(true);
-    }, remaining);
+    const timer = setTimeout(
+      () => {
+        if (mountedRef.current) setTokenMayBeExpired(true);
+      },
+      Math.min(remaining, 0x7fffffff)
+    );
     return () => clearTimeout(timer);
   }, [state.result?.expiresIn, state.fetchedAt]);
 

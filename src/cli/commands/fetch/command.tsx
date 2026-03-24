@@ -1,10 +1,10 @@
 import { getErrorMessage } from '../../errors';
-import { fetchGatewayToken, listGateways } from '../../operations/fetch-access';
 import { COMMAND_DESCRIPTIONS } from '../../tui/copy';
 import { requireProject } from '../../tui/guards';
+import { handleFetchAccess } from './action';
+import type { FetchAccessOptions } from './types';
 import type { Command } from '@commander-js/extra-typings';
 import { Box, Text, render } from 'ink';
-import React from 'react';
 
 export const registerFetch = (program: Command) => {
   const fetchCmd = program.command('fetch').description(COMMAND_DESCRIPTIONS.fetch);
@@ -15,31 +15,29 @@ export const registerFetch = (program: Command) => {
     .option('--name <resource>', 'Gateway name')
     .option('--target <target>', 'Deployment target')
     .option('--json', 'Output as JSON')
-    .action(async (cliOptions: { name?: string; target?: string; json?: boolean }) => {
+    .action(async (cliOptions: FetchAccessOptions) => {
       requireProject();
 
-      if (!cliOptions.name) {
-        try {
-          const gateways = await listGateways({ deployTarget: cliOptions.target });
+      try {
+        const result = await handleFetchAccess(cliOptions);
+
+        if (!result.success) {
           if (cliOptions.json) {
             console.log(
               JSON.stringify({
                 success: false,
-                error:
-                  gateways.length === 0
-                    ? 'No deployed gateways found. Run `agentcore deploy` first.'
-                    : 'Missing required option: --name',
-                ...(gateways.length > 0 && { availableGateways: gateways }),
+                error: result.error,
+                ...(result.availableGateways && { availableGateways: result.availableGateways }),
               })
             );
-          } else if (gateways.length === 0) {
-            render(<Text color="red">No deployed gateways found. Run `agentcore deploy` first.</Text>);
+          } else if (!result.availableGateways) {
+            render(<Text color="red">{result.error}</Text>);
           } else {
             render(
               <Box flexDirection="column">
-                <Text color="red">Missing required option: --name</Text>
+                <Text color="red">{result.error}</Text>
                 <Text>Available gateways:</Text>
-                {gateways.map(gw => (
+                {result.availableGateways.map(gw => (
                   <Text key={gw.name}>
                     {'  '}
                     {gw.name} [{gw.authType}]
@@ -48,44 +46,33 @@ export const registerFetch = (program: Command) => {
               </Box>
             );
           }
-        } catch (error) {
-          if (cliOptions.json) {
-            console.log(JSON.stringify({ success: false, error: getErrorMessage(error) }));
-          } else {
-            render(<Text color="red">Error: {getErrorMessage(error)}</Text>);
-          }
+          process.exit(1);
         }
-        process.exit(1);
-      }
-
-      try {
-        const result = await fetchGatewayToken(cliOptions.name, {
-          deployTarget: cliOptions.target,
-        });
 
         if (cliOptions.json) {
-          console.log(JSON.stringify({ success: true, ...result }, null, 2));
+          console.log(JSON.stringify({ success: true, ...result.result }, null, 2));
           return;
         }
 
+        const r = result.result!;
         render(
           <Box flexDirection="column">
             <Text>
               <Text bold>URL:</Text>
-              <Text color="green"> {result.url}</Text>
+              <Text color="green"> {r.url}</Text>
             </Text>
             <Text>
-              <Text bold>Auth:</Text> {result.authType}
+              <Text bold>Auth:</Text> {r.authType}
             </Text>
-            {result.message && <Text>{result.message}</Text>}
-            {result.token && (
+            {r.message && <Text>{r.message}</Text>}
+            {r.token && (
               <Text>
-                <Text bold>Token:</Text> {result.token}
+                <Text bold>Token:</Text> {r.token}
               </Text>
             )}
-            {result.expiresIn !== undefined && (
+            {r.expiresIn !== undefined && (
               <Text>
-                <Text bold>Expires in:</Text> {result.expiresIn}s
+                <Text bold>Expires in:</Text> {r.expiresIn}s
               </Text>
             )}
           </Box>
