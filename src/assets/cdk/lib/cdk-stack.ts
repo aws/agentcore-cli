@@ -49,6 +49,7 @@ export class AgentCoreStack extends Stack {
         mcpSpec,
         agentCoreApplication: this.application,
         credentials,
+        projectTags: spec.tags,
       });
     }
 
