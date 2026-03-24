@@ -119,6 +119,33 @@ describe('probePath', () => {
     expect(probePath(exec)).toBeNull();
   });
 
+  it('returns null when Windows binary is inside npm directory', () => {
+    const exec = (cmd: string) => {
+      if (cmd === 'where agentcore') return 'C:\\Users\\dev\\AppData\\Roaming\\npm\\agentcore';
+      if (cmd === 'agentcore --version') throw new Error('exit code 1');
+      return '';
+    };
+    expect(probePath(exec, 'win32')).toBeNull();
+  });
+
+  it('returns null when Windows binary is inside .nvm directory', () => {
+    const exec = (cmd: string) => {
+      if (cmd === 'where agentcore') return 'C:\\Users\\dev\\.nvm\\versions\\node\\v20\\bin\\agentcore';
+      if (cmd === 'agentcore --version') throw new Error('exit code 1');
+      return '';
+    };
+    expect(probePath(exec, 'win32')).toBeNull();
+  });
+
+  it('returns null when Windows binary is inside .fnm directory', () => {
+    const exec = (cmd: string) => {
+      if (cmd === 'where agentcore') return 'C:\\Users\\dev\\.fnm\\node-versions\\v20\\bin\\agentcore';
+      if (cmd === 'agentcore --version') throw new Error('exit code 1');
+      return '';
+    };
+    expect(probePath(exec, 'win32')).toBeNull();
+  });
+
   it('uses "command -v agentcore" on non-Windows', () => {
     const calls: string[] = [];
     const exec = (cmd: string) => {

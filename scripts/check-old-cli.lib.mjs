@@ -41,7 +41,7 @@ export function probePath(execSyncFn, platform = process.platform) {
   }
   // Skip binaries installed via npm/node — a broken new CLI install would also
   // fail --version, and we don't want to block reinstallation.
-  if (/node_modules|\/\.?npm\/|\/\.?nvm\/|\/\.?fnm\/|\\npm\\/.test(binaryPath)) {
+  if (/node_modules|\/\.?npm\/|\/\.?nvm\/|\/\.?fnm\/|\\\.?npm\\|\\\.?nvm\\|\\\.?fnm\\/.test(binaryPath)) {
     return null;
   }
   try {
