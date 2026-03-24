@@ -116,6 +116,7 @@ export class ConfigIO {
   /**
    * Read and validate the AWS configuration file.
    * Region is preserved as saved. Use resolveAWSDeploymentTargets() for environment/profile overrides.
+   * TODO: Account is still overridden via AWS_PROFILE — consider moving to resolveAWSDeploymentTargets() for consistency.
    */
   async readAWSDeploymentTargets(): Promise<AwsDeploymentTarget[]> {
     const filePath = this.pathResolver.getAWSTargetsConfigPath();
