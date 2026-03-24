@@ -246,6 +246,17 @@ export async function handleImport(options: ImportOptions): Promise<ImportResult
       }
     }
 
+    // Warn about memory env var mismatch for imported agents
+    if (parsed.memories.length > 0) {
+      for (const mem of parsed.memories) {
+        const cdkEnvVar = `MEMORY_${mem.name.toUpperCase().replace(/[.-]/g, '_')}_ID`;
+        onProgress?.(
+          `\x1b[33mWarning: Memory "${mem.name}" will be injected as env var ${cdkEnvVar} by CDK.\n` +
+            `  If your agent code reads BEDROCK_AGENTCORE_MEMORY_ID, update it to use ${cdkEnvVar} instead.\x1b[0m`
+        );
+      }
+    }
+
     const existingCredentialNames = new Set((projectSpec.credentials ?? []).map(c => c.name));
     for (const cred of parsed.credentials) {
       if (!existingCredentialNames.has(cred.name)) {
