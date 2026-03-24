@@ -41,6 +41,7 @@ export const COMMAND_DESCRIPTIONS = {
   status: 'Show deployed resource details and status.',
   traces: 'View and download agent traces.',
   evals: 'View past eval run results. Also supports --agent-arn.',
+  fetch: 'Fetch access info for deployed resources.',
   pause: 'Pause an online eval config. Supports --arn for configs outside the project.',
   resume: 'Resume a paused online eval config. Supports --arn for configs outside the project.',
   run: 'Run on-demand evaluation. Supports --agent-arn for agents outside the project.',

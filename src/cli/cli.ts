@@ -3,6 +3,7 @@ import { registerCreate } from './commands/create';
 import { registerDeploy } from './commands/deploy';
 import { registerDev } from './commands/dev';
 import { registerEval } from './commands/eval';
+import { registerFetch } from './commands/fetch';
 import { registerHelp } from './commands/help';
 import { registerInvoke } from './commands/invoke';
 import { registerLogs } from './commands/logs';
@@ -135,6 +136,7 @@ export function registerCommands(program: Command) {
   registerDeploy(program);
   registerCreate(program);
   registerEval(program);
+  registerFetch(program);
   registerHelp(program);
   registerInvoke(program);
   registerLogs(program);

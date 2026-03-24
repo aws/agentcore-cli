@@ -7,4 +7,5 @@ export * from './python';
 export * from './remove';
 export * from './resolve-agent';
 export * from './session';
+export * from './fetch-access';
 export * from './traces';
