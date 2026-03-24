@@ -13,6 +13,7 @@
 interface AgentCoreProjectSpec {
   name: string; // @regex ^[A-Za-z][A-Za-z0-9]{0,22}$ @max 23 - project name
   version: number; // Schema version (integer)
+  tags?: Record<string, string>;
   agents: AgentEnvSpec[]; // Unique by name
   memories: Memory[]; // Unique by name
   credentials: Credential[]; // Unique by name
@@ -51,6 +52,7 @@ interface AgentEnvSpec {
   networkConfig?: NetworkConfig; // Required when networkMode is 'VPC'
   instrumentation?: Instrumentation; // OTel settings
   modelProvider?: ModelProvider; // Model provider used by this agent
+  tags?: Record<string, string>;
 }
 
 interface Instrumentation {
@@ -71,6 +73,7 @@ interface Memory {
   name: string; // @regex ^[a-zA-Z][a-zA-Z0-9_]{0,47}$ @max 48
   eventExpiryDuration: number; // @min 7 @max 365 (days)
   strategies: MemoryStrategy[]; // @min 1, unique by type
+  tags?: Record<string, string>;
 }
 
 interface MemoryStrategy {

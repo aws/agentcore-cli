@@ -27,6 +27,7 @@ interface AgentCoreGateway {
   enableSemanticSearch?: boolean; // default true
   /** Exception verbosity level. @default 'NONE' */
   exceptionLevel?: 'NONE' | 'DEBUG'; // default 'NONE'
+  tags?: Record<string, string>;
 }
 
 interface AgentCoreGatewayTarget {
