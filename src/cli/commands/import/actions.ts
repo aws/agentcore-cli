@@ -3,7 +3,7 @@ import type { AgentCoreRegion, AgentEnvSpec, AwsDeploymentTarget, Credential, Me
 import { validateAwsCredentials } from '../../aws/account';
 import { LocalCdkProject } from '../../cdk/local-cdk-project';
 import { silentIoHost } from '../../cdk/toolkit-lib';
-import { buildCdkProject, synthesizeCdk } from '../../operations/deploy';
+import { bootstrapEnvironment, buildCdkProject, checkBootstrapNeeded, synthesizeCdk } from '../../operations/deploy';
 import { setupPythonProject } from '../../operations/python/setup';
 import { executePhase1, getDeployedTemplate } from './phase1-update';
 import { executePhase2, publishCdkAssets } from './phase2-import';
@@ -441,9 +441,18 @@ export async function handleImport(options: ImportOptions): Promise<ImportResult
       synthTemplate = JSON.parse(fs.readFileSync(path.join(assemblyDirectory, files[0]!), 'utf-8')) as CfnTemplate;
     }
 
+    // 8b. Check CDK bootstrap and auto-bootstrap if needed (before disposing toolkit wrapper)
+    onProgress?.('Checking CDK bootstrap status...');
+    const bootstrapCheck = await checkBootstrapNeeded([target]);
+    if (bootstrapCheck.needsBootstrap) {
+      onProgress?.('AWS environment not bootstrapped. Bootstrapping...');
+      await bootstrapEnvironment(toolkitWrapper, target);
+      onProgress?.('CDK bootstrap complete');
+    }
+
     await toolkitWrapper.dispose();
 
-    // 8b. Publish CDK assets to S3 (source zips needed by CodeBuild during Phase 1)
+    // 8c. Publish CDK assets to S3 (source zips needed by CodeBuild during Phase 1)
     onProgress?.('Publishing CDK assets to S3...');
     await publishCdkAssets(assemblyDirectory, target.region, onProgress);
 
