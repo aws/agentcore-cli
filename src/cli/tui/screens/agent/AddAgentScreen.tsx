@@ -846,7 +846,10 @@ export function AddAgentScreen({ existingAgentNames, onComplete, onExit }: AddAg
             <TextInput
               prompt="Allowed request headers (comma-separated, or press Enter to skip)"
               initialValue={byoConfig.requestHeaderAllowlist}
-              customValidation={validateHeaderAllowlist}
+              customValidation={value => {
+                const result = validateHeaderAllowlist(value);
+                return result.success ? true : result.error!;
+              }}
               onSubmit={value => {
                 setByoConfig(c => ({ ...c, requestHeaderAllowlist: value }));
                 setByoStep('confirm');
@@ -899,9 +902,10 @@ export function AddAgentScreen({ existingAgentNames, onComplete, onExit }: AddAg
                     { label: 'Security Groups', value: byoConfig.securityGroups || '(none)' },
                   ]
                 : []),
-              ...(parseAndNormalizeHeaders(byoConfig.requestHeaderAllowlist).length > 0
-                ? [{ label: 'Headers', value: parseAndNormalizeHeaders(byoConfig.requestHeaderAllowlist).join(', ') }]
-                : []),
+              ...(() => {
+                const normalizedHeaders = parseAndNormalizeHeaders(byoConfig.requestHeaderAllowlist);
+                return normalizedHeaders.length > 0 ? [{ label: 'Headers', value: normalizedHeaders.join(', ') }] : [];
+              })(),
             ]}
           />
         )}

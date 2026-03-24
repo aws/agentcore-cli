@@ -220,7 +220,10 @@ export function GenerateWizardUI({
           <TextInput
             prompt="Allowed request headers (comma-separated, or press Enter to skip)"
             initialValue={(wizard.config.requestHeaderAllowlist ?? []).join(', ')}
-            customValidation={validateHeaderAllowlist}
+            customValidation={value => {
+              const result = validateHeaderAllowlist(value);
+              return result.success ? true : result.error!;
+            }}
             onSubmit={value => {
               const headers = parseAndNormalizeHeaders(value);
               if (headers.length > 0) {
