@@ -35,6 +35,10 @@ function createDefaultProjectSpec(projectName: string): AgentCoreProjectSpec {
     onlineEvalConfigs: [],
     agentCoreGateways: [],
     policyEngines: [],
+    tags: {
+      'agentcore:created-by': 'agentcore-cli',
+      'agentcore:project-name': projectName,
+    },
   };
 }
 
