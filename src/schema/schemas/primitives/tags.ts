@@ -19,9 +19,8 @@ export const TagValueSchema = z
   .max(256, 'Tag value must be 256 characters or less')
   .regex(TAG_CHAR_PATTERN, 'Tag value contains invalid characters');
 
-export const TagsSchema = z.record(TagKeySchema, TagValueSchema).refine(
-  tags => Object.keys(tags).length <= 50,
-  'Maximum 50 tags per resource'
-);
+export const TagsSchema = z
+  .record(TagKeySchema, TagValueSchema)
+  .refine(tags => Object.keys(tags).length <= 50, 'Maximum 50 tags per resource');
 
 export type Tags = z.infer<typeof TagsSchema>;

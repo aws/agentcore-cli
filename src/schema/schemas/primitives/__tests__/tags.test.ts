@@ -50,7 +50,7 @@ describe('TagsSchema', () => {
   });
 
   it('rejects more than 50 tags', () => {
-    const tags = {};
+    const tags: Record<string, string> = {};
     for (let i = 0; i < 51; i++) {
       tags[`key${i}`] = `value${i}`;
     }

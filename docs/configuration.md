@@ -88,11 +88,13 @@ Main project configuration using a **flat resource model**. Agents, memories, an
 
 ## Tags
 
-AgentCore projects support config-driven tagging at both the project and resource levels. Tags flow through to the deployed CloudFormation resources and help with resource organization, cost allocation, and automation.
+AgentCore projects support config-driven tagging at both the project and resource levels. Tags flow through to the
+deployed CloudFormation resources and help with resource organization, cost allocation, and automation.
 
 ### Project-Level Tags
 
-Project-level tags are defined at the root of `agentcore.json` and are applied to all deployed resources. When you initialize a new project, two default tags are automatically created:
+Project-level tags are defined at the root of `agentcore.json` and are applied to all deployed resources. When you
+initialize a new project, two default tags are automatically created:
 
 - `agentcore:created-by` — set to `"agentcore-cli"`
 - `agentcore:project-name` — set to your project name
@@ -117,7 +119,8 @@ You can add additional project-level tags by editing the `tags` field in `agentc
 
 ### Per-Resource Tags
 
-Individual resources can define their own tags. When a resource-level tag uses the same key as a project-level tag, the resource-level value takes precedence for that specific resource.
+Individual resources can define their own tags. When a resource-level tag uses the same key as a project-level tag, the
+resource-level value takes precedence for that specific resource.
 
 **Example:**
 
@@ -143,7 +146,8 @@ Individual resources can define their own tags. When a resource-level tag uses t
 }
 ```
 
-In this example, `MyAgent` will have tags: `Environment: staging` (overrides project-level), `Team: platform` (inherited from project), and `Owner: alice` (resource-specific).
+In this example, `MyAgent` will have tags: `Environment: staging` (overrides project-level), `Team: platform` (inherited
+from project), and `Owner: alice` (resource-specific).
 
 ### Taggable Resources
 
@@ -151,7 +155,7 @@ The following resource types support tags:
 
 - **Agents** (`agents` array in `agentcore.json`)
 - **Memories** (`memories` array in `agentcore.json`)
-- **Gateways** (`agentCoreGateways` array in `mcp.json`)
+- **Gateways** (`agentCoreGateways` array in `agentcore.json`)
 - **Evaluators** (`evaluators` array in `agentcore.json`)
 - **Online Eval Configs** (`onlineEvalConfigs` array in `agentcore.json`)
 - **Policy Engines** (`policyEngines` array in `agentcore.json`)
@@ -162,13 +166,15 @@ Resources that are **not** taggable include credentials, MCP runtime tools, unas
 
 Tags must follow AWS tagging requirements:
 
-- **Keys**: 1-128 characters, cannot start with `aws:`, allowed characters are Unicode letters, digits, whitespace, and `_.:/=+-@`
+- **Keys**: 1-128 characters, cannot start with `aws:`, allowed characters are Unicode letters, digits, whitespace, and
+  `_.:/=+-@`
 - **Values**: 0-256 characters, same allowed characters as keys
 - **Maximum**: 50 tags per resource
 
 ### Managing Tags
 
-Tags are managed by editing `agentcore.json` directly. There are no CLI commands for tag management. Changes take effect on the next deployment.
+Tags are managed by editing `agentcore.json` directly. There are no CLI commands for tag management. Changes take effect
+on the next deployment.
 
 ---
 

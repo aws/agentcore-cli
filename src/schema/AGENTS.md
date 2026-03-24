@@ -13,4 +13,5 @@ high-level definitions for agent use case and behavior to be translated into Age
 
 ### Tags
 
-The tags primitive schema is defined at `src/schema/schemas/primitives/tags.ts` and supports project-level and resource-level tagging with AWS tagging constraints.
+The tags primitive schema is defined at `src/schema/schemas/primitives/tags.ts` and supports project-level and
+resource-level tagging with AWS tagging constraints.
