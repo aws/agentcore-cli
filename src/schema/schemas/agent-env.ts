@@ -10,6 +10,7 @@ import {
   RuntimeVersionSchema as RuntimeVersionSchemaFromConstants,
 } from '../constants';
 import type { DirectoryPath, FilePath } from '../types';
+import { TagsSchema } from './primitives/tags';
 import { z } from 'zod';
 
 // Re-export path types
@@ -165,6 +166,7 @@ export const AgentEnvSpecSchema = z
     protocol: ProtocolModeSchema.optional(),
     /** Allowed request headers forwarded to the runtime at invocation time. */
     requestHeaderAllowlist: RequestHeaderAllowlistSchema.optional(),
+    tags: TagsSchema.optional(),
   })
   .superRefine((data, ctx) => {
     if (data.networkMode === 'VPC' && !data.networkConfig) {

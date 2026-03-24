@@ -1,3 +1,4 @@
+import { TagsSchema } from './tags';
 import { z } from 'zod';
 
 // ============================================================================
@@ -26,6 +27,7 @@ export const OnlineEvalConfigSchema = z.object({
   description: z.string().max(200).optional(),
   /** Whether to enable execution on create (default: true) */
   enableOnCreate: z.boolean().optional(),
+  tags: TagsSchema.optional(),
 });
 
 export type OnlineEvalConfig = z.infer<typeof OnlineEvalConfigSchema>;

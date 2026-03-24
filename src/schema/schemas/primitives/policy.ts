@@ -1,4 +1,5 @@
 import { uniqueBy } from '../zod-util';
+import { TagsSchema } from './tags';
 import { z } from 'zod';
 
 // ============================================================================
@@ -68,6 +69,7 @@ export const PolicyEngineSchema = z.object({
   name: PolicyEngineNameSchema,
   description: z.string().min(1).max(4096).optional(),
   encryptionKeyArn: z.string().optional(),
+  tags: TagsSchema.optional(),
   policies: z
     .array(PolicySchema)
     .default([])
