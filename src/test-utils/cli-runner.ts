@@ -14,34 +14,18 @@ export interface RunResult {
 }
 
 /**
- * Get the path to the CLI entry point.
- * Uses the built bundle - run `npm run build` before tests.
+ * Spawn a command, collect output, and strip ANSI codes.
  */
-function getCLIPath(): string {
-  // Navigate from src/test-utils to dist/cli/index.mjs
-  return join(__dirname, '..', '..', 'dist', 'cli', 'index.mjs');
-}
-
-/**
- * Run the AgentCore CLI with the given arguments.
- *
- * @param args - CLI arguments to pass
- * @param cwd - Working directory to run the command in
- * @returns Promise resolving to the command result
- *
- * @example
- * ```ts
- * const result = await runCLI(['create', '--name', 'MyProject', '--json'], testDir);
- * assert.strictEqual(result.exitCode, 0);
- * ```
- */
-export async function runCLI(args: string[], cwd: string, skipInstall = true): Promise<RunResult> {
-  const cliPath = getCLIPath();
-
+export function spawnAndCollect(
+  command: string,
+  args: string[],
+  cwd: string,
+  extraEnv: Record<string, string> = {}
+): Promise<RunResult> {
   return new Promise(resolve => {
-    const proc = spawn('node', [cliPath, ...args], {
+    const proc = spawn(command, args, {
       cwd,
-      env: { ...process.env, INIT_CWD: undefined, ...(skipInstall ? { AGENTCORE_SKIP_INSTALL: '1' } : {}) },
+      env: { ...process.env, INIT_CWD: undefined, ...extraEnv },
     });
 
     let stdout = '';
@@ -62,4 +46,21 @@ export async function runCLI(args: string[], cwd: string, skipInstall = true): P
       resolve({ stdout, stderr, exitCode: code ?? 1 });
     });
   });
+}
+
+/**
+ * Get the path to the CLI entry point.
+ * Uses the built bundle - run `npm run build` before tests.
+ */
+function getCLIPath(): string {
+  // Navigate from src/test-utils to dist/cli/index.mjs
+  return join(__dirname, '..', '..', 'dist', 'cli', 'index.mjs');
+}
+
+/**
+ * Run the AgentCore CLI via the local build (unit/integ tests).
+ * Skips dependency installation by default for speed.
+ */
+export async function runCLI(args: string[], cwd: string, skipInstall = true): Promise<RunResult> {
+  return spawnAndCollect('node', [getCLIPath(), ...args], cwd, skipInstall ? { AGENTCORE_SKIP_INSTALL: '1' } : {});
 }

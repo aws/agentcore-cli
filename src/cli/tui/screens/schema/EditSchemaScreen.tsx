@@ -1,5 +1,5 @@
 import { ConfigIO } from '../../../../lib';
-import { AgentCoreMcpSpecSchema, type AgentCoreProjectSpec, AgentCoreProjectSpecSchema } from '../../../../schema';
+import { type AgentCoreProjectSpec, AgentCoreProjectSpecSchema } from '../../../../schema';
 import { loadSchemaDocument } from '../../../schema';
 import { ErrorPrompt, SelectScreen } from '../../components';
 import { AgentCoreGuidedEditor } from './AgentCoreGuidedEditor';
@@ -27,11 +27,9 @@ export function EditSchemaScreen(props: EditSchemaScreenProps) {
   const _isInteractive = props.isInteractive;
   const configIO = useMemo(() => new ConfigIO(), []);
   const pathResolver = configIO.getPathResolver();
-  const mcpPath = pathResolver.getMcpConfigPath();
 
   const schemaOptions = useMemo<SchemaOption[]>(() => {
     const projectMissing = configIO.configExists('project') ? '' : ' - missing';
-    const mcpMissing = configIO.configExists('mcp') ? '' : ' - missing';
 
     return [
       {
@@ -43,13 +41,13 @@ export function EditSchemaScreen(props: EditSchemaScreenProps) {
       },
       {
         id: 'mcp',
-        title: 'mcp.json',
-        description: `Gateways and tools${mcpMissing}`,
-        filePath: mcpPath,
-        schema: AgentCoreMcpSpecSchema,
+        title: 'Gateways & tools',
+        description: 'Gateway and MCP tool configuration (in agentcore.json)',
+        filePath: pathResolver.getAgentConfigPath(),
+        schema: AgentCoreProjectSpecSchema,
       },
     ];
-  }, [pathResolver, configIO, mcpPath]);
+  }, [pathResolver, configIO]);
 
   const [activeSchema, setActiveSchema] = useState<SchemaOption | null>(null);
   const [errorPrompt, setErrorPrompt] = useState<{ message: string; detail?: string } | null>(null);

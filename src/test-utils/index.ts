@@ -3,7 +3,7 @@
  * Import these helpers instead of duplicating code in each test file.
  */
 
-export { runCLI, type RunResult } from './cli-runner.js';
+export { runCLI, spawnAndCollect, type RunResult } from './cli-runner.js';
 export { exists } from './fs-helpers.js';
 export { hasCommand, hasAwsCredentials, prereqs } from './prereqs.js';
 export { createTestProject, type TestProject, type CreateTestProjectOptions } from './project-factory.js';

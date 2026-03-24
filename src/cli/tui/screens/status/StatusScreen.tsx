@@ -18,7 +18,6 @@ export function StatusScreen({ isInteractive: _isInteractive, onExit }: StatusSc
     targetName,
     targetRegion,
     hasMultipleTargets,
-    mcpSpec,
     resourceStatuses,
     statusesLoading,
     statusesError,
@@ -92,7 +91,21 @@ export function StatusScreen({ isInteractive: _isInteractive, onExit }: StatusSc
         </Box>
       )}
 
-      {project && <ResourceGraph project={project} mcp={mcpSpec} resourceStatuses={resourceStatuses} />}
+      {project && (
+        <ResourceGraph
+          project={project}
+          mcp={
+            project.agentCoreGateways?.length
+              ? {
+                  agentCoreGateways: project.agentCoreGateways,
+                  mcpRuntimeTools: project.mcpRuntimeTools,
+                  unassignedTargets: project.unassignedTargets,
+                }
+              : undefined
+          }
+          resourceStatuses={resourceStatuses}
+        />
+      )}
     </Screen>
   );
 }

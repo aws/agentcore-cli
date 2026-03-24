@@ -5,15 +5,21 @@ import {
 } from '../remove-gateway-target.js';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
-const { mockReadMcpSpec, mockWriteMcpSpec, mockReadMcpDefs, mockWriteMcpDefs, mockConfigExists, mockGetProjectRoot } =
-  vi.hoisted(() => ({
-    mockReadMcpSpec: vi.fn(),
-    mockWriteMcpSpec: vi.fn(),
-    mockReadMcpDefs: vi.fn(),
-    mockWriteMcpDefs: vi.fn(),
-    mockConfigExists: vi.fn(),
-    mockGetProjectRoot: vi.fn(),
-  }));
+const {
+  mockReadProjectSpec,
+  mockWriteProjectSpec,
+  mockReadMcpDefs,
+  mockWriteMcpDefs,
+  mockConfigExists,
+  mockGetProjectRoot,
+} = vi.hoisted(() => ({
+  mockReadProjectSpec: vi.fn(),
+  mockWriteProjectSpec: vi.fn(),
+  mockReadMcpDefs: vi.fn(),
+  mockWriteMcpDefs: vi.fn(),
+  mockConfigExists: vi.fn(),
+  mockGetProjectRoot: vi.fn(),
+}));
 
 const { mockExistsSync, mockRm } = vi.hoisted(() => ({
   mockExistsSync: vi.fn(),
@@ -23,8 +29,8 @@ const { mockExistsSync, mockRm } = vi.hoisted(() => ({
 vi.mock('../../../../lib/index.js', () => ({
   ConfigIO: class {
     configExists = mockConfigExists;
-    readMcpSpec = mockReadMcpSpec;
-    writeMcpSpec = mockWriteMcpSpec;
+    readProjectSpec = mockReadProjectSpec;
+    writeProjectSpec = mockWriteProjectSpec;
     readMcpDefs = mockReadMcpDefs;
     writeMcpDefs = mockWriteMcpDefs;
     getProjectRoot = mockGetProjectRoot;
@@ -44,7 +50,7 @@ describe('getRemovableGatewayTargets', () => {
 
   it('returns targets from all gateways with gateway name attached', async () => {
     mockConfigExists.mockReturnValue(true);
-    mockReadMcpSpec.mockResolvedValue({
+    mockReadProjectSpec.mockResolvedValue({
       agentCoreGateways: [
         {
           name: 'gateway-1',
@@ -68,7 +74,7 @@ describe('getRemovableGatewayTargets', () => {
 
   it('returns empty array when no gateways', async () => {
     mockConfigExists.mockReturnValue(true);
-    mockReadMcpSpec.mockResolvedValue({
+    mockReadProjectSpec.mockResolvedValue({
       agentCoreGateways: [],
     });
 
@@ -79,7 +85,7 @@ describe('getRemovableGatewayTargets', () => {
 
   it('returns empty array when gateways have no targets', async () => {
     mockConfigExists.mockReturnValue(true);
-    mockReadMcpSpec.mockResolvedValue({
+    mockReadProjectSpec.mockResolvedValue({
       agentCoreGateways: [{ name: 'gateway-1', targets: [] }],
     });
 
@@ -93,7 +99,7 @@ describe('previewRemoveGatewayTarget', () => {
   afterEach(() => vi.clearAllMocks());
 
   it('shows files that will be deleted for scaffolded targets', async () => {
-    mockReadMcpSpec.mockResolvedValue({
+    mockReadProjectSpec.mockResolvedValue({
       agentCoreGateways: [
         {
           name: 'test-gateway',
@@ -126,7 +132,7 @@ describe('previewRemoveGatewayTarget', () => {
   });
 
   it('shows correct gateway name in preview', async () => {
-    mockReadMcpSpec.mockResolvedValue({
+    mockReadProjectSpec.mockResolvedValue({
       agentCoreGateways: [
         {
           name: 'my-gateway',
@@ -150,7 +156,7 @@ describe('previewRemoveGatewayTarget', () => {
   });
 
   it('handles external targets with no files to delete', async () => {
-    mockReadMcpSpec.mockResolvedValue({
+    mockReadProjectSpec.mockResolvedValue({
       agentCoreGateways: [
         {
           name: 'test-gateway',
@@ -179,7 +185,7 @@ describe('previewRemoveGatewayTarget', () => {
 describe('removeGatewayTarget', () => {
   afterEach(() => vi.clearAllMocks());
 
-  it('removes target from gateway config and writes updated mcp.json', async () => {
+  it('removes target from gateway config and writes updated agentcore.json', async () => {
     const mockMcpSpec = {
       agentCoreGateways: [
         {
@@ -188,7 +194,7 @@ describe('removeGatewayTarget', () => {
         },
       ],
     };
-    mockReadMcpSpec.mockResolvedValue(mockMcpSpec);
+    mockReadProjectSpec.mockResolvedValue(mockMcpSpec);
     mockConfigExists.mockReturnValue(true);
     mockReadMcpDefs.mockResolvedValue({ tools: {} });
     mockGetProjectRoot.mockReturnValue('/project');
@@ -197,14 +203,16 @@ describe('removeGatewayTarget', () => {
     const result = await removeGatewayTarget(target);
 
     expect(result.success).toBe(true);
-    expect(mockWriteMcpSpec).toHaveBeenCalledWith({
-      agentCoreGateways: [
-        {
-          name: 'test-gateway',
-          targets: [{ name: 'target-2' }],
-        },
-      ],
-    });
+    expect(mockWriteProjectSpec).toHaveBeenCalledWith(
+      expect.objectContaining({
+        agentCoreGateways: [
+          {
+            name: 'test-gateway',
+            targets: [{ name: 'target-2' }],
+          },
+        ],
+      })
+    );
   });
 
   it('handles last target in gateway', async () => {
@@ -216,7 +224,7 @@ describe('removeGatewayTarget', () => {
         },
       ],
     };
-    mockReadMcpSpec.mockResolvedValue(mockMcpSpec);
+    mockReadProjectSpec.mockResolvedValue(mockMcpSpec);
     mockConfigExists.mockReturnValue(true);
     mockReadMcpDefs.mockResolvedValue({ tools: {} });
     mockGetProjectRoot.mockReturnValue('/project');
@@ -225,13 +233,15 @@ describe('removeGatewayTarget', () => {
     const result = await removeGatewayTarget(target);
 
     expect(result.success).toBe(true);
-    expect(mockWriteMcpSpec).toHaveBeenCalledWith({
-      agentCoreGateways: [
-        {
-          name: 'test-gateway',
-          targets: [],
-        },
-      ],
-    });
+    expect(mockWriteProjectSpec).toHaveBeenCalledWith(
+      expect.objectContaining({
+        agentCoreGateways: [
+          {
+            name: 'test-gateway',
+            targets: [],
+          },
+        ],
+      })
+    );
   });
 });

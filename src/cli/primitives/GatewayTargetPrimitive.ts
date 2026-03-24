@@ -3,6 +3,7 @@ import type {
   AgentCoreCliMcpDefs,
   AgentCoreGatewayTarget,
   AgentCoreMcpSpec,
+  AgentCoreProjectSpec,
   ApiGatewayHttpMethod,
   DirectoryPath,
   FilePath,
@@ -43,10 +44,18 @@ export interface AddGatewayTargetOptions {
   host?: 'Lambda' | 'AgentCoreRuntime';
 }
 
+/** Extract MCP-related fields from a project spec. */
+function extractMcpSpec(project: AgentCoreProjectSpec): AgentCoreMcpSpec {
+  return {
+    agentCoreGateways: project.agentCoreGateways,
+    mcpRuntimeTools: project.mcpRuntimeTools,
+    unassignedTargets: project.unassignedTargets,
+  };
+}
+
 /**
  * GatewayTargetPrimitive handles all gateway target add/remove operations.
  * Absorbs logic from create-mcp.ts (tool) and remove-gateway-target.ts.
- * Uses mcp.json and mcp-defs.json instead of agentcore.json.
  */
 export class GatewayTargetPrimitive extends BasePrimitive<AddGatewayTargetOptions, RemovableGatewayTarget> {
   readonly kind = 'gateway-target';
@@ -84,14 +93,11 @@ export class GatewayTargetPrimitive extends BasePrimitive<AddGatewayTargetOption
 
   async getRemovable(): Promise<RemovableGatewayTarget[]> {
     try {
-      if (!this.configIO.configExists('mcp')) {
-        return [];
-      }
-      const mcpSpec = await this.configIO.readMcpSpec();
+      const project = await this.readProjectSpec();
       const tools: RemovableGatewayTarget[] = [];
 
       // Gateway targets
-      for (const gateway of mcpSpec.agentCoreGateways) {
+      for (const gateway of project.agentCoreGateways) {
         for (const target of gateway.targets) {
           tools.push({
             name: target.name,
@@ -111,7 +117,8 @@ export class GatewayTargetPrimitive extends BasePrimitive<AddGatewayTargetOption
    * Preview removal of a specific gateway target (with full target info).
    */
   async previewRemoveGatewayTarget(tool: RemovableGatewayTarget): Promise<RemovalPreview> {
-    const mcpSpec = await this.configIO.readMcpSpec();
+    const project = await this.readProjectSpec();
+    const mcpSpec = extractMcpSpec(project);
     const mcpDefs = this.configIO.configExists('mcpDefs') ? await this.configIO.readMcpDefs() : { tools: {} };
 
     const summary: string[] = [];
@@ -148,9 +155,9 @@ export class GatewayTargetPrimitive extends BasePrimitive<AddGatewayTargetOption
 
     const afterMcpSpec = this.computeRemovedToolMcpSpec(mcpSpec, tool);
     schemaChanges.push({
-      file: 'agentcore/mcp.json',
-      before: mcpSpec,
-      after: afterMcpSpec,
+      file: 'agentcore/agentcore.json',
+      before: project,
+      after: { ...project, ...afterMcpSpec },
     });
 
     const afterMcpDefs = this.computeRemovedToolMcpDefs(mcpSpec, mcpDefs, tool);
@@ -170,7 +177,8 @@ export class GatewayTargetPrimitive extends BasePrimitive<AddGatewayTargetOption
    */
   async removeGatewayTarget(tool: RemovableGatewayTarget): Promise<RemovalResult> {
     try {
-      const mcpSpec = await this.configIO.readMcpSpec();
+      const project = await this.readProjectSpec();
+      const mcpSpec = extractMcpSpec(project);
       const mcpDefs = this.configIO.configExists('mcpDefs') ? await this.configIO.readMcpDefs() : { tools: {} };
       const projectRoot = this.configIO.getProjectRoot();
 
@@ -189,9 +197,9 @@ export class GatewayTargetPrimitive extends BasePrimitive<AddGatewayTargetOption
         toolPath = target.compute.implementation.path;
       }
 
-      // Update MCP spec
+      // Update project spec with MCP changes
       const newMcpSpec = this.computeRemovedToolMcpSpec(mcpSpec, tool);
-      await this.configIO.writeMcpSpec(newMcpSpec);
+      await this.writeProjectSpec({ ...project, ...newMcpSpec });
 
       // Update MCP defs
       const newMcpDefs = this.computeRemovedToolMcpDefs(mcpSpec, mcpDefs, tool);
@@ -217,13 +225,10 @@ export class GatewayTargetPrimitive extends BasePrimitive<AddGatewayTargetOption
    */
   async getExistingToolNames(): Promise<string[]> {
     try {
-      if (!this.configIO.configExists('mcp')) {
-        return [];
-      }
-      const mcpSpec = await this.configIO.readMcpSpec();
+      const project = await this.readProjectSpec();
       const toolNames: string[] = [];
 
-      for (const gateway of mcpSpec.agentCoreGateways) {
+      for (const gateway of project.agentCoreGateways) {
         for (const target of gateway.targets) {
           for (const toolDef of target.toolDefinitions ?? []) {
             toolNames.push(toolDef.name);
@@ -527,9 +532,7 @@ export class GatewayTargetPrimitive extends BasePrimitive<AddGatewayTargetOption
    * Unlike `add()` which scaffolds new code, this registers an existing endpoint URL.
    */
   async createExternalGatewayTarget(config: McpServerTargetConfig): Promise<{ toolName: string; projectPath: string }> {
-    const mcpSpec: AgentCoreMcpSpec = this.configIO.configExists('mcp')
-      ? await this.configIO.readMcpSpec()
-      : { agentCoreGateways: [] };
+    const project = await this.readProjectSpec();
 
     const target: AgentCoreGatewayTarget = {
       name: config.name,
@@ -545,7 +548,7 @@ export class GatewayTargetPrimitive extends BasePrimitive<AddGatewayTargetOption
       );
     }
 
-    const gateway = mcpSpec.agentCoreGateways.find(g => g.name === config.gateway);
+    const gateway = project.agentCoreGateways.find(g => g.name === config.gateway);
     if (!gateway) {
       throw new Error(`Gateway "${config.gateway}" not found.`);
     }
@@ -557,7 +560,7 @@ export class GatewayTargetPrimitive extends BasePrimitive<AddGatewayTargetOption
 
     gateway.targets.push(target);
 
-    await this.configIO.writeMcpSpec(mcpSpec);
+    await this.writeProjectSpec(project);
 
     return { toolName: config.name, projectPath: '' };
   }
@@ -567,11 +570,9 @@ export class GatewayTargetPrimitive extends BasePrimitive<AddGatewayTargetOption
    * Unlike `add()` which scaffolds new code, this registers an existing REST API.
    */
   async createApiGatewayTarget(config: ApiGatewayTargetConfig): Promise<{ toolName: string }> {
-    const mcpSpec: AgentCoreMcpSpec = this.configIO.configExists('mcp')
-      ? await this.configIO.readMcpSpec()
-      : { agentCoreGateways: [] };
+    const project = await this.readProjectSpec();
 
-    const gateway = mcpSpec.agentCoreGateways.find(g => g.name === config.gateway);
+    const gateway = project.agentCoreGateways.find(g => g.name === config.gateway);
     if (!gateway) {
       throw new Error(`Gateway "${config.gateway}" not found.`);
     }
@@ -598,7 +599,7 @@ export class GatewayTargetPrimitive extends BasePrimitive<AddGatewayTargetOption
     };
 
     gateway.targets.push(target);
-    await this.configIO.writeMcpSpec(mcpSpec);
+    await this.writeProjectSpec(project);
 
     return { toolName: config.name };
   }
@@ -608,11 +609,9 @@ export class GatewayTargetPrimitive extends BasePrimitive<AddGatewayTargetOption
    * No code generation — tools are auto-derived from the schema by the service.
    */
   async createSchemaBasedGatewayTarget(config: SchemaBasedTargetConfig): Promise<{ toolName: string }> {
-    const mcpSpec: AgentCoreMcpSpec = this.configIO.configExists('mcp')
-      ? await this.configIO.readMcpSpec()
-      : { agentCoreGateways: [] };
+    const project = await this.readProjectSpec();
 
-    const gateway = mcpSpec.agentCoreGateways.find(g => g.name === config.gateway);
+    const gateway = project.agentCoreGateways.find(g => g.name === config.gateway);
     if (!gateway) {
       throw new Error(`Gateway "${config.gateway}" not found.`);
     }
@@ -629,7 +628,7 @@ export class GatewayTargetPrimitive extends BasePrimitive<AddGatewayTargetOption
     };
 
     gateway.targets.push(target);
-    await this.configIO.writeMcpSpec(mcpSpec);
+    await this.writeProjectSpec(project);
 
     return { toolName: config.name };
   }
@@ -639,11 +638,9 @@ export class GatewayTargetPrimitive extends BasePrimitive<AddGatewayTargetOption
    * Unlike `add()` which scaffolds new code, this registers an existing Lambda function ARN.
    */
   async createLambdaFunctionArnTarget(config: LambdaFunctionArnTargetConfig): Promise<{ toolName: string }> {
-    const mcpSpec: AgentCoreMcpSpec = this.configIO.configExists('mcp')
-      ? await this.configIO.readMcpSpec()
-      : { agentCoreGateways: [] };
+    const project = await this.readProjectSpec();
 
-    const gateway = mcpSpec.agentCoreGateways.find(g => g.name === config.gateway);
+    const gateway = project.agentCoreGateways.find(g => g.name === config.gateway);
     if (!gateway) {
       throw new Error(`Gateway "${config.gateway}" not found.`);
     }
@@ -666,7 +663,7 @@ export class GatewayTargetPrimitive extends BasePrimitive<AddGatewayTargetOption
     };
 
     gateway.targets.push(target);
-    await this.configIO.writeMcpSpec(mcpSpec);
+    await this.writeProjectSpec(project);
 
     return { toolName: config.name };
   }
@@ -698,9 +695,7 @@ export class GatewayTargetPrimitive extends BasePrimitive<AddGatewayTargetOption
   ): Promise<{ mcpDefsPath: string; toolName: string; projectPath: string }> {
     this.validateGatewayTargetLanguage(config.language!);
 
-    const mcpSpec: AgentCoreMcpSpec = this.configIO.configExists('mcp')
-      ? await this.configIO.readMcpSpec()
-      : { agentCoreGateways: [] };
+    const project = await this.readProjectSpec();
 
     const toolDefs =
       config.host === 'Lambda' ? getTemplateToolDefinitions(config.name, config.host) : [config.toolDefinition!];
@@ -713,7 +708,7 @@ export class GatewayTargetPrimitive extends BasePrimitive<AddGatewayTargetOption
       throw new Error('Gateway name is required for gateway targets.');
     }
 
-    const gateway = mcpSpec.agentCoreGateways.find(g => g.name === config.gateway);
+    const gateway = project.agentCoreGateways.find(g => g.name === config.gateway);
     if (!gateway) {
       throw new Error(`Gateway "${config.gateway}" not found.`);
     }
@@ -770,7 +765,7 @@ export class GatewayTargetPrimitive extends BasePrimitive<AddGatewayTargetOption
     };
 
     gateway.targets.push(target);
-    await this.configIO.writeMcpSpec(mcpSpec);
+    await this.writeProjectSpec(project);
 
     // Update mcp-defs.json
     const mcpDefsPath = this.resolveMcpDefsPath();

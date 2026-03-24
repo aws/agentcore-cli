@@ -46,7 +46,7 @@ function buildExitMessage(projectName: string, steps: Step[], agentConfig: AddAg
   // Created summary
   lines.push('\x1b[2mCreated:\x1b[0m');
   lines.push(`  ${projectName}/`);
-  if (agentConfig?.agentType === 'create') {
+  if (agentConfig?.agentType === 'create' || agentConfig?.agentType === 'import') {
     const frameworkOption = FRAMEWORK_OPTIONS.find(o => o.id === agentConfig.framework);
     const frameworkLabel = frameworkOption?.title ?? agentConfig.framework;
     const modelName = DEFAULT_MODEL_IDS[agentConfig.modelProvider];
@@ -142,7 +142,7 @@ function CreatedSummary({ projectName, agentConfig }: { projectName: string; age
     return option?.title ?? framework;
   };
 
-  const isCreate = agentConfig?.agentType === 'create';
+  const isCreate = agentConfig?.agentType === 'create' || agentConfig?.agentType === 'import';
   const isByo = agentConfig?.agentType === 'byo';
   const agentPath = isCreate ? `app/${agentConfig.name}/` : isByo ? agentConfig.codeLocation : null;
   const agentcorePath = 'agentcore/';

@@ -4,6 +4,7 @@ export interface CreateOptions extends VpcOptions {
   name?: string;
   agent?: boolean;
   defaults?: boolean;
+  type?: string;
   build?: string;
   language?: string;
   framework?: string;
@@ -11,6 +12,9 @@ export interface CreateOptions extends VpcOptions {
   apiKey?: string;
   memory?: string;
   protocol?: string;
+  agentId?: string;
+  agentAliasId?: string;
+  region?: string;
   outputDir?: string;
   skipGit?: boolean;
   skipPythonSetup?: boolean;

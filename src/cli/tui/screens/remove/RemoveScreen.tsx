@@ -8,6 +8,8 @@ const REMOVE_RESOURCES = [
   { id: 'identity', title: 'Identity', description: 'Remove an identity provider' },
   { id: 'evaluator', title: 'Evaluator', description: 'Remove a custom evaluator' },
   { id: 'online-eval', title: 'Online Eval Config', description: 'Remove an online eval config' },
+  { id: 'policy-engine', title: 'Policy Engine', description: 'Remove a policy engine' },
+  { id: 'policy', title: 'Policy', description: 'Remove a policy from a policy engine' },
   { id: 'gateway', title: 'Gateway', description: 'Remove a gateway' },
   { id: 'gateway-target', title: 'Gateway Target', description: 'Remove a gateway target' },
   { id: 'all', title: 'All', description: 'Reset entire agentcore project' },
@@ -32,6 +34,10 @@ interface RemoveScreenProps {
   evaluatorCount: number;
   /** Number of online eval configs available for removal */
   onlineEvalCount: number;
+  /** Number of policy engines available for removal */
+  policyEngineCount: number;
+  /** Number of policies available for removal */
+  policyCount: number;
 }
 
 export function RemoveScreen({
@@ -44,6 +50,8 @@ export function RemoveScreen({
   identityCount,
   evaluatorCount,
   onlineEvalCount,
+  policyEngineCount,
+  policyCount,
 }: RemoveScreenProps) {
   const items: SelectableItem[] = useMemo(() => {
     return REMOVE_RESOURCES.map(r => {
@@ -93,6 +101,18 @@ export function RemoveScreen({
             description = 'No online eval configs to remove';
           }
           break;
+        case 'policy-engine':
+          if (policyEngineCount === 0) {
+            disabled = true;
+            description = 'No policy engines to remove';
+          }
+          break;
+        case 'policy':
+          if (policyCount === 0) {
+            disabled = true;
+            description = 'No policies to remove';
+          }
+          break;
         case 'all':
           // 'all' is always available
           break;
@@ -100,7 +120,17 @@ export function RemoveScreen({
 
       return { ...r, disabled, description };
     });
-  }, [agentCount, gatewayCount, mcpToolCount, memoryCount, identityCount, evaluatorCount, onlineEvalCount]);
+  }, [
+    agentCount,
+    gatewayCount,
+    mcpToolCount,
+    memoryCount,
+    identityCount,
+    evaluatorCount,
+    onlineEvalCount,
+    policyEngineCount,
+    policyCount,
+  ]);
 
   const isDisabled = (item: SelectableItem) => item.disabled ?? false;
 

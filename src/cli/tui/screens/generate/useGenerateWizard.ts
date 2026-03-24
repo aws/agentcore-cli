@@ -34,6 +34,7 @@ export function useGenerateWizard(options?: UseGenerateWizardOptions) {
 
   // Track if user has selected a framework (moved past sdk step)
   const [sdkSelected, setSdkSelected] = useState(false);
+  const [advancedSelected, setAdvancedSelected] = useState(false);
 
   // Steps depend on protocol, SDK, model provider, network mode, and whether we have an initial name
   // MCP skips sdk, modelProvider, apiKey, memory
@@ -50,16 +51,32 @@ export function useGenerateWizard(options?: UseGenerateWizardOptions) {
         filtered = filtered.filter(s => s !== 'apiKey');
       }
       if (sdkSelected && config.sdk === 'Strands') {
-        const networkModeIndex = filtered.indexOf('networkMode');
-        filtered = [...filtered.slice(0, networkModeIndex), 'memory', ...filtered.slice(networkModeIndex)];
+        const advancedIndex = filtered.indexOf('advanced');
+        filtered = [...filtered.slice(0, advancedIndex), 'memory', ...filtered.slice(advancedIndex)];
       }
     }
-    if (config.networkMode === 'VPC') {
-      const confirmIndex = filtered.indexOf('confirm');
-      filtered = [...filtered.slice(0, confirmIndex), 'subnets', 'securityGroups', ...filtered.slice(confirmIndex)];
+    if (advancedSelected) {
+      const advancedIndex = filtered.indexOf('advanced');
+      const afterAdvanced = advancedIndex + 1;
+      const networkSteps: GenerateStep[] =
+        config.networkMode === 'VPC' ? ['networkMode', 'subnets', 'securityGroups'] : ['networkMode'];
+      filtered = [
+        ...filtered.slice(0, afterAdvanced),
+        ...networkSteps,
+        'requestHeaderAllowlist',
+        ...filtered.slice(afterAdvanced),
+      ];
     }
     return filtered;
-  }, [config.modelProvider, config.sdk, config.protocol, config.networkMode, hasInitialName, sdkSelected]);
+  }, [
+    config.modelProvider,
+    config.sdk,
+    config.protocol,
+    config.networkMode,
+    hasInitialName,
+    sdkSelected,
+    advancedSelected,
+  ]);
 
   const currentIndex = steps.indexOf(step);
 
@@ -88,7 +105,7 @@ export function useGenerateWizard(options?: UseGenerateWizardOptions) {
   const setProtocol = useCallback((protocol: ProtocolMode) => {
     setConfig(c => ({ ...c, protocol, memory: protocol === 'MCP' ? 'none' : c.memory }));
     if (protocol === 'MCP') {
-      setStep('confirm');
+      setStep('advanced');
     } else {
       setStep('sdk');
     }
@@ -117,7 +134,7 @@ export function useGenerateWizard(options?: UseGenerateWizardOptions) {
       } else if (config.sdk === 'Strands') {
         setStep('memory');
       } else {
-        setStep('networkMode');
+        setStep('advanced');
       }
     },
     [config.sdk]
@@ -129,7 +146,7 @@ export function useGenerateWizard(options?: UseGenerateWizardOptions) {
       if (config.sdk === 'Strands') {
         setStep('memory');
       } else {
-        setStep('networkMode');
+        setStep('advanced');
       }
     },
     [config.sdk]
@@ -139,13 +156,30 @@ export function useGenerateWizard(options?: UseGenerateWizardOptions) {
     if (config.sdk === 'Strands') {
       setStep('memory');
     } else {
-      setStep('networkMode');
+      setStep('advanced');
     }
   }, [config.sdk]);
 
   const setMemory = useCallback((memory: MemoryOption) => {
     setConfig(c => ({ ...c, memory }));
-    setStep('networkMode');
+    setStep('advanced');
+  }, []);
+
+  const setAdvanced = useCallback((wantsAdvanced: boolean) => {
+    if (wantsAdvanced) {
+      setAdvancedSelected(true);
+      setStep('networkMode');
+    } else {
+      setAdvancedSelected(false);
+      setConfig(c => ({
+        ...c,
+        networkMode: 'PUBLIC',
+        subnets: undefined,
+        securityGroups: undefined,
+        requestHeaderAllowlist: undefined,
+      }));
+      setStep('confirm');
+    }
   }, []);
 
   const setNetworkMode = useCallback((networkMode: NetworkMode) => {
@@ -153,7 +187,7 @@ export function useGenerateWizard(options?: UseGenerateWizardOptions) {
     if (networkMode === 'VPC') {
       setStep('subnets');
     } else {
-      setStep('confirm');
+      setStep('requestHeaderAllowlist');
     }
   }, []);
 
@@ -164,6 +198,15 @@ export function useGenerateWizard(options?: UseGenerateWizardOptions) {
 
   const setSecurityGroups = useCallback((securityGroups: string[]) => {
     setConfig(c => ({ ...c, securityGroups }));
+    setStep('requestHeaderAllowlist');
+  }, []);
+
+  const setRequestHeaderAllowlist = useCallback((requestHeaderAllowlist: string[]) => {
+    setConfig(c => ({ ...c, requestHeaderAllowlist }));
+    setStep('confirm');
+  }, []);
+
+  const skipRequestHeaderAllowlist = useCallback(() => {
     setStep('confirm');
   }, []);
 
@@ -178,6 +221,7 @@ export function useGenerateWizard(options?: UseGenerateWizardOptions) {
     setConfig(getDefaultConfig());
     setError(null);
     setSdkSelected(false);
+    setAdvancedSelected(false);
   }, []);
 
   /**
@@ -207,9 +251,13 @@ export function useGenerateWizard(options?: UseGenerateWizardOptions) {
     setApiKey,
     skipApiKey,
     setMemory,
+    setAdvanced,
+    advancedSelected,
     setNetworkMode,
     setSubnets,
     setSecurityGroups,
+    setRequestHeaderAllowlist,
+    skipRequestHeaderAllowlist,
     goBack,
     reset,
     initWithName,

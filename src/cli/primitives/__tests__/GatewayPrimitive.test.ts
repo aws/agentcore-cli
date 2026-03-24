@@ -1,18 +1,30 @@
-import type { AgentCoreMcpSpec } from '../../../schema';
+import type { AgentCoreProjectSpec } from '../../../schema';
 import { GatewayPrimitive } from '../GatewayPrimitive';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-const { mockConfigExists, mockReadMcpSpec, mockWriteMcpSpec } = vi.hoisted(() => ({
+const defaultProject: AgentCoreProjectSpec = {
+  name: 'test',
+  version: 1,
+  agents: [],
+  memories: [],
+  credentials: [],
+  evaluators: [],
+  onlineEvalConfigs: [],
+  agentCoreGateways: [],
+  policyEngines: [],
+};
+
+const { mockConfigExists, mockReadProjectSpec, mockWriteProjectSpec } = vi.hoisted(() => ({
   mockConfigExists: vi.fn().mockReturnValue(true),
-  mockReadMcpSpec: vi.fn().mockResolvedValue({ agentCoreGateways: [] }),
-  mockWriteMcpSpec: vi.fn().mockResolvedValue(undefined),
+  mockReadProjectSpec: vi.fn(),
+  mockWriteProjectSpec: vi.fn().mockResolvedValue(undefined),
 }));
 
 vi.mock('../../../lib', () => {
   const MockConfigIO = vi.fn(function (this: Record<string, unknown>) {
     this.configExists = mockConfigExists;
-    this.readMcpSpec = mockReadMcpSpec;
-    this.writeMcpSpec = mockWriteMcpSpec;
+    this.readProjectSpec = mockReadProjectSpec;
+    this.writeProjectSpec = mockWriteProjectSpec;
   });
   return {
     ConfigIO: MockConfigIO,
@@ -21,10 +33,10 @@ vi.mock('../../../lib', () => {
   };
 });
 
-/** Extract the first gateway written to writeMcpSpec. */
+/** Extract the first gateway written to writeProjectSpec. */
 function getWrittenGateway() {
-  expect(mockWriteMcpSpec).toHaveBeenCalledTimes(1);
-  const spec = mockWriteMcpSpec.mock.calls[0]![0] as AgentCoreMcpSpec;
+  expect(mockWriteProjectSpec).toHaveBeenCalledTimes(1);
+  const spec = mockWriteProjectSpec.mock.calls[0]![0] as AgentCoreProjectSpec;
   const gw = spec.agentCoreGateways[0];
   expect(gw).toBeDefined();
   return gw!;
@@ -35,8 +47,80 @@ describe('GatewayPrimitive', () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
-    mockReadMcpSpec.mockResolvedValue({ agentCoreGateways: [] });
+    mockReadProjectSpec.mockImplementation(() => Promise.resolve({ ...defaultProject, agentCoreGateways: [] }));
     primitive = new GatewayPrimitive();
+  });
+
+  describe('customClaims pipeline', () => {
+    const SAMPLE_CLAIMS = [
+      {
+        inboundTokenClaimName: 'department',
+        inboundTokenClaimValueType: 'STRING_ARRAY' as const,
+        authorizingClaimMatchValue: {
+          claimMatchOperator: 'CONTAINS_ANY' as const,
+          claimMatchValue: { matchValueStringList: ['engineering', 'sales'] },
+        },
+      },
+    ];
+
+    it('custom claims from TUI flow are written to authorizerConfiguration', async () => {
+      await primitive.add({
+        name: 'jwt-gw',
+        authorizerType: 'CUSTOM_JWT',
+        discoveryUrl: 'https://example.com/.well-known/openid-configuration',
+        allowedAudience: 'aud1',
+        customClaims: SAMPLE_CLAIMS,
+      });
+
+      const gw = getWrittenGateway();
+      expect(gw.authorizerConfiguration?.customJwtAuthorizer).toBeDefined();
+      expect(gw.authorizerConfiguration!.customJwtAuthorizer!.customClaims).toEqual(SAMPLE_CLAIMS);
+    });
+
+    it('custom claims are preserved alongside audience and clients', async () => {
+      await primitive.add({
+        name: 'jwt-gw',
+        authorizerType: 'CUSTOM_JWT',
+        discoveryUrl: 'https://example.com/.well-known/openid-configuration',
+        allowedAudience: 'aud1,aud2',
+        allowedClients: 'client1',
+        customClaims: SAMPLE_CLAIMS,
+      });
+
+      const gw = getWrittenGateway();
+      const jwtConfig = gw.authorizerConfiguration!.customJwtAuthorizer!;
+      expect(jwtConfig.allowedAudience).toEqual(['aud1', 'aud2']);
+      expect(jwtConfig.allowedClients).toEqual(['client1']);
+      expect(jwtConfig.customClaims).toEqual(SAMPLE_CLAIMS);
+    });
+
+    it('omits customClaims from authorizerConfiguration when not provided', async () => {
+      await primitive.add({
+        name: 'jwt-gw',
+        authorizerType: 'CUSTOM_JWT',
+        discoveryUrl: 'https://example.com/.well-known/openid-configuration',
+        allowedAudience: 'aud1',
+      });
+
+      const gw = getWrittenGateway();
+      expect(gw.authorizerConfiguration!.customJwtAuthorizer!.customClaims).toBeUndefined();
+    });
+
+    it('custom claims only (no audience/clients/scopes) produces valid config', async () => {
+      await primitive.add({
+        name: 'jwt-gw',
+        authorizerType: 'CUSTOM_JWT',
+        discoveryUrl: 'https://example.com/.well-known/openid-configuration',
+        customClaims: SAMPLE_CLAIMS,
+      });
+
+      const gw = getWrittenGateway();
+      const jwtConfig = gw.authorizerConfiguration!.customJwtAuthorizer!;
+      expect(jwtConfig.allowedAudience).toBeUndefined();
+      expect(jwtConfig.allowedClients).toBeUndefined();
+      expect(jwtConfig.allowedScopes).toBeUndefined();
+      expect(jwtConfig.customClaims).toEqual(SAMPLE_CLAIMS);
+    });
   });
 
   describe('exceptionLevel', () => {

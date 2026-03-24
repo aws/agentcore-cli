@@ -1,5 +1,5 @@
 import { ConfigIO, SecureCredentials } from '../../../lib';
-import type { DeployedState } from '../../../schema';
+import type { AgentCoreMcpSpec, DeployedState } from '../../../schema';
 import { validateAwsCredentials } from '../../aws/account';
 import { createSwitchableIoHost } from '../../cdk/toolkit-lib';
 import {
@@ -10,6 +10,8 @@ import {
   parseGatewayOutputs,
   parseMemoryOutputs,
   parseOnlineEvalOutputs,
+  parsePolicyEngineOutputs,
+  parsePolicyOutputs,
 } from '../../cloudformation';
 import { getErrorMessage } from '../../errors';
 import { ExecLogger } from '../../logging';
@@ -79,13 +81,13 @@ export async function handleDeploy(options: ValidatedDeployOptions): Promise<Dep
     }
     endStep('success');
 
-    // Read MCP spec for gateway information
-    let mcpSpec;
+    // Read project spec for gateway information (used later for deploy step name and outputs)
+    let mcpSpec: Pick<AgentCoreMcpSpec, 'agentCoreGateways'> | null = null;
     try {
-      mcpSpec = await configIO.readMcpSpec();
+      const projectSpec = await configIO.readProjectSpec();
+      mcpSpec = { agentCoreGateways: projectSpec.agentCoreGateways };
     } catch {
-      // No mcp.json or invalid — no gateways
-      mcpSpec = null;
+      // Project read failed — no gateways
     }
 
     // Preflight: validate project
@@ -384,6 +386,17 @@ export async function handleDeploy(options: ValidatedDeployOptions): Promise<Dep
     const onlineEvalNames = (context.projectSpec.onlineEvalConfigs ?? []).map(c => c.name);
     const onlineEvalConfigs = parseOnlineEvalOutputs(outputs, onlineEvalNames);
 
+    // Parse policy engine outputs
+    const policyEngineSpecs = context.projectSpec.policyEngines ?? [];
+    const policyEngineNames = policyEngineSpecs.map(pe => pe.name);
+    const policyEngines = parsePolicyEngineOutputs(outputs, policyEngineNames);
+
+    // Parse policy outputs
+    const policySpecs = policyEngineSpecs.flatMap(pe =>
+      pe.policies.map(p => ({ engineName: pe.name, policyName: p.name }))
+    );
+    const policies = parsePolicyOutputs(outputs, policySpecs);
+
     // Parse gateway outputs
     const gatewaySpecs =
       mcpSpec?.agentCoreGateways?.reduce(
@@ -407,6 +420,8 @@ export async function handleDeploy(options: ValidatedDeployOptions): Promise<Dep
       memories,
       evaluators,
       onlineEvalConfigs,
+      policyEngines,
+      policies,
     });
     await configIO.writeDeployedState(deployedState);
 

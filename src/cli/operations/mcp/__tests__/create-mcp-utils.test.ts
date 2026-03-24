@@ -2,18 +2,16 @@ import { GatewayPrimitive } from '../../../primitives/GatewayPrimitive.js';
 import { GatewayTargetPrimitive } from '../../../primitives/GatewayTargetPrimitive.js';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
-const { mockReadMcpSpec, mockWriteMcpSpec, mockReadProjectSpec, mockConfigExists } = vi.hoisted(() => ({
-  mockReadMcpSpec: vi.fn(),
-  mockWriteMcpSpec: vi.fn(),
+const { mockReadProjectSpec, mockWriteProjectSpec, mockConfigExists } = vi.hoisted(() => ({
   mockReadProjectSpec: vi.fn(),
+  mockWriteProjectSpec: vi.fn(),
   mockConfigExists: vi.fn(),
 }));
 
 vi.mock('../../../../lib/index.js', () => ({
   ConfigIO: class {
-    readMcpSpec = mockReadMcpSpec;
-    writeMcpSpec = mockWriteMcpSpec;
     readProjectSpec = mockReadProjectSpec;
+    writeProjectSpec = mockWriteProjectSpec;
     configExists = mockConfigExists;
   },
   requireConfigRoot: () => '/project/agentcore',
@@ -40,17 +38,16 @@ describe('getExistingGateways', () => {
 
   afterEach(() => vi.clearAllMocks());
 
-  it('returns empty array when mcp config does not exist', async () => {
-    mockConfigExists.mockReturnValue(false);
+  it('returns empty array when no project exists', async () => {
+    mockReadProjectSpec.mockRejectedValue(new Error('No project'));
 
     const result = await gatewayPrimitive.getExistingGateways();
 
     expect(result).toEqual([]);
   });
 
-  it('returns gateway names from mcp spec', async () => {
-    mockConfigExists.mockReturnValue(true);
-    mockReadMcpSpec.mockResolvedValue({
+  it('returns gateway names from project spec', async () => {
+    mockReadProjectSpec.mockResolvedValue({
       agentCoreGateways: [{ name: 'gw-1' }, { name: 'gw-2' }],
     });
 
@@ -60,9 +57,7 @@ describe('getExistingGateways', () => {
   });
 
   it('returns empty array on error', async () => {
-    mockConfigExists.mockImplementation(() => {
-      throw new Error('read error');
-    });
+    mockReadProjectSpec.mockRejectedValue(new Error('read error'));
 
     const result = await gatewayPrimitive.getExistingGateways();
 
@@ -75,8 +70,8 @@ describe('getExistingToolNames', () => {
 
   afterEach(() => vi.clearAllMocks());
 
-  it('returns empty array when mcp config does not exist', async () => {
-    mockConfigExists.mockReturnValue(false);
+  it('returns empty array when no project exists', async () => {
+    mockReadProjectSpec.mockRejectedValue(new Error('No project'));
 
     const result = await gatewayTargetPrimitive.getExistingToolNames();
 
@@ -84,8 +79,7 @@ describe('getExistingToolNames', () => {
   });
 
   it('returns tool names from gateway targets', async () => {
-    mockConfigExists.mockReturnValue(true);
-    mockReadMcpSpec.mockResolvedValue({
+    mockReadProjectSpec.mockResolvedValue({
       agentCoreGateways: [
         {
           name: 'gw-1',
@@ -105,8 +99,7 @@ describe('getExistingToolNames', () => {
   });
 
   it('returns empty array when no gateway targets have tool definitions', async () => {
-    mockConfigExists.mockReturnValue(true);
-    mockReadMcpSpec.mockResolvedValue({
+    mockReadProjectSpec.mockResolvedValue({
       agentCoreGateways: [{ name: 'gw', targets: [] }],
     });
 
@@ -116,8 +109,7 @@ describe('getExistingToolNames', () => {
   });
 
   it('returns empty array on error', async () => {
-    mockConfigExists.mockReturnValue(true);
-    mockReadMcpSpec.mockRejectedValue(new Error('corrupt'));
+    mockReadProjectSpec.mockRejectedValue(new Error('corrupt'));
 
     const result = await gatewayTargetPrimitive.getExistingToolNames();
 
@@ -130,9 +122,18 @@ describe('GatewayPrimitive.add (createGateway)', () => {
 
   afterEach(() => vi.clearAllMocks());
 
-  it('creates gateway when mcp config does not exist', async () => {
-    mockConfigExists.mockReturnValue(false);
-    mockWriteMcpSpec.mockResolvedValue(undefined);
+  it('creates gateway when project has no gateways', async () => {
+    mockReadProjectSpec.mockResolvedValue({
+      name: 'test',
+      version: 1,
+      agents: [],
+      memories: [],
+      credentials: [],
+      evaluators: [],
+      onlineEvalConfigs: [],
+      agentCoreGateways: [],
+    });
+    mockWriteProjectSpec.mockResolvedValue(undefined);
 
     const result = await gatewayPrimitive.add({
       name: 'new-gw',
@@ -141,7 +142,7 @@ describe('GatewayPrimitive.add (createGateway)', () => {
     });
 
     expect(result).toEqual(expect.objectContaining({ success: true, gatewayName: 'new-gw' }));
-    expect(mockWriteMcpSpec).toHaveBeenCalledWith(
+    expect(mockWriteProjectSpec).toHaveBeenCalledWith(
       expect.objectContaining({
         agentCoreGateways: [
           expect.objectContaining({
@@ -155,11 +156,17 @@ describe('GatewayPrimitive.add (createGateway)', () => {
   });
 
   it('appends to existing gateways', async () => {
-    mockConfigExists.mockReturnValue(true);
-    mockReadMcpSpec.mockResolvedValue({
+    mockReadProjectSpec.mockResolvedValue({
+      name: 'test',
+      version: 1,
+      agents: [],
+      memories: [],
+      credentials: [],
+      evaluators: [],
+      onlineEvalConfigs: [],
       agentCoreGateways: [{ name: 'existing-gw', targets: [] }],
     });
-    mockWriteMcpSpec.mockResolvedValue(undefined);
+    mockWriteProjectSpec.mockResolvedValue(undefined);
 
     const result = await gatewayPrimitive.add({
       name: 'new-gw',
@@ -168,12 +175,18 @@ describe('GatewayPrimitive.add (createGateway)', () => {
     });
 
     expect(result).toEqual(expect.objectContaining({ success: true, gatewayName: 'new-gw' }));
-    expect(mockWriteMcpSpec.mock.calls[0]![0].agentCoreGateways).toHaveLength(2);
+    expect(mockWriteProjectSpec.mock.calls[0]![0].agentCoreGateways).toHaveLength(2);
   });
 
   it('returns error when gateway name already exists', async () => {
-    mockConfigExists.mockReturnValue(true);
-    mockReadMcpSpec.mockResolvedValue({
+    mockReadProjectSpec.mockResolvedValue({
+      name: 'test',
+      version: 1,
+      agents: [],
+      memories: [],
+      credentials: [],
+      evaluators: [],
+      onlineEvalConfigs: [],
       agentCoreGateways: [{ name: 'dup-gw', targets: [] }],
     });
 
@@ -189,8 +202,17 @@ describe('GatewayPrimitive.add (createGateway)', () => {
   });
 
   it('includes JWT authorizer config when CUSTOM_JWT', async () => {
-    mockConfigExists.mockReturnValue(false);
-    mockWriteMcpSpec.mockResolvedValue(undefined);
+    mockReadProjectSpec.mockResolvedValue({
+      name: 'test',
+      version: 1,
+      agents: [],
+      memories: [],
+      credentials: [],
+      evaluators: [],
+      onlineEvalConfigs: [],
+      agentCoreGateways: [],
+    });
+    mockWriteProjectSpec.mockResolvedValue(undefined);
 
     await gatewayPrimitive.add({
       name: 'jwt-gw',
@@ -201,7 +223,7 @@ describe('GatewayPrimitive.add (createGateway)', () => {
       allowedClients: 'client1',
     });
 
-    expect(mockWriteMcpSpec.mock.calls[0]![0].agentCoreGateways[0].authorizerConfiguration).toEqual({
+    expect(mockWriteProjectSpec.mock.calls[0]![0].agentCoreGateways[0].authorizerConfiguration).toEqual({
       customJwtAuthorizer: {
         discoveryUrl: 'https://example.com/.well-known/openid',
         allowedAudience: ['aud1'],

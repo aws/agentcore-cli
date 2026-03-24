@@ -1,14 +1,14 @@
 import { formatError, validateProject } from '../preflight.js';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
-const { mockReadProjectSpec, mockReadAWSDeploymentTargets, mockReadMcpSpec, mockReadDeployedState, mockConfigExists } =
-  vi.hoisted(() => ({
+const { mockReadProjectSpec, mockReadAWSDeploymentTargets, mockReadDeployedState, mockConfigExists } = vi.hoisted(
+  () => ({
     mockReadProjectSpec: vi.fn(),
     mockReadAWSDeploymentTargets: vi.fn(),
-    mockReadMcpSpec: vi.fn(),
     mockReadDeployedState: vi.fn(),
     mockConfigExists: vi.fn(),
-  }));
+  })
+);
 
 const { mockValidate } = vi.hoisted(() => ({
   mockValidate: vi.fn(),
@@ -30,7 +30,6 @@ vi.mock('../../../../lib/index.js', () => ({
     readProjectSpec = mockReadProjectSpec;
     readAWSDeploymentTargets = mockReadAWSDeploymentTargets;
     resolveAWSDeploymentTargets = mockReadAWSDeploymentTargets;
-    readMcpSpec = mockReadMcpSpec;
     readDeployedState = mockReadDeployedState;
     configExists = mockConfigExists;
   },
@@ -56,12 +55,9 @@ describe('validateProject', () => {
     mockReadProjectSpec.mockResolvedValue({
       name: 'test-project',
       agents: [],
-    });
-    mockReadAWSDeploymentTargets.mockResolvedValue([]);
-    mockConfigExists.mockReturnValue(true);
-    mockReadMcpSpec.mockResolvedValue({
       agentCoreGateways: [{ name: 'test-gateway' }],
     });
+    mockReadAWSDeploymentTargets.mockResolvedValue([]);
     mockValidateAwsCredentials.mockResolvedValue(undefined);
 
     const result = await validateProject();
@@ -76,9 +72,9 @@ describe('validateProject', () => {
     mockReadProjectSpec.mockResolvedValue({
       name: 'test-project',
       agents: [],
+      agentCoreGateways: [],
     });
     mockReadAWSDeploymentTargets.mockResolvedValue([]);
-    mockReadMcpSpec.mockRejectedValue(new Error('No mcp.json'));
     mockReadDeployedState.mockRejectedValue(new Error('No deployed state'));
 
     await expect(validateProject()).rejects.toThrow(
@@ -93,9 +89,9 @@ describe('validateProject', () => {
       name: 'test-project',
       agents: [],
       memories: [{ name: 'test-memory', strategies: [] }],
+      agentCoreGateways: [],
     });
     mockReadAWSDeploymentTargets.mockResolvedValue([]);
-    mockReadMcpSpec.mockRejectedValue(new Error('No mcp.json'));
     mockValidateAwsCredentials.mockResolvedValue(undefined);
 
     const result = await validateProject();
@@ -110,12 +106,9 @@ describe('validateProject', () => {
     mockReadProjectSpec.mockResolvedValue({
       name: 'test-project',
       agents: [{ name: 'test-agent' }],
-    });
-    mockReadAWSDeploymentTargets.mockResolvedValue([]);
-    mockConfigExists.mockReturnValue(true);
-    mockReadMcpSpec.mockResolvedValue({
       agentCoreGateways: [{ name: 'test-gateway' }],
     });
+    mockReadAWSDeploymentTargets.mockResolvedValue([]);
     mockValidateAwsCredentials.mockResolvedValue(undefined);
 
     const result = await validateProject();

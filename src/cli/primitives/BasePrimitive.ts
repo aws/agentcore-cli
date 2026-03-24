@@ -13,9 +13,8 @@ import type { z } from 'zod';
  * Each primitive (Agent, Memory, Credential, Gateway, GatewayTarget)
  * extends this class and owns its add/remove logic entirely.
  *
- * The base provides shared helpers for the common case (agentcore.json),
- * but primitives that use mcp.json override everything — they just share
- * the same interface.
+ * The base provides shared helpers for reading/writing agentcore.json.
+ * All resource types (including gateways) now use agentcore.json.
  */
 export abstract class BasePrimitive<
   TAddOptions = Record<string, unknown>,

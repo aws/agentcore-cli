@@ -106,21 +106,18 @@ describe('remove all command', () => {
     expect(json.note).toContain('agentcore deploy');
   });
 
-  it('clears gateways from mcp.json after remove all', async () => {
-    // Write mcp.json with a gateway and target
-    const mcpPath = join(projectDir, 'agentcore', 'mcp.json');
-    await writeFile(
-      mcpPath,
-      JSON.stringify({
-        agentCoreGateways: [
-          {
-            name: 'TestGateway',
-            authorizerType: 'NONE',
-            targets: [{ name: 'test-target', targetType: 'mcpServer', endpoint: 'https://example.com/mcp' }],
-          },
-        ],
-      })
-    );
+  it('clears gateways from agentcore.json after remove all', async () => {
+    // Read current agentcore.json and add a gateway
+    const projectSpecPath = join(projectDir, 'agentcore', 'agentcore.json');
+    const projectSpec = JSON.parse(await readFile(projectSpecPath, 'utf-8'));
+    projectSpec.agentCoreGateways = [
+      {
+        name: 'TestGateway',
+        authorizerType: 'NONE',
+        targets: [{ name: 'test-target', targetType: 'mcpServer', endpoint: 'https://example.com/mcp' }],
+      },
+    ];
+    await writeFile(projectSpecPath, JSON.stringify(projectSpec, null, 2));
 
     // Run remove all
     const result = await runCLI(['remove', 'all', '--force', '--json'], projectDir);
@@ -128,8 +125,8 @@ describe('remove all command', () => {
     const json = JSON.parse(result.stdout);
     expect(json.success).toBe(true);
 
-    // Verify mcp.json gateways are cleared
-    const mcpAfter = JSON.parse(await readFile(mcpPath, 'utf-8'));
-    expect(mcpAfter.agentCoreGateways.length, 'Gateways should be cleared after remove all').toBe(0);
+    // Verify agentcore.json gateways are cleared
+    const projectSpecAfter = JSON.parse(await readFile(projectSpecPath, 'utf-8'));
+    expect(projectSpecAfter.agentCoreGateways.length, 'Gateways should be cleared after remove all').toBe(0);
   });
 });

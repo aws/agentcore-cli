@@ -17,13 +17,11 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const mockReadProjectSpec = vi.fn();
 const mockConfigExists = vi.fn().mockReturnValue(true);
-const mockReadMcpSpec = vi.fn();
 
 vi.mock('../../../../lib/index.js', () => ({
   ConfigIO: class {
     readProjectSpec = mockReadProjectSpec;
     configExists = mockConfigExists;
-    readMcpSpec = mockReadMcpSpec;
   },
   findConfigRoot: vi.fn().mockReturnValue('/mock/project/agentcore'),
 }));
@@ -220,19 +218,24 @@ describe('validate', () => {
       expect(result.error?.includes('Invalid authorizer type')).toBeTruthy();
     });
 
-    // AC11: CUSTOM_JWT requires discoveryUrl and allowedClients (allowedAudience is optional)
+    // AC11: CUSTOM_JWT requires discoveryUrl; at least one of allowedAudience/allowedClients/allowedScopes
     it('returns error for CUSTOM_JWT missing required fields', () => {
-      const jwtFields: { field: keyof AddGatewayOptions; error: string }[] = [
-        { field: 'discoveryUrl', error: '--discovery-url is required for CUSTOM_JWT authorizer' },
-        { field: 'allowedClients', error: '--allowed-clients is required for CUSTOM_JWT authorizer' },
-      ];
+      // discoveryUrl is always required
+      const result = validateAddGatewayOptions({ ...validGatewayOptionsJwt, discoveryUrl: undefined });
+      expect(result.valid).toBe(false);
+      expect(result.error).toBe('--discovery-url is required for CUSTOM_JWT authorizer');
 
-      for (const { field, error } of jwtFields) {
-        const opts = { ...validGatewayOptionsJwt, [field]: undefined };
-        const result = validateAddGatewayOptions(opts);
-        expect(result.valid, `Should fail for missing ${String(field)}`).toBe(false);
-        expect(result.error).toBe(error);
-      }
+      // All three optional fields absent fails
+      const noneResult = validateAddGatewayOptions({
+        ...validGatewayOptionsJwt,
+        allowedAudience: undefined,
+        allowedClients: undefined,
+        allowedScopes: undefined,
+      });
+      expect(noneResult.valid).toBe(false);
+      expect(noneResult.error).toBe(
+        'At least one of --allowed-audience, --allowed-clients, --allowed-scopes, or --custom-claims must be provided for CUSTOM_JWT authorizer'
+      );
     });
 
     // AC11b: allowedAudience is optional
@@ -255,11 +258,86 @@ describe('validate', () => {
       expect(result.error?.includes('.well-known/openid-configuration')).toBeTruthy();
     });
 
-    // AC13: Empty comma-separated clients rejected (audience can be empty)
-    it('returns error for empty clients', () => {
-      const result = validateAddGatewayOptions({ ...validGatewayOptionsJwt, allowedClients: '  ,  ' });
+    // AC13: At least one of audience/clients/scopes must be non-empty
+    it('returns error when all of audience, clients, and scopes are empty', () => {
+      const result = validateAddGatewayOptions({
+        ...validGatewayOptionsJwt,
+        allowedAudience: '  ',
+        allowedClients: undefined,
+        allowedScopes: undefined,
+      });
       expect(result.valid).toBe(false);
-      expect(result.error).toBe('At least one client value is required');
+      expect(result.error).toBe(
+        'At least one of --allowed-audience, --allowed-clients, --allowed-scopes, or --custom-claims must be provided for CUSTOM_JWT authorizer'
+      );
+    });
+
+    // AC-claims1: --custom-claims with valid JSON passes validation
+    it('accepts valid --custom-claims JSON', () => {
+      const result = validateAddGatewayOptions({
+        ...validGatewayOptionsJwt,
+        customClaims: JSON.stringify([
+          {
+            inboundTokenClaimName: 'dept',
+            inboundTokenClaimValueType: 'STRING',
+            authorizingClaimMatchValue: {
+              claimMatchOperator: 'EQUALS',
+              claimMatchValue: { matchValueString: 'engineering' },
+            },
+          },
+        ]),
+      });
+      expect(result.valid).toBe(true);
+    });
+
+    // AC-claims2: --custom-claims alone satisfies the "at least one constraint" check
+    it('allows CUSTOM_JWT with only --custom-claims (no audience/clients/scopes)', () => {
+      const result = validateAddGatewayOptions({
+        name: 'test-gw',
+        authorizerType: 'CUSTOM_JWT',
+        discoveryUrl: 'https://example.com/.well-known/openid-configuration',
+        customClaims: JSON.stringify([
+          {
+            inboundTokenClaimName: 'role',
+            inboundTokenClaimValueType: 'STRING_ARRAY',
+            authorizingClaimMatchValue: {
+              claimMatchOperator: 'CONTAINS_ANY',
+              claimMatchValue: { matchValueStringList: ['admin'] },
+            },
+          },
+        ]),
+      });
+      expect(result.valid).toBe(true);
+    });
+
+    // AC-claims3: --custom-claims with invalid JSON fails
+    it('returns error for --custom-claims with invalid JSON', () => {
+      const result = validateAddGatewayOptions({
+        ...validGatewayOptionsJwt,
+        customClaims: 'not json',
+      });
+      expect(result.valid).toBe(false);
+      expect(result.error).toBe('--custom-claims must be valid JSON');
+    });
+
+    // AC-claims4: --custom-claims with empty array fails
+    it('returns error for --custom-claims with empty array', () => {
+      const result = validateAddGatewayOptions({
+        ...validGatewayOptionsJwt,
+        customClaims: '[]',
+      });
+      expect(result.valid).toBe(false);
+      expect(result.error).toBe('--custom-claims must be a non-empty JSON array');
+    });
+
+    // AC-claims5: --custom-claims with invalid claim structure fails
+    it('returns error for --custom-claims with invalid claim structure', () => {
+      const result = validateAddGatewayOptions({
+        ...validGatewayOptionsJwt,
+        customClaims: JSON.stringify([{ badField: 'value' }]),
+      });
+      expect(result.valid).toBe(false);
+      expect(result.error).toContain('Invalid custom claim at index 0');
     });
 
     // AC14: Valid options pass
@@ -268,42 +346,42 @@ describe('validate', () => {
       expect(validateAddGatewayOptions(validGatewayOptionsJwt)).toEqual({ valid: true });
     });
 
-    // AC15: agentClientId and agentClientSecret must be provided together
-    it('returns error when agentClientId provided without agentClientSecret', () => {
+    // AC15: clientId and clientSecret must be provided together
+    it('returns error when clientId provided without clientSecret', () => {
       const result = validateAddGatewayOptions({
         ...validGatewayOptionsJwt,
-        agentClientId: 'my-client-id',
+        clientId: 'my-client-id',
       });
       expect(result.valid).toBe(false);
-      expect(result.error).toBe('Both --agent-client-id and --agent-client-secret must be provided together');
+      expect(result.error).toBe('Both --client-id and --client-secret must be provided together');
     });
 
-    it('returns error when agentClientSecret provided without agentClientId', () => {
+    it('returns error when clientSecret provided without clientId', () => {
       const result = validateAddGatewayOptions({
         ...validGatewayOptionsJwt,
-        agentClientSecret: 'my-secret',
+        clientSecret: 'my-secret',
       });
       expect(result.valid).toBe(false);
-      expect(result.error).toBe('Both --agent-client-id and --agent-client-secret must be provided together');
+      expect(result.error).toBe('Both --client-id and --client-secret must be provided together');
     });
 
-    // AC16: agent credentials only valid with CUSTOM_JWT
-    it('returns error when agent credentials used with non-CUSTOM_JWT authorizer', () => {
+    // AC16: OAuth client credentials only valid with CUSTOM_JWT
+    it('returns error when OAuth client credentials used with non-CUSTOM_JWT authorizer', () => {
       const result = validateAddGatewayOptions({
         ...validGatewayOptionsNone,
-        agentClientId: 'my-client-id',
-        agentClientSecret: 'my-secret',
+        clientId: 'my-client-id',
+        clientSecret: 'my-secret',
       });
       expect(result.valid).toBe(false);
-      expect(result.error).toBe('Agent OAuth credentials are only valid with CUSTOM_JWT authorizer');
+      expect(result.error).toBe('OAuth client credentials are only valid with CUSTOM_JWT authorizer');
     });
 
-    // AC17: valid CUSTOM_JWT with agent credentials passes
-    it('passes for CUSTOM_JWT with agent credentials', () => {
+    // AC17: valid CUSTOM_JWT with OAuth client credentials passes
+    it('passes for CUSTOM_JWT with OAuth client credentials', () => {
       const result = validateAddGatewayOptions({
         ...validGatewayOptionsJwt,
-        agentClientId: 'my-client-id',
-        agentClientSecret: 'my-secret',
+        clientId: 'my-client-id',
+        clientSecret: 'my-secret',
         allowedScopes: 'scope1,scope2',
       });
       expect(result.valid).toBe(true);
@@ -313,7 +391,7 @@ describe('validate', () => {
   describe('validateAddGatewayTargetOptions', () => {
     beforeEach(() => {
       // By default, mock that the gateway from validGatewayTargetOptions exists
-      mockReadMcpSpec.mockResolvedValue({ agentCoreGateways: [{ name: 'my-gateway' }] });
+      mockReadProjectSpec.mockResolvedValue({ agentCoreGateways: [{ name: 'my-gateway' }] });
     });
 
     // AC15: Required fields validated
@@ -332,7 +410,7 @@ describe('validate', () => {
     });
 
     it('returns error when no gateways exist', async () => {
-      mockReadMcpSpec.mockResolvedValue({ agentCoreGateways: [] });
+      mockReadProjectSpec.mockResolvedValue({ agentCoreGateways: [] });
       const result = await validateAddGatewayTargetOptions({ ...validGatewayTargetOptions });
       expect(result.valid).toBe(false);
       expect(result.error).toContain('No gateways found');
@@ -340,7 +418,7 @@ describe('validate', () => {
     });
 
     it('returns error when specified gateway does not exist', async () => {
-      mockReadMcpSpec.mockResolvedValue({ agentCoreGateways: [{ name: 'other-gateway' }] });
+      mockReadProjectSpec.mockResolvedValue({ agentCoreGateways: [{ name: 'other-gateway' }] });
       const result = await validateAddGatewayTargetOptions({ ...validGatewayTargetOptions });
       expect(result.valid).toBe(false);
       expect(result.error).toContain('Gateway "my-gateway" not found');
@@ -446,6 +524,7 @@ describe('validate', () => {
     // AC21: credential validation through outbound auth
     it('returns error when credential not found', async () => {
       mockReadProjectSpec.mockResolvedValue({
+        agentCoreGateways: [{ name: 'my-gateway' }],
         credentials: [{ name: 'existing-cred', type: 'ApiKey' }],
       });
 
@@ -464,6 +543,7 @@ describe('validate', () => {
 
     it('returns error when no credentials configured', async () => {
       mockReadProjectSpec.mockResolvedValue({
+        agentCoreGateways: [{ name: 'my-gateway' }],
         credentials: [],
       });
 
@@ -482,6 +562,7 @@ describe('validate', () => {
 
     it('passes when credential exists', async () => {
       mockReadProjectSpec.mockResolvedValue({
+        agentCoreGateways: [{ name: 'my-gateway' }],
         credentials: [{ name: 'valid-cred', type: 'ApiKey' }],
       });
 
@@ -934,6 +1015,71 @@ describe('validate', () => {
     // AC25: Valid options pass
     it('passes for valid options', () => {
       expect(validateAddIdentityOptions(validIdentityOptions)).toEqual({ valid: true });
+    });
+  });
+
+  describe('validateAddAgentOptions import validation', () => {
+    const validImportOptions: AddAgentOptions = {
+      name: 'ImportedAgent',
+      type: 'import',
+      framework: 'Strands',
+      memory: 'none',
+      agentId: 'AGENT123',
+      agentAliasId: 'ALIAS456',
+      region: 'us-east-1',
+    };
+
+    it('passes for valid import options', () => {
+      const result = validateAddAgentOptions({ ...validImportOptions });
+      expect(result).toEqual({ valid: true });
+    });
+
+    it('requires --agent-id for import path', () => {
+      const result = validateAddAgentOptions({ ...validImportOptions, agentId: undefined });
+      expect(result.valid).toBe(false);
+      expect(result.error).toContain('--agent-id');
+    });
+
+    it('requires --agent-alias-id for import path', () => {
+      const result = validateAddAgentOptions({ ...validImportOptions, agentAliasId: undefined });
+      expect(result.valid).toBe(false);
+      expect(result.error).toContain('--agent-alias-id');
+    });
+
+    it('requires --region for import path', () => {
+      const result = validateAddAgentOptions({ ...validImportOptions, region: undefined });
+      expect(result.valid).toBe(false);
+      expect(result.error).toContain('--region');
+    });
+
+    it('requires --framework for import path', () => {
+      const result = validateAddAgentOptions({ ...validImportOptions, framework: undefined });
+      expect(result.valid).toBe(false);
+      expect(result.error).toContain('--framework');
+    });
+
+    it('only allows Strands or LangChain_LangGraph for import', () => {
+      const result = validateAddAgentOptions({ ...validImportOptions, framework: 'GoogleADK' });
+      expect(result.valid).toBe(false);
+      expect(result.error).toContain('Strands or LangChain_LangGraph');
+    });
+
+    it('requires --memory for import path', () => {
+      const result = validateAddAgentOptions({ ...validImportOptions, memory: undefined });
+      expect(result.valid).toBe(false);
+      expect(result.error).toContain('--memory');
+    });
+
+    it('forces modelProvider to Bedrock and language to Python', () => {
+      const opts = { ...validImportOptions };
+      validateAddAgentOptions(opts);
+      expect(opts.modelProvider).toBe('Bedrock');
+      expect(opts.language).toBe('Python');
+    });
+
+    it('accepts LangChain_LangGraph framework', () => {
+      const result = validateAddAgentOptions({ ...validImportOptions, framework: 'LangChain_LangGraph' });
+      expect(result.valid).toBe(true);
     });
   });
 

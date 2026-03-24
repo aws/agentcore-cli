@@ -18,7 +18,6 @@ export const CONFIG_FILES = {
   AGENT_ENV: 'agentcore.json',
   AWS_TARGETS: 'aws-targets.json',
   DEPLOYED_STATE: 'deployed-state.json',
-  MCP: 'mcp.json',
   MCP_DEFS: 'mcp-defs.json',
 } as const;
 

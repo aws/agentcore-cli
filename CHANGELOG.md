@@ -2,6 +2,31 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.3.0-preview.7.0] - 2026-03-23
+
+**Note:** Policy currently has issues with asscoiating a policy engine with a gateway that has No Auth or IAM Auth.
+
+### Added
+- feat: add resource tagging support (#564) (dd9716c)
+- feat: add import from Bedrock Agents to add agent and create flows (#563) (f0e1af7)
+- feat: add policy engine and policy support (#579) (4da709b)
+- feat: add advanced settings gate to agent creation wizard (#593) (0023284)
+
+### Fixed
+- fix: improve old CLI conflict detection in preinstall hook (#588) (a5cbc03)
+- fix: add @aws-sdk/xml-builder override to resolve entity expansion limit (#601) (36f1ca2)
+
+### Documentation
+- docs: update CLI command reference with missing commands, options, and aliases (#581) (41b6c74)
+
+### Other Changes
+- Revert "feat: add resource tagging support (#564)" (#612) (b62ca3a)
+- fix(tui): remove dead PlaceholderScreen and fix gateway wizard UX (#597) (8f44713)
+- fix(gateway): harden inbound auth schema and rename credential flags (#598) (bf1406c)
+- ci: run full e2e suite on every push to main (#585) (aec6102)
+- ci: add package install sanity check to build-and-test (#590) (06fb886)
+- ci: fix pr-tarball for fork PRs using pull_request_target (#586) (686dbee)
+
 ## [0.3.0-preview.6.1] - 2026-03-19
 
 ### Added

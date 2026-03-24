@@ -18,6 +18,8 @@ describe('getDevConfig', () => {
       credentials: [],
       evaluators: [],
       onlineEvalConfigs: [],
+      agentCoreGateways: [],
+      policyEngines: [],
     };
 
     const config = getDevConfig(workingDir, project);
@@ -43,6 +45,8 @@ describe('getDevConfig', () => {
       credentials: [],
       evaluators: [],
       onlineEvalConfigs: [],
+      agentCoreGateways: [],
+      policyEngines: [],
     };
 
     const config = getDevConfig(workingDir, project);
@@ -68,6 +72,8 @@ describe('getDevConfig', () => {
       credentials: [],
       evaluators: [],
       onlineEvalConfigs: [],
+      agentCoreGateways: [],
+      policyEngines: [],
     };
 
     const config = getDevConfig(workingDir, project, '/test/project/agentcore');
@@ -99,6 +105,8 @@ describe('getDevConfig', () => {
       credentials: [],
       evaluators: [],
       onlineEvalConfigs: [],
+      agentCoreGateways: [],
+      policyEngines: [],
     };
 
     expect(() => getDevConfig(workingDir, project, undefined, 'NonExistentAgent')).toThrow(
@@ -125,6 +133,8 @@ describe('getDevConfig', () => {
       credentials: [],
       evaluators: [],
       onlineEvalConfigs: [],
+      agentCoreGateways: [],
+      policyEngines: [],
     };
 
     expect(() => getDevConfig(workingDir, project, undefined, 'NodeAgent')).toThrow('Dev mode only supports Python');
@@ -149,6 +159,8 @@ describe('getDevConfig', () => {
       credentials: [],
       evaluators: [],
       onlineEvalConfigs: [],
+      agentCoreGateways: [],
+      policyEngines: [],
     };
 
     const config = getDevConfig(workingDir, project, '/test/project/agentcore');
@@ -176,6 +188,8 @@ describe('getDevConfig', () => {
       credentials: [],
       evaluators: [],
       onlineEvalConfigs: [],
+      agentCoreGateways: [],
+      policyEngines: [],
     };
 
     // No configRoot provided
@@ -203,6 +217,8 @@ describe('getDevConfig', () => {
       credentials: [],
       evaluators: [],
       onlineEvalConfigs: [],
+      agentCoreGateways: [],
+      policyEngines: [],
     };
 
     const config = getDevConfig(workingDir, project, '/test/project/agentcore');
@@ -230,6 +246,8 @@ describe('getDevConfig', () => {
       credentials: [],
       evaluators: [],
       onlineEvalConfigs: [],
+      agentCoreGateways: [],
+      policyEngines: [],
     };
 
     const config = getDevConfig(workingDir, project, '/test/project/agentcore');
@@ -256,6 +274,8 @@ describe('getDevConfig', () => {
       credentials: [],
       evaluators: [],
       onlineEvalConfigs: [],
+      agentCoreGateways: [],
+      policyEngines: [],
     };
 
     const config = getDevConfig(workingDir, project, '/test/project/agentcore');
@@ -282,6 +302,8 @@ describe('getDevConfig', () => {
       credentials: [],
       evaluators: [],
       onlineEvalConfigs: [],
+      agentCoreGateways: [],
+      policyEngines: [],
     };
 
     const config = getDevConfig(workingDir, project, '/test/project/agentcore');
@@ -308,6 +330,8 @@ describe('getDevConfig', () => {
       credentials: [],
       evaluators: [],
       onlineEvalConfigs: [],
+      agentCoreGateways: [],
+      policyEngines: [],
     };
 
     const config = getDevConfig(workingDir, project, '/test/project/agentcore');
@@ -334,6 +358,8 @@ describe('getDevConfig', () => {
       credentials: [],
       evaluators: [],
       onlineEvalConfigs: [],
+      agentCoreGateways: [],
+      policyEngines: [],
     };
 
     const config = getDevConfig(workingDir, project, '/test/project/agentcore');
@@ -375,6 +401,8 @@ describe('getAgentPort', () => {
       credentials: [],
       evaluators: [],
       onlineEvalConfigs: [],
+      agentCoreGateways: [],
+      policyEngines: [],
     };
 
     expect(getAgentPort(project, 'Agent1', 8080)).toBe(8080);
@@ -390,6 +418,8 @@ describe('getAgentPort', () => {
       credentials: [],
       evaluators: [],
       onlineEvalConfigs: [],
+      agentCoreGateways: [],
+      policyEngines: [],
     };
 
     expect(getAgentPort(project, 'NonExistent', 9000)).toBe(9000);
@@ -410,6 +440,8 @@ describe('getDevSupportedAgents', () => {
       credentials: [],
       evaluators: [],
       onlineEvalConfigs: [],
+      agentCoreGateways: [],
+      policyEngines: [],
     };
 
     expect(getDevSupportedAgents(project)).toEqual([]);
@@ -434,6 +466,8 @@ describe('getDevSupportedAgents', () => {
       credentials: [],
       evaluators: [],
       onlineEvalConfigs: [],
+      agentCoreGateways: [],
+      policyEngines: [],
     };
 
     expect(getDevSupportedAgents(project)).toEqual([]);
@@ -467,6 +501,8 @@ describe('getDevSupportedAgents', () => {
       credentials: [],
       evaluators: [],
       onlineEvalConfigs: [],
+      agentCoreGateways: [],
+      policyEngines: [],
     };
 
     const supported = getDevSupportedAgents(project);
@@ -493,6 +529,8 @@ describe('getDevSupportedAgents', () => {
       credentials: [],
       evaluators: [],
       onlineEvalConfigs: [],
+      agentCoreGateways: [],
+      policyEngines: [],
     };
 
     const supported = getDevSupportedAgents(project);
@@ -528,6 +566,8 @@ describe('getDevSupportedAgents', () => {
       credentials: [],
       evaluators: [],
       onlineEvalConfigs: [],
+      agentCoreGateways: [],
+      policyEngines: [],
     };
 
     const supported = getDevSupportedAgents(project);

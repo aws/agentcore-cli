@@ -1,4 +1,13 @@
-export type ResourceType = 'agent' | 'gateway' | 'gateway-target' | 'memory' | 'identity' | 'evaluator' | 'online-eval';
+export type ResourceType =
+  | 'agent'
+  | 'gateway'
+  | 'gateway-target'
+  | 'memory'
+  | 'identity'
+  | 'evaluator'
+  | 'online-eval'
+  | 'policy-engine'
+  | 'policy';
 
 export interface RemoveOptions {
   resourceType: ResourceType;

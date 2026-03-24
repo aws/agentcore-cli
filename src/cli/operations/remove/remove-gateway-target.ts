@@ -21,14 +21,11 @@ export interface RemovableGatewayTarget {
 export async function getRemovableGatewayTargets(): Promise<RemovableGatewayTarget[]> {
   try {
     const configIO = new ConfigIO();
-    if (!configIO.configExists('mcp')) {
-      return [];
-    }
-    const mcpSpec = await configIO.readMcpSpec();
+    const project = await configIO.readProjectSpec();
     const tools: RemovableGatewayTarget[] = [];
 
     // Gateway targets
-    for (const gateway of mcpSpec.agentCoreGateways) {
+    for (const gateway of project.agentCoreGateways) {
       for (const target of gateway.targets) {
         tools.push({
           name: target.name,
@@ -49,7 +46,12 @@ export async function getRemovableGatewayTargets(): Promise<RemovableGatewayTarg
  */
 export async function previewRemoveGatewayTarget(tool: RemovableGatewayTarget): Promise<RemovalPreview> {
   const configIO = new ConfigIO();
-  const mcpSpec = await configIO.readMcpSpec();
+  const project = await configIO.readProjectSpec();
+  const mcpSpec: AgentCoreMcpSpec = {
+    agentCoreGateways: project.agentCoreGateways,
+    mcpRuntimeTools: project.mcpRuntimeTools,
+    unassignedTargets: project.unassignedTargets,
+  };
   const mcpDefs = configIO.configExists('mcpDefs') ? await configIO.readMcpDefs() : { tools: {} };
 
   const summary: string[] = [];
@@ -90,9 +92,9 @@ export async function previewRemoveGatewayTarget(tool: RemovableGatewayTarget): 
   // Compute schema changes
   const afterMcpSpec = computeRemovedToolMcpSpec(mcpSpec, tool);
   schemaChanges.push({
-    file: 'agentcore/mcp.json',
-    before: mcpSpec,
-    after: afterMcpSpec,
+    file: 'agentcore/agentcore.json',
+    before: project,
+    after: { ...project, ...afterMcpSpec },
   });
 
   const afterMcpDefs = computeRemovedToolMcpDefs(mcpSpec, mcpDefs, tool);
@@ -156,7 +158,12 @@ function computeRemovedToolMcpDefs(
 export async function removeGatewayTarget(tool: RemovableGatewayTarget): Promise<RemovalResult> {
   try {
     const configIO = new ConfigIO();
-    const mcpSpec = await configIO.readMcpSpec();
+    const project = await configIO.readProjectSpec();
+    const mcpSpec: AgentCoreMcpSpec = {
+      agentCoreGateways: project.agentCoreGateways,
+      mcpRuntimeTools: project.mcpRuntimeTools,
+      unassignedTargets: project.unassignedTargets,
+    };
     const mcpDefs = configIO.configExists('mcpDefs') ? await configIO.readMcpDefs() : { tools: {} };
     const projectRoot = configIO.getProjectRoot();
 
@@ -175,9 +182,9 @@ export async function removeGatewayTarget(tool: RemovableGatewayTarget): Promise
       toolPath = target.compute.implementation.path;
     }
 
-    // Update MCP spec
+    // Update project spec with MCP changes
     const newMcpSpec = computeRemovedToolMcpSpec(mcpSpec, tool);
-    await configIO.writeMcpSpec(newMcpSpec);
+    await configIO.writeProjectSpec({ ...project, ...newMcpSpec });
 
     // Update MCP defs
     const newMcpDefs = computeRemovedToolMcpDefs(mcpSpec, mcpDefs, tool);

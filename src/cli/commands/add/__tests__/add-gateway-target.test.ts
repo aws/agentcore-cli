@@ -78,9 +78,9 @@ describe('add gateway-target command', () => {
       const json = JSON.parse(result.stdout);
       expect(json.success).toBe(true);
 
-      // Verify in mcp.json
-      const mcpSpec = JSON.parse(await readFile(join(projectDir, 'agentcore/mcp.json'), 'utf-8'));
-      const gateway = mcpSpec.agentCoreGateways.find((g: { name: string }) => g.name === gatewayName);
+      // Verify in agentcore.json
+      const projectSpec = JSON.parse(await readFile(join(projectDir, 'agentcore/agentcore.json'), 'utf-8'));
+      const gateway = projectSpec.agentCoreGateways.find((g: { name: string }) => g.name === gatewayName);
       const target = gateway?.targets?.find((t: { name: string }) => t.name === targetName);
       expect(target, 'Target should be in gateway targets').toBeTruthy();
     });
@@ -122,8 +122,8 @@ describe('add gateway-target command', () => {
       expect(json.success).toBe(true);
       expect(json.toolName).toBe(targetName);
 
-      const mcpSpec = JSON.parse(await readFile(join(projectDir, 'agentcore/mcp.json'), 'utf-8'));
-      const gateway = mcpSpec.agentCoreGateways.find((g: { name: string }) => g.name === gatewayName);
+      const projectSpec = JSON.parse(await readFile(join(projectDir, 'agentcore/agentcore.json'), 'utf-8'));
+      const gateway = projectSpec.agentCoreGateways.find((g: { name: string }) => g.name === gatewayName);
       const target = gateway?.targets?.find((t: { name: string }) => t.name === targetName);
       expect(target).toBeTruthy();
       expect(target.targetType).toBe('lambdaFunctionArn');

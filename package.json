@@ -1,6 +1,6 @@
 {
   "name": "@aws/agentcore",
-  "version": "0.3.0-preview.6.1",
+  "version": "0.3.0-preview.7.0",
   "description": "CLI for Amazon Bedrock AgentCore",
   "license": "Apache-2.0",
   "repository": {
@@ -72,12 +72,15 @@
   "dependencies": {
     "@aws-cdk/toolkit-lib": "^1.16.0",
     "@aws-sdk/client-application-signals": "^3.1003.0",
+    "@aws-sdk/client-bedrock": "^3.1012.0",
+    "@aws-sdk/client-bedrock-agent": "^3.1012.0",
     "@aws-sdk/client-bedrock-agentcore": "^3.893.0",
     "@aws-sdk/client-bedrock-agentcore-control": "^3.893.0",
     "@aws-sdk/client-bedrock-runtime": "^3.893.0",
     "@aws-sdk/client-cloudformation": "^3.893.0",
     "@aws-sdk/client-cloudwatch-logs": "^3.893.0",
     "@aws-sdk/client-resource-groups-tagging-api": "^3.893.0",
+    "@aws-sdk/client-s3": "^3.1012.0",
     "@aws-sdk/client-sts": "^3.893.0",
     "@aws-sdk/client-xray": "^3.1003.0",
     "@aws-sdk/credential-providers": "^3.893.0",
@@ -90,6 +93,7 @@
     "ink": "^6.6.0",
     "ink-link": "5.0.0",
     "ink-spinner": "^5.0.0",
+    "js-yaml": "^4.1.1",
     "react": "^19.2.3",
     "zod": "^4.3.5"
   },
@@ -102,6 +106,7 @@
     "@modelcontextprotocol/sdk": "^1.0.0",
     "@secretlint/secretlint-rule-preset-recommend": "^11.3.0",
     "@trivago/prettier-plugin-sort-imports": "^6.0.2",
+    "@types/js-yaml": "^4.0.9",
     "@types/node": "^25.0.3",
     "@types/react": "^19.2.7",
     "@typescript-eslint/eslint-plugin": "^8.50.0",
@@ -132,11 +137,13 @@
   },
   "overridesComments": {
     "minimatch": "GHSA-7r86-cg39-jmmj, GHSA-23c5-xmqv-rm74: minimatch 10.0.0-10.2.2 has ReDoS vulnerabilities. Multiple transitive deps (eslint, typescript-eslint, eslint-plugin-import, eslint-plugin-react, prettier-plugin-sort-imports, aws-cdk-lib) pin older versions. Remove this override once upstream packages update their minimatch dependency to >=10.2.3.",
-    "fast-xml-parser": "GHSA-8gc5-j5rx-235r, GHSA-jp2q-39xq-3w4g: fast-xml-parser <=5.5.6 has entity expansion bypass (CVE-2026-33036, CVE-2026-33349). Transitive via @aws-sdk/xml-builder. Remove once @aws-sdk updates to fast-xml-parser >=5.5.7."
+    "fast-xml-parser": "GHSA-8gc5-j5rx-235r, GHSA-jp2q-39xq-3w4g: fast-xml-parser <=5.5.6 has entity expansion bypass (CVE-2026-33036, CVE-2026-33349). Transitive via @aws-sdk/xml-builder. Remove once @aws-sdk updates to fast-xml-parser >=5.5.7.",
+    "@aws-sdk/xml-builder": "aws/aws-sdk-js-v3#7867: @aws-sdk/xml-builder <3.972.14 does not configure maxTotalExpansions on fast-xml-parser, causing 'Entity expansion limit exceeded' on large CloudFormation responses. Remove once @aws-sdk/client-* deps are bumped past 3.972.14."
   },
   "overrides": {
     "minimatch": "10.2.4",
-    "fast-xml-parser": "5.5.7"
+    "fast-xml-parser": "5.5.7",
+    "@aws-sdk/xml-builder": "3.972.15"
   },
   "engines": {
     "node": ">=20"

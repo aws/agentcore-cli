@@ -7,7 +7,16 @@ import { DEPLOYMENT_STATE_COLORS, DEPLOYMENT_STATE_LABELS } from './constants';
 import type { Command } from '@commander-js/extra-typings';
 import { Box, Text, render } from 'ink';
 
-const VALID_RESOURCE_TYPES = ['agent', 'memory', 'credential', 'gateway', 'evaluator', 'online-eval'] as const;
+const VALID_RESOURCE_TYPES = [
+  'agent',
+  'memory',
+  'credential',
+  'gateway',
+  'evaluator',
+  'online-eval',
+  'policy-engine',
+  'policy',
+] as const;
 const VALID_STATES = ['deployed', 'local-only', 'pending-removal'] as const;
 
 interface StatusCliOptions {
@@ -47,7 +56,7 @@ export const registerStatus = (program: Command) => {
     .description(COMMAND_DESCRIPTIONS.status)
     .option('--agent-runtime-id <id>', 'Look up a specific agent runtime by ID')
     .option('--target <name>', 'Select deployment target')
-    .option('--type <type>', 'Filter by resource type (agent, memory, credential, gateway)')
+    .option('--type <type>', 'Filter by resource type (agent, memory, credential, gateway, policy-engine, policy)')
     .option('--state <state>', 'Filter by deployment state (deployed, local-only, pending-removal)')
     .option('--agent <name>', 'Filter to a specific agent')
     .option('--json', 'Output as JSON')
@@ -128,6 +137,8 @@ export const registerStatus = (program: Command) => {
         const gateways = filtered.filter(r => r.resourceType === 'gateway');
         const evaluators = filtered.filter(r => r.resourceType === 'evaluator');
         const onlineEvals = filtered.filter(r => r.resourceType === 'online-eval');
+        const policyEngines = filtered.filter(r => r.resourceType === 'policy-engine');
+        const policies = filtered.filter(r => r.resourceType === 'policy');
 
         render(
           <Box flexDirection="column">
@@ -186,6 +197,24 @@ export const registerStatus = (program: Command) => {
                 <Text bold>Online Eval Configs</Text>
                 {onlineEvals.map(entry => (
                   <ResourceEntry key={`${entry.resourceType}-${entry.name}`} entry={entry} />
+                ))}
+              </Box>
+            )}
+
+            {policyEngines.length > 0 && (
+              <Box flexDirection="column" marginTop={1}>
+                <Text bold>Policy Engines</Text>
+                {policyEngines.map(entry => (
+                  <ResourceEntry key={`${entry.resourceType}-${entry.name}`} entry={entry} />
+                ))}
+              </Box>
+            )}
+
+            {policies.length > 0 && (
+              <Box flexDirection="column" marginTop={1}>
+                <Text bold>Policies</Text>
+                {policies.map(entry => (
+                  <ResourceEntry key={`${entry.resourceType}-${entry.detail}-${entry.name}`} entry={entry} />
                 ))}
               </Box>
             )}

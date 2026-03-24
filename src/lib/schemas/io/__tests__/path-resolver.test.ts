@@ -199,11 +199,6 @@ describe('PathResolver', () => {
     expect(resolver.getStatePath()).toBe(join('/base', '.cli', 'deployed-state.json'));
   });
 
-  it('getMcpConfigPath returns mcp.json path', () => {
-    const resolver = new PathResolver({ baseDir: '/base' });
-    expect(resolver.getMcpConfigPath()).toBe(join('/base', 'mcp.json'));
-  });
-
   it('getMcpDefsPath returns mcp-defs.json path', () => {
     const resolver = new PathResolver({ baseDir: '/base' });
     expect(resolver.getMcpDefsPath()).toBe(join('/base', 'mcp-defs.json'));

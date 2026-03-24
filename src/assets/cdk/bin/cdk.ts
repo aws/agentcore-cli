@@ -28,13 +28,19 @@ async function main() {
   const spec = await configIO.readProjectSpec();
   const targets = await configIO.readAWSDeploymentTargets();
 
-  // Read MCP configuration if it exists
-  let mcpSpec;
-  try {
-    mcpSpec = await configIO.readMcpSpec();
-  } catch {
-    // MCP config is optional
-  }
+  // Extract MCP configuration from project spec.
+  // Gateway fields are stored in agentcore.json but may not yet be on the
+  // AgentCoreProjectSpec type from @aws/agentcore-cdk, so we read them
+  // dynamically and cast the resulting object.
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const specAny = spec as any;
+  const mcpSpec = specAny.agentCoreGateways?.length
+    ? {
+        agentCoreGateways: specAny.agentCoreGateways,
+        mcpRuntimeTools: specAny.mcpRuntimeTools,
+        unassignedTargets: specAny.unassignedTargets,
+      }
+    : undefined;
 
   // Read deployed state for credential ARNs (populated by pre-deploy identity setup)
   let deployedState: Record<string, unknown> | undefined;

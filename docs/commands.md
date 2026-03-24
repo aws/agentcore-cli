@@ -53,6 +53,16 @@ agentcore create --name MyProject --no-agent
 
 # Preview without creating
 agentcore create --name MyProject --defaults --dry-run
+
+# Import from Bedrock Agents
+agentcore create \
+  --name MyImportedAgent \
+  --type import \
+  --agent-id AGENT123 \
+  --agent-alias-id ALIAS456 \
+  --region us-east-1 \
+  --framework Strands \
+  --memory none
 ```
 
 | Flag                      | Description                                                                      |
@@ -60,6 +70,7 @@ agentcore create --name MyProject --defaults --dry-run
 | `--name <name>`           | Project name (alphanumeric, starts with letter, max 23 chars)                    |
 | `--defaults`              | Use defaults (Python, Strands, Bedrock, no memory)                               |
 | `--no-agent`              | Skip agent creation                                                              |
+| `--type <type>`           | `create` (default) or `import`                                                   |
 | `--language <lang>`       | `Python` (default)                                                               |
 | `--framework <fw>`        | `Strands`, `LangChain_LangGraph`, `CrewAI`, `GoogleADK`, `OpenAIAgents`          |
 | `--model-provider <p>`    | `Bedrock`, `Anthropic`, `OpenAI`, `Gemini`                                       |
@@ -70,6 +81,9 @@ agentcore create --name MyProject --defaults --dry-run
 | `--network-mode <mode>`   | `PUBLIC` (default) or `VPC`                                                      |
 | `--subnets <ids>`         | Comma-separated subnet IDs (required for VPC mode)                               |
 | `--security-groups <ids>` | Comma-separated security group IDs (required for VPC mode)                       |
+| `--agent-id <id>`         | Bedrock Agent ID (import only)                                                   |
+| `--agent-alias-id <id>`   | Bedrock Agent Alias ID (import only)                                             |
+| `--region <region>`       | AWS region for Bedrock Agent (import only)                                       |
 | `--output-dir <dir>`      | Output directory                                                                 |
 | `--skip-git`              | Skip git initialization                                                          |
 | `--skip-python-setup`     | Skip venv setup                                                                  |
@@ -167,24 +181,37 @@ agentcore add agent \
   --network-mode VPC \
   --subnets subnet-abc,subnet-def \
   --security-groups sg-123
+
+# Import from Bedrock Agents
+agentcore add agent \
+  --name MyAgent \
+  --type import \
+  --agent-id AGENT123 \
+  --agent-alias-id ALIAS456 \
+  --region us-east-1 \
+  --framework Strands \
+  --memory none
 ```
 
 | Flag                      | Description                                                                      |
 | ------------------------- | -------------------------------------------------------------------------------- |
 | `--name <name>`           | Agent name (alphanumeric, starts with letter, max 64 chars)                      |
-| `--type <type>`           | `create` (default) or `byo`                                                      |
+| `--type <type>`           | `create` (default), `byo`, or `import`                                           |
 | `--build <type>`          | `CodeZip` (default) or `Container` (see [Container Builds](container-builds.md)) |
 | `--language <lang>`       | `Python` (create); `Python`, `TypeScript`, `Other` (BYO)                         |
 | `--framework <fw>`        | `Strands`, `LangChain_LangGraph`, `CrewAI`, `GoogleADK`, `OpenAIAgents`          |
 | `--model-provider <p>`    | `Bedrock`, `Anthropic`, `OpenAI`, `Gemini`                                       |
 | `--api-key <key>`         | API key for non-Bedrock providers                                                |
-| `--memory <opt>`          | `none`, `shortTerm`, `longAndShortTerm` (create only)                            |
+| `--memory <opt>`          | `none`, `shortTerm`, `longAndShortTerm` (create and import)                      |
 | `--protocol <protocol>`   | `HTTP` (default), `MCP`, `A2A`                                                   |
 | `--code-location <path>`  | Path to existing code (BYO only)                                                 |
 | `--entrypoint <file>`     | Entry file relative to code-location (BYO, default: `main.py`)                   |
 | `--network-mode <mode>`   | `PUBLIC` (default) or `VPC`                                                      |
 | `--subnets <ids>`         | Comma-separated subnet IDs (required for VPC mode)                               |
 | `--security-groups <ids>` | Comma-separated security group IDs (required for VPC mode)                       |
+| `--agent-id <id>`         | Bedrock Agent ID (import only)                                                   |
+| `--agent-alias-id <id>`   | Bedrock Agent Alias ID (import only)                                             |
+| `--region <region>`       | AWS region for Bedrock Agent (import only)                                       |
 | `--json`                  | JSON output                                                                      |
 
 ### add memory

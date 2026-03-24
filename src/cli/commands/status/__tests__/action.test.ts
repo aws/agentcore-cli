@@ -1,4 +1,4 @@
-import type { AgentCoreMcpSpec, AgentCoreProjectSpec, DeployedResourceState } from '../../../../schema/index.js';
+import type { AgentCoreProjectSpec, DeployedResourceState } from '../../../../schema/index.js';
 import { computeResourceStatuses, handleProjectStatus } from '../action.js';
 import type { StatusContext } from '../action.js';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -223,10 +223,11 @@ describe('computeResourceStatuses', () => {
     expect(result.every(r => r.deploymentState === 'local-only')).toBe(true);
   });
 
-  it('marks gateway as deployed when in both local mcp spec and deployed state', () => {
-    const mcpSpec = {
+  it('marks gateway as deployed when in both local project and deployed state', () => {
+    const project = {
+      ...baseProject,
       agentCoreGateways: [{ name: 'my-gateway', targets: [{ name: 't1' }, { name: 't2' }] }],
-    } as unknown as AgentCoreMcpSpec;
+    } as unknown as AgentCoreProjectSpec;
 
     const resources: DeployedResourceState = {
       mcp: {
@@ -239,7 +240,7 @@ describe('computeResourceStatuses', () => {
       },
     };
 
-    const result = computeResourceStatuses(baseProject, resources, mcpSpec);
+    const result = computeResourceStatuses(project, resources);
     const gwEntry = result.find(r => r.resourceType === 'gateway' && r.name === 'my-gateway');
 
     expect(gwEntry).toBeDefined();
@@ -249,11 +250,12 @@ describe('computeResourceStatuses', () => {
   });
 
   it('marks gateway as local-only when not in deployed state', () => {
-    const mcpSpec = {
+    const project = {
+      ...baseProject,
       agentCoreGateways: [{ name: 'my-gateway', targets: [{ name: 't1' }] }],
-    } as unknown as AgentCoreMcpSpec;
+    } as unknown as AgentCoreProjectSpec;
 
-    const result = computeResourceStatuses(baseProject, undefined, mcpSpec);
+    const result = computeResourceStatuses(project, undefined);
     const gwEntry = result.find(r => r.resourceType === 'gateway' && r.name === 'my-gateway');
 
     expect(gwEntry).toBeDefined();
@@ -261,11 +263,7 @@ describe('computeResourceStatuses', () => {
     expect(gwEntry!.detail).toBe('1 target');
   });
 
-  it('marks gateway as pending-removal when in deployed state but not in local mcp spec', () => {
-    const mcpSpec = {
-      agentCoreGateways: [],
-    } as unknown as AgentCoreMcpSpec;
-
+  it('marks gateway as pending-removal when in deployed state but not in local project', () => {
     const resources: DeployedResourceState = {
       mcp: {
         gateways: {
@@ -277,7 +275,7 @@ describe('computeResourceStatuses', () => {
       },
     };
 
-    const result = computeResourceStatuses(baseProject, resources, mcpSpec);
+    const result = computeResourceStatuses(baseProject, resources);
     const gwEntry = result.find(r => r.resourceType === 'gateway' && r.name === 'removed-gateway');
 
     expect(gwEntry).toBeDefined();

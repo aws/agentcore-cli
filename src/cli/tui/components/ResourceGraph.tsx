@@ -18,6 +18,8 @@ const ICONS = {
   runtime: '▶',
   evaluator: '✦',
   'online-eval': '↻',
+  'policy-engine': '▣',
+  policy: '▢',
 } as const;
 
 interface ResourceGraphProps {
@@ -118,6 +120,7 @@ export function ResourceGraph({ project, mcp, agentName, resourceStatuses }: Res
   const gateways = mcp?.agentCoreGateways ?? [];
   const mcpRuntimeTools = mcp?.mcpRuntimeTools ?? [];
   const unassignedTargets = mcp?.unassignedTargets ?? [];
+  const policyEngines = project.policyEngines ?? [];
 
   // Build lookup map and collect pending-removal resources in a single pass
   const { statusMap, pendingRemovals } = useMemo(() => {
@@ -126,7 +129,11 @@ export function ResourceGraph({ project, mcp, agentName, resourceStatuses }: Res
 
     if (resourceStatuses) {
       for (const entry of resourceStatuses) {
-        map.set(`${entry.resourceType}:${entry.name}`, entry);
+        const key =
+          entry.resourceType === 'policy' && entry.detail
+            ? `${entry.resourceType}:${entry.detail}/${entry.name}`
+            : `${entry.resourceType}:${entry.name}`;
+        map.set(key, entry);
         if (entry.deploymentState === 'pending-removal') {
           pending.push(entry);
         }
@@ -143,6 +150,7 @@ export function ResourceGraph({ project, mcp, agentName, resourceStatuses }: Res
     evaluators.length > 0 ||
     onlineEvalConfigs.length > 0 ||
     gateways.length > 0 ||
+    policyEngines.length > 0 ||
     mcpRuntimeTools.length > 0 ||
     unassignedTargets.length > 0 ||
     pendingRemovals.length > 0;
@@ -326,6 +334,43 @@ export function ResourceGraph({ project, mcp, agentName, resourceStatuses }: Res
         </Box>
       )}
 
+      {/* Policy Engines and Policies */}
+      {policyEngines.length > 0 && (
+        <Box flexDirection="column">
+          <SectionHeader>Policy Engines</SectionHeader>
+          {policyEngines.map(engine => {
+            const rsEntry = statusMap.get(`policy-engine:${engine.name}`);
+            return (
+              <Box key={engine.name} flexDirection="column">
+                <ResourceRow
+                  icon={ICONS['policy-engine']}
+                  color="red"
+                  name={engine.name}
+                  detail={rsEntry?.detail}
+                  deploymentState={rsEntry?.deploymentState}
+                  identifier={rsEntry?.identifier}
+                />
+                {engine.policies.map(policy => {
+                  const policyEntry = statusMap.get(`policy:${engine.name}/${policy.name}`);
+                  return (
+                    <Text key={policy.name}>
+                      {'    '}
+                      <Text color="red">{ICONS.policy}</Text> {policy.name}
+                      {policyEntry?.deploymentState && (
+                        <Text color={DEPLOYMENT_STATE_COLORS[policyEntry.deploymentState]}>
+                          {' '}
+                          [{DEPLOYMENT_STATE_LABELS[policyEntry.deploymentState]}]
+                        </Text>
+                      )}
+                    </Text>
+                  );
+                })}
+              </Box>
+            );
+          })}
+        </Box>
+      )}
+
       {/* MCP Runtime Tools */}
       {mcpRuntimeTools.length > 0 && (
         <Box flexDirection="column">
@@ -364,7 +409,8 @@ export function ResourceGraph({ project, mcp, agentName, resourceStatuses }: Res
           <Text color="yellow">{ICONS.credential}</Text> credential{'  '}
           <Text color="cyan">{ICONS.evaluator}</Text> evaluator{'  '}
           <Text color="magenta">{ICONS['online-eval']}</Text> online-eval{'  '}
-          <Text color="magenta">{ICONS.gateway}</Text> gateway
+          <Text color="magenta">{ICONS.gateway}</Text> gateway{'  '}
+          <Text color="red">{ICONS['policy-engine']}</Text> policy engine
         </Text>
         {resourceStatuses && resourceStatuses.length > 0 && (
           <Box flexDirection="column" marginTop={1}>

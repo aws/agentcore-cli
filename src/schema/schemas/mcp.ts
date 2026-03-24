@@ -36,23 +36,85 @@ const OIDC_WELL_KNOWN_SUFFIX = '/.well-known/openid-configuration';
 const OidcDiscoveryUrlSchema = z
   .string()
   .url('Must be a valid URL')
+  .refine(url => url.startsWith('https://'), {
+    message: 'OIDC discovery URL must use HTTPS',
+  })
   .refine(url => url.endsWith(OIDC_WELL_KNOWN_SUFFIX), {
     message: `OIDC discovery URL must end with '${OIDC_WELL_KNOWN_SUFFIX}'`,
   });
 
+// ── Custom Claims Schemas (matches CFN CustomClaimValidationType) ──
+
+export const ClaimMatchOperatorSchema = z.enum(['EQUALS', 'CONTAINS', 'CONTAINS_ANY']);
+export type ClaimMatchOperator = z.infer<typeof ClaimMatchOperatorSchema>;
+
+export const ClaimMatchValueSchema = z
+  .object({
+    matchValueString: z.string().min(1).optional(),
+    matchValueStringList: z.array(z.string().min(1)).min(1).max(255).optional(),
+  })
+  .refine(data => data.matchValueString !== undefined || data.matchValueStringList !== undefined, {
+    message: 'Either matchValueString or matchValueStringList must be provided',
+  })
+  .refine(data => !(data.matchValueString !== undefined && data.matchValueStringList !== undefined), {
+    message: 'Only one of matchValueString or matchValueStringList may be provided',
+  });
+export type ClaimMatchValue = z.infer<typeof ClaimMatchValueSchema>;
+
+export const InboundTokenClaimValueTypeSchema = z.enum(['STRING', 'STRING_ARRAY']);
+export type InboundTokenClaimValueType = z.infer<typeof InboundTokenClaimValueTypeSchema>;
+
+export const CustomClaimValidationSchema = z
+  .object({
+    inboundTokenClaimName: z
+      .string()
+      .min(1)
+      .regex(/^[A-Za-z0-9_.\-:]+$/, 'Claim name must match [A-Za-z0-9_.-:]+'),
+    inboundTokenClaimValueType: InboundTokenClaimValueTypeSchema,
+    authorizingClaimMatchValue: z.object({
+      claimMatchOperator: ClaimMatchOperatorSchema,
+      claimMatchValue: ClaimMatchValueSchema,
+    }),
+  })
+  .strict();
+export type CustomClaimValidation = z.infer<typeof CustomClaimValidationSchema>;
+
+// ── Custom JWT Authorizer Configuration ──
+
 /**
  * Custom JWT authorizer configuration.
  * Used when authorizerType is 'CUSTOM_JWT'.
+ *
+ * At least one of allowedAudience, allowedClients, allowedScopes, or customClaims
+ * must be provided. Only discoveryUrl is unconditionally required.
  */
-export const CustomJwtAuthorizerConfigSchema = z.object({
-  /** OIDC discovery URL (e.g., https://cognito-idp.{region}.amazonaws.com/{userPoolId}/.well-known/openid-configuration) */
-  discoveryUrl: OidcDiscoveryUrlSchema,
-  /** List of allowed audiences (typically client IDs). Empty array means no audience validation. */
-  allowedAudience: z.array(z.string().min(1)),
-  /** List of allowed client IDs */
-  allowedClients: z.array(z.string().min(1)).min(1),
-  allowedScopes: z.array(z.string().min(1)).optional(),
-});
+export const CustomJwtAuthorizerConfigSchema = z
+  .object({
+    /** OIDC discovery URL (e.g., https://cognito-idp.{region}.amazonaws.com/{userPoolId}/.well-known/openid-configuration) */
+    discoveryUrl: OidcDiscoveryUrlSchema,
+    /** List of allowed audiences (typically client IDs) */
+    allowedAudience: z.array(z.string().min(1)).optional(),
+    /** List of allowed client IDs */
+    allowedClients: z.array(z.string().min(1)).optional(),
+    /** List of allowed scopes */
+    allowedScopes: z.array(z.string().min(1)).optional(),
+    /** Custom claim validations */
+    customClaims: z.array(CustomClaimValidationSchema).min(1).optional(),
+  })
+  .strict()
+  .superRefine((data, ctx) => {
+    const hasAudience = data.allowedAudience && data.allowedAudience.length > 0;
+    const hasClients = data.allowedClients && data.allowedClients.length > 0;
+    const hasScopes = data.allowedScopes && data.allowedScopes.length > 0;
+    const hasClaims = data.customClaims && data.customClaims.length > 0;
+
+    if (!hasAudience && !hasClients && !hasScopes && !hasClaims) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: 'At least one of allowedAudience, allowedClients, allowedScopes, or customClaims must be provided',
+      });
+    }
+  });
 
 export type CustomJwtAuthorizerConfig = z.infer<typeof CustomJwtAuthorizerConfigSchema>;
 
@@ -594,6 +656,21 @@ export const GatewayExceptionLevelSchema = z.enum(['NONE', 'DEBUG']);
 export type GatewayExceptionLevel = z.infer<typeof GatewayExceptionLevelSchema>;
 
 // ============================================================================
+// Gateway Policy Engine Configuration
+// ============================================================================
+
+export const PolicyEngineModeSchema = z.enum(['LOG_ONLY', 'ENFORCE']);
+export type PolicyEngineMode = z.infer<typeof PolicyEngineModeSchema>;
+
+export const GatewayPolicyEngineConfigurationSchema = z
+  .object({
+    policyEngineName: z.string().min(1),
+    mode: PolicyEngineModeSchema,
+  })
+  .strict();
+export type GatewayPolicyEngineConfiguration = z.infer<typeof GatewayPolicyEngineConfigurationSchema>;
+
+// ============================================================================
 // Gateway
 // ============================================================================
 
@@ -614,6 +691,8 @@ export const AgentCoreGatewaySchema = z
     enableSemanticSearch: z.boolean().default(true),
     /** Exception verbosity level. 'NONE' = generic errors (default), 'DEBUG' = verbose errors. */
     exceptionLevel: GatewayExceptionLevelSchema.default('NONE'),
+    /** Policy engine configuration for Cedar-based authorization of tool calls. */
+    policyEngineConfiguration: GatewayPolicyEngineConfigurationSchema.optional(),
   })
   .strict()
   .refine(
@@ -672,18 +751,15 @@ export const AgentCoreMcpRuntimeToolSchema = z
 export type AgentCoreMcpRuntimeTool = z.infer<typeof AgentCoreMcpRuntimeToolSchema>;
 
 // ============================================================================
-// Top-Level MCP Spec
+// MCP Spec Type (convenience alias)
 // ============================================================================
 
 /**
- * Top-level MCP schema.
+ * Shape of MCP-related fields within AgentCoreProjectSpec.
+ * These fields are now part of agentcore.json (previously in mcp.json).
  */
-export const AgentCoreMcpSpecSchema = z
-  .object({
-    agentCoreGateways: z.array(AgentCoreGatewaySchema),
-    mcpRuntimeTools: z.array(AgentCoreMcpRuntimeToolSchema).optional(),
-    unassignedTargets: z.array(AgentCoreGatewayTargetSchema).optional(),
-  })
-  .strict();
-
-export type AgentCoreMcpSpec = z.infer<typeof AgentCoreMcpSpecSchema>;
+export interface AgentCoreMcpSpec {
+  agentCoreGateways: AgentCoreGateway[];
+  mcpRuntimeTools?: AgentCoreMcpRuntimeTool[];
+  unassignedTargets?: AgentCoreGatewayTarget[];
+}

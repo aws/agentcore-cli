@@ -1,5 +1,6 @@
 import type { ModelProvider, NetworkMode } from '../../../../schema';
 import { DEFAULT_MODEL_IDS, ProjectNameSchema } from '../../../../schema';
+import { parseAndNormalizeHeaders, validateHeaderAllowlist } from '../../../commands/shared/header-utils';
 import { validateSecurityGroupIds, validateSubnetIds } from '../../../commands/shared/vpc-utils';
 import { computeDefaultCredentialEnvVarName } from '../../../primitives/credential-utils';
 import { ApiKeySecretInput, Panel, SelectList, StepIndicator, TextInput } from '../../components';
@@ -7,6 +8,7 @@ import type { SelectableItem } from '../../components';
 import { useListNavigation } from '../../hooks';
 import type { BuildType, GenerateConfig, GenerateStep, MemoryOption, ProtocolMode } from './types';
 import {
+  ADVANCED_OPTIONS,
   BUILD_TYPE_OPTIONS,
   LANGUAGE_OPTIONS,
   MEMORY_OPTIONS,
@@ -79,6 +81,8 @@ export function GenerateWizardUI({
         }));
       case 'memory':
         return MEMORY_OPTIONS.map(o => ({ id: o.id, title: o.title, description: o.description }));
+      case 'advanced':
+        return ADVANCED_OPTIONS.map(o => ({ id: o.id, title: o.title, description: o.description }));
       case 'networkMode':
         return NETWORK_MODE_OPTIONS.map(o => ({ id: o.id, title: o.title, description: o.description }));
       default:
@@ -92,6 +96,7 @@ export function GenerateWizardUI({
   const isApiKeyStep = wizard.step === 'apiKey';
   const isSubnetsStep = wizard.step === 'subnets';
   const isSecurityGroupsStep = wizard.step === 'securityGroups';
+  const isRequestHeaderAllowlistStep = wizard.step === 'requestHeaderAllowlist';
   const isConfirmStep = wizard.step === 'confirm';
 
   const handleSelect = (item: SelectableItem) => {
@@ -113,6 +118,9 @@ export function GenerateWizardUI({
         break;
       case 'memory':
         wizard.setMemory(item.id as MemoryOption);
+        break;
+      case 'advanced':
+        wizard.setAdvanced(item.id === 'yes');
         break;
       case 'networkMode':
         wizard.setNetworkMode(item.id as NetworkMode);
@@ -207,6 +215,34 @@ export function GenerateWizardUI({
         />
       )}
 
+      {isRequestHeaderAllowlistStep && (
+        <Box flexDirection="column">
+          <TextInput
+            prompt="Allowed request headers (comma-separated, or press Enter to skip)"
+            initialValue={(wizard.config.requestHeaderAllowlist ?? []).join(', ')}
+            customValidation={value => {
+              const result = validateHeaderAllowlist(value);
+              return result.success ? true : result.error!;
+            }}
+            onSubmit={value => {
+              const headers = parseAndNormalizeHeaders(value);
+              if (headers.length > 0) {
+                wizard.setRequestHeaderAllowlist(headers);
+              } else {
+                wizard.skipRequestHeaderAllowlist();
+              }
+            }}
+            onCancel={onBack}
+          />
+          <Box marginTop={1}>
+            <Text dimColor>
+              Enter header suffixes or full names. We auto-prefix with X-Amzn-Bedrock-AgentCore-Runtime-Custom- if
+              needed. &apos;Authorization&apos; is also accepted.
+            </Text>
+          </Box>
+        </Box>
+      )}
+
       {isConfirmStep && <ConfirmView config={wizard.config} credentialProjectName={credentialProjectName} />}
     </Panel>
   );
@@ -218,7 +254,8 @@ export function GenerateWizardUI({
 // eslint-disable-next-line react-refresh/only-export-components
 export function getWizardHelpText(step: GenerateStep): string {
   if (step === 'confirm') return 'Enter/Y confirm · Esc back';
-  if (step === 'projectName' || step === 'subnets' || step === 'securityGroups') return 'Enter submit · Esc cancel';
+  if (step === 'projectName' || step === 'subnets' || step === 'securityGroups' || step === 'requestHeaderAllowlist')
+    return 'Enter submit · Esc cancel';
   if (step === 'apiKey') return 'Enter submit · Tab show/hide · Esc back';
   return '↑↓ navigate · Enter select · Esc back';
 }
@@ -313,6 +350,12 @@ function ConfirmView({ config, credentialProjectName }: { config: GenerateConfig
           <Text>
             <Text dimColor>Security Groups: </Text>
             <Text>{config.securityGroups.join(', ')}</Text>
+          </Text>
+        )}
+        {config.requestHeaderAllowlist && config.requestHeaderAllowlist.length > 0 && (
+          <Text>
+            <Text dimColor>Headers: </Text>
+            <Text>{config.requestHeaderAllowlist.join(', ')}</Text>
           </Text>
         )}
       </Box>

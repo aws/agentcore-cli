@@ -2,7 +2,6 @@ import { getWorkingDirectory } from '../../lib';
 import { createProgram } from '../cli';
 import { LayoutProvider } from './context';
 import { MissingProjectMessage, WrongDirectoryMessage, getProjectRootMismatch, projectExists } from './guards';
-import { PlaceholderScreen } from './screens/PlaceholderScreen';
 import { AddFlow } from './screens/add/AddFlow';
 import { CreateScreen } from './screens/create';
 import { DeployScreen } from './screens/deploy/DeployScreen';
@@ -17,7 +16,7 @@ import { RunEvalFlow, RunScreen } from './screens/run-eval';
 import { StatusScreen } from './screens/status/StatusScreen';
 import { UpdateScreen } from './screens/update';
 import { ValidateScreen } from './screens/validate';
-import { type CommandMeta, getCommandsForUI } from './utils/commands';
+import { getCommandsForUI } from './utils/commands';
 import { useApp } from 'ink';
 import React, { useState } from 'react';
 
@@ -27,7 +26,6 @@ const cwd = getWorkingDirectory();
 type Route =
   | { name: 'home' }
   | { name: 'help'; initialQuery?: string }
-  | { name: 'command'; command: CommandMeta }
   | { name: 'dev' }
   | { name: 'deploy' }
   | { name: 'invoke' }
@@ -102,8 +100,6 @@ function AppContent() {
       setRoute({ name: 'package' });
     } else if (id === 'update') {
       setRoute({ name: 'update' });
-    } else {
-      setRoute({ name: 'command', command: cmd });
     }
   };
 
@@ -243,7 +239,8 @@ function AppContent() {
     return <UpdateScreen isInteractive={true} onExit={() => setRoute({ name: 'help' })} />;
   }
 
-  return <PlaceholderScreen command={route.command} onBack={() => setRoute({ name: 'help' })} />;
+  // All visible commands are handled above; this is unreachable.
+  return null;
 }
 
 export function App() {

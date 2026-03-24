@@ -1,11 +1,5 @@
 import { ConfigIO } from '../../../lib';
-import type {
-  AgentCoreMcpSpec,
-  AgentCoreProjectSpec,
-  AwsDeploymentTargets,
-  DeployedResourceState,
-  DeployedState,
-} from '../../../schema';
+import type { AgentCoreProjectSpec, AwsDeploymentTargets, DeployedResourceState, DeployedState } from '../../../schema';
 import { getAgentRuntimeStatus } from '../../aws';
 import { getEvaluator, getOnlineEvaluationConfig } from '../../aws/agentcore-control';
 import { getErrorMessage } from '../../errors';
@@ -15,7 +9,15 @@ import type { ResourceDeploymentState } from './constants';
 export type { ResourceDeploymentState };
 
 export interface ResourceStatusEntry {
-  resourceType: 'agent' | 'memory' | 'credential' | 'gateway' | 'evaluator' | 'online-eval';
+  resourceType:
+    | 'agent'
+    | 'memory'
+    | 'credential'
+    | 'gateway'
+    | 'evaluator'
+    | 'online-eval'
+    | 'policy-engine'
+    | 'policy';
   name: string;
   deploymentState: ResourceDeploymentState;
   identifier?: string;
@@ -37,7 +39,6 @@ export interface StatusContext {
   project: AgentCoreProjectSpec;
   deployedState: DeployedState;
   awsTargets: AwsDeploymentTargets;
-  mcpSpec?: AgentCoreMcpSpec;
 }
 
 export interface RuntimeLookupResult {
@@ -54,16 +55,15 @@ export interface RuntimeLookupResult {
  * Gracefully handles missing deployed-state by returning empty targets.
  */
 export async function loadStatusConfig(configIO: ConfigIO = new ConfigIO()): Promise<StatusContext> {
-  const [project, awsTargets, deployedState, mcpSpec] = await Promise.all([
+  const [project, awsTargets, deployedState] = await Promise.all([
     configIO.readProjectSpec(),
     configIO.readAWSDeploymentTargets(),
     configIO.configExists('state')
       ? configIO.readDeployedState()
       : (Promise.resolve({ targets: {} }) as Promise<DeployedState>),
-    configIO.configExists('mcp') ? configIO.readMcpSpec() : Promise.resolve(undefined),
   ]);
 
-  return { project, deployedState, awsTargets, mcpSpec };
+  return { project, deployedState, awsTargets };
 }
 
 /**
@@ -76,18 +76,21 @@ function diffResourceSet<TLocal extends { name: string }, TDeployed>({
   deployedRecord,
   getIdentifier,
   getLocalDetail,
+  getDeployedKey,
 }: {
   resourceType: ResourceStatusEntry['resourceType'];
   localItems: TLocal[];
   deployedRecord: Record<string, TDeployed>;
   getIdentifier: (deployed: TDeployed) => string | undefined;
   getLocalDetail?: (item: TLocal) => string | undefined;
+  getDeployedKey?: (item: TLocal) => string;
 }): ResourceStatusEntry[] {
   const entries: ResourceStatusEntry[] = [];
-  const localNames = new Set(localItems.map(item => item.name));
+  const localKeys = new Set(localItems.map(item => (getDeployedKey ? getDeployedKey(item) : item.name)));
 
   for (const item of localItems) {
-    const deployed = deployedRecord[item.name];
+    const key = getDeployedKey ? getDeployedKey(item) : item.name;
+    const deployed = deployedRecord[key];
     entries.push({
       resourceType,
       name: item.name,
@@ -98,7 +101,7 @@ function diffResourceSet<TLocal extends { name: string }, TDeployed>({
   }
 
   for (const [name, deployed] of Object.entries(deployedRecord)) {
-    if (!localNames.has(name)) {
+    if (!localKeys.has(name)) {
       entries.push({
         resourceType,
         name,
@@ -113,8 +116,7 @@ function diffResourceSet<TLocal extends { name: string }, TDeployed>({
 
 export function computeResourceStatuses(
   project: AgentCoreProjectSpec,
-  resources: DeployedResourceState | undefined,
-  mcpSpec?: AgentCoreMcpSpec
+  resources: DeployedResourceState | undefined
 ): ResourceStatusEntry[] {
   const agents = diffResourceSet({
     resourceType: 'agent',
@@ -144,7 +146,7 @@ export function computeResourceStatuses(
 
   const gateways = diffResourceSet({
     resourceType: 'gateway',
-    localItems: mcpSpec?.agentCoreGateways ?? [],
+    localItems: project.agentCoreGateways ?? [],
     deployedRecord: resources?.mcp?.gateways ?? {},
     getIdentifier: deployed => deployed.gatewayId,
     getLocalDetail: item => {
@@ -170,7 +172,44 @@ export function computeResourceStatuses(
       `${item.evaluators.length} evaluator${item.evaluators.length !== 1 ? 's' : ''}, ${item.samplingRate}% sampling`,
   });
 
-  return [...agents, ...credentials, ...memories, ...gateways, ...evaluators, ...onlineEvalConfigs];
+  const policyEngines = diffResourceSet({
+    resourceType: 'policy-engine',
+    localItems: project.policyEngines ?? [],
+    deployedRecord: resources?.policyEngines ?? {},
+    getIdentifier: deployed => deployed.policyEngineArn,
+    getLocalDetail: item => {
+      const count = item.policies?.length ?? 0;
+      return count > 0 ? `${count} polic${count !== 1 ? 'ies' : 'y'}` : undefined;
+    },
+  });
+
+  // Flatten all policies across all engines into a single list for diffing
+  const localPolicies: { name: string; engineName: string }[] = [];
+  for (const engine of project.policyEngines ?? []) {
+    for (const policy of engine.policies) {
+      localPolicies.push({ name: policy.name, engineName: engine.name });
+    }
+  }
+
+  const policies = diffResourceSet({
+    resourceType: 'policy',
+    localItems: localPolicies,
+    deployedRecord: resources?.policies ?? {},
+    getIdentifier: deployed => deployed.policyArn,
+    getLocalDetail: item => item.engineName,
+    getDeployedKey: item => `${item.engineName}/${item.name}`,
+  });
+
+  return [
+    ...agents,
+    ...credentials,
+    ...memories,
+    ...gateways,
+    ...evaluators,
+    ...onlineEvalConfigs,
+    ...policyEngines,
+    ...policies,
+  ];
 }
 
 export async function handleProjectStatus(
@@ -178,7 +217,7 @@ export async function handleProjectStatus(
   options: { targetName?: string } = {}
 ): Promise<ProjectStatusResult> {
   const logger = new ExecLogger({ command: 'status' });
-  const { project, deployedState, awsTargets, mcpSpec } = context;
+  const { project, deployedState, awsTargets } = context;
 
   logger.startStep('Resolve target');
   const deployedTargetNames = Object.keys(deployedState.targets);
@@ -211,7 +250,7 @@ export async function handleProjectStatus(
   const targetConfig = selectedTargetName ? awsTargets.find(t => t.name === selectedTargetName) : undefined;
   const targetResources = selectedTargetName ? deployedState.targets[selectedTargetName]?.resources : undefined;
 
-  const resources = computeResourceStatuses(project, targetResources, mcpSpec);
+  const resources = computeResourceStatuses(project, targetResources);
 
   const deployed = resources.filter(r => r.deploymentState === 'deployed').length;
   const localOnly = resources.filter(r => r.deploymentState === 'local-only').length;

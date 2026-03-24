@@ -48,6 +48,7 @@ Note: CDK L3 constructs are in a separate package `@aws/agentcore-cdk`.
 - **Template agents**: Created from framework templates (Strands, LangChain_LangGraph, CrewAI, GoogleADK, OpenAIAgents,
   AutoGen)
 - **BYO agents**: Bring your own code with `agentcore add agent --type byo`
+- **Imported agents**: Import from Bedrock Agents with `agentcore add agent --type import`
 
 ### Build Types
 

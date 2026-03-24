@@ -4,8 +4,8 @@ import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
-async function readMcpConfig(projectPath: string) {
-  return JSON.parse(await readFile(join(projectPath, 'agentcore/mcp.json'), 'utf-8'));
+async function readProjectConfig(projectPath: string) {
+  return JSON.parse(await readFile(join(projectPath, 'agentcore/agentcore.json'), 'utf-8'));
 }
 
 describe('integration: add and remove gateway with external MCP server', () => {
@@ -29,9 +29,9 @@ describe('integration: add and remove gateway with external MCP server', () => {
       const json = JSON.parse(result.stdout);
       expect(json.success).toBe(true);
 
-      const mcpSpec = await readMcpConfig(project.projectPath);
+      const mcpSpec = await readProjectConfig(project.projectPath);
       const gateway = mcpSpec.agentCoreGateways?.find((g: { name: string }) => g.name === gatewayName);
-      expect(gateway, `Gateway "${gatewayName}" should be in mcp.json`).toBeTruthy();
+      expect(gateway, `Gateway "${gatewayName}" should be in agentcore.json`).toBeTruthy();
       expect(gateway.authorizerType).toBe('NONE');
     });
 
@@ -57,7 +57,7 @@ describe('integration: add and remove gateway with external MCP server', () => {
       const json = JSON.parse(result.stdout);
       expect(json.success).toBe(true);
 
-      const mcpSpec = await readMcpConfig(project.projectPath);
+      const mcpSpec = await readProjectConfig(project.projectPath);
       const gateway = mcpSpec.agentCoreGateways?.find((g: { name: string }) => g.name === gatewayName);
       const target = gateway?.targets?.find((t: { name: string }) => t.name === targetName);
       expect(target, `Target "${targetName}" should be in gateway targets`).toBeTruthy();
@@ -70,7 +70,7 @@ describe('integration: add and remove gateway with external MCP server', () => {
       const json = JSON.parse(result.stdout);
       expect(json.success).toBe(true);
 
-      const mcpSpec = await readMcpConfig(project.projectPath);
+      const mcpSpec = await readProjectConfig(project.projectPath);
       const gateway = mcpSpec.agentCoreGateways?.find((g: { name: string }) => g.name === gatewayName);
       const targets = gateway?.targets ?? [];
       const found = targets.find((t: { name: string }) => t.name === targetName);
@@ -84,7 +84,7 @@ describe('integration: add and remove gateway with external MCP server', () => {
       const json = JSON.parse(result.stdout);
       expect(json.success).toBe(true);
 
-      const mcpSpec = await readMcpConfig(project.projectPath);
+      const mcpSpec = await readProjectConfig(project.projectPath);
       const gateways = mcpSpec.agentCoreGateways ?? [];
       const found = gateways.find((g: { name: string }) => g.name === gatewayName);
       expect(found, `Gateway "${gatewayName}" should be removed`).toBeFalsy();
@@ -161,7 +161,7 @@ describe('integration: add and remove gateway with OpenAPI schema target', () =>
       expect(json.success).toBe(true);
       expect(json.toolName).toBe(targetName);
 
-      const mcpSpec = await readMcpConfig(project.projectPath);
+      const mcpSpec = await readProjectConfig(project.projectPath);
       const gateway = mcpSpec.agentCoreGateways?.find((g: { name: string }) => g.name === gatewayName);
       const target = gateway?.targets?.find((t: { name: string }) => t.name === targetName);
       expect(target, `Target "${targetName}" should be in gateway targets`).toBeTruthy();
@@ -202,7 +202,7 @@ describe('integration: add and remove gateway with OpenAPI schema target', () =>
       const json = JSON.parse(result.stdout);
       expect(json.success).toBe(true);
 
-      const mcpSpec = await readMcpConfig(project.projectPath);
+      const mcpSpec = await readProjectConfig(project.projectPath);
       const gateway = mcpSpec.agentCoreGateways?.find((g: { name: string }) => g.name === gatewayName);
       const targets = gateway?.targets ?? [];
       const found = targets.find((t: { name: string }) => t.name === targetName);
@@ -271,7 +271,7 @@ describe('integration: add gateway with S3 URI schema target', () => {
       expect(json.success).toBe(true);
       expect(json.toolName).toBe(targetName);
 
-      const mcpSpec = await readMcpConfig(project.projectPath);
+      const mcpSpec = await readProjectConfig(project.projectPath);
       const gateway = mcpSpec.agentCoreGateways?.find((g: { name: string }) => g.name === gatewayName);
       const target = gateway?.targets?.find((t: { name: string }) => t.name === targetName);
       expect(target, `Target "${targetName}" should be in gateway targets`).toBeTruthy();
@@ -333,7 +333,7 @@ describe('integration: add gateway with S3 URI and bucketOwnerAccountId', () => 
     const json = JSON.parse(result.stdout);
     expect(json.success).toBe(true);
 
-    const mcpSpec = await readMcpConfig(project.projectPath);
+    const mcpSpec = await readProjectConfig(project.projectPath);
     const gateway = mcpSpec.agentCoreGateways?.find((g: { name: string }) => g.name === gatewayName);
     const target = gateway?.targets?.find((t: { name: string }) => t.name === targetName);
     expect(target.schemaSource?.s3?.uri).toBe('s3://cross-account-bucket/spec.json');
@@ -395,7 +395,7 @@ describe('integration: add gateway with Smithy model target', () => {
       expect(json.success).toBe(true);
       expect(json.toolName).toBe(targetName);
 
-      const mcpSpec = await readMcpConfig(project.projectPath);
+      const mcpSpec = await readProjectConfig(project.projectPath);
       const gateway = mcpSpec.agentCoreGateways?.find((g: { name: string }) => g.name === gatewayName);
       const target = gateway?.targets?.find((t: { name: string }) => t.name === targetName);
       expect(target, `Target "${targetName}" should be in gateway targets`).toBeTruthy();
@@ -410,7 +410,7 @@ describe('integration: add gateway with Smithy model target', () => {
       const json = JSON.parse(result.stdout);
       expect(json.success).toBe(true);
 
-      const mcpSpec = await readMcpConfig(project.projectPath);
+      const mcpSpec = await readProjectConfig(project.projectPath);
       const gateway = mcpSpec.agentCoreGateways?.find((g: { name: string }) => g.name === gatewayName);
       const targets = gateway?.targets ?? [];
       const found = targets.find((t: { name: string }) => t.name === targetName);

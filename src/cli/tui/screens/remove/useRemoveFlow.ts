@@ -36,6 +36,8 @@ function createDefaultProjectSpec(projectName: string): AgentCoreProjectSpec {
     credentials: [],
     evaluators: [],
     onlineEvalConfigs: [],
+    agentCoreGateways: [],
+    policyEngines: [],
   };
 }
 
@@ -78,29 +80,30 @@ export function useRemoveFlow({ force, dryRun }: RemoveFlowOptions): RemoveFlowS
         if (projectSpec.credentials && projectSpec.credentials.length > 0) {
           items.push(`${projectSpec.credentials.length} credential${projectSpec.credentials.length > 1 ? 's' : ''}`);
         }
+        // Check for gateways in agentcore.json
+        const gatewayCount = projectSpec.agentCoreGateways?.length ?? 0;
+        if (gatewayCount > 0) {
+          const targetCount = projectSpec.agentCoreGateways.reduce(
+            (sum: number, gw: { targets?: unknown[] }) => sum + (gw.targets?.length ?? 0),
+            0
+          );
+          items.push(`${gatewayCount} gateway${gatewayCount > 1 ? 's' : ''}`);
+          if (targetCount > 0) {
+            items.push(`${targetCount} gateway target${targetCount > 1 ? 's' : ''}`);
+          }
+        }
+        if (projectSpec.policyEngines && projectSpec.policyEngines.length > 0) {
+          items.push(
+            `${projectSpec.policyEngines.length} policy engine${projectSpec.policyEngines.length > 1 ? 's' : ''}`
+          );
+          const totalPolicies = projectSpec.policyEngines.reduce((sum, e) => sum + (e.policies?.length ?? 0), 0);
+          if (totalPolicies > 0) {
+            items.push(`${totalPolicies} polic${totalPolicies > 1 ? 'ies' : 'y'}`);
+          }
+        }
       } catch {
         // Project exists but has issues - still allow reset
         items.push('AgentCore project (corrupted or incomplete)');
-      }
-
-      // Check for gateways in mcp.json
-      if (configIO.configExists('mcp')) {
-        try {
-          const mcpSpec = await configIO.readMcpSpec();
-          const gatewayCount = mcpSpec.agentCoreGateways?.length ?? 0;
-          if (gatewayCount > 0) {
-            const targetCount = mcpSpec.agentCoreGateways.reduce(
-              (sum: number, gw: { targets?: unknown[] }) => sum + (gw.targets?.length ?? 0),
-              0
-            );
-            items.push(`${gatewayCount} gateway${gatewayCount > 1 ? 's' : ''}`);
-            if (targetCount > 0) {
-              items.push(`${targetCount} gateway target${targetCount > 1 ? 's' : ''}`);
-            }
-          }
-        } catch {
-          // mcp.json exists but has issues - still allow reset
-        }
       }
 
       items.push('All schemas will be reset to empty state');
@@ -163,11 +166,6 @@ export function useRemoveFlow({ force, dryRun }: RemoveFlowOptions): RemoveFlowS
             // Reset agentcore.json (keep project name)
             const defaultProjectSpec = createDefaultProjectSpec(projectName || 'Project');
             await configIO.writeProjectSpec(defaultProjectSpec);
-
-            // Reset mcp.json gateways so a subsequent deploy can tear down gateway resources
-            if (configIO.configExists('mcp')) {
-              await configIO.writeMcpSpec({ agentCoreGateways: [] });
-            }
 
             // Preserve aws-targets.json and deployed-state.json so that
             // a subsequent `agentcore deploy` can tear down existing stacks.

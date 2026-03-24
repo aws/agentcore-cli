@@ -22,6 +22,7 @@ import {
   mapModelProviderToIdentityProviders,
   writeAgentToProject,
 } from '../operations/agent/generate';
+import { executeImportAgent } from '../operations/agent/import';
 import { setupPythonProject } from '../operations/python';
 import type { RemovalPreview, RemovalResult, SchemaChange } from '../operations/remove/types';
 import { createRenderer } from '../templates';
@@ -39,7 +40,7 @@ import { dirname, join } from 'path';
  */
 export interface AddAgentOptions extends VpcOptions {
   name: string;
-  type: 'create' | 'byo';
+  type: 'create' | 'byo' | 'import';
   buildType: BuildType;
   language: TargetLanguage;
   framework: SDKFramework;
@@ -49,6 +50,9 @@ export interface AddAgentOptions extends VpcOptions {
   protocol?: ProtocolMode;
   codeLocation?: string;
   entrypoint?: string;
+  bedrockAgentId?: string;
+  bedrockAliasId?: string;
+  bedrockRegion?: string;
 }
 
 /**
@@ -82,7 +86,9 @@ export class AgentPrimitive extends BasePrimitive<AddAgentOptions, RemovableReso
         return { success: false, error: `Agent "${options.name}" already exists in this project.` };
       }
 
-      if (options.type === 'byo') {
+      if (options.type === 'import') {
+        return await this.handleImportPath(options, configBaseDir);
+      } else if (options.type === 'byo') {
         return await this.handleByoPath(options, configIO, configBaseDir);
       } else {
         return await this.handleCreatePath(options, configBaseDir);
@@ -168,7 +174,7 @@ export class AgentPrimitive extends BasePrimitive<AddAgentOptions, RemovableReso
       .command('agent')
       .description('Add an agent to the project')
       .option('--name <name>', 'Agent name (start with letter, alphanumeric only, max 64 chars) [non-interactive]')
-      .option('--type <type>', 'Agent type: create or byo [non-interactive]', 'create')
+      .option('--type <type>', 'Agent type: create, byo, or import [non-interactive]', 'create')
       .option('--build <type>', 'Build type: CodeZip or Container (default: CodeZip) [non-interactive]')
       .option('--language <lang>', 'Language: Python (create), or Python/TypeScript/Other (BYO) [non-interactive]')
       .option(
@@ -181,6 +187,9 @@ export class AgentPrimitive extends BasePrimitive<AddAgentOptions, RemovableReso
       .option('--protocol <protocol>', 'Protocol: HTTP, MCP, A2A (default: HTTP) [non-interactive]')
       .option('--code-location <path>', 'Path to existing code (BYO path only) [non-interactive]')
       .option('--entrypoint <file>', 'Entry file relative to code-location (BYO, default: main.py) [non-interactive]')
+      .option('--agent-id <id>', 'Bedrock Agent ID (import path only) [non-interactive]')
+      .option('--agent-alias-id <id>', 'Bedrock Agent Alias ID (import path only) [non-interactive]')
+      .option('--region <region>', 'AWS region for Bedrock Agent (import path only) [non-interactive]')
       .option('--network-mode <mode>', 'Network mode (PUBLIC, VPC) [non-interactive]')
       .option('--subnets <ids>', 'Comma-separated subnet IDs (required for VPC mode) [non-interactive]')
       .option('--security-groups <ids>', 'Comma-separated security group IDs (required for VPC mode) [non-interactive]')
@@ -220,6 +229,9 @@ export class AgentPrimitive extends BasePrimitive<AddAgentOptions, RemovableReso
             securityGroups: cliOptions.securityGroups,
             codeLocation: cliOptions.codeLocation,
             entrypoint: cliOptions.entrypoint,
+            bedrockAgentId: cliOptions.agentId,
+            bedrockAliasId: cliOptions.agentAliasId,
+            bedrockRegion: cliOptions.region,
           });
 
           if (cliOptions.json) {
@@ -337,6 +349,24 @@ export class AgentPrimitive extends BasePrimitive<AddAgentOptions, RemovableReso
     }
 
     return { success: true, agentName: options.name, agentPath };
+  }
+
+  /**
+   * Handle "import" path: import from Bedrock Agents.
+   */
+  private async handleImportPath(
+    options: AddAgentOptions,
+    configBaseDir: string
+  ): Promise<AddResult<{ agentName: string; agentPath?: string }>> {
+    return executeImportAgent({
+      name: options.name,
+      framework: options.framework,
+      memory: options.memory ?? 'none',
+      bedrockRegion: options.bedrockRegion!,
+      bedrockAgentId: options.bedrockAgentId!,
+      bedrockAliasId: options.bedrockAliasId!,
+      configBaseDir,
+    });
   }
 
   /**

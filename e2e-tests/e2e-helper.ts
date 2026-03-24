@@ -1,4 +1,10 @@
-import { hasAwsCredentials, parseJsonOutput, prereqs, runCLI } from '../src/test-utils/index.js';
+import {
+  type RunResult,
+  hasAwsCredentials,
+  parseJsonOutput,
+  prereqs,
+  spawnAndCollect,
+} from '../src/test-utils/index.js';
 import {
   BedrockAgentCoreControlClient,
   DeleteApiKeyCredentialProviderCommand,
@@ -12,6 +18,14 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
 const hasAws = hasAwsCredentials();
 const baseCanRun = prereqs.npm && prereqs.git && prereqs.uv && hasAws;
+
+/**
+ * Run the globally installed `agentcore` CLI.
+ * E2E tests use the packaged binary to validate the published artifact.
+ */
+async function runAgentCore(args: string[], cwd: string): Promise<RunResult> {
+  return spawnAndCollect('agentcore', args, cwd);
+}
 
 interface E2EConfig {
   framework: string;
@@ -79,7 +93,7 @@ export function createE2ESuite(cfg: E2EConfig) {
         createArgs.push('--api-key', apiKey);
       }
 
-      const result = await runCLI(createArgs, testDir, false);
+      const result = await runAgentCore(createArgs, testDir);
 
       expect(result.exitCode, `Create failed: ${result.stderr}`).toBe(0);
       const json = parseJsonOutput(result.stdout) as { projectPath: string };
@@ -92,12 +106,20 @@ export function createE2ESuite(cfg: E2EConfig) {
       const region = process.env.AWS_REGION ?? 'us-east-1';
       const awsTargetsPath = join(projectPath, 'agentcore', 'aws-targets.json');
       await writeFile(awsTargetsPath, JSON.stringify([{ name: 'default', account, region }]));
+
+      // Override @aws/agentcore-cdk with a local tarball if provided (for cross-package testing)
+      if (process.env.CDK_TARBALL) {
+        execSync(`npm install -f ${process.env.CDK_TARBALL}`, {
+          cwd: join(projectPath, 'agentcore', 'cdk'),
+          stdio: 'pipe',
+        });
+      }
     }, 300000);
 
     afterAll(async () => {
       if (projectPath && hasAws) {
-        await runCLI(['remove', 'all', '--json'], projectPath, false);
-        const result = await runCLI(['deploy', '--yes', '--json'], projectPath, false);
+        await runAgentCore(['remove', 'all', '--json'], projectPath);
+        const result = await runAgentCore(['deploy', '--yes', '--json'], projectPath);
 
         if (result.exitCode !== 0) {
           console.log('Teardown stdout:', result.stdout);
@@ -121,24 +143,35 @@ export function createE2ESuite(cfg: E2EConfig) {
       if (testDir) await rm(testDir, { recursive: true, force: true, maxRetries: 3, retryDelay: 1000 });
     }, 600000);
 
+    // Container builds go through CodeBuild which is slower and more prone to transient failures.
+    const isContainerBuild = cfg.build === 'Container';
+    const deployRetries = isContainerBuild ? 3 : 1;
+    const deployTimeout = isContainerBuild ? 900000 : 600000;
+
     it.skipIf(!canRun)(
       'deploys to AWS successfully',
       async () => {
         expect(projectPath, 'Project should have been created').toBeTruthy();
 
-        const result = await runCLI(['deploy', '--yes', '--json'], projectPath, false);
+        await retry(
+          async () => {
+            const result = await runAgentCore(['deploy', '--yes', '--json'], projectPath);
 
-        if (result.exitCode !== 0) {
-          console.log('Deploy stdout:', result.stdout);
-          console.log('Deploy stderr:', result.stderr);
-        }
+            if (result.exitCode !== 0) {
+              console.log('Deploy stdout:', result.stdout);
+              console.log('Deploy stderr:', result.stderr);
+            }
 
-        expect(result.exitCode, `Deploy failed: ${result.stderr}`).toBe(0);
+            expect(result.exitCode, `Deploy failed (stderr: ${result.stderr}, stdout: ${result.stdout})`).toBe(0);
 
-        const json = parseJsonOutput(result.stdout) as { success: boolean };
-        expect(json.success, 'Deploy should report success').toBe(true);
+            const json = parseJsonOutput(result.stdout) as { success: boolean };
+            expect(json.success, 'Deploy should report success').toBe(true);
+          },
+          deployRetries,
+          30000
+        );
       },
-      600000
+      deployTimeout
     );
 
     it.skipIf(!canRun)(
@@ -149,10 +182,9 @@ export function createE2ESuite(cfg: E2EConfig) {
         // Retry invoke to handle cold-start / runtime initialization delays
         await retry(
           async () => {
-            const result = await runCLI(
+            const result = await runAgentCore(
               ['invoke', '--prompt', 'Say hello', '--agent', agentName, '--json'],
-              projectPath,
-              false
+              projectPath
             );
 
             if (result.exitCode !== 0) {

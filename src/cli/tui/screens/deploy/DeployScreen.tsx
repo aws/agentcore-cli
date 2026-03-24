@@ -1,5 +1,5 @@
 import { ConfigIO } from '../../../../lib';
-import type { AgentCoreMcpSpec } from '../../../../schema';
+import type { AgentCoreMcpSpec, AgentCoreProjectSpec } from '../../../../schema';
 import { formatTargetStatus } from '../../../operations/deploy/gateway-status';
 import {
   AwsTargetConfigUI,
@@ -99,15 +99,21 @@ export function DeployScreen({
   const allSuccess = !hasError && isComplete;
   const skipPreflight = !!preSynthesized;
 
-  // Load MCP spec when context is available
+  // Extract MCP spec from project when context is available
   useEffect(() => {
     if (!context) return;
-    if (configIO.configExists('mcp')) {
-      configIO
-        .readMcpSpec()
-        .then(setMcpSpec)
-        .catch(() => setMcpSpec(undefined));
-    }
+    configIO
+      .readProjectSpec()
+      .then((project: AgentCoreProjectSpec) => {
+        if (project.agentCoreGateways?.length) {
+          setMcpSpec({
+            agentCoreGateways: project.agentCoreGateways,
+            mcpRuntimeTools: project.mcpRuntimeTools,
+            unassignedTargets: project.unassignedTargets,
+          });
+        }
+      })
+      .catch(() => setMcpSpec(undefined));
   }, [context, configIO]);
 
   // Toggle ResourceGraph with Ctrl+G

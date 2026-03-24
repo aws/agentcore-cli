@@ -45,28 +45,27 @@ export async function getCredentials(): Promise<string[]> {
 }
 
 /**
- * Get list of MCP runtime tools from mcp.json.
+ * Get list of MCP runtime tools from agentcore.json.
  */
 export async function getMcpRuntimeTools(): Promise<string[]> {
   try {
     const configIO = new ConfigIO();
-    const mcpSpec = await configIO.readMcpSpec();
-    if (!mcpSpec?.mcpRuntimeTools) return [];
-    return mcpSpec.mcpRuntimeTools.map(tool => tool.name);
+    const project = await configIO.readProjectSpec();
+    if (!project?.mcpRuntimeTools) return [];
+    return project.mcpRuntimeTools.map(tool => tool.name);
   } catch {
     return [];
   }
 }
 
 /**
- * Get list of gateways from mcp.json.
+ * Get list of gateways from agentcore.json.
  */
 export async function getGateways(): Promise<string[]> {
   try {
     const configIO = new ConfigIO();
-    const mcpSpec = await configIO.readMcpSpec();
-    if (!mcpSpec?.agentCoreGateways) return [];
-    return mcpSpec.agentCoreGateways.map(gw => gw.name);
+    const project = await configIO.readProjectSpec();
+    return project.agentCoreGateways.map(gw => gw.name);
   } catch {
     return [];
   }
@@ -83,7 +82,7 @@ export interface BindMcpRuntimeConfig {
 
 /**
  * Bind an agent to an MCP runtime tool.
- * Adds the binding to the MCP runtime's bindings array in mcp.json.
+ * Adds the binding to the MCP runtime's bindings array in agentcore.json.
  */
 export async function bindMcpRuntimeToAgent(mcpRuntimeName: string, config: BindMcpRuntimeConfig): Promise<void> {
   const configIO = new ConfigIO();
@@ -96,10 +95,9 @@ export async function bindMcpRuntimeToAgent(mcpRuntimeName: string, config: Bind
   }
 
   // Find the MCP runtime tool
-  const mcpSpec = await configIO.readMcpSpec();
-  const runtimeTool = mcpSpec.mcpRuntimeTools?.find(t => t.name === mcpRuntimeName);
+  const runtimeTool = project.mcpRuntimeTools?.find(t => t.name === mcpRuntimeName);
   if (!runtimeTool) {
-    throw new Error(`MCP runtime tool "${mcpRuntimeName}" not found in mcp.json.`);
+    throw new Error(`MCP runtime tool "${mcpRuntimeName}" not found in agentcore.json.`);
   }
 
   // Initialize bindings array if needed
@@ -116,5 +114,5 @@ export async function bindMcpRuntimeToAgent(mcpRuntimeName: string, config: Bind
   };
 
   runtimeTool.bindings.push(binding);
-  await configIO.writeMcpSpec(mcpSpec);
+  await configIO.writeProjectSpec(project);
 }

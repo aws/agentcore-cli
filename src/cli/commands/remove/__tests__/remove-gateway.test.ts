@@ -87,8 +87,8 @@ describe('remove gateway command', () => {
       expect(json.success).toBe(true);
 
       // Verify gateway is removed
-      const mcpSpec = JSON.parse(await readFile(join(projectDir, 'agentcore/mcp.json'), 'utf-8'));
-      const gateway = mcpSpec.agentCoreGateways?.find((g: { name: string }) => g.name === tempGateway);
+      const projectSpec = JSON.parse(await readFile(join(projectDir, 'agentcore/agentcore.json'), 'utf-8'));
+      const gateway = projectSpec.agentCoreGateways?.find((g: { name: string }) => g.name === tempGateway);
       expect(!gateway, 'Gateway should be removed').toBeTruthy();
     });
 
@@ -122,9 +122,9 @@ describe('remove gateway command', () => {
       const json = JSON.parse(result.stdout);
       expect(json.success).toBe(true);
 
-      // Verify gateway is removed from mcp.json
-      const mcpSpec = JSON.parse(await readFile(join(projectDir, 'agentcore/mcp.json'), 'utf-8'));
-      expect(mcpSpec.agentCoreGateways?.find((g: { name: string }) => g.name === gatewayName)).toBeUndefined();
+      // Verify gateway is removed from agentcore.json
+      const projectSpec = JSON.parse(await readFile(join(projectDir, 'agentcore/agentcore.json'), 'utf-8'));
+      expect(projectSpec.agentCoreGateways?.find((g: { name: string }) => g.name === gatewayName)).toBeUndefined();
     });
   });
 });

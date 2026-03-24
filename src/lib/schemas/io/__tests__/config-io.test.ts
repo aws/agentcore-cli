@@ -87,18 +87,11 @@ describe('ConfigIO', () => {
       expect(existsSync(join(emptyDir, 'agentcore'))).toBe(false);
     });
 
-    it('writeMcpSpec() throws NoProjectError when no project exists', async () => {
-      const configIO = new ConfigIO();
-      await expect(configIO.writeMcpSpec({ agentCoreGateways: [] })).rejects.toThrow(NoProjectError);
-      expect(existsSync(join(emptyDir, 'agentcore'))).toBe(false);
-    });
-
     it('does not create agentcore directory on any write operation', async () => {
       const configIO = new ConfigIO();
       const operations = [
         () => configIO.initializeBaseDir(),
         () => configIO.writeProjectSpec({ version: '1.0', agents: [] } as never),
-        () => configIO.writeMcpSpec({ agentCoreGateways: [] }),
         () => configIO.writeMcpDefs({ tools: {} }),
       ];
 
@@ -231,7 +224,6 @@ describe('ConfigIO', () => {
       const configIO = new ConfigIO();
       expect(configIO.configExists('awsTargets')).toBe(false);
       expect(configIO.configExists('state')).toBe(false);
-      expect(configIO.configExists('mcp')).toBe(false);
       expect(configIO.configExists('mcpDefs')).toBe(false);
     });
   });
@@ -272,23 +264,6 @@ describe('ConfigIO', () => {
 
       configIO.setBaseDir('/updated');
       expect(configIO.getConfigRoot()).toBe('/updated');
-    });
-  });
-
-  describe('writeMcpSpec and readMcpSpec', () => {
-    it('round-trips a valid MCP spec', async () => {
-      const projectDir = join(testDir, `mcp-rt-${randomUUID()}`);
-      const agentcoreDir = join(projectDir, 'agentcore');
-      mkdirSync(agentcoreDir, { recursive: true });
-
-      const configIO = new ConfigIO({ baseDir: agentcoreDir });
-
-      const mcpSpec = { agentCoreGateways: [] };
-      await configIO.writeMcpSpec(mcpSpec);
-      expect(configIO.configExists('mcp')).toBe(true);
-
-      const readBack = await configIO.readMcpSpec();
-      expect(readBack.agentCoreGateways).toEqual([]);
     });
   });
 

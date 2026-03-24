@@ -122,13 +122,17 @@ async function handleCreateCLI(options: CreateOptions): Promise<void> {
     : await createProjectWithAgent({
         name: options.name!,
         cwd,
+        type: options.type as 'create' | 'import' | undefined,
         buildType: (options.build as BuildType) ?? 'CodeZip',
-        language: options.language as TargetLanguage,
+        language: (options.language as TargetLanguage) ?? (options.type === 'import' ? 'Python' : undefined),
         framework: options.framework as SDKFramework | undefined,
         modelProvider: options.modelProvider as ModelProvider | undefined,
         apiKey: options.apiKey,
         memory: (options.memory as 'none' | 'shortTerm' | 'longAndShortTerm') ?? 'none',
         protocol: options.protocol as ProtocolMode | undefined,
+        agentId: options.agentId,
+        agentAliasId: options.agentAliasId,
+        region: options.region,
         networkMode: options.networkMode as NetworkMode | undefined,
         subnets: parseCommaSeparatedList(options.subnets),
         securityGroups: parseCommaSeparatedList(options.securityGroups),
@@ -165,6 +169,10 @@ export const registerCreate = (program: Command) => {
     .option('--api-key <key>', 'API key for non-Bedrock providers [non-interactive]')
     .option('--memory <option>', 'Memory option (none, shortTerm, longAndShortTerm) [non-interactive]')
     .option('--protocol <protocol>', 'Protocol: HTTP, MCP, A2A (default: HTTP) [non-interactive]')
+    .option('--type <type>', 'Agent type: create or import (default: create) [non-interactive]')
+    .option('--agent-id <id>', 'Bedrock Agent ID (required for --type import) [non-interactive]')
+    .option('--agent-alias-id <id>', 'Bedrock Agent Alias ID (required for --type import) [non-interactive]')
+    .option('--region <region>', 'AWS region for Bedrock Agent (required for --type import) [non-interactive]')
     .option('--network-mode <mode>', 'Network mode (PUBLIC, VPC) [non-interactive]')
     .option('--subnets <ids>', 'Comma-separated subnet IDs (required for VPC mode) [non-interactive]')
     .option('--security-groups <ids>', 'Comma-separated security group IDs (required for VPC mode) [non-interactive]')
