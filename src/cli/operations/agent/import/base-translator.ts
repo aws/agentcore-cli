@@ -332,7 +332,7 @@ memory_id = os.environ.get("MEMORY_ID", "")
       '        agent_result = invoke_agent(agent_query)',
       '',
       '        ' + toolsUsedUpdate,
-      '        response_content = ' + responseContent,
+      '        response_content = ' + responseContent
     );
     if (memoryEventCode) {
       lines.push(
