@@ -168,7 +168,7 @@ Tags must follow AWS tagging requirements:
 
 ### Managing Tags
 
-Tags are managed by editing `agentcore.json` or `mcp.json` directly. There are no CLI commands for tag management. Changes take effect on the next deployment.
+Tags are managed by editing `agentcore.json` directly. There are no CLI commands for tag management. Changes take effect on the next deployment.
 
 ---
 
