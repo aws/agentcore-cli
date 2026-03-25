@@ -10,6 +10,7 @@ import {
   RuntimeVersionSchema as RuntimeVersionSchemaFromConstants,
 } from '../constants';
 import type { DirectoryPath, FilePath } from '../types';
+import { AuthorizerConfigSchema, RuntimeAuthorizerTypeSchema } from './auth';
 import { TagsSchema } from './primitives/tags';
 import { z } from 'zod';
 
@@ -166,6 +167,10 @@ export const AgentEnvSpecSchema = z
     protocol: ProtocolModeSchema.optional(),
     /** Allowed request headers forwarded to the runtime at invocation time. */
     requestHeaderAllowlist: RequestHeaderAllowlistSchema.optional(),
+    /** Authorizer type for inbound requests. Defaults to AWS_IAM. */
+    authorizerType: RuntimeAuthorizerTypeSchema.optional(),
+    /** Authorizer configuration. Required when authorizerType is CUSTOM_JWT. */
+    authorizerConfiguration: AuthorizerConfigSchema.optional(),
     tags: TagsSchema.optional(),
   })
   .superRefine((data, ctx) => {
@@ -181,6 +186,20 @@ export const AgentEnvSpecSchema = z
         code: z.ZodIssueCode.custom,
         message: 'networkConfig is only allowed when networkMode is VPC',
         path: ['networkConfig'],
+      });
+    }
+    if (data.authorizerType === 'CUSTOM_JWT' && !data.authorizerConfiguration?.customJwtAuthorizer) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: 'authorizerConfiguration with customJwtAuthorizer is required when authorizerType is CUSTOM_JWT',
+        path: ['authorizerConfiguration'],
+      });
+    }
+    if (data.authorizerType !== 'CUSTOM_JWT' && data.authorizerConfiguration) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: 'authorizerConfiguration is only allowed when authorizerType is CUSTOM_JWT',
+        path: ['authorizerConfiguration'],
       });
     }
   });
