@@ -18,8 +18,8 @@ AgentCore with minimal configuration.
 ## Installation
 
 > **Upgrading from the Bedrock AgentCore Starter Toolkit?** If the old Python CLI is still installed, you'll see a
-> warning after install asking you to uninstall it. Both CLIs use the `agentcore` command name, so having both
-> can cause confusion. Uninstall the old one using whichever tool you originally used:
+> warning after install asking you to uninstall it. Both CLIs use the `agentcore` command name, so having both can cause
+> confusion. Uninstall the old one using whichever tool you originally used:
 >
 > ```bash
 > pip uninstall bedrock-agentcore-starter-toolkit    # if installed via pip
