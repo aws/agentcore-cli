@@ -1322,3 +1322,102 @@ describe('validateAddAgentOptions - VPC validation', () => {
     expect(result.error).toContain('only valid with --network-mode VPC');
   });
 });
+
+describe('validateAddAgentOptions - lifecycle configuration', () => {
+  const baseOptions: AddAgentOptions = {
+    name: 'TestAgent',
+    type: 'byo',
+    language: 'Python',
+    framework: 'Strands',
+    modelProvider: 'Bedrock',
+    build: 'CodeZip',
+    codeLocation: './app/test/',
+  };
+
+  it('accepts valid idle-timeout', () => {
+    const result = validateAddAgentOptions({ ...baseOptions, idleTimeout: 900 });
+    expect(result.valid).toBe(true);
+  });
+
+  it('accepts valid max-lifetime', () => {
+    const result = validateAddAgentOptions({ ...baseOptions, maxLifetime: 28800 });
+    expect(result.valid).toBe(true);
+  });
+
+  it('accepts both when idle <= max', () => {
+    const result = validateAddAgentOptions({ ...baseOptions, idleTimeout: 600, maxLifetime: 3600 });
+    expect(result.valid).toBe(true);
+  });
+
+  it('accepts both when idle === max', () => {
+    const result = validateAddAgentOptions({ ...baseOptions, idleTimeout: 3600, maxLifetime: 3600 });
+    expect(result.valid).toBe(true);
+  });
+
+  it('rejects idle-timeout below 60', () => {
+    const result = validateAddAgentOptions({ ...baseOptions, idleTimeout: 59 });
+    expect(result.valid).toBe(false);
+    expect(result.error).toContain('--idle-timeout');
+  });
+
+  it('rejects idle-timeout above 28800', () => {
+    const result = validateAddAgentOptions({ ...baseOptions, idleTimeout: 28801 });
+    expect(result.valid).toBe(false);
+    expect(result.error).toContain('--idle-timeout');
+  });
+
+  it('rejects max-lifetime below 60', () => {
+    const result = validateAddAgentOptions({ ...baseOptions, maxLifetime: 59 });
+    expect(result.valid).toBe(false);
+    expect(result.error).toContain('--max-lifetime');
+  });
+
+  it('rejects max-lifetime above 28800', () => {
+    const result = validateAddAgentOptions({ ...baseOptions, maxLifetime: 28801 });
+    expect(result.valid).toBe(false);
+    expect(result.error).toContain('--max-lifetime');
+  });
+
+  it('rejects idle > max', () => {
+    const result = validateAddAgentOptions({ ...baseOptions, idleTimeout: 5000, maxLifetime: 1000 });
+    expect(result.valid).toBe(false);
+    expect(result.error).toContain('--idle-timeout must be <= --max-lifetime');
+  });
+
+  it('passes without lifecycle options (defaults handled server-side)', () => {
+    const result = validateAddAgentOptions(baseOptions);
+    expect(result.valid).toBe(true);
+  });
+
+  it('accepts lifecycle options for import path', () => {
+    const importOptions: AddAgentOptions = {
+      name: 'TestAgent',
+      type: 'import',
+      agentId: 'AGENT123',
+      agentAliasId: 'ALIAS123',
+      region: 'us-east-1',
+      framework: 'Strands',
+      memory: 'none',
+      idleTimeout: 600,
+      maxLifetime: 7200,
+    };
+    const result = validateAddAgentOptions(importOptions);
+    expect(result.valid).toBe(true);
+  });
+
+  it('rejects invalid lifecycle for import path', () => {
+    const importOptions: AddAgentOptions = {
+      name: 'TestAgent',
+      type: 'import',
+      agentId: 'AGENT123',
+      agentAliasId: 'ALIAS123',
+      region: 'us-east-1',
+      framework: 'Strands',
+      memory: 'none',
+      idleTimeout: 50000,
+    };
+    const result = validateAddAgentOptions(importOptions);
+    expect(result.valid).toBe(false);
+    expect(result.error).toContain('--idle-timeout');
+  });
+});

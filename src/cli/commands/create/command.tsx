@@ -136,6 +136,8 @@ async function handleCreateCLI(options: CreateOptions): Promise<void> {
         networkMode: options.networkMode as NetworkMode | undefined,
         subnets: parseCommaSeparatedList(options.subnets),
         securityGroups: parseCommaSeparatedList(options.securityGroups),
+        idleTimeout: options.idleTimeout ? Number(options.idleTimeout) : undefined,
+        maxLifetime: options.maxLifetime ? Number(options.maxLifetime) : undefined,
         skipGit: options.skipGit,
         skipPythonSetup: options.skipPythonSetup,
         onProgress,
@@ -176,6 +178,8 @@ export const registerCreate = (program: Command) => {
     .option('--network-mode <mode>', 'Network mode (PUBLIC, VPC) [non-interactive]')
     .option('--subnets <ids>', 'Comma-separated subnet IDs (required for VPC mode) [non-interactive]')
     .option('--security-groups <ids>', 'Comma-separated security group IDs (required for VPC mode) [non-interactive]')
+    .option('--idle-timeout <seconds>', 'Idle session timeout in seconds (60-28800) [non-interactive]')
+    .option('--max-lifetime <seconds>', 'Max instance lifetime in seconds (60-28800) [non-interactive]')
     .option('--output-dir <dir>', 'Output directory (default: current directory) [non-interactive]')
     .option('--skip-git', 'Skip git repository initialization [non-interactive]')
     .option('--skip-python-setup', 'Skip Python virtual environment setup [non-interactive]')

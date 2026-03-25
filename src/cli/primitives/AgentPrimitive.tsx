@@ -64,6 +64,8 @@ export interface AddAgentOptions extends VpcOptions {
   customClaims?: CustomClaimValidation[];
   clientId?: string;
   clientSecret?: string;
+  idleTimeout?: number;
+  maxLifetime?: number;
 }
 
 /**
@@ -77,6 +79,15 @@ export class AgentPrimitive extends BasePrimitive<AddAgentOptions, RemovableReso
 
   /** Local instance to avoid circular dependency with registry. */
   private readonly credentialPrimitive = new CredentialPrimitive();
+
+  /** Build lifecycleConfiguration block from flat options - only if at least one value is set. */
+  private buildLifecycleConfig(options: { idleTimeout?: number; maxLifetime?: number }) {
+    if (options.idleTimeout === undefined && options.maxLifetime === undefined) return undefined;
+    return {
+      ...(options.idleTimeout !== undefined && { idleRuntimeSessionTimeout: options.idleTimeout }),
+      ...(options.maxLifetime !== undefined && { maxLifetime: options.maxLifetime }),
+    };
+  }
 
   async add(options: AddAgentOptions): Promise<AddResult<{ agentName: string; agentPath?: string }>> {
     try {
@@ -212,6 +223,8 @@ export class AgentPrimitive extends BasePrimitive<AddAgentOptions, RemovableReso
       .option('--custom-claims <json>', 'Custom claim validations as JSON array (for CUSTOM_JWT) [non-interactive]')
       .option('--client-id <id>', 'OAuth client ID for agent bearer token [non-interactive]')
       .option('--client-secret <secret>', 'OAuth client secret [non-interactive]')
+      .option('--idle-timeout <seconds>', 'Idle session timeout in seconds (60-28800) [non-interactive]')
+      .option('--max-lifetime <seconds>', 'Max instance lifetime in seconds (60-28800) [non-interactive]')
       .option('--json', 'Output as JSON [non-interactive]')
       .action(async options => {
         if (!findConfigRoot()) {
@@ -264,6 +277,8 @@ export class AgentPrimitive extends BasePrimitive<AddAgentOptions, RemovableReso
             customClaims,
             clientId: cliOptions.clientId,
             clientSecret: cliOptions.clientSecret,
+            idleTimeout: cliOptions.idleTimeout ? Number(cliOptions.idleTimeout) : undefined,
+            maxLifetime: cliOptions.maxLifetime ? Number(cliOptions.maxLifetime) : undefined,
           });
 
           if (cliOptions.json) {
@@ -356,6 +371,8 @@ export class AgentPrimitive extends BasePrimitive<AddAgentOptions, RemovableReso
             customClaims: options.customClaims,
           },
         }),
+      idleRuntimeSessionTimeout: options.idleTimeout,
+      maxLifetime: options.maxLifetime,
     };
 
     const agentPath = join(projectRoot, APP_DIR, options.name);
@@ -424,6 +441,8 @@ export class AgentPrimitive extends BasePrimitive<AddAgentOptions, RemovableReso
       bedrockAgentId: options.bedrockAgentId!,
       bedrockAliasId: options.bedrockAliasId!,
       configBaseDir,
+      idleTimeout: options.idleTimeout,
+      maxLifetime: options.maxLifetime,
     });
   }
 
@@ -477,6 +496,8 @@ export class AgentPrimitive extends BasePrimitive<AddAgentOptions, RemovableReso
           })
         : undefined;
 
+    const lifecycleConfiguration = this.buildLifecycleConfig(options);
+
     const agent: AgentEnvSpec = {
       type: 'AgentCoreRuntime',
       name: options.name,
@@ -495,6 +516,7 @@ export class AgentPrimitive extends BasePrimitive<AddAgentOptions, RemovableReso
       ...(protocol === 'MCP' && { instrumentation: { enableOtel: false } }),
       ...(authorizerType && { authorizerType }),
       ...(authorizerConfiguration && { authorizerConfiguration }),
+      ...(lifecycleConfiguration && { lifecycleConfiguration }),
     };
 
     project.agents.push(agent);

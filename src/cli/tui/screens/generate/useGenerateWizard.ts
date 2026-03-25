@@ -66,6 +66,8 @@ export function useGenerateWizard(options?: UseGenerateWizardOptions) {
         ...networkSteps,
         'requestHeaderAllowlist',
         'authorizerType',
+        'idleTimeout',
+        'maxLifetime',
         ...filtered.slice(afterAdvanced),
       ];
     }
@@ -185,6 +187,8 @@ export function useGenerateWizard(options?: UseGenerateWizardOptions) {
         subnets: undefined,
         securityGroups: undefined,
         requestHeaderAllowlist: undefined,
+        idleRuntimeSessionTimeout: undefined,
+        maxLifetime: undefined,
       }));
       setStep('confirm');
     }
@@ -224,12 +228,30 @@ export function useGenerateWizard(options?: UseGenerateWizardOptions) {
       setStep('jwtConfig');
     } else {
       setConfig(c => ({ ...c, authorizerType, jwtConfig: undefined }));
-      setStep('confirm');
+      setStep('idleTimeout');
     }
   }, []);
 
   const setJwtConfig = useCallback((jwtConfig: JwtConfigOptions) => {
     setConfig(c => ({ ...c, jwtConfig }));
+    setStep('idleTimeout');
+  }, []);
+
+  const setIdleTimeout = useCallback((value: number | undefined) => {
+    setConfig(c => ({ ...c, idleRuntimeSessionTimeout: value }));
+    setStep('maxLifetime');
+  }, []);
+
+  const skipIdleTimeout = useCallback(() => {
+    setStep('maxLifetime');
+  }, []);
+
+  const setMaxLifetime = useCallback((value: number | undefined) => {
+    setConfig(c => ({ ...c, maxLifetime: value }));
+    setStep('confirm');
+  }, []);
+
+  const skipMaxLifetime = useCallback(() => {
     setStep('confirm');
   }, []);
 
@@ -283,6 +305,10 @@ export function useGenerateWizard(options?: UseGenerateWizardOptions) {
     skipRequestHeaderAllowlist,
     setAuthorizerType,
     setJwtConfig,
+    setIdleTimeout,
+    skipIdleTimeout,
+    setMaxLifetime,
+    skipMaxLifetime,
     goBack,
     reset,
     initWithName,

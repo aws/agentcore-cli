@@ -80,6 +80,16 @@ export function mapByoConfigToAgent(config: AddAgentConfig): AgentEnvSpec {
       config.jwtConfig && {
         authorizerConfiguration: buildAuthorizerConfigFromJwtConfig(config.jwtConfig),
       }),
+    ...(config.idleRuntimeSessionTimeout !== undefined || config.maxLifetime !== undefined
+      ? {
+          lifecycleConfiguration: {
+            ...(config.idleRuntimeSessionTimeout !== undefined && {
+              idleRuntimeSessionTimeout: config.idleRuntimeSessionTimeout,
+            }),
+            ...(config.maxLifetime !== undefined && { maxLifetime: config.maxLifetime }),
+          },
+        }
+      : {}),
   };
 }
 
@@ -101,6 +111,8 @@ function mapAddAgentConfigToGenerateConfig(config: AddAgentConfig): GenerateConf
     requestHeaderAllowlist: config.requestHeaderAllowlist,
     authorizerType: config.authorizerType,
     jwtConfig: config.jwtConfig,
+    idleRuntimeSessionTimeout: config.idleRuntimeSessionTimeout,
+    maxLifetime: config.maxLifetime,
   };
 }
 
@@ -263,6 +275,8 @@ async function handleImportPath(
     configBaseDir,
     authorizerType: config.authorizerType,
     jwtConfig: config.jwtConfig,
+    idleTimeout: config.idleRuntimeSessionTimeout,
+    maxLifetime: config.maxLifetime,
   });
 
   if (!result.success) {

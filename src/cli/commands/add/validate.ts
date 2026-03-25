@@ -14,6 +14,7 @@ import {
   getSupportedModelProviders,
   matchEnumValue,
 } from '../../../schema';
+import { validateLifecycleOptions } from '../shared/lifecycle-utils';
 import { validateVpcOptions } from '../shared/vpc-utils';
 import { validateJwtAuthorizerOptions } from './auth-options';
 import type {
@@ -136,6 +137,10 @@ export function validateAddAgentOptions(options: AddAgentOptions): ValidationRes
         error: `Invalid memory option: ${options.memory}. Use none, shortTerm, or longAndShortTerm`,
       };
     }
+    // Validate lifecycle configuration for import path
+    const lcResult = validateLifecycleOptions(options);
+    if (!lcResult.valid) return lcResult;
+
     // Force import defaults
     options.modelProvider = 'Bedrock' as typeof options.modelProvider;
     options.language = 'Python' as typeof options.language;
@@ -165,6 +170,10 @@ export function validateAddAgentOptions(options: AddAgentOptions): ValidationRes
     if (isByoPath && !options.codeLocation) {
       return { valid: false, error: '--code-location is required for BYO path' };
     }
+
+    // Validate lifecycle configuration for MCP path
+    const mcpLcResult = validateLifecycleOptions(options);
+    if (!mcpLcResult.valid) return mcpLcResult;
 
     return { valid: true };
   }
@@ -233,6 +242,10 @@ export function validateAddAgentOptions(options: AddAgentOptions): ValidationRes
       };
     }
   }
+
+  // Validate lifecycle configuration
+  const lifecycleResult = validateLifecycleOptions(options);
+  if (!lifecycleResult.valid) return lifecycleResult;
 
   // Validate VPC options
   const vpcResult = validateVpcOptions(options);

@@ -26,6 +26,8 @@ export type GenerateStep =
   | 'requestHeaderAllowlist'
   | 'authorizerType'
   | 'jwtConfig'
+  | 'idleTimeout'
+  | 'maxLifetime'
   | 'confirm';
 
 export type MemoryOption = 'none' | 'shortTerm' | 'longAndShortTerm';
@@ -52,6 +54,10 @@ export interface GenerateConfig {
   authorizerType?: RuntimeAuthorizerType;
   /** JWT config for CUSTOM_JWT authorizer */
   jwtConfig?: JwtConfigOptions;
+  /** Idle session timeout in seconds (60-28800) */
+  idleRuntimeSessionTimeout?: number;
+  /** Max instance lifetime in seconds (60-28800) */
+  maxLifetime?: number;
 }
 
 /** Base steps - apiKey, memory, subnets, securityGroups are conditionally added based on selections */
@@ -83,6 +89,8 @@ export const STEP_LABELS: Record<GenerateStep, string> = {
   requestHeaderAllowlist: 'Headers',
   authorizerType: 'Auth',
   jwtConfig: 'JWT Config',
+  idleTimeout: 'Idle Timeout',
+  maxLifetime: 'Max Lifetime',
   confirm: 'Confirm',
 };
 

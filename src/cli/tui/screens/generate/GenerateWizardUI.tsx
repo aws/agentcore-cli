@@ -102,6 +102,8 @@ export function GenerateWizardUI({
   const isSecurityGroupsStep = wizard.step === 'securityGroups';
   const isRequestHeaderAllowlistStep = wizard.step === 'requestHeaderAllowlist';
   const isJwtConfigStep = wizard.step === 'jwtConfig';
+  const isIdleTimeoutStep = wizard.step === 'idleTimeout';
+  const isMaxLifetimeStep = wizard.step === 'maxLifetime';
   const isConfirmStep = wizard.step === 'confirm';
 
   const handleSelect = (item: SelectableItem) => {
@@ -285,6 +287,53 @@ export function GenerateWizardUI({
         />
       )}
 
+      {isIdleTimeoutStep && (
+        <TextInput
+          prompt="Idle session timeout in seconds (60-28800, or press Enter to skip)"
+          initialValue=""
+          customValidation={value => {
+            if (!value) return true;
+            const n = Number(value);
+            if (isNaN(n) || !Number.isInteger(n) || n < 60 || n > 28800)
+              return 'Must be an integer between 60 and 28800';
+            return true;
+          }}
+          onSubmit={value => {
+            if (value) {
+              wizard.setIdleTimeout(Number(value));
+            } else {
+              wizard.skipIdleTimeout();
+            }
+          }}
+          onCancel={onBack}
+        />
+      )}
+
+      {isMaxLifetimeStep && (
+        <TextInput
+          prompt="Max instance lifetime in seconds (60-28800, or press Enter to skip)"
+          initialValue=""
+          customValidation={value => {
+            if (!value) return true;
+            const n = Number(value);
+            if (isNaN(n) || !Number.isInteger(n) || n < 60 || n > 28800)
+              return 'Must be an integer between 60 and 28800';
+            if (wizard.config.idleRuntimeSessionTimeout !== undefined && n < wizard.config.idleRuntimeSessionTimeout) {
+              return 'Must be >= idle timeout';
+            }
+            return true;
+          }}
+          onSubmit={value => {
+            if (value) {
+              wizard.setMaxLifetime(Number(value));
+            } else {
+              wizard.skipMaxLifetime();
+            }
+          }}
+          onCancel={onBack}
+        />
+      )}
+
       {isConfirmStep && <ConfirmView config={wizard.config} credentialProjectName={credentialProjectName} />}
     </Panel>
   );
@@ -296,7 +345,14 @@ export function GenerateWizardUI({
 // eslint-disable-next-line react-refresh/only-export-components
 export function getWizardHelpText(step: GenerateStep): string {
   if (step === 'confirm') return 'Enter/Y confirm · Esc back';
-  if (step === 'projectName' || step === 'subnets' || step === 'securityGroups' || step === 'requestHeaderAllowlist')
+  if (
+    step === 'projectName' ||
+    step === 'subnets' ||
+    step === 'securityGroups' ||
+    step === 'requestHeaderAllowlist' ||
+    step === 'idleTimeout' ||
+    step === 'maxLifetime'
+  )
     return 'Enter submit · Esc cancel';
   if (step === 'apiKey') return 'Enter submit · Tab show/hide · Esc back';
   if (step === 'jwtConfig') return 'Enter submit · Esc back';
@@ -423,6 +479,18 @@ function ConfirmView({ config, credentialProjectName }: { config: GenerateConfig
               </Text>
             )}
           </>
+        )}
+        {config.idleRuntimeSessionTimeout !== undefined && (
+          <Text>
+            <Text dimColor>Idle Timeout: </Text>
+            <Text>{config.idleRuntimeSessionTimeout}s</Text>
+          </Text>
+        )}
+        {config.maxLifetime !== undefined && (
+          <Text>
+            <Text dimColor>Max Lifetime: </Text>
+            <Text>{config.maxLifetime}s</Text>
+          </Text>
         )}
       </Box>
     </Box>

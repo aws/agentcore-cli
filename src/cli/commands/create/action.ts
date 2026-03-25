@@ -140,6 +140,8 @@ export interface CreateWithAgentOptions {
   agentId?: string;
   agentAliasId?: string;
   region?: string;
+  idleTimeout?: number;
+  maxLifetime?: number;
   skipGit?: boolean;
   skipPythonSetup?: boolean;
   onProgress?: ProgressCallback;
@@ -160,6 +162,8 @@ export async function createProjectWithAgent(options: CreateWithAgentOptions): P
     subnets,
     securityGroups,
     requestHeaderAllowlist,
+    idleTimeout,
+    maxLifetime: maxLifetimeOpt,
     skipGit,
     skipPythonSetup,
     onProgress,
@@ -237,6 +241,8 @@ export async function createProjectWithAgent(options: CreateWithAgentOptions): P
       subnets,
       securityGroups,
       requestHeaderAllowlist,
+      ...(idleTimeout !== undefined && { idleRuntimeSessionTimeout: idleTimeout }),
+      ...(maxLifetimeOpt !== undefined && { maxLifetime: maxLifetimeOpt }),
     };
 
     // Resolve credential strategy FIRST (new project has no existing credentials)

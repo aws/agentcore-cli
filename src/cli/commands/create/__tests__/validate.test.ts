@@ -280,3 +280,65 @@ describe('validateCreateOptions - VPC validation', () => {
     expect(result.error).toContain('--subnets is required');
   });
 });
+
+describe('validateCreateOptions - lifecycle configuration', () => {
+  const cwd = join(tmpdir(), `create-lifecycle-${randomUUID()}`);
+
+  const baseOptions = {
+    name: 'TestProject',
+    language: 'Python',
+    framework: 'Strands',
+    modelProvider: 'Bedrock',
+    memory: 'none',
+  };
+
+  it('accepts valid idle-timeout', () => {
+    const result = validateCreateOptions({ ...baseOptions, idleTimeout: '900' }, cwd);
+    expect(result.valid).toBe(true);
+  });
+
+  it('accepts valid max-lifetime', () => {
+    const result = validateCreateOptions({ ...baseOptions, maxLifetime: '28800' }, cwd);
+    expect(result.valid).toBe(true);
+  });
+
+  it('accepts both when idle <= max', () => {
+    const result = validateCreateOptions({ ...baseOptions, idleTimeout: '600', maxLifetime: '3600' }, cwd);
+    expect(result.valid).toBe(true);
+  });
+
+  it('rejects idle-timeout below 60', () => {
+    const result = validateCreateOptions({ ...baseOptions, idleTimeout: '30' }, cwd);
+    expect(result.valid).toBe(false);
+    expect(result.error).toContain('--idle-timeout');
+  });
+
+  it('rejects max-lifetime above 28800', () => {
+    const result = validateCreateOptions({ ...baseOptions, maxLifetime: '99999' }, cwd);
+    expect(result.valid).toBe(false);
+    expect(result.error).toContain('--max-lifetime');
+  });
+
+  it('rejects idle-timeout > max-lifetime', () => {
+    const result = validateCreateOptions({ ...baseOptions, idleTimeout: '5000', maxLifetime: '3000' }, cwd);
+    expect(result.valid).toBe(false);
+    expect(result.error).toContain('--idle-timeout must be <= --max-lifetime');
+  });
+
+  it('rejects non-integer idle-timeout', () => {
+    const result = validateCreateOptions({ ...baseOptions, idleTimeout: '120.5' }, cwd);
+    expect(result.valid).toBe(false);
+    expect(result.error).toContain('--idle-timeout');
+  });
+
+  it('rejects non-numeric idle-timeout', () => {
+    const result = validateCreateOptions({ ...baseOptions, idleTimeout: 'abc' }, cwd);
+    expect(result.valid).toBe(false);
+    expect(result.error).toContain('--idle-timeout');
+  });
+
+  it('accepts no lifecycle flags', () => {
+    const result = validateCreateOptions({ ...baseOptions }, cwd);
+    expect(result.valid).toBe(true);
+  });
+});

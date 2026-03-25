@@ -15,6 +15,8 @@ export interface CreateOptions extends VpcOptions {
   agentId?: string;
   agentAliasId?: string;
   region?: string;
+  idleTimeout?: string;
+  maxLifetime?: string;
   outputDir?: string;
   skipGit?: boolean;
   skipPythonSetup?: boolean;

@@ -10,6 +10,7 @@ import {
   matchEnumValue,
 } from '../../../schema';
 import type { ProtocolMode } from '../../../schema';
+import { validateLifecycleOptions } from '../shared/lifecycle-utils';
 import { validateVpcOptions } from '../shared/vpc-utils';
 import type { CreateOptions } from './types';
 import { existsSync } from 'fs';
@@ -199,6 +200,10 @@ export function validateCreateOptions(options: CreateOptions, cwd?: string): Val
   if (!vpcResult.valid) {
     return { valid: false, error: vpcResult.error };
   }
+
+  // Validate lifecycle configuration
+  const lifecycleResult = validateLifecycleOptions(options);
+  if (!lifecycleResult.valid) return lifecycleResult;
 
   return { valid: true };
 }

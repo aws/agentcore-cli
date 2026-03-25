@@ -138,6 +138,16 @@ export function mapGenerateConfigToAgent(config: GenerateConfig): AgentEnvSpec {
       config.jwtConfig && {
         authorizerConfiguration: buildAuthorizerConfigFromJwtConfig(config.jwtConfig),
       }),
+    ...(config.idleRuntimeSessionTimeout !== undefined || config.maxLifetime !== undefined
+      ? {
+          lifecycleConfiguration: {
+            ...(config.idleRuntimeSessionTimeout !== undefined && {
+              idleRuntimeSessionTimeout: config.idleRuntimeSessionTimeout,
+            }),
+            ...(config.maxLifetime !== undefined && { maxLifetime: config.maxLifetime }),
+          },
+        }
+      : {}),
     ...(protocol !== 'MCP' && { modelProvider: config.modelProvider }),
     // MCP uses mcp.run() which is incompatible with the opentelemetry-instrument wrapper
     ...(protocol === 'MCP' && { instrumentation: { enableOtel: false } }),

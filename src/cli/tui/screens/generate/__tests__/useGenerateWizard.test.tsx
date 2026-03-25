@@ -126,6 +126,8 @@ describe('useGenerateWizard — advanced config gate', () => {
         'networkMode',
         'requestHeaderAllowlist',
         'authorizerType',
+        'idleTimeout',
+        'maxLifetime',
         'confirm',
       ]);
     });
@@ -146,6 +148,8 @@ describe('useGenerateWizard — advanced config gate', () => {
         'securityGroups',
         'requestHeaderAllowlist',
         'authorizerType',
+        'idleTimeout',
+        'maxLifetime',
         'confirm',
       ]);
     });

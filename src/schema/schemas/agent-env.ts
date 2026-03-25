@@ -142,6 +142,30 @@ export const RequestHeaderAllowlistSchema = z
   .max(MAX_HEADER_ALLOWLIST_SIZE, `Maximum ${MAX_HEADER_ALLOWLIST_SIZE} headers allowed`);
 
 /**
+ * Lifecycle configuration for runtime sessions.
+ * Controls idle timeout and max lifetime of runtime instances.
+ */
+export const LifecycleConfigurationSchema = z
+  .object({
+    /** Idle session timeout in seconds (60-28800). API default: 900s. */
+    idleRuntimeSessionTimeout: z.number().int().min(60).max(28800).optional(),
+    /** Max instance lifetime in seconds (60-28800). API default: 28800s. */
+    maxLifetime: z.number().int().min(60).max(28800).optional(),
+  })
+  .superRefine((data, ctx) => {
+    if (data.idleRuntimeSessionTimeout !== undefined && data.maxLifetime !== undefined) {
+      if (data.idleRuntimeSessionTimeout > data.maxLifetime) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: 'idleRuntimeSessionTimeout must be <= maxLifetime',
+          path: ['idleRuntimeSessionTimeout'],
+        });
+      }
+    }
+  });
+export type LifecycleConfiguration = z.infer<typeof LifecycleConfigurationSchema>;
+
+/**
  * AgentEnvSpec - represents an AgentCore Runtime.
  * This is a top-level resource in the schema.
  */
@@ -172,6 +196,8 @@ export const AgentEnvSpecSchema = z
     /** Authorizer configuration. Required when authorizerType is CUSTOM_JWT. */
     authorizerConfiguration: AuthorizerConfigSchema.optional(),
     tags: TagsSchema.optional(),
+    /** Lifecycle configuration for runtime sessions. */
+    lifecycleConfiguration: LifecycleConfigurationSchema.optional(),
   })
   .superRefine((data, ctx) => {
     if (data.networkMode === 'VPC' && !data.networkConfig) {

@@ -7,6 +7,7 @@ import {
   EnvVarSchema,
   GatewayNameSchema,
   InstrumentationSchema,
+  LifecycleConfigurationSchema,
   NetworkConfigSchema,
 } from '../agent-env.js';
 import { describe, expect, it } from 'vitest';
@@ -347,5 +348,120 @@ describe('NetworkConfigSchema', () => {
       securityGroups: [],
     });
     expect(result.success).toBe(false);
+  });
+});
+
+describe('LifecycleConfigurationSchema', () => {
+  it('accepts empty object (both fields optional)', () => {
+    expect(LifecycleConfigurationSchema.safeParse({}).success).toBe(true);
+  });
+
+  it('accepts valid idleRuntimeSessionTimeout only', () => {
+    expect(LifecycleConfigurationSchema.safeParse({ idleRuntimeSessionTimeout: 900 }).success).toBe(true);
+  });
+
+  it('accepts valid maxLifetime only', () => {
+    expect(LifecycleConfigurationSchema.safeParse({ maxLifetime: 28800 }).success).toBe(true);
+  });
+
+  it('accepts both fields when idle <= maxLifetime', () => {
+    expect(LifecycleConfigurationSchema.safeParse({ idleRuntimeSessionTimeout: 900, maxLifetime: 28800 }).success).toBe(
+      true
+    );
+  });
+
+  it('accepts both fields when idle === maxLifetime', () => {
+    expect(LifecycleConfigurationSchema.safeParse({ idleRuntimeSessionTimeout: 3600, maxLifetime: 3600 }).success).toBe(
+      true
+    );
+  });
+
+  it('accepts minimum value (60)', () => {
+    expect(LifecycleConfigurationSchema.safeParse({ idleRuntimeSessionTimeout: 60 }).success).toBe(true);
+    expect(LifecycleConfigurationSchema.safeParse({ maxLifetime: 60 }).success).toBe(true);
+  });
+
+  it('accepts maximum value (28800)', () => {
+    expect(LifecycleConfigurationSchema.safeParse({ idleRuntimeSessionTimeout: 28800 }).success).toBe(true);
+    expect(LifecycleConfigurationSchema.safeParse({ maxLifetime: 28800 }).success).toBe(true);
+  });
+
+  it('rejects idle > maxLifetime', () => {
+    const result = LifecycleConfigurationSchema.safeParse({ idleRuntimeSessionTimeout: 10000, maxLifetime: 5000 });
+    expect(result.success).toBe(false);
+  });
+
+  it('rejects value below minimum (59)', () => {
+    expect(LifecycleConfigurationSchema.safeParse({ idleRuntimeSessionTimeout: 59 }).success).toBe(false);
+    expect(LifecycleConfigurationSchema.safeParse({ maxLifetime: 59 }).success).toBe(false);
+  });
+
+  it('rejects value above maximum (28801)', () => {
+    expect(LifecycleConfigurationSchema.safeParse({ idleRuntimeSessionTimeout: 28801 }).success).toBe(false);
+    expect(LifecycleConfigurationSchema.safeParse({ maxLifetime: 28801 }).success).toBe(false);
+  });
+
+  it('rejects non-integer values', () => {
+    expect(LifecycleConfigurationSchema.safeParse({ idleRuntimeSessionTimeout: 900.5 }).success).toBe(false);
+    expect(LifecycleConfigurationSchema.safeParse({ maxLifetime: 100.1 }).success).toBe(false);
+  });
+
+  it('rejects non-number values', () => {
+    expect(LifecycleConfigurationSchema.safeParse({ idleRuntimeSessionTimeout: '900' }).success).toBe(false);
+  });
+});
+
+describe('AgentEnvSpecSchema - lifecycleConfiguration', () => {
+  const validAgent = {
+    type: 'AgentCoreRuntime',
+    name: 'TestAgent',
+    build: 'CodeZip',
+    entrypoint: 'main.py',
+    codeLocation: 'app/TestAgent/',
+    runtimeVersion: 'PYTHON_3_12',
+  };
+
+  it('accepts agent without lifecycleConfiguration', () => {
+    expect(AgentEnvSpecSchema.safeParse(validAgent).success).toBe(true);
+  });
+
+  it('accepts agent with valid lifecycleConfiguration', () => {
+    const result = AgentEnvSpecSchema.safeParse({
+      ...validAgent,
+      lifecycleConfiguration: { idleRuntimeSessionTimeout: 300, maxLifetime: 7200 },
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it('accepts agent with only idleRuntimeSessionTimeout', () => {
+    const result = AgentEnvSpecSchema.safeParse({
+      ...validAgent,
+      lifecycleConfiguration: { idleRuntimeSessionTimeout: 600 },
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it('accepts agent with only maxLifetime', () => {
+    const result = AgentEnvSpecSchema.safeParse({
+      ...validAgent,
+      lifecycleConfiguration: { maxLifetime: 14400 },
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it('rejects agent with idle > maxLifetime in lifecycleConfiguration', () => {
+    const result = AgentEnvSpecSchema.safeParse({
+      ...validAgent,
+      lifecycleConfiguration: { idleRuntimeSessionTimeout: 10000, maxLifetime: 5000 },
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it('omits lifecycleConfiguration from parsed output when not provided', () => {
+    const result = AgentEnvSpecSchema.safeParse(validAgent);
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.lifecycleConfiguration).toBeUndefined();
+    }
   });
 });
