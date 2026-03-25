@@ -81,8 +81,21 @@ describe.skipIf(!prereqs.npm || !prereqs.git)('integration: create with memory o
 
     // longAndShortTerm should have strategies defined
     const memory = memories![0]!;
-    const strategies = memory.strategies as Record<string, unknown>[] | undefined;
+    const strategies = memory.strategies as { type: string; reflectionNamespaces?: string[] }[] | undefined;
     expect(strategies, 'memory should have strategies').toBeDefined();
-    expect(strategies!.length).toBeGreaterThanOrEqual(2);
+    expect(strategies!.length).toBe(4);
+
+    // Verify all four strategy types are present
+    const types = strategies!.map(s => s.type);
+    expect(types).toContain('SEMANTIC');
+    expect(types).toContain('USER_PREFERENCE');
+    expect(types).toContain('SUMMARIZATION');
+    expect(types).toContain('EPISODIC');
+
+    // Verify EPISODIC has reflectionNamespaces
+    const episodic = strategies!.find(s => s.type === 'EPISODIC');
+    expect(episodic, 'EPISODIC strategy should exist').toBeTruthy();
+    expect(episodic!.reflectionNamespaces, 'EPISODIC should have reflectionNamespaces').toBeDefined();
+    expect(episodic!.reflectionNamespaces!.length).toBeGreaterThan(0);
   });
 });

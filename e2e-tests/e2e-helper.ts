@@ -25,6 +25,7 @@ interface E2EConfig {
   modelProvider: string;
   requiredEnvVar?: string;
   build?: string;
+  memory?: string;
 }
 
 export function createE2ESuite(cfg: E2EConfig) {
@@ -54,7 +55,7 @@ export function createE2ESuite(cfg: E2EConfig) {
         '--model-provider',
         cfg.modelProvider,
         '--memory',
-        'none',
+        cfg.memory ?? 'none',
         '--json',
       ];
 
