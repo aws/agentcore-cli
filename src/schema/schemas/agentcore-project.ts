@@ -23,7 +23,12 @@ import { uniqueBy } from './zod-util';
 import { z } from 'zod';
 
 // Re-export for convenience
-export { DEFAULT_EPISODIC_REFLECTION_NAMESPACES, DEFAULT_STRATEGY_NAMESPACES, MemoryStrategySchema, MemoryStrategyTypeSchema };
+export {
+  DEFAULT_EPISODIC_REFLECTION_NAMESPACES,
+  DEFAULT_STRATEGY_NAMESPACES,
+  MemoryStrategySchema,
+  MemoryStrategyTypeSchema,
+};
 export { EvaluationLevelSchema };
 export type { MemoryStrategy, MemoryStrategyType } from './primitives/memory';
 export type { OnlineEvalConfig } from './primitives/online-eval-config';

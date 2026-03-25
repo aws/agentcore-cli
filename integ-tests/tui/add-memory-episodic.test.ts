@@ -181,7 +181,10 @@ describe('Add Memory with EPISODIC Strategy', () => {
     const raw = await readFileAsync(configPath, 'utf-8');
     const config = JSON.parse(raw);
 
-    const memories = config.memories as { name: string; strategies: { type: string; namespaces?: string[]; reflectionNamespaces?: string[] }[] }[];
+    const memories = config.memories as {
+      name: string;
+      strategies: { type: string; namespaces?: string[]; reflectionNamespaces?: string[] }[];
+    }[];
     expect(memories.length).toBeGreaterThan(0);
 
     const memory = memories.find(m => m.name === 'EpisodicTestMemory');

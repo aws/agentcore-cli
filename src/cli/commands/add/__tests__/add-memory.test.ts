@@ -119,7 +119,15 @@ describe('add memory command', () => {
     it('sets default namespaces for each strategy type', async () => {
       const memoryName = `ns${Date.now()}`;
       const result = await runCLI(
-        ['add', 'memory', '--name', memoryName, '--strategies', 'SEMANTIC,USER_PREFERENCE,SUMMARIZATION,EPISODIC', '--json'],
+        [
+          'add',
+          'memory',
+          '--name',
+          memoryName,
+          '--strategies',
+          'SEMANTIC,USER_PREFERENCE,SUMMARIZATION,EPISODIC',
+          '--json',
+        ],
         projectDir
       );
 

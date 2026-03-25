@@ -49,7 +49,10 @@ describe('integration: add and remove resources', () => {
 
       // Verify EPISODIC in config with reflectionNamespaces
       const config = await readProjectConfig(project.projectPath);
-      const memories = config.memories as { name: string; strategies: { type: string; reflectionNamespaces?: string[] }[] }[];
+      const memories = config.memories as {
+        name: string;
+        strategies: { type: string; reflectionNamespaces?: string[] }[];
+      }[];
       const mem = memories.find(m => m.name === episodicMemName);
       expect(mem, 'Memory should exist').toBeTruthy();
 
