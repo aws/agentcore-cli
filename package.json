@@ -44,7 +44,7 @@
     "!dist/mcp-harness"
   ],
   "scripts": {
-    "preinstall": "node scripts/check-old-cli.mjs",
+    "postinstall": "node scripts/check-old-cli.mjs",
     "build": "npm run build:lib && npm run build:cli && npm run build:assets",
     "build:lib": "tsc -p tsconfig.build.json",
     "build:cli": "node esbuild.config.mjs",

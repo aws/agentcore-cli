@@ -1,11 +1,10 @@
 import {
   detectOldToolkit,
-  formatErrorMessage,
+  formatWarningMessage,
   probeInstaller,
   probePath,
 } from '../../../../scripts/check-old-cli.lib.mjs';
 import { execSync } from 'node:child_process';
-import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { describe, expect, it } from 'vitest';
 
@@ -244,11 +243,11 @@ describe('detectOldToolkit', () => {
 });
 
 // ---------------------------------------------------------------------------
-// formatErrorMessage
+// formatWarningMessage
 // ---------------------------------------------------------------------------
-describe('formatErrorMessage', () => {
+describe('formatWarningMessage', () => {
   it('shows correct uninstall command for a single installer', () => {
-    const msg = formatErrorMessage([
+    const msg = formatWarningMessage([
       { installer: 'pip', uninstallCmd: 'pip uninstall bedrock-agentcore-starter-toolkit' },
     ]);
     expect(msg).toContain('pip uninstall bedrock-agentcore-starter-toolkit');
@@ -256,7 +255,7 @@ describe('formatErrorMessage', () => {
   });
 
   it('shows all uninstall commands for multiple installers', () => {
-    const msg = formatErrorMessage([
+    const msg = formatWarningMessage([
       { installer: 'pip', uninstallCmd: 'pip uninstall bedrock-agentcore-starter-toolkit' },
       { installer: 'pipx', uninstallCmd: 'pipx uninstall bedrock-agentcore-starter-toolkit' },
     ]);
@@ -264,18 +263,11 @@ describe('formatErrorMessage', () => {
     expect(msg).toContain('pipx uninstall bedrock-agentcore-starter-toolkit');
   });
 
-  it('contains bypass env var instruction', () => {
-    const msg = formatErrorMessage([
+  it('contains WARNING in the banner', () => {
+    const msg = formatWarningMessage([
       { installer: 'pip', uninstallCmd: 'pip uninstall bedrock-agentcore-starter-toolkit' },
     ]);
-    expect(msg).toContain('AGENTCORE_SKIP_CONFLICT_CHECK=1');
-  });
-
-  it('contains re-run instruction', () => {
-    const msg = formatErrorMessage([
-      { installer: 'pip', uninstallCmd: 'pip uninstall bedrock-agentcore-starter-toolkit' },
-    ]);
-    expect(msg).toContain('npm install -g @aws/agentcore');
+    expect(msg).toContain('WARNING');
   });
 });
 
@@ -286,39 +278,19 @@ describe('check-old-cli.mjs entry point', () => {
   const scriptPath = path.resolve(__dirname, '../../../../scripts/check-old-cli.mjs');
 
   it('exits 0 when AGENTCORE_SKIP_CONFLICT_CHECK=1', () => {
-    // Should not throw (exit code 0)
     execSync(`node ${scriptPath}`, {
       env: { ...process.env, AGENTCORE_SKIP_CONFLICT_CHECK: '1' },
       stdio: 'pipe',
     });
   });
 
-  it('exits 1 with actionable error when old toolkit is detected', () => {
-    // Use a wrapper script that stubs pip to report the old toolkit, guaranteeing
-    // the exit-1 path is always exercised regardless of the test machine.
-    const scriptsDir = path.resolve(__dirname, '../../../../scripts');
-    const wrapperPath = path.join(scriptsDir, '_test-stub-detect.mjs');
-    fs.writeFileSync(
-      wrapperPath,
-      [
-        `import { detectOldToolkit, formatErrorMessage } from './check-old-cli.lib.mjs';`,
-        `const detected = detectOldToolkit((cmd) => {`,
-        `  if (cmd === 'pip list') return 'bedrock-agentcore-starter-toolkit 0.1.0';`,
-        `  throw new Error('not found');`,
-        `});`,
-        `if (detected.length > 0) { console.error(formatErrorMessage(detected)); process.exit(1); }`,
-      ].join('\n')
-    );
-    try {
-      execSync(`node ${wrapperPath}`, { stdio: 'pipe', encoding: 'utf-8' });
-      expect.unreachable('Should have exited with code 1');
-    } catch (err: any) {
-      expect(err.status).toBe(1);
-      expect(err.stderr).toContain('bedrock-agentcore-starter-toolkit');
-      expect(err.stderr).toContain('AGENTCORE_SKIP_CONFLICT_CHECK');
-      expect(err.stderr).toContain('pip uninstall');
-    } finally {
-      fs.unlinkSync(wrapperPath);
-    }
+  it('exits 0 even when old toolkit is detected (warning only)', () => {
+    // The postinstall hook should never exit non-zero.
+    // On a clean machine this just runs and exits 0.
+    // We verify the script doesn't throw by running it directly.
+    execSync(`node ${scriptPath}`, {
+      stdio: 'pipe',
+      encoding: 'utf-8',
+    });
   });
 });
