@@ -1,5 +1,5 @@
 import { DeploymentTargetNameSchema } from './aws-targets';
-import { CustomClaimValidationSchema } from './mcp';
+import { CustomClaimValidationSchema } from './auth';
 import { z } from 'zod';
 
 // ============================================================================

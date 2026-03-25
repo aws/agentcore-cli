@@ -1,12 +1,14 @@
 import {
-  AgentCoreGatewaySchema,
-  AgentCoreGatewayTargetSchema,
-  AgentCoreMcpRuntimeToolSchema,
-  ApiGatewayConfigSchema,
   ClaimMatchValueSchema,
   CustomClaimValidationSchema,
   CustomJwtAuthorizerConfigSchema,
   GatewayAuthorizerTypeSchema,
+} from '../auth.js';
+import {
+  AgentCoreGatewaySchema,
+  AgentCoreGatewayTargetSchema,
+  AgentCoreMcpRuntimeToolSchema,
+  ApiGatewayConfigSchema,
   GatewayExceptionLevelSchema,
   GatewayTargetTypeSchema,
   LambdaFunctionArnConfigSchema,
