@@ -12,6 +12,8 @@ export interface InvokeOptions {
   input?: string;
   /** Custom headers to forward to the agent runtime (key-value pairs) */
   headers?: Record<string, string>;
+  /** Bearer token for CUSTOM_JWT auth (bypasses SigV4) */
+  bearerToken?: string;
 }
 
 export interface InvokeResult {

@@ -5,6 +5,7 @@ import type {
   ModelProvider,
   NetworkMode,
   ProtocolMode,
+  RuntimeAuthorizerType,
   AgentCoreProjectSpec as _AgentCoreProjectSpec,
 } from '../../../../schema';
 import {
@@ -28,6 +29,7 @@ export interface InvokeConfig {
     modelProvider?: ModelProvider;
     networkMode?: NetworkMode;
     protocol?: ProtocolMode;
+    authorizerType?: RuntimeAuthorizerType;
   }[];
   target: AwsDeploymentTarget;
   targetName: string;
@@ -39,6 +41,7 @@ export interface InvokeFlowOptions {
   initialUserId?: string;
   /** Custom headers to forward to the agent runtime on every invocation */
   headers?: Record<string, string>;
+  initialBearerToken?: string;
 }
 
 export interface InvokeFlowState {
@@ -50,17 +53,19 @@ export interface InvokeFlowState {
   logFilePath: string | null;
   sessionId: string | null;
   userId: string;
+  bearerToken: string;
   mcpTools: McpToolDef[];
   mcpToolsFetched: boolean;
   selectAgent: (index: number) => void;
   setUserId: (id: string) => void;
+  setBearerToken: (token: string) => void;
   invoke: (prompt: string) => Promise<void>;
   newSession: () => void;
   fetchMcpTools: () => Promise<void>;
 }
 
 export function useInvokeFlow(options: InvokeFlowOptions = {}): InvokeFlowState {
-  const { initialSessionId, initialUserId, headers } = options;
+  const { initialSessionId, initialUserId, headers, initialBearerToken } = options;
   const [phase, setPhase] = useState<'loading' | 'ready' | 'invoking' | 'error'>('loading');
   const [config, setConfig] = useState<InvokeConfig | null>(null);
   const [selectedAgent, setSelectedAgent] = useState(0);
@@ -69,6 +74,7 @@ export function useInvokeFlow(options: InvokeFlowOptions = {}): InvokeFlowState 
   const [logFilePath, setLogFilePath] = useState<string | null>(null);
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [userId, setUserId] = useState<string>(initialUserId ?? DEFAULT_RUNTIME_USER_ID);
+  const [bearerToken, setBearerToken] = useState<string>(initialBearerToken ?? '');
 
   // MCP state
   const [mcpTools, setMcpTools] = useState<McpToolDef[]>([]);
@@ -115,6 +121,7 @@ export function useInvokeFlow(options: InvokeFlowOptions = {}): InvokeFlowState 
             modelProvider: agent.modelProvider,
             networkMode: agent.networkMode,
             protocol: agent.protocol,
+            authorizerType: agent.authorizerType,
           });
         }
 
@@ -285,6 +292,7 @@ export function useInvokeFlow(options: InvokeFlowOptions = {}): InvokeFlowState 
               userId,
               logger,
               headers,
+              bearerToken: bearerToken || undefined,
             });
 
         if (result.sessionId) {
@@ -323,7 +331,7 @@ export function useInvokeFlow(options: InvokeFlowOptions = {}): InvokeFlowState 
         setPhase('ready');
       }
     },
-    [config, selectedAgent, phase, sessionId, userId, headers, fetchMcpTools, getMcpInvokeOptions]
+    [config, selectedAgent, phase, sessionId, userId, headers, bearerToken, fetchMcpTools, getMcpInvokeOptions]
   );
 
   const newSession = useCallback(() => {
@@ -346,10 +354,12 @@ export function useInvokeFlow(options: InvokeFlowOptions = {}): InvokeFlowState 
     logFilePath,
     sessionId,
     userId,
+    bearerToken,
     mcpTools,
     mcpToolsFetched,
     selectAgent: setSelectedAgent,
     setUserId,
+    setBearerToken,
     invoke,
     newSession,
     fetchMcpTools,

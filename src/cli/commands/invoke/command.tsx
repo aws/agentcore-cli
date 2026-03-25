@@ -110,6 +110,7 @@ export const registerInvoke = (program: Command) => {
       (val: string, prev: string[]) => [...prev, val],
       [] as string[]
     )
+    .option('--bearer-token <token>', 'Bearer token for CUSTOM_JWT auth (bypasses SigV4) [non-interactive]')
     .action(
       async (
         positionalPrompt: string | undefined,
@@ -124,6 +125,7 @@ export const registerInvoke = (program: Command) => {
           tool?: string;
           input?: string;
           header?: string[];
+          bearerToken?: string;
         }
       ) => {
         try {
@@ -144,7 +146,8 @@ export const registerInvoke = (program: Command) => {
             cliOptions.target ||
             cliOptions.stream ||
             cliOptions.agent ||
-            cliOptions.tool
+            cliOptions.tool ||
+            cliOptions.bearerToken
           ) {
             await handleInvokeCLI({
               prompt,
@@ -157,6 +160,7 @@ export const registerInvoke = (program: Command) => {
               tool: cliOptions.tool,
               input: cliOptions.input,
               headers,
+              bearerToken: cliOptions.bearerToken,
             });
           } else {
             // No CLI options - interactive TUI mode (headers still passed if provided)
@@ -167,6 +171,7 @@ export const registerInvoke = (program: Command) => {
                 initialSessionId={cliOptions.sessionId}
                 initialUserId={cliOptions.userId}
                 initialHeaders={headers}
+                initialBearerToken={cliOptions.bearerToken}
               />
             );
             await waitUntilExit();

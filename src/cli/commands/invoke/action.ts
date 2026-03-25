@@ -219,8 +219,9 @@ export async function handleInvoke(context: InvokeContext, options: InvokeOption
         payload: options.prompt,
         sessionId: options.sessionId,
         userId: options.userId,
-        logger, // Pass logger for SSE event debugging
+        logger,
         headers: options.headers,
+        bearerToken: options.bearerToken,
       });
 
       for await (const chunk of result.stream) {
@@ -253,6 +254,7 @@ export async function handleInvoke(context: InvokeContext, options: InvokeOption
     sessionId: options.sessionId,
     userId: options.userId,
     headers: options.headers,
+    bearerToken: options.bearerToken,
   });
 
   logger.logResponse(response.content);

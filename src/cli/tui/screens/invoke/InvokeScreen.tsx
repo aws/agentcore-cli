@@ -13,9 +13,10 @@ interface InvokeScreenProps {
   initialUserId?: string;
   /** Custom headers to forward to the agent runtime on every invocation */
   initialHeaders?: Record<string, string>;
+  initialBearerToken?: string;
 }
 
-type Mode = 'select-agent' | 'chat' | 'input';
+type Mode = 'select-agent' | 'chat' | 'input' | 'token-input';
 
 /**
  * Render conversation messages as a single string for scrolling.
@@ -99,6 +100,7 @@ export function InvokeScreen({
   initialSessionId,
   initialUserId,
   initialHeaders,
+  initialBearerToken,
 }: InvokeScreenProps) {
   const {
     phase,
@@ -109,18 +111,24 @@ export function InvokeScreen({
     logFilePath,
     sessionId,
     userId,
+    bearerToken,
     mcpToolsFetched,
     selectAgent,
+    setBearerToken,
     invoke,
     newSession,
     fetchMcpTools,
-  } = useInvokeFlow({ initialSessionId, initialUserId, headers: initialHeaders });
+  } = useInvokeFlow({ initialSessionId, initialUserId, headers: initialHeaders, initialBearerToken });
   const [mode, setMode] = useState<Mode>('select-agent');
   const [scrollOffset, setScrollOffset] = useState(0);
   const [userScrolled, setUserScrolled] = useState(false);
   const { stdout } = useStdout();
   const justCancelledRef = useRef(false);
   const mcpFetchTriggeredRef = useRef(false);
+
+  // Compute auth type early so hooks can reference it
+  const currentAgent = config?.agents[selectedAgent];
+  const isCustomJwt = currentAgent?.authorizerType === 'CUSTOM_JWT';
 
   // Handle initial prompt - skip agent selection if only one agent
   useEffect(() => {
@@ -251,6 +259,12 @@ export function InvokeScreen({
           return;
         }
 
+        // Token input for CUSTOM_JWT
+        if (input === 't' && phase === 'ready' && isCustomJwt) {
+          setMode('token-input');
+          return;
+        }
+
         // New session
         if (input === 'n' && phase === 'ready') {
           newSession();
@@ -267,6 +281,16 @@ export function InvokeScreen({
       }
     },
     { isActive: mode === 'chat' || mode === 'select-agent' }
+  );
+
+  // Auto-prompt for bearer token when CUSTOM_JWT agent is selected and no token is set
+  const tokenPromptShownRef = useRef(false);
+  useEffect(() => {
+    if (isCustomJwt && !bearerToken && mode === 'input' && messages.length === 0 && !tokenPromptShownRef.current) {
+      tokenPromptShownRef.current = true;
+      queueMicrotask(() => setMode('token-input'));
+    }
+  }, [isCustomJwt, bearerToken, mode, messages.length]
   );
 
   // Error state - show error in main screen
@@ -305,20 +329,23 @@ export function InvokeScreen({
 
   // Dynamic help text
   const backOrQuit = config.agents.length > 1 ? 'Esc back' : 'Esc quit';
+  const tokenHint = isCustomJwt ? ' · T set token' : '';
   const helpText =
     mode === 'select-agent'
       ? '↑↓ select · Enter confirm · Esc quit'
-      : mode === 'input'
-        ? isMcp
-          ? 'Enter send · Esc cancel · "list" to refresh tools'
-          : 'Enter send · Esc cancel'
-        : phase === 'invoking'
-          ? '↑↓ scroll'
-          : messages.length > 0
-            ? `↑↓ scroll · Enter invoke · N new session · ${backOrQuit}`
-            : isMcp
-              ? `Enter to call a tool · N new session · ${backOrQuit}`
-              : `Enter to send a message · ${backOrQuit}`;
+      : mode === 'token-input'
+        ? 'Enter confirm · Esc cancel'
+        : mode === 'input'
+          ? isMcp
+            ? 'Enter send · Esc cancel · "list" to refresh tools'
+            : 'Enter send · Esc cancel'
+          : phase === 'invoking'
+            ? '↑↓ scroll'
+            : messages.length > 0
+              ? `↑↓ scroll · Enter invoke · N new session${tokenHint} · ${backOrQuit}`
+              : isMcp
+                ? `Enter to call a tool · N new session${tokenHint} · ${backOrQuit}`
+                : `Enter to send a message${tokenHint} · ${backOrQuit}`;
 
   const headerContent = (
     <Box flexDirection="column">
@@ -358,6 +385,13 @@ export function InvokeScreen({
         <Box>
           <Text>User: </Text>
           <Text color="white">{userId}</Text>
+        </Box>
+      )}
+      {mode !== 'select-agent' && isCustomJwt && (
+        <Box>
+          <Text>Auth: </Text>
+          <Text color={bearerToken ? 'green' : 'yellow'}>{bearerToken ? 'Bearer token set' : 'CUSTOM_JWT (no token)'}</Text>
+          {!bearerToken && <Text color="yellow"> — press T to set token</Text>}
         </Box>
       )}
       {logFilePath && <LogLink filePath={logFilePath} />}
@@ -433,6 +467,24 @@ export function InvokeScreen({
         )}
         {mode === 'chat' && phase === 'ready' && messages.length === 0 && (!isMcp || mcpToolsFetched) && (
           <Text dimColor>{isMcp ? 'Press Enter to call a tool' : 'Press Enter to send a message'}</Text>
+        )}
+        {mode === 'token-input' && (
+          <Box>
+            <Text color="yellow">Bearer token: </Text>
+            <TextInput
+              prompt=""
+              hideArrow
+              placeholder="Paste JWT bearer token..."
+              initialValue={bearerToken}
+              onSubmit={text => {
+                setBearerToken(text.trim());
+                setMode(messages.length > 0 ? 'chat' : 'input');
+              }}
+              onCancel={() => {
+                setMode(messages.length > 0 ? 'chat' : 'input');
+              }}
+            />
+          </Box>
         )}
         {mode === 'input' && phase === 'ready' && (
           <Box>
