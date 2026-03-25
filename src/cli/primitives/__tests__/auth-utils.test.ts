@@ -1,5 +1,6 @@
 import type { AgentCoreProjectSpec, CustomClaimValidation } from '../../../schema';
 import { buildAuthorizerConfigFromJwtConfig, createManagedOAuthCredential } from '../auth-utils';
+import type { JwtConfigOptions } from '../auth-utils';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const { mockSetEnvVar } = vi.hoisted(() => ({
@@ -14,9 +15,9 @@ describe('buildAuthorizerConfigFromJwtConfig', () => {
   it('returns correct nested structure with all fields', () => {
     const customClaim: CustomClaimValidation = {
       inboundTokenClaimName: 'department',
-      inboundTokenClaimValueType: 'String',
+      inboundTokenClaimValueType: 'STRING',
       authorizingClaimMatchValue: {
-        claimMatchOperator: 'Equals',
+        claimMatchOperator: 'EQUALS',
         claimMatchValue: { matchValueString: 'engineering' },
       },
     };
@@ -63,9 +64,9 @@ describe('buildAuthorizerConfigFromJwtConfig', () => {
     const claims: CustomClaimValidation[] = [
       {
         inboundTokenClaimName: 'role',
-        inboundTokenClaimValueType: 'StringList',
+        inboundTokenClaimValueType: 'STRING_ARRAY',
         authorizingClaimMatchValue: {
-          claimMatchOperator: 'Contains',
+          claimMatchOperator: 'CONTAINS',
           claimMatchValue: { matchValueStringList: ['admin', 'editor'] },
         },
       },
@@ -93,25 +94,26 @@ describe('createManagedOAuthCredential', () => {
     policyEngines: [],
   };
 
-  let mockWriteProjectSpec: ReturnType<typeof vi.fn>;
-  let mockReadProjectSpec: ReturnType<typeof vi.fn>;
+  const jwtConfig: JwtConfigOptions = {
+    discoveryUrl: 'https://idp.example.com/.well-known/openid-configuration',
+    clientId: 'id1',
+    clientSecret: 'secret1',
+  };
+
+  let writeSpy: ReturnType<typeof vi.fn>;
+  let readSpy: ReturnType<typeof vi.fn>;
 
   beforeEach(() => {
     vi.clearAllMocks();
-    mockWriteProjectSpec = vi.fn().mockResolvedValue(undefined);
-    mockReadProjectSpec = vi.fn().mockResolvedValue({ ...baseProject, credentials: [] });
+    writeSpy = vi.fn().mockResolvedValue(undefined);
+    readSpy = vi.fn().mockResolvedValue({ ...baseProject, credentials: [] });
   });
 
   it('creates credential with correct name/type/vendor/managed/usage fields', async () => {
-    await createManagedOAuthCredential(
-      'my-gateway',
-      { discoveryUrl: 'https://idp.example.com/.well-known/openid-configuration', clientId: 'id1', clientSecret: 'secret1' },
-      mockWriteProjectSpec,
-      mockReadProjectSpec
-    );
+    await createManagedOAuthCredential('my-gateway', jwtConfig, writeSpy as never, readSpy as never);
 
-    expect(mockWriteProjectSpec).toHaveBeenCalledTimes(1);
-    const writtenSpec = mockWriteProjectSpec.mock.calls[0]![0] as AgentCoreProjectSpec;
+    expect(writeSpy).toHaveBeenCalledTimes(1);
+    const writtenSpec = writeSpy.mock.calls[0]![0] as AgentCoreProjectSpec;
     const cred = writtenSpec.credentials.find(c => c.name === 'my-gateway-oauth');
     expect(cred).toEqual({
       type: 'OAuthCredentialProvider',
@@ -124,12 +126,12 @@ describe('createManagedOAuthCredential', () => {
   });
 
   it('writes client ID and secret to .env', async () => {
-    await createManagedOAuthCredential(
-      'my-gateway',
-      { discoveryUrl: 'https://idp.example.com/.well-known/openid-configuration', clientId: 'myClientId', clientSecret: 'mySecret' },
-      mockWriteProjectSpec,
-      mockReadProjectSpec
-    );
+    const config: JwtConfigOptions = {
+      discoveryUrl: 'https://idp.example.com/.well-known/openid-configuration',
+      clientId: 'myClientId',
+      clientSecret: 'mySecret',
+    };
+    await createManagedOAuthCredential('my-gateway', config, writeSpy as never, readSpy as never);
 
     expect(mockSetEnvVar).toHaveBeenCalledWith(
       'AGENTCORE_CREDENTIAL_MY_GATEWAY_OAUTH_CLIENT_ID',
@@ -142,7 +144,7 @@ describe('createManagedOAuthCredential', () => {
   });
 
   it('skips creation if credential already exists', async () => {
-    mockReadProjectSpec.mockResolvedValue({
+    readSpy.mockResolvedValue({
       ...baseProject,
       credentials: [
         {
@@ -156,14 +158,9 @@ describe('createManagedOAuthCredential', () => {
       ],
     });
 
-    await createManagedOAuthCredential(
-      'my-gateway',
-      { discoveryUrl: 'https://idp.example.com/.well-known/openid-configuration', clientId: 'id1', clientSecret: 'secret1' },
-      mockWriteProjectSpec,
-      mockReadProjectSpec
-    );
+    await createManagedOAuthCredential('my-gateway', jwtConfig, writeSpy as never, readSpy as never);
 
-    expect(mockWriteProjectSpec).not.toHaveBeenCalled();
+    expect(writeSpy).not.toHaveBeenCalled();
     expect(mockSetEnvVar).not.toHaveBeenCalled();
   });
 });
