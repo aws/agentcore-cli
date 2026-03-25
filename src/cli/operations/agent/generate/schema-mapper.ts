@@ -10,8 +10,8 @@ import type {
   ModelProvider,
 } from '../../../../schema';
 import { DEFAULT_STRATEGY_NAMESPACES } from '../../../../schema';
-import { buildAuthorizerConfigFromJwtConfig } from '../../../primitives/auth-utils';
 import { GatewayPrimitive } from '../../../primitives/GatewayPrimitive';
+import { buildAuthorizerConfigFromJwtConfig } from '../../../primitives/auth-utils';
 import {
   computeDefaultCredentialEnvVarName,
   computeManagedOAuthCredentialName,

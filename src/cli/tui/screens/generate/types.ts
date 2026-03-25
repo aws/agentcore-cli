@@ -7,8 +7,8 @@ import type {
   SDKFramework,
   TargetLanguage,
 } from '../../../../schema';
-import type { JwtConfigOptions } from '../../../primitives/auth-utils';
 import { DEFAULT_MODEL_IDS, PROTOCOL_FRAMEWORK_MATRIX, getSupportedModelProviders } from '../../../../schema';
+import type { JwtConfigOptions } from '../../../primitives/auth-utils';
 
 export type GenerateStep =
   | 'projectName'

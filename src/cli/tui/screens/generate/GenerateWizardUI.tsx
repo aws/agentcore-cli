@@ -1,12 +1,13 @@
 import type { ModelProvider, NetworkMode, RuntimeAuthorizerType } from '../../../../schema';
 import { DEFAULT_MODEL_IDS, ProjectNameSchema } from '../../../../schema';
 import { parseAndNormalizeHeaders, validateHeaderAllowlist } from '../../../commands/shared/header-utils';
-import { computeDefaultCredentialEnvVarName } from '../../../primitives/credential-utils';
 import { validateSecurityGroupIds, validateSubnetIds } from '../../../commands/shared/vpc-utils';
+import { computeDefaultCredentialEnvVarName } from '../../../primitives/credential-utils';
 import { ApiKeySecretInput, Panel, SelectList, StepIndicator, TextInput } from '../../components';
 import type { SelectableItem } from '../../components';
 import { JwtConfigInput, useJwtConfigFlow } from '../../components/jwt-config';
 import { useListNavigation } from '../../hooks';
+import { RUNTIME_AUTHORIZER_TYPE_OPTIONS } from '../agent/types';
 import type { BuildType, GenerateConfig, GenerateStep, MemoryOption, ProtocolMode } from './types';
 import {
   ADVANCED_OPTIONS,
@@ -19,7 +20,6 @@ import {
   getModelProviderOptionsForSdk,
   getSDKOptionsForProtocol,
 } from './types';
-import { RUNTIME_AUTHORIZER_TYPE_OPTIONS } from '../agent/types';
 import type { useGenerateWizard } from './useGenerateWizard';
 import { Box, Text, useInput } from 'ink';
 
@@ -404,7 +404,10 @@ function ConfirmView({ config, credentialProjectName }: { config: GenerateConfig
         {config.authorizerType && config.authorizerType !== 'AWS_IAM' && (
           <Text>
             <Text dimColor>Inbound Auth: </Text>
-            <Text>{RUNTIME_AUTHORIZER_TYPE_OPTIONS.find(o => o.id === config.authorizerType)?.title ?? config.authorizerType}</Text>
+            <Text>
+              {RUNTIME_AUTHORIZER_TYPE_OPTIONS.find(o => o.id === config.authorizerType)?.title ??
+                config.authorizerType}
+            </Text>
           </Text>
         )}
         {config.authorizerType === 'CUSTOM_JWT' && config.jwtConfig && (

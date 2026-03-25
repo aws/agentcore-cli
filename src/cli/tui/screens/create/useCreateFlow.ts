@@ -337,7 +337,11 @@ export function useCreateFlow(cwd: string): CreateFlowState {
                 }
 
                 // Auto-create OAuth credential for CUSTOM_JWT inbound auth
-                if (addAgentConfig.authorizerType === 'CUSTOM_JWT' && addAgentConfig.jwtConfig?.clientId && addAgentConfig.jwtConfig?.clientSecret) {
+                if (
+                  addAgentConfig.authorizerType === 'CUSTOM_JWT' &&
+                  addAgentConfig.jwtConfig?.clientId &&
+                  addAgentConfig.jwtConfig?.clientSecret
+                ) {
                   logger.logSubStep('Creating OAuth credential for inbound auth...');
                   const configIO = new ConfigIO({ baseDir: configBaseDir });
                   await createManagedOAuthCredential(
@@ -408,7 +412,11 @@ export function useCreateFlow(cwd: string): CreateFlowState {
                 await configIO.writeProjectSpec(project);
 
                 // Auto-create OAuth credential for CUSTOM_JWT inbound auth
-                if (addAgentConfig.authorizerType === 'CUSTOM_JWT' && addAgentConfig.jwtConfig?.clientId && addAgentConfig.jwtConfig?.clientSecret) {
+                if (
+                  addAgentConfig.authorizerType === 'CUSTOM_JWT' &&
+                  addAgentConfig.jwtConfig?.clientId &&
+                  addAgentConfig.jwtConfig?.clientSecret
+                ) {
                   logger.logSubStep('Creating OAuth credential for inbound auth...');
                   await createManagedOAuthCredential(
                     addAgentConfig.name,

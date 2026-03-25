@@ -89,8 +89,24 @@ const ADVANCED_ITEMS: SelectableItem[] = ADVANCED_OPTIONS.map(o => ({
 }));
 const BYO_STEPS: ByoStep[] = ['codeLocation', 'buildType', 'modelProvider', 'apiKey', 'advanced', 'confirm'];
 
-type ImportStep = 'region' | 'bedrockAgent' | 'bedrockAlias' | 'framework' | 'memory' | 'authorizerType' | 'jwtConfig' | 'confirm';
-const BASE_IMPORT_STEPS: ImportStep[] = ['region', 'bedrockAgent', 'bedrockAlias', 'framework', 'memory', 'authorizerType', 'confirm'];
+type ImportStep =
+  | 'region'
+  | 'bedrockAgent'
+  | 'bedrockAlias'
+  | 'framework'
+  | 'memory'
+  | 'authorizerType'
+  | 'jwtConfig'
+  | 'confirm';
+const BASE_IMPORT_STEPS: ImportStep[] = [
+  'region',
+  'bedrockAgent',
+  'bedrockAlias',
+  'framework',
+  'memory',
+  'authorizerType',
+  'confirm',
+];
 
 export function AddAgentScreen({ existingAgentNames, onComplete, onExit }: AddAgentScreenProps) {
   // Phase 1: name + agentType selection
@@ -225,12 +241,14 @@ export function AddAgentScreen({ existingAgentNames, onComplete, onExit }: AddAg
       subnets: generateWizard.config.networkMode === 'VPC' ? generateWizard.config.subnets : undefined,
       securityGroups: generateWizard.config.networkMode === 'VPC' ? generateWizard.config.securityGroups : undefined,
       requestHeaderAllowlist: generateWizard.config.requestHeaderAllowlist,
-      ...(generateWizard.config.authorizerType && generateWizard.config.authorizerType !== 'AWS_IAM' && {
-        authorizerType: generateWizard.config.authorizerType,
-      }),
-      ...(generateWizard.config.authorizerType === 'CUSTOM_JWT' && generateWizard.config.jwtConfig && {
-        jwtConfig: generateWizard.config.jwtConfig,
-      }),
+      ...(generateWizard.config.authorizerType &&
+        generateWizard.config.authorizerType !== 'AWS_IAM' && {
+          authorizerType: generateWizard.config.authorizerType,
+        }),
+      ...(generateWizard.config.authorizerType === 'CUSTOM_JWT' &&
+        generateWizard.config.jwtConfig && {
+          jwtConfig: generateWizard.config.jwtConfig,
+        }),
       pythonVersion: DEFAULT_PYTHON_VERSION,
       memory: generateWizard.config.memory,
     };
@@ -1100,7 +1118,8 @@ export function AddAgentScreen({ existingAgentNames, onComplete, onExit }: AddAg
               })(),
               {
                 label: 'Inbound Auth',
-                value: RUNTIME_AUTHORIZER_TYPE_OPTIONS.find(o => o.id === byoAuthorizerType)?.title ?? byoAuthorizerType,
+                value:
+                  RUNTIME_AUTHORIZER_TYPE_OPTIONS.find(o => o.id === byoAuthorizerType)?.title ?? byoAuthorizerType,
               },
               ...(byoAuthorizerType === 'CUSTOM_JWT' && byoJwtConfig
                 ? [

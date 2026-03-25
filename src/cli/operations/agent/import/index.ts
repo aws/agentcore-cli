@@ -34,7 +34,17 @@ export interface ExecuteImportAgentParams {
 export async function executeImportAgent(
   params: ExecuteImportAgentParams
 ): Promise<AddResult<{ agentName: string; agentPath: string }>> {
-  const { name, framework, memory, bedrockRegion, bedrockAgentId, bedrockAliasId, configBaseDir, authorizerType, jwtConfig } = params;
+  const {
+    name,
+    framework,
+    memory,
+    bedrockRegion,
+    bedrockAgentId,
+    bedrockAliasId,
+    configBaseDir,
+    authorizerType,
+    jwtConfig,
+  } = params;
   const projectRoot = dirname(configBaseDir);
   const agentPath = join(projectRoot, APP_DIR, name);
 

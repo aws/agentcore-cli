@@ -299,8 +299,7 @@ export function InvokeScreen({
       tokenFetchTriggeredRef.current = true;
       void fetchBearerToken();
     }
-  }, [isCustomJwt, bearerToken, initialBearerToken, mode, tokenFetchState, fetchBearerToken]
-  );
+  }, [isCustomJwt, bearerToken, initialBearerToken, mode, tokenFetchState, fetchBearerToken]);
 
   // Error state - show error in main screen
   if (phase === 'error') {

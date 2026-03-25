@@ -29,9 +29,9 @@ import { setupPythonProject } from '../operations/python';
 import type { RemovalPreview, RemovalResult, SchemaChange } from '../operations/remove/types';
 import { createRenderer } from '../templates';
 import type { MemoryOption } from '../tui/screens/generate/types';
-import { buildAuthorizerConfigFromJwtConfig, createManagedOAuthCredential } from './auth-utils';
 import { BasePrimitive } from './BasePrimitive';
 import { CredentialPrimitive } from './CredentialPrimitive';
+import { buildAuthorizerConfigFromJwtConfig, createManagedOAuthCredential } from './auth-utils';
 import { computeDefaultCredentialEnvVarName } from './credential-utils';
 import type { AddResult, AddScreenComponent, RemovableResource } from './types';
 import type { Command } from '@commander-js/extra-typings';
@@ -430,13 +430,22 @@ export class AgentPrimitive extends BasePrimitive<AddAgentOptions, RemovableReso
         ? buildAuthorizerConfigFromJwtConfig({
             discoveryUrl: options.discoveryUrl,
             allowedAudience: options.allowedAudience
-              ? options.allowedAudience.split(',').map(s => s.trim()).filter(Boolean)
+              ? options.allowedAudience
+                  .split(',')
+                  .map(s => s.trim())
+                  .filter(Boolean)
               : undefined,
             allowedClients: options.allowedClients
-              ? options.allowedClients.split(',').map(s => s.trim()).filter(Boolean)
+              ? options.allowedClients
+                  .split(',')
+                  .map(s => s.trim())
+                  .filter(Boolean)
               : undefined,
             allowedScopes: options.allowedScopes
-              ? options.allowedScopes.split(',').map(s => s.trim()).filter(Boolean)
+              ? options.allowedScopes
+                  .split(',')
+                  .map(s => s.trim())
+                  .filter(Boolean)
               : undefined,
             customClaims: options.customClaims,
           })

@@ -154,9 +154,9 @@ function buildInvokeUrl(region: string, runtimeArn: string): string {
 async function invokeWithBearerTokenStreaming(options: InvokeAgentRuntimeOptions): Promise<StreamingInvokeResult> {
   const url = buildInvokeUrl(options.region, options.runtimeArn);
   const headers: Record<string, string> = {
-    'Authorization': `Bearer ${options.bearerToken}`,
+    Authorization: `Bearer ${options.bearerToken}`,
     'Content-Type': 'application/json',
-    'Accept': 'application/json, text/event-stream',
+    Accept: 'application/json, text/event-stream',
   };
   if (options.sessionId) {
     headers['X-Amzn-Bedrock-AgentCore-Runtime-Session-Id'] = options.sessionId;
@@ -248,9 +248,9 @@ async function invokeWithBearerTokenStreaming(options: InvokeAgentRuntimeOptions
 async function invokeWithBearerToken(options: InvokeAgentRuntimeOptions): Promise<InvokeAgentRuntimeResult> {
   const url = buildInvokeUrl(options.region, options.runtimeArn);
   const headers: Record<string, string> = {
-    'Authorization': `Bearer ${options.bearerToken}`,
+    Authorization: `Bearer ${options.bearerToken}`,
     'Content-Type': 'application/json',
-    'Accept': 'application/json',
+    Accept: 'application/json',
   };
   if (options.sessionId) {
     headers['X-Amzn-Bedrock-AgentCore-Runtime-Session-Id'] = options.sessionId;

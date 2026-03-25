@@ -1,5 +1,5 @@
 import { fetchGatewayToken, fetchRuntimeToken, listGateways } from '../../operations/fetch-access';
-import type { TokenFetchResult, OAuthTokenResult } from '../../operations/fetch-access';
+import type { OAuthTokenResult, TokenFetchResult } from '../../operations/fetch-access';
 import type { FetchAccessOptions } from './types';
 
 export interface FetchAccessResult {

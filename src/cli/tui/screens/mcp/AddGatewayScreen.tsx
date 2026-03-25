@@ -170,7 +170,6 @@ export function AddGatewayScreen({
     isActive: isConfirmStep,
   });
 
-
   const helpText = isJwtConfigStep
     ? jwtFlow.subStep === 'constraintPicker'
       ? HELP_TEXT.MULTI_SELECT
@@ -356,4 +355,3 @@ export function AddGatewayScreen({
     </Screen>
   );
 }
-

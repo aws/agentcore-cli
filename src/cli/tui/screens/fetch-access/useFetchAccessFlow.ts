@@ -109,9 +109,7 @@ export function useFetchAccessFlow() {
     const resource = state.selectedResource;
 
     const fetchToken: Promise<TokenFetchResult> =
-      resource.resourceType === 'gateway'
-        ? fetchGatewayToken(resource.name)
-        : fetchAgentAccess(resource);
+      resource.resourceType === 'gateway' ? fetchGatewayToken(resource.name) : fetchAgentAccess(resource);
 
     fetchToken
       .then(result => {

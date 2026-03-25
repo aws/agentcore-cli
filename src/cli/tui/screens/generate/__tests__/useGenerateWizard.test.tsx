@@ -121,7 +121,13 @@ describe('useGenerateWizard — advanced config gate', () => {
 
       const steps = ref.current!.wizard.steps;
       const advIdx = steps.indexOf('advanced');
-      expect(steps.slice(advIdx)).toEqual(['advanced', 'networkMode', 'requestHeaderAllowlist', 'authorizerType', 'confirm']);
+      expect(steps.slice(advIdx)).toEqual([
+        'advanced',
+        'networkMode',
+        'requestHeaderAllowlist',
+        'authorizerType',
+        'confirm',
+      ]);
     });
 
     it('setAdvanced(true) then VPC injects subnets and securityGroups', () => {

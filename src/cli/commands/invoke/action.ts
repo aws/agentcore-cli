@@ -8,9 +8,9 @@ import {
   mcpInitSession,
   mcpListTools,
 } from '../../aws';
-import { canFetchRuntimeToken, fetchRuntimeToken } from '../../operations/fetch-access';
 import { InvokeLogger } from '../../logging';
 import { formatMcpToolList } from '../../operations/dev/utils';
+import { canFetchRuntimeToken, fetchRuntimeToken } from '../../operations/fetch-access';
 import type { InvokeOptions, InvokeResult } from './types';
 
 export interface InvokeContext {

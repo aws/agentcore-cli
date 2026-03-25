@@ -1,9 +1,7 @@
 import { ConfigIO } from '../../../lib';
 import type { AgentInfo } from './types';
 
-export async function listAgents(
-  options: { configIO?: ConfigIO; deployTarget?: string } = {}
-): Promise<AgentInfo[]> {
+export async function listAgents(options: { configIO?: ConfigIO; deployTarget?: string } = {}): Promise<AgentInfo[]> {
   const configIO = options.configIO ?? new ConfigIO();
 
   const deployedState = await configIO.readDeployedState();

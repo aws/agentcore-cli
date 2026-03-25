@@ -12,10 +12,7 @@ import type { OAuthTokenResult } from './oauth-token';
  * Returns true only if the managed OAuth credential exists in the project
  * spec AND the client secret is available in .env.local.
  */
-export async function canFetchRuntimeToken(
-  agentName: string,
-  options: { configIO?: ConfigIO } = {}
-): Promise<boolean> {
+export async function canFetchRuntimeToken(agentName: string, options: { configIO?: ConfigIO } = {}): Promise<boolean> {
   try {
     const configIO = options.configIO ?? new ConfigIO();
     const projectSpec = await configIO.readProjectSpec();
@@ -63,9 +60,7 @@ export async function fetchRuntimeToken(
   const agentSpec = projectSpec.agents.find(a => a.name === agentName);
   if (!agentSpec) {
     const available = projectSpec.agents.map(a => a.name);
-    throw new Error(
-      `Agent '${agentName}' not found in project. Available agents: ${available.join(', ') || 'none'}`
-    );
+    throw new Error(`Agent '${agentName}' not found in project. Available agents: ${available.join(', ') || 'none'}`);
   }
 
   if (agentSpec.authorizerType !== 'CUSTOM_JWT') {
@@ -76,9 +71,7 @@ export async function fetchRuntimeToken(
 
   const jwtConfig = agentSpec.authorizerConfiguration?.customJwtAuthorizer;
   if (!jwtConfig) {
-    throw new Error(
-      `Agent '${agentName}' is configured as CUSTOM_JWT but has no customJwtAuthorizer configuration.`
-    );
+    throw new Error(`Agent '${agentName}' is configured as CUSTOM_JWT but has no customJwtAuthorizer configuration.`);
   }
 
   return fetchOAuthToken({

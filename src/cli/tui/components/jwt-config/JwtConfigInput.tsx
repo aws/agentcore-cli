@@ -1,5 +1,5 @@
-import { SecretInput, TextInput, WizardMultiSelect } from '../index';
 import { useMultiSelectNavigation } from '../../hooks';
+import { SecretInput, TextInput, WizardMultiSelect } from '../index';
 import { CustomClaimsManager } from './CustomClaimsManager';
 import type { ClaimsManagerMode, ConstraintType, CustomClaimEntry, JwtSubStep } from './types';
 import { CONSTRAINT_ITEMS, OIDC_WELL_KNOWN_SUFFIX, validateCommaSeparated } from './types';

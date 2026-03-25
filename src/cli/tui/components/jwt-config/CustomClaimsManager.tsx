@@ -1,5 +1,5 @@
-import type { SelectableItem } from '../index';
 import { useListNavigation } from '../../hooks';
+import type { SelectableItem } from '../index';
 import { CustomClaimForm } from './CustomClaimForm';
 import type { ClaimsManagerMode, CustomClaimEntry } from './types';
 import { formatClaimSummary } from './types';

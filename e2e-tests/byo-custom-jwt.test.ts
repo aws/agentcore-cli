@@ -21,6 +21,7 @@ import {
   runCLI,
   stripAnsi,
 } from '../src/test-utils/index.js';
+import { CloudFormationClient, GetTemplateCommand } from '@aws-sdk/client-cloudformation';
 import {
   CognitoIdentityProviderClient,
   CreateResourceServerCommand,
@@ -31,10 +32,6 @@ import {
   DeleteUserPoolCommand,
   DeleteUserPoolDomainCommand,
 } from '@aws-sdk/client-cognito-identity-provider';
-import {
-  CloudFormationClient,
-  GetTemplateCommand,
-} from '@aws-sdk/client-cloudformation';
 import { execSync } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
 import { mkdir, readFile, rm, writeFile } from 'node:fs/promises';
@@ -76,14 +73,10 @@ describe.sequential('e2e: BYO agent with CUSTOM_JWT auth', () => {
     const poolName = `agentcore-e2e-jwt-${suffix}`;
     domainPrefix = `agentcore-e2e-jwt-${suffix}`;
 
-    const poolResult = await cognitoClient.send(
-      new CreateUserPoolCommand({ PoolName: poolName })
-    );
+    const poolResult = await cognitoClient.send(new CreateUserPoolCommand({ PoolName: poolName }));
     userPoolId = poolResult.UserPool!.Id!;
 
-    await cognitoClient.send(
-      new CreateUserPoolDomainCommand({ UserPoolId: userPoolId, Domain: domainPrefix })
-    );
+    await cognitoClient.send(new CreateUserPoolDomainCommand({ UserPoolId: userPoolId, Domain: domainPrefix }));
 
     await cognitoClient.send(
       new CreateResourceServerCommand({
@@ -115,7 +108,20 @@ describe.sequential('e2e: BYO agent with CUSTOM_JWT auth', () => {
 
     agentName = `E2eJwt${String(Date.now()).slice(-8)}`;
     const createResult = await runLocalCLI(
-      ['create', '--name', agentName, '--language', 'Python', '--framework', 'Strands', '--model-provider', 'Bedrock', '--memory', 'none', '--json'],
+      [
+        'create',
+        '--name',
+        agentName,
+        '--language',
+        'Python',
+        '--framework',
+        'Strands',
+        '--model-provider',
+        'Bedrock',
+        '--memory',
+        'none',
+        '--json',
+      ],
       testDir
     );
     expect(createResult.exitCode, `Create failed: ${createResult.stderr}`).toBe(0);
@@ -123,7 +129,8 @@ describe.sequential('e2e: BYO agent with CUSTOM_JWT auth', () => {
     projectPath = createJson.projectPath;
 
     // Write AWS targets
-    const account = process.env.AWS_ACCOUNT_ID ??
+    const account =
+      process.env.AWS_ACCOUNT_ID ??
       execSync('aws sts get-caller-identity --query Account --output text').toString().trim();
     await writeFile(
       join(projectPath, 'agentcore', 'aws-targets.json'),
@@ -166,18 +173,20 @@ describe.sequential('e2e: BYO agent with CUSTOM_JWT auth', () => {
     // ── Delete Cognito resources ──
     if (userPoolId) {
       try {
-        await cognitoClient.send(
-          new DeleteResourceServerCommand({ UserPoolId: userPoolId, Identifier: 'agentcore' })
-        );
-      } catch { /* best-effort */ }
+        await cognitoClient.send(new DeleteResourceServerCommand({ UserPoolId: userPoolId, Identifier: 'agentcore' }));
+      } catch {
+        /* best-effort */
+      }
       try {
-        await cognitoClient.send(
-          new DeleteUserPoolDomainCommand({ UserPoolId: userPoolId, Domain: domainPrefix })
-        );
-      } catch { /* best-effort */ }
+        await cognitoClient.send(new DeleteUserPoolDomainCommand({ UserPoolId: userPoolId, Domain: domainPrefix }));
+      } catch {
+        /* best-effort */
+      }
       try {
         await cognitoClient.send(new DeleteUserPoolCommand({ UserPoolId: userPoolId }));
-      } catch { /* best-effort */ }
+      } catch {
+        /* best-effort */
+      }
     }
 
     // ── Clean up temp directory ──
@@ -204,16 +213,12 @@ describe.sequential('e2e: BYO agent with CUSTOM_JWT auth', () => {
       expect(json.success, 'Deploy should report success').toBe(true);
 
       // Verify CloudFormation template contains AuthorizerConfiguration
-      const templateResult = await cfnClient.send(
-        new GetTemplateCommand({ StackName: json.stackName })
-      );
+      const templateResult = await cfnClient.send(new GetTemplateCommand({ StackName: json.stackName }));
       const template = JSON.parse(templateResult.TemplateBody!) as {
         Resources: Record<string, { Type: string; Properties: Record<string, unknown> }>;
       };
 
-      const runtimeResource = Object.values(template.Resources).find(
-        r => r.Type === 'AWS::BedrockAgentCore::Runtime'
-      );
+      const runtimeResource = Object.values(template.Resources).find(r => r.Type === 'AWS::BedrockAgentCore::Runtime');
       expect(runtimeResource, 'Template should contain a Runtime resource').toBeDefined();
 
       const props = runtimeResource!.Properties;

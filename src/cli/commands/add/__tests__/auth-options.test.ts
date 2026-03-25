@@ -18,9 +18,9 @@ describe('validateJwtAuthorizerOptions', () => {
   });
 
   it('accepts valid options with scopes', () => {
-    expect(
-      validateJwtAuthorizerOptions({ ...validBase, allowedAudience: undefined, allowedScopes: 'scope1' })
-    ).toEqual({ valid: true });
+    expect(validateJwtAuthorizerOptions({ ...validBase, allowedAudience: undefined, allowedScopes: 'scope1' })).toEqual(
+      { valid: true }
+    );
   });
 
   it('accepts valid options with custom claims', () => {
@@ -34,9 +34,9 @@ describe('validateJwtAuthorizerOptions', () => {
         },
       },
     ]);
-    expect(
-      validateJwtAuthorizerOptions({ ...validBase, allowedAudience: undefined, customClaims: claims })
-    ).toEqual({ valid: true });
+    expect(validateJwtAuthorizerOptions({ ...validBase, allowedAudience: undefined, customClaims: claims })).toEqual({
+      valid: true,
+    });
   });
 
   it('rejects missing discovery URL', () => {
@@ -111,8 +111,8 @@ describe('validateJwtAuthorizerOptions', () => {
   });
 
   it('accepts client credentials pair', () => {
-    expect(
-      validateJwtAuthorizerOptions({ ...validBase, clientId: 'id', clientSecret: 'secret' })
-    ).toEqual({ valid: true });
+    expect(validateJwtAuthorizerOptions({ ...validBase, clientId: 'id', clientSecret: 'secret' })).toEqual({
+      valid: true,
+    });
   });
 });

@@ -133,14 +133,8 @@ describe('createManagedOAuthCredential', () => {
     };
     await createManagedOAuthCredential('my-gateway', config, writeSpy as never, readSpy as never);
 
-    expect(mockSetEnvVar).toHaveBeenCalledWith(
-      'AGENTCORE_CREDENTIAL_MY_GATEWAY_OAUTH_CLIENT_ID',
-      'myClientId'
-    );
-    expect(mockSetEnvVar).toHaveBeenCalledWith(
-      'AGENTCORE_CREDENTIAL_MY_GATEWAY_OAUTH_CLIENT_SECRET',
-      'mySecret'
-    );
+    expect(mockSetEnvVar).toHaveBeenCalledWith('AGENTCORE_CREDENTIAL_MY_GATEWAY_OAUTH_CLIENT_ID', 'myClientId');
+    expect(mockSetEnvVar).toHaveBeenCalledWith('AGENTCORE_CREDENTIAL_MY_GATEWAY_OAUTH_CLIENT_SECRET', 'mySecret');
   });
 
   it('skips creation if credential already exists', async () => {
