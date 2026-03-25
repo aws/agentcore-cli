@@ -8,7 +8,7 @@ import type { RuntimeAuthorizerType, SDKFramework } from '../../../../schema';
 import { getBedrockAgentConfig } from '../../../aws/bedrock-import';
 import { getErrorMessage } from '../../../errors';
 import type { JwtConfigOptions } from '../../../primitives/auth-utils';
-import { buildAuthorizerConfigFromJwtConfig, createManagedOAuthCredential } from '../../../primitives/auth-utils';
+import { createManagedOAuthCredential } from '../../../primitives/auth-utils';
 import type { AddResult } from '../../../primitives/types';
 import type { MemoryOption } from '../../../tui/screens/generate/types';
 import { setupPythonProject } from '../../python';

@@ -87,7 +87,7 @@ const ADVANCED_ITEMS: SelectableItem[] = ADVANCED_OPTIONS.map(o => ({
   title: o.title,
   description: o.description,
 }));
-const BYO_STEPS: ByoStep[] = ['codeLocation', 'buildType', 'modelProvider', 'apiKey', 'advanced', 'authorizerType', 'confirm'];
+const BYO_STEPS: ByoStep[] = ['codeLocation', 'buildType', 'modelProvider', 'apiKey', 'advanced', 'confirm'];
 
 type ImportStep = 'region' | 'bedrockAgent' | 'bedrockAlias' | 'framework' | 'memory' | 'authorizerType' | 'jwtConfig' | 'confirm';
 const BASE_IMPORT_STEPS: ImportStep[] = ['region', 'bedrockAgent', 'bedrockAlias', 'framework', 'memory', 'authorizerType', 'confirm'];
@@ -266,6 +266,7 @@ export function AddAgentScreen({ existingAgentNames, onComplete, onExit }: AddAg
         ...steps.slice(0, afterAdvanced),
         ...networkSteps,
         'requestHeaderAllowlist',
+        'authorizerType',
         ...steps.slice(afterAdvanced),
       ];
     }
@@ -384,7 +385,7 @@ export function AddAgentScreen({ existingAgentNames, onComplete, onExit }: AddAg
       } else {
         setByoAdvancedSelected(false);
         setByoConfig(c => ({ ...c, networkMode: 'PUBLIC' as NetworkMode, subnets: '', securityGroups: '' }));
-        setByoStep('authorizerType');
+        setByoStep('confirm');
       }
     },
     onExit: handleByoBack,

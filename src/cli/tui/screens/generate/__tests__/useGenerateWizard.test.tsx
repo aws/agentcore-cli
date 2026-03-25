@@ -43,8 +43,8 @@ describe('useGenerateWizard — advanced config gate', () => {
       const frame = lastFrame()!;
       expect(frame).toContain('steps:');
       // Default modelProvider is Bedrock which filters out apiKey
-      // authorizerType is always inserted before confirm
-      expect(frame).toMatch(/modelProvider,advanced,authorizerType,confirm/);
+      // authorizerType is only shown when advanced is selected
+      expect(frame).toMatch(/modelProvider,advanced,confirm/);
       expect(frame).not.toContain('apiKey');
     });
 
@@ -89,7 +89,7 @@ describe('useGenerateWizard — advanced config gate', () => {
       });
     }
 
-    it('setAdvanced(false) jumps to authorizerType with PUBLIC defaults', () => {
+    it('setAdvanced(false) jumps to confirm with PUBLIC defaults', () => {
       const { ref, lastFrame } = setup();
       walkToAdvanced(ref);
       expect(lastFrame()).toContain('step:advanced');
@@ -97,7 +97,7 @@ describe('useGenerateWizard — advanced config gate', () => {
       act(() => ref.current!.wizard.setAdvanced(false));
 
       const frame = lastFrame()!;
-      expect(frame).toContain('step:authorizerType');
+      expect(frame).toContain('step:confirm');
       expect(frame).toContain('networkMode:PUBLIC');
       expect(frame).toContain('advancedSelected:false');
     });
@@ -170,7 +170,7 @@ describe('useGenerateWizard — advanced config gate', () => {
       act(() => ref.current!.wizard.setAdvanced(false));
 
       const w = ref.current!.wizard;
-      expect(w.step).toBe('authorizerType');
+      expect(w.step).toBe('confirm');
       expect(w.config.networkMode).toBe('PUBLIC');
       expect(w.advancedSelected).toBe(false);
       // Network steps should not be in the step list

@@ -198,7 +198,7 @@ export function useInvokeFlow(options: InvokeFlowOptions = {}): InvokeFlowState 
   const fetchBearerToken = useCallback(async () => {
     if (!config) return;
     const agent = config.agents[selectedAgent];
-    if (!agent || agent.authorizerType !== 'CUSTOM_JWT') return;
+    if (agent?.authorizerType !== 'CUSTOM_JWT') return;
 
     // Check if credentials are set up before attempting fetch
     const canFetch = await canFetchRuntimeToken(agent.name);

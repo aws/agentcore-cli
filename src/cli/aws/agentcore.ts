@@ -195,7 +195,7 @@ async function invokeWithBearerTokenStreaming(options: InvokeAgentRuntimeOptions
         const result = await reader.read();
         if (result.done) break;
 
-        const decoded = decoder.decode(result.value, { stream: true });
+        const decoded = decoder.decode(result.value as Uint8Array | undefined, { stream: true });
         buffer += decoded;
         fullResponse += decoded;
 

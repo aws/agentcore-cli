@@ -21,7 +21,7 @@ export async function canFetchRuntimeToken(
     const projectSpec = await configIO.readProjectSpec();
 
     const agentSpec = projectSpec.agents.find(a => a.name === agentName);
-    if (!agentSpec || agentSpec.authorizerType !== 'CUSTOM_JWT') return false;
+    if (!agentSpec?.authorizerType || agentSpec.authorizerType !== 'CUSTOM_JWT') return false;
     if (!agentSpec.authorizerConfiguration?.customJwtAuthorizer) return false;
 
     const credName = computeManagedOAuthCredentialName(agentName);

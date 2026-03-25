@@ -68,10 +68,6 @@ export function useGenerateWizard(options?: UseGenerateWizardOptions) {
         'authorizerType',
         ...filtered.slice(afterAdvanced),
       ];
-    } else {
-      // Even without advanced, add authorizerType before confirm
-      const confirmIndex = filtered.indexOf('confirm');
-      filtered = [...filtered.slice(0, confirmIndex), 'authorizerType', ...filtered.slice(confirmIndex)];
     }
     // Add jwtConfig step after authorizerType when CUSTOM_JWT is selected
     if (config.authorizerType === 'CUSTOM_JWT') {
@@ -190,7 +186,7 @@ export function useGenerateWizard(options?: UseGenerateWizardOptions) {
         securityGroups: undefined,
         requestHeaderAllowlist: undefined,
       }));
-      setStep('authorizerType');
+      setStep('confirm');
     }
   }, []);
 
