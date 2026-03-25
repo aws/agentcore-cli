@@ -24,14 +24,14 @@ export const DEFAULT_STRATEGY_NAMESPACES: Partial<Record<MemoryStrategyType, str
   SEMANTIC: ['/users/{actorId}/facts'],
   USER_PREFERENCE: ['/users/{actorId}/preferences'],
   SUMMARIZATION: ['/summaries/{actorId}/{sessionId}'],
-  EPISODIC: ['/strategy/{memoryStrategyId}/actor/{actorId}/'],
+  EPISODIC: ['/episodes/{actorId}/{sessionId}'],
 };
 
 /**
  * Default reflection namespaces for the EPISODIC strategy.
  * The service requires reflection namespaces to be the same as or a prefix of episode namespaces.
  */
-export const DEFAULT_EPISODIC_REFLECTION_NAMESPACES: string[] = ['/strategy/{memoryStrategyId}/actor/{actorId}/'];
+export const DEFAULT_EPISODIC_REFLECTION_NAMESPACES: string[] = ['/reflections/{actorId}'];
 
 /**
  * Memory strategy name validation.

@@ -141,8 +141,8 @@ describe('create command', () => {
 
       const episodic = memory?.strategies?.find((s: { type: string }) => s.type === 'EPISODIC');
       expect(episodic, 'EPISODIC strategy should exist in longAndShortTerm').toBeTruthy();
-      expect(episodic?.namespaces).toEqual(['/strategy/{memoryStrategyId}/actor/{actorId}/']);
-      expect(episodic?.reflectionNamespaces).toEqual(['/strategy/{memoryStrategyId}/actor/{actorId}/']);
+      expect(episodic?.namespaces).toEqual(['/episodes/{actorId}/{sessionId}']);
+      expect(episodic?.reflectionNamespaces).toEqual(['/reflections/{actorId}']);
     });
   });
 

@@ -76,8 +76,8 @@ describe('MemoryStrategySchema', () => {
   it('accepts EPISODIC strategy with reflectionNamespaces', () => {
     const result = MemoryStrategySchema.safeParse({
       type: 'EPISODIC',
-      namespaces: ['/strategy/{memoryStrategyId}/actor/{actorId}/'],
-      reflectionNamespaces: ['/strategy/{memoryStrategyId}/actor/{actorId}/'],
+      namespaces: ['/episodes/{actorId}/{sessionId}'],
+      reflectionNamespaces: ['/reflections/{actorId}'],
     });
     expect(result.success).toBe(true);
   });
@@ -85,7 +85,7 @@ describe('MemoryStrategySchema', () => {
   it('rejects EPISODIC strategy without reflectionNamespaces', () => {
     const result = MemoryStrategySchema.safeParse({
       type: 'EPISODIC',
-      namespaces: ['/strategy/{memoryStrategyId}/actor/{actorId}/'],
+      namespaces: ['/episodes/{actorId}/{sessionId}'],
     });
     expect(result.success).toBe(false);
   });
@@ -93,7 +93,7 @@ describe('MemoryStrategySchema', () => {
   it('rejects EPISODIC strategy with empty reflectionNamespaces', () => {
     const result = MemoryStrategySchema.safeParse({
       type: 'EPISODIC',
-      namespaces: ['/strategy/{memoryStrategyId}/actor/{actorId}/'],
+      namespaces: ['/episodes/{actorId}/{sessionId}'],
       reflectionNamespaces: [],
     });
     expect(result.success).toBe(false);
@@ -119,7 +119,7 @@ describe('DEFAULT_STRATEGY_NAMESPACES', () => {
   });
 
   it('has default namespaces for EPISODIC', () => {
-    expect(DEFAULT_STRATEGY_NAMESPACES.EPISODIC).toEqual(['/strategy/{memoryStrategyId}/actor/{actorId}/']);
+    expect(DEFAULT_STRATEGY_NAMESPACES.EPISODIC).toEqual(['/episodes/{actorId}/{sessionId}']);
   });
 
   it('does not have default namespaces for CUSTOM (removed)', () => {
