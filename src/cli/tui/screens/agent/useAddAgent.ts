@@ -9,6 +9,7 @@ import {
   writeAgentToProject,
 } from '../../../operations/agent/generate';
 import { executeImportAgent } from '../../../operations/agent/import';
+import { buildAuthorizerConfigFromJwtConfig } from '../../../primitives/auth-utils';
 import { computeDefaultCredentialEnvVarName } from '../../../primitives/credential-utils';
 import { credentialPrimitive } from '../../../primitives/registry';
 import { createRenderer } from '../../../templates';
@@ -74,6 +75,11 @@ export function mapByoConfigToAgent(config: AddAgentConfig): AgentEnvSpec {
     ...(config.requestHeaderAllowlist?.length && {
       requestHeaderAllowlist: config.requestHeaderAllowlist,
     }),
+    ...(config.authorizerType && { authorizerType: config.authorizerType }),
+    ...(config.authorizerType === 'CUSTOM_JWT' &&
+      config.jwtConfig && {
+        authorizerConfiguration: buildAuthorizerConfigFromJwtConfig(config.jwtConfig),
+      }),
   };
 }
 

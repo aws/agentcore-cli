@@ -1,5 +1,5 @@
 import { APP_DIR, ConfigIO } from '../../../../lib';
-import type { ModelProvider, NetworkMode, SDKFramework } from '../../../../schema';
+import type { ModelProvider, NetworkMode, RuntimeAuthorizerType, SDKFramework } from '../../../../schema';
 import { AgentNameSchema, DEFAULT_MODEL_IDS } from '../../../../schema';
 import { listBedrockAgentAliases, listBedrockAgents } from '../../../aws/bedrock-import';
 import type { BedrockAgentSummary, BedrockAliasSummary } from '../../../aws/bedrock-import-types';
@@ -10,6 +10,7 @@ import {
   validateSubnetIds,
 } from '../../../commands/shared/vpc-utils';
 import { BEDROCK_REGIONS, IMPORT_FRAMEWORK_OPTIONS } from '../../../operations/agent/import/constants';
+import type { JwtConfigOptions } from '../../../primitives/auth-utils';
 import { computeDefaultCredentialEnvVarName } from '../../../primitives/credential-utils';
 import {
   ApiKeySecretInput,
@@ -22,6 +23,7 @@ import {
   WizardSelect,
 } from '../../components';
 import type { SelectableItem } from '../../components';
+import { JwtConfigInput, useJwtConfigFlow } from '../../components/jwt-config';
 import { HELP_TEXT } from '../../constants';
 import { useListNavigation, useProject } from '../../hooks';
 import { generateUniqueName } from '../../utils';
@@ -36,6 +38,7 @@ import {
   DEFAULT_PYTHON_VERSION,
   MODEL_PROVIDER_OPTIONS,
   NETWORK_MODE_OPTIONS,
+  RUNTIME_AUTHORIZER_TYPE_OPTIONS,
 } from './types';
 import { Box, Text, useInput } from 'ink';
 import Spinner from 'ink-spinner';
@@ -74,6 +77,8 @@ type ByoStep =
   | 'subnets'
   | 'securityGroups'
   | 'requestHeaderAllowlist'
+  | 'authorizerType'
+  | 'jwtConfig'
   | 'confirm';
 
 const INITIAL_STEPS: InitialStep[] = ['name', 'agentType'];
@@ -82,7 +87,7 @@ const ADVANCED_ITEMS: SelectableItem[] = ADVANCED_OPTIONS.map(o => ({
   title: o.title,
   description: o.description,
 }));
-const BYO_STEPS: ByoStep[] = ['codeLocation', 'buildType', 'modelProvider', 'apiKey', 'advanced', 'confirm'];
+const BYO_STEPS: ByoStep[] = ['codeLocation', 'buildType', 'modelProvider', 'apiKey', 'advanced', 'authorizerType', 'confirm'];
 
 type ImportStep = 'region' | 'bedrockAgent' | 'bedrockAlias' | 'framework' | 'memory' | 'confirm';
 const IMPORT_STEPS: ImportStep[] = ['region', 'bedrockAgent', 'bedrockAlias', 'framework', 'memory', 'confirm'];
@@ -111,6 +116,8 @@ export function AddAgentScreen({ existingAgentNames, onComplete, onExit }: AddAg
     requestHeaderAllowlist: '' as string,
   });
   const [byoAdvancedSelected, setByoAdvancedSelected] = useState(false);
+  const [byoAuthorizerType, setByoAuthorizerType] = useState<RuntimeAuthorizerType>('AWS_IAM');
+  const [byoJwtConfig, setByoJwtConfig] = useState<JwtConfigOptions | undefined>(undefined);
 
   const { project } = useProject();
 
@@ -236,7 +243,7 @@ export function AddAgentScreen({ existingAgentNames, onComplete, onExit }: AddAg
   // BYO Path
   // ─────────────────────────────────────────────────────────────────────────────
 
-  // BYO steps filtering (remove apiKey for Bedrock, subnets/securityGroups for non-VPC)
+  // BYO steps filtering (remove apiKey for Bedrock, subnets/securityGroups for non-VPC, jwtConfig for non-CUSTOM_JWT)
   const byoSteps = useMemo(() => {
     let steps = [...BYO_STEPS];
     if (byoConfig.modelProvider === 'Bedrock') {
@@ -254,8 +261,13 @@ export function AddAgentScreen({ existingAgentNames, onComplete, onExit }: AddAg
         ...steps.slice(afterAdvanced),
       ];
     }
+    // Add jwtConfig step after authorizerType when CUSTOM_JWT is selected
+    if (byoAuthorizerType === 'CUSTOM_JWT') {
+      const authIndex = steps.indexOf('authorizerType');
+      steps = [...steps.slice(0, authIndex + 1), 'jwtConfig', ...steps.slice(authIndex + 1)];
+    }
     return steps;
-  }, [byoConfig.modelProvider, byoConfig.networkMode, byoAdvancedSelected]);
+  }, [byoConfig.modelProvider, byoConfig.networkMode, byoAdvancedSelected, byoAuthorizerType]);
 
   const byoCurrentIndex = byoSteps.indexOf(byoStep);
 
@@ -311,11 +323,13 @@ export function AddAgentScreen({ existingAgentNames, onComplete, onExit }: AddAg
       subnets: byoConfig.networkMode === 'VPC' ? parseCommaSeparatedList(byoConfig.subnets) : undefined,
       securityGroups: byoConfig.networkMode === 'VPC' ? parseCommaSeparatedList(byoConfig.securityGroups) : undefined,
       ...(requestHeaderAllowlist.length > 0 && { requestHeaderAllowlist }),
+      ...(byoAuthorizerType !== 'AWS_IAM' && { authorizerType: byoAuthorizerType }),
+      ...(byoAuthorizerType === 'CUSTOM_JWT' && byoJwtConfig && { jwtConfig: byoJwtConfig }),
       pythonVersion: DEFAULT_PYTHON_VERSION,
       memory: 'none',
     };
     onComplete(config);
-  }, [name, byoConfig, onComplete]);
+  }, [name, byoConfig, byoAuthorizerType, byoJwtConfig, onComplete]);
 
   const buildTypeNav = useListNavigation({
     items: buildTypeItems,
@@ -362,7 +376,7 @@ export function AddAgentScreen({ existingAgentNames, onComplete, onExit }: AddAg
       } else {
         setByoAdvancedSelected(false);
         setByoConfig(c => ({ ...c, networkMode: 'PUBLIC' as NetworkMode, subnets: '', securityGroups: '' }));
-        setByoStep('confirm');
+        setByoStep('authorizerType');
       }
     },
     onExit: handleByoBack,
@@ -382,6 +396,39 @@ export function AddAgentScreen({ existingAgentNames, onComplete, onExit }: AddAg
     },
     onExit: handleByoBack,
     isActive: isByoPath && byoStep === 'networkMode',
+  });
+
+  // Authorizer type options for BYO path
+  const authorizerTypeItems: SelectableItem[] = useMemo(
+    () => RUNTIME_AUTHORIZER_TYPE_OPTIONS.map(o => ({ id: o.id, title: o.title, description: o.description })),
+    []
+  );
+
+  const authorizerTypeNav = useListNavigation({
+    items: authorizerTypeItems,
+    onSelect: item => {
+      const authType = item.id as RuntimeAuthorizerType;
+      setByoAuthorizerType(authType);
+      if (authType === 'CUSTOM_JWT') {
+        setByoStep('jwtConfig');
+      } else {
+        setByoJwtConfig(undefined);
+        setByoStep('confirm');
+      }
+    },
+    onExit: handleByoBack,
+    isActive: isByoPath && byoStep === 'authorizerType',
+  });
+
+  // JWT config flow for BYO path
+  const byoJwtFlow = useJwtConfigFlow({
+    onComplete: jwtConfig => {
+      setByoJwtConfig(jwtConfig);
+      setByoStep('confirm');
+    },
+    onBack: () => {
+      setByoStep('authorizerType');
+    },
   });
 
   useListNavigation({
@@ -565,6 +612,15 @@ export function AddAgentScreen({ existingAgentNames, onComplete, onExit }: AddAg
       return HELP_TEXT.NAVIGATE_SELECT;
     }
     // BYO path
+    if (byoStep === 'jwtConfig') {
+      if (byoJwtFlow.subStep === 'constraintPicker') return HELP_TEXT.MULTI_SELECT;
+      if (byoJwtFlow.subStep === 'customClaims') {
+        return byoJwtFlow.claimsManagerMode === 'add' || byoJwtFlow.claimsManagerMode === 'edit'
+          ? '↑/↓ field · ←/→ cycle · Enter next/save · Esc cancel'
+          : 'Navigate · Enter select · Esc back';
+      }
+      return HELP_TEXT.TEXT_INPUT;
+    }
     if (
       byoStep === 'codeLocation' ||
       byoStep === 'apiKey' ||
@@ -853,7 +909,7 @@ export function AddAgentScreen({ existingAgentNames, onComplete, onExit }: AddAg
               }}
               onSubmit={value => {
                 setByoConfig(c => ({ ...c, requestHeaderAllowlist: value }));
-                setByoStep('confirm');
+                setByoStep('authorizerType');
               }}
               onCancel={handleByoBack}
             />
@@ -864,6 +920,39 @@ export function AddAgentScreen({ existingAgentNames, onComplete, onExit }: AddAg
               </Text>
             </Box>
           </Box>
+        )}
+
+        {byoStep === 'authorizerType' && (
+          <WizardSelect
+            title="Select inbound auth type"
+            description="How will clients authenticate to this agent?"
+            items={authorizerTypeItems}
+            selectedIndex={authorizerTypeNav.selectedIndex}
+          />
+        )}
+
+        {byoStep === 'jwtConfig' && (
+          <JwtConfigInput
+            subStep={byoJwtFlow.subStep}
+            steps={byoJwtFlow.steps}
+            selectedConstraints={byoJwtFlow.selectedConstraints}
+            customClaims={byoJwtFlow.customClaims}
+            discoveryUrl={byoJwtFlow.discoveryUrl}
+            audience={byoJwtFlow.audience}
+            clients={byoJwtFlow.clients}
+            scopes={byoJwtFlow.scopes}
+            onDiscoveryUrl={byoJwtFlow.handlers.handleDiscoveryUrl}
+            onConstraintsPicked={byoJwtFlow.handlers.handleConstraintsPicked}
+            onAudience={byoJwtFlow.handlers.handleAudience}
+            onClients={byoJwtFlow.handlers.handleClients}
+            onScopes={byoJwtFlow.handlers.handleScopes}
+            onCustomClaimsDone={byoJwtFlow.handlers.handleCustomClaimsDone}
+            onClientId={byoJwtFlow.handlers.handleClientId}
+            onClientIdSkip={byoJwtFlow.handlers.handleClientIdSkip}
+            onClientSecret={byoJwtFlow.handlers.handleClientSecret}
+            onBack={byoJwtFlow.goBack}
+            onClaimsManagerModeChange={byoJwtFlow.handlers.handleClaimsManagerModeChange}
+          />
         )}
 
         {byoStep === 'confirm' && (
@@ -907,6 +996,27 @@ export function AddAgentScreen({ existingAgentNames, onComplete, onExit }: AddAg
                 const normalizedHeaders = parseAndNormalizeHeaders(byoConfig.requestHeaderAllowlist);
                 return normalizedHeaders.length > 0 ? [{ label: 'Headers', value: normalizedHeaders.join(', ') }] : [];
               })(),
+              {
+                label: 'Inbound Auth',
+                value: RUNTIME_AUTHORIZER_TYPE_OPTIONS.find(o => o.id === byoAuthorizerType)?.title ?? byoAuthorizerType,
+              },
+              ...(byoAuthorizerType === 'CUSTOM_JWT' && byoJwtConfig
+                ? [
+                    { label: 'Discovery URL', value: byoJwtConfig.discoveryUrl },
+                    ...(byoJwtConfig.allowedAudience?.length
+                      ? [{ label: 'Allowed Audience', value: byoJwtConfig.allowedAudience.join(', ') }]
+                      : []),
+                    ...(byoJwtConfig.allowedClients?.length
+                      ? [{ label: 'Allowed Clients', value: byoJwtConfig.allowedClients.join(', ') }]
+                      : []),
+                    ...(byoJwtConfig.allowedScopes?.length
+                      ? [{ label: 'Allowed Scopes', value: byoJwtConfig.allowedScopes.join(', ') }]
+                      : []),
+                    ...(byoJwtConfig.customClaims?.length
+                      ? [{ label: 'Custom Claims', value: `${byoJwtConfig.customClaims.length} claim(s) configured` }]
+                      : []),
+                  ]
+                : []),
             ]}
           />
         )}
