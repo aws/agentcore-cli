@@ -1,9 +1,42 @@
 import { isMacOS, isWindows } from '../../../../lib/utils/platform';
 import { getErrorMessage } from '../../../errors';
 import type { ResourceInfo, TokenFetchResult } from '../../../operations/fetch-access';
-import { fetchGatewayToken, fetchRuntimeToken, listAgents, listGateways } from '../../../operations/fetch-access';
+import {
+  canFetchRuntimeToken,
+  fetchGatewayToken,
+  fetchRuntimeToken,
+  listAgents,
+  listGateways,
+} from '../../../operations/fetch-access';
 import { spawn } from 'node:child_process';
 import { useCallback, useEffect, useRef, useState } from 'react';
+
+async function fetchAgentAccess(resource: ResourceInfo): Promise<TokenFetchResult> {
+  if (resource.authType === 'AWS_IAM') {
+    return {
+      url: '',
+      authType: 'AWS_IAM',
+      message: 'This agent uses AWS_IAM authentication. Use AWS SigV4 signing to invoke.',
+    };
+  }
+
+  const canFetch = await canFetchRuntimeToken(resource.name);
+  if (!canFetch) {
+    return {
+      url: '',
+      authType: 'CUSTOM_JWT',
+      message: 'CUSTOM_JWT agent, but no managed OAuth credential is configured. Provide a token manually when invoking.',
+    };
+  }
+
+  const tokenResult = await fetchRuntimeToken(resource.name);
+  return {
+    url: '',
+    authType: 'CUSTOM_JWT',
+    token: tokenResult.token,
+    expiresIn: tokenResult.expiresIn,
+  };
+}
 
 type FetchAccessPhase = 'loading' | 'picking' | 'fetching' | 'result' | 'error';
 
@@ -88,15 +121,10 @@ export function useFetchAccessFlow() {
 
     const resource = state.selectedResource;
 
-    const fetchToken =
+    const fetchToken: Promise<TokenFetchResult> =
       resource.resourceType === 'gateway'
         ? fetchGatewayToken(resource.name)
-        : fetchRuntimeToken(resource.name).then(tokenResult => ({
-            url: '',
-            authType: 'CUSTOM_JWT' as const,
-            token: tokenResult.token,
-            expiresIn: tokenResult.expiresIn,
-          }));
+        : fetchAgentAccess(resource);
 
     fetchToken
       .then(result => {
