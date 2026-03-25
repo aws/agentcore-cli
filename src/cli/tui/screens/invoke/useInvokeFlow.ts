@@ -19,7 +19,7 @@ import {
 import { getErrorMessage } from '../../../errors';
 import { InvokeLogger } from '../../../logging';
 import { formatMcpToolList } from '../../../operations/dev/utils';
-import { fetchRuntimeToken } from '../../../operations/fetch-access';
+import { canFetchRuntimeToken, fetchRuntimeToken } from '../../../operations/fetch-access';
 import { generateSessionId } from '../../../operations/session';
 import { useCallback, useEffect, useRef, useState } from 'react';
 
@@ -199,6 +199,13 @@ export function useInvokeFlow(options: InvokeFlowOptions = {}): InvokeFlowState 
     if (!config) return;
     const agent = config.agents[selectedAgent];
     if (!agent || agent.authorizerType !== 'CUSTOM_JWT') return;
+
+    // Check if credentials are set up before attempting fetch
+    const canFetch = await canFetchRuntimeToken(agent.name);
+    if (!canFetch) {
+      // No credential configured — silently skip, user can press T to enter manually
+      return;
+    }
 
     setTokenFetchState('fetching');
     setTokenFetchError(null);

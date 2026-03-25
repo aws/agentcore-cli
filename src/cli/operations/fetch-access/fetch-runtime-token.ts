@@ -1,6 +1,42 @@
 import { ConfigIO } from '../../../lib';
+import { readEnvFile } from '../../../lib/utils/env';
+import {
+  computeDefaultCredentialEnvVarName,
+  computeManagedOAuthCredentialName,
+} from '../../primitives/credential-utils';
 import { fetchOAuthToken } from './oauth-token';
 import type { OAuthTokenResult } from './oauth-token';
+
+/**
+ * Check whether auto-fetch is possible for a CUSTOM_JWT agent.
+ * Returns true only if the managed OAuth credential exists in the project
+ * spec AND the client secret is available in .env.local.
+ */
+export async function canFetchRuntimeToken(
+  agentName: string,
+  options: { configIO?: ConfigIO } = {}
+): Promise<boolean> {
+  try {
+    const configIO = options.configIO ?? new ConfigIO();
+    const projectSpec = await configIO.readProjectSpec();
+
+    const agentSpec = projectSpec.agents.find(a => a.name === agentName);
+    if (!agentSpec || agentSpec.authorizerType !== 'CUSTOM_JWT') return false;
+    if (!agentSpec.authorizerConfiguration?.customJwtAuthorizer) return false;
+
+    const credName = computeManagedOAuthCredentialName(agentName);
+    const hasCredential = projectSpec.credentials.some(
+      c => c.type === 'OAuthCredentialProvider' && c.name === credName
+    );
+    if (!hasCredential) return false;
+
+    const secretEnvVar = computeDefaultCredentialEnvVarName(credName);
+    const envVars = await readEnvFile();
+    return !!envVars[secretEnvVar];
+  } catch {
+    return false;
+  }
+}
 
 /**
  * Fetch an OAuth access token for a CUSTOM_JWT runtime agent.
