@@ -43,7 +43,8 @@ describe('useGenerateWizard — advanced config gate', () => {
       const frame = lastFrame()!;
       expect(frame).toContain('steps:');
       // Default modelProvider is Bedrock which filters out apiKey
-      expect(frame).toMatch(/modelProvider,advanced,confirm/);
+      // authorizerType is always inserted before confirm
+      expect(frame).toMatch(/modelProvider,advanced,authorizerType,confirm/);
       expect(frame).not.toContain('apiKey');
     });
 
@@ -88,7 +89,7 @@ describe('useGenerateWizard — advanced config gate', () => {
       });
     }
 
-    it('setAdvanced(false) jumps to confirm with PUBLIC defaults', () => {
+    it('setAdvanced(false) jumps to authorizerType with PUBLIC defaults', () => {
       const { ref, lastFrame } = setup();
       walkToAdvanced(ref);
       expect(lastFrame()).toContain('step:advanced');
@@ -96,7 +97,7 @@ describe('useGenerateWizard — advanced config gate', () => {
       act(() => ref.current!.wizard.setAdvanced(false));
 
       const frame = lastFrame()!;
-      expect(frame).toContain('step:confirm');
+      expect(frame).toContain('step:authorizerType');
       expect(frame).toContain('networkMode:PUBLIC');
       expect(frame).toContain('advancedSelected:false');
     });
@@ -120,7 +121,7 @@ describe('useGenerateWizard — advanced config gate', () => {
 
       const steps = ref.current!.wizard.steps;
       const advIdx = steps.indexOf('advanced');
-      expect(steps.slice(advIdx)).toEqual(['advanced', 'networkMode', 'requestHeaderAllowlist', 'confirm']);
+      expect(steps.slice(advIdx)).toEqual(['advanced', 'networkMode', 'requestHeaderAllowlist', 'authorizerType', 'confirm']);
     });
 
     it('setAdvanced(true) then VPC injects subnets and securityGroups', () => {
@@ -138,6 +139,7 @@ describe('useGenerateWizard — advanced config gate', () => {
         'subnets',
         'securityGroups',
         'requestHeaderAllowlist',
+        'authorizerType',
         'confirm',
       ]);
     });
@@ -168,7 +170,7 @@ describe('useGenerateWizard — advanced config gate', () => {
       act(() => ref.current!.wizard.setAdvanced(false));
 
       const w = ref.current!.wizard;
-      expect(w.step).toBe('confirm');
+      expect(w.step).toBe('authorizerType');
       expect(w.config.networkMode).toBe('PUBLIC');
       expect(w.advancedSelected).toBe(false);
       // Network steps should not be in the step list

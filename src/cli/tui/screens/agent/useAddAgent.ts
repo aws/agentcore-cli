@@ -99,6 +99,8 @@ function mapAddAgentConfigToGenerateConfig(config: AddAgentConfig): GenerateConf
     subnets: config.subnets,
     securityGroups: config.securityGroups,
     requestHeaderAllowlist: config.requestHeaderAllowlist,
+    authorizerType: config.authorizerType,
+    jwtConfig: config.jwtConfig,
   };
 }
 
@@ -213,6 +215,16 @@ async function handleCreatePath(
     await writeAgentToProject(generateConfig, { configBaseDir });
   }
 
+  // Auto-create OAuth credential for CUSTOM_JWT inbound auth
+  if (config.authorizerType === 'CUSTOM_JWT' && config.jwtConfig?.clientId && config.jwtConfig?.clientSecret) {
+    await createManagedOAuthCredential(
+      config.name,
+      config.jwtConfig,
+      spec => configIO.writeProjectSpec(spec),
+      () => configIO.readProjectSpec()
+    );
+  }
+
   // Set up Python environment if applicable
   let pythonSetupResult: PythonSetupResult | undefined;
   if (config.language === 'Python') {
@@ -249,6 +261,8 @@ async function handleImportPath(
     bedrockAgentId: config.bedrockAgentId!,
     bedrockAliasId: config.bedrockAliasId!,
     configBaseDir,
+    authorizerType: config.authorizerType,
+    jwtConfig: config.jwtConfig,
   });
 
   if (!result.success) {

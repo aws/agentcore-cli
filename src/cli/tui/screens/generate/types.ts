@@ -3,9 +3,11 @@ import type {
   ModelProvider,
   NetworkMode,
   ProtocolMode,
+  RuntimeAuthorizerType,
   SDKFramework,
   TargetLanguage,
 } from '../../../../schema';
+import type { JwtConfigOptions } from '../../../primitives/auth-utils';
 import { DEFAULT_MODEL_IDS, PROTOCOL_FRAMEWORK_MATRIX, getSupportedModelProviders } from '../../../../schema';
 
 export type GenerateStep =
@@ -22,6 +24,8 @@ export type GenerateStep =
   | 'subnets'
   | 'securityGroups'
   | 'requestHeaderAllowlist'
+  | 'authorizerType'
+  | 'jwtConfig'
   | 'confirm';
 
 export type MemoryOption = 'none' | 'shortTerm' | 'longAndShortTerm';
@@ -44,6 +48,10 @@ export interface GenerateConfig {
   securityGroups?: string[];
   /** Allowed request headers for the runtime */
   requestHeaderAllowlist?: string[];
+  /** Authorizer type for inbound requests */
+  authorizerType?: RuntimeAuthorizerType;
+  /** JWT config for CUSTOM_JWT authorizer */
+  jwtConfig?: JwtConfigOptions;
 }
 
 /** Base steps - apiKey, memory, subnets, securityGroups are conditionally added based on selections */
@@ -73,6 +81,8 @@ export const STEP_LABELS: Record<GenerateStep, string> = {
   subnets: 'Subnets',
   securityGroups: 'Security Groups',
   requestHeaderAllowlist: 'Headers',
+  authorizerType: 'Auth',
+  jwtConfig: 'JWT Config',
   confirm: 'Confirm',
 };
 

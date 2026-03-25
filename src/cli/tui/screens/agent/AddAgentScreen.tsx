@@ -89,8 +89,8 @@ const ADVANCED_ITEMS: SelectableItem[] = ADVANCED_OPTIONS.map(o => ({
 }));
 const BYO_STEPS: ByoStep[] = ['codeLocation', 'buildType', 'modelProvider', 'apiKey', 'advanced', 'authorizerType', 'confirm'];
 
-type ImportStep = 'region' | 'bedrockAgent' | 'bedrockAlias' | 'framework' | 'memory' | 'confirm';
-const IMPORT_STEPS: ImportStep[] = ['region', 'bedrockAgent', 'bedrockAlias', 'framework', 'memory', 'confirm'];
+type ImportStep = 'region' | 'bedrockAgent' | 'bedrockAlias' | 'framework' | 'memory' | 'authorizerType' | 'jwtConfig' | 'confirm';
+const BASE_IMPORT_STEPS: ImportStep[] = ['region', 'bedrockAgent', 'bedrockAlias', 'framework', 'memory', 'authorizerType', 'confirm'];
 
 export function AddAgentScreen({ existingAgentNames, onComplete, onExit }: AddAgentScreenProps) {
   // Phase 1: name + agentType selection
@@ -155,6 +155,8 @@ export function AddAgentScreen({ existingAgentNames, onComplete, onExit }: AddAg
   }, [importConfig]);
   const [bedrockAgents, setBedrockAgents] = useState<BedrockAgentSummary[]>([]);
   const [bedrockAliases, setBedrockAliases] = useState<BedrockAliasSummary[]>([]);
+  const [importAuthorizerType, setImportAuthorizerType] = useState<RuntimeAuthorizerType>('AWS_IAM');
+  const [importJwtConfig, setImportJwtConfig] = useState<JwtConfigOptions | undefined>(undefined);
   const [importLoading, setImportLoading] = useState(false);
   const [importError, setImportError] = useState<string | null>(null);
 
@@ -223,6 +225,12 @@ export function AddAgentScreen({ existingAgentNames, onComplete, onExit }: AddAg
       subnets: generateWizard.config.networkMode === 'VPC' ? generateWizard.config.subnets : undefined,
       securityGroups: generateWizard.config.networkMode === 'VPC' ? generateWizard.config.securityGroups : undefined,
       requestHeaderAllowlist: generateWizard.config.requestHeaderAllowlist,
+      ...(generateWizard.config.authorizerType && generateWizard.config.authorizerType !== 'AWS_IAM' && {
+        authorizerType: generateWizard.config.authorizerType,
+      }),
+      ...(generateWizard.config.authorizerType === 'CUSTOM_JWT' && generateWizard.config.jwtConfig && {
+        jwtConfig: generateWizard.config.jwtConfig,
+      }),
       pythonVersion: DEFAULT_PYTHON_VERSION,
       memory: generateWizard.config.memory,
     };
@@ -442,17 +450,27 @@ export function AddAgentScreen({ existingAgentNames, onComplete, onExit }: AddAg
   // Import Path
   // ─────────────────────────────────────────────────────────────────────────────
 
-  const importCurrentIndex = IMPORT_STEPS.indexOf(importStep);
+  // Compute import steps dynamically (add jwtConfig after authorizerType when CUSTOM_JWT selected)
+  const importSteps = useMemo(() => {
+    let steps = [...BASE_IMPORT_STEPS];
+    if (importAuthorizerType === 'CUSTOM_JWT') {
+      const authIndex = steps.indexOf('authorizerType');
+      steps = [...steps.slice(0, authIndex + 1), 'jwtConfig', ...steps.slice(authIndex + 1)];
+    }
+    return steps;
+  }, [importAuthorizerType]);
+
+  const importCurrentIndex = importSteps.indexOf(importStep);
 
   const handleImportBack = useCallback(() => {
     if (importCurrentIndex === 0) {
       setAgentType(null);
       setInitialStep('agentType');
     } else {
-      const prevStep = IMPORT_STEPS[importCurrentIndex - 1];
+      const prevStep = importSteps[importCurrentIndex - 1];
       if (prevStep) setImportStep(prevStep);
     }
-  }, [importCurrentIndex]);
+  }, [importCurrentIndex, importSteps]);
 
   // Region selection items
   const regionItems: SelectableItem[] = useMemo(
@@ -562,10 +580,38 @@ export function AddAgentScreen({ existingAgentNames, onComplete, onExit }: AddAg
     items: importMemoryItems,
     onSelect: item => {
       setImportConfig(c => ({ ...c, memory: item.id as MemoryOption }));
-      setImportStep('confirm');
+      setImportStep('authorizerType');
     },
     onExit: handleImportBack,
     isActive: isImportPath && importStep === 'memory',
+  });
+
+  // Authorizer type selection for import path (reuse same items)
+  const importAuthorizerTypeNav = useListNavigation({
+    items: authorizerTypeItems,
+    onSelect: item => {
+      const authType = item.id as RuntimeAuthorizerType;
+      setImportAuthorizerType(authType);
+      if (authType === 'CUSTOM_JWT') {
+        setImportStep('jwtConfig');
+      } else {
+        setImportJwtConfig(undefined);
+        setImportStep('confirm');
+      }
+    },
+    onExit: handleImportBack,
+    isActive: isImportPath && importStep === 'authorizerType',
+  });
+
+  // JWT config flow for import path
+  const importJwtFlow = useJwtConfigFlow({
+    onComplete: jwtConfig => {
+      setImportJwtConfig(jwtConfig);
+      setImportStep('confirm');
+    },
+    onBack: () => {
+      setImportStep('authorizerType');
+    },
   });
 
   const handleImportComplete = useCallback(() => {
@@ -584,9 +630,11 @@ export function AddAgentScreen({ existingAgentNames, onComplete, onExit }: AddAg
       bedrockAgentId: importConfig.bedrockAgentId,
       bedrockAliasId: importConfig.bedrockAliasId,
       bedrockRegion: importConfig.region,
+      ...(importAuthorizerType !== 'AWS_IAM' && { authorizerType: importAuthorizerType }),
+      ...(importAuthorizerType === 'CUSTOM_JWT' && importJwtConfig && { jwtConfig: importJwtConfig }),
     };
     onComplete(config);
-  }, [name, importConfig, onComplete]);
+  }, [name, importConfig, importAuthorizerType, importJwtConfig, onComplete]);
 
   useListNavigation({
     items: [{ id: 'confirm', title: 'Confirm' }],
@@ -609,6 +657,15 @@ export function AddAgentScreen({ existingAgentNames, onComplete, onExit }: AddAg
     }
     if (isImportPath) {
       if (importStep === 'confirm') return HELP_TEXT.CONFIRM_CANCEL;
+      if (importStep === 'jwtConfig') {
+        if (importJwtFlow.subStep === 'constraintPicker') return HELP_TEXT.MULTI_SELECT;
+        if (importJwtFlow.subStep === 'customClaims') {
+          return importJwtFlow.claimsManagerMode === 'add' || importJwtFlow.claimsManagerMode === 'edit'
+            ? '↑/↓ field · ←/→ cycle · Enter next/save · Esc cancel'
+            : 'Navigate · Enter select · Esc back';
+        }
+        return HELP_TEXT.TEXT_INPUT;
+      }
       return HELP_TEXT.NAVIGATE_SELECT;
     }
     // BYO path
@@ -654,7 +711,7 @@ export function AddAgentScreen({ existingAgentNames, onComplete, onExit }: AddAg
       );
     }
     if (isImportPath) {
-      const allSteps: AddAgentStep[] = ['name', 'agentType', ...IMPORT_STEPS];
+      const allSteps: AddAgentStep[] = ['name', 'agentType', ...importSteps];
       return <StepIndicator steps={allSteps} currentStep={importStep} labels={ADD_AGENT_STEP_LABELS} />;
     }
     // BYO path
@@ -778,6 +835,38 @@ export function AddAgentScreen({ existingAgentNames, onComplete, onExit }: AddAg
             />
           )}
 
+          {importStep === 'authorizerType' && (
+            <WizardSelect
+              title="Select inbound auth mode"
+              items={authorizerTypeItems}
+              selectedIndex={importAuthorizerTypeNav.selectedIndex}
+            />
+          )}
+
+          {importStep === 'jwtConfig' && (
+            <JwtConfigInput
+              subStep={importJwtFlow.subStep}
+              steps={importJwtFlow.steps}
+              selectedConstraints={importJwtFlow.selectedConstraints}
+              customClaims={importJwtFlow.customClaims}
+              discoveryUrl={importJwtFlow.discoveryUrl}
+              audience={importJwtFlow.audience}
+              clients={importJwtFlow.clients}
+              scopes={importJwtFlow.scopes}
+              onDiscoveryUrl={importJwtFlow.handlers.handleDiscoveryUrl}
+              onConstraintsPicked={importJwtFlow.handlers.handleConstraintsPicked}
+              onAudience={importJwtFlow.handlers.handleAudience}
+              onClients={importJwtFlow.handlers.handleClients}
+              onScopes={importJwtFlow.handlers.handleScopes}
+              onCustomClaimsDone={importJwtFlow.handlers.handleCustomClaimsDone}
+              onClientId={importJwtFlow.handlers.handleClientId}
+              onClientIdSkip={importJwtFlow.handlers.handleClientIdSkip}
+              onClientSecret={importJwtFlow.handlers.handleClientSecret}
+              onBack={importJwtFlow.goBack}
+              onClaimsManagerModeChange={importJwtFlow.handlers.handleClaimsManagerModeChange}
+            />
+          )}
+
           {importStep === 'confirm' && (
             <ConfirmReview
               fields={[
@@ -796,6 +885,19 @@ export function AddAgentScreen({ existingAgentNames, onComplete, onExit }: AddAg
                   label: 'Memory',
                   value: MEMORY_OPTIONS.find(o => o.id === importConfig.memory)?.title ?? importConfig.memory,
                 },
+                ...(importAuthorizerType !== 'AWS_IAM'
+                  ? [
+                      {
+                        label: 'Inbound Auth',
+                        value:
+                          RUNTIME_AUTHORIZER_TYPE_OPTIONS.find(o => o.id === importAuthorizerType)?.title ??
+                          importAuthorizerType,
+                      },
+                    ]
+                  : []),
+                ...(importAuthorizerType === 'CUSTOM_JWT' && importJwtConfig
+                  ? [{ label: 'Discovery URL', value: importJwtConfig.discoveryUrl }]
+                  : []),
               ]}
             />
           )}

@@ -3,10 +3,12 @@
  * Provides executeImportAgent() as the shared handler called by both
  * the TUI hook (useAddAgent) and the non-interactive CLI (AgentPrimitive).
  */
-import { APP_DIR } from '../../../../lib';
-import type { SDKFramework } from '../../../../schema';
+import { APP_DIR, ConfigIO } from '../../../../lib';
+import type { RuntimeAuthorizerType, SDKFramework } from '../../../../schema';
 import { getBedrockAgentConfig } from '../../../aws/bedrock-import';
 import { getErrorMessage } from '../../../errors';
+import type { JwtConfigOptions } from '../../../primitives/auth-utils';
+import { buildAuthorizerConfigFromJwtConfig, createManagedOAuthCredential } from '../../../primitives/auth-utils';
 import type { AddResult } from '../../../primitives/types';
 import type { MemoryOption } from '../../../tui/screens/generate/types';
 import { setupPythonProject } from '../../python';
@@ -25,12 +27,14 @@ export interface ExecuteImportAgentParams {
   bedrockAgentId: string;
   bedrockAliasId: string;
   configBaseDir: string;
+  authorizerType?: RuntimeAuthorizerType;
+  jwtConfig?: JwtConfigOptions;
 }
 
 export async function executeImportAgent(
   params: ExecuteImportAgentParams
 ): Promise<AddResult<{ agentName: string; agentPath: string }>> {
-  const { name, framework, memory, bedrockRegion, bedrockAgentId, bedrockAliasId, configBaseDir } = params;
+  const { name, framework, memory, bedrockRegion, bedrockAgentId, bedrockAliasId, configBaseDir, authorizerType, jwtConfig } = params;
   const projectRoot = dirname(configBaseDir);
   const agentPath = join(projectRoot, APP_DIR, name);
 
@@ -76,8 +80,21 @@ export async function executeImportAgent(
       memory,
       language: 'Python' as const,
       protocol: 'HTTP' as const,
+      authorizerType,
+      jwtConfig,
     };
     await writeAgentToProject(generateConfig, { configBaseDir });
+
+    // 5b. Auto-create OAuth credential for CUSTOM_JWT inbound auth
+    if (authorizerType === 'CUSTOM_JWT' && jwtConfig?.clientId && jwtConfig?.clientSecret) {
+      const configIO = new ConfigIO({ baseDir: configBaseDir });
+      await createManagedOAuthCredential(
+        name,
+        jwtConfig,
+        spec => configIO.writeProjectSpec(spec),
+        () => configIO.readProjectSpec()
+      );
+    }
 
     // 6. Set up Python environment
     await setupPythonProject({ projectDir: agentPath });

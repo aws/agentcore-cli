@@ -1,10 +1,11 @@
-import type { ModelProvider, NetworkMode } from '../../../../schema';
+import type { ModelProvider, NetworkMode, RuntimeAuthorizerType } from '../../../../schema';
 import { DEFAULT_MODEL_IDS, ProjectNameSchema } from '../../../../schema';
 import { parseAndNormalizeHeaders, validateHeaderAllowlist } from '../../../commands/shared/header-utils';
-import { validateSecurityGroupIds, validateSubnetIds } from '../../../commands/shared/vpc-utils';
 import { computeDefaultCredentialEnvVarName } from '../../../primitives/credential-utils';
+import { validateSecurityGroupIds, validateSubnetIds } from '../../../commands/shared/vpc-utils';
 import { ApiKeySecretInput, Panel, SelectList, StepIndicator, TextInput } from '../../components';
 import type { SelectableItem } from '../../components';
+import { JwtConfigInput, useJwtConfigFlow } from '../../components/jwt-config';
 import { useListNavigation } from '../../hooks';
 import type { BuildType, GenerateConfig, GenerateStep, MemoryOption, ProtocolMode } from './types';
 import {
@@ -18,6 +19,7 @@ import {
   getModelProviderOptionsForSdk,
   getSDKOptionsForProtocol,
 } from './types';
+import { RUNTIME_AUTHORIZER_TYPE_OPTIONS } from '../agent/types';
 import type { useGenerateWizard } from './useGenerateWizard';
 import { Box, Text, useInput } from 'ink';
 
@@ -85,6 +87,8 @@ export function GenerateWizardUI({
         return ADVANCED_OPTIONS.map(o => ({ id: o.id, title: o.title, description: o.description }));
       case 'networkMode':
         return NETWORK_MODE_OPTIONS.map(o => ({ id: o.id, title: o.title, description: o.description }));
+      case 'authorizerType':
+        return RUNTIME_AUTHORIZER_TYPE_OPTIONS.map(o => ({ id: o.id, title: o.title, description: o.description }));
       default:
         return [];
     }
@@ -97,6 +101,7 @@ export function GenerateWizardUI({
   const isSubnetsStep = wizard.step === 'subnets';
   const isSecurityGroupsStep = wizard.step === 'securityGroups';
   const isRequestHeaderAllowlistStep = wizard.step === 'requestHeaderAllowlist';
+  const isJwtConfigStep = wizard.step === 'jwtConfig';
   const isConfirmStep = wizard.step === 'confirm';
 
   const handleSelect = (item: SelectableItem) => {
@@ -125,6 +130,9 @@ export function GenerateWizardUI({
       case 'networkMode':
         wizard.setNetworkMode(item.id as NetworkMode);
         break;
+      case 'authorizerType':
+        wizard.setAuthorizerType(item.id as RuntimeAuthorizerType);
+        break;
     }
   };
 
@@ -135,6 +143,16 @@ export function GenerateWizardUI({
     isActive: isActive && isSelectStep,
     isDisabled: item => item.disabled ?? false,
     resetKey: wizard.step,
+  });
+
+  // JWT config flow for CUSTOM_JWT authorizer
+  const jwtFlow = useJwtConfigFlow({
+    onComplete: jwtConfig => {
+      wizard.setJwtConfig(jwtConfig);
+    },
+    onBack: () => {
+      wizard.goBack();
+    },
   });
 
   // Handle confirm step input
@@ -244,6 +262,30 @@ export function GenerateWizardUI({
         </Box>
       )}
 
+      {isJwtConfigStep && (
+        <JwtConfigInput
+          subStep={jwtFlow.subStep}
+          steps={jwtFlow.steps}
+          selectedConstraints={jwtFlow.selectedConstraints}
+          customClaims={jwtFlow.customClaims}
+          discoveryUrl={jwtFlow.discoveryUrl}
+          audience={jwtFlow.audience}
+          clients={jwtFlow.clients}
+          scopes={jwtFlow.scopes}
+          onDiscoveryUrl={jwtFlow.handlers.handleDiscoveryUrl}
+          onConstraintsPicked={jwtFlow.handlers.handleConstraintsPicked}
+          onAudience={jwtFlow.handlers.handleAudience}
+          onClients={jwtFlow.handlers.handleClients}
+          onScopes={jwtFlow.handlers.handleScopes}
+          onCustomClaimsDone={jwtFlow.handlers.handleCustomClaimsDone}
+          onClientId={jwtFlow.handlers.handleClientId}
+          onClientIdSkip={jwtFlow.handlers.handleClientIdSkip}
+          onClientSecret={jwtFlow.handlers.handleClientSecret}
+          onBack={jwtFlow.goBack}
+          onClaimsManagerModeChange={jwtFlow.handlers.handleClaimsManagerModeChange}
+        />
+      )}
+
       {isConfirmStep && <ConfirmView config={wizard.config} credentialProjectName={credentialProjectName} />}
     </Panel>
   );
@@ -258,6 +300,7 @@ export function getWizardHelpText(step: GenerateStep): string {
   if (step === 'projectName' || step === 'subnets' || step === 'securityGroups' || step === 'requestHeaderAllowlist')
     return 'Enter submit · Esc cancel';
   if (step === 'apiKey') return 'Enter submit · Tab show/hide · Esc back';
+  if (step === 'jwtConfig') return 'Enter submit · Esc back';
   return '↑↓ navigate · Enter select · Esc back';
 }
 
@@ -358,6 +401,26 @@ function ConfirmView({ config, credentialProjectName }: { config: GenerateConfig
             <Text dimColor>Headers: </Text>
             <Text>{config.requestHeaderAllowlist.join(', ')}</Text>
           </Text>
+        )}
+        {config.authorizerType && config.authorizerType !== 'AWS_IAM' && (
+          <Text>
+            <Text dimColor>Inbound Auth: </Text>
+            <Text>{RUNTIME_AUTHORIZER_TYPE_OPTIONS.find(o => o.id === config.authorizerType)?.title ?? config.authorizerType}</Text>
+          </Text>
+        )}
+        {config.authorizerType === 'CUSTOM_JWT' && config.jwtConfig && (
+          <>
+            <Text>
+              <Text dimColor>Discovery URL: </Text>
+              <Text>{config.jwtConfig.discoveryUrl}</Text>
+            </Text>
+            {config.jwtConfig.allowedAudience && config.jwtConfig.allowedAudience.length > 0 && (
+              <Text>
+                <Text dimColor>Allowed Audience: </Text>
+                <Text>{config.jwtConfig.allowedAudience.join(', ')}</Text>
+              </Text>
+            )}
+          </>
         )}
       </Box>
     </Box>
