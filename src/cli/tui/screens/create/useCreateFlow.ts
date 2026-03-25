@@ -10,6 +10,7 @@ import {
   writeAgentToProject,
 } from '../../../operations/agent/generate';
 import { executeImportAgent } from '../../../operations/agent/import';
+import { createManagedOAuthCredential } from '../../../primitives/auth-utils';
 import { computeDefaultCredentialEnvVarName } from '../../../primitives/credential-utils';
 import { credentialPrimitive } from '../../../primitives/registry';
 import { CDKRenderer, createRenderer } from '../../../templates';
@@ -286,6 +287,8 @@ export function useCreateFlow(cwd: string): CreateFlowState {
                   subnets: addAgentConfig.subnets,
                   securityGroups: addAgentConfig.securityGroups,
                   requestHeaderAllowlist: addAgentConfig.requestHeaderAllowlist,
+                  authorizerType: addAgentConfig.authorizerType,
+                  jwtConfig: addAgentConfig.jwtConfig,
                 };
 
                 logger.logSubStep(`Framework: ${generateConfig.sdk}`);
@@ -332,6 +335,18 @@ export function useCreateFlow(cwd: string): CreateFlowState {
                 } else {
                   await writeAgentToProject(generateConfig, { configBaseDir });
                 }
+
+                // Auto-create OAuth credential for CUSTOM_JWT inbound auth
+                if (addAgentConfig.authorizerType === 'CUSTOM_JWT' && addAgentConfig.jwtConfig?.clientId && addAgentConfig.jwtConfig?.clientSecret) {
+                  logger.logSubStep('Creating OAuth credential for inbound auth...');
+                  const configIO = new ConfigIO({ baseDir: configBaseDir });
+                  await createManagedOAuthCredential(
+                    addAgentConfig.name,
+                    addAgentConfig.jwtConfig,
+                    spec => configIO.writeProjectSpec(spec),
+                    () => configIO.readProjectSpec()
+                  );
+                }
               } else if (addAgentConfig.agentType === 'import') {
                 // Import path: delegate to executeImportAgent
                 logger.logSubStep(`Importing from Bedrock Agent: ${addAgentConfig.bedrockAgentId}`);
@@ -343,6 +358,8 @@ export function useCreateFlow(cwd: string): CreateFlowState {
                   bedrockAgentId: addAgentConfig.bedrockAgentId!,
                   bedrockAliasId: addAgentConfig.bedrockAliasId!,
                   configBaseDir,
+                  authorizerType: addAgentConfig.authorizerType,
+                  jwtConfig: addAgentConfig.jwtConfig,
                 });
                 if (!importResult.success) {
                   throw new Error(importResult.error ?? 'Import failed');
@@ -389,6 +406,17 @@ export function useCreateFlow(cwd: string): CreateFlowState {
                 }
 
                 await configIO.writeProjectSpec(project);
+
+                // Auto-create OAuth credential for CUSTOM_JWT inbound auth
+                if (addAgentConfig.authorizerType === 'CUSTOM_JWT' && addAgentConfig.jwtConfig?.clientId && addAgentConfig.jwtConfig?.clientSecret) {
+                  logger.logSubStep('Creating OAuth credential for inbound auth...');
+                  await createManagedOAuthCredential(
+                    addAgentConfig.name,
+                    addAgentConfig.jwtConfig,
+                    spec => configIO.writeProjectSpec(spec),
+                    () => configIO.readProjectSpec()
+                  );
+                }
               }
             });
             logger.endStep('success');
