@@ -1,13 +1,7 @@
 import { isMacOS, isWindows } from '../../../../lib/utils/platform';
 import { getErrorMessage } from '../../../errors';
 import type { ResourceInfo, TokenFetchResult } from '../../../operations/fetch-access';
-import {
-  canFetchRuntimeToken,
-  fetchGatewayToken,
-  fetchRuntimeToken,
-  listAgents,
-  listGateways,
-} from '../../../operations/fetch-access';
+import { fetchGatewayToken, fetchRuntimeToken, listAgents, listGateways } from '../../../operations/fetch-access';
 import { spawn } from 'node:child_process';
 import { useCallback, useEffect, useRef, useState } from 'react';
 
@@ -20,15 +14,8 @@ async function fetchAgentAccess(resource: ResourceInfo): Promise<TokenFetchResul
     };
   }
 
-  const canFetch = await canFetchRuntimeToken(resource.name);
-  if (!canFetch) {
-    return {
-      url: '',
-      authType: 'CUSTOM_JWT',
-      message: 'CUSTOM_JWT agent, but no managed OAuth credential is configured. Provide a token manually when invoking.',
-    };
-  }
-
+  // For CUSTOM_JWT agents, attempt token fetch directly.
+  // Errors (missing credential, bad config) surface in the error phase.
   const tokenResult = await fetchRuntimeToken(resource.name);
   return {
     url: '',
