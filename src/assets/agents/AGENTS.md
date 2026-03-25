@@ -63,7 +63,7 @@ file maps to a JSON config file and includes validation constraints as comments.
 - **BuildType**: `'CodeZip'` | `'Container'`
 - **NetworkMode**: `'PUBLIC'`
 - **RuntimeVersion**: `'PYTHON_3_10'` | `'PYTHON_3_11'` | `'PYTHON_3_12'` | `'PYTHON_3_13'`
-- **MemoryStrategyType**: `'SEMANTIC'` | `'SUMMARIZATION'` | `'USER_PREFERENCE'`
+- **MemoryStrategyType**: `'SEMANTIC'` | `'SUMMARIZATION'` | `'USER_PREFERENCE'` | `'EPISODIC'`
 
 ### Build Types
 

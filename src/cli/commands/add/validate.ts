@@ -33,7 +33,8 @@ export interface ValidationResult {
 
 // Constants
 const MEMORY_OPTIONS = ['none', 'shortTerm', 'longAndShortTerm'] as const;
-const VALID_STRATEGIES = ['SEMANTIC', 'SUMMARIZATION', 'USER_PREFERENCE'];
+const OIDC_WELL_KNOWN_SUFFIX = '/.well-known/openid-configuration';
+const VALID_STRATEGIES = ['SEMANTIC', 'SUMMARIZATION', 'USER_PREFERENCE', 'EPISODIC'];
 
 /**
  * Validate that a credential name exists in the project spec.

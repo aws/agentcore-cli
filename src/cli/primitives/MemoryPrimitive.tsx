@@ -1,6 +1,6 @@
 import { findConfigRoot } from '../../lib';
 import type { Memory, MemoryStrategy, MemoryStrategyType } from '../../schema';
-import { DEFAULT_STRATEGY_NAMESPACES, MemorySchema } from '../../schema';
+import { DEFAULT_EPISODIC_REFLECTION_NAMESPACES, DEFAULT_STRATEGY_NAMESPACES, MemorySchema } from '../../schema';
 import { validateAddMemoryOptions } from '../commands/add/validate';
 import { getErrorMessage } from '../errors';
 import type { RemovalPreview, RemovalResult, SchemaChange } from '../operations/remove/types';
@@ -126,7 +126,7 @@ export class MemoryPrimitive extends BasePrimitive<AddMemoryOptions, RemovableMe
       .option('--name <name>', 'Memory name [non-interactive]')
       .option(
         '--strategies <types>',
-        'Comma-separated strategies: SEMANTIC, SUMMARIZATION, USER_PREFERENCE [non-interactive]'
+        'Comma-separated strategies: SEMANTIC, SUMMARIZATION, USER_PREFERENCE, EPISODIC [non-interactive]'
       )
       .option('--expiry <days>', 'Event expiry duration in days (default: 30) [non-interactive]')
       .option('--json', 'Output as JSON [non-interactive]')
@@ -223,6 +223,7 @@ export class MemoryPrimitive extends BasePrimitive<AddMemoryOptions, RemovableMe
       return {
         type: strategyType,
         ...(defaultNamespaces && { namespaces: defaultNamespaces }),
+        ...(strategyType === 'EPISODIC' && { reflectionNamespaces: DEFAULT_EPISODIC_REFLECTION_NAMESPACES }),
       };
     });
 

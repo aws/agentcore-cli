@@ -35,15 +35,16 @@ describe('mapGenerateInputToMemories', () => {
     expect(result[0]!.strategies).toEqual([]);
   });
 
-  it('returns memory with three strategies for "longAndShortTerm"', () => {
+  it('returns memory with four strategies for longAndShortTerm', () => {
     const result = mapGenerateInputToMemories('longAndShortTerm', 'Proj');
     expect(result).toHaveLength(1);
     const strategies = result[0]!.strategies;
-    expect(strategies).toHaveLength(3);
+    expect(strategies).toHaveLength(4);
     const types = strategies.map(s => s.type);
     expect(types).toContain('SEMANTIC');
     expect(types).toContain('USER_PREFERENCE');
     expect(types).toContain('SUMMARIZATION');
+    expect(types).toContain('EPISODIC');
   });
 
   it('includes default namespaces for strategies', () => {
@@ -128,7 +129,7 @@ describe('mapGenerateConfigToResources', () => {
     const result = mapGenerateConfigToResources(config);
     expect(result.memories).toHaveLength(1);
     expect(result.credentials).toHaveLength(1);
-    expect(result.memories[0]!.strategies).toHaveLength(3);
+    expect(result.memories[0]!.strategies).toHaveLength(4);
   });
 });
 
@@ -191,7 +192,7 @@ describe('mapGenerateConfigToRenderConfig', () => {
   it('populates memoryProviders with strategy types for longAndShortTerm', async () => {
     const config: GenerateConfig = { ...baseConfig, memory: 'longAndShortTerm' };
     const result = await mapGenerateConfigToRenderConfig(config, []);
-    expect(result.memoryProviders[0]!.strategies).toEqual(['SEMANTIC', 'USER_PREFERENCE', 'SUMMARIZATION']);
+    expect(result.memoryProviders[0]!.strategies).toEqual(['SEMANTIC', 'USER_PREFERENCE', 'SUMMARIZATION', 'EPISODIC']);
   });
 });
 

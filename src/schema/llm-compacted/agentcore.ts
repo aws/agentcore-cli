@@ -33,7 +33,7 @@ interface NetworkConfig {
   securityGroups: string[]; // sg-xxx IDs
 }
 
-type MemoryStrategyType = 'SEMANTIC' | 'SUMMARIZATION' | 'USER_PREFERENCE';
+type MemoryStrategyType = 'SEMANTIC' | 'SUMMARIZATION' | 'USER_PREFERENCE' | 'EPISODIC';
 type ModelProvider = 'Bedrock' | 'Gemini' | 'OpenAI' | 'Anthropic';
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -81,6 +81,7 @@ interface MemoryStrategy {
   name?: string; // @regex ^[a-zA-Z][a-zA-Z0-9_]{0,47}$ @max 48
   description?: string;
   namespaces?: string[];
+  reflectionNamespaces?: string[]; // EPISODIC only: namespaces for cross-episode reflections
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

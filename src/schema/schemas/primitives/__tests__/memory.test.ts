@@ -14,6 +14,10 @@ describe('MemoryStrategyTypeSchema', () => {
     it('accepts USER_PREFERENCE', () => {
       expect(MemoryStrategyTypeSchema.safeParse('USER_PREFERENCE').success).toBe(true);
     });
+
+    it('accepts EPISODIC', () => {
+      expect(MemoryStrategyTypeSchema.safeParse('EPISODIC').success).toBe(true);
+    });
   });
 
   describe('invalid strategy types', () => {
@@ -31,8 +35,8 @@ describe('MemoryStrategyTypeSchema', () => {
   });
 
   describe('schema options', () => {
-    it('only contains three valid strategies', () => {
-      expect(MemoryStrategyTypeSchema.options).toEqual(['SEMANTIC', 'SUMMARIZATION', 'USER_PREFERENCE']);
+    it('contains four valid strategies including EPISODIC', () => {
+      expect(MemoryStrategyTypeSchema.options).toEqual(['SEMANTIC', 'SUMMARIZATION', 'USER_PREFERENCE', 'EPISODIC']);
       expect(MemoryStrategyTypeSchema.options).not.toContain('CUSTOM');
     });
   });
@@ -81,6 +85,10 @@ describe('DEFAULT_STRATEGY_NAMESPACES', () => {
 
   it('has default namespaces for SUMMARIZATION', () => {
     expect(DEFAULT_STRATEGY_NAMESPACES.SUMMARIZATION).toEqual(['/summaries/{actorId}/{sessionId}']);
+  });
+
+  it('has default namespaces for EPISODIC', () => {
+    expect(DEFAULT_STRATEGY_NAMESPACES.EPISODIC).toEqual(['/strategy/{memoryStrategyId}/actor/{actorId}/']);
   });
 
   it('does not have default namespaces for CUSTOM (removed)', () => {

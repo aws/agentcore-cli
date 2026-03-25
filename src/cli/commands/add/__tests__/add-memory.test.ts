@@ -119,7 +119,7 @@ describe('add memory command', () => {
     it('sets default namespaces for each strategy type', async () => {
       const memoryName = `ns${Date.now()}`;
       const result = await runCLI(
-        ['add', 'memory', '--name', memoryName, '--strategies', 'SEMANTIC,USER_PREFERENCE,SUMMARIZATION', '--json'],
+        ['add', 'memory', '--name', memoryName, '--strategies', 'SEMANTIC,USER_PREFERENCE,SUMMARIZATION,EPISODIC', '--json'],
         projectDir
       );
 
@@ -137,6 +137,25 @@ describe('add memory command', () => {
 
       const summarization = memory?.strategies?.find((s: { type: string }) => s.type === 'SUMMARIZATION');
       expect(summarization?.namespaces).toEqual(['/summaries/{actorId}/{sessionId}']);
+
+      const episodic = memory?.strategies?.find((s: { type: string }) => s.type === 'EPISODIC');
+      expect(episodic?.namespaces).toEqual(['/strategy/{memoryStrategyId}/actor/{actorId}/']);
+      expect(episodic?.reflectionNamespaces).toEqual(['/strategy/{memoryStrategyId}/actor/{actorId}/']);
+    });
+
+    it('creates memory with EPISODIC strategy including default namespaces and reflectionNamespaces', async () => {
+      const memoryName = `epi${Date.now()}`;
+      const result = await runCLI(
+        ['add', 'memory', '--name', memoryName, '--strategies', 'EPISODIC', '--json'],
+        projectDir
+      );
+      expect(result.exitCode, `stdout: ${result.stdout}, stderr: ${result.stderr}`).toBe(0);
+      const projectSpec = JSON.parse(await readFile(join(projectDir, 'agentcore/agentcore.json'), 'utf-8'));
+      const memory = projectSpec.memories.find((m: { name: string }) => m.name === memoryName);
+      const episodic = memory?.strategies?.find((s: { type: string }) => s.type === 'EPISODIC');
+      expect(episodic).toBeTruthy();
+      expect(episodic?.namespaces).toEqual(['/strategy/{memoryStrategyId}/actor/{actorId}/']);
+      expect(episodic?.reflectionNamespaces).toEqual(['/strategy/{memoryStrategyId}/actor/{actorId}/']);
     });
   });
 });

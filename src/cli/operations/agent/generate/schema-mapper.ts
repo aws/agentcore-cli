@@ -9,7 +9,7 @@ import type {
   MemoryStrategyType,
   ModelProvider,
 } from '../../../../schema';
-import { DEFAULT_STRATEGY_NAMESPACES } from '../../../../schema';
+import { DEFAULT_EPISODIC_REFLECTION_NAMESPACES, DEFAULT_STRATEGY_NAMESPACES } from '../../../../schema';
 import { GatewayPrimitive } from '../../../primitives/GatewayPrimitive';
 import { buildAuthorizerConfigFromJwtConfig } from '../../../primitives/auth-utils';
 import {
@@ -67,12 +67,13 @@ export function mapGenerateInputToMemories(memory: MemoryOption, projectName: st
   // Short term memory has no strategies - just base memory with expiration time
   // Long term memory includes strategies for semantic search, summarization, and user preferences
   if (memory === 'longAndShortTerm') {
-    const strategyTypes: MemoryStrategyType[] = ['SEMANTIC', 'USER_PREFERENCE', 'SUMMARIZATION'];
+    const strategyTypes: MemoryStrategyType[] = ['SEMANTIC', 'USER_PREFERENCE', 'SUMMARIZATION', 'EPISODIC'];
     for (const type of strategyTypes) {
       const defaultNamespaces = DEFAULT_STRATEGY_NAMESPACES[type];
       strategies.push({
         type,
         ...(defaultNamespaces && { namespaces: defaultNamespaces }),
+        ...(type === 'EPISODIC' && { reflectionNamespaces: DEFAULT_EPISODIC_REFLECTION_NAMESPACES }),
       });
     }
   }

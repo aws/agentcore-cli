@@ -10,9 +10,10 @@ import { z } from 'zod';
  * - SEMANTIC → SemanticMemoryStrategy
  * - SUMMARIZATION → SummaryMemoryStrategy (note: CloudFormation uses "Summary")
  * - USER_PREFERENCE → UserPreferenceMemoryStrategy
+ * - EPISODIC → EpisodicMemoryStrategy
  * @see https://docs.aws.amazon.com/AWSCloudFormation/latest/TemplateReference/aws-properties-bedrockagentcore-memory-memorystrategy.html
  */
-export const MemoryStrategyTypeSchema = z.enum(['SEMANTIC', 'SUMMARIZATION', 'USER_PREFERENCE']);
+export const MemoryStrategyTypeSchema = z.enum(['SEMANTIC', 'SUMMARIZATION', 'USER_PREFERENCE', 'EPISODIC']);
 export type MemoryStrategyType = z.infer<typeof MemoryStrategyTypeSchema>;
 
 /**
@@ -23,7 +24,14 @@ export const DEFAULT_STRATEGY_NAMESPACES: Partial<Record<MemoryStrategyType, str
   SEMANTIC: ['/users/{actorId}/facts'],
   USER_PREFERENCE: ['/users/{actorId}/preferences'],
   SUMMARIZATION: ['/summaries/{actorId}/{sessionId}'],
+  EPISODIC: ['/strategy/{memoryStrategyId}/actor/{actorId}/'],
 };
+
+/**
+ * Default reflection namespaces for the EPISODIC strategy.
+ * The service requires reflection namespaces to be the same as or a prefix of episode namespaces.
+ */
+export const DEFAULT_EPISODIC_REFLECTION_NAMESPACES: string[] = ['/strategy/{memoryStrategyId}/actor/{actorId}/'];
 
 /**
  * Memory strategy name validation.
@@ -52,6 +60,8 @@ export const MemoryStrategySchema = z.object({
   description: z.string().optional(),
   /** Optional namespaces for scoping memory access */
   namespaces: z.array(z.string()).optional(),
+  /** Reflection namespaces for EPISODIC strategy. Required by the service for episodic strategies. */
+  reflectionNamespaces: z.array(z.string()).optional(),
 });
 
 export type MemoryStrategy = z.infer<typeof MemoryStrategySchema>;
