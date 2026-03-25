@@ -5,7 +5,7 @@ import type { NetworkMode, PythonRuntime } from '../../../../schema';
  */
 
 /** Default Python runtime version for new agents */
-export const DEFAULT_PYTHON_VERSION: PythonRuntime = 'PYTHON_3_12';
+export const DEFAULT_PYTHON_VERSION: PythonRuntime = 'PYTHON_3_14';
 
 /** Default network mode for agent runtimes */
 export const DEFAULT_NETWORK_MODE: NetworkMode = 'PUBLIC';
