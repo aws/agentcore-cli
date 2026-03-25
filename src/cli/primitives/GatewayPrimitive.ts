@@ -1,4 +1,4 @@
-import { findConfigRoot, setEnvVar } from '../../lib';
+import { findConfigRoot } from '../../lib';
 import type {
   AgentCoreGateway,
   AgentCoreGatewayTarget,
@@ -13,9 +13,9 @@ import { validateAddGatewayOptions } from '../commands/add/validate';
 import { getErrorMessage } from '../errors';
 import type { RemovalPreview, RemovalResult, SchemaChange } from '../operations/remove/types';
 import type { AddGatewayConfig } from '../tui/screens/mcp/types';
+import { buildAuthorizerConfigFromJwtConfig, createManagedOAuthCredential } from './auth-utils';
 import { BasePrimitive } from './BasePrimitive';
 import { SOURCE_CODE_NOTE } from './constants';
-import { computeDefaultCredentialEnvVarName, computeManagedOAuthCredentialName } from './credential-utils';
 import type { AddResult, AddScreenComponent, RemovableResource } from './types';
 import type { Command } from '@commander-js/extra-typings';
 
@@ -382,7 +382,10 @@ export class GatewayPrimitive extends BasePrimitive<AddGatewayOptions, Removable
       description: config.description,
       targets: movedTargets,
       authorizerType: config.authorizerType,
-      authorizerConfiguration: this.buildAuthorizerConfiguration(config),
+      authorizerConfiguration:
+        config.authorizerType === 'CUSTOM_JWT' && config.jwtConfig
+          ? buildAuthorizerConfigFromJwtConfig(config.jwtConfig)
+          : undefined,
       enableSemanticSearch: config.enableSemanticSearch,
       exceptionLevel: config.exceptionLevel,
       policyEngineConfiguration: config.policyEngineConfiguration,
@@ -393,61 +396,15 @@ export class GatewayPrimitive extends BasePrimitive<AddGatewayOptions, Removable
 
     // Auto-create OAuth credential if client credentials are provided
     if (config.jwtConfig?.clientId && config.jwtConfig?.clientSecret) {
-      await this.createManagedOAuthCredential(config.name, config.jwtConfig);
+      await createManagedOAuthCredential(
+        config.name,
+        config.jwtConfig,
+        spec => this.writeProjectSpec(spec),
+        () => this.readProjectSpec()
+      );
     }
 
     return { name: config.name };
-  }
-
-  /**
-   * Auto-create a managed OAuth credential for gateway inbound auth.
-   * Stores the credential in agentcore.json and writes the client ID and client secret to .env.
-   */
-  private async createManagedOAuthCredential(
-    gatewayName: string,
-    jwtConfig: NonNullable<AddGatewayConfig['jwtConfig']>
-  ): Promise<void> {
-    const credentialName = computeManagedOAuthCredentialName(gatewayName);
-    const project = await this.readProjectSpec();
-
-    // Skip if credential already exists
-    if (project.credentials.some(c => c.name === credentialName)) {
-      return;
-    }
-
-    project.credentials.push({
-      type: 'OAuthCredentialProvider',
-      name: credentialName,
-      discoveryUrl: jwtConfig.discoveryUrl,
-      vendor: 'CustomOauth2',
-      managed: true,
-      usage: 'inbound',
-    });
-    await this.writeProjectSpec(project);
-
-    // Write client ID and client secret to .env
-    const envVarPrefix = computeDefaultCredentialEnvVarName(credentialName);
-    await setEnvVar(`${envVarPrefix}_CLIENT_ID`, jwtConfig.clientId!);
-    await setEnvVar(`${envVarPrefix}_CLIENT_SECRET`, jwtConfig.clientSecret!);
-  }
-
-  /**
-   * Build authorizer configuration from wizard config.
-   */
-  private buildAuthorizerConfiguration(config: AddGatewayConfig): AgentCoreGateway['authorizerConfiguration'] {
-    if (config.authorizerType !== 'CUSTOM_JWT' || !config.jwtConfig) {
-      return undefined;
-    }
-
-    return {
-      customJwtAuthorizer: {
-        discoveryUrl: config.jwtConfig.discoveryUrl,
-        ...(config.jwtConfig.allowedAudience?.length ? { allowedAudience: config.jwtConfig.allowedAudience } : {}),
-        ...(config.jwtConfig.allowedClients?.length ? { allowedClients: config.jwtConfig.allowedClients } : {}),
-        ...(config.jwtConfig.allowedScopes?.length ? { allowedScopes: config.jwtConfig.allowedScopes } : {}),
-        ...(config.jwtConfig.customClaims?.length ? { customClaims: config.jwtConfig.customClaims } : {}),
-      },
-    };
   }
 
   /**
