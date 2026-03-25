@@ -136,6 +136,7 @@ export interface CreateWithAgentOptions {
   networkMode?: NetworkMode;
   subnets?: string[];
   securityGroups?: string[];
+  requestHeaderAllowlist?: string[];
   agentId?: string;
   agentAliasId?: string;
   region?: string;
@@ -158,6 +159,7 @@ export async function createProjectWithAgent(options: CreateWithAgentOptions): P
     networkMode,
     subnets,
     securityGroups,
+    requestHeaderAllowlist,
     skipGit,
     skipPythonSetup,
     onProgress,
@@ -234,6 +236,7 @@ export async function createProjectWithAgent(options: CreateWithAgentOptions): P
       networkMode,
       subnets,
       securityGroups,
+      requestHeaderAllowlist,
     };
 
     // Resolve credential strategy FIRST (new project has no existing credentials)

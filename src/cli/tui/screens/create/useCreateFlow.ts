@@ -285,6 +285,7 @@ export function useCreateFlow(cwd: string): CreateFlowState {
                   networkMode: addAgentConfig.networkMode,
                   subnets: addAgentConfig.subnets,
                   securityGroups: addAgentConfig.securityGroups,
+                  requestHeaderAllowlist: addAgentConfig.requestHeaderAllowlist,
                 };
 
                 logger.logSubStep(`Framework: ${generateConfig.sdk}`);
