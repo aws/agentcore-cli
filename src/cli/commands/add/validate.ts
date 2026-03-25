@@ -6,6 +6,7 @@ import {
   GatewayNameSchema,
   ModelProviderSchema,
   ProtocolModeSchema,
+  RuntimeAuthorizerTypeSchema,
   SDKFrameworkSchema,
   TARGET_TYPE_AUTH_CONFIG,
   TargetLanguageSchema,
@@ -237,6 +238,24 @@ export function validateAddAgentOptions(options: AddAgentOptions): ValidationRes
   const vpcResult = validateVpcOptions(options);
   if (!vpcResult.valid) {
     return { valid: false, error: vpcResult.error };
+  }
+
+  // Validate authorizer options (BYO path only)
+  if (options.authorizerType) {
+    const authResult = RuntimeAuthorizerTypeSchema.safeParse(options.authorizerType);
+    if (!authResult.success) {
+      return { valid: false, error: 'Invalid authorizer type. Use AWS_IAM or CUSTOM_JWT' };
+    }
+
+    if (options.authorizerType === 'CUSTOM_JWT') {
+      const jwtResult = validateJwtAuthorizerOptions(options);
+      if (!jwtResult.valid) return jwtResult;
+    }
+  }
+
+  // Validate OAuth client credentials require CUSTOM_JWT
+  if (options.clientId && options.authorizerType !== 'CUSTOM_JWT') {
+    return { valid: false, error: 'OAuth client credentials are only valid with CUSTOM_JWT authorizer' };
   }
 
   return { valid: true };

@@ -2,11 +2,13 @@ import { APP_DIR, ConfigIO, NoProjectError, findConfigRoot, setEnvVar } from '..
 import type {
   AgentEnvSpec,
   BuildType,
+  CustomClaimValidation,
   DirectoryPath,
   FilePath,
   ModelProvider,
   NetworkMode,
   ProtocolMode,
+  RuntimeAuthorizerType,
   SDKFramework,
   TargetLanguage,
 } from '../../schema';
@@ -27,6 +29,7 @@ import { setupPythonProject } from '../operations/python';
 import type { RemovalPreview, RemovalResult, SchemaChange } from '../operations/remove/types';
 import { createRenderer } from '../templates';
 import type { MemoryOption } from '../tui/screens/generate/types';
+import { buildAuthorizerConfigFromJwtConfig, createManagedOAuthCredential } from './auth-utils';
 import { BasePrimitive } from './BasePrimitive';
 import { CredentialPrimitive } from './CredentialPrimitive';
 import { computeDefaultCredentialEnvVarName } from './credential-utils';
@@ -53,6 +56,14 @@ export interface AddAgentOptions extends VpcOptions {
   bedrockAgentId?: string;
   bedrockAliasId?: string;
   bedrockRegion?: string;
+  authorizerType?: RuntimeAuthorizerType;
+  discoveryUrl?: string;
+  allowedAudience?: string;
+  allowedClients?: string;
+  allowedScopes?: string;
+  customClaims?: CustomClaimValidation[];
+  clientId?: string;
+  clientSecret?: string;
 }
 
 /**
@@ -193,6 +204,14 @@ export class AgentPrimitive extends BasePrimitive<AddAgentOptions, RemovableReso
       .option('--network-mode <mode>', 'Network mode (PUBLIC, VPC) [non-interactive]')
       .option('--subnets <ids>', 'Comma-separated subnet IDs (required for VPC mode) [non-interactive]')
       .option('--security-groups <ids>', 'Comma-separated security group IDs (required for VPC mode) [non-interactive]')
+      .option('--authorizer-type <type>', 'Inbound auth: AWS_IAM or CUSTOM_JWT [non-interactive]')
+      .option('--discovery-url <url>', 'OIDC discovery URL (for CUSTOM_JWT) [non-interactive]')
+      .option('--allowed-audience <audience>', 'Comma-separated allowed audiences (for CUSTOM_JWT) [non-interactive]')
+      .option('--allowed-clients <clients>', 'Comma-separated allowed client IDs (for CUSTOM_JWT) [non-interactive]')
+      .option('--allowed-scopes <scopes>', 'Comma-separated allowed scopes (for CUSTOM_JWT) [non-interactive]')
+      .option('--custom-claims <json>', 'Custom claim validations as JSON array (for CUSTOM_JWT) [non-interactive]')
+      .option('--client-id <id>', 'OAuth client ID for agent bearer token [non-interactive]')
+      .option('--client-secret <secret>', 'OAuth client secret [non-interactive]')
       .option('--json', 'Output as JSON [non-interactive]')
       .action(async options => {
         if (!findConfigRoot()) {
@@ -214,6 +233,11 @@ export class AgentPrimitive extends BasePrimitive<AddAgentOptions, RemovableReso
             process.exit(1);
           }
 
+          // Parse custom claims JSON if provided (already validated by validateAddAgentOptions)
+          const customClaims = cliOptions.customClaims
+            ? (JSON.parse(cliOptions.customClaims) as CustomClaimValidation[])
+            : undefined;
+
           const result = await this.add({
             name: cliOptions.name!,
             type: cliOptions.type ?? 'create',
@@ -232,6 +256,14 @@ export class AgentPrimitive extends BasePrimitive<AddAgentOptions, RemovableReso
             bedrockAgentId: cliOptions.agentId,
             bedrockAliasId: cliOptions.agentAliasId,
             bedrockRegion: cliOptions.region,
+            authorizerType: cliOptions.authorizerType,
+            discoveryUrl: cliOptions.discoveryUrl,
+            allowedAudience: cliOptions.allowedAudience,
+            allowedClients: cliOptions.allowedClients,
+            allowedScopes: cliOptions.allowedScopes,
+            customClaims,
+            clientId: cliOptions.clientId,
+            clientSecret: cliOptions.clientSecret,
           });
 
           if (cliOptions.json) {
@@ -391,6 +423,25 @@ export class AgentPrimitive extends BasePrimitive<AddAgentOptions, RemovableReso
     const subnets = parseCommaSeparatedList(options.subnets);
     const securityGroups = parseCommaSeparatedList(options.securityGroups);
 
+    // Build authorizer configuration if CUSTOM_JWT
+    const authorizerType = options.authorizerType;
+    const authorizerConfiguration =
+      authorizerType === 'CUSTOM_JWT' && options.discoveryUrl
+        ? buildAuthorizerConfigFromJwtConfig({
+            discoveryUrl: options.discoveryUrl,
+            allowedAudience: options.allowedAudience
+              ? options.allowedAudience.split(',').map(s => s.trim()).filter(Boolean)
+              : undefined,
+            allowedClients: options.allowedClients
+              ? options.allowedClients.split(',').map(s => s.trim()).filter(Boolean)
+              : undefined,
+            allowedScopes: options.allowedScopes
+              ? options.allowedScopes.split(',').map(s => s.trim()).filter(Boolean)
+              : undefined,
+            customClaims: options.customClaims,
+          })
+        : undefined;
+
     const agent: AgentEnvSpec = {
       type: 'AgentCoreRuntime',
       name: options.name,
@@ -407,6 +458,8 @@ export class AgentPrimitive extends BasePrimitive<AddAgentOptions, RemovableReso
         }),
       // MCP uses mcp.run() which is incompatible with the opentelemetry-instrument wrapper
       ...(protocol === 'MCP' && { instrumentation: { enableOtel: false } }),
+      ...(authorizerType && { authorizerType }),
+      ...(authorizerConfiguration && { authorizerConfiguration }),
     };
 
     project.agents.push(agent);
@@ -437,6 +490,16 @@ export class AgentPrimitive extends BasePrimitive<AddAgentOptions, RemovableReso
     }
 
     await configIO.writeProjectSpec(project);
+
+    // Auto-create OAuth credential for CUSTOM_JWT inbound auth
+    if (authorizerType === 'CUSTOM_JWT' && options.clientId && options.clientSecret && options.discoveryUrl) {
+      await createManagedOAuthCredential(
+        options.name,
+        { discoveryUrl: options.discoveryUrl, clientId: options.clientId, clientSecret: options.clientSecret },
+        spec => configIO.writeProjectSpec(spec),
+        () => configIO.readProjectSpec()
+      );
+    }
 
     return { success: true, agentName: options.name };
   }
