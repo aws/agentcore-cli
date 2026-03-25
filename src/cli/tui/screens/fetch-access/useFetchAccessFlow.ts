@@ -1,7 +1,7 @@
 import { isMacOS, isWindows } from '../../../../lib/utils/platform';
 import { getErrorMessage } from '../../../errors';
-import type { GatewayInfo, TokenFetchResult } from '../../../operations/fetch-access';
-import { fetchGatewayToken, listGateways } from '../../../operations/fetch-access';
+import type { ResourceInfo, TokenFetchResult } from '../../../operations/fetch-access';
+import { fetchGatewayToken, fetchRuntimeToken, listAgents, listGateways } from '../../../operations/fetch-access';
 import { spawn } from 'node:child_process';
 import { useCallback, useEffect, useRef, useState } from 'react';
 
@@ -9,9 +9,9 @@ type FetchAccessPhase = 'loading' | 'picking' | 'fetching' | 'result' | 'error';
 
 interface FetchAccessState {
   phase: FetchAccessPhase;
-  gateways: GatewayInfo[];
+  resources: ResourceInfo[];
   selectedIndex: number;
-  selectedGateway?: string;
+  selectedResource?: ResourceInfo;
   result?: TokenFetchResult;
   error?: string;
   tokenVisible: boolean;
@@ -21,7 +21,7 @@ interface FetchAccessState {
 export function useFetchAccessFlow() {
   const [state, setState] = useState<FetchAccessState>({
     phase: 'loading',
-    gateways: [],
+    resources: [],
     selectedIndex: 0,
     tokenVisible: false,
   });
@@ -35,27 +35,32 @@ export function useFetchAccessFlow() {
     };
   }, []);
 
-  // Load gateways on mount
+  // Load gateways and agents on mount
   useEffect(() => {
-    listGateways()
-      .then(gateways => {
+    Promise.all([listGateways(), listAgents()])
+      .then(([gateways, agents]) => {
         if (!mountedRef.current) return;
 
-        if (gateways.length === 0) {
+        const resources: ResourceInfo[] = [
+          ...gateways.map(gw => ({ name: gw.name, resourceType: 'gateway' as const, authType: gw.authType })),
+          ...agents.map(ag => ({ name: ag.name, resourceType: 'agent' as const, authType: ag.authType })),
+        ];
+
+        if (resources.length === 0) {
           setState(prev => ({
             ...prev,
             phase: 'error',
-            error: 'No deployed gateways found. Run `agentcore deploy` first.',
+            error: 'No deployed gateways or agents found. Run `agentcore deploy` first.',
           }));
           return;
         }
 
-        // Auto-skip picker when only one gateway
-        if (gateways.length === 1) {
+        // Auto-skip picker when only one resource
+        if (resources.length === 1) {
           setState(prev => ({
             ...prev,
-            gateways,
-            selectedGateway: gateways[0]!.name,
+            resources,
+            selectedResource: resources[0],
             phase: 'fetching',
           }));
           return;
@@ -63,7 +68,7 @@ export function useFetchAccessFlow() {
 
         setState(prev => ({
           ...prev,
-          gateways,
+          resources,
           phase: 'picking',
         }));
       })
@@ -77,11 +82,23 @@ export function useFetchAccessFlow() {
       });
   }, []);
 
-  // Fetch access info when gateway is selected
+  // Fetch access info when resource is selected
   useEffect(() => {
-    if (state.phase !== 'fetching' || !state.selectedGateway) return;
+    if (state.phase !== 'fetching' || !state.selectedResource) return;
 
-    fetchGatewayToken(state.selectedGateway)
+    const resource = state.selectedResource;
+
+    const fetchToken =
+      resource.resourceType === 'gateway'
+        ? fetchGatewayToken(resource.name)
+        : fetchRuntimeToken(resource.name).then(tokenResult => ({
+            url: '',
+            authType: 'CUSTOM_JWT' as const,
+            token: tokenResult.token,
+            expiresIn: tokenResult.expiresIn,
+          }));
+
+    fetchToken
       .then(result => {
         if (!mountedRef.current) return;
         setState(prev => ({
@@ -100,12 +117,12 @@ export function useFetchAccessFlow() {
           error: getErrorMessage(error),
         }));
       });
-  }, [state.phase, state.selectedGateway]);
+  }, [state.phase, state.selectedResource]);
 
-  const selectGateway = useCallback((name: string) => {
+  const selectResource = useCallback((resource: ResourceInfo) => {
     setState(prev => ({
       ...prev,
-      selectedGateway: name,
+      selectedResource: resource,
       phase: 'fetching',
       tokenVisible: false,
     }));
@@ -113,8 +130,8 @@ export function useFetchAccessFlow() {
 
   const moveSelection = useCallback((direction: 1 | -1) => {
     setState(prev => {
-      if (prev.phase !== 'picking' || prev.gateways.length === 0) return prev;
-      const newIndex = (prev.selectedIndex + direction + prev.gateways.length) % prev.gateways.length;
+      if (prev.phase !== 'picking' || prev.resources.length === 0) return prev;
+      const newIndex = (prev.selectedIndex + direction + prev.resources.length) % prev.resources.length;
       return { ...prev, selectedIndex: newIndex };
     });
   }, []);
@@ -122,11 +139,11 @@ export function useFetchAccessFlow() {
   const confirmSelection = useCallback(() => {
     setState(prev => {
       if (prev.phase !== 'picking') return prev;
-      const gateway = prev.gateways[prev.selectedIndex];
-      if (!gateway) return prev;
+      const resource = prev.resources[prev.selectedIndex];
+      if (!resource) return prev;
       return {
         ...prev,
-        selectedGateway: gateway.name,
+        selectedResource: resource,
         phase: 'fetching',
         tokenVisible: false,
       };
@@ -180,7 +197,7 @@ export function useFetchAccessFlow() {
   const refresh = useCallback(() => {
     setTokenMayBeExpired(false);
     setState(prev => {
-      if (!prev.selectedGateway) return prev;
+      if (!prev.selectedResource) return prev;
       return {
         ...prev,
         phase: 'fetching',
@@ -194,33 +211,33 @@ export function useFetchAccessFlow() {
   const goBackToPicker = useCallback(() => {
     setTokenMayBeExpired(false);
     setState(prev => {
-      if (prev.gateways.length <= 1) return prev;
+      if (prev.resources.length <= 1) return prev;
       return {
         ...prev,
         phase: 'picking',
         result: undefined,
         error: undefined,
-        selectedGateway: undefined,
+        selectedResource: undefined,
         tokenVisible: false,
       };
     });
   }, []);
 
-  // Can go back to picker if there are multiple gateways (single-gateway auto-skips picker)
-  const canGoBack = state.gateways.length > 1;
+  // Can go back to picker if there are multiple resources (single-resource auto-skips picker)
+  const canGoBack = state.resources.length > 1;
 
   return {
     phase: state.phase,
-    gateways: state.gateways,
+    resources: state.resources,
     selectedIndex: state.selectedIndex,
-    selectedGateway: state.selectedGateway,
+    selectedResource: state.selectedResource,
     result: state.result,
     error: state.error,
     tokenVisible: state.tokenVisible,
     tokenMayBeExpired,
     copied,
     canGoBack,
-    selectGateway,
+    selectResource,
     moveSelection,
     confirmSelection,
     toggleTokenVisibility,

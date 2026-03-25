@@ -1,4 +1,4 @@
-import { fetchGatewayToken, listGateways } from '../../../../operations/fetch-access';
+import { fetchGatewayToken, listAgents, listGateways } from '../../../../operations/fetch-access';
 import { useFetchAccessFlow } from '../useFetchAccessFlow';
 import { Text } from 'ink';
 import { render } from 'ink-testing-library';
@@ -11,10 +11,13 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 
 vi.mock('../../../../operations/fetch-access', () => ({
   listGateways: vi.fn(),
+  listAgents: vi.fn(),
   fetchGatewayToken: vi.fn(),
+  fetchRuntimeToken: vi.fn(),
 }));
 
 const mockListGateways = vi.mocked(listGateways);
+const mockListAgents = vi.mocked(listAgents);
 const mockFetchGatewayToken = vi.mocked(fetchGatewayToken);
 
 // ---------------------------------------------------------------------------
@@ -56,7 +59,7 @@ function PhaseHarness() {
   return (
     <Text>
       phase:{flow.phase}
-      gatewayCount:{flow.gateways.length}
+      resourceCount:{flow.resources.length}
       selectedIndex:{flow.selectedIndex}
       tokenVisible:{String(flow.tokenVisible)}
       error:{flow.error ?? ''}
@@ -65,7 +68,6 @@ function PhaseHarness() {
 }
 
 interface HarnessHandle {
-  selectGateway: (name: string) => void;
   moveSelection: (direction: 1 | -1) => void;
   confirmSelection: () => void;
   toggleTokenVisibility: () => void;
@@ -79,7 +81,6 @@ interface HarnessHandle {
 const ImperativeHarness = React.forwardRef<HarnessHandle>((_, ref) => {
   const flow = useFetchAccessFlow();
   useImperativeHandle(ref, () => ({
-    selectGateway: flow.selectGateway,
     moveSelection: flow.moveSelection,
     confirmSelection: flow.confirmSelection,
     toggleTokenVisibility: flow.toggleTokenVisibility,
@@ -114,32 +115,39 @@ describe('useFetchAccessFlow', () => {
           /* never resolves */
         })
       );
+      mockListAgents.mockReturnValue(
+        new Promise(() => {
+          /* never resolves */
+        })
+      );
       const { lastFrame } = render(<PhaseHarness />);
 
       expect(lastFrame()).toContain('phase:loading');
     });
   });
 
-  describe('transitions to picking for multiple gateways', () => {
-    it('enters picking phase when listGateways returns 2+ gateways', async () => {
+  describe('transitions to picking for multiple resources', () => {
+    it('enters picking phase when combined gateways and agents total 2+', async () => {
       mockListGateways.mockResolvedValue(mockGateways);
+      mockListAgents.mockResolvedValue([]);
       const { lastFrame } = render(<PhaseHarness />);
 
       await delay();
 
       expect(lastFrame()).toContain('phase:picking');
-      expect(lastFrame()).toContain('gatewayCount:2');
+      expect(lastFrame()).toContain('resourceCount:2');
     });
   });
 
-  describe('auto-skip picker for single gateway', () => {
-    it('skips picking and enters fetching phase when only 1 gateway is returned', async () => {
+  describe('auto-skip picker for single resource', () => {
+    it('skips picking and enters fetching phase when only 1 resource is returned', async () => {
       mockFetchGatewayToken.mockReturnValue(
         new Promise(() => {
           /* never resolves */
         })
       );
       mockListGateways.mockResolvedValue([{ name: 'gw-only', authType: 'NONE' as const }]);
+      mockListAgents.mockResolvedValue([]);
       const { lastFrame } = render(<PhaseHarness />);
 
       await delay();
@@ -148,9 +156,10 @@ describe('useFetchAccessFlow', () => {
     });
   });
 
-  describe('error when no gateways found', () => {
-    it('transitions to error phase with message when listGateways returns empty array', async () => {
+  describe('error when no resources found', () => {
+    it('transitions to error phase when both lists return empty', async () => {
       mockListGateways.mockResolvedValue([]);
+      mockListAgents.mockResolvedValue([]);
       const { lastFrame } = render(<PhaseHarness />);
 
       await delay();
@@ -162,6 +171,7 @@ describe('useFetchAccessFlow', () => {
   describe('confirmSelection transitions to fetching', () => {
     it('calling confirmSelection in picking phase sets phase to fetching', async () => {
       mockListGateways.mockResolvedValue(mockGateways);
+      mockListAgents.mockResolvedValue([]);
       mockFetchGatewayToken.mockReturnValue(
         new Promise(() => {
           /* never resolves */
@@ -184,6 +194,7 @@ describe('useFetchAccessFlow', () => {
   describe('token visibility toggle', () => {
     it('toggleTokenVisibility flips tokenVisible for CUSTOM_JWT result with token', async () => {
       mockListGateways.mockResolvedValue([{ name: 'gw-jwt', authType: 'CUSTOM_JWT' as const }]);
+      mockListAgents.mockResolvedValue([]);
       mockFetchGatewayToken.mockResolvedValue(mockJwtResult);
       const ref = React.createRef<HarnessHandle>();
       const { lastFrame } = render(<ImperativeHarness ref={ref} />);
@@ -207,6 +218,7 @@ describe('useFetchAccessFlow', () => {
 
     it('toggleTokenVisibility is a no-op when result has no token (NONE auth type)', async () => {
       mockListGateways.mockResolvedValue([{ name: 'gw-none', authType: 'NONE' as const }]);
+      mockListAgents.mockResolvedValue([]);
       mockFetchGatewayToken.mockResolvedValue(mockNoneResult);
       const ref = React.createRef<HarnessHandle>();
       const { lastFrame } = render(<ImperativeHarness ref={ref} />);
@@ -226,6 +238,7 @@ describe('useFetchAccessFlow', () => {
   describe('refresh re-fetches access info', () => {
     it('calling refresh in result phase transitions back to fetching', async () => {
       mockListGateways.mockResolvedValue([{ name: 'gw-jwt', authType: 'CUSTOM_JWT' as const }]);
+      mockListAgents.mockResolvedValue([]);
       mockFetchGatewayToken.mockResolvedValueOnce(mockJwtResult).mockReturnValue(
         new Promise(() => {
           /* never resolves on second call */
@@ -248,6 +261,7 @@ describe('useFetchAccessFlow', () => {
   describe('error handling for failed fetch', () => {
     it('transitions to error phase with error message when fetchGatewayToken throws', async () => {
       mockListGateways.mockResolvedValue([{ name: 'gw-jwt', authType: 'CUSTOM_JWT' as const }]);
+      mockListAgents.mockResolvedValue([]);
       mockFetchGatewayToken.mockRejectedValue(new Error('Token request failed: 401 Unauthorized'));
       const { lastFrame } = render(<PhaseHarness />);
 
