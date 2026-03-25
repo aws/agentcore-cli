@@ -1,10 +1,5 @@
 import { ConfigIO } from '../../../lib';
-import { readEnvFile } from '../../../lib/utils/env';
-import type { AgentCoreProjectSpec, DeployedState } from '../../../schema';
-import {
-  computeDefaultCredentialEnvVarName,
-  computeManagedOAuthCredentialName,
-} from '../../primitives/credential-utils';
+import { fetchOAuthToken } from './oauth-token';
 import type { TokenFetchResult } from './types';
 
 export async function fetchGatewayToken(
@@ -63,17 +58,6 @@ export async function fetchGatewayToken(
   }
 
   // CUSTOM_JWT: perform OAuth client_credentials flow
-  return fetchCustomJwtToken(gatewayName, gatewayUrl, gatewaySpec, deployedState, targetName, projectSpec);
-}
-
-async function fetchCustomJwtToken(
-  gatewayName: string,
-  gatewayUrl: string,
-  gatewaySpec: AgentCoreProjectSpec['agentCoreGateways'][number],
-  deployedState: DeployedState,
-  targetName: string,
-  projectSpec: { credentials: { type: string; name: string }[] }
-): Promise<TokenFetchResult> {
   const jwtConfig = gatewaySpec.authorizerConfiguration?.customJwtAuthorizer;
   if (!jwtConfig) {
     throw new Error(
@@ -81,135 +65,18 @@ async function fetchCustomJwtToken(
     );
   }
 
-  // Resolve credential name using the GatewayPrimitive naming convention
-  const credName = computeManagedOAuthCredentialName(gatewayName);
-
-  // Validate credential exists in project spec
-  const credential = projectSpec.credentials.find(c => c.type === 'OAuthCredentialProvider' && c.name === credName);
-  if (!credential) {
-    throw new Error(
-      `No managed OAuth credential found for gateway. Expected credential '${credName}'. ` +
-        `Re-create the gateway with --client-id and --client-secret.`
-    );
-  }
-
-  // Resolve client_secret from .env.local (GatewayPrimitive pattern: bare env var name)
-  const secretEnvVar = computeDefaultCredentialEnvVarName(credName);
-  const envVars = await readEnvFile();
-  const clientSecret = envVars[secretEnvVar];
-  if (!clientSecret) {
-    throw new Error(
-      `Client secret not found in environment variable ${secretEnvVar}. Ensure .env.local file contains this value.`
-    );
-  }
-
-  // Resolve client_id using 3-tier fallback
-  const clientId = resolveClientId(deployedState, targetName, credName, secretEnvVar, envVars, jwtConfig);
-  if (!clientId) {
-    throw new Error('Could not determine OAuth client ID. Ensure the gateway was created with --client-id.');
-  }
-
-  // Perform OIDC discovery
-  const discoveryUrl = jwtConfig.discoveryUrl;
-  const discoveryResponse = await fetch(discoveryUrl);
-  if (!discoveryResponse.ok) {
-    throw new Error(
-      `OIDC discovery failed: ${discoveryResponse.status} ${discoveryResponse.statusText} (${discoveryUrl})`
-    );
-  }
-  const discoveryDoc = (await discoveryResponse.json()) as {
-    token_endpoint?: string;
-    grant_types_supported?: string[];
-  };
-  const tokenEndpoint = discoveryDoc.token_endpoint;
-  if (!tokenEndpoint) {
-    throw new Error(`OIDC discovery response missing 'token_endpoint' field (${discoveryUrl})`);
-  }
-
-  // Detect 3-legged OAuth (authorization code flow) — not supported
-  const supportedGrants = discoveryDoc.grant_types_supported;
-  if (supportedGrants && !supportedGrants.includes('client_credentials')) {
-    throw new Error(
-      `This OAuth provider does not support the client_credentials grant type. ` +
-        `Supported grants: ${supportedGrants.join(', ')}. ` +
-        `Authorization code flows (3-legged OAuth) requiring browser login are not yet supported.`
-    );
-  }
-
-  // Build token request body
-  const params = new URLSearchParams({
-    grant_type: 'client_credentials',
-    client_id: clientId,
-    client_secret: clientSecret,
+  const result = await fetchOAuthToken({
+    resourceName: gatewayName,
+    jwtConfig,
+    deployedState,
+    targetName,
+    credentials: projectSpec.credentials,
   });
-
-  const scopes = jwtConfig.allowedScopes;
-  if (scopes && scopes.length > 0) {
-    params.set('scope', scopes.join(' '));
-  }
-
-  // Request token
-  const tokenResponse = await fetch(tokenEndpoint, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-    body: params.toString(),
-  });
-
-  if (!tokenResponse.ok) {
-    const errorBody = await tokenResponse.text();
-    if (errorBody.includes('unsupported_grant_type')) {
-      throw new Error(
-        `Token request failed: the OAuth provider rejected the client_credentials grant type. ` +
-          `This gateway may require an authorization code flow (3-legged OAuth) which is not yet supported.`
-      );
-    }
-    throw new Error(`Token request failed: ${tokenResponse.status} ${tokenResponse.statusText}. ${errorBody}`);
-  }
-
-  const tokenData = (await tokenResponse.json()) as {
-    access_token?: string;
-    expires_in?: number;
-    token_type?: string;
-  };
-
-  if (!tokenData.access_token) {
-    throw new Error('Token response missing access_token field.');
-  }
 
   return {
     url: gatewayUrl,
     authType: 'CUSTOM_JWT',
-    token: tokenData.access_token,
-    expiresIn: tokenData.expires_in,
+    token: result.token,
+    expiresIn: result.expiresIn,
   };
-}
-
-function resolveClientId(
-  deployedState: DeployedState,
-  targetName: string,
-  credName: string,
-  secretEnvVar: string,
-  envVars: Record<string, string>,
-  jwtConfig: { allowedClients?: string[] }
-): string | undefined {
-  // Tier 1: deployed-state credentials (currently dead code — CredentialDeployedStateSchema
-  // has no clientId field, but preserved for forward-compatibility if schema is extended)
-  const deployedCred = deployedState.targets[targetName]?.resources?.credentials?.[credName];
-  if (deployedCred && 'clientId' in deployedCred) {
-    return (deployedCred as Record<string, string>).clientId;
-  }
-
-  // Tier 2: env var ${secretEnvVar}_CLIENT_ID (primary real path today)
-  const clientIdEnvVar = `${secretEnvVar}_CLIENT_ID`;
-  const envClientId = envVars[clientIdEnvVar];
-  if (envClientId) {
-    return envClientId;
-  }
-
-  // Tier 3: allowedClients[0] from agentcore.json (fallback)
-  if (jwtConfig.allowedClients && jwtConfig.allowedClients.length > 0) {
-    return jwtConfig.allowedClients[0];
-  }
-
-  return undefined;
 }

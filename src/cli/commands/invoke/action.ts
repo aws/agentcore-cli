@@ -8,6 +8,7 @@ import {
   mcpInitSession,
   mcpListTools,
 } from '../../aws';
+import { fetchRuntimeToken } from '../../operations/fetch-access';
 import { InvokeLogger } from '../../logging';
 import { formatMcpToolList } from '../../operations/dev/utils';
 import type { InvokeOptions, InvokeResult } from './types';
@@ -87,6 +88,19 @@ export async function handleInvoke(context: InvokeContext, options: InvokeOption
 
   if (!agentState) {
     return { success: false, error: `Agent '${agentSpec.name}' is not deployed to target '${selectedTargetName}'` };
+  }
+
+  // Auto-fetch bearer token for CUSTOM_JWT agents when not provided
+  if (agentSpec.authorizerType === 'CUSTOM_JWT' && !options.bearerToken) {
+    try {
+      const tokenResult = await fetchRuntimeToken(agentSpec.name, { deployTarget: selectedTargetName });
+      options = { ...options, bearerToken: tokenResult.token };
+    } catch (err) {
+      return {
+        success: false,
+        error: `CUSTOM_JWT agent requires a bearer token. Auto-fetch failed: ${err instanceof Error ? err.message : String(err)}\nProvide one manually with --bearer-token.`,
+      };
+    }
   }
 
   // MCP protocol handling

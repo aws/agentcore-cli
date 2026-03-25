@@ -112,9 +112,13 @@ export function InvokeScreen({
     sessionId,
     userId,
     bearerToken,
+    tokenFetchState,
+    tokenFetchError,
+    tokenExpiresIn,
     mcpToolsFetched,
     selectAgent,
     setBearerToken,
+    fetchBearerToken,
     invoke,
     newSession,
     fetchMcpTools,
@@ -259,9 +263,13 @@ export function InvokeScreen({
           return;
         }
 
-        // Token input for CUSTOM_JWT
+        // Token management for CUSTOM_JWT
         if (input === 't' && phase === 'ready' && isCustomJwt) {
           setMode('token-input');
+          return;
+        }
+        if (input === 'r' && phase === 'ready' && isCustomJwt) {
+          void fetchBearerToken();
           return;
         }
 
@@ -283,14 +291,21 @@ export function InvokeScreen({
     { isActive: mode === 'chat' || mode === 'select-agent' }
   );
 
-  // Auto-prompt for bearer token when CUSTOM_JWT agent is selected and no token is set
-  const tokenPromptShownRef = useRef(false);
+  // Auto-fetch bearer token when CUSTOM_JWT agent is selected and no token is set
+  const tokenFetchTriggeredRef = useRef(false);
   useEffect(() => {
-    if (isCustomJwt && !bearerToken && mode === 'input' && messages.length === 0 && !tokenPromptShownRef.current) {
-      tokenPromptShownRef.current = true;
-      queueMicrotask(() => setMode('token-input'));
+    if (
+      isCustomJwt &&
+      !bearerToken &&
+      !initialBearerToken &&
+      mode !== 'select-agent' &&
+      tokenFetchState === 'idle' &&
+      !tokenFetchTriggeredRef.current
+    ) {
+      tokenFetchTriggeredRef.current = true;
+      void fetchBearerToken();
     }
-  }, [isCustomJwt, bearerToken, mode, messages.length]
+  }, [isCustomJwt, bearerToken, initialBearerToken, mode, tokenFetchState, fetchBearerToken]
   );
 
   // Error state - show error in main screen
@@ -329,7 +344,7 @@ export function InvokeScreen({
 
   // Dynamic help text
   const backOrQuit = config.agents.length > 1 ? 'Esc back' : 'Esc quit';
-  const tokenHint = isCustomJwt ? ' · T set token' : '';
+  const tokenHint = isCustomJwt ? ' · T token · R refresh' : '';
   const helpText =
     mode === 'select-agent'
       ? '↑↓ select · Enter confirm · Esc quit'
@@ -390,8 +405,20 @@ export function InvokeScreen({
       {mode !== 'select-agent' && isCustomJwt && (
         <Box>
           <Text>Auth: </Text>
-          <Text color={bearerToken ? 'green' : 'yellow'}>{bearerToken ? 'Bearer token set' : 'CUSTOM_JWT (no token)'}</Text>
-          {!bearerToken && <Text color="yellow"> — press T to set token</Text>}
+          {tokenFetchState === 'fetching' && <Text color="yellow">Fetching token...</Text>}
+          {tokenFetchState === 'fetched' && bearerToken && (
+            <Text color="green">
+              Token fetched{tokenExpiresIn ? ` (expires in ${Math.floor(tokenExpiresIn / 60)}m)` : ''}
+              {' · R refresh · T manual'}
+            </Text>
+          )}
+          {tokenFetchState === 'error' && (
+            <Text color="red">
+              Token fetch failed{tokenFetchError ? `: ${tokenFetchError}` : ''} — press T to enter manually
+            </Text>
+          )}
+          {tokenFetchState === 'idle' && bearerToken && <Text color="green">Bearer token set · T change · R refresh</Text>}
+          {tokenFetchState === 'idle' && !bearerToken && <Text color="yellow">CUSTOM_JWT — press T to set token</Text>}
         </Box>
       )}
       {logFilePath && <LogLink filePath={logFilePath} />}

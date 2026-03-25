@@ -19,6 +19,7 @@ import {
 import { getErrorMessage } from '../../../errors';
 import { InvokeLogger } from '../../../logging';
 import { formatMcpToolList } from '../../../operations/dev/utils';
+import { fetchRuntimeToken } from '../../../operations/fetch-access';
 import { generateSessionId } from '../../../operations/session';
 import { useCallback, useEffect, useRef, useState } from 'react';
 
@@ -44,6 +45,8 @@ export interface InvokeFlowOptions {
   initialBearerToken?: string;
 }
 
+export type TokenFetchState = 'idle' | 'fetching' | 'fetched' | 'error';
+
 export interface InvokeFlowState {
   phase: 'loading' | 'ready' | 'invoking' | 'error';
   config: InvokeConfig | null;
@@ -54,11 +57,15 @@ export interface InvokeFlowState {
   sessionId: string | null;
   userId: string;
   bearerToken: string;
+  tokenFetchState: TokenFetchState;
+  tokenFetchError: string | null;
+  tokenExpiresIn: number | undefined;
   mcpTools: McpToolDef[];
   mcpToolsFetched: boolean;
   selectAgent: (index: number) => void;
   setUserId: (id: string) => void;
   setBearerToken: (token: string) => void;
+  fetchBearerToken: () => Promise<void>;
   invoke: (prompt: string) => Promise<void>;
   newSession: () => void;
   fetchMcpTools: () => Promise<void>;
@@ -75,6 +82,9 @@ export function useInvokeFlow(options: InvokeFlowOptions = {}): InvokeFlowState 
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [userId, setUserId] = useState<string>(initialUserId ?? DEFAULT_RUNTIME_USER_ID);
   const [bearerToken, setBearerToken] = useState<string>(initialBearerToken ?? '');
+  const [tokenFetchState, setTokenFetchState] = useState<TokenFetchState>('idle');
+  const [tokenFetchError, setTokenFetchError] = useState<string | null>(null);
+  const [tokenExpiresIn, setTokenExpiresIn] = useState<number | undefined>(undefined);
 
   // MCP state
   const [mcpTools, setMcpTools] = useState<McpToolDef[]>([]);
@@ -184,6 +194,24 @@ export function useInvokeFlow(options: InvokeFlowOptions = {}): InvokeFlowState 
       setMcpToolsFetched(true);
     }
   }, [getMcpInvokeOptions]);
+
+  const fetchBearerToken = useCallback(async () => {
+    if (!config) return;
+    const agent = config.agents[selectedAgent];
+    if (!agent || agent.authorizerType !== 'CUSTOM_JWT') return;
+
+    setTokenFetchState('fetching');
+    setTokenFetchError(null);
+    try {
+      const result = await fetchRuntimeToken(agent.name, { deployTarget: config.targetName });
+      setBearerToken(result.token);
+      setTokenExpiresIn(result.expiresIn);
+      setTokenFetchState('fetched');
+    } catch (err) {
+      setTokenFetchError(getErrorMessage(err));
+      setTokenFetchState('error');
+    }
+  }, [config, selectedAgent]);
 
   // Track current streaming content to avoid stale closure issues
   const streamingContentRef = useRef('');
@@ -355,11 +383,15 @@ export function useInvokeFlow(options: InvokeFlowOptions = {}): InvokeFlowState 
     sessionId,
     userId,
     bearerToken,
+    tokenFetchState,
+    tokenFetchError,
+    tokenExpiresIn,
     mcpTools,
     mcpToolsFetched,
     selectAgent: setSelectedAgent,
     setUserId,
     setBearerToken,
+    fetchBearerToken,
     invoke,
     newSession,
     fetchMcpTools,
