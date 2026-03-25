@@ -20,7 +20,11 @@ export interface McpToolsResult {
  * Sends initialize + tools/list JSON-RPC requests to the MCP endpoint.
  * Returns tools and the session ID needed for subsequent calls.
  */
-export async function listMcpTools(port: number, logger?: SSELogger, customHeaders?: Record<string, string>): Promise<McpToolsResult> {
+export async function listMcpTools(
+  port: number,
+  logger?: SSELogger,
+  customHeaders?: Record<string, string>
+): Promise<McpToolsResult> {
   const maxRetries = 5;
   const baseDelay = 500;
   let lastError: Error | null = null;
@@ -43,7 +47,11 @@ export async function listMcpTools(port: number, logger?: SSELogger, customHeade
 
       const initRes = await fetch(`http://localhost:${port}/mcp`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', Accept: 'application/json, text/event-stream', ...customHeaders },
+        headers: {
+          'Content-Type': 'application/json',
+          Accept: 'application/json, text/event-stream',
+          ...customHeaders,
+        },
         body: JSON.stringify(initBody),
       });
 
@@ -84,7 +92,11 @@ export async function listMcpTools(port: number, logger?: SSELogger, customHeade
 
       const listRes = await fetch(`http://localhost:${port}/mcp`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', Accept: 'application/json, text/event-stream', ...sessionHeaders },
+        headers: {
+          'Content-Type': 'application/json',
+          Accept: 'application/json, text/event-stream',
+          ...sessionHeaders,
+        },
         body: JSON.stringify(listBody),
       });
 

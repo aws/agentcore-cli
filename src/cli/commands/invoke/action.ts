@@ -168,7 +168,12 @@ export async function handleInvoke(context: InvokeContext, options: InvokeOption
   if (agentSpec.protocol === 'A2A') {
     try {
       const a2aResult = await invokeA2ARuntime(
-        { region: targetConfig.region, runtimeArn: agentState.runtimeArn, userId: options.userId, headers: options.headers },
+        {
+          region: targetConfig.region,
+          runtimeArn: agentState.runtimeArn,
+          userId: options.userId,
+          headers: options.headers,
+        },
         options.prompt
       );
       let response = '';

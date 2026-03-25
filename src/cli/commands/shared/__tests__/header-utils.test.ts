@@ -1,4 +1,10 @@
-import { normalizeHeaderName, parseAndNormalizeHeaders, parseHeaderFlag, parseHeaderFlags, validateHeaderAllowlist } from '../header-utils';
+import {
+  normalizeHeaderName,
+  parseAndNormalizeHeaders,
+  parseHeaderFlag,
+  parseHeaderFlags,
+  validateHeaderAllowlist,
+} from '../header-utils';
 import { describe, expect, it } from 'vitest';
 
 describe('normalizeHeaderName', () => {

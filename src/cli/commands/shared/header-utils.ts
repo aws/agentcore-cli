@@ -99,9 +99,7 @@ export function parseHeaderFlags(rawHeaders: string[]): Record<string, string> {
   for (const raw of rawHeaders) {
     const parsed = parseHeaderFlag(raw);
     if (!parsed) {
-      throw new Error(
-        `Invalid header format: "${raw}". Expected "Header-Name: value" or "Header-Name:value".`
-      );
+      throw new Error(`Invalid header format: "${raw}". Expected "Header-Name: value" or "Header-Name:value".`);
     }
     result[parsed.name] = parsed.value;
   }

@@ -41,7 +41,13 @@ export interface ConversationMessage {
 
 const MAX_LOG_ENTRIES = 50;
 
-export function useDevServer(options: { workingDir: string; port: number; agentName?: string; onReady?: () => void; headers?: Record<string, string> }) {
+export function useDevServer(options: {
+  workingDir: string;
+  port: number;
+  agentName?: string;
+  onReady?: () => void;
+  headers?: Record<string, string>;
+}) {
   const [logs, setLogs] = useState<LogEntry[]>([]);
   const [status, setStatus] = useState<ServerStatus>('starting');
   const [isStreaming, setIsStreaming] = useState(false);
@@ -326,7 +332,12 @@ export function useDevServer(options: { workingDir: string; port: number; agentN
               onStatus: setA2aStatus,
               headers: options.headers,
             })
-          : invokeAgentStreaming({ port: actualPort, message, logger: loggerRef.current ?? undefined, headers: options.headers });
+          : invokeAgentStreaming({
+              port: actualPort,
+              message,
+              logger: loggerRef.current ?? undefined,
+              headers: options.headers,
+            });
 
       for await (const chunk of streamFn) {
         responseContent += chunk;

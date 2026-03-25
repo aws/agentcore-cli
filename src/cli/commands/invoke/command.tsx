@@ -104,7 +104,12 @@ export const registerInvoke = (program: Command) => {
     .option('--stream', 'Stream response in real-time (TUI streams by default) [non-interactive]')
     .option('--tool <name>', 'MCP tool name (use with "call-tool" prompt) [non-interactive]')
     .option('--input <json>', 'MCP tool arguments as JSON (use with --tool) [non-interactive]')
-    .option('-H, --header <header>', 'Custom header to forward to the agent (format: "Name: Value", repeatable)', (val: string, prev: string[]) => [...prev, val], [] as string[])
+    .option(
+      '-H, --header <header>',
+      'Custom header to forward to the agent (format: "Name: Value", repeatable)',
+      (val: string, prev: string[]) => [...prev, val],
+      [] as string[]
+    )
     .action(
       async (
         positionalPrompt: string | undefined,

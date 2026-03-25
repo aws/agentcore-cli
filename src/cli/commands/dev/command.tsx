@@ -1,5 +1,4 @@
 import { findConfigRoot, getWorkingDirectory, readEnvFile } from '../../../lib';
-import { parseHeaderFlags } from '../shared/header-utils';
 import { getErrorMessage } from '../../errors';
 import { ExecLogger } from '../../logging';
 import {
@@ -21,6 +20,7 @@ import { FatalError } from '../../tui/components';
 import { LayoutProvider } from '../../tui/context';
 import { COMMAND_DESCRIPTIONS } from '../../tui/copy';
 import { requireProject } from '../../tui/guards';
+import { parseHeaderFlags } from '../shared/header-utils';
 import type { Command } from '@commander-js/extra-typings';
 import { Text, render } from 'ink';
 import React from 'react';
@@ -30,7 +30,12 @@ const ENTER_ALT_SCREEN = '\x1B[?1049h\x1B[H';
 const EXIT_ALT_SCREEN = '\x1B[?1049l';
 const SHOW_CURSOR = '\x1B[?25h';
 
-async function invokeDevServer(port: number, prompt: string, stream: boolean, headers?: Record<string, string>): Promise<void> {
+async function invokeDevServer(
+  port: number,
+  prompt: string,
+  stream: boolean,
+  headers?: Record<string, string>
+): Promise<void> {
   try {
     if (stream) {
       // Stream response to stdout
@@ -70,7 +75,13 @@ async function invokeA2ADevServer(port: number, prompt: string, headers?: Record
   }
 }
 
-async function handleMcpInvoke(port: number, invokeValue: string, toolName?: string, input?: string, headers?: Record<string, string>): Promise<void> {
+async function handleMcpInvoke(
+  port: number,
+  invokeValue: string,
+  toolName?: string,
+  input?: string,
+  headers?: Record<string, string>
+): Promise<void> {
   try {
     if (invokeValue === 'list-tools') {
       const { tools } = await listMcpTools(port, undefined, headers);
@@ -133,7 +144,12 @@ export const registerDev = (program: Command) => {
     .option('-l, --logs', 'Run dev server with logs to stdout [non-interactive]')
     .option('--tool <name>', 'MCP tool name (used with --invoke call-tool)')
     .option('--input <json>', 'MCP tool arguments as JSON (used with --invoke call-tool)')
-    .option('-H, --header <header>', 'Custom header to forward to the agent (format: "Name: Value", repeatable)', (val: string, prev: string[]) => [...prev, val], [] as string[])
+    .option(
+      '-H, --header <header>',
+      'Custom header to forward to the agent (format: "Name: Value", repeatable)',
+      (val: string, prev: string[]) => [...prev, val],
+      [] as string[]
+    )
     .action(async opts => {
       try {
         const port = parseInt(opts.port, 10);
