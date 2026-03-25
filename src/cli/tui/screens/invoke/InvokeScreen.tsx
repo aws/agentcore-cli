@@ -264,11 +264,11 @@ export function InvokeScreen({
         }
 
         // Token management for CUSTOM_JWT
-        if (input === 't' && phase === 'ready' && isCustomJwt) {
+        if (key.ctrl && input === 't' && phase === 'ready' && isCustomJwt) {
           setMode('token-input');
           return;
         }
-        if (input === 'r' && phase === 'ready' && isCustomJwt) {
+        if (key.ctrl && input === 'r' && phase === 'ready' && isCustomJwt) {
           void fetchBearerToken();
           return;
         }
@@ -344,7 +344,7 @@ export function InvokeScreen({
 
   // Dynamic help text
   const backOrQuit = config.agents.length > 1 ? 'Esc back' : 'Esc quit';
-  const tokenHint = isCustomJwt ? ' · T token · R refresh' : '';
+  const tokenHint = isCustomJwt ? ' · ^T token · ^R refresh' : '';
   const helpText =
     mode === 'select-agent'
       ? '↑↓ select · Enter confirm · Esc quit'
@@ -409,16 +409,16 @@ export function InvokeScreen({
           {tokenFetchState === 'fetched' && bearerToken && (
             <Text color="green">
               Token fetched{tokenExpiresIn ? ` (expires in ${Math.floor(tokenExpiresIn / 60)}m)` : ''}
-              {' · R refresh · T manual'}
+              {' · ^R refresh · ^T manual'}
             </Text>
           )}
           {tokenFetchState === 'error' && (
             <Text color="red">
-              Token fetch failed{tokenFetchError ? `: ${tokenFetchError}` : ''} — press T to enter manually
+              Token fetch failed{tokenFetchError ? `: ${tokenFetchError}` : ''} — ^T to enter manually
             </Text>
           )}
-          {tokenFetchState === 'idle' && bearerToken && <Text color="green">Bearer token set · T change · R refresh</Text>}
-          {tokenFetchState === 'idle' && !bearerToken && <Text color="yellow">CUSTOM_JWT — press T to set token</Text>}
+          {tokenFetchState === 'idle' && bearerToken && <Text color="green">Bearer token set · ^T change · ^R refresh</Text>}
+          {tokenFetchState === 'idle' && !bearerToken && <Text color="yellow">CUSTOM_JWT — ^T to set token</Text>}
         </Box>
       )}
       {logFilePath && <LogLink filePath={logFilePath} />}
