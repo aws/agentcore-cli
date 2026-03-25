@@ -9,7 +9,7 @@ import {
   writeAgentToProject,
 } from '../../../operations/agent/generate';
 import { executeImportAgent } from '../../../operations/agent/import';
-import { buildAuthorizerConfigFromJwtConfig } from '../../../primitives/auth-utils';
+import { buildAuthorizerConfigFromJwtConfig, createManagedOAuthCredential } from '../../../primitives/auth-utils';
 import { computeDefaultCredentialEnvVarName } from '../../../primitives/credential-utils';
 import { credentialPrimitive } from '../../../primitives/registry';
 import { createRenderer } from '../../../templates';
@@ -313,6 +313,16 @@ async function handleByoPath(
   } else {
     // Bedrock: no credentials needed
     await configIO.writeProjectSpec(project);
+  }
+
+  // Auto-create OAuth credential for CUSTOM_JWT inbound auth
+  if (config.authorizerType === 'CUSTOM_JWT' && config.jwtConfig?.clientId && config.jwtConfig?.clientSecret) {
+    await createManagedOAuthCredential(
+      config.name,
+      config.jwtConfig,
+      spec => configIO.writeProjectSpec(spec),
+      () => configIO.readProjectSpec()
+    );
   }
 
   return { ok: true, type: 'byo', agentName: config.name, projectName: project.name };
