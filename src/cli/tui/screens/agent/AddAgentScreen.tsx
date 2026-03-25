@@ -1004,7 +1004,6 @@ export function AddAgentScreen({ existingAgentNames, onComplete, onExit }: AddAg
             <TextInput
               prompt="Allowed request headers (comma-separated, or press Enter to skip)"
               initialValue={byoConfig.requestHeaderAllowlist}
-              allowEmpty
               customValidation={value => {
                 const result = validateHeaderAllowlist(value);
                 return result.success ? true : result.error!;
