@@ -138,7 +138,7 @@ describe('fetchGatewayToken', () => {
   describe('auth type CUSTOM_JWT', () => {
     beforeEach(() => {
       vi.mocked(readEnvFile).mockResolvedValue({
-        AGENTCORE_CREDENTIAL_MYGATEWAY_OAUTH: 'test-secret',
+        AGENTCORE_CREDENTIAL_MYGATEWAY_OAUTH_CLIENT_SECRET: 'test-secret',
         AGENTCORE_CREDENTIAL_MYGATEWAY_OAUTH_CLIENT_ID: 'test-client',
       });
 
@@ -170,7 +170,7 @@ describe('fetchGatewayToken', () => {
 
     it('uses tier 2 CLIENT_ID env var when set', async () => {
       vi.mocked(readEnvFile).mockResolvedValue({
-        AGENTCORE_CREDENTIAL_MYGATEWAY_OAUTH: 'test-secret',
+        AGENTCORE_CREDENTIAL_MYGATEWAY_OAUTH_CLIENT_SECRET: 'test-secret',
         AGENTCORE_CREDENTIAL_MYGATEWAY_OAUTH_CLIENT_ID: 'tier2-client',
       });
 
@@ -187,7 +187,7 @@ describe('fetchGatewayToken', () => {
 
     it('falls back to tier 3 allowedClients[0] when no CLIENT_ID env var', async () => {
       vi.mocked(readEnvFile).mockResolvedValue({
-        AGENTCORE_CREDENTIAL_MYGATEWAY_OAUTH: 'test-secret',
+        AGENTCORE_CREDENTIAL_MYGATEWAY_OAUTH_CLIENT_SECRET: 'test-secret',
       });
 
       const projectSpecWithFallbackClient = {
@@ -296,7 +296,7 @@ describe('fetchGatewayToken', () => {
 
     it('throws when client_id is not resolvable', async () => {
       vi.mocked(readEnvFile).mockResolvedValue({
-        AGENTCORE_CREDENTIAL_MYGATEWAY_OAUTH: 'test-secret',
+        AGENTCORE_CREDENTIAL_MYGATEWAY_OAUTH_CLIENT_SECRET: 'test-secret',
         // no CLIENT_ID env var
       });
 
@@ -326,7 +326,7 @@ describe('fetchGatewayToken', () => {
 
     it('throws when OIDC discovery returns non-ok response', async () => {
       vi.mocked(readEnvFile).mockResolvedValue({
-        AGENTCORE_CREDENTIAL_MYGATEWAY_OAUTH: 'test-secret',
+        AGENTCORE_CREDENTIAL_MYGATEWAY_OAUTH_CLIENT_SECRET: 'test-secret',
         AGENTCORE_CREDENTIAL_MYGATEWAY_OAUTH_CLIENT_ID: 'test-client',
       });
 
@@ -345,7 +345,7 @@ describe('fetchGatewayToken', () => {
 
     it('throws with status and error body when token request fails', async () => {
       vi.mocked(readEnvFile).mockResolvedValue({
-        AGENTCORE_CREDENTIAL_MYGATEWAY_OAUTH: 'test-secret',
+        AGENTCORE_CREDENTIAL_MYGATEWAY_OAUTH_CLIENT_SECRET: 'test-secret',
         AGENTCORE_CREDENTIAL_MYGATEWAY_OAUTH_CLIENT_ID: 'test-client',
       });
 

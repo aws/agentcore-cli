@@ -46,7 +46,8 @@ export async function fetchOAuthToken(opts: {
   }
 
   // Resolve client_secret from .env.local
-  const secretEnvVar = computeDefaultCredentialEnvVarName(credName);
+  const envVarPrefix = computeDefaultCredentialEnvVarName(credName);
+  const secretEnvVar = `${envVarPrefix}_CLIENT_SECRET`;
   const envVars = await readEnvFile();
   const clientSecret = envVars[secretEnvVar];
   if (!clientSecret) {
@@ -56,7 +57,7 @@ export async function fetchOAuthToken(opts: {
   }
 
   // Resolve client_id using 3-tier fallback
-  const clientId = resolveClientId(deployedState, targetName, credName, secretEnvVar, envVars, jwtConfig);
+  const clientId = resolveClientId(deployedState, targetName, credName, envVarPrefix, envVars, jwtConfig);
   if (!clientId) {
     throw new Error(
       `Could not determine OAuth client ID for '${resourceName}'. Ensure the resource was created with --client-id.`
@@ -140,7 +141,7 @@ function resolveClientId(
   deployedState: DeployedState,
   targetName: string,
   credName: string,
-  secretEnvVar: string,
+  envVarPrefix: string,
   envVars: Record<string, string>,
   jwtConfig: { allowedClients?: string[] }
 ): string | undefined {
@@ -150,8 +151,8 @@ function resolveClientId(
     return (deployedCred as Record<string, string>).clientId;
   }
 
-  // Tier 2: env var ${secretEnvVar}_CLIENT_ID
-  const clientIdEnvVar = `${secretEnvVar}_CLIENT_ID`;
+  // Tier 2: env var ${envVarPrefix}_CLIENT_ID
+  const clientIdEnvVar = `${envVarPrefix}_CLIENT_ID`;
   const envClientId = envVars[clientIdEnvVar];
   if (envClientId) {
     return envClientId;

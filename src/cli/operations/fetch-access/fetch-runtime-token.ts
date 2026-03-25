@@ -30,9 +30,9 @@ export async function canFetchRuntimeToken(
     );
     if (!hasCredential) return false;
 
-    const secretEnvVar = computeDefaultCredentialEnvVarName(credName);
+    const envVarPrefix = computeDefaultCredentialEnvVarName(credName);
     const envVars = await readEnvFile();
-    return !!envVars[secretEnvVar];
+    return !!envVars[`${envVarPrefix}_CLIENT_SECRET`];
   } catch {
     return false;
   }
