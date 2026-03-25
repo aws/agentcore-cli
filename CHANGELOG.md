@@ -2,6 +2,34 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.3.0-preview.8.0] - 2026-03-25
+
+### Added
+- feat: rename `run evals` command to `run eval` (#636) (408801a)
+- feat: config-driven resource tagging (#625) (79a6a53)
+- feat: add requestHeaderAllowlist support to CLI (#614) (55acc9b)
+
+### Fixed
+- fix: custom header support for invoke and dev commands (#652) (1066276)
+- fix: pass requestHeaderAllowlist through create flow and fix tag command types (#643) (8a1af21)
+- fix: move conflict check to postinstall and downgrade to warning (#640) (30b781f)
+- fix: handle dot-prefixed directories in PATH fallback detection (#621) (73fdf72)
+- fix: fix import from Bedrock Agents code generation bugs (#622) (32a543a)
+- fix: add missing MCP fields to vended CDK test spec (#619) (8758f9b)
+
+### Other Changes
+- fix(gateway): add missing validation for custom JWT claim values (#644) (acd300d)
+- ci: add global CLI install and CDK matrix to full e2e workflow (#639) (e1e2bbf)
+- feat(gateway): add agentcore fetch access command (#627) (eda0f5d)
+- test: add e2e test for evaluations lifecycle (#628) (ec3d007)
+- test: add integ tests for evaluator and online-eval resource lifecycle (#626) (afaec4f)
+- test: add post-deploy e2e tests for status, logs, and traces (#623) (87de38a)
+- fix(gateway): write both CLIENT_ID and CLIENT_SECRET env vars for managed OAuth credentials (#617) (7c69105)
+- ci: use packaged CLI tarball for e2e tests (#616) (6952584)
+- feat(gateway): add custom claims validation and TUI wizard for JWT auth (#599) (b1c8a50)
+- feat!: merge mcp.json into agentcore.json (#605) (23df9fe)
+- ci: add cross-package e2e matrix testing against CDK constructs main (#610) (b941fbc)
+
 ## [0.3.0-preview.7.0] - 2026-03-23
 
 **Note:** Policy currently has issues with asscoiating a policy engine with a gateway that has No Auth or IAM Auth.
