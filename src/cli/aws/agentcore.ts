@@ -6,7 +6,33 @@ import {
   InvokeAgentRuntimeCommand,
   StopRuntimeSessionCommand,
 } from '@aws-sdk/client-bedrock-agentcore';
+import type { HttpRequest } from '@smithy/protocol-http';
 import type { DocumentType } from '@smithy/types';
+
+/**
+ * Create a BedrockAgentCoreClient with optional custom header injection middleware.
+ */
+function createAgentCoreClient(region: string, headers?: Record<string, string>): BedrockAgentCoreClient {
+  const client = new BedrockAgentCoreClient({
+    region,
+    credentials: getCredentialProvider(),
+  });
+
+  if (headers && Object.keys(headers).length > 0) {
+    client.middlewareStack.add(
+      next => async args => {
+        const request = args.request as HttpRequest;
+        for (const [name, value] of Object.entries(headers)) {
+          request.headers[name] = value;
+        }
+        return next(args);
+      },
+      { step: 'build', name: 'addCustomHeaders' }
+    );
+  }
+
+  return client;
+}
 
 /** Logger interface for SSE events */
 export interface SSELogger {
@@ -25,6 +51,8 @@ export interface InvokeAgentRuntimeOptions {
   userId?: string;
   /** Optional logger for SSE event debugging */
   logger?: SSELogger;
+  /** Custom headers to forward to the agent runtime */
+  headers?: Record<string, string>;
 }
 
 export interface InvokeAgentRuntimeResult {
@@ -109,10 +137,7 @@ export function extractResult(text: string): string {
  * Returns an object with the stream generator and session ID.
  */
 export async function invokeAgentRuntimeStreaming(options: InvokeAgentRuntimeOptions): Promise<StreamingInvokeResult> {
-  const client = new BedrockAgentCoreClient({
-    region: options.region,
-    credentials: getCredentialProvider(),
-  });
+  const client = createAgentCoreClient(options.region, options.headers);
 
   const command = new InvokeAgentRuntimeCommand({
     agentRuntimeArn: options.runtimeArn,
@@ -205,10 +230,7 @@ export async function invokeAgentRuntimeStreaming(options: InvokeAgentRuntimeOpt
  * Invoke an AgentCore Runtime and return the response.
  */
 export async function invokeAgentRuntime(options: InvokeAgentRuntimeOptions): Promise<InvokeAgentRuntimeResult> {
-  const client = new BedrockAgentCoreClient({
-    region: options.region,
-    credentials: getCredentialProvider(),
-  });
+  const client = createAgentCoreClient(options.region, options.headers);
 
   const command = new InvokeAgentRuntimeCommand({
     agentRuntimeArn: options.runtimeArn,
@@ -349,6 +371,8 @@ export interface McpInvokeOptions {
   userId?: string;
   mcpSessionId?: string;
   logger?: SSELogger;
+  /** Custom headers to forward to the agent runtime */
+  headers?: Record<string, string>;
 }
 
 export interface McpToolDef {
@@ -372,10 +396,7 @@ interface McpRpcResult {
 
 /** Send a JSON-RPC payload through InvokeAgentRuntime and return the parsed response. */
 async function mcpRpcCall(options: McpInvokeOptions, body: Record<string, unknown>): Promise<McpRpcResult> {
-  const client = new BedrockAgentCoreClient({
-    region: options.region,
-    credentials: getCredentialProvider(),
-  });
+  const client = createAgentCoreClient(options.region, options.headers);
 
   options.logger?.logSSEEvent(`MCP request: ${JSON.stringify(body)}`);
 
@@ -420,10 +441,7 @@ async function mcpRpcCallStrict(options: McpInvokeOptions, body: Record<string, 
 
 /** Send a JSON-RPC notification (no id, no response expected). */
 async function mcpRpcNotify(options: McpInvokeOptions, body: Record<string, unknown>): Promise<void> {
-  const client = new BedrockAgentCoreClient({
-    region: options.region,
-    credentials: getCredentialProvider(),
-  });
+  const client = createAgentCoreClient(options.region, options.headers);
 
   const command = new InvokeAgentRuntimeCommand({
     agentRuntimeArn: options.runtimeArn,
@@ -592,6 +610,8 @@ export interface A2AInvokeOptions {
   runtimeArn: string;
   userId?: string;
   logger?: SSELogger;
+  /** Custom headers to forward to the agent runtime */
+  headers?: Record<string, string>;
 }
 
 let a2aRequestId = 1;
@@ -601,10 +621,7 @@ let a2aRequestId = 1;
  * Streams text parts from the response artifacts.
  */
 export async function invokeA2ARuntime(options: A2AInvokeOptions, message: string): Promise<StreamingInvokeResult> {
-  const client = new BedrockAgentCoreClient({
-    region: options.region,
-    credentials: getCredentialProvider(),
-  });
+  const client = createAgentCoreClient(options.region, options.headers);
 
   const body = {
     jsonrpc: '2.0',

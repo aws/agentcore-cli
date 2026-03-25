@@ -37,6 +37,8 @@ export interface InvokeConfig {
 export interface InvokeFlowOptions {
   initialSessionId?: string;
   initialUserId?: string;
+  /** Custom headers to forward to the agent runtime on every invocation */
+  headers?: Record<string, string>;
 }
 
 export interface InvokeFlowState {
@@ -58,7 +60,7 @@ export interface InvokeFlowState {
 }
 
 export function useInvokeFlow(options: InvokeFlowOptions = {}): InvokeFlowState {
-  const { initialSessionId, initialUserId } = options;
+  const { initialSessionId, initialUserId, headers } = options;
   const [phase, setPhase] = useState<'loading' | 'ready' | 'invoking' | 'error'>('loading');
   const [config, setConfig] = useState<InvokeConfig | null>(null);
   const [selectedAgent, setSelectedAgent] = useState(0);
@@ -150,8 +152,9 @@ export function useInvokeFlow(options: InvokeFlowOptions = {}): InvokeFlowState 
       runtimeArn: agent.state.runtimeArn,
       userId,
       mcpSessionId: mcpSessionIdRef.current,
+      headers,
     };
-  }, [config, selectedAgent, userId]);
+  }, [config, selectedAgent, userId, headers]);
 
   const fetchMcpTools = useCallback(async () => {
     const opts = getMcpInvokeOptions();
@@ -271,7 +274,7 @@ export function useInvokeFlow(options: InvokeFlowOptions = {}): InvokeFlowState 
       try {
         const result = isA2A
           ? await invokeA2ARuntime(
-              { region: config.target.region, runtimeArn: agent.state.runtimeArn, userId, logger },
+              { region: config.target.region, runtimeArn: agent.state.runtimeArn, userId, logger, headers },
               prompt
             )
           : await invokeAgentRuntimeStreaming({
@@ -281,6 +284,7 @@ export function useInvokeFlow(options: InvokeFlowOptions = {}): InvokeFlowState 
               sessionId: sessionId ?? undefined,
               userId,
               logger,
+              headers,
             });
 
         if (result.sessionId) {
@@ -319,7 +323,7 @@ export function useInvokeFlow(options: InvokeFlowOptions = {}): InvokeFlowState 
         setPhase('ready');
       }
     },
-    [config, selectedAgent, phase, sessionId, userId, fetchMcpTools, getMcpInvokeOptions]
+    [config, selectedAgent, phase, sessionId, userId, headers, fetchMcpTools, getMcpInvokeOptions]
   );
 
   const newSession = useCallback(() => {

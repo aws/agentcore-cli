@@ -13,6 +13,8 @@ interface DevScreenProps {
   port?: number;
   /** Pre-selected agent name (from CLI --agent flag) */
   agentName?: string;
+  /** Custom headers to forward to the agent on every invocation */
+  headers?: Record<string, string>;
 }
 
 interface ColoredLine {
@@ -194,6 +196,7 @@ export function DevScreen(props: DevScreenProps) {
     port: props.port ?? 8080,
     agentName: selectedAgentName,
     onReady: onServerReady,
+    headers: props.headers,
   });
 
   // MCP: auto-list tools when server becomes ready, show hint in conversation

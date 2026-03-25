@@ -1,4 +1,4 @@
-import { normalizeHeaderName, parseAndNormalizeHeaders, validateHeaderAllowlist } from '../header-utils';
+import { normalizeHeaderName, parseAndNormalizeHeaders, parseHeaderFlag, parseHeaderFlags, validateHeaderAllowlist } from '../header-utils';
 import { describe, expect, it } from 'vitest';
 
 describe('normalizeHeaderName', () => {
@@ -120,5 +120,75 @@ describe('validateHeaderAllowlist', () => {
     const result = validateHeaderAllowlist('My@Header');
     expect(result.success).toBe(false);
     expect(result.error).toContain('Invalid header name');
+  });
+});
+
+describe('parseHeaderFlag', () => {
+  it('parses "Key: Value" format', () => {
+    expect(parseHeaderFlag('MyHeader: some-value')).toEqual({
+      name: 'X-Amzn-Bedrock-AgentCore-Runtime-Custom-MyHeader',
+      value: 'some-value',
+    });
+  });
+
+  it('parses "Key:Value" format without space', () => {
+    expect(parseHeaderFlag('MyHeader:some-value')).toEqual({
+      name: 'X-Amzn-Bedrock-AgentCore-Runtime-Custom-MyHeader',
+      value: 'some-value',
+    });
+  });
+
+  it('handles values containing colons', () => {
+    expect(parseHeaderFlag('Authorization: Bearer token:with:colons')).toEqual({
+      name: 'Authorization',
+      value: 'Bearer token:with:colons',
+    });
+  });
+
+  it('normalizes header names', () => {
+    expect(parseHeaderFlag('authorization: token')).toEqual({
+      name: 'Authorization',
+      value: 'token',
+    });
+  });
+
+  it('returns null for missing colon', () => {
+    expect(parseHeaderFlag('no-colon-here')).toBeNull();
+  });
+
+  it('returns null for empty key', () => {
+    expect(parseHeaderFlag(': value')).toBeNull();
+  });
+
+  it('trims whitespace from key and value', () => {
+    expect(parseHeaderFlag('  MyHeader  :  some-value  ')).toEqual({
+      name: 'X-Amzn-Bedrock-AgentCore-Runtime-Custom-MyHeader',
+      value: 'some-value',
+    });
+  });
+});
+
+describe('parseHeaderFlags', () => {
+  it('parses multiple headers', () => {
+    const result = parseHeaderFlags(['MyHeader: value1', 'Authorization: Bearer token']);
+    expect(result).toEqual({
+      'X-Amzn-Bedrock-AgentCore-Runtime-Custom-MyHeader': 'value1',
+      Authorization: 'Bearer token',
+    });
+  });
+
+  it('returns empty object for empty array', () => {
+    expect(parseHeaderFlags([])).toEqual({});
+  });
+
+  it('last value wins for duplicate keys', () => {
+    const result = parseHeaderFlags(['MyHeader: first', 'MyHeader: second']);
+    expect(result).toEqual({
+      'X-Amzn-Bedrock-AgentCore-Runtime-Custom-MyHeader': 'second',
+    });
+  });
+
+  it('throws on invalid format', () => {
+    expect(() => parseHeaderFlags(['invalid-no-colon'])).toThrow('Invalid header format');
   });
 });

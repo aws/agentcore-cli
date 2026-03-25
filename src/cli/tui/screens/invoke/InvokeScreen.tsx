@@ -11,6 +11,8 @@ interface InvokeScreenProps {
   initialPrompt?: string;
   initialSessionId?: string;
   initialUserId?: string;
+  /** Custom headers to forward to the agent runtime on every invocation */
+  initialHeaders?: Record<string, string>;
 }
 
 type Mode = 'select-agent' | 'chat' | 'input';
@@ -96,6 +98,7 @@ export function InvokeScreen({
   initialPrompt,
   initialSessionId,
   initialUserId,
+  initialHeaders,
 }: InvokeScreenProps) {
   const {
     phase,
@@ -111,7 +114,7 @@ export function InvokeScreen({
     invoke,
     newSession,
     fetchMcpTools,
-  } = useInvokeFlow({ initialSessionId, initialUserId });
+  } = useInvokeFlow({ initialSessionId, initialUserId, headers: initialHeaders });
   const [mode, setMode] = useState<Mode>('select-agent');
   const [scrollOffset, setScrollOffset] = useState(0);
   const [userScrolled, setUserScrolled] = useState(false);

@@ -60,7 +60,7 @@ export async function fetchA2AAgentCard(port: number, logger?: SSELogger): Promi
  * Yields text chunks as they arrive from artifact-update and status-update events.
  */
 export async function* invokeA2AStreaming(options: InvokeStreamingOptions): AsyncGenerator<string, void, unknown> {
-  const { port, message: msg, logger, onStatus } = options;
+  const { port, message: msg, logger, onStatus, headers: customHeaders } = options;
   const maxRetries = 5;
   const baseDelay = 500;
   let lastError: Error | null = null;
@@ -84,7 +84,7 @@ export async function* invokeA2AStreaming(options: InvokeStreamingOptions): Asyn
 
       const res = await fetch(`http://localhost:${port}/`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', Accept: 'text/event-stream' },
+        headers: { 'Content-Type': 'application/json', Accept: 'text/event-stream', ...customHeaders },
         body: JSON.stringify(body),
       });
 

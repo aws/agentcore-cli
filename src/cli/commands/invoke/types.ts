@@ -10,6 +10,8 @@ export interface InvokeOptions {
   tool?: string;
   /** MCP tool arguments as JSON string (used with --tool) */
   input?: string;
+  /** Custom headers to forward to the agent runtime (key-value pairs) */
+  headers?: Record<string, string>;
 }
 
 export interface InvokeResult {

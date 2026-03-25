@@ -71,3 +71,40 @@ export function validateHeaderAllowlist(value: string): { success: boolean; erro
 
   return { success: true };
 }
+
+/**
+ * Parse a CLI --header flag value ("Key: Value" or "Key:Value") into a key-value pair.
+ * The header name is normalized according to AgentCore Runtime rules.
+ * Returns null if the format is invalid.
+ */
+export function parseHeaderFlag(raw: string): { name: string; value: string } | null {
+  const colonIndex = raw.indexOf(':');
+  if (colonIndex < 1) return null;
+
+  const name = raw.slice(0, colonIndex).trim();
+  const value = raw.slice(colonIndex + 1).trim();
+
+  if (!name) return null;
+
+  return { name: normalizeHeaderName(name), value };
+}
+
+/**
+ * Parse multiple --header flag values into a Record<string, string>.
+ * Normalizes header names and deduplicates (last value wins).
+ */
+export function parseHeaderFlags(rawHeaders: string[]): Record<string, string> {
+  const result: Record<string, string> = {};
+
+  for (const raw of rawHeaders) {
+    const parsed = parseHeaderFlag(raw);
+    if (!parsed) {
+      throw new Error(
+        `Invalid header format: "${raw}". Expected "Header-Name: value" or "Header-Name:value".`
+      );
+    }
+    result[parsed.name] = parsed.value;
+  }
+
+  return result;
+}

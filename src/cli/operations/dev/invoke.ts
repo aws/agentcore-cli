@@ -79,7 +79,7 @@ export async function* invokeAgentStreaming(
   // Support both old signature (port, message) and new signature (options)
   const options: InvokeStreamingOptions =
     typeof portOrOptions === 'number' ? { port: portOrOptions, message: message! } : portOrOptions;
-  const { port, message: msg, logger } = options;
+  const { port, message: msg, logger, headers: customHeaders } = options;
   const maxRetries = 5;
   const baseDelay = 500;
   let lastError: Error | null = null;
@@ -92,6 +92,7 @@ export async function* invokeAgentStreaming(
           'Content-Type': 'application/json',
           Accept: 'text/event-stream',
           'x-amzn-bedrock-agentcore-runtime-session-id': 'local-dev-session',
+          ...customHeaders,
         },
         body: JSON.stringify({ prompt: msg }),
       });
@@ -204,6 +205,8 @@ export interface InvokeOptions {
   message: string;
   /** Optional logger for error logging */
   logger?: SSELogger;
+  /** Custom headers to forward to the agent */
+  headers?: Record<string, string>;
 }
 
 /**
@@ -235,7 +238,7 @@ export async function invokeAgent(portOrOptions: number | InvokeOptions, message
   // Support both old signature (port, message) and new signature (options)
   const options: InvokeOptions =
     typeof portOrOptions === 'number' ? { port: portOrOptions, message: message! } : portOrOptions;
-  const { port, message: msg, logger } = options;
+  const { port, message: msg, logger, headers: customHeaders } = options;
 
   const maxRetries = 5;
   const baseDelay = 500; // ms
@@ -249,6 +252,7 @@ export async function invokeAgent(portOrOptions: number | InvokeOptions, message
           'Content-Type': 'application/json',
           Accept: 'text/event-stream',
           'x-amzn-bedrock-agentcore-runtime-session-id': 'local-dev-session',
+          ...customHeaders,
         },
         body: JSON.stringify({ prompt: msg }),
       });

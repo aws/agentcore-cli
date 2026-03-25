@@ -31,4 +31,6 @@ export interface InvokeStreamingOptions {
   logger?: SSELogger;
   /** Callback for A2A task status updates (e.g. 'working', 'input-required') */
   onStatus?: (status: string) => void;
+  /** Custom headers to forward to the agent */
+  headers?: Record<string, string>;
 }

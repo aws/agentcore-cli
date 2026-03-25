@@ -20,7 +20,7 @@ export interface McpToolsResult {
  * Sends initialize + tools/list JSON-RPC requests to the MCP endpoint.
  * Returns tools and the session ID needed for subsequent calls.
  */
-export async function listMcpTools(port: number, logger?: SSELogger): Promise<McpToolsResult> {
+export async function listMcpTools(port: number, logger?: SSELogger, customHeaders?: Record<string, string>): Promise<McpToolsResult> {
   const maxRetries = 5;
   const baseDelay = 500;
   let lastError: Error | null = null;
@@ -43,7 +43,7 @@ export async function listMcpTools(port: number, logger?: SSELogger): Promise<Mc
 
       const initRes = await fetch(`http://localhost:${port}/mcp`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', Accept: 'application/json, text/event-stream' },
+        headers: { 'Content-Type': 'application/json', Accept: 'application/json, text/event-stream', ...customHeaders },
         body: JSON.stringify(initBody),
       });
 
@@ -63,12 +63,12 @@ export async function listMcpTools(port: number, logger?: SSELogger): Promise<Mc
         method: 'notifications/initialized',
       };
 
-      const headers: Record<string, string> = { 'Content-Type': 'application/json' };
-      if (sessionId) headers['mcp-session-id'] = sessionId;
+      const sessionHeaders: Record<string, string> = { 'Content-Type': 'application/json', ...customHeaders };
+      if (sessionId) sessionHeaders['mcp-session-id'] = sessionId;
 
       await fetch(`http://localhost:${port}/mcp`, {
         method: 'POST',
-        headers,
+        headers: sessionHeaders,
         body: JSON.stringify(initializedBody),
       });
 
@@ -84,7 +84,7 @@ export async function listMcpTools(port: number, logger?: SSELogger): Promise<Mc
 
       const listRes = await fetch(`http://localhost:${port}/mcp`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', Accept: 'application/json, text/event-stream', ...headers },
+        headers: { 'Content-Type': 'application/json', Accept: 'application/json, text/event-stream', ...sessionHeaders },
         body: JSON.stringify(listBody),
       });
 
@@ -145,7 +145,8 @@ export async function callMcpTool(
   toolName: string,
   args: Record<string, unknown>,
   sessionId?: string,
-  logger?: SSELogger
+  logger?: SSELogger,
+  customHeaders?: Record<string, string>
 ): Promise<string> {
   const body = {
     jsonrpc: '2.0',
@@ -159,6 +160,7 @@ export async function callMcpTool(
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',
     Accept: 'application/json, text/event-stream',
+    ...customHeaders,
   };
   if (sessionId) headers['mcp-session-id'] = sessionId;
 

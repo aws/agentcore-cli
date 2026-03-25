@@ -95,6 +95,7 @@ export async function handleInvoke(context: InvokeContext, options: InvokeOption
       region: targetConfig.region,
       runtimeArn: agentState.runtimeArn,
       userId: options.userId,
+      headers: options.headers,
     };
 
     // list-tools: list available MCP tools
@@ -167,7 +168,7 @@ export async function handleInvoke(context: InvokeContext, options: InvokeOption
   if (agentSpec.protocol === 'A2A') {
     try {
       const a2aResult = await invokeA2ARuntime(
-        { region: targetConfig.region, runtimeArn: agentState.runtimeArn, userId: options.userId },
+        { region: targetConfig.region, runtimeArn: agentState.runtimeArn, userId: options.userId, headers: options.headers },
         options.prompt
       );
       let response = '';
@@ -214,6 +215,7 @@ export async function handleInvoke(context: InvokeContext, options: InvokeOption
         sessionId: options.sessionId,
         userId: options.userId,
         logger, // Pass logger for SSE event debugging
+        headers: options.headers,
       });
 
       for await (const chunk of result.stream) {
@@ -245,6 +247,7 @@ export async function handleInvoke(context: InvokeContext, options: InvokeOption
     payload: options.prompt,
     sessionId: options.sessionId,
     userId: options.userId,
+    headers: options.headers,
   });
 
   logger.logResponse(response.content);
