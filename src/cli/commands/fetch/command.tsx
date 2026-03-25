@@ -12,18 +12,20 @@ export const registerFetch = (program: Command) => {
 
   fetchCmd
     .command('access')
-    .description('Fetch access info (URL, token, auth guidance) for a deployed gateway.')
-    .option('--name <resource>', 'Gateway name')
+    .description('Fetch access info (URL, token, auth guidance) for a deployed gateway or agent.')
+    .option('--name <resource>', 'Gateway or agent name')
+    .option('--type <type>', 'Resource type: gateway (default) or agent', 'gateway')
     .option('--target <target>', 'Deployment target')
     .option('--json', 'Output as JSON')
-    .action(async (cliOptions: FetchAccessOptions) => {
+    .action(async (cliOptions: Record<string, unknown>) => {
+      const options = cliOptions as unknown as FetchAccessOptions;
       requireProject();
 
       let result: FetchAccessResult;
       try {
-        result = await handleFetchAccess(cliOptions);
+        result = await handleFetchAccess(options);
       } catch (error) {
-        if (cliOptions.json) {
+        if (options.json) {
           console.log(JSON.stringify({ success: false, error: getErrorMessage(error) }));
         } else {
           render(<Text color="red">Error: {getErrorMessage(error)}</Text>);
@@ -33,7 +35,7 @@ export const registerFetch = (program: Command) => {
       }
 
       if (!result.success) {
-        if (cliOptions.json) {
+        if (options.json) {
           console.log(
             JSON.stringify({
               success: false,
@@ -61,7 +63,7 @@ export const registerFetch = (program: Command) => {
         return;
       }
 
-      if (cliOptions.json) {
+      if (options.json) {
         console.log(JSON.stringify({ success: true, ...result.result }, null, 2));
         return;
       }
