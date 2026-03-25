@@ -51,17 +51,27 @@ export const MemoryStrategyNameSchema = z
  * Memory strategy configuration.
  * Each memory can have multiple strategies with optional namespace scoping.
  */
-export const MemoryStrategySchema = z.object({
-  /** Strategy type */
-  type: MemoryStrategyTypeSchema,
-  /** Optional custom name for the strategy */
-  name: MemoryStrategyNameSchema.optional(),
-  /** Optional description */
-  description: z.string().optional(),
-  /** Optional namespaces for scoping memory access */
-  namespaces: z.array(z.string()).optional(),
-  /** Reflection namespaces for EPISODIC strategy. Required by the service for episodic strategies. */
-  reflectionNamespaces: z.array(z.string()).optional(),
-});
+export const MemoryStrategySchema = z
+  .object({
+    /** Strategy type */
+    type: MemoryStrategyTypeSchema,
+    /** Optional custom name for the strategy */
+    name: MemoryStrategyNameSchema.optional(),
+    /** Optional description */
+    description: z.string().optional(),
+    /** Optional namespaces for scoping memory access */
+    namespaces: z.array(z.string()).optional(),
+    /** Reflection namespaces for EPISODIC strategy. Required by the service for episodic strategies. */
+    reflectionNamespaces: z.array(z.string()).optional(),
+  })
+  .refine(
+    strategy =>
+      strategy.type !== 'EPISODIC' ||
+      (strategy.reflectionNamespaces !== undefined && strategy.reflectionNamespaces.length > 0),
+    {
+      message: 'EPISODIC strategy requires reflectionNamespaces',
+      path: ['reflectionNamespaces'],
+    }
+  );
 
 export type MemoryStrategy = z.infer<typeof MemoryStrategySchema>;

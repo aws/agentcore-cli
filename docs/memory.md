@@ -151,17 +151,18 @@ async def invoke(payload, context):
 
 ## Memory Strategies
 
-| Strategy          | Description                                         |
-| ----------------- | --------------------------------------------------- |
-| `SEMANTIC`        | Vector-based similarity search for relevant context |
-| `SUMMARIZATION`   | Compressed conversation history                     |
-| `USER_PREFERENCE` | Store user-specific preferences and settings        |
+| Strategy          | Description                                             |
+| ----------------- | ------------------------------------------------------- |
+| `SEMANTIC`        | Vector-based similarity search for relevant context     |
+| `SUMMARIZATION`   | Compressed conversation history                         |
+| `USER_PREFERENCE` | Store user-specific preferences and settings            |
+| `EPISODIC`        | Capture and reflect on meaningful interaction episodes   |
 
 You can combine multiple strategies:
 
 ```json
 {
-  "strategies": [{ "type": "SEMANTIC" }, { "type": "SUMMARIZATION" }, { "type": "USER_PREFERENCE" }]
+  "strategies": [{ "type": "SEMANTIC" }, { "type": "SUMMARIZATION" }, { "type": "USER_PREFERENCE" }, { "type": "EPISODIC" }]
 }
 ```
 
@@ -178,12 +179,13 @@ Each strategy can have optional configuration:
 }
 ```
 
-| Field         | Required | Description                                     |
-| ------------- | -------- | ----------------------------------------------- |
-| `type`        | Yes      | Strategy type                                   |
-| `name`        | No       | Custom name (defaults to `<memoryName>-<type>`) |
-| `description` | No       | Strategy description                            |
-| `namespaces`  | No       | Array of namespace paths for scoping            |
+| Field                   | Required          | Description                                               |
+| ----------------------- | ----------------- | --------------------------------------------------------- |
+| `type`                  | Yes               | Strategy type                                             |
+| `name`                  | No                | Custom name (defaults to `<memoryName>-<type>`)           |
+| `description`           | No                | Strategy description                                      |
+| `namespaces`            | No                | Array of namespace paths for scoping                      |
+| `reflectionNamespaces`  | EPISODIC only     | Namespaces for cross-episode reflections (must be a prefix of `namespaces`) |
 
 ## Event Expiry
 

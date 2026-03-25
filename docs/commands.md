@@ -228,7 +228,7 @@ agentcore add memory \
 | Flag                   | Description                                                     |
 | ---------------------- | --------------------------------------------------------------- |
 | `--name <name>`        | Memory name                                                     |
-| `--strategies <types>` | Comma-separated: `SEMANTIC`, `SUMMARIZATION`, `USER_PREFERENCE` |
+| `--strategies <types>` | Comma-separated: `SEMANTIC`, `SUMMARIZATION`, `USER_PREFERENCE`, `EPISODIC` |
 | `--expiry <days>`      | Event expiry duration in days (default: 30, min: 7, max: 365)   |
 | `--json`               | JSON output                                                     |
 

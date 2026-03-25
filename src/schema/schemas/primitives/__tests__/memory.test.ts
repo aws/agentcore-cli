@@ -72,6 +72,37 @@ describe('MemoryStrategySchema', () => {
     const result = MemoryStrategySchema.safeParse({ name: 'myStrategy' });
     expect(result.success).toBe(false);
   });
+
+  it('accepts EPISODIC strategy with reflectionNamespaces', () => {
+    const result = MemoryStrategySchema.safeParse({
+      type: 'EPISODIC',
+      namespaces: ['/strategy/{memoryStrategyId}/actor/{actorId}/'],
+      reflectionNamespaces: ['/strategy/{memoryStrategyId}/actor/{actorId}/'],
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it('rejects EPISODIC strategy without reflectionNamespaces', () => {
+    const result = MemoryStrategySchema.safeParse({
+      type: 'EPISODIC',
+      namespaces: ['/strategy/{memoryStrategyId}/actor/{actorId}/'],
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it('rejects EPISODIC strategy with empty reflectionNamespaces', () => {
+    const result = MemoryStrategySchema.safeParse({
+      type: 'EPISODIC',
+      namespaces: ['/strategy/{memoryStrategyId}/actor/{actorId}/'],
+      reflectionNamespaces: [],
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it('allows non-EPISODIC strategies without reflectionNamespaces', () => {
+    const result = MemoryStrategySchema.safeParse({ type: 'SEMANTIC' });
+    expect(result.success).toBe(true);
+  });
 });
 
 describe('DEFAULT_STRATEGY_NAMESPACES', () => {
