@@ -1,0 +1,30 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1028" height="715" viewBox="0 0 1028 715">
+<style>
+.bg { fill: #1e1e1e; }
+.fg { fill: #d4d4d4; font-family: Menlo, Monaco, Courier New, monospace; font-size: 14px; white-space: pre; }
+.b { font-weight: bold; }
+.i { font-style: italic; }
+.d { opacity: 0.5; }
+.u { text-decoration: underline; }
+</style>
+<rect class="bg" width="100%" height="100%" rx="8"/>
+<circle cx="20" cy="15" r="6" fill="#ff5f56"/>
+<circle cx="38" cy="15" r="6" fill="#ffbd2e"/>
+<circle cx="56" cy="15" r="6" fill="#27c93f"/>
+<line x1="0" y1="30" x2="1028" y2="30" stroke="#d4d4d4" stroke-opacity="0.15"/>
+<g transform="translate(10, 40)">
+<text y="33" xml:space="preserve" class="fg"><tspan x="0" textLength="16.8" lengthAdjust="spacing">  </tspan><tspan x="16.8" textLength="100.80000000000001" lengthAdjust="spacing" fill="#11a8cd" class="b">Add Resource</tspan><tspan x="117.60000000000001" textLength="890.4000000000001" lengthAdjust="spacing">                                                                                                          </tspan></text>
+<text y="71" xml:space="preserve" class="fg"><tspan x="0" textLength="1008" lengthAdjust="spacing">  ╭──────────────────────────────────────────────────────────╮                                                          </tspan></text>
+<text y="90" xml:space="preserve" class="fg"><tspan x="0" textLength="33.6" lengthAdjust="spacing">  │ </tspan><tspan x="33.6" textLength="58.800000000000004" lengthAdjust="spacing" fill="#11a8cd">❯ Agent</tspan><tspan x="92.4" textLength="302.40000000000003" lengthAdjust="spacing" class="d"> - Deploy an HTTP, MCP, or A2A agent</tspan><tspan x="394.8" textLength="613.2" lengthAdjust="spacing">              │                                                          </tspan></text>
+<text y="109" xml:space="preserve" class="fg"><tspan x="0" textLength="100.80000000000001" lengthAdjust="spacing">  │   Memory</tspan><tspan x="100.80000000000001" textLength="243.60000000000002" lengthAdjust="spacing" class="d"> - Persistent context storage</tspan><tspan x="344.40000000000003" textLength="663.6" lengthAdjust="spacing">                    │                                                          </tspan></text>
+<text y="128" xml:space="preserve" class="fg"><tspan x="0" textLength="117.60000000000001" lengthAdjust="spacing">  │   Identity</tspan><tspan x="117.60000000000001" textLength="260.40000000000003" lengthAdjust="spacing" class="d"> - API key credential providers</tspan><tspan x="378" textLength="630" lengthAdjust="spacing">                │                                                          </tspan></text>
+<text y="147" xml:space="preserve" class="fg"><tspan x="0" textLength="126" lengthAdjust="spacing">  │   Evaluator</tspan><tspan x="126" textLength="285.6" lengthAdjust="spacing" class="d"> - Custom LLM-as-a-Judge evaluator</tspan><tspan x="411.6" textLength="596.4" lengthAdjust="spacing">            │                                                          </tspan></text>
+<text y="166" xml:space="preserve" class="fg"><tspan x="0" textLength="201.60000000000002" lengthAdjust="spacing">  │   Online Eval Config</tspan><tspan x="201.60000000000002" textLength="277.2" lengthAdjust="spacing" class="d"> - Continuous evaluation pipeline</tspan><tspan x="478.8" textLength="529.2" lengthAdjust="spacing">    │                                                          </tspan></text>
+<text y="185" xml:space="preserve" class="fg"><tspan x="0" textLength="109.2" lengthAdjust="spacing">  │   Gateway</tspan><tspan x="109.2" textLength="294" lengthAdjust="spacing" class="d"> - Route and manage gateway targets</tspan><tspan x="403.20000000000005" textLength="604.8000000000001" lengthAdjust="spacing">             │                                                          </tspan></text>
+<text y="204" xml:space="preserve" class="fg"><tspan x="0" textLength="168" lengthAdjust="spacing">  │   Gateway Target</tspan><tspan x="168" textLength="235.20000000000002" lengthAdjust="spacing" class="d"> - Extend agent capabilities</tspan><tspan x="403.20000000000005" textLength="604.8000000000001" lengthAdjust="spacing">             │                                                          </tspan></text>
+<text y="223" xml:space="preserve" class="fg"><tspan x="0" textLength="100.80000000000001" lengthAdjust="spacing">  │   Policy</tspan><tspan x="100.80000000000001" textLength="294" lengthAdjust="spacing" class="d"> - Cedar policies for gateway tools</tspan><tspan x="394.8" textLength="613.2" lengthAdjust="spacing">              │                                                          </tspan></text>
+<text y="242" xml:space="preserve" class="fg"><tspan x="0" textLength="1008" lengthAdjust="spacing">  ╰──────────────────────────────────────────────────────────╯                                                          </tspan></text>
+<text y="280" xml:space="preserve" class="fg"><tspan x="0" textLength="16.8" lengthAdjust="spacing">  </tspan><tspan x="16.8" textLength="428.40000000000003" lengthAdjust="spacing" class="d">↑↓ navigate · Enter select · Esc back · Ctrl+C quit</tspan><tspan x="445.20000000000005" textLength="562.8000000000001" lengthAdjust="spacing">                                                                   </tspan></text>
+</g>
+<rect x="10" y="344" width="8.4" height="19" fill="#aeafad" opacity="0.7"/>
+</svg>
