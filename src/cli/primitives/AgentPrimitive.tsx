@@ -397,7 +397,7 @@ export class AgentPrimitive extends BasePrimitive<AddAgentOptions, RemovableReso
       build: options.buildType,
       entrypoint: (options.entrypoint ?? 'main.py') as FilePath,
       codeLocation: codeLocation as DirectoryPath,
-      runtimeVersion: 'PYTHON_3_14',
+      runtimeVersion: 'PYTHON_3_13',
       protocol,
       networkMode,
       ...(networkMode === 'VPC' &&

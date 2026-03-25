@@ -88,7 +88,7 @@ describe('mapGenerateConfigToAgent', () => {
     expect(result.name).toBe('TestProject');
     expect(result.build).toBe('CodeZip');
     expect(result.entrypoint).toBe('main.py');
-    expect(result.runtimeVersion).toBe('PYTHON_3_14');
+    expect(result.runtimeVersion).toBe('PYTHON_3_13');
     expect(result.networkMode).toBe('PUBLIC');
     expect(result.protocol).toBe('HTTP');
   });
