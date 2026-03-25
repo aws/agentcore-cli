@@ -113,8 +113,6 @@ export function InvokeScreen({
     userId,
     bearerToken,
     tokenFetchState,
-    tokenFetchError,
-    tokenExpiresIn,
     mcpToolsFetched,
     selectAgent,
     setBearerToken,
@@ -138,16 +136,18 @@ export function InvokeScreen({
   useEffect(() => {
     if (config && phase === 'ready') {
       if (config.agents.length === 1 && mode === 'select-agent') {
+        const agent = config.agents[0];
+        const needsTokenScreen = agent?.authorizerType === 'CUSTOM_JWT' && !bearerToken && !initialBearerToken;
         // Defer setState to avoid cascading renders within effect
         queueMicrotask(() => {
-          setMode('input');
+          setMode(needsTokenScreen ? 'token-input' : 'input');
         });
-        if (initialPrompt && messages.length === 0) {
+        if (!needsTokenScreen && initialPrompt && messages.length === 0) {
           void invoke(initialPrompt);
         }
       }
     }
-  }, [config, phase, initialPrompt, messages.length, invoke, mode]);
+  }, [config, phase, initialPrompt, messages.length, invoke, mode, bearerToken, initialBearerToken]);
 
   // Auto-exit when prompt was provided upfront and response completes
   useEffect(() => {
@@ -236,7 +236,11 @@ export function InvokeScreen({
         }
         if (key.upArrow) selectAgent((selectedAgent - 1 + config.agents.length) % config.agents.length);
         if (key.downArrow) selectAgent((selectedAgent + 1) % config.agents.length);
-        if (key.return) setMode('input');
+        if (key.return) {
+          const chosen = config.agents[selectedAgent];
+          const needsTokenScreen = chosen?.authorizerType === 'CUSTOM_JWT' && !bearerToken && !initialBearerToken;
+          setMode(needsTokenScreen ? 'token-input' : 'input');
+        }
         return;
       }
 
@@ -263,16 +267,6 @@ export function InvokeScreen({
           return;
         }
 
-        // Token management for CUSTOM_JWT
-        if (key.ctrl && input === 't' && phase === 'ready' && isCustomJwt) {
-          setMode('token-input');
-          return;
-        }
-        if (key.ctrl && input === 'r' && phase === 'ready' && isCustomJwt) {
-          void fetchBearerToken();
-          return;
-        }
-
         // New session
         if (input === 'n' && phase === 'ready') {
           newSession();
@@ -291,14 +285,14 @@ export function InvokeScreen({
     { isActive: mode === 'chat' || mode === 'select-agent' }
   );
 
-  // Auto-fetch bearer token when CUSTOM_JWT agent is selected and no token is set
+  // Auto-fetch bearer token to pre-populate the token screen
   const tokenFetchTriggeredRef = useRef(false);
   useEffect(() => {
     if (
       isCustomJwt &&
       !bearerToken &&
       !initialBearerToken &&
-      mode !== 'select-agent' &&
+      mode === 'token-input' &&
       tokenFetchState === 'idle' &&
       !tokenFetchTriggeredRef.current
     ) {
@@ -344,12 +338,11 @@ export function InvokeScreen({
 
   // Dynamic help text
   const backOrQuit = config.agents.length > 1 ? 'Esc back' : 'Esc quit';
-  const tokenHint = isCustomJwt ? ' · ^T token · ^R refresh' : '';
   const helpText =
     mode === 'select-agent'
       ? '↑↓ select · Enter confirm · Esc quit'
       : mode === 'token-input'
-        ? 'Enter confirm · Esc cancel'
+        ? 'Enter confirm · Esc skip'
         : mode === 'input'
           ? isMcp
             ? 'Enter send · Esc cancel · "list" to refresh tools'
@@ -357,10 +350,10 @@ export function InvokeScreen({
           : phase === 'invoking'
             ? '↑↓ scroll'
             : messages.length > 0
-              ? `↑↓ scroll · Enter invoke · N new session${tokenHint} · ${backOrQuit}`
+              ? `↑↓ scroll · Enter invoke · N new session · ${backOrQuit}`
               : isMcp
-                ? `Enter to call a tool · N new session${tokenHint} · ${backOrQuit}`
-                : `Enter to send a message${tokenHint} · ${backOrQuit}`;
+                ? `Enter to call a tool · N new session · ${backOrQuit}`
+                : `Enter to send a message · ${backOrQuit}`;
 
   const headerContent = (
     <Box flexDirection="column">
@@ -405,20 +398,9 @@ export function InvokeScreen({
       {mode !== 'select-agent' && isCustomJwt && (
         <Box>
           <Text>Auth: </Text>
-          {tokenFetchState === 'fetching' && <Text color="yellow">Fetching token...</Text>}
-          {tokenFetchState === 'fetched' && bearerToken && (
-            <Text color="green">
-              Token fetched{tokenExpiresIn ? ` (expires in ${Math.floor(tokenExpiresIn / 60)}m)` : ''}
-              {' · ^R refresh · ^T manual'}
-            </Text>
-          )}
-          {tokenFetchState === 'error' && (
-            <Text color="red">
-              Token fetch failed{tokenFetchError ? `: ${tokenFetchError}` : ''} — ^T to enter manually
-            </Text>
-          )}
-          {tokenFetchState === 'idle' && bearerToken && <Text color="green">Bearer token set · ^T change · ^R refresh</Text>}
-          {tokenFetchState === 'idle' && !bearerToken && <Text color="yellow">CUSTOM_JWT — ^T to set token</Text>}
+          <Text color={bearerToken ? 'green' : 'yellow'}>
+            {bearerToken ? 'CUSTOM_JWT (token set)' : 'CUSTOM_JWT (no token)'}
+          </Text>
         </Box>
       )}
       {logFilePath && <LogLink filePath={logFilePath} />}
@@ -496,21 +478,27 @@ export function InvokeScreen({
           <Text dimColor>{isMcp ? 'Press Enter to call a tool' : 'Press Enter to send a message'}</Text>
         )}
         {mode === 'token-input' && (
-          <Box>
-            <Text color="yellow">Bearer token: </Text>
-            <TextInput
-              prompt=""
-              hideArrow
-              placeholder="Paste JWT bearer token..."
-              initialValue={bearerToken}
-              onSubmit={text => {
-                setBearerToken(text.trim());
-                setMode(messages.length > 0 ? 'chat' : 'input');
-              }}
-              onCancel={() => {
-                setMode(messages.length > 0 ? 'chat' : 'input');
-              }}
-            />
+          <Box flexDirection="column">
+            {tokenFetchState === 'fetching' && <GradientText text="Fetching token..." />}
+            {tokenFetchState !== 'fetching' && (
+              <Box>
+                <Text color="yellow">Bearer token: </Text>
+                <TextInput
+                  prompt=""
+                  hideArrow
+                  placeholder="Paste JWT bearer token or press Enter to skip..."
+                  initialValue={bearerToken}
+                  allowEmpty
+                  onSubmit={text => {
+                    setBearerToken(text.trim());
+                    setMode('input');
+                  }}
+                  onCancel={() => {
+                    setMode('input');
+                  }}
+                />
+              </Box>
+            )}
           </Box>
         )}
         {mode === 'input' && phase === 'ready' && (
