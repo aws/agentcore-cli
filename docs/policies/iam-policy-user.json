@@ -1,0 +1,139 @@
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "CdkBootstrapRoleAssumption",
+      "Effect": "Allow",
+      "Action": "sts:AssumeRole",
+      "Resource": [
+        "arn:aws:iam::*:role/cdk-*-deploy-role-*",
+        "arn:aws:iam::*:role/cdk-*-file-publishing-role-*",
+        "arn:aws:iam::*:role/cdk-*-image-publishing-role-*",
+        "arn:aws:iam::*:role/cdk-*-lookup-role-*"
+      ]
+    },
+    {
+      "Sid": "AccountIdentity",
+      "Effect": "Allow",
+      "Action": "sts:GetCallerIdentity",
+      "Resource": "*"
+    },
+    {
+      "Sid": "CloudFormationStackStatus",
+      "Effect": "Allow",
+      "Action": "cloudformation:DescribeStacks",
+      "Resource": "*"
+    },
+    {
+      "Sid": "StackDiscoveryByTags",
+      "Effect": "Allow",
+      "Action": "tag:GetResources",
+      "Resource": "*"
+    },
+    {
+      "Sid": "AgentInvocation",
+      "Effect": "Allow",
+      "Action": [
+        "bedrock-agentcore:InvokeAgentRuntime",
+        "bedrock-agentcore:InvokeAgentRuntimeForUser",
+        "bedrock-agentcore:Evaluate",
+        "bedrock-agentcore:StopRuntimeSession"
+      ],
+      "Resource": "*"
+    },
+    {
+      "Sid": "AgentCoreResourceStatus",
+      "Effect": "Allow",
+      "Action": [
+        "bedrock-agentcore:GetAgentRuntime",
+        "bedrock-agentcore:GetEvaluator",
+        "bedrock-agentcore:ListEvaluators",
+        "bedrock-agentcore:GetOnlineEvaluationConfig",
+        "bedrock-agentcore:UpdateOnlineEvaluationConfig",
+        "bedrock-agentcore:ListGatewayTargets"
+      ],
+      "Resource": "*"
+    },
+    {
+      "Sid": "IdentityCredentialManagement",
+      "Effect": "Allow",
+      "Action": [
+        "bedrock-agentcore:GetApiKeyCredentialProvider",
+        "bedrock-agentcore:CreateApiKeyCredentialProvider",
+        "bedrock-agentcore:UpdateApiKeyCredentialProvider",
+        "bedrock-agentcore:GetOauth2CredentialProvider",
+        "bedrock-agentcore:CreateOauth2CredentialProvider",
+        "bedrock-agentcore:UpdateOauth2CredentialProvider",
+        "bedrock-agentcore:GetTokenVault",
+        "bedrock-agentcore:CreateTokenVault",
+        "bedrock-agentcore:SetTokenVaultCMK"
+      ],
+      "Resource": "*"
+    },
+    {
+      "Sid": "PolicyGeneration",
+      "Effect": "Allow",
+      "Action": [
+        "bedrock-agentcore:StartPolicyGeneration",
+        "bedrock-agentcore:GetPolicyGeneration",
+        "bedrock-agentcore:ListPolicyGenerationAssets"
+      ],
+      "Resource": "*"
+    },
+    {
+      "Sid": "TokenVaultKmsKeyCreation",
+      "Effect": "Allow",
+      "Action": ["kms:CreateKey", "kms:TagResource"],
+      "Resource": "*"
+    },
+    {
+      "Sid": "LogsStreamingAndSearch",
+      "Effect": "Allow",
+      "Action": [
+        "logs:StartLiveTail",
+        "logs:FilterLogEvents",
+        "logs:StartQuery",
+        "logs:GetQueryResults",
+        "logs:DescribeResourcePolicies",
+        "logs:PutResourcePolicy"
+      ],
+      "Resource": "*"
+    },
+    {
+      "Sid": "TransactionSearchSetup",
+      "Effect": "Allow",
+      "Action": [
+        "application-signals:StartDiscovery",
+        "xray:GetTraceSegmentDestination",
+        "xray:UpdateTraceSegmentDestination",
+        "xray:UpdateIndexingRule"
+      ],
+      "Resource": "*"
+    },
+    {
+      "Sid": "BedrockModelInvocation",
+      "Effect": "Allow",
+      "Action": "bedrock:InvokeModel",
+      "Resource": "*"
+    },
+    {
+      "Sid": "BedrockAgentImport",
+      "Effect": "Allow",
+      "Action": [
+        "bedrock:GetFoundationModel",
+        "bedrock:GetGuardrail",
+        "bedrock:ListAgents",
+        "bedrock:ListAgentAliases",
+        "bedrock:GetAgent",
+        "bedrock:GetAgentAlias",
+        "bedrock:ListAgentActionGroups",
+        "bedrock:GetAgentActionGroup",
+        "bedrock:ListAgentKnowledgeBases",
+        "bedrock:GetKnowledgeBase",
+        "bedrock:ListAgentCollaborators",
+        "s3:GetObject"
+      ],
+      "Resource": "*"
+    }
+  ]
+}
