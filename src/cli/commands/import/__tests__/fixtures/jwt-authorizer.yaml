@@ -1,0 +1,30 @@
+default_agent: jwt_agent
+agents:
+  jwt_agent:
+    name: jwt_agent
+    entrypoint: main.py
+    deployment_type: direct_code_deploy
+    runtime_type: PYTHON_3_12
+    language: python
+    aws:
+      account: '111122223333'
+      region: us-west-2
+      network_configuration:
+        network_mode: PUBLIC
+      protocol_configuration:
+        server_protocol: HTTP
+      observability:
+        enabled: true
+    bedrock_agentcore:
+      agent_id: null
+      agent_arn: null
+    memory:
+      mode: NO_MEMORY
+    authorizer_configuration:
+      customJWTAuthorizer:
+        discoveryUrl: 'https://cognito-idp.us-west-2.amazonaws.com/us-west-2_abc123/.well-known/openid-configuration'
+        allowedClients:
+          - client-id-1
+          - client-id-2
+        allowedAudience:
+          - aud-1

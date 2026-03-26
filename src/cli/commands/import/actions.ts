@@ -62,6 +62,13 @@ function toAgentEnvSpec(agent: ParsedStarterToolkitConfig['agents'][0]): AgentEn
     spec.networkConfig = agent.networkConfig;
   }
 
+  if (agent.authorizerType) {
+    spec.authorizerType = agent.authorizerType;
+  }
+  if (agent.authorizerConfiguration) {
+    spec.authorizerConfiguration = agent.authorizerConfiguration;
+  }
+
   return spec;
 }
 
@@ -295,16 +302,6 @@ export async function handleImport(options: ImportOptions): Promise<ImportResult
       } else {
         logger.log(`Skipping agent "${agent.name}" (already exists in project)`);
         onProgress?.(`Skipping agent "${agent.name}" (already exists in project)`);
-      }
-    }
-
-    for (const agent of parsed.agents) {
-      if (agent.hasAuthorizerConfig) {
-        const warnMsg =
-          `Warning: Agent "${agent.name}" has a custom JWT authorizer configured in the starter toolkit. ` +
-          `This is not automatically imported. To recreate it, run: agentcore add gateway --authorizer-type CUSTOM_JWT`;
-        logger.log(warnMsg, 'warn');
-        onProgress?.(warnMsg);
       }
     }
 

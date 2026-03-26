@@ -1,4 +1,4 @@
-import type { AgentCoreProjectSpec } from '../../../schema';
+import type { AgentCoreProjectSpec, AuthorizerConfig, RuntimeAuthorizerType } from '../../../schema';
 
 /**
  * Parsed representation of a starter toolkit agent from .bedrock_agentcore.yaml.
@@ -18,8 +18,10 @@ export interface ParsedStarterToolkitAgent {
   physicalAgentId?: string;
   /** Physical agent runtime ARN */
   physicalAgentArn?: string;
-  /** Whether this agent has a custom JWT authorizer configured (not imported) */
-  hasAuthorizerConfig?: boolean;
+  /** Authorizer type for inbound requests */
+  authorizerType?: RuntimeAuthorizerType;
+  /** Authorizer configuration (Custom JWT) */
+  authorizerConfiguration?: AuthorizerConfig;
 }
 
 /**

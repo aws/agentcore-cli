@@ -1,3 +1,4 @@
+import type { AuthorizerConfig, CustomClaimValidation, RuntimeAuthorizerType } from '../../../schema';
 import { RUNTIME_TYPE_MAP } from './constants';
 import type {
   ParsedStarterToolkitAgent,
@@ -122,6 +123,37 @@ function parseYamlValue(value: string): unknown {
 }
 
 /**
+ * Extract authorizer config from the YAML `authorizer_configuration` field.
+ * Starter toolkit uses `customJWTAuthorizer` (capital JWT); CLI schema uses `customJwtAuthorizer` (lowercase jwt).
+ */
+function extractAuthorizerConfig(
+  raw: unknown
+): Pick<ParsedStarterToolkitAgent, 'authorizerType' | 'authorizerConfiguration'> {
+  if (raw == null || raw === 'null' || typeof raw !== 'object') return {};
+
+  const authConfig = raw as Record<string, unknown>;
+  // Starter toolkit key is `customJWTAuthorizer` (capital JWT)
+  const jwtRaw = authConfig.customJWTAuthorizer as Record<string, unknown> | undefined;
+  if (!jwtRaw || typeof jwtRaw !== 'object') return {};
+
+  const discoveryUrl = jwtRaw.discoveryUrl as string | undefined;
+  if (!discoveryUrl) return {};
+
+  const customJwtAuthorizer: AuthorizerConfig['customJwtAuthorizer'] = {
+    discoveryUrl,
+    ...(Array.isArray(jwtRaw.allowedAudience) ? { allowedAudience: jwtRaw.allowedAudience as string[] } : {}),
+    ...(Array.isArray(jwtRaw.allowedClients) ? { allowedClients: jwtRaw.allowedClients as string[] } : {}),
+    ...(Array.isArray(jwtRaw.allowedScopes) ? { allowedScopes: jwtRaw.allowedScopes as string[] } : {}),
+    ...(Array.isArray(jwtRaw.customClaims) ? { customClaims: jwtRaw.customClaims as CustomClaimValidation[] } : {}),
+  };
+
+  return {
+    authorizerType: 'CUSTOM_JWT' as RuntimeAuthorizerType,
+    authorizerConfiguration: { customJwtAuthorizer },
+  };
+}
+
+/**
  * Parse a .bedrock_agentcore.yaml file into our internal representation.
  */
 export function parseStarterToolkitYaml(filePath: string): ParsedStarterToolkitConfig {
@@ -192,8 +224,7 @@ export function parseStarterToolkitYaml(filePath: string): ParsedStarterToolkitC
         enableOtel: (obsConfig?.enabled as boolean) ?? true,
         physicalAgentId: bedrockConfig?.agent_id as string | undefined,
         physicalAgentArn: bedrockConfig?.agent_arn as string | undefined,
-        hasAuthorizerConfig:
-          agentConfig.authorizer_configuration != null && agentConfig.authorizer_configuration !== 'null',
+        ...extractAuthorizerConfig(agentConfig.authorizer_configuration),
       });
 
       // Extract memory config per agent — ensure mode is a non-empty string
