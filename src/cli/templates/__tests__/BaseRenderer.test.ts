@@ -18,8 +18,8 @@ vi.mock('../../../lib', () => ({
 }));
 
 class TestRenderer extends BaseRenderer {
-  constructor(config: any, sdkName: string, baseTemplateDir: string) {
-    super(config, sdkName, baseTemplateDir);
+  constructor(config: any, sdkName: string, baseTemplateDir: string, protocol?: string) {
+    super(config, sdkName, baseTemplateDir, protocol);
   }
 
   getTemplateDirPublic(): string {
@@ -30,14 +30,35 @@ class TestRenderer extends BaseRenderer {
 describe('BaseRenderer', () => {
   afterEach(() => vi.clearAllMocks());
 
-  it('getTemplateDir joins language and sdk name', () => {
+  it('getTemplateDir joins language, protocol, and sdk name', () => {
     const renderer = new TestRenderer(
       { targetLanguage: 'Python', name: 'MyAgent', hasMemory: false },
       'strands',
       '/templates'
     );
 
-    expect(renderer.getTemplateDirPublic()).toBe('/templates/python/strands');
+    expect(renderer.getTemplateDirPublic()).toBe('/templates/python/http/strands');
+  });
+
+  it('getTemplateDir uses protocol from config', () => {
+    const renderer = new TestRenderer(
+      { targetLanguage: 'Python', name: 'MyAgent', hasMemory: false, protocol: 'A2A' },
+      'strands',
+      '/templates'
+    );
+
+    expect(renderer.getTemplateDirPublic()).toBe('/templates/python/a2a/strands');
+  });
+
+  it('getTemplateDir uses explicit protocol over config', () => {
+    const renderer = new TestRenderer(
+      { targetLanguage: 'Python', name: 'MyAgent', hasMemory: false, protocol: 'A2A' },
+      'standalone',
+      '/templates',
+      'mcp'
+    );
+
+    expect(renderer.getTemplateDirPublic()).toBe('/templates/python/mcp/standalone');
   });
 
   it('render copies base template', async () => {
@@ -54,7 +75,7 @@ describe('BaseRenderer', () => {
 
     expect(mockCopyAndRenderDir).toHaveBeenCalledTimes(1);
     expect(mockCopyAndRenderDir).toHaveBeenCalledWith(
-      '/templates/python/strands/base',
+      '/templates/python/http/strands/base',
       '/output/app/MyAgent',
       expect.objectContaining({ projectName: 'MyAgent', Name: 'MyAgent', hasMcp: false })
     );
@@ -74,7 +95,7 @@ describe('BaseRenderer', () => {
 
     expect(mockCopyAndRenderDir).toHaveBeenCalledTimes(2);
     expect(mockCopyAndRenderDir).toHaveBeenCalledWith(
-      '/templates/typescript/langchain/capabilities/memory',
+      '/templates/typescript/http/langchain/capabilities/memory',
       '/out/app/Agent/memory',
       expect.objectContaining({ projectName: 'Agent', hasMemory: true })
     );

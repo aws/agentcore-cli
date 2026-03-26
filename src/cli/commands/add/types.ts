@@ -1,18 +1,23 @@
-import type { GatewayAuthorizerType, ModelProvider, SDKFramework, TargetLanguage } from '../../../schema';
+import type { GatewayAuthorizerType, ModelProvider, ProtocolMode, SDKFramework, TargetLanguage } from '../../../schema';
 import type { MemoryOption } from '../../tui/screens/generate/types';
+import type { VpcOptions } from '../shared/vpc-utils';
 
 // Agent types
-export interface AddAgentOptions {
+export interface AddAgentOptions extends VpcOptions {
   name?: string;
-  type?: 'create' | 'byo';
+  type?: 'create' | 'byo' | 'import';
   build?: string;
   language?: TargetLanguage;
   framework?: SDKFramework;
   modelProvider?: ModelProvider;
   apiKey?: string;
   memory?: MemoryOption;
+  protocol?: ProtocolMode;
   codeLocation?: string;
   entrypoint?: string;
+  agentId?: string;
+  agentAliasId?: string;
+  region?: string;
   json?: boolean;
 }
 
@@ -32,11 +37,14 @@ export interface AddGatewayOptions {
   allowedAudience?: string;
   allowedClients?: string;
   allowedScopes?: string;
-  agentClientId?: string;
-  agentClientSecret?: string;
+  customClaims?: string;
+  clientId?: string;
+  clientSecret?: string;
   agents?: string;
   semanticSearch?: boolean;
   exceptionLevel?: string;
+  policyEngine?: string;
+  policyEngineMode?: string;
   json?: boolean;
 }
 

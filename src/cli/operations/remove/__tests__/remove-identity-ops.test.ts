@@ -15,16 +15,19 @@ vi.mock('../../../../lib/index.js', () => ({
     readProjectSpec = mockReadProjectSpec;
     writeProjectSpec = mockWriteProjectSpec;
     configExists = vi.fn().mockReturnValue(false);
-    readMcpSpec = vi.fn().mockResolvedValue({ agentCoreGateways: [] });
   },
 }));
 
-const makeProject = (credNames: string[]) => ({
+const makeProject = (
+  credNames: string[],
+  agentCoreGateways: { targets?: { outboundAuth?: { credentialName?: string } }[] }[] = []
+) => ({
   name: 'TestProject',
   version: 1,
   agents: [],
   memories: [],
   credentials: credNames.map(name => ({ name, type: 'ApiKeyCredentialProvider' })),
+  agentCoreGateways,
 });
 
 const primitive = new CredentialPrimitive();

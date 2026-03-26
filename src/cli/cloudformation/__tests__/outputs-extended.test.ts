@@ -1,4 +1,4 @@
-import { buildDeployedState, parseAgentOutputs } from '../outputs.js';
+import { buildDeployedState, parseAgentOutputs, parseEvaluatorOutputs, parseOnlineEvalOutputs } from '../outputs.js';
 import type { StackOutputs } from '../outputs.js';
 import { describe, expect, it } from 'vitest';
 
@@ -232,5 +232,171 @@ describe('buildDeployedState', () => {
   it('handles empty agents record', () => {
     const state = buildDeployedState({ targetName: 'default', stackName: 'Stack', agents: {}, gateways: {} });
     expect(state.targets.default!.resources?.agents).toBeUndefined();
+  });
+
+  it('includes evaluators in deployed state when provided', () => {
+    const evaluators = {
+      MyEval: {
+        evaluatorId: 'proj_MyEval-abc',
+        evaluatorArn: 'arn:aws:bedrock:us-east-1:123:evaluator/proj_MyEval-abc',
+      },
+    };
+
+    const state = buildDeployedState({
+      targetName: 'default',
+      stackName: 'Stack',
+      agents: {},
+      gateways: {},
+      evaluators,
+    });
+    expect(state.targets.default!.resources?.evaluators).toEqual(evaluators);
+  });
+
+  it('omits evaluators from deployed state when empty', () => {
+    const state = buildDeployedState({
+      targetName: 'default',
+      stackName: 'Stack',
+      agents: {},
+      gateways: {},
+      evaluators: {},
+    });
+    expect(state.targets.default!.resources?.evaluators).toBeUndefined();
+  });
+
+  it('includes onlineEvalConfigs in deployed state when provided', () => {
+    const onlineEvalConfigs = {
+      TestConfig: {
+        onlineEvaluationConfigId: 'proj_TestConfig-xyz',
+        onlineEvaluationConfigArn: 'arn:aws:bedrock:us-east-1:123:online-evaluation-config/proj_TestConfig-xyz',
+      },
+    };
+
+    const state = buildDeployedState({
+      targetName: 'default',
+      stackName: 'Stack',
+      agents: {},
+      gateways: {},
+      onlineEvalConfigs,
+    });
+    expect(state.targets.default!.resources?.onlineEvalConfigs).toEqual(onlineEvalConfigs);
+  });
+
+  it('omits onlineEvalConfigs from deployed state when empty', () => {
+    const state = buildDeployedState({
+      targetName: 'default',
+      stackName: 'Stack',
+      agents: {},
+      gateways: {},
+      onlineEvalConfigs: {},
+    });
+    expect(state.targets.default!.resources?.onlineEvalConfigs).toBeUndefined();
+  });
+});
+
+describe('parseEvaluatorOutputs', () => {
+  it('parses evaluator Id and Arn from stack outputs', () => {
+    const outputs: StackOutputs = {
+      ApplicationEvaluatorMyEvalIdOutputABC123: 'proj_MyEval-abc',
+      ApplicationEvaluatorMyEvalArnOutputDEF456: 'arn:aws:bedrock:us-east-1:123:evaluator/proj_MyEval-abc',
+    };
+
+    const result = parseEvaluatorOutputs(outputs, ['MyEval']);
+    expect(result.MyEval).toBeDefined();
+    expect(result.MyEval!.evaluatorId).toBe('proj_MyEval-abc');
+    expect(result.MyEval!.evaluatorArn).toBe('arn:aws:bedrock:us-east-1:123:evaluator/proj_MyEval-abc');
+  });
+
+  it('parses multiple evaluators', () => {
+    const outputs: StackOutputs = {
+      ApplicationEvaluatorEvalAIdOutputA: 'id-a',
+      ApplicationEvaluatorEvalAArnOutputB: 'arn:a',
+      ApplicationEvaluatorEvalBIdOutputC: 'id-b',
+      ApplicationEvaluatorEvalBArnOutputD: 'arn:b',
+    };
+
+    const result = parseEvaluatorOutputs(outputs, ['EvalA', 'EvalB']);
+    expect(Object.keys(result)).toHaveLength(2);
+    expect(result.EvalA!.evaluatorId).toBe('id-a');
+    expect(result.EvalB!.evaluatorId).toBe('id-b');
+  });
+
+  it('skips evaluator when Id output is missing', () => {
+    const outputs: StackOutputs = {
+      ApplicationEvaluatorMyEvalArnOutputDEF456: 'arn:eval',
+    };
+
+    const result = parseEvaluatorOutputs(outputs, ['MyEval']);
+    expect(result.MyEval).toBeUndefined();
+  });
+
+  it('skips evaluator when Arn output is missing', () => {
+    const outputs: StackOutputs = {
+      ApplicationEvaluatorMyEvalIdOutputABC123: 'eval-id',
+    };
+
+    const result = parseEvaluatorOutputs(outputs, ['MyEval']);
+    expect(result.MyEval).toBeUndefined();
+  });
+
+  it('returns empty record for no matching outputs', () => {
+    const result = parseEvaluatorOutputs({ UnrelatedOutput: 'value' }, ['MyEval']);
+    expect(result).toEqual({});
+  });
+
+  it('maps PascalCase output keys back to original underscore names', () => {
+    // Evaluator name "my_eval" becomes "MyEval" in PascalCase
+    const outputs: StackOutputs = {
+      ApplicationEvaluatorMyEvalIdOutputA: 'id-1',
+      ApplicationEvaluatorMyEvalArnOutputB: 'arn:1',
+    };
+
+    const result = parseEvaluatorOutputs(outputs, ['my_eval']);
+    expect(result.my_eval).toBeDefined();
+    expect(result.my_eval!.evaluatorId).toBe('id-1');
+  });
+});
+
+describe('parseOnlineEvalOutputs', () => {
+  it('parses online eval config Id and Arn from stack outputs', () => {
+    const outputs: StackOutputs = {
+      ApplicationOnlineEvalTestConfigIdOutputABC: 'proj_TestConfig-xyz',
+      ApplicationOnlineEvalTestConfigArnOutputDEF:
+        'arn:aws:bedrock:us-east-1:123:online-evaluation-config/proj_TestConfig-xyz',
+    };
+
+    const result = parseOnlineEvalOutputs(outputs, ['TestConfig']);
+    expect(result.TestConfig).toBeDefined();
+    expect(result.TestConfig!.onlineEvaluationConfigId).toBe('proj_TestConfig-xyz');
+    expect(result.TestConfig!.onlineEvaluationConfigArn).toBe(
+      'arn:aws:bedrock:us-east-1:123:online-evaluation-config/proj_TestConfig-xyz'
+    );
+  });
+
+  it('parses multiple online eval configs', () => {
+    const outputs: StackOutputs = {
+      ApplicationOnlineEvalConfigAIdOutputA: 'id-a',
+      ApplicationOnlineEvalConfigAArnOutputB: 'arn:a',
+      ApplicationOnlineEvalConfigBIdOutputC: 'id-b',
+      ApplicationOnlineEvalConfigBArnOutputD: 'arn:b',
+    };
+
+    const result = parseOnlineEvalOutputs(outputs, ['ConfigA', 'ConfigB']);
+    expect(Object.keys(result)).toHaveLength(2);
+    expect(result.ConfigA!.onlineEvaluationConfigId).toBe('id-a');
+    expect(result.ConfigB!.onlineEvaluationConfigId).toBe('id-b');
+  });
+
+  it('skips config when Id output is missing', () => {
+    const outputs: StackOutputs = {
+      ApplicationOnlineEvalTestConfigArnOutputDEF: 'arn:config',
+    };
+
+    const result = parseOnlineEvalOutputs(outputs, ['TestConfig']);
+    expect(result.TestConfig).toBeUndefined();
+  });
+
+  it('returns empty record for empty outputs', () => {
+    const result = parseOnlineEvalOutputs({}, ['TestConfig']);
+    expect(result).toEqual({});
   });
 });

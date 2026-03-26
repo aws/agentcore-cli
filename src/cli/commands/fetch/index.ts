@@ -1,0 +1,1 @@
+export { registerFetch } from './command';

@@ -1,4 +1,12 @@
-import { convertEntrypointToModule, findAvailablePort, waitForPort } from '../utils.js';
+import {
+  convertEntrypointToModule,
+  findAvailablePort,
+  formatMcpToolList,
+  getEndpointUrl,
+  isConnectionError,
+  sleep,
+  waitForPort,
+} from '../utils.js';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 /**
@@ -95,5 +103,79 @@ describe('waitForPort', () => {
     // Port 4000 is never added to availablePorts, so it stays unavailable
     const result = await waitForPort(4000, 200);
     expect(result).toBe(false);
+  });
+});
+
+describe('getEndpointUrl', () => {
+  it('returns /mcp for MCP protocol', () => {
+    expect(getEndpointUrl(8000, 'MCP')).toBe('http://localhost:8000/mcp');
+  });
+
+  it('returns / for A2A protocol', () => {
+    expect(getEndpointUrl(9000, 'A2A')).toBe('http://localhost:9000/');
+  });
+
+  it('returns /invocations for HTTP protocol', () => {
+    expect(getEndpointUrl(8080, 'HTTP')).toBe('http://localhost:8080/invocations');
+  });
+
+  it('returns /invocations for unknown protocol', () => {
+    expect(getEndpointUrl(8080, 'UNKNOWN')).toBe('http://localhost:8080/invocations');
+  });
+});
+
+describe('formatMcpToolList', () => {
+  it('formats tools with descriptions and params', () => {
+    const tools = [
+      {
+        name: 'add',
+        description: 'Add numbers',
+        inputSchema: { properties: { a: { type: 'integer' }, b: { type: 'integer' } } },
+      },
+      { name: 'greet', description: 'Say hello' },
+    ];
+    const result = formatMcpToolList(tools);
+    expect(result).toContain('Available tools (2)');
+    expect(result).toContain('add(a: integer, b: integer) - Add numbers');
+    expect(result).toContain('greet() - Say hello');
+    expect(result).toContain('Type: tool_name');
+  });
+
+  it('handles tools with no description', () => {
+    const tools = [{ name: 'test' }];
+    const result = formatMcpToolList(tools);
+    expect(result).toContain('test()');
+    expect(result).not.toContain(' - ');
+  });
+
+  it('handles empty tool list', () => {
+    const result = formatMcpToolList([]);
+    expect(result).toContain('Available tools (0)');
+  });
+});
+
+describe('isConnectionError', () => {
+  it('detects ECONNREFUSED', () => {
+    expect(isConnectionError(new Error('connect ECONNREFUSED 127.0.0.1:8080'))).toBe(true);
+  });
+
+  it('detects fetch failed', () => {
+    expect(isConnectionError(new Error('fetch failed'))).toBe(true);
+  });
+
+  it('does not match arbitrary errors', () => {
+    expect(isConnectionError(new Error('timeout'))).toBe(false);
+  });
+
+  it('does not match partial "fetch" in other messages', () => {
+    expect(isConnectionError(new Error('failed to fetch data from API'))).toBe(false);
+  });
+});
+
+describe('sleep', () => {
+  it('resolves after specified delay', async () => {
+    const start = Date.now();
+    await sleep(50);
+    expect(Date.now() - start).toBeGreaterThanOrEqual(40);
   });
 });

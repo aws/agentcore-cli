@@ -1,4 +1,12 @@
-import type { BuildType, ModelProvider, PythonRuntime, SDKFramework, TargetLanguage } from '../../../../schema';
+import type {
+  BuildType,
+  ModelProvider,
+  NetworkMode,
+  ProtocolMode,
+  PythonRuntime,
+  SDKFramework,
+  TargetLanguage,
+} from '../../../../schema';
 import { DEFAULT_MODEL_IDS, getSupportedModelProviders } from '../../../../schema';
 import type { MemoryOption } from '../generate/types';
 
@@ -9,7 +17,7 @@ import type { MemoryOption } from '../generate/types';
 /**
  * Agent type selection: Create new agent code or bring existing code.
  */
-export type AgentType = 'create' | 'byo';
+export type AgentType = 'create' | 'byo' | 'import';
 
 /**
  * Add agent wizard steps.
@@ -31,10 +39,19 @@ export type AddAgentStep =
   | 'codeLocation'
   | 'buildType'
   | 'language'
+  | 'protocol'
   | 'framework'
   | 'modelProvider'
   | 'apiKey'
+  | 'advanced'
+  | 'networkMode'
+  | 'subnets'
+  | 'securityGroups'
+  | 'requestHeaderAllowlist'
   | 'memory'
+  | 'region'
+  | 'bedrockAgent'
+  | 'bedrockAlias'
   | 'confirm';
 
 export interface AddAgentConfig {
@@ -46,14 +63,30 @@ export interface AddAgentConfig {
   entrypoint: string;
   language: TargetLanguage;
   buildType: BuildType;
+  /** Protocol (HTTP, MCP, A2A). Defaults to HTTP. */
+  protocol: ProtocolMode;
   framework: SDKFramework;
   modelProvider: ModelProvider;
   /** API key for non-Bedrock model providers (optional - can be added later) */
   apiKey?: string;
+  /** Network mode for the runtime */
+  networkMode?: NetworkMode;
+  /** Subnet IDs for VPC mode */
+  subnets?: string[];
+  /** Security group IDs for VPC mode */
+  securityGroups?: string[];
+  /** Allowed request headers for the runtime */
+  requestHeaderAllowlist?: string[];
   /** Python version (only for Python agents) */
   pythonVersion: PythonRuntime;
   /** Memory option (create path only) */
   memory: MemoryOption;
+  /** Bedrock Agent ID (import path only) */
+  bedrockAgentId?: string;
+  /** Bedrock Agent Alias ID (import path only) */
+  bedrockAliasId?: string;
+  /** AWS region for Bedrock Agent (import path only) */
+  bedrockRegion?: string;
 }
 
 export const ADD_AGENT_STEP_LABELS: Record<AddAgentStep, string> = {
@@ -62,10 +95,19 @@ export const ADD_AGENT_STEP_LABELS: Record<AddAgentStep, string> = {
   codeLocation: 'Code',
   buildType: 'Build',
   language: 'Language',
+  protocol: 'Protocol',
   framework: 'Framework',
   modelProvider: 'Model',
   apiKey: 'API Key',
+  advanced: 'Advanced',
+  networkMode: 'Network',
+  subnets: 'Subnets',
+  securityGroups: 'Security Groups',
+  requestHeaderAllowlist: 'Headers',
   memory: 'Memory',
+  region: 'Region',
+  bedrockAgent: 'Agent',
+  bedrockAlias: 'Alias',
   confirm: 'Confirm',
 };
 
@@ -76,6 +118,7 @@ export const ADD_AGENT_STEP_LABELS: Record<AddAgentStep, string> = {
 export const AGENT_TYPE_OPTIONS = [
   { id: 'create', title: 'Create new agent' },
   { id: 'byo', title: 'Bring my own code' },
+  { id: 'import', title: 'Import from Bedrock Agents' },
 ] as const;
 
 export const LANGUAGE_OPTIONS = [
@@ -113,6 +156,11 @@ export function getModelProviderOptionsForSdk(sdk: SDKFramework) {
 // ─────────────────────────────────────────────────────────────────────────────
 // Defaults
 // ─────────────────────────────────────────────────────────────────────────────
+
+export const NETWORK_MODE_OPTIONS = [
+  { id: 'PUBLIC', title: 'Public', description: undefined },
+  { id: 'VPC', title: 'VPC', description: 'Attach to your VPC' },
+] as const;
 
 export const DEFAULT_PYTHON_VERSION: PythonRuntime = 'PYTHON_3_12';
 export const DEFAULT_ENTRYPOINT = 'main.py';

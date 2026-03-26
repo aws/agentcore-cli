@@ -1,13 +1,6 @@
-import type {
-  AgentCoreCliMcpDefs,
-  AgentCoreMcpSpec,
-  AgentCoreProjectSpec,
-  AwsDeploymentTarget,
-  DeployedState,
-} from '../../../schema';
+import type { AgentCoreCliMcpDefs, AgentCoreProjectSpec, AwsDeploymentTarget, DeployedState } from '../../../schema';
 import {
   AgentCoreCliMcpDefsSchema,
-  AgentCoreMcpSpecSchema,
   AgentCoreProjectSpecSchema,
   AgentCoreRegionSchema,
   AwsDeploymentTargetsSchema,
@@ -187,22 +180,6 @@ export class ConfigIO {
   }
 
   /**
-   * Read and validate the MCP configuration file
-   */
-  async readMcpSpec(): Promise<AgentCoreMcpSpec> {
-    const filePath = this.pathResolver.getMcpConfigPath();
-    return this.readAndValidate(filePath, 'MCP Config', AgentCoreMcpSpecSchema);
-  }
-
-  /**
-   * Write and validate the MCP configuration file
-   */
-  async writeMcpSpec(data: AgentCoreMcpSpec): Promise<void> {
-    const filePath = this.pathResolver.getMcpConfigPath();
-    await this.validateAndWrite(filePath, 'MCP Config', AgentCoreMcpSpecSchema, data);
-  }
-
-  /**
    * Read and validate the MCP definitions file
    */
   async readMcpDefs(): Promise<AgentCoreCliMcpDefs> {
@@ -228,12 +205,11 @@ export class ConfigIO {
   /**
    * Check if a specific config file exists
    */
-  configExists(type: 'project' | 'awsTargets' | 'state' | 'mcp' | 'mcpDefs'): boolean {
+  configExists(type: 'project' | 'awsTargets' | 'state' | 'mcpDefs'): boolean {
     const pathMap = {
       project: this.pathResolver.getAgentConfigPath(),
       awsTargets: this.pathResolver.getAWSTargetsConfigPath(),
       state: this.pathResolver.getStatePath(),
-      mcp: this.pathResolver.getMcpConfigPath(),
       mcpDefs: this.pathResolver.getMcpDefsPath(),
     };
     return existsSync(pathMap[type]);

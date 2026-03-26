@@ -8,6 +8,7 @@ import {
   mapModelProviderToIdentityProviders,
   writeAgentToProject,
 } from '../../../operations/agent/generate';
+import { executeImportAgent } from '../../../operations/agent/import';
 import { computeDefaultCredentialEnvVarName } from '../../../primitives/credential-utils';
 import { credentialPrimitive } from '../../../primitives/registry';
 import { createRenderer } from '../../../templates';
@@ -52,6 +53,7 @@ export type AddAgentOutcome = AddAgentCreateResult | AddAgentByoResult | AddAgen
  * Maps AddAgentConfig (from BYO wizard) to v2 AgentEnvSpec for schema persistence.
  */
 export function mapByoConfigToAgent(config: AddAgentConfig): AgentEnvSpec {
+  const networkMode = config.networkMode ?? 'PUBLIC';
   return {
     type: 'AgentCoreRuntime',
     name: config.name,
@@ -59,7 +61,19 @@ export function mapByoConfigToAgent(config: AddAgentConfig): AgentEnvSpec {
     entrypoint: config.entrypoint as FilePath,
     codeLocation: config.codeLocation as DirectoryPath,
     runtimeVersion: config.pythonVersion,
-    networkMode: 'PUBLIC',
+    protocol: config.protocol ?? 'HTTP',
+    networkMode,
+    ...(networkMode === 'VPC' &&
+      config.subnets &&
+      config.securityGroups && {
+        networkConfig: {
+          subnets: config.subnets,
+          securityGroups: config.securityGroups,
+        },
+      }),
+    ...(config.requestHeaderAllowlist?.length && {
+      requestHeaderAllowlist: config.requestHeaderAllowlist,
+    }),
   };
 }
 
@@ -70,10 +84,15 @@ function mapAddAgentConfigToGenerateConfig(config: AddAgentConfig): GenerateConf
   return {
     projectName: config.name, // In create context, this is the agent name
     buildType: config.buildType,
+    protocol: config.protocol,
     sdk: config.framework,
     modelProvider: config.modelProvider,
     memory: config.memory,
     language: config.language,
+    networkMode: config.networkMode,
+    subnets: config.subnets,
+    securityGroups: config.securityGroups,
+    requestHeaderAllowlist: config.requestHeaderAllowlist,
   };
 }
 
@@ -110,7 +129,9 @@ export function useAddAgent() {
       }
 
       // Branch based on agent type
-      if (config.agentType === 'create') {
+      if (config.agentType === 'import') {
+        return await handleImportPath(config, configBaseDir);
+      } else if (config.agentType === 'create') {
         return await handleCreatePath(config, configBaseDir);
       } else {
         return await handleByoPath(config, configIO, configBaseDir);
@@ -199,6 +220,41 @@ async function handleCreatePath(
     projectName: project.name,
     projectPath: agentPath,
     pythonSetupResult,
+  };
+}
+
+/**
+ * Handle the "import" path: import from Bedrock Agents.
+ */
+async function handleImportPath(
+  config: AddAgentConfig,
+  configBaseDir: string
+): Promise<AddAgentCreateResult | AddAgentError> {
+  const projectRoot = dirname(configBaseDir);
+  const configIO = new ConfigIO({ baseDir: configBaseDir });
+  const project = await configIO.readProjectSpec();
+  const agentPath = join(projectRoot, APP_DIR, config.name);
+
+  const result = await executeImportAgent({
+    name: config.name,
+    framework: config.framework,
+    memory: config.memory,
+    bedrockRegion: config.bedrockRegion!,
+    bedrockAgentId: config.bedrockAgentId!,
+    bedrockAliasId: config.bedrockAliasId!,
+    configBaseDir,
+  });
+
+  if (!result.success) {
+    return { ok: false, error: result.error ?? 'Unknown error' };
+  }
+
+  return {
+    ok: true,
+    type: 'create',
+    agentName: config.name,
+    projectName: project.name,
+    projectPath: agentPath,
   };
 }
 

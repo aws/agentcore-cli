@@ -22,7 +22,6 @@ interface ValidationState {
 const SCHEMA_FILES = [
   { key: 'project', label: 'agentcore.json', required: true },
   { key: 'targets', label: 'aws-targets.json', required: true },
-  { key: 'mcp', label: 'mcp.json', required: false },
   { key: 'mcpDefs', label: 'mcp-defs.json', required: false },
   { key: 'state', label: '.cli/state.json', required: false },
 ] as const;
@@ -77,13 +76,6 @@ export function ValidateScreen({ isInteractive, onExit }: ValidateScreenProps) {
           } else if (file.key === 'targets') {
             await configIO.readAWSDeploymentTargets();
             newSteps[i] = { label: file.label, status: 'success' };
-          } else if (file.key === 'mcp') {
-            if (configIO.configExists('mcp')) {
-              await configIO.readMcpSpec();
-              newSteps[i] = { label: file.label, status: 'success' };
-            } else {
-              newSteps[i] = { label: file.label, status: 'info', info: 'Not present (optional)' };
-            }
           } else if (file.key === 'mcpDefs') {
             if (configIO.configExists('mcpDefs')) {
               await configIO.readMcpDefs();

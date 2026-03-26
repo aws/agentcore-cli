@@ -2,24 +2,36 @@ import type { RemovableGatewayTarget, RemovalPreview } from '../../../operations
 import { ErrorPrompt, Panel, Screen } from '../../components';
 import {
   useRemovableAgents,
+  useRemovableEvaluators,
   useRemovableGatewayTargets,
   useRemovableGateways,
   useRemovableIdentities,
   useRemovableMemories,
+  useRemovableOnlineEvalConfigs,
+  useRemovablePolicies,
+  useRemovablePolicyEngines,
   useRemovalPreview,
   useRemoveAgent,
+  useRemoveEvaluator,
   useRemoveGateway,
   useRemoveGatewayTarget,
   useRemoveIdentity,
   useRemoveMemory,
+  useRemoveOnlineEvalConfig,
+  useRemovePolicy,
+  useRemovePolicyEngine,
 } from '../../hooks/useRemove';
 import { RemoveAgentScreen } from './RemoveAgentScreen';
 import { RemoveAllScreen } from './RemoveAllScreen';
 import { RemoveConfirmScreen } from './RemoveConfirmScreen';
+import { RemoveEvaluatorScreen } from './RemoveEvaluatorScreen';
 import { RemoveGatewayScreen } from './RemoveGatewayScreen';
 import { RemoveGatewayTargetScreen } from './RemoveGatewayTargetScreen';
 import { RemoveIdentityScreen } from './RemoveIdentityScreen';
 import { RemoveMemoryScreen } from './RemoveMemoryScreen';
+import { RemoveOnlineEvalScreen } from './RemoveOnlineEvalScreen';
+import { RemovePolicyEngineScreen } from './RemovePolicyEngineScreen';
+import { RemovePolicyScreen } from './RemovePolicyScreen';
 import type { RemoveResourceType } from './RemoveScreen';
 import { RemoveScreen } from './RemoveScreen';
 import { RemoveSuccessScreen } from './RemoveSuccessScreen';
@@ -34,17 +46,29 @@ type FlowState =
   | { name: 'select-gateway-target' }
   | { name: 'select-memory' }
   | { name: 'select-identity' }
+  | { name: 'select-evaluator' }
+  | { name: 'select-online-eval' }
+  | { name: 'select-policy-engine' }
+  | { name: 'select-policy' }
   | { name: 'confirm-agent'; agentName: string; preview: RemovalPreview }
   | { name: 'confirm-gateway'; gatewayName: string; preview: RemovalPreview }
   | { name: 'confirm-gateway-target'; tool: RemovableGatewayTarget; preview: RemovalPreview }
   | { name: 'confirm-memory'; memoryName: string; preview: RemovalPreview }
   | { name: 'confirm-identity'; identityName: string; preview: RemovalPreview }
+  | { name: 'confirm-evaluator'; evaluatorName: string; preview: RemovalPreview }
+  | { name: 'confirm-online-eval'; configName: string; preview: RemovalPreview }
+  | { name: 'confirm-policy-engine'; engineName: string; preview: RemovalPreview }
+  | { name: 'confirm-policy'; compositeKey: string; policyName: string; preview: RemovalPreview }
   | { name: 'loading'; message: string }
   | { name: 'agent-success'; agentName: string; logFilePath?: string }
   | { name: 'gateway-success'; gatewayName: string; logFilePath?: string }
   | { name: 'tool-success'; toolName: string; logFilePath?: string }
   | { name: 'memory-success'; memoryName: string; logFilePath?: string }
   | { name: 'identity-success'; identityName: string; logFilePath?: string }
+  | { name: 'evaluator-success'; evaluatorName: string; logFilePath?: string }
+  | { name: 'online-eval-success'; configName: string; logFilePath?: string }
+  | { name: 'policy-engine-success'; engineName: string; logFilePath?: string }
+  | { name: 'policy-success'; policyName: string; logFilePath?: string }
   | { name: 'remove-all' }
   | { name: 'error'; message: string };
 
@@ -57,7 +81,16 @@ interface RemoveFlowProps {
   /** Force mode - skip confirmation */
   force?: boolean;
   /** Initial resource type to start at (for CLI subcommands) */
-  initialResourceType?: 'agent' | 'gateway' | 'gateway-target' | 'memory' | 'identity';
+  initialResourceType?:
+    | 'agent'
+    | 'gateway'
+    | 'gateway-target'
+    | 'memory'
+    | 'identity'
+    | 'evaluator'
+    | 'online-eval'
+    | 'policy-engine'
+    | 'policy';
   /** Initial resource name to auto-select (for CLI --name flag) */
   initialResourceName?: string;
 }
@@ -83,6 +116,14 @@ export function RemoveFlow({
         return { name: 'select-memory' };
       case 'identity':
         return { name: 'select-identity' };
+      case 'evaluator':
+        return { name: 'select-evaluator' };
+      case 'online-eval':
+        return { name: 'select-online-eval' };
+      case 'policy-engine':
+        return { name: 'select-policy-engine' };
+      case 'policy':
+        return { name: 'select-policy' };
       default:
         return { name: 'select' };
     }
@@ -95,9 +136,30 @@ export function RemoveFlow({
   const { tools: mcpTools, isLoading: isLoadingTools, refresh: refreshTools } = useRemovableGatewayTargets();
   const { memories, isLoading: isLoadingMemories, refresh: refreshMemories } = useRemovableMemories();
   const { identities, isLoading: isLoadingIdentities, refresh: refreshIdentities } = useRemovableIdentities();
+  const { evaluators, isLoading: isLoadingEvaluators, refresh: refreshEvaluators } = useRemovableEvaluators();
+  const {
+    onlineEvalConfigs,
+    isLoading: isLoadingOnlineEvals,
+    refresh: refreshOnlineEvals,
+  } = useRemovableOnlineEvalConfigs();
+  const {
+    policyEngines,
+    isLoading: isLoadingPolicyEngines,
+    refresh: refreshPolicyEngines,
+  } = useRemovablePolicyEngines();
+  const { policies, isLoading: isLoadingPolicies, refresh: refreshPolicies } = useRemovablePolicies();
 
   // Check if any data is still loading
-  const isLoading = isLoadingAgents || isLoadingGateways || isLoadingTools || isLoadingMemories || isLoadingIdentities;
+  const isLoading =
+    isLoadingAgents ||
+    isLoadingGateways ||
+    isLoadingTools ||
+    isLoadingMemories ||
+    isLoadingIdentities ||
+    isLoadingEvaluators ||
+    isLoadingOnlineEvals ||
+    isLoadingPolicyEngines ||
+    isLoadingPolicies;
 
   // Preview hook
   const {
@@ -106,6 +168,10 @@ export function RemoveFlow({
     loadGatewayTargetPreview,
     loadMemoryPreview,
     loadIdentityPreview,
+    loadEvaluatorPreview,
+    loadOnlineEvalPreview,
+    loadPolicyEnginePreview,
+    loadPolicyPreview,
     reset: resetPreview,
   } = useRemovalPreview();
 
@@ -115,6 +181,10 @@ export function RemoveFlow({
   const { remove: removeGatewayTargetOp, reset: resetRemoveGatewayTarget } = useRemoveGatewayTarget();
   const { remove: removeMemoryOp, reset: resetRemoveMemory } = useRemoveMemory();
   const { remove: removeIdentityOp, reset: resetRemoveIdentity } = useRemoveIdentity();
+  const { remove: removeEvaluatorOp, reset: resetRemoveEvaluator } = useRemoveEvaluator();
+  const { remove: removeOnlineEvalOp, reset: resetRemoveOnlineEval } = useRemoveOnlineEvalConfig();
+  const { remove: removePolicyEngineOp, reset: resetRemovePolicyEngine } = useRemovePolicyEngine();
+  const { remove: removePolicyOp, reset: resetRemovePolicy } = useRemovePolicy();
 
   // Track pending result state
   const pendingResultRef = useRef<FlowState | null>(null);
@@ -135,7 +205,17 @@ export function RemoveFlow({
   // In non-interactive mode, exit after success
   useEffect(() => {
     if (!isInteractive) {
-      const successStates = ['agent-success', 'gateway-success', 'tool-success', 'memory-success', 'identity-success'];
+      const successStates = [
+        'agent-success',
+        'gateway-success',
+        'tool-success',
+        'memory-success',
+        'identity-success',
+        'evaluator-success',
+        'online-eval-success',
+        'policy-engine-success',
+        'policy-success',
+      ];
       if (successStates.includes(flow.name)) {
         onExit();
       }
@@ -161,6 +241,18 @@ export function RemoveFlow({
         break;
       case 'identity':
         setFlow({ name: 'select-identity' });
+        break;
+      case 'evaluator':
+        setFlow({ name: 'select-evaluator' });
+        break;
+      case 'online-eval':
+        setFlow({ name: 'select-online-eval' });
+        break;
+      case 'policy-engine':
+        setFlow({ name: 'select-policy-engine' });
+        break;
+      case 'policy':
+        setFlow({ name: 'select-policy' });
         break;
       case 'all':
         setFlow({ name: 'remove-all' });
@@ -281,6 +373,97 @@ export function RemoveFlow({
     [loadIdentityPreview, force, removeIdentityOp]
   );
 
+  const handleSelectEvaluator = useCallback(
+    async (evaluatorName: string) => {
+      const result = await loadEvaluatorPreview(evaluatorName);
+      if (result.ok) {
+        if (force) {
+          setFlow({ name: 'loading', message: `Removing evaluator ${evaluatorName}...` });
+          const removeResult = await removeEvaluatorOp(evaluatorName, result.preview);
+          if (removeResult.success) {
+            setFlow({ name: 'evaluator-success', evaluatorName });
+          } else {
+            setFlow({ name: 'error', message: removeResult.error });
+          }
+        } else {
+          setFlow({ name: 'confirm-evaluator', evaluatorName, preview: result.preview });
+        }
+      } else {
+        setFlow({ name: 'error', message: result.error });
+      }
+    },
+    [loadEvaluatorPreview, force, removeEvaluatorOp]
+  );
+
+  const handleSelectOnlineEval = useCallback(
+    async (configName: string) => {
+      const result = await loadOnlineEvalPreview(configName);
+      if (result.ok) {
+        if (force) {
+          setFlow({ name: 'loading', message: `Removing online eval config ${configName}...` });
+          const removeResult = await removeOnlineEvalOp(configName, result.preview);
+          if (removeResult.success) {
+            setFlow({ name: 'online-eval-success', configName });
+          } else {
+            setFlow({ name: 'error', message: removeResult.error });
+          }
+        } else {
+          setFlow({ name: 'confirm-online-eval', configName, preview: result.preview });
+        }
+      } else {
+        setFlow({ name: 'error', message: result.error });
+      }
+    },
+    [loadOnlineEvalPreview, force, removeOnlineEvalOp]
+  );
+
+  const handleSelectPolicyEngine = useCallback(
+    async (engineName: string) => {
+      const result = await loadPolicyEnginePreview(engineName);
+      if (result.ok) {
+        if (force) {
+          setFlow({ name: 'loading', message: `Removing policy engine ${engineName}...` });
+          const removeResult = await removePolicyEngineOp(engineName, result.preview);
+          if (removeResult.success) {
+            setFlow({ name: 'policy-engine-success', engineName });
+          } else {
+            setFlow({ name: 'error', message: removeResult.error });
+          }
+        } else {
+          setFlow({ name: 'confirm-policy-engine', engineName, preview: result.preview });
+        }
+      } else {
+        setFlow({ name: 'error', message: result.error });
+      }
+    },
+    [loadPolicyEnginePreview, force, removePolicyEngineOp]
+  );
+
+  const handleSelectPolicy = useCallback(
+    async (compositeKey: string) => {
+      const result = await loadPolicyPreview(compositeKey);
+      if (result.ok) {
+        const policyName = compositeKey.includes('/')
+          ? compositeKey.slice(compositeKey.indexOf('/') + 1)
+          : compositeKey;
+        if (force) {
+          setFlow({ name: 'loading', message: `Removing policy ${policyName}...` });
+          const removeResult = await removePolicyOp(compositeKey, result.preview);
+          if (removeResult.success) {
+            setFlow({ name: 'policy-success', policyName });
+          } else {
+            setFlow({ name: 'error', message: removeResult.error });
+          }
+        } else {
+          setFlow({ name: 'confirm-policy', compositeKey, policyName, preview: result.preview });
+        }
+      } else {
+        setFlow({ name: 'error', message: result.error });
+      }
+    },
+    [loadPolicyPreview, force, removePolicyOp]
+  );
+
   // Auto-select resource when initialResourceName is provided and data is loaded
   useEffect(() => {
     if (!initialResourceName || isLoading || hasTriggeredInitialSelection.current) {
@@ -305,6 +488,18 @@ export function RemoveFlow({
         case 'identity':
           void handleSelectIdentity(initialResourceName);
           break;
+        case 'evaluator':
+          void handleSelectEvaluator(initialResourceName);
+          break;
+        case 'online-eval':
+          void handleSelectOnlineEval(initialResourceName);
+          break;
+        case 'policy-engine':
+          void handleSelectPolicyEngine(initialResourceName);
+          break;
+        case 'policy':
+          void handleSelectPolicy(initialResourceName);
+          break;
       }
     }, 0);
   }, [
@@ -315,6 +510,10 @@ export function RemoveFlow({
     handleSelectGateway,
     handleSelectMemory,
     handleSelectIdentity,
+    handleSelectEvaluator,
+    handleSelectOnlineEval,
+    handleSelectPolicyEngine,
+    handleSelectPolicy,
   ]);
 
   // Confirm handlers - pass preview for logging
@@ -398,6 +597,70 @@ export function RemoveFlow({
     [removeIdentityOp]
   );
 
+  const handleConfirmEvaluator = useCallback(
+    async (evaluatorName: string, preview: RemovalPreview) => {
+      pendingResultRef.current = null;
+      setResultReady(false);
+      setFlow({ name: 'loading', message: `Removing evaluator ${evaluatorName}...` });
+      const result = await removeEvaluatorOp(evaluatorName, preview);
+      if (result.success) {
+        pendingResultRef.current = { name: 'evaluator-success', evaluatorName, logFilePath: result.logFilePath };
+      } else {
+        pendingResultRef.current = { name: 'error', message: result.error };
+      }
+      setResultReady(true);
+    },
+    [removeEvaluatorOp]
+  );
+
+  const handleConfirmOnlineEval = useCallback(
+    async (configName: string, preview: RemovalPreview) => {
+      pendingResultRef.current = null;
+      setResultReady(false);
+      setFlow({ name: 'loading', message: `Removing online eval config ${configName}...` });
+      const result = await removeOnlineEvalOp(configName, preview);
+      if (result.success) {
+        pendingResultRef.current = { name: 'online-eval-success', configName, logFilePath: result.logFilePath };
+      } else {
+        pendingResultRef.current = { name: 'error', message: result.error };
+      }
+      setResultReady(true);
+    },
+    [removeOnlineEvalOp]
+  );
+
+  const handleConfirmPolicyEngine = useCallback(
+    async (engineName: string, preview: RemovalPreview) => {
+      pendingResultRef.current = null;
+      setResultReady(false);
+      setFlow({ name: 'loading', message: `Removing policy engine ${engineName}...` });
+      const result = await removePolicyEngineOp(engineName, preview);
+      if (result.success) {
+        pendingResultRef.current = { name: 'policy-engine-success', engineName, logFilePath: result.logFilePath };
+      } else {
+        pendingResultRef.current = { name: 'error', message: result.error };
+      }
+      setResultReady(true);
+    },
+    [removePolicyEngineOp]
+  );
+
+  const handleConfirmPolicy = useCallback(
+    async (compositeKey: string, policyName: string, preview: RemovalPreview) => {
+      pendingResultRef.current = null;
+      setResultReady(false);
+      setFlow({ name: 'loading', message: `Removing policy ${policyName}...` });
+      const result = await removePolicyOp(compositeKey, preview);
+      if (result.success) {
+        pendingResultRef.current = { name: 'policy-success', policyName, logFilePath: result.logFilePath };
+      } else {
+        pendingResultRef.current = { name: 'error', message: result.error };
+      }
+      setResultReady(true);
+    },
+    [removePolicyOp]
+  );
+
   const resetAll = useCallback(() => {
     resetPreview();
     resetRemoveAgent();
@@ -405,6 +668,10 @@ export function RemoveFlow({
     resetRemoveGatewayTarget();
     resetRemoveMemory();
     resetRemoveIdentity();
+    resetRemoveEvaluator();
+    resetRemoveOnlineEval();
+    resetRemovePolicyEngine();
+    resetRemovePolicy();
   }, [
     resetPreview,
     resetRemoveAgent,
@@ -412,11 +679,35 @@ export function RemoveFlow({
     resetRemoveGatewayTarget,
     resetRemoveMemory,
     resetRemoveIdentity,
+    resetRemoveEvaluator,
+    resetRemoveOnlineEval,
+    resetRemovePolicyEngine,
+    resetRemovePolicy,
   ]);
 
   const refreshAll = useCallback(async () => {
-    await Promise.all([refreshAgents(), refreshGateways(), refreshTools(), refreshMemories(), refreshIdentities()]);
-  }, [refreshAgents, refreshGateways, refreshTools, refreshMemories, refreshIdentities]);
+    await Promise.all([
+      refreshAgents(),
+      refreshGateways(),
+      refreshTools(),
+      refreshMemories(),
+      refreshIdentities(),
+      refreshEvaluators(),
+      refreshOnlineEvals(),
+      refreshPolicyEngines(),
+      refreshPolicies(),
+    ]);
+  }, [
+    refreshAgents,
+    refreshGateways,
+    refreshTools,
+    refreshMemories,
+    refreshIdentities,
+    refreshEvaluators,
+    refreshOnlineEvals,
+    refreshPolicyEngines,
+    refreshPolicies,
+  ]);
 
   // Select screen - wait for data to load to avoid arrow position issues
   if (flow.name === 'select') {
@@ -432,6 +723,10 @@ export function RemoveFlow({
         mcpToolCount={mcpTools.length}
         memoryCount={memories.length}
         identityCount={identities.length}
+        evaluatorCount={evaluators.length}
+        onlineEvalCount={onlineEvalConfigs.length}
+        policyEngineCount={policyEngines.length}
+        policyCount={policies.length}
       />
     );
   }
@@ -514,6 +809,58 @@ export function RemoveFlow({
     );
   }
 
+  if (flow.name === 'select-evaluator') {
+    if (initialResourceName && isLoading) {
+      return null;
+    }
+    return (
+      <RemoveEvaluatorScreen
+        evaluators={evaluators}
+        onSelect={(name: string) => void handleSelectEvaluator(name)}
+        onExit={() => setFlow({ name: 'select' })}
+      />
+    );
+  }
+
+  if (flow.name === 'select-online-eval') {
+    if (initialResourceName && isLoading) {
+      return null;
+    }
+    return (
+      <RemoveOnlineEvalScreen
+        configs={onlineEvalConfigs}
+        onSelect={(name: string) => void handleSelectOnlineEval(name)}
+        onExit={() => setFlow({ name: 'select' })}
+      />
+    );
+  }
+
+  if (flow.name === 'select-policy-engine') {
+    if (initialResourceName && isLoading) {
+      return null;
+    }
+    return (
+      <RemovePolicyEngineScreen
+        policyEngines={policyEngines}
+        onSelect={(name: string) => void handleSelectPolicyEngine(name)}
+        onExit={() => setFlow({ name: 'select' })}
+      />
+    );
+  }
+
+  if (flow.name === 'select-policy') {
+    if (initialResourceName && isLoading) {
+      return null;
+    }
+    return (
+      <RemovePolicyScreen
+        policies={policies}
+        onSelect={(compositeKey: string) => void handleSelectPolicy(compositeKey)}
+        onExit={() => setFlow({ name: 'select' })}
+      />
+    );
+  }
+
   // Confirmation screens
   if (flow.name === 'confirm-agent') {
     return (
@@ -570,6 +917,50 @@ export function RemoveFlow({
     );
   }
 
+  if (flow.name === 'confirm-evaluator') {
+    return (
+      <RemoveConfirmScreen
+        title={`Remove Evaluator: ${flow.evaluatorName}`}
+        preview={flow.preview}
+        onConfirm={() => void handleConfirmEvaluator(flow.evaluatorName, flow.preview)}
+        onCancel={() => setFlow({ name: 'select-evaluator' })}
+      />
+    );
+  }
+
+  if (flow.name === 'confirm-online-eval') {
+    return (
+      <RemoveConfirmScreen
+        title={`Remove Online Eval Config: ${flow.configName}`}
+        preview={flow.preview}
+        onConfirm={() => void handleConfirmOnlineEval(flow.configName, flow.preview)}
+        onCancel={() => setFlow({ name: 'select-online-eval' })}
+      />
+    );
+  }
+
+  if (flow.name === 'confirm-policy-engine') {
+    return (
+      <RemoveConfirmScreen
+        title={`Remove Policy Engine: ${flow.engineName}`}
+        preview={flow.preview}
+        onConfirm={() => void handleConfirmPolicyEngine(flow.engineName, flow.preview)}
+        onCancel={() => setFlow({ name: 'select-policy-engine' })}
+      />
+    );
+  }
+
+  if (flow.name === 'confirm-policy') {
+    return (
+      <RemoveConfirmScreen
+        title={`Remove Policy: ${flow.policyName}`}
+        preview={flow.preview}
+        onConfirm={() => void handleConfirmPolicy(flow.compositeKey, flow.policyName, flow.preview)}
+        onCancel={() => setFlow({ name: 'select-policy' })}
+      />
+    );
+  }
+
   // Success screens
   if (flow.name === 'agent-success') {
     return (
@@ -592,7 +983,7 @@ export function RemoveFlow({
       <RemoveSuccessScreen
         isInteractive={isInteractive}
         message={`Removed gateway: ${flow.gatewayName}`}
-        detail="Gateway removed from mcp.json. Deploy with `agentcore deploy` to apply changes."
+        detail="Gateway removed from agentcore.json. Deploy with `agentcore deploy` to apply changes."
         logFilePath={flow.logFilePath}
         onRemoveAnother={() => {
           resetAll();
@@ -641,6 +1032,70 @@ export function RemoveFlow({
         isInteractive={isInteractive}
         message={`Removed identity: ${flow.identityName}`}
         detail="Identity provider removed from agentcore.json. Deploy with `agentcore deploy` to apply changes."
+        logFilePath={flow.logFilePath}
+        onRemoveAnother={() => {
+          resetAll();
+          void refreshAll().then(() => setFlow({ name: 'select' }));
+        }}
+        onExit={onExit}
+      />
+    );
+  }
+
+  if (flow.name === 'evaluator-success') {
+    return (
+      <RemoveSuccessScreen
+        isInteractive={isInteractive}
+        message={`Removed evaluator: ${flow.evaluatorName}`}
+        detail="Evaluator removed from agentcore.json. Deploy with `agentcore deploy` to apply changes."
+        logFilePath={flow.logFilePath}
+        onRemoveAnother={() => {
+          resetAll();
+          void refreshAll().then(() => setFlow({ name: 'select' }));
+        }}
+        onExit={onExit}
+      />
+    );
+  }
+
+  if (flow.name === 'online-eval-success') {
+    return (
+      <RemoveSuccessScreen
+        isInteractive={isInteractive}
+        message={`Removed online eval config: ${flow.configName}`}
+        detail="Online eval config removed from agentcore.json. Deploy with `agentcore deploy` to apply changes."
+        logFilePath={flow.logFilePath}
+        onRemoveAnother={() => {
+          resetAll();
+          void refreshAll().then(() => setFlow({ name: 'select' }));
+        }}
+        onExit={onExit}
+      />
+    );
+  }
+
+  if (flow.name === 'policy-engine-success') {
+    return (
+      <RemoveSuccessScreen
+        isInteractive={isInteractive}
+        message={`Removed policy engine: ${flow.engineName}`}
+        detail="Policy engine removed from agentcore.json. Deploy with `agentcore deploy` to apply changes."
+        logFilePath={flow.logFilePath}
+        onRemoveAnother={() => {
+          resetAll();
+          void refreshAll().then(() => setFlow({ name: 'select' }));
+        }}
+        onExit={onExit}
+      />
+    );
+  }
+
+  if (flow.name === 'policy-success') {
+    return (
+      <RemoveSuccessScreen
+        isInteractive={isInteractive}
+        message={`Removed policy: ${flow.policyName}`}
+        detail="Policy removed from agentcore.json. Deploy with `agentcore deploy` to apply changes."
         logFilePath={flow.logFilePath}
         onRemoveAnother={() => {
           resetAll();

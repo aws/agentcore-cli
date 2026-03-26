@@ -1,4 +1,4 @@
-import type { AgentCoreMcpSpec, AgentCoreProjectSpec, AwsDeploymentTargets, DeployedState } from '../../../../schema';
+import type { AgentCoreProjectSpec, AwsDeploymentTargets, DeployedState } from '../../../../schema';
 import type { ResourceStatusEntry, StatusContext } from '../../../commands/status/action';
 import { handleProjectStatus, loadStatusConfig } from '../../../commands/status/action';
 import { getErrorMessage } from '../../../errors';
@@ -12,7 +12,6 @@ interface StatusState {
   project?: AgentCoreProjectSpec;
   deployedState?: DeployedState;
   awsTargets?: AwsDeploymentTargets;
-  mcpSpec?: AgentCoreMcpSpec;
   targetIndex: number;
   resourceStatuses: ResourceStatusEntry[];
   statusesLoaded: boolean;
@@ -43,7 +42,6 @@ export function useStatusFlow() {
           project: context.project,
           deployedState: context.deployedState,
           awsTargets: context.awsTargets,
-          mcpSpec: context.mcpSpec,
         }));
       })
       .catch((error: Error) => {
@@ -62,9 +60,8 @@ export function useStatusFlow() {
       project: state.project,
       deployedState: state.deployedState,
       awsTargets: state.awsTargets,
-      mcpSpec: state.mcpSpec,
     };
-  }, [state.awsTargets, state.deployedState, state.mcpSpec, state.project]);
+  }, [state.awsTargets, state.deployedState, state.project]);
 
   // Derive target names — fall back to awsTargets when deployedState is empty
   const targetNames = useMemo(() => {
@@ -157,7 +154,6 @@ export function useStatusFlow() {
     targetName: targetName ?? 'No target configured',
     targetRegion: targetConfig?.region,
     hasMultipleTargets: targetNames.length > 1,
-    mcpSpec: state.mcpSpec,
     resourceStatuses: state.resourceStatuses,
     statusesLoading: state.phase === 'fetching-statuses',
     statusesError: state.statusesError,

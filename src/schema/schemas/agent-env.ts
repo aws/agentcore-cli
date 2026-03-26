@@ -6,14 +6,16 @@
 import {
   ModelProviderSchema,
   NetworkModeSchema,
+  ProtocolModeSchema,
   RuntimeVersionSchema as RuntimeVersionSchemaFromConstants,
 } from '../constants';
 import type { DirectoryPath, FilePath } from '../types';
+import { TagsSchema } from './primitives/tags';
 import { z } from 'zod';
 
 // Re-export path types
 export type { DirectoryPath, FilePath, PathType } from '../types';
-export type { PythonRuntime, NodeRuntime, RuntimeVersion, NetworkMode } from '../constants';
+export type { PythonRuntime, NodeRuntime, RuntimeVersion, NetworkMode, ProtocolMode } from '../constants';
 
 // ============================================================================
 // Name Schemas
@@ -104,24 +106,83 @@ export const InstrumentationSchema = z.object({
 export type Instrumentation = z.infer<typeof InstrumentationSchema>;
 
 /**
+ * Network configuration for VPC mode.
+ * Required when networkMode is 'VPC'.
+ */
+export const NetworkConfigSchema = z.object({
+  subnets: z
+    .array(z.string().regex(/^subnet-[0-9a-zA-Z]{8,17}$/))
+    .min(1)
+    .max(16),
+  securityGroups: z
+    .array(z.string().regex(/^sg-[0-9a-zA-Z]{8,17}$/))
+    .min(1)
+    .max(16),
+});
+export type NetworkConfig = z.infer<typeof NetworkConfigSchema>;
+
+/**
+ * Allowed request headers for the runtime.
+ * Each header must be 'Authorization' or start with 'X-Amzn-Bedrock-AgentCore-Runtime-Custom-'.
+ * Maximum 20 headers.
+ */
+export const HEADER_ALLOWLIST_PREFIX = 'X-Amzn-Bedrock-AgentCore-Runtime-Custom-';
+export const MAX_HEADER_ALLOWLIST_SIZE = 20;
+
+export const RequestHeaderAllowlistSchema = z
+  .array(
+    z
+      .string()
+      .refine(
+        val => val === 'Authorization' || val.startsWith(HEADER_ALLOWLIST_PREFIX),
+        `Must be "Authorization" or start with "${HEADER_ALLOWLIST_PREFIX}"`
+      )
+  )
+  .max(MAX_HEADER_ALLOWLIST_SIZE, `Maximum ${MAX_HEADER_ALLOWLIST_SIZE} headers allowed`);
+
+/**
  * AgentEnvSpec - represents an AgentCore Runtime.
  * This is a top-level resource in the schema.
  */
-export const AgentEnvSpecSchema = z.object({
-  type: AgentTypeSchema,
-  name: AgentNameSchema,
-  build: BuildTypeSchema,
-  entrypoint: EntrypointSchema,
-  codeLocation: DirectoryPathSchema,
-  runtimeVersion: RuntimeVersionSchemaFromConstants,
-  /** Environment variables to set on the runtime */
-  envVars: z.array(EnvVarSchema).optional(),
-  /** Network mode for the runtime. Defaults to PUBLIC. */
-  networkMode: NetworkModeSchema.optional(),
-  /** Instrumentation settings for observability. Defaults to OTel enabled. */
-  instrumentation: InstrumentationSchema.optional(),
-  /** Model provider used by this agent. Optional for backwards compatibility. */
-  modelProvider: ModelProviderSchema.optional(),
-});
+export const AgentEnvSpecSchema = z
+  .object({
+    type: AgentTypeSchema,
+    name: AgentNameSchema,
+    build: BuildTypeSchema,
+    entrypoint: EntrypointSchema,
+    codeLocation: DirectoryPathSchema,
+    runtimeVersion: RuntimeVersionSchemaFromConstants,
+    /** Environment variables to set on the runtime */
+    envVars: z.array(EnvVarSchema).optional(),
+    /** Network mode for the runtime. Defaults to PUBLIC. */
+    networkMode: NetworkModeSchema.optional(),
+    /** Network configuration for VPC mode. Required when networkMode is 'VPC'. */
+    networkConfig: NetworkConfigSchema.optional(),
+    /** Instrumentation settings for observability. Defaults to OTel enabled. */
+    instrumentation: InstrumentationSchema.optional(),
+    /** Model provider used by this agent. Optional for backwards compatibility. */
+    modelProvider: ModelProviderSchema.optional(),
+    /** Protocol for the runtime (HTTP, MCP, A2A). */
+    protocol: ProtocolModeSchema.optional(),
+    /** Allowed request headers forwarded to the runtime at invocation time. */
+    requestHeaderAllowlist: RequestHeaderAllowlistSchema.optional(),
+    tags: TagsSchema.optional(),
+  })
+  .superRefine((data, ctx) => {
+    if (data.networkMode === 'VPC' && !data.networkConfig) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: 'networkConfig is required when networkMode is VPC',
+        path: ['networkConfig'],
+      });
+    }
+    if (data.networkMode !== 'VPC' && data.networkConfig) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: 'networkConfig is only allowed when networkMode is VPC',
+        path: ['networkConfig'],
+      });
+    }
+  });
 
 export type AgentEnvSpec = z.infer<typeof AgentEnvSpecSchema>;

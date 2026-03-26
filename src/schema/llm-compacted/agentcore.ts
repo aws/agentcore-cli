@@ -13,6 +13,7 @@
 interface AgentCoreProjectSpec {
   name: string; // @regex ^[A-Za-z][A-Za-z0-9]{0,22}$ @max 23 - project name
   version: number; // Schema version (integer)
+  tags?: Record<string, string>;
   agents: AgentEnvSpec[]; // Unique by name
   memories: Memory[]; // Unique by name
   credentials: Credential[]; // Unique by name
@@ -26,7 +27,12 @@ type BuildType = 'CodeZip' | 'Container';
 type PythonRuntime = 'PYTHON_3_10' | 'PYTHON_3_11' | 'PYTHON_3_12' | 'PYTHON_3_13';
 type NodeRuntime = 'NODE_18' | 'NODE_20' | 'NODE_22';
 type RuntimeVersion = PythonRuntime | NodeRuntime;
-type NetworkMode = 'PUBLIC' | 'PRIVATE';
+type NetworkMode = 'PUBLIC' | 'VPC';
+interface NetworkConfig {
+  subnets: string[]; // subnet-xxx IDs
+  securityGroups: string[]; // sg-xxx IDs
+}
+
 type MemoryStrategyType = 'SEMANTIC' | 'SUMMARIZATION' | 'USER_PREFERENCE';
 type ModelProvider = 'Bedrock' | 'Gemini' | 'OpenAI' | 'Anthropic';
 
@@ -43,8 +49,10 @@ interface AgentEnvSpec {
   runtimeVersion: RuntimeVersion;
   envVars?: EnvVar[];
   networkMode?: NetworkMode; // default 'PUBLIC'
+  networkConfig?: NetworkConfig; // Required when networkMode is 'VPC'
   instrumentation?: Instrumentation; // OTel settings
   modelProvider?: ModelProvider; // Model provider used by this agent
+  tags?: Record<string, string>;
 }
 
 interface Instrumentation {
@@ -65,6 +73,7 @@ interface Memory {
   name: string; // @regex ^[a-zA-Z][a-zA-Z0-9_]{0,47}$ @max 48
   eventExpiryDuration: number; // @min 7 @max 365 (days)
   strategies: MemoryStrategy[]; // @min 1, unique by type
+  tags?: Record<string, string>;
 }
 
 interface MemoryStrategy {

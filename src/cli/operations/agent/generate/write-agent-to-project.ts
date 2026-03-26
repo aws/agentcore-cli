@@ -67,6 +67,10 @@ export async function writeAgentToProject(config: GenerateConfig, options?: Writ
       agents: [agent],
       memories,
       credentials,
+      evaluators: [],
+      onlineEvalConfigs: [],
+      agentCoreGateways: [],
+      policyEngines: [],
     };
 
     await configIO.writeProjectSpec(project);

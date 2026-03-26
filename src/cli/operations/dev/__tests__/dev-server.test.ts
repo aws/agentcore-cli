@@ -42,6 +42,7 @@ const config: DevConfig = {
   hasConfig: true,
   isPython: true,
   buildType: 'CodeZip',
+  protocol: 'HTTP',
 };
 
 describe('DevServer', () => {

@@ -7,6 +7,7 @@ import {
   EnvVarSchema,
   GatewayNameSchema,
   InstrumentationSchema,
+  NetworkConfigSchema,
 } from '../agent-env.js';
 import { describe, expect, it } from 'vitest';
 
@@ -187,6 +188,7 @@ describe('AgentEnvSpecSchema', () => {
     entrypoint: 'main.py:handler',
     codeLocation: './agents/test',
     runtimeVersion: 'PYTHON_3_12',
+    protocol: 'HTTP',
   };
 
   const validNodeAgent = {
@@ -196,6 +198,7 @@ describe('AgentEnvSpecSchema', () => {
     entrypoint: 'index.ts',
     codeLocation: './agents/node',
     runtimeVersion: 'NODE_20',
+    protocol: 'HTTP',
   };
 
   it('accepts valid Python agent', () => {
@@ -233,13 +236,41 @@ describe('AgentEnvSpecSchema', () => {
     expect(result.success).toBe(true);
   });
 
-  it('accepts agent with network mode', () => {
+  it('accepts agent with PUBLIC network mode', () => {
     expect(AgentEnvSpecSchema.safeParse({ ...validPythonAgent, networkMode: 'PUBLIC' }).success).toBe(true);
-    expect(AgentEnvSpecSchema.safeParse({ ...validPythonAgent, networkMode: 'PRIVATE' }).success).toBe(true);
+  });
+
+  it('accepts agent with VPC network mode and networkConfig', () => {
+    const result = AgentEnvSpecSchema.safeParse({
+      ...validPythonAgent,
+      networkMode: 'VPC',
+      networkConfig: {
+        subnets: ['subnet-12345678'],
+        securityGroups: ['sg-12345678'],
+      },
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it('rejects VPC network mode without networkConfig', () => {
+    const result = AgentEnvSpecSchema.safeParse({ ...validPythonAgent, networkMode: 'VPC' });
+    expect(result.success).toBe(false);
+  });
+
+  it('rejects networkConfig without VPC network mode', () => {
+    const result = AgentEnvSpecSchema.safeParse({
+      ...validPythonAgent,
+      networkMode: 'PUBLIC',
+      networkConfig: {
+        subnets: ['subnet-12345678'],
+        securityGroups: ['sg-12345678'],
+      },
+    });
+    expect(result.success).toBe(false);
   });
 
   it('rejects invalid network mode', () => {
-    expect(AgentEnvSpecSchema.safeParse({ ...validPythonAgent, networkMode: 'VPC' }).success).toBe(false);
+    expect(AgentEnvSpecSchema.safeParse({ ...validPythonAgent, networkMode: 'PRIVATE' }).success).toBe(false);
   });
 
   it('accepts agent with instrumentation config', () => {
@@ -257,5 +288,64 @@ describe('AgentEnvSpecSchema', () => {
   it('rejects missing required fields', () => {
     expect(AgentEnvSpecSchema.safeParse({ type: 'AgentCoreRuntime' }).success).toBe(false);
     expect(AgentEnvSpecSchema.safeParse({ ...validPythonAgent, name: undefined }).success).toBe(false);
+  });
+
+  describe('protocol', () => {
+    it.each(['HTTP', 'MCP', 'A2A'])('accepts valid protocol "%s"', mode => {
+      const result = AgentEnvSpecSchema.safeParse({ ...validPythonAgent, protocol: mode });
+      expect(result.success, `Should accept protocol ${mode}`).toBe(true);
+    });
+
+    it('accepts agent without protocol (backwards compat)', () => {
+      const { protocol: _protocol, ...agentWithoutProtocol } = { ...validPythonAgent, protocol: undefined };
+      expect(AgentEnvSpecSchema.safeParse(agentWithoutProtocol).success).toBe(true);
+    });
+
+    it('rejects invalid protocol', () => {
+      expect(AgentEnvSpecSchema.safeParse({ ...validPythonAgent, protocol: 'GRPC' }).success).toBe(false);
+      expect(AgentEnvSpecSchema.safeParse({ ...validPythonAgent, protocol: 'websocket' }).success).toBe(false);
+    });
+  });
+});
+
+describe('NetworkConfigSchema', () => {
+  it('accepts valid subnets and security groups', () => {
+    const result = NetworkConfigSchema.safeParse({
+      subnets: ['subnet-12345678', 'subnet-abcdef1234567890a'],
+      securityGroups: ['sg-12345678'],
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it('rejects invalid subnet format', () => {
+    const result = NetworkConfigSchema.safeParse({
+      subnets: ['invalid-subnet'],
+      securityGroups: ['sg-12345678'],
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it('rejects invalid security group format', () => {
+    const result = NetworkConfigSchema.safeParse({
+      subnets: ['subnet-12345678'],
+      securityGroups: ['invalid-sg'],
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it('rejects empty subnets array', () => {
+    const result = NetworkConfigSchema.safeParse({
+      subnets: [],
+      securityGroups: ['sg-12345678'],
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it('rejects empty security groups array', () => {
+    const result = NetworkConfigSchema.safeParse({
+      subnets: ['subnet-12345678'],
+      securityGroups: [],
+    });
+    expect(result.success).toBe(false);
   });
 });

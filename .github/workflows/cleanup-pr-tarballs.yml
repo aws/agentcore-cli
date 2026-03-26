@@ -1,0 +1,30 @@
+name: Cleanup PR Tarballs
+
+on:
+  schedule:
+    # Run daily at midnight UTC
+    - cron: '0 0 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  cleanup:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v6
+      - name: Delete PR tarball releases older than 7 days
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          CUTOFF=$(date -u -d '7 days ago' +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || date -u -v-7d +%Y-%m-%dT%H:%M:%SZ)
+
+          gh release list --limit 100 --json tagName,createdAt,isPrerelease \
+            --jq '.[] | select(.isPrerelease and (.tagName | startswith("pr-")) and (.tagName | endswith("-tarball")))' \
+          | jq -r --arg cutoff "$CUTOFF" 'select(.createdAt < $cutoff) | .tagName' \
+          | while read -r TAG; do
+              echo "Deleting old tarball release: $TAG"
+              gh release delete "$TAG" --yes --cleanup-tag 2>/dev/null || true
+            done

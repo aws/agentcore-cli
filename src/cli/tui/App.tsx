@@ -2,19 +2,22 @@ import { getWorkingDirectory } from '../../lib';
 import { createProgram } from '../cli';
 import { LayoutProvider } from './context';
 import { MissingProjectMessage, WrongDirectoryMessage, getProjectRootMismatch, projectExists } from './guards';
-import { PlaceholderScreen } from './screens/PlaceholderScreen';
 import { AddFlow } from './screens/add/AddFlow';
 import { CreateScreen } from './screens/create';
 import { DeployScreen } from './screens/deploy/DeployScreen';
 import { DevScreen } from './screens/dev/DevScreen';
+import { EvalHubScreen, EvalScreen } from './screens/eval';
+import { FetchAccessScreen } from './screens/fetch-access';
 import { HelpScreen, HomeScreen } from './screens/home';
 import { InvokeScreen } from './screens/invoke';
+import { OnlineEvalDashboard } from './screens/online-eval';
 import { PackageScreen } from './screens/package';
 import { RemoveFlow } from './screens/remove';
+import { RunEvalFlow, RunScreen } from './screens/run-eval';
 import { StatusScreen } from './screens/status/StatusScreen';
 import { UpdateScreen } from './screens/update';
 import { ValidateScreen } from './screens/validate';
-import { type CommandMeta, getCommandsForUI } from './utils/commands';
+import { getCommandsForUI } from './utils/commands';
 import { useApp } from 'ink';
 import React, { useState } from 'react';
 
@@ -24,7 +27,6 @@ const cwd = getWorkingDirectory();
 type Route =
   | { name: 'home' }
   | { name: 'help'; initialQuery?: string }
-  | { name: 'command'; command: CommandMeta }
   | { name: 'dev' }
   | { name: 'deploy' }
   | { name: 'invoke' }
@@ -32,6 +34,12 @@ type Route =
   | { name: 'add' }
   | { name: 'status' }
   | { name: 'remove' }
+  | { name: 'run' }
+  | { name: 'run-eval'; from?: 'run' | 'evals' }
+  | { name: 'evals' }
+  | { name: 'eval-runs' }
+  | { name: 'online-evals' }
+  | { name: 'fetch-access' }
   | { name: 'validate' }
   | { name: 'package' }
   | { name: 'update' };
@@ -84,14 +92,18 @@ function AppContent() {
       setRoute({ name: 'add' });
     } else if (id === 'remove') {
       setRoute({ name: 'remove' });
+    } else if (id === 'run') {
+      setRoute({ name: 'run' });
+    } else if (id === 'evals') {
+      setRoute({ name: 'evals' });
+    } else if (id === 'fetch') {
+      setRoute({ name: 'fetch-access' });
     } else if (id === 'validate') {
       setRoute({ name: 'validate' });
     } else if (id === 'package') {
       setRoute({ name: 'package' });
     } else if (id === 'update') {
       setRoute({ name: 'update' });
-    } else {
-      setRoute({ name: 'command', command: cmd });
     }
   };
 
@@ -179,6 +191,50 @@ function AppContent() {
     );
   }
 
+  if (route.name === 'run') {
+    return (
+      <RunScreen
+        onRunEval={() => setRoute({ name: 'run-eval', from: 'run' })}
+        onExit={() => setRoute({ name: 'help' })}
+      />
+    );
+  }
+
+  if (route.name === 'evals') {
+    return (
+      <EvalHubScreen
+        onSelect={view => {
+          if (view === 'run-eval') setRoute({ name: 'run-eval', from: 'evals' });
+          if (view === 'runs') setRoute({ name: 'eval-runs' });
+          if (view === 'online-dashboard') setRoute({ name: 'online-evals' });
+        }}
+        onExit={() => setRoute({ name: 'help' })}
+      />
+    );
+  }
+
+  if (route.name === 'run-eval') {
+    const backRoute = route.from ?? 'evals';
+    return (
+      <RunEvalFlow
+        onExit={() => setRoute({ name: backRoute } as Route)}
+        onViewRuns={() => setRoute({ name: 'eval-runs' })}
+      />
+    );
+  }
+
+  if (route.name === 'eval-runs') {
+    return <EvalScreen isInteractive={true} onExit={() => setRoute({ name: 'evals' })} />;
+  }
+
+  if (route.name === 'online-evals') {
+    return <OnlineEvalDashboard isInteractive={true} onExit={() => setRoute({ name: 'evals' })} />;
+  }
+
+  if (route.name === 'fetch-access') {
+    return <FetchAccessScreen isInteractive={true} onExit={() => setRoute({ name: 'help' })} />;
+  }
+
   if (route.name === 'validate') {
     return <ValidateScreen isInteractive={true} onExit={() => setRoute({ name: 'help' })} />;
   }
@@ -191,7 +247,8 @@ function AppContent() {
     return <UpdateScreen isInteractive={true} onExit={() => setRoute({ name: 'help' })} />;
   }
 
-  return <PlaceholderScreen command={route.command} onBack={() => setRoute({ name: 'help' })} />;
+  // All visible commands are handled above; this is unreachable.
+  return null;
 }
 
 export function App() {

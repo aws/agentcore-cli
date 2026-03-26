@@ -2,10 +2,12 @@ import {
   type AgentCoreGateway,
   type AgentCoreGatewayTarget,
   type AgentCoreMcpSpec,
-  AgentCoreMcpSpecSchema,
+  type AgentCoreProjectSpec,
+  AgentCoreProjectSpecSchema,
   GatewayNameSchema,
   type OutboundAuth,
 } from '../../../../schema';
+import type { SaveDocumentResult } from '../../../schema';
 import { Header, Panel, ScreenLayout, TextInput } from '../../components';
 import { useSchemaDocument } from '../../hooks/useSchemaDocument';
 import { diffLines } from '../../utils';
@@ -25,7 +27,7 @@ interface McpGuidedEditorProps {
 }
 
 export function McpGuidedEditor(props: McpGuidedEditorProps) {
-  const { content, status, save } = useSchemaDocument(props.schema.filePath, AgentCoreMcpSpecSchema);
+  const { content, status, save: rawSave } = useSchemaDocument(props.schema.filePath, AgentCoreProjectSpecSchema);
 
   if (status.status === 'loading') {
     return (
@@ -41,7 +43,7 @@ export function McpGuidedEditor(props: McpGuidedEditorProps) {
       <ScreenLayout onExit={props.onBack}>
         <Header title="Edit MCP Config" subtitle="Error" />
         <Box flexDirection="column">
-          <Text color="red">Unable to load mcp.json</Text>
+          <Text color="red">Unable to load agentcore.json</Text>
           <Text dimColor>{status.message ?? 'Unknown error'}</Text>
           <Text dimColor>Esc back</Text>
         </Box>
@@ -49,19 +51,33 @@ export function McpGuidedEditor(props: McpGuidedEditorProps) {
     );
   }
 
+  let projectSpec: AgentCoreProjectSpec | null = null;
   let mcpSpec: AgentCoreMcpSpec & { unassignedTargets?: AgentCoreGatewayTarget[] } = {
     agentCoreGateways: [],
     unassignedTargets: [],
   };
   try {
     const parsed: unknown = JSON.parse(content);
-    const result = AgentCoreMcpSpecSchema.safeParse(parsed);
+    const result = AgentCoreProjectSpecSchema.safeParse(parsed);
     if (result.success) {
-      mcpSpec = result.data;
+      projectSpec = result.data;
+      mcpSpec = {
+        agentCoreGateways: result.data.agentCoreGateways,
+        mcpRuntimeTools: result.data.mcpRuntimeTools,
+        unassignedTargets: result.data.unassignedTargets,
+      };
     }
   } catch {
     // Will show empty gateways
   }
+
+  // Wrap save to merge MCP fields back into the full project spec
+  const save = async (mcpContent: string): Promise<SaveDocumentResult> => {
+    if (!projectSpec) return { ok: false, error: 'No project spec loaded' };
+    const mcpData = JSON.parse(mcpContent) as AgentCoreMcpSpec;
+    const merged = { ...projectSpec, ...mcpData };
+    return rawSave(JSON.stringify(merged, null, 2));
+  };
 
   const baseline = JSON.stringify(mcpSpec, null, 2);
 

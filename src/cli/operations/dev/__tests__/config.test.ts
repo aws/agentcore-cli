@@ -16,6 +16,10 @@ describe('getDevConfig', () => {
       agents: [],
       memories: [],
       credentials: [],
+      evaluators: [],
+      onlineEvalConfigs: [],
+      agentCoreGateways: [],
+      policyEngines: [],
     };
 
     const config = getDevConfig(workingDir, project);
@@ -34,10 +38,15 @@ describe('getDevConfig', () => {
           runtimeVersion: 'NODE_20',
           entrypoint: filePath('index.js'), // Not a Python agent
           codeLocation: dirPath('./agents/node'),
+          protocol: 'HTTP',
         },
       ],
       memories: [],
       credentials: [],
+      evaluators: [],
+      onlineEvalConfigs: [],
+      agentCoreGateways: [],
+      policyEngines: [],
     };
 
     const config = getDevConfig(workingDir, project);
@@ -56,10 +65,15 @@ describe('getDevConfig', () => {
           runtimeVersion: 'PYTHON_3_12',
           entrypoint: filePath('main.py'),
           codeLocation: dirPath('./agents/python'),
+          protocol: 'HTTP',
         },
       ],
       memories: [],
       credentials: [],
+      evaluators: [],
+      onlineEvalConfigs: [],
+      agentCoreGateways: [],
+      policyEngines: [],
     };
 
     const config = getDevConfig(workingDir, project, '/test/project/agentcore');
@@ -84,10 +98,15 @@ describe('getDevConfig', () => {
           runtimeVersion: 'PYTHON_3_12',
           entrypoint: filePath('main.py'),
           codeLocation: dirPath('./agents/python'),
+          protocol: 'HTTP',
         },
       ],
       memories: [],
       credentials: [],
+      evaluators: [],
+      onlineEvalConfigs: [],
+      agentCoreGateways: [],
+      policyEngines: [],
     };
 
     expect(() => getDevConfig(workingDir, project, undefined, 'NonExistentAgent')).toThrow(
@@ -107,10 +126,15 @@ describe('getDevConfig', () => {
           runtimeVersion: 'NODE_20',
           entrypoint: filePath('index.js'),
           codeLocation: dirPath('./agents/node'),
+          protocol: 'HTTP',
         },
       ],
       memories: [],
       credentials: [],
+      evaluators: [],
+      onlineEvalConfigs: [],
+      agentCoreGateways: [],
+      policyEngines: [],
     };
 
     expect(() => getDevConfig(workingDir, project, undefined, 'NodeAgent')).toThrow('Dev mode only supports Python');
@@ -128,10 +152,15 @@ describe('getDevConfig', () => {
           runtimeVersion: 'PYTHON_3_12',
           entrypoint: filePath('main.py'),
           codeLocation: dirPath('app/PythonAgent/'),
+          protocol: 'HTTP',
         },
       ],
       memories: [],
       credentials: [],
+      evaluators: [],
+      onlineEvalConfigs: [],
+      agentCoreGateways: [],
+      policyEngines: [],
     };
 
     const config = getDevConfig(workingDir, project, '/test/project/agentcore');
@@ -152,10 +181,15 @@ describe('getDevConfig', () => {
           runtimeVersion: 'PYTHON_3_12',
           entrypoint: filePath('main.py'),
           codeLocation: dirPath('./agents/python'),
+          protocol: 'HTTP',
         },
       ],
       memories: [],
       credentials: [],
+      evaluators: [],
+      onlineEvalConfigs: [],
+      agentCoreGateways: [],
+      policyEngines: [],
     };
 
     // No configRoot provided
@@ -176,10 +210,15 @@ describe('getDevConfig', () => {
           runtimeVersion: 'PYTHON_3_12',
           entrypoint: filePath('main.py'),
           codeLocation: dirPath('./agents/container'),
+          protocol: 'HTTP',
         },
       ],
       memories: [],
       credentials: [],
+      evaluators: [],
+      onlineEvalConfigs: [],
+      agentCoreGateways: [],
+      policyEngines: [],
     };
 
     const config = getDevConfig(workingDir, project, '/test/project/agentcore');
@@ -200,16 +239,104 @@ describe('getDevConfig', () => {
           runtimeVersion: 'NODE_20',
           entrypoint: filePath('index.js'),
           codeLocation: dirPath('./agents/container'),
+          protocol: 'HTTP',
         },
       ],
       memories: [],
       credentials: [],
+      evaluators: [],
+      onlineEvalConfigs: [],
+      agentCoreGateways: [],
+      policyEngines: [],
     };
 
     const config = getDevConfig(workingDir, project, '/test/project/agentcore');
     expect(config).not.toBeNull();
     expect(config?.agentName).toBe('ContainerAgent');
     expect(config?.buildType).toBe('Container');
+  });
+
+  it('returns protocol HTTP by default when agent has no protocol', () => {
+    const project: AgentCoreProjectSpec = {
+      name: 'TestProject',
+      version: 1,
+      agents: [
+        {
+          type: 'AgentCoreRuntime',
+          name: 'PythonAgent',
+          build: 'CodeZip',
+          runtimeVersion: 'PYTHON_3_12',
+          entrypoint: filePath('main.py'),
+          codeLocation: dirPath('./agents/python'),
+        },
+      ],
+      memories: [],
+      credentials: [],
+      evaluators: [],
+      onlineEvalConfigs: [],
+      agentCoreGateways: [],
+      policyEngines: [],
+    };
+
+    const config = getDevConfig(workingDir, project, '/test/project/agentcore');
+    expect(config).not.toBeNull();
+    expect(config!.protocol).toBe('HTTP');
+  });
+
+  it('returns protocol MCP for MCP agents', () => {
+    const project: AgentCoreProjectSpec = {
+      name: 'TestProject',
+      version: 1,
+      agents: [
+        {
+          type: 'AgentCoreRuntime',
+          name: 'McpAgent',
+          build: 'CodeZip',
+          runtimeVersion: 'PYTHON_3_12',
+          entrypoint: filePath('main.py'),
+          codeLocation: dirPath('./agents/mcp'),
+          protocol: 'MCP',
+        },
+      ],
+      memories: [],
+      credentials: [],
+      evaluators: [],
+      onlineEvalConfigs: [],
+      agentCoreGateways: [],
+      policyEngines: [],
+    };
+
+    const config = getDevConfig(workingDir, project, '/test/project/agentcore');
+    expect(config).not.toBeNull();
+    expect(config!.protocol).toBe('MCP');
+  });
+
+  it('returns protocol A2A for A2A agents', () => {
+    const project: AgentCoreProjectSpec = {
+      name: 'TestProject',
+      version: 1,
+      agents: [
+        {
+          type: 'AgentCoreRuntime',
+          name: 'A2aAgent',
+          build: 'CodeZip',
+          runtimeVersion: 'PYTHON_3_12',
+          entrypoint: filePath('main.py'),
+          codeLocation: dirPath('./agents/a2a'),
+          protocol: 'A2A',
+        },
+      ],
+      memories: [],
+      credentials: [],
+      evaluators: [],
+      onlineEvalConfigs: [],
+      agentCoreGateways: [],
+      policyEngines: [],
+    };
+
+    const config = getDevConfig(workingDir, project, '/test/project/agentcore');
+    expect(config).not.toBeNull();
+    expect(config!.protocol).toBe('A2A');
   });
 
   it('handles .py: entrypoint format (module:function)', () => {
@@ -224,10 +351,15 @@ describe('getDevConfig', () => {
           runtimeVersion: 'PYTHON_3_12',
           entrypoint: filePath('app.py:handler'),
           codeLocation: dirPath('./agents/fastapi'),
+          protocol: 'HTTP',
         },
       ],
       memories: [],
       credentials: [],
+      evaluators: [],
+      onlineEvalConfigs: [],
+      agentCoreGateways: [],
+      policyEngines: [],
     };
 
     const config = getDevConfig(workingDir, project, '/test/project/agentcore');
@@ -253,6 +385,7 @@ describe('getAgentPort', () => {
           runtimeVersion: 'PYTHON_3_12',
           entrypoint: filePath('main.py'),
           codeLocation: dirPath('./agents/a1'),
+          protocol: 'HTTP',
         },
         {
           type: 'AgentCoreRuntime',
@@ -261,10 +394,15 @@ describe('getAgentPort', () => {
           runtimeVersion: 'PYTHON_3_12',
           entrypoint: filePath('main.py'),
           codeLocation: dirPath('./agents/a2'),
+          protocol: 'HTTP',
         },
       ],
       memories: [],
       credentials: [],
+      evaluators: [],
+      onlineEvalConfigs: [],
+      agentCoreGateways: [],
+      policyEngines: [],
     };
 
     expect(getAgentPort(project, 'Agent1', 8080)).toBe(8080);
@@ -278,6 +416,10 @@ describe('getAgentPort', () => {
       agents: [],
       memories: [],
       credentials: [],
+      evaluators: [],
+      onlineEvalConfigs: [],
+      agentCoreGateways: [],
+      policyEngines: [],
     };
 
     expect(getAgentPort(project, 'NonExistent', 9000)).toBe(9000);
@@ -296,6 +438,10 @@ describe('getDevSupportedAgents', () => {
       agents: [],
       memories: [],
       credentials: [],
+      evaluators: [],
+      onlineEvalConfigs: [],
+      agentCoreGateways: [],
+      policyEngines: [],
     };
 
     expect(getDevSupportedAgents(project)).toEqual([]);
@@ -313,10 +459,15 @@ describe('getDevSupportedAgents', () => {
           runtimeVersion: 'NODE_20',
           entrypoint: filePath('index.js'),
           codeLocation: dirPath('./agents/node'),
+          protocol: 'HTTP',
         },
       ],
       memories: [],
       credentials: [],
+      evaluators: [],
+      onlineEvalConfigs: [],
+      agentCoreGateways: [],
+      policyEngines: [],
     };
 
     expect(getDevSupportedAgents(project)).toEqual([]);
@@ -334,6 +485,7 @@ describe('getDevSupportedAgents', () => {
           runtimeVersion: 'PYTHON_3_12',
           entrypoint: filePath('main.py'),
           codeLocation: dirPath('./agents/python'),
+          protocol: 'HTTP',
         },
         {
           type: 'AgentCoreRuntime',
@@ -342,10 +494,15 @@ describe('getDevSupportedAgents', () => {
           runtimeVersion: 'NODE_20',
           entrypoint: filePath('index.js'),
           codeLocation: dirPath('./agents/node'),
+          protocol: 'HTTP',
         },
       ],
       memories: [],
       credentials: [],
+      evaluators: [],
+      onlineEvalConfigs: [],
+      agentCoreGateways: [],
+      policyEngines: [],
     };
 
     const supported = getDevSupportedAgents(project);
@@ -365,10 +522,15 @@ describe('getDevSupportedAgents', () => {
           runtimeVersion: 'PYTHON_3_12',
           entrypoint: filePath('main.py'),
           codeLocation: dirPath('./agents/container'),
+          protocol: 'HTTP',
         },
       ],
       memories: [],
       credentials: [],
+      evaluators: [],
+      onlineEvalConfigs: [],
+      agentCoreGateways: [],
+      policyEngines: [],
     };
 
     const supported = getDevSupportedAgents(project);
@@ -388,6 +550,7 @@ describe('getDevSupportedAgents', () => {
           runtimeVersion: 'PYTHON_3_12',
           entrypoint: filePath('main.py'),
           codeLocation: dirPath('./agents/python'),
+          protocol: 'HTTP',
         },
         {
           type: 'AgentCoreRuntime',
@@ -396,10 +559,15 @@ describe('getDevSupportedAgents', () => {
           runtimeVersion: 'PYTHON_3_12',
           entrypoint: filePath('app.py'),
           codeLocation: dirPath('./agents/container'),
+          protocol: 'HTTP',
         },
       ],
       memories: [],
       credentials: [],
+      evaluators: [],
+      onlineEvalConfigs: [],
+      agentCoreGateways: [],
+      policyEngines: [],
     };
 
     const supported = getDevSupportedAgents(project);

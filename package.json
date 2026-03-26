@@ -1,6 +1,6 @@
 {
   "name": "@aws/agentcore",
-  "version": "0.3.0-preview.5.1",
+  "version": "0.3.0-preview.8.0",
   "description": "CLI for Amazon Bedrock AgentCore",
   "license": "Apache-2.0",
   "repository": {
@@ -40,14 +40,16 @@
   },
   "files": [
     "dist",
-    "scripts"
+    "scripts",
+    "!dist/mcp-harness"
   ],
   "scripts": {
-    "preinstall": "node scripts/check-old-cli.mjs",
+    "postinstall": "node scripts/check-old-cli.mjs",
     "build": "npm run build:lib && npm run build:cli && npm run build:assets",
     "build:lib": "tsc -p tsconfig.build.json",
     "build:cli": "node esbuild.config.mjs",
     "build:assets": "node scripts/copy-assets.mjs",
+    "build:harness": "BUILD_HARNESS=1 node esbuild.config.mjs",
     "cli": "npx tsx src/cli/index.ts",
     "typecheck": "tsc --noEmit",
     "lint": "eslint src/",
@@ -64,17 +66,21 @@
     "test:integ": "vitest run --project integ",
     "test:unit": "vitest run --project unit --coverage",
     "test:e2e": "vitest run --project e2e",
-    "test:update-snapshots": "vitest run --project unit --update"
+    "test:update-snapshots": "vitest run --project unit --update",
+    "test:tui": "npm run build:harness && vitest run --project tui"
   },
   "dependencies": {
     "@aws-cdk/toolkit-lib": "^1.16.0",
     "@aws-sdk/client-application-signals": "^3.1003.0",
+    "@aws-sdk/client-bedrock": "^3.1012.0",
+    "@aws-sdk/client-bedrock-agent": "^3.1012.0",
     "@aws-sdk/client-bedrock-agentcore": "^3.893.0",
     "@aws-sdk/client-bedrock-agentcore-control": "^3.893.0",
     "@aws-sdk/client-bedrock-runtime": "^3.893.0",
     "@aws-sdk/client-cloudformation": "^3.893.0",
     "@aws-sdk/client-cloudwatch-logs": "^3.893.0",
     "@aws-sdk/client-resource-groups-tagging-api": "^3.893.0",
+    "@aws-sdk/client-s3": "^3.1012.0",
     "@aws-sdk/client-sts": "^3.893.0",
     "@aws-sdk/client-xray": "^3.1003.0",
     "@aws-sdk/credential-providers": "^3.893.0",
@@ -87,23 +93,27 @@
     "ink": "^6.6.0",
     "ink-link": "5.0.0",
     "ink-spinner": "^5.0.0",
+    "js-yaml": "^4.1.1",
     "react": "^19.2.3",
     "zod": "^4.3.5"
   },
   "peerDependencies": {
-    "aws-cdk-lib": "^2.234.1",
+    "aws-cdk-lib": "^2.243.0",
     "constructs": "^10.0.0"
   },
   "devDependencies": {
     "@eslint/js": "^9.39.2",
+    "@modelcontextprotocol/sdk": "^1.0.0",
     "@secretlint/secretlint-rule-preset-recommend": "^11.3.0",
     "@trivago/prettier-plugin-sort-imports": "^6.0.2",
+    "@types/js-yaml": "^4.0.9",
     "@types/node": "^25.0.3",
     "@types/react": "^19.2.7",
     "@typescript-eslint/eslint-plugin": "^8.50.0",
     "@typescript-eslint/parser": "^8.50.0",
     "@vitest/coverage-v8": "^4.0.18",
-    "aws-cdk-lib": "^2.240.0",
+    "@xterm/headless": "^6.0.0",
+    "aws-cdk-lib": "^2.243.0",
     "constructs": "^10.4.4",
     "esbuild": "^0.27.2",
     "eslint": "^9.39.4",
@@ -117,6 +127,7 @@
     "husky": "^9.1.7",
     "ink-testing-library": "^4.0.0",
     "lint-staged": "^16.2.7",
+    "node-pty": "^1.1.0",
     "prettier": "^3.7.4",
     "secretlint": "^11.3.0",
     "tsx": "^4.21.0",
@@ -126,11 +137,13 @@
   },
   "overridesComments": {
     "minimatch": "GHSA-7r86-cg39-jmmj, GHSA-23c5-xmqv-rm74: minimatch 10.0.0-10.2.2 has ReDoS vulnerabilities. Multiple transitive deps (eslint, typescript-eslint, eslint-plugin-import, eslint-plugin-react, prettier-plugin-sort-imports, aws-cdk-lib) pin older versions. Remove this override once upstream packages update their minimatch dependency to >=10.2.3.",
-    "fast-xml-parser": "GHSA-fj3w-jwp8-x2g3: fast-xml-parser <5.3.8 has stack overflow in XMLBuilder. Transitive via @aws-sdk/xml-builder. Remove this override once @aws-sdk updates to fast-xml-parser >=5.3.8."
+    "fast-xml-parser": "GHSA-8gc5-j5rx-235r, GHSA-jp2q-39xq-3w4g: fast-xml-parser <=5.5.6 has entity expansion bypass (CVE-2026-33036, CVE-2026-33349). Transitive via @aws-sdk/xml-builder. Remove once @aws-sdk updates to fast-xml-parser >=5.5.7.",
+    "@aws-sdk/xml-builder": "aws/aws-sdk-js-v3#7867: @aws-sdk/xml-builder <3.972.14 does not configure maxTotalExpansions on fast-xml-parser, causing 'Entity expansion limit exceeded' on large CloudFormation responses. Remove once @aws-sdk/client-* deps are bumped past 3.972.14."
   },
   "overrides": {
     "minimatch": "10.2.4",
-    "fast-xml-parser": "5.3.9"
+    "fast-xml-parser": "5.5.7",
+    "@aws-sdk/xml-builder": "3.972.15"
   },
   "engines": {
     "node": ">=20"

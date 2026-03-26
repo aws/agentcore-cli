@@ -47,6 +47,7 @@ export default defineConfig({
         test: {
           name: 'integ',
           include: ['integ-tests/**/*.test.ts'],
+          exclude: ['integ-tests/tui/**/*.test.ts'],
         },
       },
       {
@@ -56,6 +57,16 @@ export default defineConfig({
           include: ['e2e-tests/**/*.test.ts'],
           testTimeout: 600000,
           hookTimeout: 600000,
+        },
+      },
+      {
+        extends: true,
+        test: {
+          name: 'tui',
+          include: ['integ-tests/tui/**/*.test.ts'],
+          testTimeout: 30_000,
+          fileParallelism: false,
+          setupFiles: ['./integ-tests/tui/setup.ts'],
         },
       },
     ],

@@ -1,0 +1,1 @@
+export { registerResume } from './command';

@@ -82,17 +82,13 @@ export async function validateProject(): Promise<PreflightContext> {
   let isTeardownDeploy = false;
   const hasAgents = projectSpec.agents && projectSpec.agents.length > 0;
   const hasMemories = projectSpec.memories && projectSpec.memories.length > 0;
+  const hasEvaluators = projectSpec.evaluators && projectSpec.evaluators.length > 0;
+  const hasPolicyEngines = projectSpec.policyEngines && projectSpec.policyEngines.length > 0;
 
-  // Check for gateways in mcp.json
-  let hasGateways = false;
-  try {
-    const mcpSpec = await configIO.readMcpSpec();
-    hasGateways = mcpSpec.agentCoreGateways && mcpSpec.agentCoreGateways.length > 0;
-  } catch {
-    // No mcp.json or invalid — no gateways
-  }
+  // Check for gateways in agentcore.json
+  const hasGateways = projectSpec.agentCoreGateways && projectSpec.agentCoreGateways.length > 0;
 
-  if (!hasAgents && !hasGateways && !hasMemories) {
+  if (!hasAgents && !hasGateways && !hasMemories && !hasEvaluators && !hasPolicyEngines) {
     let hasExistingStack = false;
     try {
       const deployedState = await configIO.readDeployedState();
@@ -102,7 +98,7 @@ export async function validateProject(): Promise<PreflightContext> {
     }
     if (!hasExistingStack) {
       throw new Error(
-        'No resources defined in project. Add an agent with "agentcore add agent", a memory with "agentcore add memory", or a gateway with "agentcore add gateway" before deploying.'
+        'No resources defined in project. Add at least one resource (agent, memory, evaluator, or gateway) before deploying.'
       );
     }
     isTeardownDeploy = true;

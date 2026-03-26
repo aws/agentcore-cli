@@ -24,12 +24,20 @@ Note: CDK L3 constructs are in a separate package `@aws/agentcore-cdk`.
 ## CLI Commands
 
 - `create` - Create new AgentCore project
-- `add` - Add resources (agent, memory, identity, target)
-- `remove` - Remove resources (agent, memory, identity, target, all)
+- `add` - Add resources (agent, memory, identity, evaluator, online-eval, target)
+- `remove` - Remove resources (agent, memory, identity, evaluator, online-eval, target, all)
 - `deploy` - Deploy infrastructure to AWS
 - `status` - Check deployment status
 - `dev` - Local development server (CodeZip: uvicorn with hot-reload; Container: Docker build + run with volume mount)
 - `invoke` - Invoke agents (local or deployed)
+- `run eval` - Run on-demand evaluation against agent sessions
+- `evals history` - View past eval run results
+- `pause online-eval` - Pause (disable) a deployed online eval config
+- `resume online-eval` - Resume (enable) a paused online eval config
+- `logs` - Stream or search agent runtime logs
+- `logs evals` - Stream or search online eval logs
+- `traces list` - List recent traces for a deployed agent
+- `traces get` - Download a trace to a JSON file
 - `package` - Package agent artifacts without deploying (zip for CodeZip, container image build for Container)
 - `validate` - Validate configuration files
 - `update` - Check for CLI updates
@@ -40,6 +48,7 @@ Note: CDK L3 constructs are in a separate package `@aws/agentcore-cdk`.
 - **Template agents**: Created from framework templates (Strands, LangChain_LangGraph, CrewAI, GoogleADK, OpenAIAgents,
   AutoGen)
 - **BYO agents**: Bring your own code with `agentcore add agent --type byo`
+- **Imported agents**: Import from Bedrock Agents with `agentcore add agent --type import`
 
 ### Build Types
 
@@ -47,14 +56,12 @@ Note: CDK L3 constructs are in a separate package `@aws/agentcore-cdk`.
 - **Container**: Agent is built as a Docker container image, deployed via ECR and CodeBuild. Requires a `Dockerfile` in
   the agent's code directory. Supported container runtimes: Docker, Podman, Finch.
 
-### Coming Soon
-
-- MCP gateway and tool support (`add gateway`, `add mcp-tool`) - currently hidden
-
 ## Primitives Architecture
 
-All resource types (agent, memory, identity, gateway, mcp-tool) are modeled as **primitives** — self-contained classes
-in `src/cli/primitives/` that own the full add/remove lifecycle for their resource type.
+All resource types (agent, memory, identity, evaluator, online-eval, gateway, mcp-tool) are modeled as **primitives** --
+self-contained classes in `src/cli/primitives/` that own the full add/remove lifecycle for their resource type.
+Resources support config-driven tagging via `agentcore.json` and `mcp.json`, with tags flowing through to deployed
+CloudFormation resources.
 
 Each primitive extends `BasePrimitive` and implements: `add()`, `remove()`, `previewRemove()`, `getRemovable()`,
 `registerCommands()`, and `addScreen()`.
@@ -64,8 +71,10 @@ Current primitives:
 - `AgentPrimitive` — agent creation (template + BYO), removal, credential resolution
 - `MemoryPrimitive` — memory creation with strategies, removal
 - `CredentialPrimitive` — credential/identity creation, .env management, removal
-- `GatewayPrimitive` — MCP gateway creation/removal (hidden, coming soon)
-- `GatewayTargetPrimitive` — MCP tool creation/removal with code generation (hidden, coming soon)
+- `EvaluatorPrimitive` — custom evaluator creation/removal with cross-reference validation
+- `OnlineEvalConfigPrimitive` — online eval config creation/removal
+- `GatewayPrimitive` — MCP gateway creation/removal
+- `GatewayTargetPrimitive` — MCP tool creation/removal with code generation
 
 Singletons are created in `registry.ts` and wired into CLI commands via `cli.ts`. See `src/cli/AGENTS.md` for details on
 adding new primitives.
@@ -121,3 +130,8 @@ See `docs/TESTING.md` for details.
 
 - Always look for existing types before creating a new type inline.
 - Re-usable constants must be defined in a constants file in the closest sensible subdirectory.
+
+## TUI Harness
+
+See `docs/tui-harness.md` for the full TUI harness usage guide (MCP tools, screen markers, examples, and error
+recovery).

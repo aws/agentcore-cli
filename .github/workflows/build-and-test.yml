@@ -47,6 +47,24 @@ jobs:
         with:
           name: coverage-report
           path: coverage/
+      - name: Pack tarball
+        if: matrix.node-version == '20.x'
+        run: npm pack
+      - name: Install from tarball
+        if: matrix.node-version == '20.x'
+        run: npm install -g aws-agentcore-*.tgz
+      - name: Verify packaged CLI runs
+        if: matrix.node-version == '20.x'
+        run: |
+          agentcore --version
+          agentcore create --name sanitytest --language Python --framework Strands --model-provider Bedrock --memory none --json
+          test -f sanitytest/agentcore/agentcore.json
+      - name: Upload tarball artifact
+        if: matrix.node-version == '20.x'
+        uses: actions/upload-artifact@v7
+        with:
+          name: tarball
+          path: '*.tgz'
 
   coverage:
     needs: build

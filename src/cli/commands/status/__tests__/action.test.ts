@@ -1,6 +1,32 @@
-import type { AgentCoreMcpSpec, AgentCoreProjectSpec, DeployedResourceState } from '../../../../schema/index.js';
-import { computeResourceStatuses } from '../action.js';
-import { describe, expect, it } from 'vitest';
+import type { AgentCoreProjectSpec, DeployedResourceState } from '../../../../schema/index.js';
+import { computeResourceStatuses, handleProjectStatus } from '../action.js';
+import type { StatusContext } from '../action.js';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+
+const mockGetAgentRuntimeStatus = vi.fn();
+const mockGetEvaluator = vi.fn();
+const mockGetOnlineEvaluationConfig = vi.fn();
+
+vi.mock('../../../aws', () => ({
+  getAgentRuntimeStatus: (...args: unknown[]) => mockGetAgentRuntimeStatus(...args),
+}));
+
+vi.mock('../../../aws/agentcore-control', () => ({
+  getEvaluator: (...args: unknown[]) => mockGetEvaluator(...args),
+  getOnlineEvaluationConfig: (...args: unknown[]) => mockGetOnlineEvaluationConfig(...args),
+}));
+
+vi.mock('../../../logging', () => {
+  return {
+    ExecLogger: class {
+      startStep = vi.fn();
+      endStep = vi.fn();
+      log = vi.fn();
+      finalize = vi.fn();
+      getRelativeLogPath = vi.fn().mockReturnValue('logs/status.log');
+    },
+  };
+});
 
 const baseProject: AgentCoreProjectSpec = {
   name: 'test-project',
@@ -197,10 +223,11 @@ describe('computeResourceStatuses', () => {
     expect(result.every(r => r.deploymentState === 'local-only')).toBe(true);
   });
 
-  it('marks gateway as deployed when in both local mcp spec and deployed state', () => {
-    const mcpSpec = {
+  it('marks gateway as deployed when in both local project and deployed state', () => {
+    const project = {
+      ...baseProject,
       agentCoreGateways: [{ name: 'my-gateway', targets: [{ name: 't1' }, { name: 't2' }] }],
-    } as unknown as AgentCoreMcpSpec;
+    } as unknown as AgentCoreProjectSpec;
 
     const resources: DeployedResourceState = {
       mcp: {
@@ -213,7 +240,7 @@ describe('computeResourceStatuses', () => {
       },
     };
 
-    const result = computeResourceStatuses(baseProject, resources, mcpSpec);
+    const result = computeResourceStatuses(project, resources);
     const gwEntry = result.find(r => r.resourceType === 'gateway' && r.name === 'my-gateway');
 
     expect(gwEntry).toBeDefined();
@@ -223,11 +250,12 @@ describe('computeResourceStatuses', () => {
   });
 
   it('marks gateway as local-only when not in deployed state', () => {
-    const mcpSpec = {
+    const project = {
+      ...baseProject,
       agentCoreGateways: [{ name: 'my-gateway', targets: [{ name: 't1' }] }],
-    } as unknown as AgentCoreMcpSpec;
+    } as unknown as AgentCoreProjectSpec;
 
-    const result = computeResourceStatuses(baseProject, undefined, mcpSpec);
+    const result = computeResourceStatuses(project, undefined);
     const gwEntry = result.find(r => r.resourceType === 'gateway' && r.name === 'my-gateway');
 
     expect(gwEntry).toBeDefined();
@@ -235,11 +263,7 @@ describe('computeResourceStatuses', () => {
     expect(gwEntry!.detail).toBe('1 target');
   });
 
-  it('marks gateway as pending-removal when in deployed state but not in local mcp spec', () => {
-    const mcpSpec = {
-      agentCoreGateways: [],
-    } as unknown as AgentCoreMcpSpec;
-
+  it('marks gateway as pending-removal when in deployed state but not in local project', () => {
     const resources: DeployedResourceState = {
       mcp: {
         gateways: {
@@ -251,12 +275,122 @@ describe('computeResourceStatuses', () => {
       },
     };
 
-    const result = computeResourceStatuses(baseProject, resources, mcpSpec);
+    const result = computeResourceStatuses(baseProject, resources);
     const gwEntry = result.find(r => r.resourceType === 'gateway' && r.name === 'removed-gateway');
 
     expect(gwEntry).toBeDefined();
     expect(gwEntry!.deploymentState).toBe('pending-removal');
     expect(gwEntry!.identifier).toBe('gw-456');
+  });
+
+  it('marks evaluator as deployed when in both local and deployed state', () => {
+    const project = {
+      ...baseProject,
+      evaluators: [{ name: 'MyEval', level: 'SESSION', config: {} }],
+    } as unknown as AgentCoreProjectSpec;
+
+    const resources: DeployedResourceState = {
+      evaluators: {
+        MyEval: {
+          evaluatorId: 'proj_MyEval-abc123',
+          evaluatorArn: 'arn:aws:bedrock:us-east-1:123456789:evaluator/proj_MyEval-abc123',
+        },
+      },
+    };
+
+    const result = computeResourceStatuses(project, resources);
+    const evalEntry = result.find(r => r.resourceType === 'evaluator' && r.name === 'MyEval');
+
+    expect(evalEntry).toBeDefined();
+    expect(evalEntry!.deploymentState).toBe('deployed');
+    expect(evalEntry!.identifier).toBe('arn:aws:bedrock:us-east-1:123456789:evaluator/proj_MyEval-abc123');
+    expect(evalEntry!.detail).toBe('SESSION — LLM-as-a-Judge');
+  });
+
+  it('marks evaluator as local-only when not deployed', () => {
+    const project = {
+      ...baseProject,
+      evaluators: [{ name: 'MyEval', level: 'TRACE', config: {} }],
+    } as unknown as AgentCoreProjectSpec;
+
+    const result = computeResourceStatuses(project, undefined);
+    const evalEntry = result.find(r => r.resourceType === 'evaluator' && r.name === 'MyEval');
+
+    expect(evalEntry).toBeDefined();
+    expect(evalEntry!.deploymentState).toBe('local-only');
+    expect(evalEntry!.detail).toBe('TRACE — LLM-as-a-Judge');
+  });
+
+  it('marks evaluator as pending-removal when deployed but removed from schema', () => {
+    const resources: DeployedResourceState = {
+      evaluators: {
+        RemovedEval: {
+          evaluatorId: 'proj_RemovedEval-xyz',
+          evaluatorArn: 'arn:aws:bedrock:us-east-1:123456789:evaluator/proj_RemovedEval-xyz',
+        },
+      },
+    };
+
+    const result = computeResourceStatuses(baseProject, resources);
+    const evalEntry = result.find(r => r.resourceType === 'evaluator' && r.name === 'RemovedEval');
+
+    expect(evalEntry).toBeDefined();
+    expect(evalEntry!.deploymentState).toBe('pending-removal');
+  });
+
+  it('marks online-eval config as deployed when in both local and deployed state', () => {
+    const project = {
+      ...baseProject,
+      onlineEvalConfigs: [{ name: 'TestConfig', evaluators: ['Builtin.Helpfulness'], samplingRate: 10 }],
+    } as unknown as AgentCoreProjectSpec;
+
+    const resources: DeployedResourceState = {
+      onlineEvalConfigs: {
+        TestConfig: {
+          onlineEvaluationConfigId: 'proj_TestConfig-abc',
+          onlineEvaluationConfigArn: 'arn:aws:bedrock:us-east-1:123456789:online-evaluation-config/proj_TestConfig-abc',
+        },
+      },
+    };
+
+    const result = computeResourceStatuses(project, resources);
+    const configEntry = result.find(r => r.resourceType === 'online-eval' && r.name === 'TestConfig');
+
+    expect(configEntry).toBeDefined();
+    expect(configEntry!.deploymentState).toBe('deployed');
+    expect(configEntry!.detail).toBe('1 evaluator, 10% sampling');
+  });
+
+  it('marks online-eval config as local-only when not deployed', () => {
+    const project = {
+      ...baseProject,
+      onlineEvalConfigs: [{ name: 'TestConfig', evaluators: ['Builtin.X', 'Builtin.Y', 'Custom'], samplingRate: 50 }],
+    } as unknown as AgentCoreProjectSpec;
+
+    const result = computeResourceStatuses(project, undefined);
+    const configEntry = result.find(r => r.resourceType === 'online-eval' && r.name === 'TestConfig');
+
+    expect(configEntry).toBeDefined();
+    expect(configEntry!.deploymentState).toBe('local-only');
+    expect(configEntry!.detail).toBe('3 evaluators, 50% sampling');
+  });
+
+  it('marks online-eval config as pending-removal when deployed but removed from schema', () => {
+    const resources: DeployedResourceState = {
+      onlineEvalConfigs: {
+        RemovedConfig: {
+          onlineEvaluationConfigId: 'proj_RemovedConfig-xyz',
+          onlineEvaluationConfigArn:
+            'arn:aws:bedrock:us-east-1:123456789:online-evaluation-config/proj_RemovedConfig-xyz',
+        },
+      },
+    };
+
+    const result = computeResourceStatuses(baseProject, resources);
+    const configEntry = result.find(r => r.resourceType === 'online-eval' && r.name === 'RemovedConfig');
+
+    expect(configEntry).toBeDefined();
+    expect(configEntry!.deploymentState).toBe('pending-removal');
   });
 
   it('handles mixed deployed and local-only resources', () => {
@@ -299,5 +433,187 @@ describe('computeResourceStatuses', () => {
 
     const deployedCred = result.find(r => r.name === 'deployed-cred');
     expect(deployedCred!.deploymentState).toBe('deployed');
+  });
+});
+
+describe('handleProjectStatus — live enrichment', () => {
+  beforeEach(() => {
+    mockGetAgentRuntimeStatus.mockReset();
+    mockGetEvaluator.mockReset();
+    mockGetOnlineEvaluationConfig.mockReset();
+  });
+
+  afterEach(() => vi.clearAllMocks());
+
+  function makeContext(overrides: Partial<StatusContext> = {}): StatusContext {
+    return {
+      project: {
+        ...baseProject,
+        evaluators: [{ name: 'MyEval', level: 'SESSION', config: {} }],
+        onlineEvalConfigs: [{ name: 'MyConfig', evaluators: ['Builtin.Helpfulness'], samplingRate: 10 }],
+      } as unknown as AgentCoreProjectSpec,
+      awsTargets: [{ name: 'dev', region: 'us-east-1', account: '123456789' }],
+      deployedState: {
+        targets: {
+          dev: {
+            resources: {
+              evaluators: {
+                MyEval: {
+                  evaluatorId: 'eval-123',
+                  evaluatorArn: 'arn:aws:bedrock:us-east-1:123456789:evaluator/eval-123',
+                },
+              },
+              onlineEvalConfigs: {
+                MyConfig: {
+                  onlineEvaluationConfigId: 'cfg-456',
+                  onlineEvaluationConfigArn: 'arn:aws:bedrock:us-east-1:123456789:online-evaluation-config/cfg-456',
+                },
+              },
+            },
+          },
+        },
+      },
+      ...overrides,
+    } as unknown as StatusContext;
+  }
+
+  it('enriches deployed evaluators with live status', async () => {
+    mockGetEvaluator.mockResolvedValue({
+      evaluatorId: 'eval-123',
+      evaluatorName: 'MyEval',
+      status: 'ACTIVE',
+      level: 'SESSION',
+    });
+    mockGetOnlineEvaluationConfig.mockResolvedValue({
+      configId: 'cfg-456',
+      configName: 'MyConfig',
+      status: 'ACTIVE',
+      executionStatus: 'ENABLED',
+    });
+
+    const result = await handleProjectStatus(makeContext());
+
+    expect(result.success).toBe(true);
+
+    const evalEntry = result.resources.find(r => r.resourceType === 'evaluator' && r.name === 'MyEval');
+    expect(evalEntry).toBeDefined();
+    expect(evalEntry!.detail).toContain('ACTIVE');
+
+    expect(mockGetEvaluator).toHaveBeenCalledWith({
+      region: 'us-east-1',
+      evaluatorId: 'eval-123',
+    });
+  });
+
+  it('enriches deployed online eval configs with live status', async () => {
+    mockGetEvaluator.mockResolvedValue({
+      evaluatorId: 'eval-123',
+      evaluatorName: 'MyEval',
+      status: 'ACTIVE',
+      level: 'SESSION',
+    });
+    mockGetOnlineEvaluationConfig.mockResolvedValue({
+      configId: 'cfg-456',
+      configName: 'MyConfig',
+      status: 'ACTIVE',
+      executionStatus: 'ENABLED',
+    });
+
+    const result = await handleProjectStatus(makeContext());
+
+    expect(result.success).toBe(true);
+
+    const configEntry = result.resources.find(r => r.resourceType === 'online-eval' && r.name === 'MyConfig');
+    expect(configEntry).toBeDefined();
+    expect(configEntry!.detail).toContain('ACTIVE');
+    expect(configEntry!.detail).toContain('ENABLED');
+
+    expect(mockGetOnlineEvaluationConfig).toHaveBeenCalledWith({
+      region: 'us-east-1',
+      configId: 'cfg-456',
+    });
+  });
+
+  it('sets error on evaluator when getEvaluator fails', async () => {
+    mockGetEvaluator.mockRejectedValue(new Error('AccessDenied'));
+    mockGetOnlineEvaluationConfig.mockResolvedValue({
+      configId: 'cfg-456',
+      configName: 'MyConfig',
+      status: 'ACTIVE',
+      executionStatus: 'ENABLED',
+    });
+
+    const result = await handleProjectStatus(makeContext());
+
+    expect(result.success).toBe(true);
+
+    const evalEntry = result.resources.find(r => r.resourceType === 'evaluator' && r.name === 'MyEval');
+    expect(evalEntry).toBeDefined();
+    expect(evalEntry!.error).toBe('AccessDenied');
+  });
+
+  it('sets error on online eval config when getOnlineEvaluationConfig fails', async () => {
+    mockGetEvaluator.mockResolvedValue({
+      evaluatorId: 'eval-123',
+      evaluatorName: 'MyEval',
+      status: 'ACTIVE',
+      level: 'SESSION',
+    });
+    mockGetOnlineEvaluationConfig.mockRejectedValue(new Error('ResourceNotFound'));
+
+    const result = await handleProjectStatus(makeContext());
+
+    expect(result.success).toBe(true);
+
+    const configEntry = result.resources.find(r => r.resourceType === 'online-eval' && r.name === 'MyConfig');
+    expect(configEntry).toBeDefined();
+    expect(configEntry!.error).toBe('ResourceNotFound');
+  });
+
+  it('skips enrichment when no target config is found', async () => {
+    const ctx = makeContext({
+      awsTargets: [] as unknown as StatusContext['awsTargets'],
+      deployedState: {
+        targets: {
+          dev: {
+            resources: {
+              evaluators: {
+                MyEval: {
+                  evaluatorId: 'eval-123',
+                  evaluatorArn: 'arn:aws:bedrock:us-east-1:123456789:evaluator/eval-123',
+                },
+              },
+            },
+          },
+        },
+      } as unknown as StatusContext['deployedState'],
+    });
+
+    const result = await handleProjectStatus(ctx);
+
+    expect(result.success).toBe(true);
+    expect(mockGetEvaluator).not.toHaveBeenCalled();
+    expect(mockGetOnlineEvaluationConfig).not.toHaveBeenCalled();
+  });
+
+  it('does not enrich local-only evaluators', async () => {
+    const ctx = makeContext({
+      deployedState: {
+        targets: {
+          dev: {
+            resources: {},
+          },
+        },
+      } as unknown as StatusContext['deployedState'],
+    });
+
+    const result = await handleProjectStatus(ctx);
+
+    expect(result.success).toBe(true);
+
+    const evalEntry = result.resources.find(r => r.resourceType === 'evaluator' && r.name === 'MyEval');
+    expect(evalEntry).toBeDefined();
+    expect(evalEntry!.deploymentState).toBe('local-only');
+    expect(mockGetEvaluator).not.toHaveBeenCalled();
   });
 });

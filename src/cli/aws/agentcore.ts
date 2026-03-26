@@ -1,9 +1,38 @@
+import { parseJsonRpcResponse } from '../../lib/utils/json-rpc';
 import { getCredentialProvider } from './account';
 import {
   BedrockAgentCoreClient,
+  EvaluateCommand,
   InvokeAgentRuntimeCommand,
   StopRuntimeSessionCommand,
 } from '@aws-sdk/client-bedrock-agentcore';
+import type { HttpRequest } from '@smithy/protocol-http';
+import type { DocumentType } from '@smithy/types';
+
+/**
+ * Create a BedrockAgentCoreClient with optional custom header injection middleware.
+ */
+function createAgentCoreClient(region: string, headers?: Record<string, string>): BedrockAgentCoreClient {
+  const client = new BedrockAgentCoreClient({
+    region,
+    credentials: getCredentialProvider(),
+  });
+
+  if (headers && Object.keys(headers).length > 0) {
+    client.middlewareStack.add(
+      next => async args => {
+        const request = args.request as HttpRequest;
+        for (const [name, value] of Object.entries(headers)) {
+          request.headers[name] = value;
+        }
+        return next(args);
+      },
+      { step: 'build', name: 'addCustomHeaders' }
+    );
+  }
+
+  return client;
+}
 
 /** Logger interface for SSE events */
 export interface SSELogger {
@@ -22,6 +51,8 @@ export interface InvokeAgentRuntimeOptions {
   userId?: string;
   /** Optional logger for SSE event debugging */
   logger?: SSELogger;
+  /** Custom headers to forward to the agent runtime */
+  headers?: Record<string, string>;
 }
 
 export interface InvokeAgentRuntimeResult {
@@ -106,10 +137,7 @@ export function extractResult(text: string): string {
  * Returns an object with the stream generator and session ID.
  */
 export async function invokeAgentRuntimeStreaming(options: InvokeAgentRuntimeOptions): Promise<StreamingInvokeResult> {
-  const client = new BedrockAgentCoreClient({
-    region: options.region,
-    credentials: getCredentialProvider(),
-  });
+  const client = createAgentCoreClient(options.region, options.headers);
 
   const command = new InvokeAgentRuntimeCommand({
     agentRuntimeArn: options.runtimeArn,
@@ -202,10 +230,7 @@ export async function invokeAgentRuntimeStreaming(options: InvokeAgentRuntimeOpt
  * Invoke an AgentCore Runtime and return the response.
  */
 export async function invokeAgentRuntime(options: InvokeAgentRuntimeOptions): Promise<InvokeAgentRuntimeResult> {
-  const client = new BedrockAgentCoreClient({
-    region: options.region,
-    credentials: getCredentialProvider(),
-  });
+  const client = createAgentCoreClient(options.region, options.headers);
 
   const command = new InvokeAgentRuntimeCommand({
     agentRuntimeArn: options.runtimeArn,
@@ -232,6 +257,472 @@ export async function invokeAgentRuntime(options: InvokeAgentRuntimeOptions): Pr
     content,
     sessionId: response.runtimeSessionId,
   };
+}
+
+// ============================================================================
+// Evaluate
+// ============================================================================
+
+export interface EvaluateOptions {
+  region: string;
+  evaluatorId: string;
+  sessionSpans: DocumentType[];
+  targetSpanIds?: string[];
+  targetTraceIds?: string[];
+}
+
+export interface EvaluationResultContext {
+  sessionId: string | undefined;
+  traceId: string | undefined;
+  spanId: string | undefined;
+}
+
+export interface EvaluationResultTokenUsage {
+  inputTokens: number;
+  outputTokens: number;
+  totalTokens: number;
+}
+
+export interface EvaluationResult {
+  evaluatorArn: string | undefined;
+  evaluatorId: string | undefined;
+  evaluatorName: string | undefined;
+  explanation: string | undefined;
+  value: number | undefined;
+  label: string | undefined;
+  errorMessage: string | undefined;
+  errorCode: string | undefined;
+  context: EvaluationResultContext | undefined;
+  tokenUsage: EvaluationResultTokenUsage | undefined;
+}
+
+export interface EvaluateResult {
+  evaluationResults: EvaluationResult[];
+}
+
+/**
+ * Run on-demand evaluation of agent traces using a specified evaluator.
+ */
+export async function evaluate(options: EvaluateOptions): Promise<EvaluateResult> {
+  const client = new BedrockAgentCoreClient({
+    region: options.region,
+    credentials: getCredentialProvider(),
+  });
+
+  const evaluationTarget = options.targetSpanIds
+    ? { spanIds: options.targetSpanIds }
+    : options.targetTraceIds
+      ? { traceIds: options.targetTraceIds }
+      : undefined;
+
+  const command = new EvaluateCommand({
+    evaluatorId: options.evaluatorId,
+    evaluationInput: {
+      sessionSpans: options.sessionSpans,
+    },
+    ...(evaluationTarget ? { evaluationTarget } : {}),
+  });
+
+  const response = await client.send(command);
+
+  if (!response.evaluationResults) {
+    throw new Error('No evaluation results returned');
+  }
+
+  return {
+    evaluationResults: response.evaluationResults.map(r => {
+      const spanContext = r.context && 'spanContext' in r.context ? r.context.spanContext : undefined;
+
+      return {
+        evaluatorArn: r.evaluatorArn,
+        evaluatorId: r.evaluatorId,
+        evaluatorName: r.evaluatorName,
+        explanation: r.explanation,
+        value: r.value,
+        label: r.label,
+        errorMessage: r.errorMessage,
+        errorCode: r.errorCode,
+        context: spanContext
+          ? {
+              sessionId: spanContext.sessionId,
+              traceId: spanContext.traceId,
+              spanId: spanContext.spanId,
+            }
+          : undefined,
+        tokenUsage: r.tokenUsage
+          ? {
+              inputTokens: r.tokenUsage.inputTokens ?? 0,
+              outputTokens: r.tokenUsage.outputTokens ?? 0,
+              totalTokens: r.tokenUsage.totalTokens ?? 0,
+            }
+          : undefined,
+      };
+    }),
+  };
+}
+
+// ---------------------------------------------------------------------------
+// MCP: JSON-RPC over InvokeAgentRuntime
+// ---------------------------------------------------------------------------
+
+export interface McpInvokeOptions {
+  region: string;
+  runtimeArn: string;
+  userId?: string;
+  mcpSessionId?: string;
+  logger?: SSELogger;
+  /** Custom headers to forward to the agent runtime */
+  headers?: Record<string, string>;
+}
+
+export interface McpToolDef {
+  name: string;
+  description?: string;
+  inputSchema?: Record<string, unknown>;
+}
+
+export interface McpListToolsResult {
+  tools: McpToolDef[];
+  mcpSessionId?: string;
+}
+
+let mcpRequestId = 1;
+
+interface McpRpcResult {
+  result: Record<string, unknown>;
+  mcpSessionId?: string;
+  error?: { message?: string; code?: number };
+}
+
+/** Send a JSON-RPC payload through InvokeAgentRuntime and return the parsed response. */
+async function mcpRpcCall(options: McpInvokeOptions, body: Record<string, unknown>): Promise<McpRpcResult> {
+  const client = createAgentCoreClient(options.region, options.headers);
+
+  options.logger?.logSSEEvent(`MCP request: ${JSON.stringify(body)}`);
+
+  const command = new InvokeAgentRuntimeCommand({
+    agentRuntimeArn: options.runtimeArn,
+    payload: new TextEncoder().encode(JSON.stringify(body)),
+    contentType: 'application/json',
+    accept: 'application/json, text/event-stream',
+    mcpSessionId: options.mcpSessionId,
+    mcpProtocolVersion: '2025-03-26',
+    runtimeUserId: options.userId ?? DEFAULT_RUNTIME_USER_ID,
+  });
+
+  const response = await client.send(command);
+
+  if (!response.response) {
+    throw new Error('No response from AgentCore Runtime');
+  }
+
+  const bytes = await response.response.transformToByteArray();
+  const text = new TextDecoder().decode(bytes);
+
+  options.logger?.logSSEEvent(`MCP response: ${text}`);
+
+  const parsed = parseJsonRpcResponse(text);
+
+  return {
+    result: (parsed.result as Record<string, unknown>) ?? {},
+    mcpSessionId: response.mcpSessionId,
+    error: parsed.error as McpRpcResult['error'],
+  };
+}
+
+/** Call mcpRpcCall and throw on JSON-RPC errors. Use mcpRpcCall directly when errors should be tolerated. */
+async function mcpRpcCallStrict(options: McpInvokeOptions, body: Record<string, unknown>): Promise<McpRpcResult> {
+  const result = await mcpRpcCall(options, body);
+  if (result.error) {
+    throw new Error(result.error.message ?? `MCP error (code ${result.error.code})`);
+  }
+  return result;
+}
+
+/** Send a JSON-RPC notification (no id, no response expected). */
+async function mcpRpcNotify(options: McpInvokeOptions, body: Record<string, unknown>): Promise<void> {
+  const client = createAgentCoreClient(options.region, options.headers);
+
+  const command = new InvokeAgentRuntimeCommand({
+    agentRuntimeArn: options.runtimeArn,
+    payload: new TextEncoder().encode(JSON.stringify(body)),
+    contentType: 'application/json',
+    accept: 'application/json, text/event-stream',
+    mcpSessionId: options.mcpSessionId,
+    mcpProtocolVersion: '2025-03-26',
+    runtimeUserId: options.userId ?? DEFAULT_RUNTIME_USER_ID,
+  });
+
+  await client.send(command);
+}
+
+/**
+ * Initialize MCP session and list available tools via InvokeAgentRuntime.
+ * Retries on cold-start initialization timeouts.
+ */
+export async function mcpListTools(options: McpInvokeOptions): Promise<McpListToolsResult> {
+  const maxRetries = 3;
+
+  for (let attempt = 0; attempt < maxRetries; attempt++) {
+    try {
+      return await mcpListToolsOnce(options);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      const isColdStart = msg.includes('initialization time exceeded') || msg.includes('initialization');
+
+      if (isColdStart && attempt < maxRetries - 1) {
+        options.logger?.logSSEEvent(`MCP cold start (attempt ${attempt + 1}/${maxRetries}), retrying...`);
+        await new Promise(resolve => setTimeout(resolve, 2000));
+        continue;
+      }
+      throw err;
+    }
+  }
+
+  throw new Error('Failed to list MCP tools after retries');
+}
+
+async function mcpListToolsOnce(options: McpInvokeOptions): Promise<McpListToolsResult> {
+  // 1. Initialize — tolerate JSON-RPC errors (stateless servers may reject initialize but still return a session ID)
+  const initResult = await mcpRpcCall(options, {
+    jsonrpc: '2.0',
+    id: mcpRequestId++,
+    method: 'initialize',
+    params: {
+      protocolVersion: '2025-03-26',
+      capabilities: {},
+      clientInfo: { name: 'agentcore-cli', version: '1.0.0' },
+    },
+  });
+
+  if (initResult.error) {
+    options.logger?.logSSEEvent(
+      `MCP initialize returned error (expected for stateless servers): ${initResult.error.message}`
+    );
+  }
+
+  const sessionId = initResult.mcpSessionId;
+  const optionsWithSession = { ...options, mcpSessionId: sessionId };
+
+  // 2. Send initialized notification
+  await mcpRpcNotify(optionsWithSession, {
+    jsonrpc: '2.0',
+    method: 'notifications/initialized',
+  });
+
+  // 3. List tools
+  const listResult = await mcpRpcCallStrict(optionsWithSession, {
+    jsonrpc: '2.0',
+    id: mcpRequestId++,
+    method: 'tools/list',
+    params: {},
+  });
+
+  const tools = (listResult.result as { tools?: McpToolDef[] }).tools ?? [];
+
+  return {
+    tools: tools.map(t => ({ name: t.name, description: t.description, inputSchema: t.inputSchema })),
+    mcpSessionId: sessionId,
+  };
+}
+
+/**
+ * Initialize an MCP session (without listing tools).
+ * Returns just the session ID needed for subsequent tool calls.
+ */
+export async function mcpInitSession(options: McpInvokeOptions): Promise<string | undefined> {
+  const initResult = await mcpRpcCall(options, {
+    jsonrpc: '2.0',
+    id: mcpRequestId++,
+    method: 'initialize',
+    params: {
+      protocolVersion: '2025-03-26',
+      capabilities: {},
+      clientInfo: { name: 'agentcore-cli', version: '1.0.0' },
+    },
+  });
+
+  const sessionId = initResult.mcpSessionId;
+  const optionsWithSession = { ...options, mcpSessionId: sessionId };
+
+  await mcpRpcNotify(optionsWithSession, {
+    jsonrpc: '2.0',
+    method: 'notifications/initialized',
+  });
+
+  return sessionId;
+}
+
+/**
+ * Call an MCP tool via InvokeAgentRuntime.
+ * Retries on cold-start initialization timeouts.
+ */
+export async function mcpCallTool(
+  options: McpInvokeOptions,
+  toolName: string,
+  args: Record<string, unknown>
+): Promise<string> {
+  const maxRetries = 3;
+
+  for (let attempt = 0; attempt < maxRetries; attempt++) {
+    try {
+      const { result } = await mcpRpcCallStrict(options, {
+        jsonrpc: '2.0',
+        id: mcpRequestId++,
+        method: 'tools/call',
+        params: { name: toolName, arguments: args },
+      });
+
+      const content = (result as { content?: { type?: string; text?: string }[] }).content;
+      if (content) {
+        const texts: string[] = [];
+        for (const item of content) {
+          if (item.text !== undefined) {
+            texts.push(item.text);
+          }
+        }
+        if (texts.length > 0) return texts.join('');
+      }
+
+      return JSON.stringify(result, null, 2);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      const isColdStart = msg.includes('initialization time exceeded') || msg.includes('initialization');
+
+      if (isColdStart && attempt < maxRetries - 1) {
+        options.logger?.logSSEEvent(`MCP cold start (attempt ${attempt + 1}/${maxRetries}), retrying...`);
+        await new Promise(resolve => setTimeout(resolve, 2000));
+        continue;
+      }
+      throw err;
+    }
+  }
+
+  throw new Error('Failed to call MCP tool after retries');
+}
+
+// ---------------------------------------------------------------------------
+// A2A: JSON-RPC message/send over InvokeAgentRuntime
+// ---------------------------------------------------------------------------
+
+export interface A2AInvokeOptions {
+  region: string;
+  runtimeArn: string;
+  userId?: string;
+  logger?: SSELogger;
+  /** Custom headers to forward to the agent runtime */
+  headers?: Record<string, string>;
+}
+
+let a2aRequestId = 1;
+
+/**
+ * Invoke a deployed A2A agent via InvokeAgentRuntime with JSON-RPC message/send.
+ * Streams text parts from the response artifacts.
+ */
+export async function invokeA2ARuntime(options: A2AInvokeOptions, message: string): Promise<StreamingInvokeResult> {
+  const client = createAgentCoreClient(options.region, options.headers);
+
+  const body = {
+    jsonrpc: '2.0',
+    id: a2aRequestId++,
+    method: 'message/send',
+    params: {
+      message: {
+        role: 'user',
+        parts: [{ kind: 'text', text: message }],
+        messageId: `msg-${Date.now()}`,
+      },
+    },
+  };
+
+  options.logger?.logSSEEvent(`A2A request: ${JSON.stringify(body)}`);
+
+  const command = new InvokeAgentRuntimeCommand({
+    agentRuntimeArn: options.runtimeArn,
+    payload: new TextEncoder().encode(JSON.stringify(body)),
+    contentType: 'application/json',
+    accept: 'application/json, text/event-stream',
+    runtimeUserId: options.userId ?? DEFAULT_RUNTIME_USER_ID,
+  });
+
+  const response = await client.send(command);
+
+  if (!response.response) {
+    throw new Error('No response from AgentCore Runtime');
+  }
+
+  const bytes = await response.response.transformToByteArray();
+  const text = new TextDecoder().decode(bytes);
+
+  options.logger?.logSSEEvent(`A2A response: ${text}`);
+
+  const parsed = parseA2AResponse(text);
+
+  return {
+    stream: singleValueStream(parsed),
+    sessionId: undefined,
+  };
+}
+
+/** Wrap a single string value as an AsyncGenerator for StreamingInvokeResult compatibility. */
+async function* singleValueStream(value: string): AsyncGenerator<string, void, unknown> {
+  yield await Promise.resolve(value);
+}
+
+/** Extract text content from A2A JSON-RPC response. Supports both kind:'text' and type:'text' part formats. */
+export function parseA2AResponse(text: string): string {
+  try {
+    const parsed: unknown = JSON.parse(text);
+    if (!parsed || typeof parsed !== 'object') return text;
+
+    const obj = parsed as Record<string, unknown>;
+
+    // Check for JSON-RPC error
+    if (obj.error && typeof obj.error === 'object') {
+      const err = obj.error as { message?: string };
+      return `Error: ${err.message ?? JSON.stringify(obj.error)}`;
+    }
+
+    // Extract text from result.artifacts[].parts[].text
+    const result = obj.result as Record<string, unknown> | undefined;
+    if (!result) return text;
+
+    const artifacts = result.artifacts as { parts?: { kind?: string; type?: string; text?: string }[] }[] | undefined;
+    if (artifacts) {
+      const texts: string[] = [];
+      for (const artifact of artifacts) {
+        if (artifact.parts) {
+          for (const part of artifact.parts) {
+            if ((part.kind === 'text' || part.type === 'text') && part.text !== undefined) {
+              texts.push(part.text);
+            }
+          }
+        }
+      }
+      if (texts.length > 0) return texts.join('');
+    }
+
+    // Fallback: check history for the last assistant message
+    const history = result.history as
+      | { role?: string; parts?: { kind?: string; type?: string; text?: string }[] }[]
+      | undefined;
+    if (history) {
+      for (let i = history.length - 1; i >= 0; i--) {
+        const msg = history[i];
+        if (msg?.role === 'agent' && msg.parts) {
+          const agentTexts = msg.parts
+            .filter(p => (p.kind === 'text' || p.type === 'text') && p.text !== undefined)
+            .map(p => p.text!);
+          if (agentTexts.length > 0) return agentTexts.join('');
+        }
+      }
+    }
+
+    return JSON.stringify(result, null, 2);
+  } catch {
+    return text;
+  }
 }
 
 /**

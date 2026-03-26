@@ -51,10 +51,15 @@ describe('resolveAgentContext', () => {
           entrypoint: 'main.py' as any,
           codeLocation: './agents/my-agent' as any,
           runtimeVersion: 'PYTHON_3_12' as const,
+          protocol: 'HTTP' as const,
         },
       ],
       memories: [],
       credentials: [],
+      evaluators: [],
+      onlineEvalConfigs: [],
+      agentCoreGateways: [],
+      policyEngines: [],
     },
     deployedState: {
       targets: {
@@ -99,6 +104,7 @@ describe('resolveAgentContext', () => {
             entrypoint: 'main.py' as any,
             codeLocation: './agents/a' as any,
             runtimeVersion: 'PYTHON_3_12' as const,
+            protocol: 'HTTP' as const,
           },
           {
             type: 'AgentCoreRuntime' as const,
@@ -107,10 +113,15 @@ describe('resolveAgentContext', () => {
             entrypoint: 'main.py' as any,
             codeLocation: './agents/b' as any,
             runtimeVersion: 'PYTHON_3_12' as const,
+            protocol: 'HTTP' as const,
           },
         ],
         memories: [],
         credentials: [],
+        evaluators: [],
+        onlineEvalConfigs: [],
+        agentCoreGateways: [],
+        policyEngines: [],
       },
     });
     const result = resolveAgentContext(context, {});
@@ -135,6 +146,7 @@ describe('resolveAgentContext', () => {
             entrypoint: 'main.py' as any,
             codeLocation: './agents/a' as any,
             runtimeVersion: 'PYTHON_3_12' as const,
+            protocol: 'HTTP' as const,
           },
           {
             type: 'AgentCoreRuntime' as const,
@@ -143,10 +155,15 @@ describe('resolveAgentContext', () => {
             entrypoint: 'main.py' as any,
             codeLocation: './agents/b' as any,
             runtimeVersion: 'PYTHON_3_12' as const,
+            protocol: 'HTTP' as const,
           },
         ],
         memories: [],
         credentials: [],
+        evaluators: [],
+        onlineEvalConfigs: [],
+        agentCoreGateways: [],
+        policyEngines: [],
       },
       deployedState: {
         targets: {
@@ -187,7 +204,17 @@ describe('resolveAgentContext', () => {
 
   it('errors when no agents defined', () => {
     const context = makeContext({
-      project: { name: 'TestProject', version: 1, agents: [], memories: [], credentials: [] },
+      project: {
+        name: 'TestProject',
+        version: 1,
+        agents: [],
+        memories: [],
+        credentials: [],
+        evaluators: [],
+        onlineEvalConfigs: [],
+        agentCoreGateways: [],
+        policyEngines: [],
+      },
     });
     const result = resolveAgentContext(context, {});
     expect(result.success).toBe(false);

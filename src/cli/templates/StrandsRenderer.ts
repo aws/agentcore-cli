@@ -4,6 +4,6 @@ import type { AgentRenderConfig } from './types';
 
 export class StrandsRenderer extends BaseRenderer {
   constructor(config: AgentRenderConfig) {
-    super(config, 'strands', TEMPLATE_ROOT);
+    super(config, 'strands', TEMPLATE_ROOT, config.protocol ?? 'http');
   }
 }

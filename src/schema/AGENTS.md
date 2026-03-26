@@ -10,3 +10,8 @@ readability and clean imports. Zod validators take a dependency on the top level
 
 **Schemas**: The core interface for both CLI and the input props to the L3 CDK constructs. These schemas allow
 high-level definitions for agent use case and behavior to be translated into AgentCore infrastructure.
+
+### Tags
+
+The tags primitive schema is defined at `src/schema/schemas/primitives/tags.ts` and supports project-level and
+resource-level tagging with AWS tagging constraints.

@@ -4,6 +4,6 @@ import type { AgentRenderConfig } from './types';
 
 export class LangGraphRenderer extends BaseRenderer {
   constructor(config: AgentRenderConfig) {
-    super(config, 'langchain_langgraph', TEMPLATE_ROOT);
+    super(config, 'langchain_langgraph', TEMPLATE_ROOT, config.protocol ?? 'http');
   }
 }

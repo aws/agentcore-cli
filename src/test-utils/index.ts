@@ -3,11 +3,29 @@
  * Import these helpers instead of duplicating code in each test file.
  */
 
-export { runCLI, type RunResult } from './cli-runner.js';
+export { runCLI, spawnAndCollect, type RunResult } from './cli-runner.js';
 export { exists } from './fs-helpers.js';
 export { hasCommand, hasAwsCredentials, prereqs } from './prereqs.js';
 export { createTestProject, type TestProject, type CreateTestProjectOptions } from './project-factory.js';
 export { readProjectConfig } from './config-reader.js';
+
+/**
+ * Retry an async function up to `times` attempts with a delay between retries.
+ */
+export async function retry<T>(fn: () => Promise<T>, times: number, delayMs: number): Promise<T> {
+  let lastError: unknown;
+  for (let i = 0; i < times; i++) {
+    try {
+      return await fn();
+    } catch (err) {
+      lastError = err;
+      if (i < times - 1) {
+        await new Promise(resolve => setTimeout(resolve, delayMs));
+      }
+    }
+  }
+  throw lastError;
+}
 
 /**
  * Strip ANSI escape codes from a string.

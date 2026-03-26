@@ -196,13 +196,6 @@ export class PathResolver {
   }
 
   /**
-   * Get the path to the MCP config file (mcp.json)
-   */
-  getMcpConfigPath(): string {
-    return join(this.config.baseDir, CONFIG_FILES.MCP);
-  }
-
-  /**
    * Get the path to the MCP definitions file (mcp-defs.json)
    */
   getMcpDefsPath(): string {

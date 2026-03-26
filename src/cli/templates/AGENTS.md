@@ -4,7 +4,8 @@ This directory contains the **rendering logic** for template processing.
 
 Template **assets** live in the `assets/` directory at the repository root.
 
-The rendering logic is rooted in the `AgentEnvSpec` and must ALWAYS respect the configuration in the Spec.
+The rendering logic is rooted in the `AgentEnvSpec` and must ALWAYS respect the configuration in the Spec. Tags defined
+in `agentcore.json` flow through to deployed CloudFormation resources.
 
 ### Rendering Pipeline
 

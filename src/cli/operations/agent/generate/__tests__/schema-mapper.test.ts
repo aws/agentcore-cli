@@ -1,4 +1,5 @@
 import { computeManagedOAuthCredentialName } from '../../../../primitives/credential-utils.js';
+import { mapByoConfigToAgent } from '../../../../tui/screens/agent/useAddAgent.js';
 import type { GenerateConfig } from '../../../../tui/screens/generate/types.js';
 import {
   mapGenerateConfigToAgent,
@@ -13,6 +14,7 @@ import { describe, expect, it } from 'vitest';
 const baseConfig: GenerateConfig = {
   projectName: 'TestProject',
   buildType: 'CodeZip',
+  protocol: 'HTTP',
   sdk: 'Strands',
   modelProvider: 'Bedrock',
   memory: 'none',
@@ -88,6 +90,7 @@ describe('mapGenerateConfigToAgent', () => {
     expect(result.entrypoint).toBe('main.py');
     expect(result.runtimeVersion).toBe('PYTHON_3_12');
     expect(result.networkMode).toBe('PUBLIC');
+    expect(result.protocol).toBe('HTTP');
   });
 
   it('uses projectName for codeLocation path', () => {
@@ -192,6 +195,38 @@ describe('mapGenerateConfigToRenderConfig', () => {
   });
 });
 
+describe('mapGenerateConfigToAgent protocol mode', () => {
+  it('omits modelProvider and sets protocol for MCP', () => {
+    const mcpConfig: GenerateConfig = {
+      ...baseConfig,
+      protocol: 'MCP',
+    };
+    const result = mapGenerateConfigToAgent(mcpConfig);
+    expect(result.protocol).toBe('MCP');
+    expect(result).not.toHaveProperty('modelProvider');
+  });
+
+  it('sets protocol to HTTP explicitly', () => {
+    const httpConfig: GenerateConfig = {
+      ...baseConfig,
+      protocol: 'HTTP',
+    };
+    const result = mapGenerateConfigToAgent(httpConfig);
+    expect(result.protocol).toBe('HTTP');
+    expect(result.modelProvider).toBe('Bedrock');
+  });
+
+  it('sets protocol for A2A', () => {
+    const a2aConfig: GenerateConfig = {
+      ...baseConfig,
+      protocol: 'A2A',
+    };
+    const result = mapGenerateConfigToAgent(a2aConfig);
+    expect(result.protocol).toBe('A2A');
+    expect(result.modelProvider).toBe('Bedrock');
+  });
+});
+
 describe('gateway credential provider name mapping', () => {
   it('computeManagedOAuthCredentialName produces the correct suffix', () => {
     // Regression test: the managed credential name must use '-oauth' suffix.
@@ -199,5 +234,169 @@ describe('gateway credential provider name mapping', () => {
     // All three now use computeManagedOAuthCredentialName to stay in sync.
     expect(computeManagedOAuthCredentialName('my-gateway')).toBe('my-gateway-oauth');
     expect(computeManagedOAuthCredentialName('test')).toBe('test-oauth');
+  });
+});
+
+describe('mapGenerateConfigToAgent - VPC support', () => {
+  const vpcBaseConfig = {
+    projectName: 'TestAgent',
+    buildType: 'CodeZip' as const,
+    protocol: 'HTTP' as const,
+    sdk: 'Strands' as const,
+    modelProvider: 'Bedrock' as const,
+    memory: 'none' as const,
+    language: 'Python' as const,
+  };
+
+  it('defaults to PUBLIC network mode when networkMode is absent', () => {
+    const result = mapGenerateConfigToAgent(vpcBaseConfig);
+    expect(result.networkMode).toBe('PUBLIC');
+    expect(result.networkConfig).toBeUndefined();
+  });
+
+  it('uses PUBLIC network mode when explicitly set', () => {
+    const result = mapGenerateConfigToAgent({ ...vpcBaseConfig, networkMode: 'PUBLIC' });
+    expect(result.networkMode).toBe('PUBLIC');
+    expect(result.networkConfig).toBeUndefined();
+  });
+
+  it('produces networkConfig for VPC mode with subnets and security groups', () => {
+    const result = mapGenerateConfigToAgent({
+      ...vpcBaseConfig,
+      networkMode: 'VPC',
+      subnets: ['subnet-12345678', 'subnet-abcdef12'],
+      securityGroups: ['sg-12345678'],
+    });
+    expect(result.networkMode).toBe('VPC');
+    expect(result.networkConfig).toEqual({
+      subnets: ['subnet-12345678', 'subnet-abcdef12'],
+      securityGroups: ['sg-12345678'],
+    });
+  });
+
+  it('does not produce networkConfig for VPC mode without subnets', () => {
+    const result = mapGenerateConfigToAgent({
+      ...vpcBaseConfig,
+      networkMode: 'VPC',
+    });
+    expect(result.networkMode).toBe('VPC');
+    expect(result.networkConfig).toBeUndefined();
+  });
+});
+
+describe('mapByoConfigToAgent - requestHeaderAllowlist', () => {
+  it('includes requestHeaderAllowlist when provided', () => {
+    const config = {
+      name: 'TestAgent',
+      agentType: 'byo' as const,
+      codeLocation: 'app/test/',
+      entrypoint: 'main.py',
+      language: 'Python' as const,
+      buildType: 'CodeZip' as const,
+      protocol: 'HTTP' as const,
+      framework: 'Strands' as const,
+      modelProvider: 'Bedrock' as const,
+      pythonVersion: 'PYTHON_3_12' as const,
+      memory: 'none' as const,
+      requestHeaderAllowlist: ['X-Amzn-Bedrock-AgentCore-Runtime-Custom-H1', 'Authorization'],
+    };
+    const result = mapByoConfigToAgent(config);
+    expect(result.requestHeaderAllowlist).toEqual(['X-Amzn-Bedrock-AgentCore-Runtime-Custom-H1', 'Authorization']);
+  });
+
+  it('omits requestHeaderAllowlist when not provided', () => {
+    const config = {
+      name: 'TestAgent',
+      agentType: 'byo' as const,
+      codeLocation: 'app/test/',
+      entrypoint: 'main.py',
+      language: 'Python' as const,
+      buildType: 'CodeZip' as const,
+      protocol: 'HTTP' as const,
+      framework: 'Strands' as const,
+      modelProvider: 'Bedrock' as const,
+      pythonVersion: 'PYTHON_3_12' as const,
+      memory: 'none' as const,
+    };
+    const result = mapByoConfigToAgent(config);
+    expect(result.requestHeaderAllowlist).toBeUndefined();
+  });
+});
+
+describe('mapGenerateConfigToAgent - requestHeaderAllowlist', () => {
+  it('includes requestHeaderAllowlist when provided', () => {
+    const config = {
+      ...baseConfig,
+      requestHeaderAllowlist: ['X-Amzn-Bedrock-AgentCore-Runtime-Custom-H1'],
+    };
+    const result = mapGenerateConfigToAgent(config);
+    expect(result.requestHeaderAllowlist).toEqual(['X-Amzn-Bedrock-AgentCore-Runtime-Custom-H1']);
+  });
+
+  it('omits requestHeaderAllowlist when empty array', () => {
+    const config = { ...baseConfig, requestHeaderAllowlist: [] as string[] };
+    const result = mapGenerateConfigToAgent(config);
+    expect(result.requestHeaderAllowlist).toBeUndefined();
+  });
+
+  it('omits requestHeaderAllowlist when undefined', () => {
+    const result = mapGenerateConfigToAgent(baseConfig);
+    expect(result.requestHeaderAllowlist).toBeUndefined();
+  });
+});
+
+describe('mapByoConfigToAgent - VPC support', () => {
+  const baseByoConfig = {
+    name: 'MyByo',
+    agentType: 'byo' as const,
+    codeLocation: 'app/MyByo/',
+    entrypoint: 'main.py',
+    language: 'Python' as const,
+    buildType: 'CodeZip' as const,
+    protocol: 'HTTP' as const,
+    framework: 'Strands' as const,
+    modelProvider: 'Bedrock' as const,
+    pythonVersion: 'PYTHON_3_12' as const,
+    memory: 'none' as const,
+  };
+
+  it('defaults to PUBLIC network mode when networkMode is undefined', () => {
+    const result = mapByoConfigToAgent(baseByoConfig);
+    expect(result.networkMode).toBe('PUBLIC');
+    expect(result.networkConfig).toBeUndefined();
+  });
+
+  it('produces networkConfig for VPC mode with subnets and security groups', () => {
+    const result = mapByoConfigToAgent({
+      ...baseByoConfig,
+      networkMode: 'VPC',
+      subnets: ['subnet-12345678'],
+      securityGroups: ['sg-abcdef12'],
+    });
+    expect(result.networkMode).toBe('VPC');
+    expect(result.networkConfig).toEqual({
+      subnets: ['subnet-12345678'],
+      securityGroups: ['sg-abcdef12'],
+    });
+  });
+
+  it('does not produce networkConfig for VPC mode without subnets', () => {
+    const result = mapByoConfigToAgent({
+      ...baseByoConfig,
+      networkMode: 'VPC',
+    });
+    expect(result.networkMode).toBe('VPC');
+    expect(result.networkConfig).toBeUndefined();
+  });
+
+  it('does not produce networkConfig for PUBLIC mode even with subnets', () => {
+    const result = mapByoConfigToAgent({
+      ...baseByoConfig,
+      networkMode: 'PUBLIC',
+      subnets: ['subnet-12345678'],
+      securityGroups: ['sg-abcdef12'],
+    });
+    expect(result.networkMode).toBe('PUBLIC');
+    expect(result.networkConfig).toBeUndefined();
   });
 });

@@ -10,6 +10,7 @@ const mockSpawn = vi.fn();
 const mockExistsSync = vi.fn();
 const mockDetectContainerRuntime = vi.fn();
 const mockGetStartHint = vi.fn();
+const mockWaitForServerReady = vi.fn();
 
 vi.mock('child_process', () => ({
   spawnSync: (...args: unknown[]) => mockSpawnSync(...args),
@@ -30,6 +31,14 @@ vi.mock('../../../external-requirements/detect', () => ({
   detectContainerRuntime: (...args: unknown[]) => mockDetectContainerRuntime(...args),
   getStartHint: (...args: unknown[]) => mockGetStartHint(...args),
 }));
+
+vi.mock('../utils', async importOriginal => {
+  const actual: Record<string, unknown> = await importOriginal();
+  return {
+    ...actual,
+    waitForServerReady: (...args: unknown[]) => mockWaitForServerReady(...args),
+  };
+});
 
 function createMockChildProcess() {
   const proc = new EventEmitter() as any;
@@ -82,6 +91,7 @@ const defaultConfig: DevConfig = {
   hasConfig: true,
   isPython: true,
   buildType: 'Container' as any,
+  protocol: 'HTTP',
 };
 
 const mockCallbacks: DevServerCallbacks = { onLog: vi.fn(), onExit: vi.fn() };
@@ -93,6 +103,8 @@ describe('ContainerDevServer', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     savedEnv = { ...process.env };
+    // Default: container server becomes ready immediately
+    mockWaitForServerReady.mockResolvedValue(true);
   });
 
   afterEach(() => {
@@ -188,7 +200,7 @@ describe('ContainerDevServer', () => {
       expect(mockCallbacks.onLog).toHaveBeenCalledWith('system', 'Container image built successfully.');
     });
 
-    it('logs system-level start message and triggers TUI readiness after container is spawned', async () => {
+    it('waits for server to be ready before triggering TUI readiness', async () => {
       mockSuccessfulPrepare();
 
       const server = new ContainerDevServer(defaultConfig, defaultOptions);
@@ -196,10 +208,26 @@ describe('ContainerDevServer', () => {
 
       expect(mockCallbacks.onLog).toHaveBeenCalledWith(
         'system',
-        'Container agentcore-dev-testagent started on port 9000.'
+        'Container agentcore-dev-testagent started, waiting for server to be ready...'
       );
-      // Emits readiness trigger for TUI detection
+      expect(mockWaitForServerReady).toHaveBeenCalledWith(9000);
+      // Emits readiness trigger for TUI detection only after port is ready
       expect(mockCallbacks.onLog).toHaveBeenCalledWith('info', 'Application startup complete');
+    });
+
+    it('logs error when container server does not become ready in time', async () => {
+      mockSuccessfulPrepare();
+      mockWaitForServerReady.mockResolvedValue(false);
+
+      const server = new ContainerDevServer(defaultConfig, defaultOptions);
+      await server.start();
+
+      expect(mockCallbacks.onLog).toHaveBeenCalledWith(
+        'error',
+        'Container server did not become ready within 60 seconds.'
+      );
+      // Should NOT emit readiness trigger
+      expect(mockCallbacks.onLog).not.toHaveBeenCalledWith('info', 'Application startup complete');
     });
 
     it('builds image directly without a dev layer', async () => {

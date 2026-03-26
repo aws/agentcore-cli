@@ -1,15 +1,15 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
-const { mockReadDeployedState, mockReadMcpSpec, mockConfigExists } = vi.hoisted(() => ({
+const { mockReadDeployedState, mockReadProjectSpec, mockConfigExists } = vi.hoisted(() => ({
   mockReadDeployedState: vi.fn(),
-  mockReadMcpSpec: vi.fn(),
+  mockReadProjectSpec: vi.fn(),
   mockConfigExists: vi.fn(),
 }));
 
 vi.mock('../../../../lib/index.js', () => ({
   ConfigIO: class {
     readDeployedState = mockReadDeployedState;
-    readMcpSpec = mockReadMcpSpec;
+    readProjectSpec = mockReadProjectSpec;
     configExists = mockConfigExists;
   },
 }));
@@ -49,7 +49,7 @@ describe('getGatewayEnvVars', () => {
       },
     });
     mockConfigExists.mockReturnValue(true);
-    mockReadMcpSpec.mockResolvedValue({
+    mockReadProjectSpec.mockResolvedValue({
       agentCoreGateways: [{ name: 'my-gateway', authorizerType: 'CUSTOM_JWT' }],
     });
 
@@ -69,7 +69,7 @@ describe('getGatewayEnvVars', () => {
       },
     });
     mockConfigExists.mockReturnValue(true);
-    mockReadMcpSpec.mockResolvedValue({ agentCoreGateways: [] });
+    mockReadProjectSpec.mockResolvedValue({ agentCoreGateways: [] });
 
     const result = await getGatewayEnvVars();
     expect(result.AGENTCORE_GATEWAY_TEST_GW_AUTH_TYPE).toBe('NONE');

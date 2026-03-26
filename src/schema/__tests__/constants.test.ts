@@ -2,12 +2,15 @@ import {
   ModelProviderSchema,
   NetworkModeSchema,
   NodeRuntimeSchema,
+  PROTOCOL_FRAMEWORK_MATRIX,
   PythonRuntimeSchema,
   RESERVED_PROJECT_NAMES,
   RuntimeVersionSchema,
   SDKFrameworkSchema,
   TargetLanguageSchema,
+  getSupportedFrameworksForProtocol,
   getSupportedModelProviders,
+  isFrameworkSupportedForProtocol,
   isModelProviderSupported,
   isReservedProjectName,
   matchEnumValue,
@@ -97,12 +100,12 @@ describe('NetworkModeSchema', () => {
     expect(NetworkModeSchema.safeParse('PUBLIC').success).toBe(true);
   });
 
-  it('accepts PRIVATE', () => {
-    expect(NetworkModeSchema.safeParse('PRIVATE').success).toBe(true);
+  it('accepts VPC', () => {
+    expect(NetworkModeSchema.safeParse('VPC').success).toBe(true);
   });
 
   it('rejects other modes', () => {
-    expect(NetworkModeSchema.safeParse('VPC').success).toBe(false);
+    expect(NetworkModeSchema.safeParse('PRIVATE').success).toBe(false);
   });
 });
 
@@ -155,5 +158,71 @@ describe('isReservedProjectName', () => {
 
   it('RESERVED_PROJECT_NAMES is not empty', () => {
     expect(RESERVED_PROJECT_NAMES.length).toBeGreaterThan(0);
+  });
+});
+
+describe('PROTOCOL_FRAMEWORK_MATRIX', () => {
+  it('defines all protocol modes', () => {
+    expect(Object.keys(PROTOCOL_FRAMEWORK_MATRIX)).toEqual(expect.arrayContaining(['HTTP', 'MCP', 'A2A']));
+    expect(Object.keys(PROTOCOL_FRAMEWORK_MATRIX)).toHaveLength(3);
+  });
+
+  it('HTTP supports all frameworks', () => {
+    expect(PROTOCOL_FRAMEWORK_MATRIX.HTTP).toEqual(
+      expect.arrayContaining(['Strands', 'LangChain_LangGraph', 'CrewAI', 'GoogleADK', 'OpenAIAgents'])
+    );
+  });
+
+  it('MCP returns empty frameworks array', () => {
+    expect(PROTOCOL_FRAMEWORK_MATRIX.MCP).toEqual([]);
+  });
+
+  it('A2A includes Strands and GoogleADK but not CrewAI or OpenAIAgents', () => {
+    expect(PROTOCOL_FRAMEWORK_MATRIX.A2A).toContain('Strands');
+    expect(PROTOCOL_FRAMEWORK_MATRIX.A2A).toContain('GoogleADK');
+    expect(PROTOCOL_FRAMEWORK_MATRIX.A2A).not.toContain('CrewAI');
+    expect(PROTOCOL_FRAMEWORK_MATRIX.A2A).not.toContain('OpenAIAgents');
+  });
+});
+
+describe('getSupportedFrameworksForProtocol', () => {
+  it('returns all frameworks for HTTP', () => {
+    const frameworks = getSupportedFrameworksForProtocol('HTTP');
+    expect(frameworks).toContain('Strands');
+    expect(frameworks).toContain('CrewAI');
+    expect(frameworks.length).toBeGreaterThan(0);
+  });
+
+  it('returns empty array for MCP', () => {
+    expect(getSupportedFrameworksForProtocol('MCP')).toEqual([]);
+  });
+
+  it('returns frameworks for A2A', () => {
+    const frameworks = getSupportedFrameworksForProtocol('A2A');
+    expect(frameworks).toContain('Strands');
+    expect(frameworks.length).toBeGreaterThan(0);
+  });
+});
+
+describe('isFrameworkSupportedForProtocol', () => {
+  it('returns true for Strands + HTTP', () => {
+    expect(isFrameworkSupportedForProtocol('HTTP', 'Strands')).toBe(true);
+  });
+
+  it('returns true for Strands + A2A', () => {
+    expect(isFrameworkSupportedForProtocol('A2A', 'Strands')).toBe(true);
+  });
+
+  it('returns false for CrewAI + A2A', () => {
+    expect(isFrameworkSupportedForProtocol('A2A', 'CrewAI')).toBe(false);
+  });
+
+  it('returns false for OpenAIAgents + A2A', () => {
+    expect(isFrameworkSupportedForProtocol('A2A', 'OpenAIAgents')).toBe(false);
+  });
+
+  it('returns false for any framework + MCP', () => {
+    expect(isFrameworkSupportedForProtocol('MCP', 'Strands')).toBe(false);
+    expect(isFrameworkSupportedForProtocol('MCP', 'CrewAI')).toBe(false);
   });
 });

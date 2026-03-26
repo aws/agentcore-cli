@@ -2,6 +2,7 @@ import { CONTAINER_INTERNAL_PORT, DOCKERFILE_NAME } from '../../../lib';
 import { getUvBuildArgs } from '../../../lib/packaging/build-args';
 import { detectContainerRuntime, getStartHint } from '../../external-requirements/detect';
 import { DevServer, type LogLevel, type SpawnConfig } from './dev-server';
+import { waitForServerReady } from './utils';
 import { type ChildProcess, spawn, spawnSync } from 'child_process';
 import { existsSync } from 'fs';
 import { homedir } from 'os';
@@ -21,16 +22,24 @@ export class ContainerDevServer extends DevServer {
     return this.imageName;
   }
 
-  /** Override start to log when the container is launched and trigger TUI readiness detection.
-   *  DevLogger filters 'info', so without a 'system'-level message the log would be empty after build.
-   *  Include "Application startup complete" so the TUI detects container readiness. */
+  /** Override start to wait for the container's server to accept connections before
+   *  signaling readiness. The base class spawns `docker run`, but the internal server
+   *  needs time to boot. We poll the mapped port so the TUI only enables input once
+   *  the container is actually ready to handle requests. */
   override async start(): Promise<ChildProcess | null> {
     const child = await super.start();
     if (child) {
       const { onLog } = this.options.callbacks;
-      onLog('system', `Container ${this.containerName} started on port ${this.options.port}.`);
-      // Trigger TUI readiness detection (useDevServer looks for this exact string)
-      onLog('info', 'Application startup complete');
+      onLog('system', `Container ${this.containerName} started, waiting for server to be ready...`);
+
+      // Poll until the container's server is accepting connections (up to 60s)
+      const ready = await waitForServerReady(this.options.port);
+      if (ready) {
+        // Trigger TUI readiness detection (useDevServer looks for this exact string)
+        onLog('info', 'Application startup complete');
+      } else {
+        onLog('error', 'Container server did not become ready within 60 seconds.');
+      }
     }
     return child;
   }

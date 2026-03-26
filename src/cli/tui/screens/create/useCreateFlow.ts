@@ -9,6 +9,7 @@ import {
   mapModelProviderToIdentityProviders,
   writeAgentToProject,
 } from '../../../operations/agent/generate';
+import { executeImportAgent } from '../../../operations/agent/import';
 import { computeDefaultCredentialEnvVarName } from '../../../primitives/credential-utils';
 import { credentialPrimitive } from '../../../primitives/registry';
 import { CDKRenderer, createRenderer } from '../../../templates';
@@ -71,9 +72,17 @@ function createDefaultProjectSpec(projectName: string): AgentCoreProjectSpec {
   return {
     name: projectName,
     version: 1,
+    tags: {
+      'agentcore:created-by': 'agentcore-cli',
+      'agentcore:project-name': projectName,
+    },
     agents: [],
     memories: [],
     credentials: [],
+    evaluators: [],
+    onlineEvalConfigs: [],
+    agentCoreGateways: [],
+    policyEngines: [],
   };
 }
 
@@ -267,11 +276,16 @@ export function useCreateFlow(cwd: string): CreateFlowState {
                 const generateConfig: GenerateConfig = {
                   projectName: addAgentConfig.name,
                   buildType: addAgentConfig.buildType,
+                  protocol: addAgentConfig.protocol,
                   sdk: addAgentConfig.framework,
                   modelProvider: addAgentConfig.modelProvider,
                   memory: addAgentConfig.memory,
                   language: addAgentConfig.language,
                   apiKey: addAgentConfig.apiKey,
+                  networkMode: addAgentConfig.networkMode,
+                  subnets: addAgentConfig.subnets,
+                  securityGroups: addAgentConfig.securityGroups,
+                  requestHeaderAllowlist: addAgentConfig.requestHeaderAllowlist,
                 };
 
                 logger.logSubStep(`Framework: ${generateConfig.sdk}`);
@@ -317,6 +331,21 @@ export function useCreateFlow(cwd: string): CreateFlowState {
                   await setEnvVar(envVarName, addAgentConfig.apiKey ?? '', configBaseDir);
                 } else {
                   await writeAgentToProject(generateConfig, { configBaseDir });
+                }
+              } else if (addAgentConfig.agentType === 'import') {
+                // Import path: delegate to executeImportAgent
+                logger.logSubStep(`Importing from Bedrock Agent: ${addAgentConfig.bedrockAgentId}`);
+                const importResult = await executeImportAgent({
+                  name: addAgentConfig.name,
+                  framework: addAgentConfig.framework,
+                  memory: addAgentConfig.memory,
+                  bedrockRegion: addAgentConfig.bedrockRegion!,
+                  bedrockAgentId: addAgentConfig.bedrockAgentId!,
+                  bedrockAliasId: addAgentConfig.bedrockAliasId!,
+                  configBaseDir,
+                });
+                if (!importResult.success) {
+                  throw new Error(importResult.error ?? 'Import failed');
                 }
               } else {
                 // BYO path: just write config to project (no file generation)

@@ -1,17 +1,22 @@
-import type { ModelProvider } from '../../../../schema';
+import type { ModelProvider, NetworkMode } from '../../../../schema';
 import { DEFAULT_MODEL_IDS, ProjectNameSchema } from '../../../../schema';
+import { parseAndNormalizeHeaders, validateHeaderAllowlist } from '../../../commands/shared/header-utils';
+import { validateSecurityGroupIds, validateSubnetIds } from '../../../commands/shared/vpc-utils';
 import { computeDefaultCredentialEnvVarName } from '../../../primitives/credential-utils';
 import { ApiKeySecretInput, Panel, SelectList, StepIndicator, TextInput } from '../../components';
 import type { SelectableItem } from '../../components';
 import { useListNavigation } from '../../hooks';
-import type { BuildType, GenerateConfig, GenerateStep, MemoryOption } from './types';
+import type { BuildType, GenerateConfig, GenerateStep, MemoryOption, ProtocolMode } from './types';
 import {
+  ADVANCED_OPTIONS,
   BUILD_TYPE_OPTIONS,
   LANGUAGE_OPTIONS,
   MEMORY_OPTIONS,
-  SDK_OPTIONS,
+  NETWORK_MODE_OPTIONS,
+  PROTOCOL_OPTIONS,
   STEP_LABELS,
   getModelProviderOptionsForSdk,
+  getSDKOptionsForProtocol,
 } from './types';
 import type { useGenerateWizard } from './useGenerateWizard';
 import { Box, Text, useInput } from 'ink';
@@ -59,8 +64,14 @@ export function GenerateWizardUI({
         }));
       case 'buildType':
         return BUILD_TYPE_OPTIONS.map(o => ({ id: o.id, title: o.title, description: o.description }));
+      case 'protocol':
+        return PROTOCOL_OPTIONS.map(o => ({ id: o.id, title: o.title, description: o.description }));
       case 'sdk':
-        return SDK_OPTIONS.map(o => ({ id: o.id, title: o.title, description: o.description }));
+        return getSDKOptionsForProtocol(wizard.config.protocol).map(o => ({
+          id: o.id,
+          title: o.title,
+          description: o.description,
+        }));
       case 'modelProvider':
         // Filter model providers based on selected SDK
         return getModelProviderOptionsForSdk(wizard.config.sdk).map(o => ({
@@ -70,6 +81,10 @@ export function GenerateWizardUI({
         }));
       case 'memory':
         return MEMORY_OPTIONS.map(o => ({ id: o.id, title: o.title, description: o.description }));
+      case 'advanced':
+        return ADVANCED_OPTIONS.map(o => ({ id: o.id, title: o.title, description: o.description }));
+      case 'networkMode':
+        return NETWORK_MODE_OPTIONS.map(o => ({ id: o.id, title: o.title, description: o.description }));
       default:
         return [];
     }
@@ -79,6 +94,9 @@ export function GenerateWizardUI({
   const isSelectStep = items.length > 0;
   const isTextStep = wizard.step === 'projectName';
   const isApiKeyStep = wizard.step === 'apiKey';
+  const isSubnetsStep = wizard.step === 'subnets';
+  const isSecurityGroupsStep = wizard.step === 'securityGroups';
+  const isRequestHeaderAllowlistStep = wizard.step === 'requestHeaderAllowlist';
   const isConfirmStep = wizard.step === 'confirm';
 
   const handleSelect = (item: SelectableItem) => {
@@ -89,6 +107,9 @@ export function GenerateWizardUI({
       case 'buildType':
         wizard.setBuildType(item.id as BuildType);
         break;
+      case 'protocol':
+        wizard.setProtocol(item.id as ProtocolMode);
+        break;
       case 'sdk':
         wizard.setSdk(item.id as GenerateConfig['sdk']);
         break;
@@ -97,6 +118,12 @@ export function GenerateWizardUI({
         break;
       case 'memory':
         wizard.setMemory(item.id as MemoryOption);
+        break;
+      case 'advanced':
+        wizard.setAdvanced(item.id === 'yes');
+        break;
+      case 'networkMode':
+        wizard.setNetworkMode(item.id as NetworkMode);
         break;
     }
   };
@@ -154,6 +181,69 @@ export function GenerateWizardUI({
         />
       )}
 
+      {isSubnetsStep && (
+        <TextInput
+          prompt="Subnet IDs (comma-separated)"
+          initialValue={(wizard.config.subnets ?? []).join(', ')}
+          customValidation={validateSubnetIds}
+          onSubmit={value => {
+            wizard.setSubnets(
+              value
+                .split(',')
+                .map(s => s.trim())
+                .filter(Boolean)
+            );
+          }}
+          onCancel={onBack}
+        />
+      )}
+
+      {isSecurityGroupsStep && (
+        <TextInput
+          prompt="Security group IDs (comma-separated)"
+          initialValue={(wizard.config.securityGroups ?? []).join(', ')}
+          customValidation={validateSecurityGroupIds}
+          onSubmit={value => {
+            wizard.setSecurityGroups(
+              value
+                .split(',')
+                .map(s => s.trim())
+                .filter(Boolean)
+            );
+          }}
+          onCancel={onBack}
+        />
+      )}
+
+      {isRequestHeaderAllowlistStep && (
+        <Box flexDirection="column">
+          <TextInput
+            prompt="Allowed request headers (comma-separated, or press Enter to skip)"
+            initialValue={(wizard.config.requestHeaderAllowlist ?? []).join(', ')}
+            allowEmpty
+            customValidation={value => {
+              const result = validateHeaderAllowlist(value);
+              return result.success ? true : result.error!;
+            }}
+            onSubmit={value => {
+              const headers = parseAndNormalizeHeaders(value);
+              if (headers.length > 0) {
+                wizard.setRequestHeaderAllowlist(headers);
+              } else {
+                wizard.skipRequestHeaderAllowlist();
+              }
+            }}
+            onCancel={onBack}
+          />
+          <Box marginTop={1}>
+            <Text dimColor>
+              Enter header suffixes or full names. We auto-prefix with X-Amzn-Bedrock-AgentCore-Runtime-Custom- if
+              needed. &apos;Authorization&apos; is also accepted.
+            </Text>
+          </Box>
+        </Box>
+      )}
+
       {isConfirmStep && <ConfirmView config={wizard.config} credentialProjectName={credentialProjectName} />}
     </Panel>
   );
@@ -165,7 +255,8 @@ export function GenerateWizardUI({
 // eslint-disable-next-line react-refresh/only-export-components
 export function getWizardHelpText(step: GenerateStep): string {
   if (step === 'confirm') return 'Enter/Y confirm · Esc back';
-  if (step === 'projectName') return 'Enter submit · Esc cancel';
+  if (step === 'projectName' || step === 'subnets' || step === 'securityGroups' || step === 'requestHeaderAllowlist')
+    return 'Enter submit · Esc cancel';
   if (step === 'apiKey') return 'Enter submit · Tab show/hide · Esc back';
   return '↑↓ navigate · Enter select · Esc back';
 }
@@ -191,7 +282,9 @@ function getMemoryLabel(memory: MemoryOption): string {
 function ConfirmView({ config, credentialProjectName }: { config: GenerateConfig; credentialProjectName?: string }) {
   const languageLabel = LANGUAGE_OPTIONS.find(o => o.id === config.language)?.title ?? config.language;
   const buildTypeLabel = BUILD_TYPE_OPTIONS.find(o => o.id === config.buildType)?.title ?? config.buildType;
+  const protocolLabel = PROTOCOL_OPTIONS.find(o => o.id === config.protocol)?.title ?? config.protocol;
   const memoryLabel = getMemoryLabel(config.memory);
+  const isMcp = config.protocol === 'MCP';
 
   // Use credentialProjectName if provided, otherwise use config.projectName
   const projectNameForCredential = credentialProjectName ?? config.projectName;
@@ -215,27 +308,57 @@ function ConfirmView({ config, credentialProjectName }: { config: GenerateConfig
           <Text>{buildTypeLabel}</Text>
         </Text>
         <Text>
-          <Text dimColor>Framework: </Text>
-          <Text>{config.sdk}</Text>
+          <Text dimColor>Protocol: </Text>
+          <Text>{protocolLabel}</Text>
         </Text>
-        <Text>
-          <Text dimColor>Model Provider: </Text>
-          <Text>
-            {config.modelProvider} ({DEFAULT_MODEL_IDS[config.modelProvider]})
-          </Text>
-        </Text>
-        {config.modelProvider !== 'Bedrock' && (
-          <Text>
-            <Text dimColor>API Key: </Text>
-            <Text color={config.apiKey ? 'green' : 'yellow'}>
-              {config.apiKey ? 'Configured' : `Not set - fill in ${envVarName} in .env.local`}
+        {!isMcp && (
+          <>
+            <Text>
+              <Text dimColor>Framework: </Text>
+              <Text>{config.sdk}</Text>
             </Text>
-          </Text>
+            <Text>
+              <Text dimColor>Model Provider: </Text>
+              <Text>
+                {config.modelProvider} ({DEFAULT_MODEL_IDS[config.modelProvider]})
+              </Text>
+            </Text>
+            {config.modelProvider !== 'Bedrock' && (
+              <Text>
+                <Text dimColor>API Key: </Text>
+                <Text color={config.apiKey ? 'green' : 'yellow'}>
+                  {config.apiKey ? 'Configured' : `Not set - fill in ${envVarName} in .env.local`}
+                </Text>
+              </Text>
+            )}
+            <Text>
+              <Text dimColor>Memory: </Text>
+              <Text>{memoryLabel}</Text>
+            </Text>
+          </>
         )}
         <Text>
-          <Text dimColor>Memory: </Text>
-          <Text>{memoryLabel}</Text>
+          <Text dimColor>Network: </Text>
+          <Text>{config.networkMode ?? 'PUBLIC'}</Text>
         </Text>
+        {config.networkMode === 'VPC' && config.subnets && (
+          <Text>
+            <Text dimColor>Subnets: </Text>
+            <Text>{config.subnets.join(', ')}</Text>
+          </Text>
+        )}
+        {config.networkMode === 'VPC' && config.securityGroups && (
+          <Text>
+            <Text dimColor>Security Groups: </Text>
+            <Text>{config.securityGroups.join(', ')}</Text>
+          </Text>
+        )}
+        {config.requestHeaderAllowlist && config.requestHeaderAllowlist.length > 0 && (
+          <Text>
+            <Text dimColor>Headers: </Text>
+            <Text>{config.requestHeaderAllowlist.join(', ')}</Text>
+          </Text>
+        )}
       </Box>
     </Box>
   );

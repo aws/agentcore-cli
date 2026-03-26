@@ -1,0 +1,71 @@
+name: PR Tarball
+on:
+  pull_request_target:
+    branches: [main]
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  pr-tarball:
+    runs-on: ubuntu-latest
+    if: >-
+      contains(fromJSON('["OWNER","MEMBER","COLLABORATOR"]'), github.event.pull_request.author_association)
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '20.x'
+          cache: 'npm'
+      - name: Configure git
+        run: |
+          git config --global user.email "bedrock-agentcore-npm+ci@amazon.com"
+          git config --global user.name "CI"
+      - uses: astral-sh/setup-uv@v7
+      - run: npm ci
+      - run: npm run build --if-present
+      - run: npm pack
+      - name: Get tarball info
+        id: tarball
+        run: |
+          TARBALL_NAME=$(ls *.tgz | head -1 | xargs basename)
+          echo "name=$TARBALL_NAME" >> $GITHUB_OUTPUT
+      - name: Create or update PR release
+        id: release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          TARBALL_NAME: ${{ steps.tarball.outputs.name }}
+        run: |
+          TAG="pr-${PR_NUMBER}-tarball"
+
+          # Delete existing release if it exists (to update the tarball)
+          gh release delete "$TAG" --yes --cleanup-tag 2>/dev/null || true
+
+          # Create a new pre-release with the tarball
+          gh release create "$TAG" \
+            "${TARBALL_NAME}" \
+            --title "PR #${PR_NUMBER} Tarball" \
+            --notes "Auto-generated tarball for PR #${PR_NUMBER}." \
+            --prerelease \
+            --target "${{ github.event.pull_request.head.sha }}"
+
+          DOWNLOAD_URL="https://github.com/${{ github.repository }}/releases/download/${TAG}/${TARBALL_NAME}"
+          echo "url=$DOWNLOAD_URL" >> $GITHUB_OUTPUT
+      - name: Comment on PR
+        uses: marocchino/sticky-pull-request-comment@v3
+        with:
+          header: tarball
+          message: |
+            ## Package Tarball
+
+            **[${{ steps.tarball.outputs.name }}](${{ steps.release.outputs.url }})**
+
+            ### How to install
+
+            ```bash
+            npm install ${{ steps.release.outputs.url }}
+            ```

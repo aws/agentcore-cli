@@ -60,3 +60,45 @@ await esbuild.build({
 fs.chmodSync('./dist/cli/index.mjs', '755');
 
 console.log('CLI build complete: dist/cli/index.mjs');
+
+// ---------------------------------------------------------------------------
+// MCP harness build — opt-in via BUILD_HARNESS=1
+//
+// The TUI harness is dev-only tooling for AI agents and integration tests.
+// It is NOT shipped to end users. Build it separately with:
+//   BUILD_HARNESS=1 node esbuild.config.mjs
+//   npm run build:harness
+// ---------------------------------------------------------------------------
+const mcpEntryPoint = './src/tui-harness/mcp/index.ts';
+
+if (process.env.BUILD_HARNESS === '1' && fs.existsSync(mcpEntryPoint)) {
+  await esbuild.build({
+    entryPoints: [mcpEntryPoint],
+    outfile: './dist/mcp-harness/index.mjs',
+    bundle: true,
+    platform: 'node',
+    format: 'esm',
+    minify: true,
+    banner: {
+      js: [
+        '#!/usr/bin/env node',
+        `import { createRequire } from 'module'; const require = createRequire(import.meta.url);`,
+      ].join('\n'),
+    },
+    // node-pty is a native C++ addon and cannot be bundled.
+    // @xterm/headless is CJS-only (no ESM exports map) — esbuild's CJS-to-ESM
+    // conversion mangles its default export at runtime, so let Node handle it.
+    // fsevents is macOS-only optional native module.
+    // express is CJS-heavy (deeply nested require chains) — let Node.js resolve
+    // it at runtime from node_modules instead of bundling.
+    external: ['fsevents', 'node-pty', '@xterm/headless', 'express'],
+    plugins: [textLoaderPlugin],
+  });
+
+  // Make executable
+  fs.chmodSync('./dist/mcp-harness/index.mjs', '755');
+
+  console.log('MCP harness build complete: dist/mcp-harness/index.mjs');
+} else if (process.env.BUILD_HARNESS === '1') {
+  console.log(`MCP harness build skipped: entry point ${mcpEntryPoint} does not exist yet`);
+}

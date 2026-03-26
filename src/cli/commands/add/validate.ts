@@ -2,15 +2,19 @@ import { ConfigIO, findConfigRoot } from '../../../lib';
 import {
   AgentNameSchema,
   BuildTypeSchema,
+  CustomClaimValidationSchema,
   GatewayExceptionLevelSchema,
   GatewayNameSchema,
   ModelProviderSchema,
+  ProtocolModeSchema,
   SDKFrameworkSchema,
   TARGET_TYPE_AUTH_CONFIG,
   TargetLanguageSchema,
+  getSupportedFrameworksForProtocol,
   getSupportedModelProviders,
   matchEnumValue,
 } from '../../../schema';
+import { validateVpcOptions } from '../shared/vpc-utils';
 import type {
   AddAgentOptions,
   AddGatewayOptions,
@@ -63,6 +67,9 @@ async function validateCredentialExists(credentialName: string): Promise<Validat
 // Agent validation
 export function validateAddAgentOptions(options: AddAgentOptions): ValidationResult {
   // Normalize enum flag values (case-insensitive matching)
+  if (options.protocol)
+    options.protocol =
+      (matchEnumValue(ProtocolModeSchema, options.protocol) as typeof options.protocol) ?? options.protocol;
   if (options.framework)
     options.framework =
       (matchEnumValue(SDKFrameworkSchema, options.framework) as typeof options.framework) ?? options.framework;
@@ -92,6 +99,77 @@ export function validateAddAgentOptions(options: AddAgentOptions): ValidationRes
     }
   }
 
+  // Validate and normalize protocol
+  const protocol = options.protocol ?? 'HTTP';
+  const protocolResult = ProtocolModeSchema.safeParse(protocol);
+  if (!protocolResult.success) {
+    return { valid: false, error: `Invalid protocol: ${protocol}. Use HTTP, MCP, or A2A` };
+  }
+  options.protocol = protocolResult.data;
+
+  const isByoPath = options.type === 'byo';
+  const isImportPath = options.type === 'import';
+
+  // Import path: validate import-specific options and return early
+  if (isImportPath) {
+    if (!options.agentId) {
+      return { valid: false, error: '--agent-id is required for import path' };
+    }
+    if (!options.agentAliasId) {
+      return { valid: false, error: '--agent-alias-id is required for import path' };
+    }
+    if (!options.region) {
+      return { valid: false, error: '--region is required for import path' };
+    }
+    if (!options.framework) {
+      return { valid: false, error: '--framework is required for import path' };
+    }
+    if (options.framework !== 'Strands' && options.framework !== 'LangChain_LangGraph') {
+      return { valid: false, error: 'Import path only supports Strands or LangChain_LangGraph frameworks' };
+    }
+    if (!options.memory) {
+      return { valid: false, error: '--memory is required for import path' };
+    }
+    if (!MEMORY_OPTIONS.includes(options.memory as (typeof MEMORY_OPTIONS)[number])) {
+      return {
+        valid: false,
+        error: `Invalid memory option: ${options.memory}. Use none, shortTerm, or longAndShortTerm`,
+      };
+    }
+    // Force import defaults
+    options.modelProvider = 'Bedrock' as typeof options.modelProvider;
+    options.language = 'Python' as typeof options.language;
+    return { valid: true };
+  }
+
+  // MCP protocol: no framework, model provider, or memory
+  if (protocol === 'MCP') {
+    if (options.framework) {
+      return { valid: false, error: '--framework is not applicable for MCP protocol' };
+    }
+    if (options.modelProvider) {
+      return { valid: false, error: '--model-provider is not applicable for MCP protocol' };
+    }
+    if (options.memory && options.memory !== 'none') {
+      return { valid: false, error: '--memory is not applicable for MCP protocol' };
+    }
+
+    if (!options.language) {
+      return { valid: false, error: '--language is required' };
+    }
+    const langResult = TargetLanguageSchema.safeParse(options.language);
+    if (!langResult.success) {
+      return { valid: false, error: `Invalid language: ${options.language}` };
+    }
+
+    if (isByoPath && !options.codeLocation) {
+      return { valid: false, error: '--code-location is required for BYO path' };
+    }
+
+    return { valid: true };
+  }
+
+  // Non-MCP protocols: validate framework
   if (!options.framework) {
     return { valid: false, error: '--framework is required' };
   }
@@ -99,6 +177,14 @@ export function validateAddAgentOptions(options: AddAgentOptions): ValidationRes
   const fwResult = SDKFrameworkSchema.safeParse(options.framework);
   if (!fwResult.success) {
     return { valid: false, error: `Invalid framework: ${options.framework}` };
+  }
+
+  // Validate framework is supported for the protocol
+  if (protocol !== 'HTTP') {
+    const supportedFrameworks = getSupportedFrameworksForProtocol(protocol);
+    if (!supportedFrameworks.includes(options.framework)) {
+      return { valid: false, error: `${options.framework} does not support ${protocol} protocol` };
+    }
   }
 
   if (!options.modelProvider) {
@@ -124,8 +210,6 @@ export function validateAddAgentOptions(options: AddAgentOptions): ValidationRes
     return { valid: false, error: `Invalid language: ${options.language}` };
   }
 
-  const isByoPath = options.type === 'byo';
-
   if (isByoPath) {
     if (!options.codeLocation) {
       return { valid: false, error: '--code-location is required for BYO path' };
@@ -148,6 +232,12 @@ export function validateAddAgentOptions(options: AddAgentOptions): ValidationRes
         error: `Invalid memory option: ${options.memory}. Use none, shortTerm, or longAndShortTerm`,
       };
     }
+  }
+
+  // Validate VPC options
+  const vpcResult = validateVpcOptions(options);
+  if (!vpcResult.valid) {
+    return { valid: false, error: vpcResult.error };
   }
 
   return { valid: true };
@@ -174,7 +264,10 @@ export function validateAddGatewayOptions(options: AddGatewayOptions): Validatio
     }
 
     try {
-      new URL(options.discoveryUrl);
+      const url = new URL(options.discoveryUrl);
+      if (url.protocol !== 'https:') {
+        return { valid: false, error: 'Discovery URL must use HTTPS' };
+      }
     } catch {
       return { valid: false, error: 'Discovery URL must be a valid URL' };
     }
@@ -183,30 +276,49 @@ export function validateAddGatewayOptions(options: AddGatewayOptions): Validatio
       return { valid: false, error: `Discovery URL must end with ${OIDC_WELL_KNOWN_SUFFIX}` };
     }
 
-    // allowedAudience is optional - empty means no audience validation
-
-    if (!options.allowedClients) {
-      return { valid: false, error: '--allowed-clients is required for CUSTOM_JWT authorizer' };
+    // Validate custom claims JSON if provided
+    if (options.customClaims) {
+      let parsed: unknown;
+      try {
+        parsed = JSON.parse(options.customClaims);
+      } catch {
+        return { valid: false, error: '--custom-claims must be valid JSON' };
+      }
+      if (!Array.isArray(parsed) || parsed.length === 0) {
+        return { valid: false, error: '--custom-claims must be a non-empty JSON array' };
+      }
+      for (const [i, entry] of parsed.entries()) {
+        const result = CustomClaimValidationSchema.safeParse(entry);
+        if (!result.success) {
+          return { valid: false, error: `Invalid custom claim at index ${i}: ${result.error.issues[0]?.message}` };
+        }
+      }
     }
 
-    const clients = options.allowedClients
-      .split(',')
-      .map(s => s.trim())
-      .filter(Boolean);
-    if (clients.length === 0) {
-      return { valid: false, error: 'At least one client value is required' };
+    // allowedAudience, allowedClients, allowedScopes, customClaims are all optional individually,
+    // but at least one must be provided
+    const hasAudience = !!options.allowedAudience?.trim();
+    const hasClients = !!options.allowedClients?.trim();
+    const hasScopes = !!options.allowedScopes?.trim();
+    const hasClaims = !!options.customClaims?.trim();
+    if (!hasAudience && !hasClients && !hasScopes && !hasClaims) {
+      return {
+        valid: false,
+        error:
+          'At least one of --allowed-audience, --allowed-clients, --allowed-scopes, or --custom-claims must be provided for CUSTOM_JWT authorizer',
+      };
     }
   }
 
-  // Validate agent OAuth credentials
-  if (options.agentClientId && !options.agentClientSecret) {
-    return { valid: false, error: 'Both --agent-client-id and --agent-client-secret must be provided together' };
+  // Validate OAuth client credentials
+  if (options.clientId && !options.clientSecret) {
+    return { valid: false, error: 'Both --client-id and --client-secret must be provided together' };
   }
-  if (options.agentClientSecret && !options.agentClientId) {
-    return { valid: false, error: 'Both --agent-client-id and --agent-client-secret must be provided together' };
+  if (options.clientSecret && !options.clientId) {
+    return { valid: false, error: 'Both --client-id and --client-secret must be provided together' };
   }
-  if (options.agentClientId && options.authorizerType !== 'CUSTOM_JWT') {
-    return { valid: false, error: 'Agent OAuth credentials are only valid with CUSTOM_JWT authorizer' };
+  if (options.clientId && options.authorizerType !== 'CUSTOM_JWT') {
+    return { valid: false, error: 'OAuth client credentials are only valid with CUSTOM_JWT authorizer' };
   }
 
   // Validate exception level if provided
@@ -215,6 +327,17 @@ export function validateAddGatewayOptions(options: AddGatewayOptions): Validatio
     if (!levelResult.success) {
       return { valid: false, error: `Invalid exception level: ${options.exceptionLevel}. Use NONE or DEBUG` };
     }
+  }
+
+  // Validate policy engine options
+  if (options.policyEngine && !options.policyEngineMode) {
+    return { valid: false, error: '--policy-engine-mode is required when --policy-engine is specified' };
+  }
+  if (options.policyEngineMode && !options.policyEngine) {
+    return { valid: false, error: '--policy-engine is required when --policy-engine-mode is specified' };
+  }
+  if (options.policyEngineMode && !['LOG_ONLY', 'ENFORCE'].includes(options.policyEngineMode)) {
+    return { valid: false, error: `Invalid policy engine mode: ${options.policyEngineMode}. Use LOG_ONLY or ENFORCE` };
   }
 
   return { valid: true };
@@ -268,10 +391,8 @@ export async function validateAddGatewayTargetOptions(options: AddGatewayTargetO
   const gatewayConfigIO = new ConfigIO();
   let existingGateways: string[] = [];
   try {
-    if (gatewayConfigIO.configExists('mcp')) {
-      const mcpSpec = await gatewayConfigIO.readMcpSpec();
-      existingGateways = mcpSpec.agentCoreGateways.map(g => g.name);
-    }
+    const project = await gatewayConfigIO.readProjectSpec();
+    existingGateways = project.agentCoreGateways.map(g => g.name);
   } catch {
     // If we can't read the config, treat as no gateways
   }

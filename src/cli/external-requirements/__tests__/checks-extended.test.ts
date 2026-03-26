@@ -44,10 +44,15 @@ describe('requiresUv', () => {
           runtimeVersion: 'PYTHON_3_12',
           entrypoint: 'main.py' as FilePath,
           codeLocation: './app' as DirectoryPath,
+          protocol: 'HTTP',
         },
       ],
       memories: [],
       credentials: [],
+      evaluators: [],
+      onlineEvalConfigs: [],
+      agentCoreGateways: [],
+      policyEngines: [],
     };
     expect(requiresUv(project)).toBe(true);
   });
@@ -64,10 +69,15 @@ describe('requiresUv', () => {
           runtimeVersion: 'PYTHON_3_12',
           entrypoint: 'main.py' as FilePath,
           codeLocation: './app' as DirectoryPath,
+          protocol: 'HTTP',
         },
       ],
       memories: [],
       credentials: [],
+      evaluators: [],
+      onlineEvalConfigs: [],
+      agentCoreGateways: [],
+      policyEngines: [],
     };
     expect(requiresUv(project)).toBe(false);
   });
@@ -79,6 +89,10 @@ describe('requiresUv', () => {
       agents: [],
       memories: [],
       credentials: [],
+      evaluators: [],
+      onlineEvalConfigs: [],
+      agentCoreGateways: [],
+      policyEngines: [],
     };
     expect(requiresUv(project)).toBe(false);
   });
@@ -97,10 +111,15 @@ describe('requiresContainerRuntime', () => {
           runtimeVersion: 'PYTHON_3_12',
           entrypoint: 'main.py' as FilePath,
           codeLocation: './app' as DirectoryPath,
+          protocol: 'HTTP',
         },
       ],
       memories: [],
       credentials: [],
+      evaluators: [],
+      onlineEvalConfigs: [],
+      agentCoreGateways: [],
+      policyEngines: [],
     };
     expect(requiresContainerRuntime(project)).toBe(true);
   });
@@ -117,10 +136,15 @@ describe('requiresContainerRuntime', () => {
           runtimeVersion: 'PYTHON_3_12',
           entrypoint: 'main.py' as FilePath,
           codeLocation: './app' as DirectoryPath,
+          protocol: 'HTTP',
         },
       ],
       memories: [],
       credentials: [],
+      evaluators: [],
+      onlineEvalConfigs: [],
+      agentCoreGateways: [],
+      policyEngines: [],
     };
     expect(requiresContainerRuntime(project)).toBe(false);
   });
@@ -132,6 +156,10 @@ describe('requiresContainerRuntime', () => {
       agents: [],
       memories: [],
       credentials: [],
+      evaluators: [],
+      onlineEvalConfigs: [],
+      agentCoreGateways: [],
+      policyEngines: [],
     };
     expect(requiresContainerRuntime(project)).toBe(false);
   });
@@ -148,6 +176,7 @@ describe('requiresContainerRuntime', () => {
           runtimeVersion: 'PYTHON_3_12',
           entrypoint: 'main.py' as FilePath,
           codeLocation: './app' as DirectoryPath,
+          protocol: 'HTTP',
         },
         {
           type: 'AgentCoreRuntime',
@@ -156,10 +185,15 @@ describe('requiresContainerRuntime', () => {
           runtimeVersion: 'PYTHON_3_12',
           entrypoint: 'app.py' as FilePath,
           codeLocation: './container-app' as DirectoryPath,
+          protocol: 'HTTP',
         },
       ],
       memories: [],
       credentials: [],
+      evaluators: [],
+      onlineEvalConfigs: [],
+      agentCoreGateways: [],
+      policyEngines: [],
     };
     expect(requiresContainerRuntime(project)).toBe(true);
   });
@@ -222,6 +256,10 @@ describe('checkDependencyVersions', () => {
       agents: [],
       memories: [],
       credentials: [],
+      evaluators: [],
+      onlineEvalConfigs: [],
+      agentCoreGateways: [],
+      policyEngines: [],
     };
 
     const result = await checkDependencyVersions(project);
@@ -237,6 +275,10 @@ describe('checkDependencyVersions', () => {
       agents: [],
       memories: [],
       credentials: [],
+      evaluators: [],
+      onlineEvalConfigs: [],
+      agentCoreGateways: [],
+      policyEngines: [],
     };
 
     const result = await checkDependencyVersions(project);
@@ -256,10 +298,15 @@ describe('checkDependencyVersions', () => {
           runtimeVersion: 'PYTHON_3_12',
           entrypoint: 'main.py' as FilePath,
           codeLocation: './app' as DirectoryPath,
+          protocol: 'HTTP',
         },
       ],
       memories: [],
       credentials: [],
+      evaluators: [],
+      onlineEvalConfigs: [],
+      agentCoreGateways: [],
+      policyEngines: [],
     };
 
     const result = await checkDependencyVersions(project);

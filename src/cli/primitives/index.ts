@@ -2,6 +2,8 @@ export { BasePrimitive } from './BasePrimitive';
 export { MemoryPrimitive } from './MemoryPrimitive';
 export { CredentialPrimitive } from './CredentialPrimitive';
 export { AgentPrimitive } from './AgentPrimitive';
+export { EvaluatorPrimitive } from './EvaluatorPrimitive';
+export { OnlineEvalConfigPrimitive } from './OnlineEvalConfigPrimitive';
 export { GatewayPrimitive } from './GatewayPrimitive';
 export { GatewayTargetPrimitive } from './GatewayTargetPrimitive';
 export {
@@ -9,6 +11,8 @@ export {
   agentPrimitive,
   memoryPrimitive,
   credentialPrimitive,
+  evaluatorPrimitive,
+  onlineEvalConfigPrimitive,
   gatewayPrimitive,
   gatewayTargetPrimitive,
   getPrimitive,

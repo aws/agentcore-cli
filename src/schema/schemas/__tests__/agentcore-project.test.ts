@@ -346,6 +346,7 @@ describe('AgentCoreProjectSpecSchema', () => {
           entrypoint: 'main.py',
           codeLocation: './agents/my-agent',
           runtimeVersion: 'PYTHON_3_12',
+          protocol: 'HTTP',
         },
       ],
     });
@@ -360,6 +361,7 @@ describe('AgentCoreProjectSpecSchema', () => {
       entrypoint: 'main.py',
       codeLocation: './agents/my-agent',
       runtimeVersion: 'PYTHON_3_12',
+      protocol: 'HTTP',
     };
     const result = AgentCoreProjectSpecSchema.safeParse({
       ...minimalProject,
@@ -415,6 +417,7 @@ describe('AgentCoreProjectSpecSchema', () => {
           entrypoint: 'main.py',
           codeLocation: './agents/agent1',
           runtimeVersion: 'PYTHON_3_12',
+          protocol: 'HTTP',
         },
         {
           type: 'AgentCoreRuntime',
@@ -423,6 +426,7 @@ describe('AgentCoreProjectSpecSchema', () => {
           entrypoint: 'index.ts',
           codeLocation: './agents/agent2',
           runtimeVersion: 'NODE_20',
+          protocol: 'HTTP',
         },
       ],
       memories: [

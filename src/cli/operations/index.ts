@@ -1,6 +1,7 @@
 export * from './agent';
 export * from './deploy';
 export * from './dev';
+export * from './fetch-access';
 export * from './init';
 export * from './mcp';
 export * from './python';

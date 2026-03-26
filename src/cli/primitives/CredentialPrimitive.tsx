@@ -1,5 +1,5 @@
 import { findConfigRoot, getEnvVar, setEnvVar } from '../../lib';
-import type { AgentCoreMcpSpec, Credential, ModelProvider } from '../../schema';
+import type { Credential, ModelProvider } from '../../schema';
 import { CredentialSchema } from '../../schema';
 import { validateAddIdentityOptions } from '../commands/add/validate';
 import { getErrorMessage } from '../errors';
@@ -421,22 +421,18 @@ export class CredentialPrimitive extends BasePrimitive<AddCredentialOptions, Rem
 
   /**
    * Find gateway targets that reference the given credential via outboundAuth.
-   * Returns an array of target objects with a `name` field, or empty if mcp.json doesn't exist.
+   * Returns an array of target objects with a `name` field, or empty if project spec can't be read.
    */
   private async findReferencingGatewayTargets(credentialName: string): Promise<{ name: string }[]> {
-    if (!this.configIO.configExists('mcp')) {
-      return [];
-    }
-
-    let mcpSpec: AgentCoreMcpSpec;
+    let project;
     try {
-      mcpSpec = await this.configIO.readMcpSpec();
+      project = await this.readProjectSpec();
     } catch {
       return [];
     }
 
     const referencingTargets: { name: string }[] = [];
-    for (const gateway of mcpSpec.agentCoreGateways) {
+    for (const gateway of project.agentCoreGateways) {
       for (const target of gateway.targets) {
         if (target.outboundAuth?.credentialName === credentialName) {
           referencingTargets.push({ name: target.name });

@@ -108,6 +108,8 @@ export function mapModelProviderToCredentials(modelProvider: ModelProvider, proj
  */
 export function mapGenerateConfigToAgent(config: GenerateConfig): AgentEnvSpec {
   const codeLocation = `${APP_DIR}/${config.projectName}/`;
+  const protocol = config.protocol ?? 'HTTP';
+  const networkMode = config.networkMode ?? DEFAULT_NETWORK_MODE;
 
   return {
     type: 'AgentCoreRuntime',
@@ -116,8 +118,22 @@ export function mapGenerateConfigToAgent(config: GenerateConfig): AgentEnvSpec {
     entrypoint: DEFAULT_PYTHON_ENTRYPOINT as FilePath,
     codeLocation: codeLocation as DirectoryPath,
     runtimeVersion: DEFAULT_PYTHON_VERSION,
-    networkMode: DEFAULT_NETWORK_MODE,
-    modelProvider: config.modelProvider,
+    networkMode,
+    protocol,
+    ...(networkMode === 'VPC' &&
+      config.subnets &&
+      config.securityGroups && {
+        networkConfig: {
+          subnets: config.subnets,
+          securityGroups: config.securityGroups,
+        },
+      }),
+    ...(config.requestHeaderAllowlist?.length && {
+      requestHeaderAllowlist: config.requestHeaderAllowlist,
+    }),
+    ...(protocol !== 'MCP' && { modelProvider: config.modelProvider }),
+    // MCP uses mcp.run() which is incompatible with the opentelemetry-instrument wrapper
+    ...(protocol === 'MCP' && { instrumentation: { enableOtel: false } }),
   };
 }
 
@@ -187,13 +203,9 @@ export function mapModelProviderToIdentityProviders(
 async function mapGatewaysToGatewayProviders(): Promise<GatewayProviderRenderConfig[]> {
   try {
     const configIO = new ConfigIO();
-    if (!configIO.configExists('mcp')) {
-      return [];
-    }
-    const mcpSpec = await configIO.readMcpSpec();
     const project = await configIO.readProjectSpec();
 
-    return mcpSpec.agentCoreGateways.map(gateway => {
+    return project.agentCoreGateways.map(gateway => {
       const config: GatewayProviderRenderConfig = {
         name: gateway.name,
         envVarName: GatewayPrimitive.computeDefaultGatewayEnvVarName(gateway.name),
@@ -232,20 +244,23 @@ export async function mapGenerateConfigToRenderConfig(
   config: GenerateConfig,
   identityProviders: IdentityProviderRenderConfig[]
 ): Promise<AgentRenderConfig> {
-  const gatewayProviders = await mapGatewaysToGatewayProviders();
+  const isMcp = config.protocol === 'MCP';
+  const gatewayProviders = isMcp ? [] : await mapGatewaysToGatewayProviders();
 
   return {
     name: config.projectName,
     sdkFramework: config.sdk,
     targetLanguage: config.language,
     modelProvider: config.modelProvider,
-    hasMemory: config.memory !== 'none',
-    hasIdentity: identityProviders.length > 0,
+    hasMemory: isMcp ? false : config.memory !== 'none',
+    hasIdentity: isMcp ? false : identityProviders.length > 0,
     hasGateway: gatewayProviders.length > 0,
+    isVpc: config.networkMode === 'VPC',
     buildType: config.buildType,
-    memoryProviders: mapMemoryOptionToMemoryProviders(config.memory, config.projectName),
-    identityProviders,
+    memoryProviders: isMcp ? [] : mapMemoryOptionToMemoryProviders(config.memory, config.projectName),
+    identityProviders: isMcp ? [] : identityProviders,
     gatewayProviders,
     gatewayAuthTypes: [...new Set(gatewayProviders.map(g => g.authType))],
+    protocol: config.protocol,
   };
 }

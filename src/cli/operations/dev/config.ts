@@ -1,5 +1,5 @@
 import { ConfigIO, findConfigRoot } from '../../../lib';
-import type { AgentCoreProjectSpec, AgentEnvSpec, BuildType } from '../../../schema';
+import type { AgentCoreProjectSpec, AgentEnvSpec, BuildType, ProtocolMode } from '../../../schema';
 import { dirname, isAbsolute, join } from 'node:path';
 
 export interface DevConfig {
@@ -9,6 +9,7 @@ export interface DevConfig {
   hasConfig: boolean;
   isPython: boolean;
   buildType: BuildType;
+  protocol: ProtocolMode;
 }
 
 interface DevSupportResult {
@@ -138,6 +139,7 @@ export function getDevConfig(
     hasConfig: true,
     isPython: isPythonAgent(targetAgent),
     buildType: targetAgent.build,
+    protocol: targetAgent.protocol ?? 'HTTP',
   };
 }
 

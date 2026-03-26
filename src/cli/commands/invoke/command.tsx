@@ -2,6 +2,7 @@ import { getErrorMessage } from '../../errors';
 import { COMMAND_DESCRIPTIONS } from '../../tui/copy';
 import { requireProject } from '../../tui/guards';
 import { InvokeScreen } from '../../tui/screens/invoke';
+import { parseHeaderFlags } from '../shared/header-utils';
 import { handleInvoke, loadInvokeConfig } from './action';
 import type { InvokeOptions } from './types';
 import { validateInvokeOptions } from './validate';
@@ -101,6 +102,14 @@ export const registerInvoke = (program: Command) => {
     .option('--user-id <id>', 'User ID for runtime invocation (default: "default-user")')
     .option('--json', 'Output as JSON [non-interactive]')
     .option('--stream', 'Stream response in real-time (TUI streams by default) [non-interactive]')
+    .option('--tool <name>', 'MCP tool name (use with "call-tool" prompt) [non-interactive]')
+    .option('--input <json>', 'MCP tool arguments as JSON (use with --tool) [non-interactive]')
+    .option(
+      '-H, --header <header>',
+      'Custom header to forward to the agent (format: "Name: Value", repeatable)',
+      (val: string, prev: string[]) => [...prev, val],
+      [] as string[]
+    )
     .action(
       async (
         positionalPrompt: string | undefined,
@@ -112,6 +121,9 @@ export const registerInvoke = (program: Command) => {
           userId?: string;
           json?: boolean;
           stream?: boolean;
+          tool?: string;
+          input?: string;
+          header?: string[];
         }
       ) => {
         try {
@@ -119,8 +131,21 @@ export const registerInvoke = (program: Command) => {
           // --prompt flag takes precedence over positional argument
           const prompt = cliOptions.prompt ?? positionalPrompt;
 
+          // Parse custom headers
+          let headers: Record<string, string> | undefined;
+          if (cliOptions.header && cliOptions.header.length > 0) {
+            headers = parseHeaderFlags(cliOptions.header);
+          }
+
           // CLI mode if any CLI-specific options provided (follows deploy command pattern)
-          if (prompt || cliOptions.json || cliOptions.target || cliOptions.stream || cliOptions.agent) {
+          if (
+            prompt ||
+            cliOptions.json ||
+            cliOptions.target ||
+            cliOptions.stream ||
+            cliOptions.agent ||
+            cliOptions.tool
+          ) {
             await handleInvokeCLI({
               prompt,
               agentName: cliOptions.agent,
@@ -129,15 +154,19 @@ export const registerInvoke = (program: Command) => {
               userId: cliOptions.userId,
               json: cliOptions.json,
               stream: cliOptions.stream,
+              tool: cliOptions.tool,
+              input: cliOptions.input,
+              headers,
             });
           } else {
-            // No CLI options - interactive TUI mode
+            // No CLI options - interactive TUI mode (headers still passed if provided)
             const { waitUntilExit } = render(
               <InvokeScreen
                 isInteractive={true}
                 onExit={() => process.exit(0)}
                 initialSessionId={cliOptions.sessionId}
                 initialUserId={cliOptions.userId}
+                initialHeaders={headers}
               />
             );
             await waitUntilExit();

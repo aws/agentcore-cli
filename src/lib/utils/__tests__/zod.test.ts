@@ -9,6 +9,7 @@ describe('validateAgentSchema', () => {
     entrypoint: 'main.py',
     codeLocation: './agents/test',
     runtimeVersion: 'PYTHON_3_12',
+    protocol: 'HTTP',
   };
 
   it('returns validated data for valid input', () => {
@@ -69,6 +70,7 @@ describe('validateProjectSchema', () => {
       entrypoint: 'main.py',
       codeLocation: '.',
       runtimeVersion: 'PYTHON_3_12',
+      protocol: 'HTTP',
     };
     expect(() =>
       validateProjectSchema({

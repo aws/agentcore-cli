@@ -1,5 +1,10 @@
 import { ErrorPrompt } from '../../components';
-import { useCreateGateway, useExistingGateways, useUnassignedTargets } from '../../hooks/useCreateMcp';
+import {
+  useCreateGateway,
+  useExistingGateways,
+  useExistingPolicyEngines,
+  useUnassignedTargets,
+} from '../../hooks/useCreateMcp';
 import { AddSuccessScreen } from '../add/AddSuccessScreen';
 import { AddGatewayScreen } from './AddGatewayScreen';
 import type { AddGatewayConfig } from './types';
@@ -25,6 +30,7 @@ export function AddGatewayFlow({ isInteractive = true, onExit, onBack, onDev, on
   const { createGateway, reset: resetCreate } = useCreateGateway();
   const { gateways: existingGateways, refresh: refreshGateways } = useExistingGateways();
   const { targets: unassignedTargets } = useUnassignedTargets();
+  const { engines: existingPolicyEngines } = useExistingPolicyEngines();
   const [flow, setFlow] = useState<FlowState>({ name: 'create-wizard' });
 
   // In non-interactive mode, exit after success (but not while loading)
@@ -61,6 +67,7 @@ export function AddGatewayFlow({ isInteractive = true, onExit, onBack, onDev, on
       <AddGatewayScreen
         existingGateways={existingGateways}
         unassignedTargets={unassignedTargets}
+        existingPolicyEngines={existingPolicyEngines}
         onComplete={handleCreateComplete}
         onExit={onBack}
       />
@@ -73,7 +80,7 @@ export function AddGatewayFlow({ isInteractive = true, onExit, onBack, onDev, on
       <AddSuccessScreen
         isInteractive={isInteractive}
         message={`Added gateway: ${flow.gatewayName}`}
-        detail="Gateway defined in `agentcore/mcp.json`. Next: Use 'add gateway-target' to route targets through this gateway."
+        detail="Gateway defined in `agentcore/agentcore.json`. Next: Use 'add gateway-target' to route targets through this gateway."
         loading={flow.loading}
         loadingMessage={flow.loadingMessage}
         showDevOption={true}

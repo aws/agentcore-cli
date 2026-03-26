@@ -1,14 +1,14 @@
 import { GatewayPrimitive } from '../../../primitives/GatewayPrimitive.js';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
-const mockReadMcpSpec = vi.fn();
-const mockWriteMcpSpec = vi.fn();
+const mockReadProjectSpec = vi.fn();
+const mockWriteProjectSpec = vi.fn();
 const mockConfigExists = vi.fn();
 
 vi.mock('../../../../lib/index.js', () => ({
   ConfigIO: class {
-    readMcpSpec = mockReadMcpSpec;
-    writeMcpSpec = mockWriteMcpSpec;
+    readProjectSpec = mockReadProjectSpec;
+    writeProjectSpec = mockWriteProjectSpec;
     configExists = mockConfigExists;
   },
 }));
@@ -31,22 +31,22 @@ describe('getRemovable', () => {
 
   it('returns gateway resources', async () => {
     mockConfigExists.mockReturnValue(true);
-    mockReadMcpSpec.mockResolvedValue(makeMcpSpec(['gw1', 'gw2']));
+    mockReadProjectSpec.mockResolvedValue(makeMcpSpec(['gw1', 'gw2']));
 
     const result = await primitive.getRemovable();
 
     expect(result).toEqual([{ name: 'gw1' }, { name: 'gw2' }]);
   });
 
-  it('returns empty when no mcp config', async () => {
-    mockConfigExists.mockReturnValue(false);
+  it('returns empty when no project config', async () => {
+    mockReadProjectSpec.mockRejectedValue(new Error('No project'));
 
     expect(await primitive.getRemovable()).toEqual([]);
   });
 
   it('returns empty on error', async () => {
     mockConfigExists.mockReturnValue(true);
-    mockReadMcpSpec.mockRejectedValue(new Error('fail'));
+    mockReadProjectSpec.mockRejectedValue(new Error('fail'));
 
     expect(await primitive.getRemovable()).toEqual([]);
   });
@@ -56,7 +56,7 @@ describe('previewRemove', () => {
   afterEach(() => vi.clearAllMocks());
 
   it('returns preview for gateway without targets', async () => {
-    mockReadMcpSpec.mockResolvedValue(makeMcpSpec(['myGw']));
+    mockReadProjectSpec.mockResolvedValue(makeMcpSpec(['myGw']));
 
     const preview = await primitive.previewRemove('myGw');
 
@@ -65,7 +65,7 @@ describe('previewRemove', () => {
   });
 
   it('notes orphaned targets when gateway has targets', async () => {
-    mockReadMcpSpec.mockResolvedValue(makeMcpSpec(['myGw'], 3));
+    mockReadProjectSpec.mockResolvedValue(makeMcpSpec(['myGw'], 3));
 
     const preview = await primitive.previewRemove('myGw');
 
@@ -73,7 +73,7 @@ describe('previewRemove', () => {
   });
 
   it('throws when gateway not found', async () => {
-    mockReadMcpSpec.mockResolvedValue(makeMcpSpec(['other']));
+    mockReadProjectSpec.mockResolvedValue(makeMcpSpec(['other']));
 
     await expect(primitive.previewRemove('missing')).rejects.toThrow('Gateway "missing" not found');
   });
@@ -83,13 +83,13 @@ describe('remove', () => {
   afterEach(() => vi.clearAllMocks());
 
   it('removes gateway and writes spec', async () => {
-    mockReadMcpSpec.mockResolvedValue(makeMcpSpec(['gw1', 'gw2']));
-    mockWriteMcpSpec.mockResolvedValue(undefined);
+    mockReadProjectSpec.mockResolvedValue(makeMcpSpec(['gw1', 'gw2']));
+    mockWriteProjectSpec.mockResolvedValue(undefined);
 
     const result = await primitive.remove('gw1');
 
     expect(result).toEqual({ success: true });
-    expect(mockWriteMcpSpec).toHaveBeenCalledWith(
+    expect(mockWriteProjectSpec).toHaveBeenCalledWith(
       expect.objectContaining({
         agentCoreGateways: [expect.objectContaining({ name: 'gw2' })],
       })
@@ -97,7 +97,7 @@ describe('remove', () => {
   });
 
   it('returns error when gateway not found', async () => {
-    mockReadMcpSpec.mockResolvedValue(makeMcpSpec([]));
+    mockReadProjectSpec.mockResolvedValue(makeMcpSpec([]));
 
     const result = await primitive.remove('missing');
 
@@ -105,7 +105,7 @@ describe('remove', () => {
   });
 
   it('returns error on exception', async () => {
-    mockReadMcpSpec.mockRejectedValue(new Error('read fail'));
+    mockReadProjectSpec.mockRejectedValue(new Error('read fail'));
 
     const result = await primitive.remove('gw1');
 

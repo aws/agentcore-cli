@@ -6,7 +6,7 @@ export async function getGatewayEnvVars(): Promise<Record<string, string>> {
 
   try {
     const deployedState = await configIO.readDeployedState();
-    const mcpSpec = configIO.configExists('mcp') ? await configIO.readMcpSpec() : undefined;
+    const project = await configIO.readProjectSpec();
 
     // Iterate all targets (not just 'default')
     for (const target of Object.values(deployedState?.targets ?? {})) {
@@ -17,13 +17,13 @@ export async function getGatewayEnvVars(): Promise<Record<string, string>> {
         const sanitized = name.toUpperCase().replace(/-/g, '_');
         envVars[`AGENTCORE_GATEWAY_${sanitized}_URL`] = gateway.gatewayUrl;
 
-        const gatewaySpec = mcpSpec?.agentCoreGateways?.find(g => g.name === name);
+        const gatewaySpec = project.agentCoreGateways?.find(g => g.name === name);
         const authType = gatewaySpec?.authorizerType ?? 'NONE';
         envVars[`AGENTCORE_GATEWAY_${sanitized}_AUTH_TYPE`] = authType;
       }
     }
   } catch {
-    // No deployed state or mcp.json — skip gateway env vars
+    // No deployed state or project spec issue — skip gateway env vars
   }
 
   return envVars;

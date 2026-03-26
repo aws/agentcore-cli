@@ -4,6 +4,6 @@ import type { AgentRenderConfig } from './types';
 
 export class AutoGenRenderer extends BaseRenderer {
   constructor(config: AgentRenderConfig) {
-    super(config, 'autogen', TEMPLATE_ROOT);
+    super(config, 'autogen', TEMPLATE_ROOT, config.protocol ?? 'http');
   }
 }

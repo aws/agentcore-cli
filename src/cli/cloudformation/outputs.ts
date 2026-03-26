@@ -1,4 +1,13 @@
-import type { AgentCoreDeployedState, DeployedState, MemoryDeployedState, TargetDeployedState } from '../../schema';
+import type {
+  AgentCoreDeployedState,
+  DeployedState,
+  EvaluatorDeployedState,
+  MemoryDeployedState,
+  OnlineEvalDeployedState,
+  PolicyDeployedState,
+  PolicyEngineDeployedState,
+  TargetDeployedState,
+} from '../../schema';
 import { getCredentialProvider } from '../aws';
 import { toPascalId } from './logical-ids';
 import { getStackName } from './stack-discovery';
@@ -45,7 +54,7 @@ export function parseGatewayOutputs(
   const gatewayNames = Object.keys(gatewaySpecs);
   const gatewayIdMap = new Map(gatewayNames.map(name => [toPascalId(name), name]));
 
-  // Match patterns: Gateway{Name}{Type}Output
+  // Match pattern: Gateway{Name}{Type}Output{Hash}
   const outputPattern = /^Gateway(.+?)(Id|Arn|Url)Output/;
 
   for (const [key, value] of Object.entries(outputs)) {
@@ -202,6 +211,133 @@ export function parseMemoryOutputs(outputs: StackOutputs, memoryNames: string[])
   return memories;
 }
 
+/**
+ * Parse stack outputs into deployed state for evaluators.
+ *
+ * Output key pattern: ApplicationEvaluator{PascalName}(Id|Arn)Output{Hash}
+ */
+export function parseEvaluatorOutputs(
+  outputs: StackOutputs,
+  evaluatorNames: string[]
+): Record<string, EvaluatorDeployedState> {
+  const evaluators: Record<string, EvaluatorDeployedState> = {};
+  const outputKeys = Object.keys(outputs);
+
+  for (const evalName of evaluatorNames) {
+    const pascal = toPascalId('Evaluator', evalName);
+    const idPrefix = `Application${pascal}IdOutput`;
+    const arnPrefix = `Application${pascal}ArnOutput`;
+
+    const idKey = outputKeys.find(k => k.startsWith(idPrefix));
+    const arnKey = outputKeys.find(k => k.startsWith(arnPrefix));
+
+    if (idKey && arnKey) {
+      evaluators[evalName] = {
+        evaluatorId: outputs[idKey]!,
+        evaluatorArn: outputs[arnKey]!,
+      };
+    }
+  }
+
+  return evaluators;
+}
+
+/**
+ * Parse stack outputs into deployed state for online evaluation configs.
+ *
+ * Output key pattern: ApplicationOnlineEval{PascalName}(Id|Arn)Output{Hash}
+ */
+export function parseOnlineEvalOutputs(
+  outputs: StackOutputs,
+  onlineEvalNames: string[]
+): Record<string, OnlineEvalDeployedState> {
+  const configs: Record<string, OnlineEvalDeployedState> = {};
+  const outputKeys = Object.keys(outputs);
+
+  for (const configName of onlineEvalNames) {
+    const pascal = toPascalId('OnlineEval', configName);
+    const idPrefix = `Application${pascal}IdOutput`;
+    const arnPrefix = `Application${pascal}ArnOutput`;
+
+    const idKey = outputKeys.find(k => k.startsWith(idPrefix));
+    const arnKey = outputKeys.find(k => k.startsWith(arnPrefix));
+
+    if (idKey && arnKey) {
+      configs[configName] = {
+        onlineEvaluationConfigId: outputs[idKey]!,
+        onlineEvaluationConfigArn: outputs[arnKey]!,
+      };
+    }
+  }
+
+  return configs;
+}
+
+/**
+ * Parse stack outputs into deployed state for policy engines.
+ *
+ * Output key pattern: ApplicationPolicyEngine{PascalName}(Id|Arn)Output{Hash}
+ */
+export function parsePolicyEngineOutputs(
+  outputs: StackOutputs,
+  engineNames: string[]
+): Record<string, PolicyEngineDeployedState> {
+  const engines: Record<string, PolicyEngineDeployedState> = {};
+  const outputKeys = Object.keys(outputs);
+
+  for (const engineName of engineNames) {
+    const pascal = toPascalId('PolicyEngine', engineName);
+    const idPrefix = `Application${pascal}IdOutput`;
+    const arnPrefix = `Application${pascal}ArnOutput`;
+
+    const idKey = outputKeys.find(k => k.startsWith(idPrefix));
+    const arnKey = outputKeys.find(k => k.startsWith(arnPrefix));
+
+    if (idKey && arnKey) {
+      engines[engineName] = {
+        policyEngineId: outputs[idKey]!,
+        policyEngineArn: outputs[arnKey]!,
+      };
+    }
+  }
+
+  return engines;
+}
+
+/**
+ * Parse stack outputs into deployed state for policies.
+ *
+ * Output key pattern: ApplicationPolicy{EnginePascal}{PolicyPascal}(Id|Arn)Output{Hash}
+ */
+export function parsePolicyOutputs(
+  outputs: StackOutputs,
+  policySpecs: { engineName: string; policyName: string }[]
+): Record<string, PolicyDeployedState> {
+  const policies: Record<string, PolicyDeployedState> = {};
+  const outputKeys = Object.keys(outputs);
+
+  for (const { engineName, policyName } of policySpecs) {
+    const pascal = toPascalId('Policy', engineName, policyName);
+    const idPrefix = `Application${pascal}IdOutput`;
+    const arnPrefix = `Application${pascal}ArnOutput`;
+
+    const idKey = outputKeys.find(k => k.startsWith(idPrefix));
+    const arnKey = outputKeys.find(k => k.startsWith(arnPrefix));
+
+    if (idKey && arnKey) {
+      // Use engineName/policyName as the key for unique identification
+      const key = `${engineName}/${policyName}`;
+      policies[key] = {
+        policyId: outputs[idKey]!,
+        policyArn: outputs[arnKey]!,
+        engineName,
+      };
+    }
+  }
+
+  return policies;
+}
+
 export interface BuildDeployedStateOptions {
   targetName: string;
   stackName: string;
@@ -211,17 +347,36 @@ export interface BuildDeployedStateOptions {
   identityKmsKeyArn?: string;
   credentials?: Record<string, { credentialProviderArn: string; clientSecretArn?: string; callbackUrl?: string }>;
   memories?: Record<string, MemoryDeployedState>;
+  evaluators?: Record<string, EvaluatorDeployedState>;
+  onlineEvalConfigs?: Record<string, OnlineEvalDeployedState>;
+  policyEngines?: Record<string, PolicyEngineDeployedState>;
+  policies?: Record<string, PolicyDeployedState>;
 }
 
 /**
  * Build deployed state from stack outputs.
  */
 export function buildDeployedState(opts: BuildDeployedStateOptions): DeployedState {
-  const { targetName, stackName, agents, gateways, existingState, identityKmsKeyArn, credentials, memories } = opts;
+  const {
+    targetName,
+    stackName,
+    agents,
+    gateways,
+    existingState,
+    identityKmsKeyArn,
+    credentials,
+    memories,
+    evaluators,
+    onlineEvalConfigs,
+    policyEngines,
+    policies,
+  } = opts;
   const targetState: TargetDeployedState = {
     resources: {
       agents: Object.keys(agents).length > 0 ? agents : undefined,
       memories: memories && Object.keys(memories).length > 0 ? memories : undefined,
+      policyEngines: policyEngines && Object.keys(policyEngines).length > 0 ? policyEngines : undefined,
+      policies: policies && Object.keys(policies).length > 0 ? policies : undefined,
       stackName,
       identityKmsKeyArn,
     },
@@ -237,6 +392,16 @@ export function buildDeployedState(opts: BuildDeployedStateOptions): DeployedSta
   // Add credential state if credentials exist
   if (credentials && Object.keys(credentials).length > 0) {
     targetState.resources!.credentials = credentials;
+  }
+
+  // Add evaluator state if evaluators exist
+  if (evaluators && Object.keys(evaluators).length > 0) {
+    targetState.resources!.evaluators = evaluators;
+  }
+
+  // Add online eval config state if configs exist
+  if (onlineEvalConfigs && Object.keys(onlineEvalConfigs).length > 0) {
+    targetState.resources!.onlineEvalConfigs = onlineEvalConfigs;
   }
 
   return {

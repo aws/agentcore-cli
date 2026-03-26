@@ -1,4 +1,10 @@
-import { buildDeployedState, parseGatewayOutputs, parseMemoryOutputs } from '../outputs';
+import {
+  buildDeployedState,
+  parseGatewayOutputs,
+  parseMemoryOutputs,
+  parsePolicyEngineOutputs,
+  parsePolicyOutputs,
+} from '../outputs';
 import { describe, expect, it } from 'vitest';
 
 describe('buildDeployedState', () => {
@@ -283,5 +289,183 @@ describe('parseMemoryOutputs', () => {
     const result = parseMemoryOutputs(outputs, ['my-memory']);
 
     expect(result).toEqual({});
+  });
+});
+
+describe('parsePolicyEngineOutputs', () => {
+  it('extracts policy engine outputs matching pattern', () => {
+    const outputs = {
+      ApplicationPolicyEngineMyEngineIdOutputABC123: 'pe-123',
+      ApplicationPolicyEngineMyEngineArnOutputDEF456: 'arn:aws:bedrock:us-east-1:123456789012:policy-engine/pe-123',
+      UnrelatedOutput: 'some-value',
+    };
+
+    const result = parsePolicyEngineOutputs(outputs, ['MyEngine']);
+
+    expect(result).toEqual({
+      MyEngine: {
+        policyEngineId: 'pe-123',
+        policyEngineArn: 'arn:aws:bedrock:us-east-1:123456789012:policy-engine/pe-123',
+      },
+    });
+  });
+
+  it('handles multiple policy engines', () => {
+    const outputs = {
+      ApplicationPolicyEngineFirstEngineIdOutput123: 'pe-1',
+      ApplicationPolicyEngineFirstEngineArnOutput123: 'arn:pe-1',
+      ApplicationPolicyEngineSecondEngineIdOutput456: 'pe-2',
+      ApplicationPolicyEngineSecondEngineArnOutput456: 'arn:pe-2',
+    };
+
+    const result = parsePolicyEngineOutputs(outputs, ['FirstEngine', 'SecondEngine']);
+
+    expect(Object.keys(result)).toHaveLength(2);
+    expect(result.FirstEngine?.policyEngineId).toBe('pe-1');
+    expect(result.SecondEngine?.policyEngineId).toBe('pe-2');
+  });
+
+  it('returns empty record when no policy engine outputs found', () => {
+    const outputs = {
+      UnrelatedOutput: 'some-value',
+    };
+
+    const result = parsePolicyEngineOutputs(outputs, ['MyEngine']);
+
+    expect(result).toEqual({});
+  });
+
+  it('skips incomplete policy engine outputs (missing ARN)', () => {
+    const outputs = {
+      ApplicationPolicyEngineMyEngineIdOutputABC123: 'pe-123',
+    };
+
+    const result = parsePolicyEngineOutputs(outputs, ['MyEngine']);
+
+    expect(result).toEqual({});
+  });
+});
+
+describe('parsePolicyOutputs', () => {
+  it('extracts policy outputs matching pattern', () => {
+    const outputs = {
+      ApplicationPolicyMyEngineDenyAllIdOutputABC123: 'pol-123',
+      ApplicationPolicyMyEngineDenyAllArnOutputDEF456: 'arn:aws:bedrock:us-east-1:123456789012:policy/pol-123',
+      UnrelatedOutput: 'some-value',
+    };
+
+    const result = parsePolicyOutputs(outputs, [{ engineName: 'MyEngine', policyName: 'DenyAll' }]);
+
+    expect(result).toEqual({
+      'MyEngine/DenyAll': {
+        policyId: 'pol-123',
+        policyArn: 'arn:aws:bedrock:us-east-1:123456789012:policy/pol-123',
+        engineName: 'MyEngine',
+      },
+    });
+  });
+
+  it('handles multiple policies across engines', () => {
+    const outputs = {
+      ApplicationPolicyEngine1Policy1IdOutput123: 'pol-1',
+      ApplicationPolicyEngine1Policy1ArnOutput123: 'arn:pol-1',
+      ApplicationPolicyEngine1Policy2IdOutput456: 'pol-2',
+      ApplicationPolicyEngine1Policy2ArnOutput456: 'arn:pol-2',
+    };
+
+    const result = parsePolicyOutputs(outputs, [
+      { engineName: 'Engine1', policyName: 'Policy1' },
+      { engineName: 'Engine1', policyName: 'Policy2' },
+    ]);
+
+    expect(Object.keys(result)).toHaveLength(2);
+    expect(result['Engine1/Policy1']?.policyId).toBe('pol-1');
+    expect(result['Engine1/Policy2']?.policyId).toBe('pol-2');
+  });
+
+  it('returns empty record when no policy outputs found', () => {
+    const outputs = {
+      UnrelatedOutput: 'some-value',
+    };
+
+    const result = parsePolicyOutputs(outputs, [{ engineName: 'MyEngine', policyName: 'DenyAll' }]);
+
+    expect(result).toEqual({});
+  });
+});
+
+describe('buildDeployedState with policy data', () => {
+  it('includes policyEngines in deployed state when provided', () => {
+    const policyEngines = {
+      MyEngine: {
+        policyEngineId: 'pe-123',
+        policyEngineArn: 'arn:aws:bedrock:us-east-1:123456789012:policy-engine/pe-123',
+      },
+    };
+
+    const result = buildDeployedState({
+      targetName: 'default',
+      stackName: 'TestStack',
+      agents: {},
+      gateways: {},
+      policyEngines,
+    });
+
+    expect(result.targets.default!.resources?.policyEngines).toEqual(policyEngines);
+  });
+
+  it('includes policies in deployed state when provided', () => {
+    const policies = {
+      'MyEngine/DenyAll': {
+        policyId: 'pol-123',
+        policyArn: 'arn:aws:bedrock:us-east-1:123456789012:policy/pol-123',
+        engineName: 'MyEngine',
+      },
+    };
+
+    const result = buildDeployedState({
+      targetName: 'default',
+      stackName: 'TestStack',
+      agents: {},
+      gateways: {},
+      policies,
+    });
+
+    expect(result.targets.default!.resources?.policies).toEqual(policies);
+  });
+
+  it('omits policyEngines field when policyEngines is empty object', () => {
+    const result = buildDeployedState({
+      targetName: 'default',
+      stackName: 'TestStack',
+      agents: {},
+      gateways: {},
+      policyEngines: {},
+    });
+
+    expect(result.targets.default!.resources?.policyEngines).toBeUndefined();
+  });
+
+  it('omits policies field when policies is empty object', () => {
+    const result = buildDeployedState({
+      targetName: 'default',
+      stackName: 'TestStack',
+      agents: {},
+      gateways: {},
+      policies: {},
+    });
+
+    expect(result.targets.default!.resources?.policies).toBeUndefined();
+  });
+
+  it('omits policyEngines field when not provided', () => {
+    const result = buildDeployedState({
+      targetName: 'default',
+      stackName: 'TestStack',
+      agents: {},
+      gateways: {},
+    });
+
+    expect(result.targets.default!.resources?.policyEngines).toBeUndefined();
   });
 });

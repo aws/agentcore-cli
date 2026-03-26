@@ -2,6 +2,92 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.3.0-preview.8.0] - 2026-03-25
+
+### Added
+- feat: rename `run evals` command to `run eval` (#636) (408801a)
+- feat: config-driven resource tagging (#625) (79a6a53)
+- feat: add requestHeaderAllowlist support to CLI (#614) (55acc9b)
+
+### Fixed
+- fix: custom header support for invoke and dev commands (#652) (1066276)
+- fix: pass requestHeaderAllowlist through create flow and fix tag command types (#643) (8a1af21)
+- fix: move conflict check to postinstall and downgrade to warning (#640) (30b781f)
+- fix: handle dot-prefixed directories in PATH fallback detection (#621) (73fdf72)
+- fix: fix import from Bedrock Agents code generation bugs (#622) (32a543a)
+- fix: add missing MCP fields to vended CDK test spec (#619) (8758f9b)
+
+### Other Changes
+- fix(gateway): add missing validation for custom JWT claim values (#644) (acd300d)
+- ci: add global CLI install and CDK matrix to full e2e workflow (#639) (e1e2bbf)
+- feat(gateway): add agentcore fetch access command (#627) (eda0f5d)
+- test: add e2e test for evaluations lifecycle (#628) (ec3d007)
+- test: add integ tests for evaluator and online-eval resource lifecycle (#626) (afaec4f)
+- test: add post-deploy e2e tests for status, logs, and traces (#623) (87de38a)
+- fix(gateway): write both CLIENT_ID and CLIENT_SECRET env vars for managed OAuth credentials (#617) (7c69105)
+- ci: use packaged CLI tarball for e2e tests (#616) (6952584)
+- feat(gateway): add custom claims validation and TUI wizard for JWT auth (#599) (b1c8a50)
+- feat!: merge mcp.json into agentcore.json (#605) (23df9fe)
+- ci: add cross-package e2e matrix testing against CDK constructs main (#610) (b941fbc)
+
+## [0.3.0-preview.7.0] - 2026-03-23
+
+**Note:** Policy currently has issues with asscoiating a policy engine with a gateway that has No Auth or IAM Auth.
+
+### Added
+- feat: add resource tagging support (#564) (dd9716c)
+- feat: add import from Bedrock Agents to add agent and create flows (#563) (f0e1af7)
+- feat: add policy engine and policy support (#579) (4da709b)
+- feat: add advanced settings gate to agent creation wizard (#593) (0023284)
+
+### Fixed
+- fix: improve old CLI conflict detection in preinstall hook (#588) (a5cbc03)
+- fix: add @aws-sdk/xml-builder override to resolve entity expansion limit (#601) (36f1ca2)
+
+### Documentation
+- docs: update CLI command reference with missing commands, options, and aliases (#581) (41b6c74)
+
+### Other Changes
+- Revert "feat: add resource tagging support (#564)" (#612) (b62ca3a)
+- fix(tui): remove dead PlaceholderScreen and fix gateway wizard UX (#597) (8f44713)
+- fix(gateway): harden inbound auth schema and rename credential flags (#598) (bf1406c)
+- ci: run full e2e suite on every push to main (#585) (aec6102)
+- ci: add package install sanity check to build-and-test (#590) (06fb886)
+- ci: fix pr-tarball for fork PRs using pull_request_target (#586) (686dbee)
+
+## [0.3.0-preview.6.1] - 2026-03-19
+
+### Added
+- feat: add PR tarball workflow with direct download link (#576) (c0aeaae)
+
+### Fixed
+- fix: align aws-cdk-lib peer dependency with @aws/agentcore-cdk ^2.243.0 (#582) (9dc4507)
+- fix: bump fast-xml-parser override to 5.5.7 (CVE-2026-33036, CVE-2026-33349) (#577) (41570f0)
+
+### Documentation
+- docs: add evals documentation, update commands reference and configuration guide (#572) (df58b41)
+
+### Other Changes
+- feat(tui-harness): tui_action tool, bug fixes, SVG rendering (#575) (06ca9dd)
+- feat(tui-harness): add SVG screenshots and HTTP transport (#571) (9d964d5)
+
+## [0.3.0-preview.6.0] - 2026-03-19
+
+### Added
+- feat: introduce evaluation feature (#518) (d970e26)
+- feat: add TUI agent harness with MCP server (#548) (c51b1e2)
+- feat: dev and invoke support for MCP and A2A protocols (#554) (c2c646c)
+- feat: unhide gateway and gateway-target CLI commands (#562) (5c8d1b4)
+- feat: add protocol mode support (HTTP, MCP, A2A) (#550) (3aaa062)
+- feat: add VPC network mode support (#545) (a61ebdd)
+
+### Fixed
+- fix: correct managed OAuth credential name lookup for gateway MCP clients (#543) (30e6a74)
+
+### Other Changes
+- Revert "chore: bump version to 0.3.0-preview.7.0 (#569)" (#573) (e1db6a5)
+- chore: bump version to 0.3.0-preview.7.0 (#569) (3ef8c07)
+
 ## [0.3.0-preview.5.1] - 2026-03-12
 
 ### Added

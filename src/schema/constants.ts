@@ -150,5 +150,36 @@ export type NodeRuntime = z.infer<typeof NodeRuntimeSchema>;
 export const RuntimeVersionSchema = z.union([PythonRuntimeSchema, NodeRuntimeSchema]);
 export type RuntimeVersion = z.infer<typeof RuntimeVersionSchema>;
 
-export const NetworkModeSchema = z.enum(['PUBLIC', 'PRIVATE']);
+export const NetworkModeSchema = z.enum(['PUBLIC', 'VPC']);
 export type NetworkMode = z.infer<typeof NetworkModeSchema>;
+
+// ============================================================================
+// Protocol Mode
+// ============================================================================
+
+export const ProtocolModeSchema = z.enum(['HTTP', 'MCP', 'A2A']);
+export type ProtocolMode = z.infer<typeof ProtocolModeSchema>;
+
+/**
+ * Matrix defining which SDK frameworks are supported for each protocol mode.
+ * MCP is a standalone tool server with no framework.
+ */
+export const PROTOCOL_FRAMEWORK_MATRIX: Record<ProtocolMode, readonly SDKFramework[]> = {
+  HTTP: ['Strands', 'LangChain_LangGraph', 'CrewAI', 'GoogleADK', 'OpenAIAgents'] as const,
+  MCP: [] as const,
+  A2A: ['Strands', 'GoogleADK', 'LangChain_LangGraph'] as const,
+};
+
+/**
+ * Returns the supported SDK frameworks for a given protocol mode.
+ */
+export function getSupportedFrameworksForProtocol(protocol: ProtocolMode): readonly SDKFramework[] {
+  return PROTOCOL_FRAMEWORK_MATRIX[protocol];
+}
+
+/**
+ * Checks if a framework is supported for a given protocol mode.
+ */
+export function isFrameworkSupportedForProtocol(protocol: ProtocolMode, framework: SDKFramework): boolean {
+  return PROTOCOL_FRAMEWORK_MATRIX[protocol].includes(framework);
+}

@@ -1,5 +1,5 @@
 import type { AgentEnvSpec } from '../../../../schema';
-import { getDevSupportedAgents, loadProjectConfig } from '../../../operations/dev';
+import { getDevSupportedAgents, getEndpointUrl, loadProjectConfig } from '../../../operations/dev';
 import { GradientText, LogLink, Panel, Screen, SelectList, TextInput } from '../../components';
 import { type ConversationMessage, useDevServer } from '../../hooks/useDevServer';
 import { Box, Text, useInput, useStdout } from 'ink';
@@ -13,6 +13,8 @@ interface DevScreenProps {
   port?: number;
   /** Pre-selected agent name (from CLI --agent flag) */
   agentName?: string;
+  /** Custom headers to forward to the agent on every invocation */
+  headers?: Record<string, string>;
 }
 
 interface ColoredLine {
@@ -110,6 +112,9 @@ function wrapColoredLines(lines: ColoredLine[], maxWidth: number): ColoredLine[]
   return wrapped;
 }
 
+/** Max tools to show in header before truncating */
+const MAX_VISIBLE_TOOLS = 5;
+
 export function DevScreen(props: DevScreenProps) {
   const [mode, setMode] = useState<Mode>('select-agent');
   const [isExiting, setIsExiting] = useState(false);
@@ -177,13 +182,50 @@ export function DevScreen(props: DevScreenProps) {
     stop,
     logFilePath,
     hasMemory,
+    hasVpc,
     modelProvider,
+    protocol,
+    mcpTools,
+    fetchMcpTools,
+    showMcpHint,
+    a2aAgentCard,
+    a2aStatus,
+    fetchAgentCard,
   } = useDevServer({
     workingDir,
     port: props.port ?? 8080,
     agentName: selectedAgentName,
     onReady: onServerReady,
+    headers: props.headers,
   });
+
+  // MCP: auto-list tools when server becomes ready, show hint in conversation
+  const mcpFetchTriggeredRef = useRef(false);
+  const [mcpToolsFetched, setMcpToolsFetched] = useState(false);
+  useEffect(() => {
+    if (protocol === 'MCP' && status === 'running' && !mcpFetchTriggeredRef.current) {
+      mcpFetchTriggeredRef.current = true;
+      void fetchMcpTools().then(() => {
+        setMcpToolsFetched(true);
+        showMcpHint();
+      });
+    }
+    if (status === 'starting') {
+      mcpFetchTriggeredRef.current = false;
+    }
+  }, [protocol, status, fetchMcpTools, showMcpHint]);
+
+  // A2A: auto-fetch agent card when server becomes ready
+  const a2aFetchTriggeredRef = useRef(false);
+  useEffect(() => {
+    if (protocol === 'A2A' && status === 'running' && !a2aFetchTriggeredRef.current) {
+      a2aFetchTriggeredRef.current = true;
+      void fetchAgentCard();
+    }
+    if (status === 'starting') {
+      a2aFetchTriggeredRef.current = false;
+    }
+  }, [protocol, status, fetchAgentCard]);
 
   // Handle exit with brief "stopping" message
   const handleExit = useCallback(() => {
@@ -195,12 +237,21 @@ export function DevScreen(props: DevScreenProps) {
     }, 1000);
   }, [props, stop, isExiting]);
 
+  const isMcp = protocol === 'MCP';
+
   // Calculate available height for conversation display
   const terminalHeight = stdout?.rows ?? 24;
   const terminalWidth = stdout?.columns ?? 80;
   // Reserve lines for: header (4-5), help text (1), input area when active (2), margins
+  // MCP needs extra header space for the tool list
+  // +1 for "Tools (N):" header, +1 for "... and X more" if truncated
+  const visibleToolCount = Math.min(mcpTools.length, MAX_VISIBLE_TOOLS);
+  const mcpToolHeaderLines =
+    isMcp && mcpTools.length > 0 ? visibleToolCount + 1 + (mcpTools.length > MAX_VISIBLE_TOOLS ? 1 : 0) + 1 : 0;
+  // A2A agent card takes ~3 lines (name, description, skills)
+  const a2aCardHeaderLines = protocol === 'A2A' && a2aAgentCard ? 3 : 0;
   // Reduce height when in input mode to make room for input field
-  const baseHeight = Math.max(5, terminalHeight - 12);
+  const baseHeight = Math.max(5, terminalHeight - 12 - mcpToolHeaderLines - a2aCardHeaderLines);
   const displayHeight = mode === 'input' ? Math.max(3, baseHeight - 2) : baseHeight;
   const contentWidth = Math.max(40, terminalWidth - 4);
 
@@ -368,18 +419,23 @@ export function DevScreen(props: DevScreenProps) {
   const visibleLines = lines.slice(effectiveOffset, effectiveOffset + displayHeight);
 
   // Dynamic help text
+  const backOrQuit = supportedAgents.length > 1 ? 'Esc back' : 'Esc quit';
   const helpText =
     mode === 'select-agent'
       ? '↑↓ select · Enter confirm · q quit'
       : mode === 'input'
-        ? 'Enter send · Esc cancel'
+        ? isMcp
+          ? 'Enter send · Esc cancel · "list" to refresh tools'
+          : 'Enter send · Esc cancel'
         : status === 'starting'
-          ? `${supportedAgents.length > 1 ? 'Esc back' : 'Esc quit'}`
+          ? backOrQuit
           : isStreaming
             ? '↑↓ scroll'
             : conversation.length > 0
-              ? `↑↓ scroll · Enter invoke · C clear · Ctrl+R restart · ${supportedAgents.length > 1 ? 'Esc back' : 'Esc quit'}`
-              : `Enter to send a message · Ctrl+R restart · ${supportedAgents.length > 1 ? 'Esc back' : 'Esc quit'}`;
+              ? `↑↓ scroll · Enter invoke · C clear · Ctrl+R restart · ${backOrQuit}`
+              : isMcp
+                ? `Enter to call a tool · Ctrl+R restart · ${backOrQuit}`
+                : `Enter to send a message · Ctrl+R restart · ${backOrQuit}`;
 
   // Agent selection screen
   if (mode === 'select-agent') {
@@ -398,13 +454,21 @@ export function DevScreen(props: DevScreenProps) {
     );
   }
 
+  const endpointUrl = getEndpointUrl(actualPort, protocol);
+
   const headerContent = (
     <Box flexDirection="column">
       <Box>
         <Text>Agent: </Text>
         <Text color="green">{config?.agentName}</Text>
       </Box>
-      {modelProvider && (
+      {protocol !== 'HTTP' && (
+        <Box>
+          <Text>Protocol: </Text>
+          <Text color="green">{protocol}</Text>
+        </Box>
+      )}
+      {protocol !== 'MCP' && modelProvider && (
         <Box>
           <Text>Provider: </Text>
           <Text color="green">{modelProvider}</Text>
@@ -412,7 +476,7 @@ export function DevScreen(props: DevScreenProps) {
       )}
       <Box>
         <Text>Server: </Text>
-        <Text color="cyan">http://localhost:{actualPort}/invocations</Text>
+        <Text color="cyan">{endpointUrl}</Text>
       </Box>
       {!isExiting && (
         <Box>
@@ -441,10 +505,42 @@ export function DevScreen(props: DevScreenProps) {
         </Box>
       )}
       {logFilePath && <LogLink filePath={logFilePath} />}
-      {hasMemory && (
+      {protocol !== 'MCP' && hasMemory && (
         <Text color="yellow">
           AgentCore memory is not available when running locally. To test memory, deploy and use invoke.
         </Text>
+      )}
+      {hasVpc && (
+        <Text color="yellow">
+          This agent uses VPC network mode. Local dev server runs outside your VPC. Network behavior may differ from
+          deployed environment.
+        </Text>
+      )}
+      {protocol === 'MCP' && status === 'running' && mcpTools.length > 0 && (
+        <Box flexDirection="column" marginTop={1}>
+          <Text bold>Tools ({mcpTools.length}):</Text>
+          {mcpTools.slice(0, MAX_VISIBLE_TOOLS).map(t => (
+            <Text key={t.name}>
+              <Text color="cyan"> {t.name}</Text>
+              {t.description && <Text dimColor> — {t.description}</Text>}
+            </Text>
+          ))}
+          {mcpTools.length > MAX_VISIBLE_TOOLS && (
+            <Text dimColor>{`  ... and ${mcpTools.length - MAX_VISIBLE_TOOLS} more (type "list" to see all)`}</Text>
+          )}
+        </Box>
+      )}
+      {protocol === 'MCP' && status === 'running' && mcpTools.length === 0 && mcpToolsFetched && (
+        <Text color="yellow">No tools available.</Text>
+      )}
+      {protocol === 'A2A' && status === 'running' && a2aAgentCard && (
+        <Box flexDirection="column" marginTop={1}>
+          <Text bold>{a2aAgentCard.name ?? 'A2A Agent'}</Text>
+          {a2aAgentCard.description && <Text dimColor> {a2aAgentCard.description}</Text>}
+          {a2aAgentCard.skills && a2aAgentCard.skills.length > 0 && (
+            <Text dimColor>{`  Skills: ${a2aAgentCard.skills.map(s => s.name ?? s.id).join(', ')}`}</Text>
+          )}
+        </Box>
       )}
     </Box>
   );
@@ -460,8 +556,12 @@ export function DevScreen(props: DevScreenProps) {
                 {line.text || ' '}
               </Text>
             ))}
-            {/* Thinking indicator - shows while waiting for response to start */}
-            {isStreaming && !streamingResponse && <GradientText text="Thinking..." />}
+            {/* Thinking/status indicator - shows while waiting for response to start */}
+            {isStreaming && !streamingResponse && (
+              <GradientText
+                text={a2aStatus ? `${a2aStatus.charAt(0).toUpperCase()}${a2aStatus.slice(1)}...` : 'Thinking...'}
+              />
+            )}
           </Box>
         )}
 
@@ -486,6 +586,7 @@ export function DevScreen(props: DevScreenProps) {
             <TextInput
               prompt=""
               hideArrow
+              placeholder={isMcp ? 'tool_name {"arg": "value"}' : protocol === 'A2A' ? 'Send a message...' : undefined}
               onSubmit={text => {
                 if (text.trim()) {
                   void handleInvoke(text);

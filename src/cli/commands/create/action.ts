@@ -4,6 +4,8 @@ import type {
   BuildType,
   DeployedState,
   ModelProvider,
+  NetworkMode,
+  ProtocolMode,
   SDKFramework,
   TargetLanguage,
 } from '../../../schema';
@@ -15,6 +17,7 @@ import {
   mapModelProviderToIdentityProviders,
   writeAgentToProject,
 } from '../../operations/agent/generate';
+import { executeImportAgent } from '../../operations/agent/import';
 import { credentialPrimitive } from '../../primitives/registry';
 import { CDKRenderer, createRenderer } from '../../templates';
 import type { CreateResult } from './types';
@@ -28,6 +31,14 @@ function createDefaultProjectSpec(projectName: string): AgentCoreProjectSpec {
     agents: [],
     memories: [],
     credentials: [],
+    evaluators: [],
+    onlineEvalConfigs: [],
+    agentCoreGateways: [],
+    policyEngines: [],
+    tags: {
+      'agentcore:created-by': 'agentcore-cli',
+      'agentcore:project-name': projectName,
+    },
   };
 }
 
@@ -114,12 +125,21 @@ type MemoryOption = 'none' | 'shortTerm' | 'longAndShortTerm';
 export interface CreateWithAgentOptions {
   name: string;
   cwd: string;
+  type?: 'create' | 'import';
   buildType?: BuildType;
   language: TargetLanguage;
-  framework: SDKFramework;
-  modelProvider: ModelProvider;
+  framework?: SDKFramework;
+  modelProvider?: ModelProvider;
   apiKey?: string;
   memory: MemoryOption;
+  protocol?: ProtocolMode;
+  networkMode?: NetworkMode;
+  subnets?: string[];
+  securityGroups?: string[];
+  requestHeaderAllowlist?: string[];
+  agentId?: string;
+  agentAliasId?: string;
+  region?: string;
   skipGit?: boolean;
   skipPythonSetup?: boolean;
   onProgress?: ProgressCallback;
@@ -135,6 +155,11 @@ export async function createProjectWithAgent(options: CreateWithAgentOptions): P
     modelProvider,
     apiKey,
     memory,
+    protocol,
+    networkMode,
+    subnets,
+    securityGroups,
+    requestHeaderAllowlist,
     skipGit,
     skipPythonSetup,
     onProgress,
@@ -159,30 +184,70 @@ export async function createProjectWithAgent(options: CreateWithAgentOptions): P
     return { ...projectResult, warnings: allWarnings.length > 0 ? allWarnings : undefined };
   }
 
+  // Import path: delegate to executeImportAgent after project scaffolding
+  if (options.type === 'import' && options.agentId && options.agentAliasId && options.region) {
+    try {
+      onProgress?.('Import agent from Bedrock', 'start');
+      const importResult = await executeImportAgent({
+        name,
+        framework: framework ?? 'Strands',
+        memory,
+        bedrockRegion: options.region,
+        bedrockAgentId: options.agentId,
+        bedrockAliasId: options.agentAliasId,
+        configBaseDir,
+      });
+      if (!importResult.success) {
+        onProgress?.('Import agent from Bedrock', 'error');
+        return { success: false, error: importResult.error, warnings: depWarnings };
+      }
+      onProgress?.('Import agent from Bedrock', 'done');
+      return {
+        success: true,
+        projectPath: projectRoot,
+        agentName: name,
+        warnings: depWarnings.length > 0 ? depWarnings : undefined,
+      };
+    } catch (err) {
+      return { success: false, error: getErrorMessage(err), warnings: depWarnings };
+    }
+  }
+
   try {
     // Build GenerateConfig for agent creation
     // Note: In this context, agent name = project name since we're creating a project with a single agent
     onProgress?.('Add agent to project', 'start');
     const agentName = name;
+    const isMcp = protocol === 'MCP';
+    const resolvedFramework = isMcp ? ('Strands' as SDKFramework) : (framework ?? ('Strands' as SDKFramework));
+    const resolvedModelProvider = isMcp
+      ? ('Bedrock' as ModelProvider)
+      : (modelProvider ?? ('Bedrock' as ModelProvider));
+
     const generateConfig = {
       projectName: agentName,
       buildType: buildType ?? ('CodeZip' as BuildType),
-      sdk: framework,
-      modelProvider,
+      sdk: resolvedFramework,
+      modelProvider: resolvedModelProvider,
       apiKey,
       memory,
       language,
+      protocol: protocol ?? 'HTTP',
+      networkMode,
+      subnets,
+      securityGroups,
+      requestHeaderAllowlist,
     };
 
     // Resolve credential strategy FIRST (new project has no existing credentials)
     let identityProviders: ReturnType<typeof mapModelProviderToIdentityProviders> = [];
     let strategy: Awaited<ReturnType<typeof credentialPrimitive.resolveCredentialStrategy>> | undefined;
 
-    if (modelProvider !== 'Bedrock') {
+    if (!isMcp && resolvedModelProvider !== 'Bedrock') {
       strategy = await credentialPrimitive.resolveCredentialStrategy(
         name,
         agentName,
-        modelProvider,
+        resolvedModelProvider,
         apiKey,
         configBaseDir,
         [] // New project has no existing credentials

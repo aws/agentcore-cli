@@ -5,12 +5,16 @@ import type {
   DirectoryPath,
   FilePath,
   ModelProvider,
+  NetworkMode,
+  ProtocolMode,
   SDKFramework,
   TargetLanguage,
 } from '../../schema';
 import { AgentEnvSpecSchema, CREDENTIAL_PROVIDERS } from '../../schema';
 import type { AddAgentOptions as CLIAddAgentOptions } from '../commands/add/types';
 import { validateAddAgentOptions } from '../commands/add/validate';
+import type { VpcOptions } from '../commands/shared/vpc-utils';
+import { VPC_ENDPOINT_WARNING, parseCommaSeparatedList } from '../commands/shared/vpc-utils';
 import { getErrorMessage } from '../errors';
 import {
   mapGenerateConfigToRenderConfig,
@@ -18,6 +22,7 @@ import {
   mapModelProviderToIdentityProviders,
   writeAgentToProject,
 } from '../operations/agent/generate';
+import { executeImportAgent } from '../operations/agent/import';
 import { setupPythonProject } from '../operations/python';
 import type { RemovalPreview, RemovalResult, SchemaChange } from '../operations/remove/types';
 import { createRenderer } from '../templates';
@@ -33,17 +38,21 @@ import { dirname, join } from 'path';
 /**
  * Options for adding an agent resource.
  */
-export interface AddAgentOptions {
+export interface AddAgentOptions extends VpcOptions {
   name: string;
-  type: 'create' | 'byo';
+  type: 'create' | 'byo' | 'import';
   buildType: BuildType;
   language: TargetLanguage;
   framework: SDKFramework;
   modelProvider: ModelProvider;
   apiKey?: string;
   memory?: MemoryOption;
+  protocol?: ProtocolMode;
   codeLocation?: string;
   entrypoint?: string;
+  bedrockAgentId?: string;
+  bedrockAliasId?: string;
+  bedrockRegion?: string;
 }
 
 /**
@@ -77,7 +86,9 @@ export class AgentPrimitive extends BasePrimitive<AddAgentOptions, RemovableReso
         return { success: false, error: `Agent "${options.name}" already exists in this project.` };
       }
 
-      if (options.type === 'byo') {
+      if (options.type === 'import') {
+        return await this.handleImportPath(options, configBaseDir);
+      } else if (options.type === 'byo') {
         return await this.handleByoPath(options, configIO, configBaseDir);
       } else {
         return await this.handleCreatePath(options, configBaseDir);
@@ -163,7 +174,7 @@ export class AgentPrimitive extends BasePrimitive<AddAgentOptions, RemovableReso
       .command('agent')
       .description('Add an agent to the project')
       .option('--name <name>', 'Agent name (start with letter, alphanumeric only, max 64 chars) [non-interactive]')
-      .option('--type <type>', 'Agent type: create or byo [non-interactive]', 'create')
+      .option('--type <type>', 'Agent type: create, byo, or import [non-interactive]', 'create')
       .option('--build <type>', 'Build type: CodeZip or Container (default: CodeZip) [non-interactive]')
       .option('--language <lang>', 'Language: Python (create), or Python/TypeScript/Other (BYO) [non-interactive]')
       .option(
@@ -173,8 +184,15 @@ export class AgentPrimitive extends BasePrimitive<AddAgentOptions, RemovableReso
       .option('--model-provider <provider>', 'Model provider: Bedrock, Anthropic, OpenAI, Gemini [non-interactive]')
       .option('--api-key <key>', 'API key for non-Bedrock providers [non-interactive]')
       .option('--memory <mem>', 'Memory: none, shortTerm, longAndShortTerm (create path only) [non-interactive]')
+      .option('--protocol <protocol>', 'Protocol: HTTP, MCP, A2A (default: HTTP) [non-interactive]')
       .option('--code-location <path>', 'Path to existing code (BYO path only) [non-interactive]')
       .option('--entrypoint <file>', 'Entry file relative to code-location (BYO, default: main.py) [non-interactive]')
+      .option('--agent-id <id>', 'Bedrock Agent ID (import path only) [non-interactive]')
+      .option('--agent-alias-id <id>', 'Bedrock Agent Alias ID (import path only) [non-interactive]')
+      .option('--region <region>', 'AWS region for Bedrock Agent (import path only) [non-interactive]')
+      .option('--network-mode <mode>', 'Network mode (PUBLIC, VPC) [non-interactive]')
+      .option('--subnets <ids>', 'Comma-separated subnet IDs (required for VPC mode) [non-interactive]')
+      .option('--security-groups <ids>', 'Comma-separated security group IDs (required for VPC mode) [non-interactive]')
       .option('--json', 'Output as JSON [non-interactive]')
       .action(async options => {
         if (!findConfigRoot()) {
@@ -205,8 +223,15 @@ export class AgentPrimitive extends BasePrimitive<AddAgentOptions, RemovableReso
             modelProvider: cliOptions.modelProvider!,
             apiKey: cliOptions.apiKey,
             memory: cliOptions.memory,
+            protocol: cliOptions.protocol,
+            networkMode: cliOptions.networkMode,
+            subnets: cliOptions.subnets,
+            securityGroups: cliOptions.securityGroups,
             codeLocation: cliOptions.codeLocation,
             entrypoint: cliOptions.entrypoint,
+            bedrockAgentId: cliOptions.agentId,
+            bedrockAliasId: cliOptions.agentAliasId,
+            bedrockRegion: cliOptions.region,
           });
 
           if (cliOptions.json) {
@@ -215,6 +240,9 @@ export class AgentPrimitive extends BasePrimitive<AddAgentOptions, RemovableReso
             console.log(`Added agent '${result.agentName}'`);
             if (result.agentPath) {
               console.log(`Agent code: ${result.agentPath}`);
+            }
+            if (cliOptions.networkMode === 'VPC') {
+              console.log(`\x1b[33mNote: ${VPC_ENDPOINT_WARNING}\x1b[0m`);
             }
           } else {
             console.error(result.error);
@@ -266,6 +294,10 @@ export class AgentPrimitive extends BasePrimitive<AddAgentOptions, RemovableReso
       modelProvider: options.modelProvider,
       memory: options.memory!,
       language: options.language,
+      protocol: options.protocol ?? 'HTTP',
+      networkMode: options.networkMode as NetworkMode | undefined,
+      subnets: parseCommaSeparatedList(options.subnets),
+      securityGroups: parseCommaSeparatedList(options.securityGroups),
     };
 
     const agentPath = join(projectRoot, APP_DIR, options.name);
@@ -274,7 +306,9 @@ export class AgentPrimitive extends BasePrimitive<AddAgentOptions, RemovableReso
     let identityProviders: ReturnType<typeof mapModelProviderToIdentityProviders> = [];
     let strategy: Awaited<ReturnType<CredentialPrimitive['resolveCredentialStrategy']>> | undefined;
 
-    if (options.modelProvider !== 'Bedrock') {
+    const isMcp = options.protocol === 'MCP';
+
+    if (!isMcp && options.modelProvider !== 'Bedrock') {
       strategy = await this.credentialPrimitive.resolveCredentialStrategy(
         project.name,
         options.name,
@@ -318,6 +352,24 @@ export class AgentPrimitive extends BasePrimitive<AddAgentOptions, RemovableReso
   }
 
   /**
+   * Handle "import" path: import from Bedrock Agents.
+   */
+  private async handleImportPath(
+    options: AddAgentOptions,
+    configBaseDir: string
+  ): Promise<AddResult<{ agentName: string; agentPath?: string }>> {
+    return executeImportAgent({
+      name: options.name,
+      framework: options.framework,
+      memory: options.memory ?? 'none',
+      bedrockRegion: options.bedrockRegion!,
+      bedrockAgentId: options.bedrockAgentId!,
+      bedrockAliasId: options.bedrockAliasId!,
+      configBaseDir,
+    });
+  }
+
+  /**
    * Handle "byo" path: bring your own code.
    */
   private async handleByoPath(
@@ -334,6 +386,11 @@ export class AgentPrimitive extends BasePrimitive<AddAgentOptions, RemovableReso
 
     const project = await configIO.readProjectSpec();
 
+    const protocol = options.protocol ?? 'HTTP';
+    const networkMode = (options.networkMode as NetworkMode | undefined) ?? 'PUBLIC';
+    const subnets = parseCommaSeparatedList(options.subnets);
+    const securityGroups = parseCommaSeparatedList(options.securityGroups);
+
     const agent: AgentEnvSpec = {
       type: 'AgentCoreRuntime',
       name: options.name,
@@ -341,12 +398,21 @@ export class AgentPrimitive extends BasePrimitive<AddAgentOptions, RemovableReso
       entrypoint: (options.entrypoint ?? 'main.py') as FilePath,
       codeLocation: codeLocation as DirectoryPath,
       runtimeVersion: 'PYTHON_3_12',
+      protocol,
+      networkMode,
+      ...(networkMode === 'VPC' &&
+        subnets &&
+        securityGroups && {
+          networkConfig: { subnets, securityGroups },
+        }),
+      // MCP uses mcp.run() which is incompatible with the opentelemetry-instrument wrapper
+      ...(protocol === 'MCP' && { instrumentation: { enableOtel: false } }),
     };
 
     project.agents.push(agent);
 
-    // Handle credential creation with smart reuse detection
-    if (options.modelProvider !== 'Bedrock') {
+    // Handle credential creation with smart reuse detection (skip for MCP)
+    if (options.protocol !== 'MCP' && options.modelProvider !== 'Bedrock') {
       const strategy = await this.credentialPrimitive.resolveCredentialStrategy(
         project.name,
         options.name,

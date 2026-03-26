@@ -2,11 +2,15 @@ import {
   BuildTypeSchema,
   ModelProviderSchema,
   ProjectNameSchema,
+  ProtocolModeSchema,
   SDKFrameworkSchema,
   TargetLanguageSchema,
+  getSupportedFrameworksForProtocol,
   getSupportedModelProviders,
   matchEnumValue,
 } from '../../../schema';
+import type { ProtocolMode } from '../../../schema';
+import { validateVpcOptions } from '../shared/vpc-utils';
 import type { CreateOptions } from './types';
 import { existsSync } from 'fs';
 import { join } from 'path';
@@ -51,19 +55,72 @@ export function validateCreateOptions(options: CreateOptions, cwd?: string): Val
     return { valid: true };
   }
 
+  // Import path: validate import-specific options
+  if (options.type === 'import') {
+    if (!options.agentId) return { valid: false, error: '--agent-id is required for import' };
+    if (!options.agentAliasId) return { valid: false, error: '--agent-alias-id is required for import' };
+    if (!options.region) return { valid: false, error: '--region is required for import' };
+    if (!options.framework)
+      return { valid: false, error: '--framework is required for import (Strands or LangChain_LangGraph)' };
+    const fw = matchEnumValue(SDKFrameworkSchema, options.framework) ?? options.framework;
+    options.framework = fw;
+    if (fw !== 'Strands' && fw !== 'LangChain_LangGraph') {
+      return { valid: false, error: `Import only supports Strands or LangChain_LangGraph, got: ${options.framework}` };
+    }
+    options.memory ??= 'none';
+    if (!MEMORY_OPTIONS.includes(options.memory as (typeof MEMORY_OPTIONS)[number])) {
+      return {
+        valid: false,
+        error: `Invalid memory option: ${options.memory}. Use none, shortTerm, or longAndShortTerm`,
+      };
+    }
+    return { valid: true };
+  }
+
   // Normalize enum flag values (case-insensitive matching)
+  if (options.protocol) options.protocol = matchEnumValue(ProtocolModeSchema, options.protocol) ?? options.protocol;
   if (options.language) options.language = matchEnumValue(TargetLanguageSchema, options.language) ?? options.language;
   if (options.framework) options.framework = matchEnumValue(SDKFrameworkSchema, options.framework) ?? options.framework;
   if (options.modelProvider)
     options.modelProvider = matchEnumValue(ModelProviderSchema, options.modelProvider) ?? options.modelProvider;
   if (options.build) options.build = matchEnumValue(BuildTypeSchema, options.build) ?? options.build;
 
-  // Validate build type if provided
+  // Validate protocol if provided
+  let protocol: ProtocolMode = 'HTTP';
+  if (options.protocol) {
+    const protocolResult = ProtocolModeSchema.safeParse(options.protocol);
+    if (!protocolResult.success) {
+      return { valid: false, error: `Invalid protocol: ${options.protocol}. Use HTTP, MCP, or A2A` };
+    }
+    protocol = protocolResult.data;
+  }
+
+  // Validate build type if provided (applies to all protocols)
   if (options.build) {
     const buildResult = BuildTypeSchema.safeParse(options.build);
     if (!buildResult.success) {
       return { valid: false, error: `Invalid build type: ${options.build}. Use CodeZip or Container` };
     }
+  }
+
+  // MCP protocol: only name, language, and build type required
+  if (protocol === 'MCP') {
+    if (options.framework) {
+      return { valid: false, error: '--framework is not applicable for MCP protocol' };
+    }
+    if (options.modelProvider) {
+      return { valid: false, error: '--model-provider is not applicable for MCP protocol' };
+    }
+    if (options.memory && options.memory !== 'none') {
+      return { valid: false, error: '--memory is not applicable for MCP protocol' };
+    }
+    if (options.language) {
+      const langResult = TargetLanguageSchema.safeParse(options.language);
+      if (!langResult.success) {
+        return { valid: false, error: `Invalid language: ${options.language}` };
+      }
+    }
+    return { valid: true };
   }
 
   // Without --no-agent, all agent options are required
@@ -103,6 +160,14 @@ export function validateCreateOptions(options: CreateOptions, cwd?: string): Val
       return { valid: false, error: `Invalid framework: ${options.framework}` };
     }
 
+    // Validate framework is supported for the protocol
+    if (protocol !== 'HTTP') {
+      const supportedFrameworks = getSupportedFrameworksForProtocol(protocol);
+      if (!supportedFrameworks.includes(fwResult.data)) {
+        return { valid: false, error: `${options.framework} does not support ${protocol} protocol` };
+      }
+    }
+
     // Validate model provider
     const mpResult = ModelProviderSchema.safeParse(options.modelProvider);
     if (!mpResult.success) {
@@ -127,6 +192,12 @@ export function validateCreateOptions(options: CreateOptions, cwd?: string): Val
         error: `Invalid memory option: ${options.memory}. Use none, shortTerm, or longAndShortTerm`,
       };
     }
+  }
+
+  // Validate VPC options
+  const vpcResult = validateVpcOptions(options);
+  if (!vpcResult.valid) {
+    return { valid: false, error: vpcResult.error };
   }
 
   return { valid: true };

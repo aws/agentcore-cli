@@ -37,10 +37,10 @@ describe('add gateway command', () => {
       expect(json.success).toBe(true);
       expect(json.gatewayName).toBe(gatewayName);
 
-      // Verify gateway in mcp.json
-      const mcpSpec = JSON.parse(await readFile(join(projectDir, 'agentcore/mcp.json'), 'utf-8'));
-      const gateway = mcpSpec.agentCoreGateways.find((g: { name: string }) => g.name === gatewayName);
-      expect(gateway, 'Gateway should be in mcp.json').toBeTruthy();
+      // Verify gateway in agentcore.json
+      const projectSpec = JSON.parse(await readFile(join(projectDir, 'agentcore/agentcore.json'), 'utf-8'));
+      const gateway = projectSpec.agentCoreGateways.find((g: { name: string }) => g.name === gatewayName);
+      expect(gateway, 'Gateway should be in agentcore.json').toBeTruthy();
       expect(gateway.authorizerType).toBe('NONE');
     });
 
@@ -105,10 +105,10 @@ describe('add gateway command', () => {
       const json = JSON.parse(result.stdout);
       expect(json.success).toBe(true);
 
-      // Verify JWT config in mcp.json
-      const mcpSpec = JSON.parse(await readFile(join(projectDir, 'agentcore/mcp.json'), 'utf-8'));
-      const gateway = mcpSpec.agentCoreGateways.find((g: { name: string }) => g.name === gatewayName);
-      expect(gateway, 'Gateway should be in mcp.json').toBeTruthy();
+      // Verify JWT config in agentcore.json
+      const projectSpec = JSON.parse(await readFile(join(projectDir, 'agentcore/agentcore.json'), 'utf-8'));
+      const gateway = projectSpec.agentCoreGateways.find((g: { name: string }) => g.name === gatewayName);
+      expect(gateway, 'Gateway should be in agentcore.json').toBeTruthy();
       expect(gateway.authorizerType).toBe('CUSTOM_JWT');
       expect(gateway.authorizerConfiguration?.customJwtAuthorizer, 'Should have JWT config').toBeTruthy();
     });
@@ -167,9 +167,9 @@ describe('add gateway command', () => {
           'client1',
           '--allowed-scopes',
           'scope1,scope2',
-          '--agent-client-id',
+          '--client-id',
           'agent-cid',
-          '--agent-client-secret',
+          '--client-secret',
           'agent-secret',
           '--json',
         ],
@@ -180,15 +180,14 @@ describe('add gateway command', () => {
       const json = JSON.parse(result.stdout);
       expect(json.success).toBe(true);
 
-      // Verify allowedScopes in mcp.json
-      const mcpSpec = JSON.parse(await readFile(join(projectDir, 'agentcore/mcp.json'), 'utf-8'));
-      const gateway = mcpSpec.agentCoreGateways.find((g: { name: string }) => g.name === gatewayName);
-      expect(gateway, 'Gateway should be in mcp.json').toBeTruthy();
+      // Verify allowedScopes in agentcore.json
+      const projectSpec = JSON.parse(await readFile(join(projectDir, 'agentcore/agentcore.json'), 'utf-8'));
+      const gateway = projectSpec.agentCoreGateways.find((g: { name: string }) => g.name === gatewayName);
+      expect(gateway, 'Gateway should be in agentcore.json').toBeTruthy();
       expect(gateway.authorizerType).toBe('CUSTOM_JWT');
       expect(gateway.authorizerConfiguration?.customJwtAuthorizer?.allowedScopes).toEqual(['scope1', 'scope2']);
 
       // Verify managed OAuth credential in agentcore.json
-      const projectSpec = JSON.parse(await readFile(join(projectDir, 'agentcore/agentcore.json'), 'utf-8'));
       const credential = projectSpec.credentials.find((c: { name: string }) => c.name === `${gatewayName}-oauth`);
       expect(credential, 'Managed OAuth credential should exist').toBeTruthy();
       expect(credential.type).toBe('OAuthCredentialProvider');
