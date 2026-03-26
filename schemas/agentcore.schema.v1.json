@@ -1,0 +1,1624 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "type": "object",
+  "properties": {
+    "name": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 23,
+      "pattern": "^[A-Za-z][A-Za-z0-9]{0,22}$"
+    },
+    "version": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 9007199254740991
+    },
+    "tags": {
+      "type": "object",
+      "propertyNames": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 128,
+        "pattern": "^[\\p{L}\\p{N}\\s_.:/=+\\-@]*$"
+      },
+      "additionalProperties": {
+        "type": "string",
+        "maxLength": 256,
+        "pattern": "^[\\p{L}\\p{N}\\s_.:/=+\\-@]*$"
+      }
+    },
+    "agents": {
+      "default": [],
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "AgentCoreRuntime"
+          },
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 48,
+            "pattern": "^[a-zA-Z][a-zA-Z0-9_]{0,47}$"
+          },
+          "build": {
+            "type": "string",
+            "enum": ["CodeZip", "Container"]
+          },
+          "entrypoint": {
+            "type": "string",
+            "minLength": 1,
+            "pattern": "^[a-zA-Z0-9_][a-zA-Z0-9_/.-]*\\.(py|ts|js)(:[a-zA-Z_][a-zA-Z0-9_]*)?$"
+          },
+          "codeLocation": {
+            "type": "string",
+            "minLength": 1
+          },
+          "runtimeVersion": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": ["PYTHON_3_10", "PYTHON_3_11", "PYTHON_3_12", "PYTHON_3_13"]
+              },
+              {
+                "type": "string",
+                "enum": ["NODE_18", "NODE_20", "NODE_22"]
+              }
+            ]
+          },
+          "envVars": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "name": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 255,
+                  "pattern": "^[A-Za-z_][A-Za-z0-9_]*$"
+                },
+                "value": {
+                  "type": "string"
+                }
+              },
+              "required": ["name", "value"],
+              "additionalProperties": false
+            }
+          },
+          "networkMode": {
+            "type": "string",
+            "enum": ["PUBLIC", "VPC"]
+          },
+          "networkConfig": {
+            "type": "object",
+            "properties": {
+              "subnets": {
+                "minItems": 1,
+                "maxItems": 16,
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "pattern": "^subnet-[0-9a-zA-Z]{8,17}$"
+                }
+              },
+              "securityGroups": {
+                "minItems": 1,
+                "maxItems": 16,
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "pattern": "^sg-[0-9a-zA-Z]{8,17}$"
+                }
+              }
+            },
+            "required": ["subnets", "securityGroups"],
+            "additionalProperties": false
+          },
+          "instrumentation": {
+            "type": "object",
+            "properties": {
+              "enableOtel": {
+                "default": true,
+                "type": "boolean"
+              }
+            },
+            "required": ["enableOtel"],
+            "additionalProperties": false
+          },
+          "modelProvider": {
+            "type": "string",
+            "enum": ["Bedrock", "Gemini", "OpenAI", "Anthropic"]
+          },
+          "protocol": {
+            "type": "string",
+            "enum": ["HTTP", "MCP", "A2A"]
+          },
+          "requestHeaderAllowlist": {
+            "maxItems": 20,
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "tags": {
+            "type": "object",
+            "propertyNames": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128,
+              "pattern": "^[\\p{L}\\p{N}\\s_.:/=+\\-@]*$"
+            },
+            "additionalProperties": {
+              "type": "string",
+              "maxLength": 256,
+              "pattern": "^[\\p{L}\\p{N}\\s_.:/=+\\-@]*$"
+            }
+          }
+        },
+        "required": ["type", "name", "build", "entrypoint", "codeLocation", "runtimeVersion"],
+        "additionalProperties": false
+      }
+    },
+    "memories": {
+      "default": [],
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "AgentCoreMemory"
+          },
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 48,
+            "pattern": "^[a-zA-Z][a-zA-Z0-9_]{0,47}$"
+          },
+          "eventExpiryDuration": {
+            "type": "integer",
+            "minimum": 7,
+            "maximum": 365
+          },
+          "strategies": {
+            "default": [],
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "type": {
+                  "type": "string",
+                  "enum": ["SEMANTIC", "SUMMARIZATION", "USER_PREFERENCE"]
+                },
+                "name": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 48,
+                  "pattern": "^[a-zA-Z][a-zA-Z0-9_]{0,47}$"
+                },
+                "description": {
+                  "type": "string"
+                },
+                "namespaces": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                }
+              },
+              "required": ["type"],
+              "additionalProperties": false
+            }
+          },
+          "tags": {
+            "type": "object",
+            "propertyNames": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128,
+              "pattern": "^[\\p{L}\\p{N}\\s_.:/=+\\-@]*$"
+            },
+            "additionalProperties": {
+              "type": "string",
+              "maxLength": 256,
+              "pattern": "^[\\p{L}\\p{N}\\s_.:/=+\\-@]*$"
+            }
+          }
+        },
+        "required": ["type", "name", "eventExpiryDuration", "strategies"],
+        "additionalProperties": false
+      }
+    },
+    "credentials": {
+      "default": [],
+      "type": "array",
+      "items": {
+        "oneOf": [
+          {
+            "type": "object",
+            "properties": {
+              "type": {
+                "type": "string",
+                "const": "ApiKeyCredentialProvider"
+              },
+              "name": {
+                "type": "string",
+                "minLength": 3,
+                "maxLength": 255,
+                "pattern": "^[A-Za-z0-9_.-]+$"
+              }
+            },
+            "required": ["type", "name"],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "type": {
+                "type": "string",
+                "const": "OAuthCredentialProvider"
+              },
+              "name": {
+                "type": "string",
+                "minLength": 3,
+                "maxLength": 255,
+                "pattern": "^[A-Za-z0-9_.-]+$"
+              },
+              "discoveryUrl": {
+                "type": "string",
+                "format": "uri"
+              },
+              "scopes": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "vendor": {
+                "default": "CustomOauth2",
+                "type": "string"
+              },
+              "managed": {
+                "type": "boolean"
+              },
+              "usage": {
+                "type": "string",
+                "enum": ["inbound", "outbound"]
+              }
+            },
+            "required": ["type", "name", "discoveryUrl", "vendor"],
+            "additionalProperties": false
+          }
+        ]
+      }
+    },
+    "evaluators": {
+      "default": [],
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "CustomEvaluator"
+          },
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 48,
+            "pattern": "^[a-zA-Z][a-zA-Z0-9_]{0,47}$"
+          },
+          "level": {
+            "type": "string",
+            "enum": ["SESSION", "TRACE", "TOOL_CALL"]
+          },
+          "description": {
+            "type": "string"
+          },
+          "config": {
+            "type": "object",
+            "properties": {
+              "llmAsAJudge": {
+                "type": "object",
+                "properties": {
+                  "model": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "instructions": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "ratingScale": {
+                    "type": "object",
+                    "properties": {
+                      "numerical": {
+                        "type": "array",
+                        "items": {
+                          "type": "object",
+                          "properties": {
+                            "value": {
+                              "type": "integer",
+                              "minimum": -9007199254740991,
+                              "maximum": 9007199254740991
+                            },
+                            "label": {
+                              "type": "string",
+                              "minLength": 1
+                            },
+                            "definition": {
+                              "type": "string",
+                              "minLength": 1
+                            }
+                          },
+                          "required": ["value", "label", "definition"],
+                          "additionalProperties": false
+                        }
+                      },
+                      "categorical": {
+                        "type": "array",
+                        "items": {
+                          "type": "object",
+                          "properties": {
+                            "label": {
+                              "type": "string",
+                              "minLength": 1
+                            },
+                            "definition": {
+                              "type": "string",
+                              "minLength": 1
+                            }
+                          },
+                          "required": ["label", "definition"],
+                          "additionalProperties": false
+                        }
+                      }
+                    },
+                    "additionalProperties": false
+                  }
+                },
+                "required": ["model", "instructions", "ratingScale"],
+                "additionalProperties": false
+              }
+            },
+            "required": ["llmAsAJudge"],
+            "additionalProperties": false
+          },
+          "tags": {
+            "type": "object",
+            "propertyNames": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128,
+              "pattern": "^[\\p{L}\\p{N}\\s_.:/=+\\-@]*$"
+            },
+            "additionalProperties": {
+              "type": "string",
+              "maxLength": 256,
+              "pattern": "^[\\p{L}\\p{N}\\s_.:/=+\\-@]*$"
+            }
+          }
+        },
+        "required": ["type", "name", "level", "config"],
+        "additionalProperties": false
+      }
+    },
+    "onlineEvalConfigs": {
+      "default": [],
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "OnlineEvaluationConfig"
+          },
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 48,
+            "pattern": "^[a-zA-Z][a-zA-Z0-9_]{0,47}$"
+          },
+          "agent": {
+            "type": "string",
+            "minLength": 1
+          },
+          "evaluators": {
+            "minItems": 1,
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1
+            }
+          },
+          "samplingRate": {
+            "type": "number",
+            "minimum": 0.01,
+            "maximum": 100
+          },
+          "description": {
+            "type": "string",
+            "maxLength": 200
+          },
+          "enableOnCreate": {
+            "type": "boolean"
+          },
+          "tags": {
+            "type": "object",
+            "propertyNames": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128,
+              "pattern": "^[\\p{L}\\p{N}\\s_.:/=+\\-@]*$"
+            },
+            "additionalProperties": {
+              "type": "string",
+              "maxLength": 256,
+              "pattern": "^[\\p{L}\\p{N}\\s_.:/=+\\-@]*$"
+            }
+          }
+        },
+        "required": ["type", "name", "agent", "evaluators", "samplingRate"],
+        "additionalProperties": false
+      }
+    },
+    "agentCoreGateways": {
+      "default": [],
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 100,
+            "pattern": "^[0-9a-zA-Z](?:[0-9a-zA-Z-]*[0-9a-zA-Z])?$"
+          },
+          "description": {
+            "type": "string"
+          },
+          "targets": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "name": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "targetType": {
+                  "type": "string",
+                  "enum": ["lambda", "mcpServer", "openApiSchema", "smithyModel", "apiGateway", "lambdaFunctionArn"]
+                },
+                "toolDefinitions": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "name": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 128
+                      },
+                      "description": {
+                        "type": "string",
+                        "minLength": 1
+                      },
+                      "inputSchema": {
+                        "$ref": "#/definitions/__schema0"
+                      },
+                      "outputSchema": {
+                        "allOf": [
+                          {
+                            "$ref": "#/definitions/__schema0"
+                          }
+                        ]
+                      }
+                    },
+                    "required": ["name", "description", "inputSchema"],
+                    "additionalProperties": false
+                  }
+                },
+                "compute": {
+                  "oneOf": [
+                    {
+                      "type": "object",
+                      "properties": {
+                        "host": {
+                          "type": "string",
+                          "const": "Lambda"
+                        },
+                        "implementation": {
+                          "type": "object",
+                          "properties": {
+                            "language": {
+                              "type": "string",
+                              "enum": ["TypeScript", "Python"]
+                            },
+                            "path": {
+                              "type": "string",
+                              "minLength": 1
+                            },
+                            "handler": {
+                              "type": "string",
+                              "minLength": 1
+                            }
+                          },
+                          "required": ["language", "path", "handler"],
+                          "additionalProperties": false
+                        },
+                        "nodeVersion": {
+                          "type": "string",
+                          "enum": ["NODE_18", "NODE_20", "NODE_22"]
+                        },
+                        "pythonVersion": {
+                          "type": "string",
+                          "enum": ["PYTHON_3_10", "PYTHON_3_11", "PYTHON_3_12", "PYTHON_3_13"]
+                        },
+                        "timeout": {
+                          "type": "integer",
+                          "minimum": 1,
+                          "maximum": 900
+                        },
+                        "memorySize": {
+                          "type": "integer",
+                          "minimum": 128,
+                          "maximum": 10240
+                        },
+                        "iamPolicy": {
+                          "type": "object",
+                          "properties": {
+                            "Version": {
+                              "type": "string"
+                            },
+                            "Statement": {
+                              "type": "array",
+                              "items": {}
+                            }
+                          },
+                          "required": ["Version", "Statement"],
+                          "additionalProperties": {}
+                        }
+                      },
+                      "required": ["host", "implementation"],
+                      "additionalProperties": false
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "host": {
+                          "type": "string",
+                          "const": "AgentCoreRuntime"
+                        },
+                        "implementation": {
+                          "type": "object",
+                          "properties": {
+                            "language": {
+                              "type": "string",
+                              "enum": ["TypeScript", "Python"]
+                            },
+                            "path": {
+                              "type": "string",
+                              "minLength": 1
+                            },
+                            "handler": {
+                              "type": "string",
+                              "minLength": 1
+                            }
+                          },
+                          "required": ["language", "path", "handler"],
+                          "additionalProperties": false
+                        },
+                        "runtime": {
+                          "type": "object",
+                          "properties": {
+                            "artifact": {
+                              "type": "string",
+                              "const": "CodeZip"
+                            },
+                            "pythonVersion": {
+                              "type": "string",
+                              "enum": ["PYTHON_3_10", "PYTHON_3_11", "PYTHON_3_12", "PYTHON_3_13"]
+                            },
+                            "name": {
+                              "type": "string",
+                              "minLength": 1,
+                              "maxLength": 48,
+                              "pattern": "^[a-zA-Z][a-zA-Z0-9_]{0,47}$"
+                            },
+                            "entrypoint": {
+                              "type": "string",
+                              "minLength": 1,
+                              "pattern": "^[a-zA-Z0-9_][a-zA-Z0-9_/.-]*\\.py(:[a-zA-Z_][a-zA-Z0-9_]*)?$"
+                            },
+                            "codeLocation": {
+                              "type": "string",
+                              "minLength": 1
+                            },
+                            "instrumentation": {
+                              "type": "object",
+                              "properties": {
+                                "enableOtel": {
+                                  "default": true,
+                                  "type": "boolean"
+                                }
+                              },
+                              "required": ["enableOtel"],
+                              "additionalProperties": false
+                            },
+                            "networkMode": {
+                              "default": "PUBLIC",
+                              "type": "string",
+                              "enum": ["PUBLIC", "VPC"]
+                            },
+                            "description": {
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "artifact",
+                            "pythonVersion",
+                            "name",
+                            "entrypoint",
+                            "codeLocation",
+                            "networkMode"
+                          ],
+                          "additionalProperties": false
+                        },
+                        "iamPolicy": {
+                          "type": "object",
+                          "properties": {
+                            "Version": {
+                              "type": "string"
+                            },
+                            "Statement": {
+                              "type": "array",
+                              "items": {}
+                            }
+                          },
+                          "required": ["Version", "Statement"],
+                          "additionalProperties": {}
+                        }
+                      },
+                      "required": ["host", "implementation"],
+                      "additionalProperties": false
+                    }
+                  ]
+                },
+                "endpoint": {
+                  "type": "string",
+                  "format": "uri"
+                },
+                "outboundAuth": {
+                  "type": "object",
+                  "properties": {
+                    "type": {
+                      "default": "NONE",
+                      "type": "string",
+                      "enum": ["OAUTH", "API_KEY", "NONE"]
+                    },
+                    "credentialName": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "scopes": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    }
+                  },
+                  "required": ["type"],
+                  "additionalProperties": false
+                },
+                "apiGateway": {
+                  "type": "object",
+                  "properties": {
+                    "restApiId": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "stage": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "apiGatewayToolConfiguration": {
+                      "type": "object",
+                      "properties": {
+                        "toolFilters": {
+                          "minItems": 1,
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "properties": {
+                              "filterPath": {
+                                "type": "string",
+                                "minLength": 1
+                              },
+                              "methods": {
+                                "minItems": 1,
+                                "type": "array",
+                                "items": {
+                                  "type": "string",
+                                  "enum": ["GET", "POST", "PUT", "DELETE", "PATCH", "HEAD", "OPTIONS"]
+                                }
+                              }
+                            },
+                            "required": ["filterPath", "methods"],
+                            "additionalProperties": false
+                          }
+                        },
+                        "toolOverrides": {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "properties": {
+                              "name": {
+                                "type": "string",
+                                "minLength": 1
+                              },
+                              "path": {
+                                "type": "string",
+                                "minLength": 1
+                              },
+                              "method": {
+                                "type": "string",
+                                "enum": ["GET", "POST", "PUT", "DELETE", "PATCH", "HEAD", "OPTIONS"]
+                              },
+                              "description": {
+                                "type": "string"
+                              }
+                            },
+                            "required": ["name", "path", "method"],
+                            "additionalProperties": false
+                          }
+                        }
+                      },
+                      "required": ["toolFilters"],
+                      "additionalProperties": false
+                    }
+                  },
+                  "required": ["restApiId", "stage", "apiGatewayToolConfiguration"],
+                  "additionalProperties": false
+                },
+                "schemaSource": {
+                  "anyOf": [
+                    {
+                      "type": "object",
+                      "properties": {
+                        "inline": {
+                          "type": "object",
+                          "properties": {
+                            "path": {
+                              "type": "string",
+                              "minLength": 1
+                            }
+                          },
+                          "required": ["path"],
+                          "additionalProperties": false
+                        }
+                      },
+                      "required": ["inline"],
+                      "additionalProperties": false
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "s3": {
+                          "type": "object",
+                          "properties": {
+                            "uri": {
+                              "type": "string",
+                              "minLength": 1,
+                              "pattern": "^s3:\\/\\/.*"
+                            },
+                            "bucketOwnerAccountId": {
+                              "type": "string"
+                            }
+                          },
+                          "required": ["uri"],
+                          "additionalProperties": false
+                        }
+                      },
+                      "required": ["s3"],
+                      "additionalProperties": false
+                    }
+                  ]
+                },
+                "lambdaFunctionArn": {
+                  "type": "object",
+                  "properties": {
+                    "lambdaArn": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 170
+                    },
+                    "toolSchemaFile": {
+                      "type": "string",
+                      "minLength": 1
+                    }
+                  },
+                  "required": ["lambdaArn", "toolSchemaFile"],
+                  "additionalProperties": false
+                }
+              },
+              "required": ["name", "targetType"],
+              "additionalProperties": false
+            }
+          },
+          "authorizerType": {
+            "default": "NONE",
+            "type": "string",
+            "enum": ["NONE", "AWS_IAM", "CUSTOM_JWT"]
+          },
+          "authorizerConfiguration": {
+            "type": "object",
+            "properties": {
+              "customJwtAuthorizer": {
+                "type": "object",
+                "properties": {
+                  "discoveryUrl": {
+                    "type": "string",
+                    "format": "uri"
+                  },
+                  "allowedAudience": {
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "minLength": 1
+                    }
+                  },
+                  "allowedClients": {
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "minLength": 1
+                    }
+                  },
+                  "allowedScopes": {
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "minLength": 1
+                    }
+                  },
+                  "customClaims": {
+                    "minItems": 1,
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "inboundTokenClaimName": {
+                          "type": "string",
+                          "minLength": 1,
+                          "maxLength": 255,
+                          "pattern": "^[A-Za-z0-9_.:-]+$"
+                        },
+                        "inboundTokenClaimValueType": {
+                          "type": "string",
+                          "enum": ["STRING", "STRING_ARRAY"]
+                        },
+                        "authorizingClaimMatchValue": {
+                          "type": "object",
+                          "properties": {
+                            "claimMatchOperator": {
+                              "type": "string",
+                              "enum": ["EQUALS", "CONTAINS", "CONTAINS_ANY"]
+                            },
+                            "claimMatchValue": {
+                              "type": "object",
+                              "properties": {
+                                "matchValueString": {
+                                  "type": "string",
+                                  "minLength": 1,
+                                  "maxLength": 255,
+                                  "pattern": "^[A-Za-z0-9_.-]+$"
+                                },
+                                "matchValueStringList": {
+                                  "minItems": 1,
+                                  "maxItems": 255,
+                                  "type": "array",
+                                  "items": {
+                                    "type": "string",
+                                    "minLength": 1,
+                                    "maxLength": 255,
+                                    "pattern": "^[A-Za-z0-9_.-]+$"
+                                  }
+                                }
+                              },
+                              "additionalProperties": false
+                            }
+                          },
+                          "required": ["claimMatchOperator", "claimMatchValue"],
+                          "additionalProperties": false
+                        }
+                      },
+                      "required": ["inboundTokenClaimName", "inboundTokenClaimValueType", "authorizingClaimMatchValue"],
+                      "additionalProperties": false
+                    }
+                  }
+                },
+                "required": ["discoveryUrl"],
+                "additionalProperties": false
+              }
+            },
+            "additionalProperties": false
+          },
+          "enableSemanticSearch": {
+            "default": true,
+            "type": "boolean"
+          },
+          "exceptionLevel": {
+            "default": "NONE",
+            "type": "string",
+            "enum": ["NONE", "DEBUG"]
+          },
+          "policyEngineConfiguration": {
+            "type": "object",
+            "properties": {
+              "policyEngineName": {
+                "type": "string",
+                "minLength": 1
+              },
+              "mode": {
+                "type": "string",
+                "enum": ["LOG_ONLY", "ENFORCE"]
+              }
+            },
+            "required": ["policyEngineName", "mode"],
+            "additionalProperties": false
+          },
+          "tags": {
+            "type": "object",
+            "propertyNames": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128,
+              "pattern": "^[\\p{L}\\p{N}\\s_.:/=+\\-@]*$"
+            },
+            "additionalProperties": {
+              "type": "string",
+              "maxLength": 256,
+              "pattern": "^[\\p{L}\\p{N}\\s_.:/=+\\-@]*$"
+            }
+          }
+        },
+        "required": ["name", "targets", "authorizerType", "enableSemanticSearch", "exceptionLevel"],
+        "additionalProperties": false
+      }
+    },
+    "mcpRuntimeTools": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "minLength": 1
+          },
+          "toolDefinition": {
+            "type": "object",
+            "properties": {
+              "name": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 128
+              },
+              "description": {
+                "type": "string",
+                "minLength": 1
+              },
+              "inputSchema": {
+                "$ref": "#/definitions/__schema0"
+              },
+              "outputSchema": {
+                "allOf": [
+                  {
+                    "$ref": "#/definitions/__schema0"
+                  }
+                ]
+              }
+            },
+            "required": ["name", "description", "inputSchema"],
+            "additionalProperties": false
+          },
+          "compute": {
+            "type": "object",
+            "properties": {
+              "host": {
+                "type": "string",
+                "const": "AgentCoreRuntime"
+              },
+              "implementation": {
+                "type": "object",
+                "properties": {
+                  "language": {
+                    "type": "string",
+                    "enum": ["TypeScript", "Python"]
+                  },
+                  "path": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "handler": {
+                    "type": "string",
+                    "minLength": 1
+                  }
+                },
+                "required": ["language", "path", "handler"],
+                "additionalProperties": false
+              },
+              "runtime": {
+                "type": "object",
+                "properties": {
+                  "artifact": {
+                    "type": "string",
+                    "const": "CodeZip"
+                  },
+                  "pythonVersion": {
+                    "type": "string",
+                    "enum": ["PYTHON_3_10", "PYTHON_3_11", "PYTHON_3_12", "PYTHON_3_13"]
+                  },
+                  "name": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 48,
+                    "pattern": "^[a-zA-Z][a-zA-Z0-9_]{0,47}$"
+                  },
+                  "entrypoint": {
+                    "type": "string",
+                    "minLength": 1,
+                    "pattern": "^[a-zA-Z0-9_][a-zA-Z0-9_/.-]*\\.py(:[a-zA-Z_][a-zA-Z0-9_]*)?$"
+                  },
+                  "codeLocation": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "instrumentation": {
+                    "type": "object",
+                    "properties": {
+                      "enableOtel": {
+                        "default": true,
+                        "type": "boolean"
+                      }
+                    },
+                    "required": ["enableOtel"],
+                    "additionalProperties": false
+                  },
+                  "networkMode": {
+                    "default": "PUBLIC",
+                    "type": "string",
+                    "enum": ["PUBLIC", "VPC"]
+                  },
+                  "description": {
+                    "type": "string"
+                  }
+                },
+                "required": ["artifact", "pythonVersion", "name", "entrypoint", "codeLocation", "networkMode"],
+                "additionalProperties": false
+              },
+              "iamPolicy": {
+                "type": "object",
+                "properties": {
+                  "Version": {
+                    "type": "string"
+                  },
+                  "Statement": {
+                    "type": "array",
+                    "items": {}
+                  }
+                },
+                "required": ["Version", "Statement"],
+                "additionalProperties": {}
+              }
+            },
+            "required": ["host", "implementation"],
+            "additionalProperties": false
+          },
+          "bindings": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "agentName": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "envVarName": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 255,
+                  "pattern": "^[A-Za-z_][A-Za-z0-9_]*$"
+                }
+              },
+              "required": ["agentName", "envVarName"],
+              "additionalProperties": false
+            }
+          }
+        },
+        "required": ["name", "toolDefinition", "compute"],
+        "additionalProperties": false
+      }
+    },
+    "unassignedTargets": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "minLength": 1
+          },
+          "targetType": {
+            "type": "string",
+            "enum": ["lambda", "mcpServer", "openApiSchema", "smithyModel", "apiGateway", "lambdaFunctionArn"]
+          },
+          "toolDefinitions": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "name": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 128
+                },
+                "description": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "inputSchema": {
+                  "$ref": "#/definitions/__schema0"
+                },
+                "outputSchema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/definitions/__schema0"
+                    }
+                  ]
+                }
+              },
+              "required": ["name", "description", "inputSchema"],
+              "additionalProperties": false
+            }
+          },
+          "compute": {
+            "oneOf": [
+              {
+                "type": "object",
+                "properties": {
+                  "host": {
+                    "type": "string",
+                    "const": "Lambda"
+                  },
+                  "implementation": {
+                    "type": "object",
+                    "properties": {
+                      "language": {
+                        "type": "string",
+                        "enum": ["TypeScript", "Python"]
+                      },
+                      "path": {
+                        "type": "string",
+                        "minLength": 1
+                      },
+                      "handler": {
+                        "type": "string",
+                        "minLength": 1
+                      }
+                    },
+                    "required": ["language", "path", "handler"],
+                    "additionalProperties": false
+                  },
+                  "nodeVersion": {
+                    "type": "string",
+                    "enum": ["NODE_18", "NODE_20", "NODE_22"]
+                  },
+                  "pythonVersion": {
+                    "type": "string",
+                    "enum": ["PYTHON_3_10", "PYTHON_3_11", "PYTHON_3_12", "PYTHON_3_13"]
+                  },
+                  "timeout": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 900
+                  },
+                  "memorySize": {
+                    "type": "integer",
+                    "minimum": 128,
+                    "maximum": 10240
+                  },
+                  "iamPolicy": {
+                    "type": "object",
+                    "properties": {
+                      "Version": {
+                        "type": "string"
+                      },
+                      "Statement": {
+                        "type": "array",
+                        "items": {}
+                      }
+                    },
+                    "required": ["Version", "Statement"],
+                    "additionalProperties": {}
+                  }
+                },
+                "required": ["host", "implementation"],
+                "additionalProperties": false
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "host": {
+                    "type": "string",
+                    "const": "AgentCoreRuntime"
+                  },
+                  "implementation": {
+                    "type": "object",
+                    "properties": {
+                      "language": {
+                        "type": "string",
+                        "enum": ["TypeScript", "Python"]
+                      },
+                      "path": {
+                        "type": "string",
+                        "minLength": 1
+                      },
+                      "handler": {
+                        "type": "string",
+                        "minLength": 1
+                      }
+                    },
+                    "required": ["language", "path", "handler"],
+                    "additionalProperties": false
+                  },
+                  "runtime": {
+                    "type": "object",
+                    "properties": {
+                      "artifact": {
+                        "type": "string",
+                        "const": "CodeZip"
+                      },
+                      "pythonVersion": {
+                        "type": "string",
+                        "enum": ["PYTHON_3_10", "PYTHON_3_11", "PYTHON_3_12", "PYTHON_3_13"]
+                      },
+                      "name": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 48,
+                        "pattern": "^[a-zA-Z][a-zA-Z0-9_]{0,47}$"
+                      },
+                      "entrypoint": {
+                        "type": "string",
+                        "minLength": 1,
+                        "pattern": "^[a-zA-Z0-9_][a-zA-Z0-9_/.-]*\\.py(:[a-zA-Z_][a-zA-Z0-9_]*)?$"
+                      },
+                      "codeLocation": {
+                        "type": "string",
+                        "minLength": 1
+                      },
+                      "instrumentation": {
+                        "type": "object",
+                        "properties": {
+                          "enableOtel": {
+                            "default": true,
+                            "type": "boolean"
+                          }
+                        },
+                        "required": ["enableOtel"],
+                        "additionalProperties": false
+                      },
+                      "networkMode": {
+                        "default": "PUBLIC",
+                        "type": "string",
+                        "enum": ["PUBLIC", "VPC"]
+                      },
+                      "description": {
+                        "type": "string"
+                      }
+                    },
+                    "required": ["artifact", "pythonVersion", "name", "entrypoint", "codeLocation", "networkMode"],
+                    "additionalProperties": false
+                  },
+                  "iamPolicy": {
+                    "type": "object",
+                    "properties": {
+                      "Version": {
+                        "type": "string"
+                      },
+                      "Statement": {
+                        "type": "array",
+                        "items": {}
+                      }
+                    },
+                    "required": ["Version", "Statement"],
+                    "additionalProperties": {}
+                  }
+                },
+                "required": ["host", "implementation"],
+                "additionalProperties": false
+              }
+            ]
+          },
+          "endpoint": {
+            "type": "string",
+            "format": "uri"
+          },
+          "outboundAuth": {
+            "type": "object",
+            "properties": {
+              "type": {
+                "default": "NONE",
+                "type": "string",
+                "enum": ["OAUTH", "API_KEY", "NONE"]
+              },
+              "credentialName": {
+                "type": "string",
+                "minLength": 1
+              },
+              "scopes": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              }
+            },
+            "required": ["type"],
+            "additionalProperties": false
+          },
+          "apiGateway": {
+            "type": "object",
+            "properties": {
+              "restApiId": {
+                "type": "string",
+                "minLength": 1
+              },
+              "stage": {
+                "type": "string",
+                "minLength": 1
+              },
+              "apiGatewayToolConfiguration": {
+                "type": "object",
+                "properties": {
+                  "toolFilters": {
+                    "minItems": 1,
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "filterPath": {
+                          "type": "string",
+                          "minLength": 1
+                        },
+                        "methods": {
+                          "minItems": 1,
+                          "type": "array",
+                          "items": {
+                            "type": "string",
+                            "enum": ["GET", "POST", "PUT", "DELETE", "PATCH", "HEAD", "OPTIONS"]
+                          }
+                        }
+                      },
+                      "required": ["filterPath", "methods"],
+                      "additionalProperties": false
+                    }
+                  },
+                  "toolOverrides": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "name": {
+                          "type": "string",
+                          "minLength": 1
+                        },
+                        "path": {
+                          "type": "string",
+                          "minLength": 1
+                        },
+                        "method": {
+                          "type": "string",
+                          "enum": ["GET", "POST", "PUT", "DELETE", "PATCH", "HEAD", "OPTIONS"]
+                        },
+                        "description": {
+                          "type": "string"
+                        }
+                      },
+                      "required": ["name", "path", "method"],
+                      "additionalProperties": false
+                    }
+                  }
+                },
+                "required": ["toolFilters"],
+                "additionalProperties": false
+              }
+            },
+            "required": ["restApiId", "stage", "apiGatewayToolConfiguration"],
+            "additionalProperties": false
+          },
+          "schemaSource": {
+            "anyOf": [
+              {
+                "type": "object",
+                "properties": {
+                  "inline": {
+                    "type": "object",
+                    "properties": {
+                      "path": {
+                        "type": "string",
+                        "minLength": 1
+                      }
+                    },
+                    "required": ["path"],
+                    "additionalProperties": false
+                  }
+                },
+                "required": ["inline"],
+                "additionalProperties": false
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "s3": {
+                    "type": "object",
+                    "properties": {
+                      "uri": {
+                        "type": "string",
+                        "minLength": 1,
+                        "pattern": "^s3:\\/\\/.*"
+                      },
+                      "bucketOwnerAccountId": {
+                        "type": "string"
+                      }
+                    },
+                    "required": ["uri"],
+                    "additionalProperties": false
+                  }
+                },
+                "required": ["s3"],
+                "additionalProperties": false
+              }
+            ]
+          },
+          "lambdaFunctionArn": {
+            "type": "object",
+            "properties": {
+              "lambdaArn": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 170
+              },
+              "toolSchemaFile": {
+                "type": "string",
+                "minLength": 1
+              }
+            },
+            "required": ["lambdaArn", "toolSchemaFile"],
+            "additionalProperties": false
+          }
+        },
+        "required": ["name", "targetType"],
+        "additionalProperties": false
+      }
+    },
+    "policyEngines": {
+      "default": [],
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 48,
+            "pattern": "^[A-Za-z][A-Za-z0-9_]{0,47}$"
+          },
+          "description": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 4096
+          },
+          "encryptionKeyArn": {
+            "type": "string"
+          },
+          "tags": {
+            "type": "object",
+            "propertyNames": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128,
+              "pattern": "^[\\p{L}\\p{N}\\s_.:/=+\\-@]*$"
+            },
+            "additionalProperties": {
+              "type": "string",
+              "maxLength": 256,
+              "pattern": "^[\\p{L}\\p{N}\\s_.:/=+\\-@]*$"
+            }
+          },
+          "policies": {
+            "default": [],
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "name": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 48,
+                  "pattern": "^[A-Za-z][A-Za-z0-9_]{0,47}$"
+                },
+                "description": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 4096
+                },
+                "statement": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "sourceFile": {
+                  "type": "string"
+                },
+                "validationMode": {
+                  "default": "FAIL_ON_ANY_FINDINGS",
+                  "type": "string",
+                  "enum": ["FAIL_ON_ANY_FINDINGS", "IGNORE_ALL_FINDINGS"]
+                }
+              },
+              "required": ["name", "statement", "validationMode"],
+              "additionalProperties": false
+            }
+          }
+        },
+        "required": ["name", "policies"],
+        "additionalProperties": false
+      }
+    },
+    "$schema": {
+      "type": "string"
+    }
+  },
+  "required": ["name", "version"],
+  "additionalProperties": false,
+  "definitions": {
+    "__schema0": {
+      "type": "object",
+      "properties": {
+        "type": {
+          "type": "string",
+          "enum": ["string", "number", "object", "array", "boolean", "integer"]
+        },
+        "description": {
+          "type": "string"
+        },
+        "items": {
+          "allOf": [
+            {
+              "$ref": "#/definitions/__schema0"
+            }
+          ]
+        },
+        "properties": {
+          "type": "object",
+          "propertyNames": {
+            "type": "string"
+          },
+          "additionalProperties": {
+            "$ref": "#/definitions/__schema0"
+          }
+        },
+        "required": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      },
+      "required": ["type"],
+      "additionalProperties": false
+    }
+  }
+}
