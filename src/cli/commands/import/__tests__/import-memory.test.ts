@@ -30,10 +30,8 @@ import { describe, expect, it } from 'vitest';
 function toMemorySpec(mem: ParsedStarterToolkitMemory): Memory {
   const strategies: Memory['strategies'] = [];
 
-  if (mem.mode === 'STM_ONLY' || mem.mode === 'STM_AND_LTM') {
-    strategies.push({ type: 'SEMANTIC' });
-  }
   if (mem.mode === 'STM_AND_LTM') {
+    strategies.push({ type: 'SEMANTIC' });
     strategies.push({ type: 'SUMMARIZATION' });
     strategies.push({ type: 'USER_PREFERENCE' });
   }
@@ -389,8 +387,7 @@ describe('toMemorySpec', () => {
     expect(result.type).toBe('AgentCoreMemory');
     expect(result.name).toBe('stm_memory');
     expect(result.eventExpiryDuration).toBe(14);
-    expect(result.strategies).toHaveLength(1);
-    expect(result.strategies[0]!.type).toBe('SEMANTIC');
+    expect(result.strategies).toHaveLength(0);
   });
 
   it('NO_MEMORY mode produces empty strategies', () => {
@@ -553,8 +550,7 @@ describe('Memory Merge Logic', () => {
     // The new memory should be added
     const newMem = merged.find(m => m.name === 'new_memory')!;
     expect(newMem.eventExpiryDuration).toBe(14);
-    expect(newMem.strategies).toHaveLength(1);
-    expect(newMem.strategies[0]!.type).toBe('SEMANTIC');
+    expect(newMem.strategies).toHaveLength(0);
   });
 
   it('adds all memories when project has none', () => {
@@ -587,7 +583,7 @@ describe('Memory Merge Logic', () => {
     expect(merged[0]!.name).toBe('memory_one');
     expect(merged[0]!.strategies).toHaveLength(3);
     expect(merged[1]!.name).toBe('memory_two');
-    expect(merged[1]!.strategies).toHaveLength(1);
+    expect(merged[1]!.strategies).toHaveLength(0);
   });
 });
 

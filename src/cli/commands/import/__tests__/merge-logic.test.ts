@@ -33,10 +33,8 @@ function toAgentEnvSpec(agent: ParsedStarterToolkitConfig['agents'][0]): AgentEn
 
 function toMemorySpec(mem: ParsedStarterToolkitConfig['memories'][0]): Memory {
   const strategies: Memory['strategies'] = [];
-  if (mem.mode === 'STM_ONLY' || mem.mode === 'STM_AND_LTM') {
-    strategies.push({ type: 'SEMANTIC' });
-  }
   if (mem.mode === 'STM_AND_LTM') {
+    strategies.push({ type: 'SEMANTIC' });
     strategies.push({ type: 'SUMMARIZATION' });
     strategies.push({ type: 'USER_PREFERENCE' });
   }
