@@ -1,0 +1,23 @@
+default_agent: my_agent
+agents:
+  my_agent:
+    name: my_agent
+    entrypoint: main.py
+    deployment_type: direct_code_deploy
+    runtime_type: PYTHON_3_12
+    source_path: null
+    aws:
+      account: '123456789012'
+      region: us-west-2
+      execution_role: arn:aws:iam::123456789012:role/StarterToolkitExecutionRole
+      network_configuration:
+        network_mode: PUBLIC
+      protocol_configuration:
+        server_protocol: HTTP
+      observability:
+        enabled: true
+    bedrock_agentcore:
+      agent_id: AGENT_ROLE_123
+      agent_arn: arn:aws:bedrock-agentcore:us-west-2:123456789012:runtime/AGENT_ROLE_123
+    memory:
+      mode: NO_MEMORY

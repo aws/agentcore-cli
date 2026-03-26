@@ -20,6 +20,8 @@ export interface ParsedStarterToolkitAgent {
   physicalAgentArn?: string;
   /** Whether this agent has a custom JWT authorizer configured (not imported) */
   hasAuthorizerConfig?: boolean;
+  /** ARN of the execution role from the starter toolkit deployment */
+  executionRoleArn?: string;
 }
 
 /**

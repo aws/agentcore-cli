@@ -55,6 +55,10 @@ function toAgentEnvSpec(agent: ParsedStarterToolkitConfig['agents'][0]): AgentEn
     spec.networkConfig = agent.networkConfig;
   }
 
+  if (agent.executionRoleArn) {
+    spec.executionRoleArn = agent.executionRoleArn;
+  }
+
   return spec;
 }
 
@@ -359,7 +363,7 @@ export async function handleImport(options: ImportOptions): Promise<ImportResult
             const toolkitDockerfile = path.join(toolkitProjectDir, '.bedrock_agentcore', agent.name, 'Dockerfile');
             if (fs.existsSync(toolkitDockerfile)) {
               logger.log('Copying Dockerfile from starter toolkit config');
-            onProgress?.(`Copying Dockerfile from starter toolkit config`);
+              onProgress?.(`Copying Dockerfile from starter toolkit config`);
               fs.copyFileSync(toolkitDockerfile, destDockerfile);
             } else {
               // Generate a minimal Dockerfile for Container builds
@@ -402,7 +406,7 @@ export async function handleImport(options: ImportOptions): Promise<ImportResult
         const pyprojectPath = path.join(appDir, 'pyproject.toml');
         if (!fs.existsSync(pyprojectPath)) {
           logger.log(`Creating minimal pyproject.toml at ${appDir}`);
-        onProgress?.(`Creating minimal pyproject.toml at ${appDir}`);
+          onProgress?.(`Creating minimal pyproject.toml at ${appDir}`);
           fs.writeFileSync(
             pyprojectPath,
             [
@@ -440,7 +444,10 @@ export async function handleImport(options: ImportOptions): Promise<ImportResult
           logger.log(`Warning: uv not found — run "uv sync" manually in ${APP_DIR}/${agent.name}`, 'warn');
           onProgress?.(`Warning: uv not found — run "uv sync" manually in ${APP_DIR}/${agent.name}`);
         } else {
-          logger.log(`Warning: Python setup failed for ${agent.name}: ${setupResult.error ?? setupResult.status}`, 'warn');
+          logger.log(
+            `Warning: Python setup failed for ${agent.name}: ${setupResult.error ?? setupResult.status}`,
+            'warn'
+          );
           onProgress?.(`Warning: Python setup failed for ${agent.name}: ${setupResult.error ?? setupResult.status}`);
         }
       }
