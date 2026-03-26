@@ -28,7 +28,7 @@ import { executeImportAgent } from '../operations/agent/import';
 import { setupPythonProject } from '../operations/python';
 import type { RemovalPreview, RemovalResult, SchemaChange } from '../operations/remove/types';
 import { createRenderer } from '../templates';
-import type { MemoryOption } from '../tui/screens/generate/types';
+import type { GenerateConfig, MemoryOption } from '../tui/screens/generate/types';
 import { BasePrimitive } from './BasePrimitive';
 import { CredentialPrimitive } from './CredentialPrimitive';
 import { buildAuthorizerConfigFromJwtConfig, createManagedOAuthCredential } from './auth-utils';
@@ -319,7 +319,7 @@ export class AgentPrimitive extends BasePrimitive<AddAgentOptions, RemovableReso
     const configIO = new ConfigIO({ baseDir: configBaseDir });
     const project = await configIO.readProjectSpec();
 
-    const generateConfig = {
+    const generateConfig: GenerateConfig = {
       projectName: options.name,
       buildType: options.buildType,
       sdk: options.framework,
@@ -330,6 +330,32 @@ export class AgentPrimitive extends BasePrimitive<AddAgentOptions, RemovableReso
       networkMode: options.networkMode as NetworkMode | undefined,
       subnets: parseCommaSeparatedList(options.subnets),
       securityGroups: parseCommaSeparatedList(options.securityGroups),
+      authorizerType: options.authorizerType,
+      ...(options.authorizerType === 'CUSTOM_JWT' &&
+        options.discoveryUrl && {
+          jwtConfig: {
+            discoveryUrl: options.discoveryUrl,
+            allowedAudience: options.allowedAudience
+              ? options.allowedAudience
+                  .split(',')
+                  .map(s => s.trim())
+                  .filter(Boolean)
+              : undefined,
+            allowedClients: options.allowedClients
+              ? options.allowedClients
+                  .split(',')
+                  .map(s => s.trim())
+                  .filter(Boolean)
+              : undefined,
+            allowedScopes: options.allowedScopes
+              ? options.allowedScopes
+                  .split(',')
+                  .map(s => s.trim())
+                  .filter(Boolean)
+              : undefined,
+            customClaims: options.customClaims,
+          },
+        }),
     };
 
     const agentPath = join(projectRoot, APP_DIR, options.name);

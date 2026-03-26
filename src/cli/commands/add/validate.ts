@@ -240,7 +240,7 @@ export function validateAddAgentOptions(options: AddAgentOptions): ValidationRes
     return { valid: false, error: vpcResult.error };
   }
 
-  // Validate authorizer options (BYO path only)
+  // Validate authorizer options (applies to both create and BYO paths)
   if (options.authorizerType) {
     const authResult = RuntimeAuthorizerTypeSchema.safeParse(options.authorizerType);
     if (!authResult.success) {
