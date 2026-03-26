@@ -2,6 +2,18 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.3.0-preview.9.0] - 2026-03-26
+
+### Added
+- feat: add runtime lifecycle configuration (idle timeout and max lifetime) (#653) (1ca0750)
+- feat: add EPISODIC memory strategy support (#651) (247de18)
+- feat: add agentcore import command for starter toolkit migration (#620) (2142c77)
+- feat: runtime inbound auth (Custom JWT) for agents (#657) (0b743db)
+
+### Fixed
+- fix: use aws-opentelemetry-distro and add input/output logging for LangGraph agent (#552) (f24609f)
+- fix: resolve picomatch high severity vulnerability (#663) (49e3d7c)
+
 ## [0.3.0-preview.8.0] - 2026-03-25
 
 ### Added
