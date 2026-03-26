@@ -3,6 +3,7 @@ import type { AgentCoreRegion, AgentEnvSpec, AwsDeploymentTarget, Credential, Me
 import { validateAwsCredentials } from '../../aws/account';
 import { LocalCdkProject } from '../../cdk/local-cdk-project';
 import { silentIoHost } from '../../cdk/toolkit-lib';
+import { ExecLogger } from '../../logging';
 import { bootstrapEnvironment, buildCdkProject, checkBootstrapNeeded, synthesizeCdk } from '../../operations/deploy';
 import { setupPythonProject } from '../../operations/python/setup';
 import { executePhase1, getDeployedTemplate } from './phase1-update';
@@ -97,43 +98,63 @@ function toCredentialSpec(cred: ParsedStarterToolkitConfig['credentials'][0]): C
 
 export async function handleImport(options: ImportOptions): Promise<ImportResult> {
   const { source, onProgress } = options;
+  const logger = new ExecLogger({ command: 'import' });
 
   try {
     // 1. Validate we're inside an existing agentcore project
+    logger.startStep('Validate project context');
     const configRoot = findConfigRoot(process.cwd());
     if (!configRoot) {
+      const error =
+        'No agentcore project found in the current directory.\nRun `agentcore create <name>` first, then run import from inside the project.';
+      logger.endStep('error', error);
+      logger.finalize(false);
       return {
         success: false,
-        error:
-          'No agentcore project found in the current directory.\nRun `agentcore create <name>` first, then run import from inside the project.',
+        error,
+        logPath: logger.getRelativeLogPath(),
       };
     }
 
     const projectRoot = path.dirname(configRoot);
     const configIO = new ConfigIO({ baseDir: configRoot });
+    logger.endStep('success');
 
     // 2. Read existing project config
+    logger.startStep('Read project config');
     const projectSpec = await configIO.readProjectSpec();
     const projectName = projectSpec.name;
+    logger.log(`Using existing project: ${projectName}`);
     onProgress?.(`Using existing project: ${projectName}`);
+    logger.endStep('success');
 
     // 3. Parse the YAML config (before target resolution so we can use YAML info if needed)
+    logger.startStep('Parse YAML');
+    logger.log(`Parsing ${source}...`);
     onProgress?.(`Parsing ${source}...`);
     const parsed = parseStarterToolkitYaml(source);
 
     if (parsed.agents.length === 0) {
-      return { success: false, error: 'No agents found in the YAML config' };
+      const error = 'No agents found in the YAML config';
+      logger.endStep('error', error);
+      logger.finalize(false);
+      return { success: false, error, logPath: logger.getRelativeLogPath() };
     }
 
+    logger.log(
+      `Found ${parsed.agents.length} agent(s), ${parsed.memories.length} memory(ies), ${parsed.credentials.length} credential(s)`
+    );
     onProgress?.(
       `Found ${parsed.agents.length} agent(s), ${parsed.memories.length} memory(ies), ${parsed.credentials.length} credential(s)`
     );
+    logger.endStep('success');
 
     // Check early whether there are any physical IDs to import.
     // This determines whether we need strict target resolution (account/region required).
     const hasPhysicalIds = parsed.agents.some(a => a.physicalAgentId) || parsed.memories.some(m => m.physicalMemoryId);
 
     // 4. Resolve deployment target
+    logger.startStep('Resolve deployment target');
     let target: AwsDeploymentTarget | undefined;
 
     if (hasPhysicalIds) {
@@ -150,10 +171,14 @@ export async function handleImport(options: ImportOptions): Promise<ImportResult
       // If no targets exist (CLI-mode create leaves targets empty), create one from YAML info
       if (targets.length === 0) {
         if (!parsed.awsTarget.account || !parsed.awsTarget.region) {
+          const error =
+            'No deployment targets found in project and YAML has no AWS account/region info.\nRun `agentcore deploy` first to set up a target, then re-run import.';
+          logger.endStep('error', error);
+          logger.finalize(false);
           return {
             success: false,
-            error:
-              'No deployment targets found in project and YAML has no AWS account/region info.\nRun `agentcore deploy` first to set up a target, then re-run import.',
+            error,
+            logPath: logger.getRelativeLogPath(),
           };
         }
         const defaultTarget: AwsDeploymentTarget = {
@@ -163,6 +188,7 @@ export async function handleImport(options: ImportOptions): Promise<ImportResult
         };
         await configIO.writeAWSDeploymentTargets([defaultTarget]);
         targets = [defaultTarget];
+        logger.log(`Created default target from YAML: ${defaultTarget.region}, ${defaultTarget.account}`);
         onProgress?.(`Created default target from YAML: ${defaultTarget.region}, ${defaultTarget.account}`);
       }
 
@@ -170,9 +196,13 @@ export async function handleImport(options: ImportOptions): Promise<ImportResult
         const found = targets.find(t => t.name === options.target);
         if (!found) {
           const names = targets.map(t => `  - ${t.name} (${t.region}, ${t.account})`).join('\n');
+          const error = `Target "${options.target}" not found. Available targets:\n${names}`;
+          logger.endStep('error', error);
+          logger.finalize(false);
           return {
             success: false,
-            error: `Target "${options.target}" not found. Available targets:\n${names}`,
+            error,
+            logPath: logger.getRelativeLogPath(),
           };
         }
         target = found;
@@ -180,25 +210,39 @@ export async function handleImport(options: ImportOptions): Promise<ImportResult
         target = targets[0]!;
       } else {
         const names = targets.map(t => `  - ${t.name} (${t.region}, ${t.account})`).join('\n');
+        const error = `Multiple deployment targets found. Specify one with --target:\n${names}`;
+        logger.endStep('error', error);
+        logger.finalize(false);
         return {
           success: false,
-          error: `Multiple deployment targets found. Specify one with --target:\n${names}`,
+          error,
+          logPath: logger.getRelativeLogPath(),
         };
       }
 
+      logger.log(`Using target: ${target.name} (${target.region}, ${target.account})`);
       onProgress?.(`Using target: ${target.name} (${target.region}, ${target.account})`);
 
       // Warn if YAML account/region differs from target
       if (parsed.awsTarget.account && parsed.awsTarget.account !== target.account) {
+        logger.log(
+          `Warning: YAML account (${parsed.awsTarget.account}) differs from target account (${target.account})`,
+          'warn'
+        );
         onProgress?.(
           `Warning: YAML account (${parsed.awsTarget.account}) differs from target account (${target.account})`
         );
       }
       if (parsed.awsTarget.region && parsed.awsTarget.region !== target.region) {
+        logger.log(
+          `Warning: YAML region (${parsed.awsTarget.region}) differs from target region (${target.region})`,
+          'warn'
+        );
         onProgress?.(`Warning: YAML region (${parsed.awsTarget.region}) differs from target region (${target.region})`);
       }
 
       // Validate AWS credentials
+      logger.log('Validating AWS credentials...');
       onProgress?.('Validating AWS credentials...');
       await validateAwsCredentials();
     } else {
@@ -212,8 +256,11 @@ export async function handleImport(options: ImportOptions): Promise<ImportResult
       }
       // If still no target, that's fine — we'll use 'default' for the stackName
     }
+    logger.endStep('success');
 
     // 5. Merge agents/memories into existing project config
+    logger.startStep('Merge agents and memories');
+    logger.log('Merging into existing project...');
     onProgress?.('Merging into existing project...');
     const existingAgentNames = new Set(projectSpec.agents.map(a => a.name));
     const newlyAddedAgentNames = new Set<string>();
@@ -222,16 +269,18 @@ export async function handleImport(options: ImportOptions): Promise<ImportResult
         projectSpec.agents.push(toAgentEnvSpec(agent));
         newlyAddedAgentNames.add(agent.name);
       } else {
+        logger.log(`Skipping agent "${agent.name}" (already exists in project)`);
         onProgress?.(`Skipping agent "${agent.name}" (already exists in project)`);
       }
     }
 
     for (const agent of parsed.agents) {
       if (agent.hasAuthorizerConfig) {
-        onProgress?.(
+        const warnMsg =
           `Warning: Agent "${agent.name}" has a custom JWT authorizer configured in the starter toolkit. ` +
-            `This is not automatically imported. To recreate it, run: agentcore add gateway --authorizer-type CUSTOM_JWT`
-        );
+          `This is not automatically imported. To recreate it, run: agentcore add gateway --authorizer-type CUSTOM_JWT`;
+        logger.log(warnMsg, 'warn');
+        onProgress?.(warnMsg);
       }
     }
 
@@ -242,6 +291,7 @@ export async function handleImport(options: ImportOptions): Promise<ImportResult
         (projectSpec.memories ??= []).push(toMemorySpec(mem));
         newlyAddedMemoryNames.add(mem.name);
       } else {
+        logger.log(`Skipping memory "${mem.name}" (already exists in project)`);
         onProgress?.(`Skipping memory "${mem.name}" (already exists in project)`);
       }
     }
@@ -250,11 +300,12 @@ export async function handleImport(options: ImportOptions): Promise<ImportResult
     if (parsed.memories.length > 0) {
       for (const mem of parsed.memories) {
         const cdkEnvVar = `MEMORY_${mem.name.toUpperCase().replace(/[.-]/g, '_')}_ID`;
-        onProgress?.(
+        const warnMsg =
           `Warning: Memory "${mem.name}" env var must be updated in your agent code:\n` +
-            `  \x1b[31m- MEMORY_ID = os.getenv("BEDROCK_AGENTCORE_MEMORY_ID")\x1b[0m\n` +
-            `  \x1b[32m+ MEMORY_ID = os.getenv("${cdkEnvVar}")\x1b[0m`
-        );
+          `  \x1b[31m- MEMORY_ID = os.getenv("BEDROCK_AGENTCORE_MEMORY_ID")\x1b[0m\n` +
+          `  \x1b[32m+ MEMORY_ID = os.getenv("${cdkEnvVar}")\x1b[0m`;
+        logger.log(`Memory "${mem.name}" env var must be updated: use ${cdkEnvVar}`, 'warn');
+        onProgress?.(warnMsg);
       }
     }
 
@@ -262,18 +313,23 @@ export async function handleImport(options: ImportOptions): Promise<ImportResult
     for (const cred of parsed.credentials) {
       if (!existingCredentialNames.has(cred.name)) {
         (projectSpec.credentials ??= []).push(toCredentialSpec(cred));
+        logger.log(`Added credential "${cred.name}" (${cred.providerType})`);
         onProgress?.(`Added credential "${cred.name}" (${cred.providerType})`);
       } else {
+        logger.log(`Skipping credential "${cred.name}" (already exists in project)`);
         onProgress?.(`Skipping credential "${cred.name}" (already exists in project)`);
       }
     }
 
     // Write updated project config
     await configIO.writeProjectSpec(projectSpec);
+    logger.endStep('success');
 
     // 6. Copy agent source code to app/<name>/ (only for newly added agents)
+    logger.startStep('Copy agent source and setup Python');
     for (const agent of parsed.agents) {
       if (existingAgentNames.has(agent.name)) {
+        logger.log(`Skipping source copy for agent "${agent.name}" (already exists in project)`);
         onProgress?.(`Skipping source copy for agent "${agent.name}" (already exists in project)`);
         continue;
       }
@@ -283,6 +339,7 @@ export async function handleImport(options: ImportOptions): Promise<ImportResult
       }
 
       if (agent.sourcePath && fs.existsSync(agent.sourcePath)) {
+        logger.log(`Copying agent source from ${agent.sourcePath} to ./${APP_DIR}/${agent.name}`);
         onProgress?.(`Copying agent source from ${agent.sourcePath} to ./${APP_DIR}/${agent.name}`);
         copyDirRecursive(agent.sourcePath, appDir);
 
@@ -301,10 +358,12 @@ export async function handleImport(options: ImportOptions): Promise<ImportResult
             const toolkitProjectDir = path.dirname(agent.sourcePath);
             const toolkitDockerfile = path.join(toolkitProjectDir, '.bedrock_agentcore', agent.name, 'Dockerfile');
             if (fs.existsSync(toolkitDockerfile)) {
-              onProgress?.(`Copying Dockerfile from starter toolkit config`);
+              logger.log('Copying Dockerfile from starter toolkit config');
+            onProgress?.(`Copying Dockerfile from starter toolkit config`);
               fs.copyFileSync(toolkitDockerfile, destDockerfile);
             } else {
               // Generate a minimal Dockerfile for Container builds
+              logger.log('Generating Dockerfile for Container build');
               onProgress?.(`Generating Dockerfile for Container build`);
               const entryModule = path.basename(agent.entrypoint, '.py');
               fs.writeFileSync(
@@ -342,7 +401,8 @@ export async function handleImport(options: ImportOptions): Promise<ImportResult
         // Create a minimal pyproject.toml if no source path available
         const pyprojectPath = path.join(appDir, 'pyproject.toml');
         if (!fs.existsSync(pyprojectPath)) {
-          onProgress?.(`Creating minimal pyproject.toml at ${appDir}`);
+          logger.log(`Creating minimal pyproject.toml at ${appDir}`);
+        onProgress?.(`Creating minimal pyproject.toml at ${appDir}`);
           fs.writeFileSync(
             pyprojectPath,
             [
@@ -370,20 +430,26 @@ export async function handleImport(options: ImportOptions): Promise<ImportResult
         fixPyprojectForSetuptools(path.join(appDir, 'pyproject.toml'));
 
         // Set up Python environment (venv + install dependencies)
+        logger.log(`Setting up Python environment for ${agent.name}...`);
         onProgress?.(`Setting up Python environment for ${agent.name}...`);
         const setupResult = await setupPythonProject({ projectDir: appDir });
         if (setupResult.status === 'success') {
+          logger.log(`Python environment ready for ${agent.name}`);
           onProgress?.(`Python environment ready for ${agent.name}`);
         } else if (setupResult.status === 'uv_not_found') {
+          logger.log(`Warning: uv not found — run "uv sync" manually in ${APP_DIR}/${agent.name}`, 'warn');
           onProgress?.(`Warning: uv not found — run "uv sync" manually in ${APP_DIR}/${agent.name}`);
         } else {
+          logger.log(`Warning: Python setup failed for ${agent.name}: ${setupResult.error ?? setupResult.status}`, 'warn');
           onProgress?.(`Warning: Python setup failed for ${agent.name}: ${setupResult.error ?? setupResult.status}`);
         }
       }
     }
+    logger.endStep('success');
 
     // 7. Determine which resources need importing (have physical IDs).
     // Only import newly added resources — skip ones already in the project.
+    logger.startStep('Determine resources to import');
     const agentsToImport = parsed.agents.filter(a => {
       return a.physicalAgentId && newlyAddedAgentNames.has(a.name);
     });
@@ -394,31 +460,43 @@ export async function handleImport(options: ImportOptions): Promise<ImportResult
     const stackName = toStackName(projectName, targetName);
 
     if (agentsToImport.length === 0 && memoriesToImport.length === 0) {
-      onProgress?.(
+      const msg =
         'No deployed resources found to import (no agent_id or memory_id in YAML). ' +
-          'Run `agentcore deploy` to create new resources.'
-      );
+        'Run `agentcore deploy` to create new resources.';
+      logger.log(msg);
+      onProgress?.(msg);
+      logger.endStep('success');
+      logger.finalize(true);
       return {
         success: true,
         projectSpec,
         importedAgents: [],
         importedMemories: [],
         stackName,
+        logPath: logger.getRelativeLogPath(),
       };
     }
 
+    logger.log(`Will import: ${agentsToImport.length} agent(s), ${memoriesToImport.length} memory(ies)`);
     onProgress?.(`Will import: ${agentsToImport.length} agent(s), ${memoriesToImport.length} memory(ies)`);
 
     // At this point we know hasPhysicalIds is true, so target must be defined.
     if (!target) {
-      return { success: false, error: 'No deployment target available for import.' };
+      const error = 'No deployment target available for import.';
+      logger.endStep('error', error);
+      logger.finalize(false);
+      return { success: false, error, logPath: logger.getRelativeLogPath() };
     }
+    logger.endStep('success');
 
     // 8. Build and synth CDK to get the full template
+    logger.startStep('Build and synth CDK');
+    logger.log('Building CDK project...');
     onProgress?.('Building CDK project...');
     const cdkProject = new LocalCdkProject(projectRoot);
     await buildCdkProject(cdkProject);
 
+    logger.log('Synthesizing CloudFormation template...');
     onProgress?.('Synthesizing CloudFormation template...');
     const synthResult = await synthesizeCdk(cdkProject, { ioHost: silentIoHost });
     const { toolkitWrapper } = synthResult;
@@ -436,27 +514,39 @@ export async function handleImport(options: ImportOptions): Promise<ImportResult
       const files = fs.readdirSync(assemblyDirectory).filter((f: string) => f.endsWith('.template.json'));
       if (files.length === 0) {
         await toolkitWrapper.dispose();
-        return { success: false, error: 'No CloudFormation template found in CDK assembly' };
+        const error = 'No CloudFormation template found in CDK assembly';
+        logger.endStep('error', error);
+        logger.finalize(false);
+        return { success: false, error, logPath: logger.getRelativeLogPath() };
       }
       synthTemplate = JSON.parse(fs.readFileSync(path.join(assemblyDirectory, files[0]!), 'utf-8')) as CfnTemplate;
     }
 
     // 8b. Check CDK bootstrap and auto-bootstrap if needed (before disposing toolkit wrapper)
+    logger.log('Checking CDK bootstrap status...');
     onProgress?.('Checking CDK bootstrap status...');
     const bootstrapCheck = await checkBootstrapNeeded([target]);
     if (bootstrapCheck.needsBootstrap) {
+      logger.log('AWS environment not bootstrapped. Bootstrapping...');
       onProgress?.('AWS environment not bootstrapped. Bootstrapping...');
       await bootstrapEnvironment(toolkitWrapper, target);
+      logger.log('CDK bootstrap complete');
       onProgress?.('CDK bootstrap complete');
     }
 
     await toolkitWrapper.dispose();
+    logger.endStep('success');
 
     // 8c. Publish CDK assets to S3 (source zips needed by CodeBuild during Phase 1)
+    logger.startStep('Publish CDK assets');
+    logger.log('Publishing CDK assets to S3...');
     onProgress?.('Publishing CDK assets to S3...');
     await publishCdkAssets(assemblyDirectory, target.region, onProgress);
+    logger.endStep('success');
 
     // 9. Phase 1: UPDATE — deploy companion resources
+    logger.startStep('Phase 1: Deploy companion resources');
+    logger.log('Phase 1: Deploying companion resources (IAM roles, policies)...');
     onProgress?.('Phase 1: Deploying companion resources (IAM roles, policies)...');
     const phase1Result = await executePhase1({
       region: target.region,
@@ -466,14 +556,23 @@ export async function handleImport(options: ImportOptions): Promise<ImportResult
     });
 
     if (!phase1Result.success) {
-      return { success: false, error: `Phase 1 failed: ${phase1Result.error}` };
+      const error = `Phase 1 failed: ${phase1Result.error}`;
+      logger.endStep('error', error);
+      logger.finalize(false);
+      return { success: false, error, logPath: logger.getRelativeLogPath() };
     }
+    logger.endStep('success');
 
     // 10. Phase 2: IMPORT — adopt primary resources
+    logger.startStep('Phase 2: Import resources');
+    logger.log('Reading deployed template...');
     onProgress?.('Reading deployed template...');
     const deployedTemplate = await getDeployedTemplate(target.region, stackName);
     if (!deployedTemplate) {
-      return { success: false, error: 'Could not read deployed template after Phase 1' };
+      const error = 'Could not read deployed template after Phase 1';
+      logger.endStep('error', error);
+      logger.finalize(false);
+      return { success: false, error, logPath: logger.getRelativeLogPath() };
     }
 
     // Build ResourcesToImport list
@@ -496,6 +595,7 @@ export async function handleImport(options: ImportOptions): Promise<ImportResult
       }
 
       if (!logicalId) {
+        logger.log(`Warning: Could not find logical ID for agent ${agent.name}, skipping`, 'warn');
         onProgress?.(`Warning: Could not find logical ID for agent ${agent.name}, skipping`);
         continue;
       }
@@ -525,6 +625,7 @@ export async function handleImport(options: ImportOptions): Promise<ImportResult
       }
 
       if (!logicalId) {
+        logger.log(`Warning: Could not find logical ID for memory ${memory.name}, skipping`, 'warn');
         onProgress?.(`Warning: Could not find logical ID for memory ${memory.name}, skipping`);
         continue;
       }
@@ -537,16 +638,21 @@ export async function handleImport(options: ImportOptions): Promise<ImportResult
     }
 
     if (resourcesToImport.length === 0) {
+      logger.log('No resources could be matched for import');
       onProgress?.('No resources could be matched for import');
+      logger.endStep('success');
+      logger.finalize(true);
       return {
         success: true,
         projectSpec,
         importedAgents: [],
         importedMemories: [],
         stackName,
+        logPath: logger.getRelativeLogPath(),
       };
     }
 
+    logger.log(`Phase 2: Importing ${resourcesToImport.length} resource(s) via CloudFormation IMPORT...`);
     onProgress?.(`Phase 2: Importing ${resourcesToImport.length} resource(s) via CloudFormation IMPORT...`);
     const phase2Result = await executePhase2({
       region: target.region,
@@ -559,10 +665,16 @@ export async function handleImport(options: ImportOptions): Promise<ImportResult
     });
 
     if (!phase2Result.success) {
-      return { success: false, error: `Phase 2 failed: ${phase2Result.error}` };
+      const error = `Phase 2 failed: ${phase2Result.error}`;
+      logger.endStep('error', error);
+      logger.finalize(false);
+      return { success: false, error, logPath: logger.getRelativeLogPath() };
     }
+    logger.endStep('success');
 
     // 11. Update deployed state
+    logger.startStep('Update deployed state');
+    logger.log('Updating deployed state...');
     onProgress?.('Updating deployed state...');
     /* eslint-disable @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-argument, @typescript-eslint/no-explicit-any */
     const existingState: any = await configIO.readDeployedState().catch(() => ({ targets: {} }));
@@ -602,17 +714,22 @@ export async function handleImport(options: ImportOptions): Promise<ImportResult
     existingState.targets[targetName] = targetState;
     await configIO.writeDeployedState(existingState);
     /* eslint-enable @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-argument, @typescript-eslint/no-explicit-any */
+    logger.endStep('success');
 
+    logger.finalize(true);
     return {
       success: true,
       projectSpec,
       importedAgents: agentsToImport.map(a => a.name),
       importedMemories: memoriesToImport.map(m => m.name),
       stackName,
+      logPath: logger.getRelativeLogPath(),
     };
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : String(err);
-    return { success: false, error: message };
+    logger.log(message, 'error');
+    logger.finalize(false);
+    return { success: false, error: message, logPath: logger.getRelativeLogPath() };
   }
 }
 

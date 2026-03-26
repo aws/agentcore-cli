@@ -78,4 +78,5 @@ export interface ImportResult {
   importedAgents?: string[];
   importedMemories?: string[];
   stackName?: string;
+  logPath?: string;
 }

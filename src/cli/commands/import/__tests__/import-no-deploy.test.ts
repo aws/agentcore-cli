@@ -46,6 +46,17 @@ vi.mock('../../../cdk/toolkit-lib', () => ({
   silentIoHost: {},
 }));
 
+vi.mock('../../../logging', () => ({
+  ExecLogger: class MockExecLogger {
+    startStep = vi.fn();
+    endStep = vi.fn();
+    log = vi.fn();
+    finalize = vi.fn();
+    getRelativeLogPath = vi.fn().mockReturnValue('agentcore/.cli/logs/import/import-mock.log');
+    logFilePath = 'agentcore/.cli/logs/import/import-mock.log';
+  },
+}));
+
 const mockBuildCdkProject = vi.fn();
 const mockSynthesizeCdk = vi.fn();
 vi.mock('../../../operations/deploy', () => ({
