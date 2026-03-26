@@ -1,5 +1,12 @@
 import { APP_DIR, ConfigIO, findConfigRoot } from '../../../lib';
-import type { AgentCoreRegion, AgentEnvSpec, AwsDeploymentTarget, Credential, Memory } from '../../../schema';
+import type {
+  AgentCoreProjectSpec,
+  AgentCoreRegion,
+  AgentEnvSpec,
+  AwsDeploymentTarget,
+  Credential,
+  Memory,
+} from '../../../schema';
 import { validateAwsCredentials } from '../../aws/account';
 import { LocalCdkProject } from '../../cdk/local-cdk-project';
 import { silentIoHost } from '../../cdk/toolkit-lib';
@@ -100,6 +107,22 @@ export async function handleImport(options: ImportOptions): Promise<ImportResult
   const { source, onProgress } = options;
   const logger = new ExecLogger({ command: 'import' });
 
+  // Rollback state — hoisted so the catch block can access it
+  let configIO: ConfigIO | undefined;
+  let configSnapshot: AgentCoreProjectSpec;
+  let configWritten = false;
+
+  const rollbackConfig = async () => {
+    if (!configWritten || !configIO) return;
+    try {
+      await configIO.writeProjectSpec(configSnapshot);
+      onProgress?.('Rolling back config changes due to failure...');
+      logger.log('Rolled back config to pre-import state');
+    } catch (rollbackErr) {
+      logger.log(`Warning: config rollback failed: ${String(rollbackErr)}`, 'error');
+    }
+  };
+
   try {
     // 1. Validate we're inside an existing agentcore project
     logger.startStep('Validate project context');
@@ -117,7 +140,7 @@ export async function handleImport(options: ImportOptions): Promise<ImportResult
     }
 
     const projectRoot = path.dirname(configRoot);
-    const configIO = new ConfigIO({ baseDir: configRoot });
+    configIO = new ConfigIO({ baseDir: configRoot });
     logger.endStep('success');
 
     // 2. Read existing project config
@@ -127,6 +150,9 @@ export async function handleImport(options: ImportOptions): Promise<ImportResult
     logger.log(`Using existing project: ${projectName}`);
     onProgress?.(`Using existing project: ${projectName}`);
     logger.endStep('success');
+
+    // Snapshot for rollback if CDK/CFN phases fail after config is written
+    configSnapshot = JSON.parse(JSON.stringify(projectSpec)) as AgentCoreProjectSpec;
 
     // 3. Parse the YAML config (before target resolution so we can use YAML info if needed)
     logger.startStep('Parse YAML');
@@ -323,6 +349,7 @@ export async function handleImport(options: ImportOptions): Promise<ImportResult
 
     // Write updated project config
     await configIO.writeProjectSpec(projectSpec);
+    configWritten = true;
     logger.endStep('success');
 
     // 6. Copy agent source code to app/<name>/ (only for newly added agents)
@@ -359,7 +386,7 @@ export async function handleImport(options: ImportOptions): Promise<ImportResult
             const toolkitDockerfile = path.join(toolkitProjectDir, '.bedrock_agentcore', agent.name, 'Dockerfile');
             if (fs.existsSync(toolkitDockerfile)) {
               logger.log('Copying Dockerfile from starter toolkit config');
-            onProgress?.(`Copying Dockerfile from starter toolkit config`);
+              onProgress?.(`Copying Dockerfile from starter toolkit config`);
               fs.copyFileSync(toolkitDockerfile, destDockerfile);
             } else {
               // Generate a minimal Dockerfile for Container builds
@@ -402,7 +429,7 @@ export async function handleImport(options: ImportOptions): Promise<ImportResult
         const pyprojectPath = path.join(appDir, 'pyproject.toml');
         if (!fs.existsSync(pyprojectPath)) {
           logger.log(`Creating minimal pyproject.toml at ${appDir}`);
-        onProgress?.(`Creating minimal pyproject.toml at ${appDir}`);
+          onProgress?.(`Creating minimal pyproject.toml at ${appDir}`);
           fs.writeFileSync(
             pyprojectPath,
             [
@@ -440,7 +467,10 @@ export async function handleImport(options: ImportOptions): Promise<ImportResult
           logger.log(`Warning: uv not found — run "uv sync" manually in ${APP_DIR}/${agent.name}`, 'warn');
           onProgress?.(`Warning: uv not found — run "uv sync" manually in ${APP_DIR}/${agent.name}`);
         } else {
-          logger.log(`Warning: Python setup failed for ${agent.name}: ${setupResult.error ?? setupResult.status}`, 'warn');
+          logger.log(
+            `Warning: Python setup failed for ${agent.name}: ${setupResult.error ?? setupResult.status}`,
+            'warn'
+          );
           onProgress?.(`Warning: Python setup failed for ${agent.name}: ${setupResult.error ?? setupResult.status}`);
         }
       }
@@ -514,6 +544,7 @@ export async function handleImport(options: ImportOptions): Promise<ImportResult
       const files = fs.readdirSync(assemblyDirectory).filter((f: string) => f.endsWith('.template.json'));
       if (files.length === 0) {
         await toolkitWrapper.dispose();
+        await rollbackConfig();
         const error = 'No CloudFormation template found in CDK assembly';
         logger.endStep('error', error);
         logger.finalize(false);
@@ -557,6 +588,7 @@ export async function handleImport(options: ImportOptions): Promise<ImportResult
 
     if (!phase1Result.success) {
       const error = `Phase 1 failed: ${phase1Result.error}`;
+      await rollbackConfig();
       logger.endStep('error', error);
       logger.finalize(false);
       return { success: false, error, logPath: logger.getRelativeLogPath() };
@@ -570,6 +602,7 @@ export async function handleImport(options: ImportOptions): Promise<ImportResult
     const deployedTemplate = await getDeployedTemplate(target.region, stackName);
     if (!deployedTemplate) {
       const error = 'Could not read deployed template after Phase 1';
+      await rollbackConfig();
       logger.endStep('error', error);
       logger.finalize(false);
       return { success: false, error, logPath: logger.getRelativeLogPath() };
@@ -666,6 +699,7 @@ export async function handleImport(options: ImportOptions): Promise<ImportResult
 
     if (!phase2Result.success) {
       const error = `Phase 2 failed: ${phase2Result.error}`;
+      await rollbackConfig();
       logger.endStep('error', error);
       logger.finalize(false);
       return { success: false, error, logPath: logger.getRelativeLogPath() };
@@ -727,6 +761,7 @@ export async function handleImport(options: ImportOptions): Promise<ImportResult
     };
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : String(err);
+    await rollbackConfig();
     logger.log(message, 'error');
     logger.finalize(false);
     return { success: false, error: message, logPath: logger.getRelativeLogPath() };
