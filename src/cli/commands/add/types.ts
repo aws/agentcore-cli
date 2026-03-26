@@ -33,8 +33,8 @@ export interface AddAgentOptions extends VpcOptions {
   customClaims?: string;
   clientId?: string;
   clientSecret?: string;
-  idleTimeout?: number;
-  maxLifetime?: number;
+  idleTimeout?: number | string;
+  maxLifetime?: number | string;
   json?: boolean;
 }
 

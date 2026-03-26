@@ -54,9 +54,9 @@ export interface GenerateConfig {
   authorizerType?: RuntimeAuthorizerType;
   /** JWT config for CUSTOM_JWT authorizer */
   jwtConfig?: JwtConfigOptions;
-  /** Idle session timeout in seconds (60-28800) */
+  /** Idle session timeout in seconds (LIFECYCLE_TIMEOUT_MIN-LIFECYCLE_TIMEOUT_MAX) */
   idleRuntimeSessionTimeout?: number;
-  /** Max instance lifetime in seconds (60-28800) */
+  /** Max instance lifetime in seconds (LIFECYCLE_TIMEOUT_MIN-LIFECYCLE_TIMEOUT_MAX) */
   maxLifetime?: number;
 }
 

@@ -12,7 +12,7 @@ import type {
   SDKFramework,
   TargetLanguage,
 } from '../../schema';
-import { AgentEnvSpecSchema, CREDENTIAL_PROVIDERS } from '../../schema';
+import { AgentEnvSpecSchema, CREDENTIAL_PROVIDERS, LIFECYCLE_TIMEOUT_MAX, LIFECYCLE_TIMEOUT_MIN } from '../../schema';
 import type { AddAgentOptions as CLIAddAgentOptions } from '../commands/add/types';
 import { validateAddAgentOptions } from '../commands/add/validate';
 import type { VpcOptions } from '../commands/shared/vpc-utils';
@@ -223,8 +223,14 @@ export class AgentPrimitive extends BasePrimitive<AddAgentOptions, RemovableReso
       .option('--custom-claims <json>', 'Custom claim validations as JSON array (for CUSTOM_JWT) [non-interactive]')
       .option('--client-id <id>', 'OAuth client ID for agent bearer token [non-interactive]')
       .option('--client-secret <secret>', 'OAuth client secret [non-interactive]')
-      .option('--idle-timeout <seconds>', 'Idle session timeout in seconds (60-28800) [non-interactive]')
-      .option('--max-lifetime <seconds>', 'Max instance lifetime in seconds (60-28800) [non-interactive]')
+      .option(
+        '--idle-timeout <seconds>',
+        `Idle session timeout in seconds (${LIFECYCLE_TIMEOUT_MIN}-${LIFECYCLE_TIMEOUT_MAX}) [non-interactive]`
+      )
+      .option(
+        '--max-lifetime <seconds>',
+        `Max instance lifetime in seconds (${LIFECYCLE_TIMEOUT_MIN}-${LIFECYCLE_TIMEOUT_MAX}) [non-interactive]`
+      )
       .option('--json', 'Output as JSON [non-interactive]')
       .action(async options => {
         if (!findConfigRoot()) {

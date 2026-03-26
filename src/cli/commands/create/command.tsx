@@ -7,6 +7,7 @@ import type {
   SDKFramework,
   TargetLanguage,
 } from '../../../schema';
+import { LIFECYCLE_TIMEOUT_MAX, LIFECYCLE_TIMEOUT_MIN } from '../../../schema';
 import { getErrorMessage } from '../../errors';
 import { COMMAND_DESCRIPTIONS } from '../../tui/copy';
 import { CreateScreen } from '../../tui/screens/create';
@@ -178,8 +179,14 @@ export const registerCreate = (program: Command) => {
     .option('--network-mode <mode>', 'Network mode (PUBLIC, VPC) [non-interactive]')
     .option('--subnets <ids>', 'Comma-separated subnet IDs (required for VPC mode) [non-interactive]')
     .option('--security-groups <ids>', 'Comma-separated security group IDs (required for VPC mode) [non-interactive]')
-    .option('--idle-timeout <seconds>', 'Idle session timeout in seconds (60-28800) [non-interactive]')
-    .option('--max-lifetime <seconds>', 'Max instance lifetime in seconds (60-28800) [non-interactive]')
+    .option(
+      '--idle-timeout <seconds>',
+      `Idle session timeout in seconds (${LIFECYCLE_TIMEOUT_MIN}-${LIFECYCLE_TIMEOUT_MAX}) [non-interactive]`
+    )
+    .option(
+      '--max-lifetime <seconds>',
+      `Max instance lifetime in seconds (${LIFECYCLE_TIMEOUT_MIN}-${LIFECYCLE_TIMEOUT_MAX}) [non-interactive]`
+    )
     .option('--output-dir <dir>', 'Output directory (default: current directory) [non-interactive]')
     .option('--skip-git', 'Skip git repository initialization [non-interactive]')
     .option('--skip-python-setup', 'Skip Python virtual environment setup [non-interactive]')

@@ -141,16 +141,21 @@ export const RequestHeaderAllowlistSchema = z
   )
   .max(MAX_HEADER_ALLOWLIST_SIZE, `Maximum ${MAX_HEADER_ALLOWLIST_SIZE} headers allowed`);
 
+/** Minimum allowed value for lifecycle timeout fields (seconds). */
+export const LIFECYCLE_TIMEOUT_MIN = 60;
+/** Maximum allowed value for lifecycle timeout fields (seconds). */
+export const LIFECYCLE_TIMEOUT_MAX = 28800;
+
 /**
  * Lifecycle configuration for runtime sessions.
  * Controls idle timeout and max lifetime of runtime instances.
  */
 export const LifecycleConfigurationSchema = z
   .object({
-    /** Idle session timeout in seconds (60-28800). API default: 900s. */
-    idleRuntimeSessionTimeout: z.number().int().min(60).max(28800).optional(),
-    /** Max instance lifetime in seconds (60-28800). API default: 28800s. */
-    maxLifetime: z.number().int().min(60).max(28800).optional(),
+    /** Idle session timeout in seconds. API default: 900s. */
+    idleRuntimeSessionTimeout: z.number().int().min(LIFECYCLE_TIMEOUT_MIN).max(LIFECYCLE_TIMEOUT_MAX).optional(),
+    /** Max instance lifetime in seconds. API default: 28800s. */
+    maxLifetime: z.number().int().min(LIFECYCLE_TIMEOUT_MIN).max(LIFECYCLE_TIMEOUT_MAX).optional(),
   })
   .superRefine((data, ctx) => {
     if (data.idleRuntimeSessionTimeout !== undefined && data.maxLifetime !== undefined) {

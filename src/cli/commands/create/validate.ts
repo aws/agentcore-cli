@@ -10,7 +10,7 @@ import {
   matchEnumValue,
 } from '../../../schema';
 import type { ProtocolMode } from '../../../schema';
-import { validateLifecycleOptions } from '../shared/lifecycle-utils';
+import { parseAndValidateLifecycleOptions } from '../shared/lifecycle-utils';
 import { validateVpcOptions } from '../shared/vpc-utils';
 import type { CreateOptions } from './types';
 import { existsSync } from 'fs';
@@ -201,9 +201,11 @@ export function validateCreateOptions(options: CreateOptions, cwd?: string): Val
     return { valid: false, error: vpcResult.error };
   }
 
-  // Validate lifecycle configuration
-  const lifecycleResult = validateLifecycleOptions(options);
+  // Parse and validate lifecycle configuration
+  const lifecycleResult = parseAndValidateLifecycleOptions(options);
   if (!lifecycleResult.valid) return lifecycleResult;
+  if (lifecycleResult.idleTimeout !== undefined) options.idleTimeout = lifecycleResult.idleTimeout;
+  if (lifecycleResult.maxLifetime !== undefined) options.maxLifetime = lifecycleResult.maxLifetime;
 
   return { valid: true };
 }

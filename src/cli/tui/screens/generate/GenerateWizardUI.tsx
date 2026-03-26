@@ -1,5 +1,5 @@
 import type { ModelProvider, NetworkMode, RuntimeAuthorizerType } from '../../../../schema';
-import { DEFAULT_MODEL_IDS, ProjectNameSchema } from '../../../../schema';
+import { DEFAULT_MODEL_IDS, LIFECYCLE_TIMEOUT_MAX, LIFECYCLE_TIMEOUT_MIN, ProjectNameSchema } from '../../../../schema';
 import { parseAndNormalizeHeaders, validateHeaderAllowlist } from '../../../commands/shared/header-utils';
 import { validateSecurityGroupIds, validateSubnetIds } from '../../../commands/shared/vpc-utils';
 import { computeDefaultCredentialEnvVarName } from '../../../primitives/credential-utils';
@@ -289,13 +289,13 @@ export function GenerateWizardUI({
 
       {isIdleTimeoutStep && (
         <TextInput
-          prompt="Idle session timeout in seconds (60-28800, or press Enter to skip)"
+          prompt={`Idle session timeout in seconds (${LIFECYCLE_TIMEOUT_MIN}-${LIFECYCLE_TIMEOUT_MAX}, or press Enter to skip)`}
           initialValue=""
           customValidation={value => {
             if (!value) return true;
             const n = Number(value);
-            if (isNaN(n) || !Number.isInteger(n) || n < 60 || n > 28800)
-              return 'Must be an integer between 60 and 28800';
+            if (isNaN(n) || !Number.isInteger(n) || n < LIFECYCLE_TIMEOUT_MIN || n > LIFECYCLE_TIMEOUT_MAX)
+              return `Must be an integer between ${LIFECYCLE_TIMEOUT_MIN} and ${LIFECYCLE_TIMEOUT_MAX}`;
             return true;
           }}
           onSubmit={value => {
@@ -311,13 +311,13 @@ export function GenerateWizardUI({
 
       {isMaxLifetimeStep && (
         <TextInput
-          prompt="Max instance lifetime in seconds (60-28800, or press Enter to skip)"
+          prompt={`Max instance lifetime in seconds (${LIFECYCLE_TIMEOUT_MIN}-${LIFECYCLE_TIMEOUT_MAX}, or press Enter to skip)`}
           initialValue=""
           customValidation={value => {
             if (!value) return true;
             const n = Number(value);
-            if (isNaN(n) || !Number.isInteger(n) || n < 60 || n > 28800)
-              return 'Must be an integer between 60 and 28800';
+            if (isNaN(n) || !Number.isInteger(n) || n < LIFECYCLE_TIMEOUT_MIN || n > LIFECYCLE_TIMEOUT_MAX)
+              return `Must be an integer between ${LIFECYCLE_TIMEOUT_MIN} and ${LIFECYCLE_TIMEOUT_MAX}`;
             if (wizard.config.idleRuntimeSessionTimeout !== undefined && n < wizard.config.idleRuntimeSessionTimeout) {
               return 'Must be >= idle timeout';
             }

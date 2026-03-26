@@ -1,6 +1,6 @@
 import { APP_DIR, ConfigIO } from '../../../../lib';
 import type { ModelProvider, NetworkMode, RuntimeAuthorizerType, SDKFramework } from '../../../../schema';
-import { AgentNameSchema, DEFAULT_MODEL_IDS } from '../../../../schema';
+import { AgentNameSchema, DEFAULT_MODEL_IDS, LIFECYCLE_TIMEOUT_MAX, LIFECYCLE_TIMEOUT_MIN } from '../../../../schema';
 import { listBedrockAgentAliases, listBedrockAgents } from '../../../aws/bedrock-import';
 import type { BedrockAgentSummary, BedrockAliasSummary } from '../../../aws/bedrock-import-types';
 import { parseAndNormalizeHeaders, validateHeaderAllowlist } from '../../../commands/shared/header-utils';
@@ -1096,13 +1096,13 @@ export function AddAgentScreen({ existingAgentNames, onComplete, onExit }: AddAg
 
         {byoStep === 'idleTimeout' && (
           <TextInput
-            prompt="Idle session timeout in seconds (60-28800, or press Enter to skip)"
+            prompt={`Idle session timeout in seconds (${LIFECYCLE_TIMEOUT_MIN}-${LIFECYCLE_TIMEOUT_MAX}, or press Enter to skip)`}
             initialValue=""
             customValidation={value => {
               if (!value) return true;
               const n = Number(value);
-              if (isNaN(n) || !Number.isInteger(n) || n < 60 || n > 28800)
-                return 'Must be an integer between 60 and 28800';
+              if (isNaN(n) || !Number.isInteger(n) || n < LIFECYCLE_TIMEOUT_MIN || n > LIFECYCLE_TIMEOUT_MAX)
+                return `Must be an integer between ${LIFECYCLE_TIMEOUT_MIN} and ${LIFECYCLE_TIMEOUT_MAX}`;
               return true;
             }}
             onSubmit={value => {
@@ -1115,13 +1115,13 @@ export function AddAgentScreen({ existingAgentNames, onComplete, onExit }: AddAg
 
         {byoStep === 'maxLifetime' && (
           <TextInput
-            prompt="Max instance lifetime in seconds (60-28800, or press Enter to skip)"
+            prompt={`Max instance lifetime in seconds (${LIFECYCLE_TIMEOUT_MIN}-${LIFECYCLE_TIMEOUT_MAX}, or press Enter to skip)`}
             initialValue=""
             customValidation={value => {
               if (!value) return true;
               const n = Number(value);
-              if (isNaN(n) || !Number.isInteger(n) || n < 60 || n > 28800)
-                return 'Must be an integer between 60 and 28800';
+              if (isNaN(n) || !Number.isInteger(n) || n < LIFECYCLE_TIMEOUT_MIN || n > LIFECYCLE_TIMEOUT_MAX)
+                return `Must be an integer between ${LIFECYCLE_TIMEOUT_MIN} and ${LIFECYCLE_TIMEOUT_MAX}`;
               if (byoConfig.idleTimeout) {
                 const idle = Number(byoConfig.idleTimeout);
                 if (!isNaN(idle) && n < idle) return 'Must be >= idle timeout';
