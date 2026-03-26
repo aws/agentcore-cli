@@ -81,8 +81,14 @@ export const registerImport = (program: Command) => {
         console.log(`  ${cyan}agentcore status${reset}     ${dim}Verify resource status${reset}`);
         console.log(`  ${cyan}agentcore invoke${reset}     ${dim}Test your agent${reset}`);
         console.log('');
+        if (result.logPath) {
+          console.log(`Log: ${result.logPath}`);
+        }
       } else {
         console.error(`\n\x1b[31m[error]${reset} Import failed: ${result.error}`);
+        if (result.logPath) {
+          console.error(`Log: ${result.logPath}`);
+        }
         process.exit(1);
       }
     });
