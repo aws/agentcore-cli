@@ -148,7 +148,7 @@ describe('add memory command', () => {
 
       const episodic = memory?.strategies?.find((s: { type: string }) => s.type === 'EPISODIC');
       expect(episodic?.namespaces).toEqual(['/episodes/{actorId}/{sessionId}']);
-      expect(episodic?.reflectionNamespaces).toEqual(['/reflections/{actorId}']);
+      expect(episodic?.reflectionNamespaces).toEqual(['/episodes/{actorId}']);
     });
 
     it('creates memory with EPISODIC strategy including default namespaces and reflectionNamespaces', async () => {
@@ -163,7 +163,7 @@ describe('add memory command', () => {
       const episodic = memory?.strategies?.find((s: { type: string }) => s.type === 'EPISODIC');
       expect(episodic).toBeTruthy();
       expect(episodic?.namespaces).toEqual(['/episodes/{actorId}/{sessionId}']);
-      expect(episodic?.reflectionNamespaces).toEqual(['/reflections/{actorId}']);
+      expect(episodic?.reflectionNamespaces).toEqual(['/episodes/{actorId}']);
     });
   });
 });

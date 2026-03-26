@@ -77,7 +77,7 @@ describe('MemoryStrategySchema', () => {
     const result = MemoryStrategySchema.safeParse({
       type: 'EPISODIC',
       namespaces: ['/episodes/{actorId}/{sessionId}'],
-      reflectionNamespaces: ['/reflections/{actorId}'],
+      reflectionNamespaces: ['/episodes/{actorId}'],
     });
     expect(result.success).toBe(true);
   });
@@ -101,6 +101,33 @@ describe('MemoryStrategySchema', () => {
 
   it('allows non-EPISODIC strategies without reflectionNamespaces', () => {
     const result = MemoryStrategySchema.safeParse({ type: 'SEMANTIC' });
+    expect(result.success).toBe(true);
+  });
+
+  it('rejects EPISODIC when reflectionNamespaces is not a prefix of namespaces', () => {
+    const result = MemoryStrategySchema.safeParse({
+      type: 'EPISODIC',
+      namespaces: ['/episodes/{actorId}/{sessionId}'],
+      reflectionNamespaces: ['/reflections/{actorId}'],
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it('accepts EPISODIC when reflectionNamespaces is a prefix of namespaces', () => {
+    const result = MemoryStrategySchema.safeParse({
+      type: 'EPISODIC',
+      namespaces: ['/episodes/{actorId}/{sessionId}'],
+      reflectionNamespaces: ['/episodes/{actorId}'],
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it('accepts EPISODIC when reflectionNamespaces equals namespaces', () => {
+    const result = MemoryStrategySchema.safeParse({
+      type: 'EPISODIC',
+      namespaces: ['/episodes/{actorId}/{sessionId}'],
+      reflectionNamespaces: ['/episodes/{actorId}/{sessionId}'],
+    });
     expect(result.success).toBe(true);
   });
 });

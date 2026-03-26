@@ -31,7 +31,7 @@ export const DEFAULT_STRATEGY_NAMESPACES: Partial<Record<MemoryStrategyType, str
  * Default reflection namespaces for the EPISODIC strategy.
  * The service requires reflection namespaces to be the same as or a prefix of episode namespaces.
  */
-export const DEFAULT_EPISODIC_REFLECTION_NAMESPACES: string[] = ['/reflections/{actorId}'];
+export const DEFAULT_EPISODIC_REFLECTION_NAMESPACES: string[] = ['/episodes/{actorId}'];
 
 /**
  * Memory strategy name validation.
@@ -70,6 +70,16 @@ export const MemoryStrategySchema = z
       (strategy.reflectionNamespaces !== undefined && strategy.reflectionNamespaces.length > 0),
     {
       message: 'EPISODIC strategy requires reflectionNamespaces',
+      path: ['reflectionNamespaces'],
+    }
+  )
+  .refine(
+    strategy => {
+      if (strategy.type !== 'EPISODIC' || !strategy.reflectionNamespaces || !strategy.namespaces) return true;
+      return strategy.reflectionNamespaces.every(ref => strategy.namespaces!.some(ns => ns.startsWith(ref)));
+    },
+    {
+      message: 'Each reflectionNamespace must be a prefix of at least one namespace',
       path: ['reflectionNamespaces'],
     }
   );
