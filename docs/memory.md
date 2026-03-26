@@ -190,7 +190,7 @@ Each strategy can have optional configuration:
 | `name`                 | No            | Custom name (defaults to `<memoryName>-<type>`)                             |
 | `description`          | No            | Strategy description                                                        |
 | `namespaces`           | No            | Array of namespace paths for scoping                                        |
-| `reflectionNamespaces` | EPISODIC only | Namespaces for cross-episode reflections (must be a prefix of `namespaces`) |
+| `reflectionNamespaces` | EPISODIC only | Namespaces for storing cross-episode reflections |
 
 ## Event Expiry
 
