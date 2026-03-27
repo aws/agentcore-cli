@@ -56,7 +56,10 @@ export const registerStatus = (program: Command) => {
     .description(COMMAND_DESCRIPTIONS.status)
     .option('--agent-runtime-id <id>', 'Look up a specific agent runtime by ID')
     .option('--target <name>', 'Select deployment target')
-    .option('--type <type>', 'Filter by resource type (agent, memory, credential, gateway, policy-engine, policy)')
+    .option(
+      '--type <type>',
+      'Filter by resource type (agent, memory, credential, gateway, evaluator, online-eval, policy-engine, policy)'
+    )
     .option('--state <state>', 'Filter by deployment state (deployed, local-only, pending-removal)')
     .option('--agent <name>', 'Filter to a specific agent')
     .option('--json', 'Output as JSON')

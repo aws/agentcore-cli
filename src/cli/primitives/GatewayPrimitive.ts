@@ -158,23 +158,27 @@ export class GatewayPrimitive extends BasePrimitive<AddGatewayOptions, Removable
   registerCommands(addCmd: Command, removeCmd: Command): void {
     addCmd
       .command('gateway')
-      .description('Add a gateway to the project')
-      .option('--name <name>', 'Gateway name')
-      .option('--description <desc>', 'Gateway description')
-      .option('--authorizer-type <type>', 'Authorizer type: NONE or CUSTOM_JWT')
-      .option('--discovery-url <url>', 'OIDC discovery URL (for CUSTOM_JWT)')
-      .option('--allowed-audience <audience>', 'Comma-separated allowed audiences (for CUSTOM_JWT)')
-      .option('--allowed-clients <clients>', 'Comma-separated allowed client IDs (for CUSTOM_JWT)')
-      .option('--allowed-scopes <scopes>', 'Comma-separated allowed scopes (for CUSTOM_JWT)')
-      .option('--custom-claims <json>', 'Custom claim validations as JSON array (for CUSTOM_JWT)')
-      .option('--client-id <id>', 'OAuth client ID for gateway bearer token')
-      .option('--client-secret <secret>', 'OAuth client secret')
-      .option('--agents <agents>', 'Comma-separated agent names')
-      .option('--no-semantic-search', 'Disable semantic search for tool discovery')
-      .option('--exception-level <level>', 'Exception verbosity level', 'NONE')
-      .option('--policy-engine <name>', 'Policy engine name for Cedar-based authorization')
-      .option('--policy-engine-mode <mode>', 'Policy engine mode: LOG_ONLY or ENFORCE')
-      .option('--json', 'Output as JSON')
+      .description('Add an API gateway that routes requests to agent targets')
+      .option('--name <name>', 'Gateway name [non-interactive]')
+      .option('--description <desc>', 'Gateway description [non-interactive]')
+      .option('--agents <agents>', 'Comma-separated agent names to expose through this gateway [non-interactive]')
+      .option('--authorizer-type <type>', 'Authorizer type: NONE or CUSTOM_JWT [non-interactive]')
+      .option('--discovery-url <url>', 'OIDC discovery URL (for CUSTOM_JWT) [non-interactive]')
+      .option('--allowed-audience <audience>', 'Comma-separated allowed audiences (for CUSTOM_JWT) [non-interactive]')
+      .option('--allowed-clients <clients>', 'Comma-separated allowed client IDs (for CUSTOM_JWT) [non-interactive]')
+      .option('--allowed-scopes <scopes>', 'Comma-separated allowed scopes (for CUSTOM_JWT) [non-interactive]')
+      .option('--custom-claims <json>', 'Custom claim validations as JSON array (for CUSTOM_JWT) [non-interactive]')
+      .option('--client-id <id>', 'OAuth client ID for fetching gateway bearer tokens [non-interactive]')
+      .option('--client-secret <secret>', 'OAuth client secret for fetching gateway bearer tokens [non-interactive]')
+      .option('--no-semantic-search', 'Disable semantic search for gateway target tool discovery [non-interactive]')
+      .option(
+        '--exception-level <level>',
+        'Exception detail level in error responses: NONE, ALL [non-interactive]',
+        'NONE'
+      )
+      .option('--policy-engine <name>', 'Policy engine name for Cedar-based authorization [non-interactive]')
+      .option('--policy-engine-mode <mode>', 'Policy engine mode: LOG_ONLY or ENFORCE [non-interactive]')
+      .option('--json', 'Output as JSON [non-interactive]')
       .action(async (rawOptions: Record<string, string | boolean | undefined>) => {
         const cliOptions = rawOptions as unknown as CLIAddGatewayOptions;
         try {
@@ -238,9 +242,9 @@ export class GatewayPrimitive extends BasePrimitive<AddGatewayOptions, Removable
     removeCmd
       .command('gateway')
       .description('Remove a gateway from the project')
-      .option('--name <name>', 'Name of resource to remove')
-      .option('--force', 'Skip confirmation prompt')
-      .option('--json', 'Output as JSON')
+      .option('--name <name>', 'Name of resource to remove [non-interactive]')
+      .option('--force', 'Skip confirmation prompt [non-interactive]')
+      .option('--json', 'Output as JSON [non-interactive]')
       .action(async (cliOptions: { name?: string; force?: boolean; json?: boolean }) => {
         try {
           if (!findConfigRoot()) {

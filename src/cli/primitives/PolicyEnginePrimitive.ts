@@ -205,8 +205,11 @@ export class PolicyEnginePrimitive extends BasePrimitive<AddPolicyEngineOptions,
       .option('--name <name>', 'Policy engine name [non-interactive]')
       .option('--description <desc>', 'Policy engine description [non-interactive]')
       .option('--encryption-key-arn <arn>', 'KMS encryption key ARN [non-interactive]')
-      .option('--attach-to-gateways <gateways>', 'Comma-separated gateway names to attach this engine to')
-      .option('--attach-mode <mode>', 'Enforcement mode for attached gateways: LOG_ONLY or ENFORCE')
+      .option(
+        '--attach-to-gateways <gateways>',
+        'Comma-separated gateway names to attach this engine to [non-interactive]'
+      )
+      .option('--attach-mode <mode>', 'Enforcement mode for attached gateways: LOG_ONLY or ENFORCE [non-interactive]')
       .option('--json', 'Output as JSON [non-interactive]')
       .action(
         async (cliOptions: {

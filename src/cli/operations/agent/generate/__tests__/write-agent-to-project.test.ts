@@ -23,6 +23,7 @@ describe('writeAgentToProject with credentialStrategy', () => {
   const baseProject = {
     name: 'MyProject',
     version: 1,
+    managedBy: 'CDK' as const,
     agents: [],
     memories: [],
     credentials: [],

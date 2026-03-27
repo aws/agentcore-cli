@@ -5,6 +5,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 const defaultProject: AgentCoreProjectSpec = {
   name: 'test',
   version: 1,
+  managedBy: 'CDK' as const,
   agents: [],
   memories: [],
   credentials: [],

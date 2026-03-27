@@ -64,6 +64,7 @@ export async function writeAgentToProject(config: GenerateConfig, options?: Writ
     const project: AgentCoreProjectSpec = {
       name: agentName,
       version: SCHEMA_VERSION,
+      managedBy: 'CDK' as const,
       agents: [agent],
       memories,
       credentials,

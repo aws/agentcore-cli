@@ -124,19 +124,22 @@ export class EvaluatorPrimitive extends BasePrimitive<AddEvaluatorOptions, Remov
     addCmd
       .command(this.kind)
       .description('Add a custom evaluator to the project')
-      .option('--name <name>', 'Evaluator name')
-      .option('--level <level>', 'Evaluation level: SESSION, TRACE, TOOL_CALL')
-      .option('--model <model>', 'Bedrock model ID for LLM-as-a-Judge')
+      .option('--name <name>', 'Evaluator name [non-interactive]')
+      .option('--level <level>', 'Evaluation level: SESSION, TRACE, TOOL_CALL [non-interactive]')
+      .option('--model <model>', 'Bedrock model ID for LLM-as-a-Judge [non-interactive]')
       .option(
         '--instructions <text>',
-        'Evaluation prompt instructions (must include level-appropriate placeholders, e.g. {context})'
+        'Evaluation prompt instructions (must include level-appropriate placeholders, e.g. {context}) [non-interactive]'
       )
-      .option('--rating-scale <preset>', `Rating scale preset: ${presetIds.join(', ')} (default: 1-5-quality)`)
+      .option(
+        '--rating-scale <preset>',
+        `Rating scale preset: ${presetIds.join(', ')} (default: 1-5-quality) [non-interactive]`
+      )
       .option(
         '--config <path>',
-        'Path to evaluator config JSON file (overrides --model, --instructions, --rating-scale)'
+        'Path to evaluator config JSON file (overrides --model, --instructions, --rating-scale) [non-interactive]'
       )
-      .option('--json', 'Output as JSON')
+      .option('--json', 'Output as JSON [non-interactive]')
       .action(
         async (cliOptions: {
           name?: string;

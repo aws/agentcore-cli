@@ -13,10 +13,10 @@ export const registerFetch = (program: Command) => {
   fetchCmd
     .command('access')
     .description('Fetch access info (URL, token, auth guidance) for a deployed gateway or agent.')
-    .option('--name <resource>', 'Gateway or agent name')
-    .option('--type <type>', 'Resource type: gateway (default) or agent', 'gateway')
-    .option('--target <target>', 'Deployment target')
-    .option('--json', 'Output as JSON')
+    .option('--name <resource>', 'Gateway or agent name [non-interactive]')
+    .option('--type <type>', 'Resource type: gateway (default) or agent [non-interactive]', 'gateway')
+    .option('--target <target>', 'Deployment target [non-interactive]')
+    .option('--json', 'Output as JSON [non-interactive]')
     .action(async (cliOptions: Record<string, unknown>) => {
       const options = cliOptions as unknown as FetchAccessOptions;
       requireProject();

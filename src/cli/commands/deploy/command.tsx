@@ -130,7 +130,7 @@ async function handleDeployCLI(options: DeployOptions): Promise<void> {
 export const registerDeploy = (program: Command) => {
   program
     .command('deploy')
-    .alias('p')
+    .alias('dp')
     .description(COMMAND_DESCRIPTIONS.deploy)
     .option('--target <target>', 'Deployment target name (default: "default") [non-interactive]')
     .option('-y, --yes', 'Auto-confirm prompts, read credentials from env [non-interactive]')

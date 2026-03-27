@@ -20,6 +20,7 @@ vi.mock('../../../../lib/index.js', () => ({
 const makeProject = (memoryNames: string[]) => ({
   name: 'TestProject',
   version: 1,
+  managedBy: 'CDK' as const,
   agents: [],
   memories: memoryNames.map(name => ({ name, type: 'AgentCoreMemory', eventExpiryDuration: 30, strategies: [] })),
   credentials: [],

@@ -36,6 +36,7 @@ describe('requiresUv', () => {
     const project: AgentCoreProjectSpec = {
       name: 'Test',
       version: 1,
+      managedBy: 'CDK' as const,
       agents: [
         {
           type: 'AgentCoreRuntime',
@@ -61,6 +62,7 @@ describe('requiresUv', () => {
     const project: AgentCoreProjectSpec = {
       name: 'Test',
       version: 1,
+      managedBy: 'CDK' as const,
       agents: [
         {
           type: 'AgentCoreRuntime',
@@ -86,6 +88,7 @@ describe('requiresUv', () => {
     const project: AgentCoreProjectSpec = {
       name: 'Test',
       version: 1,
+      managedBy: 'CDK' as const,
       agents: [],
       memories: [],
       credentials: [],
@@ -103,6 +106,7 @@ describe('requiresContainerRuntime', () => {
     const project: AgentCoreProjectSpec = {
       name: 'Test',
       version: 1,
+      managedBy: 'CDK' as const,
       agents: [
         {
           type: 'AgentCoreRuntime',
@@ -128,6 +132,7 @@ describe('requiresContainerRuntime', () => {
     const project: AgentCoreProjectSpec = {
       name: 'Test',
       version: 1,
+      managedBy: 'CDK' as const,
       agents: [
         {
           type: 'AgentCoreRuntime',
@@ -153,6 +158,7 @@ describe('requiresContainerRuntime', () => {
     const project: AgentCoreProjectSpec = {
       name: 'Test',
       version: 1,
+      managedBy: 'CDK' as const,
       agents: [],
       memories: [],
       credentials: [],
@@ -168,6 +174,7 @@ describe('requiresContainerRuntime', () => {
     const project: AgentCoreProjectSpec = {
       name: 'Test',
       version: 1,
+      managedBy: 'CDK' as const,
       agents: [
         {
           type: 'AgentCoreRuntime',
@@ -253,6 +260,7 @@ describe('checkDependencyVersions', () => {
     const project: AgentCoreProjectSpec = {
       name: 'Test',
       version: 1,
+      managedBy: 'CDK' as const,
       agents: [],
       memories: [],
       credentials: [],
@@ -272,6 +280,7 @@ describe('checkDependencyVersions', () => {
     const project: AgentCoreProjectSpec = {
       name: 'Test',
       version: 1,
+      managedBy: 'CDK' as const,
       agents: [],
       memories: [],
       credentials: [],
@@ -290,6 +299,7 @@ describe('checkDependencyVersions', () => {
     const project: AgentCoreProjectSpec = {
       name: 'Test',
       version: 1,
+      managedBy: 'CDK' as const,
       agents: [
         {
           type: 'AgentCoreRuntime',

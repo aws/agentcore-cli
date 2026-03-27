@@ -28,6 +28,7 @@ function createDefaultProjectSpec(projectName: string): AgentCoreProjectSpec {
   return {
     name: projectName,
     version: 1,
+    managedBy: 'CDK' as const,
     agents: [],
     memories: [],
     credentials: [],

@@ -85,6 +85,7 @@ describe('createManagedOAuthCredential', () => {
   const baseProject: AgentCoreProjectSpec = {
     name: 'test',
     version: 1,
+    managedBy: 'CDK' as const,
     agents: [],
     memories: [],
     credentials: [],

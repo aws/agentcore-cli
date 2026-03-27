@@ -26,6 +26,7 @@ async function handleRemoveAll(_options: RemoveAllOptions): Promise<RemoveResult
     await configIO.writeProjectSpec({
       name: projectName,
       version: 1,
+      managedBy: 'CDK' as const,
       agents: [],
       memories: [],
       credentials: [],

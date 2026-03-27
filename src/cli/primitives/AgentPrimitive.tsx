@@ -75,6 +75,7 @@ export interface AddAgentOptions extends VpcOptions {
 export class AgentPrimitive extends BasePrimitive<AddAgentOptions, RemovableResource> {
   readonly kind = 'agent';
   readonly label = 'Agent';
+  protected override readonly article = 'an';
   readonly primitiveSchema = AgentEnvSpecSchema;
 
   /** Local instance to avoid circular dependency with registry. */
@@ -195,14 +196,14 @@ export class AgentPrimitive extends BasePrimitive<AddAgentOptions, RemovableReso
     addCmd
       .command('agent')
       .description('Add an agent to the project')
-      .option('--name <name>', 'Agent name (start with letter, alphanumeric only, max 64 chars) [non-interactive]')
+      .option(
+        '--name <name>',
+        'Agent name (start with letter, alphanumeric and underscores only, max 48 chars) [non-interactive]'
+      )
       .option('--type <type>', 'Agent type: create, byo, or import [non-interactive]', 'create')
       .option('--build <type>', 'Build type: CodeZip or Container (default: CodeZip) [non-interactive]')
       .option('--language <lang>', 'Language: Python (create), or Python/TypeScript/Other (BYO) [non-interactive]')
-      .option(
-        '--framework <fw>',
-        'Framework: Strands, LangChain_LangGraph, CrewAI, GoogleADK, OpenAIAgents [non-interactive]'
-      )
+      .option('--framework <fw>', 'Framework: Strands, LangChain_LangGraph, GoogleADK, OpenAIAgents [non-interactive]')
       .option('--model-provider <provider>', 'Model provider: Bedrock, Anthropic, OpenAI, Gemini [non-interactive]')
       .option('--api-key <key>', 'API key for non-Bedrock providers [non-interactive]')
       .option('--memory <mem>', 'Memory: none, shortTerm, longAndShortTerm (create path only) [non-interactive]')

@@ -179,6 +179,7 @@ describe('ConfigIO', () => {
       const validSpec = {
         name: 'TestProject',
         version: 1,
+        managedBy: 'CDK' as const,
         agents: [
           {
             type: 'AgentCoreRuntime',

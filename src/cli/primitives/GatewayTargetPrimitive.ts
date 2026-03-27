@@ -245,35 +245,50 @@ export class GatewayTargetPrimitive extends BasePrimitive<AddGatewayTargetOption
   registerCommands(addCmd: Command, removeCmd: Command): void {
     addCmd
       .command('gateway-target')
-      .description('Add a gateway target to the project')
-      .option('--name <name>', 'Target name')
-      .option('--description <desc>', 'Target description')
+      .description('Add a target (API, MCP server, Lambda) to a gateway for tool routing')
+      .option('--name <name>', 'Target name [non-interactive]')
+      .option('--description <desc>', 'Target description [non-interactive]')
+      .option('--gateway <name>', 'Gateway to attach this target to [non-interactive]')
       .option(
         '--type <type>',
-        'Target type (required): mcp-server, api-gateway, open-api-schema, smithy-model, lambda-function-arn'
+        'Target type (required): mcp-server, api-gateway, open-api-schema, smithy-model, lambda-function-arn [non-interactive]'
       )
-      .option('--endpoint <url>', 'MCP server endpoint URL')
-      .option('--language <lang>', 'Language: Python, TypeScript, Other')
-      .option('--gateway <name>', 'Gateway name')
-      .option('--host <host>', 'Compute host: Lambda or AgentCoreRuntime')
-      .option('--outbound-auth <type>', 'Outbound auth type: oauth, api-key, or none')
-      .option('--credential-name <name>', 'Existing credential name for outbound auth')
-      .option('--oauth-client-id <id>', 'OAuth client ID (creates credential inline)')
-      .option('--oauth-client-secret <secret>', 'OAuth client secret (creates credential inline)')
-      .option('--oauth-discovery-url <url>', 'OAuth discovery URL (creates credential inline)')
-      .option('--oauth-scopes <scopes>', 'OAuth scopes, comma-separated')
-      .option('--rest-api-id <id>', 'API Gateway REST API ID (required for api-gateway type)')
-      .option('--stage <stage>', 'API Gateway deployment stage (required for api-gateway type)')
-      .option('--tool-filter-path <path>', 'Tool filter path pattern, e.g. /pets/*')
-      .option('--tool-filter-methods <methods>', 'Comma-separated HTTP methods, e.g. GET,POST')
+      .option('--endpoint <url>', 'Server endpoint URL (for mcp-server type) [non-interactive]')
+      .option('--language <lang>', 'Language of target code: Python, TypeScript, Other [non-interactive]')
+      .option('--host <host>', 'Where to run the target: Lambda or AgentCoreRuntime [non-interactive]')
+      .option('--outbound-auth <type>', 'Outbound auth type: oauth, api-key, or none [non-interactive]')
+      .option('--credential-name <name>', 'Existing credential name for outbound auth [non-interactive]')
+      .option(
+        '--oauth-client-id <id>',
+        'OAuth client ID — creates credential inline (for oauth auth) [non-interactive]'
+      )
+      .option(
+        '--oauth-client-secret <secret>',
+        'OAuth client secret — creates credential inline (for oauth auth) [non-interactive]'
+      )
+      .option(
+        '--oauth-discovery-url <url>',
+        'OAuth discovery URL — creates credential inline (for oauth auth) [non-interactive]'
+      )
+      .option('--oauth-scopes <scopes>', 'OAuth scopes, comma-separated (for oauth auth) [non-interactive]')
+      .option('--rest-api-id <id>', 'REST API ID (for api-gateway type) [non-interactive]')
+      .option('--stage <stage>', 'Deployment stage (for api-gateway type) [non-interactive]')
+      .option('--tool-filter-path <path>', 'Tool filter path pattern, e.g. /pets/* [non-interactive]')
+      .option('--tool-filter-methods <methods>', 'Comma-separated HTTP methods, e.g. GET,POST [non-interactive]')
       .option(
         '--schema <path>',
-        'Path to schema file (relative to project root) or S3 URI (for open-api-schema / smithy-model)'
+        'Schema file path or S3 URI (for open-api-schema / smithy-model type) [non-interactive]'
       )
-      .option('--schema-s3-account <id>', 'S3 bucket owner account ID (for cross-account access)')
-      .option('--lambda-arn <arn>', 'Lambda function ARN (required for lambda-function-arn type)')
-      .option('--tool-schema-file <path>', 'Path to tool schema JSON file (required for lambda-function-arn type)')
-      .option('--json', 'Output as JSON')
+      .option(
+        '--schema-s3-account <id>',
+        'S3 bucket owner account ID for cross-account access (for schema on S3) [non-interactive]'
+      )
+      .option('--lambda-arn <arn>', 'Lambda function ARN (for lambda-function-arn type) [non-interactive]')
+      .option(
+        '--tool-schema-file <path>',
+        'Tool schema JSON file path (for lambda-function-arn type) [non-interactive]'
+      )
+      .option('--json', 'Output as JSON [non-interactive]')
       .action(async (rawOptions: Record<string, string | boolean | undefined>) => {
         // Commander camelCases --outbound-auth to outboundAuth, but our types use outboundAuthType
         if (rawOptions.outboundAuth && !rawOptions.outboundAuthType) {
@@ -464,9 +479,9 @@ export class GatewayTargetPrimitive extends BasePrimitive<AddGatewayTargetOption
     removeCmd
       .command('gateway-target')
       .description('Remove a gateway target from the project')
-      .option('--name <name>', 'Name of resource to remove')
-      .option('--force', 'Skip confirmation prompt')
-      .option('--json', 'Output as JSON')
+      .option('--name <name>', 'Name of resource to remove [non-interactive]')
+      .option('--force', 'Skip confirmation prompt [non-interactive]')
+      .option('--json', 'Output as JSON [non-interactive]')
       .action(async (cliOptions: { name?: string; force?: boolean; json?: boolean }) => {
         try {
           if (!findConfigRoot()) {

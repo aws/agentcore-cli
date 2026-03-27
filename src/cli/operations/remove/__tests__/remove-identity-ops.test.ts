@@ -24,6 +24,7 @@ const makeProject = (
 ) => ({
   name: 'TestProject',
   version: 1,
+  managedBy: 'CDK' as const,
   agents: [],
   memories: [],
   credentials: credNames.map(name => ({ name, type: 'ApiKeyCredentialProvider' })),

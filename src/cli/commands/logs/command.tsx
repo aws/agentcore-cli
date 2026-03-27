@@ -24,7 +24,7 @@ export const registerLogs = (program: Command) => {
     .option('--since <time>', 'Start time — defaults to 1h ago in search mode (e.g. "1h", "30m", "2d", ISO 8601)')
     .option('--until <time>', 'End time — defaults to now in search mode (e.g. "now", ISO 8601)')
     .option('--level <level>', 'Filter by log level (error, warn, info, debug)')
-    .option('-n, --lines <count>', 'Maximum number of log lines to return')
+    .option('-n, --limit <count>', 'Maximum number of log lines to return')
     .option('--query <text>', 'Server-side text filter')
     .option('--json', 'Output as JSON Lines')
     .action(async (cliOptions: LogsOptions) => {
@@ -49,7 +49,7 @@ export const registerLogs = (program: Command) => {
     .option('-a, --agent <name>', 'Select specific agent')
     .option('--since <time>', 'Start time (e.g. "1h", "30m", "2d", ISO 8601)')
     .option('--until <time>', 'End time (e.g. "now", ISO 8601)')
-    .option('-n, --lines <count>', 'Maximum number of log lines')
+    .option('-n, --limit <count>', 'Maximum number of log lines')
     .option('-f, --follow', 'Stream logs in real-time (default when no --since/--until)')
     .option('--json', 'Output as JSON Lines')
     .action(async (cliOptions: LogsEvalOptions) => {

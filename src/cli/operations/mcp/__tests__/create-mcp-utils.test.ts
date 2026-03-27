@@ -126,6 +126,7 @@ describe('GatewayPrimitive.add (createGateway)', () => {
     mockReadProjectSpec.mockResolvedValue({
       name: 'test',
       version: 1,
+      managedBy: 'CDK' as const,
       agents: [],
       memories: [],
       credentials: [],
@@ -159,6 +160,7 @@ describe('GatewayPrimitive.add (createGateway)', () => {
     mockReadProjectSpec.mockResolvedValue({
       name: 'test',
       version: 1,
+      managedBy: 'CDK' as const,
       agents: [],
       memories: [],
       credentials: [],
@@ -182,6 +184,7 @@ describe('GatewayPrimitive.add (createGateway)', () => {
     mockReadProjectSpec.mockResolvedValue({
       name: 'test',
       version: 1,
+      managedBy: 'CDK' as const,
       agents: [],
       memories: [],
       credentials: [],
@@ -205,6 +208,7 @@ describe('GatewayPrimitive.add (createGateway)', () => {
     mockReadProjectSpec.mockResolvedValue({
       name: 'test',
       version: 1,
+      managedBy: 'CDK' as const,
       agents: [],
       memories: [],
       credentials: [],

@@ -159,14 +159,14 @@ export const registerCreate = (program: Command) => {
   program
     .command('create')
     .description(COMMAND_DESCRIPTIONS.create)
-    .option('--name <name>', 'Project name (start with letter, alphanumeric only, max 36 chars) [non-interactive]')
+    .option('--name <name>', 'Project name (start with letter, alphanumeric only, max 23 chars) [non-interactive]')
     .option('--no-agent', 'Skip agent creation [non-interactive]')
     .option('--defaults', 'Use defaults (Python, Strands, Bedrock, no memory) [non-interactive]')
     .option('--build <type>', 'Build type: CodeZip or Container (default: CodeZip) [non-interactive]')
     .option('--language <language>', 'Target language (default: Python) [non-interactive]')
     .option(
       '--framework <framework>',
-      'Agent framework (Strands, LangChain_LangGraph, CrewAI, GoogleADK, OpenAIAgents) [non-interactive]'
+      'Agent framework (Strands, LangChain_LangGraph, GoogleADK, OpenAIAgents) [non-interactive]'
     )
     .option('--model-provider <provider>', 'Model provider (Bedrock, Anthropic, OpenAI, Gemini) [non-interactive]')
     .option('--api-key <key>', 'API key for non-Bedrock providers [non-interactive]')

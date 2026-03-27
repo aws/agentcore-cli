@@ -31,6 +31,7 @@ vi.mock('../../../logging', () => {
 const baseProject: AgentCoreProjectSpec = {
   name: 'test-project',
   version: 1,
+  managedBy: 'CDK' as const,
   agents: [],
   memories: [],
   credentials: [],

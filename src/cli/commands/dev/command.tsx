@@ -142,11 +142,11 @@ export const registerDev = (program: Command) => {
     .option('-i, --invoke <prompt>', 'Invoke running dev server (use --agent if multiple) [non-interactive]')
     .option('-s, --stream', 'Stream response when using --invoke [non-interactive]')
     .option('-l, --logs', 'Run dev server with logs to stdout [non-interactive]')
-    .option('--tool <name>', 'MCP tool name (used with --invoke call-tool)')
-    .option('--input <json>', 'MCP tool arguments as JSON (used with --invoke call-tool)')
+    .option('--tool <name>', 'MCP tool name (used with --invoke call-tool) [non-interactive]')
+    .option('--input <json>', 'MCP tool arguments as JSON (used with --invoke call-tool) [non-interactive]')
     .option(
       '-H, --header <header>',
-      'Custom header to forward to the agent (format: "Name: Value", repeatable)',
+      'Custom header to forward to the agent (format: "Name: Value", repeatable) [non-interactive]',
       (val: string, prev: string[]) => [...prev, val],
       [] as string[]
     )

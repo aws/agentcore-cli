@@ -445,6 +445,24 @@ describe('AgentCoreProjectSpecSchema', () => {
     expect(result.success).toBe(true);
   });
 
+  it('defaults managedBy to CDK when omitted', () => {
+    const result = AgentCoreProjectSpecSchema.safeParse(minimalProject);
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.managedBy).toBe('CDK');
+    }
+  });
+
+  it('accepts explicit managedBy: CDK', () => {
+    const result = AgentCoreProjectSpecSchema.safeParse({ ...minimalProject, managedBy: 'CDK' });
+    expect(result.success).toBe(true);
+  });
+
+  it('rejects invalid managedBy value', () => {
+    const result = AgentCoreProjectSpecSchema.safeParse({ ...minimalProject, managedBy: 'Terraform' });
+    expect(result.success).toBe(false);
+  });
+
   it('rejects non-integer version', () => {
     const result = AgentCoreProjectSpecSchema.safeParse({
       name: 'Test',

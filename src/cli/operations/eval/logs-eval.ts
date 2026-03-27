@@ -8,7 +8,7 @@ export interface LogsEvalOptions {
   agent?: string;
   since?: string;
   until?: string;
-  lines?: string;
+  limit?: string;
   json?: boolean;
   follow?: boolean;
 }
@@ -109,7 +109,7 @@ export async function handleLogsEval(options: LogsEvalOptions): Promise<LogsEval
       if (!isFollow) {
         const startTimeMs = options.since ? parseTimeString(options.since) : Date.now() - 3_600_000;
         const endTimeMs = options.until ? parseTimeString(options.until) : Date.now();
-        const limit = options.lines ? parseInt(options.lines, 10) : undefined;
+        const limit = options.limit ? parseInt(options.limit, 10) : undefined;
 
         try {
           for await (const event of searchLogs({

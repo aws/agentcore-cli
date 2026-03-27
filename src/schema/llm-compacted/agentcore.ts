@@ -13,6 +13,7 @@
 interface AgentCoreProjectSpec {
   name: string; // @regex ^[A-Za-z][A-Za-z0-9]{0,22}$ @max 23 - project name
   version: number; // Schema version (integer)
+  managedBy: 'CDK'; // Enum — infrastructure manager. Default: "CDK"
   tags?: Record<string, string>;
   agents: AgentEnvSpec[]; // Unique by name
   memories: Memory[]; // Unique by name

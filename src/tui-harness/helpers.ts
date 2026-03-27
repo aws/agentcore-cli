@@ -90,6 +90,7 @@ export async function createMinimalProjectDir(
   const config: Record<string, unknown> = {
     name: projectName,
     version: 1,
+    managedBy: 'CDK',
     agents: [] as unknown[],
     memories: [],
     credentials: [],

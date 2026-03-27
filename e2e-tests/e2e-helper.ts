@@ -10,6 +10,7 @@ import {
   BedrockAgentCoreControlClient,
   DeleteApiKeyCredentialProviderCommand,
   GetAgentRuntimeCommand,
+  ListApiKeyCredentialProvidersCommand,
 } from '@aws-sdk/client-bedrock-agentcore-control';
 import { execSync } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
@@ -45,6 +46,8 @@ export function createE2ESuite(cfg: E2EConfig) {
 
     beforeAll(async () => {
       if (!canRun) return;
+
+      await cleanupStaleCredentialProviders();
 
       testDir = join(tmpdir(), `agentcore-e2e-${randomUUID()}`);
       await mkdir(testDir, { recursive: true });
@@ -327,6 +330,37 @@ export function installCdkTarball(projectPath: string): void {
       stdio: 'pipe',
     });
   }
+}
+
+/**
+ * Delete stale E2e* credential providers older than the given max age.
+ * Runs in beforeAll to prevent accumulation from previous runs that
+ * crashed or timed out before their afterAll teardown could execute.
+ */
+export async function cleanupStaleCredentialProviders(maxAgeMs: number = 60 * 60 * 1000): Promise<void> {
+  const region = process.env.AWS_REGION ?? 'us-east-1';
+  const client = new BedrockAgentCoreControlClient({ region });
+  const cutoff = new Date(Date.now() - maxAgeMs);
+
+  let nextToken: string | undefined;
+  do {
+    const response = await client.send(new ListApiKeyCredentialProvidersCommand({ nextToken }));
+    const providers = response.credentialProviders ?? [];
+    const stale = providers.filter(p => p.name?.startsWith('E2e') && p.createdTime && p.createdTime < cutoff);
+
+    await Promise.all(
+      stale.map(async p => {
+        try {
+          await client.send(new DeleteApiKeyCredentialProviderCommand({ name: p.name! }));
+          console.log(`Cleaned up stale credential provider: ${p.name}`);
+        } catch {
+          console.warn(`Failed to clean up stale credential provider: ${p.name}`);
+        }
+      })
+    );
+
+    nextToken = response.nextToken;
+  } while (nextToken);
 }
 
 export async function teardownE2EProject(projectPath: string, agentName: string, modelProvider: string): Promise<void> {

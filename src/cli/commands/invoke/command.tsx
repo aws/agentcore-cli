@@ -106,7 +106,7 @@ export const registerInvoke = (program: Command) => {
     .option('--input <json>', 'MCP tool arguments as JSON (use with --tool) [non-interactive]')
     .option(
       '-H, --header <header>',
-      'Custom header to forward to the agent (format: "Name: Value", repeatable)',
+      'Custom header to forward to the agent (format: "Name: Value", repeatable) [non-interactive]',
       (val: string, prev: string[]) => [...prev, val],
       [] as string[]
     )

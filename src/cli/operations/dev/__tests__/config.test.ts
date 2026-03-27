@@ -13,6 +13,7 @@ describe('getDevConfig', () => {
     const project: AgentCoreProjectSpec = {
       name: 'TestProject',
       version: 1,
+      managedBy: 'CDK' as const,
       agents: [],
       memories: [],
       credentials: [],
@@ -30,6 +31,7 @@ describe('getDevConfig', () => {
     const project: AgentCoreProjectSpec = {
       name: 'TestProject',
       version: 1,
+      managedBy: 'CDK' as const,
       agents: [
         {
           type: 'AgentCoreRuntime',
@@ -57,6 +59,7 @@ describe('getDevConfig', () => {
     const project: AgentCoreProjectSpec = {
       name: 'TestProject',
       version: 1,
+      managedBy: 'CDK' as const,
       agents: [
         {
           type: 'AgentCoreRuntime',
@@ -90,6 +93,7 @@ describe('getDevConfig', () => {
     const project: AgentCoreProjectSpec = {
       name: 'TestProject',
       version: 1,
+      managedBy: 'CDK' as const,
       agents: [
         {
           type: 'AgentCoreRuntime',
@@ -118,6 +122,7 @@ describe('getDevConfig', () => {
     const project: AgentCoreProjectSpec = {
       name: 'TestProject',
       version: 1,
+      managedBy: 'CDK' as const,
       agents: [
         {
           type: 'AgentCoreRuntime',
@@ -144,6 +149,7 @@ describe('getDevConfig', () => {
     const project: AgentCoreProjectSpec = {
       name: 'TestProject',
       version: 1,
+      managedBy: 'CDK' as const,
       agents: [
         {
           type: 'AgentCoreRuntime',
@@ -173,6 +179,7 @@ describe('getDevConfig', () => {
     const project: AgentCoreProjectSpec = {
       name: 'TestProject',
       version: 1,
+      managedBy: 'CDK' as const,
       agents: [
         {
           type: 'AgentCoreRuntime',
@@ -202,6 +209,7 @@ describe('getDevConfig', () => {
     const project: AgentCoreProjectSpec = {
       name: 'TestProject',
       version: 1,
+      managedBy: 'CDK' as const,
       agents: [
         {
           type: 'AgentCoreRuntime',
@@ -231,6 +239,7 @@ describe('getDevConfig', () => {
     const project: AgentCoreProjectSpec = {
       name: 'TestProject',
       version: 1,
+      managedBy: 'CDK' as const,
       agents: [
         {
           type: 'AgentCoreRuntime',
@@ -260,6 +269,7 @@ describe('getDevConfig', () => {
     const project: AgentCoreProjectSpec = {
       name: 'TestProject',
       version: 1,
+      managedBy: 'CDK' as const,
       agents: [
         {
           type: 'AgentCoreRuntime',
@@ -287,6 +297,7 @@ describe('getDevConfig', () => {
     const project: AgentCoreProjectSpec = {
       name: 'TestProject',
       version: 1,
+      managedBy: 'CDK' as const,
       agents: [
         {
           type: 'AgentCoreRuntime',
@@ -315,6 +326,7 @@ describe('getDevConfig', () => {
     const project: AgentCoreProjectSpec = {
       name: 'TestProject',
       version: 1,
+      managedBy: 'CDK' as const,
       agents: [
         {
           type: 'AgentCoreRuntime',
@@ -343,6 +355,7 @@ describe('getDevConfig', () => {
     const project: AgentCoreProjectSpec = {
       name: 'TestProject',
       version: 1,
+      managedBy: 'CDK' as const,
       agents: [
         {
           type: 'AgentCoreRuntime',
@@ -377,6 +390,7 @@ describe('getAgentPort', () => {
     const project: AgentCoreProjectSpec = {
       name: 'TestProject',
       version: 1,
+      managedBy: 'CDK' as const,
       agents: [
         {
           type: 'AgentCoreRuntime',
@@ -413,6 +427,7 @@ describe('getAgentPort', () => {
     const project: AgentCoreProjectSpec = {
       name: 'TestProject',
       version: 1,
+      managedBy: 'CDK' as const,
       agents: [],
       memories: [],
       credentials: [],
@@ -435,6 +450,7 @@ describe('getDevSupportedAgents', () => {
     const project: AgentCoreProjectSpec = {
       name: 'TestProject',
       version: 1,
+      managedBy: 'CDK' as const,
       agents: [],
       memories: [],
       credentials: [],
@@ -451,6 +467,7 @@ describe('getDevSupportedAgents', () => {
     const project: AgentCoreProjectSpec = {
       name: 'TestProject',
       version: 1,
+      managedBy: 'CDK' as const,
       agents: [
         {
           type: 'AgentCoreRuntime',
@@ -477,6 +494,7 @@ describe('getDevSupportedAgents', () => {
     const project: AgentCoreProjectSpec = {
       name: 'TestProject',
       version: 1,
+      managedBy: 'CDK' as const,
       agents: [
         {
           type: 'AgentCoreRuntime',
@@ -514,6 +532,7 @@ describe('getDevSupportedAgents', () => {
     const project: AgentCoreProjectSpec = {
       name: 'TestProject',
       version: 1,
+      managedBy: 'CDK' as const,
       agents: [
         {
           type: 'AgentCoreRuntime',
@@ -542,6 +561,7 @@ describe('getDevSupportedAgents', () => {
     const project: AgentCoreProjectSpec = {
       name: 'TestProject',
       version: 1,
+      managedBy: 'CDK' as const,
       agents: [
         {
           type: 'AgentCoreRuntime',
