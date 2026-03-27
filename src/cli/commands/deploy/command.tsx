@@ -137,7 +137,6 @@ export const registerDeploy = (program: Command) => {
     .option('-v, --verbose', 'Show resource-level deployment events [non-interactive]')
     .option('--json', 'Output as JSON [non-interactive]')
     .option('--dry-run', 'Preview deployment without deploying [non-interactive]')
-    .option('--plan', 'Preview deployment without deploying (alias for --dry-run) [non-interactive]')
     .option('--diff', 'Show CDK diff without deploying [non-interactive]')
     .action(
       async (cliOptions: {
@@ -146,17 +145,15 @@ export const registerDeploy = (program: Command) => {
         verbose?: boolean;
         json?: boolean;
         dryRun?: boolean;
-        plan?: boolean;
         diff?: boolean;
       }) => {
         try {
           requireProject();
-          const isDryRun = cliOptions.dryRun ?? cliOptions.plan;
-          if (cliOptions.json || cliOptions.target || isDryRun || cliOptions.yes || cliOptions.verbose) {
+          if (cliOptions.json || cliOptions.target || cliOptions.dryRun || cliOptions.yes || cliOptions.verbose) {
             // CLI mode - any flag triggers non-interactive mode
             const options = {
               ...cliOptions,
-              plan: isDryRun,
+              plan: cliOptions.dryRun,
               target: cliOptions.target ?? 'default',
               progress: !cliOptions.json,
             };

@@ -72,7 +72,7 @@ describe('remove all command', () => {
     );
 
     // Run remove all
-    const result = await runCLI(['remove', 'all', '--force', '--json'], projectDir);
+    const result = await runCLI(['remove', 'all', '--yes', '--json'], projectDir);
     expect(result.exitCode).toBe(0);
     const json = JSON.parse(result.stdout);
     expect(json.success).toBe(true);
@@ -97,7 +97,7 @@ describe('remove all command', () => {
   });
 
   it('includes note about source code in remove all result', async () => {
-    const result = await runCLI(['remove', 'all', '--force', '--json'], projectDir);
+    const result = await runCLI(['remove', 'all', '--yes', '--json'], projectDir);
     expect(result.exitCode).toBe(0);
     const json = JSON.parse(result.stdout);
     expect(json.success).toBe(true);
@@ -120,7 +120,7 @@ describe('remove all command', () => {
     await writeFile(projectSpecPath, JSON.stringify(projectSpec, null, 2));
 
     // Run remove all
-    const result = await runCLI(['remove', 'all', '--force', '--json'], projectDir);
+    const result = await runCLI(['remove', 'all', '--yes', '--json'], projectDir);
     expect(result.exitCode).toBe(0);
     const json = JSON.parse(result.stdout);
     expect(json.success).toBe(true);

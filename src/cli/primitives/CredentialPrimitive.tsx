@@ -250,7 +250,7 @@ export class CredentialPrimitive extends BasePrimitive<AddCredentialOptions, Rem
   }
 
   registerCommands(addCmd: Command, removeCmd: Command): void {
-    const credentialCmd = addCmd
+    addCmd
       .command('credential')
       .description('Add a credential to the project')
       .option('--name <name>', 'Credential name [non-interactive]')
@@ -365,9 +365,6 @@ export class CredentialPrimitive extends BasePrimitive<AddCredentialOptions, Rem
           }
         }
       );
-
-    // Backward-compat alias: `agentcore add identity` → `agentcore add credential`
-    credentialCmd.alias('identity');
 
     this.registerRemoveSubcommand(removeCmd);
   }

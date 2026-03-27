@@ -104,18 +104,16 @@ export abstract class BasePrimitive<
       .description(`Remove ${this.article} ${this.label.toLowerCase()} from the project`)
       .option('--name <name>', 'Name of resource to remove [non-interactive]')
       .option('-y, --yes', 'Skip confirmation prompt [non-interactive]')
-      .option('--force', 'Skip confirmation prompt (alias for --yes) [non-interactive]')
       .option('--json', 'Output as JSON [non-interactive]')
-      .action(async (cliOptions: { name?: string; yes?: boolean; force?: boolean; json?: boolean }) => {
+      .action(async (cliOptions: { name?: string; yes?: boolean; json?: boolean }) => {
         try {
           if (!findConfigRoot()) {
             console.error('No agentcore project found. Run `agentcore create` first.');
             process.exit(1);
           }
 
-          const skipConfirm = cliOptions.yes ?? cliOptions.force;
           // Any flag triggers non-interactive CLI mode
-          if (cliOptions.name || skipConfirm || cliOptions.json) {
+          if (cliOptions.name || cliOptions.yes || cliOptions.json) {
             if (!cliOptions.name) {
               console.log(JSON.stringify({ success: false, error: '--name is required' }));
               process.exit(1);
@@ -143,7 +141,7 @@ export abstract class BasePrimitive<
             const { clear, unmount } = render(
               React.createElement(RemoveFlow, {
                 isInteractive: false,
-                force: cliOptions.force,
+                force: cliOptions.yes,
                 initialResourceType: this.kind,
                 initialResourceName: cliOptions.name,
                 onExit: () => {
