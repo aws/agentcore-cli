@@ -76,7 +76,7 @@ export async function getGateways(): Promise<string[]> {
 // ─────────────────────────────────────────────────────────────────────────────
 
 export interface BindMcpRuntimeConfig {
-  agentName: string;
+  runtimeName: string;
   envVarName: string;
 }
 
@@ -87,11 +87,11 @@ export interface BindMcpRuntimeConfig {
 export async function bindMcpRuntimeToAgent(mcpRuntimeName: string, config: BindMcpRuntimeConfig): Promise<void> {
   const configIO = new ConfigIO();
 
-  // Validate the agent exists
+  // Validate the runtime exists
   const project = await configIO.readProjectSpec();
-  const agent = project.runtimes.find(a => a.name === config.agentName);
+  const agent = project.runtimes.find(a => a.name === config.runtimeName);
   if (!agent) {
-    throw new Error(`Agent "${config.agentName}" not found.`);
+    throw new Error(`Runtime "${config.runtimeName}" not found.`);
   }
 
   // Find the MCP runtime tool
@@ -104,12 +104,12 @@ export async function bindMcpRuntimeToAgent(mcpRuntimeName: string, config: Bind
   runtimeTool.bindings ??= [];
 
   // Check if already bound
-  if (runtimeTool.bindings.some(b => b.agentName === config.agentName)) {
-    throw new Error(`Agent "${config.agentName}" is already bound to MCP runtime "${mcpRuntimeName}".`);
+  if (runtimeTool.bindings.some(b => b.runtimeName === config.runtimeName)) {
+    throw new Error(`Runtime "${config.runtimeName}" is already bound to MCP runtime "${mcpRuntimeName}".`);
   }
 
   const binding: McpRuntimeBinding = {
-    agentName: config.agentName,
+    runtimeName: config.runtimeName,
     envVarName: config.envVarName,
   };
 

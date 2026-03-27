@@ -616,13 +616,13 @@ export type AgentCoreGateway = z.infer<typeof AgentCoreGatewaySchema>;
 // ============================================================================
 
 /**
- * Binding from an MCP runtime tool to an agent.
- * When present, the agent is granted InvokeAgentRuntime permission
+ * Binding from an MCP runtime tool to a runtime.
+ * When present, the runtime is granted InvokeAgentRuntime permission
  * and receives the runtime ARN in the specified environment variable.
  */
 export const McpRuntimeBindingSchema = z
   .object({
-    agentName: z.string().min(1),
+    runtimeName: z.string().min(1),
     envVarName: EnvVarNameSchema,
   })
   .strict();

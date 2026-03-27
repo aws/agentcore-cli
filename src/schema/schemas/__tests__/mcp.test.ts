@@ -508,7 +508,7 @@ describe('AgentCoreMcpRuntimeToolSchema', () => {
   it('accepts tool with bindings', () => {
     const result = AgentCoreMcpRuntimeToolSchema.safeParse({
       ...validTool,
-      bindings: [{ agentName: 'Agent1', envVarName: 'TOOL_ARN' }],
+      bindings: [{ runtimeName: 'Agent1', envVarName: 'TOOL_ARN' }],
     });
     expect(result.success).toBe(true);
   });

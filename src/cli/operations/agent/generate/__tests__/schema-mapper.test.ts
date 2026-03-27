@@ -101,7 +101,7 @@ describe('mapModelProviderToCredentials', () => {
 });
 
 describe('mapGenerateConfigToAgent', () => {
-  it('creates AgentCoreRuntime agent spec', () => {
+  it('creates agent spec', () => {
     const result = mapGenerateConfigToAgent(baseConfig);
     expect(result.name).toBe('TestProject');
     expect(result.build).toBe('CodeZip');

@@ -1256,7 +1256,7 @@
             "items": {
               "type": "object",
               "properties": {
-                "agentName": {
+                "runtimeName": {
                   "type": "string",
                   "minLength": 1
                 },
@@ -1267,7 +1267,7 @@
                   "pattern": "^[A-Za-z_][A-Za-z0-9_]*$"
                 }
               },
-              "required": ["agentName", "envVarName"],
+              "required": ["runtimeName", "envVarName"],
               "additionalProperties": false
             }
           }

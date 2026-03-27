@@ -85,12 +85,12 @@ interface AgentCoreMcpRuntimeTool {
 }
 
 /**
- * Binding from an MCP runtime tool to an agent.
+ * Binding from an MCP runtime tool to a runtime.
  * When present, the agent is granted InvokeAgentRuntime permission
  * and receives the runtime ARN in the specified environment variable.
  */
 interface McpRuntimeBinding {
-  agentName: string; // @min 1 - name of the agent from spec.runtimes array
+  runtimeName: string; // @min 1 - name of the runtime from spec.runtimes array
   envVarName: string; // @regex ^[A-Za-z_][A-Za-z0-9_]*$ @max 255 - env var for runtime ARN
 }
 
