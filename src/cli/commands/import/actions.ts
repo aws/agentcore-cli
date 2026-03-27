@@ -291,11 +291,11 @@ export async function handleImport(options: ImportOptions): Promise<ImportResult
     logger.startStep('Merge agents and memories');
     logger.log('Merging into existing project...');
     onProgress?.('Merging into existing project...');
-    const existingAgentNames = new Set(projectSpec.agents.map(a => a.name));
+    const existingAgentNames = new Set(projectSpec.runtimes.map(a => a.name));
     const newlyAddedAgentNames = new Set<string>();
     for (const agent of parsed.agents) {
       if (!existingAgentNames.has(agent.name)) {
-        projectSpec.agents.push(toAgentEnvSpec(agent));
+        projectSpec.runtimes.push(toAgentEnvSpec(agent));
         newlyAddedAgentNames.add(agent.name);
       } else {
         logger.log(`Skipping agent "${agent.name}" (already exists in project)`);
@@ -710,10 +710,10 @@ export async function handleImport(options: ImportOptions): Promise<ImportResult
     targetState.resources.stackName = stackName;
 
     if (agentsToImport.length > 0) {
-      targetState.resources.agents ??= {};
+      targetState.resources.runtimes ??= {};
       for (const agent of agentsToImport) {
         if (agent.physicalAgentId) {
-          targetState.resources.agents[agent.name] = {
+          targetState.resources.runtimes[agent.name] = {
             runtimeId: agent.physicalAgentId,
             runtimeArn:
               agent.physicalAgentArn ??

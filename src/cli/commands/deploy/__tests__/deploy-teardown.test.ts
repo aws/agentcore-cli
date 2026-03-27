@@ -68,7 +68,7 @@ describe('deploy with empty agents and deployed state (teardown)', () => {
           default: {
             resources: {
               stackName: 'TeardownTestProj-default',
-              agents: {
+              runtimes: {
                 OldAgent: {
                   runtimeId: 'rt-123',
                   runtimeArn: 'arn:aws:agentcore:us-east-1:123456789012:runtime/rt-123',

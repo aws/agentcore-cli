@@ -54,7 +54,7 @@ describe('integration: add BYO agent with CUSTOM_JWT auth', () => {
 
     // Verify config has authorizer fields
     const config = await readProjectConfig(project.projectPath);
-    const agent = config.agents.find(a => a.name === agentName);
+    const agent = config.runtimes.find(a => a.name === agentName);
     expect(agent, `Agent "${agentName}" should be in config`).toBeTruthy();
     expect(agent!.authorizerType).toBe('CUSTOM_JWT');
     expect(agent!.authorizerConfiguration).toBeDefined();
@@ -105,7 +105,7 @@ describe('integration: add BYO agent with CUSTOM_JWT auth', () => {
     expect(json.success).toBe(true);
 
     const config = await readProjectConfig(project.projectPath);
-    const agent = config.agents.find(a => a.name === agent2);
+    const agent = config.runtimes.find(a => a.name === agent2);
     expect(agent).toBeTruthy();
     expect(agent!.authorizerType).toBe('CUSTOM_JWT');
 
@@ -152,7 +152,7 @@ describe('integration: add BYO agent with CUSTOM_JWT auth', () => {
     expect(result.exitCode, `stdout: ${result.stdout}, stderr: ${result.stderr}`).toBe(0);
 
     const config = await readProjectConfig(project.projectPath);
-    const agent = config.agents.find(a => a.name === agent3);
+    const agent = config.runtimes.find(a => a.name === agent3);
     expect(agent).toBeTruthy();
     // No authorizerType means AWS_IAM default
     expect(agent!.authorizerType).toBeUndefined();
@@ -286,7 +286,7 @@ describe('integration: add BYO agent with CUSTOM_JWT auth', () => {
     expect(result.exitCode, `stdout: ${result.stdout}, stderr: ${result.stderr}`).toBe(0);
 
     const config = await readProjectConfig(project.projectPath);
-    const agent = config.agents.find(a => a.name === agent4);
+    const agent = config.runtimes.find(a => a.name === agent4);
     expect(agent).toBeTruthy();
 
     const jwt = agent!.authorizerConfiguration!.customJwtAuthorizer!;

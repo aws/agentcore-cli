@@ -57,8 +57,8 @@ export function useRemoveFlow({ force, dryRun }: RemoveFlowOptions): RemoveFlowS
         setProjectName(projectSpec.name);
         items.push(`AgentCore project: ${projectSpec.name}`);
 
-        if (projectSpec.agents && projectSpec.agents.length > 0) {
-          items.push(`${projectSpec.agents.length} agent definition${projectSpec.agents.length > 1 ? 's' : ''}`);
+        if (projectSpec.runtimes && projectSpec.runtimes.length > 0) {
+          items.push(`${projectSpec.runtimes.length} agent definition${projectSpec.runtimes.length > 1 ? 's' : ''}`);
         }
         if (projectSpec.memories && projectSpec.memories.length > 0) {
           items.push(`${projectSpec.memories.length} memory provider${projectSpec.memories.length > 1 ? 's' : ''}`);

@@ -57,7 +57,7 @@ describe.skipIf(!prereqs.npm || !prereqs.git)('integration: create with differen
 
     // Verify config has agent registered
     const config = await readProjectConfig(json.projectPath);
-    const agents = config.agents as Record<string, unknown>[];
+    const agents = config.runtimes as Record<string, unknown>[];
     expect(agents).toBeDefined();
     expect(agents.length).toBe(1);
     expect(agents[0]!.name).toBe(agentName);
@@ -102,7 +102,7 @@ describe.skipIf(!prereqs.npm || !prereqs.git)('integration: create with differen
 
     // Verify config has agent registered
     const config = await readProjectConfig(json.projectPath);
-    const agents = config.agents as Record<string, unknown>[];
+    const agents = config.runtimes as Record<string, unknown>[];
     expect(agents.length).toBe(1);
     expect(agents[0]!.name).toBe(agentName);
   });
@@ -143,7 +143,7 @@ describe.skipIf(!prereqs.npm || !prereqs.git)('integration: create with differen
 
     // Verify config has agent registered
     const config = await readProjectConfig(json.projectPath);
-    const agents = config.agents as Record<string, unknown>[];
+    const agents = config.runtimes as Record<string, unknown>[];
     expect(agents.length).toBe(1);
     expect(agents[0]!.name).toBe(agentName);
   });

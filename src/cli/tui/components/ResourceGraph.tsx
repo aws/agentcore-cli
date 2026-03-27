@@ -111,7 +111,7 @@ export function getTargetDisplayText(target: AgentCoreGatewayTarget): string {
 }
 
 export function ResourceGraph({ project, mcp, agentName, resourceStatuses }: ResourceGraphProps) {
-  const allAgents = project.agents ?? [];
+  const allAgents = project.runtimes ?? [];
   const agents = agentName ? allAgents.filter(a => a.name === agentName) : allAgents;
   const memories = project.memories ?? [];
   const credentials = project.credentials ?? [];

@@ -64,7 +64,7 @@ function makeDeployedContext({
 } = {}) {
   return {
     project: {
-      agents: [{ name: agentName }],
+      runtimes: [{ name: agentName }],
       onlineEvalConfigs: [],
     },
     awsTargets: [{ name: 'dev', region: 'us-east-1', account: '111222333444' }],
@@ -72,7 +72,7 @@ function makeDeployedContext({
       targets: {
         dev: {
           resources: {
-            agents: {
+            runtimes: {
               [agentName]: {
                 runtimeId,
                 runtimeArn: `arn:aws:bedrock:us-east-1:111222333444:agent-runtime/${runtimeId}`,

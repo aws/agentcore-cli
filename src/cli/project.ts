@@ -11,7 +11,7 @@ export function createDefaultProjectSpec(projectName: string): AgentCoreProjectS
     name: projectName,
     version: SCHEMA_VERSION,
     managedBy: 'CDK' as const,
-    agents: [],
+    runtimes: [],
     memories: [],
     credentials: [],
     evaluators: [],

@@ -90,7 +90,7 @@ interface AgentCoreMcpRuntimeTool {
  * and receives the runtime ARN in the specified environment variable.
  */
 interface McpRuntimeBinding {
-  agentName: string; // @min 1 - name of the agent from spec.agents array
+  agentName: string; // @min 1 - name of the agent from spec.runtimes array
   envVarName: string; // @regex ^[A-Za-z_][A-Za-z0-9_]*$ @max 255 - env var for runtime ARN
 }
 

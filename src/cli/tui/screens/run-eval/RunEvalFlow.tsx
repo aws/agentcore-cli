@@ -70,7 +70,7 @@ export function RunEvalFlow({ onExit, onViewRuns }: RunEvalFlowProps) {
         // Cross-reference project agents with deployed state to only show deployed agents
         const deployedAgentNames = new Set<string>();
         for (const target of Object.values(context.deployedState.targets)) {
-          const agentStates = target.resources?.agents;
+          const agentStates = target.resources?.runtimes;
           if (agentStates) {
             for (const name of Object.keys(agentStates)) {
               deployedAgentNames.add(name);
@@ -78,7 +78,7 @@ export function RunEvalFlow({ onExit, onViewRuns }: RunEvalFlowProps) {
           }
         }
 
-        const agents: AgentItem[] = context.project.agents
+        const agents: AgentItem[] = context.project.runtimes
           .filter(a => deployedAgentNames.has(a.name))
           .map(a => ({
             name: a.name,
@@ -90,7 +90,7 @@ export function RunEvalFlow({ onExit, onViewRuns }: RunEvalFlowProps) {
             setFlow({
               name: 'error',
               message:
-                context.project.agents.length === 0
+                context.project.runtimes.length === 0
                   ? 'No agents found in project. Run `agentcore add agent` first.'
                   : 'No deployed agents found. Run `agentcore deploy` first.',
             });

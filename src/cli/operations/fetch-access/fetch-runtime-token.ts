@@ -17,7 +17,7 @@ export async function canFetchRuntimeToken(agentName: string, options: { configI
     const configIO = options.configIO ?? new ConfigIO();
     const projectSpec = await configIO.readProjectSpec();
 
-    const agentSpec = projectSpec.agents.find(a => a.name === agentName);
+    const agentSpec = projectSpec.runtimes.find(a => a.name === agentName);
     if (!agentSpec?.authorizerType || agentSpec.authorizerType !== 'CUSTOM_JWT') return false;
     if (!agentSpec.authorizerConfiguration?.customJwtAuthorizer) return false;
 
@@ -57,9 +57,9 @@ export async function fetchRuntimeToken(
 
   const targetName = options.deployTarget ?? targetNames[0]!;
 
-  const agentSpec = projectSpec.agents.find(a => a.name === agentName);
+  const agentSpec = projectSpec.runtimes.find(a => a.name === agentName);
   if (!agentSpec) {
-    const available = projectSpec.agents.map(a => a.name);
+    const available = projectSpec.runtimes.map(a => a.name);
     throw new Error(`Agent '${agentName}' not found in project. Available agents: ${available.join(', ') || 'none'}`);
   }
 

@@ -254,13 +254,13 @@ describe('ConfigValidationError', () => {
 
     it('formats nested path with array indices as bracket notation', () => {
       const schema = z.object({
-        agents: z.array(z.object({ name: z.string() })),
+        runtimes: z.array(z.object({ name: z.string() })),
       });
-      const result = schema.safeParse({ agents: [{ name: 123 }] });
+      const result = schema.safeParse({ runtimes: [{ name: 123 }] });
       expect(result.success).toBe(false);
       if (!result.success) {
         const err = new ConfigValidationError('/path', 'project', result.error);
-        expect(err.message).toMatch(/agents\[0\]\.name/);
+        expect(err.message).toMatch(/runtimes\[0\]\.name/);
       }
     });
   });

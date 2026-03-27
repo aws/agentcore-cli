@@ -15,7 +15,7 @@ export interface WriteAgentOptions {
  * Writes a new agent (and associated resources) to the agentcore.json project config.
  *
  * In v2 schema:
- * - Agent goes to project.agents[]
+ * - Agent goes to project.runtimes[]
  * - Memory resources go to project.memories[]
  * - Credential resources go to project.credentials[] (unless strategy.reuse)
  */
@@ -34,12 +34,12 @@ export async function writeAgentToProject(config: GenerateConfig, options?: Writ
     const project = await configIO.readProjectSpec();
 
     // Check for duplicate agent name
-    if (project.agents.some(a => a.name === agentName)) {
+    if (project.runtimes.some(a => a.name === agentName)) {
       throw new AgentAlreadyExistsError(agentName);
     }
 
     // Add resources to project
-    project.agents.push(agent);
+    project.runtimes.push(agent);
 
     // Only add memories that don't already exist in the project (avoid duplicates)
     const newMemories = memories.filter(m => !project.memories.some(em => em.name === m.name));
@@ -68,7 +68,7 @@ export async function writeAgentToProject(config: GenerateConfig, options?: Writ
       name: agentName,
       version: SCHEMA_VERSION,
       managedBy: 'CDK' as const,
-      agents: [agent],
+      runtimes: [agent],
       memories,
       credentials,
       evaluators: [],

@@ -12,7 +12,7 @@ export async function getAvailableAgents(): Promise<string[]> {
   try {
     const configIO = new ConfigIO();
     const project = await configIO.readProjectSpec();
-    return project.agents.map(agent => agent.name);
+    return project.runtimes.map(agent => agent.name);
   } catch {
     return [];
   }
@@ -89,7 +89,7 @@ export async function bindMcpRuntimeToAgent(mcpRuntimeName: string, config: Bind
 
   // Validate the agent exists
   const project = await configIO.readProjectSpec();
-  const agent = project.agents.find(a => a.name === config.agentName);
+  const agent = project.runtimes.find(a => a.name === config.agentName);
   if (!agent) {
     throw new Error(`Agent "${config.agentName}" not found.`);
   }

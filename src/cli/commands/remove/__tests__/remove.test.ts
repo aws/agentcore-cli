@@ -95,7 +95,7 @@ describe('remove command', () => {
 
       // Verify agent is removed from schema
       const schema = JSON.parse(await readFile(join(projectDir, 'agentcore', 'agentcore.json'), 'utf-8'));
-      const agent = schema.agents.find((a: { name: string }) => a.name === 'TUITestAgent');
+      const agent = schema.runtimes.find((a: { name: string }) => a.name === 'TUITestAgent');
       expect(agent, 'TUITestAgent should be removed from schema').toBeUndefined();
     });
 
@@ -107,7 +107,7 @@ describe('remove command', () => {
 
       // Verify agent is removed from schema
       const schema = JSON.parse(await readFile(join(projectDir, 'agentcore', 'agentcore.json'), 'utf-8'));
-      expect(schema.agents.length, 'Agent should be removed from schema').toBe(0);
+      expect(schema.runtimes.length, 'Agent should be removed from schema').toBe(0);
     });
   });
 });

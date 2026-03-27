@@ -35,21 +35,21 @@ export function resolveAgent(
 ): { success: true; agent: ResolvedAgent } | { success: false; error: string } {
   const { project, deployedState, awsTargets } = context;
 
-  if (project.agents.length === 0) {
+  if (project.runtimes.length === 0) {
     return { success: false, error: 'No agents defined in agentcore.json' };
   }
 
   // Resolve agent
-  const agentNames = project.agents.map(a => a.name);
+  const agentNames = project.runtimes.map(a => a.name);
 
-  if (!options.agent && project.agents.length > 1) {
+  if (!options.agent && project.runtimes.length > 1) {
     return {
       success: false,
       error: `Multiple agents found. Use --agent to specify one: ${agentNames.join(', ')}`,
     };
   }
 
-  const agentSpec = options.agent ? project.agents.find(a => a.name === options.agent) : project.agents[0];
+  const agentSpec = options.agent ? project.runtimes.find(a => a.name === options.agent) : project.runtimes[0];
 
   if (options.agent && !agentSpec) {
     return {
@@ -77,7 +77,7 @@ export function resolveAgent(
   }
 
   // Get the deployed state for this specific agent
-  const agentState = targetState?.resources?.agents?.[agentSpec.name];
+  const agentState = targetState?.resources?.runtimes?.[agentSpec.name];
 
   if (!agentState) {
     return {

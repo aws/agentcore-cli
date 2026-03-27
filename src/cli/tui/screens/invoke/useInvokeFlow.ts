@@ -24,7 +24,7 @@ import { generateSessionId } from '../../../operations/session';
 import { useCallback, useEffect, useRef, useState } from 'react';
 
 export interface InvokeConfig {
-  agents: {
+  runtimes: {
     name: string;
     state: AgentCoreDeployedState;
     modelProvider?: ModelProvider;
@@ -121,11 +121,11 @@ export function useInvokeFlow(options: InvokeFlowOptions = {}): InvokeFlowState 
           return;
         }
 
-        const agents: InvokeConfig['agents'] = [];
-        for (const agent of project.agents) {
-          const state = targetState?.resources?.agents?.[agent.name];
+        const runtimes: InvokeConfig['runtimes'] = [];
+        for (const agent of project.runtimes) {
+          const state = targetState?.resources?.runtimes?.[agent.name];
           if (!state) continue;
-          agents.push({
+          runtimes.push({
             name: agent.name,
             state,
             modelProvider: undefined,
@@ -135,13 +135,13 @@ export function useInvokeFlow(options: InvokeFlowOptions = {}): InvokeFlowState 
           });
         }
 
-        if (agents.length === 0) {
+        if (runtimes.length === 0) {
           setError('No deployed agents found. Run `agentcore deploy` first.');
           setPhase('error');
           return;
         }
 
-        setConfig({ agents, target: targetConfig, targetName, projectName: project.name });
+        setConfig({ runtimes, target: targetConfig, targetName, projectName: project.name });
 
         // Initialize session ID - always generate fresh unless explicitly provided
         if (initialSessionId) {
@@ -162,7 +162,7 @@ export function useInvokeFlow(options: InvokeFlowOptions = {}): InvokeFlowState 
 
   const getMcpInvokeOptions = useCallback(() => {
     if (!config) return null;
-    const agent = config.agents[selectedAgent];
+    const agent = config.runtimes[selectedAgent];
     if (!agent) return null;
     return {
       region: config.target.region,
@@ -197,7 +197,7 @@ export function useInvokeFlow(options: InvokeFlowOptions = {}): InvokeFlowState 
 
   const fetchBearerToken = useCallback(async () => {
     if (!config) return;
-    const agent = config.agents[selectedAgent];
+    const agent = config.runtimes[selectedAgent];
     if (agent?.authorizerType !== 'CUSTOM_JWT') return;
 
     // Check if credentials are set up before attempting fetch
@@ -227,7 +227,7 @@ export function useInvokeFlow(options: InvokeFlowOptions = {}): InvokeFlowState 
     async (prompt: string) => {
       if (!config || phase === 'invoking') return;
 
-      const agent = config.agents[selectedAgent];
+      const agent = config.runtimes[selectedAgent];
       if (!agent) return;
 
       const isMcp = agent.protocol === 'MCP';

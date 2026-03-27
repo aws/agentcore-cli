@@ -58,7 +58,7 @@ export async function handlePackage(context: PackageContext): Promise<PackageRes
   }
 
   // Filter agents based on --agent flag
-  const agentsToPackage = targetAgent ? project.agents.filter(a => a.name === targetAgent) : project.agents;
+  const agentsToPackage = targetAgent ? project.runtimes.filter(a => a.name === targetAgent) : project.runtimes;
 
   for (const agent of agentsToPackage) {
     if (agent.build === 'CodeZip') {

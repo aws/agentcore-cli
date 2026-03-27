@@ -35,7 +35,7 @@ export async function listTags(resourceFilter?: string): Promise<TagListResult> 
   const resources: ResourceTagInfo[] = [];
 
   // Collect agents
-  for (const agent of spec.agents ?? []) {
+  for (const agent of spec.runtimes ?? []) {
     resources.push({
       type: 'agent',
       name: agent.name,
@@ -129,7 +129,7 @@ export async function addTag(resourceRefStr: string, key: string, value: string)
   ) {
     const spec = await configIO.readProjectSpec();
     let collection: { name: string; tags?: Record<string, string> }[] | undefined;
-    if (ref.type === 'agent') collection = spec.agents;
+    if (ref.type === 'agent') collection = spec.runtimes;
     else if (ref.type === 'memory') collection = spec.memories;
     else if (ref.type === 'evaluator') collection = spec.evaluators;
     else if (ref.type === 'policy-engine') collection = spec.policyEngines;
@@ -163,7 +163,7 @@ export async function removeTag(resourceRefStr: string, key: string): Promise<{ 
   const spec = await configIO.readProjectSpec();
 
   let collection: { name: string; tags?: Record<string, string> }[] | undefined;
-  if (ref.type === 'agent') collection = spec.agents;
+  if (ref.type === 'agent') collection = spec.runtimes;
   else if (ref.type === 'memory') collection = spec.memories;
   else if (ref.type === 'evaluator') collection = spec.evaluators;
   else if (ref.type === 'policy-engine') collection = spec.policyEngines;

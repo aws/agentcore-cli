@@ -103,7 +103,7 @@ export class AgentPrimitive extends BasePrimitive<AddAgentOptions, RemovableReso
       }
 
       const project = await configIO.readProjectSpec();
-      const existingAgent = project.agents.find(agent => agent.name === options.name);
+      const existingAgent = project.runtimes.find(agent => agent.name === options.name);
       if (existingAgent) {
         return { success: false, error: `Agent "${options.name}" already exists in this project.` };
       }
@@ -124,13 +124,13 @@ export class AgentPrimitive extends BasePrimitive<AddAgentOptions, RemovableReso
     try {
       const project = await this.readProjectSpec();
 
-      const agentIndex = project.agents.findIndex(a => a.name === agentName);
+      const agentIndex = project.runtimes.findIndex(a => a.name === agentName);
       if (agentIndex === -1) {
         return { success: false, error: `Agent "${agentName}" not found.` };
       }
 
       // Remove agent (credentials preserved for potential reuse)
-      project.agents.splice(agentIndex, 1);
+      project.runtimes.splice(agentIndex, 1);
       await this.writeProjectSpec(project);
 
       return { success: true };
@@ -143,7 +143,7 @@ export class AgentPrimitive extends BasePrimitive<AddAgentOptions, RemovableReso
   async previewRemove(agentName: string): Promise<RemovalPreview> {
     const project = await this.readProjectSpec();
 
-    const agent = project.agents.find(a => a.name === agentName);
+    const agent = project.runtimes.find(a => a.name === agentName);
     if (!agent) {
       throw new Error(`Agent "${agentName}" not found.`);
     }
@@ -153,7 +153,7 @@ export class AgentPrimitive extends BasePrimitive<AddAgentOptions, RemovableReso
 
     const afterSpec = {
       ...project,
-      agents: project.agents.filter(a => a.name !== agentName),
+      runtimes: project.runtimes.filter(a => a.name !== agentName),
     };
 
     schemaChanges.push({
@@ -168,7 +168,7 @@ export class AgentPrimitive extends BasePrimitive<AddAgentOptions, RemovableReso
   async getRemovable(): Promise<RemovableResource[]> {
     try {
       const project = await this.readProjectSpec();
-      return project.agents.map(a => ({ name: a.name }));
+      return project.runtimes.map(a => ({ name: a.name }));
     } catch {
       return [];
     }
@@ -527,7 +527,7 @@ export class AgentPrimitive extends BasePrimitive<AddAgentOptions, RemovableReso
       ...(lifecycleConfiguration && { lifecycleConfiguration }),
     };
 
-    project.agents.push(agent);
+    project.runtimes.push(agent);
 
     // Handle credential creation with smart reuse detection (skip for MCP)
     if (options.protocol !== 'MCP' && options.modelProvider !== 'Bedrock') {

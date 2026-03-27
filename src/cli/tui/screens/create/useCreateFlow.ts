@@ -362,7 +362,7 @@ export function useCreateFlow(cwd: string): CreateFlowState {
                 const configIO = new ConfigIO({ baseDir: configBaseDir });
                 const project = await configIO.readProjectSpec();
                 const agent = mapByoConfigToAgent(addAgentConfig);
-                project.agents.push(agent);
+                project.runtimes.push(agent);
 
                 // Handle credentials for BYO (new project, so always project-scoped)
                 if (addAgentConfig.modelProvider !== 'Bedrock') {

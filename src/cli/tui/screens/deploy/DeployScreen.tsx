@@ -392,7 +392,7 @@ export function DeployScreen({
 
       {allSuccess && !diffMode && (
         <NextSteps
-          steps={getDeployNextSteps((context?.projectSpec.agents.length ?? 0) > 0)}
+          steps={getDeployNextSteps((context?.projectSpec.runtimes.length ?? 0) > 0)}
           isInteractive={isInteractive}
           onSelect={step => {
             if (step.command === 'invoke') {

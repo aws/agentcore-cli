@@ -237,7 +237,7 @@ describe('handleImport: JWT authorizer passthrough', () => {
     fs.mkdirSync(configDir, { recursive: true });
     fs.writeFileSync(
       path.join(configDir, 'agentcore.json'),
-      JSON.stringify({ name: 'myproject', version: 1, agents: [], memories: [], credentials: [] })
+      JSON.stringify({ name: 'myproject', version: 1, runtimes: [], memories: [], credentials: [] })
     );
     mockFindConfigRoot.mockReturnValue(configDir);
   });
@@ -250,7 +250,7 @@ describe('handleImport: JWT authorizer passthrough', () => {
     mockReadProjectSpec.mockResolvedValue({
       name: 'myproject',
       version: 1,
-      agents: [],
+      runtimes: [],
       memories: [],
       credentials: [],
     });
@@ -265,7 +265,7 @@ describe('handleImport: JWT authorizer passthrough', () => {
     expect(mockWriteProjectSpec).toHaveBeenCalledTimes(1);
 
     const writtenSpec = mockWriteProjectSpec.mock.calls[0]![0];
-    const agent = writtenSpec.agents[0];
+    const agent = writtenSpec.runtimes[0];
     expect(agent.authorizerType).toBe('CUSTOM_JWT');
     expect(agent.authorizerConfiguration).toBeDefined();
     expect(agent.authorizerConfiguration.customJwtAuthorizer.discoveryUrl).toBe(
@@ -278,7 +278,7 @@ describe('handleImport: JWT authorizer passthrough', () => {
     mockReadProjectSpec.mockResolvedValue({
       name: 'myproject',
       version: 1,
-      agents: [],
+      runtimes: [],
       memories: [],
       credentials: [],
     });
@@ -290,7 +290,7 @@ describe('handleImport: JWT authorizer passthrough', () => {
     await handleImport({ source: fixturePath });
 
     const writtenSpec = mockWriteProjectSpec.mock.calls[0]![0];
-    for (const agent of writtenSpec.agents) {
+    for (const agent of writtenSpec.runtimes) {
       expect(agent.authorizerType).toBeUndefined();
       expect(agent.authorizerConfiguration).toBeUndefined();
     }
@@ -300,7 +300,7 @@ describe('handleImport: JWT authorizer passthrough', () => {
     mockReadProjectSpec.mockResolvedValue({
       name: 'myproject',
       version: 1,
-      agents: [],
+      runtimes: [],
       memories: [],
       credentials: [],
     });

@@ -80,7 +80,7 @@ export async function validateProject(): Promise<PreflightContext> {
   // deployed-state.json is written by the CLI after every successful deploy, so it is a
   // reliable indicator of whether a CloudFormation stack exists for this project.
   let isTeardownDeploy = false;
-  const hasAgents = projectSpec.agents && projectSpec.agents.length > 0;
+  const hasAgents = projectSpec.runtimes && projectSpec.runtimes.length > 0;
   const hasMemories = projectSpec.memories && projectSpec.memories.length > 0;
   const hasEvaluators = projectSpec.evaluators && projectSpec.evaluators.length > 0;
   const hasPolicyEngines = projectSpec.policyEngines && projectSpec.policyEngines.length > 0;
@@ -124,7 +124,7 @@ export async function validateProject(): Promise<PreflightContext> {
  */
 function validateRuntimeNames(projectSpec: AgentCoreProjectSpec): void {
   const projectName = projectSpec.name;
-  for (const agent of projectSpec.agents || []) {
+  for (const agent of projectSpec.runtimes || []) {
     const agentName = agent.name;
     if (agentName) {
       const combinedName = `${projectName}_${agentName}`;
@@ -144,7 +144,7 @@ function validateRuntimeNames(projectSpec: AgentCoreProjectSpec): void {
  */
 export function validateContainerAgents(projectSpec: AgentCoreProjectSpec, configRoot: string): void {
   const errors: string[] = [];
-  for (const agent of projectSpec.agents || []) {
+  for (const agent of projectSpec.runtimes || []) {
     if (agent.build === 'Container') {
       const codeLocation = resolveCodeLocation(agent.codeLocation, configRoot);
       const dockerfilePath = path.join(codeLocation, DOCKERFILE_NAME);

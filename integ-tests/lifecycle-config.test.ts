@@ -64,7 +64,7 @@ describe('integration: lifecycle configuration', () => {
       expect(json.success).toBe(true);
 
       const config = await readProjectConfig(json.projectPath);
-      const agents = config.agents as Record<string, unknown>[];
+      const agents = config.runtimes as Record<string, unknown>[];
       expect(agents.length).toBe(1);
 
       const agent = agents[0]!;
@@ -101,7 +101,7 @@ describe('integration: lifecycle configuration', () => {
       expect(json.success).toBe(true);
 
       const config = await readProjectConfig(json.projectPath);
-      const agents = config.agents as Record<string, unknown>[];
+      const agents = config.runtimes as Record<string, unknown>[];
       const agent = agents[0]!;
       const lifecycle = agent.lifecycleConfiguration as Record<string, unknown>;
       expect(lifecycle).toBeDefined();
@@ -134,7 +134,7 @@ describe('integration: lifecycle configuration', () => {
       expect(json.success).toBe(true);
 
       const config = await readProjectConfig(json.projectPath);
-      const agents = config.agents as Record<string, unknown>[];
+      const agents = config.runtimes as Record<string, unknown>[];
       const agent = agents[0]!;
       expect(agent.lifecycleConfiguration).toBeUndefined();
     });
@@ -173,7 +173,7 @@ describe('integration: lifecycle configuration', () => {
       expect(json.success).toBe(true);
 
       const config = await readProjectConfig(projectPath);
-      const agents = config.agents as Record<string, unknown>[];
+      const agents = config.runtimes as Record<string, unknown>[];
       const agent = agents.find(a => a.name === name);
       expect(agent).toBeDefined();
       const lifecycle = agent!.lifecycleConfiguration as Record<string, unknown>;
@@ -210,7 +210,7 @@ describe('integration: lifecycle configuration', () => {
       expect(json.success).toBe(true);
 
       const config = await readProjectConfig(projectPath);
-      const agents = config.agents as Record<string, unknown>[];
+      const agents = config.runtimes as Record<string, unknown>[];
       const agent = agents.find(a => a.name === name);
       expect(agent).toBeDefined();
       const lifecycle = agent!.lifecycleConfiguration as Record<string, unknown>;

@@ -55,7 +55,7 @@ export function AddOnlineEvalFlow({ isInteractive = true, onExit, onBack, onDev,
           description: e.description,
         }));
 
-        const agentNames = projectSpec.agents.map(a => a.name);
+        const agentNames = projectSpec.runtimes.map(a => a.name);
 
         if (agentNames.length === 0) {
           setFlow({

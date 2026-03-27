@@ -93,7 +93,7 @@ describe('remove all command', () => {
     // Verify agentcore.json agents ARE cleared
 
     const schema = JSON.parse(await readFile(join(projectDir, 'agentcore', 'agentcore.json'), 'utf-8'));
-    expect(schema.agents.length, 'Agents should be cleared after remove all').toBe(0);
+    expect(schema.runtimes.length, 'Agents should be cleared after remove all').toBe(0);
   });
 
   it('includes note about source code in remove all result', async () => {

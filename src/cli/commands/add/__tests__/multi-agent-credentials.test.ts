@@ -111,7 +111,7 @@ describe('multi-agent credential behavior', () => {
       expect(spec.credentials[0].name).toBe(`${projectName}Gemini`);
 
       // Should have 2 agents
-      expect(spec.agents).toHaveLength(2);
+      expect(spec.runtimes).toHaveLength(2);
     });
   });
 
@@ -149,7 +149,7 @@ describe('multi-agent credential behavior', () => {
       expect(credNames).toContain(`${projectName}Agent3Gemini`);
 
       // Should have 3 agents
-      expect(spec.agents).toHaveLength(3);
+      expect(spec.runtimes).toHaveLength(3);
 
       // .env.local should have both keys
       const env = await readEnvLocal();
@@ -180,7 +180,7 @@ describe('multi-agent credential behavior', () => {
       expect(spec.credentials.map((c: { name: string }) => c.name)).toContain(`${projectName}Agent3Gemini`);
 
       // Should have 2 agents
-      expect(spec.agents).toHaveLength(2);
+      expect(spec.runtimes).toHaveLength(2);
     });
 
     it('removing agent with shared credential preserves credential', async () => {
@@ -194,7 +194,7 @@ describe('multi-agent credential behavior', () => {
       expect(spec.credentials).toHaveLength(2);
 
       // Should have 1 agent
-      expect(spec.agents).toHaveLength(1);
+      expect(spec.runtimes).toHaveLength(1);
     });
   });
 

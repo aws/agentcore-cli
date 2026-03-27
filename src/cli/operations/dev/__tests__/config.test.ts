@@ -14,7 +14,7 @@ describe('getDevConfig', () => {
       name: 'TestProject',
       version: 1,
       managedBy: 'CDK' as const,
-      agents: [],
+      runtimes: [],
       memories: [],
       credentials: [],
       evaluators: [],
@@ -32,7 +32,7 @@ describe('getDevConfig', () => {
       name: 'TestProject',
       version: 1,
       managedBy: 'CDK' as const,
-      agents: [
+      runtimes: [
         {
           name: 'NodeAgent',
           build: 'CodeZip',
@@ -59,7 +59,7 @@ describe('getDevConfig', () => {
       name: 'TestProject',
       version: 1,
       managedBy: 'CDK' as const,
-      agents: [
+      runtimes: [
         {
           name: 'PythonAgent',
           build: 'CodeZip',
@@ -92,7 +92,7 @@ describe('getDevConfig', () => {
       name: 'TestProject',
       version: 1,
       managedBy: 'CDK' as const,
-      agents: [
+      runtimes: [
         {
           name: 'PythonAgent',
           build: 'CodeZip',
@@ -120,7 +120,7 @@ describe('getDevConfig', () => {
       name: 'TestProject',
       version: 1,
       managedBy: 'CDK' as const,
-      agents: [
+      runtimes: [
         {
           name: 'NodeAgent',
           build: 'CodeZip',
@@ -146,7 +146,7 @@ describe('getDevConfig', () => {
       name: 'TestProject',
       version: 1,
       managedBy: 'CDK' as const,
-      agents: [
+      runtimes: [
         {
           name: 'PythonAgent',
           build: 'CodeZip',
@@ -175,7 +175,7 @@ describe('getDevConfig', () => {
       name: 'TestProject',
       version: 1,
       managedBy: 'CDK' as const,
-      agents: [
+      runtimes: [
         {
           name: 'PythonAgent',
           build: 'CodeZip',
@@ -204,7 +204,7 @@ describe('getDevConfig', () => {
       name: 'TestProject',
       version: 1,
       managedBy: 'CDK' as const,
-      agents: [
+      runtimes: [
         {
           name: 'ContainerAgent',
           build: 'Container',
@@ -233,7 +233,7 @@ describe('getDevConfig', () => {
       name: 'TestProject',
       version: 1,
       managedBy: 'CDK' as const,
-      agents: [
+      runtimes: [
         {
           name: 'ContainerAgent',
           build: 'Container',
@@ -262,7 +262,7 @@ describe('getDevConfig', () => {
       name: 'TestProject',
       version: 1,
       managedBy: 'CDK' as const,
-      agents: [
+      runtimes: [
         {
           name: 'PythonAgent',
           build: 'CodeZip',
@@ -289,7 +289,7 @@ describe('getDevConfig', () => {
       name: 'TestProject',
       version: 1,
       managedBy: 'CDK' as const,
-      agents: [
+      runtimes: [
         {
           name: 'McpAgent',
           build: 'CodeZip',
@@ -317,7 +317,7 @@ describe('getDevConfig', () => {
       name: 'TestProject',
       version: 1,
       managedBy: 'CDK' as const,
-      agents: [
+      runtimes: [
         {
           name: 'A2aAgent',
           build: 'CodeZip',
@@ -345,7 +345,7 @@ describe('getDevConfig', () => {
       name: 'TestProject',
       version: 1,
       managedBy: 'CDK' as const,
-      agents: [
+      runtimes: [
         {
           name: 'FastAPIAgent',
           build: 'CodeZip',
@@ -379,7 +379,7 @@ describe('getAgentPort', () => {
       name: 'TestProject',
       version: 1,
       managedBy: 'CDK' as const,
-      agents: [
+      runtimes: [
         {
           name: 'Agent1',
           build: 'CodeZip',
@@ -414,7 +414,7 @@ describe('getAgentPort', () => {
       name: 'TestProject',
       version: 1,
       managedBy: 'CDK' as const,
-      agents: [],
+      runtimes: [],
       memories: [],
       credentials: [],
       evaluators: [],
@@ -437,7 +437,7 @@ describe('getDevSupportedAgents', () => {
       name: 'TestProject',
       version: 1,
       managedBy: 'CDK' as const,
-      agents: [],
+      runtimes: [],
       memories: [],
       credentials: [],
       evaluators: [],
@@ -454,7 +454,7 @@ describe('getDevSupportedAgents', () => {
       name: 'TestProject',
       version: 1,
       managedBy: 'CDK' as const,
-      agents: [
+      runtimes: [
         {
           name: 'NodeAgent',
           build: 'CodeZip',
@@ -480,7 +480,7 @@ describe('getDevSupportedAgents', () => {
       name: 'TestProject',
       version: 1,
       managedBy: 'CDK' as const,
-      agents: [
+      runtimes: [
         {
           name: 'PythonAgent',
           build: 'CodeZip',
@@ -516,7 +516,7 @@ describe('getDevSupportedAgents', () => {
       name: 'TestProject',
       version: 1,
       managedBy: 'CDK' as const,
-      agents: [
+      runtimes: [
         {
           name: 'ContainerAgent',
           build: 'Container',
@@ -544,7 +544,7 @@ describe('getDevSupportedAgents', () => {
       name: 'TestProject',
       version: 1,
       managedBy: 'CDK' as const,
-      agents: [
+      runtimes: [
         {
           name: 'PythonAgent',
           build: 'CodeZip',

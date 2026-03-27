@@ -44,7 +44,7 @@ describe('resolveAgentContext', () => {
       name: 'TestProject',
       version: 1,
       managedBy: 'CDK' as const,
-      agents: [
+      runtimes: [
         {
           name: 'MyAgent',
           build: 'CodeZip' as const,
@@ -65,7 +65,7 @@ describe('resolveAgentContext', () => {
       targets: {
         default: {
           resources: {
-            agents: {
+            runtimes: {
               MyAgent: {
                 runtimeId: 'rt-123',
                 runtimeArn: 'arn:aws:bedrock:us-east-1:123:runtime/rt-123',
@@ -97,7 +97,7 @@ describe('resolveAgentContext', () => {
         name: 'TestProject',
         version: 1,
         managedBy: 'CDK' as const,
-        agents: [
+        runtimes: [
           {
             name: 'AgentA',
             build: 'CodeZip' as const,
@@ -138,7 +138,7 @@ describe('resolveAgentContext', () => {
         name: 'TestProject',
         version: 1,
         managedBy: 'CDK' as const,
-        agents: [
+        runtimes: [
           {
             name: 'AgentA',
             build: 'CodeZip' as const,
@@ -167,7 +167,7 @@ describe('resolveAgentContext', () => {
         targets: {
           default: {
             resources: {
-              agents: {
+              runtimes: {
                 AgentA: {
                   runtimeId: 'rt-aaa',
                   runtimeArn: 'arn:aws:bedrock:us-east-1:123:runtime/rt-aaa',
@@ -206,7 +206,7 @@ describe('resolveAgentContext', () => {
         name: 'TestProject',
         version: 1,
         managedBy: 'CDK' as const,
-        agents: [],
+        runtimes: [],
         memories: [],
         credentials: [],
         evaluators: [],
@@ -228,7 +228,7 @@ describe('resolveAgentContext', () => {
         targets: {
           default: {
             resources: {
-              agents: {},
+              runtimes: {},
             },
           },
         },

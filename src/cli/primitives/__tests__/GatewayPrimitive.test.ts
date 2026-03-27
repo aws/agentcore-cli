@@ -6,7 +6,7 @@ const defaultProject: AgentCoreProjectSpec = {
   name: 'test',
   version: 1,
   managedBy: 'CDK' as const,
-  agents: [],
+  runtimes: [],
   memories: [],
   credentials: [],
   evaluators: [],

@@ -25,7 +25,7 @@ const makeProject = (
   name: 'TestProject',
   version: 1,
   managedBy: 'CDK' as const,
-  agents: [],
+  runtimes: [],
   memories: [],
   credentials: credNames.map(name => ({ name, authorizerType: 'ApiKeyCredentialProvider' })),
   agentCoreGateways,

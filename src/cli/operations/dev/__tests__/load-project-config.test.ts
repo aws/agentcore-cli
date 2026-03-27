@@ -30,8 +30,8 @@ describe('loadProjectConfig', () => {
   it('returns project spec when valid', async () => {
     mockFindConfigRoot.mockReturnValue('/work/agentcore');
     mockConfigExists.mockReturnValue(true);
-    mockReadProjectSpec.mockResolvedValue({ name: 'Test', agents: [] });
-    expect(await loadProjectConfig('/work')).toEqual({ name: 'Test', agents: [] });
+    mockReadProjectSpec.mockResolvedValue({ name: 'Test', runtimes: [] });
+    expect(await loadProjectConfig('/work')).toEqual({ name: 'Test', runtimes: [] });
   });
 
   it('returns null when readProjectSpec throws', async () => {

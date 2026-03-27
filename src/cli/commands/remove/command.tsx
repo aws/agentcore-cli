@@ -27,7 +27,7 @@ async function handleRemoveAll(_options: RemoveAllOptions): Promise<RemoveResult
       name: projectName,
       version: 1,
       managedBy: 'CDK' as const,
-      agents: [],
+      runtimes: [],
       memories: [],
       credentials: [],
       evaluators: [],

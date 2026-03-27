@@ -209,9 +209,9 @@ describe('DeployedResourceStateSchema', () => {
     expect(DeployedResourceStateSchema.safeParse({}).success).toBe(true);
   });
 
-  it('accepts resource state with agents', () => {
+  it('accepts resource state with runtimes', () => {
     const result = DeployedResourceStateSchema.safeParse({
-      agents: {
+      runtimes: {
         MyAgent: {
           runtimeId: 'rt-123',
           runtimeArn: 'arn:rt',
@@ -261,7 +261,7 @@ describe('DeployedStateSchema', () => {
       targets: {
         default: {
           resources: {
-            agents: {},
+            runtimes: {},
             stackName: 'TestStack',
           },
         },

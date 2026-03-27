@@ -161,7 +161,7 @@ describe('buildDeployedState', () => {
   it('omits agents field when agents is empty object', () => {
     const result = buildDeployedState({ targetName: 'default', stackName: 'TestStack', agents: {}, gateways: {} });
 
-    expect(result.targets.default!.resources?.agents).toBeUndefined();
+    expect(result.targets.default!.resources?.runtimes).toBeUndefined();
   });
 });
 

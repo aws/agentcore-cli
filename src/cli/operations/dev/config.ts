@@ -74,8 +74,8 @@ function resolveCodeDirectory(codeLocation: string, configRoot: string): string 
  * Returns a list of agents that support dev mode.
  */
 export function getDevSupportedAgents(project: AgentCoreProjectSpec | null): AgentEnvSpec[] {
-  if (!project?.agents) return [];
-  return project.agents.filter(agent => isDevSupported(agent).supported);
+  if (!project?.runtimes) return [];
+  return project.runtimes.filter(agent => isDevSupported(agent).supported);
 }
 
 /**
@@ -84,7 +84,7 @@ export function getDevSupportedAgents(project: AgentCoreProjectSpec | null): Age
  */
 export function getAgentPort(project: AgentCoreProjectSpec | null, agentName: string, basePort: number): number {
   if (!project) return basePort;
-  const index = project.agents.findIndex(a => a.name === agentName);
+  const index = project.runtimes.findIndex(a => a.name === agentName);
   return index >= 0 ? basePort + index : basePort;
 }
 
@@ -109,7 +109,7 @@ export function getDevConfig(
   // Find the target agent
   let targetAgent: AgentEnvSpec | undefined;
   if (agentName) {
-    targetAgent = project.agents.find(a => a.name === agentName);
+    targetAgent = project.runtimes.find(a => a.name === agentName);
     if (!targetAgent) {
       throw new Error(`Agent "${agentName}" not found in project.`);
     }

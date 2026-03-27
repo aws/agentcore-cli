@@ -364,7 +364,7 @@ export async function handleDeploy(options: ValidatedDeployOptions): Promise<Dep
     // Get stack outputs and persist state
     startStep('Persist deployment state');
     const outputs = await getStackOutputs(target.region, stackName);
-    const agentNames = context.projectSpec.agents?.map(a => a.name) || [];
+    const agentNames = context.projectSpec.runtimes?.map(a => a.name) || [];
     const agents = parseAgentOutputs(outputs, agentNames, stackName);
 
     // Parse memory outputs

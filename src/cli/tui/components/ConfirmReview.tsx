@@ -25,7 +25,7 @@ interface ConfirmReviewProps {
  *   fields={[
  *     { label: 'Name', value: config.name },
  *     { label: 'Type', value: 'API Key' },
- *     { label: 'Agents', value: config.agents.join(', ') || 'None' },
+ *     { label: 'Agents', value: config.runtimes.join(', ') || 'None' },
  *   ]}
  * />
  * ```

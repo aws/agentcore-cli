@@ -120,8 +120,8 @@ export function computeResourceStatuses(
 ): ResourceStatusEntry[] {
   const agents = diffResourceSet({
     resourceType: 'agent',
-    localItems: project.agents,
-    deployedRecord: resources?.agents ?? {},
+    localItems: project.runtimes,
+    deployedRecord: resources?.runtimes ?? {},
     getIdentifier: deployed => deployed.runtimeArn,
   });
 
@@ -267,7 +267,7 @@ export async function handleProjectStatus(
 
   // Enrich deployed agents with live runtime status (parallel, entries replaced by index)
   if (targetConfig) {
-    const agentStates = targetResources?.agents ?? {};
+    const agentStates = targetResources?.runtimes ?? {};
     const deployedAgents = resources.filter(
       (e, _i) => e.resourceType === 'agent' && e.deploymentState === 'deployed' && agentStates[e.name]
     );

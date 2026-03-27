@@ -1,7 +1,7 @@
 {
   "name": "MyProject",
   "version": 1,
-  "agents": [
+  "runtimes": [
     {
       "name": "existing_agent",
       "build": "CodeZip",

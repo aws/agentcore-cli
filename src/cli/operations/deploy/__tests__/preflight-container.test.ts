@@ -27,10 +27,10 @@ const CONFIG_ROOT = '/project/agentcore';
 /** Helper to cast plain strings to the branded DirectoryPath type used by the schema. */
 const dir = (s: string) => s as DirectoryPath;
 
-function makeSpec(agents: Record<string, unknown>[]): AgentCoreProjectSpec {
+function makeSpec(runtimes: Record<string, unknown>[]): AgentCoreProjectSpec {
   return {
     name: 'test-project',
-    agents,
+    runtimes,
   } as unknown as AgentCoreProjectSpec;
 }
 

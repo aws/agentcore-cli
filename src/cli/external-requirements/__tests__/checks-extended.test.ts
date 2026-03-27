@@ -37,7 +37,7 @@ describe('requiresUv', () => {
       name: 'Test',
       version: 1,
       managedBy: 'CDK' as const,
-      agents: [
+      runtimes: [
         {
           name: 'Agent1',
           build: 'CodeZip',
@@ -62,7 +62,7 @@ describe('requiresUv', () => {
       name: 'Test',
       version: 1,
       managedBy: 'CDK' as const,
-      agents: [
+      runtimes: [
         {
           name: 'Agent1',
           build: 'Container',
@@ -87,7 +87,7 @@ describe('requiresUv', () => {
       name: 'Test',
       version: 1,
       managedBy: 'CDK' as const,
-      agents: [],
+      runtimes: [],
       memories: [],
       credentials: [],
       evaluators: [],
@@ -105,7 +105,7 @@ describe('requiresContainerRuntime', () => {
       name: 'Test',
       version: 1,
       managedBy: 'CDK' as const,
-      agents: [
+      runtimes: [
         {
           name: 'Agent1',
           build: 'Container',
@@ -130,7 +130,7 @@ describe('requiresContainerRuntime', () => {
       name: 'Test',
       version: 1,
       managedBy: 'CDK' as const,
-      agents: [
+      runtimes: [
         {
           name: 'Agent1',
           build: 'CodeZip',
@@ -155,7 +155,7 @@ describe('requiresContainerRuntime', () => {
       name: 'Test',
       version: 1,
       managedBy: 'CDK' as const,
-      agents: [],
+      runtimes: [],
       memories: [],
       credentials: [],
       evaluators: [],
@@ -171,7 +171,7 @@ describe('requiresContainerRuntime', () => {
       name: 'Test',
       version: 1,
       managedBy: 'CDK' as const,
-      agents: [
+      runtimes: [
         {
           name: 'Agent1',
           build: 'CodeZip',
@@ -255,7 +255,7 @@ describe('checkDependencyVersions', () => {
       name: 'Test',
       version: 1,
       managedBy: 'CDK' as const,
-      agents: [],
+      runtimes: [],
       memories: [],
       credentials: [],
       evaluators: [],
@@ -275,7 +275,7 @@ describe('checkDependencyVersions', () => {
       name: 'Test',
       version: 1,
       managedBy: 'CDK' as const,
-      agents: [],
+      runtimes: [],
       memories: [],
       credentials: [],
       evaluators: [],
@@ -294,7 +294,7 @@ describe('checkDependencyVersions', () => {
       name: 'Test',
       version: 1,
       managedBy: 'CDK' as const,
-      agents: [
+      runtimes: [
         {
           name: 'Agent1',
           build: 'CodeZip',

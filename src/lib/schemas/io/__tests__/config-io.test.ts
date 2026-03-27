@@ -57,7 +57,7 @@ describe('ConfigIO', () => {
       const projectDir = join(testDir, `project-${randomUUID()}`);
       const agentcoreDir = join(projectDir, 'agentcore');
       await mkdir(agentcoreDir, { recursive: true });
-      await writeFile(join(agentcoreDir, 'agentcore.json'), JSON.stringify({ version: '1.0', agents: [] }));
+      await writeFile(join(agentcoreDir, 'agentcore.json'), JSON.stringify({ version: '1.0', runtimes: [] }));
 
       changeWorkingDir(projectDir);
 
@@ -83,7 +83,9 @@ describe('ConfigIO', () => {
 
     it('writeProjectSpec() throws NoProjectError when no project exists', async () => {
       const configIO = new ConfigIO();
-      await expect(configIO.writeProjectSpec({ version: '1.0', agents: [] } as never)).rejects.toThrow(NoProjectError);
+      await expect(configIO.writeProjectSpec({ version: '1.0', runtimes: [] } as never)).rejects.toThrow(
+        NoProjectError
+      );
       expect(existsSync(join(emptyDir, 'agentcore'))).toBe(false);
     });
 
@@ -91,7 +93,7 @@ describe('ConfigIO', () => {
       const configIO = new ConfigIO();
       const operations = [
         () => configIO.initializeBaseDir(),
-        () => configIO.writeProjectSpec({ version: '1.0', agents: [] } as never),
+        () => configIO.writeProjectSpec({ version: '1.0', runtimes: [] } as never),
         () => configIO.writeMcpDefs({ tools: {} }),
       ];
 
@@ -180,7 +182,7 @@ describe('ConfigIO', () => {
         name: 'TestProject',
         version: 1,
         managedBy: 'CDK' as const,
-        agents: [
+        runtimes: [
           {
             name: 'myagent',
             build: 'CodeZip',
@@ -197,8 +199,8 @@ describe('ConfigIO', () => {
 
       const readBack = await configIO.readProjectSpec();
       expect(readBack.version).toBe(1);
-      expect(readBack.agents).toHaveLength(1);
-      expect(readBack.agents[0]!.name).toBe('myagent');
+      expect(readBack.runtimes).toHaveLength(1);
+      expect(readBack.runtimes[0]!.name).toBe('myagent');
     });
   });
 

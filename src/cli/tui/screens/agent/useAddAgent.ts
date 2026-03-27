@@ -142,7 +142,7 @@ export function useAddAgent() {
 
       // Check for duplicate agent name
       const project = await configIO.readProjectSpec();
-      const existingAgent = project.agents.find(agent => agent.name === config.name);
+      const existingAgent = project.runtimes.find(agent => agent.name === config.name);
       if (existingAgent) {
         return { ok: false, error: `Agent "${config.name}" already exists in this project.` };
       }
@@ -308,7 +308,7 @@ async function handleByoPath(
   const agent = mapByoConfigToAgent(config);
 
   // Append new agent
-  project.agents.push(agent);
+  project.runtimes.push(agent);
 
   // Handle credential creation with smart reuse detection
   if (config.modelProvider !== 'Bedrock') {

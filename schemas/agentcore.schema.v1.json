@@ -35,7 +35,7 @@
         "pattern": "^[\\p{L}\\p{N}\\s_.:/=+\\-@]*$"
       }
     },
-    "agents": {
+    "runtimes": {
       "default": [],
       "type": "array",
       "items": {

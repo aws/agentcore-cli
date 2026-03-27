@@ -51,7 +51,7 @@ export function PackageScreen({ isInteractive: _isInteractive, onExit }: Package
         // Load project config
         const configIO = new ConfigIO({ baseDir: configRoot });
         const projectSpec = await configIO.readProjectSpec();
-        const agents = projectSpec.agents;
+        const agents = projectSpec.runtimes;
 
         if (agents.length === 0) {
           setState({

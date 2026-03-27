@@ -146,7 +146,7 @@ describe.sequential('e2e: BYO agent with CUSTOM_JWT auth', () => {
     // ── Patch agent with CUSTOM_JWT auth ──
     const specPath = join(projectPath, 'agentcore', 'agentcore.json');
     const spec = JSON.parse(await readFile(specPath, 'utf8'));
-    const agent = spec.agents[0];
+    const agent = spec.runtimes[0];
     agent.authorizerType = 'CUSTOM_JWT';
     agent.authorizerConfiguration = {
       customJwtAuthorizer: {

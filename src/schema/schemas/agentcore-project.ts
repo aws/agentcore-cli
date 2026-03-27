@@ -187,7 +187,7 @@ export const AgentCoreProjectSpecSchema = z
     managedBy: ManagedBySchema,
     tags: TagsSchema.optional(),
 
-    agents: z
+    runtimes: z
       .array(AgentEnvSpecSchema)
       .default([])
       .superRefine(
@@ -282,7 +282,7 @@ export const AgentCoreProjectSpecSchema = z
   })
   .strict()
   .superRefine((spec, ctx) => {
-    const agentNames = new Set(spec.agents.map(a => a.name));
+    const agentNames = new Set(spec.runtimes.map(a => a.name));
     const evaluatorNames = new Set(spec.evaluators.map(e => e.name));
 
     for (const config of spec.onlineEvalConfigs) {

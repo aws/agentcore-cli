@@ -15,7 +15,7 @@ interface AgentCoreProjectSpec {
   version: number; // Schema version (integer)
   managedBy: 'CDK'; // Enum — infrastructure manager. Default: "CDK"
   tags?: Record<string, string>;
-  agents: AgentEnvSpec[]; // Unique by name
+  runtimes: AgentEnvSpec[]; // Unique by name
   memories: Memory[]; // Unique by name
   credentials: Credential[]; // Unique by name
 }

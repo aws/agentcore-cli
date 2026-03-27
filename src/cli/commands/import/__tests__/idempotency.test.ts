@@ -175,7 +175,7 @@ function makeProjectSpec(agents: { name: string }[] = [], memories: { name: stri
   return {
     name: 'TestProject',
     version: 1,
-    agents: agents.map(a => ({
+    runtimes: agents.map(a => ({
       name: a.name,
       build: 'CodeZip',
       entrypoint: 'main.py',
@@ -285,8 +285,8 @@ describe('Import Idempotency (Test Group 7)', () => {
 
       expect(mockConfigIOInstance.writeProjectSpec).toHaveBeenCalledTimes(1);
       const writtenSpec = mockConfigIOInstance.writeProjectSpec.mock.calls[0]![0];
-      expect(writtenSpec.agents).toHaveLength(1);
-      expect(writtenSpec.agents[0].name).toBe('my-agent');
+      expect(writtenSpec.runtimes).toHaveLength(1);
+      expect(writtenSpec.runtimes[0].name).toBe('my-agent');
       expect(writtenSpec.memories).toHaveLength(1);
       expect(writtenSpec.memories[0].name).toBe('my-memory');
     });
@@ -325,8 +325,8 @@ describe('Import Idempotency (Test Group 7)', () => {
 
       expect(mockConfigIOInstance.writeDeployedState).toHaveBeenCalledTimes(1);
       const state = mockConfigIOInstance.writeDeployedState.mock.calls[0]![0];
-      expect(state.targets.default.resources.agents['my-agent']).toBeDefined();
-      expect(state.targets.default.resources.agents['my-agent'].runtimeId).toBe('rt-abc123');
+      expect(state.targets.default.resources.runtimes['my-agent']).toBeDefined();
+      expect(state.targets.default.resources.runtimes['my-agent'].runtimeId).toBe('rt-abc123');
       expect(state.targets.default.resources.memories['my-memory']).toBeDefined();
       expect(state.targets.default.resources.memories['my-memory'].memoryId).toBe('mem-xyz789');
     });
@@ -363,7 +363,7 @@ describe('Import Idempotency (Test Group 7)', () => {
 
       expect(mockConfigIOInstance.writeProjectSpec).toHaveBeenCalledTimes(1);
       const writtenSpec = mockConfigIOInstance.writeProjectSpec.mock.calls[0]![0];
-      expect(writtenSpec.agents).toHaveLength(1);
+      expect(writtenSpec.runtimes).toHaveLength(1);
       expect(writtenSpec.memories).toHaveLength(1);
     });
 
@@ -405,7 +405,7 @@ describe('Import Idempotency (Test Group 7)', () => {
           default: {
             resources: {
               stackName: 'AgentCore-TestProject-default',
-              agents: {
+              runtimes: {
                 'my-agent': {
                   runtimeId: 'rt-abc123',
                   runtimeArn: 'arn:aws:bedrock-agentcore:us-east-1:123456789012:runtime/rt-abc123',
@@ -504,8 +504,8 @@ describe('Import Idempotency (Test Group 7)', () => {
       expect(progressMessages.some(m => m.includes('Skipping agent "agent-a"'))).toBe(true);
 
       const writtenSpec = mockConfigIOInstance.writeProjectSpec.mock.calls[0]![0];
-      expect(writtenSpec.agents).toHaveLength(2);
-      expect(writtenSpec.agents.map((a: { name: string }) => a.name)).toContain('agent-b');
+      expect(writtenSpec.runtimes).toHaveLength(2);
+      expect(writtenSpec.runtimes.map((a: { name: string }) => a.name)).toContain('agent-b');
 
       // Phase 2 should only import agent-b, not agent-a
       expect(mockExecutePhase2).toHaveBeenCalledTimes(1);

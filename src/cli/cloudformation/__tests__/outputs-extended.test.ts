@@ -159,7 +159,7 @@ describe('buildDeployedState', () => {
 
     const state = buildDeployedState({ targetName: 'default', stackName: 'MyStack', agents, gateways: {} });
     expect(state.targets.default).toBeDefined();
-    expect(state.targets.default!.resources?.agents).toEqual(agents);
+    expect(state.targets.default!.resources?.runtimes).toEqual(agents);
     expect(state.targets.default!.resources?.stackName).toBe('MyStack');
   });
 
@@ -168,7 +168,7 @@ describe('buildDeployedState', () => {
       targets: {
         prod: {
           resources: {
-            agents: {
+            runtimes: {
               ProdAgent: { runtimeId: 'rt-p', runtimeArn: 'arn:rt-p', roleArn: 'arn:role-p' },
             },
             stackName: 'ProdStack',
@@ -198,7 +198,7 @@ describe('buildDeployedState', () => {
     const existing = {
       targets: {
         default: {
-          resources: { agents: {}, stackName: 'OldStack' },
+          resources: { runtimes: {}, stackName: 'OldStack' },
         },
       },
     };
@@ -231,7 +231,7 @@ describe('buildDeployedState', () => {
 
   it('handles empty agents record', () => {
     const state = buildDeployedState({ targetName: 'default', stackName: 'Stack', agents: {}, gateways: {} });
-    expect(state.targets.default!.resources?.agents).toBeUndefined();
+    expect(state.targets.default!.resources?.runtimes).toBeUndefined();
   });
 
   it('includes evaluators in deployed state when provided', () => {

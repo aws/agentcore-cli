@@ -22,7 +22,7 @@ Main project configuration using a **flat resource model**. Agents, memories, an
 {
   "name": "MyProject",
   "version": 1,
-  "agents": [
+  "runtimes": [
     {
       "type": "AgentCoreRuntime",
       "name": "MyAgent",
@@ -76,7 +76,7 @@ Main project configuration using a **flat resource model**. Agents, memories, an
 | `name`              | Yes      | Project name (1-23 chars, alphanumeric, starts with letter) |
 | `version`           | Yes      | Schema version (integer, currently `1`)                     |
 | `tags`              | No       | Project-level tags applied to all resources                 |
-| `agents`            | Yes      | Array of agent specifications                               |
+| `runtimes`          | Yes      | Array of agent specifications                               |
 | `memories`          | Yes      | Array of memory resources                                   |
 | `credentials`       | Yes      | Array of credential providers (API key or OAuth)            |
 | `evaluators`        | Yes      | Array of custom evaluator definitions                       |
@@ -112,7 +112,7 @@ You can add additional project-level tags by editing the `tags` field in `agentc
     "Team": "platform",
     "CostCenter": "engineering"
   },
-  "agents": [...],
+  "runtimes": [...],
   "memories": [...]
 }
 ```
@@ -132,7 +132,7 @@ resource-level value takes precedence for that specific resource.
     "Environment": "production",
     "Team": "platform"
   },
-  "agents": [
+  "runtimes": [
     {
       "type": "AgentCoreRuntime",
       "name": "MyAgent",
@@ -153,7 +153,7 @@ from project), and `Owner: alice` (resource-specific).
 
 The following resource types support tags:
 
-- **Agents** (`agents` array in `agentcore.json`)
+- **Agents** (`runtimes` array in `agentcore.json`)
 - **Memories** (`memories` array in `agentcore.json`)
 - **Gateways** (`agentCoreGateways` array in `agentcore.json`)
 - **Evaluators** (`evaluators` array in `agentcore.json`)

@@ -217,14 +217,14 @@ export function formatNpmCacheError(result: NpmCacheCheckResult): string {
  * Check if the project has any Python CodeZip agents that require uv.
  */
 export function requiresUv(projectSpec: AgentCoreProjectSpec): boolean {
-  return projectSpec.agents.some(agent => agent.build === 'CodeZip');
+  return projectSpec.runtimes.some(agent => agent.build === 'CodeZip');
 }
 
 /**
  * Check if the project has any Container agents that benefit from a local container runtime.
  */
 export function requiresContainerRuntime(projectSpec: AgentCoreProjectSpec): boolean {
-  return projectSpec.agents.some(agent => agent.build === 'Container');
+  return projectSpec.runtimes.some(agent => agent.build === 'Container');
 }
 
 /**

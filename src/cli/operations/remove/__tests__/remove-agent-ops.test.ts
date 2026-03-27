@@ -21,7 +21,7 @@ const makeProject = (agentNames: string[]) => ({
   name: 'TestProject',
   version: 1,
   managedBy: 'CDK' as const,
-  agents: agentNames.map(name => ({ name })),
+  runtimes: agentNames.map(name => ({ name })),
   memories: [],
   credentials: [],
 });
@@ -78,8 +78,8 @@ describe('remove', () => {
 
     expect(result).toEqual({ success: true });
     expect(mockWriteProjectSpec).toHaveBeenCalled();
-    expect(project.agents).toHaveLength(1);
-    expect(project.agents[0]!.name).toBe('Agent2');
+    expect(project.runtimes).toHaveLength(1);
+    expect(project.runtimes[0]!.name).toBe('Agent2');
   });
 
   it('returns error when agent not found', async () => {

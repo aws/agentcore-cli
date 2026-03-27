@@ -54,7 +54,7 @@ describe('validateProject', () => {
     mockValidate.mockReturnValue(undefined);
     mockReadProjectSpec.mockResolvedValue({
       name: 'test-project',
-      agents: [],
+      runtimes: [],
       agentCoreGateways: [{ name: 'test-gateway' }],
     });
     mockReadAWSDeploymentTargets.mockResolvedValue([]);
@@ -71,7 +71,7 @@ describe('validateProject', () => {
     mockValidate.mockReturnValue(undefined);
     mockReadProjectSpec.mockResolvedValue({
       name: 'test-project',
-      agents: [],
+      runtimes: [],
       agentCoreGateways: [],
     });
     mockReadAWSDeploymentTargets.mockResolvedValue([]);
@@ -87,7 +87,7 @@ describe('validateProject', () => {
     mockValidate.mockReturnValue(undefined);
     mockReadProjectSpec.mockResolvedValue({
       name: 'test-project',
-      agents: [],
+      runtimes: [],
       memories: [{ name: 'test-memory', strategies: [] }],
       agentCoreGateways: [],
     });
@@ -105,7 +105,7 @@ describe('validateProject', () => {
     mockValidate.mockReturnValue(undefined);
     mockReadProjectSpec.mockResolvedValue({
       name: 'test-project',
-      agents: [{ name: 'test-agent' }],
+      runtimes: [{ name: 'test-agent' }],
       agentCoreGateways: [{ name: 'test-gateway' }],
     });
     mockReadAWSDeploymentTargets.mockResolvedValue([]);

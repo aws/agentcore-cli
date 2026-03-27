@@ -32,7 +32,7 @@ function makeContext({
 } = {}) {
   return {
     project: {
-      agents: [{ name: agentName }],
+      runtimes: [{ name: agentName }],
       onlineEvalConfigs,
     },
     awsTargets: [{ name: 'dev', region: 'us-east-1', account: '111222333444' }],
@@ -40,7 +40,7 @@ function makeContext({
       targets: {
         dev: {
           resources: {
-            agents: {
+            runtimes: {
               [agentName]: {
                 runtimeId: 'rt-123',
                 runtimeArn: `arn:aws:bedrock:us-east-1:111222333444:agent-runtime/rt-123`,

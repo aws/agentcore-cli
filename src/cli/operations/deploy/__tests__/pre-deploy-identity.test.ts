@@ -87,7 +87,7 @@ vi.mock('../../../errors.js', () => ({
 const mockProjectSpec = {
   name: 'test-project',
   credentials: [],
-  agents: [],
+  runtimes: [],
 };
 
 describe('setupApiKeyProviders - KMS key reuse via GetTokenVault', () => {

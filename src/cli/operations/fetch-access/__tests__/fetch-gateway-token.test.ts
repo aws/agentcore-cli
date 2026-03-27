@@ -42,7 +42,7 @@ const baseProjectSpec = {
       discoveryUrl: DISCOVERY_URL,
     },
   ],
-  agents: [],
+  runtimes: [],
   memories: [],
   evaluators: [],
   onlineEvalConfigs: [],

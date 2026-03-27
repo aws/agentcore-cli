@@ -432,7 +432,7 @@ export function useDevServer(options: {
     stop,
     logFilePath: loggerRef.current?.getRelativeLogPath(),
     hasMemory: (project?.memories?.length ?? 0) > 0,
-    hasVpc: project?.agents.find(a => a.name === config?.agentName)?.networkMode === 'VPC',
+    hasVpc: project?.runtimes.find(a => a.name === config?.agentName)?.networkMode === 'VPC',
     modelProvider: undefined,
     protocol,
     mcpTools,

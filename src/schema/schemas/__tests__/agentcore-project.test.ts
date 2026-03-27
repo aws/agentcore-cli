@@ -317,7 +317,7 @@ describe('AgentCoreProjectSpecSchema', () => {
     const result = AgentCoreProjectSpecSchema.safeParse(minimalProject);
     expect(result.success).toBe(true);
     if (result.success) {
-      expect(result.data.agents).toEqual([]);
+      expect(result.data.runtimes).toEqual([]);
       expect(result.data.memories).toEqual([]);
       expect(result.data.credentials).toEqual([]);
     }
@@ -326,7 +326,7 @@ describe('AgentCoreProjectSpecSchema', () => {
   it('accepts project with agents', () => {
     const result = AgentCoreProjectSpecSchema.safeParse({
       ...minimalProject,
-      agents: [
+      runtimes: [
         {
           name: 'MyAgent',
           build: 'CodeZip',
@@ -351,7 +351,7 @@ describe('AgentCoreProjectSpecSchema', () => {
     };
     const result = AgentCoreProjectSpecSchema.safeParse({
       ...minimalProject,
-      agents: [agent, agent],
+      runtimes: [agent, agent],
     });
     expect(result.success).toBe(false);
     if (!result.success) {
@@ -394,7 +394,7 @@ describe('AgentCoreProjectSpecSchema', () => {
     const result = AgentCoreProjectSpecSchema.safeParse({
       name: 'FullProject',
       version: 1,
-      agents: [
+      runtimes: [
         {
           name: 'Agent1',
           build: 'CodeZip',

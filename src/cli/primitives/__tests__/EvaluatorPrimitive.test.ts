@@ -34,7 +34,7 @@ function makeProject(
     name: 'TestProject',
     version: 1,
     managedBy: 'CDK' as const,
-    agents: [],
+    runtimes: [],
     memories: [],
     credentials: [],
     evaluators,

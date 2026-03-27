@@ -59,7 +59,7 @@ describe('add agent command', () => {
 
       // Verify agent in agentcore.json
       const projectSpec = JSON.parse(await readFile(join(projectDir, 'agentcore/agentcore.json'), 'utf-8'));
-      const agent = projectSpec.agents.find((a: { name: string }) => a.name === agentName);
+      const agent = projectSpec.runtimes.find((a: { name: string }) => a.name === agentName);
       expect(agent, 'Agent should be in agentcore.json').toBeTruthy();
     });
 
@@ -269,7 +269,7 @@ describe('add agent command', () => {
 
       // Verify agent in agentcore.json with correct codeLocation
       const projectSpec = JSON.parse(await readFile(join(projectDir, 'agentcore/agentcore.json'), 'utf-8'));
-      const agent = projectSpec.agents.find((a: { name: string }) => a.name === agentName);
+      const agent = projectSpec.runtimes.find((a: { name: string }) => a.name === agentName);
       expect(agent, 'Agent should be in agentcore.json').toBeTruthy();
       expect(agent.codeLocation.includes(codeDir), `codeLocation should reference ${codeDir}`).toBeTruthy();
     });

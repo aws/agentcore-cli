@@ -129,14 +129,14 @@ export function InvokeScreen({
   const mcpFetchTriggeredRef = useRef(false);
 
   // Compute auth type early so hooks can reference it
-  const currentAgent = config?.agents[selectedAgent];
+  const currentAgent = config?.runtimes[selectedAgent];
   const isCustomJwt = currentAgent?.authorizerType === 'CUSTOM_JWT';
 
   // Handle initial prompt - skip agent selection if only one agent
   useEffect(() => {
     if (config && phase === 'ready') {
-      if (config.agents.length === 1 && mode === 'select-agent') {
-        const agent = config.agents[0];
+      if (config.runtimes.length === 1 && mode === 'select-agent') {
+        const agent = config.runtimes[0];
         const needsTokenScreen = agent?.authorizerType === 'CUSTOM_JWT' && !bearerToken && !initialBearerToken;
         // Defer setState to avoid cascading renders within effect
         queueMicrotask(() => {
@@ -158,7 +158,7 @@ export function InvokeScreen({
 
   // MCP: auto-list tools when agent is selected and ready, show hint after fetch
   useEffect(() => {
-    const agent = config?.agents[selectedAgent];
+    const agent = config?.runtimes[selectedAgent];
     if (agent?.protocol === 'MCP' && phase === 'ready' && mode !== 'select-agent' && !mcpFetchTriggeredRef.current) {
       mcpFetchTriggeredRef.current = true;
       void fetchMcpTools();
@@ -234,10 +234,10 @@ export function InvokeScreen({
           onExit();
           return;
         }
-        if (key.upArrow) selectAgent((selectedAgent - 1 + config.agents.length) % config.agents.length);
-        if (key.downArrow) selectAgent((selectedAgent + 1) % config.agents.length);
+        if (key.upArrow) selectAgent((selectedAgent - 1 + config.runtimes.length) % config.runtimes.length);
+        if (key.downArrow) selectAgent((selectedAgent + 1) % config.runtimes.length);
         if (key.return) {
-          const chosen = config.agents[selectedAgent];
+          const chosen = config.runtimes[selectedAgent];
           const needsTokenScreen = chosen?.authorizerType === 'CUSTOM_JWT' && !bearerToken && !initialBearerToken;
           setMode(needsTokenScreen ? 'token-input' : 'input');
         }
@@ -251,7 +251,7 @@ export function InvokeScreen({
             justCancelledRef.current = false;
             return;
           }
-          if (config.agents.length > 1) {
+          if (config.runtimes.length > 1) {
             setMode('select-agent');
             return;
           }
@@ -315,7 +315,7 @@ export function InvokeScreen({
     return null;
   }
 
-  const agent = config.agents[selectedAgent];
+  const agent = config.runtimes[selectedAgent];
   const traceUrl =
     mode !== 'select-agent' && agent
       ? buildTraceConsoleUrl({
@@ -327,7 +327,7 @@ export function InvokeScreen({
       : undefined;
   const agentProtocol = agent?.protocol ?? 'HTTP';
 
-  const agentItems = config.agents.map((a, i) => ({
+  const agentItems = config.runtimes.map((a, i) => ({
     id: String(i),
     title: a.name,
     description: `${a.protocol && a.protocol !== 'HTTP' ? `${a.protocol} · ` : ''}Runtime: ${a.state.runtimeId}`,
@@ -336,7 +336,7 @@ export function InvokeScreen({
   const isMcp = agentProtocol === 'MCP';
 
   // Dynamic help text
-  const backOrQuit = config.agents.length > 1 ? 'Esc back' : 'Esc quit';
+  const backOrQuit = config.runtimes.length > 1 ? 'Esc back' : 'Esc quit';
   const helpText =
     mode === 'select-agent'
       ? '↑↓ select · Enter confirm · Esc quit'

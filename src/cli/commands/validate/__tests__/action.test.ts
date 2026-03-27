@@ -79,7 +79,7 @@ describe('handleValidate', () => {
 
   it('returns success when all configs are valid', async () => {
     mockFindConfigRoot.mockReturnValue('/project/agentcore');
-    mockReadProjectSpec.mockResolvedValue({ name: 'Test', version: 1, managedBy: 'CDK' as const, agents: [] });
+    mockReadProjectSpec.mockResolvedValue({ name: 'Test', version: 1, managedBy: 'CDK' as const, runtimes: [] });
     mockReadAWSDeploymentTargets.mockResolvedValue([]);
     mockConfigExists.mockReturnValue(false);
 
@@ -100,7 +100,7 @@ describe('handleValidate', () => {
 
   it('returns error when AWS targets fails', async () => {
     mockFindConfigRoot.mockReturnValue('/project/agentcore');
-    mockReadProjectSpec.mockResolvedValue({ name: 'Test', version: 1, managedBy: 'CDK' as const, agents: [] });
+    mockReadProjectSpec.mockResolvedValue({ name: 'Test', version: 1, managedBy: 'CDK' as const, runtimes: [] });
     mockReadAWSDeploymentTargets.mockRejectedValue(new Error('bad targets'));
 
     const result = await handleValidate({});
@@ -111,7 +111,7 @@ describe('handleValidate', () => {
 
   it('validates state file when it exists', async () => {
     mockFindConfigRoot.mockReturnValue('/project/agentcore');
-    mockReadProjectSpec.mockResolvedValue({ name: 'Test', version: 1, managedBy: 'CDK' as const, agents: [] });
+    mockReadProjectSpec.mockResolvedValue({ name: 'Test', version: 1, managedBy: 'CDK' as const, runtimes: [] });
     mockReadAWSDeploymentTargets.mockResolvedValue([]);
     mockConfigExists.mockReturnValue(true);
     mockReadDeployedState.mockResolvedValue({ targets: {} });
@@ -124,7 +124,7 @@ describe('handleValidate', () => {
 
   it('returns error when state file is invalid', async () => {
     mockFindConfigRoot.mockReturnValue('/project/agentcore');
-    mockReadProjectSpec.mockResolvedValue({ name: 'Test', version: 1, managedBy: 'CDK' as const, agents: [] });
+    mockReadProjectSpec.mockResolvedValue({ name: 'Test', version: 1, managedBy: 'CDK' as const, runtimes: [] });
     mockReadAWSDeploymentTargets.mockResolvedValue([]);
     mockConfigExists.mockReturnValue(true);
     mockReadDeployedState.mockRejectedValue(new Error('bad state'));
@@ -137,7 +137,7 @@ describe('handleValidate', () => {
 
   it('uses custom directory when provided', async () => {
     mockFindConfigRoot.mockReturnValue('/custom/agentcore');
-    mockReadProjectSpec.mockResolvedValue({ name: 'Test', version: 1, managedBy: 'CDK' as const, agents: [] });
+    mockReadProjectSpec.mockResolvedValue({ name: 'Test', version: 1, managedBy: 'CDK' as const, runtimes: [] });
     mockReadAWSDeploymentTargets.mockResolvedValue([]);
     mockConfigExists.mockReturnValue(false);
 

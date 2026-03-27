@@ -164,7 +164,7 @@ function makeProjectSpec() {
   return {
     name: 'TestProject',
     version: 1,
-    agents: [],
+    runtimes: [],
     memories: [],
     credentials: [],
   };
@@ -252,10 +252,10 @@ describe('Config Rollback on Import Failure', () => {
     expect(result.success).toBe(false);
     expect(result.error).toContain('Phase 1 failed');
 
-    // First call = merge write, second call = rollback with original (empty) agents
+    // First call = merge write, second call = rollback with original (empty) runtimes
     expect(mockConfigIOInstance.writeProjectSpec).toHaveBeenCalledTimes(2);
     const rollbackData = mockConfigIOInstance.writeProjectSpec.mock.calls[1]![0];
-    expect(rollbackData.agents).toEqual([]);
+    expect(rollbackData.runtimes).toEqual([]);
   });
 
   it('rolls back config when Phase 2 fails', async () => {
@@ -270,7 +270,7 @@ describe('Config Rollback on Import Failure', () => {
 
     expect(mockConfigIOInstance.writeProjectSpec).toHaveBeenCalledTimes(2);
     const rollbackData = mockConfigIOInstance.writeProjectSpec.mock.calls[1]![0];
-    expect(rollbackData.agents).toEqual([]);
+    expect(rollbackData.runtimes).toEqual([]);
   });
 
   it('rolls back config when CDK build throws', async () => {
@@ -285,7 +285,7 @@ describe('Config Rollback on Import Failure', () => {
 
     expect(mockConfigIOInstance.writeProjectSpec).toHaveBeenCalledTimes(2);
     const rollbackData = mockConfigIOInstance.writeProjectSpec.mock.calls[1]![0];
-    expect(rollbackData.agents).toEqual([]);
+    expect(rollbackData.runtimes).toEqual([]);
   });
 
   it('does not rollback on successful import', async () => {
@@ -343,6 +343,6 @@ describe('Config Rollback on Import Failure', () => {
 
     expect(mockConfigIOInstance.writeProjectSpec).toHaveBeenCalledTimes(2);
     const rollbackData = mockConfigIOInstance.writeProjectSpec.mock.calls[1]![0];
-    expect(rollbackData.agents).toEqual([]);
+    expect(rollbackData.runtimes).toEqual([]);
   });
 });

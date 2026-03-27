@@ -189,7 +189,7 @@ describe('Create Flow: Lifecycle Configuration via TUI', () => {
         if (projectDirName) {
           const projectPath = join(parentDir, projectDirName);
           const config = readAgentcoreJson(projectPath);
-          const agents = config.agents as Record<string, unknown>[];
+          const agents = config.runtimes as Record<string, unknown>[];
           expect(agents.length).toBeGreaterThan(0);
 
           const agent = agents[0]!;
@@ -434,7 +434,7 @@ describe('Add Agent BYO Flow: Lifecycle Configuration via TUI', () => {
 
     // Read the agentcore.json and verify lifecycle config
     const config = readAgentcoreJson(projectDir.dir);
-    const agents = config.agents as Record<string, unknown>[];
+    const agents = config.runtimes as Record<string, unknown>[];
     const agent = agents.find((a: Record<string, unknown>) => a.name === 'ByoLifecycle');
     expect(agent, 'Agent should be in agentcore.json').toBeDefined();
 

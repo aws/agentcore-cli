@@ -19,9 +19,9 @@ import type {
  * @throws PackagingError if agent not found
  */
 export function validateAgentExists(project: AgentCoreProjectSpec, agentName: string): void {
-  const agent = project.agents.find((a: AgentEnvSpec) => a.name === agentName);
+  const agent = project.runtimes.find((a: AgentEnvSpec) => a.name === agentName);
   if (!agent) {
-    const available = project.agents.map((a: AgentEnvSpec) => a.name).join(', ');
+    const available = project.runtimes.map((a: AgentEnvSpec) => a.name).join(', ');
     throw new PackagingError(`Agent '${agentName}' not found. Available agents: ${available}`);
   }
 }

@@ -166,12 +166,12 @@ export const registerDev = (program: Command) => {
 
           // Determine which agent/port to invoke
           let invokePort = port;
-          let targetAgent = invokeProject?.agents[0];
+          let targetAgent = invokeProject?.runtimes[0];
           if (opts.agent && invokeProject) {
             invokePort = getAgentPort(invokeProject, opts.agent, port);
-            targetAgent = invokeProject.agents.find(a => a.name === opts.agent);
-          } else if (invokeProject && invokeProject.agents.length > 1 && !opts.agent) {
-            const names = invokeProject.agents.map(a => a.name).join(', ');
+            targetAgent = invokeProject.runtimes.find(a => a.name === opts.agent);
+          } else if (invokeProject && invokeProject.runtimes.length > 1 && !opts.agent) {
+            const names = invokeProject.runtimes.map(a => a.name).join(', ');
             console.error(`Error: Multiple agents found. Use --agent to specify which one.`);
             console.error(`Available: ${names}`);
             process.exit(1);
@@ -204,13 +204,13 @@ export const registerDev = (program: Command) => {
           process.exit(1);
         }
 
-        if (!project.agents || project.agents.length === 0) {
+        if (!project.runtimes || project.runtimes.length === 0) {
           render(<FatalError message="No agents defined in project." suggestedCommand="agentcore add agent" />);
           process.exit(1);
         }
 
         // Warn about VPC mode limitations in local dev
-        const targetDevAgent = opts.agent ? project.agents.find(a => a.name === opts.agent) : project.agents[0];
+        const targetDevAgent = opts.agent ? project.runtimes.find(a => a.name === opts.agent) : project.runtimes[0];
         if (targetDevAgent?.networkMode === 'VPC') {
           console.log(
             '\x1b[33mWarning: This agent uses VPC network mode. Local dev server runs outside your VPC. Network behavior may differ from deployed environment.\x1b[0m\n'
@@ -228,14 +228,14 @@ export const registerDev = (program: Command) => {
         // If --logs provided, run non-interactive mode
         if (opts.logs) {
           // Require --agent if multiple agents
-          if (project.agents.length > 1 && !opts.agent) {
-            const names = project.agents.map(a => a.name).join(', ');
+          if (project.runtimes.length > 1 && !opts.agent) {
+            const names = project.runtimes.map(a => a.name).join(', ');
             console.error(`Error: Multiple agents found. Use --agent to specify which one.`);
             console.error(`Available: ${names}`);
             process.exit(1);
           }
 
-          const agentName = opts.agent ?? project.agents[0]?.name;
+          const agentName = opts.agent ?? project.runtimes[0]?.name;
           const configRoot = findConfigRoot(workingDir);
           const envVars = configRoot ? await readEnvFile(configRoot) : {};
           const gatewayEnvVars = await getGatewayEnvVars();

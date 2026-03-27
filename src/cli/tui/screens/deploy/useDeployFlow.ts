@@ -203,7 +203,7 @@ export function useDeployFlow(options: DeployFlowOptions = {}): DeployFlowState 
     if (!ctx || !currentStackName || !target) return;
 
     const configIO = new ConfigIO();
-    const agentNames = ctx.projectSpec.agents?.map((a: { name: string }) => a.name) || [];
+    const agentNames = ctx.projectSpec.runtimes?.map((a: { name: string }) => a.name) || [];
 
     // CDK stream (I5900) only includes outputs without exportName.
     // Per-resource outputs (memory, agent, gateway) use exportName, so we
@@ -404,7 +404,7 @@ export function useDeployFlow(options: DeployFlowOptions = {}): DeployFlowState 
           }
 
           // Post-deploy: Enable CloudWatch Transaction Search (non-blocking, silent)
-          const agentNames = context?.projectSpec.agents?.map((a: { name: string }) => a.name) ?? [];
+          const agentNames = context?.projectSpec.runtimes?.map((a: { name: string }) => a.name) ?? [];
           const targetRegion = context?.awsTargets[0]?.region;
           const targetAccount = context?.awsTargets[0]?.account;
           const hasGateways = (context?.projectSpec.agentCoreGateways?.length ?? 0) > 0;
@@ -490,7 +490,7 @@ export function useDeployFlow(options: DeployFlowOptions = {}): DeployFlowState 
     switchableIoHost,
     context?.isTeardownDeploy,
     context?.awsTargets,
-    context?.projectSpec.agents,
+    context?.projectSpec.runtimes,
     diffMode,
   ]);
 

@@ -220,11 +220,11 @@ function AgentCoreGuidedEditorBody(props: {
   }, [stdout]);
 
   // Clamp activeAgentIndex to valid range
-  const agentIndex = Math.min(activeAgentIndex, Math.max(0, draft.agents.length - 1));
-  const agentCount = draft.agents.length;
+  const agentIndex = Math.min(activeAgentIndex, Math.max(0, draft.runtimes.length - 1));
+  const agentCount = draft.runtimes.length;
 
   const { tabs, fieldErrors, runtimeArtifact, issues } = useMemo(() => {
-    if (!draft || draft.agents.length === 0) {
+    if (!draft || draft.runtimes.length === 0) {
       return {
         tabs: [] as TabDef[],
         fieldErrors: {} as FieldErrorMap,
@@ -233,7 +233,7 @@ function AgentCoreGuidedEditorBody(props: {
       };
     }
 
-    const agent = draft.agents[agentIndex];
+    const agent = draft.runtimes[agentIndex];
     if (!agent) {
       return {
         tabs: [] as TabDef[],
@@ -252,8 +252,8 @@ function AgentCoreGuidedEditorBody(props: {
           { id: 'schema-name', label: 'Schema Name', type: 'string', path: ['name'] },
           { id: 'schema-version', label: 'Schema Version', type: 'string', path: ['version'] },
           { id: 'schema-description', label: 'Description', type: 'string', path: ['description'] },
-          { id: 'agent-name', label: 'Agent Name', type: 'string', path: ['agents', agentIndex, 'name'] },
-          { id: 'agent-id', label: 'Agent Id', type: 'string', path: ['agents', agentIndex, 'id'] },
+          { id: 'agent-name', label: 'Agent Name', type: 'string', path: ['runtimes', agentIndex, 'name'] },
+          { id: 'agent-id', label: 'Agent Id', type: 'string', path: ['runtimes', agentIndex, 'id'] },
         ],
       },
       {
@@ -264,21 +264,21 @@ function AgentCoreGuidedEditorBody(props: {
             id: 'sdk-framework',
             label: 'SDK Framework',
             type: 'enum',
-            path: ['agents', agentIndex, 'sdkFramework'],
+            path: ['runtimes', agentIndex, 'sdkFramework'],
             enumValues: SDKFrameworkSchema.options,
           },
           {
             id: 'target-language',
             label: 'Target Language',
             type: 'enum',
-            path: ['agents', agentIndex, 'targetLanguage'],
+            path: ['runtimes', agentIndex, 'targetLanguage'],
             enumValues: TargetLanguageSchema.options,
           },
           {
             id: 'model-provider',
             label: 'Model Provider',
             type: 'enum',
-            path: ['agents', agentIndex, 'modelProvider'],
+            path: ['runtimes', agentIndex, 'modelProvider'],
             enumValues: ModelProviderSchema.options,
           },
         ],
@@ -291,35 +291,35 @@ function AgentCoreGuidedEditorBody(props: {
             id: 'runtime-build',
             label: 'Build Type',
             type: 'enum',
-            path: ['agents', agentIndex, 'build'],
+            path: ['runtimes', agentIndex, 'build'],
             enumValues: BuildTypeSchema.options,
           },
           {
             id: 'runtime-entrypoint',
             label: 'Entrypoint',
             type: 'string',
-            path: ['agents', agentIndex, 'runtime', 'entrypoint'],
+            path: ['runtimes', agentIndex, 'runtime', 'entrypoint'],
             pathType: 'file',
           },
           {
             id: 'runtime-code-location',
             label: 'Code Location',
             type: 'string',
-            path: ['agents', agentIndex, 'runtime', 'codeLocation'],
+            path: ['runtimes', agentIndex, 'runtime', 'codeLocation'],
             pathType: 'directory',
           },
           {
             id: 'runtime-network',
             label: 'Network Mode',
             type: 'enum',
-            path: ['agents', agentIndex, 'runtime', 'networkMode'],
+            path: ['runtimes', agentIndex, 'runtime', 'networkMode'],
             enumValues: NetworkModeSchema.options,
           },
           {
             id: 'runtime-description',
             label: 'Runtime Description',
             type: 'string',
-            path: ['agents', agentIndex, 'runtime', 'description'],
+            path: ['runtimes', agentIndex, 'runtime', 'description'],
           },
           ...(runtimeArtifact === 'CodeZip'
             ? ([
@@ -327,7 +327,7 @@ function AgentCoreGuidedEditorBody(props: {
                   id: 'runtime-python-version',
                   label: 'Python Version',
                   type: 'enum' as FieldType,
-                  path: ['agents', agentIndex, 'runtime', 'pythonVersion'],
+                  path: ['runtimes', agentIndex, 'runtime', 'pythonVersion'],
                   enumValues: PythonRuntimeSchema.options,
                 },
               ] as FieldDef[])
@@ -336,7 +336,7 @@ function AgentCoreGuidedEditorBody(props: {
                   id: 'runtime-image-uri',
                   label: 'Image Uri',
                   type: 'string' as FieldType,
-                  path: ['agents', agentIndex, 'runtime', 'imageUri'],
+                  path: ['runtimes', agentIndex, 'runtime', 'imageUri'],
                 },
               ] as FieldDef[])),
         ],
@@ -481,7 +481,7 @@ function AgentCoreGuidedEditorBody(props: {
     }
 
     if (editingField || errorsOpen) return;
-    if (!draft || draft.agents.length === 0 || !draft.agents[agentIndex]) return;
+    if (!draft || draft.runtimes.length === 0 || !draft.runtimes[agentIndex]) return;
 
     if (key.escape) {
       if (dirty) {
@@ -596,7 +596,7 @@ function AgentCoreGuidedEditorBody(props: {
   });
 
   // Handle case where no agent exists
-  if (!draft || draft.agents.length === 0 || !draft.agents[agentIndex]) {
+  if (!draft || draft.runtimes.length === 0 || !draft.runtimes[agentIndex]) {
     return (
       <ScreenLayout onExit={props.onBack}>
         <Header title="Edit Schema" subtitle={props.schema.title} />
@@ -705,7 +705,7 @@ function AgentCoreGuidedEditorBody(props: {
     );
   }
 
-  const _activeAgent = draft.agents[agentIndex];
+  const _activeAgent = draft.runtimes[agentIndex];
 
   return (
     <ScreenLayout>
@@ -714,7 +714,7 @@ function AgentCoreGuidedEditorBody(props: {
         <Text dimColor>←→ sections · Enter edit{agentCount > 1 ? ' · Tab agents' : ''} · Esc back</Text>
         {agentCount > 1 && (
           <Box flexDirection="row" gap={1}>
-            {draft.agents.map((agent, idx) => (
+            {draft.runtimes.map((agent, idx) => (
               <Text
                 key={agent.name || idx}
                 color={idx === agentIndex ? 'cyan' : undefined}

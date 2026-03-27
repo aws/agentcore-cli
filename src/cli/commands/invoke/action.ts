@@ -55,18 +55,18 @@ export async function handleInvoke(context: InvokeContext, options: InvokeOption
     return { success: false, error: `Target config '${selectedTargetName}' not found in aws-targets` };
   }
 
-  if (project.agents.length === 0) {
+  if (project.runtimes.length === 0) {
     return { success: false, error: 'No agents defined in configuration' };
   }
 
   // Resolve agent
-  const agentNames = project.agents.map(a => a.name);
+  const agentNames = project.runtimes.map(a => a.name);
 
-  if (!options.agentName && project.agents.length > 1) {
+  if (!options.agentName && project.runtimes.length > 1) {
     return { success: false, error: `Multiple agents found. Use --agent to specify one: ${agentNames.join(', ')}` };
   }
 
-  const agentSpec = options.agentName ? project.agents.find(a => a.name === options.agentName) : project.agents[0];
+  const agentSpec = options.agentName ? project.runtimes.find(a => a.name === options.agentName) : project.runtimes[0];
 
   if (options.agentName && !agentSpec) {
     return { success: false, error: `Agent '${options.agentName}' not found. Available: ${agentNames.join(', ')}` };
@@ -84,7 +84,7 @@ export async function handleInvoke(context: InvokeContext, options: InvokeOption
   }
 
   // Get the deployed state for this specific agent
-  const agentState = targetState?.resources?.agents?.[agentSpec.name];
+  const agentState = targetState?.resources?.runtimes?.[agentSpec.name];
 
   if (!agentState) {
     return { success: false, error: `Agent '${agentSpec.name}' is not deployed to target '${selectedTargetName}'` };

@@ -7,7 +7,7 @@ import { describe, expect, it } from 'vitest';
 
 const baseProject: AgentCoreProjectSpec = {
   name: 'test-project',
-  agents: [],
+  runtimes: [],
   memories: [],
   credentials: [],
 } as unknown as AgentCoreProjectSpec;
@@ -28,7 +28,7 @@ describe('ResourceGraph', () => {
   it('renders agents section', () => {
     const project = {
       ...baseProject,
-      agents: [{ name: 'my-agent' }],
+      runtimes: [{ name: 'my-agent' }],
     } as unknown as AgentCoreProjectSpec;
 
     const { lastFrame } = render(<ResourceGraph project={project} />);
@@ -66,7 +66,7 @@ describe('ResourceGraph', () => {
   it('filters agents by agentName prop', () => {
     const project = {
       ...baseProject,
-      agents: [{ name: 'agent-a' }, { name: 'agent-b' }],
+      runtimes: [{ name: 'agent-a' }, { name: 'agent-b' }],
     } as unknown as AgentCoreProjectSpec;
 
     const { lastFrame } = render(<ResourceGraph project={project} agentName="agent-a" />);
@@ -78,7 +78,7 @@ describe('ResourceGraph', () => {
   it('renders agent runtime status from resourceStatuses', () => {
     const project = {
       ...baseProject,
-      agents: [{ name: 'my-agent' }],
+      runtimes: [{ name: 'my-agent' }],
     } as unknown as AgentCoreProjectSpec;
 
     const resourceStatuses: ResourceStatusEntry[] = [
@@ -93,7 +93,7 @@ describe('ResourceGraph', () => {
   it('renders agent error status from resourceStatuses', () => {
     const project = {
       ...baseProject,
-      agents: [{ name: 'my-agent' }],
+      runtimes: [{ name: 'my-agent' }],
     } as unknown as AgentCoreProjectSpec;
 
     const resourceStatuses: ResourceStatusEntry[] = [
@@ -212,7 +212,7 @@ describe('ResourceGraph', () => {
     it('renders Deployed badge for deployed agents', () => {
       const project = {
         ...baseProject,
-        agents: [{ name: 'my-agent' }],
+        runtimes: [{ name: 'my-agent' }],
       } as unknown as AgentCoreProjectSpec;
 
       const resourceStatuses: ResourceStatusEntry[] = [
@@ -233,7 +233,7 @@ describe('ResourceGraph', () => {
     it('renders Local only badge for local-only resources', () => {
       const project = {
         ...baseProject,
-        agents: [{ name: 'my-agent' }],
+        runtimes: [{ name: 'my-agent' }],
       } as unknown as AgentCoreProjectSpec;
 
       const resourceStatuses: ResourceStatusEntry[] = [
@@ -265,7 +265,7 @@ describe('ResourceGraph', () => {
     it('renders deployment state legend when resourceStatuses provided', () => {
       const project = {
         ...baseProject,
-        agents: [{ name: 'my-agent' }],
+        runtimes: [{ name: 'my-agent' }],
       } as unknown as AgentCoreProjectSpec;
 
       const resourceStatuses: ResourceStatusEntry[] = [
@@ -283,7 +283,7 @@ describe('ResourceGraph', () => {
     it('does not render deployment state legend when no resourceStatuses', () => {
       const project = {
         ...baseProject,
-        agents: [{ name: 'my-agent' }],
+        runtimes: [{ name: 'my-agent' }],
       } as unknown as AgentCoreProjectSpec;
 
       const { lastFrame } = render(<ResourceGraph project={project} />);

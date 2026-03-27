@@ -927,10 +927,10 @@ describe('Deployed State Update with Memory', () => {
       resources.stackName = 'AgentCore-TestProject-default';
 
       if (agentsToImport.length > 0) {
-        resources.agents = {};
+        resources.runtimes = {};
         for (const agent of agentsToImport) {
           if (agent.physicalAgentId) {
-            (resources.agents as Record<string, unknown>)[agent.name] = {
+            (resources.runtimes as Record<string, unknown>)[agent.name] = {
               runtimeId: agent.physicalAgentId,
               runtimeArn:
                 agent.physicalAgentArn ??
@@ -963,7 +963,7 @@ describe('Deployed State Update with Memory', () => {
 
       expect(res.stackName).toBe('AgentCore-TestProject-default');
 
-      const agents = res.agents as Record<string, Record<string, string>>;
+      const agents = res.runtimes as Record<string, Record<string, string>>;
       expect(agents['my_memory_agent']).toBeDefined();
       expect(agents['my_memory_agent']!.runtimeId).toBe('abc123def456');
 

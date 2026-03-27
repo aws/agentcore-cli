@@ -24,7 +24,7 @@ describe('writeAgentToProject with credentialStrategy', () => {
     name: 'MyProject',
     version: 1,
     managedBy: 'CDK' as const,
-    agents: [],
+    runtimes: [],
     memories: [],
     credentials: [],
   };
@@ -69,7 +69,7 @@ describe('writeAgentToProject with credentialStrategy', () => {
 
       const project = await readProject();
       expect(project.credentials).toHaveLength(0);
-      expect(project.agents).toHaveLength(1);
+      expect(project.runtimes).toHaveLength(1);
     });
   });
 
@@ -133,8 +133,8 @@ describe('writeAgentToProject with credentialStrategy', () => {
 
       const project = await readProject();
       expect(project.name).toBe('TestAgent');
-      expect(project.agents).toHaveLength(1);
-      expect(project.agents[0].name).toBe('TestAgent');
+      expect(project.runtimes).toHaveLength(1);
+      expect(project.runtimes[0].name).toBe('TestAgent');
     });
   });
 

@@ -14,11 +14,11 @@ export async function listAgents(options: { configIO?: ConfigIO; deployTarget?: 
   const target = deployedState.targets[targetName];
   if (!target) return [];
 
-  const deployedAgents = target.resources?.agents ?? {};
+  const deployedAgents = target.resources?.runtimes ?? {};
 
   const agents: AgentInfo[] = [];
 
-  for (const agent of projectSpec.agents) {
+  for (const agent of projectSpec.runtimes) {
     const deployed = deployedAgents[agent.name];
     if (!deployed?.runtimeArn) continue;
 

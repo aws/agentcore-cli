@@ -39,7 +39,7 @@ describe('validateProjectSchema', () => {
   const validProject = {
     name: 'TestProject',
     version: 1,
-    agents: [],
+    runtimes: [],
     memories: [],
     credentials: [],
   };
@@ -52,7 +52,7 @@ describe('validateProjectSchema', () => {
 
   it('applies defaults for missing optional arrays', () => {
     const result = validateProjectSchema({ name: 'MyProject', version: 1 });
-    expect(result.agents).toEqual([]);
+    expect(result.runtimes).toEqual([]);
     expect(result.memories).toEqual([]);
     expect(result.credentials).toEqual([]);
   });
@@ -74,7 +74,7 @@ describe('validateProjectSchema', () => {
       validateProjectSchema({
         name: 'MyProject',
         version: 1,
-        agents: [agent, agent],
+        runtimes: [agent, agent],
       })
     ).toThrow('Invalid AgentCoreProjectSpec');
   });

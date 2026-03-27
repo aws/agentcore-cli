@@ -455,7 +455,7 @@ agents:
       JSON.stringify({
         name: 'myproject',
         version: 1,
-        agents: [],
+        runtimes: [],
         memories: [],
         credentials: [],
       })
@@ -473,7 +473,7 @@ agents:
     mockReadProjectSpec.mockResolvedValue({
       name: 'myproject',
       version: 1,
-      agents: [],
+      runtimes: [],
       memories: [],
       credentials: [],
     });
@@ -499,7 +499,7 @@ agents:
     mockReadProjectSpec.mockResolvedValue({
       name: 'myproject',
       version: 1,
-      agents: [],
+      runtimes: [],
       memories: [],
       credentials: [],
     });
@@ -523,7 +523,7 @@ agents:
     mockReadProjectSpec.mockResolvedValue({
       name: 'myproject',
       version: 1,
-      agents: [],
+      runtimes: [],
       memories: [],
       credentials: [],
     });
@@ -536,15 +536,15 @@ agents:
     // writeProjectSpec should have been called with the merged config
     expect(mockWriteProjectSpec).toHaveBeenCalledTimes(1);
     const writtenSpec = mockWriteProjectSpec.mock.calls[0]![0];
-    expect(writtenSpec.agents).toHaveLength(1);
-    expect(writtenSpec.agents[0].name).toBe('test_agent');
+    expect(writtenSpec.runtimes).toHaveLength(1);
+    expect(writtenSpec.runtimes[0].name).toBe('test_agent');
   });
 
   it('adds memory to project config even without physical memory ID', async () => {
     mockReadProjectSpec.mockResolvedValue({
       name: 'myproject',
       version: 1,
-      agents: [],
+      runtimes: [],
       memories: [],
       credentials: [],
     });
@@ -563,7 +563,7 @@ agents:
     mockReadProjectSpec.mockResolvedValue({
       name: 'myproject',
       version: 1,
-      agents: [],
+      runtimes: [],
       memories: [],
       credentials: [],
     });
@@ -581,7 +581,7 @@ agents:
     mockReadProjectSpec.mockResolvedValue({
       name: 'myproject',
       version: 1,
-      agents: [],
+      runtimes: [],
       memories: [],
       credentials: [],
     });
@@ -600,7 +600,7 @@ agents:
     mockReadProjectSpec.mockResolvedValue({
       name: 'myproject',
       version: 1,
-      agents: [],
+      runtimes: [],
       memories: [],
       credentials: [],
     });
@@ -618,7 +618,7 @@ agents:
     mockReadProjectSpec.mockResolvedValue({
       name: 'myproject',
       version: 1,
-      agents: [],
+      runtimes: [],
       memories: [],
       credentials: [],
     });
@@ -635,7 +635,7 @@ agents:
     mockReadProjectSpec.mockResolvedValue({
       name: 'myproject',
       version: 1,
-      agents: [],
+      runtimes: [],
       memories: [],
       credentials: [],
     });
@@ -670,7 +670,7 @@ describe('handleImport: target resolution with null account/region', () => {
       JSON.stringify({
         name: 'myproject',
         version: 1,
-        agents: [],
+        runtimes: [],
         memories: [],
         credentials: [],
       })
@@ -712,7 +712,7 @@ agents:
     mockReadProjectSpec.mockResolvedValue({
       name: 'myproject',
       version: 1,
-      agents: [],
+      runtimes: [],
       memories: [],
       credentials: [],
     });
@@ -758,7 +758,7 @@ agents:
     mockReadProjectSpec.mockResolvedValue({
       name: 'myproject',
       version: 1,
-      agents: [],
+      runtimes: [],
       memories: [],
       credentials: [],
     });
@@ -802,7 +802,7 @@ agents:
     mockReadProjectSpec.mockResolvedValue({
       name: 'myproject',
       version: 1,
-      agents: [],
+      runtimes: [],
       memories: [],
       credentials: [],
     });

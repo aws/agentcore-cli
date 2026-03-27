@@ -21,7 +21,7 @@ const makeProject = (memoryNames: string[]) => ({
   name: 'TestProject',
   version: 1,
   managedBy: 'CDK' as const,
-  agents: [],
+  runtimes: [],
   memories: memoryNames.map(name => ({ name, eventExpiryDuration: 30, strategies: [] })),
   credentials: [],
 });

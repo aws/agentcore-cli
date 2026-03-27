@@ -373,7 +373,7 @@ export function buildDeployedState(opts: BuildDeployedStateOptions): DeployedSta
   } = opts;
   const targetState: TargetDeployedState = {
     resources: {
-      agents: Object.keys(agents).length > 0 ? agents : undefined,
+      runtimes: Object.keys(agents).length > 0 ? agents : undefined,
       memories: memories && Object.keys(memories).length > 0 ? memories : undefined,
       policyEngines: policyEngines && Object.keys(policyEngines).length > 0 ? policyEngines : undefined,
       policies: policies && Object.keys(policies).length > 0 ? policies : undefined,

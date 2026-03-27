@@ -63,7 +63,7 @@ export function EditSchemaScreen(props: EditSchemaScreenProps) {
         const result = await loadSchemaDocument(schema.filePath, AgentCoreProjectSpecSchema);
         const parsed = JSON.parse(result.content) as AgentCoreProjectSpec;
 
-        if (!parsed.agents || parsed.agents.length === 0) {
+        if (!parsed.runtimes || parsed.runtimes.length === 0) {
           setErrorPrompt({
             message: 'No agent found in schema.',
             detail: 'agentcore.json must include at least one agent.',

@@ -91,14 +91,14 @@ export async function createMinimalProjectDir(
     name: projectName,
     version: 1,
     managedBy: 'CDK',
-    agents: [] as unknown[],
+    runtimes: [] as unknown[],
     memories: [],
     credentials: [],
   };
 
   // Optionally add a sample agent.
   if (hasAgents) {
-    (config.agents as unknown[]).push({
+    (config.runtimes as unknown[]).push({
       name: 'TestAgent',
       build: 'CodeZip',
       entrypoint: 'main.py:handler',

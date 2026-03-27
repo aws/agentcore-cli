@@ -36,11 +36,11 @@ export async function getSessionId(
   const targetState = deployedState.targets[selectedTargetName];
   const targetConfig = awsTargets.find(t => t.name === selectedTargetName);
 
-  if (!targetConfig || !targetState?.resources?.agents) {
+  if (!targetConfig || !targetState?.resources?.runtimes) {
     return null;
   }
 
-  const agentState = targetState.resources.agents[agentName];
+  const agentState = targetState.resources.runtimes[agentName];
   if (!agentState) {
     return null;
   }
@@ -73,12 +73,12 @@ export async function saveSessionId(
   const selectedTargetName = targetName ?? targetNames[0]!;
   const targetState = deployedState.targets[selectedTargetName];
 
-  if (!targetState?.resources?.agents?.[agentName]) {
+  if (!targetState?.resources?.runtimes?.[agentName]) {
     throw new Error(`Agent '${agentName}' not found in deployed state`);
   }
 
   // Update the session ID
-  targetState.resources.agents[agentName].sessionId = sessionId;
+  targetState.resources.runtimes[agentName].sessionId = sessionId;
 
   await configIO.writeDeployedState(deployedState);
 }
@@ -102,12 +102,12 @@ export async function clearSessionId(
   const selectedTargetName = targetName ?? targetNames[0]!;
   const targetState = deployedState.targets[selectedTargetName];
 
-  if (!targetState?.resources?.agents?.[agentName]) {
+  if (!targetState?.resources?.runtimes?.[agentName]) {
     return;
   }
 
   // Clear the session ID
-  delete targetState.resources.agents[agentName].sessionId;
+  delete targetState.resources.runtimes[agentName].sessionId;
 
   await configIO.writeDeployedState(deployedState);
 }

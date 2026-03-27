@@ -54,10 +54,10 @@ function simulateMerge(
 ): { messages: string[]; projectSpec: AgentCoreProjectSpec } {
   const messages: string[] = [];
   const onProgress = (msg: string) => messages.push(msg);
-  const existingAgentNames = new Set(projectSpec.agents.map(a => a.name));
+  const existingAgentNames = new Set(projectSpec.runtimes.map(a => a.name));
   for (const agent of parsed.agents) {
     if (!existingAgentNames.has(agent.name)) {
-      projectSpec.agents.push(toAgentEnvSpec(agent));
+      projectSpec.runtimes.push(toAgentEnvSpec(agent));
     } else {
       onProgress(`Skipping agent "${agent.name}" (already exists in project)`);
     }
@@ -115,21 +115,21 @@ describe('merge: agent deduplication', () => {
     const projectSpec = loadCliProjectSpec();
     const parsed = parseStarterToolkitYaml(DIFFERENT_AGENT_YAML);
     const { projectSpec: merged } = simulateMerge(projectSpec, parsed);
-    expect(merged.agents).toHaveLength(2);
+    expect(merged.runtimes).toHaveLength(2);
   });
   it('skips agent with same name', () => {
     const projectSpec = loadCliProjectSpec();
     const parsed = parseStarterToolkitYaml(SAME_NAME_AGENT_YAML);
     const { messages, projectSpec: merged } = simulateMerge(projectSpec, parsed);
-    expect(merged.agents).toHaveLength(1);
+    expect(merged.runtimes).toHaveLength(1);
     expect(messages).toContain('Skipping agent "existing_agent" (already exists in project)');
   });
   it('preserves original config when skipping', () => {
     const projectSpec = loadCliProjectSpec();
     const parsed = parseStarterToolkitYaml(SAME_NAME_AGENT_YAML);
     const { projectSpec: merged } = simulateMerge(projectSpec, parsed);
-    expect(merged.agents[0]!.networkMode).toBe('PUBLIC');
-    expect(merged.agents[0]!.protocol).toBe('HTTP');
+    expect(merged.runtimes[0]!.networkMode).toBe('PUBLIC');
+    expect(merged.runtimes[0]!.protocol).toBe('HTTP');
   });
 });
 
@@ -169,7 +169,7 @@ describe('merge: combined', () => {
     const projectSpec = loadCliProjectSpec();
     const parsed = parseStarterToolkitYaml(DIFFERENT_AGENT_YAML);
     const { projectSpec: merged } = simulateMerge(projectSpec, parsed);
-    expect(merged.agents).toHaveLength(2);
+    expect(merged.runtimes).toHaveLength(2);
     expect(merged.memories).toHaveLength(2);
     expect(merged.credentials).toHaveLength(2);
   });
@@ -185,7 +185,7 @@ describe('merge: combined', () => {
 describe('source copy skip logic', () => {
   it('identifies agents to skip', () => {
     const projectSpec = loadCliProjectSpec();
-    const existingAgentNames = new Set(projectSpec.agents.map(a => a.name));
+    const existingAgentNames = new Set(projectSpec.runtimes.map(a => a.name));
     expect(existingAgentNames.has(parseStarterToolkitYaml(SAME_NAME_AGENT_YAML).agents[0]!.name)).toBe(true);
     expect(existingAgentNames.has(parseStarterToolkitYaml(DIFFERENT_AGENT_YAML).agents[0]!.name)).toBe(false);
   });
@@ -211,9 +211,9 @@ describe('edge cases', () => {
   });
   it('merge is append-only', () => {
     const projectSpec = loadCliProjectSpec();
-    const n = projectSpec.agents.length;
+    const n = projectSpec.runtimes.length;
     const parsed = parseStarterToolkitYaml(SAME_NAME_AGENT_YAML);
     const { projectSpec: merged } = simulateMerge(projectSpec, parsed);
-    expect(merged.agents.length).toBeGreaterThanOrEqual(n);
+    expect(merged.runtimes.length).toBeGreaterThanOrEqual(n);
   });
 });
