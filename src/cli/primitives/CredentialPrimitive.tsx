@@ -67,7 +67,7 @@ export class CredentialPrimitive extends BasePrimitive<AddCredentialOptions, Rem
   readonly label = 'Credential';
   readonly primitiveSchema = CredentialSchema;
 
-  protected override readonly article: string = 'an';
+  protected override readonly article: string = 'a';
 
   async add(options: AddCredentialOptions): Promise<AddResult<{ credentialName: string }>> {
     try {
