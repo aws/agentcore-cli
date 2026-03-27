@@ -219,6 +219,12 @@ that close the escalation paths. Replace `ACCOUNT_ID` with your account number b
 Together these ensure that even though `iam:CreateRole` targets `Resource: "*"`, every created role is capped by the
 boundary, and neither the boundary nor its attachment can be tampered with.
 
+> **Note:** These deny statements require a corresponding update to the AgentCore CDK constructs. The constructs do not
+> currently attach a `permissionsBoundary` to the IAM roles they create (runtime, memory, gateway, etc.), so
+> CloudFormation will fail to create those roles when `ForceExecutionRoleBoundary` is active. Until the CDK constructs
+> are updated to accept and apply a permission boundary ARN, treat this section as a recommended future configuration.
+> You can still create the boundary policy (Step 1) and scope the user policy (Step 3) today.
+
 ### Step 3: Scope the user policy to your account
 
 The provided [iam-policy-user.json](./policies/iam-policy-user.json) uses `ACCOUNT_ID` placeholders in the CDK bootstrap
