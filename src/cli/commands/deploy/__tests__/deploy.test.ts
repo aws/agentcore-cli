@@ -18,7 +18,7 @@ describe('deploy --help', () => {
     expect(result.stdout.includes('--yes')).toBeTruthy();
     expect(result.stdout.includes('--verbose')).toBeTruthy();
     expect(result.stdout.includes('--json')).toBeTruthy();
-    expect(result.stdout.includes('--plan')).toBeTruthy();
+    expect(result.stdout.includes('--dry-run')).toBeTruthy();
   });
 });
 
