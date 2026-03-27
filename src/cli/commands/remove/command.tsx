@@ -62,15 +62,17 @@ export const registerRemove = (program: Command): Command => {
   removeCommand
     .command('all')
     .description('Reset all agentcore schemas to empty state')
-    .option('--force', 'Skip confirmation prompts [non-interactive]')
+    .option('-y, --yes', 'Skip confirmation prompts [non-interactive]')
+    .option('--force', 'Skip confirmation prompts (alias for --yes) [non-interactive]')
     .option('--dry-run', 'Show what would be reset without actually resetting [non-interactive]')
     .option('--json', 'Output as JSON [non-interactive]')
-    .action(async (cliOptions: { force?: boolean; dryRun?: boolean; json?: boolean }) => {
+    .action(async (cliOptions: { yes?: boolean; force?: boolean; dryRun?: boolean; json?: boolean }) => {
       try {
+        const skipConfirm = cliOptions.yes ?? cliOptions.force;
         // Any flag triggers non-interactive CLI mode
-        if (cliOptions.force || cliOptions.dryRun || cliOptions.json) {
+        if (skipConfirm || cliOptions.dryRun || cliOptions.json) {
           await handleRemoveAllCLI({
-            force: cliOptions.force,
+            force: skipConfirm,
             dryRun: cliOptions.dryRun,
             json: cliOptions.json,
           });
