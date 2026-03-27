@@ -152,6 +152,35 @@
       "Resource": "arn:aws:ssm:*:*:parameter/cdk-bootstrap/*/version"
     },
     {
+      "Sid": "ForceExecutionRoleBoundary",
+      "Effect": "Deny",
+      "Action": "iam:CreateRole",
+      "Resource": "*",
+      "Condition": {
+        "StringNotEquals": {
+          "iam:PermissionsBoundary": "arn:aws:iam::ACCOUNT_ID:policy/AgentCoreExecutionRoleBoundary"
+        }
+      }
+    },
+    {
+      "Sid": "PreventBoundaryRemoval",
+      "Effect": "Deny",
+      "Action": ["iam:DeleteRolePermissionsBoundary", "iam:PutRolePermissionsBoundary"],
+      "Resource": "*"
+    },
+    {
+      "Sid": "PreventBoundaryPolicyTampering",
+      "Effect": "Deny",
+      "Action": [
+        "iam:CreatePolicy",
+        "iam:CreatePolicyVersion",
+        "iam:DeletePolicy",
+        "iam:DeletePolicyVersion",
+        "iam:SetDefaultPolicyVersion"
+      ],
+      "Resource": "arn:aws:iam::ACCOUNT_ID:policy/AgentCoreExecutionRoleBoundary"
+    },
+    {
       "Sid": "SecretsManagerForCredentials",
       "Effect": "Allow",
       "Action": [

@@ -5,8 +5,10 @@ who provision roles and policies in environments where access is tightly control
 action-by-action reference. Developers who just need to get unblocked can skip to
 [What developers need](#what-developers-need).
 
-Ready-to-use policy documents are provided at [iam-policy-user.json](./policies/iam-policy-user.json) and
-[iam-policy-cfn-execution.json](./policies/iam-policy-cfn-execution.json).
+Ready-to-use policy documents are provided at [iam-policy-user.json](./policies/iam-policy-user.json),
+[iam-policy-cfn-execution.json](./policies/iam-policy-cfn-execution.json), and
+[iam-policy-boundary.json](./policies/iam-policy-boundary.json). Replace `ACCOUNT_ID` placeholders with your AWS account
+number before deploying.
 
 ## How the CLI uses AWS
 
@@ -170,23 +172,70 @@ safely removed:
 | Policy engine                   | `PolicyGeneration`                                                   | Remove `*PolicyEngine*` and `*Policy` actions from `BedrockAgentCoreResources`                         |
 | Online evaluations              | Remove `UpdateOnlineEvaluationConfig` from `AgentCoreResourceStatus` | Remove `*OnlineEvaluationConfig*` actions from `BedrockAgentCoreResources`                             |
 
-## Permission boundaries
+## Hardening with permission boundaries
 
-If your organization uses
-[IAM permission boundaries](https://docs.aws.amazon.com/IAM/latest/UserGuide/access_policies_boundaries.html), there are
-two places they can come into play.
+The CFN execution role policy includes `iam:CreateRole` with `Resource: "*"`. Without further constraints,
+CloudFormation could theoretically create a role with `AdministratorAccess` and a trust policy allowing the developer to
+assume it. This is a well-known CDK privilege escalation pattern.
 
-**On the developer's role.** The developer policy from [iam-policy-user.json](./policies/iam-policy-user.json) defines
-the maximum set of actions a developer needs. You can use this as both the identity policy and the permissions boundary,
-or create a broader boundary and use the policy for the effective permissions. The critical thing is that
-`sts:AssumeRole` on the CDK bootstrap roles must be allowed through the boundary, otherwise deployments will fail.
+[IAM permission boundaries](https://docs.aws.amazon.com/IAM/latest/UserGuide/access_policies_boundaries.html) close this
+gap. A permission boundary caps the effective permissions of any role it is attached to, regardless of what identity
+policies that role carries. Even if someone attaches `AdministratorAccess` to an execution role, the boundary limits
+what the role can actually do.
 
-**On roles that CloudFormation creates.** During `agentcore deploy`, CloudFormation creates execution roles for
-runtimes, gateways, memory stores, and other resources. If your organization requires that all IAM roles have a
-permissions boundary attached, you will need to ensure the CFN execution role has `iam:PutRolePermissionsBoundary`
-permission, and the CDK constructs in your project pass the boundary ARN to the created roles. Currently, AgentCore's
-CDK constructs create roles with inline policies scoped to the specific resource. These roles are not given permission
-boundaries by default.
+The setup has three parts: creating the boundary policy, adding deny statements to the CFN execution role so it is
+forced to apply the boundary, and scoping the user policy to a single account.
+
+### Step 1: Create the execution role boundary
+
+This policy defines the maximum permissions any AgentCore execution role (runtime, memory, gateway, etc.) can have at
+runtime. Create it once per account.
+
+The provided [iam-policy-boundary.json](./policies/iam-policy-boundary.json) allows:
+
+- `bedrock:InvokeModel` and `bedrock:InvokeModelWithResponseStream` for model access
+- CloudWatch Logs scoped to `/aws/bedrock-agentcore/*` log groups
+- X-Ray trace submission
+- CloudWatch metrics scoped to the `bedrock-agentcore` namespace
+- `bedrock-agentcore:GetWorkloadAccessToken*` for identity federation
+
+```bash
+aws iam create-policy \
+  --policy-name AgentCoreExecutionRoleBoundary \
+  --policy-document file://docs/policies/iam-policy-boundary.json
+```
+
+### Step 2: Add deny statements to the CFN execution role
+
+The provided [iam-policy-cfn-execution.json](./policies/iam-policy-cfn-execution.json) includes three deny statements
+that close the escalation paths. Replace `ACCOUNT_ID` with your account number before deploying.
+
+| Statement                        | What it blocks                                                                                                                                   |
+| -------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `ForceExecutionRoleBoundary`     | Denies `iam:CreateRole` unless the boundary is attached. Any role CloudFormation creates must carry `AgentCoreExecutionRoleBoundary`.            |
+| `PreventBoundaryRemoval`         | Denies `iam:DeleteRolePermissionsBoundary` and `iam:PutRolePermissionsBoundary`. Prevents removing or swapping the boundary after role creation. |
+| `PreventBoundaryPolicyTampering` | Denies `iam:CreatePolicyVersion`, `iam:DeletePolicy`, etc. on the boundary policy itself. Prevents widening the boundary to bypass it.           |
+
+Together these ensure that even though `iam:CreateRole` targets `Resource: "*"`, every created role is capped by the
+boundary, and neither the boundary nor its attachment can be tampered with.
+
+### Step 3: Scope the user policy to your account
+
+The provided [iam-policy-user.json](./policies/iam-policy-user.json) uses `ACCOUNT_ID` placeholders in the CDK bootstrap
+role ARNs. Replace these with your actual account ID before deploying:
+
+```
+arn:aws:iam::ACCOUNT_ID:role/cdk-*-deploy-role-*
+```
+
+This prevents the developer from assuming CDK bootstrap roles in other accounts.
+
+### What about the developer's own role?
+
+The developer policy from [iam-policy-user.json](./policies/iam-policy-user.json) does not include `iam:CreateRole` or
+any IAM write actions. Developers interact with IAM only indirectly through CloudFormation, which is constrained by the
+boundary. If your organization applies permission boundaries to all IAM principals, you can use the developer policy
+itself as the boundary, but make sure `sts:AssumeRole` on the CDK bootstrap roles is allowed through it.
 
 ## What developers need
 
@@ -239,12 +288,12 @@ outside of CloudFormation.
 
 Required for all deployment operations (`deploy`, `status`, `diff`).
 
-| Action           | Resource                                            |
-| ---------------- | --------------------------------------------------- |
-| `sts:AssumeRole` | `arn:aws:iam::*:role/cdk-*-deploy-role-*`           |
-| `sts:AssumeRole` | `arn:aws:iam::*:role/cdk-*-file-publishing-role-*`  |
-| `sts:AssumeRole` | `arn:aws:iam::*:role/cdk-*-image-publishing-role-*` |
-| `sts:AssumeRole` | `arn:aws:iam::*:role/cdk-*-lookup-role-*`           |
+| Action           | Resource                                                     |
+| ---------------- | ------------------------------------------------------------ |
+| `sts:AssumeRole` | `arn:aws:iam::ACCOUNT_ID:role/cdk-*-deploy-role-*`           |
+| `sts:AssumeRole` | `arn:aws:iam::ACCOUNT_ID:role/cdk-*-file-publishing-role-*`  |
+| `sts:AssumeRole` | `arn:aws:iam::ACCOUNT_ID:role/cdk-*-image-publishing-role-*` |
+| `sts:AssumeRole` | `arn:aws:iam::ACCOUNT_ID:role/cdk-*-lookup-role-*`           |
 
 ### Core
 
@@ -470,7 +519,12 @@ actions used today.
 Ready-to-use IAM policy documents are provided alongside this guide:
 
 - [iam-policy-user.json](./policies/iam-policy-user.json) -- Attach to your IAM user or role. Covers all direct SDK
-  calls and CDK bootstrap role assumption.
+  calls and CDK bootstrap role assumption. Replace `ACCOUNT_ID` with your account number.
 - [iam-policy-cfn-execution.json](./policies/iam-policy-cfn-execution.json) -- Use as the CloudFormation execution role
-  policy if your organization scopes down the default `AdministratorAccess`. Pass it during bootstrap with
+  policy if your organization scopes down the default `AdministratorAccess`. Includes deny statements to enforce
+  permission boundaries. Replace `ACCOUNT_ID` with your account number. Pass it during bootstrap with
   `--cloudformation-execution-policies`.
+- [iam-policy-boundary.json](./policies/iam-policy-boundary.json) -- Permission boundary for execution roles created
+  during deployment. Caps what agent runtimes, memories, and gateways can do at runtime (model access, logging,
+  tracing). Replace `ACCOUNT_ID` with your account number. See
+  [Hardening with permission boundaries](#hardening-with-permission-boundaries).

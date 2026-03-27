@@ -6,10 +6,10 @@
       "Effect": "Allow",
       "Action": "sts:AssumeRole",
       "Resource": [
-        "arn:aws:iam::*:role/cdk-*-deploy-role-*",
-        "arn:aws:iam::*:role/cdk-*-file-publishing-role-*",
-        "arn:aws:iam::*:role/cdk-*-image-publishing-role-*",
-        "arn:aws:iam::*:role/cdk-*-lookup-role-*"
+        "arn:aws:iam::ACCOUNT_ID:role/cdk-*-deploy-role-*",
+        "arn:aws:iam::ACCOUNT_ID:role/cdk-*-file-publishing-role-*",
+        "arn:aws:iam::ACCOUNT_ID:role/cdk-*-image-publishing-role-*",
+        "arn:aws:iam::ACCOUNT_ID:role/cdk-*-lookup-role-*"
       ]
     },
     {
