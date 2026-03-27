@@ -90,7 +90,7 @@ async function handleDeployCLI(options: DeployOptions): Promise<void> {
     if (options.diff) {
       console.log(`\n✓ Diff complete for '${result.targetName}' (stack: ${result.stackName})`);
     } else if (options.plan) {
-      console.log(`\n✓ Plan complete for '${result.targetName}' (stack: ${result.stackName})`);
+      console.log(`\n✓ Dry run complete for '${result.targetName}' (stack: ${result.stackName})`);
       console.log('\nRun `agentcore deploy` to deploy.');
     } else {
       console.log(`\n✓ Deployed to '${result.targetName}' (stack: ${result.stackName})`);
@@ -136,7 +136,8 @@ export const registerDeploy = (program: Command) => {
     .option('-y, --yes', 'Auto-confirm prompts, read credentials from env [non-interactive]')
     .option('-v, --verbose', 'Show resource-level deployment events [non-interactive]')
     .option('--json', 'Output as JSON [non-interactive]')
-    .option('--plan', 'Preview deployment without deploying (dry-run) [non-interactive]')
+    .option('--dry-run', 'Preview deployment without deploying [non-interactive]')
+    .option('--plan', 'Preview deployment without deploying (alias for --dry-run) [non-interactive]')
     .option('--diff', 'Show CDK diff without deploying [non-interactive]')
     .action(
       async (cliOptions: {
@@ -144,15 +145,18 @@ export const registerDeploy = (program: Command) => {
         yes?: boolean;
         verbose?: boolean;
         json?: boolean;
+        dryRun?: boolean;
         plan?: boolean;
         diff?: boolean;
       }) => {
         try {
           requireProject();
-          if (cliOptions.json || cliOptions.target || cliOptions.plan || cliOptions.yes || cliOptions.verbose) {
+          const isDryRun = cliOptions.dryRun ?? cliOptions.plan;
+          if (cliOptions.json || cliOptions.target || isDryRun || cliOptions.yes || cliOptions.verbose) {
             // CLI mode - any flag triggers non-interactive mode
             const options = {
               ...cliOptions,
+              plan: isDryRun,
               target: cliOptions.target ?? 'default',
               progress: !cliOptions.json,
             };
