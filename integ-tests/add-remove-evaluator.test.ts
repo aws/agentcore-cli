@@ -55,20 +55,6 @@ describe('integration: add and remove evaluators and online eval configs', () =>
       instructions,
       '--json',
     ];
-    const addOnlineEvalArgs = [
-      'add',
-      'online-eval',
-      '--name',
-      configName,
-      '--agent',
-      project?.agentName,
-      '--evaluator',
-      evalName,
-      '--sampling-rate',
-      '50',
-      '--json',
-    ];
-
     it('adds an evaluator', async () => {
       const json = await runSuccess(addEvalArgs, project.projectPath);
       expect(json.evaluatorName).toBe(evalName);
@@ -90,7 +76,7 @@ describe('integration: add and remove evaluators and online eval configs', () =>
         'online-eval',
         '--name',
         configName,
-        '--agent',
+        '--runtime',
         project.agentName,
         '--evaluator',
         evalName,
@@ -115,7 +101,7 @@ describe('integration: add and remove evaluators and online eval configs', () =>
         'online-eval',
         '--name',
         configName,
-        '--agent',
+        '--runtime',
         project.agentName,
         '--evaluator',
         evalName,
@@ -193,7 +179,7 @@ describe('integration: add and remove evaluators and online eval configs', () =>
 
     it('rejects online eval with missing required flags', async () => {
       const json = await runFailure(['add', 'online-eval', '--name', 'SomeConfig', '--json'], project.projectPath);
-      expect(json.error).toContain('--agent');
+      expect(json.error).toContain('--runtime');
     });
 
     it('rejects online eval with invalid sampling rate', async () => {
@@ -203,7 +189,7 @@ describe('integration: add and remove evaluators and online eval configs', () =>
           'online-eval',
           '--name',
           'SomeConfig',
-          '--agent',
+          '--runtime',
           project.agentName,
           '--evaluator',
           'SomeEval',
