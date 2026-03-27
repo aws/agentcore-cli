@@ -374,8 +374,6 @@ function getMemoryLabel(memory: MemoryOption): string {
       return 'Short-term';
     case 'longAndShortTerm':
       return 'Long-term + short-term';
-    case 'custom':
-      return 'Custom';
   }
 }
 

@@ -225,12 +225,12 @@ agentcore add memory \
   --expiry 30
 ```
 
-| Flag                   | Description                                                                           |
-| ---------------------- | ------------------------------------------------------------------------------------- |
-| `--name <name>`        | Memory name                                                                           |
-| `--strategies <types>` | Comma-separated: `SEMANTIC`, `SUMMARIZATION`, `USER_PREFERENCE`, `EPISODIC`, `CUSTOM` |
-| `--expiry <days>`      | Event expiry duration in days (default: 30, min: 7, max: 365)                         |
-| `--json`               | JSON output                                                                           |
+| Flag                   | Description                                                                 |
+| ---------------------- | --------------------------------------------------------------------------- |
+| `--name <name>`        | Memory name                                                                 |
+| `--strategies <types>` | Comma-separated: `SEMANTIC`, `SUMMARIZATION`, `USER_PREFERENCE`, `EPISODIC` |
+| `--expiry <days>`      | Event expiry duration in days (default: 30, min: 7, max: 365)               |
+| `--json`               | JSON output                                                                 |
 
 ### add gateway
 
@@ -474,22 +474,23 @@ Start local development server with hot-reload.
 agentcore dev
 agentcore dev --agent MyAgent --port 3000
 agentcore dev --logs                      # Non-interactive
-agentcore dev --invoke "Hello" --stream   # Direct invoke
+agentcore dev "Hello" --stream            # Invoke running dev server
+agentcore dev "Hello" --agent MyAgent     # Invoke specific agent
 
 # MCP protocol dev commands
-agentcore dev --invoke list-tools
-agentcore dev --invoke call-tool --tool myTool --input '{"arg": "value"}'
+agentcore dev list-tools
+agentcore dev call-tool --tool myTool --input '{"arg": "value"}'
 ```
 
-| Flag                    | Description                                            |
-| ----------------------- | ------------------------------------------------------ |
-| `-p, --port <port>`     | Port (default: 8080; MCP uses 8000, A2A uses 9000)     |
-| `-a, --agent <name>`    | Agent to run (required if multiple agents)             |
-| `-i, --invoke <prompt>` | Invoke running server                                  |
-| `-s, --stream`          | Stream response (with --invoke)                        |
-| `-l, --logs`            | Non-interactive stdout logging                         |
-| `--tool <name>`         | MCP tool name (with `--invoke call-tool`)              |
-| `--input <json>`        | MCP tool arguments as JSON (with `--invoke call-tool`) |
+| Flag / Argument      | Description                                          |
+| -------------------- | ---------------------------------------------------- |
+| `[prompt]`           | Send a prompt to a running dev server                |
+| `-p, --port <port>`  | Port (default: 8080; MCP uses 8000, A2A uses 9000)   |
+| `-a, --agent <name>` | Agent to run or invoke (required if multiple agents) |
+| `-s, --stream`       | Stream response when invoking                        |
+| `-l, --logs`         | Non-interactive stdout logging                       |
+| `--tool <name>`      | MCP tool name (with `call-tool` prompt)              |
+| `--input <json>`     | MCP tool arguments as JSON (with `--tool`)           |
 
 ### invoke
 

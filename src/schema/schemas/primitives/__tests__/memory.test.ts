@@ -1,9 +1,4 @@
-import {
-  DEFAULT_STRATEGY_NAMESPACES,
-  MemoryStrategySchema,
-  MemoryStrategyTypeSchema,
-  SemanticOverrideSchema,
-} from '../memory';
+import { DEFAULT_STRATEGY_NAMESPACES, MemoryStrategySchema, MemoryStrategyTypeSchema } from '../memory';
 import { describe, expect, it } from 'vitest';
 
 describe('MemoryStrategyTypeSchema', () => {
@@ -25,14 +20,13 @@ describe('MemoryStrategyTypeSchema', () => {
     });
   });
 
-  describe('custom strategy type', () => {
-    it('accepts CUSTOM strategy', () => {
-      const result = MemoryStrategyTypeSchema.safeParse('CUSTOM');
-      expect(result.success).toBe(true);
-    });
-  });
-
   describe('invalid strategy types', () => {
+    // Issue #235: CUSTOM strategy has been removed
+    it('rejects CUSTOM strategy', () => {
+      const result = MemoryStrategyTypeSchema.safeParse('CUSTOM');
+      expect(result.success).toBe(false);
+    });
+
     it('rejects arbitrary invalid strategies', () => {
       expect(MemoryStrategyTypeSchema.safeParse('INVALID').success).toBe(false);
       expect(MemoryStrategyTypeSchema.safeParse('').success).toBe(false);
@@ -41,16 +35,9 @@ describe('MemoryStrategyTypeSchema', () => {
   });
 
   describe('schema options', () => {
-    it('contains five valid strategies including EPISODIC and CUSTOM', () => {
-      expect(MemoryStrategyTypeSchema.options).toEqual([
-        'SEMANTIC',
-        'SUMMARIZATION',
-        'USER_PREFERENCE',
-        'EPISODIC',
-        'CUSTOM',
-      ]);
-      expect(MemoryStrategyTypeSchema.options).toContain('CUSTOM');
-      expect(MemoryStrategyTypeSchema.options).toContain('EPISODIC');
+    it('contains four valid strategies including EPISODIC', () => {
+      expect(MemoryStrategyTypeSchema.options).toEqual(['SEMANTIC', 'SUMMARIZATION', 'USER_PREFERENCE', 'EPISODIC']);
+      expect(MemoryStrategyTypeSchema.options).not.toContain('CUSTOM');
     });
   });
 });
@@ -71,18 +58,9 @@ describe('MemoryStrategySchema', () => {
     expect(result.success).toBe(true);
   });
 
-  it('accepts strategy with CUSTOM type', () => {
+  it('rejects strategy with CUSTOM type', () => {
     const result = MemoryStrategySchema.safeParse({ type: 'CUSTOM' });
-    expect(result.success).toBe(true);
-  });
-
-  it('accepts CUSTOM strategy with optional fields', () => {
-    const result = MemoryStrategySchema.safeParse({
-      type: 'CUSTOM',
-      name: 'my_custom',
-      description: 'My custom strategy',
-    });
-    expect(result.success).toBe(true);
+    expect(result.success).toBe(false);
   });
 
   it('rejects strategy with invalid type', () => {
@@ -171,119 +149,7 @@ describe('DEFAULT_STRATEGY_NAMESPACES', () => {
     expect(DEFAULT_STRATEGY_NAMESPACES.EPISODIC).toEqual(['/episodes/{actorId}/{sessionId}']);
   });
 
-  it('does not have default namespaces for CUSTOM', () => {
+  it('does not have default namespaces for CUSTOM (removed)', () => {
     expect(DEFAULT_STRATEGY_NAMESPACES).not.toHaveProperty('CUSTOM');
-  });
-});
-
-describe('SemanticOverrideSchema', () => {
-  it('accepts extraction-only override', () => {
-    const result = SemanticOverrideSchema.safeParse({
-      extraction: { appendToPrompt: 'Extract key facts', modelId: 'anthropic.claude-3-sonnet-20240229-v1:0' },
-    });
-    expect(result.success).toBe(true);
-  });
-
-  it('accepts consolidation-only override', () => {
-    const result = SemanticOverrideSchema.safeParse({
-      consolidation: { appendToPrompt: 'Consolidate memories', modelId: 'anthropic.claude-3-sonnet-20240229-v1:0' },
-    });
-    expect(result.success).toBe(true);
-  });
-
-  it('accepts both extraction and consolidation', () => {
-    const result = SemanticOverrideSchema.safeParse({
-      extraction: { appendToPrompt: 'Extract', modelId: 'model-1' },
-      consolidation: { appendToPrompt: 'Consolidate', modelId: 'model-2' },
-    });
-    expect(result.success).toBe(true);
-  });
-
-  it('rejects empty override (at least one required)', () => {
-    const result = SemanticOverrideSchema.safeParse({});
-    expect(result.success).toBe(false);
-  });
-
-  it('rejects extraction with empty appendToPrompt', () => {
-    const result = SemanticOverrideSchema.safeParse({
-      extraction: { appendToPrompt: '', modelId: 'model-1' },
-    });
-    expect(result.success).toBe(false);
-  });
-
-  it('rejects extraction with missing modelId', () => {
-    const result = SemanticOverrideSchema.safeParse({
-      extraction: { appendToPrompt: 'test' },
-    });
-    expect(result.success).toBe(false);
-  });
-});
-
-describe('MemoryStrategySchema with semanticOverride', () => {
-  it('accepts SEMANTIC strategy with extraction override', () => {
-    const result = MemoryStrategySchema.safeParse({
-      type: 'SEMANTIC',
-      semanticOverride: {
-        extraction: { appendToPrompt: 'Extract key facts', modelId: 'anthropic.claude-3-sonnet-20240229-v1:0' },
-      },
-    });
-    expect(result.success).toBe(true);
-  });
-
-  it('accepts SEMANTIC strategy with both overrides', () => {
-    const result = MemoryStrategySchema.safeParse({
-      type: 'SEMANTIC',
-      semanticOverride: {
-        extraction: { appendToPrompt: 'Extract', modelId: 'model-1' },
-        consolidation: { appendToPrompt: 'Consolidate', modelId: 'model-2' },
-      },
-    });
-    expect(result.success).toBe(true);
-  });
-
-  it('accepts SEMANTIC strategy without override (backward compat)', () => {
-    const result = MemoryStrategySchema.safeParse({ type: 'SEMANTIC' });
-    expect(result.success).toBe(true);
-  });
-
-  it('rejects semanticOverride on SUMMARIZATION strategy', () => {
-    const result = MemoryStrategySchema.safeParse({
-      type: 'SUMMARIZATION',
-      semanticOverride: {
-        extraction: { appendToPrompt: 'test', modelId: 'model-1' },
-      },
-    });
-    expect(result.success).toBe(false);
-    if (!result.success) {
-      expect(result.error.issues.some(i => i.message.includes('SEMANTIC'))).toBe(true);
-    }
-  });
-
-  it('rejects semanticOverride on USER_PREFERENCE strategy', () => {
-    const result = MemoryStrategySchema.safeParse({
-      type: 'USER_PREFERENCE',
-      semanticOverride: {
-        extraction: { appendToPrompt: 'test', modelId: 'model-1' },
-      },
-    });
-    expect(result.success).toBe(false);
-  });
-
-  it('rejects consolidation-only semanticOverride on USER_PREFERENCE strategy', () => {
-    const result = MemoryStrategySchema.safeParse({
-      type: 'USER_PREFERENCE',
-      semanticOverride: {
-        consolidation: { appendToPrompt: 'test', modelId: 'model-1' },
-      },
-    });
-    expect(result.success).toBe(false);
-  });
-
-  it('rejects SEMANTIC strategy with empty semanticOverride', () => {
-    const result = MemoryStrategySchema.safeParse({
-      type: 'SEMANTIC',
-      semanticOverride: {},
-    });
-    expect(result.success).toBe(false);
   });
 });

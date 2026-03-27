@@ -34,7 +34,7 @@ export const COMMAND_DESCRIPTIONS = {
   add: 'Add resources (agent, evaluator, online-eval, memory, credential, target)',
   create: 'Create a new AgentCore project',
   deploy: 'Deploy project infrastructure to AWS via CDK.',
-  dev: 'Launch local development server with hot-reload.',
+  dev: 'Launch local dev server, or invoke an agent locally.',
   invoke: 'Invoke a deployed agent endpoint.',
   logs: 'Stream or search agent runtime logs.',
   package: 'Package agent artifacts without deploying.',

@@ -239,13 +239,12 @@ on the next deployment.
 
 ### Memory Strategies
 
-| Strategy          | Description                                                 |
-| ----------------- | ----------------------------------------------------------- |
-| `SEMANTIC`        | Vector-based similarity search for relevant context         |
-| `SUMMARIZATION`   | Compressed conversation history                             |
-| `USER_PREFERENCE` | Store user-specific preferences and settings                |
-| `EPISODIC`        | Capture and reflect on meaningful interaction episodes      |
-| `CUSTOM`          | Self-managed strategy with user-controlled extraction logic |
+| Strategy          | Description                                            |
+| ----------------- | ------------------------------------------------------ |
+| `SEMANTIC`        | Vector-based similarity search for relevant context    |
+| `SUMMARIZATION`   | Compressed conversation history                        |
+| `USER_PREFERENCE` | Store user-specific preferences and settings           |
+| `EPISODIC`        | Capture and reflect on meaningful interaction episodes |
 
 Strategy configuration:
 

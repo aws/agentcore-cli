@@ -22,11 +22,6 @@ def get_memory_session_manager(session_id: str, actor_id: str) -> Optional[Agent
 {{#if (includes memoryProviders.[0].strategies "SUMMARIZATION")}}
         f"/summaries/{actor_id}/{session_id}": RetrievalConfig(top_k=3, relevance_score=0.5),
 {{/if}}
-{{#if (includes memoryProviders.[0].strategies "CUSTOM")}}
-        # TODO: Add your custom namespace and retrieval config.
-        # Custom strategies use user-controlled extraction logic.
-        # Example: f"/custom/{actor_id}/data": RetrievalConfig(top_k=3, relevance_score=0.5),
-{{/if}}
     }
 {{/if}}
 

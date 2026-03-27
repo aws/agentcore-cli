@@ -76,9 +76,6 @@ export function mapGenerateInputToMemories(memory: MemoryOption, projectName: st
         ...(type === 'EPISODIC' && { reflectionNamespaces: DEFAULT_EPISODIC_REFLECTION_NAMESPACES }),
       });
     }
-  } else if (memory === 'custom') {
-    // Custom strategy has no default namespaces - user provides their own extraction logic
-    strategies.push({ type: 'CUSTOM' });
   }
 
   return [
@@ -253,53 +250,28 @@ async function mapGatewaysToGatewayProviders(): Promise<GatewayProviderRenderCon
 }
 
 /**
- * Maps existing Memory resources to memory providers for template rendering.
- * Used when adding an agent to a project that already has memories defined.
- */
-export function mapExistingMemoriesToProviders(memories: Memory[]): MemoryProviderRenderConfig[] {
-  return memories.map(m => ({
-    name: m.name,
-    envVarName: computeMemoryEnvVarName(m.name),
-    strategies: m.strategies.map(s => s.type),
-  }));
-}
-
-/**
  * Maps GenerateConfig to AgentRenderConfig for template rendering.
  * @param config - Generate config (note: config.projectName is actually the agent name)
  * @param identityProviders - Identity providers to include (caller controls credential naming)
- * @param existingMemories - Existing project memories to wire to the agent template
  */
 export async function mapGenerateConfigToRenderConfig(
   config: GenerateConfig,
-  identityProviders: IdentityProviderRenderConfig[],
-  existingMemories?: Memory[]
+  identityProviders: IdentityProviderRenderConfig[]
 ): Promise<AgentRenderConfig> {
   const isMcp = config.protocol === 'MCP';
   const gatewayProviders = isMcp ? [] : await mapGatewaysToGatewayProviders();
-
-  // Build memory providers: existing memories first, then any new memory from the option.
-  // This ensures agents in existing projects reference all available memories.
-  const existingProviders = existingMemories?.length ? mapExistingMemoriesToProviders(existingMemories) : [];
-  const newProviders = mapMemoryOptionToMemoryProviders(config.memory, config.projectName);
-  const allProviders = [...existingProviders];
-  for (const np of newProviders) {
-    if (!allProviders.some(ep => ep.name === np.name)) {
-      allProviders.push(np);
-    }
-  }
 
   return {
     name: config.projectName,
     sdkFramework: config.sdk,
     targetLanguage: config.language,
     modelProvider: config.modelProvider,
-    hasMemory: isMcp ? false : allProviders.length > 0,
+    hasMemory: isMcp ? false : config.memory !== 'none',
     hasIdentity: isMcp ? false : identityProviders.length > 0,
     hasGateway: gatewayProviders.length > 0,
     isVpc: config.networkMode === 'VPC',
     buildType: config.buildType,
-    memoryProviders: isMcp ? [] : allProviders,
+    memoryProviders: isMcp ? [] : mapMemoryOptionToMemoryProviders(config.memory, config.projectName),
     identityProviders: isMcp ? [] : identityProviders,
     gatewayProviders,
     gatewayAuthTypes: [...new Set(gatewayProviders.map(g => g.authType))],

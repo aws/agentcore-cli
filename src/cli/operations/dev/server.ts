@@ -7,7 +7,7 @@ import type { DevServer, DevServerOptions } from './dev-server';
  * Dev server barrel module.
  * Re-exports types, utilities, and the factory function.
  */
-export { findAvailablePort, waitForPort } from './utils';
+export { findAvailablePort, waitForPort, waitForServerReady } from './utils';
 export { DevServer, type LogLevel, type DevServerCallbacks, type DevServerOptions } from './dev-server';
 export { CodeZipDevServer } from './codezip-dev-server';
 export { ContainerDevServer } from './container-dev-server';

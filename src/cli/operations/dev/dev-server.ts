@@ -82,9 +82,10 @@ export abstract class DevServer {
   kill(): void {
     if (!this.child || this.child.killed) return;
     this.child.kill('SIGTERM');
-    setTimeout(() => {
+    const killTimer = setTimeout(() => {
       if (this.child && !this.child.killed) this.child.kill('SIGKILL');
     }, 2000);
+    killTimer.unref();
   }
 
   /** Mode-specific setup (e.g., venv creation, container image build). Returns false to abort. */

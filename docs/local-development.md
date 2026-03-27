@@ -20,20 +20,16 @@ agentcore dev --logs
 
 ## Invoking Local Agents
 
-With the dev server running, open another terminal:
+Start the dev server in one terminal, then send prompts from another:
 
 ```bash
-# Interactive chat
-agentcore invoke
+# Terminal 1: start the dev server
+agentcore dev --logs
 
-# Single prompt
-agentcore invoke "What can you do?"
-
-# With streaming
-agentcore invoke "Tell me a story" --stream
-
-# Direct invoke to running server
-agentcore dev --invoke "Hello" --stream
+# Terminal 2: send prompts
+agentcore dev "What can you do?"
+agentcore dev "Tell me a story" --stream
+agentcore dev "Hello" --agent MyAgent
 ```
 
 ## Environment Setup

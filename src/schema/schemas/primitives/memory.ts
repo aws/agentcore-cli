@@ -11,10 +11,9 @@ import { z } from 'zod';
  * - SUMMARIZATION → SummaryMemoryStrategy (note: CloudFormation uses "Summary")
  * - USER_PREFERENCE → UserPreferenceMemoryStrategy
  * - EPISODIC → EpisodicMemoryStrategy
- * - CUSTOM → CustomMemoryStrategy
  * @see https://docs.aws.amazon.com/AWSCloudFormation/latest/TemplateReference/aws-properties-bedrockagentcore-memory-memorystrategy.html
  */
-export const MemoryStrategyTypeSchema = z.enum(['SEMANTIC', 'SUMMARIZATION', 'USER_PREFERENCE', 'EPISODIC', 'CUSTOM']);
+export const MemoryStrategyTypeSchema = z.enum(['SEMANTIC', 'SUMMARIZATION', 'USER_PREFERENCE', 'EPISODIC']);
 export type MemoryStrategyType = z.infer<typeof MemoryStrategyTypeSchema>;
 
 /**
@@ -48,54 +47,6 @@ export const MemoryStrategyNameSchema = z
     'Must begin with a letter and contain only alphanumeric characters and underscores (max 48 chars)'
   );
 
-// ============================================================================
-// Semantic Override Types (CloudFormation SemanticOverride)
-// ============================================================================
-
-/**
- * Configuration for overriding semantic memory extraction behavior.
- * @see https://docs.aws.amazon.com/AWSCloudFormation/latest/TemplateReference/aws-properties-bedrockagentcore-memory-semanticoverrideextractionconfigurationinput.html
- */
-export const SemanticExtractionOverrideSchema = z.object({
-  /** Custom prompt to append for memory extraction */
-  appendToPrompt: z.string().min(1).max(30000),
-  /** Bedrock model ID to use for extraction */
-  modelId: z.string().min(1),
-});
-
-export type SemanticExtractionOverride = z.infer<typeof SemanticExtractionOverrideSchema>;
-
-/**
- * Configuration for overriding semantic memory consolidation behavior.
- * @see https://docs.aws.amazon.com/AWSCloudFormation/latest/TemplateReference/aws-properties-bedrockagentcore-memory-semanticoverrideconsolidationconfigurationinput.html
- */
-export const SemanticConsolidationOverrideSchema = z.object({
-  /** Custom prompt to append for memory consolidation */
-  appendToPrompt: z.string().min(1).max(30000),
-  /** Bedrock model ID to use for consolidation */
-  modelId: z.string().min(1),
-});
-
-export type SemanticConsolidationOverride = z.infer<typeof SemanticConsolidationOverrideSchema>;
-
-/**
- * Override configuration for semantic memory strategy.
- * At least one of extraction or consolidation must be provided.
- * @see https://docs.aws.amazon.com/AWSCloudFormation/latest/TemplateReference/aws-properties-bedrockagentcore-memory-semanticoverride.html
- */
-export const SemanticOverrideSchema = z
-  .object({
-    /** Override extraction behavior (custom prompt + model) */
-    extraction: SemanticExtractionOverrideSchema.optional(),
-    /** Override consolidation behavior (custom prompt + model) */
-    consolidation: SemanticConsolidationOverrideSchema.optional(),
-  })
-  .refine(data => data.extraction !== undefined || data.consolidation !== undefined, {
-    message: 'At least one of extraction or consolidation must be provided',
-  });
-
-export type SemanticOverride = z.infer<typeof SemanticOverrideSchema>;
-
 /**
  * Memory strategy configuration.
  * Each memory can have multiple strategies with optional namespace scoping.
@@ -112,8 +63,6 @@ export const MemoryStrategySchema = z
     namespaces: z.array(z.string()).optional(),
     /** Reflection namespaces for EPISODIC strategy. Required by the service for episodic strategies. */
     reflectionNamespaces: z.array(z.string()).optional(),
-    /** Only valid when type is 'SEMANTIC'. Override extraction and/or consolidation behavior. */
-    semanticOverride: SemanticOverrideSchema.optional(),
   })
   .refine(
     strategy =>
@@ -133,10 +82,6 @@ export const MemoryStrategySchema = z
       message: 'Each reflectionNamespace must be a prefix of at least one namespace',
       path: ['reflectionNamespaces'],
     }
-  )
-  .refine(strategy => strategy.semanticOverride === undefined || strategy.type === 'SEMANTIC', {
-    message: 'semanticOverride is only valid for SEMANTIC strategy type',
-    path: ['semanticOverride'],
-  });
+  );
 
 export type MemoryStrategy = z.infer<typeof MemoryStrategySchema>;

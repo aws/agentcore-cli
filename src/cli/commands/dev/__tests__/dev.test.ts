@@ -7,12 +7,19 @@ describe('dev command', () => {
       const result = await runCLI(['dev', '--help'], process.cwd());
 
       expect(result.exitCode).toBe(0);
+      expect(result.stdout.includes('[prompt]'), 'Should show [prompt] positional argument').toBeTruthy();
       expect(result.stdout.includes('--port'), 'Should show --port option').toBeTruthy();
       expect(result.stdout.includes('--runtime'), 'Should show --runtime option').toBeTruthy();
-      expect(result.stdout.includes('--invoke'), 'Should show --invoke option').toBeTruthy();
       expect(result.stdout.includes('--stream'), 'Should show --stream option').toBeTruthy();
       expect(result.stdout.includes('--logs'), 'Should show --logs option').toBeTruthy();
       expect(result.stdout.includes('8080'), 'Should show default port').toBeTruthy();
+    });
+
+    it('does not show --invoke flag', async () => {
+      const result = await runCLI(['dev', '--help'], process.cwd());
+
+      expect(result.exitCode).toBe(0);
+      expect(result.stdout.includes('--invoke'), 'Should not show removed --invoke option').toBeFalsy();
     });
   });
 
@@ -24,6 +31,33 @@ describe('dev command', () => {
       expect(
         result.stdout.toLowerCase().includes('project') || result.stderr.toLowerCase().includes('project'),
         `Should mention project requirement, got: ${result.stdout}`
+      ).toBeTruthy();
+    });
+  });
+
+  describe('positional prompt invoke', () => {
+    it('exits with helpful error when no server running and no project found', async () => {
+      // With no dev server running, invoke path shows connection error
+      const result = await runCLI(['dev', 'Hello agent'], process.cwd());
+
+      expect(result.exitCode).toBe(1);
+      const output = result.stderr.toLowerCase();
+      expect(
+        output.includes('dev server not running'),
+        `Should mention dev server not running, got: ${result.stderr}`
+      ).toBeTruthy();
+    });
+
+    it('does not go through requireProject guard when invoking', async () => {
+      // Invoke path uses loadProjectConfig (soft check), not requireProject()
+      // The error should mention the dev server, not the generic project guard message
+      const result = await runCLI(['dev', 'test prompt'], process.cwd());
+
+      expect(result.exitCode).toBe(1);
+      const output = result.stderr.toLowerCase();
+      expect(
+        !output.includes('run agentcore create'),
+        `Should not show the requireProject guard message, got: ${result.stderr}`
       ).toBeTruthy();
     });
   });
@@ -46,7 +80,6 @@ describe('dev command', () => {
 
       expect(result.exitCode).toBe(0);
       expect(result.stdout.includes('--stream'), 'Should show --stream option').toBeTruthy();
-      expect(result.stdout.includes('--invoke'), 'Should show --invoke option').toBeTruthy();
     });
   });
 });

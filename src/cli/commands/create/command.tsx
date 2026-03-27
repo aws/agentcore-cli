@@ -129,7 +129,7 @@ async function handleCreateCLI(options: CreateOptions): Promise<void> {
         framework: options.framework as SDKFramework | undefined,
         modelProvider: options.modelProvider as ModelProvider | undefined,
         apiKey: options.apiKey,
-        memory: (options.memory as 'none' | 'shortTerm' | 'longAndShortTerm' | 'custom') ?? 'none',
+        memory: (options.memory as 'none' | 'shortTerm' | 'longAndShortTerm') ?? 'none',
         protocol: options.protocol as ProtocolMode | undefined,
         agentId: options.agentId,
         agentAliasId: options.agentAliasId,
@@ -170,7 +170,7 @@ export const registerCreate = (program: Command) => {
     )
     .option('--model-provider <provider>', 'Model provider (Bedrock, Anthropic, OpenAI, Gemini) [non-interactive]')
     .option('--api-key <key>', 'API key for non-Bedrock providers [non-interactive]')
-    .option('--memory <option>', 'Memory option (none, shortTerm, longAndShortTerm, custom) [non-interactive]')
+    .option('--memory <option>', 'Memory option (none, shortTerm, longAndShortTerm) [non-interactive]')
     .option('--protocol <protocol>', 'Protocol: HTTP, MCP, A2A (default: HTTP) [non-interactive]')
     .option('--type <type>', 'Agent type: create or import (default: create) [non-interactive]')
     .option('--agent-id <id>', 'Bedrock Agent ID (required for --type import) [non-interactive]')

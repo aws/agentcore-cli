@@ -205,10 +205,7 @@ export class AgentPrimitive extends BasePrimitive<AddAgentOptions, RemovableReso
       .option('--framework <fw>', 'Framework: Strands, LangChain_LangGraph, GoogleADK, OpenAIAgents [non-interactive]')
       .option('--model-provider <provider>', 'Model provider: Bedrock, Anthropic, OpenAI, Gemini [non-interactive]')
       .option('--api-key <key>', 'API key for non-Bedrock providers [non-interactive]')
-      .option(
-        '--memory <mem>',
-        'Memory: none, shortTerm, longAndShortTerm, custom (create path only) [non-interactive]'
-      )
+      .option('--memory <mem>', 'Memory: none, shortTerm, longAndShortTerm (create path only) [non-interactive]')
       .option('--protocol <protocol>', 'Protocol: HTTP, MCP, A2A (default: HTTP) [non-interactive]')
       .option('--code-location <path>', 'Path to existing code (BYO path only) [non-interactive]')
       .option('--entrypoint <file>', 'Entry file relative to code-location (BYO, default: main.py) [non-interactive]')
@@ -411,8 +408,8 @@ export class AgentPrimitive extends BasePrimitive<AddAgentOptions, RemovableReso
       ];
     }
 
-    // Render templates with correct identity provider and existing project memories
-    const renderConfig = await mapGenerateConfigToRenderConfig(generateConfig, identityProviders, project.memories);
+    // Render templates with correct identity provider
+    const renderConfig = await mapGenerateConfigToRenderConfig(generateConfig, identityProviders);
     const renderer = createRenderer(renderConfig);
     await renderer.render({ outputDir: projectRoot });
 

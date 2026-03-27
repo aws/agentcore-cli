@@ -168,13 +168,12 @@ conversations, enabling cross-session recall via semantic search.
 
 ## Memory Strategies
 
-| Strategy          | Description                                                 |
-| ----------------- | ----------------------------------------------------------- |
-| `SEMANTIC`        | Vector-based similarity search for relevant context         |
-| `SUMMARIZATION`   | Compressed conversation history                             |
-| `USER_PREFERENCE` | Store user-specific preferences and settings                |
-| `EPISODIC`        | Capture and reflect on meaningful interaction episodes      |
-| `CUSTOM`          | Self-managed strategy with user-controlled extraction logic |
+| Strategy          | Description                                            |
+| ----------------- | ------------------------------------------------------ |
+| `SEMANTIC`        | Vector-based similarity search for relevant context    |
+| `SUMMARIZATION`   | Compressed conversation history                        |
+| `USER_PREFERENCE` | Store user-specific preferences and settings           |
+| `EPISODIC`        | Capture and reflect on meaningful interaction episodes |
 
 You can combine multiple strategies:
 
@@ -185,36 +184,6 @@ You can combine multiple strategies:
     { "type": "SUMMARIZATION" },
     { "type": "USER_PREFERENCE" },
     { "type": "EPISODIC" }
-  ]
-}
-```
-
-### Self-Managed (Custom) Strategy
-
-The `CUSTOM` strategy lets you control memory extraction logic externally rather than relying on built-in
-implementations. This is useful when you need specialized extraction pipelines or want to integrate with your own
-processing infrastructure.
-
-**Prerequisites:** CUSTOM strategies require user-managed extraction logic and are not functional without it. You must
-implement your own extraction mechanism (e.g., via AWS Lambda).
-
-**Key characteristics:**
-
-- No default namespaces are assigned — you provide your own or omit them
-- Each memory supports at most one CUSTOM strategy
-- You are responsible for implementing the extraction logic that processes memory events
-
-```json
-{
-  "type": "AgentCoreMemory",
-  "name": "MyMemory",
-  "eventExpiryDuration": 30,
-  "strategies": [
-    {
-      "type": "CUSTOM",
-      "name": "my_custom_strategy",
-      "description": "Custom extraction logic"
-    }
   ]
 }
 ```

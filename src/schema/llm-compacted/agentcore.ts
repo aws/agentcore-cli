@@ -34,7 +34,9 @@ interface NetworkConfig {
   securityGroups: string[]; // sg-xxx IDs
 }
 
-type MemoryStrategyType = 'SEMANTIC' | 'SUMMARIZATION' | 'USER_PREFERENCE' | 'EPISODIC' | 'CUSTOM';
+type MemoryStrategyType = 'SEMANTIC' | 'SUMMARIZATION' | 'USER_PREFERENCE' | 'EPISODIC';
+type ModelProvider = 'Bedrock' | 'Gemini' | 'OpenAI' | 'Anthropic';
+
 // ─────────────────────────────────────────────────────────────────────────────
 // AGENT
 // ─────────────────────────────────────────────────────────────────────────────
@@ -78,11 +80,6 @@ interface MemoryStrategy {
   description?: string;
   namespaces?: string[];
   reflectionNamespaces?: string[]; // EPISODIC only: namespaces for cross-episode reflections
-  semanticOverride?: {
-    // Only valid when type is 'SEMANTIC'
-    extraction?: { appendToPrompt: string; modelId: string }; // @min 1 for both, @max 30000 for appendToPrompt
-    consolidation?: { appendToPrompt: string; modelId: string }; // At least one of extraction/consolidation required
-  };
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
