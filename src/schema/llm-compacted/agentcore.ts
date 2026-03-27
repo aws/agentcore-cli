@@ -37,7 +37,6 @@ interface NetworkConfig {
 type MemoryStrategyType = 'SEMANTIC' | 'SUMMARIZATION' | 'USER_PREFERENCE' | 'EPISODIC';
 type ModelProvider = 'Bedrock' | 'Gemini' | 'OpenAI' | 'Anthropic';
 
-
 // ─────────────────────────────────────────────────────────────────────────────
 // AGENT
 // ─────────────────────────────────────────────────────────────────────────────
