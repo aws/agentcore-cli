@@ -3,7 +3,7 @@ export interface LogsOptions {
   since?: string;
   until?: string;
   level?: string;
-  lines?: string;
+  limit?: string;
   query?: string;
   json?: boolean;
 }

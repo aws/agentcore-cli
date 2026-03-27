@@ -9,7 +9,7 @@ Run `agentcore` without arguments to launch the interactive TUI. Flags marked `[
 
 | Command   | Alias |
 | --------- | ----- |
-| `deploy`  | `p`   |
+| `deploy`  | `dp`  |
 | `dev`     | `d`   |
 | `invoke`  | `i`   |
 | `status`  | `s`   |
@@ -65,30 +65,30 @@ agentcore create \
   --memory none
 ```
 
-| Flag                      | Description                                                                      |
-| ------------------------- | -------------------------------------------------------------------------------- |
-| `--name <name>`           | Project name (alphanumeric, starts with letter, max 23 chars)                    |
-| `--defaults`              | Use defaults (Python, Strands, Bedrock, no memory)                               |
-| `--no-agent`              | Skip agent creation                                                              |
-| `--type <type>`           | `create` (default) or `import`                                                   |
-| `--language <lang>`       | `Python` (default)                                                               |
-| `--framework <fw>`        | `Strands`, `LangChain_LangGraph`, `CrewAI`, `GoogleADK`, `OpenAIAgents`          |
-| `--model-provider <p>`    | `Bedrock`, `Anthropic`, `OpenAI`, `Gemini`                                       |
-| `--build <type>`          | `CodeZip` (default) or `Container` (see [Container Builds](container-builds.md)) |
-| `--api-key <key>`         | API key for non-Bedrock providers                                                |
-| `--memory <opt>`          | `none`, `shortTerm`, `longAndShortTerm`                                          |
-| `--protocol <protocol>`   | `HTTP` (default), `MCP`, `A2A`                                                   |
-| `--network-mode <mode>`   | `PUBLIC` (default) or `VPC`                                                      |
-| `--subnets <ids>`         | Comma-separated subnet IDs (required for VPC mode)                               |
-| `--security-groups <ids>` | Comma-separated security group IDs (required for VPC mode)                       |
-| `--agent-id <id>`         | Bedrock Agent ID (import only)                                                   |
-| `--agent-alias-id <id>`   | Bedrock Agent Alias ID (import only)                                             |
-| `--region <region>`       | AWS region for Bedrock Agent (import only)                                       |
-| `--output-dir <dir>`      | Output directory                                                                 |
-| `--skip-git`              | Skip git initialization                                                          |
-| `--skip-python-setup`     | Skip venv setup                                                                  |
-| `--dry-run`               | Preview without creating                                                         |
-| `--json`                  | JSON output                                                                      |
+| Flag                      | Description                                                                                                    |
+| ------------------------- | -------------------------------------------------------------------------------------------------------------- |
+| `--name <name>`           | Project name (alphanumeric, starts with letter, max 23 chars)                                                  |
+| `--defaults`              | Use defaults (Python, Strands, Bedrock, no memory)                                                             |
+| `--no-agent`              | Skip agent creation                                                                                            |
+| `--type <type>`           | `create` (default) or `import`                                                                                 |
+| `--language <lang>`       | `Python` (default)                                                                                             |
+| `--framework <fw>`        | `Strands`, `LangChain_LangGraph`, `CrewAI`, `GoogleADK`, `OpenAIAgents`                                        |
+| `--model-provider <p>`    | `Bedrock`, `Anthropic`, `OpenAI`, `Gemini`                                                                     |
+| `--build <type>`          | `CodeZip` (default) or `Container` (see [Container Builds](container-builds.md))                               |
+| `--api-key <key>`         | API key for non-Bedrock providers                                                                              |
+| `--memory <opt>`          | `none`, `shortTerm`, `longAndShortTerm` (see [Memory Shorthand Mapping](memory.md#--memory-shorthand-mapping)) |
+| `--protocol <protocol>`   | `HTTP` (default), `MCP`, `A2A`                                                                                 |
+| `--network-mode <mode>`   | `PUBLIC` (default) or `VPC`                                                                                    |
+| `--subnets <ids>`         | Comma-separated subnet IDs (required for VPC mode)                                                             |
+| `--security-groups <ids>` | Comma-separated security group IDs (required for VPC mode)                                                     |
+| `--agent-id <id>`         | Bedrock Agent ID (import only)                                                                                 |
+| `--agent-alias-id <id>`   | Bedrock Agent Alias ID (import only)                                                                           |
+| `--region <region>`       | AWS region for Bedrock Agent (import only)                                                                     |
+| `--output-dir <dir>`      | Output directory                                                                                               |
+| `--skip-git`              | Skip git initialization                                                                                        |
+| `--skip-python-setup`     | Skip venv setup                                                                                                |
+| `--dry-run`               | Preview without creating                                                                                       |
+| `--json`                  | JSON output                                                                                                    |
 
 ### deploy
 
@@ -193,26 +193,26 @@ agentcore add agent \
   --memory none
 ```
 
-| Flag                      | Description                                                                      |
-| ------------------------- | -------------------------------------------------------------------------------- |
-| `--name <name>`           | Agent name (alphanumeric, starts with letter, max 64 chars)                      |
-| `--type <type>`           | `create` (default), `byo`, or `import`                                           |
-| `--build <type>`          | `CodeZip` (default) or `Container` (see [Container Builds](container-builds.md)) |
-| `--language <lang>`       | `Python` (create); `Python`, `TypeScript`, `Other` (BYO)                         |
-| `--framework <fw>`        | `Strands`, `LangChain_LangGraph`, `CrewAI`, `GoogleADK`, `OpenAIAgents`          |
-| `--model-provider <p>`    | `Bedrock`, `Anthropic`, `OpenAI`, `Gemini`                                       |
-| `--api-key <key>`         | API key for non-Bedrock providers                                                |
-| `--memory <opt>`          | `none`, `shortTerm`, `longAndShortTerm` (create and import)                      |
-| `--protocol <protocol>`   | `HTTP` (default), `MCP`, `A2A`                                                   |
-| `--code-location <path>`  | Path to existing code (BYO only)                                                 |
-| `--entrypoint <file>`     | Entry file relative to code-location (BYO, default: `main.py`)                   |
-| `--network-mode <mode>`   | `PUBLIC` (default) or `VPC`                                                      |
-| `--subnets <ids>`         | Comma-separated subnet IDs (required for VPC mode)                               |
-| `--security-groups <ids>` | Comma-separated security group IDs (required for VPC mode)                       |
-| `--agent-id <id>`         | Bedrock Agent ID (import only)                                                   |
-| `--agent-alias-id <id>`   | Bedrock Agent Alias ID (import only)                                             |
-| `--region <region>`       | AWS region for Bedrock Agent (import only)                                       |
-| `--json`                  | JSON output                                                                      |
+| Flag                      | Description                                                                                                                       |
+| ------------------------- | --------------------------------------------------------------------------------------------------------------------------------- |
+| `--name <name>`           | Agent name (alphanumeric, starts with letter, max 64 chars)                                                                       |
+| `--type <type>`           | `create` (default), `byo`, or `import`                                                                                            |
+| `--build <type>`          | `CodeZip` (default) or `Container` (see [Container Builds](container-builds.md))                                                  |
+| `--language <lang>`       | `Python` (create); `Python`, `TypeScript`, `Other` (BYO)                                                                          |
+| `--framework <fw>`        | `Strands`, `LangChain_LangGraph`, `CrewAI`, `GoogleADK`, `OpenAIAgents`                                                           |
+| `--model-provider <p>`    | `Bedrock`, `Anthropic`, `OpenAI`, `Gemini`                                                                                        |
+| `--api-key <key>`         | API key for non-Bedrock providers                                                                                                 |
+| `--memory <opt>`          | `none`, `shortTerm`, `longAndShortTerm` (create and import; see [Memory Shorthand Mapping](memory.md#--memory-shorthand-mapping)) |
+| `--protocol <protocol>`   | `HTTP` (default), `MCP`, `A2A`                                                                                                    |
+| `--code-location <path>`  | Path to existing code (BYO only)                                                                                                  |
+| `--entrypoint <file>`     | Entry file relative to code-location (BYO, default: `main.py`)                                                                    |
+| `--network-mode <mode>`   | `PUBLIC` (default) or `VPC`                                                                                                       |
+| `--subnets <ids>`         | Comma-separated subnet IDs (required for VPC mode)                                                                                |
+| `--security-groups <ids>` | Comma-separated security group IDs (required for VPC mode)                                                                        |
+| `--agent-id <id>`         | Bedrock Agent ID (import only)                                                                                                    |
+| `--agent-alias-id <id>`   | Bedrock Agent Alias ID (import only)                                                                                              |
+| `--region <region>`       | AWS region for Bedrock Agent (import only)                                                                                        |
+| `--json`                  | JSON output                                                                                                                       |
 
 ### add memory
 
@@ -542,7 +542,7 @@ agentcore logs --json                            # JSON Lines output
 | `--since <time>`  | Start time (defaults to 1h ago in search mode; e.g. `1h`, `30m`, `2d`, ISO 8601) |
 | `--until <time>`  | End time (defaults to now in search mode; e.g. `now`, ISO 8601)                  |
 | `--level <level>` | Filter by log level: `error`, `warn`, `info`, `debug`                            |
-| `-n, --lines <n>` | Maximum number of log lines to return                                            |
+| `-n, --limit <n>` | Maximum number of log lines to return                                            |
 | `--query <text>`  | Server-side text filter                                                          |
 | `--json`          | Output as JSON Lines                                                             |
 
@@ -675,7 +675,7 @@ agentcore logs evals --follow --json
 | `-a, --agent <name>`  | Filter by agent                               |
 | `--since <time>`      | Start time (e.g. `1h`, `30m`, `2d`, ISO 8601) |
 | `--until <time>`      | End time                                      |
-| `-n, --lines <count>` | Maximum log lines                             |
+| `-n, --limit <count>` | Maximum log lines                             |
 | `-f, --follow`        | Stream in real-time                           |
 | `--json`              | JSON Lines output                             |
 

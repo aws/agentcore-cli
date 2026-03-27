@@ -110,7 +110,7 @@ export async function handleLogs(options: LogsOptions): Promise<LogsResult> {
     if (mode === 'search') {
       const startTimeMs = options.since ? parseTimeString(options.since) : Date.now() - 3_600_000;
       const endTimeMs = options.until ? parseTimeString(options.until) : Date.now();
-      const limit = options.lines ? parseInt(options.lines, 10) : undefined;
+      const limit = options.limit ? parseInt(options.limit, 10) : undefined;
 
       for await (const event of searchLogs({
         logGroupName: agentContext.logGroupName,
