@@ -100,3 +100,20 @@ jobs:
           path: node_modules
           key: node-modules-${{ hashFiles('package-lock.json') }}
       - run: npm run typecheck
+
+  schema-check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+      - name: Reject schema changes outside release PRs
+        run: |
+          if git diff --name-only origin/main...HEAD | grep -q '^schemas/agentcore\.schema\.v[0-9]*\.json$'; then
+            echo ""
+            echo "❌ schemas/ must not be modified directly."
+            echo "The JSON schema is served live from the repo — changes are released automatically."
+            echo "Schema regeneration happens during the release workflow."
+            exit 1
+          fi
+          echo "✓ No schema changes detected"
