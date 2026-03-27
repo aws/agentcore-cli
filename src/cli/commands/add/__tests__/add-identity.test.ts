@@ -5,7 +5,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
-describe('add identity command', () => {
+describe('add credential command', () => {
   let testDir: string;
   let projectDir: string;
 
@@ -28,7 +28,7 @@ describe('add identity command', () => {
 
   describe('validation', () => {
     it('requires name flag', async () => {
-      const result = await runCLI(['add', 'identity', '--json'], projectDir);
+      const result = await runCLI(['add', 'credential', '--json'], projectDir);
       expect(result.exitCode).toBe(1);
       const json = JSON.parse(result.stdout);
       expect(json.success).toBe(false);
@@ -36,7 +36,7 @@ describe('add identity command', () => {
     });
 
     it('requires api-key flag', async () => {
-      const result = await runCLI(['add', 'identity', '--name', 'test', '--json'], projectDir);
+      const result = await runCLI(['add', 'credential', '--name', 'test', '--json'], projectDir);
       expect(result.exitCode).toBe(1);
       const json = JSON.parse(result.stdout);
       expect(json.success).toBe(false);
@@ -44,11 +44,11 @@ describe('add identity command', () => {
     });
   });
 
-  describe('identity creation', () => {
+  describe('credential creation', () => {
     it('creates credential as top-level resource', async () => {
       const identityName = `id${Date.now()}`;
       const result = await runCLI(
-        ['add', 'identity', '--name', identityName, '--api-key', 'test-key-123', '--json'],
+        ['add', 'credential', '--name', identityName, '--api-key', 'test-key-123', '--json'],
         projectDir
       );
 
@@ -65,13 +65,13 @@ describe('add identity command', () => {
     });
   });
 
-  describe('oauth identity creation', () => {
+  describe('oauth credential creation', () => {
     it('creates OAuth credential with discovery URL and scopes', async () => {
       const identityName = `oauth-${Date.now()}`;
       const result = await runCLI(
         [
           'add',
-          'identity',
+          'credential',
           '--type',
           'oauth',
           '--name',

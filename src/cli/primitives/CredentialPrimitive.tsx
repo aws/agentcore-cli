@@ -1,7 +1,7 @@
 import { findConfigRoot, getEnvVar, setEnvVar } from '../../lib';
 import type { Credential, ModelProvider } from '../../schema';
 import { CredentialSchema } from '../../schema';
-import { validateAddIdentityOptions } from '../commands/add/validate';
+import { validateAddCredentialOptions } from '../commands/add/validate';
 import { getErrorMessage } from '../errors';
 import type { RemovalPreview, RemovalResult, SchemaChange } from '../operations/remove/types';
 import { BasePrimitive } from './BasePrimitive';
@@ -63,8 +63,8 @@ export interface CredentialStrategy {
  * Absorbs logic from create-identity.ts and remove-identity.ts.
  */
 export class CredentialPrimitive extends BasePrimitive<AddCredentialOptions, RemovableCredential> {
-  readonly kind = 'identity';
-  readonly label = 'Identity';
+  readonly kind = 'credential';
+  readonly label = 'Credential';
   readonly primitiveSchema = CredentialSchema;
 
   protected override readonly article: string = 'an';
@@ -250,9 +250,9 @@ export class CredentialPrimitive extends BasePrimitive<AddCredentialOptions, Rem
   }
 
   registerCommands(addCmd: Command, removeCmd: Command): void {
-    addCmd
-      .command('identity')
-      .description('Add an identity (credential) to the project')
+    const credentialCmd = addCmd
+      .command('credential')
+      .description('Add a credential to the project')
       .option('--name <name>', 'Credential name [non-interactive]')
       .option('--api-key <key>', 'The API key value [non-interactive]')
       .option('--json', 'Output as JSON [non-interactive]')
@@ -289,7 +289,7 @@ export class CredentialPrimitive extends BasePrimitive<AddCredentialOptions, Rem
               cliOptions.scopes
             ) {
               // CLI mode
-              const validation = validateAddIdentityOptions({
+              const validation = validateAddCredentialOptions({
                 name: cliOptions.name,
                 type: cliOptions.type as 'api-key' | 'oauth' | undefined,
                 apiKey: cliOptions.apiKey,
@@ -365,6 +365,9 @@ export class CredentialPrimitive extends BasePrimitive<AddCredentialOptions, Rem
           }
         }
       );
+
+    // Backward-compat alias: `agentcore add identity` → `agentcore add credential`
+    credentialCmd.alias('identity');
 
     this.registerRemoveSubcommand(removeCmd);
   }

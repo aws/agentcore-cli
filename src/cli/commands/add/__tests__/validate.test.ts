@@ -1,15 +1,15 @@
 import type {
   AddAgentOptions,
+  AddCredentialOptions,
   AddGatewayOptions,
   AddGatewayTargetOptions,
-  AddIdentityOptions,
   AddMemoryOptions,
 } from '../types.js';
 import {
   validateAddAgentOptions,
+  validateAddCredentialOptions,
   validateAddGatewayOptions,
   validateAddGatewayTargetOptions,
-  validateAddIdentityOptions,
   validateAddMemoryOptions,
 } from '../validate.js';
 import { existsSync, readFileSync } from 'fs';
@@ -75,7 +75,7 @@ const validMemoryOptions: AddMemoryOptions = {
   strategies: 'SEMANTIC,SUMMARIZATION',
 };
 
-const validIdentityOptions: AddIdentityOptions = {
+const validCredentialOptions: AddCredentialOptions = {
   name: 'test-identity',
   apiKey: 'test-key',
 };
@@ -996,17 +996,17 @@ describe('validate', () => {
     });
   });
 
-  describe('validateAddIdentityOptions', () => {
+  describe('validateAddCredentialOptions', () => {
     // AC23: Required fields validated
     it('returns error for missing required fields', () => {
-      const requiredFields: { field: keyof AddIdentityOptions; error: string }[] = [
+      const requiredFields: { field: keyof AddCredentialOptions; error: string }[] = [
         { field: 'name', error: '--name is required' },
         { field: 'apiKey', error: '--api-key is required' },
       ];
 
       for (const { field, error } of requiredFields) {
-        const opts = { ...validIdentityOptions, [field]: undefined };
-        const result = validateAddIdentityOptions(opts);
+        const opts = { ...validCredentialOptions, [field]: undefined };
+        const result = validateAddCredentialOptions(opts);
         expect(result.valid, `Should fail for missing ${String(field)}`).toBe(false);
         expect(result.error).toBe(error);
       }
@@ -1014,7 +1014,7 @@ describe('validate', () => {
 
     // AC25: Valid options pass
     it('passes for valid options', () => {
-      expect(validateAddIdentityOptions(validIdentityOptions)).toEqual({ valid: true });
+      expect(validateAddCredentialOptions(validCredentialOptions)).toEqual({ valid: true });
     });
   });
 
@@ -1193,9 +1193,9 @@ describe('validate', () => {
     });
   });
 
-  describe('validateAddIdentityOptions OAuth', () => {
+  describe('validateAddCredentialOptions OAuth', () => {
     it('passes for valid OAuth identity', () => {
-      const result = validateAddIdentityOptions({
+      const result = validateAddCredentialOptions({
         name: 'my-oauth',
         type: 'oauth',
         discoveryUrl: 'https://auth.example.com/.well-known/openid-configuration',
@@ -1206,7 +1206,7 @@ describe('validate', () => {
     });
 
     it('returns error for OAuth without discovery-url', () => {
-      const result = validateAddIdentityOptions({
+      const result = validateAddCredentialOptions({
         name: 'my-oauth',
         type: 'oauth',
         clientId: 'client123',
@@ -1217,7 +1217,7 @@ describe('validate', () => {
     });
 
     it('returns error for OAuth without client-id', () => {
-      const result = validateAddIdentityOptions({
+      const result = validateAddCredentialOptions({
         name: 'my-oauth',
         type: 'oauth',
         discoveryUrl: 'https://auth.example.com',
@@ -1228,7 +1228,7 @@ describe('validate', () => {
     });
 
     it('returns error for OAuth without client-secret', () => {
-      const result = validateAddIdentityOptions({
+      const result = validateAddCredentialOptions({
         name: 'my-oauth',
         type: 'oauth',
         discoveryUrl: 'https://auth.example.com',
@@ -1239,7 +1239,7 @@ describe('validate', () => {
     });
 
     it('still requires api-key for default type', () => {
-      const result = validateAddIdentityOptions({ name: 'my-key' });
+      const result = validateAddCredentialOptions({ name: 'my-key' });
       expect(result.valid).toBe(false);
       expect(result.error).toContain('--api-key');
     });

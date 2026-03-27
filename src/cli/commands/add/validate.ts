@@ -19,9 +19,9 @@ import { validateVpcOptions } from '../shared/vpc-utils';
 import { validateJwtAuthorizerOptions } from './auth-options';
 import type {
   AddAgentOptions,
+  AddCredentialOptions,
   AddGatewayOptions,
   AddGatewayTargetOptions,
-  AddIdentityOptions,
   AddMemoryOptions,
 } from './types';
 import { existsSync, readFileSync } from 'fs';
@@ -50,7 +50,7 @@ async function validateCredentialExists(credentialName: string): Promise<Validat
       if (availableCredentials.length === 0) {
         return {
           valid: false,
-          error: `Credential "${credentialName}" not found. No credentials are configured. Add credentials using 'agentcore add identity'.`,
+          error: `Credential "${credentialName}" not found. No credentials are configured. Add credentials using 'agentcore add credential'.`,
         };
       }
       return {
@@ -680,8 +680,8 @@ export function validateAddMemoryOptions(options: AddMemoryOptions): ValidationR
   return { valid: true };
 }
 
-// Identity validation (v2: credential resource, no owner)
-export function validateAddIdentityOptions(options: AddIdentityOptions): ValidationResult {
+// Credential validation (v2: credential resource, no owner)
+export function validateAddCredentialOptions(options: AddCredentialOptions): ValidationResult {
   if (!options.name) {
     return { valid: false, error: '--name is required' };
   }

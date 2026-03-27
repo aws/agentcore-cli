@@ -5,7 +5,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
-describe('remove identity command', () => {
+describe('remove credential command', () => {
   let testDir: string;
   let projectDir: string;
   const identityName = 'TestIdentity';
@@ -24,7 +24,7 @@ describe('remove identity command', () => {
 
     // Add identity as top-level credential
     result = await runCLI(
-      ['add', 'identity', '--name', identityName, '--api-key', 'test-key-123', '--json'],
+      ['add', 'credential', '--name', identityName, '--api-key', 'test-key-123', '--json'],
       projectDir
     );
     if (result.exitCode !== 0) {
@@ -38,7 +38,7 @@ describe('remove identity command', () => {
 
   describe('validation', () => {
     it('requires name flag', async () => {
-      const result = await runCLI(['remove', 'identity', '--json'], projectDir);
+      const result = await runCLI(['remove', 'credential', '--json'], projectDir);
       expect(result.exitCode).toBe(1);
       const json = JSON.parse(result.stdout);
       expect(json.success).toBe(false);
@@ -46,7 +46,7 @@ describe('remove identity command', () => {
     });
 
     it('rejects non-existent identity', async () => {
-      const result = await runCLI(['remove', 'identity', '--name', 'nonexistent', '--json'], projectDir);
+      const result = await runCLI(['remove', 'credential', '--name', 'nonexistent', '--json'], projectDir);
       expect(result.exitCode).toBe(1);
       const json = JSON.parse(result.stdout);
       expect(json.success).toBe(false);
@@ -58,9 +58,9 @@ describe('remove identity command', () => {
     it('removes credential without dependents', async () => {
       // Add a temp credential to remove
       const tempId = `tempId${Date.now()}`;
-      await runCLI(['add', 'identity', '--name', tempId, '--api-key', 'temp-key', '--json'], projectDir);
+      await runCLI(['add', 'credential', '--name', tempId, '--api-key', 'temp-key', '--json'], projectDir);
 
-      const result = await runCLI(['remove', 'identity', '--name', tempId, '--json'], projectDir);
+      const result = await runCLI(['remove', 'credential', '--name', tempId, '--json'], projectDir);
       expect(result.exitCode, `stdout: ${result.stdout}`).toBe(0);
       const json = JSON.parse(result.stdout);
       expect(json.success).toBe(true);
@@ -72,7 +72,7 @@ describe('remove identity command', () => {
     });
 
     it('removes the setup credential', async () => {
-      const result = await runCLI(['remove', 'identity', '--name', identityName, '--json'], projectDir);
+      const result = await runCLI(['remove', 'credential', '--name', identityName, '--json'], projectDir);
       expect(result.exitCode, `stdout: ${result.stdout}`).toBe(0);
       const json = JSON.parse(result.stdout);
       expect(json.success).toBe(true);

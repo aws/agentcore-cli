@@ -21,7 +21,7 @@ describe('validateRemoveOptions', () => {
   });
 
   it('returns valid with no json and no name', () => {
-    expect(validateRemoveOptions({ resourceType: 'identity' })).toEqual({ valid: true });
+    expect(validateRemoveOptions({ resourceType: 'credential' })).toEqual({ valid: true });
   });
 });
 

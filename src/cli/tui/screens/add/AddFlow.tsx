@@ -189,7 +189,7 @@ export function AddFlow(props: AddFlowProps) {
       case 'memory':
         setFlow({ name: 'memory-wizard' });
         break;
-      case 'identity':
+      case 'credential':
         setFlow({ name: 'identity-wizard' });
         break;
       case 'evaluator':

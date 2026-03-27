@@ -5,7 +5,7 @@ import { useMemo } from 'react';
 const REMOVE_RESOURCES = [
   { id: 'agent', title: 'Agent', description: 'Remove an agent from the project' },
   { id: 'memory', title: 'Memory', description: 'Remove a memory provider' },
-  { id: 'identity', title: 'Identity', description: 'Remove an identity provider' },
+  { id: 'credential', title: 'Credential', description: 'Remove a credential' },
   { id: 'evaluator', title: 'Evaluator', description: 'Remove a custom evaluator' },
   { id: 'online-eval', title: 'Online Eval Config', description: 'Remove an online eval config' },
   { id: 'policy-engine', title: 'Policy Engine', description: 'Remove a policy engine' },
@@ -28,8 +28,8 @@ interface RemoveScreenProps {
   mcpToolCount: number;
   /** Number of memories available for removal */
   memoryCount: number;
-  /** Number of identities available for removal */
-  identityCount: number;
+  /** Number of credentials available for removal */
+  credentialCount: number;
   /** Number of evaluators available for removal */
   evaluatorCount: number;
   /** Number of online eval configs available for removal */
@@ -47,7 +47,7 @@ export function RemoveScreen({
   gatewayCount,
   mcpToolCount,
   memoryCount,
-  identityCount,
+  credentialCount,
   evaluatorCount,
   onlineEvalCount,
   policyEngineCount,
@@ -83,10 +83,10 @@ export function RemoveScreen({
             description = 'No memories to remove';
           }
           break;
-        case 'identity':
-          if (identityCount === 0) {
+        case 'credential':
+          if (credentialCount === 0) {
             disabled = true;
-            description = 'No identities to remove';
+            description = 'No credentials to remove';
           }
           break;
         case 'evaluator':
@@ -125,7 +125,7 @@ export function RemoveScreen({
     gatewayCount,
     mcpToolCount,
     memoryCount,
-    identityCount,
+    credentialCount,
     evaluatorCount,
     onlineEvalCount,
     policyEngineCount,

@@ -118,8 +118,8 @@ export interface AddMemoryResult {
   error?: string;
 }
 
-// Identity types (v2: credential, no owner/user concept)
-export interface AddIdentityOptions {
+// Credential types (v2: credential, no owner/user concept)
+export interface AddCredentialOptions {
   name?: string;
   type?: 'api-key' | 'oauth';
   apiKey?: string;
@@ -130,7 +130,10 @@ export interface AddIdentityOptions {
   json?: boolean;
 }
 
-export interface AddIdentityResult {
+/** @deprecated Use AddCredentialOptions */
+export type AddIdentityOptions = AddCredentialOptions;
+
+export interface AddCredentialResult {
   success: boolean;
   credentialName?: string;
   error?: string;

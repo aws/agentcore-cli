@@ -3,7 +3,7 @@ export type ResourceType =
   | 'gateway'
   | 'gateway-target'
   | 'memory'
-  | 'identity'
+  | 'credential'
   | 'evaluator'
   | 'online-eval'
   | 'policy-engine'

@@ -23,10 +23,10 @@ export abstract class BasePrimitive<
   /** Shared ConfigIO instance for agentcore.json operations. */
   protected readonly configIO = new ConfigIO();
 
-  /** Resource kind identifier (e.g., 'agent', 'memory', 'identity', 'gateway', 'mcp-tool') */
+  /** Resource kind identifier (e.g., 'agent', 'memory', 'credential', 'gateway', 'mcp-tool') */
   abstract readonly kind: ResourceType;
 
-  /** Human-readable label (e.g., 'Agent', 'Memory', 'Identity') */
+  /** Human-readable label (e.g., 'Agent', 'Memory', 'Credential') */
   abstract readonly label: string;
 
   /** Zod schema for validating the primitive's config */

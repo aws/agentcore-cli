@@ -95,7 +95,7 @@ export const registerRemove = (program: Command): Command => {
       }
     });
 
-  // Resource subcommands (agent, memory, identity, gateway, mcp-tool) are registered
+  // Resource subcommands (agent, memory, credential, gateway, mcp-tool) are registered
   // via primitive.registerCommands() in cli.ts
 
   // Catch-all for TUI fallback when no subcommand is specified.

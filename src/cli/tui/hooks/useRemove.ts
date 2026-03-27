@@ -284,7 +284,7 @@ export function useRemoveMemory() {
 export function useRemoveIdentity() {
   return useRemoveResource(
     (name: string) => credentialPrimitive.remove(name),
-    'identity',
+    'credential',
     name => name
   );
 }

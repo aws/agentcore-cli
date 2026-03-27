@@ -10,7 +10,7 @@ export interface RemoveLoggerOptions {
   resourceType:
     | 'agent'
     | 'memory'
-    | 'identity'
+    | 'credential'
     | 'gateway'
     | 'gateway-target'
     | 'evaluator'

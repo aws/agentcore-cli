@@ -86,7 +86,7 @@ interface RemoveFlowProps {
     | 'gateway'
     | 'gateway-target'
     | 'memory'
-    | 'identity'
+    | 'credential'
     | 'evaluator'
     | 'online-eval'
     | 'policy-engine'
@@ -114,7 +114,7 @@ export function RemoveFlow({
         return { name: 'select-gateway-target' };
       case 'memory':
         return { name: 'select-memory' };
-      case 'identity':
+      case 'credential':
         return { name: 'select-identity' };
       case 'evaluator':
         return { name: 'select-evaluator' };
@@ -239,7 +239,7 @@ export function RemoveFlow({
       case 'memory':
         setFlow({ name: 'select-memory' });
         break;
-      case 'identity':
+      case 'credential':
         setFlow({ name: 'select-identity' });
         break;
       case 'evaluator':
@@ -485,7 +485,7 @@ export function RemoveFlow({
         case 'memory':
           void handleSelectMemory(initialResourceName);
           break;
-        case 'identity':
+        case 'credential':
           void handleSelectIdentity(initialResourceName);
           break;
         case 'evaluator':
@@ -722,7 +722,7 @@ export function RemoveFlow({
         gatewayCount={gateways.length}
         mcpToolCount={mcpTools.length}
         memoryCount={memories.length}
-        identityCount={identities.length}
+        credentialCount={identities.length}
         evaluatorCount={evaluators.length}
         onlineEvalCount={onlineEvalConfigs.length}
         policyEngineCount={policyEngines.length}
@@ -1030,8 +1030,8 @@ export function RemoveFlow({
     return (
       <RemoveSuccessScreen
         isInteractive={isInteractive}
-        message={`Removed identity: ${flow.identityName}`}
-        detail="Identity provider removed from agentcore.json. Deploy with `agentcore deploy` to apply changes."
+        message={`Removed credential: ${flow.identityName}`}
+        detail="Credential removed from agentcore.json. Deploy with `agentcore deploy` to apply changes."
         logFilePath={flow.logFilePath}
         onRemoveAnother={() => {
           resetAll();

@@ -33,7 +33,7 @@ export function registerAdd(program: Command): Command {
     );
   });
 
-  // Subcommands (agent, memory, identity, gateway, gateway-target) are registered
+  // Subcommands (agent, memory, credential, gateway, gateway-target) are registered
   // via primitive.registerCommands() in cli.ts
 
   return addCmd;
