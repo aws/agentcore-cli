@@ -117,7 +117,7 @@ describe('integration: add and remove gateway with OpenAPI schema target', () =>
 
     it('creates an API key credential for outbound auth', async () => {
       const result = await runCLI(
-        ['add', 'identity', '--name', 'TestApiKey', '--api-key', 'test-key-123', '--json'],
+        ['add', 'credential', '--name', 'TestApiKey', '--api-key', 'test-key-123', '--json'],
         project.projectPath
       );
       expect(result.exitCode, `stdout: ${result.stdout}, stderr: ${result.stderr}`).toBe(0);
@@ -238,7 +238,7 @@ describe('integration: add gateway with S3 URI schema target', () => {
       expect(result.exitCode, `stdout: ${result.stdout}, stderr: ${result.stderr}`).toBe(0);
 
       const credResult = await runCLI(
-        ['add', 'identity', '--name', 'S3ApiKey', '--api-key', 'test-key', '--json'],
+        ['add', 'credential', '--name', 'S3ApiKey', '--api-key', 'test-key', '--json'],
         project.projectPath
       );
       expect(credResult.exitCode, `stdout: ${credResult.stdout}, stderr: ${credResult.stderr}`).toBe(0);
@@ -304,7 +304,10 @@ describe('integration: add gateway with S3 URI and bucketOwnerAccountId', () => 
 
   it('adds a gateway and target with --schema-s3-account', async () => {
     await runCLI(['add', 'gateway', '--name', gatewayName, '--json'], project.projectPath);
-    await runCLI(['add', 'identity', '--name', 'CrossApiKey', '--api-key', 'test-key', '--json'], project.projectPath);
+    await runCLI(
+      ['add', 'credential', '--name', 'CrossApiKey', '--api-key', 'test-key', '--json'],
+      project.projectPath
+    );
 
     const result = await runCLI(
       [
