@@ -72,7 +72,7 @@ async function resolveEvalLogGroups(
 
 export async function handleLogsEval(options: LogsEvalOptions): Promise<LogsEvalResult> {
   const context = await loadDeployedProjectConfig();
-  const agentResult = resolveAgent(context, { agent: options.agent });
+  const agentResult = resolveAgent(context, { runtime: options.agent });
 
   if (!agentResult.success) {
     return { success: false, error: agentResult.error };

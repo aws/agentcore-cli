@@ -11,7 +11,7 @@ import { join, resolve } from 'path';
 
 export interface PackageOptions {
   directory?: string;
-  agent?: string;
+  runtime?: string;
 }
 
 export interface PackageContext {
@@ -30,7 +30,7 @@ export async function loadPackageConfig(options: PackageOptions): Promise<Packag
     project: await configIO.readProjectSpec(),
     configBaseDir: configIO.getPathResolver().getBaseDir(),
     projectRoot,
-    targetAgent: options.agent,
+    targetAgent: options.runtime,
   };
 }
 
@@ -52,12 +52,12 @@ export async function handlePackage(context: PackageContext): Promise<PackageRes
   const results: PackageAgentResult[] = [];
   const skipped: string[] = [];
 
-  // Validate --agent flag if specified
+  // Validate --runtime flag if specified
   if (targetAgent) {
     validateAgentExists(project, targetAgent);
   }
 
-  // Filter agents based on --agent flag
+  // Filter agents based on --runtime flag
   const agentsToPackage = targetAgent ? project.runtimes.filter(a => a.name === targetAgent) : project.runtimes;
 
   for (const agent of agentsToPackage) {

@@ -33,6 +33,7 @@ export interface AddGatewayOptions {
   customClaims?: CustomClaimValidation[];
   clientId?: string;
   clientSecret?: string;
+  runtimes?: string;
   enableSemanticSearch?: boolean;
   exceptionLevel?: string;
   policyEngine?: string;
@@ -160,6 +161,7 @@ export class GatewayPrimitive extends BasePrimitive<AddGatewayOptions, Removable
       .description('Add an API gateway that routes requests to agent targets')
       .option('--name <name>', 'Gateway name [non-interactive]')
       .option('--description <desc>', 'Gateway description [non-interactive]')
+      .option('--runtimes <runtimes>', 'Comma-separated runtime names to expose through this gateway [non-interactive]')
       .option('--authorizer-type <type>', 'Authorizer type: NONE or CUSTOM_JWT [non-interactive]')
       .option('--discovery-url <url>', 'OIDC discovery URL (for CUSTOM_JWT) [non-interactive]')
       .option('--allowed-audience <audience>', 'Comma-separated allowed audiences (for CUSTOM_JWT) [non-interactive]')
@@ -211,6 +213,7 @@ export class GatewayPrimitive extends BasePrimitive<AddGatewayOptions, Removable
             customClaims: parsedCustomClaims,
             clientId: cliOptions.clientId,
             clientSecret: cliOptions.clientSecret,
+            runtimes: cliOptions.runtimes,
             enableSemanticSearch: cliOptions.semanticSearch !== false,
             exceptionLevel: cliOptions.exceptionLevel,
             policyEngine: cliOptions.policyEngine,

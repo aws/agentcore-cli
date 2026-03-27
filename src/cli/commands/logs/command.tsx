@@ -10,7 +10,7 @@ import { Text, render } from 'ink';
 import React from 'react';
 
 export const registerLogs = (program: Command) => {
-  // enablePositionalOptions + passThroughOptions ensure options like --since and --agent
+  // enablePositionalOptions + passThroughOptions ensure options like --since and --runtime
   // are passed to the 'evals' subcommand rather than being consumed by the parent 'logs' command.
   program.enablePositionalOptions();
 
@@ -20,7 +20,7 @@ export const registerLogs = (program: Command) => {
     .enablePositionalOptions()
     .passThroughOptions()
     .description(COMMAND_DESCRIPTIONS.logs)
-    .option('--agent <name>', 'Select specific agent')
+    .option('--runtime <name>', 'Select specific runtime')
     .option('--since <time>', 'Start time — defaults to 1h ago in search mode (e.g. "1h", "30m", "2d", ISO 8601)')
     .option('--until <time>', 'End time — defaults to now in search mode (e.g. "now", ISO 8601)')
     .option('--level <level>', 'Filter by log level (error, warn, info, debug)')
@@ -46,7 +46,7 @@ export const registerLogs = (program: Command) => {
   logsCmd
     .command('evals')
     .description('Stream or search online eval logs')
-    .option('-a, --agent <name>', 'Select specific agent')
+    .option('-r, --runtime <name>', 'Select specific runtime')
     .option('--since <time>', 'Start time (e.g. "1h", "30m", "2d", ISO 8601)')
     .option('--until <time>', 'End time (e.g. "now", ISO 8601)')
     .option('-n, --limit <count>', 'Maximum number of log lines')

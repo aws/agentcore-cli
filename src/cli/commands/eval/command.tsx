@@ -13,15 +13,15 @@ export const registerEval = (program: Command) => {
   evalCmd
     .command('history')
     .description('Show past on-demand eval run results saved locally')
-    .option('-a, --agent <name>', 'Filter results by agent name')
+    .option('-r, --runtime <name>', 'Filter results by runtime name')
     .option('-n, --limit <count>', 'Max number of runs to display')
     .option('--json', 'Output as JSON')
-    .action((cliOptions: { agent?: string; limit?: string; json?: boolean }) => {
+    .action((cliOptions: { runtime?: string; limit?: string; json?: boolean }) => {
       requireProject();
 
       try {
         const result = handleListEvalRuns({
-          agent: cliOptions.agent,
+          agent: cliOptions.runtime,
           limit: cliOptions.limit ? parseInt(cliOptions.limit, 10) : undefined,
           json: cliOptions.json,
         });

@@ -126,7 +126,7 @@ describe('resolveAgentContext', () => {
     const result = resolveAgentContext(context, {});
     expect(result.success).toBe(false);
     if (!result.success) {
-      expect(result.error).toContain('Multiple agents found');
+      expect(result.error).toContain('Multiple runtimes found');
       expect(result.error).toContain('AgentA');
       expect(result.error).toContain('AgentB');
     }
@@ -184,7 +184,7 @@ describe('resolveAgentContext', () => {
         },
       },
     });
-    const result = resolveAgentContext(context, { agent: 'AgentB' });
+    const result = resolveAgentContext(context, { runtime: 'AgentB' });
     expect(result.success).toBe(true);
     if (result.success) {
       expect(result.agentContext.agentName).toBe('AgentB');
@@ -193,10 +193,10 @@ describe('resolveAgentContext', () => {
   });
 
   it('errors for unknown agent name', () => {
-    const result = resolveAgentContext(makeContext(), { agent: 'UnknownAgent' });
+    const result = resolveAgentContext(makeContext(), { runtime: 'UnknownAgent' });
     expect(result.success).toBe(false);
     if (!result.success) {
-      expect(result.error).toContain("Agent 'UnknownAgent' not found");
+      expect(result.error).toContain("Runtime 'UnknownAgent' not found");
     }
   });
 
@@ -218,7 +218,7 @@ describe('resolveAgentContext', () => {
     const result = resolveAgentContext(context, {});
     expect(result.success).toBe(false);
     if (!result.success) {
-      expect(result.error).toContain('No agents defined');
+      expect(result.error).toContain('No runtimes defined');
     }
   });
 

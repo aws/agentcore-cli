@@ -61,7 +61,7 @@ describe('invoke command', () => {
 
   describe('agent validation', () => {
     it('rejects non-existent agent', async () => {
-      const result = await runCLI(['invoke', 'hello', '--agent', 'nonexistent', '--json'], projectDir);
+      const result = await runCLI(['invoke', 'hello', '--runtime', 'nonexistent', '--json'], projectDir);
       expect(result.exitCode).toBe(1);
       const json = JSON.parse(result.stdout);
       expect(json.success).toBe(false);
@@ -82,7 +82,7 @@ describe('invoke command', () => {
     });
 
     it('--stream with invalid agent returns error', async () => {
-      const result = await runCLI(['invoke', 'hello', '--stream', '--agent', 'nonexistent', '--json'], projectDir);
+      const result = await runCLI(['invoke', 'hello', '--stream', '--runtime', 'nonexistent', '--json'], projectDir);
       expect(result.exitCode).toBe(1);
       const json = JSON.parse(result.stdout);
       expect(json.success).toBe(false);

@@ -9,7 +9,7 @@ export const registerPackage = (program: Command) => {
     .command('package')
     .alias('pkg')
     .option('-d, --directory <path>', 'Project directory containing agentcore config')
-    .option('-a, --agent <name>', 'Package only the specified agent')
+    .option('-r, --runtime <name>', 'Package only the specified runtime')
     .description(COMMAND_DESCRIPTIONS.package)
     .action(async options => {
       try {

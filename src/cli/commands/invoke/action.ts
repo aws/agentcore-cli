@@ -63,7 +63,7 @@ export async function handleInvoke(context: InvokeContext, options: InvokeOption
   const agentNames = project.runtimes.map(a => a.name);
 
   if (!options.agentName && project.runtimes.length > 1) {
-    return { success: false, error: `Multiple agents found. Use --agent to specify one: ${agentNames.join(', ')}` };
+    return { success: false, error: `Multiple runtimes found. Use --runtime to specify one: ${agentNames.join(', ')}` };
   }
 
   const agentSpec = options.agentName ? project.runtimes.find(a => a.name === options.agentName) : project.runtimes[0];

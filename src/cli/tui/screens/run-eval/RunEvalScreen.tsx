@@ -80,7 +80,7 @@ export function RunEvalScreen({ agents, evaluatorItems: rawEvaluatorItems, onCom
       try {
         const context = await loadDeployedProjectConfig();
         const { region } = await detectRegion();
-        const agentResult = resolveAgent(context, { agent: wizard.config.agent });
+        const agentResult = resolveAgent(context, { runtime: wizard.config.agent });
         if (!agentResult.success) {
           if (!cancelled) setSessionResult({ key: fetchKey, phase: 'error', message: agentResult.error });
           return;

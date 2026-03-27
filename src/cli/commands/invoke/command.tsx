@@ -96,7 +96,7 @@ export const registerInvoke = (program: Command) => {
     .description(COMMAND_DESCRIPTIONS.invoke)
     .argument('[prompt]', 'Prompt to send to the agent [non-interactive]')
     .option('--prompt <text>', 'Prompt to send to the agent [non-interactive]')
-    .option('--agent <name>', 'Select specific agent [non-interactive]')
+    .option('--runtime <name>', 'Select specific runtime [non-interactive]')
     .option('--target <name>', 'Select deployment target [non-interactive]')
     .option('--session-id <id>', 'Use specific session ID for conversation continuity')
     .option('--user-id <id>', 'User ID for runtime invocation (default: "default-user")')
@@ -116,7 +116,7 @@ export const registerInvoke = (program: Command) => {
         positionalPrompt: string | undefined,
         cliOptions: {
           prompt?: string;
-          agent?: string;
+          runtime?: string;
           target?: string;
           sessionId?: string;
           userId?: string;
@@ -145,13 +145,13 @@ export const registerInvoke = (program: Command) => {
             cliOptions.json ||
             cliOptions.target ||
             cliOptions.stream ||
-            cliOptions.agent ||
+            cliOptions.runtime ||
             cliOptions.tool ||
             cliOptions.bearerToken
           ) {
             await handleInvokeCLI({
               prompt,
-              agentName: cliOptions.agent,
+              agentName: cliOptions.runtime,
               targetName: cliOptions.target ?? 'default',
               sessionId: cliOptions.sessionId,
               userId: cliOptions.userId,

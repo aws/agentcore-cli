@@ -57,6 +57,7 @@ export interface AddGatewayOptions {
   customClaims?: string;
   clientId?: string;
   clientSecret?: string;
+  runtimes?: string;
   semanticSearch?: boolean;
   exceptionLevel?: string;
   policyEngine?: string;

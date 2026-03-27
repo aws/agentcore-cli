@@ -104,7 +104,7 @@ export class OnlineEvalConfigPrimitive extends BasePrimitive<AddOnlineEvalConfig
       .command('online-eval')
       .description('Add an online eval config to the project')
       .option('--name <name>', 'Config name [non-interactive]')
-      .option('-a, --agent <name>', 'Agent to monitor [non-interactive]')
+      .option('-r, --runtime <name>', 'Runtime to monitor [non-interactive]')
       .option('-e, --evaluator <evaluators...>', 'Evaluator name(s), Builtin.* IDs, or ARNs [non-interactive]')
       .option('--evaluator-arn <arns...>', 'Evaluator ARN(s) [non-interactive]')
       .option('--sampling-rate <rate>', 'Sampling percentage (0.01-100) [non-interactive]')
@@ -113,7 +113,7 @@ export class OnlineEvalConfigPrimitive extends BasePrimitive<AddOnlineEvalConfig
       .action(
         async (cliOptions: {
           name?: string;
-          agent?: string;
+          runtime?: string;
           evaluator?: string[];
           evaluatorArn?: string[];
           samplingRate?: string;
@@ -130,9 +130,9 @@ export class OnlineEvalConfigPrimitive extends BasePrimitive<AddOnlineEvalConfig
               // Merge --evaluator and --evaluator-arn into a single list
               const allEvaluators = [...(cliOptions.evaluator ?? []), ...(cliOptions.evaluatorArn ?? [])];
 
-              if (!cliOptions.name || !cliOptions.agent || allEvaluators.length === 0 || !cliOptions.samplingRate) {
+              if (!cliOptions.name || !cliOptions.runtime || allEvaluators.length === 0 || !cliOptions.samplingRate) {
                 const error =
-                  '--name, --agent, --evaluator (and/or --evaluator-arn), and --sampling-rate are all required in non-interactive mode';
+                  '--name, --runtime, --evaluator (and/or --evaluator-arn), and --sampling-rate are all required in non-interactive mode';
                 if (cliOptions.json) {
                   console.log(JSON.stringify({ success: false, error }));
                 } else {
@@ -155,7 +155,7 @@ export class OnlineEvalConfigPrimitive extends BasePrimitive<AddOnlineEvalConfig
 
               const result = await this.add({
                 name: cliOptions.name,
-                agent: cliOptions.agent,
+                agent: cliOptions.runtime,
                 evaluators: allEvaluators,
                 samplingRate,
                 enableOnCreate: cliOptions.enableOnCreate,

@@ -37,12 +37,14 @@ export const registerRun = (program: Command) => {
 
   runCmd
     .command('eval')
-    .description('Run on-demand evaluation of agent traces. Use --agent-arn to evaluate agents outside the project.')
-    .option('-a, --agent <name>', 'Agent name from project config')
-    .option('--agent-arn <arn>', 'Agent runtime ARN — run outside a project directory')
+    .description(
+      'Run on-demand evaluation of runtime traces. Use --runtime-arn to evaluate runtimes outside the project.'
+    )
+    .option('-r, --runtime <name>', 'Runtime name from project config')
+    .option('--runtime-arn <arn>', 'Runtime ARN — run outside a project directory')
     .option('-e, --evaluator <names...>', 'Evaluator name(s) from project or Builtin.* IDs')
-    .option('--evaluator-arn <arns...>', 'Evaluator ARN(s) — use with --agent-arn for standalone mode')
-    .option('--region <region>', 'AWS region (required with --agent-arn, auto-detected otherwise)')
+    .option('--evaluator-arn <arns...>', 'Evaluator ARN(s) — use with --runtime-arn for standalone mode')
+    .option('--region <region>', 'AWS region (required with --runtime-arn, auto-detected otherwise)')
     .option('-s, --session-id <id>', 'Evaluate a specific session only')
     .option('-t, --trace-id <id>', 'Evaluate a specific trace only')
     .option(
@@ -54,8 +56,8 @@ export const registerRun = (program: Command) => {
     .option('--json', 'Output as JSON')
     .action(
       async (cliOptions: {
-        agent?: string;
-        agentArn?: string;
+        runtime?: string;
+        runtimeArn?: string;
         evaluator?: string[];
         evaluatorArn?: string[];
         region?: string;
@@ -66,7 +68,7 @@ export const registerRun = (program: Command) => {
         output?: string;
         json?: boolean;
       }) => {
-        const isArnMode = !!(cliOptions.agentArn && cliOptions.evaluatorArn);
+        const isArnMode = !!(cliOptions.runtimeArn && cliOptions.evaluatorArn);
         if (!isArnMode) {
           requireProject();
         }
@@ -82,8 +84,8 @@ export const registerRun = (program: Command) => {
         }
 
         const options: RunEvalOptions = {
-          agent: cliOptions.agent,
-          agentArn: cliOptions.agentArn,
+          agent: cliOptions.runtime,
+          agentArn: cliOptions.runtimeArn,
           evaluator: cliOptions.evaluator ?? [],
           evaluatorArn: cliOptions.evaluatorArn,
           region: cliOptions.region,

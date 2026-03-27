@@ -8,7 +8,7 @@ describe('dev command', () => {
 
       expect(result.exitCode).toBe(0);
       expect(result.stdout.includes('--port'), 'Should show --port option').toBeTruthy();
-      expect(result.stdout.includes('--agent'), 'Should show --agent option').toBeTruthy();
+      expect(result.stdout.includes('--runtime'), 'Should show --runtime option').toBeTruthy();
       expect(result.stdout.includes('--invoke'), 'Should show --invoke option').toBeTruthy();
       expect(result.stdout.includes('--stream'), 'Should show --stream option').toBeTruthy();
       expect(result.stdout.includes('--logs'), 'Should show --logs option').toBeTruthy();

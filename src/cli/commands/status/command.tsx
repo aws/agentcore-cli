@@ -20,17 +20,17 @@ const VALID_RESOURCE_TYPES = [
 const VALID_STATES = ['deployed', 'local-only', 'pending-removal'] as const;
 
 interface StatusCliOptions {
-  agentRuntimeId?: string;
+  runtimeId?: string;
   target?: string;
   type?: string;
   state?: string;
-  agent?: string;
+  runtime?: string;
   json?: boolean;
 }
 
 function filterResources(
   resources: ResourceStatusEntry[],
-  options: { type?: string; state?: string; agent?: string }
+  options: { type?: string; state?: string; runtime?: string }
 ): ResourceStatusEntry[] {
   let filtered = resources;
 
@@ -42,8 +42,8 @@ function filterResources(
     filtered = filtered.filter(r => r.deploymentState === options.state);
   }
 
-  if (options.agent) {
-    filtered = filtered.filter(r => r.resourceType !== 'agent' || r.name === options.agent);
+  if (options.runtime) {
+    filtered = filtered.filter(r => r.resourceType !== 'agent' || r.name === options.runtime);
   }
 
   return filtered;
@@ -54,14 +54,14 @@ export const registerStatus = (program: Command) => {
     .command('status')
     .alias('s')
     .description(COMMAND_DESCRIPTIONS.status)
-    .option('--agent-runtime-id <id>', 'Look up a specific agent runtime by ID')
+    .option('--runtime-id <id>', 'Look up a specific runtime by ID')
     .option('--target <name>', 'Select deployment target')
     .option(
       '--type <type>',
       'Filter by resource type (agent, memory, credential, gateway, evaluator, online-eval, policy-engine, policy)'
     )
     .option('--state <state>', 'Filter by deployment state (deployed, local-only, pending-removal)')
-    .option('--agent <name>', 'Filter to a specific agent')
+    .option('--runtime <name>', 'Filter to a specific runtime')
     .option('--json', 'Output as JSON')
     .action(async (cliOptions: StatusCliOptions) => {
       requireProject();
@@ -90,9 +90,9 @@ export const registerStatus = (program: Command) => {
         const context = await loadStatusConfig();
 
         // Direct runtime lookup by ID
-        if (cliOptions.agentRuntimeId) {
+        if (cliOptions.runtimeId) {
           const result = await handleRuntimeLookup(context, {
-            agentRuntimeId: cliOptions.agentRuntimeId,
+            agentRuntimeId: cliOptions.runtimeId,
             targetName: cliOptions.target,
           });
 

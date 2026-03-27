@@ -113,7 +113,7 @@ function resolveFromArn(options: RunEvalOptions): ResolveResult {
  * Project mode: resolve context from agentcore.json + deployed-state.json.
  */
 function resolveFromProject(context: DeployedProjectConfig, options: RunEvalOptions): ResolveResult {
-  const agentResult = resolveAgent(context, { agent: options.agent });
+  const agentResult = resolveAgent(context, { runtime: options.agent });
   if (!agentResult.success) {
     return agentResult;
   }

@@ -1,12 +1,12 @@
 export interface TracesListOptions {
-  agent?: string;
+  runtime?: string;
   limit?: string;
   since?: string;
   until?: string;
 }
 
 export interface TracesGetOptions {
-  agent?: string;
+  runtime?: string;
   output?: string;
   since?: string;
   until?: string;

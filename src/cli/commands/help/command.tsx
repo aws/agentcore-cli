@@ -34,7 +34,7 @@ FLAGS THAT TRIGGER CLI MODE
     --name, --json, --yes, --force, --target, --stream, etc.
   
   Some flags work in both modes:
-    --session-id (invoke), --port (dev), --agent (dev)
+    --session-id (invoke), --port (dev), --runtime (dev)
 `;
 
 export const registerHelp = (program: Command) => {
