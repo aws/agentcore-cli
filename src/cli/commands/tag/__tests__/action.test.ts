@@ -27,7 +27,6 @@ const baseSpec = () => ({
   tags: { 'agentcore:created-by': 'agentcore-cli' },
   agents: [
     {
-      type: 'AgentCoreRuntime',
       name: 'myAgent',
       build: 'CodeZip',
       entrypoint: 'main.py',
@@ -36,7 +35,7 @@ const baseSpec = () => ({
       protocol: 'HTTP',
     },
   ],
-  memories: [{ type: 'AgentCoreMemory', name: 'myMemory', eventExpiryDuration: 30, strategies: [] }],
+  memories: [{ name: 'myMemory', eventExpiryDuration: 30, strategies: [] }],
   credentials: [],
   agentCoreGateways: [
     {

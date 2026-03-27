@@ -508,7 +508,6 @@ export class AgentPrimitive extends BasePrimitive<AddAgentOptions, RemovableReso
     const lifecycleConfiguration = this.buildLifecycleConfig(options);
 
     const agent: AgentEnvSpec = {
-      type: 'AgentCoreRuntime',
       name: options.name,
       build: options.buildType,
       entrypoint: (options.entrypoint ?? 'main.py') as FilePath,

@@ -46,7 +46,6 @@ describe('resolveAgentContext', () => {
       managedBy: 'CDK' as const,
       agents: [
         {
-          type: 'AgentCoreRuntime' as const,
           name: 'MyAgent',
           build: 'CodeZip' as const,
           entrypoint: 'main.py' as any,
@@ -100,7 +99,6 @@ describe('resolveAgentContext', () => {
         managedBy: 'CDK' as const,
         agents: [
           {
-            type: 'AgentCoreRuntime' as const,
             name: 'AgentA',
             build: 'CodeZip' as const,
             entrypoint: 'main.py' as any,
@@ -109,7 +107,6 @@ describe('resolveAgentContext', () => {
             protocol: 'HTTP' as const,
           },
           {
-            type: 'AgentCoreRuntime' as const,
             name: 'AgentB',
             build: 'CodeZip' as const,
             entrypoint: 'main.py' as any,
@@ -143,7 +140,6 @@ describe('resolveAgentContext', () => {
         managedBy: 'CDK' as const,
         agents: [
           {
-            type: 'AgentCoreRuntime' as const,
             name: 'AgentA',
             build: 'CodeZip' as const,
             entrypoint: 'main.py' as any,
@@ -152,7 +148,6 @@ describe('resolveAgentContext', () => {
             protocol: 'HTTP' as const,
           },
           {
-            type: 'AgentCoreRuntime' as const,
             name: 'AgentB',
             build: 'CodeZip' as const,
             entrypoint: 'main.py' as any,

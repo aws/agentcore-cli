@@ -27,7 +27,7 @@ const makeProject = (
   managedBy: 'CDK' as const,
   agents: [],
   memories: [],
-  credentials: credNames.map(name => ({ name, type: 'ApiKeyCredentialProvider' })),
+  credentials: credNames.map(name => ({ name, authorizerType: 'ApiKeyCredentialProvider' })),
   agentCoreGateways,
 });
 
@@ -42,8 +42,8 @@ describe('getRemovable', () => {
     const result = await primitive.getRemovable();
 
     expect(result).toEqual([
-      { name: 'Cred1', type: 'ApiKeyCredentialProvider' },
-      { name: 'Cred2', type: 'ApiKeyCredentialProvider' },
+      { name: 'Cred1', authorizerType: 'ApiKeyCredentialProvider' },
+      { name: 'Cred2', authorizerType: 'ApiKeyCredentialProvider' },
     ]);
   });
 

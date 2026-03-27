@@ -557,7 +557,6 @@ agents:
     const writtenSpec = mockWriteProjectSpec.mock.calls[0]![0];
     expect(writtenSpec.memories).toHaveLength(1);
     expect(writtenSpec.memories[0].name).toBe('test_agent_memory');
-    expect(writtenSpec.memories[0].type).toBe('AgentCoreMemory');
   });
 
   it('does NOT call CDK build/synth operations', async () => {

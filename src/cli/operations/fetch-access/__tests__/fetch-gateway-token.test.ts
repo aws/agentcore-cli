@@ -37,7 +37,7 @@ const baseProjectSpec = {
   version: 1,
   credentials: [
     {
-      type: 'OAuthCredentialProvider',
+      authorizerType: 'OAuthCredentialProvider',
       name: 'myGateway-oauth',
       discoveryUrl: DISCOVERY_URL,
     },

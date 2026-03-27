@@ -38,7 +38,7 @@ export function AddIdentityFlow({ isInteractive = true, onExit, onBack, onDev, o
       const createConfig =
         config.identityType === 'OAuthCredentialProvider'
           ? {
-              type: 'OAuthCredentialProvider' as const,
+              authorizerType: 'OAuthCredentialProvider' as const,
               name: config.name,
               discoveryUrl: config.discoveryUrl!,
               clientId: config.clientId!,
@@ -49,7 +49,7 @@ export function AddIdentityFlow({ isInteractive = true, onExit, onBack, onDev, o
                 .filter(Boolean),
             }
           : {
-              type: 'ApiKeyCredentialProvider' as const,
+              authorizerType: 'ApiKeyCredentialProvider' as const,
               name: config.name,
               apiKey: config.apiKey,
             };

@@ -15,7 +15,6 @@ export const OnlineEvalConfigNameSchema = z
   );
 
 export const OnlineEvalConfigSchema = z.object({
-  type: z.literal('OnlineEvaluationConfig'),
   name: OnlineEvalConfigNameSchema,
   /** Agent name to monitor (must match a project agent) */
   agent: z.string().min(1, 'Agent name is required'),

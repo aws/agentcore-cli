@@ -103,7 +103,7 @@ describe('computeResourceStatuses', () => {
   it('marks credential as deployed when in both local and deployed state', () => {
     const project = {
       ...baseProject,
-      credentials: [{ name: 'my-cred', type: 'OAuthCredentialProvider' }],
+      credentials: [{ name: 'my-cred', authorizerType: 'OAuthCredentialProvider' }],
     } as unknown as AgentCoreProjectSpec;
 
     const resources: DeployedResourceState = {
@@ -126,7 +126,7 @@ describe('computeResourceStatuses', () => {
   it('marks credential as local-only when not in deployed state', () => {
     const project = {
       ...baseProject,
-      credentials: [{ name: 'my-cred', type: 'ApiKeyCredentialProvider' }],
+      credentials: [{ name: 'my-cred', authorizerType: 'ApiKeyCredentialProvider' }],
     } as unknown as AgentCoreProjectSpec;
 
     const result = computeResourceStatuses(project, undefined);
@@ -215,7 +215,7 @@ describe('computeResourceStatuses', () => {
       ...baseProject,
       agents: [{ name: 'agent-a' }],
       memories: [{ name: 'mem-a', strategies: [] }],
-      credentials: [{ name: 'cred-a', type: 'ApiKeyCredentialProvider' }],
+      credentials: [{ name: 'cred-a', authorizerType: 'ApiKeyCredentialProvider' }],
     } as unknown as AgentCoreProjectSpec;
 
     const result = computeResourceStatuses(project, undefined);
@@ -398,7 +398,7 @@ describe('computeResourceStatuses', () => {
     const project = {
       ...baseProject,
       agents: [{ name: 'deployed-agent' }, { name: 'new-agent' }],
-      credentials: [{ name: 'deployed-cred', type: 'OAuthCredentialProvider' }],
+      credentials: [{ name: 'deployed-cred', authorizerType: 'OAuthCredentialProvider' }],
     } as unknown as AgentCoreProjectSpec;
 
     const resources: DeployedResourceState = {

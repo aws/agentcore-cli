@@ -22,7 +22,7 @@ const makeProject = (memoryNames: string[]) => ({
   version: 1,
   managedBy: 'CDK' as const,
   agents: [],
-  memories: memoryNames.map(name => ({ name, type: 'AgentCoreMemory', eventExpiryDuration: 30, strategies: [] })),
+  memories: memoryNames.map(name => ({ name, eventExpiryDuration: 30, strategies: [] })),
   credentials: [],
 });
 

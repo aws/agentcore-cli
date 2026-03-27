@@ -286,7 +286,6 @@ export class EvaluatorPrimitive extends BasePrimitive<AddEvaluatorOptions, Remov
     this.checkDuplicate(project.evaluators, options.name);
 
     const evaluator: Evaluator = {
-      type: 'CustomEvaluator',
       name: options.name,
       level: options.level,
       ...(options.description && { description: options.description }),

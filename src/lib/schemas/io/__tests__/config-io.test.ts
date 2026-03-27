@@ -182,7 +182,6 @@ describe('ConfigIO', () => {
         managedBy: 'CDK' as const,
         agents: [
           {
-            type: 'AgentCoreRuntime',
             name: 'myagent',
             build: 'CodeZip',
             entrypoint: 'main.py',

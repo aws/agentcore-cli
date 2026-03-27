@@ -233,7 +233,6 @@ export class MemoryPrimitive extends BasePrimitive<AddMemoryOptions, RemovableMe
     });
 
     const memory: Memory = {
-      type: 'AgentCoreMemory',
       name: config.name,
       eventExpiryDuration: config.eventExpiryDuration,
       strategies,

@@ -39,7 +39,6 @@ describe('requiresUv', () => {
       managedBy: 'CDK' as const,
       agents: [
         {
-          type: 'AgentCoreRuntime',
           name: 'Agent1',
           build: 'CodeZip',
           runtimeVersion: 'PYTHON_3_12',
@@ -65,7 +64,6 @@ describe('requiresUv', () => {
       managedBy: 'CDK' as const,
       agents: [
         {
-          type: 'AgentCoreRuntime',
           name: 'Agent1',
           build: 'Container',
           runtimeVersion: 'PYTHON_3_12',
@@ -109,7 +107,6 @@ describe('requiresContainerRuntime', () => {
       managedBy: 'CDK' as const,
       agents: [
         {
-          type: 'AgentCoreRuntime',
           name: 'Agent1',
           build: 'Container',
           runtimeVersion: 'PYTHON_3_12',
@@ -135,7 +132,6 @@ describe('requiresContainerRuntime', () => {
       managedBy: 'CDK' as const,
       agents: [
         {
-          type: 'AgentCoreRuntime',
           name: 'Agent1',
           build: 'CodeZip',
           runtimeVersion: 'PYTHON_3_12',
@@ -177,7 +173,6 @@ describe('requiresContainerRuntime', () => {
       managedBy: 'CDK' as const,
       agents: [
         {
-          type: 'AgentCoreRuntime',
           name: 'Agent1',
           build: 'CodeZip',
           runtimeVersion: 'PYTHON_3_12',
@@ -186,7 +181,6 @@ describe('requiresContainerRuntime', () => {
           protocol: 'HTTP',
         },
         {
-          type: 'AgentCoreRuntime',
           name: 'Agent2',
           build: 'Container',
           runtimeVersion: 'PYTHON_3_12',
@@ -302,7 +296,6 @@ describe('checkDependencyVersions', () => {
       managedBy: 'CDK' as const,
       agents: [
         {
-          type: 'AgentCoreRuntime',
           name: 'Agent1',
           build: 'CodeZip',
           runtimeVersion: 'PYTHON_3_12',

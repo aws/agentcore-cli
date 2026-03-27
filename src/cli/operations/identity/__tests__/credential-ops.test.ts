@@ -48,7 +48,11 @@ describe('createCredential', () => {
     mockWriteProjectSpec.mockResolvedValue(undefined);
     mockSetEnvVar.mockResolvedValue(undefined);
 
-    const result = await primitive.add({ type: 'ApiKeyCredentialProvider', name: 'NewCred', apiKey: 'key123' });
+    const result = await primitive.add({
+      authorizerType: 'ApiKeyCredentialProvider',
+      name: 'NewCred',
+      apiKey: 'key123',
+    });
 
     expect(result).toEqual(expect.objectContaining({ success: true, credentialName: 'NewCred' }));
     expect(mockWriteProjectSpec).toHaveBeenCalled();
@@ -56,11 +60,15 @@ describe('createCredential', () => {
   });
 
   it('reuses existing credential without writing project', async () => {
-    const existing = { name: 'ExistCred', type: 'ApiKeyCredentialProvider' };
+    const existing = { name: 'ExistCred', authorizerType: 'ApiKeyCredentialProvider' };
     mockReadProjectSpec.mockResolvedValue({ credentials: [existing] });
     mockSetEnvVar.mockResolvedValue(undefined);
 
-    const result = await primitive.add({ type: 'ApiKeyCredentialProvider', name: 'ExistCred', apiKey: 'newkey' });
+    const result = await primitive.add({
+      authorizerType: 'ApiKeyCredentialProvider',
+      name: 'ExistCred',
+      apiKey: 'newkey',
+    });
 
     expect(result).toEqual(expect.objectContaining({ success: true, credentialName: 'ExistCred' }));
     expect(mockWriteProjectSpec).not.toHaveBeenCalled();
@@ -91,7 +99,7 @@ describe('resolveCredentialStrategy', () => {
 
   it('reuses existing credential with matching key', async () => {
     mockGetEnvVar.mockResolvedValue('my-api-key');
-    const creds = [{ name: 'ProjAnthropic', type: 'ApiKeyCredentialProvider' as const }];
+    const creds = [{ name: 'ProjAnthropic', authorizerType: 'ApiKeyCredentialProvider' as const }];
 
     const result = await primitive.resolveCredentialStrategy(
       'Proj',
@@ -123,7 +131,7 @@ describe('resolveCredentialStrategy', () => {
 
   it('creates agent-scoped credential when project-scoped exists with different key', async () => {
     mockGetEnvVar.mockResolvedValue('different-key');
-    const creds = [{ name: 'ProjAnthropic', type: 'ApiKeyCredentialProvider' as const }];
+    const creds = [{ name: 'ProjAnthropic', authorizerType: 'ApiKeyCredentialProvider' as const }];
 
     const result = await primitive.resolveCredentialStrategy(
       'Proj',

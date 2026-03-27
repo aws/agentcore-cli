@@ -41,12 +41,12 @@ export function AddGatewayTargetFlow({
   const [flow, setFlow] = useState<FlowState>({ name: 'create-wizard' });
 
   const oauthCredentialNames = useMemo(
-    () => credentials.filter(c => c.type === 'OAuthCredentialProvider').map(c => c.name),
+    () => credentials.filter(c => c.authorizerType === 'OAuthCredentialProvider').map(c => c.name),
     [credentials]
   );
 
   const apiKeyCredentialNames = useMemo(
-    () => credentials.filter(c => c.type === 'ApiKeyCredentialProvider').map(c => c.name),
+    () => credentials.filter(c => c.authorizerType === 'ApiKeyCredentialProvider').map(c => c.name),
     [credentials]
   );
 
@@ -116,7 +116,7 @@ export function AddGatewayTargetFlow({
       const createConfig =
         identityConfig.identityType === 'OAuthCredentialProvider'
           ? {
-              type: 'OAuthCredentialProvider' as const,
+              authorizerType: 'OAuthCredentialProvider' as const,
               name: identityConfig.name,
               discoveryUrl: identityConfig.discoveryUrl!,
               clientId: identityConfig.clientId!,
@@ -127,7 +127,7 @@ export function AddGatewayTargetFlow({
                 .filter(Boolean),
             }
           : {
-              type: 'ApiKeyCredentialProvider' as const,
+              authorizerType: 'ApiKeyCredentialProvider' as const,
               name: identityConfig.name,
               apiKey: identityConfig.apiKey,
             };

@@ -56,7 +56,6 @@ export type AddAgentOutcome = AddAgentCreateResult | AddAgentByoResult | AddAgen
 export function mapByoConfigToAgent(config: AddAgentConfig): AgentEnvSpec {
   const networkMode = config.networkMode ?? 'PUBLIC';
   return {
-    type: 'AgentCoreRuntime',
     name: config.name,
     build: config.buildType,
     entrypoint: config.entrypoint as FilePath,

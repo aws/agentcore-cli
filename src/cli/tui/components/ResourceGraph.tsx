@@ -222,7 +222,7 @@ export function ResourceGraph({ project, mcp, agentName, resourceStatuses }: Res
                 icon={ICONS.credential}
                 color="yellow"
                 name={credential.name}
-                detail={rsEntry?.detail ?? credential.type.replace('CredentialProvider', '')}
+                detail={rsEntry?.detail ?? credential.authorizerType.replace('CredentialProvider', '')}
                 deploymentState={rsEntry?.deploymentState}
                 identifier={rsEntry?.identifier}
               />

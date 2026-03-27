@@ -190,7 +190,7 @@ describe('add gateway command', () => {
       // Verify managed OAuth credential in agentcore.json
       const credential = projectSpec.credentials.find((c: { name: string }) => c.name === `${gatewayName}-oauth`);
       expect(credential, 'Managed OAuth credential should exist').toBeTruthy();
-      expect(credential.type).toBe('OAuthCredentialProvider');
+      expect(credential.authorizerType).toBe('OAuthCredentialProvider');
       expect(credential.managed).toBe(true);
       expect(credential.usage).toBe('inbound');
     });

@@ -176,7 +176,6 @@ function makeProjectSpec(agents: { name: string }[] = [], memories: { name: stri
     name: 'TestProject',
     version: 1,
     agents: agents.map(a => ({
-      type: 'AgentCoreRuntime',
       name: a.name,
       build: 'CodeZip',
       entrypoint: 'main.py',
@@ -187,7 +186,6 @@ function makeProjectSpec(agents: { name: string }[] = [], memories: { name: stri
       instrumentation: { enableOtel: true },
     })),
     memories: memories.map(m => ({
-      type: 'AgentCoreMemory',
       name: m.name,
       eventExpiryDuration: 30,
       strategies: [{ type: 'SEMANTIC' }],
@@ -529,7 +527,7 @@ describe('Import Idempotency (Test Group 7)', () => {
       );
 
       const existingSpec = makeProjectSpec();
-      (existingSpec as any).credentials = [{ type: 'ApiKeyCredentialProvider', name: 'my-cred' }];
+      (existingSpec as any).credentials = [{ authorizerType: 'ApiKeyCredentialProvider', name: 'my-cred' }];
       mockConfigIOInstance.readProjectSpec.mockResolvedValue(existingSpec);
 
       const progressMessages: string[] = [];

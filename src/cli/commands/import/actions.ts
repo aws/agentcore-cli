@@ -46,7 +46,6 @@ function toAgentEnvSpec(agent: ParsedStarterToolkitConfig['agents'][0]): AgentEn
 
   /* eslint-disable @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-explicit-any */
   const spec: AgentEnvSpec = {
-    type: 'AgentCoreRuntime',
     name: agent.name,
     build: agent.build,
     entrypoint: entrypoint as any,
@@ -85,7 +84,6 @@ function toMemorySpec(mem: ParsedStarterToolkitConfig['memories'][0]): Memory {
   }
 
   return {
-    type: 'AgentCoreMemory',
     name: mem.name,
     eventExpiryDuration: Math.max(7, Math.min(365, mem.eventExpiryDays)),
     strategies,
@@ -99,13 +97,13 @@ function toMemorySpec(mem: ParsedStarterToolkitConfig['memories'][0]): Memory {
  */
 function toCredentialSpec(cred: ParsedStarterToolkitConfig['credentials'][0]): Credential {
   if (cred.providerType === 'api_key') {
-    return { type: 'ApiKeyCredentialProvider', name: cred.name };
+    return { authorizerType: 'ApiKeyCredentialProvider', name: cred.name };
   }
   // OAuth providers already exist in Identity service. We map them as OAuthCredentialProvider
   // so the CLI correctly wires CLIENT_ID/CLIENT_SECRET env vars (not API_KEY).
   // discoveryUrl is omitted since it's not available from the YAML and the provider
   // already exists — pre-deploy will skip if no credentials are in .env.local.
-  return { type: 'OAuthCredentialProvider', name: cred.name, vendor: 'CustomOauth2' };
+  return { authorizerType: 'OAuthCredentialProvider', name: cred.name, vendor: 'CustomOauth2' };
 }
 
 export async function handleImport(options: ImportOptions): Promise<ImportResult> {

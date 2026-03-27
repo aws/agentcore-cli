@@ -211,7 +211,6 @@ export class OnlineEvalConfigPrimitive extends BasePrimitive<AddOnlineEvalConfig
     this.checkDuplicate(project.onlineEvalConfigs, options.name, 'Online eval config');
 
     const config: OnlineEvalConfig = {
-      type: 'OnlineEvaluationConfig',
       name: options.name,
       agent: options.agent,
       evaluators: options.evaluators,

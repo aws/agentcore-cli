@@ -30,7 +30,6 @@ describe('mapGenerateInputToMemories', () => {
   it('returns memory with no strategies for "shortTerm"', () => {
     const result = mapGenerateInputToMemories('shortTerm', 'Proj');
     expect(result).toHaveLength(1);
-    expect(result[0]!.type).toBe('AgentCoreMemory');
     expect(result[0]!.name).toBe('ProjMemory');
     expect(result[0]!.eventExpiryDuration).toBe(30);
     expect(result[0]!.strategies).toEqual([]);
@@ -57,7 +56,6 @@ describe('mapGenerateInputToMemories', () => {
   it('returns memory with single CUSTOM strategy for "custom"', () => {
     const result = mapGenerateInputToMemories('custom', 'Proj');
     expect(result).toHaveLength(1);
-    expect(result[0]!.type).toBe('AgentCoreMemory');
     expect(result[0]!.name).toBe('ProjMemory');
     expect(result[0]!.eventExpiryDuration).toBe(30);
     const strategies = result[0]!.strategies;
@@ -87,7 +85,7 @@ describe('mapModelProviderToCredentials', () => {
   it('returns credential for Anthropic', () => {
     const result = mapModelProviderToCredentials('Anthropic', 'Proj');
     expect(result).toHaveLength(1);
-    expect(result[0]!.type).toBe('ApiKeyCredentialProvider');
+    expect(result[0]!.authorizerType).toBe('ApiKeyCredentialProvider');
     expect(result[0]!.name).toBe('ProjAnthropic');
   });
 
@@ -105,7 +103,6 @@ describe('mapModelProviderToCredentials', () => {
 describe('mapGenerateConfigToAgent', () => {
   it('creates AgentCoreRuntime agent spec', () => {
     const result = mapGenerateConfigToAgent(baseConfig);
-    expect(result.type).toBe('AgentCoreRuntime');
     expect(result.name).toBe('TestProject');
     expect(result.build).toBe('CodeZip');
     expect(result.entrypoint).toBe('main.py');
@@ -235,7 +232,6 @@ describe('mapGenerateConfigToRenderConfig', () => {
   it('includes existing memories in memoryProviders', async () => {
     const existingMemories = [
       {
-        type: 'AgentCoreMemory' as const,
         name: 'SharedMemory',
         eventExpiryDuration: 30,
         strategies: [{ type: 'SEMANTIC' as const, namespaces: ['/users/{actorId}/facts'] }],
@@ -253,7 +249,6 @@ describe('mapGenerateConfigToRenderConfig', () => {
     const config: GenerateConfig = { ...baseConfig, memory: 'shortTerm' };
     const existingMemories = [
       {
-        type: 'AgentCoreMemory' as const,
         name: 'TestProjectMemory',
         eventExpiryDuration: 30,
         strategies: [{ type: 'SEMANTIC' as const, namespaces: ['/users/{actorId}/facts'] }],
@@ -269,7 +264,6 @@ describe('mapGenerateConfigToRenderConfig', () => {
   it('sets hasMemory true from existing memories even when memory option is "none"', async () => {
     const existingMemories = [
       {
-        type: 'AgentCoreMemory' as const,
         name: 'ProjectMemory',
         eventExpiryDuration: 30,
         strategies: [],
@@ -285,7 +279,6 @@ describe('mapGenerateConfigToRenderConfig', () => {
     const config: GenerateConfig = { ...baseConfig, memory: 'custom', projectName: 'NewAgent' };
     const existingMemories = [
       {
-        type: 'AgentCoreMemory' as const,
         name: 'SharedMemory',
         eventExpiryDuration: 30,
         strategies: [{ type: 'SEMANTIC' as const, namespaces: ['/users/{actorId}/facts'] }],
@@ -303,7 +296,6 @@ describe('mapExistingMemoriesToProviders', () => {
   it('maps memories to providers with correct envVarName and strategies', () => {
     const memories = [
       {
-        type: 'AgentCoreMemory' as const,
         name: 'MyMemory',
         eventExpiryDuration: 30,
         strategies: [
@@ -322,7 +314,6 @@ describe('mapExistingMemoriesToProviders', () => {
   it('handles memory with CUSTOM strategy (no namespaces)', () => {
     const memories = [
       {
-        type: 'AgentCoreMemory' as const,
         name: 'CustomMem',
         eventExpiryDuration: 30,
         strategies: [{ type: 'CUSTOM' as const }],
@@ -336,7 +327,6 @@ describe('mapExistingMemoriesToProviders', () => {
   it('handles memory with empty strategies (short-term memory)', () => {
     const memories = [
       {
-        type: 'AgentCoreMemory' as const,
         name: 'ShortTermMem',
         eventExpiryDuration: 30,
         strategies: [],
@@ -351,13 +341,11 @@ describe('mapExistingMemoriesToProviders', () => {
   it('maps multiple memories', () => {
     const memories = [
       {
-        type: 'AgentCoreMemory' as const,
         name: 'MemOne',
         eventExpiryDuration: 30,
         strategies: [{ type: 'SEMANTIC' as const, namespaces: ['/users/{actorId}/facts'] }],
       },
       {
-        type: 'AgentCoreMemory' as const,
         name: 'MemTwo',
         eventExpiryDuration: 60,
         strategies: [{ type: 'CUSTOM' as const }],
@@ -394,7 +382,6 @@ describe('mapGenerateConfigToAgent protocol mode', () => {
     };
     const result = mapGenerateConfigToAgent(httpConfig);
     expect(result.protocol).toBe('HTTP');
-    expect(result.modelProvider).toBe('Bedrock');
   });
 
   it('sets protocol for A2A', () => {
@@ -404,7 +391,6 @@ describe('mapGenerateConfigToAgent protocol mode', () => {
     };
     const result = mapGenerateConfigToAgent(a2aConfig);
     expect(result.protocol).toBe('A2A');
-    expect(result.modelProvider).toBe('Bedrock');
   });
 });
 

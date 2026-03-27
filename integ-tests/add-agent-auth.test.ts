@@ -116,7 +116,7 @@ describe('integration: add BYO agent with CUSTOM_JWT auth', () => {
     // Verify OAuth credential was auto-created
     const oauthCred = config.credentials.find(c => c.name === `${agent2}-oauth`);
     expect(oauthCred, 'OAuth credential should be auto-created').toBeTruthy();
-    expect(oauthCred!.type).toBe('OAuthCredentialProvider');
+    expect(oauthCred!.authorizerType).toBe('OAuthCredentialProvider');
     expect((oauthCred as { managed?: boolean }).managed).toBe(true);
 
     // Verify .env.local has client secrets (namespaced per credential)

@@ -85,7 +85,7 @@ export async function setupApiKeyProviders(options: SetupApiKeyProvidersOptions)
 
   // Set up each credential in the project
   for (const credential of projectSpec.credentials) {
-    if (credential.type === 'ApiKeyCredentialProvider') {
+    if (credential.authorizerType === 'ApiKeyCredentialProvider') {
       const result = await setupApiKeyCredentialProvider(client, credential, allCredentials);
       results.push(result);
     }
@@ -200,7 +200,7 @@ async function setupApiKeyCredentialProvider(
  * Check if the project has any API key credentials that need setup.
  */
 export function hasIdentityApiProviders(projectSpec: AgentCoreProjectSpec): boolean {
-  return projectSpec.credentials.some(c => c.type === 'ApiKeyCredentialProvider');
+  return projectSpec.credentials.some(c => c.authorizerType === 'ApiKeyCredentialProvider');
 }
 
 export interface MissingCredential {
@@ -219,7 +219,7 @@ export async function getMissingCredentials(
   const missing: MissingCredential[] = [];
 
   for (const credential of projectSpec.credentials) {
-    if (credential.type === 'ApiKeyCredentialProvider') {
+    if (credential.authorizerType === 'ApiKeyCredentialProvider') {
       const envVarName = computeDefaultCredentialEnvVarName(credential.name);
       if (!envVars[envVarName]) {
         missing.push({
@@ -240,12 +240,12 @@ export function getAllCredentials(projectSpec: AgentCoreProjectSpec): MissingCre
   const credentials: MissingCredential[] = [];
 
   for (const credential of projectSpec.credentials) {
-    if (credential.type === 'ApiKeyCredentialProvider') {
+    if (credential.authorizerType === 'ApiKeyCredentialProvider') {
       credentials.push({
         providerName: credential.name,
         envVarName: computeDefaultCredentialEnvVarName(credential.name),
       });
-    } else if (credential.type === 'OAuthCredentialProvider') {
+    } else if (credential.authorizerType === 'OAuthCredentialProvider') {
       const nameKey = credential.name.toUpperCase().replace(/-/g, '_');
       credentials.push(
         { providerName: credential.name, envVarName: `AGENTCORE_CREDENTIAL_${nameKey}_CLIENT_ID` },
@@ -298,7 +298,7 @@ export async function setupOAuth2Providers(options: SetupOAuth2ProvidersOptions)
   const client = new BedrockAgentCoreControlClient({ region, credentials });
 
   for (const credential of projectSpec.credentials) {
-    if (credential.type === 'OAuthCredentialProvider') {
+    if (credential.authorizerType === 'OAuthCredentialProvider') {
       const result = await setupSingleOAuth2Provider(client, credential, allCredentials);
       results.push(result);
     }
@@ -314,7 +314,7 @@ export async function setupOAuth2Providers(options: SetupOAuth2ProvidersOptions)
  * Check if the project has any OAuth credentials that need setup.
  */
 export function hasIdentityOAuthProviders(projectSpec: AgentCoreProjectSpec): boolean {
-  return projectSpec.credentials.some(c => c.type === 'OAuthCredentialProvider');
+  return projectSpec.credentials.some(c => c.authorizerType === 'OAuthCredentialProvider');
 }
 
 async function setupSingleOAuth2Provider(
@@ -322,7 +322,7 @@ async function setupSingleOAuth2Provider(
   credential: Credential,
   credentials: SecureCredentials
 ): Promise<OAuth2ProviderSetupResult> {
-  if (credential.type !== 'OAuthCredentialProvider') {
+  if (credential.authorizerType !== 'OAuthCredentialProvider') {
     return { providerName: credential.name, status: 'error', error: 'Invalid credential type' };
   }
 

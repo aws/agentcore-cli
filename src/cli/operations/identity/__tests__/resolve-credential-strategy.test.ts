@@ -131,7 +131,7 @@ describe('resolveCredentialStrategy', () => {
   });
 
   describe('credential exists - key comparison', () => {
-    const existingCredentials: Credential[] = [{ name: 'MyProjectGemini', type: 'ApiKeyCredentialProvider' }];
+    const existingCredentials: Credential[] = [{ name: 'MyProjectGemini', authorizerType: 'ApiKeyCredentialProvider' }];
 
     it('reuses credential when API keys match', async () => {
       mockGetEnvVar.mockResolvedValue('same-key');
@@ -201,8 +201,8 @@ describe('resolveCredentialStrategy', () => {
       // Scenario: agent1 uses mainKey (project-scoped), agent2 uses secondaryKey (agent-scoped)
       // agent3 also uses secondaryKey - should reuse agent2's credential
       const existingCredentials: Credential[] = [
-        { name: 'MyProjectGemini', type: 'ApiKeyCredentialProvider' },
-        { name: 'MyProjectAgent2Gemini', type: 'ApiKeyCredentialProvider' },
+        { name: 'MyProjectGemini', authorizerType: 'ApiKeyCredentialProvider' },
+        { name: 'MyProjectAgent2Gemini', authorizerType: 'ApiKeyCredentialProvider' },
       ];
 
       mockGetEnvVar.mockImplementation((envVar: string) => {
@@ -230,8 +230,8 @@ describe('resolveCredentialStrategy', () => {
 
     it('agent3 reuses project-scoped credential when using main key', async () => {
       const existingCredentials: Credential[] = [
-        { name: 'MyProjectGemini', type: 'ApiKeyCredentialProvider' },
-        { name: 'MyProjectAgent2Gemini', type: 'ApiKeyCredentialProvider' },
+        { name: 'MyProjectGemini', authorizerType: 'ApiKeyCredentialProvider' },
+        { name: 'MyProjectAgent2Gemini', authorizerType: 'ApiKeyCredentialProvider' },
       ];
 
       mockGetEnvVar.mockImplementation((envVar: string) => {
@@ -259,8 +259,8 @@ describe('resolveCredentialStrategy', () => {
 
     it('creates new agent-scoped credential when key matches no existing credential', async () => {
       const existingCredentials: Credential[] = [
-        { name: 'MyProjectGemini', type: 'ApiKeyCredentialProvider' },
-        { name: 'MyProjectAgent2Gemini', type: 'ApiKeyCredentialProvider' },
+        { name: 'MyProjectGemini', authorizerType: 'ApiKeyCredentialProvider' },
+        { name: 'MyProjectAgent2Gemini', authorizerType: 'ApiKeyCredentialProvider' },
       ];
 
       mockGetEnvVar.mockImplementation((envVar: string) => {
@@ -297,7 +297,7 @@ describe('resolveCredentialStrategy', () => {
         'OpenAI',
         'new-key',
         configBaseDir,
-        [{ name: 'TestProjectOpenAI', type: 'ApiKeyCredentialProvider' }]
+        [{ name: 'TestProjectOpenAI', authorizerType: 'ApiKeyCredentialProvider' }]
       );
 
       expect(result.credentialName).toBe('TestProjectMyAgentOpenAI');

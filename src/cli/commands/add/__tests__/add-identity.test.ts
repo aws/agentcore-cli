@@ -61,7 +61,7 @@ describe('add credential command', () => {
       const projectSpec = JSON.parse(await readFile(join(projectDir, 'agentcore/agentcore.json'), 'utf-8'));
       const credential = projectSpec.credentials.find((c: { name: string }) => c.name === identityName);
       expect(credential, 'Credential should be in project credentials').toBeTruthy();
-      expect(credential.type).toBe('ApiKeyCredentialProvider');
+      expect(credential.authorizerType).toBe('ApiKeyCredentialProvider');
     });
   });
 
@@ -98,7 +98,7 @@ describe('add credential command', () => {
       const projectSpec = JSON.parse(await readFile(join(projectDir, 'agentcore/agentcore.json'), 'utf-8'));
       const credential = projectSpec.credentials.find((c: { name: string }) => c.name === identityName);
       expect(credential, 'Credential should be in project credentials').toBeTruthy();
-      expect(credential.type).toBe('OAuthCredentialProvider');
+      expect(credential.authorizerType).toBe('OAuthCredentialProvider');
       expect(credential.discoveryUrl).toBe('https://idp.example.com/.well-known/openid-configuration');
       expect(credential.vendor).toBe('CustomOauth2');
       expect(credential.scopes).toEqual(['read', 'write']);

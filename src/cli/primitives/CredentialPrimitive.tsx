@@ -13,7 +13,7 @@ import type { Command } from '@commander-js/extra-typings';
  * Options for adding an API Key credential.
  */
 export interface AddApiKeyCredentialOptions {
-  type: 'ApiKeyCredentialProvider';
+  authorizerType: 'ApiKeyCredentialProvider';
   name: string;
   apiKey: string;
 }
@@ -22,7 +22,7 @@ export interface AddApiKeyCredentialOptions {
  * Options for adding an OAuth credential.
  */
 export interface AddOAuthCredentialOptions {
-  type: 'OAuthCredentialProvider';
+  authorizerType: 'OAuthCredentialProvider';
   name: string;
   discoveryUrl: string;
   clientId: string;
@@ -41,7 +41,7 @@ export type AddCredentialOptions = AddApiKeyCredentialOptions | AddOAuthCredenti
  */
 export interface RemovableCredential extends RemovableResource {
   name: string;
-  type: string;
+  authorizerType: string;
 }
 
 /**
@@ -127,7 +127,7 @@ export class CredentialPrimitive extends BasePrimitive<AddCredentialOptions, Rem
 
     const summary: string[] = [
       `Removing credential: ${credentialName}`,
-      `Type: ${credential.type}`,
+      `Type: ${credential.authorizerType}`,
       `Note: .env file will not be modified`,
     ];
 
@@ -162,7 +162,7 @@ export class CredentialPrimitive extends BasePrimitive<AddCredentialOptions, Rem
   async getRemovable(): Promise<RemovableCredential[]> {
     try {
       const project = await this.readProjectSpec();
-      return project.credentials.map(c => ({ name: c.name, type: c.type }));
+      return project.credentials.map(c => ({ name: c.name, authorizerType: c.authorizerType }));
     } catch {
       return [];
     }
@@ -311,7 +311,7 @@ export class CredentialPrimitive extends BasePrimitive<AddCredentialOptions, Rem
               const addOptions =
                 cliOptions.type === 'oauth'
                   ? {
-                      type: 'OAuthCredentialProvider' as const,
+                      authorizerType: 'OAuthCredentialProvider' as const,
                       name: cliOptions.name!,
                       discoveryUrl: cliOptions.discoveryUrl!,
                       clientId: cliOptions.clientId!,
@@ -322,7 +322,7 @@ export class CredentialPrimitive extends BasePrimitive<AddCredentialOptions, Rem
                         .filter(Boolean),
                     }
                   : {
-                      type: 'ApiKeyCredentialProvider' as const,
+                      authorizerType: 'ApiKeyCredentialProvider' as const,
                       name: cliOptions.name!,
                       apiKey: cliOptions.apiKey!,
                     };
@@ -386,9 +386,9 @@ export class CredentialPrimitive extends BasePrimitive<AddCredentialOptions, Rem
     let credential: Credential;
     if (existingCredential) {
       credential = existingCredential;
-    } else if (config.type === 'OAuthCredentialProvider') {
+    } else if (config.authorizerType === 'OAuthCredentialProvider') {
       credential = {
-        type: 'OAuthCredentialProvider',
+        authorizerType: 'OAuthCredentialProvider',
         name: config.name,
         discoveryUrl: config.discoveryUrl,
         vendor: 'CustomOauth2',
@@ -398,7 +398,7 @@ export class CredentialPrimitive extends BasePrimitive<AddCredentialOptions, Rem
       await this.writeProjectSpec(project);
     } else {
       credential = {
-        type: 'ApiKeyCredentialProvider',
+        authorizerType: 'ApiKeyCredentialProvider',
         name: config.name,
       };
       project.credentials.push(credential);
@@ -406,7 +406,7 @@ export class CredentialPrimitive extends BasePrimitive<AddCredentialOptions, Rem
     }
 
     // Write secrets to .env file
-    if (config.type === 'OAuthCredentialProvider') {
+    if (config.authorizerType === 'OAuthCredentialProvider') {
       const clientIdEnvVar = `${CredentialPrimitive.computeDefaultCredentialEnvVarName(config.name)}_CLIENT_ID`;
       const clientSecretEnvVar = `${CredentialPrimitive.computeDefaultCredentialEnvVarName(config.name)}_CLIENT_SECRET`;
       await setEnvVar(clientIdEnvVar, config.clientId);

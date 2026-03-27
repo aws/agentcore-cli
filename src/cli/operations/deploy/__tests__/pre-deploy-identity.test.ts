@@ -203,8 +203,8 @@ describe('hasIdentityOAuthProviders', () => {
   it('returns true when OAuthCredentialProvider exists', () => {
     const projectSpec = {
       credentials: [
-        { name: 'oauth-cred', type: 'OAuthCredentialProvider' },
-        { name: 'api-cred', type: 'ApiKeyCredentialProvider' },
+        { name: 'oauth-cred', authorizerType: 'OAuthCredentialProvider' },
+        { name: 'api-cred', authorizerType: 'ApiKeyCredentialProvider' },
       ],
     };
     expect(hasIdentityOAuthProviders(projectSpec as any)).toBe(true);
@@ -212,7 +212,7 @@ describe('hasIdentityOAuthProviders', () => {
 
   it('returns false when only ApiKey credentials exist', () => {
     const projectSpec = {
-      credentials: [{ name: 'api-cred', type: 'ApiKeyCredentialProvider' }],
+      credentials: [{ name: 'api-cred', authorizerType: 'ApiKeyCredentialProvider' }],
     };
     expect(hasIdentityOAuthProviders(projectSpec as any)).toBe(false);
   });
@@ -226,7 +226,7 @@ describe('hasIdentityOAuthProviders', () => {
 describe('getAllCredentials', () => {
   it('returns API key env var for ApiKeyCredentialProvider', () => {
     const projectSpec = {
-      credentials: [{ name: 'test-api', type: 'ApiKeyCredentialProvider' }],
+      credentials: [{ name: 'test-api', authorizerType: 'ApiKeyCredentialProvider' }],
     };
     const result = getAllCredentials(projectSpec as any);
     expect(result).toEqual([{ providerName: 'test-api', envVarName: 'AGENTCORE_CREDENTIAL_TEST_API' }]);
@@ -234,7 +234,7 @@ describe('getAllCredentials', () => {
 
   it('returns CLIENT_ID and CLIENT_SECRET vars for OAuthCredentialProvider', () => {
     const projectSpec = {
-      credentials: [{ name: 'oauth-provider', type: 'OAuthCredentialProvider' }],
+      credentials: [{ name: 'oauth-provider', authorizerType: 'OAuthCredentialProvider' }],
     };
     const result = getAllCredentials(projectSpec as any);
     expect(result).toEqual([
@@ -246,8 +246,8 @@ describe('getAllCredentials', () => {
   it('handles both credential types together', () => {
     const projectSpec = {
       credentials: [
-        { name: 'api-key', type: 'ApiKeyCredentialProvider' },
-        { name: 'oauth-cred', type: 'OAuthCredentialProvider' },
+        { name: 'api-key', authorizerType: 'ApiKeyCredentialProvider' },
+        { name: 'oauth-cred', authorizerType: 'OAuthCredentialProvider' },
       ],
     };
     const result = getAllCredentials(projectSpec as any);
@@ -260,7 +260,7 @@ describe('getAllCredentials', () => {
 
   it('uppercases and replaces hyphens with underscores', () => {
     const projectSpec = {
-      credentials: [{ name: 'my-oauth-provider', type: 'OAuthCredentialProvider' }],
+      credentials: [{ name: 'my-oauth-provider', authorizerType: 'OAuthCredentialProvider' }],
     };
     const result = getAllCredentials(projectSpec as any);
     expect(result[0]!.envVarName).toBe('AGENTCORE_CREDENTIAL_MY_OAUTH_PROVIDER_CLIENT_ID');
@@ -288,7 +288,7 @@ describe('setupOAuth2Providers', () => {
       credentials: [
         {
           name: 'test-oauth',
-          type: 'OAuthCredentialProvider',
+          authorizerType: 'OAuthCredentialProvider',
           vendor: 'Google',
           discoveryUrl: 'https://accounts.google.com/.well-known/openid_configuration',
         },
@@ -325,7 +325,7 @@ describe('setupOAuth2Providers', () => {
       credentials: [
         {
           name: 'test-oauth',
-          type: 'OAuthCredentialProvider',
+          authorizerType: 'OAuthCredentialProvider',
           discoveryUrl: 'https://accounts.google.com/.well-known/openid_configuration',
         },
       ],
@@ -347,7 +347,7 @@ describe('setupOAuth2Providers', () => {
     mockReadEnvFile.mockResolvedValue({});
 
     const projectSpec = {
-      credentials: [{ name: 'test-oauth', type: 'OAuthCredentialProvider' }],
+      credentials: [{ name: 'test-oauth', authorizerType: 'OAuthCredentialProvider' }],
     };
 
     const result = await setupOAuth2Providers({
@@ -374,7 +374,7 @@ describe('setupOAuth2Providers', () => {
       credentials: [
         {
           name: 'test-oauth',
-          type: 'OAuthCredentialProvider',
+          authorizerType: 'OAuthCredentialProvider',
           discoveryUrl: 'https://accounts.google.com/.well-known/openid_configuration',
         },
       ],

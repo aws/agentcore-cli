@@ -117,7 +117,7 @@ describe('createManagedOAuthCredential', () => {
     const writtenSpec = writeSpy.mock.calls[0]![0] as AgentCoreProjectSpec;
     const cred = writtenSpec.credentials.find(c => c.name === 'my-gateway-oauth');
     expect(cred).toEqual({
-      type: 'OAuthCredentialProvider',
+      authorizerType: 'OAuthCredentialProvider',
       name: 'my-gateway-oauth',
       discoveryUrl: 'https://idp.example.com/.well-known/openid-configuration',
       vendor: 'CustomOauth2',
@@ -143,7 +143,7 @@ describe('createManagedOAuthCredential', () => {
       ...baseProject,
       credentials: [
         {
-          type: 'OAuthCredentialProvider',
+          authorizerType: 'OAuthCredentialProvider',
           name: 'my-gateway-oauth',
           discoveryUrl: 'https://idp.example.com/.well-known/openid-configuration',
           vendor: 'CustomOauth2',

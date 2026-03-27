@@ -53,7 +53,7 @@ describe('ResourceGraph', () => {
   it('renders credentials section', () => {
     const project = {
       ...baseProject,
-      credentials: [{ name: 'my-cred', type: 'OAuthCredentialProvider' }],
+      credentials: [{ name: 'my-cred', authorizerType: 'OAuthCredentialProvider' }],
     } as unknown as AgentCoreProjectSpec;
 
     const { lastFrame } = render(<ResourceGraph project={project} />);

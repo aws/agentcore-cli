@@ -130,7 +130,7 @@ export function computeResourceStatuses(
     localItems: project.credentials,
     deployedRecord: resources?.credentials ?? {},
     getIdentifier: deployed => deployed.credentialProviderArn,
-    getLocalDetail: item => item.type?.replace('CredentialProvider', ''),
+    getLocalDetail: item => item.authorizerType?.replace('CredentialProvider', ''),
   });
 
   const memories = diffResourceSet({

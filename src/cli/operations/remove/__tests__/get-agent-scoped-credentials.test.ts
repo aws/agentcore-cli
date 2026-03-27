@@ -14,7 +14,7 @@ const getAgentScopedCredentials = (...args: Parameters<typeof AgentPrimitive.get
 describe('getAgentScopedCredentials', () => {
   const projectName = 'MyProject';
 
-  const makeCredential = (name: string): Credential => ({ name, type: 'ApiKeyCredentialProvider' });
+  const makeCredential = (name: string): Credential => ({ name, authorizerType: 'ApiKeyCredentialProvider' });
 
   describe('matches agent-scoped credentials', () => {
     it('matches credential for the specified agent', () => {

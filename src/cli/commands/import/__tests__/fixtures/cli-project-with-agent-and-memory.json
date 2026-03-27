@@ -3,7 +3,6 @@
   "version": 1,
   "agents": [
     {
-      "type": "AgentCoreRuntime",
       "name": "existing_agent",
       "build": "CodeZip",
       "entrypoint": "main.py",
@@ -18,7 +17,6 @@
   ],
   "memories": [
     {
-      "type": "AgentCoreMemory",
       "name": "existing_agent_memory",
       "eventExpiryDuration": 30,
       "strategies": [
@@ -30,7 +28,7 @@
   ],
   "credentials": [
     {
-      "type": "ApiKeyCredentialProvider",
+      "authorizerType": "ApiKeyCredentialProvider",
       "name": "my_api_key"
     }
   ],

@@ -71,7 +71,6 @@ describe('EvaluatorPrimitive', () => {
       const writtenSpec = mockWriteProjectSpec.mock.calls[0]![0];
       expect(writtenSpec.evaluators).toHaveLength(1);
       expect(writtenSpec.evaluators[0].name).toBe('MyEval');
-      expect(writtenSpec.evaluators[0].type).toBe('CustomEvaluator');
       expect(writtenSpec.evaluators[0].level).toBe('SESSION');
     });
 

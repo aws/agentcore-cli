@@ -23,7 +23,7 @@ export async function canFetchRuntimeToken(agentName: string, options: { configI
 
     const credName = computeManagedOAuthCredentialName(agentName);
     const hasCredential = projectSpec.credentials.some(
-      c => c.type === 'OAuthCredentialProvider' && c.name === credName
+      c => c.authorizerType === 'OAuthCredentialProvider' && c.name === credName
     );
     if (!hasCredential) return false;
 

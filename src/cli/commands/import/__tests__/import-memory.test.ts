@@ -37,7 +37,6 @@ function toMemorySpec(mem: ParsedStarterToolkitMemory): Memory {
   }
 
   return {
-    type: 'AgentCoreMemory',
     name: mem.name,
     eventExpiryDuration: Math.max(7, Math.min(365, mem.eventExpiryDays)),
     strategies,
@@ -367,7 +366,6 @@ describe('toMemorySpec', () => {
 
     const result = toMemorySpec(mem);
 
-    expect(result.type).toBe('AgentCoreMemory');
     expect(result.name).toBe('test_memory');
     expect(result.eventExpiryDuration).toBe(30);
     expect(result.strategies).toHaveLength(3);
@@ -384,7 +382,6 @@ describe('toMemorySpec', () => {
 
     const result = toMemorySpec(mem);
 
-    expect(result.type).toBe('AgentCoreMemory');
     expect(result.name).toBe('stm_memory');
     expect(result.eventExpiryDuration).toBe(14);
     expect(result.strategies).toHaveLength(0);
@@ -505,7 +502,6 @@ describe('Memory Merge Logic', () => {
   it('skips existing memories by name', () => {
     const existingMemories: Memory[] = [
       {
-        type: 'AgentCoreMemory',
         name: 'existing_memory',
         eventExpiryDuration: 30,
         strategies: [{ type: 'SEMANTIC' }],

@@ -128,7 +128,7 @@ export function useInvokeFlow(options: InvokeFlowOptions = {}): InvokeFlowState 
           agents.push({
             name: agent.name,
             state,
-            modelProvider: agent.modelProvider,
+            modelProvider: undefined,
             networkMode: agent.networkMode,
             protocol: agent.protocol,
             authorizerType: agent.authorizerType,

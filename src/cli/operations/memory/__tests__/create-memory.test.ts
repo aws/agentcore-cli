@@ -24,7 +24,7 @@ const makeProject = (memoryNames: string[]) => ({
   agents: [],
   memories: memoryNames.map(name => ({
     name,
-    type: 'AgentCoreMemory',
+
     eventExpiryDuration: 30,
     strategies: [],
   })),
@@ -70,7 +70,7 @@ describe('add', () => {
     const writtenSpec = mockWriteProjectSpec.mock.calls[0]![0];
     const addedMemory = writtenSpec.memories.find((m: { name: string }) => m.name === 'NewMem');
     expect(addedMemory).toBeDefined();
-    expect(addedMemory.type).toBe('AgentCoreMemory');
+    expect(addedMemory).toBeDefined();
     expect(addedMemory.eventExpiryDuration).toBe(60);
     expect(addedMemory.strategies[0]!.type).toBe('SEMANTIC');
     expect(addedMemory.strategies[0]!.namespaces).toEqual(['/users/{actorId}/facts']);

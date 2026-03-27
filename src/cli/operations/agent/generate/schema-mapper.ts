@@ -83,7 +83,6 @@ export function mapGenerateInputToMemories(memory: MemoryOption, projectName: st
 
   return [
     {
-      type: 'AgentCoreMemory',
       name: `${projectName}Memory`,
       eventExpiryDuration: DEFAULT_MEMORY_EXPIRY_DAYS,
       strategies,
@@ -102,7 +101,7 @@ export function mapModelProviderToCredentials(modelProvider: ModelProvider, proj
 
   return [
     {
-      type: 'ApiKeyCredentialProvider',
+      authorizerType: 'ApiKeyCredentialProvider',
       name: computeCredentialName(projectName, modelProvider),
     },
   ];
@@ -117,7 +116,6 @@ export function mapGenerateConfigToAgent(config: GenerateConfig): AgentEnvSpec {
   const networkMode = config.networkMode ?? DEFAULT_NETWORK_MODE;
 
   return {
-    type: 'AgentCoreRuntime',
     name: config.projectName,
     build: config.buildType ?? 'CodeZip',
     entrypoint: DEFAULT_PYTHON_ENTRYPOINT as FilePath,
@@ -151,7 +149,6 @@ export function mapGenerateConfigToAgent(config: GenerateConfig): AgentEnvSpec {
           },
         }
       : {}),
-    ...(protocol !== 'MCP' && { modelProvider: config.modelProvider }),
     // MCP uses mcp.run() which is incompatible with the opentelemetry-instrument wrapper
     ...(protocol === 'MCP' && { instrumentation: { enableOtel: false } }),
   };

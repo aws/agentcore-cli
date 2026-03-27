@@ -372,12 +372,6 @@ export function InvokeScreen({
           <Text color="cyan">{agentProtocol}</Text>
         </Box>
       )}
-      {mode !== 'select-agent' && agent?.modelProvider && (
-        <Box>
-          <Text>Provider: </Text>
-          <Text color="cyan">{agent.modelProvider}</Text>
-        </Box>
-      )}
       <Box>
         <Text>Target: </Text>
         <Text color="yellow">{config.target.region}</Text>

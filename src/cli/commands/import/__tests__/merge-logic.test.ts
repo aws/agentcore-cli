@@ -15,7 +15,6 @@ function toAgentEnvSpec(agent: ParsedStarterToolkitConfig['agents'][0]): AgentEn
   const codeLocation = path.join(APP_DIR, agent.name);
   const entrypoint = path.basename(agent.entrypoint);
   const spec: AgentEnvSpec = {
-    type: 'AgentCoreRuntime',
     name: agent.name,
     build: agent.build,
     entrypoint: entrypoint as AgentEnvSpec['entrypoint'],
@@ -39,7 +38,6 @@ function toMemorySpec(mem: ParsedStarterToolkitConfig['memories'][0]): Memory {
     strategies.push({ type: 'USER_PREFERENCE' });
   }
   return {
-    type: 'AgentCoreMemory',
     name: mem.name,
     eventExpiryDuration: Math.max(7, Math.min(365, mem.eventExpiryDays)),
     strategies,
@@ -47,7 +45,7 @@ function toMemorySpec(mem: ParsedStarterToolkitConfig['memories'][0]): Memory {
 }
 
 function toCredentialSpec(cred: ParsedStarterToolkitConfig['credentials'][0]): Credential {
-  return { type: 'ApiKeyCredentialProvider', name: cred.name };
+  return { authorizerType: 'ApiKeyCredentialProvider', name: cred.name };
 }
 
 function simulateMerge(
@@ -159,7 +157,7 @@ describe('merge: credential deduplication', () => {
   });
   it('skips credential with same name', () => {
     const projectSpec = loadCliProjectSpec();
-    projectSpec.credentials.push({ type: 'ApiKeyCredentialProvider', name: 'new_api_key_cred' });
+    projectSpec.credentials.push({ authorizerType: 'ApiKeyCredentialProvider', name: 'new_api_key_cred' });
     const parsed = parseStarterToolkitYaml(DIFFERENT_AGENT_YAML);
     const { messages } = simulateMerge(projectSpec, parsed);
     expect(messages).toContain('Skipping credential "new_api_key_cred" (already exists in project)');

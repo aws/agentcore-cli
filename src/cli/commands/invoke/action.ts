@@ -214,8 +214,8 @@ export async function handleInvoke(context: InvokeContext, options: InvokeOption
     }
   }
 
-  // Get provider info if available
-  const providerInfo = agentSpec.modelProvider;
+  // modelProvider has been removed from schema
+  const providerInfo = undefined;
 
   // Create logger for this invocation
   const logger = new InvokeLogger({

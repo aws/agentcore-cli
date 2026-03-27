@@ -183,11 +183,6 @@ export const registerDev = (program: Command) => {
           if (protocol === 'A2A') invokePort = 9000;
           else if (protocol === 'MCP') invokePort = 8000;
 
-          // Show model info if available (not applicable to MCP)
-          if (protocol !== 'MCP' && targetAgent?.modelProvider) {
-            console.log(`Provider: ${targetAgent.modelProvider}`);
-          }
-
           // Protocol-aware dispatch
           if (protocol === 'MCP') {
             await handleMcpInvoke(invokePort, opts.invoke, opts.tool, opts.input, headers);
@@ -270,8 +265,7 @@ export const registerDev = (program: Command) => {
           }
 
           // Get provider info from agent config
-          const targetAgent = project.agents.find(a => a.name === config.agentName);
-          const providerInfo = targetAgent?.modelProvider ?? '(see agent code)';
+          const providerInfo = '(see agent code)';
 
           console.log(`Starting dev server...`);
           console.log(`Agent: ${config.agentName}`);

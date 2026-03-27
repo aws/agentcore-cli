@@ -183,7 +183,6 @@ describe('InstrumentationSchema', () => {
 
 describe('AgentEnvSpecSchema', () => {
   const validPythonAgent = {
-    type: 'AgentCoreRuntime',
     name: 'TestAgent',
     build: 'CodeZip',
     entrypoint: 'main.py:handler',
@@ -193,7 +192,6 @@ describe('AgentEnvSpecSchema', () => {
   };
 
   const validNodeAgent = {
-    type: 'AgentCoreRuntime',
     name: 'NodeAgent',
     build: 'CodeZip',
     entrypoint: 'index.ts',
@@ -282,12 +280,8 @@ describe('AgentEnvSpecSchema', () => {
     expect(result.success).toBe(true);
   });
 
-  it('rejects invalid type literal', () => {
-    expect(AgentEnvSpecSchema.safeParse({ ...validPythonAgent, type: 'Lambda' }).success).toBe(false);
-  });
-
   it('rejects missing required fields', () => {
-    expect(AgentEnvSpecSchema.safeParse({ type: 'AgentCoreRuntime' }).success).toBe(false);
+    expect(AgentEnvSpecSchema.safeParse({}).success).toBe(false);
     expect(AgentEnvSpecSchema.safeParse({ ...validPythonAgent, name: undefined }).success).toBe(false);
   });
 
@@ -413,7 +407,6 @@ describe('LifecycleConfigurationSchema', () => {
 
 describe('AgentEnvSpecSchema - lifecycleConfiguration', () => {
   const validAgent = {
-    type: 'AgentCoreRuntime',
     name: 'TestAgent',
     build: 'CodeZip',
     entrypoint: 'main.py',

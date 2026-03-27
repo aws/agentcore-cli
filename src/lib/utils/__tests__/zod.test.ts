@@ -3,7 +3,6 @@ import { describe, expect, it } from 'vitest';
 
 describe('validateAgentSchema', () => {
   const validAgent = {
-    type: 'AgentCoreRuntime',
     name: 'TestAgent',
     build: 'CodeZip',
     entrypoint: 'main.py',
@@ -64,7 +63,6 @@ describe('validateProjectSchema', () => {
 
   it('throws for duplicate agent names', () => {
     const agent = {
-      type: 'AgentCoreRuntime',
       name: 'Same',
       build: 'CodeZip',
       entrypoint: 'main.py',

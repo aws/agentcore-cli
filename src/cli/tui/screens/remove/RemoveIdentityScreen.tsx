@@ -15,7 +15,7 @@ export function RemoveIdentityScreen({ identities, onSelect, onExit }: RemoveIde
   const items = identities.map(identity => ({
     id: identity.name,
     title: identity.name,
-    description: identity.type,
+    description: identity.authorizerType,
   }));
 
   return (

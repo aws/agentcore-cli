@@ -21,7 +21,7 @@ const makeProject = (agentNames: string[]) => ({
   name: 'TestProject',
   version: 1,
   managedBy: 'CDK' as const,
-  agents: agentNames.map(name => ({ name, type: 'AgentCoreRuntime' })),
+  agents: agentNames.map(name => ({ name })),
   memories: [],
   credentials: [],
 });

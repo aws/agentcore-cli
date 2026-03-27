@@ -274,7 +274,6 @@ describe('toAgentEnvSpec conversion', () => {
   const APP_DIR = 'app';
   function toAgentEnvSpec(agent: ParsedStarterToolkitAgent) {
     return {
-      type: 'AgentCoreRuntime' as const,
       name: agent.name,
       build: agent.build,
       entrypoint: path.basename(agent.entrypoint),
@@ -298,8 +297,8 @@ describe('toAgentEnvSpec conversion', () => {
     enableOtel: true,
   };
 
-  it('type=AgentCoreRuntime', () => {
-    expect(toAgentEnvSpec(base).type).toBe('AgentCoreRuntime');
+  it('name is set', () => {
+    expect(toAgentEnvSpec(base).name).toBe('my_strands_agent');
   });
   it('build=CodeZip', () => {
     expect(toAgentEnvSpec(base).build).toBe('CodeZip');

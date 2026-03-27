@@ -43,7 +43,7 @@ export async function createManagedOAuthCredential(
   if (project.credentials.some(c => c.name === credentialName)) return;
 
   project.credentials.push({
-    type: 'OAuthCredentialProvider',
+    authorizerType: 'OAuthCredentialProvider',
     name: credentialName,
     discoveryUrl: jwtConfig.discoveryUrl,
     vendor: 'CustomOauth2',

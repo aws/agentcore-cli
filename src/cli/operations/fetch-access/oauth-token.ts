@@ -30,14 +30,14 @@ export async function fetchOAuthToken(opts: {
   /** Target name within deployed state */
   targetName: string;
   /** Project credentials list */
-  credentials: { type: string; name: string }[];
+  credentials: { authorizerType: string; name: string }[];
 }): Promise<OAuthTokenResult> {
   const { resourceName, jwtConfig, deployedState, targetName, credentials } = opts;
 
   const credName = computeManagedOAuthCredentialName(resourceName);
 
   // Validate credential exists in project spec
-  const credential = credentials.find(c => c.type === 'OAuthCredentialProvider' && c.name === credName);
+  const credential = credentials.find(c => c.authorizerType === 'OAuthCredentialProvider' && c.name === credName);
   if (!credential) {
     throw new Error(
       `No managed OAuth credential found for '${resourceName}'. Expected credential '${credName}'. ` +

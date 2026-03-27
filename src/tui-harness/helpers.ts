@@ -99,7 +99,6 @@ export async function createMinimalProjectDir(
   // Optionally add a sample agent.
   if (hasAgents) {
     (config.agents as unknown[]).push({
-      type: 'AgentCoreRuntime',
       name: 'TestAgent',
       build: 'CodeZip',
       entrypoint: 'main.py:handler',

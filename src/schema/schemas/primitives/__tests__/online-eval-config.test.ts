@@ -27,7 +27,6 @@ describe('OnlineEvalConfigNameSchema', () => {
 
 describe('OnlineEvalConfigSchema', () => {
   const validConfig = {
-    type: 'OnlineEvaluationConfig' as const,
     name: 'TestConfig',
     agent: 'MyAgent',
     evaluators: ['Builtin.GoalSuccessRate'],
@@ -49,11 +48,6 @@ describe('OnlineEvalConfigSchema', () => {
       evaluators: ['arn:aws:bedrock:us-east-1:123456:evaluator/MyEval-abc'],
     };
     expect(OnlineEvalConfigSchema.safeParse(config).success).toBe(true);
-  });
-
-  it('rejects wrong type literal', () => {
-    const config = { ...validConfig, type: 'WrongType' };
-    expect(OnlineEvalConfigSchema.safeParse(config).success).toBe(false);
   });
 
   it('rejects empty evaluators array', () => {

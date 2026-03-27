@@ -35,14 +35,11 @@ interface NetworkConfig {
 }
 
 type MemoryStrategyType = 'SEMANTIC' | 'SUMMARIZATION' | 'USER_PREFERENCE' | 'EPISODIC' | 'CUSTOM';
-type ModelProvider = 'Bedrock' | 'Gemini' | 'OpenAI' | 'Anthropic';
-
 // ─────────────────────────────────────────────────────────────────────────────
 // AGENT
 // ─────────────────────────────────────────────────────────────────────────────
 
 interface AgentEnvSpec {
-  type: 'AgentCoreRuntime';
   name: string; // @regex ^[a-zA-Z][a-zA-Z0-9_]{0,47}$ @max 48
   build: BuildType;
   entrypoint: string; // @regex ^[a-zA-Z0-9_][a-zA-Z0-9_/.-]*\.(py|ts|js)(:[a-zA-Z_][a-zA-Z0-9_]*)?$ e.g. "main.py:handler" or "index.ts"
@@ -52,7 +49,6 @@ interface AgentEnvSpec {
   networkMode?: NetworkMode; // default 'PUBLIC'
   networkConfig?: NetworkConfig; // Required when networkMode is 'VPC'
   instrumentation?: Instrumentation; // OTel settings
-  modelProvider?: ModelProvider; // Model provider used by this agent
   tags?: Record<string, string>;
 }
 
@@ -70,7 +66,6 @@ interface EnvVar {
 // ─────────────────────────────────────────────────────────────────────────────
 
 interface Memory {
-  type: 'AgentCoreMemory';
   name: string; // @regex ^[a-zA-Z][a-zA-Z0-9_]{0,47}$ @max 48
   eventExpiryDuration: number; // @min 7 @max 365 (days)
   strategies: MemoryStrategy[]; // @min 1, unique by type
@@ -95,6 +90,6 @@ interface MemoryStrategy {
 // ─────────────────────────────────────────────────────────────────────────────
 
 interface Credential {
-  type: 'ApiKeyCredentialProvider';
+  authorizerType: 'ApiKeyCredentialProvider' | 'OAuthCredentialProvider';
   name: string; // @regex ^[a-zA-Z0-9\-_]+$ @min 1 @max 128
 }

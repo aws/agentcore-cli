@@ -95,7 +95,6 @@ export const MemoryNameSchema = z
   );
 
 export const MemorySchema = z.object({
-  type: MemoryTypeSchema,
   name: MemoryNameSchema,
   eventExpiryDuration: z.number().int().min(7).max(365),
   // Strategies array can be empty for short-term memory (just base memory with expiration)
@@ -129,14 +128,14 @@ export const CredentialTypeSchema = z.enum(['ApiKeyCredentialProvider', 'OAuthCr
 export type CredentialType = z.infer<typeof CredentialTypeSchema>;
 
 export const ApiKeyCredentialSchema = z.object({
-  type: z.literal('ApiKeyCredentialProvider'),
+  authorizerType: z.literal('ApiKeyCredentialProvider'),
   name: CredentialNameSchema,
 });
 
 export type ApiKeyCredential = z.infer<typeof ApiKeyCredentialSchema>;
 
 export const OAuthCredentialSchema = z.object({
-  type: z.literal('OAuthCredentialProvider'),
+  authorizerType: z.literal('OAuthCredentialProvider'),
   name: CredentialNameSchema,
   /** OIDC discovery URL for the OAuth provider (optional for imported providers that already exist in Identity service) */
   discoveryUrl: z.string().url().optional(),
@@ -152,7 +151,7 @@ export const OAuthCredentialSchema = z.object({
 
 export type OAuthCredential = z.infer<typeof OAuthCredentialSchema>;
 
-export const CredentialSchema = z.discriminatedUnion('type', [ApiKeyCredentialSchema, OAuthCredentialSchema]);
+export const CredentialSchema = z.discriminatedUnion('authorizerType', [ApiKeyCredentialSchema, OAuthCredentialSchema]);
 
 export type Credential = z.infer<typeof CredentialSchema>;
 
@@ -164,7 +163,6 @@ export const EvaluatorTypeSchema = z.literal('CustomEvaluator');
 export type EvaluatorType = z.infer<typeof EvaluatorTypeSchema>;
 
 export const EvaluatorSchema = z.object({
-  type: EvaluatorTypeSchema,
   name: EvaluatorNameSchema,
   level: EvaluationLevelSchema,
   description: z.string().optional(),
