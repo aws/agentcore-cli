@@ -33,7 +33,6 @@ const STRATEGY_DESCRIPTIONS: Record<MemoryStrategyType, string> = {
   SUMMARIZATION: 'Compress and summarize conversation context',
   USER_PREFERENCE: 'Track and recall user preferences',
   EPISODIC: 'Capture and reflect on meaningful interaction episodes',
-  CUSTOM: 'Self-managed strategy with user-controlled extraction logic',
 };
 
 export const MEMORY_STRATEGY_OPTIONS = MemoryStrategyTypeSchema.options.map(type => ({

@@ -4,7 +4,6 @@ import {
   BuildTypeSchema,
   GatewayExceptionLevelSchema,
   GatewayNameSchema,
-  MemoryStrategyTypeSchema,
   ModelProviderSchema,
   ProtocolModeSchema,
   RuntimeAuthorizerTypeSchema,
@@ -34,8 +33,8 @@ export interface ValidationResult {
 }
 
 // Constants
-const MEMORY_OPTIONS = ['none', 'shortTerm', 'longAndShortTerm', 'custom'] as const;
-const VALID_STRATEGIES: readonly string[] = MemoryStrategyTypeSchema.options;
+const MEMORY_OPTIONS = ['none', 'shortTerm', 'longAndShortTerm'] as const;
+const VALID_STRATEGIES = ['SEMANTIC', 'SUMMARIZATION', 'USER_PREFERENCE', 'EPISODIC'];
 
 /**
  * Validate that a credential name exists in the project spec.
@@ -135,7 +134,7 @@ export function validateAddAgentOptions(options: AddAgentOptions): ValidationRes
     if (!MEMORY_OPTIONS.includes(options.memory as (typeof MEMORY_OPTIONS)[number])) {
       return {
         valid: false,
-        error: `Invalid memory option: ${options.memory}. Use none, shortTerm, longAndShortTerm, or custom`,
+        error: `Invalid memory option: ${options.memory}. Use none, shortTerm, or longAndShortTerm`,
       };
     }
     // Parse and validate lifecycle configuration for import path
@@ -243,7 +242,7 @@ export function validateAddAgentOptions(options: AddAgentOptions): ValidationRes
     if (!MEMORY_OPTIONS.includes(options.memory as (typeof MEMORY_OPTIONS)[number])) {
       return {
         valid: false,
-        error: `Invalid memory option: ${options.memory}. Use none, shortTerm, longAndShortTerm, or custom`,
+        error: `Invalid memory option: ${options.memory}. Use none, shortTerm, or longAndShortTerm`,
       };
     }
   }

@@ -30,7 +30,7 @@ export type GenerateStep =
   | 'maxLifetime'
   | 'confirm';
 
-export type MemoryOption = 'none' | 'shortTerm' | 'longAndShortTerm' | 'custom';
+export type MemoryOption = 'none' | 'shortTerm' | 'longAndShortTerm';
 
 // Re-export types from schema for convenience
 export type { BuildType, ModelProvider, ProtocolMode, SDKFramework, TargetLanguage };
@@ -158,5 +158,4 @@ export const MEMORY_OPTIONS = [
   { id: 'none', title: 'None', description: 'No memory' },
   { id: 'shortTerm', title: 'Short-term memory', description: 'Context within a session' },
   { id: 'longAndShortTerm', title: 'Long-term and short-term', description: 'Persists across sessions' },
-  { id: 'custom', title: 'Custom', description: 'Self-managed strategy with user-controlled extraction logic' },
 ] as const;

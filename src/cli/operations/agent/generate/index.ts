@@ -3,7 +3,6 @@ export {
   mapGenerateConfigToResources,
   mapGenerateConfigToRenderConfig,
   mapGenerateInputToMemories,
-  mapExistingMemoriesToProviders,
   mapModelProviderToCredentials,
   mapModelProviderToIdentityProviders,
   type GenerateConfigMappingResult,

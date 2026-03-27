@@ -21,7 +21,7 @@ export interface ValidationResult {
   error?: string;
 }
 
-const MEMORY_OPTIONS = ['none', 'shortTerm', 'longAndShortTerm', 'custom'] as const;
+const MEMORY_OPTIONS = ['none', 'shortTerm', 'longAndShortTerm'] as const;
 
 /** Check if a folder with the given name already exists in the directory */
 export function validateFolderNotExists(name: string, cwd: string): true | string {
@@ -72,7 +72,7 @@ export function validateCreateOptions(options: CreateOptions, cwd?: string): Val
     if (!MEMORY_OPTIONS.includes(options.memory as (typeof MEMORY_OPTIONS)[number])) {
       return {
         valid: false,
-        error: `Invalid memory option: ${options.memory}. Use none, shortTerm, longAndShortTerm, or custom`,
+        error: `Invalid memory option: ${options.memory}. Use none, shortTerm, or longAndShortTerm`,
       };
     }
     return { valid: true };
@@ -190,7 +190,7 @@ export function validateCreateOptions(options: CreateOptions, cwd?: string): Val
     if (!MEMORY_OPTIONS.includes(options.memory as (typeof MEMORY_OPTIONS)[number])) {
       return {
         valid: false,
-        error: `Invalid memory option: ${options.memory}. Use none, shortTerm, longAndShortTerm, or custom`,
+        error: `Invalid memory option: ${options.memory}. Use none, shortTerm, or longAndShortTerm`,
       };
     }
   }

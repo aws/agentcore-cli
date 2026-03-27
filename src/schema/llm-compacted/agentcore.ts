@@ -34,7 +34,10 @@ interface NetworkConfig {
   securityGroups: string[]; // sg-xxx IDs
 }
 
-type MemoryStrategyType = 'SEMANTIC' | 'SUMMARIZATION' | 'USER_PREFERENCE' | 'EPISODIC' | 'CUSTOM';
+type MemoryStrategyType = 'SEMANTIC' | 'SUMMARIZATION' | 'USER_PREFERENCE' | 'EPISODIC';
+type ModelProvider = 'Bedrock' | 'Gemini' | 'OpenAI' | 'Anthropic';
+
+
 // ─────────────────────────────────────────────────────────────────────────────
 // AGENT
 // ─────────────────────────────────────────────────────────────────────────────

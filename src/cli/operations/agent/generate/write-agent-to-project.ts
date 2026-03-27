@@ -40,10 +40,7 @@ export async function writeAgentToProject(config: GenerateConfig, options?: Writ
 
     // Add resources to project
     project.agents.push(agent);
-
-    // Only add memories that don't already exist in the project (avoid duplicates)
-    const newMemories = memories.filter(m => !project.memories.some(em => em.name === m.name));
-    project.memories.push(...newMemories);
+    project.memories.push(...memories);
 
     // Handle credentials based on strategy
     if (strategy) {

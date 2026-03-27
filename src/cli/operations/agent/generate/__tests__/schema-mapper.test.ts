@@ -2,7 +2,6 @@ import { computeManagedOAuthCredentialName } from '../../../../primitives/creden
 import { mapByoConfigToAgent } from '../../../../tui/screens/agent/useAddAgent.js';
 import type { GenerateConfig } from '../../../../tui/screens/generate/types.js';
 import {
-  mapExistingMemoriesToProviders,
   mapGenerateConfigToAgent,
   mapGenerateConfigToRenderConfig,
   mapGenerateConfigToResources,
@@ -51,24 +50,6 @@ describe('mapGenerateInputToMemories', () => {
     const result = mapGenerateInputToMemories('longAndShortTerm', 'Proj');
     const semantic = result[0]!.strategies.find(s => s.type === 'SEMANTIC');
     expect(semantic?.namespaces).toEqual(['/users/{actorId}/facts']);
-  });
-
-  it('returns memory with single CUSTOM strategy for "custom"', () => {
-    const result = mapGenerateInputToMemories('custom', 'Proj');
-    expect(result).toHaveLength(1);
-    expect(result[0]!.name).toBe('ProjMemory');
-    expect(result[0]!.eventExpiryDuration).toBe(30);
-    const strategies = result[0]!.strategies;
-    expect(strategies).toHaveLength(1);
-    expect(strategies[0]!.type).toBe('CUSTOM');
-  });
-
-  it('does not include namespaces for CUSTOM strategy', () => {
-    const result = mapGenerateInputToMemories('custom', 'Proj');
-    const custom = result[0]!.strategies[0]!;
-    expect(custom.type).toBe('CUSTOM');
-    expect(custom).not.toHaveProperty('namespaces');
-    expect(custom).not.toHaveProperty('reflectionNamespaces');
   });
 
   it('uses project name in memory name', () => {
@@ -148,14 +129,6 @@ describe('mapGenerateConfigToResources', () => {
     expect(result.credentials).toHaveLength(1);
     expect(result.memories[0]!.strategies).toHaveLength(4);
   });
-
-  it('includes memory with CUSTOM strategy when memory is "custom"', () => {
-    const config: GenerateConfig = { ...baseConfig, memory: 'custom' };
-    const result = mapGenerateConfigToResources(config);
-    expect(result.memories).toHaveLength(1);
-    expect(result.memories[0]!.strategies).toHaveLength(1);
-    expect(result.memories[0]!.strategies[0]!.type).toBe('CUSTOM');
-  });
 });
 
 describe('mapModelProviderToIdentityProviders', () => {
@@ -218,149 +191,6 @@ describe('mapGenerateConfigToRenderConfig', () => {
     const config: GenerateConfig = { ...baseConfig, memory: 'longAndShortTerm' };
     const result = await mapGenerateConfigToRenderConfig(config, []);
     expect(result.memoryProviders[0]!.strategies).toEqual(['SEMANTIC', 'USER_PREFERENCE', 'SUMMARIZATION', 'EPISODIC']);
-  });
-
-  it('populates memoryProviders with CUSTOM strategy for custom memory', async () => {
-    const config: GenerateConfig = { ...baseConfig, memory: 'custom' };
-    const result = await mapGenerateConfigToRenderConfig(config, []);
-    expect(result.hasMemory).toBe(true);
-    expect(result.memoryProviders).toHaveLength(1);
-    expect(result.memoryProviders[0]!.name).toBe('TestProjectMemory');
-    expect(result.memoryProviders[0]!.strategies).toEqual(['CUSTOM']);
-  });
-
-  it('includes existing memories in memoryProviders', async () => {
-    const existingMemories = [
-      {
-        name: 'SharedMemory',
-        eventExpiryDuration: 30,
-        strategies: [{ type: 'SEMANTIC' as const, namespaces: ['/users/{actorId}/facts'] }],
-      },
-    ];
-    const result = await mapGenerateConfigToRenderConfig(baseConfig, [], existingMemories);
-    expect(result.hasMemory).toBe(true);
-    expect(result.memoryProviders).toHaveLength(1);
-    expect(result.memoryProviders[0]!.name).toBe('SharedMemory');
-    expect(result.memoryProviders[0]!.envVarName).toBe('MEMORY_SHAREDMEMORY_ID');
-    expect(result.memoryProviders[0]!.strategies).toEqual(['SEMANTIC']);
-  });
-
-  it('deduplicates when existing memory and new memory have the same name', async () => {
-    const config: GenerateConfig = { ...baseConfig, memory: 'shortTerm' };
-    const existingMemories = [
-      {
-        name: 'TestProjectMemory',
-        eventExpiryDuration: 30,
-        strategies: [{ type: 'SEMANTIC' as const, namespaces: ['/users/{actorId}/facts'] }],
-      },
-    ];
-    const result = await mapGenerateConfigToRenderConfig(config, [], existingMemories);
-    expect(result.memoryProviders).toHaveLength(1);
-    expect(result.memoryProviders[0]!.name).toBe('TestProjectMemory');
-    // Existing provider wins - strategies come from the existing memory, not the new shortTerm (empty)
-    expect(result.memoryProviders[0]!.strategies).toEqual(['SEMANTIC']);
-  });
-
-  it('sets hasMemory true from existing memories even when memory option is "none"', async () => {
-    const existingMemories = [
-      {
-        name: 'ProjectMemory',
-        eventExpiryDuration: 30,
-        strategies: [],
-      },
-    ];
-    const result = await mapGenerateConfigToRenderConfig(baseConfig, [], existingMemories);
-    expect(result.hasMemory).toBe(true);
-    expect(result.memoryProviders).toHaveLength(1);
-    expect(result.memoryProviders[0]!.name).toBe('ProjectMemory');
-  });
-
-  it('combines existing memories with new custom memory', async () => {
-    const config: GenerateConfig = { ...baseConfig, memory: 'custom', projectName: 'NewAgent' };
-    const existingMemories = [
-      {
-        name: 'SharedMemory',
-        eventExpiryDuration: 30,
-        strategies: [{ type: 'SEMANTIC' as const, namespaces: ['/users/{actorId}/facts'] }],
-      },
-    ];
-    const result = await mapGenerateConfigToRenderConfig(config, [], existingMemories);
-    expect(result.memoryProviders).toHaveLength(2);
-    expect(result.memoryProviders[0]!.name).toBe('SharedMemory');
-    expect(result.memoryProviders[1]!.name).toBe('NewAgentMemory');
-    expect(result.memoryProviders[1]!.strategies).toEqual(['CUSTOM']);
-  });
-});
-
-describe('mapExistingMemoriesToProviders', () => {
-  it('maps memories to providers with correct envVarName and strategies', () => {
-    const memories = [
-      {
-        name: 'MyMemory',
-        eventExpiryDuration: 30,
-        strategies: [
-          { type: 'SEMANTIC' as const, namespaces: ['/users/{actorId}/facts'] },
-          { type: 'SUMMARIZATION' as const, namespaces: ['/conversations/{sessionId}/summary'] },
-        ],
-      },
-    ];
-    const result = mapExistingMemoriesToProviders(memories);
-    expect(result).toHaveLength(1);
-    expect(result[0]!.name).toBe('MyMemory');
-    expect(result[0]!.envVarName).toBe('MEMORY_MYMEMORY_ID');
-    expect(result[0]!.strategies).toEqual(['SEMANTIC', 'SUMMARIZATION']);
-  });
-
-  it('handles memory with CUSTOM strategy (no namespaces)', () => {
-    const memories = [
-      {
-        name: 'CustomMem',
-        eventExpiryDuration: 30,
-        strategies: [{ type: 'CUSTOM' as const }],
-      },
-    ];
-    const result = mapExistingMemoriesToProviders(memories);
-    expect(result).toHaveLength(1);
-    expect(result[0]!.strategies).toEqual(['CUSTOM']);
-  });
-
-  it('handles memory with empty strategies (short-term memory)', () => {
-    const memories = [
-      {
-        name: 'ShortTermMem',
-        eventExpiryDuration: 30,
-        strategies: [],
-      },
-    ];
-    const result = mapExistingMemoriesToProviders(memories);
-    expect(result).toHaveLength(1);
-    expect(result[0]!.name).toBe('ShortTermMem');
-    expect(result[0]!.strategies).toEqual([]);
-  });
-
-  it('maps multiple memories', () => {
-    const memories = [
-      {
-        name: 'MemOne',
-        eventExpiryDuration: 30,
-        strategies: [{ type: 'SEMANTIC' as const, namespaces: ['/users/{actorId}/facts'] }],
-      },
-      {
-        name: 'MemTwo',
-        eventExpiryDuration: 60,
-        strategies: [{ type: 'CUSTOM' as const }],
-      },
-    ];
-    const result = mapExistingMemoriesToProviders(memories);
-    expect(result).toHaveLength(2);
-    expect(result[0]!.name).toBe('MemOne');
-    expect(result[0]!.envVarName).toBe('MEMORY_MEMONE_ID');
-    expect(result[1]!.name).toBe('MemTwo');
-    expect(result[1]!.envVarName).toBe('MEMORY_MEMTWO_ID');
-  });
-
-  it('returns empty array for empty input', () => {
-    expect(mapExistingMemoriesToProviders([])).toEqual([]);
   });
 });
 
