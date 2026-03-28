@@ -84,7 +84,7 @@ describe.sequential('e2e: evaluations lifecycle', () => {
         'online-eval',
         '--name',
         onlineEvalName,
-        '--agent',
+        '--runtime',
         agentName,
         '--evaluator',
         evalName,
@@ -118,7 +118,7 @@ describe.sequential('e2e: evaluations lifecycle', () => {
     async () => {
       await retry(
         async () => {
-          const result = await run(['invoke', '--prompt', 'Say hello', '--agent', agentName, '--json']);
+          const result = await run(['invoke', '--prompt', 'Say hello', '--runtime', agentName, '--json']);
           expect(result.exitCode, `Invoke failed: ${result.stderr}`).toBe(0);
           const json = parseJsonOutput(result.stdout) as { success: boolean };
           expect(json.success).toBe(true);
@@ -138,7 +138,7 @@ describe.sequential('e2e: evaluations lifecycle', () => {
           const result = await run([
             'run',
             'eval',
-            '--agent',
+            '--runtime',
             agentName,
             '--evaluator',
             'Builtin.Faithfulness',
@@ -162,7 +162,7 @@ describe.sequential('e2e: evaluations lifecycle', () => {
   it.skipIf(!canRun)(
     'eval history shows the completed run',
     async () => {
-      const result = await run(['evals', 'history', '--agent', agentName, '--json']);
+      const result = await run(['evals', 'history', '--runtime', agentName, '--json']);
       expect(result.exitCode, `Evals history failed: ${result.stderr}`).toBe(0);
       const json = parseJsonOutput(result.stdout) as Record<string, unknown> & { runs: unknown[] };
       expect(json).toHaveProperty('success', true);

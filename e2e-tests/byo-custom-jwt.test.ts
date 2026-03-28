@@ -239,7 +239,7 @@ describe.sequential('e2e: BYO agent with CUSTOM_JWT auth', () => {
 
       // The CLI uses SigV4 by default — a CUSTOM_JWT runtime should reject it
       const result = await runLocalCLI(
-        ['invoke', '--prompt', 'Say hello', '--agent', agentName, '--json'],
+        ['invoke', '--prompt', 'Say hello', '--runtime', agentName, '--json'],
         projectPath
       );
 
