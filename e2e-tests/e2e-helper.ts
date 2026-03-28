@@ -142,7 +142,7 @@ export function createE2ESuite(cfg: E2EConfig) {
         await retry(
           async () => {
             const result = await runAgentCoreCLI(
-              ['invoke', '--prompt', 'Say hello', '--agent', agentName, '--json'],
+              ['invoke', '--prompt', 'Say hello', '--runtime', agentName, '--json'],
               projectPath
             );
 
@@ -205,7 +205,7 @@ export function createE2ESuite(cfg: E2EConfig) {
       async () => {
         expect(runtimeId, 'Runtime ID should have been extracted from status').toBeTruthy();
 
-        const result = await run(['status', '--agent-runtime-id', runtimeId, '--json']);
+        const result = await run(['status', '--runtime-id', runtimeId, '--json']);
 
         expect(result.exitCode, `Runtime lookup failed: ${result.stderr}`).toBe(0);
 
@@ -227,7 +227,7 @@ export function createE2ESuite(cfg: E2EConfig) {
         await retry(
           async () => {
             // --since 1h triggers search mode (avoids live tail)
-            const result = await run(['logs', '--agent', agentName, '--since', '1h', '--json']);
+            const result = await run(['logs', '--runtime', agentName, '--since', '1h', '--json']);
 
             expect(result.exitCode, `Logs failed: ${result.stderr}`).toBe(0);
 
@@ -254,7 +254,7 @@ export function createE2ESuite(cfg: E2EConfig) {
       'logs supports level filtering',
       async () => {
         // --level error should succeed even if no error-level logs exist
-        const result = await run(['logs', '--agent', agentName, '--since', '1h', '--level', 'error', '--json']);
+        const result = await run(['logs', '--runtime', agentName, '--since', '1h', '--level', 'error', '--json']);
 
         expect(result.exitCode, `Logs --level failed: ${result.stderr}`).toBe(0);
       },
@@ -267,7 +267,7 @@ export function createE2ESuite(cfg: E2EConfig) {
         // traces list has no --json flag — verify exit code and non-empty output
         await retry(
           async () => {
-            const result = await run(['traces', 'list', '--agent', agentName, '--since', '1h']);
+            const result = await run(['traces', 'list', '--runtime', agentName, '--since', '1h']);
 
             expect(result.exitCode, `Traces list failed (stderr: ${result.stderr})`).toBe(0);
             expect(result.stdout.length, 'Traces list should produce output').toBeGreaterThan(0);
