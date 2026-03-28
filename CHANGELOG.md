@@ -2,6 +2,51 @@
 
 All notable changes to this project will be documented in this file.
 
+## @aws/agentcore v1.0.0
+
+The AgentCore CLI is now generally available.
+
+`npm i @aws/agentcore`
+
+### What's included
+
+- Agent lifecycle: `create`, `dev`, `deploy`, `invoke`, `status`, `logs`, `traces`
+- Frameworks: Strands Agents, LangChain/LangGraph, Google ADK, OpenAI Agents, bring your own
+- Gateway: Managed MCP servers with API Gateway, Lambda, and OpenAPI targets. OAuth, API key, and Custom JWT auth.
+- Policy: Cedar-based access control for gateway tools
+- Memory: Semantic, summarization, user preference, and episodic strategies
+- Evaluations: LLM-as-a-Judge evaluators, on-demand and continuous online evaluation
+- Local development: Hot-reload dev server supporting HTTP, MCP, and A2A protocols
+- Infrastructure: CDK-managed deployments with VPC support, container builds, resource tagging, and `--dry-run` previews
+- Migration: `agentcore import` migrates existing Starter Toolkit projects with zero downtime. See the [Migration Guide](https://github.com/awslabs/amazon-bedrock-agentcore-samples/blob/main/MIGRATION.md).
+
+### Breaking changes from preview
+
+This release includes breaking changes that affect existing projects created during preview. See [aws/agentcore-cli#719](https://github.com/aws/agentcore-cli/issues/719) for the full migration checklist.
+
+### Summary of what changed:
+
+- `agents` renamed to runtimes in `agentcore.json` and all CLI flags (`--agent` → `--runtime`, `-a` → `-r`)
+- `mcp.json` merged into `agentcore.json`
+- type field removed from agent, memory, and evaluator schemas. Credential type renamed to authorizerType
+- `agentcore add identity` → `agentcore add credential`
+- `agentcore run evals` → `agentcore run eval`
+- `--force` → `--yes`, `--plan` → `--dry-run`
+- `agentcore dev --invoke "prompt"` → `agentcore dev "prompt"`
+- Default Python runtime upgraded to 3.13
+
+### Documentation
+
+- [Commands reference](https://github.com/aws/agentcore-cli/blob/main/docs/commands.md)
+- [Frameworks](https://github.com/aws/agentcore-cli/blob/main/docs/frameworks.md)
+- [Configuration](https://github.com/aws/agentcore-cli/blob/main/docs/configuration.md)
+- [Local development](https://github.com/aws/agentcore-cli/blob/main/docs/local-development.md)
+- [Memory](https://github.com/aws/agentcore-cli/blob/main/docs/memory.md)
+- [Gateway](https://github.com/aws/agentcore-cli/blob/main/docs/gateway.md)
+- [Evaluations](https://github.com/aws/agentcore-cli/blob/main/docs/evals.md)
+- [IAM permissions](https://github.com/aws/agentcore-cli/blob/main/docs/PERMISSIONS.md)
+- [Migration from Starter Toolkit](https://github.com/awslabs/amazon-bedrock-agentcore-samples/blob/main/MIGRATION.md)
+
 ## [0.4.0] - 2026-03-28
 
 ### Added
