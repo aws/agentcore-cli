@@ -22,7 +22,7 @@ The AgentCore CLI is now generally available.
 
 ### Breaking changes from preview
 
-This release includes breaking changes that affect existing projects created during preview. See [aws/agentcore-cli#719](https://github.com/aws/agentcore-cli/issues/719) step-by-step guide on making the schema compatible.
+This release includes breaking changes that affect existing projects created during preview. See [aws/agentcore-cli#719](https://github.com/aws/agentcore-cli/issues/719) for a step-by-step guide on making the schema compatible.
 
 ### Summary of what changed:
 
