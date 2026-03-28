@@ -165,21 +165,10 @@ export class ConfigIO {
   /**
    * Read and validate the AWS configuration file.
    * Region is preserved as saved. Use resolveAWSDeploymentTargets() for environment/profile overrides.
-   * TODO: Account is still overridden via AWS_PROFILE — consider moving to resolveAWSDeploymentTargets() for consistency.
    */
   async readAWSDeploymentTargets(): Promise<AwsDeploymentTarget[]> {
     const filePath = this.pathResolver.getAWSTargetsConfigPath();
-    let targets = await this.readAndValidate(filePath, 'AWS Targets', AwsDeploymentTargetsSchema);
-
-    // Override account from credentials if AWS_PROFILE is set
-    if (process.env.AWS_PROFILE) {
-      const account = await detectAwsAccount();
-      if (account) {
-        targets = targets.map(t => ({ ...t, account }));
-      }
-    }
-
-    return targets;
+    return this.readAndValidate(filePath, 'AWS Targets', AwsDeploymentTargetsSchema);
   }
 
   /**
@@ -188,7 +177,15 @@ export class ConfigIO {
    * Environment/profile region is only used as a fallback when no region is saved in aws-targets.json.
    */
   async resolveAWSDeploymentTargets(): Promise<AwsDeploymentTarget[]> {
-    const targets = await this.readAWSDeploymentTargets();
+    let targets = await this.readAWSDeploymentTargets();
+
+    // Override account from credentials if AWS_PROFILE is set
+    if (process.env.AWS_PROFILE) {
+      const account = await detectAwsAccount();
+      if (account) {
+        targets = targets.map(t => ({ ...t, account }));
+      }
+    }
 
     // Only resolve region for targets that don't already have one saved
     const fallbackRegion = await this.resolveRegionFallback();
