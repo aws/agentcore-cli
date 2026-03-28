@@ -26,7 +26,7 @@ This release includes breaking changes that affect existing projects created dur
 
 ### Summary of what changed:
 
-- `agents` renamed to runtimes in `agentcore.json` and all CLI flags (`--agent` → `--runtime`, `-a` → `-r`)
+- `agents` renamed to `runtimes` in `agentcore.json` and all CLI flags (`--agent` → `--runtime`, `-a` → `-r`)
 - `mcp.json` merged into `agentcore.json`
 - type field removed from agent, memory, and evaluator schemas. Credential type renamed to authorizerType
 - `agentcore add identity` → `agentcore add credential`
