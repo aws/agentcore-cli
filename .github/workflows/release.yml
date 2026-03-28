@@ -112,7 +112,8 @@ jobs:
         run: |
           npm run build
           node scripts/generate-schema.mjs
-          echo "✓ JSON schema regenerated"
+          npx prettier --write schemas/
+          echo "✓ JSON schema regenerated and formatted"
 
       - name: Create release branch and PR
         env:
