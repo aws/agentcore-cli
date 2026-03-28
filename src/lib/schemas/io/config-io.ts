@@ -115,12 +115,18 @@ export class ConfigIO {
 
   /**
    * Read and validate the AWS configuration file.
-   * Region is preserved as saved. Use resolveAWSDeploymentTargets() for environment/profile overrides.
-   * TODO: Account is still overridden via AWS_PROFILE — consider moving to resolveAWSDeploymentTargets() for consistency.
+   * Use resolveAWSDeploymentTargets() for environment/profile overrides.
    */
   async readAWSDeploymentTargets(): Promise<AwsDeploymentTarget[]> {
     const filePath = this.pathResolver.getAWSTargetsConfigPath();
-    let targets = await this.readAndValidate(filePath, 'AWS Targets', AwsDeploymentTargetsSchema);
+    return this.readAndValidate(filePath, 'AWS Targets', AwsDeploymentTargetsSchema);
+  }
+
+  /**
+   * Read AWS deployment targets with environment/profile overrides for deploy-time operations.
+   */
+  async resolveAWSDeploymentTargets(): Promise<AwsDeploymentTarget[]> {
+    let targets = await this.readAWSDeploymentTargets();
 
     // Override account from credentials if AWS_PROFILE is set
     if (process.env.AWS_PROFILE) {
@@ -129,16 +135,6 @@ export class ConfigIO {
         targets = targets.map(t => ({ ...t, account }));
       }
     }
-
-    return targets;
-  }
-
-  /**
-   * Read AWS deployment targets with region overrides from environment/profile.
-   * Region precedence: AWS_REGION > AWS_DEFAULT_REGION > profile config > saved value.
-   */
-  async resolveAWSDeploymentTargets(): Promise<AwsDeploymentTarget[]> {
-    const targets = await this.readAWSDeploymentTargets();
 
     // Override region from env vars
     const envRegion = process.env.AWS_REGION ?? process.env.AWS_DEFAULT_REGION;
