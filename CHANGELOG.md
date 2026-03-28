@@ -2,7 +2,7 @@
 
 All notable changes to this project will be documented in this file.
 
-## @aws/agentcore v1.0.0
+## @aws/agentcore v0.4.0
 
 The AgentCore CLI is now generally available.
 
