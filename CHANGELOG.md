@@ -31,7 +31,7 @@ This release includes breaking changes that affect existing projects created dur
 - type field removed from agent, memory, and evaluator schemas. Credential type renamed to authorizerType
 - `agentcore add identity` → `agentcore add credential`
 - `agentcore run evals` → `agentcore run eval`
-- `--force` → `--yes`, `--plan` → `--dry-run`
+- `--force` → `--yes` for the remove command, `--plan` → `--dry-run`
 - `agentcore dev --invoke "prompt"` → `agentcore dev "prompt"`
 - Default Python runtime upgraded to 3.13
 
