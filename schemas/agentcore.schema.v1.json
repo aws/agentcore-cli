@@ -298,7 +298,7 @@
               "properties": {
                 "type": {
                   "type": "string",
-                  "enum": ["SEMANTIC", "SUMMARIZATION", "USER_PREFERENCE", "EPISODIC", "CUSTOM"]
+                  "enum": ["SEMANTIC", "SUMMARIZATION", "USER_PREFERENCE", "EPISODIC"]
                 },
                 "name": {
                   "type": "string",
@@ -320,44 +320,6 @@
                   "items": {
                     "type": "string"
                   }
-                },
-                "semanticOverride": {
-                  "type": "object",
-                  "properties": {
-                    "extraction": {
-                      "type": "object",
-                      "properties": {
-                        "appendToPrompt": {
-                          "type": "string",
-                          "minLength": 1,
-                          "maxLength": 30000
-                        },
-                        "modelId": {
-                          "type": "string",
-                          "minLength": 1
-                        }
-                      },
-                      "required": ["appendToPrompt", "modelId"],
-                      "additionalProperties": false
-                    },
-                    "consolidation": {
-                      "type": "object",
-                      "properties": {
-                        "appendToPrompt": {
-                          "type": "string",
-                          "minLength": 1,
-                          "maxLength": 30000
-                        },
-                        "modelId": {
-                          "type": "string",
-                          "minLength": 1
-                        }
-                      },
-                      "required": ["appendToPrompt", "modelId"],
-                      "additionalProperties": false
-                    }
-                  },
-                  "additionalProperties": false
                 }
               },
               "required": ["type"],
