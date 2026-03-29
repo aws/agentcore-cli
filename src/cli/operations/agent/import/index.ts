@@ -21,6 +21,7 @@ import { dirname, join } from 'path';
 
 export interface ExecuteImportAgentParams {
   name: string;
+  description?: string;
   framework: SDKFramework;
   memory: MemoryOption;
   bedrockRegion: string;
@@ -38,6 +39,7 @@ export async function executeImportAgent(
 ): Promise<AddResult<{ agentName: string; agentPath: string }>> {
   const {
     name,
+    description,
     framework,
     memory,
     bedrockRegion,
@@ -88,6 +90,7 @@ export async function executeImportAgent(
     // 5. Write agent to project config (reuse existing write-agent-to-project)
     const generateConfig = {
       projectName: name,
+      description,
       buildType: 'CodeZip' as const,
       sdk: framework,
       modelProvider: 'Bedrock' as const,

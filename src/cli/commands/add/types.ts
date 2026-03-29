@@ -12,6 +12,7 @@ import type { VpcOptions } from '../shared/vpc-utils';
 // Agent types
 export interface AddAgentOptions extends VpcOptions {
   name?: string;
+  description?: string;
   type?: 'create' | 'byo' | 'import';
   build?: string;
   language?: TargetLanguage;

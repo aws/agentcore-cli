@@ -47,6 +47,11 @@
             "maxLength": 48,
             "pattern": "^[a-zA-Z][a-zA-Z0-9_]{0,47}$"
           },
+          "description": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 4096
+          },
           "build": {
             "type": "string",
             "enum": ["CodeZip", "Container"]

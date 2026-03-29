@@ -68,6 +68,7 @@ agentcore create \
 | Flag                      | Description                                                                                                    |
 | ------------------------- | -------------------------------------------------------------------------------------------------------------- |
 | `--name <name>`           | Project name (alphanumeric, starts with letter, max 23 chars)                                                  |
+| `--description <desc>`    | Description for the agent created with the project (max 4096 chars)                                            |
 | `--defaults`              | Use defaults (Python, Strands, Bedrock, no memory)                                                             |
 | `--no-agent`              | Skip agent creation                                                                                            |
 | `--type <type>`           | `create` (default) or `import`                                                                                 |
@@ -196,6 +197,7 @@ agentcore add agent \
 | Flag                      | Description                                                                                                                       |
 | ------------------------- | --------------------------------------------------------------------------------------------------------------------------------- |
 | `--name <name>`           | Agent name (alphanumeric + underscores, starts with letter, max 48 chars)                                                         |
+| `--description <desc>`    | Agent description (max 4096 chars)                                                                                                |
 | `--type <type>`           | `create` (default), `byo`, or `import`                                                                                            |
 | `--build <type>`          | `CodeZip` (default) or `Container` (see [Container Builds](container-builds.md))                                                  |
 | `--language <lang>`       | `Python` (create); `Python`, `TypeScript`, `Other` (BYO)                                                                          |

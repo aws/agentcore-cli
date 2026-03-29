@@ -184,6 +184,7 @@ on the next deployment.
 {
   "type": "AgentCoreRuntime",
   "name": "MyAgent",
+  "description": "A helpful assistant agent",
   "build": "CodeZip",
   "entrypoint": "main.py",
   "codeLocation": "app/MyAgent/",
@@ -200,6 +201,7 @@ on the next deployment.
 | ----------------- | -------- | -------------------------------------------------- |
 | `type`            | Yes      | Always `"AgentCoreRuntime"`                        |
 | `name`            | Yes      | Agent name (1-48 chars, alphanumeric + underscore) |
+| `description`     | No       | Agent description (max 4096 chars)                 |
 | `build`           | Yes      | `"CodeZip"` or `"Container"`                       |
 | `entrypoint`      | Yes      | Entry file (e.g., `main.py` or `main.py:handler`)  |
 | `codeLocation`    | Yes      | Directory containing agent code                    |
