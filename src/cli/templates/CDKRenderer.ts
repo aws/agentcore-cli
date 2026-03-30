@@ -145,13 +145,11 @@ export class CDKRenderer {
       logger?.logCommandOutput(result.stderr);
     }
     if (result.code !== 0) {
-      // Clean up tarball on failure
-      await fs.unlink(localTarball).catch(() => undefined);
       throw new Error(`Failed to install bundled @aws/agentcore-cdk: ${result.stderr}`);
     }
 
-    // Clean up tarball after install
-    await fs.unlink(localTarball).catch(() => undefined);
+    // Keep the tarball in the project so the file: reference in package.json
+    // stays valid for future npm install runs.
     logger?.logSubStep('Bundled @aws/agentcore-cdk installed');
   }
 
