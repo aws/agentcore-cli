@@ -80,6 +80,28 @@ function resolveCdkPath() {
 
 log('Starting bundle process...');
 
+const timestamp = Math.floor(Date.now() / 1000);
+log(`Bundle timestamp: ${timestamp}`);
+
+// Helper to bump a package version with a unique e2e timestamp tag.
+// Saves the original version so it can be restored after packing.
+function bumpVersion(pkgDir) {
+  const pkgJsonPath = path.join(pkgDir, 'package.json');
+  const pkg = JSON.parse(fs.readFileSync(pkgJsonPath, 'utf8'));
+  const originalVersion = pkg.version;
+  const baseVersion = originalVersion.split('-')[0];
+  pkg.version = `${baseVersion}-e2e.${timestamp}`;
+  fs.writeFileSync(pkgJsonPath, JSON.stringify(pkg, null, 2) + '\n');
+  log(`Bumped ${pkg.name} version: ${originalVersion} -> ${pkg.version}`);
+  return { pkgJsonPath, originalVersion, bumpedVersion: pkg.version };
+}
+
+function restoreVersion({ pkgJsonPath, originalVersion }) {
+  const pkg = JSON.parse(fs.readFileSync(pkgJsonPath, 'utf8'));
+  pkg.version = originalVersion;
+  fs.writeFileSync(pkgJsonPath, JSON.stringify(pkg, null, 2) + '\n');
+}
+
 // Step 1: Resolve and build CDK constructs
 const cdkPath = resolveCdkPath();
 
@@ -89,13 +111,13 @@ run('npm install', { cwd: cdkPath });
 log('Building CDK constructs...');
 run('npm run build', { cwd: cdkPath });
 
-// Step 2: Pack CDK constructs into a tarball
+// Step 2: Bump CDK version and pack into a tarball
+const cdkVersionInfo = bumpVersion(cdkPath);
 log('Packing CDK constructs...');
 run('npm pack', { cwd: cdkPath });
+restoreVersion(cdkVersionInfo);
 
-// Find the CDK tarball (npm pack outputs the filename on the last line)
-const cdkPkg = JSON.parse(fs.readFileSync(path.join(cdkPath, 'package.json'), 'utf8'));
-const cdkTarballName = `aws-agentcore-cdk-${cdkPkg.version}.tgz`;
+const cdkTarballName = `aws-agentcore-cdk-${cdkVersionInfo.bumpedVersion}.tgz`;
 const cdkTarballSrc = path.join(cdkPath, cdkTarballName);
 
 if (!fs.existsSync(cdkTarballSrc)) {
@@ -115,12 +137,13 @@ const bundledTarballDest = path.join(cliRoot, 'dist', 'assets', 'bundled-agentco
 fs.copyFileSync(cdkTarballSrc, bundledTarballDest);
 log(`Placed CDK tarball at ${bundledTarballDest}`);
 
-// Step 5: Pack CLI into final tarball (includes the bundled CDK tarball)
+// Step 5: Bump CLI version and pack into final tarball (includes the bundled CDK tarball)
+const cliVersionInfo = bumpVersion(cliRoot);
 log('Packing CLI tarball...');
 run('npm pack', { cwd: cliRoot });
+restoreVersion(cliVersionInfo);
 
-const cliPkg = JSON.parse(fs.readFileSync(path.join(cliRoot, 'package.json'), 'utf8'));
-const cliTarballName = `aws-agentcore-${cliPkg.version}.tgz`;
+const cliTarballName = `aws-agentcore-${cliVersionInfo.bumpedVersion}.tgz`;
 const cliTarballPath = path.join(cliRoot, cliTarballName);
 
 if (fs.existsSync(cliTarballPath)) {
