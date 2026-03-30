@@ -66,6 +66,12 @@ export class CDKRenderer {
     await this.writeLlmContext(configDir);
     logger?.logSubStep('LLM context files written');
 
+    // Copy bundled @aws/agentcore-cdk into agentcore/.bundled/agentcore-cdk/
+    // so the vended CDK project's file: dependency resolves locally.
+    logger?.logSubStep('Copying bundled @aws/agentcore-cdk...');
+    await this.copyBundledCdk(configDir);
+    logger?.logSubStep('Bundled @aws/agentcore-cdk copied');
+
     // Skip slow npm operations in test mode
     if (process.env.AGENTCORE_SKIP_INSTALL) return outputDir;
 
@@ -114,6 +120,24 @@ export class CDKRenderer {
     const readmeSrc = path.join(this.assetsDir, 'README.md');
     const readmeDest = path.join(projectRoot, 'README.md');
     await fs.copyFile(readmeSrc, readmeDest);
+  }
+
+  private async copyBundledCdk(configDir: string): Promise<void> {
+    const bundledSrc = path.join(this.assetsDir, 'bundled-agentcore-cdk');
+    const bundledDest = path.join(configDir, '.bundled', 'agentcore-cdk');
+
+    // Check if bundled CDK constructs exist in the CLI assets
+    try {
+      await fs.access(bundledSrc);
+    } catch {
+      throw new Error(
+        'Bundled @aws/agentcore-cdk not found in CLI assets. ' +
+          'The CLI package may not have been built with CDK constructs bundled.'
+      );
+    }
+
+    await fs.mkdir(path.dirname(bundledDest), { recursive: true });
+    await copyDir(bundledSrc, bundledDest);
   }
 
   private async writeLlmContext(configDir: string): Promise<void> {
