@@ -90,7 +90,7 @@ function bumpVersion(pkgDir) {
   const pkg = JSON.parse(fs.readFileSync(pkgJsonPath, 'utf8'));
   const originalVersion = pkg.version;
   const baseVersion = originalVersion.split('-')[0];
-  pkg.version = `${baseVersion}-e2e.${timestamp}`;
+  pkg.version = `${baseVersion}-${timestamp}`;
   fs.writeFileSync(pkgJsonPath, JSON.stringify(pkg, null, 2) + '\n');
   log(`Bumped ${pkg.name} version: ${originalVersion} -> ${pkg.version}`);
   return { pkgJsonPath, originalVersion, bumpedVersion: pkg.version };
