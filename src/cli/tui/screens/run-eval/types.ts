@@ -1,12 +1,15 @@
 import type { EvaluatorItem } from '../online-eval/types';
 
-export type RunEvalStep = 'agent' | 'evaluators' | 'days' | 'sessions' | 'confirm';
+export type RunEvalStep = 'agent' | 'evaluators' | 'days' | 'sessions' | 'groundTruth' | 'confirm';
 
 export interface RunEvalConfig {
   agent: string;
   evaluators: string[];
   days: number;
   sessionIds: string[];
+  assertions: string[];
+  expectedTrajectory: string[];
+  expectedResponse: string;
 }
 
 export const RUN_EVAL_STEP_LABELS: Record<RunEvalStep, string> = {
@@ -14,6 +17,7 @@ export const RUN_EVAL_STEP_LABELS: Record<RunEvalStep, string> = {
   evaluators: 'Evaluators',
   days: 'Lookback',
   sessions: 'Sessions',
+  groundTruth: 'GT',
   confirm: 'Confirm',
 };
 

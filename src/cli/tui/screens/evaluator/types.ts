@@ -101,12 +101,26 @@ export const LEVEL_PLACEHOLDERS: Record<EvaluationLevel, string[]> = {
   TOOL_CALL: ['available_tools', 'context', 'tool_turn'],
 };
 
+/**
+ * Reference input placeholders per evaluation level. These are populated by the caller
+ * at eval time via evaluationReferenceInputs — if not provided, they resolve to empty.
+ */
+export const REFERENCE_INPUT_PLACEHOLDERS: Record<EvaluationLevel, string[]> = {
+  SESSION: ['assertions', 'expected_tool_trajectory', 'actual_tool_trajectory'],
+  TRACE: ['expected_response'],
+  TOOL_CALL: [],
+};
+
 /** Human-readable descriptions of what each placeholder expands to at eval time. */
 export const PLACEHOLDER_DESCRIPTIONS: Record<string, string> = {
   context: 'full conversation history (user + assistant messages)',
   assistant_turn: 'the specific assistant response being evaluated',
   available_tools: 'list of tools the agent can call',
   tool_turn: 'the specific tool call and its result',
+  assertions: 'caller-provided assertions the agent should satisfy',
+  expected_tool_trajectory: 'caller-provided expected sequence of tool calls',
+  actual_tool_trajectory: 'actual sequence of tool calls from the session',
+  expected_response: 'caller-provided expected agent response',
 };
 
 /**
@@ -114,9 +128,9 @@ export const PLACEHOLDER_DESCRIPTIONS: Record<string, string> = {
  */
 export const DEFAULT_INSTRUCTIONS: Record<EvaluationLevel, string> = {
   SESSION:
-    'Evaluate the agent session. Context: {context}. Available tools: {available_tools}. Rate the overall quality of the session.',
+    'Evaluate the agent session. Context: {context}. Available tools: {available_tools}. The agent must satisfy: {assertions}. Expected trajectory: {expected_tool_trajectory}. Actual trajectory: {actual_tool_trajectory}. Rate the overall quality.',
   TRACE:
-    'Evaluate the agent trace. Context: {context}. Assistant turn: {assistant_turn}. Rate the quality of this trace.',
+    'Evaluate the agent trace. Context: {context}. Assistant turn: {assistant_turn}. Expected response: {expected_response}. Rate the quality of this response.',
   TOOL_CALL: 'Evaluate the tool call. Context: {context}. Tool turn: {tool_turn}. Rate the quality of this tool usage.',
 };
 

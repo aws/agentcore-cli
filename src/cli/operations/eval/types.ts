@@ -29,6 +29,11 @@ export interface EvalRunResult {
   lookbackDays: number;
   sessionCount: number;
   results: EvalEvaluatorResult[];
+  referenceInputs?: {
+    assertions?: string[];
+    expectedTrajectory?: string[];
+    expectedResponse?: string;
+  };
 }
 
 /** Lightweight session info returned by session discovery */
@@ -58,6 +63,12 @@ export interface RunEvalOptions {
   traceId?: string;
   /** Runtime endpoint name (e.g. PROMPT_V1). Defaults to AGENTCORE_RUNTIME_ENDPOINT env var, then DEFAULT. */
   endpoint?: string;
+  /** Assertions the agent should satisfy (repeatable) */
+  assertions?: string[];
+  /** Expected tool call names in order (repeatable) */
+  expectedTrajectory?: string[];
+  /** Expected agent response text */
+  expectedResponse?: string;
   days: number;
   output?: string;
   json?: boolean;

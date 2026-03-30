@@ -138,6 +138,9 @@ export function RunEvalFlow({ onExit, onViewRuns }: RunEvalFlowProps) {
           evaluatorArn: config.evaluators,
           days: config.days,
           sessionIds: config.sessionIds.length > 0 ? config.sessionIds : undefined,
+          assertions: config.assertions.length > 0 ? config.assertions : undefined,
+          expectedTrajectory: config.expectedTrajectory.length > 0 ? config.expectedTrajectory : undefined,
+          expectedResponse: config.expectedResponse || undefined,
         });
 
         if (cancelled) return;
@@ -253,6 +256,20 @@ function ResultsView({ run, filePath, onRunAnother, onViewRuns, onExit }: Result
             {'  '}
             <Text bold>Lookback:</Text> {run.lookbackDays}d
           </Text>
+          {run.referenceInputs && (
+            <Text dimColor>
+              Reference inputs:{' '}
+              {[
+                run.referenceInputs.assertions?.length ? `${run.referenceInputs.assertions.length} assertion(s)` : '',
+                run.referenceInputs.expectedResponse ? 'expected response' : '',
+                run.referenceInputs.expectedTrajectory?.length
+                  ? `${run.referenceInputs.expectedTrajectory.length} trajectory step(s)`
+                  : '',
+              ]
+                .filter(Boolean)
+                .join(', ')}
+            </Text>
+          )}
 
           <Box marginTop={1} flexDirection="column">
             <Text dimColor>Scores range from 0 (worst) to 1 (best).</Text>

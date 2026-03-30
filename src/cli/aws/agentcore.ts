@@ -424,6 +424,7 @@ export interface EvaluateOptions {
   sessionSpans: DocumentType[];
   targetSpanIds?: string[];
   targetTraceIds?: string[];
+  evaluationReferenceInputs?: Record<string, unknown>[];
 }
 
 export interface EvaluationResultContext {

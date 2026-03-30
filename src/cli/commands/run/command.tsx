@@ -18,7 +18,24 @@ function formatRunOutput(result: Awaited<ReturnType<typeof handleRunEval>>): voi
     hour: '2-digit',
     minute: '2-digit',
   });
-  console.log(`\nAgent: ${run.agent} | ${date} | Sessions: ${run.sessionCount} | Lookback: ${run.lookbackDays}d\n`);
+  console.log(`\nAgent: ${run.agent} | ${date} | Sessions: ${run.sessionCount} | Lookback: ${run.lookbackDays}d`);
+
+  if (run.referenceInputs) {
+    const parts: string[] = [];
+    if (run.referenceInputs.assertions?.length) {
+      parts.push(`${run.referenceInputs.assertions.length} assertion(s)`);
+    }
+    if (run.referenceInputs.expectedResponse) {
+      parts.push('expected response');
+    }
+    if (run.referenceInputs.expectedTrajectory?.length) {
+      parts.push(`${run.referenceInputs.expectedTrajectory.length} trajectory step(s)`);
+    }
+    if (parts.length > 0) {
+      console.log(`Reference inputs: ${parts.join(', ')}`);
+    }
+  }
+  console.log('');
 
   for (const r of run.results) {
     const score = r.aggregateScore.toFixed(2);
@@ -52,6 +69,9 @@ export const registerRun = (program: Command) => {
       'Runtime endpoint name (e.g. PROMPT_V1). Defaults to AGENTCORE_RUNTIME_ENDPOINT env var, then DEFAULT'
     )
     .option('--days <days>', 'Lookback window in days', '7')
+    .option('-A, --assertion <text...>', 'Assertion the agent should satisfy (repeatable)')
+    .option('--expected-trajectory <names>', 'Expected tool calls in order (comma-separated)')
+    .option('--expected-response <text>', 'Expected agent response text')
     .option('--output <path>', 'Custom output file path for results')
     .option('--json', 'Output as JSON')
     .action(
@@ -64,6 +84,9 @@ export const registerRun = (program: Command) => {
         sessionId?: string;
         traceId?: string;
         endpoint?: string;
+        assertion?: string[];
+        expectedTrajectory?: string;
+        expectedResponse?: string;
         days: string;
         output?: string;
         json?: boolean;
@@ -92,6 +115,11 @@ export const registerRun = (program: Command) => {
           sessionId: cliOptions.sessionId,
           traceId: cliOptions.traceId,
           endpoint: cliOptions.endpoint,
+          assertions: cliOptions.assertion,
+          expectedTrajectory: cliOptions.expectedTrajectory
+            ? cliOptions.expectedTrajectory.split(',').map(s => s.trim())
+            : undefined,
+          expectedResponse: cliOptions.expectedResponse,
           days: parseInt(cliOptions.days, 10),
           output: cliOptions.output,
           json: cliOptions.json,

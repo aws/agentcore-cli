@@ -16,6 +16,7 @@ import {
   PLACEHOLDER_DESCRIPTIONS,
   RATING_SCALE_PRESETS,
   RATING_SCALE_TYPE_OPTIONS,
+  REFERENCE_INPUT_PLACEHOLDERS,
   parseCustomRatingScale,
   validateInstructionPlaceholders,
 } from './types';
@@ -172,17 +173,29 @@ export function AddEvaluatorScreen({ onComplete, onExit, existingEvaluatorNames 
         {isInstructionsStep && (
           <Box flexDirection="column">
             <Text>Evaluation instructions</Text>
-            <Text dimColor>Must include at least one placeholder:</Text>
+            <Text dimColor>Available placeholders:</Text>
             {LEVEL_PLACEHOLDERS[wizard.config.level].map(p => (
               <Text key={p} dimColor>
                 {'  '}
                 {`{${p}}`} — {PLACEHOLDER_DESCRIPTIONS[p] ?? p}
               </Text>
             ))}
+            {REFERENCE_INPUT_PLACEHOLDERS[wizard.config.level].length > 0 && (
+              <>
+                <Text dimColor>Reference inputs — provided by caller at eval time, may be empty:</Text>
+                {REFERENCE_INPUT_PLACEHOLDERS[wizard.config.level].map(p => (
+                  <Text key={p} dimColor>
+                    {'  '}
+                    {`{${p}}`} — {PLACEHOLDER_DESCRIPTIONS[p] ?? p}
+                  </Text>
+                ))}
+              </>
+            )}
             <TextInput
               key="instructions"
               prompt=""
               hideArrow={false}
+              expandable
               initialValue={DEFAULT_INSTRUCTIONS[wizard.config.level]}
               onSubmit={wizard.setInstructions}
               onCancel={() => wizard.goBack()}

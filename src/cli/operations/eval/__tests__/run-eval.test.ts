@@ -1077,4 +1077,131 @@ describe('handleRunEval', () => {
     expect(queryString).not.toContain("'rt-123'; DROP TABLE'");
     expect(queryString).toContain('rt-123; DROP TABLE');
   });
+
+  // ─── Ground truth / reference inputs ────────────────────────────────────
+
+  function setupDefaultAgent() {
+    const ctx = makeDeployedContext();
+    mockLoadDeployedProjectConfig.mockResolvedValue(ctx);
+    mockResolveAgent.mockReturnValue({
+      success: true,
+      agent: {
+        agentName: 'my-agent',
+        targetName: 'dev',
+        region: 'us-east-1',
+        accountId: '111222333444',
+        runtimeId: 'rt-123',
+      },
+    });
+  }
+
+  it('passes expectedTrajectory as toolNames in evaluationReferenceInputs', async () => {
+    setupDefaultAgent();
+    setupCloudWatchToReturn([makeOtelSpanRow('session-1', 'trace-1')]);
+    mockEvaluate.mockResolvedValue({
+      evaluationResults: [{ value: 4.0, context: { spanContext: { sessionId: 'session-1' } } }],
+    });
+
+    await handleRunEval({
+      evaluator: ['Builtin.GoalSuccessRate'],
+      days: 7,
+      expectedTrajectory: ['tool_1', 'tool_2', 'tool_3'],
+    });
+
+    expect(mockEvaluate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        evaluationReferenceInputs: expect.arrayContaining([
+          expect.objectContaining({
+            expectedTrajectory: { toolNames: ['tool_1', 'tool_2', 'tool_3'] },
+          }),
+        ]),
+      })
+    );
+  });
+
+  it('passes a single-element expectedTrajectory array', async () => {
+    setupDefaultAgent();
+    setupCloudWatchToReturn([makeOtelSpanRow('session-1', 'trace-1')]);
+    mockEvaluate.mockResolvedValue({
+      evaluationResults: [{ value: 4.0, context: { spanContext: { sessionId: 'session-1' } } }],
+    });
+
+    await handleRunEval({
+      evaluator: ['Builtin.GoalSuccessRate'],
+      days: 7,
+      expectedTrajectory: ['tool_1'],
+    });
+
+    expect(mockEvaluate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        evaluationReferenceInputs: expect.arrayContaining([
+          expect.objectContaining({
+            expectedTrajectory: { toolNames: ['tool_1'] },
+          }),
+        ]),
+      })
+    );
+  });
+
+  it('does not include evaluationReferenceInputs when no ground truth provided', async () => {
+    setupDefaultAgent();
+    setupCloudWatchToReturn([makeOtelSpanRow('session-1', 'trace-1')]);
+    mockEvaluate.mockResolvedValue({
+      evaluationResults: [{ value: 4.0, context: { spanContext: { sessionId: 'session-1' } } }],
+    });
+
+    await handleRunEval({
+      evaluator: ['Builtin.GoalSuccessRate'],
+      days: 7,
+    });
+
+    expect(mockEvaluate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        evaluationReferenceInputs: undefined,
+      })
+    );
+  });
+
+  it('passes assertions in evaluationReferenceInputs', async () => {
+    setupDefaultAgent();
+    setupCloudWatchToReturn([makeOtelSpanRow('session-1', 'trace-1')]);
+    mockEvaluate.mockResolvedValue({
+      evaluationResults: [{ value: 4.0, context: { spanContext: { sessionId: 'session-1' } } }],
+    });
+
+    await handleRunEval({
+      evaluator: ['Builtin.GoalSuccessRate'],
+      days: 7,
+      assertions: ['response is relevant', 'no hallucinations'],
+    });
+
+    expect(mockEvaluate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        evaluationReferenceInputs: expect.arrayContaining([
+          expect.objectContaining({
+            assertions: [{ text: 'response is relevant' }, { text: 'no hallucinations' }],
+          }),
+        ]),
+      })
+    );
+  });
+
+  it('includes expectedTrajectory in saved run result referenceInputs', async () => {
+    setupDefaultAgent();
+    setupCloudWatchToReturn([makeOtelSpanRow('session-1', 'trace-1')]);
+    mockEvaluate.mockResolvedValue({
+      evaluationResults: [{ value: 4.0, context: { spanContext: { sessionId: 'session-1' } } }],
+    });
+
+    const result = await handleRunEval({
+      evaluator: ['Builtin.GoalSuccessRate'],
+      days: 7,
+      expectedTrajectory: ['tool_1', 'tool_2'],
+    });
+
+    expect(result.success).toBe(true);
+    expect(result.run!.referenceInputs).toEqual({
+      expectedTrajectory: ['tool_1', 'tool_2'],
+    });
+  });
 });

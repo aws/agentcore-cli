@@ -598,6 +598,55 @@ export async function handleRunEval(options: RunEvalOptions): Promise<RunEvalRes
   // Resolve evaluator levels to determine how to send spans
   const evaluatorLevels = await resolveEvaluatorLevels(ctx.evaluatorIds, ctx.region);
 
+  // Build evaluationReferenceInputs if ground truth was provided
+  const hasRefInputs =
+    (options.assertions?.length ?? 0) > 0 ||
+    (options.expectedTrajectory?.length ?? 0) > 0 ||
+    !!options.expectedResponse;
+
+  let evaluationReferenceInputs: Record<string, unknown>[] | undefined;
+  if (hasRefInputs) {
+    const refInputs: Record<string, unknown>[] = [];
+    const firstSession = sessions[0]!;
+
+    // Session-level: expectedTrajectory + assertions (one entry per session)
+    const sessionRef: Record<string, unknown> = {
+      context: { spanContext: { sessionId: firstSession.sessionId } },
+    };
+    let hasSessionRef = false;
+
+    if (options.expectedTrajectory && options.expectedTrajectory.length > 0) {
+      sessionRef.expectedTrajectory = { toolNames: options.expectedTrajectory };
+      hasSessionRef = true;
+    }
+    if (options.assertions && options.assertions.length > 0) {
+      sessionRef.assertions = options.assertions.map(a => ({ text: a }));
+      hasSessionRef = true;
+    }
+    if (hasSessionRef) {
+      refInputs.push(sessionRef);
+    }
+
+    // Per-trace: expectedResponse (targets a specific trace)
+    if (options.expectedResponse) {
+      const traceId = options.traceId ?? extractTraceIds(firstSession.spans).at(-1);
+      if (!traceId) {
+        return {
+          success: false,
+          error: 'Expected response provided but no trace IDs found in session spans. Use -t/--trace-id to specify.',
+        };
+      }
+      refInputs.push({
+        context: { spanContext: { sessionId: firstSession.sessionId, traceId } },
+        expectedResponse: { text: options.expectedResponse },
+      });
+    }
+
+    if (refInputs.length > 0) {
+      evaluationReferenceInputs = refInputs;
+    }
+  }
+
   // Run each evaluator against each session with level-appropriate targeting
   const results: EvalEvaluatorResult[] = [];
 
@@ -635,6 +684,7 @@ export async function handleRunEval(options: RunEvalOptions): Promise<RunEvalRes
           sessionSpans: session.spans,
           targetTraceIds: batch.traceIds,
           targetSpanIds: batch.spanIds,
+          evaluationReferenceInputs,
         });
 
         for (const r of response.evaluationResults) {
@@ -676,6 +726,15 @@ export async function handleRunEval(options: RunEvalOptions): Promise<RunEvalRes
     lookbackDays: options.days,
     sessionCount: sessions.length,
     results,
+    ...(hasRefInputs
+      ? {
+          referenceInputs: {
+            ...(options.assertions?.length ? { assertions: options.assertions } : {}),
+            ...(options.expectedTrajectory?.length ? { expectedTrajectory: options.expectedTrajectory } : {}),
+            ...(options.expectedResponse ? { expectedResponse: options.expectedResponse } : {}),
+          },
+        }
+      : {}),
   };
 
   // Save to disk

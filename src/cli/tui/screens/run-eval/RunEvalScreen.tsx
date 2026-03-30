@@ -16,6 +16,7 @@ import {
 import { HELP_TEXT } from '../../constants';
 import { useListNavigation, useMultiSelectNavigation } from '../../hooks';
 import type { EvaluatorItem } from '../online-eval/types';
+import { GroundTruthForm } from './GroundTruthForm';
 import type { AgentItem, RunEvalConfig } from './types';
 import { DEFAULT_LOOKBACK_DAYS, RUN_EVAL_STEP_LABELS } from './types';
 import { useRunEvalWizard } from './useRunEvalWizard';
@@ -63,6 +64,7 @@ export function RunEvalScreen({ agents, evaluatorItems: rawEvaluatorItems, onCom
   const isEvaluatorsStep = wizard.step === 'evaluators';
   const isDaysStep = wizard.step === 'days';
   const isSessionsStep = wizard.step === 'sessions';
+  const isGroundTruthStep = wizard.step === 'groundTruth';
   const isConfirmStep = wizard.step === 'confirm';
 
   const fetchKey = `${wizard.config.agent}:${wizard.config.days}`;
@@ -181,14 +183,50 @@ export function RunEvalScreen({ agents, evaluatorItems: rawEvaluatorItems, onCom
           : sessionPhase === 'error'
             ? HELP_TEXT.CONFIRM_CANCEL
             : 'Space toggle · Enter confirm · Esc back'
-        : isConfirmStep
-          ? HELP_TEXT.CONFIRM_CANCEL
-          : HELP_TEXT.TEXT_INPUT;
+        : isGroundTruthStep
+          ? 'Enter add · Enter (empty) next · Enter submit · Esc back'
+          : isConfirmStep
+            ? HELP_TEXT.CONFIRM_CANCEL
+            : HELP_TEXT.TEXT_INPUT;
 
   const headerContent = <StepIndicator steps={wizard.steps} currentStep={wizard.step} labels={RUN_EVAL_STEP_LABELS} />;
 
+  // Build confirm fields
+  const confirmFields = [
+    { label: 'Agent', value: wizard.config.agent },
+    { label: 'Evaluators', value: wizard.config.evaluators.join(', ') },
+    { label: 'Lookback', value: `${wizard.config.days} day${wizard.config.days !== 1 ? 's' : ''}` },
+    {
+      label: 'Sessions',
+      value: `${wizard.config.sessionIds.length} selected`,
+    },
+    ...(wizard.config.assertions.length > 0
+      ? [{ label: 'Assertions', value: `${wizard.config.assertions.length} assertion(s)` }]
+      : []),
+    ...(wizard.config.expectedResponse
+      ? [
+          {
+            label: 'Exp. Response',
+            value:
+              wizard.config.expectedResponse.length > 40
+                ? wizard.config.expectedResponse.slice(0, 40) + '...'
+                : wizard.config.expectedResponse,
+          },
+        ]
+      : []),
+    ...(wizard.config.expectedTrajectory.length > 0
+      ? [{ label: 'Exp. Trajectory', value: wizard.config.expectedTrajectory.join(', ') }]
+      : []),
+  ];
+
   return (
-    <Screen title="Run On-demand Evaluation" onExit={onExit} helpText={helpText} headerContent={headerContent}>
+    <Screen
+      title="Run On-demand Evaluation"
+      onExit={onExit}
+      exitEnabled={isAgentStep || isEvaluatorsStep}
+      helpText={helpText}
+      headerContent={headerContent}
+    >
       <Panel>
         {isAgentStep && (
           <WizardSelect
@@ -237,28 +275,27 @@ export function RunEvalScreen({ agents, evaluatorItems: rawEvaluatorItems, onCom
         {isSessionsStep && sessionResult?.phase === 'error' && <Text color="red">{sessionResult.message}</Text>}
 
         {isSessionsStep && sessionPhase === 'loaded' && (
-          <WizardMultiSelect
-            title="Select sessions to evaluate"
-            description={`Found ${sessionItems.length} session${sessionItems.length !== 1 ? 's' : ''} — select one or more`}
-            items={sessionItems}
-            cursorIndex={sessionsNav.cursorIndex}
-            selectedIds={sessionsNav.selectedIds}
+          <Box flexDirection="column">
+            <WizardMultiSelect
+              title="Select sessions to evaluate"
+              description={`Found ${sessionItems.length} session${sessionItems.length !== 1 ? 's' : ''} — select one or more`}
+              items={sessionItems}
+              cursorIndex={sessionsNav.cursorIndex}
+              selectedIds={sessionsNav.selectedIds}
+            />
+            <Text dimColor>Select exactly 1 session to provide ground truth.</Text>
+          </Box>
+        )}
+
+        {isGroundTruthStep && (
+          <GroundTruthForm
+            sessionId={wizard.config.sessionIds[0]!}
+            onSubmit={wizard.setGroundTruth}
+            onCancel={() => wizard.goBack()}
           />
         )}
 
-        {isConfirmStep && (
-          <ConfirmReview
-            fields={[
-              { label: 'Agent', value: wizard.config.agent },
-              { label: 'Evaluators', value: wizard.config.evaluators.join(', ') },
-              { label: 'Lookback', value: `${wizard.config.days} day${wizard.config.days !== 1 ? 's' : ''}` },
-              {
-                label: 'Sessions',
-                value: `${wizard.config.sessionIds.length} selected`,
-              },
-            ]}
-          />
-        )}
+        {isConfirmStep && <ConfirmReview fields={confirmFields} />}
       </Panel>
     </Screen>
   );

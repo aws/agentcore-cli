@@ -3,10 +3,15 @@ import { DEFAULT_LOOKBACK_DAYS } from './types';
 import { useCallback, useState } from 'react';
 
 function getAllSteps(agentCount: number): RunEvalStep[] {
-  if (agentCount <= 1) {
-    return ['evaluators', 'days', 'sessions', 'confirm'];
+  const steps: RunEvalStep[] = [];
+  if (agentCount > 1) {
+    steps.push('agent');
   }
-  return ['agent', 'evaluators', 'days', 'sessions', 'confirm'];
+  steps.push('evaluators', 'days', 'sessions');
+  // groundTruth step is always in the array; setSessions skips it when multiple sessions selected
+  steps.push('groundTruth');
+  steps.push('confirm');
+  return steps;
 }
 
 function getDefaultConfig(): RunEvalConfig {
@@ -15,7 +20,16 @@ function getDefaultConfig(): RunEvalConfig {
     evaluators: [],
     days: DEFAULT_LOOKBACK_DAYS,
     sessionIds: [],
+    assertions: [],
+    expectedTrajectory: [],
+    expectedResponse: '',
   };
+}
+
+export interface GroundTruthData {
+  assertions: string[];
+  expectedTrajectory: string[];
+  expectedResponse: string;
 }
 
 export function useRunEvalWizard(agentCount: number) {
@@ -26,9 +40,14 @@ export function useRunEvalWizard(agentCount: number) {
   const currentIndex = allSteps.indexOf(step);
 
   const goBack = useCallback(() => {
+    if (step === 'confirm' && config.sessionIds.length !== 1) {
+      // Skip GT step when going back from confirm with multiple sessions
+      setStep('sessions');
+      return;
+    }
     const prevStep = allSteps[currentIndex - 1];
     if (prevStep) setStep(prevStep);
-  }, [allSteps, currentIndex, setStep]);
+  }, [allSteps, currentIndex, step, config.sessionIds.length, setStep]);
 
   const nextStep = useCallback(
     (currentStep: RunEvalStep): RunEvalStep | undefined => {
@@ -67,11 +86,31 @@ export function useRunEvalWizard(agentCount: number) {
 
   const setSessions = useCallback(
     (sessionIds: string[]) => {
-      setConfig(c => ({ ...c, sessionIds }));
-      const next = nextStep('sessions');
-      if (next) setStep(next);
+      if (sessionIds.length === 1) {
+        // Single session: go to ground truth
+        setConfig(c => ({ ...c, sessionIds }));
+        setStep('groundTruth');
+      } else {
+        // Multiple sessions: skip GT, clear any stale GT data
+        setConfig(c => ({
+          ...c,
+          sessionIds,
+          assertions: [],
+          expectedTrajectory: [],
+          expectedResponse: '',
+        }));
+        setStep('confirm');
+      }
     },
-    [nextStep, setConfig, setStep]
+    [setConfig, setStep]
+  );
+
+  const setGroundTruth = useCallback(
+    (gt: GroundTruthData) => {
+      setConfig(c => ({ ...c, ...gt }));
+      setStep('confirm');
+    },
+    [setConfig, setStep]
   );
 
   const reset = useCallback(() => {
@@ -89,6 +128,7 @@ export function useRunEvalWizard(agentCount: number) {
     setEvaluators,
     setDays,
     setSessions,
+    setGroundTruth,
     reset,
   };
 }
