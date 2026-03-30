@@ -2,6 +2,18 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.5.0] - 2026-03-30
+
+### Added
+- feat: add ground truth reference inputs for on-demand evaluation (#732) (01623ff)
+- feat: bundle @aws/agentcore-cdk inside CLI tarball for testing (#731) (c9cc1f2)
+
+### Other Changes
+- chore: remove dead AutoGenRenderer code (#735) (cb09603)
+- fix(tui): prevent screen flicker in policy creation flow (#730) (dbb9c00)
+- fix(e2e): limit PR tests to Bedrock-only and improve credential cleanup (#728) (a5c2da9)
+- feat(import): extract and pass through executionRoleArn from starter toolkit YAML (#729) (60b5946)
+
 ## @aws/agentcore v0.4.0
 
 The AgentCore CLI is now generally available.

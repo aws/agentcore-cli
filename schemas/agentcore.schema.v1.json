@@ -141,6 +141,9 @@
               "type": "string"
             }
           },
+          "executionRoleArn": {
+            "type": "string"
+          },
           "authorizerType": {
             "type": "string",
             "enum": ["AWS_IAM", "CUSTOM_JWT"]
