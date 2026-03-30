@@ -66,12 +66,6 @@ export class CDKRenderer {
     await this.writeLlmContext(configDir);
     logger?.logSubStep('LLM context files written');
 
-    // Copy bundled @aws/agentcore-cdk into agentcore/.bundled/agentcore-cdk/
-    // so the vended CDK project's file: dependency resolves locally.
-    logger?.logSubStep('Copying bundled @aws/agentcore-cdk...');
-    await this.copyBundledCdk(configDir);
-    logger?.logSubStep('Bundled @aws/agentcore-cdk copied');
-
     // Skip slow npm operations in test mode
     if (process.env.AGENTCORE_SKIP_INSTALL) return outputDir;
 
@@ -91,6 +85,10 @@ export class CDKRenderer {
       throw new Error(`npm install failed with code ${installResult.code}: ${installResult.stderr}`);
     }
     logger?.logSubStep(`npm install completed (${(installDuration / 1000).toFixed(1)}s)`);
+
+    // If the CLI was built with a bundled CDK constructs tarball (via npm run bundle),
+    // install it to override the registry version. This is a no-op for normal builds.
+    await this.installBundledCdkIfPresent(outputDir, logger);
 
     // Format the CDK project files
     logger?.logSubStep('Running npm run format...');
@@ -122,22 +120,28 @@ export class CDKRenderer {
     await fs.copyFile(readmeSrc, readmeDest);
   }
 
-  private async copyBundledCdk(configDir: string): Promise<void> {
-    const bundledSrc = path.join(this.assetsDir, 'bundled-agentcore-cdk');
-    const bundledDest = path.join(configDir, '.bundled', 'agentcore-cdk');
+  private async installBundledCdkIfPresent(cdkProjectDir: string, logger?: CreateLogger): Promise<void> {
+    const bundledTarball = path.join(this.assetsDir, 'bundled-agentcore-cdk.tgz');
 
-    // Check if bundled CDK constructs exist in the CLI assets
     try {
-      await fs.access(bundledSrc);
+      await fs.access(bundledTarball);
     } catch {
-      throw new Error(
-        'Bundled @aws/agentcore-cdk not found in CLI assets. ' +
-          'The CLI package may not have been built with CDK constructs bundled.'
-      );
+      // No bundled tarball — normal build, nothing to do
+      return;
     }
 
-    await fs.mkdir(path.dirname(bundledDest), { recursive: true });
-    await copyDir(bundledSrc, bundledDest);
+    logger?.logSubStep('Installing bundled @aws/agentcore-cdk override...');
+    const result = await runSubprocessCapture('npm', ['install', bundledTarball], { cwd: cdkProjectDir });
+    if (result.stdout) {
+      logger?.logCommandOutput(result.stdout);
+    }
+    if (result.stderr) {
+      logger?.logCommandOutput(result.stderr);
+    }
+    if (result.code !== 0) {
+      throw new Error(`Failed to install bundled @aws/agentcore-cdk: ${result.stderr}`);
+    }
+    logger?.logSubStep('Bundled @aws/agentcore-cdk installed');
   }
 
   private async writeLlmContext(configDir: string): Promise<void> {

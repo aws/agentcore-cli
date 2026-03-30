@@ -1,15 +1,17 @@
 /**
  * bundle.mjs — Single command to build CLI + CDK constructs into one tarball.
  *
+ * This is a testing-only workflow. It does NOT modify the default build or
+ * deployment flow. The normal `npm run build` + `npm pack` pipeline is unchanged.
+ *
+ * What this script does differently: after building both packages normally, it
+ * packs the CDK constructs into a tarball and places it in the CLI's dist/assets/.
+ * At `agentcore create` time, CDKRenderer detects this tarball and installs it
+ * after the normal `npm install`, overriding the registry version.
+ *
  * Usage:
  *   node scripts/bundle.mjs
- *
- * Behavior:
- *   1. Locates @aws/agentcore-cdk via AGENTCORE_CDK_PATH, sibling directory,
- *      or clones the latest from GitHub.
- *   2. Installs and builds the CDK constructs.
- *   3. Installs and builds the CLI (which auto-bundles CDK constructs via copy-assets).
- *   4. Runs npm pack to produce the final tarball.
+ *   npm run bundle
  *
  * Environment variables:
  *   AGENTCORE_CDK_PATH — absolute path to the agentcore-l3-cdk-constructs repo
@@ -87,28 +89,44 @@ run('npm install', { cwd: cdkPath });
 log('Building CDK constructs...');
 run('npm run build', { cwd: cdkPath });
 
-// Export for copy-assets.mjs to pick up
-process.env.AGENTCORE_CDK_PATH = cdkPath;
+// Step 2: Pack CDK constructs into a tarball
+log('Packing CDK constructs...');
+run('npm pack', { cwd: cdkPath });
 
-// Step 2: Build CLI (copy-assets will bundle the CDK constructs)
+// Find the CDK tarball (npm pack outputs the filename on the last line)
+const cdkPkg = JSON.parse(fs.readFileSync(path.join(cdkPath, 'package.json'), 'utf8'));
+const cdkTarballName = `aws-agentcore-cdk-${cdkPkg.version}.tgz`;
+const cdkTarballSrc = path.join(cdkPath, cdkTarballName);
+
+if (!fs.existsSync(cdkTarballSrc)) {
+  console.error(`ERROR: Expected CDK tarball at ${cdkTarballSrc} but not found.`);
+  process.exit(1);
+}
+
+// Step 3: Build CLI normally (no modifications to copy-assets)
 log('Installing CLI dependencies...');
 run('npm install', { cwd: cliRoot });
 
 log('Building CLI...');
 run('npm run build', { cwd: cliRoot });
 
-// Step 3: Pack into tarball
-log('Packing tarball...');
+// Step 4: Copy CDK tarball into dist/assets/ so CDKRenderer can detect it
+const bundledTarballDest = path.join(cliRoot, 'dist', 'assets', 'bundled-agentcore-cdk.tgz');
+fs.copyFileSync(cdkTarballSrc, bundledTarballDest);
+log(`Placed CDK tarball at ${bundledTarballDest}`);
+
+// Step 5: Pack CLI into final tarball (includes the bundled CDK tarball)
+log('Packing CLI tarball...');
 run('npm pack', { cwd: cliRoot });
 
-// Find the tarball
-const pkg = JSON.parse(fs.readFileSync(path.join(cliRoot, 'package.json'), 'utf8'));
-const tarballName = `aws-agentcore-${pkg.version}.tgz`;
-const tarballPath = path.join(cliRoot, tarballName);
+const cliPkg = JSON.parse(fs.readFileSync(path.join(cliRoot, 'package.json'), 'utf8'));
+const cliTarballName = `aws-agentcore-${cliPkg.version}.tgz`;
+const cliTarballPath = path.join(cliRoot, cliTarballName);
 
-if (fs.existsSync(tarballPath)) {
-  log(`Done! Tarball: ${tarballPath}`);
-  log(`Install with: npm install ${tarballPath}`);
+if (fs.existsSync(cliTarballPath)) {
+  log(`Done! Tarball: ${cliTarballPath}`);
+  log(`Install with: npm install ${cliTarballPath}`);
+  log('When you run agentcore create, the bundled CDK constructs will be installed automatically.');
 } else {
   log(`Done! Check ${cliRoot} for the .tgz file.`);
 }

@@ -40,49 +40,10 @@ function copyDir(src, dest, excludeAtRoot = [], isRoot = true) {
   }
 }
 
-// ---------------------------------------------------------------------------
-// Bundle @aws/agentcore-cdk into dist/assets/bundled-agentcore-cdk/
-//
-// The CDK constructs package is resolved via AGENTCORE_CDK_PATH env var
-// (absolute path to the agentcore-l3-cdk-constructs repo root) or defaults
-// to a sibling directory ../agentcore-l3-cdk-constructs relative to this repo.
-// The package must already be built (npm run build) before running this script.
-// ---------------------------------------------------------------------------
-function bundleCdkConstructs() {
-  const cdkPkgRoot =
-    process.env.AGENTCORE_CDK_PATH ||
-    path.join(__dirname, '..', '..', 'agentcore-l3-cdk-constructs');
-
-  const cdkDist = path.join(cdkPkgRoot, 'dist');
-  const cdkPkgJson = path.join(cdkPkgRoot, 'package.json');
-
-  if (!fs.existsSync(cdkDist) || !fs.existsSync(cdkPkgJson)) {
-    console.warn(
-      'WARNING: @aws/agentcore-cdk not found or not built at',
-      cdkPkgRoot,
-      '— skipping CDK constructs bundling. Set AGENTCORE_CDK_PATH to override.',
-    );
-    return;
-  }
-
-  const bundleDir = path.join(destDir, 'bundled-agentcore-cdk');
-  fs.mkdirSync(bundleDir, { recursive: true });
-
-  // Copy package.json
-  fs.copyFileSync(cdkPkgJson, path.join(bundleDir, 'package.json'));
-
-  // Copy built dist/
-  copyDir(cdkDist, path.join(bundleDir, 'dist'), [], true);
-
-  console.log('Bundled @aws/agentcore-cdk into dist/assets/bundled-agentcore-cdk/');
-}
-
 try {
   console.log('Copying assets...');
   copyDir(srcDir, destDir, ['AGENTS.md']);
   console.log('Assets copied successfully!');
-
-  bundleCdkConstructs();
 } catch (error) {
   console.error('Error copying assets:', error);
   process.exit(1);
