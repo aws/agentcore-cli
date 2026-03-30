@@ -14,6 +14,16 @@ export interface RunResult {
 }
 
 /**
+ * Build a clean env for spawned CLI processes.
+ * Strips INIT_CWD which npm/npx sets to the runner's directory — without this,
+ * the CLI resolves the working directory from INIT_CWD instead of the spawn's cwd.
+ * @see https://docs.npmjs.com/cli/v10/commands/npm-run-script
+ */
+export function cleanSpawnEnv(extraEnv: Record<string, string> = {}): NodeJS.ProcessEnv {
+  return { ...process.env, INIT_CWD: undefined, ...extraEnv };
+}
+
+/**
  * Spawn a command, collect output, and strip ANSI codes.
  */
 export function spawnAndCollect(
@@ -25,7 +35,7 @@ export function spawnAndCollect(
   return new Promise(resolve => {
     const proc = spawn(command, args, {
       cwd,
-      env: { ...process.env, INIT_CWD: undefined, ...extraEnv },
+      env: cleanSpawnEnv(extraEnv),
     });
 
     let stdout = '';
