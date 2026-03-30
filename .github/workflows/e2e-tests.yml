@@ -106,4 +106,6 @@ jobs:
           OPENAI_API_KEY: ${{ env.E2E_OPENAI_API_KEY }}
           GEMINI_API_KEY: ${{ env.E2E_GEMINI_API_KEY }}
           CDK_TARBALL: ${{ env.CDK_TARBALL }}
-        run: npx vitest run --project e2e strands-bedrock strands-openai langgraph-bedrock googleadk-gemini
+        # Only run Bedrock tests on PRs to avoid creating ApiKeyCredentialProviders,
+        # which have a 50-resource account limit and accumulate from interrupted runs.
+        run: npx vitest run --project e2e strands-bedrock langgraph-bedrock

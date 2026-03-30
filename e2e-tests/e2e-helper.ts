@@ -332,12 +332,22 @@ export function installCdkTarball(projectPath: string): void {
   }
 }
 
+async function deleteCredentialProvider(client: BedrockAgentCoreControlClient, name: string): Promise<void> {
+  try {
+    await client.send(new DeleteApiKeyCredentialProviderCommand({ name }));
+    console.log(`Deleted credential provider: ${name}`);
+  } catch (error) {
+    const code = (error as { name?: string }).name ?? 'Unknown';
+    console.warn(`Failed to delete credential provider ${name}: [${code}]`);
+  }
+}
+
 /**
  * Delete stale E2e* credential providers older than the given max age.
  * Runs in beforeAll to prevent accumulation from previous runs that
  * crashed or timed out before their afterAll teardown could execute.
  */
-export async function cleanupStaleCredentialProviders(maxAgeMs: number = 60 * 60 * 1000): Promise<void> {
+export async function cleanupStaleCredentialProviders(maxAgeMs: number = 30 * 60 * 1000): Promise<void> {
   const region = process.env.AWS_REGION ?? 'us-east-1';
   const client = new BedrockAgentCoreControlClient({ region });
   const cutoff = new Date(Date.now() - maxAgeMs);
@@ -348,16 +358,7 @@ export async function cleanupStaleCredentialProviders(maxAgeMs: number = 60 * 60
     const providers = response.credentialProviders ?? [];
     const stale = providers.filter(p => p.name?.startsWith('E2e') && p.createdTime && p.createdTime < cutoff);
 
-    await Promise.all(
-      stale.map(async p => {
-        try {
-          await client.send(new DeleteApiKeyCredentialProviderCommand({ name: p.name! }));
-          console.log(`Cleaned up stale credential provider: ${p.name}`);
-        } catch {
-          console.warn(`Failed to clean up stale credential provider: ${p.name}`);
-        }
-      })
-    );
+    await Promise.all(stale.map(p => deleteCredentialProvider(client, p.name!)));
 
     nextToken = response.nextToken;
   } while (nextToken);
@@ -371,13 +372,8 @@ export async function teardownE2EProject(projectPath: string, agentName: string,
     console.log('Teardown stderr:', result.stderr);
   }
   if (modelProvider !== 'Bedrock' && agentName) {
-    const providerName = `${agentName}${modelProvider}`;
     const region = process.env.AWS_REGION ?? 'us-east-1';
-    try {
-      const client = new BedrockAgentCoreControlClient({ region });
-      await client.send(new DeleteApiKeyCredentialProviderCommand({ name: providerName }));
-    } catch {
-      // Best-effort cleanup
-    }
+    const client = new BedrockAgentCoreControlClient({ region });
+    await deleteCredentialProvider(client, `${agentName}${modelProvider}`);
   }
 }
