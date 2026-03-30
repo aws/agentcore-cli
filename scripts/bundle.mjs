@@ -107,16 +107,16 @@ function restoreVersion({ pkgJsonPath, originalVersion }) {
 const cdkPath = resolveCdkPath();
 
 log('Installing CDK constructs dependencies...');
-run('npm install', { cwd: cdkPath });
+run('npm', ['install'], { cwd: cdkPath });
 
 log('Building CDK constructs...');
-run('npm run build', { cwd: cdkPath });
+run('npm', ['run', 'build'], { cwd: cdkPath });
 
 // Step 2: Bump CDK version and pack into a tarball
 const cdkVersionInfo = bumpVersion(cdkPath);
 try {
   log('Packing CDK constructs...');
-  run('npm pack', { cwd: cdkPath });
+  run('npm', ['pack'], { cwd: cdkPath });
 } finally {
   restoreVersion(cdkVersionInfo);
 }
@@ -131,10 +131,10 @@ if (!fs.existsSync(cdkTarballSrc)) {
 
 // Step 3: Build CLI normally (no modifications to copy-assets)
 log('Installing CLI dependencies...');
-run('npm install', { cwd: cliRoot });
+run('npm', ['install'], { cwd: cliRoot });
 
 log('Building CLI...');
-run('npm run build', { cwd: cliRoot });
+run('npm', ['run', 'build'], { cwd: cliRoot });
 
 // Step 4: Copy CDK tarball into dist/assets/ so CDKRenderer can detect it
 const bundledTarballDest = path.join(cliRoot, 'dist', 'assets', 'bundled-agentcore-cdk.tgz');
@@ -145,7 +145,7 @@ log(`Placed CDK tarball at ${bundledTarballDest}`);
 const cliVersionInfo = bumpVersion(cliRoot);
 try {
   log('Packing CLI tarball...');
-  run('npm pack', { cwd: cliRoot });
+  run('npm', ['pack'], { cwd: cliRoot });
 } finally {
   restoreVersion(cliVersionInfo);
 }
