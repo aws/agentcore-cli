@@ -6,6 +6,7 @@ import {
   InvokeAgentRuntimeCommand,
   StopRuntimeSessionCommand,
 } from '@aws-sdk/client-bedrock-agentcore';
+import type { EvaluationReferenceInput } from '@aws-sdk/client-bedrock-agentcore';
 import type { HttpRequest } from '@smithy/protocol-http';
 import type { DocumentType } from '@smithy/types';
 
@@ -424,7 +425,7 @@ export interface EvaluateOptions {
   sessionSpans: DocumentType[];
   targetSpanIds?: string[];
   targetTraceIds?: string[];
-  evaluationReferenceInputs?: Record<string, unknown>[];
+  evaluationReferenceInputs?: EvaluationReferenceInput[];
 }
 
 export interface EvaluationResultContext {
@@ -477,6 +478,7 @@ export async function evaluate(options: EvaluateOptions): Promise<EvaluateResult
       sessionSpans: options.sessionSpans,
     },
     ...(evaluationTarget ? { evaluationTarget } : {}),
+    ...(options.evaluationReferenceInputs ? { evaluationReferenceInputs: options.evaluationReferenceInputs } : {}),
   });
 
   const response = await client.send(command);

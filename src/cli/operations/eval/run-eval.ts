@@ -6,6 +6,7 @@ import type { DeployedProjectConfig } from '../resolve-agent';
 import { loadDeployedProjectConfig, resolveAgent } from '../resolve-agent';
 import { generateFilename, saveEvalRun } from './storage';
 import type { EvalEvaluatorResult, EvalRunResult, EvalSessionScore, RunEvalOptions, SessionInfo } from './types';
+import type { EvaluationReferenceInput } from '@aws-sdk/client-bedrock-agentcore';
 import { CloudWatchLogsClient, GetQueryResultsCommand, StartQueryCommand } from '@aws-sdk/client-cloudwatch-logs';
 import type { ResultField } from '@aws-sdk/client-cloudwatch-logs';
 import type { DocumentType } from '@smithy/types';
@@ -604,13 +605,13 @@ export async function handleRunEval(options: RunEvalOptions): Promise<RunEvalRes
     (options.expectedTrajectory?.length ?? 0) > 0 ||
     !!options.expectedResponse;
 
-  let evaluationReferenceInputs: Record<string, unknown>[] | undefined;
+  let evaluationReferenceInputs: EvaluationReferenceInput[] | undefined;
   if (hasRefInputs) {
-    const refInputs: Record<string, unknown>[] = [];
+    const refInputs: EvaluationReferenceInput[] = [];
     const firstSession = sessions[0]!;
 
     // Session-level: expectedTrajectory + assertions (one entry per session)
-    const sessionRef: Record<string, unknown> = {
+    const sessionRef: EvaluationReferenceInput = {
       context: { spanContext: { sessionId: firstSession.sessionId } },
     };
     let hasSessionRef = false;
