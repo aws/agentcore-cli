@@ -22,6 +22,8 @@ export interface ParsedStarterToolkitAgent {
   authorizerType?: RuntimeAuthorizerType;
   /** Authorizer configuration (Custom JWT) */
   authorizerConfiguration?: AuthorizerConfig;
+  /** ARN of the execution role from the starter toolkit deployment */
+  executionRoleArn?: string;
 }
 
 /**

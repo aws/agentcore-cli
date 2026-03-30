@@ -225,6 +225,7 @@ export function parseStarterToolkitYaml(filePath: string): ParsedStarterToolkitC
         physicalAgentId: bedrockConfig?.agent_id as string | undefined,
         physicalAgentArn: bedrockConfig?.agent_arn as string | undefined,
         ...extractAuthorizerConfig(agentConfig.authorizer_configuration),
+        executionRoleArn: (awsConfig?.execution_role as string) || undefined,
       });
 
       // Extract memory config per agent — ensure mode is a non-empty string

@@ -61,6 +61,10 @@ function toAgentEnvSpec(agent: ParsedStarterToolkitConfig['agents'][0]): AgentEn
     spec.networkConfig = agent.networkConfig;
   }
 
+  if (agent.executionRoleArn) {
+    spec.executionRoleArn = agent.executionRoleArn;
+  }
+
   if (agent.authorizerType) {
     spec.authorizerType = agent.authorizerType;
   }

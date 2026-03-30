@@ -194,6 +194,8 @@ export const AgentEnvSpecSchema = z
     protocol: ProtocolModeSchema.optional(),
     /** Allowed request headers forwarded to the runtime at invocation time. */
     requestHeaderAllowlist: RequestHeaderAllowlistSchema.optional(),
+    /** ARN of an existing IAM execution role to use instead of creating a new one. */
+    executionRoleArn: z.string().optional(),
     /** Authorizer type for inbound requests. Defaults to AWS_IAM. */
     authorizerType: RuntimeAuthorizerTypeSchema.optional(),
     /** Authorizer configuration. Required when authorizerType is CUSTOM_JWT. */
