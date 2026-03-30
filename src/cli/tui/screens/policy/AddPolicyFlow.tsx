@@ -112,6 +112,7 @@ export function AddPolicyFlow({ isInteractive = true, onExit, onBack, onDev, onD
     if (item.id === '__create_new__') {
       setFlow({ name: 'engine-wizard' });
     } else {
+      setFlow({ name: 'loading' });
       const [deployedId, deployedGateways] = await Promise.all([
         policyEnginePrimitive.getDeployedEngineId(item.id),
         policyEnginePrimitive.getDeployedGateways(),
@@ -161,6 +162,7 @@ export function AddPolicyFlow({ isInteractive = true, onExit, onBack, onDev, onD
   }, []);
 
   const handleAddPolicyToNewEngine = useCallback(async (engineName: string) => {
+    setFlow({ name: 'loading' });
     const [deployedId, deployedGateways] = await Promise.all([
       policyEnginePrimitive.getDeployedEngineId(engineName),
       policyEnginePrimitive.getDeployedGateways(),
@@ -177,7 +179,7 @@ export function AddPolicyFlow({ isInteractive = true, onExit, onBack, onDev, onD
   if (flow.name === 'loading') {
     return (
       <Box>
-        <Text dimColor>Loading policy engines...</Text>
+        <Text dimColor>Loading...</Text>
       </Box>
     );
   }
