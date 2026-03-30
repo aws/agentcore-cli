@@ -3,10 +3,10 @@ import { getCredentialProvider } from './account';
 import {
   BedrockAgentCoreClient,
   EvaluateCommand,
+  type EvaluationReferenceInput,
   InvokeAgentRuntimeCommand,
   StopRuntimeSessionCommand,
 } from '@aws-sdk/client-bedrock-agentcore';
-import type { EvaluationReferenceInput } from '@aws-sdk/client-bedrock-agentcore';
 import type { HttpRequest } from '@smithy/protocol-http';
 import type { DocumentType } from '@smithy/types';
 

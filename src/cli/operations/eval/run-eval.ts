@@ -606,6 +606,13 @@ export async function handleRunEval(options: RunEvalOptions): Promise<RunEvalRes
     !!options.expectedResponse;
 
   let evaluationReferenceInputs: EvaluationReferenceInput[] | undefined;
+  if (hasRefInputs && sessions.length !== 1) {
+    return {
+      success: false,
+      error:
+        'Ground truth flags (-A, --expected-trajectory, --expected-response) require exactly one session. Use -s/--session-id to target a single session.',
+    };
+  }
   if (hasRefInputs) {
     const refInputs: EvaluationReferenceInput[] = [];
     const firstSession = sessions[0]!;

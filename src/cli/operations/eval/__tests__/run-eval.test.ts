@@ -1204,4 +1204,18 @@ describe('handleRunEval', () => {
       expectedTrajectory: ['tool_1', 'tool_2'],
     });
   });
+
+  it('returns error when ground truth flags are used with multiple sessions', async () => {
+    setupDefaultAgent();
+    setupCloudWatchToReturn([makeOtelSpanRow('session-1', 'trace-1'), makeOtelSpanRow('session-2', 'trace-2')]);
+
+    const result = await handleRunEval({
+      evaluator: ['Builtin.GoalSuccessRate'],
+      days: 7,
+      assertions: ['Agent should greet user'],
+    });
+
+    expect(result.success).toBe(false);
+    expect(result.error).toContain('require exactly one session');
+  });
 });
