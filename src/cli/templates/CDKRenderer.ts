@@ -130,8 +130,14 @@ export class CDKRenderer {
       return;
     }
 
+    // Copy tarball into the CDK project so npm resolves a clean local path
+    const localTarball = path.join(cdkProjectDir, 'bundled-agentcore-cdk.tgz');
+    await fs.copyFile(bundledTarball, localTarball);
+
     logger?.logSubStep('Installing bundled @aws/agentcore-cdk override...');
-    const result = await runSubprocessCapture('npm', ['install', bundledTarball], { cwd: cdkProjectDir });
+    const result = await runSubprocessCapture('npm', ['install', './bundled-agentcore-cdk.tgz'], {
+      cwd: cdkProjectDir,
+    });
     if (result.stdout) {
       logger?.logCommandOutput(result.stdout);
     }
@@ -139,8 +145,13 @@ export class CDKRenderer {
       logger?.logCommandOutput(result.stderr);
     }
     if (result.code !== 0) {
+      // Clean up tarball on failure
+      await fs.unlink(localTarball).catch(() => undefined);
       throw new Error(`Failed to install bundled @aws/agentcore-cdk: ${result.stderr}`);
     }
+
+    // Clean up tarball after install
+    await fs.unlink(localTarball).catch(() => undefined);
     logger?.logSubStep('Bundled @aws/agentcore-cdk installed');
   }
 
