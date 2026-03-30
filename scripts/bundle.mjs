@@ -66,7 +66,7 @@ function resolveCdkPath() {
 
   if (fs.existsSync(cloneDir)) {
     log('Pulling latest changes...');
-    run('git pull', { cwd: cloneDir });
+    run('git pull origin main', { cwd: cloneDir });
   } else {
     run(`git clone --depth 1 ${CDK_REPO_URL} ${cloneDir}`);
   }
@@ -113,9 +113,12 @@ run('npm run build', { cwd: cdkPath });
 
 // Step 2: Bump CDK version and pack into a tarball
 const cdkVersionInfo = bumpVersion(cdkPath);
-log('Packing CDK constructs...');
-run('npm pack', { cwd: cdkPath });
-restoreVersion(cdkVersionInfo);
+try {
+  log('Packing CDK constructs...');
+  run('npm pack', { cwd: cdkPath });
+} finally {
+  restoreVersion(cdkVersionInfo);
+}
 
 const cdkTarballName = `aws-agentcore-cdk-${cdkVersionInfo.bumpedVersion}.tgz`;
 const cdkTarballSrc = path.join(cdkPath, cdkTarballName);
@@ -139,9 +142,12 @@ log(`Placed CDK tarball at ${bundledTarballDest}`);
 
 // Step 5: Bump CLI version and pack into final tarball (includes the bundled CDK tarball)
 const cliVersionInfo = bumpVersion(cliRoot);
-log('Packing CLI tarball...');
-run('npm pack', { cwd: cliRoot });
-restoreVersion(cliVersionInfo);
+try {
+  log('Packing CLI tarball...');
+  run('npm pack', { cwd: cliRoot });
+} finally {
+  restoreVersion(cliVersionInfo);
+}
 
 const cliTarballName = `aws-agentcore-${cliVersionInfo.bumpedVersion}.tgz`;
 const cliTarballPath = path.join(cliRoot, cliTarballName);
