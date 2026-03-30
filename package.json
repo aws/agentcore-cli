@@ -68,7 +68,8 @@
     "test:unit": "vitest run --project unit --coverage",
     "test:e2e": "vitest run --project e2e",
     "test:update-snapshots": "vitest run --project unit --update",
-    "test:tui": "npm run build:harness && vitest run --project tui"
+    "test:tui": "npm run build:harness && vitest run --project tui",
+    "bundle": "node scripts/bundle.mjs"
   },
   "dependencies": {
     "@aws-cdk/toolkit-lib": "^1.16.0",

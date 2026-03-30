@@ -64,3 +64,6 @@ ProtocolTesting/
 
 # Git worktrees
 .worktrees/
+
+# Auto-cloned CDK constructs (from scripts/bundle.mjs)
+.cdk-constructs-clone/
