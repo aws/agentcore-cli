@@ -16,7 +16,7 @@
  * Environment variables:
  *   AGENTCORE_CDK_PATH — absolute path to the agentcore-l3-cdk-constructs repo
  */
-import { execSync } from 'node:child_process';
+import { execFileSync } from 'node:child_process';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -31,9 +31,10 @@ function log(msg) {
   console.log(`\n[bundle] ${msg}`);
 }
 
-function run(cmd, opts = {}) {
-  console.log(`  > ${cmd}`);
-  execSync(cmd, { stdio: 'inherit', ...opts });
+function run(cmd, args = [], opts = {}) {
+  const display = [cmd, ...args].join(' ');
+  console.log(`  > ${display}`);
+  execFileSync(cmd, args, { stdio: 'inherit', ...opts });
 }
 
 /**
@@ -66,9 +67,9 @@ function resolveCdkPath() {
 
   if (fs.existsSync(cloneDir)) {
     log('Pulling latest changes...');
-    run('git pull origin main', { cwd: cloneDir });
+    run('git', ['pull', 'origin', 'main'], { cwd: cloneDir });
   } else {
-    run(`git clone --depth 1 ${CDK_REPO_URL} ${cloneDir}`);
+    run('git', ['clone', '--depth', '1', CDK_REPO_URL, cloneDir]);
   }
 
   return cloneDir;
