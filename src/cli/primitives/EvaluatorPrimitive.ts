@@ -303,7 +303,6 @@ export class EvaluatorPrimitive extends BasePrimitive<AddEvaluatorOptions, Remov
                 if (result.codePath) {
                   console.log(`Created evaluator '${result.evaluatorName}'`);
                   console.log(`  Code: ${result.codePath}lambda_function.py`);
-                  console.log(`  Deps: ${result.codePath}requirements.txt`);
                   console.log(`  IAM:  ${result.codePath}execution-role-policy.json`);
                   console.log(
                     `\n  Next: Edit lambda_function.py with your evaluation logic, then run \`agentcore deploy\``

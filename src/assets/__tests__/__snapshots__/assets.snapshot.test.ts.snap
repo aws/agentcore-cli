@@ -449,7 +449,6 @@ exports[`Assets Directory Snapshots > File listing > should match the expected f
   "evaluators/python-lambda/execution-role-policy.json",
   "evaluators/python-lambda/lambda_function.py",
   "evaluators/python-lambda/pyproject.toml",
-  "evaluators/python-lambda/wheels/bedrock_agentcore-1.5.0-py3-none-any.whl",
   "mcp/python-lambda/README.md",
   "mcp/python-lambda/handler.py",
   "mcp/python-lambda/pyproject.toml",

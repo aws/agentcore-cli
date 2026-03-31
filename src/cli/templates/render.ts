@@ -44,11 +44,8 @@ export async function copyDir(src: string, dest: string): Promise<void> {
   }
 }
 
-const BINARY_EXTENSIONS = new Set(['.whl', '.zip', '.tar', '.gz', '.tgz', '.png', '.jpg', '.ico']);
-
 /**
  * Recursively copies a directory, rendering Handlebars templates.
- * Binary files (e.g., .whl) are copied directly without template rendering.
  */
 export async function copyAndRenderDir<T extends object>(src: string, dest: string, data: T): Promise<void> {
   await fs.mkdir(dest, { recursive: true });
@@ -61,9 +58,6 @@ export async function copyAndRenderDir<T extends object>(src: string, dest: stri
 
     if (entry.isDirectory()) {
       await copyAndRenderDir(srcPath, destPath, data);
-    } else if (BINARY_EXTENSIONS.has(path.extname(entry.name).toLowerCase())) {
-      await fs.mkdir(path.dirname(destPath), { recursive: true });
-      await fs.copyFile(srcPath, destPath);
     } else {
       const content = await fs.readFile(srcPath, 'utf-8');
       const template = Handlebars.compile(content);

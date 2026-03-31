@@ -50,7 +50,7 @@ export function AddEvaluatorFlow({ isInteractive = true, onExit, onBack, onDev, 
 
   if (flow.name === 'create-success') {
     const detail = flow.codePath
-      ? `Created evaluator "${flow.evaluatorName}"\n  Code: ${flow.codePath}lambda_function.py\n  Deps: ${flow.codePath}requirements.txt\n  IAM:  ${flow.codePath}execution-role-policy.json\n\n  Next: Edit lambda_function.py with your evaluation logic, then run \`agentcore deploy\``
+      ? `Created evaluator "${flow.evaluatorName}"\n  Code: ${flow.codePath}lambda_function.py\n  IAM:  ${flow.codePath}execution-role-policy.json\n\n  Next: Edit lambda_function.py with your evaluation logic, then run \`agentcore deploy\``
       : 'Evaluator added to project in `agentcore/agentcore.json`. Deploy with `agentcore deploy`.';
 
     return (
