@@ -50,6 +50,8 @@ function toMemorySpec(memory: MemoryDetail, localName: string): Memory {
       ...(s.name && { name: s.name }),
       ...(s.description && { description: s.description }),
       ...(s.namespaces && s.namespaces.length > 0 && { namespaces: s.namespaces }),
+      ...(s.reflectionNamespaces &&
+        s.reflectionNamespaces.length > 0 && { reflectionNamespaces: s.reflectionNamespaces }),
     };
   });
 

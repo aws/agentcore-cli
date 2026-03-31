@@ -256,6 +256,7 @@ export interface MemoryDetail {
     name?: string;
     description?: string;
     namespaces?: string[];
+    reflectionNamespaces?: string[];
   }[];
 }
 
@@ -286,12 +287,16 @@ export async function getMemoryDetail(options: GetMemoryOptions): Promise<Memory
     status: memory.status ?? 'UNKNOWN',
     description: memory.description,
     eventExpiryDuration: memory.eventExpiryDuration ?? 30,
-    strategies: (memory.strategies ?? []).map(s => ({
-      type: s.type ?? 'SEMANTIC',
-      name: s.name,
-      description: s.description,
-      namespaces: s.namespaces,
-    })),
+    strategies: (memory.strategies ?? []).map(s => {
+      const episodicNamespaces = s.configuration?.reflection?.episodicReflectionConfiguration?.namespaces;
+      return {
+        type: s.type ?? 'SEMANTIC',
+        name: s.name,
+        description: s.description,
+        namespaces: s.namespaces,
+        ...(episodicNamespaces && episodicNamespaces.length > 0 && { reflectionNamespaces: episodicNamespaces }),
+      };
+    }),
   };
 }
 
