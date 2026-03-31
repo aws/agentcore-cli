@@ -149,11 +149,9 @@ export async function handleImportRuntime(options: ImportResourceOptions): Promi
     // Derive local name: strip project prefix if present, or use --name override
     let localName = options.name ?? runtimeDetail.agentRuntimeName;
     // AgentCore runtime names are often prefixed with projectName_ — strip it
-    if (localName.includes('_')) {
-      const parts = localName.split('_');
-      if (parts.length > 1) {
-        localName = parts.slice(1).join('_');
-      }
+    const prefix = `${ctx.projectName}_`;
+    if (localName.startsWith(prefix)) {
+      localName = localName.slice(prefix.length);
     }
     onProgress(`Runtime: ${runtimeDetail.agentRuntimeName} → local name: ${localName}`);
     logger.endStep('success');
@@ -196,6 +194,20 @@ export async function handleImportRuntime(options: ImportResourceOptions): Promi
     const sourcePath = path.resolve(options.code);
     if (!fs.existsSync(sourcePath)) {
       const error = `Source path does not exist: ${sourcePath}`;
+      logger.endStep('error', error);
+      logger.finalize(false);
+      return {
+        success: false,
+        error,
+        resourceType: 'runtime',
+        resourceName: localName,
+        logPath: logger.getRelativeLogPath(),
+      };
+    }
+    // Validate entrypoint file exists inside source directory
+    const entrypointPath = path.join(sourcePath, entrypoint);
+    if (!fs.existsSync(entrypointPath)) {
+      const error = `Entrypoint file '${entrypoint}' not found in ${sourcePath}. Ensure --code points to the directory containing your entrypoint file.`;
       logger.endStep('error', error);
       logger.finalize(false);
       return {
@@ -448,7 +460,10 @@ export function registerImportRuntime(importCmd: Command): void {
     .command('runtime')
     .description('Import an existing AgentCore Runtime from your AWS account')
     .option('--id <runtimeId>', 'Runtime ID to import')
-    .requiredOption('--code <path>', 'Path to the agent source code directory')
+    .requiredOption(
+      '--code <path>',
+      'Path to the directory containing the entrypoint file (e.g., the folder with main.py)'
+    )
     .option('--entrypoint <file>', 'Entrypoint file (auto-detected from runtime, e.g. main.py)')
     .option('--target <target>', 'Deployment target name')
     .option('--name <name>', 'Local name for the imported runtime')

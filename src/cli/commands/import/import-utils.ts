@@ -1,8 +1,9 @@
 import { APP_DIR, ConfigIO, findConfigRoot } from '../../../lib';
 import type { AwsDeploymentTarget } from '../../../schema';
-import { validateAwsCredentials } from '../../aws/account';
+import { detectAccount, validateAwsCredentials } from '../../aws/account';
 import { ExecLogger } from '../../logging';
 import { setupPythonProject } from '../../operations/python/setup';
+import { getTemplatePath } from '../../templates/templateRoot';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 
@@ -87,6 +88,14 @@ export async function resolveImportTarget(options: ResolveTargetOptions): Promis
   onProgress?.('Validating AWS credentials...');
   await validateAwsCredentials();
 
+  // Validate credentials match the target account
+  const callerAccount = await detectAccount();
+  if (callerAccount && target.account && callerAccount !== target.account) {
+    throw new Error(
+      `Your AWS credentials are for account ${callerAccount}, but the target "${target.name}" is configured for account ${target.account}.\nEnsure your credentials match the deployment target.`
+    );
+  }
+
   return target;
 }
 
@@ -94,12 +103,12 @@ export async function resolveImportTarget(options: ResolveTargetOptions): Promis
 // Stack Name
 // ============================================================================
 
-function sanitize(name: string): string {
+function replaceUnderscoresWithDashes(name: string): string {
   return name.replace(/_/g, '-');
 }
 
 export function toStackName(projectName: string, targetName: string): string {
-  return `AgentCore-${sanitize(projectName)}-${sanitize(targetName)}`;
+  return `AgentCore-${replaceUnderscoresWithDashes(projectName)}-${replaceUnderscoresWithDashes(targetName)}`;
 }
 
 // ============================================================================
@@ -238,36 +247,18 @@ export async function copyAgentSource(options: CopyAgentSourceOptions): Promise<
     if (build === 'Container') {
       const destDockerfile = path.join(appDir, 'Dockerfile');
       if (!fs.existsSync(destDockerfile)) {
-        onProgress?.('Generating Dockerfile for Container build');
-        const entryModule = path.basename(options.entrypoint ?? 'main.py', '.py');
-        fs.writeFileSync(
-          destDockerfile,
-          [
-            'FROM ghcr.io/astral-sh/uv:python3.12-bookworm-slim',
-            'WORKDIR /app',
-            '',
-            'ENV UV_SYSTEM_PYTHON=1 \\',
-            '    UV_COMPILE_BYTECODE=1 \\',
-            '    UV_NO_PROGRESS=1 \\',
-            '    PYTHONUNBUFFERED=1 \\',
-            '    DOCKER_CONTAINER=1',
-            '',
-            'RUN useradd -m -u 1000 bedrock_agentcore',
-            '',
-            'COPY pyproject.toml uv.lock ./',
-            'RUN uv sync --frozen --no-dev --no-install-project',
-            '',
-            'COPY --chown=bedrock_agentcore:bedrock_agentcore . .',
-            'RUN uv sync --frozen --no-dev',
-            '',
-            'USER bedrock_agentcore',
-            '',
-            'EXPOSE 8080 8000 9000',
-            '',
-            `CMD ["opentelemetry-instrument", "python", "-m", "${entryModule}"]`,
-            '',
-          ].join('\n')
-        );
+        const isPython = options.entrypoint?.endsWith('.py') ?? true;
+        if (isPython) {
+          onProgress?.('Generating Dockerfile for Container build');
+          const entryModule = path.basename(options.entrypoint ?? 'main.py', '.py');
+          const templatePath = getTemplatePath('container', 'python', 'Dockerfile');
+          const template = fs.readFileSync(templatePath, 'utf-8');
+          fs.writeFileSync(destDockerfile, template.replace('{{entrypoint}}', entryModule));
+        } else {
+          onProgress?.(
+            'No Dockerfile found. Please add a Dockerfile to the source directory for non-Python container builds.'
+          );
+        }
       }
     }
   } else {
