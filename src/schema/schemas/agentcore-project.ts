@@ -111,6 +111,7 @@ export const MemorySchema = z.object({
       )
     ),
   tags: TagsSchema.optional(),
+  encryptionKeyArn: z.string().optional(),
 });
 
 export type Memory = z.infer<typeof MemorySchema>;
