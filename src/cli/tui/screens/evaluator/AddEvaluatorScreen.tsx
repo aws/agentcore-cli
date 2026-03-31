@@ -5,13 +5,16 @@ import { ConfirmReview, Panel, Screen, StepIndicator, TextInput, WizardSelect } 
 import { HELP_TEXT } from '../../constants';
 import { useListNavigation } from '../../hooks';
 import { generateUniqueName } from '../../utils';
-import type { AddEvaluatorConfig, CustomRatingScaleType } from './types';
+import type { AddEvaluatorConfig, CodeBasedTypeId, CustomRatingScaleType, EvaluatorTypeId } from './types';
 import {
+  CODE_BASED_TYPE_OPTIONS,
   CUSTOM_RATING_SCALE_ID,
+  DEFAULT_CODE_TIMEOUT,
   DEFAULT_INSTRUCTIONS,
   EVALUATION_LEVEL_OPTIONS,
   EVALUATOR_MODEL_OPTIONS,
   EVALUATOR_STEP_LABELS,
+  EVALUATOR_TYPE_OPTIONS,
   LEVEL_PLACEHOLDERS,
   PLACEHOLDER_DESCRIPTIONS,
   RATING_SCALE_PRESETS,
@@ -30,7 +33,7 @@ interface AddEvaluatorScreenProps {
   existingEvaluatorNames: string[];
 }
 
-function formatRatingScale(ratingScale: EvaluatorConfig['llmAsAJudge']['ratingScale']): string {
+function formatRatingScale(ratingScale: NonNullable<EvaluatorConfig['llmAsAJudge']>['ratingScale']): string {
   if ('numerical' in ratingScale && ratingScale.numerical) {
     return ratingScale.numerical.map(r => `${r.value}=${r.label}`).join(', ');
   }
@@ -42,6 +45,16 @@ function formatRatingScale(ratingScale: EvaluatorConfig['llmAsAJudge']['ratingSc
 
 export function AddEvaluatorScreen({ onComplete, onExit, existingEvaluatorNames }: AddEvaluatorScreenProps) {
   const wizard = useAddEvaluatorWizard();
+
+  const evaluatorTypeItems: SelectableItem[] = useMemo(
+    () => EVALUATOR_TYPE_OPTIONS.map(opt => ({ id: opt.id, title: opt.title, description: opt.description })),
+    []
+  );
+
+  const codeBasedTypeItems: SelectableItem[] = useMemo(
+    () => CODE_BASED_TYPE_OPTIONS.map(opt => ({ id: opt.id, title: opt.title, description: opt.description })),
+    []
+  );
 
   const levelItems: SelectableItem[] = useMemo(
     () => EVALUATION_LEVEL_OPTIONS.map(opt => ({ id: opt.id, title: opt.title, description: opt.description })),
@@ -66,6 +79,8 @@ export function AddEvaluatorScreen({ onComplete, onExit, existingEvaluatorNames 
     []
   );
 
+  const isEvaluatorTypeStep = wizard.step === 'evaluator-type';
+  const isCodeBasedTypeStep = wizard.step === 'code-based-type';
   const isNameStep = wizard.step === 'name';
   const isLevelStep = wizard.step === 'level';
   const isModelStep = wizard.step === 'model';
@@ -74,7 +89,23 @@ export function AddEvaluatorScreen({ onComplete, onExit, existingEvaluatorNames 
   const isRatingScaleStep = wizard.step === 'ratingScale';
   const isRatingScaleTypeStep = wizard.step === 'ratingScale-type';
   const isRatingScaleCustomStep = wizard.step === 'ratingScale-custom';
+  const isLambdaArnStep = wizard.step === 'lambda-arn';
+  const isTimeoutStep = wizard.step === 'timeout';
   const isConfirmStep = wizard.step === 'confirm';
+
+  const evaluatorTypeNav = useListNavigation({
+    items: evaluatorTypeItems,
+    onSelect: item => wizard.selectEvaluatorType(item.id as EvaluatorTypeId),
+    onExit: onExit,
+    isActive: isEvaluatorTypeStep,
+  });
+
+  const codeBasedTypeNav = useListNavigation({
+    items: codeBasedTypeItems,
+    onSelect: item => wizard.selectCodeBasedType(item.id as CodeBasedTypeId),
+    onExit: () => wizard.goBack(),
+    isActive: isCodeBasedTypeStep,
+  });
 
   const levelNav = useListNavigation({
     items: levelItems,
@@ -114,25 +145,89 @@ export function AddEvaluatorScreen({ onComplete, onExit, existingEvaluatorNames 
     isActive: isConfirmStep,
   });
 
-  const helpText =
-    isLevelStep || isRatingScaleStep || isModelStep || isRatingScaleTypeStep
-      ? HELP_TEXT.NAVIGATE_SELECT
-      : isConfirmStep
-        ? HELP_TEXT.CONFIRM_CANCEL
-        : HELP_TEXT.TEXT_INPUT;
+  const isSelectStep =
+    isEvaluatorTypeStep ||
+    isCodeBasedTypeStep ||
+    isLevelStep ||
+    isRatingScaleStep ||
+    isModelStep ||
+    isRatingScaleTypeStep;
+
+  const helpText = isSelectStep
+    ? HELP_TEXT.NAVIGATE_SELECT
+    : isConfirmStep
+      ? HELP_TEXT.CONFIRM_CANCEL
+      : HELP_TEXT.TEXT_INPUT;
 
   const headerContent = <StepIndicator steps={wizard.steps} currentStep={wizard.step} labels={EVALUATOR_STEP_LABELS} />;
+
+  // Build confirm fields based on evaluator type
+  const confirmFields = useMemo(() => {
+    if (wizard.evaluatorType === 'llm-as-a-judge') {
+      const llm = wizard.config.config.llmAsAJudge!;
+      return [
+        { label: 'Type', value: 'LLM-as-a-Judge' },
+        { label: 'Name', value: wizard.config.name },
+        { label: 'Level', value: wizard.config.level },
+        { label: 'Model', value: llm.model },
+        {
+          label: 'Instructions',
+          value: llm.instructions.length > 60 ? llm.instructions.slice(0, 60) + '...' : llm.instructions,
+        },
+        { label: 'Rating Scale', value: formatRatingScale(llm.ratingScale) },
+      ];
+    }
+
+    if (wizard.codeBasedType === 'managed') {
+      const managed = wizard.config.config.codeBased!.managed!;
+      return [
+        { label: 'Type', value: 'Code-based (Managed)' },
+        { label: 'Name', value: wizard.config.name },
+        { label: 'Level', value: wizard.config.level },
+        { label: 'Code', value: managed.codeLocation },
+        { label: 'Entrypoint', value: managed.entrypoint },
+        { label: 'Timeout', value: `${managed.timeoutSeconds}s` },
+      ];
+    }
+
+    // external
+    const external = wizard.config.config.codeBased!.external!;
+    return [
+      { label: 'Type', value: 'Code-based (External)' },
+      { label: 'Name', value: wizard.config.name },
+      { label: 'Level', value: wizard.config.level },
+      { label: 'Lambda ARN', value: external.lambdaArn },
+    ];
+  }, [wizard.evaluatorType, wizard.codeBasedType, wizard.config]);
 
   return (
     <Screen title="Add Evaluator" onExit={onExit} helpText={helpText} headerContent={headerContent} exitEnabled={false}>
       <Panel fullWidth>
+        {isEvaluatorTypeStep && (
+          <WizardSelect
+            title="What type of evaluator would you like to create?"
+            description="Choose how to evaluate agent behavior"
+            items={evaluatorTypeItems}
+            selectedIndex={evaluatorTypeNav.selectedIndex}
+          />
+        )}
+
+        {isCodeBasedTypeStep && (
+          <WizardSelect
+            title="How would you like to provide the Lambda?"
+            description="Managed: CLI scaffolds and deploys. External: use existing Lambda ARN."
+            items={codeBasedTypeItems}
+            selectedIndex={codeBasedTypeNav.selectedIndex}
+          />
+        )}
+
         {isNameStep && (
           <TextInput
             key="name"
             prompt="Evaluator name"
             initialValue={generateUniqueName('MyEvaluator', existingEvaluatorNames)}
             onSubmit={wizard.setName}
-            onCancel={onExit}
+            onCancel={() => wizard.goBack()}
             schema={EvaluatorNameSchema}
             customValidation={value => !existingEvaluatorNames.includes(value) || 'Evaluator name already exists'}
           />
@@ -140,7 +235,7 @@ export function AddEvaluatorScreen({ onComplete, onExit, existingEvaluatorNames 
 
         {isLevelStep && (
           <WizardSelect
-            title="Evaluation level"
+            title="What level should this evaluator operate at?"
             description="Granularity of evaluation"
             items={levelItems}
             selectedIndex={levelNav.selectedIndex}
@@ -250,23 +345,36 @@ export function AddEvaluatorScreen({ onComplete, onExit, existingEvaluatorNames 
           </Box>
         )}
 
-        {isConfirmStep && (
-          <ConfirmReview
-            fields={[
-              { label: 'Name', value: wizard.config.name },
-              { label: 'Level', value: wizard.config.level },
-              { label: 'Model', value: wizard.config.config.llmAsAJudge.model },
-              {
-                label: 'Instructions',
-                value:
-                  wizard.config.config.llmAsAJudge.instructions.length > 60
-                    ? wizard.config.config.llmAsAJudge.instructions.slice(0, 60) + '...'
-                    : wizard.config.config.llmAsAJudge.instructions,
-              },
-              { label: 'Rating Scale', value: formatRatingScale(wizard.config.config.llmAsAJudge.ratingScale) },
-            ]}
+        {isLambdaArnStep && (
+          <TextInput
+            key="lambda-arn"
+            prompt="Lambda function ARN"
+            initialValue=""
+            onSubmit={wizard.setLambdaArn}
+            onCancel={() => wizard.goBack()}
+            customValidation={value =>
+              /^arn:aws[a-z-]*:lambda:[a-z0-9-]+:\d{12}:function:.+$/.test(value) ||
+              'Must be a valid Lambda function ARN'
+            }
           />
         )}
+
+        {isTimeoutStep && (
+          <TextInput
+            key="timeout"
+            prompt="Lambda timeout in seconds (1-300)"
+            initialValue={String(DEFAULT_CODE_TIMEOUT)}
+            onSubmit={value => wizard.setTimeout(parseInt(value, 10))}
+            onCancel={() => wizard.goBack()}
+            customValidation={value => {
+              const num = parseInt(value, 10);
+              if (isNaN(num)) return 'Must be a number';
+              return (num >= 1 && num <= 300) || 'Must be between 1 and 300';
+            }}
+          />
+        )}
+
+        {isConfirmStep && <ConfirmReview fields={confirmFields} />}
       </Panel>
     </Screen>
   );

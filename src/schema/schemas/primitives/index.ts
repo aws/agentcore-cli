@@ -8,23 +8,29 @@ export {
 } from './memory';
 
 export type {
+  CategoricalRating,
+  CodeBasedConfig,
   EvaluationLevel,
   EvaluatorConfig,
+  ExternalCodeBasedConfig,
   LlmAsAJudgeConfig,
-  RatingScale,
+  ManagedCodeBasedConfig,
   NumericalRating,
-  CategoricalRating,
+  RatingScale,
 } from './evaluator';
 export {
   BedrockModelIdSchema,
-  isValidBedrockModelId,
+  CategoricalRatingSchema,
+  CodeBasedConfigSchema,
   EvaluationLevelSchema,
   EvaluatorConfigSchema,
   EvaluatorNameSchema,
+  ExternalCodeBasedConfigSchema,
+  isValidBedrockModelId,
   LlmAsAJudgeConfigSchema,
-  RatingScaleSchema,
+  ManagedCodeBasedConfigSchema,
   NumericalRatingSchema,
-  CategoricalRatingSchema,
+  RatingScaleSchema,
 } from './evaluator';
 
 export type { OnlineEvalConfig } from './online-eval-config';

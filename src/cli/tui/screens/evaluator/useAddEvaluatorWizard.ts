@@ -1,38 +1,100 @@
 import type { EvaluationLevel, EvaluatorConfig } from '../../../../schema';
-import type { AddEvaluatorConfig, AddEvaluatorStep, CustomRatingScaleType } from './types';
-import { CUSTOM_MODEL_ID, CUSTOM_RATING_SCALE_ID, DEFAULT_MODEL } from './types';
-import { useCallback, useState } from 'react';
+import type {
+  AddEvaluatorConfig,
+  AddEvaluatorStep,
+  CodeBasedTypeId,
+  CustomRatingScaleType,
+  EvaluatorTypeId,
+} from './types';
+import {
+  CUSTOM_MODEL_ID,
+  CUSTOM_RATING_SCALE_ID,
+  DEFAULT_CODE_ENTRYPOINT,
+  DEFAULT_CODE_TIMEOUT,
+  DEFAULT_MODEL,
+} from './types';
+import { useCallback, useMemo, useState } from 'react';
 
-const ALL_STEPS: AddEvaluatorStep[] = ['name', 'level', 'model', 'instructions', 'ratingScale', 'confirm'];
+const LLM_STEPS: AddEvaluatorStep[] = [
+  'evaluator-type',
+  'name',
+  'level',
+  'model',
+  'instructions',
+  'ratingScale',
+  'confirm',
+];
+const CODE_MANAGED_STEPS: AddEvaluatorStep[] = [
+  'evaluator-type',
+  'code-based-type',
+  'name',
+  'level',
+  'timeout',
+  'confirm',
+];
+const CODE_EXTERNAL_STEPS: AddEvaluatorStep[] = [
+  'evaluator-type',
+  'code-based-type',
+  'name',
+  'level',
+  'lambda-arn',
+  'confirm',
+];
 
-function getDefaultConfig(): AddEvaluatorConfig {
+function getSteps(evalType: EvaluatorTypeId, codeType: CodeBasedTypeId): AddEvaluatorStep[] {
+  if (evalType === 'llm-as-a-judge') return LLM_STEPS;
+  if (codeType === 'external') return CODE_EXTERNAL_STEPS;
+  return CODE_MANAGED_STEPS;
+}
+
+function getDefaultLlmConfig(): EvaluatorConfig {
   return {
-    name: '',
-    level: 'SESSION',
-    config: {
-      llmAsAJudge: {
-        model: DEFAULT_MODEL,
-        instructions: '',
-        ratingScale: {
-          numerical: [
-            { value: 1, label: 'Poor', definition: 'Fails to meet expectations' },
-            { value: 5, label: 'Excellent', definition: 'Far exceeds expectations' },
-          ],
-        },
+    llmAsAJudge: {
+      model: DEFAULT_MODEL,
+      instructions: '',
+      ratingScale: {
+        numerical: [
+          { value: 1, label: 'Poor', definition: 'Fails to meet expectations' },
+          { value: 5, label: 'Excellent', definition: 'Far exceeds expectations' },
+        ],
       },
     },
   };
 }
 
 export function useAddEvaluatorWizard() {
-  const [config, setConfig] = useState<AddEvaluatorConfig>(getDefaultConfig);
-  const [step, setStep] = useState<AddEvaluatorStep>('name');
+  const [evaluatorType, setEvaluatorType] = useState<EvaluatorTypeId>('code-based');
+  const [codeBasedType, setCodeBasedType] = useState<CodeBasedTypeId>('managed');
+  const [name, setNameState] = useState('');
+  const [level, setLevelState] = useState<EvaluationLevel>('SESSION');
+  const [llmConfig, setLlmConfig] = useState<NonNullable<EvaluatorConfig['llmAsAJudge']>>({
+    model: DEFAULT_MODEL,
+    instructions: '',
+    ratingScale: {
+      numerical: [
+        { value: 1, label: 'Poor', definition: 'Fails to meet expectations' },
+        { value: 5, label: 'Excellent', definition: 'Far exceeds expectations' },
+      ],
+    },
+  });
+  const [lambdaArn, setLambdaArnState] = useState('');
+  const [timeout, setTimeoutState] = useState(DEFAULT_CODE_TIMEOUT);
   const [customRatingScaleType, setCustomRatingScaleType] = useState<CustomRatingScaleType>('numerical');
+  const [step, setStep] = useState<AddEvaluatorStep>('evaluator-type');
 
-  const currentIndex = ALL_STEPS.indexOf(step);
+  const steps = useMemo(() => getSteps(evaluatorType, codeBasedType), [evaluatorType, codeBasedType]);
+  const currentIndex = steps.indexOf(step);
+
+  const nextStep = useCallback(
+    (currentStep: AddEvaluatorStep): AddEvaluatorStep | undefined => {
+      const idx = steps.indexOf(currentStep);
+      return steps[idx + 1];
+    },
+    [steps]
+  );
 
   const goBack = useCallback(() => {
-    // Sub-steps not in ALL_STEPS — go back to their parent select
+    // Sub-steps not in main steps array — go back to their parent select
     if (step === 'model-custom') {
       setStep('model');
       return;
@@ -41,18 +103,65 @@ export function useAddEvaluatorWizard() {
       setStep(step === 'ratingScale-custom' ? 'ratingScale-type' : 'ratingScale');
       return;
     }
-    const prevStep = ALL_STEPS[currentIndex - 1];
+    const prevStep = steps[currentIndex - 1];
     if (prevStep) setStep(prevStep);
-  }, [currentIndex, step]);
+  }, [currentIndex, step, steps]);
 
-  const nextStep = useCallback((currentStep: AddEvaluatorStep): AddEvaluatorStep | undefined => {
-    const idx = ALL_STEPS.indexOf(currentStep);
-    return ALL_STEPS[idx + 1];
+  // Build the final config based on current state
+  const config: AddEvaluatorConfig = useMemo(() => {
+    if (evaluatorType === 'llm-as-a-judge') {
+      return {
+        name,
+        level,
+        config: { llmAsAJudge: llmConfig },
+      };
+    }
+
+    if (codeBasedType === 'external') {
+      return {
+        name,
+        level,
+        config: {
+          codeBased: {
+            external: { lambdaArn },
+          },
+        },
+      };
+    }
+
+    // managed
+    return {
+      name,
+      level,
+      config: {
+        codeBased: {
+          managed: {
+            codeLocation: `app/${name}/`,
+            entrypoint: DEFAULT_CODE_ENTRYPOINT,
+            timeoutSeconds: timeout,
+          },
+        },
+      },
+    };
+  }, [evaluatorType, codeBasedType, name, level, llmConfig, lambdaArn, timeout]);
+
+  const selectEvaluatorType = useCallback((type: EvaluatorTypeId) => {
+    setEvaluatorType(type);
+    if (type === 'code-based') {
+      setStep('code-based-type');
+    } else {
+      setStep('name');
+    }
+  }, []);
+
+  const selectCodeBasedType = useCallback((type: CodeBasedTypeId) => {
+    setCodeBasedType(type);
+    setStep('name');
   }, []);
 
   const setName = useCallback(
-    (name: string) => {
-      setConfig(c => ({ ...c, name }));
+    (value: string) => {
+      setNameState(value);
       const next = nextStep('name');
       if (next) setStep(next);
     },
@@ -60,8 +169,8 @@ export function useAddEvaluatorWizard() {
   );
 
   const setLevel = useCallback(
-    (level: EvaluationLevel) => {
-      setConfig(c => ({ ...c, level }));
+    (value: EvaluationLevel) => {
+      setLevelState(value);
       const next = nextStep('level');
       if (next) setStep(next);
     },
@@ -74,12 +183,7 @@ export function useAddEvaluatorWizard() {
         setStep('model-custom');
         return;
       }
-      setConfig(c => ({
-        ...c,
-        config: {
-          llmAsAJudge: { ...c.config.llmAsAJudge, model: modelId },
-        },
-      }));
+      setLlmConfig(c => ({ ...c, model: modelId }));
       const next = nextStep('model');
       if (next) setStep(next);
     },
@@ -88,13 +192,7 @@ export function useAddEvaluatorWizard() {
 
   const setCustomModel = useCallback(
     (model: string) => {
-      setConfig(c => ({
-        ...c,
-        config: {
-          llmAsAJudge: { ...c.config.llmAsAJudge, model },
-        },
-      }));
-      // After custom model input, go to instructions (same as after model select)
+      setLlmConfig(c => ({ ...c, model }));
       const next = nextStep('model');
       if (next) setStep(next);
     },
@@ -103,12 +201,7 @@ export function useAddEvaluatorWizard() {
 
   const setInstructions = useCallback(
     (instructions: string) => {
-      setConfig(c => ({
-        ...c,
-        config: {
-          llmAsAJudge: { ...c.config.llmAsAJudge, instructions },
-        },
-      }));
+      setLlmConfig(c => ({ ...c, instructions }));
       const next = nextStep('instructions');
       if (next) setStep(next);
     },
@@ -116,18 +209,13 @@ export function useAddEvaluatorWizard() {
   );
 
   const selectRatingScale = useCallback(
-    (presetIdOrCustom: string, ratingScale?: EvaluatorConfig['llmAsAJudge']['ratingScale']) => {
+    (presetIdOrCustom: string, ratingScale?: NonNullable<EvaluatorConfig['llmAsAJudge']>['ratingScale']) => {
       if (presetIdOrCustom === CUSTOM_RATING_SCALE_ID) {
         setStep('ratingScale-type');
         return;
       }
       if (ratingScale) {
-        setConfig(c => ({
-          ...c,
-          config: {
-            llmAsAJudge: { ...c.config.llmAsAJudge, ratingScale },
-          },
-        }));
+        setLlmConfig(c => ({ ...c, ratingScale }));
       }
       const next = nextStep('ratingScale');
       if (next) setStep(next);
@@ -141,31 +229,54 @@ export function useAddEvaluatorWizard() {
   }, []);
 
   const setCustomRatingScale = useCallback(
-    (ratingScale: EvaluatorConfig['llmAsAJudge']['ratingScale']) => {
-      setConfig(c => ({
-        ...c,
-        config: {
-          llmAsAJudge: { ...c.config.llmAsAJudge, ratingScale },
-        },
-      }));
+    (ratingScale: NonNullable<EvaluatorConfig['llmAsAJudge']>['ratingScale']) => {
+      setLlmConfig(c => ({ ...c, ratingScale }));
       const next = nextStep('ratingScale');
       if (next) setStep(next);
     },
     [nextStep]
   );
 
+  const setLambdaArn = useCallback(
+    (arn: string) => {
+      setLambdaArnState(arn);
+      const next = nextStep('lambda-arn');
+      if (next) setStep(next);
+    },
+    [nextStep]
+  );
+
+  const setTimeout = useCallback(
+    (value: number) => {
+      setTimeoutState(value);
+      const next = nextStep('timeout');
+      if (next) setStep(next);
+    },
+    [nextStep]
+  );
+
   const reset = useCallback(() => {
-    setConfig(getDefaultConfig());
-    setStep('name');
+    setEvaluatorType('code-based');
+    setCodeBasedType('managed');
+    setNameState('');
+    setLevelState('SESSION');
+    setLlmConfig(getDefaultLlmConfig().llmAsAJudge!);
+    setLambdaArnState('');
+    setTimeoutState(DEFAULT_CODE_TIMEOUT);
+    setStep('evaluator-type');
   }, []);
 
   return {
     config,
     step,
-    steps: ALL_STEPS,
+    steps,
     currentIndex,
+    evaluatorType,
+    codeBasedType,
     customRatingScaleType,
     goBack,
+    selectEvaluatorType,
+    selectCodeBasedType,
     setName,
     setLevel,
     selectModel,
@@ -174,6 +285,8 @@ export function useAddEvaluatorWizard() {
     selectRatingScale,
     selectCustomRatingScaleType,
     setCustomRatingScale,
+    setLambdaArn,
+    setTimeout,
     reset,
   };
 }

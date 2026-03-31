@@ -7,7 +7,7 @@ import React, { useCallback, useEffect, useState } from 'react';
 
 type FlowState =
   | { name: 'create-wizard' }
-  | { name: 'create-success'; evaluatorName: string }
+  | { name: 'create-success'; evaluatorName: string; codePath?: string }
   | { name: 'error'; message: string };
 
 interface AddEvaluatorFlowProps {
@@ -33,7 +33,7 @@ export function AddEvaluatorFlow({ isInteractive = true, onExit, onBack, onDev, 
     (config: AddEvaluatorConfig) => {
       void createEvaluator(config).then(result => {
         if (result.ok) {
-          setFlow({ name: 'create-success', evaluatorName: result.evaluatorName });
+          setFlow({ name: 'create-success', evaluatorName: result.evaluatorName, codePath: result.codePath });
           return;
         }
         setFlow({ name: 'error', message: result.error });
@@ -49,11 +49,15 @@ export function AddEvaluatorFlow({ isInteractive = true, onExit, onBack, onDev, 
   }
 
   if (flow.name === 'create-success') {
+    const detail = flow.codePath
+      ? `Created evaluator "${flow.evaluatorName}"\n  Code: ${flow.codePath}lambda_function.py\n  Deps: ${flow.codePath}requirements.txt\n  IAM:  ${flow.codePath}execution-role-policy.json\n\n  Next: Edit lambda_function.py with your evaluation logic, then run \`agentcore deploy\``
+      : 'Evaluator added to project in `agentcore/agentcore.json`. Deploy with `agentcore deploy`.';
+
     return (
       <AddSuccessScreen
         isInteractive={isInteractive}
         message={`Added evaluator: ${flow.evaluatorName}`}
-        detail="Evaluator added to project in `agentcore/agentcore.json`. Deploy with `agentcore deploy`."
+        detail={detail}
         onAddAnother={onBack}
         onDev={onDev}
         onDeploy={onDeploy}

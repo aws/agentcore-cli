@@ -25,7 +25,7 @@ export function useCreateEvaluator() {
         throw new Error(addResult.error ?? 'Failed to create evaluator');
       }
       setStatus({ state: 'success' });
-      return { ok: true as const, evaluatorName: config.name };
+      return { ok: true as const, evaluatorName: config.name, codePath: addResult.codePath };
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Failed to create evaluator.';
       setStatus({ state: 'error', error: message });

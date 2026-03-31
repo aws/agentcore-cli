@@ -3,6 +3,7 @@ import type { EvaluationLevel, Evaluator, EvaluatorConfig } from '../../schema';
 import { EvaluationLevelSchema, EvaluatorSchema } from '../../schema';
 import { getErrorMessage } from '../errors';
 import type { RemovalPreview, RemovalResult, SchemaChange } from '../operations/remove/types';
+import { renderCodeBasedEvaluatorTemplate } from '../templates/EvaluatorRenderer';
 import {
   LEVEL_PLACEHOLDERS,
   RATING_SCALE_PRESETS,
@@ -12,6 +13,9 @@ import {
 import { BasePrimitive } from './BasePrimitive';
 import type { AddResult, AddScreenComponent, RemovableResource } from './types';
 import type { Command } from '@commander-js/extra-typings';
+import { existsSync } from 'node:fs';
+import { rm } from 'node:fs/promises';
+import { dirname, join } from 'node:path';
 
 export interface AddEvaluatorOptions {
   name: string;
@@ -22,6 +26,9 @@ export interface AddEvaluatorOptions {
 
 export type RemovableEvaluator = RemovableResource;
 
+const DEFAULT_CODE_ENTRYPOINT = 'lambda_function.handler';
+const DEFAULT_CODE_TIMEOUT = 60;
+
 /**
  * EvaluatorPrimitive handles all evaluator add/remove operations.
  */
@@ -31,9 +38,20 @@ export class EvaluatorPrimitive extends BasePrimitive<AddEvaluatorOptions, Remov
   override readonly article = 'an';
   readonly primitiveSchema = EvaluatorSchema;
 
-  async add(options: AddEvaluatorOptions): Promise<AddResult<{ evaluatorName: string }>> {
+  async add(options: AddEvaluatorOptions): Promise<AddResult<{ evaluatorName: string; codePath?: string }>> {
     try {
       const evaluator = await this.createEvaluator(options);
+
+      // Scaffold code for managed code-based evaluators
+      if (options.config.codeBased?.managed) {
+        const configRoot = findConfigRoot()!;
+        const projectRoot = dirname(configRoot);
+        const codeLocation = options.config.codeBased.managed.codeLocation;
+        const targetDir = join(projectRoot, codeLocation);
+        await renderCodeBasedEvaluatorTemplate(options.name, targetDir);
+        return { success: true, evaluatorName: evaluator.name, codePath: codeLocation };
+      }
+
       return { success: true, evaluatorName: evaluator.name };
     } catch (err) {
       return { success: false, error: getErrorMessage(err) };
@@ -59,6 +77,17 @@ export class EvaluatorPrimitive extends BasePrimitive<AddEvaluatorOptions, Remov
         };
       }
 
+      // Delete scaffolded code directory for managed code-based evaluators
+      const evaluator = project.evaluators[index]!;
+      if (evaluator.config.codeBased?.managed) {
+        const configRoot = findConfigRoot()!;
+        const projectRoot = dirname(configRoot);
+        const codeDir = join(projectRoot, evaluator.config.codeBased.managed.codeLocation);
+        if (existsSync(codeDir)) {
+          await rm(codeDir, { recursive: true, force: true });
+        }
+      }
+
       project.evaluators.splice(index, 1);
       await this.writeProjectSpec(project);
 
@@ -77,6 +106,7 @@ export class EvaluatorPrimitive extends BasePrimitive<AddEvaluatorOptions, Remov
     }
 
     const summary: string[] = [`Removing evaluator: ${evaluatorName}`];
+    const directoriesToDelete: string[] = [];
     const schemaChanges: SchemaChange[] = [];
 
     const referencingConfigs = project.onlineEvalConfigs.filter(c => c.evaluators.includes(evaluatorName));
@@ -84,6 +114,18 @@ export class EvaluatorPrimitive extends BasePrimitive<AddEvaluatorOptions, Remov
       summary.push(
         `Blocked: Referenced by online eval config(s): ${referencingConfigs.map(c => c.name).join(', ')}. Remove those references first.`
       );
+    }
+
+    // Preview code directory deletion for managed code-based evaluators
+    if (evaluator.config.codeBased?.managed) {
+      const configRoot = findConfigRoot()!;
+      const projectRoot = dirname(configRoot);
+      const codeLocation = evaluator.config.codeBased.managed.codeLocation;
+      const codeDir = join(projectRoot, codeLocation);
+      if (existsSync(codeDir)) {
+        directoriesToDelete.push(codeLocation);
+        summary.push(`Will delete directory: ${codeLocation}`);
+      }
     }
 
     const afterSpec = {
@@ -97,7 +139,7 @@ export class EvaluatorPrimitive extends BasePrimitive<AddEvaluatorOptions, Remov
       after: afterSpec,
     });
 
-    return { summary, directoriesToDelete: [], schemaChanges };
+    return { summary, directoriesToDelete, schemaChanges };
   }
 
   async getRemovable(): Promise<RemovableEvaluator[]> {
@@ -124,17 +166,17 @@ export class EvaluatorPrimitive extends BasePrimitive<AddEvaluatorOptions, Remov
     addCmd
       .command(this.kind)
       .description('Add a custom evaluator to the project')
-      .option('--name <name>', 'Evaluator name [non-interactive]')
-      .option('--level <level>', 'Evaluation level: SESSION, TRACE, TOOL_CALL [non-interactive]')
-      .option('--model <model>', 'Bedrock model ID for LLM-as-a-Judge [non-interactive]')
+      .option('--name <name>', 'Evaluator name')
+      .option('--level <level>', 'Evaluation level: SESSION, TRACE, TOOL_CALL')
+      .option('--type <type>', 'Evaluator type: llm-as-a-judge (default) or code-based')
+      .option('--model <model>', '[LLM] Bedrock model ID for LLM-as-a-Judge')
       .option(
         '--instructions <text>',
-        'Evaluation prompt instructions (must include level-appropriate placeholders, e.g. {context}) [non-interactive]'
+        '[LLM] Evaluation prompt instructions (must include level-appropriate placeholders, e.g. {context})'
       )
-      .option(
-        '--rating-scale <preset>',
-        `Rating scale preset: ${presetIds.join(', ')} (default: 1-5-quality) [non-interactive]`
-      )
+      .option('--rating-scale <preset>', `[LLM] Rating scale preset: ${presetIds.join(', ')} (default: 1-5-quality)`)
+      .option('--lambda-arn <arn>', '[Code-based] Existing Lambda function ARN (external)')
+      .option('--timeout <seconds>', '[Code-based] Lambda timeout in seconds, 1-300 (default: 60)')
       .option(
         '--config <path>',
         'Path to evaluator config JSON file (overrides --model, --instructions, --rating-scale) [non-interactive]'
@@ -144,9 +186,12 @@ export class EvaluatorPrimitive extends BasePrimitive<AddEvaluatorOptions, Remov
         async (cliOptions: {
           name?: string;
           level?: string;
+          type?: string;
           model?: string;
           instructions?: string;
           ratingScale?: string;
+          lambdaArn?: string;
+          timeout?: string;
           config?: string;
           json?: boolean;
         }) => {
@@ -170,21 +215,40 @@ export class EvaluatorPrimitive extends BasePrimitive<AddEvaluatorOptions, Remov
                 fail('--name and --level are required in non-interactive mode');
               }
 
-              if (!cliOptions.config && !cliOptions.model) {
-                fail('Either --config or --model is required');
-              }
-
               const levelResult = EvaluationLevelSchema.safeParse(cliOptions.level);
               if (!levelResult.success) {
                 fail(`Invalid --level "${cliOptions.level}". Must be one of: SESSION, TRACE, TOOL_CALL`);
               }
 
+              const evalType = cliOptions.type ?? 'llm-as-a-judge';
+              if (evalType !== 'llm-as-a-judge' && evalType !== 'code-based') {
+                fail(`Invalid --type "${evalType}". Must be one of: llm-as-a-judge, code-based`);
+              }
+
+              // Cross-validate flags against evaluator type
+              if (evalType !== 'code-based') {
+                if (cliOptions.lambdaArn) fail('--lambda-arn requires --type code-based');
+                if (cliOptions.timeout) fail('--timeout requires --type code-based');
+              }
+              if (evalType === 'code-based') {
+                if (cliOptions.model) fail('--model cannot be used with --type code-based');
+                if (cliOptions.instructions) fail('--instructions cannot be used with --type code-based');
+                if (cliOptions.ratingScale) fail('--rating-scale cannot be used with --type code-based');
+              }
+
               let configJson: EvaluatorConfig;
+
               if (cliOptions.config) {
                 const { readFileSync } = await import('fs');
                 configJson = JSON.parse(readFileSync(cliOptions.config, 'utf-8')) as EvaluatorConfig;
+              } else if (evalType === 'code-based') {
+                configJson = this.buildCodeBasedConfig(cliOptions.name!, cliOptions.lambdaArn, cliOptions.timeout);
               } else {
-                // --instructions is required when not using --config
+                // LLM-as-a-Judge flow
+                if (!cliOptions.model) {
+                  fail('Either --config or --model is required for LLM-as-a-Judge evaluators');
+                }
+
                 if (!cliOptions.instructions) {
                   const level = levelResult.data!;
                   const placeholders = LEVEL_PLACEHOLDERS[level].map(p => `{${p}}`).join(', ');
@@ -194,21 +258,18 @@ export class EvaluatorPrimitive extends BasePrimitive<AddEvaluatorOptions, Remov
                   );
                 }
 
-                // Validate placeholders
                 const placeholderCheck = validateInstructionPlaceholders(cliOptions.instructions!, levelResult.data!);
                 if (placeholderCheck !== true) {
                   fail(placeholderCheck);
                 }
 
-                // Resolve rating scale
-                let ratingScale: EvaluatorConfig['llmAsAJudge']['ratingScale'];
+                let ratingScale: NonNullable<EvaluatorConfig['llmAsAJudge']>['ratingScale'];
                 const scaleInput = cliOptions.ratingScale ?? '1-5-quality';
 
                 const preset = RATING_SCALE_PRESETS.find(p => p.id === scaleInput);
                 if (preset) {
                   ratingScale = preset.ratingScale;
                 } else {
-                  // Try parsing as custom format: "1:Poor:Fails, 2:Fair:Partially meets" or "Pass:Meets, Fail:Does not"
                   const isNumerical = /^\d/.test(scaleInput.trim());
                   const parsed = parseCustomRatingScale(scaleInput, isNumerical ? 'numerical' : 'categorical');
                   if (!parsed.success) {
@@ -239,7 +300,17 @@ export class EvaluatorPrimitive extends BasePrimitive<AddEvaluatorOptions, Remov
               if (cliOptions.json) {
                 console.log(JSON.stringify(result));
               } else if (result.success) {
-                console.log(`Added evaluator '${result.evaluatorName}'`);
+                if (result.codePath) {
+                  console.log(`Created evaluator '${result.evaluatorName}'`);
+                  console.log(`  Code: ${result.codePath}lambda_function.py`);
+                  console.log(`  Deps: ${result.codePath}requirements.txt`);
+                  console.log(`  IAM:  ${result.codePath}execution-role-policy.json`);
+                  console.log(
+                    `\n  Next: Edit lambda_function.py with your evaluation logic, then run \`agentcore deploy\``
+                  );
+                } else {
+                  console.log(`Added evaluator '${result.evaluatorName}'`);
+                }
               } else {
                 console.error(result.error);
               }
@@ -278,6 +349,27 @@ export class EvaluatorPrimitive extends BasePrimitive<AddEvaluatorOptions, Remov
 
   addScreen(): AddScreenComponent {
     return null;
+  }
+
+  private buildCodeBasedConfig(name: string, lambdaArn?: string, timeoutStr?: string): EvaluatorConfig {
+    if (lambdaArn) {
+      return {
+        codeBased: {
+          external: { lambdaArn },
+        },
+      };
+    }
+
+    const timeoutSeconds = timeoutStr ? parseInt(timeoutStr, 10) : DEFAULT_CODE_TIMEOUT;
+    return {
+      codeBased: {
+        managed: {
+          codeLocation: `app/${name}/`,
+          entrypoint: DEFAULT_CODE_ENTRYPOINT,
+          timeoutSeconds,
+        },
+      },
+    };
   }
 
   private async createEvaluator(options: AddEvaluatorOptions): Promise<Evaluator> {

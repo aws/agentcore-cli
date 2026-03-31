@@ -26,6 +26,15 @@ const validConfig: EvaluatorConfig = {
   },
 };
 
+function makeEvaluator(name: string, config?: EvaluatorConfig) {
+  return {
+    name,
+    type: 'CustomEvaluator',
+    level: 'SESSION',
+    config: config ?? validConfig,
+  };
+}
+
 function makeProject(
   evaluators: { name: string }[] = [],
   onlineEvalConfigs: { name: string; evaluators: string[] }[] = []
@@ -37,7 +46,7 @@ function makeProject(
     runtimes: [],
     memories: [],
     credentials: [],
-    evaluators,
+    evaluators: evaluators.map(e => ('config' in e ? e : makeEvaluator(e.name))),
     onlineEvalConfigs,
   };
 }

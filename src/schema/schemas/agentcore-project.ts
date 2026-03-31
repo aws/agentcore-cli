@@ -33,7 +33,15 @@ export { EvaluationLevelSchema };
 export type { MemoryStrategy, MemoryStrategyType } from './primitives/memory';
 export type { OnlineEvalConfig } from './primitives/online-eval-config';
 export { OnlineEvalConfigSchema, OnlineEvalConfigNameSchema } from './primitives/online-eval-config';
-export type { EvaluationLevel, EvaluatorConfig, LlmAsAJudgeConfig, RatingScale } from './primitives/evaluator';
+export type {
+  CodeBasedConfig,
+  EvaluationLevel,
+  EvaluatorConfig,
+  ExternalCodeBasedConfig,
+  LlmAsAJudgeConfig,
+  ManagedCodeBasedConfig,
+  RatingScale,
+} from './primitives/evaluator';
 export { BedrockModelIdSchema, isValidBedrockModelId, EvaluatorNameSchema } from './primitives/evaluator';
 export { PolicyEngineSchema };
 export type { Policy, PolicyEngine, ValidationMode } from './primitives/policy';
@@ -296,6 +304,15 @@ export const AgentCoreProjectSpecSchema = z
           ctx.addIssue({
             code: z.ZodIssueCode.custom,
             message: `Online eval config "${config.name}" references unknown evaluator "${evalName}"`,
+          });
+        }
+
+        // Block code-based evaluators in online eval configs
+        const evaluator = spec.evaluators.find(e => e.name === evalName);
+        if (evaluator?.config.codeBased) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            message: `Online eval config "${config.name}" references code-based evaluator "${evalName}". Code-based evaluators are not supported for online evaluation.`,
           });
         }
       }

@@ -4,7 +4,12 @@ import type { EvaluationLevel, EvaluatorConfig } from '../../../../schema';
 // Evaluator Flow Types
 // ─────────────────────────────────────────────────────────────────────────────
 
+export type EvaluatorTypeId = 'code-based' | 'llm-as-a-judge';
+export type CodeBasedTypeId = 'managed' | 'external';
+
 export type AddEvaluatorStep =
+  | 'evaluator-type'
+  | 'code-based-type'
   | 'name'
   | 'level'
   | 'model'
@@ -13,6 +18,8 @@ export type AddEvaluatorStep =
   | 'ratingScale'
   | 'ratingScale-type'
   | 'ratingScale-custom'
+  | 'lambda-arn'
+  | 'timeout'
   | 'confirm';
 
 export interface AddEvaluatorConfig {
@@ -22,6 +29,8 @@ export interface AddEvaluatorConfig {
 }
 
 export const EVALUATOR_STEP_LABELS: Record<AddEvaluatorStep, string> = {
+  'evaluator-type': 'Type',
+  'code-based-type': 'Mode',
   name: 'Name',
   level: 'Level',
   model: 'Model',
@@ -30,8 +39,39 @@ export const EVALUATOR_STEP_LABELS: Record<AddEvaluatorStep, string> = {
   ratingScale: 'Scale',
   'ratingScale-type': 'Scale',
   'ratingScale-custom': 'Scale',
+  'lambda-arn': 'Lambda',
+  timeout: 'Timeout',
   confirm: 'Confirm',
 };
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Evaluator Type Options
+// ─────────────────────────────────────────────────────────────────────────────
+
+export const EVALUATOR_TYPE_OPTIONS = [
+  {
+    id: 'code-based',
+    title: 'Code-based (custom Lambda function)',
+    description: 'Write custom Python code for evaluation logic',
+  },
+  {
+    id: 'llm-as-a-judge',
+    title: 'LLM-as-a-Judge (model-based)',
+    description: 'Use a foundation model to evaluate quality',
+  },
+] as const;
+
+export const CODE_BASED_TYPE_OPTIONS = [
+  {
+    id: 'managed',
+    title: 'Create new (CLI scaffolds and deploys the Lambda for you)',
+    description: 'CLI scaffolds code and deploys Lambda',
+  },
+  { id: 'external', title: 'Existing Lambda ARN (bring your own)', description: 'Use an existing Lambda function' },
+] as const;
+
+export const DEFAULT_CODE_TIMEOUT = 60;
+export const DEFAULT_CODE_ENTRYPOINT = 'lambda_function.handler';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // UI Option Constants
@@ -150,7 +190,7 @@ export interface RatingScalePreset {
   id: string;
   title: string;
   description: string;
-  ratingScale: EvaluatorConfig['llmAsAJudge']['ratingScale'];
+  ratingScale: NonNullable<EvaluatorConfig['llmAsAJudge']>['ratingScale'];
 }
 
 export const CUSTOM_RATING_SCALE_ID = '__custom__';
@@ -170,7 +210,9 @@ export const RATING_SCALE_TYPE_OPTIONS = [
 export function parseCustomRatingScale(
   input: string,
   type: CustomRatingScaleType
-): { success: true; ratingScale: EvaluatorConfig['llmAsAJudge']['ratingScale'] } | { success: false; error: string } {
+):
+  | { success: true; ratingScale: NonNullable<EvaluatorConfig['llmAsAJudge']>['ratingScale'] }
+  | { success: false; error: string } {
   const entries = input
     .split(',')
     .map(e => e.trim())

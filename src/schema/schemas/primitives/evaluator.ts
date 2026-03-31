@@ -74,11 +74,48 @@ export const LlmAsAJudgeConfigSchema = z.object({
 export type LlmAsAJudgeConfig = z.infer<typeof LlmAsAJudgeConfigSchema>;
 
 // ============================================================================
+// Code-Based Evaluator Config
+// ============================================================================
+
+export const ManagedCodeBasedConfigSchema = z.object({
+  codeLocation: z.string().min(1),
+  entrypoint: z.string().min(1).default('lambda_function.handler'),
+  timeoutSeconds: z.number().int().min(1).max(300).default(60),
+});
+
+export type ManagedCodeBasedConfig = z.infer<typeof ManagedCodeBasedConfigSchema>;
+
+// eslint-disable-next-line security/detect-unsafe-regex -- anchored pattern, no backtracking risk
+const LAMBDA_ARN_PATTERN = /^arn:aws[a-z-]*:lambda:[a-z0-9-]+:\d{12}:function:.+$/;
+
+export const ExternalCodeBasedConfigSchema = z.object({
+  lambdaArn: z.string().min(1).regex(LAMBDA_ARN_PATTERN, 'Must be a valid Lambda function ARN'),
+});
+
+export type ExternalCodeBasedConfig = z.infer<typeof ExternalCodeBasedConfigSchema>;
+
+export const CodeBasedConfigSchema = z
+  .object({
+    managed: ManagedCodeBasedConfigSchema.optional(),
+    external: ExternalCodeBasedConfigSchema.optional(),
+  })
+  .refine(config => Boolean(config.managed) !== Boolean(config.external), {
+    message: 'Code-based config must have either managed or external, not both',
+  });
+
+export type CodeBasedConfig = z.infer<typeof CodeBasedConfigSchema>;
+
+// ============================================================================
 // Evaluator Config
 // ============================================================================
 
-export const EvaluatorConfigSchema = z.object({
-  llmAsAJudge: LlmAsAJudgeConfigSchema,
-});
+export const EvaluatorConfigSchema = z
+  .object({
+    llmAsAJudge: LlmAsAJudgeConfigSchema.optional(),
+    codeBased: CodeBasedConfigSchema.optional(),
+  })
+  .refine(config => Boolean(config.llmAsAJudge) !== Boolean(config.codeBased), {
+    message: 'Config must have either llmAsAJudge or codeBased, not both',
+  });
 
 export type EvaluatorConfig = z.infer<typeof EvaluatorConfigSchema>;
