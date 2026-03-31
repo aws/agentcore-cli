@@ -280,17 +280,33 @@ export async function getMemoryDetail(options: GetMemoryOptions): Promise<Memory
     throw new Error(`No memory found for ID ${options.memoryId}`);
   }
 
+  if (!memory.id) {
+    throw new Error(`Memory ${options.memoryId} is missing required field: id`);
+  }
+  if (!memory.arn) {
+    throw new Error(`Memory ${options.memoryId} is missing required field: arn`);
+  }
+  if (!memory.name) {
+    throw new Error(`Memory ${options.memoryId} is missing required field: name`);
+  }
+  if (memory.eventExpiryDuration == null) {
+    throw new Error(`Memory ${options.memoryId} is missing required field: eventExpiryDuration`);
+  }
+
   return {
-    memoryId: memory.id ?? '',
-    memoryArn: memory.arn ?? '',
-    name: memory.name ?? '',
+    memoryId: memory.id,
+    memoryArn: memory.arn,
+    name: memory.name,
     status: memory.status ?? 'UNKNOWN',
     description: memory.description,
-    eventExpiryDuration: memory.eventExpiryDuration ?? 30,
+    eventExpiryDuration: memory.eventExpiryDuration,
     strategies: (memory.strategies ?? []).map(s => {
+      if (!s.type) {
+        throw new Error(`Memory ${options.memoryId} has a strategy with missing required field: type`);
+      }
       const episodicNamespaces = s.configuration?.reflection?.episodicReflectionConfiguration?.namespaces;
       return {
-        type: s.type ?? 'SEMANTIC',
+        type: s.type,
         name: s.name,
         description: s.description,
         namespaces: s.namespaces,
