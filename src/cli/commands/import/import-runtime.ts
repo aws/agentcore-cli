@@ -30,7 +30,7 @@ const reset = '\x1b[0m';
  * The array may contain wrapper commands like "opentelemetry-instrument"
  * before the actual Python/TS file (e.g. ["opentelemetry-instrument", "main.py"]).
  */
-function extractEntrypoint(entryPoint?: string[]): string | undefined {
+export function extractEntrypoint(entryPoint?: string[]): string | undefined {
   if (!entryPoint || entryPoint.length === 0) return undefined;
   // Find the first entry that looks like a source file
   return entryPoint.find(e => /\.(py|ts|js)$/.test(e));
