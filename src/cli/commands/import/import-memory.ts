@@ -6,6 +6,7 @@ import { silentIoHost } from '../../cdk/toolkit-lib';
 import { ExecLogger } from '../../logging';
 import { bootstrapEnvironment, buildCdkProject, checkBootstrapNeeded, synthesizeCdk } from '../../operations/deploy';
 import {
+  findResourceInDeployedState,
   parseAndValidateArn,
   resolveImportTarget,
   resolveProjectContext,
@@ -158,6 +159,20 @@ export async function handleImportMemory(options: ImportResourceOptions): Promis
         logPath: logger.getRelativeLogPath(),
       };
     }
+    const targetName = target.name ?? 'default';
+    const existingResource = await findResourceInDeployedState(ctx.configIO, targetName, 'memory', memoryId);
+    if (existingResource) {
+      const error = `Memory "${memoryId}" is already imported in this project as "${existingResource}". Remove it first before re-importing.`;
+      logger.endStep('error', error);
+      logger.finalize(false);
+      return {
+        success: false,
+        error,
+        resourceType: 'memory',
+        resourceName: localName,
+        logPath: logger.getRelativeLogPath(),
+      };
+    }
     logger.endStep('success');
 
     // 5. Add to project config
@@ -180,7 +195,6 @@ export async function handleImportMemory(options: ImportResourceOptions): Promis
 
     const synthInfo = await toolkitWrapper.synth();
     const assemblyDirectory = synthInfo.assemblyDirectory;
-    const targetName = target.name ?? 'default';
     const stackName = toStackName(ctx.projectName, targetName);
     const synthTemplatePath = path.join(assemblyDirectory, `${stackName}.template.json`);
 

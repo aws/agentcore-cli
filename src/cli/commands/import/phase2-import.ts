@@ -117,6 +117,18 @@ export async function executePhase2(options: Phase2Options): Promise<Phase2Resul
     return { success: true };
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : String(err);
+
+    // Detect "already exists in stack" errors and provide a friendlier message
+    const alreadyInStackMatch = /(.+) already exists in stack (.+)/.exec(message);
+    if (alreadyInStackMatch) {
+      const resourceId = alreadyInStackMatch[1];
+      const existingStack = alreadyInStackMatch[2];
+      return {
+        success: false,
+        error: `Resource "${resourceId}" is already managed by CloudFormation stack "${existingStack}". It must be removed from that stack before importing into this project.`,
+      };
+    }
+
     return { success: false, error: `Import change set failed: ${message}` };
   }
 }

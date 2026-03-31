@@ -165,6 +165,33 @@ export function toStackName(projectName: string, targetName: string): string {
 // Deployed State Update
 // ============================================================================
 
+/**
+ * Check if a resource ID is already tracked in deployed-state.json for the given target.
+ * Returns the name it's tracked under, or undefined if not found.
+ */
+export async function findResourceInDeployedState(
+  configIO: ConfigIO,
+  targetName: string,
+  resourceType: 'runtime' | 'memory',
+  resourceId: string
+): Promise<string | undefined> {
+  /* eslint-disable @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-argument, @typescript-eslint/no-explicit-any */
+  const state: any = await configIO.readDeployedState().catch(() => ({ targets: {} }));
+  const targetState = state.targets?.[targetName];
+  if (!targetState?.resources) return undefined;
+
+  const collection = resourceType === 'runtime' ? targetState.resources.runtimes : targetState.resources.memories;
+  if (!collection) return undefined;
+
+  for (const [name, entry] of Object.entries(collection)) {
+    const idField = resourceType === 'runtime' ? 'runtimeId' : 'memoryId';
+    if ((entry as any)[idField] === resourceId) return name;
+  }
+  /* eslint-enable @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-argument, @typescript-eslint/no-explicit-any */
+
+  return undefined;
+}
+
 export interface ImportedResource {
   type: 'runtime' | 'memory';
   name: string;

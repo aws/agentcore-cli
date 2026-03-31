@@ -7,6 +7,7 @@ import { ExecLogger } from '../../logging';
 import { bootstrapEnvironment, buildCdkProject, checkBootstrapNeeded, synthesizeCdk } from '../../operations/deploy';
 import {
   copyAgentSource,
+  findResourceInDeployedState,
   parseAndValidateArn,
   resolveImportTarget,
   resolveProjectContext,
@@ -238,6 +239,20 @@ export async function handleImportRuntime(options: ImportResourceOptions): Promi
         logPath: logger.getRelativeLogPath(),
       };
     }
+    const targetName = target.name ?? 'default';
+    const existingResource = await findResourceInDeployedState(ctx.configIO, targetName, 'runtime', runtimeId);
+    if (existingResource) {
+      const error = `Runtime "${runtimeId}" is already imported in this project as "${existingResource}". Remove it first before re-importing.`;
+      logger.endStep('error', error);
+      logger.finalize(false);
+      return {
+        success: false,
+        error,
+        resourceType: 'runtime',
+        resourceName: localName,
+        logPath: logger.getRelativeLogPath(),
+      };
+    }
     logger.endStep('success');
 
     // 7. Copy source code
@@ -273,7 +288,6 @@ export async function handleImportRuntime(options: ImportResourceOptions): Promi
 
     const synthInfo = await toolkitWrapper.synth();
     const assemblyDirectory = synthInfo.assemblyDirectory;
-    const targetName = target.name ?? 'default';
     const stackName = toStackName(ctx.projectName, targetName);
     const synthTemplatePath = path.join(assemblyDirectory, `${stackName}.template.json`);
 
