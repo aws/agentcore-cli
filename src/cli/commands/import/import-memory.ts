@@ -66,6 +66,7 @@ function toMemorySpec(memory: MemoryDetail, localName: string): Memory {
     name: localName,
     eventExpiryDuration: Math.max(7, Math.min(365, memory.eventExpiryDuration)),
     strategies,
+    ...(memory.tags && Object.keys(memory.tags).length > 0 && { tags: memory.tags }),
   };
 }
 

@@ -8,6 +8,7 @@ import {
   ListAgentRuntimesCommand,
   ListEvaluatorsCommand,
   ListMemoriesCommand,
+  ListTagsForResourceCommand,
   UpdateOnlineEvaluationConfigCommand,
 } from '@aws-sdk/client-bedrock-agentcore-control';
 
@@ -258,6 +259,7 @@ export interface MemoryDetail {
     namespaces?: string[];
     reflectionNamespaces?: string[];
   }[];
+  tags?: Record<string, string>;
 }
 
 /**
@@ -293,6 +295,17 @@ export async function getMemoryDetail(options: GetMemoryOptions): Promise<Memory
     throw new Error(`Memory ${options.memoryId} is missing required field: eventExpiryDuration`);
   }
 
+  // Fetch tags via separate API call
+  let tags: Record<string, string> | undefined;
+  try {
+    const tagsResponse = await client.send(new ListTagsForResourceCommand({ resourceArn: memory.arn }));
+    if (tagsResponse.tags && Object.keys(tagsResponse.tags).length > 0) {
+      tags = tagsResponse.tags;
+    }
+  } catch {
+    // Tags are optional — continue without them if the call fails
+  }
+
   return {
     memoryId: memory.id,
     memoryArn: memory.arn,
@@ -300,6 +313,7 @@ export async function getMemoryDetail(options: GetMemoryOptions): Promise<Memory
     status: memory.status ?? 'UNKNOWN',
     description: memory.description,
     eventExpiryDuration: memory.eventExpiryDuration,
+    tags,
     strategies: (memory.strategies ?? []).map(s => {
       if (!s.type) {
         throw new Error(`Memory ${options.memoryId} has a strategy with missing required field: type`);
