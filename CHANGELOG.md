@@ -2,6 +2,14 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.5.1] - 2026-03-31
+
+### Added
+- feat: add e2e tests for dev server lifecycle (#734) (d3a3c23)
+
+### Other Changes
+- fix(eval): filter scopeless spans in CloudWatch query (#738) (7f4c1bb)
+
 ## [0.5.0] - 2026-03-30
 
 ### Added
