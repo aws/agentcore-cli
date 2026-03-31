@@ -322,6 +322,19 @@ describe('computeResourceStatuses', () => {
     expect(evalEntry!.detail).toBe('TRACE — LLM-as-a-Judge');
   });
 
+  it('shows Code-based detail for code-based evaluator', () => {
+    const project = {
+      ...baseProject,
+      evaluators: [{ name: 'CodeEval', level: 'SESSION', config: { codeBased: { managed: {} } } }],
+    } as unknown as AgentCoreProjectSpec;
+
+    const result = computeResourceStatuses(project, undefined);
+    const evalEntry = result.find(r => r.resourceType === 'evaluator' && r.name === 'CodeEval');
+
+    expect(evalEntry).toBeDefined();
+    expect(evalEntry!.detail).toBe('SESSION — Code-based');
+  });
+
   it('marks evaluator as pending-removal when deployed but removed from schema', () => {
     const resources: DeployedResourceState = {
       evaluators: {

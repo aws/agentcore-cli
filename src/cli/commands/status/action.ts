@@ -160,7 +160,7 @@ export function computeResourceStatuses(
     localItems: project.evaluators ?? [],
     deployedRecord: resources?.evaluators ?? {},
     getIdentifier: deployed => deployed.evaluatorArn,
-    getLocalDetail: item => `${item.level} — LLM-as-a-Judge`,
+    getLocalDetail: item => `${item.level} — ${item.config.codeBased ? 'Code-based' : 'LLM-as-a-Judge'}`,
   });
 
   const onlineEvalConfigs = diffResourceSet({
