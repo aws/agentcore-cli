@@ -139,6 +139,7 @@ export function useAddEvaluatorWizard() {
             codeLocation: `app/${name}/`,
             entrypoint: DEFAULT_CODE_ENTRYPOINT,
             timeoutSeconds: timeout,
+            additionalPolicies: ['execution-role-policy.json'],
           },
         },
       },

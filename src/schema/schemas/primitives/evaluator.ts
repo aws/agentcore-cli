@@ -81,6 +81,7 @@ export const ManagedCodeBasedConfigSchema = z.object({
   codeLocation: z.string().min(1),
   entrypoint: z.string().min(1).default('lambda_function.handler'),
   timeoutSeconds: z.number().int().min(1).max(300).default(60),
+  additionalPolicies: z.array(z.string().min(1)).optional(),
 });
 
 export type ManagedCodeBasedConfig = z.infer<typeof ManagedCodeBasedConfigSchema>;

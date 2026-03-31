@@ -367,6 +367,7 @@ export class EvaluatorPrimitive extends BasePrimitive<AddEvaluatorOptions, Remov
           codeLocation: `app/${name}/`,
           entrypoint: DEFAULT_CODE_ENTRYPOINT,
           timeoutSeconds,
+          additionalPolicies: ['execution-role-policy.json'],
         },
       },
     };
