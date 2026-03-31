@@ -88,8 +88,8 @@ export async function handleImportMemory(options: ImportResourceOptions): Promis
     logger.startStep('Fetch memory from AWS');
     let memoryId: string;
 
-    if (options.id) {
-      memoryId = options.id;
+    if (options.arn) {
+      memoryId = options.arn.split('/').pop()!;
     } else {
       // List memories and show to user
       onProgress('Listing memories in your account...');
@@ -116,7 +116,7 @@ export async function handleImportMemory(options: ImportResourceOptions): Promis
       }
       console.log('');
 
-      const error = 'Multiple memories found. Use --id <memoryId> to specify which memory to import.';
+      const error = 'Multiple memories found. Use --arn <memoryArn> to specify which memory to import.';
       logger.endStep('error', error);
       logger.finalize(false);
       return { success: false, error, resourceType: 'memory', resourceName: '', logPath: logger.getRelativeLogPath() };
@@ -359,7 +359,7 @@ export function registerImportMemory(importCmd: Command): void {
   importCmd
     .command('memory')
     .description('Import an existing AgentCore Memory from your AWS account')
-    .option('--id <memoryId>', 'Memory ID to import')
+    .option('--arn <memoryArn>', 'Memory ARN to import')
     .option('--target <target>', 'Deployment target name')
     .option('--name <name>', 'Local name for the imported memory')
     .option('-y, --yes', 'Auto-confirm prompts')

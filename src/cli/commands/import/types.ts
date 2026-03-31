@@ -101,7 +101,7 @@ export interface ImportResourceResult {
  * Options shared across import subcommands.
  */
 export interface ImportResourceOptions {
-  id?: string;
+  arn?: string;
   code?: string;
   target?: string;
   name?: string;

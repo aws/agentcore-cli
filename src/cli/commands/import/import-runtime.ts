@@ -104,8 +104,8 @@ export async function handleImportRuntime(options: ImportResourceOptions): Promi
     logger.startStep('Fetch runtime from AWS');
     let runtimeId: string;
 
-    if (options.id) {
-      runtimeId = options.id;
+    if (options.arn) {
+      runtimeId = options.arn.split('/').pop()!;
     } else {
       // List runtimes and let user pick
       onProgress('Listing runtimes in your account...');
@@ -132,8 +132,8 @@ export async function handleImportRuntime(options: ImportResourceOptions): Promi
       }
       console.log('');
 
-      // For non-interactive mode, require --id
-      const error = 'Multiple runtimes found. Use --id <runtimeId> to specify which runtime to import.';
+      // For non-interactive mode, require --arn
+      const error = 'Multiple runtimes found. Use --arn <runtimeArn> to specify which runtime to import.';
       logger.endStep('error', error);
       logger.finalize(false);
       return { success: false, error, resourceType: 'runtime', resourceName: '', logPath: logger.getRelativeLogPath() };
@@ -459,7 +459,7 @@ export function registerImportRuntime(importCmd: Command): void {
   importCmd
     .command('runtime')
     .description('Import an existing AgentCore Runtime from your AWS account')
-    .option('--id <runtimeId>', 'Runtime ID to import')
+    .option('--arn <runtimeArn>', 'Runtime ARN to import')
     .requiredOption(
       '--code <path>',
       'Path to the directory containing the entrypoint file (e.g., the folder with main.py)'

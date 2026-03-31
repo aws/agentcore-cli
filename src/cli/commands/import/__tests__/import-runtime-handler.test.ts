@@ -144,7 +144,7 @@ describe('handleImportRuntime', () => {
       });
 
       const result = await handleImportRuntime({
-        id: 'rt-123',
+        arn: 'arn:aws:bedrock-agentcore:us-east-1:123:runtime/rt-123',
         code: '/tmp/test-source',
         name: 'myagent',
       });
@@ -170,7 +170,7 @@ describe('handleImportRuntime', () => {
       });
 
       const result = await handleImportRuntime({
-        id: 'rt-123',
+        arn: 'arn:aws:bedrock-agentcore:us-east-1:123:runtime/rt-123',
         code: '/tmp/test-source',
         name: 'myagent',
       });
@@ -195,7 +195,7 @@ describe('handleImportRuntime', () => {
       });
 
       const result = await handleImportRuntime({
-        id: 'rt-123',
+        arn: 'arn:aws:bedrock-agentcore:us-east-1:123:runtime/rt-123',
         code: '/tmp/test-source',
         name: 'myagent',
       });
@@ -225,7 +225,7 @@ describe('handleImportRuntime', () => {
       mockCopyAgentSource.mockRejectedValue(new Error('stop here'));
 
       await handleImportRuntime({
-        id: 'rt-123',
+        arn: 'arn:aws:bedrock-agentcore:us-east-1:123:runtime/rt-123',
         code: '/tmp/test-source',
         name: 'myagent',
         entrypoint: 'custom_app.py',
@@ -257,7 +257,7 @@ describe('handleImportRuntime', () => {
       mockCopyAgentSource.mockRejectedValue(new Error('stop here'));
 
       await handleImportRuntime({
-        id: 'rt-123',
+        arn: 'arn:aws:bedrock-agentcore:us-east-1:123:runtime/rt-123',
         code: '/tmp/test-source',
         name: 'myagent',
       });
@@ -287,7 +287,7 @@ describe('handleImportRuntime', () => {
       });
 
       const result = await handleImportRuntime({
-        id: 'rt-123',
+        arn: 'arn:aws:bedrock-agentcore:us-east-1:123:runtime/rt-123',
         name: 'myagent',
         // no code option
       });
@@ -315,7 +315,7 @@ describe('handleImportRuntime', () => {
       vi.mocked(fs.existsSync).mockReturnValue(false);
 
       const result = await handleImportRuntime({
-        id: 'rt-123',
+        arn: 'arn:aws:bedrock-agentcore:us-east-1:123:runtime/rt-123',
         code: '/nonexistent/path',
         name: 'myagent',
       });
@@ -347,7 +347,7 @@ describe('handleImportRuntime', () => {
       });
 
       const result = await handleImportRuntime({
-        id: 'rt-123',
+        arn: 'arn:aws:bedrock-agentcore:us-east-1:123:runtime/rt-123',
         code: '/tmp/test-source',
         name: 'myagent',
       });
