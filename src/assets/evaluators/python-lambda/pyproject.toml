@@ -8,7 +8,7 @@ version = "0.1.0"
 description = "AgentCore Code-Based Evaluator"
 requires-python = ">=3.10"
 dependencies = [
-    "bedrock-agentcore",
+    "bedrock-agentcore>=1.6.0",
 ]
 
 [tool.hatch.build.targets.wheel]
