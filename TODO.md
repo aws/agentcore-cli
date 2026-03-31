@@ -2,7 +2,7 @@
 
 ## Import Command
 
-- [ ] **Entrypoint detection: fail instead of silent fallback**
+- [x] **Entrypoint detection: fail instead of silent fallback**
   - Currently `extractEntrypoint()` in `import-runtime.ts` silently falls back to `main.py` if it can't determine the
     entrypoint from the API's modified `entryPoint` array.
   - Change: fail with a clear error message if auto-detection fails and `--entrypoint` was not provided.

@@ -105,5 +105,6 @@ export interface ImportResourceOptions {
   code?: string;
   target?: string;
   name?: string;
+  entrypoint?: string;
   yes?: boolean;
 }

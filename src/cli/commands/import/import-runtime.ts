@@ -30,22 +30,26 @@ const reset = '\x1b[0m';
  * The array may contain wrapper commands like "opentelemetry-instrument"
  * before the actual Python/TS file (e.g. ["opentelemetry-instrument", "main.py"]).
  */
-function extractEntrypoint(entryPoint?: string[]): string {
-  if (!entryPoint || entryPoint.length === 0) return 'main.py';
+function extractEntrypoint(entryPoint?: string[]): string | undefined {
+  if (!entryPoint || entryPoint.length === 0) return undefined;
   // Find the first entry that looks like a source file
-  const sourceFile = entryPoint.find(e => /\.(py|ts|js)$/.test(e));
-  return sourceFile ?? entryPoint[entryPoint.length - 1] ?? 'main.py';
+  return entryPoint.find(e => /\.(py|ts|js)$/.test(e));
 }
 
 /**
  * Map an AWS GetAgentRuntime response to the CLI AgentEnvSpec format.
  */
-function toAgentEnvSpec(runtime: AgentRuntimeDetail, localName: string, codeLocation: string): AgentEnvSpec {
+function toAgentEnvSpec(
+  runtime: AgentRuntimeDetail,
+  localName: string,
+  codeLocation: string,
+  entrypoint: string
+): AgentEnvSpec {
   /* eslint-disable @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-explicit-any */
   const spec: AgentEnvSpec = {
     name: localName,
     build: runtime.build,
-    entrypoint: extractEntrypoint(runtime.entryPoint) as any,
+    entrypoint: entrypoint as any,
     codeLocation: codeLocation as any,
     runtimeVersion: (runtime.runtimeVersion ?? 'PYTHON_3_12') as any,
     protocol: runtime.protocol as any,
@@ -154,7 +158,26 @@ export async function handleImportRuntime(options: ImportResourceOptions): Promi
     onProgress(`Runtime: ${runtimeDetail.agentRuntimeName} → local name: ${localName}`);
     logger.endStep('success');
 
-    // 4. Validate source path
+    // 4. Resolve entrypoint
+    logger.startStep('Resolve entrypoint');
+    const entrypoint = options.entrypoint ?? extractEntrypoint(runtimeDetail.entryPoint);
+    if (!entrypoint) {
+      const error =
+        'Could not determine entrypoint from runtime configuration.\n  Please re-run with --entrypoint <file> to specify it manually.';
+      logger.endStep('error', error);
+      logger.finalize(false);
+      return {
+        success: false,
+        error,
+        resourceType: 'runtime',
+        resourceName: localName,
+        logPath: logger.getRelativeLogPath(),
+      };
+    }
+    onProgress(`Entrypoint: ${entrypoint}`);
+    logger.endStep('success');
+
+    // 5. Validate source path
     logger.startStep('Validate source path');
     if (!options.code) {
       const error =
@@ -185,7 +208,7 @@ export async function handleImportRuntime(options: ImportResourceOptions): Promi
     }
     logger.endStep('success');
 
-    // 5. Check for duplicates
+    // 6. Check for duplicates
     logger.startStep('Check for duplicates');
     const projectSpec = await ctx.configIO.readProjectSpec();
     const existingNames = new Set(projectSpec.runtimes.map(r => r.name));
@@ -203,7 +226,7 @@ export async function handleImportRuntime(options: ImportResourceOptions): Promi
     }
     logger.endStep('success');
 
-    // 6. Copy source code
+    // 7. Copy source code
     logger.startStep('Copy agent source');
     const codeLocation = `app/${localName}/`;
     await copyAgentSource({
@@ -211,20 +234,20 @@ export async function handleImportRuntime(options: ImportResourceOptions): Promi
       agentName: localName,
       projectRoot: ctx.projectRoot,
       build: runtimeDetail.build,
-      entrypoint: extractEntrypoint(runtimeDetail.entryPoint),
+      entrypoint,
       onProgress,
     });
     logger.endStep('success');
 
-    // 7. Add to project config
+    // 8. Add to project config
     logger.startStep('Update project config');
-    const agentSpec = toAgentEnvSpec(runtimeDetail, localName, codeLocation);
+    const agentSpec = toAgentEnvSpec(runtimeDetail, localName, codeLocation, entrypoint);
     projectSpec.runtimes.push(agentSpec);
     await ctx.configIO.writeProjectSpec(projectSpec);
     onProgress(`Added runtime "${localName}" to agentcore.json`);
     logger.endStep('success');
 
-    // 8. Build and synth CDK
+    // 9. Build and synth CDK
     logger.startStep('Build and synth CDK');
     onProgress('Building CDK project...');
     const cdkProject = new LocalCdkProject(ctx.projectRoot);
@@ -273,13 +296,13 @@ export async function handleImportRuntime(options: ImportResourceOptions): Promi
     await toolkitWrapper.dispose();
     logger.endStep('success');
 
-    // 9. Publish CDK assets
+    // 10. Publish CDK assets
     logger.startStep('Publish CDK assets');
     onProgress('Publishing CDK assets to S3...');
     await publishCdkAssets(assemblyDirectory, target.region, onProgress);
     logger.endStep('success');
 
-    // 10. Phase 1: Deploy companion resources
+    // 11. Phase 1: Deploy companion resources
     logger.startStep('Phase 1: Deploy companion resources');
     onProgress('Phase 1: Deploying companion resources (IAM roles, policies)...');
     const phase1Result = await executePhase1({
@@ -303,7 +326,7 @@ export async function handleImportRuntime(options: ImportResourceOptions): Promi
     }
     logger.endStep('success');
 
-    // 11. Phase 2: Import the runtime resource
+    // 12. Phase 2: Import the runtime resource
     logger.startStep('Phase 2: Import runtime resource');
     onProgress('Reading deployed template...');
     const deployedTemplate = await getDeployedTemplate(target.region, stackName);
@@ -382,7 +405,7 @@ export async function handleImportRuntime(options: ImportResourceOptions): Promi
     }
     logger.endStep('success');
 
-    // 12. Update deployed state
+    // 13. Update deployed state
     logger.startStep('Update deployed state');
     await updateDeployedState(ctx.configIO, targetName, stackName, [
       {
@@ -426,6 +449,7 @@ export function registerImportRuntime(importCmd: Command): void {
     .description('Import an existing AgentCore Runtime from your AWS account')
     .option('--id <runtimeId>', 'Runtime ID to import')
     .requiredOption('--code <path>', 'Path to the agent source code directory')
+    .option('--entrypoint <file>', 'Entrypoint file (auto-detected from runtime, e.g. main.py)')
     .option('--target <target>', 'Deployment target name')
     .option('--name <name>', 'Local name for the imported runtime')
     .option('-y, --yes', 'Auto-confirm prompts')
