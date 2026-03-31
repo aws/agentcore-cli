@@ -1,4 +1,6 @@
 import { handleImport } from './actions';
+import { registerImportMemory } from './import-memory';
+import { registerImportRuntime } from './import-runtime';
 import type { Command } from '@commander-js/extra-typings';
 import * as fs from 'node:fs';
 
@@ -9,13 +11,20 @@ const dim = '\x1b[2m';
 const reset = '\x1b[0m';
 
 export const registerImport = (program: Command) => {
-  program
-    .command('import')
-    .description('Import resources from a Bedrock AgentCore Starter Toolkit project')
-    .requiredOption('--source <path>', 'Path to the .bedrock_agentcore.yaml configuration file')
+  const importCmd = program.command('import').description('Import resources into the project');
+
+  // Existing YAML flow: agentcore import --source <path>
+  importCmd
+    .option('--source <path>', 'Path to the .bedrock_agentcore.yaml configuration file')
     .option('--target <target>', 'Deployment target name (only needed if project has multiple targets)')
     .option('-y, --yes', 'Auto-confirm prompts')
-    .action(async (cliOptions: { source: string; target?: string; yes?: boolean }) => {
+    .action(async (cliOptions: { source?: string; target?: string; yes?: boolean }) => {
+      if (!cliOptions.source) {
+        // No --source and no subcommand — show help
+        importCmd.outputHelp();
+        return;
+      }
+
       // Validate source file exists
       if (!fs.existsSync(cliOptions.source)) {
         console.error(`\x1b[31m[error]${reset} Source file not found: ${cliOptions.source}`);
@@ -92,4 +101,8 @@ export const registerImport = (program: Command) => {
         process.exit(1);
       }
     });
+
+  // Register subcommands for importing individual resource types from AWS
+  registerImportRuntime(importCmd);
+  registerImportMemory(importCmd);
 };

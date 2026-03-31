@@ -1,0 +1,291 @@
+import { APP_DIR, ConfigIO, findConfigRoot } from '../../../lib';
+import type { AwsDeploymentTarget } from '../../../schema';
+import { validateAwsCredentials } from '../../aws/account';
+import { ExecLogger } from '../../logging';
+import { setupPythonProject } from '../../operations/python/setup';
+import * as fs from 'node:fs';
+import * as path from 'node:path';
+
+// ============================================================================
+// Project Context
+// ============================================================================
+
+export interface ProjectContext {
+  projectRoot: string;
+  configRoot: string;
+  configIO: ConfigIO;
+  projectName: string;
+}
+
+/**
+ * Validate we're inside an agentcore project and return project context.
+ */
+export async function resolveProjectContext(): Promise<ProjectContext> {
+  const configRoot = findConfigRoot(process.cwd());
+  if (!configRoot) {
+    throw new Error(
+      'No agentcore project found in the current directory.\nRun `agentcore create <name>` first, then run import from inside the project.'
+    );
+  }
+
+  const projectRoot = path.dirname(configRoot);
+  const configIO = new ConfigIO({ baseDir: configRoot });
+  const projectSpec = await configIO.readProjectSpec();
+
+  return {
+    projectRoot,
+    configRoot,
+    configIO,
+    projectName: projectSpec.name,
+  };
+}
+
+// ============================================================================
+// Target Resolution
+// ============================================================================
+
+export interface ResolveTargetOptions {
+  configIO: ConfigIO;
+  targetName?: string;
+  logger?: ExecLogger;
+  onProgress?: (message: string) => void;
+}
+
+/**
+ * Resolve the deployment target (account + region) for import.
+ * Validates AWS credentials.
+ */
+export async function resolveImportTarget(options: ResolveTargetOptions): Promise<AwsDeploymentTarget> {
+  const { configIO, targetName, onProgress } = options;
+
+  const targets = await configIO.readAWSDeploymentTargets();
+
+  if (targets.length === 0) {
+    throw new Error(
+      'No deployment targets found in project.\nRun `agentcore deploy` first to set up a target, then re-run import.'
+    );
+  }
+
+  let target: AwsDeploymentTarget | undefined;
+
+  if (targetName) {
+    target = targets.find(t => t.name === targetName);
+    if (!target) {
+      const names = targets.map(t => `  - ${t.name} (${t.region}, ${t.account})`).join('\n');
+      throw new Error(`Target "${targetName}" not found. Available targets:\n${names}`);
+    }
+  } else if (targets.length === 1) {
+    target = targets[0]!;
+  } else {
+    const names = targets.map(t => `  - ${t.name} (${t.region}, ${t.account})`).join('\n');
+    throw new Error(`Multiple deployment targets found. Specify one with --target:\n${names}`);
+  }
+
+  onProgress?.(`Using target: ${target.name} (${target.region}, ${target.account})`);
+
+  // Validate AWS credentials
+  onProgress?.('Validating AWS credentials...');
+  await validateAwsCredentials();
+
+  return target;
+}
+
+// ============================================================================
+// Stack Name
+// ============================================================================
+
+function sanitize(name: string): string {
+  return name.replace(/_/g, '-');
+}
+
+export function toStackName(projectName: string, targetName: string): string {
+  return `AgentCore-${sanitize(projectName)}-${sanitize(targetName)}`;
+}
+
+// ============================================================================
+// Deployed State Update
+// ============================================================================
+
+export interface ImportedResource {
+  type: 'runtime' | 'memory';
+  name: string;
+  id: string;
+  arn: string;
+}
+
+/**
+ * Update deployed-state.json with imported resource IDs.
+ */
+export async function updateDeployedState(
+  configIO: ConfigIO,
+  targetName: string,
+  stackName: string,
+  resources: ImportedResource[]
+): Promise<void> {
+  /* eslint-disable @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-explicit-any */
+  const existingState: any = await configIO.readDeployedState().catch(() => ({ targets: {} }));
+  const targetState = existingState.targets[targetName] ?? { resources: {} };
+  targetState.resources ??= {};
+  targetState.resources.stackName = stackName;
+
+  for (const resource of resources) {
+    if (resource.type === 'runtime') {
+      targetState.resources.runtimes ??= {};
+      targetState.resources.runtimes[resource.name] = {
+        runtimeId: resource.id,
+        runtimeArn: resource.arn,
+        roleArn: 'imported',
+      };
+    } else if (resource.type === 'memory') {
+      targetState.resources.memories ??= {};
+      targetState.resources.memories[resource.name] = {
+        memoryId: resource.id,
+        memoryArn: resource.arn,
+      };
+    }
+  }
+
+  existingState.targets[targetName] = targetState;
+  // eslint-disable-next-line @typescript-eslint/no-unsafe-argument
+  await configIO.writeDeployedState(existingState);
+  /* eslint-enable @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-explicit-any */
+}
+
+// ============================================================================
+// Source Code Copy
+// ============================================================================
+
+const COPY_EXCLUDE_DIRS = new Set([
+  '.venv',
+  '.git',
+  '__pycache__',
+  'node_modules',
+  '.pytest_cache',
+  '.bedrock_agentcore',
+  '.mypy_cache',
+  '.ruff_cache',
+]);
+
+/**
+ * Recursively copy directory contents, skipping excluded directories and symlinks.
+ */
+export function copyDirRecursive(src: string, dest: string): void {
+  const entries = fs.readdirSync(src, { withFileTypes: true });
+  for (const entry of entries) {
+    if (entry.isSymbolicLink()) continue;
+    const srcPath = path.join(src, entry.name);
+    const destPath = path.join(dest, entry.name);
+    if (entry.isDirectory()) {
+      if (COPY_EXCLUDE_DIRS.has(entry.name)) continue;
+      if (!fs.existsSync(destPath)) {
+        fs.mkdirSync(destPath, { recursive: true });
+      }
+      copyDirRecursive(srcPath, destPath);
+    } else {
+      fs.copyFileSync(srcPath, destPath);
+    }
+  }
+}
+
+/**
+ * Fix pyproject.toml for setuptools auto-discovery issues.
+ */
+function fixPyprojectForSetuptools(pyprojectPath: string): void {
+  if (!fs.existsSync(pyprojectPath)) return;
+
+  const content = fs.readFileSync(pyprojectPath, 'utf-8');
+
+  // Already has [tool.setuptools] section — don't touch it
+  if (content.includes('[tool.setuptools]')) return;
+
+  // Append the fix
+  fs.writeFileSync(pyprojectPath, content.trimEnd() + '\n\n[tool.setuptools]\npy-modules = []\n');
+}
+
+export interface CopyAgentSourceOptions {
+  sourcePath: string;
+  agentName: string;
+  projectRoot: string;
+  build: 'CodeZip' | 'Container';
+  entrypoint?: string;
+  onProgress?: (message: string) => void;
+}
+
+/**
+ * Copy agent source code into the project's app/<name>/ directory.
+ * Handles pyproject.toml, Dockerfile, Python env setup.
+ */
+export async function copyAgentSource(options: CopyAgentSourceOptions): Promise<void> {
+  const { sourcePath, agentName, projectRoot, build, onProgress } = options;
+
+  const appDir = path.join(projectRoot, APP_DIR, agentName);
+  if (!fs.existsSync(appDir)) {
+    fs.mkdirSync(appDir, { recursive: true });
+  }
+
+  if (fs.existsSync(sourcePath)) {
+    onProgress?.(`Copying agent source from ${sourcePath} to ./${APP_DIR}/${agentName}`);
+    copyDirRecursive(sourcePath, appDir);
+
+    // Also copy pyproject.toml from the parent of source_path if it exists
+    const parentPyproject = path.join(path.dirname(sourcePath), 'pyproject.toml');
+    const destPyproject = path.join(appDir, 'pyproject.toml');
+    if (fs.existsSync(parentPyproject) && !fs.existsSync(destPyproject)) {
+      fs.copyFileSync(parentPyproject, destPyproject);
+    }
+
+    // For Container builds, generate a Dockerfile if missing
+    if (build === 'Container') {
+      const destDockerfile = path.join(appDir, 'Dockerfile');
+      if (!fs.existsSync(destDockerfile)) {
+        onProgress?.('Generating Dockerfile for Container build');
+        const entryModule = path.basename(options.entrypoint ?? 'main.py', '.py');
+        fs.writeFileSync(
+          destDockerfile,
+          [
+            'FROM ghcr.io/astral-sh/uv:python3.12-bookworm-slim',
+            'WORKDIR /app',
+            '',
+            'ENV UV_SYSTEM_PYTHON=1 \\',
+            '    UV_COMPILE_BYTECODE=1 \\',
+            '    UV_NO_PROGRESS=1 \\',
+            '    PYTHONUNBUFFERED=1 \\',
+            '    DOCKER_CONTAINER=1',
+            '',
+            'RUN useradd -m -u 1000 bedrock_agentcore',
+            '',
+            'COPY pyproject.toml uv.lock ./',
+            'RUN uv sync --frozen --no-dev --no-install-project',
+            '',
+            'COPY --chown=bedrock_agentcore:bedrock_agentcore . .',
+            'RUN uv sync --frozen --no-dev',
+            '',
+            'USER bedrock_agentcore',
+            '',
+            'EXPOSE 8080 8000 9000',
+            '',
+            `CMD ["opentelemetry-instrument", "python", "-m", "${entryModule}"]`,
+            '',
+          ].join('\n')
+        );
+      }
+    }
+  } else {
+    throw new Error(`Source path does not exist: ${sourcePath}`);
+  }
+
+  // Container agents install dependencies inside the Docker image
+  if (build !== 'Container') {
+    fixPyprojectForSetuptools(path.join(appDir, 'pyproject.toml'));
+
+    onProgress?.(`Setting up Python environment for ${agentName}...`);
+    const setupResult = await setupPythonProject({ projectDir: appDir });
+    if (setupResult.status === 'success') {
+      onProgress?.(`Python environment ready for ${agentName}`);
+    } else if (setupResult.status === 'uv_not_found') {
+      onProgress?.(`Warning: uv not found — run "uv sync" manually in ${APP_DIR}/${agentName}`);
+    } else {
+      onProgress?.(`Warning: Python setup failed for ${agentName}: ${setupResult.error ?? setupResult.status}`);
+    }
+  }
+}

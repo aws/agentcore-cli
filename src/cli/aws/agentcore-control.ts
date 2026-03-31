@@ -3,8 +3,11 @@ import {
   BedrockAgentCoreControlClient,
   GetAgentRuntimeCommand,
   GetEvaluatorCommand,
+  GetMemoryCommand,
   GetOnlineEvaluationConfigCommand,
+  ListAgentRuntimesCommand,
   ListEvaluatorsCommand,
+  ListMemoriesCommand,
   UpdateOnlineEvaluationConfigCommand,
 } from '@aws-sdk/client-bedrock-agentcore-control';
 
@@ -40,6 +43,255 @@ export async function getAgentRuntimeStatus(options: GetAgentRuntimeStatusOption
   return {
     runtimeId: options.runtimeId,
     status: response.status,
+  };
+}
+
+// ============================================================================
+// Agent Runtimes — List & Get
+// ============================================================================
+
+export interface ListAgentRuntimesOptions {
+  region: string;
+  maxResults?: number;
+  nextToken?: string;
+}
+
+export interface AgentRuntimeSummary {
+  agentRuntimeId: string;
+  agentRuntimeArn: string;
+  agentRuntimeName: string;
+  description: string;
+  status: string;
+  lastUpdatedAt?: Date;
+}
+
+export interface ListAgentRuntimesResult {
+  runtimes: AgentRuntimeSummary[];
+  nextToken?: string;
+}
+
+/**
+ * List all AgentCore Runtimes in the given region.
+ */
+export async function listAgentRuntimes(options: ListAgentRuntimesOptions): Promise<ListAgentRuntimesResult> {
+  const client = new BedrockAgentCoreControlClient({
+    region: options.region,
+    credentials: getCredentialProvider(),
+  });
+
+  const command = new ListAgentRuntimesCommand({
+    maxResults: options.maxResults,
+    nextToken: options.nextToken,
+  });
+
+  const response = await client.send(command);
+
+  return {
+    runtimes: (response.agentRuntimes ?? []).map(r => ({
+      agentRuntimeId: r.agentRuntimeId ?? '',
+      agentRuntimeArn: r.agentRuntimeArn ?? '',
+      agentRuntimeName: r.agentRuntimeName ?? '',
+      description: r.description ?? '',
+      status: r.status ?? 'UNKNOWN',
+      lastUpdatedAt: r.lastUpdatedAt,
+    })),
+    nextToken: response.nextToken,
+  };
+}
+
+export interface GetAgentRuntimeOptions {
+  region: string;
+  runtimeId: string;
+}
+
+export interface AgentRuntimeDetail {
+  agentRuntimeId: string;
+  agentRuntimeArn: string;
+  agentRuntimeName: string;
+  status: string;
+  description?: string;
+  roleArn: string;
+  networkMode: string;
+  networkConfig?: { subnets: string[]; securityGroups: string[] };
+  protocol: string;
+  runtimeVersion?: string;
+  entryPoint?: string[];
+  build: 'CodeZip' | 'Container';
+  authorizerType?: string;
+  authorizerConfiguration?: {
+    customJwtAuthorizer?: {
+      discoveryUrl: string;
+      allowedAudience?: string[];
+      allowedClients?: string[];
+      allowedScopes?: string[];
+    };
+  };
+}
+
+/**
+ * Get full details of an AgentCore Runtime by ID.
+ */
+export async function getAgentRuntimeDetail(options: GetAgentRuntimeOptions): Promise<AgentRuntimeDetail> {
+  const client = new BedrockAgentCoreControlClient({
+    region: options.region,
+    credentials: getCredentialProvider(),
+  });
+
+  const command = new GetAgentRuntimeCommand({
+    agentRuntimeId: options.runtimeId,
+  });
+
+  const response = await client.send(command);
+
+  const networkMode = response.networkConfiguration?.networkMode ?? 'PUBLIC';
+  const networkConfig =
+    networkMode === 'VPC' && response.networkConfiguration?.networkModeConfig
+      ? {
+          subnets: response.networkConfiguration.networkModeConfig.subnets ?? [],
+          securityGroups: response.networkConfiguration.networkModeConfig.securityGroups ?? [],
+        }
+      : undefined;
+
+  const isContainer = !!response.agentRuntimeArtifact?.containerConfiguration;
+  const codeConfig = response.agentRuntimeArtifact?.codeConfiguration;
+
+  let authorizerType: string | undefined;
+  let authorizerConfiguration: AgentRuntimeDetail['authorizerConfiguration'];
+  if (response.authorizerConfiguration?.customJWTAuthorizer) {
+    authorizerType = 'CUSTOM_JWT';
+    const jwt = response.authorizerConfiguration.customJWTAuthorizer;
+    authorizerConfiguration = {
+      customJwtAuthorizer: {
+        discoveryUrl: jwt.discoveryUrl ?? '',
+        allowedAudience: jwt.allowedAudience,
+        allowedClients: jwt.allowedClients,
+        allowedScopes: jwt.allowedScopes,
+      },
+    };
+  }
+
+  return {
+    agentRuntimeId: response.agentRuntimeId ?? '',
+    agentRuntimeArn: response.agentRuntimeArn ?? '',
+    agentRuntimeName: response.agentRuntimeName ?? '',
+    status: response.status ?? 'UNKNOWN',
+    description: response.description,
+    roleArn: response.roleArn ?? '',
+    networkMode,
+    networkConfig,
+    protocol: response.protocolConfiguration?.serverProtocol ?? 'HTTP',
+    runtimeVersion: codeConfig?.runtime,
+    entryPoint: codeConfig?.entryPoint,
+    build: isContainer ? 'Container' : 'CodeZip',
+    authorizerType,
+    authorizerConfiguration,
+  };
+}
+
+// ============================================================================
+// Memories — List & Get
+// ============================================================================
+
+export interface ListMemoriesOptions {
+  region: string;
+  maxResults?: number;
+  nextToken?: string;
+}
+
+export interface MemorySummary {
+  memoryId: string;
+  memoryArn: string;
+  status: string;
+  createdAt?: Date;
+  updatedAt?: Date;
+}
+
+export interface ListMemoriesResult {
+  memories: MemorySummary[];
+  nextToken?: string;
+}
+
+/**
+ * List all AgentCore Memories in the given region.
+ */
+export async function listMemories(options: ListMemoriesOptions): Promise<ListMemoriesResult> {
+  const client = new BedrockAgentCoreControlClient({
+    region: options.region,
+    credentials: getCredentialProvider(),
+  });
+
+  const command = new ListMemoriesCommand({
+    maxResults: options.maxResults,
+    nextToken: options.nextToken,
+  });
+
+  const response = await client.send(command);
+
+  return {
+    memories: (response.memories ?? []).map(m => ({
+      memoryId: m.id ?? '',
+      memoryArn: m.arn ?? '',
+      status: m.status ?? 'UNKNOWN',
+      createdAt: m.createdAt,
+      updatedAt: m.updatedAt,
+    })),
+    nextToken: response.nextToken,
+  };
+}
+
+export interface GetMemoryOptions {
+  region: string;
+  memoryId: string;
+}
+
+export interface MemoryDetail {
+  memoryId: string;
+  memoryArn: string;
+  name: string;
+  status: string;
+  description?: string;
+  eventExpiryDuration: number;
+  strategies: {
+    type: string;
+    name?: string;
+    description?: string;
+    namespaces?: string[];
+  }[];
+}
+
+/**
+ * Get full details of an AgentCore Memory by ID.
+ */
+export async function getMemoryDetail(options: GetMemoryOptions): Promise<MemoryDetail> {
+  const client = new BedrockAgentCoreControlClient({
+    region: options.region,
+    credentials: getCredentialProvider(),
+  });
+
+  const command = new GetMemoryCommand({
+    memoryId: options.memoryId,
+  });
+
+  const response = await client.send(command);
+  const memory = response.memory;
+
+  if (!memory) {
+    throw new Error(`No memory found for ID ${options.memoryId}`);
+  }
+
+  return {
+    memoryId: memory.id ?? '',
+    memoryArn: memory.arn ?? '',
+    name: memory.name ?? '',
+    status: memory.status ?? 'UNKNOWN',
+    description: memory.description,
+    eventExpiryDuration: memory.eventExpiryDuration ?? 30,
+    strategies: (memory.strategies ?? []).map(s => ({
+      type: s.type ?? 'SEMANTIC',
+      name: s.name,
+      description: s.description,
+      namespaces: s.namespaces,
+    })),
   };
 }
 
