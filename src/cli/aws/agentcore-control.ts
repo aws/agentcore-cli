@@ -261,6 +261,7 @@ export interface MemoryDetail {
   }[];
   tags?: Record<string, string>;
   encryptionKeyArn?: string;
+  executionRoleArn?: string;
 }
 
 /**
@@ -316,6 +317,7 @@ export async function getMemoryDetail(options: GetMemoryOptions): Promise<Memory
     eventExpiryDuration: memory.eventExpiryDuration,
     tags,
     encryptionKeyArn: memory.encryptionKeyArn,
+    executionRoleArn: memory.memoryExecutionRoleArn,
     strategies: (memory.strategies ?? []).map(s => {
       if (!s.type) {
         throw new Error(`Memory ${options.memoryId} has a strategy with missing required field: type`);

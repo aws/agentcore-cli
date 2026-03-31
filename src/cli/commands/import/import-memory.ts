@@ -68,6 +68,7 @@ function toMemorySpec(memory: MemoryDetail, localName: string): Memory {
     strategies,
     ...(memory.tags && Object.keys(memory.tags).length > 0 && { tags: memory.tags }),
     ...(memory.encryptionKeyArn && { encryptionKeyArn: memory.encryptionKeyArn }),
+    ...(memory.executionRoleArn && { executionRoleArn: memory.executionRoleArn }),
   };
 }
 
