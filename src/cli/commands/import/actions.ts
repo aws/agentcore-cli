@@ -13,6 +13,7 @@ import { silentIoHost } from '../../cdk/toolkit-lib';
 import { ExecLogger } from '../../logging';
 import { bootstrapEnvironment, buildCdkProject, checkBootstrapNeeded, synthesizeCdk } from '../../operations/deploy';
 import { setupPythonProject } from '../../operations/python/setup';
+import { copyDirRecursive, fixPyprojectForSetuptools, toStackName, updateDeployedState } from './import-utils';
 import { executePhase1, getDeployedTemplate } from './phase1-update';
 import { executePhase2, publishCdkAssets } from './phase2-import';
 import type { CfnTemplate } from './template-utils';
@@ -27,14 +28,6 @@ export interface ImportOptions {
   target?: string;
   yes?: boolean;
   onProgress?: (message: string) => void;
-}
-
-function sanitize(name: string): string {
-  return name.replace(/_/g, '-');
-}
-
-function toStackName(projectName: string, targetName: string): string {
-  return `AgentCore-${sanitize(projectName)}-${sanitize(targetName)}`;
 }
 
 /**
@@ -707,44 +700,29 @@ export async function handleImport(options: ImportOptions): Promise<ImportResult
     logger.startStep('Update deployed state');
     logger.log('Updating deployed state...');
     onProgress?.('Updating deployed state...');
-    /* eslint-disable @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-argument, @typescript-eslint/no-explicit-any */
-    const existingState: any = await configIO.readDeployedState().catch(() => ({ targets: {} }));
-    const targetState = existingState.targets[targetName] ?? { resources: {} };
-    targetState.resources ??= {};
-    targetState.resources.stackName = stackName;
-
-    if (agentsToImport.length > 0) {
-      targetState.resources.runtimes ??= {};
-      for (const agent of agentsToImport) {
-        if (agent.physicalAgentId) {
-          targetState.resources.runtimes[agent.name] = {
-            runtimeId: agent.physicalAgentId,
-            runtimeArn:
-              agent.physicalAgentArn ??
-              `arn:aws:bedrock-agentcore:${target.region}:${target.account}:runtime/${agent.physicalAgentId}`,
-            roleArn: 'imported', // Placeholder — updated after agentcore deploy
-          };
-        }
-      }
-    }
-
-    if (memoriesToImport.length > 0) {
-      targetState.resources.memories ??= {};
-      for (const memory of memoriesToImport) {
-        if (memory.physicalMemoryId) {
-          targetState.resources.memories[memory.name] = {
-            memoryId: memory.physicalMemoryId,
-            memoryArn:
-              memory.physicalMemoryArn ??
-              `arn:aws:bedrock-agentcore:${target.region}:${target.account}:memory/${memory.physicalMemoryId}`,
-          };
-        }
-      }
-    }
-
-    existingState.targets[targetName] = targetState;
-    await configIO.writeDeployedState(existingState);
-    /* eslint-enable @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-argument, @typescript-eslint/no-explicit-any */
+    const importedResources = [
+      ...agentsToImport
+        .filter(a => a.physicalAgentId)
+        .map(a => ({
+          type: 'runtime' as const,
+          name: a.name,
+          id: a.physicalAgentId!,
+          arn:
+            a.physicalAgentArn ??
+            `arn:aws:bedrock-agentcore:${target.region}:${target.account}:runtime/${a.physicalAgentId}`,
+        })),
+      ...memoriesToImport
+        .filter(m => m.physicalMemoryId)
+        .map(m => ({
+          type: 'memory' as const,
+          name: m.name,
+          id: m.physicalMemoryId!,
+          arn:
+            m.physicalMemoryArn ??
+            `arn:aws:bedrock-agentcore:${target.region}:${target.account}:memory/${m.physicalMemoryId}`,
+        })),
+    ];
+    await updateDeployedState(configIO, targetName, stackName, importedResources);
     logger.endStep('success');
 
     logger.finalize(true);
@@ -762,55 +740,5 @@ export async function handleImport(options: ImportOptions): Promise<ImportResult
     logger.log(message, 'error');
     logger.finalize(false);
     return { success: false, error: message, logPath: logger.getRelativeLogPath() };
-  }
-}
-
-/**
- * Fix pyproject.toml for setuptools auto-discovery issues.
- * Starter toolkit projects may have multiple top-level directories (model/, mcp_client/)
- * which causes setuptools to refuse building. Adding `py-modules = []` tells setuptools
- * not to auto-discover packages.
- */
-function fixPyprojectForSetuptools(pyprojectPath: string): void {
-  if (!fs.existsSync(pyprojectPath)) return;
-
-  const content = fs.readFileSync(pyprojectPath, 'utf-8');
-
-  // Already has [tool.setuptools] section — don't touch it
-  if (content.includes('[tool.setuptools]')) return;
-
-  // Append the fix
-  fs.writeFileSync(pyprojectPath, content.trimEnd() + '\n\n[tool.setuptools]\npy-modules = []\n');
-}
-
-const COPY_EXCLUDE_DIRS = new Set([
-  '.venv',
-  '.git',
-  '__pycache__',
-  'node_modules',
-  '.pytest_cache',
-  '.bedrock_agentcore',
-  '.mypy_cache',
-  '.ruff_cache',
-]);
-
-/**
- * Recursively copy directory contents, skipping excluded directories and symlinks.
- */
-function copyDirRecursive(src: string, dest: string): void {
-  const entries = fs.readdirSync(src, { withFileTypes: true });
-  for (const entry of entries) {
-    if (entry.isSymbolicLink()) continue;
-    const srcPath = path.join(src, entry.name);
-    const destPath = path.join(dest, entry.name);
-    if (entry.isDirectory()) {
-      if (COPY_EXCLUDE_DIRS.has(entry.name)) continue;
-      if (!fs.existsSync(destPath)) {
-        fs.mkdirSync(destPath, { recursive: true });
-      }
-      copyDirRecursive(srcPath, destPath);
-    } else {
-      fs.copyFileSync(srcPath, destPath);
-    }
   }
 }

@@ -276,7 +276,7 @@ export function copyDirRecursive(src: string, dest: string): void {
 /**
  * Fix pyproject.toml for setuptools auto-discovery issues.
  */
-function fixPyprojectForSetuptools(pyprojectPath: string): void {
+export function fixPyprojectForSetuptools(pyprojectPath: string): void {
   if (!fs.existsSync(pyprojectPath)) return;
 
   const content = fs.readFileSync(pyprojectPath, 'utf-8');
