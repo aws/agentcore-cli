@@ -7,6 +7,7 @@ import { ExecLogger } from '../../logging';
 import { bootstrapEnvironment, buildCdkProject, checkBootstrapNeeded, synthesizeCdk } from '../../operations/deploy';
 import {
   copyAgentSource,
+  parseAndValidateArn,
   resolveImportTarget,
   resolveProjectContext,
   toStackName,
@@ -105,7 +106,8 @@ export async function handleImportRuntime(options: ImportResourceOptions): Promi
     let runtimeId: string;
 
     if (options.arn) {
-      runtimeId = options.arn.split('/').pop()!;
+      const parsed = parseAndValidateArn(options.arn, 'runtime', target);
+      runtimeId = parsed.resourceId;
     } else {
       // List runtimes and let user pick
       onProgress('Listing runtimes in your account...');

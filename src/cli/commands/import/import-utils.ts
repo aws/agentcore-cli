@@ -100,6 +100,56 @@ export async function resolveImportTarget(options: ResolveTargetOptions): Promis
 }
 
 // ============================================================================
+// ARN Validation
+// ============================================================================
+
+export interface ParsedArn {
+  region: string;
+  account: string;
+  resourceType: string;
+  resourceId: string;
+}
+
+const ARN_PATTERN = /^arn:aws:bedrock-agentcore:([^:]+):([^:]+):(runtime|memory)\/(.+)$/;
+
+/**
+ * Parse and validate a BedrockAgentCore ARN.
+ * Validates format, region, and account against the deployment target.
+ */
+export function parseAndValidateArn(
+  arn: string,
+  expectedResourceType: 'runtime' | 'memory',
+  target: { region: string; account: string }
+): ParsedArn {
+  const match = ARN_PATTERN.exec(arn);
+  if (!match) {
+    throw new Error(
+      `Invalid ARN format: "${arn}". Expected format: arn:aws:bedrock-agentcore:<region>:<account>:${expectedResourceType}/<id>`
+    );
+  }
+
+  const [, region, account, resourceType, resourceId] = match;
+
+  if (resourceType !== expectedResourceType) {
+    throw new Error(`ARN resource type "${resourceType}" does not match expected type "${expectedResourceType}".`);
+  }
+
+  if (region !== target.region) {
+    throw new Error(
+      `ARN region "${region}" does not match target region "${target.region}". Use --target to select a different deployment target.`
+    );
+  }
+
+  if (account !== target.account) {
+    throw new Error(
+      `ARN account "${account}" does not match target account "${target.account}". Ensure the ARN belongs to the correct account.`
+    );
+  }
+
+  return { region, account, resourceType, resourceId: resourceId! };
+}
+
+// ============================================================================
 // Stack Name
 // ============================================================================
 

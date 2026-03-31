@@ -5,7 +5,13 @@ import { LocalCdkProject } from '../../cdk/local-cdk-project';
 import { silentIoHost } from '../../cdk/toolkit-lib';
 import { ExecLogger } from '../../logging';
 import { bootstrapEnvironment, buildCdkProject, checkBootstrapNeeded, synthesizeCdk } from '../../operations/deploy';
-import { resolveImportTarget, resolveProjectContext, toStackName, updateDeployedState } from './import-utils';
+import {
+  parseAndValidateArn,
+  resolveImportTarget,
+  resolveProjectContext,
+  toStackName,
+  updateDeployedState,
+} from './import-utils';
 import { executePhase1, getDeployedTemplate } from './phase1-update';
 import { executePhase2, publishCdkAssets } from './phase2-import';
 import type { CfnTemplate } from './template-utils';
@@ -91,7 +97,8 @@ export async function handleImportMemory(options: ImportResourceOptions): Promis
     let memoryId: string;
 
     if (options.arn) {
-      memoryId = options.arn.split('/').pop()!;
+      const parsed = parseAndValidateArn(options.arn, 'memory', target);
+      memoryId = parsed.resourceId;
     } else {
       // List memories and show to user
       onProgress('Listing memories in your account...');

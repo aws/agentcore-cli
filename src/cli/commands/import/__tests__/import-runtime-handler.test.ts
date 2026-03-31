@@ -20,12 +20,15 @@ const mockUpdateDeployedState = vi.fn();
 const mockCopyAgentSource = vi.fn();
 const mockToStackName = vi.fn();
 
+const mockParseAndValidateArn = vi.fn();
+
 vi.mock('../import-utils', () => ({
   resolveProjectContext: (...args: unknown[]) => mockResolveProjectContext(...args),
   resolveImportTarget: (...args: unknown[]) => mockResolveImportTarget(...args),
   updateDeployedState: (...args: unknown[]) => mockUpdateDeployedState(...args),
   copyAgentSource: (...args: unknown[]) => mockCopyAgentSource(...args),
   toStackName: (...args: unknown[]) => mockToStackName(...args),
+  parseAndValidateArn: (...args: unknown[]) => mockParseAndValidateArn(...args),
 }));
 
 const mockGetAgentRuntimeDetail = vi.fn();
@@ -116,6 +119,13 @@ function setupDefaultMocks() {
     name: 'default',
     region: 'us-east-1',
     account: '123456789012',
+  });
+
+  mockParseAndValidateArn.mockReturnValue({
+    region: 'us-east-1',
+    account: '123',
+    resourceType: 'runtime',
+    resourceId: 'rt-123',
   });
 
   mockConfigIO.readProjectSpec.mockResolvedValue({ ...defaultProjectSpec, runtimes: [] });
