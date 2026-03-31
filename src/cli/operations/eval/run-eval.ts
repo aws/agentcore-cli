@@ -446,7 +446,8 @@ async function fetchSessionSpans(opts: FetchSpansOptions): Promise<SessionSpans[
   // 1. Query proper OTel spans from the aws/spans log group
   let spanQuery = `fields @message, attributes.session.id as sessionId, traceId
      | parse resource.attributes.cloud.resource_id "runtime/*/" as parsedAgentId
-     | filter parsedAgentId = '${sanitizeQueryValue(runtimeId)}'`;
+     | filter parsedAgentId = '${sanitizeQueryValue(runtimeId)}'
+     | filter ispresent(scope.name)`;
 
   if (opts.sessionId) {
     spanQuery += `\n     | filter attributes.session.id = '${sanitizeQueryValue(opts.sessionId)}'`;
