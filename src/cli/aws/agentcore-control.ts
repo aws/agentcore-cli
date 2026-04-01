@@ -100,6 +100,22 @@ export async function listAgentRuntimes(options: ListAgentRuntimesOptions): Prom
   };
 }
 
+/**
+ * List all AgentCore Runtimes in the given region, paginating through all pages.
+ */
+export async function listAllAgentRuntimes(options: { region: string }): Promise<AgentRuntimeSummary[]> {
+  const runtimes: AgentRuntimeSummary[] = [];
+  let nextToken: string | undefined;
+
+  do {
+    const result = await listAgentRuntimes({ region: options.region, maxResults: 100, nextToken });
+    runtimes.push(...result.runtimes);
+    nextToken = result.nextToken;
+  } while (nextToken);
+
+  return runtimes;
+}
+
 export interface GetAgentRuntimeOptions {
   region: string;
   runtimeId: string;
@@ -127,6 +143,10 @@ export interface AgentRuntimeDetail {
       allowedScopes?: string[];
     };
   };
+  environmentVariables?: Record<string, string>;
+  tags?: Record<string, string>;
+  lifecycleConfiguration?: { idleRuntimeSessionTimeout?: number; maxLifetime?: number };
+  requestHeaderAllowlist?: string[];
 }
 
 /**
@@ -171,6 +191,42 @@ export async function getAgentRuntimeDetail(options: GetAgentRuntimeOptions): Pr
     };
   }
 
+  // Extract environment variables
+  const environmentVariables =
+    response.environmentVariables && Object.keys(response.environmentVariables).length > 0
+      ? response.environmentVariables
+      : undefined;
+
+  // Extract lifecycle configuration
+  const lifecycleConfiguration = response.lifecycleConfiguration
+    ? {
+        idleRuntimeSessionTimeout: response.lifecycleConfiguration.idleRuntimeSessionTimeout,
+        maxLifetime: response.lifecycleConfiguration.maxLifetime,
+      }
+    : undefined;
+
+  // Extract request header allowlist from the union type
+  let requestHeaderAllowlist: string[] | undefined;
+  if (response.requestHeaderConfiguration && 'requestHeaderAllowlist' in response.requestHeaderConfiguration) {
+    const allowlist = response.requestHeaderConfiguration.requestHeaderAllowlist;
+    if (allowlist && allowlist.length > 0) {
+      requestHeaderAllowlist = allowlist;
+    }
+  }
+
+  // Fetch tags via separate API call (same pattern as getMemoryDetail)
+  let tags: Record<string, string> | undefined;
+  if (response.agentRuntimeArn) {
+    try {
+      const tagsResponse = await client.send(new ListTagsForResourceCommand({ resourceArn: response.agentRuntimeArn }));
+      if (tagsResponse.tags && Object.keys(tagsResponse.tags).length > 0) {
+        tags = tagsResponse.tags;
+      }
+    } catch {
+      // Tags are optional — continue without them if the call fails
+    }
+  }
+
   return {
     agentRuntimeId: response.agentRuntimeId ?? '',
     agentRuntimeArn: response.agentRuntimeArn ?? '',
@@ -186,6 +242,10 @@ export async function getAgentRuntimeDetail(options: GetAgentRuntimeOptions): Pr
     build: isContainer ? 'Container' : 'CodeZip',
     authorizerType,
     authorizerConfiguration,
+    environmentVariables,
+    tags,
+    lifecycleConfiguration,
+    requestHeaderAllowlist,
   };
 }
 
@@ -238,6 +298,22 @@ export async function listMemories(options: ListMemoriesOptions): Promise<ListMe
     })),
     nextToken: response.nextToken,
   };
+}
+
+/**
+ * List all AgentCore Memories in the given region, paginating through all pages.
+ */
+export async function listAllMemories(options: { region: string }): Promise<MemorySummary[]> {
+  const memories: MemorySummary[] = [];
+  let nextToken: string | undefined;
+
+  do {
+    const result = await listMemories({ region: options.region, maxResults: 100, nextToken });
+    memories.push(...result.memories);
+    nextToken = result.nextToken;
+  } while (nextToken);
+
+  return memories;
 }
 
 export interface GetMemoryOptions {

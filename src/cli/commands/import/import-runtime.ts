@@ -1,6 +1,6 @@
 import type { AgentEnvSpec } from '../../../schema';
 import type { AgentRuntimeDetail } from '../../aws/agentcore-control';
-import { getAgentRuntimeDetail, listAgentRuntimes } from '../../aws/agentcore-control';
+import { getAgentRuntimeDetail, listAllAgentRuntimes } from '../../aws/agentcore-control';
 import { LocalCdkProject } from '../../cdk/local-cdk-project';
 import { silentIoHost } from '../../cdk/toolkit-lib';
 import { ExecLogger } from '../../logging';
@@ -75,6 +75,22 @@ function toAgentEnvSpec(
     spec.authorizerConfiguration = runtime.authorizerConfiguration as AgentEnvSpec['authorizerConfiguration'];
   }
 
+  if (runtime.environmentVariables && Object.keys(runtime.environmentVariables).length > 0) {
+    spec.envVars = Object.entries(runtime.environmentVariables).map(([name, value]) => ({ name, value }));
+  }
+
+  if (runtime.tags && Object.keys(runtime.tags).length > 0) {
+    spec.tags = runtime.tags;
+  }
+
+  if (runtime.lifecycleConfiguration) {
+    spec.lifecycleConfiguration = runtime.lifecycleConfiguration;
+  }
+
+  if (runtime.requestHeaderAllowlist && runtime.requestHeaderAllowlist.length > 0) {
+    spec.requestHeaderAllowlist = runtime.requestHeaderAllowlist;
+  }
+
   return spec;
 }
 
@@ -112,9 +128,9 @@ export async function handleImportRuntime(options: ImportResourceOptions): Promi
     } else {
       // List runtimes and let user pick
       onProgress('Listing runtimes in your account...');
-      const listResult = await listAgentRuntimes({ region: target.region, maxResults: 100 });
+      const runtimes = await listAllAgentRuntimes({ region: target.region });
 
-      if (listResult.runtimes.length === 0) {
+      if (runtimes.length === 0) {
         const error = 'No runtimes found in your account. Deploy a runtime first.';
         logger.endStep('error', error);
         logger.finalize(false);
@@ -127,19 +143,31 @@ export async function handleImportRuntime(options: ImportResourceOptions): Promi
         };
       }
 
-      // Display list for user to pick
-      console.log(`\nFound ${listResult.runtimes.length} runtime(s):\n`);
-      for (let i = 0; i < listResult.runtimes.length; i++) {
-        const r = listResult.runtimes[i]!;
-        console.log(`  ${dim}[${i + 1}]${reset} ${r.agentRuntimeName} (${r.agentRuntimeId}) — ${r.status}`);
-      }
-      console.log('');
+      if (runtimes.length === 1) {
+        // Auto-select the only runtime
+        runtimeId = runtimes[0]!.agentRuntimeId;
+        onProgress(`Found 1 runtime: ${runtimes[0]!.agentRuntimeName} (${runtimeId}). Auto-selecting.`);
+      } else {
+        // Display list for user to pick
+        console.log(`\nFound ${runtimes.length} runtime(s):\n`);
+        for (let i = 0; i < runtimes.length; i++) {
+          const r = runtimes[i]!;
+          console.log(`  ${dim}[${i + 1}]${reset} ${r.agentRuntimeName} (${r.agentRuntimeId}) — ${r.status}`);
+        }
+        console.log('');
 
-      // For non-interactive mode, require --arn
-      const error = 'Multiple runtimes found. Use --arn <runtimeArn> to specify which runtime to import.';
-      logger.endStep('error', error);
-      logger.finalize(false);
-      return { success: false, error, resourceType: 'runtime', resourceName: '', logPath: logger.getRelativeLogPath() };
+        // For non-interactive mode, require --arn
+        const error = 'Multiple runtimes found. Use --arn <runtimeArn> to specify which runtime to import.';
+        logger.endStep('error', error);
+        logger.finalize(false);
+        return {
+          success: false,
+          error,
+          resourceType: 'runtime',
+          resourceName: '',
+          logPath: logger.getRelativeLogPath(),
+        };
+      }
     }
 
     onProgress(`Fetching runtime details for ${runtimeId}...`);

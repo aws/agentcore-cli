@@ -1,6 +1,6 @@
 import type { Memory } from '../../../schema';
 import type { MemoryDetail } from '../../aws/agentcore-control';
-import { getMemoryDetail, listMemories } from '../../aws/agentcore-control';
+import { getMemoryDetail, listAllMemories } from '../../aws/agentcore-control';
 import { LocalCdkProject } from '../../cdk/local-cdk-project';
 import { silentIoHost } from '../../cdk/toolkit-lib';
 import { ExecLogger } from '../../logging';
@@ -106,9 +106,9 @@ export async function handleImportMemory(options: ImportResourceOptions): Promis
     } else {
       // List memories and show to user
       onProgress('Listing memories in your account...');
-      const listResult = await listMemories({ region: target.region, maxResults: 100 });
+      const memories = await listAllMemories({ region: target.region });
 
-      if (listResult.memories.length === 0) {
+      if (memories.length === 0) {
         const error = 'No memories found in your account.';
         logger.endStep('error', error);
         logger.finalize(false);
@@ -121,18 +121,30 @@ export async function handleImportMemory(options: ImportResourceOptions): Promis
         };
       }
 
-      // Display list
-      console.log(`\nFound ${listResult.memories.length} memory(ies):\n`);
-      for (let i = 0; i < listResult.memories.length; i++) {
-        const m = listResult.memories[i]!;
-        console.log(`  ${dim}[${i + 1}]${reset} ${m.memoryId} — ${m.status}`);
-      }
-      console.log('');
+      if (memories.length === 1) {
+        // Auto-select the only memory
+        memoryId = memories[0]!.memoryId;
+        onProgress(`Found 1 memory: ${memoryId}. Auto-selecting.`);
+      } else {
+        // Display list
+        console.log(`\nFound ${memories.length} memory(ies):\n`);
+        for (let i = 0; i < memories.length; i++) {
+          const m = memories[i]!;
+          console.log(`  ${dim}[${i + 1}]${reset} ${m.memoryId} — ${m.status}`);
+        }
+        console.log('');
 
-      const error = 'Multiple memories found. Use --arn <memoryArn> to specify which memory to import.';
-      logger.endStep('error', error);
-      logger.finalize(false);
-      return { success: false, error, resourceType: 'memory', resourceName: '', logPath: logger.getRelativeLogPath() };
+        const error = 'Multiple memories found. Use --arn <memoryArn> to specify which memory to import.';
+        logger.endStep('error', error);
+        logger.finalize(false);
+        return {
+          success: false,
+          error,
+          resourceType: 'memory',
+          resourceName: '',
+          logPath: logger.getRelativeLogPath(),
+        };
+      }
     }
 
     onProgress(`Fetching memory details for ${memoryId}...`);
