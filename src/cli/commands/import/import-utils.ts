@@ -60,6 +60,13 @@ export interface ResolveTargetOptions {
 export async function resolveImportTarget(options: ResolveTargetOptions): Promise<AwsDeploymentTarget> {
   const { configIO, targetName, arn, onProgress } = options;
 
+  // Validate ARN format early if provided
+  if (arn && !/^arn:aws:bedrock-agentcore:([^:]+):([^:]+):(runtime|memory)\/(.+)$/.test(arn)) {
+    throw new Error(
+      `Not a valid ARN: "${arn}".\nExpected format: arn:aws:bedrock-agentcore:<region>:<account>:<runtime|memory>/<id>`
+    );
+  }
+
   let targets = await configIO.readAWSDeploymentTargets();
 
   if (targets.length === 0) {

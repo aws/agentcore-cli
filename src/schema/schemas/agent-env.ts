@@ -178,6 +178,8 @@ export type LifecycleConfiguration = z.infer<typeof LifecycleConfigurationSchema
 export const AgentEnvSpecSchema = z
   .object({
     name: AgentNameSchema,
+    /** Optional description for the runtime. */
+    description: z.string().max(200).optional(),
     build: BuildTypeSchema,
     entrypoint: EntrypointSchema,
     codeLocation: DirectoryPathSchema,

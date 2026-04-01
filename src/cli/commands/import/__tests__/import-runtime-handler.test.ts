@@ -364,10 +364,10 @@ describe('handleImportRuntime', () => {
 
       mockCopyAgentSource.mockResolvedValue(undefined);
 
-      // Capture what's written to project spec
+      // Capture the first write to project spec (before any rollback)
       let writtenSpec: Record<string, unknown> | undefined;
       mockConfigIO.writeProjectSpec.mockImplementation((spec: Record<string, unknown>) => {
-        writtenSpec = spec;
+        if (!writtenSpec) writtenSpec = JSON.parse(JSON.stringify(spec)) as Record<string, unknown>;
         return Promise.resolve();
       });
 
@@ -409,7 +409,7 @@ describe('handleImportRuntime', () => {
 
       let writtenSpec: Record<string, unknown> | undefined;
       mockConfigIO.writeProjectSpec.mockImplementation((spec: Record<string, unknown>) => {
-        writtenSpec = spec;
+        if (!writtenSpec) writtenSpec = JSON.parse(JSON.stringify(spec)) as Record<string, unknown>;
         return Promise.resolve();
       });
 
@@ -454,7 +454,7 @@ describe('handleImportRuntime', () => {
 
       let writtenSpec: Record<string, unknown> | undefined;
       mockConfigIO.writeProjectSpec.mockImplementation((spec: Record<string, unknown>) => {
-        writtenSpec = spec;
+        if (!writtenSpec) writtenSpec = JSON.parse(JSON.stringify(spec)) as Record<string, unknown>;
         return Promise.resolve();
       });
 

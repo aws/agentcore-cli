@@ -1,4 +1,5 @@
-import type { Memory } from '../../../schema';
+import type { AgentCoreProjectSpec, Memory } from '../../../schema';
+import type { ConfigIO } from '../../../lib';
 import type { MemoryDetail } from '../../aws/agentcore-control';
 import { getMemoryDetail, listAllMemories } from '../../aws/agentcore-control';
 import { LocalCdkProject } from '../../cdk/local-cdk-project';
@@ -91,10 +92,26 @@ export async function handleImportMemory(options: ImportResourceOptions): Promis
     console.log(`${green}[done]${reset}  ${message}`);
   };
 
+  // Rollback state
+  let configSnapshot: AgentCoreProjectSpec | undefined;
+  let configWritten = false;
+  let configIORef: ConfigIO | undefined;
+
+  const rollback = async () => {
+    if (configWritten && configSnapshot && configIORef) {
+      try {
+        await configIORef.writeProjectSpec(configSnapshot);
+      } catch {
+        // best-effort rollback
+      }
+    }
+  };
+
   try {
     // 1. Validate project context
     logger.startStep('Validate project context');
     const ctx = await resolveProjectContext();
+    configIORef = ctx.configIO;
     logger.endStep('success');
 
     // 2. Resolve deployment target
@@ -142,6 +159,7 @@ export async function handleImportMemory(options: ImportResourceOptions): Promis
         for (let i = 0; i < memories.length; i++) {
           const m = memories[i]!;
           console.log(`  ${dim}[${i + 1}]${reset} ${m.memoryId} — ${m.status}`);
+          console.log(`       ${dim}${m.memoryArn}${reset}`);
         }
         console.log('');
 
@@ -203,9 +221,11 @@ export async function handleImportMemory(options: ImportResourceOptions): Promis
 
     // 5. Add to project config
     logger.startStep('Update project config');
+    configSnapshot = JSON.parse(JSON.stringify(projectSpec)) as AgentCoreProjectSpec;
     const memorySpec = toMemorySpec(memoryDetail, localName);
     (projectSpec.memories ??= []).push(memorySpec);
     await ctx.configIO.writeProjectSpec(projectSpec);
+    configWritten = true;
     onProgress(`Added memory "${localName}" to agentcore.json`);
     logger.endStep('success');
 
@@ -232,6 +252,7 @@ export async function handleImportMemory(options: ImportResourceOptions): Promis
       if (files.length === 0) {
         await toolkitWrapper.dispose();
         const error = 'No CloudFormation template found in CDK assembly';
+        await rollback();
         logger.endStep('error', error);
         logger.finalize(false);
         return {
@@ -275,6 +296,7 @@ export async function handleImportMemory(options: ImportResourceOptions): Promis
 
     if (!phase1Result.success) {
       const error = `Phase 1 failed: ${phase1Result.error}`;
+      await rollback();
       logger.endStep('error', error);
       logger.finalize(false);
       return {
@@ -293,6 +315,7 @@ export async function handleImportMemory(options: ImportResourceOptions): Promis
     const deployedTemplate = await getDeployedTemplate(target.region, stackName);
     if (!deployedTemplate) {
       const error = 'Could not read deployed template after Phase 1';
+      await rollback();
       logger.endStep('error', error);
       logger.finalize(false);
       return {
@@ -322,6 +345,7 @@ export async function handleImportMemory(options: ImportResourceOptions): Promis
 
     if (!logicalId) {
       const error = `Could not find logical ID for memory "${localName}" in CloudFormation template`;
+      await rollback();
       logger.endStep('error', error);
       logger.finalize(false);
       return {
@@ -354,6 +378,7 @@ export async function handleImportMemory(options: ImportResourceOptions): Promis
 
     if (!phase2Result.success) {
       const error = `Phase 2 failed: ${phase2Result.error}`;
+      await rollback();
       logger.endStep('error', error);
       logger.finalize(false);
       return {
@@ -389,6 +414,7 @@ export async function handleImportMemory(options: ImportResourceOptions): Promis
     };
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : String(err);
+    await rollback();
     logger.log(message, 'error');
     logger.finalize(false);
     return {
@@ -409,7 +435,6 @@ export function registerImportMemory(importCmd: Command): void {
     .command('memory')
     .description('Import an existing AgentCore Memory from your AWS account')
     .option('--arn <memoryArn>', 'Memory ARN to import')
-    .option('--target <target>', 'Deployment target name')
     .option('--name <name>', 'Local name for the imported memory')
     .option('-y, --yes', 'Auto-confirm prompts')
     .action(async (cliOptions: ImportResourceOptions) => {

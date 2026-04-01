@@ -1,4 +1,5 @@
-import type { AgentEnvSpec } from '../../../schema';
+import type { AgentCoreProjectSpec, AgentEnvSpec } from '../../../schema';
+import type { ConfigIO } from '../../../lib';
 import type { AgentRuntimeDetail } from '../../aws/agentcore-control';
 import { getAgentRuntimeDetail, listAllAgentRuntimes } from '../../aws/agentcore-control';
 import { LocalCdkProject } from '../../cdk/local-cdk-project';
@@ -52,6 +53,7 @@ function toAgentEnvSpec(
     runtime.build === 'Container' ? runtime.runtimeVersion : (runtime.runtimeVersion ?? 'PYTHON_3_12');
   const spec: AgentEnvSpec = {
     name: localName,
+    ...(runtime.description && { description: runtime.description }),
     build: runtime.build,
     entrypoint: entrypoint as any,
     codeLocation: codeLocation as any,
@@ -105,10 +107,36 @@ export async function handleImportRuntime(options: ImportResourceOptions): Promi
     console.log(`${green}[done]${reset}  ${message}`);
   };
 
+  // Rollback state
+  let configSnapshot: AgentCoreProjectSpec | undefined;
+  let configWritten = false;
+  let copiedAppDir: string | undefined;
+  let configIORef: ConfigIO | undefined;
+
+  const rollback = async () => {
+    // Rollback config
+    if (configWritten && configSnapshot && configIORef) {
+      try {
+        await configIORef.writeProjectSpec(configSnapshot);
+      } catch {
+        // best-effort rollback
+      }
+    }
+    // Cleanup copied source directory
+    if (copiedAppDir && fs.existsSync(copiedAppDir)) {
+      try {
+        fs.rmSync(copiedAppDir, { recursive: true, force: true });
+      } catch {
+        // best-effort cleanup
+      }
+    }
+  };
+
   try {
     // 1. Validate project context
     logger.startStep('Validate project context');
     const ctx = await resolveProjectContext();
+    configIORef = ctx.configIO;
     logger.endStep('success');
 
     // 2. Resolve deployment target
@@ -155,7 +183,8 @@ export async function handleImportRuntime(options: ImportResourceOptions): Promi
         console.log(`\nFound ${runtimes.length} runtime(s):\n`);
         for (let i = 0; i < runtimes.length; i++) {
           const r = runtimes[i]!;
-          console.log(`  ${dim}[${i + 1}]${reset} ${r.agentRuntimeName} (${r.agentRuntimeId}) — ${r.status}`);
+          console.log(`  ${dim}[${i + 1}]${reset} ${r.agentRuntimeName} — ${r.status}`);
+          console.log(`       ${dim}${r.agentRuntimeArn}${reset}`);
         }
         console.log('');
 
@@ -289,6 +318,7 @@ export async function handleImportRuntime(options: ImportResourceOptions): Promi
     // 7. Copy source code
     logger.startStep('Copy agent source');
     const codeLocation = `app/${localName}/`;
+    copiedAppDir = path.join(ctx.projectRoot, 'app', localName);
     await copyAgentSource({
       sourcePath,
       agentName: localName,
@@ -301,9 +331,11 @@ export async function handleImportRuntime(options: ImportResourceOptions): Promi
 
     // 8. Add to project config
     logger.startStep('Update project config');
+    configSnapshot = JSON.parse(JSON.stringify(projectSpec)) as AgentCoreProjectSpec;
     const agentSpec = toAgentEnvSpec(runtimeDetail, localName, codeLocation, entrypoint);
     projectSpec.runtimes.push(agentSpec);
     await ctx.configIO.writeProjectSpec(projectSpec);
+    configWritten = true;
     onProgress(`Added runtime "${localName}" to agentcore.json`);
     logger.endStep('success');
 
@@ -330,6 +362,7 @@ export async function handleImportRuntime(options: ImportResourceOptions): Promi
       if (files.length === 0) {
         await toolkitWrapper.dispose();
         const error = 'No CloudFormation template found in CDK assembly';
+        await rollback();
         logger.endStep('error', error);
         logger.finalize(false);
         return {
@@ -373,6 +406,7 @@ export async function handleImportRuntime(options: ImportResourceOptions): Promi
 
     if (!phase1Result.success) {
       const error = `Phase 1 failed: ${phase1Result.error}`;
+      await rollback();
       logger.endStep('error', error);
       logger.finalize(false);
       return {
@@ -391,6 +425,7 @@ export async function handleImportRuntime(options: ImportResourceOptions): Promi
     const deployedTemplate = await getDeployedTemplate(target.region, stackName);
     if (!deployedTemplate) {
       const error = 'Could not read deployed template after Phase 1';
+      await rollback();
       logger.endStep('error', error);
       logger.finalize(false);
       return {
@@ -420,6 +455,7 @@ export async function handleImportRuntime(options: ImportResourceOptions): Promi
 
     if (!logicalId) {
       const error = `Could not find logical ID for runtime "${localName}" in CloudFormation template`;
+      await rollback();
       logger.endStep('error', error);
       logger.finalize(false);
       return {
@@ -452,6 +488,7 @@ export async function handleImportRuntime(options: ImportResourceOptions): Promi
 
     if (!phase2Result.success) {
       const error = `Phase 2 failed: ${phase2Result.error}`;
+      await rollback();
       logger.endStep('error', error);
       logger.finalize(false);
       return {
@@ -487,6 +524,7 @@ export async function handleImportRuntime(options: ImportResourceOptions): Promi
     };
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : String(err);
+    await rollback();
     logger.log(message, 'error');
     logger.finalize(false);
     return {
@@ -509,7 +547,6 @@ export function registerImportRuntime(importCmd: Command): void {
     .option('--arn <runtimeArn>', 'Runtime ARN to import')
     .option('--code <path>', 'Path to the directory containing the entrypoint file (e.g., the folder with main.py)')
     .option('--entrypoint <file>', 'Entrypoint file (auto-detected from runtime, e.g. main.py)')
-    .option('--target <target>', 'Deployment target name')
     .option('--name <name>', 'Local name for the imported runtime')
     .option('-y, --yes', 'Auto-confirm prompts')
     .action(async (cliOptions: ImportResourceOptions) => {
