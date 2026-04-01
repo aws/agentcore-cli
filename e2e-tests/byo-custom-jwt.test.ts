@@ -55,10 +55,12 @@ describe.sequential('e2e: BYO agent with CUSTOM_JWT auth', () => {
   let testDir: string;
   let projectPath: string;
   let agentName: string;
+  let mcpAgentName: string;
 
   // Cognito resources
   let userPoolId: string;
   let clientId: string;
+  let clientSecret: string;
   let domainPrefix: string;
   let discoveryUrl: string;
 
@@ -99,6 +101,7 @@ describe.sequential('e2e: BYO agent with CUSTOM_JWT auth', () => {
       })
     );
     clientId = clientResult.UserPoolClient!.ClientId!;
+    clientSecret = clientResult.UserPoolClient!.ClientSecret!;
 
     discoveryUrl = `https://cognito-idp.${region}.amazonaws.com/${userPoolId}/.well-known/openid-configuration`;
 
@@ -143,17 +146,26 @@ describe.sequential('e2e: BYO agent with CUSTOM_JWT auth', () => {
       stdio: 'pipe',
     });
 
-    // ── Patch agent with CUSTOM_JWT auth ──
+    // ── Add an MCP protocol agent to the same project ──
+    mcpAgentName = `E2eMcp${String(Date.now()).slice(-8)}`;
+    const addResult = await runLocalCLI(
+      ['add', 'agent', '--name', mcpAgentName, '--protocol', 'MCP', '--language', 'Python', '--json'],
+      projectPath
+    );
+    expect(addResult.exitCode, `Add MCP agent failed: ${addResult.stderr}`).toBe(0);
+
+    // ── Patch both agents with CUSTOM_JWT auth ──
     const specPath = join(projectPath, 'agentcore', 'agentcore.json');
     const spec = JSON.parse(await readFile(specPath, 'utf8'));
-    const agent = spec.runtimes[0];
-    agent.authorizerType = 'CUSTOM_JWT';
-    agent.authorizerConfiguration = {
-      customJwtAuthorizer: {
-        discoveryUrl,
-        allowedAudience: [clientId],
-      },
-    };
+    for (const runtime of spec.runtimes) {
+      runtime.authorizerType = 'CUSTOM_JWT';
+      runtime.authorizerConfiguration = {
+        customJwtAuthorizer: {
+          discoveryUrl,
+          allowedAudience: [clientId],
+        },
+      };
+    }
     await writeFile(specPath, JSON.stringify(spec, null, 2));
   }, 300000);
 
@@ -246,6 +258,122 @@ describe.sequential('e2e: BYO agent with CUSTOM_JWT auth', () => {
       // Expect failure due to auth method mismatch
       const output = stripAnsi(result.stdout + result.stderr);
       expect(output).toMatch(/[Aa]uthoriz(ation|er).*mismatch|different.*authorization/i);
+    },
+    180000
+  );
+
+  it.skipIf(!canRun)(
+    'invokes with bearer token successfully',
+    async () => {
+      expect(projectPath, 'Project should have been deployed').toBeTruthy();
+
+      // Fetch a Cognito access token via client_credentials flow
+      const tokenUrl = `https://${domainPrefix}.auth.${region}.amazoncognito.com/oauth2/token`;
+      const tokenRes = await fetch(tokenUrl, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/x-www-form-urlencoded',
+          Authorization: `Basic ${Buffer.from(`${clientId}:${clientSecret}`).toString('base64')}`,
+        },
+        body: 'grant_type=client_credentials&scope=agentcore/invoke',
+      });
+      expect(tokenRes.ok, `Token fetch failed: ${tokenRes.status}`).toBe(true);
+      const tokenJson = (await tokenRes.json()) as { access_token: string };
+      const accessToken = tokenJson.access_token;
+      expect(accessToken, 'Should have received an access token').toBeTruthy();
+
+      // Invoke with bearer token — should NOT get auth mismatch
+      const result = await runLocalCLI(
+        ['invoke', '--prompt', 'Say hello', '--agent', agentName, '--bearer-token', accessToken, '--json'],
+        projectPath
+      );
+
+      const output = stripAnsi(result.stdout + result.stderr);
+      // The invoke may fail for other reasons (agent logic), but it should NOT fail with auth mismatch
+      expect(output).not.toMatch(/[Aa]uthoriz(ation|er).*mismatch|different.*authorization/i);
+    },
+    180000
+  );
+
+  it.skipIf(!canRun)(
+    'MCP agent: rejects SigV4 invocation (auth method mismatch)',
+    async () => {
+      expect(projectPath, 'Project should have been deployed').toBeTruthy();
+
+      const result = await runLocalCLI(['invoke', '--agent', mcpAgentName, 'list-tools', '--json'], projectPath);
+
+      const output = stripAnsi(result.stdout + result.stderr);
+      expect(output).toMatch(/[Aa]uthoriz(ation|er).*mismatch|different.*authorization/i);
+    },
+    180000
+  );
+
+  it.skipIf(!canRun)(
+    'MCP agent: lists tools with bearer token',
+    async () => {
+      expect(projectPath, 'Project should have been deployed').toBeTruthy();
+
+      const tokenUrl = `https://${domainPrefix}.auth.${region}.amazoncognito.com/oauth2/token`;
+      const tokenRes = await fetch(tokenUrl, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/x-www-form-urlencoded',
+          Authorization: `Basic ${Buffer.from(`${clientId}:${clientSecret}`).toString('base64')}`,
+        },
+        body: 'grant_type=client_credentials&scope=agentcore/invoke',
+      });
+      expect(tokenRes.ok, `Token fetch failed: ${tokenRes.status}`).toBe(true);
+      const tokenJson = (await tokenRes.json()) as { access_token: string };
+      const accessToken = tokenJson.access_token;
+
+      const result = await runLocalCLI(
+        ['invoke', '--agent', mcpAgentName, 'list-tools', '--bearer-token', accessToken, '--json'],
+        projectPath
+      );
+
+      const output = stripAnsi(result.stdout + result.stderr);
+      expect(output).not.toMatch(/[Aa]uthoriz(ation|er).*mismatch|different.*authorization/i);
+    },
+    180000
+  );
+
+  it.skipIf(!canRun)(
+    'MCP agent: calls tool with bearer token',
+    async () => {
+      expect(projectPath, 'Project should have been deployed').toBeTruthy();
+
+      const tokenUrl = `https://${domainPrefix}.auth.${region}.amazoncognito.com/oauth2/token`;
+      const tokenRes = await fetch(tokenUrl, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/x-www-form-urlencoded',
+          Authorization: `Basic ${Buffer.from(`${clientId}:${clientSecret}`).toString('base64')}`,
+        },
+        body: 'grant_type=client_credentials&scope=agentcore/invoke',
+      });
+      expect(tokenRes.ok, `Token fetch failed: ${tokenRes.status}`).toBe(true);
+      const tokenJson = (await tokenRes.json()) as { access_token: string };
+      const accessToken = tokenJson.access_token;
+
+      const result = await runLocalCLI(
+        [
+          'invoke',
+          '--agent',
+          mcpAgentName,
+          'call-tool',
+          '--tool',
+          'add_numbers',
+          '--input',
+          '{"a": 2, "b": 3}',
+          '--bearer-token',
+          accessToken,
+          '--json',
+        ],
+        projectPath
+      );
+
+      const output = stripAnsi(result.stdout + result.stderr);
+      expect(output).not.toMatch(/[Aa]uthoriz(ation|er).*mismatch|different.*authorization/i);
     },
     180000
   );

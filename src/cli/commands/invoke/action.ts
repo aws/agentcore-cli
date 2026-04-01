@@ -113,6 +113,7 @@ export async function handleInvoke(context: InvokeContext, options: InvokeOption
       runtimeArn: agentState.runtimeArn,
       userId: options.userId,
       headers: options.headers,
+      bearerToken: options.bearerToken,
     };
 
     // list-tools: list available MCP tools

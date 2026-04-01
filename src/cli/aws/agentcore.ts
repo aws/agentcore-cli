@@ -531,6 +531,8 @@ export interface McpInvokeOptions {
   logger?: SSELogger;
   /** Custom headers to forward to the agent runtime */
   headers?: Record<string, string>;
+  /** Bearer token for CUSTOM_JWT auth. When provided, uses raw HTTP with Authorization header instead of SigV4. */
+  bearerToken?: string;
 }
 
 export interface McpToolDef {
@@ -552,8 +554,80 @@ interface McpRpcResult {
   error?: { message?: string; code?: number };
 }
 
+/** Build the common headers for MCP bearer-token HTTP requests. */
+function buildMcpBearerHeaders(options: McpInvokeOptions): Record<string, string> {
+  const headers: Record<string, string> = {
+    Authorization: `Bearer ${options.bearerToken}`,
+    'Content-Type': 'application/json',
+    Accept: 'application/json, text/event-stream',
+    'Mcp-Protocol-Version': '2025-03-26',
+    'X-Amzn-Bedrock-AgentCore-Runtime-User-Id': options.userId ?? DEFAULT_RUNTIME_USER_ID,
+  };
+  if (options.mcpSessionId) {
+    headers['Mcp-Session-Id'] = options.mcpSessionId;
+  }
+  if (options.headers) {
+    for (const [name, value] of Object.entries(options.headers)) {
+      headers[name] = value;
+    }
+  }
+  return headers;
+}
+
+/** Send an MCP JSON-RPC call using bearer-token auth (raw HTTP, no SigV4). */
+async function mcpRpcCallWithBearer(options: McpInvokeOptions, body: Record<string, unknown>): Promise<McpRpcResult> {
+  const url = buildInvokeUrl(options.region, options.runtimeArn);
+  const headers = buildMcpBearerHeaders(options);
+
+  options.logger?.logSSEEvent(`MCP request: ${JSON.stringify(body)}`);
+
+  const res = await fetch(url, {
+    method: 'POST',
+    headers,
+    body: JSON.stringify(body),
+  });
+
+  if (!res.ok) {
+    const errBody = await res.text().catch(() => '');
+    throw new Error(`MCP call failed (${res.status}): ${errBody || res.statusText}`);
+  }
+
+  const text = await res.text();
+  options.logger?.logSSEEvent(`MCP response: ${text}`);
+
+  const parsed = parseJsonRpcResponse(text);
+
+  return {
+    result: (parsed.result as Record<string, unknown>) ?? {},
+    mcpSessionId: res.headers.get('Mcp-Session-Id') ?? undefined,
+    error: parsed.error as McpRpcResult['error'],
+  };
+}
+
+/** Send an MCP JSON-RPC notification using bearer-token auth (raw HTTP, no SigV4). */
+async function mcpRpcNotifyWithBearer(options: McpInvokeOptions, body: Record<string, unknown>): Promise<void> {
+  const url = buildInvokeUrl(options.region, options.runtimeArn);
+  const headers = buildMcpBearerHeaders(options);
+
+  const res = await fetch(url, {
+    method: 'POST',
+    headers,
+    body: JSON.stringify(body),
+  });
+
+  if (!res.ok) {
+    const errBody = await res.text().catch(() => '');
+    throw new Error(`MCP notification failed (${res.status}): ${errBody || res.statusText}`);
+  }
+}
+
 /** Send a JSON-RPC payload through InvokeAgentRuntime and return the parsed response. */
 async function mcpRpcCall(options: McpInvokeOptions, body: Record<string, unknown>): Promise<McpRpcResult> {
+  // TODO: Consider unified transport refactor (Option B) when a third auth method or A2A CUSTOM_JWT is needed.
+  if (options.bearerToken) {
+    return mcpRpcCallWithBearer(options, body);
+  }
+
   const client = createAgentCoreClient(options.region, options.headers);
 
   options.logger?.logSSEEvent(`MCP request: ${JSON.stringify(body)}`);
@@ -599,6 +673,10 @@ async function mcpRpcCallStrict(options: McpInvokeOptions, body: Record<string, 
 
 /** Send a JSON-RPC notification (no id, no response expected). */
 async function mcpRpcNotify(options: McpInvokeOptions, body: Record<string, unknown>): Promise<void> {
+  if (options.bearerToken) {
+    return mcpRpcNotifyWithBearer(options, body);
+  }
+
   const client = createAgentCoreClient(options.region, options.headers);
 
   const command = new InvokeAgentRuntimeCommand({

@@ -170,8 +170,9 @@ export function useInvokeFlow(options: InvokeFlowOptions = {}): InvokeFlowState 
       userId,
       mcpSessionId: mcpSessionIdRef.current,
       headers,
+      bearerToken: bearerToken || undefined,
     };
-  }, [config, selectedAgent, userId, headers]);
+  }, [config, selectedAgent, userId, headers, bearerToken]);
 
   const fetchMcpTools = useCallback(async () => {
     const opts = getMcpInvokeOptions();
