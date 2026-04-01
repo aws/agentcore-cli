@@ -47,16 +47,26 @@ function mapStrategyType(apiType: string): string {
 }
 
 /**
+ * Filter out API-internal namespace patterns that are auto-generated
+ * and should not be included in local config.
+ * These patterns contain template variables like {memoryStrategyId}, {actorId}, etc.
+ */
+function filterInternalNamespaces(namespaces: string[]): string[] {
+  return namespaces.filter(ns => !ns.includes('{memoryStrategyId}'));
+}
+
+/**
  * Map an AWS GetMemory response to the CLI Memory format.
  */
 function toMemorySpec(memory: MemoryDetail, localName: string): Memory {
   const strategies: Memory['strategies'] = memory.strategies.map(s => {
     const mappedType = mapStrategyType(s.type);
+    const filteredNamespaces = s.namespaces ? filterInternalNamespaces(s.namespaces) : [];
     return {
       type: mappedType as Memory['strategies'][number]['type'],
       ...(s.name && { name: s.name }),
       ...(s.description && { description: s.description }),
-      ...(s.namespaces && s.namespaces.length > 0 && { namespaces: s.namespaces }),
+      ...(filteredNamespaces.length > 0 && { namespaces: filteredNamespaces }),
       ...(s.reflectionNamespaces &&
         s.reflectionNamespaces.length > 0 && { reflectionNamespaces: s.reflectionNamespaces }),
     };
