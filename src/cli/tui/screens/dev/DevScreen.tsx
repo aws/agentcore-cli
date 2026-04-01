@@ -11,7 +11,7 @@ interface DevScreenProps {
   onBack: () => void;
   workingDir?: string;
   port?: number;
-  /** Pre-selected agent name (from CLI --agent flag) */
+  /** Pre-selected agent name (from CLI --runtime flag) */
   agentName?: string;
   /** Custom headers to forward to the agent on every invocation */
   headers?: Record<string, string>;

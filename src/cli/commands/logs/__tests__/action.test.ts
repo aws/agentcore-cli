@@ -91,7 +91,7 @@ describe('resolveAgentContext', () => {
     }
   });
 
-  it('errors for multiple agents without --agent flag', () => {
+  it('errors for multiple agents without --runtime flag', () => {
     const context = makeContext({
       project: {
         name: 'TestProject',
@@ -132,7 +132,7 @@ describe('resolveAgentContext', () => {
     }
   });
 
-  it('selects correct agent with --agent flag from multiple agents', () => {
+  it('selects correct agent with --runtime flag from multiple agents', () => {
     const context = makeContext({
       project: {
         name: 'TestProject',

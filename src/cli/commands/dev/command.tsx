@@ -237,7 +237,7 @@ export const registerDev = (program: Command) => {
 
         // If --logs provided, run non-interactive mode
         if (opts.logs) {
-          // Require --agent if multiple agents
+          // Require --runtime if multiple agents
           if (project.runtimes.length > 1 && !opts.runtime) {
             const names = project.runtimes.map(a => a.name).join(', ');
             console.error(`Error: Multiple runtimes found. Use --runtime to specify which one.`);

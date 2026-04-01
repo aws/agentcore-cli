@@ -61,7 +61,7 @@ export const CLI_ONLY_EXAMPLES: Record<string, { description: string; examples: 
     examples: [
       'agentcore logs',
       'agentcore logs --since 30m --level error',
-      'agentcore logs --agent MyAgent --query "timeout"',
+      'agentcore logs --runtime MyAgent --query "timeout"',
       'agentcore logs evals --since 1h',
     ],
   },

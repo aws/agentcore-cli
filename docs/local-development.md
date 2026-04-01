@@ -9,7 +9,7 @@ The `dev` command runs your agent locally for testing before deployment.
 agentcore dev
 
 # Specify agent
-agentcore dev --agent MyAgent
+agentcore dev --runtime MyAgent
 
 # Custom port
 agentcore dev --port 3000
@@ -29,7 +29,7 @@ agentcore dev --logs
 # Terminal 2: send prompts
 agentcore dev "What can you do?"
 agentcore dev "Tell me a story" --stream
-agentcore dev "Hello" --agent MyAgent
+agentcore dev "Hello" --runtime MyAgent
 ```
 
 ## Environment Setup

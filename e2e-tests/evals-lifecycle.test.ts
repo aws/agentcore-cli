@@ -160,7 +160,7 @@ describe.sequential('e2e: evaluations lifecycle', () => {
   );
 
   it.skipIf(!canRun)(
-    'eval history shows the completed run',
+    'evals history shows the completed run',
     async () => {
       const result = await run(['evals', 'history', '--runtime', agentName, '--json']);
       expect(result.exitCode, `Evals history failed: ${result.stderr}`).toBe(0);

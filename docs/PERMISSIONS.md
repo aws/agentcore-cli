@@ -319,19 +319,19 @@ Required for all deployment operations (`deploy`, `status`, `diff`).
 
 ### Runtime and resource status
 
-| Action                                        | CLI Commands          | Purpose                               |
-| --------------------------------------------- | --------------------- | ------------------------------------- |
-| `bedrock-agentcore:GetAgentRuntime`           | `status`              | Check agent runtime deployment status |
-| `bedrock-agentcore:ListGatewayTargets`        | `status`              | Check MCP gateway target sync status  |
-| `bedrock-agentcore:GetEvaluator`              | `status`, `run evals` | Get evaluator details                 |
-| `bedrock-agentcore:ListEvaluators`            | `run evals`           | List available evaluators             |
-| `bedrock-agentcore:GetOnlineEvaluationConfig` | `status`              | Get online eval config status         |
+| Action                                        | CLI Commands         | Purpose                               |
+| --------------------------------------------- | -------------------- | ------------------------------------- |
+| `bedrock-agentcore:GetAgentRuntime`           | `status`             | Check agent runtime deployment status |
+| `bedrock-agentcore:ListGatewayTargets`        | `status`             | Check MCP gateway target sync status  |
+| `bedrock-agentcore:GetEvaluator`              | `status`, `run eval` | Get evaluator details                 |
+| `bedrock-agentcore:ListEvaluators`            | `run eval`           | List available evaluators             |
+| `bedrock-agentcore:GetOnlineEvaluationConfig` | `status`             | Get online eval config status         |
 
 ### Evaluation
 
 | Action                                           | CLI Commands                              | Purpose                                       |
 | ------------------------------------------------ | ----------------------------------------- | --------------------------------------------- |
-| `bedrock-agentcore:Evaluate`                     | `run evals`                               | Run on-demand evaluation against agent traces |
+| `bedrock-agentcore:Evaluate`                     | `run eval`                                | Run on-demand evaluation against agent traces |
 | `bedrock-agentcore:UpdateOnlineEvaluationConfig` | `pause online-eval`, `resume online-eval` | Pause or resume online evaluation             |
 
 ### Identity and credential management
@@ -360,14 +360,14 @@ Required for all deployment operations (`deploy`, `status`, `diff`).
 
 ### Logging, traces, and observability
 
-| Action                          | CLI Commands                             | Purpose                                       |
-| ------------------------------- | ---------------------------------------- | --------------------------------------------- |
-| `logs:StartLiveTail`            | `logs`                                   | Stream agent logs in real-time                |
-| `logs:FilterLogEvents`          | `logs`                                   | Search agent logs                             |
-| `logs:StartQuery`               | `traces list`, `traces get`, `run evals` | Run CloudWatch Logs Insights queries          |
-| `logs:GetQueryResults`          | `traces list`, `traces get`, `run evals` | Retrieve query results                        |
-| `logs:DescribeResourcePolicies` | `deploy`                                 | Check for X-Ray log resource policy           |
-| `logs:PutResourcePolicy`        | `deploy`                                 | Create resource policy for X-Ray trace access |
+| Action                          | CLI Commands                            | Purpose                                       |
+| ------------------------------- | --------------------------------------- | --------------------------------------------- |
+| `logs:StartLiveTail`            | `logs`                                  | Stream agent logs in real-time                |
+| `logs:FilterLogEvents`          | `logs`                                  | Search agent logs                             |
+| `logs:StartQuery`               | `traces list`, `traces get`, `run eval` | Run CloudWatch Logs Insights queries          |
+| `logs:GetQueryResults`          | `traces list`, `traces get`, `run eval` | Retrieve query results                        |
+| `logs:DescribeResourcePolicies` | `deploy`                                | Check for X-Ray log resource policy           |
+| `logs:PutResourcePolicy`        | `deploy`                                | Create resource policy for X-Ray trace access |
 
 ### Transaction search setup
 

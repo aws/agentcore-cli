@@ -150,7 +150,7 @@ Run evaluators against historical agent traces.
 ```bash
 # Project mode — evaluate a project agent
 agentcore run eval \
-  --agent MyAgent \
+  --runtime MyAgent \
   --evaluator ResponseQuality \
   --days 7
 
@@ -162,13 +162,13 @@ agentcore run eval \
 
 # Multiple evaluators
 agentcore run eval \
-  --agent MyAgent \
+  --runtime MyAgent \
   --evaluator ResponseQuality Builtin.Faithfulness \
   --days 14
 
 # Target specific session or trace
 agentcore run eval \
-  --agent MyAgent \
+  --runtime MyAgent \
   --evaluator ResponseQuality \
   --session-id abc123 \
   --days 7
@@ -176,7 +176,7 @@ agentcore run eval \
 
 | Flag                         | Description                                              |
 | ---------------------------- | -------------------------------------------------------- |
-| `-a, --agent <name>`         | Agent name from project config                           |
+| `-a, --runtime <name>`       | Agent name from project config                           |
 | `--agent-arn <arn>`          | Agent runtime ARN (standalone mode, no project required) |
 | `-e, --evaluator <names...>` | Evaluator name(s) from project or `Builtin.*` IDs        |
 | `--evaluator-arn <arns...>`  | Evaluator ARN(s) (use with `--agent-arn`)                |
@@ -209,17 +209,17 @@ Results are saved locally and can be viewed in the TUI or CLI:
 agentcore evals history
 
 # Filter by agent
-agentcore evals history --agent MyAgent
+agentcore evals history --runtime MyAgent
 
 # JSON output
 agentcore evals history --json --limit 10
 ```
 
-| Flag                  | Description                   |
-| --------------------- | ----------------------------- |
-| `-a, --agent <name>`  | Filter by agent name          |
-| `-n, --limit <count>` | Max number of runs to display |
-| `--json`              | JSON output                   |
+| Flag                   | Description                   |
+| ---------------------- | ----------------------------- |
+| `-a, --runtime <name>` | Filter by agent name          |
+| `-n, --limit <count>`  | Max number of runs to display |
+| `--json`               | JSON output                   |
 
 Results are stored in `agentcore/.cli/eval-runs/` within your project directory.
 
@@ -238,7 +238,7 @@ agentcore add online-eval
 # Non-interactive
 agentcore add online-eval \
   --name QualityMonitor \
-  --agent MyAgent \
+  --runtime MyAgent \
   --evaluator ResponseQuality Builtin.Faithfulness \
   --sampling-rate 10
 ```
@@ -246,7 +246,7 @@ agentcore add online-eval \
 | Flag                         | Description                                           |
 | ---------------------------- | ----------------------------------------------------- |
 | `--name <name>`              | Config name (alphanumeric + underscore, max 48 chars) |
-| `-a, --agent <name>`         | Agent to monitor                                      |
+| `-a, --runtime <name>`       | Agent to monitor                                      |
 | `-e, --evaluator <names...>` | Evaluator name(s), `Builtin.*` IDs, or ARNs           |
 | `--evaluator-arn <arns...>`  | Evaluator ARN(s)                                      |
 | `--sampling-rate <rate>`     | Percentage of requests to evaluate (0.01–100)         |
@@ -321,20 +321,20 @@ The TUI provides a dashboard for monitoring online eval results (`agentcore` →
 agentcore logs evals
 
 # Search historical logs
-agentcore logs evals --agent MyAgent --since 1h
+agentcore logs evals --runtime MyAgent --since 1h
 
 # JSON output
 agentcore logs evals --json --lines 100
 ```
 
-| Flag                  | Description                                   |
-| --------------------- | --------------------------------------------- |
-| `-a, --agent <name>`  | Filter by agent                               |
-| `--since <time>`      | Start time (e.g. `1h`, `30m`, `2d`, ISO 8601) |
-| `--until <time>`      | End time (e.g. `now`, ISO 8601)               |
-| `-n, --lines <count>` | Maximum number of log lines                   |
-| `-f, --follow`        | Stream logs in real-time                      |
-| `--json`              | JSON Lines output                             |
+| Flag                   | Description                                   |
+| ---------------------- | --------------------------------------------- |
+| `-a, --runtime <name>` | Filter by agent                               |
+| `--since <time>`       | Start time (e.g. `1h`, `30m`, `2d`, ISO 8601) |
+| `--until <time>`       | End time (e.g. `now`, ISO 8601)               |
+| `-n, --lines <count>`  | Maximum number of log lines                   |
+| `-f, --follow`         | Stream logs in real-time                      |
+| `--json`               | JSON Lines output                             |
 
 ---
 
@@ -359,7 +359,7 @@ AgentCore provides pre-built evaluators that can be used without creating custom
 by their `Builtin.*` ID in `--evaluator` flags or in online eval config `evaluators` arrays.
 
 ```bash
-agentcore run eval --agent MyAgent --evaluator Builtin.Faithfulness
+agentcore run eval --runtime MyAgent --evaluator Builtin.Faithfulness
 ```
 
 ---
@@ -370,7 +370,7 @@ agentcore run eval --agent MyAgent --evaluator Builtin.Faithfulness
 
 ```bash
 # Run eval and fail pipeline if score < threshold
-result=$(agentcore run eval --agent MyAgent --evaluator ResponseQuality --days 1 --json)
+result=$(agentcore run eval --runtime MyAgent --evaluator ResponseQuality --days 1 --json)
 score=$(echo "$result" | jq '.run.results[0].aggregateScore')
 if (( $(echo "$score < 0.7" | bc -l) )); then
   echo "Quality gate failed: score $score < 0.7"
@@ -389,12 +389,12 @@ agentcore add evaluator \
   --instructions "Evaluate the agent response quality. Context: {context}"
 
 # 2. Run on-demand eval to verify
-agentcore run eval --agent MyAgent --evaluator ResponseQuality --days 7
+agentcore run eval --runtime MyAgent --evaluator ResponseQuality --days 7
 
 # 3. Set up continuous monitoring
 agentcore add online-eval \
   --name QualityMonitor \
-  --agent MyAgent \
+  --runtime MyAgent \
   --evaluator ResponseQuality \
   --sampling-rate 10
 
