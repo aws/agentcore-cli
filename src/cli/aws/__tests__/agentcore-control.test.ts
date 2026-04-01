@@ -1,7 +1,10 @@
 import {
+  getAgentRuntimeDetail,
   getAgentRuntimeStatus,
   getEvaluator,
   getOnlineEvaluationConfig,
+  listAllAgentRuntimes,
+  listAllMemories,
   listEvaluators,
   updateOnlineEvalExecutionStatus,
 } from '../agentcore-control.js';
@@ -24,7 +27,16 @@ vi.mock('@aws-sdk/client-bedrock-agentcore-control', () => ({
   GetOnlineEvaluationConfigCommand: class {
     constructor(public input: unknown) {}
   },
+  ListAgentRuntimesCommand: class {
+    constructor(public input: unknown) {}
+  },
+  ListMemoriesCommand: class {
+    constructor(public input: unknown) {}
+  },
   ListEvaluatorsCommand: class {
+    constructor(public input: unknown) {}
+  },
+  ListTagsForResourceCommand: class {
     constructor(public input: unknown) {}
   },
   UpdateOnlineEvaluationConfigCommand: class {
@@ -302,6 +314,191 @@ describe('getOnlineEvaluationConfig', () => {
     await expect(getOnlineEvaluationConfig({ region: 'us-east-1', configId: 'oec-err' })).rejects.toThrow(
       'ResourceNotFoundException'
     );
+  });
+});
+
+describe('listAllAgentRuntimes', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it('returns all runtimes from a single page', async () => {
+    mockSend.mockResolvedValue({
+      agentRuntimes: [
+        { agentRuntimeId: 'rt-1', agentRuntimeArn: 'arn-1', agentRuntimeName: 'runtime-1', status: 'READY' },
+      ],
+      nextToken: undefined,
+    });
+
+    const result = await listAllAgentRuntimes({ region: 'us-east-1' });
+    expect(result).toHaveLength(1);
+    expect(result[0]!.agentRuntimeId).toBe('rt-1');
+    expect(mockSend).toHaveBeenCalledTimes(1);
+  });
+
+  it('paginates across multiple pages', async () => {
+    mockSend
+      .mockResolvedValueOnce({
+        agentRuntimes: [{ agentRuntimeId: 'rt-1', agentRuntimeArn: 'arn-1', agentRuntimeName: 'r1', status: 'READY' }],
+        nextToken: 'page2',
+      })
+      .mockResolvedValueOnce({
+        agentRuntimes: [{ agentRuntimeId: 'rt-2', agentRuntimeArn: 'arn-2', agentRuntimeName: 'r2', status: 'READY' }],
+        nextToken: 'page3',
+      })
+      .mockResolvedValueOnce({
+        agentRuntimes: [{ agentRuntimeId: 'rt-3', agentRuntimeArn: 'arn-3', agentRuntimeName: 'r3', status: 'READY' }],
+        nextToken: undefined,
+      });
+
+    const result = await listAllAgentRuntimes({ region: 'us-east-1' });
+    expect(result).toHaveLength(3);
+    expect(result.map(r => r.agentRuntimeId)).toEqual(['rt-1', 'rt-2', 'rt-3']);
+    expect(mockSend).toHaveBeenCalledTimes(3);
+  });
+
+  it('returns empty array when no runtimes exist', async () => {
+    mockSend.mockResolvedValue({ agentRuntimes: undefined, nextToken: undefined });
+
+    const result = await listAllAgentRuntimes({ region: 'us-east-1' });
+    expect(result).toEqual([]);
+  });
+});
+
+describe('listAllMemories', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it('returns all memories from a single page', async () => {
+    mockSend.mockResolvedValue({
+      memories: [{ id: 'mem-1', arn: 'arn-1', status: 'ACTIVE' }],
+      nextToken: undefined,
+    });
+
+    const result = await listAllMemories({ region: 'us-east-1' });
+    expect(result).toHaveLength(1);
+    expect(result[0]!.memoryId).toBe('mem-1');
+    expect(mockSend).toHaveBeenCalledTimes(1);
+  });
+
+  it('paginates across multiple pages', async () => {
+    mockSend
+      .mockResolvedValueOnce({
+        memories: [{ id: 'mem-1', arn: 'arn-1', status: 'ACTIVE' }],
+        nextToken: 'page2',
+      })
+      .mockResolvedValueOnce({
+        memories: [{ id: 'mem-2', arn: 'arn-2', status: 'ACTIVE' }],
+        nextToken: undefined,
+      });
+
+    const result = await listAllMemories({ region: 'us-east-1' });
+    expect(result).toHaveLength(2);
+    expect(result.map(m => m.memoryId)).toEqual(['mem-1', 'mem-2']);
+    expect(mockSend).toHaveBeenCalledTimes(2);
+  });
+
+  it('returns empty array when no memories exist', async () => {
+    mockSend.mockResolvedValue({ memories: undefined, nextToken: undefined });
+
+    const result = await listAllMemories({ region: 'us-east-1' });
+    expect(result).toEqual([]);
+  });
+});
+
+describe('getAgentRuntimeDetail — new fields', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  const baseResponse = {
+    agentRuntimeId: 'rt-123',
+    agentRuntimeArn: 'arn:aws:bedrock-agentcore:us-east-1:123:runtime/rt-123',
+    agentRuntimeName: 'my-runtime',
+    status: 'READY',
+    roleArn: 'arn:aws:iam::123:role/test',
+    networkConfiguration: { networkMode: 'PUBLIC' },
+    protocolConfiguration: { serverProtocol: 'HTTP' },
+    agentRuntimeArtifact: { codeConfiguration: { runtime: 'PYTHON_3_12', entryPoint: ['main.py'] } },
+  };
+
+  it('extracts environmentVariables when present', async () => {
+    mockSend.mockResolvedValue({
+      ...baseResponse,
+      environmentVariables: { API_KEY: 'secret', DB_HOST: 'localhost' },
+    });
+
+    const result = await getAgentRuntimeDetail({ region: 'us-east-1', runtimeId: 'rt-123' });
+    expect(result.environmentVariables).toEqual({ API_KEY: 'secret', DB_HOST: 'localhost' });
+  });
+
+  it('returns undefined environmentVariables when empty', async () => {
+    mockSend.mockResolvedValue({ ...baseResponse, environmentVariables: {} });
+
+    const result = await getAgentRuntimeDetail({ region: 'us-east-1', runtimeId: 'rt-123' });
+    expect(result.environmentVariables).toBeUndefined();
+  });
+
+  it('extracts lifecycleConfiguration when present', async () => {
+    mockSend.mockResolvedValue({
+      ...baseResponse,
+      lifecycleConfiguration: { idleRuntimeSessionTimeout: 600, maxLifetime: 3600 },
+    });
+
+    const result = await getAgentRuntimeDetail({ region: 'us-east-1', runtimeId: 'rt-123' });
+    expect(result.lifecycleConfiguration).toEqual({ idleRuntimeSessionTimeout: 600, maxLifetime: 3600 });
+  });
+
+  it('returns undefined lifecycleConfiguration when absent', async () => {
+    mockSend.mockResolvedValue({ ...baseResponse });
+
+    const result = await getAgentRuntimeDetail({ region: 'us-east-1', runtimeId: 'rt-123' });
+    expect(result.lifecycleConfiguration).toBeUndefined();
+  });
+
+  it('extracts requestHeaderAllowlist from requestHeaderConfiguration union', async () => {
+    mockSend.mockResolvedValue({
+      ...baseResponse,
+      requestHeaderConfiguration: {
+        requestHeaderAllowlist: ['X-Custom-Header', 'Authorization'],
+      },
+    });
+
+    const result = await getAgentRuntimeDetail({ region: 'us-east-1', runtimeId: 'rt-123' });
+    expect(result.requestHeaderAllowlist).toEqual(['X-Custom-Header', 'Authorization']);
+  });
+
+  it('returns undefined requestHeaderAllowlist when not present', async () => {
+    mockSend.mockResolvedValue({ ...baseResponse });
+
+    const result = await getAgentRuntimeDetail({ region: 'us-east-1', runtimeId: 'rt-123' });
+    expect(result.requestHeaderAllowlist).toBeUndefined();
+  });
+
+  it('fetches tags via ListTagsForResource', async () => {
+    // First call: GetAgentRuntime, second call: ListTagsForResource
+    mockSend
+      .mockResolvedValueOnce({ ...baseResponse })
+      .mockResolvedValueOnce({ tags: { env: 'prod', team: 'platform' } });
+
+    const result = await getAgentRuntimeDetail({ region: 'us-east-1', runtimeId: 'rt-123' });
+    expect(result.tags).toEqual({ env: 'prod', team: 'platform' });
+    expect(mockSend).toHaveBeenCalledTimes(2);
+  });
+
+  it('returns undefined tags when ListTagsForResource returns empty', async () => {
+    mockSend.mockResolvedValueOnce({ ...baseResponse }).mockResolvedValueOnce({ tags: {} });
+
+    const result = await getAgentRuntimeDetail({ region: 'us-east-1', runtimeId: 'rt-123' });
+    expect(result.tags).toBeUndefined();
+  });
+
+  it('returns undefined tags when ListTagsForResource fails', async () => {
+    mockSend.mockResolvedValueOnce({ ...baseResponse }).mockRejectedValueOnce(new Error('AccessDenied'));
+
+    const result = await getAgentRuntimeDetail({ region: 'us-east-1', runtimeId: 'rt-123' });
+    expect(result.tags).toBeUndefined();
   });
 });
 

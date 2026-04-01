@@ -34,11 +34,11 @@ vi.mock('../import-utils', () => ({
 }));
 
 const mockGetAgentRuntimeDetail = vi.fn();
-const mockListAgentRuntimes = vi.fn();
+const mockListAllAgentRuntimes = vi.fn();
 
 vi.mock('../../../aws/agentcore-control', () => ({
   getAgentRuntimeDetail: (...args: unknown[]) => mockGetAgentRuntimeDetail(...args),
-  listAgentRuntimes: (...args: unknown[]) => mockListAgentRuntimes(...args),
+  listAllAgentRuntimes: (...args: unknown[]) => mockListAllAgentRuntimes(...args),
 }));
 
 vi.mock('../../../logging', () => {
@@ -281,6 +281,204 @@ describe('handleImportRuntime', () => {
           entrypoint: 'main.py',
         })
       );
+    });
+  });
+
+  describe('single-result auto-select', () => {
+    it('auto-selects when exactly 1 runtime is returned from listing', async () => {
+      setupDefaultMocks();
+      mockListAllAgentRuntimes.mockResolvedValue([
+        { agentRuntimeId: 'rt-solo', agentRuntimeArn: 'arn-solo', agentRuntimeName: 'solo-runtime', status: 'READY' },
+      ]);
+      mockGetAgentRuntimeDetail.mockResolvedValue({
+        agentRuntimeId: 'rt-solo',
+        agentRuntimeArn: 'arn:aws:bedrock-agentcore:us-east-1:123:runtime/rt-solo',
+        agentRuntimeName: 'testproj_myagent',
+        status: 'READY',
+        roleArn: 'arn:aws:iam::123:role/test-role',
+        networkMode: 'PUBLIC',
+        protocol: 'HTTP',
+        build: 'CodeZip',
+        runtimeVersion: 'PYTHON_3_12',
+        entryPoint: ['main.py'],
+      });
+
+      // Will proceed past listing and fail at copy step — confirms auto-select worked
+      mockCopyAgentSource.mockRejectedValue(new Error('stop here'));
+
+      await handleImportRuntime({
+        code: '/tmp/test-source',
+        name: 'myagent',
+        // no --arn, so listing path is used
+      });
+
+      expect(mockGetAgentRuntimeDetail).toHaveBeenCalledWith(expect.objectContaining({ runtimeId: 'rt-solo' }));
+    });
+
+    it('errors with "Multiple runtimes found" when more than 1 runtime exists', async () => {
+      setupDefaultMocks();
+      mockListAllAgentRuntimes.mockResolvedValue([
+        { agentRuntimeId: 'rt-1', agentRuntimeArn: 'arn-1', agentRuntimeName: 'r1', status: 'READY' },
+        { agentRuntimeId: 'rt-2', agentRuntimeArn: 'arn-2', agentRuntimeName: 'r2', status: 'READY' },
+      ]);
+
+      const result = await handleImportRuntime({
+        code: '/tmp/test-source',
+        name: 'myagent',
+      });
+
+      expect(result.success).toBe(false);
+      expect(result.error).toContain('Multiple runtimes found');
+    });
+
+    it('errors when no runtimes exist', async () => {
+      setupDefaultMocks();
+      mockListAllAgentRuntimes.mockResolvedValue([]);
+
+      const result = await handleImportRuntime({
+        code: '/tmp/test-source',
+        name: 'myagent',
+      });
+
+      expect(result.success).toBe(false);
+      expect(result.error).toContain('No runtimes found');
+    });
+  });
+
+  describe('toAgentEnvSpec field mapping', () => {
+    it('maps environmentVariables to envVars array', async () => {
+      setupDefaultMocks();
+      mockGetAgentRuntimeDetail.mockResolvedValue({
+        agentRuntimeId: 'rt-123',
+        agentRuntimeArn: 'arn:aws:bedrock-agentcore:us-east-1:123:runtime/rt-123',
+        agentRuntimeName: 'testproj_myagent',
+        status: 'READY',
+        roleArn: 'arn:aws:iam::123:role/test-role',
+        networkMode: 'PUBLIC',
+        protocol: 'HTTP',
+        build: 'CodeZip',
+        runtimeVersion: 'PYTHON_3_12',
+        entryPoint: ['main.py'],
+        environmentVariables: { API_KEY: 'secret', DB_HOST: 'localhost' },
+      });
+
+      mockCopyAgentSource.mockResolvedValue(undefined);
+
+      // Capture what's written to project spec
+      let writtenSpec: Record<string, unknown> | undefined;
+      mockConfigIO.writeProjectSpec.mockImplementation((spec: Record<string, unknown>) => {
+        writtenSpec = spec;
+        return Promise.resolve();
+      });
+
+      // Will fail at CDK step, but we can inspect what was written
+      await handleImportRuntime({
+        arn: 'arn:aws:bedrock-agentcore:us-east-1:123:runtime/rt-123',
+        code: '/tmp/test-source',
+        name: 'myagent',
+      });
+
+      const runtimes = (writtenSpec as { runtimes: { envVars?: { name: string; value: string }[] }[] })?.runtimes;
+      expect(runtimes).toBeDefined();
+      const addedRuntime = runtimes?.[0];
+      expect(addedRuntime?.envVars).toEqual([
+        { name: 'API_KEY', value: 'secret' },
+        { name: 'DB_HOST', value: 'localhost' },
+      ]);
+    });
+
+    it('maps tags, lifecycleConfiguration, and requestHeaderAllowlist', async () => {
+      setupDefaultMocks();
+      mockGetAgentRuntimeDetail.mockResolvedValue({
+        agentRuntimeId: 'rt-123',
+        agentRuntimeArn: 'arn:aws:bedrock-agentcore:us-east-1:123:runtime/rt-123',
+        agentRuntimeName: 'testproj_myagent',
+        status: 'READY',
+        roleArn: 'arn:aws:iam::123:role/test-role',
+        networkMode: 'PUBLIC',
+        protocol: 'HTTP',
+        build: 'CodeZip',
+        runtimeVersion: 'PYTHON_3_12',
+        entryPoint: ['main.py'],
+        tags: { env: 'prod', team: 'platform' },
+        lifecycleConfiguration: { idleRuntimeSessionTimeout: 600, maxLifetime: 3600 },
+        requestHeaderAllowlist: ['X-Custom-Header', 'Authorization'],
+      });
+
+      mockCopyAgentSource.mockResolvedValue(undefined);
+
+      let writtenSpec: Record<string, unknown> | undefined;
+      mockConfigIO.writeProjectSpec.mockImplementation((spec: Record<string, unknown>) => {
+        writtenSpec = spec;
+        return Promise.resolve();
+      });
+
+      await handleImportRuntime({
+        arn: 'arn:aws:bedrock-agentcore:us-east-1:123:runtime/rt-123',
+        code: '/tmp/test-source',
+        name: 'myagent',
+      });
+
+      const runtimes = (
+        writtenSpec as {
+          runtimes: {
+            tags?: Record<string, string>;
+            lifecycleConfiguration?: { idleRuntimeSessionTimeout?: number; maxLifetime?: number };
+            requestHeaderAllowlist?: string[];
+          }[];
+        }
+      )?.runtimes;
+      const addedRuntime = runtimes?.[0];
+      expect(addedRuntime?.tags).toEqual({ env: 'prod', team: 'platform' });
+      expect(addedRuntime?.lifecycleConfiguration).toEqual({ idleRuntimeSessionTimeout: 600, maxLifetime: 3600 });
+      expect(addedRuntime?.requestHeaderAllowlist).toEqual(['X-Custom-Header', 'Authorization']);
+    });
+
+    it('omits new fields when they are undefined', async () => {
+      setupDefaultMocks();
+      mockGetAgentRuntimeDetail.mockResolvedValue({
+        agentRuntimeId: 'rt-123',
+        agentRuntimeArn: 'arn:aws:bedrock-agentcore:us-east-1:123:runtime/rt-123',
+        agentRuntimeName: 'testproj_myagent',
+        status: 'READY',
+        roleArn: 'arn:aws:iam::123:role/test-role',
+        networkMode: 'PUBLIC',
+        protocol: 'HTTP',
+        build: 'CodeZip',
+        runtimeVersion: 'PYTHON_3_12',
+        entryPoint: ['main.py'],
+        // No environmentVariables, tags, lifecycleConfiguration, requestHeaderAllowlist
+      });
+
+      mockCopyAgentSource.mockResolvedValue(undefined);
+
+      let writtenSpec: Record<string, unknown> | undefined;
+      mockConfigIO.writeProjectSpec.mockImplementation((spec: Record<string, unknown>) => {
+        writtenSpec = spec;
+        return Promise.resolve();
+      });
+
+      await handleImportRuntime({
+        arn: 'arn:aws:bedrock-agentcore:us-east-1:123:runtime/rt-123',
+        code: '/tmp/test-source',
+        name: 'myagent',
+      });
+
+      const runtimes = (
+        writtenSpec as {
+          runtimes: {
+            envVars?: unknown;
+            tags?: unknown;
+            lifecycleConfiguration?: unknown;
+            requestHeaderAllowlist?: unknown;
+          }[];
+        }
+      )?.runtimes;
+      const addedRuntime = runtimes?.[0];
+      expect(addedRuntime?.envVars).toBeUndefined();
+      expect(addedRuntime?.tags).toBeUndefined();
+      expect(addedRuntime?.lifecycleConfiguration).toBeUndefined();
+      expect(addedRuntime?.requestHeaderAllowlist).toBeUndefined();
     });
   });
 
