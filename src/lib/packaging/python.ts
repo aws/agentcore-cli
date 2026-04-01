@@ -60,7 +60,7 @@ export class PythonCodeZipPackager implements RuntimePackager {
       throw new PackagingError('Python packager only supports CodeZip build type.');
     }
 
-    if (!isPythonRuntimeVersion(spec.runtimeVersion)) {
+    if (!isPythonRuntimeVersion(spec.runtimeVersion!)) {
       throw new PackagingError(`Python packager only supports Python runtimes. Received: ${spec.runtimeVersion}`);
     }
 

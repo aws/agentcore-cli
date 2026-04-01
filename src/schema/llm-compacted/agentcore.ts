@@ -46,7 +46,7 @@ interface AgentEnvSpec {
   build: BuildType;
   entrypoint: string; // @regex ^[a-zA-Z0-9_][a-zA-Z0-9_/.-]*\.(py|ts|js)(:[a-zA-Z_][a-zA-Z0-9_]*)?$ e.g. "main.py:handler" or "index.ts"
   codeLocation: string; // Directory path
-  runtimeVersion: RuntimeVersion;
+  runtimeVersion?: RuntimeVersion;
   envVars?: EnvVar[];
   networkMode?: NetworkMode; // default 'PUBLIC'
   networkConfig?: NetworkConfig; // Required when networkMode is 'VPC'

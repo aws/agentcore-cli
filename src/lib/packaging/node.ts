@@ -54,7 +54,7 @@ export class NodeCodeZipPackager implements RuntimePackager {
       throw new PackagingError('Node packager only supports CodeZip build type.');
     }
 
-    if (!isNodeRuntimeVersion(spec.runtimeVersion)) {
+    if (!isNodeRuntimeVersion(spec.runtimeVersion!)) {
       throw new PackagingError(`Node packager only supports Node runtimes. Received: ${spec.runtimeVersion}`);
     }
 

@@ -181,7 +181,7 @@ export const AgentEnvSpecSchema = z
     build: BuildTypeSchema,
     entrypoint: EntrypointSchema,
     codeLocation: DirectoryPathSchema,
-    runtimeVersion: RuntimeVersionSchemaFromConstants,
+    runtimeVersion: RuntimeVersionSchemaFromConstants.optional(),
     /** Environment variables to set on the runtime */
     envVars: z.array(EnvVarSchema).optional(),
     /** Network mode for the runtime. Defaults to PUBLIC. */

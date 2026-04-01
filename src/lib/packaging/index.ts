@@ -67,7 +67,7 @@ export function getContainerPackager(): RuntimePackager {
  * Automatically selects the appropriate packager based on build type and runtime version.
  */
 export async function packRuntime(spec: AgentEnvSpec, options?: PackageOptions): Promise<ArtifactResult> {
-  const packager = spec.build === 'Container' ? getContainerPackager() : getRuntimePackager(spec.runtimeVersion);
+  const packager = spec.build === 'Container' ? getContainerPackager() : getRuntimePackager(spec.runtimeVersion!);
   return packager.pack(spec, options);
 }
 
