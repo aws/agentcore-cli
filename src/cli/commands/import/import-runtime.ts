@@ -507,10 +507,7 @@ export function registerImportRuntime(importCmd: Command): void {
     .command('runtime')
     .description('Import an existing AgentCore Runtime from your AWS account')
     .option('--arn <runtimeArn>', 'Runtime ARN to import')
-    .requiredOption(
-      '--code <path>',
-      'Path to the directory containing the entrypoint file (e.g., the folder with main.py)'
-    )
+    .option('--code <path>', 'Path to the directory containing the entrypoint file (e.g., the folder with main.py)')
     .option('--entrypoint <file>', 'Entrypoint file (auto-detected from runtime, e.g. main.py)')
     .option('--target <target>', 'Deployment target name')
     .option('--name <name>', 'Local name for the imported runtime')
