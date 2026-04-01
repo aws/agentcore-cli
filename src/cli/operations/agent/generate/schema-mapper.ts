@@ -114,6 +114,7 @@ export function mapGenerateConfigToAgent(config: GenerateConfig): AgentEnvSpec {
 
   return {
     name: config.projectName,
+    ...(config.description && { description: config.description }),
     build: config.buildType ?? 'CodeZip',
     entrypoint: DEFAULT_PYTHON_ENTRYPOINT as FilePath,
     codeLocation: codeLocation as DirectoryPath,

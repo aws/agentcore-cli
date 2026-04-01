@@ -106,6 +106,7 @@ type MemoryOption = 'none' | 'shortTerm' | 'longAndShortTerm';
 
 export interface CreateWithAgentOptions {
   name: string;
+  description?: string;
   cwd: string;
   type?: 'create' | 'import';
   buildType?: BuildType;
@@ -132,6 +133,7 @@ export interface CreateWithAgentOptions {
 export async function createProjectWithAgent(options: CreateWithAgentOptions): Promise<CreateResult> {
   const {
     name,
+    description,
     cwd,
     buildType,
     language,
@@ -176,6 +178,7 @@ export async function createProjectWithAgent(options: CreateWithAgentOptions): P
       onProgress?.('Import agent from Bedrock', 'start');
       const importResult = await executeImportAgent({
         name,
+        description,
         framework: framework ?? 'Strands',
         memory,
         bedrockRegion: options.region,
@@ -212,6 +215,7 @@ export async function createProjectWithAgent(options: CreateWithAgentOptions): P
 
     const generateConfig = {
       projectName: agentName,
+      description,
       buildType: buildType ?? ('CodeZip' as BuildType),
       sdk: resolvedFramework,
       modelProvider: resolvedModelProvider,

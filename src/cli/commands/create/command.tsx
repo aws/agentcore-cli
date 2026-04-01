@@ -122,6 +122,7 @@ async function handleCreateCLI(options: CreateOptions): Promise<void> {
     ? await createProject({ name: options.name!, cwd, skipGit: options.skipGit, onProgress })
     : await createProjectWithAgent({
         name: options.name!,
+        description: options.description,
         cwd,
         type: options.type as 'create' | 'import' | undefined,
         buildType: (options.build as BuildType) ?? 'CodeZip',
@@ -160,6 +161,7 @@ export const registerCreate = (program: Command) => {
     .command('create')
     .description(COMMAND_DESCRIPTIONS.create)
     .option('--name <name>', 'Project name (start with letter, alphanumeric only, max 23 chars) [non-interactive]')
+    .option('--description <description>', 'Agent description (max 4096 chars) [non-interactive]')
     .option('--no-agent', 'Skip agent creation [non-interactive]')
     .option('--defaults', 'Use defaults (Python, Strands, Bedrock, no memory) [non-interactive]')
     .option('--build <type>', 'Build type: CodeZip or Container (default: CodeZip) [non-interactive]')

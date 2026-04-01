@@ -43,6 +43,7 @@ import { dirname, join } from 'path';
  */
 export interface AddAgentOptions extends VpcOptions {
   name: string;
+  description?: string;
   type: 'create' | 'byo' | 'import';
   buildType: BuildType;
   language: TargetLanguage;
@@ -200,6 +201,7 @@ export class AgentPrimitive extends BasePrimitive<AddAgentOptions, RemovableReso
         '--name <name>',
         'Agent name (start with letter, alphanumeric + underscores, max 48 chars) [non-interactive]'
       )
+      .option('--description <description>', 'Agent description (max 4096 chars) [non-interactive]')
       .option('--type <type>', 'Agent type: create, byo, or import [non-interactive]', 'create')
       .option('--build <type>', 'Build type: CodeZip or Container (default: CodeZip) [non-interactive]')
       .option('--language <lang>', 'Language: Python (create), or Python/TypeScript/Other (BYO) [non-interactive]')
@@ -260,6 +262,7 @@ export class AgentPrimitive extends BasePrimitive<AddAgentOptions, RemovableReso
 
           const result = await this.add({
             name: cliOptions.name!,
+            description: cliOptions.description,
             type: cliOptions.type ?? 'create',
             buildType: (cliOptions.build as BuildType) ?? 'CodeZip',
             language: cliOptions.language!,
@@ -343,6 +346,7 @@ export class AgentPrimitive extends BasePrimitive<AddAgentOptions, RemovableReso
 
     const generateConfig: GenerateConfig = {
       projectName: options.name,
+      description: options.description,
       buildType: options.buildType,
       sdk: options.framework,
       modelProvider: options.modelProvider,
@@ -442,6 +446,7 @@ export class AgentPrimitive extends BasePrimitive<AddAgentOptions, RemovableReso
   ): Promise<AddResult<{ agentName: string; agentPath?: string }>> {
     return executeImportAgent({
       name: options.name,
+      description: options.description,
       framework: options.framework,
       memory: options.memory ?? 'none',
       bedrockRegion: options.bedrockRegion!,
@@ -507,6 +512,7 @@ export class AgentPrimitive extends BasePrimitive<AddAgentOptions, RemovableReso
 
     const agent: AgentEnvSpec = {
       name: options.name,
+      ...(options.description && { description: options.description }),
       build: options.buildType,
       entrypoint: (options.entrypoint ?? 'main.py') as FilePath,
       codeLocation: codeLocation as DirectoryPath,

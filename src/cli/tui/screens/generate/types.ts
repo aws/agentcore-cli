@@ -37,6 +37,7 @@ export type { BuildType, ModelProvider, ProtocolMode, SDKFramework, TargetLangua
 
 export interface GenerateConfig {
   projectName: string;
+  description?: string;
   buildType: BuildType;
   protocol: ProtocolMode;
   sdk: SDKFramework;
