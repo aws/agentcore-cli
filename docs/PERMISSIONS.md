@@ -320,19 +320,19 @@ Required for all deployment operations (`deploy`, `status`, `diff`).
 
 ### Runtime and resource status
 
-| Action                                        | CLI Commands          | Purpose                               |
-| --------------------------------------------- | --------------------- | ------------------------------------- |
-| `bedrock-agentcore:GetAgentRuntime`           | `status`              | Check agent runtime deployment status |
-| `bedrock-agentcore:ListGatewayTargets`        | `status`              | Check MCP gateway target sync status  |
-| `bedrock-agentcore:GetEvaluator`              | `status`, `run evals` | Get evaluator details                 |
-| `bedrock-agentcore:ListEvaluators`            | `run evals`           | List available evaluators             |
-| `bedrock-agentcore:GetOnlineEvaluationConfig` | `status`              | Get online eval config status         |
+| Action                                        | CLI Commands         | Purpose                               |
+| --------------------------------------------- | -------------------- | ------------------------------------- |
+| `bedrock-agentcore:GetAgentRuntime`           | `status`             | Check agent runtime deployment status |
+| `bedrock-agentcore:ListGatewayTargets`        | `status`             | Check MCP gateway target sync status  |
+| `bedrock-agentcore:GetEvaluator`              | `status`, `run eval` | Get evaluator details                 |
+| `bedrock-agentcore:ListEvaluators`            | `run eval`           | List available evaluators             |
+| `bedrock-agentcore:GetOnlineEvaluationConfig` | `status`             | Get online eval config status         |
 
 ### Evaluation
 
 | Action                                           | CLI Commands                              | Purpose                                       |
 | ------------------------------------------------ | ----------------------------------------- | --------------------------------------------- |
-| `bedrock-agentcore:Evaluate`                     | `run evals`                               | Run on-demand evaluation against agent traces |
+| `bedrock-agentcore:Evaluate`                     | `run eval`                                | Run on-demand evaluation against agent traces |
 | `bedrock-agentcore:UpdateOnlineEvaluationConfig` | `pause online-eval`, `resume online-eval` | Pause or resume online evaluation             |
 
 ### Batch evaluation and recommendations
