@@ -48,6 +48,7 @@ export async function resolveProjectContext(): Promise<ProjectContext> {
 export interface ResolveTargetOptions {
   configIO: ConfigIO;
   targetName?: string;
+  arn?: string;
   logger?: ExecLogger;
   onProgress?: (message: string) => void;
 }
@@ -57,14 +58,35 @@ export interface ResolveTargetOptions {
  * Validates AWS credentials.
  */
 export async function resolveImportTarget(options: ResolveTargetOptions): Promise<AwsDeploymentTarget> {
-  const { configIO, targetName, onProgress } = options;
+  const { configIO, targetName, arn, onProgress } = options;
 
-  const targets = await configIO.readAWSDeploymentTargets();
+  let targets = await configIO.readAWSDeploymentTargets();
 
   if (targets.length === 0) {
-    throw new Error(
-      'No deployment targets found in project.\nRun `agentcore deploy` first to set up a target, then re-run import.'
-    );
+    if (!arn) {
+      throw new Error(
+        'No deployment targets found in project.\nRun `agentcore deploy` first to set up a target, or use --arn so a target can be created automatically.'
+      );
+    }
+
+    const arnMatch = /^arn:aws:bedrock-agentcore:([^:]+):([^:]+):/.exec(arn);
+    if (!arnMatch) {
+      throw new Error(
+        'No deployment targets found in project and could not parse region/account from ARN.\nRun `agentcore deploy` first to set up a target, then re-run import.'
+      );
+    }
+
+    const [, arnRegion, arnAccount] = arnMatch;
+    const newTarget: AwsDeploymentTarget = {
+      name: 'default',
+      description: `Default target (${arnRegion})`,
+      account: arnAccount!,
+      region: arnRegion! as AwsDeploymentTarget['region'],
+    };
+
+    onProgress?.(`No deployment targets found. Creating default target from ARN (${arnRegion}, ${arnAccount})...`);
+    await configIO.writeAWSDeploymentTargets([newTarget]);
+    targets = [newTarget];
   }
 
   let target: AwsDeploymentTarget | undefined;

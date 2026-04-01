@@ -48,12 +48,14 @@ function toAgentEnvSpec(
   entrypoint: string
 ): AgentEnvSpec {
   /* eslint-disable @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-explicit-any */
+  const runtimeVersion =
+    runtime.build === 'Container' ? runtime.runtimeVersion : (runtime.runtimeVersion ?? 'PYTHON_3_12');
   const spec: AgentEnvSpec = {
     name: localName,
     build: runtime.build,
     entrypoint: entrypoint as any,
     codeLocation: codeLocation as any,
-    runtimeVersion: (runtime.runtimeVersion ?? 'PYTHON_3_12') as any,
+    runtimeVersion: runtimeVersion as any,
     protocol: runtime.protocol as any,
     networkMode: runtime.networkMode as any,
     instrumentation: { enableOtel: true },
@@ -114,6 +116,7 @@ export async function handleImportRuntime(options: ImportResourceOptions): Promi
     const target = await resolveImportTarget({
       configIO: ctx.configIO,
       targetName: options.target,
+      arn: options.arn,
       onProgress,
     });
     logger.endStep('success');

@@ -92,6 +92,7 @@ export async function handleImportMemory(options: ImportResourceOptions): Promis
     const target = await resolveImportTarget({
       configIO: ctx.configIO,
       targetName: options.target,
+      arn: options.arn,
       onProgress,
     });
     logger.endStep('success');
