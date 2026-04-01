@@ -1,5 +1,5 @@
-import type { AgentCoreProjectSpec, AgentEnvSpec } from '../../../schema';
 import type { ConfigIO } from '../../../lib';
+import type { AgentCoreProjectSpec, AgentEnvSpec } from '../../../schema';
 import type { AgentRuntimeDetail } from '../../aws/agentcore-control';
 import { getAgentRuntimeDetail, listAllAgentRuntimes } from '../../aws/agentcore-control';
 import { LocalCdkProject } from '../../cdk/local-cdk-project';
@@ -103,9 +103,11 @@ function toAgentEnvSpec(
  */
 export async function handleImportRuntime(options: ImportResourceOptions): Promise<ImportResourceResult> {
   const logger = new ExecLogger({ command: 'import-runtime' });
-  const onProgress = options.onProgress ?? ((message: string) => {
-    console.log(`${green}[done]${reset}  ${message}`);
-  });
+  const onProgress =
+    options.onProgress ??
+    ((message: string) => {
+      console.log(`${green}[done]${reset}  ${message}`);
+    });
 
   // Rollback state
   let configSnapshot: AgentCoreProjectSpec | undefined;
@@ -216,6 +218,20 @@ export async function handleImportRuntime(options: ImportResourceOptions): Promi
     if (localName.startsWith(prefix)) {
       localName = localName.slice(prefix.length);
     }
+    // Validate name early to prevent path traversal before any file I/O
+    const NAME_REGEX = /^[a-zA-Z][a-zA-Z0-9_]{0,47}$/;
+    if (!NAME_REGEX.test(localName)) {
+      const error = `Invalid name "${localName}". Name must start with a letter and contain only letters, numbers, and underscores (max 48 chars).`;
+      logger.endStep('error', error);
+      logger.finalize(false);
+      return {
+        success: false,
+        error,
+        resourceType: 'runtime',
+        resourceName: localName,
+        logPath: logger.getRelativeLogPath(),
+      };
+    }
     onProgress(`Runtime: ${runtimeDetail.agentRuntimeName} → local name: ${localName}`);
     logger.endStep('success');
 
@@ -302,16 +318,21 @@ export async function handleImportRuntime(options: ImportResourceOptions): Promi
     const targetName = target.name ?? 'default';
     const existingResource = await findResourceInDeployedState(ctx.configIO, targetName, 'runtime', runtimeId);
     if (existingResource) {
-      const error = `Runtime "${runtimeId}" is already imported in this project as "${existingResource}". Remove it first before re-importing.`;
-      logger.endStep('error', error);
-      logger.finalize(false);
-      return {
-        success: false,
-        error,
-        resourceType: 'runtime',
-        resourceName: localName,
-        logPath: logger.getRelativeLogPath(),
-      };
+      if (!options.name) {
+        const error = `Runtime "${runtimeId}" is already imported in this project as "${existingResource}". Remove it first before re-importing, or use --name to import under a different name.`;
+        logger.endStep('error', error);
+        logger.finalize(false);
+        return {
+          success: false,
+          error,
+          resourceType: 'runtime',
+          resourceName: localName,
+          logPath: logger.getRelativeLogPath(),
+        };
+      }
+      onProgress(
+        `Warning: Runtime "${runtimeId}" already imported as "${existingResource}". Re-importing as "${localName}".`
+      );
     }
     logger.endStep('success');
 
