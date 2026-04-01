@@ -107,4 +107,5 @@ export interface ImportResourceOptions {
   name?: string;
   entrypoint?: string;
   yes?: boolean;
+  onProgress?: (message: string) => void;
 }

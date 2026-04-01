@@ -46,7 +46,7 @@ export const COMMAND_DESCRIPTIONS = {
   pause: 'Pause an online eval config. Supports --arn for configs outside the project.',
   resume: 'Resume a paused online eval config. Supports --arn for configs outside the project.',
   run: 'Run on-demand evaluation. Supports --agent-arn for agents outside the project.',
-  import: 'Import resources from a Bedrock AgentCore Starter Toolkit project.',
+  import: 'Import a runtime, memory, or starter toolkit into this project.',
   update: 'Check for and install CLI updates',
   validate: 'Validate agentcore/ config files.',
 } as const;

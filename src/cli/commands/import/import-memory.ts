@@ -88,9 +88,9 @@ function toMemorySpec(memory: MemoryDetail, localName: string): Memory {
  */
 export async function handleImportMemory(options: ImportResourceOptions): Promise<ImportResourceResult> {
   const logger = new ExecLogger({ command: 'import-memory' });
-  const onProgress = (message: string) => {
+  const onProgress = options.onProgress ?? ((message: string) => {
     console.log(`${green}[done]${reset}  ${message}`);
-  };
+  });
 
   // Rollback state
   let configSnapshot: AgentCoreProjectSpec | undefined;

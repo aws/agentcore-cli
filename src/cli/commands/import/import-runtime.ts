@@ -103,9 +103,9 @@ function toAgentEnvSpec(
  */
 export async function handleImportRuntime(options: ImportResourceOptions): Promise<ImportResourceResult> {
   const logger = new ExecLogger({ command: 'import-runtime' });
-  const onProgress = (message: string) => {
+  const onProgress = options.onProgress ?? ((message: string) => {
     console.log(`${green}[done]${reset}  ${message}`);
-  };
+  });
 
   // Rollback state
   let configSnapshot: AgentCoreProjectSpec | undefined;

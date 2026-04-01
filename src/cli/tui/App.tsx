@@ -4,6 +4,7 @@ import { LayoutProvider } from './context';
 import { CLI_ONLY_EXAMPLES } from './copy';
 import { MissingProjectMessage, WrongDirectoryMessage, getProjectRootMismatch, projectExists } from './guards';
 import { AddFlow } from './screens/add/AddFlow';
+import { ImportFlow } from './screens/import';
 import { CliOnlyScreen } from './screens/cli-only';
 import { CreateScreen } from './screens/create';
 import { DeployScreen } from './screens/deploy/DeployScreen';
@@ -45,6 +46,7 @@ type Route =
   | { name: 'validate' }
   | { name: 'package' }
   | { name: 'update' }
+  | { name: 'import' }
   | { name: 'cli-only'; commandId: string };
 
 // Commands that don't require being at the project root
@@ -112,6 +114,12 @@ function AppContent() {
       setRoute({ name: 'validate' });
     } else if (id === 'package') {
       setRoute({ name: 'package' });
+    } else if (id === 'import') {
+      if (!projectExists() && route.name === 'help') {
+        setHelpNotice(<MissingProjectMessage inTui />);
+        return;
+      }
+      setRoute({ name: 'import' });
     } else if (id === 'update') {
       setRoute({ name: 'update' });
     }
@@ -251,6 +259,10 @@ function AppContent() {
 
   if (route.name === 'package') {
     return <PackageScreen isInteractive={true} onExit={() => setRoute({ name: 'help' })} />;
+  }
+
+  if (route.name === 'import') {
+    return <ImportFlow onBack={() => setRoute({ name: 'help' })} />;
   }
 
   if (route.name === 'update') {
