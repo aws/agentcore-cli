@@ -22,8 +22,20 @@ export const registerImport = (program: Command) => {
     .option('-y, --yes', 'Auto-confirm prompts')
     .action(async (cliOptions: { source?: string; target?: string; yes?: boolean }) => {
       if (!cliOptions.source) {
-        // No --source and no subcommand — show help
-        importCmd.outputHelp();
+        // No --source and no subcommand — launch interactive TUI
+        const { requireProject } = await import('../../tui/guards/project');
+        requireProject();
+        const { render } = await import('ink');
+        const React = await import('react');
+        const { ImportFlow } = await import('../../tui/screens/import');
+        const { clear, unmount } = render(
+          React.createElement(ImportFlow, {
+            onBack: () => {
+              clear();
+              unmount();
+            },
+          })
+        );
         return;
       }
 
