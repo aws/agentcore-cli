@@ -1,25 +1,17 @@
-import type { ConfigIO } from '../../../lib';
 import type { AgentCoreProjectSpec, AgentEnvSpec } from '../../../schema';
 import type { AgentRuntimeDetail } from '../../aws/agentcore-control';
 import { getAgentRuntimeDetail, listAllAgentRuntimes } from '../../aws/agentcore-control';
-import { LocalCdkProject } from '../../cdk/local-cdk-project';
-import { silentIoHost } from '../../cdk/toolkit-lib';
-import { ExecLogger } from '../../logging';
-import { bootstrapEnvironment, buildCdkProject, checkBootstrapNeeded, synthesizeCdk } from '../../operations/deploy';
+import { executeCdkImportPipeline } from './import-pipeline';
 import {
   copyAgentSource,
+  failResult,
   findResourceInDeployedState,
   parseAndValidateArn,
-  resolveImportTarget,
-  resolveProjectContext,
+  resolveImportContext,
   toStackName,
-  updateDeployedState,
 } from './import-utils';
-import { executePhase1, getDeployedTemplate } from './phase1-update';
-import { executePhase2, publishCdkAssets } from './phase2-import';
-import type { CfnTemplate } from './template-utils';
 import { findLogicalIdByProperty, findLogicalIdsByType } from './template-utils';
-import type { ImportResourceOptions, ImportResourceResult, ResourceToImport } from './types';
+import type { ImportResourceOptions, ImportResourceResult } from './types';
 import type { Command } from '@commander-js/extra-typings';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
@@ -102,29 +94,21 @@ function toAgentEnvSpec(
  * Handle `agentcore import runtime`.
  */
 export async function handleImportRuntime(options: ImportResourceOptions): Promise<ImportResourceResult> {
-  const logger = new ExecLogger({ command: 'import-runtime' });
-  const onProgress =
-    options.onProgress ??
-    ((message: string) => {
-      console.log(`${green}[done]${reset}  ${message}`);
-    });
-
   // Rollback state
   let configSnapshot: AgentCoreProjectSpec | undefined;
   let configWritten = false;
   let copiedAppDir: string | undefined;
-  let configIORef: ConfigIO | undefined;
+
+  let importCtx: Awaited<ReturnType<typeof resolveImportContext>> | undefined;
 
   const rollback = async () => {
-    // Rollback config
-    if (configWritten && configSnapshot && configIORef) {
+    if (configWritten && configSnapshot && importCtx) {
       try {
-        await configIORef.writeProjectSpec(configSnapshot);
+        await importCtx.ctx.configIO.writeProjectSpec(configSnapshot);
       } catch {
         // best-effort rollback
       }
     }
-    // Cleanup copied source directory
     if (copiedAppDir && fs.existsSync(copiedAppDir)) {
       try {
         fs.rmSync(copiedAppDir, { recursive: true, force: true });
@@ -135,21 +119,9 @@ export async function handleImportRuntime(options: ImportResourceOptions): Promi
   };
 
   try {
-    // 1. Validate project context
-    logger.startStep('Validate project context');
-    const ctx = await resolveProjectContext();
-    configIORef = ctx.configIO;
-    logger.endStep('success');
-
-    // 2. Resolve deployment target
-    logger.startStep('Resolve deployment target');
-    const target = await resolveImportTarget({
-      configIO: ctx.configIO,
-      targetName: options.target,
-      arn: options.arn,
-      onProgress,
-    });
-    logger.endStep('success');
+    // 1-2. Validate project context and resolve target
+    importCtx = await resolveImportContext(options, 'import-runtime');
+    const { ctx, target, logger, onProgress } = importCtx;
 
     // 3. Get runtime details from AWS
     logger.startStep('Fetch runtime from AWS');
@@ -164,24 +136,13 @@ export async function handleImportRuntime(options: ImportResourceOptions): Promi
       const runtimes = await listAllAgentRuntimes({ region: target.region });
 
       if (runtimes.length === 0) {
-        const error = 'No runtimes found in your account. Deploy a runtime first.';
-        logger.endStep('error', error);
-        logger.finalize(false);
-        return {
-          success: false,
-          error,
-          resourceType: 'runtime',
-          resourceName: '',
-          logPath: logger.getRelativeLogPath(),
-        };
+        return failResult(logger, 'No runtimes found in your account. Deploy a runtime first.', 'runtime', '');
       }
 
       if (runtimes.length === 1) {
-        // Auto-select the only runtime
         runtimeId = runtimes[0]!.agentRuntimeId;
         onProgress(`Found 1 runtime: ${runtimes[0]!.agentRuntimeName} (${runtimeId}). Auto-selecting.`);
       } else {
-        // Display list for user to pick
         console.log(`\nFound ${runtimes.length} runtime(s):\n`);
         for (let i = 0; i < runtimes.length; i++) {
           const r = runtimes[i]!;
@@ -190,17 +151,12 @@ export async function handleImportRuntime(options: ImportResourceOptions): Promi
         }
         console.log('');
 
-        // For non-interactive mode, require --arn
-        const error = 'Multiple runtimes found. Use --arn <runtimeArn> to specify which runtime to import.';
-        logger.endStep('error', error);
-        logger.finalize(false);
-        return {
-          success: false,
-          error,
-          resourceType: 'runtime',
-          resourceName: '',
-          logPath: logger.getRelativeLogPath(),
-        };
+        return failResult(
+          logger,
+          'Multiple runtimes found. Use --arn <runtimeArn> to specify which runtime to import.',
+          'runtime',
+          ''
+        );
       }
     }
 
@@ -211,26 +167,20 @@ export async function handleImportRuntime(options: ImportResourceOptions): Promi
       onProgress(`Warning: Runtime status is ${runtimeDetail.status}, not READY`);
     }
 
-    // Derive local name: strip project prefix if present, or use --name override
+    // Derive local name
     let localName = options.name ?? runtimeDetail.agentRuntimeName;
-    // AgentCore runtime names are often prefixed with projectName_ — strip it
     const prefix = `${ctx.projectName}_`;
     if (localName.startsWith(prefix)) {
       localName = localName.slice(prefix.length);
     }
-    // Validate name early to prevent path traversal before any file I/O
     const NAME_REGEX = /^[a-zA-Z][a-zA-Z0-9_]{0,47}$/;
     if (!NAME_REGEX.test(localName)) {
-      const error = `Invalid name "${localName}". Name must start with a letter and contain only letters, numbers, and underscores (max 48 chars).`;
-      logger.endStep('error', error);
-      logger.finalize(false);
-      return {
-        success: false,
-        error,
-        resourceType: 'runtime',
-        resourceName: localName,
-        logPath: logger.getRelativeLogPath(),
-      };
+      return failResult(
+        logger,
+        `Invalid name "${localName}". Name must start with a letter and contain only letters, numbers, and underscores (max 48 chars).`,
+        'runtime',
+        localName
+      );
     }
     onProgress(`Runtime: ${runtimeDetail.agentRuntimeName} → local name: ${localName}`);
     logger.endStep('success');
@@ -239,17 +189,12 @@ export async function handleImportRuntime(options: ImportResourceOptions): Promi
     logger.startStep('Resolve entrypoint');
     const entrypoint = options.entrypoint ?? extractEntrypoint(runtimeDetail.entryPoint);
     if (!entrypoint) {
-      const error =
-        'Could not determine entrypoint from runtime configuration.\n  Please re-run with --entrypoint <file> to specify it manually.';
-      logger.endStep('error', error);
-      logger.finalize(false);
-      return {
-        success: false,
-        error,
-        resourceType: 'runtime',
-        resourceName: localName,
-        logPath: logger.getRelativeLogPath(),
-      };
+      return failResult(
+        logger,
+        'Could not determine entrypoint from runtime configuration.\n  Please re-run with --entrypoint <file> to specify it manually.',
+        'runtime',
+        localName
+      );
     }
     onProgress(`Entrypoint: ${entrypoint}`);
     logger.endStep('success');
@@ -257,45 +202,26 @@ export async function handleImportRuntime(options: ImportResourceOptions): Promi
     // 5. Validate source path
     logger.startStep('Validate source path');
     if (!options.code) {
-      const error =
-        'Source path is required for runtime import. Use --code <path> to specify the agent source code directory.';
-      logger.endStep('error', error);
-      logger.finalize(false);
-      return {
-        success: false,
-        error,
-        resourceType: 'runtime',
-        resourceName: localName,
-        logPath: logger.getRelativeLogPath(),
-      };
+      return failResult(
+        logger,
+        'Source path is required for runtime import. Use --code <path> to specify the agent source code directory.',
+        'runtime',
+        localName
+      );
     }
 
     const sourcePath = path.resolve(options.code);
     if (!fs.existsSync(sourcePath)) {
-      const error = `Source path does not exist: ${sourcePath}`;
-      logger.endStep('error', error);
-      logger.finalize(false);
-      return {
-        success: false,
-        error,
-        resourceType: 'runtime',
-        resourceName: localName,
-        logPath: logger.getRelativeLogPath(),
-      };
+      return failResult(logger, `Source path does not exist: ${sourcePath}`, 'runtime', localName);
     }
-    // Validate entrypoint file exists inside source directory
     const entrypointPath = path.join(sourcePath, entrypoint);
     if (!fs.existsSync(entrypointPath)) {
-      const error = `Entrypoint file '${entrypoint}' not found in ${sourcePath}. Ensure --code points to the directory containing your entrypoint file.`;
-      logger.endStep('error', error);
-      logger.finalize(false);
-      return {
-        success: false,
-        error,
-        resourceType: 'runtime',
-        resourceName: localName,
-        logPath: logger.getRelativeLogPath(),
-      };
+      return failResult(
+        logger,
+        `Entrypoint file '${entrypoint}' not found in ${sourcePath}. Ensure --code points to the directory containing your entrypoint file.`,
+        'runtime',
+        localName
+      );
     }
     logger.endStep('success');
 
@@ -304,30 +230,22 @@ export async function handleImportRuntime(options: ImportResourceOptions): Promi
     const projectSpec = await ctx.configIO.readProjectSpec();
     const existingNames = new Set(projectSpec.runtimes.map(r => r.name));
     if (existingNames.has(localName)) {
-      const error = `Runtime "${localName}" already exists in the project. Use --name to specify a different local name.`;
-      logger.endStep('error', error);
-      logger.finalize(false);
-      return {
-        success: false,
-        error,
-        resourceType: 'runtime',
-        resourceName: localName,
-        logPath: logger.getRelativeLogPath(),
-      };
+      return failResult(
+        logger,
+        `Runtime "${localName}" already exists in the project. Use --name to specify a different local name.`,
+        'runtime',
+        localName
+      );
     }
     const targetName = target.name ?? 'default';
     const existingResource = await findResourceInDeployedState(ctx.configIO, targetName, 'runtime', runtimeId);
     if (existingResource) {
-      const error = `Runtime "${runtimeId}" is already imported in this project as "${existingResource}". Remove it first before re-importing.`;
-      logger.endStep('error', error);
-      logger.finalize(false);
-      return {
-        success: false,
-        error,
-        resourceType: 'runtime',
-        resourceName: localName,
-        logPath: logger.getRelativeLogPath(),
-      };
+      return failResult(
+        logger,
+        `Runtime "${runtimeId}" is already imported in this project as "${existingResource}". Remove it first before re-importing.`,
+        'runtime',
+        localName
+      );
     }
     logger.endStep('success');
 
@@ -355,179 +273,73 @@ export async function handleImportRuntime(options: ImportResourceOptions): Promi
     onProgress(`Added runtime "${localName}" to agentcore.json`);
     logger.endStep('success');
 
-    // 9. Build and synth CDK
+    // 9-13. CDK build → synth → bootstrap → phase 1 → phase 2 → update state
     logger.startStep('Build and synth CDK');
-    onProgress('Building CDK project...');
-    const cdkProject = new LocalCdkProject(ctx.projectRoot);
-    await buildCdkProject(cdkProject);
-
-    onProgress('Synthesizing CloudFormation template...');
-    const synthResult = await synthesizeCdk(cdkProject, { ioHost: silentIoHost });
-    const { toolkitWrapper } = synthResult;
-
-    const synthInfo = await toolkitWrapper.synth();
-    const assemblyDirectory = synthInfo.assemblyDirectory;
     const stackName = toStackName(ctx.projectName, targetName);
-    const synthTemplatePath = path.join(assemblyDirectory, `${stackName}.template.json`);
 
-    let synthTemplate: CfnTemplate;
-    try {
-      synthTemplate = JSON.parse(fs.readFileSync(synthTemplatePath, 'utf-8')) as CfnTemplate;
-    } catch {
-      const files = fs.readdirSync(assemblyDirectory).filter((f: string) => f.endsWith('.template.json'));
-      if (files.length === 0) {
-        await toolkitWrapper.dispose();
-        const error = 'No CloudFormation template found in CDK assembly';
-        await rollback();
-        logger.endStep('error', error);
-        logger.finalize(false);
-        return {
-          success: false,
-          error,
-          resourceType: 'runtime',
-          resourceName: localName,
-          logPath: logger.getRelativeLogPath(),
-        };
-      }
-      synthTemplate = JSON.parse(fs.readFileSync(path.join(assemblyDirectory, files[0]!), 'utf-8')) as CfnTemplate;
-    }
-
-    // Check CDK bootstrap
-    onProgress('Checking CDK bootstrap status...');
-    const bootstrapCheck = await checkBootstrapNeeded([target]);
-    if (bootstrapCheck.needsBootstrap) {
-      onProgress('Bootstrapping AWS environment...');
-      await bootstrapEnvironment(toolkitWrapper, target);
-      onProgress('CDK bootstrap complete');
-    }
-
-    await toolkitWrapper.dispose();
-    logger.endStep('success');
-
-    // 10. Publish CDK assets
-    logger.startStep('Publish CDK assets');
-    onProgress('Publishing CDK assets to S3...');
-    await publishCdkAssets(assemblyDirectory, target.region, onProgress);
-    logger.endStep('success');
-
-    // 11. Phase 1: Deploy companion resources
-    logger.startStep('Phase 1: Deploy companion resources');
-    onProgress('Phase 1: Deploying companion resources (IAM roles, policies)...');
-    const phase1Result = await executePhase1({
-      region: target.region,
+    const pipelineResult = await executeCdkImportPipeline({
+      projectRoot: ctx.projectRoot,
       stackName,
-      synthTemplate,
+      target,
+      configIO: ctx.configIO,
+      targetName,
       onProgress,
+      buildResourcesToImport: synthTemplate => {
+        const expectedRuntimeName = `${ctx.projectName}_${localName}`;
+        let logicalId = findLogicalIdByProperty(
+          synthTemplate,
+          'AWS::BedrockAgentCore::Runtime',
+          'AgentRuntimeName',
+          expectedRuntimeName
+        );
+
+        if (!logicalId) {
+          const runtimeLogicalIds = findLogicalIdsByType(synthTemplate, 'AWS::BedrockAgentCore::Runtime');
+          if (runtimeLogicalIds.length === 1) {
+            logicalId = runtimeLogicalIds[0];
+          }
+        }
+
+        if (!logicalId) {
+          return [];
+        }
+
+        return [
+          {
+            resourceType: 'AWS::BedrockAgentCore::Runtime',
+            logicalResourceId: logicalId,
+            resourceIdentifier: { AgentRuntimeId: runtimeId },
+          },
+        ];
+      },
+      deployedStateEntries: [
+        {
+          type: 'runtime',
+          name: localName,
+          id: runtimeId,
+          arn: runtimeDetail.agentRuntimeArn,
+        },
+      ],
     });
 
-    if (!phase1Result.success) {
-      const error = `Phase 1 failed: ${phase1Result.error}`;
-      await rollback();
-      logger.endStep('error', error);
-      logger.finalize(false);
-      return {
-        success: false,
-        error,
-        resourceType: 'runtime',
-        resourceName: localName,
-        logPath: logger.getRelativeLogPath(),
-      };
-    }
-    logger.endStep('success');
-
-    // 12. Phase 2: Import the runtime resource
-    logger.startStep('Phase 2: Import runtime resource');
-    onProgress('Reading deployed template...');
-    const deployedTemplate = await getDeployedTemplate(target.region, stackName);
-    if (!deployedTemplate) {
-      const error = 'Could not read deployed template after Phase 1';
-      await rollback();
-      logger.endStep('error', error);
-      logger.finalize(false);
-      return {
-        success: false,
-        error,
-        resourceType: 'runtime',
-        resourceName: localName,
-        logPath: logger.getRelativeLogPath(),
-      };
-    }
-
-    // Find the logical ID for this runtime in the synth template
-    const expectedRuntimeName = `${ctx.projectName}_${localName}`;
-    let logicalId = findLogicalIdByProperty(
-      synthTemplate,
-      'AWS::BedrockAgentCore::Runtime',
-      'AgentRuntimeName',
-      expectedRuntimeName
-    );
-
-    if (!logicalId) {
-      const runtimeLogicalIds = findLogicalIdsByType(synthTemplate, 'AWS::BedrockAgentCore::Runtime');
-      if (runtimeLogicalIds.length === 1) {
-        logicalId = runtimeLogicalIds[0];
-      }
-    }
-
-    if (!logicalId) {
+    if (pipelineResult.noResources) {
       const error = `Could not find logical ID for runtime "${localName}" in CloudFormation template`;
       await rollback();
-      logger.endStep('error', error);
-      logger.finalize(false);
-      return {
-        success: false,
-        error,
-        resourceType: 'runtime',
-        resourceName: localName,
-        logPath: logger.getRelativeLogPath(),
-      };
+      return failResult(logger, error, 'runtime', localName);
     }
 
-    const resourcesToImport: ResourceToImport[] = [
-      {
-        resourceType: 'AWS::BedrockAgentCore::Runtime',
-        logicalResourceId: logicalId,
-        resourceIdentifier: { AgentRuntimeId: runtimeId },
-      },
-    ];
-
-    onProgress(`Phase 2: Importing runtime via CloudFormation IMPORT...`);
-    const phase2Result = await executePhase2({
-      region: target.region,
-      stackName,
-      deployedTemplate,
-      synthTemplate,
-      resourcesToImport,
-      assemblyDirectory,
-      onProgress,
-    });
-
-    if (!phase2Result.success) {
-      const error = `Phase 2 failed: ${phase2Result.error}`;
+    if (!pipelineResult.success) {
       await rollback();
-      logger.endStep('error', error);
+      logger.endStep('error', pipelineResult.error);
       logger.finalize(false);
       return {
         success: false,
-        error,
+        error: pipelineResult.error,
         resourceType: 'runtime',
         resourceName: localName,
         logPath: logger.getRelativeLogPath(),
       };
     }
-    logger.endStep('success');
-
-    // 13. Update deployed state
-    logger.startStep('Update deployed state');
-    await updateDeployedState(ctx.configIO, targetName, stackName, [
-      {
-        type: 'runtime',
-        name: localName,
-        id: runtimeId,
-        arn: runtimeDetail.agentRuntimeArn,
-      },
-    ]);
-    onProgress('Deployed state updated');
     logger.endStep('success');
 
     logger.finalize(true);
@@ -541,14 +353,16 @@ export async function handleImportRuntime(options: ImportResourceOptions): Promi
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : String(err);
     await rollback();
-    logger.log(message, 'error');
-    logger.finalize(false);
+    if (importCtx) {
+      importCtx.logger.log(message, 'error');
+      importCtx.logger.finalize(false);
+    }
     return {
       success: false,
       error: message,
       resourceType: 'runtime',
       resourceName: options.name ?? '',
-      logPath: logger.getRelativeLogPath(),
+      logPath: importCtx?.logger.getRelativeLogPath(),
     };
   }
 }

@@ -16,21 +16,37 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 
 const mockResolveProjectContext = vi.fn();
 const mockResolveImportTarget = vi.fn();
+const mockResolveImportContext = vi.fn();
 const mockUpdateDeployedState = vi.fn();
 const mockCopyAgentSource = vi.fn();
 const mockToStackName = vi.fn();
 
 const mockParseAndValidateArn = vi.fn();
 const mockFindResourceInDeployedState = vi.fn();
+const mockFailResult = vi.fn((...args: unknown[]) => ({
+  success: false,
+  error: args[1] as string,
+  resourceType: args[2] as string,
+  resourceName: args[3] as string,
+  logPath: 'test.log',
+}));
 
 vi.mock('../import-utils', () => ({
   resolveProjectContext: (...args: unknown[]) => mockResolveProjectContext(...args),
   resolveImportTarget: (...args: unknown[]) => mockResolveImportTarget(...args),
+  resolveImportContext: (...args: unknown[]) => mockResolveImportContext(...args),
   updateDeployedState: (...args: unknown[]) => mockUpdateDeployedState(...args),
   copyAgentSource: (...args: unknown[]) => mockCopyAgentSource(...args),
   toStackName: (...args: unknown[]) => mockToStackName(...args),
   parseAndValidateArn: (...args: unknown[]) => mockParseAndValidateArn(...args),
   findResourceInDeployedState: (...args: unknown[]) => mockFindResourceInDeployedState(...args),
+  failResult: (...args: unknown[]) => mockFailResult(...args),
+}));
+
+const mockExecuteCdkImportPipeline = vi.fn();
+
+vi.mock('../import-pipeline', () => ({
+  executeCdkImportPipeline: (...args: unknown[]) => mockExecuteCdkImportPipeline(...args),
 }));
 
 const mockGetAgentRuntimeDetail = vi.fn();
@@ -110,6 +126,14 @@ const mockConfigIO = {
   writeDeployedState: vi.fn().mockResolvedValue(undefined),
 };
 
+const mockLogger = {
+  startStep: vi.fn(),
+  endStep: vi.fn(),
+  log: vi.fn(),
+  finalize: vi.fn(),
+  getRelativeLogPath: vi.fn().mockReturnValue('test.log'),
+};
+
 function setupDefaultMocks() {
   mockResolveProjectContext.mockResolvedValue({
     configIO: mockConfigIO,
@@ -123,6 +147,21 @@ function setupDefaultMocks() {
     account: '123456789012',
   });
 
+  mockResolveImportContext.mockResolvedValue({
+    ctx: {
+      configIO: mockConfigIO,
+      projectRoot: '/tmp/testproj',
+      projectName: 'testproj',
+    },
+    target: {
+      name: 'default',
+      region: 'us-east-1',
+      account: '123456789012',
+    },
+    logger: mockLogger,
+    onProgress: vi.fn(),
+  });
+
   mockParseAndValidateArn.mockReturnValue({
     region: 'us-east-1',
     account: '123',
@@ -133,6 +172,8 @@ function setupDefaultMocks() {
   mockFindResourceInDeployedState.mockResolvedValue(undefined);
 
   mockConfigIO.readProjectSpec.mockResolvedValue({ ...defaultProjectSpec, runtimes: [] });
+
+  mockExecuteCdkImportPipeline.mockResolvedValue({ success: true });
 }
 
 afterEach(() => vi.clearAllMocks());

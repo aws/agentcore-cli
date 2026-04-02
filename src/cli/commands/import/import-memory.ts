@@ -1,27 +1,17 @@
-import type { ConfigIO } from '../../../lib';
 import type { AgentCoreProjectSpec, Memory } from '../../../schema';
 import type { MemoryDetail } from '../../aws/agentcore-control';
 import { getMemoryDetail, listAllMemories } from '../../aws/agentcore-control';
-import { LocalCdkProject } from '../../cdk/local-cdk-project';
-import { silentIoHost } from '../../cdk/toolkit-lib';
-import { ExecLogger } from '../../logging';
-import { bootstrapEnvironment, buildCdkProject, checkBootstrapNeeded, synthesizeCdk } from '../../operations/deploy';
+import { executeCdkImportPipeline } from './import-pipeline';
 import {
+  failResult,
   findResourceInDeployedState,
   parseAndValidateArn,
-  resolveImportTarget,
-  resolveProjectContext,
+  resolveImportContext,
   toStackName,
-  updateDeployedState,
 } from './import-utils';
-import { executePhase1, getDeployedTemplate } from './phase1-update';
-import { executePhase2, publishCdkAssets } from './phase2-import';
-import type { CfnTemplate } from './template-utils';
 import { findLogicalIdByProperty, findLogicalIdsByType } from './template-utils';
-import type { ImportResourceOptions, ImportResourceResult, ResourceToImport } from './types';
+import type { ImportResourceOptions, ImportResourceResult } from './types';
 import type { Command } from '@commander-js/extra-typings';
-import * as fs from 'node:fs';
-import * as path from 'node:path';
 
 const green = '\x1b[32m';
 const dim = '\x1b[2m';
@@ -87,22 +77,16 @@ function toMemorySpec(memory: MemoryDetail, localName: string): Memory {
  * Handle `agentcore import memory`.
  */
 export async function handleImportMemory(options: ImportResourceOptions): Promise<ImportResourceResult> {
-  const logger = new ExecLogger({ command: 'import-memory' });
-  const onProgress =
-    options.onProgress ??
-    ((message: string) => {
-      console.log(`${green}[done]${reset}  ${message}`);
-    });
-
   // Rollback state
   let configSnapshot: AgentCoreProjectSpec | undefined;
   let configWritten = false;
-  let configIORef: ConfigIO | undefined;
+
+  let importCtx: Awaited<ReturnType<typeof resolveImportContext>> | undefined;
 
   const rollback = async () => {
-    if (configWritten && configSnapshot && configIORef) {
+    if (configWritten && configSnapshot && importCtx) {
       try {
-        await configIORef.writeProjectSpec(configSnapshot);
+        await importCtx.ctx.configIO.writeProjectSpec(configSnapshot);
       } catch {
         // best-effort rollback
       }
@@ -110,21 +94,9 @@ export async function handleImportMemory(options: ImportResourceOptions): Promis
   };
 
   try {
-    // 1. Validate project context
-    logger.startStep('Validate project context');
-    const ctx = await resolveProjectContext();
-    configIORef = ctx.configIO;
-    logger.endStep('success');
-
-    // 2. Resolve deployment target
-    logger.startStep('Resolve deployment target');
-    const target = await resolveImportTarget({
-      configIO: ctx.configIO,
-      targetName: options.target,
-      arn: options.arn,
-      onProgress,
-    });
-    logger.endStep('success');
+    // 1-2. Validate project context and resolve target
+    importCtx = await resolveImportContext(options, 'import-memory');
+    const { ctx, target, logger, onProgress } = importCtx;
 
     // 3. Get memory details from AWS
     logger.startStep('Fetch memory from AWS');
@@ -134,29 +106,17 @@ export async function handleImportMemory(options: ImportResourceOptions): Promis
       const parsed = parseAndValidateArn(options.arn, 'memory', target);
       memoryId = parsed.resourceId;
     } else {
-      // List memories and show to user
       onProgress('Listing memories in your account...');
       const memories = await listAllMemories({ region: target.region });
 
       if (memories.length === 0) {
-        const error = 'No memories found in your account.';
-        logger.endStep('error', error);
-        logger.finalize(false);
-        return {
-          success: false,
-          error,
-          resourceType: 'memory',
-          resourceName: '',
-          logPath: logger.getRelativeLogPath(),
-        };
+        return failResult(logger, 'No memories found in your account.', 'memory', '');
       }
 
       if (memories.length === 1) {
-        // Auto-select the only memory
         memoryId = memories[0]!.memoryId;
         onProgress(`Found 1 memory: ${memoryId}. Auto-selecting.`);
       } else {
-        // Display list
         console.log(`\nFound ${memories.length} memory(ies):\n`);
         for (let i = 0; i < memories.length; i++) {
           const m = memories[i]!;
@@ -165,16 +125,12 @@ export async function handleImportMemory(options: ImportResourceOptions): Promis
         }
         console.log('');
 
-        const error = 'Multiple memories found. Use --arn <memoryArn> to specify which memory to import.';
-        logger.endStep('error', error);
-        logger.finalize(false);
-        return {
-          success: false,
-          error,
-          resourceType: 'memory',
-          resourceName: '',
-          logPath: logger.getRelativeLogPath(),
-        };
+        return failResult(
+          logger,
+          'Multiple memories found. Use --arn <memoryArn> to specify which memory to import.',
+          'memory',
+          ''
+        );
       }
     }
 
@@ -186,19 +142,14 @@ export async function handleImportMemory(options: ImportResourceOptions): Promis
     }
 
     const localName = options.name ?? memoryDetail.name;
-    // Validate name early to prevent path traversal before any file I/O
     const NAME_REGEX = /^[a-zA-Z][a-zA-Z0-9_]{0,47}$/;
     if (!NAME_REGEX.test(localName)) {
-      const error = `Invalid name "${localName}". Name must start with a letter and contain only letters, numbers, and underscores (max 48 chars).`;
-      logger.endStep('error', error);
-      logger.finalize(false);
-      return {
-        success: false,
-        error,
-        resourceType: 'memory',
-        resourceName: localName,
-        logPath: logger.getRelativeLogPath(),
-      };
+      return failResult(
+        logger,
+        `Invalid name "${localName}". Name must start with a letter and contain only letters, numbers, and underscores (max 48 chars).`,
+        'memory',
+        localName
+      );
     }
     onProgress(`Memory: ${memoryDetail.name} → local name: ${localName}`);
     logger.endStep('success');
@@ -208,30 +159,22 @@ export async function handleImportMemory(options: ImportResourceOptions): Promis
     const projectSpec = await ctx.configIO.readProjectSpec();
     const existingNames = new Set((projectSpec.memories ?? []).map(m => m.name));
     if (existingNames.has(localName)) {
-      const error = `Memory "${localName}" already exists in the project. Use --name to specify a different local name.`;
-      logger.endStep('error', error);
-      logger.finalize(false);
-      return {
-        success: false,
-        error,
-        resourceType: 'memory',
-        resourceName: localName,
-        logPath: logger.getRelativeLogPath(),
-      };
+      return failResult(
+        logger,
+        `Memory "${localName}" already exists in the project. Use --name to specify a different local name.`,
+        'memory',
+        localName
+      );
     }
     const targetName = target.name ?? 'default';
     const existingResource = await findResourceInDeployedState(ctx.configIO, targetName, 'memory', memoryId);
     if (existingResource) {
-      const error = `Memory "${memoryId}" is already imported in this project as "${existingResource}". Remove it first before re-importing.`;
-      logger.endStep('error', error);
-      logger.finalize(false);
-      return {
-        success: false,
-        error,
-        resourceType: 'memory',
-        resourceName: localName,
-        logPath: logger.getRelativeLogPath(),
-      };
+      return failResult(
+        logger,
+        `Memory "${memoryId}" is already imported in this project as "${existingResource}". Remove it first before re-importing.`,
+        'memory',
+        localName
+      );
     }
     logger.endStep('success');
 
@@ -245,179 +188,73 @@ export async function handleImportMemory(options: ImportResourceOptions): Promis
     onProgress(`Added memory "${localName}" to agentcore.json`);
     logger.endStep('success');
 
-    // 6. Build and synth CDK
+    // 6-10. CDK build → synth → bootstrap → phase 1 → phase 2 → update state
     logger.startStep('Build and synth CDK');
-    onProgress('Building CDK project...');
-    const cdkProject = new LocalCdkProject(ctx.projectRoot);
-    await buildCdkProject(cdkProject);
-
-    onProgress('Synthesizing CloudFormation template...');
-    const synthResult = await synthesizeCdk(cdkProject, { ioHost: silentIoHost });
-    const { toolkitWrapper } = synthResult;
-
-    const synthInfo = await toolkitWrapper.synth();
-    const assemblyDirectory = synthInfo.assemblyDirectory;
     const stackName = toStackName(ctx.projectName, targetName);
-    const synthTemplatePath = path.join(assemblyDirectory, `${stackName}.template.json`);
 
-    let synthTemplate: CfnTemplate;
-    try {
-      synthTemplate = JSON.parse(fs.readFileSync(synthTemplatePath, 'utf-8')) as CfnTemplate;
-    } catch {
-      const files = fs.readdirSync(assemblyDirectory).filter((f: string) => f.endsWith('.template.json'));
-      if (files.length === 0) {
-        await toolkitWrapper.dispose();
-        const error = 'No CloudFormation template found in CDK assembly';
-        await rollback();
-        logger.endStep('error', error);
-        logger.finalize(false);
-        return {
-          success: false,
-          error,
-          resourceType: 'memory',
-          resourceName: localName,
-          logPath: logger.getRelativeLogPath(),
-        };
-      }
-      synthTemplate = JSON.parse(fs.readFileSync(path.join(assemblyDirectory, files[0]!), 'utf-8')) as CfnTemplate;
-    }
-
-    // Check CDK bootstrap
-    onProgress('Checking CDK bootstrap status...');
-    const bootstrapCheck = await checkBootstrapNeeded([target]);
-    if (bootstrapCheck.needsBootstrap) {
-      onProgress('Bootstrapping AWS environment...');
-      await bootstrapEnvironment(toolkitWrapper, target);
-      onProgress('CDK bootstrap complete');
-    }
-
-    await toolkitWrapper.dispose();
-    logger.endStep('success');
-
-    // 7. Publish CDK assets
-    logger.startStep('Publish CDK assets');
-    onProgress('Publishing CDK assets to S3...');
-    await publishCdkAssets(assemblyDirectory, target.region, onProgress);
-    logger.endStep('success');
-
-    // 8. Phase 1: Deploy companion resources
-    logger.startStep('Phase 1: Deploy companion resources');
-    onProgress('Phase 1: Deploying companion resources...');
-    const phase1Result = await executePhase1({
-      region: target.region,
+    const pipelineResult = await executeCdkImportPipeline({
+      projectRoot: ctx.projectRoot,
       stackName,
-      synthTemplate,
+      target,
+      configIO: ctx.configIO,
+      targetName,
       onProgress,
+      buildResourcesToImport: synthTemplate => {
+        let logicalId = findLogicalIdByProperty(synthTemplate, 'AWS::BedrockAgentCore::Memory', 'Name', localName);
+
+        // CDK prefixes memory names with the project name
+        if (!logicalId) {
+          const prefixedName = `${ctx.projectName}_${localName}`;
+          logicalId = findLogicalIdByProperty(synthTemplate, 'AWS::BedrockAgentCore::Memory', 'Name', prefixedName);
+        }
+
+        if (!logicalId) {
+          const memoryLogicalIds = findLogicalIdsByType(synthTemplate, 'AWS::BedrockAgentCore::Memory');
+          if (memoryLogicalIds.length === 1) {
+            logicalId = memoryLogicalIds[0];
+          }
+        }
+
+        if (!logicalId) {
+          return [];
+        }
+
+        return [
+          {
+            resourceType: 'AWS::BedrockAgentCore::Memory',
+            logicalResourceId: logicalId,
+            resourceIdentifier: { MemoryId: memoryId },
+          },
+        ];
+      },
+      deployedStateEntries: [
+        {
+          type: 'memory',
+          name: localName,
+          id: memoryId,
+          arn: memoryDetail.memoryArn,
+        },
+      ],
     });
 
-    if (!phase1Result.success) {
-      const error = `Phase 1 failed: ${phase1Result.error}`;
-      await rollback();
-      logger.endStep('error', error);
-      logger.finalize(false);
-      return {
-        success: false,
-        error,
-        resourceType: 'memory',
-        resourceName: localName,
-        logPath: logger.getRelativeLogPath(),
-      };
-    }
-    logger.endStep('success');
-
-    // 9. Phase 2: Import the memory resource
-    logger.startStep('Phase 2: Import memory resource');
-    onProgress('Reading deployed template...');
-    const deployedTemplate = await getDeployedTemplate(target.region, stackName);
-    if (!deployedTemplate) {
-      const error = 'Could not read deployed template after Phase 1';
-      await rollback();
-      logger.endStep('error', error);
-      logger.finalize(false);
-      return {
-        success: false,
-        error,
-        resourceType: 'memory',
-        resourceName: localName,
-        logPath: logger.getRelativeLogPath(),
-      };
-    }
-
-    // Find the logical ID for this memory in the synth template
-    let logicalId = findLogicalIdByProperty(synthTemplate, 'AWS::BedrockAgentCore::Memory', 'Name', localName);
-
-    // CDK prefixes memory names with the project name
-    if (!logicalId) {
-      const prefixedName = `${ctx.projectName}_${localName}`;
-      logicalId = findLogicalIdByProperty(synthTemplate, 'AWS::BedrockAgentCore::Memory', 'Name', prefixedName);
-    }
-
-    if (!logicalId) {
-      const memoryLogicalIds = findLogicalIdsByType(synthTemplate, 'AWS::BedrockAgentCore::Memory');
-      if (memoryLogicalIds.length === 1) {
-        logicalId = memoryLogicalIds[0];
-      }
-    }
-
-    if (!logicalId) {
+    if (pipelineResult.noResources) {
       const error = `Could not find logical ID for memory "${localName}" in CloudFormation template`;
       await rollback();
-      logger.endStep('error', error);
-      logger.finalize(false);
-      return {
-        success: false,
-        error,
-        resourceType: 'memory',
-        resourceName: localName,
-        logPath: logger.getRelativeLogPath(),
-      };
+      return failResult(logger, error, 'memory', localName);
     }
 
-    const resourcesToImport: ResourceToImport[] = [
-      {
-        resourceType: 'AWS::BedrockAgentCore::Memory',
-        logicalResourceId: logicalId,
-        resourceIdentifier: { MemoryId: memoryId },
-      },
-    ];
-
-    onProgress('Phase 2: Importing memory via CloudFormation IMPORT...');
-    const phase2Result = await executePhase2({
-      region: target.region,
-      stackName,
-      deployedTemplate,
-      synthTemplate,
-      resourcesToImport,
-      assemblyDirectory,
-      onProgress,
-    });
-
-    if (!phase2Result.success) {
-      const error = `Phase 2 failed: ${phase2Result.error}`;
+    if (!pipelineResult.success) {
       await rollback();
-      logger.endStep('error', error);
+      logger.endStep('error', pipelineResult.error);
       logger.finalize(false);
       return {
         success: false,
-        error,
+        error: pipelineResult.error,
         resourceType: 'memory',
         resourceName: localName,
         logPath: logger.getRelativeLogPath(),
       };
     }
-    logger.endStep('success');
-
-    // 10. Update deployed state
-    logger.startStep('Update deployed state');
-    await updateDeployedState(ctx.configIO, targetName, stackName, [
-      {
-        type: 'memory',
-        name: localName,
-        id: memoryId,
-        arn: memoryDetail.memoryArn,
-      },
-    ]);
-    onProgress('Deployed state updated');
     logger.endStep('success');
 
     logger.finalize(true);
@@ -431,14 +268,16 @@ export async function handleImportMemory(options: ImportResourceOptions): Promis
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : String(err);
     await rollback();
-    logger.log(message, 'error');
-    logger.finalize(false);
+    if (importCtx) {
+      importCtx.logger.log(message, 'error');
+      importCtx.logger.finalize(false);
+    }
     return {
       success: false,
       error: message,
       resourceType: 'memory',
       resourceName: options.name ?? '',
-      logPath: logger.getRelativeLogPath(),
+      logPath: importCtx?.logger.getRelativeLogPath(),
     };
   }
 }

@@ -4,8 +4,75 @@ import { detectAccount, validateAwsCredentials } from '../../aws/account';
 import { ExecLogger } from '../../logging';
 import { setupPythonProject } from '../../operations/python/setup';
 import { getTemplatePath } from '../../templates/templateRoot';
+import type { ImportResourceOptions, ImportResourceResult } from './types';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
+
+// ============================================================================
+// Import Context (shared setup for import-runtime / import-memory)
+// ============================================================================
+
+const green = '\x1b[32m';
+const reset = '\x1b[0m';
+
+export interface ImportContext {
+  ctx: ProjectContext;
+  target: AwsDeploymentTarget;
+  logger: ExecLogger;
+  onProgress: (message: string) => void;
+}
+
+/**
+ * Shared setup for single-resource import commands (runtime, memory).
+ * Validates project context, resolves deployment target, and creates logger.
+ */
+export async function resolveImportContext(options: ImportResourceOptions, command: string): Promise<ImportContext> {
+  const logger = new ExecLogger({ command });
+  const onProgress =
+    options.onProgress ??
+    ((message: string) => {
+      console.log(`${green}[done]${reset}  ${message}`);
+    });
+
+  logger.startStep('Validate project context');
+  const ctx = await resolveProjectContext();
+  logger.endStep('success');
+
+  logger.startStep('Resolve deployment target');
+  const target = await resolveImportTarget({
+    configIO: ctx.configIO,
+    targetName: options.target,
+    arn: options.arn,
+    onProgress,
+  });
+  logger.endStep('success');
+
+  return { ctx, target, logger, onProgress };
+}
+
+// ============================================================================
+// Error Result Helper
+// ============================================================================
+
+/**
+ * Build a failed ImportResourceResult, logging the error and finalizing the logger.
+ */
+export function failResult(
+  logger: ExecLogger,
+  error: string,
+  resourceType: 'runtime' | 'memory',
+  resourceName: string
+): ImportResourceResult {
+  logger.endStep('error', error);
+  logger.finalize(false);
+  return {
+    success: false,
+    error,
+    resourceType,
+    resourceName,
+    logPath: logger.getRelativeLogPath(),
+  };
+}
 
 // ============================================================================
 // Project Context
