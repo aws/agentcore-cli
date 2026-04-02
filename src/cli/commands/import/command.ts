@@ -28,12 +28,44 @@ export const registerImport = (program: Command) => {
         const { render } = await import('ink');
         const React = await import('react');
         const { ImportFlow } = await import('../../tui/screens/import');
-        const { clear, unmount } = render(
+        const inkRef: { current?: { clear: () => void; unmount: () => void } } = {};
+
+        const exitTui = () => {
+          inkRef.current?.clear();
+          inkRef.current?.unmount();
+        };
+
+        const navigateTo = async (command: string) => {
+          exitTui();
+          if (command === 'deploy') {
+            const { DeployScreen } = await import('../../tui/screens/deploy/DeployScreen');
+            const deployInstance = render(
+              React.createElement(DeployScreen, {
+                isInteractive: false,
+                onExit: () => {
+                  deployInstance.unmount();
+                  process.exit(0);
+                },
+              })
+            );
+          } else if (command === 'status') {
+            const { StatusScreen } = await import('../../tui/screens/status/StatusScreen');
+            const statusInstance = render(
+              React.createElement(StatusScreen, {
+                isInteractive: false,
+                onExit: () => {
+                  statusInstance.unmount();
+                  process.exit(0);
+                },
+              })
+            );
+          }
+        };
+
+        inkRef.current = render(
           React.createElement(ImportFlow, {
-            onBack: () => {
-              clear();
-              unmount();
-            },
+            onBack: exitTui,
+            onNavigate: (command: string) => void navigateTo(command),
           })
         );
         return;
