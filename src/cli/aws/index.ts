@@ -9,6 +9,7 @@ export {
   type ClaudeResponse,
 } from './bedrock';
 export {
+  createControlClient,
   getAgentRuntimeStatus,
   type AgentRuntimeStatusResult,
   type GetAgentRuntimeStatusOptions,

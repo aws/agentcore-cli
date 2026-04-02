@@ -12,6 +12,18 @@ import {
   UpdateOnlineEvaluationConfigCommand,
 } from '@aws-sdk/client-bedrock-agentcore-control';
 
+/**
+ * Create a shared BedrockAgentCoreControlClient for the given region.
+ * Callers should create one client and reuse it across related operations
+ * to benefit from connection pooling and credential caching.
+ */
+export function createControlClient(region: string): BedrockAgentCoreControlClient {
+  return new BedrockAgentCoreControlClient({
+    region,
+    credentials: getCredentialProvider(),
+  });
+}
+
 export interface GetAgentRuntimeStatusOptions {
   region: string;
   runtimeId: string;
@@ -26,10 +38,7 @@ export interface AgentRuntimeStatusResult {
  * Fetch the status of an AgentCore Runtime by runtime ID.
  */
 export async function getAgentRuntimeStatus(options: GetAgentRuntimeStatusOptions): Promise<AgentRuntimeStatusResult> {
-  const client = new BedrockAgentCoreControlClient({
-    region: options.region,
-    credentials: getCredentialProvider(),
-  });
+  const client = createControlClient(options.region);
 
   const command = new GetAgentRuntimeCommand({
     agentRuntimeId: options.runtimeId,
@@ -74,18 +83,18 @@ export interface ListAgentRuntimesResult {
 /**
  * List all AgentCore Runtimes in the given region.
  */
-export async function listAgentRuntimes(options: ListAgentRuntimesOptions): Promise<ListAgentRuntimesResult> {
-  const client = new BedrockAgentCoreControlClient({
-    region: options.region,
-    credentials: getCredentialProvider(),
-  });
+export async function listAgentRuntimes(
+  options: ListAgentRuntimesOptions,
+  client?: BedrockAgentCoreControlClient
+): Promise<ListAgentRuntimesResult> {
+  const resolvedClient = client ?? createControlClient(options.region);
 
   const command = new ListAgentRuntimesCommand({
     maxResults: options.maxResults,
     nextToken: options.nextToken,
   });
 
-  const response = await client.send(command);
+  const response = await resolvedClient.send(command);
 
   return {
     runtimes: (response.agentRuntimes ?? []).map(r => ({
@@ -104,11 +113,12 @@ export async function listAgentRuntimes(options: ListAgentRuntimesOptions): Prom
  * List all AgentCore Runtimes in the given region, paginating through all pages.
  */
 export async function listAllAgentRuntimes(options: { region: string }): Promise<AgentRuntimeSummary[]> {
+  const client = createControlClient(options.region);
   const runtimes: AgentRuntimeSummary[] = [];
   let nextToken: string | undefined;
 
   do {
-    const result = await listAgentRuntimes({ region: options.region, maxResults: 100, nextToken });
+    const result = await listAgentRuntimes({ region: options.region, maxResults: 100, nextToken }, client);
     runtimes.push(...result.runtimes);
     nextToken = result.nextToken;
   } while (nextToken);
@@ -153,10 +163,7 @@ export interface AgentRuntimeDetail {
  * Get full details of an AgentCore Runtime by ID.
  */
 export async function getAgentRuntimeDetail(options: GetAgentRuntimeOptions): Promise<AgentRuntimeDetail> {
-  const client = new BedrockAgentCoreControlClient({
-    region: options.region,
-    credentials: getCredentialProvider(),
-  });
+  const client = createControlClient(options.region);
 
   const command = new GetAgentRuntimeCommand({
     agentRuntimeId: options.runtimeId,
@@ -275,18 +282,18 @@ export interface ListMemoriesResult {
 /**
  * List all AgentCore Memories in the given region.
  */
-export async function listMemories(options: ListMemoriesOptions): Promise<ListMemoriesResult> {
-  const client = new BedrockAgentCoreControlClient({
-    region: options.region,
-    credentials: getCredentialProvider(),
-  });
+export async function listMemories(
+  options: ListMemoriesOptions,
+  client?: BedrockAgentCoreControlClient
+): Promise<ListMemoriesResult> {
+  const resolvedClient = client ?? createControlClient(options.region);
 
   const command = new ListMemoriesCommand({
     maxResults: options.maxResults,
     nextToken: options.nextToken,
   });
 
-  const response = await client.send(command);
+  const response = await resolvedClient.send(command);
 
   return {
     memories: (response.memories ?? []).map(m => ({
@@ -304,11 +311,12 @@ export async function listMemories(options: ListMemoriesOptions): Promise<ListMe
  * List all AgentCore Memories in the given region, paginating through all pages.
  */
 export async function listAllMemories(options: { region: string }): Promise<MemorySummary[]> {
+  const client = createControlClient(options.region);
   const memories: MemorySummary[] = [];
   let nextToken: string | undefined;
 
   do {
-    const result = await listMemories({ region: options.region, maxResults: 100, nextToken });
+    const result = await listMemories({ region: options.region, maxResults: 100, nextToken }, client);
     memories.push(...result.memories);
     nextToken = result.nextToken;
   } while (nextToken);
@@ -344,10 +352,7 @@ export interface MemoryDetail {
  * Get full details of an AgentCore Memory by ID.
  */
 export async function getMemoryDetail(options: GetMemoryOptions): Promise<MemoryDetail> {
-  const client = new BedrockAgentCoreControlClient({
-    region: options.region,
-    credentials: getCredentialProvider(),
-  });
+  const client = createControlClient(options.region);
 
   const command = new GetMemoryCommand({
     memoryId: options.memoryId,
@@ -429,10 +434,7 @@ export interface GetEvaluatorResult {
 }
 
 export async function getEvaluator(options: GetEvaluatorOptions): Promise<GetEvaluatorResult> {
-  const client = new BedrockAgentCoreControlClient({
-    region: options.region,
-    credentials: getCredentialProvider(),
-  });
+  const client = createControlClient(options.region);
 
   const command = new GetEvaluatorCommand({
     evaluatorId: options.evaluatorId,
@@ -476,10 +478,7 @@ export interface ListEvaluatorsResult {
 }
 
 export async function listEvaluators(options: ListEvaluatorsOptions): Promise<ListEvaluatorsResult> {
-  const client = new BedrockAgentCoreControlClient({
-    region: options.region,
-    credentials: getCredentialProvider(),
-  });
+  const client = createControlClient(options.region);
 
   const command = new ListEvaluatorsCommand({
     maxResults: options.maxResults,
@@ -539,10 +538,7 @@ export async function updateOnlineEvalExecutionStatus(
  * Update an online evaluation config with any supported fields.
  */
 export async function updateOnlineEvalConfig(options: UpdateOnlineEvalOptions): Promise<UpdateOnlineEvalStatusResult> {
-  const client = new BedrockAgentCoreControlClient({
-    region: options.region,
-    credentials: getCredentialProvider(),
-  });
+  const client = createControlClient(options.region);
 
   const command = new UpdateOnlineEvaluationConfigCommand({
     onlineEvaluationConfigId: options.onlineEvaluationConfigId,
@@ -577,10 +573,7 @@ export interface GetOnlineEvalConfigResult {
 export async function getOnlineEvaluationConfig(
   options: GetOnlineEvalConfigOptions
 ): Promise<GetOnlineEvalConfigResult> {
-  const client = new BedrockAgentCoreControlClient({
-    region: options.region,
-    credentials: getCredentialProvider(),
-  });
+  const client = createControlClient(options.region);
 
   const command = new GetOnlineEvaluationConfigCommand({
     onlineEvaluationConfigId: options.configId,
