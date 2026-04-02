@@ -87,8 +87,8 @@ export async function handleImportMemory(options: ImportResourceOptions): Promis
     if (configWritten && configSnapshot && importCtx) {
       try {
         await importCtx.ctx.configIO.writeProjectSpec(configSnapshot);
-      } catch {
-        // best-effort rollback
+      } catch (err) {
+        console.warn(`Warning: Could not restore agentcore.json: ${err instanceof Error ? err.message : String(err)}`);
       }
     }
   };
@@ -117,7 +117,7 @@ export async function handleImportMemory(options: ImportResourceOptions): Promis
         memoryId = memories[0]!.memoryId;
         onProgress(`Found 1 memory: ${memoryId}. Auto-selecting.`);
       } else {
-        console.log(`\nFound ${memories.length} memory(ies):\n`);
+        console.log(`\nFound ${memories.length} ${memories.length === 1 ? 'memory' : 'memories'}:\n`);
         for (let i = 0; i < memories.length; i++) {
           const m = memories[i]!;
           console.log(`  ${dim}[${i + 1}]${reset} ${m.memoryId} — ${m.status}`);

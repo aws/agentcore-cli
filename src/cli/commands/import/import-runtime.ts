@@ -105,15 +105,17 @@ export async function handleImportRuntime(options: ImportResourceOptions): Promi
     if (configWritten && configSnapshot && importCtx) {
       try {
         await importCtx.ctx.configIO.writeProjectSpec(configSnapshot);
-      } catch {
-        // best-effort rollback
+      } catch (err) {
+        console.warn(`Warning: Could not restore agentcore.json: ${err instanceof Error ? err.message : String(err)}`);
       }
     }
     if (copiedAppDir && fs.existsSync(copiedAppDir)) {
       try {
         fs.rmSync(copiedAppDir, { recursive: true, force: true });
-      } catch {
-        // best-effort cleanup
+      } catch (err) {
+        console.warn(
+          `Warning: Could not clean up ${copiedAppDir}: ${err instanceof Error ? err.message : String(err)}`
+        );
       }
     }
   };

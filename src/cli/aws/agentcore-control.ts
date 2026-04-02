@@ -229,8 +229,8 @@ export async function getAgentRuntimeDetail(options: GetAgentRuntimeOptions): Pr
       if (tagsResponse.tags && Object.keys(tagsResponse.tags).length > 0) {
         tags = tagsResponse.tags;
       }
-    } catch {
-      // Tags are optional — continue without them if the call fails
+    } catch (err) {
+      console.warn(`Warning: Failed to fetch tags for runtime: ${err instanceof Error ? err.message : String(err)}`);
     }
   }
 
@@ -385,8 +385,8 @@ export async function getMemoryDetail(options: GetMemoryOptions): Promise<Memory
     if (tagsResponse.tags && Object.keys(tagsResponse.tags).length > 0) {
       tags = tagsResponse.tags;
     }
-  } catch {
-    // Tags are optional — continue without them if the call fails
+  } catch (err) {
+    console.warn(`Warning: Failed to fetch tags for memory: ${err instanceof Error ? err.message : String(err)}`);
   }
 
   return {
