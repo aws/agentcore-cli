@@ -13,12 +13,7 @@ export function CodePathScreen({ onSubmit, onExit }: CodePathScreenProps) {
     <Screen title="Agent Source Code" onExit={onExit} exitEnabled={false}>
       <Panel>
         <Text dimColor>Path to the directory containing your entrypoint file</Text>
-        <PathInput
-          pathType="directory"
-          placeholder="app/my-agent/"
-          onSubmit={onSubmit}
-          onCancel={onExit}
-        />
+        <PathInput pathType="directory" placeholder="app/my-agent/" onSubmit={onSubmit} onCancel={onExit} />
       </Panel>
     </Screen>
   );

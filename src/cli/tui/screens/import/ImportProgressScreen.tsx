@@ -1,7 +1,7 @@
-import type { ImportResult, ImportResourceResult } from '../../../commands/import/types';
+import type { ImportResourceResult, ImportResult } from '../../../commands/import/types';
 import { Panel } from '../../components/Panel';
 import { Screen } from '../../components/Screen';
-import { StepProgress, type Step } from '../../components/StepProgress';
+import { type Step, StepProgress } from '../../components/StepProgress';
 import { HELP_TEXT } from '../../constants';
 import type { ImportType } from './ImportSelectScreen';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
@@ -25,16 +25,12 @@ export function ImportProgressScreen({
   onError,
   onExit,
 }: ImportProgressScreenProps) {
-  const [steps, setSteps] = useState<Step[]>([
-    { label: `Importing ${importType}...`, status: 'running' },
-  ]);
+  const [steps, setSteps] = useState<Step[]>([{ label: `Importing ${importType}...`, status: 'running' }]);
   const started = useRef(false);
 
   const onProgress = useCallback((message: string) => {
     setSteps(prev => {
-      const updated = prev.map(s =>
-        s.status === 'running' ? { ...s, status: 'success' as const } : s
-      );
+      const updated = prev.map(s => (s.status === 'running' ? { ...s, status: 'success' as const } : s));
       return [...updated, { label: message, status: 'running' as const }];
     });
   }, []);
@@ -52,15 +48,11 @@ export function ImportProgressScreen({
 
         const result = await handler({ arn, code, onProgress });
         if (result.success) {
-          setSteps(prev =>
-            prev.map(s => (s.status === 'running' ? { ...s, status: 'success' } : s))
-          );
+          setSteps(prev => prev.map(s => (s.status === 'running' ? { ...s, status: 'success' } : s)));
           onSuccess(result);
         } else {
           setSteps(prev =>
-            prev.map(s =>
-              s.status === 'running' ? { ...s, status: 'error', error: result.error } : s
-            )
+            prev.map(s => (s.status === 'running' ? { ...s, status: 'error', error: result.error } : s))
           );
           onError(result.error ?? 'Import failed');
         }
@@ -72,15 +64,11 @@ export function ImportProgressScreen({
           onProgress,
         });
         if (result.success) {
-          setSteps(prev =>
-            prev.map(s => (s.status === 'running' ? { ...s, status: 'success' } : s))
-          );
+          setSteps(prev => prev.map(s => (s.status === 'running' ? { ...s, status: 'success' } : s)));
           onSuccess(result);
         } else {
           setSteps(prev =>
-            prev.map(s =>
-              s.status === 'running' ? { ...s, status: 'error', error: result.error } : s
-            )
+            prev.map(s => (s.status === 'running' ? { ...s, status: 'error', error: result.error } : s))
           );
           onError(result.error ?? 'Import failed');
         }
