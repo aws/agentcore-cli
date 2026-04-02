@@ -222,21 +222,16 @@ export async function handleImportMemory(options: ImportResourceOptions): Promis
     const targetName = target.name ?? 'default';
     const existingResource = await findResourceInDeployedState(ctx.configIO, targetName, 'memory', memoryId);
     if (existingResource) {
-      if (!options.name) {
-        const error = `Memory "${memoryId}" is already imported in this project as "${existingResource}". Remove it first before re-importing, or use --name to import under a different name.`;
-        logger.endStep('error', error);
-        logger.finalize(false);
-        return {
-          success: false,
-          error,
-          resourceType: 'memory',
-          resourceName: localName,
-          logPath: logger.getRelativeLogPath(),
-        };
-      }
-      onProgress(
-        `Warning: Memory "${memoryId}" already imported as "${existingResource}". Re-importing as "${localName}".`
-      );
+      const error = `Memory "${memoryId}" is already imported in this project as "${existingResource}". Remove it first before re-importing.`;
+      logger.endStep('error', error);
+      logger.finalize(false);
+      return {
+        success: false,
+        error,
+        resourceType: 'memory',
+        resourceName: localName,
+        logPath: logger.getRelativeLogPath(),
+      };
     }
     logger.endStep('success');
 

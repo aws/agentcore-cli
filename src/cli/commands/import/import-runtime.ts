@@ -318,21 +318,16 @@ export async function handleImportRuntime(options: ImportResourceOptions): Promi
     const targetName = target.name ?? 'default';
     const existingResource = await findResourceInDeployedState(ctx.configIO, targetName, 'runtime', runtimeId);
     if (existingResource) {
-      if (!options.name) {
-        const error = `Runtime "${runtimeId}" is already imported in this project as "${existingResource}". Remove it first before re-importing, or use --name to import under a different name.`;
-        logger.endStep('error', error);
-        logger.finalize(false);
-        return {
-          success: false,
-          error,
-          resourceType: 'runtime',
-          resourceName: localName,
-          logPath: logger.getRelativeLogPath(),
-        };
-      }
-      onProgress(
-        `Warning: Runtime "${runtimeId}" already imported as "${existingResource}". Re-importing as "${localName}".`
-      );
+      const error = `Runtime "${runtimeId}" is already imported in this project as "${existingResource}". Remove it first before re-importing.`;
+      logger.endStep('error', error);
+      logger.finalize(false);
+      return {
+        success: false,
+        error,
+        resourceType: 'runtime',
+        resourceName: localName,
+        logPath: logger.getRelativeLogPath(),
+      };
     }
     logger.endStep('success');
 
