@@ -1,8 +1,8 @@
-import type { ImportResult, ImportResourceResult } from '../../../commands/import/types';
-import { ErrorPrompt } from '../../components/PromptScreen';
-import { NextSteps, type NextStep } from '../../components/NextSteps';
-import { Screen } from '../../components/Screen';
+import type { ImportResourceResult, ImportResult } from '../../../commands/import/types';
+import { type NextStep, NextSteps } from '../../components/NextSteps';
 import { Panel } from '../../components/Panel';
+import { ErrorPrompt } from '../../components/PromptScreen';
+import { Screen } from '../../components/Screen';
 import { HELP_TEXT } from '../../constants';
 import { ArnInputScreen } from './ArnInputScreen';
 import { CodePathScreen } from './CodePathScreen';
@@ -38,15 +38,16 @@ const IMPORT_NEXT_STEPS: NextStep[] = [
 
 interface ImportFlowProps {
   onBack: () => void;
+  onNavigate?: (command: string) => void;
 }
 
-export function ImportFlow({ onBack }: ImportFlowProps) {
+export function ImportFlow({ onBack, onNavigate }: ImportFlowProps) {
   const [flow, setFlow] = useState<ImportFlowState>({ name: 'select-type' });
 
   if (flow.name === 'select-type') {
     return (
       <ImportSelectScreen
-        onSelect={(type) => {
+        onSelect={type => {
           if (type === 'runtime' || type === 'memory') {
             setFlow({ name: 'arn-input', resourceType: type });
           } else {
@@ -62,7 +63,7 @@ export function ImportFlow({ onBack }: ImportFlowProps) {
     return (
       <ArnInputScreen
         resourceType={flow.resourceType}
-        onSubmit={(arn) => {
+        onSubmit={arn => {
           if (flow.resourceType === 'runtime') {
             setFlow({ name: 'code-path', resourceType: 'runtime', arn });
           } else {
@@ -81,7 +82,7 @@ export function ImportFlow({ onBack }: ImportFlowProps) {
   if (flow.name === 'code-path') {
     return (
       <CodePathScreen
-        onSubmit={(codePath) => {
+        onSubmit={codePath => {
           setFlow({
             name: 'importing',
             importType: 'runtime',
@@ -97,7 +98,7 @@ export function ImportFlow({ onBack }: ImportFlowProps) {
   if (flow.name === 'yaml-path') {
     return (
       <YamlPathScreen
-        onSubmit={(yamlPath) => {
+        onSubmit={yamlPath => {
           setFlow({
             name: 'importing',
             importType: 'starter-toolkit',
@@ -116,10 +117,10 @@ export function ImportFlow({ onBack }: ImportFlowProps) {
         arn={flow.arn}
         code={flow.code}
         yamlPath={flow.yamlPath}
-        onSuccess={(result) => {
+        onSuccess={result => {
           setFlow({ name: 'success', importType: flow.importType, result });
         }}
-        onError={(message) => {
+        onError={message => {
           setFlow({ name: 'error', message });
         }}
         onExit={onBack}
@@ -129,40 +130,39 @@ export function ImportFlow({ onBack }: ImportFlowProps) {
 
   if (flow.name === 'success') {
     const result = flow.result;
-    const isResource = 'resourceType' in result;
 
     return (
       <Screen title="Import Complete" onExit={onBack} helpText={HELP_TEXT.BACK}>
         <Panel>
           <Box flexDirection="column">
             <Text color="green">Import successful!</Text>
-            {isResource && (
+            {'resourceType' in result && (
               <Box flexDirection="column" marginTop={1}>
                 <Text>
                   <Text dimColor>Type: </Text>
-                  <Text>{(result as ImportResourceResult).resourceType}</Text>
+                  <Text>{result.resourceType}</Text>
                 </Text>
                 <Text>
                   <Text dimColor>Name: </Text>
-                  <Text>{(result as ImportResourceResult).resourceName}</Text>
+                  <Text>{result.resourceName}</Text>
                 </Text>
-                {(result as ImportResourceResult).resourceId && (
+                {result.resourceId && (
                   <Text>
                     <Text dimColor>ID: </Text>
-                    <Text>{(result as ImportResourceResult).resourceId}</Text>
+                    <Text>{result.resourceId}</Text>
                   </Text>
                 )}
               </Box>
             )}
-            {!isResource && (
+            {'importedAgents' in result && (
               <Box flexDirection="column" marginTop={1}>
-                {(result as ImportResult).importedAgents?.map((agent) => (
+                {result.importedAgents?.map(agent => (
                   <Text key={agent}>
                     <Text dimColor>Agent: </Text>
                     <Text>{agent}</Text>
                   </Text>
                 ))}
-                {(result as ImportResult).importedMemories?.map((mem) => (
+                {result.importedMemories?.map(mem => (
                   <Text key={mem}>
                     <Text dimColor>Memory: </Text>
                     <Text>{mem}</Text>
@@ -172,7 +172,12 @@ export function ImportFlow({ onBack }: ImportFlowProps) {
             )}
           </Box>
         </Panel>
-        <NextSteps steps={IMPORT_NEXT_STEPS} isInteractive={true} onSelect={() => onBack()} onBack={onBack} />
+        <NextSteps
+          steps={IMPORT_NEXT_STEPS}
+          isInteractive={true}
+          onSelect={step => (onNavigate ? onNavigate(step.command) : onBack())}
+          onBack={onBack}
+        />
       </Screen>
     );
   }

@@ -189,6 +189,23 @@ describe('PathInput', () => {
     expect(frame).not.toContain('.gitignore');
   });
 
+  it('shows dotfiles when showHidden is true', () => {
+    mockReaddirSync.mockReturnValue([
+      makeDirent('.hidden', true),
+      makeDirent('.bedrock_agentcore.yaml', false),
+      makeDirent('visible', true),
+    ]);
+
+    const { lastFrame } = render(
+      <PathInput onSubmit={vi.fn()} onCancel={vi.fn()} basePath="/base" showHidden={true} />
+    );
+
+    const frame = lastFrame()!;
+    expect(frame).toContain('visible/');
+    expect(frame).toContain('.hidden');
+    expect(frame).toContain('.bedrock_agentcore.yaml');
+  });
+
   it('navigates dropdown with arrow keys', async () => {
     mockReaddirSync.mockReturnValue([makeDirent('alpha', true), makeDirent('beta', true), makeDirent('gamma', true)]);
 

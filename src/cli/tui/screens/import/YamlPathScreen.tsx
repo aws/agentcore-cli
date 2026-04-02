@@ -16,6 +16,7 @@ export function YamlPathScreen({ onSubmit, onExit }: YamlPathScreenProps) {
         <PathInput
           pathType="file"
           placeholder=".bedrock_agentcore.yaml"
+          showHidden={true}
           onSubmit={onSubmit}
           onCancel={onExit}
         />

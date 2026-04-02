@@ -4,7 +4,6 @@ import { LayoutProvider } from './context';
 import { CLI_ONLY_EXAMPLES } from './copy';
 import { MissingProjectMessage, WrongDirectoryMessage, getProjectRootMismatch, projectExists } from './guards';
 import { AddFlow } from './screens/add/AddFlow';
-import { ImportFlow } from './screens/import';
 import { CliOnlyScreen } from './screens/cli-only';
 import { CreateScreen } from './screens/create';
 import { DeployScreen } from './screens/deploy/DeployScreen';
@@ -12,6 +11,7 @@ import { DevScreen } from './screens/dev/DevScreen';
 import { EvalHubScreen, EvalScreen } from './screens/eval';
 import { FetchAccessScreen } from './screens/fetch-access';
 import { HelpScreen, HomeScreen } from './screens/home';
+import { ImportFlow } from './screens/import';
 import { InvokeScreen } from './screens/invoke';
 import { OnlineEvalDashboard } from './screens/online-eval';
 import { PackageScreen } from './screens/package';
@@ -262,7 +262,12 @@ function AppContent() {
   }
 
   if (route.name === 'import') {
-    return <ImportFlow onBack={() => setRoute({ name: 'help' })} />;
+    return (
+      <ImportFlow
+        onBack={() => setRoute({ name: 'help' })}
+        onNavigate={command => setRoute({ name: command } as Route)}
+      />
+    );
   }
 
   if (route.name === 'update') {
