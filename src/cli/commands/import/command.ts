@@ -11,7 +11,9 @@ const dim = '\x1b[2m';
 const reset = '\x1b[0m';
 
 export const registerImport = (program: Command) => {
-  const importCmd = program.command('import').description('Import resources into the project');
+  const importCmd = program
+    .command('import')
+    .description('Import a runtime, memory, or starter toolkit into this project. [experimental]');
 
   // Existing YAML flow: agentcore import --source <path>
   importCmd
