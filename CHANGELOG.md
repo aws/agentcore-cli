@@ -2,6 +2,17 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.6.0] - 2026-04-02
+
+### Added
+- feat: add code-based evaluator support (#739) (11ca658)
+
+### Other Changes
+- ci: block schema changes in PRs (#712) (8119910)
+- fix(ci): regenerate lockfile for npm 11 compatibility (#770) (ee7aea2)
+- feat(import): add runtime and memory import subcommands with TUI wizard (#763) (cb79649)
+- ci: use draft releases for PR tarballs to avoid notifying watchers (#745) (1a45c28)
+
 ## [0.5.1] - 2026-03-31
 
 ### Added
