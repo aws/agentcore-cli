@@ -69,7 +69,7 @@ export function ImportFlow({ onBack, onNavigate }: ImportFlowProps) {
           } else {
             setFlow({
               name: 'importing',
-              importType: 'memory',
+              importType: flow.resourceType,
               arn,
             });
           }
