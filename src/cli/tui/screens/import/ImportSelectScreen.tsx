@@ -2,7 +2,7 @@ import type { SelectableItem } from '../../components/SelectList';
 import { SelectScreen } from '../../components/SelectScreen';
 import { Text } from 'ink';
 
-export type ImportType = 'runtime' | 'memory' | 'starter-toolkit';
+export type ImportType = 'runtime' | 'memory' | 'evaluator' | 'starter-toolkit';
 
 interface ImportSelectItem extends SelectableItem {
   id: ImportType;
@@ -18,6 +18,11 @@ const IMPORT_OPTIONS: ImportSelectItem[] = [
     id: 'memory',
     title: 'Memory',
     description: 'Import an existing AgentCore Memory from your AWS account',
+  },
+  {
+    id: 'evaluator',
+    title: 'Evaluator',
+    description: 'Import an existing AgentCore Evaluator from your AWS account',
   },
   {
     id: 'starter-toolkit',

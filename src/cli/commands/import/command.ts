@@ -1,4 +1,5 @@
 import { handleImport } from './actions';
+import { registerImportEvaluator } from './import-evaluator';
 import { registerImportMemory } from './import-memory';
 import { registerImportRuntime } from './import-runtime';
 import type { Command } from '@commander-js/extra-typings';
@@ -151,4 +152,5 @@ export const registerImport = (program: Command) => {
   // Register subcommands for importing individual resource types from AWS
   registerImportRuntime(importCmd);
   registerImportMemory(importCmd);
+  registerImportEvaluator(importCmd);
 };

@@ -5,6 +5,7 @@ export const CFN_RESOURCE_IDENTIFIERS: Record<string, string[]> = {
   'AWS::BedrockAgentCore::Runtime': ['AgentRuntimeId'],
   'AWS::BedrockAgentCore::Memory': ['MemoryId'],
   'AWS::BedrockAgentCore::Gateway': ['GatewayIdentifier'],
+  'AWS::BedrockAgentCore::Evaluator': ['EvaluatorId'],
 };
 
 /**

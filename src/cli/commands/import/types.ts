@@ -64,6 +64,11 @@ export interface ParsedStarterToolkitConfig {
 }
 
 /**
+ * Resource types supported by the import subcommands.
+ */
+export type ImportableResourceType = 'runtime' | 'memory' | 'evaluator';
+
+/**
  * Resource to be imported via CloudFormation IMPORT change set.
  */
 export interface ResourceToImport {
@@ -86,12 +91,12 @@ export interface ImportResult {
 }
 
 /**
- * Result for single-resource import (runtime or memory).
+ * Result for single-resource import (runtime, memory, evaluator, etc.).
  */
 export interface ImportResourceResult {
   success: boolean;
   error?: string;
-  resourceType: 'runtime' | 'memory';
+  resourceType: ImportableResourceType;
   resourceName: string;
   resourceId?: string;
   logPath?: string;
@@ -102,10 +107,16 @@ export interface ImportResourceResult {
  */
 export interface ImportResourceOptions {
   arn?: string;
-  code?: string;
   target?: string;
   name?: string;
-  entrypoint?: string;
   yes?: boolean;
   onProgress?: (message: string) => void;
+}
+
+/**
+ * Extended options for runtime import (includes source code fields).
+ */
+export interface RuntimeImportOptions extends ImportResourceOptions {
+  code?: string;
+  entrypoint?: string;
 }

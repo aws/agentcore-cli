@@ -4,7 +4,7 @@ import { detectAccount, validateAwsCredentials } from '../../aws/account';
 import { ExecLogger } from '../../logging';
 import { setupPythonProject } from '../../operations/python/setup';
 import { getTemplatePath } from '../../templates/templateRoot';
-import type { ImportResourceOptions, ImportResourceResult } from './types';
+import type { ImportResourceOptions, ImportResourceResult, ImportableResourceType } from './types';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 
@@ -60,7 +60,7 @@ export async function resolveImportContext(options: ImportResourceOptions, comma
 export function failResult(
   logger: ExecLogger,
   error: string,
-  resourceType: 'runtime' | 'memory',
+  resourceType: ImportableResourceType,
   resourceName: string
 ): ImportResourceResult {
   logger.endStep('error', error);
@@ -128,9 +128,9 @@ export async function resolveImportTarget(options: ResolveTargetOptions): Promis
   const { configIO, targetName, arn, onProgress } = options;
 
   // Validate ARN format early if provided
-  if (arn && !/^arn:aws:bedrock-agentcore:([^:]+):([^:]+):(runtime|memory)\/(.+)$/.test(arn)) {
+  if (arn && !/^arn:aws:bedrock-agentcore:([^:]+):([^:]+):(runtime|memory|evaluator)\/(.+)$/.test(arn)) {
     throw new Error(
-      `Not a valid ARN: "${arn}".\nExpected format: arn:aws:bedrock-agentcore:<region>:<account>:<runtime|memory>/<id>`
+      `Not a valid ARN: "${arn}".\nExpected format: arn:aws:bedrock-agentcore:<region>:<account>:<runtime|memory|evaluator>/<id>`
     );
   }
 
@@ -206,7 +206,7 @@ export interface ParsedArn {
   resourceId: string;
 }
 
-const ARN_PATTERN = /^arn:aws:bedrock-agentcore:([^:]+):([^:]+):(runtime|memory)\/(.+)$/;
+const ARN_PATTERN = /^arn:aws:bedrock-agentcore:([^:]+):([^:]+):(runtime|memory|evaluator)\/(.+)$/;
 
 /**
  * Parse and validate a BedrockAgentCore ARN.
@@ -214,7 +214,7 @@ const ARN_PATTERN = /^arn:aws:bedrock-agentcore:([^:]+):([^:]+):(runtime|memory)
  */
 export function parseAndValidateArn(
   arn: string,
-  expectedResourceType: 'runtime' | 'memory',
+  expectedResourceType: ImportableResourceType,
   target: { region: string; account: string }
 ): ParsedArn {
   const match = ARN_PATTERN.exec(arn);
@@ -268,7 +268,7 @@ export function toStackName(projectName: string, targetName: string): string {
 export async function findResourceInDeployedState(
   configIO: ConfigIO,
   targetName: string,
-  resourceType: 'runtime' | 'memory',
+  resourceType: ImportableResourceType,
   resourceId: string
 ): Promise<string | undefined> {
   /* eslint-disable @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-argument, @typescript-eslint/no-explicit-any */
@@ -276,11 +276,22 @@ export async function findResourceInDeployedState(
   const targetState = state.targets?.[targetName];
   if (!targetState?.resources) return undefined;
 
-  const collection = resourceType === 'runtime' ? targetState.resources.runtimes : targetState.resources.memories;
+  const collectionKeyMap: Record<ImportableResourceType, string> = {
+    runtime: 'runtimes',
+    memory: 'memories',
+    evaluator: 'evaluators',
+  };
+  const idFieldMap: Record<ImportableResourceType, string> = {
+    runtime: 'runtimeId',
+    memory: 'memoryId',
+    evaluator: 'evaluatorId',
+  };
+
+  const collection = targetState.resources[collectionKeyMap[resourceType]];
   if (!collection) return undefined;
 
+  const idField = idFieldMap[resourceType];
   for (const [name, entry] of Object.entries(collection)) {
-    const idField = resourceType === 'runtime' ? 'runtimeId' : 'memoryId';
     if ((entry as any)[idField] === resourceId) return name;
   }
   /* eslint-enable @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-argument, @typescript-eslint/no-explicit-any */
@@ -289,7 +300,7 @@ export async function findResourceInDeployedState(
 }
 
 export interface ImportedResource {
-  type: 'runtime' | 'memory';
+  type: ImportableResourceType;
   name: string;
   id: string;
   arn: string;
@@ -323,6 +334,12 @@ export async function updateDeployedState(
       targetState.resources.memories[resource.name] = {
         memoryId: resource.id,
         memoryArn: resource.arn,
+      };
+    } else if (resource.type === 'evaluator') {
+      targetState.resources.evaluators ??= {};
+      targetState.resources.evaluators[resource.name] = {
+        evaluatorId: resource.id,
+        evaluatorArn: resource.arn,
       };
     }
   }
@@ -377,7 +394,6 @@ export function fixPyprojectForSetuptools(pyprojectPath: string): void {
 
   const content = fs.readFileSync(pyprojectPath, 'utf-8');
 
-  // Already has [tool.setuptools] section — don't touch it
   if (content.includes('[tool.setuptools]')) return;
 
   // Append the fix
@@ -409,7 +425,6 @@ export async function copyAgentSource(options: CopyAgentSourceOptions): Promise<
     onProgress?.(`Copying agent source from ${sourcePath} to ./${APP_DIR}/${agentName}`);
     copyDirRecursive(sourcePath, appDir);
 
-    // Also copy pyproject.toml from the parent of source_path if it exists
     const parentPyproject = path.join(path.dirname(sourcePath), 'pyproject.toml');
     const destPyproject = path.join(appDir, 'pyproject.toml');
     if (fs.existsSync(parentPyproject) && !fs.existsSync(destPyproject)) {

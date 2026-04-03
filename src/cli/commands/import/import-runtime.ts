@@ -11,7 +11,7 @@ import {
   toStackName,
 } from './import-utils';
 import { findLogicalIdByProperty, findLogicalIdsByType } from './template-utils';
-import type { ImportResourceOptions, ImportResourceResult } from './types';
+import type { ImportResourceResult, RuntimeImportOptions } from './types';
 import type { Command } from '@commander-js/extra-typings';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
@@ -93,7 +93,7 @@ function toAgentEnvSpec(
 /**
  * Handle `agentcore import runtime`.
  */
-export async function handleImportRuntime(options: ImportResourceOptions): Promise<ImportResourceResult> {
+export async function handleImportRuntime(options: RuntimeImportOptions): Promise<ImportResourceResult> {
   // Rollback state
   let configSnapshot: AgentCoreProjectSpec | undefined;
   let configWritten = false;
@@ -381,7 +381,7 @@ export function registerImportRuntime(importCmd: Command): void {
     .option('--entrypoint <file>', 'Entrypoint file (auto-detected from runtime, e.g. main.py)')
     .option('--name <name>', 'Local name for the imported runtime')
     .option('-y, --yes', 'Auto-confirm prompts')
-    .action(async (cliOptions: ImportResourceOptions) => {
+    .action(async (cliOptions: RuntimeImportOptions) => {
       const result = await handleImportRuntime(cliOptions);
 
       if (result.success) {

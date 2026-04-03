@@ -424,6 +424,19 @@ export interface GetEvaluatorOptions {
   evaluatorId: string;
 }
 
+export interface GetEvaluatorLlmConfig {
+  model: string;
+  instructions: string;
+  ratingScale: {
+    numerical?: { value: number; label: string; definition: string }[];
+    categorical?: { label: string; definition: string }[];
+  };
+}
+
+export interface GetEvaluatorCodeBasedConfig {
+  lambdaArn: string;
+}
+
 export interface GetEvaluatorResult {
   evaluatorId: string;
   evaluatorArn: string;
@@ -431,6 +444,11 @@ export interface GetEvaluatorResult {
   level: string;
   status: string;
   description?: string;
+  evaluatorConfig?: {
+    llmAsAJudge?: GetEvaluatorLlmConfig;
+    codeBased?: GetEvaluatorCodeBasedConfig;
+  };
+  tags?: Record<string, string>;
 }
 
 export async function getEvaluator(options: GetEvaluatorOptions): Promise<GetEvaluatorResult> {
@@ -446,6 +464,62 @@ export async function getEvaluator(options: GetEvaluatorOptions): Promise<GetEva
     throw new Error(`No evaluator found for ID ${options.evaluatorId}`);
   }
 
+  // Map SDK evaluatorConfig union to flat optional-field format
+  let evaluatorConfig: GetEvaluatorResult['evaluatorConfig'];
+  if (response.evaluatorConfig) {
+    if ('llmAsAJudge' in response.evaluatorConfig && response.evaluatorConfig.llmAsAJudge) {
+      const llm = response.evaluatorConfig.llmAsAJudge;
+      // AWS API nests model ID under modelConfig.bedrockEvaluatorModelConfig.modelId;
+      // CLI schema flattens this to config.llmAsAJudge.model
+      let model = '';
+      if (
+        llm.modelConfig &&
+        'bedrockEvaluatorModelConfig' in llm.modelConfig &&
+        llm.modelConfig.bedrockEvaluatorModelConfig
+      ) {
+        model = llm.modelConfig.bedrockEvaluatorModelConfig.modelId ?? '';
+      }
+      const ratingScale: GetEvaluatorLlmConfig['ratingScale'] = {};
+      if (llm.ratingScale) {
+        if ('numerical' in llm.ratingScale && llm.ratingScale.numerical) {
+          ratingScale.numerical = llm.ratingScale.numerical.map(n => ({
+            value: n.value ?? 0,
+            label: n.label ?? '',
+            definition: n.definition ?? '',
+          }));
+        } else if ('categorical' in llm.ratingScale && llm.ratingScale.categorical) {
+          ratingScale.categorical = llm.ratingScale.categorical.map(c => ({
+            label: c.label ?? '',
+            definition: c.definition ?? '',
+          }));
+        }
+      }
+      evaluatorConfig = {
+        llmAsAJudge: { model, instructions: llm.instructions ?? '', ratingScale },
+      };
+    } else if ('codeBased' in response.evaluatorConfig && response.evaluatorConfig.codeBased) {
+      const cb = response.evaluatorConfig.codeBased;
+      if ('lambdaConfig' in cb && cb.lambdaConfig) {
+        evaluatorConfig = {
+          codeBased: { lambdaArn: cb.lambdaConfig.lambdaArn ?? '' },
+        };
+      }
+    }
+  }
+
+  // Fetch tags (non-fatal if it fails)
+  let tags: Record<string, string> | undefined;
+  if (response.evaluatorArn) {
+    try {
+      const tagsResponse = await client.send(new ListTagsForResourceCommand({ resourceArn: response.evaluatorArn }));
+      if (tagsResponse.tags && Object.keys(tagsResponse.tags).length > 0) {
+        tags = tagsResponse.tags;
+      }
+    } catch {
+      // Tags are optional — continue without them
+    }
+  }
+
   return {
     evaluatorId: response.evaluatorId,
     evaluatorArn: response.evaluatorArn ?? '',
@@ -453,6 +527,8 @@ export async function getEvaluator(options: GetEvaluatorOptions): Promise<GetEva
     level: response.level ?? 'SESSION',
     status: response.status ?? 'UNKNOWN',
     description: response.description,
+    evaluatorConfig,
+    tags,
   };
 }
 
@@ -499,6 +575,23 @@ export async function listEvaluators(options: ListEvaluatorsOptions): Promise<Li
     })),
     nextToken: response.nextToken,
   };
+}
+
+/**
+ * List all custom evaluators in the given region, paginating through all pages.
+ * Filters out Builtin evaluators — only custom evaluators can be imported.
+ */
+export async function listAllEvaluators(options: { region: string }): Promise<EvaluatorSummary[]> {
+  const evaluators: EvaluatorSummary[] = [];
+  let nextToken: string | undefined;
+
+  do {
+    const result = await listEvaluators({ region: options.region, maxResults: 100, nextToken });
+    evaluators.push(...result.evaluators.filter(e => !e.evaluatorName.startsWith('Builtin.')));
+    nextToken = result.nextToken;
+  } while (nextToken);
+
+  return evaluators;
 }
 
 // ============================================================================
