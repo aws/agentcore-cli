@@ -3,17 +3,17 @@ import { Screen } from '../../components/Screen';
 import { TextInput } from '../../components/TextInput';
 import { HELP_TEXT } from '../../constants';
 
-const ARN_PATTERN = /^arn:aws:bedrock-agentcore:[^:]+:[^:]+:(runtime|memory|evaluator)\/.+$/;
+const ARN_PATTERN = /^arn:aws:bedrock-agentcore:[^:]+:[^:]+:(runtime|memory|evaluator|online-evaluation-config)\/.+$/;
 
 function validateArn(value: string): true | string {
   if (!ARN_PATTERN.test(value)) {
-    return 'Invalid ARN format. Expected: arn:aws:bedrock-agentcore:<region>:<account>:<runtime|memory|evaluator>/<id>';
+    return 'Invalid ARN format. Expected: arn:aws:bedrock-agentcore:<region>:<account>:<resource-type>/<id>';
   }
   return true;
 }
 
 interface ArnInputScreenProps {
-  resourceType: 'runtime' | 'memory' | 'evaluator';
+  resourceType: 'runtime' | 'memory' | 'evaluator' | 'online-eval';
   onSubmit: (arn: string) => void;
   onExit: () => void;
 }
@@ -22,11 +22,13 @@ const RESOURCE_TYPE_LABELS: Record<string, string> = {
   runtime: 'Import Runtime',
   memory: 'Import Memory',
   evaluator: 'Import Evaluator',
+  'online-eval': 'Import Online Eval Config',
 };
 
 export function ArnInputScreen({ resourceType, onSubmit, onExit }: ArnInputScreenProps) {
   const title = RESOURCE_TYPE_LABELS[resourceType] ?? `Import ${resourceType}`;
-  const placeholder = `arn:aws:bedrock-agentcore:<region>:<account>:${resourceType}/<id>`;
+  const arnResourceType = resourceType === 'online-eval' ? 'online-evaluation-config' : resourceType;
+  const placeholder = `arn:aws:bedrock-agentcore:<region>:<account>:${arnResourceType}/<id>`;
 
   return (
     <Screen title={title} onExit={onExit} helpText={HELP_TEXT.TEXT_INPUT}>

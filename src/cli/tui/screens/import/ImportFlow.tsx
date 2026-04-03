@@ -14,7 +14,7 @@ import React, { useState } from 'react';
 
 type ImportFlowState =
   | { name: 'select-type' }
-  | { name: 'arn-input'; resourceType: 'runtime' | 'memory' | 'evaluator' }
+  | { name: 'arn-input'; resourceType: 'runtime' | 'memory' | 'evaluator' | 'online-eval' }
   | { name: 'code-path'; resourceType: 'runtime'; arn: string }
   | { name: 'yaml-path' }
   | {
@@ -48,7 +48,7 @@ export function ImportFlow({ onBack, onNavigate }: ImportFlowProps) {
     return (
       <ImportSelectScreen
         onSelect={type => {
-          if (type === 'runtime' || type === 'memory' || type === 'evaluator') {
+          if (type === 'runtime' || type === 'memory' || type === 'evaluator' || type === 'online-eval') {
             setFlow({ name: 'arn-input', resourceType: type });
           } else {
             setFlow({ name: 'yaml-path' });

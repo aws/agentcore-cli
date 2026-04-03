@@ -40,13 +40,20 @@ export function ImportProgressScreen({
     started.current = true;
 
     const run = async () => {
-      if (importType === 'runtime' || importType === 'memory' || importType === 'evaluator') {
+      if (
+        importType === 'runtime' ||
+        importType === 'memory' ||
+        importType === 'evaluator' ||
+        importType === 'online-eval'
+      ) {
         const handler =
           importType === 'runtime'
             ? (await import('../../../commands/import/import-runtime')).handleImportRuntime
             : importType === 'memory'
               ? (await import('../../../commands/import/import-memory')).handleImportMemory
-              : (await import('../../../commands/import/import-evaluator')).handleImportEvaluator;
+              : importType === 'evaluator'
+                ? (await import('../../../commands/import/import-evaluator')).handleImportEvaluator
+                : (await import('../../../commands/import/import-online-eval')).handleImportOnlineEval;
 
         const result = await handler({ arn, code, onProgress });
         if (result.success) {
