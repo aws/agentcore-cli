@@ -128,9 +128,12 @@ export async function resolveImportTarget(options: ResolveTargetOptions): Promis
   const { configIO, targetName, arn, onProgress } = options;
 
   // Validate ARN format early if provided
-  if (arn && !/^arn:aws:bedrock-agentcore:([^:]+):([^:]+):(runtime|memory|evaluator)\/(.+)$/.test(arn)) {
+  if (
+    arn &&
+    !/^arn:aws:bedrock-agentcore:([^:]+):([^:]+):(runtime|memory|evaluator|online-evaluation-config)\/(.+)$/.test(arn)
+  ) {
     throw new Error(
-      `Not a valid ARN: "${arn}".\nExpected format: arn:aws:bedrock-agentcore:<region>:<account>:<runtime|memory|evaluator>/<id>`
+      `Not a valid ARN: "${arn}".\nExpected format: arn:aws:bedrock-agentcore:<region>:<account>:<runtime|memory|evaluator|online-evaluation-config>/<id>`
     );
   }
 
@@ -206,7 +209,8 @@ export interface ParsedArn {
   resourceId: string;
 }
 
-const ARN_PATTERN = /^arn:aws:bedrock-agentcore:([^:]+):([^:]+):(runtime|memory|evaluator)\/(.+)$/;
+const ARN_PATTERN =
+  /^arn:aws:bedrock-agentcore:([^:]+):([^:]+):(runtime|memory|evaluator|online-evaluation-config)\/(.+)$/;
 
 /**
  * Parse and validate a BedrockAgentCore ARN.
@@ -280,11 +284,13 @@ export async function findResourceInDeployedState(
     runtime: 'runtimes',
     memory: 'memories',
     evaluator: 'evaluators',
+    'online-eval': 'onlineEvalConfigs',
   };
   const idFieldMap: Record<ImportableResourceType, string> = {
     runtime: 'runtimeId',
     memory: 'memoryId',
     evaluator: 'evaluatorId',
+    'online-eval': 'onlineEvaluationConfigId',
   };
 
   const collection = targetState.resources[collectionKeyMap[resourceType]];
@@ -340,6 +346,12 @@ export async function updateDeployedState(
       targetState.resources.evaluators[resource.name] = {
         evaluatorId: resource.id,
         evaluatorArn: resource.arn,
+      };
+    } else if (resource.type === 'online-eval') {
+      targetState.resources.onlineEvalConfigs ??= {};
+      targetState.resources.onlineEvalConfigs[resource.name] = {
+        onlineEvaluationConfigId: resource.id,
+        onlineEvaluationConfigArn: resource.arn,
       };
     }
   }

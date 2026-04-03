@@ -66,7 +66,7 @@ export interface ParsedStarterToolkitConfig {
 /**
  * Resource types supported by the import subcommands.
  */
-export type ImportableResourceType = 'runtime' | 'memory' | 'evaluator';
+export type ImportableResourceType = 'runtime' | 'memory' | 'evaluator' | 'online-eval';
 
 /**
  * Resource to be imported via CloudFormation IMPORT change set.

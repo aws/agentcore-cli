@@ -170,11 +170,7 @@ export async function handleImportRuntime(options: RuntimeImportOptions): Promis
     }
 
     // Derive local name
-    let localName = options.name ?? runtimeDetail.agentRuntimeName;
-    const prefix = `${ctx.projectName}_`;
-    if (localName.startsWith(prefix)) {
-      localName = localName.slice(prefix.length);
-    }
+    const localName = options.name ?? runtimeDetail.agentRuntimeName;
     const NAME_REGEX = /^[a-zA-Z][a-zA-Z0-9_]{0,47}$/;
     if (!NAME_REGEX.test(localName)) {
       return failResult(

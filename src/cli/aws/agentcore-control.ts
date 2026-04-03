@@ -8,6 +8,7 @@ import {
   ListAgentRuntimesCommand,
   ListEvaluatorsCommand,
   ListMemoriesCommand,
+  ListOnlineEvaluationConfigsCommand,
   ListTagsForResourceCommand,
   UpdateOnlineEvaluationConfigCommand,
 } from '@aws-sdk/client-bedrock-agentcore-control';
@@ -595,7 +596,72 @@ export async function listAllEvaluators(options: { region: string }): Promise<Ev
 }
 
 // ============================================================================
-// Online Eval Config
+// Online Eval Config — List
+// ============================================================================
+
+export interface ListOnlineEvalConfigsOptions {
+  region: string;
+  maxResults?: number;
+  nextToken?: string;
+}
+
+export interface OnlineEvalConfigSummary {
+  onlineEvaluationConfigId: string;
+  onlineEvaluationConfigArn: string;
+  onlineEvaluationConfigName: string;
+  description?: string;
+  status: string;
+  executionStatus: string;
+}
+
+export interface ListOnlineEvalConfigsResult {
+  configs: OnlineEvalConfigSummary[];
+  nextToken?: string;
+}
+
+export async function listOnlineEvaluationConfigs(
+  options: ListOnlineEvalConfigsOptions
+): Promise<ListOnlineEvalConfigsResult> {
+  const client = createControlClient(options.region);
+
+  const command = new ListOnlineEvaluationConfigsCommand({
+    maxResults: options.maxResults,
+    nextToken: options.nextToken,
+  });
+
+  const response = await client.send(command);
+
+  return {
+    configs: (response.onlineEvaluationConfigs ?? []).map(c => ({
+      onlineEvaluationConfigId: c.onlineEvaluationConfigId ?? '',
+      onlineEvaluationConfigArn: c.onlineEvaluationConfigArn ?? '',
+      onlineEvaluationConfigName: c.onlineEvaluationConfigName ?? '',
+      description: c.description,
+      status: c.status ?? 'UNKNOWN',
+      executionStatus: c.executionStatus ?? 'UNKNOWN',
+    })),
+    nextToken: response.nextToken,
+  };
+}
+
+/**
+ * List all online evaluation configs in the given region, paginating through all pages.
+ */
+export async function listAllOnlineEvaluationConfigs(options: { region: string }): Promise<OnlineEvalConfigSummary[]> {
+  const configs: OnlineEvalConfigSummary[] = [];
+  let nextToken: string | undefined;
+
+  do {
+    const result = await listOnlineEvaluationConfigs({ region: options.region, maxResults: 100, nextToken });
+    configs.push(...result.configs);
+    nextToken = result.nextToken;
+  } while (nextToken);
+
+  return configs;
+}
+
+// ============================================================================
+// Online Eval Config — Update / Get
 // ============================================================================
 
 export type OnlineEvalExecutionStatus = 'ENABLED' | 'DISABLED';
@@ -661,6 +727,12 @@ export interface GetOnlineEvalConfigResult {
   description?: string;
   failureReason?: string;
   outputLogGroupName?: string;
+  /** Sampling percentage from the rule config */
+  samplingPercentage?: number;
+  /** Service names from CloudWatch data source config (e.g. "projectName_agentName.DEFAULT") */
+  serviceNames?: string[];
+  /** Evaluator IDs referenced by this config */
+  evaluatorIds?: string[];
 }
 
 export async function getOnlineEvaluationConfig(
@@ -679,6 +751,14 @@ export async function getOnlineEvaluationConfig(
   }
 
   const logGroupName = response.outputConfig?.cloudWatchConfig?.logGroupName;
+  const samplingPercentage = response.rule?.samplingConfig?.samplingPercentage;
+  const serviceNames =
+    response.dataSourceConfig && 'cloudWatchLogs' in response.dataSourceConfig
+      ? response.dataSourceConfig.cloudWatchLogs?.serviceNames
+      : undefined;
+  const evaluatorIds = (response.evaluators ?? [])
+    .map(e => ('evaluatorId' in e ? e.evaluatorId : undefined))
+    .filter((id): id is string => !!id);
 
   return {
     configId: response.onlineEvaluationConfigId,
@@ -689,5 +769,8 @@ export async function getOnlineEvaluationConfig(
     description: response.description,
     failureReason: response.failureReason,
     outputLogGroupName: logGroupName,
+    samplingPercentage,
+    serviceNames,
+    evaluatorIds,
   };
 }

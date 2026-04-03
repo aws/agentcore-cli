@@ -1,6 +1,7 @@
 import { handleImport } from './actions';
 import { registerImportEvaluator } from './import-evaluator';
 import { registerImportMemory } from './import-memory';
+import { registerImportOnlineEval } from './import-online-eval';
 import { registerImportRuntime } from './import-runtime';
 import type { Command } from '@commander-js/extra-typings';
 import * as fs from 'node:fs';
@@ -153,4 +154,5 @@ export const registerImport = (program: Command) => {
   registerImportRuntime(importCmd);
   registerImportMemory(importCmd);
   registerImportEvaluator(importCmd);
+  registerImportOnlineEval(importCmd);
 };
