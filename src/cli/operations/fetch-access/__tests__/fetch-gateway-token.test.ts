@@ -367,5 +367,121 @@ describe('fetchGatewayToken', () => {
 
       await expect(fetchGatewayToken('myGateway', { configIO })).rejects.toThrow('Token request failed: 401');
     });
+
+    it('lists available OAuth credentials in error when no match found', async () => {
+      const projectSpecWithOtherCred = {
+        ...defaultProjectSpecCustomJwt,
+        credentials: [
+          {
+            authorizerType: 'OAuthCredentialProvider',
+            name: 'my-custom-identity',
+            discoveryUrl: DISCOVERY_URL,
+          },
+        ],
+      };
+
+      const configIO = createMockConfigIO({
+        projectSpec: projectSpecWithOtherCred,
+      });
+
+      await expect(fetchGatewayToken('myGateway', { configIO })).rejects.toThrow(
+        'Available OAuth credentials: my-custom-identity'
+      );
+    });
+
+    it('suggests --identity-name in error when credentials exist but none match', async () => {
+      const projectSpecWithOtherCred = {
+        ...defaultProjectSpecCustomJwt,
+        credentials: [
+          {
+            authorizerType: 'OAuthCredentialProvider',
+            name: 'my-custom-identity',
+            discoveryUrl: DISCOVERY_URL,
+          },
+        ],
+      };
+
+      const configIO = createMockConfigIO({
+        projectSpec: projectSpecWithOtherCred,
+      });
+
+      await expect(fetchGatewayToken('myGateway', { configIO })).rejects.toThrow('--identity-name');
+    });
+  });
+
+  describe('--identity-name option', () => {
+    it('uses custom identity name instead of default convention', async () => {
+      vi.mocked(readEnvFile).mockResolvedValue({
+        AGENTCORE_CREDENTIAL_MY_CUSTOM_IDENTITY_CLIENT_SECRET: 'custom-secret',
+        AGENTCORE_CREDENTIAL_MY_CUSTOM_IDENTITY_CLIENT_ID: 'custom-client',
+      });
+
+      vi.mocked(global.fetch)
+        .mockResolvedValueOnce({
+          ok: true,
+          json: () => Promise.resolve({ token_endpoint: TOKEN_ENDPOINT }),
+        } as Response)
+        .mockResolvedValueOnce({
+          ok: true,
+          json: () => Promise.resolve({ access_token: 'custom-token', expires_in: 1800 }),
+        } as Response);
+
+      const projectSpecWithCustomCred = {
+        ...defaultProjectSpecCustomJwt,
+        credentials: [
+          {
+            authorizerType: 'OAuthCredentialProvider',
+            name: 'my-custom-identity',
+            discoveryUrl: DISCOVERY_URL,
+          },
+        ],
+      };
+
+      const configIO = createMockConfigIO({
+        projectSpec: projectSpecWithCustomCred,
+      });
+
+      const result = await fetchGatewayToken('myGateway', {
+        configIO,
+        identityName: 'my-custom-identity',
+      });
+
+      expect(result).toEqual({
+        url: GATEWAY_URL,
+        authType: 'CUSTOM_JWT',
+        token: 'custom-token',
+        expiresIn: 1800,
+      });
+    });
+
+    it('falls back to default convention when identityName not provided', async () => {
+      vi.mocked(readEnvFile).mockResolvedValue({
+        AGENTCORE_CREDENTIAL_MYGATEWAY_OAUTH_CLIENT_SECRET: 'test-secret',
+        AGENTCORE_CREDENTIAL_MYGATEWAY_OAUTH_CLIENT_ID: 'test-client',
+      });
+
+      vi.mocked(global.fetch)
+        .mockResolvedValueOnce({
+          ok: true,
+          json: () => Promise.resolve({ token_endpoint: TOKEN_ENDPOINT }),
+        } as Response)
+        .mockResolvedValueOnce({
+          ok: true,
+          json: () => Promise.resolve({ access_token: 'test-token', expires_in: 3600 }),
+        } as Response);
+
+      const configIO = createMockConfigIO({
+        projectSpec: defaultProjectSpecCustomJwt,
+      });
+
+      const result = await fetchGatewayToken('myGateway', { configIO });
+
+      expect(result).toEqual({
+        url: GATEWAY_URL,
+        authType: 'CUSTOM_JWT',
+        token: 'test-token',
+        expiresIn: 3600,
+      });
+    });
   });
 });

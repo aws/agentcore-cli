@@ -4,7 +4,7 @@ import type { TokenFetchResult } from './types';
 
 export async function fetchGatewayToken(
   gatewayName: string,
-  options: { configIO?: ConfigIO; deployTarget?: string } = {}
+  options: { configIO?: ConfigIO; deployTarget?: string; identityName?: string } = {}
 ): Promise<TokenFetchResult> {
   const configIO = options.configIO ?? new ConfigIO();
 
@@ -71,6 +71,7 @@ export async function fetchGatewayToken(
     deployedState,
     targetName,
     credentials: projectSpec.credentials,
+    credentialName: options.identityName,
   });
 
   return {

@@ -12,7 +12,10 @@ import type { OAuthTokenResult } from './oauth-token';
  * Returns true only if the managed OAuth credential exists in the project
  * spec AND the client secret is available in .env.local.
  */
-export async function canFetchRuntimeToken(agentName: string, options: { configIO?: ConfigIO } = {}): Promise<boolean> {
+export async function canFetchRuntimeToken(
+  agentName: string,
+  options: { configIO?: ConfigIO; identityName?: string } = {}
+): Promise<boolean> {
   try {
     const configIO = options.configIO ?? new ConfigIO();
     const projectSpec = await configIO.readProjectSpec();
@@ -21,7 +24,7 @@ export async function canFetchRuntimeToken(agentName: string, options: { configI
     if (!agentSpec?.authorizerType || agentSpec.authorizerType !== 'CUSTOM_JWT') return false;
     if (!agentSpec.authorizerConfiguration?.customJwtAuthorizer) return false;
 
-    const credName = computeManagedOAuthCredentialName(agentName);
+    const credName = options.identityName ?? computeManagedOAuthCredentialName(agentName);
     const hasCredential = projectSpec.credentials.some(
       c => c.authorizerType === 'OAuthCredentialProvider' && c.name === credName
     );
@@ -43,7 +46,7 @@ export async function canFetchRuntimeToken(agentName: string, options: { configI
  */
 export async function fetchRuntimeToken(
   agentName: string,
-  options: { configIO?: ConfigIO; deployTarget?: string } = {}
+  options: { configIO?: ConfigIO; deployTarget?: string; identityName?: string } = {}
 ): Promise<OAuthTokenResult> {
   const configIO = options.configIO ?? new ConfigIO();
 
@@ -80,5 +83,6 @@ export async function fetchRuntimeToken(
     deployedState,
     targetName,
     credentials: projectSpec.credentials,
+    credentialName: options.identityName,
   });
 }

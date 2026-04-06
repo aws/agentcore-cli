@@ -32,7 +32,10 @@ async function handleFetchGatewayAccess(options: FetchAccessOptions): Promise<Fe
     };
   }
 
-  const result = await fetchGatewayToken(options.name, { deployTarget: options.target });
+  const result = await fetchGatewayToken(options.name, {
+    deployTarget: options.target,
+    identityName: options.identityName,
+  });
   return { success: true, result };
 }
 
@@ -43,7 +46,10 @@ async function handleFetchAgentAccess(options: FetchAccessOptions): Promise<Fetc
 
   let tokenResult: OAuthTokenResult;
   try {
-    tokenResult = await fetchRuntimeToken(options.name, { deployTarget: options.target });
+    tokenResult = await fetchRuntimeToken(options.name, {
+      deployTarget: options.target,
+      identityName: options.identityName,
+    });
   } catch (err) {
     return { success: false, error: err instanceof Error ? err.message : String(err) };
   }

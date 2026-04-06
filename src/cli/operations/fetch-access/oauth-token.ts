@@ -31,17 +31,24 @@ export async function fetchOAuthToken(opts: {
   targetName: string;
   /** Project credentials list */
   credentials: { authorizerType: string; name: string }[];
+  /** Optional explicit credential name. When omitted, defaults to `<resourceName>-oauth`. */
+  credentialName?: string;
 }): Promise<OAuthTokenResult> {
   const { resourceName, jwtConfig, deployedState, targetName, credentials } = opts;
 
-  const credName = computeManagedOAuthCredentialName(resourceName);
+  const credName = opts.credentialName ?? computeManagedOAuthCredentialName(resourceName);
 
   // Validate credential exists in project spec
   const credential = credentials.find(c => c.authorizerType === 'OAuthCredentialProvider' && c.name === credName);
   if (!credential) {
+    const availableOAuth = credentials.filter(c => c.authorizerType === 'OAuthCredentialProvider').map(c => c.name);
+    const availableHint =
+      availableOAuth.length > 0
+        ? ` Available OAuth credentials: ${availableOAuth.join(', ')}. Use --identity-name to specify one.`
+        : '';
     throw new Error(
-      `No managed OAuth credential found for '${resourceName}'. Expected credential '${credName}'. ` +
-        `Re-create the resource with --client-id and --client-secret.`
+      `No managed OAuth credential found for '${resourceName}'. Expected credential '${credName}'.${availableHint}` +
+        (availableOAuth.length === 0 ? ` Re-create the resource with --client-id and --client-secret.` : '')
     );
   }
 

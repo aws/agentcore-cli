@@ -173,4 +173,24 @@ describe('registerFetch', () => {
     const renderArg = mockRender.mock.calls[0]![0];
     expect(JSON.stringify(renderArg)).toContain('Token fetch failed');
   });
+
+  it('accepts --identity-name option and passes it through to fetchGatewayToken', async () => {
+    mockFetchGatewayToken.mockResolvedValue(jwtResult);
+
+    await program.parseAsync(
+      ['fetch', 'access', '--name', 'myGateway', '--identity-name', 'my-custom-cred', '--json'],
+      {
+        from: 'user',
+      }
+    );
+
+    expect(mockFetchGatewayToken).toHaveBeenCalledWith(
+      'myGateway',
+      expect.objectContaining({ identityName: 'my-custom-cred' })
+    );
+
+    expect(mockLog).toHaveBeenCalledTimes(1);
+    const output = JSON.parse(mockLog.mock.calls[0][0]);
+    expect(output.success).toBe(true);
+  });
 });
