@@ -1,4 +1,4 @@
-import type { AgentCoreProjectSpec, DeployedState, OnlineEvalConfig } from '../../../schema';
+import type { OnlineEvalConfig } from '../../../schema';
 import type { GetOnlineEvalConfigResult, OnlineEvalConfigSummary } from '../../aws/agentcore-control';
 import { getOnlineEvaluationConfig, listAllOnlineEvaluationConfigs } from '../../aws/agentcore-control';
 import { ANSI } from './constants';
@@ -6,8 +6,6 @@ import { failResult } from './import-utils';
 import { executeResourceImport } from './resource-import';
 import type { ImportResourceOptions, ImportResourceResult, ResourceImportDescriptor } from './types';
 import type { Command } from '@commander-js/extra-typings';
-
-const ARN_PREFIX = 'arn:';
 
 /**
  * Derive the agent name from the online eval config's service names.
@@ -28,7 +26,7 @@ export function toOnlineEvalConfigSpec(
   detail: GetOnlineEvalConfigResult,
   localName: string,
   agentName: string,
-  evaluatorNames: string[]
+  evaluatorArns: string[]
 ): OnlineEvalConfig {
   if (!detail.samplingPercentage) {
     throw new Error(`Online eval config "${detail.configName}" has no sampling configuration. Cannot import.`);
@@ -37,7 +35,7 @@ export function toOnlineEvalConfigSpec(
   return {
     name: localName,
     agent: agentName,
-    evaluators: evaluatorNames,
+    evaluators: evaluatorArns,
     samplingRate: detail.samplingPercentage,
     ...(detail.description && { description: detail.description }),
     ...(detail.executionStatus === 'ENABLED' && { enableOnCreate: true }),
@@ -45,35 +43,12 @@ export function toOnlineEvalConfigSpec(
 }
 
 /**
- * Resolve evaluator IDs to local names or ARNs.
- * If an evaluator ID matches a local evaluator (by checking deployed state), use the local name.
- * Otherwise, construct an ARN so the schema validation passes.
+ * Build evaluator ARNs from evaluator IDs.
+ * Online eval configs reference evaluators by ARN rather than importing them,
+ * since evaluators locked by an online eval config cannot be CFN-imported.
  */
-function resolveEvaluatorReferences(
-  evaluatorIds: string[],
-  projectSpec: AgentCoreProjectSpec,
-  deployedEvaluators: Record<string, string>,
-  region: string,
-  account: string
-): string[] {
-  const localEvaluators = projectSpec.evaluators ?? [];
-
-  return evaluatorIds.map(id => {
-    // First check deployed state for an exact physical ID → local name match
-    // This handles imported evaluators where the local name differs from the AWS name
-    if (deployedEvaluators[id]) {
-      return deployedEvaluators[id];
-    }
-    // Then check if the evaluator ID contains a local evaluator name
-    // This handles evaluators deployed by the same project (ID pattern: {projectName}_{evaluatorName}-{suffix})
-    for (const localEval of localEvaluators) {
-      if (id.includes(localEval.name)) {
-        return localEval.name;
-      }
-    }
-    // Fall back to ARN format (bypasses schema cross-reference validation)
-    return `${ARN_PREFIX}aws:bedrock-agentcore:${region}:${account}:evaluator/${id}`;
-  });
+function buildEvaluatorArns(evaluatorIds: string[], region: string, account: string): string[] {
+  return evaluatorIds.map(id => `arn:aws:bedrock-agentcore:${region}:${account}:evaluator/${id}`);
 }
 
 /**
@@ -81,7 +56,7 @@ function resolveEvaluatorReferences(
  */
 function createOnlineEvalDescriptor(): ResourceImportDescriptor<GetOnlineEvalConfigResult, OnlineEvalConfigSummary> {
   let resolvedAgentName = '';
-  let resolvedEvaluatorNames: string[] = [];
+  let resolvedEvaluatorArns: string[] = [];
 
   return {
     resourceType: 'online-eval',
@@ -112,7 +87,7 @@ function createOnlineEvalDescriptor(): ResourceImportDescriptor<GetOnlineEvalCon
     getExistingNames: spec => (spec.onlineEvalConfigs ?? []).map(c => c.name),
     addToProjectSpec: (detail, localName, spec) => {
       (spec.onlineEvalConfigs ??= []).push(
-        toOnlineEvalConfigSpec(detail, localName, resolvedAgentName, resolvedEvaluatorNames)
+        toOnlineEvalConfigSpec(detail, localName, resolvedAgentName, resolvedEvaluatorArns)
       );
     },
 
@@ -122,7 +97,8 @@ function createOnlineEvalDescriptor(): ResourceImportDescriptor<GetOnlineEvalCon
 
     buildDeployedStateEntry: (name, id, d) => ({ type: 'online-eval', name, id, arn: d.configArn }),
 
-    beforeConfigWrite: async ({ detail, localName, projectSpec, ctx, target, onProgress, logger }) => {
+    // eslint-disable-next-line @typescript-eslint/require-await -- interface requires Promise return type
+    beforeConfigWrite: async ({ detail, localName, projectSpec, target, onProgress, logger }) => {
       logger.startStep('Resolve references');
 
       // Extract agent name from service names
@@ -148,7 +124,7 @@ function createOnlineEvalDescriptor(): ResourceImportDescriptor<GetOnlineEvalCon
         );
       }
 
-      // Resolve evaluator IDs to local names or ARNs
+      // Resolve evaluator IDs to ARNs
       const evaluatorIds = detail.evaluatorIds ?? [];
       if (evaluatorIds.length === 0) {
         return failResult(
@@ -159,28 +135,9 @@ function createOnlineEvalDescriptor(): ResourceImportDescriptor<GetOnlineEvalCon
         );
       }
 
-      // Build reverse map from deployed state: evaluatorId → localName
-      const deployedEvaluators: Record<string, string> = {};
-      const deployedState: DeployedState = await ctx.configIO
-        .readDeployedState()
-        .catch((): DeployedState => ({ targets: {} }));
-      const targetName = target.name ?? 'default';
-      const evalEntries = deployedState.targets[targetName]?.resources?.evaluators;
-      if (evalEntries) {
-        for (const [localEvalName, entry] of Object.entries(evalEntries)) {
-          deployedEvaluators[entry.evaluatorId] = localEvalName;
-        }
-      }
-
-      resolvedEvaluatorNames = resolveEvaluatorReferences(
-        evaluatorIds,
-        projectSpec,
-        deployedEvaluators,
-        target.region,
-        target.account
-      );
+      resolvedEvaluatorArns = buildEvaluatorArns(evaluatorIds, target.region, target.account);
       resolvedAgentName = agentName;
-      onProgress(`Agent: ${agentName}, Evaluators: ${resolvedEvaluatorNames.join(', ')}`);
+      onProgress(`Agent: ${agentName}, Evaluators: ${resolvedEvaluatorArns.join(', ')}`);
       logger.endStep('success');
     },
   };

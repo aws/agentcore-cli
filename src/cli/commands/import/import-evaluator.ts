@@ -1,8 +1,13 @@
 import type { Evaluator } from '../../../schema';
 import type { EvaluatorSummary, GetEvaluatorResult } from '../../aws/agentcore-control';
-import { getEvaluator, listAllEvaluators } from '../../aws/agentcore-control';
+import {
+  getEvaluator,
+  getOnlineEvaluationConfig,
+  listAllEvaluators,
+  listAllOnlineEvaluationConfigs,
+} from '../../aws/agentcore-control';
 import { ANSI } from './constants';
-import { parseAndValidateArn } from './import-utils';
+import { failResult, parseAndValidateArn } from './import-utils';
 import { executeResourceImport } from './resource-import';
 import type { ImportResourceOptions, ImportResourceResult, ResourceImportDescriptor } from './types';
 import type { Command } from '@commander-js/extra-typings';
@@ -77,6 +82,38 @@ const evaluatorDescriptor: ResourceImportDescriptor<GetEvaluatorResult, Evaluato
   cfnIdentifierKey: 'EvaluatorId',
 
   buildDeployedStateEntry: (name, id, d) => ({ type: 'evaluator', name, id, arn: d.evaluatorArn }),
+
+  beforeConfigWrite: async ({ detail, localName, target, onProgress, logger }) => {
+    // Check if any online eval config references this evaluator.
+    // CFN IMPORT of locked evaluators always fails because CFN triggers a
+    // post-import TagResource call that the resource handler rejects.
+    logger.startStep('Check for online eval config references');
+    onProgress('Checking if evaluator is referenced by an online eval config...');
+
+    const oecSummaries = await listAllOnlineEvaluationConfigs({ region: target.region });
+    if (oecSummaries.length > 0) {
+      const oecDetails = await Promise.all(
+        oecSummaries.map(s =>
+          getOnlineEvaluationConfig({ region: target.region, configId: s.onlineEvaluationConfigId })
+        )
+      );
+
+      const referencingOec = oecDetails.find(oec => oec.evaluatorIds?.includes(detail.evaluatorId));
+
+      if (referencingOec) {
+        return failResult(
+          logger,
+          `Evaluator "${localName}" is referenced by online eval config "${referencingOec.configName}" and cannot be imported directly (locked by CloudFormation).\n` +
+            `To import this evaluator along with its online eval config, run:\n` +
+            `  agentcore import online-eval --arn ${referencingOec.configArn}`,
+          'evaluator',
+          localName
+        );
+      }
+    }
+
+    logger.endStep('success');
+  },
 };
 
 /**
