@@ -1,24 +1,13 @@
-import type { AgentCoreProjectSpec, AgentEnvSpec } from '../../../schema';
-import type { AgentRuntimeDetail } from '../../aws/agentcore-control';
+import type { AgentEnvSpec } from '../../../schema';
+import type { AgentRuntimeDetail, AgentRuntimeSummary } from '../../aws/agentcore-control';
 import { getAgentRuntimeDetail, listAllAgentRuntimes } from '../../aws/agentcore-control';
-import { executeCdkImportPipeline } from './import-pipeline';
-import {
-  copyAgentSource,
-  failResult,
-  findResourceInDeployedState,
-  parseAndValidateArn,
-  resolveImportContext,
-  toStackName,
-} from './import-utils';
-import { findLogicalIdByProperty, findLogicalIdsByType } from './template-utils';
-import type { ImportResourceResult, RuntimeImportOptions } from './types';
+import { ANSI } from './constants';
+import { copyAgentSource, failResult, parseAndValidateArn } from './import-utils';
+import { executeResourceImport } from './resource-import';
+import type { ImportResourceResult, ResourceImportDescriptor, RuntimeImportOptions } from './types';
 import type { Command } from '@commander-js/extra-typings';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
-
-const green = '\x1b[32m';
-const dim = '\x1b[2m';
-const reset = '\x1b[0m';
 
 /**
  * Extract the actual entrypoint file from the runtime's entryPoint array.
@@ -91,278 +80,122 @@ function toAgentEnvSpec(
 }
 
 /**
+ * Create a runtime descriptor with closed-over state for entrypoint, code location, and rollback.
+ */
+function createRuntimeDescriptor(
+  options: RuntimeImportOptions
+): ResourceImportDescriptor<AgentRuntimeDetail, AgentRuntimeSummary> {
+  let resolvedEntrypoint = '';
+  let resolvedCodeLocation = '';
+  let copiedAppDir: string | undefined;
+
+  return {
+    resourceType: 'runtime',
+    displayName: 'runtime',
+    logCommand: 'import-runtime',
+
+    listResources: region => listAllAgentRuntimes({ region }),
+    getDetail: (region, id) => getAgentRuntimeDetail({ region, runtimeId: id }),
+    parseResourceId: (arn, target) => parseAndValidateArn(arn, 'runtime', target).resourceId,
+
+    extractSummaryId: s => s.agentRuntimeId,
+    formatListItem: (s, i) =>
+      `  ${ANSI.dim}[${i + 1}]${ANSI.reset} ${s.agentRuntimeName} — ${s.status}\n       ${ANSI.dim}${s.agentRuntimeArn}${ANSI.reset}`,
+    formatAutoSelectMessage: s => `Found 1 runtime: ${s.agentRuntimeName} (${s.agentRuntimeId}). Auto-selecting.`,
+
+    extractDetailName: d => d.agentRuntimeName,
+    extractDetailArn: d => d.agentRuntimeArn,
+    readyStatus: 'READY',
+    extractDetailStatus: d => d.status,
+
+    getExistingNames: spec => spec.runtimes.map(r => r.name),
+    addToProjectSpec: (detail, localName, spec) => {
+      spec.runtimes.push(toAgentEnvSpec(detail, localName, resolvedCodeLocation, resolvedEntrypoint));
+    },
+
+    cfnResourceType: 'AWS::BedrockAgentCore::Runtime',
+    cfnNameProperty: 'AgentRuntimeName',
+    cfnIdentifierKey: 'AgentRuntimeId',
+
+    buildDeployedStateEntry: (name, id, d) => ({ type: 'runtime', name, id, arn: d.agentRuntimeArn }),
+
+    beforeConfigWrite: async ({ detail, localName, ctx, onProgress, logger }) => {
+      // Resolve entrypoint
+      logger.startStep('Resolve entrypoint');
+      const entrypoint = options.entrypoint ?? extractEntrypoint(detail.entryPoint);
+      if (!entrypoint) {
+        return failResult(
+          logger,
+          'Could not determine entrypoint from runtime configuration.\n  Please re-run with --entrypoint <file> to specify it manually.',
+          'runtime',
+          localName
+        );
+      }
+      onProgress(`Entrypoint: ${entrypoint}`);
+      logger.endStep('success');
+
+      // Validate source path
+      logger.startStep('Validate source path');
+      if (!options.code) {
+        return failResult(
+          logger,
+          'Source path is required for runtime import. Use --code <path> to specify the agent source code directory.',
+          'runtime',
+          localName
+        );
+      }
+
+      const sourcePath = path.resolve(options.code);
+      if (!fs.existsSync(sourcePath)) {
+        return failResult(logger, `Source path does not exist: ${sourcePath}`, 'runtime', localName);
+      }
+      const entrypointPath = path.join(sourcePath, entrypoint);
+      if (!fs.existsSync(entrypointPath)) {
+        return failResult(
+          logger,
+          `Entrypoint file '${entrypoint}' not found in ${sourcePath}. Ensure --code points to the directory containing your entrypoint file.`,
+          'runtime',
+          localName
+        );
+      }
+      logger.endStep('success');
+
+      // Copy agent source
+      logger.startStep('Copy agent source');
+      resolvedCodeLocation = `app/${localName}/`;
+      resolvedEntrypoint = entrypoint;
+      copiedAppDir = path.join(ctx.projectRoot, 'app', localName);
+      await copyAgentSource({
+        sourcePath,
+        agentName: localName,
+        projectRoot: ctx.projectRoot,
+        build: detail.build,
+        entrypoint,
+        onProgress,
+      });
+      logger.endStep('success');
+    },
+
+    // eslint-disable-next-line @typescript-eslint/require-await
+    rollbackExtra: async () => {
+      if (copiedAppDir && fs.existsSync(copiedAppDir)) {
+        try {
+          fs.rmSync(copiedAppDir, { recursive: true, force: true });
+        } catch (err) {
+          console.warn(
+            `Warning: Could not clean up ${copiedAppDir}: ${err instanceof Error ? err.message : String(err)}`
+          );
+        }
+      }
+    },
+  };
+}
+
+/**
  * Handle `agentcore import runtime`.
  */
 export async function handleImportRuntime(options: RuntimeImportOptions): Promise<ImportResourceResult> {
-  // Rollback state
-  let configSnapshot: AgentCoreProjectSpec | undefined;
-  let configWritten = false;
-  let copiedAppDir: string | undefined;
-
-  let importCtx: Awaited<ReturnType<typeof resolveImportContext>> | undefined;
-
-  const rollback = async () => {
-    if (configWritten && configSnapshot && importCtx) {
-      try {
-        await importCtx.ctx.configIO.writeProjectSpec(configSnapshot);
-      } catch (err) {
-        console.warn(`Warning: Could not restore agentcore.json: ${err instanceof Error ? err.message : String(err)}`);
-      }
-    }
-    if (copiedAppDir && fs.existsSync(copiedAppDir)) {
-      try {
-        fs.rmSync(copiedAppDir, { recursive: true, force: true });
-      } catch (err) {
-        console.warn(
-          `Warning: Could not clean up ${copiedAppDir}: ${err instanceof Error ? err.message : String(err)}`
-        );
-      }
-    }
-  };
-
-  try {
-    // 1-2. Validate project context and resolve target
-    importCtx = await resolveImportContext(options, 'import-runtime');
-    const { ctx, target, logger, onProgress } = importCtx;
-
-    // 3. Get runtime details from AWS
-    logger.startStep('Fetch runtime from AWS');
-    let runtimeId: string;
-
-    if (options.arn) {
-      const parsed = parseAndValidateArn(options.arn, 'runtime', target);
-      runtimeId = parsed.resourceId;
-    } else {
-      // List runtimes and let user pick
-      onProgress('Listing runtimes in your account...');
-      const runtimes = await listAllAgentRuntimes({ region: target.region });
-
-      if (runtimes.length === 0) {
-        return failResult(logger, 'No runtimes found in your account. Deploy a runtime first.', 'runtime', '');
-      }
-
-      if (runtimes.length === 1) {
-        runtimeId = runtimes[0]!.agentRuntimeId;
-        onProgress(`Found 1 runtime: ${runtimes[0]!.agentRuntimeName} (${runtimeId}). Auto-selecting.`);
-      } else {
-        console.log(`\nFound ${runtimes.length} runtime(s):\n`);
-        for (let i = 0; i < runtimes.length; i++) {
-          const r = runtimes[i]!;
-          console.log(`  ${dim}[${i + 1}]${reset} ${r.agentRuntimeName} — ${r.status}`);
-          console.log(`       ${dim}${r.agentRuntimeArn}${reset}`);
-        }
-        console.log('');
-
-        return failResult(
-          logger,
-          'Multiple runtimes found. Use --arn <runtimeArn> to specify which runtime to import.',
-          'runtime',
-          ''
-        );
-      }
-    }
-
-    onProgress(`Fetching runtime details for ${runtimeId}...`);
-    const runtimeDetail = await getAgentRuntimeDetail({ region: target.region, runtimeId });
-
-    if (runtimeDetail.status !== 'READY') {
-      onProgress(`Warning: Runtime status is ${runtimeDetail.status}, not READY`);
-    }
-
-    // Derive local name
-    const localName = options.name ?? runtimeDetail.agentRuntimeName;
-    const NAME_REGEX = /^[a-zA-Z][a-zA-Z0-9_]{0,47}$/;
-    if (!NAME_REGEX.test(localName)) {
-      return failResult(
-        logger,
-        `Invalid name "${localName}". Name must start with a letter and contain only letters, numbers, and underscores (max 48 chars).`,
-        'runtime',
-        localName
-      );
-    }
-    onProgress(`Runtime: ${runtimeDetail.agentRuntimeName} → local name: ${localName}`);
-    logger.endStep('success');
-
-    // 4. Resolve entrypoint
-    logger.startStep('Resolve entrypoint');
-    const entrypoint = options.entrypoint ?? extractEntrypoint(runtimeDetail.entryPoint);
-    if (!entrypoint) {
-      return failResult(
-        logger,
-        'Could not determine entrypoint from runtime configuration.\n  Please re-run with --entrypoint <file> to specify it manually.',
-        'runtime',
-        localName
-      );
-    }
-    onProgress(`Entrypoint: ${entrypoint}`);
-    logger.endStep('success');
-
-    // 5. Validate source path
-    logger.startStep('Validate source path');
-    if (!options.code) {
-      return failResult(
-        logger,
-        'Source path is required for runtime import. Use --code <path> to specify the agent source code directory.',
-        'runtime',
-        localName
-      );
-    }
-
-    const sourcePath = path.resolve(options.code);
-    if (!fs.existsSync(sourcePath)) {
-      return failResult(logger, `Source path does not exist: ${sourcePath}`, 'runtime', localName);
-    }
-    const entrypointPath = path.join(sourcePath, entrypoint);
-    if (!fs.existsSync(entrypointPath)) {
-      return failResult(
-        logger,
-        `Entrypoint file '${entrypoint}' not found in ${sourcePath}. Ensure --code points to the directory containing your entrypoint file.`,
-        'runtime',
-        localName
-      );
-    }
-    logger.endStep('success');
-
-    // 6. Check for duplicates
-    logger.startStep('Check for duplicates');
-    const projectSpec = await ctx.configIO.readProjectSpec();
-    const existingNames = new Set(projectSpec.runtimes.map(r => r.name));
-    if (existingNames.has(localName)) {
-      return failResult(
-        logger,
-        `Runtime "${localName}" already exists in the project. Use --name to specify a different local name.`,
-        'runtime',
-        localName
-      );
-    }
-    const targetName = target.name ?? 'default';
-    const existingResource = await findResourceInDeployedState(ctx.configIO, targetName, 'runtime', runtimeId);
-    if (existingResource) {
-      return failResult(
-        logger,
-        `Runtime "${runtimeId}" is already imported in this project as "${existingResource}". Remove it first before re-importing.`,
-        'runtime',
-        localName
-      );
-    }
-    logger.endStep('success');
-
-    // 7. Copy source code
-    logger.startStep('Copy agent source');
-    const codeLocation = `app/${localName}/`;
-    copiedAppDir = path.join(ctx.projectRoot, 'app', localName);
-    await copyAgentSource({
-      sourcePath,
-      agentName: localName,
-      projectRoot: ctx.projectRoot,
-      build: runtimeDetail.build,
-      entrypoint,
-      onProgress,
-    });
-    logger.endStep('success');
-
-    // 8. Add to project config
-    logger.startStep('Update project config');
-    configSnapshot = JSON.parse(JSON.stringify(projectSpec)) as AgentCoreProjectSpec;
-    const agentSpec = toAgentEnvSpec(runtimeDetail, localName, codeLocation, entrypoint);
-    projectSpec.runtimes.push(agentSpec);
-    await ctx.configIO.writeProjectSpec(projectSpec);
-    configWritten = true;
-    onProgress(`Added runtime "${localName}" to agentcore.json`);
-    logger.endStep('success');
-
-    // 9-13. CDK build → synth → bootstrap → phase 1 → phase 2 → update state
-    logger.startStep('Build and synth CDK');
-    const stackName = toStackName(ctx.projectName, targetName);
-
-    const pipelineResult = await executeCdkImportPipeline({
-      projectRoot: ctx.projectRoot,
-      stackName,
-      target,
-      configIO: ctx.configIO,
-      targetName,
-      onProgress,
-      buildResourcesToImport: synthTemplate => {
-        const expectedRuntimeName = `${ctx.projectName}_${localName}`;
-        let logicalId = findLogicalIdByProperty(
-          synthTemplate,
-          'AWS::BedrockAgentCore::Runtime',
-          'AgentRuntimeName',
-          expectedRuntimeName
-        );
-
-        if (!logicalId) {
-          const runtimeLogicalIds = findLogicalIdsByType(synthTemplate, 'AWS::BedrockAgentCore::Runtime');
-          if (runtimeLogicalIds.length === 1) {
-            logicalId = runtimeLogicalIds[0];
-          }
-        }
-
-        if (!logicalId) {
-          return [];
-        }
-
-        return [
-          {
-            resourceType: 'AWS::BedrockAgentCore::Runtime',
-            logicalResourceId: logicalId,
-            resourceIdentifier: { AgentRuntimeId: runtimeId },
-          },
-        ];
-      },
-      deployedStateEntries: [
-        {
-          type: 'runtime',
-          name: localName,
-          id: runtimeId,
-          arn: runtimeDetail.agentRuntimeArn,
-        },
-      ],
-    });
-
-    if (pipelineResult.noResources) {
-      const error = `Could not find logical ID for runtime "${localName}" in CloudFormation template`;
-      await rollback();
-      return failResult(logger, error, 'runtime', localName);
-    }
-
-    if (!pipelineResult.success) {
-      await rollback();
-      logger.endStep('error', pipelineResult.error);
-      logger.finalize(false);
-      return {
-        success: false,
-        error: pipelineResult.error,
-        resourceType: 'runtime',
-        resourceName: localName,
-        logPath: logger.getRelativeLogPath(),
-      };
-    }
-    logger.endStep('success');
-
-    logger.finalize(true);
-    return {
-      success: true,
-      resourceType: 'runtime',
-      resourceName: localName,
-      resourceId: runtimeId,
-      logPath: logger.getRelativeLogPath(),
-    };
-  } catch (err: unknown) {
-    const message = err instanceof Error ? err.message : String(err);
-    await rollback();
-    if (importCtx) {
-      importCtx.logger.log(message, 'error');
-      importCtx.logger.finalize(false);
-    }
-    return {
-      success: false,
-      error: message,
-      resourceType: 'runtime',
-      resourceName: options.name ?? '',
-      logPath: importCtx?.logger.getRelativeLogPath(),
-    };
-  }
+  return executeResourceImport(createRuntimeDescriptor(options), options);
 }
 
 /**
@@ -382,17 +215,17 @@ export function registerImportRuntime(importCmd: Command): void {
 
       if (result.success) {
         console.log('');
-        console.log(`${green}Runtime imported successfully!${reset}`);
+        console.log(`${ANSI.green}Runtime imported successfully!${ANSI.reset}`);
         console.log(`  Name: ${result.resourceName}`);
         console.log(`  ID: ${result.resourceId}`);
         console.log('');
-        console.log(`${dim}Next steps:${reset}`);
-        console.log(`  agentcore deploy     ${dim}Deploy the imported stack${reset}`);
-        console.log(`  agentcore status     ${dim}Verify resource status${reset}`);
-        console.log(`  agentcore invoke     ${dim}Test your agent${reset}`);
+        console.log(`${ANSI.dim}Next steps:${ANSI.reset}`);
+        console.log(`  agentcore deploy     ${ANSI.dim}Deploy the imported stack${ANSI.reset}`);
+        console.log(`  agentcore status     ${ANSI.dim}Verify resource status${ANSI.reset}`);
+        console.log(`  agentcore invoke     ${ANSI.dim}Test your agent${ANSI.reset}`);
         console.log('');
       } else {
-        console.error(`\n\x1b[31m[error]${reset} ${result.error}`);
+        console.error(`\n\x1b[31m[error]${ANSI.reset} ${result.error}`);
         if (result.logPath) {
           console.error(`Log: ${result.logPath}`);
         }

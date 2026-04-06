@@ -4,6 +4,7 @@ import { detectAccount, validateAwsCredentials } from '../../aws/account';
 import { ExecLogger } from '../../logging';
 import { setupPythonProject } from '../../operations/python/setup';
 import { getTemplatePath } from '../../templates/templateRoot';
+import { ANSI } from './constants';
 import type { ImportResourceOptions, ImportResourceResult, ImportableResourceType } from './types';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
@@ -12,8 +13,7 @@ import * as path from 'node:path';
 // Import Context (shared setup for import-runtime / import-memory)
 // ============================================================================
 
-const green = '\x1b[32m';
-const reset = '\x1b[0m';
+const { green, reset } = ANSI;
 
 export interface ImportContext {
   ctx: ProjectContext;

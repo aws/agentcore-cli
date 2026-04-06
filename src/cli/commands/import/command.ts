@@ -1,4 +1,5 @@
 import { handleImport } from './actions';
+import { ANSI } from './constants';
 import { registerImportEvaluator } from './import-evaluator';
 import { registerImportMemory } from './import-memory';
 import { registerImportOnlineEval } from './import-online-eval';
@@ -6,11 +7,7 @@ import { registerImportRuntime } from './import-runtime';
 import type { Command } from '@commander-js/extra-typings';
 import * as fs from 'node:fs';
 
-const green = '\x1b[32m';
-const yellow = '\x1b[33m';
-const cyan = '\x1b[36m';
-const dim = '\x1b[2m';
-const reset = '\x1b[0m';
+const { green, yellow, cyan, dim, reset } = ANSI;
 
 export const registerImport = (program: Command) => {
   const importCmd = program

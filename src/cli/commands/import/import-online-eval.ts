@@ -1,15 +1,11 @@
 import type { AgentCoreProjectSpec, OnlineEvalConfig } from '../../../schema';
-import type { GetOnlineEvalConfigResult } from '../../aws/agentcore-control';
+import type { GetOnlineEvalConfigResult, OnlineEvalConfigSummary } from '../../aws/agentcore-control';
 import { getOnlineEvaluationConfig, listAllOnlineEvaluationConfigs } from '../../aws/agentcore-control';
-import { executeCdkImportPipeline } from './import-pipeline';
-import { failResult, findResourceInDeployedState, resolveImportContext, toStackName } from './import-utils';
-import { findLogicalIdByProperty, findLogicalIdsByType } from './template-utils';
-import type { ImportResourceOptions, ImportResourceResult } from './types';
+import { ANSI } from './constants';
+import { failResult } from './import-utils';
+import { executeResourceImport } from './resource-import';
+import type { ImportResourceOptions, ImportResourceResult, ResourceImportDescriptor } from './types';
 import type { Command } from '@commander-js/extra-typings';
-
-const green = '\x1b[32m';
-const dim = '\x1b[2m';
-const reset = '\x1b[0m';
 
 const ARN_PREFIX = 'arn:';
 
@@ -27,11 +23,6 @@ export function extractAgentName(serviceNames: string[]): string | undefined {
 
 /**
  * Map an AWS GetOnlineEvaluationConfig response to the CLI OnlineEvalConfig spec format.
- *
- * @param detail - The AWS online eval config details
- * @param localName - The local name for this config in agentcore.json
- * @param agentName - The resolved local agent name
- * @param evaluatorNames - Mapping from evaluator ID to local evaluator name (or ARN fallback)
  */
 export function toOnlineEvalConfigSpec(
   detail: GetOnlineEvalConfigResult,
@@ -80,270 +71,101 @@ function resolveEvaluatorReferences(
 }
 
 /**
+ * Create an online-eval descriptor with closed-over state for reference resolution.
+ */
+function createOnlineEvalDescriptor(): ResourceImportDescriptor<GetOnlineEvalConfigResult, OnlineEvalConfigSummary> {
+  let resolvedAgentName = '';
+  let resolvedEvaluatorNames: string[] = [];
+
+  return {
+    resourceType: 'online-eval',
+    displayName: 'online eval config',
+    logCommand: 'import-online-eval',
+
+    listResources: region => listAllOnlineEvaluationConfigs({ region }),
+    getDetail: (region, id) => getOnlineEvaluationConfig({ region, configId: id }),
+    parseResourceId: arn => {
+      const match = /\/([^/]+)$/.exec(arn);
+      if (!match) {
+        throw new Error(`Could not parse config ID from ARN: ${arn}`);
+      }
+      return match[1]!;
+    },
+
+    extractSummaryId: s => s.onlineEvaluationConfigId,
+    formatListItem: (s, i) =>
+      `  ${ANSI.dim}[${i + 1}]${ANSI.reset} ${s.onlineEvaluationConfigName} — ${s.status} (${s.executionStatus})\n       ${ANSI.dim}${s.onlineEvaluationConfigArn}${ANSI.reset}`,
+    formatAutoSelectMessage: s =>
+      `Found 1 config: ${s.onlineEvaluationConfigName} (${s.onlineEvaluationConfigId}). Auto-selecting.`,
+
+    extractDetailName: d => d.configName,
+    extractDetailArn: d => d.configArn,
+    readyStatus: 'ACTIVE',
+    extractDetailStatus: d => d.status,
+
+    getExistingNames: spec => (spec.onlineEvalConfigs ?? []).map(c => c.name),
+    addToProjectSpec: (detail, localName, spec) => {
+      (spec.onlineEvalConfigs ??= []).push(
+        toOnlineEvalConfigSpec(detail, localName, resolvedAgentName, resolvedEvaluatorNames)
+      );
+    },
+
+    cfnResourceType: 'AWS::BedrockAgentCore::OnlineEvaluationConfig',
+    cfnNameProperty: 'OnlineEvaluationConfigName',
+    cfnIdentifierKey: 'OnlineEvaluationConfigId',
+
+    buildDeployedStateEntry: (name, id, d) => ({ type: 'online-eval', name, id, arn: d.configArn }),
+
+    // eslint-disable-next-line @typescript-eslint/require-await
+    beforeConfigWrite: async ({ detail, localName, projectSpec, target, onProgress, logger }) => {
+      logger.startStep('Resolve references');
+
+      // Extract agent name from service names
+      const agentName = extractAgentName(detail.serviceNames ?? []);
+      if (!agentName) {
+        return failResult(
+          logger,
+          'Could not determine agent name from online eval config. The config has no data source service names.',
+          'online-eval',
+          localName
+        );
+      }
+
+      // Validate agent exists in project
+      const agentNames = new Set((projectSpec.runtimes ?? []).map(r => r.name));
+      if (!agentNames.has(agentName)) {
+        return failResult(
+          logger,
+          `Online eval config references agent "${agentName}" which is not in this project. ` +
+            `Import or add the agent first with \`agentcore import runtime\` or \`agentcore add agent\`.`,
+          'online-eval',
+          localName
+        );
+      }
+
+      // Resolve evaluator IDs to local names or ARNs
+      const evaluatorIds = detail.evaluatorIds ?? [];
+      if (evaluatorIds.length === 0) {
+        return failResult(
+          logger,
+          'Online eval config has no evaluators configured. Cannot import.',
+          'online-eval',
+          localName
+        );
+      }
+      resolvedEvaluatorNames = resolveEvaluatorReferences(evaluatorIds, projectSpec, target.region, target.account);
+      resolvedAgentName = agentName;
+      onProgress(`Agent: ${agentName}, Evaluators: ${resolvedEvaluatorNames.join(', ')}`);
+      logger.endStep('success');
+    },
+  };
+}
+
+/**
  * Handle `agentcore import online-eval`.
  */
 export async function handleImportOnlineEval(options: ImportResourceOptions): Promise<ImportResourceResult> {
-  // Rollback state
-  let configSnapshot: AgentCoreProjectSpec | undefined;
-  let configWritten = false;
-
-  let importCtx: Awaited<ReturnType<typeof resolveImportContext>> | undefined;
-
-  const rollback = async () => {
-    if (configWritten && configSnapshot && importCtx) {
-      try {
-        await importCtx.ctx.configIO.writeProjectSpec(configSnapshot);
-      } catch (err) {
-        console.warn(`Warning: Could not restore agentcore.json: ${err instanceof Error ? err.message : String(err)}`);
-      }
-    }
-  };
-
-  try {
-    // 1-2. Validate project context and resolve target
-    importCtx = await resolveImportContext(options, 'import-online-eval');
-    const { ctx, target, logger, onProgress } = importCtx;
-
-    // 3. Get online eval config details from AWS
-    logger.startStep('Fetch online eval config from AWS');
-    let configId: string;
-
-    if (options.arn) {
-      // Parse config ID from ARN (last segment after /)
-      const arnMatch = /\/([^/]+)$/.exec(options.arn);
-      if (!arnMatch) {
-        return failResult(logger, `Could not parse config ID from ARN: ${options.arn}`, 'online-eval', '');
-      }
-      configId = arnMatch[1]!;
-    } else {
-      onProgress('Listing online eval configs in your account...');
-      const configs = await listAllOnlineEvaluationConfigs({ region: target.region });
-
-      if (configs.length === 0) {
-        return failResult(logger, 'No online evaluation configs found in your account.', 'online-eval', '');
-      }
-
-      if (configs.length === 1) {
-        configId = configs[0]!.onlineEvaluationConfigId;
-        onProgress(`Found 1 config: ${configs[0]!.onlineEvaluationConfigName} (${configId}). Auto-selecting.`);
-      } else {
-        console.log(`\nFound ${configs.length} online eval config(s):\n`);
-        for (let i = 0; i < configs.length; i++) {
-          const c = configs[i]!;
-          console.log(
-            `  ${dim}[${i + 1}]${reset} ${c.onlineEvaluationConfigName} — ${c.status} (${c.executionStatus})`
-          );
-          console.log(`       ${dim}${c.onlineEvaluationConfigArn}${reset}`);
-        }
-        console.log('');
-
-        return failResult(
-          logger,
-          'Multiple online eval configs found. Use --arn <configArn> to specify which config to import.',
-          'online-eval',
-          ''
-        );
-      }
-    }
-
-    onProgress(`Fetching online eval config details for ${configId}...`);
-    const configDetail = await getOnlineEvaluationConfig({ region: target.region, configId });
-
-    if (configDetail.status !== 'ACTIVE') {
-      onProgress(`Warning: Online eval config status is ${configDetail.status}, not ACTIVE`);
-    }
-
-    // Derive local name
-    const localName = options.name ?? configDetail.configName;
-    const NAME_REGEX = /^[a-zA-Z][a-zA-Z0-9_]{0,47}$/;
-    if (!NAME_REGEX.test(localName)) {
-      return failResult(
-        logger,
-        `Invalid name "${localName}". Name must start with a letter and contain only letters, numbers, and underscores (max 48 chars).`,
-        'online-eval',
-        localName
-      );
-    }
-    onProgress(`Online eval config: ${configDetail.configName} → local name: ${localName}`);
-    logger.endStep('success');
-
-    // 4. Check for duplicates
-    logger.startStep('Check for duplicates');
-    const projectSpec = await ctx.configIO.readProjectSpec();
-    const existingNames = new Set((projectSpec.onlineEvalConfigs ?? []).map(c => c.name));
-    if (existingNames.has(localName)) {
-      return failResult(
-        logger,
-        `Online eval config "${localName}" already exists in the project. Use --name to specify a different local name.`,
-        'online-eval',
-        localName
-      );
-    }
-    const targetName = target.name ?? 'default';
-    const existingResource = await findResourceInDeployedState(ctx.configIO, targetName, 'online-eval', configId);
-    if (existingResource) {
-      return failResult(
-        logger,
-        `Online eval config "${configId}" is already imported in this project as "${existingResource}". Remove it first before re-importing.`,
-        'online-eval',
-        localName
-      );
-    }
-    logger.endStep('success');
-
-    // 5. Resolve agent and evaluator references
-    logger.startStep('Resolve references');
-
-    // Extract agent name from service names
-    const agentName = extractAgentName(configDetail.serviceNames ?? []);
-    if (!agentName) {
-      return failResult(
-        logger,
-        'Could not determine agent name from online eval config. The config has no data source service names.',
-        'online-eval',
-        localName
-      );
-    }
-
-    // Validate agent exists in project
-    const agentNames = new Set((projectSpec.runtimes ?? []).map(r => r.name));
-    if (!agentNames.has(agentName)) {
-      return failResult(
-        logger,
-        `Online eval config references agent "${agentName}" which is not in this project. ` +
-          `Import or add the agent first with \`agentcore import runtime\` or \`agentcore add agent\`.`,
-        'online-eval',
-        localName
-      );
-    }
-
-    // Resolve evaluator IDs to local names or ARNs
-    const evaluatorIds = configDetail.evaluatorIds ?? [];
-    if (evaluatorIds.length === 0) {
-      return failResult(
-        logger,
-        'Online eval config has no evaluators configured. Cannot import.',
-        'online-eval',
-        localName
-      );
-    }
-    const evaluatorNames = resolveEvaluatorReferences(evaluatorIds, projectSpec, target.region, target.account);
-    onProgress(`Agent: ${agentName}, Evaluators: ${evaluatorNames.join(', ')}`);
-    logger.endStep('success');
-
-    // 6. Add to project config
-    logger.startStep('Update project config');
-    configSnapshot = JSON.parse(JSON.stringify(projectSpec)) as AgentCoreProjectSpec;
-    const onlineEvalSpec = toOnlineEvalConfigSpec(configDetail, localName, agentName, evaluatorNames);
-    (projectSpec.onlineEvalConfigs ??= []).push(onlineEvalSpec);
-    await ctx.configIO.writeProjectSpec(projectSpec);
-    configWritten = true;
-    onProgress(`Added online eval config "${localName}" to agentcore.json`);
-    logger.endStep('success');
-
-    // 7-10. CDK build → synth → bootstrap → phase 1 → phase 2 → update state
-    logger.startStep('Build and synth CDK');
-    const stackName = toStackName(ctx.projectName, targetName);
-
-    const pipelineResult = await executeCdkImportPipeline({
-      projectRoot: ctx.projectRoot,
-      stackName,
-      target,
-      configIO: ctx.configIO,
-      targetName,
-      onProgress,
-      buildResourcesToImport: synthTemplate => {
-        // Try matching by OnlineEvaluationConfigName property
-        let logicalId = findLogicalIdByProperty(
-          synthTemplate,
-          'AWS::BedrockAgentCore::OnlineEvaluationConfig',
-          'OnlineEvaluationConfigName',
-          localName
-        );
-
-        if (!logicalId) {
-          const prefixedName = `${ctx.projectName}_${localName}`;
-          logicalId = findLogicalIdByProperty(
-            synthTemplate,
-            'AWS::BedrockAgentCore::OnlineEvaluationConfig',
-            'OnlineEvaluationConfigName',
-            prefixedName
-          );
-        }
-
-        // Fall back to single online eval config by type
-        if (!logicalId) {
-          const configLogicalIds = findLogicalIdsByType(synthTemplate, 'AWS::BedrockAgentCore::OnlineEvaluationConfig');
-          if (configLogicalIds.length === 1) {
-            logicalId = configLogicalIds[0];
-          }
-        }
-
-        if (!logicalId) {
-          return [];
-        }
-
-        return [
-          {
-            resourceType: 'AWS::BedrockAgentCore::OnlineEvaluationConfig',
-            logicalResourceId: logicalId,
-            resourceIdentifier: { OnlineEvaluationConfigId: configId },
-          },
-        ];
-      },
-      deployedStateEntries: [
-        {
-          type: 'online-eval',
-          name: localName,
-          id: configId,
-          arn: configDetail.configArn,
-        },
-      ],
-    });
-
-    if (pipelineResult.noResources) {
-      const error = `Could not find logical ID for online eval config "${localName}" in CloudFormation template`;
-      await rollback();
-      return failResult(logger, error, 'online-eval', localName);
-    }
-
-    if (!pipelineResult.success) {
-      await rollback();
-      logger.endStep('error', pipelineResult.error);
-      logger.finalize(false);
-      return {
-        success: false,
-        error: pipelineResult.error,
-        resourceType: 'online-eval',
-        resourceName: localName,
-        logPath: logger.getRelativeLogPath(),
-      };
-    }
-    logger.endStep('success');
-
-    logger.finalize(true);
-    return {
-      success: true,
-      resourceType: 'online-eval',
-      resourceName: localName,
-      resourceId: configId,
-      logPath: logger.getRelativeLogPath(),
-    };
-  } catch (err: unknown) {
-    const message = err instanceof Error ? err.message : String(err);
-    await rollback();
-    if (importCtx) {
-      importCtx.logger.log(message, 'error');
-      importCtx.logger.finalize(false);
-    }
-    return {
-      success: false,
-      error: message,
-      resourceType: 'online-eval',
-      resourceName: options.name ?? '',
-      logPath: importCtx?.logger.getRelativeLogPath(),
-    };
-  }
+  return executeResourceImport(createOnlineEvalDescriptor(), options);
 }
 
 /**
@@ -361,12 +183,12 @@ export function registerImportOnlineEval(importCmd: Command): void {
 
       if (result.success) {
         console.log('');
-        console.log(`${green}Online eval config imported successfully!${reset}`);
+        console.log(`${ANSI.green}Online eval config imported successfully!${ANSI.reset}`);
         console.log(`  Name: ${result.resourceName}`);
         console.log(`  ID: ${result.resourceId}`);
         console.log('');
       } else {
-        console.error(`\n\x1b[31m[error]${reset} ${result.error}`);
+        console.error(`\n\x1b[31m[error]${ANSI.reset} ${result.error}`);
         if (result.logPath) {
           console.error(`Log: ${result.logPath}`);
         }

@@ -1,3 +1,15 @@
+/** Name validation regex used by all import handlers. */
+export const NAME_REGEX = /^[a-zA-Z][a-zA-Z0-9_]{0,47}$/;
+
+/** ANSI escape codes for console output. */
+export const ANSI = {
+  green: '\x1b[32m',
+  yellow: '\x1b[33m',
+  cyan: '\x1b[36m',
+  dim: '\x1b[2m',
+  reset: '\x1b[0m',
+} as const;
+
 /**
  * CloudFormation resource type to identifier key mapping for IMPORT.
  */
