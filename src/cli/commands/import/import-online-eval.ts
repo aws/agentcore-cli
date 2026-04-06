@@ -1,4 +1,4 @@
-import type { AgentCoreProjectSpec, OnlineEvalConfig } from '../../../schema';
+import type { AgentCoreProjectSpec, DeployedState, OnlineEvalConfig } from '../../../schema';
 import type { GetOnlineEvalConfigResult, OnlineEvalConfigSummary } from '../../aws/agentcore-control';
 import { getOnlineEvaluationConfig, listAllOnlineEvaluationConfigs } from '../../aws/agentcore-control';
 import { ANSI } from './constants';
@@ -52,14 +52,20 @@ export function toOnlineEvalConfigSpec(
 function resolveEvaluatorReferences(
   evaluatorIds: string[],
   projectSpec: AgentCoreProjectSpec,
+  deployedEvaluators: Record<string, string>,
   region: string,
   account: string
 ): string[] {
   const localEvaluators = projectSpec.evaluators ?? [];
 
   return evaluatorIds.map(id => {
-    // Check if this evaluator ID matches a local evaluator name
-    // The CDK creates evaluators with name: {projectName}_{evaluatorName}
+    // First check deployed state for an exact physical ID → local name match
+    // This handles imported evaluators where the local name differs from the AWS name
+    if (deployedEvaluators[id]) {
+      return deployedEvaluators[id];
+    }
+    // Then check if the evaluator ID contains a local evaluator name
+    // This handles evaluators deployed by the same project (ID pattern: {projectName}_{evaluatorName}-{suffix})
     for (const localEval of localEvaluators) {
       if (id.includes(localEval.name)) {
         return localEval.name;
@@ -116,8 +122,7 @@ function createOnlineEvalDescriptor(): ResourceImportDescriptor<GetOnlineEvalCon
 
     buildDeployedStateEntry: (name, id, d) => ({ type: 'online-eval', name, id, arn: d.configArn }),
 
-    // eslint-disable-next-line @typescript-eslint/require-await
-    beforeConfigWrite: async ({ detail, localName, projectSpec, target, onProgress, logger }) => {
+    beforeConfigWrite: async ({ detail, localName, projectSpec, ctx, target, onProgress, logger }) => {
       logger.startStep('Resolve references');
 
       // Extract agent name from service names
@@ -153,7 +158,27 @@ function createOnlineEvalDescriptor(): ResourceImportDescriptor<GetOnlineEvalCon
           localName
         );
       }
-      resolvedEvaluatorNames = resolveEvaluatorReferences(evaluatorIds, projectSpec, target.region, target.account);
+
+      // Build reverse map from deployed state: evaluatorId → localName
+      const deployedEvaluators: Record<string, string> = {};
+      const deployedState: DeployedState = await ctx.configIO
+        .readDeployedState()
+        .catch((): DeployedState => ({ targets: {} }));
+      const targetName = target.name ?? 'default';
+      const evalEntries = deployedState.targets[targetName]?.resources?.evaluators;
+      if (evalEntries) {
+        for (const [localEvalName, entry] of Object.entries(evalEntries)) {
+          deployedEvaluators[entry.evaluatorId] = localEvalName;
+        }
+      }
+
+      resolvedEvaluatorNames = resolveEvaluatorReferences(
+        evaluatorIds,
+        projectSpec,
+        deployedEvaluators,
+        target.region,
+        target.account
+      );
       resolvedAgentName = agentName;
       onProgress(`Agent: ${agentName}, Evaluators: ${resolvedEvaluatorNames.join(', ')}`);
       logger.endStep('success');
