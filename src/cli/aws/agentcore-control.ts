@@ -25,6 +25,53 @@ export function createControlClient(region: string): BedrockAgentCoreControlClie
   });
 }
 
+/**
+ * Paginate through all pages of a list API and collect every item.
+ * Reuses a single client for connection pooling across pages.
+ */
+async function paginateAll<T>(
+  region: string,
+  fetchPage: (
+    options: { region: string; maxResults: number; nextToken?: string },
+    client: BedrockAgentCoreControlClient
+  ) => Promise<{ items: T[]; nextToken?: string }>
+): Promise<T[]> {
+  const client = createControlClient(region);
+  const items: T[] = [];
+  let nextToken: string | undefined;
+
+  do {
+    const result = await fetchPage({ region, maxResults: 100, nextToken }, client);
+    items.push(...result.items);
+    nextToken = result.nextToken;
+  } while (nextToken);
+
+  return items;
+}
+
+/**
+ * Fetch tags for a resource by ARN. Returns undefined when the ARN is missing,
+ * the resource has no tags, or the ListTagsForResource call fails.
+ */
+async function fetchTags(
+  client: BedrockAgentCoreControlClient,
+  resourceArn: string | undefined,
+  resourceLabel: string
+): Promise<Record<string, string> | undefined> {
+  if (!resourceArn) return undefined;
+  try {
+    const response = await client.send(new ListTagsForResourceCommand({ resourceArn }));
+    if (response.tags && Object.keys(response.tags).length > 0) {
+      return response.tags;
+    }
+  } catch (err) {
+    console.warn(
+      `Warning: Failed to fetch tags for ${resourceLabel}: ${err instanceof Error ? err.message : String(err)}`
+    );
+  }
+  return undefined;
+}
+
 export interface GetAgentRuntimeStatusOptions {
   region: string;
   runtimeId: string;
@@ -114,17 +161,10 @@ export async function listAgentRuntimes(
  * List all AgentCore Runtimes in the given region, paginating through all pages.
  */
 export async function listAllAgentRuntimes(options: { region: string }): Promise<AgentRuntimeSummary[]> {
-  const client = createControlClient(options.region);
-  const runtimes: AgentRuntimeSummary[] = [];
-  let nextToken: string | undefined;
-
-  do {
-    const result = await listAgentRuntimes({ region: options.region, maxResults: 100, nextToken }, client);
-    runtimes.push(...result.runtimes);
-    nextToken = result.nextToken;
-  } while (nextToken);
-
-  return runtimes;
+  return paginateAll(options.region, async (opts, client) => {
+    const result = await listAgentRuntimes(opts, client);
+    return { items: result.runtimes, nextToken: result.nextToken };
+  });
 }
 
 export interface GetAgentRuntimeOptions {
@@ -222,18 +262,7 @@ export async function getAgentRuntimeDetail(options: GetAgentRuntimeOptions): Pr
     }
   }
 
-  // Fetch tags via separate API call (same pattern as getMemoryDetail)
-  let tags: Record<string, string> | undefined;
-  if (response.agentRuntimeArn) {
-    try {
-      const tagsResponse = await client.send(new ListTagsForResourceCommand({ resourceArn: response.agentRuntimeArn }));
-      if (tagsResponse.tags && Object.keys(tagsResponse.tags).length > 0) {
-        tags = tagsResponse.tags;
-      }
-    } catch (err) {
-      console.warn(`Warning: Failed to fetch tags for runtime: ${err instanceof Error ? err.message : String(err)}`);
-    }
-  }
+  const tags = await fetchTags(client, response.agentRuntimeArn, 'runtime');
 
   return {
     agentRuntimeId: response.agentRuntimeId ?? '',
@@ -312,17 +341,10 @@ export async function listMemories(
  * List all AgentCore Memories in the given region, paginating through all pages.
  */
 export async function listAllMemories(options: { region: string }): Promise<MemorySummary[]> {
-  const client = createControlClient(options.region);
-  const memories: MemorySummary[] = [];
-  let nextToken: string | undefined;
-
-  do {
-    const result = await listMemories({ region: options.region, maxResults: 100, nextToken }, client);
-    memories.push(...result.memories);
-    nextToken = result.nextToken;
-  } while (nextToken);
-
-  return memories;
+  return paginateAll(options.region, async (opts, client) => {
+    const result = await listMemories(opts, client);
+    return { items: result.memories, nextToken: result.nextToken };
+  });
 }
 
 export interface GetMemoryOptions {
@@ -379,16 +401,7 @@ export async function getMemoryDetail(options: GetMemoryOptions): Promise<Memory
     throw new Error(`Memory ${options.memoryId} is missing required field: eventExpiryDuration`);
   }
 
-  // Fetch tags via separate API call
-  let tags: Record<string, string> | undefined;
-  try {
-    const tagsResponse = await client.send(new ListTagsForResourceCommand({ resourceArn: memory.arn }));
-    if (tagsResponse.tags && Object.keys(tagsResponse.tags).length > 0) {
-      tags = tagsResponse.tags;
-    }
-  } catch (err) {
-    console.warn(`Warning: Failed to fetch tags for memory: ${err instanceof Error ? err.message : String(err)}`);
-  }
+  const tags = await fetchTags(client, memory.arn, 'memory');
 
   return {
     memoryId: memory.id,
@@ -508,18 +521,7 @@ export async function getEvaluator(options: GetEvaluatorOptions): Promise<GetEva
     }
   }
 
-  // Fetch tags (non-fatal if it fails)
-  let tags: Record<string, string> | undefined;
-  if (response.evaluatorArn) {
-    try {
-      const tagsResponse = await client.send(new ListTagsForResourceCommand({ resourceArn: response.evaluatorArn }));
-      if (tagsResponse.tags && Object.keys(tagsResponse.tags).length > 0) {
-        tags = tagsResponse.tags;
-      }
-    } catch {
-      // Tags are optional — continue without them
-    }
-  }
+  const tags = await fetchTags(client, response.evaluatorArn, 'evaluator');
 
   return {
     evaluatorId: response.evaluatorId,
@@ -554,15 +556,18 @@ export interface ListEvaluatorsResult {
   nextToken?: string;
 }
 
-export async function listEvaluators(options: ListEvaluatorsOptions): Promise<ListEvaluatorsResult> {
-  const client = createControlClient(options.region);
+export async function listEvaluators(
+  options: ListEvaluatorsOptions,
+  client?: BedrockAgentCoreControlClient
+): Promise<ListEvaluatorsResult> {
+  const resolvedClient = client ?? createControlClient(options.region);
 
   const command = new ListEvaluatorsCommand({
     maxResults: options.maxResults,
     nextToken: options.nextToken,
   });
 
-  const response = await client.send(command);
+  const response = await resolvedClient.send(command);
 
   return {
     evaluators: (response.evaluators ?? []).map(e => ({
@@ -583,16 +588,13 @@ export async function listEvaluators(options: ListEvaluatorsOptions): Promise<Li
  * Filters out Builtin evaluators — only custom evaluators can be imported.
  */
 export async function listAllEvaluators(options: { region: string }): Promise<EvaluatorSummary[]> {
-  const evaluators: EvaluatorSummary[] = [];
-  let nextToken: string | undefined;
-
-  do {
-    const result = await listEvaluators({ region: options.region, maxResults: 100, nextToken });
-    evaluators.push(...result.evaluators.filter(e => !e.evaluatorName.startsWith('Builtin.')));
-    nextToken = result.nextToken;
-  } while (nextToken);
-
-  return evaluators;
+  return paginateAll(options.region, async (opts, client) => {
+    const result = await listEvaluators(opts, client);
+    return {
+      items: result.evaluators.filter(e => !e.evaluatorName.startsWith('Builtin.')),
+      nextToken: result.nextToken,
+    };
+  });
 }
 
 // ============================================================================
@@ -620,16 +622,17 @@ export interface ListOnlineEvalConfigsResult {
 }
 
 export async function listOnlineEvaluationConfigs(
-  options: ListOnlineEvalConfigsOptions
+  options: ListOnlineEvalConfigsOptions,
+  client?: BedrockAgentCoreControlClient
 ): Promise<ListOnlineEvalConfigsResult> {
-  const client = createControlClient(options.region);
+  const resolvedClient = client ?? createControlClient(options.region);
 
   const command = new ListOnlineEvaluationConfigsCommand({
     maxResults: options.maxResults,
     nextToken: options.nextToken,
   });
 
-  const response = await client.send(command);
+  const response = await resolvedClient.send(command);
 
   return {
     configs: (response.onlineEvaluationConfigs ?? []).map(c => ({
@@ -648,16 +651,10 @@ export async function listOnlineEvaluationConfigs(
  * List all online evaluation configs in the given region, paginating through all pages.
  */
 export async function listAllOnlineEvaluationConfigs(options: { region: string }): Promise<OnlineEvalConfigSummary[]> {
-  const configs: OnlineEvalConfigSummary[] = [];
-  let nextToken: string | undefined;
-
-  do {
-    const result = await listOnlineEvaluationConfigs({ region: options.region, maxResults: 100, nextToken });
-    configs.push(...result.configs);
-    nextToken = result.nextToken;
-  } while (nextToken);
-
-  return configs;
+  return paginateAll(options.region, async (opts, client) => {
+    const result = await listOnlineEvaluationConfigs(opts, client);
+    return { items: result.configs, nextToken: result.nextToken };
+  });
 }
 
 // ============================================================================
