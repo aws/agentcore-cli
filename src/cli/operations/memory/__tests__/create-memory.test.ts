@@ -76,20 +76,18 @@ describe('add', () => {
     expect(addedMemory.strategies[0]!.namespaces).toEqual(['/users/{actorId}/facts']);
   });
 
-  it('creates memory with strategy without default namespaces', async () => {
+  it('rejects invalid strategy type', async () => {
     const project = makeProject([]);
     mockReadProjectSpec.mockResolvedValue(project);
-    mockWriteProjectSpec.mockResolvedValue(undefined);
 
-    await primitive.add({
+    const result = await primitive.add({
       name: 'NewMem',
       strategies: 'CUSTOM',
       expiry: 30,
     });
 
-    const writtenSpec = mockWriteProjectSpec.mock.calls[0]![0];
-    const addedMemory = writtenSpec.memories.find((m: { name: string }) => m.name === 'NewMem');
-    expect(addedMemory.strategies[0]!.namespaces).toBeUndefined();
+    expect(result).toEqual(expect.objectContaining({ success: false, error: expect.any(String) }));
+    expect(mockWriteProjectSpec).not.toHaveBeenCalled();
   });
 
   it('returns error on duplicate memory name', async () => {
