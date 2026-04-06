@@ -5,6 +5,7 @@ import { getEvaluator, getOnlineEvaluationConfig } from '../../aws/agentcore-con
 import { getErrorMessage } from '../../errors';
 import { ExecLogger } from '../../logging';
 import type { ResourceDeploymentState } from './constants';
+import { buildRuntimeInvocationUrl } from './constants';
 
 export type { ResourceDeploymentState };
 
@@ -23,6 +24,7 @@ export interface ResourceStatusEntry {
   identifier?: string;
   detail?: string;
   error?: string;
+  invocationUrl?: string;
 }
 
 export interface ProjectStatusResult {
@@ -284,16 +286,20 @@ export async function handleProjectStatus(
           const agentState = agentStates[entry.name];
           if (!agentState) return;
 
+          const invocationUrl = entry.identifier
+            ? buildRuntimeInvocationUrl(targetConfig.region, entry.identifier)
+            : undefined;
+
           try {
             const runtimeStatus = await getAgentRuntimeStatus({
               region: targetConfig.region,
               runtimeId: agentState.runtimeId,
             });
-            resources[i] = { ...entry, detail: runtimeStatus.status };
+            resources[i] = { ...entry, detail: runtimeStatus.status, invocationUrl };
             logger.log(`  ${entry.name}: ${runtimeStatus.status} (${agentState.runtimeId})`);
           } catch (error) {
             const errorMsg = getErrorMessage(error);
-            resources[i] = { ...entry, error: errorMsg };
+            resources[i] = { ...entry, error: errorMsg, invocationUrl };
             logger.log(`  ${entry.name}: ERROR - ${errorMsg}`, 'error');
           }
         })

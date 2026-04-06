@@ -1,6 +1,7 @@
 import type { AgentCoreProjectSpec, DeployedResourceState } from '../../../../schema/index.js';
 import { computeResourceStatuses, handleProjectStatus } from '../action.js';
 import type { StatusContext } from '../action.js';
+import { buildRuntimeInvocationUrl } from '../constants.js';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const mockGetAgentRuntimeStatus = vi.fn();
@@ -629,5 +630,178 @@ describe('handleProjectStatus — live enrichment', () => {
     expect(evalEntry).toBeDefined();
     expect(evalEntry!.deploymentState).toBe('local-only');
     expect(mockGetEvaluator).not.toHaveBeenCalled();
+  });
+});
+
+describe('buildRuntimeInvocationUrl', () => {
+  it('constructs the correct invocation URL with encoded ARN', () => {
+    const url = buildRuntimeInvocationUrl(
+      'us-east-1',
+      'arn:aws:bedrock-agentcore:us-east-1:123456789012:runtime/travelplanner_FlightsMcp-abcdefgh'
+    );
+    expect(url).toBe(
+      'https://bedrock-agentcore.us-east-1.amazonaws.com/runtimes/arn%3Aaws%3Abedrock-agentcore%3Aus-east-1%3A123456789012%3Aruntime%2Ftravelplanner_FlightsMcp-abcdefgh/invocations'
+    );
+  });
+
+  it('handles different regions', () => {
+    const url = buildRuntimeInvocationUrl(
+      'eu-west-1',
+      'arn:aws:bedrock-agentcore:eu-west-1:111111111111:runtime/my-agent-xyz'
+    );
+    expect(url).toBe(
+      'https://bedrock-agentcore.eu-west-1.amazonaws.com/runtimes/arn%3Aaws%3Abedrock-agentcore%3Aeu-west-1%3A111111111111%3Aruntime%2Fmy-agent-xyz/invocations'
+    );
+  });
+});
+
+describe('handleProjectStatus — invocation URL enrichment', () => {
+  beforeEach(() => {
+    mockGetAgentRuntimeStatus.mockReset();
+    mockGetEvaluator.mockReset();
+    mockGetOnlineEvaluationConfig.mockReset();
+  });
+
+  afterEach(() => vi.clearAllMocks());
+
+  it('sets invocationUrl on deployed agents after runtime status enrichment', async () => {
+    const runtimeArn = 'arn:aws:bedrock-agentcore:us-east-1:123456789012:runtime/proj_MyAgent-abc123';
+
+    mockGetAgentRuntimeStatus.mockResolvedValue({
+      runtimeId: 'proj_MyAgent-abc123',
+      status: 'READY',
+    });
+
+    const ctx: StatusContext = {
+      project: {
+        ...baseProject,
+        runtimes: [{ name: 'MyAgent' }],
+      } as unknown as AgentCoreProjectSpec,
+      awsTargets: [{ name: 'dev', region: 'us-east-1', account: '123456789012' }],
+      deployedState: {
+        targets: {
+          dev: {
+            resources: {
+              runtimes: {
+                MyAgent: {
+                  runtimeId: 'proj_MyAgent-abc123',
+                  runtimeArn,
+                  roleArn: 'arn:aws:iam::123456789012:role/test',
+                },
+              },
+            },
+          },
+        },
+      },
+    } as unknown as StatusContext;
+
+    const result = await handleProjectStatus(ctx);
+
+    expect(result.success).toBe(true);
+    const agentEntry = result.resources.find(r => r.resourceType === 'agent' && r.name === 'MyAgent');
+    expect(agentEntry).toBeDefined();
+    expect(agentEntry!.invocationUrl).toBe(
+      `https://bedrock-agentcore.us-east-1.amazonaws.com/runtimes/${encodeURIComponent(runtimeArn)}/invocations`
+    );
+  });
+
+  it('does not set invocationUrl on local-only agents', async () => {
+    const ctx: StatusContext = {
+      project: {
+        ...baseProject,
+        runtimes: [{ name: 'LocalAgent' }],
+      } as unknown as AgentCoreProjectSpec,
+      awsTargets: [{ name: 'dev', region: 'us-east-1', account: '123456789012' }],
+      deployedState: {
+        targets: {
+          dev: {
+            resources: {},
+          },
+        },
+      },
+    } as unknown as StatusContext;
+
+    const result = await handleProjectStatus(ctx);
+
+    expect(result.success).toBe(true);
+    const agentEntry = result.resources.find(r => r.resourceType === 'agent' && r.name === 'LocalAgent');
+    expect(agentEntry).toBeDefined();
+    expect(agentEntry!.invocationUrl).toBeUndefined();
+  });
+
+  it('still sets invocationUrl when runtime status fetch fails', async () => {
+    const runtimeArn = 'arn:aws:bedrock-agentcore:us-east-1:123456789012:runtime/proj_FailAgent-xyz';
+    mockGetAgentRuntimeStatus.mockRejectedValue(new Error('Timeout'));
+
+    const ctx: StatusContext = {
+      project: {
+        ...baseProject,
+        runtimes: [{ name: 'FailAgent' }],
+      } as unknown as AgentCoreProjectSpec,
+      awsTargets: [{ name: 'dev', region: 'us-east-1', account: '123456789012' }],
+      deployedState: {
+        targets: {
+          dev: {
+            resources: {
+              runtimes: {
+                FailAgent: {
+                  runtimeId: 'proj_FailAgent-xyz',
+                  runtimeArn,
+                  roleArn: 'arn:aws:iam::123456789012:role/test',
+                },
+              },
+            },
+          },
+        },
+      },
+    } as unknown as StatusContext;
+
+    const result = await handleProjectStatus(ctx);
+
+    expect(result.success).toBe(true);
+    const agentEntry = result.resources.find(r => r.resourceType === 'agent' && r.name === 'FailAgent');
+    expect(agentEntry).toBeDefined();
+    expect(agentEntry!.error).toBe('Timeout');
+    expect(agentEntry!.invocationUrl).toBe(
+      `https://bedrock-agentcore.us-east-1.amazonaws.com/runtimes/${encodeURIComponent(runtimeArn)}/invocations`
+    );
+  });
+
+  it('does not set invocationUrl on pending-removal agents', async () => {
+    mockGetAgentRuntimeStatus.mockResolvedValue({
+      runtimeId: 'proj_OldAgent-abc',
+      status: 'READY',
+    });
+
+    const ctx: StatusContext = {
+      project: {
+        ...baseProject,
+        runtimes: [],
+      } as unknown as AgentCoreProjectSpec,
+      awsTargets: [{ name: 'dev', region: 'us-east-1', account: '123456789012' }],
+      deployedState: {
+        targets: {
+          dev: {
+            resources: {
+              runtimes: {
+                OldAgent: {
+                  runtimeId: 'proj_OldAgent-abc',
+                  runtimeArn: 'arn:aws:bedrock-agentcore:us-east-1:123456789012:runtime/proj_OldAgent-abc',
+                  roleArn: 'arn:aws:iam::123456789012:role/test',
+                },
+              },
+            },
+          },
+        },
+      },
+    } as unknown as StatusContext;
+
+    const result = await handleProjectStatus(ctx);
+
+    expect(result.success).toBe(true);
+    const agentEntry = result.resources.find(r => r.resourceType === 'agent' && r.name === 'OldAgent');
+    expect(agentEntry).toBeDefined();
+    expect(agentEntry!.deploymentState).toBe('pending-removal');
+    expect(agentEntry!.invocationUrl).toBeUndefined();
   });
 });

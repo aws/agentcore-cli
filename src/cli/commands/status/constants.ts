@@ -13,3 +13,8 @@ export const DEPLOYMENT_STATE_LABELS: Record<ResourceDeploymentState, string> = 
   'local-only': 'Local only',
   'pending-removal': 'Removed locally',
 };
+
+export function buildRuntimeInvocationUrl(region: string, runtimeArn: string): string {
+  const encodedArn = encodeURIComponent(runtimeArn);
+  return `https://bedrock-agentcore.${region}.amazonaws.com/runtimes/${encodedArn}/invocations`;
+}

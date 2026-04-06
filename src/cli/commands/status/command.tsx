@@ -154,7 +154,14 @@ export const registerStatus = (program: Command) => {
               <Box flexDirection="column" marginTop={1}>
                 <Text bold>Agents</Text>
                 {agents.map(entry => (
-                  <ResourceEntry key={`${entry.resourceType}-${entry.name}`} entry={entry} showRuntime />
+                  <Box key={`${entry.resourceType}-${entry.name}`} flexDirection="column">
+                    <ResourceEntry entry={entry} showRuntime />
+                    {entry.invocationUrl && (
+                      <Text dimColor>
+                        {'  '}URL: {entry.invocationUrl}
+                      </Text>
+                    )}
+                  </Box>
                 ))}
               </Box>
             )}
