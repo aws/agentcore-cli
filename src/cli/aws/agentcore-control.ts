@@ -472,7 +472,16 @@ export async function getEvaluator(options: GetEvaluatorOptions): Promise<GetEva
     evaluatorId: options.evaluatorId,
   });
 
-  const response = await client.send(command);
+  let response;
+  try {
+    response = await client.send(command);
+  } catch (err: unknown) {
+    const name = (err as { name?: string }).name ?? '';
+    if (name === 'ResourceNotFoundException' || name === 'ValidationException') {
+      throw new Error(`Evaluator "${options.evaluatorId}" not found. Verify the evaluator ID or ARN is correct.`);
+    }
+    throw err;
+  }
 
   if (!response.evaluatorId) {
     throw new Error(`No evaluator found for ID ${options.evaluatorId}`);
