@@ -10,16 +10,18 @@ import {
   DEFAULT_EPISODIC_REFLECTION_NAMESPACES,
   DEFAULT_STRATEGY_NAMESPACES,
   MemorySchema,
+  MemoryStrategyTypeSchema,
   StreamContentLevelSchema,
   StreamDeliveryResourcesSchema,
 } from '../../schema';
-import { validateAddMemoryOptions } from '../commands/add/validate';
+import { DEFAULT_DELIVERY_TYPE, validateAddMemoryOptions } from '../commands/add/validate';
 import { getErrorMessage } from '../errors';
 import type { RemovalPreview, RemovalResult, SchemaChange } from '../operations/remove/types';
 import { DEFAULT_EVENT_EXPIRY } from '../tui/screens/memory/types';
 import { BasePrimitive } from './BasePrimitive';
 import type { AddResult, AddScreenComponent, RemovableResource } from './types';
 import type { Command } from '@commander-js/extra-typings';
+import { z } from 'zod';
 
 /**
  * Options for adding a memory resource.
@@ -57,14 +59,14 @@ export class MemoryPrimitive extends BasePrimitive<AddMemoryOptions, RemovableMe
             .split(',')
             .map(s => s.trim())
             .filter(Boolean)
-            .map(type => ({ type: type as MemoryStrategyType }))
+            .map(type => ({ type: MemoryStrategyTypeSchema.parse(type) }))
         : [];
 
       const streamDeliveryResources = options.streamDeliveryResources
         ? this.parseStreamDeliveryResources(options.streamDeliveryResources)
         : options.dataStreamArn
           ? this.buildStreamDeliveryResources({
-              deliveryType: options.deliveryType ?? 'kinesis',
+              deliveryType: options.deliveryType ?? DEFAULT_DELIVERY_TYPE,
               dataStreamArn: options.dataStreamArn,
               contentLevel: StreamContentLevelSchema.parse(options.contentLevel ?? 'FULL_CONTENT'),
             })
@@ -268,7 +270,7 @@ export class MemoryPrimitive extends BasePrimitive<AddMemoryOptions, RemovableMe
   private async createMemory(config: {
     name: string;
     eventExpiryDuration: number;
-    strategies: { type: string }[];
+    strategies: { type: MemoryStrategyType }[];
     streamDeliveryResources?: StreamDeliveryResources;
   }): Promise<Memory> {
     const project = await this.readProjectSpec();
@@ -277,12 +279,11 @@ export class MemoryPrimitive extends BasePrimitive<AddMemoryOptions, RemovableMe
 
     // Map strategies with their default namespaces
     const strategies: MemoryStrategy[] = config.strategies.map(s => {
-      const strategyType = s.type as MemoryStrategyType;
-      const defaultNamespaces = DEFAULT_STRATEGY_NAMESPACES[strategyType];
+      const defaultNamespaces = DEFAULT_STRATEGY_NAMESPACES[s.type];
       return {
-        type: strategyType,
+        type: s.type,
         ...(defaultNamespaces && { namespaces: defaultNamespaces }),
-        ...(strategyType === 'EPISODIC' && { reflectionNamespaces: DEFAULT_EPISODIC_REFLECTION_NAMESPACES }),
+        ...(s.type === 'EPISODIC' && { reflectionNamespaces: DEFAULT_EPISODIC_REFLECTION_NAMESPACES }),
       };
     });
 
@@ -304,32 +305,30 @@ export class MemoryPrimitive extends BasePrimitive<AddMemoryOptions, RemovableMe
     dataStreamArn: string;
     contentLevel: StreamContentLevel;
   }): StreamDeliveryResources {
-    switch (config.deliveryType) {
-      case 'kinesis':
-        return {
-          resources: [
-            {
-              kinesis: {
-                dataStreamArn: config.dataStreamArn,
-                contentConfigurations: [{ type: 'MEMORY_RECORDS', level: config.contentLevel }],
-              },
+    if (config.deliveryType === DEFAULT_DELIVERY_TYPE) {
+      return {
+        resources: [
+          {
+            kinesis: {
+              dataStreamArn: config.dataStreamArn,
+              contentConfigurations: [{ type: 'MEMORY_RECORDS', level: config.contentLevel }],
             },
-          ],
-        };
-      default:
-        throw new Error('Unsupported delivery type. Supported types: kinesis');
+          },
+        ],
+      };
     }
+    throw new Error(`Unsupported delivery type: ${config.deliveryType}`);
   }
 
   private parseStreamDeliveryResources(input: string): StreamDeliveryResources {
     try {
       return StreamDeliveryResourcesSchema.parse(JSON.parse(input));
     } catch (e) {
-      const message =
-        e instanceof SyntaxError
-          ? 'Invalid JSON in stream delivery config'
-          : 'Stream delivery config does not match the expected schema';
-      throw new Error(message);
+      if (e instanceof SyntaxError) {
+        throw new Error('Invalid JSON in stream delivery config');
+      }
+      const detail = e instanceof z.ZodError ? `: ${e.issues.map(i => i.message).join(', ')}` : '';
+      throw new Error(`Stream delivery config does not match the expected schema${detail}`);
     }
   }
 }

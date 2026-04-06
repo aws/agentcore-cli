@@ -1032,13 +1032,23 @@ describe('validate', () => {
     });
 
     it('rejects invalid deliveryType', () => {
-      const result = validateAddMemoryOptions({ ...validMemoryOptions, deliveryType: 'sqs' });
+      const result = validateAddMemoryOptions({
+        ...validMemoryOptions,
+        dataStreamArn: 'arn:aws:kinesis:us-west-2:123456789012:stream/test',
+        deliveryType: 'sqs',
+      });
       expect(result.valid).toBe(false);
       expect(result.error).toContain('Invalid delivery type');
     });
 
     it('accepts valid deliveryType', () => {
-      expect(validateAddMemoryOptions({ ...validMemoryOptions, deliveryType: 'kinesis' })).toEqual({ valid: true });
+      expect(
+        validateAddMemoryOptions({
+          ...validMemoryOptions,
+          dataStreamArn: 'arn:aws:kinesis:us-west-2:123456789012:stream/test',
+          deliveryType: 'kinesis',
+        })
+      ).toEqual({ valid: true });
     });
 
     it('rejects dataStreamArn not starting with arn:', () => {
@@ -1058,6 +1068,44 @@ describe('validate', () => {
       });
       expect(result.valid).toBe(false);
       expect(result.error).toContain('cannot be combined');
+    });
+
+    it('rejects combining streamDeliveryResources with deliveryType', () => {
+      const result = validateAddMemoryOptions({
+        ...validMemoryOptions,
+        deliveryType: 'kinesis',
+        streamDeliveryResources:
+          '{"resources":[{"kinesis":{"dataStreamArn":"arn:aws:kinesis:us-west-2:123456789012:stream/test","contentConfigurations":[{"type":"MEMORY_RECORDS","level":"FULL_CONTENT"}]}}]}',
+      });
+      expect(result.valid).toBe(false);
+      expect(result.error).toContain('cannot be combined');
+    });
+
+    it('rejects deliveryType without dataStreamArn', () => {
+      const result = validateAddMemoryOptions({
+        ...validMemoryOptions,
+        deliveryType: 'kinesis',
+      });
+      expect(result.valid).toBe(false);
+      expect(result.error).toContain('--data-stream-arn is required');
+    });
+
+    it('rejects invalid streamDeliveryResources JSON', () => {
+      const result = validateAddMemoryOptions({
+        ...validMemoryOptions,
+        streamDeliveryResources: 'not json',
+      });
+      expect(result.valid).toBe(false);
+      expect(result.error).toContain('Invalid JSON');
+    });
+
+    it('rejects streamDeliveryResources that fails schema validation', () => {
+      const result = validateAddMemoryOptions({
+        ...validMemoryOptions,
+        streamDeliveryResources: '{"resources":[]}',
+      });
+      expect(result.valid).toBe(false);
+      expect(result.error).toContain('does not match the expected schema');
     });
   });
 
