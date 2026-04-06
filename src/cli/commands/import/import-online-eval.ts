@@ -1,8 +1,12 @@
 import type { OnlineEvalConfig } from '../../../schema';
 import type { GetOnlineEvalConfigResult, OnlineEvalConfigSummary } from '../../aws/agentcore-control';
-import { getOnlineEvaluationConfig, listAllOnlineEvaluationConfigs } from '../../aws/agentcore-control';
+import {
+  getOnlineEvaluationConfig,
+  listAllAgentRuntimes,
+  listAllOnlineEvaluationConfigs,
+} from '../../aws/agentcore-control';
 import { ANSI } from './constants';
-import { failResult } from './import-utils';
+import { failResult, findResourceInDeployedState } from './import-utils';
 import { executeResourceImport } from './resource-import';
 import type { ImportResourceOptions, ImportResourceResult, ResourceImportDescriptor } from './types';
 import type { Command } from '@commander-js/extra-typings';
@@ -97,13 +101,12 @@ function createOnlineEvalDescriptor(): ResourceImportDescriptor<GetOnlineEvalCon
 
     buildDeployedStateEntry: (name, id, d) => ({ type: 'online-eval', name, id, arn: d.configArn }),
 
-    // eslint-disable-next-line @typescript-eslint/require-await -- interface requires Promise return type
-    beforeConfigWrite: async ({ detail, localName, projectSpec, target, onProgress, logger }) => {
+    beforeConfigWrite: async ({ detail, localName, projectSpec, ctx, target, onProgress, logger }) => {
       logger.startStep('Resolve references');
 
       // Extract agent name from service names
-      const agentName = extractAgentName(detail.serviceNames ?? []);
-      if (!agentName) {
+      const awsAgentName = extractAgentName(detail.serviceNames ?? []);
+      if (!awsAgentName) {
         return failResult(
           logger,
           'Could not determine agent name from online eval config. The config has no data source service names.',
@@ -112,12 +115,40 @@ function createOnlineEvalDescriptor(): ResourceImportDescriptor<GetOnlineEvalCon
         );
       }
 
-      // Validate agent exists in project
+      // Resolve the local agent name. The AWS name from the OEC service names
+      // may differ from the local name if the runtime was imported with --name.
       const agentNames = new Set((projectSpec.runtimes ?? []).map(r => r.name));
-      if (!agentNames.has(agentName)) {
+      let agentName: string | undefined;
+
+      if (agentNames.has(awsAgentName)) {
+        // Direct match — local name equals AWS name
+        agentName = awsAgentName;
+      } else {
+        // Look up the AWS runtime ID for the AWS name, then find the local name
+        // that maps to it in deployed state.
+        onProgress(`Agent "${awsAgentName}" not found by name, checking deployed state...`);
+        const runtimes = await listAllAgentRuntimes({ region: target.region });
+        const matchingRuntime = runtimes.find(r => r.agentRuntimeName === awsAgentName);
+
+        if (matchingRuntime) {
+          const targetName = target.name ?? 'default';
+          const localMatch = await findResourceInDeployedState(
+            ctx.configIO,
+            targetName,
+            'runtime',
+            matchingRuntime.agentRuntimeId
+          );
+          if (localMatch && agentNames.has(localMatch)) {
+            agentName = localMatch;
+            onProgress(`Resolved AWS runtime "${awsAgentName}" to local name "${agentName}"`);
+          }
+        }
+      }
+
+      if (!agentName) {
         return failResult(
           logger,
-          `Online eval config references agent "${agentName}" which is not in this project. ` +
+          `Online eval config references agent "${awsAgentName}" which is not in this project. ` +
             `Import or add the agent first with \`agentcore import runtime\` or \`agentcore add agent\`.`,
           'online-eval',
           localName
