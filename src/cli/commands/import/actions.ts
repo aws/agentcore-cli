@@ -8,6 +8,7 @@ import type {
   Memory,
 } from '../../../schema';
 import { validateAwsCredentials } from '../../aws/account';
+import { arnPrefix } from '../../aws/partition';
 import { LocalCdkProject } from '../../cdk/local-cdk-project';
 import { silentIoHost } from '../../cdk/toolkit-lib';
 import { ExecLogger } from '../../logging';
@@ -721,7 +722,7 @@ export async function handleImport(options: ImportOptions): Promise<ImportResult
             runtimeId: agent.physicalAgentId,
             runtimeArn:
               agent.physicalAgentArn ??
-              `arn:aws:bedrock-agentcore:${target.region}:${target.account}:runtime/${agent.physicalAgentId}`,
+              `${arnPrefix(target.region)}:bedrock-agentcore:${target.region}:${target.account}:runtime/${agent.physicalAgentId}`,
             roleArn: 'imported', // Placeholder — updated after agentcore deploy
           };
         }
@@ -736,7 +737,7 @@ export async function handleImport(options: ImportOptions): Promise<ImportResult
             memoryId: memory.physicalMemoryId,
             memoryArn:
               memory.physicalMemoryArn ??
-              `arn:aws:bedrock-agentcore:${target.region}:${target.account}:memory/${memory.physicalMemoryId}`,
+              `${arnPrefix(target.region)}:bedrock-agentcore:${target.region}:${target.account}:memory/${memory.physicalMemoryId}`,
           };
         }
       }
