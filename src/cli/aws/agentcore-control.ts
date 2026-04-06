@@ -458,6 +458,7 @@ export interface GetEvaluatorResult {
   level: string;
   status: string;
   description?: string;
+  lockedForModification?: boolean;
   evaluatorConfig?: {
     llmAsAJudge?: GetEvaluatorLlmConfig;
     codeBased?: GetEvaluatorCodeBasedConfig;
@@ -530,6 +531,7 @@ export async function getEvaluator(options: GetEvaluatorOptions): Promise<GetEva
     level: response.level ?? 'SESSION',
     status: response.status ?? 'UNKNOWN',
     description: response.description,
+    lockedForModification: response.lockedForModification,
     evaluatorConfig,
     tags,
   };
