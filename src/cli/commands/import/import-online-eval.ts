@@ -116,7 +116,8 @@ function createOnlineEvalDescriptor(): ResourceImportDescriptor<GetOnlineEvalCon
       }
 
       // Resolve the local agent name. The AWS name from the OEC service names
-      // may differ from the local name if the runtime was imported with --name.
+      // may differ from the local name if the runtime was imported with --name,
+      // or it may include the CDK project prefix ("{projectName}_{agentName}").
       const agentNames = new Set((projectSpec.runtimes ?? []).map(r => r.name));
       let agentName: string | undefined;
 
@@ -124,6 +125,17 @@ function createOnlineEvalDescriptor(): ResourceImportDescriptor<GetOnlineEvalCon
         // Direct match — local name equals AWS name
         agentName = awsAgentName;
       } else {
+        // Strip CDK project prefix if present (service names use "{projectName}_{agentName}")
+        const prefix = `${ctx.projectName}_`;
+        if (awsAgentName.startsWith(prefix)) {
+          const stripped = awsAgentName.slice(prefix.length);
+          if (agentNames.has(stripped)) {
+            agentName = stripped;
+          }
+        }
+      }
+
+      if (!agentName) {
         // Look up the AWS runtime ID for the AWS name, then find the local name
         // that maps to it in deployed state.
         onProgress(`Agent "${awsAgentName}" not found by name, checking deployed state...`);
