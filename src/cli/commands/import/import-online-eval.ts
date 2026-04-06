@@ -6,7 +6,7 @@ import {
   listAllOnlineEvaluationConfigs,
 } from '../../aws/agentcore-control';
 import { ANSI } from './constants';
-import { failResult, findResourceInDeployedState } from './import-utils';
+import { failResult, findResourceInDeployedState, parseAndValidateArn } from './import-utils';
 import { executeResourceImport } from './resource-import';
 import type { ImportResourceOptions, ImportResourceResult, ResourceImportDescriptor } from './types';
 import type { Command } from '@commander-js/extra-typings';
@@ -69,13 +69,7 @@ function createOnlineEvalDescriptor(): ResourceImportDescriptor<GetOnlineEvalCon
 
     listResources: region => listAllOnlineEvaluationConfigs({ region }),
     getDetail: (region, id) => getOnlineEvaluationConfig({ region, configId: id }),
-    parseResourceId: arn => {
-      const match = /\/([^/]+)$/.exec(arn);
-      if (!match) {
-        throw new Error(`Could not parse config ID from ARN: ${arn}`);
-      }
-      return match[1]!;
-    },
+    parseResourceId: (arn, target) => parseAndValidateArn(arn, 'online-eval', target).resourceId,
 
     extractSummaryId: s => s.onlineEvaluationConfigId,
     formatListItem: (s, i) =>

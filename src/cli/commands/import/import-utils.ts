@@ -212,6 +212,14 @@ export interface ParsedArn {
 const ARN_PATTERN =
   /^arn:aws:bedrock-agentcore:([^:]+):([^:]+):(runtime|memory|evaluator|online-evaluation-config)\/(.+)$/;
 
+/** Map from ImportableResourceType to the resource type string used in ARNs. */
+const ARN_RESOURCE_TYPE_MAP: Record<ImportableResourceType, string> = {
+  runtime: 'runtime',
+  memory: 'memory',
+  evaluator: 'evaluator',
+  'online-eval': 'online-evaluation-config',
+};
+
 /**
  * Parse and validate a BedrockAgentCore ARN.
  * Validates format, region, and account against the deployment target.
@@ -222,16 +230,17 @@ export function parseAndValidateArn(
   target: { region: string; account: string }
 ): ParsedArn {
   const match = ARN_PATTERN.exec(arn);
+  const expectedArnType = ARN_RESOURCE_TYPE_MAP[expectedResourceType];
   if (!match) {
     throw new Error(
-      `Invalid ARN format: "${arn}". Expected format: arn:aws:bedrock-agentcore:<region>:<account>:${expectedResourceType}/<id>`
+      `Invalid ARN format: "${arn}". Expected format: arn:aws:bedrock-agentcore:<region>:<account>:${expectedArnType}/<id>`
     );
   }
 
   const [, region, account, resourceType, resourceId] = match;
 
-  if (resourceType !== expectedResourceType) {
-    throw new Error(`ARN resource type "${resourceType}" does not match expected type "${expectedResourceType}".`);
+  if (resourceType !== expectedArnType) {
+    throw new Error(`ARN resource type "${resourceType}" does not match expected type "${expectedArnType}".`);
   }
 
   if (region !== target.region) {
