@@ -2,6 +2,22 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.7.0] - 2026-04-07
+
+### Added
+- feat: add custom dockerfile support for Container agent builds (#783) (cdd5a15)
+
+### Fixed
+- fix: make add command description consistent with remove (#773) (2eb9edb)
+
+### Other Changes
+- feat(invoke,dev): add exec mode for running shell commands in runtimes (#750) (27ce2d0)
+- feat(import): add evaluator and online eval config import subcommands (#780) (e266576)
+- feat(create): add --skip-install flag to skip dependency installation (#782) (380ac6e)
+- feat(status): display runtime invocation URL for deployed agents (#775) (0aa9d55)
+- fix(fetch): add --identity-name option for custom credential lookup (#715) (#774) (a6bf024)
+- chore(deps): bump vite from 8.0.3 to 8.0.5 (#777) (c9e5cfe)
+
 ## [0.6.0] - 2026-04-02
 
 ### Added
