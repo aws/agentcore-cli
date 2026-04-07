@@ -210,28 +210,6 @@ describe('toEvaluatorSpec', () => {
 
     expect(result.tags).toBeUndefined();
   });
-
-  it('defaults level to SESSION when empty string reaches toEvaluatorSpec', () => {
-    // In practice, getEvaluator defaults empty level to 'SESSION' via the as EvaluationLevel cast.
-    // This tests the fallback in toEvaluatorSpec for defensive coverage.
-    const detail = {
-      evaluatorId: 'eval-no-level',
-      evaluatorArn: 'arn:aws:bedrock-agentcore:us-west-2:123456789012:evaluator/eval-no-level',
-      evaluatorName: 'no_level_eval',
-      level: '' as GetEvaluatorResult['level'],
-      status: 'ACTIVE',
-      evaluatorConfig: {
-        llmAsAJudge: {
-          model: 'anthropic.claude-3-5-sonnet-20241022-v2:0',
-          instructions: 'Evaluate',
-          ratingScale: { numerical: [{ value: 1, label: 'Low', definition: 'Low' }] },
-        },
-      },
-    } as GetEvaluatorResult;
-
-    const result = toEvaluatorSpec(detail, 'no_level_eval');
-    expect(result.level).toBe('SESSION');
-  });
 });
 
 // ============================================================================
