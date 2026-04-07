@@ -16,7 +16,7 @@ import type { Command } from '@commander-js/extra-typings';
  * Map an AWS GetEvaluator response to the CLI Evaluator spec format.
  */
 export function toEvaluatorSpec(detail: GetEvaluatorResult, localName: string): Evaluator {
-  const level = (detail.level ?? 'SESSION') as Evaluator['level'];
+  const level = detail.level || 'SESSION';
 
   let config: Evaluator['config'];
 
@@ -143,7 +143,7 @@ export function registerImportEvaluator(importCmd: Command): void {
         console.log(`  ID: ${result.resourceId}`);
         console.log('');
       } else {
-        console.error(`\n\x1b[31m[error]${ANSI.reset} ${result.error}`);
+        console.error(`\n${ANSI.red}[error]${ANSI.reset} ${result.error}`);
         if (result.logPath) {
           console.error(`Log: ${result.logPath}`);
         }

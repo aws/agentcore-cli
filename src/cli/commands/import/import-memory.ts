@@ -121,7 +121,7 @@ export function registerImportMemory(importCmd: Command): void {
         console.log(`  ID: ${result.resourceId}`);
         console.log('');
       } else {
-        console.error(`\n\x1b[31m[error]${ANSI.reset} ${result.error}`);
+        console.error(`\n${ANSI.red}[error]${ANSI.reset} ${result.error}`);
         if (result.logPath) {
           console.error(`Log: ${result.logPath}`);
         }

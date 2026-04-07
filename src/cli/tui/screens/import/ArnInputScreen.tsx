@@ -1,3 +1,4 @@
+import type { ImportableResourceType } from '../../../commands/import/types';
 import { Panel } from '../../components/Panel';
 import { Screen } from '../../components/Screen';
 import { TextInput } from '../../components/TextInput';
@@ -13,7 +14,7 @@ function validateArn(value: string): true | string {
 }
 
 interface ArnInputScreenProps {
-  resourceType: 'runtime' | 'memory' | 'evaluator' | 'online-eval';
+  resourceType: ImportableResourceType;
   onSubmit: (arn: string) => void;
   onExit: () => void;
 }

@@ -1,3 +1,4 @@
+import type { EvaluationLevel } from '../../schema/schemas/primitives/evaluator';
 import { getCredentialProvider } from './account';
 import {
   BedrockAgentCoreControlClient,
@@ -455,7 +456,7 @@ export interface GetEvaluatorResult {
   evaluatorId: string;
   evaluatorArn: string;
   evaluatorName: string;
-  level: string;
+  level: EvaluationLevel;
   status: string;
   description?: string;
   evaluatorConfig?: {
@@ -536,7 +537,7 @@ export async function getEvaluator(options: GetEvaluatorOptions): Promise<GetEva
     evaluatorId: response.evaluatorId,
     evaluatorArn: response.evaluatorArn ?? '',
     evaluatorName: response.evaluatorName ?? '',
-    level: response.level ?? 'SESSION',
+    level: (response.level ?? 'SESSION') as EvaluationLevel,
     status: response.status ?? 'UNKNOWN',
     description: response.description,
     evaluatorConfig,

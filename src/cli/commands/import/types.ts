@@ -72,8 +72,10 @@ export interface ParsedStarterToolkitConfig {
 
 /**
  * Resource types supported by the import subcommands.
+ * Use the array for runtime checks (e.g., IMPORTABLE_RESOURCES.includes(x)).
  */
-export type ImportableResourceType = 'runtime' | 'memory' | 'evaluator' | 'online-eval';
+export const IMPORTABLE_RESOURCES = ['runtime', 'memory', 'evaluator', 'online-eval'] as const;
+export type ImportableResourceType = (typeof IMPORTABLE_RESOURCES)[number];
 
 /**
  * Resource to be imported via CloudFormation IMPORT change set.
@@ -203,7 +205,10 @@ export interface ResourceImportDescriptor<TDetail, TSummary> {
   /** Get the array of existing resource names from the project spec. */
   getExistingNames: (projectSpec: AgentCoreProjectSpec) => string[];
 
-  /** Convert the AWS detail to local spec and add it to the project spec. */
+  /**
+   * Convert the AWS detail to local spec and add it to the project spec.
+   * Called after beforeConfigWrite — descriptor factories may rely on state set during that hook.
+   */
   addToProjectSpec: (detail: TDetail, localName: string, projectSpec: AgentCoreProjectSpec) => void;
 
   // ---- CFN template matching ----
@@ -226,6 +231,8 @@ export interface ResourceImportDescriptor<TDetail, TSummary> {
 
   /**
    * Called after detail fetch + name validation but before config write.
+   * Always runs before addToProjectSpec — descriptor factories can use this
+   * to set closed-over state that addToProjectSpec later reads.
    * Return an ImportResourceResult to abort, or void to continue.
    */
   beforeConfigWrite?: (ctx: BeforeWriteContext<TDetail>) => Promise<ImportResourceResult | void>;

@@ -212,12 +212,23 @@ export interface ParsedArn {
 const ARN_PATTERN =
   /^arn:aws:bedrock-agentcore:([^:]+):([^:]+):(runtime|memory|evaluator|online-evaluation-config)\/(.+)$/;
 
-/** Map from ImportableResourceType to the resource type string used in ARNs. */
-const ARN_RESOURCE_TYPE_MAP: Record<ImportableResourceType, string> = {
-  runtime: 'runtime',
-  memory: 'memory',
-  evaluator: 'evaluator',
-  'online-eval': 'online-evaluation-config',
+/** Unified config for each importable resource type — ARN mapping, deployed state keys. */
+const RESOURCE_TYPE_CONFIG: Record<
+  ImportableResourceType,
+  {
+    arnType: string;
+    collectionKey: string;
+    idField: string;
+  }
+> = {
+  runtime: { arnType: 'runtime', collectionKey: 'runtimes', idField: 'runtimeId' },
+  memory: { arnType: 'memory', collectionKey: 'memories', idField: 'memoryId' },
+  evaluator: { arnType: 'evaluator', collectionKey: 'evaluators', idField: 'evaluatorId' },
+  'online-eval': {
+    arnType: 'online-evaluation-config',
+    collectionKey: 'onlineEvalConfigs',
+    idField: 'onlineEvaluationConfigId',
+  },
 };
 
 /**
@@ -230,7 +241,7 @@ export function parseAndValidateArn(
   target: { region: string; account: string }
 ): ParsedArn {
   const match = ARN_PATTERN.exec(arn);
-  const expectedArnType = ARN_RESOURCE_TYPE_MAP[expectedResourceType];
+  const expectedArnType = RESOURCE_TYPE_CONFIG[expectedResourceType].arnType;
   if (!match) {
     throw new Error(
       `Invalid ARN format: "${arn}". Expected format: arn:aws:bedrock-agentcore:<region>:<account>:${expectedArnType}/<id>`
@@ -289,23 +300,10 @@ export async function findResourceInDeployedState(
   const targetState = state.targets?.[targetName];
   if (!targetState?.resources) return undefined;
 
-  const collectionKeyMap: Record<ImportableResourceType, string> = {
-    runtime: 'runtimes',
-    memory: 'memories',
-    evaluator: 'evaluators',
-    'online-eval': 'onlineEvalConfigs',
-  };
-  const idFieldMap: Record<ImportableResourceType, string> = {
-    runtime: 'runtimeId',
-    memory: 'memoryId',
-    evaluator: 'evaluatorId',
-    'online-eval': 'onlineEvaluationConfigId',
-  };
+  const { collectionKey, idField } = RESOURCE_TYPE_CONFIG[resourceType];
 
-  const collection = targetState.resources[collectionKeyMap[resourceType]];
+  const collection = targetState.resources[collectionKey];
   if (!collection) return undefined;
-
-  const idField = idFieldMap[resourceType];
   for (const [name, entry] of Object.entries(collection)) {
     if ((entry as any)[idField] === resourceId) return name;
   }

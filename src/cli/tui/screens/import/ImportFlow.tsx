@@ -1,4 +1,9 @@
-import type { ImportResourceResult, ImportResult } from '../../../commands/import/types';
+import {
+  IMPORTABLE_RESOURCES,
+  type ImportResourceResult,
+  type ImportResult,
+  type ImportableResourceType,
+} from '../../../commands/import/types';
 import { type NextStep, NextSteps } from '../../components/NextSteps';
 import { Panel } from '../../components/Panel';
 import { ErrorPrompt } from '../../components/PromptScreen';
@@ -14,7 +19,7 @@ import React, { useState } from 'react';
 
 type ImportFlowState =
   | { name: 'select-type' }
-  | { name: 'arn-input'; resourceType: 'runtime' | 'memory' | 'evaluator' | 'online-eval' }
+  | { name: 'arn-input'; resourceType: ImportableResourceType }
   | { name: 'code-path'; resourceType: 'runtime'; arn: string }
   | { name: 'yaml-path' }
   | {
@@ -48,8 +53,8 @@ export function ImportFlow({ onBack, onNavigate }: ImportFlowProps) {
     return (
       <ImportSelectScreen
         onSelect={type => {
-          if (type === 'runtime' || type === 'memory' || type === 'evaluator' || type === 'online-eval') {
-            setFlow({ name: 'arn-input', resourceType: type });
+          if ((IMPORTABLE_RESOURCES as readonly string[]).includes(type)) {
+            setFlow({ name: 'arn-input', resourceType: type as ImportableResourceType });
           } else {
             setFlow({ name: 'yaml-path' });
           }

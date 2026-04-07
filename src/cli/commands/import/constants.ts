@@ -3,6 +3,7 @@ export const NAME_REGEX = /^[a-zA-Z][a-zA-Z0-9_]{0,47}$/;
 
 /** ANSI escape codes for console output. */
 export const ANSI = {
+  red: '\x1b[31m',
   green: '\x1b[32m',
   yellow: '\x1b[33m',
   cyan: '\x1b[36m',

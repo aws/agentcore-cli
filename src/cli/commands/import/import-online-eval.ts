@@ -32,7 +32,7 @@ export function toOnlineEvalConfigSpec(
   agentName: string,
   evaluatorArns: string[]
 ): OnlineEvalConfig {
-  if (!detail.samplingPercentage) {
+  if (detail.samplingPercentage == null) {
     throw new Error(`Online eval config "${detail.configName}" has no sampling configuration. Cannot import.`);
   }
 
@@ -59,6 +59,7 @@ function buildEvaluatorArns(evaluatorIds: string[], region: string, account: str
  * Create an online-eval descriptor with closed-over state for reference resolution.
  */
 function createOnlineEvalDescriptor(): ResourceImportDescriptor<GetOnlineEvalConfigResult, OnlineEvalConfigSummary> {
+  // Set by beforeConfigWrite, read by addToProjectSpec. Ordering guaranteed by executeResourceImport.
   let resolvedAgentName = '';
   let resolvedEvaluatorArns: string[] = [];
 
@@ -207,7 +208,7 @@ export function registerImportOnlineEval(importCmd: Command): void {
         console.log(`  ID: ${result.resourceId}`);
         console.log('');
       } else {
-        console.error(`\n\x1b[31m[error]${ANSI.reset} ${result.error}`);
+        console.error(`\n${ANSI.red}[error]${ANSI.reset} ${result.error}`);
         if (result.logPath) {
           console.error(`Log: ${result.logPath}`);
         }
