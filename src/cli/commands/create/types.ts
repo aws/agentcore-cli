@@ -20,6 +20,7 @@ export interface CreateOptions extends VpcOptions {
   outputDir?: string;
   skipGit?: boolean;
   skipPythonSetup?: boolean;
+  skipInstall?: boolean;
   dryRun?: boolean;
   json?: boolean;
 }

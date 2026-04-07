@@ -34,12 +34,17 @@ export interface CreateProjectOptions {
   name: string;
   cwd: string;
   skipGit?: boolean;
+  skipInstall?: boolean;
   skipDependencyCheck?: boolean;
   onProgress?: ProgressCallback;
 }
 
 export async function createProject(options: CreateProjectOptions): Promise<CreateResult> {
-  const { name, cwd, skipGit, skipDependencyCheck, onProgress } = options;
+  const { name, cwd, skipGit, skipInstall, skipDependencyCheck, onProgress } = options;
+
+  if (skipInstall) {
+    process.env.AGENTCORE_SKIP_INSTALL = '1';
+  }
   const projectRoot = join(cwd, name);
   const configBaseDir = join(projectRoot, CONFIG_DIR);
 
@@ -125,6 +130,7 @@ export interface CreateWithAgentOptions {
   idleTimeout?: number;
   maxLifetime?: number;
   skipGit?: boolean;
+  skipInstall?: boolean;
   skipPythonSetup?: boolean;
   onProgress?: ProgressCallback;
 }
@@ -147,6 +153,7 @@ export async function createProjectWithAgent(options: CreateWithAgentOptions): P
     idleTimeout,
     maxLifetime: maxLifetimeOpt,
     skipGit,
+    skipInstall,
     skipPythonSetup,
     onProgress,
   } = options;
@@ -163,7 +170,7 @@ export async function createProjectWithAgent(options: CreateWithAgentOptions): P
   }
 
   // First create the base project (skip dependency check since we already did it)
-  const projectResult = await createProject({ name, cwd, skipGit, skipDependencyCheck: true, onProgress });
+  const projectResult = await createProject({ name, cwd, skipGit, skipInstall, skipDependencyCheck: true, onProgress });
   if (!projectResult.success) {
     // Merge warnings from both checks
     const allWarnings = [...depWarnings, ...(projectResult.warnings ?? [])];
@@ -267,7 +274,7 @@ export async function createProjectWithAgent(options: CreateWithAgentOptions): P
     onProgress?.('Add agent to project', 'done');
 
     // Set up Python environment if needed (unless skipped)
-    if (language === 'Python' && !skipPythonSetup) {
+    if (language === 'Python' && !skipPythonSetup && !skipInstall) {
       onProgress?.('Set up Python environment', 'start');
       const agentDir = join(projectRoot, APP_DIR, name);
       await setupPythonProject({ projectDir: agentDir });

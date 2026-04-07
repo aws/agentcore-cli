@@ -119,7 +119,13 @@ async function handleCreateCLI(options: CreateOptions): Promise<void> {
   const skipAgent = options.agent === false;
 
   const result = skipAgent
-    ? await createProject({ name: options.name!, cwd, skipGit: options.skipGit, onProgress })
+    ? await createProject({
+        name: options.name!,
+        cwd,
+        skipGit: options.skipGit,
+        skipInstall: options.skipInstall,
+        onProgress,
+      })
     : await createProjectWithAgent({
         name: options.name!,
         cwd,
@@ -140,6 +146,7 @@ async function handleCreateCLI(options: CreateOptions): Promise<void> {
         idleTimeout: options.idleTimeout ? Number(options.idleTimeout) : undefined,
         maxLifetime: options.maxLifetime ? Number(options.maxLifetime) : undefined,
         skipGit: options.skipGit,
+        skipInstall: options.skipInstall,
         skipPythonSetup: options.skipPythonSetup,
         onProgress,
       });
@@ -148,6 +155,11 @@ async function handleCreateCLI(options: CreateOptions): Promise<void> {
     console.log(JSON.stringify(result));
   } else if (result.success) {
     printCreateSummary(options.name!, result.agentName, options.language, options.framework);
+    if (options.skipInstall) {
+      console.log(
+        "\nDependency installation was skipped. Run 'npm install' in agentcore/cdk/ and 'uv sync' in your agent directory manually."
+      );
+    }
   } else {
     console.error(result.error);
   }
@@ -190,6 +202,7 @@ export const registerCreate = (program: Command) => {
     .option('--output-dir <dir>', 'Output directory (default: current directory) [non-interactive]')
     .option('--skip-git', 'Skip git repository initialization [non-interactive]')
     .option('--skip-python-setup', 'Skip Python virtual environment setup [non-interactive]')
+    .option('--skip-install', 'Skip all dependency installation (npm install, uv sync) [non-interactive]')
     .option('--dry-run', 'Preview what would be created without making changes [non-interactive]')
     .option('--json', 'Output as JSON [non-interactive]')
     .action(async options => {
@@ -217,6 +230,7 @@ export const registerCreate = (program: Command) => {
           options.outputDir ??
           options.skipGit ??
           options.skipPythonSetup ??
+          options.skipInstall ??
           options.dryRun ??
           options.json
         );
