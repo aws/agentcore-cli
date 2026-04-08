@@ -288,7 +288,7 @@ describe.sequential('e2e: BYO agent with CUSTOM_JWT auth', () => {
 
       // Invoke with bearer token — should NOT get auth mismatch
       const result = await runLocalCLI(
-        ['invoke', '--prompt', 'Say hello', '--agent', agentName, '--bearer-token', accessToken, '--json'],
+        ['invoke', '--prompt', 'Say hello', '--runtime', agentName, '--bearer-token', accessToken, '--json'],
         projectPath
       );
 
@@ -304,7 +304,7 @@ describe.sequential('e2e: BYO agent with CUSTOM_JWT auth', () => {
     async () => {
       expect(projectPath, 'Project should have been deployed').toBeTruthy();
 
-      const result = await runLocalCLI(['invoke', '--agent', mcpAgentName, 'list-tools', '--json'], projectPath);
+      const result = await runLocalCLI(['invoke', '--runtime', mcpAgentName, 'list-tools', '--json'], projectPath);
 
       const output = stripAnsi(result.stdout + result.stderr);
       expect(output).toMatch(/[Aa]uthoriz(ation|er).*mismatch|different.*authorization/i);
@@ -320,7 +320,7 @@ describe.sequential('e2e: BYO agent with CUSTOM_JWT auth', () => {
       const accessToken = await fetchCognitoAccessToken();
 
       const result = await runLocalCLI(
-        ['invoke', '--agent', mcpAgentName, 'list-tools', '--bearer-token', accessToken, '--json'],
+        ['invoke', '--runtime', mcpAgentName, 'list-tools', '--bearer-token', accessToken, '--json'],
         projectPath
       );
 
@@ -340,7 +340,7 @@ describe.sequential('e2e: BYO agent with CUSTOM_JWT auth', () => {
       const result = await runLocalCLI(
         [
           'invoke',
-          '--agent',
+          '--runtime',
           mcpAgentName,
           'call-tool',
           '--tool',
