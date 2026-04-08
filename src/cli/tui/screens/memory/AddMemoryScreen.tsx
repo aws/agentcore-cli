@@ -1,5 +1,6 @@
 import type { MemoryStrategyType } from '../../../../schema';
 import { AgentNameSchema, StreamContentLevelSchema } from '../../../../schema';
+import { ARN_VALIDATION_MESSAGE, isValidArn } from '../../../commands/shared/arn-utils';
 import {
   ConfirmReview,
   Panel,
@@ -173,7 +174,7 @@ export function AddMemoryScreen({ onComplete, onExit, existingMemoryNames }: Add
             initialValue=""
             onSubmit={wizard.setStreamArn}
             onCancel={() => wizard.goBack()}
-            customValidation={value => value.startsWith('arn:') || 'Must be a valid ARN (starts with arn:)'}
+            customValidation={value => isValidArn(value) || ARN_VALIDATION_MESSAGE}
           />
         )}
 

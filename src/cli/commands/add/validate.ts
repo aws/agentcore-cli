@@ -15,6 +15,7 @@ import {
   getSupportedModelProviders,
   matchEnumValue,
 } from '../../../schema';
+import { ARN_VALIDATION_MESSAGE, isValidArn } from '../shared/arn-utils';
 import { parseAndValidateLifecycleOptions } from '../shared/lifecycle-utils';
 import { validateVpcOptions } from '../shared/vpc-utils';
 import { validateJwtAuthorizerOptions } from './auth-options';
@@ -697,8 +698,8 @@ export function validateAddMemoryOptions(options: AddMemoryOptions): ValidationR
     return { valid: false, error: '--data-stream-arn is required when --delivery-type is set' };
   }
 
-  if (options.dataStreamArn && !options.dataStreamArn.startsWith('arn:')) {
-    return { valid: false, error: '--data-stream-arn must be a valid ARN (starts with arn:)' };
+  if (options.dataStreamArn && !isValidArn(options.dataStreamArn)) {
+    return { valid: false, error: `--data-stream-arn: ${ARN_VALIDATION_MESSAGE}` };
   }
 
   if (
