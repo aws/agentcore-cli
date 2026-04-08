@@ -202,7 +202,6 @@ describe('MemorySchema', () => {
 
   it('accepts memory with streamDeliveryResources', () => {
     const result = MemorySchema.safeParse({
-      type: 'AgentCoreMemory',
       name: 'StreamMemory',
       eventExpiryDuration: 30,
       strategies: [{ type: 'SEMANTIC' }],
@@ -220,9 +219,27 @@ describe('MemorySchema', () => {
     expect(result.success).toBe(true);
   });
 
+  it('accepts METADATA_ONLY content level', () => {
+    const result = MemorySchema.safeParse({
+      name: 'MetadataStream',
+      eventExpiryDuration: 30,
+      strategies: [],
+      streamDeliveryResources: {
+        resources: [
+          {
+            kinesis: {
+              dataStreamArn: 'arn:aws:kinesis:us-west-2:123456789012:stream/test',
+              contentConfigurations: [{ type: 'MEMORY_RECORDS', level: 'METADATA_ONLY' }],
+            },
+          },
+        ],
+      },
+    });
+    expect(result.success).toBe(true);
+  });
+
   it('accepts memory without streamDeliveryResources', () => {
     const result = MemorySchema.safeParse({
-      type: 'AgentCoreMemory',
       name: 'NoStream',
       eventExpiryDuration: 30,
       strategies: [],
@@ -233,7 +250,6 @@ describe('MemorySchema', () => {
 
   it('rejects streamDeliveryResources with empty resources array', () => {
     const result = MemorySchema.safeParse({
-      type: 'AgentCoreMemory',
       name: 'Test',
       eventExpiryDuration: 30,
       strategies: [],
@@ -244,7 +260,6 @@ describe('MemorySchema', () => {
 
   it('rejects streamDeliveryResources with empty contentConfigurations', () => {
     const result = MemorySchema.safeParse({
-      type: 'AgentCoreMemory',
       name: 'Test',
       eventExpiryDuration: 30,
       strategies: [],
@@ -261,7 +276,6 @@ describe('MemorySchema', () => {
 
   it('rejects streamDeliveryResources with empty dataStreamArn', () => {
     const result = MemorySchema.safeParse({
-      type: 'AgentCoreMemory',
       name: 'Test',
       eventExpiryDuration: 30,
       strategies: [],
@@ -278,7 +292,6 @@ describe('MemorySchema', () => {
 
   it('rejects invalid content level in streamDeliveryResources', () => {
     const result = MemorySchema.safeParse({
-      type: 'AgentCoreMemory',
       name: 'Test',
       eventExpiryDuration: 30,
       strategies: [],

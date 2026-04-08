@@ -8,6 +8,7 @@ interface CreateMemoryConfig {
   name: string;
   eventExpiryDuration: number;
   strategies: { type: string }[];
+  streaming?: { dataStreamArn: string; contentLevel: string };
 }
 
 interface CreateStatus<T> {
@@ -27,6 +28,8 @@ export function useCreateMemory() {
         name: config.name,
         expiry: config.eventExpiryDuration,
         strategies: strategiesStr || undefined,
+        dataStreamArn: config.streaming?.dataStreamArn,
+        contentLevel: config.streaming?.contentLevel,
       });
       if (!addResult.success) {
         throw new Error(addResult.error ?? 'Failed to create memory');

@@ -229,6 +229,13 @@ pushed to a delivery target in your account, enabling event-driven architectures
 
 ### Enabling Streaming
 
+Via the interactive wizard:
+
+```bash
+agentcore add memory
+# Select "Yes" when prompted for streaming, then provide the data stream ARN and content level
+```
+
 Via CLI flags:
 
 ```bash
