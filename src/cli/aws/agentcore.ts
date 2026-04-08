@@ -554,6 +554,28 @@ interface McpRpcResult {
   error?: { message?: string; code?: number };
 }
 
+const TRANSIENT_STATUS_CODES = new Set([429, 500, 502, 503, 504]);
+const MAX_FETCH_RETRIES = 3;
+const FETCH_RETRY_DELAY_MS = 1000;
+
+/** Retry-aware fetch for transient failures (5xx, 429, network errors). */
+async function fetchWithRetry(url: string, init: RequestInit, logger?: SSELogger): Promise<Response> {
+  for (let attempt = 0; attempt < MAX_FETCH_RETRIES; attempt++) {
+    try {
+      const res = await fetch(url, init);
+      if (res.ok || !TRANSIENT_STATUS_CODES.has(res.status) || attempt === MAX_FETCH_RETRIES - 1) {
+        return res;
+      }
+      logger?.logSSEEvent(`Transient failure (${res.status}), retrying (${attempt + 1}/${MAX_FETCH_RETRIES})...`);
+    } catch (err) {
+      if (attempt === MAX_FETCH_RETRIES - 1) throw err;
+      logger?.logSSEEvent(`Network error, retrying (${attempt + 1}/${MAX_FETCH_RETRIES})...`);
+    }
+    await new Promise(resolve => setTimeout(resolve, FETCH_RETRY_DELAY_MS));
+  }
+  throw new Error('fetchWithRetry: exhausted retries');
+}
+
 /** Build the common headers for MCP bearer-token HTTP requests. */
 function buildMcpBearerHeaders(options: McpInvokeOptions): Record<string, string> {
   const headers: Record<string, string> = {
@@ -581,11 +603,7 @@ async function mcpRpcCallWithBearer(options: McpInvokeOptions, body: Record<stri
 
   options.logger?.logSSEEvent(`MCP request: ${JSON.stringify(body)}`);
 
-  const res = await fetch(url, {
-    method: 'POST',
-    headers,
-    body: JSON.stringify(body),
-  });
+  const res = await fetchWithRetry(url, { method: 'POST', headers, body: JSON.stringify(body) }, options.logger);
 
   if (!res.ok) {
     const errBody = await res.text().catch(() => '');
@@ -609,11 +627,7 @@ async function mcpRpcNotifyWithBearer(options: McpInvokeOptions, body: Record<st
   const url = buildInvokeUrl(options.region, options.runtimeArn);
   const headers = buildMcpBearerHeaders(options);
 
-  const res = await fetch(url, {
-    method: 'POST',
-    headers,
-    body: JSON.stringify(body),
-  });
+  const res = await fetchWithRetry(url, { method: 'POST', headers, body: JSON.stringify(body) }, options.logger);
 
   if (!res.ok) {
     const errBody = await res.text().catch(() => '');

@@ -67,6 +67,23 @@ describe.sequential('e2e: BYO agent with CUSTOM_JWT auth', () => {
   const cognitoClient = new CognitoIdentityProviderClient({ region });
   const cfnClient = new CloudFormationClient({ region });
 
+  /** Fetch a Cognito access token via client_credentials flow. */
+  async function fetchCognitoAccessToken(): Promise<string> {
+    const tokenUrl = `https://${domainPrefix}.auth.${region}.amazoncognito.com/oauth2/token`;
+    const tokenRes = await fetch(tokenUrl, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/x-www-form-urlencoded',
+        Authorization: `Basic ${Buffer.from(`${clientId}:${clientSecret}`).toString('base64')}`,
+      },
+      body: 'grant_type=client_credentials&scope=agentcore/invoke',
+    });
+    expect(tokenRes.ok, `Token fetch failed: ${tokenRes.status}`).toBe(true);
+    const tokenJson = (await tokenRes.json()) as { access_token: string };
+    expect(tokenJson.access_token, 'Should have received an access token').toBeTruthy();
+    return tokenJson.access_token;
+  }
+
   beforeAll(async () => {
     if (!canRun) return;
 
@@ -267,20 +284,7 @@ describe.sequential('e2e: BYO agent with CUSTOM_JWT auth', () => {
     async () => {
       expect(projectPath, 'Project should have been deployed').toBeTruthy();
 
-      // Fetch a Cognito access token via client_credentials flow
-      const tokenUrl = `https://${domainPrefix}.auth.${region}.amazoncognito.com/oauth2/token`;
-      const tokenRes = await fetch(tokenUrl, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/x-www-form-urlencoded',
-          Authorization: `Basic ${Buffer.from(`${clientId}:${clientSecret}`).toString('base64')}`,
-        },
-        body: 'grant_type=client_credentials&scope=agentcore/invoke',
-      });
-      expect(tokenRes.ok, `Token fetch failed: ${tokenRes.status}`).toBe(true);
-      const tokenJson = (await tokenRes.json()) as { access_token: string };
-      const accessToken = tokenJson.access_token;
-      expect(accessToken, 'Should have received an access token').toBeTruthy();
+      const accessToken = await fetchCognitoAccessToken();
 
       // Invoke with bearer token — should NOT get auth mismatch
       const result = await runLocalCLI(
@@ -313,18 +317,7 @@ describe.sequential('e2e: BYO agent with CUSTOM_JWT auth', () => {
     async () => {
       expect(projectPath, 'Project should have been deployed').toBeTruthy();
 
-      const tokenUrl = `https://${domainPrefix}.auth.${region}.amazoncognito.com/oauth2/token`;
-      const tokenRes = await fetch(tokenUrl, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/x-www-form-urlencoded',
-          Authorization: `Basic ${Buffer.from(`${clientId}:${clientSecret}`).toString('base64')}`,
-        },
-        body: 'grant_type=client_credentials&scope=agentcore/invoke',
-      });
-      expect(tokenRes.ok, `Token fetch failed: ${tokenRes.status}`).toBe(true);
-      const tokenJson = (await tokenRes.json()) as { access_token: string };
-      const accessToken = tokenJson.access_token;
+      const accessToken = await fetchCognitoAccessToken();
 
       const result = await runLocalCLI(
         ['invoke', '--agent', mcpAgentName, 'list-tools', '--bearer-token', accessToken, '--json'],
@@ -342,18 +335,7 @@ describe.sequential('e2e: BYO agent with CUSTOM_JWT auth', () => {
     async () => {
       expect(projectPath, 'Project should have been deployed').toBeTruthy();
 
-      const tokenUrl = `https://${domainPrefix}.auth.${region}.amazoncognito.com/oauth2/token`;
-      const tokenRes = await fetch(tokenUrl, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/x-www-form-urlencoded',
-          Authorization: `Basic ${Buffer.from(`${clientId}:${clientSecret}`).toString('base64')}`,
-        },
-        body: 'grant_type=client_credentials&scope=agentcore/invoke',
-      });
-      expect(tokenRes.ok, `Token fetch failed: ${tokenRes.status}`).toBe(true);
-      const tokenJson = (await tokenRes.json()) as { access_token: string };
-      const accessToken = tokenJson.access_token;
+      const accessToken = await fetchCognitoAccessToken();
 
       const result = await runLocalCLI(
         [
