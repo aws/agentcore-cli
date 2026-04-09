@@ -358,6 +358,54 @@
           },
           "executionRoleArn": {
             "type": "string"
+          },
+          "streamDeliveryResources": {
+            "type": "object",
+            "properties": {
+              "resources": {
+                "minItems": 1,
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "kinesis": {
+                      "type": "object",
+                      "properties": {
+                        "dataStreamArn": {
+                          "type": "string",
+                          "minLength": 1
+                        },
+                        "contentConfigurations": {
+                          "minItems": 1,
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "properties": {
+                              "type": {
+                                "type": "string",
+                                "const": "MEMORY_RECORDS"
+                              },
+                              "level": {
+                                "type": "string",
+                                "enum": ["FULL_CONTENT", "METADATA_ONLY"]
+                              }
+                            },
+                            "required": ["type", "level"],
+                            "additionalProperties": false
+                          }
+                        }
+                      },
+                      "required": ["dataStreamArn", "contentConfigurations"],
+                      "additionalProperties": false
+                    }
+                  },
+                  "required": ["kinesis"],
+                  "additionalProperties": false
+                }
+              }
+            },
+            "required": ["resources"],
+            "additionalProperties": false
           }
         },
         "required": ["name", "eventExpiryDuration"],

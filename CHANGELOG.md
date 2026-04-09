@@ -2,6 +2,36 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.8.0] - 2026-04-09
+
+### Added
+- feat: enable memory in `agentcore dev` (#801) (04c3785)
+- feat: add telemetry notice and preference management (#797) (fb34507)
+- feat: add TUI wizard streaming steps for memory record streaming (#534) (05becd7)
+- feat: add streamDeliveryResources schema, CLI flags, and validation for memory record streaming (#531) (a8a1f79)
+
+### Fixed
+- fix: bump aws-cdk-lib to 2.248.0 in project template (#804) (374fe31)
+- fix: format docs/commands.md to pass prettier check (#798) (bbe5452)
+- fix: add bearer-token support to MCP invoke path (#749) (6b6c0a5)
+
+### Documentation
+- docs: add build, npm, and license badges to README (#787) (3124b6d)
+- docs: fix 30 documentation inaccuracies found by source code audit (#697) (767fd4c)
+
+### Other Changes
+- fix(e2e): use --runtime flag instead of non-existent --agent in byo-custom-jwt tests (#795) (321177c)
+- ci: bump the github-actions group across 1 directory with 2 updates (#649) (4a3d91d)
+- chore(deps-dev): bump @secretlint/secretlint-rule-preset-recommend (#756) (6b1bda6)
+- chore(deps-dev): bump @modelcontextprotocol/sdk from 1.28.0 to 1.29.0 (#758) (793300c)
+- chore(deps): bump dotenv from 17.3.1 to 17.4.0 (#759) (9af4f29)
+- chore(deps-dev): bump secretlint from 11.4.0 to 11.4.1 (#760) (9d1bc4d)
+- chore(deps): bump lodash from 4.17.23 to 4.18.1 (#766) (c104059)
+- chore(deps-dev): bump hono from 4.12.9 to 4.12.12 (#788) (2b904ac)
+- chore(deps-dev): bump @hono/node-server from 1.19.11 to 1.19.13 (#789) (f6c8279)
+- chore(deps): bump the aws-cdk group across 1 directory with 2 updates (#791) (7560634)
+- chore(deps): bump the aws-sdk group across 1 directory with 15 updates (#793) (ecc3e4b)
+
 ## [0.7.1] - 2026-04-07
 
 ### Added
