@@ -47,6 +47,7 @@ export const COMMAND_DESCRIPTIONS = {
   resume: 'Resume a paused online eval config. Supports --arn for configs outside the project.',
   run: 'Run on-demand evaluation. Supports --agent-arn for agents outside the project.',
   import: 'Import a runtime, memory, or starter toolkit into this project. [experimental]',
+  telemetry: 'Manage anonymous usage analytics preferences.',
   update: 'Check for and install CLI updates',
   validate: 'Validate agentcore/ config files.',
 } as const;

@@ -14,10 +14,12 @@ import { registerRemove } from './commands/remove';
 import { registerResume } from './commands/resume';
 import { registerRun } from './commands/run';
 import { registerStatus } from './commands/status';
+import { registerTelemetry } from './commands/telemetry';
 import { registerTraces } from './commands/traces';
 import { registerUpdate } from './commands/update';
 import { registerValidate } from './commands/validate';
 import { PACKAGE_VERSION } from './constants';
+import { getOrCreateInstallationId } from './global-config';
 import { ALL_PRIMITIVES } from './primitives';
 import { App } from './tui/App';
 import { LayoutProvider } from './tui/context';
@@ -61,10 +63,37 @@ function setupGlobalCleanup() {
   });
 }
 
+function printTelemetryNotice(): void {
+  const yellow = '\x1b[33m';
+  const reset = '\x1b[0m';
+  process.stderr.write(
+    [
+      '',
+      `${yellow}The AgentCore CLI will soon begin collecting aggregated, anonymous usage`,
+      'analytics to help improve the tool.',
+      'To opt out:          agentcore telemetry disable',
+      `To learn more:       agentcore telemetry --help${reset}`,
+      '',
+      '',
+    ].join('\n')
+  );
+}
+
+function printPostCommandNotices(isFirstRun: boolean, updateCheck: Promise<UpdateCheckResult | null>): Promise<void> {
+  if (isFirstRun) {
+    printTelemetryNotice();
+  }
+  return updateCheck.then(result => {
+    if (result?.updateAvailable) {
+      printUpdateNotification(result);
+    }
+  });
+}
+
 /**
  * Render the TUI in alternate screen buffer mode.
  */
-function renderTUI(updateCheck: Promise<UpdateCheckResult | null>) {
+function renderTUI(updateCheck: Promise<UpdateCheckResult | null>, isFirstRun: boolean) {
   inAltScreen = true;
   process.stdout.write(ENTER_ALT_SCREEN);
 
@@ -82,11 +111,7 @@ function renderTUI(updateCheck: Promise<UpdateCheckResult | null>) {
       clearExitMessage();
     }
 
-    // Print update notification after TUI exits
-    const result = await updateCheck;
-    if (result?.updateAvailable) {
-      printUpdateNotification(result);
-    }
+    await printPostCommandNotices(isFirstRun, updateCheck);
   });
 }
 
@@ -148,6 +173,7 @@ export function registerCommands(program: Command) {
   registerResume(program);
   registerRun(program);
   registerStatus(program);
+  registerTelemetry(program);
   registerTraces(program);
   registerUpdate(program);
   registerValidate(program);
@@ -162,6 +188,9 @@ export const main = async (argv: string[]) => {
   // Register global cleanup handlers once at startup
   setupGlobalCleanup();
 
+  // Generate installationId on first run and show telemetry notice
+  const { created: isFirstRun } = await getOrCreateInstallationId();
+
   const program = createProgram();
 
   const args = argv.slice(2);
@@ -172,15 +201,16 @@ export const main = async (argv: string[]) => {
 
   // Show TUI for no arguments, commander handles --help via configureHelp()
   if (args.length === 0) {
-    renderTUI(updateCheck);
+    renderTUI(updateCheck, isFirstRun);
     return;
+  }
+
+  if (isFirstRun) {
+    printTelemetryNotice();
   }
 
   await program.parseAsync(argv);
 
-  // Print notification after command finishes
-  const result = await updateCheck;
-  if (result?.updateAvailable) {
-    printUpdateNotification(result);
-  }
+  // Telemetry notice already printed above; only run update check here.
+  await printPostCommandNotices(false, updateCheck);
 };

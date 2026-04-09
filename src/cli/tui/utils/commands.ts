@@ -12,7 +12,7 @@ export interface CommandMeta {
 /**
  * Commands hidden from TUI entirely (meta commands).
  */
-const HIDDEN_FROM_TUI = ['help'] as const;
+const HIDDEN_FROM_TUI = ['help', 'import', 'telemetry'] as const;
 
 /**
  * Commands that are CLI-only (shown but marked as requiring CLI invocation).
