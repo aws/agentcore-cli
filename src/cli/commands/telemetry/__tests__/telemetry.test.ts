@@ -1,5 +1,5 @@
+import { readGlobalConfig } from '../../../../lib/schemas/io/global-config';
 import { createTempConfig } from '../../../__tests__/helpers/temp-config';
-import { readGlobalConfig } from '../../../global-config';
 import { handleTelemetryDisable, handleTelemetryEnable, handleTelemetryStatus } from '../actions';
 import { chmod, mkdir, rm, writeFile } from 'fs/promises';
 import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from 'vitest';

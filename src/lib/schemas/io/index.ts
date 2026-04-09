@@ -11,4 +11,3 @@ export {
   type PathConfig,
 } from './path-resolver';
 export { ConfigIO, createConfigIO, getSchemaUrlForVersion } from './config-io';
-export { readCliConfig, type CliConfig } from './cli-config';

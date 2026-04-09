@@ -1,3 +1,4 @@
+import { readFileSync } from 'fs';
 import { mkdir, readFile, writeFile } from 'fs/promises';
 import { randomUUID } from 'node:crypto';
 import { homedir } from 'os';
@@ -9,18 +10,19 @@ export const GLOBAL_CONFIG_FILE = join(GLOBAL_CONFIG_DIR, 'config.json');
 
 const GlobalConfigSchema = z
   .object({
-    installationId: z.string().optional(),
-    uvDefaultIndex: z.string().optional(),
-    uvIndex: z.string().optional(),
-    disableTransactionSearch: z.boolean().optional(),
-    transactionSearchIndexPercentage: z.number().min(0).max(100).optional(),
+    installationId: z.string().optional().catch(undefined),
+    uvDefaultIndex: z.string().optional().catch(undefined),
+    uvIndex: z.string().optional().catch(undefined),
+    disableTransactionSearch: z.boolean().optional().catch(undefined),
+    transactionSearchIndexPercentage: z.number().int().min(0).max(100).optional().catch(undefined),
     telemetry: z
       .object({
-        enabled: z.boolean().optional(),
-        endpoint: z.string().optional(),
-        audit: z.boolean().optional(),
+        enabled: z.boolean().optional().catch(undefined),
+        endpoint: z.string().optional().catch(undefined),
+        audit: z.boolean().optional().catch(undefined),
       })
-      .optional(),
+      .optional()
+      .catch(undefined),
   })
   .passthrough();
 
@@ -29,6 +31,15 @@ export type GlobalConfig = z.infer<typeof GlobalConfigSchema>;
 export async function readGlobalConfig(configFile = GLOBAL_CONFIG_FILE): Promise<GlobalConfig> {
   try {
     const data = await readFile(configFile, 'utf-8');
+    return GlobalConfigSchema.parse(JSON.parse(data));
+  } catch {
+    return {};
+  }
+}
+
+export function readGlobalConfigSync(configFile = GLOBAL_CONFIG_FILE): GlobalConfig {
+  try {
+    const data = readFileSync(configFile, 'utf-8');
     return GlobalConfigSchema.parse(JSON.parse(data));
   } catch {
     return {};

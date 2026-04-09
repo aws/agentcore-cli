@@ -1,4 +1,4 @@
-import { readCliConfig } from '../../../lib/schemas/io/cli-config';
+import { readGlobalConfigSync } from '../../../lib/schemas/io/global-config';
 import { enableTransactionSearch } from '../../aws/transaction-search';
 
 export interface TransactionSearchSetupOptions {
@@ -31,7 +31,7 @@ export async function setupTransactionSearch(
     return { success: true };
   }
 
-  const config = readCliConfig();
+  const config = readGlobalConfigSync();
   if (config.disableTransactionSearch) {
     return { success: true };
   }

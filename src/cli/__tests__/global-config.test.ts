@@ -1,4 +1,9 @@
-import { getOrCreateInstallationId, readGlobalConfig, updateGlobalConfig } from '../global-config';
+import {
+  getOrCreateInstallationId,
+  readGlobalConfig,
+  readGlobalConfigSync,
+  updateGlobalConfig,
+} from '../../lib/schemas/io/global-config';
 import { createTempConfig } from './helpers/temp-config';
 import { readFile, writeFile } from 'fs/promises';
 import { afterAll, beforeEach, describe, expect, it } from 'vitest';
@@ -21,8 +26,27 @@ describe('global-config', () => {
     it('returns empty object when file is missing or invalid', async () => {
       expect(await readGlobalConfig(tmp.testDir + '/nonexistent.json')).toEqual({});
 
-      await writeFile(tmp.configFile, JSON.stringify({ telemetry: { enabled: 'false' } }));
+      await writeFile(tmp.configFile, 'not json');
       expect(await readGlobalConfig(tmp.configFile)).toEqual({});
+    });
+
+    it('drops invalid fields while preserving valid ones', async () => {
+      await writeFile(
+        tmp.configFile,
+        JSON.stringify({
+          transactionSearchIndexPercentage: 'not-a-number',
+          uvIndex: 'https://valid.url',
+          telemetry: { enabled: 'yes', endpoint: 'https://example.com' },
+        })
+      );
+
+      const config = await readGlobalConfig(tmp.configFile);
+
+      expect(config).toEqual({
+        transactionSearchIndexPercentage: undefined,
+        uvIndex: 'https://valid.url',
+        telemetry: { enabled: undefined, endpoint: 'https://example.com' },
+      });
     });
 
     it('preserves unknown fields via passthrough', async () => {
@@ -36,6 +60,21 @@ describe('global-config', () => {
       const config = await readGlobalConfig(tmp.configFile);
 
       expect(config).toEqual(full);
+    });
+  });
+
+  describe('readGlobalConfigSync', () => {
+    it('returns parsed config when file exists', async () => {
+      await writeFile(tmp.configFile, JSON.stringify({ telemetry: { enabled: false } }));
+
+      expect(readGlobalConfigSync(tmp.configFile)).toEqual({ telemetry: { enabled: false } });
+    });
+
+    it('returns empty object when file is missing or invalid', async () => {
+      expect(readGlobalConfigSync(tmp.testDir + '/nonexistent.json')).toEqual({});
+
+      await writeFile(tmp.configFile, 'not json');
+      expect(readGlobalConfigSync(tmp.configFile)).toEqual({});
     });
   });
 

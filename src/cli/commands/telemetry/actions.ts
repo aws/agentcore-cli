@@ -1,4 +1,4 @@
-import { GLOBAL_CONFIG_DIR, GLOBAL_CONFIG_FILE, updateGlobalConfig } from '../../global-config.js';
+import { GLOBAL_CONFIG_DIR, GLOBAL_CONFIG_FILE, updateGlobalConfig } from '../../../lib/schemas/io/global-config.js';
 import { resolveTelemetryPreference } from '../../telemetry/config.js';
 
 export async function handleTelemetryDisable(

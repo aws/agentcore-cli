@@ -1,5 +1,5 @@
+import { getOrCreateInstallationId, readGlobalConfig } from '../../lib/schemas/io/global-config.js';
 import { PACKAGE_VERSION } from '../constants.js';
-import { getOrCreateInstallationId, readGlobalConfig } from '../global-config.js';
 import { type ResourceAttributes, ResourceAttributesSchema } from './schemas/common-attributes.js';
 import { randomUUID } from 'crypto';
 import os from 'os';

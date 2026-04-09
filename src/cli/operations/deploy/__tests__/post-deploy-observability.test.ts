@@ -1,23 +1,23 @@
 import { setupTransactionSearch } from '../post-deploy-observability.js';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-const { mockEnableTransactionSearch, mockReadCliConfig } = vi.hoisted(() => ({
+const { mockEnableTransactionSearch, mockReadGlobalConfigSync } = vi.hoisted(() => ({
   mockEnableTransactionSearch: vi.fn(),
-  mockReadCliConfig: vi.fn(),
+  mockReadGlobalConfigSync: vi.fn(),
 }));
 
 vi.mock('../../../aws/transaction-search', () => ({
   enableTransactionSearch: mockEnableTransactionSearch,
 }));
 
-vi.mock('../../../../lib/schemas/io/cli-config', () => ({
-  readCliConfig: mockReadCliConfig,
+vi.mock('../../../../lib/schemas/io/global-config', () => ({
+  readGlobalConfigSync: mockReadGlobalConfigSync,
 }));
 
 describe('setupTransactionSearch', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    mockReadCliConfig.mockReturnValue({});
+    mockReadGlobalConfigSync.mockReturnValue({});
     mockEnableTransactionSearch.mockResolvedValue({ success: true });
   });
 
@@ -33,7 +33,7 @@ describe('setupTransactionSearch', () => {
   });
 
   it('passes custom transactionSearchIndexPercentage from config', async () => {
-    mockReadCliConfig.mockReturnValue({ transactionSearchIndexPercentage: 25 });
+    mockReadGlobalConfigSync.mockReturnValue({ transactionSearchIndexPercentage: 25 });
 
     const result = await setupTransactionSearch({
       region: 'us-east-1',
@@ -57,7 +57,7 @@ describe('setupTransactionSearch', () => {
   });
 
   it('skips when disableTransactionSearch is true in config', async () => {
-    mockReadCliConfig.mockReturnValue({ disableTransactionSearch: true });
+    mockReadGlobalConfigSync.mockReturnValue({ disableTransactionSearch: true });
 
     const result = await setupTransactionSearch({
       region: 'us-east-1',
