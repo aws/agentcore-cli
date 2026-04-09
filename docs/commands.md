@@ -238,15 +238,15 @@ agentcore add memory \
   --expiry 30
 ```
 
-| Flag                   | Description                                                                 |
-| ---------------------- | --------------------------------------------------------------------------- |
-| `--name <name>`        | Memory name                                                                 |
-| `--strategies <types>` | Comma-separated: `SEMANTIC`, `SUMMARIZATION`, `USER_PREFERENCE`, `EPISODIC` |
+| Flag                                 | Description                                                                 |
+| ------------------------------------ | --------------------------------------------------------------------------- |
+| `--name <name>`                      | Memory name                                                                 |
+| `--strategies <types>`               | Comma-separated: `SEMANTIC`, `SUMMARIZATION`, `USER_PREFERENCE`, `EPISODIC` |
 | `--expiry <days>`                    | Event expiry duration in days (default: 30, min: 7, max: 365)               |
 | `--delivery-type <type>`             | Delivery target type (default: `kinesis`)                                   |
 | `--data-stream-arn <arn>`            | Kinesis data stream ARN for memory record streaming                         |
 | `--stream-content-level <level>`     | `FULL_CONTENT` (default) or `METADATA_ONLY`                                 |
-| `--stream-delivery-resources <json>` | Stream delivery config as JSON (advanced, overrides flat flags)              |
+| `--stream-delivery-resources <json>` | Stream delivery config as JSON (advanced, overrides flat flags)             |
 | `--json`                             | JSON output                                                                 |
 
 ### add gateway
@@ -502,16 +502,16 @@ agentcore dev list-tools
 agentcore dev call-tool --tool myTool --input '{"arg": "value"}'
 ```
 
-| Flag / Argument        | Description                                              |
-| ---------------------- | -------------------------------------------------------- |
-| `[prompt]`             | Send a prompt to a running dev server                    |
-| `-p, --port <port>`    | Port (default: 8080; MCP uses 8000, A2A uses 9000)       |
-| `-r, --runtime <name>` | Runtime to run or invoke (required if multiple runtimes) |
-| `-s, --stream`         | Stream response when invoking                            |
-| `-l, --logs`           | Non-interactive stdout logging                           |
-| `--tool <name>`        | MCP tool name (with `call-tool` prompt)                  |
-| `--input <json>`       | MCP tool arguments as JSON (with `--tool`)               |
-| `-H, --header <h>`     | Custom header (`"Name: Value"`, repeatable)              |
+| Flag / Argument        | Description                                                           |
+| ---------------------- | --------------------------------------------------------------------- |
+| `[prompt]`             | Send a prompt to a running dev server                                 |
+| `-p, --port <port>`    | Port (default: 8080; MCP uses 8000, A2A uses 9000)                    |
+| `-r, --runtime <name>` | Runtime to run or invoke (required if multiple runtimes)              |
+| `-s, --stream`         | Stream response when invoking                                         |
+| `-l, --logs`           | Non-interactive stdout logging                                        |
+| `--tool <name>`        | MCP tool name (with `call-tool` prompt)                               |
+| `--input <json>`       | MCP tool arguments as JSON (with `--tool`)                            |
+| `-H, --header <h>`     | Custom header (`"Name: Value"`, repeatable)                           |
 | `--exec`               | Execute a shell command in the running dev container (Container only) |
 
 ### invoke
@@ -724,8 +724,8 @@ agentcore fetch access --name MyGateway --type gateway --json
 agentcore fetch access --name MyAgent --type agent --target staging
 ```
 
-| Flag              | Description                                   |
-| ----------------- | --------------------------------------------- |
+| Flag                     | Description                                   |
+| ------------------------ | --------------------------------------------- |
 | `--name <name>`          | Gateway or agent name                         |
 | `--type <type>`          | Resource type: `gateway` (default) or `agent` |
 | `--target <name>`        | Deployment target                             |
