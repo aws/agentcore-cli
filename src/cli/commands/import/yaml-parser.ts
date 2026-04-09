@@ -199,7 +199,7 @@ export function parseStarterToolkitYaml(filePath: string): ParsedStarterToolkitC
       const networkModeConfig = networkConfig?.network_mode_config as Record<string, unknown> | undefined;
 
       // Map protocol
-      const protocol = String((protocolConfig?.server_protocol as string) ?? 'HTTP') as 'HTTP' | 'MCP' | 'A2A';
+      const protocol = String((protocolConfig?.server_protocol as string) ?? 'HTTP') as 'HTTP' | 'MCP' | 'A2A' | 'AGUI';
 
       agents.push({
         name: String((agentConfig.name as string) ?? agentKey),

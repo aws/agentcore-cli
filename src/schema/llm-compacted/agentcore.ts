@@ -41,6 +41,8 @@ type ModelProvider = 'Bedrock' | 'Gemini' | 'OpenAI' | 'Anthropic';
 // AGENT
 // ─────────────────────────────────────────────────────────────────────────────
 
+type ProtocolMode = 'HTTP' | 'MCP' | 'A2A' | 'AGUI';
+
 interface AgentEnvSpec {
   name: string; // @regex ^[a-zA-Z][a-zA-Z0-9_]{0,47}$ @max 48
   build: BuildType;
@@ -52,6 +54,7 @@ interface AgentEnvSpec {
   networkMode?: NetworkMode; // default 'PUBLIC'
   networkConfig?: NetworkConfig; // Required when networkMode is 'VPC'
   instrumentation?: Instrumentation; // OTel settings
+  protocol?: ProtocolMode; // default 'HTTP'
   tags?: Record<string, string>;
 }
 

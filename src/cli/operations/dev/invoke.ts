@@ -224,6 +224,11 @@ export async function* invokeForProtocol(
     case 'A2A':
       yield* invokeA2AStreaming(options);
       break;
+    case 'AGUI': {
+      const { invokeAguiStreaming } = await import('./invoke-agui');
+      yield* invokeAguiStreaming(options);
+      break;
+    }
     default:
       yield* invokeAgentStreaming(options);
   }

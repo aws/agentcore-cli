@@ -99,6 +99,12 @@ export const RESERVED_PROJECT_NAMES: readonly string[] = [
   'strands',
   'strandsagents',
   'strandsagentstools',
+  // AG-UI adapter packages
+  'agui',
+  'aguistrands',
+  'aguilanggraph',
+  'aguiadk',
+  'aguiprotocol',
   // Common utilities
   'httpx',
   'pytest',
@@ -154,7 +160,7 @@ export type NetworkMode = z.infer<typeof NetworkModeSchema>;
 // Protocol Mode
 // ============================================================================
 
-export const ProtocolModeSchema = z.enum(['HTTP', 'MCP', 'A2A']);
+export const ProtocolModeSchema = z.enum(['HTTP', 'MCP', 'A2A', 'AGUI']);
 export type ProtocolMode = z.infer<typeof ProtocolModeSchema>;
 
 /**
@@ -165,6 +171,7 @@ export const PROTOCOL_FRAMEWORK_MATRIX: Record<ProtocolMode, readonly SDKFramewo
   HTTP: ['Strands', 'LangChain_LangGraph', 'GoogleADK', 'OpenAIAgents'] as const,
   MCP: [] as const,
   A2A: ['Strands', 'GoogleADK', 'LangChain_LangGraph'] as const,
+  AGUI: ['Strands', 'LangChain_LangGraph', 'GoogleADK'] as const,
 };
 
 /**

@@ -71,6 +71,8 @@ export function getEndpointUrl(port: number, protocol: string): string {
       return `http://localhost:${port}/mcp`;
     case 'A2A':
       return `http://localhost:${port}/`;
+    case 'AGUI':
+      return `http://localhost:${port}/invocations`;
     default:
       return `http://localhost:${port}/invocations`;
   }

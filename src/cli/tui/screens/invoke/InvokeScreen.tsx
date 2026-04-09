@@ -28,7 +28,13 @@ interface ColoredLine {
  * Each line carries its own color so that word-wrapping preserves it.
  */
 function formatConversation(
-  messages: { role: 'user' | 'assistant'; content: string; isHint?: boolean; isExec?: boolean }[]
+  messages: {
+    role: 'user' | 'assistant';
+    content: string;
+    isHint?: boolean;
+    isExec?: boolean;
+    parts?: import('./useInvokeFlow').MessagePart[];
+  }[]
 ): ColoredLine[] {
   const lines: ColoredLine[] = [];
 
@@ -42,6 +48,22 @@ function formatConversation(
       lines.push({ text: `> ${msg.content}`, color: 'blue' });
     } else if (msg.isExec) {
       lines.push({ text: msg.content });
+    } else if (msg.parts && msg.parts.length > 0) {
+      // Rich AGUI rendering: render each part with distinct visual treatment
+      for (const part of msg.parts) {
+        if (part.kind === 'text') {
+          lines.push({ text: part.text, color: 'green' });
+        } else if (part.kind === 'tool_call') {
+          lines.push({ text: `  [tool] ${part.name}(${part.args})`, color: 'gray' });
+          if (part.result) {
+            lines.push({ text: `  [result] ${part.result}`, color: 'gray' });
+          }
+        } else if (part.kind === 'reasoning') {
+          lines.push({ text: `  [thinking] ${part.text}`, color: 'gray' });
+        } else if (part.kind === 'error') {
+          lines.push({ text: `Error: ${part.message}${part.code ? ` (${part.code})` : ''}`, color: 'red' });
+        }
+      }
     } else {
       lines.push({ text: msg.content, color: 'green' });
     }
@@ -527,7 +549,7 @@ export function InvokeScreen({
                     ? undefined
                     : isMcp
                       ? 'tool_name {"arg": "value"}'
-                      : agentProtocol === 'A2A'
+                      : agentProtocol === 'A2A' || agentProtocol === 'AGUI'
                         ? 'Send a message...'
                         : undefined
                 }

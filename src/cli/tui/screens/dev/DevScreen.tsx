@@ -622,7 +622,7 @@ export function DevScreen(props: DevScreenProps) {
                     ? undefined
                     : isMcp
                       ? 'tool_name {"arg": "value"}'
-                      : protocol === 'A2A'
+                      : protocol === 'A2A' || protocol === 'AGUI'
                         ? 'Send a message...'
                         : undefined
                 }

@@ -314,6 +314,42 @@ export async function handleInvoke(context: InvokeContext, options: InvokeOption
     }
   }
 
+  // AGUI protocol handling — send RunAgentInput via InvokeAgentRuntime, stream text
+  if (agentSpec.protocol === 'AGUI') {
+    try {
+      const { invokeAguiRuntime, buildAguiRunInput } = await import('../../aws');
+      const aguiInput = buildAguiRunInput(options.prompt, options.sessionId);
+      const aguiResult = await invokeAguiRuntime(
+        {
+          region: targetConfig.region,
+          runtimeArn: agentState.runtimeArn,
+          userId: options.userId,
+          headers: options.headers,
+          bearerToken: options.bearerToken,
+        },
+        aguiInput
+      );
+      let response = '';
+      for await (const chunk of aguiResult.textStream) {
+        response += chunk;
+        if (options.stream) {
+          process.stdout.write(chunk);
+        }
+      }
+      if (options.stream) {
+        process.stdout.write('\n');
+      }
+      return {
+        success: true,
+        agentName: agentSpec.name,
+        targetName: selectedTargetName,
+        response,
+      };
+    } catch (err) {
+      return { success: false, error: `AGUI invoke failed: ${err instanceof Error ? err.message : String(err)}` };
+    }
+  }
+
   // Create logger for this invocation
   const logger = new InvokeLogger({
     agentName: agentSpec.name,

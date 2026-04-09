@@ -975,6 +975,144 @@ export function parseA2AResponse(text: string): string {
   }
 }
 
+// ---------------------------------------------------------------------------
+// AGUI: Structured event streaming over InvokeAgentRuntime
+// ---------------------------------------------------------------------------
+
+export interface AguiInvokeOptions {
+  region: string;
+  runtimeArn: string;
+  userId?: string;
+  logger?: SSELogger;
+  headers?: Record<string, string>;
+  bearerToken?: string;
+}
+
+export interface AguiStreamingInvokeResult {
+  /** Typed event stream — yields all AGUI events for rich TUI rendering */
+  stream: AsyncGenerator<import('./agui-types').AguiEvent, void, unknown>;
+  /** Text-only convenience stream — yields only TEXT_MESSAGE_CONTENT deltas */
+  textStream: AsyncGenerator<string, void, unknown>;
+  sessionId: string | undefined;
+}
+
+/**
+ * Invoke an AgentCore AGUI Runtime and stream structured events.
+ * Returns both a typed event stream and a text-only convenience stream.
+ */
+export async function invokeAguiRuntime(
+  options: AguiInvokeOptions,
+  input: import('./agui-types').AguiRunInput
+): Promise<AguiStreamingInvokeResult> {
+  const { parseAguiEvent, AguiEventType } = await import('./agui-types');
+
+  const client = createAgentCoreClient(options.region, options.headers);
+
+  const command = new InvokeAgentRuntimeCommand({
+    agentRuntimeArn: options.runtimeArn,
+    payload: new TextEncoder().encode(JSON.stringify(input)),
+    contentType: 'application/json',
+    accept: 'text/event-stream',
+    runtimeSessionId: undefined,
+    runtimeUserId: options.userId ?? DEFAULT_RUNTIME_USER_ID,
+  });
+
+  const response = await client.send(command);
+  const sessionId = response.runtimeSessionId;
+
+  if (!response.response) {
+    throw new Error('No response from AgentCore Runtime');
+  }
+
+  const webStream = response.response.transformToWebStream();
+  const reader = webStream.getReader();
+  const decoder = new TextDecoder();
+
+  // Shared state for the event pump
+  const aguiEvents: import('./agui-types').AguiEvent[] = [];
+  const waiters: (() => void)[] = [];
+  let aguiStreamDone = false;
+
+  function notifyWaiters() {
+    for (const w of waiters.splice(0)) w();
+  }
+
+  // Background reader that parses SSE lines into typed events
+  const readLoop = (async () => {
+    let buffer = '';
+    try {
+      while (true) {
+        const result = await reader.read();
+        if (result.done) break;
+
+        buffer += decoder.decode(result.value as Uint8Array, { stream: true });
+        const lines = buffer.split('\n');
+        buffer = lines.pop() ?? '';
+
+        for (const line of lines) {
+          if (options.logger && line.trim()) {
+            options.logger.logSSEEvent(line);
+          }
+          const event = parseAguiEvent(line);
+          if (event) {
+            aguiEvents.push(event);
+            notifyWaiters();
+          }
+        }
+      }
+      if (buffer.trim()) {
+        if (options.logger) options.logger.logSSEEvent(buffer);
+        const event = parseAguiEvent(buffer);
+        if (event) aguiEvents.push(event);
+      }
+    } finally {
+      reader.releaseLock();
+      aguiStreamDone = true;
+      notifyWaiters();
+    }
+  })();
+
+  // eslint-disable-next-line @typescript-eslint/no-empty-function -- intentional: suppress unhandled rejection; errors surface when consumer reads
+  readLoop.catch(() => {});
+
+  async function* aguiEventStream(): AsyncGenerator<import('./agui-types').AguiEvent, void, unknown> {
+    let idx = 0;
+    while (true) {
+      if (idx < aguiEvents.length) {
+        yield aguiEvents[idx++]!;
+      } else if (aguiStreamDone) {
+        return;
+      } else {
+        await new Promise<void>(resolve => waiters.push(resolve));
+      }
+    }
+  }
+
+  async function* aguiTextStream(): AsyncGenerator<string, void, unknown> {
+    let idx = 0;
+    while (true) {
+      if (idx < aguiEvents.length) {
+        const event = aguiEvents[idx++]!;
+        if (event.type === AguiEventType.TEXT_MESSAGE_CONTENT) {
+          yield event.delta;
+        } else if (event.type === AguiEventType.RUN_ERROR) {
+          yield `Error: ${event.message}`;
+        }
+      } else if (aguiStreamDone) {
+        return;
+      } else {
+        await new Promise<void>(resolve => waiters.push(resolve));
+      }
+    }
+  }
+
+  return {
+    stream: aguiEventStream(),
+    textStream: aguiTextStream(),
+    sessionId,
+  };
+}
+
 /**
  * Stop a runtime session.
  */
