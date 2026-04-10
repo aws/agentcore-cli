@@ -62,6 +62,32 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      - name: Sync @aws/agentcore-cdk to latest npm version
+        run: |
+          echo "Fetching latest @aws/agentcore-cdk version from npm..."
+          LATEST_CDK=$(npm view @aws/agentcore-cdk version 2>/dev/null || echo "")
+
+          if [ -z "$LATEST_CDK" ]; then
+            echo "⚠️  Could not fetch @aws/agentcore-cdk version from npm. Skipping sync."
+          else
+            TEMPLATE_PKG="src/assets/cdk/package.json"
+            CURRENT_CDK=$(node -p "require('./$TEMPLATE_PKG').dependencies['@aws/agentcore-cdk']")
+            echo "Current pinned version: $CURRENT_CDK"
+            echo "Latest npm version:     $LATEST_CDK"
+
+            if [ "$CURRENT_CDK" != "$LATEST_CDK" ]; then
+              node -e "
+                const fs = require('fs');
+                const pkg = JSON.parse(fs.readFileSync('$TEMPLATE_PKG', 'utf8'));
+                pkg.dependencies['@aws/agentcore-cdk'] = '$LATEST_CDK';
+                fs.writeFileSync('$TEMPLATE_PKG', JSON.stringify(pkg, null, 2) + '\n');
+              "
+              echo "✅ Updated @aws/agentcore-cdk: $CURRENT_CDK -> $LATEST_CDK"
+            else
+              echo "✅ @aws/agentcore-cdk already at latest ($LATEST_CDK)"
+            fi
+          fi
+
       - name: Get current version
         id: current
         run: |
