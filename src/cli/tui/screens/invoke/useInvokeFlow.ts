@@ -208,7 +208,10 @@ export function useInvokeFlow(options: InvokeFlowOptions = {}): InvokeFlowState 
     // Check if credentials are set up before attempting fetch
     const canFetch = await canFetchRuntimeToken(agent.name);
     if (!canFetch) {
-      // No credential configured — silently skip, user can press T to enter manually
+      setTokenFetchState('error');
+      setTokenFetchError(
+        'No OAuth credentials configured for auto-fetch. Press T to enter a bearer token manually, or re-add the agent with --client-id and --client-secret.'
+      );
       return;
     }
 

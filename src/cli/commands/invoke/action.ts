@@ -104,6 +104,11 @@ export async function handleInvoke(context: InvokeContext, options: InvokeOption
           error: `CUSTOM_JWT agent requires a bearer token. Auto-fetch failed: ${err instanceof Error ? err.message : String(err)}\nProvide one manually with --bearer-token.`,
         };
       }
+    } else {
+      return {
+        success: false,
+        error: `Agent '${agentSpec.name}' is configured for CUSTOM_JWT but no bearer token is available.\nEither provide --bearer-token or re-add the agent with --client-id and --client-secret to enable auto-fetch.`,
+      };
     }
   }
 
