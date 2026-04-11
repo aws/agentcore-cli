@@ -55,6 +55,11 @@ const validGatewayOptionsNone: AddGatewayOptions = {
   authorizerType: 'NONE',
 };
 
+const validGatewayOptionsIam: AddGatewayOptions = {
+  name: 'test-gateway',
+  authorizerType: 'AWS_IAM',
+};
+
 const validGatewayOptionsJwt: AddGatewayOptions = {
   name: 'test-gateway',
   authorizerType: 'CUSTOM_JWT',
@@ -343,6 +348,7 @@ describe('validate', () => {
     // AC14: Valid options pass
     it('passes for valid options', () => {
       expect(validateAddGatewayOptions(validGatewayOptionsNone)).toEqual({ valid: true });
+      expect(validateAddGatewayOptions(validGatewayOptionsIam)).toEqual({ valid: true });
       expect(validateAddGatewayOptions(validGatewayOptionsJwt)).toEqual({ valid: true });
     });
 

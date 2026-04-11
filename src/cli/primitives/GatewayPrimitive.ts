@@ -162,7 +162,7 @@ export class GatewayPrimitive extends BasePrimitive<AddGatewayOptions, Removable
       .option('--name <name>', 'Gateway name [non-interactive]')
       .option('--description <desc>', 'Gateway description [non-interactive]')
       .option('--runtimes <runtimes>', 'Comma-separated runtime names to expose through this gateway [non-interactive]')
-      .option('--authorizer-type <type>', 'Authorizer type: NONE or CUSTOM_JWT [non-interactive]')
+      .option('--authorizer-type <type>', 'Authorizer type: NONE, AWS_IAM, or CUSTOM_JWT [non-interactive]')
       .option('--discovery-url <url>', 'OIDC discovery URL (for CUSTOM_JWT) [non-interactive]')
       .option('--allowed-audience <audience>', 'Comma-separated allowed audiences (for CUSTOM_JWT) [non-interactive]')
       .option('--allowed-clients <clients>', 'Comma-separated allowed client IDs (for CUSTOM_JWT) [non-interactive]')
