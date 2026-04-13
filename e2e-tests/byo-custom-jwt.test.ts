@@ -272,9 +272,11 @@ describe.sequential('e2e: BYO agent with CUSTOM_JWT auth', () => {
         projectPath
       );
 
-      // Expect failure due to auth method mismatch
+      // Expect failure due to auth method mismatch (client-side fast-fail or server-side rejection)
       const output = stripAnsi(result.stdout + result.stderr);
-      expect(output).toMatch(/[Aa]uthoriz(ation|er).*mismatch|different.*authorization/i);
+      expect(output).toMatch(
+        /configured for CUSTOM_JWT but no bearer token|[Aa]uthoriz(ation|er).*mismatch|different.*authorization/i
+      );
     },
     180000
   );
@@ -294,7 +296,9 @@ describe.sequential('e2e: BYO agent with CUSTOM_JWT auth', () => {
 
       const output = stripAnsi(result.stdout + result.stderr);
       // The invoke may fail for other reasons (agent logic), but it should NOT fail with auth mismatch
-      expect(output).not.toMatch(/[Aa]uthoriz(ation|er).*mismatch|different.*authorization/i);
+      expect(output).not.toMatch(
+        /configured for CUSTOM_JWT but no bearer token|[Aa]uthoriz(ation|er).*mismatch|different.*authorization/i
+      );
     },
     180000
   );
@@ -307,7 +311,9 @@ describe.sequential('e2e: BYO agent with CUSTOM_JWT auth', () => {
       const result = await runLocalCLI(['invoke', '--runtime', mcpAgentName, 'list-tools', '--json'], projectPath);
 
       const output = stripAnsi(result.stdout + result.stderr);
-      expect(output).toMatch(/[Aa]uthoriz(ation|er).*mismatch|different.*authorization/i);
+      expect(output).toMatch(
+        /configured for CUSTOM_JWT but no bearer token|[Aa]uthoriz(ation|er).*mismatch|different.*authorization/i
+      );
     },
     180000
   );
@@ -325,7 +331,9 @@ describe.sequential('e2e: BYO agent with CUSTOM_JWT auth', () => {
       );
 
       const output = stripAnsi(result.stdout + result.stderr);
-      expect(output).not.toMatch(/[Aa]uthoriz(ation|er).*mismatch|different.*authorization/i);
+      expect(output).not.toMatch(
+        /configured for CUSTOM_JWT but no bearer token|[Aa]uthoriz(ation|er).*mismatch|different.*authorization/i
+      );
     },
     180000
   );
@@ -355,7 +363,9 @@ describe.sequential('e2e: BYO agent with CUSTOM_JWT auth', () => {
       );
 
       const output = stripAnsi(result.stdout + result.stderr);
-      expect(output).not.toMatch(/[Aa]uthoriz(ation|er).*mismatch|different.*authorization/i);
+      expect(output).not.toMatch(
+        /configured for CUSTOM_JWT but no bearer token|[Aa]uthoriz(ation|er).*mismatch|different.*authorization/i
+      );
     },
     180000
   );
