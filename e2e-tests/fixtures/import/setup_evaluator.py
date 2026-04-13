@@ -10,7 +10,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 import time
 from common import (
-    REGION, get_control_client, save_resource, tag_resource,
+    get_control_client, save_resource, tag_resource,
     wait_for_evaluator, print_import_command,
 )
 
