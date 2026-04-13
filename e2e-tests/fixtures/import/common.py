@@ -1,7 +1,6 @@
 """Shared helpers for bugbash setup scripts."""
 import json
 import os
-import sys
 import time
 import zipfile
 import tempfile
