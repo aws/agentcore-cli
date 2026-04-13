@@ -9,7 +9,6 @@ const mockSpawnSync = vi.fn();
 const mockSpawn = vi.fn();
 const mockExistsSync = vi.fn();
 const mockDetectContainerRuntime = vi.fn();
-const mockGetStartHint = vi.fn();
 const mockWaitForServerReady = vi.fn();
 
 vi.mock('child_process', () => ({
@@ -29,7 +28,6 @@ vi.mock('os', () => ({
 // Path is relative to this test file in __tests__/, so 3 levels up to reach cli/
 vi.mock('../../../external-requirements/detect', () => ({
   detectContainerRuntime: (...args: unknown[]) => mockDetectContainerRuntime(...args),
-  getStartHint: (...args: unknown[]) => mockGetStartHint(...args),
 }));
 
 vi.mock('../utils', async importOriginal => {
@@ -71,7 +69,6 @@ function mockSuccessfulPrepare() {
   // Runtime detected
   mockDetectContainerRuntime.mockResolvedValue({
     runtime: { runtime: 'docker', binary: 'docker', version: 'Docker 24.0' },
-    notReadyRuntimes: [],
   });
   // Dockerfile exists (first call), ~/.aws exists (second call in getSpawnConfig)
   mockExistsSync.mockReturnValue(true);
@@ -115,7 +112,6 @@ describe('ContainerDevServer', () => {
     it('returns null when no container runtime detected', async () => {
       mockDetectContainerRuntime.mockResolvedValue({
         runtime: null,
-        notReadyRuntimes: [],
       });
 
       const server = new ContainerDevServer(defaultConfig, defaultOptions);
@@ -128,25 +124,9 @@ describe('ContainerDevServer', () => {
       );
     });
 
-    it('logs start hints when runtimes installed but not ready', async () => {
-      mockDetectContainerRuntime.mockResolvedValue({
-        runtime: null,
-        notReadyRuntimes: ['docker', 'podman'],
-      });
-      mockGetStartHint.mockReturnValue('Start Docker Desktop');
-
-      const server = new ContainerDevServer(defaultConfig, defaultOptions);
-      const result = await server.start();
-
-      expect(result).toBeNull();
-      expect(mockCallbacks.onLog).toHaveBeenCalledWith('error', expect.stringContaining('docker, podman'));
-      expect(mockGetStartHint).toHaveBeenCalledWith(['docker', 'podman']);
-    });
-
     it('returns null when Dockerfile is missing', async () => {
       mockDetectContainerRuntime.mockResolvedValue({
         runtime: { runtime: 'docker', binary: 'docker', version: 'Docker 24.0' },
-        notReadyRuntimes: [],
       });
       mockExistsSync.mockReturnValue(false);
 
@@ -175,7 +155,6 @@ describe('ContainerDevServer', () => {
     it('returns null when image build fails', async () => {
       mockDetectContainerRuntime.mockResolvedValue({
         runtime: { runtime: 'docker', binary: 'docker', version: 'Docker 24.0' },
-        notReadyRuntimes: [],
       });
       mockExistsSync.mockReturnValue(true);
       // rm succeeds (spawnSync)
@@ -250,7 +229,6 @@ describe('ContainerDevServer', () => {
     it('streams build output lines at system level in real-time', async () => {
       mockDetectContainerRuntime.mockResolvedValue({
         runtime: { runtime: 'docker', binary: 'docker', version: 'Docker 24.0' },
-        notReadyRuntimes: [],
       });
       mockExistsSync.mockReturnValue(true);
       mockSpawnSync.mockReturnValue({ status: 0, stdout: Buffer.from(''), stderr: Buffer.from('') }); // rm
@@ -437,7 +415,6 @@ describe('ContainerDevServer', () => {
     it('skips ~/.aws mount when directory does not exist', async () => {
       mockDetectContainerRuntime.mockResolvedValue({
         runtime: { runtime: 'docker', binary: 'docker', version: 'Docker 24.0' },
-        notReadyRuntimes: [],
       });
       // existsSync is called for: (1) Dockerfile in prepare(), (2) ~/.aws in getSpawnConfig()
       mockExistsSync.mockImplementation((path: string) => {

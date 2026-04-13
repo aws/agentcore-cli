@@ -16,7 +16,6 @@ export {
   DOCKERFILE_NAME,
   CONTAINER_INTERNAL_PORT,
   CONTAINER_RUNTIMES,
-  START_HINTS,
   getDockerfilePath,
   type ContainerRuntime,
 } from './constants';

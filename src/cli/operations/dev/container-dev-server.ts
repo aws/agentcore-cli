@@ -1,6 +1,6 @@
 import { CONTAINER_INTERNAL_PORT, DOCKERFILE_NAME, getDockerfilePath } from '../../../lib';
 import { getUvBuildArgs } from '../../../lib/packaging/build-args';
-import { detectContainerRuntime, getStartHint } from '../../external-requirements/detect';
+import { detectContainerRuntime } from '../../external-requirements/detect';
 import { DevServer, type LogLevel, type SpawnConfig } from './dev-server';
 import { waitForServerReady } from './utils';
 import { type ChildProcess, spawn, spawnSync } from 'child_process';
@@ -58,16 +58,9 @@ export class ContainerDevServer extends DevServer {
     const { onLog } = this.options.callbacks;
 
     // 1. Detect container runtime
-    const { runtime, notReadyRuntimes } = await detectContainerRuntime();
+    const { runtime } = await detectContainerRuntime();
     if (!runtime) {
-      if (notReadyRuntimes.length > 0) {
-        onLog(
-          'error',
-          `Found ${notReadyRuntimes.join(', ')} but not ready. Start a runtime:\n${getStartHint(notReadyRuntimes)}`
-        );
-      } else {
-        onLog('error', 'No container runtime found. Install Docker, Podman, or Finch.');
-      }
+      onLog('error', 'No container runtime found. Install Docker, Podman, or Finch.');
       return false;
     }
     this.runtimeBinary = runtime.binary;

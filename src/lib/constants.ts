@@ -47,16 +47,6 @@ export const CONTAINER_INTERNAL_PORT = 8080;
 export type ContainerRuntime = 'docker' | 'podman' | 'finch';
 export const CONTAINER_RUNTIMES: ContainerRuntime[] = ['docker', 'podman', 'finch'];
 
-/** Platform-aware start hints for container runtimes. */
-export const START_HINTS: Record<ContainerRuntime, string> = {
-  docker:
-    process.platform === 'win32'
-      ? 'Start Docker Desktop or run: Start-Service docker'
-      : 'Start Docker Desktop or run: sudo systemctl start docker',
-  podman: 'Run: podman machine start',
-  finch: 'Run: finch vm init && finch vm start',
-};
-
 /**
  * Get the Dockerfile path for a given code location.
  * @param codeLocation - Directory containing the Dockerfile

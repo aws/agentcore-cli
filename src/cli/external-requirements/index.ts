@@ -32,7 +32,6 @@ export {
 export {
   detectContainerRuntime,
   requireContainerRuntime,
-  getStartHint,
   type ContainerRuntime,
   type ContainerRuntimeInfo,
   type DetectionResult,
