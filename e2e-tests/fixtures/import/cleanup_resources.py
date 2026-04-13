@@ -9,7 +9,7 @@ import os
 import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from common import REGION, RESOURCES_FILE, get_control_client
+from common import RESOURCES_FILE, get_control_client
 
 
 def main():
