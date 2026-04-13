@@ -9,7 +9,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 import time
 from common import (
-    REGION, ensure_role, get_control_client, wait_for_runtime,
+    ensure_role, get_control_client, wait_for_runtime,
     save_resource, print_import_command, upload_code,
 )
 
