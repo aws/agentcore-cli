@@ -10,11 +10,17 @@ import { describe, expect, it } from 'vitest';
 describe('AgentCoreRegionSchema', () => {
   const validRegions = [
     'ap-northeast-1',
+    'ap-northeast-2',
     'ap-south-1',
     'ap-southeast-1',
     'ap-southeast-2',
+    'ca-central-1',
     'eu-central-1',
+    'eu-north-1',
     'eu-west-1',
+    'eu-west-2',
+    'eu-west-3',
+    'sa-east-1',
     'us-east-1',
     'us-east-2',
     'us-west-2',
@@ -26,8 +32,8 @@ describe('AgentCoreRegionSchema', () => {
 
   it('rejects unsupported regions', () => {
     expect(AgentCoreRegionSchema.safeParse('us-west-1').success).toBe(false);
-    expect(AgentCoreRegionSchema.safeParse('eu-west-2').success).toBe(false);
-    expect(AgentCoreRegionSchema.safeParse('sa-east-1').success).toBe(false);
+    expect(AgentCoreRegionSchema.safeParse('af-south-1').success).toBe(false);
+    expect(AgentCoreRegionSchema.safeParse('me-south-1').success).toBe(false);
   });
 
   it('rejects empty string', () => {
