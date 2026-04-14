@@ -134,17 +134,17 @@ jobs:
           echo "branch=release/v$NEW_VERSION" >> $GITHUB_OUTPUT
           echo "New version: $NEW_VERSION"
 
-      - name: Update snapshots after CDK sync
-        run: |
-          npm run test:update-snapshots
-          echo "✓ Snapshots updated"
-
       - name: Regenerate JSON schema
         run: |
           npm run build
           node scripts/generate-schema.mjs
           npx prettier --write schemas/
           echo "✓ JSON schema regenerated and formatted"
+
+      - name: Update snapshots after CDK sync
+        run: |
+          npm run test:update-snapshots
+          echo "✓ Snapshots updated"
 
       - name: Create release branch and PR
         env:
