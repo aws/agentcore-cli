@@ -14,8 +14,7 @@ from common import (
     wait_for_evaluator, print_import_command,
 )
 
-# Keep in sync with DEFAULT_MODEL in src/cli/tui/screens/evaluator/types.ts
-DEFAULT_EVALUATOR_MODEL = "us.anthropic.claude-sonnet-4-5-20250929-v1:0"
+DEFAULT_EVALUATOR_MODEL = os.environ.get("DEFAULT_EVALUATOR_MODEL", "us.anthropic.claude-sonnet-4-5-20250929-v1:0")
 
 
 def main():

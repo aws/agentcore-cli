@@ -8,6 +8,7 @@ import {
   spawnAndCollect,
   stripAnsi,
 } from '../src/test-utils/index.js';
+import { DEFAULT_MODEL as DEFAULT_EVALUATOR_MODEL } from '../src/cli/tui/screens/evaluator/types.js';
 import { installCdkTarball, runAgentCoreCLI, writeAwsTargets } from './e2e-helper.js';
 import { execSync } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
@@ -50,7 +51,10 @@ describe.sequential('e2e: import runtime/memory/evaluator', () => {
     //    Scripts run sequentially because save_resource() does a read-modify-write
     //    on a shared bugbash-resources.json file — parallel runs would race.
     for (const script of ['setup_runtime_basic.py', 'setup_memory_full.py', 'setup_evaluator.py']) {
-      const result = await spawnAndCollect('python3', [script], fixtureDir, { AWS_REGION: region });
+      const result = await spawnAndCollect('python3', [script], fixtureDir, {
+        AWS_REGION: region,
+        DEFAULT_EVALUATOR_MODEL,
+      });
       if (result.exitCode !== 0) {
         throw new Error(
           `${script} failed (exit ${result.exitCode}):\nstdout: ${result.stdout}\nstderr: ${result.stderr}`
