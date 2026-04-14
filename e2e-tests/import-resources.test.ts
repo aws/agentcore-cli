@@ -85,6 +85,9 @@ describe.sequential('e2e: import runtime/memory/evaluator', () => {
     installCdkTarball(projectPath);
   }, 600_000);
 
+  // Note: we don't use teardownE2EProject() here because import tests need
+  // extra cleanup — the Python fallback script deletes resources that weren't
+  // successfully imported into CloudFormation, and cleans up S3 code objects.
   afterAll(async () => {
     // 1. Tear down CFN stack created by import (this deletes all imported resources)
     if (projectPath && hasAws) {

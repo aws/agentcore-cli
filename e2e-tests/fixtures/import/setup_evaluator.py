@@ -65,7 +65,8 @@ def main():
     })
 
     save_resource("evaluator-llm", evaluator_arn, evaluator_id)
-    wait_for_evaluator(client, evaluator_id)
+    if not wait_for_evaluator(client, evaluator_id):
+        sys.exit(1)
 
     print()
     print("Expected fields after import:")

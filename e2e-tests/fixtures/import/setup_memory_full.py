@@ -60,7 +60,8 @@ def main():
     })
 
     save_resource("memory-full", memory_arn, memory_id)
-    wait_for_memory(client, memory_id)
+    if not wait_for_memory(client, memory_id):
+        sys.exit(1)
 
     print()
     print("Expected fields after import:")

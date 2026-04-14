@@ -3,13 +3,37 @@
 
 Called from afterAll in import e2e tests as a fallback cleanup
 for resources that were not successfully imported into CloudFormation.
+
+Note: The IAM role (bugbash-agentcore-role) is intentionally left in place —
+it is shared across test runs via ensure_role() in common.py.
 """
 import json
 import os
 import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from common import RESOURCES_FILE, get_control_client
+from common import REGION, RESOURCES_FILE, get_control_client, get_account_id
+
+import boto3
+
+
+def cleanup_s3_code_objects():
+    """Delete uploaded code.zip objects from the bugbash S3 bucket."""
+    account_id = get_account_id()
+    bucket_name = f"bugbash-agentcore-code-{account_id}-{REGION}"
+    s3 = boto3.client("s3", region_name=REGION)
+    try:
+        resp = s3.list_objects_v2(Bucket=bucket_name)
+        objects = resp.get("Contents", [])
+        if not objects:
+            return
+        s3.delete_objects(
+            Bucket=bucket_name,
+            Delete={"Objects": [{"Key": o["Key"]} for o in objects]},
+        )
+        print(f"Deleted {len(objects)} object(s) from s3://{bucket_name}")
+    except Exception as e:
+        print(f"Could not clean up S3 objects: {e}")
 
 
 def main():
@@ -47,6 +71,8 @@ def main():
     else:
         os.remove(RESOURCES_FILE)
         print("Cleaned up bugbash-resources.json")
+
+    cleanup_s3_code_objects()
 
 
 if __name__ == "__main__":

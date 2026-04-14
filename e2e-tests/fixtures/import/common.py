@@ -7,7 +7,7 @@ import tempfile
 
 import boto3
 
-REGION = os.environ.get("AWS_REGION") or os.environ.get("AWS_DEFAULT_REGION") or "us-west-2"
+REGION = os.environ.get("AWS_REGION") or os.environ.get("AWS_DEFAULT_REGION") or "us-east-1"
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 APP_DIR = os.path.join(SCRIPT_DIR, "app")
 RESOURCES_FILE = os.path.join(SCRIPT_DIR, "bugbash-resources.json")
@@ -68,7 +68,12 @@ def get_control_client():
 
 
 def ensure_role():
-    """Create the bugbash IAM role if it doesn't exist, with all needed permissions."""
+    """Create the bugbash IAM role if it doesn't exist, with all needed permissions.
+
+    This role is intentionally persistent across test runs — ensure_role() is
+    idempotent (create-if-not-exists) so multiple CI jobs and local debugging
+    sessions share the same role without conflicts.
+    """
     account_id = get_account_id()
     role_name = "bugbash-agentcore-role"
     role_arn = f"arn:aws:iam::{account_id}:role/{role_name}"

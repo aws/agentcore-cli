@@ -48,7 +48,8 @@ def main():
     print(f"Runtime ARN: {runtime_arn}")
 
     save_resource("runtime-basic", runtime_arn, runtime_id)
-    wait_for_runtime(client, runtime_id)
+    if not wait_for_runtime(client, runtime_id):
+        sys.exit(1)
 
     print()
     print("Expected fields after import:")
