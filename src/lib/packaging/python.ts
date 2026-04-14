@@ -155,7 +155,7 @@ export class PythonCodeZipPackager implements RuntimePackager {
  */
 export class PythonCodeZipPackagerSync implements CodeZipPackager {
   packCodeZip(config: AgentEnvSpec, options: PackageOptions = {}): ArtifactResult {
-    const runtimeVersion = config.runtimeVersion ?? 'PYTHON_3_13';
+    const runtimeVersion = config.runtimeVersion ?? 'PYTHON_3_14';
 
     if (!isPythonRuntimeVersion(runtimeVersion)) {
       throw new PackagingError(`Python packager only supports Python runtimes. Received: ${runtimeVersion}`);

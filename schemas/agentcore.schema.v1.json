@@ -74,7 +74,7 @@
             "anyOf": [
               {
                 "type": "string",
-                "enum": ["PYTHON_3_10", "PYTHON_3_11", "PYTHON_3_12", "PYTHON_3_13"]
+                "enum": ["PYTHON_3_10", "PYTHON_3_11", "PYTHON_3_12", "PYTHON_3_13", "PYTHON_3_14"]
               },
               {
                 "type": "string",
@@ -774,7 +774,7 @@
                         },
                         "pythonVersion": {
                           "type": "string",
-                          "enum": ["PYTHON_3_10", "PYTHON_3_11", "PYTHON_3_12", "PYTHON_3_13"]
+                          "enum": ["PYTHON_3_10", "PYTHON_3_11", "PYTHON_3_12", "PYTHON_3_13", "PYTHON_3_14"]
                         },
                         "timeout": {
                           "type": "integer",
@@ -839,7 +839,7 @@
                             },
                             "pythonVersion": {
                               "type": "string",
-                              "enum": ["PYTHON_3_10", "PYTHON_3_11", "PYTHON_3_12", "PYTHON_3_13"]
+                              "enum": ["PYTHON_3_10", "PYTHON_3_11", "PYTHON_3_12", "PYTHON_3_13", "PYTHON_3_14"]
                             },
                             "name": {
                               "type": "string",
@@ -1269,7 +1269,7 @@
                   },
                   "pythonVersion": {
                     "type": "string",
-                    "enum": ["PYTHON_3_10", "PYTHON_3_11", "PYTHON_3_12", "PYTHON_3_13"]
+                    "enum": ["PYTHON_3_10", "PYTHON_3_11", "PYTHON_3_12", "PYTHON_3_13", "PYTHON_3_14"]
                   },
                   "name": {
                     "type": "string",
@@ -1427,7 +1427,7 @@
                   },
                   "pythonVersion": {
                     "type": "string",
-                    "enum": ["PYTHON_3_10", "PYTHON_3_11", "PYTHON_3_12", "PYTHON_3_13"]
+                    "enum": ["PYTHON_3_10", "PYTHON_3_11", "PYTHON_3_12", "PYTHON_3_13", "PYTHON_3_14"]
                   },
                   "timeout": {
                     "type": "integer",
@@ -1492,7 +1492,7 @@
                       },
                       "pythonVersion": {
                         "type": "string",
-                        "enum": ["PYTHON_3_10", "PYTHON_3_11", "PYTHON_3_12", "PYTHON_3_13"]
+                        "enum": ["PYTHON_3_10", "PYTHON_3_11", "PYTHON_3_12", "PYTHON_3_13", "PYTHON_3_14"]
                       },
                       "name": {
                         "type": "string",

@@ -60,13 +60,13 @@ describe('ModelProviderSchema', () => {
 });
 
 describe('PythonRuntimeSchema', () => {
-  it.each(['PYTHON_3_10', 'PYTHON_3_11', 'PYTHON_3_12', 'PYTHON_3_13'])('accepts "%s"', version => {
+  it.each(['PYTHON_3_10', 'PYTHON_3_11', 'PYTHON_3_12', 'PYTHON_3_13', 'PYTHON_3_14'])('accepts "%s"', version => {
     expect(PythonRuntimeSchema.safeParse(version).success).toBe(true);
   });
 
   it('rejects unsupported versions', () => {
     expect(PythonRuntimeSchema.safeParse('PYTHON_3_9').success).toBe(false);
-    expect(PythonRuntimeSchema.safeParse('PYTHON_3_14').success).toBe(false);
+    expect(PythonRuntimeSchema.safeParse('PYTHON_3_15').success).toBe(false);
   });
 });
 

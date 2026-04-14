@@ -19,6 +19,10 @@ describe('extractPythonVersion', () => {
     expect(extractPythonVersion('PYTHON_3_13' as PythonRuntime)).toBe('3.13');
   });
 
+  it('extracts 3.14 from PYTHON_3_14', () => {
+    expect(extractPythonVersion('PYTHON_3_14' as PythonRuntime)).toBe('3.14');
+  });
+
   it('throws for unsupported runtime string', () => {
     expect(() => extractPythonVersion('RUBY_3_0' as PythonRuntime)).toThrow('Unsupported Python runtime');
   });

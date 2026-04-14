@@ -51,4 +51,5 @@ export const RUNTIME_TYPE_MAP: Record<string, string> = {
   PYTHON_3_11: 'PYTHON_3_11',
   PYTHON_3_12: 'PYTHON_3_12',
   PYTHON_3_13: 'PYTHON_3_13',
+  PYTHON_3_14: 'PYTHON_3_14',
 };
