@@ -22,7 +22,7 @@ const hasPython =
   hasCommand('python3') &&
   (() => {
     try {
-      execSync('python3 -c "import boto3"', { stdio: 'ignore' });
+      execSync('uv run --with boto3 python3 -c "import boto3"', { stdio: 'ignore' });
       return true;
     } catch {
       return false;
@@ -51,7 +51,7 @@ describe.sequential('e2e: import runtime/memory/evaluator', () => {
     //    Scripts run sequentially because save_resource() does a read-modify-write
     //    on a shared bugbash-resources.json file — parallel runs would race.
     for (const script of ['setup_runtime_basic.py', 'setup_memory_full.py', 'setup_evaluator.py']) {
-      const result = await spawnAndCollect('python3', [script], fixtureDir, {
+      const result = await spawnAndCollect('uv', ['run', '--with', 'boto3', 'python3', script], fixtureDir, {
         AWS_REGION: region,
         DEFAULT_EVALUATOR_MODEL,
       });
@@ -100,7 +100,9 @@ describe.sequential('e2e: import runtime/memory/evaluator', () => {
 
     // 2. Fallback: delete any resources that weren't imported into CFN
     try {
-      await spawnAndCollect('python3', ['cleanup_resources.py'], fixtureDir, { AWS_REGION: region });
+      await spawnAndCollect('uv', ['run', '--with', 'boto3', 'python3', 'cleanup_resources.py'], fixtureDir, {
+        AWS_REGION: region,
+      });
     } catch {
       /* ignore — resources may already be deleted by CFN teardown */
     }

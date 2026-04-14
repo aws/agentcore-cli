@@ -40,8 +40,6 @@ jobs:
           git config --global user.email "ci@amazon.com"
           git config --global user.name "CI"
       - uses: astral-sh/setup-uv@v7
-      - name: Install Python dependencies for import tests
-        run: pip install boto3
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v6
         with:
