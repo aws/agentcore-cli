@@ -67,3 +67,9 @@ ProtocolTesting/
 
 # Auto-cloned CDK constructs (from scripts/bundle.mjs)
 .cdk-constructs-clone/
+
+# E2E test artifacts
+e2e-tests/fixtures/import/bugbash-resources.json
+
+# oh-my-claudecode
+.omc/
