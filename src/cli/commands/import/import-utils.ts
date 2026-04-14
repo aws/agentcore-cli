@@ -130,10 +130,12 @@ export async function resolveImportTarget(options: ResolveTargetOptions): Promis
   // Validate ARN format early if provided
   if (
     arn &&
-    !/^arn:aws:bedrock-agentcore:([^:]+):([^:]+):(runtime|memory|evaluator|online-evaluation-config)\/(.+)$/.test(arn)
+    !/^arn:aws:bedrock-agentcore:([^:]+):([^:]+):(runtime|memory|evaluator|online-evaluation-config|gateway)\/(.+)$/.test(
+      arn
+    )
   ) {
     throw new Error(
-      `Not a valid ARN: "${arn}".\nExpected format: arn:aws:bedrock-agentcore:<region>:<account>:<runtime|memory|evaluator|online-evaluation-config>/<id>`
+      `Not a valid ARN: "${arn}".\nExpected format: arn:aws:bedrock-agentcore:<region>:<account>:<runtime|memory|evaluator|online-evaluation-config|gateway>/<id>`
     );
   }
 
@@ -210,7 +212,7 @@ export interface ParsedArn {
 }
 
 const ARN_PATTERN =
-  /^arn:aws:bedrock-agentcore:([^:]+):([^:]+):(runtime|memory|evaluator|online-evaluation-config)\/(.+)$/;
+  /^arn:aws:bedrock-agentcore:([^:]+):([^:]+):(runtime|memory|evaluator|online-evaluation-config|gateway)\/(.+)$/;
 
 /** Unified config for each importable resource type — ARN mapping, deployed state keys. */
 const RESOURCE_TYPE_CONFIG: Record<
@@ -229,6 +231,7 @@ const RESOURCE_TYPE_CONFIG: Record<
     collectionKey: 'onlineEvalConfigs',
     idField: 'onlineEvaluationConfigId',
   },
+  gateway: { arnType: 'gateway', collectionKey: 'mcp.gateways', idField: 'gatewayId' },
 };
 
 /**
@@ -302,7 +305,11 @@ export async function findResourceInDeployedState(
 
   const { collectionKey, idField } = RESOURCE_TYPE_CONFIG[resourceType];
 
-  const collection = targetState.resources[collectionKey];
+  // Handle nested path (e.g., 'mcp.gateways') by traversing dot-separated keys
+  let collection: any = targetState.resources;
+  for (const key of collectionKey.split('.')) {
+    collection = collection?.[key];
+  }
   if (!collection) return undefined;
   for (const [name, entry] of Object.entries(collection)) {
     if ((entry as any)[idField] === resourceId) return name;
@@ -359,6 +366,13 @@ export async function updateDeployedState(
       targetState.resources.onlineEvalConfigs[resource.name] = {
         onlineEvaluationConfigId: resource.id,
         onlineEvaluationConfigArn: resource.arn,
+      };
+    } else if (resource.type === 'gateway') {
+      targetState.resources.mcp ??= {};
+      targetState.resources.mcp.gateways ??= {};
+      targetState.resources.mcp.gateways[resource.name] = {
+        gatewayId: resource.id,
+        gatewayArn: resource.arn,
       };
     }
   }

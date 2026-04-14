@@ -580,6 +580,8 @@ export type GatewayPolicyEngineConfiguration = z.infer<typeof GatewayPolicyEngin
 export const AgentCoreGatewaySchema = z
   .object({
     name: GatewayNameSchema,
+    /** Actual AWS resource name for imported gateways. When set, CDK uses this instead of generating projectName-name. */
+    resourceName: z.string().optional(),
     description: z.string().optional(),
     targets: z.array(AgentCoreGatewayTargetSchema),
     /** Authorization type for the gateway. Defaults to 'NONE'. */

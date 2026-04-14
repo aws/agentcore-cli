@@ -1,6 +1,7 @@
 import { handleImport } from './actions';
 import { ANSI } from './constants';
 import { registerImportEvaluator } from './import-evaluator';
+import { registerImportGateway } from './import-gateway';
 import { registerImportMemory } from './import-memory';
 import { registerImportOnlineEval } from './import-online-eval';
 import { registerImportRuntime } from './import-runtime';
@@ -12,7 +13,7 @@ const { green, yellow, cyan, dim, reset } = ANSI;
 export const registerImport = (program: Command) => {
   const importCmd = program
     .command('import')
-    .description('Import a runtime, memory, or starter toolkit into this project. [experimental]');
+    .description('Import a runtime, memory, gateway, or starter toolkit into this project. [experimental]');
 
   // Existing YAML flow: agentcore import --source <path>
   importCmd
@@ -152,4 +153,5 @@ export const registerImport = (program: Command) => {
   registerImportMemory(importCmd);
   registerImportEvaluator(importCmd);
   registerImportOnlineEval(importCmd);
+  registerImportGateway(importCmd);
 };
