@@ -1,3 +1,4 @@
+import { DEFAULT_MODEL as DEFAULT_EVALUATOR_MODEL } from '../src/cli/tui/screens/evaluator/types.js';
 import {
   type RunResult,
   hasAwsCredentials,
@@ -8,7 +9,6 @@ import {
   spawnAndCollect,
   stripAnsi,
 } from '../src/test-utils/index.js';
-import { DEFAULT_MODEL as DEFAULT_EVALUATOR_MODEL } from '../src/cli/tui/screens/evaluator/types.js';
 import { installCdkTarball, runAgentCoreCLI, writeAwsTargets } from './e2e-helper.js';
 import { execSync } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
