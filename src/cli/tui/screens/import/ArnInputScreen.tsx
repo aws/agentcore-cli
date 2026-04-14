@@ -4,7 +4,8 @@ import { Screen } from '../../components/Screen';
 import { TextInput } from '../../components/TextInput';
 import { HELP_TEXT } from '../../constants';
 
-const ARN_PATTERN = /^arn:aws:bedrock-agentcore:[^:]+:[^:]+:(runtime|memory|evaluator|online-evaluation-config)\/.+$/;
+const ARN_PATTERN =
+  /^arn:aws:bedrock-agentcore:[^:]+:[^:]+:(runtime|memory|evaluator|online-evaluation-config|gateway)\/.+$/;
 
 function validateArn(value: string): true | string {
   if (!ARN_PATTERN.test(value)) {
@@ -24,6 +25,7 @@ const RESOURCE_TYPE_LABELS: Record<string, string> = {
   memory: 'Import Memory',
   evaluator: 'Import Evaluator',
   'online-eval': 'Import Online Eval Config',
+  gateway: 'Import Gateway',
 };
 
 export function ArnInputScreen({ resourceType, onSubmit, onExit }: ArnInputScreenProps) {
@@ -40,6 +42,7 @@ export function ArnInputScreen({ resourceType, onSubmit, onExit }: ArnInputScree
           onSubmit={onSubmit}
           onCancel={onExit}
           customValidation={validateArn}
+          expandable
         />
       </Panel>
     </Screen>
