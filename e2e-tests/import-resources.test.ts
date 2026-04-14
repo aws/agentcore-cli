@@ -47,6 +47,8 @@ describe.sequential('e2e: import runtime/memory/evaluator', () => {
 
     // 1. Run Python setup scripts to create AWS resources via API.
     //    Each script creates a resource and saves its ARN/ID to bugbash-resources.json.
+    //    Scripts run sequentially because save_resource() does a read-modify-write
+    //    on a shared bugbash-resources.json file — parallel runs would race.
     for (const script of ['setup_runtime_basic.py', 'setup_memory_full.py', 'setup_evaluator.py']) {
       const result = await spawnAndCollect('python3', [script], fixtureDir, { AWS_REGION: region });
       if (result.exitCode !== 0) {
@@ -83,7 +85,10 @@ describe.sequential('e2e: import runtime/memory/evaluator', () => {
     // 1. Tear down CFN stack created by import (this deletes all imported resources)
     if (projectPath && hasAws) {
       await runAgentCoreCLI(['remove', 'all', '--json'], projectPath);
-      await runAgentCoreCLI(['deploy', '--yes', '--json'], projectPath);
+      const deployResult = await runAgentCoreCLI(['deploy', '--yes', '--json'], projectPath);
+      if (deployResult.exitCode !== 0) {
+        console.warn('Teardown deploy failed:', deployResult.stderr);
+      }
     }
 
     // 2. Fallback: delete any resources that weren't imported into CFN

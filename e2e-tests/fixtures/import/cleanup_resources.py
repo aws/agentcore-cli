@@ -22,6 +22,7 @@ def main():
 
     client = get_control_client()
 
+    failed = []
     for key, val in resources.items():
         rid = val.get("id")
         if not rid:
@@ -36,9 +37,16 @@ def main():
             print(f"Deleted {key}: {rid}")
         except Exception as e:
             print(f"Could not delete {key} ({rid}): {e}")
+            failed.append(key)
 
-    os.remove(RESOURCES_FILE)
-    print("Cleaned up bugbash-resources.json")
+    if failed:
+        remaining = {k: v for k, v in resources.items() if k in failed}
+        with open(RESOURCES_FILE, "w") as f:
+            json.dump(remaining, f, indent=2)
+        print(f"WARNING: {len(failed)} resources could not be deleted, kept in {RESOURCES_FILE}")
+    else:
+        os.remove(RESOURCES_FILE)
+        print("Cleaned up bugbash-resources.json")
 
 
 if __name__ == "__main__":

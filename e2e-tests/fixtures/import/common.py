@@ -7,7 +7,7 @@ import tempfile
 
 import boto3
 
-REGION = os.environ.get("AWS_REGION") or os.environ.get("AWS_DEFAULT_REGION") or boto3.session.Session().region_name or "us-west-2"
+REGION = os.environ.get("AWS_REGION") or os.environ.get("AWS_DEFAULT_REGION") or "us-west-2"
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 APP_DIR = os.path.join(SCRIPT_DIR, "app")
 RESOURCES_FILE = os.path.join(SCRIPT_DIR, "bugbash-resources.json")

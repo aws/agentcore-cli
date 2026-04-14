@@ -13,6 +13,7 @@ from common import (
     save_resource, print_import_command, upload_code,
 )
 
+
 def main():
     role_arn = ensure_role()
     client = get_control_client()

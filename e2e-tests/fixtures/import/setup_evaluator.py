@@ -14,6 +14,9 @@ from common import (
     wait_for_evaluator, print_import_command,
 )
 
+# Keep in sync with DEFAULT_MODEL in src/cli/tui/screens/evaluator/types.ts
+DEFAULT_EVALUATOR_MODEL = "us.anthropic.claude-sonnet-4-5-20250929-v1:0"
+
 
 def main():
     client = get_control_client()
@@ -45,7 +48,7 @@ def main():
                 },
                 "modelConfig": {
                     "bedrockEvaluatorModelConfig": {
-                        "modelId": "anthropic.claude-3-haiku-20240307-v1:0",
+                        "modelId": DEFAULT_EVALUATOR_MODEL,
                     }
                 },
             }
@@ -70,7 +73,7 @@ def main():
     print(f"  name: {evaluator_name}")
     print("  level: SESSION")
     print("  description: Bugbash evaluator for import testing")
-    print("  config.llmAsAJudge.model: anthropic.claude-3-haiku-20240307-v1:0")
+    print(f"  config.llmAsAJudge.model: {DEFAULT_EVALUATOR_MODEL}")
     print("  config.llmAsAJudge.instructions: (multi-line with {context} placeholder)")
     print("  config.llmAsAJudge.ratingScale: numerical 1-5 (Poor to Excellent)")
     print("  tags: {env: bugbash, team: agentcore-cli}")
