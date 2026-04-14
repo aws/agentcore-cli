@@ -30,7 +30,7 @@ const hasPython =
   })();
 const canRun = prereqs.npm && prereqs.git && prereqs.uv && hasAws && hasPython;
 
-describe.sequential('e2e: import runtime/memory/evaluator', () => {
+describe.sequential('e2e: import runtime/memory/evaluator/gateway', () => {
   const region = process.env.AWS_REGION ?? 'us-east-1';
   const fixtureDir = join(__dirname, 'fixtures', 'import');
   const appDir = join(fixtureDir, 'app');
@@ -40,6 +40,7 @@ describe.sequential('e2e: import runtime/memory/evaluator', () => {
   let runtimeArn: string;
   let memoryArn: string;
   let evaluatorArn: string;
+  let gatewayArn: string;
   let projectPath: string;
   let testDir: string;
 
@@ -50,7 +51,7 @@ describe.sequential('e2e: import runtime/memory/evaluator', () => {
     //    Each script creates a resource and saves its ARN/ID to bugbash-resources.json.
     //    Scripts run sequentially because save_resource() does a read-modify-write
     //    on a shared bugbash-resources.json file — parallel runs would race.
-    for (const script of ['setup_runtime_basic.py', 'setup_memory_full.py', 'setup_evaluator.py']) {
+    for (const script of ['setup_runtime_basic.py', 'setup_memory_full.py', 'setup_evaluator.py', 'setup_gateway.py']) {
       const result = await spawnAndCollect('python3', [script], fixtureDir, {
         AWS_REGION: region,
         DEFAULT_EVALUATOR_MODEL,
@@ -68,6 +69,7 @@ describe.sequential('e2e: import runtime/memory/evaluator', () => {
     runtimeArn = resources['runtime-basic']!.arn;
     memoryArn = resources['memory-full']!.arn;
     evaluatorArn = resources['evaluator-llm']!.arn;
+    gatewayArn = resources.gateway!.arn;
 
     // 3. Create a destination CLI project (no agent — we'll import one)
     testDir = join(tmpdir(), `agentcore-e2e-import-${randomUUID()}`);
@@ -161,6 +163,22 @@ describe.sequential('e2e: import runtime/memory/evaluator', () => {
     600_000
   );
 
+  it.skipIf(!canRun)(
+    'imports a gateway by ARN',
+    async () => {
+      const result = await run(['import', 'gateway', '--arn', gatewayArn]);
+
+      if (result.exitCode !== 0) {
+        console.log('Import gateway stdout:', result.stdout);
+        console.log('Import gateway stderr:', result.stderr);
+      }
+
+      expect(result.exitCode, `Import gateway failed: ${result.stderr}`).toBe(0);
+      expect(stripAnsi(result.stdout).toLowerCase()).toContain('imported successfully');
+    },
+    600_000
+  );
+
   // ── Verification tests ────────────────────────────────────────────
 
   it.skipIf(!canRun)(
@@ -185,6 +203,69 @@ describe.sequential('e2e: import runtime/memory/evaluator', () => {
 
       const evaluator = json.resources.find(r => r.resourceType === 'evaluator');
       expect(evaluator, 'Imported evaluator should appear in status').toBeDefined();
+
+      const gateway = json.resources.find(r => r.resourceType === 'gateway');
+      expect(gateway, 'Imported gateway should appear in status').toBeDefined();
+    },
+    120_000
+  );
+
+  it.skipIf(!canRun)(
+    'agentcore.json has correct gateway fields',
+    async () => {
+      const configPath = join(projectPath, 'agentcore', 'agentcore.json');
+      const config = JSON.parse(await readFile(configPath, 'utf-8')) as {
+        agentCoreGateways: {
+          name: string;
+          resourceName?: string;
+          description?: string;
+          authorizerType: string;
+          enableSemanticSearch: boolean;
+          exceptionLevel: string;
+          tags?: Record<string, string>;
+          targets: { name: string; targetType: string; endpoint?: string }[];
+        }[];
+      };
+
+      expect(config.agentCoreGateways.length, 'Should have one gateway').toBe(1);
+      const gw = config.agentCoreGateways[0]!;
+
+      expect(gw.name, 'Gateway name should be set').toBeTruthy();
+      expect(gw.resourceName, 'resourceName should preserve AWS name').toBeTruthy();
+      expect(gw.description).toBe('Bugbash gateway for import testing');
+      expect(gw.authorizerType).toBe('NONE');
+      expect(gw.enableSemanticSearch).toBe(true);
+      expect(gw.exceptionLevel).toBe('DEBUG');
+      expect(gw.tags).toEqual({ env: 'bugbash', team: 'agentcore-cli' });
+
+      expect(gw.targets.length, 'Should have one target').toBe(1);
+      expect(gw.targets[0]!.name).toBe('mcpTarget');
+      expect(gw.targets[0]!.targetType).toBe('mcpServer');
+      expect(gw.targets[0]!.endpoint).toBe('https://mcp.exa.ai/mcp');
+    },
+    120_000
+  );
+
+  it.skipIf(!canRun)(
+    'deployed-state.json has gateway entry',
+    async () => {
+      const statePath = join(projectPath, 'agentcore', '.cli', 'deployed-state.json');
+      const state = JSON.parse(await readFile(statePath, 'utf-8')) as Record<string, unknown>;
+
+      // Gateway state is stored under targets.<targetName>.resources.mcp.gateways
+      const targets = state.targets as Record<string, { resources?: { mcp?: { gateways?: Record<string, unknown> } } }>;
+      const targetEntries = Object.values(targets);
+      expect(targetEntries.length).toBeGreaterThan(0);
+
+      const firstTarget = targetEntries[0]!;
+      const gateways = firstTarget.resources?.mcp?.gateways;
+      expect(gateways, 'deployed-state should have mcp.gateways entry').toBeDefined();
+
+      const gatewayEntries = Object.values(gateways!);
+      expect(gatewayEntries.length, 'Should have one gateway in deployed state').toBe(1);
+
+      const gwState = gatewayEntries[0] as { gatewayId?: string; gatewayArn?: string };
+      expect(gwState.gatewayId, 'Gateway ID should be recorded').toBeTruthy();
     },
     120_000
   );

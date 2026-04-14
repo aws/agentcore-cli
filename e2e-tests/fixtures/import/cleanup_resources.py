@@ -51,6 +51,10 @@ def main():
         rid = val.get("id")
         if not rid:
             continue
+        # Gateway targets are deleted automatically when the parent gateway is deleted
+        if "gateway" in key and "target" in key:
+            print(f"Skipping {key} (deleted with parent gateway)")
+            continue
         try:
             if "runtime" in key:
                 client.delete_agent_runtime(agentRuntimeId=rid)
@@ -58,6 +62,8 @@ def main():
                 client.delete_memory(memoryId=rid)
             elif "evaluator" in key:
                 client.delete_evaluator(evaluatorId=rid)
+            elif "gateway" in key:
+                client.delete_gateway(gatewayIdentifier=rid)
             print(f"Deleted {key}: {rid}")
         except Exception as e:
             print(f"Could not delete {key} ({rid}): {e}")

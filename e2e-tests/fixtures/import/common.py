@@ -256,3 +256,48 @@ def tag_resource(client, arn, tags):
     """Tag a resource via the control plane API."""
     print(f"Tagging resource with {tags}...")
     client.tag_resource(resourceArn=arn, tags=tags)
+
+
+def wait_for_gateway(client, gateway_id, timeout=120):
+    """Wait for a gateway to reach READY status."""
+    print(f"Waiting for gateway {gateway_id} to become READY...")
+    start = time.time()
+    while time.time() - start < timeout:
+        resp = client.get_gateway(gatewayIdentifier=gateway_id)
+        status = resp.get("status", "UNKNOWN")
+        if status == "READY":
+            print(f"Gateway {gateway_id} is READY")
+            return True
+        if status in ("CREATE_FAILED", "FAILED"):
+            reason = resp.get("statusReasons", [{}])
+            print(f"ERROR: Gateway {gateway_id} status: {status} — {reason}")
+            return False
+        elapsed = int(time.time() - start)
+        print(f"  Status: {status} ({elapsed}s elapsed)")
+        time.sleep(5)
+    print(f"WARNING: Gateway did not reach READY after {timeout}s")
+    return False
+
+
+def wait_for_gateway_target(client, gateway_id, target_id, timeout=120):
+    """Wait for a gateway target to reach READY status."""
+    print(f"Waiting for target {target_id} to become READY...")
+    start = time.time()
+    while time.time() - start < timeout:
+        resp = client.get_gateway_target(
+            gatewayIdentifier=gateway_id,
+            targetId=target_id,
+        )
+        status = resp.get("status", "UNKNOWN")
+        if status == "READY":
+            print(f"Target {target_id} is READY")
+            return True
+        if status in ("CREATE_FAILED", "FAILED"):
+            reason = resp.get("statusReasons", [{}])
+            print(f"ERROR: Target {target_id} status: {status} — {reason}")
+            return False
+        elapsed = int(time.time() - start)
+        print(f"  Status: {status} ({elapsed}s elapsed)")
+        time.sleep(5)
+    print(f"WARNING: Target did not reach READY after {timeout}s")
+    return False
