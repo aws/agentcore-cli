@@ -2,6 +2,31 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.8.1] - 2026-04-14
+
+### Added
+- feat: add auto-instrumentation to langchain agent template (#835) (31fb7d1)
+- feat: add e2e tests for import command (#828) (bb9de25)
+- feat: add --request-header-allowlist CLI flag for agentcore add agent (#825) (#830) (b433faf)
+
+### Fixed
+- fix: only exclude root-level agentcore/ directory from packaging artifacts (#844) (c3921ec)
+- fix: add AWS_IAM as a valid authorizer type for gateway commands (#820) (f2964e3)
+- fix: add missing langchain instrumentor dependency to import flow (#836) (921a05f)
+- fix: unhide import command from TUI main menu (#834) (ee6b630)
+- fix: add missing AgentCore regions to match AWS documentation (#833) (3b60dbe)
+- fix: remove docker info check from container runtime detection (#829) (6729eb2)
+- fix: update E2E test regex to match new CUSTOM_JWT client-side error (#832) (4f178a5)
+- fix: fail fast when CUSTOM_JWT agent has no bearer token available (#817) (96de3d2)
+- fix: respect aws-targets.json region instead of overriding with AWS_REGION env var (#818) (bdcc954)
+- fix: use caret range for aws-cdk-lib in project template (#805) (6e19463)
+
+### Other Changes
+- fix(e2e): use uv run for import test Python scripts (#845) (5962711)
+- fix(ci): unpin boto3 in e2e workflow (#841) (e64e8e2)
+- chore: pin @aws/agentcore-cdk version and auto-sync on release (#811) (1e5c631)
+- chore: bump aws-cdk-lib peer dep to ^2.248.0 (#812) (16b3c8c)
+
 ## [0.8.0] - 2026-04-09
 
 ### Added
