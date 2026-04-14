@@ -10,7 +10,7 @@ readme = "README.md"
 requires-python = ">=3.10"
 dependencies = [
     "aws-opentelemetry-distro",
-    "opentelemetry-instrumentation-langchain",
+    "opentelemetry-instrumentation-langchain >= 0.59.0",
     "langgraph >= 1.0.2",
     "mcp >= 1.19.0",
     "langchain-mcp-adapters >= 0.1.11",
