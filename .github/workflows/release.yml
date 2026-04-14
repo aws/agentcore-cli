@@ -141,11 +141,6 @@ jobs:
           npx prettier --write schemas/
           echo "✓ JSON schema regenerated and formatted"
 
-      - name: Update snapshots after CDK sync
-        run: |
-          npm run test:update-snapshots
-          echo "✓ Snapshots updated"
-
       - name: Create release branch and PR
         env:
           NEW_VERSION: ${{ steps.bump.outputs.version }}
