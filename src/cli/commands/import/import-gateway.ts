@@ -612,8 +612,6 @@ export function registerImportGateway(importCmd: Command): void {
     .command('gateway')
     .description('Import an existing AgentCore Gateway (with targets) from your AWS account')
     .option('--arn <gatewayArn>', 'Gateway ARN to import')
-    .option('--name <name>', 'Local name for the imported gateway')
-    .option('-y, --yes', 'Auto-confirm prompts')
     .action(async (cliOptions: ImportResourceOptions) => {
       const result = await handleImportGateway(cliOptions);
 
