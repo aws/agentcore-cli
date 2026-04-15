@@ -357,7 +357,7 @@ exports[`Assets Directory Snapshots > CDK assets > cdk/cdk/package.json should m
     "typescript": "~5.9.3"
   },
   "dependencies": {
-    "@aws/agentcore-cdk": "0.1.0-alpha.17",
+    "@aws/agentcore-cdk": "0.1.0-alpha.18",
     "aws-cdk-lib": "^2.248.0",
     "constructs": "^10.0.0"
   }
@@ -1385,7 +1385,7 @@ dependencies = [
     {{/if}}{{#if (eq modelProvider "Gemini")}}"langchain-google-genai >= 2.0.0",
     {{/if}}{{#if (eq modelProvider "OpenAI")}}"langchain-openai >= 0.2.0",
     {{/if}}"aws-opentelemetry-distro",
-    "opentelemetry-instrumentation-langchain",
+    "opentelemetry-instrumentation-langchain >= 0.59.0",
     "bedrock-agentcore[a2a] >= 1.0.3",
     "botocore[crt] >= 1.35.0",
     "langgraph >= 0.2.0",
@@ -2832,7 +2832,7 @@ readme = "README.md"
 requires-python = ">=3.10"
 dependencies = [
     "aws-opentelemetry-distro",
-    "opentelemetry-instrumentation-langchain",
+    "opentelemetry-instrumentation-langchain >= 0.59.0",
     "langgraph >= 1.0.2",
     "mcp >= 1.19.0",
     "langchain-mcp-adapters >= 0.1.11",

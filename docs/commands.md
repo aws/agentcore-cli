@@ -276,7 +276,7 @@ agentcore add gateway \
 | `--name <name>`               | Gateway name                                                 |
 | `--description <desc>`        | Gateway description                                          |
 | `--runtimes <names>`          | Comma-separated runtime names to expose through this gateway |
-| `--authorizer-type <type>`    | `NONE` (default) or `CUSTOM_JWT`                             |
+| `--authorizer-type <type>`    | `NONE` (default), `AWS_IAM`, or `CUSTOM_JWT`                 |
 | `--discovery-url <url>`       | OIDC discovery URL (required for CUSTOM_JWT)                 |
 | `--allowed-audience <values>` | Comma-separated allowed audiences (required for CUSTOM_JWT)  |
 | `--allowed-clients <values>`  | Comma-separated allowed client IDs (required for CUSTOM_JWT) |

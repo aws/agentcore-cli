@@ -254,6 +254,7 @@ describe('generatePyprojectToml', () => {
 
     expect(result).toContain('langgraph');
     expect(result).toContain('langchain_aws');
+    expect(result).toContain('opentelemetry-instrumentation-langchain');
     expect(result).not.toContain('strands-agents');
   });
 

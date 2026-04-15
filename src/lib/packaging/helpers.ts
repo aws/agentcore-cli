@@ -51,15 +51,7 @@ interface ResolvedPaths {
   artifactsDir: string;
 }
 
-const EXCLUDED_ENTRIES = new Set([
-  'agentcore',
-  '.git',
-  '.venv',
-  '__pycache__',
-  '.pytest_cache',
-  '.DS_Store',
-  'node_modules',
-]);
+const EXCLUDED_ENTRIES = new Set(['.git', '.venv', '__pycache__', '.pytest_cache', '.DS_Store', 'node_modules']);
 
 export const MAX_ZIP_SIZE_BYTES = 250 * 1024 * 1024;
 
@@ -147,7 +139,7 @@ export async function ensureDirClean(dir: string): Promise<void> {
   await mkdir(dir, { recursive: true });
 }
 
-async function copyEntry(source: string, destination: string): Promise<void> {
+async function copyEntry(source: string, destination: string, rootDir: string): Promise<void> {
   const stats = await stat(source);
   if (stats.isDirectory()) {
     await mkdir(destination, { recursive: true });
@@ -156,7 +148,10 @@ async function copyEntry(source: string, destination: string): Promise<void> {
       if (EXCLUDED_ENTRIES.has(entry)) {
         continue;
       }
-      await copyEntry(join(source, entry), join(destination, entry));
+      if (entry === CONFIG_DIR && resolve(source) === resolve(rootDir)) {
+        continue;
+      }
+      await copyEntry(join(source, entry), join(destination, entry), rootDir);
     }
     return;
   }
@@ -170,7 +165,7 @@ export async function copySourceTree(srcDir: string, destination: string): Promi
   if (!(await pathExists(srcDir))) {
     throw new MissingProjectFileError(srcDir);
   }
-  await copyEntry(srcDir, destination);
+  await copyEntry(srcDir, destination, srcDir);
 }
 
 export async function ensureBinaryAvailable(binary: string, installHint?: string): Promise<void> {
@@ -197,23 +192,24 @@ export async function createZipFromDir(sourceDir: string, outputZip: string): Pr
   await rm(outputZip, { force: true });
   await mkdir(dirname(outputZip), { recursive: true });
 
-  const files = await collectFiles(sourceDir);
+  const files = await collectFiles(sourceDir, sourceDir);
   const zipped = zipSync(files);
   await writeFile(outputZip, zipped);
 }
 
-async function collectFiles(directory: string, basePath = ''): Promise<Zippable> {
+async function collectFiles(directory: string, rootDir: string, basePath = ''): Promise<Zippable> {
   const result: Zippable = {};
   const entries = await readdir(directory, { withFileTypes: true });
 
   for (const entry of entries) {
     if (EXCLUDED_ENTRIES.has(entry.name)) continue;
+    if (entry.name === CONFIG_DIR && resolve(directory) === resolve(rootDir)) continue;
 
     const fullPath = join(directory, entry.name);
     const zipPath = basePath ? `${basePath}/${entry.name}` : entry.name;
 
     if (entry.isDirectory()) {
-      Object.assign(result, await collectFiles(fullPath, zipPath));
+      Object.assign(result, await collectFiles(fullPath, rootDir, zipPath));
     } else if (entry.isFile()) {
       result[zipPath] = [await readFile(fullPath), { level: 6 }];
     }
@@ -286,7 +282,7 @@ export function ensureDirCleanSync(dir: string): void {
   mkdirSync(dir, { recursive: true });
 }
 
-function copyEntrySync(source: string, destination: string): void {
+function copyEntrySync(source: string, destination: string, rootDir: string): void {
   const stats = statSync(source);
   if (stats.isDirectory()) {
     mkdirSync(destination, { recursive: true });
@@ -295,7 +291,10 @@ function copyEntrySync(source: string, destination: string): void {
       if (EXCLUDED_ENTRIES.has(entry)) {
         continue;
       }
-      copyEntrySync(join(source, entry), join(destination, entry));
+      if (entry === CONFIG_DIR && resolve(source) === resolve(rootDir)) {
+        continue;
+      }
+      copyEntrySync(join(source, entry), join(destination, entry), rootDir);
     }
     return;
   }
@@ -307,7 +306,7 @@ export function copySourceTreeSync(srcDir: string, destination: string): void {
   if (!pathExistsSync(srcDir)) {
     throw new MissingProjectFileError(srcDir);
   }
-  copyEntrySync(srcDir, destination);
+  copyEntrySync(srcDir, destination, srcDir);
 }
 
 export function ensureBinaryAvailableSync(binary: string, installHint?: string): void {
@@ -326,18 +325,19 @@ export function ensureBinaryAvailableSync(binary: string, installHint?: string):
   throw new MissingDependencyError(binary, installHint);
 }
 
-function collectFilesSync(directory: string, basePath = ''): Zippable {
+function collectFilesSync(directory: string, rootDir: string, basePath = ''): Zippable {
   const result: Zippable = {};
   const entries = readdirSync(directory, { withFileTypes: true });
 
   for (const entry of entries) {
     if (EXCLUDED_ENTRIES.has(entry.name)) continue;
+    if (entry.name === CONFIG_DIR && resolve(directory) === resolve(rootDir)) continue;
 
     const fullPath = join(directory, entry.name);
     const zipPath = basePath ? `${basePath}/${entry.name}` : entry.name;
 
     if (entry.isDirectory()) {
-      Object.assign(result, collectFilesSync(fullPath, zipPath));
+      Object.assign(result, collectFilesSync(fullPath, rootDir, zipPath));
     } else if (entry.isFile()) {
       result[zipPath] = [readFileSync(fullPath), { level: 6 }];
     }
@@ -349,7 +349,7 @@ export function createZipFromDirSync(sourceDir: string, outputZip: string): void
   rmSync(outputZip, { force: true });
   mkdirSync(dirname(outputZip), { recursive: true });
 
-  const files = collectFilesSync(sourceDir);
+  const files = collectFilesSync(sourceDir, sourceDir);
   const zipped = zipSync(files);
   writeFileSync(outputZip, zipped);
 }

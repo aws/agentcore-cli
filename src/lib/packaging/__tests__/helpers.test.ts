@@ -16,7 +16,9 @@ import {
   resolveProjectPaths,
   resolveProjectPathsSync,
 } from '../helpers.js';
+import { unzipSync } from 'fflate';
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'fs';
+import { readFile } from 'fs/promises';
 import { tmpdir } from 'os';
 import { join } from 'path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
@@ -386,5 +388,131 @@ describe('convertWindowsScriptsToLinux (shebang rewriting on non-Windows)', () =
     mkdirSync(staging, { recursive: true });
     convertWindowsScriptsToLinuxSync(staging);
     expect(existsSync(join(staging, 'bin'))).toBe(false);
+  });
+});
+
+// ── Issue #843: nested agentcore directory exclusion ────────────────
+
+describe('nested agentcore directory is preserved (issue #843)', () => {
+  let root: string;
+
+  beforeAll(() => {
+    root = mkdtempSync(join(tmpdir(), 'helpers-nested-agentcore-'));
+  });
+
+  afterAll(() => {
+    rmSync(root, { recursive: true, force: true });
+  });
+
+  /**
+   * Helper: build a source tree that mimics a real project with a
+   * top-level agentcore/ config dir AND a third-party dependency
+   * that ships its own agentcore/ sub-module.
+   *
+   *   <src>/
+   *     main.py
+   *     agentcore/          ← should be excluded (project config dir)
+   *       config.yaml
+   *     lib/
+   *       langgraph_checkpoint_aws/
+   *         __init__.py
+   *         agentcore/      ← should be INCLUDED (dependency sub-module)
+   *           __init__.py
+   *           core.py
+   */
+  function buildFixture(base: string): string {
+    const src = join(base, 'src');
+
+    // Top-level source file
+    mkdirSync(src, { recursive: true });
+    writeFileSync(join(src, 'main.py'), 'print("hello")');
+
+    // Top-level agentcore/ (project config — should be excluded)
+    mkdirSync(join(src, 'agentcore'), { recursive: true });
+    writeFileSync(join(src, 'agentcore', 'config.yaml'), 'key: value');
+
+    // Nested dependency with its own agentcore/ sub-module
+    const nestedAgentcore = join(src, 'lib', 'langgraph_checkpoint_aws', 'agentcore');
+    mkdirSync(nestedAgentcore, { recursive: true });
+    writeFileSync(join(src, 'lib', 'langgraph_checkpoint_aws', '__init__.py'), '# init');
+    writeFileSync(join(nestedAgentcore, '__init__.py'), '# agentcore init');
+    writeFileSync(join(nestedAgentcore, 'core.py'), 'class Core: pass');
+
+    return src;
+  }
+
+  // ── copySourceTree (async) ──
+
+  it('excludes top-level agentcore/ but includes nested agentcore/', async () => {
+    const src = buildFixture(join(root, 'copy-async'));
+    const dest = join(root, 'copy-async-dest');
+    mkdirSync(dest, { recursive: true });
+
+    await copySourceTree(src, dest);
+
+    // Top-level agentcore/ excluded
+    expect(existsSync(join(dest, 'agentcore'))).toBe(false);
+
+    // Source file preserved
+    expect(existsSync(join(dest, 'main.py'))).toBe(true);
+
+    // Nested agentcore/ inside dependency preserved
+    expect(existsSync(join(dest, 'lib', 'langgraph_checkpoint_aws', 'agentcore', '__init__.py'))).toBe(true);
+    expect(existsSync(join(dest, 'lib', 'langgraph_checkpoint_aws', 'agentcore', 'core.py'))).toBe(true);
+  });
+
+  // ── copySourceTreeSync ──
+
+  it('sync: excludes top-level agentcore/ but includes nested agentcore/', () => {
+    const src = buildFixture(join(root, 'copy-sync'));
+    const dest = join(root, 'copy-sync-dest');
+    mkdirSync(dest, { recursive: true });
+
+    copySourceTreeSync(src, dest);
+
+    expect(existsSync(join(dest, 'agentcore'))).toBe(false);
+    expect(existsSync(join(dest, 'main.py'))).toBe(true);
+    expect(existsSync(join(dest, 'lib', 'langgraph_checkpoint_aws', 'agentcore', '__init__.py'))).toBe(true);
+    expect(existsSync(join(dest, 'lib', 'langgraph_checkpoint_aws', 'agentcore', 'core.py'))).toBe(true);
+  });
+
+  // ── createZipFromDir (async) ──
+
+  it('zip: excludes top-level agentcore/ but includes nested agentcore/', async () => {
+    const src = buildFixture(join(root, 'zip-async'));
+    const zipPath = join(root, 'zip-async.zip');
+
+    await createZipFromDir(src, zipPath);
+
+    const zipBuffer = await readFile(zipPath);
+    const entries = Object.keys(unzipSync(new Uint8Array(zipBuffer)));
+
+    // Top-level agentcore/ should NOT appear
+    expect(entries.some(e => e === 'agentcore/config.yaml')).toBe(false);
+    expect(entries.some(e => e.startsWith('agentcore/'))).toBe(false);
+
+    // Nested agentcore/ SHOULD appear
+    expect(entries).toContain('lib/langgraph_checkpoint_aws/agentcore/__init__.py');
+    expect(entries).toContain('lib/langgraph_checkpoint_aws/agentcore/core.py');
+
+    // Regular files present
+    expect(entries).toContain('main.py');
+  });
+
+  // ── createZipFromDirSync ──
+
+  it('sync zip: excludes top-level agentcore/ but includes nested agentcore/', () => {
+    const src = buildFixture(join(root, 'zip-sync'));
+    const zipPath = join(root, 'zip-sync.zip');
+
+    createZipFromDirSync(src, zipPath);
+
+    const zipBuffer = readFileSync(zipPath);
+    const entries = Object.keys(unzipSync(new Uint8Array(zipBuffer)));
+
+    expect(entries.some(e => e.startsWith('agentcore/'))).toBe(false);
+    expect(entries).toContain('lib/langgraph_checkpoint_aws/agentcore/__init__.py');
+    expect(entries).toContain('lib/langgraph_checkpoint_aws/agentcore/core.py');
+    expect(entries).toContain('main.py');
   });
 });

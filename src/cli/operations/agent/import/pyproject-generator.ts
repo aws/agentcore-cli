@@ -18,6 +18,7 @@ const LANGGRAPH_DEPS = [
   'langchain>=1.0.3',
   'langchain_aws>=1.0.0',
   'langchain-mcp-adapters>=0.1.11',
+  'opentelemetry-instrumentation-langchain>=0.59.0',
   'tiktoken==0.11.0',
 ];
 

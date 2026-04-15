@@ -2,6 +2,7 @@ import { ConfigIO, findConfigRoot } from '../../../lib';
 import {
   AgentNameSchema,
   BuildTypeSchema,
+  GatewayAuthorizerTypeSchema,
   GatewayExceptionLevelSchema,
   GatewayNameSchema,
   ModelProviderSchema,
@@ -305,8 +306,12 @@ export function validateAddGatewayOptions(options: AddGatewayOptions): Validatio
     return { valid: false, error: nameResult.error.issues[0]?.message ?? 'Invalid gateway name' };
   }
 
-  if (options.authorizerType && !['NONE', 'CUSTOM_JWT'].includes(options.authorizerType)) {
-    return { valid: false, error: 'Invalid authorizer type. Use NONE or CUSTOM_JWT' };
+  if (options.authorizerType) {
+    const result = GatewayAuthorizerTypeSchema.safeParse(options.authorizerType);
+    if (!result.success) {
+      const valid = GatewayAuthorizerTypeSchema.options.join(', ');
+      return { valid: false, error: `Invalid authorizer type. Use ${valid}` };
+    }
   }
 
   if (options.authorizerType === 'CUSTOM_JWT') {
