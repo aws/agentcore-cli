@@ -103,7 +103,7 @@ export async function createMinimalProjectDir(
       build: 'CodeZip',
       entrypoint: 'main.py:handler',
       codeLocation: 'app/TestAgent',
-      runtimeVersion: 'PYTHON_3_13',
+      runtimeVersion: 'PYTHON_3_14',
     });
 
     // Create the agent code directory so the CLI does not complain.

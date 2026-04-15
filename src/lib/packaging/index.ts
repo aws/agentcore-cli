@@ -78,7 +78,7 @@ export async function packRuntime(spec: AgentEnvSpec, options?: PackageOptions):
  * Defaults to Python if no runtimeVersion is specified.
  */
 export function packCodeZipSync(config: CodeBundleConfig | AgentEnvSpec, options?: PackageOptions): ArtifactResult {
-  const runtimeVersion = config.runtimeVersion ?? 'PYTHON_3_13';
+  const runtimeVersion = config.runtimeVersion ?? 'PYTHON_3_14';
   const packager = getCodeZipPackager(runtimeVersion);
   return packager.packCodeZip(config as AgentEnvSpec, options);
 }

@@ -31,7 +31,7 @@ Main project configuration using a **flat resource model**. Agents, memories, an
       "build": "CodeZip",
       "entrypoint": "main.py",
       "codeLocation": "app/MyAgent/",
-      "runtimeVersion": "PYTHON_3_13",
+      "runtimeVersion": "PYTHON_3_14",
       "networkMode": "PUBLIC",
       "protocol": "HTTP"
     }
@@ -166,7 +166,7 @@ on the next deployment.
   "build": "CodeZip",
   "entrypoint": "main.py",
   "codeLocation": "app/MyAgent/",
-  "runtimeVersion": "PYTHON_3_13",
+  "runtimeVersion": "PYTHON_3_14",
   "networkMode": "PUBLIC",
   "envVars": [{ "name": "MY_VAR", "value": "my-value" }],
   "instrumentation": {
@@ -201,6 +201,7 @@ on the next deployment.
 - `PYTHON_3_11`
 - `PYTHON_3_12`
 - `PYTHON_3_13`
+- `PYTHON_3_14`
 
 **Node.js:**
 
