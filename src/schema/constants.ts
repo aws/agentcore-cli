@@ -140,6 +140,9 @@ export function isReservedProjectName(name: string): boolean {
 export const PythonRuntimeSchema = z.enum(['PYTHON_3_10', 'PYTHON_3_11', 'PYTHON_3_12', 'PYTHON_3_13', 'PYTHON_3_14']);
 export type PythonRuntime = z.infer<typeof PythonRuntimeSchema>;
 
+/** Default Python runtime version for new agents and MCP tools */
+export const DEFAULT_PYTHON_VERSION: PythonRuntime = 'PYTHON_3_14';
+
 export const NodeRuntimeSchema = z.enum(['NODE_18', 'NODE_20', 'NODE_22']);
 export type NodeRuntime = z.infer<typeof NodeRuntimeSchema>;
 

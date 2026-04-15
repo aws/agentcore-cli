@@ -6,7 +6,6 @@ import type {
   GatewayPolicyEngineConfiguration,
   GatewayTargetType,
   NodeRuntime,
-  PythonRuntime,
   SchemaSource,
   ToolDefinition,
 } from '../../../../schema';
@@ -295,6 +294,6 @@ export const NODE_VERSION_OPTIONS = [
 // Defaults
 // ─────────────────────────────────────────────────────────────────────────────
 
-export const DEFAULT_PYTHON_VERSION: PythonRuntime = 'PYTHON_3_14';
+export { DEFAULT_PYTHON_VERSION } from '../../../../schema';
 export const DEFAULT_NODE_VERSION: NodeRuntime = 'NODE_20';
 export const DEFAULT_HANDLER = 'handler.lambda_handler';

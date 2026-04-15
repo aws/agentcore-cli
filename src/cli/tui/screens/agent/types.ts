@@ -189,5 +189,5 @@ export const NETWORK_MODE_OPTIONS = [
   { id: 'VPC', title: 'VPC', description: 'Attach to your VPC' },
 ] as const;
 
-export const DEFAULT_PYTHON_VERSION: PythonRuntime = 'PYTHON_3_14';
+export { DEFAULT_PYTHON_VERSION } from '../../../../schema';
 export const DEFAULT_ENTRYPOINT = 'main.py';

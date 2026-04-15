@@ -12,7 +12,13 @@ import type {
   SDKFramework,
   TargetLanguage,
 } from '../../schema';
-import { AgentEnvSpecSchema, CREDENTIAL_PROVIDERS, LIFECYCLE_TIMEOUT_MAX, LIFECYCLE_TIMEOUT_MIN } from '../../schema';
+import {
+  AgentEnvSpecSchema,
+  CREDENTIAL_PROVIDERS,
+  DEFAULT_PYTHON_VERSION,
+  LIFECYCLE_TIMEOUT_MAX,
+  LIFECYCLE_TIMEOUT_MIN,
+} from '../../schema';
 import type { AddAgentOptions as CLIAddAgentOptions } from '../commands/add/types';
 import { validateAddAgentOptions } from '../commands/add/validate';
 import { parseAndNormalizeHeaders } from '../commands/shared/header-utils';
@@ -526,7 +532,7 @@ export class AgentPrimitive extends BasePrimitive<AddAgentOptions, RemovableReso
       build: options.buildType,
       entrypoint: (options.entrypoint ?? 'main.py') as FilePath,
       codeLocation: codeLocation as DirectoryPath,
-      runtimeVersion: 'PYTHON_3_14',
+      runtimeVersion: DEFAULT_PYTHON_VERSION,
       protocol,
       networkMode,
       ...(networkMode === 'VPC' &&
