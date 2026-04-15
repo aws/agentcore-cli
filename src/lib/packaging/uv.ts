@@ -7,7 +7,8 @@ export interface PlatformIssue {
 
 const PLATFORM_HINT_REGEX = /platforms:\s*([^\n]+)/i;
 const MANYLINUX_TOKEN = /(manylinux[^\s,]+)/gi;
-const NO_WHEELS_REGEX = /(has no wheels with a matching platform tag|no compatible (?:wheels|tags) found)/i;
+const NO_WHEELS_REGEX =
+  /(has no wheels with a matching (?:platform|Python ABI) tag|no compatible (?:wheels|tags) found|has no usable wheels)/i;
 
 export function detectUnavailablePlatform(result: SubprocessResult): PlatformIssue | null {
   const combined = `${result.stdout}\n${result.stderr}`;

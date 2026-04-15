@@ -57,6 +57,20 @@ describe('detectUnavailablePlatform', () => {
     expect(issue!.message).toContain('has no wheels');
   });
 
+  it('detects "no wheels with a matching Python ABI tag" message (e.g. cp314)', () => {
+    const out = 'numpy==2.4.4 has no wheels with a matching Python ABI tag (e.g., `cp314`)';
+    const issue = detectUnavailablePlatform(result(out));
+    expect(issue).not.toBeNull();
+    expect(issue!.message).toContain('cp314');
+  });
+
+  it('detects "has no usable wheels" message', () => {
+    const out = 'numpy>=1.10.4 has no usable wheels, we can conclude that numpy>=1.10.4 cannot be used.';
+    const issue = detectUnavailablePlatform(result(out));
+    expect(issue).not.toBeNull();
+    expect(issue!.message).toContain('usable wheels');
+  });
+
   it('returns null for successful output', () => {
     const out = 'Successfully installed package-1.0.0\nAll done!';
     expect(detectUnavailablePlatform({ code: 0, stdout: out, stderr: '', signal: null })).toBeNull();
