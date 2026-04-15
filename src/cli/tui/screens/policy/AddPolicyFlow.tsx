@@ -56,6 +56,7 @@ export function AddPolicyFlow({ isInteractive = true, onExit, onBack, onDev, onD
   const [engineNames, setEngineNames] = useState<string[]>([]);
   const [policyNames, setPolicyNames] = useState<string[]>([]);
   const [hasUnprotectedGateways, setHasUnprotectedGateways] = useState(false);
+  const [pendingEngineName, setPendingEngineName] = useState<string | undefined>();
 
   const engineSteps = useMemo<EngineCreationStep[]>(() => {
     const steps: EngineCreationStep[] = ['name'];
@@ -133,6 +134,7 @@ export function AddPolicyFlow({ isInteractive = true, onExit, onBack, onDev, onD
       return;
     }
     setEngineNames(prev => [...prev, engineName]);
+    setPendingEngineName(undefined);
     if (gateways && gateways.length > 0 && mode) {
       await policyEnginePrimitive.attachToGateways(engineName, gateways, mode);
     }
@@ -141,6 +143,7 @@ export function AddPolicyFlow({ isInteractive = true, onExit, onBack, onDev, onD
 
   const handleEngineComplete = useCallback(
     async (config: AddPolicyEngineConfig) => {
+      setPendingEngineName(config.name);
       const unprotected = await policyEnginePrimitive.getUnprotectedGateways();
       if (unprotected.length > 0) {
         setFlow({ name: 'attach-gateways', engineName: config.name, gateways: unprotected });
@@ -208,6 +211,7 @@ export function AddPolicyFlow({ isInteractive = true, onExit, onBack, onDev, onD
     return (
       <AddPolicyEngineScreen
         existingEngineNames={engineNames}
+        initialName={pendingEngineName}
         headerContent={<StepIndicator steps={engineSteps} currentStep="name" labels={ENGINE_STEP_LABELS} />}
         onComplete={(config: AddPolicyEngineConfig) => void handleEngineComplete(config)}
         onExit={() => {

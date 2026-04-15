@@ -9,6 +9,7 @@ interface AddPolicyEngineScreenProps {
   onComplete: (config: AddPolicyEngineConfig) => void;
   onExit: () => void;
   existingEngineNames: string[];
+  initialName?: string;
   headerContent?: React.ReactNode;
 }
 
@@ -16,6 +17,7 @@ export function AddPolicyEngineScreen({
   onComplete,
   onExit,
   existingEngineNames,
+  initialName,
   headerContent,
 }: AddPolicyEngineScreenProps) {
   return (
@@ -24,7 +26,7 @@ export function AddPolicyEngineScreen({
         <TextInput
           key="name"
           prompt="Policy engine name"
-          initialValue={generateUniqueName('MyPolicyEngine', existingEngineNames)}
+          initialValue={initialName ?? generateUniqueName('MyPolicyEngine', existingEngineNames)}
           onSubmit={name => onComplete({ name })}
           onCancel={onExit}
           schema={PolicyEngineNameSchema}
