@@ -594,6 +594,8 @@ export const AgentCoreGatewaySchema = z
     exceptionLevel: GatewayExceptionLevelSchema.default('NONE'),
     /** Policy engine configuration for Cedar-based authorization of tool calls. */
     policyEngineConfiguration: GatewayPolicyEngineConfigurationSchema.optional(),
+    /** ARN of an existing IAM execution role. When set, CDK uses this role instead of creating a new one. */
+    executionRoleArn: z.string().optional(),
     tags: TagsSchema.optional(),
   })
   .strict()

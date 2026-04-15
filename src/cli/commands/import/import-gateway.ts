@@ -281,6 +281,7 @@ function toGatewaySpec(gateway: GatewayDetail, targets: AgentCoreGatewayTarget[]
     enableSemanticSearch,
     exceptionLevel,
     ...(policyEngineConfiguration && { policyEngineConfiguration }),
+    ...(gateway.roleArn && { executionRoleArn: gateway.roleArn }),
     ...(gateway.tags && Object.keys(gateway.tags).length > 0 && { tags: gateway.tags }),
   };
 }

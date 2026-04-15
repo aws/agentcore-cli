@@ -222,6 +222,7 @@ describe.sequential('e2e: import runtime/memory/evaluator/gateway', () => {
           authorizerType: string;
           enableSemanticSearch: boolean;
           exceptionLevel: string;
+          executionRoleArn?: string;
           tags?: Record<string, string>;
           targets: { name: string; targetType: string; endpoint?: string }[];
         }[];
@@ -237,6 +238,9 @@ describe.sequential('e2e: import runtime/memory/evaluator/gateway', () => {
       expect(gw.enableSemanticSearch).toBe(true);
       expect(gw.exceptionLevel).toBe('DEBUG');
       expect(gw.tags).toEqual({ env: 'bugbash', team: 'agentcore-cli' });
+
+      expect(gw.executionRoleArn, 'executionRoleArn should be preserved from AWS').toBeTruthy();
+      expect(gw.executionRoleArn).toContain('bugbash-agentcore-role');
 
       expect(gw.targets.length, 'Should have one target').toBe(1);
       expect(gw.targets[0]!.name).toBe('mcpTarget');

@@ -806,6 +806,7 @@ export interface GatewayDetail {
   status: string;
   description?: string;
   authorizerType: string;
+  roleArn?: string;
   authorizerConfiguration?: {
     customJwtAuthorizer?: {
       discoveryUrl: string;
@@ -936,6 +937,7 @@ export async function getGatewayDetail(options: { region: string; gatewayId: str
     status: response.status ?? 'UNKNOWN',
     description: response.description,
     authorizerType: response.authorizerType ?? 'NONE',
+    roleArn: response.roleArn,
     authorizerConfiguration,
     protocolConfiguration,
     exceptionLevel: response.exceptionLevel,
