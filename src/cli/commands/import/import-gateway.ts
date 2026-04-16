@@ -218,8 +218,13 @@ function resolveOutboundAuth(
 
 /**
  * Map GetGateway + GetGatewayTarget[] responses to CLI AgentCoreGateway schema.
+ * @internal
  */
-function toGatewaySpec(gateway: GatewayDetail, targets: AgentCoreGatewayTarget[], localName: string): AgentCoreGateway {
+export function toGatewaySpec(
+  gateway: GatewayDetail,
+  targets: AgentCoreGatewayTarget[],
+  localName: string
+): AgentCoreGateway {
   const authorizerType = (gateway.authorizerType ?? 'NONE') as GatewayAuthorizerType;
 
   let authorizerConfiguration: AuthorizerConfig | undefined;
@@ -293,8 +298,9 @@ function toGatewaySpec(gateway: GatewayDetail, targets: AgentCoreGatewayTarget[]
 /**
  * Build a map from credential provider ARN → credential name
  * using the project's deployed state.
+ * @internal
  */
-async function buildCredentialArnMap(
+export async function buildCredentialArnMap(
   configIO: { readDeployedState: () => Promise<unknown> },
   targetName: string
 ): Promise<Map<string, string>> {
@@ -600,6 +606,13 @@ export async function handleImportGateway(options: ImportResourceOptions): Promi
     };
   }
 }
+
+/** @internal — exported for unit testing */
+export {
+  toGatewayTargetSpec as _toGatewayTargetSpec,
+  toGatewayTargetSpec,
+  resolveOutboundAuth as _resolveOutboundAuth,
+};
 
 // ============================================================================
 // Command Registration
