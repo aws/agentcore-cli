@@ -191,6 +191,7 @@ on the next deployment.
 | `authorizerConfiguration` | No       | JWT authorizer settings (for `CUSTOM_JWT`)                      |
 | `requestHeaderAllowlist`  | No       | Headers to forward to the agent                                 |
 | `lifecycleConfiguration`  | No       | Runtime session lifecycle settings (idle timeout, max lifetime) |
+| `executionRoleArn`        | No       | ARN of an existing IAM execution role (skips CDK-managed role)  |
 | `tags`                    | No       | Agent-level tags                                                |
 
 ### Runtime Versions
