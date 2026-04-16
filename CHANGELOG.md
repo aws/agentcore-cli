@@ -2,6 +2,16 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.8.2] - 2026-04-16
+
+### Added
+- feat: upgrade default Python runtime to PYTHON_3_14 (#837) (b139c05)
+
+### Other Changes
+- revert: roll back version bump to 0.8.1 (#877) (ef14108)
+- test: update asset snapshot for @aws/agentcore-cdk 0.1.0-alpha.19 (#875) (f781c60)
+- chore: bump version to 0.8.2 (#874) (865b5d5)
+
 ## [0.8.1] - 2026-04-14
 
 ### Added
