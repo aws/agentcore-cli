@@ -8,6 +8,13 @@ All notable changes to this project will be documented in this file.
 - fix: revert version to 0.8.2 (#885) (321ea06)
 - fix: agent-inspector frontend assets missing from build (#883) (08f826c)
 - fix: use caret range for @aws/agentcore-cdk in CDK template (#882) (e01f6f9)
+- fix: defer policy engine write and harden policy flow UX (#856) (c576d02)
+  
+### Added
+- feat: add agent inspector web UI for `agentcore dev` (#871) (6cc575c)
+
+### Documentation
+- docs: document executionRoleArn in runtime spec (#872) (abfd33b)
 
 ## [0.8.2] - 2026-04-16
 
