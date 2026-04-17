@@ -2,6 +2,12 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.10.0] - 2026-04-17
+
+### Fixed
+- fix: agent-inspector frontend assets missing from build (#883) (08f826c)
+- fix: use caret range for @aws/agentcore-cdk in CDK template (#882) (e01f6f9)
+
 ## [0.9.0] - 2026-04-17
 
 ### Added
