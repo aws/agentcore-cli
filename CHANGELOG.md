@@ -2,17 +2,6 @@
 
 All notable changes to this project will be documented in this file.
 
-## [0.9.0] - 2026-04-17
-
-### Added
-- feat: add agent inspector web UI for `agentcore dev` (#871) (6cc575c)
-
-### Fixed
-- fix: defer policy engine write and harden policy flow UX (#856) (c576d02)
-
-### Documentation
-- docs: document executionRoleArn in runtime spec (#872) (abfd33b)
-
 ## [0.8.2] - 2026-04-16
 
 ### Added
