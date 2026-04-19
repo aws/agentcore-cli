@@ -148,6 +148,7 @@ async function handleA2AInvocation(
         messageId: randomUUID(),
         role: 'user',
         parts: [{ kind: 'text', text: prompt }],
+        ...(sessionId ? { contextId: sessionId } : {}),
       },
     },
   };
