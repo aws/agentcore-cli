@@ -145,6 +145,7 @@ async function handleCreateCLI(options: CreateOptions): Promise<void> {
         securityGroups: parseCommaSeparatedList(options.securityGroups),
         idleTimeout: options.idleTimeout ? Number(options.idleTimeout) : undefined,
         maxLifetime: options.maxLifetime ? Number(options.maxLifetime) : undefined,
+        sessionStorageMountPath: options.sessionStorageMountPath,
         skipGit: options.skipGit,
         skipInstall: options.skipInstall,
         skipPythonSetup: options.skipPythonSetup,
@@ -198,6 +199,10 @@ export const registerCreate = (program: Command) => {
     .option(
       '--max-lifetime <seconds>',
       `Max instance lifetime in seconds (${LIFECYCLE_TIMEOUT_MIN}-${LIFECYCLE_TIMEOUT_MAX}) [non-interactive]`
+    )
+    .option(
+      '--session-storage-mount-path <path>',
+      'Absolute mount path for session filesystem storage under /mnt (e.g. /mnt/data) [non-interactive]'
     )
     .option('--output-dir <dir>', 'Output directory (default: current directory) [non-interactive]')
     .option('--skip-git', 'Skip git repository initialization [non-interactive]')

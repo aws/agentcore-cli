@@ -74,6 +74,7 @@ export interface AddAgentOptions extends VpcOptions {
   clientSecret?: string;
   idleTimeout?: number;
   maxLifetime?: number;
+  sessionStorageMountPath?: string;
 }
 
 /**
@@ -247,6 +248,10 @@ export class AgentPrimitive extends BasePrimitive<AddAgentOptions, RemovableReso
         '--max-lifetime <seconds>',
         `Max instance lifetime in seconds (${LIFECYCLE_TIMEOUT_MIN}-${LIFECYCLE_TIMEOUT_MAX}) [non-interactive]`
       )
+      .option(
+        '--session-storage-mount-path <path>',
+        'Absolute mount path for session filesystem storage (e.g. /mnt/session-storage) [non-interactive]'
+      )
       .option('--json', 'Output as JSON [non-interactive]')
       .action(async options => {
         if (!findConfigRoot()) {
@@ -307,6 +312,7 @@ export class AgentPrimitive extends BasePrimitive<AddAgentOptions, RemovableReso
             clientSecret: cliOptions.clientSecret,
             idleTimeout: cliOptions.idleTimeout ? Number(cliOptions.idleTimeout) : undefined,
             maxLifetime: cliOptions.maxLifetime ? Number(cliOptions.maxLifetime) : undefined,
+            sessionStorageMountPath: cliOptions.sessionStorageMountPath,
           });
 
           if (cliOptions.json) {
@@ -402,6 +408,7 @@ export class AgentPrimitive extends BasePrimitive<AddAgentOptions, RemovableReso
       requestHeaderAllowlist: options.requestHeaderAllowlist,
       idleRuntimeSessionTimeout: options.idleTimeout,
       maxLifetime: options.maxLifetime,
+      sessionStorageMountPath: options.sessionStorageMountPath,
     };
 
     const agentPath = join(projectRoot, APP_DIR, options.name);
@@ -472,6 +479,7 @@ export class AgentPrimitive extends BasePrimitive<AddAgentOptions, RemovableReso
       configBaseDir,
       idleTimeout: options.idleTimeout,
       maxLifetime: options.maxLifetime,
+      sessionStorageMountPath: options.sessionStorageMountPath,
     });
   }
 
@@ -548,6 +556,9 @@ export class AgentPrimitive extends BasePrimitive<AddAgentOptions, RemovableReso
       ...(authorizerType && { authorizerType }),
       ...(authorizerConfiguration && { authorizerConfiguration }),
       ...(lifecycleConfiguration && { lifecycleConfiguration }),
+      ...(options.sessionStorageMountPath && {
+        filesystemConfigurations: [{ sessionStorage: { mountPath: options.sessionStorageMountPath } }],
+      }),
     };
 
     project.runtimes.push(agent);

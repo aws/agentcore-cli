@@ -68,4 +68,6 @@ export interface AgentRenderConfig {
   protocol?: ProtocolMode;
   /** Custom Dockerfile name — when set, the template Dockerfile is not scaffolded */
   dockerfile?: string;
+  /** Session storage mount path — when set, file read/write tools are included */
+  sessionStorageMountPath?: string;
 }

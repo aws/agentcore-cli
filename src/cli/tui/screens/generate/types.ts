@@ -29,6 +29,7 @@ export type GenerateStep =
   | 'jwtConfig'
   | 'idleTimeout'
   | 'maxLifetime'
+  | 'sessionStorageMountPath'
   | 'confirm';
 
 export type MemoryOption = 'none' | 'shortTerm' | 'longAndShortTerm';
@@ -61,6 +62,8 @@ export interface GenerateConfig {
   idleRuntimeSessionTimeout?: number;
   /** Max instance lifetime in seconds (LIFECYCLE_TIMEOUT_MIN-LIFECYCLE_TIMEOUT_MAX) */
   maxLifetime?: number;
+  /** Mount path for session filesystem storage (e.g. /mnt/session-storage) */
+  sessionStorageMountPath?: string;
 }
 
 /** Base steps - apiKey, memory, subnets, securityGroups are conditionally added based on selections */
@@ -95,6 +98,7 @@ export const STEP_LABELS: Record<GenerateStep, string> = {
   jwtConfig: 'JWT Config',
   idleTimeout: 'Idle Timeout',
   maxLifetime: 'Max Lifetime',
+  sessionStorageMountPath: 'Session Storage',
   confirm: 'Confirm',
 };
 
@@ -153,7 +157,7 @@ export const NETWORK_MODE_OPTIONS = [
   { id: 'VPC', title: 'VPC', description: 'Attach to your VPC' },
 ] as const;
 
-export type AdvancedSettingId = 'dockerfile' | 'network' | 'headers' | 'auth' | 'lifecycle';
+export type AdvancedSettingId = 'dockerfile' | 'network' | 'headers' | 'auth' | 'lifecycle' | 'filesystem';
 
 export const ADVANCED_SETTING_OPTIONS = [
   { id: 'dockerfile', title: 'Custom Dockerfile', description: 'Specify a custom Dockerfile path' },
@@ -161,6 +165,7 @@ export const ADVANCED_SETTING_OPTIONS = [
   { id: 'headers', title: 'Request header allowlist', description: 'Allow custom headers through to your agent' },
   { id: 'auth', title: 'Custom auth (JWT)', description: 'OIDC-based token validation for inbound requests' },
   { id: 'lifecycle', title: 'Lifecycle timeouts', description: 'Idle timeout & max instance lifetime' },
+  { id: 'filesystem', title: 'Session filesystem storage', description: 'Persist files across session stop/resume' },
 ] as const;
 
 /** Dockerfile filename regex — must match the Zod schema in agent-env.ts */

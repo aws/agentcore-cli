@@ -858,6 +858,7 @@ export interface A2AInvokeOptions {
   region: string;
   runtimeArn: string;
   userId?: string;
+  sessionId?: string;
   logger?: SSELogger;
   /** Custom headers to forward to the agent runtime */
   headers?: Record<string, string>;
@@ -893,6 +894,7 @@ export async function invokeA2ARuntime(options: A2AInvokeOptions, message: strin
     contentType: 'application/json',
     accept: 'application/json, text/event-stream',
     runtimeUserId: options.userId ?? DEFAULT_RUNTIME_USER_ID,
+    ...(options.sessionId && { runtimeSessionId: options.sessionId }),
   });
 
   const response = await client.send(command);

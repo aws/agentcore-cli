@@ -9,6 +9,7 @@ import {
   ProtocolModeSchema,
   RuntimeAuthorizerTypeSchema,
   SDKFrameworkSchema,
+  SessionStorageSchema,
   StreamDeliveryResourcesSchema,
   TARGET_TYPE_AUTH_CONFIG,
   TargetLanguageSchema,
@@ -267,6 +268,14 @@ export function validateAddAgentOptions(options: AddAgentOptions): ValidationRes
   if (!lifecycleResult.valid) return lifecycleResult;
   if (lifecycleResult.idleTimeout !== undefined) options.idleTimeout = lifecycleResult.idleTimeout;
   if (lifecycleResult.maxLifetime !== undefined) options.maxLifetime = lifecycleResult.maxLifetime;
+
+  // Validate session storage mount path
+  if (options.sessionStorageMountPath) {
+    const mountPathResult = SessionStorageSchema.shape.mountPath.safeParse(options.sessionStorageMountPath);
+    if (!mountPathResult.success) {
+      return { valid: false, error: `--session-storage-mount-path: ${mountPathResult.error.issues[0]?.message}` };
+    }
+  }
 
   // Validate VPC options
   const vpcResult = validateVpcOptions(options);

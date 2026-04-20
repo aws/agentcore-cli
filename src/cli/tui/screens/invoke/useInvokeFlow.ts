@@ -324,7 +324,14 @@ export function useInvokeFlow(options: InvokeFlowOptions = {}): InvokeFlowState 
       try {
         const result = isA2A
           ? await invokeA2ARuntime(
-              { region: config.target.region, runtimeArn: agent.state.runtimeArn, userId, logger, headers },
+              {
+                region: config.target.region,
+                runtimeArn: agent.state.runtimeArn,
+                userId,
+                sessionId: sessionId ?? undefined,
+                logger,
+                headers,
+              },
               prompt
             )
           : await invokeAgentRuntimeStreaming({

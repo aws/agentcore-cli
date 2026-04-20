@@ -968,7 +968,8 @@ Thumbs.db
 `;
 
 exports[`Assets Directory Snapshots > Python framework assets > python/python/a2a/googleadk/base/main.py should match snapshot 1`] = `
-"from google.adk.agents import Agent
+"import os
+from google.adk.agents import Agent
 from google.adk.a2a.executor.a2a_agent_executor import A2aAgentExecutor
 from google.adk.runners import Runner
 from google.adk.sessions import InMemorySessionService
@@ -982,12 +983,71 @@ def add_numbers(a: int, b: int) -> int:
     return a + b
 
 
+tools = [add_numbers]
+
+{{#if sessionStorageMountPath}}
+SESSION_STORAGE_PATH = "{{sessionStorageMountPath}}"
+
+def _safe_resolve(path: str) -> str:
+    """Resolve path safely within the storage boundary."""
+    resolved = os.path.realpath(os.path.join(SESSION_STORAGE_PATH, path.lstrip("/")))
+    if not resolved.startswith(os.path.realpath(SESSION_STORAGE_PATH)):
+        raise ValueError(f"Path '{path}' is outside the storage boundary")
+    return resolved
+
+def file_read(path: str) -> str:
+    """Read a file from persistent storage. The path is relative to the storage root."""
+    try:
+        full_path = _safe_resolve(path)
+        with open(full_path) as f:
+            return f.read()
+    except ValueError as e:
+        return str(e)
+    except OSError as e:
+        return f"Error reading '{path}': {e.strerror}"
+
+def file_write(path: str, content: str) -> str:
+    """Write content to a file in persistent storage. The path is relative to the storage root."""
+    try:
+        full_path = _safe_resolve(path)
+        parent = os.path.dirname(full_path)
+        if parent:
+            os.makedirs(parent, exist_ok=True)
+        with open(full_path, "w") as f:
+            f.write(content)
+        return f"Written to {path}"
+    except ValueError as e:
+        return str(e)
+    except OSError as e:
+        return f"Error writing '{path}': {e.strerror}"
+
+def list_files(directory: str = "") -> str:
+    """List files in persistent storage. The directory is relative to the storage root."""
+    try:
+        target = _safe_resolve(directory)
+        entries = os.listdir(target)
+        return "\\n".join(entries) if entries else "(empty directory)"
+    except ValueError as e:
+        return str(e)
+    except OSError as e:
+        return f"Error listing '{directory}': {e.strerror}"
+
+tools.extend([file_read, file_write, list_files])
+{{/if}}
+
+AGENT_INSTRUCTION = """
+You are a helpful assistant. Use tools when appropriate.
+{{#if sessionStorageMountPath}}
+You have persistent storage at {{sessionStorageMountPath}}. Use file tools to read and write files. Data persists across sessions.
+{{/if}}
+"""
+
 agent = Agent(
     model=load_model(),
     name="{{ name }}",
     description="A helpful assistant that can use tools.",
-    instruction="You are a helpful assistant. Use tools when appropriate.",
-    tools=[add_numbers],
+    instruction=AGENT_INSTRUCTION,
+    tools=tools,
 )
 
 runner = Runner(
@@ -1165,7 +1225,8 @@ Thumbs.db
 `;
 
 exports[`Assets Directory Snapshots > Python framework assets > python/python/a2a/langchain_langgraph/base/main.py should match snapshot 1`] = `
-"from langchain_core.tools import tool
+"import os
+from langchain_core.tools import tool
 from langgraph.prebuilt import create_react_agent
 from opentelemetry.instrumentation.langchain import LangchainInstrumentor
 from a2a.server.agent_execution import AgentExecutor, RequestContext
@@ -1185,8 +1246,70 @@ def add_numbers(a: int, b: int) -> int:
     return a + b
 
 
+tools = [add_numbers]
+
+{{#if sessionStorageMountPath}}
+SESSION_STORAGE_PATH = "{{sessionStorageMountPath}}"
+
+def _safe_resolve(path: str) -> str:
+    """Resolve path safely within the storage boundary."""
+    resolved = os.path.realpath(os.path.join(SESSION_STORAGE_PATH, path.lstrip("/")))
+    if not resolved.startswith(os.path.realpath(SESSION_STORAGE_PATH)):
+        raise ValueError(f"Path '{path}' is outside the storage boundary")
+    return resolved
+
+@tool
+def file_read(path: str) -> str:
+    """Read a file from persistent storage. The path is relative to the storage root."""
+    try:
+        full_path = _safe_resolve(path)
+        with open(full_path) as f:
+            return f.read()
+    except ValueError as e:
+        return str(e)
+    except OSError as e:
+        return f"Error reading '{path}': {e.strerror}"
+
+@tool
+def file_write(path: str, content: str) -> str:
+    """Write content to a file in persistent storage. The path is relative to the storage root."""
+    try:
+        full_path = _safe_resolve(path)
+        parent = os.path.dirname(full_path)
+        if parent:
+            os.makedirs(parent, exist_ok=True)
+        with open(full_path, "w") as f:
+            f.write(content)
+        return f"Written to {path}"
+    except ValueError as e:
+        return str(e)
+    except OSError as e:
+        return f"Error writing '{path}': {e.strerror}"
+
+@tool
+def list_files(directory: str = "") -> str:
+    """List files in persistent storage. The directory is relative to the storage root."""
+    try:
+        target = _safe_resolve(directory)
+        entries = os.listdir(target)
+        return "\\n".join(entries) if entries else "(empty directory)"
+    except ValueError as e:
+        return str(e)
+    except OSError as e:
+        return f"Error listing '{directory}': {e.strerror}"
+
+tools.extend([file_read, file_write, list_files])
+{{/if}}
+
+SYSTEM_PROMPT = """
+You are a helpful assistant. Use tools when appropriate.
+{{#if sessionStorageMountPath}}
+You have persistent storage at {{sessionStorageMountPath}}. Use file tools to read and write files. Data persists across sessions.
+{{/if}}
+"""
+
 model = load_model()
-graph = create_react_agent(model, tools=[add_numbers])
+graph = create_react_agent(model, tools=tools, prompt=SYSTEM_PROMPT)
 
 
 class LangGraphA2AExecutor(AgentExecutor):
@@ -1475,6 +1598,9 @@ from model.load import load_model
 {{#if hasMemory}}
 from memory.session import get_memory_session_manager
 {{/if}}
+{{#if sessionStorageMountPath}}
+import os
+{{/if}}
 
 
 @tool
@@ -1485,6 +1611,66 @@ def add_numbers(a: int, b: int) -> int:
 
 tools = [add_numbers]
 
+{{#if sessionStorageMountPath}}
+SESSION_STORAGE_PATH = "{{sessionStorageMountPath}}"
+
+def _safe_resolve(path: str) -> str:
+    """Resolve path safely within the storage boundary."""
+    resolved = os.path.realpath(os.path.join(SESSION_STORAGE_PATH, path.lstrip("/")))
+    if not resolved.startswith(os.path.realpath(SESSION_STORAGE_PATH)):
+        raise ValueError(f"Path '{path}' is outside the storage boundary")
+    return resolved
+
+@tool
+def file_read(path: str) -> str:
+    """Read a file from persistent storage. The path is relative to the storage root."""
+    try:
+        full_path = _safe_resolve(path)
+        with open(full_path) as f:
+            return f.read()
+    except ValueError as e:
+        return str(e)
+    except OSError as e:
+        return f"Error reading '{path}': {e.strerror}"
+
+@tool
+def file_write(path: str, content: str) -> str:
+    """Write content to a file in persistent storage. The path is relative to the storage root."""
+    try:
+        full_path = _safe_resolve(path)
+        parent = os.path.dirname(full_path)
+        if parent:
+            os.makedirs(parent, exist_ok=True)
+        with open(full_path, "w") as f:
+            f.write(content)
+        return f"Written to {path}"
+    except ValueError as e:
+        return str(e)
+    except OSError as e:
+        return f"Error writing '{path}': {e.strerror}"
+
+@tool
+def list_files(directory: str = "") -> str:
+    """List files in persistent storage. The directory is relative to the storage root."""
+    try:
+        target = _safe_resolve(directory)
+        entries = os.listdir(target)
+        return "\\n".join(entries) if entries else "(empty directory)"
+    except ValueError as e:
+        return str(e)
+    except OSError as e:
+        return f"Error listing '{directory}': {e.strerror}"
+
+tools.extend([file_read, file_write, list_files])
+{{/if}}
+
+SYSTEM_PROMPT = """
+You are a helpful assistant. Use tools when appropriate.
+{{#if sessionStorageMountPath}}
+You have persistent storage at {{sessionStorageMountPath}}. Use file tools to read and write files. Data persists across sessions.
+{{/if}}
+"""
+
 {{#if hasMemory}}
 def agent_factory():
     cache = {}
@@ -1494,7 +1680,7 @@ def agent_factory():
             cache[key] = Agent(
                 model=load_model(),
                 session_manager=get_memory_session_manager(session_id, user_id),
-                system_prompt="You are a helpful assistant. Use tools when appropriate.",
+                system_prompt=SYSTEM_PROMPT,
                 tools=tools,
             )
         return cache[key]
@@ -1505,7 +1691,7 @@ agent = get_or_create_agent("default-session", "default-user")
 {{else}}
 agent = Agent(
     model=load_model(),
-    system_prompt="You are a helpful assistant. Use tools when appropriate.",
+    system_prompt=SYSTEM_PROMPT,
     tools=tools,
 )
 {{/if}}
@@ -1834,6 +2020,66 @@ add_numbers_tool = FunctionTool(
 # Define a collection of tools used by the model
 tools = [add_numbers_tool]
 
+{{#if sessionStorageMountPath}}
+SESSION_STORAGE_PATH = "{{sessionStorageMountPath}}"
+
+def _safe_resolve(path: str) -> str:
+    """Resolve path safely within the storage boundary."""
+    resolved = os.path.realpath(os.path.join(SESSION_STORAGE_PATH, path.lstrip("/")))
+    if not resolved.startswith(os.path.realpath(SESSION_STORAGE_PATH)):
+        raise ValueError(f"Path '{path}' is outside the storage boundary")
+    return resolved
+
+def file_read(path: str) -> str:
+    """Read a file from persistent storage. The path is relative to the storage root."""
+    try:
+        full_path = _safe_resolve(path)
+        with open(full_path) as f:
+            return f.read()
+    except ValueError as e:
+        return str(e)
+    except OSError as e:
+        return f"Error reading '{path}': {e.strerror}"
+
+def file_write(path: str, content: str) -> str:
+    """Write content to a file in persistent storage. The path is relative to the storage root."""
+    try:
+        full_path = _safe_resolve(path)
+        parent = os.path.dirname(full_path)
+        if parent:
+            os.makedirs(parent, exist_ok=True)
+        with open(full_path, "w") as f:
+            f.write(content)
+        return f"Written to {path}"
+    except ValueError as e:
+        return str(e)
+    except OSError as e:
+        return f"Error writing '{path}': {e.strerror}"
+
+def list_files(directory: str = "") -> str:
+    """List files in persistent storage. The directory is relative to the storage root."""
+    try:
+        target = _safe_resolve(directory)
+        entries = os.listdir(target)
+        return "\\n".join(entries) if entries else "(empty directory)"
+    except ValueError as e:
+        return str(e)
+    except OSError as e:
+        return f"Error listing '{directory}': {e.strerror}"
+
+tools.extend([
+    FunctionTool(file_read, description="Read a file from persistent storage. The path is relative to the storage root."),
+    FunctionTool(file_write, description="Write content to a file in persistent storage. The path is relative to the storage root."),
+    FunctionTool(list_files, description="List files in persistent storage. The directory is relative to the storage root."),
+])
+{{/if}}
+
+SYSTEM_MESSAGE = """
+You are a helpful assistant. Use tools when appropriate.
+{{#if sessionStorageMountPath}}
+You have persistent storage at {{sessionStorageMountPath}}. Use file tools to read and write files. Data persists across sessions.
+{{/if}}
+"""
 
 @app.entrypoint
 async def invoke(payload, context):
@@ -1847,7 +2093,7 @@ async def invoke(payload, context):
         name="{{ name }}",
         model_client=load_model(),
         tools=tools + mcp_tools,
-        system_message="You are a helpful assistant. Use tools when appropriate.",
+        system_message=SYSTEM_MESSAGE,
     )
 
     # Process the user prompt
@@ -2202,6 +2448,66 @@ def add_numbers(a: int, b: int) -> int:
     return a + b
 
 
+# Define a collection of tools used by the model
+tools = [add_numbers]
+
+{{#if sessionStorageMountPath}}
+SESSION_STORAGE_PATH = "{{sessionStorageMountPath}}"
+
+def _safe_resolve(path: str) -> str:
+    """Resolve path safely within the storage boundary."""
+    resolved = os.path.realpath(os.path.join(SESSION_STORAGE_PATH, path.lstrip("/")))
+    if not resolved.startswith(os.path.realpath(SESSION_STORAGE_PATH)):
+        raise ValueError(f"Path '{path}' is outside the storage boundary")
+    return resolved
+
+def file_read(path: str) -> str:
+    """Read a file from persistent storage. The path is relative to the storage root."""
+    try:
+        full_path = _safe_resolve(path)
+        with open(full_path) as f:
+            return f.read()
+    except ValueError as e:
+        return str(e)
+    except OSError as e:
+        return f"Error reading '{path}': {e.strerror}"
+
+def file_write(path: str, content: str) -> str:
+    """Write content to a file in persistent storage. The path is relative to the storage root."""
+    try:
+        full_path = _safe_resolve(path)
+        parent = os.path.dirname(full_path)
+        if parent:
+            os.makedirs(parent, exist_ok=True)
+        with open(full_path, "w") as f:
+            f.write(content)
+        return f"Written to {path}"
+    except ValueError as e:
+        return str(e)
+    except OSError as e:
+        return f"Error writing '{path}': {e.strerror}"
+
+def list_files(directory: str = "") -> str:
+    """List files in persistent storage. The directory is relative to the storage root."""
+    try:
+        target = _safe_resolve(directory)
+        entries = os.listdir(target)
+        return "\\n".join(entries) if entries else "(empty directory)"
+    except ValueError as e:
+        return str(e)
+    except OSError as e:
+        return f"Error listing '{directory}': {e.strerror}"
+
+tools.extend([file_read, file_write, list_files])
+{{/if}}
+
+AGENT_INSTRUCTION = """
+I can answer your questions using the knowledge I have!
+{{#if sessionStorageMountPath}}
+You have persistent storage at {{sessionStorageMountPath}}. Use file tools to read and write files. Data persists across sessions.
+{{/if}}
+"""
+
 # Get MCP Toolset
 {{#if hasGateway}}
 mcp_toolset = get_all_gateway_mcp_toolsets()
@@ -2224,8 +2530,8 @@ agent = Agent(
     model=MODEL_ID,
     name="{{ name }}",
     description="Agent to answer questions",
-    instruction="I can answer your questions using the knowledge I have!",
-    tools=mcp_toolset + [add_numbers],
+    instruction=AGENT_INSTRUCTION,
+    tools=mcp_toolset + tools,
 )
 
 
@@ -2563,6 +2869,66 @@ def add_numbers(a: int, b: int) -> int:
 # Define a collection of tools used by the model
 tools = [add_numbers]
 
+{{#if sessionStorageMountPath}}
+SESSION_STORAGE_PATH = "{{sessionStorageMountPath}}"
+
+def _safe_resolve(path: str) -> str:
+    """Resolve path safely within the storage boundary."""
+    resolved = os.path.realpath(os.path.join(SESSION_STORAGE_PATH, path.lstrip("/")))
+    if not resolved.startswith(os.path.realpath(SESSION_STORAGE_PATH)):
+        raise ValueError(f"Path '{path}' is outside the storage boundary")
+    return resolved
+
+@tool
+def file_read(path: str) -> str:
+    """Read a file from persistent storage. The path is relative to the storage root."""
+    try:
+        full_path = _safe_resolve(path)
+        with open(full_path) as f:
+            return f.read()
+    except ValueError as e:
+        return str(e)
+    except OSError as e:
+        return f"Error reading '{path}': {e.strerror}"
+
+@tool
+def file_write(path: str, content: str) -> str:
+    """Write content to a file in persistent storage. The path is relative to the storage root."""
+    try:
+        full_path = _safe_resolve(path)
+        parent = os.path.dirname(full_path)
+        if parent:
+            os.makedirs(parent, exist_ok=True)
+        with open(full_path, "w") as f:
+            f.write(content)
+        return f"Written to {path}"
+    except ValueError as e:
+        return str(e)
+    except OSError as e:
+        return f"Error writing '{path}': {e.strerror}"
+
+@tool
+def list_files(directory: str = "") -> str:
+    """List files in persistent storage. The directory is relative to the storage root."""
+    try:
+        target = _safe_resolve(directory)
+        entries = os.listdir(target)
+        return "\\n".join(entries) if entries else "(empty directory)"
+    except ValueError as e:
+        return str(e)
+    except OSError as e:
+        return f"Error listing '{directory}': {e.strerror}"
+
+tools.extend([file_read, file_write, list_files])
+{{/if}}
+
+SYSTEM_PROMPT = """
+You are a helpful assistant. Use tools when appropriate.
+{{#if sessionStorageMountPath}}
+You have persistent storage at {{sessionStorageMountPath}}. Use file tools to read and write files. Data persists across sessions.
+{{/if}}
+"""
+
 
 @app.entrypoint
 async def invoke(payload, context):
@@ -2581,7 +2947,7 @@ async def invoke(payload, context):
         mcp_tools = await mcp_client.get_tools()
 
     # Define the agent using create_react_agent
-    graph = create_react_agent(get_or_create_model(), tools=mcp_tools + tools)
+    graph = create_react_agent(get_or_create_model(), tools=mcp_tools + tools, prompt=SYSTEM_PROMPT)
 
     # Process the user prompt
     prompt = payload.get("prompt", "What can you help me with?")
@@ -2986,6 +3352,68 @@ def add_numbers(a: int, b: int) -> int:
     return a + b
 
 
+tools = [add_numbers]
+
+{{#if sessionStorageMountPath}}
+SESSION_STORAGE_PATH = "{{sessionStorageMountPath}}"
+
+def _safe_resolve(path: str) -> str:
+    """Resolve path safely within the storage boundary."""
+    resolved = os.path.realpath(os.path.join(SESSION_STORAGE_PATH, path.lstrip("/")))
+    if not resolved.startswith(os.path.realpath(SESSION_STORAGE_PATH)):
+        raise ValueError(f"Path '{path}' is outside the storage boundary")
+    return resolved
+
+@function_tool
+def file_read(path: str) -> str:
+    """Read a file from persistent storage. The path is relative to the storage root."""
+    try:
+        full_path = _safe_resolve(path)
+        with open(full_path) as f:
+            return f.read()
+    except ValueError as e:
+        return str(e)
+    except OSError as e:
+        return f"Error reading '{path}': {e.strerror}"
+
+@function_tool
+def file_write(path: str, content: str) -> str:
+    """Write content to a file in persistent storage. The path is relative to the storage root."""
+    try:
+        full_path = _safe_resolve(path)
+        parent = os.path.dirname(full_path)
+        if parent:
+            os.makedirs(parent, exist_ok=True)
+        with open(full_path, "w") as f:
+            f.write(content)
+        return f"Written to {path}"
+    except ValueError as e:
+        return str(e)
+    except OSError as e:
+        return f"Error writing '{path}': {e.strerror}"
+
+@function_tool
+def list_files(directory: str = "") -> str:
+    """List files in persistent storage. The directory is relative to the storage root."""
+    try:
+        target = _safe_resolve(directory)
+        entries = os.listdir(target)
+        return "\\n".join(entries) if entries else "(empty directory)"
+    except ValueError as e:
+        return str(e)
+    except OSError as e:
+        return f"Error listing '{directory}': {e.strerror}"
+
+tools.extend([file_read, file_write, list_files])
+{{/if}}
+
+INSTRUCTIONS = """
+You are a helpful assistant. Use tools when appropriate.
+{{#if sessionStorageMountPath}}
+You have persistent storage at {{sessionStorageMountPath}}. Use file tools to read and write files. Data persists across sessions.
+{{/if}}
+"""
+
 # Define the agent execution
 async def main(query):
     ensure_credentials_loaded()
@@ -2995,8 +3423,9 @@ async def main(query):
             agent = Agent(
                 name="{{ name }}",
                 model="gpt-4.1",
+                instructions=INSTRUCTIONS,
                 mcp_servers=mcp_servers,
-                tools=[add_numbers]
+                tools=tools
             )
             result = await Runner.run(agent, query)
             return result
@@ -3004,8 +3433,9 @@ async def main(query):
             agent = Agent(
                 name="{{ name }}",
                 model="gpt-4.1",
+                instructions=INSTRUCTIONS,
                 mcp_servers=[],
-                tools=[add_numbers]
+                tools=tools
             )
             result = await Runner.run(agent, query)
             return result
@@ -3016,8 +3446,9 @@ async def main(query):
                 agent = Agent(
                     name="{{ name }}",
                     model="gpt-4.1",
+                    instructions=INSTRUCTIONS,
                     mcp_servers=active_servers,
-                    tools=[add_numbers]
+                    tools=tools
                 )
                 result = await Runner.run(agent, query)
                 return result
@@ -3025,8 +3456,9 @@ async def main(query):
             agent = Agent(
                 name="{{ name }}",
                 model="gpt-4.1",
+                instructions=INSTRUCTIONS,
                 mcp_servers=[],
-                tools=[add_numbers]
+                tools=tools
             )
             result = await Runner.run(agent, query)
             return result
@@ -3308,6 +3740,9 @@ from mcp_client.client import get_streamable_http_mcp_client
 {{#if hasMemory}}
 from memory.session import get_memory_session_manager
 {{/if}}
+{{#if sessionStorageMountPath}}
+import os
+{{/if}}
 
 app = BedrockAgentCoreApp()
 log = app.logger
@@ -3329,11 +3764,70 @@ def add_numbers(a: int, b: int) -> int:
     return a+b
 tools.append(add_numbers)
 
+{{#if sessionStorageMountPath}}
+SESSION_STORAGE_PATH = "{{sessionStorageMountPath}}"
+
+def _safe_resolve(path: str) -> str:
+    """Resolve path safely within the storage boundary."""
+    resolved = os.path.realpath(os.path.join(SESSION_STORAGE_PATH, path.lstrip("/")))
+    if not resolved.startswith(os.path.realpath(SESSION_STORAGE_PATH)):
+        raise ValueError(f"Path '{path}' is outside the storage boundary")
+    return resolved
+
+@tool
+def file_read(path: str) -> str:
+    """Read a file from persistent storage. The path is relative to the storage root."""
+    try:
+        full_path = _safe_resolve(path)
+        with open(full_path) as f:
+            return f.read()
+    except ValueError as e:
+        return str(e)
+    except OSError as e:
+        return f"Error reading '{path}': {e.strerror}"
+
+@tool
+def file_write(path: str, content: str) -> str:
+    """Write content to a file in persistent storage. The path is relative to the storage root."""
+    try:
+        full_path = _safe_resolve(path)
+        parent = os.path.dirname(full_path)
+        if parent:
+            os.makedirs(parent, exist_ok=True)
+        with open(full_path, "w") as f:
+            f.write(content)
+        return f"Written to {path}"
+    except ValueError as e:
+        return str(e)
+    except OSError as e:
+        return f"Error writing '{path}': {e.strerror}"
+
+@tool
+def list_files(directory: str = "") -> str:
+    """List files in persistent storage. The directory is relative to the storage root."""
+    try:
+        target = _safe_resolve(directory)
+        entries = os.listdir(target)
+        return "\\n".join(entries) if entries else "(empty directory)"
+    except ValueError as e:
+        return str(e)
+    except OSError as e:
+        return f"Error listing '{directory}': {e.strerror}"
+
+tools.extend([file_read, file_write, list_files])
+{{/if}}
+
 # Add MCP client to tools if available
 for mcp_client in mcp_clients:
     if mcp_client:
         tools.append(mcp_client)
 
+SYSTEM_PROMPT = """
+You are a helpful assistant. Use tools when appropriate.
+{{#if sessionStorageMountPath}}
+You have persistent storage at {{sessionStorageMountPath}}. Use file tools to read and write files. Data persists across sessions.
+{{/if}}
+"""
 
 {{#if hasMemory}}
 def agent_factory():
@@ -3345,9 +3839,7 @@ def agent_factory():
             cache[key] = Agent(
                 model=load_model(),
                 session_manager=get_memory_session_manager(session_id, user_id),
-                system_prompt="""
-                    You are a helpful assistant. Use tools when appropriate.
-                """,
+                system_prompt=SYSTEM_PROMPT,
                 tools=tools
             )
         return cache[key]
@@ -3361,9 +3853,7 @@ def get_or_create_agent():
     if _agent is None:
         _agent = Agent(
             model=load_model(),
-            system_prompt="""
-                You are a helpful assistant. Use tools when appropriate.
-            """,
+            system_prompt=SYSTEM_PROMPT,
             tools=tools
         )
     return _agent

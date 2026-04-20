@@ -294,6 +294,7 @@ export async function handleInvoke(context: InvokeContext, options: InvokeOption
           region: targetConfig.region,
           runtimeArn: agentState.runtimeArn,
           userId: options.userId,
+          sessionId: options.sessionId,
           headers: options.headers,
         },
         options.prompt

@@ -36,6 +36,7 @@ export interface AddAgentOptions extends VpcOptions {
   requestHeaderAllowlist?: string;
   idleTimeout?: number | string;
   maxLifetime?: number | string;
+  sessionStorageMountPath?: string;
   json?: boolean;
 }
 

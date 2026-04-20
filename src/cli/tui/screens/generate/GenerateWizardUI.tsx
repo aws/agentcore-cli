@@ -1,5 +1,11 @@
 import type { ModelProvider, NetworkMode, RuntimeAuthorizerType } from '../../../../schema';
-import { DEFAULT_MODEL_IDS, LIFECYCLE_TIMEOUT_MAX, LIFECYCLE_TIMEOUT_MIN, ProjectNameSchema } from '../../../../schema';
+import {
+  DEFAULT_MODEL_IDS,
+  LIFECYCLE_TIMEOUT_MAX,
+  LIFECYCLE_TIMEOUT_MIN,
+  ProjectNameSchema,
+  SessionStorageSchema,
+} from '../../../../schema';
 import { parseAndNormalizeHeaders, validateHeaderAllowlist } from '../../../commands/shared/header-utils';
 import { validateSecurityGroupIds, validateSubnetIds } from '../../../commands/shared/vpc-utils';
 import { computeDefaultCredentialEnvVarName } from '../../../primitives/credential-utils';
@@ -113,6 +119,7 @@ export function GenerateWizardUI({
   const isJwtConfigStep = wizard.step === 'jwtConfig';
   const isIdleTimeoutStep = wizard.step === 'idleTimeout';
   const isMaxLifetimeStep = wizard.step === 'maxLifetime';
+  const isSessionStorageMountPathStep = wizard.step === 'sessionStorageMountPath';
   const isConfirmStep = wizard.step === 'confirm';
 
   // Advanced multi-select items — filter out dockerfile when not a Container build
@@ -380,6 +387,23 @@ export function GenerateWizardUI({
         />
       )}
 
+      {isSessionStorageMountPathStep && (
+        <TextInput
+          prompt="Session storage mount path (e.g. /mnt/data, or press Enter to skip)"
+          initialValue={wizard.config.sessionStorageMountPath ?? ''}
+          allowEmpty
+          schema={SessionStorageSchema.shape.mountPath}
+          onSubmit={value => {
+            if (value) {
+              wizard.setSessionStorageMountPath(value);
+            } else {
+              wizard.skipSessionStorageMountPath();
+            }
+          }}
+          onCancel={onBack}
+        />
+      )}
+
       {isConfirmStep && <ConfirmView config={wizard.config} credentialProjectName={credentialProjectName} />}
     </Panel>
   );
@@ -398,7 +422,8 @@ export function getWizardHelpText(step: GenerateStep): string {
     step === 'securityGroups' ||
     step === 'requestHeaderAllowlist' ||
     step === 'idleTimeout' ||
-    step === 'maxLifetime'
+    step === 'maxLifetime' ||
+    step === 'sessionStorageMountPath'
   )
     return 'Enter submit · Esc cancel';
   if (step === 'apiKey') return 'Enter submit · Tab show/hide · Esc back';
@@ -544,6 +569,12 @@ function ConfirmView({ config, credentialProjectName }: { config: GenerateConfig
           <Text>
             <Text dimColor>Max Lifetime: </Text>
             <Text>{config.maxLifetime}s</Text>
+          </Text>
+        )}
+        {config.sessionStorageMountPath && (
+          <Text>
+            <Text dimColor>Session Storage: </Text>
+            <Text>{config.sessionStorageMountPath}</Text>
           </Text>
         )}
       </Box>

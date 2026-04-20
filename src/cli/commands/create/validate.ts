@@ -4,6 +4,7 @@ import {
   ProjectNameSchema,
   ProtocolModeSchema,
   SDKFrameworkSchema,
+  SessionStorageSchema,
   TargetLanguageSchema,
   getSupportedFrameworksForProtocol,
   getSupportedModelProviders,
@@ -206,6 +207,14 @@ export function validateCreateOptions(options: CreateOptions, cwd?: string): Val
   if (!lifecycleResult.valid) return lifecycleResult;
   if (lifecycleResult.idleTimeout !== undefined) options.idleTimeout = lifecycleResult.idleTimeout;
   if (lifecycleResult.maxLifetime !== undefined) options.maxLifetime = lifecycleResult.maxLifetime;
+
+  // Validate session storage mount path
+  if (options.sessionStorageMountPath) {
+    const mountPathResult = SessionStorageSchema.shape.mountPath.safeParse(options.sessionStorageMountPath);
+    if (!mountPathResult.success) {
+      return { valid: false, error: `--session-storage-mount-path: ${mountPathResult.error.issues[0]?.message}` };
+    }
+  }
 
   return { valid: true };
 }

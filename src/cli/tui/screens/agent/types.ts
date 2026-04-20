@@ -55,6 +55,7 @@ export type AddAgentStep =
   | 'jwtConfig'
   | 'idleTimeout'
   | 'maxLifetime'
+  | 'sessionStorageMountPath'
   | 'memory'
   | 'region'
   | 'bedrockAgent'
@@ -94,6 +95,8 @@ export interface AddAgentConfig {
   idleRuntimeSessionTimeout?: number;
   /** Max instance lifetime in seconds (LIFECYCLE_TIMEOUT_MIN-LIFECYCLE_TIMEOUT_MAX) */
   maxLifetime?: number;
+  /** Mount path for session filesystem storage (e.g. /mnt/session-storage) */
+  sessionStorageMountPath?: string;
   /** Python version (only for Python agents) */
   pythonVersion: PythonRuntime;
   /** Memory option (create path only) */
@@ -126,6 +129,7 @@ export const ADD_AGENT_STEP_LABELS: Record<AddAgentStep, string> = {
   jwtConfig: 'JWT Config',
   idleTimeout: 'Idle Timeout',
   maxLifetime: 'Max Lifetime',
+  sessionStorageMountPath: 'Session Storage',
   memory: 'Memory',
   region: 'Region',
   bedrockAgent: 'Agent',
