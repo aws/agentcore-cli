@@ -118,12 +118,13 @@ export async function handleInvoke(context: InvokeContext, options: InvokeOption
       agentName: agentSpec.name,
       runtimeArn: agentState.runtimeArn,
       region: targetConfig.region,
+      sessionId: options.sessionId,
     });
     const command = options.prompt;
     if (!command) {
       return { success: false, error: '--exec requires a command (prompt)' };
     }
-    logger.logPrompt(command, undefined, options.userId);
+    logger.logPrompt(command, options.sessionId, options.userId);
 
     try {
       const result = await executeBashCommand({
@@ -324,9 +325,10 @@ export async function handleInvoke(context: InvokeContext, options: InvokeOption
     agentName: agentSpec.name,
     runtimeArn: agentState.runtimeArn,
     region: targetConfig.region,
+    sessionId: options.sessionId,
   });
 
-  logger.logPrompt(options.prompt, undefined, options.userId);
+  logger.logPrompt(options.prompt, options.sessionId, options.userId);
 
   if (options.stream) {
     // Streaming mode
