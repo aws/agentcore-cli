@@ -179,6 +179,7 @@ export class OnlineEvalConfigPrimitive extends BasePrimitive<AddOnlineEvalConfig
               const { clear, unmount } = render(
                 React.createElement(AddFlow, {
                   isInteractive: false,
+                  initialResource: 'online-eval',
                   onExit: () => {
                     clear();
                     unmount();

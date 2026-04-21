@@ -157,12 +157,37 @@ interface AddFlowProps {
   onDev?: () => void;
   /** Called when user selects deploy from success screen */
   onDeploy?: () => void;
+  /** Skip the selection screen and go directly to a specific resource wizard */
+  initialResource?: AddResourceType;
+}
+
+function getInitialFlowState(resource?: AddResourceType): FlowState {
+  switch (resource) {
+    case 'agent':
+      return { name: 'agent-wizard' };
+    case 'gateway':
+      return { name: 'gateway-wizard' };
+    case 'gateway-target':
+      return { name: 'tool-wizard' };
+    case 'memory':
+      return { name: 'memory-wizard' };
+    case 'credential':
+      return { name: 'identity-wizard' };
+    case 'evaluator':
+      return { name: 'evaluator-wizard' };
+    case 'online-eval':
+      return { name: 'online-eval-wizard' };
+    case 'policy':
+      return { name: 'policy-wizard' };
+    default:
+      return { name: 'select' };
+  }
 }
 
 export function AddFlow(props: AddFlowProps) {
   const { addAgent, reset: resetAgent } = useAddAgent();
   const { agents, refresh: refreshAgents } = useAvailableAgents();
-  const [flow, setFlow] = useState<FlowState>({ name: 'select' });
+  const [flow, setFlow] = useState<FlowState>(() => getInitialFlowState(props.initialResource));
 
   // In non-interactive mode, exit after success (but not while loading)
   useEffect(() => {

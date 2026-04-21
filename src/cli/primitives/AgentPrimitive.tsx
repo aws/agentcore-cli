@@ -340,6 +340,7 @@ export class AgentPrimitive extends BasePrimitive<AddAgentOptions, RemovableReso
           const { clear, unmount } = render(
             React.createElement(AddFlow, {
               isInteractive: false,
+              initialResource: 'agent',
               onExit: () => {
                 clear();
                 unmount();
