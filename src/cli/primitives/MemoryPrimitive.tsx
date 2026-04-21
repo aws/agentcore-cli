@@ -238,6 +238,7 @@ export class MemoryPrimitive extends BasePrimitive<AddMemoryOptions, RemovableMe
               const { clear, unmount } = render(
                 React.createElement(AddFlow, {
                   isInteractive: false,
+                  initialResource: 'memory',
                   onExit: () => {
                     clear();
                     unmount();

@@ -347,6 +347,7 @@ export class CredentialPrimitive extends BasePrimitive<AddCredentialOptions, Rem
               const { clear, unmount } = render(
                 React.createElement(AddFlow, {
                   isInteractive: false,
+                  initialResource: 'credential',
                   onExit: () => {
                     clear();
                     unmount();

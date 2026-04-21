@@ -324,6 +324,7 @@ export class EvaluatorPrimitive extends BasePrimitive<AddEvaluatorOptions, Remov
               const { clear, unmount } = render(
                 React.createElement(AddFlow, {
                   isInteractive: false,
+                  initialResource: 'evaluator',
                   onExit: () => {
                     clear();
                     unmount();

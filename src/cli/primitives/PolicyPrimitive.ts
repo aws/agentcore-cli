@@ -351,6 +351,7 @@ export class PolicyPrimitive extends BasePrimitive<AddPolicyOptions, RemovablePo
               const { clear, unmount } = render(
                 React.createElement(AddFlow, {
                   isInteractive: false,
+                  initialResource: 'policy',
                   onExit: () => {
                     clear();
                     unmount();
