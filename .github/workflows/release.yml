@@ -33,13 +33,28 @@ jobs:
     outputs:
       version: ${{ steps.bump.outputs.version }}
       branch: ${{ steps.bump.outputs.branch }}
+      dist_tag: ${{ steps.release-meta.outputs.dist_tag }}
+      base_branch: ${{ steps.release-meta.outputs.base_branch }}
 
     steps:
-      - name: Validate running from main
+      - name: Determine release metadata
+        id: release-meta
         run: |
-          if [[ "${{ github.ref }}" != "refs/heads/main" ]]; then
-            echo "⚠️  WARNING: Running from ${{ github.ref }}"
-            echo "⚠️  Production releases should only run from main branch"
+          BRANCH_NAME="${{ github.ref_name }}"
+          VERSION_BUMP="${{ github.event.inputs.bump_type }}"
+
+          if [[ "$BRANCH_NAME" == "main" ]]; then
+            echo "dist_tag=latest" >> $GITHUB_OUTPUT
+            echo "base_branch=main" >> $GITHUB_OUTPUT
+          else
+            if [[ "$VERSION_BUMP" != "prerelease" ]]; then
+              echo "❌ ERROR: Only the prerelease bump type is allowed from non-main branches."
+              echo "Current branch: $BRANCH_NAME, bump type: $VERSION_BUMP"
+              exit 1
+            fi
+            echo "dist_tag=preview" >> $GITHUB_OUTPUT
+            echo "base_branch=$BRANCH_NAME" >> $GITHUB_OUTPUT
+            echo "ℹ️  Publishing preview release from branch: $BRANCH_NAME"
           fi
 
       - name: Checkout code
@@ -149,45 +164,38 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           NEW_VERSION: ${{ steps.bump.outputs.version }}
-          GITHUB_REF: ${{ github.ref }}
+          BASE_BRANCH: ${{ steps.release-meta.outputs.base_branch }}
+          DIST_TAG: ${{ steps.release-meta.outputs.dist_tag }}
           GITHUB_ACTOR: ${{ github.actor }}
         run: |
           BRANCH_NAME="release/v$NEW_VERSION"
 
-          WARNING_TEXT=""
-          if [ "$GITHUB_REF" != "refs/heads/main" ]; then
-            WARNING_TEXT="**WARNING**: Not running from main branch!"
-          else
-            WARNING_TEXT="✅ Running from main branch"
+          RELEASE_TYPE="Production"
+          if [ "$DIST_TAG" != "latest" ]; then
+            RELEASE_TYPE="Preview (npm tag: $DIST_TAG)"
           fi
 
           gh pr create \
-            --base main \
+            --base "$BASE_BRANCH" \
             --head "$BRANCH_NAME" \
             --title "Release v$NEW_VERSION" \
-            --body "## 🚀 Release v$NEW_VERSION
+            --body "## Release v$NEW_VERSION
 
           This PR was automatically created by the release workflow.
 
-          ### ⚠️  Pre-merge Checklist
+          **Release type:** $RELEASE_TYPE
+          **Base branch:** $BASE_BRANCH
+
+          ### Pre-merge Checklist
           - [ ] Review CHANGELOG.md - ensure it has meaningful release notes
           - [ ] Verify version numbers are correct in all files
           - [ ] All CI checks are passing
 
-          ### 📝 How to improve changelog
-          If the auto-generated changelog isn't good enough:
-          1. Edit CHANGELOG.md in this PR
-          2. Commit the changes
-          3. Then approve and merge
-
-          ### 🔄 Release Process
+          ### Release Process
           After merging this PR:
           1. Package will be built and tested
           2. **Manual approval required** before publishing to npm
           3. GitHub release and tag created after publication
-
-          ### 🚨 Running from: $GITHUB_REF
-          $WARNING_TEXT
 
           ---
           *Triggered by @$GITHUB_ACTOR*"
@@ -283,7 +291,6 @@ jobs:
     name: Publish to npm
     needs: [prepare-release, release-approval]
     runs-on: ubuntu-latest
-    if: github.ref == 'refs/heads/main'
     environment:
       name: npm-publish
       url: https://www.npmjs.com/package/@aws/agentcore
@@ -292,14 +299,15 @@ jobs:
       contents: write # Required to push git tags
 
     steps:
-      - name: Checkout latest main (AFTER PR merge)
+      - name: Checkout base branch (AFTER PR merge)
         uses: actions/checkout@v6
         with:
-          ref: main
+          ref: ${{ needs.prepare-release.outputs.base_branch }}
           fetch-depth: 0
 
       - name: Verify we have the merged code
         run: |
+          echo "Branch: ${{ needs.prepare-release.outputs.base_branch }}"
           echo "Current version in package.json:"
           cat package.json | grep '"version"'
           echo ""
@@ -334,8 +342,9 @@ jobs:
         env:
           VERSION: ${{ steps.version.outputs.version }}
           EXPECTED_VERSION: ${{ needs.prepare-release.outputs.version }}
+          BASE_BRANCH: ${{ needs.prepare-release.outputs.base_branch }}
         run: |
-          echo "Version in main branch: $VERSION"
+          echo "Version in $BASE_BRANCH: $VERSION"
           echo "Expected version from PR: $EXPECTED_VERSION"
 
           if [ "$VERSION" != "$EXPECTED_VERSION" ]; then
@@ -343,15 +352,15 @@ jobs:
             echo "❌ ERROR: Version mismatch!"
             echo ""
             echo "The release PR has NOT been merged yet."
-            echo "Main branch has: $VERSION"
+            echo "$BASE_BRANCH has: $VERSION"
             echo "Release PR has:  $EXPECTED_VERSION"
             echo ""
-            echo "👉 Please MERGE the release PR first, then approve this deployment."
+            echo "Please MERGE the release PR first, then approve this deployment."
             echo ""
             exit 1
           fi
 
-          echo "✅ Version matches - PR was merged correctly"
+          echo "Version matches - PR was merged correctly"
 
       - name: Install dependencies
         run: npm ci
@@ -360,10 +369,13 @@ jobs:
         run: npm run build
 
       - name: Publish to npm (using OIDC trusted publishing)
+        env:
+          DIST_TAG: ${{ needs.prepare-release.outputs.dist_tag }}
         run: |
           echo "Publishing with OIDC trusted publishing..."
           echo "No NPM_TOKEN needed - using GitHub OIDC"
-          npm publish --access public --provenance --tag latest
+          echo "Dist tag: $DIST_TAG"
+          npm publish --access public --provenance --tag "$DIST_TAG"
 
       - name: Create and push tag
         env:
