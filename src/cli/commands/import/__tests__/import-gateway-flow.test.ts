@@ -371,4 +371,85 @@ describe('handleImportGateway', () => {
       expect(progressMessages.some(m => m.includes('CREATING') && m.includes('not READY'))).toBe(true);
     });
   });
+
+  // ── Re-import into existing stack (logical-ID collision) ────────────────
+
+  describe('buildResourcesToImport — excludes already-deployed logical IDs', () => {
+    it('skips deployed targets with the same Name when importing a new gateway', async () => {
+      await handleImportGateway({ arn: GATEWAY_ARN });
+
+      const pipelineInput = mockExecuteCdkImportPipeline.mock.calls[0]![0];
+      const build = pipelineInput.buildResourcesToImport;
+
+      // Deployed template already contains a gateway + target (from a prior import)
+      // whose target Name collides with the one being newly imported.
+      const deployedTemplate = {
+        Resources: {
+          OldGatewayLogicalId: {
+            Type: 'AWS::BedrockAgentCore::Gateway',
+            Properties: { Name: `TestProject-${GATEWAY_NAME}` },
+          },
+          OldTargetLogicalId: {
+            Type: 'AWS::BedrockAgentCore::GatewayTarget',
+            Properties: { Name: 'target1' },
+          },
+        },
+      };
+
+      // Synth template contains both old and new resources (same names).
+      const synthTemplate = {
+        Resources: {
+          OldGatewayLogicalId: {
+            Type: 'AWS::BedrockAgentCore::Gateway',
+            Properties: { Name: `TestProject-${GATEWAY_NAME}` },
+          },
+          OldTargetLogicalId: {
+            Type: 'AWS::BedrockAgentCore::GatewayTarget',
+            Properties: { Name: 'target1' },
+          },
+          NewGatewayLogicalId: {
+            Type: 'AWS::BedrockAgentCore::Gateway',
+            Properties: { Name: `TestProject-${GATEWAY_NAME}` },
+          },
+          NewTargetLogicalId: {
+            Type: 'AWS::BedrockAgentCore::GatewayTarget',
+            Properties: { Name: 'target1' },
+          },
+        },
+      };
+
+      const resources = build(synthTemplate, deployedTemplate);
+
+      const logicalIds = resources.map((r: { logicalResourceId: string }) => r.logicalResourceId);
+      expect(logicalIds).toContain('NewGatewayLogicalId');
+      expect(logicalIds).toContain('NewTargetLogicalId');
+      expect(logicalIds).not.toContain('OldGatewayLogicalId');
+      expect(logicalIds).not.toContain('OldTargetLogicalId');
+    });
+
+    it('first-ever import (empty deployed template) still resolves resources', async () => {
+      await handleImportGateway({ arn: GATEWAY_ARN });
+
+      const pipelineInput = mockExecuteCdkImportPipeline.mock.calls[0]![0];
+      const build = pipelineInput.buildResourcesToImport;
+
+      const deployedTemplate = { Resources: {} };
+      const synthTemplate = {
+        Resources: {
+          GatewayLogicalId: {
+            Type: 'AWS::BedrockAgentCore::Gateway',
+            Properties: { Name: `TestProject-${GATEWAY_NAME}` },
+          },
+          TargetLogicalId: {
+            Type: 'AWS::BedrockAgentCore::GatewayTarget',
+            Properties: { Name: 'target1' },
+          },
+        },
+      };
+
+      const resources = build(synthTemplate, deployedTemplate);
+      const logicalIds = resources.map((r: { logicalResourceId: string }) => r.logicalResourceId);
+      expect(logicalIds).toEqual(['GatewayLogicalId', 'TargetLogicalId']);
+    });
+  });
 });

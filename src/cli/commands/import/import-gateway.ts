@@ -494,8 +494,12 @@ export async function handleImportGateway(options: ImportResourceOptions): Promi
       configIO: ctx.configIO,
       targetName,
       onProgress,
-      buildResourcesToImport: synthTemplate => {
+      buildResourcesToImport: (synthTemplate, deployedTemplate) => {
         const resourcesToImport: ResourceToImport[] = [];
+
+        // Exclude logical IDs already managed by the stack so we never re-import
+        // a previously-imported gateway or target with a colliding Name.
+        const deployedIds = new Set(Object.keys(deployedTemplate.Resources));
 
         // Find gateway logical ID
         const gatewayResourceName = `${ctx.projectName}-${localName}`;
@@ -503,18 +507,22 @@ export async function handleImportGateway(options: ImportResourceOptions): Promi
           synthTemplate,
           'AWS::BedrockAgentCore::Gateway',
           'Name',
-          gatewayResourceName
+          gatewayResourceName,
+          { excludeLogicalIds: deployedIds }
         );
         gatewayLogicalId ??= findLogicalIdByProperty(
           synthTemplate,
           'AWS::BedrockAgentCore::Gateway',
           'Name',
-          localName
+          localName,
+          { excludeLogicalIds: deployedIds }
         );
         if (!gatewayLogicalId) {
-          const allGatewayIds = findLogicalIdsByType(synthTemplate, 'AWS::BedrockAgentCore::Gateway');
-          if (allGatewayIds.length === 1) {
-            gatewayLogicalId = allGatewayIds[0];
+          const candidateGatewayIds = findLogicalIdsByType(synthTemplate, 'AWS::BedrockAgentCore::Gateway').filter(
+            id => !deployedIds.has(id)
+          );
+          if (candidateGatewayIds.length === 1) {
+            gatewayLogicalId = candidateGatewayIds[0];
           }
         }
 
@@ -528,8 +536,10 @@ export async function handleImportGateway(options: ImportResourceOptions): Promi
           resourceIdentifier: { GatewayIdentifier: gatewayId },
         });
 
-        // Find target logical IDs
-        const allTargetLogicalIds = findLogicalIdsByType(synthTemplate, 'AWS::BedrockAgentCore::GatewayTarget');
+        // Find target logical IDs (excluding those already in the deployed stack)
+        const candidateTargetIds = findLogicalIdsByType(synthTemplate, 'AWS::BedrockAgentCore::GatewayTarget').filter(
+          id => !deployedIds.has(id)
+        );
 
         for (const [tName, tId] of targetIdMap) {
           // Try name-based matching first
@@ -537,12 +547,13 @@ export async function handleImportGateway(options: ImportResourceOptions): Promi
             synthTemplate,
             'AWS::BedrockAgentCore::GatewayTarget',
             'Name',
-            tName
+            tName,
+            { excludeLogicalIds: deployedIds }
           );
 
           // Fall back: if exactly one unmatched target logical ID remains, use it
-          if (!targetLogicalId && allTargetLogicalIds.length === 1 && targetIdMap.size === 1) {
-            targetLogicalId = allTargetLogicalIds[0];
+          if (!targetLogicalId && candidateTargetIds.length === 1 && targetIdMap.size === 1) {
+            targetLogicalId = candidateTargetIds[0];
           }
 
           if (targetLogicalId) {

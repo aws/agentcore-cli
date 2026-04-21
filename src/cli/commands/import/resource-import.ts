@@ -158,13 +158,16 @@ export async function executeResourceImport<TDetail, TSummary>(
       configIO: ctx.configIO,
       targetName,
       onProgress,
-      buildResourcesToImport: synthTemplate => {
+      buildResourcesToImport: (synthTemplate, deployedTemplate) => {
+        const deployedIds = new Set(Object.keys(deployedTemplate.Resources));
+
         // Try matching by name property (plain name first, then prefixed)
         let logicalId = findLogicalIdByProperty(
           synthTemplate,
           descriptor.cfnResourceType,
           descriptor.cfnNameProperty,
-          localName
+          localName,
+          { excludeLogicalIds: deployedIds }
         );
 
         if (!logicalId) {
@@ -173,13 +176,16 @@ export async function executeResourceImport<TDetail, TSummary>(
             synthTemplate,
             descriptor.cfnResourceType,
             descriptor.cfnNameProperty,
-            prefixedName
+            prefixedName,
+            { excludeLogicalIds: deployedIds }
           );
         }
 
         // Fall back to single resource by type
         if (!logicalId) {
-          const allLogicalIds = findLogicalIdsByType(synthTemplate, descriptor.cfnResourceType);
+          const allLogicalIds = findLogicalIdsByType(synthTemplate, descriptor.cfnResourceType).filter(
+            id => !deployedIds.has(id)
+          );
           if (allLogicalIds.length === 1) {
             logicalId = allLogicalIds[0];
           }

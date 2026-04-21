@@ -21,7 +21,7 @@ export interface CdkImportPipelineInput {
   onProgress: (message: string) => void;
 
   /** Caller builds the import resource list from the synthesized template. */
-  buildResourcesToImport: (synthTemplate: CfnTemplate) => ResourceToImport[];
+  buildResourcesToImport: (synthTemplate: CfnTemplate, deployedTemplate: CfnTemplate) => ResourceToImport[];
 
   /** Entries to write into deployed-state.json after a successful import. */
   deployedStateEntries: ImportedResource[];
@@ -114,7 +114,7 @@ export async function executeCdkImportPipeline(input: CdkImportPipelineInput): P
   }
 
   // 7. Build resources to import (caller-specific logic)
-  const resourcesToImport = buildResourcesToImport(synthTemplate);
+  const resourcesToImport = buildResourcesToImport(synthTemplate, deployedTemplate);
 
   if (resourcesToImport.length === 0) {
     return { success: true, noResources: true };
