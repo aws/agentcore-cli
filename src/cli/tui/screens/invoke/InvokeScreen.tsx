@@ -1,5 +1,6 @@
 import { buildTraceConsoleUrl } from '../../../operations/traces';
 import { GradientText, LogLink, Panel, Screen, SelectList, TextInput } from '../../components';
+import { setExitMessage } from '../../exit-message';
 import { useInvokeFlow } from './useInvokeFlow';
 import { Box, Text, useInput, useStdout } from 'ink';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
@@ -144,6 +145,14 @@ export function InvokeScreen({
   const { stdout } = useStdout();
   const justCancelledRef = useRef(false);
   const mcpFetchTriggeredRef = useRef(false);
+
+  useEffect(() => {
+    if (sessionId) {
+      const cyan = '\x1b[36m';
+      const reset = '\x1b[0m';
+      setExitMessage(`To resume this session, run: ${cyan}agentcore invoke --session-id ${sessionId}${reset}`);
+    }
+  }, [sessionId]);
 
   // Compute auth type early so hooks can reference it
   const currentAgent = config?.runtimes[selectedAgent];
@@ -398,7 +407,7 @@ export function InvokeScreen({
       {mode !== 'select-agent' && (
         <Box>
           <Text>Session: </Text>
-          <Text color="magenta">{sessionId?.slice(0, 8) ?? 'none'}</Text>
+          <Text color="magenta">{sessionId ?? 'none'}</Text>
         </Box>
       )}
       {mode !== 'select-agent' && (
