@@ -1,5 +1,12 @@
 export { detectAwsContext, type AwsContext } from './aws-context';
-export { detectAccount, getCredentialProvider } from './account';
+export {
+  AccountMismatchError,
+  AwsCredentialsError,
+  detectAccount,
+  getCredentialProvider,
+  validateAccountMatch,
+  validateAwsCredentials,
+} from './account';
 export { detectRegion, type RegionDetectionResult } from './region';
 export {
   invokeBedrockSync,

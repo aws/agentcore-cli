@@ -161,10 +161,17 @@ export function isChangesetInProgressError(err: unknown): boolean {
 
 /**
  * Checks if an error is due to AWS account mismatch.
+ * Uses property checking for type safety since the error may come from different contexts.
  */
 export function isAccountMismatchError(err: unknown): boolean {
   if (!err || typeof err !== 'object') {
     return false;
   }
-  return (err as { name?: string }).name === 'AccountMismatchError';
+  // Check for the specific properties unique to AccountMismatchError
+  const errObj = err as { name?: string; credentialsAccount?: string; targetAccount?: string };
+  return (
+    errObj.name === 'AccountMismatchError' &&
+    typeof errObj.credentialsAccount === 'string' &&
+    typeof errObj.targetAccount === 'string'
+  );
 }

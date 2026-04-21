@@ -1,6 +1,6 @@
 import { APP_DIR, ConfigIO, findConfigRoot } from '../../../lib';
 import type { AwsDeploymentTarget } from '../../../schema';
-import { detectAccount, validateAwsCredentials } from '../../aws/account';
+import { validateAccountMatch } from '../../aws/account';
 import { ExecLogger } from '../../logging';
 import { setupPythonProject } from '../../operations/python/setup';
 import { getTemplatePath } from '../../templates/templateRoot';
@@ -183,17 +183,9 @@ export async function resolveImportTarget(options: ResolveTargetOptions): Promis
 
   onProgress?.(`Using target: ${target.name} (${target.region}, ${target.account})`);
 
-  // Validate AWS credentials
+  // Validate AWS credentials and account match
   onProgress?.('Validating AWS credentials...');
-  await validateAwsCredentials();
-
-  // Validate credentials match the target account
-  const callerAccount = await detectAccount();
-  if (callerAccount && target.account && callerAccount !== target.account) {
-    throw new Error(
-      `Your AWS credentials are for account ${callerAccount}, but the target "${target.name}" is configured for account ${target.account}.\nEnsure your credentials match the deployment target.`
-    );
-  }
+  await validateAccountMatch(target.account, target.name);
 
   return target;
 }

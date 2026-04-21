@@ -30,11 +30,14 @@ export class AwsCredentialsError extends Error {
 
 /**
  * Error thrown when AWS credentials are for a different account than the target.
+ * Supports both a short message (for interactive mode) and detailed message (for CLI mode).
  */
 export class AccountMismatchError extends Error {
   readonly credentialsAccount: string;
   readonly targetAccount: string;
   readonly targetName: string;
+  /** Short message suitable for interactive mode where UI handles recovery */
+  readonly shortMessage: string;
 
   constructor(credentialsAccount: string, targetAccount: string, targetName: string) {
     super(
@@ -48,6 +51,7 @@ export class AccountMismatchError extends Error {
     this.credentialsAccount = credentialsAccount;
     this.targetAccount = targetAccount;
     this.targetName = targetName;
+    this.shortMessage = `AWS credentials (${credentialsAccount}) don't match target account (${targetAccount}).`;
   }
 }
 
@@ -97,40 +101,41 @@ export async function detectAccount(): Promise<string | null> {
 }
 
 /**
+ * Create an AwsCredentialsError for when credentials cannot be detected.
+ * This handles the case where detectAccount returns null (unknown error during detection)
+ * or when credentials are simply not configured.
+ */
+async function createNoCredentialsError(): Promise<AwsCredentialsError> {
+  const guidance = await getAwsLoginGuidance();
+  return new AwsCredentialsError(
+    'AWS credentials not available.',
+    'AWS credentials not available (not configured or detection failed).\n\n' +
+      'To fix this:\n' +
+      `  1. ${guidance}\n` +
+      '  2. Or set AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY environment variables'
+  );
+}
+
+/**
  * Validate that AWS credentials are configured and working.
  * Throws AwsCredentialsError with a helpful message if not.
  */
 export async function validateAwsCredentials(): Promise<void> {
   const account = await detectAccount();
   if (!account) {
-    const guidance = await getAwsLoginGuidance();
-    throw new AwsCredentialsError(
-      'No AWS credentials configured.',
-      'No AWS credentials configured.\n\n' +
-        'To fix this:\n' +
-        `  1. ${guidance}\n` +
-        '  2. Or set AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY environment variables'
-    );
+    throw await createNoCredentialsError();
   }
 }
 
 /**
  * Validate that the current AWS credentials match the target account.
  * Throws AccountMismatchError if there's a mismatch.
- * Throws AwsCredentialsError if no credentials are configured.
+ * Throws AwsCredentialsError if no credentials are configured or detection fails.
  */
 export async function validateAccountMatch(targetAccount: string, targetName: string): Promise<void> {
   const credentialsAccount = await detectAccount();
   if (!credentialsAccount) {
-    // No credentials - throw AwsCredentialsError
-    const guidance = await getAwsLoginGuidance();
-    throw new AwsCredentialsError(
-      'No AWS credentials configured.',
-      'No AWS credentials configured.\n\n' +
-        'To fix this:\n' +
-        `  1. ${guidance}\n` +
-        '  2. Or set AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY environment variables'
-    );
+    throw await createNoCredentialsError();
   }
 
   if (credentialsAccount !== targetAccount) {

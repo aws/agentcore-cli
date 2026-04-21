@@ -113,9 +113,13 @@ export async function validateProject(): Promise<PreflightContext> {
   // Validate AWS credentials and account match before proceeding with build/synth.
   // Skip for teardown deploys — callers validate after teardown confirmation.
   // This is the key fix for issue #761 - fail fast if credentials are for wrong account.
+  // Note: We validate against the first target only since deploys target one account at a time.
+  // Multi-target deployments require separate deploy commands per target.
   if (!isTeardownDeploy && awsTargets.length > 0) {
-    const target = awsTargets[0]!;
-    await validateAccountMatch(target.account, target.name);
+    const target = awsTargets[0];
+    if (target) {
+      await validateAccountMatch(target.account, target.name);
+    }
   } else if (!isTeardownDeploy) {
     // No targets configured - just validate credentials exist
     await validateAwsCredentials();

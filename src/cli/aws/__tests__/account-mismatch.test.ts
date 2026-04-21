@@ -49,6 +49,13 @@ describe('AccountMismatchError', () => {
     expect(err.message).toContain('Switch to credentials');
     expect(err.message).toContain('update aws-targets.json');
   });
+
+  it('has shortMessage property with account IDs', () => {
+    const err = new AccountMismatchError('111111111111', '222222222222', 'prod');
+    expect(err.shortMessage).toContain('111111111111');
+    expect(err.shortMessage).toContain('222222222222');
+    expect(err.shortMessage).toBe("AWS credentials (111111111111) don't match target account (222222222222).");
+  });
 });
 
 describe('validateAccountMatch', () => {
@@ -80,11 +87,12 @@ describe('validateAccountMatch', () => {
     }
   });
 
-  it('throws AwsCredentialsError when no credentials (detectAccount returns null)', async () => {
-    // When detectAccount returns null (unknown error), validateAccountMatch should throw AwsCredentialsError
+  it('throws AwsCredentialsError when detectAccount encounters unknown error and returns null', async () => {
+    // When detectAccount encounters an unknown error (not a recognized credential error code),
+    // it returns null. validateAccountMatch should then throw AwsCredentialsError.
     mockSend.mockRejectedValue(new Error('Unknown error'));
     await expect(validateAccountMatch('123456789012', 'default')).rejects.toThrow(AwsCredentialsError);
-    await expect(validateAccountMatch('123456789012', 'default')).rejects.toThrow('No AWS credentials configured');
+    await expect(validateAccountMatch('123456789012', 'default')).rejects.toThrow('AWS credentials not available');
   });
 
   it('propagates AwsCredentialsError from detectAccount for expired tokens', async () => {

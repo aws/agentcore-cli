@@ -119,6 +119,6 @@ describe('validateAwsCredentials', () => {
     mockSend.mockRejectedValue(new Error('something'));
 
     await expect(validateAwsCredentials()).rejects.toThrow(AwsCredentialsError);
-    await expect(validateAwsCredentials()).rejects.toThrow('No AWS credentials configured');
+    await expect(validateAwsCredentials()).rejects.toThrow('AWS credentials not available');
   });
 });

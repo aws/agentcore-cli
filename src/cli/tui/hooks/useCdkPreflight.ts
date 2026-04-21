@@ -326,9 +326,7 @@ export function useCdkPreflight(options: PreflightOptions): PreflightResult {
             }
             const userMessage =
               isInteractive && (err instanceof AwsCredentialsError || err instanceof AccountMismatchError)
-                ? err instanceof AwsCredentialsError
-                  ? err.shortMessage
-                  : 'AWS credentials are for a different account than the target.'
+                ? err.shortMessage
                 : getErrorMessage(err);
             updateStep(STEP_VALIDATE, { status: 'error', error: userMessage });
             setPhase('error');

@@ -109,6 +109,13 @@ export async function handleDeploy(options: ValidatedDeployOptions): Promise<Dep
     // Validate AWS credentials (deferred for teardown deploys until after confirmation)
     if (context.isTeardownDeploy) {
       startStep('Validate AWS credentials');
+      // Validate target.account is a valid 12-digit AWS account ID
+      if (!target.account || !/^\d{12}$/.test(target.account)) {
+        throw new Error(
+          `Invalid account ID "${target.account}" in target configuration "${target.name}". ` +
+            'Expected a 12-digit AWS account ID.'
+        );
+      }
       await validateAccountMatch(target.account, target.name);
       endStep('success');
     }
