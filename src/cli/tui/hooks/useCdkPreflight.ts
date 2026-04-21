@@ -1,6 +1,11 @@
 import { ConfigIO, SecureCredentials } from '../../../lib';
 import type { DeployedState } from '../../../schema';
-import { AwsCredentialsError, validateAwsCredentials } from '../../aws/account';
+import {
+  AccountMismatchError,
+  AwsCredentialsError,
+  validateAccountMatch,
+  validateAwsCredentials,
+} from '../../aws/account';
 import { type CdkToolkitWrapper, type SwitchableIoHost, createSwitchableIoHost } from '../../cdk/toolkit-lib';
 import { getErrorMessage, isExpiredTokenError, isNoCredentialsError } from '../../errors';
 import type { ExecLogger } from '../../logging';
@@ -306,8 +311,13 @@ export function useCdkPreflight(options: PreflightOptions): PreflightResult {
 
         // Validate AWS credentials (deferred for teardown deploys until after confirmation)
         if (preflightContext.isTeardownDeploy) {
+          const target = preflightContext.awsTargets[0];
           try {
-            await validateAwsCredentials();
+            if (target) {
+              await validateAccountMatch(target.account, target.name);
+            } else {
+              await validateAwsCredentials();
+            }
           } catch (err) {
             const errorMsg = formatError(err);
             logger.endStep('error', errorMsg);
@@ -315,7 +325,11 @@ export function useCdkPreflight(options: PreflightOptions): PreflightResult {
               setHasCredentialsError(true);
             }
             const userMessage =
-              isInteractive && err instanceof AwsCredentialsError ? err.shortMessage : getErrorMessage(err);
+              isInteractive && (err instanceof AwsCredentialsError || err instanceof AccountMismatchError)
+                ? err instanceof AwsCredentialsError
+                  ? err.shortMessage
+                  : 'AWS credentials are for a different account than the target.'
+                : getErrorMessage(err);
             updateStep(STEP_VALIDATE, { status: 'error', error: userMessage });
             setPhase('error');
             isRunningRef.current = false;

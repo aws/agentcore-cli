@@ -1,6 +1,6 @@
 import { ConfigIO, DOCKERFILE_NAME, getDockerfilePath, requireConfigRoot, resolveCodeLocation } from '../../../lib';
 import type { AgentCoreProjectSpec, AwsDeploymentTarget } from '../../../schema';
-import { validateAwsCredentials } from '../../aws/account';
+import { validateAccountMatch, validateAwsCredentials } from '../../aws/account';
 import { LocalCdkProject } from '../../cdk/local-cdk-project';
 import { CdkToolkitWrapper, createCdkToolkitWrapper, silentIoHost } from '../../cdk/toolkit-lib';
 import { checkBootstrapStatus, checkStacksStatus, formatCdkEnvironment } from '../../cloudformation';
@@ -110,9 +110,14 @@ export async function validateProject(): Promise<PreflightContext> {
   // Validate Container agents have Dockerfiles
   validateContainerAgents(projectSpec, configRoot);
 
-  // Validate AWS credentials before proceeding with build/synth.
+  // Validate AWS credentials and account match before proceeding with build/synth.
   // Skip for teardown deploys — callers validate after teardown confirmation.
-  if (!isTeardownDeploy) {
+  // This is the key fix for issue #761 - fail fast if credentials are for wrong account.
+  if (!isTeardownDeploy && awsTargets.length > 0) {
+    const target = awsTargets[0]!;
+    await validateAccountMatch(target.account, target.name);
+  } else if (!isTeardownDeploy) {
+    // No targets configured - just validate credentials exist
     await validateAwsCredentials();
   }
 

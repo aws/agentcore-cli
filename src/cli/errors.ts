@@ -158,3 +158,13 @@ export function isChangesetInProgressError(err: unknown): boolean {
 
   return false;
 }
+
+/**
+ * Checks if an error is due to AWS account mismatch.
+ */
+export function isAccountMismatchError(err: unknown): boolean {
+  if (!err || typeof err !== 'object') {
+    return false;
+  }
+  return (err as { name?: string }).name === 'AccountMismatchError';
+}

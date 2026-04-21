@@ -29,6 +29,29 @@ export class AwsCredentialsError extends Error {
 }
 
 /**
+ * Error thrown when AWS credentials are for a different account than the target.
+ */
+export class AccountMismatchError extends Error {
+  readonly credentialsAccount: string;
+  readonly targetAccount: string;
+  readonly targetName: string;
+
+  constructor(credentialsAccount: string, targetAccount: string, targetName: string) {
+    super(
+      `AWS credentials are for account ${credentialsAccount}, but target "${targetName}" ` +
+        `is configured for account ${targetAccount}.\n\n` +
+        `To fix this:\n` +
+        `  1. Switch to credentials for account ${targetAccount}\n` +
+        `  2. Or update aws-targets.json to use account ${credentialsAccount}`
+    );
+    this.name = 'AccountMismatchError';
+    this.credentialsAccount = credentialsAccount;
+    this.targetAccount = targetAccount;
+    this.targetName = targetName;
+  }
+}
+
+/**
  * Get AWS account ID using STS GetCallerIdentity with detailed error handling.
  * Throws AwsCredentialsError with helpful messages for common credential issues.
  * Returns null only for unexpected errors (triggers generic "no credentials" message).
@@ -88,5 +111,29 @@ export async function validateAwsCredentials(): Promise<void> {
         `  1. ${guidance}\n` +
         '  2. Or set AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY environment variables'
     );
+  }
+}
+
+/**
+ * Validate that the current AWS credentials match the target account.
+ * Throws AccountMismatchError if there's a mismatch.
+ * Throws AwsCredentialsError if no credentials are configured.
+ */
+export async function validateAccountMatch(targetAccount: string, targetName: string): Promise<void> {
+  const credentialsAccount = await detectAccount();
+  if (!credentialsAccount) {
+    // No credentials - throw AwsCredentialsError
+    const guidance = await getAwsLoginGuidance();
+    throw new AwsCredentialsError(
+      'No AWS credentials configured.',
+      'No AWS credentials configured.\n\n' +
+        'To fix this:\n' +
+        `  1. ${guidance}\n` +
+        '  2. Or set AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY environment variables'
+    );
+  }
+
+  if (credentialsAccount !== targetAccount) {
+    throw new AccountMismatchError(credentialsAccount, targetAccount, targetName);
   }
 }
