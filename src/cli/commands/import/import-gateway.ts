@@ -16,6 +16,7 @@ import {
   listAllGatewayTargets,
   listAllGateways,
 } from '../../aws/agentcore-control';
+import { isAccessDeniedError } from '../../errors';
 import { ANSI, NAME_REGEX } from './constants';
 import { executeCdkImportPipeline } from './import-pipeline';
 import {
@@ -388,7 +389,23 @@ export async function handleImportGateway(options: ImportResourceOptions): Promi
     }
 
     onProgress(`Fetching gateway details for ${gatewayId}...`);
-    const gatewayDetail = await getGatewayDetail({ region: target.region, gatewayId });
+    let gatewayDetail;
+    try {
+      gatewayDetail = await getGatewayDetail({ region: target.region, gatewayId });
+    } catch (err) {
+      if (isAccessDeniedError(err)) {
+        return failResult(
+          logger,
+          `Gateway "${gatewayId}" could not be found in region ${target.region}. ` +
+            `AWS returned AccessDenied, which for this service typically means the gateway does not exist, ` +
+            `the ARN is malformed, or your credentials lack bedrock-agentcore:GetGateway permission. ` +
+            `Verify the ARN with: aws bedrock-agentcore-control list-gateways --region ${target.region}`,
+          'gateway',
+          options.name ?? ''
+        );
+      }
+      throw err;
+    }
 
     if (gatewayDetail.status !== 'READY') {
       onProgress(`Warning: Gateway status is ${gatewayDetail.status}, not READY`);
