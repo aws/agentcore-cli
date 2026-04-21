@@ -139,6 +139,21 @@ export async function resolveImportTarget(options: ResolveTargetOptions): Promis
     );
   }
 
+  // Detect region mismatch between caller's AWS_REGION and the ARN's region up front.
+  // Without this the ARN's region silently wins and the user can import cross-region
+  // by accident, leaving agentcore.json pointed at a region they didn't intend.
+  if (arn) {
+    const arnRegionMatch = /^arn:aws:bedrock-agentcore:([^:]+):/.exec(arn);
+    const arnRegion = arnRegionMatch?.[1];
+    const envRegion = process.env.AWS_REGION ?? process.env.AWS_DEFAULT_REGION;
+    if (arnRegion && envRegion && envRegion !== arnRegion) {
+      throw new Error(
+        `Region mismatch: AWS_REGION is "${envRegion}" but the ARN is in "${arnRegion}". ` +
+          `Either re-run with AWS_REGION=${arnRegion} or pass an ARN from ${envRegion}.`
+      );
+    }
+  }
+
   let targets = await configIO.readAWSDeploymentTargets();
 
   if (targets.length === 0) {
