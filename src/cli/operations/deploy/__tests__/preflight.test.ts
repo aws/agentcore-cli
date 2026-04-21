@@ -1,6 +1,9 @@
 import { formatError, validateProject } from '../preflight.js';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
+// Import the actual AccountMismatchError for use in tests
+const { AccountMismatchError } = await import('../../../aws/account.js');
+
 const { mockReadProjectSpec, mockReadAWSDeploymentTargets, mockReadDeployedState, mockConfigExists } = vi.hoisted(
   () => ({
     mockReadProjectSpec: vi.fn(),
@@ -14,8 +17,9 @@ const { mockValidate } = vi.hoisted(() => ({
   mockValidate: vi.fn(),
 }));
 
-const { mockValidateAwsCredentials } = vi.hoisted(() => ({
+const { mockValidateAwsCredentials, mockValidateAccountMatch } = vi.hoisted(() => ({
   mockValidateAwsCredentials: vi.fn(),
+  mockValidateAccountMatch: vi.fn(),
 }));
 
 const { mockRequireConfigRoot } = vi.hoisted(() => ({
@@ -42,9 +46,14 @@ vi.mock('../../../cdk/local-cdk-project.js', () => ({
   },
 }));
 
-vi.mock('../../../aws/account.js', () => ({
-  validateAwsCredentials: mockValidateAwsCredentials,
-}));
+vi.mock('../../../aws/account.js', async importOriginal => {
+  const actual = await importOriginal<typeof import('../../../aws/account.js')>();
+  return {
+    ...actual,
+    validateAwsCredentials: mockValidateAwsCredentials,
+    validateAccountMatch: mockValidateAccountMatch,
+  };
+});
 
 describe('validateProject', () => {
   afterEach(() => vi.clearAllMocks());
@@ -115,6 +124,79 @@ describe('validateProject', () => {
 
     expect(result.projectSpec.name).toBe('test-project');
     expect(result.isTeardownDeploy).toBe(false);
+  });
+
+  it('throws AccountMismatchError when credentials account does not match target', async () => {
+    mockRequireConfigRoot.mockReturnValue('/project/agentcore');
+    mockValidate.mockReturnValue(undefined);
+    mockReadProjectSpec.mockResolvedValue({
+      name: 'test-project',
+      runtimes: [{ name: 'test-agent' }],
+    });
+    mockReadAWSDeploymentTargets.mockResolvedValue([{ name: 'prod', account: '222222222222', region: 'us-east-1' }]);
+    mockValidateAccountMatch.mockRejectedValue(new AccountMismatchError('111111111111', '222222222222', 'prod'));
+
+    await expect(validateProject()).rejects.toThrow(AccountMismatchError);
+    await expect(validateProject()).rejects.toThrow('111111111111');
+    expect(mockValidateAccountMatch).toHaveBeenCalledWith('222222222222', 'prod');
+  });
+
+  it('calls validateAccountMatch with first target when targets exist', async () => {
+    mockRequireConfigRoot.mockReturnValue('/project/agentcore');
+    mockValidate.mockReturnValue(undefined);
+    mockReadProjectSpec.mockResolvedValue({
+      name: 'test-project',
+      runtimes: [{ name: 'test-agent' }],
+    });
+    mockReadAWSDeploymentTargets.mockResolvedValue([
+      { name: 'prod', account: '123456789012', region: 'us-east-1' },
+      { name: 'staging', account: '987654321098', region: 'us-west-2' },
+    ]);
+    mockValidateAccountMatch.mockResolvedValue(undefined);
+
+    await validateProject();
+
+    // Should validate against first target only
+    expect(mockValidateAccountMatch).toHaveBeenCalledTimes(1);
+    expect(mockValidateAccountMatch).toHaveBeenCalledWith('123456789012', 'prod');
+  });
+
+  it('calls validateAwsCredentials when no targets configured', async () => {
+    mockRequireConfigRoot.mockReturnValue('/project/agentcore');
+    mockValidate.mockReturnValue(undefined);
+    mockReadProjectSpec.mockResolvedValue({
+      name: 'test-project',
+      runtimes: [{ name: 'test-agent' }],
+    });
+    mockReadAWSDeploymentTargets.mockResolvedValue([]);
+    mockValidateAwsCredentials.mockResolvedValue(undefined);
+
+    await validateProject();
+
+    expect(mockValidateAwsCredentials).toHaveBeenCalled();
+    expect(mockValidateAccountMatch).not.toHaveBeenCalled();
+  });
+
+  it('skips credential validation for teardown deploys', async () => {
+    mockRequireConfigRoot.mockReturnValue('/project/agentcore');
+    mockValidate.mockReturnValue(undefined);
+    mockReadProjectSpec.mockResolvedValue({
+      name: 'test-project',
+      runtimes: [], // No agents - triggers teardown check
+    });
+    mockReadAWSDeploymentTargets.mockResolvedValue([{ name: 'prod', account: '123456789012', region: 'us-east-1' }]);
+    // Mock deployed state exists with targets (makes it a teardown deploy)
+    mockReadDeployedState.mockResolvedValue({
+      targets: { prod: { runtimes: [{ runtimeId: 'abc' }] } },
+    });
+
+    const result = await validateProject();
+
+    // Should be a teardown deploy
+    expect(result.isTeardownDeploy).toBe(true);
+    // Should NOT call credential validation (deferred until after confirmation)
+    expect(mockValidateAccountMatch).not.toHaveBeenCalled();
+    expect(mockValidateAwsCredentials).not.toHaveBeenCalled();
   });
 });
 

@@ -288,10 +288,10 @@ export function useCdkPreflight(options: PreflightOptions): PreflightResult {
           if (isNoCredentialsError(err)) {
             setHasCredentialsError(true);
           }
-          // In interactive mode with credentials error, use short message (UI handles recovery)
+          // In interactive mode with credentials/account error, use short message (UI handles recovery)
           // In non-interactive mode, show full message with fix instructions
           let userMessage: string;
-          if (isInteractive && err instanceof AwsCredentialsError) {
+          if (isInteractive && (err instanceof AwsCredentialsError || err instanceof AccountMismatchError)) {
             userMessage = err.shortMessage;
           } else {
             userMessage = getErrorMessage(err);

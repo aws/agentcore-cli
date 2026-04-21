@@ -1,6 +1,8 @@
 import {
   AgentAlreadyExistsError,
   getErrorMessage,
+  isAccessDeniedError,
+  isAccountMismatchError,
   isChangesetInProgressError,
   isExpiredTokenError,
   isNoCredentialsError,
@@ -202,6 +204,91 @@ describe('errors', () => {
       expect(isChangesetInProgressError(null)).toBe(false);
       expect(isChangesetInProgressError(undefined)).toBe(false);
       expect(isChangesetInProgressError({})).toBe(false);
+    });
+  });
+
+  describe('isAccessDeniedError', () => {
+    it('returns true for AccessDeniedException', () => {
+      expect(isAccessDeniedError({ name: 'AccessDeniedException' })).toBe(true);
+    });
+
+    it('returns true for AccessDenied', () => {
+      expect(isAccessDeniedError({ name: 'AccessDenied' })).toBe(true);
+    });
+
+    it('returns false for other error names', () => {
+      expect(isAccessDeniedError({ name: 'ValidationError' })).toBe(false);
+      expect(isAccessDeniedError({ name: 'ExpiredTokenException' })).toBe(false);
+      expect(isAccessDeniedError({ name: 'ResourceNotFoundException' })).toBe(false);
+    });
+
+    it('returns false for null/undefined/non-objects', () => {
+      expect(isAccessDeniedError(null)).toBe(false);
+      expect(isAccessDeniedError(undefined)).toBe(false);
+      expect(isAccessDeniedError('AccessDenied')).toBe(false);
+      expect(isAccessDeniedError(123)).toBe(false);
+      expect(isAccessDeniedError({})).toBe(false);
+    });
+  });
+
+  describe('isAccountMismatchError', () => {
+    it('returns true when error has name and both account properties', () => {
+      const err = {
+        name: 'AccountMismatchError',
+        credentialsAccount: '111111111111',
+        targetAccount: '222222222222',
+      };
+      expect(isAccountMismatchError(err)).toBe(true);
+    });
+
+    it('returns false when missing credentialsAccount property', () => {
+      const err = {
+        name: 'AccountMismatchError',
+        targetAccount: '222222222222',
+      };
+      expect(isAccountMismatchError(err)).toBe(false);
+    });
+
+    it('returns false when missing targetAccount property', () => {
+      const err = {
+        name: 'AccountMismatchError',
+        credentialsAccount: '111111111111',
+      };
+      expect(isAccountMismatchError(err)).toBe(false);
+    });
+
+    it('returns false when name is wrong', () => {
+      const err = {
+        name: 'SomeOtherError',
+        credentialsAccount: '111111111111',
+        targetAccount: '222222222222',
+      };
+      expect(isAccountMismatchError(err)).toBe(false);
+    });
+
+    it('returns false for null/undefined/non-objects', () => {
+      expect(isAccountMismatchError(null)).toBe(false);
+      expect(isAccountMismatchError(undefined)).toBe(false);
+      expect(isAccountMismatchError('AccountMismatchError')).toBe(false);
+      expect(isAccountMismatchError(123)).toBe(false);
+      expect(isAccountMismatchError({})).toBe(false);
+    });
+
+    it('returns false when account properties are not strings', () => {
+      expect(
+        isAccountMismatchError({
+          name: 'AccountMismatchError',
+          credentialsAccount: 111111111111,
+          targetAccount: '222222222222',
+        })
+      ).toBe(false);
+      expect(
+        isAccountMismatchError({
+          name: 'AccountMismatchError',
+          credentialsAccount: '111111111111',
+          targetAccount: null,
+        })
+      ).toBe(false);
     });
   });
 });

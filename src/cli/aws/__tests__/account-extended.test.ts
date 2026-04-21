@@ -84,6 +84,12 @@ describe('detectAccount', () => {
   });
 
   it('throws AwsCredentialsError for AccessDenied', async () => {
+    // Note: AccessDenied during STS:GetCallerIdentity is treated as a credentials error
+    // because it indicates the IAM user/role lacks sts:GetCallerIdentity permission.
+    // This is different from AccessDenied in other contexts (e.g., S3, Lambda) which
+    // indicate authorization failures for specific resources. The isExpiredTokenError
+    // function explicitly excludes AccessDenied because those errors should show the
+    // actual permission issue, not trigger credential refresh.
     mockSend.mockRejectedValue(makeNamedError('Access denied', 'AccessDenied'));
 
     await expect(detectAccount()).rejects.toThrow(AwsCredentialsError);
