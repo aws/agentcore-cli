@@ -147,12 +147,12 @@ export function InvokeScreen({
   const mcpFetchTriggeredRef = useRef(false);
 
   useEffect(() => {
-    if (sessionId) {
+    if (sessionId && messages.length > 0) {
       const cyan = '\x1b[36m';
       const reset = '\x1b[0m';
       setExitMessage(`To resume this session, run: ${cyan}agentcore invoke --session-id ${sessionId}${reset}`);
     }
-  }, [sessionId]);
+  }, [sessionId, messages.length]);
 
   // Compute auth type early so hooks can reference it
   const currentAgent = config?.runtimes[selectedAgent];
