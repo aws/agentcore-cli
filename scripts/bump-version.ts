@@ -7,17 +7,12 @@
  *   npx tsx scripts/bump-version.ts <bump_type> [options]
  *
  * Arguments:
- *   bump_type: major | minor | patch | prerelease | preview | preview-major
+ *   bump_type: major | minor | patch | prerelease
  *
  * Options:
  *   --changelog <text>     Custom changelog entry
  *   --prerelease-tag <tag> Prerelease identifier (default: beta)
  *   --dry-run              Show what would be done without making changes
- *
- * Preview bumps (internal format):
- *   - 0.3.0 -> 0.3.0-preview.1.0
- *   - 0.3.0-preview.1.0 -> 0.3.0-preview.1.1 (preview)
- *   - 0.3.0-preview.1.0 -> 0.3.0-preview.2.0 (preview-major)
  */
 import { execSync } from 'child_process';
 import { existsSync, readFileSync, writeFileSync } from 'fs';
@@ -26,7 +21,7 @@ import { existsSync, readFileSync, writeFileSync } from 'fs';
 // Types
 // ===========================
 
-type BumpType = 'major' | 'minor' | 'patch' | 'prerelease' | 'preview' | 'preview-major';
+type BumpType = 'major' | 'minor' | 'patch' | 'prerelease';
 
 interface ParsedVersion {
   major: number;
@@ -34,9 +29,6 @@ interface ParsedVersion {
   patch: number;
   prerelease?: string;
   prereleaseNum?: number;
-  // For preview format: X.Y.Z-previewN.M
-  previewMajor?: number;
-  previewMinor?: number;
 }
 
 interface PackageJson {
@@ -58,18 +50,6 @@ interface PackageLockJson {
 // ===========================
 
 function parseVersion(version: string): ParsedVersion {
-  // First try to match preview format: X.Y.Z-preview.N.M (e.g., 0.3.0-preview.1.0)
-  const previewMatch = /^(\d+)\.(\d+)\.(\d+)-preview\.(\d+)\.(\d+)$/.exec(version);
-  if (previewMatch) {
-    return {
-      major: parseInt(previewMatch[1]!, 10),
-      minor: parseInt(previewMatch[2]!, 10),
-      patch: parseInt(previewMatch[3]!, 10),
-      previewMajor: parseInt(previewMatch[4]!, 10),
-      previewMinor: parseInt(previewMatch[5]!, 10),
-    };
-  }
-
   // Match standard versions like: 1.2.3, 1.2.3-beta.1, 1.2.3-rc.0
   const match = /^(\d+)\.(\d+)\.(\d+)(?:-([a-zA-Z]+)\.(\d+))?$/.exec(version);
 
@@ -88,11 +68,6 @@ function parseVersion(version: string): ParsedVersion {
 
 function formatVersion(parsed: ParsedVersion): string {
   const base = `${parsed.major}.${parsed.minor}.${parsed.patch}`;
-
-  // Handle preview format: X.Y.Z-preview.N.M
-  if (parsed.previewMajor !== undefined && parsed.previewMinor !== undefined) {
-    return `${base}-preview.${parsed.previewMajor}.${parsed.previewMinor}`;
-  }
 
   // Handle standard prerelease format: X.Y.Z-tag.N
   if (parsed.prerelease !== undefined && parsed.prereleaseNum !== undefined) {
@@ -121,8 +96,8 @@ function bumpVersion(current: string, bumpType: BumpType, prereleaseTag = 'beta'
       });
 
     case 'patch':
-      // If currently a prerelease or preview, just remove the suffix
-      if (parsed.prerelease || parsed.previewMajor !== undefined) {
+      // If currently a prerelease, just remove the suffix
+      if (parsed.prerelease) {
         return formatVersion({
           major: parsed.major,
           minor: parsed.minor,
@@ -153,47 +128,6 @@ function bumpVersion(current: string, bumpType: BumpType, prereleaseTag = 'beta'
         patch: parsed.prerelease ? parsed.patch : parsed.patch + 1,
         prerelease: prereleaseTag,
         prereleaseNum: 0,
-      });
-
-    case 'preview':
-      // Handle preview format: X.Y.Z-previewN.M
-      // If already a preview, increment the minor preview number
-      if (parsed.previewMajor !== undefined && parsed.previewMinor !== undefined) {
-        return formatVersion({
-          major: parsed.major,
-          minor: parsed.minor,
-          patch: parsed.patch,
-          previewMajor: parsed.previewMajor,
-          previewMinor: parsed.previewMinor + 1,
-        });
-      }
-      // Otherwise, start at preview.1.0
-      return formatVersion({
-        major: parsed.major,
-        minor: parsed.minor,
-        patch: parsed.patch,
-        previewMajor: 1,
-        previewMinor: 0,
-      });
-
-    case 'preview-major':
-      // Increment the major preview number and reset minor to 0
-      if (parsed.previewMajor !== undefined && parsed.previewMinor !== undefined) {
-        return formatVersion({
-          major: parsed.major,
-          minor: parsed.minor,
-          patch: parsed.patch,
-          previewMajor: parsed.previewMajor + 1,
-          previewMinor: 0,
-        });
-      }
-      // Otherwise, start at preview.1.0
-      return formatVersion({
-        major: parsed.major,
-        minor: parsed.minor,
-        patch: parsed.patch,
-        previewMajor: 1,
-        previewMinor: 0,
       });
 
     default: {
@@ -392,27 +326,20 @@ function parseArgs(): { bumpType: BumpType; changelog?: string; prereleaseTag: s
 Usage: npx tsx scripts/bump-version.ts <bump_type> [options]
 
 Arguments:
-  bump_type: major | minor | patch | prerelease | preview | preview-major
+  bump_type: major | minor | patch | prerelease
 
 Options:
   --changelog <text>        Custom changelog entry
   --prerelease-tag <tag>    Prerelease identifier (default: beta)
   --dry-run                 Show what would be done without making changes
   --help, -h                Show this help message
-
-Preview bumps:
-  - 0.3.0 -> 0.3.0-preview.1.0
-  - 0.3.0-preview.1.0 -> 0.3.0-preview.1.1  (preview)
-  - 0.3.0-preview.1.0 -> 0.3.0-preview.2.0  (preview-major)
 `);
     process.exit(0);
   }
 
   const bumpType = args[0] as BumpType;
-  if (!['major', 'minor', 'patch', 'prerelease', 'preview', 'preview-major'].includes(bumpType)) {
-    console.error(
-      `Error: Invalid bump type '${bumpType}'. Must be one of: major, minor, patch, prerelease, preview, preview-major`
-    );
+  if (!['major', 'minor', 'patch', 'prerelease'].includes(bumpType)) {
+    console.error(`Error: Invalid bump type '${bumpType}'. Must be one of: major, minor, patch, prerelease`);
     process.exit(1);
   }
 
