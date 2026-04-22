@@ -280,6 +280,27 @@
               }
             },
             "additionalProperties": false
+          },
+          "filesystemConfigurations": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "sessionStorage": {
+                  "type": "object",
+                  "properties": {
+                    "mountPath": {
+                      "type": "string",
+                      "pattern": "^\\/mnt\\/[^/]+$"
+                    }
+                  },
+                  "required": ["mountPath"],
+                  "additionalProperties": false
+                }
+              },
+              "required": ["sessionStorage"],
+              "additionalProperties": false
+            }
           }
         },
         "required": ["name", "build", "entrypoint", "codeLocation"],
