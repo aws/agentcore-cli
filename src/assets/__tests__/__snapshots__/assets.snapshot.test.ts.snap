@@ -110,6 +110,8 @@ async function main() {
     memoryName?: string;
     containerUri?: string;
     hasDockerfile?: boolean;
+    tools?: { type: string; name: string }[];
+    apiKeyArn?: string;
   }[] = [];
   for (const entry of specAny.harnesses ?? []) {
     const harnessPath = path.resolve(projectRoot, entry.path, 'harness.json');
@@ -121,6 +123,8 @@ async function main() {
         memoryName: harnessSpec.memory?.name,
         containerUri: harnessSpec.containerUri,
         hasDockerfile: !!harnessSpec.dockerfile,
+        tools: harnessSpec.tools,
+        apiKeyArn: harnessSpec.model?.apiKeyArn,
       });
     } catch (err) {
       throw new Error(
@@ -312,7 +316,15 @@ export interface AgentCoreStackProps extends StackProps {
   /**
    * Harness role configurations. Each entry creates an IAM execution role for a harness.
    */
-  harnesses?: { name: string; executionRoleArn?: string; memoryName?: string }[];
+  harnesses?: {
+    name: string;
+    executionRoleArn?: string;
+    memoryName?: string;
+    containerUri?: string;
+    hasDockerfile?: boolean;
+    tools?: { type: string; name: string }[];
+    apiKeyArn?: string;
+  }[];
 }
 
 /**
@@ -485,6 +497,7 @@ exports[`Assets Directory Snapshots > File listing > should match the expected f
   "evaluators/python-lambda/execution-role-policy.json",
   "evaluators/python-lambda/lambda_function.py",
   "evaluators/python-lambda/pyproject.toml",
+  "harness/invoke.py.template",
   "mcp/python-lambda/README.md",
   "mcp/python-lambda/handler.py",
   "mcp/python-lambda/pyproject.toml",

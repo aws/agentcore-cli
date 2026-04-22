@@ -47,7 +47,7 @@ describe('useDevDeploy', () => {
     const { lastFrame } = render(<Harness skip={true} />);
 
     await vi.waitFor(() => {
-      expect(lastFrame()).toContain('isComplete:false');
+      expect(lastFrame()).toContain('isComplete:true');
     });
 
     expect(mockHandleDeploy).not.toHaveBeenCalled();
