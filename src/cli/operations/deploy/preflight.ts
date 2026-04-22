@@ -6,7 +6,7 @@ import { CdkToolkitWrapper, createCdkToolkitWrapper, silentIoHost } from '../../
 import { checkBootstrapStatus, checkStacksStatus, formatCdkEnvironment } from '../../cloudformation';
 import { cleanupStaleLockFiles } from '../../tui/utils';
 import type { IIoHost } from '@aws-cdk/toolkit-lib';
-import { existsSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import * as path from 'node:path';
 
 export interface PreflightContext {
@@ -114,6 +114,9 @@ export async function validateProject(): Promise<PreflightContext> {
   // Validate Container agents have Dockerfiles
   validateContainerAgents(projectSpec, configRoot);
 
+  // Validate harnesses with dockerfile field have actual Dockerfiles
+  validateHarnessDockerfiles(projectSpec, configRoot);
+
   // Validate AWS credentials before proceeding with build/synth.
   // Skip for teardown deploys — callers validate after teardown confirmation.
   if (!isTeardownDeploy) {
@@ -180,6 +183,41 @@ export function validateContainerAgents(projectSpec: AgentCoreProjectSpec, confi
       }
     }
   }
+  if (errors.length > 0) {
+    throw new Error(errors.join('\n'));
+  }
+}
+
+/**
+ * Validates that harnesses specifying a dockerfile have the Dockerfile on disk.
+ */
+export function validateHarnessDockerfiles(projectSpec: AgentCoreProjectSpec, configRoot: string): void {
+  const projectRoot = path.dirname(configRoot);
+  const errors: string[] = [];
+
+  for (const entry of projectSpec.harnesses || []) {
+    const harnessDir = path.join(projectRoot, entry.path);
+    const harnessJsonPath = path.join(harnessDir, 'harness.json');
+
+    let harnessSpec: { dockerfile?: string; containerUri?: string };
+    try {
+      const raw = readFileSync(harnessJsonPath, 'utf-8');
+      harnessSpec = JSON.parse(raw) as { dockerfile?: string; containerUri?: string };
+    } catch {
+      continue; // harness-deployer will report this error with full context
+    }
+
+    if (harnessSpec.dockerfile && !harnessSpec.containerUri) {
+      const dockerfilePath = getDockerfilePath(harnessDir, harnessSpec.dockerfile);
+      if (!existsSync(dockerfilePath)) {
+        errors.push(
+          `Harness "${entry.name}": ${harnessSpec.dockerfile} not found at ${dockerfilePath}. ` +
+            `Harnesses with a "dockerfile" field require the Dockerfile to exist.`
+        );
+      }
+    }
+  }
+
   if (errors.length > 0) {
     throw new Error(errors.join('\n'));
   }

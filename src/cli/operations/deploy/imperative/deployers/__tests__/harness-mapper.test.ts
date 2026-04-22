@@ -300,6 +300,44 @@ describe('mapHarnessSpecToCreateOptions', () => {
         },
       });
     });
+
+    it('resolves containerUri from CDK outputs when dockerfile is set', async () => {
+      const spec = minimalSpec({ dockerfile: 'Dockerfile' });
+      const cdkOutputs = {
+        HarnessTestHarnessContainerUriOutputABC123: '123456789012.dkr.ecr.us-east-1.amazonaws.com/harness-test:abc',
+      };
+
+      const result = await mapHarnessSpecToCreateOptions({ ...BASE_OPTIONS, harnessSpec: spec, cdkOutputs });
+
+      expect(result.environmentArtifact).toEqual({
+        containerConfiguration: {
+          containerUri: '123456789012.dkr.ecr.us-east-1.amazonaws.com/harness-test:abc',
+        },
+      });
+    });
+
+    it('throws when dockerfile is set but no container URI found in CDK outputs', async () => {
+      const spec = minimalSpec({ dockerfile: 'Dockerfile' });
+
+      await expect(
+        mapHarnessSpecToCreateOptions({ ...BASE_OPTIONS, harnessSpec: spec, cdkOutputs: {} })
+      ).rejects.toThrow('no container URI was found in CDK outputs');
+    });
+
+    it('prefers explicit containerUri over dockerfile', async () => {
+      const spec = minimalSpec({
+        containerUri: '123456789012.dkr.ecr.us-east-1.amazonaws.com/explicit:latest',
+        dockerfile: undefined,
+      });
+
+      const result = await mapHarnessSpecToCreateOptions({ ...BASE_OPTIONS, harnessSpec: spec });
+
+      expect(result.environmentArtifact).toEqual({
+        containerConfiguration: {
+          containerUri: '123456789012.dkr.ecr.us-east-1.amazonaws.com/explicit:latest',
+        },
+      });
+    });
   });
 
   // ── Network/Lifecycle mapping ──────────────────────────────────────────

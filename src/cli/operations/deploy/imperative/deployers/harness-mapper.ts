@@ -99,6 +99,15 @@ export async function mapHarnessSpecToCreateOptions(options: MapHarnessOptions):
   // Container artifact
   if (harnessSpec.containerUri) {
     result.environmentArtifact = mapEnvironmentArtifact(harnessSpec.containerUri);
+  } else if (harnessSpec.dockerfile) {
+    const builtUri = resolveContainerUriFromOutputs(harnessSpec.name, cdkOutputs);
+    if (!builtUri) {
+      throw new Error(
+        `Harness "${harnessSpec.name}" specifies "dockerfile" but no container URI was found in CDK outputs. ` +
+          `Expected a CDK output key starting with "Harness${toPascalId(harnessSpec.name)}ContainerUri".`
+      );
+    }
+    result.environmentArtifact = mapEnvironmentArtifact(builtUri);
   }
 
   // Environment provider (network + lifecycle)
@@ -317,6 +326,25 @@ function mapTruncation(truncation: NonNullable<HarnessSpec['truncation']>): Harn
     strategy: truncation.strategy,
     config: truncation.config as HarnessTruncationConfiguration['config'],
   };
+}
+
+// ============================================================================
+// Container URI Resolution (from CDK outputs for dockerfile-based harnesses)
+// ============================================================================
+
+function resolveContainerUriFromOutputs(harnessName: string, cdkOutputs?: Record<string, string>): string | undefined {
+  if (!cdkOutputs) return undefined;
+
+  const pascalName = toPascalId(harnessName);
+  const prefix = `Harness${pascalName}ContainerUri`;
+
+  for (const [key, value] of Object.entries(cdkOutputs)) {
+    if (key.startsWith(prefix)) {
+      return value;
+    }
+  }
+
+  return undefined;
 }
 
 // ============================================================================

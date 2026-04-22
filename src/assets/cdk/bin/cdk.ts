@@ -65,11 +65,14 @@ async function main() {
     memoryName?: string;
     containerUri?: string;
     hasDockerfile?: boolean;
+    dockerfileName?: string;
+    harnessDir?: string;
     tools?: { type: string; name: string }[];
     apiKeyArn?: string;
   }[] = [];
   for (const entry of specAny.harnesses ?? []) {
-    const harnessPath = path.resolve(projectRoot, entry.path, 'harness.json');
+    const harnessDir = path.resolve(projectRoot, entry.path);
+    const harnessPath = path.resolve(harnessDir, 'harness.json');
     try {
       const harnessSpec = JSON.parse(fs.readFileSync(harnessPath, 'utf-8'));
       harnessConfigs.push({
@@ -78,6 +81,8 @@ async function main() {
         memoryName: harnessSpec.memory?.name,
         containerUri: harnessSpec.containerUri,
         hasDockerfile: !!harnessSpec.dockerfile,
+        dockerfileName: harnessSpec.dockerfile,
+        harnessDir,
         tools: harnessSpec.tools,
         apiKeyArn: harnessSpec.model?.apiKeyArn,
       });
