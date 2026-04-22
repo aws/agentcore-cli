@@ -224,4 +224,10 @@ export const main = async (argv: string[]) => {
 
   // Telemetry notice already printed above; only run update check here.
   await printPostCommandNotices(false, updateCheck);
+
+  const exitMessage = getExitMessage();
+  if (exitMessage) {
+    console.log(`\n${exitMessage}`);
+    clearExitMessage();
+  }
 };

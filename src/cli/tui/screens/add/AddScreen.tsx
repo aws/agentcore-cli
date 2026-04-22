@@ -2,7 +2,7 @@ import type { SelectableItem } from '../../components';
 import { SelectScreen } from '../../components';
 
 const ADD_RESOURCES = [
-  { id: 'agent', title: 'Agent', description: 'Deploy an HTTP, MCP, or A2A agent' },
+  { id: 'agent', title: 'Agent', description: 'Deploy an HTTP, MCP, A2A, or AG-UI agent' },
   { id: 'memory', title: 'Memory', description: 'Persistent context storage' },
   { id: 'credential', title: 'Credential', description: 'API key credential providers' },
   { id: 'evaluator', title: 'Evaluator', description: 'Custom LLM-as-a-Judge evaluator' },

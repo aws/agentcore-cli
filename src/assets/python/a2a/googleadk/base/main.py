@@ -7,6 +7,8 @@ from a2a.types import AgentCapabilities, AgentCard, AgentSkill
 from bedrock_agentcore.runtime import serve_a2a
 from model.load import load_model
 
+load_model()  # Sets GOOGLE_API_KEY env var (returns None)
+
 
 def add_numbers(a: int, b: int) -> int:
     """Return the sum of two numbers."""
@@ -73,7 +75,7 @@ You have persistent storage at {{sessionStorageMountPath}}. Use file tools to re
 """
 
 agent = Agent(
-    model=load_model(),
+    model="gemini-2.5-flash",
     name="{{ name }}",
     description="A helpful assistant that can use tools.",
     instruction=AGENT_INSTRUCTION,

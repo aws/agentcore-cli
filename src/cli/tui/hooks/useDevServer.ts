@@ -18,6 +18,7 @@ import {
   getEndpointUrl,
   invokeA2AStreaming,
   invokeAgentStreaming,
+  invokeAguiStreaming,
   listMcpTools,
   loadDevEnv,
   loadProjectConfig,
@@ -74,6 +75,9 @@ export function useDevServer(options: {
   // A2A state
   const [a2aAgentCard, setA2aAgentCard] = useState<A2AAgentCard | null>(null);
   const [a2aStatus, setA2aStatus] = useState<string | null>(null);
+
+  // AGUI state — persistent threadId per dev session for multi-turn conversations
+  const aguiThreadIdRef = useRef<string>(crypto.randomUUID());
 
   const serverRef = useRef<DevServer | null>(null);
   const loggerRef = useRef<DevLogger | null>(null);
@@ -343,12 +347,20 @@ export function useDevServer(options: {
               onStatus: setA2aStatus,
               headers: options.headers,
             })
-          : invokeAgentStreaming({
-              port: actualPort,
-              message,
-              logger: loggerRef.current ?? undefined,
-              headers: options.headers,
-            });
+          : protocol === 'AGUI'
+            ? invokeAguiStreaming({
+                port: actualPort,
+                message,
+                logger: loggerRef.current ?? undefined,
+                headers: options.headers,
+                threadId: aguiThreadIdRef.current,
+              })
+            : invokeAgentStreaming({
+                port: actualPort,
+                message,
+                logger: loggerRef.current ?? undefined,
+                headers: options.headers,
+              });
 
       for await (const chunk of streamFn) {
         responseContent += chunk;
@@ -510,6 +522,7 @@ export function useDevServer(options: {
   const clearConversation = () => {
     setConversation([]);
     setStreamingResponse(null);
+    aguiThreadIdRef.current = crypto.randomUUID();
   };
 
   const showMcpHint = () => {

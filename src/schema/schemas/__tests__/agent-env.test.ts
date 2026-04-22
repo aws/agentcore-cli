@@ -286,7 +286,7 @@ describe('AgentEnvSpecSchema', () => {
   });
 
   describe('protocol', () => {
-    it.each(['HTTP', 'MCP', 'A2A'])('accepts valid protocol "%s"', mode => {
+    it.each(['HTTP', 'MCP', 'A2A', 'AGUI'])('accepts valid protocol "%s"', mode => {
       const result = AgentEnvSpecSchema.safeParse({ ...validPythonAgent, protocol: mode });
       expect(result.success, `Should accept protocol ${mode}`).toBe(true);
     });

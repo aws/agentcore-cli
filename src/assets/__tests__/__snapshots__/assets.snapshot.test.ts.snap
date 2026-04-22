@@ -475,6 +475,26 @@ exports[`Assets Directory Snapshots > File listing > should match the expected f
   "python/a2a/strands/base/pyproject.toml",
   "python/a2a/strands/capabilities/memory/__init__.py",
   "python/a2a/strands/capabilities/memory/session.py",
+  "python/agui/googleadk/base/README.md",
+  "python/agui/googleadk/base/gitignore.template",
+  "python/agui/googleadk/base/main.py",
+  "python/agui/googleadk/base/model/__init__.py",
+  "python/agui/googleadk/base/model/load.py",
+  "python/agui/googleadk/base/pyproject.toml",
+  "python/agui/langchain_langgraph/base/README.md",
+  "python/agui/langchain_langgraph/base/gitignore.template",
+  "python/agui/langchain_langgraph/base/main.py",
+  "python/agui/langchain_langgraph/base/model/__init__.py",
+  "python/agui/langchain_langgraph/base/model/load.py",
+  "python/agui/langchain_langgraph/base/pyproject.toml",
+  "python/agui/strands/base/README.md",
+  "python/agui/strands/base/gitignore.template",
+  "python/agui/strands/base/main.py",
+  "python/agui/strands/base/model/__init__.py",
+  "python/agui/strands/base/model/load.py",
+  "python/agui/strands/base/pyproject.toml",
+  "python/agui/strands/capabilities/memory/__init__.py",
+  "python/agui/strands/capabilities/memory/session.py",
   "python/http/autogen/base/README.md",
   "python/http/autogen/base/gitignore.template",
   "python/http/autogen/base/main.py",
@@ -977,6 +997,8 @@ from a2a.types import AgentCapabilities, AgentCard, AgentSkill
 from bedrock_agentcore.runtime import serve_a2a
 from model.load import load_model
 
+load_model()  # Sets GOOGLE_API_KEY env var (returns None)
+
 
 def add_numbers(a: int, b: int) -> int:
     """Return the sum of two numbers."""
@@ -1043,7 +1065,7 @@ You have persistent storage at {{sessionStorageMountPath}}. Use file tools to re
 """
 
 agent = Agent(
-    model=load_model(),
+    model="gemini-2.5-flash",
     name="{{ name }}",
     description="A helpful assistant that can use tools.",
     instruction=AGENT_INSTRUCTION,
@@ -1866,6 +1888,841 @@ exports[`Assets Directory Snapshots > Python framework assets > python/python/a2
 `;
 
 exports[`Assets Directory Snapshots > Python framework assets > python/python/a2a/strands/capabilities/memory/session.py should match snapshot 1`] = `
+"import os
+from typing import Optional
+
+from bedrock_agentcore.memory.integrations.strands.config import AgentCoreMemoryConfig{{#if memoryProviders.[0].strategies.length}}, RetrievalConfig{{/if}}
+from bedrock_agentcore.memory.integrations.strands.session_manager import AgentCoreMemorySessionManager
+
+MEMORY_ID = os.getenv("{{memoryProviders.[0].envVarName}}")
+REGION = os.getenv("AWS_REGION")
+
+def get_memory_session_manager(session_id: str, actor_id: str) -> Optional[AgentCoreMemorySessionManager]:
+    if not MEMORY_ID:
+        return None
+
+{{#if memoryProviders.[0].strategies.length}}
+    retrieval_config = {
+{{#if (includes memoryProviders.[0].strategies "SEMANTIC")}}
+        f"/users/{actor_id}/facts": RetrievalConfig(top_k=3, relevance_score=0.5),
+{{/if}}
+{{#if (includes memoryProviders.[0].strategies "USER_PREFERENCE")}}
+        f"/users/{actor_id}/preferences": RetrievalConfig(top_k=3, relevance_score=0.5),
+{{/if}}
+{{#if (includes memoryProviders.[0].strategies "SUMMARIZATION")}}
+        f"/summaries/{actor_id}/{session_id}": RetrievalConfig(top_k=3, relevance_score=0.5),
+{{/if}}
+    }
+{{/if}}
+
+    return AgentCoreMemorySessionManager(
+        AgentCoreMemoryConfig(
+            memory_id=MEMORY_ID,
+            session_id=session_id,
+            actor_id=actor_id,
+{{#if memoryProviders.[0].strategies.length}}
+            retrieval_config=retrieval_config,
+{{/if}}
+        ),
+        REGION
+    )
+"
+`;
+
+exports[`Assets Directory Snapshots > Python framework assets > python/python/agui/googleadk/base/README.md should match snapshot 1`] = `
+"# {{ name }}
+
+An AG-UI agent deployed on Amazon Bedrock AgentCore using Google ADK.
+
+## Overview
+
+This agent implements the AG-UI protocol using Google's Agent Development Kit, enabling rich agent-user interaction via the AG-UI event stream.
+
+## Local Development
+
+\`\`\`bash
+uv sync
+uv run python main.py
+\`\`\`
+
+The agent starts on port 8080 and serves requests at \`/invocations\`.
+
+## Health Check
+
+\`\`\`
+GET /ping
+\`\`\`
+
+Returns \`{"status": "healthy"}\`.
+
+## Deploy
+
+\`\`\`bash
+agentcore deploy
+\`\`\`
+"
+`;
+
+exports[`Assets Directory Snapshots > Python framework assets > python/python/agui/googleadk/base/gitignore.template should match snapshot 1`] = `
+"# Environment variables
+.env
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Virtual environments
+.venv/
+venv/
+ENV/
+env/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+"
+`;
+
+exports[`Assets Directory Snapshots > Python framework assets > python/python/agui/googleadk/base/main.py should match snapshot 1`] = `
+"import os
+import uvicorn
+from google.adk.agents import LlmAgent
+from ag_ui_adk import ADKAgent, AGUIToolset, create_adk_app
+from model.load import load_model
+
+load_model()
+
+agent = LlmAgent(
+    name="{{ name }}",
+    model="gemini-2.5-flash",
+    instruction="You are a helpful assistant.",
+    tools=[AGUIToolset()],
+)
+
+adk_agent = ADKAgent(
+    adk_agent=agent,
+    app_name="{{ name }}",
+    use_in_memory_services=True,
+)
+
+app = create_adk_app(adk_agent, path="/invocations")
+
+
+@app.get("/ping")
+async def ping():
+    return {"status": "healthy"}
+
+
+if __name__ == "__main__":
+    uvicorn.run(app, host="0.0.0.0", port=int(os.environ.get("PORT", "8080")))
+"
+`;
+
+exports[`Assets Directory Snapshots > Python framework assets > python/python/agui/googleadk/base/model/__init__.py should match snapshot 1`] = `
+"# Package marker
+"
+`;
+
+exports[`Assets Directory Snapshots > Python framework assets > python/python/agui/googleadk/base/model/load.py should match snapshot 1`] = `
+"import os
+from bedrock_agentcore.identity.auth import requires_api_key
+
+IDENTITY_PROVIDER_NAME = "{{identityProviders.[0].name}}"
+IDENTITY_ENV_VAR = "{{identityProviders.[0].envVarName}}"
+
+
+@requires_api_key(provider_name=IDENTITY_PROVIDER_NAME)
+def _agentcore_identity_api_key_provider(api_key: str) -> str:
+    """Fetch API key from AgentCore Identity."""
+    return api_key
+
+
+def _get_api_key() -> str:
+    """
+    Uses AgentCore Identity for API key management in deployed environments.
+    For local development, run via 'agentcore dev' which loads agentcore/.env.
+    """
+    if os.getenv("LOCAL_DEV") == "1":
+        api_key = os.getenv(IDENTITY_ENV_VAR)
+        if not api_key:
+            raise RuntimeError(
+                f"{IDENTITY_ENV_VAR} not found. Add {IDENTITY_ENV_VAR}=your-key to .env.local"
+            )
+        return api_key
+    return _agentcore_identity_api_key_provider()
+
+
+def load_model() -> None:
+    """
+    Set up Gemini API key authentication.
+    Uses AgentCore Identity for API key management in deployed environments,
+    and falls back to .env file for local development.
+    Sets the GOOGLE_API_KEY environment variable for the Google ADK.
+    """
+    api_key = _get_api_key()
+    # Use Google AI Studios API Key Authentication.
+    # https://google.github.io/adk-docs/agents/models/#google-ai-studio
+    os.environ["GOOGLE_API_KEY"] = api_key
+    # Set to TRUE is using Google Vertex AI, Set to FALSE for Google AI Studio
+    os.environ["GOOGLE_GENAI_USE_VERTEXAI"] = "FALSE"
+"
+`;
+
+exports[`Assets Directory Snapshots > Python framework assets > python/python/agui/googleadk/base/pyproject.toml should match snapshot 1`] = `
+"[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "{{ name }}"
+version = "0.1.0"
+description = "AgentCore AG-UI Agent using Google ADK"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    "ag-ui-adk >= 0.6.0",
+    "ag-ui-protocol >= 0.1.10",
+    "bedrock-agentcore >= 1.0.3",
+    "fastapi >= 0.115.12",
+    "google-adk >= 1.16.0",
+    "google-genai >= 1.0.0",
+    "opentelemetry-distro",
+    "opentelemetry-exporter-otlp",
+    "uvicorn >= 0.34.3",
+]
+
+[tool.hatch.build.targets.wheel]
+packages = ["."]
+"
+`;
+
+exports[`Assets Directory Snapshots > Python framework assets > python/python/agui/langchain_langgraph/base/README.md should match snapshot 1`] = `
+"# {{ name }}
+
+An AG-UI agent deployed on Amazon Bedrock AgentCore using LangChain + LangGraph.
+
+## Overview
+
+This agent implements the AG-UI protocol using LangGraph, enabling seamless frontend-to-agent communication with support for streaming, tool calls, and frontend-injected tools.
+
+## Local Development
+
+\`\`\`bash
+uv sync
+uv run python main.py
+\`\`\`
+
+The agent starts on port 8080.
+
+## Deploy
+
+\`\`\`bash
+agentcore deploy
+\`\`\`
+"
+`;
+
+exports[`Assets Directory Snapshots > Python framework assets > python/python/agui/langchain_langgraph/base/gitignore.template should match snapshot 1`] = `
+"# Environment variables
+.env
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Virtual environments
+.venv/
+venv/
+ENV/
+env/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+"
+`;
+
+exports[`Assets Directory Snapshots > Python framework assets > python/python/agui/langchain_langgraph/base/main.py should match snapshot 1`] = `
+"import os
+
+os.environ["LANGGRAPH_FAST_API"] = "true"
+
+import uvicorn
+from typing import Any, List
+from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
+from langgraph.graph import StateGraph, START
+from langgraph.graph.message import MessagesState
+from langgraph.checkpoint.memory import MemorySaver
+from langgraph.prebuilt import ToolNode, tools_condition
+from langchain_core.tools import tool
+from opentelemetry.instrumentation.langchain import LangchainInstrumentor
+from ag_ui_langgraph import LangGraphAgent, add_langgraph_fastapi_endpoint
+from model.load import load_model
+
+LangchainInstrumentor().instrument()
+
+
+@tool
+def add_numbers(a: int, b: int) -> int:
+    """Return the sum of two numbers."""
+    return a + b
+
+
+backend_tools = [add_numbers]
+model = load_model()
+
+
+class AgentState(MessagesState):
+    tools: List[Any]
+
+
+def chat_node(state: AgentState):
+    bound_model = model.bind_tools(
+        [*state.get("tools", []), *backend_tools],
+    )
+    response = bound_model.invoke(state["messages"])
+    return {"messages": [response]}
+
+
+builder = StateGraph(AgentState)
+builder.add_node("chat", chat_node)
+builder.add_node("tools", ToolNode(tools=backend_tools))
+builder.add_edge(START, "chat")
+builder.add_conditional_edges("chat", tools_condition)
+builder.add_edge("tools", "chat")
+graph = builder.compile(checkpointer=MemorySaver())
+
+agent = LangGraphAgent(
+    name="{{ name }}",
+    graph=graph,
+    description="A helpful assistant",
+)
+
+app = FastAPI()
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+add_langgraph_fastapi_endpoint(app=app, agent=agent, path="/invocations")
+
+
+@app.get("/ping")
+async def ping():
+    return {"status": "healthy"}
+
+
+if __name__ == "__main__":
+    uvicorn.run(app, host="0.0.0.0", port=int(os.environ.get("PORT", "8080")))
+"
+`;
+
+exports[`Assets Directory Snapshots > Python framework assets > python/python/agui/langchain_langgraph/base/model/__init__.py should match snapshot 1`] = `
+"# Package marker
+"
+`;
+
+exports[`Assets Directory Snapshots > Python framework assets > python/python/agui/langchain_langgraph/base/model/load.py should match snapshot 1`] = `
+"{{#if (eq modelProvider "Bedrock")}}
+from langchain_aws import ChatBedrock
+
+# Uses global inference profile for Claude Sonnet 4.5
+# https://docs.aws.amazon.com/bedrock/latest/userguide/inference-profiles-support.html
+MODEL_ID = "global.anthropic.claude-sonnet-4-5-20250929-v1:0"
+
+
+def load_model() -> ChatBedrock:
+    """Get Bedrock model client using IAM credentials."""
+    return ChatBedrock(model_id=MODEL_ID)
+{{/if}}
+{{#if (eq modelProvider "Anthropic")}}
+import os
+from langchain_anthropic import ChatAnthropic
+from bedrock_agentcore.identity.auth import requires_api_key
+
+IDENTITY_PROVIDER_NAME = "{{identityProviders.[0].name}}"
+IDENTITY_ENV_VAR = "{{identityProviders.[0].envVarName}}"
+
+
+@requires_api_key(provider_name=IDENTITY_PROVIDER_NAME)
+def _agentcore_identity_api_key_provider(api_key: str) -> str:
+    """Fetch API key from AgentCore Identity."""
+    return api_key
+
+
+def _get_api_key() -> str:
+    """
+    Uses AgentCore Identity for API key management in deployed environments.
+    For local development, run via 'agentcore dev' which loads agentcore/.env.
+    """
+    if os.getenv("LOCAL_DEV") == "1":
+        api_key = os.getenv(IDENTITY_ENV_VAR)
+        if not api_key:
+            raise RuntimeError(
+                f"{IDENTITY_ENV_VAR} not found. Add {IDENTITY_ENV_VAR}=your-key to .env.local"
+            )
+        return api_key
+    return _agentcore_identity_api_key_provider()
+
+
+def load_model() -> ChatAnthropic:
+    """Get authenticated Anthropic model client."""
+    return ChatAnthropic(
+        model="claude-sonnet-4-5-20250929",
+        api_key=_get_api_key()
+    )
+{{/if}}
+{{#if (eq modelProvider "OpenAI")}}
+import os
+from langchain_openai import ChatOpenAI
+from bedrock_agentcore.identity.auth import requires_api_key
+
+IDENTITY_PROVIDER_NAME = "{{identityProviders.[0].name}}"
+IDENTITY_ENV_VAR = "{{identityProviders.[0].envVarName}}"
+
+
+@requires_api_key(provider_name=IDENTITY_PROVIDER_NAME)
+def _agentcore_identity_api_key_provider(api_key: str) -> str:
+    """Fetch API key from AgentCore Identity."""
+    return api_key
+
+
+def _get_api_key() -> str:
+    """
+    Uses AgentCore Identity for API key management in deployed environments.
+    For local development, run via 'agentcore dev' which loads agentcore/.env.
+    """
+    if os.getenv("LOCAL_DEV") == "1":
+        api_key = os.getenv(IDENTITY_ENV_VAR)
+        if not api_key:
+            raise RuntimeError(
+                f"{IDENTITY_ENV_VAR} not found. Add {IDENTITY_ENV_VAR}=your-key to .env.local"
+            )
+        return api_key
+    return _agentcore_identity_api_key_provider()
+
+
+def load_model() -> ChatOpenAI:
+    """Get authenticated OpenAI model client."""
+    return ChatOpenAI(
+        model="gpt-4.1",
+        api_key=_get_api_key()
+    )
+{{/if}}
+{{#if (eq modelProvider "Gemini")}}
+import os
+from langchain_google_genai import ChatGoogleGenerativeAI
+from bedrock_agentcore.identity.auth import requires_api_key
+
+IDENTITY_PROVIDER_NAME = "{{identityProviders.[0].name}}"
+IDENTITY_ENV_VAR = "{{identityProviders.[0].envVarName}}"
+
+
+@requires_api_key(provider_name=IDENTITY_PROVIDER_NAME)
+def _agentcore_identity_api_key_provider(api_key: str) -> str:
+    """Fetch API key from AgentCore Identity."""
+    return api_key
+
+
+def _get_api_key() -> str:
+    """
+    Uses AgentCore Identity for API key management in deployed environments.
+    For local development, run via 'agentcore dev' which loads agentcore/.env.
+    """
+    if os.getenv("LOCAL_DEV") == "1":
+        api_key = os.getenv(IDENTITY_ENV_VAR)
+        if not api_key:
+            raise RuntimeError(
+                f"{IDENTITY_ENV_VAR} not found. Add {IDENTITY_ENV_VAR}=your-key to .env.local"
+            )
+        return api_key
+    return _agentcore_identity_api_key_provider()
+
+
+def load_model() -> ChatGoogleGenerativeAI:
+    """Get authenticated Gemini model client."""
+    return ChatGoogleGenerativeAI(
+        model="gemini-2.5-flash",
+        api_key=_get_api_key()
+    )
+{{/if}}
+"
+`;
+
+exports[`Assets Directory Snapshots > Python framework assets > python/python/agui/langchain_langgraph/base/pyproject.toml should match snapshot 1`] = `
+"[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "{{ name }}"
+version = "0.1.0"
+description = "AgentCore AG-UI Agent using LangChain + LangGraph"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    "ag-ui-langgraph >= 0.0.31",
+    "ag-ui-protocol >= 0.1.10",
+    {{#if (eq modelProvider "Anthropic")}}"langchain-anthropic >= 0.3.0",
+    {{/if}}{{#if (eq modelProvider "Bedrock")}}"langchain-aws >= 0.2.0",
+    {{/if}}{{#if (eq modelProvider "Gemini")}}"langchain-google-genai >= 2.0.0",
+    {{/if}}{{#if (eq modelProvider "OpenAI")}}"langchain-openai >= 0.2.0",
+    {{/if}}"aws-opentelemetry-distro",
+    "opentelemetry-instrumentation-langchain >= 0.59.0",
+    "bedrock-agentcore >= 1.0.3",
+    "botocore[crt] >= 1.35.0",
+    "langgraph >= 0.3.25",
+    "langchain >= 0.3.0",
+    "langchain-core >= 0.3.0",
+    "fastapi >= 0.115.12",
+    "uvicorn >= 0.34.3",
+]
+
+[tool.hatch.build.targets.wheel]
+packages = ["."]
+"
+`;
+
+exports[`Assets Directory Snapshots > Python framework assets > python/python/agui/strands/base/README.md should match snapshot 1`] = `
+"# {{ name }}
+
+An AG-UI agent deployed on Amazon Bedrock AgentCore using Strands SDK.
+
+## Overview
+
+This agent implements the AG-UI protocol, enabling streaming agent-to-UI communication. The agent exposes an \`/invocations\` endpoint that accepts AG-UI protocol requests and streams responses back to the client.
+
+## Local Development
+
+\`\`\`bash
+uv sync
+uv run python main.py
+\`\`\`
+
+The agent starts on port 8080.
+
+## Deploy
+
+\`\`\`bash
+agentcore deploy
+\`\`\`
+"
+`;
+
+exports[`Assets Directory Snapshots > Python framework assets > python/python/agui/strands/base/gitignore.template should match snapshot 1`] = `
+"# Environment variables
+.env
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Virtual environments
+.venv/
+venv/
+ENV/
+env/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+"
+`;
+
+exports[`Assets Directory Snapshots > Python framework assets > python/python/agui/strands/base/main.py should match snapshot 1`] = `
+"import os
+
+# Suppress OpenTelemetry warnings during local development; remove for production
+if os.getenv("LOCAL_DEV") == "1":
+    os.environ["OTEL_SDK_DISABLED"] = "true"
+
+import uvicorn
+from strands import Agent, tool
+from ag_ui_strands import StrandsAgent, StrandsAgentConfig, create_strands_app
+from model.load import load_model
+{{#if hasMemory}}
+from memory.session import get_memory_session_manager
+{{/if}}
+
+
+@tool
+def add_numbers(a: int, b: int) -> int:
+    """Return the sum of two numbers."""
+    return a + b
+
+
+tools = [add_numbers]
+
+agent = Agent(
+    model=load_model(),
+    system_prompt="You are a helpful assistant. Use tools when appropriate.",
+    tools=tools,
+)
+
+{{#if hasMemory}}
+def session_manager_provider(input_data):
+    return get_memory_session_manager(input_data.thread_id, "default-user")
+
+config = StrandsAgentConfig(session_manager_provider=session_manager_provider)
+{{else}}
+config = StrandsAgentConfig()
+{{/if}}
+
+agui_agent = StrandsAgent(agent=agent, name="{{ name }}", description="A helpful assistant", config=config)
+app = create_strands_app(agui_agent, path="/invocations", ping_path="/ping")
+
+if __name__ == "__main__":
+    uvicorn.run(app, host="0.0.0.0", port=int(os.environ.get("PORT", "8080")))
+"
+`;
+
+exports[`Assets Directory Snapshots > Python framework assets > python/python/agui/strands/base/model/__init__.py should match snapshot 1`] = `
+"# Package marker
+"
+`;
+
+exports[`Assets Directory Snapshots > Python framework assets > python/python/agui/strands/base/model/load.py should match snapshot 1`] = `
+"{{#if (eq modelProvider "Bedrock")}}
+from strands.models.bedrock import BedrockModel
+
+
+def load_model() -> BedrockModel:
+    """Get Bedrock model client using IAM credentials."""
+    return BedrockModel(model_id="global.anthropic.claude-sonnet-4-5-20250929-v1:0")
+{{/if}}
+{{#if (eq modelProvider "Anthropic")}}
+import os
+
+from strands.models.anthropic import AnthropicModel
+from bedrock_agentcore.identity.auth import requires_api_key
+
+IDENTITY_PROVIDER_NAME = "{{identityProviders.[0].name}}"
+IDENTITY_ENV_VAR = "{{identityProviders.[0].envVarName}}"
+
+
+@requires_api_key(provider_name=IDENTITY_PROVIDER_NAME)
+def _agentcore_identity_api_key_provider(api_key: str) -> str:
+    """Fetch API key from AgentCore Identity."""
+    return api_key
+
+
+def _get_api_key() -> str:
+    """
+    Uses AgentCore Identity for API key management in deployed environments.
+    For local development, run via 'agentcore dev' which loads agentcore/.env.
+    """
+    if os.getenv("LOCAL_DEV") == "1":
+        api_key = os.getenv(IDENTITY_ENV_VAR)
+        if not api_key:
+            raise RuntimeError(
+                f"{IDENTITY_ENV_VAR} not found. Add {IDENTITY_ENV_VAR}=your-key to .env.local"
+            )
+        return api_key
+    return _agentcore_identity_api_key_provider()
+
+
+def load_model() -> AnthropicModel:
+    """Get authenticated Anthropic model client."""
+    return AnthropicModel(
+        client_args={"api_key": _get_api_key()},
+        model_id="claude-sonnet-4-5-20250929",
+        max_tokens=5000,
+    )
+{{/if}}
+{{#if (eq modelProvider "OpenAI")}}
+import os
+
+from strands.models.openai import OpenAIModel
+from bedrock_agentcore.identity.auth import requires_api_key
+
+IDENTITY_PROVIDER_NAME = "{{identityProviders.[0].name}}"
+IDENTITY_ENV_VAR = "{{identityProviders.[0].envVarName}}"
+
+
+@requires_api_key(provider_name=IDENTITY_PROVIDER_NAME)
+def _agentcore_identity_api_key_provider(api_key: str) -> str:
+    """Fetch API key from AgentCore Identity."""
+    return api_key
+
+
+def _get_api_key() -> str:
+    """
+    Uses AgentCore Identity for API key management in deployed environments.
+    For local development, run via 'agentcore dev' which loads agentcore/.env.
+    """
+    if os.getenv("LOCAL_DEV") == "1":
+        api_key = os.getenv(IDENTITY_ENV_VAR)
+        if not api_key:
+            raise RuntimeError(
+                f"{IDENTITY_ENV_VAR} not found. Add {IDENTITY_ENV_VAR}=your-key to .env.local"
+            )
+        return api_key
+    return _agentcore_identity_api_key_provider()
+
+
+def load_model() -> OpenAIModel:
+    """Get authenticated OpenAI model client."""
+    return OpenAIModel(
+        client_args={"api_key": _get_api_key()},
+        model_id="gpt-4.1",
+    )
+{{/if}}
+{{#if (eq modelProvider "Gemini")}}
+import os
+
+from strands.models.gemini import GeminiModel
+from bedrock_agentcore.identity.auth import requires_api_key
+
+IDENTITY_PROVIDER_NAME = "{{identityProviders.[0].name}}"
+IDENTITY_ENV_VAR = "{{identityProviders.[0].envVarName}}"
+
+
+@requires_api_key(provider_name=IDENTITY_PROVIDER_NAME)
+def _agentcore_identity_api_key_provider(api_key: str) -> str:
+    """Fetch API key from AgentCore Identity."""
+    return api_key
+
+
+def _get_api_key() -> str:
+    """
+    Uses AgentCore Identity for API key management in deployed environments.
+    For local development, run via 'agentcore dev' which loads agentcore/.env.
+    """
+    if os.getenv("LOCAL_DEV") == "1":
+        api_key = os.getenv(IDENTITY_ENV_VAR)
+        if not api_key:
+            raise RuntimeError(
+                f"{IDENTITY_ENV_VAR} not found. Add {IDENTITY_ENV_VAR}=your-key to .env.local"
+            )
+        return api_key
+    return _agentcore_identity_api_key_provider()
+
+
+def load_model() -> GeminiModel:
+    """Get authenticated Gemini model client."""
+    return GeminiModel(
+        client_args={"api_key": _get_api_key()},
+        model_id="gemini-2.5-flash",
+    )
+{{/if}}
+"
+`;
+
+exports[`Assets Directory Snapshots > Python framework assets > python/python/agui/strands/base/pyproject.toml should match snapshot 1`] = `
+"[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "{{ name }}"
+version = "0.1.0"
+description = "AgentCore AG-UI Agent using Strands SDK"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    {{#if (eq modelProvider "Anthropic")}}"anthropic >= 0.30.0",
+    {{/if}}"ag-ui-strands >= 0.1.7",
+    "ag-ui-protocol >= 0.1.10",
+    "aws-opentelemetry-distro",
+    "bedrock-agentcore >= 1.0.3",
+    "botocore[crt] >= 1.35.0",
+    "fastapi >= 0.115.12",
+    {{#if (eq modelProvider "Gemini")}}"google-genai >= 1.0.0",
+    {{/if}}{{#if (eq modelProvider "OpenAI")}}"openai >= 1.0.0",
+    {{/if}}"strands-agents >= 1.15.0",
+    "strands-agents-tools >= 0.2.14",
+    "uvicorn >= 0.34.3",
+]
+
+[tool.hatch.build.targets.wheel]
+packages = ["."]
+"
+`;
+
+exports[`Assets Directory Snapshots > Python framework assets > python/python/agui/strands/capabilities/memory/__init__.py should match snapshot 1`] = `
+"# Package marker
+"
+`;
+
+exports[`Assets Directory Snapshots > Python framework assets > python/python/agui/strands/capabilities/memory/session.py should match snapshot 1`] = `
 "import os
 from typing import Optional
 

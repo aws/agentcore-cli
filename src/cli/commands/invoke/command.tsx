@@ -168,10 +168,10 @@ export const registerInvoke = (program: Command) => {
             });
           } else {
             // No CLI options - interactive TUI mode (headers still passed if provided)
-            const { waitUntilExit } = render(
+            const { waitUntilExit, unmount } = render(
               <InvokeScreen
                 isInteractive={true}
-                onExit={() => process.exit(0)}
+                onExit={() => unmount()}
                 initialSessionId={cliOptions.sessionId}
                 initialUserId={cliOptions.userId}
                 initialHeaders={headers}

@@ -72,7 +72,12 @@ export abstract class BaseRenderer {
 
       if (existsSync(containerTemplateDir)) {
         const exclude = this.config.dockerfile ? new Set(['Dockerfile']) : undefined;
-        await copyAndRenderDir(containerTemplateDir, projectDir, { ...templateData, entrypoint: 'main' }, { exclude });
+        await copyAndRenderDir(
+          containerTemplateDir,
+          projectDir,
+          { ...templateData, entrypoint: 'main', enableOtel: this.config.enableOtel ?? true },
+          { exclude }
+        );
       }
     }
   }

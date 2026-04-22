@@ -9,11 +9,14 @@ import type {
   AgentCoreProjectSpec as _AgentCoreProjectSpec,
 } from '../../../../schema';
 import {
+  AguiEventType,
   DEFAULT_RUNTIME_USER_ID,
   type McpToolDef,
+  buildAguiRunInput,
   executeBashCommand,
   invokeA2ARuntime,
   invokeAgentRuntimeStreaming,
+  invokeAguiRuntime,
   mcpCallTool,
   mcpListTools,
 } from '../../../aws';
@@ -23,6 +26,13 @@ import { formatMcpToolList } from '../../../operations/dev/utils';
 import { canFetchRuntimeToken, fetchRuntimeToken } from '../../../operations/fetch-access';
 import { generateSessionId } from '../../../operations/session';
 import { useCallback, useEffect, useRef, useState } from 'react';
+
+/** Structured message part for rich AGUI event rendering */
+export type MessagePart =
+  | { kind: 'text'; text: string }
+  | { kind: 'tool_call'; id: string; name: string; args: string; result?: string }
+  | { kind: 'reasoning'; text: string }
+  | { kind: 'error'; message: string; code?: string };
 
 export interface InvokeConfig {
   runtimes: {
@@ -52,7 +62,7 @@ export interface InvokeFlowState {
   phase: 'loading' | 'ready' | 'invoking' | 'error';
   config: InvokeConfig | null;
   selectedAgent: number;
-  messages: { role: 'user' | 'assistant'; content: string; isHint?: boolean }[];
+  messages: { role: 'user' | 'assistant'; content: string; isHint?: boolean; parts?: MessagePart[] }[];
   error: string | null;
   logFilePath: string | null;
   sessionId: string | null;
@@ -79,7 +89,7 @@ export function useInvokeFlow(options: InvokeFlowOptions = {}): InvokeFlowState 
   const [config, setConfig] = useState<InvokeConfig | null>(null);
   const [selectedAgent, setSelectedAgent] = useState(0);
   const [messages, setMessages] = useState<
-    { role: 'user' | 'assistant'; content: string; isHint?: boolean; isExec?: boolean }[]
+    { role: 'user' | 'assistant'; content: string; isHint?: boolean; isExec?: boolean; parts?: MessagePart[] }[]
   >([]);
   const [error, setError] = useState<string | null>(null);
   const [logFilePath, setLogFilePath] = useState<string | null>(null);
@@ -310,6 +320,122 @@ export function useInvokeFlow(options: InvokeFlowOptions = {}): InvokeFlowState 
         }
 
         setPhase('ready');
+        return;
+      }
+
+      // AGUI: structured event streaming with rich rendering
+      if (agent.protocol === 'AGUI') {
+        const aguiInput = buildAguiRunInput(prompt, sessionId ?? undefined);
+
+        setMessages(prev => [...prev, { role: 'user', content: prompt }, { role: 'assistant', content: '' }]);
+        setPhase('invoking');
+        streamingContentRef.current = '';
+
+        logger.logPrompt(prompt, sessionId ?? undefined, userId);
+
+        try {
+          const aguiResult = await invokeAguiRuntime(
+            {
+              region: config.target.region,
+              runtimeArn: agent.state.runtimeArn,
+              userId,
+              logger,
+              headers,
+              bearerToken: bearerToken || undefined,
+            },
+            aguiInput
+          );
+
+          if (aguiResult.sessionId) {
+            setSessionId(aguiResult.sessionId);
+            logger.updateSessionId(aguiResult.sessionId);
+          }
+
+          const parts: MessagePart[] = [];
+          let currentToolCall: { id: string; name: string; args: string } | null = null;
+
+          for await (const event of aguiResult.stream) {
+            if (event.type === AguiEventType.TEXT_MESSAGE_CONTENT) {
+              const delta = (event as { delta: string }).delta;
+              streamingContentRef.current += delta;
+              // Accumulate text part — replace instead of mutate for React state safety
+              const lastPart = parts[parts.length - 1];
+              if (lastPart?.kind === 'text') {
+                parts[parts.length - 1] = { ...lastPart, text: lastPart.text + delta };
+              } else {
+                parts.push({ kind: 'text', text: delta });
+              }
+            } else if (event.type === AguiEventType.TOOL_CALL_START) {
+              const tc = event as { toolCallId: string; toolCallName: string };
+              currentToolCall = { id: tc.toolCallId, name: tc.toolCallName, args: '' };
+            } else if (event.type === AguiEventType.TOOL_CALL_ARGS && currentToolCall) {
+              currentToolCall.args += (event as { delta: string }).delta;
+            } else if (event.type === AguiEventType.TOOL_CALL_END && currentToolCall) {
+              parts.push({
+                kind: 'tool_call',
+                id: currentToolCall.id,
+                name: currentToolCall.name,
+                args: currentToolCall.args,
+              });
+              currentToolCall = null;
+            } else if (event.type === AguiEventType.TOOL_CALL_RESULT) {
+              const result = event as { toolCallId: string; content: unknown };
+              const idx = parts.findIndex(p => p.kind === 'tool_call' && p.id === result.toolCallId);
+              if (idx >= 0) {
+                const toolPart = parts[idx]!;
+                if (toolPart.kind === 'tool_call') {
+                  parts[idx] = {
+                    ...toolPart,
+                    result: typeof result.content === 'string' ? result.content : JSON.stringify(result.content),
+                  };
+                }
+              }
+            } else if (event.type === AguiEventType.REASONING_MESSAGE_CONTENT) {
+              const delta = (event as { delta: string }).delta;
+              const lastPart = parts[parts.length - 1];
+              if (lastPart?.kind === 'reasoning') {
+                parts[parts.length - 1] = { ...lastPart, text: lastPart.text + delta };
+              } else {
+                parts.push({ kind: 'reasoning', text: delta });
+              }
+            } else if (event.type === AguiEventType.RUN_ERROR) {
+              const err = event as { message: string; code?: string };
+              parts.push({ kind: 'error', message: err.message, code: err.code });
+              streamingContentRef.current += `\nError: ${err.message}`;
+            }
+
+            const currentContent = streamingContentRef.current;
+            const currentParts = [...parts];
+            setMessages(prev => {
+              const updated = [...prev];
+              const lastIdx = updated.length - 1;
+              if (lastIdx >= 0 && updated[lastIdx]?.role === 'assistant') {
+                updated[lastIdx] = {
+                  ...updated[lastIdx],
+                  role: 'assistant',
+                  content: currentContent,
+                  parts: currentParts,
+                };
+              }
+              return updated;
+            });
+          }
+
+          logger.logResponse(streamingContentRef.current);
+          setPhase('ready');
+        } catch (err) {
+          const errMsg = getErrorMessage(err);
+          logger.logError(err, 'AGUI invoke failed');
+          setMessages(prev => {
+            const updated = [...prev];
+            const lastIdx = updated.length - 1;
+            if (lastIdx >= 0 && updated[lastIdx]?.role === 'assistant') {
+              updated[lastIdx] = { role: 'assistant', content: `Error: ${errMsg}` };
+            }
+            return updated;
+          });
+          setPhase('ready');
+        }
         return;
       }
 

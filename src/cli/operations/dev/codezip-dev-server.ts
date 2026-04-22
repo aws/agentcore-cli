@@ -146,7 +146,7 @@ export class CodeZipDevServer extends DevServer {
     }
 
     if (protocol !== 'HTTP') {
-      // MCP/A2A: run python main.py directly (no module-level ASGI app)
+      // MCP/A2A/AGUI: run python main.py directly (no module-level ASGI app)
       const python = getVenvExecutable(venvDir, 'python');
       const entryFile = module.split(':')[0] ?? module;
       return { cmd: python, args: [entryFile], cwd: directory, env };

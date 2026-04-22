@@ -184,7 +184,7 @@ export const registerCreate = (program: Command) => {
     .option('--model-provider <provider>', 'Model provider (Bedrock, Anthropic, OpenAI, Gemini) [non-interactive]')
     .option('--api-key <key>', 'API key for non-Bedrock providers [non-interactive]')
     .option('--memory <option>', 'Memory option (none, shortTerm, longAndShortTerm) [non-interactive]')
-    .option('--protocol <protocol>', 'Protocol: HTTP, MCP, A2A (default: HTTP) [non-interactive]')
+    .option('--protocol <protocol>', 'Protocol: HTTP, MCP, A2A, AGUI (default: HTTP) [non-interactive]')
     .option('--type <type>', 'Agent type: create or import (default: create) [non-interactive]')
     .option('--agent-id <id>', 'Bedrock Agent ID (required for --type import) [non-interactive]')
     .option('--agent-alias-id <id>', 'Bedrock Agent Alias ID (required for --type import) [non-interactive]')

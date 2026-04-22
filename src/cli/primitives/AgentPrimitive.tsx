@@ -219,7 +219,7 @@ export class AgentPrimitive extends BasePrimitive<AddAgentOptions, RemovableReso
       .option('--model-provider <provider>', 'Model provider: Bedrock, Anthropic, OpenAI, Gemini [non-interactive]')
       .option('--api-key <key>', 'API key for non-Bedrock providers [non-interactive]')
       .option('--memory <mem>', 'Memory: none, shortTerm, longAndShortTerm (create path only) [non-interactive]')
-      .option('--protocol <protocol>', 'Protocol: HTTP, MCP, A2A (default: HTTP) [non-interactive]')
+      .option('--protocol <protocol>', 'Protocol: HTTP, MCP, A2A, AGUI (default: HTTP) [non-interactive]')
       .option('--code-location <path>', 'Path to existing code (BYO path only) [non-interactive]')
       .option('--entrypoint <file>', 'Entry file relative to code-location (BYO, default: main.py) [non-interactive]')
       .option('--agent-id <id>', 'Bedrock Agent ID (import path only) [non-interactive]')

@@ -150,8 +150,11 @@ function formatZodIssue(issue: ZodIssueExt): string {
     }
   }
 
-  // Fail open: unhandled cases use Zod's message verbatim
-  return `${path}: ${issue.message}`;
+  // Fail open: unhandled cases use Zod's message verbatim.
+  // Some Zod 3/4 shape mismatches produce issues with no .message — fall back to the code
+  // so users see something actionable instead of the literal string "undefined".
+  const message = issue.message ?? issue.code ?? 'invalid value';
+  return `${path}: ${message}`;
 }
 
 /**

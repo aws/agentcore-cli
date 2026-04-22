@@ -1,10 +1,12 @@
 import { ConfigIO } from '../../../lib';
 import type { AgentCoreProjectSpec, AwsDeploymentTargets, DeployedState } from '../../../schema';
 import {
+  buildAguiRunInput,
   executeBashCommand,
   invokeA2ARuntime,
   invokeAgentRuntime,
   invokeAgentRuntimeStreaming,
+  invokeAguiRuntime,
   mcpCallTool,
   mcpInitSession,
   mcpListTools,
@@ -318,6 +320,60 @@ export async function handleInvoke(context: InvokeContext, options: InvokeOption
       };
     } catch (err) {
       return { success: false, error: `A2A invoke failed: ${err instanceof Error ? err.message : String(err)}` };
+    }
+  }
+
+  // AGUI protocol handling — send RunAgentInput via InvokeAgentRuntime, stream text
+  if (agentSpec.protocol === 'AGUI') {
+    const logger = new InvokeLogger({
+      agentName: agentSpec.name,
+      runtimeArn: agentState.runtimeArn,
+      region: targetConfig.region,
+    });
+
+    try {
+      const aguiInput = buildAguiRunInput(options.prompt, options.sessionId);
+      logger.logPrompt(options.prompt, undefined, options.userId);
+
+      const aguiResult = await invokeAguiRuntime(
+        {
+          region: targetConfig.region,
+          runtimeArn: agentState.runtimeArn,
+          sessionId: options.sessionId,
+          userId: options.userId,
+          logger,
+          headers: options.headers,
+          bearerToken: options.bearerToken,
+        },
+        aguiInput
+      );
+      let response = '';
+      let hasError = false;
+      for await (const chunk of aguiResult.textStream) {
+        response += chunk;
+        if (chunk.startsWith('Error: ')) {
+          hasError = true;
+        }
+        if (options.stream) {
+          process.stdout.write(chunk);
+        }
+      }
+      if (options.stream) {
+        process.stdout.write('\n');
+      }
+
+      logger.logResponse(response);
+
+      return {
+        success: !hasError,
+        agentName: agentSpec.name,
+        targetName: selectedTargetName,
+        response,
+        logFilePath: logger.logFilePath,
+      };
+    } catch (err) {
+      logger.logError(err, 'AGUI invoke failed');
+      return { success: false, error: `AGUI invoke failed: ${err instanceof Error ? err.message : String(err)}` };
     }
   }
 

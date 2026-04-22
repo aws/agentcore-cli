@@ -41,7 +41,7 @@ function toAgentEnvSpec(agent: ParsedStarterToolkitConfig['agents'][0]): AgentEn
     runtimeVersion: (agent.runtimeVersion ?? 'PYTHON_3_12') as any,
     protocol: agent.protocol,
     networkMode: agent.networkMode,
-    instrumentation: { enableOtel: agent.enableOtel },
+    instrumentation: { enableOtel: agent.protocol === 'MCP' ? false : agent.enableOtel },
   };
   /* eslint-enable @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-explicit-any */
 

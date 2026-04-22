@@ -1,4 +1,5 @@
 import { invokeA2AStreaming } from './invoke-a2a';
+import { invokeAguiStreaming } from './invoke-agui';
 import { ConnectionError, type InvokeStreamingOptions, type SSELogger, ServerError } from './invoke-types';
 import { isConnectionError, sleep } from './utils';
 
@@ -124,7 +125,7 @@ export async function* invokeAgentStreaming(
           fullResponse += decoded;
 
           // Process complete lines from buffer
-          const lines = buffer.split('\n');
+          const lines = buffer.split(/\r?\n/);
           buffer = lines.pop() ?? '';
 
           for (const line of lines) {
@@ -223,6 +224,9 @@ export async function* invokeForProtocol(
       throw new Error('Use listMcpTools/callMcpTool for MCP agents');
     case 'A2A':
       yield* invokeA2AStreaming(options);
+      break;
+    case 'AGUI':
+      yield* invokeAguiStreaming(options);
       break;
     default:
       yield* invokeAgentStreaming(options);

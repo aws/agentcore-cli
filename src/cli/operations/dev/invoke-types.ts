@@ -33,4 +33,6 @@ export interface InvokeStreamingOptions {
   onStatus?: (status: string) => void;
   /** Custom headers to forward to the agent */
   headers?: Record<string, string>;
+  /** Persistent thread ID for AGUI multi-turn conversations */
+  threadId?: string;
 }

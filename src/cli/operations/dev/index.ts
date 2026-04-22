@@ -17,6 +17,8 @@ export { invokeA2AStreaming, fetchA2AAgentCard, type A2AAgentCard } from './invo
 
 export { listMcpTools, callMcpTool, type McpTool, type McpToolsResult } from './invoke-mcp';
 
+export { invokeAguiStreaming } from './invoke-agui';
+
 export { getEndpointUrl, formatMcpToolList } from './utils';
 
 export { loadDevEnv, type DevEnv } from './load-dev-env';

@@ -92,7 +92,7 @@ export function validateCreateOptions(options: CreateOptions, cwd?: string): Val
   if (options.protocol) {
     const protocolResult = ProtocolModeSchema.safeParse(options.protocol);
     if (!protocolResult.success) {
-      return { valid: false, error: `Invalid protocol: ${options.protocol}. Use HTTP, MCP, or A2A` };
+      return { valid: false, error: `Invalid protocol: ${options.protocol}. Use HTTP, MCP, A2A, or AGUI` };
     }
     protocol = protocolResult.data;
   }

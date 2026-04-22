@@ -216,7 +216,7 @@ export const AgentEnvSpecSchema = z
     networkConfig: NetworkConfigSchema.optional(),
     /** Instrumentation settings for observability. Defaults to OTel enabled. */
     instrumentation: InstrumentationSchema.optional(),
-    /** Protocol for the runtime (HTTP, MCP, A2A). */
+    /** Protocol for the runtime (HTTP, MCP, A2A, AGUI). */
     protocol: ProtocolModeSchema.optional(),
     /** Allowed request headers forwarded to the runtime at invocation time. */
     requestHeaderAllowlist: RequestHeaderAllowlistSchema.optional(),

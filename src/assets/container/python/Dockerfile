@@ -31,4 +31,8 @@ USER bedrock_agentcore
 # 9000: A2A Mode
 EXPOSE 8080 8000 9000
 
+{{#if enableOtel}}
 CMD ["opentelemetry-instrument", "python", "-m", "{{entrypoint}}"]
+{{else}}
+CMD ["python", "-m", "{{entrypoint}}"]
+{{/if}}
