@@ -43,6 +43,14 @@ export interface MapHarnessOptions {
 export async function mapHarnessSpecToCreateOptions(options: MapHarnessOptions): Promise<CreateHarnessOptions> {
   const { harnessSpec, harnessDir, executionRoleArn, region, projectName, deployedResources, cdkOutputs } = options;
 
+  if (harnessSpec.dockerfile && !harnessSpec.containerUri) {
+    throw new Error(
+      `Harness "${harnessSpec.name}" specifies "dockerfile" but the CLI does not yet build and push ` +
+        `Dockerfiles for harnesses. Either replace "dockerfile" with a pre-built "containerUri" ` +
+        `(e.g. an ECR image URI), or remove the "dockerfile" field.`
+    );
+  }
+
   const result: CreateHarnessOptions = {
     region,
     harnessName: `${projectName}_${harnessSpec.name}`,

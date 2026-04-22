@@ -302,6 +302,18 @@ describe('mapHarnessSpecToCreateOptions', () => {
     });
   });
 
+  // ── Dockerfile fail-fast ──────────────────────────────────────────────
+
+  describe('dockerfile fail-fast', () => {
+    it('throws when dockerfile is set without containerUri', async () => {
+      const spec = minimalSpec({ dockerfile: 'Dockerfile' });
+
+      await expect(mapHarnessSpecToCreateOptions({ ...BASE_OPTIONS, harnessSpec: spec })).rejects.toThrow(
+        'does not yet build and push Dockerfiles for harnesses'
+      );
+    });
+  });
+
   // ── Network/Lifecycle mapping ──────────────────────────────────────────
 
   describe('environment provider mapping', () => {
