@@ -173,7 +173,7 @@ function CreatedSummary({
   const isByo = agentConfig?.agentType === 'byo';
   const agentPath = isCreate ? `app/${agentConfig.name}/` : isByo ? agentConfig.codeLocation : null;
   const harnessPath = harnessConfig ? `harness/${harnessConfig.name}/` : null;
-  const resourcePath = agentPath || harnessPath;
+  const resourcePath = agentPath ?? harnessPath;
   const agentcorePath = 'agentcore/';
   const maxPathLen = resourcePath ? Math.max(resourcePath.length, agentcorePath.length) : agentcorePath.length;
 
