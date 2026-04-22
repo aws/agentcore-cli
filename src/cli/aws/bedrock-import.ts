@@ -323,7 +323,7 @@ async function fetchCollaborators(
       const aliasArn = (summary as { agentDescriptor?: { aliasArn?: string } }).agentDescriptor?.aliasArn;
       if (!aliasArn) continue;
 
-      const arnMatch = /^arn:aws:bedrock:[^:]+:[^:]+:agent-alias\/([^/]+)\/([^/]+)$/.exec(aliasArn);
+      const arnMatch = /^arn:[^:]+:bedrock:[^:]+:[^:]+:agent-alias\/([^/]+)\/([^/]+)$/.exec(aliasArn);
       if (!arnMatch) continue;
       const [, collabAgentId, collabAliasId] = arnMatch;
       if (!collabAgentId || !collabAliasId) continue;

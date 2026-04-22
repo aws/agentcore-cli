@@ -12,6 +12,7 @@ export const BEDROCK_REGIONS = [
   { id: 'ap-south-1', title: 'Asia Pacific (Mumbai)' },
   { id: 'ca-central-1', title: 'Canada (Central)' },
   { id: 'sa-east-1', title: 'South America (Sao Paulo)' },
+  { id: 'us-gov-west-1', title: 'GovCloud (US West)' },
 ] as const;
 
 export const IMPORT_FRAMEWORK_OPTIONS = [

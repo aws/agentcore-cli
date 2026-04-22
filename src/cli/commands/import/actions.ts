@@ -8,6 +8,7 @@ import type {
   Memory,
 } from '../../../schema';
 import { validateAwsCredentials } from '../../aws/account';
+import { arnPrefix } from '../../aws/partition';
 import { ExecLogger } from '../../logging';
 import { setupPythonProject } from '../../operations/python/setup';
 import { executeCdkImportPipeline } from './import-pipeline';
@@ -521,7 +522,7 @@ export async function handleImport(options: ImportOptions): Promise<ImportResult
           id: a.physicalAgentId!,
           arn:
             a.physicalAgentArn ??
-            `arn:aws:bedrock-agentcore:${target.region}:${target.account}:runtime/${a.physicalAgentId}`,
+            `${arnPrefix(target.region)}:bedrock-agentcore:${target.region}:${target.account}:runtime/${a.physicalAgentId}`,
         })),
       ...memoriesToImport
         .filter(m => m.physicalMemoryId)
@@ -531,7 +532,7 @@ export async function handleImport(options: ImportOptions): Promise<ImportResult
           id: m.physicalMemoryId!,
           arn:
             m.physicalMemoryArn ??
-            `arn:aws:bedrock-agentcore:${target.region}:${target.account}:memory/${m.physicalMemoryId}`,
+            `${arnPrefix(target.region)}:bedrock-agentcore:${target.region}:${target.account}:memory/${m.physicalMemoryId}`,
         })),
     ];
 
