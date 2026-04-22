@@ -300,6 +300,55 @@ describe('mapHarnessSpecToCreateOptions', () => {
         },
       });
     });
+
+    it('resolves built image URI from CDK outputs when dockerfile is set', async () => {
+      const spec = minimalSpec({ name: 'my_harness', dockerfile: 'Dockerfile' });
+
+      const result = await mapHarnessSpecToCreateOptions({
+        ...BASE_OPTIONS,
+        harnessSpec: spec,
+        cdkOutputs: {
+          ApplicationHarnessMyHarnessImageUriABCD1234:
+            '123456789012.dkr.ecr.us-east-1.amazonaws.com/cdk-hnb659fds-container-assets-123456789012-us-east-1:sha256hash',
+        },
+      });
+
+      expect(result.environmentArtifact).toEqual({
+        containerConfiguration: {
+          containerUri:
+            '123456789012.dkr.ecr.us-east-1.amazonaws.com/cdk-hnb659fds-container-assets-123456789012-us-east-1:sha256hash',
+        },
+      });
+    });
+
+    it('throws with actionable error when dockerfile is set but CDK outputs lack the image URI', async () => {
+      const spec = minimalSpec({ name: 'my_harness', dockerfile: 'Dockerfile' });
+
+      await expect(
+        mapHarnessSpecToCreateOptions({ ...BASE_OPTIONS, harnessSpec: spec, cdkOutputs: {} })
+      ).rejects.toThrow(/ApplicationHarnessMyHarnessImageUri/);
+    });
+
+    it('prefers explicit containerUri over dockerfile-derived image URI', async () => {
+      const spec = minimalSpec({
+        name: 'my_harness',
+        containerUri: '123456789012.dkr.ecr.us-east-1.amazonaws.com/explicit:v1',
+      });
+
+      const result = await mapHarnessSpecToCreateOptions({
+        ...BASE_OPTIONS,
+        harnessSpec: spec,
+        cdkOutputs: {
+          ApplicationHarnessMyHarnessImageUriABCD1234: '123456789012.dkr.ecr.us-east-1.amazonaws.com/built:latest',
+        },
+      });
+
+      expect(result.environmentArtifact).toEqual({
+        containerConfiguration: {
+          containerUri: '123456789012.dkr.ecr.us-east-1.amazonaws.com/explicit:v1',
+        },
+      });
+    });
   });
 
   // ── Network/Lifecycle mapping ──────────────────────────────────────────

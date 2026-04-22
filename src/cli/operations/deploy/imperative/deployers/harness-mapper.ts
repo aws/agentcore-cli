@@ -96,9 +96,23 @@ export async function mapHarnessSpecToCreateOptions(options: MapHarnessOptions):
     result.timeoutSeconds = harnessSpec.timeoutSeconds;
   }
 
-  // Container artifact
+  // Container artifact. `containerUri` wins if set explicitly; otherwise if the
+  // user supplied a `dockerfile`, resolve the image URI from CDK outputs (the
+  // stack emits `ApplicationHarness<Pascal>ImageUri` via a DockerImageAsset).
   if (harnessSpec.containerUri) {
     result.environmentArtifact = mapEnvironmentArtifact(harnessSpec.containerUri);
+  } else if (harnessSpec.dockerfile) {
+    const builtImageUri = resolveHarnessImageUri(harnessSpec.name, cdkOutputs);
+    if (!builtImageUri) {
+      throw new Error(
+        `Harness "${harnessSpec.name}" sets "dockerfile": "${harnessSpec.dockerfile}" but no built ` +
+          `image URI was found in CDK outputs. Expected an output starting with ` +
+          `"ApplicationHarness${toPascalId(harnessSpec.name)}ImageUri". ` +
+          `This usually indicates the CDK stack was synthesized without Docker access; ensure a Docker ` +
+          `daemon capable of building linux/arm64 images is available during \`agentcore deploy\`.`
+      );
+    }
+    result.environmentArtifact = mapEnvironmentArtifact(builtImageUri);
   }
 
   // Environment provider (network + lifecycle)
@@ -327,6 +341,21 @@ function mapEnvironmentArtifact(containerUri: string): HarnessEnvironmentArtifac
   return {
     containerConfiguration: { containerUri },
   };
+}
+
+/**
+ * Resolve a harness's built image URI from CDK stack outputs. The stack emits
+ * an output whose logical ID starts with `ApplicationHarness<Pascal>ImageUri`
+ * whenever a DockerImageAsset was built for the harness (see cdk-stack.ts).
+ * CDK may append a hash suffix to the logical ID, so we match by prefix.
+ */
+function resolveHarnessImageUri(harnessName: string, cdkOutputs?: Record<string, string>): string | undefined {
+  if (!cdkOutputs) return undefined;
+  const prefix = `ApplicationHarness${toPascalId(harnessName)}ImageUri`;
+  for (const [key, value] of Object.entries(cdkOutputs)) {
+    if (key.startsWith(prefix)) return value;
+  }
+  return undefined;
 }
 
 // ============================================================================
