@@ -45,10 +45,23 @@ print(f"{CYAN}PR:{RESET}      {PR_URL}")
 print(f"{CYAN}Harness:{RESET} {HARNESS_ARN}")
 print()
 
-# Set up SigV4 signing and HTTP client
-session = boto3.Session(region_name=REGION)
-credentials = session.get_credentials().get_frozen_credentials()
-http = urllib3.PoolManager()
+def invoke_harness(harness_arn, body, region):
+    """Send a SigV4-signed request to the harness invoke endpoint. Returns a streaming response."""
+    session = boto3.Session(region_name=region)
+    credentials = session.get_credentials().get_frozen_credentials()
+    url = f"https://bedrock-agentcore.{region}.amazonaws.com/harnesses/invoke?harnessArn={quote(harness_arn, safe='')}"
+    request = AWSRequest(method="POST", url=url, data=body, headers={
+        "Content-Type": "application/json",
+        "Accept": "application/vnd.amazon.eventstream",
+    })
+    SigV4Auth(credentials, "bedrock-agentcore", region).add_auth(request)
+    return urllib3.PoolManager().urlopen(
+        "POST", url, body=body,
+        headers=dict(request.headers),
+        preload_content=False,
+        timeout=urllib3.Timeout(connect=10, read=600),
+    )
+
 
 SYSTEM_PROMPT = """# AgentCore CLI Development Workspace
 
@@ -95,19 +108,7 @@ request_body = json.dumps({
     "model": {"bedrockModelConfig": {"modelId": MODEL_ID}},
 })
 
-url = f"https://bedrock-agentcore.{REGION}.amazonaws.com/harnesses/invoke?harnessArn={quote(HARNESS_ARN, safe='')}"
-aws_request = AWSRequest(method="POST", url=url, data=request_body, headers={
-    "Content-Type": "application/json",
-    "Accept": "application/vnd.amazon.eventstream",
-})
-SigV4Auth(credentials, "bedrock-agentcore", REGION).add_auth(aws_request)
-
-http_response = http.urlopen(
-    "POST", url, body=request_body,
-    headers=dict(aws_request.headers),
-    preload_content=False,
-    timeout=urllib3.Timeout(connect=10, read=600),
-)
+http_response = invoke_harness(HARNESS_ARN, request_body, REGION)
 
 if http_response.status != 200:
     error = http_response.read().decode("utf-8")
