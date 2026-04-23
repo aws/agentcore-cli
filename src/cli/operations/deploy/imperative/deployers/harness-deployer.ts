@@ -96,12 +96,13 @@ export class HarnessDeployer implements ImperativeDeployer<HarnessDeployedStateM
           return {
             success: false,
             error: `Invalid harness.json for "${entry.name}": ${validated.error.message}`,
+            state: resultState,
           };
         }
         harnessSpec = validated.data;
       } catch (err) {
         const message = err instanceof Error ? err.message : String(err);
-        return { success: false, error: `Failed to read harness.json for "${entry.name}": ${message}` };
+        return { success: false, error: `Failed to read harness.json for "${entry.name}": ${message}`, state: resultState };
       }
 
       // Resolve role ARN from CDK outputs
@@ -110,6 +111,7 @@ export class HarnessDeployer implements ImperativeDeployer<HarnessDeployedStateM
         return {
           success: false,
           error: `Could not find role ARN in CDK outputs for harness "${entry.name}". Expected output key starting with "ApplicationHarness${toPascalId(entry.name)}RoleArn".`,
+          state: resultState,
         };
       }
 
@@ -226,7 +228,7 @@ export class HarnessDeployer implements ImperativeDeployer<HarnessDeployedStateM
           notes.push(`Deleted harness "${name}"`);
         } catch (err) {
           const message = err instanceof Error ? err.message : String(err);
-          return { success: false, error: `Failed to delete harness "${name}": ${message}` };
+          return { success: false, error: `Failed to delete harness "${name}": ${message}`, state: resultState };
         }
       }
     }

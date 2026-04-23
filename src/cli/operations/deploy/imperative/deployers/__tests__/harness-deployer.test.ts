@@ -348,6 +348,85 @@ describe('HarnessDeployer', () => {
       expect(result.error).toContain('Failed to read harness.json');
     });
 
+    it('preserves existing harness state when validation fails', async () => {
+      mockedReadFile.mockResolvedValueOnce('{ "invalid": true }');
+
+      const existingState = {
+        harnessId: 'h-existing',
+        harnessArn: 'arn:aws:bedrock-agentcore:us-east-1:123456789012:harness/h-existing',
+        roleArn: 'arn:aws:iam::123456789012:role/HarnessRole',
+        status: 'READY' as const,
+        configHash: 'abc123',
+      };
+
+      const ctx = createContext({
+        harnesses: [{ name: 'my_harness', path: 'harnesses/my_harness' }],
+        deployedHarnesses: {
+          harnesses: { my_harness: existingState },
+        },
+        cdkOutputs: {
+          ApplicationHarnessMyHarnessRoleArnOutput123: 'arn:aws:iam::123456789012:role/HarnessRole',
+        },
+      });
+
+      const result = await deployer.deploy(ctx);
+
+      expect(result.success).toBe(false);
+      expect(result.state).toEqual({ my_harness: existingState });
+    });
+
+    it('preserves existing harness state when harness.json read fails', async () => {
+      mockedReadFile.mockRejectedValueOnce(new Error('ENOENT'));
+
+      const existingState = {
+        harnessId: 'h-existing',
+        harnessArn: 'arn:aws:bedrock-agentcore:us-east-1:123456789012:harness/h-existing',
+        roleArn: 'arn:aws:iam::123456789012:role/HarnessRole',
+        status: 'READY' as const,
+        configHash: 'abc123',
+      };
+
+      const ctx = createContext({
+        harnesses: [{ name: 'my_harness', path: 'harnesses/my_harness' }],
+        deployedHarnesses: {
+          harnesses: { my_harness: existingState },
+        },
+        cdkOutputs: {
+          ApplicationHarnessMyHarnessRoleArnOutput123: 'arn:aws:iam::123456789012:role/HarnessRole',
+        },
+      });
+
+      const result = await deployer.deploy(ctx);
+
+      expect(result.success).toBe(false);
+      expect(result.state).toEqual({ my_harness: existingState });
+    });
+
+    it('preserves existing harness state when role ARN not found', async () => {
+      mockedReadFile.mockResolvedValueOnce(HARNESS_SPEC_JSON);
+
+      const existingState = {
+        harnessId: 'h-existing',
+        harnessArn: 'arn:aws:bedrock-agentcore:us-east-1:123456789012:harness/h-existing',
+        roleArn: 'arn:aws:iam::123456789012:role/HarnessRole',
+        status: 'READY' as const,
+        configHash: 'abc123',
+      };
+
+      const ctx = createContext({
+        harnesses: [{ name: 'my_harness', path: 'harnesses/my_harness' }],
+        deployedHarnesses: {
+          harnesses: { my_harness: existingState },
+        },
+        cdkOutputs: { SomeOtherOutput: 'value' },
+      });
+
+      const result = await deployer.deploy(ctx);
+
+      expect(result.success).toBe(false);
+      expect(result.state).toEqual({ my_harness: existingState });
+    });
+
     it('returns error when API call fails', async () => {
       mockedReadFile.mockResolvedValueOnce(HARNESS_SPEC_JSON);
       mockedMapHarness.mockResolvedValueOnce({
