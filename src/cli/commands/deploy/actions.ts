@@ -1,7 +1,7 @@
 import { ConfigIO, SecureCredentials } from '../../../lib';
 import type { AgentCoreMcpSpec, DeployedState } from '../../../schema';
+import { applyTargetRegionToEnv } from '../../aws';
 import { validateAwsCredentials } from '../../aws/account';
-import { applyTargetRegionToEnv } from '../../aws/target-region';
 import { createSwitchableIoHost } from '../../cdk/toolkit-lib';
 import {
   buildDeployedState,

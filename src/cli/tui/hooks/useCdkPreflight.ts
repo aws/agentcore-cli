@@ -1,7 +1,7 @@
 import { ConfigIO, SecureCredentials } from '../../../lib';
 import type { DeployedState } from '../../../schema';
+import { applyTargetRegionToEnv } from '../../aws';
 import { AwsCredentialsError, validateAwsCredentials } from '../../aws/account';
-import { applyTargetRegionToEnv } from '../../aws/target-region';
 import { type CdkToolkitWrapper, type SwitchableIoHost, createSwitchableIoHost } from '../../cdk/toolkit-lib';
 import { getErrorMessage, isExpiredTokenError, isNoCredentialsError } from '../../errors';
 import type { ExecLogger } from '../../logging';
@@ -211,6 +211,16 @@ export function useCdkPreflight(options: PreflightOptions): PreflightResult {
       restoreRegionEnv();
     };
   }, [disposeWrapper, restoreRegionEnv]);
+
+  // Restore region env override when any preflight stage lands in 'error'.
+  // Individual error branches inside the stage effects only call setPhase('error')
+  // without cleanup, so this hook is the single place that guarantees restore
+  // happens on every error path without threading the call into every branch.
+  useEffect(() => {
+    if (phase === 'error') {
+      restoreRegionEnv();
+    }
+  }, [phase, restoreRegionEnv]);
 
   const confirmTeardown = useCallback(() => {
     // Mark teardown as confirmed and restart the preflight flow

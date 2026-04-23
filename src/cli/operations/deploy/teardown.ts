@@ -1,6 +1,6 @@
 import { CONFIG_DIR, ConfigIO } from '../../../lib';
 import type { AwsDeploymentTarget } from '../../../schema';
-import { withTargetRegion } from '../../aws/target-region';
+import { withTargetRegion } from '../../aws';
 import { CdkToolkitWrapper, silentIoHost } from '../../cdk/toolkit-lib';
 import { type DiscoveredStack, findStack } from '../../cloudformation/stack-discovery';
 import { StackSelectionStrategy } from '@aws-cdk/toolkit-lib';
