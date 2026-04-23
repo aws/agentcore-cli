@@ -81,7 +81,7 @@ jobs:
           PR_NUM="${PR_URL##*/}"
           echo "number=$PR_NUM" >> "$GITHUB_OUTPUT"
 
-      - name: Add ai-reviewing label
+      - name: Add agentcore-harness-reviewing label
         if: github.event_name != 'pull_request' || steps.auth.outputs.authorized == 'true'
         uses: actions/github-script@v8
         with:
@@ -91,16 +91,16 @@ jobs:
               await github.rest.issues.getLabel({
                 owner: context.repo.owner,
                 repo: context.repo.repo,
-                name: 'ai-reviewing',
+                name: 'agentcore-harness-reviewing',
               });
             } catch (e) {
               if (e.status === 404) {
                 await github.rest.issues.createLabel({
                   owner: context.repo.owner,
                   repo: context.repo.repo,
-                  name: 'ai-reviewing',
+                  name: 'agentcore-harness-reviewing',
                   color: '7B61FF',
-                  description: 'AI review in progress',
+                  description: 'AgentCore Harness review in progress',
                 });
               }
             }
@@ -108,7 +108,7 @@ jobs:
               owner: context.repo.owner,
               repo: context.repo.repo,
               issue_number: prNumber,
-              labels: ['ai-reviewing'],
+              labels: ['agentcore-harness-reviewing'],
             });
 
       - name: Checkout
@@ -143,7 +143,7 @@ jobs:
           HARNESS_ARN: ${{ secrets.HARNESS_ARN }}
         run: python .github/scripts/python/harness_review.py
 
-      - name: Remove ai-reviewing label
+      - name: Remove agentcore-harness-reviewing label
         if: always() && (github.event_name != 'pull_request' || steps.auth.outputs.authorized == 'true')
         uses: actions/github-script@v8
         with:
@@ -154,7 +154,7 @@ jobs:
                 owner: context.repo.owner,
                 repo: context.repo.repo,
                 issue_number: prNumber,
-                name: 'ai-reviewing',
+                name: 'agentcore-harness-reviewing',
               });
             } catch (error) {
               console.log('Label removal failed (may not exist):', error.message);
