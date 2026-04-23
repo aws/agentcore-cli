@@ -25,25 +25,15 @@ RED = "\033[31m"
 DIM = "\033[2m"
 RESET = "\033[0m"
 
-# All config comes from environment variables (set via GitHub secrets/workflow)
-REGION = os.environ.get("HARNESS_REGION", "us-east-1")
-ACCOUNT_ID = os.environ.get("HARNESS_ACCOUNT_ID", "")
-MODEL_ID = os.environ.get("HARNESS_MODEL_ID", "us.anthropic.claude-opus-4-7")
-HARNESS_ID = os.environ.get("HARNESS_ID", "")
-PR_URL = os.environ.get("PR_URL", "")
+SCRIPTS_DIR = os.path.join(os.path.dirname(__file__), "..")
 
-for name, val in [("HARNESS_ACCOUNT_ID", ACCOUNT_ID), ("HARNESS_ID", HARNESS_ID), ("PR_URL", PR_URL)]:
-    if not val:
-        print(f"{RED}ERROR: {name} environment variable is required{RESET}", file=sys.stderr)
-        sys.exit(1)
 
-HARNESS_ARN = f"arn:aws:bedrock-agentcore:{REGION}:{ACCOUNT_ID}:harness/{HARNESS_ID}"
-SESSION_ID = str(uuid.uuid4()).upper()
+def read_prompt(filename):
+    """Read a prompt template from the prompts directory."""
+    path = os.path.join(SCRIPTS_DIR, "prompts", filename)
+    with open(path) as f:
+        return f.read()
 
-print(f"{CYAN}Session:{RESET} {SESSION_ID}")
-print(f"{CYAN}PR:{RESET}      {PR_URL}")
-print(f"{CYAN}Harness:{RESET} {HARNESS_ARN}")
-print()
 
 def invoke_harness(harness_arn, body, region):
     """Send a SigV4-signed request to the harness invoke endpoint. Returns a streaming response."""
@@ -63,43 +53,130 @@ def invoke_harness(harness_arn, body, region):
     )
 
 
-SYSTEM_PROMPT = """# AgentCore CLI Development Workspace
+def print_stream(http_response):
+    """Parse and display the harness event stream with GitHub Actions log groups."""
+    start_time = time.time()
+    iteration = 0
+    current_tool_name = None
+    current_tool_input = ""
+    tool_start_time = 0.0
+    in_group = False
+    had_text = False
 
-This workspace contains two repos for developing and testing the AgentCore CLI.
+    def close_group():
+        nonlocal in_group
+        if in_group:
+            print("::endgroup::", flush=True)
+            in_group = False
 
-## Repositories
+    event_buffer = EventStreamBuffer()
 
-### agentcore-cli/ (`aws/agentcore-cli`)
+    for chunk in http_response.stream(4096):
+        event_buffer.add_data(chunk)
+        for event in event_buffer:
+            if event.headers.get(":message-type") == "exception":
+                payload = json.loads(event.payload.decode("utf-8"))
+                close_group()
+                print(f"\n{RED}ERROR: {payload}{RESET}", file=sys.stderr)
+                sys.exit(1)
 
-The terminal experience for creating, developing, and deploying AI agents to AgentCore. Node.js/TypeScript CLI built with Ink (React-based TUI).
+            event_type = event.headers.get(":event-type", "")
+            if not event.payload:
+                continue
+            payload = json.loads(event.payload.decode("utf-8"))
 
-### agentcore-l3-cdk-constructs/ (`aws/agentcore-l3-cdk-constructs`)
+            if event_type == "contentBlockStart":
+                start = payload.get("start", {})
+                if "toolUse" in start:
+                    current_tool_name = start["toolUse"].get("name", "unknown")
+                    current_tool_input = ""
+                    tool_start_time = time.time()
+                    iteration += 1
 
-AWS CDK L3 constructs for declaring and deploying AgentCore infrastructure. Used by agentcore-cli to vend CDK projects when users run `agentcore create`.
+            elif event_type == "contentBlockDelta":
+                delta = payload.get("delta", {})
+                if "text" in delta:
+                    close_group()
+                    print(flush=True)
+                    print(f"{DIM}{delta['text']}{RESET}", end="", flush=True)
+                    had_text = True
+                if "toolUse" in delta:
+                    current_tool_input += delta["toolUse"].get("input", "")
 
-## How they relate
+            elif event_type == "contentBlockStop":
+                if current_tool_name:
+                    elapsed = time.time() - tool_start_time
+                    try:
+                        parsed = json.loads(current_tool_input)
+                    except (json.JSONDecodeError, TypeError):
+                        parsed = current_tool_input
 
-`agentcore-cli` is the main product. It vends CDK projects using constructs from `agentcore-l3-cdk-constructs`.
+                    close_group()
 
-## Testing with a bundled distribution
+                    if had_text:
+                        print("\n", flush=True)
+                        had_text = False
 
-Run `npm run bundle` in `agentcore-cli/` to create a tar distribution that includes the packaged `agentcore-l3-cdk-constructs`. You can then install it globally with `npm install -g <path-to-tar>` to test the CLI end-to-end.
-"""
+                    if isinstance(parsed, dict) and "command" in parsed:
+                        header = f"{CYAN}[{iteration}]{RESET} {YELLOW}{current_tool_name}{RESET} {DIM}({elapsed:.1f}s){RESET}: $ {parsed['command']}"
+                    else:
+                        header = f"{CYAN}[{iteration}]{RESET} {YELLOW}{current_tool_name}{RESET} {DIM}({elapsed:.1f}s){RESET}"
 
-REVIEW_PROMPT = f"""Review this GitHub PR: {PR_URL}
+                    print(f"::group::{header}", flush=True)
+                    in_group = True
 
-You have tools to fetch the PR diff, read files, search the web, and post comments on the PR.
+                    if isinstance(parsed, dict):
+                        for k, v in parsed.items():
+                            if k == "command":
+                                continue
+                            print(f"  {DIM}{k}:{RESET} {str(v)[:300]}", flush=True)
 
-You have these repos cloned locally for context:
-- /opt/workspace/agentcore-cli — aws/agentcore-cli
-- /opt/workspace/agentcore-l3-cdk-constructs — aws/agentcore-l3-cdk-constructs
+                current_tool_name = None
+                current_tool_input = ""
 
-Before reviewing, read all existing comments on the PR to understand what has already been discussed. Do not repeat or re-post issues that have already been raised in existing comments.
+            elif event_type == "messageStop":
+                close_group()
+                reason = payload.get("stopReason", "")
+                if reason == "end_turn":
+                    total = time.time() - start_time
+                    minutes = int(total // 60)
+                    seconds = int(total % 60)
+                    print(f"\n\n{GREEN}{'=' * 50}", flush=True)
+                    print(f"  Done ({minutes}m {seconds}s)", flush=True)
+                    print(f"{'=' * 50}{RESET}", flush=True)
 
-Review the PR. If there are any serious issues that require code changes before merging, post a comment on the PR for each issue explaining the problem. If there are multiple ways to fix an issue, list the options so the author can choose. Skip style nits and minor suggestions — only flag things that actually need to change.
+            elif event_type == "internalServerException":
+                close_group()
+                print(f"\n{RED}ERROR: {payload}{RESET}", file=sys.stderr)
+                sys.exit(1)
 
-If all serious issues have already been raised in existing comments, or if you found no new issues, post a single comment on the PR saying it looks good to merge (or that all issues have already been flagged).
-"""
+    close_group()
+
+    total = time.time() - start_time
+    print(f"\n{GREEN}Review complete.{RESET} {DIM}({iteration} tool calls, {int(total)}s total){RESET}")
+
+
+# --- Main ---
+
+# All config comes from environment variables (set via GitHub secrets/workflow)
+REGION = os.environ.get("HARNESS_REGION", "us-east-1")
+MODEL_ID = os.environ.get("HARNESS_MODEL_ID", "us.anthropic.claude-opus-4-7")
+HARNESS_ARN = os.environ.get("HARNESS_ARN", "")
+PR_URL = os.environ.get("PR_URL", "")
+
+for name, val in [("HARNESS_ARN", HARNESS_ARN), ("PR_URL", PR_URL)]:
+    if not val:
+        print(f"{RED}ERROR: {name} environment variable is required{RESET}", file=sys.stderr)
+        sys.exit(1)
+SESSION_ID = str(uuid.uuid4()).upper()
+
+print(f"{CYAN}Session:{RESET} {SESSION_ID}")
+print(f"{CYAN}PR:{RESET}      {PR_URL}")
+print(f"{CYAN}Harness:{RESET} {HARNESS_ARN}")
+print()
+
+SYSTEM_PROMPT = read_prompt("system.md")
+REVIEW_PROMPT = read_prompt("review.md").format(pr_url=PR_URL)
 
 request_body = json.dumps({
     "runtimeSessionId": SESSION_ID,
@@ -115,112 +192,4 @@ if http_response.status != 200:
     print(f"{RED}ERROR: HTTP {http_response.status}: {error}{RESET}", file=sys.stderr)
     sys.exit(1)
 
-# Stream event handling
-start_time = time.time()
-iteration = 0
-current_tool_name = None
-current_tool_input = ""
-tool_start_time = 0.0
-in_tool_group = False
-had_text_output = False
-
-event_buffer = EventStreamBuffer()
-
-for chunk in http_response.stream(4096):
-    event_buffer.add_data(chunk)
-    for event in event_buffer:
-        if event.headers.get(":message-type") == "exception":
-            payload = json.loads(event.payload.decode("utf-8"))
-            if in_tool_group:
-                print("::endgroup::", flush=True)
-            print(f"\n{RED}ERROR: {payload}{RESET}", file=sys.stderr)
-            sys.exit(1)
-
-        event_type = event.headers.get(":event-type", "")
-        if not event.payload:
-            continue
-        payload = json.loads(event.payload.decode("utf-8"))
-
-        if event_type == "contentBlockStart":
-            start = payload.get("start", {})
-            if "toolUse" in start:
-                current_tool_name = start["toolUse"].get("name", "unknown")
-                current_tool_input = ""
-                tool_start_time = time.time()
-                iteration += 1
-
-        elif event_type == "contentBlockDelta":
-            delta = payload.get("delta", {})
-            if "text" in delta:
-                # Close tool group before printing reasoning text
-                if in_tool_group:
-                    print("::endgroup::", flush=True)
-                    in_tool_group = False
-                    print(flush=True)
-                print(f"{DIM}{delta['text']}{RESET}", end="", flush=True)
-                had_text_output = True
-            if "toolUse" in delta:
-                current_tool_input += delta["toolUse"].get("input", "")
-
-        elif event_type == "contentBlockStop":
-            if current_tool_name:
-                elapsed = time.time() - tool_start_time
-                try:
-                    parsed = json.loads(current_tool_input)
-                except (json.JSONDecodeError, TypeError):
-                    parsed = current_tool_input
-
-                # Close previous tool group if open
-                if in_tool_group:
-                    print("::endgroup::", flush=True)
-                    in_tool_group = False
-
-                # Add spacing after reasoning text
-                if had_text_output:
-                    print("\n", flush=True)
-                    had_text_output = False
-
-                # Format tool call header
-                if isinstance(parsed, dict) and "command" in parsed:
-                    header = f"{CYAN}[{iteration}]{RESET} {YELLOW}{current_tool_name}{RESET} {DIM}({elapsed:.1f}s){RESET}: $ {parsed['command']}"
-                else:
-                    header = f"{CYAN}[{iteration}]{RESET} {YELLOW}{current_tool_name}{RESET} {DIM}({elapsed:.1f}s){RESET}"
-
-                print(f"::group::{header}", flush=True)
-                in_tool_group = True
-
-                # Print tool input details inside the group
-                if isinstance(parsed, dict):
-                    for k, v in parsed.items():
-                        if k == "command":
-                            continue
-                        v_str = str(v)[:300]
-                        print(f"  {DIM}{k}:{RESET} {v_str}", flush=True)
-
-            current_tool_name = None
-            current_tool_input = ""
-
-        elif event_type == "messageStop":
-            if in_tool_group:
-                print("::endgroup::", flush=True)
-                in_tool_group = False
-            reason = payload.get("stopReason", "")
-            if reason == "end_turn":
-                total = time.time() - start_time
-                minutes = int(total // 60)
-                seconds = int(total % 60)
-                print(f"\n\n{GREEN}{'=' * 50}", flush=True)
-                print(f"  Done ({minutes}m {seconds}s)", flush=True)
-                print(f"{'=' * 50}{RESET}", flush=True)
-
-        elif event_type == "internalServerException":
-            if in_tool_group:
-                print("::endgroup::", flush=True)
-            print(f"\n{RED}ERROR: {payload}{RESET}", file=sys.stderr)
-            sys.exit(1)
-
-if in_tool_group:
-    print("::endgroup::", flush=True)
-
-total = time.time() - start_time
-print(f"\n{GREEN}Review complete.{RESET} {DIM}({iteration} tool calls, {int(total)}s total){RESET}")
+print_stream(http_response)
