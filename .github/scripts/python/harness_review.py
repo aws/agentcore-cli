@@ -53,13 +53,28 @@ def invoke_harness(harness_arn, body, region):
     )
 
 
+def parse_events(http_response):
+    """Yield decoded events from the harness binary event stream."""
+    event_buffer = EventStreamBuffer()
+    for chunk in http_response.stream(4096):
+        event_buffer.add_data(chunk)
+        for event in event_buffer:
+            if event.headers.get(":message-type") == "exception":
+                payload = json.loads(event.payload.decode("utf-8"))
+                print(f"\n{RED}ERROR: {payload}{RESET}", file=sys.stderr)
+                sys.exit(1)
+            event_type = event.headers.get(":event-type", "")
+            if event.payload:
+                yield event_type, json.loads(event.payload.decode("utf-8"))
+
+
 def print_stream(http_response):
-    """Parse and display the harness event stream with GitHub Actions log groups."""
+    """Display harness events with GitHub Actions log groups."""
     start_time = time.time()
     iteration = 0
-    current_tool_name = None
-    current_tool_input = ""
-    tool_start_time = 0.0
+    tool_name = None
+    tool_input = ""
+    tool_start = 0.0
     in_group = False
     had_text = False
 
@@ -69,89 +84,69 @@ def print_stream(http_response):
             print("::endgroup::", flush=True)
             in_group = False
 
-    event_buffer = EventStreamBuffer()
+    for event_type, payload in parse_events(http_response):
 
-    for chunk in http_response.stream(4096):
-        event_buffer.add_data(chunk)
-        for event in event_buffer:
-            if event.headers.get(":message-type") == "exception":
-                payload = json.loads(event.payload.decode("utf-8"))
+        if event_type == "contentBlockStart":
+            start = payload.get("start", {})
+            if "toolUse" in start:
+                tool_name = start["toolUse"].get("name", "unknown")
+                tool_input = ""
+                tool_start = time.time()
+                iteration += 1
+
+        elif event_type == "contentBlockDelta":
+            delta = payload.get("delta", {})
+            if "text" in delta:
                 close_group()
-                print(f"\n{RED}ERROR: {payload}{RESET}", file=sys.stderr)
-                sys.exit(1)
+                print(flush=True)
+                print(f"{DIM}{delta['text']}{RESET}", end="", flush=True)
+                had_text = True
+            if "toolUse" in delta:
+                tool_input += delta["toolUse"].get("input", "")
 
-            event_type = event.headers.get(":event-type", "")
-            if not event.payload:
-                continue
-            payload = json.loads(event.payload.decode("utf-8"))
+        elif event_type == "contentBlockStop":
+            if tool_name:
+                elapsed = time.time() - tool_start
+                try:
+                    parsed = json.loads(tool_input)
+                except (json.JSONDecodeError, TypeError):
+                    parsed = tool_input
 
-            if event_type == "contentBlockStart":
-                start = payload.get("start", {})
-                if "toolUse" in start:
-                    current_tool_name = start["toolUse"].get("name", "unknown")
-                    current_tool_input = ""
-                    tool_start_time = time.time()
-                    iteration += 1
+                close_group()
+                if had_text:
+                    print("\n", flush=True)
+                    had_text = False
 
-            elif event_type == "contentBlockDelta":
-                delta = payload.get("delta", {})
-                if "text" in delta:
-                    close_group()
-                    print(flush=True)
-                    print(f"{DIM}{delta['text']}{RESET}", end="", flush=True)
-                    had_text = True
-                if "toolUse" in delta:
-                    current_tool_input += delta["toolUse"].get("input", "")
+                cmd = parsed.get("command") if isinstance(parsed, dict) else None
+                header = f"{CYAN}[{iteration}]{RESET} {YELLOW}{tool_name}{RESET} {DIM}({elapsed:.1f}s){RESET}"
+                if cmd:
+                    header += f": $ {cmd}"
 
-            elif event_type == "contentBlockStop":
-                if current_tool_name:
-                    elapsed = time.time() - tool_start_time
-                    try:
-                        parsed = json.loads(current_tool_input)
-                    except (json.JSONDecodeError, TypeError):
-                        parsed = current_tool_input
+                print(f"::group::{header}", flush=True)
+                in_group = True
 
-                    close_group()
-
-                    if had_text:
-                        print("\n", flush=True)
-                        had_text = False
-
-                    if isinstance(parsed, dict) and "command" in parsed:
-                        header = f"{CYAN}[{iteration}]{RESET} {YELLOW}{current_tool_name}{RESET} {DIM}({elapsed:.1f}s){RESET}: $ {parsed['command']}"
-                    else:
-                        header = f"{CYAN}[{iteration}]{RESET} {YELLOW}{current_tool_name}{RESET} {DIM}({elapsed:.1f}s){RESET}"
-
-                    print(f"::group::{header}", flush=True)
-                    in_group = True
-
-                    if isinstance(parsed, dict):
-                        for k, v in parsed.items():
-                            if k == "command":
-                                continue
+                if isinstance(parsed, dict):
+                    for k, v in parsed.items():
+                        if k != "command":
                             print(f"  {DIM}{k}:{RESET} {str(v)[:300]}", flush=True)
 
-                current_tool_name = None
-                current_tool_input = ""
+            tool_name = None
+            tool_input = ""
 
-            elif event_type == "messageStop":
-                close_group()
-                reason = payload.get("stopReason", "")
-                if reason == "end_turn":
-                    total = time.time() - start_time
-                    minutes = int(total // 60)
-                    seconds = int(total % 60)
-                    print(f"\n\n{GREEN}{'=' * 50}", flush=True)
-                    print(f"  Done ({minutes}m {seconds}s)", flush=True)
-                    print(f"{'=' * 50}{RESET}", flush=True)
+        elif event_type == "messageStop":
+            close_group()
+            if payload.get("stopReason") == "end_turn":
+                total = time.time() - start_time
+                print(f"\n\n{GREEN}{'=' * 50}", flush=True)
+                print(f"  Done ({int(total // 60)}m {int(total % 60)}s)", flush=True)
+                print(f"{'=' * 50}{RESET}", flush=True)
 
-            elif event_type == "internalServerException":
-                close_group()
-                print(f"\n{RED}ERROR: {payload}{RESET}", file=sys.stderr)
-                sys.exit(1)
+        elif event_type == "internalServerException":
+            close_group()
+            print(f"\n{RED}ERROR: {payload}{RESET}", file=sys.stderr)
+            sys.exit(1)
 
     close_group()
-
     total = time.time() - start_time
     print(f"\n{GREEN}Review complete.{RESET} {DIM}({iteration} tool calls, {int(total)}s total){RESET}")
 
