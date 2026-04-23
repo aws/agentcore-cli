@@ -16,8 +16,11 @@ permissions:
   contents: read
 
 jobs:
-  ai-review:
+  authorize:
     runs-on: ubuntu-latest
+    if: github.event_name == 'workflow_dispatch' || github.event_name == 'pull_request'
+    outputs:
+      authorized: ${{ steps.auth.outputs.authorized }}
     steps:
       - name: Check authorization
         id: auth
@@ -57,14 +60,17 @@ jobs:
               }
             }
 
-      - name: Skip if not authorized
-        if: github.event_name == 'pull_request' && steps.auth.outputs.authorized != 'true'
-        run: |
-          echo "PR author is not authorized. Skipping AI review."
-          exit 0
+      - name: Auto-authorize workflow_dispatch
+        id: dispatch-auth
+        if: github.event_name == 'workflow_dispatch'
+        run: echo "authorized=true" >> "$GITHUB_OUTPUT"
 
+  ai-review:
+    needs: authorize
+    if: needs.authorize.outputs.authorized == 'true' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    steps:
       - name: Determine PR URL
-        if: github.event_name != 'pull_request' || steps.auth.outputs.authorized == 'true'
         id: pr-url
         run: |
           if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
@@ -74,7 +80,6 @@ jobs:
           fi
 
       - name: Extract PR number
-        if: github.event_name != 'pull_request' || steps.auth.outputs.authorized == 'true'
         id: pr-number
         run: |
           PR_URL="${{ steps.pr-url.outputs.url }}"
@@ -82,7 +87,6 @@ jobs:
           echo "number=$PR_NUM" >> "$GITHUB_OUTPUT"
 
       - name: Add agentcore-harness-reviewing label
-        if: github.event_name != 'pull_request' || steps.auth.outputs.authorized == 'true'
         uses: actions/github-script@v8
         with:
           script: |
@@ -112,39 +116,33 @@ jobs:
             });
 
       - name: Checkout
-        if: github.event_name != 'pull_request' || steps.auth.outputs.authorized == 'true'
         uses: actions/checkout@v6
 
       - name: Configure AWS credentials
-        if: github.event_name != 'pull_request' || steps.auth.outputs.authorized == 'true'
         uses: aws-actions/configure-aws-credentials@v5
         with:
           role-to-assume: ${{ secrets.HARNESS_AWS_ROLE_ARN }}
           aws-region: us-east-1
 
       - name: Set up Python 3.12
-        if: github.event_name != 'pull_request' || steps.auth.outputs.authorized == 'true'
         uses: actions/setup-python@v6
         with:
           python-version: '3.12'
 
       - name: Install uv and dependencies
-        if: github.event_name != 'pull_request' || steps.auth.outputs.authorized == 'true'
         uses: astral-sh/setup-uv@v7
 
       - name: Install boto3
-        if: github.event_name != 'pull_request' || steps.auth.outputs.authorized == 'true'
         run: uv pip install --system boto3
 
       - name: Run AI review
-        if: github.event_name != 'pull_request' || steps.auth.outputs.authorized == 'true'
         env:
           PR_URL: ${{ steps.pr-url.outputs.url }}
           HARNESS_ARN: ${{ secrets.HARNESS_ARN }}
         run: python .github/scripts/python/harness_review.py
 
       - name: Remove agentcore-harness-reviewing label
-        if: always() && (github.event_name != 'pull_request' || steps.auth.outputs.authorized == 'true')
+        if: always()
         uses: actions/github-script@v8
         with:
           script: |
