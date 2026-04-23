@@ -175,7 +175,6 @@ def print_stream(http_response):
 # --- Main ---
 
 # All config comes from environment variables (set via GitHub secrets/workflow)
-REGION = os.environ.get("HARNESS_REGION", "us-east-1")
 MODEL_ID = os.environ.get("HARNESS_MODEL_ID", "us.anthropic.claude-opus-4-7")
 HARNESS_ARN = os.environ.get("HARNESS_ARN", "")
 PR_URL = os.environ.get("PR_URL", "")
@@ -184,6 +183,9 @@ for name, val in [("HARNESS_ARN", HARNESS_ARN), ("PR_URL", PR_URL)]:
     if not val:
         print(f"{RED}ERROR: {name} environment variable is required{RESET}", file=sys.stderr)
         sys.exit(1)
+
+# Extract region from the ARN (arn:aws:bedrock-agentcore:{region}:{account}:harness/{id})
+REGION = HARNESS_ARN.split(":")[3]
 SESSION_ID = str(uuid.uuid4()).upper()
 
 print(f"{CYAN}Session:{RESET} {SESSION_ID}")
