@@ -2,6 +2,25 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.0.0-preview.2] - 2026-04-23
+
+### Added
+- feat: upgrade agent inspector to 0.2.1 (#937) (b49a06f)
+- feat: remove deployed/local from status legend (#936) (c0d5b7b)
+- feat: add GovCloud multi-partition support (#908) (098b104)
+
+### Fixed
+- fix: update asset snapshots after version revert (c8ea8b4)
+- fix: use dnsSuffix() for multi-partition endpoint support (07b7430)
+- fix: preserve harness deployed state on early deploy errors (#933) (c1c92f6)
+- fix: build and push Dockerfile for harnesses on deploy (#927) (#929) (3cec11c)
+
+### Other Changes
+- Revert "chore: bump version to 1.0.0-preview.2 (#939)" (4a90975)
+- chore: bump version to 1.0.0-preview.2 (#939) (502e089)
+- Merge remote-tracking branch 'origin/main' into preview (69dbc79)
+- fix(deploy): honor aws-targets.json region for all SDK and CDK calls (#925) (1903f7d)
+
 ## [1.0.0-preview.1] - 2026-04-22
 
 ### Added
