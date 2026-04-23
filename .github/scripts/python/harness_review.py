@@ -36,7 +36,12 @@ def read_prompt(filename):
 
 
 def invoke_harness(harness_arn, body, region):
-    """Send a SigV4-signed request to the harness invoke endpoint. Returns a streaming response."""
+    """Send a SigV4-signed request to the harness invoke endpoint. Returns a streaming response.
+
+    InvokeHarness is not in standard boto3, so we call the REST API directly.
+    boto3 is only used to resolve AWS credentials (from env vars, OIDC, etc.)
+    and sign the request with SigV4. The response is an AWS binary event stream.
+    """
     session = boto3.Session(region_name=region)
     credentials = session.get_credentials().get_frozen_credentials()
     url = f"https://bedrock-agentcore.{region}.amazonaws.com/harnesses/invoke?harnessArn={quote(harness_arn, safe='')}"
@@ -54,7 +59,12 @@ def invoke_harness(harness_arn, body, region):
 
 
 def parse_events(http_response):
-    """Yield decoded events from the harness binary event stream."""
+    """Yield (event_type, payload) tuples from the harness binary event stream.
+
+    The response arrives as raw bytes in AWS binary event stream format.
+    EventStreamBuffer reassembles complete events from the 4KB chunks,
+    and we decode each event's JSON payload before yielding it.
+    """
     event_buffer = EventStreamBuffer()
     for chunk in http_response.stream(4096):
         event_buffer.add_data(chunk)
@@ -69,7 +79,18 @@ def parse_events(http_response):
 
 
 def print_stream(http_response):
-    """Display harness events with GitHub Actions log groups."""
+    """Display harness events with GitHub Actions log groups.
+
+    The harness streams events as the agent works:
+      contentBlockStart  — a new block begins (text or tool call)
+      contentBlockDelta  — incremental chunks of text or tool input JSON
+      contentBlockStop   — block complete, we now have full tool input to display
+      messageStop        — agent finished
+      internalServerException — server error
+
+    Tool calls are wrapped in ::group::/::endgroup:: for collapsible sections
+    in the GitHub Actions log UI. Agent reasoning text is printed inline in dim.
+    """
     start_time = time.time()
     iteration = 0
     tool_name = None
