@@ -17,8 +17,6 @@ from botocore.eventstream import EventStreamBuffer
 from urllib.parse import quote
 import urllib3
 
-from harness_config import REGION, MODEL_ID, harness_arn
-
 # ANSI color codes
 CYAN = "\033[36m"
 YELLOW = "\033[33m"
@@ -27,12 +25,19 @@ RED = "\033[31m"
 DIM = "\033[2m"
 RESET = "\033[0m"
 
-PR_URL = os.environ.get("PR_URL")
-if not PR_URL:
-    print(f"{RED}ERROR: PR_URL environment variable is required{RESET}", file=sys.stderr)
-    sys.exit(1)
+# All config comes from environment variables (set via GitHub secrets/workflow)
+REGION = os.environ.get("HARNESS_REGION", "us-east-1")
+ACCOUNT_ID = os.environ.get("HARNESS_ACCOUNT_ID", "")
+MODEL_ID = os.environ.get("HARNESS_MODEL_ID", "us.anthropic.claude-opus-4-7")
+HARNESS_ID = os.environ.get("HARNESS_ID", "")
+PR_URL = os.environ.get("PR_URL", "")
 
-HARNESS_ARN = harness_arn()
+for name, val in [("HARNESS_ACCOUNT_ID", ACCOUNT_ID), ("HARNESS_ID", HARNESS_ID), ("PR_URL", PR_URL)]:
+    if not val:
+        print(f"{RED}ERROR: {name} environment variable is required{RESET}", file=sys.stderr)
+        sys.exit(1)
+
+HARNESS_ARN = f"arn:aws:bedrock-agentcore:{REGION}:{ACCOUNT_ID}:harness/{HARNESS_ID}"
 SESSION_ID = str(uuid.uuid4()).upper()
 
 print(f"{CYAN}Session:{RESET} {SESSION_ID}")
