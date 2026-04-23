@@ -142,7 +142,7 @@
           },
           "protocol": {
             "type": "string",
-            "enum": ["HTTP", "MCP", "A2A"]
+            "enum": ["HTTP", "MCP", "A2A", "AGUI"]
           },
           "requestHeaderAllowlist": {
             "maxItems": 20,
@@ -280,6 +280,27 @@
               }
             },
             "additionalProperties": false
+          },
+          "filesystemConfigurations": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "sessionStorage": {
+                  "type": "object",
+                  "properties": {
+                    "mountPath": {
+                      "type": "string",
+                      "pattern": "^\\/mnt\\/[^/]+$"
+                    }
+                  },
+                  "required": ["mountPath"],
+                  "additionalProperties": false
+                }
+              },
+              "required": ["sessionStorage"],
+              "additionalProperties": false
+            }
           }
         },
         "required": ["name", "build", "entrypoint", "codeLocation"],
