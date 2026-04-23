@@ -24,6 +24,7 @@ describe('AgentCoreRegionSchema', () => {
     'us-east-1',
     'us-east-2',
     'us-west-2',
+    'us-gov-west-1',
   ];
 
   it.each(validRegions)('accepts valid region "%s"', region => {

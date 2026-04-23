@@ -7,6 +7,80 @@ import reactRefresh from 'eslint-plugin-react-refresh';
 import security from 'eslint-plugin-security';
 import tseslint from 'typescript-eslint';
 
+/** @type {import('eslint').ESLint.Plugin} */
+const partitionPlugin = {
+  rules: {
+    'no-hardcoded-arn-partition': {
+      meta: {
+        type: 'problem',
+        docs: {
+          description: 'Disallow hardcoded arn:aws: partition in ARN construction. Use arnPrefix(region) instead.',
+        },
+        schema: [],
+      },
+      create(context) {
+        function checkForHardcodedArn(node, value) {
+          if (/arn:aws:/.test(value)) {
+            context.report({
+              node,
+              message:
+                'Hardcoded "arn:aws:" detected. Use arnPrefix(region) from src/cli/aws/partition.ts for multi-partition support.',
+            });
+          }
+        }
+        return {
+          TemplateLiteral(node) {
+            for (const quasi of node.quasis) {
+              checkForHardcodedArn(node, quasi.value.raw);
+            }
+          },
+        };
+      },
+    },
+    'no-hardcoded-endpoint-tld': {
+      meta: {
+        type: 'problem',
+        docs: {
+          description:
+            'Disallow hardcoded amazonaws.com in endpoint URL construction. Use serviceEndpoint() or dnsSuffix() instead.',
+        },
+        schema: [],
+      },
+      create(context) {
+        const REGION_PATTERN = /[a-z]{2}(-[a-z]+-\d+)/;
+        function hasHardcodedEndpoint(value) {
+          return /\.amazonaws\.com/.test(value);
+        }
+        function hasHardcodedEndpointWithRegion(value) {
+          return hasHardcodedEndpoint(value) && REGION_PATTERN.test(value);
+        }
+        return {
+          TemplateLiteral(node) {
+            for (const quasi of node.quasis) {
+              if (hasHardcodedEndpoint(quasi.value.raw)) {
+                context.report({
+                  node,
+                  message:
+                    'Hardcoded ".amazonaws.com" in template literal. Use serviceEndpoint() or dnsSuffix() from src/cli/aws/partition.ts for multi-partition support.',
+                });
+              }
+            }
+          },
+          Literal(node) {
+            if (typeof node.value === 'string' && hasHardcodedEndpointWithRegion(node.value)) {
+              context.report({
+                node,
+                message:
+                  'Hardcoded endpoint with region detected. Use serviceEndpoint() or dnsSuffix() from src/cli/aws/partition.ts for multi-partition support.',
+              });
+            }
+          },
+        };
+      },
+    },
+  },
+};
+
 export default tseslint.config(
   eslint.configs.recommended,
   ...tseslint.configs.recommendedTypeChecked,
@@ -30,8 +104,11 @@ export default tseslint.config(
       'react-hooks': reactHooks,
       'react-refresh': reactRefresh,
       security,
+      partition: partitionPlugin,
     },
     rules: {
+      'partition/no-hardcoded-arn-partition': 'error',
+      'partition/no-hardcoded-endpoint-tld': 'error',
       ...importPlugin.configs.recommended.rules,
       ...react.configs.recommended.rules,
       ...security.configs.recommended.rules,
@@ -68,6 +145,8 @@ export default tseslint.config(
   {
     files: ['**/*.test.ts', '**/*.test.tsx', '**/test-utils/**', 'integ-tests/**'],
     rules: {
+      'partition/no-hardcoded-arn-partition': 'off',
+      'partition/no-hardcoded-endpoint-tld': 'off',
       '@typescript-eslint/no-unsafe-assignment': 'off',
       '@typescript-eslint/no-unsafe-member-access': 'off',
       '@typescript-eslint/no-unsafe-call': 'off',

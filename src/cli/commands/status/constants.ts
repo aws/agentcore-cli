@@ -1,3 +1,4 @@
+import { serviceEndpoint } from '../../aws/partition';
 import { STATUS_COLORS } from '../../tui/theme';
 
 export type ResourceDeploymentState = 'deployed' | 'local-only' | 'pending-removal';
@@ -16,5 +17,5 @@ export const DEPLOYMENT_STATE_LABELS: Record<ResourceDeploymentState, string> = 
 
 export function buildRuntimeInvocationUrl(region: string, runtimeArn: string): string {
   const encodedArn = encodeURIComponent(runtimeArn);
-  return `https://bedrock-agentcore.${region}.amazonaws.com/runtimes/${encodedArn}/invocations`;
+  return `https://${serviceEndpoint('bedrock-agentcore', region)}/runtimes/${encodedArn}/invocations`;
 }

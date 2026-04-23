@@ -1,6 +1,7 @@
 import { parseJsonRpcResponse } from '../../lib/utils/json-rpc';
 import { getCredentialProvider } from './account';
 import { parseAguiSSEStream } from './agui-parser';
+import { serviceEndpoint } from './partition';
 import {
   BedrockAgentCoreClient,
   EvaluateCommand,
@@ -143,11 +144,10 @@ export function extractResult(text: string): string {
 
 /**
  * Build the invoke URL for a runtime ARN.
- * Format: https://bedrock-agentcore.{REGION}.amazonaws.com/runtimes/{ESCAPED_ARN}/invocations?qualifier=DEFAULT
  */
 function buildInvokeUrl(region: string, runtimeArn: string): string {
   const escapedArn = encodeURIComponent(runtimeArn);
-  return `https://bedrock-agentcore.${region}.amazonaws.com/runtimes/${escapedArn}/invocations?qualifier=DEFAULT`;
+  return `https://${serviceEndpoint('bedrock-agentcore', region)}/runtimes/${escapedArn}/invocations?qualifier=DEFAULT`;
 }
 
 /**

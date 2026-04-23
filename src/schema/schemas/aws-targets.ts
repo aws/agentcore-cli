@@ -22,6 +22,7 @@ export const AgentCoreRegionSchema = z.enum([
   'us-east-1',
   'us-east-2',
   'us-west-2',
+  'us-gov-west-1',
 ]);
 export type AgentCoreRegion = z.infer<typeof AgentCoreRegionSchema>;
 

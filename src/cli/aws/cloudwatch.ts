@@ -1,4 +1,5 @@
 import { getCredentialProvider } from './account';
+import { arnPrefix } from './partition';
 import { CloudWatchLogsClient, FilterLogEventsCommand, StartLiveTailCommand } from '@aws-sdk/client-cloudwatch-logs';
 
 export interface LogEvent {
@@ -31,7 +32,7 @@ export async function* streamLogs(options: StreamLogsOptions): AsyncGenerator<Lo
   const { logGroupName, region, accountId, filterPattern, abortSignal } = options;
 
   // StartLiveTail requires ARN format for logGroupIdentifiers
-  const logGroupArn = `arn:aws:logs:${region}:${accountId}:log-group:${logGroupName}`;
+  const logGroupArn = `${arnPrefix(region)}:logs:${region}:${accountId}:log-group:${logGroupName}`;
 
   while (!abortSignal?.aborted) {
     const client = new CloudWatchLogsClient({

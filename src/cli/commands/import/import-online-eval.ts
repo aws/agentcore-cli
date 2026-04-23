@@ -5,6 +5,7 @@ import {
   listAllAgentRuntimes,
   listAllOnlineEvaluationConfigs,
 } from '../../aws/agentcore-control';
+import { arnPrefix } from '../../aws/partition';
 import { ANSI } from './constants';
 import { failResult, findResourceInDeployedState, parseAndValidateArn } from './import-utils';
 import { executeResourceImport } from './resource-import';
@@ -52,7 +53,7 @@ export function toOnlineEvalConfigSpec(
  * since evaluators locked by an online eval config cannot be CFN-imported.
  */
 function buildEvaluatorArns(evaluatorIds: string[], region: string, account: string): string[] {
-  return evaluatorIds.map(id => `arn:aws:bedrock-agentcore:${region}:${account}:evaluator/${id}`);
+  return evaluatorIds.map(id => `${arnPrefix(region)}:bedrock-agentcore:${region}:${account}:evaluator/${id}`);
 }
 
 /**

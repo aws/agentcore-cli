@@ -130,10 +130,10 @@ export async function resolveImportTarget(options: ResolveTargetOptions): Promis
   // Validate ARN format early if provided
   if (
     arn &&
-    !/^arn:aws:bedrock-agentcore:([^:]+):([^:]+):(runtime|memory|evaluator|online-evaluation-config)\/(.+)$/.test(arn)
+    !/^arn:[^:]+:bedrock-agentcore:([^:]+):([^:]+):(runtime|memory|evaluator|online-evaluation-config)\/(.+)$/.test(arn)
   ) {
     throw new Error(
-      `Not a valid ARN: "${arn}".\nExpected format: arn:aws:bedrock-agentcore:<region>:<account>:<runtime|memory|evaluator|online-evaluation-config>/<id>`
+      `Not a valid ARN: "${arn}".\nExpected format: arn:<partition>:bedrock-agentcore:<region>:<account>:<runtime|memory|evaluator|online-evaluation-config>/<id>`
     );
   }
 
@@ -146,7 +146,7 @@ export async function resolveImportTarget(options: ResolveTargetOptions): Promis
       );
     }
 
-    const arnMatch = /^arn:aws:bedrock-agentcore:([^:]+):([^:]+):/.exec(arn);
+    const arnMatch = /^arn:[^:]+:bedrock-agentcore:([^:]+):([^:]+):/.exec(arn);
     if (!arnMatch) {
       throw new Error(
         'No deployment targets found in project and could not parse region/account from ARN.\nRun `agentcore deploy` first to set up a target, then re-run import.'
@@ -210,7 +210,7 @@ export interface ParsedArn {
 }
 
 const ARN_PATTERN =
-  /^arn:aws:bedrock-agentcore:([^:]+):([^:]+):(runtime|memory|evaluator|online-evaluation-config)\/(.+)$/;
+  /^arn:[^:]+:bedrock-agentcore:([^:]+):([^:]+):(runtime|memory|evaluator|online-evaluation-config)\/(.+)$/;
 
 /** Unified config for each importable resource type — ARN mapping, deployed state keys. */
 const RESOURCE_TYPE_CONFIG: Record<
@@ -244,7 +244,7 @@ export function parseAndValidateArn(
   const expectedArnType = RESOURCE_TYPE_CONFIG[expectedResourceType].arnType;
   if (!match) {
     throw new Error(
-      `Invalid ARN format: "${arn}". Expected format: arn:aws:bedrock-agentcore:<region>:<account>:${expectedArnType}/<id>`
+      `Invalid ARN format: "${arn}". Expected format: arn:<partition>:bedrock-agentcore:<region>:<account>:${expectedArnType}/<id>`
     );
   }
 

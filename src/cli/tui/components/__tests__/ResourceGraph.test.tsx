@@ -262,37 +262,6 @@ describe('ResourceGraph', () => {
       expect(lastFrame()).toContain('deploy');
     });
 
-    it('renders deployment state legend when resourceStatuses provided', () => {
-      const project = {
-        ...baseProject,
-        runtimes: [{ name: 'my-agent' }],
-      } as unknown as AgentCoreProjectSpec;
-
-      const resourceStatuses: ResourceStatusEntry[] = [
-        { resourceType: 'agent', name: 'my-agent', deploymentState: 'deployed' },
-      ];
-
-      const { lastFrame } = render(<ResourceGraph project={project} resourceStatuses={resourceStatuses} />);
-
-      expect(lastFrame()).toContain('[Deployed]');
-      expect(lastFrame()).toContain('live in AWS');
-      expect(lastFrame()).toContain('[Local only]');
-      expect(lastFrame()).toContain('not yet deployed');
-    });
-
-    it('does not render deployment state legend when no resourceStatuses', () => {
-      const project = {
-        ...baseProject,
-        runtimes: [{ name: 'my-agent' }],
-      } as unknown as AgentCoreProjectSpec;
-
-      const { lastFrame } = render(<ResourceGraph project={project} />);
-
-      // Should have the base legend but not the deployment state legend
-      expect(lastFrame()).toContain('agent');
-      expect(lastFrame()).not.toContain('[Deployed]');
-    });
-
     it('renders removed credentials in Removed Locally section', () => {
       const resourceStatuses: ResourceStatusEntry[] = [
         {

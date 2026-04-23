@@ -1,5 +1,6 @@
 import { getErrorMessage, isAccessDeniedError } from '../errors';
 import { getCredentialProvider } from './account';
+import { arnPrefix } from './partition';
 import { ApplicationSignalsClient, StartDiscoveryCommand } from '@aws-sdk/client-application-signals';
 import {
   CloudWatchLogsClient,
@@ -64,11 +65,11 @@ export async function enableTransactionSearch(
             Principal: { Service: 'xray.amazonaws.com' },
             Action: 'logs:PutLogEvents',
             Resource: [
-              `arn:aws:logs:${region}:${accountId}:log-group:aws/spans:*`,
-              `arn:aws:logs:${region}:${accountId}:log-group:/aws/application-signals/data:*`,
+              `${arnPrefix(region)}:logs:${region}:${accountId}:log-group:aws/spans:*`,
+              `${arnPrefix(region)}:logs:${region}:${accountId}:log-group:/aws/application-signals/data:*`,
             ],
             Condition: {
-              ArnLike: { 'aws:SourceArn': `arn:aws:xray:${region}:${accountId}:*` },
+              ArnLike: { 'aws:SourceArn': `${arnPrefix(region)}:xray:${region}:${accountId}:*` },
               StringEquals: { 'aws:SourceAccount': accountId },
             },
           },
