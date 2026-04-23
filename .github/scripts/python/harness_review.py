@@ -1,8 +1,7 @@
 """Invoke Bedrock AgentCore Harness to review a GitHub PR.
 
 Reads PR_URL from the environment. Streams harness output to stdout.
-Requires the local service model in .github/scripts/models/ because
-InvokeHarness is not yet in standard boto3.
+Uses raw HTTP with SigV4 signing — no custom service model needed.
 """
 
 import json
@@ -12,8 +11,11 @@ import time
 import uuid
 
 import boto3
-from botocore.config import Config as BotoConfig
-from botocore.loaders import Loader
+from botocore.auth import SigV4Auth
+from botocore.awsrequest import AWSRequest
+from botocore.eventstream import EventStreamBuffer
+from urllib.parse import quote
+import urllib3
 
 from harness_config import REGION, MODEL_ID, harness_arn
 
@@ -38,21 +40,10 @@ print(f"{CYAN}PR:{RESET}      {PR_URL}")
 print(f"{CYAN}Harness:{RESET} {HARNESS_ARN}")
 print()
 
-# Register the local data plane model with Boto3
-model_dir = os.path.join(os.path.dirname(__file__), "..", "models")
-loader = Loader()
-loader.search_paths.insert(0, model_dir)
+# Set up SigV4 signing and HTTP client
 session = boto3.Session(region_name=REGION)
-session._session.register_component("data_loader", loader)
-
-client = session.client(
-    "bedrock-agentcore",
-    config=BotoConfig(
-        read_timeout=600,
-        connect_timeout=10,
-        retries={"max_attempts": 0},
-    ),
-)
+credentials = session.get_credentials().get_frozen_credentials()
+http = urllib3.PoolManager()
 
 SYSTEM_PROMPT = """# AgentCore CLI Development Workspace
 
@@ -92,22 +83,31 @@ Review the PR. If there are any serious issues that require code changes before 
 If all serious issues have already been raised in existing comments, or if you found no new issues, post a single comment on the PR saying it looks good to merge (or that all issues have already been flagged).
 """
 
-response = client.invoke_harness(
-    harnessArn=HARNESS_ARN,
-    runtimeSessionId=SESSION_ID,
-    systemPrompt=[{"text": SYSTEM_PROMPT}],
-    messages=[
-        {
-            "role": "user",
-            "content": [{"text": REVIEW_PROMPT}],
-        }
-    ],
-    model={
-        "bedrockModelConfig": {
-            "modelId": MODEL_ID,
-        }
-    },
+request_body = json.dumps({
+    "runtimeSessionId": SESSION_ID,
+    "systemPrompt": [{"text": SYSTEM_PROMPT}],
+    "messages": [{"role": "user", "content": [{"text": REVIEW_PROMPT}]}],
+    "model": {"bedrockModelConfig": {"modelId": MODEL_ID}},
+})
+
+url = f"https://bedrock-agentcore.{REGION}.amazonaws.com/harnesses/invoke?harnessArn={quote(HARNESS_ARN, safe='')}"
+aws_request = AWSRequest(method="POST", url=url, data=request_body, headers={
+    "Content-Type": "application/json",
+    "Accept": "application/vnd.amazon.eventstream",
+})
+SigV4Auth(credentials, "bedrock-agentcore", REGION).add_auth(aws_request)
+
+http_response = http.urlopen(
+    "POST", url, body=request_body,
+    headers=dict(aws_request.headers),
+    preload_content=False,
+    timeout=urllib3.Timeout(connect=10, read=600),
 )
+
+if http_response.status != 200:
+    error = http_response.read().decode("utf-8")
+    print(f"{RED}ERROR: HTTP {http_response.status}: {error}{RESET}", file=sys.stderr)
+    sys.exit(1)
 
 # Stream event handling
 start_time = time.time()
@@ -118,84 +118,100 @@ tool_start_time = 0.0
 in_tool_group = False
 had_text_output = False
 
-for event in response["stream"]:
-    if "contentBlockStart" in event:
-        start = event["contentBlockStart"].get("start", {})
-        if "toolUse" in start:
-            current_tool_name = start["toolUse"].get("name", "unknown")
+event_buffer = EventStreamBuffer()
+
+for chunk in http_response.stream(4096):
+    event_buffer.add_data(chunk)
+    for event in event_buffer:
+        if event.headers.get(":message-type") == "exception":
+            payload = json.loads(event.payload.decode("utf-8"))
+            if in_tool_group:
+                print("::endgroup::", flush=True)
+            print(f"\n{RED}ERROR: {payload}{RESET}", file=sys.stderr)
+            sys.exit(1)
+
+        event_type = event.headers.get(":event-type", "")
+        if not event.payload:
+            continue
+        payload = json.loads(event.payload.decode("utf-8"))
+
+        if event_type == "contentBlockStart":
+            start = payload.get("start", {})
+            if "toolUse" in start:
+                current_tool_name = start["toolUse"].get("name", "unknown")
+                current_tool_input = ""
+                tool_start_time = time.time()
+                iteration += 1
+
+        elif event_type == "contentBlockDelta":
+            delta = payload.get("delta", {})
+            if "text" in delta:
+                # Close tool group before printing reasoning text
+                if in_tool_group:
+                    print("::endgroup::", flush=True)
+                    in_tool_group = False
+                    print(flush=True)
+                print(f"{DIM}{delta['text']}{RESET}", end="", flush=True)
+                had_text_output = True
+            if "toolUse" in delta:
+                current_tool_input += delta["toolUse"].get("input", "")
+
+        elif event_type == "contentBlockStop":
+            if current_tool_name:
+                elapsed = time.time() - tool_start_time
+                try:
+                    parsed = json.loads(current_tool_input)
+                except (json.JSONDecodeError, TypeError):
+                    parsed = current_tool_input
+
+                # Close previous tool group if open
+                if in_tool_group:
+                    print("::endgroup::", flush=True)
+                    in_tool_group = False
+
+                # Add spacing after reasoning text
+                if had_text_output:
+                    print("\n", flush=True)
+                    had_text_output = False
+
+                # Format tool call header
+                if isinstance(parsed, dict) and "command" in parsed:
+                    header = f"{CYAN}[{iteration}]{RESET} {YELLOW}{current_tool_name}{RESET} {DIM}({elapsed:.1f}s){RESET}: $ {parsed['command']}"
+                else:
+                    header = f"{CYAN}[{iteration}]{RESET} {YELLOW}{current_tool_name}{RESET} {DIM}({elapsed:.1f}s){RESET}"
+
+                print(f"::group::{header}", flush=True)
+                in_tool_group = True
+
+                # Print tool input details inside the group
+                if isinstance(parsed, dict):
+                    for k, v in parsed.items():
+                        if k == "command":
+                            continue
+                        v_str = str(v)[:300]
+                        print(f"  {DIM}{k}:{RESET} {v_str}", flush=True)
+
+            current_tool_name = None
             current_tool_input = ""
-            tool_start_time = time.time()
-            iteration += 1
 
-    elif "contentBlockDelta" in event:
-        delta = event["contentBlockDelta"].get("delta", {})
-        if "text" in delta:
-            # Close tool group before printing reasoning text
+        elif event_type == "messageStop":
             if in_tool_group:
                 print("::endgroup::", flush=True)
                 in_tool_group = False
-                print(flush=True)
-            print(f"{DIM}{delta['text']}{RESET}", end="", flush=True)
-            had_text_output = True
-        if "toolUse" in delta:
-            current_tool_input += delta["toolUse"].get("input", "")
+            reason = payload.get("stopReason", "")
+            if reason == "end_turn":
+                total = time.time() - start_time
+                minutes = int(total // 60)
+                seconds = int(total % 60)
+                print(f"\n\n{GREEN}{'=' * 50}", flush=True)
+                print(f"  Done ({minutes}m {seconds}s)", flush=True)
+                print(f"{'=' * 50}{RESET}", flush=True)
 
-    elif "contentBlockStop" in event:
-        if current_tool_name:
-            elapsed = time.time() - tool_start_time
-            try:
-                parsed = json.loads(current_tool_input)
-            except (json.JSONDecodeError, TypeError):
-                parsed = current_tool_input
-
-            # Close previous tool group if open
+        elif event_type == "internalServerException":
             if in_tool_group:
                 print("::endgroup::", flush=True)
-                in_tool_group = False
-
-            # Add spacing after reasoning text
-            if had_text_output:
-                print("\n", flush=True)
-                had_text_output = False
-
-            # Format tool call header
-            if isinstance(parsed, dict) and "command" in parsed:
-                header = f"{CYAN}[{iteration}]{RESET} {YELLOW}{current_tool_name}{RESET} {DIM}({elapsed:.1f}s){RESET}: $ {parsed['command']}"
-            else:
-                header = f"{CYAN}[{iteration}]{RESET} {YELLOW}{current_tool_name}{RESET} {DIM}({elapsed:.1f}s){RESET}"
-
-            print(f"::group::{header}", flush=True)
-            in_tool_group = True
-
-            # Print tool input details inside the group
-            if isinstance(parsed, dict):
-                for k, v in parsed.items():
-                    if k == "command":
-                        continue
-                    v_str = str(v)[:300]
-                    print(f"  {DIM}{k}:{RESET} {v_str}", flush=True)
-
-        current_tool_name = None
-        current_tool_input = ""
-
-    elif "messageStop" in event:
-        if in_tool_group:
-            print("::endgroup::", flush=True)
-            in_tool_group = False
-        reason = event["messageStop"].get("stopReason", "")
-        if reason == "end_turn":
-            total = time.time() - start_time
-            minutes = int(total // 60)
-            seconds = int(total % 60)
-            print(f"\n\n{GREEN}{'=' * 50}", flush=True)
-            print(f"  Done ({minutes}m {seconds}s)", flush=True)
-            print(f"{'=' * 50}{RESET}", flush=True)
-
-    elif "internalServerException" in event:
-        if in_tool_group:
-            print("::endgroup::", flush=True)
-        print(f"\n{RED}ERROR: {event['internalServerException']}{RESET}", file=sys.stderr)
-        sys.exit(1)
+            print(f"\n{RED}ERROR: {payload}{RESET}", file=sys.stderr)
+            sys.exit(1)
 
 if in_tool_group:
     print("::endgroup::", flush=True)
