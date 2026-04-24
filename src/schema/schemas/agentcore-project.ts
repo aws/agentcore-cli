@@ -337,7 +337,6 @@ export const AgentCoreProjectSpecSchema = z
             message: `Online eval config "${config.name}" references unknown evaluator "${evalName}"`,
           });
         }
-
       }
     }
   });

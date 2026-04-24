@@ -48,13 +48,12 @@ export function AddOnlineEvalFlow({ isInteractive = true, onExit, onBack, onDev,
         const result = await listEvaluators({ region });
         if (cancelled) return;
 
-        const items: EvaluatorItem[] = result.evaluators
-          .map(e => ({
-            arn: e.evaluatorArn,
-            name: e.evaluatorName,
-            type: e.evaluatorType,
-            description: e.description,
-          }));
+        const items: EvaluatorItem[] = result.evaluators.map(e => ({
+          arn: e.evaluatorArn,
+          name: e.evaluatorName,
+          type: e.evaluatorType,
+          description: e.description,
+        }));
 
         const agentNames = projectSpec.runtimes.map(a => a.name);
 
