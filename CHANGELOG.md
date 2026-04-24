@@ -2,6 +2,24 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.11.0] - 2026-04-24
+
+### Added
+- feat: add telemetry schemas and client (#941) (7c37fa6)
+- feat: add GitHub Action for automated PR review via AgentCore Harness (#934) (a365bf5)
+
+### Fixed
+- fix: display session ID after CLI invoke completes (#957) (51e4a8e)
+- fix: lower eventExpiryDuration minimum from 7 to 3 days (closes #744) (#956) (8613657)
+- fix: use pull_request_target for fork PR support (#958) (933bac8)
+- fix: agentcore dev not working in windows (#951) (5271f55)
+- fix: add TTY detection before TUI fallbacks to prevent agent/CI hangs (#949) (c30ed54)
+- fix: allow code-based evaluators in online eval configs (#947) (3d2d671)
+- fix: buffer streaming text to avoid per-token log lines in GitHub Actions (#946) (cb1e81a)
+
+### Other Changes
+- test: add browser tests for agent inspector (#938) (7a4104d)
+
 ## [0.10.0] - 2026-04-23
 
 ### Added
