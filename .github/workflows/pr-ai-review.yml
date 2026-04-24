@@ -87,6 +87,7 @@ jobs:
           echo "number=$PR_NUM" >> "$GITHUB_OUTPUT"
 
       - name: Add agentcore-harness-reviewing label
+        continue-on-error: true
         uses: actions/github-script@v8
         with:
           script: |
