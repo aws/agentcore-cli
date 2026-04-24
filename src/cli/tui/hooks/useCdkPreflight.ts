@@ -1,5 +1,6 @@
 import { ConfigIO, SecureCredentials } from '../../../lib';
 import type { DeployedState } from '../../../schema';
+import { applyTargetRegionToEnv } from '../../aws';
 import { AwsCredentialsError, validateAwsCredentials } from '../../aws/account';
 import { type CdkToolkitWrapper, type SwitchableIoHost, createSwitchableIoHost } from '../../cdk/toolkit-lib';
 import { getErrorMessage, isExpiredTokenError, isNoCredentialsError } from '../../errors';
@@ -137,6 +138,11 @@ export function useCdkPreflight(options: PreflightOptions): PreflightResult {
   const isRunningRef = useRef(false);
   // Keep a ref to the wrapper so we can dispose it when starting a new run
   const wrapperRef = useRef<CdkToolkitWrapper | null>(null);
+  // Restore function for AWS_REGION / AWS_DEFAULT_REGION overrides, applied
+  // after target resolution so downstream SDK / CDK toolkit-lib clients use the
+  // aws-targets.json region rather than whatever the SDK default chain resolves.
+  // See https://github.com/aws/agentcore-cli/issues/924.
+  const restoreRegionEnvRef = useRef<(() => void) | null>(null);
 
   const updateStep = (index: number, update: Partial<Step>) => {
     setSteps(prev => prev.map((s, i) => (i === index ? { ...s, ...update } : s)));
@@ -158,10 +164,18 @@ export function useCdkPreflight(options: PreflightOptions): PreflightResult {
     }
   }, []);
 
+  // Restore AWS_REGION / AWS_DEFAULT_REGION (no-op when nothing was applied)
+  const restoreRegionEnv = useCallback(() => {
+    restoreRegionEnvRef.current?.();
+    restoreRegionEnvRef.current = null;
+  }, []);
+
   const startPreflight = useCallback(async () => {
     if (isRunningRef.current) return;
     // Dispose any existing wrapper before starting a new run
     await disposeWrapper();
+    // Restore any previously-applied region env override before re-running
+    restoreRegionEnv();
     resetSteps();
     setCdkToolkitWrapper(null);
     setStackNames([]);
@@ -169,7 +183,7 @@ export function useCdkPreflight(options: PreflightOptions): PreflightResult {
     setHasTokenExpiredError(false); // Reset token expired state when retrying
     setHasCredentialsError(false); // Reset credentials error state when retrying
     setPhase('running');
-  }, [disposeWrapper]);
+  }, [disposeWrapper, restoreRegionEnv]);
 
   const clearTokenExpiredError = useCallback(() => {
     setHasTokenExpiredError(false);
@@ -183,6 +197,7 @@ export function useCdkPreflight(options: PreflightOptions): PreflightResult {
   useEffect(() => {
     const handleInterrupt = () => {
       void disposeWrapper();
+      restoreRegionEnv();
     };
 
     process.on('SIGINT', handleInterrupt);
@@ -193,8 +208,19 @@ export function useCdkPreflight(options: PreflightOptions): PreflightResult {
       process.off('SIGTERM', handleInterrupt);
       // Dispose on unmount (user navigated away)
       void disposeWrapper();
+      restoreRegionEnv();
     };
-  }, [disposeWrapper]);
+  }, [disposeWrapper, restoreRegionEnv]);
+
+  // Restore region env override when any preflight stage lands in 'error'.
+  // Individual error branches inside the stage effects only call setPhase('error')
+  // without cleanup, so this hook is the single place that guarantees restore
+  // happens on every error path without threading the call into every branch.
+  useEffect(() => {
+    if (phase === 'error') {
+      restoreRegionEnv();
+    }
+  }, [phase, restoreRegionEnv]);
 
   const confirmTeardown = useCallback(() => {
     // Mark teardown as confirmed and restart the preflight flow
@@ -206,7 +232,8 @@ export function useCdkPreflight(options: PreflightOptions): PreflightResult {
   const cancelTeardown = useCallback(() => {
     setPhase('error');
     isRunningRef.current = false;
-  }, []);
+    restoreRegionEnv();
+  }, [restoreRegionEnv]);
 
   const confirmBootstrap = useCallback(() => {
     setPhase('bootstrapping');
@@ -274,6 +301,15 @@ export function useCdkPreflight(options: PreflightOptions): PreflightResult {
         try {
           preflightContext = await validateProject();
           setContext(preflightContext);
+          // Make aws-targets.json region authoritative for downstream SDK / CDK
+          // toolkit-lib clients that bypass explicit region options. Restored on
+          // unmount, teardown rejection, or subsequent preflight start.
+          // See https://github.com/aws/agentcore-cli/issues/924.
+          const firstTarget = preflightContext.awsTargets[0];
+          if (firstTarget) {
+            restoreRegionEnv();
+            restoreRegionEnvRef.current = applyTargetRegionToEnv(firstTarget.region);
+          }
           logger.endStep('success');
           updateStep(STEP_VALIDATE, { status: 'success' });
         } catch (err) {
@@ -493,7 +529,7 @@ export function useCdkPreflight(options: PreflightOptions): PreflightResult {
     return () => {
       process.off('unhandledRejection', handleUnhandledRejection);
     };
-  }, [phase, logger, switchableIoHost, isInteractive, skipIdentityCheck, teardownConfirmed]);
+  }, [phase, logger, switchableIoHost, isInteractive, skipIdentityCheck, teardownConfirmed, restoreRegionEnv]);
 
   // Handle identity-setup phase (after user provides credentials)
   useEffect(() => {

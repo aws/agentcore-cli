@@ -2,6 +2,30 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.10.0] - 2026-04-23
+
+### Added
+- feat: upgrade agent inspector to 0.2.1 (#937) (b49a06f)
+- feat: remove deployed/local from status legend (#936) (c0d5b7b)
+- feat: add GovCloud multi-partition support (#908) (098b104)
+- feat: support preview releases from feature branches (#905) (1a93f92)
+- feat: add AG-UI (AGUI) as fourth first-class protocol mode (#858) (52144dc)
+- feat: add session filesystem storage support (#893) (b97e337)
+
+### Fixed
+- fix: agentcore add component opens component wizard directly (#896) (74a35cb)
+- fix: propagate sessionId as A2A contextId in Inspector proxy (#892) (08d452e)
+
+### Documentation
+- docs: update vended AGENTS.md, README.md, and llm-context references (#898) (84a6dde)
+
+### Other Changes
+- fix(deploy): honor aws-targets.json region for all SDK and CDK calls (#925) (1903f7d)
+- fix(invoke): show full session ID and print resume command on exit (#904) (ce683c0)
+- chore: remove preview bump type from release workflow (#847) (13f16d3)
+- chore: remove single-commit-must-match-PR-title validation (#897) (4d7da2f)
+- fix(invoke): pass session ID to local invoke log files (#894) (e966cb6)
+
 ## [0.9.1] - 2026-04-17
 
 ## [0.9.0] - 2026-04-17

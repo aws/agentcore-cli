@@ -1,5 +1,6 @@
 import { CONFIG_DIR, ConfigIO } from '../../../lib';
 import type { AwsDeploymentTarget } from '../../../schema';
+import { withTargetRegion } from '../../aws';
 import { CdkToolkitWrapper, silentIoHost } from '../../cdk/toolkit-lib';
 import { type DiscoveredStack, findStack } from '../../cloudformation/stack-discovery';
 import { StackSelectionStrategy } from '@aws-cdk/toolkit-lib';
@@ -60,12 +61,18 @@ export async function destroyTarget(options: DestroyTargetOptions): Promise<void
     ioHost: silentIoHost,
   });
 
-  await toolkit.initialize();
-  await toolkit.destroy({
-    stacks: {
-      strategy: StackSelectionStrategy.PATTERN_MUST_MATCH,
-      patterns: [target.stack.stackName],
-    },
+  // aws-targets.json is authoritative for the destroy region; promote it onto
+  // the env so CDK toolkit-lib's internal SDK clients hit the right region even
+  // when AWS_REGION / AWS_DEFAULT_REGION are unset.
+  // See https://github.com/aws/agentcore-cli/issues/924.
+  await withTargetRegion(target.target.region, async () => {
+    await toolkit.initialize();
+    await toolkit.destroy({
+      stacks: {
+        strategy: StackSelectionStrategy.PATTERN_MUST_MATCH,
+        patterns: [target.stack.stackName],
+      },
+    });
   });
 
   // Clean up deployed-state.json after successful destroy
