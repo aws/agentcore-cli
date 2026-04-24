@@ -3,6 +3,7 @@ import type { OnlineEvalConfig } from '../../schema';
 import { OnlineEvalConfigSchema } from '../../schema';
 import { getErrorMessage } from '../errors';
 import type { RemovalPreview, RemovalResult, SchemaChange } from '../operations/remove/types';
+import { requireTTY } from '../tui/guards/tty';
 import { BasePrimitive } from './BasePrimitive';
 import type { AddResult, AddScreenComponent, RemovableResource } from './types';
 import type { Command } from '@commander-js/extra-typings';
@@ -171,6 +172,7 @@ export class OnlineEvalConfigPrimitive extends BasePrimitive<AddOnlineEvalConfig
               process.exit(result.success ? 0 : 1);
             } else {
               // TUI fallback
+              requireTTY();
               const [{ render }, { default: React }, { AddFlow }] = await Promise.all([
                 import('ink'),
                 import('react'),

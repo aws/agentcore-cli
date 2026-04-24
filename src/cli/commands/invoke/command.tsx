@@ -1,6 +1,6 @@
 import { getErrorMessage } from '../../errors';
 import { COMMAND_DESCRIPTIONS } from '../../tui/copy';
-import { requireProject } from '../../tui/guards';
+import { requireProject, requireTTY } from '../../tui/guards';
 import { InvokeScreen } from '../../tui/screens/invoke';
 import { parseHeaderFlags } from '../shared/header-utils';
 import { handleInvoke, loadInvokeConfig } from './action';
@@ -168,6 +168,7 @@ export const registerInvoke = (program: Command) => {
             });
           } else {
             // No CLI options - interactive TUI mode (headers still passed if provided)
+            requireTTY();
             const { waitUntilExit, unmount } = render(
               <InvokeScreen
                 isInteractive={true}

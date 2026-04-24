@@ -35,6 +35,7 @@ import { executeImportAgent } from '../operations/agent/import';
 import { setupPythonProject } from '../operations/python';
 import type { RemovalPreview, RemovalResult, SchemaChange } from '../operations/remove/types';
 import { createRenderer } from '../templates';
+import { requireTTY } from '../tui/guards/tty';
 import type { GenerateConfig, MemoryOption } from '../tui/screens/generate/types';
 import { BasePrimitive } from './BasePrimitive';
 import { CredentialPrimitive } from './CredentialPrimitive';
@@ -332,6 +333,7 @@ export class AgentPrimitive extends BasePrimitive<AddAgentOptions, RemovableReso
           process.exit(result.success ? 0 : 1);
         } else {
           // TUI fallback — dynamic imports to avoid pulling ink (async) into registry
+          requireTTY();
           const [{ render }, { default: React }, { AddFlow }] = await Promise.all([
             import('ink'),
             import('react'),

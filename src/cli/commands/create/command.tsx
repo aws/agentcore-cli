@@ -10,6 +10,7 @@ import type {
 import { LIFECYCLE_TIMEOUT_MAX, LIFECYCLE_TIMEOUT_MIN } from '../../../schema';
 import { getErrorMessage } from '../../errors';
 import { COMMAND_DESCRIPTIONS } from '../../tui/copy';
+import { requireTTY } from '../../tui/guards';
 import { CreateScreen } from '../../tui/screens/create';
 import { parseCommaSeparatedList } from '../shared/vpc-utils';
 import { type ProgressCallback, createProject, createProjectWithAgent, getDryRunInfo } from './action';
@@ -245,6 +246,7 @@ export const registerCreate = (program: Command) => {
           options.language = options.language ?? 'Python';
           await handleCreateCLI(options as CreateOptions);
         } else {
+          requireTTY();
           handleCreateTUI();
         }
       } catch (error) {

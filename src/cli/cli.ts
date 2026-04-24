@@ -26,6 +26,7 @@ import { LayoutProvider } from './tui/context';
 import { COMMAND_DESCRIPTIONS } from './tui/copy';
 import { clearExitAction, getExitAction } from './tui/exit-action';
 import { clearExitMessage, getExitMessage } from './tui/exit-message';
+import { requireTTY } from './tui/guards';
 import { CommandListScreen } from './tui/screens/home';
 import { getCommandsForUI } from './tui/utils';
 import { type UpdateCheckResult, checkForUpdate, printUpdateNotification } from './update-notifier';
@@ -212,6 +213,7 @@ export const main = async (argv: string[]) => {
 
   // Show TUI for no arguments, commander handles --help via configureHelp()
   if (args.length === 0) {
+    requireTTY();
     renderTUI(updateCheck, isFirstRun);
     return;
   }

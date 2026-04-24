@@ -4,6 +4,7 @@ import { EvaluationLevelSchema, EvaluatorSchema } from '../../schema';
 import { getErrorMessage } from '../errors';
 import type { RemovalPreview, RemovalResult, SchemaChange } from '../operations/remove/types';
 import { renderCodeBasedEvaluatorTemplate } from '../templates/EvaluatorRenderer';
+import { requireTTY } from '../tui/guards/tty';
 import {
   LEVEL_PLACEHOLDERS,
   RATING_SCALE_PRESETS,
@@ -316,6 +317,7 @@ export class EvaluatorPrimitive extends BasePrimitive<AddEvaluatorOptions, Remov
               process.exit(result.success ? 0 : 1);
             } else {
               // TUI fallback
+              requireTTY();
               const [{ render }, { default: React }, { AddFlow }] = await Promise.all([
                 import('ink'),
                 import('react'),
