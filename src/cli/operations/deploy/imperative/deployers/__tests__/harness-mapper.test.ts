@@ -316,6 +316,22 @@ describe('mapHarnessSpecToCreateOptions', () => {
       });
     });
 
+    it('resolves containerUri from new AgentCoreHarnessEnvironment output key', async () => {
+      const spec = minimalSpec({ dockerfile: 'Dockerfile' });
+      const cdkOutputs = {
+        ApplicationHarnessTestHarnessImageUriOutputABC123:
+          '123456789012.dkr.ecr.us-east-1.amazonaws.com/harness-test:new',
+      };
+
+      const result = await mapHarnessSpecToCreateOptions({ ...BASE_OPTIONS, harnessSpec: spec, cdkOutputs });
+
+      expect(result.environmentArtifact).toEqual({
+        containerConfiguration: {
+          containerUri: '123456789012.dkr.ecr.us-east-1.amazonaws.com/harness-test:new',
+        },
+      });
+    });
+
     it('throws when dockerfile is set but no container URI found in CDK outputs', async () => {
       const spec = minimalSpec({ dockerfile: 'Dockerfile' });
 
