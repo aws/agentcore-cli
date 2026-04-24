@@ -1,7 +1,7 @@
 name: AgentCore Harness Reviewing
 
 on:
-  pull_request:
+  pull_request_target:
     types: [opened, reopened]
   workflow_dispatch:
     inputs:
@@ -18,13 +18,13 @@ permissions:
 jobs:
   authorize:
     runs-on: ubuntu-latest
-    if: github.event_name == 'workflow_dispatch' || github.event_name == 'pull_request'
+    if: github.event_name == 'workflow_dispatch' || github.event_name == 'pull_request_target'
     outputs:
       authorized: ${{ steps.auth.outputs.authorized }}
     steps:
       - name: Check authorization
         id: auth
-        if: github.event_name == 'pull_request'
+        if: github.event_name == 'pull_request_target'
         uses: actions/github-script@v8
         with:
           script: |
@@ -87,7 +87,6 @@ jobs:
           echo "number=$PR_NUM" >> "$GITHUB_OUTPUT"
 
       - name: Add agentcore-harness-reviewing label
-        continue-on-error: true
         uses: actions/github-script@v8
         with:
           script: |
