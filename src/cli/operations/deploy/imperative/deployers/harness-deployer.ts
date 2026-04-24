@@ -102,7 +102,11 @@ export class HarnessDeployer implements ImperativeDeployer<HarnessDeployedStateM
         harnessSpec = validated.data;
       } catch (err) {
         const message = err instanceof Error ? err.message : String(err);
-        return { success: false, error: `Failed to read harness.json for "${entry.name}": ${message}`, state: resultState };
+        return {
+          success: false,
+          error: `Failed to read harness.json for "${entry.name}": ${message}`,
+          state: resultState,
+        };
       }
 
       // Resolve role ARN from CDK outputs
@@ -110,7 +114,7 @@ export class HarnessDeployer implements ImperativeDeployer<HarnessDeployedStateM
       if (!roleArn) {
         return {
           success: false,
-          error: `Could not find role ARN in CDK outputs for harness "${entry.name}". Expected output key starting with "ApplicationHarness${toPascalId(entry.name)}RoleArn".`,
+          error: `Could not find role ARN in CDK outputs for harness "${entry.name}". Expected output key starting with "ApplicationHarness${toPascalId(entry.name)}RoleArn" or "ApplicationHarness${toPascalId(entry.name)}RoleRoleArn".`,
           state: resultState,
         };
       }
@@ -265,17 +269,20 @@ export class HarnessDeployer implements ImperativeDeployer<HarnessDeployedStateM
 /**
  * Resolve the IAM role ARN for a harness from CDK stack outputs.
  *
- * The CDK construct exports the role ARN with a key matching the pattern:
- *   ApplicationHarness{PascalName}RoleArn...
+ * Supports two construct tree layouts:
+ *   Old (AgentCoreHarnessRole directly under Application):
+ *     ApplicationHarness{PascalName}RoleArnOutput...
+ *   New (AgentCoreHarnessEnvironment wrapping AgentCoreHarnessRole):
+ *     ApplicationHarness{PascalName}RoleRoleArnOutput...
  */
 function resolveRoleArn(harnessName: string, cdkOutputs?: Record<string, string>): string | undefined {
   if (!cdkOutputs) return undefined;
 
   const pascalName = toPascalId(harnessName);
-  const prefix = `ApplicationHarness${pascalName}RoleArn`;
+  const prefixes = [`ApplicationHarness${pascalName}RoleRoleArn`, `ApplicationHarness${pascalName}RoleArn`];
 
   for (const [key, value] of Object.entries(cdkOutputs)) {
-    if (key.startsWith(prefix)) {
+    if (prefixes.some(p => key.startsWith(p))) {
       return value;
     }
   }

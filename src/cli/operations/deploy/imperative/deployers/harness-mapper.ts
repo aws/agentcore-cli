@@ -104,7 +104,7 @@ export async function mapHarnessSpecToCreateOptions(options: MapHarnessOptions):
     if (!builtUri) {
       throw new Error(
         `Harness "${harnessSpec.name}" specifies "dockerfile" but no container URI was found in CDK outputs. ` +
-          `Expected a CDK output key starting with "Harness${toPascalId(harnessSpec.name)}ContainerUri".`
+          `Expected a CDK output key starting with "ApplicationHarness${toPascalId(harnessSpec.name)}ImageUri" or "Harness${toPascalId(harnessSpec.name)}ContainerUri".`
       );
     }
     result.environmentArtifact = mapEnvironmentArtifact(builtUri);
@@ -332,14 +332,21 @@ function mapTruncation(truncation: NonNullable<HarnessSpec['truncation']>): Harn
 // Container URI Resolution (from CDK outputs for dockerfile-based harnesses)
 // ============================================================================
 
+/**
+ * Supports two construct tree layouts:
+ *   Old (CfnOutput on stack root):
+ *     Harness{PascalName}ContainerUri...
+ *   New (CfnOutput inside AgentCoreHarnessEnvironment):
+ *     ApplicationHarness{PascalName}ImageUriOutput...
+ */
 function resolveContainerUriFromOutputs(harnessName: string, cdkOutputs?: Record<string, string>): string | undefined {
   if (!cdkOutputs) return undefined;
 
   const pascalName = toPascalId(harnessName);
-  const prefix = `Harness${pascalName}ContainerUri`;
+  const prefixes = [`ApplicationHarness${pascalName}ImageUri`, `Harness${pascalName}ContainerUri`];
 
   for (const [key, value] of Object.entries(cdkOutputs)) {
-    if (key.startsWith(prefix)) {
+    if (prefixes.some(p => key.startsWith(p))) {
       return value;
     }
   }
