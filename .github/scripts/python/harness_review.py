@@ -97,13 +97,20 @@ def print_stream(http_response):
     tool_input = ""
     tool_start = 0.0
     in_group = False
-    had_text = False
+    text_buffer = ""
 
     def close_group():
         nonlocal in_group
         if in_group:
             print("::endgroup::", flush=True)
             in_group = False
+
+    def flush_text():
+        nonlocal text_buffer
+        if text_buffer:
+            for line in text_buffer.splitlines():
+                print(f"{DIM}{line}{RESET}", flush=True)
+            text_buffer = ""
 
     for event_type, payload in parse_events(http_response):
 
@@ -119,13 +126,12 @@ def print_stream(http_response):
             delta = payload.get("delta", {})
             if "text" in delta:
                 close_group()
-                print(flush=True)
-                print(f"{DIM}{delta['text']}{RESET}", end="", flush=True)
-                had_text = True
+                text_buffer += delta["text"]
             if "toolUse" in delta:
                 tool_input += delta["toolUse"].get("input", "")
 
         elif event_type == "contentBlockStop":
+            flush_text()
             if tool_name:
                 elapsed = time.time() - tool_start
                 try:
@@ -134,9 +140,6 @@ def print_stream(http_response):
                     parsed = tool_input
 
                 close_group()
-                if had_text:
-                    print("\n", flush=True)
-                    had_text = False
 
                 cmd = parsed.get("command") if isinstance(parsed, dict) else None
                 header = f"{CYAN}[{iteration}]{RESET} {YELLOW}{tool_name}{RESET} {DIM}({elapsed:.1f}s){RESET}"
@@ -155,6 +158,7 @@ def print_stream(http_response):
             tool_input = ""
 
         elif event_type == "messageStop":
+            flush_text()
             close_group()
             if payload.get("stopReason") == "end_turn":
                 total = time.time() - start_time
