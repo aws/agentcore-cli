@@ -65,8 +65,8 @@ async function main() {
     memoryName?: string;
     containerUri?: string;
     hasDockerfile?: boolean;
-    dockerfileName?: string;
-    harnessDir?: string;
+    dockerfile?: string;
+    codeLocation?: string;
     tools?: { type: string; name: string }[];
     apiKeyArn?: string;
   }[] = [];
@@ -81,8 +81,8 @@ async function main() {
         memoryName: harnessSpec.memory?.name,
         containerUri: harnessSpec.containerUri,
         hasDockerfile: !!harnessSpec.dockerfile,
-        dockerfileName: harnessSpec.dockerfile,
-        harnessDir,
+        dockerfile: harnessSpec.dockerfile,
+        codeLocation: harnessSpec.dockerfile ? harnessDir : undefined,
         tools: harnessSpec.tools,
         apiKeyArn: harnessSpec.model?.apiKeyArn,
       });

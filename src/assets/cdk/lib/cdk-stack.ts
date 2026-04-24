@@ -13,8 +13,8 @@ export interface HarnessConfig {
   memoryName?: string;
   containerUri?: string;
   hasDockerfile?: boolean;
-  dockerfileName?: string;
-  harnessDir?: string;
+  dockerfile?: string;
+  codeLocation?: string;
   tools?: { type: string; name: string }[];
   apiKeyArn?: string;
 }
@@ -35,7 +35,7 @@ export interface AgentCoreStackProps extends StackProps {
   /**
    * Harness role configurations. Each entry creates an IAM execution role for a harness.
    *
-   * When `hasDockerfile` is true and `harnessDir` is provided (without an explicit
+   * When `hasDockerfile` is true and `codeLocation` is provided (without an explicit
    * `containerUri`), the L3 construct builds and pushes a container image via CodeBuild
    * and emits its URI as a stack output for the post-CDK harness deployer.
    */
