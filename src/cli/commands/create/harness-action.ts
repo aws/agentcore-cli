@@ -8,6 +8,7 @@ import { join } from 'path';
 
 export interface CreateHarnessProjectOptions {
   name: string;
+  projectName?: string;
   cwd: string;
   modelProvider: HarnessModelProvider;
   modelId: string;
@@ -31,10 +32,11 @@ export interface CreateHarnessProjectOptions {
 }
 
 export async function createProjectWithHarness(options: CreateHarnessProjectOptions): Promise<CreateResult> {
-  const { name, cwd, skipGit, skipInstall, onProgress } = options;
+  const { name, projectName: explicitProjectName, cwd, skipGit, skipInstall, onProgress } = options;
+  const projectName = explicitProjectName ?? name;
 
   const projectResult = await createProject({
-    name,
+    name: projectName,
     cwd,
     skipGit,
     skipInstall,

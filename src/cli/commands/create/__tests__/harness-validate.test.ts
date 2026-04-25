@@ -12,6 +12,7 @@ describe('validateCreateHarnessOptions', () => {
     testDir = join(tmpdir(), `harness-create-validate-${randomUUID()}`);
     mkdirSync(testDir, { recursive: true });
     mkdirSync(join(testDir, 'existingHarness'), { recursive: true });
+    mkdirSync(join(testDir, 'existingProject'), { recursive: true });
   });
 
   afterAll(() => {
@@ -140,13 +141,39 @@ describe('validateCreateHarnessOptions', () => {
     expect(options.modelId).toBe('global.anthropic.claude-sonnet-4-6');
   });
 
-  it('accepts valid harness name with underscores', () => {
-    const result = validateCreateHarnessOptions({ name: 'my_valid_harness_123' }, testDir);
+  it('accepts valid harness name with underscores when project-name is valid', () => {
+    const result = validateCreateHarnessOptions(
+      { name: 'my_valid_harness_123', projectName: 'myValidHarness123' },
+      testDir
+    );
     expect(result.valid).toBe(true);
   });
 
   it('rejects harness name longer than 48 characters', () => {
     const result = validateCreateHarnessOptions({ name: 'a'.repeat(49) }, testDir);
     expect(result.valid).toBe(false);
+  });
+
+  it('allows long harness name when project-name is valid', () => {
+    const result = validateCreateHarnessOptions(
+      { name: `Harness${'A'.repeat(30)}`, projectName: 'ShortProject' },
+      testDir
+    );
+    expect(result.valid).toBe(true);
+  });
+
+  it('validates project-name separately from harness name', () => {
+    const result = validateCreateHarnessOptions(
+      { name: 'ValidHarness', projectName: 'ProjectNameTooLongForCli' },
+      testDir
+    );
+    expect(result.valid).toBe(false);
+    expect(result.error).toContain('Project name');
+  });
+
+  it('checks folder existence using project-name', () => {
+    const result = validateCreateHarnessOptions({ name: 'ValidHarness2', projectName: 'existingProject' }, testDir);
+    expect(result.valid).toBe(false);
+    expect(result.error).toContain('existingProject');
   });
 });

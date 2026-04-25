@@ -38,6 +38,18 @@ describe('create command', () => {
       expect(json.success).toBe(false);
       expect(json.error.includes('conflicts')).toBeTruthy();
     });
+
+    it('creates project-only scaffold with --project-name and no --name', async () => {
+      const projectName = `ProjOnly${Date.now()}`;
+      const result = await runCLI(['create', '--project-name', projectName, '--no-agent', '--json'], testDir);
+
+      expect(result.exitCode, `stderr: ${result.stderr}, stdout: ${result.stdout}`).toBe(0);
+
+      const json = JSON.parse(result.stdout);
+      expect(json.success).toBe(true);
+      expect(json.projectPath).toMatch(new RegExp(`/${projectName}$`));
+      expect(await exists(join(json.projectPath, 'agentcore'))).toBeTruthy();
+    });
   });
 
   describe('with agent', () => {
@@ -145,6 +157,82 @@ describe('create command', () => {
       expect(episodic?.namespaces).toEqual(['/episodes/{actorId}/{sessionId}']);
       expect(episodic?.reflectionNamespaces).toEqual(['/episodes/{actorId}']);
     });
+
+    it('uses --project-name for project and --name for agent resource', async () => {
+      const projectName = `AgentProj${Date.now().toString().slice(-6)}`;
+      const agentName = `AgentResource${randomUUID().replace(/-/g, '').slice(0, 16)}`;
+      const result = await runCLI(
+        [
+          'create',
+          '--project-name',
+          projectName,
+          '--name',
+          agentName,
+          '--language',
+          'Python',
+          '--framework',
+          'Strands',
+          '--model-provider',
+          'Bedrock',
+          '--memory',
+          'none',
+          '--skip-git',
+          '--skip-install',
+          '--json',
+        ],
+        testDir
+      );
+
+      expect(result.exitCode, `stdout: ${result.stdout}, stderr: ${result.stderr}`).toBe(0);
+
+      const json = JSON.parse(result.stdout);
+      expect(json.success).toBe(true);
+      expect(json.projectPath).toMatch(new RegExp(`/${projectName}$`));
+      expect(json.agentName).toBe(agentName);
+      expect(await exists(join(json.projectPath, 'app', agentName))).toBeTruthy();
+
+      const projectSpec = JSON.parse(await readFile(join(json.projectPath, 'agentcore/agentcore.json'), 'utf-8'));
+      expect(projectSpec.name).toBe(projectName);
+      expect(projectSpec.runtimes[0].name).toBe(agentName);
+    });
+  });
+
+  describe('with harness', () => {
+    it('uses --project-name for project and --name for harness resource', async () => {
+      const projectName = `HarnessProj${Date.now().toString().slice(-6)}`;
+      const harnessName = `HarnessResource${randomUUID().replace(/-/g, '').slice(0, 16)}`;
+      const result = await runCLI(
+        ['create', '--project-name', projectName, '--name', harnessName, '--skip-git', '--skip-install', '--json'],
+        testDir
+      );
+
+      expect(result.exitCode, `stdout: ${result.stdout}, stderr: ${result.stderr}`).toBe(0);
+
+      const json = JSON.parse(result.stdout);
+      expect(json.success).toBe(true);
+      expect(json.projectPath).toMatch(new RegExp(`/${projectName}$`));
+      expect(await exists(join(json.projectPath, 'app', harnessName, 'harness.json'))).toBeTruthy();
+
+      const projectSpec = JSON.parse(await readFile(join(json.projectPath, 'agentcore/agentcore.json'), 'utf-8'));
+      expect(projectSpec.name).toBe(projectName);
+      expect(projectSpec.harnesses[0].name).toBe(harnessName);
+      expect(projectSpec.harnesses[0].path).toBe(`app/${harnessName}`);
+    });
+
+    it('rejects long harness name without --project-name but accepts it with --project-name', async () => {
+      const harnessName = `Harness${'A'.repeat(30)}`;
+      const rejected = await runCLI(['create', '--name', harnessName, '--skip-install', '--json'], testDir);
+      expect(rejected.exitCode).toBe(1);
+      expect(JSON.parse(rejected.stdout).success).toBe(false);
+
+      const projectName = `ShortProj${Date.now().toString().slice(-6)}`;
+      const accepted = await runCLI(
+        ['create', '--project-name', projectName, '--name', harnessName, '--skip-git', '--skip-install', '--json'],
+        testDir
+      );
+      expect(accepted.exitCode, `stdout: ${accepted.stdout}, stderr: ${accepted.stderr}`).toBe(0);
+      expect(JSON.parse(accepted.stdout).success).toBe(true);
+    });
   });
 
   describe('--defaults', () => {
@@ -163,11 +251,40 @@ describe('create command', () => {
     it('shows files without creating', async () => {
       const name = `DryRun${Date.now()}`;
       // --framework triggers agent path where --dry-run is supported
-      const result = await runCLI(['create', '--name', name, '--defaults', '--framework', 'Strands', '--dry-run'], testDir);
+      const result = await runCLI(
+        ['create', '--name', name, '--defaults', '--framework', 'Strands', '--dry-run'],
+        testDir
+      );
 
       expect(result.exitCode).toBe(0);
       expect(result.stdout.includes('would create') || result.stdout.includes('Dry run')).toBeTruthy();
       expect(await exists(join(testDir, name)), 'Should not create directory').toBe(false);
+    });
+
+    it('uses project-name for project paths and name for app paths', async () => {
+      const projectName = `DryProj${Date.now().toString().slice(-6)}`;
+      const agentName = `DryAgent${Date.now().toString().slice(-6)}`;
+      const result = await runCLI(
+        [
+          'create',
+          '--project-name',
+          projectName,
+          '--name',
+          agentName,
+          '--defaults',
+          '--framework',
+          'Strands',
+          '--dry-run',
+          '--json',
+        ],
+        testDir
+      );
+
+      expect(result.exitCode).toBe(0);
+      const json = JSON.parse(result.stdout);
+      expect(json.projectPath).toMatch(new RegExp(`/${projectName}$`));
+      expect(json.wouldCreate).toContain(`${json.projectPath}/app/${agentName}/`);
+      expect(await exists(join(testDir, projectName)), 'Should not create directory').toBe(false);
     });
   });
 

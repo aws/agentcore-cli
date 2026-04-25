@@ -1,8 +1,9 @@
-import { HarnessNameSchema } from '../../../schema';
+import { HarnessNameSchema, ProjectNameSchema } from '../../../schema';
 import { validateFolderNotExists } from './validate';
 
 export interface CreateHarnessCliOptions {
   name?: string;
+  projectName?: string;
   modelProvider?: string;
   modelId?: string;
   apiKeyArn?: string;
@@ -50,12 +51,18 @@ export function validateCreateHarnessOptions(options: CreateHarnessCliOptions, c
     return { valid: false, error: '--name is required' };
   }
 
+  const projectName = options.projectName ?? options.name;
+  const projectNameResult = ProjectNameSchema.safeParse(projectName);
+  if (!projectNameResult.success) {
+    return { valid: false, error: projectNameResult.error.issues[0]?.message ?? 'Invalid project name' };
+  }
+
   const nameResult = HarnessNameSchema.safeParse(options.name);
   if (!nameResult.success) {
     return { valid: false, error: nameResult.error.issues[0]?.message ?? 'Invalid harness name' };
   }
 
-  const folderCheck = validateFolderNotExists(options.name, cwd ?? process.cwd());
+  const folderCheck = validateFolderNotExists(projectName, cwd ?? process.cwd());
   if (folderCheck !== true) {
     return { valid: false, error: folderCheck };
   }

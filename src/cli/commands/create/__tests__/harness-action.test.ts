@@ -42,6 +42,26 @@ describe('createProjectWithHarness', () => {
     await expect(exists(join(harnessDir, 'system-prompt.md'))).resolves.toBe(true);
   });
 
+  it('uses projectName for project scaffold and name for harness resource', async () => {
+    const projectName = `Proj${randomUUID().slice(0, 6)}`;
+    const name = `HarnessName${randomUUID().replace(/-/g, '').slice(0, 12)}`;
+    const result = await createProjectWithHarness({
+      name,
+      projectName,
+      cwd: testDir,
+      modelProvider: 'bedrock',
+      modelId: 'global.anthropic.claude-sonnet-4-6',
+      skipGit: true,
+      skipInstall: true,
+    });
+
+    expect(result.success, `Error: ${result.error}`).toBe(true);
+    expect(result.projectPath).toBe(join(testDir, projectName));
+
+    await expect(exists(join(result.projectPath!, 'agentcore'))).resolves.toBe(true);
+    await expect(exists(join(result.projectPath!, 'app', name, 'harness.json'))).resolves.toBe(true);
+  });
+
   it('creates harness with custom options', async () => {
     const name = `CustomH${randomUUID().slice(0, 6)}`;
     const result = await createProjectWithHarness({

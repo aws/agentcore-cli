@@ -1,4 +1,5 @@
 import {
+  AgentNameSchema,
   BuildTypeSchema,
   ModelProviderSchema,
   ProjectNameSchema,
@@ -36,18 +37,20 @@ export function validateFolderNotExists(name: string, cwd: string): true | strin
 
 export function validateCreateOptions(options: CreateOptions, cwd?: string): ValidationResult {
   // Name is required for non-interactive mode
-  if (!options.name) {
+  if (!options.name && !(options.agent === false && options.projectName)) {
     return { valid: false, error: '--name is required' };
   }
 
-  // Validate name format
-  const nameResult = ProjectNameSchema.safeParse(options.name);
-  if (!nameResult.success) {
-    return { valid: false, error: nameResult.error.issues[0]?.message ?? 'Invalid project name' };
+  const projectName = options.projectName ?? options.name!;
+
+  // Validate project name format
+  const projectNameResult = ProjectNameSchema.safeParse(projectName);
+  if (!projectNameResult.success) {
+    return { valid: false, error: projectNameResult.error.issues[0]?.message ?? 'Invalid project name' };
   }
 
   // Check if directory already exists
-  const folderCheck = validateFolderNotExists(options.name, cwd ?? process.cwd());
+  const folderCheck = validateFolderNotExists(projectName, cwd ?? process.cwd());
   if (folderCheck !== true) {
     return { valid: false, error: folderCheck };
   }
@@ -55,6 +58,11 @@ export function validateCreateOptions(options: CreateOptions, cwd?: string): Val
   // If --no-agent (agent === false), no further validation needed
   if (options.agent === false) {
     return { valid: true };
+  }
+
+  const agentNameResult = AgentNameSchema.safeParse(options.name);
+  if (!agentNameResult.success) {
+    return { valid: false, error: agentNameResult.error.issues[0]?.message ?? 'Invalid agent name' };
   }
 
   // Import path: validate import-specific options
