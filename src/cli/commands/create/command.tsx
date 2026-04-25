@@ -76,6 +76,7 @@ function printCreateSummary(
 /** Handle CLI mode with progress output */
 async function handleCreateCLI(options: CreateOptions): Promise<void> {
   const cwd = options.outputDir ?? getWorkingDirectory();
+  const projectName = options.projectName ?? options.name!;
 
   const validation = validateCreateOptions(options, cwd);
   if (!validation.valid) {
@@ -89,7 +90,7 @@ async function handleCreateCLI(options: CreateOptions): Promise<void> {
 
   // Handle dry-run mode
   if (options.dryRun) {
-    const result = getDryRunInfo({ name: options.name!, cwd, language: options.language });
+    const result = getDryRunInfo({ name: options.name!, projectName, cwd, language: options.language });
     if (options.json) {
       console.log(JSON.stringify(result));
     } else {
@@ -121,7 +122,7 @@ async function handleCreateCLI(options: CreateOptions): Promise<void> {
 
   const result = skipAgent
     ? await createProject({
-        name: options.name!,
+        name: projectName,
         cwd,
         skipGit: options.skipGit,
         skipInstall: options.skipInstall,
@@ -129,6 +130,7 @@ async function handleCreateCLI(options: CreateOptions): Promise<void> {
       })
     : await createProjectWithAgent({
         name: options.name!,
+        projectName,
         cwd,
         type: options.type as 'create' | 'import' | undefined,
         buildType: (options.build as BuildType) ?? 'CodeZip',
@@ -156,7 +158,7 @@ async function handleCreateCLI(options: CreateOptions): Promise<void> {
   if (options.json) {
     console.log(JSON.stringify(result));
   } else if (result.success) {
-    printCreateSummary(options.name!, result.agentName, options.language, options.framework);
+    printCreateSummary(projectName, result.agentName, options.language, options.framework);
     if (options.skipInstall) {
       console.log(
         "\nDependency installation was skipped. Run 'npm install' in agentcore/cdk/ and 'uv sync' in your agent directory manually."
@@ -173,7 +175,11 @@ export const registerCreate = (program: Command) => {
   program
     .command('create')
     .description(COMMAND_DESCRIPTIONS.create)
-    .option('--name <name>', 'Project name (start with letter, alphanumeric only, max 23 chars) [non-interactive]')
+    .option('--name <name>', 'Resource name [non-interactive]')
+    .option(
+      '--project-name <name>',
+      'Project name (start with letter, alphanumeric only, max 23 chars) [non-interactive]'
+    )
     .option('--no-agent', 'Skip agent creation [non-interactive]')
     .option('--defaults', 'Use defaults (Python, Strands, Bedrock, no memory) [non-interactive]')
     .option('--build <type>', 'Build type: CodeZip or Container (default: CodeZip) [non-interactive]')
@@ -225,6 +231,7 @@ export const registerCreate = (program: Command) => {
         // Any flag triggers non-interactive CLI mode
         const hasAnyFlag = Boolean(
           options.name ??
+          options.projectName ??
           (options.agent === false ? true : null) ??
           options.defaults ??
           options.build ??
@@ -242,6 +249,9 @@ export const registerCreate = (program: Command) => {
         );
 
         if (hasAnyFlag) {
+          if (options.agent === false) {
+            options.name = options.name ?? options.projectName;
+          }
           // Default language to Python (only supported option) for CLI mode
           options.language = options.language ?? 'Python';
           await handleCreateCLI(options as CreateOptions);
