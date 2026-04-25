@@ -9,6 +9,8 @@ import {
   InstrumentationSchema,
   LifecycleConfigurationSchema,
   NetworkConfigSchema,
+  RuntimeEndpointNameSchema,
+  RuntimeEndpointSchema,
 } from '../agent-env.js';
 import { describe, expect, it } from 'vitest';
 
@@ -537,6 +539,132 @@ describe('AgentEnvSpecSchema - lifecycleConfiguration', () => {
     expect(result.success).toBe(true);
     if (result.success) {
       expect(result.data.lifecycleConfiguration).toBeUndefined();
+    }
+  });
+});
+
+describe('RuntimeEndpointNameSchema', () => {
+  it.each(['prod', 'staging', 'myEndpoint', 'v1', 'A', 'a' + '0'.repeat(47)])(
+    'accepts valid endpoint name "%s"',
+    name => {
+      expect(RuntimeEndpointNameSchema.safeParse(name).success).toBe(true);
+    }
+  );
+
+  it('rejects empty string', () => {
+    expect(RuntimeEndpointNameSchema.safeParse('').success).toBe(false);
+  });
+
+  it('rejects name starting with digit', () => {
+    expect(RuntimeEndpointNameSchema.safeParse('1prod').success).toBe(false);
+  });
+
+  it('rejects name with hyphens', () => {
+    expect(RuntimeEndpointNameSchema.safeParse('my-endpoint').success).toBe(false);
+  });
+
+  it('rejects name with special characters', () => {
+    expect(RuntimeEndpointNameSchema.safeParse('prod!').success).toBe(false);
+    expect(RuntimeEndpointNameSchema.safeParse('my@endpoint').success).toBe(false);
+  });
+
+  it('rejects name exceeding 48 chars', () => {
+    const name = 'A' + 'b'.repeat(48);
+    expect(name).toHaveLength(49);
+    expect(RuntimeEndpointNameSchema.safeParse(name).success).toBe(false);
+  });
+});
+
+describe('RuntimeEndpointSchema', () => {
+  it('accepts endpoint with version only', () => {
+    const result = RuntimeEndpointSchema.safeParse({ version: 1 });
+    expect(result.success).toBe(true);
+  });
+
+  it('accepts endpoint with version and description', () => {
+    const result = RuntimeEndpointSchema.safeParse({ version: 3, description: 'Production endpoint' });
+    expect(result.success).toBe(true);
+  });
+
+  it('rejects version < 1', () => {
+    expect(RuntimeEndpointSchema.safeParse({ version: 0 }).success).toBe(false);
+    expect(RuntimeEndpointSchema.safeParse({ version: -1 }).success).toBe(false);
+  });
+
+  it('rejects non-integer version', () => {
+    expect(RuntimeEndpointSchema.safeParse({ version: 1.5 }).success).toBe(false);
+  });
+
+  it('rejects missing version', () => {
+    expect(RuntimeEndpointSchema.safeParse({}).success).toBe(false);
+    expect(RuntimeEndpointSchema.safeParse({ description: 'no version' }).success).toBe(false);
+  });
+});
+
+describe('AgentEnvSpecSchema - endpoints', () => {
+  const validAgent = {
+    name: 'TestAgent',
+    build: 'CodeZip',
+    entrypoint: 'main.py',
+    codeLocation: 'app/TestAgent/',
+    runtimeVersion: 'PYTHON_3_12',
+  };
+
+  it('accepts valid endpoints dictionary', () => {
+    const result = AgentEnvSpecSchema.safeParse({
+      ...validAgent,
+      endpoints: {
+        prod: { version: 3, description: 'Production' },
+        staging: { version: 2 },
+      },
+    });
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.endpoints).toEqual({
+        prod: { version: 3, description: 'Production' },
+        staging: { version: 2 },
+      });
+    }
+  });
+
+  it('accepts agent without endpoints (optional)', () => {
+    const result = AgentEnvSpecSchema.safeParse(validAgent);
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.endpoints).toBeUndefined();
+    }
+  });
+
+  it('rejects invalid endpoint name with special characters', () => {
+    const result = AgentEnvSpecSchema.safeParse({
+      ...validAgent,
+      endpoints: {
+        'my-endpoint': { version: 1 },
+      },
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it('rejects endpoint with version < 1', () => {
+    const result = AgentEnvSpecSchema.safeParse({
+      ...validAgent,
+      endpoints: {
+        prod: { version: 0 },
+      },
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it('accepts endpoint with only version (no description)', () => {
+    const result = AgentEnvSpecSchema.safeParse({
+      ...validAgent,
+      endpoints: {
+        prod: { version: 5 },
+      },
+    });
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.endpoints!.prod).toEqual({ version: 5 });
     }
   });
 });

@@ -50,6 +50,38 @@ describe('AgentCoreDeployedStateSchema', () => {
   it('rejects missing required fields', () => {
     expect(AgentCoreDeployedStateSchema.safeParse({ runtimeId: 'rt-123' }).success).toBe(false);
   });
+
+  it('accepts runtimeVersion when provided as a valid integer >= 1', () => {
+    const result = AgentCoreDeployedStateSchema.safeParse({
+      runtimeId: 'rt-123',
+      runtimeArn: 'arn:aws:bedrock:us-east-1:123:agent-runtime/rt-123',
+      roleArn: 'arn:aws:iam::123:role/TestRole',
+      runtimeVersion: 1,
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it('accepts state without runtimeVersion (backwards compatible)', () => {
+    const result = AgentCoreDeployedStateSchema.safeParse({
+      runtimeId: 'rt-123',
+      runtimeArn: 'arn:aws:bedrock:us-east-1:123:agent-runtime/rt-123',
+      roleArn: 'arn:aws:iam::123:role/TestRole',
+    });
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.runtimeVersion).toBeUndefined();
+    }
+  });
+
+  it('rejects runtimeVersion of 0 (must be >= 1)', () => {
+    const result = AgentCoreDeployedStateSchema.safeParse({
+      runtimeId: 'rt-123',
+      runtimeArn: 'arn:aws:bedrock:us-east-1:123:agent-runtime/rt-123',
+      roleArn: 'arn:aws:iam::123:role/TestRole',
+      runtimeVersion: 0,
+    });
+    expect(result.success).toBe(false);
+  });
 });
 
 describe('MemoryDeployedStateSchema', () => {

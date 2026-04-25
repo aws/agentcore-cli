@@ -188,6 +188,31 @@ export const LifecycleConfigurationSchema = z
   });
 export type LifecycleConfiguration = z.infer<typeof LifecycleConfigurationSchema>;
 
+// ============================================================================
+// Runtime Endpoint Schema
+// ============================================================================
+
+/**
+ * Endpoint name follows the AgentCore API regex for endpoint aliases.
+ */
+export const RuntimeEndpointNameSchema = z
+  .string()
+  .min(1, 'Endpoint name is required')
+  .max(48)
+  .regex(
+    /^[a-zA-Z][a-zA-Z0-9_]{0,47}$/,
+    'Must begin with a letter and contain only alphanumeric characters and underscores (max 48 chars)'
+  );
+
+export const RuntimeEndpointSchema = z.object({
+  /** Version number this endpoint points to. Must be >= 1. */
+  version: z.number().int().min(1),
+  /** Optional human-readable description of this endpoint. */
+  description: z.string().max(200).optional(),
+});
+
+export type RuntimeEndpoint = z.infer<typeof RuntimeEndpointSchema>;
+
 /**
  * AgentEnvSpec - represents an AgentCore Runtime.
  * This is a top-level resource in the schema.
@@ -231,6 +256,8 @@ export const AgentEnvSpecSchema = z
     lifecycleConfiguration: LifecycleConfigurationSchema.optional(),
     /** Filesystem configurations for session-scoped persistent storage. */
     filesystemConfigurations: z.array(FilesystemConfigurationSchema).optional(),
+    /** Named endpoints (version aliases) for this runtime. Keys are endpoint names. */
+    endpoints: z.record(RuntimeEndpointNameSchema, RuntimeEndpointSchema).optional(),
   })
   .superRefine((data, ctx) => {
     if (data.networkMode === 'VPC' && !data.networkConfig) {

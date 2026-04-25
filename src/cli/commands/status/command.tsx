@@ -9,6 +9,7 @@ import { Box, Text, render } from 'ink';
 
 const VALID_RESOURCE_TYPES = [
   'agent',
+  'runtime-endpoint',
   'memory',
   'credential',
   'gateway',
@@ -135,6 +136,7 @@ export const registerStatus = (program: Command) => {
 
         const filtered = filterResources(result.resources, cliOptions);
         const agents = filtered.filter(r => r.resourceType === 'agent');
+        const runtimeEndpoints = filtered.filter(r => r.resourceType === 'runtime-endpoint');
         const credentials = filtered.filter(r => r.resourceType === 'credential');
         const memories = filtered.filter(r => r.resourceType === 'memory');
         const gateways = filtered.filter(r => r.resourceType === 'gateway');
@@ -153,16 +155,28 @@ export const registerStatus = (program: Command) => {
             {agents.length > 0 && (
               <Box flexDirection="column" marginTop={1}>
                 <Text bold>Agents</Text>
-                {agents.map(entry => (
-                  <Box key={`${entry.resourceType}-${entry.name}`} flexDirection="column">
-                    <ResourceEntry entry={entry} showRuntime />
-                    {entry.invocationUrl && (
-                      <Text dimColor>
-                        {'  '}URL: {entry.invocationUrl}
-                      </Text>
-                    )}
-                  </Box>
-                ))}
+                {agents.map(entry => {
+                  // Find endpoints belonging to this agent
+                  const agentEndpoints = runtimeEndpoints.filter(ep => ep.detail?.startsWith(`${entry.name} `));
+                  return (
+                    <Box key={`${entry.resourceType}-${entry.name}`} flexDirection="column">
+                      <ResourceEntry entry={entry} showRuntime />
+                      {entry.invocationUrl && (
+                        <Text dimColor>
+                          {'  '}URL: {entry.invocationUrl}
+                        </Text>
+                      )}
+                      {agentEndpoints.map(ep => (
+                        <Text key={`ep-${ep.name}`}>
+                          {'    '}◉ {ep.name} <Text dimColor>{ep.detail?.replace(`${entry.name} `, '')}</Text>{' '}
+                          <Text color={DEPLOYMENT_STATE_COLORS[ep.deploymentState] ?? 'gray'}>
+                            [{DEPLOYMENT_STATE_LABELS[ep.deploymentState] ?? ep.deploymentState}]
+                          </Text>
+                        </Text>
+                      ))}
+                    </Box>
+                  );
+                })}
               </Box>
             )}
 

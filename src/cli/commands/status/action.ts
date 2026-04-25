@@ -18,7 +18,8 @@ export interface ResourceStatusEntry {
     | 'evaluator'
     | 'online-eval'
     | 'policy-engine'
-    | 'policy';
+    | 'policy'
+    | 'runtime-endpoint';
   name: string;
   deploymentState: ResourceDeploymentState;
   identifier?: string;
@@ -202,8 +203,33 @@ export function computeResourceStatuses(
     getDeployedKey: item => `${item.engineName}/${item.name}`,
   });
 
+  // Flatten runtime endpoints for diffing against deployed state
+  const localEndpoints: { name: string; agentName: string; version: number; description?: string }[] = [];
+  for (const runtime of project.runtimes) {
+    if (runtime.endpoints) {
+      for (const [epName, ep] of Object.entries(runtime.endpoints)) {
+        localEndpoints.push({
+          name: epName,
+          agentName: runtime.name,
+          version: ep.version,
+          description: ep.description,
+        });
+      }
+    }
+  }
+
+  const runtimeEndpoints = diffResourceSet({
+    resourceType: 'runtime-endpoint',
+    localItems: localEndpoints,
+    deployedRecord: resources?.runtimeEndpoints ?? {},
+    getIdentifier: deployed => deployed.endpointArn,
+    getLocalDetail: item => `${item.agentName} v${item.version}${item.description ? ` — ${item.description}` : ''}`,
+    getDeployedKey: item => `${item.agentName}/${item.name}`,
+  });
+
   return [
     ...agents,
+    ...runtimeEndpoints,
     ...credentials,
     ...memories,
     ...gateways,
