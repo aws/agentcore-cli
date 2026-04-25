@@ -342,7 +342,8 @@ export function parsePolicyOutputs(
 /**
  * Parse stack outputs into deployed state for runtime endpoints.
  *
- * Output key pattern: ApplicationEndpoint{AgentPascal}{EndpointPascal}(Id|Arn)Output{Hash}
+ * Output key pattern: ApplicationAgent{AgentPascal}Endpoint{AgentPascal}{EndpointPascal}(Id|Arn)Output{Hash}
+ * The Agent{PascalName} prefix comes from the AgentEnvironment construct in the CDK tree.
  */
 export function parseRuntimeEndpointOutputs(
   outputs: StackOutputs,
@@ -352,9 +353,10 @@ export function parseRuntimeEndpointOutputs(
   const outputKeys = Object.keys(outputs);
 
   for (const { agentName, endpointName } of endpointSpecs) {
-    const pascal = toPascalId('Endpoint', agentName, endpointName);
-    const idPrefix = `Application${pascal}IdOutput`;
-    const arnPrefix = `Application${pascal}ArnOutput`;
+    const agentPascal = toPascalId(agentName);
+    const endpointPascal = toPascalId('Endpoint', agentName, endpointName);
+    const idPrefix = `ApplicationAgent${agentPascal}${endpointPascal}IdOutput`;
+    const arnPrefix = `ApplicationAgent${agentPascal}${endpointPascal}ArnOutput`;
 
     const idKey = outputKeys.find(k => k.startsWith(idPrefix));
     const arnKey = outputKeys.find(k => k.startsWith(arnPrefix));
