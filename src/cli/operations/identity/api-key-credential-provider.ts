@@ -33,6 +33,27 @@ export async function apiKeyProviderExists(
 }
 
 /**
+ * Get an existing API key credential provider.
+ */
+export async function getApiKeyProvider(
+  client: BedrockAgentCoreControlClient,
+  providerName: string
+): Promise<{ success: boolean; credentialProviderArn?: string; error?: string }> {
+  try {
+    const response = await client.send(new GetApiKeyCredentialProviderCommand({ name: providerName }));
+    if (!response.credentialProviderArn) {
+      return { success: false, error: 'No credential provider ARN in response' };
+    }
+    return { success: true, credentialProviderArn: response.credentialProviderArn };
+  } catch (error) {
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : String(error),
+    };
+  }
+}
+
+/**
  * Create an API key credential provider.
  * Returns success even if provider already exists (idempotent).
  */

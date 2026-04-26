@@ -145,7 +145,9 @@ export async function handleDeploy(options: ValidatedDeployOptions): Promise<Dep
       { credentialProviderArn: string; clientSecretArn?: string; callbackUrl?: string }
     > = {};
 
-    if (hasIdentityApiProviders(context.projectSpec)) {
+    const hasApiProviders = hasIdentityApiProviders(context.projectSpec);
+    const hasOAuthProviders = hasIdentityOAuthProviders(context.projectSpec);
+    if (hasApiProviders) {
       startStep('Creating credentials...');
 
       const identityResult = await setupApiKeyProviders({
@@ -177,7 +179,7 @@ export async function handleDeploy(options: ValidatedDeployOptions): Promise<Dep
     }
 
     // Set up OAuth credential providers if needed
-    if (hasIdentityOAuthProviders(context.projectSpec)) {
+    if (hasOAuthProviders) {
       startStep('Creating OAuth credentials...');
 
       const oauthResult = await setupOAuth2Providers({

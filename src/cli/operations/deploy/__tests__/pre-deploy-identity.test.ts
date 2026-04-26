@@ -12,7 +12,9 @@ const {
   mockSetTokenVaultKmsKey,
   mockReadEnvFile,
   mockGetCredentialProvider,
+  mockGetApiKeyProvider,
   mockOAuth2ProviderExists,
+  mockGetOAuth2Provider,
   mockCreateOAuth2Provider,
   mockUpdateOAuth2Provider,
 } = vi.hoisted(() => ({
@@ -21,7 +23,9 @@ const {
   mockSetTokenVaultKmsKey: vi.fn(),
   mockReadEnvFile: vi.fn(),
   mockGetCredentialProvider: vi.fn(),
+  mockGetApiKeyProvider: vi.fn(),
   mockOAuth2ProviderExists: vi.fn(),
+  mockGetOAuth2Provider: vi.fn(),
   mockCreateOAuth2Provider: vi.fn(),
   mockUpdateOAuth2Provider: vi.fn(),
 }));
@@ -47,9 +51,11 @@ vi.mock('@aws-sdk/client-bedrock-agentcore-control', () => ({
 vi.mock('../../identity/index.js', () => ({
   apiKeyProviderExists: vi.fn(),
   createApiKeyProvider: vi.fn(),
+  getApiKeyProvider: mockGetApiKeyProvider,
   setTokenVaultKmsKey: mockSetTokenVaultKmsKey,
   updateApiKeyProvider: vi.fn(),
   oAuth2ProviderExists: mockOAuth2ProviderExists,
+  getOAuth2Provider: mockGetOAuth2Provider,
   createOAuth2Provider: mockCreateOAuth2Provider,
   updateOAuth2Provider: mockUpdateOAuth2Provider,
 }));
@@ -199,6 +205,47 @@ describe('setupApiKeyProviders - KMS key reuse via GetTokenVault', () => {
   });
 });
 
+describe('setupApiKeyProviders - existing provider linking', () => {
+  afterEach(() => vi.clearAllMocks());
+
+  beforeEach(() => {
+    mockReadEnvFile.mockResolvedValue({});
+    mockGetCredentialProvider.mockReturnValue({});
+    mockGetApiKeyProvider.mockResolvedValue({
+      success: true,
+      credentialProviderArn: 'arn:aws:bedrock-agentcore:us-east-1:123:credential-provider/openai',
+    });
+  });
+
+  it('links an existing API key provider by name when no local secret exists', async () => {
+    const projectSpec = {
+      name: 'test-project',
+      credentials: [{ name: 'openai', authorizerType: 'ApiKeyCredentialProvider' }],
+      runtimes: [],
+    };
+
+    const result = await setupApiKeyProviders({
+      projectSpec: projectSpec as any,
+      configBaseDir: '/tmp',
+      region: 'us-east-1',
+      enableKmsEncryption: true,
+    });
+
+    expect(result.hasErrors).toBe(false);
+    expect(result.kmsKeyArn).toBeUndefined();
+    expect(result.results).toEqual([
+      {
+        providerName: 'openai',
+        status: 'linked',
+        credentialProviderArn: 'arn:aws:bedrock-agentcore:us-east-1:123:credential-provider/openai',
+      },
+    ]);
+    expect(mockGetApiKeyProvider).toHaveBeenCalledWith(expect.anything(), 'openai');
+    expect(mockControlSend).not.toHaveBeenCalled();
+    expect(mockKmsSend).not.toHaveBeenCalled();
+  });
+});
+
 describe('hasIdentityOAuthProviders', () => {
   it('returns true when OAuthCredentialProvider exists', () => {
     const projectSpec = {
@@ -273,6 +320,47 @@ describe('setupOAuth2Providers', () => {
     vi.clearAllMocks();
   });
 
+  it('links an existing OAuth2 provider by name when local client credentials are missing', async () => {
+    mockReadEnvFile.mockResolvedValue({});
+    mockGetOAuth2Provider.mockResolvedValue({
+      success: true,
+      result: {
+        credentialProviderArn: 'arn:aws:bedrock-agentcore:us-east-1:123:credential-provider/test-oauth',
+        clientSecretArn: 'arn:aws:secretsmanager:us-east-1:123:secret:test-oauth',
+        callbackUrl: 'https://callback.example.com',
+      },
+    });
+
+    const projectSpec = {
+      credentials: [
+        {
+          name: 'test-oauth',
+          authorizerType: 'OAuthCredentialProvider',
+        },
+      ],
+    };
+
+    const result = await setupOAuth2Providers({
+      projectSpec: projectSpec as any,
+      configBaseDir: '/tmp',
+      region: 'us-east-1',
+    });
+
+    expect(result.hasErrors).toBe(false);
+    expect(result.results).toEqual([
+      {
+        providerName: 'test-oauth',
+        status: 'linked',
+        credentialProviderArn: 'arn:aws:bedrock-agentcore:us-east-1:123:credential-provider/test-oauth',
+        clientSecretArn: 'arn:aws:secretsmanager:us-east-1:123:secret:test-oauth',
+        callbackUrl: 'https://callback.example.com',
+      },
+    ]);
+    expect(mockGetOAuth2Provider).toHaveBeenCalledWith(expect.anything(), 'test-oauth');
+    expect(mockCreateOAuth2Provider).not.toHaveBeenCalled();
+    expect(mockUpdateOAuth2Provider).not.toHaveBeenCalled();
+  });
+
   it('creates OAuth2 provider when it does not exist', async () => {
     mockReadEnvFile.mockResolvedValue({
       AGENTCORE_CREDENTIAL_TEST_OAUTH_CLIENT_ID: 'client123',
@@ -343,8 +431,9 @@ describe('setupOAuth2Providers', () => {
     expect(mockUpdateOAuth2Provider).toHaveBeenCalled();
   });
 
-  it('skips when env vars are missing', async () => {
+  it('returns error when env vars are missing and provider cannot be linked', async () => {
     mockReadEnvFile.mockResolvedValue({});
+    mockGetOAuth2Provider.mockResolvedValue({ success: false, error: 'ResourceNotFoundException' });
 
     const projectSpec = {
       credentials: [{ name: 'test-oauth', authorizerType: 'OAuthCredentialProvider' }],
@@ -356,10 +445,11 @@ describe('setupOAuth2Providers', () => {
       region: 'us-east-1',
     });
 
-    expect(result.hasErrors).toBe(false);
+    expect(result.hasErrors).toBe(true);
     expect(result.results).toHaveLength(1);
-    expect(result.results[0]!.status).toBe('skipped');
+    expect(result.results[0]!.status).toBe('error');
     expect(result.results[0]!.error).toContain('Missing');
+    expect(result.results[0]!.error).toContain('no existing AgentCore Identity OAuth2 credential provider');
   });
 
   it('returns error on failure', async () => {

@@ -116,6 +116,11 @@ agentcore deploy -y --json           # JSON output
 | `--diff`          | Show CDK diff without deploying               |
 | `--json`          | JSON output                                   |
 
+By default, deploying a project with credential resources creates or updates matching AgentCore Identity credential
+providers using values from `agentcore/.env.local` or matching process environment variables. If no local credential
+value is present, deploy looks for an existing AgentCore Identity credential provider with the same name and links its
+ARN into `agentcore/.cli/deployed-state.json` for CDK/IAM wiring.
+
 ### status
 
 Check deployment status and resource details.

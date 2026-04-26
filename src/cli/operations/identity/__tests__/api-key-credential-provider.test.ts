@@ -1,6 +1,7 @@
 import {
   apiKeyProviderExists,
   createApiKeyProvider,
+  getApiKeyProvider,
   setTokenVaultKmsKey,
   updateApiKeyProvider,
 } from '../api-key-credential-provider.js';
@@ -59,6 +60,30 @@ describe('apiKeyProviderExists', () => {
     mockSend.mockRejectedValue(new Error('other error'));
 
     await expect(apiKeyProviderExists(makeMockClient(), 'my-provider')).rejects.toThrow('other error');
+  });
+});
+
+describe('getApiKeyProvider', () => {
+  afterEach(() => vi.clearAllMocks());
+
+  it('returns the credential provider ARN when provider exists', async () => {
+    mockSend.mockResolvedValue({
+      credentialProviderArn: 'arn:aws:bedrock-agentcore:us-east-1:123:credential-provider/prov',
+    });
+
+    expect(await getApiKeyProvider(makeMockClient(), 'prov')).toEqual({
+      success: true,
+      credentialProviderArn: 'arn:aws:bedrock-agentcore:us-east-1:123:credential-provider/prov',
+    });
+  });
+
+  it('returns failure when provider response has no ARN', async () => {
+    mockSend.mockResolvedValue({});
+
+    expect(await getApiKeyProvider(makeMockClient(), 'prov')).toEqual({
+      success: false,
+      error: 'No credential provider ARN in response',
+    });
   });
 });
 
