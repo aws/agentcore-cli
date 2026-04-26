@@ -492,6 +492,132 @@ describe('HarnessDeployer', () => {
     });
   });
 
+  describe('configHash', () => {
+    const ROLE_ARN = 'arn:aws:iam::123456789012:role/HarnessRole';
+    const CDK_OUTPUTS = { ApplicationHarnessMyHarnessRoleArnOutput123: ROLE_ARN };
+
+    const HARNESS_SPEC_WITH_DOCKERFILE_JSON = JSON.stringify({
+      name: 'my_harness',
+      model: { provider: 'bedrock', modelId: 'anthropic.claude-3-sonnet-20240229-v1:0' },
+      tools: [],
+      skills: [],
+      dockerfile: 'Dockerfile',
+    });
+
+    const READY_HARNESS = {
+      harnessId: 'h-new',
+      harnessName: 'my_harness',
+      arn: 'arn:aws:bedrock-agentcore:us-east-1:123456789012:harness/h-new',
+      status: 'READY' as const,
+      executionRoleArn: ROLE_ARN,
+      createdAt: '2024-01-01T00:00:00Z',
+      updatedAt: '2024-01-01T00:00:00Z',
+    };
+
+    it('produces different hashes for different Dockerfile contents', async () => {
+      const ctx = createContext({
+        harnesses: [{ name: 'my_harness', path: 'harnesses/my_harness' }],
+        cdkOutputs: CDK_OUTPUTS,
+      });
+
+      // First deploy — Dockerfile v1
+      mockedReadFile
+        .mockResolvedValueOnce(HARNESS_SPEC_WITH_DOCKERFILE_JSON)
+        .mockRejectedValueOnce(new Error('ENOENT'))
+        .mockResolvedValueOnce('FROM python:3.11');
+      mockedMapHarness.mockResolvedValueOnce({ region: REGION, harnessName: 'my_harness', executionRoleArn: ROLE_ARN });
+      mockedCreateHarness.mockResolvedValueOnce({ harness: READY_HARNESS });
+
+      const result1 = await deployer.deploy(ctx);
+      const hash1 = result1.state!.my_harness!.configHash;
+
+      vi.clearAllMocks();
+
+      // Second deploy — Dockerfile v2 (same everything else)
+      mockedReadFile
+        .mockResolvedValueOnce(HARNESS_SPEC_WITH_DOCKERFILE_JSON)
+        .mockRejectedValueOnce(new Error('ENOENT'))
+        .mockResolvedValueOnce('FROM python:3.12');
+      mockedMapHarness.mockResolvedValueOnce({ region: REGION, harnessName: 'my_harness', executionRoleArn: ROLE_ARN });
+      mockedCreateHarness.mockResolvedValueOnce({ harness: READY_HARNESS });
+
+      const result2 = await deployer.deploy(ctx);
+      const hash2 = result2.state!.my_harness!.configHash;
+
+      expect(hash1).toBeDefined();
+      expect(hash2).toBeDefined();
+      expect(hash1).not.toBe(hash2);
+    });
+
+    it('triggers update when Dockerfile content changes after initial deploy', async () => {
+      // First deploy to get the real hash for Dockerfile v1
+      const ctx = createContext({
+        harnesses: [{ name: 'my_harness', path: 'harnesses/my_harness' }],
+        cdkOutputs: CDK_OUTPUTS,
+      });
+
+      mockedReadFile
+        .mockResolvedValueOnce(HARNESS_SPEC_WITH_DOCKERFILE_JSON)
+        .mockRejectedValueOnce(new Error('ENOENT'))
+        .mockResolvedValueOnce('FROM python:3.11');
+      mockedMapHarness.mockResolvedValueOnce({ region: REGION, harnessName: 'my_harness', executionRoleArn: ROLE_ARN });
+      mockedCreateHarness.mockResolvedValueOnce({ harness: READY_HARNESS });
+
+      const initialResult = await deployer.deploy(ctx);
+      const initialHash = initialResult.state!.my_harness!.configHash;
+
+      vi.clearAllMocks();
+
+      // Second deploy — Dockerfile changed, deployed state has the old hash
+      const ctxWithDeployed = createContext({
+        harnesses: [{ name: 'my_harness', path: 'harnesses/my_harness' }],
+        deployedHarnesses: {
+          harnesses: {
+            my_harness: {
+              harnessId: 'h-new',
+              harnessArn: READY_HARNESS.arn,
+              roleArn: ROLE_ARN,
+              status: 'READY',
+              configHash: initialHash,
+            },
+          },
+        },
+        cdkOutputs: CDK_OUTPUTS,
+      });
+
+      mockedReadFile
+        .mockResolvedValueOnce(HARNESS_SPEC_WITH_DOCKERFILE_JSON)
+        .mockRejectedValueOnce(new Error('ENOENT'))
+        .mockResolvedValueOnce('FROM python:3.12');
+      mockedMapHarness.mockResolvedValueOnce({ region: REGION, harnessName: 'my_harness', executionRoleArn: ROLE_ARN });
+      mockedUpdateHarness.mockResolvedValueOnce({ harness: READY_HARNESS });
+
+      const result = await deployer.deploy(ctxWithDeployed);
+
+      expect(result.success).toBe(true);
+      expect(mockedUpdateHarness).toHaveBeenCalled();
+      expect(result.notes).toContain('Updated harness "my_harness"');
+    });
+
+    it('does not read Dockerfile when no dockerfile field is set', async () => {
+      mockedReadFile.mockResolvedValueOnce(HARNESS_SPEC_JSON).mockRejectedValueOnce(new Error('ENOENT'));
+      mockedMapHarness.mockResolvedValueOnce({ region: REGION, harnessName: 'my_harness', executionRoleArn: ROLE_ARN });
+      mockedCreateHarness.mockResolvedValueOnce({ harness: READY_HARNESS });
+
+      const ctx = createContext({
+        harnesses: [{ name: 'my_harness', path: 'harnesses/my_harness' }],
+        cdkOutputs: CDK_OUTPUTS,
+      });
+
+      await deployer.deploy(ctx);
+
+      const dockerfileCallArgs = mockedReadFile.mock.calls.find(
+        ([path]) => typeof path === 'string' && path.includes('Dockerfile')
+      );
+      expect(dockerfileCallArgs).toBeUndefined();
+    });
+  });
+
   describe('teardown', () => {
     it('deletes all deployed harnesses', async () => {
       mockedDeleteHarness

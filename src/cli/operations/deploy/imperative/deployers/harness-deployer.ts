@@ -42,6 +42,14 @@ async function computeHarnessHash(harnessDir: string, harnessSpec: HarnessSpec, 
   } catch {
     // no system-prompt.md
   }
+  if (harnessSpec.dockerfile) {
+    try {
+      const dockerfileContent = await readFile(join(harnessDir, harnessSpec.dockerfile), 'utf-8');
+      hash.update(dockerfileContent);
+    } catch {
+      // Dockerfile missing — preflight already validates existence before deploy
+    }
+  }
   return hash.digest('hex').slice(0, 16);
 }
 
