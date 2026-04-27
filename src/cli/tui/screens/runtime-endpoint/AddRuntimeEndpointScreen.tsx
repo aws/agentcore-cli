@@ -2,6 +2,7 @@ import type { SelectableItem } from '../../components';
 import { ConfirmReview, Cursor, Panel, Screen, StepIndicator, WizardSelect } from '../../components';
 import { HELP_TEXT } from '../../constants';
 import { useListNavigation } from '../../hooks';
+import type { RuntimeVersionMap } from './AddRuntimeEndpointFlow';
 import type { RuntimeEndpointWizardConfig, RuntimeEndpointWizardStep } from './types';
 import { useAddRuntimeEndpointWizard } from './useAddRuntimeEndpointWizard';
 import { Box, Text, useInput } from 'ink';
@@ -20,9 +21,15 @@ interface AddRuntimeEndpointScreenProps {
   onComplete: (config: RuntimeEndpointWizardConfig) => void;
   onExit: () => void;
   runtimeNames: string[];
+  runtimeVersions: RuntimeVersionMap;
 }
 
-export function AddRuntimeEndpointScreen({ onComplete, onExit, runtimeNames }: AddRuntimeEndpointScreenProps) {
+export function AddRuntimeEndpointScreen({
+  onComplete,
+  onExit,
+  runtimeNames,
+  runtimeVersions,
+}: AddRuntimeEndpointScreenProps) {
   const skipRuntimeStep = runtimeNames.length === 1;
   const wizard = useAddRuntimeEndpointWizard({ skipRuntimeStep });
 
@@ -47,6 +54,10 @@ export function AddRuntimeEndpointScreen({ onComplete, onExit, runtimeNames }: A
   const isRuntimeStep = wizard.step === 'runtime';
   const isEndpointStep = wizard.step === 'endpoint';
   const isConfirmStep = wizard.step === 'confirm';
+
+  // Get the max deployed version for the selected runtime
+  const maxVersion = effectiveConfig.runtimeName ? runtimeVersions[effectiveConfig.runtimeName] : undefined;
+  const isDeployed = maxVersion !== undefined;
 
   // Multi-field state for endpoint step (CustomClaimForm pattern)
   const [activeField, setActiveField] = useState<EndpointField>('name');
@@ -115,6 +126,10 @@ export function AddRuntimeEndpointScreen({ onComplete, onExit, runtimeNames }: A
               setError('Version must be a positive integer');
               return;
             }
+            if (isDeployed && num > maxVersion) {
+              setError(`Version must be between 1 and ${maxVersion} (latest deployed version)`);
+              return;
+            }
           }
           setActiveField(ENDPOINT_FIELDS[idx + 1]!);
           setError(null);
@@ -132,6 +147,10 @@ export function AddRuntimeEndpointScreen({ onComplete, onExit, runtimeNames }: A
         const ver = parseInt(endpointVersion, 10);
         if (isNaN(ver) || ver < 1) {
           setError('Version must be a positive integer');
+          return;
+        }
+        if (isDeployed && ver > maxVersion) {
+          setError(`Version must be between 1 and ${maxVersion} (latest deployed version)`);
           return;
         }
         const desc = endpointDescription.trim() || undefined;
@@ -202,6 +221,9 @@ export function AddRuntimeEndpointScreen({ onComplete, onExit, runtimeNames }: A
         {isEndpointStep && (
           <Box flexDirection="column">
             <Text dimColor>Runtime: {effectiveConfig.runtimeName}</Text>
+            {isDeployed && (
+              <Text dimColor>Current deployed version: {maxVersion}</Text>
+            )}
             <Box marginTop={1} flexDirection="column">
               <Box>
                 <Text color={activeField === 'name' ? 'cyan' : 'gray'}>Endpoint name: </Text>
@@ -213,7 +235,8 @@ export function AddRuntimeEndpointScreen({ onComplete, onExit, runtimeNames }: A
               </Box>
 
               <Box>
-                <Text color={activeField === 'version' ? 'cyan' : 'gray'}>Version: </Text>
+                <Text color={activeField === 'version' ? 'cyan' : 'gray'}>
+                  Version{isDeployed ? ` (1-${maxVersion})` : ''}: </Text>
                 {activeField === 'version' && !endpointVersion && <Cursor />}
                 <Text color={activeField === 'version' ? undefined : 'gray'}>
                   {endpointVersion || <Text dimColor>1</Text>}
