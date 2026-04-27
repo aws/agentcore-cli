@@ -35,6 +35,45 @@ def read_prompt(filename):
         return f.read()
 
 
+def invoke_command(harness_arn, command, region, timeout=300):
+    """Execute a shell command on the harness runtime via invoke_agent_runtime_command."""
+    session = boto3.Session(region_name=region)
+    credentials = session.get_credentials().get_frozen_credentials()
+    url = f"https://bedrock-agentcore.{region}.amazonaws.com/runtimes/command?agentRuntimeArn={quote(harness_arn, safe='')}"
+    body = json.dumps({"command": command, "timeout": timeout})
+    request = AWSRequest(method="POST", url=url, data=body, headers={
+        "Content-Type": "application/json",
+        "Accept": "application/vnd.amazon.eventstream",
+    })
+    SigV4Auth(credentials, "bedrock-agentcore", region).add_auth(request)
+    resp = urllib3.PoolManager().urlopen(
+        "POST", url, body=body,
+        headers=dict(request.headers),
+        preload_content=False,
+        timeout=urllib3.Timeout(connect=10, read=timeout + 30),
+    )
+    if resp.status != 200:
+        print(f"  {RED}ERROR: HTTP {resp.status}: {resp.read().decode('utf-8')}{RESET}")
+        return False
+    buf = EventStreamBuffer()
+    for chunk in resp.stream(4096):
+        buf.add_data(chunk)
+        for event in buf:
+            event_type = event.headers.get(":event-type", "")
+            if not event.payload:
+                continue
+            payload = json.loads(event.payload.decode("utf-8"))
+            if event_type == "contentDelta":
+                text = payload.get("delta", {}).get("text", "")
+                if text:
+                    print(f"  {text}", end="", flush=True)
+            elif event_type == "contentStop":
+                exit_code = payload.get("exitCode", -1)
+                print(f"\n  Exit code: {exit_code}")
+                return exit_code == 0
+    return True
+
+
 def invoke_harness(harness_arn, body, region):
     """Send a SigV4-signed request to the harness invoke endpoint. Returns a streaming response.
 
@@ -195,6 +234,18 @@ SESSION_ID = str(uuid.uuid4()).upper()
 print(f"{CYAN}Session:{RESET} {SESSION_ID}")
 print(f"{CYAN}PR:{RESET}      {PR_URL}")
 print(f"{CYAN}Harness:{RESET} {HARNESS_ARN}")
+print()
+
+# Clone repos fresh on the runtime so the agent always has latest code
+print(f"{CYAN}Cloning repos on runtime...{RESET}")
+clone_cmds = [
+    "git clone https://github.com/aws/agentcore-cli.git /opt/workspace/agentcore-cli",
+    "git clone https://github.com/aws/agentcore-l3-cdk-constructs.git /opt/workspace/agentcore-l3-cdk-constructs",
+]
+for cmd in clone_cmds:
+    print(f"  $ {cmd}")
+    if not invoke_command(HARNESS_ARN, cmd, REGION):
+        print(f"  {YELLOW}Warning: clone failed, agent may lack repo context{RESET}")
 print()
 
 SYSTEM_PROMPT = read_prompt("system.md")
