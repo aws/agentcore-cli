@@ -17,10 +17,10 @@ vi.mock('../../../lib/index.js', () => ({
 }));
 
 function makeProject(
-  runtimes: Array<{
+  runtimes: {
     name: string;
     endpoints?: Record<string, { version: number; description?: string }>;
-  }> = []
+  }[] = []
 ) {
   return {
     name: 'TestProject',
