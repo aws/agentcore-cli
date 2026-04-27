@@ -199,7 +199,7 @@ export function ResourceGraph({ project, mcp, agentName, resourceStatuses }: Res
                     const epState = parentState === 'deployed' ? 'deployed' : 'local-only';
                     const badge = getDeploymentBadge(epState);
                     return (
-                      <Text key={epName}>
+                      <Text key={`${agent.name}/${epName}`}>
                         {'    '}
                         <Text color="green">{ICONS['runtime-endpoint']}</Text> {epName}
                         <Text color="gray"> v{ep.version}</Text>
