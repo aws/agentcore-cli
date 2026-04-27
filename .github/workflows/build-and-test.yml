@@ -93,8 +93,10 @@ jobs:
         uses: actions/upload-artifact@v7
         with:
           name: blob-${{ matrix.node-version }}-${{ strategy.job-index }}
-          path: .vitest-reports/
+          path: .vitest-reports
           retention-days: 1
+          if-no-files-found: error
+          include-hidden-files: true
 
   merge-reports:
     needs: unit-test
