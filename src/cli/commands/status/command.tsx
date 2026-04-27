@@ -59,7 +59,7 @@ export const registerStatus = (program: Command) => {
     .option('--target <name>', 'Select deployment target')
     .option(
       '--type <type>',
-      'Filter by resource type (agent, memory, credential, gateway, evaluator, online-eval, policy-engine, policy)'
+      'Filter by resource type (agent, runtime-endpoint, memory, credential, gateway, evaluator, online-eval, policy-engine, policy)'
     )
     .option('--state <state>', 'Filter by deployment state (deployed, local-only, pending-removal)')
     .option('--runtime <name>', 'Filter to a specific runtime')
