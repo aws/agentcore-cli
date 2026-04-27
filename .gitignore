@@ -67,3 +67,4 @@ ProtocolTesting/
 
 # Auto-cloned CDK constructs (from scripts/bundle.mjs)
 .cdk-constructs-clone/
+.omc/

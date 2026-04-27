@@ -5,7 +5,7 @@ import { useListNavigation } from '../../hooks';
 import type { RuntimeEndpointWizardConfig, RuntimeEndpointWizardStep } from './types';
 import { useAddRuntimeEndpointWizard } from './useAddRuntimeEndpointWizard';
 import { Box, Text, useInput } from 'ink';
-import React, { useCallback, useMemo, useState } from 'react';
+import React, { useMemo, useState } from 'react';
 
 const STEP_LABELS: Record<RuntimeEndpointWizardStep, string> = {
   runtime: 'Runtime',

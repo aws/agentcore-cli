@@ -1,7 +1,0 @@
-{
-  "tool_name": "Read",
-  "tool_input_preview": "{\"file_path\":\"/Users/tjariy/github_workspace/runtime_endpoint_project/agentcore-cli/src/schema/agent-env.ts\"}",
-  "error": "File does not exist. Note: your current working directory is /Users/tjariy/github_workspace/runtime_endpoint_project/agentcore-cli.",
-  "timestamp": "2026-04-24T19:40:50.234Z",
-  "retry_count": 1
-}
