@@ -250,6 +250,46 @@ describe('HarnessDeployer', () => {
       expect(mockedCreateHarness).toHaveBeenCalledWith(createOptions);
     });
 
+    it('prefers new RoleRoleArn key over old RoleArn key when both are present', async () => {
+      const createOptions = {
+        region: REGION,
+        harnessName: 'my_harness',
+        executionRoleArn: 'arn:aws:iam::123456789012:role/NewRole',
+        model: { bedrockModelConfig: { modelId: 'anthropic.claude-3-sonnet-20240229-v1:0' } },
+      };
+
+      mockedReadFile.mockResolvedValueOnce(HARNESS_SPEC_JSON);
+      mockedMapHarness.mockResolvedValueOnce(createOptions);
+      mockedCreateHarness.mockResolvedValueOnce({
+        harness: {
+          harnessId: 'h-new',
+          harnessName: 'my_harness',
+          arn: 'arn:aws:bedrock-agentcore:us-east-1:123456789012:harness/h-new',
+          status: 'READY',
+          executionRoleArn: 'arn:aws:iam::123456789012:role/NewRole',
+          createdAt: '2024-01-01T00:00:00Z',
+          updatedAt: '2024-01-01T00:00:00Z',
+        },
+      });
+
+      const ctx = createContext({
+        harnesses: [{ name: 'my_harness', path: 'harnesses/my_harness' }],
+        cdkOutputs: {
+          ApplicationHarnessMyHarnessRoleRoleArnOutput123: 'arn:aws:iam::123456789012:role/NewRole',
+          ApplicationHarnessMyHarnessRoleArnOutput456: 'arn:aws:iam::123456789012:role/OldRole',
+        },
+      });
+
+      const result = await deployer.deploy(ctx);
+
+      expect(result.success).toBe(true);
+      expect(result.state!.my_harness).toEqual(
+        expect.objectContaining({
+          roleArn: 'arn:aws:iam::123456789012:role/NewRole',
+        })
+      );
+    });
+
     it('updates a harness when already deployed', async () => {
       const createOptions = {
         region: REGION,

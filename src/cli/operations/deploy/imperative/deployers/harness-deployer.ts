@@ -287,6 +287,7 @@ function resolveRoleArn(harnessName: string, cdkOutputs?: Record<string, string>
   if (!cdkOutputs) return undefined;
 
   const pascalName = toPascalId(harnessName);
+  // Longer prefix first — RoleArn is a substring of RoleRoleArn, so checking it first would match both.
   const prefixes = [`ApplicationHarness${pascalName}RoleRoleArn`, `ApplicationHarness${pascalName}RoleArn`];
 
   for (const [key, value] of Object.entries(cdkOutputs)) {
