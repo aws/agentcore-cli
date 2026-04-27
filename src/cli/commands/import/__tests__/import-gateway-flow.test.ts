@@ -236,7 +236,7 @@ describe('handleImportGateway', () => {
       expect(mockConfigIOInstance.writeProjectSpec).not.toHaveBeenCalled();
     });
 
-    it('rejects when gateway ID is already tracked in deployed state', async () => {
+    it('re-imports gateway already in deployed state but missing from agentcore.json', async () => {
       mockConfigIOInstance.readDeployedState.mockResolvedValue({
         targets: {
           default: {
@@ -253,9 +253,55 @@ describe('handleImportGateway', () => {
 
       const result = await handleImportGateway({ arn: GATEWAY_ARN });
 
+      expect(result.success).toBe(true);
+      expect(result.resourceName).toBe('ExistingGateway');
+      expect(mockConfigIOInstance.writeProjectSpec).toHaveBeenCalledTimes(1);
+      expect(mockExecuteCdkImportPipeline).not.toHaveBeenCalled();
+    });
+
+    it('re-import uses --name override instead of deployed-state name', async () => {
+      mockConfigIOInstance.readDeployedState.mockResolvedValue({
+        targets: {
+          default: {
+            resources: {
+              mcp: {
+                gateways: {
+                  ExistingGateway: { gatewayId: GATEWAY_ID },
+                },
+              },
+            },
+          },
+        },
+      });
+
+      const result = await handleImportGateway({ arn: GATEWAY_ARN, name: 'myCustomName' });
+
+      expect(result.success).toBe(true);
+      expect(result.resourceName).toBe('myCustomName');
+      expect(mockConfigIOInstance.writeProjectSpec).toHaveBeenCalledTimes(1);
+      expect(mockExecuteCdkImportPipeline).not.toHaveBeenCalled();
+    });
+
+    it('rejects when gateway name AND ID both already exist in project', async () => {
+      mockConfigIOInstance.readProjectSpec.mockResolvedValue(makeProjectSpec([{ name: GATEWAY_NAME, targets: [] }]));
+      mockConfigIOInstance.readDeployedState.mockResolvedValue({
+        targets: {
+          default: {
+            resources: {
+              mcp: {
+                gateways: {
+                  [GATEWAY_NAME]: { gatewayId: GATEWAY_ID },
+                },
+              },
+            },
+          },
+        },
+      });
+
+      const result = await handleImportGateway({ arn: GATEWAY_ARN });
+
       expect(result.success).toBe(false);
-      expect(result.error).toContain('already imported');
-      expect(mockConfigIOInstance.writeProjectSpec).not.toHaveBeenCalled();
+      expect(result.error).toContain('already exists');
     });
   });
 

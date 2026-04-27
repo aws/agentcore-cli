@@ -80,7 +80,7 @@ export async function executeResourceImport<TDetail, TSummary>(
     }
 
     // 4. Validate name
-    const localName = options.name ?? descriptor.extractDetailName(detail);
+    let localName = options.name ?? descriptor.extractDetailName(detail);
     if (!NAME_REGEX.test(localName)) {
       return failResult(
         logger,
@@ -112,12 +112,43 @@ export async function executeResourceImport<TDetail, TSummary>(
       resourceId
     );
     if (existingResource) {
-      return failResult(
-        logger,
-        `${descriptor.displayName} "${resourceId}" is already imported in this project as "${existingResource}". Remove it first before re-importing.`,
-        descriptor.resourceType,
-        localName
-      );
+      if (!options.name) {
+        localName = existingResource;
+      }
+      onProgress(`${descriptor.displayName} already managed by CloudFormation — re-adding to project config`);
+      logger.endStep('success');
+
+      // Re-import fast path: resource is in CFN stack but missing from agentcore.json
+      if (descriptor.beforeConfigWrite) {
+        const hookResult = await descriptor.beforeConfigWrite({
+          detail,
+          localName,
+          projectSpec,
+          ctx,
+          target,
+          options,
+          onProgress,
+          logger,
+        });
+        if (hookResult) {
+          return hookResult;
+        }
+      }
+
+      logger.startStep('Update project config');
+      descriptor.addToProjectSpec(detail, localName, projectSpec);
+      await ctx.configIO.writeProjectSpec(projectSpec);
+      onProgress(`Added ${descriptor.displayName} "${localName}" to agentcore.json`);
+      logger.endStep('success');
+
+      logger.finalize(true);
+      return {
+        success: true,
+        resourceType: descriptor.resourceType,
+        resourceName: localName,
+        resourceId,
+        logPath: logger.getRelativeLogPath(),
+      };
     }
     logger.endStep('success');
 

@@ -425,7 +425,7 @@ export async function handleImportGateway(options: ImportResourceOptions): Promi
 
     // 4. Validate name
     logger.startStep('Validate name');
-    const localName = options.name ?? gatewayDetail.name;
+    let localName = options.name ?? gatewayDetail.name;
     if (!NAME_REGEX.test(localName)) {
       return failResult(
         logger,
@@ -452,12 +452,40 @@ export async function handleImportGateway(options: ImportResourceOptions): Promi
     const targetName = target.name ?? 'default';
     const existingResource = await findResourceInDeployedState(ctx.configIO, targetName, 'gateway', gatewayId);
     if (existingResource) {
-      return failResult(
-        logger,
-        `Gateway "${gatewayId}" is already imported in this project as "${existingResource}". Remove it first before re-importing.`,
-        'gateway',
-        localName
-      );
+      if (!options.name) {
+        localName = existingResource;
+      }
+      onProgress(`Gateway already managed by CloudFormation — re-adding to project config`);
+      logger.endStep('success');
+
+      // Re-import fast path: resource is in CFN stack but missing from agentcore.json
+      logger.startStep('Map gateway to project schema');
+      const credentialArnMap = await buildCredentialArnMap(ctx.configIO, targetName);
+      const mappedTargets: AgentCoreGatewayTarget[] = [];
+      for (const td of targetDetails) {
+        const mapped = toGatewayTargetSpec(td, credentialArnMap, onProgress);
+        if (mapped) {
+          mappedTargets.push(mapped);
+        }
+      }
+      const gatewaySpec = toGatewaySpec(gatewayDetail, mappedTargets, localName);
+      onProgress(`Mapped gateway with ${mappedTargets.length} target(s)`);
+      logger.endStep('success');
+
+      logger.startStep('Update project config');
+      projectSpec.agentCoreGateways.push(gatewaySpec);
+      await ctx.configIO.writeProjectSpec(projectSpec);
+      onProgress(`Added gateway "${localName}" to agentcore.json`);
+      logger.endStep('success');
+
+      logger.finalize(true);
+      return {
+        success: true,
+        resourceType: 'gateway',
+        resourceName: localName,
+        resourceId: gatewayId,
+        logPath: logger.getRelativeLogPath(),
+      };
     }
     logger.endStep('success');
 
