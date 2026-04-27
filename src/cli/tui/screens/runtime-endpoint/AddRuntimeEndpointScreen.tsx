@@ -121,8 +121,8 @@ export function AddRuntimeEndpointScreen({
             }
           }
           if (activeField === 'version') {
-            const num = parseInt(endpointVersion, 10);
-            if (isNaN(num) || num < 1) {
+            const num = Number(endpointVersion);
+            if (!Number.isInteger(num) || num < 1) {
               setError('Version must be a positive integer');
               return;
             }
@@ -144,8 +144,8 @@ export function AddRuntimeEndpointScreen({
           setError('Must begin with a letter, alphanumeric + underscores only (max 48 chars)');
           return;
         }
-        const ver = parseInt(endpointVersion, 10);
-        if (isNaN(ver) || ver < 1) {
+        const ver = Number(endpointVersion);
+        if (!Number.isInteger(ver) || ver < 1) {
           setError('Version must be a positive integer');
           return;
         }
