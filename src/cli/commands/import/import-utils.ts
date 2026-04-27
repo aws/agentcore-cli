@@ -131,7 +131,8 @@ export async function resolveImportTarget(options: ResolveTargetOptions): Promis
   if (
     arn &&
     !/^arn:aws:bedrock-agentcore:([^:]+):([^:]+):(runtime|memory|evaluator|online-evaluation-config|gateway)\/(.+)$/.test(
-      arn)
+      arn
+    )
   ) {
     throw new Error(
       `Not a valid ARN: "${arn}".\nExpected format: arn:<partition>:bedrock-agentcore:<region>:<account>:<runtime|memory|evaluator|online-evaluation-config|gateway>/<id>`

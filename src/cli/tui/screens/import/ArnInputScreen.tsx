@@ -4,8 +4,8 @@ import { Screen } from '../../components/Screen';
 import { TextInput } from '../../components/TextInput';
 import { HELP_TEXT } from '../../constants';
 
-
-const ARN_PATTERN = /^arn:[^:]+:bedrock-agentcore:[^:]+:[^:]+:(runtime|memory|evaluator|online-evaluation-config|gateway)\/.+$/;
+const ARN_PATTERN =
+  /^arn:[^:]+:bedrock-agentcore:[^:]+:[^:]+:(runtime|memory|evaluator|online-evaluation-config|gateway)\/.+$/;
 
 function validateArn(value: string): true | string {
   if (!ARN_PATTERN.test(value)) {
