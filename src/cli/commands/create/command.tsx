@@ -127,12 +127,13 @@ function printCreateHarnessSummary(projectName: string, harnessName: string): vo
 /** Handle CLI mode for the harness path */
 async function handleCreateHarnessCLI(options: CreateOptions): Promise<void> {
   const cwd = options.outputDir ?? getWorkingDirectory();
-  const projectName = options.projectName ?? options.name!;
+  const name = options.name ?? options.projectName;
+  const projectName = options.projectName ?? name;
 
   const validation = validateCreateHarnessOptions(
     {
-      name: options.name,
-      projectName: options.projectName,
+      name,
+      projectName,
       modelProvider: options.modelProvider,
       modelId: options.modelId,
       apiKeyArn: options.apiKeyArn,
@@ -171,8 +172,8 @@ async function handleCreateHarnessCLI(options: CreateOptions): Promise<void> {
   const containerOption = harnessPrimitive.parseContainerFlag(options.container);
 
   const result = await createProjectWithHarness({
-    name: options.name!,
-    projectName,
+    name: name!,
+    projectName: projectName!,
     cwd,
     modelProvider: provider,
     modelId,
@@ -198,7 +199,7 @@ async function handleCreateHarnessCLI(options: CreateOptions): Promise<void> {
   if (options.json) {
     console.log(JSON.stringify(result));
   } else if (result.success) {
-    printCreateHarnessSummary(projectName, options.name!);
+    printCreateHarnessSummary(projectName!, name!);
   } else {
     console.error(result.error);
   }
@@ -208,7 +209,8 @@ async function handleCreateHarnessCLI(options: CreateOptions): Promise<void> {
 /** Handle CLI mode with progress output for the agent/runtime path */
 async function handleCreateAgentCLI(options: CreateOptions): Promise<void> {
   const cwd = options.outputDir ?? getWorkingDirectory();
-  const projectName = options.projectName ?? options.name!;
+  const name = options.name ?? options.projectName;
+  const projectName = options.projectName ?? name;
 
   const validation = validateCreateOptions(options, cwd);
   if (!validation.valid) {
@@ -222,7 +224,7 @@ async function handleCreateAgentCLI(options: CreateOptions): Promise<void> {
 
   // Handle dry-run mode
   if (options.dryRun) {
-    const result = getDryRunInfo({ name: options.name!, projectName, cwd, language: options.language });
+    const result = getDryRunInfo({ name: name!, projectName: projectName!, cwd, language: options.language });
     if (options.json) {
       console.log(JSON.stringify(result));
     } else {
@@ -254,15 +256,15 @@ async function handleCreateAgentCLI(options: CreateOptions): Promise<void> {
 
   const result = skipAgent
     ? await createProject({
-        name: projectName,
+        name: projectName!,
         cwd,
         skipGit: options.skipGit,
         skipInstall: options.skipInstall,
         onProgress,
       })
     : await createProjectWithAgent({
-        name: options.name!,
-        projectName,
+        name: name!,
+        projectName: projectName!,
         cwd,
         type: options.type as 'create' | 'import' | undefined,
         buildType: (options.build as BuildType) ?? 'CodeZip',
@@ -290,7 +292,7 @@ async function handleCreateAgentCLI(options: CreateOptions): Promise<void> {
   if (options.json) {
     console.log(JSON.stringify(result));
   } else if (result.success) {
-    printCreateSummary(projectName, result.agentName, options.language, options.framework);
+    printCreateSummary(projectName!, result.agentName, options.language, options.framework);
     if (options.skipInstall) {
       console.log(
         "\nDependency installation was skipped. Run 'npm install' in agentcore/cdk/ and 'uv sync' in your agent directory manually."
@@ -307,7 +309,7 @@ export const registerCreate = (program: Command) => {
   program
     .command('create')
     .description(COMMAND_DESCRIPTIONS.create)
-    .option('--name <name>', 'Resource name [non-interactive]')
+    .option('--name <name>', 'Resource name (agent or harness) [non-interactive]')
     .option(
       '--project-name <name>',
       'Project name (start with letter, alphanumeric only, max 23 chars) [non-interactive]'
@@ -421,7 +423,6 @@ export const registerCreate = (program: Command) => {
 
         // --no-agent: bare project (no harness, no agent)
         if (opts.agent === false) {
-          opts.name = opts.name ?? opts.projectName;
           await handleCreateAgentCLI(opts);
           return;
         }
