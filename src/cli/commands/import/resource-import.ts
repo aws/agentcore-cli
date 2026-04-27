@@ -111,44 +111,12 @@ export async function executeResourceImport<TDetail, TSummary>(
       descriptor.resourceType,
       resourceId
     );
+    const isReimport = !!existingResource;
     if (existingResource) {
       if (!options.name) {
         localName = existingResource;
       }
       onProgress(`${descriptor.displayName} already managed by CloudFormation — re-adding to project config`);
-      logger.endStep('success');
-
-      // Re-import fast path: resource is in CFN stack but missing from agentcore.json
-      if (descriptor.beforeConfigWrite) {
-        const hookResult = await descriptor.beforeConfigWrite({
-          detail,
-          localName,
-          projectSpec,
-          ctx,
-          target,
-          options,
-          onProgress,
-          logger,
-        });
-        if (hookResult) {
-          return hookResult;
-        }
-      }
-
-      logger.startStep('Update project config');
-      descriptor.addToProjectSpec(detail, localName, projectSpec);
-      await ctx.configIO.writeProjectSpec(projectSpec);
-      onProgress(`Added ${descriptor.displayName} "${localName}" to agentcore.json`);
-      logger.endStep('success');
-
-      logger.finalize(true);
-      return {
-        success: true,
-        resourceType: descriptor.resourceType,
-        resourceName: localName,
-        resourceId,
-        logPath: logger.getRelativeLogPath(),
-      };
     }
     logger.endStep('success');
 
@@ -238,6 +206,17 @@ export async function executeResourceImport<TDetail, TSummary>(
     });
 
     if (pipelineResult.noResources) {
+      if (isReimport) {
+        logger.endStep('success');
+        logger.finalize(true);
+        return {
+          success: true,
+          resourceType: descriptor.resourceType,
+          resourceName: localName,
+          resourceId,
+          logPath: logger.getRelativeLogPath(),
+        };
+      }
       const error = `Could not find logical ID for ${descriptor.displayName} "${localName}" in CloudFormation template`;
       await rollback();
       return failResult(logger, error, descriptor.resourceType, localName);

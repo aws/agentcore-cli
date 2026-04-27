@@ -155,6 +155,7 @@ function toGatewayTargetSpec(
           lambdaArn,
           toolSchemaFile: s3Uri,
         },
+        ...(outboundAuth && { outboundAuth }),
       };
     }
 
@@ -173,7 +174,7 @@ function toGatewayTargetSpec(
 function resolveOutboundAuth(
   detail: GatewayTargetDetail,
   credentials: Map<string, string>,
-  onProgress: (msg: string) => void
+  _onProgress: (msg: string) => void
 ): OutboundAuth | undefined {
   const configs = detail.credentialProviderConfigurations;
   if (!configs || configs.length === 0) return undefined;
@@ -191,11 +192,10 @@ function resolveOutboundAuth(
           }),
         };
       }
-      onProgress(
-        `Warning: Target "${detail.name}" uses OAuth credential (${providerArn}) not found in project. ` +
-          'Configure credentials manually after import with `agentcore add credential`.'
+      throw new Error(
+        `Target "${detail.name}" references OAuth credential provider ${providerArn} which is not in this project's deployed state. ` +
+          'Import the credential first with `agentcore add credential` and re-run.'
       );
-      return undefined;
     }
 
     if (config.credentialProviderType === 'API_KEY' && config.credentialProvider?.apiKeyCredentialProvider) {
@@ -204,11 +204,10 @@ function resolveOutboundAuth(
       if (credentialName) {
         return { type: 'API_KEY', credentialName };
       }
-      onProgress(
-        `Warning: Target "${detail.name}" uses API Key credential (${providerArn}) not found in project. ` +
-          'Configure credentials manually after import with `agentcore add credential`.'
+      throw new Error(
+        `Target "${detail.name}" references API Key credential provider ${providerArn} which is not in this project's deployed state. ` +
+          'Import the credential first with `agentcore add credential` and re-run.'
       );
-      return undefined;
     }
 
     // GATEWAY_IAM_ROLE — no outbound auth needed
@@ -451,41 +450,12 @@ export async function handleImportGateway(options: ImportResourceOptions): Promi
     }
     const targetName = target.name ?? 'default';
     const existingResource = await findResourceInDeployedState(ctx.configIO, targetName, 'gateway', gatewayId);
+    const isReimport = !!existingResource;
     if (existingResource) {
       if (!options.name) {
         localName = existingResource;
       }
       onProgress(`Gateway already managed by CloudFormation — re-adding to project config`);
-      logger.endStep('success');
-
-      // Re-import fast path: resource is in CFN stack but missing from agentcore.json
-      logger.startStep('Map gateway to project schema');
-      const credentialArnMap = await buildCredentialArnMap(ctx.configIO, targetName);
-      const mappedTargets: AgentCoreGatewayTarget[] = [];
-      for (const td of targetDetails) {
-        const mapped = toGatewayTargetSpec(td, credentialArnMap, onProgress);
-        if (mapped) {
-          mappedTargets.push(mapped);
-        }
-      }
-      const gatewaySpec = toGatewaySpec(gatewayDetail, mappedTargets, localName);
-      onProgress(`Mapped gateway with ${mappedTargets.length} target(s)`);
-      logger.endStep('success');
-
-      logger.startStep('Update project config');
-      projectSpec.agentCoreGateways.push(gatewaySpec);
-      await ctx.configIO.writeProjectSpec(projectSpec);
-      onProgress(`Added gateway "${localName}" to agentcore.json`);
-      logger.endStep('success');
-
-      logger.finalize(true);
-      return {
-        success: true,
-        resourceType: 'gateway',
-        resourceName: localName,
-        resourceId: gatewayId,
-        logPath: logger.getRelativeLogPath(),
-      };
     }
     logger.endStep('success');
 
@@ -618,6 +588,17 @@ export async function handleImportGateway(options: ImportResourceOptions): Promi
     });
 
     if (pipelineResult.noResources) {
+      if (isReimport) {
+        logger.endStep('success');
+        logger.finalize(true);
+        return {
+          success: true,
+          resourceType: 'gateway',
+          resourceName: localName,
+          resourceId: gatewayId,
+          logPath: logger.getRelativeLogPath(),
+        };
+      }
       const error = `Could not find logical ID for gateway "${localName}" in CloudFormation template`;
       await rollback();
       return failResult(logger, error, 'gateway', localName);

@@ -250,13 +250,14 @@ describe('handleImportGateway', () => {
           },
         },
       });
+      mockExecuteCdkImportPipeline.mockResolvedValue({ success: true, noResources: true });
 
       const result = await handleImportGateway({ arn: GATEWAY_ARN });
 
       expect(result.success).toBe(true);
       expect(result.resourceName).toBe('ExistingGateway');
       expect(mockConfigIOInstance.writeProjectSpec).toHaveBeenCalledTimes(1);
-      expect(mockExecuteCdkImportPipeline).not.toHaveBeenCalled();
+      expect(mockExecuteCdkImportPipeline).toHaveBeenCalled();
     });
 
     it('re-import uses --name override instead of deployed-state name', async () => {
@@ -273,13 +274,14 @@ describe('handleImportGateway', () => {
           },
         },
       });
+      mockExecuteCdkImportPipeline.mockResolvedValue({ success: true, noResources: true });
 
       const result = await handleImportGateway({ arn: GATEWAY_ARN, name: 'myCustomName' });
 
       expect(result.success).toBe(true);
       expect(result.resourceName).toBe('myCustomName');
       expect(mockConfigIOInstance.writeProjectSpec).toHaveBeenCalledTimes(1);
-      expect(mockExecuteCdkImportPipeline).not.toHaveBeenCalled();
+      expect(mockExecuteCdkImportPipeline).toHaveBeenCalled();
     });
 
     it('rejects when gateway name AND ID both already exist in project', async () => {

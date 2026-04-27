@@ -59,7 +59,7 @@ export const TARGET_TYPE_AUTH_CONFIG: Record<
   apiGateway: { authRequired: false, validAuthTypes: ['API_KEY', 'NONE'], iamRoleFallback: true },
   mcpServer: { authRequired: false, validAuthTypes: ['OAUTH', 'NONE'], iamRoleFallback: false },
   lambda: { authRequired: false, validAuthTypes: ['OAUTH', 'NONE'], iamRoleFallback: false },
-  lambdaFunctionArn: { authRequired: false, validAuthTypes: [], iamRoleFallback: true },
+  lambdaFunctionArn: { authRequired: false, validAuthTypes: ['OAUTH', 'NONE'], iamRoleFallback: true },
 };
 
 // ============================================================================
@@ -581,7 +581,7 @@ export const AgentCoreGatewaySchema = z
   .object({
     name: GatewayNameSchema,
     /** Actual AWS resource name for imported gateways. When set, CDK uses this instead of generating projectName-name. */
-    resourceName: z.string().optional(),
+    resourceName: GatewayNameSchema.optional(),
     description: z.string().optional(),
     targets: z.array(AgentCoreGatewayTargetSchema),
     /** Authorization type for the gateway. Defaults to 'NONE'. */
@@ -595,7 +595,11 @@ export const AgentCoreGatewaySchema = z
     /** Policy engine configuration for Cedar-based authorization of tool calls. */
     policyEngineConfiguration: GatewayPolicyEngineConfigurationSchema.optional(),
     /** ARN of an existing IAM execution role. When set, CDK uses this role instead of creating a new one. */
-    executionRoleArn: z.string().optional(),
+    executionRoleArn: z
+      .string()
+      .regex(/^arn:[^:]+:iam::\d{12}:role\/.+/, 'Must be a valid IAM role ARN')
+      .max(2048)
+      .optional(),
     tags: TagsSchema.optional(),
   })
   .strict()
@@ -611,7 +615,11 @@ export const AgentCoreGatewaySchema = z
       message: 'customJwtAuthorizer configuration is required when authorizerType is CUSTOM_JWT',
       path: ['authorizerConfiguration'],
     }
-  );
+  )
+  .refine(data => (data.resourceName !== undefined) === (data.executionRoleArn !== undefined), {
+    message: 'resourceName and executionRoleArn must be set together (import) or both omitted (fresh gateway)',
+    path: ['resourceName'],
+  });
 
 export type AgentCoreGateway = z.infer<typeof AgentCoreGatewaySchema>;
 

@@ -130,7 +130,7 @@ export async function resolveImportTarget(options: ResolveTargetOptions): Promis
   // Validate ARN format early if provided
   if (
     arn &&
-    !/^arn:aws:bedrock-agentcore:([^:]+):([^:]+):(runtime|memory|evaluator|online-evaluation-config|gateway)\/(.+)$/.test(
+    !/^arn:[^:]+:bedrock-agentcore:([^:]+):([^:]+):(runtime|memory|evaluator|online-evaluation-config|gateway)\/(.+)$/.test(
       arn
     )
   ) {
@@ -143,7 +143,7 @@ export async function resolveImportTarget(options: ResolveTargetOptions): Promis
   // Without this the ARN's region silently wins and the user can import cross-region
   // by accident, leaving agentcore.json pointed at a region they didn't intend.
   if (arn) {
-    const arnRegionMatch = /^arn:aws:bedrock-agentcore:([^:]+):/.exec(arn);
+    const arnRegionMatch = /^arn:[^:]+:bedrock-agentcore:([^:]+):/.exec(arn);
     const arnRegion = arnRegionMatch?.[1];
     const envRegion = process.env.AWS_REGION ?? process.env.AWS_DEFAULT_REGION;
     if (arnRegion && envRegion && envRegion !== arnRegion) {

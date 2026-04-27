@@ -120,7 +120,7 @@ describe('toGatewayTargetSpec — mcpServer targets', () => {
     });
   });
 
-  it('returns undefined outboundAuth and warns when OAuth credential not in project', () => {
+  it('throws when OAuth credential not found in project', () => {
     const providerArn = 'arn:aws:bedrock:us-east-1:123456789012:credential-provider/missing-oauth';
     const detail = makeDetail({
       targetConfiguration: {
@@ -140,22 +140,13 @@ describe('toGatewayTargetSpec — mcpServer targets', () => {
         },
       ],
     });
-    const credentials = new Map<string, string>(); // empty — not resolved
+    const credentials = new Map<string, string>();
     const onProgress = vi.fn();
 
-    const result = toGatewayTargetSpec(detail, credentials, onProgress);
-
-    expect(result).toEqual({
-      name: 'my-mcp-target',
-      targetType: 'mcpServer',
-      endpoint: 'https://example.com/mcp',
-    });
-    expect(result).not.toHaveProperty('outboundAuth');
-    expect(onProgress).toHaveBeenCalledWith(expect.stringContaining('OAuth credential'));
-    expect(onProgress).toHaveBeenCalledWith(expect.stringContaining('Configure credentials manually after import'));
+    expect(() => toGatewayTargetSpec(detail, credentials, onProgress)).toThrow('references OAuth credential provider');
   });
 
-  it('returns undefined outboundAuth and warns when API_KEY credential not in project', () => {
+  it('throws when API_KEY credential not found in project', () => {
     const providerArn = 'arn:aws:bedrock:us-east-1:123456789012:credential-provider/missing-apikey';
     const detail = makeDetail({
       targetConfiguration: {
@@ -174,19 +165,12 @@ describe('toGatewayTargetSpec — mcpServer targets', () => {
         },
       ],
     });
-    const credentials = new Map<string, string>(); // empty — not resolved
+    const credentials = new Map<string, string>();
     const onProgress = vi.fn();
 
-    const result = toGatewayTargetSpec(detail, credentials, onProgress);
-
-    expect(result).toEqual({
-      name: 'my-mcp-target',
-      targetType: 'mcpServer',
-      endpoint: 'https://example.com/mcp',
-    });
-    expect(result).not.toHaveProperty('outboundAuth');
-    expect(onProgress).toHaveBeenCalledWith(expect.stringContaining('API Key credential'));
-    expect(onProgress).toHaveBeenCalledWith(expect.stringContaining('Configure credentials manually after import'));
+    expect(() => toGatewayTargetSpec(detail, credentials, onProgress)).toThrow(
+      'references API Key credential provider'
+    );
   });
 
   it('returns undefined and warns when target has no MCP configuration', () => {
