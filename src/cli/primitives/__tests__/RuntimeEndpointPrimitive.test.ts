@@ -87,15 +87,11 @@ describe('RuntimeEndpointPrimitive', () => {
         endpoint: 'prod',
       });
 
-      expect(result).toEqual(
-        expect.objectContaining({ success: false, error: expect.stringContaining('not found') })
-      );
+      expect(result).toEqual(expect.objectContaining({ success: false, error: expect.stringContaining('not found') }));
     });
 
     it('returns error when endpoint already exists', async () => {
-      mockReadProjectSpec.mockResolvedValue(
-        makeProject([{ name: 'MyRuntime', endpoints: { prod: { version: 1 } } }])
-      );
+      mockReadProjectSpec.mockResolvedValue(makeProject([{ name: 'MyRuntime', endpoints: { prod: { version: 1 } } }]));
       mockConfigExists.mockReturnValue(false);
 
       const result = await primitive.add({
@@ -212,9 +208,7 @@ describe('RuntimeEndpointPrimitive', () => {
     });
 
     it('removes endpoint using legacy bare name (fallback)', async () => {
-      mockReadProjectSpec.mockResolvedValue(
-        makeProject([{ name: 'MyRuntime', endpoints: { prod: { version: 1 } } }])
-      );
+      mockReadProjectSpec.mockResolvedValue(makeProject([{ name: 'MyRuntime', endpoints: { prod: { version: 1 } } }]));
       mockWriteProjectSpec.mockResolvedValue(undefined);
 
       const result = await primitive.remove('prod');
@@ -229,15 +223,11 @@ describe('RuntimeEndpointPrimitive', () => {
 
       const result = await primitive.remove('MyRuntime/nonexistent');
 
-      expect(result).toEqual(
-        expect.objectContaining({ success: false, error: expect.stringContaining('not found') })
-      );
+      expect(result).toEqual(expect.objectContaining({ success: false, error: expect.stringContaining('not found') }));
     });
 
     it('cleans up empty endpoints dict after removing last endpoint', async () => {
-      mockReadProjectSpec.mockResolvedValue(
-        makeProject([{ name: 'MyRuntime', endpoints: { prod: { version: 1 } } }])
-      );
+      mockReadProjectSpec.mockResolvedValue(makeProject([{ name: 'MyRuntime', endpoints: { prod: { version: 1 } } }]));
       mockWriteProjectSpec.mockResolvedValue(undefined);
 
       const result = await primitive.remove('MyRuntime/prod');
@@ -281,19 +271,14 @@ describe('RuntimeEndpointPrimitive', () => {
       const preview = await primitive.previewRemove('MyRuntime/prod');
 
       expect(preview.summary).toEqual(
-        expect.arrayContaining([
-          expect.stringContaining('prod'),
-          expect.stringContaining('MyRuntime'),
-        ])
+        expect.arrayContaining([expect.stringContaining('prod'), expect.stringContaining('MyRuntime')])
       );
       expect(preview.summary).toEqual(expect.arrayContaining([expect.stringContaining('Version: 3')]));
       expect(preview.summary).toEqual(expect.arrayContaining([expect.stringContaining('Production')]));
     });
 
     it('returns schemaChanges showing before/after agentcore.json', async () => {
-      mockReadProjectSpec.mockResolvedValue(
-        makeProject([{ name: 'MyRuntime', endpoints: { prod: { version: 1 } } }])
-      );
+      mockReadProjectSpec.mockResolvedValue(makeProject([{ name: 'MyRuntime', endpoints: { prod: { version: 1 } } }]));
 
       const preview = await primitive.previewRemove('MyRuntime/prod');
 
@@ -331,16 +316,19 @@ describe('RuntimeEndpointPrimitive', () => {
       expect(result).toEqual(
         expect.arrayContaining([
           expect.objectContaining({ name: 'RuntimeA/prod', runtimeName: 'RuntimeA', endpointName: 'prod', version: 1 }),
-          expect.objectContaining({ name: 'RuntimeA/staging', runtimeName: 'RuntimeA', endpointName: 'staging', version: 2 }),
+          expect.objectContaining({
+            name: 'RuntimeA/staging',
+            runtimeName: 'RuntimeA',
+            endpointName: 'staging',
+            version: 2,
+          }),
           expect.objectContaining({ name: 'RuntimeB/beta', runtimeName: 'RuntimeB', endpointName: 'beta', version: 3 }),
         ])
       );
     });
 
     it('uses composite key format runtimeName/endpointName for name field', async () => {
-      mockReadProjectSpec.mockResolvedValue(
-        makeProject([{ name: 'MyRuntime', endpoints: { prod: { version: 1 } } }])
-      );
+      mockReadProjectSpec.mockResolvedValue(makeProject([{ name: 'MyRuntime', endpoints: { prod: { version: 1 } } }]));
 
       const result = await primitive.getRemovable();
 

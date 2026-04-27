@@ -221,9 +221,7 @@ export function AddRuntimeEndpointScreen({
         {isEndpointStep && (
           <Box flexDirection="column">
             <Text dimColor>Runtime: {effectiveConfig.runtimeName}</Text>
-            {isDeployed && (
-              <Text dimColor>Current deployed version: {maxVersion}</Text>
-            )}
+            {isDeployed && <Text dimColor>Current deployed version: {maxVersion}</Text>}
             <Box marginTop={1} flexDirection="column">
               <Box>
                 <Text color={activeField === 'name' ? 'cyan' : 'gray'}>Endpoint name: </Text>
@@ -236,7 +234,8 @@ export function AddRuntimeEndpointScreen({
 
               <Box>
                 <Text color={activeField === 'version' ? 'cyan' : 'gray'}>
-                  Version{isDeployed ? ` (1-${maxVersion})` : ''}: </Text>
+                  Version{isDeployed ? ` (1-${maxVersion})` : ''}:{' '}
+                </Text>
                 {activeField === 'version' && !endpointVersion && <Cursor />}
                 <Text color={activeField === 'version' ? undefined : 'gray'}>
                   {endpointVersion || <Text dimColor>1</Text>}
