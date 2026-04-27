@@ -20,12 +20,14 @@ export type AddEvaluatorStep =
   | 'ratingScale-custom'
   | 'lambda-arn'
   | 'timeout'
+  | 'kms-key-arn'
   | 'confirm';
 
 export interface AddEvaluatorConfig {
   name: string;
   level: EvaluationLevel;
   config: EvaluatorConfig;
+  kmsKeyArn?: string;
 }
 
 export const EVALUATOR_STEP_LABELS: Record<AddEvaluatorStep, string> = {
@@ -41,6 +43,7 @@ export const EVALUATOR_STEP_LABELS: Record<AddEvaluatorStep, string> = {
   'ratingScale-custom': 'Scale',
   'lambda-arn': 'Lambda',
   timeout: 'Timeout',
+  'kms-key-arn': 'KMS Key',
   confirm: 'Confirm',
 };
 

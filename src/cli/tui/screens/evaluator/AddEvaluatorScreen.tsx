@@ -91,6 +91,7 @@ export function AddEvaluatorScreen({ onComplete, onExit, existingEvaluatorNames 
   const isRatingScaleCustomStep = wizard.step === 'ratingScale-custom';
   const isLambdaArnStep = wizard.step === 'lambda-arn';
   const isTimeoutStep = wizard.step === 'timeout';
+  const isKmsKeyArnStep = wizard.step === 'kms-key-arn';
   const isConfirmStep = wizard.step === 'confirm';
 
   const evaluatorTypeNav = useListNavigation({
@@ -163,6 +164,8 @@ export function AddEvaluatorScreen({ onComplete, onExit, existingEvaluatorNames 
 
   // Build confirm fields based on evaluator type
   const confirmFields = useMemo(() => {
+    const kmsField = wizard.config.kmsKeyArn ? [{ label: 'KMS Key ARN', value: wizard.config.kmsKeyArn }] : [];
+
     if (wizard.evaluatorType === 'llm-as-a-judge') {
       const llm = wizard.config.config.llmAsAJudge!;
       return [
@@ -175,6 +178,7 @@ export function AddEvaluatorScreen({ onComplete, onExit, existingEvaluatorNames 
           value: llm.instructions.length > 60 ? llm.instructions.slice(0, 60) + '...' : llm.instructions,
         },
         { label: 'Rating Scale', value: formatRatingScale(llm.ratingScale) },
+        ...kmsField,
       ];
     }
 
@@ -187,6 +191,7 @@ export function AddEvaluatorScreen({ onComplete, onExit, existingEvaluatorNames 
         { label: 'Code', value: managed.codeLocation },
         { label: 'Entrypoint', value: managed.entrypoint },
         { label: 'Timeout', value: `${managed.timeoutSeconds}s` },
+        ...kmsField,
       ];
     }
 
@@ -197,6 +202,7 @@ export function AddEvaluatorScreen({ onComplete, onExit, existingEvaluatorNames 
       { label: 'Name', value: wizard.config.name },
       { label: 'Level', value: wizard.config.level },
       { label: 'Lambda ARN', value: external.lambdaArn },
+      ...kmsField,
     ];
   }, [wizard.evaluatorType, wizard.codeBasedType, wizard.config]);
 
@@ -371,6 +377,19 @@ export function AddEvaluatorScreen({ onComplete, onExit, existingEvaluatorNames 
               if (isNaN(num)) return 'Must be a number';
               return (num >= 1 && num <= 300) || 'Must be between 1 and 300';
             }}
+          />
+        )}
+
+        {isKmsKeyArnStep && (
+          <TextInput
+            key="kms-key-arn"
+            prompt="KMS key ARN for encryption (optional, press Enter to skip)"
+            initialValue=""
+            onSubmit={wizard.setKmsKeyArn}
+            onCancel={() => wizard.goBack()}
+            customValidation={value =>
+              value === '' || /^arn:[^:]+:kms:[a-z0-9-]+:\d{12}:key\/.+$/.test(value) || 'Must be a valid KMS key ARN'
+            }
           />
         )}
 

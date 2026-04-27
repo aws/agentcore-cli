@@ -200,6 +200,7 @@ export const EvaluatorSchema = z.object({
   level: EvaluationLevelSchema,
   description: z.string().optional(),
   config: EvaluatorConfigSchema,
+  kmsKeyArn: z.string().optional(),
   tags: TagsSchema.optional(),
 });
 

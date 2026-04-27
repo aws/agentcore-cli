@@ -23,6 +23,7 @@ export interface AddEvaluatorOptions {
   level: EvaluationLevel;
   description?: string;
   config: EvaluatorConfig;
+  kmsKeyArn?: string;
 }
 
 export type RemovableEvaluator = RemovableResource;
@@ -182,6 +183,7 @@ export class EvaluatorPrimitive extends BasePrimitive<AddEvaluatorOptions, Remov
         '--config <path>',
         'Path to evaluator config JSON file (overrides --model, --instructions, --rating-scale) [non-interactive]'
       )
+      .option('--kms-key-arn <arn>', 'KMS key ARN for evaluator encryption (optional)')
       .option('--json', 'Output as JSON [non-interactive]')
       .action(
         async (cliOptions: {
@@ -194,6 +196,7 @@ export class EvaluatorPrimitive extends BasePrimitive<AddEvaluatorOptions, Remov
           lambdaArn?: string;
           timeout?: string;
           config?: string;
+          kmsKeyArn?: string;
           json?: boolean;
         }) => {
           try {
@@ -296,6 +299,7 @@ export class EvaluatorPrimitive extends BasePrimitive<AddEvaluatorOptions, Remov
                 name: cliOptions.name!,
                 level: levelResult.data!,
                 config: configJson,
+                kmsKeyArn: cliOptions.kmsKeyArn,
               });
 
               if (cliOptions.json) {
@@ -385,6 +389,7 @@ export class EvaluatorPrimitive extends BasePrimitive<AddEvaluatorOptions, Remov
       level: options.level,
       ...(options.description && { description: options.description }),
       config: options.config,
+      ...(options.kmsKeyArn && { kmsKeyArn: options.kmsKeyArn }),
     };
 
     project.evaluators.push(evaluator);
