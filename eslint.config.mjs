@@ -143,7 +143,7 @@ export default tseslint.config(
   prettier,
   // Relaxed rules for test files
   {
-    files: ['**/*.test.ts', '**/*.test.tsx', '**/test-utils/**', 'integ-tests/**'],
+    files: ['**/*.test.ts', '**/*.test.tsx', '**/test-utils/**', 'integ-tests/**', 'browser-tests/**'],
     rules: {
       'partition/no-hardcoded-arn-partition': 'off',
       'partition/no-hardcoded-endpoint-tld': 'off',
@@ -154,6 +154,10 @@ export default tseslint.config(
       '@typescript-eslint/no-unsafe-return': 'off',
       '@typescript-eslint/no-explicit-any': 'off',
       '@typescript-eslint/prefer-nullish-coalescing': 'off',
+      '@typescript-eslint/prefer-regexp-exec': 'off',
+      'no-empty-pattern': 'off',
+      'no-empty': 'off',
+      'react-hooks/rules-of-hooks': 'off',
     },
   },
   {

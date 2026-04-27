@@ -10,6 +10,7 @@ import {
   useRemovableOnlineEvalConfigs,
   useRemovablePolicies,
   useRemovablePolicyEngines,
+  useRemovableRuntimeEndpoints,
   useRemovalPreview,
   useRemoveAgent,
   useRemoveEvaluator,
@@ -20,6 +21,7 @@ import {
   useRemoveOnlineEvalConfig,
   useRemovePolicy,
   useRemovePolicyEngine,
+  useRemoveRuntimeEndpoint,
 } from '../../hooks/useRemove';
 import { RemoveAgentScreen } from './RemoveAgentScreen';
 import { RemoveAllScreen } from './RemoveAllScreen';
@@ -32,6 +34,7 @@ import { RemoveMemoryScreen } from './RemoveMemoryScreen';
 import { RemoveOnlineEvalScreen } from './RemoveOnlineEvalScreen';
 import { RemovePolicyEngineScreen } from './RemovePolicyEngineScreen';
 import { RemovePolicyScreen } from './RemovePolicyScreen';
+import { RemoveRuntimeEndpointScreen } from './RemoveRuntimeEndpointScreen';
 import type { RemoveResourceType } from './RemoveScreen';
 import { RemoveScreen } from './RemoveScreen';
 import { RemoveSuccessScreen } from './RemoveSuccessScreen';
@@ -50,6 +53,7 @@ type FlowState =
   | { name: 'select-online-eval' }
   | { name: 'select-policy-engine' }
   | { name: 'select-policy' }
+  | { name: 'select-runtime-endpoint' }
   | { name: 'confirm-agent'; agentName: string; preview: RemovalPreview }
   | { name: 'confirm-gateway'; gatewayName: string; preview: RemovalPreview }
   | { name: 'confirm-gateway-target'; tool: RemovableGatewayTarget; preview: RemovalPreview }
@@ -59,6 +63,7 @@ type FlowState =
   | { name: 'confirm-online-eval'; configName: string; preview: RemovalPreview }
   | { name: 'confirm-policy-engine'; engineName: string; preview: RemovalPreview }
   | { name: 'confirm-policy'; compositeKey: string; policyName: string; preview: RemovalPreview }
+  | { name: 'confirm-runtime-endpoint'; endpointName: string; preview: RemovalPreview }
   | { name: 'loading'; message: string }
   | { name: 'agent-success'; agentName: string; logFilePath?: string }
   | { name: 'gateway-success'; gatewayName: string; logFilePath?: string }
@@ -69,6 +74,7 @@ type FlowState =
   | { name: 'online-eval-success'; configName: string; logFilePath?: string }
   | { name: 'policy-engine-success'; engineName: string; logFilePath?: string }
   | { name: 'policy-success'; policyName: string; logFilePath?: string }
+  | { name: 'runtime-endpoint-success'; endpointName: string; logFilePath?: string }
   | { name: 'remove-all' }
   | { name: 'error'; message: string };
 
@@ -85,6 +91,7 @@ interface RemoveFlowProps {
     | 'agent'
     | 'gateway'
     | 'gateway-target'
+    | 'runtime-endpoint'
     | 'memory'
     | 'credential'
     | 'evaluator'
@@ -124,6 +131,8 @@ export function RemoveFlow({
         return { name: 'select-policy-engine' };
       case 'policy':
         return { name: 'select-policy' };
+      case 'runtime-endpoint':
+        return { name: 'select-runtime-endpoint' };
       default:
         return { name: 'select' };
     }
@@ -148,6 +157,11 @@ export function RemoveFlow({
     refresh: refreshPolicyEngines,
   } = useRemovablePolicyEngines();
   const { policies, isLoading: isLoadingPolicies, refresh: refreshPolicies } = useRemovablePolicies();
+  const {
+    endpoints: runtimeEndpoints,
+    isLoading: isLoadingRuntimeEndpoints,
+    refresh: refreshRuntimeEndpoints,
+  } = useRemovableRuntimeEndpoints();
 
   // Check if any data is still loading
   const isLoading =
@@ -159,7 +173,8 @@ export function RemoveFlow({
     isLoadingEvaluators ||
     isLoadingOnlineEvals ||
     isLoadingPolicyEngines ||
-    isLoadingPolicies;
+    isLoadingPolicies ||
+    isLoadingRuntimeEndpoints;
 
   // Preview hook
   const {
@@ -172,6 +187,7 @@ export function RemoveFlow({
     loadOnlineEvalPreview,
     loadPolicyEnginePreview,
     loadPolicyPreview,
+    loadRuntimeEndpointPreview,
     reset: resetPreview,
   } = useRemovalPreview();
 
@@ -185,6 +201,7 @@ export function RemoveFlow({
   const { remove: removeOnlineEvalOp, reset: resetRemoveOnlineEval } = useRemoveOnlineEvalConfig();
   const { remove: removePolicyEngineOp, reset: resetRemovePolicyEngine } = useRemovePolicyEngine();
   const { remove: removePolicyOp, reset: resetRemovePolicy } = useRemovePolicy();
+  const { remove: removeRuntimeEndpointOp, reset: resetRemoveRuntimeEndpoint } = useRemoveRuntimeEndpoint();
 
   // Track pending result state
   const pendingResultRef = useRef<FlowState | null>(null);
@@ -215,6 +232,7 @@ export function RemoveFlow({
         'online-eval-success',
         'policy-engine-success',
         'policy-success',
+        'runtime-endpoint-success',
       ];
       if (successStates.includes(flow.name)) {
         onExit();
@@ -253,6 +271,9 @@ export function RemoveFlow({
         break;
       case 'policy':
         setFlow({ name: 'select-policy' });
+        break;
+      case 'runtime-endpoint':
+        setFlow({ name: 'select-runtime-endpoint' });
         break;
       case 'all':
         setFlow({ name: 'remove-all' });
@@ -464,6 +485,28 @@ export function RemoveFlow({
     [loadPolicyPreview, force, removePolicyOp]
   );
 
+  const handleSelectRuntimeEndpoint = useCallback(
+    async (endpointName: string) => {
+      const result = await loadRuntimeEndpointPreview(endpointName);
+      if (result.ok) {
+        if (force) {
+          setFlow({ name: 'loading', message: `Removing runtime endpoint ${endpointName}...` });
+          const removeResult = await removeRuntimeEndpointOp(endpointName, result.preview);
+          if (removeResult.success) {
+            setFlow({ name: 'runtime-endpoint-success', endpointName });
+          } else {
+            setFlow({ name: 'error', message: removeResult.error });
+          }
+        } else {
+          setFlow({ name: 'confirm-runtime-endpoint', endpointName, preview: result.preview });
+        }
+      } else {
+        setFlow({ name: 'error', message: result.error });
+      }
+    },
+    [loadRuntimeEndpointPreview, force, removeRuntimeEndpointOp]
+  );
+
   // Auto-select resource when initialResourceName is provided and data is loaded
   useEffect(() => {
     if (!initialResourceName || isLoading || hasTriggeredInitialSelection.current) {
@@ -500,6 +543,9 @@ export function RemoveFlow({
         case 'policy':
           void handleSelectPolicy(initialResourceName);
           break;
+        case 'runtime-endpoint':
+          void handleSelectRuntimeEndpoint(initialResourceName);
+          break;
       }
     }, 0);
   }, [
@@ -514,6 +560,7 @@ export function RemoveFlow({
     handleSelectOnlineEval,
     handleSelectPolicyEngine,
     handleSelectPolicy,
+    handleSelectRuntimeEndpoint,
   ]);
 
   // Confirm handlers - pass preview for logging
@@ -661,6 +708,22 @@ export function RemoveFlow({
     [removePolicyOp]
   );
 
+  const handleConfirmRuntimeEndpoint = useCallback(
+    async (endpointName: string, preview: RemovalPreview) => {
+      pendingResultRef.current = null;
+      setResultReady(false);
+      setFlow({ name: 'loading', message: `Removing runtime endpoint ${endpointName}...` });
+      const result = await removeRuntimeEndpointOp(endpointName, preview);
+      if (result.success) {
+        pendingResultRef.current = { name: 'runtime-endpoint-success', endpointName, logFilePath: result.logFilePath };
+      } else {
+        pendingResultRef.current = { name: 'error', message: result.error };
+      }
+      setResultReady(true);
+    },
+    [removeRuntimeEndpointOp]
+  );
+
   const resetAll = useCallback(() => {
     resetPreview();
     resetRemoveAgent();
@@ -672,6 +735,7 @@ export function RemoveFlow({
     resetRemoveOnlineEval();
     resetRemovePolicyEngine();
     resetRemovePolicy();
+    resetRemoveRuntimeEndpoint();
   }, [
     resetPreview,
     resetRemoveAgent,
@@ -683,6 +747,7 @@ export function RemoveFlow({
     resetRemoveOnlineEval,
     resetRemovePolicyEngine,
     resetRemovePolicy,
+    resetRemoveRuntimeEndpoint,
   ]);
 
   const refreshAll = useCallback(async () => {
@@ -696,6 +761,7 @@ export function RemoveFlow({
       refreshOnlineEvals(),
       refreshPolicyEngines(),
       refreshPolicies(),
+      refreshRuntimeEndpoints(),
     ]);
   }, [
     refreshAgents,
@@ -707,6 +773,7 @@ export function RemoveFlow({
     refreshOnlineEvals,
     refreshPolicyEngines,
     refreshPolicies,
+    refreshRuntimeEndpoints,
   ]);
 
   // Select screen - wait for data to load to avoid arrow position issues
@@ -727,6 +794,7 @@ export function RemoveFlow({
         onlineEvalCount={onlineEvalConfigs.length}
         policyEngineCount={policyEngines.length}
         policyCount={policies.length}
+        runtimeEndpointCount={runtimeEndpoints.length}
       />
     );
   }
@@ -861,6 +929,19 @@ export function RemoveFlow({
     );
   }
 
+  if (flow.name === 'select-runtime-endpoint') {
+    if (initialResourceName && isLoading) {
+      return null;
+    }
+    return (
+      <RemoveRuntimeEndpointScreen
+        endpoints={runtimeEndpoints}
+        onSelect={(name: string) => void handleSelectRuntimeEndpoint(name)}
+        onExit={() => setFlow({ name: 'select' })}
+      />
+    );
+  }
+
   // Confirmation screens
   if (flow.name === 'confirm-agent') {
     return (
@@ -957,6 +1038,17 @@ export function RemoveFlow({
         preview={flow.preview}
         onConfirm={() => void handleConfirmPolicy(flow.compositeKey, flow.policyName, flow.preview)}
         onCancel={() => setFlow({ name: 'select-policy' })}
+      />
+    );
+  }
+
+  if (flow.name === 'confirm-runtime-endpoint') {
+    return (
+      <RemoveConfirmScreen
+        title={`Remove Runtime Endpoint: ${flow.endpointName}`}
+        preview={flow.preview}
+        onConfirm={() => void handleConfirmRuntimeEndpoint(flow.endpointName, flow.preview)}
+        onCancel={() => setFlow({ name: 'select-runtime-endpoint' })}
       />
     );
   }
@@ -1096,6 +1188,22 @@ export function RemoveFlow({
         isInteractive={isInteractive}
         message={`Removed policy: ${flow.policyName}`}
         detail="Policy removed from agentcore.json. Deploy with `agentcore deploy` to apply changes."
+        logFilePath={flow.logFilePath}
+        onRemoveAnother={() => {
+          resetAll();
+          void refreshAll().then(() => setFlow({ name: 'select' }));
+        }}
+        onExit={onExit}
+      />
+    );
+  }
+
+  if (flow.name === 'runtime-endpoint-success') {
+    return (
+      <RemoveSuccessScreen
+        isInteractive={isInteractive}
+        message={`Removed runtime endpoint: ${flow.endpointName}`}
+        detail="Runtime endpoint removed from agentcore.json. Deploy with `agentcore deploy` to apply changes."
         logFilePath={flow.logFilePath}
         onRemoveAnother={() => {
           resetAll();

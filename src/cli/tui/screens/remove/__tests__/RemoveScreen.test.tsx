@@ -21,6 +21,7 @@ describe('RemoveScreen', () => {
         onlineEvalCount={1}
         policyEngineCount={1}
         policyCount={1}
+        runtimeEndpointCount={1}
       />
     );
 
@@ -51,6 +52,7 @@ describe('RemoveScreen', () => {
         onlineEvalCount={0}
         policyEngineCount={0}
         policyCount={0}
+        runtimeEndpointCount={0}
       />
     );
 

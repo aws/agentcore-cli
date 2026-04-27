@@ -170,10 +170,9 @@ async function doStartAgent(
     return { success: false, name: agentName, port: 0, error: errorMsg };
   }
 
-  ctx.runningAgents.set(agentName, { server: agentServer, port: agentPort, protocol: config.protocol });
-
-  // Wait for the server to actually accept connections before telling the
-  // frontend it's ready — otherwise immediate invocations get ECONNREFUSED.
+  // Wait for the server to accept connections before adding to runningAgents.
+  // runningAgents gates /api/status, so adding early lets the frontend send
+  // invocations before the server is ready.
   const ready = await waitForServerReady(agentPort);
   if (!ready) {
     const errorMsg =
@@ -182,5 +181,6 @@ async function doStartAgent(
     return { success: false, name: agentName, port: 0, error: errorMsg };
   }
 
+  ctx.runningAgents.set(agentName, { server: agentServer, port: agentPort, protocol: config.protocol });
   return { success: true, name: agentName, port: agentPort };
 }

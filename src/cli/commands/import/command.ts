@@ -12,7 +12,7 @@ const { green, yellow, cyan, dim, reset } = ANSI;
 export const registerImport = (program: Command) => {
   const importCmd = program
     .command('import')
-    .description('Import a runtime, memory, or starter toolkit into this project. [experimental]');
+    .description('Import a runtime, memory, or starter toolkit into this project.');
 
   // Existing YAML flow: agentcore import --source <path>
   importCmd

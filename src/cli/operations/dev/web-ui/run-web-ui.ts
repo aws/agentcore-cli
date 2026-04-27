@@ -1,8 +1,8 @@
 import { ExecLogger } from '../../../logging';
 import { findAvailablePort } from '../server';
+import { openBrowser } from '../utils';
 import { WEB_UI_DEFAULT_PORT } from './constants';
 import { type WebUIOptions, WebUIServer } from './web-server';
-import { spawn } from 'child_process';
 
 export interface RunWebUIOptions {
   /** Options to pass to WebUIServer (minus uiPort, which is resolved automatically) */
@@ -42,8 +42,7 @@ export async function runWebUI(opts: RunWebUIOptions): Promise<void> {
       const chatUrl = url;
       console.log(`\nChat UI: ${chatUrl}`);
       console.log(`Press Ctrl+C to stop\n`);
-      const openCmd = process.platform === 'darwin' ? 'open' : process.platform === 'win32' ? 'start' : 'xdg-open';
-      spawn(openCmd, [chatUrl], { stdio: 'ignore', detached: true }).unref();
+      openBrowser(chatUrl);
     },
     onLog,
   });

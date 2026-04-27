@@ -6,6 +6,8 @@ export { EvaluatorPrimitive } from './EvaluatorPrimitive';
 export { OnlineEvalConfigPrimitive } from './OnlineEvalConfigPrimitive';
 export { GatewayPrimitive } from './GatewayPrimitive';
 export { GatewayTargetPrimitive } from './GatewayTargetPrimitive';
+export { RuntimeEndpointPrimitive } from './RuntimeEndpointPrimitive';
+export type { AddRuntimeEndpointOptions, RemovableRuntimeEndpoint } from './RuntimeEndpointPrimitive';
 export {
   ALL_PRIMITIVES,
   agentPrimitive,
@@ -15,6 +17,7 @@ export {
   onlineEvalConfigPrimitive,
   gatewayPrimitive,
   gatewayTargetPrimitive,
+  runtimeEndpointPrimitive,
   getPrimitive,
 } from './registry';
 export { SOURCE_CODE_NOTE } from './constants';

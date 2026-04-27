@@ -38,7 +38,7 @@ function toMemorySpec(mem: ParsedStarterToolkitMemory): Memory {
 
   return {
     name: mem.name,
-    eventExpiryDuration: Math.max(7, Math.min(365, mem.eventExpiryDays)),
+    eventExpiryDuration: Math.max(3, Math.min(365, mem.eventExpiryDays)),
     strategies,
   };
 }
@@ -408,7 +408,7 @@ describe('toMemorySpec', () => {
       };
 
       const result = toMemorySpec(mem);
-      expect(result.eventExpiryDuration).toBe(7);
+      expect(result.eventExpiryDuration).toBe(3);
     });
 
     it('clamps zero to minimum of 7', () => {
@@ -419,7 +419,7 @@ describe('toMemorySpec', () => {
       };
 
       const result = toMemorySpec(mem);
-      expect(result.eventExpiryDuration).toBe(7);
+      expect(result.eventExpiryDuration).toBe(3);
     });
 
     it('clamps negative values to minimum of 7', () => {
@@ -430,7 +430,7 @@ describe('toMemorySpec', () => {
       };
 
       const result = toMemorySpec(mem);
-      expect(result.eventExpiryDuration).toBe(7);
+      expect(result.eventExpiryDuration).toBe(3);
     });
 
     it('clamps high values to maximum of 365', () => {
@@ -473,7 +473,7 @@ describe('YAML Parsing: eventExpiryDays values', () => {
 
       // But toMemorySpec should clamp it
       const spec = toMemorySpec(parsed.memories[0]!);
-      expect(spec.eventExpiryDuration).toBe(7);
+      expect(spec.eventExpiryDuration).toBe(3);
     } finally {
       fs.unlinkSync(tmpFile);
     }

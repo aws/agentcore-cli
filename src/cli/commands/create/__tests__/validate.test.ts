@@ -35,6 +35,7 @@ describe('validateCreateOptions', () => {
   beforeAll(() => {
     testDir = join(tmpdir(), `create-opts-${randomUUID()}`);
     mkdirSync(testDir, { recursive: true });
+    mkdirSync(join(testDir, 'ExistingProject'), { recursive: true });
   });
 
   afterAll(() => {
@@ -57,6 +58,42 @@ describe('validateCreateOptions', () => {
     const result = validateCreateOptions({ name: 'TakenName' }, testDir);
     expect(result.valid).toBe(false);
     expect(result.error).toContain('already exists');
+  });
+
+  it('validates projectName separately from agent name', () => {
+    const result = validateCreateOptions(
+      {
+        name: `Agent${'A'.repeat(30)}`,
+        projectName: 'ShortProject',
+        language: 'Python',
+        framework: 'Strands',
+        modelProvider: 'Bedrock',
+        memory: 'none',
+      },
+      testDir
+    );
+    expect(result.valid).toBe(true);
+  });
+
+  it('checks folder existence using projectName', () => {
+    const result = validateCreateOptions(
+      {
+        name: 'AgentName',
+        projectName: 'ExistingProject',
+        language: 'Python',
+        framework: 'Strands',
+        modelProvider: 'Bedrock',
+        memory: 'none',
+      },
+      testDir
+    );
+    expect(result.valid).toBe(false);
+    expect(result.error).toContain('ExistingProject');
+  });
+
+  it('allows project-only create with only projectName', () => {
+    const result = validateCreateOptions({ projectName: 'OnlyProject', agent: false }, testDir);
+    expect(result.valid).toBe(true);
   });
 
   it('returns valid with --no-agent flag', () => {

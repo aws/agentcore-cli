@@ -20,6 +20,7 @@ const ICONS = {
   'online-eval': '↻',
   'policy-engine': '▣',
   policy: '▢',
+  'runtime-endpoint': '◉',
 } as const;
 
 interface ResourceGraphProps {
@@ -180,17 +181,34 @@ export function ResourceGraph({ project, mcp, agentName, resourceStatuses }: Res
             const runtimeStatus = rsEntry?.error ? 'error' : rsEntry?.detail;
             const runtimeStatusColor = rsEntry?.error ? 'red' : getStatusColor(runtimeStatus);
             return (
-              <ResourceRow
-                key={agent.name}
-                icon={ICONS.agent}
-                color="green"
-                name={agent.name}
-                status={runtimeStatus}
-                statusColor={runtimeStatusColor}
-                deploymentState={rsEntry?.deploymentState}
-                identifier={rsEntry?.identifier}
-                invocationUrl={rsEntry?.invocationUrl}
-              />
+              <Box key={agent.name} flexDirection="column">
+                <ResourceRow
+                  icon={ICONS.agent}
+                  color="green"
+                  name={agent.name}
+                  status={runtimeStatus}
+                  statusColor={runtimeStatusColor}
+                  deploymentState={rsEntry?.deploymentState}
+                  identifier={rsEntry?.identifier}
+                  invocationUrl={rsEntry?.invocationUrl}
+                />
+                {agent.endpoints &&
+                  Object.entries(agent.endpoints).map(([epName, ep]) => {
+                    // Endpoints inherit deployment state from parent runtime
+                    const parentState = rsEntry?.deploymentState;
+                    const epState = parentState === 'deployed' ? 'deployed' : 'local-only';
+                    const badge = getDeploymentBadge(epState);
+                    return (
+                      <Text key={`${agent.name}/${epName}`}>
+                        {'    '}
+                        <Text color="green">{ICONS['runtime-endpoint']}</Text> {epName}
+                        <Text color="gray"> v{ep.version}</Text>
+                        {ep.description && <Text color="gray"> {ep.description}</Text>}
+                        {badge && <Text color={badge.color}> [{badge.text}]</Text>}
+                      </Text>
+                    );
+                  })}
+              </Box>
             );
           })}
         </Box>

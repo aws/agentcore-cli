@@ -14,6 +14,7 @@ import {
 import { InvokeLogger } from '../../logging';
 import { formatMcpToolList } from '../../operations/dev/utils';
 import { canFetchRuntimeToken, fetchRuntimeToken } from '../../operations/fetch-access';
+import { generateSessionId } from '../../operations/session';
 import type { InvokeOptions, InvokeResult } from './types';
 
 export interface InvokeContext {
@@ -112,6 +113,14 @@ export async function handleInvoke(context: InvokeContext, options: InvokeOption
         error: `Agent '${agentSpec.name}' is configured for CUSTOM_JWT but no bearer token is available.\nEither provide --bearer-token or re-add the agent with --client-id and --client-secret to enable auto-fetch.`,
       };
     }
+  }
+
+  // When invoking with a bearer token (OAuth/CUSTOM_JWT), AgentCore does not
+  // auto-generate a runtime session ID the way it does for SigV4 callers. Templates
+  // that wire up AgentCoreMemorySessionManager require a non-null session_id, so
+  // generate one here if the caller didn't pass --session-id.
+  if (options.bearerToken && !options.sessionId) {
+    options = { ...options, sessionId: generateSessionId() };
   }
 
   // Exec mode: run shell command in runtime container
@@ -369,6 +378,7 @@ export async function handleInvoke(context: InvokeContext, options: InvokeOption
         agentName: agentSpec.name,
         targetName: selectedTargetName,
         response,
+        sessionId: aguiResult.sessionId,
         logFilePath: logger.logFilePath,
       };
     } catch (err) {
@@ -415,6 +425,7 @@ export async function handleInvoke(context: InvokeContext, options: InvokeOption
         agentName: agentSpec.name,
         targetName: selectedTargetName,
         response: fullResponse,
+        sessionId: result.sessionId,
         logFilePath: logger.logFilePath,
       };
     } catch (err) {
@@ -441,6 +452,7 @@ export async function handleInvoke(context: InvokeContext, options: InvokeOption
     agentName: agentSpec.name,
     targetName: selectedTargetName,
     response: response.content,
+    sessionId: response.sessionId,
     logFilePath: logger.logFilePath,
   };
 }

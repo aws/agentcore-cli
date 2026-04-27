@@ -27,6 +27,7 @@
     "src/**/*",
     "integ-tests/**/*",
     "e2e-tests/**/*",
+    "browser-tests/**/*",
     "scripts/**/*",
     "vitest.config.ts",
     "vitest.integ.config.ts",

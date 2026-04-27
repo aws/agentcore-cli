@@ -228,13 +228,13 @@ export function DeployScreen({
     );
   }
 
-  // AWS target configuration phase (skip when preSynthesized - we already have context)
-  if (!skipPreflight && !awsConfig.isConfigured) {
-    return (
-      <Screen title="AgentCore Deploy" onExit={onExit} helpText={getAwsConfigHelpText(awsConfig.phase)}>
-        <AwsTargetConfigUI config={awsConfig} onExit={onExit} isActive={true} />
-      </Screen>
-    );
+  const showAwsConfig = !skipPreflight && !awsConfig.isConfigured;
+
+  // Brief transitional phases — render nothing to avoid a header flash before the real UI
+  const awsTransitional =
+    awsConfig.phase === 'checking' || awsConfig.phase === 'detecting' || awsConfig.phase === 'saving';
+  if (showAwsConfig && awsTransitional) {
+    return null;
   }
 
   // Credentials prompt phase
@@ -304,7 +304,11 @@ export function DeployScreen({
   ]
     .filter(Boolean)
     .join(' · ');
-  const helpText = context && isInteractive ? `${toggleHints} · ${baseHelpText}` : baseHelpText;
+  const helpText = showAwsConfig
+    ? (getAwsConfigHelpText(awsConfig.phase) ?? HELP_TEXT.EXIT)
+    : context && isInteractive
+      ? `${toggleHints} · ${baseHelpText}`
+      : baseHelpText;
 
   const screenTitle = diffMode ? 'AgentCore Diff' : 'AgentCore Deploy';
 
@@ -316,94 +320,105 @@ export function DeployScreen({
   const diffMaxHeight = Math.max(6, terminalRows - chromeLines);
 
   return (
-    <Screen title={screenTitle} onExit={onExit} helpText={helpText} headerContent={headerContent}>
-      <StepProgress steps={displaySteps} />
+    <Screen
+      title={screenTitle}
+      onExit={onExit}
+      helpText={helpText}
+      headerContent={showAwsConfig ? undefined : headerContent}
+    >
+      {showAwsConfig ? (
+        <AwsTargetConfigUI config={awsConfig} onExit={onExit} isActive={true} />
+      ) : (
+        <>
+          <StepProgress steps={displaySteps} />
 
-      {/* Toggleable ResourceGraph view */}
-      {showResourceGraph && context && (
-        <Box marginTop={1}>
-          <ResourceGraph project={context.projectSpec} mcp={mcpSpec} />
-        </Box>
-      )}
+          {/* Toggleable ResourceGraph view */}
+          {showResourceGraph && context && (
+            <Box marginTop={1}>
+              <ResourceGraph project={context.projectSpec} mcp={mcpSpec} />
+            </Box>
+          )}
 
-      {/* Show deploy status when deploying or complete */}
-      {showDeployStatus && (
-        <Box marginTop={1}>
-          <DeployStatus messages={deployMessages} isComplete={isComplete} hasError={hasError} />
-        </Box>
-      )}
+          {/* Show deploy status when deploying or complete */}
+          {showDeployStatus && (
+            <Box marginTop={1}>
+              <DeployStatus messages={deployMessages} isComplete={isComplete} hasError={hasError} />
+            </Box>
+          )}
 
-      {/* Show diff output (diff mode: always; normal mode: Ctrl+D toggle) */}
-      {(diffMode === true || showDiff) && isDiffLoading && (
-        <Box marginTop={1}>
-          <Text dimColor>Loading diff...</Text>
-        </Box>
-      )}
-      {(diffMode === true || showDiff) && diffSummaries.length > 0 && (
-        <Box marginTop={1}>
-          <DiffSummaryView
-            summaries={diffSummaries}
-            numStacksWithChanges={numStacksWithChanges}
-            isActive={showDiff || diffMode === true}
-            maxHeight={diffMaxHeight}
-          />
-        </Box>
-      )}
+          {/* Show diff output (diff mode: always; normal mode: Ctrl+D toggle) */}
+          {(diffMode === true || showDiff) && isDiffLoading && (
+            <Box marginTop={1}>
+              <Text dimColor>Loading diff...</Text>
+            </Box>
+          )}
+          {(diffMode === true || showDiff) && diffSummaries.length > 0 && (
+            <Box marginTop={1}>
+              <DiffSummaryView
+                summaries={diffSummaries}
+                numStacksWithChanges={numStacksWithChanges}
+                isActive={showDiff || diffMode === true}
+                maxHeight={diffMaxHeight}
+              />
+            </Box>
+          )}
 
-      {allSuccess && deployOutput && !diffMode && (
-        <Box flexDirection="column" marginTop={1}>
-          <Text color="green">{deployOutput}</Text>
-        </Box>
-      )}
+          {allSuccess && deployOutput && !diffMode && (
+            <Box flexDirection="column" marginTop={1}>
+              <Text color="green">{deployOutput}</Text>
+            </Box>
+          )}
 
-      {allSuccess && diffMode && (
-        <Box flexDirection="column" marginTop={1}>
-          <Text color="green">Diff complete</Text>
-        </Box>
-      )}
+          {allSuccess && diffMode && (
+            <Box flexDirection="column" marginTop={1}>
+              <Text color="green">Diff complete</Text>
+            </Box>
+          )}
 
-      {allSuccess && deployNotes.length > 0 && (
-        <Box flexDirection="column" marginTop={1}>
-          {deployNotes.map((note, i) => (
-            <Text key={i} dimColor>
-              Note: {note}
-            </Text>
-          ))}
-        </Box>
-      )}
+          {allSuccess && deployNotes.length > 0 && (
+            <Box flexDirection="column" marginTop={1}>
+              {deployNotes.map((note, i) => (
+                <Text key={i} dimColor>
+                  Note: {note}
+                </Text>
+              ))}
+            </Box>
+          )}
 
-      {allSuccess && targetStatuses.length > 0 && (
-        <Box flexDirection="column" marginTop={1}>
-          <Text bold>Gateway Targets:</Text>
-          {targetStatuses.map(t => (
-            <Text key={t.name}>
-              {' '}
-              {t.name}: {formatTargetStatus(t.status)}
-            </Text>
-          ))}
-        </Box>
-      )}
+          {allSuccess && targetStatuses.length > 0 && (
+            <Box flexDirection="column" marginTop={1}>
+              <Text bold>Gateway Targets:</Text>
+              {targetStatuses.map(t => (
+                <Text key={t.name}>
+                  {' '}
+                  {t.name}: {formatTargetStatus(t.status)}
+                </Text>
+              ))}
+            </Box>
+          )}
 
-      {logFilePath && (
-        <Box marginTop={1}>
-          <LogLink filePath={logFilePath} />
-        </Box>
-      )}
+          {logFilePath && (
+            <Box marginTop={1}>
+              <LogLink filePath={logFilePath} />
+            </Box>
+          )}
 
-      {allSuccess && !diffMode && (
-        <NextSteps
-          steps={getDeployNextSteps((context?.projectSpec.runtimes.length ?? 0) > 0)}
-          isInteractive={isInteractive}
-          onSelect={step => {
-            if (step.command === 'invoke') {
-              setShowInvoke(true);
-            } else if (onNavigate) {
-              onNavigate(step.command);
-            }
-          }}
-          onBack={onExit}
-          isActive={allSuccess && !showInvoke}
-        />
+          {allSuccess && !diffMode && (
+            <NextSteps
+              steps={getDeployNextSteps((context?.projectSpec.runtimes.length ?? 0) > 0)}
+              isInteractive={isInteractive}
+              onSelect={step => {
+                if (step.command === 'invoke') {
+                  setShowInvoke(true);
+                } else if (onNavigate) {
+                  onNavigate(step.command);
+                }
+              }}
+              onBack={onExit}
+              isActive={allSuccess && !showInvoke}
+            />
+          )}
+        </>
       )}
     </Screen>
   );

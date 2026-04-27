@@ -12,6 +12,7 @@ import type { AddGatewayOptions as CLIAddGatewayOptions } from '../commands/add/
 import { validateAddGatewayOptions } from '../commands/add/validate';
 import { getErrorMessage } from '../errors';
 import type { RemovalPreview, RemovalResult, SchemaChange } from '../operations/remove/types';
+import { requireTTY } from '../tui/guards/tty';
 import type { AddGatewayConfig } from '../tui/screens/mcp/types';
 import { BasePrimitive } from './BasePrimitive';
 import { buildAuthorizerConfigFromJwtConfig, createManagedOAuthCredential } from './auth-utils';
@@ -271,6 +272,7 @@ export class GatewayPrimitive extends BasePrimitive<AddGatewayOptions, Removable
             );
             process.exit(result.success ? 0 : 1);
           } else {
+            requireTTY();
             const [{ render }, { default: React }, { RemoveFlow }] = await Promise.all([
               import('ink'),
               import('react'),

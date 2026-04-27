@@ -14,6 +14,8 @@ export const AgentCoreDeployedStateSchema = z.object({
   memoryIds: z.array(z.string()).optional(),
   browserId: z.string().optional(),
   codeInterpreterId: z.string().optional(),
+  /** The latest deployed version number of this runtime. */
+  runtimeVersion: z.number().int().min(1).optional(),
 });
 
 export type AgentCoreDeployedState = z.infer<typeof AgentCoreDeployedStateSchema>;
@@ -169,6 +171,17 @@ export const OnlineEvalDeployedStateSchema = z.object({
 export type OnlineEvalDeployedState = z.infer<typeof OnlineEvalDeployedStateSchema>;
 
 // ============================================================================
+// Runtime Endpoint Deployed State
+// ============================================================================
+
+export const RuntimeEndpointDeployedStateSchema = z.object({
+  endpointId: z.string().min(1),
+  endpointArn: z.string().min(1),
+});
+
+export type RuntimeEndpointDeployedState = z.infer<typeof RuntimeEndpointDeployedStateSchema>;
+
+// ============================================================================
 // Deployed Resource State
 // ============================================================================
 
@@ -182,6 +195,7 @@ export const DeployedResourceStateSchema = z.object({
   onlineEvalConfigs: z.record(z.string(), OnlineEvalDeployedStateSchema).optional(),
   policyEngines: z.record(z.string(), PolicyEngineDeployedStateSchema).optional(),
   policies: z.record(z.string(), PolicyDeployedStateSchema).optional(),
+  runtimeEndpoints: z.record(z.string(), RuntimeEndpointDeployedStateSchema).optional(),
   stackName: z.string().optional(),
   identityKmsKeyArn: z.string().optional(),
 });

@@ -89,7 +89,10 @@ describe('handleLogsEval', () => {
     );
   });
 
-  afterEach(() => vi.clearAllMocks());
+  afterEach(() => {
+    vi.clearAllMocks();
+    vi.restoreAllMocks();
+  });
 
   it('returns error when agent resolution fails', async () => {
     mockLoadDeployedProjectConfig.mockResolvedValue({});
@@ -156,7 +159,7 @@ describe('handleLogsEval', () => {
     mockStreamLogs.mockReturnValue(emptyGenerator());
 
     // eslint-disable-next-line @typescript-eslint/no-empty-function
-    const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    vi.spyOn(console, 'error').mockImplementation(() => {});
 
     const result = await handleLogsEval({});
 
@@ -168,8 +171,6 @@ describe('handleLogsEval', () => {
       })
     );
     expect(mockSearchLogs).not.toHaveBeenCalled();
-
-    consoleSpy.mockRestore();
   });
 
   it('skips ResourceNotFoundException during search', async () => {
@@ -282,6 +283,5 @@ describe('handleLogsEval', () => {
     await handleLogsEval({ since: '1h' });
 
     expect(consoleSpy).toHaveBeenCalledWith(expect.stringContaining('IAM role does not exist'));
-    consoleSpy.mockRestore();
   });
 });

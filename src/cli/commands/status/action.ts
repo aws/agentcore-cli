@@ -18,11 +18,13 @@ export interface ResourceStatusEntry {
     | 'evaluator'
     | 'online-eval'
     | 'policy-engine'
-    | 'policy';
+    | 'policy'
+    | 'runtime-endpoint';
   name: string;
   deploymentState: ResourceDeploymentState;
   identifier?: string;
   detail?: string;
+  parentName?: string;
   error?: string;
   invocationUrl?: string;
 }
@@ -79,6 +81,7 @@ function diffResourceSet<TLocal extends { name: string }, TDeployed>({
   getIdentifier,
   getLocalDetail,
   getDeployedKey,
+  getParentName,
 }: {
   resourceType: ResourceStatusEntry['resourceType'];
   localItems: TLocal[];
@@ -86,6 +89,7 @@ function diffResourceSet<TLocal extends { name: string }, TDeployed>({
   getIdentifier: (deployed: TDeployed) => string | undefined;
   getLocalDetail?: (item: TLocal) => string | undefined;
   getDeployedKey?: (item: TLocal) => string;
+  getParentName?: (item: TLocal) => string | undefined;
 }): ResourceStatusEntry[] {
   const entries: ResourceStatusEntry[] = [];
   const localKeys = new Set(localItems.map(item => (getDeployedKey ? getDeployedKey(item) : item.name)));
@@ -99,16 +103,20 @@ function diffResourceSet<TLocal extends { name: string }, TDeployed>({
       deploymentState: deployed ? 'deployed' : 'local-only',
       identifier: deployed ? getIdentifier(deployed) : undefined,
       detail: getLocalDetail?.(item),
+      parentName: getParentName?.(item),
     });
   }
 
   for (const [name, deployed] of Object.entries(deployedRecord)) {
     if (!localKeys.has(name)) {
+      // For pending-removal entries, try to extract parentName from composite key
+      const slashIdx = name.indexOf('/');
       entries.push({
         resourceType,
         name,
         deploymentState: 'pending-removal',
         identifier: getIdentifier(deployed),
+        parentName: getParentName && slashIdx > 0 ? name.substring(0, slashIdx) : undefined,
       });
     }
   }
@@ -202,8 +210,34 @@ export function computeResourceStatuses(
     getDeployedKey: item => `${item.engineName}/${item.name}`,
   });
 
+  // Flatten runtime endpoints for diffing against deployed state
+  const localEndpoints: { name: string; agentName: string; version: number; description?: string }[] = [];
+  for (const runtime of project.runtimes) {
+    if (runtime.endpoints) {
+      for (const [epName, ep] of Object.entries(runtime.endpoints)) {
+        localEndpoints.push({
+          name: epName,
+          agentName: runtime.name,
+          version: ep.version,
+          description: ep.description,
+        });
+      }
+    }
+  }
+
+  const runtimeEndpoints = diffResourceSet({
+    resourceType: 'runtime-endpoint',
+    localItems: localEndpoints,
+    deployedRecord: resources?.runtimeEndpoints ?? {},
+    getIdentifier: deployed => deployed.endpointArn,
+    getLocalDetail: item => `v${item.version}${item.description ? ` — ${item.description}` : ''}`,
+    getDeployedKey: item => `${item.agentName}/${item.name}`,
+    getParentName: item => item.agentName,
+  });
+
   return [
     ...agents,
+    ...runtimeEndpoints,
     ...credentials,
     ...memories,
     ...gateways,

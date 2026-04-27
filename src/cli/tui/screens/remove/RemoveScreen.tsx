@@ -12,6 +12,7 @@ const REMOVE_RESOURCES = [
   { id: 'policy', title: 'Policy', description: 'Remove a policy from a policy engine' },
   { id: 'gateway', title: 'Gateway', description: 'Remove a gateway' },
   { id: 'gateway-target', title: 'Gateway Target', description: 'Remove a gateway target' },
+  { id: 'runtime-endpoint', title: 'Runtime Endpoint', description: 'Remove a runtime endpoint' },
   { id: 'all', title: 'All', description: 'Reset entire agentcore project' },
 ] as const;
 
@@ -38,6 +39,8 @@ interface RemoveScreenProps {
   policyEngineCount: number;
   /** Number of policies available for removal */
   policyCount: number;
+  /** Number of runtime endpoints available for removal */
+  runtimeEndpointCount: number;
 }
 
 export function RemoveScreen({
@@ -52,6 +55,7 @@ export function RemoveScreen({
   onlineEvalCount,
   policyEngineCount,
   policyCount,
+  runtimeEndpointCount,
 }: RemoveScreenProps) {
   const items: SelectableItem[] = useMemo(() => {
     return REMOVE_RESOURCES.map(r => {
@@ -113,6 +117,12 @@ export function RemoveScreen({
             description = 'No policies to remove';
           }
           break;
+        case 'runtime-endpoint':
+          if (runtimeEndpointCount === 0) {
+            disabled = true;
+            description = 'No runtime endpoints to remove';
+          }
+          break;
         case 'all':
           // 'all' is always available
           break;
@@ -130,6 +140,7 @@ export function RemoveScreen({
     onlineEvalCount,
     policyEngineCount,
     policyCount,
+    runtimeEndpointCount,
   ]);
 
   const isDisabled = (item: SelectableItem) => item.disabled ?? false;

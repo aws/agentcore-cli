@@ -3,6 +3,7 @@ import type { OnlineEvalConfig } from '../../schema';
 import { OnlineEvalConfigSchema } from '../../schema';
 import { getErrorMessage } from '../errors';
 import type { RemovalPreview, RemovalResult, SchemaChange } from '../operations/remove/types';
+import { requireTTY } from '../tui/guards/tty';
 import { BasePrimitive } from './BasePrimitive';
 import type { AddResult, AddScreenComponent, RemovableResource } from './types';
 import type { Command } from '@commander-js/extra-typings';
@@ -171,6 +172,7 @@ export class OnlineEvalConfigPrimitive extends BasePrimitive<AddOnlineEvalConfig
               process.exit(result.success ? 0 : 1);
             } else {
               // TUI fallback
+              requireTTY();
               const [{ render }, { default: React }, { AddFlow }] = await Promise.all([
                 import('ink'),
                 import('react'),
@@ -210,18 +212,6 @@ export class OnlineEvalConfigPrimitive extends BasePrimitive<AddOnlineEvalConfig
     const project = await this.readProjectSpec();
 
     this.checkDuplicate(project.onlineEvalConfigs, options.name, 'Online eval config');
-
-    // Block code-based evaluators — only LLM-as-a-Judge evaluators are supported for online evaluation.
-    // Checks local project config. ARN-based evaluators are filtered in the TUI by API evaluatorType.
-    // TODO: For ARN-based evaluators in non-interactive mode, call getEvaluator to check type.
-    for (const evalName of options.evaluators) {
-      const evaluator = project.evaluators.find(e => e.name === evalName);
-      if (evaluator?.config.codeBased) {
-        throw new Error(
-          `Code-based evaluator "${evalName}" cannot be used in online eval configs. Only LLM-as-a-Judge evaluators are supported for online evaluation.`
-        );
-      }
-    }
 
     const config: OnlineEvalConfig = {
       name: options.name,

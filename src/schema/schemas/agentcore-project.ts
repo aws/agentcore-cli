@@ -126,7 +126,7 @@ export type StreamDeliveryResources = z.infer<typeof StreamDeliveryResourcesSche
 
 export const MemorySchema = z.object({
   name: MemoryNameSchema,
-  eventExpiryDuration: z.number().int().min(7).max(365),
+  eventExpiryDuration: z.number().int().min(3).max(365),
   // Strategies array can be empty for short-term memory (just base memory with expiration)
   // Long-term memory includes strategies like SEMANTIC, SUMMARIZATION, USER_PREFERENCE
   strategies: z
@@ -335,15 +335,6 @@ export const AgentCoreProjectSpecSchema = z
           ctx.addIssue({
             code: z.ZodIssueCode.custom,
             message: `Online eval config "${config.name}" references unknown evaluator "${evalName}"`,
-          });
-        }
-
-        // Block code-based evaluators in online eval configs
-        const evaluator = spec.evaluators.find(e => e.name === evalName);
-        if (evaluator?.config.codeBased) {
-          ctx.addIssue({
-            code: z.ZodIssueCode.custom,
-            message: `Online eval config "${config.name}" references code-based evaluator "${evalName}". Code-based evaluators are not supported for online evaluation.`,
           });
         }
       }

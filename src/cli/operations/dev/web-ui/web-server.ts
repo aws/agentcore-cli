@@ -32,16 +32,17 @@ const CSP_HEADER =
   "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; connect-src 'self'; img-src 'self' data:; font-src 'self' data:";
 
 /** Resolve the frontend dist directory. Returns null if not found. */
-function resolveUIDistDir(): string | null {
+export function resolveUIDistDir(): string | null {
   const thisDir = path.dirname(fileURLToPath(import.meta.url));
   const candidates = [
+    process.env.AGENT_INSPECTOR_PATH,
     // Bundled CLI: dist/cli/index.mjs → dist/agent-inspector/
     path.resolve(thisDir, '..', 'agent-inspector'),
     // npm package: @aws/agent-inspector/dist-assets/
     path.resolve(thisDir, '..', '..', '..', '..', '..', 'node_modules', '@aws', 'agent-inspector', 'dist-assets'),
     // Dev via tsx: src/cli/operations/dev/web-ui/ → src/assets/agent-inspector/
     path.resolve(thisDir, '..', '..', '..', '..', 'assets', 'agent-inspector'),
-  ];
+  ].filter((c): c is string => !!c);
   for (const dir of candidates) {
     if (fs.existsSync(path.join(dir, 'index.html'))) return dir;
   }

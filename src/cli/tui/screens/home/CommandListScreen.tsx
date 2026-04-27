@@ -1,9 +1,7 @@
 import { buildLogo, useLayout } from '../../context';
 import type { CommandMeta } from '../../utils/commands';
-import { Box, Text, useApp } from 'ink';
+import { Box, Text, useApp, useStdout } from 'ink';
 import React, { useEffect } from 'react';
-
-const MAX_DESC_WIDTH = 50;
 
 function truncateDescription(desc: string, maxLen: number): string {
   if (desc.length <= maxLen) return desc;
@@ -21,6 +19,9 @@ interface CommandListScreenProps {
 export function CommandListScreen({ commands }: CommandListScreenProps) {
   const { exit } = useApp();
   const { contentWidth } = useLayout();
+  const { stdout } = useStdout();
+  const terminalWidth = stdout?.columns ?? 80;
+  const maxDescWidth = Math.max(20, terminalWidth - 18);
   const logo = buildLogo(contentWidth);
 
   // Exit after render
@@ -44,7 +45,7 @@ export function CommandListScreen({ commands }: CommandListScreenProps) {
         Commands:
       </Text>
       {visibleCommands.map(cmd => {
-        const desc = truncateDescription(cmd.description, MAX_DESC_WIDTH);
+        const desc = truncateDescription(cmd.description, maxDescWidth);
         const padding = ' '.repeat(Math.max(1, 14 - cmd.title.length));
         return (
           <Box key={cmd.id}>

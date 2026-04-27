@@ -36,6 +36,7 @@ export function spawnAndCollect(
     const proc = spawn(command, args, {
       cwd,
       env: cleanSpawnEnv(extraEnv),
+      stdio: ['ignore', 'pipe', 'pipe'],
     });
 
     let stdout = '';

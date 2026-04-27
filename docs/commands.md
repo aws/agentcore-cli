@@ -525,6 +525,11 @@ agentcore invoke --runtime MyAgent --target staging
 agentcore invoke --session-id abc123         # Continue session
 agentcore invoke --json                      # JSON output
 
+# Long prompts: read from a file or pipe from stdin
+agentcore invoke --prompt-file prompt.json --json
+cat long-prompt.txt | agentcore invoke --json
+jq -r '.response' result.json | agentcore invoke --json
+
 # MCP protocol invoke
 agentcore invoke call-tool --tool myTool --input '{"key": "value"}'
 
@@ -534,22 +539,28 @@ agentcore invoke --exec "python script.py" --timeout 120
 agentcore invoke --exec "cat /etc/os-release" --json
 ```
 
-| Flag                  | Description                                              |
-| --------------------- | -------------------------------------------------------- |
-| `[prompt]`            | Prompt text (positional argument)                        |
-| `--prompt <text>`     | Prompt text (flag, takes precedence over positional)     |
-| `--runtime <name>`    | Specific runtime                                         |
-| `--target <name>`     | Deployment target                                        |
-| `--session-id <id>`   | Continue a specific session                              |
-| `--user-id <id>`      | User ID for runtime invocation (default: `default-user`) |
-| `--stream`            | Stream response in real-time                             |
-| `--tool <name>`       | MCP tool name (use with `call-tool` prompt)              |
-| `--input <json>`      | MCP tool arguments as JSON (use with `--tool`)           |
-| `-H, --header <h>`    | Custom header (`"Name: Value"`, repeatable)              |
-| `--bearer-token <t>`  | Bearer token for CUSTOM_JWT auth                         |
-| `--exec`              | Execute a shell command in the runtime container         |
-| `--timeout <seconds>` | Timeout in seconds for `--exec` commands                 |
-| `--json`              | JSON output                                              |
+The prompt can come from four sources, resolved in this precedence order: `--prompt` > positional > `--prompt-file` >
+piped stdin. `--prompt-file` combined with piped stdin content returns a collision error — pick one.
+
+| Flag                   | Description                                                      |
+| ---------------------- | ---------------------------------------------------------------- |
+| `[prompt]`             | Prompt text (positional argument)                                |
+| `--prompt <text>`      | Prompt text (flag, takes precedence over positional)             |
+| `--prompt-file <path>` | Read the prompt from a file (useful for long / structured input) |
+| `--runtime <name>`     | Specific runtime                                                 |
+| `--target <name>`      | Deployment target                                                |
+| `--session-id <id>`    | Continue a specific session                                      |
+| `--user-id <id>`       | User ID for runtime invocation (default: `default-user`)         |
+| `--stream`             | Stream response in real-time                                     |
+| `--tool <name>`        | MCP tool name (use with `call-tool` prompt)                      |
+| `--input <json>`       | MCP tool arguments as JSON (use with `--tool`)                   |
+| `-H, --header <h>`     | Custom header (`"Name: Value"`, repeatable)                      |
+| `--bearer-token <t>`   | Bearer token for CUSTOM_JWT auth                                 |
+| `--exec`               | Execute a shell command in the runtime container                 |
+| `--timeout <seconds>`  | Timeout in seconds for `--exec` commands                         |
+| `--json`               | JSON output                                                      |
+
+Piped stdin is auto-detected: when no prompt is supplied and stdin is not a TTY, the prompt is read from stdin.
 
 ---
 

@@ -10,5 +10,6 @@ export { RemoveMemoryScreen } from './RemoveMemoryScreen';
 export { RemoveOnlineEvalScreen } from './RemoveOnlineEvalScreen';
 export { RemovePolicyEngineScreen } from './RemovePolicyEngineScreen';
 export { RemovePolicyScreen } from './RemovePolicyScreen';
+export { RemoveRuntimeEndpointScreen } from './RemoveRuntimeEndpointScreen';
 export { RemoveScreen, type RemoveResourceType } from './RemoveScreen';
 export { RemoveSuccessScreen } from './RemoveSuccessScreen';

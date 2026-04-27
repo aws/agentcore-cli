@@ -1,6 +1,6 @@
 import type { Credential } from '../../../../schema/index.js';
 import { AgentPrimitive } from '../../../primitives/AgentPrimitive.js';
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 
 // Mock registry to break circular dependency: AgentPrimitive → AddFlow → hooks → registry → AgentPrimitive
 vi.mock('../../../primitives/registry', () => ({
@@ -12,6 +12,8 @@ const getAgentScopedCredentials = (...args: Parameters<typeof AgentPrimitive.get
   AgentPrimitive.getAgentScopedCredentials(...args);
 
 describe('getAgentScopedCredentials', () => {
+  afterEach(() => vi.restoreAllMocks());
+
   const projectName = 'MyProject';
 
   const makeCredential = (name: string): Credential => ({ name, authorizerType: 'ApiKeyCredentialProvider' });

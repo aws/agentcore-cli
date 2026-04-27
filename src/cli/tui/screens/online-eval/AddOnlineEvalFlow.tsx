@@ -48,17 +48,12 @@ export function AddOnlineEvalFlow({ isInteractive = true, onExit, onBack, onDev,
         const result = await listEvaluators({ region });
         if (cancelled) return;
 
-        // Filter out code-based evaluators — not supported for online evaluation.
-        // Check both the API response type ('CustomCode') and local config (codeBased).
-        const codeBasedNames = new Set(projectSpec.evaluators.filter(e => e.config.codeBased).map(e => e.name));
-        const items: EvaluatorItem[] = result.evaluators
-          .filter(e => e.evaluatorType !== 'CustomCode' && !codeBasedNames.has(e.evaluatorName))
-          .map(e => ({
-            arn: e.evaluatorArn,
-            name: e.evaluatorName,
-            type: e.evaluatorType,
-            description: e.description,
-          }));
+        const items: EvaluatorItem[] = result.evaluators.map(e => ({
+          arn: e.evaluatorArn,
+          name: e.evaluatorName,
+          type: e.evaluatorType,
+          description: e.description,
+        }));
 
         const agentNames = projectSpec.runtimes.map(a => a.name);
 

@@ -39,7 +39,7 @@ function toMemorySpec(mem: ParsedStarterToolkitConfig['memories'][0]): Memory {
   }
   return {
     name: mem.name,
-    eventExpiryDuration: Math.max(7, Math.min(365, mem.eventExpiryDays)),
+    eventExpiryDuration: Math.max(3, Math.min(365, mem.eventExpiryDays)),
     strategies,
   };
 }
@@ -194,7 +194,7 @@ describe('source copy skip logic', () => {
 describe('toMemorySpec', () => {
   it('clamps below 7', () => {
     const mem: ParsedStarterToolkitConfig['memories'][0] = { name: 't', mode: 'STM_ONLY', eventExpiryDays: 1 };
-    expect(toMemorySpec(mem).eventExpiryDuration).toBe(7);
+    expect(toMemorySpec(mem).eventExpiryDuration).toBe(3);
   });
   it('clamps above 365', () => {
     const mem: ParsedStarterToolkitConfig['memories'][0] = { name: 't', mode: 'STM_ONLY', eventExpiryDays: 999 };
