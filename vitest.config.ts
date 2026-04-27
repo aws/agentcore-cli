@@ -33,13 +33,20 @@ export default defineConfig({
   },
   plugins: [textLoaderPlugin],
   test: {
+    deps: {
+      optimizer: {
+        ssr: {
+          include: ['@aws-sdk/*', '@smithy/*', 'zod', 'commander'],
+        },
+      },
+    },
     projects: [
       {
         extends: true,
         test: {
           name: 'unit',
           include: ['src/**/*.test.ts', 'src/**/*.test.tsx'],
-          exclude: ['src/assets/cdk/test/*.test.ts'],
+          exclude: ['src/assets/cdk/test/*.test.ts', 'src/tui-harness/**'],
         },
       },
       {

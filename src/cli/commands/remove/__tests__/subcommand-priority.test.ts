@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 
 // Mock registry to break circular dependency
 vi.mock('../../../primitives/registry', () => ({
@@ -21,6 +21,8 @@ vi.mock('../../../../lib/index.js', () => ({
  * but this test ensures that contract holds if the registration pattern changes.
  */
 describe('remove subcommand priority', () => {
+  afterEach(() => vi.restoreAllMocks());
+
   it('named subcommands are matched before the catch-all', async () => {
     const { Command } = await import('@commander-js/extra-typings');
     const { registerRemove } = await import('../command.js');

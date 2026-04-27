@@ -52,6 +52,14 @@ import { afterEach, describe, expect, it } from 'vitest';
 
 const { Terminal } = xtermHeadless;
 
+let ptyAvailable = true;
+try {
+  const p = pty.spawn('/bin/echo', ['test'], { cols: 80, rows: 24 });
+  p.kill();
+} catch {
+  ptyAvailable = false;
+}
+
 // ---------------------------------------------------------------------------
 // Test A: xterm standalone
 // ---------------------------------------------------------------------------
@@ -77,7 +85,7 @@ describe('xterm standalone', () => {
 // ---------------------------------------------------------------------------
 // Test B: PTY + xterm wiring
 // ---------------------------------------------------------------------------
-describe('PTY + xterm wiring', () => {
+describe.skipIf(!ptyAvailable)('PTY + xterm wiring', () => {
   let terminal: InstanceType<typeof Terminal>;
   let ptyProcess: ReturnType<typeof pty.spawn> | undefined;
 
@@ -119,7 +127,7 @@ describe('PTY + xterm wiring', () => {
 // ---------------------------------------------------------------------------
 // Test C: DSR/CPR handler
 // ---------------------------------------------------------------------------
-describe('DSR/CPR handler', () => {
+describe.skipIf(!ptyAvailable)('DSR/CPR handler', () => {
   let terminal: InstanceType<typeof Terminal>;
   let ptyProcess: ReturnType<typeof pty.spawn> | undefined;
 
