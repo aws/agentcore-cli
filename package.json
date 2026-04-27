@@ -78,7 +78,7 @@
     "@aws-sdk/client-bedrock": "^3.1012.0",
     "@aws-sdk/client-bedrock-agent": "^3.1012.0",
     "@aws-sdk/client-bedrock-agentcore": "^3.1020.0",
-    "@aws-sdk/client-bedrock-agentcore-control": "^3.1020.0",
+    "@aws-sdk/client-bedrock-agentcore-control": "^3.1039.0",
     "@aws-sdk/client-bedrock-runtime": "^3.893.0",
     "@aws-sdk/client-cloudformation": "^3.893.0",
     "@aws-sdk/client-cloudwatch-logs": "^3.893.0",

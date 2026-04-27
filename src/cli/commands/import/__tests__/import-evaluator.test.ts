@@ -210,6 +210,49 @@ describe('toEvaluatorSpec', () => {
 
     expect(result.tags).toBeUndefined();
   });
+
+  it('forwards kmsKeyArn when present', () => {
+    const detail: GetEvaluatorResult = {
+      evaluatorId: 'eval-kms',
+      evaluatorArn: 'arn:aws:bedrock-agentcore:us-west-2:123456789012:evaluator/eval-kms',
+      evaluatorName: 'kms_eval',
+      level: 'SESSION',
+      status: 'ACTIVE',
+      evaluatorConfig: {
+        llmAsAJudge: {
+          model: 'anthropic.claude-3-5-sonnet-20241022-v2:0',
+          instructions: 'Evaluate',
+          ratingScale: { numerical: [{ value: 1, label: 'Low', definition: 'Low' }] },
+        },
+      },
+      kmsKeyArn: 'arn:aws:kms:us-west-2:123456789012:key/12345678-1234-1234-1234-123456789012',
+    };
+
+    const result = toEvaluatorSpec(detail, 'kms_eval');
+
+    expect(result.kmsKeyArn).toBe('arn:aws:kms:us-west-2:123456789012:key/12345678-1234-1234-1234-123456789012');
+  });
+
+  it('omits kmsKeyArn when not present', () => {
+    const detail: GetEvaluatorResult = {
+      evaluatorId: 'eval-no-kms',
+      evaluatorArn: 'arn:aws:bedrock-agentcore:us-west-2:123456789012:evaluator/eval-no-kms',
+      evaluatorName: 'no_kms_eval',
+      level: 'SESSION',
+      status: 'ACTIVE',
+      evaluatorConfig: {
+        llmAsAJudge: {
+          model: 'anthropic.claude-3-5-sonnet-20241022-v2:0',
+          instructions: 'Evaluate',
+          ratingScale: { numerical: [{ value: 1, label: 'Low', definition: 'Low' }] },
+        },
+      },
+    };
+
+    const result = toEvaluatorSpec(detail, 'no_kms_eval');
+
+    expect(result.kmsKeyArn).toBeUndefined();
+  });
 });
 
 // ============================================================================

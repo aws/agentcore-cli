@@ -119,3 +119,25 @@ export const EvaluatorConfigSchema = z
   });
 
 export type EvaluatorConfig = z.infer<typeof EvaluatorConfigSchema>;
+
+// ============================================================================
+// KMS Key ARN Validation
+// ============================================================================
+
+/**
+ * Pattern for KMS key ARNs accepted by the AgentCore Evaluation service.
+ * Matches key ARNs across all AWS partitions with a 36-char UUID key ID.
+ * Alias ARNs are not supported by the service for evaluator encryption.
+ */
+export const KMS_KEY_ARN_PATTERN = /^arn:[^:]+:kms:[a-zA-Z0-9-]*:[0-9]{12}:key\/[a-zA-Z0-9-]{36}$/;
+
+export const KmsKeyArnSchema = z
+  .string()
+  .regex(
+    KMS_KEY_ARN_PATTERN,
+    'Must be a valid KMS key ARN (e.g. arn:aws:kms:us-east-1:123456789012:key/12345678-1234-1234-1234-123456789012)'
+  );
+
+export function isValidKmsKeyArn(value: string): boolean {
+  return KMS_KEY_ARN_PATTERN.test(value);
+}

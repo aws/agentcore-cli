@@ -50,6 +50,7 @@ export function toEvaluatorSpec(detail: GetEvaluatorResult, localName: string): 
     level,
     ...(detail.description && { description: detail.description }),
     config,
+    ...(detail.kmsKeyArn && { kmsKeyArn: detail.kmsKeyArn }),
     ...(detail.tags && Object.keys(detail.tags).length > 0 && { tags: detail.tags }),
   };
 }
