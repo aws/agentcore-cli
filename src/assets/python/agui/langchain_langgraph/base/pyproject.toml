@@ -1,0 +1,30 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "{{ name }}"
+version = "0.1.0"
+description = "AgentCore AG-UI Agent using LangChain + LangGraph"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    "ag-ui-langgraph >= 0.0.31",
+    "ag-ui-protocol >= 0.1.10",
+    {{#if (eq modelProvider "Anthropic")}}"langchain-anthropic >= 0.3.0",
+    {{/if}}{{#if (eq modelProvider "Bedrock")}}"langchain-aws >= 0.2.0",
+    {{/if}}{{#if (eq modelProvider "Gemini")}}"langchain-google-genai >= 2.0.0",
+    {{/if}}{{#if (eq modelProvider "OpenAI")}}"langchain-openai >= 0.2.0",
+    {{/if}}"aws-opentelemetry-distro",
+    "opentelemetry-instrumentation-langchain >= 0.59.0",
+    "bedrock-agentcore >= 1.0.3",
+    "botocore[crt] >= 1.35.0",
+    "langgraph >= 0.3.25",
+    "langchain >= 0.3.0",
+    "langchain-core >= 0.3.0",
+    "fastapi >= 0.115.12",
+    "uvicorn >= 0.34.3",
+]
+
+[tool.hatch.build.targets.wheel]
+packages = ["."]

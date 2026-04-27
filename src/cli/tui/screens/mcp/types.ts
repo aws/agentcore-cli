@@ -6,7 +6,6 @@ import type {
   GatewayPolicyEngineConfiguration,
   GatewayTargetType,
   NodeRuntime,
-  PythonRuntime,
   SchemaSource,
   ToolDefinition,
 } from '../../../../schema';
@@ -278,7 +277,8 @@ export const POLICY_ENGINE_MODE_OPTIONS = [
 ] as const;
 
 export const PYTHON_VERSION_OPTIONS = [
-  { id: 'PYTHON_3_13', title: 'Python 3.13', description: 'Latest' },
+  { id: 'PYTHON_3_14', title: 'Python 3.14', description: 'Latest' },
+  { id: 'PYTHON_3_13', title: 'Python 3.13', description: '' },
   { id: 'PYTHON_3_12', title: 'Python 3.12', description: '' },
   { id: 'PYTHON_3_11', title: 'Python 3.11', description: '' },
   { id: 'PYTHON_3_10', title: 'Python 3.10', description: '' },
@@ -294,6 +294,6 @@ export const NODE_VERSION_OPTIONS = [
 // Defaults
 // ─────────────────────────────────────────────────────────────────────────────
 
-export const DEFAULT_PYTHON_VERSION: PythonRuntime = 'PYTHON_3_13';
+export { DEFAULT_PYTHON_VERSION } from '../../../../schema';
 export const DEFAULT_NODE_VERSION: NodeRuntime = 'NODE_20';
 export const DEFAULT_HANDLER = 'handler.lambda_handler';

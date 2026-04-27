@@ -1,6 +1,5 @@
 import type { SelectableItem } from '../../components/SelectList';
 import { SelectScreen } from '../../components/SelectScreen';
-import { Text } from 'ink';
 
 export type ImportType = 'runtime' | 'memory' | 'evaluator' | 'online-eval' | 'gateway' | 'starter-toolkit';
 
@@ -47,17 +46,5 @@ interface ImportSelectScreenProps {
 }
 
 export function ImportSelectScreen({ onSelect, onExit }: ImportSelectScreenProps) {
-  return (
-    <SelectScreen
-      title="Import"
-      headerContent={
-        <Text color="yellow">
-          Experimental: this feature imports resources that are already deployed, use with caution
-        </Text>
-      }
-      items={IMPORT_OPTIONS}
-      onSelect={item => onSelect(item.id)}
-      onExit={onExit}
-    />
-  );
+  return <SelectScreen title="Import" items={IMPORT_OPTIONS} onSelect={item => onSelect(item.id)} onExit={onExit} />;
 }

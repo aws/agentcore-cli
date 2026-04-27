@@ -1,4 +1,4 @@
-import { findConfigRoot, getWorkingDirectory, readEnvFile } from '../../../lib';
+import { findConfigRoot, getWorkingDirectory } from '../../../lib';
 import { getErrorMessage } from '../../errors';
 import { detectContainerRuntime } from '../../external-requirements';
 import { ExecLogger } from '../../logging';
@@ -14,18 +14,20 @@ import {
   invokeAgentStreaming,
   invokeForProtocol,
   listMcpTools,
+  loadDevEnv,
   loadProjectConfig,
 } from '../../operations/dev';
-import { getGatewayEnvVars } from '../../operations/dev/gateway-env.js';
-import { getMemoryEnvVars } from '../../operations/dev/memory-env.js';
+import { OtelCollector, startOtelCollector } from '../../operations/dev/otel';
 import { FatalError } from '../../tui/components';
 import { LayoutProvider } from '../../tui/context';
 import { COMMAND_DESCRIPTIONS } from '../../tui/copy';
-import { requireProject } from '../../tui/guards';
+import { requireProject, requireTTY } from '../../tui/guards';
 import { parseHeaderFlags } from '../shared/header-utils';
+import { runBrowserMode } from './browser-mode';
 import type { Command } from '@commander-js/extra-typings';
 import { spawn } from 'child_process';
 import { Text, render } from 'ink';
+import path from 'node:path';
 import React from 'react';
 
 // Alternate screen buffer - same as main TUI
@@ -182,6 +184,9 @@ export const registerDev = (program: Command) => {
       (val: string, prev: string[]) => [...prev, val],
       [] as string[]
     )
+    .option('-b, --no-browser', 'Use terminal TUI instead of web-based chat UI')
+    .option('--no-traces', 'Disable local OTEL trace collection')
+
     .action(async (positionalPrompt: string | undefined, opts) => {
       try {
         const port = parseInt(opts.port, 10);
@@ -242,6 +247,11 @@ export const registerDev = (program: Command) => {
             await handleMcpInvoke(invokePort, invokePrompt, opts.tool, opts.input, headers);
           } else if (protocol === 'A2A') {
             await invokeA2ADevServer(invokePort, invokePrompt, headers);
+          } else if (protocol === 'AGUI') {
+            for await (const chunk of invokeForProtocol('AGUI', { port: invokePort, message: invokePrompt, headers })) {
+              process.stdout.write(chunk);
+            }
+            process.stdout.write('\n');
           } else {
             await invokeDevServer(invokePort, invokePrompt, opts.stream ?? false, headers);
           }
@@ -279,6 +289,19 @@ export const registerDev = (program: Command) => {
           process.exit(1);
         }
 
+        // Start local OTEL collector so agent traces are captured in dev mode.
+        // Persists traces to .cli/traces/ so they survive dev server restarts.
+        const configRoot = findConfigRoot(workingDir);
+        let otelEnvVars: Record<string, string> = {};
+        let collector: OtelCollector | undefined;
+
+        if (opts.traces !== false) {
+          const persistTracesDir = path.join(configRoot ?? workingDir, '.cli', 'traces');
+          const otelResult = await startOtelCollector(persistTracesDir);
+          collector = otelResult.collector;
+          otelEnvVars = otelResult.otelEnvVars;
+        }
+
         // If --logs provided, run non-interactive mode
         if (opts.logs) {
           // Require --agent if multiple agents
@@ -290,12 +313,8 @@ export const registerDev = (program: Command) => {
           }
 
           const agentName = opts.runtime ?? project.runtimes[0]?.name;
-          const configRoot = findConfigRoot(workingDir);
-          const envVars = configRoot ? await readEnvFile(configRoot) : {};
-          const gatewayEnvVars = await getGatewayEnvVars();
-          const memoryEnvVars = await getMemoryEnvVars();
-          // Deployed-state env vars go first, .env.local overrides take precedence
-          const mergedEnvVars = { ...gatewayEnvVars, ...memoryEnvVars, ...envVars };
+          const { envVars } = await loadDevEnv(workingDir);
+          const mergedEnvVars = { ...envVars, ...otelEnvVars };
           const config = getDevConfig(workingDir, project, configRoot ?? undefined, agentName);
 
           if (!config) {
@@ -353,6 +372,7 @@ export const registerDev = (program: Command) => {
           // Handle Ctrl+C — use server.kill() for proper container cleanup
           process.on('SIGINT', () => {
             console.log('\nStopping server...');
+            collector?.stop();
             server.kill();
           });
 
@@ -361,33 +381,48 @@ export const registerDev = (program: Command) => {
           await new Promise(() => {});
         }
 
-        // Enter alternate screen buffer for fullscreen mode
-        process.stdout.write(ENTER_ALT_SCREEN);
+        // If --no-browser provided, launch terminal TUI mode
+        if (!opts.browser) {
+          requireTTY();
+          // Enter alternate screen buffer for fullscreen mode
+          process.stdout.write(ENTER_ALT_SCREEN);
 
-        const exitAltScreen = () => {
-          process.stdout.write(EXIT_ALT_SCREEN);
-          process.stdout.write(SHOW_CURSOR);
-        };
+          const exitAltScreen = () => {
+            process.stdout.write(EXIT_ALT_SCREEN);
+            process.stdout.write(SHOW_CURSOR);
+          };
 
-        const { DevScreen } = await import('../../tui/screens/dev/DevScreen');
-        const { unmount, waitUntilExit } = render(
-          <LayoutProvider>
-            <DevScreen
-              onBack={() => {
-                exitAltScreen();
-                unmount();
-                process.exit(0);
-              }}
-              workingDir={workingDir}
-              port={port}
-              agentName={opts.runtime}
-              headers={headers}
-            />
-          </LayoutProvider>
-        );
+          const { DevScreen } = await import('../../tui/screens/dev/DevScreen');
+          const { unmount, waitUntilExit } = render(
+            <LayoutProvider>
+              <DevScreen
+                onBack={() => {
+                  exitAltScreen();
+                  unmount();
+                  process.exit(0);
+                }}
+                workingDir={workingDir}
+                port={port}
+                agentName={opts.runtime}
+                headers={headers}
+              />
+            </LayoutProvider>
+          );
 
-        await waitUntilExit();
-        exitAltScreen();
+          await waitUntilExit();
+          exitAltScreen();
+          return;
+        }
+
+        // Default: launch web UI in browser
+        await runBrowserMode({
+          workingDir,
+          project,
+          port,
+          agentName: opts.runtime,
+          otelEnvVars,
+          collector,
+        });
       } catch (error) {
         render(<Text color="red">Error: {getErrorMessage(error)}</Text>);
         process.exit(1);

@@ -1,5 +1,5 @@
 import { createTempConfig } from '../../__tests__/helpers/temp-config';
-import { resolveTelemetryPreference } from '../resolve';
+import { resolveTelemetryPreference } from '../config';
 import { writeFile } from 'fs/promises';
 import { join } from 'node:path';
 import { afterAll, afterEach, beforeEach, describe, expect, it } from 'vitest';

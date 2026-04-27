@@ -86,6 +86,7 @@ type ByoStep =
   | 'jwtConfig'
   | 'idleTimeout'
   | 'maxLifetime'
+  | 'sessionStorageMountPath'
   | 'confirm';
 
 const INITIAL_STEPS: InitialStep[] = ['name', 'agentType'];
@@ -126,6 +127,9 @@ export function computeByoSteps(input: ComputeByoStepsInput): ByoStep[] {
     }
     if (input.advancedSettings.has('lifecycle')) {
       subSteps.push('idleTimeout', 'maxLifetime');
+    }
+    if (input.advancedSettings.has('filesystem')) {
+      subSteps.push('sessionStorageMountPath');
     }
     steps = [...steps.slice(0, afterAdvanced), ...subSteps, ...steps.slice(afterAdvanced)];
   }
@@ -180,6 +184,7 @@ export function AddAgentScreen({ existingAgentNames, onComplete, onExit }: AddAg
     requestHeaderAllowlist: '' as string,
     idleTimeout: '' as string,
     maxLifetime: '' as string,
+    sessionStorageMountPath: '' as string,
   });
   const [byoAdvancedSettings, setByoAdvancedSettings] = useState<Set<AdvancedSettingId>>(new Set());
   const [byoAuthorizerType, setByoAuthorizerType] = useState<RuntimeAuthorizerType>('AWS_IAM');
@@ -305,6 +310,7 @@ export function AddAgentScreen({ existingAgentNames, onComplete, onExit }: AddAg
         }),
       idleRuntimeSessionTimeout: generateWizard.config.idleRuntimeSessionTimeout,
       maxLifetime: generateWizard.config.maxLifetime,
+      sessionStorageMountPath: generateWizard.config.sessionStorageMountPath,
       pythonVersion: DEFAULT_PYTHON_VERSION,
       memory: generateWizard.config.memory,
     };
@@ -426,6 +432,7 @@ export function AddAgentScreen({ existingAgentNames, onComplete, onExit }: AddAg
       ...(byoAuthorizerType === 'CUSTOM_JWT' && byoJwtConfig && { jwtConfig: byoJwtConfig }),
       ...(byoConfig.idleTimeout && { idleRuntimeSessionTimeout: Number(byoConfig.idleTimeout) }),
       ...(byoConfig.maxLifetime && { maxLifetime: Number(byoConfig.maxLifetime) }),
+      ...(byoConfig.sessionStorageMountPath && { sessionStorageMountPath: byoConfig.sessionStorageMountPath }),
       pythonVersion: DEFAULT_PYTHON_VERSION,
       memory: 'none',
     };
@@ -486,6 +493,7 @@ export function AddAgentScreen({ existingAgentNames, onComplete, onExit }: AddAg
           requestHeaderAllowlist: '',
           idleTimeout: '',
           maxLifetime: '',
+          sessionStorageMountPath: '',
         }));
         setByoAuthorizerType('AWS_IAM');
         setByoJwtConfig(undefined);
@@ -503,6 +511,8 @@ export function AddAgentScreen({ existingAgentNames, onComplete, onExit }: AddAg
             setByoStep('authorizerType');
           } else if (selected.has('lifecycle')) {
             setByoStep('idleTimeout');
+          } else if (selected.has('filesystem')) {
+            setByoStep('sessionStorageMountPath');
           } else {
             setByoStep('confirm');
           }
@@ -810,7 +820,8 @@ export function AddAgentScreen({ existingAgentNames, onComplete, onExit }: AddAg
       byoStep === 'securityGroups' ||
       byoStep === 'requestHeaderAllowlist' ||
       byoStep === 'idleTimeout' ||
-      byoStep === 'maxLifetime'
+      byoStep === 'maxLifetime' ||
+      byoStep === 'sessionStorageMountPath'
     ) {
       return HELP_TEXT.TEXT_INPUT;
     }
@@ -1242,7 +1253,25 @@ export function AddAgentScreen({ existingAgentNames, onComplete, onExit }: AddAg
             }}
             onSubmit={value => {
               setByoConfig(c => ({ ...c, maxLifetime: value }));
-              setByoStep('confirm');
+              goToNextByoStep('maxLifetime');
+            }}
+            onCancel={handleByoBack}
+          />
+        )}
+
+        {byoStep === 'sessionStorageMountPath' && (
+          <TextInput
+            prompt="Session storage mount path (e.g. /mnt/session-storage, or press Enter to skip)"
+            initialValue={byoConfig.sessionStorageMountPath}
+            allowEmpty
+            customValidation={value => {
+              if (!value) return true;
+              if (!value.startsWith('/')) return 'Must be an absolute path starting with /';
+              return true;
+            }}
+            onSubmit={value => {
+              setByoConfig(c => ({ ...c, sessionStorageMountPath: value }));
+              goToNextByoStep('sessionStorageMountPath');
             }}
             onCancel={handleByoBack}
           />
@@ -1316,6 +1345,9 @@ export function AddAgentScreen({ existingAgentNames, onComplete, onExit }: AddAg
                 : []),
               ...(byoConfig.idleTimeout ? [{ label: 'Idle Timeout', value: `${byoConfig.idleTimeout}s` }] : []),
               ...(byoConfig.maxLifetime ? [{ label: 'Max Lifetime', value: `${byoConfig.maxLifetime}s` }] : []),
+              ...(byoConfig.sessionStorageMountPath
+                ? [{ label: 'Session Storage', value: byoConfig.sessionStorageMountPath }]
+                : []),
             ]}
           />
         )}

@@ -8,6 +8,7 @@ import type {
   Memory,
 } from '../../../schema';
 import { validateAwsCredentials } from '../../aws/account';
+import { arnPrefix } from '../../aws/partition';
 import { ExecLogger } from '../../logging';
 import { setupPythonProject } from '../../operations/python/setup';
 import { executeCdkImportPipeline } from './import-pipeline';
@@ -41,7 +42,7 @@ function toAgentEnvSpec(agent: ParsedStarterToolkitConfig['agents'][0]): AgentEn
     runtimeVersion: (agent.runtimeVersion ?? 'PYTHON_3_12') as any,
     protocol: agent.protocol,
     networkMode: agent.networkMode,
-    instrumentation: { enableOtel: agent.enableOtel },
+    instrumentation: { enableOtel: agent.protocol === 'MCP' ? false : agent.enableOtel },
   };
   /* eslint-enable @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-explicit-any */
 
@@ -77,7 +78,7 @@ function toMemorySpec(mem: ParsedStarterToolkitConfig['memories'][0]): Memory {
 
   return {
     name: mem.name,
-    eventExpiryDuration: Math.max(7, Math.min(365, mem.eventExpiryDays)),
+    eventExpiryDuration: Math.max(3, Math.min(365, mem.eventExpiryDays)),
     strategies,
   };
 }
@@ -521,7 +522,7 @@ export async function handleImport(options: ImportOptions): Promise<ImportResult
           id: a.physicalAgentId!,
           arn:
             a.physicalAgentArn ??
-            `arn:aws:bedrock-agentcore:${target.region}:${target.account}:runtime/${a.physicalAgentId}`,
+            `${arnPrefix(target.region)}:bedrock-agentcore:${target.region}:${target.account}:runtime/${a.physicalAgentId}`,
         })),
       ...memoriesToImport
         .filter(m => m.physicalMemoryId)
@@ -531,7 +532,7 @@ export async function handleImport(options: ImportOptions): Promise<ImportResult
           id: m.physicalMemoryId!,
           arn:
             m.physicalMemoryArn ??
-            `arn:aws:bedrock-agentcore:${target.region}:${target.account}:memory/${m.physicalMemoryId}`,
+            `${arnPrefix(target.region)}:bedrock-agentcore:${target.region}:${target.account}:memory/${m.physicalMemoryId}`,
         })),
     ];
 

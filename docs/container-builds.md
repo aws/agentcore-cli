@@ -58,7 +58,7 @@ In `agentcore.json`, set `"build": "Container"`:
   "build": "Container",
   "entrypoint": "main.py",
   "codeLocation": "app/MyAgent/",
-  "runtimeVersion": "PYTHON_3_13"
+  "runtimeVersion": "PYTHON_3_14"
 }
 ```
 

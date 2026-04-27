@@ -60,13 +60,13 @@ describe('ModelProviderSchema', () => {
 });
 
 describe('PythonRuntimeSchema', () => {
-  it.each(['PYTHON_3_10', 'PYTHON_3_11', 'PYTHON_3_12', 'PYTHON_3_13'])('accepts "%s"', version => {
+  it.each(['PYTHON_3_10', 'PYTHON_3_11', 'PYTHON_3_12', 'PYTHON_3_13', 'PYTHON_3_14'])('accepts "%s"', version => {
     expect(PythonRuntimeSchema.safeParse(version).success).toBe(true);
   });
 
   it('rejects unsupported versions', () => {
     expect(PythonRuntimeSchema.safeParse('PYTHON_3_9').success).toBe(false);
-    expect(PythonRuntimeSchema.safeParse('PYTHON_3_14').success).toBe(false);
+    expect(PythonRuntimeSchema.safeParse('PYTHON_3_15').success).toBe(false);
   });
 });
 
@@ -163,8 +163,8 @@ describe('isReservedProjectName', () => {
 
 describe('PROTOCOL_FRAMEWORK_MATRIX', () => {
   it('defines all protocol modes', () => {
-    expect(Object.keys(PROTOCOL_FRAMEWORK_MATRIX)).toEqual(expect.arrayContaining(['HTTP', 'MCP', 'A2A']));
-    expect(Object.keys(PROTOCOL_FRAMEWORK_MATRIX)).toHaveLength(3);
+    expect(Object.keys(PROTOCOL_FRAMEWORK_MATRIX)).toEqual(expect.arrayContaining(['HTTP', 'MCP', 'A2A', 'AGUI']));
+    expect(Object.keys(PROTOCOL_FRAMEWORK_MATRIX)).toHaveLength(4);
   });
 
   it('HTTP supports all visible frameworks', () => {

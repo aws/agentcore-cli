@@ -73,3 +73,7 @@ e2e-tests/fixtures/import/bugbash-resources.json
 
 # oh-my-claudecode
 .omc/
+# Browser tests
+browser-tests/.browser-test-env
+browser-tests/test-results/
+browser-tests/playwright-report/

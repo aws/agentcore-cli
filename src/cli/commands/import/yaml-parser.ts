@@ -1,4 +1,5 @@
 import type { AuthorizerConfig, CustomClaimValidation, RuntimeAuthorizerType } from '../../../schema';
+import { ProtocolModeSchema } from '../../../schema';
 import { RUNTIME_TYPE_MAP } from './constants';
 import type {
   ParsedStarterToolkitAgent,
@@ -199,7 +200,9 @@ export function parseStarterToolkitYaml(filePath: string): ParsedStarterToolkitC
       const networkModeConfig = networkConfig?.network_mode_config as Record<string, unknown> | undefined;
 
       // Map protocol
-      const protocol = String((protocolConfig?.server_protocol as string) ?? 'HTTP') as 'HTTP' | 'MCP' | 'A2A';
+      const protocolRaw = String((protocolConfig?.server_protocol as string) ?? 'HTTP');
+      const protocolParsed = ProtocolModeSchema.safeParse(protocolRaw);
+      const protocol = protocolParsed.success ? protocolParsed.data : ('HTTP' as const);
 
       agents.push({
         name: String((agentConfig.name as string) ?? agentKey),

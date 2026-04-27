@@ -142,6 +142,23 @@ export const RequestHeaderAllowlistSchema = z
   )
   .max(MAX_HEADER_ALLOWLIST_SIZE, `Maximum ${MAX_HEADER_ALLOWLIST_SIZE} headers allowed`);
 
+/**
+ * Session storage configuration for filesystem persistence.
+ * Files written to mountPath persist across session stop/resume cycles.
+ */
+export const SessionStorageSchema = z.object({
+  /** Absolute mount path under /mnt with exactly one subdirectory level (e.g. /mnt/data). */
+  mountPath: z
+    .string()
+    .regex(/^\/mnt\/[^/]+$/, 'Must be a path under /mnt with exactly one subdirectory (e.g. /mnt/data)'),
+});
+export type SessionStorage = z.infer<typeof SessionStorageSchema>;
+
+export const FilesystemConfigurationSchema = z.object({
+  sessionStorage: SessionStorageSchema,
+});
+export type FilesystemConfiguration = z.infer<typeof FilesystemConfigurationSchema>;
+
 /** Minimum allowed value for lifecycle timeout fields (seconds). */
 export const LIFECYCLE_TIMEOUT_MIN = 60;
 /** Maximum allowed value for lifecycle timeout fields (seconds). */
@@ -199,7 +216,7 @@ export const AgentEnvSpecSchema = z
     networkConfig: NetworkConfigSchema.optional(),
     /** Instrumentation settings for observability. Defaults to OTel enabled. */
     instrumentation: InstrumentationSchema.optional(),
-    /** Protocol for the runtime (HTTP, MCP, A2A). */
+    /** Protocol for the runtime (HTTP, MCP, A2A, AGUI). */
     protocol: ProtocolModeSchema.optional(),
     /** Allowed request headers forwarded to the runtime at invocation time. */
     requestHeaderAllowlist: RequestHeaderAllowlistSchema.optional(),
@@ -212,6 +229,8 @@ export const AgentEnvSpecSchema = z
     tags: TagsSchema.optional(),
     /** Lifecycle configuration for runtime sessions. */
     lifecycleConfiguration: LifecycleConfigurationSchema.optional(),
+    /** Filesystem configurations for session-scoped persistent storage. */
+    filesystemConfigurations: z.array(FilesystemConfigurationSchema).optional(),
   })
   .superRefine((data, ctx) => {
     if (data.networkMode === 'VPC' && !data.networkConfig) {

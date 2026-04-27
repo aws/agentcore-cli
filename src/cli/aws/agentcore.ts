@@ -1,5 +1,7 @@
 import { parseJsonRpcResponse } from '../../lib/utils/json-rpc';
 import { getCredentialProvider } from './account';
+import { parseAguiSSEStream } from './agui-parser';
+import { serviceEndpoint } from './partition';
 import {
   BedrockAgentCoreClient,
   EvaluateCommand,
@@ -142,11 +144,10 @@ export function extractResult(text: string): string {
 
 /**
  * Build the invoke URL for a runtime ARN.
- * Format: https://bedrock-agentcore.{REGION}.amazonaws.com/runtimes/{ESCAPED_ARN}/invocations?qualifier=DEFAULT
  */
 function buildInvokeUrl(region: string, runtimeArn: string): string {
   const escapedArn = encodeURIComponent(runtimeArn);
-  return `https://bedrock-agentcore.${region}.amazonaws.com/runtimes/${escapedArn}/invocations?qualifier=DEFAULT`;
+  return `https://${serviceEndpoint('bedrock-agentcore', region)}/runtimes/${escapedArn}/invocations?qualifier=DEFAULT`;
 }
 
 /**
@@ -858,6 +859,7 @@ export interface A2AInvokeOptions {
   region: string;
   runtimeArn: string;
   userId?: string;
+  sessionId?: string;
   logger?: SSELogger;
   /** Custom headers to forward to the agent runtime */
   headers?: Record<string, string>;
@@ -893,6 +895,7 @@ export async function invokeA2ARuntime(options: A2AInvokeOptions, message: strin
     contentType: 'application/json',
     accept: 'application/json, text/event-stream',
     runtimeUserId: options.userId ?? DEFAULT_RUNTIME_USER_ID,
+    ...(options.sessionId && { runtimeSessionId: options.sessionId }),
   });
 
   const response = await client.send(command);
@@ -973,6 +976,78 @@ export function parseA2AResponse(text: string): string {
   } catch {
     return text;
   }
+}
+
+// ---------------------------------------------------------------------------
+// AGUI: Structured event streaming over InvokeAgentRuntime
+// ---------------------------------------------------------------------------
+
+export interface AguiInvokeOptions {
+  region: string;
+  runtimeArn: string;
+  sessionId?: string;
+  userId?: string;
+  logger?: SSELogger;
+  headers?: Record<string, string>;
+  /** Bearer token for CUSTOM_JWT auth — not yet supported for AGUI, will throw if provided */
+  bearerToken?: string;
+}
+
+export interface AguiStreamingInvokeResult {
+  /** Typed event stream — yields all AGUI events for rich TUI rendering */
+  stream: AsyncGenerator<import('./agui-types').AguiEvent, void, unknown>;
+  /** Text-only convenience stream — yields only TEXT_MESSAGE_CONTENT deltas */
+  textStream: AsyncGenerator<string, void, unknown>;
+  sessionId: string | undefined;
+}
+
+/**
+ * Invoke an AgentCore AGUI Runtime and stream structured events.
+ * Returns both a typed event stream and a text-only convenience stream.
+ */
+export async function invokeAguiRuntime(
+  options: AguiInvokeOptions,
+  input: import('./agui-types').AguiRunInput
+): Promise<AguiStreamingInvokeResult> {
+  if (options.bearerToken) {
+    throw new Error('Bearer token auth is not yet supported for AGUI. Use SigV4 credentials.');
+  }
+
+  const client = createAgentCoreClient(options.region, options.headers);
+
+  const command = new InvokeAgentRuntimeCommand({
+    agentRuntimeArn: options.runtimeArn,
+    payload: new TextEncoder().encode(JSON.stringify(input)),
+    contentType: 'application/json',
+    accept: 'text/event-stream',
+    runtimeSessionId: options.sessionId,
+    runtimeUserId: options.userId ?? DEFAULT_RUNTIME_USER_ID,
+  });
+
+  const response = await client.send(command);
+  const sessionId = response.runtimeSessionId;
+
+  if (!response.response) {
+    throw new Error('No response from AgentCore Runtime');
+  }
+
+  const webStream = response.response.transformToWebStream();
+  const reader = webStream.getReader();
+
+  const { eventStream, textStream } = parseAguiSSEStream({
+    reader,
+    logger: options.logger,
+  });
+
+  if (!textStream) {
+    throw new Error('AGUI parser created in single-consumer mode — textStream unavailable');
+  }
+
+  return {
+    stream: eventStream,
+    textStream,
+    sessionId,
+  };
 }
 
 /**

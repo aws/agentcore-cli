@@ -55,6 +55,7 @@ export type AddAgentStep =
   | 'jwtConfig'
   | 'idleTimeout'
   | 'maxLifetime'
+  | 'sessionStorageMountPath'
   | 'memory'
   | 'region'
   | 'bedrockAgent'
@@ -72,7 +73,7 @@ export interface AddAgentConfig {
   buildType: BuildType;
   /** Path to custom Dockerfile (copied into code directory at setup) or filename already in code directory. */
   dockerfile?: string;
-  /** Protocol (HTTP, MCP, A2A). Defaults to HTTP. */
+  /** Protocol (HTTP, MCP, A2A, AGUI). Defaults to HTTP. */
   protocol: ProtocolMode;
   framework: SDKFramework;
   modelProvider: ModelProvider;
@@ -94,6 +95,8 @@ export interface AddAgentConfig {
   idleRuntimeSessionTimeout?: number;
   /** Max instance lifetime in seconds (LIFECYCLE_TIMEOUT_MIN-LIFECYCLE_TIMEOUT_MAX) */
   maxLifetime?: number;
+  /** Mount path for session filesystem storage (e.g. /mnt/session-storage) */
+  sessionStorageMountPath?: string;
   /** Python version (only for Python agents) */
   pythonVersion: PythonRuntime;
   /** Memory option (create path only) */
@@ -126,6 +129,7 @@ export const ADD_AGENT_STEP_LABELS: Record<AddAgentStep, string> = {
   jwtConfig: 'JWT Config',
   idleTimeout: 'Idle Timeout',
   maxLifetime: 'Max Lifetime',
+  sessionStorageMountPath: 'Session Storage',
   memory: 'Memory',
   region: 'Region',
   bedrockAgent: 'Agent',
@@ -189,5 +193,5 @@ export const NETWORK_MODE_OPTIONS = [
   { id: 'VPC', title: 'VPC', description: 'Attach to your VPC' },
 ] as const;
 
-export const DEFAULT_PYTHON_VERSION: PythonRuntime = 'PYTHON_3_13';
+export { DEFAULT_PYTHON_VERSION } from '../../../../schema';
 export const DEFAULT_ENTRYPOINT = 'main.py';

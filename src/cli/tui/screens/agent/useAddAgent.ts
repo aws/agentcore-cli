@@ -90,6 +90,9 @@ export function mapByoConfigToAgent(config: AddAgentConfig): AgentEnvSpec {
           },
         }
       : {}),
+    ...(config.sessionStorageMountPath && {
+      filesystemConfigurations: [{ sessionStorage: { mountPath: config.sessionStorageMountPath } }],
+    }),
   };
 }
 
@@ -114,6 +117,7 @@ function mapAddAgentConfigToGenerateConfig(config: AddAgentConfig): GenerateConf
     jwtConfig: config.jwtConfig,
     idleRuntimeSessionTimeout: config.idleRuntimeSessionTimeout,
     maxLifetime: config.maxLifetime,
+    sessionStorageMountPath: config.sessionStorageMountPath,
   };
 }
 
@@ -289,6 +293,7 @@ async function handleImportPath(
     jwtConfig: config.jwtConfig,
     idleTimeout: config.idleRuntimeSessionTimeout,
     maxLifetime: config.maxLifetime,
+    sessionStorageMountPath: config.sessionStorageMountPath,
   });
 
   if (!result.success) {

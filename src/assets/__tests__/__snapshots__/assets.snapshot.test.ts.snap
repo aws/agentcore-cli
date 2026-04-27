@@ -149,7 +149,7 @@ exports[`Assets Directory Snapshots > CDK assets > cdk/cdk/cdk.json should match
     "@aws-cdk/aws-ecs-patterns:secGroupsDisablesImplicitOpenListener": true,
     "@aws-cdk/aws-lambda:recognizeLayerVersion": true,
     "@aws-cdk/core:checkSecretUsage": true,
-    "@aws-cdk/core:target-partitions": ["aws", "aws-cn"],
+    "@aws-cdk/core:target-partitions": ["aws", "aws-cn", "aws-us-gov"],
     "@aws-cdk-containers/ecs-service-extensions:enableDefaultLogDriver": true,
     "@aws-cdk/aws-ec2:uniqueImdsv2TemplateName": true,
     "@aws-cdk/aws-ecs:arnFormatIncludesClusterName": true,
@@ -357,7 +357,7 @@ exports[`Assets Directory Snapshots > CDK assets > cdk/cdk/package.json should m
     "typescript": "~5.9.3"
   },
   "dependencies": {
-    "@aws/agentcore-cdk": "0.1.0-alpha.18",
+    "@aws/agentcore-cdk": "^0.1.0-alpha.19",
     "aws-cdk-lib": "^2.248.0",
     "constructs": "^10.0.0"
   }
@@ -475,6 +475,26 @@ exports[`Assets Directory Snapshots > File listing > should match the expected f
   "python/a2a/strands/base/pyproject.toml",
   "python/a2a/strands/capabilities/memory/__init__.py",
   "python/a2a/strands/capabilities/memory/session.py",
+  "python/agui/googleadk/base/README.md",
+  "python/agui/googleadk/base/gitignore.template",
+  "python/agui/googleadk/base/main.py",
+  "python/agui/googleadk/base/model/__init__.py",
+  "python/agui/googleadk/base/model/load.py",
+  "python/agui/googleadk/base/pyproject.toml",
+  "python/agui/langchain_langgraph/base/README.md",
+  "python/agui/langchain_langgraph/base/gitignore.template",
+  "python/agui/langchain_langgraph/base/main.py",
+  "python/agui/langchain_langgraph/base/model/__init__.py",
+  "python/agui/langchain_langgraph/base/model/load.py",
+  "python/agui/langchain_langgraph/base/pyproject.toml",
+  "python/agui/strands/base/README.md",
+  "python/agui/strands/base/gitignore.template",
+  "python/agui/strands/base/main.py",
+  "python/agui/strands/base/model/__init__.py",
+  "python/agui/strands/base/model/load.py",
+  "python/agui/strands/base/pyproject.toml",
+  "python/agui/strands/capabilities/memory/__init__.py",
+  "python/agui/strands/capabilities/memory/session.py",
   "python/http/autogen/base/README.md",
   "python/http/autogen/base/gitignore.template",
   "python/http/autogen/base/main.py",
@@ -968,7 +988,8 @@ Thumbs.db
 `;
 
 exports[`Assets Directory Snapshots > Python framework assets > python/python/a2a/googleadk/base/main.py should match snapshot 1`] = `
-"from google.adk.agents import Agent
+"import os
+from google.adk.agents import Agent
 from google.adk.a2a.executor.a2a_agent_executor import A2aAgentExecutor
 from google.adk.runners import Runner
 from google.adk.sessions import InMemorySessionService
@@ -976,18 +997,79 @@ from a2a.types import AgentCapabilities, AgentCard, AgentSkill
 from bedrock_agentcore.runtime import serve_a2a
 from model.load import load_model
 
+load_model()  # Sets GOOGLE_API_KEY env var (returns None)
+
 
 def add_numbers(a: int, b: int) -> int:
     """Return the sum of two numbers."""
     return a + b
 
 
+tools = [add_numbers]
+
+{{#if sessionStorageMountPath}}
+SESSION_STORAGE_PATH = "{{sessionStorageMountPath}}"
+
+def _safe_resolve(path: str) -> str:
+    """Resolve path safely within the storage boundary."""
+    resolved = os.path.realpath(os.path.join(SESSION_STORAGE_PATH, path.lstrip("/")))
+    if not resolved.startswith(os.path.realpath(SESSION_STORAGE_PATH)):
+        raise ValueError(f"Path '{path}' is outside the storage boundary")
+    return resolved
+
+def file_read(path: str) -> str:
+    """Read a file from persistent storage. The path is relative to the storage root."""
+    try:
+        full_path = _safe_resolve(path)
+        with open(full_path) as f:
+            return f.read()
+    except ValueError as e:
+        return str(e)
+    except OSError as e:
+        return f"Error reading '{path}': {e.strerror}"
+
+def file_write(path: str, content: str) -> str:
+    """Write content to a file in persistent storage. The path is relative to the storage root."""
+    try:
+        full_path = _safe_resolve(path)
+        parent = os.path.dirname(full_path)
+        if parent:
+            os.makedirs(parent, exist_ok=True)
+        with open(full_path, "w") as f:
+            f.write(content)
+        return f"Written to {path}"
+    except ValueError as e:
+        return str(e)
+    except OSError as e:
+        return f"Error writing '{path}': {e.strerror}"
+
+def list_files(directory: str = "") -> str:
+    """List files in persistent storage. The directory is relative to the storage root."""
+    try:
+        target = _safe_resolve(directory)
+        entries = os.listdir(target)
+        return "\\n".join(entries) if entries else "(empty directory)"
+    except ValueError as e:
+        return str(e)
+    except OSError as e:
+        return f"Error listing '{directory}': {e.strerror}"
+
+tools.extend([file_read, file_write, list_files])
+{{/if}}
+
+AGENT_INSTRUCTION = """
+You are a helpful assistant. Use tools when appropriate.
+{{#if sessionStorageMountPath}}
+You have persistent storage at {{sessionStorageMountPath}}. Use file tools to read and write files. Data persists across sessions.
+{{/if}}
+"""
+
 agent = Agent(
-    model=load_model(),
+    model="gemini-2.5-flash",
     name="{{ name }}",
     description="A helpful assistant that can use tools.",
-    instruction="You are a helpful assistant. Use tools when appropriate.",
-    tools=[add_numbers],
+    instruction=AGENT_INSTRUCTION,
+    tools=tools,
 )
 
 runner = Runner(
@@ -1165,7 +1247,8 @@ Thumbs.db
 `;
 
 exports[`Assets Directory Snapshots > Python framework assets > python/python/a2a/langchain_langgraph/base/main.py should match snapshot 1`] = `
-"from langchain_core.tools import tool
+"import os
+from langchain_core.tools import tool
 from langgraph.prebuilt import create_react_agent
 from opentelemetry.instrumentation.langchain import LangchainInstrumentor
 from a2a.server.agent_execution import AgentExecutor, RequestContext
@@ -1185,8 +1268,70 @@ def add_numbers(a: int, b: int) -> int:
     return a + b
 
 
+tools = [add_numbers]
+
+{{#if sessionStorageMountPath}}
+SESSION_STORAGE_PATH = "{{sessionStorageMountPath}}"
+
+def _safe_resolve(path: str) -> str:
+    """Resolve path safely within the storage boundary."""
+    resolved = os.path.realpath(os.path.join(SESSION_STORAGE_PATH, path.lstrip("/")))
+    if not resolved.startswith(os.path.realpath(SESSION_STORAGE_PATH)):
+        raise ValueError(f"Path '{path}' is outside the storage boundary")
+    return resolved
+
+@tool
+def file_read(path: str) -> str:
+    """Read a file from persistent storage. The path is relative to the storage root."""
+    try:
+        full_path = _safe_resolve(path)
+        with open(full_path) as f:
+            return f.read()
+    except ValueError as e:
+        return str(e)
+    except OSError as e:
+        return f"Error reading '{path}': {e.strerror}"
+
+@tool
+def file_write(path: str, content: str) -> str:
+    """Write content to a file in persistent storage. The path is relative to the storage root."""
+    try:
+        full_path = _safe_resolve(path)
+        parent = os.path.dirname(full_path)
+        if parent:
+            os.makedirs(parent, exist_ok=True)
+        with open(full_path, "w") as f:
+            f.write(content)
+        return f"Written to {path}"
+    except ValueError as e:
+        return str(e)
+    except OSError as e:
+        return f"Error writing '{path}': {e.strerror}"
+
+@tool
+def list_files(directory: str = "") -> str:
+    """List files in persistent storage. The directory is relative to the storage root."""
+    try:
+        target = _safe_resolve(directory)
+        entries = os.listdir(target)
+        return "\\n".join(entries) if entries else "(empty directory)"
+    except ValueError as e:
+        return str(e)
+    except OSError as e:
+        return f"Error listing '{directory}': {e.strerror}"
+
+tools.extend([file_read, file_write, list_files])
+{{/if}}
+
+SYSTEM_PROMPT = """
+You are a helpful assistant. Use tools when appropriate.
+{{#if sessionStorageMountPath}}
+You have persistent storage at {{sessionStorageMountPath}}. Use file tools to read and write files. Data persists across sessions.
+{{/if}}
+"""
+
 model = load_model()
-graph = create_react_agent(model, tools=[add_numbers])
+graph = create_react_agent(model, tools=tools, prompt=SYSTEM_PROMPT)
 
 
 class LangGraphA2AExecutor(AgentExecutor):
@@ -1475,6 +1620,9 @@ from model.load import load_model
 {{#if hasMemory}}
 from memory.session import get_memory_session_manager
 {{/if}}
+{{#if sessionStorageMountPath}}
+import os
+{{/if}}
 
 
 @tool
@@ -1485,6 +1633,66 @@ def add_numbers(a: int, b: int) -> int:
 
 tools = [add_numbers]
 
+{{#if sessionStorageMountPath}}
+SESSION_STORAGE_PATH = "{{sessionStorageMountPath}}"
+
+def _safe_resolve(path: str) -> str:
+    """Resolve path safely within the storage boundary."""
+    resolved = os.path.realpath(os.path.join(SESSION_STORAGE_PATH, path.lstrip("/")))
+    if not resolved.startswith(os.path.realpath(SESSION_STORAGE_PATH)):
+        raise ValueError(f"Path '{path}' is outside the storage boundary")
+    return resolved
+
+@tool
+def file_read(path: str) -> str:
+    """Read a file from persistent storage. The path is relative to the storage root."""
+    try:
+        full_path = _safe_resolve(path)
+        with open(full_path) as f:
+            return f.read()
+    except ValueError as e:
+        return str(e)
+    except OSError as e:
+        return f"Error reading '{path}': {e.strerror}"
+
+@tool
+def file_write(path: str, content: str) -> str:
+    """Write content to a file in persistent storage. The path is relative to the storage root."""
+    try:
+        full_path = _safe_resolve(path)
+        parent = os.path.dirname(full_path)
+        if parent:
+            os.makedirs(parent, exist_ok=True)
+        with open(full_path, "w") as f:
+            f.write(content)
+        return f"Written to {path}"
+    except ValueError as e:
+        return str(e)
+    except OSError as e:
+        return f"Error writing '{path}': {e.strerror}"
+
+@tool
+def list_files(directory: str = "") -> str:
+    """List files in persistent storage. The directory is relative to the storage root."""
+    try:
+        target = _safe_resolve(directory)
+        entries = os.listdir(target)
+        return "\\n".join(entries) if entries else "(empty directory)"
+    except ValueError as e:
+        return str(e)
+    except OSError as e:
+        return f"Error listing '{directory}': {e.strerror}"
+
+tools.extend([file_read, file_write, list_files])
+{{/if}}
+
+SYSTEM_PROMPT = """
+You are a helpful assistant. Use tools when appropriate.
+{{#if sessionStorageMountPath}}
+You have persistent storage at {{sessionStorageMountPath}}. Use file tools to read and write files. Data persists across sessions.
+{{/if}}
+"""
+
 {{#if hasMemory}}
 def agent_factory():
     cache = {}
@@ -1494,7 +1702,7 @@ def agent_factory():
             cache[key] = Agent(
                 model=load_model(),
                 session_manager=get_memory_session_manager(session_id, user_id),
-                system_prompt="You are a helpful assistant. Use tools when appropriate.",
+                system_prompt=SYSTEM_PROMPT,
                 tools=tools,
             )
         return cache[key]
@@ -1505,7 +1713,7 @@ agent = get_or_create_agent("default-session", "default-user")
 {{else}}
 agent = Agent(
     model=load_model(),
-    system_prompt="You are a helpful assistant. Use tools when appropriate.",
+    system_prompt=SYSTEM_PROMPT,
     tools=tools,
 )
 {{/if}}
@@ -1681,6 +1889,7 @@ exports[`Assets Directory Snapshots > Python framework assets > python/python/a2
 
 exports[`Assets Directory Snapshots > Python framework assets > python/python/a2a/strands/capabilities/memory/session.py should match snapshot 1`] = `
 "import os
+import uuid
 from typing import Optional
 
 from bedrock_agentcore.memory.integrations.strands.config import AgentCoreMemoryConfig{{#if memoryProviders.[0].strategies.length}}, RetrievalConfig{{/if}}
@@ -1689,9 +1898,853 @@ from bedrock_agentcore.memory.integrations.strands.session_manager import AgentC
 MEMORY_ID = os.getenv("{{memoryProviders.[0].envVarName}}")
 REGION = os.getenv("AWS_REGION")
 
-def get_memory_session_manager(session_id: str, actor_id: str) -> Optional[AgentCoreMemorySessionManager]:
+def get_memory_session_manager(session_id: Optional[str], actor_id: str) -> Optional[AgentCoreMemorySessionManager]:
     if not MEMORY_ID:
         return None
+
+    # AgentCoreMemoryConfig rejects None; OAuth/CUSTOM_JWT callers can reach us
+    # without a runtime session header, so synthesize one when absent.
+    session_id = session_id or uuid.uuid4().hex
+
+{{#if memoryProviders.[0].strategies.length}}
+    retrieval_config = {
+{{#if (includes memoryProviders.[0].strategies "SEMANTIC")}}
+        f"/users/{actor_id}/facts": RetrievalConfig(top_k=3, relevance_score=0.5),
+{{/if}}
+{{#if (includes memoryProviders.[0].strategies "USER_PREFERENCE")}}
+        f"/users/{actor_id}/preferences": RetrievalConfig(top_k=3, relevance_score=0.5),
+{{/if}}
+{{#if (includes memoryProviders.[0].strategies "SUMMARIZATION")}}
+        f"/summaries/{actor_id}/{session_id}": RetrievalConfig(top_k=3, relevance_score=0.5),
+{{/if}}
+    }
+{{/if}}
+
+    return AgentCoreMemorySessionManager(
+        AgentCoreMemoryConfig(
+            memory_id=MEMORY_ID,
+            session_id=session_id,
+            actor_id=actor_id,
+{{#if memoryProviders.[0].strategies.length}}
+            retrieval_config=retrieval_config,
+{{/if}}
+        ),
+        REGION
+    )
+"
+`;
+
+exports[`Assets Directory Snapshots > Python framework assets > python/python/agui/googleadk/base/README.md should match snapshot 1`] = `
+"# {{ name }}
+
+An AG-UI agent deployed on Amazon Bedrock AgentCore using Google ADK.
+
+## Overview
+
+This agent implements the AG-UI protocol using Google's Agent Development Kit, enabling rich agent-user interaction via the AG-UI event stream.
+
+## Local Development
+
+\`\`\`bash
+uv sync
+uv run python main.py
+\`\`\`
+
+The agent starts on port 8080 and serves requests at \`/invocations\`.
+
+## Health Check
+
+\`\`\`
+GET /ping
+\`\`\`
+
+Returns \`{"status": "healthy"}\`.
+
+## Deploy
+
+\`\`\`bash
+agentcore deploy
+\`\`\`
+"
+`;
+
+exports[`Assets Directory Snapshots > Python framework assets > python/python/agui/googleadk/base/gitignore.template should match snapshot 1`] = `
+"# Environment variables
+.env
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Virtual environments
+.venv/
+venv/
+ENV/
+env/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+"
+`;
+
+exports[`Assets Directory Snapshots > Python framework assets > python/python/agui/googleadk/base/main.py should match snapshot 1`] = `
+"import os
+import uvicorn
+from google.adk.agents import LlmAgent
+from ag_ui_adk import ADKAgent, AGUIToolset, create_adk_app
+from model.load import load_model
+
+load_model()
+
+agent = LlmAgent(
+    name="{{ name }}",
+    model="gemini-2.5-flash",
+    instruction="You are a helpful assistant.",
+    tools=[AGUIToolset()],
+)
+
+adk_agent = ADKAgent(
+    adk_agent=agent,
+    app_name="{{ name }}",
+    use_in_memory_services=True,
+)
+
+app = create_adk_app(adk_agent, path="/invocations")
+
+
+@app.get("/ping")
+async def ping():
+    return {"status": "healthy"}
+
+
+if __name__ == "__main__":
+    uvicorn.run(app, host="0.0.0.0", port=int(os.environ.get("PORT", "8080")))
+"
+`;
+
+exports[`Assets Directory Snapshots > Python framework assets > python/python/agui/googleadk/base/model/__init__.py should match snapshot 1`] = `
+"# Package marker
+"
+`;
+
+exports[`Assets Directory Snapshots > Python framework assets > python/python/agui/googleadk/base/model/load.py should match snapshot 1`] = `
+"import os
+from bedrock_agentcore.identity.auth import requires_api_key
+
+IDENTITY_PROVIDER_NAME = "{{identityProviders.[0].name}}"
+IDENTITY_ENV_VAR = "{{identityProviders.[0].envVarName}}"
+
+
+@requires_api_key(provider_name=IDENTITY_PROVIDER_NAME)
+def _agentcore_identity_api_key_provider(api_key: str) -> str:
+    """Fetch API key from AgentCore Identity."""
+    return api_key
+
+
+def _get_api_key() -> str:
+    """
+    Uses AgentCore Identity for API key management in deployed environments.
+    For local development, run via 'agentcore dev' which loads agentcore/.env.
+    """
+    if os.getenv("LOCAL_DEV") == "1":
+        api_key = os.getenv(IDENTITY_ENV_VAR)
+        if not api_key:
+            raise RuntimeError(
+                f"{IDENTITY_ENV_VAR} not found. Add {IDENTITY_ENV_VAR}=your-key to .env.local"
+            )
+        return api_key
+    return _agentcore_identity_api_key_provider()
+
+
+def load_model() -> None:
+    """
+    Set up Gemini API key authentication.
+    Uses AgentCore Identity for API key management in deployed environments,
+    and falls back to .env file for local development.
+    Sets the GOOGLE_API_KEY environment variable for the Google ADK.
+    """
+    api_key = _get_api_key()
+    # Use Google AI Studios API Key Authentication.
+    # https://google.github.io/adk-docs/agents/models/#google-ai-studio
+    os.environ["GOOGLE_API_KEY"] = api_key
+    # Set to TRUE is using Google Vertex AI, Set to FALSE for Google AI Studio
+    os.environ["GOOGLE_GENAI_USE_VERTEXAI"] = "FALSE"
+"
+`;
+
+exports[`Assets Directory Snapshots > Python framework assets > python/python/agui/googleadk/base/pyproject.toml should match snapshot 1`] = `
+"[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "{{ name }}"
+version = "0.1.0"
+description = "AgentCore AG-UI Agent using Google ADK"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    "ag-ui-adk >= 0.6.0",
+    "ag-ui-protocol >= 0.1.10",
+    "bedrock-agentcore >= 1.0.3",
+    "fastapi >= 0.115.12",
+    "google-adk >= 1.16.0",
+    "google-genai >= 1.0.0",
+    "opentelemetry-distro",
+    "opentelemetry-exporter-otlp",
+    "uvicorn >= 0.34.3",
+]
+
+[tool.hatch.build.targets.wheel]
+packages = ["."]
+"
+`;
+
+exports[`Assets Directory Snapshots > Python framework assets > python/python/agui/langchain_langgraph/base/README.md should match snapshot 1`] = `
+"# {{ name }}
+
+An AG-UI agent deployed on Amazon Bedrock AgentCore using LangChain + LangGraph.
+
+## Overview
+
+This agent implements the AG-UI protocol using LangGraph, enabling seamless frontend-to-agent communication with support for streaming, tool calls, and frontend-injected tools.
+
+## Local Development
+
+\`\`\`bash
+uv sync
+uv run python main.py
+\`\`\`
+
+The agent starts on port 8080.
+
+## Deploy
+
+\`\`\`bash
+agentcore deploy
+\`\`\`
+"
+`;
+
+exports[`Assets Directory Snapshots > Python framework assets > python/python/agui/langchain_langgraph/base/gitignore.template should match snapshot 1`] = `
+"# Environment variables
+.env
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Virtual environments
+.venv/
+venv/
+ENV/
+env/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+"
+`;
+
+exports[`Assets Directory Snapshots > Python framework assets > python/python/agui/langchain_langgraph/base/main.py should match snapshot 1`] = `
+"import os
+
+os.environ["LANGGRAPH_FAST_API"] = "true"
+
+import uvicorn
+from typing import Any, List
+from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
+from langgraph.graph import StateGraph, START
+from langgraph.graph.message import MessagesState
+from langgraph.checkpoint.memory import MemorySaver
+from langgraph.prebuilt import ToolNode, tools_condition
+from langchain_core.tools import tool
+from opentelemetry.instrumentation.langchain import LangchainInstrumentor
+from ag_ui_langgraph import LangGraphAgent, add_langgraph_fastapi_endpoint
+from model.load import load_model
+
+LangchainInstrumentor().instrument()
+
+
+@tool
+def add_numbers(a: int, b: int) -> int:
+    """Return the sum of two numbers."""
+    return a + b
+
+
+backend_tools = [add_numbers]
+model = load_model()
+
+
+class AgentState(MessagesState):
+    tools: List[Any]
+
+
+def chat_node(state: AgentState):
+    bound_model = model.bind_tools(
+        [*state.get("tools", []), *backend_tools],
+    )
+    response = bound_model.invoke(state["messages"])
+    return {"messages": [response]}
+
+
+builder = StateGraph(AgentState)
+builder.add_node("chat", chat_node)
+builder.add_node("tools", ToolNode(tools=backend_tools))
+builder.add_edge(START, "chat")
+builder.add_conditional_edges("chat", tools_condition)
+builder.add_edge("tools", "chat")
+graph = builder.compile(checkpointer=MemorySaver())
+
+agent = LangGraphAgent(
+    name="{{ name }}",
+    graph=graph,
+    description="A helpful assistant",
+)
+
+app = FastAPI()
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+add_langgraph_fastapi_endpoint(app=app, agent=agent, path="/invocations")
+
+
+@app.get("/ping")
+async def ping():
+    return {"status": "healthy"}
+
+
+if __name__ == "__main__":
+    uvicorn.run(app, host="0.0.0.0", port=int(os.environ.get("PORT", "8080")))
+"
+`;
+
+exports[`Assets Directory Snapshots > Python framework assets > python/python/agui/langchain_langgraph/base/model/__init__.py should match snapshot 1`] = `
+"# Package marker
+"
+`;
+
+exports[`Assets Directory Snapshots > Python framework assets > python/python/agui/langchain_langgraph/base/model/load.py should match snapshot 1`] = `
+"{{#if (eq modelProvider "Bedrock")}}
+from langchain_aws import ChatBedrock
+
+# Uses global inference profile for Claude Sonnet 4.5
+# https://docs.aws.amazon.com/bedrock/latest/userguide/inference-profiles-support.html
+MODEL_ID = "global.anthropic.claude-sonnet-4-5-20250929-v1:0"
+
+
+def load_model() -> ChatBedrock:
+    """Get Bedrock model client using IAM credentials."""
+    return ChatBedrock(model_id=MODEL_ID)
+{{/if}}
+{{#if (eq modelProvider "Anthropic")}}
+import os
+from langchain_anthropic import ChatAnthropic
+from bedrock_agentcore.identity.auth import requires_api_key
+
+IDENTITY_PROVIDER_NAME = "{{identityProviders.[0].name}}"
+IDENTITY_ENV_VAR = "{{identityProviders.[0].envVarName}}"
+
+
+@requires_api_key(provider_name=IDENTITY_PROVIDER_NAME)
+def _agentcore_identity_api_key_provider(api_key: str) -> str:
+    """Fetch API key from AgentCore Identity."""
+    return api_key
+
+
+def _get_api_key() -> str:
+    """
+    Uses AgentCore Identity for API key management in deployed environments.
+    For local development, run via 'agentcore dev' which loads agentcore/.env.
+    """
+    if os.getenv("LOCAL_DEV") == "1":
+        api_key = os.getenv(IDENTITY_ENV_VAR)
+        if not api_key:
+            raise RuntimeError(
+                f"{IDENTITY_ENV_VAR} not found. Add {IDENTITY_ENV_VAR}=your-key to .env.local"
+            )
+        return api_key
+    return _agentcore_identity_api_key_provider()
+
+
+def load_model() -> ChatAnthropic:
+    """Get authenticated Anthropic model client."""
+    return ChatAnthropic(
+        model="claude-sonnet-4-5-20250929",
+        api_key=_get_api_key()
+    )
+{{/if}}
+{{#if (eq modelProvider "OpenAI")}}
+import os
+from langchain_openai import ChatOpenAI
+from bedrock_agentcore.identity.auth import requires_api_key
+
+IDENTITY_PROVIDER_NAME = "{{identityProviders.[0].name}}"
+IDENTITY_ENV_VAR = "{{identityProviders.[0].envVarName}}"
+
+
+@requires_api_key(provider_name=IDENTITY_PROVIDER_NAME)
+def _agentcore_identity_api_key_provider(api_key: str) -> str:
+    """Fetch API key from AgentCore Identity."""
+    return api_key
+
+
+def _get_api_key() -> str:
+    """
+    Uses AgentCore Identity for API key management in deployed environments.
+    For local development, run via 'agentcore dev' which loads agentcore/.env.
+    """
+    if os.getenv("LOCAL_DEV") == "1":
+        api_key = os.getenv(IDENTITY_ENV_VAR)
+        if not api_key:
+            raise RuntimeError(
+                f"{IDENTITY_ENV_VAR} not found. Add {IDENTITY_ENV_VAR}=your-key to .env.local"
+            )
+        return api_key
+    return _agentcore_identity_api_key_provider()
+
+
+def load_model() -> ChatOpenAI:
+    """Get authenticated OpenAI model client."""
+    return ChatOpenAI(
+        model="gpt-4.1",
+        api_key=_get_api_key()
+    )
+{{/if}}
+{{#if (eq modelProvider "Gemini")}}
+import os
+from langchain_google_genai import ChatGoogleGenerativeAI
+from bedrock_agentcore.identity.auth import requires_api_key
+
+IDENTITY_PROVIDER_NAME = "{{identityProviders.[0].name}}"
+IDENTITY_ENV_VAR = "{{identityProviders.[0].envVarName}}"
+
+
+@requires_api_key(provider_name=IDENTITY_PROVIDER_NAME)
+def _agentcore_identity_api_key_provider(api_key: str) -> str:
+    """Fetch API key from AgentCore Identity."""
+    return api_key
+
+
+def _get_api_key() -> str:
+    """
+    Uses AgentCore Identity for API key management in deployed environments.
+    For local development, run via 'agentcore dev' which loads agentcore/.env.
+    """
+    if os.getenv("LOCAL_DEV") == "1":
+        api_key = os.getenv(IDENTITY_ENV_VAR)
+        if not api_key:
+            raise RuntimeError(
+                f"{IDENTITY_ENV_VAR} not found. Add {IDENTITY_ENV_VAR}=your-key to .env.local"
+            )
+        return api_key
+    return _agentcore_identity_api_key_provider()
+
+
+def load_model() -> ChatGoogleGenerativeAI:
+    """Get authenticated Gemini model client."""
+    return ChatGoogleGenerativeAI(
+        model="gemini-2.5-flash",
+        api_key=_get_api_key()
+    )
+{{/if}}
+"
+`;
+
+exports[`Assets Directory Snapshots > Python framework assets > python/python/agui/langchain_langgraph/base/pyproject.toml should match snapshot 1`] = `
+"[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "{{ name }}"
+version = "0.1.0"
+description = "AgentCore AG-UI Agent using LangChain + LangGraph"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    "ag-ui-langgraph >= 0.0.31",
+    "ag-ui-protocol >= 0.1.10",
+    {{#if (eq modelProvider "Anthropic")}}"langchain-anthropic >= 0.3.0",
+    {{/if}}{{#if (eq modelProvider "Bedrock")}}"langchain-aws >= 0.2.0",
+    {{/if}}{{#if (eq modelProvider "Gemini")}}"langchain-google-genai >= 2.0.0",
+    {{/if}}{{#if (eq modelProvider "OpenAI")}}"langchain-openai >= 0.2.0",
+    {{/if}}"aws-opentelemetry-distro",
+    "opentelemetry-instrumentation-langchain >= 0.59.0",
+    "bedrock-agentcore >= 1.0.3",
+    "botocore[crt] >= 1.35.0",
+    "langgraph >= 0.3.25",
+    "langchain >= 0.3.0",
+    "langchain-core >= 0.3.0",
+    "fastapi >= 0.115.12",
+    "uvicorn >= 0.34.3",
+]
+
+[tool.hatch.build.targets.wheel]
+packages = ["."]
+"
+`;
+
+exports[`Assets Directory Snapshots > Python framework assets > python/python/agui/strands/base/README.md should match snapshot 1`] = `
+"# {{ name }}
+
+An AG-UI agent deployed on Amazon Bedrock AgentCore using Strands SDK.
+
+## Overview
+
+This agent implements the AG-UI protocol, enabling streaming agent-to-UI communication. The agent exposes an \`/invocations\` endpoint that accepts AG-UI protocol requests and streams responses back to the client.
+
+## Local Development
+
+\`\`\`bash
+uv sync
+uv run python main.py
+\`\`\`
+
+The agent starts on port 8080.
+
+## Deploy
+
+\`\`\`bash
+agentcore deploy
+\`\`\`
+"
+`;
+
+exports[`Assets Directory Snapshots > Python framework assets > python/python/agui/strands/base/gitignore.template should match snapshot 1`] = `
+"# Environment variables
+.env
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Virtual environments
+.venv/
+venv/
+ENV/
+env/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+"
+`;
+
+exports[`Assets Directory Snapshots > Python framework assets > python/python/agui/strands/base/main.py should match snapshot 1`] = `
+"import os
+
+# Suppress OpenTelemetry warnings during local development; remove for production
+if os.getenv("LOCAL_DEV") == "1":
+    os.environ["OTEL_SDK_DISABLED"] = "true"
+
+import uvicorn
+from strands import Agent, tool
+from ag_ui_strands import StrandsAgent, StrandsAgentConfig, create_strands_app
+from model.load import load_model
+{{#if hasMemory}}
+from memory.session import get_memory_session_manager
+{{/if}}
+
+
+@tool
+def add_numbers(a: int, b: int) -> int:
+    """Return the sum of two numbers."""
+    return a + b
+
+
+tools = [add_numbers]
+
+agent = Agent(
+    model=load_model(),
+    system_prompt="You are a helpful assistant. Use tools when appropriate.",
+    tools=tools,
+)
+
+{{#if hasMemory}}
+def session_manager_provider(input_data):
+    return get_memory_session_manager(input_data.thread_id, "default-user")
+
+config = StrandsAgentConfig(session_manager_provider=session_manager_provider)
+{{else}}
+config = StrandsAgentConfig()
+{{/if}}
+
+agui_agent = StrandsAgent(agent=agent, name="{{ name }}", description="A helpful assistant", config=config)
+app = create_strands_app(agui_agent, path="/invocations", ping_path="/ping")
+
+if __name__ == "__main__":
+    uvicorn.run(app, host="0.0.0.0", port=int(os.environ.get("PORT", "8080")))
+"
+`;
+
+exports[`Assets Directory Snapshots > Python framework assets > python/python/agui/strands/base/model/__init__.py should match snapshot 1`] = `
+"# Package marker
+"
+`;
+
+exports[`Assets Directory Snapshots > Python framework assets > python/python/agui/strands/base/model/load.py should match snapshot 1`] = `
+"{{#if (eq modelProvider "Bedrock")}}
+from strands.models.bedrock import BedrockModel
+
+
+def load_model() -> BedrockModel:
+    """Get Bedrock model client using IAM credentials."""
+    return BedrockModel(model_id="global.anthropic.claude-sonnet-4-5-20250929-v1:0")
+{{/if}}
+{{#if (eq modelProvider "Anthropic")}}
+import os
+
+from strands.models.anthropic import AnthropicModel
+from bedrock_agentcore.identity.auth import requires_api_key
+
+IDENTITY_PROVIDER_NAME = "{{identityProviders.[0].name}}"
+IDENTITY_ENV_VAR = "{{identityProviders.[0].envVarName}}"
+
+
+@requires_api_key(provider_name=IDENTITY_PROVIDER_NAME)
+def _agentcore_identity_api_key_provider(api_key: str) -> str:
+    """Fetch API key from AgentCore Identity."""
+    return api_key
+
+
+def _get_api_key() -> str:
+    """
+    Uses AgentCore Identity for API key management in deployed environments.
+    For local development, run via 'agentcore dev' which loads agentcore/.env.
+    """
+    if os.getenv("LOCAL_DEV") == "1":
+        api_key = os.getenv(IDENTITY_ENV_VAR)
+        if not api_key:
+            raise RuntimeError(
+                f"{IDENTITY_ENV_VAR} not found. Add {IDENTITY_ENV_VAR}=your-key to .env.local"
+            )
+        return api_key
+    return _agentcore_identity_api_key_provider()
+
+
+def load_model() -> AnthropicModel:
+    """Get authenticated Anthropic model client."""
+    return AnthropicModel(
+        client_args={"api_key": _get_api_key()},
+        model_id="claude-sonnet-4-5-20250929",
+        max_tokens=5000,
+    )
+{{/if}}
+{{#if (eq modelProvider "OpenAI")}}
+import os
+
+from strands.models.openai import OpenAIModel
+from bedrock_agentcore.identity.auth import requires_api_key
+
+IDENTITY_PROVIDER_NAME = "{{identityProviders.[0].name}}"
+IDENTITY_ENV_VAR = "{{identityProviders.[0].envVarName}}"
+
+
+@requires_api_key(provider_name=IDENTITY_PROVIDER_NAME)
+def _agentcore_identity_api_key_provider(api_key: str) -> str:
+    """Fetch API key from AgentCore Identity."""
+    return api_key
+
+
+def _get_api_key() -> str:
+    """
+    Uses AgentCore Identity for API key management in deployed environments.
+    For local development, run via 'agentcore dev' which loads agentcore/.env.
+    """
+    if os.getenv("LOCAL_DEV") == "1":
+        api_key = os.getenv(IDENTITY_ENV_VAR)
+        if not api_key:
+            raise RuntimeError(
+                f"{IDENTITY_ENV_VAR} not found. Add {IDENTITY_ENV_VAR}=your-key to .env.local"
+            )
+        return api_key
+    return _agentcore_identity_api_key_provider()
+
+
+def load_model() -> OpenAIModel:
+    """Get authenticated OpenAI model client."""
+    return OpenAIModel(
+        client_args={"api_key": _get_api_key()},
+        model_id="gpt-4.1",
+    )
+{{/if}}
+{{#if (eq modelProvider "Gemini")}}
+import os
+
+from strands.models.gemini import GeminiModel
+from bedrock_agentcore.identity.auth import requires_api_key
+
+IDENTITY_PROVIDER_NAME = "{{identityProviders.[0].name}}"
+IDENTITY_ENV_VAR = "{{identityProviders.[0].envVarName}}"
+
+
+@requires_api_key(provider_name=IDENTITY_PROVIDER_NAME)
+def _agentcore_identity_api_key_provider(api_key: str) -> str:
+    """Fetch API key from AgentCore Identity."""
+    return api_key
+
+
+def _get_api_key() -> str:
+    """
+    Uses AgentCore Identity for API key management in deployed environments.
+    For local development, run via 'agentcore dev' which loads agentcore/.env.
+    """
+    if os.getenv("LOCAL_DEV") == "1":
+        api_key = os.getenv(IDENTITY_ENV_VAR)
+        if not api_key:
+            raise RuntimeError(
+                f"{IDENTITY_ENV_VAR} not found. Add {IDENTITY_ENV_VAR}=your-key to .env.local"
+            )
+        return api_key
+    return _agentcore_identity_api_key_provider()
+
+
+def load_model() -> GeminiModel:
+    """Get authenticated Gemini model client."""
+    return GeminiModel(
+        client_args={"api_key": _get_api_key()},
+        model_id="gemini-2.5-flash",
+    )
+{{/if}}
+"
+`;
+
+exports[`Assets Directory Snapshots > Python framework assets > python/python/agui/strands/base/pyproject.toml should match snapshot 1`] = `
+"[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "{{ name }}"
+version = "0.1.0"
+description = "AgentCore AG-UI Agent using Strands SDK"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    {{#if (eq modelProvider "Anthropic")}}"anthropic >= 0.30.0",
+    {{/if}}"ag-ui-strands >= 0.1.7",
+    "ag-ui-protocol >= 0.1.10",
+    "aws-opentelemetry-distro",
+    "bedrock-agentcore >= 1.0.3",
+    "botocore[crt] >= 1.35.0",
+    "fastapi >= 0.115.12",
+    {{#if (eq modelProvider "Gemini")}}"google-genai >= 1.0.0",
+    {{/if}}{{#if (eq modelProvider "OpenAI")}}"openai >= 1.0.0",
+    {{/if}}"strands-agents >= 1.15.0",
+    "strands-agents-tools >= 0.2.14",
+    "uvicorn >= 0.34.3",
+]
+
+[tool.hatch.build.targets.wheel]
+packages = ["."]
+"
+`;
+
+exports[`Assets Directory Snapshots > Python framework assets > python/python/agui/strands/capabilities/memory/__init__.py should match snapshot 1`] = `
+"# Package marker
+"
+`;
+
+exports[`Assets Directory Snapshots > Python framework assets > python/python/agui/strands/capabilities/memory/session.py should match snapshot 1`] = `
+"import os
+import uuid
+from typing import Optional
+
+from bedrock_agentcore.memory.integrations.strands.config import AgentCoreMemoryConfig{{#if memoryProviders.[0].strategies.length}}, RetrievalConfig{{/if}}
+from bedrock_agentcore.memory.integrations.strands.session_manager import AgentCoreMemorySessionManager
+
+MEMORY_ID = os.getenv("{{memoryProviders.[0].envVarName}}")
+REGION = os.getenv("AWS_REGION")
+
+def get_memory_session_manager(session_id: Optional[str], actor_id: str) -> Optional[AgentCoreMemorySessionManager]:
+    if not MEMORY_ID:
+        return None
+
+    # AgentCoreMemoryConfig rejects None; OAuth/CUSTOM_JWT callers can reach us
+    # without a runtime session header, so synthesize one when absent.
+    session_id = session_id or uuid.uuid4().hex
 
 {{#if memoryProviders.[0].strategies.length}}
     retrieval_config = {
@@ -1834,6 +2887,66 @@ add_numbers_tool = FunctionTool(
 # Define a collection of tools used by the model
 tools = [add_numbers_tool]
 
+{{#if sessionStorageMountPath}}
+SESSION_STORAGE_PATH = "{{sessionStorageMountPath}}"
+
+def _safe_resolve(path: str) -> str:
+    """Resolve path safely within the storage boundary."""
+    resolved = os.path.realpath(os.path.join(SESSION_STORAGE_PATH, path.lstrip("/")))
+    if not resolved.startswith(os.path.realpath(SESSION_STORAGE_PATH)):
+        raise ValueError(f"Path '{path}' is outside the storage boundary")
+    return resolved
+
+def file_read(path: str) -> str:
+    """Read a file from persistent storage. The path is relative to the storage root."""
+    try:
+        full_path = _safe_resolve(path)
+        with open(full_path) as f:
+            return f.read()
+    except ValueError as e:
+        return str(e)
+    except OSError as e:
+        return f"Error reading '{path}': {e.strerror}"
+
+def file_write(path: str, content: str) -> str:
+    """Write content to a file in persistent storage. The path is relative to the storage root."""
+    try:
+        full_path = _safe_resolve(path)
+        parent = os.path.dirname(full_path)
+        if parent:
+            os.makedirs(parent, exist_ok=True)
+        with open(full_path, "w") as f:
+            f.write(content)
+        return f"Written to {path}"
+    except ValueError as e:
+        return str(e)
+    except OSError as e:
+        return f"Error writing '{path}': {e.strerror}"
+
+def list_files(directory: str = "") -> str:
+    """List files in persistent storage. The directory is relative to the storage root."""
+    try:
+        target = _safe_resolve(directory)
+        entries = os.listdir(target)
+        return "\\n".join(entries) if entries else "(empty directory)"
+    except ValueError as e:
+        return str(e)
+    except OSError as e:
+        return f"Error listing '{directory}': {e.strerror}"
+
+tools.extend([
+    FunctionTool(file_read, description="Read a file from persistent storage. The path is relative to the storage root."),
+    FunctionTool(file_write, description="Write content to a file in persistent storage. The path is relative to the storage root."),
+    FunctionTool(list_files, description="List files in persistent storage. The directory is relative to the storage root."),
+])
+{{/if}}
+
+SYSTEM_MESSAGE = """
+You are a helpful assistant. Use tools when appropriate.
+{{#if sessionStorageMountPath}}
+You have persistent storage at {{sessionStorageMountPath}}. Use file tools to read and write files. Data persists across sessions.
+{{/if}}
+"""
 
 @app.entrypoint
 async def invoke(payload, context):
@@ -1847,7 +2960,7 @@ async def invoke(payload, context):
         name="{{ name }}",
         model_client=load_model(),
         tools=tools + mcp_tools,
-        system_message="You are a helpful assistant. Use tools when appropriate.",
+        system_message=SYSTEM_MESSAGE,
     )
 
     # Process the user prompt
@@ -2202,6 +3315,66 @@ def add_numbers(a: int, b: int) -> int:
     return a + b
 
 
+# Define a collection of tools used by the model
+tools = [add_numbers]
+
+{{#if sessionStorageMountPath}}
+SESSION_STORAGE_PATH = "{{sessionStorageMountPath}}"
+
+def _safe_resolve(path: str) -> str:
+    """Resolve path safely within the storage boundary."""
+    resolved = os.path.realpath(os.path.join(SESSION_STORAGE_PATH, path.lstrip("/")))
+    if not resolved.startswith(os.path.realpath(SESSION_STORAGE_PATH)):
+        raise ValueError(f"Path '{path}' is outside the storage boundary")
+    return resolved
+
+def file_read(path: str) -> str:
+    """Read a file from persistent storage. The path is relative to the storage root."""
+    try:
+        full_path = _safe_resolve(path)
+        with open(full_path) as f:
+            return f.read()
+    except ValueError as e:
+        return str(e)
+    except OSError as e:
+        return f"Error reading '{path}': {e.strerror}"
+
+def file_write(path: str, content: str) -> str:
+    """Write content to a file in persistent storage. The path is relative to the storage root."""
+    try:
+        full_path = _safe_resolve(path)
+        parent = os.path.dirname(full_path)
+        if parent:
+            os.makedirs(parent, exist_ok=True)
+        with open(full_path, "w") as f:
+            f.write(content)
+        return f"Written to {path}"
+    except ValueError as e:
+        return str(e)
+    except OSError as e:
+        return f"Error writing '{path}': {e.strerror}"
+
+def list_files(directory: str = "") -> str:
+    """List files in persistent storage. The directory is relative to the storage root."""
+    try:
+        target = _safe_resolve(directory)
+        entries = os.listdir(target)
+        return "\\n".join(entries) if entries else "(empty directory)"
+    except ValueError as e:
+        return str(e)
+    except OSError as e:
+        return f"Error listing '{directory}': {e.strerror}"
+
+tools.extend([file_read, file_write, list_files])
+{{/if}}
+
+AGENT_INSTRUCTION = """
+I can answer your questions using the knowledge I have!
+{{#if sessionStorageMountPath}}
+You have persistent storage at {{sessionStorageMountPath}}. Use file tools to read and write files. Data persists across sessions.
+{{/if}}
+"""
+
 # Get MCP Toolset
 {{#if hasGateway}}
 mcp_toolset = get_all_gateway_mcp_toolsets()
@@ -2224,8 +3397,8 @@ agent = Agent(
     model=MODEL_ID,
     name="{{ name }}",
     description="Agent to answer questions",
-    instruction="I can answer your questions using the knowledge I have!",
-    tools=mcp_toolset + [add_numbers],
+    instruction=AGENT_INSTRUCTION,
+    tools=mcp_toolset + tools,
 )
 
 
@@ -2563,6 +3736,66 @@ def add_numbers(a: int, b: int) -> int:
 # Define a collection of tools used by the model
 tools = [add_numbers]
 
+{{#if sessionStorageMountPath}}
+SESSION_STORAGE_PATH = "{{sessionStorageMountPath}}"
+
+def _safe_resolve(path: str) -> str:
+    """Resolve path safely within the storage boundary."""
+    resolved = os.path.realpath(os.path.join(SESSION_STORAGE_PATH, path.lstrip("/")))
+    if not resolved.startswith(os.path.realpath(SESSION_STORAGE_PATH)):
+        raise ValueError(f"Path '{path}' is outside the storage boundary")
+    return resolved
+
+@tool
+def file_read(path: str) -> str:
+    """Read a file from persistent storage. The path is relative to the storage root."""
+    try:
+        full_path = _safe_resolve(path)
+        with open(full_path) as f:
+            return f.read()
+    except ValueError as e:
+        return str(e)
+    except OSError as e:
+        return f"Error reading '{path}': {e.strerror}"
+
+@tool
+def file_write(path: str, content: str) -> str:
+    """Write content to a file in persistent storage. The path is relative to the storage root."""
+    try:
+        full_path = _safe_resolve(path)
+        parent = os.path.dirname(full_path)
+        if parent:
+            os.makedirs(parent, exist_ok=True)
+        with open(full_path, "w") as f:
+            f.write(content)
+        return f"Written to {path}"
+    except ValueError as e:
+        return str(e)
+    except OSError as e:
+        return f"Error writing '{path}': {e.strerror}"
+
+@tool
+def list_files(directory: str = "") -> str:
+    """List files in persistent storage. The directory is relative to the storage root."""
+    try:
+        target = _safe_resolve(directory)
+        entries = os.listdir(target)
+        return "\\n".join(entries) if entries else "(empty directory)"
+    except ValueError as e:
+        return str(e)
+    except OSError as e:
+        return f"Error listing '{directory}': {e.strerror}"
+
+tools.extend([file_read, file_write, list_files])
+{{/if}}
+
+SYSTEM_PROMPT = """
+You are a helpful assistant. Use tools when appropriate.
+{{#if sessionStorageMountPath}}
+You have persistent storage at {{sessionStorageMountPath}}. Use file tools to read and write files. Data persists across sessions.
+{{/if}}
+"""
+
 
 @app.entrypoint
 async def invoke(payload, context):
@@ -2581,7 +3814,7 @@ async def invoke(payload, context):
         mcp_tools = await mcp_client.get_tools()
 
     # Define the agent using create_react_agent
-    graph = create_react_agent(get_or_create_model(), tools=mcp_tools + tools)
+    graph = create_react_agent(get_or_create_model(), tools=mcp_tools + tools, prompt=SYSTEM_PROMPT)
 
     # Process the user prompt
     prompt = payload.get("prompt", "What can you help me with?")
@@ -2986,6 +4219,68 @@ def add_numbers(a: int, b: int) -> int:
     return a + b
 
 
+tools = [add_numbers]
+
+{{#if sessionStorageMountPath}}
+SESSION_STORAGE_PATH = "{{sessionStorageMountPath}}"
+
+def _safe_resolve(path: str) -> str:
+    """Resolve path safely within the storage boundary."""
+    resolved = os.path.realpath(os.path.join(SESSION_STORAGE_PATH, path.lstrip("/")))
+    if not resolved.startswith(os.path.realpath(SESSION_STORAGE_PATH)):
+        raise ValueError(f"Path '{path}' is outside the storage boundary")
+    return resolved
+
+@function_tool
+def file_read(path: str) -> str:
+    """Read a file from persistent storage. The path is relative to the storage root."""
+    try:
+        full_path = _safe_resolve(path)
+        with open(full_path) as f:
+            return f.read()
+    except ValueError as e:
+        return str(e)
+    except OSError as e:
+        return f"Error reading '{path}': {e.strerror}"
+
+@function_tool
+def file_write(path: str, content: str) -> str:
+    """Write content to a file in persistent storage. The path is relative to the storage root."""
+    try:
+        full_path = _safe_resolve(path)
+        parent = os.path.dirname(full_path)
+        if parent:
+            os.makedirs(parent, exist_ok=True)
+        with open(full_path, "w") as f:
+            f.write(content)
+        return f"Written to {path}"
+    except ValueError as e:
+        return str(e)
+    except OSError as e:
+        return f"Error writing '{path}': {e.strerror}"
+
+@function_tool
+def list_files(directory: str = "") -> str:
+    """List files in persistent storage. The directory is relative to the storage root."""
+    try:
+        target = _safe_resolve(directory)
+        entries = os.listdir(target)
+        return "\\n".join(entries) if entries else "(empty directory)"
+    except ValueError as e:
+        return str(e)
+    except OSError as e:
+        return f"Error listing '{directory}': {e.strerror}"
+
+tools.extend([file_read, file_write, list_files])
+{{/if}}
+
+INSTRUCTIONS = """
+You are a helpful assistant. Use tools when appropriate.
+{{#if sessionStorageMountPath}}
+You have persistent storage at {{sessionStorageMountPath}}. Use file tools to read and write files. Data persists across sessions.
+{{/if}}
+"""
+
 # Define the agent execution
 async def main(query):
     ensure_credentials_loaded()
@@ -2995,8 +4290,9 @@ async def main(query):
             agent = Agent(
                 name="{{ name }}",
                 model="gpt-4.1",
+                instructions=INSTRUCTIONS,
                 mcp_servers=mcp_servers,
-                tools=[add_numbers]
+                tools=tools
             )
             result = await Runner.run(agent, query)
             return result
@@ -3004,8 +4300,9 @@ async def main(query):
             agent = Agent(
                 name="{{ name }}",
                 model="gpt-4.1",
+                instructions=INSTRUCTIONS,
                 mcp_servers=[],
-                tools=[add_numbers]
+                tools=tools
             )
             result = await Runner.run(agent, query)
             return result
@@ -3016,8 +4313,9 @@ async def main(query):
                 agent = Agent(
                     name="{{ name }}",
                     model="gpt-4.1",
+                    instructions=INSTRUCTIONS,
                     mcp_servers=active_servers,
-                    tools=[add_numbers]
+                    tools=tools
                 )
                 result = await Runner.run(agent, query)
                 return result
@@ -3025,8 +4323,9 @@ async def main(query):
             agent = Agent(
                 name="{{ name }}",
                 model="gpt-4.1",
+                instructions=INSTRUCTIONS,
                 mcp_servers=[],
-                tools=[add_numbers]
+                tools=tools
             )
             result = await Runner.run(agent, query)
             return result
@@ -3308,6 +4607,9 @@ from mcp_client.client import get_streamable_http_mcp_client
 {{#if hasMemory}}
 from memory.session import get_memory_session_manager
 {{/if}}
+{{#if sessionStorageMountPath}}
+import os
+{{/if}}
 
 app = BedrockAgentCoreApp()
 log = app.logger
@@ -3329,11 +4631,70 @@ def add_numbers(a: int, b: int) -> int:
     return a+b
 tools.append(add_numbers)
 
+{{#if sessionStorageMountPath}}
+SESSION_STORAGE_PATH = "{{sessionStorageMountPath}}"
+
+def _safe_resolve(path: str) -> str:
+    """Resolve path safely within the storage boundary."""
+    resolved = os.path.realpath(os.path.join(SESSION_STORAGE_PATH, path.lstrip("/")))
+    if not resolved.startswith(os.path.realpath(SESSION_STORAGE_PATH)):
+        raise ValueError(f"Path '{path}' is outside the storage boundary")
+    return resolved
+
+@tool
+def file_read(path: str) -> str:
+    """Read a file from persistent storage. The path is relative to the storage root."""
+    try:
+        full_path = _safe_resolve(path)
+        with open(full_path) as f:
+            return f.read()
+    except ValueError as e:
+        return str(e)
+    except OSError as e:
+        return f"Error reading '{path}': {e.strerror}"
+
+@tool
+def file_write(path: str, content: str) -> str:
+    """Write content to a file in persistent storage. The path is relative to the storage root."""
+    try:
+        full_path = _safe_resolve(path)
+        parent = os.path.dirname(full_path)
+        if parent:
+            os.makedirs(parent, exist_ok=True)
+        with open(full_path, "w") as f:
+            f.write(content)
+        return f"Written to {path}"
+    except ValueError as e:
+        return str(e)
+    except OSError as e:
+        return f"Error writing '{path}': {e.strerror}"
+
+@tool
+def list_files(directory: str = "") -> str:
+    """List files in persistent storage. The directory is relative to the storage root."""
+    try:
+        target = _safe_resolve(directory)
+        entries = os.listdir(target)
+        return "\\n".join(entries) if entries else "(empty directory)"
+    except ValueError as e:
+        return str(e)
+    except OSError as e:
+        return f"Error listing '{directory}': {e.strerror}"
+
+tools.extend([file_read, file_write, list_files])
+{{/if}}
+
 # Add MCP client to tools if available
 for mcp_client in mcp_clients:
     if mcp_client:
         tools.append(mcp_client)
 
+SYSTEM_PROMPT = """
+You are a helpful assistant. Use tools when appropriate.
+{{#if sessionStorageMountPath}}
+You have persistent storage at {{sessionStorageMountPath}}. Use file tools to read and write files. Data persists across sessions.
+{{/if}}
+"""
 
 {{#if hasMemory}}
 def agent_factory():
@@ -3345,9 +4706,7 @@ def agent_factory():
             cache[key] = Agent(
                 model=load_model(),
                 session_manager=get_memory_session_manager(session_id, user_id),
-                system_prompt="""
-                    You are a helpful assistant. Use tools when appropriate.
-                """,
+                system_prompt=SYSTEM_PROMPT,
                 tools=tools
             )
         return cache[key]
@@ -3361,9 +4720,7 @@ def get_or_create_agent():
     if _agent is None:
         _agent = Agent(
             model=load_model(),
-            system_prompt="""
-                You are a helpful assistant. Use tools when appropriate.
-            """,
+            system_prompt=SYSTEM_PROMPT,
             tools=tools
         )
     return _agent
@@ -3646,6 +5003,7 @@ exports[`Assets Directory Snapshots > Python framework assets > python/python/ht
 
 exports[`Assets Directory Snapshots > Python framework assets > python/python/http/strands/capabilities/memory/session.py should match snapshot 1`] = `
 "import os
+import uuid
 from typing import Optional
 
 from bedrock_agentcore.memory.integrations.strands.config import AgentCoreMemoryConfig{{#if memoryProviders.[0].strategies.length}}, RetrievalConfig{{/if}}
@@ -3654,9 +5012,13 @@ from bedrock_agentcore.memory.integrations.strands.session_manager import AgentC
 MEMORY_ID = os.getenv("{{memoryProviders.[0].envVarName}}")
 REGION = os.getenv("AWS_REGION")
 
-def get_memory_session_manager(session_id: str, actor_id: str) -> Optional[AgentCoreMemorySessionManager]:
+def get_memory_session_manager(session_id: Optional[str], actor_id: str) -> Optional[AgentCoreMemorySessionManager]:
     if not MEMORY_ID:
         return None
+
+    # AgentCoreMemoryConfig rejects None; OAuth/CUSTOM_JWT callers can reach us
+    # without a runtime session header, so synthesize one when absent.
+    session_id = session_id or uuid.uuid4().hex
 
 {{#if memoryProviders.[0].strategies.length}}
     retrieval_config = {
@@ -3826,27 +5188,47 @@ exports[`Assets Directory Snapshots > Root-level assets > AGENTS.md should match
 
 This directory stores:
 
-- Template assets for agents written in different Languages, SDKs and having different configurations
+- Template assets for agents written in different languages, SDKs, and configurations
 - Container templates (\`container/python/\`) with \`Dockerfile\` and \`.dockerignore\` for Container build agents
+- Vended documentation (\`README.md\`, \`agents/AGENTS.md\`) copied into user projects at create time
+- CDK project template (\`cdk/\`) using \`@aws/agentcore-cdk\` L3 constructs
+- Evaluator templates (\`evaluators/\`) for code-based evaluators
+- MCP tool templates (\`mcp/\`) for Lambda and AgentCoreRuntime compute
 
 ### Directory Layout
 
 \`\`\`
 assets/
-├── python/              # Framework templates (one per SDK)
-│   ├── strands/
-│   ├── langchain_langgraph/
-│   ├── googleadk/
-│   ├── openaiagents/
-│   └── autogen/
+├── README.md            # Vended to project root as project README
+├── AGENTS.md            # This file — internal dev context
+├── agents/
+│   └── AGENTS.md        # Vended to project root for AI coding assistants
+├── python/              # Framework templates (one per SDK per protocol)
+│   ├── http/            # HTTP protocol agents
+│   │   ├── strands/
+│   │   ├── langchain_langgraph/
+│   │   ├── googleadk/
+│   │   ├── openaiagents/
+│   │   └── autogen/
+│   ├── mcp/             # MCP protocol agents
+│   │   └── standalone/
+│   └── a2a/             # A2A protocol agents
+│       ├── strands/
+│       ├── langchain_langgraph/
+│       └── googleadk/
+├── typescript/          # TypeScript agent templates
 ├── container/           # Container build templates
 │   └── python/
 │       ├── Dockerfile
 │       └── dockerignore.template
-└── agents/              # AGENTS.md vended to user projects
+├── cdk/                 # CDK project template (@aws/agentcore-cdk)
+├── evaluators/          # Code-based evaluator templates
+└── mcp/                 # MCP tool templates (Lambda + AgentCoreRuntime)
+    ├── python/
+    └── python-lambda/
 \`\`\`
 
-The rendering logic is rooted in the \`AgentEnvSpec\` and must ALWAYS respect the configuration in the Spec.
+The rendering logic is rooted in the \`AgentEnvSpec\` and must ALWAYS respect the configuration in the spec.
 
 For Container builds, \`BaseRenderer.render()\` automatically copies the \`container/<language>/\` templates (Dockerfile,
 .dockerignore) into the agent directory when \`buildType === 'Container'\`.
@@ -3855,10 +5237,13 @@ For Container builds, \`BaseRenderer.render()\` automatically copies the \`conta
 
 - Always make sure the templates are as close to working code as possible
 - AVOID as much as possible using any conditionals within the templates
+- Test template rendering with \`agentcore add agent\` for each framework/protocol combination
 
 ## How to use the assets in this directory
 
-- These assets are rendered by the CLI's template renderer in \`src/cli/templates/\`.
+- These assets are rendered by the CLI's template renderer in \`src/cli/templates/\`
+- The \`README.md\` and \`agents/AGENTS.md\` are copied verbatim (no template rendering) during project creation
+- The \`.llm-context/\` files are sourced from \`src/schema/llm-compacted/\` and written during init
 "
 `;
 
@@ -3870,14 +5255,19 @@ This project was created with the [AgentCore CLI](https://github.com/aws/agentco
 ## Project Structure
 
 \`\`\`
-.
 my-project/
+├── AGENTS.md               # AI coding assistant context
 ├── agentcore/
-│   ├── .env.local          # API keys (gitignored)
-│   ├── agentcore.json      # Resource specifications
-│   ├── aws-targets.json    # Deployment targets
-│   └── cdk/                # CDK infrastructure
-├── app/                    # Application code
+│   ├── agentcore.json      # Project config (agents, memories, credentials, gateways, evaluators)
+│   ├── aws-targets.json    # Deployment targets (account + region)
+│   ├── .env.local          # Secrets — API keys (gitignored)
+│   ├── .llm-context/       # TypeScript type definitions for AI assistants
+│   │   ├── agentcore.ts    # AgentCoreProjectSpec types
+│   │   ├── aws-targets.ts  # Deployment target types
+│   │   └── mcp.ts          # Gateway and MCP tool types
+│   └── cdk/                # CDK infrastructure (@aws/agentcore-cdk)
+├── app/                    # Agent application code
+└── evaluators/             # Custom evaluator code (if any)
 \`\`\`
 
 ## Getting Started
@@ -3885,7 +5275,9 @@ my-project/
 ### Prerequisites
 
 - **Node.js** 20.x or later
-- **uv** for Python agents ([install](https://docs.astral.sh/uv/getting-started/installation/))
+- **Python 3.10+** and **uv** for Python agents ([install uv](https://docs.astral.sh/uv/getting-started/installation/))
+- **AWS credentials** configured (\`aws configure\` or environment variables)
+- **Docker** (only for Container build agents)
 
 ### Development
 
@@ -3903,44 +5295,62 @@ Deploy to AWS:
 agentcore deploy
 \`\`\`
 
-Or use CDK directly:
+## Commands
 
-\`\`\`bash
-cd agentcore/cdk
-npx cdk deploy
-\`\`\`
+| Command | Description |
+| --- | --- |
+| \`agentcore create\` | Create a new AgentCore project |
+| \`agentcore add\` | Add resources (agent, memory, credential, gateway, evaluator, policy) |
+| \`agentcore remove\` | Remove resources |
+| \`agentcore dev\` | Run agent locally with hot-reload |
+| \`agentcore deploy\` | Deploy to AWS via CDK |
+| \`agentcore status\` | Show deployment status |
+| \`agentcore invoke\` | Invoke agent (local or deployed) |
+| \`agentcore logs\` | View agent logs |
+| \`agentcore traces\` | View agent traces |
+| \`agentcore eval\` | Run evaluations |
+| \`agentcore package\` | Package agent artifacts |
+| \`agentcore validate\` | Validate configuration |
+| \`agentcore pause\` | Pause a deployed agent |
+| \`agentcore resume\` | Resume a paused agent |
+| \`agentcore fetch\` | Fetch remote resource definitions |
+| \`agentcore import\` | Import existing resources |
+| \`agentcore update\` | Check for CLI updates |
 
 ## Configuration
 
-Edit the JSON files in \`agentcore/\` to configure your agents, memory, and credentials. See \`agentcore/.llm-context/\` for
-type definitions and validation constraints.
+Edit the JSON files in \`agentcore/\` to configure your project. See \`agentcore/.llm-context/\` for type definitions and validation constraints.
 
-The project uses a **flat resource model** where agents, memories, and credentials are top-level arrays in
-\`agentcore.json\`.
+The project uses a **flat resource model** — agents, memories, credentials, gateways, evaluators, and policies are top-level arrays in \`agentcore.json\`. Resources are independent; agents discover memories and credentials at runtime via environment variables or SDK calls.
 
-## Commands
+## Resources
 
-| Command              | Description                                     |
-| -------------------- | ----------------------------------------------- |
-| \`agentcore create\`   | Create a new AgentCore project                  |
-| \`agentcore add\`      | Add resources (agent, memory, credential, target) |
-| \`agentcore remove\`   | Remove resources                                |
-| \`agentcore dev\`      | Run agent locally                               |
-| \`agentcore deploy\`   | Deploy to AWS                                   |
-| \`agentcore status\`   | Show deployment status                          |
-| \`agentcore invoke\`   | Invoke agent (local or deployed)                |
-| \`agentcore package\`  | Package agent artifacts                         |
-| \`agentcore validate\` | Validate configuration                          |
-| \`agentcore update\`   | Check for CLI updates                           |
+| Resource | Purpose |
+| --- | --- |
+| Agent (runtime) | HTTP, MCP, or A2A agent deployed to AgentCore Runtime |
+| Memory | Persistent context storage with configurable strategies |
+| Credential | API key or OAuth credential providers |
+| Gateway | MCP gateway that routes tool calls to targets |
+| Gateway Target | Tool implementation (Lambda, MCP server, OpenAPI, Smithy, API Gateway) |
+| Evaluator | Custom LLM-as-a-Judge or code-based evaluation |
+| Online Eval Config | Continuous evaluation pipeline for deployed agents |
+| Policy | Cedar authorization policies for gateway tools |
 
 ### Agent Types
 
-- **Template agents**: Created from framework templates (Strands, LangChain_LangGraph, CrewAI, GoogleADK, OpenAIAgents)
+- **Template agents**: Created from framework templates (Strands, LangChain/LangGraph, GoogleADK, OpenAI Agents, Autogen)
 - **BYO agents**: Bring your own code with \`agentcore add agent --type byo\`
+- **Import agents**: Import existing Bedrock agents with \`agentcore import\`
+
+### Build Types
+
+- **CodeZip**: Python source packaged as a zip and deployed directly to AgentCore Runtime
+- **Container**: Docker image built via CodeBuild (ARM64), pushed to ECR, and deployed to AgentCore Runtime
 
 ## Documentation
 
-- [AgentCore CLI Documentation](https://github.com/aws/agentcore-cli)
+- [AgentCore CLI](https://github.com/aws/agentcore-cli)
+- [AgentCore CDK Constructs](https://github.com/aws/agentcore-l3-cdk-constructs)
 - [Amazon Bedrock AgentCore](https://aws.amazon.com/bedrock/agentcore/)
 "
 `;
@@ -3950,103 +5360,114 @@ exports[`Assets Directory Snapshots > Root-level assets > agents/AGENTS.md shoul
 
 This project contains configuration and infrastructure for an Amazon Bedrock AgentCore application.
 
-The \`agentcore/\` directory serves as a declarative model of an AgentCore project along with a concrete implementation
-through the \`agentcore/cdk/\` project which is modeled to take the configs as input. The project uses a **flat resource
-model** where agents, memories, and credentials are top-level arrays.
+The \`agentcore/\` directory is a declarative model of the project. The \`agentcore/cdk/\` subdirectory uses the
+\`@aws/agentcore-cdk\` L3 constructs to deploy the configuration to AWS.
 
 ## Mental Model
 
-The project uses a **flat resource model**. Agents, memories, and credentials are independent top-level arrays in
-\`agentcore.json\`. There is no binding or attachment between resources in the schema — each resource is provisioned
-independently. To use a memory or credential from an agent, the application code discovers the resource at runtime
-(e.g., via environment variables or SDK calls). Tags defined in \`agentcore.json\` flow through to deployed CloudFormation resources.
+The project uses a **flat resource model**. Agents, memories, credentials, gateways, evaluators, and policies are
+independent top-level arrays in \`agentcore.json\`. There is no binding between resources in the schema — each resource is
+provisioned independently. Agents discover memories and credentials at runtime via environment variables or SDK calls.
+Tags defined in \`agentcore.json\` flow through to deployed CloudFormation resources.
 
 ## Critical Invariants
 
-1. **Schema-First Authority:** The \`.json\` files are the absolute source of truth. Do not attempt to modify agent
-   behavior by editing the generated CDK code in \`cdk/\`.
-2. **Resource Identity:** The \`name\` field in the schema determines the CloudFormation Logical ID.
-   - **Renaming** an agent or target will **destroy and recreate** that resource.
-   - **Modifying** other fields (descriptions, config) will update the resource **in-place**.
-3. **1:1 Validation:** The schema maps directly to valid CloudFormation. If your JSON conforms to the types in
-   \`.llm-context/\`, it will deploy successfully.
-4. **Resource Removal:** To remove all resources, use \`agentcore remove all\`. To tear down deployed infrastructure, run
-   \`agentcore deploy\` after removal — it will detect the empty state and offer a teardown flow.
+1. **Schema-First Authority:** The \`.json\` files are the source of truth. Do not modify agent behavior by editing
+   generated CDK code in \`cdk/\`.
+2. **Resource Identity:** The \`name\` field determines the CloudFormation Logical ID.
+   - **Renaming** a resource will **destroy and recreate** it.
+   - **Modifying** other fields will update the resource **in-place**.
+3. **Schema Validation:** If your JSON conforms to the types in \`.llm-context/\`, it will deploy successfully. Run
+   \`agentcore validate\` to check.
+4. **Resource Removal:** Use \`agentcore remove\` to remove resources. Run \`agentcore deploy\` after removal to tear down
+   deployed infrastructure.
 
 ## Directory Structure
 
 \`\`\`
-myNewProject/
-├── AGENTS.md               # This file - AI coding assistant context
-├── agentcore/              # AgentCore configuration directory
+myProject/
+├── AGENTS.md               # This file — AI coding assistant context
+├── agentcore/
 │   ├── agentcore.json      # Main project config (AgentCoreProjectSpec)
-│   ├── aws-targets.json    # Deployment targets
-│   ├── .llm-context/       # TypeScript type definitions for AI coding assistants
-│   │   ├── README.md       # Guide to using the schema files
+│   ├── aws-targets.json    # Deployment targets (account + region)
+│   ├── .env.local          # Secrets — API keys (gitignored)
+│   ├── .llm-context/       # TypeScript type definitions for AI assistants
+│   │   ├── README.md       # Guide to using schema files
 │   │   ├── agentcore.ts    # AgentCoreProjectSpec types
-│   │   └── aws-targets.ts  # AWS deployment target types
-│   └── cdk/                # AWS CDK project for deployment
-└── app/                    # Application code (if agents were created)
+│   │   ├── aws-targets.ts  # AWS deployment target types
+│   │   └── mcp.ts          # Gateway and MCP tool types
+│   └── cdk/                # AWS CDK project (@aws/agentcore-cdk L3 constructs)
+├── app/                    # Agent application code
+└── evaluators/             # Custom evaluator code (if any)
 \`\`\`
 
 ## Schema Reference
 
 The \`agentcore/.llm-context/\` directory contains TypeScript type definitions optimized for AI coding assistants. Each
-file maps to a JSON config file and includes validation constraints as comments.
+file maps to a JSON config file and includes validation constraints as comments (\`@regex\`, \`@min\`, \`@max\`).
 
-| JSON Config                  | Schema File                             | Root Type               |
-| ---------------------------- | --------------------------------------- | ----------------------- |
-| \`agentcore/agentcore.json\`   | \`agentcore/.llm-context/agentcore.ts\`   | \`AgentCoreProjectSpec\`  |
-| \`agentcore/aws-targets.json\` | \`agentcore/.llm-context/aws-targets.ts\` | \`AWSDeploymentTarget[]\` |
+| JSON Config | Schema File | Root Type |
+| --- | --- | --- |
+| \`agentcore/agentcore.json\` | \`agentcore/.llm-context/agentcore.ts\` | \`AgentCoreProjectSpec\` |
+| \`agentcore/agentcore.json\` (gateways) | \`agentcore/.llm-context/mcp.ts\` | \`AgentCoreMcpSpec\` |
+| \`agentcore/aws-targets.json\` | \`agentcore/.llm-context/aws-targets.ts\` | \`AwsDeploymentTarget[]\` |
 
 ### Key Types
 
-- **AgentCoreProjectSpec**: Root project configuration with \`agents\`, \`memories\`, \`credentials\` arrays
-- **AgentEnvSpec**: Agent configuration (runtime, entrypoint, code location)
-- **Memory**: Memory resource with strategies and expiry
-- **Credential**: API key credential provider
+- **AgentCoreProjectSpec**: Root config with \`runtimes\`, \`memories\`, \`credentials\`, \`agentCoreGateways\`, \`evaluators\`, \`onlineEvalConfigs\`, \`policyEngines\` arrays
+- **AgentEnvSpec**: Agent configuration (build type, entrypoint, code location, runtime version, network mode)
+- **Memory**: Memory resource with strategies (SEMANTIC, SUMMARIZATION, USER_PREFERENCE, EPISODIC) and expiry
+- **Credential**: API key or OAuth credential provider
+- **AgentCoreGateway**: MCP gateway with targets (Lambda, MCP server, OpenAPI, Smithy, API Gateway)
+- **Evaluator**: LLM-as-a-Judge or code-based evaluator
+- **OnlineEvalConfig**: Continuous evaluation pipeline bound to an agent
 
 ### Common Enum Values
 
 - **BuildType**: \`'CodeZip'\` | \`'Container'\`
-- **NetworkMode**: \`'PUBLIC'\`
-- **RuntimeVersion**: \`'PYTHON_3_10'\` | \`'PYTHON_3_11'\` | \`'PYTHON_3_12'\` | \`'PYTHON_3_13'\`
+- **NetworkMode**: \`'PUBLIC'\` | \`'VPC'\`
+- **RuntimeVersion**: \`'PYTHON_3_10'\` | \`'PYTHON_3_11'\` | \`'PYTHON_3_12'\` | \`'PYTHON_3_13'\` | \`'PYTHON_3_14'\` | \`'NODE_18'\` | \`'NODE_20'\` | \`'NODE_22'\`
 - **MemoryStrategyType**: \`'SEMANTIC'\` | \`'SUMMARIZATION'\` | \`'USER_PREFERENCE'\` | \`'EPISODIC'\`
+- **GatewayTargetType**: \`'lambda'\` | \`'mcpServer'\` | \`'openApiSchema'\` | \`'smithyModel'\` | \`'apiGateway'\` | \`'lambdaFunctionArn'\`
+- **ModelProvider**: \`'Bedrock'\` | \`'Gemini'\` | \`'OpenAI'\` | \`'Anthropic'\`
 
 ### Build Types
 
-- **CodeZip**: Python source is packaged as a zip artifact and deployed directly to AgentCore Runtime.
-- **Container**: Agent code is built as a Docker container image. Requires a \`Dockerfile\` in the agent's \`codeLocation\`
-  directory. At deploy time, the source is uploaded to S3, built in CodeBuild (ARM64), pushed to a per-agent ECR
-  repository, and the container URI is provided to the AgentCore Runtime. For local development (\`agentcore dev\`), the
-  container is built and run locally with volume-mounted hot-reload.
+- **CodeZip**: Python source packaged as a zip and deployed directly to AgentCore Runtime.
+- **Container**: Docker image built in CodeBuild (ARM64), pushed to a per-agent ECR repository. Requires a \`Dockerfile\`
+  in the agent's \`codeLocation\` directory. For local development (\`agentcore dev\`), the container is built and run
+  locally with volume-mounted hot-reload.
 
 ### Supported Frameworks (for template agents)
 
-- **Strands** - Works with Bedrock, Anthropic, OpenAI, Gemini
-- **LangChain_LangGraph** - Works with Bedrock, Anthropic, OpenAI, Gemini
-- **GoogleADK** - Gemini only
-- **OpenAIAgents** - OpenAI only
+- **Strands** — Bedrock, Anthropic, OpenAI, Gemini
+- **LangChain/LangGraph** — Bedrock, Anthropic, OpenAI, Gemini
+- **GoogleADK** — Gemini
+- **OpenAI Agents** — OpenAI
+- **Autogen** — Bedrock, Anthropic, OpenAI, Gemini
 
+### Protocols
 
-### Specific Context
-
-Directory pathing to local projects is required for runtimes. Both CodeZip (Python zip) and Container (Docker image)
-deployment options are available.
+- **HTTP** — Standard HTTP agent endpoint
+- **MCP** — Model Context Protocol server
+- **A2A** — Agent-to-Agent protocol (Google A2A)
 
 ## Deployment
 
-The \`agentcore/cdk/\` subdirectory contains an AWS CDK node project.
+Deployments are orchestrated through the CLI:
 
-Deployments of this project are primarily intended to be orchestrated through the \`agentcore deploy\` command in the CLI.
+\`\`\`bash
+agentcore deploy    # Synthesizes CDK and deploys to AWS
+agentcore status    # Shows deployment status
+\`\`\`
 
-Alternatively, the project can be deployed directly as a traditional CDK project:
+Alternatively, deploy directly via CDK:
 
 \`\`\`bash
 cd agentcore/cdk
 npm install
-npx cdk synth   # Preview CloudFormation template
-npx cdk deploy  # Deploy to AWS
+npx cdk synth
+npx cdk deploy
 \`\`\`
 
 ## Editing Schemas
@@ -4057,7 +5478,25 @@ When modifying JSON config files:
 2. Check validation constraint comments (\`@regex\`, \`@min\`, \`@max\`)
 3. Use exact enum values as string literals
 4. Use CloudFormation-safe names (alphanumeric, start with letter)
-5. Run \`agentcore validate\` command to verify changes.
+5. Run \`agentcore validate\` to verify changes
+
+## CLI Commands
+
+| Command | Description |
+| --- | --- |
+| \`agentcore create\` | Create a new project |
+| \`agentcore add <resource>\` | Add agent, memory, credential, gateway, evaluator, policy |
+| \`agentcore remove <resource>\` | Remove a resource |
+| \`agentcore dev\` | Run agent locally with hot-reload |
+| \`agentcore deploy\` | Deploy to AWS |
+| \`agentcore status\` | Show deployment status |
+| \`agentcore invoke\` | Invoke agent (local or deployed) |
+| \`agentcore logs\` | View agent logs |
+| \`agentcore traces\` | View agent traces |
+| \`agentcore eval\` | Run evaluations against an agent |
+| \`agentcore package\` | Package agent artifacts |
+| \`agentcore validate\` | Validate configuration |
+| \`agentcore pause\` / \`resume\` | Pause or resume a deployed agent |
 "
 `;
 

@@ -1,10 +1,12 @@
 import { ConfigIO } from '../../../lib';
 import type { AgentCoreProjectSpec, AwsDeploymentTargets, DeployedState } from '../../../schema';
 import {
+  buildAguiRunInput,
   executeBashCommand,
   invokeA2ARuntime,
   invokeAgentRuntime,
   invokeAgentRuntimeStreaming,
+  invokeAguiRuntime,
   mcpCallTool,
   mcpInitSession,
   mcpListTools,
@@ -12,6 +14,7 @@ import {
 import { InvokeLogger } from '../../logging';
 import { formatMcpToolList } from '../../operations/dev/utils';
 import { canFetchRuntimeToken, fetchRuntimeToken } from '../../operations/fetch-access';
+import { generateSessionId } from '../../operations/session';
 import type { InvokeOptions, InvokeResult } from './types';
 
 export interface InvokeContext {
@@ -112,18 +115,27 @@ export async function handleInvoke(context: InvokeContext, options: InvokeOption
     }
   }
 
+  // When invoking with a bearer token (OAuth/CUSTOM_JWT), AgentCore does not
+  // auto-generate a runtime session ID the way it does for SigV4 callers. Templates
+  // that wire up AgentCoreMemorySessionManager require a non-null session_id, so
+  // generate one here if the caller didn't pass --session-id.
+  if (options.bearerToken && !options.sessionId) {
+    options = { ...options, sessionId: generateSessionId() };
+  }
+
   // Exec mode: run shell command in runtime container
   if (options.exec) {
     const logger = new InvokeLogger({
       agentName: agentSpec.name,
       runtimeArn: agentState.runtimeArn,
       region: targetConfig.region,
+      sessionId: options.sessionId,
     });
     const command = options.prompt;
     if (!command) {
       return { success: false, error: '--exec requires a command (prompt)' };
     }
-    logger.logPrompt(command, undefined, options.userId);
+    logger.logPrompt(command, options.sessionId, options.userId);
 
     try {
       const result = await executeBashCommand({
@@ -294,6 +306,7 @@ export async function handleInvoke(context: InvokeContext, options: InvokeOption
           region: targetConfig.region,
           runtimeArn: agentState.runtimeArn,
           userId: options.userId,
+          sessionId: options.sessionId,
           headers: options.headers,
         },
         options.prompt
@@ -319,14 +332,70 @@ export async function handleInvoke(context: InvokeContext, options: InvokeOption
     }
   }
 
+  // AGUI protocol handling — send RunAgentInput via InvokeAgentRuntime, stream text
+  if (agentSpec.protocol === 'AGUI') {
+    const logger = new InvokeLogger({
+      agentName: agentSpec.name,
+      runtimeArn: agentState.runtimeArn,
+      region: targetConfig.region,
+    });
+
+    try {
+      const aguiInput = buildAguiRunInput(options.prompt, options.sessionId);
+      logger.logPrompt(options.prompt, undefined, options.userId);
+
+      const aguiResult = await invokeAguiRuntime(
+        {
+          region: targetConfig.region,
+          runtimeArn: agentState.runtimeArn,
+          sessionId: options.sessionId,
+          userId: options.userId,
+          logger,
+          headers: options.headers,
+          bearerToken: options.bearerToken,
+        },
+        aguiInput
+      );
+      let response = '';
+      let hasError = false;
+      for await (const chunk of aguiResult.textStream) {
+        response += chunk;
+        if (chunk.startsWith('Error: ')) {
+          hasError = true;
+        }
+        if (options.stream) {
+          process.stdout.write(chunk);
+        }
+      }
+      if (options.stream) {
+        process.stdout.write('\n');
+      }
+
+      logger.logResponse(response);
+
+      return {
+        success: !hasError,
+        agentName: agentSpec.name,
+        targetName: selectedTargetName,
+        response,
+        sessionId: aguiResult.sessionId,
+        logFilePath: logger.logFilePath,
+      };
+    } catch (err) {
+      logger.logError(err, 'AGUI invoke failed');
+      return { success: false, error: `AGUI invoke failed: ${err instanceof Error ? err.message : String(err)}` };
+    }
+  }
+
   // Create logger for this invocation
   const logger = new InvokeLogger({
     agentName: agentSpec.name,
     runtimeArn: agentState.runtimeArn,
     region: targetConfig.region,
+    sessionId: options.sessionId,
   });
 
-  logger.logPrompt(options.prompt, undefined, options.userId);
+  logger.logPrompt(options.prompt, options.sessionId, options.userId);
 
   if (options.stream) {
     // Streaming mode
@@ -356,6 +425,7 @@ export async function handleInvoke(context: InvokeContext, options: InvokeOption
         agentName: agentSpec.name,
         targetName: selectedTargetName,
         response: fullResponse,
+        sessionId: result.sessionId,
         logFilePath: logger.logFilePath,
       };
     } catch (err) {
@@ -382,6 +452,7 @@ export async function handleInvoke(context: InvokeContext, options: InvokeOption
     agentName: agentSpec.name,
     targetName: selectedTargetName,
     response: response.content,
+    sessionId: response.sessionId,
     logFilePath: logger.logFilePath,
   };
 }

@@ -1,6 +1,8 @@
 export { detectAwsContext, type AwsContext } from './aws-context';
 export { detectAccount, getCredentialProvider } from './account';
+export { getPartition, arnPrefix, dnsSuffix, serviceEndpoint, consoleDomain } from './partition';
 export { detectRegion, type RegionDetectionResult } from './region';
+export { applyTargetRegionToEnv, withTargetRegion } from './target-region';
 export {
   invokeBedrockSync,
   invokeClaude,
@@ -46,3 +48,44 @@ export {
   type StopRuntimeSessionOptions,
   type StopRuntimeSessionResult,
 } from './agentcore';
+export {
+  AguiEventType,
+  AguiErrorCode,
+  parseAguiEvent,
+  buildAguiRunInput,
+  type AguiBaseEvent,
+  type AguiEvent,
+  type AguiRunInput,
+  type AguiMessage,
+  type AguiTool,
+  type AguiContext,
+  type AguiRunStarted,
+  type AguiRunFinished,
+  type AguiRunError,
+  type AguiTextMessageStart,
+  type AguiTextMessageContent,
+  type AguiTextMessageEnd,
+  type AguiToolCallStart,
+  type AguiToolCallArgs,
+  type AguiToolCallEnd,
+  type AguiToolCallResult,
+  type AguiStateSnapshot,
+  type AguiStateDelta,
+  type AguiStepStarted,
+  type AguiStepFinished,
+  type AguiMessagesSnapshot,
+  type AguiActivitySnapshot,
+  type AguiActivityDelta,
+  type AguiReasoningStart,
+  type AguiReasoningMessageStart,
+  type AguiReasoningMessageContent,
+  type AguiReasoningMessageEnd,
+  type AguiReasoningEnd,
+  type AguiReasoningEncryptedValue,
+  type AguiRawEvent,
+  type AguiCustomEvent,
+  type AguiTextMessageChunk,
+  type AguiToolCallChunk,
+  type AguiMetaEvent,
+} from './agui-types';
+export { invokeAguiRuntime, type AguiInvokeOptions, type AguiStreamingInvokeResult } from './agentcore';

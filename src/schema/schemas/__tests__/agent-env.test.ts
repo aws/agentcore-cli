@@ -209,7 +209,7 @@ describe('AgentEnvSpecSchema', () => {
   });
 
   it('accepts agent with all Python runtime versions', () => {
-    for (const version of ['PYTHON_3_10', 'PYTHON_3_11', 'PYTHON_3_12', 'PYTHON_3_13']) {
+    for (const version of ['PYTHON_3_10', 'PYTHON_3_11', 'PYTHON_3_12', 'PYTHON_3_13', 'PYTHON_3_14']) {
       const result = AgentEnvSpecSchema.safeParse({ ...validPythonAgent, runtimeVersion: version });
       expect(result.success, `Should accept ${version}`).toBe(true);
     }
@@ -286,7 +286,7 @@ describe('AgentEnvSpecSchema', () => {
   });
 
   describe('protocol', () => {
-    it.each(['HTTP', 'MCP', 'A2A'])('accepts valid protocol "%s"', mode => {
+    it.each(['HTTP', 'MCP', 'A2A', 'AGUI'])('accepts valid protocol "%s"', mode => {
       const result = AgentEnvSpecSchema.safeParse({ ...validPythonAgent, protocol: mode });
       expect(result.success, `Should accept protocol ${mode}`).toBe(true);
     });

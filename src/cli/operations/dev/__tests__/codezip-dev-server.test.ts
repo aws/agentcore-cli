@@ -7,7 +7,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 const mockSpawn = vi.fn();
 vi.mock('child_process', () => ({
   spawn: (...args: unknown[]) => mockSpawn(...args),
-  spawnSync: vi.fn(() => ({ status: 0 })),
+  spawnSync: vi.fn(() => ({ status: 0, stdout: Buffer.from(''), stderr: Buffer.from('') })),
 }));
 
 vi.mock('fs', () => ({

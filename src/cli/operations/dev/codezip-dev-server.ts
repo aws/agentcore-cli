@@ -4,7 +4,7 @@ import { DevServer, type LogLevel, type SpawnConfig } from './dev-server';
 import { convertEntrypointToModule } from './utils';
 import { spawnSync } from 'child_process';
 import { existsSync } from 'fs';
-import { join } from 'path';
+import { delimiter, join } from 'path';
 
 /**
  * Ensures a Python virtual environment exists and has dependencies installed.
@@ -67,6 +67,32 @@ function ensurePythonVenv(
   return true;
 }
 
+/**
+ * Locate the directory containing OpenTelemetry's auto-instrumentation sitecustomize.py.
+ * When this directory is prepended to PYTHONPATH, Python will execute sitecustomize.py
+ * on startup, which bootstraps OTEL auto-instrumentation in every process.
+ */
+function findOtelSitecustomizeDir(venvPath: string): string | undefined {
+  // opentelemetry-instrument stores its sitecustomize.py at:
+  // <site-packages>/opentelemetry/instrumentation/auto_instrumentation/sitecustomize.py
+  // We need the parent directory so Python finds the file as `sitecustomize.py`.
+  const result = spawnSync(
+    getVenvExecutable(venvPath, 'python'),
+    [
+      '-c',
+      'import opentelemetry.instrumentation.auto_instrumentation as m; import os; print(os.path.dirname(m.__file__))',
+    ],
+    { cwd: venvPath, stdio: 'pipe' }
+  );
+  if (result.status === 0) {
+    const dir = result.stdout.toString().trim();
+    if (dir && existsSync(join(dir, 'sitecustomize.py'))) {
+      return dir;
+    }
+  }
+  return undefined;
+}
+
 /** Dev server for CodeZip agents. Runs uvicorn (Python) or npx tsx (Node.js) locally. */
 export class CodeZipDevServer extends DevServer {
   protected prepare(): Promise<boolean> {
@@ -80,10 +106,18 @@ export class CodeZipDevServer extends DevServer {
   protected getSpawnConfig(): SpawnConfig {
     const { module, directory, isPython, protocol } = this.config;
     const { port, envVars = {} } = this.options;
-    const env = { ...process.env, ...envVars, PORT: String(port), LOCAL_DEV: '1' };
+    const env: Record<string, string | undefined> = { ...process.env, ...envVars, PORT: String(port), LOCAL_DEV: '1' };
+
+    // FastMCP declares FASTMCP_PORT via pydantic BaseSettings (env_prefix="FASTMCP_"),
+    // but its __init__ passes port=8000 as an init kwarg to Settings(), which takes
+    // priority over env vars in pydantic v2. So this env var is currently ineffective —
+    // the agent always binds to 8000. We still set it for forward compatibility in case
+    // a future MCP SDK release fixes the override. The dev server targets port 8000.
+    if (protocol === 'MCP') {
+      env.FASTMCP_PORT = String(port);
+    }
 
     if (!isPython) {
-      // Node.js path (unchanged)
       return {
         cmd: 'npx',
         args: ['tsx', 'watch', (module.split(':')[0] ?? module).replace(/\./g, '/') + '.ts'],
@@ -94,8 +128,25 @@ export class CodeZipDevServer extends DevServer {
 
     const venvDir = join(directory, '.venv');
 
+    // Enable OTEL auto-instrumentation via sitecustomize.py injection.
+    // We can't use `opentelemetry-instrument` as a wrapper because uvicorn's
+    // --reload runs two processes: a reloader (parent) that watches files, and
+    // a worker (child) that actually serves requests. The wrapper only instruments
+    // the reloader — when it respawns the worker on file changes, the new worker
+    // is a fresh Python process with no tracing, so requests go untraced.
+    // Instead, we prepend the OTEL sitecustomize.py directory to PYTHONPATH.
+    // Python executes sitecustomize.py automatically on startup in every process,
+    // so both the reloader and every worker it spawns get instrumented.
+    const otelSitecustomizeDir = findOtelSitecustomizeDir(venvDir);
+    if (envVars.OTEL_EXPORTER_OTLP_ENDPOINT && otelSitecustomizeDir) {
+      const existingPythonPath = env.PYTHONPATH ?? '';
+      env.PYTHONPATH = existingPythonPath
+        ? `${otelSitecustomizeDir}${delimiter}${existingPythonPath}`
+        : otelSitecustomizeDir;
+    }
+
     if (protocol !== 'HTTP') {
-      // MCP/A2A: run python main.py directly (no module-level ASGI app)
+      // MCP/A2A/AGUI: run python main.py directly (no module-level ASGI app)
       const python = getVenvExecutable(venvDir, 'python');
       const entryFile = module.split(':')[0] ?? module;
       return { cmd: python, args: [entryFile], cwd: directory, env };

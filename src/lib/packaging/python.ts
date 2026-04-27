@@ -1,4 +1,5 @@
 import type { AgentEnvSpec, PythonRuntime, RuntimeVersion } from '../../schema';
+import { DEFAULT_PYTHON_VERSION } from '../../schema';
 import { UV_INSTALL_HINT, getArtifactZipName } from '../constants';
 import { runSubprocessCapture, runSubprocessCaptureSync } from '../utils/subprocess';
 import { PackagingError } from './errors';
@@ -155,7 +156,7 @@ export class PythonCodeZipPackager implements RuntimePackager {
  */
 export class PythonCodeZipPackagerSync implements CodeZipPackager {
   packCodeZip(config: AgentEnvSpec, options: PackageOptions = {}): ArtifactResult {
-    const runtimeVersion = config.runtimeVersion ?? 'PYTHON_3_13';
+    const runtimeVersion = config.runtimeVersion ?? DEFAULT_PYTHON_VERSION;
 
     if (!isPythonRuntimeVersion(runtimeVersion)) {
       throw new PackagingError(`Python packager only supports Python runtimes. Received: ${runtimeVersion}`);

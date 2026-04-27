@@ -14,6 +14,7 @@ import type {
   KnowledgeBaseInfo,
   PromptConfiguration,
 } from '../../../aws/bedrock-import-types';
+import { arnPrefix } from '../../../aws/partition';
 import type { MemoryOption } from '../../../tui/screens/generate/types';
 
 export interface TranslatorOptions {
@@ -373,7 +374,9 @@ memory_id = os.environ.get("MEMORY_ID", "")
       if (kb.knowledgeBaseArn) {
         kbArns.push(kb.knowledgeBaseArn);
       } else if (kb.knowledgeBaseId) {
-        kbArns.push(`arn:aws:bedrock:${this.agentRegion}:*:knowledge-base/${kb.knowledgeBaseId}`);
+        kbArns.push(
+          `${arnPrefix(this.agentRegion)}:bedrock:${this.agentRegion}:*:knowledge-base/${kb.knowledgeBaseId}`
+        );
       }
     }
 

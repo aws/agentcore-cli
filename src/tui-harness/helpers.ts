@@ -5,6 +5,7 @@
  * AgentCore CLI recognizes as valid projects, without the overhead of
  * running the full create wizard or npm/uv installs.
  */
+import { DEFAULT_PYTHON_VERSION } from '../schema';
 import { mkdir, mkdtemp, rm, writeFile } from 'fs/promises';
 import { tmpdir } from 'os';
 import { join } from 'path';
@@ -103,7 +104,7 @@ export async function createMinimalProjectDir(
       build: 'CodeZip',
       entrypoint: 'main.py:handler',
       codeLocation: 'app/TestAgent',
-      runtimeVersion: 'PYTHON_3_13',
+      runtimeVersion: DEFAULT_PYTHON_VERSION,
     });
 
     // Create the agent code directory so the CLI does not complain.

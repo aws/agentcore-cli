@@ -340,14 +340,22 @@ describe('ContainerDevServer', () => {
       expect(spawnArgs).toContain(`PORT=${CONTAINER_INTERNAL_PORT}`);
     });
 
-    it('disables OpenTelemetry SDK to avoid missing-collector errors', async () => {
+    it('forwards OTEL env vars from caller to the container', async () => {
       mockSuccessfulPrepare();
 
-      const server = new ContainerDevServer(defaultConfig, defaultOptions);
+      const options = {
+        ...defaultOptions,
+        envVars: {
+          OTEL_EXPORTER_OTLP_ENDPOINT: 'http://127.0.0.1:4318',
+          OTEL_EXPORTER_OTLP_PROTOCOL: 'http/json',
+        },
+      };
+      const server = new ContainerDevServer(defaultConfig, options);
       await server.start();
 
       const spawnArgs = getSpawnArgs();
-      expect(spawnArgs).toContain('OTEL_SDK_DISABLED=true');
+      expect(spawnArgs).toContain('OTEL_EXPORTER_OTLP_ENDPOINT=http://host.docker.internal:4318');
+      expect(spawnArgs).toContain('OTEL_EXPORTER_OTLP_PROTOCOL=http/json');
     });
 
     it('forwards AWS env vars when present in process.env', async () => {

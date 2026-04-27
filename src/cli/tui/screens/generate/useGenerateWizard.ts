@@ -1,5 +1,5 @@
 import type { NetworkMode, RuntimeAuthorizerType } from '../../../../schema';
-import { ProjectNameSchema } from '../../../../schema';
+import { ProjectNameSchema, SessionStorageSchema } from '../../../../schema';
 import type { JwtConfigOptions } from '../../../primitives/auth-utils';
 import type { AdvancedSettingId, BuildType, GenerateConfig, GenerateStep, MemoryOption, ProtocolMode } from './types';
 import { BASE_GENERATE_STEPS, getModelProviderOptionsForSdk } from './types';
@@ -84,6 +84,10 @@ export function useGenerateWizard(options?: UseGenerateWizardOptions) {
       // Lifecycle
       if (advancedSettings.has('lifecycle')) {
         subSteps.push('idleTimeout', 'maxLifetime');
+      }
+      // Filesystem
+      if (advancedSettings.has('filesystem')) {
+        subSteps.push('sessionStorageMountPath');
       }
       filtered = [...filtered.slice(0, afterAdvanced), ...subSteps, ...filtered.slice(afterAdvanced)];
     }
@@ -229,6 +233,7 @@ export function useGenerateWizard(options?: UseGenerateWizardOptions) {
           jwtConfig: undefined,
           idleRuntimeSessionTimeout: undefined,
           maxLifetime: undefined,
+          sessionStorageMountPath: undefined,
         }));
         setStep('confirm');
       } else {
@@ -246,6 +251,8 @@ export function useGenerateWizard(options?: UseGenerateWizardOptions) {
             setStep('authorizerType');
           } else if (selected.has('lifecycle')) {
             setStep('idleTimeout');
+          } else if (selected.has('filesystem')) {
+            setStep('sessionStorageMountPath');
           } else {
             setStep('confirm');
           }
@@ -325,14 +332,38 @@ export function useGenerateWizard(options?: UseGenerateWizardOptions) {
     setStep('maxLifetime');
   }, []);
 
-  const setMaxLifetime = useCallback((value: number | undefined) => {
-    setConfig(c => ({ ...c, maxLifetime: value }));
-    setStep('confirm');
-  }, []);
+  const setMaxLifetime = useCallback(
+    (value: number | undefined) => {
+      setConfig(c => ({ ...c, maxLifetime: value }));
+      setTimeout(() => goToNextStep('maxLifetime'), 0);
+    },
+    [goToNextStep]
+  );
 
   const skipMaxLifetime = useCallback(() => {
-    setStep('confirm');
-  }, []);
+    setTimeout(() => goToNextStep('maxLifetime'), 0);
+  }, [goToNextStep]);
+
+  const setSessionStorageMountPath = useCallback(
+    (value: string | undefined) => {
+      if (value) {
+        const result = SessionStorageSchema.shape.mountPath.safeParse(value);
+        if (!result.success) {
+          setError(result.error.issues[0]?.message ?? 'Invalid mount path');
+          return false;
+        }
+      }
+      setError(null);
+      setConfig(c => ({ ...c, sessionStorageMountPath: value }));
+      setTimeout(() => goToNextStep('sessionStorageMountPath'), 0);
+      return true;
+    },
+    [goToNextStep]
+  );
+
+  const skipSessionStorageMountPath = useCallback(() => {
+    setTimeout(() => goToNextStep('sessionStorageMountPath'), 0);
+  }, [goToNextStep]);
 
   const goBack = useCallback(() => {
     setError(null);
@@ -390,6 +421,8 @@ export function useGenerateWizard(options?: UseGenerateWizardOptions) {
     skipIdleTimeout,
     setMaxLifetime,
     skipMaxLifetime,
+    setSessionStorageMountPath,
+    skipSessionStorageMountPath,
     goBack,
     reset,
     initWithName,

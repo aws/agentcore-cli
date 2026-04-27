@@ -147,6 +147,9 @@ export function mapGenerateConfigToAgent(config: GenerateConfig): AgentEnvSpec {
           },
         }
       : {}),
+    ...(config.sessionStorageMountPath && {
+      filesystemConfigurations: [{ sessionStorage: { mountPath: config.sessionStorageMountPath } }],
+    }),
     // MCP uses mcp.run() which is incompatible with the opentelemetry-instrument wrapper
     ...(protocol === 'MCP' && { instrumentation: { enableOtel: false } }),
   };
@@ -261,6 +264,7 @@ export async function mapGenerateConfigToRenderConfig(
 ): Promise<AgentRenderConfig> {
   const isMcp = config.protocol === 'MCP';
   const gatewayProviders = isMcp ? [] : await mapGatewaysToGatewayProviders();
+  const enableOtel = !isMcp;
 
   return {
     name: config.projectName,
@@ -278,5 +282,7 @@ export async function mapGenerateConfigToRenderConfig(
     gatewayAuthTypes: [...new Set(gatewayProviders.map(g => g.authType))],
     protocol: config.protocol,
     dockerfile: config.dockerfile,
+    sessionStorageMountPath: config.sessionStorageMountPath,
+    enableOtel,
   };
 }

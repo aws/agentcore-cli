@@ -1,0 +1,24 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "{{ name }}"
+version = "0.1.0"
+description = "AgentCore AG-UI Agent using Google ADK"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    "ag-ui-adk >= 0.6.0",
+    "ag-ui-protocol >= 0.1.10",
+    "bedrock-agentcore >= 1.0.3",
+    "fastapi >= 0.115.12",
+    "google-adk >= 1.16.0",
+    "google-genai >= 1.0.0",
+    "opentelemetry-distro",
+    "opentelemetry-exporter-otlp",
+    "uvicorn >= 0.34.3",
+]
+
+[tool.hatch.build.targets.wheel]
+packages = ["."]

@@ -99,6 +99,12 @@ export const RESERVED_PROJECT_NAMES: readonly string[] = [
   'strands',
   'strandsagents',
   'strandsagentstools',
+  // AG-UI adapter packages
+  'agui',
+  'aguistrands',
+  'aguilanggraph',
+  'aguiadk',
+  'aguiprotocol',
   // Common utilities
   'httpx',
   'pytest',
@@ -137,8 +143,11 @@ export function isReservedProjectName(name: string): boolean {
 // Infrastructure Constants (shared between agent-env and mcp schemas)
 // ============================================================================
 
-export const PythonRuntimeSchema = z.enum(['PYTHON_3_10', 'PYTHON_3_11', 'PYTHON_3_12', 'PYTHON_3_13']);
+export const PythonRuntimeSchema = z.enum(['PYTHON_3_10', 'PYTHON_3_11', 'PYTHON_3_12', 'PYTHON_3_13', 'PYTHON_3_14']);
 export type PythonRuntime = z.infer<typeof PythonRuntimeSchema>;
+
+/** Default Python runtime version for new agents and MCP tools */
+export const DEFAULT_PYTHON_VERSION: PythonRuntime = 'PYTHON_3_14';
 
 export const NodeRuntimeSchema = z.enum(['NODE_18', 'NODE_20', 'NODE_22']);
 export type NodeRuntime = z.infer<typeof NodeRuntimeSchema>;
@@ -154,7 +163,7 @@ export type NetworkMode = z.infer<typeof NetworkModeSchema>;
 // Protocol Mode
 // ============================================================================
 
-export const ProtocolModeSchema = z.enum(['HTTP', 'MCP', 'A2A']);
+export const ProtocolModeSchema = z.enum(['HTTP', 'MCP', 'A2A', 'AGUI']);
 export type ProtocolMode = z.infer<typeof ProtocolModeSchema>;
 
 /**
@@ -165,6 +174,7 @@ export const PROTOCOL_FRAMEWORK_MATRIX: Record<ProtocolMode, readonly SDKFramewo
   HTTP: ['Strands', 'LangChain_LangGraph', 'GoogleADK', 'OpenAIAgents'] as const,
   MCP: [] as const,
   A2A: ['Strands', 'GoogleADK', 'LangChain_LangGraph'] as const,
+  AGUI: ['Strands', 'LangChain_LangGraph', 'GoogleADK'] as const,
 };
 
 /**

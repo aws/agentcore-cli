@@ -75,12 +75,14 @@ export function AddGatewayScreen({
   // Reset when re-entering the step (e.g., after navigating back)
   const [policyEngineSubStep, setPolicyEngineSubStep] = useState(0);
   const [selectedEngineName, setSelectedEngineName] = useState('');
-  React.useEffect(() => {
+  const [prevWizardStep, setPrevWizardStep] = useState(wizard.step);
+  if (prevWizardStep !== wizard.step) {
+    setPrevWizardStep(wizard.step);
     if (wizard.step === 'policy-engine') {
       setPolicyEngineSubStep(0);
       setSelectedEngineName('');
     }
-  }, [wizard.step]);
+  }
 
   const policyEngineItems: SelectableItem[] = useMemo(
     () => [

@@ -56,6 +56,7 @@ export function AddPolicyFlow({ isInteractive = true, onExit, onBack, onDev, onD
   const [engineNames, setEngineNames] = useState<string[]>([]);
   const [policyNames, setPolicyNames] = useState<string[]>([]);
   const [hasUnprotectedGateways, setHasUnprotectedGateways] = useState(false);
+  const [pendingEngineName, setPendingEngineName] = useState<string | undefined>();
 
   const engineSteps = useMemo<EngineCreationStep[]>(() => {
     const steps: EngineCreationStep[] = ['name'];
@@ -126,23 +127,32 @@ export function AddPolicyFlow({ isInteractive = true, onExit, onBack, onDev, onD
     }
   }, []);
 
-  const handleEngineComplete = useCallback(async (config: AddPolicyEngineConfig) => {
-    const result = await policyEnginePrimitive.add({
-      name: config.name,
-    });
+  const commitEngine = useCallback(async (engineName: string, gateways?: string[], mode?: 'LOG_ONLY' | 'ENFORCE') => {
+    const result = await policyEnginePrimitive.add({ name: engineName });
+    if (!result.success) {
+      setFlow({ name: 'error', message: result.error });
+      return;
+    }
+    setEngineNames(prev => [...prev, engineName]);
+    setPendingEngineName(undefined);
+    if (gateways && gateways.length > 0 && mode) {
+      await policyEnginePrimitive.attachToGateways(engineName, gateways, mode);
+    }
+    setFlow({ name: 'engine-success', engineName });
+  }, []);
 
-    if (result.success) {
-      setEngineNames(prev => [...prev, config.name]);
+  const handleEngineComplete = useCallback(
+    async (config: AddPolicyEngineConfig) => {
+      setPendingEngineName(config.name);
       const unprotected = await policyEnginePrimitive.getUnprotectedGateways();
       if (unprotected.length > 0) {
         setFlow({ name: 'attach-gateways', engineName: config.name, gateways: unprotected });
       } else {
-        setFlow({ name: 'engine-success', engineName: config.name });
+        void commitEngine(config.name);
       }
-    } else {
-      setFlow({ name: 'error', message: result.error });
-    }
-  }, []);
+    },
+    [commitEngine]
+  );
 
   const handlePolicyComplete = useCallback(async (config: AddPolicyConfig) => {
     const result = await policyPrimitive.add({
@@ -201,6 +211,7 @@ export function AddPolicyFlow({ isInteractive = true, onExit, onBack, onDev, onD
     return (
       <AddPolicyEngineScreen
         existingEngineNames={engineNames}
+        initialName={pendingEngineName}
         headerContent={<StepIndicator steps={engineSteps} currentStep="name" labels={ENGINE_STEP_LABELS} />}
         onComplete={(config: AddPolicyEngineConfig) => void handleEngineComplete(config)}
         onExit={() => {
@@ -238,7 +249,7 @@ export function AddPolicyFlow({ isInteractive = true, onExit, onBack, onDev, onD
         stepIndicator={<StepIndicator steps={engineSteps} currentStep="attach-gateways" labels={ENGINE_STEP_LABELS} />}
         onConfirm={selected => {
           if (selected.length === 0) {
-            setFlow({ name: 'engine-success', engineName: flow.engineName });
+            void commitEngine(flow.engineName);
           } else {
             setFlow({
               name: 'attach-mode',
@@ -248,7 +259,7 @@ export function AddPolicyFlow({ isInteractive = true, onExit, onBack, onDev, onD
             });
           }
         }}
-        onSkip={() => setFlow({ name: 'engine-success', engineName: flow.engineName })}
+        onBack={() => setFlow({ name: 'engine-wizard' })}
       />
     );
   }
@@ -261,15 +272,12 @@ export function AddPolicyFlow({ isInteractive = true, onExit, onBack, onDev, onD
         gatewayCount={flow.selectedGateways.length}
         stepIndicator={<StepIndicator steps={engineSteps} currentStep="attach-mode" labels={ENGINE_STEP_LABELS} />}
         onSelect={mode => {
-          void policyEnginePrimitive
-            .attachToGateways(flow.engineName, flow.selectedGateways, mode)
-            .then(() => setFlow({ name: 'engine-success', engineName: flow.engineName }))
-            .catch(err =>
-              setFlow({
-                name: 'error',
-                message: err instanceof Error ? err.message : 'Failed to attach policy engine',
-              })
-            );
+          void commitEngine(flow.engineName, flow.selectedGateways, mode).catch(err =>
+            setFlow({
+              name: 'error',
+              message: err instanceof Error ? err.message : 'Failed to attach policy engine',
+            })
+          );
         }}
         onBack={() => {
           setFlow({ name: 'attach-gateways', engineName: flow.engineName, gateways: flow.allGateways });
@@ -360,13 +368,13 @@ function AttachGatewaysScreen({
   engineName,
   gateways,
   onConfirm,
-  onSkip,
+  onBack,
   stepIndicator,
 }: {
   engineName: string;
   gateways: string[];
   onConfirm: (selected: string[]) => void;
-  onSkip: () => void;
+  onBack: () => void;
   stepIndicator?: React.ReactNode;
 }) {
   const items: SelectableItem[] = useMemo(() => gateways.map(name => ({ id: name, title: name })), [gateways]);
@@ -375,7 +383,7 @@ function AttachGatewaysScreen({
     items,
     getId: item => item.id,
     onConfirm: ids => onConfirm([...ids]),
-    onExit: onSkip,
+    onExit: onBack,
     isActive: true,
     requireSelection: false,
   });
@@ -383,8 +391,8 @@ function AttachGatewaysScreen({
   return (
     <Screen
       title="Attach Policy Engine"
-      onExit={onSkip}
-      helpText="Space toggle · Enter confirm · Esc skip · Ctrl+C quit"
+      onExit={onBack}
+      helpText="Space toggle · Enter confirm · Esc back · Ctrl+C quit"
       headerContent={stepIndicator}
     >
       <Panel>

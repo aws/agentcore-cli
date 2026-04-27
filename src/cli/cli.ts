@@ -24,7 +24,9 @@ import { ALL_PRIMITIVES } from './primitives';
 import { App } from './tui/App';
 import { LayoutProvider } from './tui/context';
 import { COMMAND_DESCRIPTIONS } from './tui/copy';
+import { clearExitAction, getExitAction } from './tui/exit-action';
 import { clearExitMessage, getExitMessage } from './tui/exit-message';
+import { requireTTY } from './tui/guards';
 import { CommandListScreen } from './tui/screens/home';
 import { getCommandsForUI } from './tui/utils';
 import { type UpdateCheckResult, checkForUpdate, printUpdateNotification } from './update-notifier';
@@ -103,6 +105,16 @@ function renderTUI(updateCheck: Promise<UpdateCheckResult | null>, isFirstRun: b
     inAltScreen = false;
     process.stdout.write(EXIT_ALT_SCREEN);
     process.stdout.write(SHOW_CURSOR);
+
+    // Check if the TUI requested a post-exit action (e.g., launch browser dev mode)
+    const action = getExitAction();
+    clearExitAction();
+
+    if (action?.type === 'dev') {
+      const { launchBrowserDev } = await import('./commands/dev/browser-mode');
+      await launchBrowserDev();
+      return;
+    }
 
     // Print any exit message set by screens (e.g., after successful project creation)
     const exitMessage = getExitMessage();
@@ -201,6 +213,7 @@ export const main = async (argv: string[]) => {
 
   // Show TUI for no arguments, commander handles --help via configureHelp()
   if (args.length === 0) {
+    requireTTY();
     renderTUI(updateCheck, isFirstRun);
     return;
   }
@@ -213,4 +226,10 @@ export const main = async (argv: string[]) => {
 
   // Telemetry notice already printed above; only run update check here.
   await printPostCommandNotices(false, updateCheck);
+
+  const exitMessage = getExitMessage();
+  if (exitMessage) {
+    console.log(`\n${exitMessage}`);
+    clearExitMessage();
+  }
 };

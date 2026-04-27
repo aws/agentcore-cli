@@ -129,6 +129,7 @@ export interface CreateWithAgentOptions {
   region?: string;
   idleTimeout?: number;
   maxLifetime?: number;
+  sessionStorageMountPath?: string;
   skipGit?: boolean;
   skipInstall?: boolean;
   skipPythonSetup?: boolean;
@@ -152,6 +153,7 @@ export async function createProjectWithAgent(options: CreateWithAgentOptions): P
     requestHeaderAllowlist,
     idleTimeout,
     maxLifetime: maxLifetimeOpt,
+    sessionStorageMountPath,
     skipGit,
     skipInstall,
     skipPythonSetup,
@@ -232,6 +234,7 @@ export async function createProjectWithAgent(options: CreateWithAgentOptions): P
       requestHeaderAllowlist,
       ...(idleTimeout !== undefined && { idleRuntimeSessionTimeout: idleTimeout }),
       ...(maxLifetimeOpt !== undefined && { maxLifetime: maxLifetimeOpt }),
+      ...(sessionStorageMountPath && { sessionStorageMountPath }),
     };
 
     // Resolve credential strategy FIRST (new project has no existing credentials)

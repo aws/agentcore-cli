@@ -31,6 +31,7 @@ export interface ExecuteImportAgentParams {
   jwtConfig?: JwtConfigOptions;
   idleTimeout?: number;
   maxLifetime?: number;
+  sessionStorageMountPath?: string;
 }
 
 export async function executeImportAgent(
@@ -48,6 +49,7 @@ export async function executeImportAgent(
     jwtConfig,
     idleTimeout,
     maxLifetime,
+    sessionStorageMountPath,
   } = params;
   const projectRoot = dirname(configBaseDir);
   const agentPath = join(projectRoot, APP_DIR, name);
@@ -98,6 +100,7 @@ export async function executeImportAgent(
       jwtConfig,
       idleRuntimeSessionTimeout: idleTimeout,
       maxLifetime,
+      sessionStorageMountPath,
     };
     await writeAgentToProject(generateConfig, { configBaseDir });
 

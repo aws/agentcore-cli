@@ -86,7 +86,6 @@ export const ManagedCodeBasedConfigSchema = z.object({
 
 export type ManagedCodeBasedConfig = z.infer<typeof ManagedCodeBasedConfigSchema>;
 
-// eslint-disable-next-line security/detect-unsafe-regex -- anchored pattern, no backtracking risk
 const LAMBDA_ARN_PATTERN = /^arn:aws[a-z-]*:lambda:[a-z0-9-]+:\d{12}:function:.+$/;
 
 export const ExternalCodeBasedConfigSchema = z.object({

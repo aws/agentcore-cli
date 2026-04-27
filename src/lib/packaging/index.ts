@@ -1,4 +1,5 @@
 import type { AgentCoreProjectSpec, AgentEnvSpec, RuntimeVersion } from '../../schema';
+import { DEFAULT_PYTHON_VERSION } from '../../schema';
 import { ContainerPackager } from './container';
 import { PackagingError } from './errors';
 import { isNodeRuntime, isPythonRuntime } from './helpers';
@@ -78,7 +79,7 @@ export async function packRuntime(spec: AgentEnvSpec, options?: PackageOptions):
  * Defaults to Python if no runtimeVersion is specified.
  */
 export function packCodeZipSync(config: CodeBundleConfig | AgentEnvSpec, options?: PackageOptions): ArtifactResult {
-  const runtimeVersion = config.runtimeVersion ?? 'PYTHON_3_13';
+  const runtimeVersion = config.runtimeVersion ?? DEFAULT_PYTHON_VERSION;
   const packager = getCodeZipPackager(runtimeVersion);
   return packager.packCodeZip(config as AgentEnvSpec, options);
 }

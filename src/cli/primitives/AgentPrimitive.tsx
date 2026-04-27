@@ -12,7 +12,13 @@ import type {
   SDKFramework,
   TargetLanguage,
 } from '../../schema';
-import { AgentEnvSpecSchema, CREDENTIAL_PROVIDERS, LIFECYCLE_TIMEOUT_MAX, LIFECYCLE_TIMEOUT_MIN } from '../../schema';
+import {
+  AgentEnvSpecSchema,
+  CREDENTIAL_PROVIDERS,
+  DEFAULT_PYTHON_VERSION,
+  LIFECYCLE_TIMEOUT_MAX,
+  LIFECYCLE_TIMEOUT_MIN,
+} from '../../schema';
 import type { AddAgentOptions as CLIAddAgentOptions } from '../commands/add/types';
 import { validateAddAgentOptions } from '../commands/add/validate';
 import { parseAndNormalizeHeaders } from '../commands/shared/header-utils';
@@ -29,6 +35,7 @@ import { executeImportAgent } from '../operations/agent/import';
 import { setupPythonProject } from '../operations/python';
 import type { RemovalPreview, RemovalResult, SchemaChange } from '../operations/remove/types';
 import { createRenderer } from '../templates';
+import { requireTTY } from '../tui/guards/tty';
 import type { GenerateConfig, MemoryOption } from '../tui/screens/generate/types';
 import { BasePrimitive } from './BasePrimitive';
 import { CredentialPrimitive } from './CredentialPrimitive';
@@ -68,6 +75,7 @@ export interface AddAgentOptions extends VpcOptions {
   clientSecret?: string;
   idleTimeout?: number;
   maxLifetime?: number;
+  sessionStorageMountPath?: string;
 }
 
 /**
@@ -212,7 +220,7 @@ export class AgentPrimitive extends BasePrimitive<AddAgentOptions, RemovableReso
       .option('--model-provider <provider>', 'Model provider: Bedrock, Anthropic, OpenAI, Gemini [non-interactive]')
       .option('--api-key <key>', 'API key for non-Bedrock providers [non-interactive]')
       .option('--memory <mem>', 'Memory: none, shortTerm, longAndShortTerm (create path only) [non-interactive]')
-      .option('--protocol <protocol>', 'Protocol: HTTP, MCP, A2A (default: HTTP) [non-interactive]')
+      .option('--protocol <protocol>', 'Protocol: HTTP, MCP, A2A, AGUI (default: HTTP) [non-interactive]')
       .option('--code-location <path>', 'Path to existing code (BYO path only) [non-interactive]')
       .option('--entrypoint <file>', 'Entry file relative to code-location (BYO, default: main.py) [non-interactive]')
       .option('--agent-id <id>', 'Bedrock Agent ID (import path only) [non-interactive]')
@@ -240,6 +248,10 @@ export class AgentPrimitive extends BasePrimitive<AddAgentOptions, RemovableReso
       .option(
         '--max-lifetime <seconds>',
         `Max instance lifetime in seconds (${LIFECYCLE_TIMEOUT_MIN}-${LIFECYCLE_TIMEOUT_MAX}) [non-interactive]`
+      )
+      .option(
+        '--session-storage-mount-path <path>',
+        'Absolute mount path for session filesystem storage (e.g. /mnt/session-storage) [non-interactive]'
       )
       .option('--json', 'Output as JSON [non-interactive]')
       .action(async options => {
@@ -301,6 +313,7 @@ export class AgentPrimitive extends BasePrimitive<AddAgentOptions, RemovableReso
             clientSecret: cliOptions.clientSecret,
             idleTimeout: cliOptions.idleTimeout ? Number(cliOptions.idleTimeout) : undefined,
             maxLifetime: cliOptions.maxLifetime ? Number(cliOptions.maxLifetime) : undefined,
+            sessionStorageMountPath: cliOptions.sessionStorageMountPath,
           });
 
           if (cliOptions.json) {
@@ -320,6 +333,7 @@ export class AgentPrimitive extends BasePrimitive<AddAgentOptions, RemovableReso
           process.exit(result.success ? 0 : 1);
         } else {
           // TUI fallback — dynamic imports to avoid pulling ink (async) into registry
+          requireTTY();
           const [{ render }, { default: React }, { AddFlow }] = await Promise.all([
             import('ink'),
             import('react'),
@@ -328,6 +342,7 @@ export class AgentPrimitive extends BasePrimitive<AddAgentOptions, RemovableReso
           const { clear, unmount } = render(
             React.createElement(AddFlow, {
               isInteractive: false,
+              initialResource: 'agent',
               onExit: () => {
                 clear();
                 unmount();
@@ -396,6 +411,7 @@ export class AgentPrimitive extends BasePrimitive<AddAgentOptions, RemovableReso
       requestHeaderAllowlist: options.requestHeaderAllowlist,
       idleRuntimeSessionTimeout: options.idleTimeout,
       maxLifetime: options.maxLifetime,
+      sessionStorageMountPath: options.sessionStorageMountPath,
     };
 
     const agentPath = join(projectRoot, APP_DIR, options.name);
@@ -466,6 +482,7 @@ export class AgentPrimitive extends BasePrimitive<AddAgentOptions, RemovableReso
       configBaseDir,
       idleTimeout: options.idleTimeout,
       maxLifetime: options.maxLifetime,
+      sessionStorageMountPath: options.sessionStorageMountPath,
     });
   }
 
@@ -526,7 +543,7 @@ export class AgentPrimitive extends BasePrimitive<AddAgentOptions, RemovableReso
       build: options.buildType,
       entrypoint: (options.entrypoint ?? 'main.py') as FilePath,
       codeLocation: codeLocation as DirectoryPath,
-      runtimeVersion: 'PYTHON_3_13',
+      runtimeVersion: DEFAULT_PYTHON_VERSION,
       protocol,
       networkMode,
       ...(networkMode === 'VPC' &&
@@ -542,6 +559,9 @@ export class AgentPrimitive extends BasePrimitive<AddAgentOptions, RemovableReso
       ...(authorizerType && { authorizerType }),
       ...(authorizerConfiguration && { authorizerConfiguration }),
       ...(lifecycleConfiguration && { lifecycleConfiguration }),
+      ...(options.sessionStorageMountPath && {
+        filesystemConfigurations: [{ sessionStorage: { mountPath: options.sessionStorageMountPath } }],
+      }),
     };
 
     project.runtimes.push(agent);

@@ -385,6 +385,133 @@ describe('useGenerateWizard — advanced config gate', () => {
     });
   });
 
+  describe('filesystem advanced setting', () => {
+    function walkToAdvanced(ref: React.RefObject<HarnessHandle | null>) {
+      act(() => {
+        ref.current!.wizard.setProjectName('Test');
+        ref.current!.wizard.setLanguage('Python');
+        ref.current!.wizard.setBuildType('CodeZip');
+        ref.current!.wizard.setProtocol('HTTP');
+        ref.current!.wizard.setSdk('Strands');
+        ref.current!.wizard.setModelProvider('Bedrock');
+        ref.current!.wizard.setMemory('none');
+      });
+    }
+
+    it('filesystem step is included in steps when filesystem is selected', () => {
+      const { ref } = setup();
+      walkToAdvanced(ref);
+
+      act(() => ref.current!.wizard.setAdvanced(['filesystem']));
+
+      expect(ref.current!.wizard.steps).toContain('sessionStorageMountPath');
+    });
+
+    it('setAdvanced with only filesystem navigates to sessionStorageMountPath step', () => {
+      vi.useFakeTimers();
+      const { ref, lastFrame } = setup();
+      walkToAdvanced(ref);
+
+      act(() => ref.current!.wizard.setAdvanced(['filesystem']));
+      act(() => {
+        vi.runAllTimers();
+      });
+
+      expect(lastFrame()).toContain('step:sessionStorageMountPath');
+      vi.useRealTimers();
+    });
+
+    it('setSessionStorageMountPath rejects invalid path and sets error without advancing', () => {
+      vi.useFakeTimers();
+      const { ref } = setup();
+      walkToAdvanced(ref);
+
+      act(() => ref.current!.wizard.setAdvanced(['filesystem']));
+      act(() => {
+        vi.runAllTimers();
+      });
+
+      let result: boolean | undefined;
+      act(() => {
+        result = ref.current!.wizard.setSessionStorageMountPath('/bad/path/too/deep');
+      });
+      act(() => {
+        vi.runAllTimers();
+      });
+
+      expect(result).toBe(false);
+      expect(ref.current!.wizard.error).toBeTruthy();
+      expect(ref.current!.wizard.step).toBe('sessionStorageMountPath');
+      vi.useRealTimers();
+    });
+
+    it('setSessionStorageMountPath accepts valid path, clears error, and advances to confirm', () => {
+      vi.useFakeTimers();
+      const { ref, lastFrame } = setup();
+      walkToAdvanced(ref);
+
+      act(() => ref.current!.wizard.setAdvanced(['filesystem']));
+      act(() => {
+        vi.runAllTimers();
+      });
+
+      let result: boolean | undefined;
+      act(() => {
+        result = ref.current!.wizard.setSessionStorageMountPath('/mnt/data');
+      });
+      act(() => {
+        vi.runAllTimers();
+      });
+
+      expect(result).toBe(true);
+      expect(ref.current!.wizard.error).toBeNull();
+      expect(lastFrame()).toContain('step:confirm');
+      expect(ref.current!.wizard.config.sessionStorageMountPath).toBe('/mnt/data');
+      vi.useRealTimers();
+    });
+
+    it('lifecycle + filesystem injects both sub-step groups', () => {
+      const { ref } = setup();
+      walkToAdvanced(ref);
+
+      act(() => ref.current!.wizard.setAdvanced(['lifecycle', 'filesystem']));
+
+      const steps = ref.current!.wizard.steps;
+      const advIdx = steps.indexOf('advanced');
+      expect(steps.slice(advIdx)).toEqual([
+        'advanced',
+        'idleTimeout',
+        'maxLifetime',
+        'sessionStorageMountPath',
+        'confirm',
+      ]);
+    });
+
+    it('deselecting all advanced clears sessionStorageMountPath config', () => {
+      vi.useFakeTimers();
+      const { ref } = setup();
+      walkToAdvanced(ref);
+
+      act(() => ref.current!.wizard.setAdvanced(['filesystem']));
+      act(() => {
+        vi.runAllTimers();
+      });
+      act(() => {
+        ref.current!.wizard.setSessionStorageMountPath('/mnt/data');
+      });
+      act(() => {
+        vi.runAllTimers();
+      });
+      expect(ref.current!.wizard.config.sessionStorageMountPath).toBe('/mnt/data');
+
+      act(() => ref.current!.wizard.setAdvanced([]));
+
+      expect(ref.current!.wizard.config.sessionStorageMountPath).toBeUndefined();
+      expect(ref.current!.wizard.step).toBe('confirm');
+      vi.useRealTimers();
+    });
+  });
+
   describe('reset clears advancedSelected', () => {
     it('reset returns advancedSelected to false', () => {
       const { ref, lastFrame } = setup();

@@ -17,6 +17,7 @@ export interface CreateOptions extends VpcOptions {
   region?: string;
   idleTimeout?: number | string;
   maxLifetime?: number | string;
+  sessionStorageMountPath?: string;
   outputDir?: string;
   skipGit?: boolean;
   skipPythonSetup?: boolean;

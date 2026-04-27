@@ -1,5 +1,6 @@
 import { ConfigIO, SecureCredentials } from '../../../lib';
 import type { AgentCoreMcpSpec, DeployedState } from '../../../schema';
+import { applyTargetRegionToEnv } from '../../aws';
 import { validateAwsCredentials } from '../../aws/account';
 import { createSwitchableIoHost } from '../../cdk/toolkit-lib';
 import {
@@ -48,6 +49,7 @@ const MEMORY_ONLY_NEXT_STEPS = ['agentcore add agent', 'agentcore status'];
 
 export async function handleDeploy(options: ValidatedDeployOptions): Promise<DeployResult> {
   let toolkitWrapper = null;
+  let restoreEnv: (() => void) | null = null;
   const logger = new ExecLogger({ command: 'deploy' });
   const { onProgress } = options;
   let currentStepName = '';
@@ -79,6 +81,10 @@ export async function handleDeploy(options: ValidatedDeployOptions): Promise<Dep
         logPath: logger.getRelativeLogPath(),
       };
     }
+    // Make the resolved target region authoritative for downstream SDK / CDK
+    // calls that don't receive an explicit region option.
+    // See https://github.com/aws/agentcore-cli/issues/924.
+    restoreEnv = applyTargetRegionToEnv(target.region);
     endStep('success');
 
     // Read project spec for gateway information (used later for deploy step name and outputs)
@@ -485,5 +491,6 @@ export async function handleDeploy(options: ValidatedDeployOptions): Promise<Dep
     if (toolkitWrapper) {
       await toolkitWrapper.dispose();
     }
+    restoreEnv?.();
   }
 }

@@ -10,6 +10,7 @@ import type {
 import { LIFECYCLE_TIMEOUT_MAX, LIFECYCLE_TIMEOUT_MIN } from '../../../schema';
 import { getErrorMessage } from '../../errors';
 import { COMMAND_DESCRIPTIONS } from '../../tui/copy';
+import { requireTTY } from '../../tui/guards';
 import { CreateScreen } from '../../tui/screens/create';
 import { parseCommaSeparatedList } from '../shared/vpc-utils';
 import { type ProgressCallback, createProject, createProjectWithAgent, getDryRunInfo } from './action';
@@ -145,6 +146,7 @@ async function handleCreateCLI(options: CreateOptions): Promise<void> {
         securityGroups: parseCommaSeparatedList(options.securityGroups),
         idleTimeout: options.idleTimeout ? Number(options.idleTimeout) : undefined,
         maxLifetime: options.maxLifetime ? Number(options.maxLifetime) : undefined,
+        sessionStorageMountPath: options.sessionStorageMountPath,
         skipGit: options.skipGit,
         skipInstall: options.skipInstall,
         skipPythonSetup: options.skipPythonSetup,
@@ -183,7 +185,7 @@ export const registerCreate = (program: Command) => {
     .option('--model-provider <provider>', 'Model provider (Bedrock, Anthropic, OpenAI, Gemini) [non-interactive]')
     .option('--api-key <key>', 'API key for non-Bedrock providers [non-interactive]')
     .option('--memory <option>', 'Memory option (none, shortTerm, longAndShortTerm) [non-interactive]')
-    .option('--protocol <protocol>', 'Protocol: HTTP, MCP, A2A (default: HTTP) [non-interactive]')
+    .option('--protocol <protocol>', 'Protocol: HTTP, MCP, A2A, AGUI (default: HTTP) [non-interactive]')
     .option('--type <type>', 'Agent type: create or import (default: create) [non-interactive]')
     .option('--agent-id <id>', 'Bedrock Agent ID (required for --type import) [non-interactive]')
     .option('--agent-alias-id <id>', 'Bedrock Agent Alias ID (required for --type import) [non-interactive]')
@@ -198,6 +200,10 @@ export const registerCreate = (program: Command) => {
     .option(
       '--max-lifetime <seconds>',
       `Max instance lifetime in seconds (${LIFECYCLE_TIMEOUT_MIN}-${LIFECYCLE_TIMEOUT_MAX}) [non-interactive]`
+    )
+    .option(
+      '--session-storage-mount-path <path>',
+      'Absolute mount path for session filesystem storage under /mnt (e.g. /mnt/data) [non-interactive]'
     )
     .option('--output-dir <dir>', 'Output directory (default: current directory) [non-interactive]')
     .option('--skip-git', 'Skip git repository initialization [non-interactive]')
@@ -240,6 +246,7 @@ export const registerCreate = (program: Command) => {
           options.language = options.language ?? 'Python';
           await handleCreateCLI(options as CreateOptions);
         } else {
+          requireTTY();
           handleCreateTUI();
         }
       } catch (error) {

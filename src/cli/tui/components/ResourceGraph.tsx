@@ -420,17 +420,6 @@ export function ResourceGraph({ project, mcp, agentName, resourceStatuses }: Res
           <Text color="magenta">{ICONS.gateway}</Text> gateway{'  '}
           <Text color="red">{ICONS['policy-engine']}</Text> policy engine
         </Text>
-        {resourceStatuses && resourceStatuses.length > 0 && (
-          <Box flexDirection="column" marginTop={1}>
-            <Text>
-              <Text color="green">[Deployed]</Text>
-              <Text color="gray"> live in AWS</Text>
-              {'  '}
-              <Text color="yellow">[Local only]</Text>
-              <Text color="gray"> not yet deployed</Text>
-            </Text>
-          </Box>
-        )}
       </Box>
     </Box>
   );

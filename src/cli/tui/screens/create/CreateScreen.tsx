@@ -237,75 +237,12 @@ export function CreateScreen({ cwd, isInteractive, onExit, onNavigate }: CreateS
     isActive: flow.phase === 'create-prompt',
   });
 
-  // Checking phase: brief loading state
+  // Checking phase: instant async check — render nothing to avoid a flash before the real UI
   if (flow.phase === 'checking') {
-    return (
-      <Screen title="AgentCore Create" onExit={handleExit}>
-        <Text dimColor>Checking for existing project...</Text>
-      </Screen>
-    );
+    return null;
   }
 
-  // Existing project error phase
-  if (flow.phase === 'existing-project-error') {
-    return (
-      <Screen title="AgentCore Create" onExit={handleExit} helpText="Press Esc to exit">
-        <Box marginBottom={1} flexDirection="column">
-          <Text color="red">A project already exists at this location.</Text>
-          {flow.existingProjectPath && <Text dimColor>Found: {flow.existingProjectPath}</Text>}
-          <Box marginTop={1}>
-            <Text>
-              Use <Text color="cyan">add agent</Text> to create a new agent in the existing project.
-            </Text>
-          </Box>
-        </Box>
-      </Screen>
-    );
-  }
-
-  // Input phase: ask for project name
-  if (flow.phase === 'input') {
-    return (
-      <Screen title="AgentCore Create" onExit={handleExit} helpText={HELP_TEXT.TEXT_INPUT}>
-        <Box marginBottom={1} flexDirection="column">
-          <Text>Create a new AgentCore project</Text>
-          <Text dimColor>This will create a directory with your project name.</Text>
-        </Box>
-        <TextInput
-          prompt="Project name"
-          initialValue=""
-          schema={ProjectNameSchema}
-          customValidation={name => validateFolderNotExists(name, cwd)}
-          onSubmit={name => {
-            flow.setProjectName(name);
-            flow.confirmProjectName();
-          }}
-          onCancel={handleExit}
-        />
-      </Screen>
-    );
-  }
-
-  // Create prompt phase
-  if (flow.phase === 'create-prompt') {
-    return (
-      <Screen title="AgentCore Create" onExit={handleExit} helpText={HELP_TEXT.NAVIGATE_SELECT}>
-        <Box marginBottom={1}>
-          <Text>
-            Project: <Text color={STATUS_COLORS.success}>{flow.projectName}</Text>
-          </Text>
-        </Box>
-        <Box flexDirection="column">
-          <Text>Would you like to add an agent now?</Text>
-          <Box marginTop={1}>
-            <SelectList items={CREATE_PROMPT_ITEMS} selectedIndex={createPromptIndex} />
-          </Box>
-        </Box>
-      </Screen>
-    );
-  }
-
-  // Create wizard phase - use AddAgentScreen for consistent experience
+  // Create wizard phase - use AddAgentScreen (separate component, no header conflict)
   if (flow.phase === 'create-wizard') {
     return (
       <AddAgentScreen
@@ -316,22 +253,84 @@ export function CreateScreen({ cwd, isInteractive, onExit, onNavigate }: CreateS
     );
   }
 
-  // Running/complete phase: show progress
-  const headerContent = (
+  // All other phases share a single <Screen> to prevent duplicate header flashes
+  // when Ink transitions between different <Screen> mounts.
+  const phase = flow.phase;
+  const showProjectHeader = phase !== 'input' && phase !== 'existing-project-error';
+  const headerContent = showProjectHeader ? (
     <Box marginTop={1}>
       <Text>
         Project: <Text color={STATUS_COLORS.success}>{flow.projectName}</Text>
       </Text>
     </Box>
-  );
+  ) : undefined;
 
-  const helpText = flow.hasError || allSuccess ? HELP_TEXT.EXIT : undefined;
+  const helpText =
+    phase === 'existing-project-error'
+      ? 'Press Esc to exit'
+      : phase === 'input'
+        ? HELP_TEXT.TEXT_INPUT
+        : phase === 'create-prompt'
+          ? HELP_TEXT.NAVIGATE_SELECT
+          : flow.hasError || allSuccess
+            ? HELP_TEXT.EXIT
+            : undefined;
 
   return (
     <Screen title="AgentCore Create" onExit={handleExit} headerContent={headerContent} helpText={helpText}>
-      <StepProgress steps={flow.steps} />
+      {phase === 'existing-project-error' && (
+        <Box marginBottom={1} flexDirection="column">
+          <Text color="red">A project already exists at this location.</Text>
+          {flow.existingProjectPath && <Text dimColor>Found: {flow.existingProjectPath}</Text>}
+          <Box marginTop={1}>
+            <Text>
+              Use <Text color="cyan">add agent</Text> to create a new agent in the existing project.
+            </Text>
+          </Box>
+        </Box>
+      )}
+
+      {phase === 'input' && (
+        <>
+          <Box marginBottom={1} flexDirection="column">
+            <Text>Create a new AgentCore project</Text>
+            <Text dimColor>This will create a directory with your project name.</Text>
+          </Box>
+          <TextInput
+            prompt="Project name"
+            initialValue=""
+            schema={ProjectNameSchema}
+            customValidation={name => validateFolderNotExists(name, cwd)}
+            onSubmit={name => {
+              flow.setProjectName(name);
+              flow.confirmProjectName();
+            }}
+            onCancel={handleExit}
+          />
+        </>
+      )}
+
+      {phase === 'create-prompt' && (
+        <>
+          <Box marginBottom={1}>
+            <Text>
+              Project: <Text color={STATUS_COLORS.success}>{flow.projectName}</Text>
+            </Text>
+          </Box>
+          <Box flexDirection="column">
+            <Text>Would you like to add an agent now?</Text>
+            <Box marginTop={1}>
+              <SelectList items={CREATE_PROMPT_ITEMS} selectedIndex={createPromptIndex} />
+            </Box>
+          </Box>
+        </>
+      )}
+
+      {phase === 'running' && <StepProgress steps={flow.steps} />}
+
       {allSuccess && flow.outputDir && (
         <Box marginTop={1} flexDirection="column">
+          <StepProgress steps={flow.steps} />
           <CreatedSummary projectName={flow.projectName} agentConfig={flow.addAgentConfig} />
           {isInteractive ? (
             <Box marginTop={1}>
@@ -352,8 +351,10 @@ export function CreateScreen({ cwd, isInteractive, onExit, onNavigate }: CreateS
           )}
         </Box>
       )}
+
       {flow.hasError && (
         <Box marginTop={1} flexDirection="column">
+          <StepProgress steps={flow.steps} />
           <Text color={STATUS_COLORS.error}>Project creation failed.</Text>
           {flow.logFilePath && (
             <Box marginTop={1}>

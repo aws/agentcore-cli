@@ -2,6 +2,74 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.11.0] - 2026-04-24
+
+### Added
+- feat: add telemetry schemas and client (#941) (7c37fa6)
+- feat: add GitHub Action for automated PR review via AgentCore Harness (#934) (a365bf5)
+
+### Fixed
+- fix: display session ID after CLI invoke completes (#957) (51e4a8e)
+- fix: lower eventExpiryDuration minimum from 7 to 3 days (closes #744) (#956) (8613657)
+- fix: use pull_request_target for fork PR support (#958) (933bac8)
+- fix: agentcore dev not working in windows (#951) (5271f55)
+- fix: add TTY detection before TUI fallbacks to prevent agent/CI hangs (#949) (c30ed54)
+- fix: allow code-based evaluators in online eval configs (#947) (3d2d671)
+- fix: buffer streaming text to avoid per-token log lines in GitHub Actions (#946) (cb1e81a)
+
+### Other Changes
+- test: add browser tests for agent inspector (#938) (7a4104d)
+
+## [0.10.0] - 2026-04-23
+
+### Added
+- feat: upgrade agent inspector to 0.2.1 (#937) (b49a06f)
+- feat: remove deployed/local from status legend (#936) (c0d5b7b)
+- feat: add GovCloud multi-partition support (#908) (098b104)
+- feat: support preview releases from feature branches (#905) (1a93f92)
+- feat: add AG-UI (AGUI) as fourth first-class protocol mode (#858) (52144dc)
+- feat: add session filesystem storage support (#893) (b97e337)
+
+### Fixed
+- fix: agentcore add component opens component wizard directly (#896) (74a35cb)
+- fix: propagate sessionId as A2A contextId in Inspector proxy (#892) (08d452e)
+
+### Documentation
+- docs: update vended AGENTS.md, README.md, and llm-context references (#898) (84a6dde)
+
+### Other Changes
+- fix(deploy): honor aws-targets.json region for all SDK and CDK calls (#925) (1903f7d)
+- fix(invoke): show full session ID and print resume command on exit (#904) (ce683c0)
+- chore: remove preview bump type from release workflow (#847) (13f16d3)
+- chore: remove single-commit-must-match-PR-title validation (#897) (4d7da2f)
+- fix(invoke): pass session ID to local invoke log files (#894) (e966cb6)
+
+## [0.9.1] - 2026-04-17
+
+## [0.9.0] - 2026-04-17
+
+### Fixed
+- fix: revert version to 0.8.2 (#885) (321ea06)
+- fix: agent-inspector frontend assets missing from build (#883) (08f826c)
+- fix: use caret range for @aws/agentcore-cdk in CDK template (#882) (e01f6f9)
+- fix: defer policy engine write and harden policy flow UX (#856) (c576d02)
+  
+### Added
+- feat: add agent inspector web UI for `agentcore dev` (#871) (6cc575c)
+
+### Documentation
+- docs: document executionRoleArn in runtime spec (#872) (abfd33b)
+
+## [0.8.2] - 2026-04-16
+
+### Added
+- feat: upgrade default Python runtime to PYTHON_3_14 (#837) (b139c05)
+
+### Other Changes
+- revert: roll back version bump to 0.8.1 (#877) (ef14108)
+- test: update asset snapshot for @aws/agentcore-cdk 0.1.0-alpha.19 (#875) (f781c60)
+- chore: bump version to 0.8.2 (#874) (865b5d5)
+
 ## [0.8.1] - 2026-04-14
 
 ### Added

@@ -7,6 +7,8 @@ const __dirname = path.dirname(__filename);
 
 const srcDir = path.join(__dirname, '..', 'src', 'assets');
 const destDir = path.join(__dirname, '..', 'dist', 'assets');
+const inspectorSrcDir = path.join(__dirname, '..', 'node_modules', '@aws', 'agent-inspector', 'dist-assets');
+const inspectorDestDir = path.join(__dirname, '..', 'dist', 'agent-inspector');
 
 /**
  * Recursively copy directory contents, excluding specified files at root level only
@@ -44,6 +46,18 @@ try {
   console.log('Copying assets...');
   copyDir(srcDir, destDir, ['AGENTS.md']);
   console.log('Assets copied successfully!');
+
+  // Copy @aws/agent-inspector built assets into dist/agent-inspector/ for bundled CLI
+  if (fs.existsSync(inspectorSrcDir)) {
+    console.log('Copying @aws/agent-inspector assets...');
+    copyDir(inspectorSrcDir, inspectorDestDir);
+    console.log('@aws/agent-inspector assets copied successfully!');
+  } else {
+    console.error(
+      'Error: @aws/agent-inspector dist-assets/ not found. Run "npm install" to ensure the package is available.'
+    );
+    process.exit(1);
+  }
 } catch (error) {
   console.error('Error copying assets:', error);
   process.exit(1);

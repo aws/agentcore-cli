@@ -2,12 +2,12 @@ import { getWorkingDirectory } from '../../lib';
 import { createProgram } from '../cli';
 import { LayoutProvider } from './context';
 import { CLI_ONLY_EXAMPLES } from './copy';
+import { setExitAction } from './exit-action';
 import { MissingProjectMessage, WrongDirectoryMessage, getProjectRootMismatch, projectExists } from './guards';
 import { AddFlow } from './screens/add/AddFlow';
 import { CliOnlyScreen } from './screens/cli-only';
 import { CreateScreen } from './screens/create';
 import { DeployScreen } from './screens/deploy/DeployScreen';
-import { DevScreen } from './screens/dev/DevScreen';
 import { EvalHubScreen, EvalScreen } from './screens/eval';
 import { FetchAccessScreen } from './screens/fetch-access';
 import { HelpScreen, HomeScreen } from './screens/home';
@@ -30,7 +30,6 @@ const cwd = getWorkingDirectory();
 type Route =
   | { name: 'home' }
   | { name: 'help'; initialQuery?: string }
-  | { name: 'dev' }
   | { name: 'deploy' }
   | { name: 'invoke' }
   | { name: 'create' }
@@ -87,7 +86,9 @@ function AppContent() {
     }
 
     if (id === 'dev') {
-      setRoute({ name: 'dev' });
+      setExitAction({ type: 'dev' });
+      exit();
+      return;
     } else if (id === 'deploy') {
       setRoute({ name: 'deploy' });
     } else if (id === 'invoke') {
@@ -152,10 +153,6 @@ function AppContent() {
     );
   }
 
-  if (route.name === 'dev') {
-    return <DevScreen onBack={() => setRoute({ name: 'help' })} />;
-  }
-
   if (route.name === 'deploy') {
     return (
       <DeployScreen
@@ -179,7 +176,10 @@ function AppContent() {
       <AddFlow
         isInteractive={true}
         onExit={() => setRoute({ name: 'help' })}
-        onDev={() => setRoute({ name: 'dev' })}
+        onDev={() => {
+          setExitAction({ type: 'dev' });
+          exit();
+        }}
         onDeploy={() => setRoute({ name: 'deploy' })}
       />
     );

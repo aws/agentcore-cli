@@ -143,6 +143,44 @@ See `docs/TESTING.md` for details.
 - Always look for existing types before creating a new type inline.
 - Re-usable constants must be defined in a constants file in the closest sensible subdirectory.
 
+## Multi-Partition Support (GovCloud, China)
+
+The CLI supports multiple AWS partitions (commercial, GovCloud, China) through a central utility at
+`src/cli/aws/partition.ts`. This module maps region prefixes to partition-specific values.
+
+### Rules
+
+- **Never hardcode `arn:aws:`** in ARN construction. Use `arnPrefix(region)` from `src/cli/aws/partition.ts`.
+- **Never hardcode `amazonaws.com`** in endpoint URLs. Use `serviceEndpoint(service, region)` or `dnsSuffix(region)`.
+- **Never hardcode `console.aws.amazon.com`** in console URLs. Use `consoleDomain(region)`.
+- **ARN regex patterns** must use `arn:[^:]+:` (not `arn:aws:`) to match any partition.
+- **Static JSON assets** (e.g., IAM policies in `src/assets/`) cannot use TypeScript utilities — use `arn:*:` as the
+  partition wildcard since IAM evaluates it across all partitions.
+
+### Adding a New Region
+
+Update these files in the CLI repo:
+
+1. `src/schema/schemas/aws-targets.ts` — add to `AgentCoreRegionSchema` enum
+2. `src/schema/llm-compacted/aws-targets.ts` — add to `AgentCoreRegion` type union
+3. `src/schema/schemas/__tests__/aws-targets.test.ts` — add to `validRegions` array
+4. `src/cli/operations/agent/import/constants.ts` — add to `BEDROCK_REGIONS` (if applicable to Bedrock Agent import)
+
+Update these files in the CDK repo (`@aws/agentcore-cdk`):
+
+5. `src/schema/schemas/aws-targets.ts` — add to `AgentCoreRegionSchema` enum
+6. `src/schema/llm-compacted/aws-targets.ts` — add to `AgentCoreRegion` type union
+
+Then run `npm run test:update-snapshots` in the CLI repo if any asset files changed.
+
+### Adding a New Partition
+
+1. Add a new entry to `PARTITION_CONFIGS` in `src/cli/aws/partition.ts` with the region prefix, partition name, DNS
+   suffix, and console domain.
+2. Add tests for the new partition in `src/cli/aws/__tests__/partition.test.ts`.
+3. Update `src/assets/cdk/cdk.json` — add the partition to `@aws-cdk/core:target-partitions`.
+4. Run `npm run test:update-snapshots` to update asset snapshots.
+
 ## TUI Harness
 
 See `docs/tui-harness.md` for the full TUI harness usage guide (MCP tools, screen markers, examples, and error

@@ -215,7 +215,7 @@ function handleSSEEvent(event: Record<string, unknown>, onStatus?: (status: stri
 }
 
 /** Check if an event (possibly wrapped in JSON-RPC envelope) is a status-update */
-function isStatusUpdateEvent(event: Record<string, unknown>): boolean {
+export function isStatusUpdateEvent(event: Record<string, unknown>): boolean {
   const target = (event.result as Record<string, unknown>) ?? event;
   return target.kind === 'status-update';
 }
@@ -232,7 +232,7 @@ function isStatusUpdateEvent(event: Record<string, unknown>): boolean {
  * When `streamedFromStatus` is true, artifact-update text is skipped because
  * the same content was already streamed incrementally via status-update events.
  */
-function extractSSEEventText(event: Record<string, unknown>, streamedFromStatus = false): string | null {
+export function extractSSEEventText(event: Record<string, unknown>, streamedFromStatus = false): string | null {
   // Unwrap JSON-RPC result envelope if present
   const target = (event.result as Record<string, unknown>) ?? event;
   const kind = target.kind as string | undefined;
@@ -260,7 +260,7 @@ function extractSSEEventText(event: Record<string, unknown>, streamedFromStatus 
 }
 
 /** Extract text from a full Task result (has artifacts array and/or status) */
-function extractTaskText(result: Record<string, unknown>): string | null {
+export function extractTaskText(result: Record<string, unknown>): string | null {
   // Try artifacts first
   const artifacts = result.artifacts as { parts?: { kind?: string; type?: string; text?: string }[] }[] | undefined;
   if (artifacts) {

@@ -1,11 +1,10 @@
-import type { NetworkMode, PythonRuntime } from '../../../../schema';
+import type { NetworkMode } from '../../../../schema';
+
+export { DEFAULT_PYTHON_VERSION } from '../../../../schema';
 
 /**
  * Default configuration values for create command
  */
-
-/** Default Python runtime version for new agents */
-export const DEFAULT_PYTHON_VERSION: PythonRuntime = 'PYTHON_3_13';
 
 /** Default network mode for agent runtimes */
 export const DEFAULT_NETWORK_MODE: NetworkMode = 'PUBLIC';
