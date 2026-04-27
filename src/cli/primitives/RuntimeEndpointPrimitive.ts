@@ -352,11 +352,4 @@ export class RuntimeEndpointPrimitive extends BasePrimitive<AddRuntimeEndpointOp
    * Stub for future cross-reference validation.
    * Checks if any gateway targets reference a given runtime endpoint.
    */
-  private findGatewayTargetReferences(
-    _project: AgentCoreProjectSpec,
-    _runtimeName: string,
-    _endpointName: string
-  ): { gatewayName: string; targetName: string }[] {
-    return []; // Future: check gateway targets that reference this endpoint
-  }
 }
