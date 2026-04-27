@@ -49,9 +49,7 @@ export class RuntimeEndpointPrimitive extends BasePrimitive<AddRuntimeEndpointOp
       }
 
       // Initialize endpoints dictionary if needed
-      if (!runtime.endpoints) {
-        runtime.endpoints = {};
-      }
+      runtime.endpoints ??= {};
 
       // Check for duplicate endpoint name
       if (runtime.endpoints[options.endpoint]) {
@@ -114,28 +112,36 @@ export class RuntimeEndpointPrimitive extends BasePrimitive<AddRuntimeEndpointOp
     try {
       const project = await this.readProjectSpec();
 
-      // Find the runtime that contains this endpoint
-      let found = false;
-      for (const runtime of project.runtimes) {
-        if (runtime.endpoints && runtime.endpoints[name]) {
-          delete runtime.endpoints[name];
+      // Support composite key: runtimeName/endpointName
+      const slashIndex = name.indexOf('/');
+      if (slashIndex > 0) {
+        const runtimeName = name.substring(0, slashIndex);
+        const endpointName = name.substring(slashIndex + 1);
+        const runtime = project.runtimes.find(r => r.name === runtimeName);
+        if (!runtime?.endpoints?.[endpointName]) {
+          return { success: false, error: `Runtime endpoint "${name}" not found.` };
+        }
+        delete runtime.endpoints[endpointName];
+        if (Object.keys(runtime.endpoints).length === 0) {
+          delete runtime.endpoints;
+        }
+        await this.writeProjectSpec(project);
+        return { success: true };
+      }
 
-          // Clean up empty endpoints dictionary
+      // Legacy: bare endpoint name — search all runtimes
+      for (const runtime of project.runtimes) {
+        if (runtime.endpoints?.[name]) {
+          delete runtime.endpoints[name];
           if (Object.keys(runtime.endpoints).length === 0) {
             delete runtime.endpoints;
           }
-
-          found = true;
-          break;
+          await this.writeProjectSpec(project);
+          return { success: true };
         }
       }
 
-      if (!found) {
-        return { success: false, error: `Runtime endpoint "${name}" not found.` };
-      }
-
-      await this.writeProjectSpec(project);
-      return { success: true };
+      return { success: false, error: `Runtime endpoint "${name}" not found.` };
     } catch (err) {
       return { success: false, error: getErrorMessage(err) };
     }
@@ -144,15 +150,27 @@ export class RuntimeEndpointPrimitive extends BasePrimitive<AddRuntimeEndpointOp
   async previewRemove(name: string): Promise<RemovalPreview> {
     const project = await this.readProjectSpec();
 
-    // Find the runtime that contains this endpoint
+    // Support composite key: runtimeName/endpointName
     let runtimeName: string | undefined;
+    let endpointName: string = name;
     let endpointConfig: { version: number; description?: string } | undefined;
 
-    for (const runtime of project.runtimes) {
-      if (runtime.endpoints && runtime.endpoints[name]) {
-        runtimeName = runtime.name;
-        endpointConfig = runtime.endpoints[name];
-        break;
+    const slashIndex = name.indexOf('/');
+    if (slashIndex > 0) {
+      runtimeName = name.substring(0, slashIndex);
+      endpointName = name.substring(slashIndex + 1);
+      const runtime = project.runtimes.find(r => r.name === runtimeName);
+      if (runtime?.endpoints?.[endpointName]) {
+        endpointConfig = runtime.endpoints[endpointName];
+      }
+    } else {
+      // Legacy: bare endpoint name — search all runtimes
+      for (const runtime of project.runtimes) {
+        if (runtime.endpoints?.[name]) {
+          runtimeName = runtime.name;
+          endpointConfig = runtime.endpoints[name];
+          break;
+        }
       }
     }
 
@@ -163,7 +181,7 @@ export class RuntimeEndpointPrimitive extends BasePrimitive<AddRuntimeEndpointOp
     const summary: string[] = [];
     const schemaChanges: SchemaChange[] = [];
 
-    summary.push(`Removing runtime endpoint: ${name} (from runtime "${runtimeName}")`);
+    summary.push(`Removing runtime endpoint: ${endpointName} (from runtime "${runtimeName}")`);
     summary.push(`  Version: ${endpointConfig.version}`);
     if (endpointConfig.description) {
       summary.push(`  Description: ${endpointConfig.description}`);
@@ -173,7 +191,7 @@ export class RuntimeEndpointPrimitive extends BasePrimitive<AddRuntimeEndpointOp
     const afterProject = JSON.parse(JSON.stringify(project)) as AgentCoreProjectSpec;
     const afterRuntime = afterProject.runtimes.find(a => a.name === runtimeName);
     if (afterRuntime?.endpoints) {
-      delete afterRuntime.endpoints[name];
+      delete afterRuntime.endpoints[endpointName];
       if (Object.keys(afterRuntime.endpoints).length === 0) {
         delete afterRuntime.endpoints;
       }
@@ -198,7 +216,7 @@ export class RuntimeEndpointPrimitive extends BasePrimitive<AddRuntimeEndpointOp
 
         for (const [endpointName, endpointConfig] of Object.entries(runtime.endpoints)) {
           removable.push({
-            name: endpointName,
+            name: `${runtime.name}/${endpointName}`,
             type: 'runtime-endpoint',
             runtimeName: runtime.name,
             endpointName,

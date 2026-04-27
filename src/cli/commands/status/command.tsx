@@ -157,7 +157,7 @@ export const registerStatus = (program: Command) => {
                 <Text bold>Agents</Text>
                 {agents.map(entry => {
                   // Find endpoints belonging to this agent
-                  const agentEndpoints = runtimeEndpoints.filter(ep => ep.detail?.startsWith(`${entry.name} `));
+                  const agentEndpoints = runtimeEndpoints.filter(ep => ep.parentName === entry.name);
                   return (
                     <Box key={`${entry.resourceType}-${entry.name}`} flexDirection="column">
                       <ResourceEntry entry={entry} showRuntime />
@@ -167,8 +167,8 @@ export const registerStatus = (program: Command) => {
                         </Text>
                       )}
                       {agentEndpoints.map(ep => (
-                        <Text key={`ep-${ep.name}`}>
-                          {'    '}◉ {ep.name} <Text dimColor>{ep.detail?.replace(`${entry.name} `, '')}</Text>{' '}
+                        <Text key={`${ep.parentName}/${ep.name}`}>
+                          {'    '}◉ {ep.name} <Text dimColor>{ep.detail}</Text>{' '}
                           <Text color={DEPLOYMENT_STATE_COLORS[ep.deploymentState] ?? 'gray'}>
                             [{DEPLOYMENT_STATE_LABELS[ep.deploymentState] ?? ep.deploymentState}]
                           </Text>
@@ -184,8 +184,8 @@ export const registerStatus = (program: Command) => {
               <Box flexDirection="column" marginTop={1}>
                 <Text bold>Runtime Endpoints</Text>
                 {runtimeEndpoints.map(ep => (
-                  <Text key={`ep-${ep.detail}-${ep.name}`}>
-                    {'  '}◉ {ep.name} <Text dimColor>{ep.detail}</Text>{' '}
+                  <Text key={`${ep.parentName}/${ep.name}`}>
+                    {'  '}◉ {ep.parentName}/{ep.name} <Text dimColor>{ep.detail}</Text>{' '}
                     <Text color={DEPLOYMENT_STATE_COLORS[ep.deploymentState] ?? 'gray'}>
                       [{DEPLOYMENT_STATE_LABELS[ep.deploymentState] ?? ep.deploymentState}]
                     </Text>

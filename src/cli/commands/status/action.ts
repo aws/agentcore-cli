@@ -24,6 +24,7 @@ export interface ResourceStatusEntry {
   deploymentState: ResourceDeploymentState;
   identifier?: string;
   detail?: string;
+  parentName?: string;
   error?: string;
   invocationUrl?: string;
 }
@@ -80,6 +81,7 @@ function diffResourceSet<TLocal extends { name: string }, TDeployed>({
   getIdentifier,
   getLocalDetail,
   getDeployedKey,
+  getParentName,
 }: {
   resourceType: ResourceStatusEntry['resourceType'];
   localItems: TLocal[];
@@ -87,6 +89,7 @@ function diffResourceSet<TLocal extends { name: string }, TDeployed>({
   getIdentifier: (deployed: TDeployed) => string | undefined;
   getLocalDetail?: (item: TLocal) => string | undefined;
   getDeployedKey?: (item: TLocal) => string;
+  getParentName?: (item: TLocal) => string | undefined;
 }): ResourceStatusEntry[] {
   const entries: ResourceStatusEntry[] = [];
   const localKeys = new Set(localItems.map(item => (getDeployedKey ? getDeployedKey(item) : item.name)));
@@ -100,16 +103,20 @@ function diffResourceSet<TLocal extends { name: string }, TDeployed>({
       deploymentState: deployed ? 'deployed' : 'local-only',
       identifier: deployed ? getIdentifier(deployed) : undefined,
       detail: getLocalDetail?.(item),
+      parentName: getParentName?.(item),
     });
   }
 
   for (const [name, deployed] of Object.entries(deployedRecord)) {
     if (!localKeys.has(name)) {
+      // For pending-removal entries, try to extract parentName from composite key
+      const slashIdx = name.indexOf('/');
       entries.push({
         resourceType,
         name,
         deploymentState: 'pending-removal',
         identifier: getIdentifier(deployed),
+        parentName: getParentName && slashIdx > 0 ? name.substring(0, slashIdx) : undefined,
       });
     }
   }
@@ -223,8 +230,9 @@ export function computeResourceStatuses(
     localItems: localEndpoints,
     deployedRecord: resources?.runtimeEndpoints ?? {},
     getIdentifier: deployed => deployed.endpointArn,
-    getLocalDetail: item => `${item.agentName} v${item.version}${item.description ? ` — ${item.description}` : ''}`,
+    getLocalDetail: item => `v${item.version}${item.description ? ` — ${item.description}` : ''}`,
     getDeployedKey: item => `${item.agentName}/${item.name}`,
+    getParentName: item => item.agentName,
   });
 
   return [
