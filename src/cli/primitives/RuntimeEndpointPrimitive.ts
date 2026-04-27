@@ -61,9 +61,15 @@ export class RuntimeEndpointPrimitive extends BasePrimitive<AddRuntimeEndpointOp
         };
       }
 
+      // Validate version is a positive integer
+      const version = options.version ?? 1;
+      if (!Number.isInteger(version) || version < 1) {
+        return { success: false, error: `Version must be a positive integer (got ${version}).` };
+      }
+
       // Build and validate the endpoint config
       const config = {
-        version: options.version ?? 1,
+        version,
         ...(options.description ? { description: options.description } : {}),
       };
       RuntimeEndpointSchema.parse(config);
@@ -190,7 +196,7 @@ export class RuntimeEndpointPrimitive extends BasePrimitive<AddRuntimeEndpointOp
       .description('Add a named endpoint (version alias) to a runtime')
       .requiredOption('--runtime <name>', 'Runtime name to add the endpoint to')
       .requiredOption('--endpoint <name>', 'Endpoint name (e.g., prod, staging)')
-      .option('--version <number>', 'Version number to alias (default: 1)', parseInt)
+      .option('--version <number>', 'Version number to alias (default: 1)', Number)
       .option('--description <desc>', 'Description of the endpoint')
       .option('--json', 'Output as JSON [non-interactive]')
       .action(
