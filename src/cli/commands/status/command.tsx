@@ -180,6 +180,20 @@ export const registerStatus = (program: Command) => {
               </Box>
             )}
 
+            {agents.length === 0 && runtimeEndpoints.length > 0 && (
+              <Box flexDirection="column" marginTop={1}>
+                <Text bold>Runtime Endpoints</Text>
+                {runtimeEndpoints.map(ep => (
+                  <Text key={`ep-${ep.detail}-${ep.name}`}>
+                    {'  '}◉ {ep.name} <Text dimColor>{ep.detail}</Text>{' '}
+                    <Text color={DEPLOYMENT_STATE_COLORS[ep.deploymentState] ?? 'gray'}>
+                      [{DEPLOYMENT_STATE_LABELS[ep.deploymentState] ?? ep.deploymentState}]
+                    </Text>
+                  </Text>
+                ))}
+              </Box>
+            )}
+
             {memories.length > 0 && (
               <Box flexDirection="column" marginTop={1}>
                 <Text bold>Memories</Text>
