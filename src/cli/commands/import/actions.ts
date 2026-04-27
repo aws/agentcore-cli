@@ -78,7 +78,7 @@ function toMemorySpec(mem: ParsedStarterToolkitConfig['memories'][0]): Memory {
 
   return {
     name: mem.name,
-    eventExpiryDuration: Math.max(7, Math.min(365, mem.eventExpiryDays)),
+    eventExpiryDuration: Math.max(3, Math.min(365, mem.eventExpiryDays)),
     strategies,
   };
 }

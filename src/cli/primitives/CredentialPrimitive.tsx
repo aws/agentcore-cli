@@ -4,6 +4,7 @@ import { CredentialSchema } from '../../schema';
 import { validateAddCredentialOptions } from '../commands/add/validate';
 import { getErrorMessage } from '../errors';
 import type { RemovalPreview, RemovalResult, SchemaChange } from '../operations/remove/types';
+import { requireTTY } from '../tui/guards/tty';
 import { BasePrimitive } from './BasePrimitive';
 import { computeDefaultCredentialEnvVarName } from './credential-utils';
 import type { AddResult, AddScreenComponent, RemovableResource } from './types';
@@ -339,6 +340,7 @@ export class CredentialPrimitive extends BasePrimitive<AddCredentialOptions, Rem
               process.exit(result.success ? 0 : 1);
             } else {
               // TUI fallback — dynamic imports to avoid pulling ink (async) into registry
+              requireTTY();
               const [{ render }, { default: React }, { AddFlow }] = await Promise.all([
                 import('ink'),
                 import('react'),

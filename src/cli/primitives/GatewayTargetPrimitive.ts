@@ -15,6 +15,7 @@ import { getErrorMessage } from '../errors';
 import type { RemovableGatewayTarget } from '../operations/remove/remove-gateway-target';
 import type { RemovalPreview, RemovalResult, SchemaChange } from '../operations/remove/types';
 import { getTemplateToolDefinitions, renderGatewayTargetTemplate } from '../templates/GatewayTargetRenderer';
+import { requireTTY } from '../tui/guards/tty';
 import type {
   ApiGatewayTargetConfig,
   GatewayTargetWizardState,
@@ -508,6 +509,7 @@ export class GatewayTargetPrimitive extends BasePrimitive<AddGatewayTargetOption
             );
             process.exit(result.success ? 0 : 1);
           } else {
+            requireTTY();
             const [{ render }, { default: React }, { RemoveFlow }] = await Promise.all([
               import('ink'),
               import('react'),

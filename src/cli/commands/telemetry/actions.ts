@@ -1,5 +1,5 @@
 import { GLOBAL_CONFIG_DIR, GLOBAL_CONFIG_FILE, updateGlobalConfig } from '../../global-config.js';
-import { resolveTelemetryPreference } from '../../telemetry/resolve.js';
+import { resolveTelemetryPreference } from '../../telemetry/config.js';
 
 export async function handleTelemetryDisable(
   configDir = GLOBAL_CONFIG_DIR,

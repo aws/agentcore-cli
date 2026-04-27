@@ -3,6 +3,7 @@ import type { AgentCoreProjectSpec, PolicyEngine } from '../../schema';
 import { PolicyEngineModeSchema, PolicyEngineSchema } from '../../schema';
 import { getErrorMessage } from '../errors';
 import type { RemovalPreview, RemovalResult, SchemaChange } from '../operations/remove/types';
+import { requireTTY } from '../tui/guards/tty';
 import { BasePrimitive } from './BasePrimitive';
 import { SOURCE_CODE_NOTE } from './constants';
 import type { AddResult, AddScreenComponent, RemovableResource } from './types';
@@ -261,6 +262,7 @@ export class PolicyEnginePrimitive extends BasePrimitive<AddPolicyEngineOptions,
               }
               process.exit(result.success ? 0 : 1);
             } else {
+              requireTTY();
               const [{ render }, { default: React }, { AddFlow }] = await Promise.all([
                 import('ink'),
                 import('react'),
@@ -326,6 +328,7 @@ export class PolicyEnginePrimitive extends BasePrimitive<AddPolicyEngineOptions,
             }
             process.exit(result.success ? 0 : 1);
           } else {
+            requireTTY();
             const [{ render }, { default: React }, { RemoveFlow }] = await Promise.all([
               import('ink'),
               import('react'),

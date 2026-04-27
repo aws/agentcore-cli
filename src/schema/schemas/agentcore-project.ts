@@ -126,7 +126,7 @@ export type StreamDeliveryResources = z.infer<typeof StreamDeliveryResourcesSche
 
 export const MemorySchema = z.object({
   name: MemoryNameSchema,
-  eventExpiryDuration: z.number().int().min(7).max(365),
+  eventExpiryDuration: z.number().int().min(3).max(365),
   // Strategies array can be empty for short-term memory (just base memory with expiration)
   // Long-term memory includes strategies like SEMANTIC, SUMMARIZATION, USER_PREFERENCE
   strategies: z

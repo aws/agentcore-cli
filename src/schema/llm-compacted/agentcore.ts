@@ -73,7 +73,7 @@ interface EnvVar {
 
 interface Memory {
   name: string; // @regex ^[a-zA-Z][a-zA-Z0-9_]{0,47}$ @max 48
-  eventExpiryDuration: number; // @min 7 @max 365 (days)
+  eventExpiryDuration: number; // @min 3 @max 365 (days)
   strategies: MemoryStrategy[]; // @min 1, unique by type
   tags?: Record<string, string>;
 }

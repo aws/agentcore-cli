@@ -3,10 +3,8 @@ import { useLayout } from '../../context';
 import { HINTS } from '../../copy';
 import { useTextInput } from '../../hooks';
 import type { CommandMeta } from '../../utils/commands';
-import { Box, Text, useInput } from 'ink';
+import { Box, Text, useInput, useStdout } from 'ink';
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-
-const MAX_DESC_WIDTH = 50;
 
 function truncateDescription(desc: string, maxLen: number): string {
   if (desc.length <= maxLen) return desc;
@@ -29,8 +27,18 @@ interface HelpDisplayProps {
   notice?: React.ReactNode;
 }
 
-function CommandRow({ item, selected, maxLabelLen }: { item: DisplayItem; selected: boolean; maxLabelLen: number }) {
-  const desc = truncateDescription(item.command.description, MAX_DESC_WIDTH);
+function CommandRow({
+  item,
+  selected,
+  maxLabelLen,
+  maxDescWidth,
+}: {
+  item: DisplayItem;
+  selected: boolean;
+  maxLabelLen: number;
+  maxDescWidth: number;
+}) {
+  const desc = truncateDescription(item.command.description, maxDescWidth);
   const labelLen = item.matchedSubcommand
     ? item.command.title.length + 3 + item.matchedSubcommand.length
     : item.command.title.length;
@@ -77,10 +85,13 @@ function HelpDisplay({
   notice,
 }: HelpDisplayProps) {
   const { contentWidth } = useLayout();
+  const { stdout } = useStdout();
+  const terminalWidth = stdout?.columns ?? 80;
   const bottomDivider = '─'.repeat(contentWidth);
 
   const allItems = [...interactiveItems, ...cliOnlyItems];
   const maxLabelLen = getMaxLabelLen(allItems);
+  const maxDescWidth = Math.max(20, terminalWidth - maxLabelLen - 8);
 
   const hasCliOnly = cliOnlyItems.length > 0;
   const showCliSection = hasCliOnly && (showCliOnly || !!query);
@@ -114,6 +125,7 @@ function HelpDisplay({
                 item={item}
                 selected={idx === clampedIndex}
                 maxLabelLen={maxLabelLen}
+                maxDescWidth={maxDescWidth}
               />
             ))}
 
@@ -128,6 +140,7 @@ function HelpDisplay({
                     item={item}
                     selected={interactiveCount + idx === clampedIndex}
                     maxLabelLen={maxLabelLen}
+                    maxDescWidth={maxDescWidth}
                   />
                 ))}
               </>

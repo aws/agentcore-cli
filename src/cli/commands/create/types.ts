@@ -2,6 +2,7 @@ import type { VpcOptions } from '../shared/vpc-utils';
 
 export interface CreateOptions extends VpcOptions {
   name?: string;
+  projectName?: string;
   agent?: boolean;
   defaults?: boolean;
   type?: string;

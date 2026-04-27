@@ -5,6 +5,7 @@ import { detectRegion } from '../aws';
 import { getPolicyGeneration, startPolicyGeneration } from '../aws/policy-generation';
 import { getErrorMessage } from '../errors';
 import type { RemovalPreview, RemovalResult, SchemaChange } from '../operations/remove/types';
+import { requireTTY } from '../tui/guards/tty';
 import { BasePrimitive } from './BasePrimitive';
 import { SOURCE_CODE_NOTE } from './constants';
 import type { AddResult, AddScreenComponent, RemovableResource } from './types';
@@ -343,6 +344,7 @@ export class PolicyPrimitive extends BasePrimitive<AddPolicyOptions, RemovablePo
               }
               process.exit(result.success ? 0 : 1);
             } else {
+              requireTTY();
               const [{ render }, { default: React }, { AddFlow }] = await Promise.all([
                 import('ink'),
                 import('react'),
@@ -417,6 +419,7 @@ export class PolicyPrimitive extends BasePrimitive<AddPolicyOptions, RemovablePo
             }
             process.exit(result.success ? 0 : 1);
           } else {
+            requireTTY();
             const [{ render }, { default: React }, { RemoveFlow }] = await Promise.all([
               import('ink'),
               import('react'),

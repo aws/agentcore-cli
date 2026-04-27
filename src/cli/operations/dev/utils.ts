@@ -1,3 +1,4 @@
+import { spawn } from 'child_process';
 import { createConnection, createServer } from 'net';
 
 /** Check if a port is available on a specific host */
@@ -107,4 +108,11 @@ export function convertEntrypointToModule(entrypoint: string): string {
   if (entrypoint.includes(':')) return entrypoint;
   const path = entrypoint.replace(/\.py$/, '').replace(/\//g, '.');
   return `${path}:app`;
+}
+
+export function openBrowser(url: string): void {
+  const isWindows = process.platform === 'win32';
+  const cmd = isWindows ? 'cmd' : process.platform === 'darwin' ? 'open' : 'xdg-open';
+  const args = isWindows ? ['/c', 'start', url] : [url];
+  spawn(cmd, args, { stdio: 'ignore', detached: true }).unref();
 }

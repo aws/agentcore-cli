@@ -79,3 +79,48 @@ jobs:
           GEMINI_API_KEY: ${{ env.E2E_GEMINI_API_KEY }}
           CDK_TARBALL: ${{ env.CDK_TARBALL }}
         run: npm run test:e2e
+  browser-tests:
+    runs-on: ubuntu-latest
+    environment: e2e-testing
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ github.event_name == 'workflow_dispatch' && github.ref || 'main' }}
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '20.x'
+          cache: 'npm'
+      - name: Configure git
+        run: |
+          git config --global user.email "ci@amazon.com"
+          git config --global user.name "CI"
+      - uses: astral-sh/setup-uv@v7
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v6
+        with:
+          role-to-assume: ${{ secrets.E2E_AWS_ROLE_ARN }}
+          aws-region: ${{ inputs.aws_region || 'us-east-1' }}
+      - name: Get AWS Account ID
+        id: aws
+        run: echo "account_id=$(aws sts get-caller-identity --query Account --output text)" >> "$GITHUB_OUTPUT"
+      - run: npm ci
+      - run: npm run build
+      - name: Install CLI globally
+        run: npm install -g "$(npm pack | tail -1)"
+      - name: Install Playwright browsers
+        run: npx playwright install chromium --with-deps
+      - name: Run browser tests
+        env:
+          AWS_ACCOUNT_ID: ${{ steps.aws.outputs.account_id }}
+          AWS_REGION: ${{ inputs.aws_region || 'us-east-1' }}
+          PLAYWRIGHT_TRACE: 'off'
+        run: npm run test:browser
+      - name: Print browser test debug info
+        if: failure()
+        run: |
+          echo "=== Dev server PTY output ==="
+          cat browser-tests/test-results/agentcore-dev-pty.log 2>/dev/null || echo "(no pty log)"
+          echo ""
+          echo "=== Error contexts ==="
+          find browser-tests/test-results -name 'error-context.md' -exec echo "--- {} ---" \; -exec cat {} \; 2>/dev/null || echo "(no error contexts)"

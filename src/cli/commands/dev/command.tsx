@@ -21,7 +21,7 @@ import { OtelCollector, startOtelCollector } from '../../operations/dev/otel';
 import { FatalError } from '../../tui/components';
 import { LayoutProvider } from '../../tui/context';
 import { COMMAND_DESCRIPTIONS } from '../../tui/copy';
-import { requireProject } from '../../tui/guards';
+import { requireProject, requireTTY } from '../../tui/guards';
 import { parseHeaderFlags } from '../shared/header-utils';
 import { runBrowserMode } from './browser-mode';
 import type { Command } from '@commander-js/extra-typings';
@@ -383,6 +383,7 @@ export const registerDev = (program: Command) => {
 
         // If --no-browser provided, launch terminal TUI mode
         if (!opts.browser) {
+          requireTTY();
           // Enter alternate screen buffer for fullscreen mode
           process.stdout.write(ENTER_ALT_SCREEN);
 

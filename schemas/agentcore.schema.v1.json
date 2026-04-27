@@ -321,7 +321,7 @@
           },
           "eventExpiryDuration": {
             "type": "integer",
-            "minimum": 7,
+            "minimum": 3,
             "maximum": 365
           },
           "strategies": {

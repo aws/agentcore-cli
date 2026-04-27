@@ -68,3 +68,8 @@ ProtocolTesting/
 # Auto-cloned CDK constructs (from scripts/bundle.mjs)
 .cdk-constructs-clone/
 .omc/
+
+# Browser tests
+browser-tests/.browser-test-env
+browser-tests/test-results/
+browser-tests/playwright-report/

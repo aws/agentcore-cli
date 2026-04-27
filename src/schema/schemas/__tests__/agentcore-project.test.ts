@@ -137,10 +137,10 @@ describe('MemorySchema', () => {
     }
   });
 
-  it('rejects eventExpiryDuration below 7', () => {
+  it('rejects eventExpiryDuration below 3', () => {
     const result = MemorySchema.safeParse({
       name: 'Test',
-      eventExpiryDuration: 6,
+      eventExpiryDuration: 2,
       strategies: [],
     });
     expect(result.success).toBe(false);
@@ -155,11 +155,11 @@ describe('MemorySchema', () => {
     expect(result.success).toBe(false);
   });
 
-  it('accepts eventExpiryDuration boundary values (7 and 365)', () => {
+  it('accepts eventExpiryDuration boundary values (3 and 365)', () => {
     expect(
       MemorySchema.safeParse({
         name: 'Min',
-        eventExpiryDuration: 7,
+        eventExpiryDuration: 3,
         strategies: [],
       }).success
     ).toBe(true);
