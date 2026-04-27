@@ -80,7 +80,12 @@ export class RuntimeEndpointPrimitive extends BasePrimitive<AddRuntimeEndpointOp
       // Write updated project spec
       await this.writeProjectSpec(project);
 
-      return { success: true };
+      return {
+        success: true,
+        endpointName: options.endpoint,
+        agent: options.runtime,
+        version: config.version,
+      };
     } catch (err) {
       return { success: false, error: getErrorMessage(err) };
     }
