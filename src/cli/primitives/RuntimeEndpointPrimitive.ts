@@ -1,4 +1,4 @@
-import { ConfigIO, findConfigRoot } from '../../lib';
+import { findConfigRoot } from '../../lib';
 import type { AgentCoreProjectSpec } from '../../schema';
 import { RuntimeEndpointSchema } from '../../schema';
 import type { ResourceType } from '../commands/remove/types';
@@ -67,9 +67,8 @@ export class RuntimeEndpointPrimitive extends BasePrimitive<AddRuntimeEndpointOp
 
       // Check version against latest deployed version
       try {
-        const configIO = new ConfigIO();
-        if (configIO.configExists('state')) {
-          const deployedState = await configIO.readDeployedState();
+        if (this.configIO.configExists('state')) {
+          const deployedState = await this.configIO.readDeployedState();
           for (const target of Object.values(deployedState.targets)) {
             const deployedRuntime = target.resources?.runtimes?.[options.runtime];
             if (deployedRuntime?.runtimeVersion && version > deployedRuntime.runtimeVersion) {
