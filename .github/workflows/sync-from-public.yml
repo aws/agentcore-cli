@@ -102,3 +102,96 @@ jobs:
           fi
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  sync-preview:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Configure Git
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+      - name: Fetch public preview
+        run: |
+          git remote add public https://github.com/aws/agentcore-cli.git
+          git fetch public preview
+
+      - name: Sync preview with public/preview
+        run: |
+          git checkout preview
+          git reset --hard origin/preview
+
+          # Check if public/preview is already merged
+          if git merge-base --is-ancestor public/preview HEAD; then
+            echo "✅ preview is already up to date with public/preview"
+            exit 0
+          fi
+
+          # Merge but exclude .github/workflows/ (GITHUB_TOKEN lacks workflow permission)
+          if git merge public/preview --no-commit --no-ff; then
+            git checkout HEAD -- .github/workflows/ 2>/dev/null || true
+            git commit -m "chore: sync preview with public/preview"
+            git push origin preview
+            echo "✅ preview synced successfully"
+          else
+            echo "⚠️  Conflict detected in preview"
+
+            # Capture conflicted files before aborting
+            conflicted_files=$(git diff --name-only --diff-filter=U 2>/dev/null || echo "Unable to determine conflicted files")
+            git merge --abort
+
+            # Check if a sync PR already exists
+            existing_pr=$(gh pr list --base "preview" --search "Merge public/preview" --state open --json number --jq '.[0].number' 2>/dev/null || echo "")
+
+            if [ -n "$existing_pr" ]; then
+              echo "ℹ️  PR #$existing_pr already exists, skipping"
+              exit 0
+            fi
+
+            conflict_branch="sync-conflict-preview-$(date +%Y%m%d-%H%M%S)"
+            git checkout -b "$conflict_branch"
+
+            git merge public/preview --no-commit --no-ff || true
+            git checkout HEAD -- .github/workflows/ 2>/dev/null || true
+            git add -A
+            git commit -m "chore: sync preview with public/preview (conflicts present)
+
+          This automated sync detected merge conflicts that require manual resolution.
+
+          Source: public/preview (https://github.com/aws/agentcore-cli)
+          Target: preview
+
+          Please resolve conflicts and merge this PR." || true
+
+            git push origin "$conflict_branch"
+
+            gh pr create \
+              --title "🔀 [Sync Conflict] Merge public/preview → preview" \
+              --body "## Automated Sync Conflict
+
+          This PR was automatically created because merging \`public/preview\` into \`preview\` encountered conflicts.
+
+          **Source:** \`preview\` from [aws/agentcore-cli](https://github.com/aws/agentcore-cli)
+          **Target:** \`preview\`
+
+          ### Action Required
+          1. \`git fetch origin && git checkout $conflict_branch\`
+          2. Resolve merge conflicts
+          3. \`git add . && git commit\`
+          4. \`git push origin $conflict_branch\`
+          5. Merge this PR
+
+          ### Files with Conflicts
+          \`\`\`
+          $conflicted_files
+          \`\`\`" \
+              --base "preview" \
+              --head "$conflict_branch" || echo "⚠️  Failed to create PR"
+          fi
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
