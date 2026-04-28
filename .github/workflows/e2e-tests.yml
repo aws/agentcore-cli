@@ -101,6 +101,7 @@ jobs:
           BASE_SHA=${{ github.event.pull_request.base.sha || 'HEAD~1' }}
           CHANGED=$(git diff --name-only "$BASE_SHA"..HEAD -- 'e2e-tests/*.test.ts' \
             | grep -v '^e2e-tests/strands-bedrock\.test\.ts$' \
+            | grep -v '^e2e-tests/harness-bedrock\.test\.ts$' \
             | tr '\n' ' ')
           echo "extra_tests=$CHANGED" >> "$GITHUB_OUTPUT"
           echo "Changed e2e tests: ${CHANGED:-none}"
@@ -113,5 +114,7 @@ jobs:
           OPENAI_API_KEY: ${{ env.E2E_OPENAI_API_KEY }}
           GEMINI_API_KEY: ${{ env.E2E_GEMINI_API_KEY }}
           CDK_TARBALL: ${{ env.CDK_TARBALL }}
-        # Always run strands-bedrock as baseline, plus any e2e test files changed in the PR
-        run: npx vitest run --project e2e e2e-tests/strands-bedrock.test.ts ${{ steps.changed.outputs.extra_tests }}
+        # Always run strands-bedrock and harness-bedrock as baseline, plus any e2e test files changed in the PR
+        run:
+          npx vitest run --project e2e e2e-tests/strands-bedrock.test.ts e2e-tests/harness-bedrock.test.ts ${{
+          steps.changed.outputs.extra_tests }}
