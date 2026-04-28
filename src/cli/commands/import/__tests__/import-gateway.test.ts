@@ -143,7 +143,9 @@ describe('toGatewayTargetSpec — mcpServer targets', () => {
     const credentials = new Map<string, string>();
     const onProgress = vi.fn();
 
-    expect(() => toGatewayTargetSpec(detail, credentials, onProgress)).toThrow('references OAuth credential provider');
+    expect(() => toGatewayTargetSpec(detail, credentials, onProgress)).toThrow(
+      'uses an OAuth credential provider not found'
+    );
   });
 
   it('throws when API_KEY credential not found in project', () => {
@@ -169,7 +171,7 @@ describe('toGatewayTargetSpec — mcpServer targets', () => {
     const onProgress = vi.fn();
 
     expect(() => toGatewayTargetSpec(detail, credentials, onProgress)).toThrow(
-      'references API Key credential provider'
+      'uses an API Key credential provider not found'
     );
   });
 

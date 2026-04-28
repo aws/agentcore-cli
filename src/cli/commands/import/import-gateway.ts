@@ -193,7 +193,7 @@ function resolveOutboundAuth(
         };
       }
       throw new Error(
-        `Target "${detail.name}" references OAuth credential provider ${providerArn} which is not in this project's deployed state. ` +
+        `Target "${detail.name}" uses an OAuth credential provider not found in this project's deployed state. ` +
           'Import the credential first with `agentcore add credential` and re-run.'
       );
     }
@@ -205,7 +205,7 @@ function resolveOutboundAuth(
         return { type: 'API_KEY', credentialName };
       }
       throw new Error(
-        `Target "${detail.name}" references API Key credential provider ${providerArn} which is not in this project's deployed state. ` +
+        `Target "${detail.name}" uses an API Key credential provider not found in this project's deployed state. ` +
           'Import the credential first with `agentcore add credential` and re-run.'
       );
     }
