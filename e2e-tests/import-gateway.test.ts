@@ -7,7 +7,7 @@ import {
   spawnAndCollect,
   stripAnsi,
 } from '../src/test-utils/index.js';
-import { installCdkTarball, runAgentCoreCLI, writeAwsTargets } from './e2e-helper.js';
+import { dumpImportDebugInfo, installCdkTarball, runAgentCoreCLI, writeAwsTargets } from './e2e-helper.js';
 import { execSync } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
 import { mkdir, readFile, rm } from 'node:fs/promises';
@@ -89,6 +89,7 @@ describe.sequential('e2e: import gateway', () => {
   }, 600_000);
 
   const run = (args: string[]): Promise<RunResult> => runAgentCoreCLI(args, projectPath);
+  const stackName = `AgentCore-${agentName}-default`;
 
   // ── Import test ───────────────────────────────────────────────────
 
@@ -98,41 +99,7 @@ describe.sequential('e2e: import gateway', () => {
       const result = await run(['import', 'gateway', '--arn', gatewayArn]);
 
       if (result.exitCode !== 0) {
-        console.log('Import gateway stdout:', result.stdout);
-        console.log('Import gateway stderr:', result.stderr);
-
-        // Print the import log file for debugging CI failures
-        const logMatch = /Log: (.+)/.exec(result.stderr);
-        if (logMatch) {
-          const logPath = join(projectPath, logMatch[1]!);
-          try {
-            const logContents = await readFile(logPath, 'utf-8');
-            console.log('Import gateway log:\n', logContents);
-          } catch {
-            console.log('Could not read log file:', logPath);
-          }
-        }
-
-        // Print CloudFormation stack events for the failed import
-        const cfnEvents = await spawnAndCollect(
-          'aws',
-          [
-            'cloudformation',
-            'describe-stack-events',
-            '--stack-name',
-            `AgentCore-${agentName}-default`,
-            '--query',
-            'StackEvents[?ResourceStatus==`IMPORT_FAILED` || ResourceStatus==`IMPORT_ROLLBACK_IN_PROGRESS`]',
-            '--output',
-            'json',
-            '--region',
-            region,
-          ],
-          projectPath
-        );
-        if (cfnEvents.exitCode === 0) {
-          console.log('CloudFormation failed events:', cfnEvents.stdout);
-        }
+        await dumpImportDebugInfo('gateway', result, projectPath, stackName, region);
       }
 
       expect(result.exitCode, `Import gateway failed: ${result.stderr}`).toBe(0);

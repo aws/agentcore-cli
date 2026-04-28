@@ -9,7 +9,7 @@ import {
   spawnAndCollect,
   stripAnsi,
 } from '../src/test-utils/index.js';
-import { installCdkTarball, runAgentCoreCLI, writeAwsTargets } from './e2e-helper.js';
+import { dumpImportDebugInfo, installCdkTarball, runAgentCoreCLI, writeAwsTargets } from './e2e-helper.js';
 import { execSync } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
 import { mkdir, readFile, rm } from 'node:fs/promises';
@@ -112,6 +112,7 @@ describe.sequential('e2e: import runtime/memory/evaluator', () => {
   }, 600_000);
 
   const run = (args: string[]): Promise<RunResult> => runAgentCoreCLI(args, projectPath);
+  const stackName = `AgentCore-${agentName}-default`;
 
   // ── Import tests ──────────────────────────────────────────────────
 
@@ -121,8 +122,7 @@ describe.sequential('e2e: import runtime/memory/evaluator', () => {
       const result = await run(['import', 'runtime', '--arn', runtimeArn, '--code', appDir, '--name', agentName, '-y']);
 
       if (result.exitCode !== 0) {
-        console.log('Import runtime stdout:', result.stdout);
-        console.log('Import runtime stderr:', result.stderr);
+        await dumpImportDebugInfo('runtime', result, projectPath, stackName, region);
       }
 
       expect(result.exitCode, `Import runtime failed: ${result.stderr}`).toBe(0);
@@ -137,8 +137,7 @@ describe.sequential('e2e: import runtime/memory/evaluator', () => {
       const result = await run(['import', 'memory', '--arn', memoryArn, '-y']);
 
       if (result.exitCode !== 0) {
-        console.log('Import memory stdout:', result.stdout);
-        console.log('Import memory stderr:', result.stderr);
+        await dumpImportDebugInfo('memory', result, projectPath, stackName, region);
       }
 
       expect(result.exitCode, `Import memory failed: ${result.stderr}`).toBe(0);
@@ -153,8 +152,7 @@ describe.sequential('e2e: import runtime/memory/evaluator', () => {
       const result = await run(['import', 'evaluator', '--arn', evaluatorArn]);
 
       if (result.exitCode !== 0) {
-        console.log('Import evaluator stdout:', result.stdout);
-        console.log('Import evaluator stderr:', result.stderr);
+        await dumpImportDebugInfo('evaluator', result, projectPath, stackName, region);
       }
 
       expect(result.exitCode, `Import evaluator failed: ${result.stderr}`).toBe(0);
