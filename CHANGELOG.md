@@ -2,6 +2,37 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.12.0] - 2026-04-28
+
+### Added
+- feat: add gateway import command with executionRoleArn support (#855) (2df1387)
+- feat: runtime endpoint support in AgentCore CLI (#979) (41c59ef)
+- feat: add project-name option to create (#969) (9b46fbb)
+
+### Fixed
+- fix: duplicate header flash and help menu truncation (closes #895, closes #637) (#955) (e7b85c1)
+- fix: show 'Computing diff changes...' step during deploy diff phase (#952) (a725d12)
+
+### Other Changes
+- fix(e2e): add debug logging for gateway import CI failures (#1001) (8012d6c)
+- fix(e2e): separate gateway import test and add PR-changed test detection (#999) (19b7d13)
+- fix(import): remove resourceName/executionRoleArn co-variance refine (#996) (ad0ee58)
+- test: speed up CI and fix mock cleanup gaps (#989) (51240ac)
+- chore(deps-dev): bump esbuild from 0.27.4 to 0.28.0 (#862) (a778fb5)
+- chore(deps-dev): bump hono from 4.12.12 to 4.12.14 (#868) (d64d2b8)
+- chore(deps): bump the aws-sdk group across 1 directory with 14 updates (#912) (6061958)
+- chore(deps-dev): bump @secretlint/secretlint-rule-preset-recommend (#914) (8ed1fe7)
+- chore(deps-dev): bump @vitest/coverage-v8 from 4.1.2 to 4.1.5 (#915) (a74cab9)
+- chore(deps-dev): bump secretlint from 11.4.1 to 12.2.0 (#916) (80fc145)
+- chore(deps): bump postcss from 8.5.8 to 8.5.10 (#961) (760ac17)
+- chore(deps-dev): bump aws-cdk-lib (#962) (8a264fb)
+- ci: bump the github-actions group across 1 directory with 4 updates (#964) (9962c3e)
+- test: configure git in browser tests workflow (#976) (17b5727)
+- fix(import): remove experimental warning from import command (#977) (fdd6631)
+- feat(invoke): add --prompt-file and stdin support for long prompts (#974) (f6a3e99)
+- test: split browser tests into its own job, fix logs path (#975) (acbfb9e)
+- fix(invoke): auto-generate session ID for bearer-token invocations (#953) (343fedc)
+
 ## [0.11.0] - 2026-04-24
 
 ### Added
