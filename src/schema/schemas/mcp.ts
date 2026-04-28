@@ -615,11 +615,7 @@ export const AgentCoreGatewaySchema = z
       message: 'customJwtAuthorizer configuration is required when authorizerType is CUSTOM_JWT',
       path: ['authorizerConfiguration'],
     }
-  )
-  .refine(data => (data.resourceName !== undefined) === (data.executionRoleArn !== undefined), {
-    message: 'resourceName and executionRoleArn must be set together (import) or both omitted (fresh gateway)',
-    path: ['resourceName'],
-  });
+  );
 
 export type AgentCoreGateway = z.infer<typeof AgentCoreGatewaySchema>;
 
