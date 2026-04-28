@@ -25,7 +25,7 @@ RED = "\033[31m"
 DIM = "\033[2m"
 RESET = "\033[0m"
 
-SCRIPTS_DIR = os.path.join(os.path.dirname(__file__), "..")
+SCRIPTS_DIR = os.path.dirname(__file__)
 
 
 def read_prompt(filename):
