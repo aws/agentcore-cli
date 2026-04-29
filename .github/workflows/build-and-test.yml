@@ -87,7 +87,7 @@ jobs:
       - run: npm ci
       - run: npm run build --if-present
       - name: Run unit tests (shard ${{ matrix.shard }})
-        run: npx vitest run --project unit --shard=${{ matrix.shard }} --reporter=blob --reporter=verbose
+        run: npx vitest run --project unit --shard=${{ matrix.shard }} --reporter=blob --reporter=verbose --coverage
       - name: Upload blob report
         if: always()
         uses: actions/upload-artifact@v7
@@ -144,6 +144,6 @@ jobs:
         with:
           json-summary-path: coverage/coverage-summary.json
           json-final-path: coverage/coverage-final.json
-          vite-config-path: vitest.unit.config.ts
+          vite-config-path: vitest.config.ts
           file-coverage-mode: none
           coverage-thresholds: '{ "lines": 50, "branches": 50, "functions": 50, "statements": 50 }'
