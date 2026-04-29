@@ -1,12 +1,8 @@
-import { createTestProject, exists, runCLI } from '../src/test-utils/index.js';
+import { createTestProject, exists, readProjectConfig, runCLI } from '../src/test-utils/index.js';
 import type { TestProject } from '../src/test-utils/index.js';
 import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-
-async function readProjectConfig(projectPath: string) {
-  return JSON.parse(await readFile(join(projectPath, 'agentcore/agentcore.json'), 'utf-8'));
-}
 
 async function readHarnessSpec(projectPath: string, harnessName: string) {
   return JSON.parse(await readFile(join(projectPath, `app/${harnessName}/harness.json`), 'utf-8'));
