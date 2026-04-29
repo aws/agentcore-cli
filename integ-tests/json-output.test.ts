@@ -41,8 +41,8 @@ describe('JSON output structure', () => {
     });
 
     it('missing required options returns error JSON', async () => {
-      // Missing --language, --framework, etc without --no-agent
-      const result = await runCLI(['create', '--name', 'ValidName', '--json'], testDir);
+      // Missing --language, --model-provider, etc. on agent path
+      const result = await runCLI(['create', '--name', 'ValidName', '--framework', 'Strands', '--json'], testDir);
 
       expect(result.exitCode).toBe(1);
       const json = JSON.parse(result.stdout);

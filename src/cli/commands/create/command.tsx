@@ -131,7 +131,6 @@ async function handleCreateHarnessCLI(options: CreateOptions): Promise<void> {
   const name = options.name ?? options.projectName;
   const projectName = options.projectName ?? name;
 
-
   const validation = validateCreateHarnessOptions(
     {
       name,

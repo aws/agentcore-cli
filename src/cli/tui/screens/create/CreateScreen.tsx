@@ -150,7 +150,11 @@ function getCreateNextSteps(hasAgent: boolean, hasHarness: boolean): NextStep[] 
 
 const CREATE_TYPE_ITEMS = [
   { id: 'harness', title: 'Harness (recommended)', description: 'Managed config-based agent loop, no code required' },
-  { id: 'agent', title: 'Agent', description: 'Start with a template or bring your own code hosted on AgentCore Runtime' },
+  {
+    id: 'agent',
+    title: 'Agent',
+    description: 'Start with a template or bring your own code hosted on AgentCore Runtime',
+  },
   { id: 'skip', title: 'Skip', description: "I'll add resources later" },
 ];
 
@@ -262,7 +266,16 @@ export function CreateScreen({ cwd, isInteractive, onExit, onNavigate }: CreateS
     } else {
       onExit();
     }
-  }, [allSuccess, isInteractive, flow.projectName, flow.steps, flow.addAgentConfig, flow.addHarnessConfig, exit, onExit]);
+  }, [
+    allSuccess,
+    isInteractive,
+    flow.projectName,
+    flow.steps,
+    flow.addAgentConfig,
+    flow.addHarnessConfig,
+    exit,
+    onExit,
+  ]);
 
   // Auto-exit when project creation completes successfully
   useEffect(() => {

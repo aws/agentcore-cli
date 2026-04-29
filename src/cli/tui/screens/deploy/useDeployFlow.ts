@@ -667,7 +667,16 @@ export function useDeployFlow(options: DeployFlowOptions = {}): DeployFlowState 
       deploySteps.push(postCdkStep);
     }
     return deploySteps;
-  }, [preflight.steps, preDeployDiffStep, publishAssetsStep, deployStep, diffStep, skipPreflight, diffMode, postCdkStep]);
+  }, [
+    preflight.steps,
+    preDeployDiffStep,
+    publishAssetsStep,
+    deployStep,
+    diffStep,
+    skipPreflight,
+    diffMode,
+    postCdkStep,
+  ]);
 
   const phase: DeployPhase = useMemo(() => {
     const activeStep = diffMode ? diffStep : deployStep;

@@ -131,7 +131,10 @@ describe.skipIf(!prereqs.npm || !prereqs.git)('integration: create edge cases', 
 
     it('--dry-run shows what would be created without writing files', async () => {
       const name = `DryRun${Date.now().toString().slice(-6)}`;
-      const result = await runCLI(['create', '--name', name, '--defaults', '--dry-run', '--json'], testDir);
+      const result = await runCLI(
+        ['create', '--name', name, '--framework', 'Strands', '--defaults', '--dry-run', '--json'],
+        testDir
+      );
 
       expect(result.exitCode).toBe(0);
       const json = JSON.parse(result.stdout);

@@ -259,7 +259,6 @@ export const registerInvoke = (program: Command) => {
               process.stdout.write(SHOW_CURSOR);
             };
 
-
             const { waitUntilExit, unmount } = render(
               <InvokeScreen
                 isInteractive={true}

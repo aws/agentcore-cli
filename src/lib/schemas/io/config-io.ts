@@ -1,11 +1,17 @@
-import type { AgentCoreCliMcpDefs, AgentCoreProjectSpec, AwsDeploymentTarget, DeployedState, HarnessSpec } from '../../../schema';
+import type {
+  AgentCoreCliMcpDefs,
+  AgentCoreProjectSpec,
+  AwsDeploymentTarget,
+  DeployedState,
+  HarnessSpec,
+} from '../../../schema';
 import {
   AgentCoreCliMcpDefsSchema,
   AgentCoreProjectSpecSchema,
   AgentCoreRegionSchema,
   AwsDeploymentTargetsSchema,
-  createValidatedDeployedStateSchema,
   HarnessSpecSchema,
+  createValidatedDeployedStateSchema,
 } from '../../../schema';
 import {
   ConfigNotFoundError,
