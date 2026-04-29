@@ -123,7 +123,7 @@ jobs:
 
       - name: Sync preview with public/preview
         run: |
-          git checkout preview
+          git checkout --track origin/preview
           git reset --hard origin/preview
 
           # Check if public/preview is already merged
