@@ -477,8 +477,11 @@ describe('nested agentcore directory is preserved (issue #843)', () => {
   });
 
   // ── createZipFromDir (async) ──
+  // The zip stage should NOT exclude agentcore/ — that's copySourceTree's job.
+  // When zipping a staging directory, any agentcore/ present is a legitimate
+  // Python package installed by uv, not the project config dir.
 
-  it('zip: excludes top-level agentcore/ but includes nested agentcore/', async () => {
+  it('zip: does not exclude agentcore/ directories (staging has no project config)', async () => {
     const src = buildFixture(join(root, 'zip-async'));
     const zipPath = join(root, 'zip-async.zip');
 
@@ -487,21 +490,17 @@ describe('nested agentcore directory is preserved (issue #843)', () => {
     const zipBuffer = await readFile(zipPath);
     const entries = Object.keys(unzipSync(new Uint8Array(zipBuffer)));
 
-    // Top-level agentcore/ should NOT appear
-    expect(entries.some(e => e === 'agentcore/config.yaml')).toBe(false);
-    expect(entries.some(e => e.startsWith('agentcore/'))).toBe(false);
-
-    // Nested agentcore/ SHOULD appear
+    // Both top-level and nested agentcore/ are preserved in the zip —
+    // the zip function zips everything; exclusion is copySourceTree's concern
+    expect(entries).toContain('agentcore/config.yaml');
     expect(entries).toContain('lib/langgraph_checkpoint_aws/agentcore/__init__.py');
     expect(entries).toContain('lib/langgraph_checkpoint_aws/agentcore/core.py');
-
-    // Regular files present
     expect(entries).toContain('main.py');
   });
 
   // ── createZipFromDirSync ──
 
-  it('sync zip: excludes top-level agentcore/ but includes nested agentcore/', () => {
+  it('sync zip: does not exclude agentcore/ directories (staging has no project config)', () => {
     const src = buildFixture(join(root, 'zip-sync'));
     const zipPath = join(root, 'zip-sync.zip');
 
@@ -510,9 +509,61 @@ describe('nested agentcore directory is preserved (issue #843)', () => {
     const zipBuffer = readFileSync(zipPath);
     const entries = Object.keys(unzipSync(new Uint8Array(zipBuffer)));
 
-    expect(entries.some(e => e.startsWith('agentcore/'))).toBe(false);
+    expect(entries).toContain('agentcore/config.yaml');
     expect(entries).toContain('lib/langgraph_checkpoint_aws/agentcore/__init__.py');
     expect(entries).toContain('lib/langgraph_checkpoint_aws/agentcore/core.py');
+    expect(entries).toContain('main.py');
+  });
+
+  // ── Staging directory scenario (the actual bug) ──
+  // After uv installs deps into staging, copySourceTree copies user source on top.
+  // The staging dir may contain a top-level agentcore/ from a Python package.
+  // createZipFromDir must NOT strip it.
+
+  it('zip preserves top-level agentcore/ Python package in staging dir', async () => {
+    const staging = join(root, 'staging-zip-async');
+    mkdirSync(staging, { recursive: true });
+
+    // Simulate uv-installed dependency with top-level agentcore/ package
+    const agentcorePkg = join(staging, 'langgraph_checkpoint_aws', 'agentcore');
+    mkdirSync(agentcorePkg, { recursive: true });
+    writeFileSync(join(staging, 'langgraph_checkpoint_aws', '__init__.py'), '# init');
+    writeFileSync(join(agentcorePkg, '__init__.py'), '# agentcore init');
+    writeFileSync(join(agentcorePkg, 'saver.py'), 'class AgentCoreMemorySaver: pass');
+
+    // User source copied on top by copySourceTree
+    writeFileSync(join(staging, 'main.py'), 'print("hello")');
+
+    const zipPath = join(root, 'staging-async.zip');
+    await createZipFromDir(staging, zipPath);
+
+    const zipBuffer = await readFile(zipPath);
+    const entries = Object.keys(unzipSync(new Uint8Array(zipBuffer)));
+
+    expect(entries).toContain('langgraph_checkpoint_aws/agentcore/__init__.py');
+    expect(entries).toContain('langgraph_checkpoint_aws/agentcore/saver.py');
+    expect(entries).toContain('main.py');
+  });
+
+  it('sync zip preserves top-level agentcore/ Python package in staging dir', () => {
+    const staging = join(root, 'staging-zip-sync');
+    mkdirSync(staging, { recursive: true });
+
+    const agentcorePkg = join(staging, 'langgraph_checkpoint_aws', 'agentcore');
+    mkdirSync(agentcorePkg, { recursive: true });
+    writeFileSync(join(staging, 'langgraph_checkpoint_aws', '__init__.py'), '# init');
+    writeFileSync(join(agentcorePkg, '__init__.py'), '# agentcore init');
+    writeFileSync(join(agentcorePkg, 'saver.py'), 'class AgentCoreMemorySaver: pass');
+    writeFileSync(join(staging, 'main.py'), 'print("hello")');
+
+    const zipPath = join(root, 'staging-sync.zip');
+    createZipFromDirSync(staging, zipPath);
+
+    const zipBuffer = readFileSync(zipPath);
+    const entries = Object.keys(unzipSync(new Uint8Array(zipBuffer)));
+
+    expect(entries).toContain('langgraph_checkpoint_aws/agentcore/__init__.py');
+    expect(entries).toContain('langgraph_checkpoint_aws/agentcore/saver.py');
     expect(entries).toContain('main.py');
   });
 });

@@ -1,0 +1,520 @@
+name: Release Both (Main + Preview)
+
+on:
+  workflow_dispatch:
+    inputs:
+      main_bump_type:
+        description: 'Main branch version bump'
+        required: true
+        type: choice
+        options:
+          - patch
+          - minor
+          - major
+      preview_bump_type:
+        description: 'Preview branch version bump (prerelease with preview tag)'
+        required: true
+        type: choice
+        options:
+          - prerelease
+      main_changelog:
+        description: 'Main changelog entry (optional)'
+        required: false
+        type: string
+      preview_changelog:
+        description: 'Preview changelog entry (optional)'
+        required: false
+        type: string
+      dry_run:
+        description: 'Dry run — create PRs but skip npm publish'
+        required: false
+        type: boolean
+        default: false
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  # ═══════════════════════════════════════════════════════════════════
+  # Preflight — verify preview contains all of main
+  # ═══════════════════════════════════════════════════════════════════
+  preflight:
+    name: Preflight Checks
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Verify running from main
+        run: |
+          if [[ "${{ github.ref }}" != "refs/heads/main" ]]; then
+            echo "❌ This workflow must be run from the main branch."
+            exit 1
+          fi
+
+      - name: Verify preview contains all of main
+        run: |
+          git fetch origin preview
+          MAIN_SHA=$(git rev-parse HEAD)
+          MERGE_BASE=$(git merge-base HEAD origin/preview)
+
+          if [[ "$MAIN_SHA" != "$MERGE_BASE" ]]; then
+            echo "❌ preview branch does not contain all of main."
+            echo ""
+            echo "Main HEAD:  $MAIN_SHA"
+            echo "Merge base: $MERGE_BASE"
+            echo ""
+            echo "The sync-preview workflow should have merged automatically."
+            echo "If it failed due to conflicts, resolve manually:"
+            echo "  git checkout preview && git merge main && git push origin preview"
+            echo ""
+            echo "Then re-run this workflow."
+            exit 1
+          fi
+
+          echo "✅ preview contains all of main"
+
+  # ═══════════════════════════════════════════════════════════════════
+  # Step 1 — Prepare main release (bump, PR)
+  # ═══════════════════════════════════════════════════════════════════
+  prepare-main:
+    name: Prepare Main Release
+    needs: preflight
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.bump.outputs.version }}
+      branch: ${{ steps.bump.outputs.branch }}
+
+    steps:
+      - name: Checkout main
+        uses: actions/checkout@v6
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 20.x
+
+      - name: Configure git
+        run: |
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+
+      - run: npm ci
+
+      - name: Sync @aws/agentcore-cdk to latest npm version
+        run: |
+          LATEST_CDK=$(npm view @aws/agentcore-cdk version 2>/dev/null || echo "")
+          if [ -n "$LATEST_CDK" ]; then
+            TEMPLATE_PKG="src/assets/cdk/package.json"
+            CURRENT_CDK=$(node -p "require('./$TEMPLATE_PKG').dependencies['@aws/agentcore-cdk']")
+            if [ "$CURRENT_CDK" != "$LATEST_CDK" ]; then
+              node -e "
+                const fs = require('fs');
+                const pkg = JSON.parse(fs.readFileSync('$TEMPLATE_PKG', 'utf8'));
+                pkg.dependencies['@aws/agentcore-cdk'] = '$LATEST_CDK';
+                fs.writeFileSync('$TEMPLATE_PKG', JSON.stringify(pkg, null, 2) + '\n');
+              "
+              echo "✅ Updated @aws/agentcore-cdk: $CURRENT_CDK -> $LATEST_CDK"
+            fi
+          fi
+
+      - name: Bump version
+        id: bump
+        env:
+          BUMP_TYPE: ${{ github.event.inputs.main_bump_type }}
+          CHANGELOG_INPUT: ${{ github.event.inputs.main_changelog }}
+        run: |
+          BUMP_CMD="npx tsx scripts/bump-version.ts $BUMP_TYPE"
+          if [ -n "$CHANGELOG_INPUT" ]; then
+            BUMP_CMD="$BUMP_CMD --changelog \"$CHANGELOG_INPUT\""
+          fi
+          eval $BUMP_CMD
+
+          NEW_VERSION=$(node -p "require('./package.json').version")
+          echo "version=$NEW_VERSION" >> $GITHUB_OUTPUT
+          echo "branch=release/v$NEW_VERSION" >> $GITHUB_OUTPUT
+          echo "📦 Main version: $NEW_VERSION"
+
+      - name: Regenerate JSON schema
+        run: |
+          npm run build
+          node scripts/generate-schema.mjs
+          npx prettier --write schemas/
+
+      - name: Create release branch and PR
+        env:
+          GH_TOKEN: ${{ github.token }}
+          NEW_VERSION: ${{ steps.bump.outputs.version }}
+        run: |
+          BRANCH_NAME="release/v$NEW_VERSION"
+          git ls-remote --exit-code --heads origin $BRANCH_NAME && git push origin --delete $BRANCH_NAME || true
+          git show-ref --verify --quiet refs/heads/$BRANCH_NAME && git branch -D $BRANCH_NAME || true
+
+          git checkout -b $BRANCH_NAME
+          git add -A
+          git commit -m "chore: bump version to $NEW_VERSION"
+          git push origin $BRANCH_NAME
+
+          gh pr create \
+            --base main \
+            --head "$BRANCH_NAME" \
+            --title "Release v$NEW_VERSION" \
+            --body "## Release v$NEW_VERSION (main)
+
+          Part of a coordinated main + preview release.
+
+          ### Checklist
+          - [ ] Review CHANGELOG.md
+          - [ ] All CI checks passing
+          - [ ] Merge this PR before approving the publish step"
+
+  # ═══════════════════════════════════════════════════════════════════
+  # Step 2 — Prepare preview release (bump, PR)
+  # ═══════════════════════════════════════════════════════════════════
+  prepare-preview:
+    name: Prepare Preview Release
+    needs: preflight
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.bump.outputs.version }}
+      branch: ${{ steps.bump.outputs.branch }}
+
+    steps:
+      - name: Checkout preview
+        uses: actions/checkout@v6
+        with:
+          ref: preview
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 20.x
+
+      - name: Configure git
+        run: |
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+
+      - run: npm ci
+
+      # TODO: When @aws/agentcore-cdk publishes a @preview dist-tag, change this
+      # to: npm view @aws/agentcore-cdk@preview version
+      - name: Sync @aws/agentcore-cdk to latest npm version
+        run: |
+          LATEST_CDK=$(npm view @aws/agentcore-cdk version 2>/dev/null || echo "")
+          if [ -n "$LATEST_CDK" ]; then
+            TEMPLATE_PKG="src/assets/cdk/package.json"
+            CURRENT_CDK=$(node -p "require('./$TEMPLATE_PKG').dependencies['@aws/agentcore-cdk']")
+            if [ "$CURRENT_CDK" != "$LATEST_CDK" ]; then
+              node -e "
+                const fs = require('fs');
+                const pkg = JSON.parse(fs.readFileSync('$TEMPLATE_PKG', 'utf8'));
+                pkg.dependencies['@aws/agentcore-cdk'] = '$LATEST_CDK';
+                fs.writeFileSync('$TEMPLATE_PKG', JSON.stringify(pkg, null, 2) + '\n');
+              "
+              echo "✅ Updated @aws/agentcore-cdk: $CURRENT_CDK -> $LATEST_CDK"
+            fi
+          fi
+
+      - name: Bump version
+        id: bump
+        env:
+          CHANGELOG_INPUT: ${{ github.event.inputs.preview_changelog }}
+        run: |
+          BUMP_CMD="npx tsx scripts/bump-version.ts prerelease --prerelease-tag preview"
+          if [ -n "$CHANGELOG_INPUT" ]; then
+            BUMP_CMD="$BUMP_CMD --changelog \"$CHANGELOG_INPUT\""
+          fi
+          eval $BUMP_CMD
+
+          NEW_VERSION=$(node -p "require('./package.json').version")
+          echo "version=$NEW_VERSION" >> $GITHUB_OUTPUT
+          echo "branch=release/v$NEW_VERSION" >> $GITHUB_OUTPUT
+          echo "📦 Preview version: $NEW_VERSION"
+
+      - name: Regenerate JSON schema
+        run: |
+          npm run build
+          node scripts/generate-schema.mjs
+          npx prettier --write schemas/
+
+      - name: Create release branch and PR
+        env:
+          GH_TOKEN: ${{ github.token }}
+          NEW_VERSION: ${{ steps.bump.outputs.version }}
+        run: |
+          BRANCH_NAME="release/v$NEW_VERSION"
+          git ls-remote --exit-code --heads origin $BRANCH_NAME && git push origin --delete $BRANCH_NAME || true
+          git show-ref --verify --quiet refs/heads/$BRANCH_NAME && git branch -D $BRANCH_NAME || true
+
+          git checkout -b $BRANCH_NAME
+          git add -A
+          git commit -m "chore: bump version to $NEW_VERSION"
+          git push origin $BRANCH_NAME
+
+          gh pr create \
+            --base preview \
+            --head "$BRANCH_NAME" \
+            --title "Release v$NEW_VERSION (preview)" \
+            --body "## Release v$NEW_VERSION (preview)
+
+          Part of a coordinated main + preview release.
+
+          ### Checklist
+          - [ ] Review CHANGELOG.md
+          - [ ] All CI checks passing
+          - [ ] Merge this PR before approving the publish step"
+
+  # ═══════════════════════════════════════════════════════════════════
+  # Step 3 — Build and test both
+  # ═══════════════════════════════════════════════════════════════════
+  test-main:
+    name: Test Main
+    needs: prepare-main
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: release/v${{ needs.prepare-main.outputs.version }}
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 20.x
+      - name: Configure git
+        run: |
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+      - run: curl -LsSf https://astral.sh/uv/install.sh | sh
+      - run: npm ci
+      - run: npm run lint
+      - run: npm run typecheck
+      - run: npm run build
+      - run: npm run test:unit
+
+  test-preview:
+    name: Test Preview
+    needs: prepare-preview
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: release/v${{ needs.prepare-preview.outputs.version }}
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 20.x
+      - name: Configure git
+        run: |
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+      - run: curl -LsSf https://astral.sh/uv/install.sh | sh
+      - run: npm ci
+      - run: npm run lint
+      - run: npm run typecheck
+      - run: npm run build
+      - run: npm run test:unit
+
+  # ═══════════════════════════════════════════════════════════════════
+  # Step 4 — Manual approval gate
+  # ═══════════════════════════════════════════════════════════════════
+  release-approval:
+    name: Release Approval (Both)
+    needs: [test-main, test-preview, prepare-main, prepare-preview]
+    runs-on: ubuntu-latest
+    environment:
+      name: npm-publish-approval
+    steps:
+      - name: Approval checkpoint
+        env:
+          MAIN_VERSION: ${{ needs.prepare-main.outputs.version }}
+          PREVIEW_VERSION: ${{ needs.prepare-preview.outputs.version }}
+        run: |
+          echo "✅ Both builds and tests passed"
+          echo ""
+          echo "📦 Main version:    $MAIN_VERSION (npm tag: latest)"
+          echo "📦 Preview version: $PREVIEW_VERSION (npm tag: preview)"
+          echo ""
+          echo "⚠️  MANUAL APPROVAL REQUIRED"
+          echo ""
+          echo "Before approving:"
+          echo "1. Merge the main release PR (release/v$MAIN_VERSION → main)"
+          echo "2. Merge the preview release PR (release/v$PREVIEW_VERSION → preview)"
+          echo "3. Verify both PRs are merged"
+
+  # ═══════════════════════════════════════════════════════════════════
+  # Step 5 — Verify both PRs merged before any publish
+  # ═══════════════════════════════════════════════════════════════════
+  verify-merges:
+    name: Verify Both PRs Merged
+    needs: [prepare-main, prepare-preview, release-approval]
+    if: ${{ !inputs.dry_run }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Verify main version
+        env:
+          EXPECTED: ${{ needs.prepare-main.outputs.version }}
+        run: |
+          git fetch origin main
+          ACTUAL=$(git show origin/main:package.json | node -p "JSON.parse(require('fs').readFileSync('/dev/stdin','utf8')).version")
+          if [ "$ACTUAL" != "$EXPECTED" ]; then
+            echo "❌ Main release PR not merged yet!"
+            echo "Expected: $EXPECTED, Got: $ACTUAL"
+            exit 1
+          fi
+          echo "✅ Main version verified: $ACTUAL"
+
+      - name: Verify preview version
+        env:
+          EXPECTED: ${{ needs.prepare-preview.outputs.version }}
+        run: |
+          git fetch origin preview
+          ACTUAL=$(git show origin/preview:package.json | node -p "JSON.parse(require('fs').readFileSync('/dev/stdin','utf8')).version")
+          if [ "$ACTUAL" != "$EXPECTED" ]; then
+            echo "❌ Preview release PR not merged yet!"
+            echo "Expected: $EXPECTED, Got: $ACTUAL"
+            exit 1
+          fi
+          echo "✅ Preview version verified: $ACTUAL"
+
+  # ═══════════════════════════════════════════════════════════════════
+  # Step 6a — Publish main to npm (tag: latest)
+  # ═══════════════════════════════════════════════════════════════════
+  publish-main:
+    name: Publish Main (@latest)
+    needs: [prepare-main, verify-merges]
+    runs-on: ubuntu-latest
+    environment:
+      name: npm-publish
+      url: https://www.npmjs.com/package/@aws/agentcore
+    permissions:
+      id-token: write
+      contents: write
+
+    steps:
+      - name: Checkout main
+        uses: actions/checkout@v6
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 22.x
+          registry-url: 'https://registry.npmjs.org'
+
+      - run: npm install -g npm@11.5.1
+      - run: npm ci
+      - run: npm run build
+
+      - name: Publish to npm
+        run: npm publish --access public --provenance --tag latest
+
+      - name: Tag and release
+        env:
+          VERSION: ${{ needs.prepare-main.outputs.version }}
+        run: |
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+          git tag -a "v$VERSION" -m "Release v$VERSION"
+          git push origin "v$VERSION"
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v${{ needs.prepare-main.outputs.version }}
+          name: AgentCore CLI v${{ needs.prepare-main.outputs.version }}
+          generate_release_notes: true
+          prerelease: false
+          body: |
+            ## Installation
+
+            ```bash
+            npm install -g @aws/agentcore@${{ needs.prepare-main.outputs.version }}
+            ```
+
+  # ═══════════════════════════════════════════════════════════════════
+  # Step 6b — Publish preview to npm (tag: preview)
+  # ═══════════════════════════════════════════════════════════════════
+  publish-preview:
+    name: Publish Preview (@preview)
+    needs: [prepare-preview, verify-merges]
+    runs-on: ubuntu-latest
+    environment:
+      name: npm-publish
+      url: https://www.npmjs.com/package/@aws/agentcore
+    permissions:
+      id-token: write
+      contents: write
+
+    steps:
+      - name: Checkout preview
+        uses: actions/checkout@v6
+        with:
+          ref: preview
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 22.x
+          registry-url: 'https://registry.npmjs.org'
+
+      - run: npm install -g npm@11.5.1
+      - run: npm ci
+      - run: npm run build
+
+      - name: Publish to npm
+        run: npm publish --access public --provenance --tag preview
+
+      - name: Tag and release
+        env:
+          VERSION: ${{ needs.prepare-preview.outputs.version }}
+        run: |
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+          git tag -a "v$VERSION" -m "Release v$VERSION (preview)"
+          git push origin "v$VERSION"
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v${{ needs.prepare-preview.outputs.version }}
+          name: AgentCore CLI v${{ needs.prepare-preview.outputs.version }} (Preview)
+          generate_release_notes: true
+          prerelease: true
+          body: |
+            ## Installation (Preview)
+
+            ```bash
+            npm install -g @aws/agentcore@preview
+            ```
+
+  # ═══════════════════════════════════════════════════════════════════
+  # Summary
+  # ═══════════════════════════════════════════════════════════════════
+  summary:
+    name: Release Summary
+    needs: [prepare-main, prepare-preview, publish-main, publish-preview]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Summary
+        env:
+          MAIN_VERSION: ${{ needs.prepare-main.outputs.version }}
+          PREVIEW_VERSION: ${{ needs.prepare-preview.outputs.version }}
+          MAIN_STATUS: ${{ needs.publish-main.result }}
+          PREVIEW_STATUS: ${{ needs.publish-preview.result }}
+        run: |
+          echo "## Release Summary"
+          echo ""
+          echo "| Package | Version | npm Tag | Status |"
+          echo "|---------|---------|---------|--------|"
+          echo "| @aws/agentcore | $MAIN_VERSION | latest | $MAIN_STATUS |"
+          echo "| @aws/agentcore | $PREVIEW_VERSION | preview | $PREVIEW_STATUS |"

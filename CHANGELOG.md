@@ -2,20 +2,28 @@
 
 All notable changes to this project will be documented in this file.
 
+<<<<<<< HEAD
 ## [1.0.0-preview.3] - 2026-04-28
+=======
+## [0.12.0] - 2026-04-28
+>>>>>>> origin/main
 
 ### Added
 - feat: add gateway import command with executionRoleArn support (#855) (2df1387)
 - feat: runtime endpoint support in AgentCore CLI (#979) (41c59ef)
 - feat: add project-name option to create (#969) (9b46fbb)
+<<<<<<< HEAD
 - feat: add project-name option to preview create (#970) (a19fc8f)
 - feat: add agentcore-cli User-Agent to all API calls (#960) (398dc50)
 - feat: add telemetry schemas and client (#941) (7c37fa6)
 - feat: add GitHub Action for automated PR review via AgentCore Harness (#934) (a365bf5)
+=======
+>>>>>>> origin/main
 
 ### Fixed
 - fix: duplicate header flash and help menu truncation (closes #895, closes #637) (#955) (e7b85c1)
 - fix: show 'Computing diff changes...' step during deploy diff phase (#952) (a725d12)
+<<<<<<< HEAD
 - fix: display session ID after CLI invoke completes (#957) (51e4a8e)
 - fix: lower eventExpiryDuration minimum from 7 to 3 days (closes #744) (#956) (8613657)
 - fix: use pull_request_target for fork PR support (#958) (933bac8)
@@ -27,6 +35,10 @@ All notable changes to this project will be documented in this file.
 ### Other Changes
 - fix(tests): fix 2 test failures on preview branch (8a4ea58)
 - Merge main into preview (3fd6668)
+=======
+
+### Other Changes
+>>>>>>> origin/main
 - fix(e2e): add debug logging for gateway import CI failures (#1001) (8012d6c)
 - fix(e2e): separate gateway import test and add PR-changed test detection (#999) (19b7d13)
 - fix(import): remove resourceName/executionRoleArn co-variance refine (#996) (ad0ee58)
@@ -42,6 +54,7 @@ All notable changes to this project will be documented in this file.
 - ci: bump the github-actions group across 1 directory with 4 updates (#964) (9962c3e)
 - test: configure git in browser tests workflow (#976) (17b5727)
 - fix(import): remove experimental warning from import command (#977) (fdd6631)
+<<<<<<< HEAD
 - Remove inline container build from vended cdk-stack.ts (#954) (57ee733)
 - feat(invoke): add --prompt-file and stdin support for long prompts (#974) (f6a3e99)
 - test: split browser tests into its own job, fix logs path (#975) (acbfb9e)
@@ -49,6 +62,11 @@ All notable changes to this project will be documented in this file.
 - chore: bump version to 0.11.0 (#967) (f8dc490)
 - test: add browser tests for agent inspector (#938) (7a4104d)
 - chore: bump version to 0.10.0 (#944) (12275c3)
+=======
+- feat(invoke): add --prompt-file and stdin support for long prompts (#974) (f6a3e99)
+- test: split browser tests into its own job, fix logs path (#975) (acbfb9e)
+- fix(invoke): auto-generate session ID for bearer-token invocations (#953) (343fedc)
+>>>>>>> origin/main
 
 ## [0.11.0] - 2026-04-24
 
