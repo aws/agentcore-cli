@@ -2,9 +2,9 @@ name: Build and Test
 
 on:
   push:
-    branches: ['main']
+    branches: ['main', 'preview']
   pull_request:
-    branches: ['main']
+    branches: ['main', 'preview']
 
 permissions:
   contents: read
@@ -12,7 +12,7 @@ permissions:
 # Cancel in-progress runs for PRs; never cancel runs on main (merges should not abort each other)
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' && github.ref != 'refs/heads/preview' }}
 
 jobs:
   build:

@@ -4,7 +4,7 @@ name: PR Size Check and Label
 # Safe because this workflow only reads PR metadata — it never checks out untrusted code.
 on:
   pull_request_target:
-    branches: [main]
+    branches: [main, preview]
 
 jobs:
   label-size:

@@ -2,7 +2,7 @@ name: Validate PR Title
 
 on:
   pull_request_target:
-    branches: [main]
+    branches: [main, preview]
     types: [opened, edited, synchronize, reopened]
 
 permissions:

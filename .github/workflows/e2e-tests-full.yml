@@ -8,7 +8,7 @@ on:
   schedule:
     - cron: '0 14 * * 1' # Every Monday at 9 AM EST (14:00 UTC)
   push:
-    branches: [main]
+    branches: [main, preview]
 
 concurrency:
   group: e2e-${{ github.event.pull_request.number || github.ref }}
@@ -30,7 +30,7 @@ jobs:
     steps:
       - uses: actions/checkout@v6
         with:
-          ref: main
+          ref: ${{ github.sha }}
       - uses: actions/setup-node@v6
         with:
           node-version: '20.x'
@@ -86,7 +86,7 @@ jobs:
     steps:
       - uses: actions/checkout@v6
         with:
-          ref: ${{ github.event_name == 'workflow_dispatch' && github.ref || 'main' }}
+          ref: ${{ github.sha }}
       - uses: actions/setup-node@v6
         with:
           node-version: '20.x'

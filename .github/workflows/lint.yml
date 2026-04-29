@@ -2,9 +2,9 @@ name: Quality and Safety Checks
 
 on:
   push:
-    branches: ['main']
+    branches: ['main', 'preview']
   pull_request:
-    branches: ['main']
+    branches: ['main', 'preview']
 
 permissions:
   contents: read
@@ -12,7 +12,7 @@ permissions:
 # Cancel in-progress runs for PRs; never cancel runs on main (merges should not abort each other)
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' && github.ref != 'refs/heads/preview' }}
 
 jobs:
   setup:
@@ -109,7 +109,7 @@ jobs:
           fetch-depth: 0
       - name: Reject schema changes outside release PRs
         run: |
-          if git diff --name-only origin/main...HEAD | grep -q '^schemas/agentcore\.schema\.v[0-9]*\.json$'; then
+          if git diff --name-only origin/${{ github.base_ref || github.ref_name }}...HEAD | grep -q '^schemas/agentcore\.schema\.v[0-9]*\.json$'; then
             echo ""
             echo "❌ schemas/ must not be modified directly."
             echo "The JSON schema is served live from the repo — changes are released automatically."

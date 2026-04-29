@@ -2,16 +2,16 @@ name: CodeQL
 
 on:
   push:
-    branches: ['main']
+    branches: ['main', 'preview']
   pull_request:
-    branches: ['main']
+    branches: ['main', 'preview']
   pull_request_target:
-    branches: ['main']
+    branches: ['main', 'preview']
 
 # Cancel in-progress runs for PRs; never cancel runs on main (merges should not abort each other)
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' && github.ref != 'refs/heads/preview' }}
 
 jobs:
   analyze:

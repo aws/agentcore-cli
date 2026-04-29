@@ -6,7 +6,7 @@ on:
         description: 'AWS region for deployment'
         default: 'us-east-1'
   pull_request_target:
-    branches: [main]
+    branches: [main, preview]
 
 concurrency:
   group: e2e-${{ github.event.pull_request.number || github.ref }}
