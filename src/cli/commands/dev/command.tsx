@@ -186,6 +186,10 @@ export const registerDev = (program: Command) => {
     )
     .option('-b, --no-browser', 'Use terminal TUI instead of web-based chat UI')
     .option('--no-traces', 'Disable local OTEL trace collection')
+    .option(
+      '--otel-endpoint <url>',
+      'Forward agent traces to a custom OTLP/HTTP endpoint instead of the local collector (e.g. http://localhost:4318)'
+    )
 
     .action(async (positionalPrompt: string | undefined, opts) => {
       try {
@@ -297,9 +301,12 @@ export const registerDev = (program: Command) => {
 
         if (opts.traces !== false) {
           const persistTracesDir = path.join(configRoot ?? workingDir, '.cli', 'traces');
-          const otelResult = await startOtelCollector(persistTracesDir);
+          const otelResult = await startOtelCollector(persistTracesDir, opts.otelEndpoint);
           collector = otelResult.collector;
           otelEnvVars = otelResult.otelEnvVars;
+          if (opts.otelEndpoint) {
+            console.log(`OTEL traces → ${opts.otelEndpoint}`);
+          }
         }
 
         // If --logs provided, run non-interactive mode
@@ -422,6 +429,7 @@ export const registerDev = (program: Command) => {
           agentName: opts.runtime,
           otelEnvVars,
           collector,
+          otelEndpoint: opts.otelEndpoint,
         });
       } catch (error) {
         render(<Text color="red">Error: {getErrorMessage(error)}</Text>);

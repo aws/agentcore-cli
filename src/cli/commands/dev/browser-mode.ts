@@ -98,13 +98,15 @@ export interface BrowserModeOptions {
   otelEnvVars?: Record<string, string>;
   /** OTEL collector instance for local trace collection */
   collector?: OtelCollector;
+  /** Custom OTLP endpoint to forward traces to instead of the local collector */
+  otelEndpoint?: string;
 }
 
 /**
  * Standalone entry point for launching browser dev mode from the TUI.
  * Handles all setup (project loading, OTEL collector, etc.) internally.
  */
-export async function launchBrowserDev(): Promise<void> {
+export async function launchBrowserDev(otelEndpoint?: string): Promise<void> {
   const workingDir = getWorkingDirectory();
   const project = await loadProjectConfig(workingDir);
 
@@ -115,7 +117,7 @@ export async function launchBrowserDev(): Promise<void> {
 
   const configRoot = findConfigRoot(workingDir);
   const persistTracesDir = path.join(configRoot ?? workingDir, '.cli', 'traces');
-  const { collector, otelEnvVars } = await startOtelCollector(persistTracesDir);
+  const { collector, otelEnvVars } = await startOtelCollector(persistTracesDir, otelEndpoint);
 
   await runBrowserMode({
     workingDir,
@@ -123,6 +125,7 @@ export async function launchBrowserDev(): Promise<void> {
     port: 8080,
     otelEnvVars,
     collector,
+    otelEndpoint,
   });
 }
 

@@ -288,11 +288,31 @@ function readBodyAsBuffer(req: IncomingMessage): Promise<Buffer> {
 /**
  * Start an OTEL collector and return it along with the env vars agents need
  * to export traces to it.
+ *
+ * When `customEndpoint` is provided the local in-process collector is NOT
+ * started. Instead the env vars are set to point at the custom endpoint and
+ * `collector` is returned as `undefined`. Traces will not be available in the
+ * web UI in this mode — they are forwarded directly to the external backend.
  */
-export async function startOtelCollector(persistTracesDir: string): Promise<{
-  collector: OtelCollector;
+export async function startOtelCollector(
+  persistTracesDir: string,
+  customEndpoint?: string
+): Promise<{
+  collector: OtelCollector | undefined;
   otelEnvVars: Record<string, string>;
 }> {
+  if (customEndpoint) {
+    const otelEnvVars: Record<string, string> = {
+      OTEL_EXPORTER_OTLP_ENDPOINT: customEndpoint,
+      OTEL_EXPORTER_OTLP_PROTOCOL: 'http/protobuf',
+      OTEL_METRICS_EXPORTER: 'none',
+      AGENT_OBSERVABILITY_ENABLED: 'true',
+      OTEL_INSTRUMENTATION_GENAI_CAPTURE_MESSAGE_CONTENT: 'true',
+      OTEL_PYTHON_LOGGING_AUTO_INSTRUMENTATION_ENABLED: 'true',
+    };
+    return { collector: undefined, otelEnvVars };
+  }
+
   const collector = new OtelCollector({ persistTracesDir });
   const collectorPort = await collector.start();
 
