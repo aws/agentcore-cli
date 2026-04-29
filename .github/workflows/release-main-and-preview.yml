@@ -109,23 +109,6 @@ jobs:
 
       - run: npm ci
 
-      - name: Sync @aws/agentcore-cdk to latest npm version
-        run: |
-          LATEST_CDK=$(npm view @aws/agentcore-cdk version 2>/dev/null || echo "")
-          if [ -n "$LATEST_CDK" ]; then
-            TEMPLATE_PKG="src/assets/cdk/package.json"
-            CURRENT_CDK=$(node -p "require('./$TEMPLATE_PKG').dependencies['@aws/agentcore-cdk']")
-            if [ "$CURRENT_CDK" != "$LATEST_CDK" ]; then
-              node -e "
-                const fs = require('fs');
-                const pkg = JSON.parse(fs.readFileSync('$TEMPLATE_PKG', 'utf8'));
-                pkg.dependencies['@aws/agentcore-cdk'] = '$LATEST_CDK';
-                fs.writeFileSync('$TEMPLATE_PKG', JSON.stringify(pkg, null, 2) + '\n');
-              "
-              echo "✅ Updated @aws/agentcore-cdk: $CURRENT_CDK -> $LATEST_CDK"
-            fi
-          fi
-
       - name: Bump version
         id: bump
         env:
@@ -210,25 +193,6 @@ jobs:
           git config --global user.email "github-actions[bot]@users.noreply.github.com"
 
       - run: npm ci
-
-      # TODO: When @aws/agentcore-cdk publishes a @preview dist-tag, change this
-      # to: npm view @aws/agentcore-cdk@preview version
-      - name: Sync @aws/agentcore-cdk to latest npm version
-        run: |
-          LATEST_CDK=$(npm view @aws/agentcore-cdk version 2>/dev/null || echo "")
-          if [ -n "$LATEST_CDK" ]; then
-            TEMPLATE_PKG="src/assets/cdk/package.json"
-            CURRENT_CDK=$(node -p "require('./$TEMPLATE_PKG').dependencies['@aws/agentcore-cdk']")
-            if [ "$CURRENT_CDK" != "$LATEST_CDK" ]; then
-              node -e "
-                const fs = require('fs');
-                const pkg = JSON.parse(fs.readFileSync('$TEMPLATE_PKG', 'utf8'));
-                pkg.dependencies['@aws/agentcore-cdk'] = '$LATEST_CDK';
-                fs.writeFileSync('$TEMPLATE_PKG', JSON.stringify(pkg, null, 2) + '\n');
-              "
-              echo "✅ Updated @aws/agentcore-cdk: $CURRENT_CDK -> $LATEST_CDK"
-            fi
-          fi
 
       - name: Bump version
         id: bump
