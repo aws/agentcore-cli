@@ -109,6 +109,52 @@ See [Container Builds](container-builds.md) for full details on container develo
 
 Memory requires deployment to test fully. For local testing, you can mock these dependencies in your agent code.
 
+## Telemetry
+
+In dev mode the CLI automatically starts a local OTLP/HTTP collector and injects the standard OpenTelemetry environment
+variables into the agent process. Traces are persisted to `agentcore/.cli/traces/` and displayed in the web UI.
+
+### Custom OTLP Endpoint
+
+To forward traces to your own backend (Jaeger, Grafana Tempo, a cloud collector, etc.) instead of the local collector:
+
+```bash
+agentcore dev --otel-endpoint http://localhost:4318
+```
+
+When `--otel-endpoint` is set:
+- The local in-process collector is **not** started — no port is bound by the CLI
+- `OTEL_EXPORTER_OTLP_ENDPOINT` is set to your URL
+- All other OTEL env vars are injected as normal
+- Traces will **not** appear in the web UI traces panel (they go directly to your backend)
+
+The endpoint at startup is printed to stdout:
+
+```
+OTEL traces → http://localhost:4318
+```
+
+### Disabling Traces
+
+To disable telemetry collection entirely:
+
+```bash
+agentcore dev --no-traces
+```
+
+No OTEL env vars are injected into the agent process.
+
+### Trace Storage
+
+When using the default local collector, traces are persisted as OTLP JSON Lines files:
+
+```
+agentcore/.cli/traces/otlp/
+└── <agent-name>-<traceId>.otlp.jsonl
+```
+
+Traces survive dev server restarts and are available in the web UI traces panel across sessions.
+
 ## Gateway Environment Variables
 
 When you have deployed gateways, `agentcore dev` automatically injects gateway environment variables into your local
