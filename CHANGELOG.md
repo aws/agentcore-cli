@@ -2,6 +2,19 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.12.1] - 2026-04-29
+
+### Added
+- feat: add CloudWatch traces API for web UI (#997) (76b07aa)
+
+### Fixed
+- fix: remove CONFIG_DIR exclusion from zip stage to preserve dependency agentcore/ packages (#1015) (d1e5241)
+
+### Other Changes
+- ci: add coordinated main + preview release workflow (#995) (7e8cae4)
+- fix(import): use GatewayNameSchema for gateway import name validation (#1011) (29b6522)
+- test: remove 44 render-only and framework-testing tests (#998) (13b34a3)
+
 ## [0.12.0] - 2026-04-28
 
 ### Added
