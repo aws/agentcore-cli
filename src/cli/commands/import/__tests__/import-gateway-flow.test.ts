@@ -310,14 +310,13 @@ describe('handleImportGateway', () => {
   // ── Name validation ─────────────────────────────────────────────────────
 
   describe('Name validation', () => {
-    it('rejects invalid name starting with a number', async () => {
-      mockGetGatewayDetail.mockResolvedValue(makeGatewayDetail({ name: '123gateway' }));
+    it('rejects invalid name with special characters', async () => {
+      mockGetGatewayDetail.mockResolvedValue(makeGatewayDetail({ name: 'gateway_with_underscores!' }));
 
       const result = await handleImportGateway({ arn: GATEWAY_ARN });
 
       expect(result.success).toBe(false);
       expect(result.error).toContain('Invalid name');
-      expect(result.error).toContain('must start with a letter');
       expect(mockConfigIOInstance.writeProjectSpec).not.toHaveBeenCalled();
     });
 

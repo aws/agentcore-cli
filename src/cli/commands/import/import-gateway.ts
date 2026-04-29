@@ -9,6 +9,7 @@ import type {
   GatewayPolicyEngineConfiguration,
   OutboundAuth,
 } from '../../../schema';
+import { GatewayNameSchema } from '../../../schema';
 import type { GatewayDetail, GatewayTargetDetail } from '../../aws/agentcore-control';
 import {
   getGatewayDetail,
@@ -17,7 +18,7 @@ import {
   listAllGateways,
 } from '../../aws/agentcore-control';
 import { isAccessDeniedError } from '../../errors';
-import { ANSI, NAME_REGEX } from './constants';
+import { ANSI } from './constants';
 import { executeCdkImportPipeline } from './import-pipeline';
 import {
   failResult,
@@ -425,10 +426,11 @@ export async function handleImportGateway(options: ImportResourceOptions): Promi
     // 4. Validate name
     logger.startStep('Validate name');
     let localName = options.name ?? gatewayDetail.name;
-    if (!NAME_REGEX.test(localName)) {
+    const nameResult = GatewayNameSchema.safeParse(localName);
+    if (!nameResult.success) {
       return failResult(
         logger,
-        `Invalid name "${localName}". Name must start with a letter and contain only letters, numbers, and underscores (max 48 chars).`,
+        `Invalid name "${localName}". ${nameResult.error.issues[0]?.message ?? 'Invalid gateway name'}`,
         'gateway',
         localName
       );
