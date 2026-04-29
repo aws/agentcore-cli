@@ -18,6 +18,7 @@ const baseCanRun = prereqs.npm && prereqs.git && hasAws;
 interface HarnessE2EConfig {
   modelProvider: 'bedrock' | 'open_ai' | 'gemini';
   requiredEnvVar?: string;
+  skipMemory?: boolean;
 }
 
 export function createHarnessE2ESuite(cfg: HarnessE2EConfig) {
@@ -55,6 +56,10 @@ export function createHarnessE2ESuite(cfg: HarnessE2EConfig) {
 
       if (cfg.requiredEnvVar && process.env[cfg.requiredEnvVar]) {
         createArgs.push('--api-key-arn', process.env[cfg.requiredEnvVar]!);
+      }
+
+      if (cfg.skipMemory) {
+        createArgs.push('--no-harness-memory');
       }
 
       const result = await runAgentCoreCLI(createArgs, testDir);
