@@ -192,24 +192,23 @@ export async function createZipFromDir(sourceDir: string, outputZip: string): Pr
   await rm(outputZip, { force: true });
   await mkdir(dirname(outputZip), { recursive: true });
 
-  const files = await collectFiles(sourceDir, sourceDir);
+  const files = await collectFiles(sourceDir);
   const zipped = zipSync(files);
   await writeFile(outputZip, zipped);
 }
 
-async function collectFiles(directory: string, rootDir: string, basePath = ''): Promise<Zippable> {
+async function collectFiles(directory: string, basePath = ''): Promise<Zippable> {
   const result: Zippable = {};
   const entries = await readdir(directory, { withFileTypes: true });
 
   for (const entry of entries) {
     if (EXCLUDED_ENTRIES.has(entry.name)) continue;
-    if (entry.name === CONFIG_DIR && resolve(directory) === resolve(rootDir)) continue;
 
     const fullPath = join(directory, entry.name);
     const zipPath = basePath ? `${basePath}/${entry.name}` : entry.name;
 
     if (entry.isDirectory()) {
-      Object.assign(result, await collectFiles(fullPath, rootDir, zipPath));
+      Object.assign(result, await collectFiles(fullPath, zipPath));
     } else if (entry.isFile()) {
       result[zipPath] = [await readFile(fullPath), { level: 6 }];
     }
@@ -325,19 +324,18 @@ export function ensureBinaryAvailableSync(binary: string, installHint?: string):
   throw new MissingDependencyError(binary, installHint);
 }
 
-function collectFilesSync(directory: string, rootDir: string, basePath = ''): Zippable {
+function collectFilesSync(directory: string, basePath = ''): Zippable {
   const result: Zippable = {};
   const entries = readdirSync(directory, { withFileTypes: true });
 
   for (const entry of entries) {
     if (EXCLUDED_ENTRIES.has(entry.name)) continue;
-    if (entry.name === CONFIG_DIR && resolve(directory) === resolve(rootDir)) continue;
 
     const fullPath = join(directory, entry.name);
     const zipPath = basePath ? `${basePath}/${entry.name}` : entry.name;
 
     if (entry.isDirectory()) {
-      Object.assign(result, collectFilesSync(fullPath, rootDir, zipPath));
+      Object.assign(result, collectFilesSync(fullPath, zipPath));
     } else if (entry.isFile()) {
       result[zipPath] = [readFileSync(fullPath), { level: 6 }];
     }
@@ -349,7 +347,7 @@ export function createZipFromDirSync(sourceDir: string, outputZip: string): void
   rmSync(outputZip, { force: true });
   mkdirSync(dirname(outputZip), { recursive: true });
 
-  const files = collectFilesSync(sourceDir, sourceDir);
+  const files = collectFilesSync(sourceDir);
   const zipped = zipSync(files);
   writeFileSync(outputZip, zipped);
 }
