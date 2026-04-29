@@ -30,7 +30,7 @@ describe('integration: harness add/remove lifecycle', () => {
     const config = await readProjectConfig(project.projectPath);
     const harness = config.harnesses?.find((h: { name: string }) => h.name === harnessName);
     expect(harness, `Harness "${harnessName}" should be in agentcore.json`).toBeTruthy();
-    expect(harness.path).toBe(`app/${harnessName}`);
+    expect(harness!.path).toBe(`app/${harnessName}`);
   });
 
   it('creates harness.json with correct model config', async () => {
