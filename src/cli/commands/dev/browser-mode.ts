@@ -10,16 +10,11 @@ import {
 } from '../../operations/dev/web-ui';
 import type { HarnessInfo } from '../../operations/dev/web-ui/constants';
 import { listMemoryRecords, retrieveMemoryRecords } from '../../operations/memory';
-<<<<<<< HEAD
 import { loadDeployedProjectConfig, resolveAgentOrHarness } from '../../operations/resolve-agent';
 import { fetchTraceRecords, listTraces } from '../../operations/traces';
 import { LayoutProvider } from '../../tui/context';
 import { runCliDeploy } from '../deploy/progress';
 import { render } from 'ink';
-=======
-import { loadDeployedProjectConfig, resolveAgent } from '../../operations/resolve-agent';
-import { fetchTraceRecords, listTraces } from '../../operations/traces';
->>>>>>> origin/main
 import path from 'node:path';
 import React from 'react';
 
@@ -253,19 +248,11 @@ export async function runBrowserMode(opts: BrowserModeOptions): Promise<void> {
         ? (agentNameParam, startTime, endTime) => collector.listTraces(agentNameParam, startTime, endTime)
         : undefined,
       onGetTrace: collector ? (agentNameParam, traceId) => collector.getTraceSpans(agentNameParam, traceId) : undefined,
-<<<<<<< HEAD
       onListCloudWatchTraces: async (agentName, harnessName, startTime, endTime) => {
         try {
           const configIO = new ConfigIO({ baseDir });
           const context = await loadDeployedProjectConfig(configIO);
           const resolved = await resolveAgentOrHarness(context, { runtime: agentName, harness: harnessName });
-=======
-      onListCloudWatchTraces: async (agentName, _harnessName, startTime, endTime) => {
-        try {
-          const configIO = new ConfigIO({ baseDir });
-          const context = await loadDeployedProjectConfig(configIO);
-          const resolved = resolveAgent(context, { runtime: agentName });
->>>>>>> origin/main
           if (!resolved.success) return { success: false, error: resolved.error };
           return listTraces({
             region: resolved.agent.region,
@@ -281,19 +268,11 @@ export async function runBrowserMode(opts: BrowserModeOptions): Promise<void> {
           };
         }
       },
-<<<<<<< HEAD
       onGetCloudWatchTrace: async (agentName, harnessName, traceId, startTime, endTime) => {
         try {
           const configIO = new ConfigIO({ baseDir });
           const context = await loadDeployedProjectConfig(configIO);
           const resolved = await resolveAgentOrHarness(context, { runtime: agentName, harness: harnessName });
-=======
-      onGetCloudWatchTrace: async (agentName, _harnessName, traceId, startTime, endTime) => {
-        try {
-          const configIO = new ConfigIO({ baseDir });
-          const context = await loadDeployedProjectConfig(configIO);
-          const resolved = resolveAgent(context, { runtime: agentName });
->>>>>>> origin/main
           if (!resolved.success) return { success: false, error: resolved.error };
           return fetchTraceRecords({
             region: resolved.agent.region,
