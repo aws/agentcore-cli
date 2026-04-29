@@ -99,6 +99,9 @@ jobs:
         with:
           node-version: 20.x
 
+      - name: Install uv
+        uses: astral-sh/setup-uv@v7
+
       - name: Configure git
         run: |
           git config --global user.name "github-actions[bot]"
@@ -197,6 +200,9 @@ jobs:
       - uses: actions/setup-node@v6
         with:
           node-version: 20.x
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v7
 
       - name: Configure git
         run: |
