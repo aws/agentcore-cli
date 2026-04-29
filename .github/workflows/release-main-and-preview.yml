@@ -120,7 +120,6 @@ jobs:
                 fs.writeFileSync('$TEMPLATE_PKG', JSON.stringify(pkg, null, 2) + '\n');
               "
               echo "✅ Updated @aws/agentcore-cdk: $CURRENT_CDK -> $LATEST_CDK"
-              npm run test:update-snapshots
             fi
           fi
 
@@ -146,6 +145,9 @@ jobs:
           npm run build
           node scripts/generate-schema.mjs
           npx prettier --write schemas/
+
+      - name: Update snapshots
+        run: npm run test:update-snapshots
 
       - name: Create release branch and PR
         env:
@@ -219,7 +221,6 @@ jobs:
                 fs.writeFileSync('$TEMPLATE_PKG', JSON.stringify(pkg, null, 2) + '\n');
               "
               echo "✅ Updated @aws/agentcore-cdk: $CURRENT_CDK -> $LATEST_CDK"
-              npm run test:update-snapshots
             fi
           fi
 
@@ -244,6 +245,9 @@ jobs:
           npm run build
           node scripts/generate-schema.mjs
           npx prettier --write schemas/
+
+      - name: Update snapshots
+        run: npm run test:update-snapshots
 
       - name: Create release branch and PR
         env:
