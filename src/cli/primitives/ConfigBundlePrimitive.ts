@@ -45,12 +45,12 @@ export class ConfigBundlePrimitive extends BasePrimitive<AddConfigBundleOptions,
     try {
       const project = await this.readProjectSpec();
 
-      const index = project.configBundles.findIndex(b => b.name === bundleName);
+      const index = (project.configBundles ?? []).findIndex(b => b.name === bundleName);
       if (index === -1) {
         return { success: false, error: `Configuration bundle "${bundleName}" not found.` };
       }
 
-      project.configBundles.splice(index, 1);
+      project.configBundles!.splice(index, 1);
       await this.writeProjectSpec(project);
 
       return { success: true };
@@ -62,7 +62,7 @@ export class ConfigBundlePrimitive extends BasePrimitive<AddConfigBundleOptions,
   async previewRemove(bundleName: string): Promise<RemovalPreview> {
     const project = await this.readProjectSpec();
 
-    const bundle = project.configBundles.find(b => b.name === bundleName);
+    const bundle = (project.configBundles ?? []).find(b => b.name === bundleName);
     if (!bundle) {
       throw new Error(`Configuration bundle "${bundleName}" not found.`);
     }
@@ -72,7 +72,7 @@ export class ConfigBundlePrimitive extends BasePrimitive<AddConfigBundleOptions,
 
     const afterSpec = {
       ...project,
-      configBundles: project.configBundles.filter(b => b.name !== bundleName),
+      configBundles: (project.configBundles ?? []).filter(b => b.name !== bundleName),
     };
 
     schemaChanges.push({
@@ -87,7 +87,7 @@ export class ConfigBundlePrimitive extends BasePrimitive<AddConfigBundleOptions,
   async getRemovable(): Promise<RemovableConfigBundle[]> {
     try {
       const project = await this.readProjectSpec();
-      return project.configBundles.map(b => ({ name: b.name }));
+      return (project.configBundles ?? []).map(b => ({ name: b.name }));
     } catch {
       return [];
     }
@@ -96,7 +96,7 @@ export class ConfigBundlePrimitive extends BasePrimitive<AddConfigBundleOptions,
   async getAllNames(): Promise<string[]> {
     try {
       const project = await this.readProjectSpec();
-      return project.configBundles.map(b => b.name);
+      return (project.configBundles ?? []).map(b => b.name);
     } catch {
       return [];
     }
@@ -217,7 +217,7 @@ export class ConfigBundlePrimitive extends BasePrimitive<AddConfigBundleOptions,
   private async createConfigBundle(options: AddConfigBundleOptions): Promise<ConfigBundle> {
     const project = await this.readProjectSpec();
 
-    this.checkDuplicate(project.configBundles, options.name);
+    this.checkDuplicate(project.configBundles ?? [], options.name);
 
     const bundle: ConfigBundle = {
       name: options.name,
@@ -228,6 +228,7 @@ export class ConfigBundlePrimitive extends BasePrimitive<AddConfigBundleOptions,
       ...(options.commitMessage && { commitMessage: options.commitMessage }),
     };
 
+    project.configBundles ??= [];
     project.configBundles.push(bundle);
     await this.writeProjectSpec(project);
 

@@ -5,8 +5,9 @@ export async function createConfigBundleForAgent(agentName: string, configBaseDi
   const project = await configIO.readProjectSpec();
 
   const bundleName = `${agentName}Config`;
-  if (project.configBundles.some(b => b.name === bundleName)) return;
+  if ((project.configBundles ?? []).some(b => b.name === bundleName)) return;
 
+  project.configBundles ??= [];
   project.configBundles.push({
     type: 'ConfigurationBundle',
     name: bundleName,

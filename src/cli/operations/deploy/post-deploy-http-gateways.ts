@@ -420,7 +420,7 @@ export async function deleteOrphanedHttpGateways(options: {
   const { region, projectSpec, existingHttpGateways } = options;
   if (!existingHttpGateways) return { results: [], hasErrors: false };
 
-  const specGatewayNames = new Set(projectSpec.httpGateways.map(g => g.name));
+  const specGatewayNames = new Set((projectSpec.httpGateways ?? []).map(g => g.name));
   const results: HttpGatewaySetupResult[] = [];
 
   for (const [gwName, gwState] of Object.entries(existingHttpGateways)) {

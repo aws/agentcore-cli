@@ -134,7 +134,7 @@ export async function setupABTests(options: SetupABTestsOptions): Promise<SetupA
   const abTests: Record<string, ABTestDeployedState> = {};
 
   // Create or skip tests from the spec
-  for (const testSpec of projectSpec.abTests) {
+  for (const testSpec of projectSpec.abTests ?? []) {
     let resolvedRoleArn: string | undefined;
     let roleCreatedByCli = false;
     try {
@@ -321,7 +321,7 @@ export async function deleteOrphanedABTests(options: {
   const { region, projectSpec, existingABTests } = options;
   if (!existingABTests) return { results: [], hasErrors: false };
 
-  const specTestNames = new Set(projectSpec.abTests.map(t => t.name));
+  const specTestNames = new Set((projectSpec.abTests ?? []).map(t => t.name));
   const results: ABTestSetupResult[] = [];
 
   for (const [testName, testState] of Object.entries(existingABTests)) {

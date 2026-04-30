@@ -325,33 +325,39 @@ export const AgentCoreProjectSpecSchema = z
 
     configBundles: z
       .array(ConfigBundleSchema)
-      .default([])
-      .superRefine(
-        uniqueBy(
-          bundle => bundle.name,
-          name => `Duplicate config bundle name: ${name}`
-        )
-      ),
+      .optional()
+      .superRefine((items, ctx) => {
+        if (items) {
+          uniqueBy(
+            (bundle: { name: string }) => bundle.name,
+            (name: string) => `Duplicate config bundle name: ${name}`
+          )(items, ctx);
+        }
+      }),
 
     abTests: z
       .array(ABTestSchema)
-      .default([])
-      .superRefine(
-        uniqueBy(
-          test => test.name,
-          name => `Duplicate AB test name: ${name}`
-        )
-      ),
+      .optional()
+      .superRefine((items, ctx) => {
+        if (items) {
+          uniqueBy(
+            (test: { name: string }) => test.name,
+            (name: string) => `Duplicate AB test name: ${name}`
+          )(items, ctx);
+        }
+      }),
 
     httpGateways: z
       .array(HttpGatewaySchema)
-      .default([])
-      .superRefine(
-        uniqueBy(
-          gw => gw.name,
-          name => `Duplicate HTTP gateway name: ${name}`
-        )
-      ),
+      .optional()
+      .superRefine((items, ctx) => {
+        if (items) {
+          uniqueBy(
+            (gw: { name: string }) => gw.name,
+            (name: string) => `Duplicate HTTP gateway name: ${name}`
+          )(items, ctx);
+        }
+      }),
   })
   .strict()
   .superRefine((spec, ctx) => {
@@ -381,7 +387,7 @@ export const AgentCoreProjectSpecSchema = z
     }
 
     // Validate HTTP gateway runtimeRef references
-    for (const gw of spec.httpGateways) {
+    for (const gw of spec.httpGateways ?? []) {
       const runtimeExists = spec.runtimes.some(r => r.name === gw.runtimeRef);
       if (!runtimeExists) {
         ctx.addIssue({
@@ -392,13 +398,13 @@ export const AgentCoreProjectSpecSchema = z
     }
 
     // Validate AB test gateway references
-    for (const test of spec.abTests) {
+    for (const test of spec.abTests ?? []) {
       const gwField = test.gatewayRef;
       if (gwField && typeof gwField === 'string') {
         const match = /^\{\{gateway:(.+)\}\}$/.exec(gwField);
         if (match) {
           const gwName = match[1];
-          const gwExists = spec.httpGateways.some(gw => gw.name === gwName);
+          const gwExists = (spec.httpGateways ?? []).some(gw => gw.name === gwName);
           if (!gwExists) {
             ctx.addIssue({
               code: z.ZodIssueCode.custom,
@@ -408,7 +414,7 @@ export const AgentCoreProjectSpecSchema = z
 
           // For target-based AB tests, validate target names exist in the gateway's targets array
           if (test.mode === 'target-based') {
-            const gw = spec.httpGateways.find(g => g.name === gwName);
+            const gw = (spec.httpGateways ?? []).find(g => g.name === gwName);
             if (gw) {
               const gwTargetNames = new Set((gw.targets ?? []).map(t => t.name));
               for (const variant of test.variants) {
@@ -427,7 +433,7 @@ export const AgentCoreProjectSpecSchema = z
     }
 
     // Validate HTTP gateway target runtimeRef and qualifier references
-    for (const gw of spec.httpGateways) {
+    for (const gw of spec.httpGateways ?? []) {
       for (const target of gw.targets ?? []) {
         const runtime = spec.runtimes.find(r => r.name === target.runtimeRef);
         if (!runtime) {

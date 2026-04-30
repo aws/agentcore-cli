@@ -73,13 +73,13 @@ export class ABTestPrimitive extends BasePrimitive<AddABTestOptions, RemovableAB
     try {
       const project = await this.readProjectSpec();
 
-      const index = project.abTests.findIndex(t => t.name === testName);
+      const index = (project.abTests ?? []).findIndex(t => t.name === testName);
       if (index === -1) {
         return { success: false, error: `AB test "${testName}" not found.` };
       }
 
-      const removedTest = project.abTests[index]!;
-      project.abTests.splice(index, 1);
+      const removedTest = project.abTests![index]!;
+      project.abTests!.splice(index, 1);
 
       // Cascade: remove auto-created online eval configs for target-based tests
       // Only remove eval configs that were auto-created (matching the {testName}_eval_ prefix pattern)
@@ -102,19 +102,19 @@ export class ABTestPrimitive extends BasePrimitive<AddABTestOptions, RemovableAB
             const targetNames = removedTest.variants
               .map(v => v.variantConfiguration.target?.targetName)
               .filter((n): n is string => !!n);
-            const gw = project.httpGateways.find(g => g.name === gwName);
+            const gw = (project.httpGateways ?? []).find(g => g.name === gwName);
             if (gw?.targets) {
               gw.targets = gw.targets.filter(t => !targetNames.includes(t.name));
             }
           }
 
           // Remove gateway if no other AB tests reference it
-          const stillReferenced = project.abTests.some(t => {
+          const stillReferenced = (project.abTests ?? []).some(t => {
             const m = /^\{\{gateway:(.+)\}\}$/.exec(t.gatewayRef);
             return m?.[1] === gwName;
           });
           if (!stillReferenced) {
-            project.httpGateways = project.httpGateways.filter(gw => gw.name !== gwName);
+            project.httpGateways = (project.httpGateways ?? []).filter(gw => gw.name !== gwName);
           }
         }
       }
@@ -130,7 +130,7 @@ export class ABTestPrimitive extends BasePrimitive<AddABTestOptions, RemovableAB
   async previewRemove(testName: string): Promise<RemovalPreview> {
     const project = await this.readProjectSpec();
 
-    const abTest = project.abTests.find(t => t.name === testName);
+    const abTest = (project.abTests ?? []).find(t => t.name === testName);
     if (!abTest) {
       throw new Error(`AB test "${testName}" not found.`);
     }
@@ -138,27 +138,27 @@ export class ABTestPrimitive extends BasePrimitive<AddABTestOptions, RemovableAB
     const summary: string[] = [`Removing AB test: ${testName}`];
     const schemaChanges: SchemaChange[] = [];
 
-    const testIndex = project.abTests.findIndex(t => t.name === testName);
+    const testIndex = (project.abTests ?? []).findIndex(t => t.name === testName);
     const afterSpec = {
       ...project,
-      abTests: project.abTests.filter(t => t.name !== testName),
-      httpGateways: [...project.httpGateways],
+      abTests: (project.abTests ?? []).filter(t => t.name !== testName),
+      httpGateways: [...(project.httpGateways ?? [])],
     };
 
     // Check if the gateway would be orphaned
-    const test = project.abTests[testIndex];
+    const test = (project.abTests ?? [])[testIndex];
     if (test?.gatewayRef) {
       const gwMatch = /^\{\{gateway:(.+)\}\}$/.exec(test.gatewayRef);
       if (gwMatch) {
         const gwName = gwMatch[1];
-        const otherTests = project.abTests.filter((_, i) => i !== testIndex);
+        const otherTests = (project.abTests ?? []).filter((_, i) => i !== testIndex);
         const stillReferenced = otherTests.some(t => {
           const m = /^\{\{gateway:(.+)\}\}$/.exec(t.gatewayRef);
           return m && m[1] === gwName;
         });
         if (!stillReferenced) {
           summary.push(`Also removing HTTP gateway: ${gwName} (no other AB tests reference it)`);
-          afterSpec.httpGateways = project.httpGateways.filter(gw => gw.name !== gwName);
+          afterSpec.httpGateways = (project.httpGateways ?? []).filter(gw => gw.name !== gwName);
         }
       }
     }
@@ -175,7 +175,7 @@ export class ABTestPrimitive extends BasePrimitive<AddABTestOptions, RemovableAB
   async getRemovable(): Promise<RemovableABTest[]> {
     try {
       const project = await this.readProjectSpec();
-      return project.abTests.map(t => ({ name: t.name }));
+      return (project.abTests ?? []).map(t => ({ name: t.name }));
     } catch {
       return [];
     }
@@ -184,7 +184,7 @@ export class ABTestPrimitive extends BasePrimitive<AddABTestOptions, RemovableAB
   async getAllNames(): Promise<string[]> {
     try {
       const project = await this.readProjectSpec();
-      return project.abTests.map(t => t.name);
+      return (project.abTests ?? []).map(t => t.name);
     } catch {
       return [];
     }
@@ -519,7 +519,7 @@ Target-Based Mode (--mode target-based)
   private async createABTest(options: AddABTestOptions): Promise<ABTest> {
     const project = await this.readProjectSpec();
 
-    this.checkDuplicate(project.abTests, options.name);
+    this.checkDuplicate(project.abTests ?? [], options.name);
 
     // Resolve gateway reference based on the user's choice
     let gatewayRef: string;
@@ -527,7 +527,7 @@ Target-Based Mode (--mode target-based)
 
     if (choice.type === 'existing-http') {
       // Reuse an existing HTTP gateway from the project spec
-      const existing = project.httpGateways.find(gw => gw.name === choice.name);
+      const existing = (project.httpGateways ?? []).find(gw => gw.name === choice.name);
       if (!existing) {
         throw new Error(`HTTP gateway "${choice.name}" not found in project.`);
       }
@@ -535,7 +535,7 @@ Target-Based Mode (--mode target-based)
     } else {
       // Create new HTTP gateway — truncate name to fit 48-char limit
       const httpGwName = `${options.name.replace(/_/g, '-').slice(0, 44)}-gw`;
-      const existingGw = project.httpGateways.find(gw => gw.name === httpGwName);
+      const existingGw = (project.httpGateways ?? []).find(gw => gw.name === httpGwName);
       if (existingGw) {
         if (existingGw.runtimeRef !== options.agent) {
           throw new Error(
@@ -544,6 +544,7 @@ Target-Based Mode (--mode target-based)
           );
         }
       } else {
+        project.httpGateways ??= [];
         project.httpGateways.push({
           name: httpGwName,
           runtimeRef: options.agent,
@@ -590,6 +591,7 @@ Target-Based Mode (--mode target-based)
       ...(options.enableOnCreate !== undefined && { enableOnCreate: options.enableOnCreate }),
     };
 
+    project.abTests ??= [];
     project.abTests.push(abTest);
     await this.writeProjectSpec(project);
 
@@ -608,7 +610,7 @@ Target-Based Mode (--mode target-based)
   private async createTargetBasedABTest(options: AddTargetBasedABTestOptions): Promise<ABTest> {
     const project = await this.readProjectSpec();
 
-    this.checkDuplicate(project.abTests, options.name);
+    this.checkDuplicate(project.abTests ?? [], options.name);
 
     // Validate runtime exists
     const runtime = project.runtimes.find(r => r.name === options.runtime);
@@ -633,7 +635,7 @@ Target-Based Mode (--mode target-based)
     const treatmentTarget = `${options.runtime}-${options.treatmentEndpoint}`;
 
     // Auto-create HTTP gateway if it doesn't exist
-    let existing = project.httpGateways.find(gw => gw.name === options.gateway);
+    let existing = (project.httpGateways ?? []).find(gw => gw.name === options.gateway);
     if (!existing) {
       existing = {
         name: options.gateway,
@@ -644,6 +646,7 @@ Target-Based Mode (--mode target-based)
           { name: treatmentTarget, runtimeRef: options.runtime, qualifier: options.treatmentEndpoint },
         ],
       };
+      project.httpGateways ??= [];
       project.httpGateways.push(existing);
     } else {
       // Gateway exists — ensure targets exist
@@ -716,6 +719,7 @@ Target-Based Mode (--mode target-based)
       ...(options.enableOnCreate !== undefined && { enableOnCreate: options.enableOnCreate }),
     };
 
+    project.abTests ??= [];
     project.abTests.push(abTest);
     await this.writeProjectSpec(project);
 

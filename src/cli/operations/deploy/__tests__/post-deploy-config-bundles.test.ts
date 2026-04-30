@@ -537,7 +537,7 @@ describe('resolveConfigBundleComponentKeys', () => {
     });
 
     const result = resolveConfigBundleComponentKeys(spec, deployedState, 'target1');
-    const keys = Object.keys(result.configBundles[0]!.components);
+    const keys = Object.keys(result.configBundles![0]!.components);
     expect(keys).toEqual(['arn:aws:bedrock-agentcore:us-east-1:123:runtime/rt-1']);
   });
 
@@ -550,7 +550,7 @@ describe('resolveConfigBundleComponentKeys', () => {
     });
 
     const result = resolveConfigBundleComponentKeys(spec, deployedState, 'target1');
-    const keys = Object.keys(result.configBundles[0]!.components);
+    const keys = Object.keys(result.configBundles![0]!.components);
     expect(keys).toEqual(['arn:aws:bedrock-agentcore:us-east-1:123:gateway/gw-1']);
   });
 
@@ -563,7 +563,7 @@ describe('resolveConfigBundleComponentKeys', () => {
     });
 
     const result = resolveConfigBundleComponentKeys(spec, deployedState, 'target1');
-    const keys = Object.keys(result.configBundles[0]!.components);
+    const keys = Object.keys(result.configBundles![0]!.components);
     expect(keys).toEqual(['arn:mcp:gw:resolved']);
   });
 
@@ -574,7 +574,7 @@ describe('resolveConfigBundleComponentKeys', () => {
     const deployedState = makeDeployedState('target1', { runtimes: {} });
 
     const result = resolveConfigBundleComponentKeys(spec, deployedState, 'target1');
-    const keys = Object.keys(result.configBundles[0]!.components);
+    const keys = Object.keys(result.configBundles![0]!.components);
     expect(keys).toEqual(['arn:existing:key']);
   });
 
@@ -585,7 +585,7 @@ describe('resolveConfigBundleComponentKeys', () => {
     const deployedState = makeDeployedState('target1', { runtimes: {} });
 
     const result = resolveConfigBundleComponentKeys(spec, deployedState, 'target1');
-    const keys = Object.keys(result.configBundles[0]!.components);
+    const keys = Object.keys(result.configBundles![0]!.components);
     expect(keys).toEqual(['some-plain-key']);
   });
 
@@ -629,9 +629,9 @@ describe('resolveConfigBundleComponentKeys', () => {
 
     const result = resolveConfigBundleComponentKeys(spec, deployedState, 'target1');
     // Original should still have the placeholder
-    expect(Object.keys(spec.configBundles[0]!.components)).toEqual(['{{runtime:my-rt}}']);
+    expect(Object.keys(spec.configBundles![0]!.components)).toEqual(['{{runtime:my-rt}}']);
     // Result should have the resolved key
-    expect(Object.keys(result.configBundles[0]!.components)).toEqual(['arn:resolved']);
+    expect(Object.keys(result.configBundles![0]!.components)).toEqual(['arn:resolved']);
   });
 
   it('prefers HTTP gateway over MCP gateway when both exist with same name', () => {
@@ -644,7 +644,7 @@ describe('resolveConfigBundleComponentKeys', () => {
     });
 
     const result = resolveConfigBundleComponentKeys(spec, deployedState, 'target1');
-    const keys = Object.keys(result.configBundles[0]!.components);
+    const keys = Object.keys(result.configBundles![0]!.components);
     // HTTP gateway should take precedence (checked first in code)
     expect(keys).toEqual(['arn:http:gw']);
   });

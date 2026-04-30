@@ -55,13 +55,13 @@ export async function promoteABTestConfig(abTestId: string, testNameFallback?: s
       `[promote] Could not resolve AB test ID "${abTestId}" from deployed state; falling back to name "${testNameFallback}".`
     );
     const lowerName = testNameFallback.toLowerCase();
-    const match = project.abTests.find(
+    const match = (project.abTests ?? []).find(
       t => t.name.toLowerCase() === lowerName || `${project.name}_${t.name}`.toLowerCase() === lowerName
     );
     specName = match?.name;
   }
 
-  const abTest = specName ? project.abTests.find(t => t.name === specName) : undefined;
+  const abTest = specName ? (project.abTests ?? []).find(t => t.name === specName) : undefined;
 
   if (!abTest) {
     return { promoted: false, promotionDetail: `AB test with ID "${abTestId}" not found in project config.` };
@@ -78,7 +78,7 @@ export async function promoteABTestConfig(abTestId: string, testNameFallback?: s
     const gwMatch = /^\{\{gateway:(.+)\}\}$/.exec(abTest.gatewayRef);
     const gwName = gwMatch?.[1];
     if (gwName) {
-      const gw = project.httpGateways.find(g => g.name === gwName);
+      const gw = (project.httpGateways ?? []).find(g => g.name === gwName);
       if (gw?.targets) {
         const controlTarget = gw.targets.find(t => t.name === controlTargetName);
         const treatmentTarget = gw.targets.find(t => t.name === treatmentTargetName);

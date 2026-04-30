@@ -53,11 +53,11 @@ export async function setupConfigBundles(options: SetupConfigBundlesOptions): Pr
   const results: ConfigBundleSetupResult[] = [];
   const configBundles: Record<string, ConfigBundleDeployedState> = {};
 
-  const specBundleNames = new Set(projectSpec.configBundles.map(b => b.name));
+  const specBundleNames = new Set((projectSpec.configBundles ?? []).map(b => b.name));
   const projectName = projectSpec.name;
 
   // Create or update bundles from the spec
-  for (const bundleSpec of projectSpec.configBundles) {
+  for (const bundleSpec of projectSpec.configBundles ?? []) {
     // Prepend project name to the API-side bundle name (no separator for config bundles)
     const apiBundleName = `${projectName}${bundleSpec.name}`;
 
