@@ -6,7 +6,7 @@ import { CdkToolkitWrapper, createCdkToolkitWrapper, silentIoHost } from '../../
 import { checkBootstrapStatus, checkStacksStatus, formatCdkEnvironment } from '../../cloudformation';
 import { cleanupStaleLockFiles } from '../../tui/utils';
 import type { IIoHost } from '@aws-cdk/toolkit-lib';
-import { existsSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync } from 'node:fs';
 import * as path from 'node:path';
 
 export interface PreflightContext {
@@ -70,24 +70,6 @@ export async function validateProject(): Promise<PreflightContext> {
   cdkProject.validate();
 
   const configIO = new ConfigIO({ baseDir: configRoot });
-
-  // Patch config bundles on disk to include `type: "ConfigurationBundle"` if missing.
-  // The CDK package now requires this discriminator during synthesis validation.
-  const specPath = configIO.getPathResolver().getAgentConfigPath();
-  const rawJson = JSON.parse(readFileSync(specPath, 'utf-8')) as Record<string, unknown>;
-  const rawBundles = rawJson.configBundles;
-  if (Array.isArray(rawBundles) && rawBundles.length > 0) {
-    let patched = false;
-    for (const b of rawBundles as Record<string, unknown>[]) {
-      if (!b.type) {
-        b.type = 'ConfigurationBundle';
-        patched = true;
-      }
-    }
-    if (patched) {
-      writeFileSync(specPath, JSON.stringify(rawJson, null, 2), 'utf-8');
-    }
-  }
 
   const projectSpec = await configIO.readProjectSpec();
   const awsTargets = await configIO.resolveAWSDeploymentTargets();
