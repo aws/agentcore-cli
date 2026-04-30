@@ -199,6 +199,146 @@ describe('mapHarnessSpecToCreateOptions', () => {
 
       expect(result.tools).toBeUndefined();
     });
+
+    it('passes gateway tool with outboundAuth awsIam through the mapper', async () => {
+      const spec = minimalSpec({
+        tools: [
+          {
+            type: 'agentcore_gateway',
+            name: 'my_gw',
+            config: {
+              agentCoreGateway: {
+                gatewayArn: 'arn:aws:bedrock-agentcore:us-west-2:123:gateway/abc',
+                outboundAuth: { awsIam: {} },
+              },
+            },
+          },
+        ],
+      });
+
+      const result = await mapHarnessSpecToCreateOptions({ ...BASE_OPTIONS, harnessSpec: spec });
+
+      expect(result.tools).toEqual([
+        {
+          type: 'agentcore_gateway',
+          name: 'my_gw',
+          config: {
+            agentCoreGateway: {
+              gatewayArn: 'arn:aws:bedrock-agentcore:us-west-2:123:gateway/abc',
+              outboundAuth: { awsIam: {} },
+            },
+          },
+        },
+      ]);
+    });
+
+    it('passes gateway tool with outboundAuth none through the mapper', async () => {
+      const spec = minimalSpec({
+        tools: [
+          {
+            type: 'agentcore_gateway',
+            name: 'my_gw',
+            config: {
+              agentCoreGateway: {
+                gatewayArn: 'arn:aws:bedrock-agentcore:us-west-2:123:gateway/abc',
+                outboundAuth: { none: {} },
+              },
+            },
+          },
+        ],
+      });
+
+      const result = await mapHarnessSpecToCreateOptions({ ...BASE_OPTIONS, harnessSpec: spec });
+
+      expect(result.tools).toEqual([
+        {
+          type: 'agentcore_gateway',
+          name: 'my_gw',
+          config: {
+            agentCoreGateway: {
+              gatewayArn: 'arn:aws:bedrock-agentcore:us-west-2:123:gateway/abc',
+              outboundAuth: { none: {} },
+            },
+          },
+        },
+      ]);
+    });
+
+    it('passes gateway tool with outboundAuth oauth through the mapper', async () => {
+      const spec = minimalSpec({
+        tools: [
+          {
+            type: 'agentcore_gateway',
+            name: 'my_gw',
+            config: {
+              agentCoreGateway: {
+                gatewayArn: 'arn:aws:bedrock-agentcore:us-west-2:123:gateway/abc',
+                outboundAuth: {
+                  oauth: {
+                    providerArn:
+                      'arn:aws:bedrock-agentcore:us-west-2:123:token-vault/default/oauth2credentialprovider/my-provider',
+                    scopes: ['read', 'write'],
+                    grantType: 'CLIENT_CREDENTIALS',
+                  },
+                },
+              },
+            },
+          },
+        ],
+      });
+
+      const result = await mapHarnessSpecToCreateOptions({ ...BASE_OPTIONS, harnessSpec: spec });
+
+      expect(result.tools).toEqual([
+        {
+          type: 'agentcore_gateway',
+          name: 'my_gw',
+          config: {
+            agentCoreGateway: {
+              gatewayArn: 'arn:aws:bedrock-agentcore:us-west-2:123:gateway/abc',
+              outboundAuth: {
+                oauth: {
+                  providerArn:
+                    'arn:aws:bedrock-agentcore:us-west-2:123:token-vault/default/oauth2credentialprovider/my-provider',
+                  scopes: ['read', 'write'],
+                  grantType: 'CLIENT_CREDENTIALS',
+                },
+              },
+            },
+          },
+        },
+      ]);
+    });
+
+    it('passes gateway tool without outboundAuth through the mapper', async () => {
+      const spec = minimalSpec({
+        tools: [
+          {
+            type: 'agentcore_gateway',
+            name: 'my_gw',
+            config: {
+              agentCoreGateway: {
+                gatewayArn: 'arn:aws:bedrock-agentcore:us-west-2:123:gateway/abc',
+              },
+            },
+          },
+        ],
+      });
+
+      const result = await mapHarnessSpecToCreateOptions({ ...BASE_OPTIONS, harnessSpec: spec });
+
+      expect(result.tools).toEqual([
+        {
+          type: 'agentcore_gateway',
+          name: 'my_gw',
+          config: {
+            agentCoreGateway: {
+              gatewayArn: 'arn:aws:bedrock-agentcore:us-west-2:123:gateway/abc',
+            },
+          },
+        },
+      ]);
+    });
   });
 
   // ── Skills mapping ─────────────────────────────────────────────────────

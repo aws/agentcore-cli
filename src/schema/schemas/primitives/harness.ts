@@ -89,11 +89,40 @@ export const AgentCoreCodeInterpreterConfigSchema = z.object({
   }),
 });
 
-export const AgentCoreGatewayConfigSchema = z.object({
-  agentCoreGateway: z.object({
-    gatewayArn: z.string().min(1),
-    credentialProviderName: z.string().optional(),
+export const GatewayOAuthGrantTypeSchema = z.enum(['CLIENT_CREDENTIALS', 'USER_FEDERATION']);
+
+export const HarnessGatewayOutboundAuthSchema = z.union([
+  z.object({ awsIam: z.object({}) }),
+  z.object({ none: z.object({}) }),
+  z.object({
+    oauth: z.object({
+      providerArn: z.string().min(1),
+      scopes: z.array(z.string().min(1)),
+      grantType: GatewayOAuthGrantTypeSchema.optional(),
+      customParameters: z.record(z.string(), z.string()).optional(),
+    }),
   }),
+]);
+
+export type HarnessGatewayOutboundAuth = z.infer<typeof HarnessGatewayOutboundAuthSchema>;
+
+export const AgentCoreGatewayConfigSchema = z.object({
+  agentCoreGateway: z
+    .object({
+      gatewayArn: z.string().min(1),
+      outboundAuth: HarnessGatewayOutboundAuthSchema.optional(),
+    })
+    .passthrough()
+    .superRefine((data, ctx) => {
+      if ('credentialProviderName' in data) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message:
+            'credentialProviderName is no longer supported. Use outboundAuth instead. Example: outboundAuth: { awsIam: {} } or outboundAuth: { oauth: { providerArn: "...", scopes: [...] } }',
+          path: ['credentialProviderName'],
+        });
+      }
+    }),
 });
 
 export const InlineFunctionConfigSchema = z.object({

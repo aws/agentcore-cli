@@ -1,5 +1,5 @@
 import { ConfigIO } from '../../../lib';
-import type { HarnessSpec } from '../../../schema';
+import type { HarnessGatewayOutboundAuth, HarnessSpec } from '../../../schema';
 import type { HarnessToolType } from '../../../schema/schemas/primitives/harness';
 
 export interface AddToolOptions {
@@ -11,8 +11,16 @@ export interface AddToolOptions {
   codeInterpreterArn?: string;
   gatewayArn?: string;
   gateway?: string;
+  outboundAuth?: string;
+  providerArn?: string;
+  scopes?: string;
+  grantType?: string;
   json?: boolean;
 }
+
+const VALID_OUTBOUND_AUTH_TYPES = ['awsIam', 'none', 'oauth'] as const;
+const VALID_GRANT_TYPES = ['CLIENT_CREDENTIALS', 'USER_FEDERATION'] as const;
+const ARN_PATTERN = /^arn:[^:]+:/;
 
 export interface AddToolResult {
   success: boolean;
@@ -47,6 +55,57 @@ export async function handleAddTool(options: AddToolOptions): Promise<AddToolRes
 
   if (toolType === 'agentcore_gateway' && !options.gatewayArn && !options.gateway) {
     return { success: false, error: '--gateway-arn or --gateway is required for agentcore_gateway tools' };
+  }
+
+  let outboundAuth: HarnessGatewayOutboundAuth | undefined;
+  if (options.outboundAuth !== undefined) {
+    if (toolType !== 'agentcore_gateway') {
+      return { success: false, error: '--outbound-auth is only valid for agentcore_gateway tools' };
+    }
+    if (!VALID_OUTBOUND_AUTH_TYPES.includes(options.outboundAuth as (typeof VALID_OUTBOUND_AUTH_TYPES)[number])) {
+      return {
+        success: false,
+        error: `Invalid --outbound-auth '${options.outboundAuth}'. Valid: ${VALID_OUTBOUND_AUTH_TYPES.join(', ')}`,
+      };
+    }
+    if (options.outboundAuth === 'awsIam') {
+      outboundAuth = { awsIam: {} };
+    } else if (options.outboundAuth === 'none') {
+      outboundAuth = { none: {} };
+    } else {
+      if (!options.providerArn) {
+        return { success: false, error: '--provider-arn is required when --outbound-auth oauth' };
+      }
+      if (!ARN_PATTERN.test(options.providerArn)) {
+        return { success: false, error: `Invalid --provider-arn '${options.providerArn}': must be a valid ARN` };
+      }
+      if (!options.scopes) {
+        return { success: false, error: '--scopes is required when --outbound-auth oauth' };
+      }
+      const scopes = options.scopes
+        .split(',')
+        .map(s => s.trim())
+        .filter(Boolean);
+      if (scopes.length === 0) {
+        return { success: false, error: '--scopes must contain at least one scope' };
+      }
+      if (
+        options.grantType !== undefined &&
+        !VALID_GRANT_TYPES.includes(options.grantType as (typeof VALID_GRANT_TYPES)[number])
+      ) {
+        return {
+          success: false,
+          error: `Invalid --grant-type '${options.grantType}'. Valid: ${VALID_GRANT_TYPES.join(', ')}`,
+        };
+      }
+      outboundAuth = {
+        oauth: {
+          providerArn: options.providerArn,
+          scopes,
+          ...(options.grantType && { grantType: options.grantType as (typeof VALID_GRANT_TYPES)[number] }),
+        },
+      };
+    }
   }
 
   const configIO = new ConfigIO();
@@ -98,7 +157,12 @@ export async function handleAddTool(options: AddToolOptions): Promise<AddToolRes
   } else if (toolType === 'agentcore_code_interpreter' && options.codeInterpreterArn) {
     toolEntry.config = { agentCoreCodeInterpreter: { codeInterpreterArn: options.codeInterpreterArn } };
   } else if (toolType === 'agentcore_gateway') {
-    toolEntry.config = { agentCoreGateway: { gatewayArn: resolvedGatewayArn! } };
+    toolEntry.config = {
+      agentCoreGateway: {
+        gatewayArn: resolvedGatewayArn!,
+        ...(outboundAuth && { outboundAuth }),
+      },
+    };
   }
 
   harnessSpec.tools.push(toolEntry);

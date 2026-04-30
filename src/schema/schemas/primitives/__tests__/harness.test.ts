@@ -112,7 +112,83 @@ describe('HarnessToolSchema', () => {
     expect(result.success).toBe(true);
   });
 
-  it('accepts gateway tool with credentialProviderName', () => {
+  it('accepts gateway tool with outboundAuth awsIam', () => {
+    const result = HarnessToolSchema.safeParse({
+      type: 'agentcore_gateway',
+      name: 'my-gw',
+      config: {
+        agentCoreGateway: {
+          gatewayArn: 'arn:aws:bedrock-agentcore:us-west-2:123:gateway/abc',
+          outboundAuth: { awsIam: {} },
+        },
+      },
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it('accepts gateway tool with outboundAuth none', () => {
+    const result = HarnessToolSchema.safeParse({
+      type: 'agentcore_gateway',
+      name: 'my-gw',
+      config: {
+        agentCoreGateway: {
+          gatewayArn: 'arn:aws:bedrock-agentcore:us-west-2:123:gateway/abc',
+          outboundAuth: { none: {} },
+        },
+      },
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it('accepts gateway tool with outboundAuth oauth', () => {
+    const result = HarnessToolSchema.safeParse({
+      type: 'agentcore_gateway',
+      name: 'my-gw',
+      config: {
+        agentCoreGateway: {
+          gatewayArn: 'arn:aws:bedrock-agentcore:us-west-2:123:gateway/abc',
+          outboundAuth: {
+            oauth: {
+              providerArn:
+                'arn:aws:bedrock-agentcore:us-west-2:123:token-vault/default/oauth2credentialprovider/my-provider',
+              scopes: ['read', 'write'],
+              grantType: 'CLIENT_CREDENTIALS',
+            },
+          },
+        },
+      },
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it('accepts gateway tool without outboundAuth (defaults to SigV4)', () => {
+    const result = HarnessToolSchema.safeParse({
+      type: 'agentcore_gateway',
+      name: 'my-gw',
+      config: {
+        agentCoreGateway: {
+          gatewayArn: 'arn:aws:bedrock-agentcore:us-west-2:123:gateway/abc',
+        },
+      },
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it('rejects gateway tool with invalid outboundAuth variant', () => {
+    const result = HarnessToolSchema.safeParse({
+      type: 'agentcore_gateway',
+      name: 'my-gw',
+      config: {
+        agentCoreGateway: {
+          gatewayArn: 'arn:aws:bedrock-agentcore:us-west-2:123:gateway/abc',
+          outboundAuth: { unknownAuth: {} },
+        },
+      },
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it('rejects gateway tool with credentialProviderName and shows migration message', () => {
     const result = HarnessToolSchema.safeParse({
       type: 'agentcore_gateway',
       name: 'my-gw',
@@ -123,7 +199,10 @@ describe('HarnessToolSchema', () => {
         },
       },
     });
-    expect(result.success).toBe(true);
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      expect(result.error.issues.some(i => i.message.includes('no longer supported'))).toBe(true);
+    }
   });
 
   it('accepts inline function tool', () => {

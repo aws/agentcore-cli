@@ -18,6 +18,13 @@ export function registerAddTool(addCmd: Command): void {
     .option('--code-interpreter-arn <arn>', 'Custom code interpreter ARN (optional for agentcore_code_interpreter)')
     .option('--gateway-arn <arn>', 'Gateway ARN (for agentcore_gateway)')
     .option('--gateway <name>', 'Project gateway name — resolves ARN from deployed state (for agentcore_gateway)')
+    .option('--outbound-auth <type>', 'Gateway outbound auth type: awsIam, none, or oauth (for agentcore_gateway)')
+    .option('--provider-arn <arn>', 'OAuth credential provider ARN (required when --outbound-auth oauth)')
+    .option('--scopes <scopes>', 'Comma-separated OAuth scopes (required when --outbound-auth oauth)')
+    .option(
+      '--grant-type <type>',
+      'OAuth grant type: CLIENT_CREDENTIALS or USER_FEDERATION (for --outbound-auth oauth)'
+    )
     .option('--json', 'Output as JSON')
     .action(async cliOptions => {
       if (!findConfigRoot()) {
@@ -35,6 +42,10 @@ export function registerAddTool(addCmd: Command): void {
           codeInterpreterArn: cliOptions.codeInterpreterArn,
           gatewayArn: cliOptions.gatewayArn,
           gateway: cliOptions.gateway,
+          outboundAuth: cliOptions.outboundAuth,
+          providerArn: cliOptions.providerArn,
+          scopes: cliOptions.scopes,
+          grantType: cliOptions.grantType,
           json: cliOptions.json,
         });
 

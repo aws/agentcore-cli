@@ -1,5 +1,6 @@
 import { APP_DIR, ConfigIO, findConfigRoot } from '../../lib';
 import type {
+  HarnessGatewayOutboundAuth,
   HarnessModelProvider,
   HarnessSpec,
   MemoryStrategy,
@@ -45,6 +46,9 @@ export interface AddHarnessOptions {
   mcpName?: string;
   mcpUrl?: string;
   gatewayArn?: string;
+  gatewayOutboundAuth?: 'awsIam' | 'none' | 'oauth';
+  gatewayProviderArn?: string;
+  gatewayScopes?: string[];
   authorizerType?: RuntimeAuthorizerType;
   jwtConfig?: JwtConfigOptions;
   configBaseDir?: string;
@@ -104,10 +108,33 @@ export class HarnessPrimitive extends BasePrimitive<AddHarnessOptions, Removable
               config: { remoteMcp: { url: options.mcpUrl } },
             });
           } else if (toolType === 'agentcore_gateway' && options.gatewayArn) {
+            let outboundAuth: HarnessGatewayOutboundAuth | undefined;
+            if (options.gatewayOutboundAuth === 'awsIam') {
+              outboundAuth = { awsIam: {} };
+            } else if (options.gatewayOutboundAuth === 'none') {
+              outboundAuth = { none: {} };
+            } else if (
+              options.gatewayOutboundAuth === 'oauth' &&
+              options.gatewayProviderArn &&
+              options.gatewayScopes &&
+              options.gatewayScopes.length > 0
+            ) {
+              outboundAuth = {
+                oauth: {
+                  providerArn: options.gatewayProviderArn,
+                  scopes: options.gatewayScopes,
+                },
+              };
+            }
             tools.push({
               type: 'agentcore_gateway',
               name: 'gateway',
-              config: { agentCoreGateway: { gatewayArn: options.gatewayArn } },
+              config: {
+                agentCoreGateway: {
+                  gatewayArn: options.gatewayArn,
+                  ...(outboundAuth && { outboundAuth }),
+                },
+              },
             });
           }
         }

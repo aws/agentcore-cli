@@ -46,6 +46,7 @@ export {
 } from './policy';
 
 export type {
+  HarnessGatewayOutboundAuth,
   HarnessMemoryRef,
   HarnessModel,
   HarnessModelProvider,
@@ -56,6 +57,8 @@ export type {
 } from './harness';
 export {
   AllowedToolSchema,
+  GatewayOAuthGrantTypeSchema,
+  HarnessGatewayOutboundAuthSchema,
   HarnessMemoryRefSchema,
   HarnessModelProviderSchema,
   HarnessModelSchema,

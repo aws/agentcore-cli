@@ -22,6 +22,7 @@ import {
   ADVANCED_SETTING_OPTIONS,
   AUTHORIZER_TYPE_OPTIONS,
   CONTAINER_MODE_OPTIONS,
+  GATEWAY_OUTBOUND_AUTH_OPTIONS,
   HARNESS_STEP_LABELS,
   MEMORY_OPTIONS,
   MODEL_PROVIDER_OPTIONS,
@@ -86,6 +87,11 @@ export function AddHarnessScreen({ existingHarnessNames, onComplete, onExit }: A
     []
   );
 
+  const gatewayOutboundAuthItems: SelectableItem[] = useMemo(
+    () => GATEWAY_OUTBOUND_AUTH_OPTIONS.map(opt => ({ id: opt.id, title: opt.title, description: opt.description })),
+    []
+  );
+
   const isNameStep = wizard.step === 'name';
   const isModelProviderStep = wizard.step === 'model-provider';
   const isApiKeyArnStep = wizard.step === 'api-key-arn';
@@ -97,6 +103,9 @@ export function AddHarnessScreen({ existingHarnessNames, onComplete, onExit }: A
   const isMcpNameStep = wizard.step === 'mcp-name';
   const isMcpUrlStep = wizard.step === 'mcp-url';
   const isGatewayArnStep = wizard.step === 'gateway-arn';
+  const isGatewayOutboundAuthStep = wizard.step === 'gateway-outbound-auth';
+  const isGatewayProviderArnStep = wizard.step === 'gateway-provider-arn';
+  const isGatewayScopesStep = wizard.step === 'gateway-scopes';
   const isMemoryStep = wizard.step === 'memory';
   const isAuthorizerTypeStep = wizard.step === 'authorizerType';
   const isJwtConfigStep = wizard.step === 'jwtConfig';
@@ -158,6 +167,13 @@ export function AddHarnessScreen({ existingHarnessNames, onComplete, onExit }: A
     isActive: isAuthorizerTypeStep,
   });
 
+  const gatewayOutboundAuthNav = useListNavigation({
+    items: gatewayOutboundAuthItems,
+    onSelect: item => wizard.setGatewayOutboundAuth(item.id as 'awsIam' | 'none' | 'oauth'),
+    onExit: () => wizard.goBack(),
+    isActive: isGatewayOutboundAuthStep,
+  });
+
   const networkModeNav = useListNavigation({
     items: networkModeItems,
     onSelect: item => wizard.setNetworkMode(NetworkModeSchema.parse(item.id)),
@@ -194,7 +210,8 @@ export function AddHarnessScreen({ existingHarnessNames, onComplete, onExit }: A
           isContainerStep ||
           isNetworkModeStep ||
           isTruncationStrategyStep ||
-          isAuthorizerTypeStep
+          isAuthorizerTypeStep ||
+          isGatewayOutboundAuthStep
         ? HELP_TEXT.NAVIGATE_SELECT
         : isConfirmStep
           ? HELP_TEXT.CONFIRM_CANCEL
@@ -255,6 +272,22 @@ export function AddHarnessScreen({ existingHarnessNames, onComplete, onExit }: A
       }
       if (wizard.config.gatewayArn) {
         fields.push({ label: 'Gateway ARN', value: wizard.config.gatewayArn });
+      }
+      if (wizard.config.gatewayOutboundAuth) {
+        fields.push({
+          label: 'Gateway Auth',
+          value:
+            GATEWAY_OUTBOUND_AUTH_OPTIONS.find(o => o.id === wizard.config.gatewayOutboundAuth)?.title ??
+            wizard.config.gatewayOutboundAuth,
+        });
+      }
+      if (wizard.config.gatewayOutboundAuth === 'oauth') {
+        if (wizard.config.gatewayProviderArn) {
+          fields.push({ label: 'Provider ARN', value: wizard.config.gatewayProviderArn });
+        }
+        if (wizard.config.gatewayScopes) {
+          fields.push({ label: 'OAuth Scopes', value: wizard.config.gatewayScopes });
+        }
       }
     }
 
@@ -434,6 +467,39 @@ export function AddHarnessScreen({ existingHarnessNames, onComplete, onExit }: A
             onSubmit={wizard.setGatewayArn}
             onCancel={() => wizard.goBack()}
             customValidation={value => (isValidArn(value) ? true : ARN_VALIDATION_MESSAGE)}
+          />
+        )}
+
+        {isGatewayOutboundAuthStep && (
+          <WizardSelect
+            title="Gateway outbound auth"
+            description="How should the harness authenticate when calling the gateway?"
+            items={gatewayOutboundAuthItems}
+            selectedIndex={gatewayOutboundAuthNav.selectedIndex}
+          />
+        )}
+
+        {isGatewayProviderArnStep && (
+          <TextInput
+            key="gateway-provider-arn"
+            prompt="Credential provider ARN"
+            description="ARN of the AgentCore Identity OAuth2 credential provider"
+            initialValue=""
+            onSubmit={wizard.setGatewayProviderArn}
+            onCancel={() => wizard.goBack()}
+            customValidation={value => (isValidArn(value) ? true : ARN_VALIDATION_MESSAGE)}
+          />
+        )}
+
+        {isGatewayScopesStep && (
+          <TextInput
+            key="gateway-scopes"
+            prompt="OAuth scopes (comma-separated)"
+            description="Scopes requested from the credential provider"
+            initialValue=""
+            onSubmit={wizard.setGatewayScopes}
+            onCancel={() => wizard.goBack()}
+            customValidation={value => (value.trim().length > 0 ? true : 'At least one scope is required')}
           />
         )}
 

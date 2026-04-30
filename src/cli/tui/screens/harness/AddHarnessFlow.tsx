@@ -68,6 +68,14 @@ export function AddHarnessFlow({ isInteractive = true, onExit, onBack, onDev, on
         mcpName: config.mcpName,
         mcpUrl: config.mcpUrl,
         gatewayArn: config.gatewayArn,
+        gatewayOutboundAuth: config.gatewayOutboundAuth,
+        gatewayProviderArn: config.gatewayProviderArn,
+        gatewayScopes: config.gatewayScopes
+          ? config.gatewayScopes
+              .split(',')
+              .map(s => s.trim())
+              .filter(Boolean)
+          : undefined,
         authorizerType: config.authorizerType,
         jwtConfig: config.jwtConfig
           ? {

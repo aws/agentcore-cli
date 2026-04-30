@@ -78,6 +78,10 @@ export function useAddHarnessWizard() {
       }
       if (config.selectedTools?.includes('agentcore_gateway')) {
         steps.push('gateway-arn');
+        steps.push('gateway-outbound-auth');
+        if (config.gatewayOutboundAuth === 'oauth') {
+          steps.push('gateway-provider-arn', 'gateway-scopes');
+        }
       }
     }
 
@@ -120,6 +124,7 @@ export function useAddHarnessWizard() {
     config.authorizerType,
     config.networkMode,
     config.selectedTools,
+    config.gatewayOutboundAuth,
     advancedSettings,
   ]);
 
@@ -238,9 +243,32 @@ export function useAddHarnessWizard() {
     [advancedSettings, config.selectedTools]
   );
 
-  const setGatewayArn = useCallback(
-    (gatewayArn: string) => {
-      setConfig(c => ({ ...c, gatewayArn }));
+  const setGatewayArn = useCallback((gatewayArn: string) => {
+    setConfig(c => ({ ...c, gatewayArn }));
+    setStep('gateway-outbound-auth');
+  }, []);
+
+  const setGatewayOutboundAuth = useCallback(
+    (authType: 'awsIam' | 'none' | 'oauth') => {
+      setConfig(c => ({ ...c, gatewayOutboundAuth: authType }));
+      if (authType === 'oauth') {
+        setStep('gateway-provider-arn');
+      } else {
+        const next = getNextAdvancedStep(advancedSettings, 'tools');
+        setStep(next ?? 'confirm');
+      }
+    },
+    [advancedSettings]
+  );
+
+  const setGatewayProviderArn = useCallback((gatewayProviderArn: string) => {
+    setConfig(c => ({ ...c, gatewayProviderArn }));
+    setStep('gateway-scopes');
+  }, []);
+
+  const setGatewayScopes = useCallback(
+    (gatewayScopes: string) => {
+      setConfig(c => ({ ...c, gatewayScopes }));
       const next = getNextAdvancedStep(advancedSettings, 'tools');
       setStep(next ?? 'confirm');
     },
@@ -405,6 +433,9 @@ export function useAddHarnessWizard() {
     setMcpName,
     setMcpUrl,
     setGatewayArn,
+    setGatewayOutboundAuth,
+    setGatewayProviderArn,
+    setGatewayScopes,
     setMemoryEnabled,
     setAuthorizerType,
     setJwtConfig,

@@ -15,6 +15,9 @@ export type AddHarnessStep =
   | 'mcp-name'
   | 'mcp-url'
   | 'gateway-arn'
+  | 'gateway-outbound-auth'
+  | 'gateway-provider-arn'
+  | 'gateway-scopes'
   | 'memory'
   | 'authorizerType'
   | 'jwtConfig'
@@ -55,6 +58,9 @@ export interface AddHarnessConfig {
   mcpName?: string;
   mcpUrl?: string;
   gatewayArn?: string;
+  gatewayOutboundAuth?: 'awsIam' | 'none' | 'oauth';
+  gatewayProviderArn?: string;
+  gatewayScopes?: string;
 }
 
 export const HARNESS_STEP_LABELS: Record<AddHarnessStep, string> = {
@@ -69,6 +75,9 @@ export const HARNESS_STEP_LABELS: Record<AddHarnessStep, string> = {
   'mcp-name': 'MCP name',
   'mcp-url': 'MCP URL',
   'gateway-arn': 'Gateway ARN',
+  'gateway-outbound-auth': 'Gateway auth',
+  'gateway-provider-arn': 'Provider ARN',
+  'gateway-scopes': 'OAuth scopes',
   memory: 'Memory',
   authorizerType: 'Auth type',
   jwtConfig: 'JWT config',
@@ -157,3 +166,9 @@ export const AUTHORIZER_TYPE_OPTIONS = [
   { id: 'AWS_IAM' as const, title: 'AWS IAM', description: 'Use AWS IAM authentication (default)' },
   { id: 'CUSTOM_JWT' as const, title: 'Custom JWT', description: 'Use a custom JWT authorizer (OIDC)' },
 ] as const;
+
+export const GATEWAY_OUTBOUND_AUTH_OPTIONS = [
+  { id: 'awsIam', title: 'AWS IAM', description: 'SigV4 signing with the harness execution role (default)' },
+  { id: 'none', title: 'None', description: 'No authentication headers' },
+  { id: 'oauth', title: 'OAuth', description: 'Bearer token via AgentCore Identity credential provider' },
+];
