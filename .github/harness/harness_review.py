@@ -1,7 +1,7 @@
 """Invoke Bedrock AgentCore Harness to review a GitHub PR.
 
 Reads PR_URL from the environment. Streams harness output to stdout.
-Uses raw HTTP with SigV4 signing — no custom service model needed.
+Uses the boto3 bedrock-agentcore client's invoke_harness API.
 """
 
 import json
@@ -11,11 +11,6 @@ import time
 import uuid
 
 import boto3
-from botocore.auth import SigV4Auth
-from botocore.awsrequest import AWSRequest
-from botocore.eventstream import EventStreamBuffer
-from urllib.parse import quote
-import urllib3
 
 # ANSI color codes
 CYAN = "\033[36m"
@@ -35,50 +30,37 @@ def read_prompt(filename):
         return f.read()
 
 
-def invoke_harness(harness_arn, body, region):
-    """Send a SigV4-signed request to the harness invoke endpoint. Returns a streaming response.
-
-    InvokeHarness is not in standard boto3, so we call the REST API directly.
-    boto3 is only used to resolve AWS credentials (from env vars, OIDC, etc.)
-    and sign the request with SigV4. The response is an AWS binary event stream.
-    """
-    session = boto3.Session(region_name=region)
-    credentials = session.get_credentials().get_frozen_credentials()
-    url = f"https://bedrock-agentcore.{region}.amazonaws.com/harnesses/invoke?harnessArn={quote(harness_arn, safe='')}"
-    request = AWSRequest(method="POST", url=url, data=body, headers={
-        "Content-Type": "application/json",
-        "Accept": "application/vnd.amazon.eventstream",
-    })
-    SigV4Auth(credentials, "bedrock-agentcore", region).add_auth(request)
-    return urllib3.PoolManager().urlopen(
-        "POST", url, body=body,
-        headers=dict(request.headers),
-        preload_content=False,
-        timeout=urllib3.Timeout(connect=10, read=600),
+def invoke_harness_streaming(harness_arn, session_id, system_prompt, messages, model_id, region):
+    """Call invoke_harness via boto3 and return the event stream."""
+    client = boto3.client("bedrock-agentcore", region_name=region)
+    response = client.invoke_harness(
+        harnessArn=harness_arn,
+        runtimeSessionId=session_id,
+        systemPrompt=[{"text": system_prompt}],
+        messages=messages,
+        model={"bedrockModelConfig": {"modelId": model_id}},
     )
+    return response["stream"]
 
 
-def parse_events(http_response):
-    """Yield (event_type, payload) tuples from the harness binary event stream.
-
-    The response arrives as raw bytes in AWS binary event stream format.
-    EventStreamBuffer reassembles complete events from the 4KB chunks,
-    and we decode each event's JSON payload before yielding it.
-    """
-    event_buffer = EventStreamBuffer()
-    for chunk in http_response.stream(4096):
-        event_buffer.add_data(chunk)
-        for event in event_buffer:
-            if event.headers.get(":message-type") == "exception":
-                payload = json.loads(event.payload.decode("utf-8"))
-                print(f"\n{RED}ERROR: {payload}{RESET}", file=sys.stderr)
-                sys.exit(1)
-            event_type = event.headers.get(":event-type", "")
-            if event.payload:
-                yield event_type, json.loads(event.payload.decode("utf-8"))
+def parse_events(event_stream):
+    """Yield (event_type, payload) tuples from the boto3 event stream."""
+    for event in event_stream:
+        if "contentBlockStart" in event:
+            yield "contentBlockStart", event["contentBlockStart"]
+        elif "contentBlockDelta" in event:
+            yield "contentBlockDelta", event["contentBlockDelta"]
+        elif "contentBlockStop" in event:
+            yield "contentBlockStop", event["contentBlockStop"]
+        elif "messageStop" in event:
+            yield "messageStop", event["messageStop"]
+        elif "internalServerException" in event:
+            yield "internalServerException", event["internalServerException"]
+        elif "runtimeClientError" in event:
+            yield "runtimeClientError", event["runtimeClientError"]
 
 
-def print_stream(http_response):
+def print_stream(event_stream):
     """Display harness events with GitHub Actions log groups.
 
     The harness streams events as the agent works:
@@ -112,7 +94,7 @@ def print_stream(http_response):
                 print(f"{DIM}{line}{RESET}", flush=True)
             text_buffer = ""
 
-    for event_type, payload in parse_events(http_response):
+    for event_type, payload in parse_events(event_stream):
 
         if event_type == "contentBlockStart":
             start = payload.get("start", {})
@@ -171,6 +153,11 @@ def print_stream(http_response):
             print(f"\n{RED}ERROR: {payload}{RESET}", file=sys.stderr)
             sys.exit(1)
 
+        elif event_type == "runtimeClientError":
+            close_group()
+            print(f"\n{RED}ERROR: {payload.get('message', payload)}{RESET}", file=sys.stderr)
+            sys.exit(1)
+
     close_group()
     total = time.time() - start_time
     print(f"\n{GREEN}Review complete.{RESET} {DIM}({iteration} tool calls, {int(total)}s total){RESET}")
@@ -200,18 +187,10 @@ print()
 SYSTEM_PROMPT = read_prompt("system.md")
 REVIEW_PROMPT = read_prompt("review.md").format(pr_url=PR_URL)
 
-request_body = json.dumps({
-    "runtimeSessionId": SESSION_ID,
-    "systemPrompt": [{"text": SYSTEM_PROMPT}],
-    "messages": [{"role": "user", "content": [{"text": REVIEW_PROMPT}]}],
-    "model": {"bedrockModelConfig": {"modelId": MODEL_ID}},
-})
+messages = [{"role": "user", "content": [{"text": REVIEW_PROMPT}]}]
 
-http_response = invoke_harness(HARNESS_ARN, request_body, REGION)
+event_stream = invoke_harness_streaming(
+    HARNESS_ARN, SESSION_ID, SYSTEM_PROMPT, messages, MODEL_ID, REGION
+)
 
-if http_response.status != 200:
-    error = http_response.read().decode("utf-8")
-    print(f"{RED}ERROR: HTTP {http_response.status}: {error}{RESET}", file=sys.stderr)
-    sys.exit(1)
-
-print_stream(http_response)
+print_stream(event_stream)
