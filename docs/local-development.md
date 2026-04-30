@@ -123,6 +123,7 @@ agentcore dev --otel-endpoint http://localhost:4318
 ```
 
 When `--otel-endpoint` is set:
+
 - The local in-process collector is **not** started — no port is bound by the CLI
 - `OTEL_EXPORTER_OTLP_ENDPOINT` is set to your URL
 - All other OTEL env vars are injected as normal
