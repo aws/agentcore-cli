@@ -15,7 +15,8 @@ RUN curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg -o 
     && apt-get install -y gh \
     && rm -rf /var/lib/apt/lists/*
 
-# Tokens are passed as build args only — not stored in env vars
+# Tokens are baked into the image at build time. This image must be treated as a
+# secret and stored only in a registry with equivalent access controls.
 ARG CLONE_TOKEN
 ARG GITHUB_TOKEN
 
