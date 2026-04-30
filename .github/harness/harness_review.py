@@ -189,8 +189,12 @@ REVIEW_PROMPT = read_prompt("review.md").format(pr_url=PR_URL)
 
 messages = [{"role": "user", "content": [{"text": REVIEW_PROMPT}]}]
 
-event_stream = invoke_harness_streaming(
-    HARNESS_ARN, SESSION_ID, SYSTEM_PROMPT, messages, MODEL_ID, REGION
-)
+try:
+    event_stream = invoke_harness_streaming(
+        HARNESS_ARN, SESSION_ID, SYSTEM_PROMPT, messages, MODEL_ID, REGION
+    )
+except Exception as e:
+    print(f"{RED}ERROR: Failed to invoke harness: {e}{RESET}", file=sys.stderr)
+    sys.exit(1)
 
 print_stream(event_stream)
