@@ -2,6 +2,28 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.0.0-preview.5] - 2026-04-30
+
+### Added
+- feat: add telemetry audit mode with FileSystemSink (#1014) (397c187)
+
+### Fixed
+- fix: add Accept header to HTTP protocol invocation proxy (#1051) (821e4c3)
+
+### Other Changes
+- Merge pull request #1057 from aws/sync-preview/merge-main-20260430-v2 (18fa2c9)
+- chore: merge main into preview (7590650)
+- Merge pull request #1058 from aws/release/v0.12.2 (68b25bf)
+- chore: bump version to 0.12.2 (5ce4bdc)
+- chore: merge main into preview (6e01e4e)
+- fix(harness): add error handling for invoke_harness API call (#1056) (9a6a5d0)
+- Merge pull request #1054 from aws/fix/remove-coauthor-reland (0afeaf5)
+- refactor: move harness resources to .github/harness/ and use boto3 invoke_harness (ad2ba9b)
+- Revert "refactor: move harness resources to .github/harness/ (#992)" (b8a90c9)
+- refactor: move harness resources to .github/harness/ (#992) (aef3890)
+- Merge pull request #1053 from aws/sync-preview/merge-main-20260430 (26b1c4c)
+- chore: merge main into preview (9f2702a)
+
 ## [1.0.0-preview.4] - 2026-04-29
 
 ### Added
