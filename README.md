@@ -66,7 +66,6 @@ agentcore invoke
 | ------------------- | ----------------------------- |
 | Strands Agents      | AWS-native, streaming support |
 | LangChain/LangGraph | Graph-based workflows         |
-| CrewAI              | Multi-agent orchestration     |
 | Google ADK          | Gemini models only            |
 | OpenAI Agents       | OpenAI models only            |
 
