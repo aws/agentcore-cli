@@ -12,6 +12,7 @@ import time
 from common import (
     get_control_client, save_resource, tag_resource,
     wait_for_evaluator, print_import_command,
+    NAME_SUFFIX,
 )
 
 DEFAULT_EVALUATOR_MODEL = os.environ.get("DEFAULT_EVALUATOR_MODEL", "us.anthropic.claude-sonnet-4-5-20250929-v1:0")
@@ -19,8 +20,7 @@ DEFAULT_EVALUATOR_MODEL = os.environ.get("DEFAULT_EVALUATOR_MODEL", "us.anthropi
 
 def main():
     client = get_control_client()
-    ts = int(time.time())
-    evaluator_name = f"bugbash_eval_{ts}"
+    evaluator_name = f"bugbash_eval_{NAME_SUFFIX}"
 
     print(f"Creating evaluator: {evaluator_name}")
     resp = client.create_evaluator(

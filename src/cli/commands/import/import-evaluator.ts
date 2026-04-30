@@ -10,6 +10,7 @@ import { ANSI } from './constants';
 import { failResult, parseAndValidateArn } from './import-utils';
 import { executeResourceImport } from './resource-import';
 import type { ImportResourceOptions, ImportResourceResult, ResourceImportDescriptor } from './types';
+import { ResourceNotFoundException } from '@aws-sdk/client-bedrock-agentcore-control';
 import type { Command } from '@commander-js/extra-typings';
 
 /**
@@ -92,11 +93,18 @@ const evaluatorDescriptor: ResourceImportDescriptor<GetEvaluatorResult, Evaluato
 
     const oecSummaries = await listAllOnlineEvaluationConfigs({ region: target.region });
     if (oecSummaries.length > 0) {
-      const oecDetails = await Promise.all(
-        oecSummaries.map(s =>
-          getOnlineEvaluationConfig({ region: target.region, configId: s.onlineEvaluationConfigId })
+      // Configs can be deleted between list and get (TOCTOU race).
+      // Skip ResourceNotFoundException — a deleted config can't be locking our evaluator.
+      const oecDetails = (
+        await Promise.all(
+          oecSummaries.map(s =>
+            getOnlineEvaluationConfig({ region: target.region, configId: s.onlineEvaluationConfigId }).catch(err => {
+              if (err instanceof ResourceNotFoundException) return null;
+              throw err;
+            })
+          )
         )
-      );
+      ).filter(r => r !== null);
 
       const referencingOec = oecDetails.find(oec => oec.evaluatorIds?.includes(detail.evaluatorId));
 

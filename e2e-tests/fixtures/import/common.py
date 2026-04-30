@@ -2,6 +2,7 @@
 import json
 import os
 import time
+import uuid
 import zipfile
 import tempfile
 
@@ -9,6 +10,8 @@ import boto3
 
 REGION = os.environ.get("AWS_REGION") or os.environ.get("AWS_DEFAULT_REGION") or "us-east-1"
 RESOURCE_SUFFIX = os.environ.get("RESOURCE_SUFFIX", "")
+# Unique suffix for resource names — avoids collisions across parallel CI shards.
+NAME_SUFFIX = RESOURCE_SUFFIX or uuid.uuid4().hex[:12]
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 APP_DIR = os.path.join(SCRIPT_DIR, "app")
 _resources_name = f"bugbash-resources-{RESOURCE_SUFFIX}.json" if RESOURCE_SUFFIX else "bugbash-resources.json"
