@@ -7,7 +7,6 @@ import sys
 import os
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-import time
 from common import (
     ensure_role, get_control_client, wait_for_runtime,
     save_resource, print_import_command, upload_code,
