@@ -151,20 +151,37 @@ function buildInvokeUrl(region: string, runtimeArn: string): string {
 }
 
 /**
- * Invoke an AgentCore Runtime using bearer token auth (raw HTTP, no SigV4).
- * Used when the runtime has CUSTOM_JWT authorizer configured.
+ * Build headers for bearer-token invoke requests.
+ * Shared by both streaming and non-streaming invoke paths.
  */
-async function invokeWithBearerTokenStreaming(options: InvokeAgentRuntimeOptions): Promise<StreamingInvokeResult> {
-  const url = buildInvokeUrl(options.region, options.runtimeArn);
+export function buildBearerInvokeHeaders(
+  options: Pick<InvokeAgentRuntimeOptions, 'bearerToken' | 'sessionId' | 'userId' | 'headers'>,
+  accept: string
+): Record<string, string> {
   const headers: Record<string, string> = {
     Authorization: `Bearer ${options.bearerToken}`,
     'Content-Type': 'application/json',
-    Accept: 'application/json, text/event-stream',
+    Accept: accept,
   };
   if (options.sessionId) {
     headers['X-Amzn-Bedrock-AgentCore-Runtime-Session-Id'] = options.sessionId;
   }
   headers['X-Amzn-Bedrock-AgentCore-Runtime-User-Id'] = options.userId ?? DEFAULT_RUNTIME_USER_ID;
+  if (options.headers) {
+    for (const [name, value] of Object.entries(options.headers)) {
+      headers[name] = value;
+    }
+  }
+  return headers;
+}
+
+/**
+ * Invoke an AgentCore Runtime using bearer token auth (raw HTTP, no SigV4).
+ * Used when the runtime has CUSTOM_JWT authorizer configured.
+ */
+async function invokeWithBearerTokenStreaming(options: InvokeAgentRuntimeOptions): Promise<StreamingInvokeResult> {
+  const url = buildInvokeUrl(options.region, options.runtimeArn);
+  const headers = buildBearerInvokeHeaders(options, 'application/json, text/event-stream');
 
   const res = await fetch(url, {
     method: 'POST',
@@ -250,15 +267,7 @@ async function invokeWithBearerTokenStreaming(options: InvokeAgentRuntimeOptions
  */
 async function invokeWithBearerToken(options: InvokeAgentRuntimeOptions): Promise<InvokeAgentRuntimeResult> {
   const url = buildInvokeUrl(options.region, options.runtimeArn);
-  const headers: Record<string, string> = {
-    Authorization: `Bearer ${options.bearerToken}`,
-    'Content-Type': 'application/json',
-    Accept: 'application/json',
-  };
-  if (options.sessionId) {
-    headers['X-Amzn-Bedrock-AgentCore-Runtime-Session-Id'] = options.sessionId;
-  }
-  headers['X-Amzn-Bedrock-AgentCore-Runtime-User-Id'] = options.userId ?? DEFAULT_RUNTIME_USER_ID;
+  const headers = buildBearerInvokeHeaders(options, 'application/json');
 
   const res = await fetch(url, {
     method: 'POST',
