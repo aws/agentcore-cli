@@ -68,10 +68,14 @@ export async function handleAddTool(options: AddToolOptions): Promise<AddToolRes
         error: `Invalid --outbound-auth '${options.outboundAuth}'. Valid: ${VALID_OUTBOUND_AUTH_TYPES.join(', ')}`,
       };
     }
-    if (options.outboundAuth === 'awsIam') {
-      outboundAuth = { awsIam: {} };
-    } else if (options.outboundAuth === 'none') {
-      outboundAuth = { none: {} };
+    if (options.outboundAuth === 'awsIam' || options.outboundAuth === 'none') {
+      if (options.providerArn || options.scopes || options.grantType) {
+        return {
+          success: false,
+          error: '--provider-arn, --scopes, and --grant-type are only valid with --outbound-auth oauth',
+        };
+      }
+      outboundAuth = options.outboundAuth === 'awsIam' ? { awsIam: {} } : { none: {} };
     } else {
       if (!options.providerArn) {
         return { success: false, error: '--provider-arn is required when --outbound-auth oauth' };
