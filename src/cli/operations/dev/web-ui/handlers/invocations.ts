@@ -68,6 +68,7 @@ export async function handleInvocations(
   return new Promise<void>((resolve, reject) => {
     const headers: Record<string, string> = {
       'Content-Type': 'application/json',
+      Accept: 'text/event-stream, */*',
       'x-amzn-bedrock-agentcore-runtime-session-id': sessionId ?? randomUUID(),
     };
     if (userId) {
