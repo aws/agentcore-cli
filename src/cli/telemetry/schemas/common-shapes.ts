@@ -8,6 +8,24 @@ export function safeSchema<T extends Record<string, SafeField>>(shape: T) {
   return z.object(shape);
 }
 
+/**
+ * Validate each field in a schema individually, defaulting to 'unknown' on failure.
+ * This ensures a single invalid attribute never blocks the entire metric from being published.
+ * Keys in attrs not present in the schema are omitted from the result.
+ */
+export function resilientParse(
+  schema: z.ZodObject<z.ZodRawShape>,
+  attrs: Record<string, unknown>
+): Record<string, unknown> {
+  const result: Record<string, unknown> = {};
+  for (const key of Object.keys(schema.shape)) {
+    const field = schema.shape[key] as z.ZodType;
+    const parsed = field.safeParse(attrs[key]);
+    result[key] = parsed.success ? parsed.data : 'unknown';
+  }
+  return result;
+}
+
 // Primitive types
 export const Count = z.number().int().nonnegative();
 
