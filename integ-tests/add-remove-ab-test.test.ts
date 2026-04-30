@@ -5,7 +5,10 @@ import {
   readProjectConfig,
   runCLI,
 } from '../src/test-utils/index.js';
+import { createTelemetryHelper } from '../src/test-utils/telemetry-helper.js';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+
+const telemetry = createTelemetryHelper();
 
 async function runSuccess(args: string[], cwd: string) {
   const result = await runCLI(args, cwd);
@@ -38,6 +41,7 @@ describe('integration: add and remove ab-test', () => {
 
   afterAll(async () => {
     await project.cleanup();
+    telemetry.destroy();
   });
 
   it('requires --name for JSON mode', async () => {
@@ -154,17 +158,26 @@ describe('integration: add and remove ab-test', () => {
   });
 
   it('removes ab-test', async () => {
-    const json = await runSuccess(['remove', 'ab-test', '--name', 'MyIntegTest', '--json'], project.projectPath);
+    const result = await runCLI(['remove', 'ab-test', '--name', 'MyIntegTest', '--json'], project.projectPath, {
+      env: telemetry.env,
+    });
+    expect(result.exitCode).toBe(0);
+    const json = JSON.parse(result.stdout);
     expect(json.success).toBe(true);
 
-    // Verify removal from agentcore.json
     const spec = await readProjectConfig(project.projectPath);
     const abTest = spec.abTests?.find((t: { name: string }) => t.name === 'MyIntegTest');
     expect(abTest).toBeUndefined();
+    telemetry.assertMetricEmitted({ command: 'remove.ab-test', exit_reason: 'success' });
   });
 
   it('remove returns error for non-existent test', async () => {
-    const json = await runFailure(['remove', 'ab-test', '--name', 'DoesNotExist', '--json'], project.projectPath);
+    const result = await runCLI(['remove', 'ab-test', '--name', 'DoesNotExist', '--json'], project.projectPath, {
+      env: telemetry.env,
+    });
+    expect(result.exitCode).toBe(1);
+    const json = JSON.parse(result.stdout);
     expect(json.error).toContain('not found');
+    telemetry.assertMetricEmitted({ command: 'remove.ab-test', exit_reason: 'failure' });
   });
 });

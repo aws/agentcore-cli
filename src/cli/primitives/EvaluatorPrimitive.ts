@@ -3,7 +3,7 @@ import type { EvaluationLevel, Evaluator, EvaluatorConfig } from '../../schema';
 import { EvaluationLevelSchema, EvaluatorSchema } from '../../schema';
 import { getErrorMessage } from '../errors';
 import type { RemovalPreview, RemovalResult, SchemaChange } from '../operations/remove/types';
-import { cliCommandRun } from '../telemetry/cli-command-run.js';
+import { runCliCommand } from '../telemetry/cli-command-run.js';
 import { EvaluatorType, Level, standardize } from '../telemetry/schemas/common-shapes.js';
 import { renderCodeBasedEvaluatorTemplate } from '../templates/EvaluatorRenderer';
 import { requireTTY } from '../tui/guards/tty';
@@ -204,7 +204,7 @@ export class EvaluatorPrimitive extends BasePrimitive<AddEvaluatorOptions, Remov
           }
 
           if (cliOptions.name || cliOptions.json) {
-            await cliCommandRun('add.evaluator', !!cliOptions.json, async () => {
+            await runCliCommand('add.evaluator', !!cliOptions.json, async () => {
               const fail = (error: string): never => {
                 throw new Error(error);
               };

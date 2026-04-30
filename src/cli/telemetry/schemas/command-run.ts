@@ -195,6 +195,7 @@ export const COMMAND_SCHEMAS = {
   validate: NoAttrs,
   'help.modes': NoAttrs,
   help: NoAttrs,
+  'remove.all': NoAttrs,
   'remove.agent': NoAttrs,
   'remove.memory': NoAttrs,
   'remove.credential': NoAttrs,
@@ -204,6 +205,9 @@ export const COMMAND_SCHEMAS = {
   'remove.gateway-target': NoAttrs,
   'remove.policy-engine': NoAttrs,
   'remove.policy': NoAttrs,
+  'remove.runtime-endpoint': NoAttrs,
+  'remove.config-bundle': NoAttrs,
+  'remove.ab-test': NoAttrs,
   'telemetry.disable': NoAttrs,
   'telemetry.enable': NoAttrs,
   'telemetry.status': NoAttrs,
@@ -215,6 +219,22 @@ export const COMMAND_SCHEMAS = {
 
 export type Command = keyof typeof COMMAND_SCHEMAS;
 export type CommandAttrs<C extends Command> = z.infer<(typeof COMMAND_SCHEMAS)[C]>;
+
+/** Extract the command group prefix from a dotted command key (e.g. 'add' from 'add.agent'). */
+type CommandGroup = {
+  [C in Command]: C extends `${infer G}.${string}` ? G : C;
+}[Command];
+
+/**
+ * Type-safe lookup of a subcommand under a command group.
+ * Produces a compile-time error if `${G}.${S}` is not a registered command.
+ *
+ * @example
+ * SubCommand<'remove', 'agent'>  // → 'remove.agent'
+ * SubCommand<'add', 'memory'>    // → 'add.memory'
+ * SubCommand<'remove', 'bogus'>  // → never (compile error at call site)
+ */
+export type SubCommand<G extends CommandGroup, S extends string> = Extract<Command, `${G}.${S}`>;
 
 /** Derive command_group from command key (e.g. 'add.agent' → 'add') */
 export function deriveCommandGroup(command: Command): string {

@@ -41,7 +41,6 @@ describe('integration: add and remove resources', () => {
       const found = memories!.some((m: Record<string, unknown>) => m.name === memoryName);
       expect(found, `Memory "${memoryName}" should be in config`).toBe(true);
 
-      // Verify telemetry
       telemetry.assertMetricEmitted({ command: 'add.memory', exit_reason: 'success' });
     });
 
@@ -71,7 +70,6 @@ describe('integration: add and remove resources', () => {
       expect(episodic!.reflectionNamespaces, 'Should have reflectionNamespaces').toBeDefined();
       expect(episodic!.reflectionNamespaces!.length).toBeGreaterThan(0);
 
-      // Verify telemetry
       telemetry.assertMetricEmitted({
         command: 'add.memory',
         exit_reason: 'success',
@@ -84,7 +82,9 @@ describe('integration: add and remove resources', () => {
     });
 
     it('removes the memory resource', async () => {
-      const result = await runCLI(['remove', 'memory', '--name', memoryName, '--json'], project.projectPath);
+      const result = await runCLI(['remove', 'memory', '--name', memoryName, '--json'], project.projectPath, {
+        env: telemetry.env,
+      });
 
       expect(result.exitCode, `stdout: ${result.stdout}, stderr: ${result.stderr}`).toBe(0);
       const json = JSON.parse(result.stdout);
@@ -95,6 +95,8 @@ describe('integration: add and remove resources', () => {
       const memories = (config.memories as Record<string, unknown>[] | undefined) ?? [];
       const found = memories.some((m: Record<string, unknown>) => m.name === memoryName);
       expect(found, `Memory "${memoryName}" should be removed from config`).toBe(false);
+
+      telemetry.assertMetricEmitted({ command: 'remove.memory', exit_reason: 'success' });
     });
   });
 
@@ -119,7 +121,6 @@ describe('integration: add and remove resources', () => {
       const found = credentials!.some((c: Record<string, unknown>) => c.name === credentialName);
       expect(found, `Credential "${credentialName}" should be in config`).toBe(true);
 
-      // Verify telemetry
       telemetry.assertMetricEmitted({
         command: 'add.credential',
         exit_reason: 'success',
@@ -128,7 +129,9 @@ describe('integration: add and remove resources', () => {
     });
 
     it('removes the credential resource', async () => {
-      const result = await runCLI(['remove', 'credential', '--name', credentialName, '--json'], project.projectPath);
+      const result = await runCLI(['remove', 'credential', '--name', credentialName, '--json'], project.projectPath, {
+        env: telemetry.env,
+      });
 
       expect(result.exitCode, `stdout: ${result.stdout}, stderr: ${result.stderr}`).toBe(0);
       const json = JSON.parse(result.stdout);
@@ -139,6 +142,8 @@ describe('integration: add and remove resources', () => {
       const credentials = (config.credentials as Record<string, unknown>[] | undefined) ?? [];
       const found = credentials.some((c: Record<string, unknown>) => c.name === credentialName);
       expect(found, `Credential "${credentialName}" should be removed from config`).toBe(false);
+
+      telemetry.assertMetricEmitted({ command: 'remove.credential', exit_reason: 'success' });
     });
   });
 
@@ -162,9 +167,46 @@ describe('integration: add and remove resources', () => {
     });
 
     it('removes the policy engine resource', async () => {
-      const result = await runCLI(['remove', 'policy-engine', '--name', engineName, '--json'], project.projectPath);
+      const result = await runCLI(['remove', 'policy-engine', '--name', engineName, '--json'], project.projectPath, {
+        env: telemetry.env,
+      });
 
       expect(result.exitCode, `stdout: ${result.stdout}, stderr: ${result.stderr}`).toBe(0);
+
+      telemetry.assertMetricEmitted({ command: 'remove.policy-engine', exit_reason: 'success' });
+    });
+  });
+
+  describe('remove failure telemetry', () => {
+    it('emits failure telemetry for non-existent memory', async () => {
+      const result = await runCLI(['remove', 'memory', '--name', 'DoesNotExist', '--json'], project.projectPath, {
+        env: telemetry.env,
+      });
+
+      expect(result.exitCode).toBe(1);
+      telemetry.assertMetricEmitted({ command: 'remove.memory', exit_reason: 'failure' });
+    });
+
+    it('emits failure telemetry for non-existent credential', async () => {
+      const result = await runCLI(['remove', 'credential', '--name', 'DoesNotExist', '--json'], project.projectPath, {
+        env: telemetry.env,
+      });
+
+      expect(result.exitCode).toBe(1);
+      telemetry.assertMetricEmitted({ command: 'remove.credential', exit_reason: 'failure' });
+    });
+  });
+
+  describe('remove all', () => {
+    it('resets all schemas and emits telemetry', async () => {
+      const result = await runCLI(['remove', 'all', '--yes', '--json'], project.projectPath, {
+        env: telemetry.env,
+      });
+
+      expect(result.exitCode).toBe(0);
+      const json = JSON.parse(result.stdout);
+      expect(json.success).toBe(true);
+      telemetry.assertMetricEmitted({ command: 'remove.all', exit_reason: 'success' });
     });
   });
 });

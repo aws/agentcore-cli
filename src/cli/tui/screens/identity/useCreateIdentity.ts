@@ -2,7 +2,7 @@ import { ConfigIO } from '../../../../lib';
 import type { Credential } from '../../../../schema';
 import type { AddCredentialOptions } from '../../../primitives/CredentialPrimitive';
 import { credentialPrimitive } from '../../../primitives/registry';
-import { withAddTelemetry } from '../../../telemetry/cli-command-run.js';
+import { withCommandRunTelemetry } from '../../../telemetry/cli-command-run.js';
 import { useCallback, useEffect, useState } from 'react';
 
 interface CreateStatus<T> {
@@ -17,7 +17,7 @@ export function useCreateIdentity() {
   const create = useCallback(async (config: AddCredentialOptions) => {
     setStatus({ state: 'loading' });
     try {
-      const result = await withAddTelemetry(
+      const result = await withCommandRunTelemetry(
         'add.credential',
         {
           credential_type: config.authorizerType === 'OAuthCredentialProvider' ? 'oauth' : 'api-key',

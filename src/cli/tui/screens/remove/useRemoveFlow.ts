@@ -1,7 +1,9 @@
 import { ConfigIO, getWorkingDirectory } from '../../../../lib';
 import { findStack } from '../../../cloudformation/stack-discovery';
 import { getErrorMessage } from '../../../errors';
+import type { RemovalResult } from '../../../operations/remove/types';
 import { createDefaultProjectSpec } from '../../../project';
+import { withCommandRunTelemetry } from '../../../telemetry/cli-command-run.js';
 import { type Step, areStepsComplete, hasStepError } from '../../components';
 import { withMinDuration } from '../../utils';
 import { useCallback, useEffect, useMemo, useState } from 'react';
@@ -146,16 +148,23 @@ export function useRemoveFlow({ force, dryRun }: RemoveFlowOptions): RemoveFlowS
         // Reset all schemas to default empty state
         updateStep(0, { status: 'running' });
         try {
-          await withMinDuration(async () => {
-            const configIO = new ConfigIO();
+          const res = await withCommandRunTelemetry(
+            'remove.all',
+            {},
+            (): Promise<RemovalResult> =>
+              withMinDuration(async () => {
+                const configIO = new ConfigIO();
 
-            // Reset agentcore.json (keep project name)
-            const defaultProjectSpec = createDefaultProjectSpec(projectName || 'Project');
-            await configIO.writeProjectSpec(defaultProjectSpec);
+                // Reset agentcore.json (keep project name)
+                const defaultProjectSpec = createDefaultProjectSpec(projectName || 'Project');
+                await configIO.writeProjectSpec(defaultProjectSpec);
 
-            // Preserve aws-targets.json and deployed-state.json so that
-            // a subsequent `agentcore deploy` can tear down existing stacks.
-          });
+                // Preserve aws-targets.json and deployed-state.json so that
+                // a subsequent `agentcore deploy` can tear down existing stacks.
+                return { success: true };
+              })
+          );
+          if (!res.success) throw new Error(res.error);
           updateStep(0, { status: 'success' });
         } catch (err) {
           updateStep(0, { status: 'error', error: getErrorMessage(err) });

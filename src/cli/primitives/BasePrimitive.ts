@@ -2,6 +2,8 @@ import { ConfigIO, findConfigRoot } from '../../lib';
 import type { AgentCoreProjectSpec } from '../../schema';
 import type { ResourceType } from '../commands/remove/types';
 import { getErrorMessage } from '../errors';
+import { withCommandRunTelemetry } from '../telemetry/cli-command-run.js';
+import type { SubCommand } from '../telemetry/schemas/command-run.js';
 import { requireTTY } from '../tui/guards/tty';
 import { SOURCE_CODE_NOTE } from './constants';
 import type { AddResult, AddScreenComponent, RemovableResource, RemovalPreview, RemovalResult } from './types';
@@ -120,7 +122,11 @@ export abstract class BasePrimitive<
               process.exit(1);
             }
 
-            const result = await this.remove(cliOptions.name);
+            const result = await withCommandRunTelemetry<SubCommand<'remove', typeof this.kind>, RemovalResult>(
+              `remove.${this.kind}`,
+              {},
+              () => this.remove(cliOptions.name!)
+            );
             console.log(
               JSON.stringify({
                 success: result.success,

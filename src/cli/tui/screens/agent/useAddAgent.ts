@@ -12,7 +12,7 @@ import { executeImportAgent } from '../../../operations/agent/import';
 import { buildAuthorizerConfigFromJwtConfig, createManagedOAuthCredential } from '../../../primitives/auth-utils';
 import { computeDefaultCredentialEnvVarName } from '../../../primitives/credential-utils';
 import { credentialPrimitive } from '../../../primitives/registry';
-import { withAddTelemetry } from '../../../telemetry/cli-command-run.js';
+import { withCommandRunTelemetry } from '../../../telemetry/cli-command-run.js';
 import {
   AgentType as AgentTypeEnum,
   AuthorizerType as AuthorizerTypeEnum,
@@ -149,7 +149,7 @@ export function useAddAgent() {
   const addAgent = useCallback(async (config: AddAgentConfig): Promise<AddAgentOutcome> => {
     setIsLoading(true);
     try {
-      const result = await withAddTelemetry(
+      const result = await withCommandRunTelemetry(
         'add.agent',
         {
           language: standardize(Language, config.language),

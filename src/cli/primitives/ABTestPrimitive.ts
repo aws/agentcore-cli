@@ -3,6 +3,7 @@ import type { ABTest } from '../../schema/schemas/primitives/ab-test';
 import { ABTestSchema } from '../../schema/schemas/primitives/ab-test';
 import { getErrorMessage } from '../errors';
 import type { RemovalPreview, RemovalResult, SchemaChange } from '../operations/remove/types';
+import { withCommandRunTelemetry } from '../telemetry/cli-command-run.js';
 import { requireTTY } from '../tui/guards/tty';
 import { BasePrimitive } from './BasePrimitive';
 import type { AddResult, AddScreenComponent, RemovableResource } from './types';
@@ -468,7 +469,9 @@ Target-Based Mode (--mode target-based)
               process.exit(1);
             }
 
-            const result = await this.remove(cliOptions.name, { deleteGateway: cliOptions.deleteGateway });
+            const result = await withCommandRunTelemetry('remove.ab-test', {}, () =>
+              this.remove(cliOptions.name!, { deleteGateway: cliOptions.deleteGateway })
+            );
             console.log(
               JSON.stringify({
                 success: result.success,

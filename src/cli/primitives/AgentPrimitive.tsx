@@ -35,7 +35,7 @@ import {
 import { executeImportAgent } from '../operations/agent/import';
 import { setupPythonProject } from '../operations/python';
 import type { RemovalPreview, RemovalResult, SchemaChange } from '../operations/remove/types';
-import { cliCommandRun } from '../telemetry/cli-command-run.js';
+import { runCliCommand } from '../telemetry/cli-command-run.js';
 import {
   AgentType,
   AuthorizerType,
@@ -283,7 +283,7 @@ export class AgentPrimitive extends BasePrimitive<AddAgentOptions, RemovableReso
 
         // Any flag triggers non-interactive CLI mode
         if (cliOptions.name || cliOptions.framework || cliOptions.json) {
-          await cliCommandRun('add.agent', !!cliOptions.json, async () => {
+          await runCliCommand('add.agent', !!cliOptions.json, async () => {
             const validation = validateAddAgentOptions(cliOptions);
             if (!validation.valid) {
               throw new Error(validation.error);

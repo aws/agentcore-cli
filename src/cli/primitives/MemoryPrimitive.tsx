@@ -17,7 +17,7 @@ import {
 import { DEFAULT_DELIVERY_TYPE, validateAddMemoryOptions } from '../commands/add/validate';
 import { getErrorMessage } from '../errors';
 import type { RemovalPreview, RemovalResult, SchemaChange } from '../operations/remove/types';
-import { cliCommandRun } from '../telemetry/cli-command-run.js';
+import { runCliCommand } from '../telemetry/cli-command-run.js';
 import { requireTTY } from '../tui/guards/tty';
 import { DEFAULT_EVENT_EXPIRY } from '../tui/screens/memory/types';
 import { BasePrimitive } from './BasePrimitive';
@@ -191,7 +191,7 @@ export class MemoryPrimitive extends BasePrimitive<AddMemoryOptions, RemovableMe
 
           if (cliOptions.name || cliOptions.json) {
             // CLI mode
-            await cliCommandRun('add.memory', !!cliOptions.json, async () => {
+            await runCliCommand('add.memory', !!cliOptions.json, async () => {
               const expiry = cliOptions.expiry ? parseInt(cliOptions.expiry, 10) : undefined;
               const validation = validateAddMemoryOptions({
                 name: cliOptions.name,

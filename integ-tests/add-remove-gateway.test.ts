@@ -1,8 +1,11 @@
 import { createTestProject, runCLI } from '../src/test-utils/index.js';
 import type { TestProject } from '../src/test-utils/index.js';
+import { createTelemetryHelper } from '../src/test-utils/telemetry-helper.js';
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+
+const telemetry = createTelemetryHelper();
 
 async function readProjectConfig(projectPath: string) {
   return JSON.parse(await readFile(join(projectPath, 'agentcore/agentcore.json'), 'utf-8'));
@@ -19,6 +22,7 @@ describe('integration: add and remove gateway with external MCP server', () => {
 
   afterAll(async () => {
     await project.cleanup();
+    telemetry.destroy();
   });
 
   describe('gateway lifecycle', () => {
@@ -64,7 +68,9 @@ describe('integration: add and remove gateway with external MCP server', () => {
     });
 
     it('removes the gateway target', async () => {
-      const result = await runCLI(['remove', 'gateway-target', '--name', targetName, '--json'], project.projectPath);
+      const result = await runCLI(['remove', 'gateway-target', '--name', targetName, '--json'], project.projectPath, {
+        env: telemetry.env,
+      });
 
       expect(result.exitCode, `stdout: ${result.stdout}, stderr: ${result.stderr}`).toBe(0);
       const json = JSON.parse(result.stdout);
@@ -75,10 +81,13 @@ describe('integration: add and remove gateway with external MCP server', () => {
       const targets = gateway?.targets ?? [];
       const found = targets.find((t: { name: string }) => t.name === targetName);
       expect(found, `Target "${targetName}" should be removed`).toBeFalsy();
+      telemetry.assertMetricEmitted({ command: 'remove.gateway-target', exit_reason: 'success' });
     });
 
     it('removes the gateway', async () => {
-      const result = await runCLI(['remove', 'gateway', '--name', gatewayName, '--json'], project.projectPath);
+      const result = await runCLI(['remove', 'gateway', '--name', gatewayName, '--json'], project.projectPath, {
+        env: telemetry.env,
+      });
 
       expect(result.exitCode, `stdout: ${result.stdout}, stderr: ${result.stderr}`).toBe(0);
       const json = JSON.parse(result.stdout);
@@ -88,6 +97,25 @@ describe('integration: add and remove gateway with external MCP server', () => {
       const gateways = mcpSpec.agentCoreGateways ?? [];
       const found = gateways.find((g: { name: string }) => g.name === gatewayName);
       expect(found, `Gateway "${gatewayName}" should be removed`).toBeFalsy();
+      telemetry.assertMetricEmitted({ command: 'remove.gateway', exit_reason: 'success' });
+    });
+
+    it('fails to remove non-existent gateway', async () => {
+      const result = await runCLI(['remove', 'gateway', '--name', 'NonExistent', '--json'], project.projectPath, {
+        env: telemetry.env,
+      });
+      expect(result.exitCode).toBe(1);
+      telemetry.assertMetricEmitted({ command: 'remove.gateway', exit_reason: 'failure' });
+    });
+
+    it('fails to remove non-existent gateway target', async () => {
+      const result = await runCLI(
+        ['remove', 'gateway-target', '--name', 'NonExistent', '--json'],
+        project.projectPath,
+        { env: telemetry.env }
+      );
+      expect(result.exitCode).toBe(1);
+      telemetry.assertMetricEmitted({ command: 'remove.gateway-target', exit_reason: 'failure' });
     });
   });
 });
