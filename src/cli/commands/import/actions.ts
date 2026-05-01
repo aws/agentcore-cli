@@ -124,9 +124,10 @@ export async function handleImport(options: ImportOptions): Promise<ImportResult
     logger.startStep('Validate project context');
     const configRoot = findConfigRoot(process.cwd());
     if (!configRoot) {
-      const error =
-        'No agentcore project found in the current directory.\nRun `agentcore create <name>` first, then run import from inside the project.';
-      logger.endStep('error', error);
+      const error = new Error(
+        'No agentcore project found in the current directory.\nRun `agentcore create <name>` first, then run import from inside the project.'
+      );
+      logger.endStep('error', error.message);
       logger.finalize(false);
       return {
         success: false,
@@ -157,8 +158,8 @@ export async function handleImport(options: ImportOptions): Promise<ImportResult
     const parsed = parseStarterToolkitYaml(source);
 
     if (parsed.agents.length === 0) {
-      const error = 'No agents found in the YAML config';
-      logger.endStep('error', error);
+      const error = new Error('No agents found in the YAML config');
+      logger.endStep('error', error.message);
       logger.finalize(false);
       return { success: false, error, logPath: logger.getRelativeLogPath() };
     }
@@ -193,9 +194,10 @@ export async function handleImport(options: ImportOptions): Promise<ImportResult
       // If no targets exist (CLI-mode create leaves targets empty), create one from YAML info
       if (targets.length === 0) {
         if (!parsed.awsTarget.account || !parsed.awsTarget.region) {
-          const error =
-            'No deployment targets found in project and YAML has no AWS account/region info.\nRun `agentcore deploy` first to set up a target, then re-run import.';
-          logger.endStep('error', error);
+          const error = new Error(
+            'No deployment targets found in project and YAML has no AWS account/region info.\nRun `agentcore deploy` first to set up a target, then re-run import.'
+          );
+          logger.endStep('error', error.message);
           logger.finalize(false);
           return {
             success: false,
@@ -218,8 +220,8 @@ export async function handleImport(options: ImportOptions): Promise<ImportResult
         const found = targets.find(t => t.name === options.target);
         if (!found) {
           const names = targets.map(t => `  - ${t.name} (${t.region}, ${t.account})`).join('\n');
-          const error = `Target "${options.target}" not found. Available targets:\n${names}`;
-          logger.endStep('error', error);
+          const error = new Error(`Target "${options.target}" not found. Available targets:\n${names}`);
+          logger.endStep('error', error.message);
           logger.finalize(false);
           return {
             success: false,
@@ -232,8 +234,8 @@ export async function handleImport(options: ImportOptions): Promise<ImportResult
         target = targets[0]!;
       } else {
         const names = targets.map(t => `  - ${t.name} (${t.region}, ${t.account})`).join('\n');
-        const error = `Multiple deployment targets found. Specify one with --target:\n${names}`;
-        logger.endStep('error', error);
+        const error = new Error(`Multiple deployment targets found. Specify one with --target:\n${names}`);
+        logger.endStep('error', error.message);
         logger.finalize(false);
         return {
           success: false,
@@ -498,8 +500,8 @@ export async function handleImport(options: ImportOptions): Promise<ImportResult
 
     // At this point we know hasPhysicalIds is true, so target must be defined.
     if (!target) {
-      const error = 'No deployment target available for import.';
-      logger.endStep('error', error);
+      const error = new Error('No deployment target available for import.');
+      logger.endStep('error', error.message);
       logger.finalize(false);
       return { success: false, error, logPath: logger.getRelativeLogPath() };
     }
@@ -636,9 +638,9 @@ export async function handleImport(options: ImportOptions): Promise<ImportResult
     }
 
     if (!pipelineResult.success) {
-      const error = pipelineResult.error!;
+      const error = pipelineResult.error;
       await rollbackConfig();
-      logger.endStep('error', error);
+      logger.endStep('error', error.message);
       logger.finalize(false);
       return { success: false, error, logPath: logger.getRelativeLogPath() };
     }
@@ -658,6 +660,6 @@ export async function handleImport(options: ImportOptions): Promise<ImportResult
     await rollbackConfig();
     logger.log(message, 'error');
     logger.finalize(false);
-    return { success: false, error: message, logPath: logger.getRelativeLogPath() };
+    return { success: false, error: new Error(message), logPath: logger.getRelativeLogPath() };
   }
 }

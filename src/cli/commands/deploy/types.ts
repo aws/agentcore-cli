@@ -1,3 +1,5 @@
+import type { Result } from '../../../lib/types';
+
 export interface DeployOptions {
   target?: string;
   yes?: boolean;
@@ -8,8 +10,7 @@ export interface DeployOptions {
   diff?: boolean;
 }
 
-export interface DeployResult {
-  success: boolean;
+export type DeployResult = Result<{
   targetName?: string;
   stackName?: string;
   outputs?: Record<string, string>;
@@ -17,12 +18,6 @@ export interface DeployResult {
   nextSteps?: string[];
   notes?: string[];
   postDeployWarnings?: string[];
-  error?: string;
-}
+}> & { logPath?: string };
 
-export interface PreflightResult {
-  success: boolean;
-  stackNames?: string[];
-  needsBootstrap?: boolean;
-  error?: string;
-}
+export type PreflightResult = Result;

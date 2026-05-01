@@ -1,3 +1,4 @@
+import type { Result } from '../../../lib/types';
 import { parseTimeString } from '../../../lib/utils';
 import { searchLogs, streamLogs } from '../../aws/cloudwatch';
 import { DEFAULT_ENDPOINT_NAME } from '../../constants';
@@ -17,10 +18,7 @@ export interface AgentContext {
   logGroupName: string;
 }
 
-export interface LogsResult {
-  success: boolean;
-  error?: string;
-}
+export type LogsResult = Result;
 
 /**
  * Detect whether to stream or search based on options
@@ -49,10 +47,10 @@ export function formatLogLine(event: { timestamp: number; message: string }, jso
 export function resolveAgentContext(
   context: DeployedProjectConfig,
   options: LogsOptions
-): { success: true; agentContext: AgentContext } | { success: false; error: string } {
+): Result<{ agentContext: AgentContext }> {
   const result = resolveAgent(context, options);
   if (!result.success) {
-    return { success: false, error: result.error };
+    return result;
   }
   const { agent } = result;
   const endpointName = DEFAULT_ENDPOINT_NAME;
@@ -78,7 +76,7 @@ export async function handleLogs(options: LogsOptions): Promise<LogsResult> {
   if (options.level && !VALID_LEVELS.includes(options.level.toLowerCase())) {
     return {
       success: false,
-      error: `Invalid log level: "${options.level}". Valid levels: ${VALID_LEVELS.join(', ')}`,
+      error: new Error(`Invalid log level: "${options.level}". Valid levels: ${VALID_LEVELS.join(', ')}`),
     };
   }
 
@@ -96,7 +94,7 @@ export async function handleLogs(options: LogsOptions): Promise<LogsResult> {
   try {
     filterPattern = buildFilterPattern({ level: options.level, query: options.query });
   } catch (err) {
-    return { success: false, error: (err as Error).message };
+    return { success: false, error: err as Error };
   }
 
   const mode = detectMode(options);
@@ -143,7 +141,7 @@ export async function handleLogs(options: LogsOptions): Promise<LogsResult> {
     if (errorName === 'ResourceNotFoundException') {
       return {
         success: false,
-        error: `No logs found for agent '${agentContext.agentName}'. Has the agent been invoked?`,
+        error: new Error(`No logs found for agent '${agentContext.agentName}'. Has the agent been invoked?`),
       };
     }
 

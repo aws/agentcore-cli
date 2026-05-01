@@ -99,6 +99,7 @@ describe('applyRecommendationToBundle', () => {
     );
 
     expect(applyResult.success).toBe(true);
+    // @ts-expect-error -- test accesses success-branch field
     expect(applyResult.newVersionId).toBe(NEW_VERSION_ID);
 
     // Verify spec was written with server components
@@ -133,6 +134,7 @@ describe('applyRecommendationToBundle', () => {
     );
 
     expect(applyResult.success).toBe(true);
+    // @ts-expect-error -- test accesses success-branch field
     expect(applyResult.newVersionId).toBe(NEW_VERSION_ID);
   });
 
@@ -153,6 +155,7 @@ describe('applyRecommendationToBundle', () => {
     );
 
     expect(applyResult.success).toBe(true);
+    // @ts-expect-error -- test accesses success-branch field
     expect(applyResult.newVersionId).toBe(NEW_VERSION_ID);
   });
 
@@ -172,7 +175,8 @@ describe('applyRecommendationToBundle', () => {
     );
 
     expect(applyResult.success).toBe(false);
-    expect(applyResult.error).toContain('does not contain a new config bundle version');
+    // @ts-expect-error -- test accesses failure-branch field
+    expect(applyResult.error.message).toContain('does not contain a new config bundle version');
     expect(writeSpecSpy).not.toHaveBeenCalled();
   });
 
@@ -193,7 +197,8 @@ describe('applyRecommendationToBundle', () => {
     );
 
     expect(applyResult.success).toBe(false);
-    expect(applyResult.error).toContain('NonExistent');
+    // @ts-expect-error -- test accesses failure-branch field
+    expect(applyResult.error.message).toContain('NonExistent');
     expect(writeSpecSpy).not.toHaveBeenCalled();
   });
 });

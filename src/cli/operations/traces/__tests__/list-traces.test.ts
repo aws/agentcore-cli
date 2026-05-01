@@ -39,13 +39,16 @@ describe('listTraces', () => {
     const result = await listTraces(baseOptions);
 
     expect(result.success).toBe(true);
+    // @ts-expect-error -- test accesses success-branch field
     expect(result.traces).toHaveLength(2);
+    // @ts-expect-error -- test accesses discriminated union field
     expect(result.traces![0]).toEqual({
       traceId: 'trace-1',
       timestamp: '2024-01-01T00:05:00Z',
       sessionId: 'sess-1',
       spanCount: '12',
     });
+    // @ts-expect-error -- test accesses discriminated union field
     expect(result.traces![1]).toEqual({
       traceId: 'trace-2',
       timestamp: '2024-01-01T00:03:00Z',
@@ -67,7 +70,9 @@ describe('listTraces', () => {
     const result = await listTraces(baseOptions);
 
     expect(result.success).toBe(true);
+    // @ts-expect-error -- test accesses success-branch field
     expect(result.traces).toHaveLength(1);
+    // @ts-expect-error -- test accesses discriminated union field
     expect(result.traces![0]!.traceId).toBe('trace-1');
   });
 
@@ -80,6 +85,7 @@ describe('listTraces', () => {
     const result = await listTraces(baseOptions);
 
     expect(result.success).toBe(true);
+    // @ts-expect-error -- test accesses discriminated union field
     expect(result.traces![0]!.timestamp).toBe('2024-01-01T00:00:00Z');
   });
 
@@ -92,19 +98,21 @@ describe('listTraces', () => {
     const result = await listTraces(baseOptions);
 
     expect(result.success).toBe(true);
+    // @ts-expect-error -- test accesses success-branch field
     expect(result.traces).toHaveLength(0);
   });
 
   it('propagates errors from runInsightsQuery', async () => {
     mockRunInsightsQuery.mockResolvedValueOnce({
       success: false,
-      error: 'Log group not found',
+      error: new Error('Log group not found'),
     });
 
     const result = await listTraces(baseOptions);
 
     expect(result.success).toBe(false);
-    expect(result.error).toBe('Log group not found');
+    // @ts-expect-error -- test accesses failure-branch field
+    expect(result.error.message).toBe('Log group not found');
   });
 
   it('passes correct log group name and default limit', async () => {

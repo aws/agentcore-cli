@@ -21,10 +21,7 @@ export interface RemovalPreview {
   schemaChanges: SchemaChange[];
 }
 
-/**
- * Result of a removal operation.
- */
-export type RemovalResult = { success: true } | { success: false; error: string };
+export type { Result } from '../../../lib/types';
 
 /**
  * Snapshot of all schemas before removal (for diff computation).

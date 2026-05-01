@@ -2,7 +2,7 @@ import { findConfigRoot } from '../../lib';
 import type { EvaluationLevel, Evaluator, EvaluatorConfig } from '../../schema';
 import { EvaluationLevelSchema, EvaluatorSchema } from '../../schema';
 import { getErrorMessage } from '../errors';
-import type { RemovalPreview, RemovalResult, SchemaChange } from '../operations/remove/types';
+import type { RemovalPreview, Result, SchemaChange } from '../operations/remove/types';
 import { cliCommandRun } from '../telemetry/cli-command-run.js';
 import { EvaluatorType, Level, standardize } from '../telemetry/schemas/common-shapes.js';
 import { renderCodeBasedEvaluatorTemplate } from '../templates/EvaluatorRenderer';
@@ -14,7 +14,7 @@ import {
   validateInstructionPlaceholders,
 } from '../tui/screens/evaluator/types';
 import { BasePrimitive } from './BasePrimitive';
-import type { AddResult, AddScreenComponent, RemovableResource } from './types';
+import type { AddScreenComponent, RemovableResource } from './types';
 import type { Command } from '@commander-js/extra-typings';
 import { existsSync } from 'node:fs';
 import { rm } from 'node:fs/promises';
@@ -41,7 +41,7 @@ export class EvaluatorPrimitive extends BasePrimitive<AddEvaluatorOptions, Remov
   override readonly article = 'an';
   readonly primitiveSchema = EvaluatorSchema;
 
-  async add(options: AddEvaluatorOptions): Promise<AddResult<{ evaluatorName: string; codePath?: string }>> {
+  async add(options: AddEvaluatorOptions): Promise<Result<{ evaluatorName: string; codePath?: string }>> {
     try {
       const evaluator = await this.createEvaluator(options);
 
@@ -57,17 +57,17 @@ export class EvaluatorPrimitive extends BasePrimitive<AddEvaluatorOptions, Remov
 
       return { success: true, evaluatorName: evaluator.name };
     } catch (err) {
-      return { success: false, error: getErrorMessage(err) };
+      return { success: false, error: err instanceof Error ? err : new Error(getErrorMessage(err)) };
     }
   }
 
-  async remove(evaluatorName: string): Promise<RemovalResult> {
+  async remove(evaluatorName: string): Promise<Result> {
     try {
       const project = await this.readProjectSpec();
 
       const index = project.evaluators.findIndex(e => e.name === evaluatorName);
       if (index === -1) {
-        return { success: false, error: `Evaluator "${evaluatorName}" not found.` };
+        return { success: false, error: new Error(`Evaluator "${evaluatorName}" not found.`) };
       }
 
       // Warn if referenced by online eval configs
@@ -76,7 +76,9 @@ export class EvaluatorPrimitive extends BasePrimitive<AddEvaluatorOptions, Remov
         const configNames = referencingConfigs.map(c => c.name).join(', ');
         return {
           success: false,
-          error: `Evaluator "${evaluatorName}" is referenced by online eval config(s): ${configNames}. Remove those references first.`,
+          error: new Error(
+            `Evaluator "${evaluatorName}" is referenced by online eval config(s): ${configNames}. Remove those references first.`
+          ),
         };
       }
 
@@ -96,7 +98,7 @@ export class EvaluatorPrimitive extends BasePrimitive<AddEvaluatorOptions, Remov
 
       return { success: true };
     } catch (err) {
-      return { success: false, error: getErrorMessage(err) };
+      return { success: false, error: err instanceof Error ? err : new Error(getErrorMessage(err)) };
     }
   }
 
@@ -249,7 +251,7 @@ export class EvaluatorPrimitive extends BasePrimitive<AddEvaluatorOptions, Remov
 
                 if (!cliOptions.instructions) {
                   const level = levelResult.data!;
-                  const placeholders = LEVEL_PLACEHOLDERS[level].map(p => `{${p}}`).join(', ');
+                  const placeholders = LEVEL_PLACEHOLDERS[level].map((p: string) => `{${p}}`).join(', ');
                   fail(
                     `--instructions is required in non-interactive mode (or use --config). ` +
                       `Must include at least one placeholder for ${level}: ${placeholders}`
@@ -296,7 +298,7 @@ export class EvaluatorPrimitive extends BasePrimitive<AddEvaluatorOptions, Remov
               });
 
               if (!result.success) {
-                throw new Error(result.error);
+                throw result.error;
               }
 
               if (cliOptions.json) {

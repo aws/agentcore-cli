@@ -62,12 +62,15 @@ describe('fetchTraceRecords', () => {
     const result = await fetchTraceRecords(baseOptions);
 
     expect(result.success).toBe(true);
+    // @ts-expect-error -- test accesses success-branch field
     expect(result.records).toHaveLength(2);
+    // @ts-expect-error -- test accesses discriminated union field
     expect(result.records![0]).toEqual({
       '@timestamp': '2024-01-01T00:00:00Z',
       '@message': { traceId: 'abc123', spanId: 'span1' },
       '@ptr': 'ptr-value-1',
     });
+    // @ts-expect-error -- test accesses discriminated union field
     expect(result.records![1]).toEqual({
       '@timestamp': '2024-01-01T00:00:01Z',
       '@message': { traceId: 'abc123', spanId: 'span2' },
@@ -81,7 +84,8 @@ describe('fetchTraceRecords', () => {
     });
 
     expect(result.success).toBe(false);
-    expect(result.error).toContain('Invalid trace ID format');
+    // @ts-expect-error -- test accesses failure-branch field
+    expect(result.error.message).toContain('Invalid trace ID format');
     expect(mockSend).not.toHaveBeenCalled();
   });
 
@@ -94,7 +98,8 @@ describe('fetchTraceRecords', () => {
     const result = await fetchTraceRecords(baseOptions);
 
     expect(result.success).toBe(false);
-    expect(result.error).toContain('No trace data found');
+    // @ts-expect-error -- test accesses failure-branch field
+    expect(result.error.message).toContain('No trace data found');
   });
 
   it('returns error when query fails to start', async () => {
@@ -103,7 +108,8 @@ describe('fetchTraceRecords', () => {
     const result = await fetchTraceRecords(baseOptions);
 
     expect(result.success).toBe(false);
-    expect(result.error).toContain('Failed to start CloudWatch Logs Insights query');
+    // @ts-expect-error -- test accesses failure-branch field
+    expect(result.error.message).toContain('Failed to start CloudWatch Logs Insights query');
   });
 
   it('returns error when query status is Failed', async () => {
@@ -112,7 +118,8 @@ describe('fetchTraceRecords', () => {
     const result = await fetchTraceRecords(baseOptions);
 
     expect(result.success).toBe(false);
-    expect(result.error).toContain('failed');
+    // @ts-expect-error -- test accesses failure-branch field
+    expect(result.error.message).toContain('failed');
   });
 
   it('preserves @ptr when present in CloudWatch response', async () => {
@@ -130,7 +137,9 @@ describe('fetchTraceRecords', () => {
     const result = await fetchTraceRecords(baseOptions);
 
     expect(result.success).toBe(true);
+    // @ts-expect-error -- test accesses success-branch field
     expect(result.records).toHaveLength(1);
+    // @ts-expect-error -- test accesses discriminated union field
     expect(result.records![0]!['@ptr']).toBe('cw-ptr-123');
   });
 
@@ -148,6 +157,7 @@ describe('fetchTraceRecords', () => {
     const result = await fetchTraceRecords(baseOptions);
 
     expect(result.success).toBe(true);
+    // @ts-expect-error -- test accesses discriminated union field
     expect(result.records![0]).not.toHaveProperty('@ptr');
   });
 
@@ -165,7 +175,9 @@ describe('fetchTraceRecords', () => {
     const result = await fetchTraceRecords(baseOptions);
 
     expect(result.success).toBe(true);
+    // @ts-expect-error -- test accesses success-branch field
     expect(result.records).toHaveLength(1);
+    // @ts-expect-error -- test accesses discriminated union field
     expect(result.records![0]!['@message']).toBe('plain text message');
   });
 
@@ -177,8 +189,10 @@ describe('fetchTraceRecords', () => {
     const result = await fetchTraceRecords(baseOptions);
 
     expect(result.success).toBe(false);
-    expect(result.error).toContain('Log group');
-    expect(result.error).toContain('not found');
+    // @ts-expect-error -- test accesses failure-branch field
+    expect(result.error.message).toContain('Log group');
+    // @ts-expect-error -- test accesses failure-branch field
+    expect(result.error.message).toContain('not found');
   });
 });
 
@@ -209,6 +223,7 @@ describe('getTrace', () => {
     });
 
     expect(result.success).toBe(true);
+    // @ts-expect-error -- test accesses success-branch field
     expect(result.filePath).toContain('test-trace.json');
     expect(fs.default.mkdirSync).toHaveBeenCalled();
     expect(fs.default.writeFileSync).toHaveBeenCalledWith('/tmp/test-trace.json', expect.stringContaining('"traceId"'));
@@ -227,7 +242,8 @@ describe('getTrace', () => {
     });
 
     expect(result.success).toBe(false);
-    expect(result.error).toContain('Invalid trace ID format');
+    // @ts-expect-error -- test accesses failure-branch field
+    expect(result.error.message).toContain('Invalid trace ID format');
     expect(fs.default.writeFileSync).not.toHaveBeenCalled();
   });
 });

@@ -250,7 +250,7 @@ describe('Config Rollback on Import Failure', () => {
     const result = await handleImport({ source: '/tmp/config.yaml' });
 
     expect(result.success).toBe(false);
-    expect(result.error).toContain('Phase 1 failed');
+    expect(!result.success ? result.error.message : undefined).toContain('Phase 1 failed');
 
     // First call = merge write, second call = rollback with original (empty) runtimes
     expect(mockConfigIOInstance.writeProjectSpec).toHaveBeenCalledTimes(2);
@@ -266,7 +266,7 @@ describe('Config Rollback on Import Failure', () => {
     const result = await handleImport({ source: '/tmp/config.yaml' });
 
     expect(result.success).toBe(false);
-    expect(result.error).toContain('Phase 2 failed');
+    expect(!result.success ? result.error.message : undefined).toContain('Phase 2 failed');
 
     expect(mockConfigIOInstance.writeProjectSpec).toHaveBeenCalledTimes(2);
     const rollbackData = mockConfigIOInstance.writeProjectSpec.mock.calls[1]![0];
@@ -281,7 +281,7 @@ describe('Config Rollback on Import Failure', () => {
     const result = await handleImport({ source: '/tmp/config.yaml' });
 
     expect(result.success).toBe(false);
-    expect(result.error).toContain('CDK build failed');
+    expect(!result.success ? result.error.message : undefined).toContain('CDK build failed');
 
     expect(mockConfigIOInstance.writeProjectSpec).toHaveBeenCalledTimes(2);
     const rollbackData = mockConfigIOInstance.writeProjectSpec.mock.calls[1]![0];
@@ -312,7 +312,7 @@ describe('Config Rollback on Import Failure', () => {
     const result = await handleImport({ source: '/tmp/config.yaml' });
 
     expect(result.success).toBe(false);
-    expect(result.error).toContain('No agents found');
+    expect(!result.success ? result.error.message : undefined).toContain('No agents found');
     // Config was never written, so no rollback
     expect(mockConfigIOInstance.writeProjectSpec).not.toHaveBeenCalled();
   });
@@ -339,7 +339,7 @@ describe('Config Rollback on Import Failure', () => {
     const result = await handleImport({ source: '/tmp/config.yaml' });
 
     expect(result.success).toBe(false);
-    expect(result.error).toContain('Could not read deployed template');
+    expect(!result.success ? result.error.message : undefined).toContain('Could not read deployed template');
 
     expect(mockConfigIOInstance.writeProjectSpec).toHaveBeenCalledTimes(2);
     const rollbackData = mockConfigIOInstance.writeProjectSpec.mock.calls[1]![0];

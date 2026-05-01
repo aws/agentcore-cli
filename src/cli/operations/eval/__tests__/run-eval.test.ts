@@ -146,12 +146,13 @@ describe('handleRunEval', () => {
 
   it('returns error when agent resolution fails', async () => {
     mockLoadDeployedProjectConfig.mockResolvedValue({});
-    mockResolveAgent.mockReturnValue({ success: false, error: 'No agents defined' });
+    mockResolveAgent.mockReturnValue({ success: false, error: new Error('No agents defined') });
 
     const result = await handleRunEval({ evaluator: ['Builtin.GoalSuccessRate'], days: 7 });
 
     expect(result.success).toBe(false);
-    expect(result.error).toBe('No agents defined');
+    // @ts-expect-error -- test accesses failure-branch field
+    expect(result.error.message).toBe('No agents defined');
   });
 
   it('returns error when a custom evaluator is not found in deployed state', async () => {
@@ -171,8 +172,10 @@ describe('handleRunEval', () => {
     const result = await handleRunEval({ evaluator: ['MissingEval'], days: 7 });
 
     expect(result.success).toBe(false);
-    expect(result.error).toContain('MissingEval');
-    expect(result.error).toContain('not found in deployed state');
+    // @ts-expect-error -- test accesses failure-branch field
+    expect(result.error.message).toContain('MissingEval');
+    // @ts-expect-error -- test accesses failure-branch field
+    expect(result.error.message).toContain('not found in deployed state');
   });
 
   it('resolves builtin evaluators without deployed state lookup', async () => {
@@ -195,7 +198,8 @@ describe('handleRunEval', () => {
     const result = await handleRunEval({ evaluator: ['Builtin.GoalSuccessRate'], days: 7 });
 
     // Fails because no spans, but NOT because evaluator wasn't found
-    expect(result.error).toContain('No session spans found');
+    // @ts-expect-error -- test accesses failure-branch field
+    expect(result.error.message).toContain('No session spans found');
   });
 
   it('resolves custom evaluator name to deployed evaluator ID', async () => {
@@ -279,8 +283,10 @@ describe('handleRunEval', () => {
     const result = await handleRunEval({ evaluator: ['Builtin.GoalSuccessRate'], days: 7 });
 
     expect(result.success).toBe(false);
-    expect(result.error).toContain('No session spans found');
-    expect(result.error).toContain('my-agent');
+    // @ts-expect-error -- test accesses failure-branch field
+    expect(result.error.message).toContain('No session spans found');
+    // @ts-expect-error -- test accesses failure-branch field
+    expect(result.error.message).toContain('my-agent');
   });
 
   // ─── Successful evaluation ────────────────────────────────────────────────
@@ -325,10 +331,14 @@ describe('handleRunEval', () => {
     const result = await handleRunEval({ evaluator: ['Builtin.GoalSuccessRate'], days: 7 });
 
     expect(result.success).toBe(true);
+    // @ts-expect-error -- test accesses success-branch field
     expect(result.run).toBeDefined();
+    // @ts-expect-error -- test accesses discriminated union field
     expect(result.run!.sessionCount).toBe(2);
+    // @ts-expect-error -- test accesses discriminated union field
     expect(result.run!.results).toHaveLength(1);
 
+    // @ts-expect-error -- test accesses discriminated union field
     const evalResult = result.run!.results[0]!;
     expect(evalResult.aggregateScore).toBe(3.0); // (4 + 2) / 2
     expect(evalResult.sessionScores).toHaveLength(2);
@@ -362,6 +372,7 @@ describe('handleRunEval', () => {
     const result = await handleRunEval({ evaluator: ['Builtin.GoalSuccessRate'], days: 7 });
 
     expect(result.success).toBe(true);
+    // @ts-expect-error -- test accesses discriminated union field
     const evalResult = result.run!.results[0]!;
     // Only the non-errored session (value 5.0) should be in the aggregate
     expect(evalResult.aggregateScore).toBe(5.0);
@@ -394,6 +405,7 @@ describe('handleRunEval', () => {
     expect(result.success).toBe(true);
     expect(mockSaveEvalRun).toHaveBeenCalled();
     expect(mockWriteFileSync).not.toHaveBeenCalled();
+    // @ts-expect-error -- test accesses success-branch field
     expect(result.filePath).toBe('/tmp/eval-results/eval_2025-01-15_10-00-00.json');
   });
 
@@ -425,6 +437,7 @@ describe('handleRunEval', () => {
     expect(result.success).toBe(true);
     expect(mockWriteFileSync).toHaveBeenCalledWith('/tmp/my-output.json', expect.any(String));
     expect(mockSaveEvalRun).not.toHaveBeenCalled();
+    // @ts-expect-error -- test accesses success-branch field
     expect(result.filePath).toBe('/tmp/my-output.json');
   });
 
@@ -462,10 +475,15 @@ describe('handleRunEval', () => {
     });
 
     expect(result.success).toBe(true);
+    // @ts-expect-error -- test accesses discriminated union field
     expect(result.run!.results).toHaveLength(2);
+    // @ts-expect-error -- test accesses discriminated union field
     expect(result.run!.results[0]!.evaluator).toBe('Builtin.GoalSuccessRate');
+    // @ts-expect-error -- test accesses discriminated union field
     expect(result.run!.results[0]!.aggregateScore).toBe(0.9);
+    // @ts-expect-error -- test accesses discriminated union field
     expect(result.run!.results[1]!.evaluator).toBe('CustomEval');
+    // @ts-expect-error -- test accesses discriminated union field
     expect(result.run!.results[1]!.aggregateScore).toBe(4.5);
   });
 
@@ -485,6 +503,7 @@ describe('handleRunEval', () => {
     });
 
     expect(result.success).toBe(true);
+    // @ts-expect-error -- test accesses discriminated union field
     expect(result.run!.agent).toBe('rt-arn-test');
     expect(mockLoadDeployedProjectConfig).not.toHaveBeenCalled();
     expect(mockResolveAgent).not.toHaveBeenCalled();
@@ -533,7 +552,8 @@ describe('handleRunEval', () => {
     });
 
     expect(result.success).toBe(false);
-    expect(result.error).toContain('Invalid agent runtime ARN');
+    // @ts-expect-error -- test accesses failure-branch field
+    expect(result.error.message).toContain('Invalid agent runtime ARN');
   });
 
   it('rejects custom evaluator names in ARN mode', async () => {
@@ -544,7 +564,8 @@ describe('handleRunEval', () => {
     });
 
     expect(result.success).toBe(false);
-    expect(result.error).toContain('cannot be resolved in ARN mode');
+    // @ts-expect-error -- test accesses failure-branch field
+    expect(result.error.message).toContain('cannot be resolved in ARN mode');
   });
 
   it('saves to cwd in ARN mode when no --output is specified', async () => {
@@ -566,6 +587,7 @@ describe('handleRunEval', () => {
       expect.stringContaining('eval_2025-01-15_10-00-00.json'),
       expect.any(String)
     );
+    // @ts-expect-error -- test accesses success-branch field
     expect(result.filePath).toContain('eval_2025-01-15_10-00-00.json');
   });
 
@@ -584,6 +606,7 @@ describe('handleRunEval', () => {
 
     expect(result.success).toBe(true);
     expect(mockWriteFileSync).toHaveBeenCalledWith('/tmp/custom-eval.json', expect.any(String));
+    // @ts-expect-error -- test accesses success-branch field
     expect(result.filePath).toBe('/tmp/custom-eval.json');
   });
 
@@ -595,7 +618,8 @@ describe('handleRunEval', () => {
     });
 
     expect(result.success).toBe(false);
-    expect(result.error).toContain('No evaluators specified');
+    // @ts-expect-error -- test accesses failure-branch field
+    expect(result.error.message).toContain('No evaluators specified');
   });
 
   // ─── Endpoint selection ──────────────────────────────────────────────────
@@ -1200,6 +1224,7 @@ describe('handleRunEval', () => {
     });
 
     expect(result.success).toBe(true);
+    // @ts-expect-error -- test accesses discriminated union field
     expect(result.run!.referenceInputs).toEqual({
       expectedTrajectory: ['tool_1', 'tool_2'],
     });
@@ -1216,6 +1241,7 @@ describe('handleRunEval', () => {
     });
 
     expect(result.success).toBe(false);
-    expect(result.error).toContain('require exactly one session');
+    // @ts-expect-error -- test accesses failure-branch field
+    expect(result.error.message).toContain('require exactly one session');
   });
 });

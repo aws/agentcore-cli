@@ -199,7 +199,7 @@ export async function runBrowserMode(opts: BrowserModeOptions): Promise<void> {
           const configIO = new ConfigIO({ baseDir });
           const context = await loadDeployedProjectConfig(configIO);
           const resolved = resolveAgent(context, { runtime: agentName });
-          if (!resolved.success) return { success: false, error: resolved.error };
+          if (!resolved.success) return { success: false, error: resolved.error.message };
           return listTraces({
             region: resolved.agent.region,
             runtimeId: resolved.agent.runtimeId,
@@ -219,7 +219,7 @@ export async function runBrowserMode(opts: BrowserModeOptions): Promise<void> {
           const configIO = new ConfigIO({ baseDir });
           const context = await loadDeployedProjectConfig(configIO);
           const resolved = resolveAgent(context, { runtime: agentName });
-          if (!resolved.success) return { success: false, error: resolved.error };
+          if (!resolved.success) return { success: false, error: resolved.error.message };
           return fetchTraceRecords({
             region: resolved.agent.region,
             runtimeId: resolved.agent.runtimeId,

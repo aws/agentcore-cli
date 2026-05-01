@@ -89,7 +89,7 @@ export type ListCloudWatchTracesHandler = (
   harnessName: string | undefined,
   startTime?: number,
   endTime?: number
-) => Promise<{ success: boolean; traces?: unknown[]; error?: string }>;
+) => Promise<{ success: boolean; traces?: unknown[]; error?: string | Error }>;
 
 /**
  * Custom handler for GET /api/cloudwatch-traces/:traceId.
@@ -101,7 +101,7 @@ export type GetCloudWatchTraceHandler = (
   traceId: string,
   startTime?: number,
   endTime?: number
-) => Promise<{ success: boolean; records?: unknown[]; spans?: unknown[]; error?: string }>;
+) => Promise<{ success: boolean; records?: unknown[]; spans?: unknown[]; error?: string | Error }>;
 
 /**
  * Custom handler for GET /api/memory.
@@ -111,7 +111,7 @@ export type ListMemoryRecordsHandler = (
   memoryName: string,
   namespace: string,
   strategyId?: string
-) => Promise<{ success: boolean; records?: unknown[]; error?: string }>;
+) => Promise<{ success: boolean; records?: unknown[]; error?: string | Error }>;
 
 /**
  * Custom handler for POST /api/memory/search.
@@ -122,7 +122,7 @@ export type RetrieveMemoryRecordsHandler = (
   namespace: string,
   searchQuery: string,
   strategyId?: string
-) => Promise<{ success: boolean; records?: unknown[]; error?: string }>;
+) => Promise<{ success: boolean; records?: unknown[]; error?: string | Error }>;
 
 export interface WebUIOptions {
   /** Server mode identifier (currently only 'dev' is used) */

@@ -29,6 +29,7 @@ describe('handleListEvalRuns', () => {
     const result = handleListEvalRuns({});
 
     expect(result.success).toBe(true);
+    // @ts-expect-error -- test accesses success-branch field
     expect(result.runs).toHaveLength(2);
   });
 
@@ -43,7 +44,9 @@ describe('handleListEvalRuns', () => {
     const result = handleListEvalRuns({ agent: 'agent-a' });
 
     expect(result.success).toBe(true);
+    // @ts-expect-error -- test accesses success-branch field
     expect(result.runs).toHaveLength(2);
+    // @ts-expect-error -- test accesses discriminated union field
     expect(result.runs!.every(r => r.agent === 'agent-a')).toBe(true);
   });
 
@@ -58,6 +61,7 @@ describe('handleListEvalRuns', () => {
     const result = handleListEvalRuns({ limit: 2 });
 
     expect(result.success).toBe(true);
+    // @ts-expect-error -- test accesses success-branch field
     expect(result.runs).toHaveLength(2);
   });
 
@@ -72,8 +76,11 @@ describe('handleListEvalRuns', () => {
 
     const result = handleListEvalRuns({ agent: 'a', limit: 2 });
 
+    // @ts-expect-error -- test accesses success-branch field
     expect(result.runs).toHaveLength(2);
+    // @ts-expect-error -- test accesses discriminated union field
     expect(result.runs![0]!.timestamp).toBe('2025-01-15T10:00:00.000Z');
+    // @ts-expect-error -- test accesses discriminated union field
     expect(result.runs![1]!.timestamp).toBe('2025-01-15T12:00:00.000Z');
   });
 
@@ -83,6 +90,7 @@ describe('handleListEvalRuns', () => {
     const result = handleListEvalRuns({});
 
     expect(result.success).toBe(true);
+    // @ts-expect-error -- test accesses success-branch field
     expect(result.runs).toEqual([]);
   });
 
@@ -94,7 +102,9 @@ describe('handleListEvalRuns', () => {
     const result = handleListEvalRuns({});
 
     expect(result.success).toBe(false);
-    expect(result.error).toBe('disk error');
+    // @ts-expect-error -- test accesses failure-branch field
+    expect(result.error.message).toBe('disk error');
+    // @ts-expect-error -- test accesses success-branch field
     expect(result.runs).toBeUndefined();
   });
 
@@ -106,6 +116,7 @@ describe('handleListEvalRuns', () => {
     const result = handleListEvalRuns({});
 
     expect(result.success).toBe(false);
-    expect(result.error).toBe('42');
+    // @ts-expect-error -- test accesses failure-branch field
+    expect(result.error.message).toBe('42');
   });
 });

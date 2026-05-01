@@ -152,7 +152,7 @@ export function RecommendationScreen({
         const { region } = await detectRegion();
         const agentResult = resolveAgent(context, { runtime: wizard.config.agent });
         if (!agentResult.success) {
-          if (!cancelled) setSessionResult({ key: fetchKey, phase: 'error', message: agentResult.error });
+          if (!cancelled) setSessionResult({ key: fetchKey, phase: 'error', message: agentResult.error.message });
           return;
         }
 

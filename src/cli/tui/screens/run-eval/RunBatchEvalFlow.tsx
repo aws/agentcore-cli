@@ -260,7 +260,7 @@ export function RunBatchEvalFlow({ onExit }: RunBatchEvalFlowProps) {
           setFlow(prev => {
             if (prev.name !== 'running') return prev;
             const steps = prev.steps.map(s =>
-              s.status === 'running' ? { ...s, status: 'error' as const, error: result.error } : s
+              s.status === 'running' ? { ...s, status: 'error' as const, error: result.error.message } : s
             );
             return { ...prev, steps };
           });
@@ -268,7 +268,7 @@ export function RunBatchEvalFlow({ onExit }: RunBatchEvalFlowProps) {
           if (cancelled) return;
           setFlow({
             name: 'error',
-            message: result.error ?? 'Batch evaluation failed',
+            message: result.error.message ?? 'Batch evaluation failed',
             logFilePath: result.logFilePath,
           });
           return;
@@ -472,7 +472,7 @@ function BatchEvalWizard({ agents, evaluators: rawEvaluators, onComplete, onExit
         const region = targetRegion ?? detectedRegion;
         const agentResult = resolveAgent(context, { runtime: config.agent });
         if (!agentResult.success) {
-          if (!cancelled) setSessionResult({ key: fetchKey, phase: 'error', message: agentResult.error });
+          if (!cancelled) setSessionResult({ key: fetchKey, phase: 'error', message: agentResult.error.message });
           return;
         }
 
@@ -846,7 +846,7 @@ function ResultsView({ result, savedFilePath, onRunAnother, onExit }: ResultsVie
     isActive: true,
   });
 
-  const evalRes = result.evaluationResults;
+  const evalRes = result.success ? result.evaluationResults : undefined;
   const summaries = evalRes?.evaluatorSummaries;
 
   // Fall back to local grouping when API summaries aren't available

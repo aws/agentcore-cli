@@ -1,3 +1,4 @@
+import type { Result } from '../../../lib/types';
 import { getCredentialProvider } from '../../aws';
 import { evaluate } from '../../aws/agentcore';
 import type { EvaluationReferenceInput } from '../../aws/agentcore';
@@ -30,7 +31,7 @@ interface ResolvedEvalContext {
   evaluatorLabels: string[];
 }
 
-type ResolveResult = { success: true; ctx: ResolvedEvalContext } | { success: false; error: string };
+type ResolveResult = Result<{ ctx: ResolvedEvalContext }>;
 
 /**
  * Resolve evaluator IDs from ARN strings or raw IDs.
@@ -53,18 +54,18 @@ function resolveFromArn(options: RunEvalOptions): ResolveResult {
   // Parse ARN: arn:aws:bedrock-agentcore:<region>:<account>:runtime/<runtimeId>
   const arnParts = arn.split(':');
   if (arnParts.length < 6) {
-    return { success: false, error: `Invalid agent runtime ARN: ${arn}` };
+    return { success: false, error: new Error(`Invalid agent runtime ARN: ${arn}`) };
   }
 
   const region = options.region ?? arnParts[3];
   if (!region) {
-    return { success: false, error: 'Could not determine region from ARN. Use --region to specify.' };
+    return { success: false, error: new Error('Could not determine region from ARN. Use --region to specify.') };
   }
 
   const resourcePart = arnParts.slice(5).join(':');
   const runtimeMatch = /runtime\/(.+)$/.exec(resourcePart);
   if (!runtimeMatch) {
-    return { success: false, error: `Could not extract runtime ID from ARN: ${arn}` };
+    return { success: false, error: new Error(`Could not extract runtime ID from ARN: ${arn}`) };
   }
   const runtimeId = runtimeMatch[1]!;
 
@@ -79,7 +80,9 @@ function resolveFromArn(options: RunEvalOptions): ResolveResult {
     } else {
       return {
         success: false,
-        error: `Custom evaluator "${evalName}" cannot be resolved in ARN mode. Use --evaluator-arn with an evaluator ARN or ID, or use Builtin.* evaluators.`,
+        error: new Error(
+          `Custom evaluator "${evalName}" cannot be resolved in ARN mode. Use --evaluator-arn with an evaluator ARN or ID, or use Builtin.* evaluators.`
+        ),
       };
     }
   }
@@ -91,7 +94,10 @@ function resolveFromArn(options: RunEvalOptions): ResolveResult {
   }
 
   if (evaluatorIds.length === 0) {
-    return { success: false, error: 'No evaluators specified. Use -e/--evaluator with Builtin.* or --evaluator-arn.' };
+    return {
+      success: false,
+      error: new Error('No evaluators specified. Use -e/--evaluator with Builtin.* or --evaluator-arn.'),
+    };
   }
 
   const endpointName = options.endpoint ?? process.env.AGENTCORE_RUNTIME_ENDPOINT ?? DEFAULT_ENDPOINT_NAME;
@@ -139,7 +145,7 @@ function resolveFromProject(context: DeployedProjectConfig, options: RunEvalOpti
     if (!deployedEval) {
       return {
         success: false,
-        error: `Evaluator "${evalName}" not found in deployed state. Has it been deployed?`,
+        error: new Error(`Evaluator "${evalName}" not found in deployed state. Has it been deployed?`),
       };
     }
     evaluatorIds.push(deployedEval.evaluatorId);
@@ -154,7 +160,7 @@ function resolveFromProject(context: DeployedProjectConfig, options: RunEvalOpti
   }
 
   if (evaluatorIds.length === 0) {
-    return { success: false, error: 'No evaluators specified. Use -e/--evaluator or --evaluator-arn.' };
+    return { success: false, error: new Error('No evaluators specified. Use -e/--evaluator or --evaluator-arn.') };
   }
 
   return {
@@ -551,12 +557,7 @@ async function fetchSessionSpans(opts: FetchSpansOptions): Promise<SessionSpans[
   return sessions;
 }
 
-export interface RunEvalResult {
-  success: boolean;
-  error?: string;
-  run?: EvalRunResult;
-  filePath?: string;
-}
+export type RunEvalResult = Result<{ run: EvalRunResult; filePath: string }>;
 
 export async function handleRunEval(options: RunEvalOptions): Promise<RunEvalResult> {
   let resolution: ResolveResult;
@@ -569,7 +570,7 @@ export async function handleRunEval(options: RunEvalOptions): Promise<RunEvalRes
   }
 
   if (!resolution.success) {
-    return { success: false, error: resolution.error };
+    return { success: false, error: new Error(resolution.error.message) };
   }
 
   const { ctx } = resolution;
@@ -593,7 +594,9 @@ export async function handleRunEval(options: RunEvalOptions): Promise<RunEvalRes
   if (sessions.length === 0) {
     return {
       success: false,
-      error: `No session spans found for agent "${ctx.agentLabel}" in the last ${options.days} day(s). Has the agent been invoked?`,
+      error: new Error(
+        `No session spans found for agent "${ctx.agentLabel}" in the last ${options.days} day(s). Has the agent been invoked?`
+      ),
     };
   }
 
@@ -610,8 +613,9 @@ export async function handleRunEval(options: RunEvalOptions): Promise<RunEvalRes
   if (hasRefInputs && sessions.length !== 1) {
     return {
       success: false,
-      error:
-        'Ground truth flags (-A, --expected-trajectory, --expected-response) require exactly one session. Use -s/--session-id to target a single session.',
+      error: new Error(
+        'Ground truth flags (-A, --expected-trajectory, --expected-response) require exactly one session. Use -s/--session-id to target a single session.'
+      ),
     };
   }
   if (hasRefInputs) {
@@ -642,7 +646,9 @@ export async function handleRunEval(options: RunEvalOptions): Promise<RunEvalRes
       if (!traceId) {
         return {
           success: false,
-          error: 'Expected response provided but no trace IDs found in session spans. Use -t/--trace-id to specify.',
+          error: new Error(
+            'Expected response provided but no trace IDs found in session spans. Use -t/--trace-id to specify.'
+          ),
         };
       }
       refInputs.push({

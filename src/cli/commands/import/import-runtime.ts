@@ -225,7 +225,7 @@ export function registerImportRuntime(importCmd: Command): void {
         console.log(`  agentcore invoke     ${ANSI.dim}Test your agent${ANSI.reset}`);
         console.log('');
       } else {
-        console.error(`\n${ANSI.red}[error]${ANSI.reset} ${result.error}`);
+        console.error(`\n${ANSI.red}[error]${ANSI.reset} ${result.error.message}`);
         if (result.logPath) {
           console.error(`Log: ${result.logPath}`);
         }

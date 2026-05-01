@@ -23,9 +23,9 @@ async function fetchSpans(
   traceId: string,
   startTime?: number,
   endTime?: number
-): Promise<{ success: boolean; spans?: CloudWatchSpanRecord[]; error?: string }> {
+): Promise<{ success: boolean; spans?: CloudWatchSpanRecord[]; error?: Error }> {
   if (!TRACE_ID_PATTERN.test(traceId)) {
-    return { success: false, error: 'Invalid trace ID format. Expected a hex string (e.g., abc123def456).' };
+    return { success: false, error: new Error('Invalid trace ID format. Expected a hex string (e.g., abc123def456).') };
   }
 
   const result = await runInsightsQuery({
@@ -82,7 +82,7 @@ export async function fetchTraceRecords(options: FetchTraceRecordsOptions): Prom
   const { region, runtimeId, traceId, includeSpans } = options;
 
   if (!TRACE_ID_PATTERN.test(traceId)) {
-    return { success: false, error: 'Invalid trace ID format. Expected a hex string (e.g., abc123def456).' };
+    return { success: false, error: new Error('Invalid trace ID format. Expected a hex string (e.g., abc123def456).') };
   }
 
   const [recordsResult, spansResult] = await Promise.all([
@@ -106,7 +106,7 @@ export async function fetchTraceRecords(options: FetchTraceRecordsOptions): Prom
   const traceData = recordsResult.rows ?? [];
 
   if (traceData.length === 0 && (!spansResult || (spansResult.spans ?? []).length === 0)) {
-    return { success: false, error: `No trace data found for trace ID: ${traceId}` };
+    return { success: false, error: new Error(`No trace data found for trace ID: ${traceId}`) };
   }
 
   const records: CloudWatchTraceRecord[] = traceData.map(entry => {
@@ -146,7 +146,7 @@ export async function getTrace(options: GetTraceOptions): Promise<GetTraceResult
   const { region, runtimeId, agentName, traceId, outputPath } = options;
 
   if (!TRACE_ID_PATTERN.test(traceId)) {
-    return { success: false, error: 'Invalid trace ID format. Expected a hex string (e.g., abc123def456).' };
+    return { success: false, error: new Error('Invalid trace ID format. Expected a hex string (e.g., abc123def456).') };
   }
 
   const result = await runInsightsQuery({
@@ -165,7 +165,7 @@ export async function getTrace(options: GetTraceOptions): Promise<GetTraceResult
 
   const traceData = result.rows ?? [];
   if (traceData.length === 0) {
-    return { success: false, error: `No trace data found for trace ID: ${traceId}` };
+    return { success: false, error: new Error(`No trace data found for trace ID: ${traceId}`) };
   }
 
   const parsedTrace = traceData.map(entry => {

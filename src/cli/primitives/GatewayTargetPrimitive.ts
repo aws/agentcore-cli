@@ -13,7 +13,7 @@ import type { AddGatewayTargetOptions as CLIAddGatewayTargetOptions } from '../c
 import { validateAddGatewayTargetOptions } from '../commands/add/validate';
 import { getErrorMessage } from '../errors';
 import type { RemovableGatewayTarget } from '../operations/remove/remove-gateway-target';
-import type { RemovalPreview, RemovalResult, SchemaChange } from '../operations/remove/types';
+import type { RemovalPreview, Result, SchemaChange } from '../operations/remove/types';
 import { cliCommandRun } from '../telemetry/cli-command-run.js';
 import {
   GATEWAY_TARGET_TYPE_MAP,
@@ -33,7 +33,7 @@ import type {
 import { DEFAULT_HANDLER, DEFAULT_NODE_VERSION, DEFAULT_PYTHON_VERSION } from '../tui/screens/mcp/types';
 import { BasePrimitive } from './BasePrimitive';
 import { SOURCE_CODE_NOTE } from './constants';
-import type { AddResult, AddScreenComponent } from './types';
+import type { AddScreenComponent } from './types';
 import type { Command } from '@commander-js/extra-typings';
 import { existsSync } from 'fs';
 import { mkdir, readFile, rm, writeFile } from 'fs/promises';
@@ -70,22 +70,22 @@ export class GatewayTargetPrimitive extends BasePrimitive<AddGatewayTargetOption
   readonly label = 'Gateway Target';
   readonly primitiveSchema = AgentCoreGatewayTargetSchema;
 
-  async add(options: AddGatewayTargetOptions): Promise<AddResult<{ toolName: string; sourcePath: string }>> {
+  async add(options: AddGatewayTargetOptions): Promise<Result<{ toolName: string; sourcePath: string }>> {
     try {
       const config = this.buildGatewayTargetConfig(options);
       const result = await this.createToolFromWizard(config);
       return { success: true, toolName: result.toolName, sourcePath: result.projectPath };
     } catch (err) {
-      return { success: false, error: getErrorMessage(err) };
+      return { success: false, error: err instanceof Error ? err : new Error(getErrorMessage(err)) };
     }
   }
 
-  async remove(name: string): Promise<RemovalResult> {
+  async remove(name: string): Promise<Result> {
     // Find the target by name to get its gateway info
     const tools = await this.getRemovable();
     const tool = tools.find(t => t.name === name);
     if (!tool) {
-      return { success: false, error: `Gateway target "${name}" not found.` };
+      return { success: false, error: new Error(`Gateway target "${name}" not found.`) };
     }
     return this.removeGatewayTarget(tool);
   }
@@ -183,7 +183,7 @@ export class GatewayTargetPrimitive extends BasePrimitive<AddGatewayTargetOption
   /**
    * Remove a gateway target (with full target info).
    */
-  async removeGatewayTarget(tool: RemovableGatewayTarget): Promise<RemovalResult> {
+  async removeGatewayTarget(tool: RemovableGatewayTarget): Promise<Result> {
     try {
       const project = await this.readProjectSpec();
       const mcpSpec = extractMcpSpec(project);
@@ -195,11 +195,14 @@ export class GatewayTargetPrimitive extends BasePrimitive<AddGatewayTargetOption
 
       const gateway = mcpSpec.agentCoreGateways.find(g => g.name === tool.gatewayName);
       if (!gateway) {
-        return { success: false, error: `Gateway "${tool.gatewayName}" not found.` };
+        return { success: false, error: new Error(`Gateway "${tool.gatewayName}" not found.`) };
       }
       const target = gateway.targets.find(t => t.name === tool.name);
       if (!target) {
-        return { success: false, error: `Target "${tool.name}" not found in gateway "${tool.gatewayName}".` };
+        return {
+          success: false,
+          error: new Error(`Target "${tool.name}" not found in gateway "${tool.gatewayName}".`),
+        };
       }
       if (target.compute?.implementation && 'path' in target.compute.implementation) {
         toolPath = target.compute.implementation.path;
@@ -223,8 +226,7 @@ export class GatewayTargetPrimitive extends BasePrimitive<AddGatewayTargetOption
 
       return { success: true };
     } catch (err) {
-      const message = err instanceof Error ? err.message : 'Unknown error';
-      return { success: false, error: message };
+      return { success: false, error: err instanceof Error ? err : new Error(getErrorMessage(err)) };
     }
   }
 
@@ -475,7 +477,7 @@ export class GatewayTargetPrimitive extends BasePrimitive<AddGatewayTargetOption
           });
 
           if (!result.success) {
-            throw new Error(result.error);
+            throw result.error;
           }
 
           if (cliOptions.json) {
@@ -518,7 +520,7 @@ export class GatewayTargetPrimitive extends BasePrimitive<AddGatewayTargetOption
                 resourceName: cliOptions.name,
                 message: result.success ? `Removed gateway target '${cliOptions.name}'` : undefined,
                 note: result.success ? SOURCE_CODE_NOTE : undefined,
-                error: !result.success ? result.error : undefined,
+                error: !result.success ? result.error.message : undefined,
               })
             );
             process.exit(result.success ? 0 : 1);

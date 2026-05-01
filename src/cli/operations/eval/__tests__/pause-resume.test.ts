@@ -47,6 +47,7 @@ describe('handlePauseResume', () => {
     const result = await handlePauseResume({ name: 'my-config' }, 'pause');
 
     expect(result.success).toBe(true);
+    // @ts-expect-error -- test accesses success-branch field
     expect(result.executionStatus).toBe('DISABLED');
     expect(mockUpdateOnlineEvalExecutionStatus).toHaveBeenCalledWith({
       region: 'us-east-1',
@@ -66,6 +67,7 @@ describe('handlePauseResume', () => {
     const result = await handlePauseResume({ name: 'my-config' }, 'resume');
 
     expect(result.success).toBe(true);
+    // @ts-expect-error -- test accesses success-branch field
     expect(result.executionStatus).toBe('ENABLED');
     expect(mockUpdateOnlineEvalExecutionStatus).toHaveBeenCalledWith({
       region: 'us-east-1',
@@ -84,7 +86,8 @@ describe('handlePauseResume', () => {
     const result = await handlePauseResume({ name: 'my-config' }, 'pause');
 
     expect(result.success).toBe(false);
-    expect(result.error).toContain('No deployed targets found');
+    // @ts-expect-error -- test accesses failure-branch field
+    expect(result.error.message).toContain('No deployed targets found');
   });
 
   it('returns error when config name is not found in deployed state', async () => {
@@ -93,8 +96,10 @@ describe('handlePauseResume', () => {
     const result = await handlePauseResume({ name: 'missing-config' }, 'pause');
 
     expect(result.success).toBe(false);
-    expect(result.error).toContain('missing-config');
-    expect(result.error).toContain('not found');
+    // @ts-expect-error -- test accesses failure-branch field
+    expect(result.error.message).toContain('missing-config');
+    // @ts-expect-error -- test accesses failure-branch field
+    expect(result.error.message).toContain('not found');
   });
 
   it('returns error when target config is missing from aws-targets', async () => {
@@ -106,8 +111,10 @@ describe('handlePauseResume', () => {
     const result = await handlePauseResume({ name: 'my-config' }, 'pause');
 
     expect(result.success).toBe(false);
-    expect(result.error).toContain('Target config');
-    expect(result.error).toContain('not found');
+    // @ts-expect-error -- test accesses failure-branch field
+    expect(result.error.message).toContain('Target config');
+    // @ts-expect-error -- test accesses failure-branch field
+    expect(result.error.message).toContain('not found');
   });
 
   it('returns error when the SDK call fails', async () => {
@@ -117,7 +124,8 @@ describe('handlePauseResume', () => {
     const result = await handlePauseResume({ name: 'my-config' }, 'pause');
 
     expect(result.success).toBe(false);
-    expect(result.error).toBe('Service unavailable');
+    // @ts-expect-error -- test accesses failure-branch field
+    expect(result.error.message).toBe('Service unavailable');
   });
 
   describe('ARN mode', () => {
@@ -132,6 +140,7 @@ describe('handlePauseResume', () => {
       const result = await handlePauseResume({ name: '', arn }, 'pause');
 
       expect(result.success).toBe(true);
+      // @ts-expect-error -- test accesses success-branch field
       expect(result.executionStatus).toBe('DISABLED');
       expect(mockLoadDeployedProjectConfig).not.toHaveBeenCalled();
       expect(mockUpdateOnlineEvalExecutionStatus).toHaveBeenCalledWith({
@@ -152,6 +161,7 @@ describe('handlePauseResume', () => {
       const result = await handlePauseResume({ name: '', arn, region: 'eu-west-1' }, 'resume');
 
       expect(result.success).toBe(true);
+      // @ts-expect-error -- test accesses success-branch field
       expect(result.executionStatus).toBe('ENABLED');
       expect(mockUpdateOnlineEvalExecutionStatus).toHaveBeenCalledWith({
         region: 'eu-west-1',
@@ -164,7 +174,8 @@ describe('handlePauseResume', () => {
       const result = await handlePauseResume({ name: '', arn: 'not-an-arn' }, 'pause');
 
       expect(result.success).toBe(false);
-      expect(result.error).toContain('Invalid online eval config ARN');
+      // @ts-expect-error -- test accesses failure-branch field
+      expect(result.error.message).toContain('Invalid online eval config ARN');
     });
 
     it('returns error when config ID cannot be extracted from ARN', async () => {
@@ -172,7 +183,8 @@ describe('handlePauseResume', () => {
       const result = await handlePauseResume({ name: '', arn }, 'pause');
 
       expect(result.success).toBe(false);
-      expect(result.error).toContain('Could not extract config ID');
+      // @ts-expect-error -- test accesses failure-branch field
+      expect(result.error.message).toContain('Could not extract config ID');
     });
   });
 });

@@ -9,7 +9,7 @@ import { getBedrockAgentConfig } from '../../../aws/bedrock-import';
 import { getErrorMessage } from '../../../errors';
 import type { JwtConfigOptions } from '../../../primitives/auth-utils';
 import { createManagedOAuthCredential } from '../../../primitives/auth-utils';
-import type { AddResult } from '../../../primitives/types';
+import type { Result } from '../../../primitives/types';
 import type { MemoryOption } from '../../../tui/screens/generate/types';
 import { setupPythonProject } from '../../python';
 import { writeAgentToProject } from '../generate/write-agent-to-project';
@@ -36,7 +36,7 @@ export interface ExecuteImportAgentParams {
 
 export async function executeImportAgent(
   params: ExecuteImportAgentParams
-): Promise<AddResult<{ agentName: string; agentPath: string }>> {
+): Promise<Result<{ agentName: string; agentPath: string }>> {
   const {
     name,
     framework,
@@ -120,6 +120,6 @@ export async function executeImportAgent(
 
     return { success: true, agentName: name, agentPath };
   } catch (err) {
-    return { success: false, error: getErrorMessage(err) };
+    return { success: false, error: err instanceof Error ? err : new Error(getErrorMessage(err)) };
   }
 }

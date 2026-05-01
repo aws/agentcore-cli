@@ -4,7 +4,7 @@ import type { ResourceType } from '../commands/remove/types';
 import { getErrorMessage } from '../errors';
 import { requireTTY } from '../tui/guards/tty';
 import { SOURCE_CODE_NOTE } from './constants';
-import type { AddResult, AddScreenComponent, RemovableResource, RemovalPreview, RemovalResult } from './types';
+import type { AddScreenComponent, RemovableResource, RemovalPreview, Result } from './types';
 import type { Command } from '@commander-js/extra-typings';
 import type { z } from 'zod';
 
@@ -37,12 +37,12 @@ export abstract class BasePrimitive<
    * Add a new resource of this type.
    * Each primitive owns its implementation entirely.
    */
-  abstract add(options: TAddOptions): Promise<AddResult>;
+  abstract add(options: TAddOptions): Promise<Result>;
 
   /**
    * Remove a resource by name.
    */
-  abstract remove(name: string): Promise<RemovalResult>;
+  abstract remove(name: string): Promise<Result>;
 
   /**
    * Preview what will be removed.
@@ -128,7 +128,7 @@ export abstract class BasePrimitive<
                 resourceName: cliOptions.name,
                 message: result.success ? `Removed ${this.label.toLowerCase()} '${cliOptions.name}'` : undefined,
                 note: result.success ? SOURCE_CODE_NOTE : undefined,
-                error: !result.success ? result.error : undefined,
+                error: !result.success ? result.error.message : undefined,
               })
             );
             process.exit(result.success ? 0 : 1);

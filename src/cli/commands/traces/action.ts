@@ -1,3 +1,4 @@
+import type { Result } from '../../../lib/types';
 import { parseTimeString } from '../../../lib/utils';
 import type { DeployedProjectConfig } from '../../operations/resolve-agent';
 import { resolveAgent } from '../../operations/resolve-agent';
@@ -19,7 +20,7 @@ export async function handleTracesList(
 ): Promise<TracesListResult> {
   const resolved = resolveAgent(context, options);
   if (!resolved.success) {
-    return { success: false, error: resolved.error };
+    return { success: false, error: resolved.error.message };
   }
 
   const { agent } = resolved;
@@ -56,7 +57,7 @@ export async function handleTracesList(
   });
 
   if (!result.success) {
-    return { success: false, error: result.error, consoleUrl };
+    return { success: false, error: result.error.message, consoleUrl };
   }
 
   return {
@@ -68,14 +69,11 @@ export async function handleTracesList(
   };
 }
 
-export interface TracesGetResult {
-  success: boolean;
+export type TracesGetResult = Result<{
   agentName?: string;
   targetName?: string;
-  consoleUrl?: string;
   filePath?: string;
-  error?: string;
-}
+}> & { consoleUrl?: string };
 
 export async function handleTracesGet(
   context: DeployedProjectConfig,

@@ -280,8 +280,8 @@ describe('Import Idempotency (Test Group 7)', () => {
       const result = await handleImport({ source: '/tmp/config.yaml' });
 
       expect(result.success).toBe(true);
-      expect(result.importedAgents).toContain('my-agent');
-      expect(result.importedMemories).toContain('my-memory');
+      expect(result.success ? result.importedAgents : undefined).toContain('my-agent');
+      expect(result.success ? result.importedMemories : undefined).toContain('my-memory');
 
       expect(mockConfigIOInstance.writeProjectSpec).toHaveBeenCalledTimes(1);
       const writtenSpec = mockConfigIOInstance.writeProjectSpec.mock.calls[0]![0];
@@ -394,8 +394,8 @@ describe('Import Idempotency (Test Group 7)', () => {
       const result = await handleImport({ source: '/tmp/config.yaml' });
 
       expect(result.success).toBe(true);
-      expect(result.importedAgents).toEqual([]);
-      expect(result.importedMemories).toEqual([]);
+      expect(result.success ? result.importedAgents : undefined).toEqual([]);
+      expect(result.success ? result.importedMemories : undefined).toEqual([]);
     });
 
     it('does not corrupt deployed state on second import', async () => {
@@ -611,7 +611,7 @@ describe('Import Idempotency (Test Group 7)', () => {
       const result = await handleImport({ source: '/tmp/config.yaml' });
 
       expect(result.success).toBe(false);
-      expect(result.error).toContain('No agents found');
+      expect(!result.success ? result.error.message : undefined).toContain('No agents found');
     });
 
     it('returns error when no project found', async () => {
@@ -620,7 +620,7 @@ describe('Import Idempotency (Test Group 7)', () => {
       const result = await handleImport({ source: '/tmp/config.yaml' });
 
       expect(result.success).toBe(false);
-      expect(result.error).toContain('No agentcore project found');
+      expect(!result.success ? result.error.message : undefined).toContain('No agentcore project found');
     });
   });
 

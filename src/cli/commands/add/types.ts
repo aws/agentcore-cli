@@ -1,3 +1,4 @@
+import type { Result } from '../../../lib/types';
 import type {
   GatewayAuthorizerType,
   ModelProvider,
@@ -41,12 +42,7 @@ export interface AddAgentOptions extends VpcOptions {
   json?: boolean;
 }
 
-export interface AddAgentResult {
-  success: boolean;
-  agentName?: string;
-  agentPath?: string;
-  error?: string;
-}
+export type AddAgentResult = Result<{ agentName?: string; agentPath?: string }>;
 
 // Gateway types
 export interface AddGatewayOptions {
@@ -68,11 +64,7 @@ export interface AddGatewayOptions {
   json?: boolean;
 }
 
-export interface AddGatewayResult {
-  success: boolean;
-  gatewayName?: string;
-  error?: string;
-}
+export type AddGatewayResult = Result<{ gatewayName?: string }>;
 
 // Gateway Target types
 export interface AddGatewayTargetOptions {
@@ -100,12 +92,7 @@ export interface AddGatewayTargetOptions {
   json?: boolean;
 }
 
-export interface AddGatewayTargetResult {
-  success: boolean;
-  toolName?: string;
-  sourcePath?: string;
-  error?: string;
-}
+export type AddGatewayTargetResult = Result<{ toolName?: string; sourcePath?: string }>;
 
 // Memory types (v2: no owner/user concept)
 export interface AddMemoryOptions {
@@ -119,11 +106,7 @@ export interface AddMemoryOptions {
   json?: boolean;
 }
 
-export interface AddMemoryResult {
-  success: boolean;
-  memoryName?: string;
-  error?: string;
-}
+export type AddMemoryResult = Result<{ memoryName?: string }>;
 
 // Credential types (v2: credential, no owner/user concept)
 export interface AddCredentialOptions {
@@ -140,8 +123,4 @@ export interface AddCredentialOptions {
 /** @deprecated Use AddCredentialOptions */
 export type AddIdentityOptions = AddCredentialOptions;
 
-export interface AddCredentialResult {
-  success: boolean;
-  credentialName?: string;
-  error?: string;
-}
+export type AddCredentialResult = Result<{ credentialName?: string }>;

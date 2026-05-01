@@ -96,12 +96,13 @@ describe('handleLogsEval', () => {
 
   it('returns error when agent resolution fails', async () => {
     mockLoadDeployedProjectConfig.mockResolvedValue({});
-    mockResolveAgent.mockReturnValue({ success: false, error: 'No agents defined' });
+    mockResolveAgent.mockReturnValue({ success: false, error: new Error('No agents defined') });
 
     const result = await handleLogsEval({});
 
     expect(result.success).toBe(false);
-    expect(result.error).toBe('No agents defined');
+    // @ts-expect-error -- test accesses failure-branch field
+    expect(result.error.message).toBe('No agents defined');
   });
 
   it('returns error when no online eval configs exist for the agent', async () => {
@@ -112,7 +113,8 @@ describe('handleLogsEval', () => {
     const result = await handleLogsEval({});
 
     expect(result.success).toBe(false);
-    expect(result.error).toContain('No deployed online eval configs found');
+    // @ts-expect-error -- test accesses failure-branch field
+    expect(result.error.message).toContain('No deployed online eval configs found');
   });
 
   it('returns error when online eval configs exist but none are deployed', async () => {
@@ -123,7 +125,8 @@ describe('handleLogsEval', () => {
     const result = await handleLogsEval({});
 
     expect(result.success).toBe(false);
-    expect(result.error).toContain('No deployed online eval configs found');
+    // @ts-expect-error -- test accesses failure-branch field
+    expect(result.error.message).toContain('No deployed online eval configs found');
   });
 
   it('searches logs with time range when --since is specified', async () => {

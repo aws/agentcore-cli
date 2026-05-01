@@ -67,7 +67,7 @@ export function failResult(
   logger.finalize(false);
   return {
     success: false,
-    error,
+    error: new Error(error),
     resourceType,
     resourceName,
     logPath: logger.getRelativeLogPath(),

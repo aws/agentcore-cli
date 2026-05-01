@@ -1,3 +1,4 @@
+import type { Result } from '../../../lib/types';
 import { getCredentialProvider } from '../../aws/account';
 import type { CfnTemplate } from './template-utils';
 import { buildImportTemplate } from './template-utils';
@@ -26,10 +27,7 @@ export interface Phase2Options {
   onProgress?: (message: string) => void;
 }
 
-export interface Phase2Result {
-  success: boolean;
-  error?: string;
-}
+export type Phase2Result = Result;
 
 /**
  * Phase 2: IMPORT
@@ -125,11 +123,13 @@ export async function executePhase2(options: Phase2Options): Promise<Phase2Resul
       const existingStack = alreadyInStackMatch[2];
       return {
         success: false,
-        error: `Resource "${resourceId}" is already managed by CloudFormation stack "${existingStack}". It must be removed from that stack before importing into this project.`,
+        error: new Error(
+          `Resource "${resourceId}" is already managed by CloudFormation stack "${existingStack}". It must be removed from that stack before importing into this project.`
+        ),
       };
     }
 
-    return { success: false, error: `Import change set failed: ${message}` };
+    return { success: false, error: new Error(`Import change set failed: ${message}`) };
   }
 }
 

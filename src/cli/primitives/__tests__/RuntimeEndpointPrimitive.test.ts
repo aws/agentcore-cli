@@ -87,7 +87,12 @@ describe('RuntimeEndpointPrimitive', () => {
         endpoint: 'prod',
       });
 
-      expect(result).toEqual(expect.objectContaining({ success: false, error: expect.stringContaining('not found') }));
+      expect(result).toEqual(
+        expect.objectContaining({
+          success: false,
+          error: expect.objectContaining({ message: expect.stringContaining('not found') }),
+        })
+      );
     });
 
     it('returns error when endpoint already exists', async () => {
@@ -100,7 +105,10 @@ describe('RuntimeEndpointPrimitive', () => {
       });
 
       expect(result).toEqual(
-        expect.objectContaining({ success: false, error: expect.stringContaining('already exists') })
+        expect.objectContaining({
+          success: false,
+          error: expect.objectContaining({ message: expect.stringContaining('already exists') }),
+        })
       );
     });
 
@@ -134,7 +142,10 @@ describe('RuntimeEndpointPrimitive', () => {
       });
 
       expect(result).toEqual(
-        expect.objectContaining({ success: false, error: expect.stringContaining('positive integer') })
+        expect.objectContaining({
+          success: false,
+          error: expect.objectContaining({ message: expect.stringContaining('positive integer') }),
+        })
       );
     });
 
@@ -181,7 +192,10 @@ describe('RuntimeEndpointPrimitive', () => {
       });
 
       expect(result).toEqual(
-        expect.objectContaining({ success: false, error: expect.stringContaining('exceeds latest deployed version') })
+        expect.objectContaining({
+          success: false,
+          error: expect.objectContaining({ message: expect.stringContaining('exceeds latest deployed version') }),
+        })
       );
     });
   });
@@ -223,7 +237,12 @@ describe('RuntimeEndpointPrimitive', () => {
 
       const result = await primitive.remove('MyRuntime/nonexistent');
 
-      expect(result).toEqual(expect.objectContaining({ success: false, error: expect.stringContaining('not found') }));
+      expect(result).toEqual(
+        expect.objectContaining({
+          success: false,
+          error: expect.objectContaining({ message: expect.stringContaining('not found') }),
+        })
+      );
     });
 
     it('cleans up empty endpoints dict after removing last endpoint', async () => {

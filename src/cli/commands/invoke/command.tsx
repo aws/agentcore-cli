@@ -58,7 +58,7 @@ async function handleInvokeCLI(options: InvokeOptions): Promise<void> {
       console.log(JSON.stringify(result));
     } else if (options.stream) {
       // Streaming already wrote to stdout, just show session and log path
-      if (result.sessionId) {
+      if (result.success && result.sessionId) {
         console.error(`\nSession: ${result.sessionId}`);
         console.error(`To resume: agentcore invoke --session-id ${result.sessionId}`);
       }
@@ -72,7 +72,7 @@ async function handleInvokeCLI(options: InvokeOptions): Promise<void> {
       } else if (!result.success && result.error) {
         console.error(result.error);
       }
-      if (result.sessionId) {
+      if (result.success && result.sessionId) {
         console.error(`\nSession: ${result.sessionId}`);
         console.error(`To resume: agentcore invoke --session-id ${result.sessionId}`);
       }

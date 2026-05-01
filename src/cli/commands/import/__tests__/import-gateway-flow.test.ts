@@ -178,7 +178,7 @@ describe('handleImportGateway', () => {
       const result = await handleImportGateway({ arn: GATEWAY_ARN });
 
       expect(result.success).toBe(true);
-      expect(result.resourceId).toBe(GATEWAY_ID);
+      expect(result.success ? result.resourceId : undefined).toBe(GATEWAY_ID);
       expect(result.resourceType).toBe('gateway');
       expect(result.resourceName).toBe(GATEWAY_NAME);
 
@@ -195,12 +195,12 @@ describe('handleImportGateway', () => {
 
   describe('Rollback', () => {
     it('rolls back config on pipeline failure', async () => {
-      mockExecuteCdkImportPipeline.mockResolvedValue({ success: false, error: 'Phase 2 failed' });
+      mockExecuteCdkImportPipeline.mockResolvedValue({ success: false, error: new Error('Phase 2 failed') });
 
       const result = await handleImportGateway({ arn: GATEWAY_ARN });
 
       expect(result.success).toBe(false);
-      expect(result.error).toBe('Phase 2 failed');
+      expect(!result.success ? result.error.message : undefined).toBe('Phase 2 failed');
 
       // First call = write merged config, second call = rollback
       expect(mockConfigIOInstance.writeProjectSpec).toHaveBeenCalledTimes(2);
@@ -214,7 +214,7 @@ describe('handleImportGateway', () => {
       const result = await handleImportGateway({ arn: GATEWAY_ARN });
 
       expect(result.success).toBe(false);
-      expect(result.error).toContain('Could not find logical ID');
+      expect(!result.success ? result.error.message : undefined).toContain('Could not find logical ID');
 
       // First call = write merged config, second call = rollback
       expect(mockConfigIOInstance.writeProjectSpec).toHaveBeenCalledTimes(2);
@@ -232,7 +232,7 @@ describe('handleImportGateway', () => {
       const result = await handleImportGateway({ arn: GATEWAY_ARN });
 
       expect(result.success).toBe(false);
-      expect(result.error).toContain('already exists');
+      expect(!result.success ? result.error.message : undefined).toContain('already exists');
       expect(mockConfigIOInstance.writeProjectSpec).not.toHaveBeenCalled();
     });
 
@@ -303,7 +303,7 @@ describe('handleImportGateway', () => {
       const result = await handleImportGateway({ arn: GATEWAY_ARN });
 
       expect(result.success).toBe(false);
-      expect(result.error).toContain('already exists');
+      expect(!result.success ? result.error.message : undefined).toContain('already exists');
     });
   });
 
@@ -316,7 +316,7 @@ describe('handleImportGateway', () => {
       const result = await handleImportGateway({ arn: GATEWAY_ARN });
 
       expect(result.success).toBe(false);
-      expect(result.error).toContain('Invalid name');
+      expect(!result.success ? result.error.message : undefined).toContain('Invalid name');
       expect(mockConfigIOInstance.writeProjectSpec).not.toHaveBeenCalled();
     });
 
@@ -344,7 +344,7 @@ describe('handleImportGateway', () => {
       const result = await handleImportGateway({});
 
       expect(result.success).toBe(true);
-      expect(result.resourceId).toBe(GATEWAY_ID);
+      expect(result.success ? result.resourceId : undefined).toBe(GATEWAY_ID);
       expect(mockGetGatewayDetail).toHaveBeenCalledWith({ region: REGION, gatewayId: GATEWAY_ID });
     });
 
@@ -357,7 +357,7 @@ describe('handleImportGateway', () => {
       const result = await handleImportGateway({});
 
       expect(result.success).toBe(false);
-      expect(result.error).toContain('Multiple gateways found');
+      expect(!result.success ? result.error.message : undefined).toContain('Multiple gateways found');
     });
 
     it('fails when no gateways exist and no --arn', async () => {
@@ -366,7 +366,7 @@ describe('handleImportGateway', () => {
       const result = await handleImportGateway({});
 
       expect(result.success).toBe(false);
-      expect(result.error).toContain('No gateways found');
+      expect(!result.success ? result.error.message : undefined).toContain('No gateways found');
     });
   });
 

@@ -151,10 +151,10 @@ export function ImportFlow({ onBack, onNavigate }: ImportFlowProps) {
                   <Text dimColor>Name: </Text>
                   <Text>{result.resourceName}</Text>
                 </Text>
-                {result.resourceId && (
+                {(result.success ? result.resourceId : undefined) && (
                   <Text>
                     <Text dimColor>ID: </Text>
-                    <Text>{result.resourceId}</Text>
+                    <Text>{result.success ? result.resourceId : undefined}</Text>
                   </Text>
                 )}
               </Box>

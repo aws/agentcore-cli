@@ -163,7 +163,8 @@ describe('enableTransactionSearch', () => {
       const result = await enableTransactionSearch('us-east-1', '123456789012');
 
       expect(result.success).toBe(false);
-      expect(result.error).toContain('Insufficient permissions to enable Application Signals');
+      // @ts-expect-error -- test accesses failure-branch field
+      expect(result.error.message).toContain('Insufficient permissions to enable Application Signals');
     });
 
     it('returns error when Application Signals fails with generic error', async () => {
@@ -172,7 +173,8 @@ describe('enableTransactionSearch', () => {
       const result = await enableTransactionSearch('us-east-1', '123456789012');
 
       expect(result.success).toBe(false);
-      expect(result.error).toContain('Failed to enable Application Signals');
+      // @ts-expect-error -- test accesses failure-branch field
+      expect(result.error.message).toContain('Failed to enable Application Signals');
     });
 
     it('returns error when CloudWatch Logs policy fails with AccessDenied', async () => {
@@ -184,7 +186,8 @@ describe('enableTransactionSearch', () => {
       const result = await enableTransactionSearch('us-east-1', '123456789012');
 
       expect(result.success).toBe(false);
-      expect(result.error).toContain('Insufficient permissions to configure CloudWatch Logs policy');
+      // @ts-expect-error -- test accesses failure-branch field
+      expect(result.error.message).toContain('Insufficient permissions to configure CloudWatch Logs policy');
     });
 
     it('returns error when trace destination fails', async () => {
@@ -195,7 +198,8 @@ describe('enableTransactionSearch', () => {
       const result = await enableTransactionSearch('us-east-1', '123456789012');
 
       expect(result.success).toBe(false);
-      expect(result.error).toContain('Failed to configure trace destination');
+      // @ts-expect-error -- test accesses failure-branch field
+      expect(result.error.message).toContain('Failed to configure trace destination');
     });
 
     it('returns error when indexing rule update fails', async () => {
@@ -215,7 +219,8 @@ describe('enableTransactionSearch', () => {
       const result = await enableTransactionSearch('us-east-1', '123456789012');
 
       expect(result.success).toBe(false);
-      expect(result.error).toContain('Failed to configure indexing rules');
+      // @ts-expect-error -- test accesses failure-branch field
+      expect(result.error.message).toContain('Failed to configure indexing rules');
     });
 
     it('does not proceed to later steps when an earlier step fails', async () => {

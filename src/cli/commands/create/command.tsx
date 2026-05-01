@@ -94,7 +94,7 @@ async function handleCreateCLI(options: CreateOptions): Promise<void> {
     const result = getDryRunInfo({ name: name!, projectName, cwd, language: options.language });
     if (options.json) {
       console.log(JSON.stringify(result));
-    } else {
+    } else if (result.success) {
       console.log('Dry run - would create:');
       for (const path of result.wouldCreate ?? []) {
         console.log(`  ${path}`);
@@ -158,7 +158,7 @@ async function handleCreateCLI(options: CreateOptions): Promise<void> {
       });
 
   if (options.json) {
-    console.log(JSON.stringify(result));
+    console.log(JSON.stringify(result.success ? result : { ...result, error: result.error.message }));
   } else if (result.success) {
     printCreateSummary(projectName!, result.agentName, options.language, options.framework);
     if (options.skipInstall) {
@@ -167,7 +167,7 @@ async function handleCreateCLI(options: CreateOptions): Promise<void> {
       );
     }
   } else {
-    console.error(result.error);
+    console.error(result.error.message);
   }
 
   process.exit(result.success ? 0 : 1);

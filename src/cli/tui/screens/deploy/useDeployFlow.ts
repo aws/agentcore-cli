@@ -648,8 +648,8 @@ export function useDeployFlow(options: DeployFlowOptions = {}): DeployFlowState 
                 agentNames,
                 hasGateways,
               });
-              if (tsResult.error) {
-                logger.log(`Transaction search setup warning: ${tsResult.error}`, 'warn');
+              if (!tsResult.success) {
+                logger.log(`Transaction search setup warning: ${tsResult.error.message}`, 'warn');
               } else {
                 setDeployNotes(prev => [
                   ...prev,

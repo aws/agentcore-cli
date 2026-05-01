@@ -1,3 +1,4 @@
+import type { Result } from '../../../lib/types';
 import { parseTimeString } from '../../../lib/utils';
 import { getOnlineEvaluationConfig } from '../../aws/agentcore-control';
 import { searchLogs, streamLogs } from '../../aws/cloudwatch';
@@ -13,10 +14,7 @@ export interface LogsEvalOptions {
   follow?: boolean;
 }
 
-export interface LogsEvalResult {
-  success: boolean;
-  error?: string;
-}
+export type LogsEvalResult = Result;
 
 function formatLogLine(event: { timestamp: number; message: string }, json: boolean): string {
   if (json) {
@@ -75,7 +73,7 @@ export async function handleLogsEval(options: LogsEvalOptions): Promise<LogsEval
   const agentResult = resolveAgent(context, { runtime: options.agent });
 
   if (!agentResult.success) {
-    return { success: false, error: agentResult.error };
+    return { success: false, error: new Error(agentResult.error.message) };
   }
 
   const { agent } = agentResult;
@@ -85,7 +83,7 @@ export async function handleLogsEval(options: LogsEvalOptions): Promise<LogsEval
   if (resolvedLogGroups.length === 0) {
     return {
       success: false,
-      error: `No deployed online eval configs found. Add one with 'agentcore add online-eval' and deploy.`,
+      error: new Error(`No deployed online eval configs found. Add one with 'agentcore add online-eval' and deploy.`),
     };
   }
 

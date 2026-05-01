@@ -105,7 +105,7 @@ export const registerStatus = (program: Command) => {
           }
 
           if (!result.success) {
-            render(<Text color="red">{result.error}</Text>);
+            render(<Text color="red">{result.error.message}</Text>);
             return;
           }
 
@@ -132,7 +132,7 @@ export const registerStatus = (program: Command) => {
         }
 
         if (!result.success) {
-          render(<Text color="red">{result.error}</Text>);
+          render(<Text color="red">{result.error.message}</Text>);
           return;
         }
 

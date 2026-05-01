@@ -2,10 +2,10 @@ import { findConfigRoot } from '../../lib';
 import type { ABTest } from '../../schema/schemas/primitives/ab-test';
 import { ABTestSchema } from '../../schema/schemas/primitives/ab-test';
 import { getErrorMessage } from '../errors';
-import type { RemovalPreview, RemovalResult, SchemaChange } from '../operations/remove/types';
+import type { RemovalPreview, Result, SchemaChange } from '../operations/remove/types';
 import { requireTTY } from '../tui/guards/tty';
 import { BasePrimitive } from './BasePrimitive';
-import type { AddResult, AddScreenComponent, RemovableResource } from './types';
+import type { AddScreenComponent, RemovableResource } from './types';
 import type { Command } from '@commander-js/extra-typings';
 
 export type GatewayChoice = { type: 'create-new' } | { type: 'existing-http'; name: string };
@@ -60,22 +60,22 @@ export class ABTestPrimitive extends BasePrimitive<AddABTestOptions, RemovableAB
   override readonly article = 'an';
   readonly primitiveSchema = ABTestSchema;
 
-  async add(options: AddABTestOptions): Promise<AddResult<{ abTestName: string }>> {
+  async add(options: AddABTestOptions): Promise<Result<{ abTestName: string }>> {
     try {
       const abTest = await this.createABTest(options);
       return { success: true, abTestName: abTest.name };
     } catch (err) {
-      return { success: false, error: getErrorMessage(err) };
+      return { success: false, error: err instanceof Error ? err : new Error(getErrorMessage(err)) };
     }
   }
 
-  async remove(testName: string, options?: { deleteGateway?: boolean }): Promise<RemovalResult> {
+  async remove(testName: string, options?: { deleteGateway?: boolean }): Promise<Result> {
     try {
       const project = await this.readProjectSpec();
 
       const index = (project.abTests ?? []).findIndex(t => t.name === testName);
       if (index === -1) {
-        return { success: false, error: `AB test "${testName}" not found.` };
+        return { success: false, error: new Error(`AB test "${testName}" not found.`) };
       }
 
       const removedTest = project.abTests[index]!;
@@ -123,7 +123,7 @@ export class ABTestPrimitive extends BasePrimitive<AddABTestOptions, RemovableAB
 
       return { success: true };
     } catch (err) {
-      return { success: false, error: getErrorMessage(err) };
+      return { success: false, error: err instanceof Error ? err : new Error(getErrorMessage(err)) };
     }
   }
 
@@ -364,11 +364,11 @@ Target-Based Mode (--mode target-based)
               });
 
               if (cliOptions.json) {
-                console.log(JSON.stringify(result));
+                console.log(JSON.stringify(result.success ? result : { success: false, error: result.error.message }));
               } else if (result.success) {
                 console.log(`Added target-based AB test '${result.abTestName}'`);
               } else {
-                console.error(result.error);
+                console.error(result.error.message);
               }
               process.exit(result.success ? 0 : 1);
               return;
@@ -411,11 +411,11 @@ Target-Based Mode (--mode target-based)
             });
 
             if (cliOptions.json) {
-              console.log(JSON.stringify(result));
+              console.log(JSON.stringify(result.success ? result : { success: false, error: result.error.message }));
             } else if (result.success) {
               console.log(`Added AB test '${result.abTestName}'`);
             } else {
-              console.error(result.error);
+              console.error(result.error.message);
             }
             process.exit(result.success ? 0 : 1);
           } else {
@@ -475,7 +475,7 @@ Target-Based Mode (--mode target-based)
                 resourceType: this.kind,
                 resourceName: cliOptions.name,
                 message: result.success ? `Removed ${this.label.toLowerCase()} '${cliOptions.name}'` : undefined,
-                error: !result.success ? result.error : undefined,
+                error: !result.success ? result.error.message : undefined,
               })
             );
             process.exit(result.success ? 0 : 1);
@@ -598,12 +598,12 @@ Target-Based Mode (--mode target-based)
     return abTest;
   }
 
-  async addTargetBased(options: AddTargetBasedABTestOptions): Promise<AddResult<{ abTestName: string }>> {
+  async addTargetBased(options: AddTargetBasedABTestOptions): Promise<Result<{ abTestName: string }>> {
     try {
       const abTest = await this.createTargetBasedABTest(options);
       return { success: true, abTestName: abTest.name };
     } catch (err) {
-      return { success: false, error: getErrorMessage(err) };
+      return { success: false, error: err instanceof Error ? err : new Error(getErrorMessage(err)) };
     }
   }
 

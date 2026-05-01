@@ -57,7 +57,7 @@ export async function createProject(options: CreateProjectOptions): Promise<Crea
 
     // Fail on errors
     if (!depCheck.passed) {
-      return { success: false, error: depCheck.errors.join('\n'), warnings: depWarnings };
+      return { success: false, error: new Error(depCheck.errors.join('\n')), warnings: depWarnings };
     }
   }
 
@@ -93,7 +93,7 @@ export async function createProject(options: CreateProjectOptions): Promise<Crea
       const gitResult = await initGitRepo(projectRoot);
       if (gitResult.status === 'error') {
         onProgress?.('Initialize git repository', 'error');
-        return { success: false, error: gitResult.message, warnings: depWarnings };
+        return { success: false, error: new Error(gitResult.message), warnings: depWarnings };
       }
       onProgress?.('Initialize git repository', 'done');
     }
@@ -104,7 +104,7 @@ export async function createProject(options: CreateProjectOptions): Promise<Crea
       warnings: depWarnings.length > 0 ? depWarnings : undefined,
     };
   } catch (err) {
-    return { success: false, error: getErrorMessage(err), warnings: depWarnings };
+    return { success: false, error: new Error(getErrorMessage(err)), warnings: depWarnings };
   }
 }
 
@@ -174,7 +174,7 @@ export async function createProjectWithAgent(options: CreateWithAgentOptions): P
 
   // Fail on errors
   if (!depCheck.passed) {
-    return { success: false, error: depCheck.errors.join('\n'), warnings: depWarnings };
+    return { success: false, error: new Error(depCheck.errors.join('\n')), warnings: depWarnings };
   }
 
   // First create the base project (skip dependency check since we already did it)
@@ -217,7 +217,7 @@ export async function createProjectWithAgent(options: CreateWithAgentOptions): P
         warnings: depWarnings.length > 0 ? depWarnings : undefined,
       };
     } catch (err) {
-      return { success: false, error: getErrorMessage(err), warnings: depWarnings };
+      return { success: false, error: new Error(getErrorMessage(err)), warnings: depWarnings };
     }
   }
 
@@ -310,7 +310,7 @@ export async function createProjectWithAgent(options: CreateWithAgentOptions): P
       warnings: depWarnings.length > 0 ? depWarnings : undefined,
     };
   } catch (err) {
-    return { success: false, error: getErrorMessage(err), warnings: depWarnings };
+    return { success: false, error: new Error(getErrorMessage(err)), warnings: depWarnings };
   }
 }
 

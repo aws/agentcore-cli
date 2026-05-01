@@ -1,3 +1,4 @@
+import type { Result } from '../../../lib/types';
 import { getCredentialProvider } from '../../aws/account';
 import type { CfnTemplate } from './template-utils';
 import { filterCompanionOnlyTemplate } from './template-utils';
@@ -18,11 +19,7 @@ export interface Phase1Options {
   onProgress?: (message: string) => void;
 }
 
-export interface Phase1Result {
-  success: boolean;
-  stackExists: boolean;
-  error?: string;
-}
+export type Phase1Result = Result & { stackExists: boolean };
 
 /**
  * Phase 1: UPDATE (pre-import)
@@ -89,7 +86,7 @@ export async function executePhase1(options: Phase1Options): Promise<Phase1Resul
         onProgress?.('Stack already has companion resources, no update needed');
         return { success: true, stackExists: true };
       }
-      return { success: false, stackExists: true, error: message };
+      return { success: false, stackExists: true, error: new Error(message) };
     }
   } else {
     onProgress?.(`Creating stack ${stackName} with companion resources...`);
@@ -114,7 +111,7 @@ export async function executePhase1(options: Phase1Options): Promise<Phase1Resul
       onProgress?.('Phase 1 CREATE complete');
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : String(err);
-      return { success: false, stackExists: false, error: message };
+      return { success: false, stackExists: false, error: new Error(message) };
     }
   }
 

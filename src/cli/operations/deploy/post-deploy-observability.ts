@@ -1,4 +1,5 @@
 import { readGlobalConfigSync } from '../../../lib/schemas/io/global-config';
+import type { Result } from '../../../lib/types';
 import { enableTransactionSearch } from '../../aws/transaction-search';
 
 export interface TransactionSearchSetupOptions {
@@ -8,10 +9,7 @@ export interface TransactionSearchSetupOptions {
   hasGateways?: boolean;
 }
 
-export interface TransactionSearchSetupResult {
-  success: boolean;
-  error?: string;
-}
+export type TransactionSearchSetupResult = Result;
 
 /**
  * Post-deploy step: enable CloudWatch Transaction Search (Application Signals +

@@ -489,10 +489,10 @@ agents:
     });
 
     expect(result.success).toBe(true);
-    expect(result.importedAgents).toEqual([]);
-    expect(result.importedMemories).toEqual([]);
-    expect(result.stackName).toBeDefined();
-    expect(result.projectSpec).toBeDefined();
+    expect(result.success ? result.importedAgents : undefined).toEqual([]);
+    expect(result.success ? result.importedMemories : undefined).toEqual([]);
+    expect(result.success ? result.stackName : undefined).toBeDefined();
+    expect(result.success ? result.projectSpec : undefined).toBeDefined();
   });
 
   it('emits "No deployed resources found" message', async () => {
@@ -645,7 +645,7 @@ agents:
     const { handleImport } = await import('../actions.js');
     const result = await handleImport({ source: yamlPath });
 
-    expect(result.stackName).toBe('AgentCore-myproject-default');
+    expect(result.success ? result.stackName : undefined).toBe('AgentCore-myproject-default');
   });
 });
 
@@ -725,8 +725,8 @@ agents:
     // No physical IDs means target resolution is skipped entirely.
     // The import succeeds -- config merge + source copy still happen.
     expect(result.success).toBe(true);
-    expect(result.importedAgents).toEqual([]);
-    expect(result.importedMemories).toEqual([]);
+    expect(result.success ? result.importedAgents : undefined).toEqual([]);
+    expect(result.success ? result.importedMemories : undefined).toEqual([]);
   });
 
   it('succeeds when project already has targets even with null YAML account/region', async () => {
@@ -769,8 +769,8 @@ agents:
     const result = await handleImport({ source: yamlPath });
 
     expect(result.success).toBe(true);
-    expect(result.importedAgents).toEqual([]);
-    expect(result.importedMemories).toEqual([]);
+    expect(result.success ? result.importedAgents : undefined).toEqual([]);
+    expect(result.success ? result.importedMemories : undefined).toEqual([]);
   });
 
   it('does not write targets when YAML has account/region but no physical IDs', async () => {
@@ -816,7 +816,7 @@ agents:
     // No physical IDs means target is not written to disk
     expect(mockWriteAWSDeploymentTargets).not.toHaveBeenCalled();
     // But the stackName should still be computed using 'default' fallback
-    expect(result.stackName).toBe('AgentCore-myproject-default');
+    expect(result.success ? result.stackName : undefined).toBe('AgentCore-myproject-default');
   });
 });
 

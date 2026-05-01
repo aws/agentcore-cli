@@ -132,9 +132,9 @@ describe('resolveAgentContext', () => {
     const result = resolveAgentContext(context, {});
     expect(result.success).toBe(false);
     if (!result.success) {
-      expect(result.error).toContain('Multiple runtimes found');
-      expect(result.error).toContain('AgentA');
-      expect(result.error).toContain('AgentB');
+      expect(result.error.message).toContain('Multiple runtimes found');
+      expect(result.error.message).toContain('AgentA');
+      expect(result.error.message).toContain('AgentB');
     }
   });
 
@@ -205,7 +205,7 @@ describe('resolveAgentContext', () => {
     const result = resolveAgentContext(makeContext(), { runtime: 'UnknownAgent' });
     expect(result.success).toBe(false);
     if (!result.success) {
-      expect(result.error).toContain("Runtime 'UnknownAgent' not found");
+      expect(result.error.message).toContain("Runtime 'UnknownAgent' not found");
     }
   });
 
@@ -230,7 +230,7 @@ describe('resolveAgentContext', () => {
     const result = resolveAgentContext(context, {});
     expect(result.success).toBe(false);
     if (!result.success) {
-      expect(result.error).toContain('No runtimes defined');
+      expect(result.error.message).toContain('No runtimes defined');
     }
   });
 
@@ -249,7 +249,7 @@ describe('resolveAgentContext', () => {
     const result = resolveAgentContext(context, {});
     expect(result.success).toBe(false);
     if (!result.success) {
-      expect(result.error).toContain('is not deployed');
+      expect(result.error.message).toContain('is not deployed');
     }
   });
 });

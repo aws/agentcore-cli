@@ -2,11 +2,11 @@ import { findConfigRoot } from '../../lib';
 import type { OnlineEvalConfig } from '../../schema';
 import { OnlineEvalConfigSchema } from '../../schema';
 import { getErrorMessage } from '../errors';
-import type { RemovalPreview, RemovalResult, SchemaChange } from '../operations/remove/types';
+import type { RemovalPreview, Result, SchemaChange } from '../operations/remove/types';
 import { cliCommandRun } from '../telemetry/cli-command-run.js';
 import { requireTTY } from '../tui/guards/tty';
 import { BasePrimitive } from './BasePrimitive';
-import type { AddResult, AddScreenComponent, RemovableResource } from './types';
+import type { AddScreenComponent, RemovableResource } from './types';
 import type { Command } from '@commander-js/extra-typings';
 
 export interface AddOnlineEvalConfigOptions {
@@ -29,22 +29,22 @@ export class OnlineEvalConfigPrimitive extends BasePrimitive<AddOnlineEvalConfig
   override readonly article = 'an';
   readonly primitiveSchema = OnlineEvalConfigSchema;
 
-  async add(options: AddOnlineEvalConfigOptions): Promise<AddResult<{ configName: string }>> {
+  async add(options: AddOnlineEvalConfigOptions): Promise<Result<{ configName: string }>> {
     try {
       const config = await this.createOnlineEvalConfig(options);
       return { success: true, configName: config.name };
     } catch (err) {
-      return { success: false, error: getErrorMessage(err) };
+      return { success: false, error: err instanceof Error ? err : new Error(getErrorMessage(err)) };
     }
   }
 
-  async remove(configName: string): Promise<RemovalResult> {
+  async remove(configName: string): Promise<Result> {
     try {
       const project = await this.readProjectSpec();
 
       const index = project.onlineEvalConfigs.findIndex(c => c.name === configName);
       if (index === -1) {
-        return { success: false, error: `Online eval config "${configName}" not found.` };
+        return { success: false, error: new Error(`Online eval config "${configName}" not found.`) };
       }
 
       project.onlineEvalConfigs.splice(index, 1);
@@ -52,7 +52,7 @@ export class OnlineEvalConfigPrimitive extends BasePrimitive<AddOnlineEvalConfig
 
       return { success: true };
     } catch (err) {
-      return { success: false, error: getErrorMessage(err) };
+      return { success: false, error: err instanceof Error ? err : new Error(getErrorMessage(err)) };
     }
   }
 
@@ -159,7 +159,7 @@ export class OnlineEvalConfigPrimitive extends BasePrimitive<AddOnlineEvalConfig
               });
 
               if (!result.success) {
-                throw new Error(result.error);
+                throw result.error;
               }
 
               if (cliOptions.json) {

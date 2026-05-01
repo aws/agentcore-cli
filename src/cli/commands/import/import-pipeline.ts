@@ -1,4 +1,5 @@
 import type { ConfigIO } from '../../../lib';
+import type { Result } from '../../../lib/types';
 import type { AwsDeploymentTarget } from '../../../schema';
 import { LocalCdkProject } from '../../cdk/local-cdk-project';
 import { silentIoHost } from '../../cdk/toolkit-lib';
@@ -27,12 +28,10 @@ export interface CdkImportPipelineInput {
   deployedStateEntries: ImportedResource[];
 }
 
-export interface CdkImportPipelineResult {
-  success: boolean;
-  error?: string;
+export type CdkImportPipelineResult = Result & {
   /** True when buildResourcesToImport returned an empty list. Callers decide if this is an error. */
   noResources?: boolean;
-}
+};
 
 /**
  * Shared CDK import pipeline: build → synth → bootstrap → publish assets → phase 1 → phase 2 → update state.
@@ -73,7 +72,7 @@ export async function executeCdkImportPipeline(input: CdkImportPipelineInput): P
     const files = fs.readdirSync(assemblyDirectory).filter((f: string) => f.endsWith('.template.json'));
     if (files.length === 0) {
       await toolkitWrapper.dispose();
-      return { success: false, error: 'No CloudFormation template found in CDK assembly' };
+      return { success: false, error: new Error('No CloudFormation template found in CDK assembly') };
     }
     synthTemplate = JSON.parse(fs.readFileSync(path.join(assemblyDirectory, files[0]!), 'utf-8')) as CfnTemplate;
   }
@@ -103,14 +102,14 @@ export async function executeCdkImportPipeline(input: CdkImportPipelineInput): P
   });
 
   if (!phase1Result.success) {
-    return { success: false, error: `Phase 1 failed: ${phase1Result.error}` };
+    return { success: false, error: new Error(`Phase 1 failed: ${phase1Result.error.message}`) };
   }
 
   // 6. Read deployed template
   onProgress('Reading deployed template...');
   const deployedTemplate = await getDeployedTemplate(target.region, stackName);
   if (!deployedTemplate) {
-    return { success: false, error: 'Could not read deployed template after Phase 1' };
+    return { success: false, error: new Error('Could not read deployed template after Phase 1') };
   }
 
   // 7. Build resources to import (caller-specific logic)
@@ -133,7 +132,7 @@ export async function executeCdkImportPipeline(input: CdkImportPipelineInput): P
   });
 
   if (!phase2Result.success) {
-    return { success: false, error: `Phase 2 failed: ${phase2Result.error}` };
+    return { success: false, error: new Error(`Phase 2 failed: ${phase2Result.error.message}`) };
   }
 
   // 9. Update deployed state

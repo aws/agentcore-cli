@@ -25,7 +25,7 @@ const RECOMMENDATION_TYPE_MAP: Record<string, RecommendationType> = {
 };
 
 function formatRunOutput(result: Awaited<ReturnType<typeof handleRunEval>>): void {
-  if (!result.run) return;
+  if (!result.success) return;
 
   const { run } = result;
   const date = new Date(run.timestamp).toLocaleString([], {
@@ -151,7 +151,7 @@ export const registerRun = (program: Command) => {
             formatRunOutput(result);
           } else {
             formatRunOutput(result);
-            render(<Text color="red">{result.error}</Text>);
+            render(<Text color="red">{result.error.message}</Text>);
           }
 
           process.exit(result.success ? 0 : 1);
@@ -244,7 +244,7 @@ export const registerRun = (program: Command) => {
           } else if (result.success) {
             formatBatchEvalOutput(result);
           } else {
-            render(<Text color="red">{result.error}</Text>);
+            render(<Text color="red">{result.error.message}</Text>);
             if (result.logFilePath) {
               console.error(`\nLog: ${result.logFilePath}`);
             }
@@ -403,7 +403,7 @@ export const registerRun = (program: Command) => {
             if (cliOptions.json) {
               console.log(JSON.stringify(result));
             } else {
-              render(<Text color="red">{result.error}</Text>);
+              render(<Text color="red">{result.error.message}</Text>);
               if (result.logFilePath) {
                 console.error(`\nLog: ${result.logFilePath}`);
               }
@@ -495,7 +495,7 @@ function formatBatchEvalOutput(result: RunBatchEvaluationCommandResult): void {
   console.log(`Status: ${result.status}`);
 
   // Show session stats from API if available
-  const evalResults = result.evaluationResults;
+  const evalResults = result.success ? result.evaluationResults : undefined;
   if (evalResults) {
     const parts: string[] = [];
     if (evalResults.totalNumberOfSessions != null) parts.push(`${evalResults.totalNumberOfSessions} sessions`);

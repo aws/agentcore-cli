@@ -55,7 +55,7 @@ function registerOnlineEvalSubcommand(parent: Command, action: 'pause' | 'resume
           const displayName = cliOptions.arn ? result.configId : name;
           console.log(`${pastTense} online eval config "${displayName}" (status: ${result.executionStatus})`);
         } else {
-          render(<Text color="red">{result.error}</Text>);
+          render(<Text color="red">{result.error.message}</Text>);
         }
 
         process.exit(result.success ? 0 : 1);

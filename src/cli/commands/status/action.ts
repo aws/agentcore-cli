@@ -1,4 +1,5 @@
 import { ConfigIO } from '../../../lib';
+import type { Result } from '../../../lib/types';
 import type { AgentCoreProjectSpec, AwsDeploymentTargets, DeployedResourceState, DeployedState } from '../../../schema';
 import { getAgentRuntimeStatus } from '../../aws';
 import { getEvaluator, getOnlineEvaluationConfig } from '../../aws/agentcore-control';
@@ -32,15 +33,12 @@ export interface ResourceStatusEntry {
   invocationUrl?: string;
 }
 
-export interface ProjectStatusResult {
-  success: boolean;
+export type ProjectStatusResult = Result<{ targetRegion?: string }> & {
   projectName: string;
   targetName: string;
-  targetRegion?: string;
   resources: ResourceStatusEntry[];
-  error?: string;
   logPath?: string;
-}
+};
 
 export interface StatusContext {
   project: AgentCoreProjectSpec;
@@ -48,14 +46,11 @@ export interface StatusContext {
   awsTargets: AwsDeploymentTargets;
 }
 
-export interface RuntimeLookupResult {
-  success: boolean;
+export type RuntimeLookupResult = Result<{
   targetName?: string;
   runtimeId?: string;
   runtimeStatus?: string;
-  error?: string;
-  logPath?: string;
-}
+}> & { logPath?: string };
 
 /**
  * Loads configuration required for status check.
@@ -336,7 +331,7 @@ export async function handleProjectStatus(
       projectName: project.name,
       targetName: options.targetName,
       resources: [],
-      error,
+      error: new Error(error),
       logPath: logger.getRelativeLogPath(),
     };
   }
@@ -504,7 +499,7 @@ export async function handleRuntimeLookup(
     const error = 'No deployment targets found. Run `agentcore create` first.';
     logger.endStep('error', error);
     logger.finalize(false);
-    return { success: false, error, logPath: logger.getRelativeLogPath() };
+    return { success: false, error: new Error(error), logPath: logger.getRelativeLogPath() };
   }
 
   const selectedTargetName = options.targetName ?? targetNames[0]!;
@@ -513,7 +508,7 @@ export async function handleRuntimeLookup(
     const error = `Target '${options.targetName}' not found. Available: ${targetNames.join(', ')}`;
     logger.endStep('error', error);
     logger.finalize(false);
-    return { success: false, error, logPath: logger.getRelativeLogPath() };
+    return { success: false, error: new Error(error), logPath: logger.getRelativeLogPath() };
   }
 
   const targetConfig = awsTargets.find(target => target.name === selectedTargetName);
@@ -522,7 +517,7 @@ export async function handleRuntimeLookup(
     const error = `Target config '${selectedTargetName}' not found in aws-targets`;
     logger.endStep('error', error);
     logger.finalize(false);
-    return { success: false, error, logPath: logger.getRelativeLogPath() };
+    return { success: false, error: new Error(error), logPath: logger.getRelativeLogPath() };
   }
 
   logger.log(`Target: ${selectedTargetName} (${targetConfig.region})`);
@@ -550,6 +545,6 @@ export async function handleRuntimeLookup(
     const errorMsg = getErrorMessage(error);
     logger.endStep('error', errorMsg);
     logger.finalize(false);
-    return { success: false, error: errorMsg, logPath: logger.getRelativeLogPath() };
+    return { success: false, error: new Error(errorMsg), logPath: logger.getRelativeLogPath() };
   }
 }

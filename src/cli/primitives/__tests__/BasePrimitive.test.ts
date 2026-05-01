@@ -1,5 +1,5 @@
 import { BasePrimitive } from '../BasePrimitive';
-import type { AddResult, AddScreenComponent, RemovableResource, RemovalPreview, RemovalResult } from '../types';
+import type { AddScreenComponent, RemovableResource, RemovalPreview, Result } from '../types';
 import type { Command } from '@commander-js/extra-typings';
 import { describe, expect, it } from 'vitest';
 import { z } from 'zod';
@@ -10,11 +10,11 @@ class StubPrimitive extends BasePrimitive {
   readonly label = 'Stub';
   readonly primitiveSchema = z.object({ name: z.string() });
 
-  add(_options: Record<string, unknown>): Promise<AddResult> {
+  add(_options: Record<string, unknown>): Promise<Result> {
     return Promise.resolve({ success: true });
   }
 
-  remove(_name: string): Promise<RemovalResult> {
+  remove(_name: string): Promise<Result> {
     return Promise.resolve({ success: true });
   }
 

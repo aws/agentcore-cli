@@ -224,7 +224,7 @@ export async function executeResourceImport<TDetail, TSummary>(
 
     if (!pipelineResult.success) {
       await rollback();
-      logger.endStep('error', pipelineResult.error);
+      logger.endStep('error', pipelineResult.error.message);
       logger.finalize(false);
       return {
         success: false,
@@ -254,7 +254,7 @@ export async function executeResourceImport<TDetail, TSummary>(
     }
     return {
       success: false,
-      error: message,
+      error: new Error(message),
       resourceType: descriptor.resourceType,
       resourceName: options.name ?? '',
       logPath: importCtx?.logger.getRelativeLogPath(),

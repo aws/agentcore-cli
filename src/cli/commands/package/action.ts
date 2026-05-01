@@ -6,6 +6,7 @@ import {
   resolveCodeLocation,
   validateAgentExists,
 } from '../../../lib';
+import type { Result } from '../../../lib/types';
 import type { AgentCoreProjectSpec } from '../../../schema';
 import { join, resolve } from 'path';
 
@@ -40,12 +41,7 @@ export interface PackageAgentResult {
   sizeMb: string;
 }
 
-export interface PackageResult {
-  success: boolean;
-  results: PackageAgentResult[];
-  skipped: string[];
-  error?: string;
-}
+export type PackageResult = Result & { results: PackageAgentResult[]; skipped: string[] };
 
 export async function handlePackage(context: PackageContext): Promise<PackageResult> {
   const { project, configBaseDir, targetAgent } = context;

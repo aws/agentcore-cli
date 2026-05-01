@@ -363,7 +363,7 @@ export function useCreateFlow(cwd: string): CreateFlowState {
                   sessionStorageMountPath: addAgentConfig.sessionStorageMountPath,
                 });
                 if (!importResult.success) {
-                  throw new Error(importResult.error ?? 'Import failed');
+                  throw importResult.error;
                 }
               } else {
                 // BYO path: just write config to project (no file generation)

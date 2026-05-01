@@ -32,7 +32,7 @@ export function useCreateEvaluator() {
           })
       );
       if (!addResult.success) {
-        throw new Error(addResult.error ?? 'Failed to create evaluator');
+        throw addResult.error ?? new Error('Failed to create evaluator');
       }
       setStatus({ state: 'success' });
       return { ok: true as const, evaluatorName: config.name, codePath: addResult.codePath };

@@ -25,5 +25,8 @@ export * from './errors';
 export * from './packaging';
 export * from './utils';
 
+// Types
+export type { Result } from './types';
+
 // Schema I/O utilities
 export * from './schemas/io';

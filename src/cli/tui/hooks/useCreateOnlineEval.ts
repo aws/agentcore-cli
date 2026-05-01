@@ -38,7 +38,7 @@ export function useCreateOnlineEval() {
           })
       );
       if (!addResult.success) {
-        throw new Error(addResult.error ?? 'Failed to create online eval config');
+        throw addResult.error ?? new Error('Failed to create online eval config');
       }
       setStatus({ state: 'success' });
       return { ok: true as const, configName: config.name };

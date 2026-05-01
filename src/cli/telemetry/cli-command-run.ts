@@ -1,5 +1,5 @@
 import { getErrorMessage } from '../errors';
-import type { AddResult } from '../primitives/types.js';
+import type { Result } from '../primitives/types.js';
 import { TelemetryClientAccessor } from './client-accessor.js';
 import type { Command, CommandAttrs } from './schemas/command-run.js';
 
@@ -44,8 +44,8 @@ export async function cliCommandRun<C extends Command>(
 export async function withAddTelemetry<C extends Command, T extends Record<string, unknown>>(
   command: C,
   attrs: CommandAttrs<C>,
-  fn: () => Promise<AddResult<T>>
-): Promise<AddResult<T>> {
+  fn: () => Promise<Result<T>>
+): Promise<Result<T>> {
   let client;
   try {
     client = await TelemetryClientAccessor.get();
@@ -53,18 +53,18 @@ export async function withAddTelemetry<C extends Command, T extends Record<strin
     return fn();
   }
 
-  let result: AddResult<T> | undefined;
+  let result: Result<T> | undefined;
   try {
     await client.withCommandRun(command, async () => {
       result = await fn();
-      if (!result.success) throw new Error(result.error);
+      if (!result.success) throw result.error;
       return attrs;
     });
   } catch (err) {
     // withCommandRun re-throws after recording failure telemetry.
     // result is set if fn() ran; if not, fn() itself threw.
     if (!result) {
-      return { success: false, error: getErrorMessage(err) };
+      return { success: false, error: err instanceof Error ? err : new Error(getErrorMessage(err)) } as Result<T>;
     }
   }
   return result!;

@@ -1,3 +1,5 @@
+import type { Result } from '../../../lib/types';
+
 export interface CloudWatchTraceRecord {
   '@timestamp': string;
   '@message': unknown;
@@ -31,12 +33,7 @@ export interface FetchTraceRecordsOptions {
   includeSpans?: boolean;
 }
 
-export interface FetchTraceRecordsResult {
-  success: boolean;
-  records?: CloudWatchTraceRecord[];
-  spans?: CloudWatchSpanRecord[];
-  error?: string;
-}
+export type FetchTraceRecordsResult = Result<{ records: CloudWatchTraceRecord[]; spans?: CloudWatchSpanRecord[] }>;
 
 export interface GetTraceOptions {
   region: string;
@@ -48,11 +45,7 @@ export interface GetTraceOptions {
   endTime?: number;
 }
 
-export interface GetTraceResult {
-  success: boolean;
-  filePath?: string;
-  error?: string;
-}
+export type GetTraceResult = Result<{ filePath: string }>;
 
 export interface TraceEntry {
   traceId: string;
@@ -70,8 +63,4 @@ export interface ListTracesOptions {
   endTime?: number;
 }
 
-export interface ListTracesResult {
-  success: boolean;
-  traces?: TraceEntry[];
-  error?: string;
-}
+export type ListTracesResult = Result<{ traces: TraceEntry[] }>;

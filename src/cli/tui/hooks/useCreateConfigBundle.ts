@@ -25,7 +25,7 @@ export function useCreateConfigBundle() {
         commitMessage: config.commitMessage,
       });
       if (!addResult.success) {
-        throw new Error(addResult.error ?? 'Failed to create configuration bundle');
+        throw addResult.error ?? new Error('Failed to create configuration bundle');
       }
       setStatus({ state: 'success' });
       return { ok: true as const, bundleName: config.name };

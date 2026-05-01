@@ -40,7 +40,7 @@ export function saveBatchEvalRun(result: RunBatchEvaluationCommandResult): strin
     completedAt: result.completedAt,
     evaluators: result.results.map(r => r.evaluatorId),
     results: result.results,
-    evaluationResults: result.evaluationResults,
+    evaluationResults: result.success ? result.evaluationResults : undefined,
   };
 
   writeFileSync(filePath, JSON.stringify(record, null, 2));

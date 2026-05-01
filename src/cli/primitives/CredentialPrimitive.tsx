@@ -3,13 +3,13 @@ import type { Credential, ModelProvider } from '../../schema';
 import { CredentialSchema } from '../../schema';
 import { validateAddCredentialOptions } from '../commands/add/validate';
 import { getErrorMessage } from '../errors';
-import type { RemovalPreview, RemovalResult, SchemaChange } from '../operations/remove/types';
+import type { RemovalPreview, Result, SchemaChange } from '../operations/remove/types';
 import { cliCommandRun } from '../telemetry/cli-command-run.js';
 import { CredentialType, standardize } from '../telemetry/schemas/common-shapes.js';
 import { requireTTY } from '../tui/guards/tty';
 import { BasePrimitive } from './BasePrimitive';
 import { computeDefaultCredentialEnvVarName } from './credential-utils';
-import type { AddResult, AddScreenComponent, RemovableResource } from './types';
+import type { AddScreenComponent, RemovableResource } from './types';
 import type { Command } from '@commander-js/extra-typings';
 
 /**
@@ -72,22 +72,22 @@ export class CredentialPrimitive extends BasePrimitive<AddCredentialOptions, Rem
 
   protected override readonly article: string = 'a';
 
-  async add(options: AddCredentialOptions): Promise<AddResult<{ credentialName: string }>> {
+  async add(options: AddCredentialOptions): Promise<Result<{ credentialName: string }>> {
     try {
       const credential = await this.createCredential(options);
       return { success: true, credentialName: credential.name };
     } catch (err) {
-      return { success: false, error: getErrorMessage(err) };
+      return { success: false, error: err instanceof Error ? err : new Error(getErrorMessage(err)) };
     }
   }
 
-  async remove(credentialName: string, options?: { force?: boolean }): Promise<RemovalResult> {
+  async remove(credentialName: string, options?: { force?: boolean }): Promise<Result> {
     try {
       const project = await this.readProjectSpec();
 
       const credentialIndex = project.credentials.findIndex(c => c.name === credentialName);
       if (credentialIndex === -1) {
-        return { success: false, error: `Credential "${credentialName}" not found.` };
+        return { success: false, error: new Error(`Credential "${credentialName}" not found.`) };
       }
 
       const credential = project.credentials[credentialIndex]!;
@@ -96,7 +96,9 @@ export class CredentialPrimitive extends BasePrimitive<AddCredentialOptions, Rem
       if ('managed' in credential && credential.managed && !options?.force) {
         return {
           success: false,
-          error: `Credential "${credentialName}" is managed by the CLI and cannot be removed. Use force to override.`,
+          error: new Error(
+            `Credential "${credentialName}" is managed by the CLI and cannot be removed. Use force to override.`
+          ),
         };
       }
 
@@ -106,7 +108,9 @@ export class CredentialPrimitive extends BasePrimitive<AddCredentialOptions, Rem
         const targetList = referencingTargets.map(t => t.name).join(', ');
         return {
           success: false,
-          error: `Credential "${credentialName}" is referenced by gateway target(s): ${targetList}. Use force to override.`,
+          error: new Error(
+            `Credential "${credentialName}" is referenced by gateway target(s): ${targetList}. Use force to override.`
+          ),
         };
       }
 
@@ -115,8 +119,7 @@ export class CredentialPrimitive extends BasePrimitive<AddCredentialOptions, Rem
 
       return { success: true };
     } catch (err) {
-      const message = err instanceof Error ? err.message : 'Unknown error';
-      return { success: false, error: message };
+      return { success: false, error: err instanceof Error ? err : new Error(getErrorMessage(err)) };
     }
   }
 
@@ -328,7 +331,7 @@ export class CredentialPrimitive extends BasePrimitive<AddCredentialOptions, Rem
               const result = await this.add(addOptions);
 
               if (!result.success) {
-                throw new Error(result.error);
+                throw result.error;
               }
 
               if (cliOptions.json) {

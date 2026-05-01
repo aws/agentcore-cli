@@ -7,15 +7,13 @@ import {
   NoProjectError,
   findConfigRoot,
 } from '../../../lib';
+import type { Result } from '../../../lib/types';
 
 export interface ValidateOptions {
   directory?: string;
 }
 
-export interface ValidateResult {
-  success: boolean;
-  error?: string;
-}
+export type ValidateResult = Result;
 
 /**
  * Validates all AgentCore schema files in the project.
@@ -29,7 +27,7 @@ export async function handleValidate(options: ValidateOptions): Promise<Validate
   if (!configRoot) {
     return {
       success: false,
-      error: new NoProjectError().message,
+      error: new NoProjectError(),
     };
   }
 
@@ -39,14 +37,14 @@ export async function handleValidate(options: ValidateOptions): Promise<Validate
   try {
     await configIO.readProjectSpec();
   } catch (err) {
-    return { success: false, error: formatError(err, 'agentcore.json') };
+    return { success: false, error: new Error(formatError(err, 'agentcore.json')) };
   }
 
   // Validate AWS targets (aws-targets.json)
   try {
     await configIO.readAWSDeploymentTargets();
   } catch (err) {
-    return { success: false, error: formatError(err, 'aws-targets.json') };
+    return { success: false, error: new Error(formatError(err, 'aws-targets.json')) };
   }
 
   // Validate deployed state if it exists (.cli/state.json)
@@ -54,7 +52,7 @@ export async function handleValidate(options: ValidateOptions): Promise<Validate
     try {
       await configIO.readDeployedState();
     } catch (err) {
-      return { success: false, error: formatError(err, '.cli/state.json') };
+      return { success: false, error: new Error(formatError(err, '.cli/state.json')) };
     }
   }
 

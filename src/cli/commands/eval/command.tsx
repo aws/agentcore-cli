@@ -33,7 +33,7 @@ export const registerEval = (program: Command) => {
         }
 
         if (!result.success) {
-          render(<Text color="red">{result.error}</Text>);
+          render(<Text color="red">{result.error.message}</Text>);
           process.exit(1);
         }
 

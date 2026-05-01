@@ -1,23 +1,17 @@
+import type { Result } from '../../../lib/types';
 import type { OnlineEvalExecutionStatus } from '../../aws/agentcore-control';
 import { updateOnlineEvalExecutionStatus } from '../../aws/agentcore-control';
 import { loadDeployedProjectConfig } from '../resolve-agent';
 import type { OnlineEvalActionOptions } from './types';
 
-export interface PauseResumeResult {
-  success: boolean;
-  error?: string;
-  configId?: string;
-  executionStatus?: string;
-}
+export type PauseResumeResult = Result<{ configId: string; executionStatus: string }>;
 
-async function resolveOnlineEvalConfig(
-  configName: string
-): Promise<{ success: true; configId: string; region: string } | { success: false; error: string }> {
+async function resolveOnlineEvalConfig(configName: string): Promise<Result<{ configId: string; region: string }>> {
   const context = await loadDeployedProjectConfig();
   const targetNames = Object.keys(context.deployedState.targets);
 
   if (targetNames.length === 0) {
-    return { success: false, error: 'No deployed targets found. Run `agentcore deploy` first.' };
+    return { success: false, error: new Error('No deployed targets found. Run `agentcore deploy` first.') };
   }
 
   const targetName = targetNames[0]!;
@@ -27,13 +21,13 @@ async function resolveOnlineEvalConfig(
   if (!deployedConfig) {
     return {
       success: false,
-      error: `Online eval config "${configName}" not found in deployed state. Has it been deployed?`,
+      error: new Error(`Online eval config "${configName}" not found in deployed state. Has it been deployed?`),
     };
   }
 
   const targetConfig = context.awsTargets.find(t => t.name === targetName);
   if (!targetConfig) {
-    return { success: false, error: `Target config "${targetName}" not found in aws-targets.` };
+    return { success: false, error: new Error(`Target config "${targetName}" not found in aws-targets.`) };
   }
 
   return {
@@ -47,24 +41,21 @@ async function resolveOnlineEvalConfig(
  * Parse an online eval config ARN to extract the config ID and region.
  * ARN format: arn:aws:bedrock-agentcore:<region>:<account>:online-evaluation-config/<configId>
  */
-function parseOnlineEvalConfigArn(
-  arn: string,
-  regionOverride?: string
-): { success: true; configId: string; region: string } | { success: false; error: string } {
+function parseOnlineEvalConfigArn(arn: string, regionOverride?: string): Result<{ configId: string; region: string }> {
   const parts = arn.split(':');
   if (parts.length < 6 || !arn.startsWith('arn:')) {
-    return { success: false, error: `Invalid online eval config ARN: ${arn}` };
+    return { success: false, error: new Error(`Invalid online eval config ARN: ${arn}`) };
   }
 
   const region = regionOverride ?? parts[3];
   if (!region) {
-    return { success: false, error: 'Could not determine region from ARN. Use --region to specify.' };
+    return { success: false, error: new Error('Could not determine region from ARN. Use --region to specify.') };
   }
 
   const resource = parts.slice(5).join(':');
   const match = /online-evaluation-config\/(.+)$/.exec(resource);
   if (!match) {
-    return { success: false, error: `Could not extract config ID from ARN: ${arn}` };
+    return { success: false, error: new Error(`Could not extract config ID from ARN: ${arn}`) };
   }
 
   return { success: true, configId: match[1]!, region };
@@ -73,9 +64,7 @@ function parseOnlineEvalConfigArn(
 /**
  * Resolve config ID and region from either a project config name or an ARN.
  */
-async function resolveConfig(
-  options: OnlineEvalActionOptions
-): Promise<{ success: true; configId: string; region: string } | { success: false; error: string }> {
+async function resolveConfig(options: OnlineEvalActionOptions): Promise<Result<{ configId: string; region: string }>> {
   if (options.arn) {
     return parseOnlineEvalConfigArn(options.arn, options.region);
   }
@@ -88,7 +77,7 @@ export async function handlePauseResume(
 ): Promise<PauseResumeResult> {
   const resolution = await resolveConfig(options);
   if (!resolution.success) {
-    return resolution;
+    return { success: false, error: new Error(resolution.error.message) };
   }
 
   const executionStatus: OnlineEvalExecutionStatus = action === 'pause' ? 'DISABLED' : 'ENABLED';
@@ -106,6 +95,6 @@ export async function handlePauseResume(
       executionStatus: result.executionStatus,
     };
   } catch (err) {
-    return { success: false, error: (err as Error).message };
+    return { success: false, error: err instanceof Error ? err : new Error(String(err)) };
   }
 }

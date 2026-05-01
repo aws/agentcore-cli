@@ -17,9 +17,9 @@ function makeTmpDir(): string {
   return dir;
 }
 
-function makeResult(overrides: Partial<RunRecommendationCommandResult> = {}): RunRecommendationCommandResult {
+function makeResult(overrides: Record<string, unknown> = {}): RunRecommendationCommandResult {
   return {
-    success: true,
+    success: true as const,
     recommendationId: 'rec-123',
     status: 'COMPLETED',
     startedAt: '2026-03-24T10:00:00.000Z',
