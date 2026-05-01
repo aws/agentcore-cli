@@ -2,6 +2,27 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.13.0] - 2026-05-01
+
+### Added
+- feat: evo preview features — config bundles, batch evaluation, recommendations, AB testing (#1068) (9ccf802)
+- feat: wire telemetry into all add.* commands (#1050) (e9dfc16)
+- feat: make parsing resilient to individual failures (#1062) (a4c37a2)
+- feat: update @aws/agent-inspector to 0.3.0 (90f17b4)
+- feat: update @aws/agent-inspector to 0.3.0 (278783a)
+
+### Fixed
+- fix: remove unnecessary non-null assertions after .default([]) revert (#1075) (eab8c87)
+- fix: revert .optional() to .default([]) and strip empty evo arrays on write (#1074) (8c5cdfe)
+- fix: remove dead preflight patch, proper teardown, optional evo schema fields (#1073) (839b32b)
+- fix: remove dead preflight patch and use proper teardown for evo resources (#1072) (0e38e9e)
+- fix: resolve e2e import test concurrency races (#1067) (bd6f841)
+- fix: forward custom headers in bearer token invoke paths (#1065) (3dccd97)
+
+### Other Changes
+- refactor: consolidate cli-config into global-config (#802) (3aec000)
+- ci: cut full e2e time in half via vitest sharding (#1016) (4daca83)
+
 ## [0.11.0] - 2026-04-24
 
 ### Added

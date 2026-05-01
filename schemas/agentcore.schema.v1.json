@@ -690,6 +690,10 @@
             "type": "string",
             "minLength": 1
           },
+          "endpoint": {
+            "type": "string",
+            "minLength": 1
+          },
           "evaluators": {
             "minItems": 1,
             "type": "array",
@@ -1838,6 +1842,309 @@
           }
         },
         "required": ["name"],
+        "additionalProperties": false
+      }
+    },
+    "configBundles": {
+      "default": [],
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 100,
+            "pattern": "^[a-zA-Z][a-zA-Z0-9_]{0,99}$"
+          },
+          "type": {
+            "default": "ConfigurationBundle",
+            "type": "string",
+            "const": "ConfigurationBundle"
+          },
+          "description": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 500
+          },
+          "components": {
+            "type": "object",
+            "propertyNames": {
+              "type": "string"
+            },
+            "additionalProperties": {
+              "type": "object",
+              "properties": {
+                "configuration": {
+                  "type": "object",
+                  "propertyNames": {
+                    "type": "string"
+                  },
+                  "additionalProperties": {}
+                }
+              },
+              "required": ["configuration"],
+              "additionalProperties": false
+            }
+          },
+          "branchName": {
+            "type": "string",
+            "maxLength": 128
+          },
+          "commitMessage": {
+            "type": "string",
+            "maxLength": 500
+          }
+        },
+        "required": ["name", "components"],
+        "additionalProperties": false
+      }
+    },
+    "abTests": {
+      "default": [],
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 48,
+            "pattern": "^[a-zA-Z][a-zA-Z0-9_]{0,47}$"
+          },
+          "description": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200
+          },
+          "mode": {
+            "default": "config-bundle",
+            "type": "string",
+            "enum": ["config-bundle", "target-based"]
+          },
+          "gatewayRef": {
+            "type": "string",
+            "minLength": 1
+          },
+          "roleArn": {
+            "type": "string",
+            "minLength": 1
+          },
+          "variants": {
+            "minItems": 2,
+            "maxItems": 2,
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "name": {
+                  "type": "string",
+                  "enum": ["C", "T1"]
+                },
+                "weight": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 100
+                },
+                "variantConfiguration": {
+                  "anyOf": [
+                    {
+                      "type": "object",
+                      "properties": {
+                        "configurationBundle": {
+                          "type": "object",
+                          "properties": {
+                            "bundleArn": {
+                              "type": "string",
+                              "minLength": 1
+                            },
+                            "bundleVersion": {
+                              "type": "string",
+                              "minLength": 1
+                            }
+                          },
+                          "required": ["bundleArn", "bundleVersion"],
+                          "additionalProperties": false
+                        },
+                        "target": {
+                          "not": {}
+                        }
+                      },
+                      "required": ["configurationBundle"],
+                      "additionalProperties": false
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "configurationBundle": {
+                          "not": {}
+                        },
+                        "target": {
+                          "type": "object",
+                          "properties": {
+                            "targetName": {
+                              "type": "string",
+                              "minLength": 1,
+                              "maxLength": 100
+                            }
+                          },
+                          "required": ["targetName"],
+                          "additionalProperties": false
+                        }
+                      },
+                      "required": ["target"],
+                      "additionalProperties": false
+                    }
+                  ]
+                }
+              },
+              "required": ["name", "weight", "variantConfiguration"],
+              "additionalProperties": false
+            }
+          },
+          "evaluationConfig": {
+            "anyOf": [
+              {
+                "type": "object",
+                "properties": {
+                  "onlineEvaluationConfigArn": {
+                    "type": "string",
+                    "minLength": 1
+                  }
+                },
+                "required": ["onlineEvaluationConfigArn"],
+                "additionalProperties": false
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "perVariantOnlineEvaluationConfig": {
+                    "minItems": 2,
+                    "maxItems": 2,
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "treatmentName": {
+                          "type": "string",
+                          "enum": ["C", "T1"]
+                        },
+                        "onlineEvaluationConfigArn": {
+                          "type": "string",
+                          "minLength": 1
+                        }
+                      },
+                      "required": ["treatmentName", "onlineEvaluationConfigArn"],
+                      "additionalProperties": false
+                    }
+                  }
+                },
+                "required": ["perVariantOnlineEvaluationConfig"],
+                "additionalProperties": false
+              }
+            ]
+          },
+          "gatewayFilter": {
+            "type": "object",
+            "properties": {
+              "targetPaths": {
+                "maxItems": 1,
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 500
+                }
+              }
+            },
+            "required": ["targetPaths"],
+            "additionalProperties": false
+          },
+          "trafficAllocationConfig": {
+            "type": "object",
+            "properties": {
+              "routeOnHeader": {
+                "type": "object",
+                "properties": {
+                  "headerName": {
+                    "type": "string",
+                    "minLength": 1
+                  }
+                },
+                "required": ["headerName"],
+                "additionalProperties": false
+              }
+            },
+            "required": ["routeOnHeader"],
+            "additionalProperties": false
+          },
+          "maxDurationDays": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 90
+          },
+          "enableOnCreate": {
+            "type": "boolean"
+          },
+          "promoted": {
+            "type": "boolean"
+          }
+        },
+        "required": ["name", "gatewayRef", "variants", "evaluationConfig"],
+        "additionalProperties": false
+      }
+    },
+    "httpGateways": {
+      "default": [],
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 48,
+            "pattern": "^[a-zA-Z][a-zA-Z0-9-]{0,47}$"
+          },
+          "description": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200
+          },
+          "runtimeRef": {
+            "type": "string",
+            "minLength": 1
+          },
+          "roleArn": {
+            "type": "string",
+            "minLength": 1
+          },
+          "targets": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "name": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 100
+                },
+                "runtimeRef": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "qualifier": {
+                  "default": "DEFAULT",
+                  "type": "string",
+                  "minLength": 1
+                }
+              },
+              "required": ["name", "runtimeRef"],
+              "additionalProperties": false
+            }
+          }
+        },
+        "required": ["name", "runtimeRef"],
         "additionalProperties": false
       }
     }
