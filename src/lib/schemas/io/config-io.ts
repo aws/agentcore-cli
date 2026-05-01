@@ -110,7 +110,12 @@ export class ConfigIO {
    */
   async writeProjectSpec(data: AgentCoreProjectSpec): Promise<void> {
     const filePath = this.pathResolver.getAgentConfigPath();
-    await this.validateAndWrite(filePath, 'AgentCore Project Config', AgentCoreProjectSpecSchema, data);
+    // TODO: extend this to all resource arrays so empty defaults never pollute agentcore.json
+    const cleaned = { ...data };
+    if (cleaned.configBundles?.length === 0) delete (cleaned as Record<string, unknown>).configBundles;
+    if (cleaned.abTests?.length === 0) delete (cleaned as Record<string, unknown>).abTests;
+    if (cleaned.httpGateways?.length === 0) delete (cleaned as Record<string, unknown>).httpGateways;
+    await this.validateAndWrite(filePath, 'AgentCore Project Config', AgentCoreProjectSpecSchema, cleaned);
   }
 
   /**

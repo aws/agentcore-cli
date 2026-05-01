@@ -325,39 +325,33 @@ export const AgentCoreProjectSpecSchema = z
 
     configBundles: z
       .array(ConfigBundleSchema)
-      .optional()
-      .superRefine((items, ctx) => {
-        if (items) {
-          uniqueBy(
-            (bundle: { name: string }) => bundle.name,
-            (name: string) => `Duplicate config bundle name: ${name}`
-          )(items, ctx);
-        }
-      }),
+      .default([])
+      .superRefine(
+        uniqueBy(
+          bundle => bundle.name,
+          name => `Duplicate config bundle name: ${name}`
+        )
+      ),
 
     abTests: z
       .array(ABTestSchema)
-      .optional()
-      .superRefine((items, ctx) => {
-        if (items) {
-          uniqueBy(
-            (test: { name: string }) => test.name,
-            (name: string) => `Duplicate AB test name: ${name}`
-          )(items, ctx);
-        }
-      }),
+      .default([])
+      .superRefine(
+        uniqueBy(
+          test => test.name,
+          name => `Duplicate AB test name: ${name}`
+        )
+      ),
 
     httpGateways: z
       .array(HttpGatewaySchema)
-      .optional()
-      .superRefine((items, ctx) => {
-        if (items) {
-          uniqueBy(
-            (gw: { name: string }) => gw.name,
-            (name: string) => `Duplicate HTTP gateway name: ${name}`
-          )(items, ctx);
-        }
-      }),
+      .default([])
+      .superRefine(
+        uniqueBy(
+          gw => gw.name,
+          name => `Duplicate HTTP gateway name: ${name}`
+        )
+      ),
   })
   .strict()
   .superRefine((spec, ctx) => {
