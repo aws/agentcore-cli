@@ -162,8 +162,8 @@ agentcore add agent \
 
 Not all frameworks support all protocol modes. MCP protocol is a standalone tool server with no framework.
 
-| Protocol | Supported Frameworks                                          |
-| -------- | ------------------------------------------------------------- |
+| Protocol | Supported Frameworks                                  |
+| -------- | ----------------------------------------------------- |
 | **HTTP** | Strands, LangChain_LangGraph, GoogleADK, OpenAIAgents |
-| **MCP**  | None (standalone tool server)                                 |
-| **A2A**  | Strands, GoogleADK, LangChain_LangGraph                       |
+| **MCP**  | None (standalone tool server)                         |
+| **A2A**  | Strands, GoogleADK, LangChain_LangGraph               |
