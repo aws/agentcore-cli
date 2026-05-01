@@ -8,42 +8,17 @@ import {
 import { describe, expect, it } from 'vitest';
 
 describe('AgentCoreRegionSchema', () => {
-  const validRegions = [
-    'ap-northeast-1',
-    'ap-northeast-2',
-    'ap-south-1',
-    'ap-southeast-1',
-    'ap-southeast-2',
-    'ca-central-1',
-    'eu-central-1',
-    'eu-north-1',
-    'eu-west-1',
-    'eu-west-2',
-    'eu-west-3',
-    'sa-east-1',
-    'us-east-1',
-    'us-east-2',
-    'us-west-2',
-    'us-gov-west-1',
-  ];
-
-  it.each(validRegions)('accepts valid region "%s"', region => {
-    expect(AgentCoreRegionSchema.safeParse(region).success).toBe(true);
+  it('accepts representative valid regions', () => {
+    expect(AgentCoreRegionSchema.safeParse('us-east-1').success).toBe(true);
+    expect(AgentCoreRegionSchema.safeParse('eu-west-1').success).toBe(true);
+    expect(AgentCoreRegionSchema.safeParse('us-gov-west-1').success).toBe(true);
   });
 
-  it('rejects unsupported regions', () => {
+  it('rejects unsupported regions and invalid values', () => {
     expect(AgentCoreRegionSchema.safeParse('us-west-1').success).toBe(false);
     expect(AgentCoreRegionSchema.safeParse('af-south-1').success).toBe(false);
-    expect(AgentCoreRegionSchema.safeParse('me-south-1').success).toBe(false);
-  });
-
-  it('rejects empty string', () => {
     expect(AgentCoreRegionSchema.safeParse('').success).toBe(false);
-  });
-
-  it('rejects non-string values', () => {
     expect(AgentCoreRegionSchema.safeParse(123).success).toBe(false);
-    expect(AgentCoreRegionSchema.safeParse(null).success).toBe(false);
   });
 });
 

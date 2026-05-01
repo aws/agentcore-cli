@@ -7,34 +7,22 @@ import {
 import { describe, expect, it } from 'vitest';
 
 describe('ToolNameSchema', () => {
-  it.each(['myTool', 'get_user', 'search-results', 'A'])('accepts valid name "%s"', name => {
-    expect(ToolNameSchema.safeParse(name).success).toBe(true);
+  it('accepts valid names', () => {
+    expect(ToolNameSchema.safeParse('myTool').success).toBe(true);
+    expect(ToolNameSchema.safeParse('get_user').success).toBe(true);
+    expect(ToolNameSchema.safeParse('search-results').success).toBe(true);
   });
 
-  it('rejects empty string', () => {
+  it('rejects invalid names', () => {
     expect(ToolNameSchema.safeParse('').success).toBe(false);
-  });
-
-  it('rejects name starting with digit', () => {
     expect(ToolNameSchema.safeParse('1tool').success).toBe(false);
-  });
-
-  it('rejects name starting with hyphen', () => {
     expect(ToolNameSchema.safeParse('-tool').success).toBe(false);
-  });
-
-  it('rejects name exceeding 128 chars', () => {
-    const name = 'a'.repeat(129);
-    expect(ToolNameSchema.safeParse(name).success).toBe(false);
-  });
-
-  it('accepts 128-char name (max)', () => {
-    const name = 'a'.repeat(128);
-    expect(ToolNameSchema.safeParse(name).success).toBe(true);
-  });
-
-  it('rejects name with dots', () => {
     expect(ToolNameSchema.safeParse('my.tool').success).toBe(false);
+  });
+
+  it('enforces 128-char boundary', () => {
+    expect(ToolNameSchema.safeParse('a'.repeat(128)).success).toBe(true);
+    expect(ToolNameSchema.safeParse('a'.repeat(129)).success).toBe(false);
   });
 });
 

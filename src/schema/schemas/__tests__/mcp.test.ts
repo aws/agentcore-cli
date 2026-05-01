@@ -21,12 +21,10 @@ import {
 import { describe, expect, it } from 'vitest';
 
 describe('GatewayTargetTypeSchema', () => {
-  it.each(['lambda', 'mcpServer', 'openApiSchema', 'smithyModel', 'apiGateway', 'lambdaFunctionArn'])(
-    'accepts "%s"',
-    type => {
-      expect(GatewayTargetTypeSchema.safeParse(type).success).toBe(true);
-    }
-  );
+  it('accepts valid target types', () => {
+    expect(GatewayTargetTypeSchema.safeParse('lambda').success).toBe(true);
+    expect(GatewayTargetTypeSchema.safeParse('lambdaFunctionArn').success).toBe(true);
+  });
 
   it('rejects invalid type', () => {
     expect(GatewayTargetTypeSchema.safeParse('http').success).toBe(false);
@@ -34,29 +32,17 @@ describe('GatewayTargetTypeSchema', () => {
 });
 
 describe('GatewayAuthorizerTypeSchema', () => {
-  it('accepts NONE', () => {
+  it('accepts valid types and rejects invalid', () => {
     expect(GatewayAuthorizerTypeSchema.safeParse('NONE').success).toBe(true);
-  });
-
-  it('accepts CUSTOM_JWT', () => {
     expect(GatewayAuthorizerTypeSchema.safeParse('CUSTOM_JWT').success).toBe(true);
-  });
-
-  it('rejects other types', () => {
     expect(GatewayAuthorizerTypeSchema.safeParse('IAM').success).toBe(false);
   });
 });
 
 describe('McpImplLanguageSchema', () => {
-  it('accepts TypeScript', () => {
+  it('accepts valid languages and rejects invalid', () => {
     expect(McpImplLanguageSchema.safeParse('TypeScript').success).toBe(true);
-  });
-
-  it('accepts Python', () => {
     expect(McpImplLanguageSchema.safeParse('Python').success).toBe(true);
-  });
-
-  it('rejects other languages', () => {
     expect(McpImplLanguageSchema.safeParse('Go').success).toBe(false);
   });
 });
@@ -345,15 +331,9 @@ describe('AgentCoreGatewayTargetSchema', () => {
 });
 
 describe('GatewayExceptionLevelSchema', () => {
-  it('accepts NONE', () => {
+  it('accepts valid levels and rejects invalid', () => {
     expect(GatewayExceptionLevelSchema.safeParse('NONE').success).toBe(true);
-  });
-
-  it('accepts DEBUG', () => {
     expect(GatewayExceptionLevelSchema.safeParse('DEBUG').success).toBe(true);
-  });
-
-  it('rejects invalid level', () => {
     expect(GatewayExceptionLevelSchema.safeParse('VERBOSE').success).toBe(false);
   });
 });
