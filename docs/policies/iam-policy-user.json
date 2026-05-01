@@ -116,10 +116,7 @@
     {
       "Sid": "BedrockModelInvocation",
       "Effect": "Allow",
-      "Action": [
-        "bedrock:InvokeModel",
-        "bedrock:InvokeModelWithResponseStream"
-      ],
+      "Action": ["bedrock:InvokeModel", "bedrock:InvokeModelWithResponseStream"],
       "Resource": "*"
     },
     {
@@ -184,10 +181,7 @@
     {
       "Sid": "SsmParameterLookup",
       "Effect": "Allow",
-      "Action": [
-        "ssm:GetParameters",
-        "ssm:GetParameter"
-      ],
+      "Action": ["ssm:GetParameters", "ssm:GetParameter"],
       "Resource": "*"
     },
     {
@@ -199,12 +193,7 @@
     {
       "Sid": "ImportTestIam",
       "Effect": "Allow",
-      "Action": [
-        "iam:GetRole",
-        "iam:CreateRole",
-        "iam:AttachRolePolicy",
-        "iam:PutRolePolicy"
-      ],
+      "Action": ["iam:GetRole", "iam:CreateRole", "iam:AttachRolePolicy", "iam:PutRolePolicy"],
       "Resource": "arn:aws:iam::ACCOUNT_ID:role/bugbash-agentcore-role"
     },
     {
@@ -221,21 +210,13 @@
     {
       "Sid": "ImportTestS3",
       "Effect": "Allow",
-      "Action": [
-        "s3:ListBucket",
-        "s3:CreateBucket",
-        "s3:PutObject"
-      ],
+      "Action": ["s3:ListBucket", "s3:CreateBucket", "s3:PutObject"],
       "Resource": "*"
     },
     {
       "Sid": "SecretsManager",
       "Effect": "Allow",
-      "Action": [
-        "secretsmanager:GetSecretValue",
-        "secretsmanager:CreateSecret",
-        "secretsmanager:DeleteSecret"
-      ],
+      "Action": ["secretsmanager:GetSecretValue", "secretsmanager:CreateSecret", "secretsmanager:DeleteSecret"],
       "Resource": "*"
     },
     {
