@@ -2,6 +2,27 @@ import { runCLI } from '../../../../test-utils/index.js';
 import { describe, expect, it } from 'vitest';
 
 describe('dev command', () => {
+  describe('--help', () => {
+    it('shows all options', async () => {
+      const result = await runCLI(['dev', '--help'], process.cwd());
+
+      expect(result.exitCode).toBe(0);
+      expect(result.stdout.includes('[prompt]'), 'Should show [prompt] positional argument').toBeTruthy();
+      expect(result.stdout.includes('--port'), 'Should show --port option').toBeTruthy();
+      expect(result.stdout.includes('--runtime'), 'Should show --runtime option').toBeTruthy();
+      expect(result.stdout.includes('--stream'), 'Should show --stream option').toBeTruthy();
+      expect(result.stdout.includes('--logs'), 'Should show --logs option').toBeTruthy();
+      expect(result.stdout.includes('8080'), 'Should show default port').toBeTruthy();
+    });
+
+    it('does not show --invoke flag', async () => {
+      const result = await runCLI(['dev', '--help'], process.cwd());
+
+      expect(result.exitCode).toBe(0);
+      expect(result.stdout.includes('--invoke'), 'Should not show removed --invoke option').toBeFalsy();
+    });
+  });
+
   describe('requires project context', () => {
     it('exits with error when run outside project', async () => {
       const result = await runCLI(['dev'], process.cwd());

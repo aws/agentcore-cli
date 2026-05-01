@@ -21,9 +21,15 @@ import {
 import { describe, expect, it } from 'vitest';
 
 describe('GatewayTargetTypeSchema', () => {
-  it('accepts valid target types', () => {
-    expect(GatewayTargetTypeSchema.safeParse('lambda').success).toBe(true);
-    expect(GatewayTargetTypeSchema.safeParse('lambdaFunctionArn').success).toBe(true);
+  it('enumerates all target types', () => {
+    expect(GatewayTargetTypeSchema.options).toEqual([
+      'lambda',
+      'mcpServer',
+      'openApiSchema',
+      'smithyModel',
+      'apiGateway',
+      'lambdaFunctionArn',
+    ]);
   });
 
   it('rejects invalid type', () => {

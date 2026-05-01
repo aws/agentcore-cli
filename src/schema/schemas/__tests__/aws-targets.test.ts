@@ -8,10 +8,25 @@ import {
 import { describe, expect, it } from 'vitest';
 
 describe('AgentCoreRegionSchema', () => {
-  it('accepts representative valid regions', () => {
-    expect(AgentCoreRegionSchema.safeParse('us-east-1').success).toBe(true);
-    expect(AgentCoreRegionSchema.safeParse('eu-west-1').success).toBe(true);
-    expect(AgentCoreRegionSchema.safeParse('us-gov-west-1').success).toBe(true);
+  it('enumerates all supported regions', () => {
+    expect(AgentCoreRegionSchema.options).toEqual([
+      'ap-northeast-1',
+      'ap-northeast-2',
+      'ap-south-1',
+      'ap-southeast-1',
+      'ap-southeast-2',
+      'ca-central-1',
+      'eu-central-1',
+      'eu-north-1',
+      'eu-west-1',
+      'eu-west-2',
+      'eu-west-3',
+      'sa-east-1',
+      'us-east-1',
+      'us-east-2',
+      'us-west-2',
+      'us-gov-west-1',
+    ]);
   });
 
   it('rejects unsupported regions and invalid values', () => {
