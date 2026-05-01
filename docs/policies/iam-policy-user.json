@@ -298,7 +298,9 @@
         "iam:DeleteRole",
         "iam:GetRole",
         "iam:PutRolePolicy",
-        "iam:DeleteRolePolicy"
+        "iam:DeleteRolePolicy",
+        "iam:TagRole",
+        "iam:PassRole"
       ],
       "Resource": "arn:aws:iam::*:role/AgentCore-*"
     },
