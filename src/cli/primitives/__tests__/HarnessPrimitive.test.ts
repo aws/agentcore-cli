@@ -44,6 +44,9 @@ const baseProject: AgentCoreProjectSpec = {
   agentCoreGateways: [],
   policyEngines: [],
   harnesses: [],
+  configBundles: [],
+  abTests: [],
+  httpGateways: [],
 };
 
 describe('HarnessPrimitive', () => {
@@ -518,6 +521,9 @@ describe('HarnessPrimitive', () => {
       expect(mockWriteProjectSpec).toHaveBeenCalledWith(
         expect.objectContaining({
           harnesses: [],
+          configBundles: [],
+          abTests: [],
+          httpGateways: [],
         })
       );
       expect(rm).toHaveBeenCalledWith('/tmp/test/agentcore/harnesses/test', { recursive: true, force: true });

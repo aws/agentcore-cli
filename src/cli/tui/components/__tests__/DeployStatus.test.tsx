@@ -155,6 +155,55 @@ describe('DeployStatus', () => {
     });
   });
 
+  describe('warning state (post-deploy errors)', () => {
+    it('shows warning banner when hasPostDeployError is true', () => {
+      const { lastFrame } = render(
+        <DeployStatus messages={[]} isComplete={true} hasError={false} hasPostDeployError={true} />
+      );
+      const frame = lastFrame()!;
+
+      expect(frame).toContain('⚠');
+      expect(frame).toContain('Deploy to AWS Complete (with warnings)');
+    });
+
+    it('shows post-deploy warnings in the banner', () => {
+      const warnings = ['Config bundle "my-bundle": timeout', 'AB test "test-1": not found'];
+      const { lastFrame } = render(
+        <DeployStatus
+          messages={[]}
+          isComplete={true}
+          hasError={false}
+          hasPostDeployError={true}
+          postDeployWarnings={warnings}
+        />
+      );
+      const frame = lastFrame()!;
+
+      expect(frame).toContain('Config bundle "my-bundle": timeout');
+      expect(frame).toContain('AB test "test-1": not found');
+    });
+
+    it('warning state takes precedence over complete state', () => {
+      const { lastFrame } = render(
+        <DeployStatus messages={[]} isComplete={true} hasError={false} hasPostDeployError={true} />
+      );
+      const frame = lastFrame()!;
+
+      expect(frame).not.toContain('✓ Deploy to AWS Complete');
+      expect(frame).toContain('⚠ Deploy to AWS Complete (with warnings)');
+    });
+
+    it('error state takes precedence over warning state', () => {
+      const { lastFrame } = render(
+        <DeployStatus messages={[]} isComplete={true} hasError={true} hasPostDeployError={true} />
+      );
+      const frame = lastFrame()!;
+
+      expect(frame).toContain('✗ Deploy to AWS Failed');
+      expect(frame).not.toContain('with warnings');
+    });
+  });
+
   describe('error state details', () => {
     it('shows last 3 resource events on failure', () => {
       const messages = [

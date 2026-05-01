@@ -70,6 +70,7 @@ export async function validateProject(): Promise<PreflightContext> {
   cdkProject.validate();
 
   const configIO = new ConfigIO({ baseDir: configRoot });
+
   const projectSpec = await configIO.readProjectSpec();
   const awsTargets = await configIO.resolveAWSDeploymentTargets();
 

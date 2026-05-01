@@ -3,6 +3,8 @@ import type { EvaluationLevel, Evaluator, EvaluatorConfig } from '../../schema';
 import { EvaluationLevelSchema, EvaluatorSchema } from '../../schema';
 import { getErrorMessage } from '../errors';
 import type { RemovalPreview, RemovalResult, SchemaChange } from '../operations/remove/types';
+import { cliCommandRun } from '../telemetry/cli-command-run.js';
+import { EvaluatorType, Level, standardize } from '../telemetry/schemas/common-shapes.js';
 import { renderCodeBasedEvaluatorTemplate } from '../templates/EvaluatorRenderer';
 import { requireTTY } from '../tui/guards/tty';
 import {
@@ -196,20 +198,15 @@ export class EvaluatorPrimitive extends BasePrimitive<AddEvaluatorOptions, Remov
           config?: string;
           json?: boolean;
         }) => {
-          try {
-            if (!findConfigRoot()) {
-              console.error('No agentcore project found. Run `agentcore create` first.');
-              process.exit(1);
-            }
+          if (!findConfigRoot()) {
+            console.error('No agentcore project found. Run `agentcore create` first.');
+            process.exit(1);
+          }
 
-            if (cliOptions.name || cliOptions.json) {
-              const fail = (error: string) => {
-                if (cliOptions.json) {
-                  console.log(JSON.stringify({ success: false, error }));
-                } else {
-                  console.error(error);
-                }
-                process.exit(1);
+          if (cliOptions.name || cliOptions.json) {
+            await cliCommandRun('add.evaluator', !!cliOptions.json, async () => {
+              const fail = (error: string): never => {
+                throw new Error(error);
               };
 
               if (!cliOptions.name || !cliOptions.level) {
@@ -298,9 +295,13 @@ export class EvaluatorPrimitive extends BasePrimitive<AddEvaluatorOptions, Remov
                 config: configJson,
               });
 
+              if (!result.success) {
+                throw new Error(result.error);
+              }
+
               if (cliOptions.json) {
                 console.log(JSON.stringify(result));
-              } else if (result.success) {
+              } else {
                 if (result.codePath) {
                   console.log(`Created evaluator '${result.evaluatorName}'`);
                   console.log(`  Code: ${result.codePath}lambda_function.py`);
@@ -311,11 +312,15 @@ export class EvaluatorPrimitive extends BasePrimitive<AddEvaluatorOptions, Remov
                 } else {
                   console.log(`Added evaluator '${result.evaluatorName}'`);
                 }
-              } else {
-                console.error(result.error);
               }
-              process.exit(result.success ? 0 : 1);
-            } else {
+
+              return {
+                evaluator_type: standardize(EvaluatorType, evalType),
+                level: standardize(Level, levelResult.data),
+              };
+            });
+          } else {
+            try {
               // TUI fallback
               requireTTY();
               const [{ render }, { default: React }, { AddFlow }] = await Promise.all([
@@ -334,14 +339,10 @@ export class EvaluatorPrimitive extends BasePrimitive<AddEvaluatorOptions, Remov
                   },
                 })
               );
-            }
-          } catch (error) {
-            if (cliOptions.json) {
-              console.log(JSON.stringify({ success: false, error: getErrorMessage(error) }));
-            } else {
+            } catch (error) {
               console.error(getErrorMessage(error));
+              process.exit(1);
             }
-            process.exit(1);
           }
         }
       );

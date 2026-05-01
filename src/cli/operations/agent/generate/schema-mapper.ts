@@ -284,5 +284,6 @@ export async function mapGenerateConfigToRenderConfig(
     dockerfile: config.dockerfile,
     sessionStorageMountPath: config.sessionStorageMountPath,
     enableOtel,
+    hasConfigBundle: config.withConfigBundle,
   };
 }

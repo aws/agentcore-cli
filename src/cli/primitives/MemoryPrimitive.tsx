@@ -17,6 +17,7 @@ import {
 import { DEFAULT_DELIVERY_TYPE, validateAddMemoryOptions } from '../commands/add/validate';
 import { getErrorMessage } from '../errors';
 import type { RemovalPreview, RemovalResult, SchemaChange } from '../operations/remove/types';
+import { cliCommandRun } from '../telemetry/cli-command-run.js';
 import { requireTTY } from '../tui/guards/tty';
 import { DEFAULT_EVENT_EXPIRY } from '../tui/screens/memory/types';
 import { BasePrimitive } from './BasePrimitive';
@@ -183,14 +184,14 @@ export class MemoryPrimitive extends BasePrimitive<AddMemoryOptions, RemovableMe
           streamDeliveryResources?: string;
           json?: boolean;
         }) => {
-          try {
-            if (!findConfigRoot()) {
-              console.error('No agentcore project found. Run `agentcore create` first.');
-              process.exit(1);
-            }
+          if (!findConfigRoot()) {
+            console.error('No agentcore project found. Run `agentcore create` first.');
+            process.exit(1);
+          }
 
-            if (cliOptions.name || cliOptions.json) {
-              // CLI mode
+          if (cliOptions.name || cliOptions.json) {
+            // CLI mode
+            await cliCommandRun('add.memory', !!cliOptions.json, async () => {
               const expiry = cliOptions.expiry ? parseInt(cliOptions.expiry, 10) : undefined;
               const validation = validateAddMemoryOptions({
                 name: cliOptions.name,
@@ -203,12 +204,7 @@ export class MemoryPrimitive extends BasePrimitive<AddMemoryOptions, RemovableMe
               });
 
               if (!validation.valid) {
-                if (cliOptions.json) {
-                  console.log(JSON.stringify({ success: false, error: validation.error }));
-                } else {
-                  console.error(validation.error);
-                }
-                process.exit(1);
+                throw new Error(validation.error);
               }
 
               const result = await this.add({
@@ -221,15 +217,30 @@ export class MemoryPrimitive extends BasePrimitive<AddMemoryOptions, RemovableMe
                 streamDeliveryResources: cliOptions.streamDeliveryResources,
               });
 
+              if (!result.success) {
+                throw new Error(result.error);
+              }
+
               if (cliOptions.json) {
                 console.log(JSON.stringify(result));
-              } else if (result.success) {
-                console.log(`Added memory '${result.memoryName}'`);
               } else {
-                console.error(result.error);
+                console.log(`Added memory '${result.memoryName}'`);
               }
-              process.exit(result.success ? 0 : 1);
-            } else {
+
+              const strategyList = (cliOptions.strategies ?? '')
+                .split(',')
+                .map(s => s.trim().toUpperCase())
+                .filter(Boolean);
+              return {
+                strategy_count: strategyList.length,
+                strategy_semantic: strategyList.includes('SEMANTIC'),
+                strategy_summarization: strategyList.includes('SUMMARIZATION'),
+                strategy_user_preference: strategyList.includes('USER_PREFERENCE'),
+                strategy_episodic: strategyList.includes('EPISODIC'),
+              };
+            });
+          } else {
+            try {
               // TUI fallback — dynamic imports to avoid pulling ink (async) into registry
               requireTTY();
               const [{ render }, { default: React }, { AddFlow }] = await Promise.all([
@@ -248,14 +259,10 @@ export class MemoryPrimitive extends BasePrimitive<AddMemoryOptions, RemovableMe
                   },
                 })
               );
-            }
-          } catch (error) {
-            if (cliOptions.json) {
-              console.log(JSON.stringify({ success: false, error: getErrorMessage(error) }));
-            } else {
+            } catch (error) {
               console.error(getErrorMessage(error));
+              process.exit(1);
             }
-            process.exit(1);
           }
         }
       );

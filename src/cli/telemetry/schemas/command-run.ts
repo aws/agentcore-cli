@@ -157,6 +157,7 @@ export const COMMAND_SCHEMAS = {
   'add.gateway-target': AddGatewayTargetAttrs,
   'add.policy-engine': AddPolicyEngineAttrs,
   'add.policy': AddPolicyAttrs,
+  'add.runtime-endpoint': NoAttrs,
 
   // deploy
   deploy: DeployAttrs,

@@ -22,6 +22,9 @@ describe('getDevConfig', () => {
       agentCoreGateways: [],
       policyEngines: [],
       harnesses: [],
+      configBundles: [],
+      abTests: [],
+      httpGateways: [],
     };
 
     const config = getDevConfig(workingDir, project);
@@ -50,6 +53,9 @@ describe('getDevConfig', () => {
       agentCoreGateways: [],
       policyEngines: [],
       harnesses: [],
+      configBundles: [],
+      abTests: [],
+      httpGateways: [],
     };
 
     const config = getDevConfig(workingDir, project);
@@ -78,6 +84,9 @@ describe('getDevConfig', () => {
       agentCoreGateways: [],
       policyEngines: [],
       harnesses: [],
+      configBundles: [],
+      abTests: [],
+      httpGateways: [],
     };
 
     const config = getDevConfig(workingDir, project, '/test/project/agentcore');
@@ -112,6 +121,9 @@ describe('getDevConfig', () => {
       agentCoreGateways: [],
       policyEngines: [],
       harnesses: [],
+      configBundles: [],
+      abTests: [],
+      httpGateways: [],
     };
 
     expect(() => getDevConfig(workingDir, project, undefined, 'NonExistentAgent')).toThrow(
@@ -141,6 +153,9 @@ describe('getDevConfig', () => {
       agentCoreGateways: [],
       policyEngines: [],
       harnesses: [],
+      configBundles: [],
+      abTests: [],
+      httpGateways: [],
     };
 
     expect(() => getDevConfig(workingDir, project, undefined, 'NodeAgent')).toThrow('Dev mode only supports Python');
@@ -168,6 +183,9 @@ describe('getDevConfig', () => {
       agentCoreGateways: [],
       policyEngines: [],
       harnesses: [],
+      configBundles: [],
+      abTests: [],
+      httpGateways: [],
     };
 
     const config = getDevConfig(workingDir, project, '/test/project/agentcore');
@@ -198,6 +216,9 @@ describe('getDevConfig', () => {
       agentCoreGateways: [],
       policyEngines: [],
       harnesses: [],
+      configBundles: [],
+      abTests: [],
+      httpGateways: [],
     };
 
     // No configRoot provided
@@ -228,6 +249,9 @@ describe('getDevConfig', () => {
       agentCoreGateways: [],
       policyEngines: [],
       harnesses: [],
+      configBundles: [],
+      abTests: [],
+      httpGateways: [],
     };
 
     const config = getDevConfig(workingDir, project, '/test/project/agentcore');
@@ -258,6 +282,9 @@ describe('getDevConfig', () => {
       agentCoreGateways: [],
       policyEngines: [],
       harnesses: [],
+      configBundles: [],
+      abTests: [],
+      httpGateways: [],
     };
 
     const config = getDevConfig(workingDir, project, '/test/project/agentcore');
@@ -287,6 +314,9 @@ describe('getDevConfig', () => {
       agentCoreGateways: [],
       policyEngines: [],
       harnesses: [],
+      configBundles: [],
+      abTests: [],
+      httpGateways: [],
     };
 
     const config = getDevConfig(workingDir, project, '/test/project/agentcore');
@@ -316,6 +346,9 @@ describe('getDevConfig', () => {
       agentCoreGateways: [],
       policyEngines: [],
       harnesses: [],
+      configBundles: [],
+      abTests: [],
+      httpGateways: [],
     };
 
     const config = getDevConfig(workingDir, project, '/test/project/agentcore');
@@ -345,6 +378,9 @@ describe('getDevConfig', () => {
       agentCoreGateways: [],
       policyEngines: [],
       harnesses: [],
+      configBundles: [],
+      abTests: [],
+      httpGateways: [],
     };
 
     const config = getDevConfig(workingDir, project, '/test/project/agentcore');
@@ -374,6 +410,9 @@ describe('getDevConfig', () => {
       agentCoreGateways: [],
       policyEngines: [],
       harnesses: [],
+      configBundles: [],
+      abTests: [],
+      httpGateways: [],
     };
 
     const config = getDevConfig(workingDir, project, '/test/project/agentcore');
@@ -404,6 +443,9 @@ describe('getDevConfig', () => {
       agentCoreGateways: [],
       policyEngines: [],
       harnesses: [],
+      configBundles: [],
+      abTests: [],
+      httpGateways: [],
     };
 
     const config = getDevConfig(workingDir, project, '/test/project/agentcore');
@@ -447,6 +489,9 @@ describe('getAgentPort', () => {
       agentCoreGateways: [],
       policyEngines: [],
       harnesses: [],
+      configBundles: [],
+      abTests: [],
+      httpGateways: [],
     };
 
     expect(getAgentPort(project, 'Agent1', 8080)).toBe(8080);
@@ -466,6 +511,9 @@ describe('getAgentPort', () => {
       agentCoreGateways: [],
       policyEngines: [],
       harnesses: [],
+      configBundles: [],
+      abTests: [],
+      httpGateways: [],
     };
 
     expect(getAgentPort(project, 'NonExistent', 9000)).toBe(9000);
@@ -490,6 +538,9 @@ describe('getDevSupportedAgents', () => {
       agentCoreGateways: [],
       policyEngines: [],
       harnesses: [],
+      configBundles: [],
+      abTests: [],
+      httpGateways: [],
     };
 
     expect(getDevSupportedAgents(project)).toEqual([]);
@@ -517,6 +568,9 @@ describe('getDevSupportedAgents', () => {
       agentCoreGateways: [],
       policyEngines: [],
       harnesses: [],
+      configBundles: [],
+      abTests: [],
+      httpGateways: [],
     };
 
     expect(getDevSupportedAgents(project)).toEqual([]);
@@ -552,6 +606,9 @@ describe('getDevSupportedAgents', () => {
       agentCoreGateways: [],
       policyEngines: [],
       harnesses: [],
+      configBundles: [],
+      abTests: [],
+      httpGateways: [],
     };
 
     const supported = getDevSupportedAgents(project);
@@ -581,6 +638,9 @@ describe('getDevSupportedAgents', () => {
       agentCoreGateways: [],
       policyEngines: [],
       harnesses: [],
+      configBundles: [],
+      abTests: [],
+      httpGateways: [],
     };
 
     const supported = getDevSupportedAgents(project);
@@ -618,6 +678,9 @@ describe('getDevSupportedAgents', () => {
       agentCoreGateways: [],
       policyEngines: [],
       harnesses: [],
+      configBundles: [],
+      abTests: [],
+      httpGateways: [],
     };
 
     const supported = getDevSupportedAgents(project);

@@ -1,40 +1,58 @@
 import type { AddOnlineEvalConfig, AddOnlineEvalStep } from './types';
 import { DEFAULT_SAMPLING_RATE } from './types';
-import { useCallback, useState } from 'react';
+import { useCallback, useRef, useState } from 'react';
 
 function getAllSteps(agentCount: number): AddOnlineEvalStep[] {
   if (agentCount <= 1) {
-    return ['name', 'evaluators', 'samplingRate', 'enableOnCreate', 'confirm'];
+    // endpoint step is included but will be skipped dynamically when no endpoints exist
+    return ['name', 'endpoint', 'evaluators', 'samplingRate', 'enableOnCreate', 'confirm'];
   }
-  return ['name', 'agent', 'evaluators', 'samplingRate', 'enableOnCreate', 'confirm'];
+  return ['name', 'agent', 'endpoint', 'evaluators', 'samplingRate', 'enableOnCreate', 'confirm'];
 }
 
 function getDefaultConfig(): AddOnlineEvalConfig {
   return {
     name: '',
     agent: '',
+    endpoint: undefined,
     evaluators: [],
     samplingRate: DEFAULT_SAMPLING_RATE,
     enableOnCreate: true,
   };
 }
 
+type StepSkipCheck = (step: AddOnlineEvalStep) => boolean;
+
 export function useAddOnlineEvalWizard(agentCount: number) {
   const allSteps = getAllSteps(agentCount);
   const [config, setConfig] = useState<AddOnlineEvalConfig>(getDefaultConfig);
   const [step, setStep] = useState<AddOnlineEvalStep>(allSteps[0]!);
+  const skipCheckRef = useRef<StepSkipCheck>(() => false);
 
   const currentIndex = allSteps.indexOf(step);
 
+  const setSkipCheck = useCallback((check: StepSkipCheck) => {
+    skipCheckRef.current = check;
+  }, []);
+
   const goBack = useCallback(() => {
-    const prevStep = allSteps[currentIndex - 1];
-    if (prevStep) setStep(prevStep);
+    for (let i = currentIndex - 1; i >= 0; i--) {
+      if (!skipCheckRef.current(allSteps[i]!)) {
+        setStep(allSteps[i]!);
+        return;
+      }
+    }
   }, [allSteps, currentIndex, setStep]);
 
   const nextStep = useCallback(
     (currentStep: AddOnlineEvalStep): AddOnlineEvalStep | undefined => {
       const idx = allSteps.indexOf(currentStep);
-      return allSteps[idx + 1];
+      for (let i = idx + 1; i < allSteps.length; i++) {
+        if (!skipCheckRef.current(allSteps[i]!)) {
+          return allSteps[i]!;
+        }
+      }
+      return undefined;
     },
     [allSteps]
   );
@@ -50,8 +68,17 @@ export function useAddOnlineEvalWizard(agentCount: number) {
 
   const setAgent = useCallback(
     (agent: string) => {
-      setConfig(c => ({ ...c, agent }));
+      setConfig(c => ({ ...c, agent, endpoint: undefined }));
       const next = nextStep('agent');
+      if (next) setStep(next);
+    },
+    [nextStep, setConfig, setStep]
+  );
+
+  const setEndpoint = useCallback(
+    (endpoint: string | undefined) => {
+      setConfig(c => ({ ...c, endpoint }));
+      const next = nextStep('endpoint');
       if (next) setStep(next);
     },
     [nextStep, setConfig, setStep]
@@ -95,8 +122,10 @@ export function useAddOnlineEvalWizard(agentCount: number) {
     steps: allSteps,
     currentIndex,
     goBack,
+    setSkipCheck,
     setName,
     setAgent,
+    setEndpoint,
     setEvaluators,
     setSamplingRate,
     setEnableOnCreate,

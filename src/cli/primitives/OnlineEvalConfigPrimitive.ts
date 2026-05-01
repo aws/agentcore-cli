@@ -3,6 +3,7 @@ import type { OnlineEvalConfig } from '../../schema';
 import { OnlineEvalConfigSchema } from '../../schema';
 import { getErrorMessage } from '../errors';
 import type { RemovalPreview, RemovalResult, SchemaChange } from '../operations/remove/types';
+import { cliCommandRun } from '../telemetry/cli-command-run.js';
 import { requireTTY } from '../tui/guards/tty';
 import { BasePrimitive } from './BasePrimitive';
 import type { AddResult, AddScreenComponent, RemovableResource } from './types';
@@ -14,6 +15,7 @@ export interface AddOnlineEvalConfigOptions {
   evaluators: string[];
   samplingRate: number;
   enableOnCreate?: boolean;
+  endpoint?: string;
 }
 
 export type RemovableOnlineEvalConfig = RemovableResource;
@@ -109,6 +111,7 @@ export class OnlineEvalConfigPrimitive extends BasePrimitive<AddOnlineEvalConfig
       .option('-e, --evaluator <evaluators...>', 'Evaluator name(s), Builtin.* IDs, or ARNs [non-interactive]')
       .option('--evaluator-arn <arns...>', 'Evaluator ARN(s) [non-interactive]')
       .option('--sampling-rate <rate>', 'Sampling percentage (0.01-100) [non-interactive]')
+      .option('--endpoint <name>', 'Runtime endpoint name to scope monitoring [non-interactive]')
       .option('--enable-on-create', 'Enable evaluation immediately after deploy [non-interactive]')
       .option('--json', 'Output as JSON [non-interactive]')
       .action(
@@ -118,40 +121,32 @@ export class OnlineEvalConfigPrimitive extends BasePrimitive<AddOnlineEvalConfig
           evaluator?: string[];
           evaluatorArn?: string[];
           samplingRate?: string;
+          endpoint?: string;
           enableOnCreate?: boolean;
           json?: boolean;
         }) => {
-          try {
-            if (!findConfigRoot()) {
-              console.error('No agentcore project found. Run `agentcore create` first.');
-              process.exit(1);
-            }
+          if (!findConfigRoot()) {
+            console.error('No agentcore project found. Run `agentcore create` first.');
+            process.exit(1);
+          }
 
-            if (cliOptions.name || cliOptions.json) {
-              // Merge --evaluator and --evaluator-arn into a single list
-              const allEvaluators = [...(cliOptions.evaluator ?? []), ...(cliOptions.evaluatorArn ?? [])];
+          if (cliOptions.name || cliOptions.json) {
+            // Merge --evaluator and --evaluator-arn into a single list
+            const allEvaluators = [...(cliOptions.evaluator ?? []), ...(cliOptions.evaluatorArn ?? [])];
 
+            await cliCommandRun('add.online-eval', !!cliOptions.json, async () => {
               if (!cliOptions.name || !cliOptions.runtime || allEvaluators.length === 0 || !cliOptions.samplingRate) {
-                const error =
-                  '--name, --runtime, --evaluator (and/or --evaluator-arn), and --sampling-rate are all required in non-interactive mode';
-                if (cliOptions.json) {
-                  console.log(JSON.stringify({ success: false, error }));
-                } else {
-                  console.error(error);
-                }
-                process.exit(1);
+                throw new Error(
+                  '--name, --runtime, --evaluator (and/or --evaluator-arn), and --sampling-rate are all required in non-interactive mode'
+                );
               }
 
               // Sampling rate as a percentage of requests to evaluate (0.01% to 100%)
               const samplingRate = parseFloat(cliOptions.samplingRate);
               if (isNaN(samplingRate) || samplingRate < 0.01 || samplingRate > 100) {
-                const error = `Invalid --sampling-rate "${cliOptions.samplingRate}". Must be a percentage between 0.01 and 100`;
-                if (cliOptions.json) {
-                  console.log(JSON.stringify({ success: false, error }));
-                } else {
-                  console.error(error);
-                }
-                process.exit(1);
+                throw new Error(
+                  `Invalid --sampling-rate "${cliOptions.samplingRate}". Must be a percentage between 0.01 and 100`
+                );
               }
 
               const result = await this.add({
@@ -160,17 +155,26 @@ export class OnlineEvalConfigPrimitive extends BasePrimitive<AddOnlineEvalConfig
                 evaluators: allEvaluators,
                 samplingRate,
                 enableOnCreate: cliOptions.enableOnCreate,
+                endpoint: cliOptions.endpoint,
               });
+
+              if (!result.success) {
+                throw new Error(result.error);
+              }
 
               if (cliOptions.json) {
                 console.log(JSON.stringify(result));
-              } else if (result.success) {
-                console.log(`Added online eval config '${result.configName}'`);
               } else {
-                console.error(result.error);
+                console.log(`Added online eval config '${result.configName}'`);
               }
-              process.exit(result.success ? 0 : 1);
-            } else {
+
+              return {
+                evaluator_count: allEvaluators.length,
+                enable_on_create: cliOptions.enableOnCreate ?? false,
+              };
+            });
+          } else {
+            try {
               // TUI fallback
               requireTTY();
               const [{ render }, { default: React }, { AddFlow }] = await Promise.all([
@@ -189,14 +193,10 @@ export class OnlineEvalConfigPrimitive extends BasePrimitive<AddOnlineEvalConfig
                   },
                 })
               );
-            }
-          } catch (error) {
-            if (cliOptions.json) {
-              console.log(JSON.stringify({ success: false, error: getErrorMessage(error) }));
-            } else {
+            } catch (error) {
               console.error(getErrorMessage(error));
+              process.exit(1);
             }
-            process.exit(1);
           }
         }
       );
@@ -213,12 +213,28 @@ export class OnlineEvalConfigPrimitive extends BasePrimitive<AddOnlineEvalConfig
 
     this.checkDuplicate(project.onlineEvalConfigs, options.name, 'Online eval config');
 
+    // Validate that the endpoint exists on the specified runtime if provided
+    if (options.endpoint) {
+      const runtime = project.runtimes.find(r => r.name === options.agent);
+      if (!runtime) {
+        throw new Error(`Runtime "${options.agent}" not found in project.`);
+      }
+      if (!runtime.endpoints?.[options.endpoint]) {
+        throw new Error(
+          `Endpoint "${options.endpoint}" not found on runtime "${options.agent}". Available endpoints: ${
+            runtime.endpoints ? Object.keys(runtime.endpoints).join(', ') : '(none)'
+          }`
+        );
+      }
+    }
+
     const config: OnlineEvalConfig = {
       name: options.name,
       agent: options.agent,
       evaluators: options.evaluators,
       samplingRate: options.samplingRate,
       ...(options.enableOnCreate !== undefined && { enableOnCreate: options.enableOnCreate }),
+      ...(options.endpoint && { endpoint: options.endpoint }),
     };
 
     project.onlineEvalConfigs.push(config);

@@ -43,6 +43,7 @@ describe.sequential('e2e: import gateway', () => {
 
     const result = await spawnAndCollect('uv', ['run', '--with', 'boto3', 'python3', 'setup_gateway.py'], fixtureDir, {
       AWS_REGION: region,
+      RESOURCE_SUFFIX: suffix,
     });
     if (result.exitCode !== 0) {
       throw new Error(
@@ -50,7 +51,7 @@ describe.sequential('e2e: import gateway', () => {
       );
     }
 
-    const resourcesPath = join(fixtureDir, 'bugbash-resources.json');
+    const resourcesPath = join(fixtureDir, `bugbash-resources-${suffix}.json`);
     const resources = JSON.parse(await readFile(resourcesPath, 'utf-8')) as Record<string, { arn: string; id: string }>;
     gatewayArn = resources.gateway!.arn;
 
@@ -80,6 +81,7 @@ describe.sequential('e2e: import gateway', () => {
     try {
       await spawnAndCollect('uv', ['run', '--with', 'boto3', 'python3', 'cleanup_resources.py'], fixtureDir, {
         AWS_REGION: region,
+        RESOURCE_SUFFIX: suffix,
       });
     } catch {
       /* ignore — resources may already be deleted by CFN teardown */

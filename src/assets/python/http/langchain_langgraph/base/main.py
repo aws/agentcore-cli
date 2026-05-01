@@ -1,7 +1,13 @@
 import os
-from langchain_core.messages import HumanMessage
+from typing import Any
+
+from langchain_core.messages import HumanMessage{{#if hasConfigBundle}}, SystemMessage{{/if}}
 from langgraph.prebuilt import create_react_agent
 from langchain.tools import tool
+{{#if hasConfigBundle}}
+from langchain_core.callbacks import BaseCallbackHandler
+from bedrock_agentcore.runtime.context import BedrockAgentCoreContext
+{{/if}}
 from opentelemetry.instrumentation.langchain import LangchainInstrumentor
 from bedrock_agentcore.runtime import BedrockAgentCoreApp
 from model.load import load_model
@@ -23,6 +29,14 @@ def get_or_create_model():
     if _llm is None:
         _llm = load_model()
     return _llm
+
+
+DEFAULT_SYSTEM_PROMPT = """
+You are a helpful assistant. Use tools when appropriate.
+{{#if sessionStorageMountPath}}
+You have persistent storage at {{sessionStorageMountPath}}. Use file tools to read and write files. Data persists across sessions.
+{{/if}}
+"""
 
 
 # Define a simple function tool
@@ -88,13 +102,28 @@ def list_files(directory: str = "") -> str:
 tools.extend([file_read, file_write, list_files])
 {{/if}}
 
-SYSTEM_PROMPT = """
-You are a helpful assistant. Use tools when appropriate.
-{{#if sessionStorageMountPath}}
-You have persistent storage at {{sessionStorageMountPath}}. Use file tools to read and write files. Data persists across sessions.
-{{/if}}
-"""
+{{#if hasConfigBundle}}
 
+class ConfigBundleCallback(BaseCallbackHandler):
+    """Injects config bundle values into LangGraph agent at runtime.
+
+    BedrockAgentCoreContext.get_config_bundle() fetches the component configuration
+    for the current runtime ARN from the config bundle service. The SDK caches the
+    result and refreshes on bundle version changes.
+    """
+
+    def on_chain_start(self, serialized: dict, inputs: dict, **kwargs: Any) -> None:
+        config = BedrockAgentCoreContext.get_config_bundle()
+        prompt = config.get("systemPrompt", DEFAULT_SYSTEM_PROMPT)
+
+        messages = inputs.get("messages", [])
+        if messages and isinstance(messages[0], SystemMessage):
+            messages[0] = SystemMessage(content=prompt)
+        else:
+            messages.insert(0, SystemMessage(content=prompt))
+        inputs["messages"] = messages
+
+{{/if}}
 
 @app.entrypoint
 async def invoke(payload, context):
@@ -113,7 +142,21 @@ async def invoke(payload, context):
         mcp_tools = await mcp_client.get_tools()
 
     # Define the agent using create_react_agent
-    graph = create_react_agent(get_or_create_model(), tools=mcp_tools + tools, prompt=SYSTEM_PROMPT)
+{{#if hasConfigBundle}}
+    graph = create_react_agent(get_or_create_model(), tools=mcp_tools + tools, prompt=DEFAULT_SYSTEM_PROMPT)
+    callback = ConfigBundleCallback()
+
+    # Process the user prompt
+    prompt = payload.get("prompt", "What can you help me with?")
+    log.info(f"Agent input: {prompt}")
+
+    # Run the agent with config bundle callback
+    result = await graph.ainvoke(
+        {"messages": [HumanMessage(content=prompt)]},
+        config={"callbacks": [callback]},
+    )
+{{else}}
+    graph = create_react_agent(get_or_create_model(), tools=mcp_tools + tools, prompt=DEFAULT_SYSTEM_PROMPT)
 
     # Process the user prompt
     prompt = payload.get("prompt", "What can you help me with?")
@@ -121,6 +164,7 @@ async def invoke(payload, context):
 
     # Run the agent
     result = await graph.ainvoke({"messages": [HumanMessage(content=prompt)]})
+{{/if}}
 
     # Return result
     output = result["messages"][-1].content

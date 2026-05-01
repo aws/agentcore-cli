@@ -72,4 +72,6 @@ export interface AgentRenderConfig {
   sessionStorageMountPath?: string;
   /** Whether to wrap entrypoint with opentelemetry-instrument. Defaults to true. */
   enableOtel?: boolean;
+  /** Whether a config bundle is wired into the agent template */
+  hasConfigBundle?: boolean;
 }

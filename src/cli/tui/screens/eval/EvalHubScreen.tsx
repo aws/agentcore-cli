@@ -4,7 +4,7 @@ import { HELP_TEXT } from '../../constants';
 import { useListNavigation } from '../../hooks';
 import React, { useMemo } from 'react';
 
-type EvalHubView = 'run-eval' | 'runs' | 'online-dashboard';
+type EvalHubView = 'run-eval' | 'runs' | 'run-batch-eval' | 'batch-eval-history' | 'online-dashboard';
 
 interface EvalHubScreenProps {
   onSelect: (view: EvalHubView) => void;
@@ -19,7 +19,17 @@ export function EvalHubScreen({ onSelect, onExit }: EvalHubScreenProps) {
         title: 'Run On-demand Evaluation',
         description: 'Evaluate agent traces with selected evaluators',
       },
-      { id: 'runs', title: 'Eval Runs', description: 'View past eval run results and scores' },
+      { id: 'runs', title: 'Eval Runs', description: 'View past on-demand eval results and scores' },
+      {
+        id: 'run-batch-eval',
+        title: 'Run Batch Evaluation',
+        description: 'Run a batch evaluation against agent sessions via CloudWatch',
+      },
+      {
+        id: 'batch-eval-history',
+        title: 'Batch Eval History',
+        description: 'View past batch evaluation results (local)',
+      },
       {
         id: 'online-dashboard',
         title: 'Online Eval Dashboard',

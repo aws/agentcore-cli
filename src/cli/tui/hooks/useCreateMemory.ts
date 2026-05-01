@@ -2,6 +2,7 @@ import { ConfigIO } from '../../../lib';
 import type { Memory } from '../../../schema';
 import { getAvailableAgents } from '../../operations/attach';
 import { memoryPrimitive } from '../../primitives/registry';
+import { withAddTelemetry } from '../../telemetry/cli-command-run.js';
 import { useCallback, useEffect, useState } from 'react';
 
 interface CreateMemoryConfig {
@@ -24,13 +25,25 @@ export function useCreateMemory() {
     setStatus({ state: 'loading' });
     try {
       const strategiesStr = config.strategies.map(s => s.type).join(',');
-      const addResult = await memoryPrimitive.add({
-        name: config.name,
-        expiry: config.eventExpiryDuration,
-        strategies: strategiesStr || undefined,
-        dataStreamArn: config.streaming?.dataStreamArn,
-        contentLevel: config.streaming?.contentLevel,
-      });
+      const strategyList = strategiesStr ? strategiesStr.split(',').map(s => s.trim().toUpperCase()) : [];
+      const addResult = await withAddTelemetry(
+        'add.memory',
+        {
+          strategy_count: strategyList.length,
+          strategy_semantic: strategyList.includes('SEMANTIC'),
+          strategy_summarization: strategyList.includes('SUMMARIZATION'),
+          strategy_user_preference: strategyList.includes('USER_PREFERENCE'),
+          strategy_episodic: strategyList.includes('EPISODIC'),
+        },
+        () =>
+          memoryPrimitive.add({
+            name: config.name,
+            expiry: config.eventExpiryDuration,
+            strategies: strategiesStr || undefined,
+            dataStreamArn: config.streaming?.dataStreamArn,
+            contentLevel: config.streaming?.contentLevel,
+          })
+      );
       if (!addResult.success) {
         throw new Error(addResult.error ?? 'Failed to create memory');
       }

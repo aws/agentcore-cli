@@ -9,8 +9,11 @@
 import { isReservedProjectName } from '../constants';
 import { AgentEnvSpecSchema } from './agent-env';
 import { AgentCoreGatewaySchema, AgentCoreGatewayTargetSchema, AgentCoreMcpRuntimeToolSchema } from './mcp';
+import { ABTestSchema } from './primitives/ab-test';
+import { ConfigBundleSchema } from './primitives/config-bundle';
 import { EvaluationLevelSchema, EvaluatorConfigSchema, EvaluatorNameSchema } from './primitives/evaluator';
 import { HarnessNameSchema } from './primitives/harness';
+import { HttpGatewaySchema } from './primitives/http-gateway';
 import {
   DEFAULT_EPISODIC_REFLECTION_NAMESPACES,
   DEFAULT_STRATEGY_NAMESPACES,
@@ -51,11 +54,18 @@ export {
   HarnessToolTypeSchema,
   HarnessModelProviderSchema,
 } from './primitives/harness';
+export { ConfigBundleSchema };
+export type { ComponentConfiguration, ComponentConfigurationMap, ConfigBundle } from './primitives/config-bundle';
+export { ConfigBundleNameSchema, ComponentConfigurationMapSchema } from './primitives/config-bundle';
 export { PolicyEngineSchema };
 export type { Policy, PolicyEngine, ValidationMode } from './primitives/policy';
 export { PolicyEngineNameSchema, PolicyNameSchema, PolicySchema, ValidationModeSchema } from './primitives/policy';
 export { TagsSchema };
 export type { Tags } from './primitives/tags';
+export type { ABTestMode, TargetRef, GatewayFilter, PerVariantOnlineEvaluationConfig } from './primitives/ab-test';
+export { ABTestModeSchema, TargetRefSchema, GatewayFilterSchema } from './primitives/ab-test';
+export type { HttpGatewayTarget } from './primitives/http-gateway';
+export { HttpGatewayTargetSchema } from './primitives/http-gateway';
 
 // ============================================================================
 // ManagedBy Schema
@@ -341,6 +351,36 @@ export const AgentCoreProjectSpecSchema = z
           name => `Duplicate harness name: ${name}`
         )
       ),
+
+    configBundles: z
+      .array(ConfigBundleSchema)
+      .default([])
+      .superRefine(
+        uniqueBy(
+          bundle => bundle.name,
+          name => `Duplicate config bundle name: ${name}`
+        )
+      ),
+
+    abTests: z
+      .array(ABTestSchema)
+      .default([])
+      .superRefine(
+        uniqueBy(
+          test => test.name,
+          name => `Duplicate AB test name: ${name}`
+        )
+      ),
+
+    httpGateways: z
+      .array(HttpGatewaySchema)
+      .default([])
+      .superRefine(
+        uniqueBy(
+          gw => gw.name,
+          name => `Duplicate HTTP gateway name: ${name}`
+        )
+      ),
   })
   .strict()
   .superRefine((spec, ctx) => {
@@ -364,6 +404,70 @@ export const AgentCoreProjectSpecSchema = z
           ctx.addIssue({
             code: z.ZodIssueCode.custom,
             message: `Online eval config "${config.name}" references unknown evaluator "${evalName}"`,
+          });
+        }
+      }
+    }
+
+    // Validate HTTP gateway runtimeRef references
+    for (const gw of spec.httpGateways ?? []) {
+      const runtimeExists = spec.runtimes.some(r => r.name === gw.runtimeRef);
+      if (!runtimeExists) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: `HTTP gateway "${gw.name}" references unknown runtime "${gw.runtimeRef}"`,
+        });
+      }
+    }
+
+    // Validate AB test gateway references
+    for (const test of spec.abTests ?? []) {
+      const gwField = test.gatewayRef;
+      if (gwField && typeof gwField === 'string') {
+        const match = /^\{\{gateway:(.+)\}\}$/.exec(gwField);
+        if (match) {
+          const gwName = match[1];
+          const gwExists = (spec.httpGateways ?? []).some(gw => gw.name === gwName);
+          if (!gwExists) {
+            ctx.addIssue({
+              code: z.ZodIssueCode.custom,
+              message: `AB test "${test.name}" references gateway "${gwName}" which does not exist in httpGateways`,
+            });
+          }
+
+          // For target-based AB tests, validate target names exist in the gateway's targets array
+          if (test.mode === 'target-based') {
+            const gw = (spec.httpGateways ?? []).find(g => g.name === gwName);
+            if (gw) {
+              const gwTargetNames = new Set((gw.targets ?? []).map(t => t.name));
+              for (const variant of test.variants) {
+                const targetName = variant.variantConfiguration.target?.targetName;
+                if (targetName && !gwTargetNames.has(targetName)) {
+                  ctx.addIssue({
+                    code: z.ZodIssueCode.custom,
+                    message: `AB test "${test.name}" variant "${variant.name}" references target "${targetName}" which does not exist in gateway "${gwName}" targets`,
+                  });
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+
+    // Validate HTTP gateway target runtimeRef and qualifier references
+    for (const gw of spec.httpGateways ?? []) {
+      for (const target of gw.targets ?? []) {
+        const runtime = spec.runtimes.find(r => r.name === target.runtimeRef);
+        if (!runtime) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            message: `HTTP gateway "${gw.name}" target "${target.name}" references unknown runtime "${target.runtimeRef}"`,
+          });
+        } else if (target.qualifier && target.qualifier !== 'DEFAULT' && !runtime.endpoints?.[target.qualifier]) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            message: `HTTP gateway "${gw.name}" target "${target.name}" references qualifier "${target.qualifier}" which is not an endpoint on runtime "${target.runtimeRef}"`,
           });
         }
       }

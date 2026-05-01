@@ -54,6 +54,9 @@ describe('requiresUv', () => {
       agentCoreGateways: [],
       policyEngines: [],
       harnesses: [],
+      configBundles: [],
+      abTests: [],
+      httpGateways: [],
     };
     expect(requiresUv(project)).toBe(true);
   });
@@ -80,6 +83,9 @@ describe('requiresUv', () => {
       agentCoreGateways: [],
       policyEngines: [],
       harnesses: [],
+      configBundles: [],
+      abTests: [],
+      httpGateways: [],
     };
     expect(requiresUv(project)).toBe(false);
   });
@@ -97,6 +103,9 @@ describe('requiresUv', () => {
       agentCoreGateways: [],
       policyEngines: [],
       harnesses: [],
+      configBundles: [],
+      abTests: [],
+      httpGateways: [],
     };
     expect(requiresUv(project)).toBe(false);
   });
@@ -125,6 +134,9 @@ describe('requiresContainerRuntime', () => {
       agentCoreGateways: [],
       policyEngines: [],
       harnesses: [],
+      configBundles: [],
+      abTests: [],
+      httpGateways: [],
     };
     expect(requiresContainerRuntime(project)).toBe(true);
   });
@@ -151,6 +163,9 @@ describe('requiresContainerRuntime', () => {
       agentCoreGateways: [],
       policyEngines: [],
       harnesses: [],
+      configBundles: [],
+      abTests: [],
+      httpGateways: [],
     };
     expect(requiresContainerRuntime(project)).toBe(false);
   });
@@ -168,6 +183,9 @@ describe('requiresContainerRuntime', () => {
       agentCoreGateways: [],
       policyEngines: [],
       harnesses: [],
+      configBundles: [],
+      abTests: [],
+      httpGateways: [],
     };
     expect(requiresContainerRuntime(project)).toBe(false);
   });
@@ -202,6 +220,9 @@ describe('requiresContainerRuntime', () => {
       agentCoreGateways: [],
       policyEngines: [],
       harnesses: [],
+      configBundles: [],
+      abTests: [],
+      httpGateways: [],
     };
     expect(requiresContainerRuntime(project)).toBe(true);
   });
@@ -270,6 +291,9 @@ describe('checkDependencyVersions', () => {
       agentCoreGateways: [],
       policyEngines: [],
       harnesses: [],
+      configBundles: [],
+      abTests: [],
+      httpGateways: [],
     };
 
     const result = await checkDependencyVersions(project);
@@ -291,6 +315,9 @@ describe('checkDependencyVersions', () => {
       agentCoreGateways: [],
       policyEngines: [],
       harnesses: [],
+      configBundles: [],
+      abTests: [],
+      httpGateways: [],
     };
 
     const result = await checkDependencyVersions(project);
@@ -320,6 +347,9 @@ describe('checkDependencyVersions', () => {
       agentCoreGateways: [],
       policyEngines: [],
       harnesses: [],
+      configBundles: [],
+      abTests: [],
+      httpGateways: [],
     };
 
     const result = await checkDependencyVersions(project);

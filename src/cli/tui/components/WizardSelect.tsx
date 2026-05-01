@@ -16,6 +16,8 @@ interface WizardSelectBaseProps {
 interface WizardSelectProps extends WizardSelectBaseProps {
   /** Current selected index */
   selectedIndex: number;
+  /** Maximum visible items before scrolling. Undefined = show all. */
+  maxVisibleItems?: number;
 }
 
 interface WizardMultiSelectProps extends WizardSelectBaseProps {
@@ -23,6 +25,8 @@ interface WizardMultiSelectProps extends WizardSelectBaseProps {
   cursorIndex: number;
   /** Currently selected item IDs */
   selectedIds: Set<string>;
+  /** Maximum visible items before scrolling. Undefined = show all. */
+  maxVisibleItems?: number;
 }
 
 /**
@@ -39,13 +43,25 @@ interface WizardMultiSelectProps extends WizardSelectBaseProps {
  * />
  * ```
  */
-export function WizardSelect({ title, description, items, selectedIndex, emptyMessage }: WizardSelectProps) {
+export function WizardSelect({
+  title,
+  description,
+  items,
+  selectedIndex,
+  emptyMessage,
+  maxVisibleItems,
+}: WizardSelectProps) {
   return (
     <Box flexDirection="column">
       <Text bold>{title}</Text>
       {description && <Text dimColor>{description}</Text>}
       <Box marginTop={1}>
-        <SelectList items={items} selectedIndex={selectedIndex} emptyMessage={emptyMessage} />
+        <SelectList
+          items={items}
+          selectedIndex={selectedIndex}
+          emptyMessage={emptyMessage}
+          maxVisibleItems={maxVisibleItems}
+        />
       </Box>
     </Box>
   );
@@ -73,6 +89,7 @@ export function WizardMultiSelect({
   cursorIndex,
   selectedIds,
   emptyMessage,
+  maxVisibleItems,
 }: WizardMultiSelectProps) {
   return (
     <Box flexDirection="column">
@@ -84,6 +101,7 @@ export function WizardMultiSelect({
           selectedIndex={cursorIndex}
           selectedIds={selectedIds}
           emptyMessage={emptyMessage}
+          maxVisibleItems={maxVisibleItems}
         />
       </Box>
     </Box>

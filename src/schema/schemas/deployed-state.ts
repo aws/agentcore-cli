@@ -182,9 +182,57 @@ export const OnlineEvalDeployedStateSchema = z.object({
   onlineEvaluationConfigId: z.string().min(1),
   onlineEvaluationConfigArn: z.string().min(1),
   executionStatus: z.enum(['ENABLED', 'DISABLED']).optional(),
+  /** Agent name this online eval config monitors. */
+  agent: z.string().min(1).optional(),
+  /** Runtime endpoint name scoped to this online eval config. */
+  endpoint: z.string().min(1).optional(),
 });
 
 export type OnlineEvalDeployedState = z.infer<typeof OnlineEvalDeployedStateSchema>;
+
+// ============================================================================
+// Configuration Bundle Deployed State
+// ============================================================================
+
+export const ConfigBundleDeployedStateSchema = z.object({
+  bundleId: z.string().min(1),
+  bundleArn: z.string().min(1),
+  versionId: z.string().min(1),
+});
+
+export type ConfigBundleDeployedState = z.infer<typeof ConfigBundleDeployedStateSchema>;
+
+// ============================================================================
+// AB Test Deployed State
+// ============================================================================
+
+export const ABTestDeployedStateSchema = z.object({
+  abTestId: z.string().min(1),
+  abTestArn: z.string().min(1),
+  /** IAM role ARN used by this AB test. */
+  roleArn: z.string().min(1).optional(),
+  /** Whether the CLI auto-created this role (true = CLI should delete on cleanup). */
+  roleCreatedByCli: z.boolean().optional(),
+  /** SHA-256 hash of the AB test configuration for change detection. */
+  configHash: z.string().optional(),
+});
+
+export type ABTestDeployedState = z.infer<typeof ABTestDeployedStateSchema>;
+
+// ============================================================================
+// HTTP Gateway Deployed State
+// ============================================================================
+
+export const HttpGatewayDeployedStateSchema = z.object({
+  gatewayId: z.string().min(1),
+  gatewayArn: z.string().min(1),
+  gatewayUrl: z.string().optional(),
+  targetId: z.string().min(1).optional(),
+  roleArn: z.string().min(1).optional(),
+  roleCreatedByCli: z.boolean().optional(),
+});
+
+export type HttpGatewayDeployedState = z.infer<typeof HttpGatewayDeployedStateSchema>;
 
 // ============================================================================
 // Runtime Endpoint Deployed State
@@ -209,6 +257,9 @@ export const DeployedResourceStateSchema = z.object({
   credentials: z.record(z.string(), CredentialDeployedStateSchema).optional(),
   evaluators: z.record(z.string(), EvaluatorDeployedStateSchema).optional(),
   onlineEvalConfigs: z.record(z.string(), OnlineEvalDeployedStateSchema).optional(),
+  configBundles: z.record(z.string(), ConfigBundleDeployedStateSchema).optional(),
+  abTests: z.record(z.string(), ABTestDeployedStateSchema).optional(),
+  httpGateways: z.record(z.string(), HttpGatewayDeployedStateSchema).optional(),
   policyEngines: z.record(z.string(), PolicyEngineDeployedStateSchema).optional(),
   policies: z.record(z.string(), PolicyDeployedStateSchema).optional(),
   harnesses: z.record(z.string(), HarnessDeployedStateSchema).optional(),

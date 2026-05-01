@@ -251,13 +251,13 @@ export function parseEvaluatorOutputs(
  */
 export function parseOnlineEvalOutputs(
   outputs: StackOutputs,
-  onlineEvalNames: string[]
+  onlineEvalSpecs: { name: string; agent?: string; endpoint?: string }[]
 ): Record<string, OnlineEvalDeployedState> {
   const configs: Record<string, OnlineEvalDeployedState> = {};
   const outputKeys = Object.keys(outputs);
 
-  for (const configName of onlineEvalNames) {
-    const pascal = toPascalId('OnlineEval', configName);
+  for (const spec of onlineEvalSpecs) {
+    const pascal = toPascalId('OnlineEval', spec.name);
     const idPrefix = `Application${pascal}IdOutput`;
     const arnPrefix = `Application${pascal}ArnOutput`;
 
@@ -265,9 +265,11 @@ export function parseOnlineEvalOutputs(
     const arnKey = outputKeys.find(k => k.startsWith(arnPrefix));
 
     if (idKey && arnKey) {
-      configs[configName] = {
+      configs[spec.name] = {
         onlineEvaluationConfigId: outputs[idKey]!,
         onlineEvaluationConfigArn: outputs[arnKey]!,
+        ...(spec.agent && { agent: spec.agent }),
+        ...(spec.endpoint && { endpoint: spec.endpoint }),
       };
     }
   }
@@ -452,6 +454,24 @@ export function buildDeployedState(opts: BuildDeployedStateOptions): DeployedSta
   // Add runtime endpoint state if endpoints exist
   if (runtimeEndpoints && Object.keys(runtimeEndpoints).length > 0) {
     targetState.resources!.runtimeEndpoints = runtimeEndpoints;
+  }
+
+  // Carry forward config bundles from existing state (managed post-deploy, not via CFN outputs)
+  const existingConfigBundles = existingState?.targets?.[targetName]?.resources?.configBundles;
+  if (existingConfigBundles && Object.keys(existingConfigBundles).length > 0) {
+    targetState.resources!.configBundles = existingConfigBundles;
+  }
+
+  // Carry forward AB tests from existing state (managed post-deploy, not via CFN outputs)
+  const existingABTests = existingState?.targets?.[targetName]?.resources?.abTests;
+  if (existingABTests && Object.keys(existingABTests).length > 0) {
+    targetState.resources!.abTests = existingABTests;
+  }
+
+  // Carry forward HTTP gateways from existing state (managed post-deploy, not via CFN outputs)
+  const existingHttpGateways = existingState?.targets?.[targetName]?.resources?.httpGateways;
+  if (existingHttpGateways && Object.keys(existingHttpGateways).length > 0) {
+    targetState.resources!.httpGateways = existingHttpGateways;
   }
 
   return {

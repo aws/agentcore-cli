@@ -6,13 +6,20 @@ import { serviceEndpoint } from './partition';
 import {
   BedrockAgentCoreClient,
   EvaluateCommand,
-  type EvaluationReferenceInput,
   InvokeAgentRuntimeCommand,
   InvokeAgentRuntimeCommandCommand,
   StopRuntimeSessionCommand,
 } from '@aws-sdk/client-bedrock-agentcore';
 import type { HttpRequest } from '@smithy/protocol-http';
 import type { DocumentType } from '@smithy/types';
+
+/** Local definition — SDK does not yet export this type. */
+export interface EvaluationReferenceInput {
+  context: { spanContext: { sessionId: string; traceId?: string } };
+  expectedTrajectory?: { toolNames: string[] };
+  assertions?: { text: string }[];
+  expectedResponse?: { text: string };
+}
 
 /**
  * Create a BedrockAgentCoreClient with optional custom header injection middleware.
@@ -70,6 +77,8 @@ export interface InvokeAgentRuntimeOptions {
   headers?: Record<string, string>;
   /** Bearer token for CUSTOM_JWT auth. When provided, uses raw HTTP with Authorization header instead of SigV4. */
   bearerToken?: string;
+  /** W3C baggage header value (e.g. config bundle ref for runtime) */
+  baggage?: string;
 }
 
 export interface InvokeAgentRuntimeResult {
@@ -162,20 +171,40 @@ function buildInvokeUrl(region: string, runtimeArn: string): string {
 }
 
 /**
- * Invoke an AgentCore Runtime using bearer token auth (raw HTTP, no SigV4).
- * Used when the runtime has CUSTOM_JWT authorizer configured.
+ * Build headers for bearer-token invoke requests.
+ * Shared by both streaming and non-streaming invoke paths.
  */
-async function invokeWithBearerTokenStreaming(options: InvokeAgentRuntimeOptions): Promise<StreamingInvokeResult> {
-  const url = buildInvokeUrl(options.region, options.runtimeArn);
+export function buildBearerInvokeHeaders(
+  options: Pick<InvokeAgentRuntimeOptions, 'bearerToken' | 'sessionId' | 'userId' | 'headers' | 'baggage'>,
+  accept: string
+): Record<string, string> {
   const headers: Record<string, string> = {
     Authorization: `Bearer ${options.bearerToken}`,
     'Content-Type': 'application/json',
-    Accept: 'application/json, text/event-stream',
+    Accept: accept,
   };
   if (options.sessionId) {
     headers['X-Amzn-Bedrock-AgentCore-Runtime-Session-Id'] = options.sessionId;
   }
   headers['X-Amzn-Bedrock-AgentCore-Runtime-User-Id'] = options.userId ?? DEFAULT_RUNTIME_USER_ID;
+  if (options.baggage) {
+    headers.baggage = options.baggage;
+  }
+  if (options.headers) {
+    for (const [name, value] of Object.entries(options.headers)) {
+      headers[name] = value;
+    }
+  }
+  return headers;
+}
+
+/**
+ * Invoke an AgentCore Runtime using bearer token auth (raw HTTP, no SigV4).
+ * Used when the runtime has CUSTOM_JWT authorizer configured.
+ */
+async function invokeWithBearerTokenStreaming(options: InvokeAgentRuntimeOptions): Promise<StreamingInvokeResult> {
+  const url = buildInvokeUrl(options.region, options.runtimeArn);
+  const headers = buildBearerInvokeHeaders(options, 'application/json, text/event-stream');
 
   const res = await fetch(url, {
     method: 'POST',
@@ -261,15 +290,7 @@ async function invokeWithBearerTokenStreaming(options: InvokeAgentRuntimeOptions
  */
 async function invokeWithBearerToken(options: InvokeAgentRuntimeOptions): Promise<InvokeAgentRuntimeResult> {
   const url = buildInvokeUrl(options.region, options.runtimeArn);
-  const headers: Record<string, string> = {
-    Authorization: `Bearer ${options.bearerToken}`,
-    'Content-Type': 'application/json',
-    Accept: 'application/json',
-  };
-  if (options.sessionId) {
-    headers['X-Amzn-Bedrock-AgentCore-Runtime-Session-Id'] = options.sessionId;
-  }
-  headers['X-Amzn-Bedrock-AgentCore-Runtime-User-Id'] = options.userId ?? DEFAULT_RUNTIME_USER_ID;
+  const headers = buildBearerInvokeHeaders(options, 'application/json');
 
   const res = await fetch(url, {
     method: 'POST',
@@ -311,6 +332,7 @@ export async function invokeAgentRuntimeStreaming(options: InvokeAgentRuntimeOpt
     accept: 'application/json',
     runtimeSessionId: options.sessionId,
     runtimeUserId: options.userId ?? DEFAULT_RUNTIME_USER_ID,
+    ...(options.baggage && { baggage: options.baggage }),
   });
 
   const response = await client.send(command);
@@ -406,6 +428,7 @@ export async function invokeAgentRuntime(options: InvokeAgentRuntimeOptions): Pr
     accept: 'application/json',
     runtimeSessionId: options.sessionId,
     runtimeUserId: options.userId ?? DEFAULT_RUNTIME_USER_ID,
+    ...(options.baggage && { baggage: options.baggage }),
   });
 
   const response = await client.send(command);

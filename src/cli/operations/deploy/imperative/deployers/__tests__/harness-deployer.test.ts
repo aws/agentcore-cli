@@ -49,6 +49,9 @@ function createContext(overrides?: {
     onlineEvalConfigs: [],
     agentCoreGateways: [],
     policyEngines: [],
+    configBundles: [],
+    abTests: [],
+    httpGateways: [],
     harnesses: overrides?.harnesses,
   } as AgentCoreProjectSpec;
 

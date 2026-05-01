@@ -415,6 +415,24 @@ Test configuration is in `vitest.config.ts` using Vitest projects:
 - Test timeout: 120 seconds
 - Hook timeout: 120 seconds
 
+## Troubleshooting
+
+### `Cannot find module '@playwright/test'`
+
+Playwright is not installed. Run:
+
+```bash
+npm install
+```
+
+### `browserType.launch: Executable doesn't exist` (Playwright browsers)
+
+Playwright browsers need to be downloaded after install. Run:
+
+```bash
+npx playwright install chromium
+```
+
 ## Integration Tests
 
 Integration tests require:

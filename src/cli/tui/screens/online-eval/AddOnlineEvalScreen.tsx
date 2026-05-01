@@ -12,11 +12,17 @@ import {
 import { HELP_TEXT } from '../../constants';
 import { useListNavigation, useMultiSelectNavigation } from '../../hooks';
 import { generateUniqueName } from '../../utils';
-import type { AddOnlineEvalConfig, EvaluatorItem } from './types';
+import type { AddOnlineEvalConfig, EvaluatorItem, RuntimeEndpointEntry } from './types';
 import { DEFAULT_SAMPLING_RATE, ONLINE_EVAL_STEP_LABELS } from './types';
 import { useAddOnlineEvalWizard } from './useAddOnlineEvalWizard';
 import { Box, Text } from 'ink';
-import React, { useMemo } from 'react';
+import React, { useCallback, useEffect, useMemo } from 'react';
+
+/** Runtime info with endpoints, passed from the parent flow. */
+export interface RuntimeInfoForEval {
+  name: string;
+  endpoints: RuntimeEndpointEntry[];
+}
 
 interface AddOnlineEvalScreenProps {
   onComplete: (config: AddOnlineEvalConfig) => void;
@@ -24,6 +30,8 @@ interface AddOnlineEvalScreenProps {
   existingConfigNames: string[];
   evaluatorItems: EvaluatorItem[];
   agentNames: string[];
+  /** Runtime info including endpoints for the endpoint picker step. */
+  runtimes?: RuntimeInfoForEval[];
 }
 
 export function AddOnlineEvalScreen({
@@ -32,6 +40,7 @@ export function AddOnlineEvalScreen({
   existingConfigNames,
   evaluatorItems: rawEvaluatorItems,
   agentNames,
+  runtimes = [],
 }: AddOnlineEvalScreenProps) {
   const wizard = useAddOnlineEvalWizard(agentNames.length);
 
@@ -42,6 +51,36 @@ export function AddOnlineEvalScreen({
     }
     return wizard.config;
   }, [wizard.config, agentNames]);
+
+  // Determine endpoints for the currently selected agent
+  const agentEndpoints = useMemo(() => {
+    const agentName = effectiveConfig.agent;
+    if (!agentName) return [];
+    const rt = runtimes.find(r => r.name === agentName);
+    return rt?.endpoints ?? [];
+  }, [effectiveConfig.agent, runtimes]);
+
+  // Skip endpoint step when the selected agent has no endpoints
+  const shouldSkipStep = useCallback(
+    (s: string) => {
+      if (s === 'endpoint' && agentEndpoints.length === 0) return true;
+      return false;
+    },
+    [agentEndpoints.length]
+  );
+
+  useEffect(() => {
+    wizard.setSkipCheck(shouldSkipStep);
+  }, [shouldSkipStep]); // wizard.setSkipCheck is stable (useCallback with no deps)
+
+  // Build endpoint picker items: DEFAULT (plain) + each endpoint
+  const endpointItems: SelectableItem[] = useMemo(() => {
+    const items: SelectableItem[] = [{ id: 'DEFAULT', title: 'DEFAULT' }];
+    for (const ep of agentEndpoints) {
+      items.push({ id: ep.name, title: ep.name, description: `v${ep.version}` });
+    }
+    return items;
+  }, [agentEndpoints]);
 
   const evaluatorItems: SelectableItem[] = useMemo(() => {
     return rawEvaluatorItems.map(e => ({
@@ -57,6 +96,7 @@ export function AddOnlineEvalScreen({
 
   const isNameStep = wizard.step === 'name';
   const isAgentStep = wizard.step === 'agent';
+  const isEndpointStep = wizard.step === 'endpoint';
   const isEvaluatorsStep = wizard.step === 'evaluators';
   const isSamplingRateStep = wizard.step === 'samplingRate';
   const isEnableOnCreateStep = wizard.step === 'enableOnCreate';
@@ -75,6 +115,16 @@ export function AddOnlineEvalScreen({
     onSelect: item => wizard.setAgent(item.id),
     onExit: () => wizard.goBack(),
     isActive: isAgentStep,
+  });
+
+  const endpointNav = useListNavigation({
+    items: endpointItems,
+    onSelect: item => {
+      // DEFAULT means no endpoint filter — store undefined
+      wizard.setEndpoint(item.id === 'DEFAULT' ? undefined : item.id);
+    },
+    onExit: () => wizard.goBack(),
+    isActive: isEndpointStep,
   });
 
   const evaluatorsNav = useMultiSelectNavigation({
@@ -102,7 +152,7 @@ export function AddOnlineEvalScreen({
 
   const helpText = isEvaluatorsStep
     ? 'Space toggle · Enter confirm · Esc back'
-    : isAgentStep || isEnableOnCreateStep
+    : isAgentStep || isEndpointStep || isEnableOnCreateStep
       ? HELP_TEXT.NAVIGATE_SELECT
       : isConfirmStep
         ? HELP_TEXT.CONFIRM_CANCEL
@@ -133,6 +183,14 @@ export function AddOnlineEvalScreen({
             description="Each online eval config monitors a single agent"
             items={agentItems}
             selectedIndex={agentNav.selectedIndex}
+          />
+        )}
+
+        {isEndpointStep && (
+          <WizardSelect
+            title="Select endpoint to monitor"
+            items={endpointItems}
+            selectedIndex={endpointNav.selectedIndex}
           />
         )}
 
@@ -186,6 +244,7 @@ export function AddOnlineEvalScreen({
             fields={[
               { label: 'Name', value: effectiveConfig.name },
               { label: 'Agent', value: effectiveConfig.agent },
+              ...(effectiveConfig.endpoint ? [{ label: 'Endpoint', value: effectiveConfig.endpoint }] : []),
               { label: 'Evaluators', value: effectiveConfig.evaluators.join(', ') },
               { label: 'Sampling Rate', value: `${effectiveConfig.samplingRate}%` },
               { label: 'Enable on Deploy', value: effectiveConfig.enableOnCreate ? 'Yes' : 'No' },

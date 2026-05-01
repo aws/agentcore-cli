@@ -49,6 +49,7 @@ export interface InvokeConfig {
     networkMode?: NetworkMode;
     protocol?: ProtocolMode;
     authorizerType?: RuntimeAuthorizerType;
+    baggage?: string;
   }[];
   harnesses: {
     name: string;
@@ -150,9 +151,24 @@ export function useInvokeFlow(options: InvokeFlowOptions = {}): InvokeFlowState 
         }
 
         const runtimes: InvokeConfig['runtimes'] = [];
+        const deployedBundles = targetState?.resources?.configBundles ?? {};
         for (const agent of project.runtimes) {
           const state = targetState?.resources?.runtimes?.[agent.name];
           if (!state) continue;
+
+          // Build config bundle baggage if a bundle is associated with this agent
+          let baggage: string | undefined;
+          const bundleSpec = project.configBundles?.find(b => {
+            const keys = Object.keys(b.components ?? {});
+            return keys.some(k => k === `{{runtime:${agent.name}}}`);
+          });
+          if (bundleSpec) {
+            const bundleState = deployedBundles[bundleSpec.name];
+            if (bundleState?.bundleArn && bundleState?.versionId) {
+              baggage = `aws.agentcore.configbundle_arn=${encodeURIComponent(bundleState.bundleArn)},aws.agentcore.configbundle_version=${encodeURIComponent(bundleState.versionId)}`;
+            }
+          }
+
           runtimes.push({
             name: agent.name,
             state,
@@ -160,6 +176,7 @@ export function useInvokeFlow(options: InvokeFlowOptions = {}): InvokeFlowState 
             networkMode: agent.networkMode,
             protocol: agent.protocol,
             authorizerType: agent.authorizerType,
+            baggage,
           });
         }
 
@@ -673,6 +690,7 @@ export function useInvokeFlow(options: InvokeFlowOptions = {}): InvokeFlowState 
               logger,
               headers,
               bearerToken: bearerToken || undefined,
+              baggage: agent.baggage,
             });
 
         if (result.sessionId) {

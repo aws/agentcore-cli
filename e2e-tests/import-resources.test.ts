@@ -54,6 +54,7 @@ describe.sequential('e2e: import runtime/memory/evaluator', () => {
       const result = await spawnAndCollect('uv', ['run', '--with', 'boto3', 'python3', script], fixtureDir, {
         AWS_REGION: region,
         DEFAULT_EVALUATOR_MODEL,
+        RESOURCE_SUFFIX: suffix,
       });
       if (result.exitCode !== 0) {
         throw new Error(
@@ -63,7 +64,7 @@ describe.sequential('e2e: import runtime/memory/evaluator', () => {
     }
 
     // 2. Read resource ARNs from bugbash-resources.json
-    const resourcesPath = join(fixtureDir, 'bugbash-resources.json');
+    const resourcesPath = join(fixtureDir, `bugbash-resources-${suffix}.json`);
     const resources = JSON.parse(await readFile(resourcesPath, 'utf-8')) as Record<string, { arn: string; id: string }>;
     runtimeArn = resources['runtime-basic']!.arn;
     memoryArn = resources['memory-full']!.arn;
@@ -102,6 +103,7 @@ describe.sequential('e2e: import runtime/memory/evaluator', () => {
     try {
       await spawnAndCollect('uv', ['run', '--with', 'boto3', 'python3', 'cleanup_resources.py'], fixtureDir, {
         AWS_REGION: region,
+        RESOURCE_SUFFIX: suffix,
       });
     } catch {
       /* ignore — resources may already be deleted by CFN teardown */

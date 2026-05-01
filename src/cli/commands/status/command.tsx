@@ -18,6 +18,8 @@ const VALID_RESOURCE_TYPES = [
   'online-eval',
   'policy-engine',
   'policy',
+  'config-bundle',
+  'ab-test',
 ] as const;
 const VALID_STATES = ['deployed', 'local-only', 'pending-removal'] as const;
 
@@ -60,7 +62,7 @@ export const registerStatus = (program: Command) => {
     .option('--target <name>', 'Select deployment target')
     .option(
       '--type <type>',
-      'Filter by resource type (agent, harness, runtime-endpoint, memory, credential, gateway, evaluator, online-eval, policy-engine, policy)'
+      'Filter by resource type (agent, harness, runtime-endpoint, memory, credential, gateway, evaluator, online-eval, policy-engine, policy, config-bundle, ab-test)'
     )
     .option('--state <state>', 'Filter by deployment state (deployed, local-only, pending-removal)')
     .option('--runtime <name>', 'Filter to a specific runtime')
@@ -146,11 +148,14 @@ export const registerStatus = (program: Command) => {
         const onlineEvals = filtered.filter(r => r.resourceType === 'online-eval');
         const policyEngines = filtered.filter(r => r.resourceType === 'policy-engine');
         const policies = filtered.filter(r => r.resourceType === 'policy');
+        const configBundles = filtered.filter(r => r.resourceType === 'config-bundle');
+        const abTests = filtered.filter(r => r.resourceType === 'ab-test');
+        // TODO: Add http-gateway resource type when diffResourceSet for HTTP gateways is added to action.ts
 
         render(
           <Box flexDirection="column">
             <Text bold>
-              AgentCore Status (target: {result.targetName}
+              AgentCore Status (target: {result.targetName || 'No target configured'}
               {result.targetRegion ? `, ${result.targetRegion}` : ''})
             </Text>
 
@@ -267,6 +272,33 @@ export const registerStatus = (program: Command) => {
                 ))}
               </Box>
             )}
+
+            {configBundles.length > 0 && (
+              <Box flexDirection="column" marginTop={1}>
+                <Text bold>Config Bundles</Text>
+                {configBundles.map(entry => (
+                  <ResourceEntry key={`${entry.resourceType}-${entry.name}`} entry={entry} />
+                ))}
+              </Box>
+            )}
+
+            {abTests.length > 0 && (
+              <Box flexDirection="column" marginTop={1}>
+                <Text bold>AB Tests</Text>
+                {abTests.map(entry => (
+                  <Box key={`${entry.resourceType}-${entry.name}`} flexDirection="column">
+                    <ResourceEntry entry={entry} />
+                    {entry.invocationUrl && (
+                      <Text dimColor>
+                        {'  '}Invocation URL: {entry.invocationUrl}
+                      </Text>
+                    )}
+                  </Box>
+                ))}
+              </Box>
+            )}
+
+            {/* TODO: Add HTTP Gateways render section when diffResourceSet is added to action.ts */}
 
             {filtered.length === 0 && <Text dimColor>No resources match the given filters.</Text>}
           </Box>

@@ -61,6 +61,9 @@ describe('resolveAgentContext', () => {
       agentCoreGateways: [],
       policyEngines: [],
       harnesses: [],
+      configBundles: [],
+      abTests: [],
+      httpGateways: [],
     },
     deployedState: {
       targets: {
@@ -123,6 +126,9 @@ describe('resolveAgentContext', () => {
         agentCoreGateways: [],
         policyEngines: [],
         harnesses: [],
+        configBundles: [],
+        abTests: [],
+        httpGateways: [],
       },
     });
     const result = await resolveAgentContext(context, {});
@@ -165,6 +171,9 @@ describe('resolveAgentContext', () => {
         agentCoreGateways: [],
         policyEngines: [],
         harnesses: [],
+        configBundles: [],
+        abTests: [],
+        httpGateways: [],
       },
       deployedState: {
         targets: {
@@ -217,6 +226,9 @@ describe('resolveAgentContext', () => {
         agentCoreGateways: [],
         policyEngines: [],
         harnesses: [],
+        configBundles: [],
+        abTests: [],
+        httpGateways: [],
       },
     });
     const result = await resolveAgentContext(context, {});

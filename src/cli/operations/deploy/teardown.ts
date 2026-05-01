@@ -1,8 +1,11 @@
 import { CONFIG_DIR, ConfigIO } from '../../../lib';
 import type { AwsDeploymentTarget } from '../../../schema';
 import { withTargetRegion } from '../../aws';
+import { deleteConfigurationBundle } from '../../aws/agentcore-config-bundles';
 import { CdkToolkitWrapper, silentIoHost } from '../../cdk/toolkit-lib';
 import { type DiscoveredStack, findStack } from '../../cloudformation/stack-discovery';
+import { deleteOrphanedABTests } from './post-deploy-ab-tests';
+import { deleteOrphanedHttpGateways } from './post-deploy-http-gateways';
 import { StackSelectionStrategy } from '@aws-cdk/toolkit-lib';
 import { existsSync } from 'fs';
 import { join } from 'path';
@@ -111,6 +114,83 @@ export async function performStackTeardown(targetName: string): Promise<StackTea
 
   const discovered = await discoverDeployedTargets();
   const deployedTarget = discovered.deployedTargets.find(dt => dt.target.name === targetName);
+
+  // Clean up imperatively-created resources before stack destruction.
+  // Ordering: AB tests first (they create rules on gateways), then gateways, then bundles.
+  // Delegates to the existing orphan-cleanup functions with an empty spec so everything
+  // is treated as orphaned — reuses stop/poll/delete/role-cleanup logic without duplication.
+  try {
+    const deployedState = await configIO.readDeployedState();
+    const resources = deployedState.targets?.[targetName]?.resources;
+
+    if (resources?.httpGateways || resources?.configBundles || resources?.abTests) {
+      let region = deployedTarget?.target.region;
+      if (!region) {
+        try {
+          const targets = await configIO.resolveAWSDeploymentTargets();
+          const matchingTarget = targets.find(t => t.name === targetName);
+          region = matchingTarget?.region;
+        } catch {
+          // Can't resolve region
+        }
+      }
+      if (!region) {
+        console.warn('Warning: Could not determine region for resource cleanup — resources may need manual deletion');
+      }
+      if (region) {
+        const projectSpec = await configIO.readProjectSpec();
+        const emptySpec = { ...projectSpec, abTests: [], httpGateways: [] };
+
+        if (resources.abTests) {
+          const abResult = await deleteOrphanedABTests({
+            region,
+            projectSpec: emptySpec,
+            existingABTests: resources.abTests,
+          });
+          for (const r of abResult.results) {
+            if (r.status === 'deleted') {
+              console.log(`Deleted AB test "${r.testName}"`);
+            } else if (r.error) {
+              console.warn(`Warning: Failed to delete AB test "${r.testName}": ${r.error}`);
+            }
+          }
+        }
+
+        if (resources.httpGateways) {
+          const gwResult = await deleteOrphanedHttpGateways({
+            region,
+            projectSpec: emptySpec,
+            existingHttpGateways: resources.httpGateways,
+          });
+          for (const r of gwResult.results) {
+            if (r.status === 'deleted') {
+              console.log(`Deleted HTTP gateway "${r.gatewayName}"`);
+            } else if (r.error) {
+              console.warn(`Warning: Failed to delete HTTP gateway "${r.gatewayName}": ${r.error}`);
+            }
+          }
+        }
+
+        for (const [bundleName, bundleState] of Object.entries(resources.configBundles ?? {})) {
+          try {
+            await deleteConfigurationBundle({ region, bundleId: bundleState.bundleId });
+            console.log(`Deleted config bundle "${bundleName}"`);
+          } catch (err) {
+            console.warn(
+              `Warning: Error during config bundle "${bundleName}" cleanup: ${err instanceof Error ? err.message : String(err)}`
+            );
+          }
+        }
+      }
+    }
+  } catch (err) {
+    // Only suppress "file not found" — other errors (corrupt state, permissions) should warn
+    const msg = err instanceof Error ? err.message : String(err);
+    if (!msg.includes('ENOENT') && !msg.includes('not found') && !msg.includes('does not exist')) {
+      console.warn(`Warning: Could not read deployed state for resource cleanup: ${msg}`);
+    }
+  }
+
   if (deployedTarget) {
     await destroyTarget({ target: deployedTarget, cdkProjectDir });
   }

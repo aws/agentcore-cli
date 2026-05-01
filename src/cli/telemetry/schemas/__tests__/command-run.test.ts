@@ -1,6 +1,6 @@
 import { COMMAND_SCHEMAS, type Command, type CommandAttrs, deriveCommandGroup } from '../command-run';
 import { ResourceAttributesSchema } from '../common-attributes';
-import { CommandResultSchema } from '../common-shapes';
+import { CommandResultSchema, resilientParse } from '../common-shapes';
 import { describe, expect, expectTypeOf, it } from 'vitest';
 import { z } from 'zod';
 
@@ -168,5 +168,57 @@ describe('type safety', () => {
       const isConstrained = !freeText.success || !empty.success;
       expect(isConstrained, `${field} accepts arbitrary strings`).toBe(true);
     }
+  });
+});
+
+describe('resilientParse', () => {
+  it('passes valid attrs through unchanged', () => {
+    const attrs = {
+      language: 'python',
+      framework: 'strands',
+      model_provider: 'bedrock',
+      memory: 'shortterm',
+      protocol: 'mcp',
+      build: 'codezip',
+      agent_type: 'create',
+      network_mode: 'public',
+      has_agent: true,
+    };
+    expect(resilientParse(COMMAND_SCHEMAS.create, attrs)).toEqual(attrs);
+  });
+
+  it('defaults a single invalid enum field to unknown', () => {
+    const attrs = {
+      language: 'rust', // invalid
+      framework: 'strands',
+      model_provider: 'bedrock',
+      memory: 'shortterm',
+      protocol: 'mcp',
+      build: 'codezip',
+      agent_type: 'create',
+      network_mode: 'public',
+      has_agent: true,
+    };
+    const result = resilientParse(COMMAND_SCHEMAS.create, attrs);
+    expect(result.language).toBe('unknown');
+    expect(result.framework).toBe('strands');
+  });
+
+  it('defaults missing required fields to unknown', () => {
+    const result = resilientParse(COMMAND_SCHEMAS.create, { language: 'python' });
+    expect(result.language).toBe('python');
+    expect(result.framework).toBe('unknown');
+    expect(result.model_provider).toBe('unknown');
+  });
+
+  it('defaults all fields to unknown when all are invalid', () => {
+    const result = resilientParse(COMMAND_SCHEMAS.create, {});
+    for (const value of Object.values(result)) {
+      expect(value).toBe('unknown');
+    }
+  });
+
+  it('returns empty object for no-attrs schemas', () => {
+    expect(resilientParse(COMMAND_SCHEMAS['telemetry.disable'], {})).toEqual({});
   });
 });

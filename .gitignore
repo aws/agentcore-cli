@@ -69,11 +69,6 @@ ProtocolTesting/
 .cdk-constructs-clone/
 .omc/
 
-# E2E test artifacts
-e2e-tests/fixtures/import/bugbash-resources.json
-
-# oh-my-claudecode
-.omc/
 # Browser tests
 browser-tests/.browser-test-env
 browser-tests/test-results/

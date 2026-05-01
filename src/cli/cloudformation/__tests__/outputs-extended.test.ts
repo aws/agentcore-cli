@@ -364,7 +364,7 @@ describe('parseOnlineEvalOutputs', () => {
         'arn:aws:bedrock:us-east-1:123:online-evaluation-config/proj_TestConfig-xyz',
     };
 
-    const result = parseOnlineEvalOutputs(outputs, ['TestConfig']);
+    const result = parseOnlineEvalOutputs(outputs, [{ name: 'TestConfig' }]);
     expect(result.TestConfig).toBeDefined();
     expect(result.TestConfig!.onlineEvaluationConfigId).toBe('proj_TestConfig-xyz');
     expect(result.TestConfig!.onlineEvaluationConfigArn).toBe(
@@ -380,7 +380,7 @@ describe('parseOnlineEvalOutputs', () => {
       ApplicationOnlineEvalConfigBArnOutputD: 'arn:b',
     };
 
-    const result = parseOnlineEvalOutputs(outputs, ['ConfigA', 'ConfigB']);
+    const result = parseOnlineEvalOutputs(outputs, [{ name: 'ConfigA' }, { name: 'ConfigB' }]);
     expect(Object.keys(result)).toHaveLength(2);
     expect(result.ConfigA!.onlineEvaluationConfigId).toBe('id-a');
     expect(result.ConfigB!.onlineEvaluationConfigId).toBe('id-b');
@@ -391,12 +391,12 @@ describe('parseOnlineEvalOutputs', () => {
       ApplicationOnlineEvalTestConfigArnOutputDEF: 'arn:config',
     };
 
-    const result = parseOnlineEvalOutputs(outputs, ['TestConfig']);
+    const result = parseOnlineEvalOutputs(outputs, [{ name: 'TestConfig' }]);
     expect(result.TestConfig).toBeUndefined();
   });
 
   it('returns empty record for empty outputs', () => {
-    const result = parseOnlineEvalOutputs({}, ['TestConfig']);
+    const result = parseOnlineEvalOutputs({}, [{ name: 'TestConfig' }]);
     expect(result).toEqual({});
   });
 });

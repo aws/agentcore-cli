@@ -12,18 +12,17 @@ import sys
 import os
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-import time
 from common import (
     REGION, get_control_client, ensure_role, save_resource,
     tag_resource, wait_for_gateway, wait_for_gateway_target,
+    NAME_SUFFIX,
 )
 
 
 def main():
     role_arn = ensure_role()
     client = get_control_client()
-    ts = int(time.time())
-    gateway_name = f"bugbashGw{ts}"
+    gateway_name = f"bugbashGw{NAME_SUFFIX}"
 
     # ------------------------------------------------------------------
     # 1. Create gateway

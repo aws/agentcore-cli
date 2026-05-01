@@ -3,6 +3,7 @@ import type { AgentCoreProjectSpec, AwsDeploymentTargets, DeployedResourceState,
 import { getAgentRuntimeStatus } from '../../aws';
 import { getEvaluator, getOnlineEvaluationConfig } from '../../aws/agentcore-control';
 import { getHarness } from '../../aws/agentcore-harness';
+import { dnsSuffix } from '../../aws/partition';
 import { getErrorMessage } from '../../errors';
 import { ExecLogger } from '../../logging';
 import type { ResourceDeploymentState } from './constants';
@@ -21,6 +22,8 @@ export interface ResourceStatusEntry {
     | 'online-eval'
     | 'policy-engine'
     | 'policy'
+    | 'config-bundle'
+    | 'ab-test'
     | 'runtime-endpoint';
   name: string;
   deploymentState: ResourceDeploymentState;
@@ -126,6 +129,30 @@ function diffResourceSet<TLocal extends { name: string }, TDeployed>({
   return entries;
 }
 
+/**
+ * Build the full gateway invocation URL for an AB test.
+ * Appends the runtime target name and /invocations path to the gateway base URL.
+ */
+function buildGatewayInvocationUrl(
+  gwState: { gatewayId: string; gatewayArn: string; gatewayUrl?: string },
+  gwName: string,
+  project: AgentCoreProjectSpec
+): string | undefined {
+  // Use stored URL or derive from ARN: arn:aws:bedrock-agentcore:{region}:{account}:gateway/{id}
+  const baseUrl =
+    gwState.gatewayUrl ??
+    (() => {
+      const region = gwState.gatewayArn.split(':')[3];
+      return region
+        ? `https://${gwState.gatewayId}.gateway.bedrock-agentcore.${region}.${dnsSuffix(region)}`
+        : undefined;
+    })();
+  if (!baseUrl) return undefined;
+  const gwSpec = (project.httpGateways ?? []).find(gw => gw.name === gwName);
+  if (!gwSpec) return baseUrl;
+  return `${baseUrl}/${gwSpec.runtimeRef}/invocations`;
+}
+
 export function computeResourceStatuses(
   project: AgentCoreProjectSpec,
   resources: DeployedResourceState | undefined
@@ -219,6 +246,37 @@ export function computeResourceStatuses(
     getDeployedKey: item => `${item.engineName}/${item.name}`,
   });
 
+  const configBundles = diffResourceSet({
+    resourceType: 'config-bundle',
+    localItems: project.configBundles ?? [],
+    deployedRecord: resources?.configBundles ?? {},
+    getIdentifier: deployed => deployed.bundleArn,
+    getLocalDetail: item => item.description,
+  });
+
+  const abTests = diffResourceSet({
+    resourceType: 'ab-test',
+    localItems: project.abTests ?? [],
+    deployedRecord: resources?.abTests ?? {},
+    getIdentifier: deployed => deployed.abTestArn,
+    getLocalDetail: item => item.description,
+  });
+
+  // Enrich deployed AB tests with gateway invocation URL
+  const httpGatewayState = resources?.httpGateways ?? {};
+  for (const entry of abTests) {
+    if (entry.deploymentState !== 'deployed') continue;
+    const testSpec = (project.abTests ?? []).find(t => t.name === entry.name);
+    if (!testSpec) continue;
+    const gwMatch = /^\{\{gateway:(.+)\}\}$/.exec(testSpec.gatewayRef);
+    const gwName = gwMatch?.[1];
+    if (!gwName) continue;
+    const gwState = httpGatewayState[gwName];
+    if (!gwState) continue;
+    const url = buildGatewayInvocationUrl(gwState, gwName, project);
+    if (url) entry.invocationUrl = url;
+  }
+
   // Flatten runtime endpoints for diffing against deployed state
   const localEndpoints: { name: string; agentName: string; version: number; description?: string }[] = [];
   for (const runtime of project.runtimes) {
@@ -255,6 +313,8 @@ export function computeResourceStatuses(
     ...onlineEvalConfigs,
     ...policyEngines,
     ...policies,
+    ...configBundles,
+    ...abTests,
   ];
 }
 

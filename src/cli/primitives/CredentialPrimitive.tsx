@@ -4,6 +4,8 @@ import { CredentialSchema } from '../../schema';
 import { validateAddCredentialOptions } from '../commands/add/validate';
 import { getErrorMessage } from '../errors';
 import type { RemovalPreview, RemovalResult, SchemaChange } from '../operations/remove/types';
+import { cliCommandRun } from '../telemetry/cli-command-run.js';
+import { CredentialType, standardize } from '../telemetry/schemas/common-shapes.js';
 import { requireTTY } from '../tui/guards/tty';
 import { BasePrimitive } from './BasePrimitive';
 import { computeDefaultCredentialEnvVarName } from './credential-utils';
@@ -273,23 +275,23 @@ export class CredentialPrimitive extends BasePrimitive<AddCredentialOptions, Rem
           clientSecret?: string;
           scopes?: string;
         }) => {
-          try {
-            if (!findConfigRoot()) {
-              console.error('No agentcore project found. Run `agentcore create` first.');
-              process.exit(1);
-            }
+          if (!findConfigRoot()) {
+            console.error('No agentcore project found. Run `agentcore create` first.');
+            process.exit(1);
+          }
 
-            if (
-              cliOptions.name ||
-              cliOptions.apiKey ||
-              cliOptions.json ||
-              cliOptions.type ||
-              cliOptions.discoveryUrl ||
-              cliOptions.clientId ||
-              cliOptions.clientSecret ||
-              cliOptions.scopes
-            ) {
-              // CLI mode
+          if (
+            cliOptions.name ||
+            cliOptions.apiKey ||
+            cliOptions.json ||
+            cliOptions.type ||
+            cliOptions.discoveryUrl ||
+            cliOptions.clientId ||
+            cliOptions.clientSecret ||
+            cliOptions.scopes
+          ) {
+            // CLI mode
+            await cliCommandRun('add.credential', !!cliOptions.json, async () => {
               const validation = validateAddCredentialOptions({
                 name: cliOptions.name,
                 type: cliOptions.type as 'api-key' | 'oauth' | undefined,
@@ -301,12 +303,7 @@ export class CredentialPrimitive extends BasePrimitive<AddCredentialOptions, Rem
               });
 
               if (!validation.valid) {
-                if (cliOptions.json) {
-                  console.log(JSON.stringify({ success: false, error: validation.error }));
-                } else {
-                  console.error(validation.error);
-                }
-                process.exit(1);
+                throw new Error(validation.error);
               }
 
               const addOptions =
@@ -330,15 +327,22 @@ export class CredentialPrimitive extends BasePrimitive<AddCredentialOptions, Rem
 
               const result = await this.add(addOptions);
 
+              if (!result.success) {
+                throw new Error(result.error);
+              }
+
               if (cliOptions.json) {
                 console.log(JSON.stringify(result));
-              } else if (result.success) {
-                console.log(`Added credential '${result.credentialName}'`);
               } else {
-                console.error(result.error);
+                console.log(`Added credential '${result.credentialName}'`);
               }
-              process.exit(result.success ? 0 : 1);
-            } else {
+
+              return {
+                credential_type: standardize(CredentialType, cliOptions.type ?? 'api-key'),
+              };
+            });
+          } else {
+            try {
               // TUI fallback — dynamic imports to avoid pulling ink (async) into registry
               requireTTY();
               const [{ render }, { default: React }, { AddFlow }] = await Promise.all([
@@ -357,14 +361,10 @@ export class CredentialPrimitive extends BasePrimitive<AddCredentialOptions, Rem
                   },
                 })
               );
-            }
-          } catch (error) {
-            if (cliOptions.json) {
-              console.log(JSON.stringify({ success: false, error: getErrorMessage(error) }));
-            } else {
+            } catch (error) {
               console.error(getErrorMessage(error));
+              process.exit(1);
             }
-            process.exit(1);
           }
         }
       );

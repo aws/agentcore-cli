@@ -11,6 +11,7 @@ import type {
 import { getErrorMessage } from '../../errors';
 import { checkCreateDependencies } from '../../external-requirements';
 import { initGitRepo, setupPythonProject, writeEnvFile, writeGitignore } from '../../operations';
+import { createConfigBundleForAgent } from '../../operations/agent/config-bundle-defaults';
 import {
   mapGenerateConfigToRenderConfig,
   mapModelProviderToIdentityProviders,
@@ -131,6 +132,7 @@ export interface CreateWithAgentOptions {
   idleTimeout?: number;
   maxLifetime?: number;
   sessionStorageMountPath?: string;
+  withConfigBundle?: boolean;
   skipGit?: boolean;
   skipInstall?: boolean;
   skipPythonSetup?: boolean;
@@ -156,6 +158,7 @@ export async function createProjectWithAgent(options: CreateWithAgentOptions): P
     idleTimeout,
     maxLifetime: maxLifetimeOpt,
     sessionStorageMountPath,
+    withConfigBundle,
     skipGit,
     skipInstall,
     skipPythonSetup,
@@ -245,6 +248,7 @@ export async function createProjectWithAgent(options: CreateWithAgentOptions): P
       ...(idleTimeout !== undefined && { idleRuntimeSessionTimeout: idleTimeout }),
       ...(maxLifetimeOpt !== undefined && { maxLifetime: maxLifetimeOpt }),
       ...(sessionStorageMountPath && { sessionStorageMountPath }),
+      ...(withConfigBundle && { withConfigBundle }),
     };
 
     // Resolve credential strategy FIRST (new project has no existing credentials)
@@ -285,6 +289,11 @@ export async function createProjectWithAgent(options: CreateWithAgentOptions): P
       await writeAgentToProject(generateConfig, { configBaseDir });
     }
     onProgress?.('Add agent to project', 'done');
+
+    // Auto-create config bundle when opted in
+    if (withConfigBundle) {
+      await createConfigBundleForAgent(agentName, configBaseDir);
+    }
 
     // Set up Python environment if needed (unless skipped)
     if (language === 'Python' && !skipPythonSetup && !skipInstall) {

@@ -109,7 +109,8 @@ function resolveInspectorPath() {
 
 log('Starting bundle process...');
 
-const timestamp = Math.floor(Date.now() / 1000);
+const now = new Date();
+const timestamp = now.toISOString().replace(/[-:T]/g, '').slice(0, 14);
 log(`Bundle timestamp: ${timestamp}`);
 
 // Helper to bump a package version with a unique e2e timestamp tag.
@@ -119,7 +120,9 @@ function bumpVersion(pkgDir) {
   const pkg = JSON.parse(fs.readFileSync(pkgJsonPath, 'utf8'));
   const originalVersion = pkg.version;
   const baseVersion = originalVersion.split('-')[0];
-  pkg.version = `${baseVersion}-${timestamp}`;
+  const prerelease = originalVersion.includes('-') ? originalVersion.split('-').slice(1).join('-') : '';
+  const tag = prerelease ? `${prerelease}-${timestamp}` : timestamp;
+  pkg.version = `${baseVersion}-${tag}`;
   fs.writeFileSync(pkgJsonPath, JSON.stringify(pkg, null, 2) + '\n');
   log(`Bumped ${pkg.name} version: ${originalVersion} -> ${pkg.version}`);
   return { pkgJsonPath, originalVersion, bumpedVersion: pkg.version };

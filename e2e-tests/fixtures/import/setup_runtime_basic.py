@@ -7,20 +7,19 @@ import sys
 import os
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-import time
 from common import (
     ensure_role, get_control_client, wait_for_runtime,
     save_resource, print_import_command, upload_code,
+    NAME_SUFFIX,
 )
 
 
 def main():
     role_arn = ensure_role()
     client = get_control_client()
-    ts = int(time.time())
-    runtime_name = f"bugbash_basic_{ts}"
+    runtime_name = f"bugbash_basic_{NAME_SUFFIX}"
 
-    bucket, s3_key = upload_code(f"bugbash-basic-{ts}")
+    bucket, s3_key = upload_code(f"bugbash-basic-{NAME_SUFFIX}")
 
     print(f"Creating basic runtime: {runtime_name}")
     resp = client.create_agent_runtime(

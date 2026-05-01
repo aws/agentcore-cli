@@ -32,9 +32,19 @@ vi.mock('../../../../lib/index.js', () => ({
     resolveAWSDeploymentTargets = mockReadAWSDeploymentTargets;
     readDeployedState = mockReadDeployedState;
     configExists = mockConfigExists;
+    getPathResolver = () => ({ getAgentConfigPath: () => '/tmp/mock-agentcore.json' });
   },
   requireConfigRoot: mockRequireConfigRoot,
 }));
+
+vi.mock('node:fs', async importOriginal => {
+  const actual = await importOriginal<typeof import('node:fs')>();
+  return {
+    ...actual,
+    readFileSync: () => JSON.stringify({}),
+    writeFileSync: vi.fn(),
+  };
+});
 
 vi.mock('../../../cdk/local-cdk-project.js', () => ({
   LocalCdkProject: class {

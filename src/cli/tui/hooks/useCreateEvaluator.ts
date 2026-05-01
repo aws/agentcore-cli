@@ -1,5 +1,7 @@
 import type { EvaluatorConfig } from '../../../schema';
 import { evaluatorPrimitive } from '../../primitives/registry';
+import { withAddTelemetry } from '../../telemetry/cli-command-run.js';
+import { Level, standardize } from '../../telemetry/schemas/common-shapes.js';
 import { useCallback, useEffect, useState } from 'react';
 
 interface CreateEvaluatorConfig {
@@ -16,11 +18,19 @@ export function useCreateEvaluator() {
   const create = useCallback(async (config: CreateEvaluatorConfig) => {
     setStatus({ state: 'loading' });
     try {
-      const addResult = await evaluatorPrimitive.add({
-        name: config.name,
-        level: config.level as 'SESSION' | 'TRACE' | 'TOOL_CALL',
-        config: config.config,
-      });
+      const addResult = await withAddTelemetry(
+        'add.evaluator',
+        {
+          evaluator_type: config.config.codeBased ? 'code-based' : 'llm-as-a-judge',
+          level: standardize(Level, config.level),
+        },
+        () =>
+          evaluatorPrimitive.add({
+            name: config.name,
+            level: config.level as 'SESSION' | 'TRACE' | 'TOOL_CALL',
+            config: config.config,
+          })
+      );
       if (!addResult.success) {
         throw new Error(addResult.error ?? 'Failed to create evaluator');
       }

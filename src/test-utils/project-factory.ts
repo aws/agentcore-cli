@@ -65,7 +65,7 @@ export async function createTestProject(options: CreateTestProjectOptions = {}):
 
   args.push('--json');
 
-  const result = await runCLI(args, testDir, skipInstall);
+  const result = await runCLI(args, testDir, { skipInstall });
 
   if (result.exitCode !== 0) {
     // Clean up on failure

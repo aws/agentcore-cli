@@ -27,6 +27,7 @@ jobs:
       fail-fast: false
       matrix:
         cdk-source: [npm, main]
+        shard: ['1/6', '2/6', '3/6', '4/6', '5/6', '6/6']
     steps:
       - uses: actions/checkout@v6
         with:
@@ -70,7 +71,7 @@ jobs:
           CDK_REPO: ${{ secrets.CDK_REPO_NAME }}
       - name: Install CLI globally
         run: npm install -g "$(npm pack | tail -1)"
-      - name: Run E2E tests (${{ matrix.cdk-source }})
+      - name: Run E2E tests (${{ matrix.cdk-source }}, shard ${{ matrix.shard }})
         env:
           AWS_ACCOUNT_ID: ${{ steps.aws.outputs.account_id }}
           AWS_REGION: ${{ inputs.aws_region || 'us-east-1' }}
@@ -78,7 +79,7 @@ jobs:
           OPENAI_API_KEY: ${{ env.E2E_OPENAI_API_KEY }}
           GEMINI_API_KEY: ${{ env.E2E_GEMINI_API_KEY }}
           CDK_TARBALL: ${{ env.CDK_TARBALL }}
-        run: npm run test:e2e
+        run: npx vitest run --project e2e --shard=${{ matrix.shard }}
   browser-tests:
     runs-on: ubuntu-latest
     environment: e2e-testing

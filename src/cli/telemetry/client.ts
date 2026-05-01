@@ -1,6 +1,6 @@
 import { classifyError, isUserError } from './error-classification.js';
 import { COMMAND_SCHEMAS, type Command, type CommandAttrs, deriveCommandGroup } from './schemas/command-run.js';
-import { type CommandResult, CommandResultSchema } from './schemas/common-shapes.js';
+import { type CommandResult, CommandResultSchema, resilientParse } from './schemas/common-shapes.js';
 import type { MetricSink } from './sinks/metric-sink.js';
 import { performance } from 'perf_hooks';
 
@@ -69,17 +69,24 @@ export class TelemetryClient {
     durationMs: number
   ): void {
     try {
+      // CommandResult is built internally — hard parse is intentional since
+      // a metric without a valid exit_reason is meaningless.
       CommandResultSchema.parse(result);
-      if (result.exit_reason !== 'failure' && result.exit_reason !== 'cancel') {
-        COMMAND_SCHEMAS[command].parse(attrs);
-      }
+
+      // Validate command attrs resiliently: invalid fields default to 'unknown'
+      // instead of dropping the entire metric.
+      // On failure/cancel the callback attrs are empty so validation is skipped.
+      const validatedAttrs =
+        result.exit_reason !== 'failure' && result.exit_reason !== 'cancel'
+          ? resilientParse(COMMAND_SCHEMAS[command], attrs as Record<string, unknown>)
+          : attrs;
 
       const otelAttrs: Record<string, string | number> = {
         command_group: deriveCommandGroup(command),
         command,
       };
 
-      for (const obj of [result, attrs]) {
+      for (const obj of [result, validatedAttrs]) {
         for (const [k, v] of Object.entries(obj)) {
           if (typeof v === 'boolean') {
             otelAttrs[k] = String(v);

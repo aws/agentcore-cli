@@ -428,8 +428,12 @@ export async function handleDeploy(options: ValidatedDeployOptions): Promise<Dep
     const evaluators = parseEvaluatorOutputs(outputs, evaluatorNames);
 
     // Parse online eval config outputs
-    const onlineEvalNames = (context.projectSpec.onlineEvalConfigs ?? []).map(c => c.name);
-    const onlineEvalConfigs = parseOnlineEvalOutputs(outputs, onlineEvalNames);
+    const onlineEvalSpecs = (context.projectSpec.onlineEvalConfigs ?? []).map(c => ({
+      name: c.name,
+      agent: c.agent,
+      endpoint: c.endpoint,
+    }));
+    const onlineEvalConfigs = parseOnlineEvalOutputs(outputs, onlineEvalSpecs);
 
     // Parse policy engine outputs
     const policyEngineSpecs = context.projectSpec.policyEngines ?? [];

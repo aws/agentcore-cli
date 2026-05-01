@@ -4,6 +4,8 @@ import {
   gatewayTargetPrimitive,
   policyEnginePrimitive,
 } from '../../primitives/registry';
+import { withAddTelemetry } from '../../telemetry/cli-command-run.js';
+import { AuthorizerType, PolicyEngineMode, standardize } from '../../telemetry/schemas/common-shapes.js';
 import type { AddGatewayConfig } from '../screens/mcp/types';
 import { useCallback, useEffect, useState } from 'react';
 
@@ -23,22 +25,33 @@ export function useCreateGateway() {
   const createGateway = useCallback(async (config: AddGatewayConfig) => {
     setStatus({ state: 'loading' });
     try {
-      const addResult = await gatewayPrimitive.add({
-        name: config.name,
-        description: config.description,
-        authorizerType: config.authorizerType,
-        discoveryUrl: config.jwtConfig?.discoveryUrl,
-        allowedAudience: config.jwtConfig?.allowedAudience?.join(','),
-        allowedClients: config.jwtConfig?.allowedClients?.join(','),
-        allowedScopes: config.jwtConfig?.allowedScopes?.join(','),
-        customClaims: config.jwtConfig?.customClaims,
-        clientId: config.jwtConfig?.clientId,
-        clientSecret: config.jwtConfig?.clientSecret,
-        enableSemanticSearch: config.enableSemanticSearch,
-        exceptionLevel: config.exceptionLevel,
-        policyEngine: config.policyEngineConfiguration?.policyEngineName,
-        policyEngineMode: config.policyEngineConfiguration?.mode,
-      });
+      const addResult = await withAddTelemetry(
+        'add.gateway',
+        {
+          authorizer_type: standardize(AuthorizerType, config.authorizerType ?? 'NONE'),
+          has_policy_engine: !!config.policyEngineConfiguration?.policyEngineName,
+          policy_engine_mode: standardize(PolicyEngineMode, config.policyEngineConfiguration?.mode ?? 'log_only'),
+          semantic_search: config.enableSemanticSearch !== false,
+          runtime_count: 0,
+        },
+        () =>
+          gatewayPrimitive.add({
+            name: config.name,
+            description: config.description,
+            authorizerType: config.authorizerType,
+            discoveryUrl: config.jwtConfig?.discoveryUrl,
+            allowedAudience: config.jwtConfig?.allowedAudience?.join(','),
+            allowedClients: config.jwtConfig?.allowedClients?.join(','),
+            allowedScopes: config.jwtConfig?.allowedScopes?.join(','),
+            customClaims: config.jwtConfig?.customClaims,
+            clientId: config.jwtConfig?.clientId,
+            clientSecret: config.jwtConfig?.clientSecret,
+            enableSemanticSearch: config.enableSemanticSearch,
+            exceptionLevel: config.exceptionLevel,
+            policyEngine: config.policyEngineConfiguration?.policyEngineName,
+            policyEngineMode: config.policyEngineConfiguration?.mode,
+          })
+      );
       if (!addResult.success) {
         throw new Error(addResult.error ?? 'Failed to create gateway');
       }

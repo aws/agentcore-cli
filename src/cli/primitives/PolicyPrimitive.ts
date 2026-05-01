@@ -5,6 +5,8 @@ import { detectRegion } from '../aws';
 import { getPolicyGeneration, startPolicyGeneration } from '../aws/policy-generation';
 import { getErrorMessage } from '../errors';
 import type { RemovalPreview, RemovalResult, SchemaChange } from '../operations/remove/types';
+import { cliCommandRun } from '../telemetry/cli-command-run.js';
+import { ValidationMode, standardize } from '../telemetry/schemas/common-shapes.js';
 import { requireTTY } from '../tui/guards/tty';
 import { BasePrimitive } from './BasePrimitive';
 import { SOURCE_CODE_NOTE } from './constants';
@@ -291,35 +293,25 @@ export class PolicyPrimitive extends BasePrimitive<AddPolicyOptions, RemovablePo
           validationMode?: string;
           json?: boolean;
         }) => {
-          try {
-            if (!findConfigRoot()) {
-              console.error('No agentcore project found. Run `agentcore create` first.');
-              process.exit(1);
-            }
+          if (!findConfigRoot()) {
+            console.error('No agentcore project found. Run `agentcore create` first.');
+            process.exit(1);
+          }
 
-            if (
-              cliOptions.name ||
-              cliOptions.engine ||
-              cliOptions.source ||
-              cliOptions.statement ||
-              cliOptions.generate ||
-              cliOptions.json
-            ) {
+          if (
+            cliOptions.name ||
+            cliOptions.engine ||
+            cliOptions.source ||
+            cliOptions.statement ||
+            cliOptions.generate ||
+            cliOptions.json
+          ) {
+            await cliCommandRun('add.policy', !!cliOptions.json, async () => {
               if (!cliOptions.name) {
-                if (cliOptions.json) {
-                  console.log(JSON.stringify({ success: false, error: '--name is required' }));
-                } else {
-                  console.error('--name is required');
-                }
-                process.exit(1);
+                throw new Error('--name is required');
               }
               if (!cliOptions.engine) {
-                if (cliOptions.json) {
-                  console.log(JSON.stringify({ success: false, error: '--engine is required' }));
-                } else {
-                  console.error('--engine is required');
-                }
-                process.exit(1);
+                throw new Error('--engine is required');
               }
 
               const result = await this.add({
@@ -335,15 +327,28 @@ export class PolicyPrimitive extends BasePrimitive<AddPolicyOptions, RemovablePo
                   : undefined,
               });
 
+              if (!result.success) {
+                throw new Error(result.error);
+              }
+
               if (cliOptions.json) {
                 console.log(JSON.stringify(result));
-              } else if (result.success) {
-                console.log(`Added policy '${result.policyName}' to engine '${result.engineName}'`);
               } else {
-                console.error(result.error);
+                console.log(`Added policy '${result.policyName}' to engine '${result.engineName}'`);
               }
-              process.exit(result.success ? 0 : 1);
-            } else {
+
+              const sourceType: 'file' | 'statement' | 'generate' = cliOptions.source
+                ? 'file'
+                : cliOptions.generate
+                  ? 'generate'
+                  : 'statement';
+              return {
+                source_type: sourceType,
+                validation_mode: standardize(ValidationMode, cliOptions.validationMode ?? 'FAIL_ON_ANY_FINDINGS'),
+              };
+            });
+          } else {
+            try {
               requireTTY();
               const [{ render }, { default: React }, { AddFlow }] = await Promise.all([
                 import('ink'),
@@ -361,14 +366,10 @@ export class PolicyPrimitive extends BasePrimitive<AddPolicyOptions, RemovablePo
                   },
                 })
               );
+            } catch (error) {
+              console.error(getErrorMessage(error));
+              process.exit(1);
             }
-          } catch (error) {
-            if (cliOptions.json) {
-              console.log(JSON.stringify({ success: false, error: getErrorMessage(error) }));
-            } else {
-              console.error(`Error: ${getErrorMessage(error)}`);
-            }
-            process.exit(1);
           }
         }
       );

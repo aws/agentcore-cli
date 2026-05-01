@@ -4,8 +4,10 @@ import { LayoutProvider } from './context';
 import { CLI_ONLY_EXAMPLES } from './copy';
 import { setExitAction } from './exit-action';
 import { MissingProjectMessage, WrongDirectoryMessage, getProjectRootMismatch, projectExists } from './guards';
+import { ABTestPickerScreen } from './screens/ab-test';
 import { AddFlow } from './screens/add/AddFlow';
 import { CliOnlyScreen } from './screens/cli-only';
+import { ConfigBundleFlow } from './screens/config-bundle-hub';
 import { CreateScreen } from './screens/create';
 import { DeployScreen } from './screens/deploy/DeployScreen';
 import { EvalHubScreen, EvalScreen } from './screens/eval';
@@ -15,8 +17,9 @@ import { ImportFlow } from './screens/import';
 import { InvokeScreen } from './screens/invoke';
 import { OnlineEvalDashboard } from './screens/online-eval';
 import { PackageScreen } from './screens/package';
+import { RecommendationFlow, RecommendationHistoryScreen, RecommendationsHubScreen } from './screens/recommendation';
 import { RemoveFlow } from './screens/remove';
-import { RunEvalFlow, RunScreen } from './screens/run-eval';
+import { BatchEvalHistoryScreen, RunBatchEvalFlow, RunEvalFlow, RunScreen } from './screens/run-eval';
 import { StatusScreen } from './screens/status/StatusScreen';
 import { UpdateScreen } from './screens/update';
 import { ValidateScreen } from './screens/validate';
@@ -38,6 +41,11 @@ type Route =
   | { name: 'remove' }
   | { name: 'run' }
   | { name: 'run-eval'; from?: 'run' | 'evals' }
+  | { name: 'run-batch-eval'; from?: 'run' | 'evals' }
+  | { name: 'batch-eval-history' }
+  | { name: 'recommendations-hub' }
+  | { name: 'recommend'; from?: 'recommendations-hub' | 'run' }
+  | { name: 'recommendation-history' }
   | { name: 'evals' }
   | { name: 'eval-runs' }
   | { name: 'online-evals' }
@@ -45,7 +53,9 @@ type Route =
   | { name: 'validate' }
   | { name: 'package' }
   | { name: 'update' }
+  | { name: 'config-bundle' }
   | { name: 'import' }
+  | { name: 'ab-test' }
   | { name: 'cli-only'; commandId: string };
 
 // Commands that don't require being at the project root
@@ -111,6 +121,8 @@ function AppContent() {
       setRoute({ name: 'evals' });
     } else if (id === 'fetch') {
       setRoute({ name: 'fetch-access' });
+    } else if (id === 'recommendations') {
+      setRoute({ name: 'recommendations-hub' });
     } else if (id === 'validate') {
       setRoute({ name: 'validate' });
     } else if (id === 'package') {
@@ -123,6 +135,10 @@ function AppContent() {
       setRoute({ name: 'import' });
     } else if (id === 'update') {
       setRoute({ name: 'update' });
+    } else if (id === 'config-bundle') {
+      setRoute({ name: 'config-bundle' });
+    } else if (id === 'ab-test') {
+      setRoute({ name: 'ab-test' });
     }
   };
 
@@ -213,6 +229,8 @@ function AppContent() {
     return (
       <RunScreen
         onRunEval={() => setRoute({ name: 'run-eval', from: 'run' })}
+        onRunBatchEval={() => setRoute({ name: 'run-batch-eval', from: 'run' })}
+        onRunRecommendation={() => setRoute({ name: 'recommend', from: 'run' })}
         onExit={() => setRoute({ name: 'help' })}
       />
     );
@@ -224,6 +242,8 @@ function AppContent() {
         onSelect={view => {
           if (view === 'run-eval') setRoute({ name: 'run-eval', from: 'evals' });
           if (view === 'runs') setRoute({ name: 'eval-runs' });
+          if (view === 'run-batch-eval') setRoute({ name: 'run-batch-eval', from: 'evals' });
+          if (view === 'batch-eval-history') setRoute({ name: 'batch-eval-history' });
           if (view === 'online-dashboard') setRoute({ name: 'online-evals' });
         }}
         onExit={() => setRoute({ name: 'help' })}
@@ -239,6 +259,36 @@ function AppContent() {
         onViewRuns={() => setRoute({ name: 'eval-runs' })}
       />
     );
+  }
+
+  if (route.name === 'run-batch-eval') {
+    const backRoute = route.from ?? 'run';
+    return <RunBatchEvalFlow onExit={() => setRoute({ name: backRoute } as Route)} />;
+  }
+
+  if (route.name === 'batch-eval-history') {
+    return <BatchEvalHistoryScreen onExit={() => setRoute({ name: 'evals' })} />;
+  }
+
+  if (route.name === 'recommendations-hub') {
+    return (
+      <RecommendationsHubScreen
+        onSelect={view => {
+          if (view === 'run-recommendation') setRoute({ name: 'recommend', from: 'recommendations-hub' });
+          if (view === 'recommendation-history') setRoute({ name: 'recommendation-history' });
+        }}
+        onExit={() => setRoute({ name: 'help' })}
+      />
+    );
+  }
+
+  if (route.name === 'recommend') {
+    const backRoute = route.from ?? 'recommendations-hub';
+    return <RecommendationFlow onExit={() => setRoute({ name: backRoute } as Route)} />;
+  }
+
+  if (route.name === 'recommendation-history') {
+    return <RecommendationHistoryScreen onExit={() => setRoute({ name: 'recommendations-hub' })} />;
   }
 
   if (route.name === 'eval-runs') {
@@ -272,6 +322,14 @@ function AppContent() {
 
   if (route.name === 'update') {
     return <UpdateScreen isInteractive={true} onExit={() => setRoute({ name: 'help' })} />;
+  }
+
+  if (route.name === 'config-bundle') {
+    return <ConfigBundleFlow onExit={() => setRoute({ name: 'help' })} />;
+  }
+
+  if (route.name === 'ab-test') {
+    return <ABTestPickerScreen onExit={() => setRoute({ name: 'help' })} />;
   }
 
   if (route.name === 'cli-only') {

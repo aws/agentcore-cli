@@ -128,6 +128,20 @@ export async function handleInvoke(context: InvokeContext, options: InvokeOption
     return { success: false, error: `Agent '${agentSpec.name}' is not deployed to target '${selectedTargetName}'` };
   }
 
+  // Build config bundle baggage if a bundle is associated with this agent
+  const deployedBundles = targetState?.resources?.configBundles ?? {};
+  let baggage: string | undefined;
+  const bundleSpec = project.configBundles?.find(b => {
+    const keys = Object.keys(b.components ?? {});
+    return keys.some(k => k === `{{runtime:${agentSpec.name}}}`);
+  });
+  if (bundleSpec) {
+    const bundleState = deployedBundles[bundleSpec.name];
+    if (bundleState?.bundleArn && bundleState?.versionId) {
+      baggage = `aws.agentcore.configbundle_arn=${encodeURIComponent(bundleState.bundleArn)},aws.agentcore.configbundle_version=${encodeURIComponent(bundleState.versionId)}`;
+    }
+  }
+
   // Auto-fetch bearer token for CUSTOM_JWT agents when not provided
   if (agentSpec.authorizerType === 'CUSTOM_JWT' && !options.bearerToken) {
     const canFetch = await canFetchRuntimeToken(agentSpec.name);
@@ -264,6 +278,7 @@ export async function handleInvoke(context: InvokeContext, options: InvokeOption
       userId: options.userId,
       headers: options.headers,
       bearerToken: options.bearerToken,
+      baggage,
     };
 
     // list-tools: list available MCP tools
@@ -444,6 +459,7 @@ export async function handleInvoke(context: InvokeContext, options: InvokeOption
         logger,
         headers: options.headers,
         bearerToken: options.bearerToken,
+        baggage,
       });
 
       for await (const chunk of result.stream) {
@@ -477,6 +493,7 @@ export async function handleInvoke(context: InvokeContext, options: InvokeOption
     userId: options.userId,
     headers: options.headers,
     bearerToken: options.bearerToken,
+    baggage,
   });
 
   logger.logResponse(response.content);

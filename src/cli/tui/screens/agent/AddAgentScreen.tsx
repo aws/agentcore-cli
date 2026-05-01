@@ -185,6 +185,7 @@ export function AddAgentScreen({ existingAgentNames, onComplete, onExit }: AddAg
     idleTimeout: '' as string,
     maxLifetime: '' as string,
     sessionStorageMountPath: '' as string,
+    withConfigBundle: undefined as boolean | undefined,
   });
   const [byoAdvancedSettings, setByoAdvancedSettings] = useState<Set<AdvancedSettingId>>(new Set());
   const [byoAuthorizerType, setByoAuthorizerType] = useState<RuntimeAuthorizerType>('AWS_IAM');
@@ -311,6 +312,7 @@ export function AddAgentScreen({ existingAgentNames, onComplete, onExit }: AddAg
       idleRuntimeSessionTimeout: generateWizard.config.idleRuntimeSessionTimeout,
       maxLifetime: generateWizard.config.maxLifetime,
       sessionStorageMountPath: generateWizard.config.sessionStorageMountPath,
+      withConfigBundle: generateWizard.config.withConfigBundle,
       pythonVersion: DEFAULT_PYTHON_VERSION,
       memory: generateWizard.config.memory,
     };
@@ -433,6 +435,7 @@ export function AddAgentScreen({ existingAgentNames, onComplete, onExit }: AddAg
       ...(byoConfig.idleTimeout && { idleRuntimeSessionTimeout: Number(byoConfig.idleTimeout) }),
       ...(byoConfig.maxLifetime && { maxLifetime: Number(byoConfig.maxLifetime) }),
       ...(byoConfig.sessionStorageMountPath && { sessionStorageMountPath: byoConfig.sessionStorageMountPath }),
+      ...(byoConfig.withConfigBundle && { withConfigBundle: true }),
       pythonVersion: DEFAULT_PYTHON_VERSION,
       memory: 'none',
     };
@@ -494,11 +497,14 @@ export function AddAgentScreen({ existingAgentNames, onComplete, onExit }: AddAg
           idleTimeout: '',
           maxLifetime: '',
           sessionStorageMountPath: '',
+          withConfigBundle: undefined,
         }));
         setByoAuthorizerType('AWS_IAM');
         setByoJwtConfig(undefined);
         setByoStep('confirm');
       } else {
+        // Config bundle has no sub-steps — set flag immediately
+        setByoConfig(c => ({ ...c, withConfigBundle: selected.has('configBundle') || undefined }));
         // Navigate to first advanced sub-step (steps memo hasn't updated yet)
         setTimeout(() => {
           if (selected.has('dockerfile') && byoConfig.buildType === 'Container') {
@@ -1347,6 +1353,9 @@ export function AddAgentScreen({ existingAgentNames, onComplete, onExit }: AddAg
               ...(byoConfig.maxLifetime ? [{ label: 'Max Lifetime', value: `${byoConfig.maxLifetime}s` }] : []),
               ...(byoConfig.sessionStorageMountPath
                 ? [{ label: 'Session Storage', value: byoConfig.sessionStorageMountPath }]
+                : []),
+              ...(byoConfig.withConfigBundle
+                ? [{ label: 'Config Bundle', value: 'Yes (auto-created on deploy)' }]
                 : []),
             ]}
           />

@@ -1,4 +1,4 @@
-import { GLOBAL_CONFIG_DIR, readGlobalConfig } from '../global-config.js';
+import { GLOBAL_CONFIG_DIR, readGlobalConfig } from '../../lib/schemas/io/global-config.js';
 import { TelemetryClient } from './client.js';
 import { resolveAuditFilePath, resolveResourceAttributes } from './config.js';
 import { FileSystemSink } from './sinks/filesystem-sink.js';

@@ -2,12 +2,32 @@
  * Shared test utilities for AgentCore CLI tests.
  * Import these helpers instead of duplicating code in each test file.
  */
+import { runCLI as runCLIImpl } from './cli-runner.js';
+import { expect } from 'vitest';
 
 export { runCLI, spawnAndCollect, cleanSpawnEnv, type RunResult } from './cli-runner.js';
+export { createTelemetryHelper, type TelemetryHelper, type TelemetryEntry } from './telemetry-helper.js';
 export { exists } from './fs-helpers.js';
 export { hasCommand, hasAwsCredentials, prereqs } from './prereqs.js';
 export { createTestProject, type TestProject, type CreateTestProjectOptions } from './project-factory.js';
 export { readProjectConfig } from './config-reader.js';
+
+export async function runSuccess(args: string[], cwd: string): Promise<Record<string, unknown>> {
+  const result = await runCLIImpl(args, cwd);
+  expect(result.exitCode, `stdout: ${result.stdout}, stderr: ${result.stderr}`).toBe(0);
+  const json: unknown = parseJsonOutput(result.stdout);
+  expect(json).toHaveProperty('success', true);
+  return json as Record<string, unknown>;
+}
+
+export async function runFailure(args: string[], cwd: string): Promise<Record<string, unknown>> {
+  const result = await runCLIImpl(args, cwd);
+  expect(result.exitCode).toBe(1);
+  const json: unknown = parseJsonOutput(result.stdout);
+  expect(json).toHaveProperty('success', false);
+  expect(json).toHaveProperty('error');
+  return json as Record<string, unknown>;
+}
 
 /**
  * Retry an async function up to `times` attempts with a delay between retries.
