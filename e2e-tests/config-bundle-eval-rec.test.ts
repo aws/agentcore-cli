@@ -446,7 +446,7 @@ describe.sequential('e2e: config bundles, batch evaluation, and recommendations'
             agentName,
             '--evaluator',
             'Builtin.Faithfulness',
-            '--lookback',
+            '--days',
             '1',
             '--json',
           ]);
