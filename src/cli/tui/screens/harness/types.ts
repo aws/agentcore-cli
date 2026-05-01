@@ -168,7 +168,7 @@ export const AUTHORIZER_TYPE_OPTIONS = [
 ] as const;
 
 export const GATEWAY_OUTBOUND_AUTH_OPTIONS = [
-  { id: 'awsIam', title: 'AWS IAM', description: 'SigV4 signing with the harness execution role (default)' },
+  { id: 'awsIam', title: 'AWS IAM (default)', description: 'SigV4 signing with the harness execution role' },
   { id: 'none', title: 'None', description: 'No authentication headers' },
   { id: 'oauth', title: 'OAuth', description: 'Bearer token via AgentCore Identity credential provider' },
 ];
