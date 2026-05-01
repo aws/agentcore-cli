@@ -58,7 +58,7 @@ export const TARGET_TYPE_AUTH_CONFIG: Record<
   smithyModel: { authRequired: false, validAuthTypes: [], iamRoleFallback: true },
   apiGateway: { authRequired: false, validAuthTypes: ['API_KEY', 'NONE'], iamRoleFallback: true },
   mcpServer: { authRequired: false, validAuthTypes: ['OAUTH', 'NONE'], iamRoleFallback: false },
-  lambda: { authRequired: false, validAuthTypes: ['OAUTH', 'NONE'], iamRoleFallback: false },
+  lambda: { authRequired: false, validAuthTypes: ['OAUTH', 'NONE'], iamRoleFallback: true },
   lambdaFunctionArn: { authRequired: false, validAuthTypes: ['OAUTH', 'NONE'], iamRoleFallback: true },
 };
 
