@@ -135,6 +135,32 @@
         "s3:GetObject"
       ],
       "Resource": "*"
+    },
+    {
+      "Sid": "ConfigBundleManagement",
+      "Effect": "Allow",
+      "Action": [
+        "bedrock-agentcore:CreateConfigurationBundle",
+        "bedrock-agentcore:UpdateConfigurationBundle",
+        "bedrock-agentcore:DeleteConfigurationBundle",
+        "bedrock-agentcore:GetConfigurationBundle",
+        "bedrock-agentcore:GetConfigurationBundleVersion",
+        "bedrock-agentcore:ListConfigurationBundles",
+        "bedrock-agentcore:ListConfigurationBundleVersions"
+      ],
+      "Resource": "*"
+    },
+    {
+      "Sid": "HttpGatewayIamRoleManagement",
+      "Effect": "Allow",
+      "Action": [
+        "iam:CreateRole",
+        "iam:DeleteRole",
+        "iam:GetRole",
+        "iam:PutRolePolicy",
+        "iam:DeleteRolePolicy"
+      ],
+      "Resource": "arn:aws:iam::*:role/AgentCore-*"
     }
   ]
 }
