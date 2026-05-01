@@ -78,8 +78,8 @@ export class ABTestPrimitive extends BasePrimitive<AddABTestOptions, RemovableAB
         return { success: false, error: `AB test "${testName}" not found.` };
       }
 
-      const removedTest = project.abTests![index]!;
-      project.abTests!.splice(index, 1);
+      const removedTest = project.abTests[index]!;
+      project.abTests.splice(index, 1);
 
       // Cascade: remove auto-created online eval configs for target-based tests
       // Only remove eval configs that were auto-created (matching the {testName}_eval_ prefix pattern)

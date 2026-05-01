@@ -50,7 +50,7 @@ export class ConfigBundlePrimitive extends BasePrimitive<AddConfigBundleOptions,
         return { success: false, error: `Configuration bundle "${bundleName}" not found.` };
       }
 
-      project.configBundles!.splice(index, 1);
+      project.configBundles.splice(index, 1);
       await this.writeProjectSpec(project);
 
       return { success: true };

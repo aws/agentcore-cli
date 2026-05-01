@@ -45,11 +45,11 @@ export type TargetRef = z.infer<typeof TargetRefSchema>;
 
 const ConfigBundleVariantConfigSchema = z.object({
   configurationBundle: ConfigurationBundleRefSchema,
-  target: z.undefined().optional(),
+  target: z.never().optional(),
 });
 
 const TargetVariantConfigSchema = z.object({
-  configurationBundle: z.undefined().optional(),
+  configurationBundle: z.never().optional(),
   target: TargetRefSchema,
 });
 
