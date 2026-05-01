@@ -2,26 +2,111 @@
 
 All notable changes to this project will be documented in this file.
 
-## [0.13.0] - 2026-05-01
+## [1.0.0-preview.5] - 2026-04-30
 
 ### Added
-- feat: evo preview features — config bundles, batch evaluation, recommendations, AB testing (#1068) (9ccf802)
-- feat: wire telemetry into all add.* commands (#1050) (e9dfc16)
-- feat: make parsing resilient to individual failures (#1062) (a4c37a2)
-- feat: update @aws/agent-inspector to 0.3.0 (90f17b4)
-- feat: update @aws/agent-inspector to 0.3.0 (278783a)
+- feat: add telemetry audit mode with FileSystemSink (#1014) (397c187)
 
 ### Fixed
-- fix: remove unnecessary non-null assertions after .default([]) revert (#1075) (eab8c87)
-- fix: revert .optional() to .default([]) and strip empty evo arrays on write (#1074) (8c5cdfe)
-- fix: remove dead preflight patch, proper teardown, optional evo schema fields (#1073) (839b32b)
-- fix: remove dead preflight patch and use proper teardown for evo resources (#1072) (0e38e9e)
-- fix: resolve e2e import test concurrency races (#1067) (bd6f841)
-- fix: forward custom headers in bearer token invoke paths (#1065) (3dccd97)
+- fix: add Accept header to HTTP protocol invocation proxy (#1051) (821e4c3)
 
 ### Other Changes
-- refactor: consolidate cli-config into global-config (#802) (3aec000)
-- ci: cut full e2e time in half via vitest sharding (#1016) (4daca83)
+- Merge pull request #1057 from aws/sync-preview/merge-main-20260430-v2 (18fa2c9)
+- chore: merge main into preview (7590650)
+- Merge pull request #1058 from aws/release/v0.12.2 (68b25bf)
+- chore: bump version to 0.12.2 (5ce4bdc)
+- chore: merge main into preview (6e01e4e)
+- fix(harness): add error handling for invoke_harness API call (#1056) (9a6a5d0)
+- Merge pull request #1054 from aws/fix/remove-coauthor-reland (0afeaf5)
+- refactor: move harness resources to .github/harness/ and use boto3 invoke_harness (ad2ba9b)
+- Revert "refactor: move harness resources to .github/harness/ (#992)" (b8a90c9)
+- refactor: move harness resources to .github/harness/ (#992) (aef3890)
+- Merge pull request #1053 from aws/sync-preview/merge-main-20260430 (26b1c4c)
+- chore: merge main into preview (9f2702a)
+
+## [1.0.0-preview.4] - 2026-04-29
+
+### Added
+- feat: add CloudWatch traces API for web UI (#997) (76b07aa)
+
+### Fixed
+- fix: remove CONFIG_DIR exclusion from zip stage to preserve dependency agentcore/ packages (#1015) (d1e5241)
+
+### Other Changes
+- Merge pull request #1040 from aws/sync-preview/merge-main-20260429-v5 (dd76d17)
+- chore: merge main into preview (ecda10c)
+- fix(ci): install uv in release workflow prepare steps (#1038) (#1039) (01b3b7d)
+- fix(ci): install uv in release workflow prepare steps (#1038) (29ae8e5)
+- Merge pull request #1037 from aws/sync-preview/merge-main-20260429-v3 (7f315c6)
+- chore: merge main into preview (a951aed)
+- fix(ci): move snapshot update after build in release workflow (#1036) (227c840)
+- Merge pull request #1035 from aws/sync-preview/merge-main-20260429-v2 (451868a)
+- chore: merge main into preview (c44d8c1)
+- fix(ci): enable coverage collection in sharded unit test runs (#1034) (061b6b3)
+- ci: run all PR and merge workflows on preview branch (#1023) (fc1cd56)
+- fix(ci): update snapshots after CDK version sync in release workflow (#1033) (d3b412f)
+- chore(deps): bump @opentelemetry/sdk-metrics from 2.6.1 to 2.7.0 (#1030) (ad59fc0)
+- chore(deps-dev): bump secretlint from 12.2.0 to 12.3.1 (#1029) (36755e9)
+- chore(deps-dev): bump @secretlint/secretlint-rule-preset-recommend (#1028) (56a6d4c)
+- chore(deps): bump @opentelemetry/resources from 2.6.1 to 2.7.0 (#1026) (ad482cf)
+- chore(deps): bump the aws-cdk group with 2 updates (#1025) (1686e4d)
+- chore(deps): bump the aws-sdk group with 14 updates (#1024) (1fc366c)
+- Merge pull request #1018 from aws/sync-preview/real-merge-main-20260429 (8c4d6eb)
+- chore: merge main into preview (553a520)
+- sync-preview: merge main into preview (#1017) (1c726d8)
+- ci: add coordinated main + preview release workflow (#995) (7e8cae4)
+- chore: merge main into preview (#1013) (3e7e15b)
+- fix(import): use GatewayNameSchema for gateway import name validation (#1011) (29b6522)
+- test: remove 44 render-only and framework-testing tests (#998) (13b34a3)
+- chore: bump version to 0.12.0 (#1002) (dd9270d)
+
+## [1.0.0-preview.3] - 2026-04-28
+
+### Added
+- feat: add gateway import command with executionRoleArn support (#855) (2df1387)
+- feat: runtime endpoint support in AgentCore CLI (#979) (41c59ef)
+- feat: add project-name option to create (#969) (9b46fbb)
+- feat: add project-name option to preview create (#970) (a19fc8f)
+- feat: add agentcore-cli User-Agent to all API calls (#960) (398dc50)
+- feat: add telemetry schemas and client (#941) (7c37fa6)
+- feat: add GitHub Action for automated PR review via AgentCore Harness (#934) (a365bf5)
+
+### Fixed
+- fix: duplicate header flash and help menu truncation (closes #895, closes #637) (#955) (e7b85c1)
+- fix: show 'Computing diff changes...' step during deploy diff phase (#952) (a725d12)
+- fix: display session ID after CLI invoke completes (#957) (51e4a8e)
+- fix: lower eventExpiryDuration minimum from 7 to 3 days (closes #744) (#956) (8613657)
+- fix: use pull_request_target for fork PR support (#958) (933bac8)
+- fix: agentcore dev not working in windows (#951) (5271f55)
+- fix: add TTY detection before TUI fallbacks to prevent agent/CI hangs (#949) (c30ed54)
+- fix: allow code-based evaluators in online eval configs (#947) (3d2d671)
+- fix: buffer streaming text to avoid per-token log lines in GitHub Actions (#946) (cb1e81a)
+
+### Other Changes
+- fix(tests): fix 2 test failures on preview branch (8a4ea58)
+- Merge main into preview (3fd6668)
+- fix(e2e): add debug logging for gateway import CI failures (#1001) (8012d6c)
+- fix(e2e): separate gateway import test and add PR-changed test detection (#999) (19b7d13)
+- fix(import): remove resourceName/executionRoleArn co-variance refine (#996) (ad0ee58)
+- test: speed up CI and fix mock cleanup gaps (#989) (51240ac)
+- chore(deps-dev): bump esbuild from 0.27.4 to 0.28.0 (#862) (a778fb5)
+- chore(deps-dev): bump hono from 4.12.12 to 4.12.14 (#868) (d64d2b8)
+- chore(deps): bump the aws-sdk group across 1 directory with 14 updates (#912) (6061958)
+- chore(deps-dev): bump @secretlint/secretlint-rule-preset-recommend (#914) (8ed1fe7)
+- chore(deps-dev): bump @vitest/coverage-v8 from 4.1.2 to 4.1.5 (#915) (a74cab9)
+- chore(deps-dev): bump secretlint from 11.4.1 to 12.2.0 (#916) (80fc145)
+- chore(deps): bump postcss from 8.5.8 to 8.5.10 (#961) (760ac17)
+- chore(deps-dev): bump aws-cdk-lib (#962) (8a264fb)
+- ci: bump the github-actions group across 1 directory with 4 updates (#964) (9962c3e)
+- test: configure git in browser tests workflow (#976) (17b5727)
+- fix(import): remove experimental warning from import command (#977) (fdd6631)
+- Remove inline container build from vended cdk-stack.ts (#954) (57ee733)
+- feat(invoke): add --prompt-file and stdin support for long prompts (#974) (f6a3e99)
+- test: split browser tests into its own job, fix logs path (#975) (acbfb9e)
+- fix(invoke): auto-generate session ID for bearer-token invocations (#953) (343fedc)
+- chore: bump version to 0.11.0 (#967) (f8dc490)
+- test: add browser tests for agent inspector (#938) (7a4104d)
+- chore: bump version to 0.10.0 (#944) (12275c3)
 
 ## [0.11.0] - 2026-04-24
 
