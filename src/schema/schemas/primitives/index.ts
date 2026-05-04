@@ -21,7 +21,9 @@ export {
 
 export type { MemoryStrategy, MemoryStrategyType } from './memory';
 export {
+  DEFAULT_EPISODIC_REFLECTION_NAMESPACE_TEMPLATES,
   DEFAULT_EPISODIC_REFLECTION_NAMESPACES,
+  DEFAULT_STRATEGY_NAMESPACE_TEMPLATES,
   DEFAULT_STRATEGY_NAMESPACES,
   MemoryStrategyNameSchema,
   MemoryStrategySchema,

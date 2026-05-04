@@ -11,9 +11,9 @@ import type {
 } from '../../../../schema';
 import {
   DEFAULT_ENTRYPOINT_BY_LANGUAGE,
-  DEFAULT_EPISODIC_REFLECTION_NAMESPACES,
+  DEFAULT_EPISODIC_REFLECTION_NAMESPACE_TEMPLATES,
   DEFAULT_RUNTIME_BY_LANGUAGE,
-  DEFAULT_STRATEGY_NAMESPACES,
+  DEFAULT_STRATEGY_NAMESPACE_TEMPLATES,
 } from '../../../../schema';
 import { GatewayPrimitive } from '../../../primitives/GatewayPrimitive';
 import { buildAuthorizerConfigFromJwtConfig } from '../../../primitives/auth-utils';
@@ -74,11 +74,11 @@ export function mapGenerateInputToMemories(memory: MemoryOption, projectName: st
   if (memory === 'longAndShortTerm') {
     const strategyTypes: MemoryStrategyType[] = ['SEMANTIC', 'USER_PREFERENCE', 'SUMMARIZATION', 'EPISODIC'];
     for (const type of strategyTypes) {
-      const defaultNamespaces = DEFAULT_STRATEGY_NAMESPACES[type];
+      const defaultTemplates = DEFAULT_STRATEGY_NAMESPACE_TEMPLATES[type];
       strategies.push({
         type,
-        ...(defaultNamespaces && { namespaces: defaultNamespaces }),
-        ...(type === 'EPISODIC' && { reflectionNamespaces: DEFAULT_EPISODIC_REFLECTION_NAMESPACES }),
+        ...(defaultTemplates && { namespaceTemplates: defaultTemplates }),
+        ...(type === 'EPISODIC' && { reflectionNamespaceTemplates: DEFAULT_EPISODIC_REFLECTION_NAMESPACE_TEMPLATES }),
       });
     }
   }

@@ -8,8 +8,8 @@ import type {
   StreamDeliveryResources,
 } from '../../schema';
 import {
-  DEFAULT_EPISODIC_REFLECTION_NAMESPACES,
-  DEFAULT_STRATEGY_NAMESPACES,
+  DEFAULT_EPISODIC_REFLECTION_NAMESPACE_TEMPLATES,
+  DEFAULT_STRATEGY_NAMESPACE_TEMPLATES,
   MemorySchema,
   MemoryStrategyTypeSchema,
   StreamContentLevelSchema,
@@ -287,13 +287,13 @@ export class MemoryPrimitive extends BasePrimitive<AddMemoryOptions, RemovableMe
 
     this.checkDuplicate(project.memories, config.name);
 
-    // Map strategies with their default namespaces
+    // Map strategies with their default namespace templates
     const strategies: MemoryStrategy[] = config.strategies.map(s => {
-      const defaultNamespaces = DEFAULT_STRATEGY_NAMESPACES[s.type];
+      const defaultTemplates = DEFAULT_STRATEGY_NAMESPACE_TEMPLATES[s.type];
       return {
         type: s.type,
-        ...(defaultNamespaces && { namespaces: defaultNamespaces }),
-        ...(s.type === 'EPISODIC' && { reflectionNamespaces: DEFAULT_EPISODIC_REFLECTION_NAMESPACES }),
+        ...(defaultTemplates && { namespaceTemplates: defaultTemplates }),
+        ...(s.type === 'EPISODIC' && { reflectionNamespaceTemplates: DEFAULT_EPISODIC_REFLECTION_NAMESPACE_TEMPLATES }),
       };
     });
 

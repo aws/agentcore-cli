@@ -82,7 +82,7 @@ describe('add', () => {
     expect(addedMemory).toBeDefined();
     expect(addedMemory.eventExpiryDuration).toBe(60);
     expect(addedMemory.strategies[0]!.type).toBe('SEMANTIC');
-    expect(addedMemory.strategies[0]!.namespaces).toEqual(['/users/{actorId}/facts']);
+    expect(addedMemory.strategies[0]!.namespaceTemplates).toEqual(['/users/{actorId}/facts']);
   });
 
   it('rejects invalid strategy type', async () => {

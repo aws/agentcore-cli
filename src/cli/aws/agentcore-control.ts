@@ -368,8 +368,8 @@ export interface MemoryDetail {
     type: string;
     name?: string;
     description?: string;
-    namespaces?: string[];
-    reflectionNamespaces?: string[];
+    namespaceTemplates?: string[];
+    reflectionNamespaceTemplates?: string[];
   }[];
   tags?: Record<string, string>;
   encryptionKeyArn?: string;
@@ -422,13 +422,17 @@ export async function getMemoryDetail(options: GetMemoryOptions): Promise<Memory
       if (!s.type) {
         throw new Error(`Memory ${options.memoryId} has a strategy with missing required field: type`);
       }
-      const episodicNamespaces = s.configuration?.reflection?.episodicReflectionConfiguration?.namespaces;
+      // Prefer the new `namespaceTemplates` field; fall back to the deprecated `namespaces` field.
+      const namespaceTemplates = s.namespaceTemplates ?? s.namespaces;
+      const reflectionConfig = s.configuration?.reflection?.episodicReflectionConfiguration;
+      const reflectionTemplates = reflectionConfig?.namespaceTemplates ?? reflectionConfig?.namespaces;
       return {
         type: s.type,
         name: s.name,
         description: s.description,
-        namespaces: s.namespaces,
-        ...(episodicNamespaces && episodicNamespaces.length > 0 && { reflectionNamespaces: episodicNamespaces }),
+        ...(namespaceTemplates && namespaceTemplates.length > 0 && { namespaceTemplates }),
+        ...(reflectionTemplates &&
+          reflectionTemplates.length > 0 && { reflectionNamespaceTemplates: reflectionTemplates }),
       };
     }),
   };

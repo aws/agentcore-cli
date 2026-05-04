@@ -145,8 +145,8 @@ export interface ResourceMemory {
 /** Memory strategy with namespace patterns */
 export interface ResourceMemoryStrategy {
   type: string;
-  /** Namespace patterns, e.g. "/users/{actorId}/facts", "/summaries/{actorId}/{sessionId}" */
-  namespaces: string[];
+  /** Namespace templates, e.g. "/users/{actorId}/facts", "/summaries/{actorId}/{sessionId}" */
+  namespaceTemplates: string[];
 }
 
 /** Credential details in the resources response */

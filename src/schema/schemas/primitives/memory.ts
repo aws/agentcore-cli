@@ -17,10 +17,10 @@ export const MemoryStrategyTypeSchema = z.enum(['SEMANTIC', 'SUMMARIZATION', 'US
 export type MemoryStrategyType = z.infer<typeof MemoryStrategyTypeSchema>;
 
 /**
- * Default namespaces for each memory strategy type.
+ * Default namespace templates for each memory strategy type.
  * These match the patterns generated in CLI session.py templates.
  */
-export const DEFAULT_STRATEGY_NAMESPACES: Partial<Record<MemoryStrategyType, string[]>> = {
+export const DEFAULT_STRATEGY_NAMESPACE_TEMPLATES: Partial<Record<MemoryStrategyType, string[]>> = {
   SEMANTIC: ['/users/{actorId}/facts'],
   USER_PREFERENCE: ['/users/{actorId}/preferences'],
   SUMMARIZATION: ['/summaries/{actorId}/{sessionId}'],
@@ -28,10 +28,22 @@ export const DEFAULT_STRATEGY_NAMESPACES: Partial<Record<MemoryStrategyType, str
 };
 
 /**
- * Default reflection namespaces for the EPISODIC strategy.
- * The service requires reflection namespaces to be the same as or a prefix of episode namespaces.
+ * @deprecated Use {@link DEFAULT_STRATEGY_NAMESPACE_TEMPLATES} instead.
+ * Retained as an alias for backward compatibility.
  */
-export const DEFAULT_EPISODIC_REFLECTION_NAMESPACES: string[] = ['/episodes/{actorId}'];
+export const DEFAULT_STRATEGY_NAMESPACES = DEFAULT_STRATEGY_NAMESPACE_TEMPLATES;
+
+/**
+ * Default reflection namespace templates for the EPISODIC strategy.
+ * The service requires reflection templates to be the same as or a prefix of episode templates.
+ */
+export const DEFAULT_EPISODIC_REFLECTION_NAMESPACE_TEMPLATES: string[] = ['/episodes/{actorId}'];
+
+/**
+ * @deprecated Use {@link DEFAULT_EPISODIC_REFLECTION_NAMESPACE_TEMPLATES} instead.
+ * Retained as an alias for backward compatibility.
+ */
+export const DEFAULT_EPISODIC_REFLECTION_NAMESPACES = DEFAULT_EPISODIC_REFLECTION_NAMESPACE_TEMPLATES;
 
 /**
  * Memory strategy name validation.
@@ -50,6 +62,12 @@ export const MemoryStrategyNameSchema = z
 /**
  * Memory strategy configuration.
  * Each memory can have multiple strategies with optional namespace scoping.
+ *
+ * Field naming:
+ * - `namespaceTemplates` / `reflectionNamespaceTemplates` are the preferred field names.
+ * - `namespaces` / `reflectionNamespaces` are deprecated aliases retained for backward
+ *   compatibility. Specifying both the deprecated and preferred form for the same concept
+ *   is rejected by validation.
  */
 export const MemoryStrategySchema = z
   .object({
@@ -59,28 +77,50 @@ export const MemoryStrategySchema = z
     name: MemoryStrategyNameSchema.optional(),
     /** Optional description */
     description: z.string().optional(),
-    /** Optional namespaces for scoping memory access */
+    /** Optional namespace templates for scoping memory access */
+    namespaceTemplates: z.array(z.string()).optional(),
+    /** @deprecated Use `namespaceTemplates` instead. */
     namespaces: z.array(z.string()).optional(),
-    /** Reflection namespaces for EPISODIC strategy. Required by the service for episodic strategies. */
+    /** Reflection namespace templates for EPISODIC strategy. Required by the service for episodic strategies. */
+    reflectionNamespaceTemplates: z.array(z.string()).optional(),
+    /** @deprecated Use `reflectionNamespaceTemplates` instead. */
     reflectionNamespaces: z.array(z.string()).optional(),
   })
+  .refine(strategy => !(strategy.namespaces !== undefined && strategy.namespaceTemplates !== undefined), {
+    message:
+      "'namespaces' and 'namespaceTemplates' are mutually exclusive. Prefer 'namespaceTemplates' ('namespaces' is deprecated).",
+    path: ['namespaceTemplates'],
+  })
   .refine(
-    strategy =>
-      strategy.type !== 'EPISODIC' ||
-      (strategy.reflectionNamespaces !== undefined && strategy.reflectionNamespaces.length > 0),
+    strategy => !(strategy.reflectionNamespaces !== undefined && strategy.reflectionNamespaceTemplates !== undefined),
     {
-      message: 'EPISODIC strategy requires reflectionNamespaces',
-      path: ['reflectionNamespaces'],
+      message:
+        "'reflectionNamespaces' and 'reflectionNamespaceTemplates' are mutually exclusive. Prefer 'reflectionNamespaceTemplates' ('reflectionNamespaces' is deprecated).",
+      path: ['reflectionNamespaceTemplates'],
     }
   )
   .refine(
     strategy => {
-      if (strategy.type !== 'EPISODIC' || !strategy.reflectionNamespaces || !strategy.namespaces) return true;
-      return strategy.reflectionNamespaces.every(ref => strategy.namespaces!.some(ns => ns.startsWith(ref)));
+      if (strategy.type !== 'EPISODIC') return true;
+      const reflection = strategy.reflectionNamespaceTemplates ?? strategy.reflectionNamespaces;
+      return reflection !== undefined && reflection.length > 0;
     },
     {
-      message: 'Each reflectionNamespace must be a prefix of at least one namespace',
-      path: ['reflectionNamespaces'],
+      message: 'EPISODIC strategy requires reflectionNamespaceTemplates',
+      path: ['reflectionNamespaceTemplates'],
+    }
+  )
+  .refine(
+    strategy => {
+      if (strategy.type !== 'EPISODIC') return true;
+      const reflection = strategy.reflectionNamespaceTemplates ?? strategy.reflectionNamespaces;
+      const templates = strategy.namespaceTemplates ?? strategy.namespaces;
+      if (!reflection || !templates) return true;
+      return reflection.every(ref => templates.some(ns => ns.startsWith(ref)));
+    },
+    {
+      message: 'Each reflectionNamespaceTemplate must be a prefix of at least one namespaceTemplate',
+      path: ['reflectionNamespaceTemplates'],
     }
   );
 
