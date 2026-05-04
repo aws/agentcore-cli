@@ -104,24 +104,38 @@ export type GetCloudWatchTraceHandler = (
 ) => Promise<{ success: boolean; records?: unknown[]; spans?: unknown[]; error?: string }>;
 
 /**
+ * Arguments for {@link ListMemoryRecordsHandler}. Exactly one of `namespace` (exact match)
+ * or `namespacePath` (hierarchical path prefix) must be provided.
+ */
+export type ListMemoryRecordsArgs = {
+  memoryName: string;
+  strategyId?: string;
+} & ({ namespace: string; namespacePath?: never } | { namespace?: never; namespacePath: string });
+
+/**
  * Custom handler for GET /api/memory.
- * Returns a list of memory records for a given memory + namespace.
+ * Returns a list of memory records for a given memory + namespace/namespacePath.
  */
 export type ListMemoryRecordsHandler = (
-  memoryName: string,
-  namespace: string,
-  strategyId?: string
+  args: ListMemoryRecordsArgs
 ) => Promise<{ success: boolean; records?: unknown[]; error?: string }>;
+
+/**
+ * Arguments for {@link RetrieveMemoryRecordsHandler}. Exactly one of `namespace` (exact match)
+ * or `namespacePath` (hierarchical path prefix) must be provided.
+ */
+export type RetrieveMemoryRecordsArgs = {
+  memoryName: string;
+  searchQuery: string;
+  strategyId?: string;
+} & ({ namespace: string; namespacePath?: never } | { namespace?: never; namespacePath: string });
 
 /**
  * Custom handler for POST /api/memory/search.
  * Performs semantic search across memory records.
  */
 export type RetrieveMemoryRecordsHandler = (
-  memoryName: string,
-  namespace: string,
-  searchQuery: string,
-  strategyId?: string
+  args: RetrieveMemoryRecordsArgs
 ) => Promise<{ success: boolean; records?: unknown[]; error?: string }>;
 
 export interface WebUIOptions {

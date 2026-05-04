@@ -81,6 +81,29 @@ describe('StrandsTranslator', () => {
     expect(result.features.hasMemory).toBe(true);
   });
 
+  it('emits namespace_path (not namespace) in retrieve_memories calls for longAndShortTerm memory', () => {
+    const config = makeSimpleAgentConfig({
+      agent: {
+        ...makeSimpleAgentConfig().agent,
+        memoryConfiguration: { enabledMemoryTypes: ['SESSION_SUMMARY'] },
+      },
+    });
+    const translator = new StrandsTranslator(config, {
+      agentConfig: config,
+      enableMemory: true,
+      memoryOption: 'longAndShortTerm',
+      enableObservability: false,
+    });
+    const result = translator.translate();
+
+    // All three retrieval calls should use the new namespace_path kwarg
+    expect(result.mainPyContent).toContain("namespace_path=f'/users/{user_id}/facts'");
+    expect(result.mainPyContent).toContain("namespace_path=f'/users/{user_id}/preferences'");
+    expect(result.mainPyContent).toContain("namespace_path=f'/summaries/{user_id}/'");
+    // The deprecated kwarg form must not appear for longAndShortTerm retrievals
+    expect(result.mainPyContent).not.toMatch(/retrieve_memories\([^)]*\bnamespace=/);
+  });
+
   it('generates action group tools for function-schema action groups', () => {
     const config = makeSimpleAgentConfig({
       action_groups: [
@@ -220,6 +243,29 @@ describe('LangGraphTranslator', () => {
     expect(result.mainPyContent).toContain('guardrails');
     expect(result.mainPyContent).toContain('gr-123');
     expect(result.features.hasGuardrails).toBe(true);
+  });
+
+  it('emits namespace_path (not namespace) in retrieve_memories calls for longAndShortTerm memory', () => {
+    const config = makeSimpleAgentConfig({
+      agent: {
+        ...makeSimpleAgentConfig().agent,
+        memoryConfiguration: { enabledMemoryTypes: ['SESSION_SUMMARY'] },
+      },
+    });
+    const translator = new LangGraphTranslator(config, {
+      agentConfig: config,
+      enableMemory: true,
+      memoryOption: 'longAndShortTerm',
+      enableObservability: false,
+    });
+    const result = translator.translate();
+
+    // All three retrieval calls should use the new namespace_path kwarg
+    expect(result.mainPyContent).toContain("namespace_path=f'/users/{user_id}/facts'");
+    expect(result.mainPyContent).toContain("namespace_path=f'/users/{user_id}/preferences'");
+    expect(result.mainPyContent).toContain("namespace_path=f'/summaries/{user_id}/'");
+    // The deprecated kwarg form must not appear for longAndShortTerm retrievals
+    expect(result.mainPyContent).not.toMatch(/retrieve_memories\([^)]*\bnamespace=/);
   });
 });
 

@@ -3,8 +3,11 @@ import { parseRequestUrl } from './route-context';
 import type { IncomingMessage, ServerResponse } from 'node:http';
 
 /**
- * GET /api/memory?memoryName=xxx&namespace=yyy[&strategyId=zzz]
+ * GET /api/memory?memoryName=xxx&(namespace=yyy|namespacePath=yyy)[&strategyId=zzz]
  * Lists memory records. Requires onListMemoryRecords handler.
+ *
+ * Exactly one of `namespace` (exact match) or `namespacePath` (hierarchical path prefix)
+ * must be provided.
  */
 export async function handleListMemoryRecords(
   ctx: RouteContext,
@@ -22,6 +25,7 @@ export async function handleListMemoryRecords(
   const { param } = parseRequestUrl(req);
   const memoryName = param('memoryName');
   const namespace = param('namespace');
+  const namespacePath = param('namespacePath');
   const strategyId = param('strategyId');
 
   if (!memoryName) {
@@ -31,15 +35,36 @@ export async function handleListMemoryRecords(
     return;
   }
 
-  if (!namespace) {
+  if (namespace && namespacePath) {
     ctx.setCorsHeaders(res, origin);
     res.writeHead(400, { 'Content-Type': 'application/json' });
-    res.end(JSON.stringify({ success: false, error: 'namespace query parameter is required' }));
+    res.end(
+      JSON.stringify({
+        success: false,
+        error: "'namespace' and 'namespacePath' query parameters are mutually exclusive",
+      })
+    );
+    return;
+  }
+
+  if (!namespace && !namespacePath) {
+    ctx.setCorsHeaders(res, origin);
+    res.writeHead(400, { 'Content-Type': 'application/json' });
+    res.end(
+      JSON.stringify({
+        success: false,
+        error: "either 'namespace' or 'namespacePath' query parameter is required",
+      })
+    );
     return;
   }
 
   try {
-    const result = await ctx.options.onListMemoryRecords(memoryName, namespace, strategyId);
+    const result = await ctx.options.onListMemoryRecords({
+      memoryName,
+      strategyId,
+      ...(namespace ? { namespace } : { namespacePath: namespacePath! }),
+    });
     ctx.setCorsHeaders(res, origin);
     res.writeHead(result.success ? 200 : 500, { 'Content-Type': 'application/json' });
     res.end(JSON.stringify(result));
@@ -53,8 +78,10 @@ export async function handleListMemoryRecords(
 
 /**
  * POST /api/memory/search — semantic search across memory records.
- * Body: { memoryName, namespace, searchQuery, strategyId? }
+ * Body: { memoryName, namespace | namespacePath, searchQuery, strategyId? }
  * Requires onRetrieveMemoryRecords handler.
+ *
+ * Exactly one of `namespace` or `namespacePath` must be provided.
  */
 export async function handleRetrieveMemoryRecords(
   ctx: RouteContext,
@@ -72,6 +99,7 @@ export async function handleRetrieveMemoryRecords(
   const body = await ctx.readBody(req);
   let memoryName: string | undefined;
   let namespace: string | undefined;
+  let namespacePath: string | undefined;
   let searchQuery: string | undefined;
   let strategyId: string | undefined;
 
@@ -79,11 +107,13 @@ export async function handleRetrieveMemoryRecords(
     const parsed = JSON.parse(body) as {
       memoryName?: string;
       namespace?: string;
+      namespacePath?: string;
       searchQuery?: string;
       strategyId?: string;
     };
     memoryName = parsed.memoryName;
     namespace = parsed.namespace;
+    namespacePath = parsed.namespacePath;
     searchQuery = parsed.searchQuery;
     strategyId = parsed.strategyId;
   } catch {
@@ -97,10 +127,17 @@ export async function handleRetrieveMemoryRecords(
     return;
   }
 
-  if (!namespace) {
+  if (namespace && namespacePath) {
     ctx.setCorsHeaders(res, origin);
     res.writeHead(400, { 'Content-Type': 'application/json' });
-    res.end(JSON.stringify({ success: false, error: 'namespace is required' }));
+    res.end(JSON.stringify({ success: false, error: "'namespace' and 'namespacePath' are mutually exclusive" }));
+    return;
+  }
+
+  if (!namespace && !namespacePath) {
+    ctx.setCorsHeaders(res, origin);
+    res.writeHead(400, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({ success: false, error: "either 'namespace' or 'namespacePath' is required" }));
     return;
   }
 
@@ -112,7 +149,12 @@ export async function handleRetrieveMemoryRecords(
   }
 
   try {
-    const result = await ctx.options.onRetrieveMemoryRecords(memoryName, namespace, searchQuery, strategyId);
+    const result = await ctx.options.onRetrieveMemoryRecords({
+      memoryName,
+      searchQuery,
+      strategyId,
+      ...(namespace ? { namespace } : { namespacePath: namespacePath! }),
+    });
     ctx.setCorsHeaders(res, origin);
     res.writeHead(result.success ? 200 : 500, { 'Content-Type': 'application/json' });
     res.end(JSON.stringify(result));
