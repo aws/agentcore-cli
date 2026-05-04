@@ -139,13 +139,13 @@ describe('setupHttpGateways', () => {
 
       expect(mockCreateHttpGateway).toHaveBeenCalledWith({
         region: 'us-east-1',
-        name: 'MyHttpGw',
+        name: 'TestProject-MyHttpGw',
         roleArn: 'arn:aws:iam::123456789012:role/ExistingRole',
       });
       expect(mockCreateHttpGatewayTarget).toHaveBeenCalledWith({
         region: 'us-east-1',
         gatewayId: 'gw-001',
-        targetName: 'my-agent',
+        targetName: 'TestProject-my-agent',
         runtimeArn: 'arn:aws:bedrock-agentcore:us-east-1:123456789012:runtime/rt-123',
       });
     });
@@ -175,7 +175,7 @@ describe('setupHttpGateways', () => {
 
     it('finds gateway by name via list (state loss recovery)', async () => {
       mockListAllHttpGateways.mockResolvedValue([
-        { name: 'MyHttpGw', gatewayId: 'gw-api', gatewayArn: 'arn:httpgw:api' },
+        { name: 'TestProject-MyHttpGw', gatewayId: 'gw-api', gatewayArn: 'arn:httpgw:api' },
       ]);
 
       const result = await setupHttpGateways({

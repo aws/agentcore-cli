@@ -143,7 +143,7 @@ export async function setupHttpGateways(options: SetupHttpGatewaysOptions): Prom
               const tgtResult = await createHttpGatewayTarget({
                 region,
                 gatewayId: existingGateway.gatewayId,
-                targetName: tgt.name,
+                targetName: `${projectName}-${tgt.name}`,
                 runtimeArn: tgtRuntime.runtimeArn,
                 qualifier: tgt.qualifier,
               });
@@ -170,7 +170,8 @@ export async function setupHttpGateways(options: SetupHttpGatewaysOptions): Prom
       }
 
       // Try to find by name via list (handles re-creation after state loss)
-      const existingByName = await findHttpGatewayByName(region, gwSpec.name);
+      const prefixedGatewayName = `${projectName}-${gwSpec.name}`;
+      const existingByName = await findHttpGatewayByName(region, prefixedGatewayName);
       if (existingByName) {
         console.warn(
           `Warning: HTTP gateway "${gwSpec.name}" found by name but local state was lost. Target and role state may be incomplete — consider re-deploying.`
@@ -216,7 +217,7 @@ export async function setupHttpGateways(options: SetupHttpGatewaysOptions): Prom
       // Creating HTTP gateway for runtime
       const createResult = await createHttpGateway({
         region,
-        name: gwSpec.name,
+        name: `${projectName}-${gwSpec.name}`,
         roleArn: resolvedRoleArn,
       });
 
@@ -231,7 +232,7 @@ export async function setupHttpGateways(options: SetupHttpGatewaysOptions): Prom
         const targetResult = await createHttpGatewayTarget({
           region,
           gatewayId: createResult.gatewayId,
-          targetName: gwSpec.runtimeRef,
+          targetName: `${projectName}-${gwSpec.runtimeRef}`,
           runtimeArn,
         });
 
@@ -288,7 +289,7 @@ export async function setupHttpGateways(options: SetupHttpGatewaysOptions): Prom
             const tgtResult = await createHttpGatewayTarget({
               region,
               gatewayId: createResult.gatewayId,
-              targetName: tgt.name,
+              targetName: `${projectName}-${tgt.name}`,
               runtimeArn: tgtRuntime.runtimeArn,
               qualifier: tgt.qualifier,
             });
