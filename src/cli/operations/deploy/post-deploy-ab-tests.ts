@@ -445,7 +445,7 @@ function resolveVariants(
       weight: v.weight,
       variantConfiguration: {
         ...(v.variantConfiguration.target && {
-          target: { name: `${projectName}-${v.variantConfiguration.target.targetName}` },
+          target: { name: resolveTargetName(v.variantConfiguration.target.targetName, projectName) },
         }),
       },
     };
@@ -478,6 +478,18 @@ function resolveConfigBundleVersion(
   }
 
   return versionRef;
+}
+
+/**
+ * Resolve a variant target name, applying the project prefix if not already present.
+ * This handles legacy configs that were created before the prefix requirement.
+ */
+function resolveTargetName(targetName: string, projectName: string): string {
+  // If the target name already starts with the project prefix, use as-is to avoid double-prefixing
+  if (targetName.startsWith(`${projectName}-`)) {
+    return targetName;
+  }
+  return `${projectName}-${targetName}`;
 }
 
 function resolveGatewayArn(ref: string, deployedResources?: DeployedResourceState): string {
