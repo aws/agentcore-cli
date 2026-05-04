@@ -61,6 +61,14 @@ describe('archive-storage', () => {
       expect(() => deleteLocalBatchEvalRun('eval-123')).toThrow('No agentcore project found');
     });
 
+    it('throws when id contains a forward slash', () => {
+      expect(() => deleteLocalBatchEvalRun('../evil')).toThrow('Invalid batch evaluation ID');
+    });
+
+    it('throws when id contains a backslash', () => {
+      expect(() => deleteLocalBatchEvalRun('evil\\path')).toThrow('Invalid batch evaluation ID');
+    });
+
     it('leaves other files in the directory untouched', () => {
       const keep = join(tmpDir, '.cli', 'batch-eval-results', 'keep-me.json');
       const del = join(tmpDir, '.cli', 'batch-eval-results', 'delete-me.json');
@@ -97,6 +105,14 @@ describe('archive-storage', () => {
     it('throws when findConfigRoot returns null', () => {
       mockFindConfigRoot.mockReturnValue(null);
       expect(() => deleteLocalRecommendationRun('rec-456')).toThrow('No agentcore project found');
+    });
+
+    it('throws when id contains a forward slash', () => {
+      expect(() => deleteLocalRecommendationRun('../evil')).toThrow('Invalid recommendation ID');
+    });
+
+    it('throws when id contains a backslash', () => {
+      expect(() => deleteLocalRecommendationRun('evil\\path')).toThrow('Invalid recommendation ID');
     });
 
     it('leaves other files in the directory untouched', () => {
