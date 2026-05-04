@@ -157,6 +157,10 @@ export async function setupABTests(options: SetupABTestsOptions): Promise<SetupA
         'onlineEvaluationConfigArn' in resolvedEvalConfig
           ? [resolvedEvalConfig.onlineEvaluationConfigArn]
           : resolvedEvalConfig.perVariantOnlineEvaluationConfig.map(pv => pv.onlineEvaluationConfigArn);
+      // Resolve evaluator ARNs referenced by the online eval configs so the AB test
+      // role can pass the service-side evaluator validation check.
+      const evaluatorArns = Object.values(deployedResources?.evaluators ?? {}).map(e => e.evaluatorArn);
+
       if (testSpec.roleArn) {
         resolvedRoleArn = testSpec.roleArn;
       } else {
@@ -166,6 +170,7 @@ export async function setupABTests(options: SetupABTestsOptions): Promise<SetupA
           testName: testSpec.name,
           gatewayArn: resolvedGatewayArn,
           onlineEvalConfigArns: evalConfigArns,
+          evaluatorArns,
         });
         roleCreatedByCli = true;
       }
@@ -557,10 +562,11 @@ interface CreateABTestRoleOptions {
   testName: string;
   gatewayArn: string;
   onlineEvalConfigArns: string[];
+  evaluatorArns: string[];
 }
 
 async function getOrCreateABTestRole(options: CreateABTestRoleOptions): Promise<string> {
-  const { region, projectName, testName, gatewayArn, onlineEvalConfigArns } = options;
+  const { region, projectName, testName, gatewayArn, onlineEvalConfigArns, evaluatorArns } = options;
   const credentials = getCredentialProvider();
   const iamClient = new IAMClient({ region, credentials });
 
@@ -652,6 +658,16 @@ async function getOrCreateABTestRole(options: CreateABTestRoleOptions): Promise<
         Action: ['bedrock-agentcore:GetOnlineEvaluationConfig', 'bedrock-agentcore:UpdateOnlineEvaluationConfig'],
         Resource: onlineEvalConfigArns,
       },
+      ...(evaluatorArns.length > 0
+        ? [
+            {
+              Sid: 'EvaluatorReadStatement',
+              Effect: 'Allow',
+              Action: ['bedrock-agentcore:GetEvaluator'],
+              Resource: evaluatorArns,
+            },
+          ]
+        : []),
       {
         Sid: 'ConfigurationBundleReadStatement',
         Effect: 'Allow',
