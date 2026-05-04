@@ -1,0 +1,1 @@
+export { registerArchive } from './command';

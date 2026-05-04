@@ -6,6 +6,7 @@ import { handlePauseResume } from '../../operations/eval';
 import type { OnlineEvalActionOptions } from '../../operations/eval';
 import { COMMAND_DESCRIPTIONS } from '../../tui/copy';
 import { requireProject } from '../../tui/guards';
+import { getRegion } from '../shared/region-utils';
 import type { Command } from '@commander-js/extra-typings';
 import { Text, render } from 'ink';
 import React from 'react';
@@ -68,18 +69,6 @@ function registerOnlineEvalSubcommand(parent: Command, action: 'pause' | 'resume
         process.exit(1);
       }
     });
-}
-
-async function getRegion(cliRegion?: string): Promise<string> {
-  if (cliRegion) return cliRegion;
-  try {
-    const configIO = new ConfigIO();
-    const targets = await configIO.resolveAWSDeploymentTargets();
-    if (targets.length > 0) return targets[0]!.region;
-  } catch {
-    // Fall through to env vars
-  }
-  return process.env.AWS_DEFAULT_REGION ?? process.env.AWS_REGION ?? 'us-east-1';
 }
 
 async function resolveABTestId(

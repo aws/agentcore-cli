@@ -159,6 +159,169 @@
         "s3:GetObject"
       ],
       "Resource": "*"
+    },
+    {
+      "Sid": "AgentCoreResourceManagement",
+      "Effect": "Allow",
+      "Action": [
+        "bedrock-agentcore:CreateAgentRuntime",
+        "bedrock-agentcore:UpdateAgentRuntime",
+        "bedrock-agentcore:DeleteAgentRuntime",
+        "bedrock-agentcore:ListAgentRuntimes",
+        "bedrock-agentcore:CreateAgentRuntimeEndpoint",
+        "bedrock-agentcore:CreateWorkloadIdentity",
+        "bedrock-agentcore:DeleteWorkloadIdentity",
+        "bedrock-agentcore:CreateMemory",
+        "bedrock-agentcore:GetMemory",
+        "bedrock-agentcore:UpdateMemory",
+        "bedrock-agentcore:DeleteMemory",
+        "bedrock-agentcore:ListMemories",
+        "bedrock-agentcore:CreateEvaluator",
+        "bedrock-agentcore:DeleteEvaluator",
+        "bedrock-agentcore:ListOnlineEvaluationConfigs",
+        "bedrock-agentcore:TagResource",
+        "bedrock-agentcore:ListTagsForResource",
+        "bedrock-agentcore:CreateGateway",
+        "bedrock-agentcore:UpdateGateway",
+        "bedrock-agentcore:DeleteGateway",
+        "bedrock-agentcore:GetGateway",
+        "bedrock-agentcore:ListGateways",
+        "bedrock-agentcore:CreateGatewayTarget",
+        "bedrock-agentcore:UpdateGatewayTarget",
+        "bedrock-agentcore:DeleteGatewayTarget",
+        "bedrock-agentcore:GetGatewayTarget",
+        "bedrock-agentcore:SynchronizeGatewayTargets"
+      ],
+      "Resource": "*"
+    },
+    {
+      "Sid": "CloudFormationFull",
+      "Effect": "Allow",
+      "Action": "cloudformation:*",
+      "Resource": "*"
+    },
+    {
+      "Sid": "SsmParameterLookup",
+      "Effect": "Allow",
+      "Action": ["ssm:GetParameters", "ssm:GetParameter"],
+      "Resource": "*"
+    },
+    {
+      "Sid": "CloudFormationTemplateVerification",
+      "Effect": "Allow",
+      "Action": "cloudformation:GetTemplate",
+      "Resource": "*"
+    },
+    {
+      "Sid": "ImportTestIam",
+      "Effect": "Allow",
+      "Action": ["iam:GetRole", "iam:CreateRole", "iam:AttachRolePolicy", "iam:PutRolePolicy"],
+      "Resource": "arn:aws:iam::ACCOUNT_ID:role/bugbash-agentcore-role"
+    },
+    {
+      "Sid": "ImportTestPassRole",
+      "Effect": "Allow",
+      "Action": "iam:PassRole",
+      "Resource": "arn:aws:iam::ACCOUNT_ID:role/bugbash-agentcore-role",
+      "Condition": {
+        "StringEquals": {
+          "iam:PassedToService": "bedrock-agentcore.amazonaws.com"
+        }
+      }
+    },
+    {
+      "Sid": "ImportTestS3",
+      "Effect": "Allow",
+      "Action": ["s3:ListBucket", "s3:CreateBucket", "s3:PutObject"],
+      "Resource": "*"
+    },
+    {
+      "Sid": "SecretsManager",
+      "Effect": "Allow",
+      "Action": ["secretsmanager:GetSecretValue", "secretsmanager:CreateSecret", "secretsmanager:DeleteSecret"],
+      "Resource": "*"
+    },
+    {
+      "Sid": "CustomJwtCognitoSetup",
+      "Effect": "Allow",
+      "Action": [
+        "cognito-idp:CreateUserPool",
+        "cognito-idp:CreateUserPoolDomain",
+        "cognito-idp:CreateResourceServer",
+        "cognito-idp:CreateUserPoolClient",
+        "cognito-idp:DeleteResourceServer",
+        "cognito-idp:DeleteUserPoolDomain",
+        "cognito-idp:DeleteUserPool"
+      ],
+      "Resource": "*"
+    },
+    {
+      "Sid": "HarnessManagement",
+      "Effect": "Allow",
+      "Action": [
+        "bedrock-agentcore:CreateHarness",
+        "bedrock-agentcore:GetHarness",
+        "bedrock-agentcore:UpdateHarness",
+        "bedrock-agentcore:DeleteHarness",
+        "bedrock-agentcore:ListHarnesses",
+        "bedrock-agentcore:InvokeHarness"
+      ],
+      "Resource": "*"
+    },
+    {
+      "Sid": "HarnessPassRole",
+      "Effect": "Allow",
+      "Action": "iam:PassRole",
+      "Resource": "arn:aws:iam::ACCOUNT_ID:role/*",
+      "Condition": {
+        "StringEquals": {
+          "iam:PassedToService": "bedrock-agentcore.amazonaws.com"
+        }
+      }
+    },
+    {
+      "Sid": "ConfigBundleManagement",
+      "Effect": "Allow",
+      "Action": [
+        "bedrock-agentcore:CreateConfigurationBundle",
+        "bedrock-agentcore:UpdateConfigurationBundle",
+        "bedrock-agentcore:DeleteConfigurationBundle",
+        "bedrock-agentcore:GetConfigurationBundle",
+        "bedrock-agentcore:GetConfigurationBundleVersion",
+        "bedrock-agentcore:ListConfigurationBundles",
+        "bedrock-agentcore:ListConfigurationBundleVersions"
+      ],
+      "Resource": "*"
+    },
+    {
+      "Sid": "HttpGatewayIamRoleManagement",
+      "Effect": "Allow",
+      "Action": [
+        "iam:CreateRole",
+        "iam:DeleteRole",
+        "iam:GetRole",
+        "iam:PutRolePolicy",
+        "iam:DeleteRolePolicy",
+        "iam:TagRole",
+        "iam:PassRole"
+      ],
+      "Resource": "arn:aws:iam::*:role/AgentCore-*"
+    },
+    {
+      "Sid": "BatchEvalAndRecommendation",
+      "Effect": "Allow",
+      "Action": [
+        "bedrock-agentcore:StartBatchEvaluation",
+        "bedrock-agentcore:GetBatchEvaluation",
+        "bedrock-agentcore:ListBatchEvaluations",
+        "bedrock-agentcore:StopBatchEvaluation",
+        "bedrock-agentcore:DeleteBatchEvaluation",
+        "bedrock-agentcore:StartRecommendation",
+        "bedrock-agentcore:GetRecommendation",
+        "bedrock-agentcore:ListRecommendations",
+        "bedrock-agentcore:DeleteRecommendation"
+      ],
+      "Resource": "*"
     }
   ]
 }

@@ -4,7 +4,7 @@ import type { RunRecommendationCommandResult } from './types';
 import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from 'fs';
 import { join } from 'path';
 
-const RECOMMENDATIONS_DIR = 'recommendations';
+export const RECOMMENDATIONS_DIR = 'recommendations';
 
 export interface RecommendationRunRecord {
   recommendationId: string;
