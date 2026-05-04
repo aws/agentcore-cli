@@ -2,16 +2,7 @@ import { DEFAULT_MODEL_IDS, ProjectNameSchema } from '../../../../schema';
 import { validateFolderNotExists } from '../../../commands/create/validate';
 import { VPC_ENDPOINT_WARNING } from '../../../commands/shared/vpc-utils';
 import { computeDefaultCredentialEnvVarName } from '../../../primitives/credential-utils';
-import {
-  LogLink,
-  type NextStep,
-  NextSteps,
-  Screen,
-  SelectList,
-  type Step,
-  StepProgress,
-  TextInput,
-} from '../../components';
+import { LogLink, Screen, SelectList, type Step, StepProgress, TextInput } from '../../components';
 import { HELP_TEXT } from '../../constants';
 import { setExitMessage } from '../../exit-message';
 import { useListNavigation } from '../../hooks';
@@ -23,7 +14,6 @@ import { AddHarnessScreen } from '../harness/AddHarnessScreen';
 import type { AddHarnessConfig } from '../harness/types';
 import { useCreateFlow } from './useCreateFlow';
 import { Box, Text, useApp } from 'ink';
-import { join } from 'path';
 import { useCallback, useEffect } from 'react';
 
 /** Build a text representation of the completion screen for terminal output */
@@ -71,7 +61,7 @@ function buildExitMessage(
     lines.push(`    ${agentPath.padEnd(maxPathLen)}  \x1b[2mAgent code location (empty)\x1b[0m`);
     lines.push(`    ${agentcorePath.padEnd(maxPathLen)}  \x1b[2mConfig and CDK project\x1b[0m`);
   } else if (harnessConfig) {
-    const harnessPath = `harness/${harnessConfig.name}/`;
+    const harnessPath = `app/${harnessConfig.name}/`;
     const agentcorePath = 'agentcore/';
     const maxPathLen = Math.max(harnessPath.length, agentcorePath.length);
     lines.push(`    ${harnessPath.padEnd(maxPathLen)}  \x1b[2mHarness\x1b[0m`);
@@ -134,20 +124,6 @@ interface CreateScreenProps {
   onNavigate?: (params: NavigateParams) => void;
 }
 
-/** Next steps shown after successful project creation */
-function getCreateNextSteps(hasAgent: boolean, hasHarness: boolean): NextStep[] {
-  if (hasAgent) {
-    return [
-      { command: 'dev', label: 'Run agent locally' },
-      { command: 'deploy', label: 'Deploy to AWS' },
-    ];
-  }
-  if (hasHarness) {
-    return [{ command: 'deploy', label: 'Deploy to AWS' }];
-  }
-  return [{ command: 'add', label: 'Add an agent' }];
-}
-
 const CREATE_TYPE_ITEMS = [
   { id: 'harness', title: 'Harness (recommended)', description: 'Managed config-based agent loop, no code required' },
   {
@@ -176,7 +152,7 @@ function CreatedSummary({
   const isCreate = agentConfig?.agentType === 'create' || agentConfig?.agentType === 'import';
   const isByo = agentConfig?.agentType === 'byo';
   const agentPath = isCreate ? `app/${agentConfig.name}/` : isByo ? agentConfig.codeLocation : null;
-  const harnessPath = harnessConfig ? `harness/${harnessConfig.name}/` : null;
+  const harnessPath = harnessConfig ? `app/${harnessConfig.name}/` : null;
   const resourcePath = agentPath ?? harnessPath;
   const agentcorePath = 'agentcore/';
   const maxPathLen = resourcePath ? Math.max(resourcePath.length, agentcorePath.length) : agentcorePath.length;
@@ -248,11 +224,9 @@ function CreatedSummary({
   );
 }
 
-export function CreateScreen({ cwd, isInteractive, onExit, onNavigate }: CreateScreenProps) {
+export function CreateScreen({ cwd, isInteractive, onExit, onNavigate: _onNavigate }: CreateScreenProps) {
   const { exit } = useApp();
   const flow = useCreateFlow(cwd);
-  // Project root is cwd/projectName (new project directory)
-  const projectRoot = join(cwd, flow.projectName);
 
   // Completion state for next steps
   const allSuccess = !flow.hasError && flow.isComplete;
@@ -404,17 +378,21 @@ export function CreateScreen({ cwd, isInteractive, onExit, onNavigate }: CreateS
               <Text color="green">Project created successfully!</Text>
             </Box>
           ) : (
-            <NextSteps
-              steps={getCreateNextSteps(flow.addAgentConfig !== null, flow.addHarnessConfig !== null)}
-              isInteractive={isInteractive}
-              onSelect={step => {
-                if (onNavigate) {
-                  onNavigate({ command: step.command as NextCommand, workingDir: projectRoot });
-                }
-              }}
-              onBack={handleExit}
-              isActive={allSuccess}
-            />
+            <Box flexDirection="column" marginTop={1}>
+              <Text color="green">Project created successfully!</Text>
+              <Box flexDirection="column" marginTop={1}>
+                <Text dimColor>To continue, navigate to your new project:</Text>
+                <Box marginTop={1} flexDirection="column">
+                  <Text>
+                    {'  '}cd <Text color={STATUS_COLORS.info}>{flow.projectName}</Text>
+                  </Text>
+                  <Text>
+                    {'  '}
+                    <Text color={STATUS_COLORS.info}>agentcore</Text>
+                  </Text>
+                </Box>
+              </Box>
+            </Box>
           )}
         </Box>
       )}
