@@ -220,7 +220,7 @@ describe.sequential('e2e: target-based AB test lifecycle', () => {
 
           const json = parseJsonOutput(result.stdout) as {
             success: boolean;
-            resources: { resourceType: string; name: string; deploymentState: string }[];
+            resources: { resourceType: string; name: string; deploymentState: string; invocationUrl?: string }[];
           };
           expect(json.success).toBe(true);
 
@@ -232,6 +232,9 @@ describe.sequential('e2e: target-based AB test lifecycle', () => {
           // AB test should be deployed (HTTP gateways are not surfaced as top-level status resources)
           const abTest = json.resources.find(r => r.resourceType === 'ab-test' && r.name === abTestName);
           expect(abTest, `AB test "${abTestName}" should appear in status`).toBeDefined();
+          expect(abTest!.deploymentState).toBe('deployed');
+          // invocationUrl proves the HTTP gateway was deployed and wired up correctly
+          expect(abTest!.invocationUrl, 'AB test should have a gateway invocation URL').toBeTruthy();
         },
         3,
         15000
