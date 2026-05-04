@@ -41,8 +41,8 @@ See [integ-tests/README.md](../integ-tests/README.md) for integration test detai
 
 ### E2E Tests
 
-E2E tests live in `e2e-tests/` and verify the full user journey across the AWS boundary
-— deploy, invoke, status, logs, traces, and control plane API calls.
+E2E tests live in `e2e-tests/` and verify the full user journey across the AWS boundary — deploy, invoke, status, logs,
+traces, and control plane API calls.
 
 ```
 e2e-tests/
@@ -450,8 +450,7 @@ npx playwright install chromium
 
 ## Integration Tests
 
-Integration tests require no AWS credentials. They run the real CLI binary and assert
-on local files and stdout only.
+Integration tests require no AWS credentials. They run the real CLI binary and assert on local files and stdout only.
 
 Run integration tests:
 
