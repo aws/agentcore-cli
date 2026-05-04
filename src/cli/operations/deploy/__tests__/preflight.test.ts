@@ -126,6 +126,51 @@ describe('validateProject', () => {
     expect(result.projectSpec.name).toBe('test-project');
     expect(result.isTeardownDeploy).toBe(false);
   });
+
+  it('rejects gateway target name that exceeds 48 chars when prefixed with project name', async () => {
+    mockRequireConfigRoot.mockReturnValue('/project/agentcore');
+    mockValidate.mockReturnValue(undefined);
+    // projectName "myproject" (9) + "-" (1) + targetName (39) = 49 > 48
+    mockReadProjectSpec.mockResolvedValue({
+      name: 'myproject',
+      runtimes: [],
+      httpGateways: [
+        {
+          name: 'gw',
+          targets: [{ name: 'a'.repeat(39), runtimeRef: 'rt', qualifier: 'DEFAULT' }],
+        },
+      ],
+      agentCoreGateways: [{ name: 'gw' }],
+    });
+    mockReadAWSDeploymentTargets.mockResolvedValue([]);
+    mockValidateAwsCredentials.mockResolvedValue(undefined);
+
+    await expect(validateProject()).rejects.toThrow(
+      'HTTP gateway target "' + 'a'.repeat(39) + '" in gateway "gw" would exceed the 48-character AWS limit'
+    );
+  });
+
+  it('accepts gateway target name within 48 chars when prefixed with project name', async () => {
+    mockRequireConfigRoot.mockReturnValue('/project/agentcore');
+    mockValidate.mockReturnValue(undefined);
+    // projectName "myproject" (9) + "-" (1) + targetName (38) = 48 == limit
+    mockReadProjectSpec.mockResolvedValue({
+      name: 'myproject',
+      runtimes: [],
+      httpGateways: [
+        {
+          name: 'gw',
+          targets: [{ name: 'a'.repeat(38), runtimeRef: 'rt', qualifier: 'DEFAULT' }],
+        },
+      ],
+      agentCoreGateways: [{ name: 'gw' }],
+    });
+    mockReadAWSDeploymentTargets.mockResolvedValue([]);
+    mockValidateAwsCredentials.mockResolvedValue(undefined);
+
+    const result = await validateProject();
+    expect(result.projectSpec.name).toBe('myproject');
+  });
 });
 
 describe('formatError', () => {

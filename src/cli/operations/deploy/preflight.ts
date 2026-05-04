@@ -161,6 +161,16 @@ function validateHttpGatewayNames(projectSpec: AgentCoreProjectSpec): void {
         );
       }
     }
+    for (const target of gateway.targets ?? []) {
+      const combined = `${projectName}-${target.name}`;
+      if (combined.length > MAX_GATEWAY_COMBINED_NAME_LENGTH) {
+        const maxTargetLen = MAX_GATEWAY_COMBINED_NAME_LENGTH - projectName.length - 1;
+        throw new Error(
+          `HTTP gateway target "${target.name}" in gateway "${gwName}" would exceed the ${MAX_GATEWAY_COMBINED_NAME_LENGTH}-character AWS limit when prefixed with project name "${projectName}-" (total: ${combined.length} chars). ` +
+            `Shorten the target name to ${maxTargetLen} characters or fewer.`
+        );
+      }
+    }
   }
 }
 
