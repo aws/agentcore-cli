@@ -1,6 +1,7 @@
 import { getOrCreateInstallationId } from '../lib/schemas/io/global-config';
 import { registerABTestCommand } from './commands/abtest';
 import { registerAdd } from './commands/add';
+import { registerArchive } from './commands/archive';
 import { registerConfigBundle } from './commands/config-bundle';
 import { registerCreate } from './commands/create';
 import { registerDeploy } from './commands/deploy';
@@ -198,6 +199,7 @@ export function registerCommands(program: Command) {
   registerUpdate(program);
   registerValidate(program);
   registerConfigBundle(program);
+  registerArchive(program);
 
   // Register primitive subcommands (add agent, remove agent, add memory, etc.)
   for (const primitive of ALL_PRIMITIVES) {

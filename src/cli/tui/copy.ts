@@ -54,6 +54,7 @@ export const COMMAND_DESCRIPTIONS = {
   update: 'Check for and install CLI updates',
   validate: 'Validate agentcore/ config files.',
   'config-bundle': '[preview] Manage configuration bundle versions and diffs.',
+  archive: '[preview] Archive (delete) a batch evaluation or recommendation on the service and clear local history.',
 } as const;
 
 /**
@@ -118,6 +119,17 @@ export const CLI_ONLY_EXAMPLES: Record<string, { description: string; examples: 
       'agentcore stop batch-evaluation -i <batch-eval-id>',
       'agentcore stop batch-evaluation -i <batch-eval-id> --json',
       'agentcore stop ab-test <name>',
+    ],
+  },
+  archive: {
+    description: 'Archive (delete) a batch evaluation or recommendation on the service and clear local history.',
+    examples: [
+      'agentcore archive batch-evaluation -i <batch-eval-id>',
+      'agentcore archive batch-evaluation -i <batch-eval-id> --region us-west-2',
+      'agentcore archive batch-evaluation -i <batch-eval-id> --json',
+      'agentcore archive recommendation -i <recommendation-id>',
+      'agentcore archive recommendation -i <recommendation-id> --region us-west-2',
+      'agentcore archive recommendation -i <recommendation-id> --json',
     ],
   },
 };

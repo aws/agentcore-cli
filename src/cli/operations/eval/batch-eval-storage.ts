@@ -4,7 +4,7 @@ import type { BatchEvaluationResult, RunBatchEvaluationCommandResult } from './r
 import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from 'fs';
 import { join } from 'path';
 
-const BATCH_EVAL_RESULTS_DIR = 'batch-eval-results';
+export const BATCH_EVAL_RESULTS_DIR = 'batch-eval-results';
 
 export interface BatchEvalRunRecord {
   name: string;
