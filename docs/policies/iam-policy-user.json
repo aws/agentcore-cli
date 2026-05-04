@@ -292,9 +292,12 @@
         "bedrock-agentcore:StartBatchEvaluation",
         "bedrock-agentcore:GetBatchEvaluation",
         "bedrock-agentcore:ListBatchEvaluations",
+        "bedrock-agentcore:StopBatchEvaluation",
+        "bedrock-agentcore:DeleteBatchEvaluation",
         "bedrock-agentcore:StartRecommendation",
         "bedrock-agentcore:GetRecommendation",
-        "bedrock-agentcore:ListRecommendations"
+        "bedrock-agentcore:ListRecommendations",
+        "bedrock-agentcore:DeleteRecommendation"
       ],
       "Resource": "*"
     }
