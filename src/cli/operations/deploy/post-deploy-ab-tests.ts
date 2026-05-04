@@ -142,7 +142,7 @@ export async function setupABTests(options: SetupABTestsOptions): Promise<SetupA
       const existingTest = existingABTests?.[testSpec.name];
 
       // Resolve ARN references from deployed state
-      const resolvedVariants = resolveVariants(testSpec.variants, deployedResources);
+      const resolvedVariants = resolveVariants(testSpec.variants, projectSpec.name, deployedResources);
       const resolvedGatewayArn = resolveGatewayArn(testSpec.gatewayRef, deployedResources);
       if (!resolvedGatewayArn.startsWith('arn:') || resolvedGatewayArn.split(':').length < 6) {
         results.push({
@@ -409,7 +409,8 @@ async function findABTestByName(
 /**
  * Resolve variant config bundle references.
  * If bundleArn is a name (not an ARN), look it up in deployed config bundles.
- * Target-based variants are passed through as-is.
+ * Target-based variants have their target name prefixed with projectName to match
+ * what post-deploy-http-gateways.ts creates on AWS (e.g. `${projectName}-${tgt.name}`).
  */
 function resolveVariants(
   variants: {
@@ -420,6 +421,7 @@ function resolveVariants(
       target?: { targetName: string };
     };
   }[],
+  projectName: string,
   deployedResources?: DeployedResourceState
 ): ABTestVariant[] {
   return variants.map(v => {
@@ -436,12 +438,15 @@ function resolveVariants(
         },
       };
     }
-    // Target-based variant — pass through
+    // Target-based variant — prepend projectName to match the AWS-side name created by
+    // post-deploy-http-gateways.ts: `${projectName}-${tgt.name}`
     return {
       name: v.name,
       weight: v.weight,
       variantConfiguration: {
-        ...(v.variantConfiguration.target && { target: { name: v.variantConfiguration.target.targetName } }),
+        ...(v.variantConfiguration.target && {
+          target: { name: `${projectName}-${v.variantConfiguration.target.targetName}` },
+        }),
       },
     };
   });

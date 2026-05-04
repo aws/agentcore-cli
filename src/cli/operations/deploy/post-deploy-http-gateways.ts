@@ -101,7 +101,7 @@ export async function setupHttpGateways(options: SetupHttpGatewaysOptions): Prom
           }
 
           for (const tgt of gwSpec.targets) {
-            const existingTarget = existingTargetsByName.get(tgt.name);
+            const existingTarget = existingTargetsByName.get(`${projectName}-${tgt.name}`);
             if (existingTarget) {
               // Target exists by name — check if qualifier matches
               try {
