@@ -229,9 +229,9 @@ describe.sequential('e2e: target-based AB test lifecycle', () => {
           expect(agent, `Agent "${agentName}" should appear in status`).toBeDefined();
           expect(agent!.deploymentState).toBe('deployed');
 
-          // Gateway should be deployed
-          const gateway = json.resources.find(r => r.resourceType === 'http-gateway' && r.name === `${abTestName}-gw`);
-          expect(gateway, 'HTTP gateway should appear in status').toBeDefined();
+          // AB test should be deployed (HTTP gateways are not surfaced as top-level status resources)
+          const abTest = json.resources.find(r => r.resourceType === 'ab-test' && r.name === abTestName);
+          expect(abTest, `AB test "${abTestName}" should appear in status`).toBeDefined();
         },
         3,
         15000
