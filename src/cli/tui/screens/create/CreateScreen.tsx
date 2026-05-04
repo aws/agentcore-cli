@@ -373,25 +373,16 @@ export function CreateScreen({ cwd, isInteractive, onExit, onNavigate: _onNaviga
             agentConfig={flow.addAgentConfig}
             harnessConfig={flow.addHarnessConfig}
           />
-          {isInteractive ? (
-            <Box marginTop={1}>
-              <Text color="green">Project created successfully!</Text>
-            </Box>
-          ) : (
+          <Box marginTop={1}>
+            <Text color="green">Project created successfully!</Text>
+          </Box>
+          {!isInteractive && (
             <Box flexDirection="column" marginTop={1}>
-              <Text color="green">Project created successfully!</Text>
-              <Box flexDirection="column" marginTop={1}>
-                <Text dimColor>To continue, navigate to your new project:</Text>
-                <Box marginTop={1} flexDirection="column">
-                  <Text>
-                    {'  '}cd <Text color={STATUS_COLORS.info}>{flow.projectName}</Text>
-                  </Text>
-                  <Text>
-                    {'  '}
-                    <Text color={STATUS_COLORS.info}>agentcore</Text>
-                  </Text>
-                </Box>
-              </Box>
+              <Text dimColor>To continue, navigate to your new project:</Text>
+              <Text>
+                {'\n'} cd {flow.projectName}
+              </Text>
+              <Text> agentcore</Text>
             </Box>
           )}
         </Box>
