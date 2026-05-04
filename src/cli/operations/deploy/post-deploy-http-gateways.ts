@@ -190,6 +190,29 @@ export async function setupHttpGateways(options: SetupHttpGatewaysOptions): Prom
         continue;
       }
 
+      // Migration fallback: try unprefixed name for pre-PR gateways (Comment 3 fix)
+      const existingByLegacyName = await findHttpGatewayByName(region, gwSpec.name);
+      if (existingByLegacyName) {
+        console.warn(
+          `Warning: HTTP gateway "${gwSpec.name}" was found using its pre-migration name. ` +
+            `This CLI version uses the naming convention "${prefixedGatewayName}". ` +
+            `The gateway has been recovered from state loss. ` +
+            `You may want to rename "${gwSpec.name}" to "${prefixedGatewayName}" on AWS to match the new convention.`
+        );
+        httpGateways[gwSpec.name] = {
+          gatewayId: existingByLegacyName.gatewayId,
+          gatewayArn: existingByLegacyName.gatewayArn,
+          // targetId, roleArn, roleCreatedByCli unknown after state-loss recovery
+        };
+        results.push({
+          gatewayName: gwSpec.name,
+          status: 'skipped',
+          gatewayId: existingByLegacyName.gatewayId,
+          gatewayArn: existingByLegacyName.gatewayArn,
+        });
+        continue;
+      }
+
       // Resolve runtime ARN from deployed state
       const runtimeState = deployedResources?.runtimes?.[gwSpec.runtimeRef];
       if (!runtimeState) {
