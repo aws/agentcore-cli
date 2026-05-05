@@ -162,6 +162,44 @@ describe.sequential('e2e: config-bundle AB test lifecycle', () => {
   );
 
   it.skipIf(!canRun)(
+    'deploys AB test',
+    async () => {
+      await retry(
+        async () => {
+          const result = await run(['deploy', '--yes', '--json']);
+          if (result.exitCode !== 0) {
+            console.log('AB test deploy stdout:', result.stdout);
+            console.log('AB test deploy stderr:', result.stderr);
+          }
+          expect(result.exitCode, `AB test deploy failed`).toBe(0);
+          const json = parseJsonOutput(result.stdout) as { success: boolean };
+          expect(json.success).toBe(true);
+        },
+        2,
+        30000
+      );
+    },
+    600000
+  );
+
+  it.skipIf(!canRun)(
+    'AB test reaches RUNNING status after deploy',
+    async () => {
+      await retry(
+        async () => {
+          const result = await run(['ab-test', abTestName, '--json']);
+          expect(result.exitCode, `ab-test lookup failed: ${result.stdout} ${result.stderr}`).toBe(0);
+          const json = parseJsonOutput(result.stdout) as { executionStatus: string };
+          expect(json.executionStatus, 'AB test should be RUNNING after deploy').toBe('RUNNING');
+        },
+        12,
+        15000
+      );
+    },
+    300000
+  );
+
+  it.skipIf(!canRun)(
     'status shows AB test in config',
     async () => {
       const result = await run(['status', '--json']);

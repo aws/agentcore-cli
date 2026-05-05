@@ -211,6 +211,23 @@ describe.sequential('e2e: target-based AB test lifecycle', () => {
   );
 
   it.skipIf(!canRun)(
+    'AB test reaches RUNNING status after deploy',
+    async () => {
+      await retry(
+        async () => {
+          const result = await run(['ab-test', abTestName, '--json']);
+          expect(result.exitCode, `ab-test lookup failed: ${result.stdout} ${result.stderr}`).toBe(0);
+          const json = parseJsonOutput(result.stdout) as { executionStatus: string };
+          expect(json.executionStatus, 'AB test should be RUNNING after deploy').toBe('RUNNING');
+        },
+        12,
+        15000
+      );
+    },
+    300000
+  );
+
+  it.skipIf(!canRun)(
     'status shows all resources deployed',
     async () => {
       await retry(
