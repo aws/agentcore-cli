@@ -274,12 +274,22 @@ export const registerPromote = (program: Command) => {
           process.exit(1);
         }
 
-        // Stop the AB test
-        const result = await updateABTest({
-          region,
-          abTestId,
-          executionStatus: 'STOPPED',
-        });
+        // Stop the AB test — retry on 409 UPDATING (transitioning from resume)
+        let result;
+        for (let attempt = 0; attempt < 6; attempt++) {
+          try {
+            result = await updateABTest({ region, abTestId, executionStatus: 'STOPPED' });
+            break;
+          } catch (err) {
+            const msg = err instanceof Error ? err.message : String(err);
+            if (msg.includes('409') && attempt < 5) {
+              await new Promise(resolve => setTimeout(resolve, 10_000));
+              continue;
+            }
+            throw err;
+          }
+        }
+        if (!result) throw new Error('Failed to stop AB test after retries');
 
         // Apply promotion to agentcore.json
         const { promoteABTestConfig } = await import('../../operations/ab-test/promote');
