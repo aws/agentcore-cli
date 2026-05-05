@@ -10,6 +10,7 @@
  * - Fails when runtime name already exists in project
  */
 import { handleImportRuntime } from '../import-runtime';
+import assert from 'node:assert';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 // ── Mock dependencies ────────────────────────────────────────────────────────
@@ -25,7 +26,7 @@ const mockParseAndValidateArn = vi.fn();
 const mockFindResourceInDeployedState = vi.fn();
 const mockFailResult = vi.fn((...args: unknown[]) => ({
   success: false,
-  error: args[1] as string,
+  error: new Error(args[1] as string),
   resourceType: args[2] as string,
   resourceName: args[3] as string,
   logPath: 'test.log',
@@ -205,8 +206,9 @@ describe('handleImportRuntime', () => {
       });
 
       expect(result.success).toBe(false);
-      expect(result.error).toContain('Could not determine entrypoint');
-      expect(result.error).toContain('--entrypoint');
+      assert(!result.success);
+      expect(result.error.message).toContain('Could not determine entrypoint');
+      expect(result.error.message).toContain('--entrypoint');
     });
 
     it('fails with clear error when entryPoint is undefined', async () => {
@@ -231,7 +233,8 @@ describe('handleImportRuntime', () => {
       });
 
       expect(result.success).toBe(false);
-      expect(result.error).toContain('Could not determine entrypoint');
+      assert(!result.success);
+      expect(result.error.message).toContain('Could not determine entrypoint');
     });
 
     it('fails with clear error when entryPoint is empty array', async () => {
@@ -256,7 +259,8 @@ describe('handleImportRuntime', () => {
       });
 
       expect(result.success).toBe(false);
-      expect(result.error).toContain('Could not determine entrypoint');
+      assert(!result.success);
+      expect(result.error.message).toContain('Could not determine entrypoint');
     });
 
     it('uses --entrypoint flag when provided, bypassing auto-detection', async () => {
@@ -369,7 +373,8 @@ describe('handleImportRuntime', () => {
       });
 
       expect(result.success).toBe(false);
-      expect(result.error).toContain('Multiple runtimes found');
+      assert(!result.success);
+      expect(result.error.message).toContain('Multiple runtimes found');
     });
 
     it('errors when no runtimes exist', async () => {
@@ -382,7 +387,8 @@ describe('handleImportRuntime', () => {
       });
 
       expect(result.success).toBe(false);
-      expect(result.error).toContain('No runtimes found');
+      assert(!result.success);
+      expect(result.error.message).toContain('No runtimes found');
     });
   });
 
@@ -546,7 +552,8 @@ describe('handleImportRuntime', () => {
       });
 
       expect(result.success).toBe(false);
-      expect(result.error).toContain('--code');
+      assert(!result.success);
+      expect(result.error.message).toContain('--code');
     });
 
     it('fails when source path does not exist', async () => {
@@ -574,7 +581,8 @@ describe('handleImportRuntime', () => {
       });
 
       expect(result.success).toBe(false);
-      expect(result.error).toContain('does not exist');
+      assert(!result.success);
+      expect(result.error.message).toContain('does not exist');
     });
 
     it('fails when runtime name already exists in project', async () => {
@@ -606,7 +614,8 @@ describe('handleImportRuntime', () => {
       });
 
       expect(result.success).toBe(false);
-      expect(result.error).toContain('already exists');
+      assert(!result.success);
+      expect(result.error.message).toContain('already exists');
     });
   });
 });

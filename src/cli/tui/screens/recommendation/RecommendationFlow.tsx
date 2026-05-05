@@ -33,7 +33,12 @@ type FlowState =
       recommendationId?: string;
       region?: string;
     }
-  | { name: 'results'; result: RunRecommendationCommandResult; config: RecommendationWizardConfig; filePath?: string }
+  | {
+      name: 'results';
+      result: Extract<RunRecommendationCommandResult, { success: true }>;
+      config: RecommendationWizardConfig;
+      filePath?: string;
+    }
   | { name: 'creds-error'; message: string }
   | { name: 'error'; message: string; logFilePath?: string };
 
@@ -194,13 +199,17 @@ export function RecommendationFlow({ onExit }: RecommendationFlowProps) {
           setFlow(prev => {
             if (prev.name !== 'running') return prev;
             const steps = prev.steps.map(s =>
-              s.status === 'running' ? { ...s, status: 'error' as const, error: result.error } : s
+              s.status === 'running' ? { ...s, status: 'error' as const, error: result.error.message } : s
             );
             return { ...prev, steps };
           });
           await new Promise(resolve => setTimeout(resolve, 2000));
           if (cancelled) return;
-          setFlow({ name: 'error', message: result.error ?? 'Recommendation failed', logFilePath: result.logFilePath });
+          setFlow({
+            name: 'error',
+            message: result.error?.message ?? 'Recommendation failed',
+            logFilePath: result.logFilePath,
+          });
           return;
         }
 
@@ -333,7 +342,7 @@ export function RecommendationFlow({ onExit }: RecommendationFlowProps) {
 // ─────────────────────────────────────────────────────────────────────────────
 
 interface ResultsViewProps {
-  result: RunRecommendationCommandResult;
+  result: Extract<RunRecommendationCommandResult, { success: true }>;
   config: RecommendationWizardConfig;
   filePath?: string;
   onRunAnother: () => void;
@@ -369,7 +378,7 @@ function ResultsView({ result, config, filePath, onRunAnother, onExit }: Results
           message: `New bundle version (${applyResult.newVersionId}) created with recommended changes. Local config updated.`,
         });
       } else {
-        setApplyStatus({ applied: false, message: applyResult.error ?? 'Unknown error' });
+        setApplyStatus({ applied: false, message: applyResult.error?.message ?? 'Unknown error' });
       }
     } catch (err) {
       setApplyStatus({ applied: false, message: getErrorMessage(err) });

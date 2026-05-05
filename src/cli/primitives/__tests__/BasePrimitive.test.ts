@@ -1,5 +1,6 @@
+import type { Result } from '../../../lib/result';
 import { BasePrimitive } from '../BasePrimitive';
-import type { AddResult, AddScreenComponent, RemovableResource, RemovalPreview, RemovalResult } from '../types';
+import type { AddResult, AddScreenComponent, RemovableResource, RemovalPreview } from '../types';
 import type { Command } from '@commander-js/extra-typings';
 import { describe, expect, it } from 'vitest';
 import { z } from 'zod';
@@ -14,7 +15,7 @@ class StubPrimitive extends BasePrimitive {
     return Promise.resolve({ success: true });
   }
 
-  remove(_name: string): Promise<RemovalResult> {
+  remove(_name: string): Promise<Result> {
     return Promise.resolve({ success: true });
   }
 

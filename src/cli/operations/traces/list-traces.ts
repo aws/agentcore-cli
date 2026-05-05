@@ -27,7 +27,7 @@ export async function listTraces(options: ListTracesOptions): Promise<ListTraces
     return { success: false, error: result.error };
   }
 
-  const traces = (result.rows ?? []).reduce<TraceEntry[]>((acc, row) => {
+  const traces = result.rows.reduce<TraceEntry[]>((acc, row) => {
     if (row.traceId) {
       acc.push({
         traceId: row.traceId,

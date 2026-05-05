@@ -1,6 +1,7 @@
 /**
  * Shared types for the recommendation feature.
  */
+import type { Result } from '../../../lib/result';
 import type { RecommendationResult, RecommendationType } from '../../aws/agentcore-recommendation';
 
 export type { RecommendationType } from '../../aws/agentcore-recommendation';
@@ -56,17 +57,9 @@ export interface RunRecommendationCommandOptions {
   onStarted?: (info: { recommendationId: string; region: string }) => void;
 }
 
-export interface RunRecommendationCommandResult {
-  success: boolean;
-  error?: string;
-  recommendationId?: string;
-  status?: string;
-  /** The recommendation result from the API (populated on COMPLETED) */
+export type RunRecommendationCommandResult = Result<{
   result?: RecommendationResult;
-  /** Resolved AWS region used for the recommendation */
   region?: string;
   startedAt?: string;
   completedAt?: string;
-  /** Path to the execution log file */
-  logFilePath?: string;
-}
+}> & { recommendationId?: string; status?: string; logFilePath?: string };

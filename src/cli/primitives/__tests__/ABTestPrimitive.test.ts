@@ -11,6 +11,14 @@ vi.mock('../../../lib/index.js', () => ({
     writeProjectSpec = mockWriteProjectSpec;
   },
   findConfigRoot: () => '/fake/root',
+  toError: (err: unknown) => (err instanceof Error ? err : new Error(String(err))),
+  serializeResult: (r: unknown) => r,
+  ResourceNotFoundError: class extends Error {
+    constructor(m: string) {
+      super(m);
+      this.name = 'ResourceNotFoundError';
+    }
+  },
 }));
 
 function makeProject(abTests: { name: string; gatewayRef?: string }[] = []) {
@@ -121,7 +129,10 @@ describe('ABTestPrimitive', () => {
       const result = await primitive.add(validOptions);
 
       expect(result).toEqual(
-        expect.objectContaining({ success: false, error: expect.stringContaining('already exists') })
+        expect.objectContaining({
+          success: false,
+          error: expect.objectContaining({ message: expect.stringContaining('already exists') }),
+        })
       );
     });
 
@@ -130,7 +141,7 @@ describe('ABTestPrimitive', () => {
 
       const result = await primitive.add(validOptions);
 
-      expect(result).toEqual(expect.objectContaining({ success: false, error: 'disk read error' }));
+      expect(result).toEqual(expect.objectContaining({ success: false, error: new Error('disk read error') }));
     });
 
     it('returns error when writeProjectSpec fails', async () => {
@@ -139,7 +150,7 @@ describe('ABTestPrimitive', () => {
 
       const result = await primitive.add(validOptions);
 
-      expect(result).toEqual(expect.objectContaining({ success: false, error: 'disk write error' }));
+      expect(result).toEqual(expect.objectContaining({ success: false, error: new Error('disk write error') }));
     });
 
     it('returns error when variant weights do not sum to 100', async () => {
@@ -175,8 +186,8 @@ describe('ABTestPrimitive', () => {
 
       expect(result.success).toBe(false);
       if (!result.success) {
-        expect(result.error).toContain('NonExistent');
-        expect(result.error).toContain('not found');
+        expect(result.error.message).toContain('NonExistent');
+        expect(result.error.message).toContain('not found');
       }
     });
 
@@ -187,7 +198,7 @@ describe('ABTestPrimitive', () => {
 
       expect(result.success).toBe(false);
       if (!result.success) {
-        expect(result.error).toBe('io error');
+        expect(result.error.message).toBe('io error');
       }
     });
 

@@ -25,7 +25,7 @@ export function useCreateIdentity() {
         () => credentialPrimitive.add(config)
       );
       if (!result.success) {
-        throw new Error(result.error ?? 'Failed to create credential');
+        throw new Error(result.error?.message ?? 'Failed to create credential');
       }
       // Read back the credential object
       const configIO = new ConfigIO();

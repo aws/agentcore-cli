@@ -1,3 +1,4 @@
+import { ResourceNotFoundError } from '../../../../lib';
 import { MemoryPrimitive } from '../../../primitives/MemoryPrimitive.js';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
@@ -14,6 +15,15 @@ vi.mock('../../../../lib/index.js', () => ({
   ConfigIO: class {
     readProjectSpec = mockReadProjectSpec;
     writeProjectSpec = mockWriteProjectSpec;
+  },
+  findConfigRoot: () => '/fake/root',
+  toError: (err: unknown) => (err instanceof Error ? err : new Error(String(err))),
+  serializeResult: (r: unknown) => r,
+  ResourceNotFoundError: class extends Error {
+    constructor(m: string) {
+      super(m);
+      this.name = 'ResourceNotFoundError';
+    }
   },
 }));
 
@@ -84,7 +94,7 @@ describe('remove', () => {
 
     const result = await primitive.remove('Missing');
 
-    expect(result).toEqual({ success: false, error: 'Memory "Missing" not found.' });
+    expect(result).toEqual({ success: false, error: new ResourceNotFoundError('Memory "Missing" not found.') });
   });
 
   it('returns error on exception', async () => {
@@ -92,6 +102,6 @@ describe('remove', () => {
 
     const result = await primitive.remove('Mem1');
 
-    expect(result).toEqual({ success: false, error: 'read fail' });
+    expect(result).toEqual({ success: false, error: new Error('read fail') });
   });
 });

@@ -1,3 +1,5 @@
+import { AccessDeniedError } from '../../lib';
+import type { Result } from '../../lib/result';
 import { getErrorMessage, isAccessDeniedError } from '../errors';
 import { getCredentialProvider } from './account';
 import { arnPrefix } from './partition';
@@ -14,11 +16,6 @@ import {
   XRayClient,
 } from '@aws-sdk/client-xray';
 
-export interface TransactionSearchEnableResult {
-  success: boolean;
-  error?: string;
-}
-
 const RESOURCE_POLICY_NAME = 'TransactionSearchXRayAccess';
 
 /**
@@ -34,7 +31,7 @@ export async function enableTransactionSearch(
   region: string,
   accountId: string,
   indexPercentage = 100
-): Promise<TransactionSearchEnableResult> {
+): Promise<Result> {
   const credentials = getCredentialProvider();
 
   // Step 1: Enable Application Signals (creates service-linked role, idempotent)
@@ -44,9 +41,14 @@ export async function enableTransactionSearch(
   } catch (err: unknown) {
     const message = getErrorMessage(err);
     if (isAccessDeniedError(err)) {
-      return { success: false, error: `Insufficient permissions to enable Application Signals: ${message}` };
+      return {
+        success: false,
+        error: new AccessDeniedError(`Insufficient permissions to enable Application Signals: ${message}`, {
+          cause: err,
+        }),
+      };
     }
-    return { success: false, error: `Failed to enable Application Signals: ${message}` };
+    return { success: false, error: new Error(`Failed to enable Application Signals: ${message}`, { cause: err }) };
   }
 
   // Step 2: Create CloudWatch Logs resource policy for X-Ray (if needed)
@@ -80,9 +82,17 @@ export async function enableTransactionSearch(
   } catch (err: unknown) {
     const message = getErrorMessage(err);
     if (isAccessDeniedError(err)) {
-      return { success: false, error: `Insufficient permissions to configure CloudWatch Logs policy: ${message}` };
+      return {
+        success: false,
+        error: new AccessDeniedError(`Insufficient permissions to configure CloudWatch Logs policy: ${message}`, {
+          cause: err,
+        }),
+      };
     }
-    return { success: false, error: `Failed to configure CloudWatch Logs policy: ${message}` };
+    return {
+      success: false,
+      error: new Error(`Failed to configure CloudWatch Logs policy: ${message}`, { cause: err }),
+    };
   }
 
   const xrayClient = new XRayClient({ region, credentials });
@@ -96,9 +106,14 @@ export async function enableTransactionSearch(
   } catch (err: unknown) {
     const message = getErrorMessage(err);
     if (isAccessDeniedError(err)) {
-      return { success: false, error: `Insufficient permissions to configure trace destination: ${message}` };
+      return {
+        success: false,
+        error: new AccessDeniedError(`Insufficient permissions to configure trace destination: ${message}`, {
+          cause: err,
+        }),
+      };
     }
-    return { success: false, error: `Failed to configure trace destination: ${message}` };
+    return { success: false, error: new Error(`Failed to configure trace destination: ${message}`, { cause: err }) };
   }
 
   // Step 4: Set indexing to 100% on the built-in Default rule (always exists, idempotent)
@@ -112,9 +127,14 @@ export async function enableTransactionSearch(
   } catch (err: unknown) {
     const message = getErrorMessage(err);
     if (isAccessDeniedError(err)) {
-      return { success: false, error: `Insufficient permissions to configure indexing rules: ${message}` };
+      return {
+        success: false,
+        error: new AccessDeniedError(`Insufficient permissions to configure indexing rules: ${message}`, {
+          cause: err,
+        }),
+      };
     }
-    return { success: false, error: `Failed to configure indexing rules: ${message}` };
+    return { success: false, error: new Error(`Failed to configure indexing rules: ${message}`, { cause: err }) };
   }
 
   return { success: true };

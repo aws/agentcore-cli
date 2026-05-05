@@ -9,6 +9,7 @@ const CONFIG_ERRORS = new Set([
   'ConfigReadError',
   'ConfigWriteError',
   'ConfigParseError',
+  'ValidationError',
 ]);
 const PACKAGING_ERRORS = new Set([
   'PackagingError',
@@ -16,11 +17,13 @@ const PACKAGING_ERRORS = new Set([
   'MissingProjectFileError',
   'UnsupportedLanguageError',
   'ArtifactSizeError',
+  'DependencyCheckError',
 ]);
 const CREDENTIAL_ERRORS = new Set([
   'AwsCredentialsError',
   'AccessDeniedException',
   'AccessDenied',
+  'AccessDeniedError',
   'ExpiredToken',
   'ExpiredTokenException',
   'TokenRefreshRequired',
@@ -36,6 +39,8 @@ const SERVICE_ERRORS = new Set([
   'ValidationException',
   'ConflictException',
   'ResourceAlreadyExistsException',
+  'ResourceNotFoundError',
+  'ConflictError',
 ]);
 
 const USER_CATEGORIES = new Set<ErrorCategoryValue>(['ConfigError', 'CredentialsError', 'ProjectError']);

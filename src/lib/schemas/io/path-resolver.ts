@@ -1,19 +1,9 @@
 import { CLI_LOGS_DIR, CLI_SYSTEM_DIR, CONFIG_DIR, CONFIG_FILES as _CONFIG_FILES } from '../../constants';
+import { NoProjectError } from '../../errors';
 import { existsSync } from 'fs';
 import { dirname, join } from 'path';
 
-// Re-export for backward compatibility
 export const CONFIG_FILES = _CONFIG_FILES;
-
-/**
- * Error thrown when no AgentCore project is found.
- */
-export class NoProjectError extends Error {
-  constructor(message?: string) {
-    super(message ?? 'No agentcore project found. Run "agentcore create" first.');
-    this.name = 'NoProjectError';
-  }
-}
 
 /**
  * Get the working directory where the user invoked the CLI.

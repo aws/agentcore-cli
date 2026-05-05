@@ -1,6 +1,7 @@
+import type { Result } from '../../../lib/result';
 import type { ResourceType } from '../../commands/remove/types';
 import { RemoveLogger } from '../../logging';
-import type { RemovableGatewayTarget, RemovalPreview, RemovalResult } from '../../operations/remove';
+import type { RemovableGatewayTarget, RemovalPreview } from '../../operations/remove';
 import type { RemovableCredential } from '../../primitives/CredentialPrimitive';
 import type { RemovableMemory } from '../../primitives/MemoryPrimitive';
 import type { RemovablePolicyResource } from '../../primitives/PolicyPrimitive';
@@ -62,7 +63,7 @@ function useRemovableResources<T>(loader: () => Promise<T[]>) {
  * All useRemove* hooks delegate to this.
  */
 function useRemoveResource<TIdentifier>(
-  removeFn: (id: TIdentifier) => Promise<RemovalResult>,
+  removeFn: (id: TIdentifier) => Promise<Result>,
   resourceType: ResourceType,
   getResourceName: (id: TIdentifier) => string
 ) {
@@ -76,7 +77,7 @@ function useRemoveResource<TIdentifier>(
 
   const remove = useCallback(async (id: TIdentifier, preview?: RemovalPreview): Promise<RemoveResult> => {
     setState({ isLoading: true, result: null });
-    const result = await withCommandRunTelemetry<SubCommand<'remove', ResourceType>, RemovalResult>(
+    const result = await withCommandRunTelemetry<SubCommand<'remove', ResourceType>, Result>(
       `remove.${resourceTypeRef.current}`,
       {},
       () => removeFnRef.current(id)
@@ -89,7 +90,7 @@ function useRemoveResource<TIdentifier>(
         resourceType: resourceTypeRef.current,
         resourceName: getNameRef.current(id),
       });
-      logger.logRemoval(preview, result.success, result.success ? undefined : result.error);
+      logger.logRemoval(preview, result.success, result.success ? undefined : result.error?.message);
       logPath = logger.getAbsoluteLogPath();
       setLogFilePath(logPath);
     }
@@ -297,10 +298,10 @@ export function useRemovalPreview() {
 
 interface RemovalState {
   isLoading: boolean;
-  result: RemovalResult | null;
+  result: Result | null;
 }
 
-type RemoveResult = RemovalResult & { logFilePath?: string };
+type RemoveResult = Result & { logFilePath?: string };
 
 export function useRemoveAgent() {
   return useRemoveResource(

@@ -45,7 +45,7 @@ export function useCreateMemory() {
           })
       );
       if (!addResult.success) {
-        throw new Error(addResult.error ?? 'Failed to create memory');
+        throw new Error(addResult.error?.message ?? 'Failed to create memory');
       }
       // Read back the memory object
       const configIO = new ConfigIO();

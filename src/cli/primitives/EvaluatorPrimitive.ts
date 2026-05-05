@@ -1,8 +1,9 @@
-import { findConfigRoot } from '../../lib';
+import { ConflictError, ResourceNotFoundError, findConfigRoot, serializeResult, toError } from '../../lib';
+import type { Result } from '../../lib/result';
 import type { EvaluationLevel, Evaluator, EvaluatorConfig } from '../../schema';
 import { EvaluationLevelSchema, EvaluatorSchema } from '../../schema';
 import { getErrorMessage } from '../errors';
-import type { RemovalPreview, RemovalResult, SchemaChange } from '../operations/remove/types';
+import type { RemovalPreview, SchemaChange } from '../operations/remove/types';
 import { runCliCommand } from '../telemetry/cli-command-run.js';
 import { EvaluatorType, Level, standardize } from '../telemetry/schemas/common-shapes.js';
 import { renderCodeBasedEvaluatorTemplate } from '../templates/EvaluatorRenderer';
@@ -57,17 +58,17 @@ export class EvaluatorPrimitive extends BasePrimitive<AddEvaluatorOptions, Remov
 
       return { success: true, evaluatorName: evaluator.name };
     } catch (err) {
-      return { success: false, error: getErrorMessage(err) };
+      return { success: false, error: toError(err) };
     }
   }
 
-  async remove(evaluatorName: string): Promise<RemovalResult> {
+  async remove(evaluatorName: string): Promise<Result> {
     try {
       const project = await this.readProjectSpec();
 
       const index = project.evaluators.findIndex(e => e.name === evaluatorName);
       if (index === -1) {
-        return { success: false, error: `Evaluator "${evaluatorName}" not found.` };
+        return { success: false, error: new ResourceNotFoundError(`Evaluator "${evaluatorName}" not found.`) };
       }
 
       // Warn if referenced by online eval configs
@@ -76,7 +77,9 @@ export class EvaluatorPrimitive extends BasePrimitive<AddEvaluatorOptions, Remov
         const configNames = referencingConfigs.map(c => c.name).join(', ');
         return {
           success: false,
-          error: `Evaluator "${evaluatorName}" is referenced by online eval config(s): ${configNames}. Remove those references first.`,
+          error: new ConflictError(
+            `Evaluator "${evaluatorName}" is referenced by online eval config(s): ${configNames}. Remove those references first.`
+          ),
         };
       }
 
@@ -96,7 +99,7 @@ export class EvaluatorPrimitive extends BasePrimitive<AddEvaluatorOptions, Remov
 
       return { success: true };
     } catch (err) {
-      return { success: false, error: getErrorMessage(err) };
+      return { success: false, error: toError(err) };
     }
   }
 
@@ -296,11 +299,11 @@ export class EvaluatorPrimitive extends BasePrimitive<AddEvaluatorOptions, Remov
               });
 
               if (!result.success) {
-                throw new Error(result.error);
+                throw result.error;
               }
 
               if (cliOptions.json) {
-                console.log(JSON.stringify(result));
+                console.log(JSON.stringify(serializeResult(result)));
               } else {
                 if (result.codePath) {
                   console.log(`Created evaluator '${result.evaluatorName}'`);

@@ -1,8 +1,9 @@
-import { findConfigRoot } from '../../lib';
+import { ResourceNotFoundError, findConfigRoot, serializeResult, toError } from '../../lib';
+import type { Result } from '../../lib/result';
 import type { OnlineEvalConfig } from '../../schema';
 import { OnlineEvalConfigSchema } from '../../schema';
 import { getErrorMessage } from '../errors';
-import type { RemovalPreview, RemovalResult, SchemaChange } from '../operations/remove/types';
+import type { RemovalPreview, SchemaChange } from '../operations/remove/types';
 import { runCliCommand } from '../telemetry/cli-command-run.js';
 import { requireTTY } from '../tui/guards/tty';
 import { BasePrimitive } from './BasePrimitive';
@@ -34,17 +35,17 @@ export class OnlineEvalConfigPrimitive extends BasePrimitive<AddOnlineEvalConfig
       const config = await this.createOnlineEvalConfig(options);
       return { success: true, configName: config.name };
     } catch (err) {
-      return { success: false, error: getErrorMessage(err) };
+      return { success: false, error: toError(err) };
     }
   }
 
-  async remove(configName: string): Promise<RemovalResult> {
+  async remove(configName: string): Promise<Result> {
     try {
       const project = await this.readProjectSpec();
 
       const index = project.onlineEvalConfigs.findIndex(c => c.name === configName);
       if (index === -1) {
-        return { success: false, error: `Online eval config "${configName}" not found.` };
+        return { success: false, error: new ResourceNotFoundError(`Online eval config "${configName}" not found.`) };
       }
 
       project.onlineEvalConfigs.splice(index, 1);
@@ -52,7 +53,7 @@ export class OnlineEvalConfigPrimitive extends BasePrimitive<AddOnlineEvalConfig
 
       return { success: true };
     } catch (err) {
-      return { success: false, error: getErrorMessage(err) };
+      return { success: false, error: toError(err) };
     }
   }
 
@@ -159,11 +160,11 @@ export class OnlineEvalConfigPrimitive extends BasePrimitive<AddOnlineEvalConfig
               });
 
               if (!result.success) {
-                throw new Error(result.error);
+                throw result.error;
               }
 
               if (cliOptions.json) {
-                console.log(JSON.stringify(result));
+                console.log(JSON.stringify(serializeResult(result)));
               } else {
                 console.log(`Added online eval config '${result.configName}'`);
               }

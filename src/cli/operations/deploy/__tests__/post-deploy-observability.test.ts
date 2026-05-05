@@ -70,7 +70,7 @@ describe('setupTransactionSearch', () => {
   });
 
   it('propagates error from enableTransactionSearch', async () => {
-    mockEnableTransactionSearch.mockResolvedValue({ success: false, error: 'Insufficient permissions' });
+    mockEnableTransactionSearch.mockResolvedValue({ success: false, error: new Error('Insufficient permissions') });
 
     const result = await setupTransactionSearch({
       region: 'us-east-1',
@@ -78,7 +78,10 @@ describe('setupTransactionSearch', () => {
       agentNames: ['agent-1'],
     });
 
-    expect(result).toEqual({ success: false, error: 'Insufficient permissions' });
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      expect(result.error.message).toBe('Insufficient permissions');
+    }
   });
 
   it('triggers when hasGateways is true and agentNames is empty', async () => {

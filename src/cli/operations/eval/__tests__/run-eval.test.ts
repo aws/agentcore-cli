@@ -1,4 +1,5 @@
 import { handleRunEval } from '../run-eval.js';
+import assert from 'node:assert';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 // ─── Mocks ────────────────────────────────────────────────────────────────────
@@ -150,8 +151,8 @@ describe('handleRunEval', () => {
 
     const result = await handleRunEval({ evaluator: ['Builtin.GoalSuccessRate'], days: 7 });
 
-    expect(result.success).toBe(false);
-    expect(result.error).toBe('No agents defined');
+    assert(!result.success);
+    expect(result.error.message).toBe('No agents defined');
   });
 
   it('returns error when a custom evaluator is not found in deployed state', async () => {
@@ -170,9 +171,9 @@ describe('handleRunEval', () => {
 
     const result = await handleRunEval({ evaluator: ['MissingEval'], days: 7 });
 
-    expect(result.success).toBe(false);
-    expect(result.error).toContain('MissingEval');
-    expect(result.error).toContain('not found in deployed state');
+    assert(!result.success);
+    expect(result.error.message).toContain('MissingEval');
+    expect(result.error.message).toContain('not found in deployed state');
   });
 
   it('resolves builtin evaluators without deployed state lookup', async () => {
@@ -195,7 +196,8 @@ describe('handleRunEval', () => {
     const result = await handleRunEval({ evaluator: ['Builtin.GoalSuccessRate'], days: 7 });
 
     // Fails because no spans, but NOT because evaluator wasn't found
-    expect(result.error).toContain('No session spans found');
+    assert(!result.success);
+    expect(result.error.message).toContain('No session spans found');
   });
 
   it('resolves custom evaluator name to deployed evaluator ID', async () => {
@@ -278,9 +280,9 @@ describe('handleRunEval', () => {
 
     const result = await handleRunEval({ evaluator: ['Builtin.GoalSuccessRate'], days: 7 });
 
-    expect(result.success).toBe(false);
-    expect(result.error).toContain('No session spans found');
-    expect(result.error).toContain('my-agent');
+    assert(!result.success);
+    expect(result.error.message).toContain('No session spans found');
+    expect(result.error.message).toContain('my-agent');
   });
 
   // ─── Successful evaluation ────────────────────────────────────────────────
@@ -324,12 +326,12 @@ describe('handleRunEval', () => {
 
     const result = await handleRunEval({ evaluator: ['Builtin.GoalSuccessRate'], days: 7 });
 
-    expect(result.success).toBe(true);
+    assert(result.success);
     expect(result.run).toBeDefined();
-    expect(result.run!.sessionCount).toBe(2);
-    expect(result.run!.results).toHaveLength(1);
+    expect(result.run.sessionCount).toBe(2);
+    expect(result.run.results).toHaveLength(1);
 
-    const evalResult = result.run!.results[0]!;
+    const evalResult = result.run.results[0]!;
     expect(evalResult.aggregateScore).toBe(3.0); // (4 + 2) / 2
     expect(evalResult.sessionScores).toHaveLength(2);
     expect(evalResult.tokenUsage).toEqual({ inputTokens: 180, outputTokens: 90, totalTokens: 270 });
@@ -361,8 +363,8 @@ describe('handleRunEval', () => {
 
     const result = await handleRunEval({ evaluator: ['Builtin.GoalSuccessRate'], days: 7 });
 
-    expect(result.success).toBe(true);
-    const evalResult = result.run!.results[0]!;
+    assert(result.success);
+    const evalResult = result.run.results[0]!;
     // Only the non-errored session (value 5.0) should be in the aggregate
     expect(evalResult.aggregateScore).toBe(5.0);
     expect(evalResult.sessionScores).toHaveLength(2);
@@ -391,7 +393,7 @@ describe('handleRunEval', () => {
 
     const result = await handleRunEval({ evaluator: ['Builtin.GoalSuccessRate'], days: 7 });
 
-    expect(result.success).toBe(true);
+    assert(result.success);
     expect(mockSaveEvalRun).toHaveBeenCalled();
     expect(mockWriteFileSync).not.toHaveBeenCalled();
     expect(result.filePath).toBe('/tmp/eval-results/eval_2025-01-15_10-00-00.json');
@@ -422,7 +424,7 @@ describe('handleRunEval', () => {
       output: '/tmp/my-output.json',
     });
 
-    expect(result.success).toBe(true);
+    assert(result.success);
     expect(mockWriteFileSync).toHaveBeenCalledWith('/tmp/my-output.json', expect.any(String));
     expect(mockSaveEvalRun).not.toHaveBeenCalled();
     expect(result.filePath).toBe('/tmp/my-output.json');
@@ -461,12 +463,12 @@ describe('handleRunEval', () => {
       days: 7,
     });
 
-    expect(result.success).toBe(true);
-    expect(result.run!.results).toHaveLength(2);
-    expect(result.run!.results[0]!.evaluator).toBe('Builtin.GoalSuccessRate');
-    expect(result.run!.results[0]!.aggregateScore).toBe(0.9);
-    expect(result.run!.results[1]!.evaluator).toBe('CustomEval');
-    expect(result.run!.results[1]!.aggregateScore).toBe(4.5);
+    assert(result.success);
+    expect(result.run.results).toHaveLength(2);
+    expect(result.run.results[0]!.evaluator).toBe('Builtin.GoalSuccessRate');
+    expect(result.run.results[0]!.aggregateScore).toBe(0.9);
+    expect(result.run.results[1]!.evaluator).toBe('CustomEval');
+    expect(result.run.results[1]!.aggregateScore).toBe(4.5);
   });
 
   // ─── ARN mode ─────────────────────────────────────────────────────────────
@@ -484,8 +486,8 @@ describe('handleRunEval', () => {
       days: 3,
     });
 
-    expect(result.success).toBe(true);
-    expect(result.run!.agent).toBe('rt-arn-test');
+    assert(result.success);
+    expect(result.run.agent).toBe('rt-arn-test');
     expect(mockLoadDeployedProjectConfig).not.toHaveBeenCalled();
     expect(mockResolveAgent).not.toHaveBeenCalled();
   });
@@ -532,8 +534,8 @@ describe('handleRunEval', () => {
       days: 7,
     });
 
-    expect(result.success).toBe(false);
-    expect(result.error).toContain('Invalid agent runtime ARN');
+    assert(!result.success);
+    expect(result.error.message).toContain('Invalid agent runtime ARN');
   });
 
   it('rejects custom evaluator names in ARN mode', async () => {
@@ -543,8 +545,8 @@ describe('handleRunEval', () => {
       days: 7,
     });
 
-    expect(result.success).toBe(false);
-    expect(result.error).toContain('cannot be resolved in ARN mode');
+    assert(!result.success);
+    expect(result.error.message).toContain('cannot be resolved in ARN mode');
   });
 
   it('saves to cwd in ARN mode when no --output is specified', async () => {
@@ -559,7 +561,7 @@ describe('handleRunEval', () => {
       days: 7,
     });
 
-    expect(result.success).toBe(true);
+    assert(result.success);
     // Should write to cwd, not call saveEvalRun (which requires a project)
     expect(mockSaveEvalRun).not.toHaveBeenCalled();
     expect(mockWriteFileSync).toHaveBeenCalledWith(
@@ -582,7 +584,7 @@ describe('handleRunEval', () => {
       output: '/tmp/custom-eval.json',
     });
 
-    expect(result.success).toBe(true);
+    assert(result.success);
     expect(mockWriteFileSync).toHaveBeenCalledWith('/tmp/custom-eval.json', expect.any(String));
     expect(result.filePath).toBe('/tmp/custom-eval.json');
   });
@@ -594,8 +596,8 @@ describe('handleRunEval', () => {
       days: 7,
     });
 
-    expect(result.success).toBe(false);
-    expect(result.error).toContain('No evaluators specified');
+    assert(!result.success);
+    expect(result.error.message).toContain('No evaluators specified');
   });
 
   // ─── Endpoint selection ──────────────────────────────────────────────────
@@ -1199,8 +1201,8 @@ describe('handleRunEval', () => {
       expectedTrajectory: ['tool_1', 'tool_2'],
     });
 
-    expect(result.success).toBe(true);
-    expect(result.run!.referenceInputs).toEqual({
+    assert(result.success);
+    expect(result.run.referenceInputs).toEqual({
       expectedTrajectory: ['tool_1', 'tool_2'],
     });
   });
@@ -1215,7 +1217,7 @@ describe('handleRunEval', () => {
       assertions: ['Agent should greet user'],
     });
 
-    expect(result.success).toBe(false);
-    expect(result.error).toContain('require exactly one session');
+    assert(!result.success);
+    expect(result.error.message).toContain('require exactly one session');
   });
 });

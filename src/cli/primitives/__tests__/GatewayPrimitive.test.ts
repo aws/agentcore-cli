@@ -34,6 +34,14 @@ vi.mock('../../../lib', () => {
     ConfigIO: MockConfigIO,
     findConfigRoot: vi.fn().mockReturnValue('/fake/root'),
     setEnvVar: vi.fn().mockResolvedValue(undefined),
+    toError: (err: unknown) => (err instanceof Error ? err : new Error(String(err))),
+    serializeResult: (r: unknown) => r,
+    ResourceNotFoundError: class extends Error {
+      constructor(m: string) {
+        super(m);
+        this.name = 'ResourceNotFoundError';
+      }
+    },
   };
 });
 

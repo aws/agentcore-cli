@@ -1,4 +1,4 @@
-import { APP_DIR, ConfigIO, findConfigRoot } from '../../../lib';
+import { APP_DIR, ConfigIO, NoProjectError, ValidationError, findConfigRoot, toError } from '../../../lib';
 import type {
   AgentCoreProjectSpec,
   AgentCoreRegion,
@@ -124,9 +124,10 @@ export async function handleImport(options: ImportOptions): Promise<ImportResult
     logger.startStep('Validate project context');
     const configRoot = findConfigRoot(process.cwd());
     if (!configRoot) {
-      const error =
-        'No agentcore project found in the current directory.\nRun `agentcore create <name>` first, then run import from inside the project.';
-      logger.endStep('error', error);
+      const error = new NoProjectError(
+        'No agentcore project found in the current directory.\nRun `agentcore create <name>` first, then run import from inside the project.'
+      );
+      logger.endStep('error', error.message);
       logger.finalize(false);
       return {
         success: false,
@@ -160,7 +161,7 @@ export async function handleImport(options: ImportOptions): Promise<ImportResult
       const error = 'No agents found in the YAML config';
       logger.endStep('error', error);
       logger.finalize(false);
-      return { success: false, error, logPath: logger.getRelativeLogPath() };
+      return { success: false, error: new ValidationError(error), logPath: logger.getRelativeLogPath() };
     }
 
     logger.log(
@@ -199,7 +200,7 @@ export async function handleImport(options: ImportOptions): Promise<ImportResult
           logger.finalize(false);
           return {
             success: false,
-            error,
+            error: new Error(error),
             logPath: logger.getRelativeLogPath(),
           };
         }
@@ -223,7 +224,7 @@ export async function handleImport(options: ImportOptions): Promise<ImportResult
           logger.finalize(false);
           return {
             success: false,
-            error,
+            error: new Error(error),
             logPath: logger.getRelativeLogPath(),
           };
         }
@@ -237,7 +238,7 @@ export async function handleImport(options: ImportOptions): Promise<ImportResult
         logger.finalize(false);
         return {
           success: false,
-          error,
+          error: new Error(error),
           logPath: logger.getRelativeLogPath(),
         };
       }
@@ -501,7 +502,7 @@ export async function handleImport(options: ImportOptions): Promise<ImportResult
       const error = 'No deployment target available for import.';
       logger.endStep('error', error);
       logger.finalize(false);
-      return { success: false, error, logPath: logger.getRelativeLogPath() };
+      return { success: false, error: new ValidationError(error), logPath: logger.getRelativeLogPath() };
     }
     logger.endStep('success');
 
@@ -640,7 +641,7 @@ export async function handleImport(options: ImportOptions): Promise<ImportResult
       await rollbackConfig();
       logger.endStep('error', error);
       logger.finalize(false);
-      return { success: false, error, logPath: logger.getRelativeLogPath() };
+      return { success: false, error: new Error(error), logPath: logger.getRelativeLogPath() };
     }
     logger.endStep('success');
 
@@ -658,6 +659,6 @@ export async function handleImport(options: ImportOptions): Promise<ImportResult
     await rollbackConfig();
     logger.log(message, 'error');
     logger.finalize(false);
-    return { success: false, error: message, logPath: logger.getRelativeLogPath() };
+    return { success: false, error: toError(err), logPath: logger.getRelativeLogPath() };
   }
 }

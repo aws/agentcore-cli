@@ -1,3 +1,5 @@
+import type { Result } from '../../../lib/result';
+
 export type ResourceType =
   | 'agent'
   | 'gateway'
@@ -25,11 +27,9 @@ export interface RemoveAllOptions {
   json?: boolean;
 }
 
-export interface RemoveResult {
-  success: boolean;
+export type RemoveResult = Result<{
   resourceType?: ResourceType;
   resourceName?: string;
   message?: string;
   note?: string;
-  error?: string;
-}
+}>;

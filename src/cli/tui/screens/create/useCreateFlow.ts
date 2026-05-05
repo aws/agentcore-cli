@@ -1,4 +1,12 @@
-import { APP_DIR, CONFIG_DIR, ConfigIO, findConfigRoot, setEnvVar, setSessionProjectRoot } from '../../../../lib';
+import {
+  APP_DIR,
+  CONFIG_DIR,
+  ConfigIO,
+  GitInitError,
+  findConfigRoot,
+  setEnvVar,
+  setSessionProjectRoot,
+} from '../../../../lib';
 import type { DeployedState } from '../../../../schema';
 import { getErrorMessage } from '../../../errors';
 import { CreateLogger } from '../../../logging';
@@ -205,7 +213,7 @@ export function useCreateFlow(cwd: string): CreateFlowState {
       has_agent: addAgentConfig !== null,
     };
 
-    const run = async (): Promise<{ success: true } | { success: false; error: string }> => {
+    const run = async (): Promise<{ success: true } | { success: false; error: Error }> => {
       // Project root is now cwd/projectName (creating a new directory)
       const projectRoot = join(cwd, projectName);
       const configBaseDir = join(projectRoot, CONFIG_DIR);
@@ -268,7 +276,7 @@ export function useCreateFlow(cwd: string): CreateFlowState {
           logger.endStep('error', errMsg);
           updateStep(stepIndex, { status: 'error', error: errMsg });
           logger.finalize(false);
-          return { success: false, error: errMsg };
+          return { success: false, error: new Error(errMsg) };
         }
 
         // Step: Add agent to project (if addAgentConfig is set)
@@ -387,7 +395,7 @@ export function useCreateFlow(cwd: string): CreateFlowState {
                   sessionStorageMountPath: addAgentConfig.sessionStorageMountPath,
                 });
                 if (!importResult.success) {
-                  throw new Error(importResult.error ?? 'Import failed');
+                  throw new Error(importResult.error?.message ?? 'Import failed');
                 }
               } else {
                 // BYO path: just write config to project (no file generation)
@@ -456,7 +464,7 @@ export function useCreateFlow(cwd: string): CreateFlowState {
             logger.endStep('error', errMsg);
             updateStep(stepIndex, { status: 'error', error: errMsg });
             logger.finalize(false);
-            return { success: false, error: errMsg };
+            return { success: false, error: new Error(errMsg) };
           }
 
           // Step: Set up Python environment (if Python and create path)
@@ -498,7 +506,7 @@ export function useCreateFlow(cwd: string): CreateFlowState {
           logger.endStep('error', errMsg);
           updateStep(stepIndex, { status: 'error', error: errMsg });
           logger.finalize(false);
-          return { success: false, error: errMsg };
+          return { success: false, error: new Error(errMsg) };
         }
 
         // Step: Initialize git repository
@@ -510,7 +518,7 @@ export function useCreateFlow(cwd: string): CreateFlowState {
           logger.endStep('error', gitResult.message);
           updateStep(stepIndex, { status: 'error', error: gitResult.message });
           logger.finalize(false);
-          return { success: false, error: gitResult.message ?? 'Git initialization failed' };
+          return { success: false, error: new GitInitError(gitResult.message ?? 'Git initialization failed') };
         } else if (gitResult.status === 'skipped') {
           logger.endStep('warn', gitResult.message);
           updateStep(stepIndex, { status: 'success', warn: gitResult.message });
@@ -534,7 +542,7 @@ export function useCreateFlow(cwd: string): CreateFlowState {
           }
           return prev;
         });
-        return { success: false, error: errMsg };
+        return { success: false, error: new Error(errMsg) };
       }
     };
 

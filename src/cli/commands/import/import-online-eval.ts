@@ -209,7 +209,7 @@ export function registerImportOnlineEval(importCmd: Command): void {
         console.log(`  ID: ${result.resourceId}`);
         console.log('');
       } else {
-        console.error(`\n${ANSI.red}[error]${ANSI.reset} ${result.error}`);
+        console.error(`\n${ANSI.red}[error]${ANSI.reset} ${result.error.message}`);
         if (result.logPath) {
           console.error(`Log: ${result.logPath}`);
         }

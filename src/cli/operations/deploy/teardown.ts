@@ -1,4 +1,5 @@
 import { CONFIG_DIR, ConfigIO } from '../../../lib';
+import type { Result } from '../../../lib/result';
 import type { AwsDeploymentTarget } from '../../../schema';
 import { withTargetRegion } from '../../aws';
 import { deleteConfigurationBundle } from '../../aws/agentcore-config-bundles';
@@ -99,16 +100,11 @@ export function getCdkProjectDir(cwd?: string): string {
   return join(baseDir, CONFIG_DIR, 'cdk');
 }
 
-export interface StackTeardownResult {
-  success: boolean;
-  error?: string;
-}
-
 /**
  * Perform full stack teardown for a target: destroy CloudFormation stack,
  * remove deployed-state entry, and remove the target from aws-targets.json.
  */
-export async function performStackTeardown(targetName: string): Promise<StackTeardownResult> {
+export async function performStackTeardown(targetName: string): Promise<Result> {
   const cdkProjectDir = getCdkProjectDir();
   const configIO = new ConfigIO();
 

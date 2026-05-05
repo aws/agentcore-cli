@@ -623,7 +623,7 @@ export function useDeployFlow(options: DeployFlowOptions = {}): DeployFlowState 
           if (targetName) {
             const teardown = await performStackTeardown(targetName);
             if (!teardown.success) {
-              throw new Error(`Stack teardown failed: ${teardown.error}`);
+              throw new Error(`Stack teardown failed: ${teardown.error.message}`);
             }
           }
         } else {
@@ -648,8 +648,8 @@ export function useDeployFlow(options: DeployFlowOptions = {}): DeployFlowState 
                 agentNames,
                 hasGateways,
               });
-              if (tsResult.error) {
-                logger.log(`Transaction search setup warning: ${tsResult.error}`, 'warn');
+              if (!tsResult.success) {
+                logger.log(`Transaction search setup warning: ${tsResult.error.message}`, 'warn');
               } else {
                 setDeployNotes(prev => [
                   ...prev,

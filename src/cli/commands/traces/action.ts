@@ -1,17 +1,16 @@
+import { ResourceNotFoundError, ValidationError } from '../../../lib';
+import type { Result } from '../../../lib/result';
 import { parseTimeString } from '../../../lib/utils';
 import type { DeployedProjectConfig } from '../../operations/resolve-agent';
 import { resolveAgent } from '../../operations/resolve-agent';
 import { buildTraceConsoleUrl, getTrace, listTraces } from '../../operations/traces';
 import type { TracesGetOptions, TracesListOptions } from './types';
 
-export interface TracesListResult {
-  success: boolean;
+export type TracesListResult = Result<{
   agentName?: string;
   targetName?: string;
-  consoleUrl?: string;
-  traces?: { traceId: string; timestamp: string; sessionId?: string }[];
-  error?: string;
-}
+  traces: { traceId: string; timestamp: string; sessionId?: string }[];
+}> & { consoleUrl?: string };
 
 export async function handleTracesList(
   context: DeployedProjectConfig,
@@ -19,7 +18,7 @@ export async function handleTracesList(
 ): Promise<TracesListResult> {
   const resolved = resolveAgent(context, options);
   if (!resolved.success) {
-    return { success: false, error: resolved.error };
+    return { success: false, error: new ResourceNotFoundError(resolved.error) };
   }
 
   const { agent } = resolved;
@@ -33,7 +32,7 @@ export async function handleTracesList(
 
   const limit = options.limit ? parseInt(options.limit, 10) : 20;
   if (isNaN(limit)) {
-    return { success: false, error: '--limit must be a number' };
+    return { success: false, error: new ValidationError('--limit must be a number') };
   }
 
   // Parse time options
@@ -68,14 +67,11 @@ export async function handleTracesList(
   };
 }
 
-export interface TracesGetResult {
-  success: boolean;
+export type TracesGetResult = Result<{
   agentName?: string;
   targetName?: string;
-  consoleUrl?: string;
   filePath?: string;
-  error?: string;
-}
+}> & { consoleUrl?: string };
 
 export async function handleTracesGet(
   context: DeployedProjectConfig,
@@ -84,7 +80,7 @@ export async function handleTracesGet(
 ): Promise<TracesGetResult> {
   const resolved = resolveAgent(context, options);
   if (!resolved.success) {
-    return { success: false, error: resolved.error };
+    return { success: false, error: new ResourceNotFoundError(resolved.error) };
   }
 
   const { agent } = resolved;

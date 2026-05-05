@@ -1,4 +1,4 @@
-import { getWorkingDirectory } from '../../../lib';
+import { getWorkingDirectory, serializeResult } from '../../../lib';
 import type {
   BuildType,
   ModelProvider,
@@ -104,8 +104,8 @@ async function handleCreateCLI(options: CreateOptions): Promise<void> {
     }
     const result = getDryRunInfo({ name: name!, projectName, cwd, language: options.language });
     if (options.json) {
-      console.log(JSON.stringify(result));
-    } else {
+      console.log(JSON.stringify(serializeResult(result)));
+    } else if (result.success) {
       console.log('Dry run - would create:');
       for (const path of result.wouldCreate ?? []) {
         console.log(`  ${path}`);
@@ -174,11 +174,11 @@ async function handleCreateCLI(options: CreateOptions): Promise<void> {
         });
 
     if (!result.success) {
-      throw new Error(result.error);
+      throw result.error;
     }
 
     if (options.json) {
-      console.log(JSON.stringify(result));
+      console.log(JSON.stringify(serializeResult(result)));
     } else {
       printCreateSummary(projectName!, result.agentName, options.language, options.framework);
       if (options.skipInstall) {

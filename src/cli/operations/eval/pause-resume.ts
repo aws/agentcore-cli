@@ -1,14 +1,11 @@
+import { ResourceNotFoundError, toError } from '../../../lib';
+import type { Result } from '../../../lib/result';
 import type { OnlineEvalExecutionStatus } from '../../aws/agentcore-control';
 import { updateOnlineEvalExecutionStatus } from '../../aws/agentcore-control';
 import { loadDeployedProjectConfig } from '../resolve-agent';
 import type { OnlineEvalActionOptions } from './types';
 
-export interface PauseResumeResult {
-  success: boolean;
-  error?: string;
-  configId?: string;
-  executionStatus?: string;
-}
+export type PauseResumeResult = Result<{ configId?: string; executionStatus?: string }>;
 
 async function resolveOnlineEvalConfig(
   configName: string
@@ -88,7 +85,7 @@ export async function handlePauseResume(
 ): Promise<PauseResumeResult> {
   const resolution = await resolveConfig(options);
   if (!resolution.success) {
-    return resolution;
+    return { success: false, error: new ResourceNotFoundError(resolution.error) };
   }
 
   const executionStatus: OnlineEvalExecutionStatus = action === 'pause' ? 'DISABLED' : 'ENABLED';
@@ -106,6 +103,6 @@ export async function handlePauseResume(
       executionStatus: result.executionStatus,
     };
   } catch (err) {
-    return { success: false, error: (err as Error).message };
+    return { success: false, error: toError(err) };
   }
 }

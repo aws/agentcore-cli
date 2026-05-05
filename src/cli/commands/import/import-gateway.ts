@@ -1,3 +1,4 @@
+import { toError } from '../../../lib';
 import type {
   AgentCoreGateway,
   AgentCoreGatewayTarget,
@@ -612,7 +613,7 @@ export async function handleImportGateway(options: ImportResourceOptions): Promi
       logger.finalize(false);
       return {
         success: false,
-        error: pipelineResult.error,
+        error: new Error(pipelineResult.error ?? 'Pipeline failed'),
         resourceType: 'gateway',
         resourceName: localName,
         logPath: logger.getRelativeLogPath(),
@@ -638,7 +639,7 @@ export async function handleImportGateway(options: ImportResourceOptions): Promi
     }
     return {
       success: false,
-      error: message,
+      error: toError(err),
       resourceType: 'gateway',
       resourceName: options.name ?? '',
       logPath: importCtx?.logger.getRelativeLogPath(),
@@ -680,7 +681,7 @@ export function registerImportGateway(importCmd: Command): void {
         console.log(`  agentcore fetch access  ${ANSI.dim}Get gateway URL and token${ANSI.reset}`);
         console.log('');
       } else {
-        console.error(`\n${ANSI.red}[error]${ANSI.reset} ${result.error}`);
+        console.error(`\n${ANSI.red}[error]${ANSI.reset} ${result.error.message}`);
         if (result.logPath) {
           console.error(`Log: ${result.logPath}`);
         }

@@ -1,8 +1,9 @@
-import { findConfigRoot } from '../../lib';
+import { ResourceNotFoundError, findConfigRoot, serializeResult, toError } from '../../lib';
+import type { Result } from '../../lib/result';
 import type { ConfigBundle } from '../../schema';
 import { ConfigBundleSchema } from '../../schema';
 import { getErrorMessage } from '../errors';
-import type { RemovalPreview, RemovalResult, SchemaChange } from '../operations/remove/types';
+import type { RemovalPreview, SchemaChange } from '../operations/remove/types';
 import { BasePrimitive } from './BasePrimitive';
 import type { AddResult, AddScreenComponent, RemovableResource } from './types';
 import type { Command } from '@commander-js/extra-typings';
@@ -37,17 +38,17 @@ export class ConfigBundlePrimitive extends BasePrimitive<AddConfigBundleOptions,
       const bundle = await this.createConfigBundle(options);
       return { success: true, bundleName: bundle.name };
     } catch (err) {
-      return { success: false, error: getErrorMessage(err) };
+      return { success: false, error: toError(err) };
     }
   }
 
-  async remove(bundleName: string): Promise<RemovalResult> {
+  async remove(bundleName: string): Promise<Result> {
     try {
       const project = await this.readProjectSpec();
 
       const index = (project.configBundles ?? []).findIndex(b => b.name === bundleName);
       if (index === -1) {
-        return { success: false, error: `Configuration bundle "${bundleName}" not found.` };
+        return { success: false, error: new ResourceNotFoundError(`Configuration bundle "${bundleName}" not found.`) };
       }
 
       project.configBundles.splice(index, 1);
@@ -55,7 +56,7 @@ export class ConfigBundlePrimitive extends BasePrimitive<AddConfigBundleOptions,
 
       return { success: true };
     } catch (err) {
-      return { success: false, error: getErrorMessage(err) };
+      return { success: false, error: toError(err) };
     }
   }
 
@@ -170,11 +171,11 @@ export class ConfigBundlePrimitive extends BasePrimitive<AddConfigBundleOptions,
               });
 
               if (cliOptions.json) {
-                console.log(JSON.stringify(result));
+                console.log(JSON.stringify(serializeResult(result)));
               } else if (result.success) {
                 console.log(`Added configuration bundle '${result.bundleName}'`);
               } else {
-                console.error(result.error);
+                console.error(result.error.message);
               }
               process.exit(result.success ? 0 : 1);
             } else {

@@ -6,7 +6,7 @@
  *   4. Poll GetRecommendation until terminal status
  *   5. Return result with optimized artifact
  */
-import { ConfigIO } from '../../../lib';
+import { ConfigIO, ResourceNotFoundError, TimeoutError, ValidationError, toError } from '../../../lib';
 import type { DeployedState } from '../../../schema';
 import type {
   RecommendationConfig,
@@ -60,7 +60,7 @@ export async function runRecommendationCommand(
       logger?.finalize(false);
       return {
         success: false,
-        error: `Agent "${options.agent}" not deployed. Run \`agentcore deploy\` first.`,
+        error: new Error(`Agent "${options.agent}" not deployed. Run \`agentcore deploy\` first.`),
         logFilePath: logger?.logFilePath,
       };
     }
@@ -73,7 +73,9 @@ export async function runRecommendationCommand(
       if (!evaluatorId) {
         return {
           success: false,
-          error: `Evaluator "${evaluator}" not found in deployed state. Use a Builtin.* name, a full ARN, or deploy a custom evaluator first.`,
+          error: new Error(
+            `Evaluator "${evaluator}" not found in deployed state. Use a Builtin.* name, a full ARN, or deploy a custom evaluator first.`
+          ),
           logFilePath: logger?.logFilePath,
         };
       }
@@ -82,7 +84,7 @@ export async function runRecommendationCommand(
     if (options.type === 'SYSTEM_PROMPT_RECOMMENDATION' && evaluatorIds.length !== 1) {
       return {
         success: false,
-        error: 'System prompt recommendations require exactly one evaluator.',
+        error: new ValidationError('System prompt recommendations require exactly one evaluator.'),
         logFilePath: logger?.logFilePath,
       };
     }
@@ -105,7 +107,9 @@ export async function runRecommendationCommand(
     ) {
       return {
         success: false,
-        error: 'System prompt content is required. Provide via --inline, --prompt-file, or --bundle-name.',
+        error: new ValidationError(
+          'System prompt content is required. Provide via --inline, --prompt-file, or --bundle-name.'
+        ),
         logFilePath: logger?.logFilePath,
       };
     }
@@ -132,7 +136,9 @@ export async function runRecommendationCommand(
         if (!bundleArn) {
           return {
             success: false,
-            error: `Config bundle "${options.bundleName}" not found in deployed state. Run \`agentcore deploy\` first.`,
+            error: new ResourceNotFoundError(
+              `Config bundle "${options.bundleName}" not found in deployed state. Run \`agentcore deploy\` first.`
+            ),
             logFilePath: logger?.logFilePath,
           };
         }
@@ -230,7 +236,9 @@ export async function runRecommendationCommand(
         logger?.finalize(false);
         return {
           success: false,
-          error: `Polling timed out after ${Math.round(maxDurationMs / 60000)} minutes. The recommendation may still be running server-side.\nRecommendation ID: ${startResult.recommendationId}`,
+          error: new TimeoutError(
+            `Polling timed out after ${Math.round(maxDurationMs / 60000)} minutes. The recommendation may still be running server-side.\nRecommendation ID: ${startResult.recommendationId}`
+          ),
           recommendationId: startResult.recommendationId,
           status: currentStatus,
           logFilePath: logger?.logFilePath,
@@ -255,7 +263,9 @@ export async function runRecommendationCommand(
           logger?.finalize(false);
           return {
             success: false,
-            error: `Polling failed after ${MAX_POLL_RETRIES} consecutive errors: ${pollErrMsg}\nThe recommendation may still be running server-side.\nRecommendation ID: ${startResult.recommendationId}`,
+            error: new TimeoutError(
+              `Polling failed after ${MAX_POLL_RETRIES} consecutive errors: ${pollErrMsg}\nThe recommendation may still be running server-side.\nRecommendation ID: ${startResult.recommendationId}`
+            ),
             recommendationId: startResult.recommendationId,
             status: currentStatus,
             logFilePath: logger?.logFilePath,
@@ -303,9 +313,11 @@ export async function runRecommendationCommand(
 
         return {
           success: false,
-          error: failureDetails
-            ? `Recommendation failed: ${failureDetails}`
-            : `Recommendation finished with status: ${currentStatus}`,
+          error: new Error(
+            failureDetails
+              ? `Recommendation failed: ${failureDetails}`
+              : `Recommendation finished with status: ${currentStatus}`
+          ),
           recommendationId: startResult.recommendationId,
           status: currentStatus,
           logFilePath: logger?.logFilePath,
@@ -319,7 +331,7 @@ export async function runRecommendationCommand(
     logger?.finalize(false);
     return {
       success: false,
-      error: `Recommendation ended with unexpected status: ${currentStatus}`,
+      error: new Error(`Recommendation ended with unexpected status: ${currentStatus}`),
       recommendationId: startResult.recommendationId,
       status: currentStatus,
       logFilePath: logger?.logFilePath,
@@ -331,7 +343,7 @@ export async function runRecommendationCommand(
     logger?.finalize(false);
     return {
       success: false,
-      error: errorMsg,
+      error: toError(err),
       logFilePath: logger?.logFilePath,
     };
   }

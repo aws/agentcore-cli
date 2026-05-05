@@ -27,7 +27,20 @@ vi.mock('../../../../lib', () => ({
     readDeployedState = mockReadDeployedState;
     writeDeployedState = mockWriteDeployedState;
   },
+  NoProjectError: class NoProjectError extends Error {
+    constructor(msg?: string) {
+      super(msg ?? 'No agentcore project found');
+      this.name = 'NoProjectError';
+    }
+  },
+  ValidationError: class extends Error {
+    constructor(m: string) {
+      super(m);
+      this.name = 'ValidationError';
+    }
+  },
   findConfigRoot: (...args: unknown[]) => mockFindConfigRoot(...args),
+  toError: (err: unknown) => (err instanceof Error ? err : new Error(String(err))),
 }));
 
 vi.mock('../../../aws/account', () => ({

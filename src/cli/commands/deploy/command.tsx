@@ -1,3 +1,4 @@
+import { serializeResult } from '../../../lib';
 import { getErrorMessage } from '../../errors';
 import { COMMAND_DESCRIPTIONS } from '../../tui/copy';
 import { requireProject, requireTTY } from '../../tui/guards';
@@ -85,7 +86,7 @@ async function handleDeployCLI(options: DeployOptions): Promise<void> {
   }
 
   if (options.json) {
-    console.log(JSON.stringify(result));
+    console.log(JSON.stringify(serializeResult(result)));
   } else if (result.success) {
     if (options.diff) {
       console.log(`\n✓ Diff complete for '${result.targetName}' (stack: ${result.stackName})`);
@@ -125,7 +126,7 @@ async function handleDeployCLI(options: DeployOptions): Promise<void> {
       console.log(`\nLog: ${result.logPath}`);
     }
   } else {
-    console.error(result.error);
+    console.error(result.error.message);
     if (result.logPath) {
       console.error(`Log: ${result.logPath}`);
     }

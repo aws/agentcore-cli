@@ -7,21 +7,17 @@ import {
   NoProjectError,
   findConfigRoot,
 } from '../../../lib';
+import type { Result } from '../../../lib/result';
 
 export interface ValidateOptions {
   directory?: string;
-}
-
-export interface ValidateResult {
-  success: boolean;
-  error?: string;
 }
 
 /**
  * Validates all AgentCore schema files in the project.
  * Returns a binary success/fail result with an error message if validation fails.
  */
-export async function handleValidate(options: ValidateOptions): Promise<ValidateResult> {
+export async function handleValidate(options: ValidateOptions): Promise<Result> {
   const baseDir = options.directory ?? process.cwd();
 
   // Check if project exists
@@ -29,7 +25,7 @@ export async function handleValidate(options: ValidateOptions): Promise<Validate
   if (!configRoot) {
     return {
       success: false,
-      error: new NoProjectError().message,
+      error: new NoProjectError(),
     };
   }
 
@@ -39,14 +35,14 @@ export async function handleValidate(options: ValidateOptions): Promise<Validate
   try {
     await configIO.readProjectSpec();
   } catch (err) {
-    return { success: false, error: formatError(err, 'agentcore.json') };
+    return { success: false, error: new Error(formatError(err, 'agentcore.json'), { cause: err }) };
   }
 
   // Validate AWS targets (aws-targets.json)
   try {
     await configIO.readAWSDeploymentTargets();
   } catch (err) {
-    return { success: false, error: formatError(err, 'aws-targets.json') };
+    return { success: false, error: new Error(formatError(err, 'aws-targets.json'), { cause: err }) };
   }
 
   // Validate deployed state if it exists (.cli/state.json)
@@ -54,7 +50,7 @@ export async function handleValidate(options: ValidateOptions): Promise<Validate
     try {
       await configIO.readDeployedState();
     } catch (err) {
-      return { success: false, error: formatError(err, '.cli/state.json') };
+      return { success: false, error: new Error(formatError(err, '.cli/state.json'), { cause: err }) };
     }
   }
 

@@ -1,6 +1,6 @@
+import { NoProjectError } from '../../../errors';
 import { ConfigNotFoundError, ConfigParseError, ConfigValidationError } from '../../../errors/config.js';
 import { ConfigIO } from '../config-io.js';
-import { NoProjectError } from '../path-resolver.js';
 import { randomUUID } from 'node:crypto';
 import { existsSync, mkdirSync, writeFileSync } from 'node:fs';
 import { mkdir, rm, unlink, writeFile } from 'node:fs/promises';

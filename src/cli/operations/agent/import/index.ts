@@ -3,10 +3,9 @@
  * Provides executeImportAgent() as the shared handler called by both
  * the TUI hook (useAddAgent) and the non-interactive CLI (AgentPrimitive).
  */
-import { APP_DIR, ConfigIO } from '../../../../lib';
+import { APP_DIR, ConfigIO, toError } from '../../../../lib';
 import type { RuntimeAuthorizerType, SDKFramework } from '../../../../schema';
 import { getBedrockAgentConfig } from '../../../aws/bedrock-import';
-import { getErrorMessage } from '../../../errors';
 import type { JwtConfigOptions } from '../../../primitives/auth-utils';
 import { createManagedOAuthCredential } from '../../../primitives/auth-utils';
 import type { AddResult } from '../../../primitives/types';
@@ -120,6 +119,6 @@ export async function executeImportAgent(
 
     return { success: true, agentName: name, agentPath };
   } catch (err) {
-    return { success: false, error: getErrorMessage(err) };
+    return { success: false, error: toError(err) };
   }
 }

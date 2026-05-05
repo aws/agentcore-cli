@@ -1,3 +1,4 @@
+import { serializeResult } from '../../../lib';
 import { getErrorMessage } from '../../errors';
 import { COMMAND_DESCRIPTIONS } from '../../tui/copy';
 import { requireProject, requireTTY } from '../../tui/guards';
@@ -55,7 +56,7 @@ async function handleInvokeCLI(options: InvokeOptions): Promise<void> {
     }
 
     if (options.json) {
-      console.log(JSON.stringify(result));
+      console.log(JSON.stringify(serializeResult(result)));
     } else if (options.stream) {
       // Streaming already wrote to stdout, just show session and log path
       if (result.sessionId) {
@@ -70,7 +71,7 @@ async function handleInvokeCLI(options: InvokeOptions): Promise<void> {
       if (result.success && result.response) {
         console.log(result.response);
       } else if (!result.success && result.error) {
-        console.error(result.error);
+        console.error(result.error.message);
       }
       if (result.sessionId) {
         console.error(`\nSession: ${result.sessionId}`);

@@ -15,6 +15,17 @@ vi.mock('../../../../lib/index.js', () => ({
     configExists = mockConfigExists;
   },
   requireConfigRoot: () => '/project/agentcore',
+  findConfigRoot: () => '/project/agentcore',
+  toError: (err: unknown) => (err instanceof Error ? err : new Error(String(err))),
+  serializeResult: (r: unknown) => r,
+  ResourceNotFoundError: class extends Error {
+    constructor(m: string) {
+      super(m);
+      this.name = 'ResourceNotFoundError';
+    }
+  },
+  APP_DIR: 'app',
+  MCP_APP_SUBDIR: 'mcp',
 }));
 
 const computeDefaultGatewayEnvVarName = (name: string) => GatewayPrimitive.computeDefaultGatewayEnvVarName(name);
@@ -200,7 +211,10 @@ describe('GatewayPrimitive.add (createGateway)', () => {
     });
 
     expect(result).toEqual(
-      expect.objectContaining({ success: false, error: expect.stringContaining('Gateway "dup-gw" already exists') })
+      expect.objectContaining({
+        success: false,
+        error: expect.objectContaining({ message: expect.stringContaining('Gateway "dup-gw" already exists') }),
+      })
     );
   });
 

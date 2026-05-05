@@ -99,7 +99,7 @@ export function useStatusFlow() {
           ...prev,
           phase: 'ready',
           statusesLoaded: true,
-          statusesError: result.error,
+          statusesError: result.error?.message,
         }));
         return;
       }

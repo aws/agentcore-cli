@@ -1,12 +1,9 @@
-import { getErrorMessage } from '../../errors';
+import { toError } from '../../../lib';
+import type { Result } from '../../../lib/result';
 import { listEvalRuns } from './storage';
 import type { EvalRunResult, ListEvalRunsOptions } from './types';
 
-export interface ListEvalRunsResult {
-  success: boolean;
-  error?: string;
-  runs?: EvalRunResult[];
-}
+export type ListEvalRunsResult = Result<{ runs: EvalRunResult[] }>;
 
 export function handleListEvalRuns(options: ListEvalRunsOptions): ListEvalRunsResult {
   try {
@@ -22,6 +19,6 @@ export function handleListEvalRuns(options: ListEvalRunsOptions): ListEvalRunsRe
 
     return { success: true, runs };
   } catch (err) {
-    return { success: false, error: getErrorMessage(err) };
+    return { success: false, error: toError(err) };
   }
 }

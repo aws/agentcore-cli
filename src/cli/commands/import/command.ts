@@ -140,7 +140,7 @@ export const registerImport = (program: Command) => {
           console.log(`Log: ${result.logPath}`);
         }
       } else {
-        console.error(`\n\x1b[31m[error]${reset} Import failed: ${result.error}`);
+        console.error(`\n\x1b[31m[error]${reset} Import failed: ${result.error.message}`);
         if (result.logPath) {
           console.error(`Log: ${result.logPath}`);
         }

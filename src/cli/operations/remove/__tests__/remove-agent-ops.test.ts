@@ -1,3 +1,4 @@
+import { ResourceNotFoundError } from '../../../../lib';
 import { AgentPrimitive } from '../../../primitives/AgentPrimitive.js';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
@@ -15,6 +16,29 @@ vi.mock('../../../../lib/index.js', () => ({
     readProjectSpec = mockReadProjectSpec;
     writeProjectSpec = mockWriteProjectSpec;
   },
+  findConfigRoot: () => '/fake/root',
+  toError: (err: unknown) => (err instanceof Error ? err : new Error(String(err))),
+  serializeResult: (r: unknown) => r,
+  ResourceNotFoundError: class extends Error {
+    constructor(m: string) {
+      super(m);
+      this.name = 'ResourceNotFoundError';
+    }
+  },
+  ConflictError: class extends Error {
+    constructor(m: string) {
+      super(m);
+      this.name = 'ConflictError';
+    }
+  },
+  NoProjectError: class extends Error {
+    constructor(m: string) {
+      super(m);
+      this.name = 'NoProjectError';
+    }
+  },
+  APP_DIR: 'app',
+  setEnvVar: vi.fn().mockResolvedValue(undefined),
 }));
 
 const makeProject = (agentNames: string[]) => ({
@@ -87,7 +111,7 @@ describe('remove', () => {
 
     const result = await primitive.remove('Missing');
 
-    expect(result).toEqual({ success: false, error: 'Agent "Missing" not found.' });
+    expect(result).toEqual({ success: false, error: new ResourceNotFoundError('Agent "Missing" not found.') });
   });
 
   it('returns error on exception', async () => {
@@ -95,6 +119,6 @@ describe('remove', () => {
 
     const result = await primitive.remove('Agent1');
 
-    expect(result).toEqual({ success: false, error: 'read fail' });
+    expect(result).toEqual({ success: false, error: new Error('read fail') });
   });
 });
