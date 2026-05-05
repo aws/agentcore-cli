@@ -516,22 +516,22 @@ describe('setupABTests', () => {
       const trustPolicy = JSON.parse(createRoleCall.input.AssumeRolePolicyDocument);
       expect(trustPolicy.Statement).toHaveLength(1);
       expect(trustPolicy.Statement[0].Principal.Service).toBe('bedrock-agentcore.amazonaws.com');
+      expect(trustPolicy.Statement[0].Condition.StringEquals['aws:SourceAccount']).toBeDefined();
+      expect(trustPolicy.Statement[0].Condition.ArnLike['aws:SourceArn']).toContain('ab-test/*');
 
       // Second call: PutRolePolicyCommand with inline policy
       const putPolicyCall = mockIAMSend.mock.calls[1]![0];
       const policy = JSON.parse(putPolicyCall.input.PolicyDocument);
       const sids = policy.Statement.map((s: { Sid: string }) => s.Sid);
-      expect(sids).toContain('GatewayRuleStatement');
-      expect(sids).toContain('GatewayReadStatement');
-      expect(sids).toContain('GatewayListStatement');
-      expect(sids).toContain('OnlineEvaluationConfigStatement');
-      expect(sids).toContain('ConfigurationBundleReadStatement');
-      expect(sids).toContain('CloudWatchLogReadStatement');
-      expect(sids).toContain('CloudWatchIndexPolicyStatement');
+      expect(sids).toContain('AgentCoreResources');
+      expect(sids).toContain('CloudWatchLogs');
 
-      // ListGateways must use wildcard resource (can't be scoped)
-      const listGatewayStmt = policy.Statement.find((s: { Sid: string }) => s.Sid === 'GatewayListStatement');
-      expect(listGatewayStmt.Resource).toEqual(['*']);
+      // AgentCoreResources must include all required actions
+      const agentCoreStmt = policy.Statement.find((s: { Sid: string }) => s.Sid === 'AgentCoreResources');
+      expect(agentCoreStmt.Action).toContain('bedrock-agentcore:GetEvaluator');
+      expect(agentCoreStmt.Action).toContain('bedrock-agentcore:GetGateway');
+      expect(agentCoreStmt.Action).toContain('bedrock-agentcore:GetOnlineEvaluationConfig');
+      expect(agentCoreStmt.Condition.StringEquals['aws:ResourceAccount']).toBeDefined();
     });
   });
 
