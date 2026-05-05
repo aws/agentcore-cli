@@ -195,10 +195,6 @@ describe.sequential('e2e: target-based AB test lifecycle', () => {
       await retry(
         async () => {
           const result = await run(['deploy', '--yes', '--json']);
-          if (result.exitCode !== 0) {
-            console.log('Deploy stdout:', result.stdout);
-            console.log('Deploy stderr:', result.stderr);
-          }
           expect(result.exitCode, `Deploy failed (stderr: ${result.stderr})`).toBe(0);
           const json = parseJsonOutput(result.stdout) as { success: boolean };
           expect(json.success).toBe(true);
