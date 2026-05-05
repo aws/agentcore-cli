@@ -276,10 +276,17 @@ export const registerPromote = (program: Command) => {
 
         // Wait for the AB test to reach RUNNING before stopping.
         // The service 409s if you attempt a transition while UPDATING.
+        let currentStatus: string | undefined;
         for (let attempt = 0; attempt < 12; attempt++) {
           const current = await getABTest({ region, abTestId });
-          if (current.executionStatus === 'RUNNING') break;
+          currentStatus = current.executionStatus;
+          if (currentStatus === 'RUNNING') break;
           await new Promise(resolve => setTimeout(resolve, 10_000));
+        }
+        if (currentStatus !== 'RUNNING') {
+          throw new Error(
+            `AB test "${name}" did not reach RUNNING state after waiting (current: ${currentStatus}). Cannot promote.`
+          );
         }
 
         const result = await updateABTest({ region, abTestId, executionStatus: 'STOPPED' });
