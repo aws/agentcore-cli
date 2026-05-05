@@ -7,6 +7,7 @@ import type { OnlineEvalActionOptions } from '../../operations/eval';
 import { COMMAND_DESCRIPTIONS } from '../../tui/copy';
 import { requireProject } from '../../tui/guards';
 import { getRegion } from '../shared/region-utils';
+import { waitForRunningThenStop } from './promote-utils';
 import type { Command } from '@commander-js/extra-typings';
 import { Text, render } from 'ink';
 import React from 'react';
@@ -274,12 +275,7 @@ export const registerPromote = (program: Command) => {
           process.exit(1);
         }
 
-        // Stop the AB test
-        const result = await updateABTest({
-          region,
-          abTestId,
-          executionStatus: 'STOPPED',
-        });
+        const result = await waitForRunningThenStop(region, abTestId, name);
 
         // Apply promotion to agentcore.json
         const { promoteABTestConfig } = await import('../../operations/ab-test/promote');

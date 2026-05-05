@@ -195,10 +195,6 @@ describe.sequential('e2e: target-based AB test lifecycle', () => {
       await retry(
         async () => {
           const result = await run(['deploy', '--yes', '--json']);
-          if (result.exitCode !== 0) {
-            console.log('Deploy stdout:', result.stdout);
-            console.log('Deploy stderr:', result.stderr);
-          }
           expect(result.exitCode, `Deploy failed (stderr: ${result.stderr})`).toBe(0);
           const json = parseJsonOutput(result.stdout) as { success: boolean };
           expect(json.success).toBe(true);
@@ -211,6 +207,23 @@ describe.sequential('e2e: target-based AB test lifecycle', () => {
   );
 
   it.skipIf(!canRun)(
+    'AB test reaches RUNNING status after deploy',
+    async () => {
+      await retry(
+        async () => {
+          const result = await run(['ab-test', abTestName, '--json']);
+          expect(result.exitCode, `ab-test lookup failed: ${result.stdout} ${result.stderr}`).toBe(0);
+          const json = parseJsonOutput(result.stdout) as { executionStatus: string };
+          expect(json.executionStatus, 'AB test should be RUNNING after deploy').toBe('RUNNING');
+        },
+        12,
+        15000
+      );
+    },
+    300000
+  );
+
+  it.skipIf(!canRun)(
     'status shows all resources deployed',
     async () => {
       await retry(
@@ -220,7 +233,7 @@ describe.sequential('e2e: target-based AB test lifecycle', () => {
 
           const json = parseJsonOutput(result.stdout) as {
             success: boolean;
-            resources: { resourceType: string; name: string; deploymentState: string }[];
+            resources: { resourceType: string; name: string; deploymentState: string; invocationUrl?: string }[];
           };
           expect(json.success).toBe(true);
 
@@ -229,9 +242,12 @@ describe.sequential('e2e: target-based AB test lifecycle', () => {
           expect(agent, `Agent "${agentName}" should appear in status`).toBeDefined();
           expect(agent!.deploymentState).toBe('deployed');
 
-          // Gateway should be deployed
-          const gateway = json.resources.find(r => r.resourceType === 'http-gateway' && r.name === `${abTestName}-gw`);
-          expect(gateway, 'HTTP gateway should appear in status').toBeDefined();
+          // AB test should be deployed (HTTP gateways are not surfaced as top-level status resources)
+          const abTest = json.resources.find(r => r.resourceType === 'ab-test' && r.name === abTestName);
+          expect(abTest, `AB test "${abTestName}" should appear in status`).toBeDefined();
+          expect(abTest!.deploymentState).toBe('deployed');
+          // invocationUrl proves the HTTP gateway was deployed and wired up correctly
+          expect(abTest!.invocationUrl, 'AB test should have a gateway invocation URL').toBeTruthy();
         },
         3,
         15000
@@ -280,7 +296,7 @@ describe.sequential('e2e: target-based AB test lifecycle', () => {
     'promotes AB test (updates agentcore.json)',
     async () => {
       const result = await run(['promote', 'ab-test', abTestName, '--json']);
-      expect(result.exitCode, `Promote failed: ${result.stderr}`).toBe(0);
+      expect(result.exitCode, `Promote failed: ${result.stdout} ${result.stderr}`).toBe(0);
       const json = parseJsonOutput(result.stdout) as Record<string, unknown>;
       expect(json).toHaveProperty('success', true);
       expect(json).toHaveProperty('promoted', true);

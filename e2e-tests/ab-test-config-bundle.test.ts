@@ -105,10 +105,6 @@ describe.sequential('e2e: config-bundle AB test lifecycle', () => {
       await retry(
         async () => {
           const result = await run(['deploy', '--yes', '--json']);
-          if (result.exitCode !== 0) {
-            console.log('Initial deploy stdout:', result.stdout);
-            console.log('Initial deploy stderr:', result.stderr);
-          }
           expect(result.exitCode, `Initial deploy failed`).toBe(0);
           const json = parseJsonOutput(result.stdout) as { success: boolean };
           expect(json.success).toBe(true);
@@ -123,10 +119,12 @@ describe.sequential('e2e: config-bundle AB test lifecycle', () => {
   it.skipIf(!canRun)(
     'adds config-bundle AB test with 90/10 split',
     async () => {
-      // Config bundles reference ARNs from deployed resources.
-      // Use placeholder bundle ARNs — the deploy step will validate or create them.
-      const controlBundle = `arn:aws:bedrock-agentcore:ap-southeast-2:998846730471:config-bundle/control-v1`;
-      const treatmentBundle = `arn:aws:bedrock-agentcore:ap-southeast-2:998846730471:config-bundle/treatment-v1`;
+      // Use placeholder bundle ARNs that satisfy the service format constraints.
+      // Real config bundles would be created separately; these test the AB test wiring.
+      const region = process.env.AWS_REGION ?? 'us-east-1';
+      const account = process.env.AWS_ACCOUNT_ID ?? '000000000000';
+      const controlBundle = `arn:aws:bedrock-agentcore:${region}:${account}:configuration-bundle/control-bundle-AbCdEfGhIj`;
+      const treatmentBundle = `arn:aws:bedrock-agentcore:${region}:${account}:configuration-bundle/treatment-bundle-AbCdEfGhIj`;
 
       const result = await run([
         'add',
@@ -140,11 +138,11 @@ describe.sequential('e2e: config-bundle AB test lifecycle', () => {
         '--control-bundle',
         controlBundle,
         '--control-version',
-        'v1',
+        '00000000-0000-0000-0000-000000000001',
         '--treatment-bundle',
         treatmentBundle,
         '--treatment-version',
-        'v1',
+        '00000000-0000-0000-0000-000000000002',
         '--control-weight',
         '90',
         '--treatment-weight',

@@ -153,10 +153,6 @@ export async function setupABTests(options: SetupABTestsOptions): Promise<SetupA
         continue;
       }
       const resolvedEvalConfig = resolveEvalConfig(testSpec.evaluationConfig, deployedResources);
-      const evalConfigArns: string[] =
-        'onlineEvaluationConfigArn' in resolvedEvalConfig
-          ? [resolvedEvalConfig.onlineEvaluationConfigArn]
-          : resolvedEvalConfig.perVariantOnlineEvaluationConfig.map(pv => pv.onlineEvaluationConfigArn);
       if (testSpec.roleArn) {
         resolvedRoleArn = testSpec.roleArn;
       } else {
@@ -165,7 +161,6 @@ export async function setupABTests(options: SetupABTestsOptions): Promise<SetupA
           projectName: projectSpec.name,
           testName: testSpec.name,
           gatewayArn: resolvedGatewayArn,
-          onlineEvalConfigArns: evalConfigArns,
         });
         roleCreatedByCli = true;
       }
@@ -556,18 +551,15 @@ interface CreateABTestRoleOptions {
   projectName: string;
   testName: string;
   gatewayArn: string;
-  onlineEvalConfigArns: string[];
 }
 
 async function getOrCreateABTestRole(options: CreateABTestRoleOptions): Promise<string> {
-  const { region, projectName, testName, gatewayArn, onlineEvalConfigArns } = options;
+  const { region, projectName, testName, gatewayArn } = options;
   const credentials = getCredentialProvider();
   const iamClient = new IAMClient({ region, credentials });
 
   // Extract account ID from gateway ARN (arn:aws:bedrock-agentcore:REGION:ACCOUNT:gateway/ID)
   const accountId = gatewayArn.split(':')[4] ?? '*';
-  // Extract gateway ID for resource scoping
-  const gatewayId = gatewayArn.split('/').pop() ?? '*';
 
   const roleName = generateRoleName(projectName, testName);
 
@@ -578,6 +570,10 @@ async function getOrCreateABTestRole(options: CreateABTestRoleOptions): Promise<
         Effect: 'Allow',
         Principal: { Service: 'bedrock-agentcore.amazonaws.com' },
         Action: 'sts:AssumeRole',
+        Condition: {
+          StringEquals: { 'aws:SourceAccount': accountId },
+          ArnLike: { 'aws:SourceArn': `${arnPrefix(region)}:bedrock-agentcore:*:${accountId}:ab-test/*` },
+        },
       },
     ],
   });
@@ -623,51 +619,38 @@ async function getOrCreateABTestRole(options: CreateABTestRoleOptions): Promise<
     Version: '2012-10-17',
     Statement: [
       {
-        Sid: 'GatewayRuleStatement',
+        Sid: 'AgentCoreResources',
         Effect: 'Allow',
         Action: [
+          'bedrock-agentcore:GetGateway',
+          'bedrock-agentcore:GetGatewayTarget',
+          'bedrock-agentcore:ListGatewayTargets',
           'bedrock-agentcore:CreateGatewayRule',
           'bedrock-agentcore:UpdateGatewayRule',
           'bedrock-agentcore:GetGatewayRule',
           'bedrock-agentcore:DeleteGatewayRule',
           'bedrock-agentcore:ListGatewayRules',
+          'bedrock-agentcore:GetOnlineEvaluationConfig',
+          'bedrock-agentcore:GetEvaluator',
+          'bedrock-agentcore:GetConfigurationBundle',
+          'bedrock-agentcore:GetConfigurationBundleVersion',
+          'bedrock-agentcore:ListConfigurationBundleVersions',
         ],
-        Resource: [`${arnPrefix(region)}:bedrock-agentcore:${region}:${accountId}:gateway/${gatewayId}`],
+        Resource: `${arnPrefix(region)}:bedrock-agentcore:*:${accountId}:*`,
+        Condition: { StringEquals: { 'aws:ResourceAccount': accountId } },
       },
       {
-        Sid: 'GatewayReadStatement',
-        Effect: 'Allow',
-        Action: ['bedrock-agentcore:GetGateway'],
-        Resource: [`${arnPrefix(region)}:bedrock-agentcore:${region}:${accountId}:gateway/${gatewayId}`],
-      },
-      {
-        Sid: 'GatewayListStatement',
-        Effect: 'Allow',
-        Action: ['bedrock-agentcore:ListGateways'],
-        Resource: ['*'],
-      },
-      {
-        Sid: 'OnlineEvaluationConfigStatement',
-        Effect: 'Allow',
-        Action: ['bedrock-agentcore:GetOnlineEvaluationConfig', 'bedrock-agentcore:UpdateOnlineEvaluationConfig'],
-        Resource: onlineEvalConfigArns,
-      },
-      {
-        Sid: 'ConfigurationBundleReadStatement',
-        Effect: 'Allow',
-        Action: ['bedrock-agentcore:GetConfigurationBundle', 'bedrock-agentcore:GetConfigurationBundleVersion'],
-        Resource: [`${arnPrefix(region)}:bedrock-agentcore:${region}:${accountId}:configuration-bundle/*`],
-      },
-      {
-        Sid: 'CloudWatchDescribeLogGroups',
+        Sid: 'CloudWatchLogsDescribe',
         Effect: 'Allow',
         Action: ['logs:DescribeLogGroups'],
-        Resource: ['*'],
+        Resource: '*',
       },
       {
-        Sid: 'CloudWatchLogReadStatement',
+        Sid: 'CloudWatchLogs',
         Effect: 'Allow',
         Action: [
+          'logs:DescribeIndexPolicies',
+          'logs:PutIndexPolicy',
           'logs:StartQuery',
           'logs:GetQueryResults',
           'logs:StopQuery',
@@ -675,19 +658,9 @@ async function getOrCreateABTestRole(options: CreateABTestRoleOptions): Promise<
           'logs:GetLogEvents',
         ],
         Resource: [
-          `${arnPrefix(region)}:logs:${region}:${accountId}:log-group:/aws/bedrock-agentcore/evaluations/*`,
-          `${arnPrefix(region)}:logs:${region}:${accountId}:log-group:/aws/bedrock-agentcore/evaluations/*:*`,
-          `${arnPrefix(region)}:logs:${region}:${accountId}:log-group:aws/spans`,
-          `${arnPrefix(region)}:logs:${region}:${accountId}:log-group:aws/spans:*`,
-        ],
-      },
-      {
-        Sid: 'CloudWatchIndexPolicyStatement',
-        Effect: 'Allow',
-        Action: ['logs:DescribeIndexPolicies', 'logs:PutIndexPolicy'],
-        Resource: [
-          `${arnPrefix(region)}:logs:${region}:${accountId}:log-group:aws/spans`,
-          `${arnPrefix(region)}:logs:${region}:${accountId}:log-group:aws/spans:*`,
+          `${arnPrefix(region)}:logs:*:${accountId}:log-group:/aws/bedrock-agentcore/evaluations/*`,
+          `${arnPrefix(region)}:logs:*:${accountId}:log-group:aws/spans`,
+          `${arnPrefix(region)}:logs:*:${accountId}:log-group:aws/spans:*`,
         ],
       },
     ],
