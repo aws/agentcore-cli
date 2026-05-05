@@ -274,12 +274,11 @@ export const registerPromote = (program: Command) => {
           process.exit(1);
         }
 
-        // Wait for any in-progress transition to settle before stopping.
-        // The service returns UPDATING while transitioning between states and
-        // rejects updates with 409 until the transition is complete.
+        // Wait for the AB test to reach RUNNING before stopping.
+        // The service 409s if you attempt a transition while UPDATING.
         for (let attempt = 0; attempt < 12; attempt++) {
           const current = await getABTest({ region, abTestId });
-          if (current.executionStatus !== 'UPDATING') break;
+          if (current.executionStatus === 'RUNNING') break;
           await new Promise(resolve => setTimeout(resolve, 10_000));
         }
 
