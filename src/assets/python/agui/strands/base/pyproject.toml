@@ -13,7 +13,7 @@ dependencies = [
     {{/if}}"ag-ui-strands >= 0.1.7",
     "ag-ui-protocol >= 0.1.10",
     "aws-opentelemetry-distro",
-    "bedrock-agentcore >= 1.0.3",
+    "bedrock-agentcore >= 1.9.1",
     "botocore[crt] >= 1.35.0",
     "fastapi >= 0.115.12",
     {{#if (eq modelProvider "Gemini")}}"google-genai >= 1.0.0",

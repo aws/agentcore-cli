@@ -130,14 +130,24 @@ export async function handleRetrieveMemoryRecords(
   if (namespace && namespacePath) {
     ctx.setCorsHeaders(res, origin);
     res.writeHead(400, { 'Content-Type': 'application/json' });
-    res.end(JSON.stringify({ success: false, error: "'namespace' and 'namespacePath' are mutually exclusive" }));
+    res.end(
+      JSON.stringify({
+        success: false,
+        error: "'namespace' and 'namespacePath' request fields are mutually exclusive",
+      })
+    );
     return;
   }
 
   if (!namespace && !namespacePath) {
     ctx.setCorsHeaders(res, origin);
     res.writeHead(400, { 'Content-Type': 'application/json' });
-    res.end(JSON.stringify({ success: false, error: "either 'namespace' or 'namespacePath' is required" }));
+    res.end(
+      JSON.stringify({
+        success: false,
+        error: "either 'namespace' or 'namespacePath' request field is required",
+      })
+    );
     return;
   }
 

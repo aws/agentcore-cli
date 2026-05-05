@@ -188,7 +188,9 @@ describe('handleRetrieveMemoryRecords', () => {
     await handleRetrieveMemoryRecords(ctx, req, res);
 
     expect(res._status).toBe(400);
-    expect(JSON.parse(res._body).error).toContain('mutually exclusive');
+    const err = JSON.parse(res._body).error;
+    expect(err).toContain('mutually exclusive');
+    expect(err).toContain('request fields');
     expect(onRetrieveMemoryRecords).not.toHaveBeenCalled();
   });
 
@@ -201,7 +203,9 @@ describe('handleRetrieveMemoryRecords', () => {
     await handleRetrieveMemoryRecords(ctx, req, res);
 
     expect(res._status).toBe(400);
-    expect(JSON.parse(res._body).error).toContain("either 'namespace' or 'namespacePath'");
+    const err = JSON.parse(res._body).error;
+    expect(err).toContain("either 'namespace' or 'namespacePath'");
+    expect(err).toContain('request field');
     expect(onRetrieveMemoryRecords).not.toHaveBeenCalled();
   });
 

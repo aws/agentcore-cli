@@ -314,8 +314,17 @@ export interface GetCloudWatchTraceResponse {
 export type { CloudWatchTraceRecord, CloudWatchSpanRecord } from '../../traces/types';
 
 // ---------------------------------------------------------------------------
-// GET /api/memory?memoryName=xxx&namespace=yyy[&strategyId=zzz]
+// GET /api/memory?memoryName=xxx&(namespace=yyy|namespacePath=yyy)[&strategyId=zzz]
 // ---------------------------------------------------------------------------
+
+/**
+ * Query parameters for GET /api/memory. Exactly one of `namespace` (exact match) or
+ * `namespacePath` (hierarchical path prefix) must be provided.
+ */
+export type ListMemoryRecordsQuery = {
+  memoryName: string;
+  strategyId?: string;
+} & ({ namespace: string; namespacePath?: never } | { namespace?: never; namespacePath: string });
 
 /** Response shape for GET /api/memory */
 export interface ListMemoryRecordsResponse {
@@ -340,13 +349,15 @@ export interface MemoryRecordResponse {
 // POST /api/memory/search
 // ---------------------------------------------------------------------------
 
-/** Request body for POST /api/memory/search */
-export interface RetrieveMemoryRecordsRequest {
+/**
+ * Request body for POST /api/memory/search. Exactly one of `namespace` (exact match) or
+ * `namespacePath` (hierarchical path prefix) must be provided.
+ */
+export type RetrieveMemoryRecordsRequest = {
   memoryName: string;
-  namespace: string;
   searchQuery: string;
   strategyId?: string;
-}
+} & ({ namespace: string; namespacePath?: never } | { namespace?: never; namespacePath: string });
 
 /** Response shape for POST /api/memory/search */
 export interface RetrieveMemoryRecordsResponse {
