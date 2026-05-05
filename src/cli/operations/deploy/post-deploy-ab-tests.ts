@@ -157,9 +157,28 @@ export async function setupABTests(options: SetupABTestsOptions): Promise<SetupA
         'onlineEvaluationConfigArn' in resolvedEvalConfig
           ? [resolvedEvalConfig.onlineEvaluationConfigArn]
           : resolvedEvalConfig.perVariantOnlineEvaluationConfig.map(pv => pv.onlineEvaluationConfigArn);
-      // Resolve evaluator ARNs referenced by the online eval configs so the AB test
-      // role can pass the service-side evaluator validation check.
-      const evaluatorArns = Object.values(deployedResources?.evaluators ?? {}).map(e => e.evaluatorArn);
+      // Resolve evaluator ARNs transitively from the online eval configs this AB test
+      // references, so the execution role can pass service-side evaluator validation.
+      // Three cases: custom (deployed), Builtin.*, and external ARNs.
+      const onlineEvalConfigNames = ((): string[] => {
+        const cfg = testSpec.evaluationConfig;
+        if ('onlineEvaluationConfigArn' in cfg) return [cfg.onlineEvaluationConfigArn];
+        return cfg.perVariantOnlineEvaluationConfig.map(pv => pv.onlineEvaluationConfigArn);
+      })();
+      const evaluatorArns = Array.from(
+        new Set(
+          onlineEvalConfigNames.flatMap(nameOrArn => {
+            const configSpec = projectSpec.onlineEvalConfigs?.find(c => c.name === nameOrArn);
+            if (!configSpec) return [];
+            return configSpec.evaluators.flatMap(ref => {
+              if (ref.startsWith('arn:')) return [ref];
+              if (ref.startsWith('Builtin.')) return [`${arnPrefix(region)}:bedrock-agentcore:::evaluator/${ref}`];
+              const deployed = deployedResources?.evaluators?.[ref];
+              return deployed ? [deployed.evaluatorArn] : [];
+            });
+          })
+        )
+      );
 
       if (testSpec.roleArn) {
         resolvedRoleArn = testSpec.roleArn;
