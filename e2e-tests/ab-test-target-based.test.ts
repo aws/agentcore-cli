@@ -283,7 +283,7 @@ describe.sequential('e2e: target-based AB test lifecycle', () => {
     'promotes AB test (updates agentcore.json)',
     async () => {
       const result = await run(['promote', 'ab-test', abTestName, '--json']);
-      expect(result.exitCode, `Promote failed: ${result.stderr}`).toBe(0);
+      expect(result.exitCode, `Promote failed: ${result.stdout} ${result.stderr}`).toBe(0);
       const json = parseJsonOutput(result.stdout) as Record<string, unknown>;
       expect(json).toHaveProperty('success', true);
       expect(json).toHaveProperty('promoted', true);
