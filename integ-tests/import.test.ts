@@ -6,16 +6,14 @@ import { join } from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
 /**
- * These tests only exercise the Phase-1-local paths of `agentcore import` that
- * do NOT touch AWS. See src/cli/commands/import/actions.ts: AWS calls (notably
- * `validateAwsCredentials()`) only fire when the parsed YAML contains a
- * physical `agent_id` or `memory_id`. All fixtures here omit those fields.
+ * Tests for `agentcore import` error paths that run without AWS credentials.
+ * AWS calls only fire when the parsed YAML contains a physical `agent_id` or
+ * `memory_id` — all fixtures here omit those fields.
  *
- * Note: the top-level `agentcore import --source ...` command does not expose a
- * `--json` flag (only the import-subcommands do), so assertions read from the
- * combined stdout/stderr stream.
+ * Note: `agentcore import --source ...` does not expose a `--json` flag, so
+ * assertions read from the combined stdout/stderr stream.
  */
-describe('integration: import command (Phase 1 — no AWS)', () => {
+describe('integration: import command', () => {
   let project: TestProject;
 
   beforeAll(async () => {
