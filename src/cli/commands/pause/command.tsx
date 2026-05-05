@@ -1,5 +1,5 @@
 import { ConfigIO } from '../../../lib';
-import { getABTest, listABTests, updateABTest } from '../../aws/agentcore-ab-tests';
+import { listABTests, updateABTest } from '../../aws/agentcore-ab-tests';
 import { stopBatchEvaluation } from '../../aws/agentcore-batch-evaluation';
 import { getErrorMessage } from '../../errors';
 import { handlePauseResume } from '../../operations/eval';
@@ -7,6 +7,7 @@ import type { OnlineEvalActionOptions } from '../../operations/eval';
 import { COMMAND_DESCRIPTIONS } from '../../tui/copy';
 import { requireProject } from '../../tui/guards';
 import { getRegion } from '../shared/region-utils';
+import { waitForRunningThenStop } from './promote-utils';
 import type { Command } from '@commander-js/extra-typings';
 import { Text, render } from 'ink';
 import React from 'react';
@@ -274,22 +275,7 @@ export const registerPromote = (program: Command) => {
           process.exit(1);
         }
 
-        // Wait for the AB test to reach RUNNING before stopping.
-        // The service 409s if you attempt a transition while UPDATING.
-        let currentStatus: string | undefined;
-        for (let attempt = 0; attempt < 12; attempt++) {
-          const current = await getABTest({ region, abTestId });
-          currentStatus = current.executionStatus;
-          if (currentStatus === 'RUNNING') break;
-          await new Promise(resolve => setTimeout(resolve, 10_000));
-        }
-        if (currentStatus !== 'RUNNING') {
-          throw new Error(
-            `AB test "${name}" did not reach RUNNING state after waiting (current: ${currentStatus}). Cannot promote.`
-          );
-        }
-
-        const result = await updateABTest({ region, abTestId, executionStatus: 'STOPPED' });
+        const result = await waitForRunningThenStop(region, abTestId, name);
 
         // Apply promotion to agentcore.json
         const { promoteABTestConfig } = await import('../../operations/ab-test/promote');
