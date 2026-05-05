@@ -143,7 +143,7 @@ To disable telemetry collection entirely:
 agentcore dev --no-traces
 ```
 
-No OTEL env vars are injected into the agent process.
+No OTEL env vars are injected into the agent process. `--no-traces` and `--otel-endpoint` are mutually exclusive — passing both is an error.
 
 ### Trace Storage
 

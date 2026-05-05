@@ -100,5 +100,15 @@ describe('dev command', () => {
         'Should describe the OTLP endpoint purpose'
       ).toBeTruthy();
     });
+
+    it('errors when combined with --no-traces', async () => {
+      const result = await runCLI(['dev', '--no-traces', '--otel-endpoint', 'http://localhost:4318'], process.cwd());
+
+      expect(result.exitCode).toBe(1);
+      expect(
+        result.stderr.toLowerCase().includes('mutually exclusive'),
+        `Should mention mutually exclusive flags, got: ${result.stderr}`
+      ).toBeTruthy();
+    });
   });
 });

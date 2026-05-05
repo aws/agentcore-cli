@@ -262,6 +262,15 @@ export const registerDev = (program: Command) => {
           return;
         }
 
+        // Reject conflicting telemetry flags before any project checks
+        if (opts.traces === false && opts.otelEndpoint) {
+          console.error('Error: --no-traces and --otel-endpoint are mutually exclusive.');
+          console.error(
+            'Use --otel-endpoint to forward traces to a custom backend, or --no-traces to disable telemetry entirely.'
+          );
+          process.exit(1);
+        }
+
         requireProject();
 
         const workingDir = getWorkingDirectory();
@@ -298,6 +307,12 @@ export const registerDev = (program: Command) => {
         const configRoot = findConfigRoot(workingDir);
         let otelEnvVars: Record<string, string> = {};
         let collector: OtelCollector | undefined;
+
+        if (opts.traces === false && opts.otelEndpoint) {
+          console.error('Error: --no-traces and --otel-endpoint are mutually exclusive.');
+          console.error('Use --otel-endpoint to forward traces to a custom backend, or --no-traces to disable telemetry entirely.');
+          process.exit(1);
+        }
 
         if (opts.traces !== false) {
           const persistTracesDir = path.join(configRoot ?? workingDir, '.cli', 'traces');
@@ -429,7 +444,6 @@ export const registerDev = (program: Command) => {
           agentName: opts.runtime,
           otelEnvVars,
           collector,
-          otelEndpoint: opts.otelEndpoint,
         });
       } catch (error) {
         render(<Text color="red">Error: {getErrorMessage(error)}</Text>);

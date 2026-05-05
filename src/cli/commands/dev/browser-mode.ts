@@ -98,8 +98,6 @@ export interface BrowserModeOptions {
   otelEnvVars?: Record<string, string>;
   /** OTEL collector instance for local trace collection */
   collector?: OtelCollector;
-  /** Custom OTLP endpoint to forward traces to instead of the local collector */
-  otelEndpoint?: string;
 }
 
 /**
@@ -125,7 +123,6 @@ export async function launchBrowserDev(otelEndpoint?: string): Promise<void> {
     port: 8080,
     otelEnvVars,
     collector,
-    otelEndpoint,
   });
 }
 
