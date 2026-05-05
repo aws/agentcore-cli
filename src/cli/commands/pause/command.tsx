@@ -1,5 +1,5 @@
 import { ConfigIO } from '../../../lib';
-import { listABTests, updateABTest } from '../../aws/agentcore-ab-tests';
+import { getABTest, listABTests, updateABTest } from '../../aws/agentcore-ab-tests';
 import { stopBatchEvaluation } from '../../aws/agentcore-batch-evaluation';
 import { getErrorMessage } from '../../errors';
 import { handlePauseResume } from '../../operations/eval';
@@ -274,22 +274,16 @@ export const registerPromote = (program: Command) => {
           process.exit(1);
         }
 
-        // Stop the AB test — retry on 409 UPDATING (transitioning from resume)
-        let result;
-        for (let attempt = 0; attempt < 6; attempt++) {
-          try {
-            result = await updateABTest({ region, abTestId, executionStatus: 'STOPPED' });
-            break;
-          } catch (err) {
-            const msg = err instanceof Error ? err.message : String(err);
-            if (msg.includes('409') && attempt < 5) {
-              await new Promise(resolve => setTimeout(resolve, 10_000));
-              continue;
-            }
-            throw err;
-          }
+        // Wait for any in-progress transition to settle before stopping.
+        // The service returns UPDATING while transitioning between states and
+        // rejects updates with 409 until the transition is complete.
+        for (let attempt = 0; attempt < 12; attempt++) {
+          const current = await getABTest({ region, abTestId });
+          if (current.executionStatus !== 'UPDATING') break;
+          await new Promise(resolve => setTimeout(resolve, 10_000));
         }
-        if (!result) throw new Error('Failed to stop AB test after retries');
+
+        const result = await updateABTest({ region, abTestId, executionStatus: 'STOPPED' });
 
         // Apply promotion to agentcore.json
         const { promoteABTestConfig } = await import('../../operations/ab-test/promote');
