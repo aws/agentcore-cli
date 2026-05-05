@@ -640,10 +640,15 @@ async function getOrCreateABTestRole(options: CreateABTestRoleOptions): Promise<
         Condition: { StringEquals: { 'aws:ResourceAccount': accountId } },
       },
       {
+        Sid: 'CloudWatchLogsDescribe',
+        Effect: 'Allow',
+        Action: ['logs:DescribeLogGroups'],
+        Resource: '*',
+      },
+      {
         Sid: 'CloudWatchLogs',
         Effect: 'Allow',
         Action: [
-          'logs:DescribeLogGroups',
           'logs:DescribeIndexPolicies',
           'logs:PutIndexPolicy',
           'logs:StartQuery',
