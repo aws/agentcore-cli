@@ -7,6 +7,7 @@ import type {
   Credential,
   Memory,
 } from '../../../schema';
+import { applyTargetRegionToEnv } from '../../aws';
 import { validateAwsCredentials } from '../../aws/account';
 import { arnPrefix } from '../../aws/partition';
 import { ExecLogger } from '../../logging';
@@ -108,6 +109,22 @@ export async function handleImport(options: ImportOptions): Promise<ImportResult
   let configSnapshot: AgentCoreProjectSpec;
   let configWritten = false;
 
+  // Region env override — applied once we know the authoritative region
+  // (initially from YAML, later re-applied with the resolved target region).
+  // Restored in the outer `finally` block. See
+  // https://github.com/aws/agentcore-cli/issues/924.
+  // Typed as the union explicitly: TS would otherwise narrow to `null` because
+  // the only reassignment happens inside the `setRegionEnv` closure below.
+  let restoreEnv: (() => void) | null = null;
+  const setRegionEnv = (region: string): void => {
+    // Replace any prior override so we always carry the most authoritative
+    // region forward; the inner restore would otherwise undo our latest set.
+    if (restoreEnv) {
+      restoreEnv();
+    }
+    restoreEnv = applyTargetRegionToEnv(region);
+  };
+
   const rollbackConfig = async () => {
     if (!configWritten || !configIO) return;
     try {
@@ -184,9 +201,10 @@ export async function handleImport(options: ImportOptions): Promise<ImportResult
       // If the YAML specifies a region, override AWS_REGION before reading targets
       // because readAWSDeploymentTargets() overrides file-based regions with AWS_REGION.
       // The YAML region is authoritative — it's where the resources actually exist.
+      // The override is restored in the outer `finally` block so we don't leak
+      // env mutations to the caller. See https://github.com/aws/agentcore-cli/issues/924.
       if (parsed.awsTarget.region) {
-        process.env.AWS_REGION = parsed.awsTarget.region;
-        process.env.AWS_DEFAULT_REGION = parsed.awsTarget.region;
+        setRegionEnv(parsed.awsTarget.region);
       }
       let targets = await configIO.readAWSDeploymentTargets();
 
@@ -245,6 +263,12 @@ export async function handleImport(options: ImportOptions): Promise<ImportResult
       logger.log(`Using target: ${target.name} (${target.region}, ${target.account})`);
       onProgress?.(`Using target: ${target.name} (${target.region}, ${target.account})`);
 
+      // Make the resolved target's region authoritative for any downstream SDK
+      // clients constructed without an explicit region option (validateAwsCredentials,
+      // CDK toolkit-lib internals during the CFN import pipeline, etc.).
+      // See https://github.com/aws/agentcore-cli/issues/924.
+      setRegionEnv(target.region);
+
       // Warn if YAML account/region differs from target
       if (parsed.awsTarget.account && parsed.awsTarget.account !== target.account) {
         logger.log(
@@ -277,6 +301,11 @@ export async function handleImport(options: ImportOptions): Promise<ImportResult
         target = targets.find(t => t.name === options.target);
       }
       // If still no target, that's fine — we'll use 'default' for the stackName
+      if (target?.region) {
+        // Promote target region onto env for any downstream SDK clients.
+        // See https://github.com/aws/agentcore-cli/issues/924.
+        setRegionEnv(target.region);
+      }
     }
     logger.endStep('success');
 
@@ -659,5 +688,12 @@ export async function handleImport(options: ImportOptions): Promise<ImportResult
     logger.log(message, 'error');
     logger.finalize(false);
     return { success: false, error: message, logPath: logger.getRelativeLogPath() };
+  } finally {
+    // Restore any AWS_REGION / AWS_DEFAULT_REGION env vars we mutated above so
+    // we don't leak the override to subsequent CLI work in the same process.
+    // See https://github.com/aws/agentcore-cli/issues/924.
+    if (restoreEnv) {
+      restoreEnv();
+    }
   }
 }

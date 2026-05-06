@@ -1,4 +1,5 @@
-import { applyTargetRegionToEnv, withTargetRegion } from '../target-region.js';
+import type { AwsDeploymentTarget } from '../../../schema';
+import { applyTargetRegionToEnv, runWithTargetRegion, withTargetRegion } from '../target-region.js';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
 describe('target-region', () => {
@@ -94,6 +95,74 @@ describe('target-region', () => {
     it('returns the callback result', async () => {
       const result = await withTargetRegion('eu-west-2', () => Promise.resolve(42));
       expect(result).toBe(42);
+    });
+  });
+
+  describe('runWithTargetRegion', () => {
+    const buildTarget = (region: string): AwsDeploymentTarget => ({
+      name: 'default',
+      account: '123456789012',
+      region: region as AwsDeploymentTarget['region'],
+    });
+
+    it('applies the resolved target region inside the callback and restores afterwards', async () => {
+      let seenRegion: string | undefined;
+      const target = buildTarget('ap-southeast-2');
+
+      const result = await runWithTargetRegion(
+        () => Promise.resolve(target),
+        resolved => {
+          seenRegion = process.env.AWS_REGION;
+          expect(resolved).toBe(target);
+          return Promise.resolve('ok');
+        }
+      );
+
+      expect(seenRegion).toBe('ap-southeast-2');
+      expect(result).toBe('ok');
+      expect(process.env.AWS_REGION).toBeUndefined();
+      expect(process.env.AWS_DEFAULT_REGION).toBeUndefined();
+    });
+
+    it('skips the env override when no target is resolved', async () => {
+      let seenRegion: string | undefined;
+
+      await runWithTargetRegion(
+        () => Promise.resolve(undefined),
+        resolved => {
+          seenRegion = process.env.AWS_REGION;
+          expect(resolved).toBeUndefined();
+          return Promise.resolve();
+        }
+      );
+
+      expect(seenRegion).toBeUndefined();
+      expect(process.env.AWS_REGION).toBeUndefined();
+    });
+
+    it('restores env vars even when the callback throws', async () => {
+      process.env.AWS_REGION = 'us-east-1';
+
+      await expect(
+        runWithTargetRegion(
+          () => Promise.resolve(buildTarget('sa-east-1')),
+          () => Promise.reject(new Error('boom'))
+        )
+      ).rejects.toThrow('boom');
+
+      expect(process.env.AWS_REGION).toBe('us-east-1');
+    });
+
+    it('propagates errors from the target resolver without mutating env', async () => {
+      await expect(
+        runWithTargetRegion(
+          () => Promise.reject(new Error('cannot resolve')),
+          () => Promise.resolve('unreached')
+        )
+      ).rejects.toThrow('cannot resolve');
+
+      expect(process.env.AWS_REGION).toBeUndefined();
+      expect(process.env.AWS_DEFAULT_REGION).toBeUndefined();
     });
   });
 });

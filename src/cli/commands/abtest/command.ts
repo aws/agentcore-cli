@@ -5,6 +5,7 @@
  * from the data plane API, including evaluation scores/metrics.
  */
 import { ConfigIO } from '../../../lib';
+import { applyTargetRegionToEnv } from '../../aws';
 import { getABTest, listABTests } from '../../aws/agentcore-ab-tests';
 import type { GetABTestResult } from '../../aws/agentcore-ab-tests';
 import { dnsSuffix } from '../../aws/partition';
@@ -15,16 +16,39 @@ import type { Command } from '@commander-js/extra-typings';
 // Helpers
 // ============================================================================
 
+/**
+ * Resolve the region for AB-test API calls, preferring (in order):
+ *  1. an explicit `--region` flag
+ *  2. the first target in `aws-targets.json`
+ *  3. AWS_DEFAULT_REGION / AWS_REGION env vars
+ *  4. `us-east-1`
+ *
+ * As a side effect, also promotes the resolved region onto AWS_REGION /
+ * AWS_DEFAULT_REGION so any downstream SDK client constructed without an
+ * explicit `region` option behaves consistently. See
+ * https://github.com/aws/agentcore-cli/issues/924.
+ */
 async function getRegion(cliRegion?: string): Promise<string> {
-  if (cliRegion) return cliRegion;
-  try {
-    const configIO = new ConfigIO();
-    const targets = await configIO.resolveAWSDeploymentTargets();
-    if (targets.length > 0) return targets[0]!.region;
-  } catch {
-    // Fall through to env vars
+  let region: string;
+  if (cliRegion) {
+    region = cliRegion;
+  } else {
+    let targetRegion: string | undefined;
+    try {
+      const configIO = new ConfigIO();
+      const targets = await configIO.resolveAWSDeploymentTargets();
+      if (targets.length > 0) targetRegion = targets[0]!.region;
+    } catch {
+      // Fall through to env vars
+    }
+    region = targetRegion ?? process.env.AWS_DEFAULT_REGION ?? process.env.AWS_REGION ?? 'us-east-1';
   }
-  return process.env.AWS_DEFAULT_REGION ?? process.env.AWS_REGION ?? 'us-east-1';
+  // Intentionally not restored — the abtest command runs to completion and
+  // exits the process; restoring would require threading a teardown through
+  // every caller. The override is safe because it only sets env vars to the
+  // same region we'd otherwise pass explicitly to every SDK client below.
+  applyTargetRegionToEnv(region);
+  return region;
 }
 
 async function resolveABTestId(
