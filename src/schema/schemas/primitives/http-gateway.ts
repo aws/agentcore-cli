@@ -7,10 +7,9 @@ import { z } from 'zod';
 export const HttpGatewayNameSchema = z
   .string()
   .min(1, 'Name is required')
-  .max(48)
   .regex(
-    /^[a-zA-Z][a-zA-Z0-9-]{0,47}$/,
-    'Must begin with a letter and contain only alphanumeric characters and hyphens (max 48 chars)'
+    /^[a-zA-Z][a-zA-Z0-9-]*$/,
+    'Gateway name must start with a letter and contain only alphanumeric characters or hyphens (combined with project name must fit 48-char AWS limit)'
   );
 
 export const HttpGatewayTargetSchema = z.object({

@@ -171,7 +171,14 @@ describe.sequential('e2e: config bundles, batch evaluation, and recommendations'
     async () => {
       await retry(
         async () => {
-          const result = await run(['invoke', '--prompt', 'Say hello', '--runtime', agentName, '--json']);
+          const result = await run([
+            'invoke',
+            '--prompt',
+            'What is 3 + 5? Use the add_numbers tool.',
+            '--runtime',
+            agentName,
+            '--json',
+          ]);
           expect(result.exitCode, `Invoke failed: ${result.stderr}`).toBe(0);
           const json = parseJsonOutput(result.stdout) as { success: boolean };
           expect(json.success).toBe(true);
@@ -199,7 +206,7 @@ describe.sequential('e2e: config bundles, batch evaluation, and recommendations'
       };
       expect(json.success).toBe(true);
 
-      const bundle = json.resources.find(r => r.resourceType === 'configBundle' && r.name === bundleName);
+      const bundle = json.resources.find(r => r.resourceType === 'config-bundle' && r.name === bundleName);
       expect(bundle, `Config bundle "${bundleName}" should appear in status`).toBeDefined();
 
       const evaluator = json.resources.find(r => r.resourceType === 'evaluator' && r.name === evalName);
@@ -368,7 +375,7 @@ describe.sequential('e2e: config bundles, batch evaluation, and recommendations'
           );
           const json = parseJsonOutput(result.stdout) as Record<string, unknown>;
           expect(json).toHaveProperty('success', true);
-          expect(json).toHaveProperty('batchEvaluateId');
+          expect(json).toHaveProperty('batchEvaluationId');
           expect(json.status).toBeDefined();
           expect(json.status).not.toBe('FAILED');
         },
@@ -446,7 +453,7 @@ describe.sequential('e2e: config bundles, batch evaluation, and recommendations'
             agentName,
             '--evaluator',
             'Builtin.Faithfulness',
-            '--lookback',
+            '--days',
             '1',
             '--json',
           ]);
@@ -549,9 +556,7 @@ describe.sequential('e2e: config bundles, batch evaluation, and recommendations'
             '--runtime',
             agentName,
             '--tools',
-            'search:Searches the web for information',
-            '--tools',
-            'calculator:Performs mathematical calculations',
+            'add_numbers:Adds two numbers together',
             '--lookback',
             '1',
             '--json',

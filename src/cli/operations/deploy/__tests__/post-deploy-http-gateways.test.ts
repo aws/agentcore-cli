@@ -140,13 +140,13 @@ describe('setupHttpGateways', () => {
 
       expect(mockCreateHttpGateway).toHaveBeenCalledWith({
         region: 'us-east-1',
-        name: 'MyHttpGw',
+        name: 'TestProject-MyHttpGw',
         roleArn: 'arn:aws:iam::123456789012:role/ExistingRole',
       });
       expect(mockCreateHttpGatewayTarget).toHaveBeenCalledWith({
         region: 'us-east-1',
         gatewayId: 'gw-001',
-        targetName: 'my-agent',
+        targetName: 'TestProject-my-agent',
         runtimeArn: 'arn:aws:bedrock-agentcore:us-east-1:123456789012:runtime/rt-123',
       });
     });
@@ -176,7 +176,7 @@ describe('setupHttpGateways', () => {
 
     it('finds gateway by name via list (state loss recovery)', async () => {
       mockListAllHttpGateways.mockResolvedValue([
-        { name: 'MyHttpGw', gatewayId: 'gw-api', gatewayArn: 'arn:httpgw:api' },
+        { name: 'TestProject-MyHttpGw', gatewayId: 'gw-api', gatewayArn: 'arn:httpgw:api' },
       ]);
 
       const result = await setupHttpGateways({
@@ -189,6 +189,39 @@ describe('setupHttpGateways', () => {
       expect(result.results[0]!.status).toBe('skipped');
       expect(result.httpGateways.MyHttpGw!.gatewayId).toBe('gw-api');
       expect(mockCreateHttpGateway).not.toHaveBeenCalled();
+    });
+
+    it('recovers state using legacy (pre-migration) gateway name when prefixed name not found', async () => {
+      // First call: prefixed name "TestProject-MyHttpGw" → not found
+      // Second call: unprefixed legacy name "MyHttpGw" → found
+      mockListAllHttpGateways
+        .mockResolvedValueOnce([])
+        .mockResolvedValueOnce([{ name: 'MyHttpGw', gatewayId: 'gw-legacy', gatewayArn: 'arn:httpgw:legacy' }]);
+
+      const warnSpy = vi.spyOn(console, 'warn').mockReturnValue(undefined);
+
+      const result = await setupHttpGateways({
+        region: 'us-east-1',
+        projectName: 'TestProject',
+        projectSpec: makeProjectSpec([sampleHttpGateway]),
+        deployedResources: sampleDeployedResources,
+      });
+
+      // findHttpGatewayByName was called twice: once for prefixed, once for unprefixed name
+      expect(mockListAllHttpGateways).toHaveBeenCalledTimes(2);
+
+      // Gateway result is skipped (not created)
+      expect(result.results[0]!.status).toBe('skipped');
+      expect(result.results[0]!.gatewayId).toBe('gw-legacy');
+      expect(result.httpGateways.MyHttpGw!.gatewayId).toBe('gw-legacy');
+
+      // createHttpGateway was NOT called
+      expect(mockCreateHttpGateway).not.toHaveBeenCalled();
+
+      // console.warn was called with the pre-migration warning text
+      expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining('pre-migration name'));
+
+      warnSpy.mockRestore();
     });
 
     it('reports error on missing runtime ref', async () => {

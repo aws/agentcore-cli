@@ -22,12 +22,12 @@ describe('HttpGatewayNameSchema', () => {
     expect(HttpGatewayNameSchema.safeParse('my_gateway').success).toBe(false);
   });
 
-  it('rejects name over 48 chars', () => {
-    expect(HttpGatewayNameSchema.safeParse('a'.repeat(49)).success).toBe(false);
+  it('accepts name longer than 24 chars', () => {
+    expect(HttpGatewayNameSchema.safeParse('a'.repeat(25)).success).toBe(true);
   });
 
-  it('accepts name at 48 chars', () => {
-    expect(HttpGatewayNameSchema.safeParse('a'.repeat(48)).success).toBe(true);
+  it('accepts name at 47 chars (room for 1-char project name + hyphen)', () => {
+    expect(HttpGatewayNameSchema.safeParse('a' + 'b'.repeat(46)).success).toBe(true);
   });
 });
 
@@ -60,8 +60,8 @@ describe('HttpGatewaySchema', () => {
     expect(HttpGatewaySchema.safeParse(withoutRuntimeRef).success).toBe(false);
   });
 
-  it('rejects name too long (>48 chars)', () => {
-    expect(HttpGatewaySchema.safeParse({ ...validHttpGateway, name: 'a'.repeat(49) }).success).toBe(false);
+  it('accepts name longer than 24 chars (no standalone max cap)', () => {
+    expect(HttpGatewaySchema.safeParse({ ...validHttpGateway, name: 'a' + 'b'.repeat(30) }).success).toBe(true);
   });
 
   it('rejects name starting with number', () => {

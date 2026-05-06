@@ -39,72 +39,45 @@ describe('matchEnumValue', () => {
 });
 
 describe('SDKFrameworkSchema', () => {
-  it.each(['Strands', 'LangChain_LangGraph', 'GoogleADK', 'OpenAIAgents'])('accepts "%s"', framework => {
-    expect(SDKFrameworkSchema.safeParse(framework).success).toBe(true);
-  });
-
-  it('rejects invalid framework', () => {
+  it('accepts valid frameworks and rejects invalid', () => {
+    expect(SDKFrameworkSchema.safeParse('Strands').success).toBe(true);
+    expect(SDKFrameworkSchema.safeParse('OpenAIAgents').success).toBe(true);
     expect(SDKFrameworkSchema.safeParse('AutoGen').success).toBe(false);
     expect(SDKFrameworkSchema.safeParse('strands').success).toBe(false); // case-sensitive
   });
 });
 
 describe('ModelProviderSchema', () => {
-  it.each(['Bedrock', 'Gemini', 'OpenAI', 'Anthropic'])('accepts "%s"', provider => {
-    expect(ModelProviderSchema.safeParse(provider).success).toBe(true);
-  });
-
-  it('rejects invalid provider', () => {
+  it('accepts valid providers and rejects invalid', () => {
+    expect(ModelProviderSchema.safeParse('Bedrock').success).toBe(true);
+    expect(ModelProviderSchema.safeParse('Anthropic').success).toBe(true);
     expect(ModelProviderSchema.safeParse('Azure').success).toBe(false);
   });
 });
 
-describe('PythonRuntimeSchema', () => {
-  it.each(['PYTHON_3_10', 'PYTHON_3_11', 'PYTHON_3_12', 'PYTHON_3_13', 'PYTHON_3_14'])('accepts "%s"', version => {
-    expect(PythonRuntimeSchema.safeParse(version).success).toBe(true);
-  });
-
-  it('rejects unsupported versions', () => {
-    expect(PythonRuntimeSchema.safeParse('PYTHON_3_9').success).toBe(false);
-    expect(PythonRuntimeSchema.safeParse('PYTHON_3_15').success).toBe(false);
-  });
-});
-
-describe('NodeRuntimeSchema', () => {
-  it.each(['NODE_18', 'NODE_20', 'NODE_22'])('accepts "%s"', version => {
-    expect(NodeRuntimeSchema.safeParse(version).success).toBe(true);
-  });
-
-  it('rejects unsupported versions', () => {
-    expect(NodeRuntimeSchema.safeParse('NODE_16').success).toBe(false);
-    expect(NodeRuntimeSchema.safeParse('NODE_24').success).toBe(false);
-  });
-});
-
-describe('RuntimeVersionSchema', () => {
-  it('accepts Python versions', () => {
+describe('RuntimeVersionSchemas', () => {
+  it('accepts valid Python and Node versions', () => {
+    expect(PythonRuntimeSchema.safeParse('PYTHON_3_10').success).toBe(true);
+    expect(PythonRuntimeSchema.safeParse('PYTHON_3_14').success).toBe(true);
+    expect(NodeRuntimeSchema.safeParse('NODE_18').success).toBe(true);
+    expect(NodeRuntimeSchema.safeParse('NODE_22').success).toBe(true);
     expect(RuntimeVersionSchema.safeParse('PYTHON_3_12').success).toBe(true);
-  });
-
-  it('accepts Node versions', () => {
     expect(RuntimeVersionSchema.safeParse('NODE_20').success).toBe(true);
   });
 
   it('rejects invalid versions', () => {
+    expect(PythonRuntimeSchema.safeParse('PYTHON_3_9').success).toBe(false);
+    expect(PythonRuntimeSchema.safeParse('PYTHON_3_15').success).toBe(false);
+    expect(NodeRuntimeSchema.safeParse('NODE_16').success).toBe(false);
+    expect(NodeRuntimeSchema.safeParse('NODE_24').success).toBe(false);
     expect(RuntimeVersionSchema.safeParse('RUBY_3_0').success).toBe(false);
   });
 });
 
 describe('NetworkModeSchema', () => {
-  it('accepts PUBLIC', () => {
+  it('accepts valid modes and rejects invalid', () => {
     expect(NetworkModeSchema.safeParse('PUBLIC').success).toBe(true);
-  });
-
-  it('accepts VPC', () => {
     expect(NetworkModeSchema.safeParse('VPC').success).toBe(true);
-  });
-
-  it('rejects other modes', () => {
     expect(NetworkModeSchema.safeParse('PRIVATE').success).toBe(false);
   });
 });

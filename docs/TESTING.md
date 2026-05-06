@@ -39,6 +39,21 @@ integ-tests/
 
 See [integ-tests/README.md](../integ-tests/README.md) for integration test details.
 
+### E2E Tests
+
+E2E tests live in `e2e-tests/` and verify the full user journey across the AWS boundary — deploy, invoke, status, logs,
+traces, and control plane API calls.
+
+```
+e2e-tests/
+├── e2e-helper.ts           # Shared utilities and createE2ESuite() factory
+├── strands-bedrock.test.ts
+├── langgraph-openai.test.ts
+└── ...
+```
+
+See [e2e-tests/README.md](../e2e-tests/README.md) for e2e test details.
+
 ## Writing Tests
 
 ### Imports
@@ -435,14 +450,12 @@ npx playwright install chromium
 
 ## Integration Tests
 
-Integration tests require:
-
-- AWS credentials configured
-- IAM permissions for CloudFormation operations
-- Dedicated test AWS account (recommended)
+Integration tests require no AWS credentials. They run the real CLI binary and assert on local files and stdout only.
 
 Run integration tests:
 
 ```bash
 npm run test:integ
 ```
+
+See [integ-tests/README.md](../integ-tests/README.md) for full details.

@@ -6,19 +6,14 @@ import { join } from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
 describe('deploy --help', () => {
-  it('shows verbose option', async () => {
-    const result = await runCLI(['deploy', '--help'], process.cwd());
-    expect(result.exitCode).toBe(0);
-    expect(result.stdout.includes('--verbose'), 'Should show --verbose option').toBeTruthy();
-    expect(result.stdout.includes('resource-level'), 'Should describe resource-level events').toBeTruthy();
-  });
-
   it('shows all deploy options', async () => {
     const result = await runCLI(['deploy', '--help'], process.cwd());
+    expect(result.exitCode).toBe(0);
     expect(result.stdout.includes('--yes')).toBeTruthy();
     expect(result.stdout.includes('--verbose')).toBeTruthy();
     expect(result.stdout.includes('--json')).toBeTruthy();
     expect(result.stdout.includes('--dry-run')).toBeTruthy();
+    expect(result.stdout.includes('resource-level'), 'Should describe resource-level events').toBeTruthy();
   });
 });
 

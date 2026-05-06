@@ -59,6 +59,7 @@ export function formatError(err: unknown): string {
  * Returns the project context needed for subsequent steps.
  */
 const MAX_RUNTIME_NAME_LENGTH = 48;
+const MAX_GATEWAY_COMBINED_NAME_LENGTH = 48;
 
 export async function validateProject(): Promise<PreflightContext> {
   // Find the agentcore config directory, walking up from cwd if needed
@@ -112,6 +113,9 @@ export async function validateProject(): Promise<PreflightContext> {
   validateRuntimeNames(projectSpec);
   validateHarnessNames(projectSpec);
 
+  // Validate HTTP gateway names don't exceed AWS limits when combined with project name
+  validateHttpGatewayNames(projectSpec);
+
   // Validate Container agents have Dockerfiles
   validateContainerAgents(projectSpec, configRoot);
 
@@ -161,6 +165,36 @@ function validateHarnessNames(projectSpec: AgentCoreProjectSpec): void {
           `Harness name too long: "${combinedName}" (${combinedName.length} chars). ` +
             `AWS limits harness names to ${MAX_RUNTIME_NAME_LENGTH} characters. ` +
             `Shorten the project name or harness name in agentcore.json.`
+        );
+      }
+    }
+  }
+}
+
+/**
+ * Validates that combined HTTP gateway names (projectName-gatewayName) don't exceed AWS limits.
+ */
+function validateHttpGatewayNames(projectSpec: AgentCoreProjectSpec): void {
+  const projectName = projectSpec.name;
+  for (const gateway of projectSpec.httpGateways ?? []) {
+    const gwName = gateway.name;
+    if (gwName) {
+      const combinedName = `${projectName}-${gwName}`;
+      if (combinedName.length > MAX_GATEWAY_COMBINED_NAME_LENGTH) {
+        throw new Error(
+          `HTTP gateway name too long: "${combinedName}" (${combinedName.length} chars). ` +
+            `AWS limits gateway names to ${MAX_GATEWAY_COMBINED_NAME_LENGTH} characters. ` +
+            `Shorten the project name or gateway name in agentcore.json.`
+        );
+      }
+    }
+    for (const target of gateway.targets ?? []) {
+      const combined = `${projectName}-${target.name}`;
+      if (combined.length > MAX_GATEWAY_COMBINED_NAME_LENGTH) {
+        const maxTargetLen = MAX_GATEWAY_COMBINED_NAME_LENGTH - projectName.length - 1;
+        throw new Error(
+          `HTTP gateway target "${target.name}" in gateway "${gwName}" would exceed the ${MAX_GATEWAY_COMBINED_NAME_LENGTH}-character AWS limit when prefixed with project name "${projectName}-" (total: ${combined.length} chars). ` +
+            `Shorten the target name to ${maxTargetLen} characters or fewer.`
         );
       }
     }

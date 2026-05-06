@@ -86,6 +86,8 @@
         "bedrock-agentcore:GetApiKeyCredentialProvider",
         "bedrock-agentcore:CreateApiKeyCredentialProvider",
         "bedrock-agentcore:UpdateApiKeyCredentialProvider",
+        "bedrock-agentcore:DeleteApiKeyCredentialProvider",
+        "bedrock-agentcore:ListApiKeyCredentialProviders",
         "bedrock-agentcore:GetOauth2CredentialProvider",
         "bedrock-agentcore:CreateOauth2CredentialProvider",
         "bedrock-agentcore:UpdateOauth2CredentialProvider",
@@ -138,7 +140,7 @@
     {
       "Sid": "BedrockModelInvocation",
       "Effect": "Allow",
-      "Action": "bedrock:InvokeModel",
+      "Action": ["bedrock:InvokeModel", "bedrock:InvokeModelWithResponseStream"],
       "Resource": "*"
     },
     {

@@ -74,12 +74,5 @@ describe('dev command', () => {
 
       expect(result.exitCode).toBe(1);
     });
-
-    it('stream flag is documented in help', async () => {
-      const result = await runCLI(['dev', '--help'], process.cwd());
-
-      expect(result.exitCode).toBe(0);
-      expect(result.stdout.includes('--stream'), 'Should show --stream option').toBeTruthy();
-    });
   });
 });

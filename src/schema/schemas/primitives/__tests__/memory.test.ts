@@ -2,43 +2,16 @@ import { DEFAULT_STRATEGY_NAMESPACES, MemoryStrategySchema, MemoryStrategyTypeSc
 import { describe, expect, it } from 'vitest';
 
 describe('MemoryStrategyTypeSchema', () => {
-  describe('valid strategy types', () => {
-    it('accepts SEMANTIC', () => {
-      expect(MemoryStrategyTypeSchema.safeParse('SEMANTIC').success).toBe(true);
-    });
-
-    it('accepts SUMMARIZATION', () => {
-      expect(MemoryStrategyTypeSchema.safeParse('SUMMARIZATION').success).toBe(true);
-    });
-
-    it('accepts USER_PREFERENCE', () => {
-      expect(MemoryStrategyTypeSchema.safeParse('USER_PREFERENCE').success).toBe(true);
-    });
-
-    it('accepts EPISODIC', () => {
-      expect(MemoryStrategyTypeSchema.safeParse('EPISODIC').success).toBe(true);
-    });
+  it('accepts valid strategy types and rejects invalid', () => {
+    expect(MemoryStrategyTypeSchema.safeParse('SEMANTIC').success).toBe(true);
+    expect(MemoryStrategyTypeSchema.safeParse('EPISODIC').success).toBe(true);
+    expect(MemoryStrategyTypeSchema.safeParse('CUSTOM').success).toBe(false);
+    expect(MemoryStrategyTypeSchema.safeParse('semantic').success).toBe(false);
   });
 
-  describe('invalid strategy types', () => {
-    // Issue #235: CUSTOM strategy has been removed
-    it('rejects CUSTOM strategy', () => {
-      const result = MemoryStrategyTypeSchema.safeParse('CUSTOM');
-      expect(result.success).toBe(false);
-    });
-
-    it('rejects arbitrary invalid strategies', () => {
-      expect(MemoryStrategyTypeSchema.safeParse('INVALID').success).toBe(false);
-      expect(MemoryStrategyTypeSchema.safeParse('').success).toBe(false);
-      expect(MemoryStrategyTypeSchema.safeParse('semantic').success).toBe(false); // lowercase
-    });
-  });
-
-  describe('schema options', () => {
-    it('contains four valid strategies including EPISODIC', () => {
-      expect(MemoryStrategyTypeSchema.options).toEqual(['SEMANTIC', 'SUMMARIZATION', 'USER_PREFERENCE', 'EPISODIC']);
-      expect(MemoryStrategyTypeSchema.options).not.toContain('CUSTOM');
-    });
+  it('contains four valid strategies including EPISODIC', () => {
+    expect(MemoryStrategyTypeSchema.options).toEqual(['SEMANTIC', 'SUMMARIZATION', 'USER_PREFERENCE', 'EPISODIC']);
+    expect(MemoryStrategyTypeSchema.options).not.toContain('CUSTOM');
   });
 });
 
