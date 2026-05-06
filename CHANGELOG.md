@@ -2,6 +2,29 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.13.1] - 2026-05-06
+
+### Added
+- feat: add archive command for batch evaluations and recommendations (#1112) (7586092e)
+
+### Fixed
+- fix: correct AB test execution role IAM policy and promote stability (#1120) (9f231d00)
+- fix: set iamRoleFallback to true for lambda gateway targets (#1086) (639adf1b)
+- fix: prefix HTTP gateway names with project name to prevent cross-project collisions (#1105) (e9066ce0)
+- fix: use correct resourceType for config bundle in E2E status test (#1094) (7fb8a636)
+- fix: align E2E batch eval and recommendation tests with current API (#1093) (f1d046cf)
+- fix: sync e2e IAM policy and fix run eval flag (#1092) (78b3bd15)
+- fix: address formatting failure in docs (#1080) (162afd45)
+
+### Documentation
+- docs: clarify integration vs e2e test boundaries and add e2e README (#1111) (bb69aa53)
+- docs: remove CrewAI from supported frameworks (#1059) (a91d8882)
+
+### Other Changes
+- test: collapse schema enumeration tests and remove duplicates (#1087) (4f464d77)
+- test: remove http-gateway-targets e2e test (#1090) (5ce18744)
+- chore(deps): override glob to ^13 to silence install deprecation warning (#1008) (3b7a0a5b)
+
 ## [0.13.0] - 2026-05-01
 
 ### Added

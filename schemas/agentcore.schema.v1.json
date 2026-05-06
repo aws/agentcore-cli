@@ -2103,8 +2103,7 @@
           "name": {
             "type": "string",
             "minLength": 1,
-            "maxLength": 48,
-            "pattern": "^[a-zA-Z][a-zA-Z0-9-]{0,47}$"
+            "pattern": "^[a-zA-Z][a-zA-Z0-9-]*$"
           },
           "description": {
             "type": "string",
