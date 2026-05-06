@@ -2,7 +2,8 @@ import { ConfigIO, SecureCredentials } from '../../../lib';
 import type { AgentCoreMcpSpec, DeployedState } from '../../../schema';
 import { applyTargetRegionToEnv } from '../../aws';
 import { validateAwsCredentials } from '../../aws/account';
-import { createSwitchableIoHost } from '../../cdk/toolkit-lib';
+import { CdkToolkitWrapper, createSwitchableIoHost } from '../../cdk/toolkit-lib';
+import type { SwitchableIoHost } from '../../cdk/toolkit-lib';
 import {
   buildDeployedState,
   getStackOutputs,
@@ -40,7 +41,9 @@ import {
 } from '../../operations/deploy/post-deploy-config-bundles';
 import { setupHttpGateways } from '../../operations/deploy/post-deploy-http-gateways';
 import { enableOnlineEvalConfigs } from '../../operations/deploy/post-deploy-online-evals';
+import { toStackName } from '../import/import-utils';
 import type { DeployResult } from './types';
+import { StackSelectionStrategy } from '@aws-cdk/toolkit-lib';
 
 export interface ValidatedDeployOptions {
   target: string;
@@ -54,6 +57,38 @@ export interface ValidatedDeployOptions {
 
 const AGENT_NEXT_STEPS = ['agentcore invoke', 'agentcore status'];
 const MEMORY_ONLY_NEXT_STEPS = ['agentcore add agent', 'agentcore status'];
+
+export async function runDiff(
+  toolkitWrapper: CdkToolkitWrapper,
+  stackName: string,
+  switchableIoHost?: SwitchableIoHost
+): Promise<void> {
+  const diffIoHost = switchableIoHost ?? createSwitchableIoHost();
+  let hasDiffContent = false;
+  diffIoHost.setOnRawMessage((code, _level, message) => {
+    if (!message) return;
+    // I4002: formatted diff per stack, I4001: overall diff summary
+    if (code === 'CDK_TOOLKIT_I4002' || code === 'CDK_TOOLKIT_I4001') {
+      hasDiffContent = true;
+      console.log(message);
+    }
+  });
+  diffIoHost.setVerbose(true);
+  await toolkitWrapper.diff({
+    stacks: { strategy: StackSelectionStrategy.PATTERN_MUST_MATCH, patterns: [stackName] },
+  });
+  if (!hasDiffContent) {
+    console.log('No stack differences detected.');
+  }
+  diffIoHost.setVerbose(false);
+  diffIoHost.setOnRawMessage(null);
+}
+
+export async function runDeploy(toolkitWrapper: CdkToolkitWrapper, stackName: string): Promise<void> {
+  await toolkitWrapper.deploy({
+    stacks: { strategy: StackSelectionStrategy.PATTERN_MUST_MATCH, patterns: [stackName] },
+  });
+}
 
 export async function handleDeploy(options: ValidatedDeployOptions): Promise<DeployResult> {
   let toolkitWrapper = null;
@@ -247,6 +282,8 @@ export async function handleDeploy(options: ValidatedDeployOptions): Promise<Dep
     const stackName = stackNames[0]!;
     endStep('success');
 
+    const targetStackName = toStackName(context.projectSpec.name, target.name);
+
     // Check if bootstrap needed
     startStep('Check bootstrap status');
     const bootstrapCheck = await checkBootstrapNeeded(context.awsTargets);
@@ -296,23 +333,7 @@ export async function handleDeploy(options: ValidatedDeployOptions): Promise<Dep
     // Diff mode: run cdk diff and exit without deploying
     if (options.diff) {
       startStep('Run CDK diff');
-      const diffIoHost = switchableIoHost ?? createSwitchableIoHost();
-      let hasDiffContent = false;
-      diffIoHost.setOnRawMessage((code, _level, message) => {
-        if (!message) return;
-        // I4002: formatted diff per stack, I4001: overall diff summary
-        if (code === 'CDK_TOOLKIT_I4002' || code === 'CDK_TOOLKIT_I4001') {
-          hasDiffContent = true;
-          console.log(message);
-        }
-      });
-      diffIoHost.setVerbose(true);
-      await toolkitWrapper.diff();
-      if (!hasDiffContent) {
-        console.log('No stack differences detected.');
-      }
-      diffIoHost.setVerbose(false);
-      diffIoHost.setOnRawMessage(null);
+      await runDiff(toolkitWrapper, targetStackName, switchableIoHost);
       endStep('success');
 
       logger.finalize(true);
@@ -339,7 +360,7 @@ export async function handleDeploy(options: ValidatedDeployOptions): Promise<Dep
       switchableIoHost.setVerbose(true);
     }
 
-    await toolkitWrapper.deploy();
+    await runDeploy(toolkitWrapper, targetStackName);
 
     // Disable verbose output
     if (switchableIoHost) {
