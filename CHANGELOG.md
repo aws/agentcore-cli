@@ -2,6 +2,20 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.0.0-preview.8] - 2026-05-06
+
+### Added
+- feat: add archive command for batch evaluations and recommendations (#1112) (#1121) (0abe5899)
+
+### Fixed
+- fix: correct AB test execution role IAM policy and promote stability (#1120) (#1126) (62419a6c)
+
+### Documentation
+- docs: add harness permissions to IAM policy and permissions guide (#1089) (9a68c333)
+
+### Other Changes
+- chore: merge main into preview (2026-05-06) (#1130) (37d9003e)
+
 ## [1.0.0-preview.7] - 2026-05-04
 
 ### Added

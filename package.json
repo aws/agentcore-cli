@@ -1,6 +1,6 @@
 {
   "name": "@aws/agentcore",
-  "version": "1.0.0-preview.7",
+  "version": "1.0.0-preview.8",
   "description": "CLI for Amazon Bedrock AgentCore",
   "license": "Apache-2.0",
   "repository": {
