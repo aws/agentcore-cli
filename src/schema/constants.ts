@@ -161,22 +161,11 @@ export const DEFAULT_PYTHON_VERSION: PythonRuntime = 'PYTHON_3_13';
 
 /**
  * AWS regions where PYTHON_3_14 is currently supported by Bedrock AgentCore /
- * CloudFormation. Update as availability expands.
+ * CloudFormation. Update as availability expands. Callers should compare
+ * directly with this list rather than wrap it in a helper, so the rule lives
+ * in one place.
  */
 export const PYTHON_3_14_SUPPORTED_REGIONS: readonly string[] = ['us-east-1', 'us-west-2'] as const;
-
-/**
- * Returns true when the given runtime version is known to be unavailable in
- * the given AWS region. Used to surface non-blocking warnings during
- * `agentcore validate`.
- */
-export function isRuntimeAvailableInRegion(runtimeVersion: string, region: string | undefined): boolean {
-  if (runtimeVersion === 'PYTHON_3_14') {
-    if (!region) return true; // Can't determine, assume OK
-    return PYTHON_3_14_SUPPORTED_REGIONS.includes(region);
-  }
-  return true;
-}
 
 export const NodeRuntimeSchema = z.enum(['NODE_18', 'NODE_20', 'NODE_22']);
 export type NodeRuntime = z.infer<typeof NodeRuntimeSchema>;

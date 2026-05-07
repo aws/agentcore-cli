@@ -19,11 +19,15 @@ const IN_PROGRESS_STATUSES = new Set([
 
 /**
  * `REVIEW_IN_PROGRESS` is special: it occurs after `CreateChangeSet` with
- * `ChangeSetType=CREATE` *before* a successful execute. If the only change set
- * for the stack is `FAILED` (e.g. CloudFormation rejected the template due to
- * an `AWS::EarlyValidation::PropertyValidation` error), the stack is
- * **permanently** stuck in `REVIEW_IN_PROGRESS`. The stack contains no
- * resources and can be safely deleted to recover.
+ * `ChangeSetType=CREATE` *before* a successful execute. When the underlying
+ * change set fails CloudFormation early-validation, the stack is permanently
+ * stuck in this state with zero resources.
+ *
+ * The `isRecoverableReview` flag set below merely advertises eligibility for
+ * the `agentcore deploy --recover` flow; it does **not** itself prove the
+ * stack is empty. The real safety check (verifying that no change set has
+ * been executed) lives in `recoverReviewInProgressStack`, which is invoked
+ * by the recover flow before the stack is deleted.
  *
  * See: https://github.com/aws/agentcore-cli/issues/907
  */

@@ -7,11 +7,28 @@ import {
 } from '@aws-sdk/client-cloudformation';
 
 /**
- * CloudFormation change set execution / status values that indicate a change
- * set has *not* been successfully executed and the stack therefore contains
- * no resources from it.
+ * CloudFormation change-set `Status` values that indicate the change set
+ * itself never reached a successful state (so deleting the stack is safe).
+ *
+ * `CREATE_COMPLETE` is also safe **iff** the corresponding `ExecutionStatus`
+ * indicates the change set was never actually executed (see
+ * {@link NON_EXECUTED_EXECUTION_STATUSES}). The combined check is performed
+ * inline in {@link recoverReviewInProgressStack}.
  */
 const NON_EXECUTED_CHANGE_SET_STATUSES = new Set(['FAILED', 'OBSOLETE']);
+
+/**
+ * CloudFormation change-set `ExecutionStatus` values that indicate the change
+ * set has not been executed against the stack.
+ *
+ * - `UNAVAILABLE` — change set creation failed; cannot be executed.
+ * - `AVAILABLE`   — change set is ready to execute but hasn't been.
+ * - `EXECUTE_FAILED` — execution attempt failed; CloudFormation does not
+ *   apply partial changes for `CHANGE_SET_TYPE=CREATE` so the stack stays
+ *   resource-free.
+ * - `OBSOLETE` — superseded by another change set; will not execute.
+ */
+const NON_EXECUTED_EXECUTION_STATUSES = new Set(['UNAVAILABLE', 'AVAILABLE', 'EXECUTE_FAILED', 'OBSOLETE']);
 
 export interface RecoverReviewInProgressOptions {
   /** Maximum total time to wait for stack deletion (ms). Default: 5 minutes. */
@@ -78,16 +95,31 @@ export async function recoverReviewInProgressStack(
     nextToken = resp.NextToken;
   } while (nextToken);
 
-  // 3. Refuse to delete if any change set was successfully executed
-  const allNonExecuted = changeSetSummaries.every(
-    cs =>
-      (cs.Status && NON_EXECUTED_CHANGE_SET_STATUSES.has(cs.Status)) ||
-      (cs.ExecutionStatus && NON_EXECUTED_CHANGE_SET_STATUSES.has(cs.ExecutionStatus)) ||
-      // No status reported is treated as non-executed only if execution status agrees
-      cs.ExecutionStatus === 'UNAVAILABLE'
-  );
+  // 3. Refuse to delete if any change set was successfully executed.
+  //    A change set is "non-executed" when its Status is FAILED/OBSOLETE
+  //    *or* its ExecutionStatus is in NON_EXECUTED_EXECUTION_STATUSES (which
+  //    covers the common `Status=CREATE_COMPLETE, ExecutionStatus=AVAILABLE`
+  //    case that triggered REVIEW_IN_PROGRESS in the first place).
+  const isNonExecuted = (cs: { Status?: string; ExecutionStatus?: string }) => {
+    if (cs.Status && NON_EXECUTED_CHANGE_SET_STATUSES.has(cs.Status)) return true;
+    if (cs.ExecutionStatus && NON_EXECUTED_EXECUTION_STATUSES.has(cs.ExecutionStatus)) return true;
+    return false;
+  };
 
-  if (changeSetSummaries.length > 0 && !allNonExecuted) {
+  // Empty change-set list is suspicious — the recovery contract relies on
+  // *evidence* that no change set has been executed. Without it, we may be
+  // looking at a stack whose change sets were already cleaned up. Refuse and
+  // let the user inspect it.
+  if (changeSetSummaries.length === 0) {
+    throw new Error(
+      `Refusing to auto-delete stack "${stackName}": no change sets found, so we cannot ` +
+        `verify the stack is empty. Inspect the stack in the AWS console before attempting recovery.`
+    );
+  }
+
+  const allNonExecuted = changeSetSummaries.every(isNonExecuted);
+
+  if (!allNonExecuted) {
     throw new Error(
       `Refusing to auto-delete stack "${stackName}": at least one change set has been executed. ` +
         `Inspect the stack in the AWS console before attempting recovery.`

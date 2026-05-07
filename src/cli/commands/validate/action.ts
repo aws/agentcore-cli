@@ -95,9 +95,9 @@ export function collectRuntimeRegionWarnings(
   const py314Agents = (projectSpec.runtimes ?? []).filter(r => r.runtimeVersion === 'PYTHON_3_14');
   if (py314Agents.length === 0) return warnings;
 
-  const unsupportedRegions = awsTargets
-    .map(t => t.region)
-    .filter(region => !PYTHON_3_14_SUPPORTED_REGIONS.includes(region));
+  const unsupportedRegions = Array.from(
+    new Set(awsTargets.map(t => t.region).filter(region => !PYTHON_3_14_SUPPORTED_REGIONS.includes(region)))
+  );
 
   if (unsupportedRegions.length === 0) return warnings;
 

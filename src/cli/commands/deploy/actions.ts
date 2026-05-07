@@ -15,8 +15,9 @@ import {
   parsePolicyEngineOutputs,
   parsePolicyOutputs,
   parseRuntimeEndpointOutputs,
+  recoverReviewInProgressStack,
 } from '../../cloudformation';
-import { getErrorMessage } from '../../errors';
+import { getErrorMessage, isEarlyValidationError } from '../../errors';
 import { ExecLogger } from '../../logging';
 import {
   bootstrapEnvironment,
@@ -320,7 +321,6 @@ export async function handleDeploy(options: ValidatedDeployOptions): Promise<Dep
       if (options.recover && deployabilityCheck.isRecoverableReview && deployabilityCheck.blockingStack) {
         logger.log(`Recovering stack "${deployabilityCheck.blockingStack}" stuck in REVIEW_IN_PROGRESS...`, 'warn');
         try {
-          const { recoverReviewInProgressStack } = await import('../../cloudformation');
           await recoverReviewInProgressStack(target.region, deployabilityCheck.blockingStack);
           logger.log(`Recovered stack "${deployabilityCheck.blockingStack}".`);
           deployabilityCheck = await checkStackDeployability(target.region, stackNames);
@@ -715,9 +715,29 @@ export async function handleDeploy(options: ValidatedDeployOptions): Promise<Dep
       postDeployWarnings: postDeployWarnings.length > 0 ? postDeployWarnings : undefined,
     };
   } catch (err: unknown) {
-    logger.log(getErrorMessage(err), 'error');
+    const errorMessage = getErrorMessage(err);
+    logger.log(errorMessage, 'error');
     logger.finalize(false);
-    return { success: false, error: getErrorMessage(err), logPath: logger.getRelativeLogPath() };
+
+    // Upgrade the user-facing message for CloudFormation early-validation
+    // failures (e.g. PYTHON_3_14 unavailable in target region). These leave
+    // the stack stuck in REVIEW_IN_PROGRESS; point the user at `--recover`
+    // and a known-good runtime. See
+    // https://github.com/aws/agentcore-cli/issues/907.
+    if (isEarlyValidationError(err)) {
+      const friendly =
+        `${errorMessage}\n\n` +
+        `CloudFormation rejected the template before any resources were created. ` +
+        `This is commonly caused by an unsupported runtime in this region (for example, ` +
+        `PYTHON_3_14 outside us-east-1 / us-west-2). ` +
+        `Try changing runtimeVersion to "PYTHON_3_13" in agentcore.json, or deploy in a ` +
+        `supported region. ` +
+        `Then run \`agentcore deploy --recover\` to delete the empty stack stuck in ` +
+        `REVIEW_IN_PROGRESS and retry.`;
+      return { success: false, error: friendly, logPath: logger.getRelativeLogPath() };
+    }
+
+    return { success: false, error: errorMessage, logPath: logger.getRelativeLogPath() };
   } finally {
     if (toolkitWrapper) {
       await toolkitWrapper.dispose();

@@ -135,4 +135,57 @@ describe('recoverReviewInProgressStack', () => {
       })
     ).rejects.toThrow(/Failed to delete stack/);
   });
+
+  it('refuses to delete when ListChangeSets returns no summaries', async () => {
+    mockSend.mockResolvedValueOnce({ Stacks: [{ StackStatus: 'REVIEW_IN_PROGRESS' }] });
+    mockSend.mockResolvedValueOnce({ Summaries: [] });
+
+    await expect(recoverReviewInProgressStack('us-east-1', 'MyStack', { client: makeClient() })).rejects.toThrow(
+      /no change sets found/
+    );
+
+    const deleteCalls = mockSend.mock.calls.filter(c => c[0] instanceof DeleteStackCommand);
+    expect(deleteCalls.length).toBe(0);
+  });
+
+  it('treats Status=CREATE_COMPLETE + ExecutionStatus=AVAILABLE as recoverable', async () => {
+    // This is the typical shape of the change set that *put* the stack into
+    // REVIEW_IN_PROGRESS in the first place — created successfully but never
+    // executed (e.g. the user is recovering from a prior early-validation
+    // failure flow).
+    mockSend.mockResolvedValueOnce({ Stacks: [{ StackStatus: 'REVIEW_IN_PROGRESS' }] });
+    mockSend.mockResolvedValueOnce({
+      Summaries: [{ Status: 'CREATE_COMPLETE', ExecutionStatus: 'AVAILABLE' }],
+    });
+    mockSend.mockResolvedValueOnce({}); // delete
+    const validationErr = new Error('Stack does not exist');
+    validationErr.name = 'ValidationError';
+    mockSend.mockRejectedValueOnce(validationErr);
+
+    const result = await recoverReviewInProgressStack('us-east-1', 'MyStack', {
+      pollIntervalMs: 1,
+      timeoutMs: 1000,
+      client: makeClient(),
+    });
+    expect(result.deleted).toBe(true);
+    expect(result.allChangeSetsNonExecuted).toBe(true);
+  });
+
+  it('treats ExecutionStatus=EXECUTE_FAILED as recoverable', async () => {
+    mockSend.mockResolvedValueOnce({ Stacks: [{ StackStatus: 'REVIEW_IN_PROGRESS' }] });
+    mockSend.mockResolvedValueOnce({
+      Summaries: [{ Status: 'CREATE_COMPLETE', ExecutionStatus: 'EXECUTE_FAILED' }],
+    });
+    mockSend.mockResolvedValueOnce({}); // delete
+    const validationErr = new Error('Stack does not exist');
+    validationErr.name = 'ValidationError';
+    mockSend.mockRejectedValueOnce(validationErr);
+
+    const result = await recoverReviewInProgressStack('us-east-1', 'MyStack', {
+      pollIntervalMs: 1,
+      timeoutMs: 1000,
+      client: makeClient(),
+    });
+    expect(result.deleted).toBe(true);
+  });
 });
