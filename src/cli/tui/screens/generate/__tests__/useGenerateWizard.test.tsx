@@ -383,6 +383,28 @@ describe('useGenerateWizard — advanced config gate', () => {
       expect(ref.current!.wizard.step).toBe('confirm');
       vi.useRealTimers();
     });
+
+    it('setDockerfile preserves directory components (no basename stripping)', () => {
+      // Regression test for #1128: the wizard must keep the user-supplied
+      // path intact so useAddAgent.handleCreatePath can resolve it relative
+      // to process.cwd() and copy the file.
+      vi.useFakeTimers();
+      const { ref } = setup();
+      walkToAdvancedWithContainer(ref);
+
+      act(() => ref.current!.wizard.setAdvanced(['dockerfile']));
+      act(() => {
+        vi.runAllTimers();
+      });
+
+      act(() => ref.current!.wizard.setDockerfile('./subdir/Dockerfile.dev'));
+      act(() => {
+        vi.runAllTimers();
+      });
+
+      expect(ref.current!.wizard.config.dockerfile).toBe('./subdir/Dockerfile.dev');
+      vi.useRealTimers();
+    });
   });
 
   describe('filesystem advanced setting', () => {

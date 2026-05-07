@@ -136,6 +136,62 @@ function mapAddAgentConfigToGenerateConfig(config: AddAgentConfig): GenerateConf
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// Dockerfile path helpers
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Result of resolving a user-supplied Dockerfile path.
+ *
+ * - `ok: true, copy: true`  → the user supplied a path; caller must copy
+ *   `sourcePath` into the destination dir under name `filename`.
+ * - `ok: true, copy: false` → user supplied a bare filename or nothing;
+ *   no copy is needed.
+ * - `ok: false`             → file does not exist at the resolved path.
+ */
+export type ResolveDockerfileResult =
+  | { ok: true; copy: false; filename: string | undefined }
+  | { ok: true; copy: true; sourcePath: string; filename: string }
+  | { ok: false; error: string };
+
+/**
+ * Resolve a user-supplied Dockerfile value relative to `cwd` (the directory
+ * the user invoked the CLI from).
+ *
+ * Behaviour:
+ *  - undefined / empty → no-op (`copy: false`, filename stays undefined).
+ *  - bare filename (e.g. `Dockerfile`) → no-op; the filename is preserved
+ *    as-is for the project spec.
+ *  - anything else (e.g. `./Dockerfile.dev`, `subdir/X`, `/abs/X`, `C:\X`) →
+ *    instruct the caller to copy from `resolve(cwd, value)` into the
+ *    destination directory, persisting only the basename.
+ *
+ * Validates that the resolved source file exists; returns `ok: false` with
+ * a descriptive error otherwise.
+ *
+ * Exported for unit testing — see issue #1128.
+ */
+export function resolveUserDockerfile(
+  value: string | undefined,
+  cwd: string,
+  fileExists: (p: string) => boolean = existsSync
+): ResolveDockerfileResult {
+  if (!value) {
+    return { ok: true, copy: false, filename: undefined };
+  }
+
+  // Bare filename → preserve as-is, no copy.
+  if (value === basename(value)) {
+    return { ok: true, copy: false, filename: value };
+  }
+
+  const sourcePath = resolve(cwd, value);
+  if (!fileExists(sourcePath)) {
+    return { ok: false, error: `Dockerfile not found at ${sourcePath}` };
+  }
+  return { ok: true, copy: true, sourcePath, filename: basename(sourcePath) };
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // Hook
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -264,15 +320,13 @@ async function handleCreatePath(
   // directory the user invoked the CLI from (process.cwd()), copy it into the
   // agent directory, and persist only the basename in the project spec
   // (agent-env schema requires a filename, not a path).
-  const userDockerfile = generateConfig.dockerfile;
-  if (userDockerfile && userDockerfile !== basename(userDockerfile)) {
-    const sourcePath = resolve(process.cwd(), userDockerfile);
-    if (!existsSync(sourcePath)) {
-      return { ok: false, error: `Dockerfile not found at ${sourcePath}` };
-    }
-    const filename = basename(sourcePath);
-    copyFileSync(sourcePath, join(agentPath, filename));
-    generateConfig.dockerfile = filename;
+  const dockerfileResolution = resolveUserDockerfile(generateConfig.dockerfile, process.cwd());
+  if (!dockerfileResolution.ok) {
+    return { ok: false, error: dockerfileResolution.error };
+  }
+  if (dockerfileResolution.copy) {
+    copyFileSync(dockerfileResolution.sourcePath, join(agentPath, dockerfileResolution.filename));
+    generateConfig.dockerfile = dockerfileResolution.filename;
   }
 
   // Write agent to project config
@@ -377,13 +431,13 @@ async function handleByoPath(
   // directory the user invoked the CLI from (process.cwd()), copy it into the
   // BYO code directory, and use only the basename when persisting.
   let dockerfileName = config.dockerfile;
-  if (dockerfileName && dockerfileName !== basename(dockerfileName)) {
-    const sourcePath = resolve(process.cwd(), dockerfileName);
-    if (!existsSync(sourcePath)) {
-      return { ok: false, error: `Dockerfile not found at ${sourcePath}` };
-    }
-    dockerfileName = basename(sourcePath);
-    copyFileSync(sourcePath, join(codeDir, dockerfileName));
+  const byoDockerfileResolution = resolveUserDockerfile(dockerfileName, process.cwd());
+  if (!byoDockerfileResolution.ok) {
+    return { ok: false, error: byoDockerfileResolution.error };
+  }
+  if (byoDockerfileResolution.copy) {
+    copyFileSync(byoDockerfileResolution.sourcePath, join(codeDir, byoDockerfileResolution.filename));
+    dockerfileName = byoDockerfileResolution.filename;
   }
 
   const project = await configIO.readProjectSpec();
