@@ -24,7 +24,7 @@ import { COMMAND_DESCRIPTIONS } from '../../tui/copy';
 import { requireProject, requireTTY } from '../../tui/guards';
 import { parseHeaderFlags } from '../shared/header-utils';
 import { runBrowserMode } from './browser-mode';
-import { isPortExplicit, resolveDevPort } from './port-resolution';
+import { computeTargetPort, isPortExplicit, resolveDevPort } from './port-resolution';
 import type { Command } from '@commander-js/extra-typings';
 import { spawn } from 'child_process';
 import { Text, render } from 'ink';
@@ -340,11 +340,16 @@ export const registerDev = (program: Command) => {
           const logger = new ExecLogger({ command: 'dev' });
 
           // Calculate port: A2A/MCP use fixed framework ports, HTTP uses configurable port.
-          // resolveDevPort encapsulates the issue #1079 logic (explicit-port
-          // honors literally, otherwise base + runtime-index offset with a
-          // visible log). It is unit-tested in __tests__/port-resolution.test.ts.
-          const httpResolution = resolveAgentPort(project, config.agentName, port, { explicit: portIsExplicit });
-          const targetPort = config.protocol === 'A2A' ? 9000 : config.protocol === 'MCP' ? 8000 : httpResolution.port;
+          // computeTargetPort + resolveDevPort encapsulate the issue #1079 logic
+          // (explicit-port honors literally, otherwise base + runtime-index offset
+          // with a visible log). Unit-tested in __tests__/port-resolution.test.ts.
+          const { targetPort } = computeTargetPort({
+            project,
+            agentName: config.agentName,
+            protocol: config.protocol,
+            basePort: port,
+            portIsExplicit,
+          });
           const actualPort = await findAvailablePort(targetPort);
           const resolution = resolveDevPort({
             project,

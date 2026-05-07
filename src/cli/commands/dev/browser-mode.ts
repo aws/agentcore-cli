@@ -177,7 +177,12 @@ export async function runBrowserMode(opts: BrowserModeOptions): Promise<void> {
       mode: 'dev',
       agents: agentInfoList,
       selectedAgent: agentName,
-      basePort: port,
+      // Only pass basePort when the user explicitly supplied --port. When
+      // implicit, leaving basePort undefined preserves the legacy
+      // `uiPort + 1 + index` allocation in handleStart, so HTTP agents
+      // continue to bind above the web UI's 8081 (avoiding the regression
+      // where index-1 agents would land on 8081 = web UI port).
+      basePort: portIsExplicit ? port : undefined,
       basePortIsExplicit: portIsExplicit,
       envVars: mergedEnvVars,
       getEnvVars: async () => {

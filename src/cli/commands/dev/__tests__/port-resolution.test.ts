@@ -1,5 +1,5 @@
 import type { AgentCoreProjectSpec, DirectoryPath, FilePath } from '../../../../schema';
-import { isPortExplicit, resolveDevPort } from '../port-resolution';
+import { computeTargetPort, isPortExplicit, resolveDevPort } from '../port-resolution';
 import { describe, expect, it, vi } from 'vitest';
 
 // Helper to cast strings to branded path types for testing
@@ -216,5 +216,77 @@ describe('resolveDevPort - A2A/MCP protocols', () => {
     expect(r.conflictError).toBeDefined();
     expect(r.conflictError).toMatch(/MCP agents require port 8000/);
     expect(r.conflictError).not.toMatch(/Pass a different --port/);
+  });
+});
+
+describe('computeTargetPort', () => {
+  it('agrees with resolveDevPort on targetPort for HTTP+implicit', () => {
+    const project = makeProject('AgentA', 'AgentB');
+    const args = {
+      project,
+      agentName: 'AgentB',
+      protocol: 'HTTP' as const,
+      basePort: 8080,
+      portIsExplicit: false,
+    };
+    const target = computeTargetPort(args);
+    const resolved = resolveDevPort({ ...args, availablePort: target.targetPort });
+    expect(resolved.port).toBe(target.targetPort);
+    expect(resolved.offset).toBe(target.offset);
+  });
+
+  it('agrees with resolveDevPort on targetPort for HTTP+explicit', () => {
+    const project = makeProject('AgentA', 'AgentB');
+    const args = {
+      project,
+      agentName: 'AgentB',
+      protocol: 'HTTP' as const,
+      basePort: 8788,
+      portIsExplicit: true,
+    };
+    const target = computeTargetPort(args);
+    expect(target.targetPort).toBe(8788);
+    expect(target.offset).toBe(0);
+  });
+
+  it('A2A always returns 9000 regardless of basePort', () => {
+    const project = makeProject('AgentA', 'AgentB');
+    const target = computeTargetPort({
+      project,
+      agentName: 'AgentB',
+      protocol: 'A2A',
+      basePort: 8080,
+      portIsExplicit: true,
+    });
+    expect(target.targetPort).toBe(9000);
+    expect(target.offset).toBe(0);
+    expect(target.infoLogs.every(l => !l.includes('index'))).toBe(true);
+  });
+
+  it('MCP always returns 8000 regardless of basePort', () => {
+    const project = makeProject('AgentA');
+    const target = computeTargetPort({
+      project,
+      agentName: 'AgentA',
+      protocol: 'MCP',
+      basePort: 9999,
+      portIsExplicit: false,
+    });
+    expect(target.targetPort).toBe(8000);
+    expect(target.offset).toBe(0);
+  });
+
+  it('emits offset log when HTTP runtime is at index > 0 and port is implicit', () => {
+    const project = makeProject('AgentA', 'AgentB', 'AgentC');
+    const target = computeTargetPort({
+      project,
+      agentName: 'AgentC',
+      protocol: 'HTTP',
+      basePort: 8080,
+      portIsExplicit: false,
+    });
+    expect(target.targetPort).toBe(8082);
+    expect(target.offset).toBe(2);
+    expect(target.infoLogs.some(l => l.includes('AgentC') && l.includes('index 2'))).toBe(true);
   });
 });

@@ -192,29 +192,34 @@ export function useDevServer(options: {
         }
         port = fixedPort;
       } else if (options.portIsExplicit) {
-        // User passed --port explicitly: honor it literally and fail fast on conflict.
+        // User passed --port explicitly: honor it literally and fail fast on
+        // conflict. Always probe regardless of restart state so a port stolen
+        // by another process between waitForPort() and the spawn is caught
+        // here with a clear message rather than surfacing as an opaque
+        // EADDRINUSE from the dev server.
         const available = await findAvailablePort(fixedPort);
-        if (!isRestart && available !== fixedPort) {
-          addLog('error', `Port ${fixedPort} is in use. Pass a different --port or stop the conflicting process.`);
-          setStatus('error');
-          return;
-        }
-        if (isRestart && !portFree) {
-          // Previous instance hasn't released the explicit port. Probe one more
-          // time and surface a clear error rather than silently attempting to
-          // bind a port we know is held — otherwise the user would only see an
-          // opaque EADDRINUSE from the spawned process.
-          const recheck = await findAvailablePort(fixedPort);
-          if (recheck !== fixedPort) {
-            addLog(
-              'error',
-              `Port ${fixedPort} still held by previous instance. ` +
-                `Stop the conflicting process or pass a different --port.`
-            );
+        if (available !== fixedPort) {
+          // On initial start (or when the previous instance still holds the
+          // port), this is a hard conflict — fail fast.
+          if (!isRestart) {
+            addLog('error', `Port ${fixedPort} is in use. Pass a different --port or stop the conflicting process.`);
             setStatus('error');
             return;
           }
+          // On restart with the previous instance still holding the port,
+          // emit a clearer message than the generic conflict text.
+          addLog(
+            'error',
+            `Port ${fixedPort} still held by previous instance. ` +
+              `Stop the conflicting process or pass a different --port.`
+          );
+          setStatus('error');
+          return;
         }
+        // On restart where the prior port has been released and reuse is
+        // possible, keep using actualPortRef.current to preserve session
+        // continuity. Otherwise bind to the explicit port we just verified
+        // is free.
         port = isRestart && portFree ? actualPortRef.current : fixedPort;
       } else {
         port = isRestart && portFree ? actualPortRef.current : await findAvailablePort(fixedPort);

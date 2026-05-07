@@ -27,11 +27,21 @@ export function isPortExplicit(
   return source !== undefined && source !== 'default';
 }
 
-/** Result of resolving the dev server's bind port for the --logs flow. */
+/** Result of {@link computeTargetPort}: where the dev server should *try* to bind. */
+export interface DevTargetPort {
+  /** The port to pass to `findAvailablePort` before spawning the dev server. */
+  targetPort: number;
+  /** Runtime-index offset applied to basePort (HTTP only; 0 for A2A/MCP). */
+  offset: number;
+  /** Informational log lines to emit before binding (e.g. the offset notice). */
+  infoLogs: string[];
+}
+
+/** Result of {@link resolveDevPort} after `findAvailablePort` has run. */
 export interface DevPortResolution {
   /** The port the dev server should bind to. */
   port: number;
-  /** Whether the resolved port differed from the user's `basePort` due to runtime index offset. */
+  /** Runtime-index offset applied to basePort (HTTP only; 0 for A2A/MCP). */
   offset: number;
   /** Informational log lines the caller should emit before binding. */
   infoLogs: string[];
@@ -40,15 +50,43 @@ export interface DevPortResolution {
 }
 
 /**
- * Pure helper that resolves the dev server's bind port for the non-interactive
- * (`--logs`) CLI flow. Mirrors the logic embedded in command.tsx so it can be
- * unit-tested without spawning a CLI process.
+ * Compute the port the dev server should *try* to bind to. Pure, no I/O.
  *
  * Precedence:
- *   1. A2A → 9000, MCP → 8000 (framework-fixed; only existing checkAvailable
- *      result determines conflict).
- *   2. HTTP: `resolveAgentPort` (honors `portIsExplicit` literally; otherwise
- *      applies basePort + runtime-index).
+ *   1. A2A → 9000, MCP → 8000 (framework-fixed).
+ *   2. HTTP → `resolveAgentPort` (explicit honors literally; otherwise
+ *      basePort + runtime-index).
+ *
+ * Also returns any informational log lines (e.g. the index-offset notice)
+ * the caller should emit before invoking `findAvailablePort`.
+ */
+export function computeTargetPort(args: {
+  project: AgentCoreProjectSpec | null;
+  agentName: string;
+  protocol: ProtocolMode;
+  basePort: number;
+  portIsExplicit: boolean;
+}): DevTargetPort {
+  const { project, agentName, protocol, basePort, portIsExplicit } = args;
+  const isA2A = protocol === 'A2A';
+  const isMcp = protocol === 'MCP';
+  const httpResolution = resolveAgentPort(project, agentName, basePort, { explicit: portIsExplicit });
+  const targetPort = isA2A ? 9000 : isMcp ? 8000 : httpResolution.port;
+
+  const infoLogs: string[] = [];
+  if (!isA2A && !isMcp && httpResolution.offset > 0) {
+    infoLogs.push(
+      `Runtime "${agentName}" is at index ${httpResolution.offset}; using port ${targetPort} ` +
+        `(pass --port ${targetPort} explicitly to override).`
+    );
+  }
+
+  return { targetPort, offset: httpResolution.offset, infoLogs };
+}
+
+/**
+ * Pure helper that resolves the dev server's bind port for the non-interactive
+ * (`--logs`) CLI flow. Composes {@link computeTargetPort} with conflict checks.
  *
  * Conflict semantics:
  *   - A2A/MCP: any deviation from the fixed port → conflictError.
@@ -64,27 +102,16 @@ export function resolveDevPort(args: {
   /** Result from `findAvailablePort(targetPort)`; pass through so this stays pure. */
   availablePort: number;
 }): DevPortResolution {
-  const { project, agentName, protocol, basePort, portIsExplicit, availablePort } = args;
+  const { protocol, portIsExplicit, availablePort } = args;
+  const { targetPort, offset, infoLogs } = computeTargetPort(args);
   const isA2A = protocol === 'A2A';
   const isMcp = protocol === 'MCP';
-  const httpResolution = resolveAgentPort(project, agentName, basePort, { explicit: portIsExplicit });
-  const targetPort = isA2A ? 9000 : isMcp ? 8000 : httpResolution.port;
-
-  const infoLogs: string[] = [];
-
-  // Surface the index-based offset so it isn't silent (issue #1079).
-  if (!isA2A && !isMcp && httpResolution.offset > 0) {
-    infoLogs.push(
-      `Runtime "${agentName}" is at index ${httpResolution.offset}; using port ${targetPort} ` +
-        `(pass --port ${targetPort} explicitly to override).`
-    );
-  }
 
   // Conflict checks
   if ((isA2A || isMcp) && availablePort !== targetPort) {
     return {
       port: targetPort,
-      offset: httpResolution.offset,
+      offset,
       infoLogs,
       conflictError: `Port ${targetPort} is in use. ${protocol} agents require port ${targetPort}.`,
     };
@@ -92,7 +119,7 @@ export function resolveDevPort(args: {
   if (!isA2A && !isMcp && portIsExplicit && availablePort !== targetPort) {
     return {
       port: targetPort,
-      offset: httpResolution.offset,
+      offset,
       infoLogs,
       conflictError: `Port ${targetPort} is in use. Pass a different --port or stop the conflicting process.`,
     };
@@ -103,7 +130,7 @@ export function resolveDevPort(args: {
 
   return {
     port: availablePort,
-    offset: httpResolution.offset,
+    offset,
     infoLogs,
   };
 }
