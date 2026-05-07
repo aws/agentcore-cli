@@ -13,6 +13,10 @@ describe('dev command', () => {
       expect(result.stdout.includes('--stream'), 'Should show --stream option').toBeTruthy();
       expect(result.stdout.includes('--logs'), 'Should show --logs option').toBeTruthy();
       expect(result.stdout.includes('8080'), 'Should show default port').toBeTruthy();
+      expect(
+        /base.*port|runtime\s+index/i.test(result.stdout),
+        'Should document multi-runtime --port semantics (issue #1079)'
+      ).toBeTruthy();
     });
 
     it('does not show --invoke flag', async () => {

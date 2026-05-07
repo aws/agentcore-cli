@@ -1,5 +1,5 @@
 import type { AgentCoreProjectSpec, DirectoryPath, FilePath } from '../../../../schema';
-import { getAgentPort, getDevConfig, getDevSupportedAgents } from '../config';
+import { getAgentPort, getDevConfig, getDevSupportedAgents, resolveAgentPort } from '../config';
 import { describe, expect, it } from 'vitest';
 
 // Helper to cast strings to branded path types for testing
@@ -501,6 +501,61 @@ describe('getAgentPort', () => {
     };
 
     expect(getAgentPort(project, 'NonExistent', 9000)).toBe(9000);
+  });
+});
+
+describe('resolveAgentPort', () => {
+  const makeProject = (...names: string[]): AgentCoreProjectSpec => ({
+    name: 'TestProject',
+    version: 1,
+    managedBy: 'CDK' as const,
+    runtimes: names.map(name => ({
+      name,
+      build: 'CodeZip' as const,
+      runtimeVersion: 'PYTHON_3_12' as const,
+      entrypoint: filePath('main.py'),
+      codeLocation: dirPath(`./agents/${name}`),
+      protocol: 'HTTP' as const,
+    })),
+    memories: [],
+    credentials: [],
+    evaluators: [],
+    onlineEvalConfigs: [],
+    agentCoreGateways: [],
+    policyEngines: [],
+    configBundles: [],
+    abTests: [],
+    httpGateways: [],
+  });
+
+  it('returns basePort with zero offset when project is null', () => {
+    expect(resolveAgentPort(null, 'any', 8080)).toEqual({ port: 8080, offset: 0 });
+  });
+
+  it('returns basePort + index with offset > 0 when not explicit', () => {
+    const project = makeProject('A', 'B', 'C');
+    expect(resolveAgentPort(project, 'A', 8080)).toEqual({ port: 8080, offset: 0 });
+    expect(resolveAgentPort(project, 'B', 8080)).toEqual({ port: 8081, offset: 1 });
+    expect(resolveAgentPort(project, 'C', 8080)).toEqual({ port: 8082, offset: 2 });
+  });
+
+  it('honors basePort literally when explicit (no offset, regardless of index)', () => {
+    const project = makeProject('A', 'B', 'C');
+    expect(resolveAgentPort(project, 'A', 8788, { explicit: true })).toEqual({ port: 8788, offset: 0 });
+    expect(resolveAgentPort(project, 'B', 8788, { explicit: true })).toEqual({ port: 8788, offset: 0 });
+    expect(resolveAgentPort(project, 'C', 8788, { explicit: true })).toEqual({ port: 8788, offset: 0 });
+  });
+
+  it('returns basePort with zero offset when agent is not found', () => {
+    const project = makeProject('A', 'B');
+    expect(resolveAgentPort(project, 'Missing', 9000)).toEqual({ port: 9000, offset: 0 });
+  });
+
+  it('getAgentPort wrapper still returns a number for backwards compat', () => {
+    const project = makeProject('A', 'B');
+    expect(getAgentPort(project, 'A', 8080)).toBe(8080);
+    expect(getAgentPort(project, 'B', 8080)).toBe(8081);
+    expect(typeof getAgentPort(project, 'A', 8080)).toBe('number');
   });
 });
 
