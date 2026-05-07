@@ -1,6 +1,6 @@
 import { findConfigRoot } from '../../lib';
-import type { OnlineEvalConfig } from '../../schema';
-import { OnlineEvalConfigSchema } from '../../schema';
+import type { OnlineEvalConfig, OnlineEvalFilter } from '../../schema';
+import { OnlineEvalConfigSchema, OnlineEvalFilterSchema } from '../../schema';
 import { getErrorMessage } from '../errors';
 import type { RemovalPreview, RemovalResult, SchemaChange } from '../operations/remove/types';
 import { cliCommandRun } from '../telemetry/cli-command-run.js';
@@ -16,6 +16,10 @@ export interface AddOnlineEvalConfigOptions {
   samplingRate: number;
   enableOnCreate?: boolean;
   endpoint?: string;
+  /** Session idle timeout in minutes (1-1440). If omitted, the service applies a default of 5 minutes. */
+  sessionTimeoutMinutes?: number;
+  /** Optional rule filters scoping which sessions are evaluated. */
+  filters?: OnlineEvalFilter[];
 }
 
 export type RemovableOnlineEvalConfig = RemovableResource;
@@ -112,6 +116,14 @@ export class OnlineEvalConfigPrimitive extends BasePrimitive<AddOnlineEvalConfig
       .option('--evaluator-arn <arns...>', 'Evaluator ARN(s) [non-interactive]')
       .option('--sampling-rate <rate>', 'Sampling percentage (0.01-100) [non-interactive]')
       .option('--endpoint <name>', 'Runtime endpoint name to scope monitoring [non-interactive]')
+      .option(
+        '--session-timeout <minutes>',
+        'Session idle timeout in minutes, integer 1-1440 (default: service applies 5) [non-interactive]'
+      )
+      .option(
+        '--filters <json>',
+        'Rule filters as JSON array, e.g. \'[{"key":"user.id","operator":"Equals","value":{"stringValue":"abc"}}]\' [non-interactive]'
+      )
       .option('--enable-on-create', 'Enable evaluation immediately after deploy [non-interactive]')
       .option('--json', 'Output as JSON [non-interactive]')
       .action(
@@ -122,6 +134,8 @@ export class OnlineEvalConfigPrimitive extends BasePrimitive<AddOnlineEvalConfig
           evaluatorArn?: string[];
           samplingRate?: string;
           endpoint?: string;
+          sessionTimeout?: string;
+          filters?: string;
           enableOnCreate?: boolean;
           json?: boolean;
         }) => {
@@ -149,11 +163,50 @@ export class OnlineEvalConfigPrimitive extends BasePrimitive<AddOnlineEvalConfig
                 );
               }
 
+              // Optional session timeout (1-1440 minutes)
+              let sessionTimeoutMinutes: number | undefined;
+              if (cliOptions.sessionTimeout !== undefined) {
+                const n = Number(cliOptions.sessionTimeout);
+                if (!Number.isInteger(n) || n < 1 || n > 1440) {
+                  throw new Error(
+                    `Invalid --session-timeout "${cliOptions.sessionTimeout}". Must be an integer between 1 and 1440`
+                  );
+                }
+                sessionTimeoutMinutes = n;
+              }
+
+              // Optional filters (JSON array, validated against schema)
+              let filters: OnlineEvalFilter[] | undefined;
+              if (cliOptions.filters !== undefined) {
+                let parsed: unknown;
+                try {
+                  parsed = JSON.parse(cliOptions.filters);
+                } catch (err) {
+                  throw new Error(`Invalid --filters JSON: ${getErrorMessage(err)}`);
+                }
+                if (!Array.isArray(parsed)) {
+                  throw new Error('--filters must be a JSON array of filter objects');
+                }
+                const validated: OnlineEvalFilter[] = [];
+                for (const [i, raw] of parsed.entries()) {
+                  const result = OnlineEvalFilterSchema.safeParse(raw);
+                  if (!result.success) {
+                    throw new Error(`Invalid --filters[${i}]: ${result.error.issues.map(x => x.message).join('; ')}`);
+                  }
+                  validated.push(result.data);
+                }
+                if (validated.length > 0) {
+                  filters = validated;
+                }
+              }
+
               const result = await this.add({
                 name: cliOptions.name,
                 agent: cliOptions.runtime,
                 evaluators: allEvaluators,
                 samplingRate,
+                ...(sessionTimeoutMinutes !== undefined && { sessionTimeoutMinutes }),
+                ...(filters && { filters }),
                 enableOnCreate: cliOptions.enableOnCreate,
                 endpoint: cliOptions.endpoint,
               });
@@ -233,6 +286,8 @@ export class OnlineEvalConfigPrimitive extends BasePrimitive<AddOnlineEvalConfig
       agent: options.agent,
       evaluators: options.evaluators,
       samplingRate: options.samplingRate,
+      ...(options.sessionTimeoutMinutes !== undefined && { sessionTimeoutMinutes: options.sessionTimeoutMinutes }),
+      ...(options.filters && options.filters.length > 0 && { filters: options.filters }),
       ...(options.enableOnCreate !== undefined && { enableOnCreate: options.enableOnCreate }),
       ...(options.endpoint && { endpoint: options.endpoint }),
     };

@@ -1,4 +1,5 @@
-import type { OnlineEvalConfig, OnlineEvalFilter, OnlineEvalFilterOperator } from '../../../schema';
+import type { OnlineEvalConfig, OnlineEvalFilter } from '../../../schema';
+import { OnlineEvalFilterOperatorSchema } from '../../../schema';
 import type { GetOnlineEvalConfigResult, OnlineEvalConfigSummary } from '../../aws/agentcore-control';
 import {
   getOnlineEvaluationConfig,
@@ -37,6 +38,25 @@ export function toOnlineEvalConfigSpec(
     throw new Error(`Online eval config "${detail.configName}" has no sampling configuration. Cannot import.`);
   }
 
+  // Validate operator values against the local schema enum. The service may
+  // return values not yet known to this CLI (e.g. newer API additions); skip
+  // those with a warning instead of writing an invalid spec to disk.
+  const validatedFilters: OnlineEvalFilter[] = [];
+  for (const f of detail.filters ?? []) {
+    const opResult = OnlineEvalFilterOperatorSchema.safeParse(f.operator);
+    if (!opResult.success) {
+      process.stderr.write(
+        `${ANSI.dim}[warn]${ANSI.reset} skipping filter with unsupported operator "${f.operator}" on online eval config "${detail.configName}"\n`
+      );
+      continue;
+    }
+    validatedFilters.push({
+      key: f.key,
+      operator: opResult.data,
+      value: { ...f.value },
+    });
+  }
+
   return {
     name: localName,
     agent: agentName,
@@ -44,14 +64,7 @@ export function toOnlineEvalConfigSpec(
     samplingRate: detail.samplingPercentage,
     ...(detail.description && { description: detail.description }),
     ...(detail.sessionTimeoutMinutes !== undefined && { sessionTimeoutMinutes: detail.sessionTimeoutMinutes }),
-    ...(detail.filters &&
-      detail.filters.length > 0 && {
-        filters: detail.filters.map(f => ({
-          key: f.key,
-          operator: f.operator as OnlineEvalFilterOperator,
-          value: { ...f.value },
-        })) satisfies OnlineEvalFilter[],
-      }),
+    ...(validatedFilters.length > 0 && { filters: validatedFilters }),
     ...(detail.executionStatus === 'ENABLED' && { enableOnCreate: true }),
   };
 }

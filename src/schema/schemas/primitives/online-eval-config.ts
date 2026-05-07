@@ -59,7 +59,7 @@ export const OnlineEvalConfigSchema = z.object({
   samplingRate: z.number().min(0.01).max(100),
   /** Optional description for the online eval config */
   description: z.string().max(200).optional(),
-  /** Session idle timeout in minutes (1-1440). Default: 5 */
+  /** Session idle timeout in minutes (1-1440). If omitted, the service applies a default of 5 minutes. */
   sessionTimeoutMinutes: z.number().int().min(1).max(1440).optional(),
   /** Optional filters applied to the evaluation rule */
   filters: z.array(OnlineEvalFilterSchema).optional(),

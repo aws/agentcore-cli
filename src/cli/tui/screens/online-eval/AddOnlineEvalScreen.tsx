@@ -303,8 +303,9 @@ export function AddOnlineEvalScreen({
                   wizard.setSessionTimeout(undefined);
                   return;
                 }
-                const n = parseInt(trimmed, 10);
-                if (isNaN(n) || n < 1 || n > 1440) return;
+                // customValidation has already gated submission; mirror its parsing.
+                const n = Number(trimmed);
+                if (!Number.isInteger(n) || n < 1 || n > 1440) return;
                 wizard.setSessionTimeout(n);
               }}
               onCancel={() => wizard.goBack()}
@@ -323,7 +324,8 @@ export function AddOnlineEvalScreen({
         {isFiltersStep && (
           <Box flexDirection="column">
             <Text dimColor>
-              Optional filters scope which sessions get evaluated. Enter a JSON array of filters or leave blank to skip.
+              Optional filters scope which sessions get evaluated. Enter a JSON array of filters or leave blank to skip
+              (you can add or edit filters later in agentcore/agentcore.json).
             </Text>
             <Text dimColor>Operators: {ONLINE_EVAL_FILTER_OPERATORS.join(', ')}</Text>
             <Text dimColor>{'Example: [{"key":"user.id","operator":"Equals","value":{"stringValue":"123"}}]'}</Text>

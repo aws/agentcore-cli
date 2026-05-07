@@ -786,6 +786,13 @@ export async function getOnlineEvaluationConfig(
           if (v.stringValue !== undefined) value.stringValue = v.stringValue;
           if (v.doubleValue !== undefined) value.doubleValue = v.doubleValue;
           if (v.booleanValue !== undefined) value.booleanValue = v.booleanValue;
+          // Drop filters whose value did not have exactly one of the three
+          // supported branches set — they would later fail schema validation.
+          const setCount =
+            Number(value.stringValue !== undefined) +
+            Number(value.doubleValue !== undefined) +
+            Number(value.booleanValue !== undefined);
+          if (setCount !== 1) return undefined;
           return { key, operator, value };
         })
         .filter(
