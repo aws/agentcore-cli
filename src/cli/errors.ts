@@ -161,18 +161,22 @@ export function isChangesetInProgressError(err: unknown): boolean {
 
 /**
  * Checks if an error originates from CloudFormation early validation hooks
- * (e.g. `AWS::EarlyValidation::PropertyValidation`). These errors typically
+ * (e.g. `AWS::EarlyValidation::PropertyValidation`, or future hook subtypes
+ * under the `AWS::EarlyValidation::` namespace). These errors typically
  * indicate that the template references a value the service does not support
  * in the target region (for example, a Python runtime not yet GA in that
  * region — see https://github.com/aws/agentcore-cli/issues/907).
  */
 export function isEarlyValidationError(err: unknown): boolean {
   const message = getErrorMessage(err).toLowerCase();
-  return (
-    message.includes('aws::earlyvalidation::propertyvalidation') ||
-    message.includes('earlyvalidation::propertyvalidation') ||
-    (message.includes('hook(s)/validation failed') && message.includes('earlyvalidation'))
-  );
+  // Match any `AWS::EarlyValidation::*` hook (PropertyValidation today, but
+  // CloudFormation may add more subtypes). The single `earlyvalidation::`
+  // substring is sufficient because CFN renders the namespace separator
+  // consistently. Also accept the older "hook(s)/validation failed" framing
+  // for cases where the hook name is logged with different separators.
+  if (message.includes('earlyvalidation::')) return true;
+  if (message.includes('hook(s)/validation failed') && message.includes('earlyvalidation')) return true;
+  return false;
 }
 
 /**

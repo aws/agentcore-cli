@@ -17,7 +17,7 @@ import {
   parseRuntimeEndpointOutputs,
   recoverReviewInProgressStack,
 } from '../../cloudformation';
-import { getErrorMessage, isEarlyValidationError } from '../../errors';
+import { getErrorMessage, isEarlyValidationError, isReviewInProgressError } from '../../errors';
 import { ExecLogger } from '../../logging';
 import {
   bootstrapEnvironment,
@@ -734,6 +734,19 @@ export async function handleDeploy(options: ValidatedDeployOptions): Promise<Dep
         `supported region. ` +
         `Then run \`agentcore deploy --recover\` to delete the empty stack stuck in ` +
         `REVIEW_IN_PROGRESS and retry.`;
+      return { success: false, error: friendly, logPath: logger.getRelativeLogPath() };
+    }
+
+    // If we hit a stack-stuck-in-REVIEW_IN_PROGRESS error here (e.g. retried
+    // deploy without --recover after a previous early-validation failure),
+    // point the user at the recovery flow. See
+    // https://github.com/aws/agentcore-cli/issues/907.
+    if (isReviewInProgressError(err)) {
+      const friendly =
+        `${errorMessage}\n\n` +
+        `The CloudFormation stack is stuck in REVIEW_IN_PROGRESS, which usually means a ` +
+        `prior deploy failed CloudFormation early validation. ` +
+        `Run \`agentcore deploy --recover\` to delete the empty stack and retry.`;
       return { success: false, error: friendly, logPath: logger.getRelativeLogPath() };
     }
 

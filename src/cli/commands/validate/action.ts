@@ -76,6 +76,34 @@ export async function handleValidate(options: ValidateOptions): Promise<Validate
 
 interface ProjectSpecForWarnings {
   runtimes?: Array<{ name: string; runtimeVersion?: string }>;
+  /**
+   * MCP runtime tools deployed as AgentCore Runtime compute. The Python
+   * version lives at `compute.runtime.pythonVersion`.
+   */
+  mcpRuntimeTools?: Array<{
+    name: string;
+    compute?: {
+      host?: string;
+      runtime?: { pythonVersion?: string };
+      pythonVersion?: string;
+    };
+  }>;
+  /**
+   * MCP gateways with Lambda or AgentCoreRuntime compute targets. Lambda
+   * targets carry pythonVersion directly on the compute; AgentCoreRuntime
+   * targets carry it under `compute.runtime.pythonVersion`.
+   */
+  agentCoreGateways?: Array<{
+    name: string;
+    targets?: Array<{
+      name?: string;
+      compute?: {
+        host?: string;
+        runtime?: { pythonVersion?: string };
+        pythonVersion?: string;
+      };
+    }>;
+  }>;
 }
 
 interface AwsTargetForWarnings {
@@ -83,8 +111,21 @@ interface AwsTargetForWarnings {
 }
 
 /**
+ * Extracts the Python runtime version (if any) from a compute config object,
+ * regardless of host shape (Lambda's flat `pythonVersion` or AgentCoreRuntime's
+ * nested `runtime.pythonVersion`).
+ */
+function getPythonVersionFromCompute(
+  compute: { runtime?: { pythonVersion?: string }; pythonVersion?: string } | undefined
+): string | undefined {
+  if (!compute) return undefined;
+  return compute.runtime?.pythonVersion ?? compute.pythonVersion;
+}
+
+/**
  * Returns a list of non-fatal validation warnings. Currently only checks
- * Python 3.14 region availability.
+ * Python 3.14 region availability across agents, MCP runtime tools, and
+ * gateway targets.
  */
 export function collectRuntimeRegionWarnings(
   projectSpec: ProjectSpecForWarnings,
@@ -92,8 +133,30 @@ export function collectRuntimeRegionWarnings(
 ): string[] {
   const warnings: string[] = [];
 
-  const py314Agents = (projectSpec.runtimes ?? []).filter(r => r.runtimeVersion === 'PYTHON_3_14');
-  if (py314Agents.length === 0) return warnings;
+  // Collect every component that selected PYTHON_3_14, with a friendly label
+  // for the warning message.
+  const py314Components: string[] = [];
+
+  for (const r of projectSpec.runtimes ?? []) {
+    if (r.runtimeVersion === 'PYTHON_3_14') py314Components.push(`agent "${r.name}"`);
+  }
+
+  for (const tool of projectSpec.mcpRuntimeTools ?? []) {
+    if (getPythonVersionFromCompute(tool.compute) === 'PYTHON_3_14') {
+      py314Components.push(`MCP tool "${tool.name}"`);
+    }
+  }
+
+  for (const gw of projectSpec.agentCoreGateways ?? []) {
+    for (const tgt of gw.targets ?? []) {
+      if (getPythonVersionFromCompute(tgt.compute) === 'PYTHON_3_14') {
+        const targetLabel = tgt.name ? `target "${tgt.name}"` : 'target';
+        py314Components.push(`gateway "${gw.name}" ${targetLabel}`);
+      }
+    }
+  }
+
+  if (py314Components.length === 0) return warnings;
 
   const unsupportedRegions = Array.from(
     new Set(awsTargets.map(t => t.region).filter(region => !PYTHON_3_14_SUPPORTED_REGIONS.includes(region)))
@@ -101,9 +164,8 @@ export function collectRuntimeRegionWarnings(
 
   if (unsupportedRegions.length === 0) return warnings;
 
-  const agentNames = py314Agents.map(a => a.name).join(', ');
   warnings.push(
-    `Agent(s) [${agentNames}] use runtimeVersion "PYTHON_3_14", which is not yet ` +
+    `Component(s) [${py314Components.join(', ')}] use Python 3.14, which is not yet ` +
       `available in region(s): ${unsupportedRegions.join(', ')}. ` +
       `CloudFormation will reject the deployment with an early-validation error. ` +
       `Switch to "PYTHON_3_13" or deploy in one of: ${PYTHON_3_14_SUPPORTED_REGIONS.join(', ')}.`

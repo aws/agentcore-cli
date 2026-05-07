@@ -217,6 +217,20 @@ describe('errors', () => {
       expect(isEarlyValidationError(new Error('EarlyValidation::PropertyValidation rejected runtime'))).toBe(true);
     });
 
+    it('detects other AWS::EarlyValidation:: hook subtypes', () => {
+      // Future-proofing: any hook under the EarlyValidation namespace should match.
+      expect(isEarlyValidationError(new Error('AWS::EarlyValidation::SomeOtherCheck failed for resource'))).toBe(true);
+    });
+
+    it('detects messages that only carry the hook(s)/validation framing', () => {
+      // When CFN logs the hook name with different separators, we still recognize it.
+      expect(
+        isEarlyValidationError(
+          new Error('The following hook(s)/validation failed: [AWS-EarlyValidation-PropertyValidation]')
+        )
+      ).toBe(true);
+    });
+
     it('returns false for unrelated errors', () => {
       expect(isEarlyValidationError(new Error('CREATE_FAILED'))).toBe(false);
       expect(isEarlyValidationError(new Error('Stack not found'))).toBe(false);

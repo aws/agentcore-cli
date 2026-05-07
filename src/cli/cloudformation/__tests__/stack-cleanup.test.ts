@@ -136,16 +136,29 @@ describe('recoverReviewInProgressStack', () => {
     ).rejects.toThrow(/Failed to delete stack/);
   });
 
-  it('refuses to delete when ListChangeSets returns no summaries', async () => {
+  it('proceeds with deletion when ListChangeSets returns no summaries (with warning)', async () => {
+    // CloudFormation may auto-purge old change sets; REVIEW_IN_PROGRESS itself
+    // is sufficient evidence that the stack contains no resources.
     mockSend.mockResolvedValueOnce({ Stacks: [{ StackStatus: 'REVIEW_IN_PROGRESS' }] });
     mockSend.mockResolvedValueOnce({ Summaries: [] });
+    mockSend.mockResolvedValueOnce({}); // delete
+    const validationErr = new Error('Stack does not exist');
+    validationErr.name = 'ValidationError';
+    mockSend.mockRejectedValueOnce(validationErr);
 
-    await expect(recoverReviewInProgressStack('us-east-1', 'MyStack', { client: makeClient() })).rejects.toThrow(
-      /no change sets found/
-    );
-
+    const warnings: string[] = [];
+    const result = await recoverReviewInProgressStack('us-east-1', 'MyStack', {
+      pollIntervalMs: 1,
+      timeoutMs: 1000,
+      client: makeClient(),
+      onWarning: msg => warnings.push(msg),
+    });
+    expect(result.deleted).toBe(true);
+    expect(result.changeSetCount).toBe(0);
+    expect(warnings.length).toBe(1);
+    expect(warnings[0]).toContain('no change sets');
     const deleteCalls = mockSend.mock.calls.filter(c => c[0] instanceof DeleteStackCommand);
-    expect(deleteCalls.length).toBe(0);
+    expect(deleteCalls.length).toBe(1);
   });
 
   it('treats Status=CREATE_COMPLETE + ExecutionStatus=AVAILABLE as recoverable', async () => {
@@ -187,5 +200,38 @@ describe('recoverReviewInProgressStack', () => {
       client: makeClient(),
     });
     expect(result.deleted).toBe(true);
+  });
+
+  it('throws a Timed out error when the deadline elapses without delete completing', async () => {
+    mockSend.mockResolvedValueOnce({ Stacks: [{ StackStatus: 'REVIEW_IN_PROGRESS' }] });
+    mockSend.mockResolvedValueOnce({ Summaries: [{ Status: 'FAILED' }] });
+    mockSend.mockResolvedValueOnce({}); // delete
+    // Subsequent describes always return DELETE_IN_PROGRESS
+    mockSend.mockResolvedValue({ Stacks: [{ StackStatus: 'DELETE_IN_PROGRESS' }] });
+
+    await expect(
+      recoverReviewInProgressStack('us-east-1', 'MyStack', {
+        pollIntervalMs: 1,
+        timeoutMs: 5,
+        client: makeClient(),
+      })
+    ).rejects.toThrow(/Timed out waiting for stack/);
+  });
+
+  it('re-throws non-ValidationError errors raised by DescribeStacks during polling', async () => {
+    mockSend.mockResolvedValueOnce({ Stacks: [{ StackStatus: 'REVIEW_IN_PROGRESS' }] });
+    mockSend.mockResolvedValueOnce({ Summaries: [{ Status: 'FAILED' }] });
+    mockSend.mockResolvedValueOnce({}); // delete
+    const accessDenied = new Error('Access denied');
+    accessDenied.name = 'AccessDeniedException';
+    mockSend.mockRejectedValueOnce(accessDenied);
+
+    await expect(
+      recoverReviewInProgressStack('us-east-1', 'MyStack', {
+        pollIntervalMs: 1,
+        timeoutMs: 1000,
+        client: makeClient(),
+      })
+    ).rejects.toThrow(/Access denied/);
   });
 });

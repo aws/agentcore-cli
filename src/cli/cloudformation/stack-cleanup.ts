@@ -40,6 +40,13 @@ export interface RecoverReviewInProgressOptions {
    * new client is constructed using the configured region and credentials.
    */
   client?: CloudFormationClient;
+  /**
+   * Optional logger callback for non-fatal observations (e.g. "no change sets
+   * found, proceeding because stack is REVIEW_IN_PROGRESS"). Tests and the
+   * deploy flow can hook this in; defaults to a no-op so the helper is
+   * usable from any context.
+   */
+  onWarning?: (message: string) => void;
 }
 
 export interface RecoverReviewInProgressResult {
@@ -106,32 +113,39 @@ export async function recoverReviewInProgressStack(
     return false;
   };
 
-  // Empty change-set list is suspicious — the recovery contract relies on
-  // *evidence* that no change set has been executed. Without it, we may be
-  // looking at a stack whose change sets were already cleaned up. Refuse and
-  // let the user inspect it.
+  // Empty change-set list is a corner case: CloudFormation auto-purges old
+  // change sets after a while, and users can also delete them manually. The
+  // stack's `REVIEW_IN_PROGRESS` status is itself authoritative evidence that
+  // no resources have been provisioned, so we proceed with deletion but emit
+  // a warning so operators know the safety check could not be performed
+  // through change-set inspection.
   if (changeSetSummaries.length === 0) {
-    throw new Error(
-      `Refusing to auto-delete stack "${stackName}": no change sets found, so we cannot ` +
-        `verify the stack is empty. Inspect the stack in the AWS console before attempting recovery.`
+    options.onWarning?.(
+      `Stack "${stackName}" is in REVIEW_IN_PROGRESS but has no change sets to inspect. ` +
+        `Proceeding with deletion based on stack status alone (REVIEW_IN_PROGRESS implies no resources).`
     );
+  } else {
+    const allNonExecuted = changeSetSummaries.every(isNonExecuted);
+    if (!allNonExecuted) {
+      throw new Error(
+        `Refusing to auto-delete stack "${stackName}": at least one change set has been executed. ` +
+          `Inspect the stack in the AWS console before attempting recovery.`
+      );
+    }
   }
 
-  const allNonExecuted = changeSetSummaries.every(isNonExecuted);
-
-  if (!allNonExecuted) {
-    throw new Error(
-      `Refusing to auto-delete stack "${stackName}": at least one change set has been executed. ` +
-        `Inspect the stack in the AWS console before attempting recovery.`
-    );
-  }
+  const allNonExecuted = changeSetSummaries.length === 0 || changeSetSummaries.every(isNonExecuted);
 
   // 4. Delete the stack
   await cfn.send(new DeleteStackCommand({ StackName: stackName }));
 
-  // 5. Poll until the stack disappears or hits an unrecoverable state
+  // 5. Poll until the stack disappears or hits an unrecoverable state.
+  //    Use a do/while so the body runs at least once even if `timeoutMs`
+  //    is 0 or the deadline already lapsed by the time the DeleteStack
+  //    request returned (otherwise we'd spuriously throw "Timed out…"
+  //    even when the delete request was actually accepted).
   const deadline = Date.now() + timeoutMs;
-  while (Date.now() < deadline) {
+  do {
     try {
       const resp = await cfn.send(new DescribeStacksCommand({ StackName: stackName }));
       const current = resp.Stacks?.[0];
@@ -159,8 +173,9 @@ export async function recoverReviewInProgressStack(
       }
       throw err;
     }
+    if (Date.now() >= deadline) break;
     await new Promise(resolve => setTimeout(resolve, pollIntervalMs));
-  }
+  } while (Date.now() < deadline);
 
   throw new Error(`Timed out waiting for stack "${stackName}" to delete after ${timeoutMs}ms.`);
 }

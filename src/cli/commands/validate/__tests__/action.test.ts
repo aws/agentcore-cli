@@ -220,7 +220,7 @@ describe('handleValidate', () => {
 
     expect(result.success).toBe(true);
     expect(result.warnings).toBeDefined();
-    expect(result.warnings![0]).toContain('PYTHON_3_14');
+    expect(result.warnings![0]).toContain('Python 3.14');
     expect(result.warnings![0]).toContain('eu-central-1');
     expect(result.warnings![0]).toContain('agent1');
   });
@@ -257,5 +257,109 @@ describe('handleValidate', () => {
 
     expect(result.success).toBe(true);
     expect(result.warnings).toBeUndefined();
+  });
+
+  it('lists multiple PYTHON_3_14 agents in a single warning', async () => {
+    mockFindConfigRoot.mockReturnValue('/project/agentcore');
+    mockReadProjectSpec.mockResolvedValue({
+      name: 'Test',
+      version: 1,
+      managedBy: 'CDK' as const,
+      runtimes: [
+        { name: 'agentA', runtimeVersion: 'PYTHON_3_14' },
+        { name: 'agentB', runtimeVersion: 'PYTHON_3_14' },
+        { name: 'agentC', runtimeVersion: 'PYTHON_3_13' },
+      ],
+    });
+    mockReadAWSDeploymentTargets.mockResolvedValue([
+      { name: 'a', region: 'eu-central-1', account: '111' },
+      { name: 'b', region: 'us-east-1', account: '111' },
+      { name: 'c', region: 'eu-central-1', account: '222' },
+    ]);
+    mockConfigExists.mockReturnValue(false);
+
+    const result = await handleValidate({});
+
+    expect(result.success).toBe(true);
+    expect(result.warnings).toBeDefined();
+    expect(result.warnings!.length).toBe(1);
+    const w = result.warnings![0];
+    expect(w).toContain('agentA');
+    expect(w).toContain('agentB');
+    expect(w).not.toContain('agentC');
+    // The unsupported-regions list should contain eu-central-1 exactly once
+    // (deduped) and should not list us-east-1, since us-east-1 *is* supported.
+    // Note that us-east-1 may appear in the trailing "deploy in one of:" hint;
+    // we therefore only inspect the substring up to that hint.
+    const beforeHint = w!.split('Switch to')[0]!;
+    expect(beforeHint.match(/eu-central-1/g)?.length ?? 0).toBe(1);
+    expect(beforeHint).not.toContain('us-east-1');
+  });
+
+  it('does not warn or crash when projectSpec has no runtimes', async () => {
+    mockFindConfigRoot.mockReturnValue('/project/agentcore');
+    mockReadProjectSpec.mockResolvedValue({ name: 'Test', version: 1, managedBy: 'CDK' as const });
+    mockReadAWSDeploymentTargets.mockResolvedValue([{ name: 'default', region: 'eu-central-1', account: '111' }]);
+    mockConfigExists.mockReturnValue(false);
+
+    const result = await handleValidate({});
+
+    expect(result.success).toBe(true);
+    expect(result.warnings).toBeUndefined();
+  });
+
+  it('warns when an MCP runtime tool uses PYTHON_3_14 in an unsupported region', async () => {
+    mockFindConfigRoot.mockReturnValue('/project/agentcore');
+    mockReadProjectSpec.mockResolvedValue({
+      name: 'Test',
+      version: 1,
+      managedBy: 'CDK' as const,
+      runtimes: [],
+      mcpRuntimeTools: [
+        {
+          name: 'tool-x',
+          compute: { host: 'AgentCoreRuntime', runtime: { pythonVersion: 'PYTHON_3_14' } },
+        },
+      ],
+    });
+    mockReadAWSDeploymentTargets.mockResolvedValue([{ name: 'default', region: 'eu-central-1', account: '111' }]);
+    mockConfigExists.mockReturnValue(false);
+
+    const result = await handleValidate({});
+
+    expect(result.success).toBe(true);
+    expect(result.warnings).toBeDefined();
+    expect(result.warnings![0]).toContain('MCP tool "tool-x"');
+    expect(result.warnings![0]).toContain('eu-central-1');
+  });
+
+  it('warns when a gateway Lambda target uses PYTHON_3_14 in an unsupported region', async () => {
+    mockFindConfigRoot.mockReturnValue('/project/agentcore');
+    mockReadProjectSpec.mockResolvedValue({
+      name: 'Test',
+      version: 1,
+      managedBy: 'CDK' as const,
+      runtimes: [],
+      agentCoreGateways: [
+        {
+          name: 'gw1',
+          targets: [
+            {
+              name: 'tgt1',
+              compute: { host: 'Lambda', pythonVersion: 'PYTHON_3_14' },
+            },
+          ],
+        },
+      ],
+    });
+    mockReadAWSDeploymentTargets.mockResolvedValue([{ name: 'default', region: 'eu-central-1', account: '111' }]);
+    mockConfigExists.mockReturnValue(false);
+
+    const result = await handleValidate({});
+
+    expect(result.success).toBe(true);
+    expect(result.warnings).toBeDefined();
+    expect(result.warnings![0]).toContain('gateway "gw1"');
+    expect(result.warnings![0]).toContain('tgt1');
   });
 });

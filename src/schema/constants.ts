@@ -164,6 +164,13 @@ export const DEFAULT_PYTHON_VERSION: PythonRuntime = 'PYTHON_3_13';
  * CloudFormation. Update as availability expands. Callers should compare
  * directly with this list rather than wrap it in a helper, so the rule lives
  * in one place.
+ *
+ * NOTE: When this list changes, also update the equivalent constant in the
+ * sibling repo `aws/agentcore-l3-cdk-constructs` (see
+ * `src/cdk/constructs/components/mcp/mcp-utils.ts`,
+ * `DEFAULT_MCP_PYTHON_VERSION`). The two repos do not currently share a
+ * package, so they can drift; consider extracting a shared package if a third
+ * region becomes supported. See https://github.com/aws/agentcore-cli/issues/907.
  */
 export const PYTHON_3_14_SUPPORTED_REGIONS: readonly string[] = ['us-east-1', 'us-west-2'] as const;
 
