@@ -143,6 +143,16 @@ export function isReservedProjectName(name: string): boolean {
 // Infrastructure Constants (shared between agent-env and mcp schemas)
 // ============================================================================
 
+/**
+ * Supported Python runtime versions.
+ *
+ * NOTE: `PYTHON_3_14` is accepted by the schema but is currently only
+ * supported by CloudFormation in `us-east-1` and `us-west-2`. In other
+ * regions, deploys with `PYTHON_3_14` fail with
+ * `AWS::EarlyValidation::PropertyValidation` and leave the stack stuck
+ * in `REVIEW_IN_PROGRESS` (see issue #907). The default is therefore
+ * `PYTHON_3_13` until `PYTHON_3_14` is broadly supported.
+ */
 export const PythonRuntimeSchema = z.enum(['PYTHON_3_10', 'PYTHON_3_11', 'PYTHON_3_12', 'PYTHON_3_13', 'PYTHON_3_14']);
 export type PythonRuntime = z.infer<typeof PythonRuntimeSchema>;
 

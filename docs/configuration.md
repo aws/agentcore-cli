@@ -31,7 +31,7 @@ Main project configuration using a **flat resource model**. Agents, memories, an
       "build": "CodeZip",
       "entrypoint": "main.py",
       "codeLocation": "app/MyAgent/",
-      "runtimeVersion": "PYTHON_3_14",
+      "runtimeVersion": "PYTHON_3_13",
       "networkMode": "PUBLIC",
       "protocol": "HTTP"
     }
@@ -166,7 +166,7 @@ on the next deployment.
   "build": "CodeZip",
   "entrypoint": "main.py",
   "codeLocation": "app/MyAgent/",
-  "runtimeVersion": "PYTHON_3_14",
+  "runtimeVersion": "PYTHON_3_13",
   "networkMode": "PUBLIC",
   "envVars": [{ "name": "MY_VAR", "value": "my-value" }],
   "instrumentation": {
@@ -201,8 +201,10 @@ on the next deployment.
 - `PYTHON_3_10`
 - `PYTHON_3_11`
 - `PYTHON_3_12`
-- `PYTHON_3_13`
-- `PYTHON_3_14`
+- `PYTHON_3_13` (default)
+- `PYTHON_3_14` &mdash; **opt-in only.** Currently supported by CloudFormation in `us-east-1` and `us-west-2`. In other
+  regions the deploy will fail with `AWS::EarlyValidation::PropertyValidation` and leave the stack stuck in
+  `REVIEW_IN_PROGRESS` (see [issue #907](https://github.com/aws/agentcore-cli/issues/907)).
 
 **Node.js:**
 
