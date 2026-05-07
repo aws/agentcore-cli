@@ -175,24 +175,24 @@ on the next deployment.
 }
 ```
 
-| Field                     | Required | Description                                                     |
-| ------------------------- | -------- | --------------------------------------------------------------- |
-| `name`                    | Yes      | Agent name (1-48 chars, alphanumeric + underscore)              |
-| `build`                   | Yes      | `"CodeZip"` or `"Container"`                                    |
-| `entrypoint`              | Yes      | Entry file (e.g., `main.py` or `main.py:handler`)               |
-| `codeLocation`            | Yes      | Directory containing agent code                                 |
-| `runtimeVersion`          | Yes      | Runtime version (see below)                                     |
-| `networkMode`             | No       | `"PUBLIC"` (default) or `"VPC"`                                 |
-| `networkConfig`           | No       | VPC configuration (subnets, security groups)                    |
-| `protocol`                | No       | `"HTTP"` (default), `"MCP"`, or `"A2A"`                         |
-| `envVars`                 | No       | Custom environment variables                                    |
-| `instrumentation`         | No       | OpenTelemetry settings                                          |
-| `authorizerType`          | No       | `"AWS_IAM"` or `"CUSTOM_JWT"`                                   |
-| `authorizerConfiguration` | No       | JWT authorizer settings (for `CUSTOM_JWT`)                      |
-| `requestHeaderAllowlist`  | No       | Headers to forward to the agent                                 |
-| `lifecycleConfiguration`  | No       | Runtime session lifecycle settings (idle timeout, max lifetime) |
-| `executionRoleArn`        | No       | ARN of an existing IAM execution role (skips CDK-managed role)  |
-| `tags`                    | No       | Agent-level tags                                                |
+| Field                     | Required | Description                                                                                                                                                                                                                                                                                                                |
+| ------------------------- | -------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `name`                    | Yes      | Agent name (1-48 chars, alphanumeric + underscore)                                                                                                                                                                                                                                                                         |
+| `build`                   | Yes      | `"CodeZip"` or `"Container"`                                                                                                                                                                                                                                                                                               |
+| `entrypoint`              | Yes      | Entry file (e.g., `main.py` or `main.py:handler`)                                                                                                                                                                                                                                                                          |
+| `codeLocation`            | Yes      | Directory containing agent code                                                                                                                                                                                                                                                                                            |
+| `runtimeVersion`          | Yes      | Runtime version (see below)                                                                                                                                                                                                                                                                                                |
+| `networkMode`             | No       | `"PUBLIC"` (default) or `"VPC"`                                                                                                                                                                                                                                                                                            |
+| `networkConfig`           | No       | VPC configuration (subnets, security groups)                                                                                                                                                                                                                                                                               |
+| `protocol`                | No       | `"HTTP"` (default), `"MCP"`, or `"A2A"`                                                                                                                                                                                                                                                                                    |
+| `envVars`                 | No       | Custom environment variables                                                                                                                                                                                                                                                                                               |
+| `instrumentation`         | No       | OpenTelemetry settings                                                                                                                                                                                                                                                                                                     |
+| `authorizerType`          | No       | `"AWS_IAM"` or `"CUSTOM_JWT"`                                                                                                                                                                                                                                                                                              |
+| `authorizerConfiguration` | No       | JWT authorizer settings (for `CUSTOM_JWT`)                                                                                                                                                                                                                                                                                 |
+| `requestHeaderAllowlist`  | No       | Headers to forward to the agent (max 20). Accepts any non-restricted HTTP header (alphanumerics/hyphens/underscores), `Authorization`, or names starting with `X-Amzn-Bedrock-AgentCore-Runtime-Custom-`. See the [AWS docs](https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/runtime-header-allowlist.html). |
+| `lifecycleConfiguration`  | No       | Runtime session lifecycle settings (idle timeout, max lifetime)                                                                                                                                                                                                                                                            |
+| `executionRoleArn`        | No       | ARN of an existing IAM execution role (skips CDK-managed role)                                                                                                                                                                                                                                                             |
+| `tags`                    | No       | Agent-level tags                                                                                                                                                                                                                                                                                                           |
 
 ### Runtime Versions
 

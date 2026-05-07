@@ -1,18 +1,20 @@
 import {
   HEADER_ALLOWLIST_PREFIX as HEADER_ALLOWLIST_PREFIX_FROM_SCHEMA,
   MAX_HEADER_ALLOWLIST_SIZE as MAX_HEADER_ALLOWLIST_SIZE_FROM_SCHEMA,
+  getHeaderRejectionReason,
 } from '../../../schema/schemas/agent-env';
 
 export const HEADER_ALLOWLIST_PREFIX = HEADER_ALLOWLIST_PREFIX_FROM_SCHEMA;
 export const MAX_HEADER_ALLOWLIST_SIZE = MAX_HEADER_ALLOWLIST_SIZE_FROM_SCHEMA;
 
-const HEADER_NAME_PATTERN = /^[A-Za-z0-9-]+$/;
-
 /**
  * Normalize a header name according to AgentCore Runtime rules:
  * - "Authorization" (case-insensitive) -> "Authorization"
- * - Headers already starting with the prefix (case-insensitive) -> canonical prefix + original suffix
- * - Other headers -> prepend the prefix
+ * - Headers already starting with the AgentCore custom prefix
+ *   (case-insensitive) -> canonical prefix + original suffix
+ * - Otherwise -> the input is returned unchanged. The allowlist now accepts any
+ *   non-restricted HTTP header name (alphanumerics, hyphens, underscores), so
+ *   we no longer auto-prepend the AgentCore custom prefix.
  */
 export function normalizeHeaderName(input: string): string {
   if (input.toLowerCase() === 'authorization') {
@@ -21,12 +23,12 @@ export function normalizeHeaderName(input: string): string {
   if (input.toLowerCase().startsWith(HEADER_ALLOWLIST_PREFIX.toLowerCase())) {
     return `${HEADER_ALLOWLIST_PREFIX}${input.slice(HEADER_ALLOWLIST_PREFIX.length)}`;
   }
-  return `${HEADER_ALLOWLIST_PREFIX}${input}`;
+  return input;
 }
 
 /**
- * Parse a comma-separated string of header names, normalize each, and deduplicate.
- * Returns an array of normalized header names.
+ * Parse a comma-separated string of header names, normalize each, and deduplicate
+ * (case-insensitive; first occurrence wins).
  */
 export function parseAndNormalizeHeaders(input: string): string[] {
   const headers = input
@@ -35,7 +37,16 @@ export function parseAndNormalizeHeaders(input: string): string[] {
     .filter(Boolean)
     .map(normalizeHeaderName);
 
-  return Array.from(new Set(headers));
+  const seen = new Set<string>();
+  const result: string[] = [];
+  for (const h of headers) {
+    const key = h.toLowerCase();
+    if (!seen.has(key)) {
+      seen.add(key);
+      result.push(h);
+    }
+  }
+  return result;
 }
 
 /**
@@ -52,16 +63,30 @@ export function validateHeaderAllowlist(value: string): { success: boolean; erro
     .split(',')
     .map(s => s.trim())
     .filter(Boolean);
+
+  // Validate each header name against the allowlist rules (regex + restricted
+  // names + reserved prefixes).
   for (const name of rawNames) {
-    if (!HEADER_NAME_PATTERN.test(name)) {
-      return {
-        success: false,
-        error: `Invalid header name "${name}". Header names may only contain letters, numbers, and hyphens.`,
-      };
+    const rejection = getHeaderRejectionReason(normalizeHeaderName(name));
+    if (rejection) {
+      return { success: false, error: rejection };
     }
   }
 
+  // Detect duplicates (case-insensitive, after normalization).
   const headers = parseAndNormalizeHeaders(value);
+  const seen = new Set<string>();
+  for (const raw of rawNames) {
+    const key = normalizeHeaderName(raw).toLowerCase();
+    if (seen.has(key)) {
+      return {
+        success: false,
+        error: `Duplicate header (case-insensitive): "${raw}".`,
+      };
+    }
+    seen.add(key);
+  }
+
   if (headers.length > MAX_HEADER_ALLOWLIST_SIZE) {
     return {
       success: false,

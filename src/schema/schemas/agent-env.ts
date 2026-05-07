@@ -125,22 +125,220 @@ export type NetworkConfig = z.infer<typeof NetworkConfigSchema>;
 
 /**
  * Allowed request headers for the runtime.
- * Each header must be 'Authorization' or start with 'X-Amzn-Bedrock-AgentCore-Runtime-Custom-'.
- * Maximum 20 headers.
+ *
+ * Per https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/runtime-header-allowlist.html
+ * AgentCore Runtime accepts any HTTP header name that is:
+ *   - composed of alphanumerics, hyphens, or underscores;
+ *   - not in the restricted-headers list (Cookie, Host, Content-Type, etc.);
+ *   - not starting with `x-amz-` (reserved for AWS SigV4);
+ *   - not starting with `x-amzn-` unless it begins with the AgentCore custom prefix.
+ *
+ * `Authorization` is allowed (and requires a custom JWT authorizer to be configured).
+ * Headers prefixed with `X-Amzn-Bedrock-AgentCore-Runtime-Custom-` continue to be
+ * supported for backward compatibility. Maximum 20 headers (case-insensitive,
+ * duplicates rejected).
  */
 export const HEADER_ALLOWLIST_PREFIX = 'X-Amzn-Bedrock-AgentCore-Runtime-Custom-';
 export const MAX_HEADER_ALLOWLIST_SIZE = 20;
 
+/**
+ * Valid header-name character set accepted by AgentCore Runtime: alphanumerics,
+ * hyphens, and underscores. (Looser than the legacy `/^[A-Za-z0-9-]+$/` which
+ * disallowed underscores.)
+ */
+export const HEADER_NAME_REGEX = /^[A-Za-z0-9_-]+$/;
+
+/**
+ * Restricted header names (case-insensitive). Sourced from
+ * https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/runtime-header-allowlist.html
+ * "Restricted headers" table.
+ */
+export const RESTRICTED_HEADER_NAMES: ReadonlySet<string> = new Set(
+  [
+    // Authentication & Authorization (Authorization itself is allowed)
+    'Proxy-Authorization',
+    'WWW-Authenticate',
+    // Content Negotiation
+    'Accept',
+    'Accept-Charset',
+    'Accept-Encoding',
+    'Accept-Language',
+    'Content-Type',
+    'Content-Length',
+    'Content-Encoding',
+    'Content-Language',
+    'Content-Location',
+    'Content-Range',
+    // Caching
+    'Cache-Control',
+    'ETag',
+    'Expires',
+    'If-Match',
+    'If-Modified-Since',
+    'If-None-Match',
+    'If-Range',
+    'If-Unmodified-Since',
+    'Last-Modified',
+    'Pragma',
+    'Vary',
+    // Connection management
+    'Connection',
+    'Keep-Alive',
+    'Proxy-Connection',
+    'Upgrade',
+    // Request context
+    'Host',
+    'User-Agent',
+    'Referer',
+    'From',
+    // Range / transfer
+    'Range',
+    'Accept-Ranges',
+    'Transfer-Encoding',
+    'TE',
+    'Trailer',
+    // Server information
+    'Server',
+    'Date',
+    'Location',
+    'Retry-After',
+    // Cookies
+    'Set-Cookie',
+    'Cookie',
+    // Security
+    'Content-Security-Policy',
+    'Content-Security-Policy-Report-Only',
+    'Strict-Transport-Security',
+    'X-Content-Type-Options',
+    'X-Frame-Options',
+    'X-XSS-Protection',
+    'Referrer-Policy',
+    'Permissions-Policy',
+    'Cross-Origin-Embedder-Policy',
+    'Cross-Origin-Opener-Policy',
+    'Cross-Origin-Resource-Policy',
+    // CORS
+    'Access-Control-Allow-Origin',
+    'Access-Control-Allow-Methods',
+    'Access-Control-Allow-Headers',
+    'Access-Control-Allow-Credentials',
+    'Access-Control-Expose-Headers',
+    'Access-Control-Max-Age',
+    'Access-Control-Request-Method',
+    'Access-Control-Request-Headers',
+    'Origin',
+    // Client hints
+    'Accept-CH',
+    'Accept-CH-Lifetime',
+    'DPR',
+    'Width',
+    'Viewport-Width',
+    'Downlink',
+    'ECT',
+    'RTT',
+    'Save-Data',
+    // Experimental / proposed
+    'Clear-Site-Data',
+    'Feature-Policy',
+    'Expect-CT',
+    'Public-Key-Pins',
+    'Public-Key-Pins-Report-Only',
+    // Proxy
+    'Via',
+    'Forwarded',
+    'X-Forwarded-For',
+    'X-Forwarded-Host',
+    'X-Forwarded-Proto',
+    'X-Real-IP',
+    'X-Requested-With',
+    'X-CSRF-Token',
+    // IP spoofing / URL manipulation
+    'True-Client-IP',
+    'X-Client-IP',
+    'X-Cluster-Client-IP',
+    'X-Originating-IP',
+    'X-Source-IP',
+    'X-Original-URL',
+    'X-Original-Host',
+    'X-Rewrite-URL',
+    // CDN / Proxy
+    'CF-Ray',
+    'CF-Connecting-IP',
+    'X-Amz-Cf-Id',
+    'X-Cache',
+    'X-Served-By',
+    // HTTP/2 pseudo headers
+    ':method',
+    ':path',
+    ':scheme',
+    ':authority',
+    ':status',
+    // Server push
+    'Link',
+    // WebSocket
+    'Sec-WebSocket-Key',
+    'Sec-WebSocket-Accept',
+    'Sec-WebSocket-Version',
+    'Sec-WebSocket-Protocol',
+    'Sec-WebSocket-Extensions',
+  ].map(s => s.toLowerCase())
+);
+
+/**
+ * Validate a single header name against the AgentCore Runtime allowlist rules.
+ * Returns `null` if the header is allowed, otherwise a human-readable rejection
+ * reason.
+ */
+export function getHeaderRejectionReason(name: string): string | null {
+  if (typeof name !== 'string' || name.length === 0) {
+    return 'Header name must be a non-empty string.';
+  }
+  if (!HEADER_NAME_REGEX.test(name)) {
+    return `Invalid header name "${name}". Header names may only contain letters, numbers, hyphens, and underscores.`;
+  }
+  const lower = name.toLowerCase();
+  // Authorization is explicitly allowed (requires customJWTAuthorizer at runtime).
+  if (lower === 'authorization') return null;
+  // Backward-compatible AgentCore custom prefix is always allowed.
+  if (lower.startsWith(HEADER_ALLOWLIST_PREFIX.toLowerCase())) return null;
+  // x-amz-* is reserved for AWS SigV4 signing.
+  if (lower.startsWith('x-amz-')) {
+    return `Header "${name}" is reserved (the "x-amz-" prefix is reserved for AWS SigV4 signing).`;
+  }
+  // x-amzn-* is reserved except for the AgentCore custom prefix (handled above).
+  if (lower.startsWith('x-amzn-')) {
+    return `Header "${name}" is reserved (the "x-amzn-" prefix is reserved; only headers starting with "${HEADER_ALLOWLIST_PREFIX}" are allowed).`;
+  }
+  if (RESTRICTED_HEADER_NAMES.has(lower)) {
+    return `Header "${name}" is in the restricted-headers list and cannot be configured for propagation.`;
+  }
+  return null;
+}
+
 export const RequestHeaderAllowlistSchema = z
   .array(
-    z
-      .string()
-      .refine(
-        val => val === 'Authorization' || val.startsWith(HEADER_ALLOWLIST_PREFIX),
-        `Must be "Authorization" or start with "${HEADER_ALLOWLIST_PREFIX}"`
-      )
+    z.string().superRefine((val, ctx) => {
+      const reason = getHeaderRejectionReason(val);
+      if (reason) {
+        ctx.addIssue({ code: z.ZodIssueCode.custom, message: reason });
+      }
+    })
   )
-  .max(MAX_HEADER_ALLOWLIST_SIZE, `Maximum ${MAX_HEADER_ALLOWLIST_SIZE} headers allowed`);
+  .max(MAX_HEADER_ALLOWLIST_SIZE, `Maximum ${MAX_HEADER_ALLOWLIST_SIZE} headers allowed`)
+  .superRefine((arr, ctx) => {
+    const seen = new Set<string>();
+    arr.forEach((v, i) => {
+      const k = typeof v === 'string' ? v.toLowerCase() : '';
+      if (seen.has(k)) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: [i],
+          message: `Duplicate header (case-insensitive): "${v}"`,
+        });
+      }
+      seen.add(k);
+    });
+  });
 
 /**
  * Session storage configuration for filesystem persistence.

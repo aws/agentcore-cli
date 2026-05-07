@@ -32,12 +32,11 @@ describe('normalizeHeaderName', () => {
     );
   });
 
-  it('auto-prefixes a bare suffix like "MyHeader"', () => {
-    expect(normalizeHeaderName('MyHeader')).toBe('X-Amzn-Bedrock-AgentCore-Runtime-Custom-MyHeader');
-  });
-
-  it('auto-prefixes suffix with hyphens like "My-Custom-Header"', () => {
-    expect(normalizeHeaderName('My-Custom-Header')).toBe('X-Amzn-Bedrock-AgentCore-Runtime-Custom-My-Custom-Header');
+  it('preserves arbitrary header names without auto-prefixing', () => {
+    expect(normalizeHeaderName('MyHeader')).toBe('MyHeader');
+    expect(normalizeHeaderName('My-Custom-Header')).toBe('My-Custom-Header');
+    expect(normalizeHeaderName('X-Custom-Signature')).toBe('X-Custom-Signature');
+    expect(normalizeHeaderName('X-Api-Key')).toBe('X-Api-Key');
   });
 });
 
@@ -52,15 +51,18 @@ describe('parseAndNormalizeHeaders', () => {
 
   it('splits comma-separated and normalizes', () => {
     const result = parseAndNormalizeHeaders('MyHeader, authorization, Another-Header');
-    expect(result).toEqual([
-      'X-Amzn-Bedrock-AgentCore-Runtime-Custom-MyHeader',
-      'Authorization',
-      'X-Amzn-Bedrock-AgentCore-Runtime-Custom-Another-Header',
-    ]);
+    expect(result).toEqual(['MyHeader', 'Authorization', 'Another-Header']);
   });
 
-  it('deduplicates after normalization', () => {
-    const result = parseAndNormalizeHeaders('MyHeader, X-Amzn-Bedrock-AgentCore-Runtime-Custom-MyHeader');
+  it('deduplicates after normalization (case-insensitive)', () => {
+    const result = parseAndNormalizeHeaders('MyHeader, myheader, MYHEADER');
+    expect(result).toEqual(['MyHeader']);
+  });
+
+  it('deduplicates the AgentCore custom prefix variations', () => {
+    const result = parseAndNormalizeHeaders(
+      'X-Amzn-Bedrock-AgentCore-Runtime-Custom-MyHeader, x-amzn-bedrock-agentcore-runtime-custom-MyHeader'
+    );
     expect(result).toEqual(['X-Amzn-Bedrock-AgentCore-Runtime-Custom-MyHeader']);
   });
 
@@ -71,11 +73,7 @@ describe('parseAndNormalizeHeaders', () => {
 
   it('trims whitespace around values', () => {
     const result = parseAndNormalizeHeaders('  MyHeader  ,  authorization  ,  Another-Header  ');
-    expect(result).toEqual([
-      'X-Amzn-Bedrock-AgentCore-Runtime-Custom-MyHeader',
-      'Authorization',
-      'X-Amzn-Bedrock-AgentCore-Runtime-Custom-Another-Header',
-    ]);
+    expect(result).toEqual(['MyHeader', 'Authorization', 'Another-Header']);
   });
 });
 
@@ -85,11 +83,14 @@ describe('validateHeaderAllowlist', () => {
     expect(validateHeaderAllowlist('   ')).toEqual({ success: true });
   });
 
-  it('returns success for valid custom header suffix', () => {
+  it('accepts arbitrary custom headers (no longer requires the AgentCore prefix)', () => {
     expect(validateHeaderAllowlist('MyHeader')).toEqual({ success: true });
+    expect(validateHeaderAllowlist('X-Custom-Signature')).toEqual({ success: true });
+    expect(validateHeaderAllowlist('X-Api-Key')).toEqual({ success: true });
+    expect(validateHeaderAllowlist('Some_Header_With_Underscores')).toEqual({ success: true });
   });
 
-  it('returns success for valid full header name', () => {
+  it('returns success for valid full AgentCore custom header name', () => {
     expect(validateHeaderAllowlist('X-Amzn-Bedrock-AgentCore-Runtime-Custom-MyHeader')).toEqual({ success: true });
   });
 
@@ -99,9 +100,9 @@ describe('validateHeaderAllowlist', () => {
   });
 
   it('returns success for mixed valid headers', () => {
-    expect(validateHeaderAllowlist('Authorization, MyHeader, X-Amzn-Bedrock-AgentCore-Runtime-Custom-Another')).toEqual(
-      { success: true }
-    );
+    expect(
+      validateHeaderAllowlist('Authorization, X-Custom-Signature, X-Amzn-Bedrock-AgentCore-Runtime-Custom-Another')
+    ).toEqual({ success: true });
   });
 
   it('returns error when exceeding max 20 headers', () => {
@@ -127,19 +128,51 @@ describe('validateHeaderAllowlist', () => {
     expect(result.success).toBe(false);
     expect(result.error).toContain('Invalid header name');
   });
+
+  it('rejects restricted headers (Cookie, Host, Accept, Content-Type, etc.)', () => {
+    for (const restricted of ['Cookie', 'Host', 'Accept', 'Content-Type', 'User-Agent', 'Connection']) {
+      const result = validateHeaderAllowlist(restricted);
+      expect(result.success, `expected "${restricted}" to be rejected`).toBe(false);
+      expect(result.error).toMatch(/restricted/i);
+    }
+  });
+
+  it('rejects restricted headers case-insensitively', () => {
+    const result = validateHeaderAllowlist('cookie');
+    expect(result.success).toBe(false);
+    expect(result.error).toMatch(/restricted/i);
+  });
+
+  it('rejects headers starting with x-amz-', () => {
+    const result = validateHeaderAllowlist('X-Amz-Date');
+    expect(result.success).toBe(false);
+    expect(result.error).toMatch(/x-amz-/i);
+  });
+
+  it('rejects headers starting with x-amzn- that are not the AgentCore custom prefix', () => {
+    const result = validateHeaderAllowlist('X-Amzn-Foo');
+    expect(result.success).toBe(false);
+    expect(result.error).toMatch(/x-amzn-/i);
+  });
+
+  it('rejects duplicate headers (case-insensitive)', () => {
+    const result = validateHeaderAllowlist('MyHeader, myheader');
+    expect(result.success).toBe(false);
+    expect(result.error).toMatch(/[Dd]uplicate/);
+  });
 });
 
 describe('parseHeaderFlag', () => {
   it('parses "Key: Value" format', () => {
     expect(parseHeaderFlag('MyHeader: some-value')).toEqual({
-      name: 'X-Amzn-Bedrock-AgentCore-Runtime-Custom-MyHeader',
+      name: 'MyHeader',
       value: 'some-value',
     });
   });
 
   it('parses "Key:Value" format without space', () => {
     expect(parseHeaderFlag('MyHeader:some-value')).toEqual({
-      name: 'X-Amzn-Bedrock-AgentCore-Runtime-Custom-MyHeader',
+      name: 'MyHeader',
       value: 'some-value',
     });
   });
@@ -151,10 +184,17 @@ describe('parseHeaderFlag', () => {
     });
   });
 
-  it('normalizes header names', () => {
+  it('normalizes Authorization casing', () => {
     expect(parseHeaderFlag('authorization: token')).toEqual({
       name: 'Authorization',
       value: 'token',
+    });
+  });
+
+  it('preserves case for arbitrary headers (no auto-prefixing)', () => {
+    expect(parseHeaderFlag('X-Custom-Signature: abc123')).toEqual({
+      name: 'X-Custom-Signature',
+      value: 'abc123',
     });
   });
 
@@ -168,7 +208,7 @@ describe('parseHeaderFlag', () => {
 
   it('trims whitespace from key and value', () => {
     expect(parseHeaderFlag('  MyHeader  :  some-value  ')).toEqual({
-      name: 'X-Amzn-Bedrock-AgentCore-Runtime-Custom-MyHeader',
+      name: 'MyHeader',
       value: 'some-value',
     });
   });
@@ -178,7 +218,7 @@ describe('parseHeaderFlags', () => {
   it('parses multiple headers', () => {
     const result = parseHeaderFlags(['MyHeader: value1', 'Authorization: Bearer token']);
     expect(result).toEqual({
-      'X-Amzn-Bedrock-AgentCore-Runtime-Custom-MyHeader': 'value1',
+      MyHeader: 'value1',
       Authorization: 'Bearer token',
     });
   });
@@ -190,7 +230,7 @@ describe('parseHeaderFlags', () => {
   it('last value wins for duplicate keys', () => {
     const result = parseHeaderFlags(['MyHeader: first', 'MyHeader: second']);
     expect(result).toEqual({
-      'X-Amzn-Bedrock-AgentCore-Runtime-Custom-MyHeader': 'second',
+      MyHeader: 'second',
     });
   });
 
