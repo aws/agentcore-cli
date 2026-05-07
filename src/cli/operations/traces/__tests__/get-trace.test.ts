@@ -3,7 +3,7 @@ import type { FetchTraceRecordsOptions } from '../types';
 import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const { mockSend } = vi.hoisted(() => ({
   mockSend: vi.fn(),
@@ -181,15 +181,14 @@ describe('fetchTraceRecords', () => {
 describe('getTrace', () => {
   let tmpDir: string;
 
-  beforeAll(() => {
+  beforeEach(() => {
     tmpDir = mkdtempSync(join(tmpdir(), 'get-trace-test-'));
   });
 
-  afterAll(() => {
+  afterEach(() => {
+    vi.clearAllMocks();
     rmSync(tmpDir, { recursive: true, force: true });
   });
-
-  afterEach(() => vi.clearAllMocks());
 
   it('calls fetchTraceRecords and writes result to disk', async () => {
     mockSend.mockResolvedValueOnce({ queryId: 'q-1' }).mockResolvedValueOnce({
