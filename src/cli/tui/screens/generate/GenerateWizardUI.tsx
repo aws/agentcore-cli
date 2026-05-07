@@ -36,7 +36,6 @@ import {
 } from './types';
 import type { useGenerateWizard } from './useGenerateWizard';
 import { Box, Text, useInput } from 'ink';
-import { basename } from 'path';
 
 // Helper to get provider display name and env var name from ModelProvider
 function getProviderInfo(provider: ModelProvider): { name: string; envVarName: string } {
@@ -234,7 +233,11 @@ export function GenerateWizardUI({
           allowEmpty
           emptyHelpText="Press Enter to use the default Dockerfile"
           onSubmit={value => {
-            wizard.setDockerfile(value ? basename(value) : undefined);
+            // Pass the user-entered path through unchanged. Final basename
+            // resolution + copy into the agent directory happens in
+            // useAddAgent.handleCreatePath, so the directory component must
+            // survive this step.
+            wizard.setDockerfile(value || undefined);
           }}
           onCancel={onBack}
         />

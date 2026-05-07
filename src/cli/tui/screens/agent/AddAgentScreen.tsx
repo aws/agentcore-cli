@@ -45,7 +45,6 @@ import {
 } from './types';
 import { Box, Text, useInput } from 'ink';
 import Spinner from 'ink-spinner';
-import { basename, resolve } from 'path';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 // Helper to get provider display name and env var name from ModelProvider
@@ -1086,12 +1085,14 @@ export function AddAgentScreen({ existingAgentNames, onComplete, onExit }: AddAg
         {byoStep === 'dockerfile' && (
           <PathInput
             placeholder="Select a Dockerfile"
-            basePath={resolve(project?.projectRoot ?? process.cwd(), byoConfig.codeLocation)}
+            basePath={process.cwd()}
             pathType="file"
             allowEmpty
             emptyHelpText="Press Enter to use the default Dockerfile"
             onSubmit={value => {
-              setByoConfig(c => ({ ...c, dockerfile: value ? basename(value) : '' }));
+              // Preserve the user-entered path; resolution + copy into the
+              // agent code directory happens later in useAddAgent.handleByoPath.
+              setByoConfig(c => ({ ...c, dockerfile: value || '' }));
               goToNextByoStep('dockerfile');
             }}
             onCancel={handleByoBack}
