@@ -51,6 +51,13 @@ export interface ValidatedDeployOptions {
   verbose?: boolean;
   plan?: boolean;
   diff?: boolean;
+  /**
+   * If set, attempt to recover stacks stuck in `REVIEW_IN_PROGRESS` (caused
+   * by a prior failed CloudFormation early-validation) by deleting them
+   * before deployment proceeds. See
+   * https://github.com/aws/agentcore-cli/issues/907.
+   */
+  recover?: boolean;
   onProgress?: (step: string, status: 'start' | 'success' | 'error') => void;
   onResourceEvent?: (message: string) => void;
 }
@@ -305,7 +312,30 @@ export async function handleDeploy(options: ValidatedDeployOptions): Promise<Dep
 
     // Check stack deployability
     startStep('Check stack status');
-    const deployabilityCheck = await checkStackDeployability(target.region, stackNames);
+    let deployabilityCheck = await checkStackDeployability(target.region, stackNames);
+    if (!deployabilityCheck.canDeploy) {
+      // Special handling for recoverable REVIEW_IN_PROGRESS stacks: when the
+      // user passes --recover, delete the empty stack and re-check.
+      // See https://github.com/aws/agentcore-cli/issues/907.
+      if (options.recover && deployabilityCheck.isRecoverableReview && deployabilityCheck.blockingStack) {
+        logger.log(`Recovering stack "${deployabilityCheck.blockingStack}" stuck in REVIEW_IN_PROGRESS...`, 'warn');
+        try {
+          const { recoverReviewInProgressStack } = await import('../../cloudformation');
+          await recoverReviewInProgressStack(target.region, deployabilityCheck.blockingStack);
+          logger.log(`Recovered stack "${deployabilityCheck.blockingStack}".`);
+          deployabilityCheck = await checkStackDeployability(target.region, stackNames);
+        } catch (recoverErr: unknown) {
+          const recoverErrorMessage = getErrorMessage(recoverErr);
+          endStep('error', recoverErrorMessage);
+          logger.finalize(false);
+          return {
+            success: false,
+            error: `Stack recovery failed: ${recoverErrorMessage}`,
+            logPath: logger.getRelativeLogPath(),
+          };
+        }
+      }
+    }
     if (!deployabilityCheck.canDeploy) {
       endStep('error', deployabilityCheck.message);
       logger.finalize(false);

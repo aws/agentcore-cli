@@ -7,6 +7,7 @@ import {
   NoProjectError,
   findConfigRoot,
 } from '../../../lib';
+import { PYTHON_3_14_SUPPORTED_REGIONS } from '../../../schema';
 
 export interface ValidateOptions {
   directory?: string;
@@ -15,6 +16,11 @@ export interface ValidateOptions {
 export interface ValidateResult {
   success: boolean;
   error?: string;
+  /**
+   * Non-fatal warnings (e.g. selected runtime is not yet GA in the configured
+   * region). The CLI prints these but does not fail validation.
+   */
+  warnings?: string[];
 }
 
 /**
@@ -36,15 +42,17 @@ export async function handleValidate(options: ValidateOptions): Promise<Validate
   const configIO = new ConfigIO({ baseDir: configRoot });
 
   // Validate project spec (agentcore.json)
+  let projectSpec: Awaited<ReturnType<ConfigIO['readProjectSpec']>>;
   try {
-    await configIO.readProjectSpec();
+    projectSpec = await configIO.readProjectSpec();
   } catch (err) {
     return { success: false, error: formatError(err, 'agentcore.json') };
   }
 
   // Validate AWS targets (aws-targets.json)
+  let awsTargets: Awaited<ReturnType<ConfigIO['readAWSDeploymentTargets']>>;
   try {
-    await configIO.readAWSDeploymentTargets();
+    awsTargets = await configIO.readAWSDeploymentTargets();
   } catch (err) {
     return { success: false, error: formatError(err, 'aws-targets.json') };
   }
@@ -58,7 +66,50 @@ export async function handleValidate(options: ValidateOptions): Promise<Validate
     }
   }
 
-  return { success: true };
+  // Non-fatal warnings: PYTHON_3_14 is not GA in all regions; flag any agent
+  // that selected it together with an unsupported region. See
+  // https://github.com/aws/agentcore-cli/issues/907.
+  const warnings = collectRuntimeRegionWarnings(projectSpec, awsTargets);
+
+  return warnings.length > 0 ? { success: true, warnings } : { success: true };
+}
+
+interface ProjectSpecForWarnings {
+  runtimes?: Array<{ name: string; runtimeVersion?: string }>;
+}
+
+interface AwsTargetForWarnings {
+  region: string;
+}
+
+/**
+ * Returns a list of non-fatal validation warnings. Currently only checks
+ * Python 3.14 region availability.
+ */
+export function collectRuntimeRegionWarnings(
+  projectSpec: ProjectSpecForWarnings,
+  awsTargets: readonly AwsTargetForWarnings[]
+): string[] {
+  const warnings: string[] = [];
+
+  const py314Agents = (projectSpec.runtimes ?? []).filter(r => r.runtimeVersion === 'PYTHON_3_14');
+  if (py314Agents.length === 0) return warnings;
+
+  const unsupportedRegions = awsTargets
+    .map(t => t.region)
+    .filter(region => !PYTHON_3_14_SUPPORTED_REGIONS.includes(region));
+
+  if (unsupportedRegions.length === 0) return warnings;
+
+  const agentNames = py314Agents.map(a => a.name).join(', ');
+  warnings.push(
+    `Agent(s) [${agentNames}] use runtimeVersion "PYTHON_3_14", which is not yet ` +
+      `available in region(s): ${unsupportedRegions.join(', ')}. ` +
+      `CloudFormation will reject the deployment with an early-validation error. ` +
+      `Switch to "PYTHON_3_13" or deploy in one of: ${PYTHON_3_14_SUPPORTED_REGIONS.join(', ')}.`
+  );
+
+  return warnings;
 }
 
 function formatError(err: unknown, fileName: string): string {

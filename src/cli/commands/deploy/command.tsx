@@ -75,6 +75,7 @@ async function handleDeployCLI(options: DeployOptions): Promise<void> {
     verbose: options.verbose ?? options.diff,
     plan: options.plan,
     diff: options.diff,
+    recover: options.recover,
     onProgress,
     onResourceEvent,
   });
@@ -146,6 +147,10 @@ export const registerDeploy = (program: Command) => {
     .option('--json', 'Output as JSON [non-interactive]')
     .option('--dry-run', 'Preview deployment without deploying [non-interactive]')
     .option('--diff', 'Show CDK diff without deploying [non-interactive]')
+    .option(
+      '--recover',
+      'Auto-delete stacks stuck in REVIEW_IN_PROGRESS before deploying (see issue #907) [non-interactive]'
+    )
     .action(
       async (cliOptions: {
         target?: string;
@@ -154,10 +159,18 @@ export const registerDeploy = (program: Command) => {
         json?: boolean;
         dryRun?: boolean;
         diff?: boolean;
+        recover?: boolean;
       }) => {
         try {
           requireProject();
-          if (cliOptions.json || cliOptions.target || cliOptions.dryRun || cliOptions.yes || cliOptions.verbose) {
+          if (
+            cliOptions.json ||
+            cliOptions.target ||
+            cliOptions.dryRun ||
+            cliOptions.yes ||
+            cliOptions.verbose ||
+            cliOptions.recover
+          ) {
             // CLI mode - any flag triggers non-interactive mode
             const options = {
               ...cliOptions,

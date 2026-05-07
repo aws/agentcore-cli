@@ -277,8 +277,8 @@ export const POLICY_ENGINE_MODE_OPTIONS = [
 ] as const;
 
 export const PYTHON_VERSION_OPTIONS = [
-  { id: 'PYTHON_3_14', title: 'Python 3.14', description: 'Latest' },
-  { id: 'PYTHON_3_13', title: 'Python 3.13', description: '' },
+  { id: 'PYTHON_3_13', title: 'Python 3.13', description: 'Recommended' },
+  { id: 'PYTHON_3_14', title: 'Python 3.14', description: 'Preview – not available in all regions' },
   { id: 'PYTHON_3_12', title: 'Python 3.12', description: '' },
   { id: 'PYTHON_3_11', title: 'Python 3.11', description: '' },
   { id: 'PYTHON_3_10', title: 'Python 3.10', description: '' },

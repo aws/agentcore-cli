@@ -146,8 +146,37 @@ export function isReservedProjectName(name: string): boolean {
 export const PythonRuntimeSchema = z.enum(['PYTHON_3_10', 'PYTHON_3_11', 'PYTHON_3_12', 'PYTHON_3_13', 'PYTHON_3_14']);
 export type PythonRuntime = z.infer<typeof PythonRuntimeSchema>;
 
-/** Default Python runtime version for new agents and MCP tools */
-export const DEFAULT_PYTHON_VERSION: PythonRuntime = 'PYTHON_3_14';
+/**
+ * Default Python runtime version for new agents and MCP tools.
+ *
+ * NOTE: PYTHON_3_14 is intentionally NOT used as the default because it is not
+ * yet available in all AWS regions (only us-east-1 / us-west-2 at the time of
+ * writing). When users in other regions accepted the default, CloudFormation
+ * rejected the deploy with `AWS::EarlyValidation::PropertyValidation`, leaving
+ * the stack stuck in `REVIEW_IN_PROGRESS`. See
+ * https://github.com/aws/agentcore-cli/issues/907 for details. PYTHON_3_13 is
+ * GA in all AgentCore regions and is therefore the safer default.
+ */
+export const DEFAULT_PYTHON_VERSION: PythonRuntime = 'PYTHON_3_13';
+
+/**
+ * AWS regions where PYTHON_3_14 is currently supported by Bedrock AgentCore /
+ * CloudFormation. Update as availability expands.
+ */
+export const PYTHON_3_14_SUPPORTED_REGIONS: readonly string[] = ['us-east-1', 'us-west-2'] as const;
+
+/**
+ * Returns true when the given runtime version is known to be unavailable in
+ * the given AWS region. Used to surface non-blocking warnings during
+ * `agentcore validate`.
+ */
+export function isRuntimeAvailableInRegion(runtimeVersion: string, region: string | undefined): boolean {
+  if (runtimeVersion === 'PYTHON_3_14') {
+    if (!region) return true; // Can't determine, assume OK
+    return PYTHON_3_14_SUPPORTED_REGIONS.includes(region);
+  }
+  return true;
+}
 
 export const NodeRuntimeSchema = z.enum(['NODE_18', 'NODE_20', 'NODE_22']);
 export type NodeRuntime = z.infer<typeof NodeRuntimeSchema>;

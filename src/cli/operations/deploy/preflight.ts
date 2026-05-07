@@ -34,6 +34,12 @@ export interface StackStatusCheckResult {
   blockingStack?: string;
   /** User-friendly message explaining why deployment is blocked */
   message?: string;
+  /**
+   * True when the blocking stack is in `REVIEW_IN_PROGRESS` and can usually
+   * be recovered via `agentcore deploy --recover`. See
+   * https://github.com/aws/agentcore-cli/issues/907.
+   */
+  isRecoverableReview?: boolean;
 }
 
 /**
@@ -251,6 +257,7 @@ export async function checkStackDeployability(region: string, stackNames: string
       canDeploy: false,
       blockingStack: blocking.stackName,
       message: blocking.result.message,
+      isRecoverableReview: blocking.result.isRecoverableReview,
     };
   }
 

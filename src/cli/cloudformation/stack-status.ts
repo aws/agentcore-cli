@@ -13,10 +13,21 @@ const IN_PROGRESS_STATUSES = new Set([
   'UPDATE_ROLLBACK_IN_PROGRESS',
   'UPDATE_COMPLETE_CLEANUP_IN_PROGRESS',
   'DELETE_COMPLETE_CLEANUP_IN_PROGRESS',
-  'REVIEW_IN_PROGRESS',
   'IMPORT_IN_PROGRESS',
   'IMPORT_ROLLBACK_IN_PROGRESS',
 ]);
+
+/**
+ * `REVIEW_IN_PROGRESS` is special: it occurs after `CreateChangeSet` with
+ * `ChangeSetType=CREATE` *before* a successful execute. If the only change set
+ * for the stack is `FAILED` (e.g. CloudFormation rejected the template due to
+ * an `AWS::EarlyValidation::PropertyValidation` error), the stack is
+ * **permanently** stuck in `REVIEW_IN_PROGRESS`. The stack contains no
+ * resources and can be safely deleted to recover.
+ *
+ * See: https://github.com/aws/agentcore-cli/issues/907
+ */
+const RECOVERABLE_REVIEW_STATUSES = new Set(['REVIEW_IN_PROGRESS']);
 
 /**
  * CloudFormation stack statuses that indicate the stack is in a failed state
@@ -39,6 +50,12 @@ export interface StackStatusResult {
   status?: string;
   /** User-friendly message explaining why deployment is blocked */
   message?: string;
+  /**
+   * True when the stack is in `REVIEW_IN_PROGRESS` and has no successfully
+   * executed change sets — i.e. it can be cleaned up via `DeleteStack` and the
+   * deploy retried. Callers may offer a `--recover` flow when this is set.
+   */
+  isRecoverableReview?: boolean;
 }
 
 /**
@@ -49,6 +66,7 @@ export interface StackStatusResult {
  * - If the stack is in a stable state (*_COMPLETE), deployment can proceed
  * - If the stack is in progress, deployment must wait
  * - If the stack is in a failed state, deployment may require manual intervention
+ * - If the stack is in `REVIEW_IN_PROGRESS`, it can usually be auto-recovered
  */
 export async function checkStackStatus(region: string, stackName: string): Promise<StackStatusResult> {
   const cfn = new CloudFormationClient({ region, credentials: getCredentialProvider() });
@@ -63,6 +81,20 @@ export async function checkStackStatus(region: string, stackName: string): Promi
     }
 
     const status = stack.StackStatus;
+
+    // Stuck in REVIEW_IN_PROGRESS — treat as recoverable, with a clearer message
+    if (RECOVERABLE_REVIEW_STATUSES.has(status)) {
+      return {
+        canDeploy: false,
+        exists: true,
+        status,
+        isRecoverableReview: true,
+        message:
+          `Stack "${stackName}" is in ${status} state. This usually means a previous deployment ` +
+          `failed CloudFormation early validation (for example, an unsupported runtime in this region). ` +
+          `Run \`agentcore deploy --recover\` to delete the empty stack and retry.`,
+      };
+    }
 
     // Check if stack is in a transitional state
     if (IN_PROGRESS_STATUSES.has(status)) {

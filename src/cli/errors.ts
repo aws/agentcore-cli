@@ -158,3 +158,29 @@ export function isChangesetInProgressError(err: unknown): boolean {
 
   return false;
 }
+
+/**
+ * Checks if an error originates from CloudFormation early validation hooks
+ * (e.g. `AWS::EarlyValidation::PropertyValidation`). These errors typically
+ * indicate that the template references a value the service does not support
+ * in the target region (for example, a Python runtime not yet GA in that
+ * region — see https://github.com/aws/agentcore-cli/issues/907).
+ */
+export function isEarlyValidationError(err: unknown): boolean {
+  const message = getErrorMessage(err).toLowerCase();
+  return (
+    message.includes('aws::earlyvalidation::propertyvalidation') ||
+    message.includes('earlyvalidation::propertyvalidation') ||
+    (message.includes('hook(s)/validation failed') && message.includes('earlyvalidation'))
+  );
+}
+
+/**
+ * Checks if an error indicates the stack is stuck in `REVIEW_IN_PROGRESS`.
+ * This is a recoverable state — the stack contains no resources and can be
+ * deleted via `agentcore deploy --recover`.
+ */
+export function isReviewInProgressError(err: unknown): boolean {
+  const message = getErrorMessage(err).toLowerCase();
+  return message.includes('review_in_progress');
+}
