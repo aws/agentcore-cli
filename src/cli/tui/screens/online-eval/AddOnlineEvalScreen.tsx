@@ -275,12 +275,13 @@ export function AddOnlineEvalScreen({
           <Box flexDirection="column">
             <Text dimColor>
               Optional filters that scope which traces are evaluated. Format: {'<key>'} {'<op>'} {'<value>'}, separated
-              by ";". Operators: {ONLINE_EVAL_FILTER_OPERATORS.join(', ')}. Values are parsed as boolean (true/false),
-              number, or string. Leave blank for no filters.
+              by ";". Operators: {ONLINE_EVAL_FILTER_OPERATORS.join(', ')}. Bare {'`true`'}/{'`false`'} → boolean; bare
+              numbers → double; quoted {'`"..."`'} or anything else → string. Use quotes to force string type for
+              numeric-looking IDs or the literal words {'`"true"`'}/{'`"false"`'}. Leave blank for no filters.
             </Text>
             <TextInput
               key="filters"
-              prompt='Filters (e.g. "model Equals claude-3; latencyMs LessThan 1000")'
+              prompt='Filters (e.g. "model Equals claude-3; id Equals "12345"; success Equals true")'
               initialValue=""
               onSubmit={value => {
                 const trimmed = value.trim();
@@ -363,7 +364,15 @@ function formatFilter(f: OnlineEvalFilter): string {
 
 /**
  * Parse a filter input string such as:
- *   "model Equals claude-3; latencyMs LessThan 1000; success Equals true"
+ *   'model Equals claude-3; latencyMs LessThan 1000; success Equals true'
+ *   'id Equals "12345"; flag Equals "true"'
+ *
+ * Value typing rules:
+ *   - Double-quoted value (e.g. "12345") → stringValue (quotes stripped)
+ *   - Bare `true` / `false` → booleanValue
+ *   - Bare numeric (`-?\d+(\.\d+)?`) → doubleValue
+ *   - Anything else → stringValue
+ *
  * Returns undefined if any segment is malformed.
  */
 function parseFiltersInput(input: string): OnlineEvalFilter[] | undefined {
@@ -375,20 +384,29 @@ function parseFiltersInput(input: string): OnlineEvalFilter[] | undefined {
 
   const filters: OnlineEvalFilter[] = [];
   for (const segment of segments) {
-    const parts = segment.split(/\s+/);
-    if (parts.length < 3) return undefined;
-    const key = parts[0]!;
-    const operator = parts[1] as OnlineEvalFilterOperator;
+    // Match: <key> <operator> <value> where <value> is either a double-quoted
+    // string (with no embedded quotes) or a bare token sequence to end of line.
+    const match = segment.match(/^(\S+)\s+(\S+)\s+(?:"([^"]*)"|(.+?))\s*$/);
+    if (!match) return undefined;
+    const key = match[1]!;
+    const operator = match[2] as OnlineEvalFilterOperator;
     if (!ONLINE_EVAL_FILTER_OPERATORS.includes(operator)) return undefined;
-    const rawValue = parts.slice(2).join(' ');
+    const quoted = match[3];
+    const bare = match[4];
 
     let value: OnlineEvalFilter['value'];
-    if (rawValue === 'true' || rawValue === 'false') {
-      value = { booleanValue: rawValue === 'true' };
-    } else if (/^-?\d+(\.\d+)?$/.test(rawValue)) {
-      value = { doubleValue: parseFloat(rawValue) };
+    if (quoted !== undefined) {
+      // Explicit string — preserves "true", "false", "12345" as strings.
+      value = { stringValue: quoted };
     } else {
-      value = { stringValue: rawValue };
+      const rawValue = bare!;
+      if (rawValue === 'true' || rawValue === 'false') {
+        value = { booleanValue: rawValue === 'true' };
+      } else if (/^-?\d+(\.\d+)?$/.test(rawValue)) {
+        value = { doubleValue: parseFloat(rawValue) };
+      } else {
+        value = { stringValue: rawValue };
+      }
     }
     filters.push({ key, operator, value });
   }
