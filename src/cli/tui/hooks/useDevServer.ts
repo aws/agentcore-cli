@@ -199,6 +199,22 @@ export function useDevServer(options: {
           setStatus('error');
           return;
         }
+        if (isRestart && !portFree) {
+          // Previous instance hasn't released the explicit port. Probe one more
+          // time and surface a clear error rather than silently attempting to
+          // bind a port we know is held — otherwise the user would only see an
+          // opaque EADDRINUSE from the spawned process.
+          const recheck = await findAvailablePort(fixedPort);
+          if (recheck !== fixedPort) {
+            addLog(
+              'error',
+              `Port ${fixedPort} still held by previous instance. ` +
+                `Stop the conflicting process or pass a different --port.`
+            );
+            setStatus('error');
+            return;
+          }
+        }
         port = isRestart && portFree ? actualPortRef.current : fixedPort;
       } else {
         port = isRestart && portFree ? actualPortRef.current : await findAvailablePort(fixedPort);

@@ -194,9 +194,27 @@ export const registerDev = (program: Command) => {
     .action(async (positionalPrompt: string | undefined, opts, command) => {
       try {
         const port = parseInt(opts.port, 10);
-        // Was --port passed explicitly on the command line, or are we using the default?
-        // Used to honor literal port values (issue #1079) instead of silently offsetting.
-        const portIsExplicit = command?.getOptionValueSource?.('port') === 'cli';
+        // Was --port passed explicitly (CLI flag, env, or config), or are we
+        // using the registered default? Any non-default source is treated as
+        // explicit so the user's value is honored literally — issue #1079.
+        //
+        // Commander v14 always provides `command` and `getOptionValueSource`
+        // on the action callback. The optional chain below is defensive: if
+        // either is missing (older Commander, exotic test harness), the value
+        // falls back to "implicit" rather than throwing. To prevent silent
+        // regressions, we explicitly check that the API is present.
+        if (!command || typeof command.getOptionValueSource !== 'function') {
+          // eslint-disable-next-line no-console
+          console.warn(
+            'Warning: Commander command/getOptionValueSource unavailable; --port will be treated as implicit.'
+          );
+        }
+        const portSource = command?.getOptionValueSource?.('port');
+        const portIsExplicit = portSource !== undefined && portSource !== 'default';
+        // Note: passing `-p 8080` (matching the registered default) is now
+        // treated as explicit, which means it disables the runtime-index
+        // offset and fails fast on conflict. This is the intended behavior of
+        // issue #1079 and is documented in the --port help text and CHANGELOG.
 
         // Parse custom headers
         let headers: Record<string, string> | undefined;

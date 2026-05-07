@@ -135,12 +135,20 @@ export interface WebUIOptions {
    * Base port for agent dev servers. When provided, agents bind at
    * `basePort + agentIndex` (or literally at `basePort` if `basePortIsExplicit`).
    * When omitted, falls back to `uiPort + 1 + agentIndex`.
+   *
+   * NOTE for external callers: pair this with `basePortIsExplicit` so the
+   * caller's intent is unambiguous. Passing `basePort` alone preserves the
+   * historical auto-offset behavior — which is exactly the silent shift
+   * issue #1079 fixed in CLI flows. If you want the literal value honored
+   * (and conflicts to fail fast), set `basePortIsExplicit: true`.
    */
   basePort?: number;
   /**
-   * Was the base port explicitly passed by the user on the CLI? When true the
-   * port is honored literally and a port conflict fails fast instead of being
-   * silently shifted (issue #1079).
+   * Was the base port explicitly passed by the user (e.g. via CLI `--port`)?
+   * When true, the port is honored literally and a port conflict fails fast
+   * instead of being silently shifted by the runtime index (issue #1079).
+   *
+   * Only meaningful when `basePort` is also set; ignored otherwise.
    */
   basePortIsExplicit?: boolean;
   /** Dev config factory — called when an agent needs to be started. Required for dev mode, unused when onStart is provided. */

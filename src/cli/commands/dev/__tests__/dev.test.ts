@@ -13,8 +13,10 @@ describe('dev command', () => {
       expect(result.stdout.includes('--stream'), 'Should show --stream option').toBeTruthy();
       expect(result.stdout.includes('--logs'), 'Should show --logs option').toBeTruthy();
       expect(result.stdout.includes('8080'), 'Should show default port').toBeTruthy();
+      // Stable contract: the --port description must mention "runtime index"
+      // so users learn the multi-runtime semantics from --help (issue #1079).
       expect(
-        /base.*port|runtime\s+index/i.test(result.stdout),
+        result.stdout.includes('runtime index'),
         'Should document multi-runtime --port semantics (issue #1079)'
       ).toBeTruthy();
     });

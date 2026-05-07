@@ -125,6 +125,11 @@ export async function launchBrowserDev(): Promise<void> {
     workingDir,
     project,
     port: 8080,
+    // Intentionally implicit: this entry point is invoked from the TUI
+    // launcher (no CLI parsing), so there is no user-supplied --port to
+    // honor literally. Multi-runtime auto-offset behavior applies, matching
+    // the experience of running `agentcore dev` with no --port flag.
+    portIsExplicit: false,
     otelEnvVars,
     collector,
   });

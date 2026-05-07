@@ -14,9 +14,23 @@ vi.mock('../../server', async () => {
     // findAvailablePort: configured per-test via mockImplementation below
     findAvailablePort: vi.fn((p: number) => Promise.resolve(p)),
     createDevServer: vi.fn(() => ({
-      start: vi.fn(() => Promise.resolve({ pid: 1234, killed: false })),
+      // The handler only null-checks `child`; cast to satisfy the type without
+      // pretending to satisfy the full ChildProcess contract.
+      start: vi.fn(() => Promise.resolve({} as never)),
       kill: vi.fn(),
     })),
+  };
+});
+
+// Also mock waitForServerReady (imported by handlers/start.ts directly from '../../utils').
+// Without this, tests fall through to a real 60s TCP probe loop after createDevServer.start()
+// resolves, ballooning the file's runtime to several minutes and creating flakiness if anything
+// happens to be listening on the resolved port.
+vi.mock('../../utils', async () => {
+  const actual = await vi.importActual<typeof import('../../utils')>('../../utils');
+  return {
+    ...actual,
+    waitForServerReady: vi.fn(() => Promise.resolve(true)),
   };
 });
 
@@ -63,7 +77,6 @@ function makeDevConfig(overrides: Partial<DevConfig> = {}): DevConfig {
 
 function mockCtx(opts: {
   agentNames: string[];
-  selectedAgent: string;
   basePort?: number;
   basePortIsExplicit?: boolean;
   protocol?: 'HTTP' | 'A2A' | 'MCP';
@@ -114,7 +127,6 @@ describe('handleStart - port resolution (issue #1079)', () => {
     const logs: { level: string; msg: string }[] = [];
     const ctx = mockCtx({
       agentNames: ['AgentA', 'AgentB'],
-      selectedAgent: 'AgentB',
       basePort: 8080,
       basePortIsExplicit: false,
       onLog: (level, msg) => logs.push({ level, msg }),
@@ -133,7 +145,6 @@ describe('handleStart - port resolution (issue #1079)', () => {
     const logs: { level: string; msg: string }[] = [];
     const ctx = mockCtx({
       agentNames: ['AgentA', 'AgentB'],
-      selectedAgent: 'AgentB',
       basePort: 8788,
       basePortIsExplicit: true,
       onLog: (level, msg) => logs.push({ level, msg }),
@@ -150,7 +161,6 @@ describe('handleStart - port resolution (issue #1079)', () => {
   it('falls back to uiPort + 1 + index when basePort is undefined', async () => {
     const ctx = mockCtx({
       agentNames: ['AgentA', 'AgentB'],
-      selectedAgent: 'AgentB',
     });
     const req = mockReq({ agentName: 'AgentB' });
     const res = mockRes();
@@ -165,7 +175,6 @@ describe('handleStart - port resolution (issue #1079)', () => {
     findAvailableMock.mockImplementationOnce((p: number) => Promise.resolve(p + 5) as never); // simulate conflict
     const ctx = mockCtx({
       agentNames: ['AgentA'],
-      selectedAgent: 'AgentA',
       basePort: 8788,
       basePortIsExplicit: true,
     });

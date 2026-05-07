@@ -2,6 +2,19 @@
 
 All notable changes to this project will be documented in this file.
 
+## [Unreleased]
+
+### Changed
+- **Breaking:** `agentcore dev --port <port>` now honors the value literally
+  instead of silently offsetting it by the runtime's index in `agentcore.json`
+  (issue #1079). When `--port` is passed (including `-p 8080`, which matches
+  the registered default), per-runtime offsetting is disabled and a port
+  conflict fails fast with a clear error message. When `--port` is omitted,
+  the previous `basePort + runtimeIndex` auto-allocation continues to apply
+  but now logs the offset whenever it shifts. Migration: drop the manual
+  `-p = desiredPort - runtimeIndex` arithmetic from your scripts and pass the
+  port you actually want.
+
 ## [0.13.1] - 2026-05-06
 
 ### Added

@@ -102,9 +102,12 @@ async function doStartAgent(
   //   1. If basePort was explicitly passed via --port: use it literally (no offset).
   //   2. If basePort was provided (default): basePort + agentIndex.
   //   3. Otherwise: uiPort + 1 + agentIndex (legacy auto-allocation above the UI port).
+  // basePortIsExplicit is only meaningful when basePort is set (the two are paired
+  // by command.tsx; guarding here keeps programmatic misuse from triggering the
+  // confusing combination of "fail-fast + legacy uiPort+1+index").
   const safeIndex = agentIndex >= 0 ? agentIndex : 0;
   const basePort = ctx.options.basePort;
-  const basePortIsExplicit = ctx.options.basePortIsExplicit === true;
+  const basePortIsExplicit = ctx.options.basePortIsExplicit === true && basePort !== undefined;
   let httpTargetPort: number;
   let offset: number;
   if (basePort !== undefined && basePortIsExplicit) {
@@ -146,11 +149,19 @@ async function doStartAgent(
     };
   }
   if (!isA2A && !isMCP && basePortIsExplicit && agentPort !== targetPort) {
+    // When --port is explicit, all HTTP runtimes bind to the same literal port,
+    // so only the first can succeed. Surface this clearly when there is more
+    // than one HTTP runtime configured.
+    const httpAgentCount = ctx.options.agents.filter(a => a.protocol !== 'A2A' && a.protocol !== 'MCP').length;
+    const multiRuntimeHint =
+      httpAgentCount > 1
+        ? ' Explicit --port binds all HTTP runtimes to the same port; omit --port to auto-offset per runtime, or stop the conflicting process.'
+        : ' Pass a different --port or stop the conflicting process.';
     return {
       success: false,
       name: agentName,
       port: 0,
-      error: `Port ${targetPort} is in use. Pass a different --port or stop the conflicting process.`,
+      error: `Port ${targetPort} is in use.${multiRuntimeHint}`,
     };
   }
   if (agentPort !== targetPort) {
