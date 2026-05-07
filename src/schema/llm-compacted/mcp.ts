@@ -177,6 +177,8 @@ interface IamPolicyDocument {
 // ─────────────────────────────────────────────────────────────────────────────
 
 type GatewayTargetType = 'lambda' | 'mcpServer' | 'openApiSchema' | 'smithyModel' | 'apiGateway' | 'lambdaFunctionArn';
+// PYTHON_3_14 is opt-in only; CloudFormation currently supports it in us-east-1
+// and us-west-2. See docs/configuration.md#runtime-versions and issue #907.
 type PythonRuntime = 'PYTHON_3_10' | 'PYTHON_3_11' | 'PYTHON_3_12' | 'PYTHON_3_13' | 'PYTHON_3_14';
 type NodeRuntime = 'NODE_18' | 'NODE_20' | 'NODE_22';
 type NetworkMode = 'PUBLIC' | 'VPC';

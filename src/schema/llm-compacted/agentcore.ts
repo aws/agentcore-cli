@@ -35,6 +35,8 @@ interface AgentCoreProjectSpec {
 // ─────────────────────────────────────────────────────────────────────────────
 
 type BuildType = 'CodeZip' | 'Container';
+// PYTHON_3_14 is opt-in only; CloudFormation currently supports it in us-east-1
+// and us-west-2. See docs/configuration.md#runtime-versions and issue #907.
 type PythonRuntime = 'PYTHON_3_10' | 'PYTHON_3_11' | 'PYTHON_3_12' | 'PYTHON_3_13' | 'PYTHON_3_14';
 type NodeRuntime = 'NODE_18' | 'NODE_20' | 'NODE_22';
 type RuntimeVersion = PythonRuntime | NodeRuntime;
@@ -68,7 +70,7 @@ interface AgentEnvSpec {
   entrypoint: string; // @regex ^[a-zA-Z0-9_][a-zA-Z0-9_/.-]*\.(py|ts|js)(:[a-zA-Z_][a-zA-Z0-9_]*)?$ e.g. "main.py:handler" or "index.ts"
   codeLocation: string; // Directory path
   dockerfile?: string; // Custom Dockerfile name for Container builds (default: 'Dockerfile'). Must be a filename, not a path.
-  runtimeVersion?: RuntimeVersion;
+  runtimeVersion?: RuntimeVersion; // default 'PYTHON_3_13'
   envVars?: EnvVar[];
   networkMode?: NetworkMode; // default 'PUBLIC'
   networkConfig?: NetworkConfig; // Required when networkMode is 'VPC'
