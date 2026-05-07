@@ -68,7 +68,7 @@ file maps to a JSON config file and includes validation constraints as comments 
 
 - **BuildType**: `'CodeZip'` | `'Container'`
 - **NetworkMode**: `'PUBLIC'` | `'VPC'`
-- **RuntimeVersion**: `'PYTHON_3_10'` | `'PYTHON_3_11'` | `'PYTHON_3_12'` | `'PYTHON_3_13'` | `'PYTHON_3_14'` | `'NODE_18'` | `'NODE_20'` | `'NODE_22'`
+- **RuntimeVersion**: `'PYTHON_3_10'` | `'PYTHON_3_11'` | `'PYTHON_3_12'` | `'PYTHON_3_13'` (default) | `'PYTHON_3_14'` (opt-in; only supported by CloudFormation in `us-east-1` and `us-west-2` &mdash; see [issue #907](https://github.com/aws/agentcore-cli/issues/907)) | `'NODE_18'` | `'NODE_20'` | `'NODE_22'`
 - **MemoryStrategyType**: `'SEMANTIC'` | `'SUMMARIZATION'` | `'USER_PREFERENCE'` | `'EPISODIC'`
 - **GatewayTargetType**: `'lambda'` | `'mcpServer'` | `'openApiSchema'` | `'smithyModel'` | `'apiGateway'` | `'lambdaFunctionArn'`
 - **ModelProvider**: `'Bedrock'` | `'Gemini'` | `'OpenAI'` | `'Anthropic'`
