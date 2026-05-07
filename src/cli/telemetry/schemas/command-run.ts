@@ -70,7 +70,12 @@ const AddCredentialAttrs = safeSchema({ credential_type: CredentialType });
 
 const AddEvaluatorAttrs = safeSchema({ evaluator_type: EvaluatorType, level: Level });
 
-const AddOnlineEvalAttrs = safeSchema({ evaluator_count: Count, enable_on_create: z.boolean() });
+const AddOnlineEvalAttrs = safeSchema({
+  evaluator_count: Count,
+  enable_on_create: z.boolean(),
+  filter_count: Count,
+  session_timeout_set: z.boolean(),
+});
 
 const AddGatewayAttrs = safeSchema({
   authorizer_type: AuthorizerType,

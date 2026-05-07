@@ -76,7 +76,9 @@ export function parseFilterFlag(raw: string): FilterRule {
 
   const parsed = FilterRuleSchema.safeParse({ key, operator: op, value });
   if (!parsed.success) {
-    throw new Error(`--filter failed schema validation: ${parsed.error.issues.map(i => i.message).join('; ')}`);
+    throw new Error(
+      `--filter failed schema validation: ${parsed.error.issues.map((i: { message: string }) => i.message).join('; ')}`
+    );
   }
   return parsed.data;
 }
