@@ -60,6 +60,30 @@ export interface AddAgentError {
 export type AddAgentOutcome = AddAgentCreateResult | AddAgentByoResult | AddAgentError;
 
 // ─────────────────────────────────────────────────────────────────────────────
+// Dockerfile source resolution
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Resolve the absolute source path of a user-supplied Dockerfile.
+ *
+ * The path is interpreted relative to the directory the user invoked
+ * `agentcore` from (process.cwd()), matching the "add policy" file picker
+ * (issue #1128). Absolute paths are returned unchanged. A `null` return
+ * value means the caller should not attempt to copy the file (the user
+ * either left the field empty, indicating they want the default
+ * Dockerfile, or supplied a bare filename indicating the file already
+ * lives inside the build context).
+ */
+export function resolveDockerfileSource(dockerfile: string | undefined, cwd: string = process.cwd()): string | null {
+  // Empty / undefined / bare-filename inputs do not need resolution: empty
+  // means "use default", bare filename means "already in code dir".
+  if (!dockerfile?.includes('/')) {
+    return null;
+  }
+  return resolve(cwd, dockerfile);
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // Config Mappers
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -263,13 +287,13 @@ async function handleCreatePath(
   // If dockerfile is a path (contains /), copy it into the agent directory (overwriting template default).
   // The path is interpreted relative to the directory the user invoked agentcore from (process.cwd()),
   // matching the behavior of the "add policy" file picker (issue #1128).
-  if (generateConfig.dockerfile?.includes('/')) {
-    const sourcePath = resolve(process.cwd(), generateConfig.dockerfile);
-    if (!existsSync(sourcePath)) {
-      return { ok: false, error: `Dockerfile not found at ${sourcePath}` };
+  const createSourcePath = resolveDockerfileSource(generateConfig.dockerfile);
+  if (createSourcePath !== null) {
+    if (!existsSync(createSourcePath)) {
+      return { ok: false, error: `Dockerfile not found at ${createSourcePath}` };
     }
-    const filename = basename(sourcePath);
-    copyFileSync(sourcePath, join(agentPath, filename));
+    const filename = basename(createSourcePath);
+    copyFileSync(createSourcePath, join(agentPath, filename));
     generateConfig.dockerfile = filename;
   }
 
@@ -375,13 +399,13 @@ async function handleByoPath(
   // The user-supplied path is resolved relative to process.cwd() — the directory the user
   // invoked agentcore from — matching the "add policy" file picker (issue #1128).
   let dockerfileName = config.dockerfile;
-  if (dockerfileName?.includes('/')) {
-    const sourcePath = resolve(process.cwd(), dockerfileName);
-    if (!existsSync(sourcePath)) {
-      return { ok: false, error: `Dockerfile not found at ${sourcePath}` };
+  const byoSourcePath = resolveDockerfileSource(dockerfileName);
+  if (byoSourcePath !== null) {
+    if (!existsSync(byoSourcePath)) {
+      return { ok: false, error: `Dockerfile not found at ${byoSourcePath}` };
     }
-    dockerfileName = basename(sourcePath);
-    copyFileSync(sourcePath, join(codeDir, dockerfileName));
+    dockerfileName = basename(byoSourcePath);
+    copyFileSync(byoSourcePath, join(codeDir, dockerfileName));
   }
 
   const project = await configIO.readProjectSpec();
