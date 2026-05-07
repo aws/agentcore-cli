@@ -50,7 +50,6 @@ describe('checkStackStatus', () => {
       'DELETE_IN_PROGRESS',
       'ROLLBACK_IN_PROGRESS',
       'UPDATE_ROLLBACK_IN_PROGRESS',
-      'REVIEW_IN_PROGRESS',
     ];
 
     for (const status of inProgressStatuses) {
@@ -59,7 +58,18 @@ describe('checkStackStatus', () => {
       expect(result.canDeploy, `${status} should block deploy`).toBe(false);
       expect(result.exists).toBe(true);
       expect(result.message).toContain(status);
+      expect(result.isRecoverableReview).toBeFalsy();
     }
+  });
+
+  it('returns canDeploy false and isRecoverableReview true for REVIEW_IN_PROGRESS', async () => {
+    mockSend.mockResolvedValue({ Stacks: [{ StackStatus: 'REVIEW_IN_PROGRESS' }] });
+    const result = await checkStackStatus('us-east-1', 'MyStack');
+    expect(result.canDeploy).toBe(false);
+    expect(result.exists).toBe(true);
+    expect(result.status).toBe('REVIEW_IN_PROGRESS');
+    expect(result.isRecoverableReview).toBe(true);
+    expect(result.message).toContain('--recover');
   });
 
   it('returns canDeploy false for failed status', async () => {

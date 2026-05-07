@@ -2,8 +2,10 @@ import {
   AgentAlreadyExistsError,
   getErrorMessage,
   isChangesetInProgressError,
+  isEarlyValidationError,
   isExpiredTokenError,
   isNoCredentialsError,
+  isReviewInProgressError,
   isStackInProgressError,
 } from '../errors.js';
 import { describe, expect, it } from 'vitest';
@@ -202,6 +204,36 @@ describe('errors', () => {
       expect(isChangesetInProgressError(null)).toBe(false);
       expect(isChangesetInProgressError(undefined)).toBe(false);
       expect(isChangesetInProgressError({})).toBe(false);
+    });
+  });
+
+  describe('isEarlyValidationError', () => {
+    it('detects AWS::EarlyValidation::PropertyValidation messages', () => {
+      expect(
+        isEarlyValidationError(
+          new Error('The following hook(s)/validation failed: [AWS::EarlyValidation::PropertyValidation]')
+        )
+      ).toBe(true);
+      expect(isEarlyValidationError(new Error('EarlyValidation::PropertyValidation rejected runtime'))).toBe(true);
+    });
+
+    it('returns false for unrelated errors', () => {
+      expect(isEarlyValidationError(new Error('CREATE_FAILED'))).toBe(false);
+      expect(isEarlyValidationError(new Error('Stack not found'))).toBe(false);
+      expect(isEarlyValidationError(null)).toBe(false);
+    });
+  });
+
+  describe('isReviewInProgressError', () => {
+    it('detects REVIEW_IN_PROGRESS errors', () => {
+      expect(isReviewInProgressError(new Error('Stack "MyStack" is currently in REVIEW_IN_PROGRESS state.'))).toBe(
+        true
+      );
+    });
+
+    it('returns false for unrelated errors', () => {
+      expect(isReviewInProgressError(new Error('UPDATE_IN_PROGRESS'))).toBe(false);
+      expect(isReviewInProgressError(null)).toBe(false);
     });
   });
 });

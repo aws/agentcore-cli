@@ -204,4 +204,58 @@ describe('handleValidate', () => {
     expect(result.success).toBe(false);
     expect(result.error).toBe('string error');
   });
+
+  it('emits a warning when PYTHON_3_14 is used in an unsupported region', async () => {
+    mockFindConfigRoot.mockReturnValue('/project/agentcore');
+    mockReadProjectSpec.mockResolvedValue({
+      name: 'Test',
+      version: 1,
+      managedBy: 'CDK' as const,
+      runtimes: [{ name: 'agent1', runtimeVersion: 'PYTHON_3_14' }],
+    });
+    mockReadAWSDeploymentTargets.mockResolvedValue([{ name: 'default', region: 'eu-central-1', account: '111' }]);
+    mockConfigExists.mockReturnValue(false);
+
+    const result = await handleValidate({});
+
+    expect(result.success).toBe(true);
+    expect(result.warnings).toBeDefined();
+    expect(result.warnings![0]).toContain('PYTHON_3_14');
+    expect(result.warnings![0]).toContain('eu-central-1');
+    expect(result.warnings![0]).toContain('agent1');
+  });
+
+  it('does not warn when PYTHON_3_14 is used in a supported region', async () => {
+    mockFindConfigRoot.mockReturnValue('/project/agentcore');
+    mockReadProjectSpec.mockResolvedValue({
+      name: 'Test',
+      version: 1,
+      managedBy: 'CDK' as const,
+      runtimes: [{ name: 'agent1', runtimeVersion: 'PYTHON_3_14' }],
+    });
+    mockReadAWSDeploymentTargets.mockResolvedValue([{ name: 'default', region: 'us-east-1', account: '111' }]);
+    mockConfigExists.mockReturnValue(false);
+
+    const result = await handleValidate({});
+
+    expect(result.success).toBe(true);
+    expect(result.warnings).toBeUndefined();
+  });
+
+  it('does not warn for non-PYTHON_3_14 runtimes regardless of region', async () => {
+    mockFindConfigRoot.mockReturnValue('/project/agentcore');
+    mockReadProjectSpec.mockResolvedValue({
+      name: 'Test',
+      version: 1,
+      managedBy: 'CDK' as const,
+      runtimes: [{ name: 'agent1', runtimeVersion: 'PYTHON_3_13' }],
+    });
+    mockReadAWSDeploymentTargets.mockResolvedValue([{ name: 'default', region: 'eu-central-1', account: '111' }]);
+    mockConfigExists.mockReturnValue(false);
+
+    const result = await handleValidate({});
+
+    expect(result.success).toBe(true);
+    expect(result.warnings).toBeUndefined();
+  });
 });
