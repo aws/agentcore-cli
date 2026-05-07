@@ -740,6 +740,14 @@ export interface GetOnlineEvalConfigResult {
   outputLogGroupName?: string;
   /** Sampling percentage from the rule config */
   samplingPercentage?: number;
+  /** Session idle timeout in minutes from rule.sessionConfig */
+  sessionTimeoutMinutes?: number;
+  /** Filters applied to the rule */
+  filters?: {
+    key: string;
+    operator: string;
+    value: { stringValue?: string; doubleValue?: number; booleanValue?: boolean };
+  }[];
   /** Service names from CloudWatch data source config (e.g. "projectName_agentName.DEFAULT") */
   serviceNames?: string[];
   /** Evaluator IDs referenced by this config */
@@ -763,6 +771,33 @@ export async function getOnlineEvaluationConfig(
 
   const logGroupName = response.outputConfig?.cloudWatchConfig?.logGroupName;
   const samplingPercentage = response.rule?.samplingConfig?.samplingPercentage;
+  const sessionTimeoutMinutes = response.rule?.sessionConfig?.sessionTimeoutMinutes;
+  const rawFilters = response.rule?.filters;
+  const filters = Array.isArray(rawFilters)
+    ? rawFilters
+        .map(f => {
+          if (!f || typeof f !== 'object') return undefined;
+          const key = (f as { key?: string }).key;
+          const operator = (f as { operator?: string }).operator;
+          const rawValue = (f as { value?: unknown }).value;
+          if (!key || !operator || !rawValue || typeof rawValue !== 'object') return undefined;
+          const v = rawValue as { stringValue?: string; doubleValue?: number; booleanValue?: boolean };
+          const value: { stringValue?: string; doubleValue?: number; booleanValue?: boolean } = {};
+          if (v.stringValue !== undefined) value.stringValue = v.stringValue;
+          if (v.doubleValue !== undefined) value.doubleValue = v.doubleValue;
+          if (v.booleanValue !== undefined) value.booleanValue = v.booleanValue;
+          return { key, operator, value };
+        })
+        .filter(
+          (
+            f
+          ): f is {
+            key: string;
+            operator: string;
+            value: { stringValue?: string; doubleValue?: number; booleanValue?: boolean };
+          } => !!f
+        )
+    : undefined;
   const serviceNames =
     response.dataSourceConfig && 'cloudWatchLogs' in response.dataSourceConfig
       ? response.dataSourceConfig.cloudWatchLogs?.serviceNames
@@ -781,6 +816,8 @@ export async function getOnlineEvaluationConfig(
     failureReason: response.failureReason,
     outputLogGroupName: logGroupName,
     samplingPercentage,
+    sessionTimeoutMinutes,
+    filters,
     serviceNames,
     evaluatorIds,
   };

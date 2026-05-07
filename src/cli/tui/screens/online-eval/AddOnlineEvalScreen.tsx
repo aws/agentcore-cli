@@ -12,8 +12,13 @@ import {
 import { HELP_TEXT } from '../../constants';
 import { useListNavigation, useMultiSelectNavigation } from '../../hooks';
 import { generateUniqueName } from '../../utils';
-import type { AddOnlineEvalConfig, EvaluatorItem, RuntimeEndpointEntry } from './types';
-import { DEFAULT_SAMPLING_RATE, ONLINE_EVAL_STEP_LABELS } from './types';
+import type { AddOnlineEvalConfig, EvaluatorItem, OnlineEvalFilter, RuntimeEndpointEntry } from './types';
+import {
+  DEFAULT_SAMPLING_RATE,
+  DEFAULT_SESSION_TIMEOUT_MINUTES,
+  ONLINE_EVAL_FILTER_OPERATORS,
+  ONLINE_EVAL_STEP_LABELS,
+} from './types';
 import { useAddOnlineEvalWizard } from './useAddOnlineEvalWizard';
 import { Box, Text } from 'ink';
 import React, { useCallback, useEffect, useMemo } from 'react';
@@ -22,6 +27,54 @@ import React, { useCallback, useEffect, useMemo } from 'react';
 export interface RuntimeInfoForEval {
   name: string;
   endpoints: RuntimeEndpointEntry[];
+}
+
+/**
+ * Parse a user-entered JSON string into a list of OnlineEvalFilter objects.
+ * Returns true (no filters) for an empty input. Returns an error message string on failure.
+ */
+function parseFiltersInput(raw: string): OnlineEvalFilter[] | string {
+  const trimmed = raw.trim();
+  if (trimmed === '') return [];
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(trimmed);
+  } catch {
+    return 'Invalid JSON';
+  }
+  if (!Array.isArray(parsed)) return 'Must be a JSON array of filter objects';
+  const result: OnlineEvalFilter[] = [];
+  for (const f of parsed) {
+    if (!f || typeof f !== 'object') return 'Each filter must be an object';
+    const obj = f as { key?: unknown; operator?: unknown; value?: unknown };
+    if (typeof obj.key !== 'string' || obj.key.length === 0) return 'Each filter requires a non-empty "key" string';
+    if (typeof obj.operator !== 'string' || !(ONLINE_EVAL_FILTER_OPERATORS as string[]).includes(obj.operator)) {
+      return `operator must be one of: ${ONLINE_EVAL_FILTER_OPERATORS.join(', ')}`;
+    }
+    if (!obj.value || typeof obj.value !== 'object') return 'Each filter requires a "value" object';
+    const v = obj.value as { stringValue?: unknown; doubleValue?: unknown; booleanValue?: unknown };
+    const value: { stringValue?: string; doubleValue?: number; booleanValue?: boolean } = {};
+    let count = 0;
+    if (typeof v.stringValue === 'string') {
+      value.stringValue = v.stringValue;
+      count++;
+    }
+    if (typeof v.doubleValue === 'number') {
+      value.doubleValue = v.doubleValue;
+      count++;
+    }
+    if (typeof v.booleanValue === 'boolean') {
+      value.booleanValue = v.booleanValue;
+      count++;
+    }
+    if (count !== 1) return 'Filter value must have exactly one of stringValue, doubleValue, booleanValue';
+    result.push({
+      key: obj.key,
+      operator: obj.operator as OnlineEvalFilter['operator'],
+      value,
+    });
+  }
+  return result;
 }
 
 interface AddOnlineEvalScreenProps {
@@ -99,6 +152,8 @@ export function AddOnlineEvalScreen({
   const isEndpointStep = wizard.step === 'endpoint';
   const isEvaluatorsStep = wizard.step === 'evaluators';
   const isSamplingRateStep = wizard.step === 'samplingRate';
+  const isSessionTimeoutStep = wizard.step === 'sessionTimeout';
+  const isFiltersStep = wizard.step === 'filters';
   const isEnableOnCreateStep = wizard.step === 'enableOnCreate';
   const isConfirmStep = wizard.step === 'confirm';
 
@@ -156,7 +211,9 @@ export function AddOnlineEvalScreen({
       ? HELP_TEXT.NAVIGATE_SELECT
       : isConfirmStep
         ? HELP_TEXT.CONFIRM_CANCEL
-        : HELP_TEXT.TEXT_INPUT;
+        : isFiltersStep
+          ? 'Enter to submit (blank = no filters) · Esc back'
+          : HELP_TEXT.TEXT_INPUT;
 
   const headerContent = (
     <StepIndicator steps={wizard.steps} currentStep={wizard.step} labels={ONLINE_EVAL_STEP_LABELS} />
@@ -230,6 +287,64 @@ export function AddOnlineEvalScreen({
           </Box>
         )}
 
+        {isSessionTimeoutStep && (
+          <Box flexDirection="column">
+            <Text dimColor>
+              Session idle timeout in minutes (1–1440). Leave blank to use the default of{' '}
+              {DEFAULT_SESSION_TIMEOUT_MINUTES} minutes.
+            </Text>
+            <TextInput
+              key="sessionTimeout"
+              prompt="Session timeout (minutes, blank = default)"
+              initialValue=""
+              onSubmit={value => {
+                const trimmed = value.trim();
+                if (trimmed === '') {
+                  wizard.setSessionTimeout(undefined);
+                  return;
+                }
+                const n = parseInt(trimmed, 10);
+                if (isNaN(n) || n < 1 || n > 1440) return;
+                wizard.setSessionTimeout(n);
+              }}
+              onCancel={() => wizard.goBack()}
+              customValidation={value => {
+                const trimmed = value.trim();
+                if (trimmed === '') return true;
+                const n = Number(trimmed);
+                if (!Number.isInteger(n)) return 'Must be an integer';
+                if (n < 1 || n > 1440) return 'Must be between 1 and 1440';
+                return true;
+              }}
+            />
+          </Box>
+        )}
+
+        {isFiltersStep && (
+          <Box flexDirection="column">
+            <Text dimColor>
+              Optional filters scope which sessions get evaluated. Enter a JSON array of filters or leave blank to skip.
+            </Text>
+            <Text dimColor>Operators: {ONLINE_EVAL_FILTER_OPERATORS.join(', ')}</Text>
+            <Text dimColor>{'Example: [{"key":"user.id","operator":"Equals","value":{"stringValue":"123"}}]'}</Text>
+            <TextInput
+              key="filters"
+              prompt="Filters (JSON array, blank = none)"
+              initialValue=""
+              onSubmit={value => {
+                const result = parseFiltersInput(value);
+                if (typeof result === 'string') return;
+                wizard.setFilters(result.length > 0 ? result : undefined);
+              }}
+              onCancel={() => wizard.goBack()}
+              customValidation={value => {
+                const result = parseFiltersInput(value);
+                return typeof result === 'string' ? result : true;
+              }}
+            />
+          </Box>
+        )}
+
         {isEnableOnCreateStep && (
           <WizardSelect
             title="Enable on deploy?"
@@ -247,6 +362,20 @@ export function AddOnlineEvalScreen({
               ...(effectiveConfig.endpoint ? [{ label: 'Endpoint', value: effectiveConfig.endpoint }] : []),
               { label: 'Evaluators', value: effectiveConfig.evaluators.join(', ') },
               { label: 'Sampling Rate', value: `${effectiveConfig.samplingRate}%` },
+              {
+                label: 'Session Timeout',
+                value:
+                  effectiveConfig.sessionTimeoutMinutes !== undefined
+                    ? `${effectiveConfig.sessionTimeoutMinutes} min`
+                    : `${DEFAULT_SESSION_TIMEOUT_MINUTES} min (default)`,
+              },
+              {
+                label: 'Filters',
+                value:
+                  effectiveConfig.filters && effectiveConfig.filters.length > 0
+                    ? effectiveConfig.filters.map(f => `${f.key} ${f.operator} ${JSON.stringify(f.value)}`).join('; ')
+                    : 'none',
+              },
               { label: 'Enable on Deploy', value: effectiveConfig.enableOnCreate ? 'Yes' : 'No' },
             ]}
           />

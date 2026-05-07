@@ -1,4 +1,4 @@
-import type { OnlineEvalConfig } from '../../../schema';
+import type { OnlineEvalConfig, OnlineEvalFilter, OnlineEvalFilterOperator } from '../../../schema';
 import type { GetOnlineEvalConfigResult, OnlineEvalConfigSummary } from '../../aws/agentcore-control';
 import {
   getOnlineEvaluationConfig,
@@ -43,6 +43,15 @@ export function toOnlineEvalConfigSpec(
     evaluators: evaluatorArns,
     samplingRate: detail.samplingPercentage,
     ...(detail.description && { description: detail.description }),
+    ...(detail.sessionTimeoutMinutes !== undefined && { sessionTimeoutMinutes: detail.sessionTimeoutMinutes }),
+    ...(detail.filters &&
+      detail.filters.length > 0 && {
+        filters: detail.filters.map(f => ({
+          key: f.key,
+          operator: f.operator as OnlineEvalFilterOperator,
+          value: { ...f.value },
+        })) satisfies OnlineEvalFilter[],
+      }),
     ...(detail.executionStatus === 'ENABLED' && { enableOnCreate: true }),
   };
 }

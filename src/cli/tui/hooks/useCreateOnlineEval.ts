@@ -1,5 +1,6 @@
 import { onlineEvalConfigPrimitive } from '../../primitives/registry';
 import { withAddTelemetry } from '../../telemetry/cli-command-run.js';
+import type { OnlineEvalFilter } from '../screens/online-eval/types';
 import { useCallback, useEffect, useState } from 'react';
 
 interface CreateOnlineEvalConfig {
@@ -9,6 +10,7 @@ interface CreateOnlineEvalConfig {
   evaluators: string[];
   samplingRate: number;
   sessionTimeoutMinutes?: number;
+  filters?: OnlineEvalFilter[];
   enableOnCreate: boolean;
 }
 
@@ -34,6 +36,7 @@ export function useCreateOnlineEval() {
             evaluators: config.evaluators,
             samplingRate: config.samplingRate,
             ...(config.sessionTimeoutMinutes !== undefined && { sessionTimeoutMinutes: config.sessionTimeoutMinutes }),
+            ...(config.filters && config.filters.length > 0 && { filters: config.filters }),
             enableOnCreate: config.enableOnCreate,
           })
       );
