@@ -281,7 +281,7 @@ export function AddOnlineEvalScreen({
             </Text>
             <TextInput
               key="filters"
-              prompt='Filters (e.g. "model Equals claude-3; id Equals "12345"; success Equals true")'
+              prompt='Filters (e.g. model Equals claude-3; id Equals "12345"; success Equals true)'
               initialValue=""
               onSubmit={value => {
                 const trimmed = value.trim();
