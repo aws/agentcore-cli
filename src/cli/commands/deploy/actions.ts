@@ -316,17 +316,20 @@ export async function handleDeploy(options: ValidatedDeployOptions): Promise<Dep
     let deployabilityCheck = await checkStackDeployability(target.region, stackNames);
 
     // Recovery loop: when the user passes --recover, drain any stacks stuck
-    // in REVIEW_IN_PROGRESS one at a time. Bounded by stackNames.length so
-    // we cannot spin even if checkStackDeployability returned the same
-    // blocking stack twice for some reason. See
-    // https://github.com/aws/agentcore-cli/issues/907.
-    let recoveryAttempts = 0;
+    // in REVIEW_IN_PROGRESS one at a time. Each iteration recovers exactly
+    // one stack (DescribeStackDeployability returns the *first* blocking
+    // stack), so we track the names we've already recovered and exit the
+    // loop if we ever see the same stack reported twice — which would
+    // indicate either eventual-consistency lag in CloudFormation or a
+    // semantics change in checkStackDeployability. Either way, retrying is
+    // not safe. See https://github.com/aws/agentcore-cli/issues/907.
+    const recoveredStacks = new Set<string>();
     while (
       !deployabilityCheck.canDeploy &&
       options.recover &&
       deployabilityCheck.isRecoverableReview &&
       deployabilityCheck.blockingStack &&
-      recoveryAttempts < stackNames.length
+      !recoveredStacks.has(deployabilityCheck.blockingStack)
     ) {
       const blockingStack = deployabilityCheck.blockingStack;
       logger.log(`Recovering stack "${blockingStack}" stuck in REVIEW_IN_PROGRESS...`, 'warn');
@@ -339,7 +342,7 @@ export async function handleDeploy(options: ValidatedDeployOptions): Promise<Dep
           },
         });
         logger.log(`Recovered stack "${blockingStack}".`);
-        recoveryAttempts++;
+        recoveredStacks.add(blockingStack);
         deployabilityCheck = await checkStackDeployability(target.region, stackNames);
       } catch (recoverErr: unknown) {
         const recoverErrorMessage = getErrorMessage(recoverErr);

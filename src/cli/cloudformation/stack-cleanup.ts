@@ -166,16 +166,20 @@ export async function recoverReviewInProgressStack(
     }
   }
 
-  const allNonExecuted = changeSetSummaries.length === 0 || changeSetSummaries.every(isNonExecuted);
+  // `Array#every` returns true for empty arrays, which matches the
+  // warn-and-proceed semantics of the empty-summaries branch above.
+  const allNonExecuted = changeSetSummaries.every(isNonExecuted);
 
   // 4. Delete the stack
   await cfn.send(new DeleteStackCommand({ StackName: stackName }));
 
   // 5. Poll until the stack disappears or hits an unrecoverable state.
-  //    Use a do/while so the body runs at least once even if `timeoutMs`
-  //    is 0 or the deadline already lapsed by the time the DeleteStack
-  //    request returned (otherwise we'd spuriously throw "Timed out…"
-  //    even when the delete request was actually accepted).
+  //    Run the body once first (do/while) so a delete that completes
+  //    synchronously — i.e. DescribeStacks immediately returns
+  //    DELETE_COMPLETE or NotFound — is recognised even when the deadline
+  //    has already lapsed (e.g. timeoutMs=0). For non-terminal first
+  //    responses (DELETE_IN_PROGRESS), the loop will still time out as
+  //    expected.
   const deadline = Date.now() + timeoutMs;
   do {
     try {

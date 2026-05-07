@@ -243,6 +243,15 @@ describe('errors', () => {
       expect(isReviewInProgressError(new Error('Stack "MyStack" is currently in REVIEW_IN_PROGRESS state.'))).toBe(
         true
       );
+      expect(isReviewInProgressError(new Error('Stack "MyStack" is in REVIEW_IN_PROGRESS state'))).toBe(true);
+      expect(isReviewInProgressError(new Error('REVIEW_IN_PROGRESS state detected'))).toBe(true);
+    });
+
+    it('does not match bare REVIEW_IN_PROGRESS token in passing references', () => {
+      // e.g. an event-stream history message mentioning prior statuses
+      expect(
+        isReviewInProgressError(new Error('History: REVIEW_IN_PROGRESS -> CREATE_IN_PROGRESS -> CREATE_COMPLETE'))
+      ).toBe(false);
     });
 
     it('returns false for unrelated errors', () => {

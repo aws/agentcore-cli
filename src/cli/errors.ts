@@ -183,8 +183,17 @@ export function isEarlyValidationError(err: unknown): boolean {
  * Checks if an error indicates the stack is stuck in `REVIEW_IN_PROGRESS`.
  * This is a recoverable state — the stack contains no resources and can be
  * deleted via `agentcore deploy --recover`.
+ *
+ * Matches the specific phrasings CloudFormation uses when surfacing this
+ * state ("is in REVIEW_IN_PROGRESS state", "currently in REVIEW_IN_PROGRESS")
+ * rather than a bare token, so that event-stream messages that merely
+ * mention `REVIEW_IN_PROGRESS` in passing (e.g. as part of a status history)
+ * do not trigger a misleading `--recover` hint.
  */
 export function isReviewInProgressError(err: unknown): boolean {
   const message = getErrorMessage(err).toLowerCase();
-  return message.includes('review_in_progress');
+  if (message.includes('is in review_in_progress')) return true;
+  if (message.includes('currently in review_in_progress')) return true;
+  if (message.includes('review_in_progress state')) return true;
+  return false;
 }
