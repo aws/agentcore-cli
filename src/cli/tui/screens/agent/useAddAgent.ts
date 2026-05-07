@@ -260,9 +260,11 @@ async function handleCreatePath(
   const renderer = createRenderer(renderConfig);
   await renderer.render({ outputDir: projectRoot });
 
-  // If dockerfile is a path (contains /), copy it into the agent directory (overwriting template default)
+  // If dockerfile is a path (contains /), copy it into the agent directory (overwriting template default).
+  // The path is interpreted relative to the directory the user invoked agentcore from (process.cwd()),
+  // matching the behavior of the "add policy" file picker (issue #1128).
   if (generateConfig.dockerfile?.includes('/')) {
-    const sourcePath = resolve(projectRoot, generateConfig.dockerfile);
+    const sourcePath = resolve(process.cwd(), generateConfig.dockerfile);
     if (!existsSync(sourcePath)) {
       return { ok: false, error: `Dockerfile not found at ${sourcePath}` };
     }
@@ -369,10 +371,12 @@ async function handleByoPath(
   const codeDir = join(projectRoot, config.codeLocation.replace(/\/$/, ''));
   mkdirSync(codeDir, { recursive: true });
 
-  // If dockerfile is a path (contains /), copy it into the code directory and use the filename
+  // If dockerfile is a path (contains /), copy it into the code directory and use the filename.
+  // The user-supplied path is resolved relative to process.cwd() — the directory the user
+  // invoked agentcore from — matching the "add policy" file picker (issue #1128).
   let dockerfileName = config.dockerfile;
   if (dockerfileName?.includes('/')) {
-    const sourcePath = resolve(projectRoot, dockerfileName);
+    const sourcePath = resolve(process.cwd(), dockerfileName);
     if (!existsSync(sourcePath)) {
       return { ok: false, error: `Dockerfile not found at ${sourcePath}` };
     }

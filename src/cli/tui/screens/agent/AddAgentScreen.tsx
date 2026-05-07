@@ -45,7 +45,6 @@ import {
 } from './types';
 import { Box, Text, useInput } from 'ink';
 import Spinner from 'ink-spinner';
-import { basename, resolve } from 'path';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 // Helper to get provider display name and env var name from ModelProvider
@@ -1086,12 +1085,18 @@ export function AddAgentScreen({ existingAgentNames, onComplete, onExit }: AddAg
         {byoStep === 'dockerfile' && (
           <PathInput
             placeholder="Select a Dockerfile"
-            basePath={resolve(project?.projectRoot ?? process.cwd(), byoConfig.codeLocation)}
+            // basePath omitted → defaults to process.cwd(), matching the
+            // "add policy" wizard. Resolving from the not-yet-created
+            // project's codeLocation produced confusing "not a valid path"
+            // errors (issue #1128).
             pathType="file"
             allowEmpty
             emptyHelpText="Press Enter to use the default Dockerfile"
             onSubmit={value => {
-              setByoConfig(c => ({ ...c, dockerfile: value ? basename(value) : '' }));
+              // Preserve the full user-supplied path so handleByoPath can
+              // locate and copy the source file. The file is collapsed to a
+              // basename only after a successful copy into the code dir.
+              setByoConfig(c => ({ ...c, dockerfile: value }));
               goToNextByoStep('dockerfile');
             }}
             onCancel={handleByoBack}
