@@ -188,4 +188,37 @@ describe('handleStart - port resolution (issue #1079)', () => {
     expect(body.success).toBe(false);
     expect(body.error).toMatch(/8788.*in use/);
   });
+
+  it('explicit-conflict error mentions multi-runtime hint when more than one HTTP agent exists', async () => {
+    findAvailableMock.mockImplementationOnce((p: number) => Promise.resolve(p + 5) as never); // simulate conflict
+    const ctx = mockCtx({
+      agentNames: ['AgentA', 'AgentB'],
+      basePort: 8788,
+      basePortIsExplicit: true,
+    });
+    const req = mockReq({ agentName: 'AgentA' });
+    const res = mockRes();
+
+    await handleStart(ctx, req, res);
+
+    expect(res._status).toBe(500);
+    const body = JSON.parse(res._body);
+    expect(body.error).toMatch(/binds all HTTP runtimes to the same port/);
+    expect(body.error).toMatch(/omit --port to auto-offset/);
+  });
+
+  it('ignores basePortIsExplicit when basePort is undefined (programmatic misuse guard)', async () => {
+    const ctx = mockCtx({
+      agentNames: ['AgentA', 'AgentB'],
+      // basePort intentionally omitted while basePortIsExplicit is set
+      basePortIsExplicit: true,
+    });
+    const req = mockReq({ agentName: 'AgentB' });
+    const res = mockRes();
+
+    await handleStart(ctx, req, res);
+
+    // Falls back to legacy uiPort+1+index = 8083 (no fail-fast on explicit conflict).
+    expect(findAvailableMock).toHaveBeenCalledWith(8083);
+  });
 });
