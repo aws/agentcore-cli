@@ -1,5 +1,5 @@
 import { findConfigRoot } from '../../lib';
-import type { OnlineEvalConfig } from '../../schema';
+import type { OnlineEvalConfig, OnlineEvalFilter } from '../../schema';
 import { OnlineEvalConfigSchema } from '../../schema';
 import { getErrorMessage } from '../errors';
 import type { RemovalPreview, RemovalResult, SchemaChange } from '../operations/remove/types';
@@ -16,6 +16,8 @@ export interface AddOnlineEvalConfigOptions {
   samplingRate: number;
   enableOnCreate?: boolean;
   endpoint?: string;
+  sessionTimeoutMinutes?: number;
+  filters?: OnlineEvalFilter[];
 }
 
 export type RemovableOnlineEvalConfig = RemovableResource;
@@ -235,6 +237,8 @@ export class OnlineEvalConfigPrimitive extends BasePrimitive<AddOnlineEvalConfig
       samplingRate: options.samplingRate,
       ...(options.enableOnCreate !== undefined && { enableOnCreate: options.enableOnCreate }),
       ...(options.endpoint && { endpoint: options.endpoint }),
+      ...(options.sessionTimeoutMinutes !== undefined && { sessionTimeoutMinutes: options.sessionTimeoutMinutes }),
+      ...(options.filters && options.filters.length > 0 && { filters: options.filters }),
     };
 
     project.onlineEvalConfigs.push(config);

@@ -1,4 +1,5 @@
 import { OnlineEvalConfigNameSchema } from '../../../../schema';
+import type { OnlineEvalFilter, OnlineEvalFilterOperator } from '../../../../schema';
 import type { SelectableItem } from '../../components';
 import {
   ConfirmReview,
@@ -13,7 +14,12 @@ import { HELP_TEXT } from '../../constants';
 import { useListNavigation, useMultiSelectNavigation } from '../../hooks';
 import { generateUniqueName } from '../../utils';
 import type { AddOnlineEvalConfig, EvaluatorItem, RuntimeEndpointEntry } from './types';
-import { DEFAULT_SAMPLING_RATE, ONLINE_EVAL_STEP_LABELS } from './types';
+import {
+  DEFAULT_SAMPLING_RATE,
+  DEFAULT_SESSION_TIMEOUT_MINUTES,
+  ONLINE_EVAL_FILTER_OPERATORS,
+  ONLINE_EVAL_STEP_LABELS,
+} from './types';
 import { useAddOnlineEvalWizard } from './useAddOnlineEvalWizard';
 import { Box, Text } from 'ink';
 import React, { useCallback, useEffect, useMemo } from 'react';
@@ -99,6 +105,8 @@ export function AddOnlineEvalScreen({
   const isEndpointStep = wizard.step === 'endpoint';
   const isEvaluatorsStep = wizard.step === 'evaluators';
   const isSamplingRateStep = wizard.step === 'samplingRate';
+  const isSessionTimeoutStep = wizard.step === 'sessionTimeout';
+  const isFiltersStep = wizard.step === 'filters';
   const isEnableOnCreateStep = wizard.step === 'enableOnCreate';
   const isConfirmStep = wizard.step === 'confirm';
 
@@ -230,6 +238,73 @@ export function AddOnlineEvalScreen({
           </Box>
         )}
 
+        {isSessionTimeoutStep && (
+          <Box flexDirection="column">
+            <Text dimColor>
+              Minutes of inactivity before an agent session is considered complete (1–1440). Leave blank to use the
+              default of {DEFAULT_SESSION_TIMEOUT_MINUTES}.
+            </Text>
+            <TextInput
+              key="sessionTimeout"
+              prompt="Session timeout (minutes, blank=default)"
+              initialValue=""
+              onSubmit={value => {
+                const trimmed = value.trim();
+                if (trimmed === '') {
+                  wizard.setSessionTimeoutMinutes(undefined);
+                  return;
+                }
+                const minutes = parseInt(trimmed, 10);
+                if (isNaN(minutes) || minutes < 1 || minutes > 1440) return;
+                wizard.setSessionTimeoutMinutes(minutes);
+              }}
+              onCancel={() => wizard.goBack()}
+              customValidation={value => {
+                const trimmed = value.trim();
+                if (trimmed === '') return true;
+                const minutes = parseInt(trimmed, 10);
+                if (isNaN(minutes)) return 'Must be an integer or blank';
+                if (minutes < 1 || minutes > 1440) return 'Must be between 1 and 1440';
+                return true;
+              }}
+            />
+          </Box>
+        )}
+
+        {isFiltersStep && (
+          <Box flexDirection="column">
+            <Text dimColor>
+              Optional filters that scope which traces are evaluated. Format: {'<key>'} {'<op>'} {'<value>'}, separated
+              by ";". Operators: {ONLINE_EVAL_FILTER_OPERATORS.join(', ')}. Values are parsed as boolean (true/false),
+              number, or string. Leave blank for no filters.
+            </Text>
+            <TextInput
+              key="filters"
+              prompt='Filters (e.g. "model Equals claude-3; latencyMs LessThan 1000")'
+              initialValue=""
+              onSubmit={value => {
+                const trimmed = value.trim();
+                if (trimmed === '') {
+                  wizard.setFilters(undefined);
+                  return;
+                }
+                const parsed = parseFiltersInput(trimmed);
+                if (!parsed) return;
+                wizard.setFilters(parsed);
+              }}
+              onCancel={() => wizard.goBack()}
+              customValidation={value => {
+                const trimmed = value.trim();
+                if (trimmed === '') return true;
+                const parsed = parseFiltersInput(trimmed);
+                if (!parsed)
+                  return 'Each filter must be "<key> <operator> <value>" with a valid operator (separate with ";")';
+                return true;
+              }}
+            />
+          </Box>
+        )}
+
         {isEnableOnCreateStep && (
           <WizardSelect
             title="Enable on deploy?"
@@ -247,6 +322,20 @@ export function AddOnlineEvalScreen({
               ...(effectiveConfig.endpoint ? [{ label: 'Endpoint', value: effectiveConfig.endpoint }] : []),
               { label: 'Evaluators', value: effectiveConfig.evaluators.join(', ') },
               { label: 'Sampling Rate', value: `${effectiveConfig.samplingRate}%` },
+              {
+                label: 'Session Timeout',
+                value:
+                  effectiveConfig.sessionTimeoutMinutes !== undefined
+                    ? `${effectiveConfig.sessionTimeoutMinutes} min`
+                    : `${DEFAULT_SESSION_TIMEOUT_MINUTES} min (default)`,
+              },
+              {
+                label: 'Filters',
+                value:
+                  effectiveConfig.filters && effectiveConfig.filters.length > 0
+                    ? effectiveConfig.filters.map(formatFilter).join('; ')
+                    : '(none)',
+              },
               { label: 'Enable on Deploy', value: effectiveConfig.enableOnCreate ? 'Yes' : 'No' },
             ]}
           />
@@ -254,4 +343,54 @@ export function AddOnlineEvalScreen({
       </Panel>
     </Screen>
   );
+}
+
+// ──────────────────────────────────────────────────────────────────────────────
+// Filter parsing helpers
+// ──────────────────────────────────────────────────────────────────────────────
+
+function formatFilter(f: OnlineEvalFilter): string {
+  const v =
+    f.value.stringValue !== undefined
+      ? f.value.stringValue
+      : f.value.doubleValue !== undefined
+        ? String(f.value.doubleValue)
+        : f.value.booleanValue !== undefined
+          ? String(f.value.booleanValue)
+          : '';
+  return `${f.key} ${f.operator} ${v}`;
+}
+
+/**
+ * Parse a filter input string such as:
+ *   "model Equals claude-3; latencyMs LessThan 1000; success Equals true"
+ * Returns undefined if any segment is malformed.
+ */
+function parseFiltersInput(input: string): OnlineEvalFilter[] | undefined {
+  const segments = input
+    .split(';')
+    .map(s => s.trim())
+    .filter(s => s.length > 0);
+  if (segments.length === 0) return undefined;
+
+  const filters: OnlineEvalFilter[] = [];
+  for (const segment of segments) {
+    const parts = segment.split(/\s+/);
+    if (parts.length < 3) return undefined;
+    const key = parts[0]!;
+    const operator = parts[1] as OnlineEvalFilterOperator;
+    if (!ONLINE_EVAL_FILTER_OPERATORS.includes(operator)) return undefined;
+    const rawValue = parts.slice(2).join(' ');
+
+    let value: OnlineEvalFilter['value'];
+    if (rawValue === 'true' || rawValue === 'false') {
+      value = { booleanValue: rawValue === 'true' };
+    } else if (/^-?\d+(\.\d+)?$/.test(rawValue)) {
+      value = { doubleValue: parseFloat(rawValue) };
+    } else {
+      value = { stringValue: rawValue };
+    }
+    filters.push({ key, operator, value });
+  }
+  return filters;
 }

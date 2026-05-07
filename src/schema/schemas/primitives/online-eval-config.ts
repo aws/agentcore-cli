@@ -14,6 +14,36 @@ export const OnlineEvalConfigNameSchema = z
     'Must begin with a letter and contain only alphanumeric characters and underscores (max 48 chars)'
   );
 
+/** Operators supported by online evaluation config filters. */
+export const OnlineEvalFilterOperatorSchema = z.enum([
+  'Equals',
+  'NotEquals',
+  'GreaterThan',
+  'LessThan',
+  'GreaterThanOrEqual',
+  'LessThanOrEqual',
+  'Contains',
+  'NotContains',
+]);
+
+/** Value for a single filter — exactly one of stringValue/doubleValue/booleanValue should be set. */
+export const OnlineEvalFilterValueSchema = z
+  .object({
+    stringValue: z.string().optional(),
+    doubleValue: z.number().optional(),
+    booleanValue: z.boolean().optional(),
+  })
+  .refine(
+    v => [v.stringValue, v.doubleValue, v.booleanValue].filter(x => x !== undefined).length === 1,
+    'Exactly one of stringValue, doubleValue, or booleanValue must be set'
+  );
+
+export const OnlineEvalFilterSchema = z.object({
+  key: z.string().min(1),
+  operator: OnlineEvalFilterOperatorSchema,
+  value: OnlineEvalFilterValueSchema,
+});
+
 export const OnlineEvalConfigSchema = z.object({
   name: OnlineEvalConfigNameSchema,
   /** Agent name to monitor (must match a project agent) */
@@ -26,9 +56,16 @@ export const OnlineEvalConfigSchema = z.object({
   samplingRate: z.number().min(0.01).max(100),
   /** Optional description for the online eval config */
   description: z.string().max(200).optional(),
+  /** Session idle timeout in minutes (1-1440). Default: 5 */
+  sessionTimeoutMinutes: z.number().int().min(1).max(1440).optional(),
+  /** Optional filters that scope which agent traces are evaluated. */
+  filters: z.array(OnlineEvalFilterSchema).optional(),
   /** Whether to enable execution on create (default: true) */
   enableOnCreate: z.boolean().optional(),
   tags: TagsSchema.optional(),
 });
 
 export type OnlineEvalConfig = z.infer<typeof OnlineEvalConfigSchema>;
+export type OnlineEvalFilter = z.infer<typeof OnlineEvalFilterSchema>;
+export type OnlineEvalFilterOperator = z.infer<typeof OnlineEvalFilterOperatorSchema>;
+export type OnlineEvalFilterValue = z.infer<typeof OnlineEvalFilterValueSchema>;
