@@ -95,6 +95,47 @@ describe('OnlineEvalConfigPrimitive', () => {
       expect(config.enableOnCreate).toBeUndefined();
     });
 
+    it('stores sessionTimeoutMinutes and filters when provided', async () => {
+      mockReadProjectSpec.mockResolvedValue(makeProject());
+      mockWriteProjectSpec.mockResolvedValue(undefined);
+
+      const result = await primitive.add({
+        name: 'WithTimeoutAndFilters',
+        agent: 'MyAgent',
+        evaluators: ['Builtin.GoalSuccessRate'],
+        samplingRate: 10,
+        sessionTimeoutMinutes: 30,
+        filters: [
+          { key: 'model', operator: 'Equals', value: { stringValue: 'claude-3' } },
+          { key: 'latencyMs', operator: 'LessThan', value: { doubleValue: 1000 } },
+        ],
+      });
+
+      expect(result.success).toBe(true);
+      const config = mockWriteProjectSpec.mock.calls[0]![0].onlineEvalConfigs[0];
+      expect(config.sessionTimeoutMinutes).toBe(30);
+      expect(config.filters).toEqual([
+        { key: 'model', operator: 'Equals', value: { stringValue: 'claude-3' } },
+        { key: 'latencyMs', operator: 'LessThan', value: { doubleValue: 1000 } },
+      ]);
+    });
+
+    it('omits sessionTimeoutMinutes and filters when not provided', async () => {
+      mockReadProjectSpec.mockResolvedValue(makeProject());
+      mockWriteProjectSpec.mockResolvedValue(undefined);
+
+      await primitive.add({
+        name: 'NoTimeoutOrFilters',
+        agent: 'MyAgent',
+        evaluators: ['Builtin.GoalSuccessRate'],
+        samplingRate: 10,
+      });
+
+      const config = mockWriteProjectSpec.mock.calls[0]![0].onlineEvalConfigs[0];
+      expect(config.sessionTimeoutMinutes).toBeUndefined();
+      expect(config.filters).toBeUndefined();
+    });
+
     it('supports multiple evaluators including ARNs', async () => {
       mockReadProjectSpec.mockResolvedValue(makeProject());
       mockWriteProjectSpec.mockResolvedValue(undefined);
