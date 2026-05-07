@@ -4,10 +4,10 @@ on:
   workflow_run:
     # These names must match the `name:` field in each workflow file exactly
     workflows:
-      - "Build and Test"
-      - "Quality and Safety Checks"
-      - "E2E Tests (Full Suite)"
-      - "CodeQL"
+      - 'Build and Test'
+      - 'Quality and Safety Checks'
+      - 'E2E Tests (Full Suite)'
+      - 'CodeQL'
     types: [completed]
 
 jobs:
