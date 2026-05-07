@@ -2,7 +2,7 @@ import type { AddOnlineEvalConfig, AddOnlineEvalStep, OnlineEvalFilter } from '.
 import { DEFAULT_SAMPLING_RATE } from './types';
 import { useCallback, useRef, useState } from 'react';
 
-function getAllSteps(agentCount: number): AddOnlineEvalStep[] {
+export function getAllSteps(agentCount: number): AddOnlineEvalStep[] {
   if (agentCount <= 1) {
     // endpoint step is included but will be skipped dynamically when no endpoints exist
     return ['name', 'endpoint', 'evaluators', 'samplingRate', 'sessionTimeout', 'filters', 'enableOnCreate', 'confirm'];
@@ -114,7 +114,15 @@ export function useAddOnlineEvalWizard(agentCount: number) {
 
   const setSessionTimeout = useCallback(
     (sessionTimeoutMinutes: number | undefined) => {
-      setConfig(c => ({ ...c, sessionTimeoutMinutes }));
+      // Use object-rest to remove the key entirely when undefined so callers using
+      // `'sessionTimeoutMinutes' in config` checks see consistent behaviour.
+      setConfig(c => {
+        if (sessionTimeoutMinutes === undefined) {
+          const { sessionTimeoutMinutes: _omit, ...rest } = c;
+          return rest;
+        }
+        return { ...c, sessionTimeoutMinutes };
+      });
       const next = nextStep('sessionTimeout');
       if (next) setStep(next);
     },
@@ -123,7 +131,13 @@ export function useAddOnlineEvalWizard(agentCount: number) {
 
   const setFilters = useCallback(
     (filters: OnlineEvalFilter[] | undefined) => {
-      setConfig(c => ({ ...c, filters: filters && filters.length > 0 ? filters : undefined }));
+      setConfig(c => {
+        if (!filters || filters.length === 0) {
+          const { filters: _omit, ...rest } = c;
+          return rest;
+        }
+        return { ...c, filters };
+      });
       const next = nextStep('filters');
       if (next) setStep(next);
     },

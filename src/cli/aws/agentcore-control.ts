@@ -773,38 +773,36 @@ export async function getOnlineEvaluationConfig(
   const samplingPercentage = response.rule?.samplingConfig?.samplingPercentage;
   const sessionTimeoutMinutes = response.rule?.sessionConfig?.sessionTimeoutMinutes;
   const rawFilters = response.rule?.filters;
-  const filters = Array.isArray(rawFilters)
-    ? rawFilters
-        .map(f => {
-          if (!f || typeof f !== 'object') return undefined;
-          const key = (f as { key?: string }).key;
-          const operator = (f as { operator?: string }).operator;
-          const rawValue = (f as { value?: unknown }).value;
-          if (!key || !operator || !rawValue || typeof rawValue !== 'object') return undefined;
-          const v = rawValue as { stringValue?: string; doubleValue?: number; booleanValue?: boolean };
-          const value: { stringValue?: string; doubleValue?: number; booleanValue?: boolean } = {};
-          if (v.stringValue !== undefined) value.stringValue = v.stringValue;
-          if (v.doubleValue !== undefined) value.doubleValue = v.doubleValue;
-          if (v.booleanValue !== undefined) value.booleanValue = v.booleanValue;
-          // Drop filters whose value did not have exactly one of the three
-          // supported branches set — they would later fail schema validation.
-          const setCount =
-            Number(value.stringValue !== undefined) +
-            Number(value.doubleValue !== undefined) +
-            Number(value.booleanValue !== undefined);
-          if (setCount !== 1) return undefined;
-          return { key, operator, value };
-        })
-        .filter(
-          (
-            f
-          ): f is {
-            key: string;
-            operator: string;
-            value: { stringValue?: string; doubleValue?: number; booleanValue?: boolean };
-          } => !!f
-        )
-    : undefined;
+  interface NormalizedFilter {
+    key: string;
+    operator: string;
+    value: { stringValue?: string; doubleValue?: number; booleanValue?: boolean };
+  }
+  let filters: NormalizedFilter[] | undefined;
+  if (Array.isArray(rawFilters)) {
+    const out: NormalizedFilter[] = [];
+    for (const f of rawFilters) {
+      if (!f || typeof f !== 'object') continue;
+      const key = (f as { key?: string }).key;
+      const operator = (f as { operator?: string }).operator;
+      const rawValue = (f as { value?: unknown }).value;
+      if (!key || !operator || !rawValue || typeof rawValue !== 'object') continue;
+      const v = rawValue as { stringValue?: string; doubleValue?: number; booleanValue?: boolean };
+      const value: { stringValue?: string; doubleValue?: number; booleanValue?: boolean } = {};
+      if (v.stringValue !== undefined) value.stringValue = v.stringValue;
+      if (v.doubleValue !== undefined) value.doubleValue = v.doubleValue;
+      if (v.booleanValue !== undefined) value.booleanValue = v.booleanValue;
+      // Drop filters whose value did not have exactly one of the three
+      // supported branches set — they would later fail schema validation.
+      const setCount =
+        Number(value.stringValue !== undefined) +
+        Number(value.doubleValue !== undefined) +
+        Number(value.booleanValue !== undefined);
+      if (setCount !== 1) continue;
+      out.push({ key, operator, value });
+    }
+    filters = out;
+  }
   const serviceNames =
     response.dataSourceConfig && 'cloudWatchLogs' in response.dataSourceConfig
       ? response.dataSourceConfig.cloudWatchLogs?.serviceNames

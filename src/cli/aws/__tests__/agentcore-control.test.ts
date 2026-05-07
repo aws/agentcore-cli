@@ -315,6 +315,107 @@ describe('getOnlineEvaluationConfig', () => {
       'ResourceNotFoundException'
     );
   });
+
+  it('returns sessionTimeoutMinutes=undefined when rule.sessionConfig is missing', async () => {
+    mockSend.mockResolvedValue({
+      onlineEvaluationConfigId: 'oec-no-sto',
+      status: 'ACTIVE',
+      executionStatus: 'ENABLED',
+      rule: { samplingConfig: { samplingPercentage: 10 } },
+    });
+    const result = await getOnlineEvaluationConfig({ region: 'us-east-1', configId: 'oec-no-sto' });
+    expect(result.sessionTimeoutMinutes).toBeUndefined();
+  });
+
+  it('returns filters=undefined when rule.filters is missing', async () => {
+    mockSend.mockResolvedValue({
+      onlineEvaluationConfigId: 'oec-no-filters',
+      status: 'ACTIVE',
+      executionStatus: 'ENABLED',
+      rule: { samplingConfig: { samplingPercentage: 10 } },
+    });
+    const result = await getOnlineEvaluationConfig({ region: 'us-east-1', configId: 'oec-no-filters' });
+    expect(result.filters).toBeUndefined();
+  });
+
+  it('returns filters=undefined when rule.filters is not an array', async () => {
+    mockSend.mockResolvedValue({
+      onlineEvaluationConfigId: 'oec-bad-filters',
+      status: 'ACTIVE',
+      executionStatus: 'ENABLED',
+      rule: { samplingConfig: { samplingPercentage: 10 }, filters: 'not-an-array' },
+    });
+    const result = await getOnlineEvaluationConfig({ region: 'us-east-1', configId: 'oec-bad-filters' });
+    expect(result.filters).toBeUndefined();
+  });
+
+  it('round-trips a well-formed filter', async () => {
+    mockSend.mockResolvedValue({
+      onlineEvaluationConfigId: 'oec-good',
+      status: 'ACTIVE',
+      executionStatus: 'ENABLED',
+      rule: {
+        samplingConfig: { samplingPercentage: 10 },
+        sessionConfig: { sessionTimeoutMinutes: 7 },
+        filters: [{ key: 'user.id', operator: 'Equals', value: { stringValue: 'abc' } }],
+      },
+    });
+    const result = await getOnlineEvaluationConfig({ region: 'us-east-1', configId: 'oec-good' });
+    expect(result.sessionTimeoutMinutes).toBe(7);
+    expect(result.filters).toEqual([{ key: 'user.id', operator: 'Equals', value: { stringValue: 'abc' } }]);
+  });
+
+  it('drops filters whose value object has zero branches set', async () => {
+    mockSend.mockResolvedValue({
+      onlineEvaluationConfigId: 'oec-zero',
+      status: 'ACTIVE',
+      executionStatus: 'ENABLED',
+      rule: {
+        samplingConfig: { samplingPercentage: 10 },
+        filters: [{ key: 'k', operator: 'Equals', value: {} }],
+      },
+    });
+    const result = await getOnlineEvaluationConfig({ region: 'us-east-1', configId: 'oec-zero' });
+    expect(result.filters).toEqual([]);
+  });
+
+  it('drops filters whose value object has multiple branches set', async () => {
+    mockSend.mockResolvedValue({
+      onlineEvaluationConfigId: 'oec-multi',
+      status: 'ACTIVE',
+      executionStatus: 'ENABLED',
+      rule: {
+        samplingConfig: { samplingPercentage: 10 },
+        filters: [
+          { key: 'a', operator: 'Equals', value: { stringValue: 'x', doubleValue: 1 } },
+          { key: 'b', operator: 'Equals', value: { stringValue: 'y' } },
+        ],
+      },
+    });
+    const result = await getOnlineEvaluationConfig({ region: 'us-east-1', configId: 'oec-multi' });
+    expect(result.filters).toEqual([{ key: 'b', operator: 'Equals', value: { stringValue: 'y' } }]);
+  });
+
+  it('drops filter elements that are not objects or are missing required fields', async () => {
+    mockSend.mockResolvedValue({
+      onlineEvaluationConfigId: 'oec-shape',
+      status: 'ACTIVE',
+      executionStatus: 'ENABLED',
+      rule: {
+        samplingConfig: { samplingPercentage: 10 },
+        filters: [
+          'not-an-object',
+          { operator: 'Equals', value: { stringValue: 'x' } }, // missing key
+          { key: 'k', value: { stringValue: 'x' } }, // missing operator
+          { key: 'k', operator: 'Equals' }, // missing value
+          { key: 'k', operator: 'Equals', value: 'not-an-object' }, // value not an object
+          { key: 'good', operator: 'Equals', value: { stringValue: 'x' } },
+        ],
+      },
+    });
+    const result = await getOnlineEvaluationConfig({ region: 'us-east-1', configId: 'oec-shape' });
+    expect(result.filters).toEqual([{ key: 'good', operator: 'Equals', value: { stringValue: 'x' } }]);
+  });
 });
 
 describe('listAllAgentRuntimes', () => {

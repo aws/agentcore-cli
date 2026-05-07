@@ -12,13 +12,9 @@ import {
 import { HELP_TEXT } from '../../constants';
 import { useListNavigation, useMultiSelectNavigation } from '../../hooks';
 import { generateUniqueName } from '../../utils';
-import type { AddOnlineEvalConfig, EvaluatorItem, OnlineEvalFilter, RuntimeEndpointEntry } from './types';
-import {
-  DEFAULT_SAMPLING_RATE,
-  DEFAULT_SESSION_TIMEOUT_MINUTES,
-  ONLINE_EVAL_FILTER_OPERATORS,
-  ONLINE_EVAL_STEP_LABELS,
-} from './types';
+import { parseFiltersInput } from './parseFiltersInput';
+import type { AddOnlineEvalConfig, EvaluatorItem, RuntimeEndpointEntry } from './types';
+import { DEFAULT_SAMPLING_RATE, ONLINE_EVAL_FILTER_OPERATORS, ONLINE_EVAL_STEP_LABELS } from './types';
 import { useAddOnlineEvalWizard } from './useAddOnlineEvalWizard';
 import { Box, Text } from 'ink';
 import React, { useCallback, useEffect, useMemo } from 'react';
@@ -27,54 +23,6 @@ import React, { useCallback, useEffect, useMemo } from 'react';
 export interface RuntimeInfoForEval {
   name: string;
   endpoints: RuntimeEndpointEntry[];
-}
-
-/**
- * Parse a user-entered JSON string into a list of OnlineEvalFilter objects.
- * Returns true (no filters) for an empty input. Returns an error message string on failure.
- */
-function parseFiltersInput(raw: string): OnlineEvalFilter[] | string {
-  const trimmed = raw.trim();
-  if (trimmed === '') return [];
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(trimmed);
-  } catch {
-    return 'Invalid JSON';
-  }
-  if (!Array.isArray(parsed)) return 'Must be a JSON array of filter objects';
-  const result: OnlineEvalFilter[] = [];
-  for (const f of parsed) {
-    if (!f || typeof f !== 'object') return 'Each filter must be an object';
-    const obj = f as { key?: unknown; operator?: unknown; value?: unknown };
-    if (typeof obj.key !== 'string' || obj.key.length === 0) return 'Each filter requires a non-empty "key" string';
-    if (typeof obj.operator !== 'string' || !(ONLINE_EVAL_FILTER_OPERATORS as string[]).includes(obj.operator)) {
-      return `operator must be one of: ${ONLINE_EVAL_FILTER_OPERATORS.join(', ')}`;
-    }
-    if (!obj.value || typeof obj.value !== 'object') return 'Each filter requires a "value" object';
-    const v = obj.value as { stringValue?: unknown; doubleValue?: unknown; booleanValue?: unknown };
-    const value: { stringValue?: string; doubleValue?: number; booleanValue?: boolean } = {};
-    let count = 0;
-    if (typeof v.stringValue === 'string') {
-      value.stringValue = v.stringValue;
-      count++;
-    }
-    if (typeof v.doubleValue === 'number') {
-      value.doubleValue = v.doubleValue;
-      count++;
-    }
-    if (typeof v.booleanValue === 'boolean') {
-      value.booleanValue = v.booleanValue;
-      count++;
-    }
-    if (count !== 1) return 'Filter value must have exactly one of stringValue, doubleValue, booleanValue';
-    result.push({
-      key: obj.key,
-      operator: obj.operator as OnlineEvalFilter['operator'],
-      value,
-    });
-  }
-  return result;
 }
 
 interface AddOnlineEvalScreenProps {
@@ -289,10 +237,7 @@ export function AddOnlineEvalScreen({
 
         {isSessionTimeoutStep && (
           <Box flexDirection="column">
-            <Text dimColor>
-              Session idle timeout in minutes (1–1440). Leave blank to use the default of{' '}
-              {DEFAULT_SESSION_TIMEOUT_MINUTES} minutes.
-            </Text>
+            <Text dimColor>Session idle timeout in minutes (1–1440). Leave blank to use the AWS service default.</Text>
             <TextInput
               key="sessionTimeout"
               prompt="Session timeout (minutes, blank = default)"
@@ -369,7 +314,7 @@ export function AddOnlineEvalScreen({
                 value:
                   effectiveConfig.sessionTimeoutMinutes !== undefined
                     ? `${effectiveConfig.sessionTimeoutMinutes} min`
-                    : `${DEFAULT_SESSION_TIMEOUT_MINUTES} min (default)`,
+                    : 'service default',
               },
               {
                 label: 'Filters',

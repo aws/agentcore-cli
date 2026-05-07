@@ -12,7 +12,7 @@ import { extractAgentName, toOnlineEvalConfigSpec } from '../import-online-eval'
 import { buildImportTemplate, findLogicalIdByProperty, findLogicalIdsByType } from '../template-utils';
 import type { CfnTemplate } from '../template-utils';
 import type { ResourceToImport } from '../types';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 
 // ============================================================================
 // extractAgentName Tests
@@ -142,6 +142,108 @@ describe('toOnlineEvalConfigSpec', () => {
     expect(result.evaluators).toHaveLength(2);
     expect(result.evaluators[0]).toBe('local_eval');
     expect(result.evaluators[1]).toMatch(/^arn:/);
+  });
+
+  it('propagates sessionTimeoutMinutes when present', () => {
+    const detail: GetOnlineEvalConfigResult = {
+      configId: 'oec-sto',
+      configArn: 'arn:aws:bedrock-agentcore:us-west-2:123456789012:online-evaluation-config/oec-sto',
+      configName: 'WithTimeout',
+      status: 'ACTIVE',
+      executionStatus: 'ENABLED',
+      samplingPercentage: 10,
+      sessionTimeoutMinutes: 15,
+      serviceNames: ['agent.DEFAULT'],
+      evaluatorIds: ['eval-1'],
+    };
+
+    const result = toOnlineEvalConfigSpec(detail, 'WithTimeout', 'agent', ['eval_one']);
+    expect(result.sessionTimeoutMinutes).toBe(15);
+  });
+
+  it('omits sessionTimeoutMinutes when undefined on detail', () => {
+    const detail: GetOnlineEvalConfigResult = {
+      configId: 'oec-no-sto',
+      configArn: 'arn:aws:bedrock-agentcore:us-west-2:123456789012:online-evaluation-config/oec-no-sto',
+      configName: 'NoTimeout',
+      status: 'ACTIVE',
+      executionStatus: 'ENABLED',
+      samplingPercentage: 10,
+      serviceNames: ['agent.DEFAULT'],
+      evaluatorIds: ['eval-1'],
+    };
+
+    const result = toOnlineEvalConfigSpec(detail, 'NoTimeout', 'agent', ['eval_one']);
+    expect('sessionTimeoutMinutes' in result).toBe(false);
+  });
+
+  it('retains valid filters and skips ones with unsupported operators (warning to stderr)', () => {
+    const writeSpy = vi.spyOn(process.stderr, 'write').mockImplementation(() => true);
+
+    const detail: GetOnlineEvalConfigResult = {
+      configId: 'oec-mix',
+      configArn: 'arn:aws:bedrock-agentcore:us-west-2:123456789012:online-evaluation-config/oec-mix',
+      configName: 'MixedFilters',
+      status: 'ACTIVE',
+      executionStatus: 'ENABLED',
+      samplingPercentage: 10,
+      serviceNames: ['agent.DEFAULT'],
+      evaluatorIds: ['eval-1'],
+      filters: [
+        { key: 'user.id', operator: 'Equals', value: { stringValue: 'abc' } },
+        // unsupported operator (e.g. service returned a newer enum value)
+        { key: 'score', operator: 'NEW_OP', value: { doubleValue: 0.5 } },
+      ],
+    };
+
+    const result = toOnlineEvalConfigSpec(detail, 'MixedFilters', 'agent', ['eval_one']);
+
+    expect(result.filters).toEqual([{ key: 'user.id', operator: 'Equals', value: { stringValue: 'abc' } }]);
+    expect(writeSpy).toHaveBeenCalled();
+    const warned = writeSpy.mock.calls.flat().join('\n');
+    expect(warned).toContain('NEW_OP');
+
+    writeSpy.mockRestore();
+  });
+
+  it('omits the filters key entirely when all filters have unsupported operators', () => {
+    const writeSpy = vi.spyOn(process.stderr, 'write').mockImplementation(() => true);
+
+    const detail: GetOnlineEvalConfigResult = {
+      configId: 'oec-bad',
+      configArn: 'arn:aws:bedrock-agentcore:us-west-2:123456789012:online-evaluation-config/oec-bad',
+      configName: 'AllBad',
+      status: 'ACTIVE',
+      executionStatus: 'ENABLED',
+      samplingPercentage: 10,
+      serviceNames: ['agent.DEFAULT'],
+      evaluatorIds: ['eval-1'],
+      filters: [
+        { key: 'a', operator: 'BOGUS_1', value: { stringValue: 'x' } },
+        { key: 'b', operator: 'BOGUS_2', value: { stringValue: 'y' } },
+      ],
+    };
+
+    const result = toOnlineEvalConfigSpec(detail, 'AllBad', 'agent', ['eval_one']);
+    expect('filters' in result).toBe(false);
+    writeSpy.mockRestore();
+  });
+
+  it('omits the filters key when detail.filters is an empty array', () => {
+    const detail: GetOnlineEvalConfigResult = {
+      configId: 'oec-empty',
+      configArn: 'arn:aws:bedrock-agentcore:us-west-2:123456789012:online-evaluation-config/oec-empty',
+      configName: 'EmptyFilters',
+      status: 'ACTIVE',
+      executionStatus: 'ENABLED',
+      samplingPercentage: 10,
+      serviceNames: ['agent.DEFAULT'],
+      evaluatorIds: ['eval-1'],
+      filters: [],
+    };
+
+    const result = toOnlineEvalConfigSpec(detail, 'EmptyFilters', 'agent', ['eval_one']);
+    expect('filters' in result).toBe(false);
   });
 });
 
