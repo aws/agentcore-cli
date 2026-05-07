@@ -95,6 +95,76 @@ describe('OnlineEvalConfigPrimitive', () => {
       expect(config.enableOnCreate).toBeUndefined();
     });
 
+    it('persists sessionTimeoutMinutes when provided', async () => {
+      mockReadProjectSpec.mockResolvedValue(makeProject());
+      mockWriteProjectSpec.mockResolvedValue(undefined);
+
+      const result = await primitive.add({
+        name: 'WithTimeout',
+        agent: 'MyAgent',
+        evaluators: ['Builtin.GoalSuccessRate'],
+        samplingRate: 10,
+        sessionTimeoutMinutes: 30,
+      });
+
+      expect(result.success).toBe(true);
+      const config = mockWriteProjectSpec.mock.calls[0]![0].onlineEvalConfigs[0];
+      expect(config.sessionTimeoutMinutes).toBe(30);
+    });
+
+    it('omits sessionTimeoutMinutes when not provided', async () => {
+      mockReadProjectSpec.mockResolvedValue(makeProject());
+      mockWriteProjectSpec.mockResolvedValue(undefined);
+
+      await primitive.add({
+        name: 'NoTimeout',
+        agent: 'MyAgent',
+        evaluators: ['Builtin.GoalSuccessRate'],
+        samplingRate: 10,
+      });
+
+      const config = mockWriteProjectSpec.mock.calls[0]![0].onlineEvalConfigs[0];
+      expect(config.sessionTimeoutMinutes).toBeUndefined();
+    });
+
+    it('persists filters when provided', async () => {
+      mockReadProjectSpec.mockResolvedValue(makeProject());
+      mockWriteProjectSpec.mockResolvedValue(undefined);
+
+      const filters = [
+        { key: 'userId', operator: 'Equals' as const, value: { stringValue: 'abc' } },
+        { key: 'score', operator: 'GreaterThan' as const, value: { doubleValue: 0.5 } },
+      ];
+
+      const result = await primitive.add({
+        name: 'WithFilters',
+        agent: 'MyAgent',
+        evaluators: ['Builtin.GoalSuccessRate'],
+        samplingRate: 10,
+        filters,
+      });
+
+      expect(result.success).toBe(true);
+      const config = mockWriteProjectSpec.mock.calls[0]![0].onlineEvalConfigs[0];
+      expect(config.filters).toEqual(filters);
+    });
+
+    it('omits filters when an empty array is provided', async () => {
+      mockReadProjectSpec.mockResolvedValue(makeProject());
+      mockWriteProjectSpec.mockResolvedValue(undefined);
+
+      await primitive.add({
+        name: 'EmptyFilters',
+        agent: 'MyAgent',
+        evaluators: ['Builtin.GoalSuccessRate'],
+        samplingRate: 10,
+        filters: [],
+      });
+
+      const config = mockWriteProjectSpec.mock.calls[0]![0].onlineEvalConfigs[0];
+      expect(config.filters).toBeUndefined();
+    });
+
     it('supports multiple evaluators including ARNs', async () => {
       mockReadProjectSpec.mockResolvedValue(makeProject());
       mockWriteProjectSpec.mockResolvedValue(undefined);
