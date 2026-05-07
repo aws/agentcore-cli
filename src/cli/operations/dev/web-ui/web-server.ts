@@ -131,6 +131,18 @@ export interface WebUIOptions {
   uiPort: number;
   /** Available agents (metadata only — servers are started on demand) */
   agents: AgentInfo[];
+  /**
+   * Base port for agent dev servers. When provided, agents bind at
+   * `basePort + agentIndex` (or literally at `basePort` if `basePortIsExplicit`).
+   * When omitted, falls back to `uiPort + 1 + agentIndex`.
+   */
+  basePort?: number;
+  /**
+   * Was the base port explicitly passed by the user on the CLI? When true the
+   * port is honored literally and a port conflict fails fast instead of being
+   * silently shifted (issue #1079).
+   */
+  basePortIsExplicit?: boolean;
   /** Dev config factory — called when an agent needs to be started. Required for dev mode, unused when onStart is provided. */
   getDevConfig?: (agentName: string) => DevConfig | null | Promise<DevConfig | null>;
   /** Env vars to pass to started agent servers */

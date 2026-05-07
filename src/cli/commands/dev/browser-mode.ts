@@ -95,6 +95,8 @@ export interface BrowserModeOptions {
   workingDir: string;
   project: AgentCoreProjectSpec;
   port: number;
+  /** Was --port passed explicitly on the CLI? Controls fail-fast on conflicts (issue #1079). */
+  portIsExplicit?: boolean;
   agentName?: string;
   /** OTEL env vars to pass to dev servers (set by the dev command when collector is active) */
   otelEnvVars?: Record<string, string>;
@@ -129,7 +131,7 @@ export async function launchBrowserDev(): Promise<void> {
 }
 
 export async function runBrowserMode(opts: BrowserModeOptions): Promise<void> {
-  const { workingDir, project, agentName, otelEnvVars = {}, collector } = opts;
+  const { workingDir, project, agentName, port, portIsExplicit, otelEnvVars = {}, collector } = opts;
 
   const configRoot = findConfigRoot(workingDir);
   const { envVars } = await loadDevEnv(workingDir);
@@ -170,6 +172,8 @@ export async function runBrowserMode(opts: BrowserModeOptions): Promise<void> {
       mode: 'dev',
       agents: agentInfoList,
       selectedAgent: agentName,
+      basePort: port,
+      basePortIsExplicit: portIsExplicit,
       envVars: mergedEnvVars,
       getEnvVars: async () => {
         const { envVars: freshEnvVars } = await loadDevEnv(workingDir);

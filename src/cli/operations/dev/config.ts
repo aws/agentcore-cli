@@ -80,13 +80,38 @@ export function getDevSupportedAgents(project: AgentCoreProjectSpec | null): Age
 }
 
 /**
+ * Resolve the port for a specific agent based on its index in the project.
+ *
+ * When `opts.explicit` is true, the user passed `--port` literally on the CLI;
+ * in that case the basePort is honored as-is (no offset). Otherwise the
+ * historical behavior is preserved: actual port = basePort + agent index.
+ *
+ * Returns both the resolved port and the offset that was applied so callers
+ * can surface a log line explaining the shift (issue #1079).
+ */
+export function resolveAgentPort(
+  project: AgentCoreProjectSpec | null,
+  agentName: string,
+  basePort: number,
+  opts: { explicit?: boolean } = {}
+): { port: number; offset: number } {
+  if (opts.explicit) return { port: basePort, offset: 0 };
+  if (!project) return { port: basePort, offset: 0 };
+  const index = project.runtimes.findIndex(a => a.name === agentName);
+  if (index <= 0) return { port: basePort, offset: 0 };
+  return { port: basePort + index, offset: index };
+}
+
+/**
  * Get the port for a specific agent based on its index in the project.
- * Base port + agent index = actual port
+ * Base port + agent index = actual port.
+ *
+ * @deprecated Prefer {@link resolveAgentPort} which also returns the offset
+ *   so callers can log the (otherwise silent) port shift. This wrapper is
+ *   kept for backwards compatibility.
  */
 export function getAgentPort(project: AgentCoreProjectSpec | null, agentName: string, basePort: number): number {
-  if (!project) return basePort;
-  const index = project.runtimes.findIndex(a => a.name === agentName);
-  return index >= 0 ? basePort + index : basePort;
+  return resolveAgentPort(project, agentName, basePort).port;
 }
 
 /**

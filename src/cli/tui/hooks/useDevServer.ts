@@ -22,6 +22,7 @@ import {
   listMcpTools,
   loadDevEnv,
   loadProjectConfig,
+  resolveAgentPort,
   waitForPort,
 } from '../../operations/dev';
 import { formatMcpToolList } from '../../operations/dev/utils';
@@ -48,6 +49,8 @@ const MAX_LOG_ENTRIES = 50;
 export function useDevServer(options: {
   workingDir: string;
   port: number;
+  /** Was --port passed explicitly on the CLI? Controls fail-fast on conflicts (issue #1079). */
+  portIsExplicit?: boolean;
   agentName?: string;
   onReady?: () => void;
   headers?: Record<string, string>;
@@ -154,7 +157,18 @@ export function useDevServer(options: {
       // A2A servers always use port 9000, MCP servers use port 8000 (framework defaults, not configurable via env)
       const isA2A = config.protocol === 'A2A';
       const isMcp = config.protocol === 'MCP';
-      const fixedPort = isA2A ? 9000 : isMcp ? 8000 : targetPort;
+      // Resolve HTTP port: honor --port literally when explicit, otherwise apply
+      // historical base + runtime-index offset and surface it via a log line (issue #1079).
+      const httpResolution = resolveAgentPort(project, config.agentName, targetPort, {
+        explicit: options.portIsExplicit,
+      });
+      const fixedPort = isA2A ? 9000 : isMcp ? 8000 : httpResolution.port;
+      if (!isA2A && !isMcp && httpResolution.offset > 0) {
+        addLog(
+          'info',
+          `Runtime "${config.agentName}" is at index ${httpResolution.offset}; using port ${fixedPort} (pass --port ${fixedPort} explicitly to override).`
+        );
+      }
 
       // On restart, reuse the same port. On initial start, find an available port.
       // If restart times out waiting for port, fall back to finding a new one.
@@ -177,6 +191,15 @@ export function useDevServer(options: {
           return;
         }
         port = fixedPort;
+      } else if (options.portIsExplicit) {
+        // User passed --port explicitly: honor it literally and fail fast on conflict.
+        const available = await findAvailablePort(fixedPort);
+        if (!isRestart && available !== fixedPort) {
+          addLog('error', `Port ${fixedPort} is in use. Pass a different --port or stop the conflicting process.`);
+          setStatus('error');
+          return;
+        }
+        port = isRestart && portFree ? actualPortRef.current : fixedPort;
       } else {
         port = isRestart && portFree ? actualPortRef.current : await findAvailablePort(fixedPort);
         if (!isRestart && port !== fixedPort) {

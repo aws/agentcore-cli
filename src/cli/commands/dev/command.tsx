@@ -6,7 +6,6 @@ import {
   callMcpTool,
   createDevServer,
   findAvailablePort,
-  getAgentPort,
   getDevConfig,
   getDevSupportedAgents,
   getEndpointUrl,
@@ -16,6 +15,7 @@ import {
   listMcpTools,
   loadDevEnv,
   loadProjectConfig,
+  resolveAgentPort,
 } from '../../operations/dev';
 import { OtelCollector, startOtelCollector } from '../../operations/dev/otel';
 import { FatalError } from '../../tui/components';
@@ -171,7 +171,11 @@ export const registerDev = (program: Command) => {
     .alias('d')
     .description(COMMAND_DESCRIPTIONS.dev)
     .argument('[prompt]', 'Send a prompt to a running dev server [non-interactive]')
-    .option('-p, --port <port>', 'Port for development server', '8080')
+    .option(
+      '-p, --port <port>',
+      'Base port for development server. With multiple runtimes, the actual port is base + runtime index when --port is omitted; when --port is passed explicitly the value is used literally and a port conflict fails fast.',
+      '8080'
+    )
     .option('-r, --runtime <name>', 'Runtime to run or invoke (required if multiple runtimes)')
     .option('-s, --stream', 'Stream response when invoking [non-interactive]')
     .option('-l, --logs', 'Run dev server with logs to stdout [non-interactive]')
@@ -187,9 +191,12 @@ export const registerDev = (program: Command) => {
     .option('-b, --no-browser', 'Use terminal TUI instead of web-based chat UI')
     .option('--no-traces', 'Disable local OTEL trace collection')
 
-    .action(async (positionalPrompt: string | undefined, opts) => {
+    .action(async (positionalPrompt: string | undefined, opts, command) => {
       try {
         const port = parseInt(opts.port, 10);
+        // Was --port passed explicitly on the command line, or are we using the default?
+        // Used to honor literal port values (issue #1079) instead of silently offsetting.
+        const portIsExplicit = command?.getOptionValueSource?.('port') === 'cli';
 
         // Parse custom headers
         let headers: Record<string, string> | undefined;
@@ -227,7 +234,9 @@ export const registerDev = (program: Command) => {
           let invokePort = port;
           let targetAgent = invokeProject?.runtimes[0];
           if (opts.runtime && invokeProject) {
-            invokePort = getAgentPort(invokeProject, opts.runtime, port);
+            // Honor explicit --port literally; otherwise apply the historical
+            // base + runtime index offset so we hit the auto-allocated port.
+            invokePort = resolveAgentPort(invokeProject, opts.runtime, port, { explicit: portIsExplicit }).port;
             targetAgent = invokeProject.runtimes.find(a => a.name === opts.runtime);
           } else if (invokeProject && invokeProject.runtimes.length > 1 && !opts.runtime) {
             const names = invokeProject.runtimes.map(a => a.name).join(', ');
@@ -325,13 +334,31 @@ export const registerDev = (program: Command) => {
           // Create logger for log file path
           const logger = new ExecLogger({ command: 'dev' });
 
-          // Calculate port: A2A/MCP use fixed framework ports, HTTP uses configurable port
+          // Calculate port: A2A/MCP use fixed framework ports, HTTP uses configurable port.
+          // For HTTP we resolve via resolveAgentPort which honors explicit --port literally
+          // and otherwise applies the historical base + runtime-index offset.
           const isA2A = config.protocol === 'A2A';
           const isMcp = config.protocol === 'MCP';
-          const fixedPort = isA2A ? 9000 : isMcp ? 8000 : getAgentPort(project, config.agentName, port);
+          const httpResolution = resolveAgentPort(project, config.agentName, port, { explicit: portIsExplicit });
+          const fixedPort = isA2A ? 9000 : isMcp ? 8000 : httpResolution.port;
+
+          // Surface the index-based offset so it isn't silent (issue #1079).
+          if (!isA2A && !isMcp && httpResolution.offset > 0) {
+            console.log(
+              `Runtime "${config.agentName}" is at index ${httpResolution.offset}; using port ${fixedPort} ` +
+                `(pass --port ${fixedPort} explicitly to override).`
+            );
+          }
+
           const actualPort = await findAvailablePort(fixedPort);
           if ((isA2A || isMcp) && actualPort !== fixedPort) {
             console.error(`Error: Port ${fixedPort} is in use. ${config.protocol} agents require port ${fixedPort}.`);
+            process.exit(1);
+          }
+          if (!isA2A && !isMcp && portIsExplicit && actualPort !== fixedPort) {
+            console.error(
+              `Error: Port ${fixedPort} is in use. Pass a different --port or stop the conflicting process.`
+            );
             process.exit(1);
           }
           if (actualPort !== fixedPort) {
@@ -403,6 +430,7 @@ export const registerDev = (program: Command) => {
                 }}
                 workingDir={workingDir}
                 port={port}
+                portIsExplicit={portIsExplicit}
                 agentName={opts.runtime}
                 headers={headers}
               />
@@ -419,6 +447,7 @@ export const registerDev = (program: Command) => {
           workingDir,
           project,
           port,
+          portIsExplicit,
           agentName: opts.runtime,
           otelEnvVars,
           collector,

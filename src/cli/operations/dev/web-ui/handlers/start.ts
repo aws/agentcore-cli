@@ -98,7 +98,36 @@ async function doStartAgent(
   // we set. So MCP agents always bind to 8000 regardless of environment configuration.
   const isA2A = config.protocol === 'A2A';
   const isMCP = config.protocol === 'MCP';
-  const targetPort = isA2A ? 9000 : isMCP ? 8000 : ctx.options.uiPort + 1 + (agentIndex >= 0 ? agentIndex : 0);
+  // Resolve HTTP target port. Precedence:
+  //   1. If basePort was explicitly passed via --port: use it literally (no offset).
+  //   2. If basePort was provided (default): basePort + agentIndex.
+  //   3. Otherwise: uiPort + 1 + agentIndex (legacy auto-allocation above the UI port).
+  const safeIndex = agentIndex >= 0 ? agentIndex : 0;
+  const basePort = ctx.options.basePort;
+  const basePortIsExplicit = ctx.options.basePortIsExplicit === true;
+  let httpTargetPort: number;
+  let offset: number;
+  if (basePort !== undefined && basePortIsExplicit) {
+    httpTargetPort = basePort;
+    offset = 0;
+  } else if (basePort !== undefined) {
+    httpTargetPort = basePort + safeIndex;
+    offset = safeIndex;
+  } else {
+    httpTargetPort = ctx.options.uiPort + 1 + safeIndex;
+    offset = safeIndex;
+  }
+  const targetPort = isA2A ? 9000 : isMCP ? 8000 : httpTargetPort;
+
+  // Surface the index-based offset so it isn't silent (issue #1079).
+  if (!isA2A && !isMCP && offset > 0) {
+    onLog?.(
+      'info',
+      `[${agentName}] Runtime is at index ${offset}; using port ${targetPort} ` +
+        `(pass --port ${targetPort} explicitly to override).`
+    );
+  }
+
   const agentPort = await findAvailablePort(targetPort);
   if (isA2A && agentPort !== 9000) {
     return {
@@ -114,6 +143,14 @@ async function doStartAgent(
       name: agentName,
       port: 0,
       error: `Port 8000 is in use. MCP agents require port 8000 (FastMCP default).`,
+    };
+  }
+  if (!isA2A && !isMCP && basePortIsExplicit && agentPort !== targetPort) {
+    return {
+      success: false,
+      name: agentName,
+      port: 0,
+      error: `Port ${targetPort} is in use. Pass a different --port or stop the conflicting process.`,
     };
   }
   if (agentPort !== targetPort) {
