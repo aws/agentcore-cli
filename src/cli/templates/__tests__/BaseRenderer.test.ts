@@ -1,20 +1,13 @@
 import { BaseRenderer } from '../BaseRenderer.js';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { mkdirSync, mkdtempSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const mockCopyAndRenderDir = vi.fn();
-const mockExistsSync = vi.fn();
 
 vi.mock('../render.js', () => ({
   copyAndRenderDir: (...args: unknown[]) => mockCopyAndRenderDir(...args),
-}));
-
-vi.mock('node:fs', async () => {
-  const actual = await vi.importActual('node:fs');
-  return { ...actual, existsSync: (...args: unknown[]) => mockExistsSync(...args) };
-});
-
-vi.mock('../../../lib', () => ({
-  APP_DIR: 'app',
 }));
 
 class TestRenderer extends BaseRenderer {
@@ -28,7 +21,16 @@ class TestRenderer extends BaseRenderer {
 }
 
 describe('BaseRenderer', () => {
-  afterEach(() => vi.clearAllMocks());
+  let tmpDir: string;
+
+  beforeEach(() => {
+    tmpDir = mkdtempSync(join(tmpdir(), 'base-renderer-test-'));
+  });
+
+  afterEach(() => {
+    vi.clearAllMocks();
+    rmSync(tmpDir, { recursive: true, force: true });
+  });
 
   it('getTemplateDir joins language, protocol, and sdk name', () => {
     const renderer = new TestRenderer(
@@ -63,19 +65,18 @@ describe('BaseRenderer', () => {
 
   it('render copies base template', async () => {
     mockCopyAndRenderDir.mockResolvedValue(undefined);
-    mockExistsSync.mockReturnValue(false);
 
     const renderer = new TestRenderer(
       { targetLanguage: 'Python', name: 'MyAgent', hasMemory: false },
       'strands',
-      '/templates'
+      tmpDir
     );
 
     await renderer.render({ outputDir: '/output' });
 
     expect(mockCopyAndRenderDir).toHaveBeenCalledTimes(1);
     expect(mockCopyAndRenderDir).toHaveBeenCalledWith(
-      '/templates/python/http/strands/base',
+      join(tmpDir, 'python', 'http', 'strands', 'base'),
       '/output/app/MyAgent',
       expect.objectContaining({ projectName: 'MyAgent', Name: 'MyAgent', hasMcp: false })
     );
@@ -83,19 +84,19 @@ describe('BaseRenderer', () => {
 
   it('render copies memory capability when hasMemory and dir exists', async () => {
     mockCopyAndRenderDir.mockResolvedValue(undefined);
-    mockExistsSync.mockReturnValue(true);
+    mkdirSync(join(tmpDir, 'typescript', 'http', 'langchain', 'capabilities', 'memory'), { recursive: true });
 
     const renderer = new TestRenderer(
       { targetLanguage: 'TypeScript', name: 'Agent', hasMemory: true },
       'langchain',
-      '/templates'
+      tmpDir
     );
 
     await renderer.render({ outputDir: '/out' });
 
     expect(mockCopyAndRenderDir).toHaveBeenCalledTimes(2);
     expect(mockCopyAndRenderDir).toHaveBeenCalledWith(
-      '/templates/typescript/http/langchain/capabilities/memory',
+      join(tmpDir, 'typescript', 'http', 'langchain', 'capabilities', 'memory'),
       '/out/app/Agent/memory',
       expect.objectContaining({ projectName: 'Agent', hasMemory: true })
     );
@@ -103,13 +104,8 @@ describe('BaseRenderer', () => {
 
   it('render skips memory capability when dir does not exist', async () => {
     mockCopyAndRenderDir.mockResolvedValue(undefined);
-    mockExistsSync.mockReturnValue(false);
 
-    const renderer = new TestRenderer(
-      { targetLanguage: 'Python', name: 'Agent', hasMemory: true },
-      'strands',
-      '/templates'
-    );
+    const renderer = new TestRenderer({ targetLanguage: 'Python', name: 'Agent', hasMemory: true }, 'strands', tmpDir);
 
     await renderer.render({ outputDir: '/out' });
 
