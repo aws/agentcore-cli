@@ -14,4 +14,5 @@ Review the PR. If there are any serious issues that require code changes before 
 each issue explaining the problem. If there are multiple ways to fix an issue, list the options so the author can
 choose. Skip style nits and minor suggestions — only flag things that actually need to change.
 
-When finished, submit a formal PR review (approve or request changes) with individual and inline comments in it. Be specific with line numbers.
+When finished, submit a formal PR review (approve or request changes) with individual and inline comments in it. Be
+specific with line numbers.
