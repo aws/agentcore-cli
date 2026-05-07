@@ -98,4 +98,137 @@ describe('OnlineEvalConfigSchema', () => {
   it('accepts config without description and enableOnCreate', () => {
     expect(OnlineEvalConfigSchema.safeParse(validConfig).success).toBe(true);
   });
+
+  describe('sessionTimeoutMinutes', () => {
+    it('accepts boundary value 1', () => {
+      const config = { ...validConfig, sessionTimeoutMinutes: 1 };
+      expect(OnlineEvalConfigSchema.safeParse(config).success).toBe(true);
+    });
+
+    it('accepts boundary value 1440', () => {
+      const config = { ...validConfig, sessionTimeoutMinutes: 1440 };
+      expect(OnlineEvalConfigSchema.safeParse(config).success).toBe(true);
+    });
+
+    it('rejects 0', () => {
+      const config = { ...validConfig, sessionTimeoutMinutes: 0 };
+      expect(OnlineEvalConfigSchema.safeParse(config).success).toBe(false);
+    });
+
+    it('rejects 1441', () => {
+      const config = { ...validConfig, sessionTimeoutMinutes: 1441 };
+      expect(OnlineEvalConfigSchema.safeParse(config).success).toBe(false);
+    });
+
+    it('rejects non-integer values', () => {
+      const config = { ...validConfig, sessionTimeoutMinutes: 5.5 };
+      expect(OnlineEvalConfigSchema.safeParse(config).success).toBe(false);
+    });
+
+    it('omitting the field is valid (uses construct default)', () => {
+      expect(OnlineEvalConfigSchema.safeParse(validConfig).success).toBe(true);
+    });
+  });
+
+  describe('filters', () => {
+    const baseFilter = {
+      key: 'model',
+      operator: 'Equals' as const,
+      value: { stringValue: 'claude-3' },
+    };
+
+    it('accepts a single valid filter with a stringValue', () => {
+      const config = { ...validConfig, filters: [baseFilter] };
+      expect(OnlineEvalConfigSchema.safeParse(config).success).toBe(true);
+    });
+
+    it('accepts filters with doubleValue and booleanValue', () => {
+      const config = {
+        ...validConfig,
+        filters: [
+          { key: 'latencyMs', operator: 'LessThan', value: { doubleValue: 1000 } },
+          { key: 'success', operator: 'Equals', value: { booleanValue: true } },
+        ],
+      };
+      expect(OnlineEvalConfigSchema.safeParse(config).success).toBe(true);
+    });
+
+    it('accepts every supported operator', () => {
+      const operators = [
+        'Equals',
+        'NotEquals',
+        'GreaterThan',
+        'LessThan',
+        'GreaterThanOrEqual',
+        'LessThanOrEqual',
+        'Contains',
+        'NotContains',
+      ] as const;
+      for (const op of operators) {
+        const config = { ...validConfig, filters: [{ ...baseFilter, operator: op }] };
+        expect(OnlineEvalConfigSchema.safeParse(config).success, `operator ${op}`).toBe(true);
+      }
+    });
+
+    it('rejects an invalid operator', () => {
+      const config = {
+        ...validConfig,
+        filters: [{ ...baseFilter, operator: 'StartsWith' }],
+      };
+      expect(OnlineEvalConfigSchema.safeParse(config).success).toBe(false);
+    });
+
+    it('rejects a filter with zero value variants set', () => {
+      const config = {
+        ...validConfig,
+        filters: [{ key: 'model', operator: 'Equals', value: {} }],
+      };
+      expect(OnlineEvalConfigSchema.safeParse(config).success).toBe(false);
+    });
+
+    it('rejects a filter with two value variants set simultaneously', () => {
+      const config = {
+        ...validConfig,
+        filters: [
+          {
+            key: 'model',
+            operator: 'Equals',
+            value: { stringValue: 'claude-3', doubleValue: 1 },
+          },
+        ],
+      };
+      expect(OnlineEvalConfigSchema.safeParse(config).success).toBe(false);
+    });
+
+    it('rejects a filter with all three value variants set', () => {
+      const config = {
+        ...validConfig,
+        filters: [
+          {
+            key: 'model',
+            operator: 'Equals',
+            value: { stringValue: 'x', doubleValue: 1, booleanValue: true },
+          },
+        ],
+      };
+      expect(OnlineEvalConfigSchema.safeParse(config).success).toBe(false);
+    });
+
+    it('rejects a filter with an empty key', () => {
+      const config = {
+        ...validConfig,
+        filters: [{ ...baseFilter, key: '' }],
+      };
+      expect(OnlineEvalConfigSchema.safeParse(config).success).toBe(false);
+    });
+
+    it('omitting the field is valid', () => {
+      expect(OnlineEvalConfigSchema.safeParse(validConfig).success).toBe(true);
+    });
+
+    it('accepts an empty filters array', () => {
+      const config = { ...validConfig, filters: [] };
+      expect(OnlineEvalConfigSchema.safeParse(config).success).toBe(true);
+    });
+  });
 });
