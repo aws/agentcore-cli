@@ -1,4 +1,5 @@
 import {
+  DEFAULT_PYTHON_VERSION,
   ModelProviderSchema,
   NetworkModeSchema,
   NodeRuntimeSchema,
@@ -71,6 +72,13 @@ describe('RuntimeVersionSchemas', () => {
     expect(NodeRuntimeSchema.safeParse('NODE_16').success).toBe(false);
     expect(NodeRuntimeSchema.safeParse('NODE_24').success).toBe(false);
     expect(RuntimeVersionSchema.safeParse('RUBY_3_0').success).toBe(false);
+  });
+
+  // Regression test for issue #907: PYTHON_3_14 is not yet broadly supported
+  // by CloudFormation, so the CLI default must remain a server-side-supported
+  // version (PYTHON_3_13) to avoid stuck REVIEW_IN_PROGRESS stacks.
+  it('uses PYTHON_3_13 as the default Python runtime', () => {
+    expect(DEFAULT_PYTHON_VERSION).toBe('PYTHON_3_13');
   });
 });
 
