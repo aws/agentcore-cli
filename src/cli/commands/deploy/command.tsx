@@ -149,7 +149,7 @@ export const registerDeploy = (program: Command) => {
     .option('--diff', 'Show CDK diff without deploying [non-interactive]')
     .option(
       '--recover',
-      'Auto-delete stacks stuck in REVIEW_IN_PROGRESS before deploying (see issue #907) [non-interactive]'
+      'Auto-delete stacks stuck in REVIEW_IN_PROGRESS before deploying (see issue #907). Combine with --yes if AWS bootstrap may also be needed. [non-interactive]'
     )
     .action(
       async (cliOptions: {

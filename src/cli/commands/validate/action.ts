@@ -159,7 +159,13 @@ export function collectRuntimeRegionWarnings(
   if (py314Components.length === 0) return warnings;
 
   const unsupportedRegions = Array.from(
-    new Set(awsTargets.map(t => t.region).filter(region => !PYTHON_3_14_SUPPORTED_REGIONS.includes(region)))
+    new Set(
+      awsTargets
+        .map(t => t.region)
+        // AWS regions are canonically lowercase, but harden against any
+        // non-canonical casing that may slip through aws-targets parsing.
+        .filter(region => !PYTHON_3_14_SUPPORTED_REGIONS.includes(region.toLowerCase()))
+    )
   );
 
   if (unsupportedRegions.length === 0) return warnings;

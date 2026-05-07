@@ -234,4 +234,59 @@ describe('recoverReviewInProgressStack', () => {
       })
     ).rejects.toThrow(/Access denied/);
   });
+
+  it('treats ValidationException (SDK v3 surface) as stack-deleted during polling', async () => {
+    mockSend.mockResolvedValueOnce({ Stacks: [{ StackStatus: 'REVIEW_IN_PROGRESS' }] });
+    mockSend.mockResolvedValueOnce({ Summaries: [{ Status: 'FAILED' }] });
+    mockSend.mockResolvedValueOnce({}); // delete
+    const validationEx = new Error('Stack with id MyStack does not exist');
+    validationEx.name = 'ValidationException';
+    mockSend.mockRejectedValueOnce(validationEx);
+
+    const result = await recoverReviewInProgressStack('us-east-1', 'MyStack', {
+      pollIntervalMs: 1,
+      timeoutMs: 1000,
+      client: makeClient(),
+    });
+    expect(result.deleted).toBe(true);
+  });
+
+  it('treats arbitrary "does not exist" errors as stack-deleted during polling', async () => {
+    mockSend.mockResolvedValueOnce({ Stacks: [{ StackStatus: 'REVIEW_IN_PROGRESS' }] });
+    mockSend.mockResolvedValueOnce({ Summaries: [{ Status: 'FAILED' }] });
+    mockSend.mockResolvedValueOnce({}); // delete
+    const wrappedErr = new Error('Stack with id MyStack does not exist');
+    wrappedErr.name = 'CloudFormationServiceException';
+    mockSend.mockRejectedValueOnce(wrappedErr);
+
+    const result = await recoverReviewInProgressStack('us-east-1', 'MyStack', {
+      pollIntervalMs: 1,
+      timeoutMs: 1000,
+      client: makeClient(),
+    });
+    expect(result.deleted).toBe(true);
+  });
+
+  it('invokes onProgress callback for each poll iteration', async () => {
+    mockSend.mockResolvedValueOnce({ Stacks: [{ StackStatus: 'REVIEW_IN_PROGRESS' }] });
+    mockSend.mockResolvedValueOnce({ Summaries: [{ Status: 'FAILED' }] });
+    mockSend.mockResolvedValueOnce({}); // delete
+    // First poll returns DELETE_IN_PROGRESS, second poll returns "not found"
+    mockSend.mockResolvedValueOnce({ Stacks: [{ StackStatus: 'DELETE_IN_PROGRESS' }] });
+    const validationErr = new Error('Stack does not exist');
+    validationErr.name = 'ValidationError';
+    mockSend.mockRejectedValueOnce(validationErr);
+
+    const heartbeats: { stackStatus: string; elapsedMs: number }[] = [];
+    const result = await recoverReviewInProgressStack('us-east-1', 'MyStack', {
+      pollIntervalMs: 1,
+      timeoutMs: 1000,
+      client: makeClient(),
+      onProgress: info => heartbeats.push(info),
+    });
+    expect(result.deleted).toBe(true);
+    expect(heartbeats.length).toBeGreaterThanOrEqual(2);
+    expect(heartbeats[0]!.stackStatus).toBe('DELETE_IN_PROGRESS');
+    expect(heartbeats[heartbeats.length - 1]!.stackStatus).toBe('DELETE_COMPLETE');
+  });
 });

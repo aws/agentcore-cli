@@ -362,4 +362,22 @@ describe('handleValidate', () => {
     expect(result.warnings![0]).toContain('gateway "gw1"');
     expect(result.warnings![0]).toContain('tgt1');
   });
+
+  it('does not warn for non-canonical casing of a supported region', async () => {
+    mockFindConfigRoot.mockReturnValue('/project/agentcore');
+    mockReadProjectSpec.mockResolvedValue({
+      name: 'Test',
+      version: 1,
+      managedBy: 'CDK' as const,
+      runtimes: [{ name: 'agent1', runtimeVersion: 'PYTHON_3_14' }],
+    });
+    // Should not warn even though casing is non-canonical
+    mockReadAWSDeploymentTargets.mockResolvedValue([{ name: 'default', region: 'US-EAST-1', account: '111' }]);
+    mockConfigExists.mockReturnValue(false);
+
+    const result = await handleValidate({});
+
+    expect(result.success).toBe(true);
+    expect(result.warnings).toBeUndefined();
+  });
 });

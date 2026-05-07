@@ -314,28 +314,60 @@ export async function handleDeploy(options: ValidatedDeployOptions): Promise<Dep
     // Check stack deployability
     startStep('Check stack status');
     let deployabilityCheck = await checkStackDeployability(target.region, stackNames);
-    if (!deployabilityCheck.canDeploy) {
-      // Special handling for recoverable REVIEW_IN_PROGRESS stacks: when the
-      // user passes --recover, delete the empty stack and re-check.
-      // See https://github.com/aws/agentcore-cli/issues/907.
-      if (options.recover && deployabilityCheck.isRecoverableReview && deployabilityCheck.blockingStack) {
-        logger.log(`Recovering stack "${deployabilityCheck.blockingStack}" stuck in REVIEW_IN_PROGRESS...`, 'warn');
-        try {
-          await recoverReviewInProgressStack(target.region, deployabilityCheck.blockingStack);
-          logger.log(`Recovered stack "${deployabilityCheck.blockingStack}".`);
-          deployabilityCheck = await checkStackDeployability(target.region, stackNames);
-        } catch (recoverErr: unknown) {
-          const recoverErrorMessage = getErrorMessage(recoverErr);
-          endStep('error', recoverErrorMessage);
-          logger.finalize(false);
-          return {
-            success: false,
-            error: `Stack recovery failed: ${recoverErrorMessage}`,
-            logPath: logger.getRelativeLogPath(),
-          };
-        }
+
+    // Recovery loop: when the user passes --recover, drain any stacks stuck
+    // in REVIEW_IN_PROGRESS one at a time. Bounded by stackNames.length so
+    // we cannot spin even if checkStackDeployability returned the same
+    // blocking stack twice for some reason. See
+    // https://github.com/aws/agentcore-cli/issues/907.
+    let recoveryAttempts = 0;
+    while (
+      !deployabilityCheck.canDeploy &&
+      options.recover &&
+      deployabilityCheck.isRecoverableReview &&
+      deployabilityCheck.blockingStack &&
+      recoveryAttempts < stackNames.length
+    ) {
+      const blockingStack = deployabilityCheck.blockingStack;
+      logger.log(`Recovering stack "${blockingStack}" stuck in REVIEW_IN_PROGRESS...`, 'warn');
+      try {
+        await recoverReviewInProgressStack(target.region, blockingStack, {
+          onWarning: msg => logger.log(msg, 'warn'),
+          onProgress: ({ stackStatus, elapsedMs }) => {
+            // Heartbeat every poll so the deploy step doesn't look hung.
+            logger.log(`  recovery: ${blockingStack} status=${stackStatus} (${Math.floor(elapsedMs / 1000)}s)`);
+          },
+        });
+        logger.log(`Recovered stack "${blockingStack}".`);
+        recoveryAttempts++;
+        deployabilityCheck = await checkStackDeployability(target.region, stackNames);
+      } catch (recoverErr: unknown) {
+        const recoverErrorMessage = getErrorMessage(recoverErr);
+        endStep('error', recoverErrorMessage);
+        logger.finalize(false);
+        return {
+          success: false,
+          error: `Stack recovery failed: ${recoverErrorMessage}`,
+          logPath: logger.getRelativeLogPath(),
+        };
       }
     }
+
+    // If --recover was requested but the blocking stack is not in a
+    // recoverable state, surface that explicitly so users don't think the
+    // flag silently did nothing.
+    if (
+      !deployabilityCheck.canDeploy &&
+      options.recover &&
+      !deployabilityCheck.isRecoverableReview &&
+      deployabilityCheck.blockingStack
+    ) {
+      logger.log(
+        `--recover requested, but stack "${deployabilityCheck.blockingStack}" is not in an auto-recoverable state. Skipping recovery.`,
+        'warn'
+      );
+    }
+
     if (!deployabilityCheck.canDeploy) {
       endStep('error', deployabilityCheck.message);
       logger.finalize(false);
