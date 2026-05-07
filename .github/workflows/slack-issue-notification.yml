@@ -20,4 +20,5 @@ jobs:
             issue_author: "${{ github.event.issue.user.login }}"
             issue_body: ${{ toJSON(github.event.issue.body) }}
             repository: "${{ github.repository }}"
+            labels: "${{ join(github.event.issue.labels.*.name, ', ') }}"
             created_at: "${{ github.event.issue.created_at }}"
