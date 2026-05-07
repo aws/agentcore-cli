@@ -1,3 +1,15 @@
 export { buildTraceConsoleUrl } from './trace-url';
-export { listTraces, type TraceEntry, type ListTracesOptions, type ListTracesResult } from './list-traces';
-export { getTrace, type GetTraceOptions, type GetTraceResult } from './get-trace';
+export { listTraces } from './list-traces';
+export { fetchTraceRecords, getTrace } from './get-trace';
+export { runInsightsQuery, type InsightsQueryOptions, type InsightsQueryResult } from './insights-query';
+export type {
+  CloudWatchSpanRecord,
+  CloudWatchTraceRecord,
+  FetchTraceRecordsOptions,
+  FetchTraceRecordsResult,
+  GetTraceOptions,
+  GetTraceResult,
+  ListTracesOptions,
+  ListTracesResult,
+  TraceEntry,
+} from './types';

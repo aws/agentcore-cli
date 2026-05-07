@@ -4,8 +4,10 @@ import { type AgentError, type AgentInfo, WEB_UI_LOCAL_URL } from './constants';
 import {
   type RouteContext,
   handleA2AAgentCard,
+  handleGetCloudWatchTrace,
   handleGetTrace,
   handleInvocations,
+  handleListCloudWatchTraces,
   handleListMemoryRecords,
   handleListTraces,
   handleMcpProxy,
@@ -79,6 +81,29 @@ export type GetTraceHandler = (
 ) => Promise<{ success: boolean; resourceSpans?: unknown[]; resourceLogs?: unknown[]; error?: string }>;
 
 /**
+ * Custom handler for GET /api/cloudwatch-traces.
+ * Returns a list of recent CloudWatch traces for the given agent or harness.
+ */
+export type ListCloudWatchTracesHandler = (
+  agentName: string | undefined,
+  harnessName: string | undefined,
+  startTime?: number,
+  endTime?: number
+) => Promise<{ success: boolean; traces?: unknown[]; error?: string }>;
+
+/**
+ * Custom handler for GET /api/cloudwatch-traces/:traceId.
+ * Returns the full CloudWatch trace data for a specific trace.
+ */
+export type GetCloudWatchTraceHandler = (
+  agentName: string | undefined,
+  harnessName: string | undefined,
+  traceId: string,
+  startTime?: number,
+  endTime?: number
+) => Promise<{ success: boolean; records?: unknown[]; spans?: unknown[]; error?: string }>;
+
+/**
  * Custom handler for GET /api/memory.
  * Returns a list of memory records for a given memory + namespace.
  */
@@ -124,6 +149,10 @@ export interface WebUIOptions {
   onListTraces?: ListTracesHandler;
   /** Custom handler for getting a single trace */
   onGetTrace?: GetTraceHandler;
+  /** Custom handler for listing CloudWatch traces */
+  onListCloudWatchTraces?: ListCloudWatchTracesHandler;
+  /** Custom handler for getting a single CloudWatch trace */
+  onGetCloudWatchTrace?: GetCloudWatchTraceHandler;
   /** Custom handler for listing memory records */
   onListMemoryRecords?: ListMemoryRecordsHandler;
   /** Custom handler for searching memory records */
@@ -291,6 +320,10 @@ export class WebUIServer {
       await handleGetTrace(ctx, req, res, origin);
     } else if (req.method === 'GET' && req.url?.startsWith('/api/traces')) {
       await handleListTraces(ctx, req, res, origin);
+    } else if (req.method === 'GET' && req.url?.startsWith('/api/cloudwatch-traces/')) {
+      await handleGetCloudWatchTrace(ctx, req, res, origin);
+    } else if (req.method === 'GET' && req.url?.startsWith('/api/cloudwatch-traces')) {
+      await handleListCloudWatchTraces(ctx, req, res, origin);
     } else if (req.method === 'POST' && req.url === '/api/start') {
       await handleStart(ctx, req, res, origin);
     } else if (req.method === 'POST' && req.url === '/invocations') {

@@ -74,7 +74,7 @@ export interface ParsedStarterToolkitConfig {
  * Resource types supported by the import subcommands.
  * Use the array for runtime checks (e.g., IMPORTABLE_RESOURCES.includes(x)).
  */
-export const IMPORTABLE_RESOURCES = ['runtime', 'memory', 'evaluator', 'online-eval'] as const;
+export const IMPORTABLE_RESOURCES = ['runtime', 'memory', 'evaluator', 'online-eval', 'gateway'] as const;
 export type ImportableResourceType = (typeof IMPORTABLE_RESOURCES)[number];
 
 /**

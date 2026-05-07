@@ -97,6 +97,8 @@ export interface AddAgentConfig {
   maxLifetime?: number;
   /** Mount path for session filesystem storage (e.g. /mnt/session-storage) */
   sessionStorageMountPath?: string;
+  /** When true, create a config bundle wired into the agent template */
+  withConfigBundle?: boolean;
   /** Python version (only for Python agents) */
   pythonVersion: PythonRuntime;
   /** Memory option (create path only) */

@@ -7,6 +7,8 @@ interface DeployStatusProps {
   messages: DeployMessage[];
   isComplete: boolean;
   hasError: boolean;
+  hasPostDeployError?: boolean;
+  postDeployWarnings?: string[];
 }
 
 const PROGRESS_BAR_WIDTH = 20;
@@ -127,7 +129,13 @@ function ResourceLine({ resource }: { resource: ParsedResource }) {
  * During deployment: shows last N resource events (type + status only)
  * After completion: shows success/failure state
  */
-export function DeployStatus({ messages, isComplete, hasError }: DeployStatusProps) {
+export function DeployStatus({
+  messages,
+  isComplete,
+  hasError,
+  hasPostDeployError,
+  postDeployWarnings,
+}: DeployStatusProps) {
   // Parse and filter messages to only meaningful resource updates
   const parsedResources = messages
     .map(msg => ({ original: msg, parsed: parseResourceMessage(msg) }))
@@ -139,16 +147,19 @@ export function DeployStatus({ messages, isComplete, hasError }: DeployStatusPro
 
   // When complete, show final status
   if (isComplete) {
+    const hasWarning = hasPostDeployError && !hasError;
+    const borderColor = hasError ? 'red' : hasWarning ? 'yellow' : 'green';
+    const textColor = borderColor;
+    const bannerText = hasError
+      ? '✗ Deploy to AWS Failed'
+      : hasWarning
+        ? '⚠ Deploy to AWS Complete (with warnings)'
+        : '✓ Deploy to AWS Complete';
+
     return (
-      <Box
-        flexDirection="column"
-        borderStyle="round"
-        borderColor={hasError ? 'red' : 'green'}
-        paddingX={1}
-        minWidth={50}
-      >
-        <Text bold color={hasError ? 'red' : 'green'}>
-          {hasError ? '✗ Deploy to AWS Failed' : '✓ Deploy to AWS Complete'}
+      <Box flexDirection="column" borderStyle="round" borderColor={borderColor} paddingX={1} minWidth={50}>
+        <Text bold color={textColor}>
+          {bannerText}
         </Text>
         {progress && (
           <Box marginTop={1}>
@@ -159,6 +170,15 @@ export function DeployStatus({ messages, isComplete, hasError }: DeployStatusPro
           <Box flexDirection="column" marginTop={1}>
             {parsedResources.slice(-3).map((m, i) => (
               <ResourceLine key={`${m.original.code}-${i}`} resource={m.parsed} />
+            ))}
+          </Box>
+        )}
+        {hasWarning && postDeployWarnings && postDeployWarnings.length > 0 && (
+          <Box flexDirection="column" marginTop={1}>
+            {postDeployWarnings.map((w, i) => (
+              <Text key={i} color="yellow">
+                {w}
+              </Text>
             ))}
           </Box>
         )}

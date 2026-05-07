@@ -1,129 +1,186 @@
-import { getCredentialProvider } from '../../aws';
 import { DEFAULT_ENDPOINT_NAME } from '../../constants';
-import { CloudWatchLogsClient, GetQueryResultsCommand, StartQueryCommand } from '@aws-sdk/client-cloudwatch-logs';
+import { runInsightsQuery } from './insights-query';
+import type {
+  CloudWatchSpanRecord,
+  CloudWatchTraceRecord,
+  FetchTraceRecordsOptions,
+  FetchTraceRecordsResult,
+  GetTraceOptions,
+  GetTraceResult,
+} from './types';
 import fs from 'node:fs';
 import path from 'node:path';
 
-export interface GetTraceOptions {
-  region: string;
-  runtimeId: string;
-  agentName: string;
-  traceId: string;
-  outputPath?: string;
-  startTime?: number;
-  endTime?: number;
+const SPANS_LOG_GROUP = 'aws/spans';
+const TRACE_ID_PATTERN = /^[a-fA-F0-9-]+$/;
+
+function runtimeLogGroup(runtimeId: string): string {
+  return `/aws/bedrock-agentcore/runtimes/${runtimeId}-${DEFAULT_ENDPOINT_NAME}`;
 }
 
-export interface GetTraceResult {
-  success: boolean;
-  filePath?: string;
-  error?: string;
+async function fetchSpans(
+  region: string,
+  traceId: string,
+  startTime?: number,
+  endTime?: number
+): Promise<{ success: boolean; spans?: CloudWatchSpanRecord[]; error?: string }> {
+  if (!TRACE_ID_PATTERN.test(traceId)) {
+    return { success: false, error: 'Invalid trace ID format. Expected a hex string (e.g., abc123def456).' };
+  }
+
+  const result = await runInsightsQuery({
+    region,
+    logGroupName: SPANS_LOG_GROUP,
+    startTime,
+    endTime,
+    queryString: `fields traceId, spanId, parentSpanId, name, kind,
+  startTimeUnixNano, endTimeUnixNano, durationNano,
+  status.code as statusCode,
+  resource.attributes.service.name as serviceName,
+  attributes.gen_ai.usage.input_tokens as inputTokens,
+  attributes.gen_ai.usage.output_tokens as outputTokens,
+  attributes.gen_ai.usage.total_tokens as totalTokens,
+  attributes.http.status_code as httpStatusCode,
+  attributes.session.id as sessionId
+| filter ispresent(traceId) and ispresent(resource.attributes.service.name)
+| filter resource.attributes.aws.service.type = "gen_ai_agent"
+| filter traceId = '${traceId}'
+| sort startTimeUnixNano asc`,
+  });
+
+  if (!result.success) return { success: false, error: result.error };
+
+  const spans: CloudWatchSpanRecord[] = (result.rows ?? [])
+    .filter(row => row.traceId && row.spanId)
+    .map(row => ({
+      traceId: row.traceId!,
+      spanId: row.spanId!,
+      parentSpanId: row.parentSpanId ?? undefined,
+      name: row.name ?? undefined,
+      kind: row.kind ?? undefined,
+      startTimeUnixNano: row.startTimeUnixNano ?? undefined,
+      endTimeUnixNano: row.endTimeUnixNano ?? undefined,
+      durationNano: row.durationNano ?? undefined,
+      statusCode: row.statusCode ?? undefined,
+      serviceName: row.serviceName ?? undefined,
+      inputTokens: row.inputTokens ? Number(row.inputTokens) : undefined,
+      outputTokens: row.outputTokens ? Number(row.outputTokens) : undefined,
+      totalTokens: row.totalTokens ? Number(row.totalTokens) : undefined,
+      httpStatusCode: row.httpStatusCode ? Number(row.httpStatusCode) : undefined,
+      sessionId: row.sessionId ?? undefined,
+    }));
+
+  return { success: true, spans };
+}
+
+/**
+ * Fetches trace records from CloudWatch Logs Insights for a given trace ID.
+ * Returns typed records for the web UI API. Use `getTrace()` to write raw
+ * results to a JSON file on disk.
+ */
+export async function fetchTraceRecords(options: FetchTraceRecordsOptions): Promise<FetchTraceRecordsResult> {
+  const { region, runtimeId, traceId, includeSpans } = options;
+
+  if (!TRACE_ID_PATTERN.test(traceId)) {
+    return { success: false, error: 'Invalid trace ID format. Expected a hex string (e.g., abc123def456).' };
+  }
+
+  const [recordsResult, spansResult] = await Promise.all([
+    runInsightsQuery({
+      region,
+      logGroupName: runtimeLogGroup(runtimeId),
+      startTime: options.startTime,
+      endTime: options.endTime,
+      queryString: `fields @timestamp, @message, @ptr
+| filter traceId = '${traceId}'
+| sort @timestamp asc
+| limit 10000`,
+    }),
+    includeSpans ? fetchSpans(region, traceId, options.startTime, options.endTime) : Promise.resolve(undefined),
+  ]);
+
+  if (!recordsResult.success) {
+    return { success: false, error: recordsResult.error };
+  }
+
+  const traceData = recordsResult.rows ?? [];
+
+  if (traceData.length === 0 && (!spansResult || (spansResult.spans ?? []).length === 0)) {
+    return { success: false, error: `No trace data found for trace ID: ${traceId}` };
+  }
+
+  const records: CloudWatchTraceRecord[] = traceData.map(entry => {
+    let message: unknown = entry['@message'] ?? '{}';
+    try {
+      message = JSON.parse(entry['@message'] ?? '{}');
+    } catch {
+      // Keep original string if not valid JSON
+    }
+
+    const record: CloudWatchTraceRecord = {
+      '@timestamp': entry['@timestamp'] ?? '',
+      '@message': message,
+    };
+
+    if (entry['@ptr']) {
+      record['@ptr'] = entry['@ptr'];
+    }
+
+    return record;
+  });
+
+  const result: FetchTraceRecordsResult = { success: true, records };
+
+  if (spansResult?.success && spansResult.spans) {
+    result.spans = spansResult.spans;
+  }
+
+  return result;
 }
 
 /**
  * Fetches a full trace from CloudWatch Logs and writes it to a JSON file.
- *
- * Log group naming convention: /aws/bedrock-agentcore/runtimes/{runtimeId}-DEFAULT
- * Trace ID is stored in the @message JSON body as "traceId".
+ * Preserves all raw CloudWatch Insights fields in the output file.
  */
 export async function getTrace(options: GetTraceOptions): Promise<GetTraceResult> {
   const { region, runtimeId, agentName, traceId, outputPath } = options;
 
-  if (!/^[a-fA-F0-9-]+$/.test(traceId)) {
+  if (!TRACE_ID_PATTERN.test(traceId)) {
     return { success: false, error: 'Invalid trace ID format. Expected a hex string (e.g., abc123def456).' };
   }
 
-  const client = new CloudWatchLogsClient({
-    credentials: getCredentialProvider(),
+  const result = await runInsightsQuery({
     region,
-  });
-
-  const logGroupName = `/aws/bedrock-agentcore/runtimes/${runtimeId}-${DEFAULT_ENDPOINT_NAME}`;
-
-  const now = Date.now();
-  const endTime = options.endTime ?? now;
-  const startTime = options.startTime ?? endTime - 12 * 60 * 60 * 1000; // default: last 12 hours
-
-  try {
-    const startQuery = await client.send(
-      new StartQueryCommand({
-        logGroupName,
-        startTime: Math.floor(startTime / 1000),
-        endTime: Math.floor(endTime / 1000),
-        queryString: `fields @timestamp, @message
+    logGroupName: runtimeLogGroup(runtimeId),
+    startTime: options.startTime,
+    endTime: options.endTime,
+    queryString: `fields @timestamp, @message
 | filter traceId = '${traceId}'
 | sort @timestamp asc
-| limit 1000`,
-      })
-    );
-
-    if (!startQuery.queryId) {
-      return { success: false, error: 'Failed to start CloudWatch Logs Insights query' };
-    }
-
-    // Poll for results
-    let traceData: Record<string, string>[] = [];
-    let queryStatus = 'Running';
-
-    for (let i = 0; i < 60; i++) {
-      await new Promise(resolve => setTimeout(resolve, 1000));
-
-      const queryResults = await client.send(new GetQueryResultsCommand({ queryId: startQuery.queryId }));
-
-      queryStatus = queryResults.status ?? 'Unknown';
-
-      if (queryStatus === 'Complete' || queryStatus === 'Failed' || queryStatus === 'Cancelled') {
-        if (queryStatus !== 'Complete') {
-          return { success: false, error: `Query ${queryStatus.toLowerCase()}` };
-        }
-
-        traceData = (queryResults.results ?? []).map(row => {
-          const fields: Record<string, string> = {};
-          for (const field of row) {
-            if (field.field && field.value) {
-              fields[field.field] = field.value;
-            }
-          }
-          return fields;
-        });
-        break;
-      }
-    }
-
-    if (queryStatus === 'Running') {
-      return { success: false, error: 'Query timed out after 60 seconds' };
-    }
-
-    if (traceData.length === 0) {
-      return { success: false, error: `No trace data found for trace ID: ${traceId}` };
-    }
-
-    // Parse @message fields as JSON where possible
-    const parsedTrace = traceData.map(entry => {
-      try {
-        const parsed: unknown = JSON.parse(entry['@message'] ?? '{}');
-        return { ...entry, '@message': parsed };
-      } catch {
-        return entry;
-      }
-    });
-
-    // Write to file
-    const filePath = outputPath ?? path.join('agentcore', '.cli', 'traces', `${agentName}-${traceId}.json`);
-
-    const dir = path.dirname(filePath);
-    fs.mkdirSync(dir, { recursive: true });
-    fs.writeFileSync(filePath, JSON.stringify(parsedTrace, null, 2));
-
-    return { success: true, filePath: path.resolve(filePath) };
-  } catch (error: unknown) {
-    const err = error as Error;
-    if (err.name === 'ResourceNotFoundException') {
-      return {
-        success: false,
-        error: `Log group '${logGroupName}' not found. The agent may not have been invoked yet, or traces may not be enabled.`,
-      };
-    }
-    return { success: false, error: err.message ?? String(error) };
+| limit 10000`,
+  });
+  if (!result.success) {
+    return { success: false, error: result.error };
   }
+
+  const traceData = result.rows ?? [];
+  if (traceData.length === 0) {
+    return { success: false, error: `No trace data found for trace ID: ${traceId}` };
+  }
+
+  const parsedTrace = traceData.map(entry => {
+    try {
+      const parsed: unknown = JSON.parse(entry['@message'] ?? '{}');
+      return { ...entry, '@message': parsed };
+    } catch {
+      return entry;
+    }
+  });
+
+  const filePath = outputPath ?? path.join('agentcore', '.cli', 'traces', `${agentName}-${traceId}.json`);
+  const dir = path.dirname(filePath);
+  fs.mkdirSync(dir, { recursive: true });
+  fs.writeFileSync(filePath, JSON.stringify(parsedTrace, null, 2));
+
+  return { success: true, filePath: path.resolve(filePath) };
 }

@@ -12,6 +12,8 @@ import type { AddGatewayOptions as CLIAddGatewayOptions } from '../commands/add/
 import { validateAddGatewayOptions } from '../commands/add/validate';
 import { getErrorMessage } from '../errors';
 import type { RemovalPreview, RemovalResult, SchemaChange } from '../operations/remove/types';
+import { cliCommandRun } from '../telemetry/cli-command-run.js';
+import { AuthorizerType, PolicyEngineMode, standardize } from '../telemetry/schemas/common-shapes.js';
 import { requireTTY } from '../tui/guards/tty';
 import type { AddGatewayConfig } from '../tui/screens/mcp/types';
 import { BasePrimitive } from './BasePrimitive';
@@ -182,20 +184,14 @@ export class GatewayPrimitive extends BasePrimitive<AddGatewayOptions, Removable
       .option('--json', 'Output as JSON [non-interactive]')
       .action(async (rawOptions: Record<string, string | boolean | undefined>) => {
         const cliOptions = rawOptions as unknown as CLIAddGatewayOptions;
-        try {
-          if (!findConfigRoot()) {
-            console.error('No agentcore project found. Run `agentcore create` first.');
-            process.exit(1);
-          }
-
+        if (!findConfigRoot()) {
+          console.error('No agentcore project found. Run `agentcore create` first.');
+          process.exit(1);
+        }
+        await cliCommandRun('add.gateway', !!cliOptions.json, async () => {
           const validation = validateAddGatewayOptions(cliOptions);
           if (!validation.valid) {
-            if (cliOptions.json) {
-              console.log(JSON.stringify({ success: false, error: validation.error }));
-            } else {
-              console.error(validation.error);
-            }
-            process.exit(1);
+            throw new Error(validation.error);
           }
 
           // Parse custom claims JSON if provided (already validated)
@@ -221,23 +217,30 @@ export class GatewayPrimitive extends BasePrimitive<AddGatewayOptions, Removable
             policyEngineMode: cliOptions.policyEngineMode,
           });
 
-          if (cliOptions.json) {
-            console.log(JSON.stringify(result));
-          } else if (result.success) {
-            console.log(`Added gateway '${result.gatewayName}'`);
-          } else {
-            console.error(result.error);
+          if (!result.success) {
+            throw new Error(result.error);
           }
 
-          process.exit(result.success ? 0 : 1);
-        } catch (error) {
           if (cliOptions.json) {
-            console.log(JSON.stringify({ success: false, error: getErrorMessage(error) }));
+            console.log(JSON.stringify(result));
           } else {
-            console.error(`Error: ${getErrorMessage(error)}`);
+            console.log(`Added gateway '${result.gatewayName}'`);
           }
-          process.exit(1);
-        }
+
+          const runtimeCount = cliOptions.runtimes
+            ? cliOptions.runtimes
+                .split(',')
+                .map(s => s.trim())
+                .filter(Boolean).length
+            : 0;
+          return {
+            authorizer_type: standardize(AuthorizerType, cliOptions.authorizerType ?? 'NONE'),
+            has_policy_engine: !!cliOptions.policyEngine,
+            policy_engine_mode: standardize(PolicyEngineMode, cliOptions.policyEngineMode ?? 'log_only'),
+            semantic_search: cliOptions.semanticSearch !== false,
+            runtime_count: runtimeCount,
+          };
+        });
       });
 
     removeCmd

@@ -1,12 +1,12 @@
 import { getCredentialProvider } from '../../aws';
 import { evaluate } from '../../aws/agentcore';
+import type { EvaluationReferenceInput } from '../../aws/agentcore';
 import { getEvaluator } from '../../aws/agentcore-control';
 import { DEFAULT_ENDPOINT_NAME } from '../../constants';
 import type { DeployedProjectConfig } from '../resolve-agent';
 import { loadDeployedProjectConfig, resolveAgent } from '../resolve-agent';
 import { generateFilename, saveEvalRun } from './storage';
 import type { EvalEvaluatorResult, EvalRunResult, EvalSessionScore, RunEvalOptions, SessionInfo } from './types';
-import type { EvaluationReferenceInput } from '@aws-sdk/client-bedrock-agentcore';
 import { CloudWatchLogsClient, GetQueryResultsCommand, StartQueryCommand } from '@aws-sdk/client-cloudwatch-logs';
 import type { ResultField } from '@aws-sdk/client-cloudwatch-logs';
 import type { DocumentType } from '@smithy/types';

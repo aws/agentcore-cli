@@ -21,6 +21,8 @@ describe('RemoveScreen', () => {
         onlineEvalCount={1}
         policyEngineCount={1}
         policyCount={1}
+        configBundleCount={1}
+        abTestCount={0}
         runtimeEndpointCount={1}
       />
     );
@@ -52,6 +54,8 @@ describe('RemoveScreen', () => {
         onlineEvalCount={0}
         policyEngineCount={0}
         policyCount={0}
+        configBundleCount={0}
+        abTestCount={0}
         runtimeEndpointCount={0}
       />
     );
@@ -60,5 +64,58 @@ describe('RemoveScreen', () => {
     expect(lastFrame()).toContain('No gateway targets to remove');
     expect(lastFrame()).toContain('No policy engines to remove');
     expect(lastFrame()).toContain('No policies to remove');
+  });
+
+  it('AB test option enabled when abTestCount > 0', () => {
+    const onSelect = vi.fn();
+    const onExit = vi.fn();
+
+    const { lastFrame } = render(
+      <RemoveScreen
+        onSelect={onSelect}
+        onExit={onExit}
+        agentCount={0}
+        gatewayCount={0}
+        mcpToolCount={0}
+        memoryCount={0}
+        credentialCount={0}
+        evaluatorCount={0}
+        onlineEvalCount={0}
+        policyEngineCount={0}
+        policyCount={0}
+        configBundleCount={0}
+        abTestCount={2}
+        runtimeEndpointCount={0}
+      />
+    );
+
+    expect(lastFrame()).toContain('AB Test');
+    expect(lastFrame()).not.toContain('No AB tests to remove');
+  });
+
+  it('AB test option disabled when abTestCount = 0', () => {
+    const onSelect = vi.fn();
+    const onExit = vi.fn();
+
+    const { lastFrame } = render(
+      <RemoveScreen
+        onSelect={onSelect}
+        onExit={onExit}
+        agentCount={0}
+        gatewayCount={0}
+        mcpToolCount={0}
+        memoryCount={0}
+        credentialCount={0}
+        evaluatorCount={0}
+        onlineEvalCount={0}
+        policyEngineCount={0}
+        policyCount={0}
+        configBundleCount={0}
+        abTestCount={0}
+        runtimeEndpointCount={0}
+      />
+    );
+
+    expect(lastFrame()).toContain('No AB tests to remove');
   });
 });

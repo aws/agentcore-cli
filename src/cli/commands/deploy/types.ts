@@ -16,6 +16,7 @@ export interface DeployResult {
   logPath?: string;
   nextSteps?: string[];
   notes?: string[];
+  postDeployWarnings?: string[];
   error?: string;
 }
 

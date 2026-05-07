@@ -157,6 +157,7 @@ export const COMMAND_SCHEMAS = {
   'add.gateway-target': AddGatewayTargetAttrs,
   'add.policy-engine': AddPolicyEngineAttrs,
   'add.policy': AddPolicyAttrs,
+  'add.runtime-endpoint': NoAttrs,
 
   // deploy
   deploy: DeployAttrs,
@@ -193,6 +194,7 @@ export const COMMAND_SCHEMAS = {
   package: NoAttrs,
   validate: NoAttrs,
   'help.modes': NoAttrs,
+  help: NoAttrs,
   'remove.agent': NoAttrs,
   'remove.memory': NoAttrs,
   'remove.credential': NoAttrs,

@@ -4,10 +4,14 @@ import {
   BedrockAgentCoreControlClient,
   GetAgentRuntimeCommand,
   GetEvaluatorCommand,
+  GetGatewayCommand,
+  GetGatewayTargetCommand,
   GetMemoryCommand,
   GetOnlineEvaluationConfigCommand,
   ListAgentRuntimesCommand,
   ListEvaluatorsCommand,
+  ListGatewayTargetsCommand,
+  ListGatewaysCommand,
   ListMemoriesCommand,
   ListOnlineEvaluationConfigsCommand,
   ListTagsForResourceCommand,
@@ -779,5 +783,363 @@ export async function getOnlineEvaluationConfig(
     samplingPercentage,
     serviceNames,
     evaluatorIds,
+  };
+}
+
+// ============================================================================
+// Gateways — List & Get
+// ============================================================================
+
+export interface GatewaySummary {
+  gatewayId: string;
+  name: string;
+  status: string;
+  description?: string;
+  authorizerType: string;
+}
+
+export interface GatewayDetail {
+  gatewayId: string;
+  gatewayArn: string;
+  gatewayUrl?: string;
+  name: string;
+  status: string;
+  description?: string;
+  authorizerType: string;
+  roleArn?: string;
+  authorizerConfiguration?: {
+    customJwtAuthorizer?: {
+      discoveryUrl: string;
+      allowedAudience?: string[];
+      allowedClients?: string[];
+      allowedScopes?: string[];
+      customClaims?: {
+        inboundTokenClaimName: string;
+        inboundTokenClaimValueType: string;
+        authorizingClaimMatchValue: {
+          claimMatchValue: { matchValueString?: string; matchValueStringList?: string[] };
+          claimMatchOperator: string;
+        };
+      }[];
+    };
+  };
+  protocolConfiguration?: {
+    mcp?: { searchType?: string };
+  };
+  exceptionLevel?: string;
+  policyEngineConfiguration?: {
+    arn: string;
+    mode: string;
+  };
+  tags?: Record<string, string>;
+}
+
+export interface ListGatewaysResult {
+  gateways: GatewaySummary[];
+  nextToken?: string;
+}
+
+export async function listGatewaysPage(
+  options: { region: string; maxResults?: number; nextToken?: string },
+  client?: BedrockAgentCoreControlClient
+): Promise<ListGatewaysResult> {
+  const resolvedClient = client ?? createControlClient(options.region);
+
+  const command = new ListGatewaysCommand({
+    maxResults: options.maxResults,
+    nextToken: options.nextToken,
+  });
+
+  const response = await resolvedClient.send(command);
+
+  return {
+    gateways: (response.items ?? []).map(g => ({
+      gatewayId: g.gatewayId ?? '',
+      name: g.name ?? '',
+      status: g.status ?? 'UNKNOWN',
+      description: g.description,
+      authorizerType: g.authorizerType ?? 'NONE',
+    })),
+    nextToken: response.nextToken,
+  };
+}
+
+/**
+ * List all Gateways in the given region, paginating through all pages.
+ */
+export async function listAllGateways(options: { region: string }): Promise<GatewaySummary[]> {
+  return paginateAll(options.region, async (opts, client) => {
+    const result = await listGatewaysPage(opts, client);
+    return { items: result.gateways, nextToken: result.nextToken };
+  });
+}
+
+/**
+ * Get full details of a Gateway by ID.
+ */
+export async function getGatewayDetail(options: { region: string; gatewayId: string }): Promise<GatewayDetail> {
+  const client = createControlClient(options.region);
+
+  const command = new GetGatewayCommand({
+    gatewayIdentifier: options.gatewayId,
+  });
+
+  const response = await client.send(command);
+
+  let authorizerConfiguration: GatewayDetail['authorizerConfiguration'];
+  if (response.authorizerConfiguration && 'customJWTAuthorizer' in response.authorizerConfiguration) {
+    const jwt = response.authorizerConfiguration.customJWTAuthorizer;
+    if (jwt) {
+      authorizerConfiguration = {
+        customJwtAuthorizer: {
+          discoveryUrl: jwt.discoveryUrl ?? '',
+          allowedAudience: jwt.allowedAudience,
+          allowedClients: jwt.allowedClients,
+          allowedScopes: jwt.allowedScopes,
+          customClaims: jwt.customClaims?.map(c => ({
+            inboundTokenClaimName: c.inboundTokenClaimName ?? '',
+            inboundTokenClaimValueType: c.inboundTokenClaimValueType ?? 'STRING',
+            authorizingClaimMatchValue: {
+              claimMatchValue: {
+                matchValueString:
+                  c.authorizingClaimMatchValue?.claimMatchValue &&
+                  'matchValueString' in c.authorizingClaimMatchValue.claimMatchValue
+                    ? c.authorizingClaimMatchValue.claimMatchValue.matchValueString
+                    : undefined,
+                matchValueStringList:
+                  c.authorizingClaimMatchValue?.claimMatchValue &&
+                  'matchValueStringList' in c.authorizingClaimMatchValue.claimMatchValue
+                    ? c.authorizingClaimMatchValue.claimMatchValue.matchValueStringList
+                    : undefined,
+              },
+              claimMatchOperator: c.authorizingClaimMatchValue?.claimMatchOperator ?? 'EQUALS',
+            },
+          })),
+        },
+      };
+    }
+  }
+
+  let protocolConfiguration: GatewayDetail['protocolConfiguration'];
+  if (response.protocolConfiguration && 'mcp' in response.protocolConfiguration) {
+    protocolConfiguration = {
+      mcp: { searchType: response.protocolConfiguration.mcp?.searchType },
+    };
+  }
+
+  const tags = await fetchTags(client, response.gatewayArn, 'gateway');
+
+  return {
+    gatewayId: response.gatewayId ?? '',
+    gatewayArn: response.gatewayArn ?? '',
+    gatewayUrl: response.gatewayUrl,
+    name: response.name ?? '',
+    status: response.status ?? 'UNKNOWN',
+    description: response.description,
+    authorizerType: response.authorizerType ?? 'NONE',
+    roleArn: response.roleArn,
+    authorizerConfiguration,
+    protocolConfiguration,
+    exceptionLevel: response.exceptionLevel,
+    policyEngineConfiguration: response.policyEngineConfiguration
+      ? { arn: response.policyEngineConfiguration.arn ?? '', mode: response.policyEngineConfiguration.mode ?? '' }
+      : undefined,
+    tags,
+  };
+}
+
+// ============================================================================
+// Gateway Targets — List & Get
+// ============================================================================
+
+export interface GatewayTargetSummary {
+  targetId: string;
+  name: string;
+  status: string;
+  description?: string;
+}
+
+/* eslint-disable @typescript-eslint/no-explicit-any */
+export interface GatewayTargetDetail {
+  targetId: string;
+  name: string;
+  status: string;
+  description?: string;
+  targetConfiguration?: {
+    mcp?: {
+      mcpServer?: { endpoint: string };
+      apiGateway?: {
+        restApiId: string;
+        stage: string;
+        apiGatewayToolConfiguration?: {
+          toolFilters?: { filterPath: string; methods: string[] }[];
+          toolOverrides?: { name: string; path: string; method: string; description?: string }[];
+        };
+      };
+      openApiSchema?: { s3?: { uri: string; bucketOwnerAccountId?: string }; inlinePayload?: string };
+      smithyModel?: { s3?: { uri: string; bucketOwnerAccountId?: string }; inlinePayload?: string };
+      lambda?: { lambdaArn: string; toolSchema?: any };
+    };
+  };
+  credentialProviderConfigurations?: {
+    credentialProviderType: string;
+    credentialProvider?: {
+      oauthCredentialProvider?: { providerArn: string; scopes?: string[] };
+      apiKeyCredentialProvider?: { providerArn: string };
+    };
+  }[];
+}
+/* eslint-enable @typescript-eslint/no-explicit-any */
+
+export interface ListGatewayTargetsResult {
+  targets: GatewayTargetSummary[];
+  nextToken?: string;
+}
+
+export async function listGatewayTargetsPage(
+  options: { region: string; gatewayId: string; maxResults?: number; nextToken?: string },
+  client?: BedrockAgentCoreControlClient
+): Promise<ListGatewayTargetsResult> {
+  const resolvedClient = client ?? createControlClient(options.region);
+
+  const command = new ListGatewayTargetsCommand({
+    gatewayIdentifier: options.gatewayId,
+    maxResults: options.maxResults,
+    nextToken: options.nextToken,
+  });
+
+  const response = await resolvedClient.send(command);
+
+  return {
+    targets: (response.items ?? []).map(t => ({
+      targetId: t.targetId ?? '',
+      name: t.name ?? '',
+      status: t.status ?? 'UNKNOWN',
+      description: t.description,
+    })),
+    nextToken: response.nextToken,
+  };
+}
+
+/**
+ * List all targets for a Gateway, paginating through all pages.
+ */
+export async function listAllGatewayTargets(options: {
+  region: string;
+  gatewayId: string;
+}): Promise<GatewayTargetSummary[]> {
+  const client = createControlClient(options.region);
+  const items: GatewayTargetSummary[] = [];
+  let nextToken: string | undefined;
+
+  do {
+    const result = await listGatewayTargetsPage(
+      { region: options.region, gatewayId: options.gatewayId, maxResults: 100, nextToken },
+      client
+    );
+    items.push(...result.targets);
+    nextToken = result.nextToken;
+  } while (nextToken);
+
+  return items;
+}
+
+/**
+ * Get full details of a Gateway Target by gateway ID and target ID.
+ */
+export async function getGatewayTargetDetail(options: {
+  region: string;
+  gatewayId: string;
+  targetId: string;
+}): Promise<GatewayTargetDetail> {
+  const client = createControlClient(options.region);
+
+  const command = new GetGatewayTargetCommand({
+    gatewayIdentifier: options.gatewayId,
+    targetId: options.targetId,
+  });
+
+  const response = await client.send(command);
+
+  /* eslint-disable @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-call */
+  let targetConfiguration: GatewayTargetDetail['targetConfiguration'];
+  if (response.targetConfiguration && 'mcp' in response.targetConfiguration) {
+    const mcp = response.targetConfiguration.mcp as any;
+    targetConfiguration = { mcp: {} };
+
+    if (mcp?.mcpServer) {
+      targetConfiguration.mcp!.mcpServer = { endpoint: mcp.mcpServer.endpoint ?? '' };
+    }
+    if (mcp?.apiGateway) {
+      targetConfiguration.mcp!.apiGateway = {
+        restApiId: mcp.apiGateway.restApiId ?? '',
+        stage: mcp.apiGateway.stage ?? '',
+        apiGatewayToolConfiguration: mcp.apiGateway.apiGatewayToolConfiguration
+          ? {
+              toolFilters: mcp.apiGateway.apiGatewayToolConfiguration.toolFilters?.map((f: any) => ({
+                filterPath: f.filterPath ?? '',
+                methods: f.methods ?? [],
+              })),
+              toolOverrides: mcp.apiGateway.apiGatewayToolConfiguration.toolOverrides?.map((o: any) => ({
+                name: o.name ?? '',
+                path: o.path ?? '',
+                method: o.method ?? '',
+                description: o.description,
+              })),
+            }
+          : undefined,
+      };
+    }
+    if (mcp?.openApiSchema) {
+      targetConfiguration.mcp!.openApiSchema = {
+        s3: mcp.openApiSchema.s3
+          ? { uri: mcp.openApiSchema.s3.uri ?? '', bucketOwnerAccountId: mcp.openApiSchema.s3.bucketOwnerAccountId }
+          : undefined,
+        inlinePayload: mcp.openApiSchema.inlinePayload,
+      };
+    }
+    if (mcp?.smithyModel) {
+      targetConfiguration.mcp!.smithyModel = {
+        s3: mcp.smithyModel.s3
+          ? { uri: mcp.smithyModel.s3.uri ?? '', bucketOwnerAccountId: mcp.smithyModel.s3.bucketOwnerAccountId }
+          : undefined,
+        inlinePayload: mcp.smithyModel.inlinePayload,
+      };
+    }
+    if (mcp?.lambda) {
+      targetConfiguration.mcp!.lambda = {
+        lambdaArn: mcp.lambda.lambdaArn ?? '',
+        toolSchema: mcp.lambda.toolSchema,
+      };
+    }
+  }
+
+  const credentialProviderConfigurations: GatewayTargetDetail['credentialProviderConfigurations'] = (
+    response.credentialProviderConfigurations ?? []
+  ).map((c: any) => ({
+    credentialProviderType: c.credentialProviderType ?? '',
+    credentialProvider: c.credentialProvider
+      ? {
+          oauthCredentialProvider: c.credentialProvider.oauthCredentialProvider
+            ? {
+                providerArn: c.credentialProvider.oauthCredentialProvider.providerArn ?? '',
+                scopes: c.credentialProvider.oauthCredentialProvider.scopes,
+              }
+            : undefined,
+          apiKeyCredentialProvider: c.credentialProvider.apiKeyCredentialProvider
+            ? { providerArn: c.credentialProvider.apiKeyCredentialProvider.providerArn ?? '' }
+            : undefined,
+        }
+      : undefined,
+  }));
+  /* eslint-enable @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-call */
+
+  return {
+    targetId: response.targetId ?? '',
+    name: response.name ?? '',
+    status: response.status ?? 'UNKNOWN',
+    description: response.description,
+    targetConfiguration,
+    credentialProviderConfigurations,
   };
 }

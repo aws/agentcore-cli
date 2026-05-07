@@ -34,6 +34,9 @@ async function handleRemoveAll(_options: RemoveAllOptions): Promise<RemoveResult
       onlineEvalConfigs: [],
       agentCoreGateways: [],
       policyEngines: [],
+      configBundles: [],
+      abTests: [],
+      httpGateways: [],
     });
 
     // Preserve aws-targets.json and deployed-state.json so that

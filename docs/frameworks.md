@@ -9,7 +9,6 @@ for existing code.
 | ----------------------- | ---------------------------------- |
 | **Strands Agents**      | Bedrock, Anthropic, OpenAI, Gemini |
 | **LangChain_LangGraph** | Bedrock, Anthropic, OpenAI, Gemini |
-| **CrewAI**              | Bedrock, Anthropic, OpenAI, Gemini |
 | **GoogleADK**           | Gemini only                        |
 | **OpenAIAgents**        | OpenAI only                        |
 
@@ -60,21 +59,6 @@ Google's Agent Development Kit.
 
 ```bash
 agentcore create --framework GoogleADK --model-provider Gemini
-```
-
-### CrewAI
-
-Multi-agent orchestration framework.
-
-**Best for:**
-
-- Multi-agent workflows with role-based collaboration
-- Projects requiring agent coordination and task delegation
-
-**Model providers:** Bedrock, Anthropic, OpenAI, Gemini
-
-```bash
-agentcore create --framework CrewAI --model-provider Bedrock
 ```
 
 ### OpenAIAgents
@@ -167,19 +151,19 @@ agentcore add agent \
 
 ## Framework Comparison
 
-| Feature                | Strands | LangChain | CrewAI   | GoogleADK | OpenAIAgents |
-| ---------------------- | ------- | --------- | -------- | --------- | ------------ |
-| Multi-provider support | Yes     | Yes       | Yes      | No        | No           |
-| AWS Bedrock native     | Yes     | No        | No       | No        | No           |
-| Tool ecosystem         | Growing | Extensive | Moderate | Moderate  | Moderate     |
-| Memory integration     | Native  | Via libs  | Via libs | Via libs  | Via libs     |
+| Feature                | Strands | LangChain | GoogleADK | OpenAIAgents |
+| ---------------------- | ------- | --------- | --------- | ------------ |
+| Multi-provider support | Yes     | Yes       | No        | No           |
+| AWS Bedrock native     | Yes     | No        | No        | No           |
+| Tool ecosystem         | Growing | Extensive | Moderate  | Moderate     |
+| Memory integration     | Native  | Via libs  | Via libs  | Via libs     |
 
 ## Protocol Compatibility
 
 Not all frameworks support all protocol modes. MCP protocol is a standalone tool server with no framework.
 
-| Protocol | Supported Frameworks                                          |
-| -------- | ------------------------------------------------------------- |
-| **HTTP** | Strands, LangChain_LangGraph, CrewAI, GoogleADK, OpenAIAgents |
-| **MCP**  | None (standalone tool server)                                 |
-| **A2A**  | Strands, GoogleADK, LangChain_LangGraph                       |
+| Protocol | Supported Frameworks                                  |
+| -------- | ----------------------------------------------------- |
+| **HTTP** | Strands, LangChain_LangGraph, GoogleADK, OpenAIAgents |
+| **MCP**  | None (standalone tool server)                         |
+| **A2A**  | Strands, GoogleADK, LangChain_LangGraph               |

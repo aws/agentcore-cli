@@ -8,6 +8,7 @@
  * TODO: Extract these types into a shared package so both repos import
  * from a single source of truth instead of manually duplicating.
  */
+import type { CloudWatchSpanRecord, CloudWatchTraceRecord } from '../../traces/types';
 
 // ---------------------------------------------------------------------------
 // GET /api/status
@@ -278,6 +279,39 @@ export interface GetTraceResponse {
   resourceLogs?: unknown[];
   error?: string;
 }
+
+// ---------------------------------------------------------------------------
+// GET /api/cloudwatch-traces?agentName=xxx|harnessName=xxx
+// ---------------------------------------------------------------------------
+
+/** A single trace entry returned by the CloudWatch traces list endpoint */
+export interface CloudWatchTraceEntry {
+  traceId: string;
+  timestamp: string;
+  sessionId?: string;
+  spanCount?: string;
+}
+
+/** Response shape for GET /api/cloudwatch-traces */
+export interface ListCloudWatchTracesResponse {
+  success: boolean;
+  traces?: CloudWatchTraceEntry[];
+  error?: string;
+}
+
+// ---------------------------------------------------------------------------
+// GET /api/cloudwatch-traces/:traceId?agentName=xxx|harnessName=xxx
+// ---------------------------------------------------------------------------
+
+/** Response shape for GET /api/cloudwatch-traces/:traceId */
+export interface GetCloudWatchTraceResponse {
+  success: boolean;
+  records?: CloudWatchTraceRecord[];
+  spans?: CloudWatchSpanRecord[];
+  error?: string;
+}
+
+export type { CloudWatchTraceRecord, CloudWatchSpanRecord } from '../../traces/types';
 
 // ---------------------------------------------------------------------------
 // GET /api/memory?memoryName=xxx&namespace=yyy[&strategyId=zzz]

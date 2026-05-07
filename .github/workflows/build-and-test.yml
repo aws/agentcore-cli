@@ -22,7 +22,8 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        node-version: [20.x, 22.x, 24.x]
+        node-version:
+          ${{ github.event_name == 'pull_request' && fromJSON('["20.x"]') || fromJSON('["20.x", "22.x", "24.x"]') }}
 
     steps:
       - uses: actions/checkout@v6
@@ -39,14 +40,7 @@ jobs:
         uses: astral-sh/setup-uv@v7
       - run: npm ci
       - run: npm run build --if-present
-      - run: npm run test:unit
       - run: npm run test:integ
-      - name: Upload coverage artifact
-        if: matrix.node-version == '20.x'
-        uses: actions/upload-artifact@v7
-        with:
-          name: coverage-report
-          path: coverage/
       - name: Pack tarball
         if: matrix.node-version == '20.x'
         run: npm pack
@@ -66,8 +60,72 @@ jobs:
           name: tarball
           path: '*.tgz'
 
+  unit-test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    strategy:
+      fail-fast: false
+      matrix:
+        node-version:
+          ${{ github.event_name == 'pull_request' && fromJSON('["20.x"]') || fromJSON('["20.x", "22.x", "24.x"]') }}
+        shard: [1/3, 2/3, 3/3]
+
+    steps:
+      - uses: actions/checkout@v6
+      - name: Use Node.js ${{ matrix.node-version }}
+        uses: actions/setup-node@v6
+        with:
+          node-version: ${{ matrix.node-version }}
+          cache: 'npm'
+      - name: Configure git for tests
+        run: |
+          git config --global user.email "bedrock-agentcore-npm+ci@amazon.com"
+          git config --global user.name "CI"
+      - name: Install uv
+        uses: astral-sh/setup-uv@v7
+      - run: npm ci
+      - run: npm run build --if-present
+      - name: Run unit tests (shard ${{ matrix.shard }})
+        run: npx vitest run --project unit --shard=${{ matrix.shard }} --reporter=blob --reporter=verbose --coverage
+      - name: Upload blob report
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: blob-${{ matrix.node-version }}-${{ strategy.job-index }}
+          path: .vitest-reports
+          retention-days: 1
+          if-no-files-found: error
+          include-hidden-files: true
+
+  merge-reports:
+    needs: unit-test
+    runs-on: ubuntu-latest
+    if: always()
+
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 20.x
+          cache: 'npm'
+      - run: npm ci
+      - name: Download blob reports (Node 20)
+        uses: actions/download-artifact@v8
+        with:
+          pattern: blob-20.x-*
+          merge-multiple: true
+          path: .vitest-reports/
+      - name: Merge reports
+        run: npx vitest --mergeReports=.vitest-reports/ --project unit --coverage
+      - name: Upload coverage artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: coverage-report
+          path: coverage/
+
   coverage:
-    needs: build
+    needs: merge-reports
     runs-on: ubuntu-latest
     if: github.event_name == 'pull_request'
     permissions:
@@ -86,6 +144,6 @@ jobs:
         with:
           json-summary-path: coverage/coverage-summary.json
           json-final-path: coverage/coverage-final.json
-          vite-config-path: vitest.unit.config.ts
+          vite-config-path: vitest.config.ts
           file-coverage-mode: none
           coverage-thresholds: '{ "lines": 50, "branches": 50, "functions": 50, "statements": 50 }'

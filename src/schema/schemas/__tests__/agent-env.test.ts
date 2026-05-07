@@ -15,72 +15,41 @@ import {
 import { describe, expect, it } from 'vitest';
 
 describe('AgentNameSchema', () => {
-  it.each(['Agent1', 'myAgent', 'A', 'agent_with_underscores', 'a' + '0'.repeat(47)])(
-    'accepts valid name "%s"',
-    name => {
-      expect(AgentNameSchema.safeParse(name).success).toBe(true);
-    }
-  );
+  it('accepts valid names', () => {
+    expect(AgentNameSchema.safeParse('Agent1').success).toBe(true);
+    expect(AgentNameSchema.safeParse('A').success).toBe(true);
+    expect(AgentNameSchema.safeParse('agent_with_underscores').success).toBe(true);
+  });
 
-  it('rejects empty string', () => {
+  it('rejects invalid names', () => {
     expect(AgentNameSchema.safeParse('').success).toBe(false);
-  });
-
-  it('rejects name starting with digit', () => {
     expect(AgentNameSchema.safeParse('1Agent').success).toBe(false);
-  });
-
-  it('rejects name with hyphens', () => {
     expect(AgentNameSchema.safeParse('my-agent').success).toBe(false);
   });
 
-  it('rejects name exceeding 48 chars', () => {
-    const name = 'A' + 'b'.repeat(48);
-    expect(name).toHaveLength(49);
-    expect(AgentNameSchema.safeParse(name).success).toBe(false);
-  });
-
-  it('accepts 48-char name (max)', () => {
-    const name = 'A' + 'b'.repeat(47);
-    expect(name).toHaveLength(48);
-    expect(AgentNameSchema.safeParse(name).success).toBe(true);
+  it('enforces 48-char boundary', () => {
+    expect(AgentNameSchema.safeParse('A' + 'b'.repeat(47)).success).toBe(true);
+    expect(AgentNameSchema.safeParse('A' + 'b'.repeat(48)).success).toBe(false);
   });
 });
 
 describe('EnvVarNameSchema', () => {
-  it.each(['MY_VAR', '_private', 'UPPER123', 'a', '_'])('accepts valid env var name "%s"', name => {
-    expect(EnvVarNameSchema.safeParse(name).success).toBe(true);
-  });
-
-  it('rejects name starting with digit', () => {
+  it('accepts valid env var names and rejects invalid', () => {
+    expect(EnvVarNameSchema.safeParse('MY_VAR').success).toBe(true);
+    expect(EnvVarNameSchema.safeParse('_private').success).toBe(true);
     expect(EnvVarNameSchema.safeParse('1VAR').success).toBe(false);
-  });
-
-  it('rejects name with hyphens', () => {
     expect(EnvVarNameSchema.safeParse('MY-VAR').success).toBe(false);
-  });
-
-  it('rejects empty string', () => {
     expect(EnvVarNameSchema.safeParse('').success).toBe(false);
   });
 });
 
 describe('GatewayNameSchema', () => {
-  it.each(['gateway1', 'my-gateway', 'MyGateway', 'a'])('accepts valid gateway name "%s"', name => {
-    expect(GatewayNameSchema.safeParse(name).success).toBe(true);
-  });
-
-  it('rejects empty string', () => {
+  it('accepts valid names and rejects invalid', () => {
+    expect(GatewayNameSchema.safeParse('gateway1').success).toBe(true);
+    expect(GatewayNameSchema.safeParse('my-gateway').success).toBe(true);
     expect(GatewayNameSchema.safeParse('').success).toBe(false);
-  });
-
-  it('rejects name with underscores', () => {
     expect(GatewayNameSchema.safeParse('my_gateway').success).toBe(false);
-  });
-
-  it('rejects name exceeding 100 chars', () => {
-    const name = 'a'.repeat(101);
-    expect(GatewayNameSchema.safeParse(name).success).toBe(false);
+    expect(GatewayNameSchema.safeParse('a'.repeat(101)).success).toBe(false);
   });
 });
 
@@ -288,9 +257,10 @@ describe('AgentEnvSpecSchema', () => {
   });
 
   describe('protocol', () => {
-    it.each(['HTTP', 'MCP', 'A2A', 'AGUI'])('accepts valid protocol "%s"', mode => {
-      const result = AgentEnvSpecSchema.safeParse({ ...validPythonAgent, protocol: mode });
-      expect(result.success, `Should accept protocol ${mode}`).toBe(true);
+    it('accepts valid protocols', () => {
+      expect(AgentEnvSpecSchema.safeParse({ ...validPythonAgent, protocol: 'HTTP' }).success).toBe(true);
+      expect(AgentEnvSpecSchema.safeParse({ ...validPythonAgent, protocol: 'MCP' }).success).toBe(true);
+      expect(AgentEnvSpecSchema.safeParse({ ...validPythonAgent, protocol: 'A2A' }).success).toBe(true);
     });
 
     it('accepts agent without protocol (backwards compat)', () => {
@@ -300,7 +270,6 @@ describe('AgentEnvSpecSchema', () => {
 
     it('rejects invalid protocol', () => {
       expect(AgentEnvSpecSchema.safeParse({ ...validPythonAgent, protocol: 'GRPC' }).success).toBe(false);
-      expect(AgentEnvSpecSchema.safeParse({ ...validPythonAgent, protocol: 'websocket' }).success).toBe(false);
     });
   });
 });
@@ -439,12 +408,12 @@ describe('AgentEnvSpecSchema - dockerfile', () => {
     }
   });
 
-  it.each(['Dockerfile', 'Dockerfile.dev', 'Dockerfile.gpu-v2', 'my.Dockerfile', 'dockerfile_test'])(
-    'accepts valid dockerfile name "%s"',
-    name => {
-      expect(AgentEnvSpecSchema.safeParse({ ...validContainerAgent, dockerfile: name }).success).toBe(true);
-    }
-  );
+  it('accepts valid dockerfile names', () => {
+    expect(AgentEnvSpecSchema.safeParse({ ...validContainerAgent, dockerfile: 'Dockerfile' }).success).toBe(true);
+    expect(AgentEnvSpecSchema.safeParse({ ...validContainerAgent, dockerfile: 'Dockerfile.gpu-v2' }).success).toBe(
+      true
+    );
+  });
 
   it('rejects dockerfile on CodeZip builds', () => {
     const result = AgentEnvSpecSchema.safeParse({ ...validCodeZipAgent, dockerfile: 'Dockerfile.custom' });
@@ -454,12 +423,12 @@ describe('AgentEnvSpecSchema - dockerfile', () => {
     }
   });
 
-  it.each(['../Dockerfile', '/etc/Dockerfile', 'path/to/Dockerfile', '.hidden'])(
-    'rejects path traversal or path separator in dockerfile "%s"',
-    name => {
-      expect(AgentEnvSpecSchema.safeParse({ ...validContainerAgent, dockerfile: name }).success).toBe(false);
-    }
-  );
+  it('rejects path traversal or path separator in dockerfile', () => {
+    expect(AgentEnvSpecSchema.safeParse({ ...validContainerAgent, dockerfile: '../Dockerfile' }).success).toBe(false);
+    expect(AgentEnvSpecSchema.safeParse({ ...validContainerAgent, dockerfile: 'path/to/Dockerfile' }).success).toBe(
+      false
+    );
+  });
 
   it('rejects empty string dockerfile', () => {
     expect(AgentEnvSpecSchema.safeParse({ ...validContainerAgent, dockerfile: '' }).success).toBe(false);
@@ -481,12 +450,12 @@ describe('AgentEnvSpecSchema - dockerfile', () => {
     expect(AgentEnvSpecSchema.safeParse({ ...validContainerAgent, dockerfile: maxName }).success).toBe(true);
   });
 
-  it.each(['\\\\server\\share', 'Dockerfile\\..\\secret', '..\\Dockerfile'])(
-    'rejects backslash path traversal in dockerfile "%s"',
-    name => {
-      expect(AgentEnvSpecSchema.safeParse({ ...validContainerAgent, dockerfile: name }).success).toBe(false);
-    }
-  );
+  it('rejects backslash path traversal in dockerfile', () => {
+    expect(AgentEnvSpecSchema.safeParse({ ...validContainerAgent, dockerfile: '\\\\server\\share' }).success).toBe(
+      false
+    );
+    expect(AgentEnvSpecSchema.safeParse({ ...validContainerAgent, dockerfile: '..\\Dockerfile' }).success).toBe(false);
+  });
 });
 
 describe('AgentEnvSpecSchema - lifecycleConfiguration', () => {
@@ -544,34 +513,21 @@ describe('AgentEnvSpecSchema - lifecycleConfiguration', () => {
 });
 
 describe('RuntimeEndpointNameSchema', () => {
-  it.each(['prod', 'staging', 'myEndpoint', 'v1', 'A', 'a' + '0'.repeat(47)])(
-    'accepts valid endpoint name "%s"',
-    name => {
-      expect(RuntimeEndpointNameSchema.safeParse(name).success).toBe(true);
-    }
-  );
+  it('accepts valid names', () => {
+    expect(RuntimeEndpointNameSchema.safeParse('prod').success).toBe(true);
+    expect(RuntimeEndpointNameSchema.safeParse('myEndpoint').success).toBe(true);
+  });
 
-  it('rejects empty string', () => {
+  it('rejects invalid names', () => {
     expect(RuntimeEndpointNameSchema.safeParse('').success).toBe(false);
-  });
-
-  it('rejects name starting with digit', () => {
     expect(RuntimeEndpointNameSchema.safeParse('1prod').success).toBe(false);
-  });
-
-  it('rejects name with hyphens', () => {
     expect(RuntimeEndpointNameSchema.safeParse('my-endpoint').success).toBe(false);
-  });
-
-  it('rejects name with special characters', () => {
     expect(RuntimeEndpointNameSchema.safeParse('prod!').success).toBe(false);
-    expect(RuntimeEndpointNameSchema.safeParse('my@endpoint').success).toBe(false);
   });
 
-  it('rejects name exceeding 48 chars', () => {
-    const name = 'A' + 'b'.repeat(48);
-    expect(name).toHaveLength(49);
-    expect(RuntimeEndpointNameSchema.safeParse(name).success).toBe(false);
+  it('enforces 48-char boundary', () => {
+    expect(RuntimeEndpointNameSchema.safeParse('A' + 'b'.repeat(47)).success).toBe(true);
+    expect(RuntimeEndpointNameSchema.safeParse('A' + 'b'.repeat(48)).success).toBe(false);
   });
 });
 

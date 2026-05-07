@@ -49,7 +49,9 @@ export function ImportProgressScreen({
               ? (await import('../../../commands/import/import-memory')).handleImportMemory
               : importType === 'evaluator'
                 ? (await import('../../../commands/import/import-evaluator')).handleImportEvaluator
-                : (await import('../../../commands/import/import-online-eval')).handleImportOnlineEval;
+                : importType === 'gateway'
+                  ? (await import('../../../commands/import/import-gateway')).handleImportGateway
+                  : (await import('../../../commands/import/import-online-eval')).handleImportOnlineEval;
 
         const result = await handler({ arn, code, onProgress });
         if (result.success) {

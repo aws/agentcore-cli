@@ -8,22 +8,22 @@ import sys
 import os
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-import time
 from common import (
     ensure_role, get_control_client, wait_for_memory,
     save_resource, print_import_command, tag_resource,
+    NAME_SUFFIX,
 )
 
 
 def main():
     role_arn = ensure_role()
     client = get_control_client()
-    memory_name = f"bugbash_memory_{int(time.time())}"
+    memory_name = f"bugbash_memory_{NAME_SUFFIX}"
 
     print(f"Creating memory: {memory_name}")
     resp = client.create_memory(
         name=memory_name,
-        clientToken=f"bugbash-{int(time.time())}",
+        clientToken=f"bugbash-{NAME_SUFFIX}",
         eventExpiryDuration=30,
         memoryExecutionRoleArn=role_arn,
         memoryStrategies=[

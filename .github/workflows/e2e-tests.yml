@@ -47,14 +47,11 @@ jobs:
     runs-on: ubuntu-latest
     environment: e2e-testing
     timeout-minutes: 30
-    strategy:
-      fail-fast: false
-      matrix:
-        cdk-source: [npm, main]
     steps:
       - uses: actions/checkout@v6
         with:
           ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
       - uses: actions/setup-node@v6
         with:
           node-version: '20.x'
@@ -82,7 +79,6 @@ jobs:
       # Build @aws/agentcore-cdk from source for cross-package testing.
       # Requires secrets: CDK_REPO_NAME (org/repo), CDK_REPO_TOKEN (fine-grained PAT)
       - name: Build CDK package from main
-        if: matrix.cdk-source == 'main'
         run: |
           git clone --depth 1 "https://x-access-token:${CDK_REPO_TOKEN}@github.com/${CDK_REPO}.git" /tmp/cdk-repo
           cd /tmp/cdk-repo
@@ -98,7 +94,18 @@ jobs:
       - run: npm run build
       - name: Install CLI globally
         run: npm install -g "$(npm pack | tail -1)"
-      - name: Run E2E tests (${{ matrix.cdk-source }})
+
+      - name: Detect changed e2e test files
+        id: changed
+        run: |
+          BASE_SHA=${{ github.event.pull_request.base.sha || 'HEAD~1' }}
+          CHANGED=$(git diff --name-only "$BASE_SHA"..HEAD -- 'e2e-tests/*.test.ts' \
+            | grep -v '^e2e-tests/strands-bedrock\.test\.ts$' \
+            | tr '\n' ' ')
+          echo "extra_tests=$CHANGED" >> "$GITHUB_OUTPUT"
+          echo "Changed e2e tests: ${CHANGED:-none}"
+
+      - name: Run E2E tests
         env:
           AWS_ACCOUNT_ID: ${{ steps.aws.outputs.account_id }}
           AWS_REGION: ${{ inputs.aws_region || 'us-east-1' }}
@@ -106,6 +113,5 @@ jobs:
           OPENAI_API_KEY: ${{ env.E2E_OPENAI_API_KEY }}
           GEMINI_API_KEY: ${{ env.E2E_GEMINI_API_KEY }}
           CDK_TARBALL: ${{ env.CDK_TARBALL }}
-        # Only run Bedrock tests on PRs to avoid creating ApiKeyCredentialProviders,
-        # which have a 50-resource account limit and accumulate from interrupted runs.
-        run: npx vitest run --project e2e strands-bedrock langgraph-bedrock
+        # Always run strands-bedrock as baseline, plus any e2e test files changed in the PR
+        run: npx vitest run --project e2e e2e-tests/strands-bedrock.test.ts ${{ steps.changed.outputs.extra_tests }}

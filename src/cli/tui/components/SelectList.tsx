@@ -13,6 +13,8 @@ export function SelectList<T extends SelectableItem>(props: {
   items: T[];
   selectedIndex: number;
   emptyMessage?: string;
+  /** Maximum number of visible items before scrolling. Undefined = show all. */
+  maxVisibleItems?: number;
 }) {
   if (props.items.length === 0) {
     return (
@@ -24,10 +26,29 @@ export function SelectList<T extends SelectableItem>(props: {
     );
   }
 
+  const { items, selectedIndex, maxVisibleItems } = props;
+  const needsScroll = maxVisibleItems !== undefined && items.length > maxVisibleItems;
+
+  let visibleItems = items;
+  let viewportStart = 0;
+  let viewportEnd = items.length;
+
+  if (needsScroll) {
+    const halfVisible = Math.floor(maxVisibleItems / 2);
+    viewportStart = Math.max(0, selectedIndex - halfVisible);
+    viewportEnd = Math.min(items.length, viewportStart + maxVisibleItems);
+    if (viewportEnd - viewportStart < maxVisibleItems) {
+      viewportStart = Math.max(0, viewportEnd - maxVisibleItems);
+    }
+    visibleItems = items.slice(viewportStart, viewportEnd);
+  }
+
   return (
     <Box flexDirection="column">
-      {props.items.map((item, idx) => {
-        const selected = idx === props.selectedIndex;
+      {needsScroll && viewportStart > 0 && <Text dimColor> ↑ {viewportStart} more</Text>}
+      {visibleItems.map((item, idx) => {
+        const actualIndex = viewportStart + idx;
+        const selected = actualIndex === selectedIndex;
         const disabled = item.disabled ?? false;
         return (
           <Box key={item.id} marginTop={item.spaceBefore ? 1 : 0}>
@@ -43,6 +64,7 @@ export function SelectList<T extends SelectableItem>(props: {
           </Box>
         );
       })}
+      {needsScroll && viewportEnd < items.length && <Text dimColor> ↓ {items.length - viewportEnd} more</Text>}
     </Box>
   );
 }

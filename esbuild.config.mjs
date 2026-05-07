@@ -51,7 +51,7 @@ await esbuild.build({
   jsx: 'automatic',
   // Inject require shim for ESM compatibility with CommonJS dependencies
   banner: {
-    js: `import { createRequire } from 'module'; const require = createRequire(import.meta.url);`,
+    js: `import { createRequire } from 'module'; import { fileURLToPath as __ef } from 'url'; import { dirname as __ed } from 'path'; const require = createRequire(import.meta.url); const __filename = __ef(import.meta.url); const __dirname = __ed(__filename);`,
   },
   external: ['fsevents', '@aws-cdk/toolkit-lib'],
   plugins: [optionalDepsPlugin, textLoaderPlugin],

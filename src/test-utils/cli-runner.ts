@@ -72,6 +72,14 @@ function getCLIPath(): string {
  * Run the AgentCore CLI via the local build (unit/integ tests).
  * Skips dependency installation by default for speed.
  */
-export async function runCLI(args: string[], cwd: string, skipInstall = true): Promise<RunResult> {
-  return spawnAndCollect('node', [getCLIPath(), ...args], cwd, skipInstall ? { AGENTCORE_SKIP_INSTALL: '1' } : {});
+export async function runCLI(
+  args: string[],
+  cwd: string,
+  options: { skipInstall?: boolean; env?: Record<string, string> } = {}
+): Promise<RunResult> {
+  const { skipInstall = true, env } = options;
+  return spawnAndCollect('node', [getCLIPath(), ...args], cwd, {
+    ...(skipInstall ? { AGENTCORE_SKIP_INSTALL: '1' } : {}),
+    ...env,
+  });
 }

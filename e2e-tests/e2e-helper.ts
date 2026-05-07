@@ -14,7 +14,7 @@ import {
 } from '@aws-sdk/client-bedrock-agentcore-control';
 import { execSync } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
-import { mkdir, rm, writeFile } from 'node:fs/promises';
+import { mkdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
@@ -375,5 +375,46 @@ export async function teardownE2EProject(projectPath: string, agentName: string,
     const region = process.env.AWS_REGION ?? 'us-east-1';
     const client = new BedrockAgentCoreControlClient({ region });
     await deleteCredentialProvider(client, `${agentName}${modelProvider}`);
+  }
+}
+
+export async function dumpImportDebugInfo(
+  label: string,
+  result: RunResult,
+  projectPath: string,
+  stackName: string,
+  region: string
+): Promise<void> {
+  console.log(`Import ${label} stdout:`, result.stdout);
+  console.log(`Import ${label} stderr:`, result.stderr);
+
+  const logMatch = /Log: (.+)/.exec(result.stderr);
+  if (logMatch) {
+    try {
+      const logContents = await readFile(join(projectPath, logMatch[1]!), 'utf-8');
+      console.log(`Import ${label} log:\n`, logContents);
+    } catch {
+      /* log file may not exist */
+    }
+  }
+
+  const cfnEvents = await spawnAndCollect(
+    'aws',
+    [
+      'cloudformation',
+      'describe-stack-events',
+      '--stack-name',
+      stackName,
+      '--query',
+      'StackEvents[?ResourceStatus==`IMPORT_FAILED` || ResourceStatus==`IMPORT_ROLLBACK_IN_PROGRESS`]',
+      '--output',
+      'json',
+      '--region',
+      region,
+    ],
+    projectPath
+  );
+  if (cfnEvents.exitCode === 0 && cfnEvents.stdout.trim() !== '[]') {
+    console.log(`CloudFormation failed events for ${label}:`, cfnEvents.stdout);
   }
 }

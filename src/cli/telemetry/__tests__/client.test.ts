@@ -116,18 +116,49 @@ describe('TelemetryClient', () => {
       expect(sink.metrics[0]!.attrs.check_only).toBe('true');
     });
 
-    it('silently drops invalid success payloads', async () => {
+    it('publishes metric with unknown defaults for incomplete success payloads', async () => {
       const sink = new InMemorySink();
       const client = new TelemetryClient(sink);
 
-      // Missing required attrs for 'create' — should silently drop
+      // Missing required attrs for 'create' — should still publish with 'unknown' defaults
       await client.withCommandRun(
         'create',
         // @ts-expect-error — intentionally incomplete
         async () => ({ language: 'python' })
       );
 
-      expect(sink.metrics).toHaveLength(0);
+      expect(sink.metrics).toHaveLength(1);
+      expect(sink.metrics[0]!.attrs).toMatchObject({
+        exit_reason: 'success',
+        language: 'python',
+        framework: 'unknown',
+        model_provider: 'unknown',
+      });
+    });
+
+    it('defaults invalid attrs to unknown while preserving valid ones', async () => {
+      const sink = new InMemorySink();
+      const client = new TelemetryClient(sink);
+
+      await client.withCommandRun(
+        'create',
+        // @ts-expect-error — intentionally invalid enum value
+        async () => ({
+          language: 'rust', // invalid enum
+          framework: 'strands',
+          model_provider: 'bedrock',
+          memory: 'shortterm',
+          protocol: 'mcp',
+          build: 'codezip',
+          agent_type: 'create',
+          network_mode: 'public',
+          has_agent: true,
+        })
+      );
+
+      expect(sink.metrics).toHaveLength(1);
+      expect(sink.metrics[0]!.attrs.language).toBe('unknown');
+      expect(sink.metrics[0]!.attrs.framework).toBe('strands');
     });
 
     it('records cancel when callback returns CANCELLED', async () => {

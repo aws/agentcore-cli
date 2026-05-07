@@ -1,0 +1,125 @@
+name: Sync Preview with Main
+
+on:
+  push:
+    branches: [main]
+
+concurrency:
+  group: sync-preview
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  sync:
+    name: Merge main into preview
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout preview
+        uses: actions/checkout@v6
+        with:
+          ref: preview
+          fetch-depth: 0
+
+      - name: Configure git
+        run: |
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+
+      - name: Merge main into preview
+        id: merge
+        run: |
+          git fetch origin main
+          MAIN_SHA=$(git rev-parse origin/main)
+          MERGE_BASE=$(git merge-base HEAD origin/main)
+
+          if [[ "$MAIN_SHA" == "$MERGE_BASE" ]]; then
+            echo "✅ preview already contains all of main"
+            echo "status=up-to-date" >> $GITHUB_OUTPUT
+            exit 0
+          fi
+
+          echo "ℹ️  Merging main into preview..."
+
+          if git merge origin/main --no-edit -m "chore: merge main into preview"; then
+            git push origin preview
+            echo "✅ main merged into preview and pushed"
+            echo "status=merged" >> $GITHUB_OUTPUT
+          else
+            git merge --abort
+            echo "status=conflict" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Get original commit author
+        if: steps.merge.outputs.status == 'conflict'
+        id: author
+        run: |
+          AUTHOR=$(git log origin/main -1 --format='%an')
+          GH_USER=$(git log origin/main -1 --format='%ae' | grep -oP '.*(?=@users\.noreply\.github\.com)' || echo "")
+          if [[ -z "$GH_USER" ]]; then
+            # Try to get GitHub username from the commit
+            GH_USER=$(gh api "/repos/${{ github.repository }}/commits/$(git rev-parse origin/main)" --jq '.author.login // empty' 2>/dev/null || echo "")
+          fi
+          echo "name=$AUTHOR" >> $GITHUB_OUTPUT
+          echo "gh_user=$GH_USER" >> $GITHUB_OUTPUT
+        env:
+          GH_TOKEN: ${{ github.token }}
+
+      - name: Create PR for conflict resolution
+        if: steps.merge.outputs.status == 'conflict'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          AUTHOR_NAME: ${{ steps.author.outputs.name }}
+          AUTHOR_GH: ${{ steps.author.outputs.gh_user }}
+        run: |
+          BRANCH="sync-preview/merge-main-$(date +%Y%m%d-%H%M%S)"
+
+          # Check if there's already an open sync PR
+          EXISTING=$(gh pr list --base preview --search "sync-preview: merge main into preview" --state open --json number --jq 'length')
+          if [[ "$EXISTING" != "0" ]]; then
+            echo "ℹ️  Sync PR already open — skipping duplicate."
+            exit 0
+          fi
+
+          # Create a branch from preview with the conflict markers
+          git checkout -b "$BRANCH"
+          git merge origin/main --no-edit -m "chore: merge main into preview" || true
+          git add -A
+          git commit --no-edit -m "chore: merge main into preview (conflicts need resolution)" || true
+          git push origin "$BRANCH"
+
+          # Build mention string
+          MENTION=""
+          if [[ -n "$AUTHOR_GH" ]]; then
+            MENTION="cc @${AUTHOR_GH}"
+          fi
+
+          gh pr create \
+            --base preview \
+            --head "$BRANCH" \
+            --title "sync-preview: merge main into preview" \
+            --body "$(cat <<BODY
+          The automated sync-preview workflow could not cleanly merge \`main\` into \`preview\`.
+
+          **This PR contains the merge with conflict markers.** To resolve:
+
+          1. Check out this branch locally:
+             \`\`\`bash
+             gh pr checkout <this-pr-number>
+             \`\`\`
+          2. Search for conflict markers and resolve them:
+             \`\`\`bash
+             grep -rn '<<<<<<< HEAD' .
+             \`\`\`
+          3. Keep preview-specific values (package version, preview tests, etc.) — accept main's changes for everything else.
+          4. Commit and push, then merge this PR.
+
+          This must be resolved before the next coordinated release.
+
+          ${MENTION}
+
+          _Opened automatically by the sync-preview workflow._
+          BODY
+          )"

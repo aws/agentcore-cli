@@ -1,3 +1,4 @@
+export { ABTestPrimitive } from './ABTestPrimitive';
 export { BasePrimitive } from './BasePrimitive';
 export { MemoryPrimitive } from './MemoryPrimitive';
 export { CredentialPrimitive } from './CredentialPrimitive';
@@ -17,6 +18,8 @@ export {
   onlineEvalConfigPrimitive,
   gatewayPrimitive,
   gatewayTargetPrimitive,
+  configBundlePrimitive,
+  abTestPrimitive,
   runtimeEndpointPrimitive,
   getPrimitive,
 } from './registry';

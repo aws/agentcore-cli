@@ -60,7 +60,7 @@ describe('integration: dev server', () => {
         '--json',
       ],
       testDir,
-      false
+      { skipInstall: false }
     );
 
     if (result.exitCode === 0) {

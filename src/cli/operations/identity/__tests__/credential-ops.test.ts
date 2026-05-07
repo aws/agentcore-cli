@@ -147,20 +147,3 @@ describe('resolveCredentialStrategy', () => {
     expect(result.isAgentScoped).toBe(true);
   });
 });
-
-// TODO: OAuth credential creation needs to be added to CredentialPrimitive.
-// These tests were ported from main's create-identity.ts OAuth support.
-// Once CredentialPrimitive.addOAuth() is implemented, convert these to use primitive.addOAuth().
-describe('createCredential OAuth', () => {
-  afterEach(() => vi.clearAllMocks());
-
-  it.todo('creates OAuth credential and writes to project');
-
-  it.todo('writes CLIENT_ID and CLIENT_SECRET to env');
-
-  it.todo('uppercases name in env var keys');
-
-  it.todo('throws when OAuth credential already exists');
-
-  it.todo('includes scopes when provided');
-});

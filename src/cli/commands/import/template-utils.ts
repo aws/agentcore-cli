@@ -192,10 +192,14 @@ export function findLogicalIdByProperty(
   template: CfnTemplate,
   resourceType: string,
   propertyName: string,
-  propertyValue: string
+  propertyValue: string,
+  options?: { excludeLogicalIds?: ReadonlySet<string> }
 ): string | undefined {
+  const exclude = options?.excludeLogicalIds;
+
   // First pass: exact string match (highest confidence)
   for (const [logicalId, resource] of Object.entries(template.Resources)) {
+    if (exclude?.has(logicalId)) continue;
     if (resource.Type === resourceType && resource.Properties) {
       if (resource.Properties[propertyName] === propertyValue) {
         return logicalId;
@@ -211,6 +215,7 @@ export function findLogicalIdByProperty(
   const pattern = new RegExp(escaped + '(?=[^a-zA-Z0-9_]|$)');
 
   for (const [logicalId, resource] of Object.entries(template.Resources)) {
+    if (exclude?.has(logicalId)) continue;
     if (resource.Type === resourceType && resource.Properties) {
       const propVal = resource.Properties[propertyName];
       if (typeof propVal === 'object' && propVal !== null) {

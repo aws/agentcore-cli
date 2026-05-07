@@ -21,6 +21,9 @@ describe('getDevConfig', () => {
       onlineEvalConfigs: [],
       agentCoreGateways: [],
       policyEngines: [],
+      configBundles: [],
+      abTests: [],
+      httpGateways: [],
     };
 
     const config = getDevConfig(workingDir, project);
@@ -48,6 +51,9 @@ describe('getDevConfig', () => {
       onlineEvalConfigs: [],
       agentCoreGateways: [],
       policyEngines: [],
+      configBundles: [],
+      abTests: [],
+      httpGateways: [],
     };
 
     const config = getDevConfig(workingDir, project);
@@ -75,6 +81,9 @@ describe('getDevConfig', () => {
       onlineEvalConfigs: [],
       agentCoreGateways: [],
       policyEngines: [],
+      configBundles: [],
+      abTests: [],
+      httpGateways: [],
     };
 
     const config = getDevConfig(workingDir, project, '/test/project/agentcore');
@@ -108,6 +117,9 @@ describe('getDevConfig', () => {
       onlineEvalConfigs: [],
       agentCoreGateways: [],
       policyEngines: [],
+      configBundles: [],
+      abTests: [],
+      httpGateways: [],
     };
 
     expect(() => getDevConfig(workingDir, project, undefined, 'NonExistentAgent')).toThrow(
@@ -136,6 +148,9 @@ describe('getDevConfig', () => {
       onlineEvalConfigs: [],
       agentCoreGateways: [],
       policyEngines: [],
+      configBundles: [],
+      abTests: [],
+      httpGateways: [],
     };
 
     expect(() => getDevConfig(workingDir, project, undefined, 'NodeAgent')).toThrow('Dev mode only supports Python');
@@ -162,6 +177,9 @@ describe('getDevConfig', () => {
       onlineEvalConfigs: [],
       agentCoreGateways: [],
       policyEngines: [],
+      configBundles: [],
+      abTests: [],
+      httpGateways: [],
     };
 
     const config = getDevConfig(workingDir, project, '/test/project/agentcore');
@@ -191,6 +209,9 @@ describe('getDevConfig', () => {
       onlineEvalConfigs: [],
       agentCoreGateways: [],
       policyEngines: [],
+      configBundles: [],
+      abTests: [],
+      httpGateways: [],
     };
 
     // No configRoot provided
@@ -220,6 +241,9 @@ describe('getDevConfig', () => {
       onlineEvalConfigs: [],
       agentCoreGateways: [],
       policyEngines: [],
+      configBundles: [],
+      abTests: [],
+      httpGateways: [],
     };
 
     const config = getDevConfig(workingDir, project, '/test/project/agentcore');
@@ -249,6 +273,9 @@ describe('getDevConfig', () => {
       onlineEvalConfigs: [],
       agentCoreGateways: [],
       policyEngines: [],
+      configBundles: [],
+      abTests: [],
+      httpGateways: [],
     };
 
     const config = getDevConfig(workingDir, project, '/test/project/agentcore');
@@ -277,6 +304,9 @@ describe('getDevConfig', () => {
       onlineEvalConfigs: [],
       agentCoreGateways: [],
       policyEngines: [],
+      configBundles: [],
+      abTests: [],
+      httpGateways: [],
     };
 
     const config = getDevConfig(workingDir, project, '/test/project/agentcore');
@@ -305,6 +335,9 @@ describe('getDevConfig', () => {
       onlineEvalConfigs: [],
       agentCoreGateways: [],
       policyEngines: [],
+      configBundles: [],
+      abTests: [],
+      httpGateways: [],
     };
 
     const config = getDevConfig(workingDir, project, '/test/project/agentcore');
@@ -333,6 +366,9 @@ describe('getDevConfig', () => {
       onlineEvalConfigs: [],
       agentCoreGateways: [],
       policyEngines: [],
+      configBundles: [],
+      abTests: [],
+      httpGateways: [],
     };
 
     const config = getDevConfig(workingDir, project, '/test/project/agentcore');
@@ -361,6 +397,9 @@ describe('getDevConfig', () => {
       onlineEvalConfigs: [],
       agentCoreGateways: [],
       policyEngines: [],
+      configBundles: [],
+      abTests: [],
+      httpGateways: [],
     };
 
     const config = getDevConfig(workingDir, project, '/test/project/agentcore');
@@ -390,6 +429,9 @@ describe('getDevConfig', () => {
       onlineEvalConfigs: [],
       agentCoreGateways: [],
       policyEngines: [],
+      configBundles: [],
+      abTests: [],
+      httpGateways: [],
     };
 
     const config = getDevConfig(workingDir, project, '/test/project/agentcore');
@@ -432,6 +474,9 @@ describe('getAgentPort', () => {
       onlineEvalConfigs: [],
       agentCoreGateways: [],
       policyEngines: [],
+      configBundles: [],
+      abTests: [],
+      httpGateways: [],
     };
 
     expect(getAgentPort(project, 'Agent1', 8080)).toBe(8080);
@@ -450,6 +495,9 @@ describe('getAgentPort', () => {
       onlineEvalConfigs: [],
       agentCoreGateways: [],
       policyEngines: [],
+      configBundles: [],
+      abTests: [],
+      httpGateways: [],
     };
 
     expect(getAgentPort(project, 'NonExistent', 9000)).toBe(9000);
@@ -473,6 +521,9 @@ describe('getDevSupportedAgents', () => {
       onlineEvalConfigs: [],
       agentCoreGateways: [],
       policyEngines: [],
+      configBundles: [],
+      abTests: [],
+      httpGateways: [],
     };
 
     expect(getDevSupportedAgents(project)).toEqual([]);
@@ -499,6 +550,9 @@ describe('getDevSupportedAgents', () => {
       onlineEvalConfigs: [],
       agentCoreGateways: [],
       policyEngines: [],
+      configBundles: [],
+      abTests: [],
+      httpGateways: [],
     };
 
     expect(getDevSupportedAgents(project)).toEqual([]);
@@ -533,6 +587,9 @@ describe('getDevSupportedAgents', () => {
       onlineEvalConfigs: [],
       agentCoreGateways: [],
       policyEngines: [],
+      configBundles: [],
+      abTests: [],
+      httpGateways: [],
     };
 
     const supported = getDevSupportedAgents(project);
@@ -561,6 +618,9 @@ describe('getDevSupportedAgents', () => {
       onlineEvalConfigs: [],
       agentCoreGateways: [],
       policyEngines: [],
+      configBundles: [],
+      abTests: [],
+      httpGateways: [],
     };
 
     const supported = getDevSupportedAgents(project);
@@ -597,6 +657,9 @@ describe('getDevSupportedAgents', () => {
       onlineEvalConfigs: [],
       agentCoreGateways: [],
       policyEngines: [],
+      configBundles: [],
+      abTests: [],
+      httpGateways: [],
     };
 
     const supported = getDevSupportedAgents(project);

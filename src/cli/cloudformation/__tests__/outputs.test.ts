@@ -469,3 +469,117 @@ describe('buildDeployedState with policy data', () => {
     expect(result.targets.default!.resources?.policyEngines).toBeUndefined();
   });
 });
+
+describe('buildDeployedState carry-forward', () => {
+  it('carries forward abTests from existing state', () => {
+    const existingState = {
+      targets: {
+        default: {
+          resources: {
+            stackName: 'TestStack',
+            abTests: {
+              TestExperiment: {
+                abTestId: 'abt-123',
+                abTestArn: 'arn:aws:bedrock:us-east-1:123456789012:ab-test/abt-123',
+              },
+            },
+          },
+        },
+      },
+    };
+
+    const result = buildDeployedState({
+      targetName: 'default',
+      stackName: 'TestStack',
+      agents: {},
+      gateways: {},
+      existingState,
+    });
+
+    expect(result.targets.default!.resources?.abTests).toEqual({
+      TestExperiment: {
+        abTestId: 'abt-123',
+        abTestArn: 'arn:aws:bedrock:us-east-1:123456789012:ab-test/abt-123',
+      },
+    });
+  });
+
+  it('carries forward httpGateways from existing state', () => {
+    const existingState = {
+      targets: {
+        default: {
+          resources: {
+            stackName: 'TestStack',
+            httpGateways: {
+              MyHttpGw: {
+                gatewayId: 'hgw-456',
+                gatewayArn: 'arn:aws:bedrock:us-east-1:123456789012:http-gateway/hgw-456',
+              },
+            },
+          },
+        },
+      },
+    };
+
+    const result = buildDeployedState({
+      targetName: 'default',
+      stackName: 'TestStack',
+      agents: {},
+      gateways: {},
+      existingState,
+    });
+
+    expect(result.targets.default!.resources?.httpGateways).toEqual({
+      MyHttpGw: {
+        gatewayId: 'hgw-456',
+        gatewayArn: 'arn:aws:bedrock:us-east-1:123456789012:http-gateway/hgw-456',
+      },
+    });
+  });
+
+  it('does not carry forward empty abTests', () => {
+    const existingState = {
+      targets: {
+        default: {
+          resources: {
+            stackName: 'TestStack',
+            abTests: {},
+          },
+        },
+      },
+    };
+
+    const result = buildDeployedState({
+      targetName: 'default',
+      stackName: 'TestStack',
+      agents: {},
+      gateways: {},
+      existingState,
+    });
+
+    expect(result.targets.default!.resources?.abTests).toBeUndefined();
+  });
+
+  it('does not carry forward empty httpGateways', () => {
+    const existingState = {
+      targets: {
+        default: {
+          resources: {
+            stackName: 'TestStack',
+            httpGateways: {},
+          },
+        },
+      },
+    };
+
+    const result = buildDeployedState({
+      targetName: 'default',
+      stackName: 'TestStack',
+      agents: {},
+      gateways: {},
+      existingState,
+    });
+
+    expect(result.targets.default!.resources?.httpGateways).toBeUndefined();
+  });
+});

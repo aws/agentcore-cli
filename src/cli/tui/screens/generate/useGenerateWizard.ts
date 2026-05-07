@@ -89,6 +89,7 @@ export function useGenerateWizard(options?: UseGenerateWizardOptions) {
       if (advancedSettings.has('filesystem')) {
         subSteps.push('sessionStorageMountPath');
       }
+      // Config bundle — no sub-steps needed, uses smart defaults
       filtered = [...filtered.slice(0, afterAdvanced), ...subSteps, ...filtered.slice(afterAdvanced)];
     }
     // Add jwtConfig step after authorizerType when CUSTOM_JWT is selected
@@ -234,9 +235,12 @@ export function useGenerateWizard(options?: UseGenerateWizardOptions) {
           idleRuntimeSessionTimeout: undefined,
           maxLifetime: undefined,
           sessionStorageMountPath: undefined,
+          withConfigBundle: undefined,
         }));
         setStep('confirm');
       } else {
+        // Config bundle has no sub-steps — set flag immediately
+        setConfig(c => ({ ...c, withConfigBundle: selected.has('configBundle') || undefined }));
         // Navigate to first advanced sub-step — determined by the steps memo on next render.
         // Use setTimeout so the steps memo recalculates with the new advancedSettings first.
         setTimeout(() => {

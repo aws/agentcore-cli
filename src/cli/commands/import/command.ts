@@ -1,6 +1,7 @@
 import { handleImport } from './actions';
 import { ANSI } from './constants';
 import { registerImportEvaluator } from './import-evaluator';
+import { registerImportGateway } from './import-gateway';
 import { registerImportMemory } from './import-memory';
 import { registerImportOnlineEval } from './import-online-eval';
 import { registerImportRuntime } from './import-runtime';
@@ -152,4 +153,5 @@ export const registerImport = (program: Command) => {
   registerImportMemory(importCmd);
   registerImportEvaluator(importCmd);
   registerImportOnlineEval(importCmd);
+  registerImportGateway(importCmd);
 };

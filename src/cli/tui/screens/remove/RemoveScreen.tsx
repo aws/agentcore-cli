@@ -12,6 +12,8 @@ const REMOVE_RESOURCES = [
   { id: 'policy', title: 'Policy', description: 'Remove a policy from a policy engine' },
   { id: 'gateway', title: 'Gateway', description: 'Remove a gateway' },
   { id: 'gateway-target', title: 'Gateway Target', description: 'Remove a gateway target' },
+  { id: 'config-bundle', title: 'Configuration Bundle [preview]', description: 'Remove a configuration bundle' },
+  { id: 'ab-test', title: 'AB Test [preview]', description: 'Remove an A/B test' },
   { id: 'runtime-endpoint', title: 'Runtime Endpoint', description: 'Remove a runtime endpoint' },
   { id: 'all', title: 'All', description: 'Reset entire agentcore project' },
 ] as const;
@@ -39,6 +41,10 @@ interface RemoveScreenProps {
   policyEngineCount: number;
   /** Number of policies available for removal */
   policyCount: number;
+  /** Number of configuration bundles available for removal */
+  configBundleCount: number;
+  /** Number of AB tests available for removal */
+  abTestCount: number;
   /** Number of runtime endpoints available for removal */
   runtimeEndpointCount: number;
 }
@@ -55,6 +61,8 @@ export function RemoveScreen({
   onlineEvalCount,
   policyEngineCount,
   policyCount,
+  configBundleCount,
+  abTestCount,
   runtimeEndpointCount,
 }: RemoveScreenProps) {
   const items: SelectableItem[] = useMemo(() => {
@@ -117,6 +125,18 @@ export function RemoveScreen({
             description = 'No policies to remove';
           }
           break;
+        case 'config-bundle':
+          if (configBundleCount === 0) {
+            disabled = true;
+            description = 'No configuration bundles to remove';
+          }
+          break;
+        case 'ab-test':
+          if (abTestCount === 0) {
+            disabled = true;
+            description = 'No AB tests to remove';
+          }
+          break;
         case 'runtime-endpoint':
           if (runtimeEndpointCount === 0) {
             disabled = true;
@@ -140,6 +160,8 @@ export function RemoveScreen({
     onlineEvalCount,
     policyEngineCount,
     policyCount,
+    configBundleCount,
+    abTestCount,
     runtimeEndpointCount,
   ]);
 

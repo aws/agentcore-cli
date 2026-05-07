@@ -87,36 +87,22 @@ describe('Assets Directory Snapshots', () => {
     });
   });
 
-  describe('Static assets', () => {
+  describe.skipIf(assetFiles.filter(f => f.startsWith('static/')).length === 0)('Static assets', () => {
     const staticFiles = assetFiles.filter(f => f.startsWith('static/'));
 
-    if (staticFiles.length > 0) {
-      it.each(staticFiles)('static/%s should match snapshot', file => {
-        const content = readFileContent(path.join(ASSETS_DIR, file));
-        expect(content).toMatchSnapshot();
-      });
-    } else {
-      it('static directory is empty or does not exist', () => {
-        // Static assets may not exist
-        expect(true).toBe(true);
-      });
-    }
+    it.each(staticFiles)('static/%s should match snapshot', file => {
+      const content = readFileContent(path.join(ASSETS_DIR, file));
+      expect(content).toMatchSnapshot();
+    });
   });
 
-  describe('TypeScript assets', () => {
+  describe.skipIf(assetFiles.filter(f => f.startsWith('typescript/')).length === 0)('TypeScript assets', () => {
     const tsFiles = assetFiles.filter(f => f.startsWith('typescript/'));
 
-    if (tsFiles.length > 0) {
-      it.each(tsFiles)('typescript/%s should match snapshot', file => {
-        const content = readFileContent(path.join(ASSETS_DIR, file));
-        expect(content).toMatchSnapshot();
-      });
-    } else {
-      it('typescript directory is empty or contains only placeholder files', () => {
-        // TypeScript assets may not exist yet
-        expect(true).toBe(true);
-      });
-    }
+    it.each(tsFiles)('typescript/%s should match snapshot', file => {
+      const content = readFileContent(path.join(ASSETS_DIR, file));
+      expect(content).toMatchSnapshot();
+    });
   });
 
   describe('Root-level assets', () => {

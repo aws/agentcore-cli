@@ -1,3 +1,24 @@
+export type {
+  ABTest,
+  ABTestVariant,
+  ABTestEvaluationConfig,
+  ConfigurationBundleRef,
+  TrafficAllocationConfig,
+  VariantConfiguration,
+} from './ab-test';
+export {
+  ABTestNameSchema,
+  ABTestDescriptionSchema,
+  ABTestSchema,
+  ABTestVariantSchema,
+  ABTestEvaluationConfigSchema,
+  ConfigurationBundleRefSchema,
+  TrafficAllocationConfigSchema,
+  VariantConfigurationSchema,
+  VariantNameSchema,
+  VariantWeightSchema,
+} from './ab-test';
+
 export type { MemoryStrategy, MemoryStrategyType } from './memory';
 export {
   DEFAULT_EPISODIC_REFLECTION_NAMESPACES,
@@ -44,3 +65,6 @@ export {
   PolicySchema,
   ValidationModeSchema,
 } from './policy';
+
+export type { HttpGateway } from './http-gateway';
+export { HttpGatewayNameSchema, HttpGatewaySchema } from './http-gateway';

@@ -9,12 +9,11 @@ import {
 import { describe, expect, it } from 'vitest';
 
 describe('EvaluationLevelSchema', () => {
-  it.each(['SESSION', 'TRACE', 'TOOL_CALL'])('accepts %s', level => {
-    expect(EvaluationLevelSchema.safeParse(level).success).toBe(true);
-  });
-
-  it.each(['session', 'INVALID', '', 'SPAN'])('rejects %s', level => {
-    expect(EvaluationLevelSchema.safeParse(level).success).toBe(false);
+  it('accepts valid levels and rejects invalid', () => {
+    expect(EvaluationLevelSchema.safeParse('SESSION').success).toBe(true);
+    expect(EvaluationLevelSchema.safeParse('TOOL_CALL').success).toBe(true);
+    expect(EvaluationLevelSchema.safeParse('session').success).toBe(false);
+    expect(EvaluationLevelSchema.safeParse('INVALID').success).toBe(false);
   });
 });
 

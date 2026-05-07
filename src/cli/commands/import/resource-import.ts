@@ -80,7 +80,7 @@ export async function executeResourceImport<TDetail, TSummary>(
     }
 
     // 4. Validate name
-    const localName = options.name ?? descriptor.extractDetailName(detail);
+    let localName = options.name ?? descriptor.extractDetailName(detail);
     if (!NAME_REGEX.test(localName)) {
       return failResult(
         logger,
@@ -111,13 +111,12 @@ export async function executeResourceImport<TDetail, TSummary>(
       descriptor.resourceType,
       resourceId
     );
+    const isReimport = !!existingResource;
     if (existingResource) {
-      return failResult(
-        logger,
-        `${descriptor.displayName} "${resourceId}" is already imported in this project as "${existingResource}". Remove it first before re-importing.`,
-        descriptor.resourceType,
-        localName
-      );
+      if (!options.name) {
+        localName = existingResource;
+      }
+      onProgress(`${descriptor.displayName} already managed by CloudFormation — re-adding to project config`);
     }
     logger.endStep('success');
 
@@ -158,13 +157,16 @@ export async function executeResourceImport<TDetail, TSummary>(
       configIO: ctx.configIO,
       targetName,
       onProgress,
-      buildResourcesToImport: synthTemplate => {
+      buildResourcesToImport: (synthTemplate, deployedTemplate) => {
+        const deployedIds = new Set(Object.keys(deployedTemplate.Resources));
+
         // Try matching by name property (plain name first, then prefixed)
         let logicalId = findLogicalIdByProperty(
           synthTemplate,
           descriptor.cfnResourceType,
           descriptor.cfnNameProperty,
-          localName
+          localName,
+          { excludeLogicalIds: deployedIds }
         );
 
         if (!logicalId) {
@@ -173,13 +175,16 @@ export async function executeResourceImport<TDetail, TSummary>(
             synthTemplate,
             descriptor.cfnResourceType,
             descriptor.cfnNameProperty,
-            prefixedName
+            prefixedName,
+            { excludeLogicalIds: deployedIds }
           );
         }
 
         // Fall back to single resource by type
         if (!logicalId) {
-          const allLogicalIds = findLogicalIdsByType(synthTemplate, descriptor.cfnResourceType);
+          const allLogicalIds = findLogicalIdsByType(synthTemplate, descriptor.cfnResourceType).filter(
+            id => !deployedIds.has(id)
+          );
           if (allLogicalIds.length === 1) {
             logicalId = allLogicalIds[0];
           }
@@ -201,6 +206,17 @@ export async function executeResourceImport<TDetail, TSummary>(
     });
 
     if (pipelineResult.noResources) {
+      if (isReimport) {
+        logger.endStep('success');
+        logger.finalize(true);
+        return {
+          success: true,
+          resourceType: descriptor.resourceType,
+          resourceName: localName,
+          resourceId,
+          logPath: logger.getRelativeLogPath(),
+        };
+      }
       const error = `Could not find logical ID for ${descriptor.displayName} "${localName}" in CloudFormation template`;
       await rollback();
       return failResult(logger, error, descriptor.resourceType, localName);

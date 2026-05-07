@@ -1,3 +1,4 @@
+import { TelemetryClientAccessor } from '../../telemetry/client-accessor.js';
 import type { Command } from '@commander-js/extra-typings';
 
 const MODES_HELP = `
@@ -41,15 +42,23 @@ export const registerHelp = (program: Command) => {
   const helpCmd = program
     .command('help')
     .description('Display help topics')
-    .action(() => {
-      console.log('Available help topics: modes');
-      console.log('Run `agentcore help <topic>` for details.');
+    .action(async () => {
+      const client = await TelemetryClientAccessor.get();
+      await client.withCommandRun('help', () => {
+        console.log('Available help topics: modes');
+        console.log('Run `agentcore help <topic>` for details.');
+        return {};
+      });
     });
 
   helpCmd
     .command('modes')
     .description('Explain interactive vs non-interactive modes')
-    .action(() => {
-      console.log(MODES_HELP);
+    .action(async () => {
+      const client = await TelemetryClientAccessor.get();
+      await client.withCommandRun('help.modes', () => {
+        console.log(MODES_HELP);
+        return {};
+      });
     });
 };

@@ -1,0 +1,1 @@
+export { registerConfigBundle } from './command';

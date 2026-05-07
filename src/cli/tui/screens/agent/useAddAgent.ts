@@ -1,7 +1,7 @@
 import { APP_DIR, ConfigIO, NoProjectError, findConfigRoot, setEnvVar } from '../../../../lib';
 import type { AgentEnvSpec, DirectoryPath, FilePath } from '../../../../schema';
-import { getErrorMessage } from '../../../errors';
 import { type PythonSetupResult, setupPythonProject } from '../../../operations';
+import { createConfigBundleForAgent } from '../../../operations/agent/config-bundle-defaults';
 import {
   mapGenerateConfigToRenderConfig,
   mapModelProviderToCredentials,
@@ -12,6 +12,19 @@ import { executeImportAgent } from '../../../operations/agent/import';
 import { buildAuthorizerConfigFromJwtConfig, createManagedOAuthCredential } from '../../../primitives/auth-utils';
 import { computeDefaultCredentialEnvVarName } from '../../../primitives/credential-utils';
 import { credentialPrimitive } from '../../../primitives/registry';
+import { withAddTelemetry } from '../../../telemetry/cli-command-run.js';
+import {
+  AgentType as AgentTypeEnum,
+  AuthorizerType as AuthorizerTypeEnum,
+  Build,
+  Framework,
+  Language,
+  Memory as MemoryEnum,
+  ModelProvider,
+  NetworkMode,
+  Protocol,
+  standardize,
+} from '../../../telemetry/schemas/common-shapes.js';
 import { createRenderer } from '../../../templates';
 import type { GenerateConfig } from '../generate/types';
 import type { AddAgentConfig } from './types';
@@ -118,6 +131,7 @@ function mapAddAgentConfigToGenerateConfig(config: AddAgentConfig): GenerateConf
     idleRuntimeSessionTimeout: config.idleRuntimeSessionTimeout,
     maxLifetime: config.maxLifetime,
     sessionStorageMountPath: config.sessionStorageMountPath,
+    withConfigBundle: config.withConfigBundle,
   };
 }
 
@@ -135,34 +149,25 @@ export function useAddAgent() {
   const addAgent = useCallback(async (config: AddAgentConfig): Promise<AddAgentOutcome> => {
     setIsLoading(true);
     try {
-      const configBaseDir = findConfigRoot();
-      if (!configBaseDir) {
-        return { ok: false, error: new NoProjectError().message };
+      const result = await withAddTelemetry(
+        'add.agent',
+        {
+          language: standardize(Language, config.language),
+          framework: standardize(Framework, config.framework),
+          model_provider: standardize(ModelProvider, config.modelProvider),
+          agent_type: standardize(AgentTypeEnum, config.agentType),
+          build: standardize(Build, config.buildType),
+          protocol: standardize(Protocol, config.protocol ?? 'HTTP'),
+          network_mode: standardize(NetworkMode, config.networkMode ?? 'PUBLIC'),
+          authorizer_type: standardize(AuthorizerTypeEnum, config.authorizerType ?? 'NONE'),
+          memory: standardize(MemoryEnum, config.memory ?? 'none'),
+        },
+        () => addAgentInner(config)
+      );
+      if (!result.success) {
+        return { ok: false, error: result.error };
       }
-
-      const configIO = new ConfigIO({ baseDir: configBaseDir });
-
-      if (!configIO.configExists('project')) {
-        return { ok: false, error: new NoProjectError().message };
-      }
-
-      // Check for duplicate agent name
-      const project = await configIO.readProjectSpec();
-      const existingAgent = project.runtimes.find(agent => agent.name === config.name);
-      if (existingAgent) {
-        return { ok: false, error: `Agent "${config.name}" already exists in this project.` };
-      }
-
-      // Branch based on agent type
-      if (config.agentType === 'import') {
-        return await handleImportPath(config, configBaseDir);
-      } else if (config.agentType === 'create') {
-        return await handleCreatePath(config, configBaseDir);
-      } else {
-        return await handleByoPath(config, configIO, configBaseDir);
-      }
-    } catch (err) {
-      return { ok: false, error: getErrorMessage(err) };
+      return result.outcome;
     } finally {
       setIsLoading(false);
     }
@@ -173,6 +178,43 @@ export function useAddAgent() {
   }, []);
 
   return { addAgent, isLoading, reset };
+}
+
+type AddAgentInnerResult =
+  | { success: true; outcome: AddAgentCreateResult | AddAgentByoResult }
+  | { success: false; error: string };
+
+async function addAgentInner(config: AddAgentConfig): Promise<AddAgentInnerResult> {
+  const configBaseDir = findConfigRoot();
+  if (!configBaseDir) {
+    return { success: false, error: new NoProjectError().message };
+  }
+
+  const configIO = new ConfigIO({ baseDir: configBaseDir });
+
+  if (!configIO.configExists('project')) {
+    return { success: false, error: new NoProjectError().message };
+  }
+
+  const project = await configIO.readProjectSpec();
+  const existingAgent = project.runtimes.find(agent => agent.name === config.name);
+  if (existingAgent) {
+    return { success: false, error: `Agent "${config.name}" already exists in this project.` };
+  }
+
+  let outcome: AddAgentCreateResult | AddAgentByoResult | AddAgentError;
+  if (config.agentType === 'import') {
+    outcome = await handleImportPath(config, configBaseDir);
+  } else if (config.agentType === 'create') {
+    outcome = await handleCreatePath(config, configBaseDir);
+  } else {
+    outcome = await handleByoPath(config, configIO, configBaseDir);
+  }
+
+  if (!outcome.ok) {
+    return { success: false, error: outcome.error };
+  }
+  return { success: true, outcome };
 }
 
 /**
@@ -257,6 +299,11 @@ async function handleCreatePath(
   let pythonSetupResult: PythonSetupResult | undefined;
   if (config.language === 'Python') {
     pythonSetupResult = await setupPythonProject({ projectDir: agentPath });
+  }
+
+  // Auto-create config bundle when opted in
+  if (config.withConfigBundle) {
+    await createConfigBundleForAgent(config.name, configBaseDir);
   }
 
   return {

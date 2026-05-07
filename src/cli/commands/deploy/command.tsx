@@ -103,6 +103,13 @@ async function handleDeployCLI(options: DeployOptions): Promise<void> {
         }
       }
 
+      if (result.postDeployWarnings && result.postDeployWarnings.length > 0) {
+        console.log('\n⚠ Post-deploy warnings:');
+        for (const warning of result.postDeployWarnings) {
+          console.log(`  ${warning}`);
+        }
+      }
+
       if (result.notes && result.notes.length > 0) {
         for (const note of result.notes) {
           console.log(`\nNote: ${note}`);
@@ -124,7 +131,8 @@ async function handleDeployCLI(options: DeployOptions): Promise<void> {
     }
   }
 
-  process.exit(result.success ? 0 : 1);
+  const hasPostDeployWarnings = result.success && result.postDeployWarnings && result.postDeployWarnings.length > 0;
+  process.exit(result.success ? (hasPostDeployWarnings ? 2 : 0) : 1);
 }
 
 export const registerDeploy = (program: Command) => {

@@ -25,6 +25,7 @@ import { parseAndNormalizeHeaders } from '../commands/shared/header-utils';
 import type { VpcOptions } from '../commands/shared/vpc-utils';
 import { VPC_ENDPOINT_WARNING, parseCommaSeparatedList } from '../commands/shared/vpc-utils';
 import { getErrorMessage } from '../errors';
+import { createConfigBundleForAgent } from '../operations/agent/config-bundle-defaults';
 import {
   mapGenerateConfigToRenderConfig,
   mapModelProviderToCredentials,
@@ -34,6 +35,19 @@ import {
 import { executeImportAgent } from '../operations/agent/import';
 import { setupPythonProject } from '../operations/python';
 import type { RemovalPreview, RemovalResult, SchemaChange } from '../operations/remove/types';
+import { cliCommandRun } from '../telemetry/cli-command-run.js';
+import {
+  AgentType,
+  AuthorizerType,
+  Build,
+  Framework,
+  Language,
+  Memory,
+  ModelProvider as ModelProviderEnum,
+  NetworkMode as NetworkModeEnum,
+  Protocol,
+  standardize,
+} from '../telemetry/schemas/common-shapes.js';
 import { createRenderer } from '../templates';
 import { requireTTY } from '../tui/guards/tty';
 import type { GenerateConfig, MemoryOption } from '../tui/screens/generate/types';
@@ -76,6 +90,7 @@ export interface AddAgentOptions extends VpcOptions {
   idleTimeout?: number;
   maxLifetime?: number;
   sessionStorageMountPath?: string;
+  withConfigBundle?: boolean;
 }
 
 /**
@@ -253,6 +268,10 @@ export class AgentPrimitive extends BasePrimitive<AddAgentOptions, RemovableReso
         '--session-storage-mount-path <path>',
         'Absolute mount path for session filesystem storage (e.g. /mnt/session-storage) [non-interactive]'
       )
+      .option(
+        '--with-config-bundle',
+        'Create a config bundle wired into the agent template [preview] [non-interactive]'
+      )
       .option('--json', 'Output as JSON [non-interactive]')
       .action(async options => {
         if (!findConfigRoot()) {
@@ -264,92 +283,107 @@ export class AgentPrimitive extends BasePrimitive<AddAgentOptions, RemovableReso
 
         // Any flag triggers non-interactive CLI mode
         if (cliOptions.name || cliOptions.framework || cliOptions.json) {
-          const validation = validateAddAgentOptions(cliOptions);
-          if (!validation.valid) {
-            if (cliOptions.json) {
-              console.log(JSON.stringify({ success: false, error: validation.error }));
-            } else {
-              console.error(validation.error);
+          await cliCommandRun('add.agent', !!cliOptions.json, async () => {
+            const validation = validateAddAgentOptions(cliOptions);
+            if (!validation.valid) {
+              throw new Error(validation.error);
             }
+
+            // Parse custom claims JSON if provided (already validated by validateAddAgentOptions)
+            const customClaims = cliOptions.customClaims
+              ? (JSON.parse(cliOptions.customClaims) as CustomClaimValidation[])
+              : undefined;
+
+            // Parse request header allowlist if provided
+            const requestHeaderAllowlist = cliOptions.requestHeaderAllowlist
+              ? parseAndNormalizeHeaders(cliOptions.requestHeaderAllowlist)
+              : undefined;
+
+            const result = await this.add({
+              name: cliOptions.name!,
+              type: cliOptions.type ?? 'create',
+              buildType: (cliOptions.build as BuildType) ?? 'CodeZip',
+              language: cliOptions.language!,
+              framework: cliOptions.framework!,
+              modelProvider: cliOptions.modelProvider!,
+              apiKey: cliOptions.apiKey,
+              memory: cliOptions.memory,
+              protocol: cliOptions.protocol,
+              networkMode: cliOptions.networkMode,
+              subnets: cliOptions.subnets,
+              securityGroups: cliOptions.securityGroups,
+              requestHeaderAllowlist,
+              codeLocation: cliOptions.codeLocation,
+              entrypoint: cliOptions.entrypoint,
+              bedrockAgentId: cliOptions.agentId,
+              bedrockAliasId: cliOptions.agentAliasId,
+              bedrockRegion: cliOptions.region,
+              authorizerType: cliOptions.authorizerType,
+              discoveryUrl: cliOptions.discoveryUrl,
+              allowedAudience: cliOptions.allowedAudience,
+              allowedClients: cliOptions.allowedClients,
+              allowedScopes: cliOptions.allowedScopes,
+              customClaims,
+              clientId: cliOptions.clientId,
+              clientSecret: cliOptions.clientSecret,
+              idleTimeout: cliOptions.idleTimeout ? Number(cliOptions.idleTimeout) : undefined,
+              maxLifetime: cliOptions.maxLifetime ? Number(cliOptions.maxLifetime) : undefined,
+              sessionStorageMountPath: cliOptions.sessionStorageMountPath,
+              withConfigBundle: cliOptions.withConfigBundle,
+            });
+
+            if (!result.success) {
+              throw new Error(result.error);
+            }
+
+            if (cliOptions.json) {
+              console.log(JSON.stringify(result));
+            } else {
+              console.log(`Added agent '${result.agentName}'`);
+              if (result.agentPath) {
+                console.log(`Agent code: ${result.agentPath}`);
+              }
+              if (cliOptions.networkMode === 'VPC') {
+                console.log(`\x1b[33mNote: ${VPC_ENDPOINT_WARNING}\x1b[0m`);
+              }
+            }
+
+            return {
+              language: standardize(Language, cliOptions.language),
+              framework: standardize(Framework, cliOptions.framework),
+              model_provider: standardize(ModelProviderEnum, cliOptions.modelProvider),
+              agent_type: standardize(AgentType, cliOptions.type ?? 'create'),
+              build: standardize(Build, cliOptions.build ?? 'CodeZip'),
+              protocol: standardize(Protocol, cliOptions.protocol ?? 'HTTP'),
+              network_mode: standardize(NetworkModeEnum, cliOptions.networkMode ?? 'PUBLIC'),
+              authorizer_type: standardize(AuthorizerType, cliOptions.authorizerType ?? 'NONE'),
+              memory: standardize(Memory, cliOptions.memory ?? 'none'),
+            };
+          });
+        } else {
+          try {
+            // TUI fallback — dynamic imports to avoid pulling ink (async) into registry
+            requireTTY();
+            const [{ render }, { default: React }, { AddFlow }] = await Promise.all([
+              import('ink'),
+              import('react'),
+              import('../tui/screens/add/AddFlow'),
+            ]);
+            const { clear, unmount } = render(
+              React.createElement(AddFlow, {
+                isInteractive: false,
+                initialResource: 'agent',
+                onExit: () => {
+                  clear();
+                  unmount();
+                  process.exit(0);
+                },
+              })
+            );
+          } catch (error) {
+            console.error(getErrorMessage(error));
             process.exit(1);
           }
-
-          // Parse custom claims JSON if provided (already validated by validateAddAgentOptions)
-          const customClaims = cliOptions.customClaims
-            ? (JSON.parse(cliOptions.customClaims) as CustomClaimValidation[])
-            : undefined;
-
-          // Parse request header allowlist if provided
-          const requestHeaderAllowlist = cliOptions.requestHeaderAllowlist
-            ? parseAndNormalizeHeaders(cliOptions.requestHeaderAllowlist)
-            : undefined;
-
-          const result = await this.add({
-            name: cliOptions.name!,
-            type: cliOptions.type ?? 'create',
-            buildType: (cliOptions.build as BuildType) ?? 'CodeZip',
-            language: cliOptions.language!,
-            framework: cliOptions.framework!,
-            modelProvider: cliOptions.modelProvider!,
-            apiKey: cliOptions.apiKey,
-            memory: cliOptions.memory,
-            protocol: cliOptions.protocol,
-            networkMode: cliOptions.networkMode,
-            subnets: cliOptions.subnets,
-            securityGroups: cliOptions.securityGroups,
-            requestHeaderAllowlist,
-            codeLocation: cliOptions.codeLocation,
-            entrypoint: cliOptions.entrypoint,
-            bedrockAgentId: cliOptions.agentId,
-            bedrockAliasId: cliOptions.agentAliasId,
-            bedrockRegion: cliOptions.region,
-            authorizerType: cliOptions.authorizerType,
-            discoveryUrl: cliOptions.discoveryUrl,
-            allowedAudience: cliOptions.allowedAudience,
-            allowedClients: cliOptions.allowedClients,
-            allowedScopes: cliOptions.allowedScopes,
-            customClaims,
-            clientId: cliOptions.clientId,
-            clientSecret: cliOptions.clientSecret,
-            idleTimeout: cliOptions.idleTimeout ? Number(cliOptions.idleTimeout) : undefined,
-            maxLifetime: cliOptions.maxLifetime ? Number(cliOptions.maxLifetime) : undefined,
-            sessionStorageMountPath: cliOptions.sessionStorageMountPath,
-          });
-
-          if (cliOptions.json) {
-            console.log(JSON.stringify(result));
-          } else if (result.success) {
-            console.log(`Added agent '${result.agentName}'`);
-            if (result.agentPath) {
-              console.log(`Agent code: ${result.agentPath}`);
-            }
-            if (cliOptions.networkMode === 'VPC') {
-              console.log(`\x1b[33mNote: ${VPC_ENDPOINT_WARNING}\x1b[0m`);
-            }
-          } else {
-            console.error(result.error);
-          }
-
-          process.exit(result.success ? 0 : 1);
-        } else {
-          // TUI fallback — dynamic imports to avoid pulling ink (async) into registry
-          requireTTY();
-          const [{ render }, { default: React }, { AddFlow }] = await Promise.all([
-            import('ink'),
-            import('react'),
-            import('../tui/screens/add/AddFlow'),
-          ]);
-          const { clear, unmount } = render(
-            React.createElement(AddFlow, {
-              isInteractive: false,
-              initialResource: 'agent',
-              onExit: () => {
-                clear();
-                unmount();
-                process.exit(0);
-              },
-            })
-          );
         }
       });
 
@@ -412,6 +446,7 @@ export class AgentPrimitive extends BasePrimitive<AddAgentOptions, RemovableReso
       idleRuntimeSessionTimeout: options.idleTimeout,
       maxLifetime: options.maxLifetime,
       sessionStorageMountPath: options.sessionStorageMountPath,
+      withConfigBundle: options.withConfigBundle,
     };
 
     const agentPath = join(projectRoot, APP_DIR, options.name);
@@ -460,6 +495,10 @@ export class AgentPrimitive extends BasePrimitive<AddAgentOptions, RemovableReso
 
     if (options.language === 'Python') {
       await setupPythonProject({ projectDir: agentPath });
+    }
+
+    if (options.withConfigBundle) {
+      await createConfigBundleForAgent(options.name, configBaseDir);
     }
 
     return { success: true, agentName: options.name, agentPath };

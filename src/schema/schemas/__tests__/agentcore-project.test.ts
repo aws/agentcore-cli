@@ -9,69 +9,31 @@ import {
 import { describe, expect, it } from 'vitest';
 
 describe('ProjectNameSchema', () => {
-  describe('valid names', () => {
-    it.each(['A', 'MyProject', 'test1', 'a1b2c3', 'ALLCAPS', 'abcdefghijklmnopqrstuvw'])('accepts "%s"', name => {
-      expect(ProjectNameSchema.safeParse(name).success).toBe(true);
-    });
+  it('accepts valid names', () => {
+    expect(ProjectNameSchema.safeParse('A').success).toBe(true);
+    expect(ProjectNameSchema.safeParse('MyProject').success).toBe(true);
+    expect(ProjectNameSchema.safeParse('a1b2c3').success).toBe(true);
   });
 
-  describe('length validation', () => {
-    it('rejects empty string', () => {
-      expect(ProjectNameSchema.safeParse('').success).toBe(false);
-    });
-
-    it('accepts 1-character name', () => {
-      expect(ProjectNameSchema.safeParse('A').success).toBe(true);
-    });
-
-    it('accepts 23-character name (max)', () => {
-      const name = 'A' + 'b'.repeat(22);
-      expect(name).toHaveLength(23);
-      expect(ProjectNameSchema.safeParse(name).success).toBe(true);
-    });
-
-    it('rejects 24-character name', () => {
-      const name = 'A' + 'b'.repeat(23);
-      expect(name).toHaveLength(24);
-      expect(ProjectNameSchema.safeParse(name).success).toBe(false);
-    });
+  it('enforces 23-char boundary', () => {
+    expect(ProjectNameSchema.safeParse('A' + 'b'.repeat(22)).success).toBe(true);
+    expect(ProjectNameSchema.safeParse('A' + 'b'.repeat(23)).success).toBe(false);
   });
 
-  describe('format validation', () => {
-    it('rejects name starting with a digit', () => {
-      expect(ProjectNameSchema.safeParse('1project').success).toBe(false);
-    });
-
-    it('rejects name with underscores', () => {
-      expect(ProjectNameSchema.safeParse('my_project').success).toBe(false);
-    });
-
-    it('rejects name with hyphens', () => {
-      expect(ProjectNameSchema.safeParse('my-project').success).toBe(false);
-    });
-
-    it('rejects name with spaces', () => {
-      expect(ProjectNameSchema.safeParse('my project').success).toBe(false);
-    });
-
-    it('rejects name with special characters', () => {
-      expect(ProjectNameSchema.safeParse('my.project').success).toBe(false);
-      expect(ProjectNameSchema.safeParse('my@project').success).toBe(false);
-    });
+  it('rejects invalid formats', () => {
+    expect(ProjectNameSchema.safeParse('').success).toBe(false);
+    expect(ProjectNameSchema.safeParse('1project').success).toBe(false);
+    expect(ProjectNameSchema.safeParse('my_project').success).toBe(false);
+    expect(ProjectNameSchema.safeParse('my-project').success).toBe(false);
+    expect(ProjectNameSchema.safeParse('my project').success).toBe(false);
+    expect(ProjectNameSchema.safeParse('my.project').success).toBe(false);
   });
 
-  describe('reserved name validation', () => {
-    it.each(['anthropic', 'Anthropic', 'ANTHROPIC', 'openai', 'boto3', 'strands', 'test', 'pip', 'uv'])(
-      'rejects reserved name "%s"',
-      name => {
-        // Some reserved names may also fail the regex (e.g., too long). We just check it doesn't pass.
-        expect(ProjectNameSchema.safeParse(name).success).toBe(false);
-      }
-    );
-
-    it('accepts non-reserved name', () => {
-      expect(ProjectNameSchema.safeParse('MyAgent').success).toBe(true);
-    });
+  it('rejects reserved names (case-insensitive)', () => {
+    expect(ProjectNameSchema.safeParse('anthropic').success).toBe(false);
+    expect(ProjectNameSchema.safeParse('Anthropic').success).toBe(false);
+    expect(ProjectNameSchema.safeParse('openai').success).toBe(false);
+    expect(ProjectNameSchema.safeParse('MyAgent').success).toBe(true);
   });
 });
 

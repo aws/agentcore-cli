@@ -36,6 +36,8 @@ export const HELP_TEXT = {
   STATUS_REFRESH: '↑↓ select · Enter refresh · Esc back · Ctrl+C quit',
   /** Status screen refresh with target cycling */
   STATUS_TARGET_CYCLE: '↑↓ select · Enter refresh · T target · Esc back · Ctrl+C quit',
+  /** Variant config form */
+  VARIANTS_FORM: 'Enter to select · Esc back',
 } as const;
 
 /**

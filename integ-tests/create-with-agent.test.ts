@@ -49,7 +49,7 @@ describe('integration: create with Python agent', () => {
         '--json',
       ],
       testDir,
-      false
+      { skipInstall: false }
     );
 
     expect(result.exitCode, `stderr: ${result.stderr}`).toBe(0);

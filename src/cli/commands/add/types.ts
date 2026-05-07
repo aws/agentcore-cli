@@ -37,6 +37,7 @@ export interface AddAgentOptions extends VpcOptions {
   idleTimeout?: number | string;
   maxLifetime?: number | string;
   sessionStorageMountPath?: string;
+  withConfigBundle?: boolean;
   json?: boolean;
 }
 

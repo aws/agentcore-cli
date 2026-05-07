@@ -45,6 +45,30 @@ export {
 // Post-deploy observability setup
 export { setupTransactionSearch, type TransactionSearchSetupResult } from './post-deploy-observability';
 
+// Post-deploy HTTP gateways
+export {
+  setupHttpGateways,
+  type SetupHttpGatewaysOptions,
+  type SetupHttpGatewaysResult,
+  type HttpGatewaySetupResult,
+} from './post-deploy-http-gateways';
+
+// Post-deploy online eval enablement
+export {
+  enableOnlineEvalConfigs,
+  type EnableOnlineEvalsOptions,
+  type EnableOnlineEvalsResult,
+  type OnlineEvalEnableResult,
+} from './post-deploy-online-evals';
+
+// Post-deploy config bundles
+export {
+  setupConfigBundles,
+  type SetupConfigBundlesOptions,
+  type SetupConfigBundlesResult,
+  type ConfigBundleSetupResult,
+} from './post-deploy-config-bundles';
+
 // Re-export external requirements for convenience
 export {
   checkDependencyVersions,

@@ -6,6 +6,8 @@ export interface MultiSelectListProps<T extends SelectableItem> {
   selectedIndex: number;
   selectedIds: Set<string>;
   emptyMessage?: string;
+  /** Maximum number of visible items before scrolling. Undefined = show all. */
+  maxVisibleItems?: number;
 }
 
 export function MultiSelectList<T extends SelectableItem>(props: MultiSelectListProps<T>) {
@@ -18,11 +20,30 @@ export function MultiSelectList<T extends SelectableItem>(props: MultiSelectList
     );
   }
 
+  const { items, selectedIndex, selectedIds, maxVisibleItems } = props;
+  const needsScroll = maxVisibleItems !== undefined && items.length > maxVisibleItems;
+
+  let visibleItems = items;
+  let viewportStart = 0;
+  let viewportEnd = items.length;
+
+  if (needsScroll) {
+    const halfVisible = Math.floor(maxVisibleItems / 2);
+    viewportStart = Math.max(0, selectedIndex - halfVisible);
+    viewportEnd = Math.min(items.length, viewportStart + maxVisibleItems);
+    if (viewportEnd - viewportStart < maxVisibleItems) {
+      viewportStart = Math.max(0, viewportEnd - maxVisibleItems);
+    }
+    visibleItems = items.slice(viewportStart, viewportEnd);
+  }
+
   return (
     <Box flexDirection="column">
-      {props.items.map((item, idx) => {
-        const isCursor = idx === props.selectedIndex;
-        const isChecked = props.selectedIds.has(item.id);
+      {needsScroll && viewportStart > 0 && <Text dimColor> ↑ {viewportStart} more</Text>}
+      {visibleItems.map((item, idx) => {
+        const actualIndex = viewportStart + idx;
+        const isCursor = actualIndex === selectedIndex;
+        const isChecked = selectedIds.has(item.id);
         const checkbox = isChecked ? '[✓]' : '[ ]';
         return (
           <Box key={item.id}>
@@ -35,6 +56,7 @@ export function MultiSelectList<T extends SelectableItem>(props: MultiSelectList
           </Box>
         );
       })}
+      {needsScroll && viewportEnd < items.length && <Text dimColor> ↓ {items.length - viewportEnd} more</Text>}
     </Box>
   );
 }

@@ -4,6 +4,7 @@ import { RuntimeEndpointSchema } from '../../schema';
 import type { ResourceType } from '../commands/remove/types';
 import { getErrorMessage } from '../errors';
 import type { RemovalPreview, RemovalResult, SchemaChange } from '../operations/remove/types';
+import { cliCommandRun } from '../telemetry/cli-command-run.js';
 import { BasePrimitive } from './BasePrimitive';
 import { SOURCE_CODE_NOTE } from './constants';
 import type { AddResult, AddScreenComponent, RemovableResource } from './types';
@@ -248,12 +249,12 @@ export class RuntimeEndpointPrimitive extends BasePrimitive<AddRuntimeEndpointOp
           description?: string;
           json?: boolean;
         }) => {
-          try {
-            if (!findConfigRoot()) {
-              console.error('No agentcore project found. Run `agentcore create` first.');
-              process.exit(1);
-            }
+          if (!findConfigRoot()) {
+            console.error('No agentcore project found. Run `agentcore create` first.');
+            process.exit(1);
+          }
 
+          await cliCommandRun('add.runtime-endpoint', !!cliOptions.json, async () => {
             const result = await this.add({
               runtime: cliOptions.runtime,
               endpoint: cliOptions.endpoint,
@@ -261,23 +262,18 @@ export class RuntimeEndpointPrimitive extends BasePrimitive<AddRuntimeEndpointOp
               description: cliOptions.description,
             });
 
-            if (cliOptions.json) {
-              console.log(JSON.stringify(result));
-            } else if (result.success) {
-              console.log(`Added runtime endpoint '${cliOptions.endpoint}' to runtime '${cliOptions.runtime}'`);
-            } else {
-              console.error(result.error);
+            if (!result.success) {
+              throw new Error(result.error);
             }
 
-            process.exit(result.success ? 0 : 1);
-          } catch (error) {
             if (cliOptions.json) {
-              console.log(JSON.stringify({ success: false, error: getErrorMessage(error) }));
+              console.log(JSON.stringify(result));
             } else {
-              console.error(`Error: ${getErrorMessage(error)}`);
+              console.log(`Added runtime endpoint '${cliOptions.endpoint}' to runtime '${cliOptions.runtime}'`);
             }
-            process.exit(1);
-          }
+
+            return {};
+          });
         }
       );
 

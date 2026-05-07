@@ -1,1 +1,1 @@
-export { registerPause } from './command';
+export { registerPause, registerPromote } from './command';

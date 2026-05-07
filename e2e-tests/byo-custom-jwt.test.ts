@@ -48,7 +48,7 @@ const region = process.env.AWS_REGION ?? 'us-east-1';
  * Run the local CLI build without skipping install (needed for deploy).
  */
 function runLocalCLI(args: string[], cwd: string): Promise<RunResult> {
-  return runCLI(args, cwd, /* skipInstall */ false);
+  return runCLI(args, cwd, { skipInstall: false });
 }
 
 describe.sequential('e2e: BYO agent with CUSTOM_JWT auth', () => {

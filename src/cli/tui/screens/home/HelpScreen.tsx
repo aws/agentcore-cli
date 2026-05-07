@@ -218,11 +218,11 @@ export function HelpScreen(props: {
 
   const interactiveItems = useMemo((): DisplayItem[] => {
     return commands.filter(cmd => !cmd.cliOnly).flatMap(filterCommand);
-  }, [commands, query]);
+  }, [commands, filterCommand]);
 
   const cliOnlyItems = useMemo((): DisplayItem[] => {
     return commands.filter(cmd => cmd.cliOnly).flatMap(filterCommand);
-  }, [commands, query]);
+  }, [commands, filterCommand]);
 
   const visibleCliOnlyItems = query ? cliOnlyItems : showCliOnly ? cliOnlyItems : [];
 

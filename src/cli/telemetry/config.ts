@@ -1,8 +1,9 @@
+import { getOrCreateInstallationId, readGlobalConfig } from '../../lib/schemas/io/global-config.js';
 import { PACKAGE_VERSION } from '../constants.js';
-import { getOrCreateInstallationId, readGlobalConfig } from '../global-config.js';
 import { type ResourceAttributes, ResourceAttributesSchema } from './schemas/common-attributes.js';
 import { randomUUID } from 'crypto';
 import os from 'os';
+import { join } from 'path';
 
 // ---------------------------------------------------------------------------
 // Telemetry preference (opt-in / opt-out)
@@ -58,4 +59,8 @@ export async function resolveResourceAttributes(mode: 'cli' | 'tui'): Promise<Re
     'host.arch': os.arch(),
     'node.version': process.version,
   });
+}
+
+export function resolveAuditFilePath(outputDir: string, entrypoint: string, sessionId: string): string {
+  return join(outputDir, `${entrypoint}-${sessionId}.json`);
 }

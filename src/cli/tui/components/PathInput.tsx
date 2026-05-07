@@ -209,8 +209,30 @@ export function PathInput({
       return;
     }
 
-    // Enter: Validate and submit the current path
+    // Enter: If a dropdown item is highlighted, select it first; then validate and submit
     if (key.return) {
+      // If there's a highlighted match, auto-select it
+      if (matches.length > 0 && matches[clampedIndex]) {
+        const selected = matches[clampedIndex];
+        if (selected.isDirectory) {
+          // Drill into directory
+          setValue(selected.value);
+          setCursor(selected.value.length);
+          setSelectedIndex(0);
+          return;
+        }
+        // It's a file — select and submit it
+        const validationError = allowCreate
+          ? validatePathForCreate(selected.value, basePath)
+          : validatePath(selected.value, basePath, pathType);
+        if (validationError) {
+          setError(validationError);
+          return;
+        }
+        onSubmit(selected.value);
+        return;
+      }
+
       const trimmed = value.trim();
       if (!trimmed) {
         if (allowEmpty) {

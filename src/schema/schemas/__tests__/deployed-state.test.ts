@@ -196,43 +196,27 @@ describe('VpcConfigSchema', () => {
 });
 
 describe('CredentialDeployedStateSchema', () => {
-  it('accepts valid credential state with all fields', () => {
-    const result = CredentialDeployedStateSchema.safeParse({
-      credentialProviderArn: 'arn:aws:bedrock:us-east-1:123:credential-provider/my-cred',
-      clientSecretArn: 'arn:aws:secretsmanager:us-east-1:123:secret:my-secret',
-      callbackUrl: 'https://callback.example.com',
-    });
-    expect(result.success).toBe(true);
-  });
-
-  it('accepts credential state with only required credentialProviderArn', () => {
-    const result = CredentialDeployedStateSchema.safeParse({
-      credentialProviderArn: 'arn:aws:bedrock:us-east-1:123:credential-provider/my-cred',
-    });
-    expect(result.success).toBe(true);
-  });
-
-  it('accepts credential state with optional clientSecretArn', () => {
-    const result = CredentialDeployedStateSchema.safeParse({
-      credentialProviderArn: 'arn:aws:bedrock:us-east-1:123:credential-provider/my-cred',
-      clientSecretArn: 'arn:aws:secretsmanager:us-east-1:123:secret:my-secret',
-    });
-    expect(result.success).toBe(true);
-  });
-
-  it('accepts credential state with optional callbackUrl', () => {
-    const result = CredentialDeployedStateSchema.safeParse({
-      credentialProviderArn: 'arn:aws:bedrock:us-east-1:123:credential-provider/my-cred',
-      callbackUrl: 'https://callback.example.com',
-    });
-    expect(result.success).toBe(true);
+  it('accepts valid credential state with all fields and required-only', () => {
+    expect(
+      CredentialDeployedStateSchema.safeParse({
+        credentialProviderArn: 'arn:aws:bedrock:us-east-1:123:credential-provider/my-cred',
+        clientSecretArn: 'arn:aws:secretsmanager:us-east-1:123:secret:my-secret',
+        callbackUrl: 'https://callback.example.com',
+      }).success
+    ).toBe(true);
+    expect(
+      CredentialDeployedStateSchema.safeParse({
+        credentialProviderArn: 'arn:aws:bedrock:us-east-1:123:credential-provider/my-cred',
+      }).success
+    ).toBe(true);
   });
 
   it('rejects credential state without credentialProviderArn', () => {
-    const result = CredentialDeployedStateSchema.safeParse({
-      clientSecretArn: 'arn:aws:secretsmanager:us-east-1:123:secret:my-secret',
-    });
-    expect(result.success).toBe(false);
+    expect(
+      CredentialDeployedStateSchema.safeParse({
+        clientSecretArn: 'arn:aws:secretsmanager:us-east-1:123:secret:my-secret',
+      }).success
+    ).toBe(false);
   });
 });
 

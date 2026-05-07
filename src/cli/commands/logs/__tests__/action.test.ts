@@ -60,6 +60,9 @@ describe('resolveAgentContext', () => {
       onlineEvalConfigs: [],
       agentCoreGateways: [],
       policyEngines: [],
+      configBundles: [],
+      abTests: [],
+      httpGateways: [],
     },
     deployedState: {
       targets: {
@@ -121,6 +124,9 @@ describe('resolveAgentContext', () => {
         onlineEvalConfigs: [],
         agentCoreGateways: [],
         policyEngines: [],
+        configBundles: [],
+        abTests: [],
+        httpGateways: [],
       },
     });
     const result = resolveAgentContext(context, {});
@@ -162,6 +168,9 @@ describe('resolveAgentContext', () => {
         onlineEvalConfigs: [],
         agentCoreGateways: [],
         policyEngines: [],
+        configBundles: [],
+        abTests: [],
+        httpGateways: [],
       },
       deployedState: {
         targets: {
@@ -213,6 +222,9 @@ describe('resolveAgentContext', () => {
         onlineEvalConfigs: [],
         agentCoreGateways: [],
         policyEngines: [],
+        configBundles: [],
+        abTests: [],
+        httpGateways: [],
       },
     });
     const result = resolveAgentContext(context, {});

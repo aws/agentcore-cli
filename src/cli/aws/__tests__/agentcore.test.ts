@@ -1,4 +1,4 @@
-import { extractResult, parseA2AResponse, parseSSE, parseSSELine } from '../agentcore.js';
+import { buildBearerInvokeHeaders, extractResult, parseA2AResponse, parseSSE, parseSSELine } from '../agentcore.js';
 import { describe, expect, it } from 'vitest';
 
 describe('parseSSELine', () => {
@@ -174,5 +174,45 @@ describe('parseA2AResponse', () => {
 
   it('returns raw text for non-JSON input', () => {
     expect(parseA2AResponse('not json')).toBe('not json');
+  });
+});
+
+describe('buildBearerInvokeHeaders', () => {
+  it('includes custom headers from options.headers', () => {
+    const headers = buildBearerInvokeHeaders(
+      {
+        bearerToken: 'tok',
+        headers: {
+          'x-amzn-bedrock-agentcore-runtime-custom-foo': 'bar',
+          'x-amzn-bedrock-agentcore-runtime-custom-baz': 'qux',
+        },
+      },
+      'application/json'
+    );
+    expect(headers['x-amzn-bedrock-agentcore-runtime-custom-foo']).toBe('bar');
+    expect(headers['x-amzn-bedrock-agentcore-runtime-custom-baz']).toBe('qux');
+  });
+
+  it('sets Authorization, Content-Type, Accept, and default user ID', () => {
+    const headers = buildBearerInvokeHeaders({ bearerToken: 'tok' }, 'application/json');
+    expect(headers.Authorization).toBe('Bearer tok');
+    expect(headers['Content-Type']).toBe('application/json');
+    expect(headers.Accept).toBe('application/json');
+    expect(headers['X-Amzn-Bedrock-AgentCore-Runtime-User-Id']).toBe('default-user');
+  });
+
+  it('sets session ID header when provided', () => {
+    const headers = buildBearerInvokeHeaders({ bearerToken: 'tok', sessionId: 's1' }, 'application/json');
+    expect(headers['X-Amzn-Bedrock-AgentCore-Runtime-Session-Id']).toBe('s1');
+  });
+
+  it('omits session ID header when not provided', () => {
+    const headers = buildBearerInvokeHeaders({ bearerToken: 'tok' }, 'application/json');
+    expect(headers).not.toHaveProperty('X-Amzn-Bedrock-AgentCore-Runtime-Session-Id');
+  });
+
+  it('returns correct headers when options.headers is undefined', () => {
+    const headers = buildBearerInvokeHeaders({ bearerToken: 'tok' }, 'application/json');
+    expect(Object.keys(headers)).toHaveLength(4); // Authorization, Content-Type, Accept, User-Id
   });
 });

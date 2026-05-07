@@ -1,7 +1,7 @@
 import type { SelectableItem } from '../../components/SelectList';
 import { SelectScreen } from '../../components/SelectScreen';
 
-export type ImportType = 'runtime' | 'memory' | 'evaluator' | 'online-eval' | 'starter-toolkit';
+export type ImportType = 'runtime' | 'memory' | 'evaluator' | 'online-eval' | 'gateway' | 'starter-toolkit';
 
 interface ImportSelectItem extends SelectableItem {
   id: ImportType;
@@ -27,6 +27,11 @@ const IMPORT_OPTIONS: ImportSelectItem[] = [
     id: 'online-eval',
     title: 'Online Eval Config',
     description: 'Import an existing AgentCore Online Evaluation Config from your AWS account',
+  },
+  {
+    id: 'gateway',
+    title: 'Gateway',
+    description: 'Import an existing AgentCore Gateway (with targets) from your AWS account',
   },
   {
     id: 'starter-toolkit',

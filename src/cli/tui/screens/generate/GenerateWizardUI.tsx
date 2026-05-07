@@ -577,6 +577,12 @@ function ConfirmView({ config, credentialProjectName }: { config: GenerateConfig
             <Text>{config.sessionStorageMountPath}</Text>
           </Text>
         )}
+        {config.withConfigBundle && (
+          <Text>
+            <Text dimColor>Config Bundle: </Text>
+            <Text color="green">Yes (auto-created on deploy)</Text>
+          </Text>
+        )}
       </Box>
     </Box>
   );

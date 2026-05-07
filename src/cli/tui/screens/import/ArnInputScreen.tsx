@@ -24,6 +24,7 @@ const RESOURCE_TYPE_LABELS: Record<string, string> = {
   memory: 'Import Memory',
   evaluator: 'Import Evaluator',
   'online-eval': 'Import Online Eval Config',
+  gateway: 'Import Gateway',
 };
 
 export function ArnInputScreen({ resourceType, onSubmit, onExit }: ArnInputScreenProps) {
@@ -40,6 +41,7 @@ export function ArnInputScreen({ resourceType, onSubmit, onExit }: ArnInputScree
           onSubmit={onSubmit}
           onCancel={onExit}
           customValidation={validateArn}
+          expandable
         />
       </Panel>
     </Screen>

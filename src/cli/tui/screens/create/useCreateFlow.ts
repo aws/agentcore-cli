@@ -3,6 +3,7 @@ import type { DeployedState } from '../../../../schema';
 import { getErrorMessage } from '../../../errors';
 import { CreateLogger } from '../../../logging';
 import { initGitRepo, setupPythonProject, writeEnvFile, writeGitignore } from '../../../operations';
+import { createConfigBundleForAgent } from '../../../operations/agent/config-bundle-defaults';
 import {
   mapGenerateConfigToRenderConfig,
   mapModelProviderToCredentials,
@@ -276,6 +277,7 @@ export function useCreateFlow(cwd: string): CreateFlowState {
                   idleRuntimeSessionTimeout: addAgentConfig.idleRuntimeSessionTimeout,
                   maxLifetime: addAgentConfig.maxLifetime,
                   sessionStorageMountPath: addAgentConfig.sessionStorageMountPath,
+                  withConfigBundle: addAgentConfig.withConfigBundle,
                 };
 
                 logger.logSubStep(`Framework: ${generateConfig.sdk}`);
@@ -337,6 +339,11 @@ export function useCreateFlow(cwd: string): CreateFlowState {
                     spec => configIO.writeProjectSpec(spec),
                     () => configIO.readProjectSpec()
                   );
+                }
+                // Auto-create config bundle when opted in
+                if (addAgentConfig.withConfigBundle) {
+                  logger.logSubStep('Creating config bundle...');
+                  await createConfigBundleForAgent(addAgentConfig.name, configBaseDir);
                 }
               } else if (addAgentConfig.agentType === 'import') {
                 // Import path: delegate to executeImportAgent

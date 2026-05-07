@@ -34,7 +34,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Check authorization
-        uses: actions/github-script@v8
+        uses: actions/github-script@v9
         with:
           script: |
             // Skip auth check for workflow_dispatch (manual runs)
@@ -70,7 +70,7 @@ jobs:
           fetch-depth: 0
 
       - name: Add strands-running label
-        uses: actions/github-script@v8
+        uses: actions/github-script@v9
         with:
           script: |
             const issueNumber = ${{ inputs.issue_id || github.event.issue.number || github.event.pull_request.number }};
@@ -83,7 +83,7 @@ jobs:
 
       - name: Process inputs and build prompts
         id: process-inputs
-        uses: actions/github-script@v8
+        uses: actions/github-script@v9
         with:
           script: |
             const processInputs = require('./.github/scripts/javascript/process-inputs.cjs');
@@ -112,7 +112,7 @@ jobs:
 
       - name: Remove strands-running label
         if: always()
-        uses: actions/github-script@v8
+        uses: actions/github-script@v9
         with:
           script: |
             try {

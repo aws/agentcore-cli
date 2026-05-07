@@ -13,6 +13,9 @@ const defaultProject: AgentCoreProjectSpec = {
   onlineEvalConfigs: [],
   agentCoreGateways: [],
   policyEngines: [],
+  configBundles: [],
+  abTests: [],
+  httpGateways: [],
 };
 
 const { mockConfigExists, mockReadProjectSpec, mockWriteProjectSpec } = vi.hoisted(() => ({

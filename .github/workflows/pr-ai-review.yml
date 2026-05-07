@@ -1,0 +1,159 @@
+name: AgentCore Harness Reviewing
+
+on:
+  pull_request_target:
+    types: [opened, reopened]
+  workflow_dispatch:
+    inputs:
+      pr_url:
+        description: 'GitHub PR URL to review (e.g. https://github.com/org/repo/pull/123)'
+        required: true
+        type: string
+
+permissions:
+  id-token: write
+  pull-requests: write
+  contents: read
+
+jobs:
+  authorize:
+    runs-on: ubuntu-latest
+    if: github.event_name == 'workflow_dispatch' || github.event_name == 'pull_request_target'
+    outputs:
+      authorized: ${{ steps.auth.outputs.authorized }}
+    steps:
+      - name: Check authorization
+        id: auth
+        if: github.event_name == 'pull_request_target'
+        uses: actions/github-script@v9
+        with:
+          script: |
+            const user = context.payload.pull_request.user.login;
+            try {
+              // Try team membership first (works for org repos)
+              await github.rest.teams.getMembershipForUserInOrg({
+                org: context.repo.owner,
+                team_slug: 'agentcore-cli-devs',
+                username: user,
+              });
+              console.log(`${user} is a member of agentcore-cli-devs`);
+              core.setOutput('authorized', 'true');
+            } catch (teamError) {
+              // Fall back to collaborator write access (works for personal repos)
+              try {
+                const { data } = await github.rest.repos.getCollaboratorPermissionLevel({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  username: user,
+                });
+                const hasWriteAccess = ['write', 'admin'].includes(data.permission);
+                if (hasWriteAccess) {
+                  console.log(`${user} has write access (${data.permission})`);
+                  core.setOutput('authorized', 'true');
+                } else {
+                  console.log(`${user} does not have write access (${data.permission}) — skipping review`);
+                  core.setOutput('authorized', 'false');
+                }
+              } catch (collabError) {
+                console.log(`${user} authorization check failed (${collabError.status}) — skipping review`);
+                core.setOutput('authorized', 'false');
+              }
+            }
+
+      - name: Auto-authorize workflow_dispatch
+        id: dispatch-auth
+        if: github.event_name == 'workflow_dispatch'
+        run: echo "authorized=true" >> "$GITHUB_OUTPUT"
+
+  ai-review:
+    needs: authorize
+    if: needs.authorize.outputs.authorized == 'true' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Determine PR URL
+        id: pr-url
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "url=${{ inputs.pr_url }}" >> "$GITHUB_OUTPUT"
+          else
+            echo "url=${{ github.event.pull_request.html_url }}" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Extract PR number
+        id: pr-number
+        run: |
+          PR_URL="${{ steps.pr-url.outputs.url }}"
+          PR_NUM="${PR_URL##*/}"
+          echo "number=$PR_NUM" >> "$GITHUB_OUTPUT"
+
+      - name: Add agentcore-harness-reviewing label
+        uses: actions/github-script@v9
+        with:
+          script: |
+            const prNumber = parseInt('${{ steps.pr-number.outputs.number }}');
+            try {
+              await github.rest.issues.getLabel({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                name: 'agentcore-harness-reviewing',
+              });
+            } catch (e) {
+              if (e.status === 404) {
+                await github.rest.issues.createLabel({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  name: 'agentcore-harness-reviewing',
+                  color: '7B61FF',
+                  description: 'AgentCore Harness review in progress',
+                });
+              }
+            }
+            await github.rest.issues.addLabels({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: prNumber,
+              labels: ['agentcore-harness-reviewing'],
+            });
+
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v6
+        with:
+          role-to-assume: ${{ secrets.HARNESS_AWS_ROLE_ARN }}
+          aws-region: us-east-1
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+
+      - name: Install uv and dependencies
+        uses: astral-sh/setup-uv@v7
+
+      - name: Install boto3
+        run: uv pip install --system boto3
+
+      - name: Run AI review
+        env:
+          PR_URL: ${{ steps.pr-url.outputs.url }}
+          HARNESS_ARN: ${{ secrets.HARNESS_ARN }}
+        run: python .github/harness/harness_review.py
+
+      - name: Remove agentcore-harness-reviewing label
+        if: always()
+        uses: actions/github-script@v9
+        with:
+          script: |
+            const prNumber = parseInt('${{ steps.pr-number.outputs.number }}');
+            try {
+              await github.rest.issues.removeLabel({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: prNumber,
+                name: 'agentcore-harness-reviewing',
+              });
+            } catch (error) {
+              console.log('Label removal failed (may not exist):', error.message);
+            }

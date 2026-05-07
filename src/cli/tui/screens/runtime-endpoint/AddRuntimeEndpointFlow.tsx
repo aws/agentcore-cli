@@ -1,5 +1,6 @@
 import { ConfigIO } from '../../../../lib';
 import { runtimeEndpointPrimitive } from '../../../primitives/registry';
+import { withAddTelemetry } from '../../../telemetry/cli-command-run.js';
 import { ErrorPrompt } from '../../components';
 import { AddSuccessScreen } from '../add/AddSuccessScreen';
 import { AddRuntimeEndpointScreen } from './AddRuntimeEndpointScreen';
@@ -78,24 +79,24 @@ export function AddRuntimeEndpointFlow({
   }, [isInteractive, flow.name, onExit]);
 
   const handleCreateComplete = useCallback((config: RuntimeEndpointWizardConfig) => {
-    void runtimeEndpointPrimitive
-      .add({
+    void withAddTelemetry('add.runtime-endpoint', {}, () =>
+      runtimeEndpointPrimitive.add({
         runtime: config.runtimeName,
         endpoint: config.endpointName,
         version: config.version,
         description: config.description,
       })
-      .then(result => {
-        if (result.success) {
-          setFlow({
-            name: 'create-success',
-            endpointName: config.endpointName,
-            runtimeName: config.runtimeName,
-          });
-          return;
-        }
-        setFlow({ name: 'error', message: result.error ?? 'Unknown error' });
-      });
+    ).then(result => {
+      if (result.success) {
+        setFlow({
+          name: 'create-success',
+          endpointName: config.endpointName,
+          runtimeName: config.runtimeName,
+        });
+        return;
+      }
+      setFlow({ name: 'error', message: result.error ?? 'Unknown error' });
+    });
   }, []);
 
   if (flow.name === 'loading') {

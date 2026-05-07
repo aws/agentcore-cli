@@ -4,6 +4,7 @@ export { handleResources } from './resources';
 export { handleStart } from './start';
 export { handleInvocations } from './invocations';
 export { handleListTraces, handleGetTrace } from './traces';
+export { handleListCloudWatchTraces, handleGetCloudWatchTrace } from './cloudwatch-traces';
 export { handleListMemoryRecords, handleRetrieveMemoryRecords } from './memory';
 export { handleMcpProxy } from './mcp-proxy';
 export { handleA2AAgentCard } from './a2a-proxy';
