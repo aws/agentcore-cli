@@ -1,6 +1,8 @@
-// ─────────────────────────────────────────────────────────────────────────────
+import type { FilterRule } from '../../../../schema';
+
+// ────────────────────────────────────────────────────────────────────────────
 // Online Eval Config Flow Types
-// ─────────────────────────────────────────────────────────────────────────────
+// ────────────────────────────────────────────────────────────────────────────
 
 export type AddOnlineEvalStep =
   | 'name'
@@ -8,6 +10,8 @@ export type AddOnlineEvalStep =
   | 'endpoint'
   | 'evaluators'
   | 'samplingRate'
+  | 'sessionTimeoutMinutes'
+  | 'filters'
   | 'enableOnCreate'
   | 'confirm';
 
@@ -17,6 +21,10 @@ export interface AddOnlineEvalConfig {
   endpoint?: string;
   evaluators: string[];
   samplingRate: number;
+  /** Session idle timeout in minutes (1-1440). Undefined = use service/CDK default of 5. */
+  sessionTimeoutMinutes?: number;
+  /** Optional list of trace-level filters (max 20). */
+  filters?: FilterRule[];
   enableOnCreate: boolean;
   description?: string;
 }
@@ -33,13 +41,32 @@ export const ONLINE_EVAL_STEP_LABELS: Record<AddOnlineEvalStep, string> = {
   endpoint: 'Endpoint',
   evaluators: 'Evaluators',
   samplingRate: 'Rate',
+  sessionTimeoutMinutes: 'Timeout',
+  filters: 'Filters',
   enableOnCreate: 'Enable',
   confirm: 'Confirm',
 };
 
-// ─────────────────────────────────────────────────────────────────────────────
+// ────────────────────────────────────────────────────────────────────────────
+// Filter constants for the TUI builder
+// ────────────────────────────────────────────────────────────────────────────
+
+export const FILTER_OPERATOR_OPTIONS = [
+  'Equals',
+  'NotEquals',
+  'GreaterThan',
+  'LessThan',
+  'GreaterThanOrEqual',
+  'LessThanOrEqual',
+  'Contains',
+  'NotContains',
+] as const;
+
+export type FilterValueType = 'string' | 'double' | 'boolean';
+
+// ────────────────────────────────────────────────────────────────────────────
 // Evaluator Items (fetched from API)
-// ─────────────────────────────────────────────────────────────────────────────
+// ────────────────────────────────────────────────────────────────────────────
 
 export interface EvaluatorItem {
   /** ARN used as the stored identifier in the config */

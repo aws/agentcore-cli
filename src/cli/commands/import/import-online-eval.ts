@@ -44,6 +44,8 @@ export function toOnlineEvalConfigSpec(
     samplingRate: detail.samplingPercentage,
     ...(detail.description && { description: detail.description }),
     ...(detail.executionStatus === 'ENABLED' && { enableOnCreate: true }),
+    ...(detail.sessionTimeoutMinutes !== undefined && { sessionTimeoutMinutes: detail.sessionTimeoutMinutes }),
+    ...(detail.filters && detail.filters.length > 0 && { filters: detail.filters }),
   };
 }
 

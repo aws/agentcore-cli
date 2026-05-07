@@ -201,6 +201,14 @@ export interface ResourceOnlineEvalConfig {
   evaluators: string[];
   samplingRate: number;
   description?: string;
+  /** Session idle timeout in minutes (1-1440). Default: 5 */
+  sessionTimeoutMinutes?: number;
+  /** Optional filter rules limiting which traces are evaluated. */
+  filters?: Array<{
+    key: string;
+    operator: string;
+    value: { stringValue?: string; doubleValue?: number; booleanValue?: boolean };
+  }>;
   deploymentStatus?: ResourceDeploymentStatus;
   deployed?: DeployedOnlineEvalState;
 }

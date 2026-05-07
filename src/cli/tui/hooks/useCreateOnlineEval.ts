@@ -1,3 +1,4 @@
+import type { FilterRule } from '../../../schema';
 import { onlineEvalConfigPrimitive } from '../../primitives/registry';
 import { withAddTelemetry } from '../../telemetry/cli-command-run.js';
 import { useCallback, useEffect, useState } from 'react';
@@ -9,6 +10,7 @@ interface CreateOnlineEvalConfig {
   evaluators: string[];
   samplingRate: number;
   sessionTimeoutMinutes?: number;
+  filters?: FilterRule[];
   enableOnCreate: boolean;
 }
 
@@ -25,6 +27,8 @@ export function useCreateOnlineEval() {
         {
           evaluator_count: config.evaluators.length,
           enable_on_create: config.enableOnCreate ?? false,
+          filter_count: config.filters?.length ?? 0,
+          session_timeout_set: config.sessionTimeoutMinutes !== undefined,
         },
         () =>
           onlineEvalConfigPrimitive.add({
@@ -34,6 +38,7 @@ export function useCreateOnlineEval() {
             evaluators: config.evaluators,
             samplingRate: config.samplingRate,
             ...(config.sessionTimeoutMinutes !== undefined && { sessionTimeoutMinutes: config.sessionTimeoutMinutes }),
+            ...(config.filters && config.filters.length > 0 && { filters: config.filters }),
             enableOnCreate: config.enableOnCreate,
           })
       );

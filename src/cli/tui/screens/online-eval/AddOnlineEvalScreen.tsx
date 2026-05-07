@@ -12,6 +12,7 @@ import {
 import { HELP_TEXT } from '../../constants';
 import { useListNavigation, useMultiSelectNavigation } from '../../hooks';
 import { generateUniqueName } from '../../utils';
+import { FilterBuilder } from './FilterBuilder';
 import type { AddOnlineEvalConfig, EvaluatorItem, RuntimeEndpointEntry } from './types';
 import { DEFAULT_SAMPLING_RATE, ONLINE_EVAL_STEP_LABELS } from './types';
 import { useAddOnlineEvalWizard } from './useAddOnlineEvalWizard';
@@ -99,6 +100,8 @@ export function AddOnlineEvalScreen({
   const isEndpointStep = wizard.step === 'endpoint';
   const isEvaluatorsStep = wizard.step === 'evaluators';
   const isSamplingRateStep = wizard.step === 'samplingRate';
+  const isSessionTimeoutStep = wizard.step === 'sessionTimeoutMinutes';
+  const isFiltersStep = wizard.step === 'filters';
   const isEnableOnCreateStep = wizard.step === 'enableOnCreate';
   const isConfirmStep = wizard.step === 'confirm';
 
@@ -152,7 +155,7 @@ export function AddOnlineEvalScreen({
 
   const helpText = isEvaluatorsStep
     ? 'Space toggle · Enter confirm · Esc back'
-    : isAgentStep || isEndpointStep || isEnableOnCreateStep
+    : isAgentStep || isEndpointStep || isEnableOnCreateStep || isFiltersStep
       ? HELP_TEXT.NAVIGATE_SELECT
       : isConfirmStep
         ? HELP_TEXT.CONFIRM_CANCEL
@@ -230,6 +233,47 @@ export function AddOnlineEvalScreen({
           </Box>
         )}
 
+        {isSessionTimeoutStep && (
+          <Box flexDirection="column">
+            <Text dimColor>
+              How long after the last trace a session is considered complete (1–1440 minutes). Leave blank to use the
+              default of 5 minutes.
+            </Text>
+            <TextInput
+              key="sessionTimeoutMinutes"
+              prompt="Session timeout minutes (blank = default)"
+              initialValue=""
+              onSubmit={value => {
+                const trimmed = value.trim();
+                if (trimmed === '') {
+                  wizard.setSessionTimeoutMinutes(undefined);
+                  return;
+                }
+                const n = Number(trimmed);
+                if (!Number.isInteger(n) || n < 1 || n > 1440) return;
+                wizard.setSessionTimeoutMinutes(n);
+              }}
+              onCancel={() => wizard.goBack()}
+              customValidation={value => {
+                const trimmed = value.trim();
+                if (trimmed === '') return true;
+                const n = Number(trimmed);
+                if (!Number.isInteger(n)) return 'Must be a whole number (or blank)';
+                if (n < 1 || n > 1440) return 'Must be between 1 and 1440';
+                return true;
+              }}
+            />
+          </Box>
+        )}
+
+        {isFiltersStep && (
+          <FilterBuilder
+            initial={wizard.config.filters}
+            onComplete={filters => wizard.setFilters(filters.length > 0 ? filters : undefined)}
+            onCancel={() => wizard.goBack()}
+          />
+        )}
+
         {isEnableOnCreateStep && (
           <WizardSelect
             title="Enable on deploy?"
@@ -247,6 +291,20 @@ export function AddOnlineEvalScreen({
               ...(effectiveConfig.endpoint ? [{ label: 'Endpoint', value: effectiveConfig.endpoint }] : []),
               { label: 'Evaluators', value: effectiveConfig.evaluators.join(', ') },
               { label: 'Sampling Rate', value: `${effectiveConfig.samplingRate}%` },
+              {
+                label: 'Session Timeout',
+                value:
+                  effectiveConfig.sessionTimeoutMinutes !== undefined
+                    ? `${effectiveConfig.sessionTimeoutMinutes} min`
+                    : 'Default (5 min)',
+              },
+              {
+                label: 'Filters',
+                value:
+                  effectiveConfig.filters && effectiveConfig.filters.length > 0
+                    ? effectiveConfig.filters.map(f => `${f.key} ${f.operator} ${JSON.stringify(f.value)}`).join('; ')
+                    : 'None',
+              },
               { label: 'Enable on Deploy', value: effectiveConfig.enableOnCreate ? 'Yes' : 'No' },
             ]}
           />

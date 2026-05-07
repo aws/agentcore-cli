@@ -740,6 +740,10 @@ export interface GetOnlineEvalConfigResult {
   outputLogGroupName?: string;
   /** Sampling percentage from the rule config */
   samplingPercentage?: number;
+  /** Session idle timeout in minutes from rule.sessionConfig (if set) */
+  sessionTimeoutMinutes?: number;
+  /** Filter rules from rule.filters (if any) */
+  filters?: import('../../schema').FilterRule[];
   /** Service names from CloudWatch data source config (e.g. "projectName_agentName.DEFAULT") */
   serviceNames?: string[];
   /** Evaluator IDs referenced by this config */
@@ -763,6 +767,19 @@ export async function getOnlineEvaluationConfig(
 
   const logGroupName = response.outputConfig?.cloudWatchConfig?.logGroupName;
   const samplingPercentage = response.rule?.samplingConfig?.samplingPercentage;
+  const sessionTimeoutMinutes = response.rule?.sessionConfig?.sessionTimeoutMinutes;
+  const filters = (response.rule?.filters ?? [])
+    .map(f => {
+      if (!f.key || !f.operator || !f.value) return undefined;
+      const v = f.value;
+      const value: { stringValue?: string; doubleValue?: number; booleanValue?: boolean } = {};
+      if ('stringValue' in v && v.stringValue !== undefined) value.stringValue = v.stringValue;
+      else if ('doubleValue' in v && v.doubleValue !== undefined) value.doubleValue = v.doubleValue;
+      else if ('booleanValue' in v && v.booleanValue !== undefined) value.booleanValue = v.booleanValue;
+      else return undefined; // unknown variant — skip
+      return { key: f.key, operator: f.operator as import('../../schema').FilterOperator, value };
+    })
+    .filter((f): f is import('../../schema').FilterRule => f !== undefined);
   const serviceNames =
     response.dataSourceConfig && 'cloudWatchLogs' in response.dataSourceConfig
       ? response.dataSourceConfig.cloudWatchLogs?.serviceNames
@@ -781,6 +798,8 @@ export async function getOnlineEvaluationConfig(
     failureReason: response.failureReason,
     outputLogGroupName: logGroupName,
     samplingPercentage,
+    ...(sessionTimeoutMinutes !== undefined && { sessionTimeoutMinutes }),
+    ...(filters.length > 0 && { filters }),
     serviceNames,
     evaluatorIds,
   };

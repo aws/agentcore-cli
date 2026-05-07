@@ -54,8 +54,15 @@ export {
   RatingScaleSchema,
 } from './evaluator';
 
-export type { OnlineEvalConfig } from './online-eval-config';
-export { OnlineEvalConfigSchema, OnlineEvalConfigNameSchema } from './online-eval-config';
+export type { OnlineEvalConfig, FilterRule, FilterValue, FilterOperator } from './online-eval-config';
+export {
+  OnlineEvalConfigSchema,
+  OnlineEvalConfigNameSchema,
+  FilterRuleSchema,
+  FilterValueSchema,
+  FilterOperatorSchema,
+  FILTER_OPERATORS,
+} from './online-eval-config';
 
 export type { Policy, PolicyEngine, ValidationMode } from './policy';
 export {

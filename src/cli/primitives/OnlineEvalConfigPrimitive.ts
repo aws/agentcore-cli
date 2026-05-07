@@ -1,11 +1,12 @@
 import { findConfigRoot } from '../../lib';
-import type { OnlineEvalConfig } from '../../schema';
+import type { FilterRule, OnlineEvalConfig } from '../../schema';
 import { OnlineEvalConfigSchema } from '../../schema';
 import { getErrorMessage } from '../errors';
 import type { RemovalPreview, RemovalResult, SchemaChange } from '../operations/remove/types';
 import { cliCommandRun } from '../telemetry/cli-command-run.js';
 import { requireTTY } from '../tui/guards/tty';
 import { BasePrimitive } from './BasePrimitive';
+import { parseFilterFlags } from './filter-flag-parser';
 import type { AddResult, AddScreenComponent, RemovableResource } from './types';
 import type { Command } from '@commander-js/extra-typings';
 
@@ -16,6 +17,8 @@ export interface AddOnlineEvalConfigOptions {
   samplingRate: number;
   enableOnCreate?: boolean;
   endpoint?: string;
+  sessionTimeoutMinutes?: number;
+  filters?: FilterRule[];
 }
 
 export type RemovableOnlineEvalConfig = RemovableResource;
@@ -113,6 +116,11 @@ export class OnlineEvalConfigPrimitive extends BasePrimitive<AddOnlineEvalConfig
       .option('--sampling-rate <rate>', 'Sampling percentage (0.01-100) [non-interactive]')
       .option('--endpoint <name>', 'Runtime endpoint name to scope monitoring [non-interactive]')
       .option('--enable-on-create', 'Enable evaluation immediately after deploy [non-interactive]')
+      .option('--session-timeout-minutes <minutes>', 'Session idle timeout in minutes (1-1440) [non-interactive]')
+      .option(
+        '--filter <spec...>',
+        'Filter rule (repeatable). Format: key=<k>,op=<Operator>,type=<string|double|boolean>,value=<v> [non-interactive]'
+      )
       .option('--json', 'Output as JSON [non-interactive]')
       .action(
         async (cliOptions: {
@@ -123,6 +131,8 @@ export class OnlineEvalConfigPrimitive extends BasePrimitive<AddOnlineEvalConfig
           samplingRate?: string;
           endpoint?: string;
           enableOnCreate?: boolean;
+          sessionTimeoutMinutes?: string;
+          filter?: string[];
           json?: boolean;
         }) => {
           if (!findConfigRoot()) {
@@ -149,6 +159,19 @@ export class OnlineEvalConfigPrimitive extends BasePrimitive<AddOnlineEvalConfig
                 );
               }
 
+              let sessionTimeoutMinutes: number | undefined;
+              if (cliOptions.sessionTimeoutMinutes !== undefined) {
+                const parsed = Number(cliOptions.sessionTimeoutMinutes);
+                if (!Number.isInteger(parsed) || parsed < 1 || parsed > 1440) {
+                  throw new Error(
+                    `Invalid --session-timeout-minutes "${cliOptions.sessionTimeoutMinutes}". Must be an integer between 1 and 1440`
+                  );
+                }
+                sessionTimeoutMinutes = parsed;
+              }
+
+              const filters = parseFilterFlags(cliOptions.filter);
+
               const result = await this.add({
                 name: cliOptions.name,
                 agent: cliOptions.runtime,
@@ -156,6 +179,8 @@ export class OnlineEvalConfigPrimitive extends BasePrimitive<AddOnlineEvalConfig
                 samplingRate,
                 enableOnCreate: cliOptions.enableOnCreate,
                 endpoint: cliOptions.endpoint,
+                ...(sessionTimeoutMinutes !== undefined && { sessionTimeoutMinutes }),
+                ...(filters && filters.length > 0 && { filters }),
               });
 
               if (!result.success) {
@@ -171,6 +196,8 @@ export class OnlineEvalConfigPrimitive extends BasePrimitive<AddOnlineEvalConfig
               return {
                 evaluator_count: allEvaluators.length,
                 enable_on_create: cliOptions.enableOnCreate ?? false,
+                filter_count: filters?.length ?? 0,
+                session_timeout_set: sessionTimeoutMinutes !== undefined,
               };
             });
           } else {
@@ -235,6 +262,8 @@ export class OnlineEvalConfigPrimitive extends BasePrimitive<AddOnlineEvalConfig
       samplingRate: options.samplingRate,
       ...(options.enableOnCreate !== undefined && { enableOnCreate: options.enableOnCreate }),
       ...(options.endpoint && { endpoint: options.endpoint }),
+      ...(options.sessionTimeoutMinutes !== undefined && { sessionTimeoutMinutes: options.sessionTimeoutMinutes }),
+      ...(options.filters && options.filters.length > 0 && { filters: options.filters }),
     };
 
     project.onlineEvalConfigs.push(config);

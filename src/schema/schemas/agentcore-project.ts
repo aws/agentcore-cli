@@ -34,7 +34,7 @@ export {
 };
 export { EvaluationLevelSchema };
 export type { MemoryStrategy, MemoryStrategyType } from './primitives/memory';
-export type { OnlineEvalConfig } from './primitives/online-eval-config';
+export type { OnlineEvalConfig, FilterRule, FilterValue, FilterOperator } from './primitives/online-eval-config';
 export { OnlineEvalConfigSchema, OnlineEvalConfigNameSchema } from './primitives/online-eval-config';
 export type {
   CodeBasedConfig,

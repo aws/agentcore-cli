@@ -176,8 +176,24 @@ interface OnlineEvalConfig {
   evaluators: string[]; // @min 1 — evaluator names, Builtin.* IDs, or evaluator ARNs
   samplingRate: number; // @min 0.01 @max 100 (percentage)
   description?: string; // @max 200
+  sessionTimeoutMinutes?: number; // @min 1 @max 1440 — session idle timeout. Default: 5
+  filters?: FilterRule[]; // Optional trace-level filters (max 20)
   enableOnCreate?: boolean; // Whether to enable on create (default: true)
   tags?: Record<string, string>;
+}
+
+interface FilterRule {
+  key: string;
+  operator:
+    | 'Equals'
+    | 'NotEquals'
+    | 'GreaterThan'
+    | 'LessThan'
+    | 'GreaterThanOrEqual'
+    | 'LessThanOrEqual'
+    | 'Contains'
+    | 'NotContains';
+  value: { stringValue?: string; doubleValue?: number; booleanValue?: boolean }; // exactly one variant
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

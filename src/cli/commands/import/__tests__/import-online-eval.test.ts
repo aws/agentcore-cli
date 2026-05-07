@@ -106,6 +106,50 @@ describe('toOnlineEvalConfigSpec', () => {
     expect(result.description).toBeUndefined();
   });
 
+  it('preserves sessionTimeoutMinutes and filters when present', () => {
+    const detail: GetOnlineEvalConfigResult = {
+      configId: 'oec-rich',
+      configArn: 'arn:aws:bedrock-agentcore:us-west-2:123456789012:online-evaluation-config/oec-rich',
+      configName: 'Rich',
+      status: 'ACTIVE',
+      executionStatus: 'ENABLED',
+      samplingPercentage: 30,
+      sessionTimeoutMinutes: 60,
+      filters: [
+        { key: 'userId', operator: 'Equals', value: { stringValue: 'abc' } },
+        { key: 'score', operator: 'GreaterThan', value: { doubleValue: 0.5 } },
+      ],
+      serviceNames: ['agent.DEFAULT'],
+      evaluatorIds: ['eval-1'],
+    };
+
+    const result = toOnlineEvalConfigSpec(detail, 'Rich', 'agent', ['eval_one']);
+
+    expect(result.sessionTimeoutMinutes).toBe(60);
+    expect(result.filters).toEqual([
+      { key: 'userId', operator: 'Equals', value: { stringValue: 'abc' } },
+      { key: 'score', operator: 'GreaterThan', value: { doubleValue: 0.5 } },
+    ]);
+  });
+
+  it('omits sessionTimeoutMinutes and filters when absent on the source config', () => {
+    const detail: GetOnlineEvalConfigResult = {
+      configId: 'oec-bare',
+      configArn: 'arn:aws:bedrock-agentcore:us-west-2:123456789012:online-evaluation-config/oec-bare',
+      configName: 'Bare',
+      status: 'ACTIVE',
+      executionStatus: 'ENABLED',
+      samplingPercentage: 5,
+      serviceNames: ['agent.DEFAULT'],
+      evaluatorIds: ['eval-1'],
+    };
+
+    const result = toOnlineEvalConfigSpec(detail, 'Bare', 'agent', ['eval_one']);
+
+    expect(result.sessionTimeoutMinutes).toBeUndefined();
+    expect(result.filters).toBeUndefined();
+  });
+
   it('throws when sampling percentage is missing', () => {
     const detail: GetOnlineEvalConfigResult = {
       configId: 'oec-no-sampling',

@@ -1,4 +1,10 @@
-import { OnlineEvalConfigNameSchema, OnlineEvalConfigSchema } from '../online-eval-config';
+import {
+  FILTER_OPERATORS,
+  FilterRuleSchema,
+  FilterValueSchema,
+  OnlineEvalConfigNameSchema,
+  OnlineEvalConfigSchema,
+} from '../online-eval-config';
 import { describe, expect, it } from 'vitest';
 
 describe('OnlineEvalConfigNameSchema', () => {
@@ -97,5 +103,84 @@ describe('OnlineEvalConfigSchema', () => {
 
   it('accepts config without description and enableOnCreate', () => {
     expect(OnlineEvalConfigSchema.safeParse(validConfig).success).toBe(true);
+  });
+
+  it('accepts sessionTimeoutMinutes within bounds', () => {
+    expect(OnlineEvalConfigSchema.safeParse({ ...validConfig, sessionTimeoutMinutes: 1 }).success).toBe(true);
+    expect(OnlineEvalConfigSchema.safeParse({ ...validConfig, sessionTimeoutMinutes: 1440 }).success).toBe(true);
+  });
+
+  it('rejects sessionTimeoutMinutes out of bounds', () => {
+    expect(OnlineEvalConfigSchema.safeParse({ ...validConfig, sessionTimeoutMinutes: 0 }).success).toBe(false);
+    expect(OnlineEvalConfigSchema.safeParse({ ...validConfig, sessionTimeoutMinutes: 1441 }).success).toBe(false);
+  });
+
+  it('rejects non-integer sessionTimeoutMinutes', () => {
+    expect(OnlineEvalConfigSchema.safeParse({ ...validConfig, sessionTimeoutMinutes: 5.5 }).success).toBe(false);
+  });
+
+  it('accepts a config with filters of each value variant', () => {
+    const result = OnlineEvalConfigSchema.safeParse({
+      ...validConfig,
+      filters: [
+        { key: 'userId', operator: 'Equals', value: { stringValue: 'abc' } },
+        { key: 'score', operator: 'GreaterThan', value: { doubleValue: 0.5 } },
+        { key: 'isPremium', operator: 'Equals', value: { booleanValue: true } },
+      ],
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it('rejects filters with multiple value variants', () => {
+    const result = OnlineEvalConfigSchema.safeParse({
+      ...validConfig,
+      filters: [{ key: 'k', operator: 'Equals', value: { stringValue: 'a', doubleValue: 1 } }],
+    });
+    expect(result.success).toBe(false);
+  });
+});
+
+describe('FilterValueSchema', () => {
+  it('rejects empty value', () => {
+    expect(FilterValueSchema.safeParse({}).success).toBe(false);
+  });
+
+  it('accepts each variant alone', () => {
+    expect(FilterValueSchema.safeParse({ stringValue: 'x' }).success).toBe(true);
+    expect(FilterValueSchema.safeParse({ doubleValue: 1.2 }).success).toBe(true);
+    expect(FilterValueSchema.safeParse({ booleanValue: false }).success).toBe(true);
+  });
+});
+
+describe('FilterRuleSchema', () => {
+  it('accepts each documented operator', () => {
+    for (const op of FILTER_OPERATORS) {
+      const result = FilterRuleSchema.safeParse({
+        key: 'userId',
+        operator: op,
+        value: { stringValue: 'abc' },
+      });
+      expect(result.success).toBe(true);
+    }
+  });
+
+  it('rejects unknown operator', () => {
+    expect(
+      FilterRuleSchema.safeParse({
+        key: 'userId',
+        operator: 'StartsWith',
+        value: { stringValue: 'abc' },
+      }).success
+    ).toBe(false);
+  });
+
+  it('rejects empty key', () => {
+    expect(
+      FilterRuleSchema.safeParse({
+        key: '',
+        operator: 'Equals',
+        value: { stringValue: 'abc' },
+      }).success
+    ).toBe(false);
   });
 });

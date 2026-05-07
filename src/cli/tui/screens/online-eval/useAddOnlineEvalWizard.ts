@@ -1,3 +1,4 @@
+import type { FilterRule } from '../../../../schema';
 import type { AddOnlineEvalConfig, AddOnlineEvalStep } from './types';
 import { DEFAULT_SAMPLING_RATE } from './types';
 import { useCallback, useRef, useState } from 'react';
@@ -5,9 +6,28 @@ import { useCallback, useRef, useState } from 'react';
 function getAllSteps(agentCount: number): AddOnlineEvalStep[] {
   if (agentCount <= 1) {
     // endpoint step is included but will be skipped dynamically when no endpoints exist
-    return ['name', 'endpoint', 'evaluators', 'samplingRate', 'enableOnCreate', 'confirm'];
+    return [
+      'name',
+      'endpoint',
+      'evaluators',
+      'samplingRate',
+      'sessionTimeoutMinutes',
+      'filters',
+      'enableOnCreate',
+      'confirm',
+    ];
   }
-  return ['name', 'agent', 'endpoint', 'evaluators', 'samplingRate', 'enableOnCreate', 'confirm'];
+  return [
+    'name',
+    'agent',
+    'endpoint',
+    'evaluators',
+    'samplingRate',
+    'sessionTimeoutMinutes',
+    'filters',
+    'enableOnCreate',
+    'confirm',
+  ];
 }
 
 function getDefaultConfig(): AddOnlineEvalConfig {
@@ -17,6 +37,8 @@ function getDefaultConfig(): AddOnlineEvalConfig {
     endpoint: undefined,
     evaluators: [],
     samplingRate: DEFAULT_SAMPLING_RATE,
+    sessionTimeoutMinutes: undefined,
+    filters: undefined,
     enableOnCreate: true,
   };
 }
@@ -102,6 +124,25 @@ export function useAddOnlineEvalWizard(agentCount: number) {
     [nextStep, setConfig, setStep]
   );
 
+  const setSessionTimeoutMinutes = useCallback(
+    (sessionTimeoutMinutes: number | undefined) => {
+      setConfig(c => ({ ...c, sessionTimeoutMinutes }));
+      const next = nextStep('sessionTimeoutMinutes');
+      if (next) setStep(next);
+    },
+    [nextStep, setConfig, setStep]
+  );
+
+  const setFilters = useCallback(
+    (filters: FilterRule[] | undefined) => {
+      const cleaned = filters && filters.length > 0 ? filters : undefined;
+      setConfig(c => ({ ...c, filters: cleaned }));
+      const next = nextStep('filters');
+      if (next) setStep(next);
+    },
+    [nextStep, setConfig, setStep]
+  );
+
   const setEnableOnCreate = useCallback(
     (enableOnCreate: boolean) => {
       setConfig(c => ({ ...c, enableOnCreate }));
@@ -128,6 +169,8 @@ export function useAddOnlineEvalWizard(agentCount: number) {
     setEndpoint,
     setEvaluators,
     setSamplingRate,
+    setSessionTimeoutMinutes,
+    setFilters,
     setEnableOnCreate,
     reset,
   };
