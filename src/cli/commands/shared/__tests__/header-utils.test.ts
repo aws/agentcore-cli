@@ -39,6 +39,21 @@ describe('normalizeHeaderName', () => {
   it('auto-prefixes suffix with hyphens like "My-Custom-Header"', () => {
     expect(normalizeHeaderName('My-Custom-Header')).toBe('X-Amzn-Bedrock-AgentCore-Runtime-Custom-My-Custom-Header');
   });
+
+  it('preserves a header already under the broader namespace prefix without re-prefixing', () => {
+    expect(normalizeHeaderName('X-Amzn-Bedrock-AgentCore-Runtime-User-Id')).toBe(
+      'X-Amzn-Bedrock-AgentCore-Runtime-User-Id'
+    );
+    expect(normalizeHeaderName('X-Amzn-Bedrock-AgentCore-Runtime-Session-Id')).toBe(
+      'X-Amzn-Bedrock-AgentCore-Runtime-Session-Id'
+    );
+  });
+
+  it('canonicalizes the namespace prefix casing for non-Custom headers', () => {
+    expect(normalizeHeaderName('x-amzn-bedrock-agentcore-Runtime-User-Id')).toBe(
+      'X-Amzn-Bedrock-AgentCore-Runtime-User-Id'
+    );
+  });
 });
 
 describe('parseAndNormalizeHeaders', () => {
@@ -126,6 +141,16 @@ describe('validateHeaderAllowlist', () => {
     const result = validateHeaderAllowlist('My@Header');
     expect(result.success).toBe(false);
     expect(result.error).toContain('Invalid header name');
+  });
+
+  it('accepts headers under the broader X-Amzn-Bedrock-AgentCore- namespace', () => {
+    expect(validateHeaderAllowlist('X-Amzn-Bedrock-AgentCore-Runtime-User-Id')).toEqual({ success: true });
+    expect(validateHeaderAllowlist('X-Amzn-Bedrock-AgentCore-Runtime-Session-Id')).toEqual({ success: true });
+    expect(
+      validateHeaderAllowlist(
+        'Authorization, X-Amzn-Bedrock-AgentCore-Runtime-User-Id, X-Amzn-Bedrock-AgentCore-Runtime-Custom-Foo'
+      )
+    ).toEqual({ success: true });
   });
 });
 

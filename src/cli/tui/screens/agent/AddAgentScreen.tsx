@@ -1181,8 +1181,9 @@ export function AddAgentScreen({ existingAgentNames, onComplete, onExit }: AddAg
             />
             <Box marginTop={1}>
               <Text dimColor>
-                Enter header suffixes or full names. We auto-prefix with X-Amzn-Bedrock-AgentCore-Runtime-Custom- if
-                needed. &apos;Authorization&apos; is also accepted.
+                Enter header suffixes or full names. Bare names are auto-prefixed with
+                X-Amzn-Bedrock-AgentCore-Runtime-Custom-. &apos;Authorization&apos; and any header under the
+                X-Amzn-Bedrock-AgentCore- namespace are also accepted.
               </Text>
             </Box>
           </Box>

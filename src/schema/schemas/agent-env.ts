@@ -125,19 +125,51 @@ export type NetworkConfig = z.infer<typeof NetworkConfigSchema>;
 
 /**
  * Allowed request headers for the runtime.
- * Each header must be 'Authorization' or start with 'X-Amzn-Bedrock-AgentCore-Runtime-Custom-'.
+ *
+ * Per AWS Bedrock AgentCore runtime header allowlist documentation
+ * (https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/runtime-header-allowlist.html),
+ * each header must be either:
+ *  - 'Authorization' (case-sensitive canonical form), or
+ *  - any header beginning with the AgentCore runtime namespace prefix
+ *    'X-Amzn-Bedrock-AgentCore-' (case-insensitive), e.g.
+ *      * 'X-Amzn-Bedrock-AgentCore-Runtime-Custom-<Suffix>'
+ *      * 'X-Amzn-Bedrock-AgentCore-Runtime-User-Id'
+ *      * 'X-Amzn-Bedrock-AgentCore-Runtime-Session-Id'
+ *      * other documented headers under the same namespace
+ *
  * Maximum 20 headers.
+ *
+ * NOTE: This file is duplicated in agentcore-l3-cdk-constructs/src/schema/schemas/agent-env.ts.
+ * Keep both copies in sync.
  */
 export const HEADER_ALLOWLIST_PREFIX = 'X-Amzn-Bedrock-AgentCore-Runtime-Custom-';
+export const HEADER_ALLOWLIST_NAMESPACE_PREFIX = 'X-Amzn-Bedrock-AgentCore-';
 export const MAX_HEADER_ALLOWLIST_SIZE = 20;
+
+/**
+ * Pattern matching any header name that is an acceptable entry in the
+ * request header allowlist. Matches case-insensitively for the namespace
+ * prefix to accommodate user-supplied casing variations; the runtime
+ * itself is HTTP-header-case-insensitive.
+ */
+export const REQUEST_HEADER_ALLOWLIST_PATTERN = /^(Authorization|X-Amzn-Bedrock-AgentCore-[A-Za-z0-9-]+)$/i;
+
+/**
+ * Returns true when the given header name is allowed in the runtime
+ * request header allowlist (Authorization or any header under the
+ * AgentCore runtime namespace prefix).
+ */
+export function isAllowedRequestHeader(name: string): boolean {
+  return REQUEST_HEADER_ALLOWLIST_PATTERN.test(name);
+}
 
 export const RequestHeaderAllowlistSchema = z
   .array(
     z
       .string()
       .refine(
-        val => val === 'Authorization' || val.startsWith(HEADER_ALLOWLIST_PREFIX),
-        `Must be "Authorization" or start with "${HEADER_ALLOWLIST_PREFIX}"`
+        isAllowedRequestHeader,
+        `Must be "Authorization" or start with "${HEADER_ALLOWLIST_NAMESPACE_PREFIX}". See https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/runtime-header-allowlist.html`
       )
   )
   .max(MAX_HEADER_ALLOWLIST_SIZE, `Maximum ${MAX_HEADER_ALLOWLIST_SIZE} headers allowed`);

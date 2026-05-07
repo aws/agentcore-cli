@@ -6,11 +6,17 @@ import {
   EnvVarNameSchema,
   EnvVarSchema,
   GatewayNameSchema,
+  HEADER_ALLOWLIST_NAMESPACE_PREFIX,
+  HEADER_ALLOWLIST_PREFIX,
   InstrumentationSchema,
   LifecycleConfigurationSchema,
+  MAX_HEADER_ALLOWLIST_SIZE,
   NetworkConfigSchema,
+  REQUEST_HEADER_ALLOWLIST_PATTERN,
+  RequestHeaderAllowlistSchema,
   RuntimeEndpointNameSchema,
   RuntimeEndpointSchema,
+  isAllowedRequestHeader,
 } from '../agent-env.js';
 import { describe, expect, it } from 'vitest';
 
@@ -621,6 +627,61 @@ describe('AgentEnvSpecSchema - endpoints', () => {
     expect(result.success).toBe(true);
     if (result.success) {
       expect(result.data.endpoints!.prod).toEqual({ version: 5 });
+    }
+  });
+});
+
+describe('REQUEST_HEADER_ALLOWLIST_PATTERN / isAllowedRequestHeader', () => {
+  it('matches Authorization (case-insensitive)', () => {
+    expect(REQUEST_HEADER_ALLOWLIST_PATTERN.test('Authorization')).toBe(true);
+    expect(isAllowedRequestHeader('authorization')).toBe(true);
+  });
+
+  it('matches headers under the AgentCore namespace prefix', () => {
+    expect(isAllowedRequestHeader('X-Amzn-Bedrock-AgentCore-Runtime-Custom-Foo')).toBe(true);
+    expect(isAllowedRequestHeader('X-Amzn-Bedrock-AgentCore-Runtime-User-Id')).toBe(true);
+    expect(isAllowedRequestHeader('X-Amzn-Bedrock-AgentCore-Runtime-Session-Id')).toBe(true);
+  });
+
+  it('rejects non-matching names and the bare namespace prefix', () => {
+    expect(isAllowedRequestHeader('Foo')).toBe(false);
+    expect(isAllowedRequestHeader('X-Custom-Foo')).toBe(false);
+    expect(isAllowedRequestHeader(HEADER_ALLOWLIST_NAMESPACE_PREFIX)).toBe(false);
+    expect(isAllowedRequestHeader('')).toBe(false);
+  });
+});
+
+describe('RequestHeaderAllowlistSchema', () => {
+  it('accepts Authorization and Custom- prefixed headers', () => {
+    const result = RequestHeaderAllowlistSchema.safeParse(['Authorization', `${HEADER_ALLOWLIST_PREFIX}Foo`]);
+    expect(result.success).toBe(true);
+  });
+
+  it('accepts the broader namespace prefix', () => {
+    const result = RequestHeaderAllowlistSchema.safeParse([
+      'X-Amzn-Bedrock-AgentCore-Runtime-User-Id',
+      'X-Amzn-Bedrock-AgentCore-Runtime-Session-Id',
+    ]);
+    expect(result.success).toBe(true);
+  });
+
+  it('rejects bare names without the namespace prefix', () => {
+    const result = RequestHeaderAllowlistSchema.safeParse(['Foo-Bar']);
+    expect(result.success).toBe(false);
+  });
+
+  it(`rejects more than ${MAX_HEADER_ALLOWLIST_SIZE} headers`, () => {
+    const headers = Array.from({ length: MAX_HEADER_ALLOWLIST_SIZE + 1 }, (_, i) => `${HEADER_ALLOWLIST_PREFIX}H${i}`);
+    const result = RequestHeaderAllowlistSchema.safeParse(headers);
+    expect(result.success).toBe(false);
+  });
+
+  it('error message references the AWS doc URL', () => {
+    const result = RequestHeaderAllowlistSchema.safeParse(['Foo']);
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      const allMessages = result.error.issues.map(i => i.message).join(' | ');
+      expect(allMessages).toContain('runtime-header-allowlist.html');
     }
   });
 });

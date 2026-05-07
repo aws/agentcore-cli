@@ -1,9 +1,12 @@
 import {
+  HEADER_ALLOWLIST_NAMESPACE_PREFIX as HEADER_ALLOWLIST_NAMESPACE_PREFIX_FROM_SCHEMA,
   HEADER_ALLOWLIST_PREFIX as HEADER_ALLOWLIST_PREFIX_FROM_SCHEMA,
   MAX_HEADER_ALLOWLIST_SIZE as MAX_HEADER_ALLOWLIST_SIZE_FROM_SCHEMA,
+  isAllowedRequestHeader,
 } from '../../../schema/schemas/agent-env';
 
 export const HEADER_ALLOWLIST_PREFIX = HEADER_ALLOWLIST_PREFIX_FROM_SCHEMA;
+export const HEADER_ALLOWLIST_NAMESPACE_PREFIX = HEADER_ALLOWLIST_NAMESPACE_PREFIX_FROM_SCHEMA;
 export const MAX_HEADER_ALLOWLIST_SIZE = MAX_HEADER_ALLOWLIST_SIZE_FROM_SCHEMA;
 
 const HEADER_NAME_PATTERN = /^[A-Za-z0-9-]+$/;
@@ -11,8 +14,12 @@ const HEADER_NAME_PATTERN = /^[A-Za-z0-9-]+$/;
 /**
  * Normalize a header name according to AgentCore Runtime rules:
  * - "Authorization" (case-insensitive) -> "Authorization"
- * - Headers already starting with the prefix (case-insensitive) -> canonical prefix + original suffix
- * - Other headers -> prepend the prefix
+ * - Headers already starting with the canonical custom prefix
+ *   (case-insensitive) -> canonical prefix + original suffix
+ * - Headers already under the broader 'X-Amzn-Bedrock-AgentCore-' namespace
+ *   (case-insensitive) -> canonical namespace prefix + original suffix
+ *   (i.e. these are accepted as-is and NOT re-prefixed with the Custom- prefix)
+ * - Other (bare) header names -> prepend the Custom- prefix
  */
 export function normalizeHeaderName(input: string): string {
   if (input.toLowerCase() === 'authorization') {
@@ -20,6 +27,9 @@ export function normalizeHeaderName(input: string): string {
   }
   if (input.toLowerCase().startsWith(HEADER_ALLOWLIST_PREFIX.toLowerCase())) {
     return `${HEADER_ALLOWLIST_PREFIX}${input.slice(HEADER_ALLOWLIST_PREFIX.length)}`;
+  }
+  if (input.toLowerCase().startsWith(HEADER_ALLOWLIST_NAMESPACE_PREFIX.toLowerCase())) {
+    return `${HEADER_ALLOWLIST_NAMESPACE_PREFIX}${input.slice(HEADER_ALLOWLIST_NAMESPACE_PREFIX.length)}`;
   }
   return `${HEADER_ALLOWLIST_PREFIX}${input}`;
 }
@@ -67,6 +77,15 @@ export function validateHeaderAllowlist(value: string): { success: boolean; erro
       success: false,
       error: `Header allowlist cannot exceed ${MAX_HEADER_ALLOWLIST_SIZE} headers. Provided: ${headers.length}`,
     };
+  }
+
+  for (const header of headers) {
+    if (!isAllowedRequestHeader(header)) {
+      return {
+        success: false,
+        error: `Invalid header "${header}". Must be "Authorization" or start with "${HEADER_ALLOWLIST_NAMESPACE_PREFIX}". See https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/runtime-header-allowlist.html`,
+      };
+    }
   }
 
   return { success: true };
