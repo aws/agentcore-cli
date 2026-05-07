@@ -1,52 +1,58 @@
 import { type UpdateCheckResult, checkForUpdate, printUpdateNotification } from '../update-notifier.js';
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { rmSync } from 'fs';
+import { mkdir, readFile, writeFile } from 'fs/promises';
+import { join } from 'path';
+import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-const { mockReadFile, mockWriteFile, mockMkdir } = vi.hoisted(() => ({
-  mockReadFile: vi.fn(),
-  mockWriteFile: vi.fn(),
-  mockMkdir: vi.fn(),
+const tmpDir = vi.hoisted(() => {
+  /* eslint-disable @typescript-eslint/no-require-imports */
+  const fs = require('fs');
+  const os = require('os');
+  const path = require('path');
+  /* eslint-enable @typescript-eslint/no-require-imports */
+  return fs.mkdtempSync(path.join(os.tmpdir(), 'update-notifier-test-'));
+});
+
+vi.mock('../../lib/schemas/io/global-config.js', () => ({
+  GLOBAL_CONFIG_DIR: tmpDir,
 }));
 
-vi.mock('fs/promises', () => ({
-  readFile: mockReadFile,
-  writeFile: mockWriteFile,
-  mkdir: mockMkdir,
-}));
+vi.mock('../constants.js', async importOriginal => {
+  const actual = await importOriginal<typeof import('../constants.js')>();
+  return { ...actual, PACKAGE_VERSION: '1.0.0' };
+});
 
-vi.mock('../constants.js', () => ({
-  PACKAGE_VERSION: '1.0.0',
-}));
-
-const { mockFetchLatestVersion, mockCompareVersions } = vi.hoisted(() => ({
+const { mockFetchLatestVersion } = vi.hoisted(() => ({
   mockFetchLatestVersion: vi.fn(),
-  mockCompareVersions: vi.fn(),
 }));
 
-vi.mock('../commands/update/action.js', () => ({
-  fetchLatestVersion: mockFetchLatestVersion,
-  compareVersions: mockCompareVersions,
-}));
+vi.mock('../commands/update/action.js', async importOriginal => {
+  const actual = await importOriginal<typeof import('../commands/update/action.js')>();
+  return { ...actual, fetchLatestVersion: mockFetchLatestVersion };
+});
+
+const CACHE_DIR = tmpDir;
+const CACHE_FILE = join(tmpDir, 'update-check.json');
 
 describe('checkForUpdate', () => {
   beforeEach(() => {
     vi.spyOn(Date, 'now').mockReturnValue(1708646400000);
-    mockWriteFile.mockResolvedValue(undefined);
-    mockMkdir.mockResolvedValue(undefined);
+    try {
+      rmSync(CACHE_DIR, { recursive: true });
+    } catch {}
   });
 
   afterEach(() => {
     vi.restoreAllMocks();
-    mockReadFile.mockReset();
-    mockWriteFile.mockReset();
-    mockMkdir.mockReset();
     mockFetchLatestVersion.mockReset();
-    mockCompareVersions.mockReset();
+  });
+
+  afterAll(() => {
+    rmSync(tmpDir, { recursive: true });
   });
 
   it('fetches from registry when no cache exists', async () => {
-    mockReadFile.mockRejectedValue(new Error('ENOENT'));
     mockFetchLatestVersion.mockResolvedValue('2.0.0');
-    mockCompareVersions.mockReturnValue(1);
 
     const result = await checkForUpdate();
 
@@ -55,12 +61,8 @@ describe('checkForUpdate', () => {
   });
 
   it('uses cache when last check was less than 24 hours ago', async () => {
-    const cache = JSON.stringify({
-      lastCheck: 1708646400000 - 1000, // 1 second ago
-      latestVersion: '2.0.0',
-    });
-    mockReadFile.mockResolvedValue(cache);
-    mockCompareVersions.mockReturnValue(1);
+    await mkdir(CACHE_DIR, { recursive: true });
+    await writeFile(CACHE_FILE, JSON.stringify({ lastCheck: 1708646400000 - 1000, latestVersion: '2.0.0' }), 'utf-8');
 
     const result = await checkForUpdate();
 
@@ -69,13 +71,13 @@ describe('checkForUpdate', () => {
   });
 
   it('fetches from registry when cache is expired', async () => {
-    const cache = JSON.stringify({
-      lastCheck: 1708646400000 - 25 * 60 * 60 * 1000, // 25 hours ago
-      latestVersion: '1.5.0',
-    });
-    mockReadFile.mockResolvedValue(cache);
+    await mkdir(CACHE_DIR, { recursive: true });
+    await writeFile(
+      CACHE_FILE,
+      JSON.stringify({ lastCheck: 1708646400000 - 25 * 60 * 60 * 1000, latestVersion: '1.5.0' }),
+      'utf-8'
+    );
     mockFetchLatestVersion.mockResolvedValue('2.0.0');
-    mockCompareVersions.mockReturnValue(1);
 
     const result = await checkForUpdate();
 
@@ -84,24 +86,16 @@ describe('checkForUpdate', () => {
   });
 
   it('writes cache after fetching', async () => {
-    mockReadFile.mockRejectedValue(new Error('ENOENT'));
     mockFetchLatestVersion.mockResolvedValue('2.0.0');
-    mockCompareVersions.mockReturnValue(1);
 
     await checkForUpdate();
 
-    expect(mockMkdir).toHaveBeenCalled();
-    expect(mockWriteFile).toHaveBeenCalledWith(
-      expect.stringContaining('update-check.json'),
-      JSON.stringify({ lastCheck: 1708646400000, latestVersion: '2.0.0' }),
-      'utf-8'
-    );
+    const cached = JSON.parse(await readFile(CACHE_FILE, 'utf-8'));
+    expect(cached).toEqual({ lastCheck: 1708646400000, latestVersion: '2.0.0' });
   });
 
   it('returns updateAvailable: false when versions match', async () => {
-    mockReadFile.mockRejectedValue(new Error('ENOENT'));
     mockFetchLatestVersion.mockResolvedValue('1.0.0');
-    mockCompareVersions.mockReturnValue(0);
 
     const result = await checkForUpdate();
 
@@ -109,9 +103,7 @@ describe('checkForUpdate', () => {
   });
 
   it('returns updateAvailable: false when current is newer', async () => {
-    mockReadFile.mockRejectedValue(new Error('ENOENT'));
     mockFetchLatestVersion.mockResolvedValue('0.9.0');
-    mockCompareVersions.mockReturnValue(-1);
 
     const result = await checkForUpdate();
 
@@ -119,7 +111,6 @@ describe('checkForUpdate', () => {
   });
 
   it('returns null on fetch error', async () => {
-    mockReadFile.mockRejectedValue(new Error('ENOENT'));
     mockFetchLatestVersion.mockRejectedValue(new Error('network error'));
 
     const result = await checkForUpdate();
@@ -128,7 +119,8 @@ describe('checkForUpdate', () => {
   });
 
   it('returns null on cache parse error and fetch error', async () => {
-    mockReadFile.mockResolvedValue('invalid json');
+    await mkdir(CACHE_DIR, { recursive: true });
+    await writeFile(CACHE_FILE, 'invalid json', 'utf-8');
     mockFetchLatestVersion.mockRejectedValue(new Error('network error'));
 
     const result = await checkForUpdate();
@@ -137,14 +129,18 @@ describe('checkForUpdate', () => {
   });
 
   it('succeeds even when cache write fails', async () => {
-    mockReadFile.mockRejectedValue(new Error('ENOENT'));
+    await mkdir(CACHE_DIR, { recursive: true });
+    await writeFile(CACHE_FILE, '', 'utf-8');
+    const { chmod } = await import('fs/promises');
+    await chmod(CACHE_DIR, 0o444);
+
     mockFetchLatestVersion.mockResolvedValue('2.0.0');
-    mockCompareVersions.mockReturnValue(1);
-    mockWriteFile.mockRejectedValue(new Error('EACCES'));
 
     const result = await checkForUpdate();
 
     expect(result).toEqual({ updateAvailable: true, latestVersion: '2.0.0' });
+
+    await chmod(CACHE_DIR, 0o755);
   });
 });
 

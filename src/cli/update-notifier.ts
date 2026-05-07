@@ -1,11 +1,10 @@
+import { GLOBAL_CONFIG_DIR } from '../lib/schemas/io/global-config.js';
 import { compareVersions, fetchLatestVersion } from './commands/update/action.js';
 import { PACKAGE_VERSION } from './constants.js';
 import { mkdir, readFile, writeFile } from 'fs/promises';
-import { homedir } from 'os';
 import { join } from 'path';
 
-const CACHE_DIR = join(homedir(), '.agentcore');
-const CACHE_FILE = join(CACHE_DIR, 'update-check.json');
+const CACHE_FILE = join(GLOBAL_CONFIG_DIR, 'update-check.json');
 const CHECK_INTERVAL_MS = 24 * 60 * 60 * 1000; // every 24 hours
 
 interface CacheData {
@@ -29,7 +28,7 @@ async function readCache(): Promise<CacheData | null> {
 
 async function writeCache(data: CacheData): Promise<void> {
   try {
-    await mkdir(CACHE_DIR, { recursive: true });
+    await mkdir(GLOBAL_CONFIG_DIR, { recursive: true });
     await writeFile(CACHE_FILE, JSON.stringify(data), 'utf-8');
   } catch {
     // Silently ignore cache write failures
