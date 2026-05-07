@@ -36,16 +36,27 @@ jobs:
               const branch = context.payload.workflow_run.head_branch;
               const title = `CI Failure: ${workflowName}`;
 
-              const { data: issues } = await github.rest.issues.listForRepo({
-                owner: context.repo.owner,
-                repo: context.repo.repo,
-                labels: 'high-severity,ci',
-                state: 'open',
-                per_page: 100
+              const { data } = await github.rest.search.issuesAndPullRequests({
+                q: `repo:${context.repo.owner}/${context.repo.repo} is:issue is:open in:title "${title}"`
               });
 
-              if (issues.some(i => i.title === title)) {
+              if (data.items.some(i => i.title === title)) {
                 core.info(`Issue already exists for "${title}"`);
+                return;
+              }
+
+              // Fallback: check recent issues in case search index is stale
+              const { data: recent } = await github.rest.issues.listForRepo({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                state: 'open',
+                sort: 'created',
+                direction: 'desc',
+                per_page: 30
+              });
+
+              if (recent.some(i => i.title === title)) {
+                core.info(`Issue already exists for "${title}" (found via fallback)`);
                 return;
               }
 
