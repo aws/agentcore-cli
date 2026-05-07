@@ -551,6 +551,28 @@ describe('resolveAgentPort', () => {
     expect(resolveAgentPort(project, 'Missing', 9000)).toEqual({ port: 9000, offset: 0 });
   });
 
+  it('returns basePort with zero offset for empty agent name (locks the index <= 0 guard)', () => {
+    const project = makeProject('A', 'B');
+    // findIndex returns -1, which collapses to offset 0 via the guard.
+    expect(resolveAgentPort(project, '', 8080)).toEqual({ port: 8080, offset: 0 });
+  });
+
+  it('returns basePort with zero offset when project has zero runtimes', () => {
+    const project = makeProject(); // no runtimes
+    expect(resolveAgentPort(project, 'A', 8080)).toEqual({ port: 8080, offset: 0 });
+    expect(resolveAgentPort(project, '', 8080)).toEqual({ port: 8080, offset: 0 });
+  });
+
+  it('first runtime (index 0) returns offset 0 (locks index <= 0, not < 0, semantics)', () => {
+    const project = makeProject('First', 'Second');
+    // index === 0 must collapse to offset 0; a regression flipping `<= 0` to
+    // `< 0` would erroneously return offset = 0 here too (because index is 0,
+    // and `0 > 0` is false, returning the same result), so this test pairs
+    // with the AgentB case below.
+    expect(resolveAgentPort(project, 'First', 8080)).toEqual({ port: 8080, offset: 0 });
+    expect(resolveAgentPort(project, 'Second', 8080)).toEqual({ port: 8081, offset: 1 });
+  });
+
   it('getAgentPort wrapper still returns a number for backwards compat', () => {
     const project = makeProject('A', 'B');
     expect(getAgentPort(project, 'A', 8080)).toBe(8080);

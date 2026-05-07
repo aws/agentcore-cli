@@ -24,6 +24,7 @@ import { COMMAND_DESCRIPTIONS } from '../../tui/copy';
 import { requireProject, requireTTY } from '../../tui/guards';
 import { parseHeaderFlags } from '../shared/header-utils';
 import { runBrowserMode } from './browser-mode';
+import { isPortExplicit, resolveDevPort } from './port-resolution';
 import type { Command } from '@commander-js/extra-typings';
 import { spawn } from 'child_process';
 import { Text, render } from 'ink';
@@ -194,23 +195,9 @@ export const registerDev = (program: Command) => {
     .action(async (positionalPrompt: string | undefined, opts, command) => {
       try {
         const port = parseInt(opts.port, 10);
-        // Was --port passed explicitly (CLI flag, env, or config), or are we
-        // using the registered default? Any non-default source is treated as
-        // explicit so the user's value is honored literally — issue #1079.
-        //
-        // Commander v14 always provides `command` and `getOptionValueSource`
-        // on the action callback. The optional chain below is defensive: if
-        // either is missing (older Commander, exotic test harness), the value
-        // falls back to "implicit" rather than throwing. To prevent silent
-        // regressions, we explicitly check that the API is present.
-        if (!command || typeof command.getOptionValueSource !== 'function') {
-          // eslint-disable-next-line no-console
-          console.warn(
-            'Warning: Commander command/getOptionValueSource unavailable; --port will be treated as implicit.'
-          );
-        }
-        const portSource = command?.getOptionValueSource?.('port');
-        const portIsExplicit = portSource !== undefined && portSource !== 'default';
+        // Detect explicit --port via Commander's getOptionValueSource. See
+        // ./port-resolution.ts for the rationale and defensive guard.
+        const portIsExplicit = isPortExplicit(command);
         // Note: passing `-p 8080` (matching the registered default) is now
         // treated as explicit, which means it disables the runtime-index
         // offset and fails fast on conflict. This is the intended behavior of
@@ -353,34 +340,26 @@ export const registerDev = (program: Command) => {
           const logger = new ExecLogger({ command: 'dev' });
 
           // Calculate port: A2A/MCP use fixed framework ports, HTTP uses configurable port.
-          // For HTTP we resolve via resolveAgentPort which honors explicit --port literally
-          // and otherwise applies the historical base + runtime-index offset.
-          const isA2A = config.protocol === 'A2A';
-          const isMcp = config.protocol === 'MCP';
+          // resolveDevPort encapsulates the issue #1079 logic (explicit-port
+          // honors literally, otherwise base + runtime-index offset with a
+          // visible log). It is unit-tested in __tests__/port-resolution.test.ts.
           const httpResolution = resolveAgentPort(project, config.agentName, port, { explicit: portIsExplicit });
-          const fixedPort = isA2A ? 9000 : isMcp ? 8000 : httpResolution.port;
-
-          // Surface the index-based offset so it isn't silent (issue #1079).
-          if (!isA2A && !isMcp && httpResolution.offset > 0) {
-            console.log(
-              `Runtime "${config.agentName}" is at index ${httpResolution.offset}; using port ${fixedPort} ` +
-                `(pass --port ${fixedPort} explicitly to override).`
-            );
+          const targetPort = config.protocol === 'A2A' ? 9000 : config.protocol === 'MCP' ? 8000 : httpResolution.port;
+          const actualPort = await findAvailablePort(targetPort);
+          const resolution = resolveDevPort({
+            project,
+            agentName: config.agentName,
+            protocol: config.protocol,
+            basePort: port,
+            portIsExplicit,
+            availablePort: actualPort,
+          });
+          for (const line of resolution.infoLogs) {
+            console.log(line);
           }
-
-          const actualPort = await findAvailablePort(fixedPort);
-          if ((isA2A || isMcp) && actualPort !== fixedPort) {
-            console.error(`Error: Port ${fixedPort} is in use. ${config.protocol} agents require port ${fixedPort}.`);
+          if (resolution.conflictError) {
+            console.error(`Error: ${resolution.conflictError}`);
             process.exit(1);
-          }
-          if (!isA2A && !isMcp && portIsExplicit && actualPort !== fixedPort) {
-            console.error(
-              `Error: Port ${fixedPort} is in use. Pass a different --port or stop the conflicting process.`
-            );
-            process.exit(1);
-          }
-          if (actualPort !== fixedPort) {
-            console.log(`Port ${fixedPort} in use, using ${actualPort}`);
           }
 
           // Get provider info from agent config

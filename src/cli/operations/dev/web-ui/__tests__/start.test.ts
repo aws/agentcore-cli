@@ -221,4 +221,75 @@ describe('handleStart - port resolution (issue #1079)', () => {
     // Falls back to legacy uiPort+1+index = 8083 (no fail-fast on explicit conflict).
     expect(findAvailableMock).toHaveBeenCalledWith(8083);
   });
+
+  it('basePortIsExplicit without basePort + conflict still falls back to legacy log-and-continue (no 500)', async () => {
+    // Simulate a conflict: findAvailablePort returns a different port. With
+    // basePortIsExplicit=true but no basePort, the misuse guard must collapse
+    // back to implicit semantics, which means logging the shift, NOT a 500.
+    findAvailableMock.mockImplementationOnce((p: number) => Promise.resolve(p + 5) as never);
+    const logs: { level: string; msg: string }[] = [];
+    const ctx = mockCtx({
+      agentNames: ['AgentA', 'AgentB'],
+      // basePort intentionally omitted while basePortIsExplicit is set
+      basePortIsExplicit: true,
+      onLog: (level, msg) => logs.push({ level, msg }),
+    });
+    const req = mockReq({ agentName: 'AgentB' });
+    const res = mockRes();
+
+    await handleStart(ctx, req, res);
+
+    // Must NOT return the explicit-conflict 500.
+    expect(res._status).not.toBe(500);
+    // Must emit the legacy "Port X in use, using Y" log.
+    expect(logs.some(l => l.msg.includes('Port 8083 in use, using 8088'))).toBe(true);
+  });
+
+  it('A2A protocol with basePortIsExplicit=true: no "index N" log; A2A-specific conflict message', async () => {
+    findAvailableMock.mockImplementationOnce((p: number) => Promise.resolve(p + 1) as never);
+    const logs: { level: string; msg: string }[] = [];
+    const ctx = mockCtx({
+      agentNames: ['AgentA', 'AgentB'],
+      basePort: 8080,
+      basePortIsExplicit: true,
+      protocol: 'A2A',
+      onLog: (level, msg) => logs.push({ level, msg }),
+    });
+    const req = mockReq({ agentName: 'AgentB' });
+    const res = mockRes();
+
+    await handleStart(ctx, req, res);
+
+    // A2A pin to 9000 regardless of basePort/index.
+    expect(findAvailableMock).toHaveBeenCalledWith(9000);
+    // No HTTP-only "index" offset log should fire for A2A agents.
+    expect(logs.every(l => !l.msg.includes('index'))).toBe(true);
+    // Conflict surfaces the A2A-specific message, not the HTTP "Pass a different --port" one.
+    const body = JSON.parse(res._body);
+    expect(body.error).toMatch(/A2A agents require port 9000/);
+    expect(body.error).not.toMatch(/Pass a different --port/);
+  });
+
+  it('MCP protocol with basePortIsExplicit=true: no "index N" log; MCP-specific conflict message', async () => {
+    findAvailableMock.mockImplementationOnce((p: number) => Promise.resolve(p + 1) as never);
+    const logs: { level: string; msg: string }[] = [];
+    const ctx = mockCtx({
+      agentNames: ['AgentA', 'AgentB'],
+      basePort: 8080,
+      basePortIsExplicit: true,
+      protocol: 'MCP',
+      onLog: (level, msg) => logs.push({ level, msg }),
+    });
+    const req = mockReq({ agentName: 'AgentB' });
+    const res = mockRes();
+
+    await handleStart(ctx, req, res);
+
+    // MCP pinned to 8000 regardless of basePort/index.
+    expect(findAvailableMock).toHaveBeenCalledWith(8000);
+    expect(logs.every(l => !l.msg.includes('index'))).toBe(true);
+    const body = JSON.parse(res._body);
+    expect(body.error).toMatch(/MCP agents require port 8000/);
+    expect(body.error).not.toMatch(/Pass a different --port/);
+  });
 });
