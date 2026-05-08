@@ -149,14 +149,10 @@
   },
   "overridesComments": {
     "minimatch": "GHSA-7r86-cg39-jmmj, GHSA-23c5-xmqv-rm74: minimatch 10.0.0-10.2.2 has ReDoS vulnerabilities. Multiple transitive deps (eslint, typescript-eslint, eslint-plugin-import, eslint-plugin-react, prettier-plugin-sort-imports, aws-cdk-lib) pin older versions. Remove this override once upstream packages update their minimatch dependency to >=10.2.3.",
-    "fast-xml-parser": "GHSA-8gc5-j5rx-235r, GHSA-jp2q-39xq-3w4g: fast-xml-parser <=5.5.6 has entity expansion bypass (CVE-2026-33036, CVE-2026-33349). Transitive via @aws-sdk/xml-builder. Remove once @aws-sdk updates to fast-xml-parser >=5.5.7.",
-    "@aws-sdk/xml-builder": "aws/aws-sdk-js-v3#7867: @aws-sdk/xml-builder <3.972.14 does not configure maxTotalExpansions on fast-xml-parser, causing 'Entity expansion limit exceeded' on large CloudFormation responses. Remove once @aws-sdk/client-* deps are bumped past 3.972.14.",
     "glob": "glob <12 is deprecated and emits npm install warnings (https://github.com/isaacs/node-glob). Pulled in transitively via archiver-utils@5.0.2 (latest), which still pins glob@^10.0.0. archiver-utils only uses glob.sync(pattern, options), which remains compatible in glob@13. Remove this override once archiver-utils updates its glob dependency."
   },
   "overrides": {
     "minimatch": "10.2.4",
-    "fast-xml-parser": "5.5.7",
-    "@aws-sdk/xml-builder": "3.972.15",
     "glob": "^13.0.0"
   },
   "engines": {
