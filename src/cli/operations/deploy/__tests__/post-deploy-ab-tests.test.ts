@@ -298,6 +298,67 @@ describe('setupABTests', () => {
 
       expect(mockCreateABTest.mock.calls[0]![0].evaluationConfig.onlineEvaluationConfigArn).toBe('arn:eval:resolved');
     });
+
+    it('resolves target-based variant with project prefix (runtime === projectName)', async () => {
+      const targetBasedTest = {
+        ...sampleABTest,
+        mode: 'target-based' as const,
+        variants: [
+          {
+            name: 'C' as const,
+            weight: 90,
+            variantConfiguration: { target: { targetName: 'MyAgent-prod' } },
+          },
+          {
+            name: 'T1' as const,
+            weight: 10,
+            variantConfiguration: { target: { targetName: 'MyAgent-staging' } },
+          },
+        ],
+      };
+      mockCreateABTest.mockResolvedValue({ abTestId: 'abt-tgt-1', abTestArn: 'arn:abt:tgt1' });
+
+      await setupABTests({
+        region: 'us-east-1',
+        projectSpec: makeProjectSpec([targetBasedTest]),
+      });
+
+      const callArgs = mockCreateABTest.mock.calls[0]![0];
+      expect(callArgs.variants[0].variantConfiguration.target.name).toBe('TestProject-MyAgent-prod');
+      expect(callArgs.variants[1].variantConfiguration.target.name).toBe('TestProject-MyAgent-staging');
+    });
+
+    it('resolves target-based variant with project prefix (different project name)', async () => {
+      const targetBasedTest = {
+        ...sampleABTest,
+        mode: 'target-based' as const,
+        variants: [
+          {
+            name: 'C' as const,
+            weight: 90,
+            variantConfiguration: { target: { targetName: 'Bar-prod' } },
+          },
+          {
+            name: 'T1' as const,
+            weight: 10,
+            variantConfiguration: { target: { targetName: 'Bar-staging' } },
+          },
+        ],
+      };
+      mockCreateABTest.mockResolvedValue({ abTestId: 'abt-tgt-2', abTestArn: 'arn:abt:tgt2' });
+
+      const spec = makeProjectSpec([targetBasedTest]);
+      spec.name = 'Foo';
+
+      await setupABTests({
+        region: 'us-east-1',
+        projectSpec: spec,
+      });
+
+      const callArgs = mockCreateABTest.mock.calls[0]![0];
+      expect(callArgs.variants[0].variantConfiguration.target.name).toBe('Foo-Bar-prod');
+      expect(callArgs.variants[1].variantConfiguration.target.name).toBe('Foo-Bar-staging');
+    });
   });
 
   describe('deletion (reconciliation)', () => {
