@@ -1,5 +1,5 @@
 import { PollExhaustedError, PollTimeoutError, isThrottlingError, poll } from '../polling.js';
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 /* eslint-disable @typescript-eslint/require-await */
 
@@ -35,46 +35,51 @@ describe('poll', () => {
     );
   });
 
-  it('applies exponential backoff', async () => {
-    vi.useFakeTimers();
-    let count = 0;
-    const promise = poll({
-      fn: async () => {
-        count++;
-        return count === 4 ? { done: true, value: 'done' } : { done: false };
-      },
-      maxAttempts: 5,
-      delayMs: 100,
-      backoffFactor: 2,
+  describe('backoff', () => {
+    beforeEach(() => {
+      vi.useFakeTimers();
     });
-    // Advance through iterations
-    await vi.advanceTimersByTimeAsync(100); // 1st delay: 100
-    await vi.advanceTimersByTimeAsync(200); // 2nd delay: 200
-    await vi.advanceTimersByTimeAsync(400); // 3rd delay: 400
-    const result = await promise;
-    expect(result).toBe('done');
-    vi.useRealTimers();
-  });
 
-  it('caps delay at maxDelayMs', async () => {
-    vi.useFakeTimers();
-    let count = 0;
-    const promise = poll({
-      fn: async () => {
-        count++;
-        return count === 4 ? { done: true, value: 'done' } : { done: false };
-      },
-      maxAttempts: 5,
-      delayMs: 100,
-      backoffFactor: 10,
-      maxDelayMs: 500,
+    afterEach(() => {
+      vi.useRealTimers();
     });
-    await vi.advanceTimersByTimeAsync(100); // 1st: 100
-    await vi.advanceTimersByTimeAsync(500); // 2nd: capped at 500
-    await vi.advanceTimersByTimeAsync(500); // 3rd: capped at 500
-    const result = await promise;
-    expect(result).toBe('done');
-    vi.useRealTimers();
+
+    it('applies exponential backoff', async () => {
+      let count = 0;
+      const promise = poll({
+        fn: async () => {
+          count++;
+          return count === 4 ? { done: true, value: 'done' } : { done: false };
+        },
+        maxAttempts: 5,
+        delayMs: 100,
+        backoffFactor: 2,
+      });
+      await vi.advanceTimersByTimeAsync(100); // 1st delay: 100
+      await vi.advanceTimersByTimeAsync(200); // 2nd delay: 200
+      await vi.advanceTimersByTimeAsync(400); // 3rd delay: 400
+      const result = await promise;
+      expect(result).toBe('done');
+    });
+
+    it('caps delay at maxDelayMs', async () => {
+      let count = 0;
+      const promise = poll({
+        fn: async () => {
+          count++;
+          return count === 4 ? { done: true, value: 'done' } : { done: false };
+        },
+        maxAttempts: 5,
+        delayMs: 100,
+        backoffFactor: 10,
+        maxDelayMs: 500,
+      });
+      await vi.advanceTimersByTimeAsync(100); // 1st: 100
+      await vi.advanceTimersByTimeAsync(500); // 2nd: capped at 500
+      await vi.advanceTimersByTimeAsync(500); // 3rd: capped at 500
+      const result = await promise;
+      expect(result).toBe('done');
+    });
   });
 
   it('retries on error by default', async () => {
