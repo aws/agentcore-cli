@@ -1,4 +1,4 @@
-import { isThrottlingError, poll } from '../../../lib/utils/polling';
+import { PollExhaustedError, PollTimeoutError, isThrottlingError, poll } from '../../../lib/utils/polling';
 import { getCredentialProvider } from '../../aws/account';
 import type { CfnTemplate } from './template-utils';
 import { buildImportTemplate } from './template-utils';
@@ -142,47 +142,61 @@ async function waitForChangeSetReady(
   stackName: string,
   changeSetName: string
 ): Promise<void> {
-  await poll({
-    fn: async () => {
-      const response = await cfn.send(
-        new DescribeChangeSetCommand({
-          StackName: stackName,
-          ChangeSetName: changeSetName,
-        })
-      );
-      const status = response.Status;
-      if (status === 'CREATE_COMPLETE') return { done: true, value: undefined };
-      if (status === 'FAILED') {
-        throw new Error(`Change set creation failed: ${response.StatusReason ?? 'Unknown reason'}`);
-      }
-      return { done: false };
-    },
-    maxAttempts: 60,
-    delayMs: 5000,
-    onError: (err: unknown) => (isThrottlingError(err) ? 'retry' : 'abort'),
-  });
+  try {
+    await poll({
+      fn: async () => {
+        const response = await cfn.send(
+          new DescribeChangeSetCommand({
+            StackName: stackName,
+            ChangeSetName: changeSetName,
+          })
+        );
+        const status = response.Status;
+        if (status === 'CREATE_COMPLETE') return { done: true, value: undefined };
+        if (status === 'FAILED') {
+          throw new Error(`Change set creation failed: ${response.StatusReason ?? 'Unknown reason'}`);
+        }
+        return { done: false };
+      },
+      maxAttempts: 60,
+      delayMs: 5000,
+      onError: (err: unknown) => (isThrottlingError(err) ? 'retry' : 'abort'),
+    });
+  } catch (err) {
+    if (err instanceof PollExhaustedError || err instanceof PollTimeoutError) {
+      throw new Error('Timed out waiting for change set creation', { cause: err });
+    }
+    throw err;
+  }
 }
 
 /**
  * Wait for stack to reach IMPORT_COMPLETE status.
  */
 async function waitForStackImportComplete(cfn: CloudFormationClient, stackName: string): Promise<void> {
-  await poll({
-    fn: async () => {
-      const response = await cfn.send(new DescribeStacksCommand({ StackName: stackName }));
-      const stack = response.Stacks?.[0];
-      if (!stack) throw new Error(`Stack ${stackName} not found during import wait`);
-      const status = stack.StackStatus ?? '';
-      if (status === 'IMPORT_COMPLETE') return { done: true, value: undefined };
-      if (status.includes('FAILED') || status.includes('ROLLBACK')) {
-        throw new Error(`Import failed with status: ${status}. Reason: ${stack.StackStatusReason ?? 'Unknown'}`);
-      }
-      return { done: false };
-    },
-    maxAttempts: 120,
-    delayMs: 5000,
-    onError: (err: unknown) => (isThrottlingError(err) ? 'retry' : 'abort'),
-  });
+  try {
+    await poll({
+      fn: async () => {
+        const response = await cfn.send(new DescribeStacksCommand({ StackName: stackName }));
+        const stack = response.Stacks?.[0];
+        if (!stack) throw new Error(`Stack ${stackName} not found during import wait`);
+        const status = stack.StackStatus ?? '';
+        if (status === 'IMPORT_COMPLETE') return { done: true, value: undefined };
+        if (status.includes('FAILED') || status.includes('ROLLBACK')) {
+          throw new Error(`Import failed with status: ${status}. Reason: ${stack.StackStatusReason ?? 'Unknown'}`);
+        }
+        return { done: false };
+      },
+      maxAttempts: 120,
+      delayMs: 5000,
+      onError: (err: unknown) => (isThrottlingError(err) ? 'retry' : 'abort'),
+    });
+  } catch (err) {
+    if (err instanceof PollExhaustedError || err instanceof PollTimeoutError) {
+      throw new Error('Timed out waiting for import to complete', { cause: err });
+    }
+    throw err;
+  }
 }
 
 /**

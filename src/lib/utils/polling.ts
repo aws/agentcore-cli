@@ -24,15 +24,15 @@ export interface PollOptions<T> {
 }
 
 export class PollTimeoutError extends Error {
-  constructor(timeoutMs: number) {
-    super(`Polling timed out after ${timeoutMs}ms`);
+  constructor(timeoutMs: number, options?: { cause?: unknown }) {
+    super(`Polling timed out after ${timeoutMs}ms`, options);
     this.name = 'PollTimeoutError';
   }
 }
 
 export class PollExhaustedError extends Error {
-  constructor(maxAttempts: number) {
-    super(`Polling exhausted after ${maxAttempts} attempts`);
+  constructor(maxAttempts: number, options?: { cause?: unknown }) {
+    super(`Polling exhausted after ${maxAttempts} attempts`, options);
     this.name = 'PollExhaustedError';
   }
 }
@@ -57,13 +57,14 @@ export async function poll<T>(options: PollOptions<T>): Promise<T> {
   let attempts = 0;
   let consecutiveErrors = 0;
   let currentDelay = delayMs;
+  let lastError: unknown = undefined;
 
   while (true) {
     if (maxAttempts !== undefined && attempts >= maxAttempts) {
-      throw new PollExhaustedError(maxAttempts);
+      throw new PollExhaustedError(maxAttempts, { cause: lastError });
     }
     if (timeoutMs !== undefined && Date.now() - start >= timeoutMs) {
-      throw new PollTimeoutError(timeoutMs);
+      throw new PollTimeoutError(timeoutMs, { cause: lastError });
     }
 
     attempts++;
@@ -75,15 +76,16 @@ export async function poll<T>(options: PollOptions<T>): Promise<T> {
     } catch (err: unknown) {
       const action = onError ? onError(err) : 'retry';
       if (action === 'abort') throw err;
+      lastError = err;
       consecutiveErrors++;
       if (maxConsecutiveErrors && consecutiveErrors >= maxConsecutiveErrors) {
-        throw new PollExhaustedError(maxConsecutiveErrors);
+        throw new PollExhaustedError(attempts, { cause: lastError });
       }
     }
 
     // Don't sleep if we're about to exceed timeout
     if (timeoutMs !== undefined && Date.now() - start + currentDelay >= timeoutMs) {
-      throw new PollTimeoutError(timeoutMs);
+      throw new PollTimeoutError(timeoutMs, { cause: lastError });
     }
 
     await new Promise(resolve => setTimeout(resolve, currentDelay));

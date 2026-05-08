@@ -119,6 +119,42 @@ describe('poll', () => {
     ).rejects.toThrow(PollExhaustedError);
   });
 
+  it('PollExhaustedError includes cause with the last error', async () => {
+    const err = await poll({
+      fn: async () => {
+        throw new Error('Rate exceeded');
+      },
+      maxAttempts: 3,
+      delayMs: 1,
+    }).catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(PollExhaustedError);
+    expect((err as PollExhaustedError).cause).toBeInstanceOf(Error);
+    expect(((err as PollExhaustedError).cause as Error).message).toBe('Rate exceeded');
+  });
+
+  it('PollTimeoutError includes cause with the last error', async () => {
+    const err = await poll({
+      fn: async () => {
+        throw new Error('service unavailable');
+      },
+      timeoutMs: 50,
+      delayMs: 10,
+    }).catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(PollTimeoutError);
+    expect((err as PollTimeoutError).cause).toBeInstanceOf(Error);
+    expect(((err as PollTimeoutError).cause as Error).message).toBe('service unavailable');
+  });
+
+  it('cause is undefined when no errors occurred during polling', async () => {
+    const err = await poll({
+      fn: async () => ({ done: false }),
+      maxAttempts: 2,
+      delayMs: 1,
+    }).catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(PollExhaustedError);
+    expect((err as PollExhaustedError).cause).toBeUndefined();
+  });
+
   it('resets consecutive error count on success', async () => {
     let count = 0;
     const result = await poll({
