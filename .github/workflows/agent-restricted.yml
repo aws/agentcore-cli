@@ -66,6 +66,13 @@ jobs:
 
       - uses: actions/checkout@v6
 
+      - name: Generate GitHub App Token
+        id: app-token
+        uses: actions/create-github-app-token@v1
+        with:
+          app-id: ${{ vars.APP_ID }}
+          private-key: ${{ secrets.APP_PRIVATE_KEY }}
+
       - name: Run Strands Agent
         uses: ./.github/actions/strands-action
         with:
@@ -78,6 +85,6 @@ jobs:
           agent_runner: ${{ inputs.agent_runner }}
           aws_role_arn: ${{ secrets.AWS_ROLE_ARN }}
           aws_region: 'us-west-2'
-          pat_token: ${{ secrets.PAT_TOKEN }}
+          pat_token: ${{ steps.app-token.outputs.token }}
         env:
           STRANDS_TOOLS_DIRECTORY: 'true'
