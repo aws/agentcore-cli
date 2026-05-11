@@ -2,19 +2,11 @@ import { Panel } from '../Panel.js';
 import { Text } from 'ink';
 import { render } from 'ink-testing-library';
 import React from 'react';
-import { afterEach, describe, expect, it, vi } from 'vitest';
-
-const { mockContentWidth } = vi.hoisted(() => ({
-  mockContentWidth: { value: 60 },
-}));
+import { describe, expect, it, vi } from 'vitest';
 
 vi.mock('../../context/index.js', () => ({
-  useLayout: () => ({ contentWidth: mockContentWidth.value }),
+  useLayout: () => ({ contentWidth: 80 }),
 }));
-
-afterEach(() => {
-  mockContentWidth.value = 60;
-});
 
 describe('Panel', () => {
   it('renders children content inside a border', () => {
@@ -42,7 +34,6 @@ describe('Panel', () => {
   });
 
   it('defaults to full width', () => {
-    mockContentWidth.value = 30;
     const { lastFrame } = render(
       <Panel>
         <Text>test</Text>
@@ -50,7 +41,6 @@ describe('Panel', () => {
     );
     const frame = lastFrame()!;
     const topLine = frame.split('\n')[0]!;
-    // fullWidth panels don't constrain to contentWidth, so width should exceed 30
-    expect(topLine.length).toBeGreaterThan(30);
+    expect(topLine.length).toBeGreaterThan(80);
   });
 });

@@ -1,16 +1,14 @@
 import { useStdout } from 'ink';
 import React, { type ReactNode, createContext, useContext } from 'react';
 
-/** Maximum content width cap */
-const MAX_CONTENT_WIDTH = 100;
+const DEFAULT_WIDTH = 80;
 
 interface LayoutContextValue {
-  /** Global content width: min(terminalWidth, MAX_CONTENT_WIDTH) */
   contentWidth: number;
 }
 
 const LayoutContext = createContext<LayoutContextValue>({
-  contentWidth: MAX_CONTENT_WIDTH,
+  contentWidth: DEFAULT_WIDTH,
 });
 
 // eslint-disable-next-line react-refresh/only-export-components
@@ -45,8 +43,7 @@ interface LayoutProviderProps {
 
 export function LayoutProvider({ children }: LayoutProviderProps) {
   const { stdout } = useStdout();
-  const terminalWidth = stdout?.columns ?? MAX_CONTENT_WIDTH;
-  const contentWidth = Math.min(terminalWidth, MAX_CONTENT_WIDTH);
+  const contentWidth = stdout?.columns ?? DEFAULT_WIDTH;
 
   return <LayoutContext.Provider value={{ contentWidth }}>{children}</LayoutContext.Provider>;
 }
