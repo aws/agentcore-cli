@@ -114,92 +114,99 @@ async function handleCreateCLI(options: CreateOptions): Promise<void> {
     process.exit(0);
   }
 
-  await runCliCommand('create', !!options.json, async () => {
-    const validation = validateCreateOptions(options, cwd);
-    if (!validation.valid) {
-      throw new Error(validation.error);
-    }
-    const green = '\x1b[32m';
-    const reset = '\x1b[0m';
+  const knownAttrs = {
+    language: standardize(Language, options.language),
+    framework: standardize(Framework, options.framework),
+    model_provider: standardize(ModelProviderEnum, options.modelProvider),
+    memory: standardize(Memory, options.memory ?? 'none'),
+    protocol: standardize(Protocol, options.protocol ?? 'http'),
+    build: standardize(Build, options.build ?? 'codezip'),
+    agent_type: standardize(AgentType, options.type ?? 'create'),
+    network_mode: standardize(NetworkModeEnum, options.networkMode ?? 'public'),
+    has_agent: options.agent !== false,
+  };
 
-    // Progress callback for real-time output
-    const onProgress: ProgressCallback | undefined = options.json
-      ? undefined
-      : (step, status) => {
-          if (status === 'done') {
-            console.log(`${green}[done]${reset}  ${step}`);
-          } else if (status === 'error') {
-            console.log(`\x1b[31m[error]${reset} ${step}`);
-          }
-          // 'start' is silent - we only show when done
-        };
-
-    // Commander.js --no-agent sets agent=false, not noAgent=true
-    const skipAgent = options.agent === false;
-
-    const result = skipAgent
-      ? await createProject({
-          name: projectName!,
-          cwd,
-          skipGit: options.skipGit,
-          skipInstall: options.skipInstall,
-          onProgress,
-        })
-      : await createProjectWithAgent({
-          name: name!,
-          projectName,
-          cwd,
-          type: options.type as 'create' | 'import' | undefined,
-          buildType: (options.build as BuildType) ?? 'CodeZip',
-          language: (options.language as TargetLanguage) ?? (options.type === 'import' ? 'Python' : undefined),
-          framework: options.framework as SDKFramework | undefined,
-          modelProvider: options.modelProvider as ModelProvider | undefined,
-          apiKey: options.apiKey,
-          memory: (options.memory as 'none' | 'shortTerm' | 'longAndShortTerm') ?? 'none',
-          protocol: options.protocol as ProtocolMode | undefined,
-          agentId: options.agentId,
-          agentAliasId: options.agentAliasId,
-          region: options.region,
-          networkMode: options.networkMode as NetworkMode | undefined,
-          subnets: parseCommaSeparatedList(options.subnets),
-          securityGroups: parseCommaSeparatedList(options.securityGroups),
-          idleTimeout: options.idleTimeout ? Number(options.idleTimeout) : undefined,
-          maxLifetime: options.maxLifetime ? Number(options.maxLifetime) : undefined,
-          sessionStorageMountPath: options.sessionStorageMountPath,
-          withConfigBundle: options.withConfigBundle,
-          skipGit: options.skipGit,
-          skipInstall: options.skipInstall,
-          skipPythonSetup: options.skipPythonSetup,
-          onProgress,
-        });
-
-    if (!result.success) {
-      throw result.error;
-    }
-
-    if (options.json) {
-      console.log(JSON.stringify(serializeResult(result)));
-    } else {
-      printCreateSummary(projectName!, result.agentName, options.language, options.framework);
-      if (options.skipInstall) {
-        console.log(
-          "\nDependency installation was skipped. Run 'npm install' in agentcore/cdk/ and 'uv sync' in your agent directory manually."
-        );
+  await runCliCommand(
+    'create',
+    !!options.json,
+    async () => {
+      const validation = validateCreateOptions(options, cwd);
+      if (!validation.valid) {
+        throw new Error(validation.error);
       }
-    }
+      const green = '\x1b[32m';
+      const reset = '\x1b[0m';
 
-    return {
-      language: standardize(Language, options.language),
-      framework: standardize(Framework, options.framework),
-      model_provider: standardize(ModelProviderEnum, options.modelProvider),
-      memory: standardize(Memory, options.memory ?? 'none'),
-      protocol: standardize(Protocol, options.protocol ?? 'http'),
-      build: standardize(Build, options.build ?? 'codezip'),
-      agent_type: standardize(AgentType, options.type ?? 'create'),
-      network_mode: standardize(NetworkModeEnum, options.networkMode ?? 'public'),
-      has_agent: options.agent !== false,
-    };
-  });
+      // Progress callback for real-time output
+      const onProgress: ProgressCallback | undefined = options.json
+        ? undefined
+        : (step, status) => {
+            if (status === 'done') {
+              console.log(`${green}[done]${reset}  ${step}`);
+            } else if (status === 'error') {
+              console.log(`\x1b[31m[error]${reset} ${step}`);
+            }
+            // 'start' is silent - we only show when done
+          };
+
+      // Commander.js --no-agent sets agent=false, not noAgent=true
+      const skipAgent = options.agent === false;
+
+      const result = skipAgent
+        ? await createProject({
+            name: projectName!,
+            cwd,
+            skipGit: options.skipGit,
+            skipInstall: options.skipInstall,
+            onProgress,
+          })
+        : await createProjectWithAgent({
+            name: name!,
+            projectName,
+            cwd,
+            type: options.type as 'create' | 'import' | undefined,
+            buildType: (options.build as BuildType) ?? 'CodeZip',
+            language: (options.language as TargetLanguage) ?? (options.type === 'import' ? 'Python' : undefined),
+            framework: options.framework as SDKFramework | undefined,
+            modelProvider: options.modelProvider as ModelProvider | undefined,
+            apiKey: options.apiKey,
+            memory: (options.memory as 'none' | 'shortTerm' | 'longAndShortTerm') ?? 'none',
+            protocol: options.protocol as ProtocolMode | undefined,
+            agentId: options.agentId,
+            agentAliasId: options.agentAliasId,
+            region: options.region,
+            networkMode: options.networkMode as NetworkMode | undefined,
+            subnets: parseCommaSeparatedList(options.subnets),
+            securityGroups: parseCommaSeparatedList(options.securityGroups),
+            idleTimeout: options.idleTimeout ? Number(options.idleTimeout) : undefined,
+            maxLifetime: options.maxLifetime ? Number(options.maxLifetime) : undefined,
+            sessionStorageMountPath: options.sessionStorageMountPath,
+            withConfigBundle: options.withConfigBundle,
+            skipGit: options.skipGit,
+            skipInstall: options.skipInstall,
+            skipPythonSetup: options.skipPythonSetup,
+            onProgress,
+          });
+
+      if (!result.success) {
+        throw new Error(result.error);
+      }
+
+      if (options.json) {
+        console.log(JSON.stringify(result));
+      } else {
+        printCreateSummary(projectName!, result.agentName, options.language, options.framework);
+        if (options.skipInstall) {
+          console.log(
+            "\nDependency installation was skipped. Run 'npm install' in agentcore/cdk/ and 'uv sync' in your agent directory manually."
+          );
+        }
+      }
+
+      return knownAttrs;
+    },
+    knownAttrs
+  );
 }
 
 export const registerCreate = (program: Command) => {

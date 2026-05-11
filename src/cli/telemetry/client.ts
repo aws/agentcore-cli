@@ -26,7 +26,8 @@ export class TelemetryClient {
    */
   async withCommandRun<C extends Command>(
     command: C,
-    fn: () => CommandAttrs<C> | typeof CANCELLED | Promise<CommandAttrs<C> | typeof CANCELLED>
+    fn: () => CommandAttrs<C> | typeof CANCELLED | Promise<CommandAttrs<C> | typeof CANCELLED>,
+    fallbackAttrs?: Partial<CommandAttrs<C>>
   ): Promise<void> {
     const start = performance.now();
     try {
@@ -43,7 +44,7 @@ export class TelemetryClient {
         error_name: classifyError(err),
         is_user_error: isUserError(err),
       };
-      this.recordCommandRun(command, failureResult, {}, Math.round(performance.now() - start));
+      this.recordCommandRun(command, failureResult, fallbackAttrs ?? {}, Math.round(performance.now() - start));
       throw err;
     } finally {
       try {
@@ -75,9 +76,8 @@ export class TelemetryClient {
 
       // Validate command attrs resiliently: invalid fields default to 'unknown'
       // instead of dropping the entire metric.
-      // On failure/cancel the callback attrs are empty so validation is skipped.
       const validatedAttrs =
-        result.exit_reason !== 'failure' && result.exit_reason !== 'cancel'
+        Object.keys(attrs as Record<string, unknown>).length > 0
           ? resilientParse(COMMAND_SCHEMAS[command], attrs as Record<string, unknown>)
           : attrs;
 

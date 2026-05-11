@@ -31,11 +31,15 @@ export async function withCommandRunTelemetry<C extends Command, R extends Opera
 
   let result: R | undefined;
   try {
-    await client.withCommandRun(command, async () => {
-      result = await fn();
-      if (!result.success) throw result.error;
-      return attrs;
-    });
+    await client.withCommandRun(
+      command,
+      async () => {
+        result = await fn();
+        if (!result.success) throw new Error(result.error);
+        return attrs;
+      },
+      attrs
+    );
   } catch (e) {
     // withCommandRun re-throws after recording failure telemetry.
     // If result was set, fn() returned a failure result — return it directly.
@@ -52,11 +56,13 @@ export async function withCommandRunTelemetry<C extends Command, R extends Opera
  * Record telemetry, print errors, and exit the process.
  * Use in CLI command handlers where the command is the final action.
  * The callback returns attrs on success and throws on failure.
+ * Pass knownAttrs to record command-specific attributes even on failure.
  */
 export async function runCliCommand<C extends Command>(
   command: C,
   json: boolean,
-  fn: () => Promise<CommandAttrs<C>>
+  fn: () => Promise<CommandAttrs<C>>,
+  knownAttrs?: Partial<CommandAttrs<C>>
 ): Promise<never> {
   try {
     const client = await getTelemetryClient();
@@ -64,7 +70,7 @@ export async function runCliCommand<C extends Command>(
       await fn();
       process.exit(0);
     }
-    await client.withCommandRun(command, fn);
+    await client.withCommandRun(command, fn, knownAttrs);
     process.exit(0);
   } catch (error) {
     if (json) {

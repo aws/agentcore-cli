@@ -62,10 +62,11 @@ async function withCommandRunTelemetry<C extends Command, R extends OperationRes
 
 **Behavior:**
 
-- On success (`{ success: true }`): records success telemetry with `attrs`, returns the result.
-- On failure (`{ success: false, error }`): records failure telemetry, returns the result to the caller.
-- On throw: records failure telemetry, returns `{ success: false, error }` so callers don't leak unhandled rejections.
+- On success: records `attrs` with `exit_reason: 'success'`, returns the result.
+- On failure/throw: records `attrs` with `exit_reason: 'failure'`, returns `{ success: false, error }`.
 - If telemetry is unavailable: runs `fn()` untracked.
+
+Since `attrs` are passed upfront, they are always recorded — even on failure.
 
 **Example with attributes:**
 
@@ -93,6 +94,22 @@ await runCliCommand('add.widget', !!options.json, async () => {
   if (!result.success) throw new Error(result.error);
   return { widget_type: standardize(WidgetType, options.type), count: options.items.length };
 });
+```
+
+To record attrs on failure, pass `knownAttrs` as the fourth argument:
+
+```ts
+const knownAttrs = { widget_type: standardize(WidgetType, options.type), count: options.items.length };
+await runCliCommand(
+  'add.widget',
+  !!options.json,
+  async () => {
+    const result = await widgetPrimitive.add(options);
+    if (!result.success) throw new Error(result.error);
+    return knownAttrs;
+  },
+  knownAttrs
+);
 ```
 
 ## Key Points
