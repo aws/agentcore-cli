@@ -44,14 +44,14 @@ describe('Panel', () => {
   it('adapts to different content widths from context', () => {
     mockContentWidth.value = 30;
     const { lastFrame: narrow } = render(
-      <Panel>
+      <Panel fullWidth={false}>
         <Text>test</Text>
       </Panel>
     );
 
     mockContentWidth.value = 100;
     const { lastFrame: wide } = render(
-      <Panel>
+      <Panel fullWidth={false}>
         <Text>test</Text>
       </Panel>
     );

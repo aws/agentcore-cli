@@ -16,7 +16,7 @@ export interface PanelProps {
   fullWidth?: boolean;
 }
 
-export function Panel({ title, children, borderColor, height, flexGrow, flexBasis, fullWidth = false }: PanelProps) {
+export function Panel({ title, children, borderColor, height, flexGrow, flexBasis, fullWidth = true }: PanelProps) {
   const { contentWidth } = useLayout();
 
   return (
