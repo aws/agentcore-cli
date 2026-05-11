@@ -1,7 +1,7 @@
 # E2E Tests
 
-E2E tests verify the full user journey across the AWS boundary — deploy, invoke, status, logs, traces, and control
-plane API calls.
+E2E tests verify the full user journey across the AWS boundary — deploy, invoke, status, logs, traces, and control plane
+API calls.
 
 ## Prerequisites
 

@@ -2,7 +2,8 @@
 
 ## Building a local tarball
 
-Run `npm run bundle` from the agentcore-cli directory. This bundles the CLI along with the CDK constructs from the sister repo (`agentcore-l3-cdk-constructs`) into a single installable tarball.
+Run `npm run bundle` from the agentcore-cli directory. This bundles the CLI along with the CDK constructs from the
+sister repo (`agentcore-l3-cdk-constructs`) into a single installable tarball.
 
 ```bash
 cd agentcore-cli
