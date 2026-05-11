@@ -47,7 +47,7 @@ export function MultiSelectList<T extends SelectableItem>(props: MultiSelectList
         const checkbox = isChecked ? '[✓]' : '[ ]';
         return (
           <Box key={item.id}>
-            <Text wrap="truncate">
+            <Text wrap="wrap">
               <Text color={isCursor ? 'cyan' : undefined}>{isCursor ? '❯' : ' '} </Text>
               <Text color={isChecked ? 'green' : undefined}>{checkbox} </Text>
               <Text color={isCursor ? 'cyan' : undefined}>{item.title}</Text>

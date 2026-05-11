@@ -2,7 +2,7 @@ import { useStdout } from 'ink';
 import React, { type ReactNode, createContext, useContext } from 'react';
 
 /** Maximum content width cap */
-const MAX_CONTENT_WIDTH = 60;
+const MAX_CONTENT_WIDTH = 100;
 
 interface LayoutContextValue {
   /** Global content width: min(terminalWidth, MAX_CONTENT_WIDTH) */
