@@ -12,7 +12,7 @@ import type { AddGatewayOptions as CLIAddGatewayOptions } from '../commands/add/
 import { validateAddGatewayOptions } from '../commands/add/validate';
 import { getErrorMessage } from '../errors';
 import type { RemovalPreview, RemovalResult, SchemaChange } from '../operations/remove/types';
-import { cliCommandRun } from '../telemetry/cli-command-run.js';
+import { runCliCommand, withCommandRunTelemetry } from '../telemetry/cli-command-run.js';
 import { AuthorizerType, PolicyEngineMode, standardize } from '../telemetry/schemas/common-shapes.js';
 import { requireTTY } from '../tui/guards/tty';
 import type { AddGatewayConfig } from '../tui/screens/mcp/types';
@@ -188,7 +188,7 @@ export class GatewayPrimitive extends BasePrimitive<AddGatewayOptions, Removable
           console.error('No agentcore project found. Run `agentcore create` first.');
           process.exit(1);
         }
-        await cliCommandRun('add.gateway', !!cliOptions.json, async () => {
+        await runCliCommand('add.gateway', !!cliOptions.json, async () => {
           const validation = validateAddGatewayOptions(cliOptions);
           if (!validation.valid) {
             throw new Error(validation.error);
@@ -262,7 +262,7 @@ export class GatewayPrimitive extends BasePrimitive<AddGatewayOptions, Removable
               process.exit(1);
             }
 
-            const result = await this.remove(cliOptions.name);
+            const result = await withCommandRunTelemetry('remove.gateway', {}, () => this.remove(cliOptions.name!));
             console.log(
               JSON.stringify({
                 success: result.success,

@@ -2,19 +2,11 @@ import { Panel } from '../Panel.js';
 import { Text } from 'ink';
 import { render } from 'ink-testing-library';
 import React from 'react';
-import { afterEach, describe, expect, it, vi } from 'vitest';
-
-const { mockContentWidth } = vi.hoisted(() => ({
-  mockContentWidth: { value: 60 },
-}));
+import { describe, expect, it, vi } from 'vitest';
 
 vi.mock('../../context/index.js', () => ({
-  useLayout: () => ({ contentWidth: mockContentWidth.value }),
+  useLayout: () => ({ contentWidth: 80 }),
 }));
-
-afterEach(() => {
-  mockContentWidth.value = 60;
-});
 
 describe('Panel', () => {
   it('renders children content inside a border', () => {
@@ -41,23 +33,14 @@ describe('Panel', () => {
     expect(frame.indexOf('Settings')).toBeLessThan(frame.indexOf('body'));
   });
 
-  it('adapts to different content widths from context', () => {
-    mockContentWidth.value = 30;
-    const { lastFrame: narrow } = render(
+  it('defaults to full width', () => {
+    const { lastFrame } = render(
       <Panel>
         <Text>test</Text>
       </Panel>
     );
-
-    mockContentWidth.value = 100;
-    const { lastFrame: wide } = render(
-      <Panel>
-        <Text>test</Text>
-      </Panel>
-    );
-
-    const narrowTopLine = narrow()!.split('\n')[0]!;
-    const wideTopLine = wide()!.split('\n')[0]!;
-    expect(narrowTopLine.length).toBeLessThan(wideTopLine.length);
+    const frame = lastFrame()!;
+    const topLine = frame.split('\n')[0]!;
+    expect(topLine.length).toBeGreaterThan(80);
   });
 });

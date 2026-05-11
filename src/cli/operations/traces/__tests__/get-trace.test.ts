@@ -1,6 +1,9 @@
 import { fetchTraceRecords, getTrace } from '../get-trace';
 import type { FetchTraceRecordsOptions } from '../types';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const { mockSend } = vi.hoisted(() => ({
   mockSend: vi.fn(),
@@ -20,13 +23,6 @@ vi.mock('@aws-sdk/client-cloudwatch-logs', () => ({
 
 vi.mock('../../../aws', () => ({
   getCredentialProvider: vi.fn().mockReturnValue({}),
-}));
-
-vi.mock('node:fs', () => ({
-  default: {
-    mkdirSync: vi.fn(),
-    writeFileSync: vi.fn(),
-  },
 }));
 
 const baseOptions: FetchTraceRecordsOptions = {
@@ -183,11 +179,18 @@ describe('fetchTraceRecords', () => {
 });
 
 describe('getTrace', () => {
-  afterEach(() => vi.clearAllMocks());
+  let tmpDir: string;
+
+  beforeEach(() => {
+    tmpDir = mkdtempSync(join(tmpdir(), 'get-trace-test-'));
+  });
+
+  afterEach(() => {
+    vi.clearAllMocks();
+    rmSync(tmpDir, { recursive: true, force: true });
+  });
 
   it('calls fetchTraceRecords and writes result to disk', async () => {
-    const fs = await import('node:fs');
-
     mockSend.mockResolvedValueOnce({ queryId: 'q-1' }).mockResolvedValueOnce({
       status: 'Complete',
       results: [
@@ -198,36 +201,38 @@ describe('getTrace', () => {
       ],
     });
 
+    const outputPath = join(tmpDir, 'test-trace.json');
     const result = await getTrace({
       region: 'us-west-2',
       runtimeId: 'runtime-123',
       agentName: 'my-agent',
       traceId: 'abc123def456',
-      outputPath: '/tmp/test-trace.json',
+      outputPath,
       startTime: 1000000,
       endTime: 2000000,
     });
 
     expect(result.success).toBe(true);
     expect(result.filePath).toContain('test-trace.json');
-    expect(fs.default.mkdirSync).toHaveBeenCalled();
-    expect(fs.default.writeFileSync).toHaveBeenCalledWith('/tmp/test-trace.json', expect.stringContaining('"traceId"'));
+    const content = JSON.parse(readFileSync(outputPath, 'utf-8'));
+    expect(content).toHaveLength(1);
+    expect(content[0]['@message']).toEqual({ traceId: 'abc123' });
   });
 
   it('returns error from fetchTraceRecords without writing file', async () => {
-    const fs = await import('node:fs');
-
+    const outputPath = join(tmpDir, 'should-not-exist.json');
     const result = await getTrace({
       region: 'us-west-2',
       runtimeId: 'runtime-123',
       agentName: 'my-agent',
       traceId: 'invalid!@#$',
+      outputPath,
       startTime: 1000000,
       endTime: 2000000,
     });
 
     expect(result.success).toBe(false);
     expect(result.error).toContain('Invalid trace ID format');
-    expect(fs.default.writeFileSync).not.toHaveBeenCalled();
+    expect(existsSync(outputPath)).toBe(false);
   });
 });

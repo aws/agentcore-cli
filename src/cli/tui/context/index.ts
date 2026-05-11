@@ -1,1 +1,1 @@
-export { LayoutProvider, useLayout, buildLogo } from './LayoutContext';
+export { LayoutProvider, useLayout } from './LayoutContext';

@@ -1,5 +1,5 @@
 import { policyEnginePrimitive, policyPrimitive } from '../../../primitives/registry';
-import { withAddTelemetry } from '../../../telemetry/cli-command-run.js';
+import { withCommandRunTelemetry } from '../../../telemetry/cli-command-run.js';
 import { AttachMode, ValidationMode, standardize } from '../../../telemetry/schemas/common-shapes.js';
 import {
   ErrorPrompt,
@@ -130,7 +130,7 @@ export function AddPolicyFlow({ isInteractive = true, onExit, onBack, onDev, onD
   }, []);
 
   const commitEngine = useCallback(async (engineName: string, gateways?: string[], mode?: 'LOG_ONLY' | 'ENFORCE') => {
-    const result = await withAddTelemetry(
+    const result = await withCommandRunTelemetry(
       'add.policy-engine',
       {
         attach_gateway_count: gateways?.length ?? 0,
@@ -164,7 +164,7 @@ export function AddPolicyFlow({ isInteractive = true, onExit, onBack, onDev, onD
   );
 
   const handlePolicyComplete = useCallback(async (config: AddPolicyConfig) => {
-    const result = await withAddTelemetry(
+    const result = await withCommandRunTelemetry(
       'add.policy',
       {
         source_type: config.sourceFile ? 'file' : config.sourceMethod === 'generate' ? 'generate' : 'statement',

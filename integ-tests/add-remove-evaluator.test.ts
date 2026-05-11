@@ -1,10 +1,13 @@
 import { createTestProject, parseJsonOutput, readProjectConfig, runCLI } from '../src/test-utils/index.js';
 import type { TestProject } from '../src/test-utils/index.js';
+import { createTelemetryHelper } from '../src/test-utils/telemetry-helper.js';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+
+const telemetry = createTelemetryHelper();
 
 /** Run a CLI command and assert it succeeds, returning parsed JSON output. */
 async function runSuccess(args: string[], cwd: string) {
-  const result = await runCLI(args, cwd);
+  const result = await runCLI(args, cwd, { env: telemetry.env });
   expect(result.exitCode, `stdout: ${result.stdout}, stderr: ${result.stderr}`).toBe(0);
   const json: unknown = parseJsonOutput(result.stdout);
   expect(json).toHaveProperty('success', true);
@@ -13,7 +16,7 @@ async function runSuccess(args: string[], cwd: string) {
 
 /** Run a CLI command and assert it fails, returning parsed JSON output. */
 async function runFailure(args: string[], cwd: string) {
-  const result = await runCLI(args, cwd);
+  const result = await runCLI(args, cwd, { env: telemetry.env });
   expect(result.exitCode).toBe(1);
   const json: unknown = parseJsonOutput(result.stdout);
   expect(json).toHaveProperty('success', false);
@@ -35,6 +38,7 @@ describe('integration: add and remove evaluators and online eval configs', () =>
 
   afterAll(async () => {
     await project.cleanup();
+    telemetry.destroy();
   });
 
   describe('evaluator and online eval lifecycle', () => {
@@ -123,6 +127,7 @@ describe('integration: add and remove evaluators and online eval configs', () =>
 
       const config = await readProjectConfig(project.projectPath);
       expect(config.onlineEvalConfigs.find(c => c.name === configName)).toBeUndefined();
+      telemetry.assertMetricEmitted({ command: 'remove.online-eval', exit_reason: 'success' });
     });
 
     it('removes the evaluator after online eval is gone', async () => {
@@ -130,6 +135,7 @@ describe('integration: add and remove evaluators and online eval configs', () =>
 
       const config = await readProjectConfig(project.projectPath);
       expect(config.evaluators.find(e => e.name === evalName)).toBeUndefined();
+      telemetry.assertMetricEmitted({ command: 'remove.evaluator', exit_reason: 'success' });
     });
   });
 
@@ -137,11 +143,13 @@ describe('integration: add and remove evaluators and online eval configs', () =>
     it('fails to remove non-existent evaluator', async () => {
       const json = await runFailure(['remove', 'evaluator', '--name', 'NonExistent', '--json'], project.projectPath);
       expect(json.error).toContain('not found');
+      telemetry.assertMetricEmitted({ command: 'remove.evaluator', exit_reason: 'failure' });
     });
 
     it('fails to remove non-existent online eval config', async () => {
       const json = await runFailure(['remove', 'online-eval', '--name', 'NonExistent', '--json'], project.projectPath);
       expect(json.error).toContain('not found');
+      telemetry.assertMetricEmitted({ command: 'remove.online-eval', exit_reason: 'failure' });
     });
 
     it('rejects evaluator with missing --level', async () => {

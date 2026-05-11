@@ -1,5 +1,5 @@
 import { onlineEvalConfigPrimitive } from '../../primitives/registry';
-import { withAddTelemetry } from '../../telemetry/cli-command-run.js';
+import { withCommandRunTelemetry } from '../../telemetry/cli-command-run.js';
 import { useCallback, useEffect, useState } from 'react';
 
 interface CreateOnlineEvalConfig {
@@ -20,7 +20,7 @@ export function useCreateOnlineEval() {
   const create = useCallback(async (config: CreateOnlineEvalConfig) => {
     setStatus({ state: 'loading' });
     try {
-      const addResult = await withAddTelemetry(
+      const addResult = await withCommandRunTelemetry(
         'add.online-eval',
         {
           evaluator_count: config.evaluators.length,

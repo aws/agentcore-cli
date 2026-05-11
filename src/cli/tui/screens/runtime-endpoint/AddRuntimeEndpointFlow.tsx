@@ -1,6 +1,6 @@
 import { ConfigIO } from '../../../../lib';
 import { runtimeEndpointPrimitive } from '../../../primitives/registry';
-import { withAddTelemetry } from '../../../telemetry/cli-command-run.js';
+import { withCommandRunTelemetry } from '../../../telemetry/cli-command-run.js';
 import { ErrorPrompt } from '../../components';
 import { AddSuccessScreen } from '../add/AddSuccessScreen';
 import { AddRuntimeEndpointScreen } from './AddRuntimeEndpointScreen';
@@ -79,7 +79,7 @@ export function AddRuntimeEndpointFlow({
   }, [isInteractive, flow.name, onExit]);
 
   const handleCreateComplete = useCallback((config: RuntimeEndpointWizardConfig) => {
-    void withAddTelemetry('add.runtime-endpoint', {}, () =>
+    void withCommandRunTelemetry('add.runtime-endpoint', {}, () =>
       runtimeEndpointPrimitive.add({
         runtime: config.runtimeName,
         endpoint: config.endpointName,

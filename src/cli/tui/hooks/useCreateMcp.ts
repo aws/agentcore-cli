@@ -4,7 +4,7 @@ import {
   gatewayTargetPrimitive,
   policyEnginePrimitive,
 } from '../../primitives/registry';
-import { withAddTelemetry } from '../../telemetry/cli-command-run.js';
+import { withCommandRunTelemetry } from '../../telemetry/cli-command-run.js';
 import { AuthorizerType, PolicyEngineMode, standardize } from '../../telemetry/schemas/common-shapes.js';
 import type { AddGatewayConfig } from '../screens/mcp/types';
 import { useCallback, useEffect, useState } from 'react';
@@ -25,7 +25,7 @@ export function useCreateGateway() {
   const createGateway = useCallback(async (config: AddGatewayConfig) => {
     setStatus({ state: 'loading' });
     try {
-      const addResult = await withAddTelemetry(
+      const addResult = await withCommandRunTelemetry(
         'add.gateway',
         {
           authorizer_type: standardize(AuthorizerType, config.authorizerType ?? 'NONE'),

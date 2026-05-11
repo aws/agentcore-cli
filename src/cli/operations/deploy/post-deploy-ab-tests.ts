@@ -476,14 +476,11 @@ function resolveConfigBundleVersion(
 }
 
 /**
- * Resolve a variant target name, applying the project prefix if not already present.
- * This handles legacy configs that were created before the prefix requirement.
+ * Resolve a variant target name by applying the project prefix unconditionally.
+ * post-deploy-http-gateways.ts always creates targets as `${projectName}-${tgt.name}`,
+ * so the AB test must reference the same prefixed name.
  */
 function resolveTargetName(targetName: string, projectName: string): string {
-  // If the target name already starts with the project prefix, use as-is to avoid double-prefixing
-  if (targetName.startsWith(`${projectName}-`)) {
-    return targetName;
-  }
   return `${projectName}-${targetName}`;
 }
 

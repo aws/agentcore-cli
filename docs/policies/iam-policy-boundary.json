@@ -4,7 +4,7 @@
     {
       "Sid": "BedrockModelAccess",
       "Effect": "Allow",
-      "Action": ["bedrock:InvokeModel", "bedrock:InvokeModelWithResponseStream"],
+      "Action": ["bedrock:InvokeModel", "bedrock:InvokeModelWithResponseStream", "bedrock:CountTokens"],
       "Resource": ["arn:aws:bedrock:*::foundation-model/*", "arn:aws:bedrock:*:ACCOUNT_ID:*"]
     },
     {

@@ -1,6 +1,5 @@
 import { findConfigRoot } from '../../../../lib';
 import { Cursor, ScreenLayout } from '../../components';
-import { buildLogo, useLayout } from '../../context';
 import { HINTS } from '../../copy';
 import { Box, Text, useApp, useInput } from 'ink';
 import React from 'react';
@@ -53,10 +52,7 @@ interface HomeScreenProps {
 
 export function HomeScreen({ cwd: _cwd, version, onShowHelp, onSelectCreate }: HomeScreenProps) {
   const { exit } = useApp();
-  const { contentWidth } = useLayout();
   const showQuickStart = !hasProject();
-  const logo = buildLogo(contentWidth, version);
-  const divider = '─'.repeat(contentWidth);
 
   useInput((input, key) => {
     if (key.escape) {
@@ -82,8 +78,11 @@ export function HomeScreen({ cwd: _cwd, version, onShowHelp, onSelectCreate }: H
   return (
     <ScreenLayout>
       <Box flexDirection="column">
-        {/* Logo with version - always at top */}
-        <Text color="cyan">{logo}</Text>
+        {/* Logo with version */}
+        <Box borderStyle="single" borderColor="cyan" width="100%" justifyContent="space-between" paddingX={1}>
+          <Text color="cyan">{'>_ AgentCore'}</Text>
+          {version && <Text color="cyan">v{version}</Text>}
+        </Box>
 
         {/* Input - directly under logo */}
         <Box marginTop={1}>
@@ -97,8 +96,15 @@ export function HomeScreen({ cwd: _cwd, version, onShowHelp, onSelectCreate }: H
         {showQuickStart ? <QuickStart /> : <Box height={QUICK_START_LINES} />}
 
         {/* Divider and hint at bottom */}
-        <Box marginTop={1} flexDirection="column">
-          <Text dimColor>{divider}</Text>
+        <Box
+          marginTop={1}
+          flexDirection="column"
+          borderStyle="single"
+          borderTop
+          borderBottom={false}
+          borderLeft={false}
+          borderRight={false}
+        >
           <Text dimColor>{HINTS.HOME}</Text>
         </Box>
       </Box>

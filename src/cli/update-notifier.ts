@@ -1,12 +1,15 @@
+import { ONE_DAY_MS } from '../lib/time-constants.js';
 import { compareVersions, fetchLatestVersion } from './commands/update/action.js';
 import { PACKAGE_VERSION } from './constants.js';
 import { mkdir, readFile, writeFile } from 'fs/promises';
 import { homedir } from 'os';
 import { join } from 'path';
 
-const CACHE_DIR = join(homedir(), '.agentcore');
-const CACHE_FILE = join(CACHE_DIR, 'update-check.json');
-const CHECK_INTERVAL_MS = 24 * 60 * 60 * 1000; // every 24 hours
+function getConfigDir(): string {
+  return process.env.AGENTCORE_CONFIG_DIR ?? join(homedir(), '.agentcore');
+}
+
+const CHECK_INTERVAL_MS = ONE_DAY_MS;
 
 interface CacheData {
   lastCheck: number;
@@ -20,7 +23,7 @@ export interface UpdateCheckResult {
 
 async function readCache(): Promise<CacheData | null> {
   try {
-    const data = await readFile(CACHE_FILE, 'utf-8');
+    const data = await readFile(join(getConfigDir(), 'update-check.json'), 'utf-8');
     return JSON.parse(data) as CacheData;
   } catch {
     return null;
@@ -29,8 +32,9 @@ async function readCache(): Promise<CacheData | null> {
 
 async function writeCache(data: CacheData): Promise<void> {
   try {
-    await mkdir(CACHE_DIR, { recursive: true });
-    await writeFile(CACHE_FILE, JSON.stringify(data), 'utf-8');
+    const dir = getConfigDir();
+    await mkdir(dir, { recursive: true });
+    await writeFile(join(dir, 'update-check.json'), JSON.stringify(data), 'utf-8');
   } catch {
     // Silently ignore cache write failures
   }

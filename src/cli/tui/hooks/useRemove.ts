@@ -19,6 +19,8 @@ import {
   policyPrimitive,
   runtimeEndpointPrimitive,
 } from '../../primitives/registry';
+import { withCommandRunTelemetry } from '../../telemetry/cli-command-run.js';
+import type { SubCommand } from '../../telemetry/schemas/command-run.js';
 import { useCallback, useEffect, useRef, useState } from 'react';
 
 // Re-export types for consumers
@@ -74,7 +76,11 @@ function useRemoveResource<TIdentifier>(
 
   const remove = useCallback(async (id: TIdentifier, preview?: RemovalPreview): Promise<RemoveResult> => {
     setState({ isLoading: true, result: null });
-    const result = await removeFnRef.current(id);
+    const result = await withCommandRunTelemetry<SubCommand<'remove', ResourceType>, RemovalResult>(
+      `remove.${resourceTypeRef.current}`,
+      {},
+      () => removeFnRef.current(id)
+    );
     setState({ isLoading: false, result });
 
     let logPath: string | undefined;

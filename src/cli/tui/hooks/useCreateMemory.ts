@@ -2,7 +2,7 @@ import { ConfigIO } from '../../../lib';
 import type { Memory } from '../../../schema';
 import { getAvailableAgents } from '../../operations/attach';
 import { memoryPrimitive } from '../../primitives/registry';
-import { withAddTelemetry } from '../../telemetry/cli-command-run.js';
+import { withCommandRunTelemetry } from '../../telemetry/cli-command-run.js';
 import { useCallback, useEffect, useState } from 'react';
 
 interface CreateMemoryConfig {
@@ -26,7 +26,7 @@ export function useCreateMemory() {
     try {
       const strategiesStr = config.strategies.map(s => s.type).join(',');
       const strategyList = strategiesStr ? strategiesStr.split(',').map(s => s.trim().toUpperCase()) : [];
-      const addResult = await withAddTelemetry(
+      const addResult = await withCommandRunTelemetry(
         'add.memory',
         {
           strategy_count: strategyList.length,

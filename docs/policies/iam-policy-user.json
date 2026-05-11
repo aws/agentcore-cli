@@ -116,7 +116,7 @@
     {
       "Sid": "BedrockModelInvocation",
       "Effect": "Allow",
-      "Action": ["bedrock:InvokeModel", "bedrock:InvokeModelWithResponseStream"],
+      "Action": ["bedrock:InvokeModel", "bedrock:InvokeModelWithResponseStream", "bedrock:CountTokens"],
       "Resource": "*"
     },
     {

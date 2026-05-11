@@ -1,5 +1,4 @@
 import { Cursor, ScreenLayout } from '../../components';
-import { useLayout } from '../../context';
 import { HINTS } from '../../copy';
 import { useTextInput } from '../../hooks';
 import type { CommandMeta } from '../../utils/commands';
@@ -84,10 +83,8 @@ function HelpDisplay({
   interactiveCount,
   notice,
 }: HelpDisplayProps) {
-  const { contentWidth } = useLayout();
   const { stdout } = useStdout();
   const terminalWidth = stdout?.columns ?? 80;
-  const bottomDivider = '─'.repeat(contentWidth);
 
   const allItems = [...interactiveItems, ...cliOnlyItems];
   const maxLabelLen = getMaxLabelLen(allItems);
@@ -131,8 +128,16 @@ function HelpDisplay({
 
             {showCliSection && (
               <>
-                <Box marginTop={1}>
-                  <Text dimColor>CLI only {'─'.repeat(Math.max(0, contentWidth - 11))}</Text>
+                <Box
+                  marginTop={1}
+                  borderStyle="single"
+                  borderTop
+                  borderBottom={false}
+                  borderLeft={false}
+                  borderRight={false}
+                  width="100%"
+                >
+                  <Text dimColor>CLI only</Text>
                 </Box>
                 {cliOnlyItems.map((item, idx) => (
                   <CommandRow
@@ -151,8 +156,15 @@ function HelpDisplay({
 
       {notice && <Box marginTop={1}>{notice}</Box>}
 
-      <Box marginTop={1} flexDirection="column">
-        <Text dimColor>{bottomDivider}</Text>
+      <Box
+        marginTop={1}
+        flexDirection="column"
+        borderStyle="single"
+        borderTop
+        borderBottom={false}
+        borderLeft={false}
+        borderRight={false}
+      >
         <Text dimColor>{hintText}</Text>
       </Box>
     </Box>

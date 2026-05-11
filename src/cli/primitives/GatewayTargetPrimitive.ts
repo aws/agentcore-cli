@@ -14,7 +14,7 @@ import { validateAddGatewayTargetOptions } from '../commands/add/validate';
 import { getErrorMessage } from '../errors';
 import type { RemovableGatewayTarget } from '../operations/remove/remove-gateway-target';
 import type { RemovalPreview, RemovalResult, SchemaChange } from '../operations/remove/types';
-import { cliCommandRun } from '../telemetry/cli-command-run.js';
+import { runCliCommand, withCommandRunTelemetry } from '../telemetry/cli-command-run.js';
 import {
   GATEWAY_TARGET_TYPE_MAP,
   GatewayTargetHost,
@@ -309,7 +309,7 @@ export class GatewayTargetPrimitive extends BasePrimitive<AddGatewayTargetOption
           process.exit(1);
         }
 
-        await cliCommandRun('add.gateway-target', !!cliOptions.json, async () => {
+        await runCliCommand('add.gateway-target', !!cliOptions.json, async () => {
           const validation = await validateAddGatewayTargetOptions(cliOptions);
           if (!validation.valid) {
             throw new Error(validation.error);
@@ -510,7 +510,9 @@ export class GatewayTargetPrimitive extends BasePrimitive<AddGatewayTargetOption
               process.exit(1);
             }
 
-            const result = await this.remove(cliOptions.name);
+            const result = await withCommandRunTelemetry('remove.gateway-target', {}, () =>
+              this.remove(cliOptions.name!)
+            );
             console.log(
               JSON.stringify({
                 success: result.success,

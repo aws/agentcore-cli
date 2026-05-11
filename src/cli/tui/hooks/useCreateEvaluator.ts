@@ -1,6 +1,6 @@
 import type { EvaluatorConfig } from '../../../schema';
 import { evaluatorPrimitive } from '../../primitives/registry';
-import { withAddTelemetry } from '../../telemetry/cli-command-run.js';
+import { withCommandRunTelemetry } from '../../telemetry/cli-command-run.js';
 import { Level, standardize } from '../../telemetry/schemas/common-shapes.js';
 import { useCallback, useEffect, useState } from 'react';
 
@@ -18,7 +18,7 @@ export function useCreateEvaluator() {
   const create = useCallback(async (config: CreateEvaluatorConfig) => {
     setStatus({ state: 'loading' });
     try {
-      const addResult = await withAddTelemetry(
+      const addResult = await withCommandRunTelemetry(
         'add.evaluator',
         {
           evaluator_type: config.config.codeBased ? 'code-based' : 'llm-as-a-judge',

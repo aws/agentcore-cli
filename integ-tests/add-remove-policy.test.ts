@@ -1,6 +1,9 @@
 import { createTestProject, readProjectConfig, runCLI } from '../src/test-utils/index.js';
 import type { TestProject } from '../src/test-utils/index.js';
+import { createTelemetryHelper } from '../src/test-utils/telemetry-helper.js';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+
+const telemetry = createTelemetryHelper();
 
 describe('integration: add and remove policy engines and policies', () => {
   let project: TestProject;
@@ -16,6 +19,7 @@ describe('integration: add and remove policy engines and policies', () => {
 
   afterAll(async () => {
     await project.cleanup();
+    telemetry.destroy();
   });
 
   describe('policy engine lifecycle', () => {
@@ -111,7 +115,8 @@ describe('integration: add and remove policy engines and policies', () => {
     it('removes a policy with --engine flag', async () => {
       const result = await runCLI(
         ['remove', 'policy', '--name', policyName, '--engine', engineName, '--json'],
-        project.projectPath
+        project.projectPath,
+        { env: telemetry.env }
       );
 
       expect(result.exitCode, `stdout: ${result.stdout}, stderr: ${result.stderr}`).toBe(0);
@@ -125,6 +130,7 @@ describe('integration: add and remove policy engines and policies', () => {
       expect(engine, `Engine "${engineName}" should still exist`).toBeDefined();
       const policy = engine!.policies.find(p => p.name === policyName);
       expect(policy, `Policy "${policyName}" should be removed`).toBeUndefined();
+      telemetry.assertMetricEmitted({ command: 'remove.policy', exit_reason: 'success' });
     });
   });
 
@@ -272,24 +278,29 @@ describe('integration: add and remove policy engines and policies', () => {
     });
 
     it('fails to remove non-existent policy', async () => {
-      const result = await runCLI(['remove', 'policy', '--name', 'NonExistentPolicy', '--json'], project.projectPath);
+      const result = await runCLI(['remove', 'policy', '--name', 'NonExistentPolicy', '--json'], project.projectPath, {
+        env: telemetry.env,
+      });
 
       expect(result.exitCode).toBe(1);
       const json = JSON.parse(result.stdout);
       expect(json.success).toBe(false);
       expect(json.error).toContain('not found');
+      telemetry.assertMetricEmitted({ command: 'remove.policy', exit_reason: 'failure' });
     });
 
     it('fails to remove non-existent policy engine', async () => {
       const result = await runCLI(
         ['remove', 'policy-engine', '--name', 'NonExistentEngine', '--json'],
-        project.projectPath
+        project.projectPath,
+        { env: telemetry.env }
       );
 
       expect(result.exitCode).toBe(1);
       const json = JSON.parse(result.stdout);
       expect(json.success).toBe(false);
       expect(json.error).toContain('not found');
+      telemetry.assertMetricEmitted({ command: 'remove.policy-engine', exit_reason: 'failure' });
     });
 
     it('requires --engine when adding a policy', async () => {

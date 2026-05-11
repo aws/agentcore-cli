@@ -1,0 +1,72 @@
+name: CI Failure Issue
+
+on:
+  workflow_run:
+    # These names must match the `name:` field in each workflow file exactly
+    workflows:
+      - 'Build and Test'
+      - 'Quality and Safety Checks'
+      - 'E2E Tests (Full Suite)'
+      - 'CodeQL'
+    types: [completed]
+
+jobs:
+  create-issue:
+    concurrency: ci-failure-issue-${{ github.event.workflow_run.name }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    if: ${{ github.event.workflow_run.conclusion == 'failure' && github.event.workflow_run.head_branch == 'main' }}
+    permissions:
+      issues: write
+    steps:
+      - uses: actions/github-script@v9
+        with:
+          github-token: ${{ secrets.AUTOMATION_ACCOUNT_PAT_TOKEN }}
+          script: |
+            try {
+              const workflowName = context.payload.workflow_run.name;
+
+              if (!/^[A-Za-z0-9 _()\-]+$/.test(workflowName)) {
+                core.setFailed(`Unexpected characters in workflow name: ${workflowName}`);
+                return;
+              }
+
+              const sha = context.payload.workflow_run.head_sha;
+              const runUrl = context.payload.workflow_run.html_url;
+              const branch = context.payload.workflow_run.head_branch;
+              const title = `CI Failure: ${workflowName}`;
+
+              const { data } = await github.rest.search.issuesAndPullRequests({
+                q: `repo:${context.repo.owner}/${context.repo.repo} is:issue is:open in:title "${title}"`
+              });
+
+              if (data.items.some(i => i.title === title)) {
+                core.info(`Issue already exists for "${title}"`);
+                return;
+              }
+
+              // Fallback: check recent issues in case search index is stale
+              const { data: recent } = await github.rest.issues.listForRepo({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                state: 'open',
+                sort: 'created',
+                direction: 'desc',
+                per_page: 30
+              });
+
+              if (recent.some(i => i.title === title)) {
+                core.info(`Issue already exists for "${title}" (found via fallback)`);
+                return;
+              }
+
+              await github.rest.issues.create({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                title,
+                labels: ['high-severity', 'ci'],
+                body: `## CI Failure\n\n- **Workflow:** ${workflowName}\n- **Branch:** ${branch}\n- **Commit:** ${sha}\n- **Run:** ${runUrl}\n\nPlease investigate this failure.`
+              });
+            } catch (error) {
+              core.setFailed(`Failed to create CI failure issue: ${error.message || error}`);
+            }

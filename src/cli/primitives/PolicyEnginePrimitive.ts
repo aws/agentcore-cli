@@ -3,7 +3,7 @@ import type { AgentCoreProjectSpec, PolicyEngine } from '../../schema';
 import { PolicyEngineModeSchema, PolicyEngineSchema } from '../../schema';
 import { getErrorMessage } from '../errors';
 import type { RemovalPreview, RemovalResult, SchemaChange } from '../operations/remove/types';
-import { cliCommandRun } from '../telemetry/cli-command-run.js';
+import { runCliCommand, withCommandRunTelemetry } from '../telemetry/cli-command-run.js';
 import { AttachMode, standardize } from '../telemetry/schemas/common-shapes.js';
 import { requireTTY } from '../tui/guards/tty';
 import { BasePrimitive } from './BasePrimitive';
@@ -229,7 +229,7 @@ export class PolicyEnginePrimitive extends BasePrimitive<AddPolicyEngineOptions,
           }
 
           if (cliOptions.name || cliOptions.description || cliOptions.encryptionKeyArn || cliOptions.json) {
-            await cliCommandRun('add.policy-engine', !!cliOptions.json, async () => {
+            await runCliCommand('add.policy-engine', !!cliOptions.json, async () => {
               if (!cliOptions.name) {
                 throw new Error('--name is required');
               }
@@ -316,7 +316,9 @@ export class PolicyEnginePrimitive extends BasePrimitive<AddPolicyEngineOptions,
               process.exit(1);
             }
 
-            const result = await this.remove(cliOptions.name);
+            const result = await withCommandRunTelemetry('remove.policy-engine', {}, () =>
+              this.remove(cliOptions.name!)
+            );
             if (cliOptions.json) {
               console.log(
                 JSON.stringify({

@@ -4,7 +4,7 @@ import { CredentialSchema } from '../../schema';
 import { validateAddCredentialOptions } from '../commands/add/validate';
 import { getErrorMessage } from '../errors';
 import type { RemovalPreview, RemovalResult, SchemaChange } from '../operations/remove/types';
-import { cliCommandRun } from '../telemetry/cli-command-run.js';
+import { runCliCommand } from '../telemetry/cli-command-run.js';
 import { CredentialType, standardize } from '../telemetry/schemas/common-shapes.js';
 import { requireTTY } from '../tui/guards/tty';
 import { BasePrimitive } from './BasePrimitive';
@@ -291,7 +291,7 @@ export class CredentialPrimitive extends BasePrimitive<AddCredentialOptions, Rem
             cliOptions.scopes
           ) {
             // CLI mode
-            await cliCommandRun('add.credential', !!cliOptions.json, async () => {
+            await runCliCommand('add.credential', !!cliOptions.json, async () => {
               const validation = validateAddCredentialOptions({
                 name: cliOptions.name,
                 type: cliOptions.type as 'api-key' | 'oauth' | undefined,

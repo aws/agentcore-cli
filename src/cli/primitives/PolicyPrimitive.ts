@@ -5,7 +5,7 @@ import { detectRegion } from '../aws';
 import { getPolicyGeneration, startPolicyGeneration } from '../aws/policy-generation';
 import { getErrorMessage } from '../errors';
 import type { RemovalPreview, RemovalResult, SchemaChange } from '../operations/remove/types';
-import { cliCommandRun } from '../telemetry/cli-command-run.js';
+import { runCliCommand, withCommandRunTelemetry } from '../telemetry/cli-command-run.js';
 import { ValidationMode, standardize } from '../telemetry/schemas/common-shapes.js';
 import { requireTTY } from '../tui/guards/tty';
 import { BasePrimitive } from './BasePrimitive';
@@ -306,7 +306,7 @@ export class PolicyPrimitive extends BasePrimitive<AddPolicyOptions, RemovablePo
             cliOptions.generate ||
             cliOptions.json
           ) {
-            await cliCommandRun('add.policy', !!cliOptions.json, async () => {
+            await runCliCommand('add.policy', !!cliOptions.json, async () => {
               if (!cliOptions.name) {
                 throw new Error('--name is required');
               }
@@ -400,7 +400,7 @@ export class PolicyPrimitive extends BasePrimitive<AddPolicyOptions, RemovablePo
 
             // Build composite key when --engine is provided for unambiguous removal
             const removeKey = cliOptions.engine ? `${cliOptions.engine}/${cliOptions.name}` : cliOptions.name;
-            const result = await this.remove(removeKey);
+            const result = await withCommandRunTelemetry('remove.policy', {}, () => this.remove(removeKey));
 
             if (cliOptions.json) {
               console.log(
