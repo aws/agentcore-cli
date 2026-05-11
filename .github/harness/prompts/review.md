@@ -14,5 +14,5 @@ Review the PR. If there are any serious issues that require code changes before 
 each issue explaining the problem. If there are multiple ways to fix an issue, list the options so the author can
 choose. Skip style nits and minor suggestions — only flag things that actually need to change.
 
-If all serious issues have already been raised in existing comments, or if you found no new issues, post a single
-comment on the PR saying it looks good to merge (or that all issues have already been flagged).
+When finished, submit a formal PR review (approve or request changes) with individual and inline comments in it. Be
+specific with line numbers.

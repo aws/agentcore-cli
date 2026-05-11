@@ -1,4 +1,6 @@
 import { runCLI } from '../../../../test-utils/index.js';
+import { runDeploy, runDiff } from '../actions.js';
+import { StackSelectionStrategy } from '@aws-cdk/toolkit-lib';
 import { randomUUID } from 'node:crypto';
 import { mkdir, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
@@ -54,5 +56,39 @@ describe('deploy without agents', () => {
     expect(json.success).toBe(false);
     expect(json.error).toBeDefined();
     expect(json.error.toLowerCase()).toContain('no resources defined');
+  });
+});
+
+describe('runDiff', () => {
+  it('passes stack selection pattern to toolkit wrapper diff', async () => {
+    let captured: unknown;
+    const fakeWrapper = {
+      diff: (opts?: unknown) => {
+        captured = opts;
+      },
+    };
+
+    await runDiff(fakeWrapper as any, 'AgentCore-myapp-prod');
+
+    expect(captured).toEqual({
+      stacks: { strategy: StackSelectionStrategy.PATTERN_MUST_MATCH, patterns: ['AgentCore-myapp-prod'] },
+    });
+  });
+});
+
+describe('runDeploy', () => {
+  it('passes stack selection pattern to toolkit wrapper deploy', async () => {
+    let captured: unknown;
+    const fakeWrapper = {
+      deploy: (opts?: unknown) => {
+        captured = opts;
+      },
+    };
+
+    await runDeploy(fakeWrapper as any, 'AgentCore-myapp-prod');
+
+    expect(captured).toEqual({
+      stacks: { strategy: StackSelectionStrategy.PATTERN_MUST_MATCH, patterns: ['AgentCore-myapp-prod'] },
+    });
   });
 });
