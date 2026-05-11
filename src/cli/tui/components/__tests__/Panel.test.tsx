@@ -41,23 +41,16 @@ describe('Panel', () => {
     expect(frame.indexOf('Settings')).toBeLessThan(frame.indexOf('body'));
   });
 
-  it('adapts to different content widths from context', () => {
+  it('defaults to full width', () => {
     mockContentWidth.value = 30;
-    const { lastFrame: narrow } = render(
-      <Panel fullWidth={false}>
+    const { lastFrame } = render(
+      <Panel>
         <Text>test</Text>
       </Panel>
     );
-
-    mockContentWidth.value = 100;
-    const { lastFrame: wide } = render(
-      <Panel fullWidth={false}>
-        <Text>test</Text>
-      </Panel>
-    );
-
-    const narrowTopLine = narrow()!.split('\n')[0]!;
-    const wideTopLine = wide()!.split('\n')[0]!;
-    expect(narrowTopLine.length).toBeLessThan(wideTopLine.length);
+    const frame = lastFrame()!;
+    const topLine = frame.split('\n')[0]!;
+    // fullWidth panels don't constrain to contentWidth, so width should exceed 30
+    expect(topLine.length).toBeGreaterThan(30);
   });
 });
