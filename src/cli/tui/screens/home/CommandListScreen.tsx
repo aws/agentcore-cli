@@ -1,4 +1,3 @@
-import { buildLogo, useLayout } from '../../context';
 import type { CommandMeta } from '../../utils/commands';
 import { Box, Text, useApp, useStdout } from 'ink';
 import React, { useEffect } from 'react';
@@ -18,11 +17,9 @@ interface CommandListScreenProps {
  */
 export function CommandListScreen({ commands }: CommandListScreenProps) {
   const { exit } = useApp();
-  const { contentWidth } = useLayout();
   const { stdout } = useStdout();
   const terminalWidth = stdout?.columns ?? 80;
   const maxDescWidth = Math.max(20, terminalWidth - 18);
-  const logo = buildLogo(contentWidth);
 
   // Exit after render
   useEffect(() => {
@@ -34,7 +31,9 @@ export function CommandListScreen({ commands }: CommandListScreenProps) {
 
   return (
     <Box flexDirection="column" paddingY={1}>
-      <Text>{logo}</Text>
+      <Box borderStyle="single" borderColor="cyan" width="100%" justifyContent="space-between" paddingX={1}>
+        <Text color="cyan">{'>_ AgentCore'}</Text>
+      </Box>
       <Text> </Text>
       <Text bold color="yellow">
         Usage:
