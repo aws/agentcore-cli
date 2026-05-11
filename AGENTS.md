@@ -143,6 +143,10 @@ See `docs/TESTING.md` for details.
 - Always look for existing types before creating a new type inline.
 - Re-usable constants must be defined in a constants file in the closest sensible subdirectory.
 
+## Telemetry
+
+New features must include telemetry instrumentation. See `src/cli/telemetry/README.md` for how to add metrics.
+
 ## Multi-Partition Support (GovCloud, China)
 
 The CLI supports multiple AWS partitions (commercial, GovCloud, China) through a central utility at
