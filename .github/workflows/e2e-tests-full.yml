@@ -64,6 +64,7 @@ jobs:
         with:
           app-id: ${{ vars.APP_ID }}
           private-key: ${{ secrets.APP_PRIVATE_KEY }}
+          owner: aws
       - name: Build CDK package from main
         if: matrix.cdk-source == 'main'
         run: |

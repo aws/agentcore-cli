@@ -82,6 +82,7 @@ jobs:
         with:
           app-id: ${{ vars.APP_ID }}
           private-key: ${{ secrets.APP_PRIVATE_KEY }}
+          owner: aws
       - name: Build CDK package from main
         run: |
           git clone --depth 1 "https://x-access-token:${CDK_REPO_TOKEN}@github.com/${CDK_REPO}.git" /tmp/cdk-repo
