@@ -16,7 +16,7 @@ Install the tarball into your working directory so it doesn't conflict with othe
 ```bash
 # From the parent workspace directory
 npm init -y  # if no package.json exists yet
-npm install ./agentcore-cli/agentcore-cli-*.tgz
+npm install ./agentcore-cli/aws-agentcore-*.tgz
 ```
 
 Then run it with:
