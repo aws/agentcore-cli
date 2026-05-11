@@ -15,6 +15,18 @@ import { createManagedOAuthCredential } from '../../../primitives/auth-utils';
 import { computeDefaultCredentialEnvVarName } from '../../../primitives/credential-utils';
 import { credentialPrimitive } from '../../../primitives/registry';
 import { createDefaultProjectSpec } from '../../../project';
+import { withCommandRunTelemetry } from '../../../telemetry/cli-command-run.js';
+import {
+  AgentType,
+  Build,
+  Framework,
+  Language,
+  Memory as MemoryEnum,
+  ModelProvider,
+  NetworkMode,
+  Protocol,
+  standardize,
+} from '../../../telemetry/schemas/common-shapes.js';
 import { CDKRenderer, createRenderer } from '../../../templates';
 import { type Step, areStepsComplete, hasStepError } from '../../components';
 import { withMinDuration } from '../../utils';
@@ -181,7 +193,19 @@ export function useCreateFlow(cwd: string): CreateFlowState {
   useEffect(() => {
     if (phase !== 'running') return;
 
-    const run = async () => {
+    const attrs = {
+      language: standardize(Language, addAgentConfig?.language ?? 'Python'),
+      framework: standardize(Framework, addAgentConfig?.framework),
+      model_provider: standardize(ModelProvider, addAgentConfig?.modelProvider),
+      memory: standardize(MemoryEnum, addAgentConfig?.memory ?? 'none'),
+      protocol: standardize(Protocol, addAgentConfig?.protocol ?? 'HTTP'),
+      build: standardize(Build, addAgentConfig?.buildType ?? 'CodeZip'),
+      agent_type: standardize(AgentType, addAgentConfig?.agentType ?? 'create'),
+      network_mode: standardize(NetworkMode, addAgentConfig?.networkMode ?? 'PUBLIC'),
+      has_agent: addAgentConfig !== null,
+    };
+
+    const run = async (): Promise<{ success: true } | { success: false; error: string }> => {
       // Project root is now cwd/projectName (creating a new directory)
       const projectRoot = join(cwd, projectName);
       const configBaseDir = join(projectRoot, CONFIG_DIR);
@@ -244,7 +268,7 @@ export function useCreateFlow(cwd: string): CreateFlowState {
           logger.endStep('error', errMsg);
           updateStep(stepIndex, { status: 'error', error: errMsg });
           logger.finalize(false);
-          return;
+          return { success: false, error: errMsg };
         }
 
         // Step: Add agent to project (if addAgentConfig is set)
@@ -432,7 +456,7 @@ export function useCreateFlow(cwd: string): CreateFlowState {
             logger.endStep('error', errMsg);
             updateStep(stepIndex, { status: 'error', error: errMsg });
             logger.finalize(false);
-            return;
+            return { success: false, error: errMsg };
           }
 
           // Step: Set up Python environment (if Python and create path)
@@ -474,7 +498,7 @@ export function useCreateFlow(cwd: string): CreateFlowState {
           logger.endStep('error', errMsg);
           updateStep(stepIndex, { status: 'error', error: errMsg });
           logger.finalize(false);
-          return;
+          return { success: false, error: errMsg };
         }
 
         // Step: Initialize git repository
@@ -486,7 +510,7 @@ export function useCreateFlow(cwd: string): CreateFlowState {
           logger.endStep('error', gitResult.message);
           updateStep(stepIndex, { status: 'error', error: gitResult.message });
           logger.finalize(false);
-          return;
+          return { success: false, error: gitResult.message ?? 'Git initialization failed' };
         } else if (gitResult.status === 'skipped') {
           logger.endStep('warn', gitResult.message);
           updateStep(stepIndex, { status: 'success', warn: gitResult.message });
@@ -497,6 +521,7 @@ export function useCreateFlow(cwd: string): CreateFlowState {
 
         logger.finalize(true);
         setPhase('complete');
+        return { success: true };
       } catch (err) {
         // Top-level catch - find current running step and mark as error
         const errMsg = getErrorMessage(err);
@@ -509,10 +534,11 @@ export function useCreateFlow(cwd: string): CreateFlowState {
           }
           return prev;
         });
+        return { success: false, error: errMsg };
       }
     };
 
-    void run();
+    void withCommandRunTelemetry('create', attrs, run);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [phase]);
 

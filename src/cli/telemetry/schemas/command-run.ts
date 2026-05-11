@@ -41,7 +41,7 @@ const CreateAttrs = safeSchema({
   memory: Memory,
   protocol: Protocol,
   build: Build,
-  agent_type: z.enum(['create', 'import']),
+  agent_type: AgentType,
   network_mode: NetworkMode,
   has_agent: z.boolean(),
 });

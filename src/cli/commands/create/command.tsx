@@ -9,6 +9,18 @@ import type {
 } from '../../../schema';
 import { LIFECYCLE_TIMEOUT_MAX, LIFECYCLE_TIMEOUT_MIN } from '../../../schema';
 import { getErrorMessage } from '../../errors';
+import { runCliCommand } from '../../telemetry/cli-command-run.js';
+import {
+  AgentType,
+  Build,
+  Framework,
+  Language,
+  Memory,
+  ModelProvider as ModelProviderEnum,
+  NetworkMode as NetworkModeEnum,
+  Protocol,
+  standardize,
+} from '../../telemetry/schemas/common-shapes.js';
 import { COMMAND_DESCRIPTIONS } from '../../tui/copy';
 import { requireTTY } from '../../tui/guards';
 import { CreateScreen } from '../../tui/screens/create';
@@ -79,18 +91,17 @@ async function handleCreateCLI(options: CreateOptions): Promise<void> {
   const name = options.name ?? options.projectName;
   const projectName = options.projectName ?? name;
 
-  const validation = validateCreateOptions(options, cwd);
-  if (!validation.valid) {
-    if (options.json) {
-      console.log(JSON.stringify({ success: false, error: validation.error }));
-    } else {
-      console.error(validation.error);
-    }
-    process.exit(1);
-  }
-
-  // Handle dry-run mode
+  // Handle dry-run mode (no telemetry for dry-run)
   if (options.dryRun) {
+    const validation = validateCreateOptions(options, cwd);
+    if (!validation.valid) {
+      if (options.json) {
+        console.log(JSON.stringify({ success: false, error: validation.error }));
+      } else {
+        console.error(validation.error);
+      }
+      process.exit(1);
+    }
     const result = getDryRunInfo({ name: name!, projectName, cwd, language: options.language });
     if (options.json) {
       console.log(JSON.stringify(result));
@@ -103,74 +114,92 @@ async function handleCreateCLI(options: CreateOptions): Promise<void> {
     process.exit(0);
   }
 
-  const green = '\x1b[32m';
-  const reset = '\x1b[0m';
-
-  // Progress callback for real-time output
-  const onProgress: ProgressCallback | undefined = options.json
-    ? undefined
-    : (step, status) => {
-        if (status === 'done') {
-          console.log(`${green}[done]${reset}  ${step}`);
-        } else if (status === 'error') {
-          console.log(`\x1b[31m[error]${reset} ${step}`);
-        }
-        // 'start' is silent - we only show when done
-      };
-
-  // Commander.js --no-agent sets agent=false, not noAgent=true
-  const skipAgent = options.agent === false;
-
-  const result = skipAgent
-    ? await createProject({
-        name: projectName!,
-        cwd,
-        skipGit: options.skipGit,
-        skipInstall: options.skipInstall,
-        onProgress,
-      })
-    : await createProjectWithAgent({
-        name: name!,
-        projectName,
-        cwd,
-        type: options.type as 'create' | 'import' | undefined,
-        buildType: (options.build as BuildType) ?? 'CodeZip',
-        language: (options.language as TargetLanguage) ?? (options.type === 'import' ? 'Python' : undefined),
-        framework: options.framework as SDKFramework | undefined,
-        modelProvider: options.modelProvider as ModelProvider | undefined,
-        apiKey: options.apiKey,
-        memory: (options.memory as 'none' | 'shortTerm' | 'longAndShortTerm') ?? 'none',
-        protocol: options.protocol as ProtocolMode | undefined,
-        agentId: options.agentId,
-        agentAliasId: options.agentAliasId,
-        region: options.region,
-        networkMode: options.networkMode as NetworkMode | undefined,
-        subnets: parseCommaSeparatedList(options.subnets),
-        securityGroups: parseCommaSeparatedList(options.securityGroups),
-        idleTimeout: options.idleTimeout ? Number(options.idleTimeout) : undefined,
-        maxLifetime: options.maxLifetime ? Number(options.maxLifetime) : undefined,
-        sessionStorageMountPath: options.sessionStorageMountPath,
-        withConfigBundle: options.withConfigBundle,
-        skipGit: options.skipGit,
-        skipInstall: options.skipInstall,
-        skipPythonSetup: options.skipPythonSetup,
-        onProgress,
-      });
-
-  if (options.json) {
-    console.log(JSON.stringify(result));
-  } else if (result.success) {
-    printCreateSummary(projectName!, result.agentName, options.language, options.framework);
-    if (options.skipInstall) {
-      console.log(
-        "\nDependency installation was skipped. Run 'npm install' in agentcore/cdk/ and 'uv sync' in your agent directory manually."
-      );
+  await runCliCommand('create', !!options.json, async () => {
+    const validation = validateCreateOptions(options, cwd);
+    if (!validation.valid) {
+      throw new Error(validation.error);
     }
-  } else {
-    console.error(result.error);
-  }
+    const green = '\x1b[32m';
+    const reset = '\x1b[0m';
 
-  process.exit(result.success ? 0 : 1);
+    // Progress callback for real-time output
+    const onProgress: ProgressCallback | undefined = options.json
+      ? undefined
+      : (step, status) => {
+          if (status === 'done') {
+            console.log(`${green}[done]${reset}  ${step}`);
+          } else if (status === 'error') {
+            console.log(`\x1b[31m[error]${reset} ${step}`);
+          }
+          // 'start' is silent - we only show when done
+        };
+
+    // Commander.js --no-agent sets agent=false, not noAgent=true
+    const skipAgent = options.agent === false;
+
+    const result = skipAgent
+      ? await createProject({
+          name: projectName!,
+          cwd,
+          skipGit: options.skipGit,
+          skipInstall: options.skipInstall,
+          onProgress,
+        })
+      : await createProjectWithAgent({
+          name: name!,
+          projectName,
+          cwd,
+          type: options.type as 'create' | 'import' | undefined,
+          buildType: (options.build as BuildType) ?? 'CodeZip',
+          language: (options.language as TargetLanguage) ?? (options.type === 'import' ? 'Python' : undefined),
+          framework: options.framework as SDKFramework | undefined,
+          modelProvider: options.modelProvider as ModelProvider | undefined,
+          apiKey: options.apiKey,
+          memory: (options.memory as 'none' | 'shortTerm' | 'longAndShortTerm') ?? 'none',
+          protocol: options.protocol as ProtocolMode | undefined,
+          agentId: options.agentId,
+          agentAliasId: options.agentAliasId,
+          region: options.region,
+          networkMode: options.networkMode as NetworkMode | undefined,
+          subnets: parseCommaSeparatedList(options.subnets),
+          securityGroups: parseCommaSeparatedList(options.securityGroups),
+          idleTimeout: options.idleTimeout ? Number(options.idleTimeout) : undefined,
+          maxLifetime: options.maxLifetime ? Number(options.maxLifetime) : undefined,
+          sessionStorageMountPath: options.sessionStorageMountPath,
+          withConfigBundle: options.withConfigBundle,
+          skipGit: options.skipGit,
+          skipInstall: options.skipInstall,
+          skipPythonSetup: options.skipPythonSetup,
+          onProgress,
+        });
+
+    if (!result.success) {
+      throw new Error(result.error);
+    }
+
+    if (options.json) {
+      console.log(JSON.stringify(result));
+    } else {
+      printCreateSummary(projectName!, result.agentName, options.language, options.framework);
+      if (options.skipInstall) {
+        console.log(
+          "\nDependency installation was skipped. Run 'npm install' in agentcore/cdk/ and 'uv sync' in your agent directory manually."
+        );
+      }
+    }
+
+    return {
+      language: standardize(Language, options.language),
+      framework: standardize(Framework, options.framework),
+      model_provider: standardize(ModelProviderEnum, options.modelProvider),
+      memory: standardize(Memory, options.memory ?? 'none'),
+      protocol: standardize(Protocol, options.protocol ?? 'http'),
+      build: standardize(Build, options.build ?? 'codezip'),
+      agent_type: standardize(AgentType, options.type ?? 'create'),
+      network_mode: standardize(NetworkModeEnum, options.networkMode ?? 'public'),
+      has_agent: options.agent !== false,
+    };
+  });
 }
 
 export const registerCreate = (program: Command) => {
