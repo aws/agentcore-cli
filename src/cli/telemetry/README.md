@@ -58,7 +58,7 @@ async function withCommandRunTelemetry<C extends Command, R extends OperationRes
 
 - `command` — the registered command key (e.g. `'add.widget'`)
 - `attrs` — attribute object matching the schema registered in Step 1
-- `fn` — async callback returning `{ success: true } | { success: false; error: string }`
+- `fn` — async callback returning `Result<T>` (from `src/lib/result.ts`)
 
 **Behavior:**
 
