@@ -65,8 +65,9 @@ jobs:
           if git merge origin/main --no-edit -m "chore: merge main into preview"; then
             echo "status=clean" >> $GITHUB_OUTPUT
           else
-            # If package.json or package-lock.json conflict, accept main's content
-            # (we'll fix the version back afterwards)
+            # preview carries a higher version string than main (e.g. 1.0.0-preview.X vs 0.13.X).
+            # This means package.json/package-lock.json almost always conflict on the version field.
+            # Accept main's content here; the version is restored in the next step.
             for f in package.json package-lock.json; do
               if git diff --name-only --diff-filter=U | grep -qx "$f"; then
                 git checkout --theirs "$f"
@@ -91,24 +92,25 @@ jobs:
           CURRENT_VERSION=$(node -p "require('./package.json').version")
 
           if [[ "$CURRENT_VERSION" != "$PREVIEW_VERSION" ]]; then
-            node -e "
+            PREVIEW_VERSION="$PREVIEW_VERSION" node -e "
               const fs = require('fs');
               const pkg = JSON.parse(fs.readFileSync('package.json', 'utf8'));
-              pkg.version = '$PREVIEW_VERSION';
+              pkg.version = process.env.PREVIEW_VERSION;
               fs.writeFileSync('package.json', JSON.stringify(pkg, null, 2) + '\n');
             "
             if [[ -f package-lock.json ]]; then
-              node -e "
+              PREVIEW_VERSION="$PREVIEW_VERSION" node -e "
                 const fs = require('fs');
                 const lock = JSON.parse(fs.readFileSync('package-lock.json', 'utf8'));
-                lock.version = '$PREVIEW_VERSION';
+                lock.version = process.env.PREVIEW_VERSION;
                 if (lock.packages && lock.packages['']) {
-                  lock.packages[''].version = '$PREVIEW_VERSION';
+                  lock.packages[''].version = process.env.PREVIEW_VERSION;
                 }
                 fs.writeFileSync('package-lock.json', JSON.stringify(lock, null, 2) + '\n');
               "
             fi
-            git add package.json package-lock.json
+            git add package.json
+            [[ -f package-lock.json ]] && git add package-lock.json
             git commit -m "chore: restore preview version ($PREVIEW_VERSION)"
           fi
 
@@ -120,8 +122,9 @@ jobs:
         env:
           GH_TOKEN: ${{ steps.app-token.outputs.token }}
         run: |
-          # Check if there's already an open sync PR
-          COUNT=$(gh pr list --base preview --search "sync-preview:" --state open --json number --jq 'length')
+          # Check if there's already an open sync PR (match by branch prefix, not title search)
+          COUNT=$(gh pr list --base preview --state open --json headRefName \
+            --jq '[.[] | select(.headRefName | startswith("sync-preview/"))] | length')
           if [[ "$COUNT" != "0" ]]; then
             echo "ℹ️  Sync PR already open — skipping duplicate."
             exit 0
