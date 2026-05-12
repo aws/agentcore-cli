@@ -11,6 +11,7 @@ import {
   parsePolicyEngineOutputs,
   parsePolicyOutputs,
 } from '../../../cloudformation';
+import { DEFAULT_DEPLOY_ATTRS, computeDeployAttrs } from '../../../commands/deploy/utils.js';
 import { getErrorMessage, isChangesetInProgressError, isExpiredTokenError } from '../../../errors';
 import { ExecLogger } from '../../../logging';
 import { performStackTeardown, setupTransactionSearch } from '../../../operations/deploy';
@@ -22,6 +23,7 @@ import {
 } from '../../../operations/deploy/post-deploy-config-bundles';
 import { setupHttpGateways } from '../../../operations/deploy/post-deploy-http-gateways';
 import { enableOnlineEvalConfigs } from '../../../operations/deploy/post-deploy-online-evals';
+import { withCommandRunTelemetry } from '../../../telemetry/cli-command-run.js';
 import {
   type StackDiffSummary,
   type Step,
@@ -550,7 +552,9 @@ export function useDeployFlow(options: DeployFlowOptions = {}): DeployFlowState 
     if (deployStep.status !== 'pending') return;
     if (!cdkToolkitWrapper) return;
 
-    const run = async () => {
+    const attrs = context ? computeDeployAttrs(context.projectSpec, 'deploy') : { ...DEFAULT_DEPLOY_ATTRS };
+
+    const run = async (): Promise<{ success: true } | { success: false; error: Error }> => {
       // Run diff before deploy to capture pre-deploy differences
       if (!isDiffRunningRef.current) {
         isDiffRunningRef.current = true;
@@ -669,6 +673,7 @@ export function useDeployFlow(options: DeployFlowOptions = {}): DeployFlowState 
         // Mark both steps as success (in case CFn events were never received)
         setPublishAssetsStep(prev => ({ ...prev, status: 'success' }));
         setDeployStep(prev => ({ ...prev, status: 'success' }));
+        return { success: true } as const;
       } catch (err) {
         const errorMsg = getErrorMessage(err);
 
@@ -700,6 +705,7 @@ export function useDeployFlow(options: DeployFlowOptions = {}): DeployFlowState 
             error: logger.getFailureMessage('Publish assets'),
           }));
         }
+        return { success: false, error: err instanceof Error ? err : new Error(errorMsg) } as const;
       } finally {
         // Disable verbose output and clear callback after deploy
         switchableIoHost?.setVerbose(false);
@@ -709,7 +715,7 @@ export function useDeployFlow(options: DeployFlowOptions = {}): DeployFlowState 
       }
     };
 
-    void run();
+    void withCommandRunTelemetry('deploy', attrs, run);
   }, [
     preflight.phase,
     cdkToolkitWrapper,
@@ -734,7 +740,11 @@ export function useDeployFlow(options: DeployFlowOptions = {}): DeployFlowState 
     if (diffStep.status !== 'pending') return;
     if (!cdkToolkitWrapper) return;
 
-    const run = async () => {
+    const attrs = context
+      ? computeDeployAttrs(context.projectSpec, 'diff')
+      : { ...DEFAULT_DEPLOY_ATTRS, mode: 'diff' as const };
+
+    const run = async (): Promise<{ success: true } | { success: false; error: Error }> => {
       setDiffStep(prev => ({ ...prev, status: 'running' }));
       setShouldStartDeploy(false);
       setDiffSummaries([]);
@@ -755,6 +765,7 @@ export function useDeployFlow(options: DeployFlowOptions = {}): DeployFlowState 
         logger.endStep('success');
         logger.finalize(true);
         setDiffStep(prev => ({ ...prev, status: 'success' }));
+        return { success: true };
       } catch (err) {
         const errorMsg = getErrorMessage(err);
         logger.endStep('error', errorMsg);
@@ -769,6 +780,7 @@ export function useDeployFlow(options: DeployFlowOptions = {}): DeployFlowState 
           status: 'error',
           error: logger.getFailureMessage('Run CDK diff'),
         }));
+        return { success: false, error: err instanceof Error ? err : new Error(errorMsg) };
       } finally {
         switchableIoHost?.setVerbose(false);
         switchableIoHost?.setOnRawMessage(null);
@@ -776,7 +788,7 @@ export function useDeployFlow(options: DeployFlowOptions = {}): DeployFlowState 
       }
     };
 
-    void run();
+    void withCommandRunTelemetry('deploy', attrs, run);
   }, [
     diffMode,
     preflight.phase,

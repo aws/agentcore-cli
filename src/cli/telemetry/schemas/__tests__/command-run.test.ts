@@ -47,7 +47,7 @@ describe('COMMAND_SCHEMAS', () => {
       gateway_target_count: 3,
       policy_engine_count: 0,
       policy_count: 0,
-      has_diff: true,
+      mode: 'diff',
     };
     expect(COMMAND_SCHEMAS.deploy.parse(attrs)).toEqual(attrs);
   });
@@ -64,7 +64,7 @@ describe('COMMAND_SCHEMAS', () => {
         gateway_target_count: 0,
         policy_engine_count: 0,
         policy_count: 0,
-        has_diff: false,
+        mode: 'deploy',
       })
     ).toThrow();
   });
@@ -81,7 +81,7 @@ describe('COMMAND_SCHEMAS', () => {
         gateway_target_count: 0,
         policy_engine_count: 0,
         policy_count: 0,
-        has_diff: false,
+        mode: 'deploy',
       })
     ).toThrow();
   });

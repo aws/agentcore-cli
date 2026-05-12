@@ -1,10 +1,12 @@
-import { serializeResult } from '../../../lib';
+import { ConfigIO, serializeResult } from '../../../lib';
 import { getErrorMessage } from '../../errors';
+import { withCommandRunTelemetry } from '../../telemetry/cli-command-run.js';
 import { COMMAND_DESCRIPTIONS } from '../../tui/copy';
 import { requireProject, requireTTY } from '../../tui/guards';
 import { DeployScreen } from '../../tui/screens/deploy/DeployScreen';
 import { handleDeploy } from './actions';
-import type { DeployOptions } from './types';
+import type { DeployOptions, DeployResult } from './types';
+import { DEFAULT_DEPLOY_ATTRS, computeDeployAttrs } from './utils';
 import { validateDeployOptions } from './validate';
 import type { Command } from '@commander-js/extra-typings';
 import { Text, render } from 'ink';
@@ -39,6 +41,45 @@ async function handleDeployCLI(options: DeployOptions): Promise<void> {
     process.exit(1);
   }
 
+  // Compute attrs upfront from project spec (available before deploy)
+  const mode = options.diff ? 'diff' : options.plan ? 'dry-run' : 'deploy';
+  const attrs = await new ConfigIO()
+    .readProjectSpec()
+    .then(spec => computeDeployAttrs(spec, mode))
+    .catch(() => ({ ...DEFAULT_DEPLOY_ATTRS, mode }) as const);
+
+  const { deployResult } = await withCommandRunTelemetry('deploy', attrs, async () => {
+    const result = await executeDeploy(options).catch(
+      (e): DeployResult => ({ success: false, error: e instanceof Error ? e : new Error(getErrorMessage(e)) })
+    );
+    if (!result.success) {
+      return { success: false as const, error: result.error, deployResult: result };
+    }
+    return { success: true as const, deployResult: result };
+  });
+
+  // ALL output happens here, after telemetry
+  if (!deployResult.success) {
+    if (options.json) {
+      console.log(JSON.stringify(serializeResult(deployResult)));
+    } else {
+      console.error(deployResult.error.message);
+      if (deployResult.logPath) {
+        console.error(`Log: ${deployResult.logPath}`);
+      }
+    }
+    process.exit(1);
+  }
+
+  printDeployResult(deployResult, options);
+
+  if (deployResult.postDeployWarnings && deployResult.postDeployWarnings.length > 0) {
+    process.exit(2);
+  }
+  process.exit(0);
+}
+
+async function executeDeploy(options: DeployOptions): Promise<DeployResult> {
   let spinner: NodeJS.Timeout | undefined;
 
   // Progress callback for --progress mode
@@ -85,55 +126,52 @@ async function handleDeployCLI(options: DeployOptions): Promise<void> {
     process.stdout.write('\r\x1b[K');
   }
 
+  return result;
+}
+
+function printDeployResult(result: DeployResult & { success: true }, options: DeployOptions): void {
   if (options.json) {
-    console.log(JSON.stringify(serializeResult(result)));
-  } else if (result.success) {
-    if (options.diff) {
-      console.log(`\n✓ Diff complete for '${result.targetName}' (stack: ${result.stackName})`);
-    } else if (options.plan) {
-      console.log(`\n✓ Dry run complete for '${result.targetName}' (stack: ${result.stackName})`);
-      console.log('\nRun `agentcore deploy` to deploy.');
-    } else {
-      console.log(`\n✓ Deployed to '${result.targetName}' (stack: ${result.stackName})`);
+    console.log(JSON.stringify(result));
+    return;
+  }
 
-      // Show stack outputs in non-JSON mode
-      if (result.outputs && Object.keys(result.outputs).length > 0) {
-        console.log('\nOutputs:');
-        for (const [key, value] of Object.entries(result.outputs)) {
-          console.log(`  ${key}: ${value}`);
-        }
-      }
-
-      if (result.postDeployWarnings && result.postDeployWarnings.length > 0) {
-        console.log('\n⚠ Post-deploy warnings:');
-        for (const warning of result.postDeployWarnings) {
-          console.log(`  ${warning}`);
-        }
-      }
-
-      if (result.notes && result.notes.length > 0) {
-        for (const note of result.notes) {
-          console.log(`\nNote: ${note}`);
-        }
-      }
-
-      if (result.nextSteps && result.nextSteps.length > 0) {
-        console.log(`Next: ${result.nextSteps.join(' | ')}`);
-      }
-    }
-
-    if (result.logPath) {
-      console.log(`\nLog: ${result.logPath}`);
-    }
+  if (options.diff) {
+    console.log(`\n✓ Diff complete for '${result.targetName}' (stack: ${result.stackName})`);
+  } else if (options.plan) {
+    console.log(`\n✓ Dry run complete for '${result.targetName}' (stack: ${result.stackName})`);
+    console.log('\nRun `agentcore deploy` to deploy.');
   } else {
-    console.error(result.error.message);
-    if (result.logPath) {
-      console.error(`Log: ${result.logPath}`);
+    console.log(`\n✓ Deployed to '${result.targetName}' (stack: ${result.stackName})`);
+
+    // Show stack outputs in non-JSON mode
+    if (result.outputs && Object.keys(result.outputs).length > 0) {
+      console.log('\nOutputs:');
+      for (const [key, value] of Object.entries(result.outputs)) {
+        console.log(`  ${key}: ${value}`);
+      }
+    }
+
+    if (result.postDeployWarnings && result.postDeployWarnings.length > 0) {
+      console.log('\n⚠ Post-deploy warnings:');
+      for (const warning of result.postDeployWarnings) {
+        console.log(`  ${warning}`);
+      }
+    }
+
+    if (result.notes && result.notes.length > 0) {
+      for (const note of result.notes) {
+        console.log(`\nNote: ${note}`);
+      }
+    }
+
+    if (result.nextSteps && result.nextSteps.length > 0) {
+      console.log(`Next: ${result.nextSteps.join(' | ')}`);
     }
   }
 
-  const hasPostDeployWarnings = result.success && result.postDeployWarnings && result.postDeployWarnings.length > 0;
-  process.exit(result.success ? (hasPostDeployWarnings ? 2 : 0) : 1);
+  if (result.logPath) {
+    console.log(`\nLog: ${result.logPath}`);
+  }
 }
 
 export const registerDeploy = (program: Command) => {
