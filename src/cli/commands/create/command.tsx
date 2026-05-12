@@ -189,7 +189,7 @@ async function handleCreateCLI(options: CreateOptions): Promise<void> {
           });
 
       if (!result.success) {
-        throw new Error(result.error);
+        throw result.error;
       }
 
       if (options.json) {

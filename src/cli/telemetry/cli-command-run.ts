@@ -35,7 +35,7 @@ export async function withCommandRunTelemetry<C extends Command, R extends Opera
       command,
       async () => {
         result = await fn();
-        if (!result.success) throw new Error(result.error);
+        if (!result.success) throw result.error;
         return attrs;
       },
       attrs
