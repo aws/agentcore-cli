@@ -85,6 +85,24 @@ jobs:
             fi
           fi
 
+      - name: Restore preview-owned files
+        if: steps.merge.outputs.status == 'clean'
+        run: |
+          # These files are auto-generated during preview releases and must not
+          # be overwritten by main's versions (schema-check CI will reject changes
+          # to schemas/, and CHANGELOG.md tracks preview releases separately).
+          PREVIEW_HEAD=$(git rev-parse HEAD^1)
+          for f in schemas/agentcore.schema.v1.json CHANGELOG.md; do
+            if git show "$PREVIEW_HEAD:$f" > /dev/null 2>&1; then
+              git show "$PREVIEW_HEAD:$f" > "$f"
+              git add "$f"
+              echo "  ↳ restored preview's $f"
+            fi
+          done
+          if ! git diff --cached --quiet; then
+            git commit -m "chore: restore preview-owned files (schema, changelog)"
+          fi
+
       - name: Restore preview version and push
         if: steps.merge.outputs.status == 'clean'
         run: |
