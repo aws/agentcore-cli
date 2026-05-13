@@ -120,6 +120,63 @@ describe('COMMAND_SCHEMAS', () => {
   it('no-attrs commands accept empty object', () => {
     expect(COMMAND_SCHEMAS['telemetry.disable'].parse({})).toEqual({});
   });
+
+  it('accepts valid dev invoke attrs', () => {
+    const attrs = {
+      action: 'invoke',
+      ui_mode: 'terminal',
+      has_stream: true,
+      protocol: 'http',
+      invoke_count: 1,
+    };
+    expect(COMMAND_SCHEMAS.dev.parse(attrs)).toEqual(attrs);
+  });
+
+  it('accepts valid dev server browser attrs', () => {
+    const attrs = {
+      action: 'server',
+      ui_mode: 'browser',
+      has_stream: false,
+      protocol: 'mcp',
+      invoke_count: 12,
+    };
+    expect(COMMAND_SCHEMAS.dev.parse(attrs)).toEqual(attrs);
+  });
+
+  it('accepts dev exec attrs', () => {
+    const attrs = {
+      action: 'exec',
+      ui_mode: 'terminal',
+      has_stream: false,
+      protocol: 'http',
+      invoke_count: 1,
+    };
+    expect(COMMAND_SCHEMAS.dev.parse(attrs)).toEqual(attrs);
+  });
+
+  it('rejects dev attrs with invalid action', () => {
+    expect(() =>
+      COMMAND_SCHEMAS.dev.parse({
+        action: 'unknown',
+        ui_mode: 'terminal',
+        has_stream: false,
+        protocol: 'http',
+        invoke_count: 0,
+      })
+    ).toThrow();
+  });
+
+  it('rejects dev attrs with invalid ui_mode', () => {
+    expect(() =>
+      COMMAND_SCHEMAS.dev.parse({
+        action: 'server',
+        ui_mode: 'headless',
+        has_stream: false,
+        protocol: 'http',
+        invoke_count: 0,
+      })
+    ).toThrow();
+  });
 });
 
 describe('deriveCommandGroup', () => {

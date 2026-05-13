@@ -24,6 +24,7 @@ import {
   RefType,
   ResourceType,
   SourceType,
+  UiMode,
   ValidationMode,
   safeSchema,
 } from './common-shapes.js';
@@ -105,6 +106,7 @@ const DeployAttrs = safeSchema({
 
 const DevAttrs = safeSchema({
   action: Action,
+  ui_mode: UiMode,
   has_stream: z.boolean(),
   protocol: Protocol,
   invoke_count: Count,

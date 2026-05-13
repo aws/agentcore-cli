@@ -46,7 +46,8 @@ export function standardize<T extends z.ZodEnum<any>>(schema: T, value: string |
 export const Count = z.number().int().nonnegative();
 
 // Shared enums — alphabetical, one per attribute name from the metric shape spec
-export const Action = z.enum(['server', 'invoke']);
+export const Action = z.enum(['server', 'invoke', 'exec']);
+export const UiMode = z.enum(['browser', 'terminal']);
 export const AgentType = z.enum(['create', 'byo', 'import']);
 export const AttachMode = z.enum(['log_only', 'enforce']);
 export const AuthType = z.enum(['sigv4', 'bearer_token']);
@@ -94,7 +95,7 @@ export const ModelProvider = z.enum(['bedrock', 'anthropic', 'openai', 'gemini']
 export const NetworkMode = z.enum(['public', 'vpc']);
 export const OutboundAuth = z.enum(['oauth', 'api-key', 'none']);
 export const PolicyEngineMode = z.enum(['log_only', 'enforce']);
-export const Protocol = z.enum(['http', 'mcp', 'a2a']);
+export const Protocol = z.enum(['http', 'mcp', 'a2a', 'agui']);
 export const RefType = z.enum(['arn', 'name']);
 export const ResourceType = z.enum(['gateway', 'agent']);
 export const SourceType = z.enum(['file', 'statement', 'generate']);

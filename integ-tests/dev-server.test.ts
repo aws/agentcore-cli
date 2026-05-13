@@ -1,4 +1,4 @@
-import { runCLI } from '../src/test-utils/index.js';
+import { createTelemetryHelper, runCLI } from '../src/test-utils/index.js';
 import { type ChildProcess, execSync, spawn } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
 import { mkdir, rm } from 'node:fs/promises';
@@ -37,6 +37,8 @@ describe('integration: dev server', () => {
   let testDir: string;
   let projectPath: string;
   let devProcess: ChildProcess | null = null;
+
+  const telemetry = createTelemetryHelper();
 
   beforeAll(async () => {
     testDir = join(tmpdir(), `agentcore-integ-dev-${randomUUID()}`);
@@ -81,6 +83,7 @@ describe('integration: dev server', () => {
     if (devProcess) {
       devProcess.kill('SIGKILL');
     }
+    telemetry.destroy();
     await rm(testDir, { recursive: true, force: true });
   });
 
@@ -100,6 +103,31 @@ describe('integration: dev server', () => {
 
       const serverReady = await waitForServer(port, 20000);
       expect(serverReady, 'Dev server should respond to ping within 20s').toBeTruthy();
+
+      // Invoke the running server and verify telemetry
+      const invokeResult = await runCLI(['dev', 'hello', '--port', String(port)], projectPath, {
+        env: telemetry.env,
+      });
+      expect(invokeResult.exitCode).toBe(0);
+
+      telemetry.assertMetricEmitted({
+        command: 'dev',
+        action: 'invoke',
+        ui_mode: 'terminal',
+        exit_reason: 'success',
+        protocol: 'http',
+      });
+
+      // Verify failure telemetry when invoking a non-running port
+      telemetry.clearEntries();
+      const failResult = await runCLI(['dev', 'hello', '--port', '19999'], projectPath, { env: telemetry.env });
+      expect(failResult.exitCode).toBe(1);
+
+      telemetry.assertMetricEmitted({
+        command: 'dev',
+        action: 'invoke',
+        exit_reason: 'failure',
+      });
 
       // Clean shutdown
       devProcess.kill('SIGTERM');
