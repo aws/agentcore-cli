@@ -1,10 +1,10 @@
+import { ConnectionError, ServerError } from '../../../lib/errors/types';
 import { invokeA2AStreaming } from './invoke-a2a';
 import { invokeAguiStreaming } from './invoke-agui';
-import { ConnectionError, type InvokeStreamingOptions, type SSELogger, ServerError } from './invoke-types';
+import { type InvokeStreamingOptions, type SSELogger } from './invoke-types';
 import { isConnectionError, sleep } from './utils';
 
-// Re-export shared types so existing consumers don't break
-export { ConnectionError, ServerError, type InvokeStreamingOptions, type SSELogger } from './invoke-types';
+export { type InvokeStreamingOptions, type SSELogger } from './invoke-types';
 
 /**
  * Parse a single SSE data line and extract the content.

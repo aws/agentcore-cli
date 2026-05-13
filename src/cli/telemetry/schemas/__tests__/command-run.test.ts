@@ -12,10 +12,10 @@ describe('CommandResultSchema', () => {
   it('accepts failure with required error fields', () => {
     const result = CommandResultSchema.parse({
       exit_reason: 'failure',
-      error_name: 'PackagingError',
-      is_user_error: false,
+      error_name: 'DependencyCheckError',
+      error_source: 'user',
     });
-    expect(result).toMatchObject({ exit_reason: 'failure', error_name: 'PackagingError' });
+    expect(result).toMatchObject({ exit_reason: 'failure', error_name: 'DependencyCheckError' });
   });
 
   it('rejects failure missing error_name', () => {

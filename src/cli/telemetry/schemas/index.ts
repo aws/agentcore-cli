@@ -1,7 +1,8 @@
 export {
   CommandResultSchema,
   Count,
-  ErrorCategory,
+  ErrorName,
+  ErrorSource,
   ExitReason,
   FailureResult,
   Mode,

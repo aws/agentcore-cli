@@ -1,6 +1,7 @@
+import { ConnectionError, ServerError } from '../../../lib/errors/types';
 import { parseAguiSSEStream } from '../../aws/agui-parser';
 import { AguiEventType } from '../../aws/agui-types';
-import { ConnectionError, type InvokeStreamingOptions, ServerError } from './invoke-types';
+import { type InvokeStreamingOptions } from './invoke-types';
 import { isConnectionError, sleep } from './utils';
 import { randomUUID } from 'crypto';
 

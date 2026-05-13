@@ -101,23 +101,43 @@ export const ResourceType = z.enum(['gateway', 'agent']);
 export const SourceType = z.enum(['file', 'statement', 'generate']);
 export const ValidationMode = z.enum(['fail_on_any_findings', 'ignore_all_findings']);
 
-export const ErrorCategory = z.enum([
-  'ConfigError',
-  'CredentialsError',
-  'PackagingError',
-  'ProjectError',
-  'ServiceError',
+export const ErrorName = z.enum([
+  'AccessDeniedError',
+  'AgentAlreadyExistsError',
+  'ArtifactSizeError',
+  'AwsCredentialsError',
+  'ConfigNotFoundError',
+  'ConfigParseError',
+  'ConfigReadError',
+  'ConfigValidationError',
+  'ConfigWriteError',
+  'ConflictError',
   'ConnectionError',
+  'DependencyCheckError',
+  'GitInitError',
+  'MissingDependencyError',
+  'MissingProjectFileError',
+  'NoProjectError',
+  'PackagingError',
+  'PollExhaustedError',
+  'PollTimeoutError',
+  'ResourceNotFoundError',
+  'ServerError',
+  'TimeoutError',
+  'UnsupportedLanguageError',
+  'ValidationError',
   'UnknownError',
 ]);
+
+export const ErrorSource = z.enum(['user', 'client', 'service', 'unknown']);
 
 // Common result shapes — reusable across metrics
 export const SuccessResult = z.object({ exit_reason: z.literal('success') });
 export const CancelResult = z.object({ exit_reason: z.literal('cancel') });
 export const FailureResult = z.object({
   exit_reason: z.literal('failure'),
-  error_name: ErrorCategory,
-  is_user_error: z.boolean(),
+  error_name: ErrorName,
+  error_source: ErrorSource,
 });
 export const CommandResultSchema = z.discriminatedUnion('exit_reason', [SuccessResult, CancelResult, FailureResult]);
 export type CommandResult = z.infer<typeof CommandResultSchema>;

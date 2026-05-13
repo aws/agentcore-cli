@@ -1,8 +1,8 @@
 import type { RuntimeVersion } from '../../schema';
 import { CONFIG_DIR } from '../constants';
+import { ArtifactSizeError, MissingDependencyError, MissingProjectFileError } from '../errors/types';
 import { isWindows } from '../utils/platform';
 import { checkSubprocess, checkSubprocessSync, runSubprocess } from '../utils/subprocess';
-import { ArtifactSizeError, MissingDependencyError, MissingProjectFileError } from './errors';
 import type { PackageOptions } from './types/packaging';
 import type { Zippable } from 'fflate';
 import { zipSync } from 'fflate';

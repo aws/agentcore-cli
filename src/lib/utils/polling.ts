@@ -1,3 +1,5 @@
+import { PollExhaustedError, PollTimeoutError } from '../errors/types.js';
+
 /**
  * Shared polling/retry utility for async operations.
  */
@@ -21,20 +23,6 @@ export interface PollOptions<T> {
   maxConsecutiveErrors?: number;
   /** Called when fn throws. Return 'retry' to continue or 'abort' to rethrow. Default: 'retry'. */
   onError?: (err: unknown) => 'retry' | 'abort';
-}
-
-export class PollTimeoutError extends Error {
-  constructor(timeoutMs: number, options?: { cause?: unknown }) {
-    super(`Polling timed out after ${timeoutMs}ms`, options);
-    this.name = 'PollTimeoutError';
-  }
-}
-
-export class PollExhaustedError extends Error {
-  constructor(maxAttempts: number, options?: { cause?: unknown }) {
-    super(`Polling exhausted after ${maxAttempts} attempts`, options);
-    this.name = 'PollExhaustedError';
-  }
 }
 
 export async function poll<T>(options: PollOptions<T>): Promise<T> {

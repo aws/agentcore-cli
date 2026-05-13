@@ -1,4 +1,4 @@
-import { classifyError, isUserError } from './error-classification.js';
+import { classifyError } from './error.js';
 import { COMMAND_SCHEMAS, type Command, type CommandAttrs, deriveCommandGroup } from './schemas/command-run.js';
 import { type CommandResult, CommandResultSchema, resilientParse } from './schemas/common-shapes.js';
 import type { MetricSink } from './sinks/metric-sink.js';
@@ -39,10 +39,11 @@ export class TelemetryClient {
         this.recordCommandRun(command, { exit_reason: 'success' }, result, durationMs);
       }
     } catch (err) {
+      const { category, source } = classifyError(err);
       const failureResult: CommandResult & { exit_reason: 'failure' } = {
         exit_reason: 'failure',
-        error_name: classifyError(err),
-        is_user_error: isUserError(err),
+        error_name: category,
+        error_source: source,
       };
       this.recordCommandRun(command, failureResult, fallbackAttrs ?? {}, Math.round(performance.now() - start));
       throw err;

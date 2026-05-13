@@ -1,65 +1,6 @@
-import { ZodError } from 'zod';
-
 /**
- * Base class for all config-related errors
+ * Zod error formatting utilities for human-readable validation messages.
  */
-export abstract class ConfigError extends Error {
-  protected constructor(message: string) {
-    super(message);
-    this.name = this.constructor.name;
-    Error.captureStackTrace(this, this.constructor);
-  }
-}
-
-/**
- * Thrown when a config file doesn't exist
- */
-export class ConfigNotFoundError extends ConfigError {
-  constructor(
-    public readonly filePath: string,
-    public readonly fileType: string
-  ) {
-    super(`${fileType} config file not found at: ${filePath}`);
-  }
-}
-
-/**
- * Thrown when a config file can't be read
- */
-export class ConfigReadError extends ConfigError {
-  constructor(
-    public readonly filePath: string,
-    public override readonly cause: unknown
-  ) {
-    const message = cause instanceof Error ? cause.message : String(cause);
-    super(`Failed to read config file at ${filePath}: ${message}`);
-  }
-}
-
-/**
- * Thrown when a config file can't be written
- */
-export class ConfigWriteError extends ConfigError {
-  constructor(
-    public readonly filePath: string,
-    public override readonly cause: unknown
-  ) {
-    const message = cause instanceof Error ? cause.message : String(cause);
-    super(`Failed to write config file at ${filePath}: ${message}`);
-  }
-}
-
-/**
- * Format a Zod path array to bracket notation: agents[0].name
- */
-function formatPath(path: PropertyKey[]): string {
-  if (path.length === 0) return 'root';
-  return path
-    .map((segment, i) =>
-      typeof segment === 'number' ? `[${segment}]` : i === 0 ? String(segment) : `.${String(segment)}`
-    )
-    .join('');
-}
 
 // Zod issue with extended properties for type-safe access (Zod 4 compatible)
 interface ZodIssueExt {
@@ -74,6 +15,18 @@ interface ZodIssueExt {
   unionErrors?: { issues: ZodIssueExt[] }[]; // Zod 3
   errors?: ZodIssueExt[]; // Zod 4
   discriminator?: string; // Zod 4 discriminated union
+}
+
+/**
+ * Format a Zod path array to bracket notation: agents[0].name
+ */
+function formatPath(path: PropertyKey[]): string {
+  if (path.length === 0) return 'root';
+  return path
+    .map((segment, i) =>
+      typeof segment === 'number' ? `[${segment}]` : i === 0 ? String(segment) : `.${String(segment)}`
+    )
+    .join('');
 }
 
 /**
@@ -158,28 +111,8 @@ function formatZodIssue(issue: ZodIssueExt): string {
 }
 
 /**
- * Thrown when config validation fails
+ * Format all issues from a ZodError into a newline-separated list.
  */
-export class ConfigValidationError extends ConfigError {
-  constructor(
-    public readonly filePath: string,
-    public readonly fileType: string,
-    public readonly zodError: ZodError
-  ) {
-    const formattedErrors = (zodError.issues as ZodIssueExt[]).map(issue => `  - ${formatZodIssue(issue)}`).join('\n');
-    super(`${filePath}:\n${formattedErrors}`);
-  }
-}
-
-/**
- * Thrown when JSON parsing fails
- */
-export class ConfigParseError extends ConfigError {
-  constructor(
-    public readonly filePath: string,
-    public override readonly cause: unknown
-  ) {
-    const message = cause instanceof Error ? cause.message : String(cause);
-    super(`Failed to parse JSON in config file at ${filePath}: ${message}`);
-  }
+export function formatZodErrors(issues: unknown[]): string {
+  return (issues as ZodIssueExt[]).map(issue => `  - ${formatZodIssue(issue)}`).join('\n');
 }

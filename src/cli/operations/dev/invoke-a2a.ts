@@ -1,4 +1,5 @@
-import { ConnectionError, type InvokeStreamingOptions, type SSELogger, ServerError } from './invoke-types';
+import { ConnectionError, ServerError } from '../../../lib/errors/types';
+import { type InvokeStreamingOptions, type SSELogger } from './invoke-types';
 import { isConnectionError, sleep } from './utils';
 import { randomUUID } from 'crypto';
 

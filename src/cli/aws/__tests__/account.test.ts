@@ -1,4 +1,4 @@
-import { AwsCredentialsError } from '../account.js';
+import { AwsCredentialsError } from '../../../lib/errors/types.js';
 import { describe, expect, it } from 'vitest';
 
 describe('AwsCredentialsError', () => {

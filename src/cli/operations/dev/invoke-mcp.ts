@@ -1,5 +1,6 @@
+import { ConnectionError, ServerError } from '../../../lib/errors/types';
 import { parseJsonRpcResponse } from '../../../lib/utils/json-rpc';
-import { ConnectionError, type SSELogger, ServerError } from './invoke-types';
+import { type SSELogger } from './invoke-types';
 import { isConnectionError, sleep } from './utils';
 
 let requestId = 1;
