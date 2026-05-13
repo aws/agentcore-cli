@@ -1,6 +1,6 @@
 import { findConfigRoot } from '../../lib';
 import type { EvaluationLevel, Evaluator, EvaluatorConfig } from '../../schema';
-import { EvaluationLevelSchema, EvaluatorSchema } from '../../schema';
+import { EvaluationLevelSchema, EvaluatorSchema, isValidKmsKeyArn } from '../../schema';
 import { getErrorMessage } from '../errors';
 import type { RemovalPreview, RemovalResult, SchemaChange } from '../operations/remove/types';
 import { runCliCommand } from '../telemetry/cli-command-run.js';
@@ -25,6 +25,7 @@ export interface AddEvaluatorOptions {
   level: EvaluationLevel;
   description?: string;
   config: EvaluatorConfig;
+  kmsKeyArn?: string;
 }
 
 export type RemovableEvaluator = RemovableResource;
@@ -184,6 +185,7 @@ export class EvaluatorPrimitive extends BasePrimitive<AddEvaluatorOptions, Remov
         '--config <path>',
         'Path to evaluator config JSON file (overrides --model, --instructions, --rating-scale) [non-interactive]'
       )
+      .option('--kms-key-arn <arn>', 'KMS key ARN for evaluator encryption (optional)')
       .option('--json', 'Output as JSON [non-interactive]')
       .action(
         async (cliOptions: {
@@ -196,6 +198,7 @@ export class EvaluatorPrimitive extends BasePrimitive<AddEvaluatorOptions, Remov
           lambdaArn?: string;
           timeout?: string;
           config?: string;
+          kmsKeyArn?: string;
           json?: boolean;
         }) => {
           if (!findConfigRoot()) {
@@ -289,10 +292,17 @@ export class EvaluatorPrimitive extends BasePrimitive<AddEvaluatorOptions, Remov
                 };
               }
 
+              if (cliOptions.kmsKeyArn && !isValidKmsKeyArn(cliOptions.kmsKeyArn)) {
+                fail(
+                  '--kms-key-arn must be a valid KMS key ARN (e.g. arn:aws:kms:us-east-1:123456789012:key/12345678-1234-1234-1234-123456789012)'
+                );
+              }
+
               const result = await this.add({
                 name: cliOptions.name!,
                 level: levelResult.data!,
                 config: configJson,
+                kmsKeyArn: cliOptions.kmsKeyArn,
               });
 
               if (!result.success) {
@@ -386,6 +396,7 @@ export class EvaluatorPrimitive extends BasePrimitive<AddEvaluatorOptions, Remov
       level: options.level,
       ...(options.description && { description: options.description }),
       config: options.config,
+      ...(options.kmsKeyArn && { kmsKeyArn: options.kmsKeyArn }),
     };
 
     project.evaluators.push(evaluator);

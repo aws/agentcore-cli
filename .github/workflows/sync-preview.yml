@@ -17,19 +17,27 @@ jobs:
     name: Merge main into preview
     runs-on: ubuntu-latest
     steps:
+      - name: Generate GitHub App Token
+        id: app-token
+        uses: actions/create-github-app-token@v1
+        with:
+          app-id: ${{ vars.APP_ID }}
+          private-key: ${{ secrets.APP_PRIVATE_KEY }}
+
       - name: Checkout preview
         uses: actions/checkout@v6
         with:
           ref: preview
           fetch-depth: 0
+          token: ${{ steps.app-token.outputs.token }}
 
       - name: Configure git
         run: |
           git config --global user.name "github-actions[bot]"
           git config --global user.email "github-actions[bot]@users.noreply.github.com"
 
-      - name: Merge main into preview
-        id: merge
+      - name: Check if sync needed
+        id: check
         run: |
           git fetch origin main
           MAIN_SHA=$(git rev-parse origin/main)
@@ -37,73 +45,133 @@ jobs:
 
           if [[ "$MAIN_SHA" == "$MERGE_BASE" ]]; then
             echo "✅ preview already contains all of main"
-            echo "status=up-to-date" >> $GITHUB_OUTPUT
-            exit 0
+            echo "needed=false" >> $GITHUB_OUTPUT
+          else
+            echo "needed=true" >> $GITHUB_OUTPUT
           fi
 
-          echo "ℹ️  Merging main into preview..."
+      - name: Skip if already synced
+        if: steps.check.outputs.needed == 'false'
+        run: echo "Nothing to sync."
+
+      - name: Merge main into preview
+        if: steps.check.outputs.needed == 'true'
+        id: merge
+        run: |
+          # Save preview's version before merge so we can restore it after
+          PREVIEW_VERSION=$(node -p "require('./package.json').version")
+          echo "preview_version=$PREVIEW_VERSION" >> $GITHUB_OUTPUT
 
           if git merge origin/main --no-edit -m "chore: merge main into preview"; then
-            git push origin preview
-            echo "✅ main merged into preview and pushed"
-            echo "status=merged" >> $GITHUB_OUTPUT
+            echo "status=clean" >> $GITHUB_OUTPUT
           else
-            git merge --abort
-            echo "status=conflict" >> $GITHUB_OUTPUT
+            # preview carries a higher version string than main (e.g. 1.0.0-preview.X vs 0.13.X).
+            # This means package.json/package-lock.json almost always conflict on the version field.
+            # Accept main's content here; the version is restored in the next step.
+            for f in package.json package-lock.json; do
+              if git diff --name-only --diff-filter=U | grep -qx "$f"; then
+                git checkout --theirs "$f"
+                git add "$f"
+                echo "  ↳ resolved $f conflict (accepted main, will restore version)"
+              fi
+            done
+
+            # Check if all conflicts are now resolved
+            if [[ -z "$(git diff --name-only --diff-filter=U)" ]]; then
+              git commit --no-edit -m "chore: merge main into preview"
+              echo "status=clean" >> $GITHUB_OUTPUT
+            else
+              echo "status=conflict" >> $GITHUB_OUTPUT
+            fi
           fi
 
-      - name: Get original commit author
-        if: steps.merge.outputs.status == 'conflict'
-        id: author
+      - name: Restore preview-owned files
+        if: steps.merge.outputs.status == 'clean'
         run: |
-          AUTHOR=$(git log origin/main -1 --format='%an')
-          GH_USER=$(git log origin/main -1 --format='%ae' | grep -oP '.*(?=@users\.noreply\.github\.com)' || echo "")
-          if [[ -z "$GH_USER" ]]; then
-            # Try to get GitHub username from the commit
-            GH_USER=$(gh api "/repos/${{ github.repository }}/commits/$(git rev-parse origin/main)" --jq '.author.login // empty' 2>/dev/null || echo "")
+          # These files are auto-generated during preview releases and must not
+          # be overwritten by main's versions (schema-check CI will reject changes
+          # to schemas/, and CHANGELOG.md tracks preview releases separately).
+          PREVIEW_HEAD=$(git rev-parse HEAD^1)
+          for f in schemas/agentcore.schema.v1.json CHANGELOG.md; do
+            if git show "$PREVIEW_HEAD:$f" > /dev/null 2>&1; then
+              git show "$PREVIEW_HEAD:$f" > "$f"
+              git add "$f"
+              echo "  ↳ restored preview's $f"
+            fi
+          done
+          if ! git diff --cached --quiet; then
+            git commit -m "chore: restore preview-owned files (schema, changelog)"
           fi
-          echo "name=$AUTHOR" >> $GITHUB_OUTPUT
-          echo "gh_user=$GH_USER" >> $GITHUB_OUTPUT
-        env:
-          GH_TOKEN: ${{ github.token }}
+
+      - name: Restore preview version and push
+        if: steps.merge.outputs.status == 'clean'
+        run: |
+          PREVIEW_VERSION="${{ steps.merge.outputs.preview_version }}"
+          CURRENT_VERSION=$(node -p "require('./package.json').version")
+
+          if [[ "$CURRENT_VERSION" != "$PREVIEW_VERSION" ]]; then
+            PREVIEW_VERSION="$PREVIEW_VERSION" node -e "
+              const fs = require('fs');
+              const pkg = JSON.parse(fs.readFileSync('package.json', 'utf8'));
+              pkg.version = process.env.PREVIEW_VERSION;
+              fs.writeFileSync('package.json', JSON.stringify(pkg, null, 2) + '\n');
+            "
+            if [[ -f package-lock.json ]]; then
+              PREVIEW_VERSION="$PREVIEW_VERSION" node -e "
+                const fs = require('fs');
+                const lock = JSON.parse(fs.readFileSync('package-lock.json', 'utf8'));
+                lock.version = process.env.PREVIEW_VERSION;
+                if (lock.packages && lock.packages['']) {
+                  lock.packages[''].version = process.env.PREVIEW_VERSION;
+                }
+                fs.writeFileSync('package-lock.json', JSON.stringify(lock, null, 2) + '\n');
+              "
+            fi
+            git add package.json
+            [[ -f package-lock.json ]] && git add package-lock.json
+            git commit -m "chore: restore preview version ($PREVIEW_VERSION)"
+          fi
+
+          git push origin HEAD:preview
+          echo "✅ main merged into preview and pushed"
 
       - name: Create PR for conflict resolution
         if: steps.merge.outputs.status == 'conflict'
         env:
-          GH_TOKEN: ${{ github.token }}
-          AUTHOR_NAME: ${{ steps.author.outputs.name }}
-          AUTHOR_GH: ${{ steps.author.outputs.gh_user }}
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
         run: |
-          BRANCH="sync-preview/merge-main-$(date +%Y%m%d-%H%M%S)"
-
-          # Check if there's already an open sync PR
-          EXISTING=$(gh pr list --base preview --search "sync-preview: merge main into preview" --state open --json number --jq 'length')
-          if [[ "$EXISTING" != "0" ]]; then
+          # Check if there's already an open sync PR (match by branch prefix, not title search)
+          COUNT=$(gh pr list --base preview --state open --json headRefName \
+            --jq '[.[] | select(.headRefName | startswith("sync-preview/"))] | length')
+          if [[ "$COUNT" != "0" ]]; then
             echo "ℹ️  Sync PR already open — skipping duplicate."
             exit 0
           fi
 
-          # Create a branch from preview with the conflict markers
+          # Abort the failed merge and redo on a branch for the PR
+          git merge --abort
+
+          BRANCH="sync-preview/merge-main-$(date +%Y%m%d-%H%M%S)"
           git checkout -b "$BRANCH"
-          git merge origin/main --no-edit -m "chore: merge main into preview" || true
+          git merge origin/main --no-edit -m "chore: merge main into preview (conflicts need resolution)" || true
           git add -A
           git commit --no-edit -m "chore: merge main into preview (conflicts need resolution)" || true
           git push origin "$BRANCH"
 
-          # Build mention string
+          GH_USER=$(gh api "/repos/${{ github.repository }}/commits/$(git rev-parse origin/main)" --jq '.author.login // empty' 2>/dev/null || echo "")
           MENTION=""
-          if [[ -n "$AUTHOR_GH" ]]; then
-            MENTION="cc @${AUTHOR_GH}"
+          if [[ -n "$GH_USER" ]]; then
+            MENTION="cc @${GH_USER}"
           fi
 
           gh pr create \
             --base preview \
             --head "$BRANCH" \
-            --title "sync-preview: merge main into preview" \
+            --title "sync-preview: merge main into preview (conflicts)" \
             --body "$(cat <<BODY
-          The automated sync-preview workflow could not cleanly merge \`main\` into \`preview\`.
+          The automated sync could not cleanly merge \`main\` into \`preview\`.
 
-          **This PR contains the merge with conflict markers.** To resolve:
+          **This PR contains conflict markers.** To resolve:
 
           1. Check out this branch locally:
              \`\`\`bash
@@ -115,8 +183,6 @@ jobs:
              \`\`\`
           3. Keep preview-specific values (package version, preview tests, etc.) — accept main's changes for everything else.
           4. Commit and push, then merge this PR.
-
-          This must be resolved before the next coordinated release.
 
           ${MENTION}
 

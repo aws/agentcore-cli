@@ -8,6 +8,7 @@ interface CreateEvaluatorConfig {
   name: string;
   level: string;
   config: EvaluatorConfig;
+  kmsKeyArn?: string;
 }
 
 export function useCreateEvaluator() {
@@ -29,6 +30,7 @@ export function useCreateEvaluator() {
             name: config.name,
             level: config.level as 'SESSION' | 'TRACE' | 'TOOL_CALL',
             config: config.config,
+            kmsKeyArn: config.kmsKeyArn,
           })
       );
       if (!addResult.success) {

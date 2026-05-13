@@ -94,6 +94,12 @@ jobs:
             };
             await processInputs(context, github, core, inputs);
 
+      - name: Generate GitHub App Token
+        id: app-token
+        uses: actions/create-github-app-token@v1
+        with:
+          app-id: ${{ vars.APP_ID }}
+          private-key: ${{ secrets.APP_PRIVATE_KEY }}
       - name: Run Strands Agent
         uses: ./.github/actions/strands-action
         with:
@@ -104,7 +110,7 @@ jobs:
           tools: 'strands_tools:shell,retrieve'
           aws_role_arn: ${{ secrets.AWS_ROLE_ARN }}
           aws_region: 'us-west-2'
-          pat_token: ${{ secrets.GITHUB_TOKEN }}
+          pat_token: ${{ steps.app-token.outputs.token }}
         env:
           SESSION_ID: ${{ steps.process-inputs.outputs.session_id }}
           S3_SESSION_BUCKET: ${{ secrets.AGENT_SESSIONS_BUCKET }}

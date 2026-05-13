@@ -50,10 +50,16 @@ jobs:
         run: |
           TARBALL_NAME=$(ls *.tgz | head -1 | xargs basename)
           echo "name=$TARBALL_NAME" >> $GITHUB_OUTPUT
+      - name: Generate GitHub App Token
+        id: app-token
+        uses: actions/create-github-app-token@v1
+        with:
+          app-id: ${{ vars.APP_ID }}
+          private-key: ${{ secrets.APP_PRIVATE_KEY }}
       - name: Create or update PR release
         id: release
         env:
-          GH_TOKEN: ${{ github.token }}
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
           TARBALL_NAME: ${{ steps.tarball.outputs.name }}
         run: |

@@ -160,9 +160,16 @@ jobs:
             exit 1
           fi
 
+      - name: Generate GitHub App Token
+        id: app-token
+        uses: actions/create-github-app-token@v1
+        with:
+          app-id: ${{ vars.APP_ID }}
+          private-key: ${{ secrets.APP_PRIVATE_KEY }}
+
       - name: Create Pull Request
         env:
-          GH_TOKEN: ${{ github.token }}
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
           NEW_VERSION: ${{ steps.bump.outputs.version }}
           BASE_BRANCH: ${{ steps.release-meta.outputs.base_branch }}
           DIST_TAG: ${{ steps.release-meta.outputs.dist_tag }}

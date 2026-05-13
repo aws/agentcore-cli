@@ -469,6 +469,7 @@ export interface GetEvaluatorResult {
     llmAsAJudge?: GetEvaluatorLlmConfig;
     codeBased?: GetEvaluatorCodeBasedConfig;
   };
+  kmsKeyArn?: string;
   tags?: Record<string, string>;
 }
 
@@ -547,6 +548,7 @@ export async function getEvaluator(options: GetEvaluatorOptions): Promise<GetEva
     status: response.status ?? 'UNKNOWN',
     description: response.description,
     evaluatorConfig,
+    kmsKeyArn: response.kmsKeyArn,
     tags,
   };
 }
