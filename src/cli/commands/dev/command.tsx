@@ -1,4 +1,11 @@
-import { type Result, findConfigRoot, getWorkingDirectory } from '../../../lib';
+import {
+  ConnectionError,
+  ResourceNotFoundError,
+  type Result,
+  ValidationError,
+  findConfigRoot,
+  getWorkingDirectory,
+} from '../../../lib';
 import { getErrorMessage } from '../../errors';
 import { detectContainerRuntime } from '../../external-requirements';
 import { ExecLogger } from '../../logging';
@@ -19,6 +26,7 @@ import {
 } from '../../operations/dev';
 import { OtelCollector, startOtelCollector } from '../../operations/dev/otel';
 import { withCommandRunTelemetry } from '../../telemetry/cli-command-run.js';
+import { TelemetryClientAccessor } from '../../telemetry/client-accessor.js';
 import { Protocol, standardize } from '../../telemetry/schemas/common-shapes.js';
 import { FatalError } from '../../tui/components';
 import { LayoutProvider } from '../../tui/context';
@@ -55,7 +63,9 @@ async function invokeDevServer(
     }
   } catch (err) {
     throw isConnectionRefused(err)
-      ? new Error(`Dev server not running on port ${port}. Start it with: agentcore dev --logs`, { cause: err })
+      ? new ConnectionError(`Dev server not running on port ${port}. Start it with: agentcore dev --logs`, {
+          cause: err,
+        })
       : err;
   }
 }
@@ -68,7 +78,9 @@ async function invokeA2ADevServer(port: number, prompt: string, headers?: Record
     process.stdout.write('\n');
   } catch (err) {
     throw isConnectionRefused(err)
-      ? new Error(`Dev server not running on port ${port}. Start it with: agentcore dev --logs`, { cause: err })
+      ? new ConnectionError(`Dev server not running on port ${port}. Start it with: agentcore dev --logs`, {
+          cause: err,
+        })
       : err;
   }
 }
@@ -102,7 +114,7 @@ async function handleMcpInvoke(
       }
     } else if (invokeValue === 'call-tool') {
       if (!toolName) {
-        throw new Error(
+        throw new ValidationError(
           '--tool is required with call-tool. Usage: agentcore dev call-tool --tool <name> --input \'{"arg": "value"}\''
         );
       }
@@ -112,19 +124,21 @@ async function handleMcpInvoke(
         try {
           args = JSON.parse(input) as Record<string, unknown>;
         } catch {
-          throw new Error(`Invalid JSON for --input: ${input}. Expected format: --input '{"key": "value"}'`);
+          throw new ValidationError(`Invalid JSON for --input: ${input}. Expected format: --input '{"key": "value"}'`);
         }
       }
       const result = await callMcpTool(port, toolName, args, sessionId, undefined, headers);
       console.log(result);
     } else {
-      throw new Error(
+      throw new ValidationError(
         `Unknown MCP invoke command "${invokeValue}". Usage: agentcore dev list-tools | agentcore dev call-tool --tool <name>`
       );
     }
   } catch (err) {
     throw isConnectionRefused(err)
-      ? new Error(`Dev server not running on port ${port}. Start it with: agentcore dev --logs`, { cause: err })
+      ? new ConnectionError(`Dev server not running on port ${port}. Start it with: agentcore dev --logs`, {
+          cause: err,
+        })
       : err;
   }
 }
@@ -132,7 +146,7 @@ async function handleMcpInvoke(
 async function execInContainer(command: string, containerName: string): Promise<void> {
   const detection = await detectContainerRuntime();
   if (!detection.runtime) {
-    throw new Error('No container runtime found (docker, podman, or finch required)');
+    throw new ResourceNotFoundError('No container runtime found (docker, podman, or finch required)');
   }
   return new Promise((resolve, reject) => {
     const child = spawn(detection.runtime!.binary, ['exec', containerName, 'bash', '-c', command], {
@@ -465,32 +479,32 @@ export const registerDev = (program: Command) => {
         }
 
         // Default: launch web UI in browser
-        // runBrowserMode blocks forever (internal await new Promise(() => {})).
-        // On SIGINT, its internal handler stops the server and the process exits.
-        // Telemetry only emits here on startup failure; normal shutdown telemetry
-        // requires refactoring runWebUI to return a shutdown promise (follow-up).
-        const browserResult = await withCommandRunTelemetry(
-          'dev',
-          {
+        // NOTE: Do not copy this pattern. runBrowserMode blocks forever (internal
+        // await new Promise(() => {})) so we cannot use withCommandRunTelemetry here.
+        // We emit telemetry eagerly before the blocking call. If startup fails, the
+        // error propagates to the outer catch. Prefer withCommandRunTelemetry for
+        // commands that return.
+        {
+          const client = await TelemetryClientAccessor.get().catch(() => undefined);
+          const devAttrs = {
             action: 'server' as const,
             ui_mode: 'browser' as const,
             has_stream: false,
             protocol: standardize(Protocol, (targetDevAgent?.protocol ?? 'http').toLowerCase()),
             invoke_count: 0,
-          },
-          async (): Promise<Result> => {
-            await runBrowserMode({
-              workingDir,
-              project,
-              port,
-              agentName: opts.runtime,
-              otelEnvVars,
-              collector,
-            });
-            return { success: true };
+          };
+          if (client) {
+            await client.withCommandRun('dev', () => devAttrs);
           }
-        );
-        if (!browserResult.success) throw browserResult.error;
+          await runBrowserMode({
+            workingDir,
+            project,
+            port,
+            agentName: opts.runtime,
+            otelEnvVars,
+            collector,
+          });
+        }
       } catch (error) {
         console.error(`Error: ${getErrorMessage(error)}`);
         process.exit(1);
