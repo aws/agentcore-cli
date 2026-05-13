@@ -1,12 +1,14 @@
-import { serializeResult } from '../../../lib';
+import { type Result, serializeResult } from '../../../lib';
 import { getErrorMessage } from '../../errors';
+import { withCommandRunTelemetry } from '../../telemetry/cli-command-run.js';
+import { AuthType, Protocol, standardize } from '../../telemetry/schemas/common-shapes.js';
 import { COMMAND_DESCRIPTIONS } from '../../tui/copy';
 import { requireProject, requireTTY } from '../../tui/guards';
 import { InvokeScreen } from '../../tui/screens/invoke';
 import { parseHeaderFlags } from '../shared/header-utils';
 import { handleInvoke, loadInvokeConfig } from './action';
 import { resolvePrompt } from './resolve-prompt';
-import type { InvokeOptions } from './types';
+import type { InvokeOptions, InvokeResult } from './types';
 import { validateInvokeOptions } from './validate';
 import type { Command } from '@commander-js/extra-typings';
 import { Text, render } from 'ink';
@@ -28,15 +30,16 @@ function stopSpinner(spinner: NodeJS.Timeout): void {
   process.stderr.write('\r\x1b[K'); // Clear line
 }
 
-async function handleInvokeCLI(options: InvokeOptions): Promise<void> {
+function resolveProtocol(options: InvokeOptions, projectProtocol?: string): string {
+  if (projectProtocol) return projectProtocol.toLowerCase();
+  if (options.tool) return 'mcp';
+  return 'http';
+}
+
+async function handleInvokeCLI(options: InvokeOptions): Promise<InvokeResult> {
   const validation = validateInvokeOptions(options);
   if (!validation.valid) {
-    if (options.json) {
-      console.log(JSON.stringify({ success: false, error: validation.error }));
-    } else {
-      console.error(validation.error);
-    }
-    process.exit(1);
+    return { success: false, error: new Error(validation.error) };
   }
 
   let spinner: NodeJS.Timeout | undefined;
@@ -55,44 +58,41 @@ async function handleInvokeCLI(options: InvokeOptions): Promise<void> {
       stopSpinner(spinner);
     }
 
-    if (options.json) {
-      console.log(JSON.stringify(serializeResult(result)));
-    } else if (options.stream) {
-      // Streaming already wrote to stdout, just show session and log path
-      if (result.sessionId) {
-        console.error(`\nSession: ${result.sessionId}`);
-        console.error(`To resume: agentcore invoke --session-id ${result.sessionId}`);
-      }
-      if (result.logFilePath) {
-        console.error(`Log: ${result.logFilePath}`);
-      }
-    } else {
-      // Non-streaming, non-json: print provider info and response or error
-      if (result.success && result.response) {
-        console.log(result.response);
-      } else if (!result.success && result.error) {
-        console.error(result.error.message);
-      }
-      if (result.sessionId) {
-        console.error(`\nSession: ${result.sessionId}`);
-        console.error(`To resume: agentcore invoke --session-id ${result.sessionId}`);
-      }
-      if (result.logFilePath) {
-        console.error(`Log: ${result.logFilePath}`);
-      }
-    }
-
-    process.exit(result.success ? 0 : 1);
+    return result;
   } catch (err) {
     if (spinner) {
       stopSpinner(spinner);
     }
-    if (options.json) {
-      console.log(JSON.stringify({ success: false, error: getErrorMessage(err) }));
-    } else {
-      console.error(getErrorMessage(err));
+    throw err;
+  }
+}
+
+function printInvokeResult(result: InvokeResult, options: InvokeOptions): void {
+  if (options.json) {
+    console.log(JSON.stringify(serializeResult(result)));
+  } else if (options.stream) {
+    // Streaming already wrote to stdout, just show session and log path
+    if (result.sessionId) {
+      console.error(`\nSession: ${result.sessionId}`);
+      console.error(`To resume: agentcore invoke --session-id ${result.sessionId}`);
     }
-    process.exit(1);
+    if (result.logFilePath) {
+      console.error(`Log: ${result.logFilePath}`);
+    }
+  } else {
+    // Non-streaming, non-json: print provider info and response or error
+    if (result.success && result.response) {
+      console.log(result.response);
+    } else if (!result.success && result.error) {
+      console.error(result.error.message);
+    }
+    if (result.sessionId) {
+      console.error(`\nSession: ${result.sessionId}`);
+      console.error(`To resume: agentcore invoke --session-id ${result.sessionId}`);
+    }
+    if (result.logFilePath) {
+      console.error(`Log: ${result.logFilePath}`);
+    }
   }
 }
 
@@ -149,22 +149,6 @@ export const registerInvoke = (program: Command) => {
       ) => {
         try {
           requireProject();
-          // Resolve prompt from flag / positional / --prompt-file / stdin
-          const resolved = await resolvePrompt({
-            flag: cliOptions.prompt,
-            positional: positionalPrompt,
-            file: cliOptions.promptFile,
-            stdinPiped: !process.stdin.isTTY,
-          });
-          if (!resolved.success) {
-            if (cliOptions.json) {
-              console.log(JSON.stringify({ success: false, error: resolved.error }));
-            } else {
-              console.error(resolved.error);
-            }
-            process.exit(1);
-          }
-          const prompt = resolved.prompt;
 
           // Parse custom headers
           let headers: Record<string, string> | undefined;
@@ -172,9 +156,31 @@ export const registerInvoke = (program: Command) => {
             headers = parseHeaderFlags(cliOptions.header);
           }
 
-          // CLI mode if any CLI-specific options provided (follows deploy command pattern)
+          // Determine protocol from project config (best-effort for telemetry)
+          let agentProtocol: string | undefined;
+          try {
+            const { project } = await loadInvokeConfig();
+            const agent = cliOptions.runtime
+              ? project.runtimes.find(a => a.name === cliOptions.runtime)
+              : project.runtimes[0];
+            agentProtocol = agent?.protocol;
+          } catch {
+            // Config load failure will be caught again inside handleInvokeCLI
+          }
+
+          // Resolve prompt from flag / positional / --prompt-file / stdin
+          const resolved = await resolvePrompt({
+            flag: cliOptions.prompt,
+            positional: positionalPrompt,
+            file: cliOptions.promptFile,
+            stdinPiped: !process.stdin.isTTY,
+          });
+
+          // CLI mode if any CLI-specific options provided, prompt resolved, or prompt resolution failed
+          // (follows deploy command pattern)
           if (
-            prompt !== undefined ||
+            !resolved.success ||
+            resolved.prompt !== undefined ||
             cliOptions.json ||
             cliOptions.target ||
             cliOptions.stream ||
@@ -183,8 +189,8 @@ export const registerInvoke = (program: Command) => {
             cliOptions.exec ||
             cliOptions.bearerToken
           ) {
-            await handleInvokeCLI({
-              prompt,
+            const options: InvokeOptions = {
+              prompt: resolved.prompt,
               agentName: cliOptions.runtime,
               targetName: cliOptions.target ?? 'default',
               sessionId: cliOptions.sessionId,
@@ -197,21 +203,57 @@ export const registerInvoke = (program: Command) => {
               timeout: cliOptions.timeout,
               headers,
               bearerToken: cliOptions.bearerToken,
-            });
+            };
+
+            const result = await withCommandRunTelemetry(
+              'invoke',
+              {
+                has_stream: options.stream ?? false,
+                has_session_id: !!options.sessionId,
+                auth_type: standardize(AuthType, options.bearerToken ? 'bearer_token' : 'sigv4'),
+                protocol: standardize(Protocol, resolveProtocol(options, agentProtocol)),
+              },
+              async (): Promise<InvokeResult> => {
+                if (!resolved.success) {
+                  return { success: false, error: new Error(resolved.error ?? 'Prompt resolution failed') };
+                }
+                return handleInvokeCLI(options);
+              }
+            );
+
+            printInvokeResult(result, options);
+            process.exit(result.success ? 0 : 1);
           } else {
             // No CLI options - interactive TUI mode (headers still passed if provided)
             requireTTY();
-            const { waitUntilExit, unmount } = render(
-              <InvokeScreen
-                isInteractive={true}
-                onExit={() => unmount()}
-                initialSessionId={cliOptions.sessionId}
-                initialUserId={cliOptions.userId}
-                initialHeaders={headers}
-                initialBearerToken={cliOptions.bearerToken}
-              />
+
+            const tuiResult = await withCommandRunTelemetry(
+              'invoke',
+              {
+                has_stream: true,
+                has_session_id: !!cliOptions.sessionId,
+                auth_type: standardize(AuthType, cliOptions.bearerToken ? 'bearer_token' : 'sigv4'),
+                protocol: standardize(Protocol, resolveProtocol({}, agentProtocol)),
+              },
+              async (): Promise<Result> => {
+                const { waitUntilExit, unmount } = render(
+                  <InvokeScreen
+                    isInteractive={true}
+                    onExit={() => unmount()}
+                    initialSessionId={cliOptions.sessionId}
+                    initialUserId={cliOptions.userId}
+                    initialHeaders={headers}
+                    initialBearerToken={cliOptions.bearerToken}
+                  />
+                );
+                await waitUntilExit();
+                return { success: true };
+              }
             );
-            await waitUntilExit();
+            if (!tuiResult.success) {
+              render(<Text color="red">Error: {getErrorMessage(tuiResult.error)}</Text>);
+              process.exit(1);
+            }
           }
         } catch (error) {
           if (cliOptions.json) {
