@@ -25,7 +25,7 @@ import {
 } from '../../../operations/deploy/post-deploy-config-bundles';
 import { setupHttpGateways } from '../../../operations/deploy/post-deploy-http-gateways';
 import { enableOnlineEvalConfigs } from '../../../operations/deploy/post-deploy-online-evals';
-import { withCommandRunTelemetry } from '../../../telemetry/cli-command-run.js';
+import { type OperationResult, withCommandRunTelemetry } from '../../../telemetry/cli-command-run.js';
 import {
   type StackDiffSummary,
   type Step,
@@ -607,7 +607,7 @@ export function useDeployFlow(options: DeployFlowOptions = {}): DeployFlowState 
 
     const attrs = context ? computeDeployAttrs(context.projectSpec, 'deploy') : { ...DEFAULT_DEPLOY_ATTRS };
 
-    const run = async (): Promise<{ success: true } | { success: false; error: Error }> => {
+    const run = async (): Promise<OperationResult> => {
       // Run diff before deploy to capture pre-deploy differences
       if (!isDiffRunningRef.current) {
         isDiffRunningRef.current = true;
@@ -787,7 +787,7 @@ export function useDeployFlow(options: DeployFlowOptions = {}): DeployFlowState 
             error: logger.getFailureMessage('Publish assets'),
           }));
         }
-        return { success: false, error: err instanceof Error ? err : new Error(errorMsg) } as const;
+        return { success: false, error: errorMsg };
       } finally {
         // Disable verbose output and clear callback after deploy
         switchableIoHost?.setVerbose(false);
@@ -826,7 +826,7 @@ export function useDeployFlow(options: DeployFlowOptions = {}): DeployFlowState 
       ? computeDeployAttrs(context.projectSpec, 'diff')
       : { ...DEFAULT_DEPLOY_ATTRS, mode: 'diff' as const };
 
-    const run = async (): Promise<{ success: true } | { success: false; error: Error }> => {
+    const run = async (): Promise<OperationResult> => {
       setDiffStep(prev => ({ ...prev, status: 'running' }));
       setShouldStartDeploy(false);
       setDiffSummaries([]);
@@ -862,7 +862,7 @@ export function useDeployFlow(options: DeployFlowOptions = {}): DeployFlowState 
           status: 'error',
           error: logger.getFailureMessage('Run CDK diff'),
         }));
-        return { success: false, error: err instanceof Error ? err : new Error(errorMsg) };
+        return { success: false, error: errorMsg };
       } finally {
         switchableIoHost?.setVerbose(false);
         switchableIoHost?.setOnRawMessage(null);

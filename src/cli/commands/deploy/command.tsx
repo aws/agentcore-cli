@@ -1,4 +1,4 @@
-import { ConfigIO, serializeResult } from '../../../lib';
+import { ConfigIO } from '../../../lib';
 import { getErrorMessage } from '../../errors';
 import { withCommandRunTelemetry } from '../../telemetry/cli-command-run.js';
 import { COMMAND_DESCRIPTIONS } from '../../tui/copy';
@@ -50,10 +50,10 @@ async function handleDeployCLI(options: DeployOptions): Promise<void> {
 
   const { deployResult } = await withCommandRunTelemetry('deploy', attrs, async () => {
     const result = await executeDeploy(options).catch(
-      (e): DeployResult => ({ success: false, error: e instanceof Error ? e : new Error(getErrorMessage(e)) })
+      (e): DeployResult => ({ success: false, error: getErrorMessage(e) })
     );
     if (!result.success) {
-      return { success: false as const, error: result.error, deployResult: result };
+      return { success: false as const, error: result.error ?? 'Deploy failed', deployResult: result };
     }
     return { success: true as const, deployResult: result };
   });
@@ -61,9 +61,9 @@ async function handleDeployCLI(options: DeployOptions): Promise<void> {
   // ALL output happens here, after telemetry
   if (!deployResult.success) {
     if (options.json) {
-      console.log(JSON.stringify(serializeResult(deployResult)));
+      console.log(JSON.stringify(deployResult));
     } else {
-      console.error(deployResult.error.message);
+      console.error(deployResult.error);
       if (deployResult.logPath) {
         console.error(`Log: ${deployResult.logPath}`);
       }
@@ -71,7 +71,7 @@ async function handleDeployCLI(options: DeployOptions): Promise<void> {
     process.exit(1);
   }
 
-  printDeployResult(deployResult, options);
+  printDeployResult(deployResult as DeployResult & { success: true }, options);
 
   if (deployResult.postDeployWarnings && deployResult.postDeployWarnings.length > 0) {
     process.exit(2);

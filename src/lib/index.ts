@@ -28,3 +28,5 @@ export * from './utils';
 // Schema I/O utilities
 export * from './schemas/io';
 export * from './time-constants';
+export { serializeResult } from './result';
+export type { Result } from './result';
