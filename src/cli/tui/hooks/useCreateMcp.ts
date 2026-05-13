@@ -53,7 +53,7 @@ export function useCreateGateway() {
           })
       );
       if (!addResult.success) {
-        throw new Error(addResult.error ?? 'Failed to create gateway');
+        throw new Error(addResult.error?.message ?? 'Failed to create gateway');
       }
       const result: CreateGatewayResult = { name: config.name };
       setStatus({ state: 'success', result });

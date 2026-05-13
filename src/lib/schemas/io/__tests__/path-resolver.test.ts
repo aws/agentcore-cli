@@ -1,5 +1,5 @@
+import { NoProjectError } from '../../../errors';
 import {
-  NoProjectError,
   PathResolver,
   findConfigRoot,
   findProjectRoot,

@@ -1,3 +1,4 @@
+import type { Result } from '../../../lib/result';
 import { readGlobalConfigSync } from '../../../lib/schemas/io/global-config';
 import { enableTransactionSearch } from '../../aws/transaction-search';
 
@@ -6,11 +7,6 @@ export interface TransactionSearchSetupOptions {
   accountId: string;
   agentNames: string[];
   hasGateways?: boolean;
-}
-
-export interface TransactionSearchSetupResult {
-  success: boolean;
-  error?: string;
 }
 
 /**
@@ -22,9 +18,7 @@ export interface TransactionSearchSetupResult {
  *
  * This is a non-blocking best-effort operation — failures do not fail the deploy.
  */
-export async function setupTransactionSearch(
-  options: TransactionSearchSetupOptions
-): Promise<TransactionSearchSetupResult> {
+export async function setupTransactionSearch(options: TransactionSearchSetupOptions): Promise<Result> {
   const { region, accountId, agentNames } = options;
 
   if (agentNames.length === 0 && !options.hasGateways) {

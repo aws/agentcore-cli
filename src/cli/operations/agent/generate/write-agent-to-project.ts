@@ -1,7 +1,6 @@
-import { ConfigIO, requireConfigRoot } from '../../../../lib';
+import { AgentAlreadyExistsError, ConfigIO, requireConfigRoot } from '../../../../lib';
 import type { AgentCoreProjectSpec } from '../../../../schema';
 import { SCHEMA_VERSION } from '../../../constants';
-import { AgentAlreadyExistsError } from '../../../errors';
 import type { CredentialStrategy } from '../../../primitives/CredentialPrimitive';
 import type { GenerateConfig } from '../../../tui/screens/generate/types';
 import { mapGenerateConfigToAgent, mapGenerateInputToMemories, mapModelProviderToCredentials } from './schema-mapper';

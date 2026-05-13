@@ -1,3 +1,5 @@
+import { ResourceNotFoundError, toError } from '../../../lib';
+import type { Result } from '../../../lib/result';
 import { getCredentialProvider } from '../../aws';
 import { BedrockAgentCoreClient, ListMemoryRecordsCommand } from '@aws-sdk/client-bedrock-agentcore';
 
@@ -20,12 +22,7 @@ export interface ListMemoryRecordsOptions {
   nextToken?: string;
 }
 
-export interface ListMemoryRecordsResult {
-  success: boolean;
-  records?: MemoryRecordEntry[];
-  nextToken?: string;
-  error?: string;
-}
+export type ListMemoryRecordsResult = Result<{ records: MemoryRecordEntry[]; nextToken?: string }>;
 
 /**
  * Lists memory records for a deployed memory resource via the AWS SDK.
@@ -63,8 +60,11 @@ export async function listMemoryRecords(options: ListMemoryRecordsOptions): Prom
   } catch (error: unknown) {
     const err = error as Error;
     if (err.name === 'ResourceNotFoundException') {
-      return { success: false, error: `Memory '${memoryId}' not found. It may not have been deployed yet.` };
+      return {
+        success: false,
+        error: new ResourceNotFoundError(`Memory '${memoryId}' not found. It may not have been deployed yet.`),
+      };
     }
-    return { success: false, error: err.message ?? String(error) };
+    return { success: false, error: toError(error) };
   }
 }

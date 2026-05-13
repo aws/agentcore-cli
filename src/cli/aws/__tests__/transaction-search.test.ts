@@ -1,4 +1,5 @@
 import { enableTransactionSearch } from '../transaction-search.js';
+import assert from 'node:assert';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const { mockAppSignalsSend, mockLogsSend, mockXRaySend } = vi.hoisted(() => ({
@@ -162,8 +163,8 @@ describe('enableTransactionSearch', () => {
 
       const result = await enableTransactionSearch('us-east-1', '123456789012');
 
-      expect(result.success).toBe(false);
-      expect(result.error).toContain('Insufficient permissions to enable Application Signals');
+      assert(!result.success);
+      expect(result.error.message).toContain('Insufficient permissions to enable Application Signals');
     });
 
     it('returns error when Application Signals fails with generic error', async () => {
@@ -171,8 +172,8 @@ describe('enableTransactionSearch', () => {
 
       const result = await enableTransactionSearch('us-east-1', '123456789012');
 
-      expect(result.success).toBe(false);
-      expect(result.error).toContain('Failed to enable Application Signals');
+      assert(!result.success);
+      expect(result.error.message).toContain('Failed to enable Application Signals');
     });
 
     it('returns error when CloudWatch Logs policy fails with AccessDenied', async () => {
@@ -183,8 +184,8 @@ describe('enableTransactionSearch', () => {
 
       const result = await enableTransactionSearch('us-east-1', '123456789012');
 
-      expect(result.success).toBe(false);
-      expect(result.error).toContain('Insufficient permissions to configure CloudWatch Logs policy');
+      assert(!result.success);
+      expect(result.error.message).toContain('Insufficient permissions to configure CloudWatch Logs policy');
     });
 
     it('returns error when trace destination fails', async () => {
@@ -194,8 +195,8 @@ describe('enableTransactionSearch', () => {
 
       const result = await enableTransactionSearch('us-east-1', '123456789012');
 
-      expect(result.success).toBe(false);
-      expect(result.error).toContain('Failed to configure trace destination');
+      assert(!result.success);
+      expect(result.error.message).toContain('Failed to configure trace destination');
     });
 
     it('returns error when indexing rule update fails', async () => {
@@ -214,8 +215,8 @@ describe('enableTransactionSearch', () => {
 
       const result = await enableTransactionSearch('us-east-1', '123456789012');
 
-      expect(result.success).toBe(false);
-      expect(result.error).toContain('Failed to configure indexing rules');
+      assert(!result.success);
+      expect(result.error.message).toContain('Failed to configure indexing rules');
     });
 
     it('does not proceed to later steps when an earlier step fails', async () => {

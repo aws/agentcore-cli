@@ -15,6 +15,15 @@ vi.mock('../../../../lib/index.js', () => ({
     readProjectSpec = mockReadProjectSpec;
     writeProjectSpec = mockWriteProjectSpec;
   },
+  findConfigRoot: () => '/fake/root',
+  toError: (err: unknown) => (err instanceof Error ? err : new Error(String(err))),
+  serializeResult: (r: unknown) => r,
+  ResourceNotFoundError: class extends Error {
+    constructor(m: string) {
+      super(m);
+      this.name = 'ResourceNotFoundError';
+    }
+  },
 }));
 
 const makeProject = (memoryNames: string[]) => ({
@@ -86,7 +95,7 @@ describe('add', () => {
       expiry: 30,
     });
 
-    expect(result).toEqual(expect.objectContaining({ success: false, error: expect.any(String) }));
+    expect(result).toEqual(expect.objectContaining({ success: false, error: expect.any(Error) }));
     expect(mockWriteProjectSpec).not.toHaveBeenCalled();
   });
 
@@ -96,7 +105,10 @@ describe('add', () => {
     const result = await primitive.add({ name: 'Existing', strategies: '', expiry: 30 });
 
     expect(result).toEqual(
-      expect.objectContaining({ success: false, error: expect.stringContaining('Memory "Existing" already exists') })
+      expect.objectContaining({
+        success: false,
+        error: expect.objectContaining({ message: expect.stringContaining('Memory "Existing" already exists') }),
+      })
     );
   });
 });

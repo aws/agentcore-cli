@@ -11,6 +11,7 @@
  * - Non-READY gateway warning
  */
 import { handleImportGateway } from '../import-gateway';
+import assert from 'node:assert';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 // ── Hoisted mock fns ────────────────────────────────────────────────────────
@@ -56,6 +57,12 @@ const {
 vi.mock('../../../../lib', () => ({
   APP_DIR: 'app',
   ConfigIO: MockConfigIOClass,
+  NoProjectError: class NoProjectError extends Error {
+    constructor(msg?: string) {
+      super(msg ?? 'No agentcore project found');
+      this.name = 'NoProjectError';
+    }
+  },
   findConfigRoot: (...args: unknown[]) => mockFindConfigRoot(...args),
 }));
 
@@ -177,7 +184,7 @@ describe('handleImportGateway', () => {
     it('successfully imports a gateway with --arn', async () => {
       const result = await handleImportGateway({ arn: GATEWAY_ARN });
 
-      expect(result.success).toBe(true);
+      assert(result.success);
       expect(result.resourceId).toBe(GATEWAY_ID);
       expect(result.resourceType).toBe('gateway');
       expect(result.resourceName).toBe(GATEWAY_NAME);
@@ -199,8 +206,8 @@ describe('handleImportGateway', () => {
 
       const result = await handleImportGateway({ arn: GATEWAY_ARN });
 
-      expect(result.success).toBe(false);
-      expect(result.error).toBe('Phase 2 failed');
+      assert(!result.success);
+      expect(result.error.message).toBe('Phase 2 failed');
 
       // First call = write merged config, second call = rollback
       expect(mockConfigIOInstance.writeProjectSpec).toHaveBeenCalledTimes(2);
@@ -213,8 +220,8 @@ describe('handleImportGateway', () => {
 
       const result = await handleImportGateway({ arn: GATEWAY_ARN });
 
-      expect(result.success).toBe(false);
-      expect(result.error).toContain('Could not find logical ID');
+      assert(!result.success);
+      expect(result.error.message).toContain('Could not find logical ID');
 
       // First call = write merged config, second call = rollback
       expect(mockConfigIOInstance.writeProjectSpec).toHaveBeenCalledTimes(2);
@@ -231,8 +238,8 @@ describe('handleImportGateway', () => {
 
       const result = await handleImportGateway({ arn: GATEWAY_ARN });
 
-      expect(result.success).toBe(false);
-      expect(result.error).toContain('already exists');
+      assert(!result.success);
+      expect(result.error.message).toContain('already exists');
       expect(mockConfigIOInstance.writeProjectSpec).not.toHaveBeenCalled();
     });
 
@@ -254,7 +261,7 @@ describe('handleImportGateway', () => {
 
       const result = await handleImportGateway({ arn: GATEWAY_ARN });
 
-      expect(result.success).toBe(true);
+      assert(result.success);
       expect(result.resourceName).toBe('ExistingGateway');
       expect(mockConfigIOInstance.writeProjectSpec).toHaveBeenCalledTimes(1);
       expect(mockExecuteCdkImportPipeline).toHaveBeenCalled();
@@ -278,7 +285,7 @@ describe('handleImportGateway', () => {
 
       const result = await handleImportGateway({ arn: GATEWAY_ARN, name: 'myCustomName' });
 
-      expect(result.success).toBe(true);
+      assert(result.success);
       expect(result.resourceName).toBe('myCustomName');
       expect(mockConfigIOInstance.writeProjectSpec).toHaveBeenCalledTimes(1);
       expect(mockExecuteCdkImportPipeline).toHaveBeenCalled();
@@ -302,8 +309,8 @@ describe('handleImportGateway', () => {
 
       const result = await handleImportGateway({ arn: GATEWAY_ARN });
 
-      expect(result.success).toBe(false);
-      expect(result.error).toContain('already exists');
+      assert(!result.success);
+      expect(result.error.message).toContain('already exists');
     });
   });
 
@@ -315,15 +322,15 @@ describe('handleImportGateway', () => {
 
       const result = await handleImportGateway({ arn: GATEWAY_ARN });
 
-      expect(result.success).toBe(false);
-      expect(result.error).toContain('Invalid name');
+      assert(!result.success);
+      expect(result.error.message).toContain('Invalid name');
       expect(mockConfigIOInstance.writeProjectSpec).not.toHaveBeenCalled();
     });
 
     it('uses --name override with original resourceName preserved', async () => {
       const result = await handleImportGateway({ arn: GATEWAY_ARN, name: 'myCustomName' });
 
-      expect(result.success).toBe(true);
+      assert(result.success);
       expect(result.resourceName).toBe('myCustomName');
 
       const writtenSpec = mockConfigIOInstance.writeProjectSpec.mock.calls[0]![0];
@@ -343,7 +350,7 @@ describe('handleImportGateway', () => {
 
       const result = await handleImportGateway({});
 
-      expect(result.success).toBe(true);
+      assert(result.success);
       expect(result.resourceId).toBe(GATEWAY_ID);
       expect(mockGetGatewayDetail).toHaveBeenCalledWith({ region: REGION, gatewayId: GATEWAY_ID });
     });
@@ -356,8 +363,8 @@ describe('handleImportGateway', () => {
 
       const result = await handleImportGateway({});
 
-      expect(result.success).toBe(false);
-      expect(result.error).toContain('Multiple gateways found');
+      assert(!result.success);
+      expect(result.error.message).toContain('Multiple gateways found');
     });
 
     it('fails when no gateways exist and no --arn', async () => {
@@ -365,8 +372,8 @@ describe('handleImportGateway', () => {
 
       const result = await handleImportGateway({});
 
-      expect(result.success).toBe(false);
-      expect(result.error).toContain('No gateways found');
+      assert(!result.success);
+      expect(result.error.message).toContain('No gateways found');
     });
   });
 
@@ -399,7 +406,7 @@ describe('handleImportGateway', () => {
         onProgress: (msg: string) => progressMessages.push(msg),
       });
 
-      expect(result.success).toBe(true);
+      assert(result.success);
 
       // Verify warning about unmapped targets
       expect(progressMessages.some(m => m.includes('1 target(s) could not be mapped'))).toBe(true);
@@ -414,7 +421,7 @@ describe('handleImportGateway', () => {
         onProgress: (msg: string) => progressMessages.push(msg),
       });
 
-      expect(result.success).toBe(true);
+      assert(result.success);
       expect(progressMessages.some(m => m.includes('CREATING') && m.includes('not READY'))).toBe(true);
     });
   });

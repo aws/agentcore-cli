@@ -1,9 +1,18 @@
-import { findConfigRoot, getEnvVar, setEnvVar } from '../../lib';
+import {
+  ConflictError,
+  ResourceNotFoundError,
+  findConfigRoot,
+  getEnvVar,
+  serializeResult,
+  setEnvVar,
+  toError,
+} from '../../lib';
+import type { Result } from '../../lib/result';
 import type { Credential, ModelProvider } from '../../schema';
 import { CredentialSchema } from '../../schema';
 import { validateAddCredentialOptions } from '../commands/add/validate';
 import { getErrorMessage } from '../errors';
-import type { RemovalPreview, RemovalResult, SchemaChange } from '../operations/remove/types';
+import type { RemovalPreview, SchemaChange } from '../operations/remove/types';
 import { runCliCommand } from '../telemetry/cli-command-run.js';
 import { CredentialType, standardize } from '../telemetry/schemas/common-shapes.js';
 import { requireTTY } from '../tui/guards/tty';
@@ -77,17 +86,17 @@ export class CredentialPrimitive extends BasePrimitive<AddCredentialOptions, Rem
       const credential = await this.createCredential(options);
       return { success: true, credentialName: credential.name };
     } catch (err) {
-      return { success: false, error: getErrorMessage(err) };
+      return { success: false, error: toError(err) };
     }
   }
 
-  async remove(credentialName: string, options?: { force?: boolean }): Promise<RemovalResult> {
+  async remove(credentialName: string, options?: { force?: boolean }): Promise<Result> {
     try {
       const project = await this.readProjectSpec();
 
       const credentialIndex = project.credentials.findIndex(c => c.name === credentialName);
       if (credentialIndex === -1) {
-        return { success: false, error: `Credential "${credentialName}" not found.` };
+        return { success: false, error: new ResourceNotFoundError(`Credential "${credentialName}" not found.`) };
       }
 
       const credential = project.credentials[credentialIndex]!;
@@ -96,7 +105,9 @@ export class CredentialPrimitive extends BasePrimitive<AddCredentialOptions, Rem
       if ('managed' in credential && credential.managed && !options?.force) {
         return {
           success: false,
-          error: `Credential "${credentialName}" is managed by the CLI and cannot be removed. Use force to override.`,
+          error: new ConflictError(
+            `Credential "${credentialName}" is managed by the CLI and cannot be removed. Use force to override.`
+          ),
         };
       }
 
@@ -106,7 +117,9 @@ export class CredentialPrimitive extends BasePrimitive<AddCredentialOptions, Rem
         const targetList = referencingTargets.map(t => t.name).join(', ');
         return {
           success: false,
-          error: `Credential "${credentialName}" is referenced by gateway target(s): ${targetList}. Use force to override.`,
+          error: new ConflictError(
+            `Credential "${credentialName}" is referenced by gateway target(s): ${targetList}. Use force to override.`
+          ),
         };
       }
 
@@ -115,8 +128,7 @@ export class CredentialPrimitive extends BasePrimitive<AddCredentialOptions, Rem
 
       return { success: true };
     } catch (err) {
-      const message = err instanceof Error ? err.message : 'Unknown error';
-      return { success: false, error: message };
+      return { success: false, error: toError(err) };
     }
   }
 
@@ -328,11 +340,11 @@ export class CredentialPrimitive extends BasePrimitive<AddCredentialOptions, Rem
               const result = await this.add(addOptions);
 
               if (!result.success) {
-                throw new Error(result.error);
+                throw result.error;
               }
 
               if (cliOptions.json) {
-                console.log(JSON.stringify(result));
+                console.log(JSON.stringify(serializeResult(result)));
               } else {
                 console.log(`Added credential '${result.credentialName}'`);
               }

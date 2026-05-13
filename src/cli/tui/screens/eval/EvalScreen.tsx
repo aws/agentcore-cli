@@ -339,7 +339,7 @@ export function EvalScreen({ onExit }: EvalScreenProps) {
       }
       const result = handleListEvalRuns({});
       if (!result.success) {
-        setState({ phase: 'error', runs: [], error: result.error ?? 'Unknown error' });
+        setState({ phase: 'error', runs: [], error: result.error?.message ?? 'Unknown error' });
         return;
       }
       setState({ phase: 'loaded', runs: result.runs ?? [], error: null });

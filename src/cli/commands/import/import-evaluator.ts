@@ -50,6 +50,7 @@ export function toEvaluatorSpec(detail: GetEvaluatorResult, localName: string): 
     level,
     ...(detail.description && { description: detail.description }),
     config,
+    ...(detail.kmsKeyArn && { kmsKeyArn: detail.kmsKeyArn }),
     ...(detail.tags && Object.keys(detail.tags).length > 0 && { tags: detail.tags }),
   };
 }
@@ -151,7 +152,7 @@ export function registerImportEvaluator(importCmd: Command): void {
         console.log(`  ID: ${result.resourceId}`);
         console.log('');
       } else {
-        console.error(`\n${ANSI.red}[error]${ANSI.reset} ${result.error}`);
+        console.error(`\n${ANSI.red}[error]${ANSI.reset} ${result.error.message}`);
         if (result.logPath) {
           console.error(`Log: ${result.logPath}`);
         }

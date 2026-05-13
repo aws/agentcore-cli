@@ -1,4 +1,5 @@
 import { handlePauseResume } from '../pause-resume.js';
+import assert from 'node:assert';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 const mockLoadDeployedProjectConfig = vi.fn();
@@ -46,7 +47,7 @@ describe('handlePauseResume', () => {
 
     const result = await handlePauseResume({ name: 'my-config' }, 'pause');
 
-    expect(result.success).toBe(true);
+    assert(result.success);
     expect(result.executionStatus).toBe('DISABLED');
     expect(mockUpdateOnlineEvalExecutionStatus).toHaveBeenCalledWith({
       region: 'us-east-1',
@@ -65,7 +66,7 @@ describe('handlePauseResume', () => {
 
     const result = await handlePauseResume({ name: 'my-config' }, 'resume');
 
-    expect(result.success).toBe(true);
+    assert(result.success);
     expect(result.executionStatus).toBe('ENABLED');
     expect(mockUpdateOnlineEvalExecutionStatus).toHaveBeenCalledWith({
       region: 'us-east-1',
@@ -83,8 +84,8 @@ describe('handlePauseResume', () => {
 
     const result = await handlePauseResume({ name: 'my-config' }, 'pause');
 
-    expect(result.success).toBe(false);
-    expect(result.error).toContain('No deployed targets found');
+    assert(!result.success);
+    expect(result.error.message).toContain('No deployed targets found');
   });
 
   it('returns error when config name is not found in deployed state', async () => {
@@ -92,9 +93,9 @@ describe('handlePauseResume', () => {
 
     const result = await handlePauseResume({ name: 'missing-config' }, 'pause');
 
-    expect(result.success).toBe(false);
-    expect(result.error).toContain('missing-config');
-    expect(result.error).toContain('not found');
+    assert(!result.success);
+    expect(result.error.message).toContain('missing-config');
+    expect(result.error.message).toContain('not found');
   });
 
   it('returns error when target config is missing from aws-targets', async () => {
@@ -105,9 +106,9 @@ describe('handlePauseResume', () => {
 
     const result = await handlePauseResume({ name: 'my-config' }, 'pause');
 
-    expect(result.success).toBe(false);
-    expect(result.error).toContain('Target config');
-    expect(result.error).toContain('not found');
+    assert(!result.success);
+    expect(result.error.message).toContain('Target config');
+    expect(result.error.message).toContain('not found');
   });
 
   it('returns error when the SDK call fails', async () => {
@@ -116,8 +117,8 @@ describe('handlePauseResume', () => {
 
     const result = await handlePauseResume({ name: 'my-config' }, 'pause');
 
-    expect(result.success).toBe(false);
-    expect(result.error).toBe('Service unavailable');
+    assert(!result.success);
+    expect(result.error.message).toBe('Service unavailable');
   });
 
   describe('ARN mode', () => {
@@ -131,7 +132,7 @@ describe('handlePauseResume', () => {
       const arn = 'arn:aws:bedrock-agentcore:us-west-2:123456789012:online-evaluation-config/my-cfg-id';
       const result = await handlePauseResume({ name: '', arn }, 'pause');
 
-      expect(result.success).toBe(true);
+      assert(result.success);
       expect(result.executionStatus).toBe('DISABLED');
       expect(mockLoadDeployedProjectConfig).not.toHaveBeenCalled();
       expect(mockUpdateOnlineEvalExecutionStatus).toHaveBeenCalledWith({
@@ -151,7 +152,7 @@ describe('handlePauseResume', () => {
       const arn = 'arn:aws:bedrock-agentcore:us-west-2:123456789012:online-evaluation-config/my-cfg-id';
       const result = await handlePauseResume({ name: '', arn, region: 'eu-west-1' }, 'resume');
 
-      expect(result.success).toBe(true);
+      assert(result.success);
       expect(result.executionStatus).toBe('ENABLED');
       expect(mockUpdateOnlineEvalExecutionStatus).toHaveBeenCalledWith({
         region: 'eu-west-1',
@@ -163,16 +164,16 @@ describe('handlePauseResume', () => {
     it('returns error for invalid ARN', async () => {
       const result = await handlePauseResume({ name: '', arn: 'not-an-arn' }, 'pause');
 
-      expect(result.success).toBe(false);
-      expect(result.error).toContain('Invalid online eval config ARN');
+      assert(!result.success);
+      expect(result.error.message).toContain('Invalid online eval config ARN');
     });
 
     it('returns error when config ID cannot be extracted from ARN', async () => {
       const arn = 'arn:aws:bedrock-agentcore:us-east-1:123456789012:some-other-resource/foo';
       const result = await handlePauseResume({ name: '', arn }, 'pause');
 
-      expect(result.success).toBe(false);
-      expect(result.error).toContain('Could not extract config ID');
+      assert(!result.success);
+      expect(result.error.message).toContain('Could not extract config ID');
     });
   });
 });

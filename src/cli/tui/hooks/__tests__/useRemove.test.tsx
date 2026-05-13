@@ -281,7 +281,7 @@ describe('useRemoveAgent', () => {
   });
 
   it('calls removeAgent and shows failure result', async () => {
-    mockAgentRemove.mockResolvedValue({ success: false, error: 'Not found' });
+    mockAgentRemove.mockResolvedValue({ success: false, error: new Error('Not found') });
     const { lastFrame } = render(<RemoveAgentHarness agentName="bad-agent" />);
 
     await delay();

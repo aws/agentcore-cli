@@ -135,9 +135,16 @@ jobs:
       - name: Update snapshots
         run: npm run test:update-snapshots
 
+      - name: Generate GitHub App Token
+        id: app-token
+        uses: actions/create-github-app-token@v1
+        with:
+          app-id: ${{ vars.APP_ID }}
+          private-key: ${{ secrets.APP_PRIVATE_KEY }}
+
       - name: Create release branch and PR
         env:
-          GH_TOKEN: ${{ github.token }}
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
           NEW_VERSION: ${{ steps.bump.outputs.version }}
         run: |
           BRANCH_NAME="release/v$NEW_VERSION"
@@ -219,9 +226,16 @@ jobs:
       - name: Update snapshots
         run: npm run test:update-snapshots
 
+      - name: Generate GitHub App Token
+        id: app-token
+        uses: actions/create-github-app-token@v1
+        with:
+          app-id: ${{ vars.APP_ID }}
+          private-key: ${{ secrets.APP_PRIVATE_KEY }}
+
       - name: Create release branch and PR
         env:
-          GH_TOKEN: ${{ github.token }}
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
           NEW_VERSION: ${{ steps.bump.outputs.version }}
         run: |
           BRANCH_NAME="release/v$NEW_VERSION"

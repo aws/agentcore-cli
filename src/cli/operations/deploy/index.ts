@@ -39,11 +39,10 @@ export {
   type DeployedTarget,
   type DiscoverDeployedResult,
   type DestroyTargetOptions,
-  type StackTeardownResult,
 } from './teardown';
 
 // Post-deploy observability setup
-export { setupTransactionSearch, type TransactionSearchSetupResult } from './post-deploy-observability';
+export { setupTransactionSearch } from './post-deploy-observability';
 
 // Post-deploy HTTP gateways
 export {

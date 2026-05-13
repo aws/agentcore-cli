@@ -1,3 +1,4 @@
+import { serializeResult } from '../../../lib';
 import { getErrorMessage } from '../../errors';
 import { handleListEvalRuns } from '../../operations/eval';
 import { getResultsPath } from '../../operations/eval/storage';
@@ -27,13 +28,13 @@ export const registerEval = (program: Command) => {
         });
 
         if (cliOptions.json) {
-          console.log(JSON.stringify(result));
+          console.log(JSON.stringify(serializeResult(result)));
           process.exit(result.success ? 0 : 1);
           return;
         }
 
         if (!result.success) {
-          render(<Text color="red">{result.error}</Text>);
+          render(<Text color="red">{result.error.message}</Text>);
           process.exit(1);
         }
 

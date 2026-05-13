@@ -1,14 +1,4 @@
 /**
- * Error thrown when an agent with the same name already exists.
- */
-export class AgentAlreadyExistsError extends Error {
-  constructor(agentName: string) {
-    super(`An agent named "${agentName}" already exists in the schema.`);
-    this.name = 'AgentAlreadyExistsError';
-  }
-}
-
-/**
  * Converts an unknown error to a string message.
  * Handles Error instances and other thrown values consistently.
  */

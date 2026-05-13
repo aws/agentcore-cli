@@ -156,7 +156,7 @@ export function OnlineEvalDashboard({ onExit }: OnlineEvalDashboardProps) {
       setState(prev => ({ ...prev, phase: 'toggling' }));
       void handlePauseResume({ name: item.name }, action).then(result => {
         if (!result.success) {
-          setState(prev => ({ ...prev, phase: 'loaded', error: result.error ?? 'Toggle failed' }));
+          setState(prev => ({ ...prev, phase: 'loaded', error: result.error?.message ?? 'Toggle failed' }));
           return;
         }
         return fetchDashboardConfigs().then(configs => {

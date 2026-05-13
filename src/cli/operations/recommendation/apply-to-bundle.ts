@@ -9,7 +9,8 @@
  * This module fetches that new version via GetConfigurationBundleVersion and
  * updates the local agentcore.json components to match the server state.
  */
-import { ConfigIO } from '../../../lib';
+import { ConfigIO, ResourceNotFoundError } from '../../../lib';
+import type { Result } from '../../../lib/result';
 import { getConfigurationBundleVersion } from '../../aws/agentcore-config-bundles';
 import type { RecommendationResult } from '../../aws/agentcore-recommendation';
 
@@ -24,12 +25,7 @@ export interface ApplyRecommendationOptions {
   region: string;
 }
 
-export interface ApplyRecommendationResult {
-  success: boolean;
-  error?: string;
-  /** New version ID that was synced from the server */
-  newVersionId?: string;
-}
+export type ApplyRecommendationResult = Result<{ newVersionId?: string }>;
 
 /**
  * Extract the bundleId from a bundle ARN.
@@ -58,8 +54,9 @@ export async function applyRecommendationToBundle(
   if (!resultBundle) {
     return {
       success: false,
-      error:
-        'Recommendation result does not contain a new config bundle version. The server may not have applied the recommendation to the bundle.',
+      error: new Error(
+        'Recommendation result does not contain a new config bundle version. The server may not have applied the recommendation to the bundle.'
+      ),
     };
   }
 
@@ -67,7 +64,7 @@ export async function applyRecommendationToBundle(
   if (!bundleId) {
     return {
       success: false,
-      error: `Could not extract bundle ID from ARN: ${resultBundle.bundleArn}`,
+      error: new Error(`Could not extract bundle ID from ARN: ${resultBundle.bundleArn}`),
     };
   }
 
@@ -107,7 +104,7 @@ export async function applyRecommendationToBundle(
   if (!bundle) {
     return {
       success: false,
-      error: `Config bundle "${identifier}" not found in agentcore.json.`,
+      error: new ResourceNotFoundError(`Config bundle "${identifier}" not found in agentcore.json.`),
     };
   }
 

@@ -151,7 +151,7 @@ export function ImportFlow({ onBack, onNavigate }: ImportFlowProps) {
                   <Text dimColor>Name: </Text>
                   <Text>{result.resourceName}</Text>
                 </Text>
-                {result.resourceId && (
+                {'resourceId' in result && result.resourceId && (
                   <Text>
                     <Text dimColor>ID: </Text>
                     <Text>{result.resourceId}</Text>

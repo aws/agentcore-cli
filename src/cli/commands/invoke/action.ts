@@ -1,4 +1,4 @@
-import { ConfigIO } from '../../../lib';
+import { ConfigIO, ResourceNotFoundError, ValidationError } from '../../../lib';
 import type { AgentCoreProjectSpec, AwsDeploymentTargets, DeployedState } from '../../../schema';
 import {
   buildAguiRunInput,
@@ -43,41 +43,58 @@ export async function handleInvoke(context: InvokeContext, options: InvokeOption
   // Resolve target
   const targetNames = Object.keys(deployedState.targets);
   if (targetNames.length === 0) {
-    return { success: false, error: 'No deployed targets found. Run `agentcore deploy` first.' };
+    return {
+      success: false,
+      error: new ResourceNotFoundError('No deployed targets found. Run `agentcore deploy` first.'),
+    };
   }
 
   const selectedTargetName = options.targetName ?? targetNames[0]!;
 
   if (options.targetName && !targetNames.includes(options.targetName)) {
-    return { success: false, error: `Target '${options.targetName}' not found. Available: ${targetNames.join(', ')}` };
+    return {
+      success: false,
+      error: new ResourceNotFoundError(
+        `Target '${options.targetName}' not found. Available: ${targetNames.join(', ')}`
+      ),
+    };
   }
 
   const targetState = deployedState.targets[selectedTargetName];
   const targetConfig = awsTargets.find(t => t.name === selectedTargetName);
 
   if (!targetConfig) {
-    return { success: false, error: `Target config '${selectedTargetName}' not found in aws-targets` };
+    return {
+      success: false,
+      error: new ResourceNotFoundError(`Target config '${selectedTargetName}' not found in aws-targets`),
+    };
   }
 
   if (project.runtimes.length === 0) {
-    return { success: false, error: 'No agents defined in configuration' };
+    return { success: false, error: new ValidationError('No agents defined in configuration') };
   }
 
   // Resolve agent
   const agentNames = project.runtimes.map(a => a.name);
 
   if (!options.agentName && project.runtimes.length > 1) {
-    return { success: false, error: `Multiple runtimes found. Use --runtime to specify one: ${agentNames.join(', ')}` };
+    return {
+      success: false,
+      error: new ValidationError(`Multiple runtimes found. Use --runtime to specify one: ${agentNames.join(', ')}`),
+    };
   }
 
   const agentSpec = options.agentName ? project.runtimes.find(a => a.name === options.agentName) : project.runtimes[0];
 
   if (options.agentName && !agentSpec) {
-    return { success: false, error: `Agent '${options.agentName}' not found. Available: ${agentNames.join(', ')}` };
+    return {
+      success: false,
+      error: new ResourceNotFoundError(`Agent '${options.agentName}' not found. Available: ${agentNames.join(', ')}`),
+    };
   }
 
   if (!agentSpec) {
-    return { success: false, error: 'No agents defined in configuration' };
+    return { success: false, error: new ValidationError('No agents defined in configuration') };
   }
 
   // Warn about VPC mode endpoint requirements
@@ -91,7 +108,10 @@ export async function handleInvoke(context: InvokeContext, options: InvokeOption
   const agentState = targetState?.resources?.runtimes?.[agentSpec.name];
 
   if (!agentState) {
-    return { success: false, error: `Agent '${agentSpec.name}' is not deployed to target '${selectedTargetName}'` };
+    return {
+      success: false,
+      error: new ValidationError(`Agent '${agentSpec.name}' is not deployed to target '${selectedTargetName}'`),
+    };
   }
 
   // Build config bundle baggage if a bundle is associated with this agent
@@ -118,13 +138,18 @@ export async function handleInvoke(context: InvokeContext, options: InvokeOption
       } catch (err) {
         return {
           success: false,
-          error: `CUSTOM_JWT agent requires a bearer token. Auto-fetch failed: ${err instanceof Error ? err.message : String(err)}\nProvide one manually with --bearer-token.`,
+          error: new ValidationError(
+            `CUSTOM_JWT agent requires a bearer token. Auto-fetch failed: ${err instanceof Error ? err.message : String(err)}\nProvide one manually with --bearer-token.`,
+            { cause: err }
+          ),
         };
       }
     } else {
       return {
         success: false,
-        error: `Agent '${agentSpec.name}' is configured for CUSTOM_JWT but no bearer token is available.\nEither provide --bearer-token or re-add the agent with --client-id and --client-secret to enable auto-fetch.`,
+        error: new ValidationError(
+          `Agent '${agentSpec.name}' is configured for CUSTOM_JWT but no bearer token is available.\nEither provide --bearer-token or re-add the agent with --client-id and --client-secret to enable auto-fetch.`
+        ),
       };
     }
   }
@@ -147,7 +172,7 @@ export async function handleInvoke(context: InvokeContext, options: InvokeOption
     });
     const command = options.prompt;
     if (!command) {
-      return { success: false, error: '--exec requires a command (prompt)' };
+      return { success: false, error: new ValidationError('--exec requires a command (prompt)') };
     }
     logger.logPrompt(command, options.sessionId, options.userId);
 
@@ -195,8 +220,18 @@ export async function handleInvoke(context: InvokeContext, options: InvokeOption
       logger.logResponse(stdout || stderr || `exit code: ${exitCode}`);
 
       if (options.json) {
+        if (exitCode === 0) {
+          return {
+            success: true,
+            agentName: agentSpec.name,
+            targetName: selectedTargetName,
+            response: JSON.stringify({ stdout, stderr, exitCode, status }),
+            logFilePath: logger.logFilePath,
+          };
+        }
         return {
-          success: exitCode === 0,
+          success: false,
+          error: new Error(`Command exited with code ${exitCode}`),
           agentName: agentSpec.name,
           targetName: selectedTargetName,
           response: JSON.stringify({ stdout, stderr, exitCode, status }),
@@ -207,9 +242,9 @@ export async function handleInvoke(context: InvokeContext, options: InvokeOption
       if (exitCode === undefined) {
         return {
           success: false,
+          error: new Error('Command stream ended without exit code'),
           agentName: agentSpec.name,
           targetName: selectedTargetName,
-          error: 'Command stream ended without exit code',
           logFilePath: logger.logFilePath,
         };
       }
@@ -217,9 +252,10 @@ export async function handleInvoke(context: InvokeContext, options: InvokeOption
       if (exitCode !== 0) {
         return {
           success: false,
+          error: new Error(`Command exited with code ${exitCode}${status === 'TIMED_OUT' ? ' (timed out)' : ''}`),
           agentName: agentSpec.name,
           targetName: selectedTargetName,
-          error: `Command exited with code ${exitCode}${status === 'TIMED_OUT' ? ' (timed out)' : ''}`,
+          response: JSON.stringify({ stdout, stderr, exitCode, status }),
           logFilePath: logger.logFilePath,
         };
       }
@@ -261,7 +297,9 @@ export async function handleInvoke(context: InvokeContext, options: InvokeOption
       } catch (err) {
         return {
           success: false,
-          error: `Failed to list MCP tools: ${err instanceof Error ? err.message : String(err)}`,
+          error: new Error(`Failed to list MCP tools: ${err instanceof Error ? err.message : String(err)}`, {
+            cause: err,
+          }),
         };
       }
     }
@@ -271,7 +309,7 @@ export async function handleInvoke(context: InvokeContext, options: InvokeOption
       if (!options.tool) {
         return {
           success: false,
-          error: 'MCP call-tool requires --tool <name>. Use "list-tools" to see available tools.',
+          error: new Error('MCP call-tool requires --tool <name>. Use "list-tools" to see available tools.'),
         };
       }
       let args: Record<string, unknown> = {};
@@ -279,7 +317,7 @@ export async function handleInvoke(context: InvokeContext, options: InvokeOption
         try {
           args = JSON.parse(options.input) as Record<string, unknown>;
         } catch {
-          return { success: false, error: `Invalid JSON for --input: ${options.input}` };
+          return { success: false, error: new ValidationError(`Invalid JSON for --input: ${options.input}`) };
         }
       }
       try {
@@ -295,7 +333,9 @@ export async function handleInvoke(context: InvokeContext, options: InvokeOption
       } catch (err) {
         return {
           success: false,
-          error: `Failed to call MCP tool: ${err instanceof Error ? err.message : String(err)}`,
+          error: new Error(`Failed to call MCP tool: ${err instanceof Error ? err.message : String(err)}`, {
+            cause: err,
+          }),
         };
       }
     }
@@ -303,14 +343,15 @@ export async function handleInvoke(context: InvokeContext, options: InvokeOption
     if (!options.prompt) {
       return {
         success: false,
-        error:
-          'MCP agents require a command. Usage:\n  agentcore invoke list-tools\n  agentcore invoke call-tool --tool <name> --input \'{"arg": "value"}\'',
+        error: new ValidationError(
+          'MCP agents require a command. Usage:\n  agentcore invoke list-tools\n  agentcore invoke call-tool --tool <name> --input \'{"arg": "value"}\''
+        ),
       };
     }
   }
 
   if (!options.prompt) {
-    return { success: false, error: 'No prompt provided. Usage: agentcore invoke "your prompt"' };
+    return { success: false, error: new ValidationError('No prompt provided. Usage: agentcore invoke "your prompt"') };
   }
 
   // A2A protocol handling — send JSON-RPC message/send via InvokeAgentRuntime
@@ -343,7 +384,10 @@ export async function handleInvoke(context: InvokeContext, options: InvokeOption
         response,
       };
     } catch (err) {
-      return { success: false, error: `A2A invoke failed: ${err instanceof Error ? err.message : String(err)}` };
+      return {
+        success: false,
+        error: new Error(`A2A invoke failed: ${err instanceof Error ? err.message : String(err)}`, { cause: err }),
+      };
     }
   }
 
@@ -388,8 +432,20 @@ export async function handleInvoke(context: InvokeContext, options: InvokeOption
 
       logger.logResponse(response);
 
+      if (hasError) {
+        return {
+          success: false,
+          error: new Error(response),
+          agentName: agentSpec.name,
+          targetName: selectedTargetName,
+          response,
+          sessionId: aguiResult.sessionId,
+          logFilePath: logger.logFilePath,
+        };
+      }
+
       return {
-        success: !hasError,
+        success: true,
         agentName: agentSpec.name,
         targetName: selectedTargetName,
         response,
@@ -398,7 +454,10 @@ export async function handleInvoke(context: InvokeContext, options: InvokeOption
       };
     } catch (err) {
       logger.logError(err, 'AGUI invoke failed');
-      return { success: false, error: `AGUI invoke failed: ${err instanceof Error ? err.message : String(err)}` };
+      return {
+        success: false,
+        error: new Error(`AGUI invoke failed: ${err instanceof Error ? err.message : String(err)}`, { cause: err }),
+      };
     }
   }
 

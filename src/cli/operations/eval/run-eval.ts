@@ -1,3 +1,5 @@
+import { ResourceNotFoundError, ValidationError } from '../../../lib';
+import type { Result } from '../../../lib/result';
 import { getCredentialProvider } from '../../aws';
 import { evaluate } from '../../aws/agentcore';
 import type { EvaluationReferenceInput } from '../../aws/agentcore';
@@ -551,12 +553,7 @@ async function fetchSessionSpans(opts: FetchSpansOptions): Promise<SessionSpans[
   return sessions;
 }
 
-export interface RunEvalResult {
-  success: boolean;
-  error?: string;
-  run?: EvalRunResult;
-  filePath?: string;
-}
+export type RunEvalResult = Result<{ run: EvalRunResult; filePath: string }>;
 
 export async function handleRunEval(options: RunEvalOptions): Promise<RunEvalResult> {
   let resolution: ResolveResult;
@@ -569,7 +566,7 @@ export async function handleRunEval(options: RunEvalOptions): Promise<RunEvalRes
   }
 
   if (!resolution.success) {
-    return { success: false, error: resolution.error };
+    return { success: false, error: new ResourceNotFoundError(resolution.error) };
   }
 
   const { ctx } = resolution;
@@ -593,7 +590,9 @@ export async function handleRunEval(options: RunEvalOptions): Promise<RunEvalRes
   if (sessions.length === 0) {
     return {
       success: false,
-      error: `No session spans found for agent "${ctx.agentLabel}" in the last ${options.days} day(s). Has the agent been invoked?`,
+      error: new ResourceNotFoundError(
+        `No session spans found for agent "${ctx.agentLabel}" in the last ${options.days} day(s). Has the agent been invoked?`
+      ),
     };
   }
 
@@ -610,8 +609,9 @@ export async function handleRunEval(options: RunEvalOptions): Promise<RunEvalRes
   if (hasRefInputs && sessions.length !== 1) {
     return {
       success: false,
-      error:
-        'Ground truth flags (-A, --expected-trajectory, --expected-response) require exactly one session. Use -s/--session-id to target a single session.',
+      error: new ValidationError(
+        'Ground truth flags (-A, --expected-trajectory, --expected-response) require exactly one session. Use -s/--session-id to target a single session.'
+      ),
     };
   }
   if (hasRefInputs) {
@@ -642,7 +642,9 @@ export async function handleRunEval(options: RunEvalOptions): Promise<RunEvalRes
       if (!traceId) {
         return {
           success: false,
-          error: 'Expected response provided but no trace IDs found in session spans. Use -t/--trace-id to specify.',
+          error: new ValidationError(
+            'Expected response provided but no trace IDs found in session spans. Use -t/--trace-id to specify.'
+          ),
         };
       }
       refInputs.push({

@@ -1,3 +1,5 @@
+import { ResourceNotFoundError, TimeoutError, toError } from '../../../lib';
+import type { Result } from '../../../lib/result';
 import { getCredentialProvider } from '../../aws';
 import { CloudWatchLogsClient, GetQueryResultsCommand, StartQueryCommand } from '@aws-sdk/client-cloudwatch-logs';
 
@@ -11,11 +13,7 @@ export interface InsightsQueryOptions {
   endTime?: number;
 }
 
-export interface InsightsQueryResult {
-  success: boolean;
-  rows?: Record<string, string>[];
-  error?: string;
-}
+export type InsightsQueryResult = Result<{ rows: Record<string, string>[] }>;
 
 async function pollQueryResults(client: CloudWatchLogsClient, queryId: string): Promise<InsightsQueryResult> {
   for (let i = 0; i < 60; i++) {
@@ -26,7 +24,7 @@ async function pollQueryResults(client: CloudWatchLogsClient, queryId: string): 
 
     if (status === 'Complete' || status === 'Failed' || status === 'Cancelled') {
       if (status !== 'Complete') {
-        return { success: false, error: `Query ${status.toLowerCase()}` };
+        return { success: false, error: new Error(`Query ${status.toLowerCase()}`) };
       }
 
       const rows = (queryResults.results ?? []).map(row => {
@@ -42,7 +40,7 @@ async function pollQueryResults(client: CloudWatchLogsClient, queryId: string): 
     }
   }
 
-  return { success: false, error: 'Query timed out after 60 seconds' };
+  return { success: false, error: new TimeoutError('Query timed out after 60 seconds') };
 }
 
 export async function runInsightsQuery(options: InsightsQueryOptions): Promise<InsightsQueryResult> {
@@ -68,7 +66,7 @@ export async function runInsightsQuery(options: InsightsQueryOptions): Promise<I
     );
 
     if (!startQuery.queryId) {
-      return { success: false, error: 'Failed to start CloudWatch Logs Insights query' };
+      return { success: false, error: new Error('Failed to start CloudWatch Logs Insights query') };
     }
 
     return await pollQueryResults(client, startQuery.queryId);
@@ -77,9 +75,11 @@ export async function runInsightsQuery(options: InsightsQueryOptions): Promise<I
     if (err.name === 'ResourceNotFoundException') {
       return {
         success: false,
-        error: `Log group '${logGroupName}' not found. The agent may not have been invoked yet, or traces may not be enabled.`,
+        error: new ResourceNotFoundError(
+          `Log group '${logGroupName}' not found. The agent may not have been invoked yet, or traces may not be enabled.`
+        ),
       };
     }
-    return { success: false, error: err.message ?? String(error) };
+    return { success: false, error: toError(error) };
   }
 }

@@ -1,8 +1,9 @@
-import { findConfigRoot } from '../../lib';
+import { ConflictError, ResourceNotFoundError, findConfigRoot, serializeResult, toError } from '../../lib';
+import type { Result } from '../../lib/result';
 import type { EvaluationLevel, Evaluator, EvaluatorConfig } from '../../schema';
-import { EvaluationLevelSchema, EvaluatorSchema } from '../../schema';
+import { EvaluationLevelSchema, EvaluatorSchema, isValidKmsKeyArn } from '../../schema';
 import { getErrorMessage } from '../errors';
-import type { RemovalPreview, RemovalResult, SchemaChange } from '../operations/remove/types';
+import type { RemovalPreview, SchemaChange } from '../operations/remove/types';
 import { runCliCommand } from '../telemetry/cli-command-run.js';
 import { EvaluatorType, Level, standardize } from '../telemetry/schemas/common-shapes.js';
 import { renderCodeBasedEvaluatorTemplate } from '../templates/EvaluatorRenderer';
@@ -25,6 +26,7 @@ export interface AddEvaluatorOptions {
   level: EvaluationLevel;
   description?: string;
   config: EvaluatorConfig;
+  kmsKeyArn?: string;
 }
 
 export type RemovableEvaluator = RemovableResource;
@@ -57,17 +59,17 @@ export class EvaluatorPrimitive extends BasePrimitive<AddEvaluatorOptions, Remov
 
       return { success: true, evaluatorName: evaluator.name };
     } catch (err) {
-      return { success: false, error: getErrorMessage(err) };
+      return { success: false, error: toError(err) };
     }
   }
 
-  async remove(evaluatorName: string): Promise<RemovalResult> {
+  async remove(evaluatorName: string): Promise<Result> {
     try {
       const project = await this.readProjectSpec();
 
       const index = project.evaluators.findIndex(e => e.name === evaluatorName);
       if (index === -1) {
-        return { success: false, error: `Evaluator "${evaluatorName}" not found.` };
+        return { success: false, error: new ResourceNotFoundError(`Evaluator "${evaluatorName}" not found.`) };
       }
 
       // Warn if referenced by online eval configs
@@ -76,7 +78,9 @@ export class EvaluatorPrimitive extends BasePrimitive<AddEvaluatorOptions, Remov
         const configNames = referencingConfigs.map(c => c.name).join(', ');
         return {
           success: false,
-          error: `Evaluator "${evaluatorName}" is referenced by online eval config(s): ${configNames}. Remove those references first.`,
+          error: new ConflictError(
+            `Evaluator "${evaluatorName}" is referenced by online eval config(s): ${configNames}. Remove those references first.`
+          ),
         };
       }
 
@@ -96,7 +100,7 @@ export class EvaluatorPrimitive extends BasePrimitive<AddEvaluatorOptions, Remov
 
       return { success: true };
     } catch (err) {
-      return { success: false, error: getErrorMessage(err) };
+      return { success: false, error: toError(err) };
     }
   }
 
@@ -184,6 +188,7 @@ export class EvaluatorPrimitive extends BasePrimitive<AddEvaluatorOptions, Remov
         '--config <path>',
         'Path to evaluator config JSON file (overrides --model, --instructions, --rating-scale) [non-interactive]'
       )
+      .option('--kms-key-arn <arn>', 'KMS key ARN for evaluator encryption (optional)')
       .option('--json', 'Output as JSON [non-interactive]')
       .action(
         async (cliOptions: {
@@ -196,6 +201,7 @@ export class EvaluatorPrimitive extends BasePrimitive<AddEvaluatorOptions, Remov
           lambdaArn?: string;
           timeout?: string;
           config?: string;
+          kmsKeyArn?: string;
           json?: boolean;
         }) => {
           if (!findConfigRoot()) {
@@ -289,18 +295,25 @@ export class EvaluatorPrimitive extends BasePrimitive<AddEvaluatorOptions, Remov
                 };
               }
 
+              if (cliOptions.kmsKeyArn && !isValidKmsKeyArn(cliOptions.kmsKeyArn)) {
+                fail(
+                  '--kms-key-arn must be a valid KMS key ARN (e.g. arn:aws:kms:us-east-1:123456789012:key/12345678-1234-1234-1234-123456789012)'
+                );
+              }
+
               const result = await this.add({
                 name: cliOptions.name!,
                 level: levelResult.data!,
                 config: configJson,
+                kmsKeyArn: cliOptions.kmsKeyArn,
               });
 
               if (!result.success) {
-                throw new Error(result.error);
+                throw result.error;
               }
 
               if (cliOptions.json) {
-                console.log(JSON.stringify(result));
+                console.log(JSON.stringify(serializeResult(result)));
               } else {
                 if (result.codePath) {
                   console.log(`Created evaluator '${result.evaluatorName}'`);
@@ -386,6 +399,7 @@ export class EvaluatorPrimitive extends BasePrimitive<AddEvaluatorOptions, Remov
       level: options.level,
       ...(options.description && { description: options.description }),
       config: options.config,
+      ...(options.kmsKeyArn && { kmsKeyArn: options.kmsKeyArn }),
     };
 
     project.evaluators.push(evaluator);

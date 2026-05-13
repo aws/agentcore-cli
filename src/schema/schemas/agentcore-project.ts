@@ -11,7 +11,12 @@ import { AgentEnvSpecSchema } from './agent-env';
 import { AgentCoreGatewaySchema, AgentCoreGatewayTargetSchema, AgentCoreMcpRuntimeToolSchema } from './mcp';
 import { ABTestSchema } from './primitives/ab-test';
 import { ConfigBundleSchema } from './primitives/config-bundle';
-import { EvaluationLevelSchema, EvaluatorConfigSchema, EvaluatorNameSchema } from './primitives/evaluator';
+import {
+  EvaluationLevelSchema,
+  EvaluatorConfigSchema,
+  EvaluatorNameSchema,
+  KmsKeyArnSchema,
+} from './primitives/evaluator';
 import { HttpGatewaySchema } from './primitives/http-gateway';
 import {
   DEFAULT_EPISODIC_REFLECTION_NAMESPACES,
@@ -45,7 +50,13 @@ export type {
   ManagedCodeBasedConfig,
   RatingScale,
 } from './primitives/evaluator';
-export { BedrockModelIdSchema, isValidBedrockModelId, EvaluatorNameSchema } from './primitives/evaluator';
+export {
+  BedrockModelIdSchema,
+  isValidBedrockModelId,
+  EvaluatorNameSchema,
+  KMS_KEY_ARN_PATTERN,
+  isValidKmsKeyArn,
+} from './primitives/evaluator';
 export { ConfigBundleSchema };
 export type { ComponentConfiguration, ComponentConfigurationMap, ConfigBundle } from './primitives/config-bundle';
 export { ConfigBundleNameSchema, ComponentConfigurationMapSchema } from './primitives/config-bundle';
@@ -210,6 +221,7 @@ export const EvaluatorSchema = z.object({
   level: EvaluationLevelSchema,
   description: z.string().optional(),
   config: EvaluatorConfigSchema,
+  kmsKeyArn: KmsKeyArnSchema.optional(),
   tags: TagsSchema.optional(),
 });
 

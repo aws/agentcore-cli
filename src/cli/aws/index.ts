@@ -17,7 +17,7 @@ export {
   type GetAgentRuntimeStatusOptions,
 } from './agentcore-control';
 export { streamLogs, searchLogs, type LogEvent, type StreamLogsOptions, type SearchLogsOptions } from './cloudwatch';
-export { enableTransactionSearch, type TransactionSearchEnableResult } from './transaction-search';
+export { enableTransactionSearch } from './transaction-search';
 export {
   startPolicyGeneration,
   getPolicyGeneration,

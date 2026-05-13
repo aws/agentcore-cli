@@ -7,7 +7,6 @@ export {
   getSessionProjectRoot,
   getWorkingDirectory,
   requireConfigRoot,
-  NoProjectError,
   type PathConfig,
 } from './path-resolver';
 export { ConfigIO, createConfigIO, getSchemaUrlForVersion } from './config-io';

@@ -12,9 +12,10 @@ import {
   ConfigReadError,
   ConfigValidationError,
   ConfigWriteError,
+  NoProjectError,
 } from '../../errors';
 import { detectAwsAccount } from '../../utils';
-import { NoProjectError, type PathConfig, PathResolver, findConfigRoot } from './path-resolver';
+import { type PathConfig, PathResolver, findConfigRoot } from './path-resolver';
 import { loadSharedConfigFiles } from '@smithy/shared-ini-file-loader';
 import { existsSync } from 'fs';
 import { mkdir, readFile, writeFile } from 'fs/promises';

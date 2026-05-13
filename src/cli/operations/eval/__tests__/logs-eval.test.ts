@@ -1,4 +1,5 @@
 import { handleLogsEval } from '../logs-eval.js';
+import assert from 'node:assert';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const mockLoadDeployedProjectConfig = vi.fn();
@@ -100,8 +101,8 @@ describe('handleLogsEval', () => {
 
     const result = await handleLogsEval({});
 
-    expect(result.success).toBe(false);
-    expect(result.error).toBe('No agents defined');
+    assert(!result.success);
+    expect(result.error.message).toBe('No agents defined');
   });
 
   it('returns error when no online eval configs exist for the agent', async () => {
@@ -111,8 +112,8 @@ describe('handleLogsEval', () => {
 
     const result = await handleLogsEval({});
 
-    expect(result.success).toBe(false);
-    expect(result.error).toContain('No deployed online eval configs found');
+    assert(!result.success);
+    expect(result.error.message).toContain('No deployed online eval configs found');
   });
 
   it('returns error when online eval configs exist but none are deployed', async () => {
@@ -122,8 +123,8 @@ describe('handleLogsEval', () => {
 
     const result = await handleLogsEval({});
 
-    expect(result.success).toBe(false);
-    expect(result.error).toContain('No deployed online eval configs found');
+    assert(!result.success);
+    expect(result.error.message).toContain('No deployed online eval configs found');
   });
 
   it('searches logs with time range when --since is specified', async () => {

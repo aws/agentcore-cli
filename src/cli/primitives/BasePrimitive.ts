@@ -1,4 +1,5 @@
 import { ConfigIO, findConfigRoot } from '../../lib';
+import type { Result } from '../../lib/result';
 import type { AgentCoreProjectSpec } from '../../schema';
 import type { ResourceType } from '../commands/remove/types';
 import { getErrorMessage } from '../errors';
@@ -6,7 +7,7 @@ import { withCommandRunTelemetry } from '../telemetry/cli-command-run.js';
 import type { SubCommand } from '../telemetry/schemas/command-run.js';
 import { requireTTY } from '../tui/guards/tty';
 import { SOURCE_CODE_NOTE } from './constants';
-import type { AddResult, AddScreenComponent, RemovableResource, RemovalPreview, RemovalResult } from './types';
+import type { AddResult, AddScreenComponent, RemovableResource, RemovalPreview } from './types';
 import type { Command } from '@commander-js/extra-typings';
 import type { z } from 'zod';
 
@@ -44,7 +45,7 @@ export abstract class BasePrimitive<
   /**
    * Remove a resource by name.
    */
-  abstract remove(name: string): Promise<RemovalResult>;
+  abstract remove(name: string): Promise<Result>;
 
   /**
    * Preview what will be removed.
@@ -122,7 +123,7 @@ export abstract class BasePrimitive<
               process.exit(1);
             }
 
-            const result = await withCommandRunTelemetry<SubCommand<'remove', typeof this.kind>, RemovalResult>(
+            const result = await withCommandRunTelemetry<SubCommand<'remove', typeof this.kind>, Result>(
               `remove.${this.kind}`,
               {},
               () => this.remove(cliOptions.name!)
@@ -134,7 +135,7 @@ export abstract class BasePrimitive<
                 resourceName: cliOptions.name,
                 message: result.success ? `Removed ${this.label.toLowerCase()} '${cliOptions.name}'` : undefined,
                 note: result.success ? SOURCE_CODE_NOTE : undefined,
-                error: !result.success ? result.error : undefined,
+                error: !result.success ? result.error.message : undefined,
               })
             );
             process.exit(result.success ? 0 : 1);

@@ -19,9 +19,16 @@ jobs:
     permissions:
       issues: write
     steps:
+      - name: Generate GitHub App Token
+        id: app-token
+        uses: actions/create-github-app-token@v1
+        with:
+          app-id: ${{ vars.APP_ID }}
+          private-key: ${{ secrets.APP_PRIVATE_KEY }}
+
       - uses: actions/github-script@v9
         with:
-          github-token: ${{ secrets.AUTOMATION_ACCOUNT_PAT_TOKEN }}
+          github-token: ${{ steps.app-token.outputs.token }}
           script: |
             try {
               const workflowName = context.payload.workflow_run.name;

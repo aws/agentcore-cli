@@ -1,5 +1,5 @@
+import { AgentAlreadyExistsError, toError } from '../../lib';
 import {
-  AgentAlreadyExistsError,
   getErrorMessage,
   isChangesetInProgressError,
   isExpiredTokenError,
@@ -202,6 +202,37 @@ describe('errors', () => {
       expect(isChangesetInProgressError(null)).toBe(false);
       expect(isChangesetInProgressError(undefined)).toBe(false);
       expect(isChangesetInProgressError({})).toBe(false);
+    });
+  });
+
+  describe('toError', () => {
+    it('returns Error instance as-is', () => {
+      const err = new Error('original');
+      expect(toError(err)).toBe(err);
+    });
+
+    it('wraps string in Error', () => {
+      const result = toError('string error');
+      expect(result).toBeInstanceOf(Error);
+      expect(result.message).toBe('string error');
+    });
+
+    it('handles null', () => {
+      const result = toError(null);
+      expect(result).toBeInstanceOf(Error);
+      expect(result.message).toBe('null');
+    });
+
+    it('handles undefined', () => {
+      const result = toError(undefined);
+      expect(result).toBeInstanceOf(Error);
+      expect(result.message).toBe('undefined');
+    });
+
+    it('handles non-Error objects', () => {
+      const result = toError({ code: 42 });
+      expect(result).toBeInstanceOf(Error);
+      expect(result.message).toBe('[object Object]');
     });
   });
 });

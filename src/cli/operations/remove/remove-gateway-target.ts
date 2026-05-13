@@ -1,6 +1,7 @@
-import { ConfigIO } from '../../../lib';
+import { ConfigIO, ResourceNotFoundError, toError } from '../../../lib';
+import type { Result } from '../../../lib/result';
 import type { AgentCoreCliMcpDefs, AgentCoreMcpSpec } from '../../../schema';
-import type { RemovalPreview, RemovalResult, SchemaChange } from './types';
+import type { RemovalPreview, SchemaChange } from './types';
 import { existsSync } from 'fs';
 import { rm } from 'fs/promises';
 import { join } from 'path';
@@ -155,7 +156,7 @@ function computeRemovedToolMcpDefs(
 /**
  * Remove a gateway target from the project.
  */
-export async function removeGatewayTarget(tool: RemovableGatewayTarget): Promise<RemovalResult> {
+export async function removeGatewayTarget(tool: RemovableGatewayTarget): Promise<Result> {
   try {
     const configIO = new ConfigIO();
     const project = await configIO.readProjectSpec();
@@ -172,11 +173,14 @@ export async function removeGatewayTarget(tool: RemovableGatewayTarget): Promise
 
     const gateway = mcpSpec.agentCoreGateways.find(g => g.name === tool.gatewayName);
     if (!gateway) {
-      return { success: false, error: `Gateway "${tool.gatewayName}" not found.` };
+      return { success: false, error: new ResourceNotFoundError(`Gateway "${tool.gatewayName}" not found.`) };
     }
     const target = gateway.targets.find(t => t.name === tool.name);
     if (!target) {
-      return { success: false, error: `Target "${tool.name}" not found in gateway "${tool.gatewayName}".` };
+      return {
+        success: false,
+        error: new ResourceNotFoundError(`Target "${tool.name}" not found in gateway "${tool.gatewayName}".`),
+      };
     }
     if (target.compute?.implementation && 'path' in target.compute.implementation) {
       toolPath = target.compute.implementation.path;
@@ -200,7 +204,6 @@ export async function removeGatewayTarget(tool: RemovableGatewayTarget): Promise
 
     return { success: true };
   } catch (err) {
-    const message = err instanceof Error ? err.message : 'Unknown error';
-    return { success: false, error: message };
+    return { success: false, error: toError(err) };
   }
 }

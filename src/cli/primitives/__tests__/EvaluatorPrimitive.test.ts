@@ -11,6 +11,20 @@ vi.mock('../../../lib/index.js', () => ({
     writeProjectSpec = mockWriteProjectSpec;
   },
   findConfigRoot: () => '/fake/root',
+  toError: (err: unknown) => (err instanceof Error ? err : new Error(String(err))),
+  serializeResult: (r: unknown) => r,
+  ResourceNotFoundError: class extends Error {
+    constructor(m: string) {
+      super(m);
+      this.name = 'ResourceNotFoundError';
+    }
+  },
+  ConflictError: class extends Error {
+    constructor(m: string) {
+      super(m);
+      this.name = 'ConflictError';
+    }
+  },
 }));
 
 const validConfig: EvaluatorConfig = {
@@ -108,7 +122,10 @@ describe('EvaluatorPrimitive', () => {
       });
 
       expect(result).toEqual(
-        expect.objectContaining({ success: false, error: expect.stringContaining('already exists') })
+        expect.objectContaining({
+          success: false,
+          error: expect.objectContaining({ message: expect.stringContaining('already exists') }),
+        })
       );
     });
 
@@ -121,7 +138,7 @@ describe('EvaluatorPrimitive', () => {
         config: validConfig,
       });
 
-      expect(result).toEqual(expect.objectContaining({ success: false, error: 'disk read error' }));
+      expect(result).toEqual(expect.objectContaining({ success: false, error: new Error('disk read error') }));
     });
   });
 
@@ -145,8 +162,8 @@ describe('EvaluatorPrimitive', () => {
 
       expect(result.success).toBe(false);
       if (!result.success) {
-        expect(result.error).toContain('NonExistent');
-        expect(result.error).toContain('not found');
+        expect(result.error.message).toContain('NonExistent');
+        expect(result.error.message).toContain('not found');
       }
     });
 
@@ -159,8 +176,8 @@ describe('EvaluatorPrimitive', () => {
 
       expect(result.success).toBe(false);
       if (!result.success) {
-        expect(result.error).toContain('referenced by online eval config');
-        expect(result.error).toContain('MyOnlineConfig');
+        expect(result.error.message).toContain('referenced by online eval config');
+        expect(result.error.message).toContain('MyOnlineConfig');
       }
       expect(mockWriteProjectSpec).not.toHaveBeenCalled();
     });
@@ -172,7 +189,7 @@ describe('EvaluatorPrimitive', () => {
 
       expect(result.success).toBe(false);
       if (!result.success) {
-        expect(result.error).toBe('io error');
+        expect(result.error.message).toBe('io error');
       }
     });
   });

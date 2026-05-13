@@ -78,7 +78,7 @@
     "@aws-sdk/client-bedrock": "^3.1012.0",
     "@aws-sdk/client-bedrock-agent": "^3.1012.0",
     "@aws-sdk/client-bedrock-agentcore": "^3.1020.0",
-    "@aws-sdk/client-bedrock-agentcore-control": "^3.1020.0",
+    "@aws-sdk/client-bedrock-agentcore-control": "^3.1039.0",
     "@aws-sdk/client-bedrock-runtime": "^3.893.0",
     "@aws-sdk/client-cloudformation": "^3.893.0",
     "@aws-sdk/client-cloudwatch-logs": "^3.893.0",
@@ -90,7 +90,7 @@
     "@aws/agent-inspector": "0.3.0",
     "@commander-js/extra-typings": "^14.0.0",
     "@opentelemetry/api": "^1.9.1",
-    "@opentelemetry/exporter-metrics-otlp-http": "^0.217.0",
+    "@opentelemetry/exporter-metrics-otlp-http": "^0.215.0",
     "@opentelemetry/otlp-transformer": "^0.213.0",
     "@opentelemetry/resources": "^2.6.1",
     "@opentelemetry/sdk-metrics": "^2.6.1",
@@ -141,7 +141,7 @@
     "lint-staged": "^16.2.7",
     "node-pty": "^1.1.0",
     "prettier": "^3.7.4",
-    "secretlint": "^13.0.0",
+    "secretlint": "^12.2.0",
     "tsx": "^4.21.0",
     "typescript": "^5",
     "typescript-eslint": "^8.50.1",
@@ -149,11 +149,15 @@
   },
   "overridesComments": {
     "minimatch": "GHSA-7r86-cg39-jmmj, GHSA-23c5-xmqv-rm74: minimatch 10.0.0-10.2.2 has ReDoS vulnerabilities. Multiple transitive deps (eslint, typescript-eslint, eslint-plugin-import, eslint-plugin-react, prettier-plugin-sort-imports, aws-cdk-lib) pin older versions. Remove this override once upstream packages update their minimatch dependency to >=10.2.3.",
-    "glob": "glob <12 is deprecated and emits npm install warnings (https://github.com/isaacs/node-glob). Pulled in transitively via archiver-utils@5.0.2 (latest), which still pins glob@^10.0.0. archiver-utils only uses glob.sync(pattern, options), which remains compatible in glob@13. Remove this override once archiver-utils updates its glob dependency."
+    "glob": "glob <12 is deprecated and emits npm install warnings (https://github.com/isaacs/node-glob). Pulled in transitively via archiver-utils@5.0.2 (latest), which still pins glob@^10.0.0. archiver-utils only uses glob.sync(pattern, options), which remains compatible in glob@13. Remove this override once archiver-utils updates its glob dependency.",
+    "fast-xml-parser": "GHSA-8gc5-j5rx-235r, GHSA-jp2q-39xq-3w4g: fast-xml-parser <=5.5.6 has entity expansion bypass (CVE-2026-33036, CVE-2026-33349). Transitive via @aws-sdk/xml-builder. Remove once @aws-sdk updates to fast-xml-parser >=5.5.7.",
+    "@aws-sdk/xml-builder": "aws/aws-sdk-js-v3#7867: @aws-sdk/xml-builder <3.972.14 does not configure maxTotalExpansions on fast-xml-parser, causing 'Entity expansion limit exceeded' on large CloudFormation responses. Remove once @aws-sdk/client-* deps are bumped past 3.972.14."
   },
   "overrides": {
     "minimatch": "10.2.4",
-    "glob": "^13.0.0"
+    "glob": "^13.0.0",
+    "fast-xml-parser": "5.5.7",
+    "@aws-sdk/xml-builder": "3.972.15"
   },
   "engines": {
     "node": ">=20"

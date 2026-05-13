@@ -173,5 +173,54 @@ describe('TelemetryClient', () => {
         exit_reason: 'cancel',
       });
     });
+
+    it('records fallbackAttrs on failure when provided', async () => {
+      const sink = new InMemorySink();
+      const client = new TelemetryClient(sink);
+
+      await expect(
+        client.withCommandRun(
+          'create',
+          async () => {
+            throw new Error('validation failed');
+          },
+          {
+            language: 'python',
+            framework: 'strands',
+            model_provider: 'bedrock',
+            memory: 'none',
+            protocol: 'http',
+            build: 'codezip',
+            agent_type: 'create',
+            network_mode: 'public',
+            has_agent: true,
+          }
+        )
+      ).rejects.toThrow('validation failed');
+
+      expect(sink.metrics).toHaveLength(1);
+      expect(sink.metrics[0]!.attrs).toMatchObject({
+        exit_reason: 'failure',
+        error_name: 'UnknownError',
+        language: 'python',
+        framework: 'strands',
+        model_provider: 'bedrock',
+        has_agent: 'true',
+      });
+    });
+
+    it('records empty attrs on failure when fallbackAttrs not provided', async () => {
+      const sink = new InMemorySink();
+      const client = new TelemetryClient(sink);
+
+      await expect(
+        client.withCommandRun('deploy', async () => {
+          throw new Error('boom');
+        })
+      ).rejects.toThrow('boom');
+
+      expect(sink.metrics).toHaveLength(1);
+      expect(sink.metrics[0]!.attrs.language).toBeUndefined();
+    });
   });
 });

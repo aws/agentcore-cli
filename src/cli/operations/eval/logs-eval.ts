@@ -1,3 +1,5 @@
+import { ResourceNotFoundError, ValidationError } from '../../../lib';
+import type { Result } from '../../../lib/result';
 import { parseTimeString } from '../../../lib/utils';
 import { getOnlineEvaluationConfig } from '../../aws/agentcore-control';
 import { searchLogs, streamLogs } from '../../aws/cloudwatch';
@@ -11,11 +13,6 @@ export interface LogsEvalOptions {
   limit?: string;
   json?: boolean;
   follow?: boolean;
-}
-
-export interface LogsEvalResult {
-  success: boolean;
-  error?: string;
 }
 
 function formatLogLine(event: { timestamp: number; message: string }, json: boolean): string {
@@ -70,12 +67,12 @@ async function resolveEvalLogGroups(
   return results;
 }
 
-export async function handleLogsEval(options: LogsEvalOptions): Promise<LogsEvalResult> {
+export async function handleLogsEval(options: LogsEvalOptions): Promise<Result> {
   const context = await loadDeployedProjectConfig();
   const agentResult = resolveAgent(context, { runtime: options.agent });
 
   if (!agentResult.success) {
-    return { success: false, error: agentResult.error };
+    return { success: false, error: new ResourceNotFoundError(agentResult.error) };
   }
 
   const { agent } = agentResult;
@@ -85,7 +82,9 @@ export async function handleLogsEval(options: LogsEvalOptions): Promise<LogsEval
   if (resolvedLogGroups.length === 0) {
     return {
       success: false,
-      error: `No deployed online eval configs found. Add one with 'agentcore add online-eval' and deploy.`,
+      error: new ValidationError(
+        `No deployed online eval configs found. Add one with 'agentcore add online-eval' and deploy.`
+      ),
     };
   }
 

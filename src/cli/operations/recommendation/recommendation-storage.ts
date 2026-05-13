@@ -43,9 +43,9 @@ export function saveRecommendationRun(
     agent,
     evaluators,
     status: result.status ?? 'unknown',
-    startedAt: result.startedAt,
-    completedAt: result.completedAt,
-    result: result.result,
+    startedAt: result.success ? result.startedAt : undefined,
+    completedAt: result.success ? result.completedAt : undefined,
+    result: result.success ? result.result : undefined,
   };
 
   writeFileSync(filePath, JSON.stringify(record, null, 2));

@@ -1,5 +1,7 @@
+import { ResourceNotFoundError } from '../../../../lib';
 import { listTraces } from '../list-traces';
 import type { ListTracesOptions } from '../types';
+import assert from 'node:assert';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 const { mockRunInsightsQuery } = vi.hoisted(() => ({
@@ -38,15 +40,15 @@ describe('listTraces', () => {
 
     const result = await listTraces(baseOptions);
 
-    expect(result.success).toBe(true);
+    assert(result.success);
     expect(result.traces).toHaveLength(2);
-    expect(result.traces![0]).toEqual({
+    expect(result.traces[0]).toEqual({
       traceId: 'trace-1',
       timestamp: '2024-01-01T00:05:00Z',
       sessionId: 'sess-1',
       spanCount: '12',
     });
-    expect(result.traces![1]).toEqual({
+    expect(result.traces[1]).toEqual({
       traceId: 'trace-2',
       timestamp: '2024-01-01T00:03:00Z',
       sessionId: undefined,
@@ -66,9 +68,9 @@ describe('listTraces', () => {
 
     const result = await listTraces(baseOptions);
 
-    expect(result.success).toBe(true);
+    assert(result.success);
     expect(result.traces).toHaveLength(1);
-    expect(result.traces![0]!.traceId).toBe('trace-1');
+    expect(result.traces[0]!.traceId).toBe('trace-1');
   });
 
   it('falls back to firstSeen when lastSeen is missing', async () => {
@@ -79,8 +81,8 @@ describe('listTraces', () => {
 
     const result = await listTraces(baseOptions);
 
-    expect(result.success).toBe(true);
-    expect(result.traces![0]!.timestamp).toBe('2024-01-01T00:00:00Z');
+    assert(result.success);
+    expect(result.traces[0]!.timestamp).toBe('2024-01-01T00:00:00Z');
   });
 
   it('returns empty traces for empty query results', async () => {
@@ -91,20 +93,20 @@ describe('listTraces', () => {
 
     const result = await listTraces(baseOptions);
 
-    expect(result.success).toBe(true);
+    assert(result.success);
     expect(result.traces).toHaveLength(0);
   });
 
   it('propagates errors from runInsightsQuery', async () => {
     mockRunInsightsQuery.mockResolvedValueOnce({
       success: false,
-      error: 'Log group not found',
+      error: new ResourceNotFoundError('Log group not found'),
     });
 
     const result = await listTraces(baseOptions);
 
-    expect(result.success).toBe(false);
-    expect(result.error).toBe('Log group not found');
+    assert(!result.success);
+    expect(result.error.message).toBe('Log group not found');
   });
 
   it('passes correct log group name and default limit', async () => {

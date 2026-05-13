@@ -59,9 +59,9 @@ export function ImportProgressScreen({
           onSuccess(result);
         } else {
           setSteps(prev =>
-            prev.map(s => (s.status === 'running' ? { ...s, status: 'error', error: result.error } : s))
+            prev.map(s => (s.status === 'running' ? { ...s, status: 'error', error: result.error.message } : s))
           );
-          onError(result.error ?? 'Import failed');
+          onError(result.error.message ?? 'Import failed');
         }
       } else {
         // Starter toolkit
@@ -75,9 +75,9 @@ export function ImportProgressScreen({
           onSuccess(result);
         } else {
           setSteps(prev =>
-            prev.map(s => (s.status === 'running' ? { ...s, status: 'error', error: result.error } : s))
+            prev.map(s => (s.status === 'running' ? { ...s, status: 'error', error: result.error.message } : s))
           );
-          onError(result.error ?? 'Import failed');
+          onError(result.error.message ?? 'Import failed');
         }
       }
     };

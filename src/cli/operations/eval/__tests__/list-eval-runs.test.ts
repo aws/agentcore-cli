@@ -1,5 +1,6 @@
 import { handleListEvalRuns } from '../list-eval-runs.js';
 import type { EvalRunResult } from '../types.js';
+import assert from 'node:assert';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 const mockListEvalRuns = vi.fn();
@@ -28,7 +29,7 @@ describe('handleListEvalRuns', () => {
 
     const result = handleListEvalRuns({});
 
-    expect(result.success).toBe(true);
+    assert(result.success);
     expect(result.runs).toHaveLength(2);
   });
 
@@ -42,9 +43,9 @@ describe('handleListEvalRuns', () => {
 
     const result = handleListEvalRuns({ agent: 'agent-a' });
 
-    expect(result.success).toBe(true);
+    assert(result.success);
     expect(result.runs).toHaveLength(2);
-    expect(result.runs!.every(r => r.agent === 'agent-a')).toBe(true);
+    expect(result.runs.every((r: EvalRunResult) => r.agent === 'agent-a')).toBe(true);
   });
 
   it('limits the number of results', () => {
@@ -57,7 +58,7 @@ describe('handleListEvalRuns', () => {
 
     const result = handleListEvalRuns({ limit: 2 });
 
-    expect(result.success).toBe(true);
+    assert(result.success);
     expect(result.runs).toHaveLength(2);
   });
 
@@ -72,9 +73,10 @@ describe('handleListEvalRuns', () => {
 
     const result = handleListEvalRuns({ agent: 'a', limit: 2 });
 
+    assert(result.success);
     expect(result.runs).toHaveLength(2);
-    expect(result.runs![0]!.timestamp).toBe('2025-01-15T10:00:00.000Z');
-    expect(result.runs![1]!.timestamp).toBe('2025-01-15T12:00:00.000Z');
+    expect(result.runs[0]!.timestamp).toBe('2025-01-15T10:00:00.000Z');
+    expect(result.runs[1]!.timestamp).toBe('2025-01-15T12:00:00.000Z');
   });
 
   it('returns empty array when no runs exist', () => {
@@ -82,7 +84,7 @@ describe('handleListEvalRuns', () => {
 
     const result = handleListEvalRuns({});
 
-    expect(result.success).toBe(true);
+    assert(result.success);
     expect(result.runs).toEqual([]);
   });
 
@@ -93,9 +95,8 @@ describe('handleListEvalRuns', () => {
 
     const result = handleListEvalRuns({});
 
-    expect(result.success).toBe(false);
-    expect(result.error).toBe('disk error');
-    expect(result.runs).toBeUndefined();
+    assert(!result.success);
+    expect(result.error.message).toBe('disk error');
   });
 
   it('handles non-Error thrown values', () => {
@@ -105,7 +106,7 @@ describe('handleListEvalRuns', () => {
 
     const result = handleListEvalRuns({});
 
-    expect(result.success).toBe(false);
-    expect(result.error).toBe('42');
+    assert(!result.success);
+    expect(result.error.message).toBe('42');
   });
 });

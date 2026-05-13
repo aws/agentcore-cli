@@ -1,10 +1,11 @@
-import { findConfigRoot } from '../../lib';
+import { ResourceNotFoundError, ValidationError, findConfigRoot, serializeResult, toError } from '../../lib';
+import type { Result } from '../../lib/result';
 import type { Policy } from '../../schema';
 import { PolicySchema, ValidationModeSchema } from '../../schema';
 import { detectRegion } from '../aws';
 import { getPolicyGeneration, startPolicyGeneration } from '../aws/policy-generation';
 import { getErrorMessage } from '../errors';
-import type { RemovalPreview, RemovalResult, SchemaChange } from '../operations/remove/types';
+import type { RemovalPreview, SchemaChange } from '../operations/remove/types';
 import { runCliCommand, withCommandRunTelemetry } from '../telemetry/cli-command-run.js';
 import { ValidationMode, standardize } from '../telemetry/schemas/common-shapes.js';
 import { requireTTY } from '../tui/guards/tty';
@@ -40,7 +41,7 @@ export class PolicyPrimitive extends BasePrimitive<AddPolicyOptions, RemovablePo
       if (sourceFlags.length > 1) {
         return {
           success: false,
-          error: 'Only one of --statement, --source, or --generate can be provided.',
+          error: new ValidationError('Only one of --statement, --source, or --generate can be provided.'),
         };
       }
 
@@ -48,7 +49,7 @@ export class PolicyPrimitive extends BasePrimitive<AddPolicyOptions, RemovablePo
 
       const engine = project.policyEngines.find(e => e.name === options.engine);
       if (!engine) {
-        return { success: false, error: `Policy engine "${options.engine}" not found.` };
+        return { success: false, error: new ResourceNotFoundError(`Policy engine "${options.engine}" not found.`) };
       }
 
       this.checkDuplicate(engine.policies, options.name, 'Policy');
@@ -57,11 +58,11 @@ export class PolicyPrimitive extends BasePrimitive<AddPolicyOptions, RemovablePo
 
       if (options.source && !statement) {
         if (!existsSync(options.source)) {
-          return { success: false, error: `Source file not found: ${options.source}` };
+          return { success: false, error: new ResourceNotFoundError(`Source file not found: ${options.source}`) };
         }
         statement = readFileSync(options.source, 'utf-8').trim();
         if (!statement) {
-          return { success: false, error: `Source file is empty: ${options.source}` };
+          return { success: false, error: new ValidationError(`Source file is empty: ${options.source}`) };
         }
       }
 
@@ -91,17 +92,23 @@ export class PolicyPrimitive extends BasePrimitive<AddPolicyOptions, RemovablePo
         if (!engineId) {
           return {
             success: false,
-            error: `Policy engine "${options.engine}" is not deployed. Run \`agentcore deploy\` first.`,
+            error: new ValidationError(
+              `Policy engine "${options.engine}" is not deployed. Run \`agentcore deploy\` first.`
+            ),
           };
         }
         if (options.gateway && !gatewayArn) {
-          return { success: false, error: `Gateway "${options.gateway}" not found in deployed state.` };
+          return {
+            success: false,
+            error: new ResourceNotFoundError(`Gateway "${options.gateway}" not found in deployed state.`),
+          };
         }
         if (!gatewayArn) {
           return {
             success: false,
-            error:
-              'No deployed gateway found. Policy generation requires a deployed gateway. Use --gateway <name> to specify one.',
+            error: new ResourceNotFoundError(
+              'No deployed gateway found. Policy generation requires a deployed gateway. Use --gateway <name> to specify one.'
+            ),
           };
         }
 
@@ -123,7 +130,10 @@ export class PolicyPrimitive extends BasePrimitive<AddPolicyOptions, RemovablePo
       }
 
       if (!statement) {
-        return { success: false, error: 'Either --statement, --source, or --generate is required.' };
+        return {
+          success: false,
+          error: new ValidationError('Either --statement, --source, or --generate is required.'),
+        };
       }
 
       const policy: Policy = {
@@ -139,7 +149,7 @@ export class PolicyPrimitive extends BasePrimitive<AddPolicyOptions, RemovablePo
 
       return { success: true, policyName: policy.name, engineName: options.engine };
     } catch (err) {
-      return { success: false, error: getErrorMessage(err) };
+      return { success: false, error: toError(err) };
     }
   }
 
@@ -148,7 +158,7 @@ export class PolicyPrimitive extends BasePrimitive<AddPolicyOptions, RemovablePo
    * The composite key format is used by getRemovable() and the generic TUI remove flow.
    * The separate arguments form is used by the CLI --name + --engine flags.
    */
-  async remove(nameOrCompositeKey: string, engineName?: string): Promise<RemovalResult> {
+  async remove(nameOrCompositeKey: string, engineName?: string): Promise<Result> {
     try {
       const project = await this.readProjectSpec();
 
@@ -167,7 +177,9 @@ export class PolicyPrimitive extends BasePrimitive<AddPolicyOptions, RemovablePo
         if (matchingEngines.length > 1) {
           return {
             success: false,
-            error: `Policy "${resolvedPolicy}" exists in multiple engines: ${matchingEngines.map(e => e.name).join(', ')}. Use --engine to specify which one.`,
+            error: new ValidationError(
+              `Policy "${resolvedPolicy}" exists in multiple engines: ${matchingEngines.map(e => e.name).join(', ')}. Use --engine to specify which one.`
+            ),
           };
         }
       }
@@ -185,10 +197,12 @@ export class PolicyPrimitive extends BasePrimitive<AddPolicyOptions, RemovablePo
 
       return {
         success: false,
-        error: `Policy "${resolvedPolicy}" not found${resolvedEngine ? ` in engine "${resolvedEngine}"` : ''}.`,
+        error: new ResourceNotFoundError(
+          `Policy "${resolvedPolicy}" not found${resolvedEngine ? ` in engine "${resolvedEngine}"` : ''}.`
+        ),
       };
     } catch (err) {
-      return { success: false, error: getErrorMessage(err) };
+      return { success: false, error: toError(err) };
     }
   }
 
@@ -328,11 +342,11 @@ export class PolicyPrimitive extends BasePrimitive<AddPolicyOptions, RemovablePo
               });
 
               if (!result.success) {
-                throw new Error(result.error);
+                throw result.error;
               }
 
               if (cliOptions.json) {
-                console.log(JSON.stringify(result));
+                console.log(JSON.stringify(serializeResult(result)));
               } else {
                 console.log(`Added policy '${result.policyName}' to engine '${result.engineName}'`);
               }
@@ -410,13 +424,13 @@ export class PolicyPrimitive extends BasePrimitive<AddPolicyOptions, RemovablePo
                   resourceName: cliOptions.name,
                   message: result.success ? `Removed policy '${cliOptions.name}'` : undefined,
                   note: result.success ? SOURCE_CODE_NOTE : undefined,
-                  error: !result.success ? result.error : undefined,
+                  error: !result.success ? result.error.message : undefined,
                 })
               );
             } else if (result.success) {
               console.log(`Removed policy '${cliOptions.name}'`);
             } else {
-              console.error(result.error);
+              console.error(result.error.message);
             }
             process.exit(result.success ? 0 : 1);
           } else {

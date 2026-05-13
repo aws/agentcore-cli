@@ -1,3 +1,4 @@
+import type { Result } from '../../../lib/result';
 import type {
   AgentCoreProjectSpec,
   AuthorizerConfig,
@@ -89,27 +90,19 @@ export interface ResourceToImport {
 /**
  * Result of the import command.
  */
-export interface ImportResult {
-  success: boolean;
-  error?: string;
+export type ImportResult = Result<{
   projectSpec?: AgentCoreProjectSpec;
   importedAgents?: string[];
   importedMemories?: string[];
   stackName?: string;
-  logPath?: string;
-}
+}> & { logPath?: string };
 
 /**
  * Result for single-resource import (runtime, memory, evaluator, etc.).
  */
-export interface ImportResourceResult {
-  success: boolean;
-  error?: string;
-  resourceType: ImportableResourceType;
-  resourceName: string;
+export type ImportResourceResult = Result<{
   resourceId?: string;
-  logPath?: string;
-}
+}> & { resourceType: ImportableResourceType; resourceName: string; logPath?: string };
 
 /**
  * Options shared across import subcommands.

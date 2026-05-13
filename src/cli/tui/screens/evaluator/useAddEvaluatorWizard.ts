@@ -22,6 +22,7 @@ const LLM_STEPS: AddEvaluatorStep[] = [
   'model',
   'instructions',
   'ratingScale',
+  'kms-key-arn',
   'confirm',
 ];
 const CODE_MANAGED_STEPS: AddEvaluatorStep[] = [
@@ -30,6 +31,7 @@ const CODE_MANAGED_STEPS: AddEvaluatorStep[] = [
   'name',
   'level',
   'timeout',
+  'kms-key-arn',
   'confirm',
 ];
 const CODE_EXTERNAL_STEPS: AddEvaluatorStep[] = [
@@ -38,6 +40,7 @@ const CODE_EXTERNAL_STEPS: AddEvaluatorStep[] = [
   'name',
   'level',
   'lambda-arn',
+  'kms-key-arn',
   'confirm',
 ];
 
@@ -80,6 +83,7 @@ export function useAddEvaluatorWizard() {
   const [lambdaArn, setLambdaArnState] = useState('');
   const [timeout, setTimeoutState] = useState(DEFAULT_CODE_TIMEOUT);
   const [customRatingScaleType, setCustomRatingScaleType] = useState<CustomRatingScaleType>('numerical');
+  const [kmsKeyArn, setKmsKeyArnState] = useState('');
   const [step, setStep] = useState<AddEvaluatorStep>('evaluator-type');
 
   const steps = useMemo(() => getSteps(evaluatorType, codeBasedType), [evaluatorType, codeBasedType]);
@@ -109,11 +113,13 @@ export function useAddEvaluatorWizard() {
 
   // Build the final config based on current state
   const config: AddEvaluatorConfig = useMemo(() => {
+    const kms = kmsKeyArn || undefined;
     if (evaluatorType === 'llm-as-a-judge') {
       return {
         name,
         level,
         config: { llmAsAJudge: llmConfig },
+        ...(kms && { kmsKeyArn: kms }),
       };
     }
 
@@ -126,6 +132,7 @@ export function useAddEvaluatorWizard() {
             external: { lambdaArn },
           },
         },
+        ...(kms && { kmsKeyArn: kms }),
       };
     }
 
@@ -143,8 +150,9 @@ export function useAddEvaluatorWizard() {
           },
         },
       },
+      ...(kms && { kmsKeyArn: kms }),
     };
-  }, [evaluatorType, codeBasedType, name, level, llmConfig, lambdaArn, timeout]);
+  }, [evaluatorType, codeBasedType, name, level, llmConfig, lambdaArn, timeout, kmsKeyArn]);
 
   const selectEvaluatorType = useCallback((type: EvaluatorTypeId) => {
     setEvaluatorType(type);
@@ -256,6 +264,15 @@ export function useAddEvaluatorWizard() {
     [nextStep]
   );
 
+  const setKmsKeyArn = useCallback(
+    (arn: string) => {
+      setKmsKeyArnState(arn);
+      const next = nextStep('kms-key-arn');
+      if (next) setStep(next);
+    },
+    [nextStep]
+  );
+
   const reset = useCallback(() => {
     setEvaluatorType('code-based');
     setCodeBasedType('managed');
@@ -264,6 +281,7 @@ export function useAddEvaluatorWizard() {
     setLlmConfig(getDefaultLlmConfig().llmAsAJudge!);
     setLambdaArnState('');
     setTimeoutState(DEFAULT_CODE_TIMEOUT);
+    setKmsKeyArnState('');
     setStep('evaluator-type');
   }, []);
 
@@ -288,6 +306,7 @@ export function useAddEvaluatorWizard() {
     setCustomRatingScale,
     setLambdaArn,
     setTimeout,
+    setKmsKeyArn,
     reset,
   };
 }

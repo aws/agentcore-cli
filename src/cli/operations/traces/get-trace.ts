@@ -1,3 +1,5 @@
+import { ResourceNotFoundError, ValidationError } from '../../../lib';
+import type { Result } from '../../../lib/result';
 import { DEFAULT_ENDPOINT_NAME } from '../../constants';
 import { runInsightsQuery } from './insights-query';
 import type {
@@ -23,9 +25,12 @@ async function fetchSpans(
   traceId: string,
   startTime?: number,
   endTime?: number
-): Promise<{ success: boolean; spans?: CloudWatchSpanRecord[]; error?: string }> {
+): Promise<Result<{ spans: CloudWatchSpanRecord[] }>> {
   if (!TRACE_ID_PATTERN.test(traceId)) {
-    return { success: false, error: 'Invalid trace ID format. Expected a hex string (e.g., abc123def456).' };
+    return {
+      success: false,
+      error: new ValidationError('Invalid trace ID format. Expected a hex string (e.g., abc123def456).'),
+    };
   }
 
   const result = await runInsightsQuery({
@@ -50,7 +55,7 @@ async function fetchSpans(
 
   if (!result.success) return { success: false, error: result.error };
 
-  const spans: CloudWatchSpanRecord[] = (result.rows ?? [])
+  const spans: CloudWatchSpanRecord[] = result.rows
     .filter(row => row.traceId && row.spanId)
     .map(row => ({
       traceId: row.traceId!,
@@ -82,7 +87,10 @@ export async function fetchTraceRecords(options: FetchTraceRecordsOptions): Prom
   const { region, runtimeId, traceId, includeSpans } = options;
 
   if (!TRACE_ID_PATTERN.test(traceId)) {
-    return { success: false, error: 'Invalid trace ID format. Expected a hex string (e.g., abc123def456).' };
+    return {
+      success: false,
+      error: new ValidationError('Invalid trace ID format. Expected a hex string (e.g., abc123def456).'),
+    };
   }
 
   const [recordsResult, spansResult] = await Promise.all([
@@ -103,10 +111,10 @@ export async function fetchTraceRecords(options: FetchTraceRecordsOptions): Prom
     return { success: false, error: recordsResult.error };
   }
 
-  const traceData = recordsResult.rows ?? [];
+  const traceData = recordsResult.rows;
 
-  if (traceData.length === 0 && (!spansResult || (spansResult.spans ?? []).length === 0)) {
-    return { success: false, error: `No trace data found for trace ID: ${traceId}` };
+  if (traceData.length === 0 && (!spansResult || !spansResult.success || spansResult.spans.length === 0)) {
+    return { success: false, error: new ResourceNotFoundError(`No trace data found for trace ID: ${traceId}`) };
   }
 
   const records: CloudWatchTraceRecord[] = traceData.map(entry => {
@@ -129,11 +137,9 @@ export async function fetchTraceRecords(options: FetchTraceRecordsOptions): Prom
     return record;
   });
 
-  const result: FetchTraceRecordsResult = { success: true, records };
-
-  if (spansResult?.success && spansResult.spans) {
-    result.spans = spansResult.spans;
-  }
+  const result: FetchTraceRecordsResult = spansResult?.success
+    ? { success: true, records, spans: spansResult.spans }
+    : { success: true, records };
 
   return result;
 }
@@ -146,7 +152,10 @@ export async function getTrace(options: GetTraceOptions): Promise<GetTraceResult
   const { region, runtimeId, agentName, traceId, outputPath } = options;
 
   if (!TRACE_ID_PATTERN.test(traceId)) {
-    return { success: false, error: 'Invalid trace ID format. Expected a hex string (e.g., abc123def456).' };
+    return {
+      success: false,
+      error: new ValidationError('Invalid trace ID format. Expected a hex string (e.g., abc123def456).'),
+    };
   }
 
   const result = await runInsightsQuery({
@@ -163,9 +172,9 @@ export async function getTrace(options: GetTraceOptions): Promise<GetTraceResult
     return { success: false, error: result.error };
   }
 
-  const traceData = result.rows ?? [];
+  const traceData = result.rows;
   if (traceData.length === 0) {
-    return { success: false, error: `No trace data found for trace ID: ${traceId}` };
+    return { success: false, error: new ResourceNotFoundError(`No trace data found for trace ID: ${traceId}`) };
   }
 
   const parsedTrace = traceData.map(entry => {

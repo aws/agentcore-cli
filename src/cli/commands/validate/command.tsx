@@ -15,7 +15,7 @@ export const registerValidate = (program: Command) => {
         render(<Text color="green">Valid</Text>);
         process.exit(0);
       } else {
-        render(<Text color="red">{result.error}</Text>);
+        render(<Text color="red">{result.error.message}</Text>);
         process.exit(1);
       }
     });

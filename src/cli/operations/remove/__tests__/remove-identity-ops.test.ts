@@ -1,3 +1,4 @@
+import { ResourceNotFoundError } from '../../../../lib';
 import { CredentialPrimitive } from '../../../primitives/CredentialPrimitive.js';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
@@ -16,6 +17,23 @@ vi.mock('../../../../lib/index.js', () => ({
     writeProjectSpec = mockWriteProjectSpec;
     configExists = vi.fn().mockReturnValue(false);
   },
+  findConfigRoot: () => '/fake/root',
+  toError: (err: unknown) => (err instanceof Error ? err : new Error(String(err))),
+  serializeResult: (r: unknown) => r,
+  ResourceNotFoundError: class extends Error {
+    constructor(m: string) {
+      super(m);
+      this.name = 'ResourceNotFoundError';
+    }
+  },
+  ConflictError: class extends Error {
+    constructor(m: string) {
+      super(m);
+      this.name = 'ConflictError';
+    }
+  },
+  setEnvVar: vi.fn().mockResolvedValue(undefined),
+  getEnvVar: vi.fn(),
 }));
 
 const makeProject = (
@@ -93,7 +111,7 @@ describe('remove', () => {
 
     const result = await primitive.remove('Missing');
 
-    expect(result).toEqual({ success: false, error: 'Credential "Missing" not found.' });
+    expect(result).toEqual({ success: false, error: new ResourceNotFoundError('Credential "Missing" not found.') });
   });
 
   it('returns error on exception', async () => {
@@ -101,6 +119,6 @@ describe('remove', () => {
 
     const result = await primitive.remove('Cred1');
 
-    expect(result).toEqual({ success: false, error: 'read fail' });
+    expect(result).toEqual({ success: false, error: new Error('read fail') });
   });
 });

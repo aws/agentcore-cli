@@ -1,7 +1,8 @@
 import type { AgentCoreProjectSpec, DeployedResourceState } from '../../../../schema/index.js';
 import { computeResourceStatuses, handleProjectStatus } from '../action.js';
-import type { StatusContext } from '../action.js';
+import type { ResourceStatusEntry, StatusContext } from '../action.js';
 import { buildRuntimeInvocationUrl } from '../constants.js';
+import assert from 'node:assert';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const mockGetAgentRuntimeStatus = vi.fn();
@@ -508,9 +509,11 @@ describe('handleProjectStatus — live enrichment', () => {
 
     const result = await handleProjectStatus(makeContext());
 
-    expect(result.success).toBe(true);
+    assert(result.success);
 
-    const evalEntry = result.resources.find(r => r.resourceType === 'evaluator' && r.name === 'MyEval');
+    const evalEntry = result.resources.find(
+      (r: ResourceStatusEntry) => r.resourceType === 'evaluator' && r.name === 'MyEval'
+    );
     expect(evalEntry).toBeDefined();
     expect(evalEntry!.detail).toContain('ACTIVE');
 
@@ -536,9 +539,11 @@ describe('handleProjectStatus — live enrichment', () => {
 
     const result = await handleProjectStatus(makeContext());
 
-    expect(result.success).toBe(true);
+    assert(result.success);
 
-    const configEntry = result.resources.find(r => r.resourceType === 'online-eval' && r.name === 'MyConfig');
+    const configEntry = result.resources.find(
+      (r: ResourceStatusEntry) => r.resourceType === 'online-eval' && r.name === 'MyConfig'
+    );
     expect(configEntry).toBeDefined();
     expect(configEntry!.detail).toContain('ACTIVE');
     expect(configEntry!.detail).toContain('ENABLED');
@@ -560,9 +565,11 @@ describe('handleProjectStatus — live enrichment', () => {
 
     const result = await handleProjectStatus(makeContext());
 
-    expect(result.success).toBe(true);
+    assert(result.success);
 
-    const evalEntry = result.resources.find(r => r.resourceType === 'evaluator' && r.name === 'MyEval');
+    const evalEntry = result.resources.find(
+      (r: ResourceStatusEntry) => r.resourceType === 'evaluator' && r.name === 'MyEval'
+    );
     expect(evalEntry).toBeDefined();
     expect(evalEntry!.error).toBe('AccessDenied');
   });
@@ -578,9 +585,11 @@ describe('handleProjectStatus — live enrichment', () => {
 
     const result = await handleProjectStatus(makeContext());
 
-    expect(result.success).toBe(true);
+    assert(result.success);
 
-    const configEntry = result.resources.find(r => r.resourceType === 'online-eval' && r.name === 'MyConfig');
+    const configEntry = result.resources.find(
+      (r: ResourceStatusEntry) => r.resourceType === 'online-eval' && r.name === 'MyConfig'
+    );
     expect(configEntry).toBeDefined();
     expect(configEntry!.error).toBe('ResourceNotFound');
   });
@@ -624,9 +633,11 @@ describe('handleProjectStatus — live enrichment', () => {
 
     const result = await handleProjectStatus(ctx);
 
-    expect(result.success).toBe(true);
+    assert(result.success);
 
-    const evalEntry = result.resources.find(r => r.resourceType === 'evaluator' && r.name === 'MyEval');
+    const evalEntry = result.resources.find(
+      (r: ResourceStatusEntry) => r.resourceType === 'evaluator' && r.name === 'MyEval'
+    );
     expect(evalEntry).toBeDefined();
     expect(evalEntry!.deploymentState).toBe('local-only');
     expect(mockGetEvaluator).not.toHaveBeenCalled();
@@ -697,8 +708,10 @@ describe('handleProjectStatus — invocation URL enrichment', () => {
 
     const result = await handleProjectStatus(ctx);
 
-    expect(result.success).toBe(true);
-    const agentEntry = result.resources.find(r => r.resourceType === 'agent' && r.name === 'MyAgent');
+    assert(result.success);
+    const agentEntry = result.resources.find(
+      (r: ResourceStatusEntry) => r.resourceType === 'agent' && r.name === 'MyAgent'
+    );
     expect(agentEntry).toBeDefined();
     expect(agentEntry!.invocationUrl).toBe(
       `https://bedrock-agentcore.us-east-1.amazonaws.com/runtimes/${encodeURIComponent(runtimeArn)}/invocations`
@@ -723,8 +736,10 @@ describe('handleProjectStatus — invocation URL enrichment', () => {
 
     const result = await handleProjectStatus(ctx);
 
-    expect(result.success).toBe(true);
-    const agentEntry = result.resources.find(r => r.resourceType === 'agent' && r.name === 'LocalAgent');
+    assert(result.success);
+    const agentEntry = result.resources.find(
+      (r: ResourceStatusEntry) => r.resourceType === 'agent' && r.name === 'LocalAgent'
+    );
     expect(agentEntry).toBeDefined();
     expect(agentEntry!.invocationUrl).toBeUndefined();
   });
@@ -758,8 +773,10 @@ describe('handleProjectStatus — invocation URL enrichment', () => {
 
     const result = await handleProjectStatus(ctx);
 
-    expect(result.success).toBe(true);
-    const agentEntry = result.resources.find(r => r.resourceType === 'agent' && r.name === 'FailAgent');
+    assert(result.success);
+    const agentEntry = result.resources.find(
+      (r: ResourceStatusEntry) => r.resourceType === 'agent' && r.name === 'FailAgent'
+    );
     expect(agentEntry).toBeDefined();
     expect(agentEntry!.error).toBe('Timeout');
     expect(agentEntry!.invocationUrl).toBe(
@@ -798,8 +815,10 @@ describe('handleProjectStatus — invocation URL enrichment', () => {
 
     const result = await handleProjectStatus(ctx);
 
-    expect(result.success).toBe(true);
-    const agentEntry = result.resources.find(r => r.resourceType === 'agent' && r.name === 'OldAgent');
+    assert(result.success);
+    const agentEntry = result.resources.find(
+      (r: ResourceStatusEntry) => r.resourceType === 'agent' && r.name === 'OldAgent'
+    );
     expect(agentEntry).toBeDefined();
     expect(agentEntry!.deploymentState).toBe('pending-removal');
     expect(agentEntry!.invocationUrl).toBeUndefined();

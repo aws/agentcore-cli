@@ -20,7 +20,7 @@ type FlowState =
   | { name: 'loading' }
   | { name: 'wizard'; data: RunEvalFlowData }
   | { name: 'running'; config: RunEvalConfig }
-  | { name: 'results'; result: RunEvalResult; run: EvalRunResult }
+  | { name: 'results'; result: RunEvalResult; run: EvalRunResult; filePath: string }
   | { name: 'creds-error'; message: string }
   | { name: 'error'; message: string };
 
@@ -145,12 +145,12 @@ export function RunEvalFlow({ onExit, onViewRuns }: RunEvalFlowProps) {
 
         if (cancelled) return;
 
-        if (!result.success || !result.run) {
-          setFlow({ name: 'error', message: result.error ?? 'Evaluation failed' });
+        if (!result.success) {
+          setFlow({ name: 'error', message: result.error.message });
           return;
         }
 
-        setFlow({ name: 'results', result, run: result.run });
+        setFlow({ name: 'results', result, run: result.run, filePath: result.filePath });
       } catch (err) {
         if (!cancelled) setFlow({ name: 'error', message: getErrorMessage(err) });
       }
@@ -196,7 +196,7 @@ export function RunEvalFlow({ onExit, onViewRuns }: RunEvalFlowProps) {
     return (
       <ResultsView
         run={flow.run}
-        filePath={flow.result.filePath}
+        filePath={flow.filePath}
         onRunAnother={() => setFlow({ name: 'loading' })}
         onViewRuns={onViewRuns}
         onExit={onExit}

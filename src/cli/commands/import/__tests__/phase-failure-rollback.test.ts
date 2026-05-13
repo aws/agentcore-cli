@@ -7,6 +7,7 @@
  */
 import { handleImport } from '../actions';
 import type { ParsedStarterToolkitConfig } from '../types';
+import assert from 'node:assert';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 // ── Hoisted mock fns ────────────────────────────────────────────────────────
@@ -73,7 +74,20 @@ const {
 vi.mock('../../../../lib', () => ({
   APP_DIR: 'app',
   ConfigIO: MockConfigIOClass,
+  NoProjectError: class NoProjectError extends Error {
+    constructor(msg?: string) {
+      super(msg ?? 'No agentcore project found');
+      this.name = 'NoProjectError';
+    }
+  },
+  ValidationError: class ValidationError extends Error {
+    constructor(msg: string) {
+      super(msg);
+      this.name = 'ValidationError';
+    }
+  },
   findConfigRoot: (...args: unknown[]) => mockFindConfigRoot(...args),
+  toError: (err: unknown) => (err instanceof Error ? err : new Error(String(err))),
 }));
 
 vi.mock('../../../aws/account', () => ({
@@ -249,8 +263,8 @@ describe('Config Rollback on Import Failure', () => {
 
     const result = await handleImport({ source: '/tmp/config.yaml' });
 
-    expect(result.success).toBe(false);
-    expect(result.error).toContain('Phase 1 failed');
+    assert(!result.success);
+    expect(result.error.message).toContain('Phase 1 failed');
 
     // First call = merge write, second call = rollback with original (empty) runtimes
     expect(mockConfigIOInstance.writeProjectSpec).toHaveBeenCalledTimes(2);
@@ -265,8 +279,8 @@ describe('Config Rollback on Import Failure', () => {
 
     const result = await handleImport({ source: '/tmp/config.yaml' });
 
-    expect(result.success).toBe(false);
-    expect(result.error).toContain('Phase 2 failed');
+    assert(!result.success);
+    expect(result.error.message).toContain('Phase 2 failed');
 
     expect(mockConfigIOInstance.writeProjectSpec).toHaveBeenCalledTimes(2);
     const rollbackData = mockConfigIOInstance.writeProjectSpec.mock.calls[1]![0];
@@ -280,8 +294,8 @@ describe('Config Rollback on Import Failure', () => {
 
     const result = await handleImport({ source: '/tmp/config.yaml' });
 
-    expect(result.success).toBe(false);
-    expect(result.error).toContain('CDK build failed');
+    assert(!result.success);
+    expect(result.error.message).toContain('CDK build failed');
 
     expect(mockConfigIOInstance.writeProjectSpec).toHaveBeenCalledTimes(2);
     const rollbackData = mockConfigIOInstance.writeProjectSpec.mock.calls[1]![0];
@@ -294,7 +308,7 @@ describe('Config Rollback on Import Failure', () => {
 
     const result = await handleImport({ source: '/tmp/config.yaml' });
 
-    expect(result.success).toBe(true);
+    assert(result.success);
     // Only one write: the merge write
     expect(mockConfigIOInstance.writeProjectSpec).toHaveBeenCalledTimes(1);
   });
@@ -311,8 +325,8 @@ describe('Config Rollback on Import Failure', () => {
 
     const result = await handleImport({ source: '/tmp/config.yaml' });
 
-    expect(result.success).toBe(false);
-    expect(result.error).toContain('No agents found');
+    assert(!result.success);
+    expect(result.error.message).toContain('No agents found');
     // Config was never written, so no rollback
     expect(mockConfigIOInstance.writeProjectSpec).not.toHaveBeenCalled();
   });
@@ -338,8 +352,8 @@ describe('Config Rollback on Import Failure', () => {
 
     const result = await handleImport({ source: '/tmp/config.yaml' });
 
-    expect(result.success).toBe(false);
-    expect(result.error).toContain('Could not read deployed template');
+    assert(!result.success);
+    expect(result.error.message).toContain('Could not read deployed template');
 
     expect(mockConfigIOInstance.writeProjectSpec).toHaveBeenCalledTimes(2);
     const rollbackData = mockConfigIOInstance.writeProjectSpec.mock.calls[1]![0];

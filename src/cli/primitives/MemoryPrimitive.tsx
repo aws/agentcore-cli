@@ -1,4 +1,5 @@
-import { findConfigRoot } from '../../lib';
+import { ResourceNotFoundError, findConfigRoot, serializeResult, toError } from '../../lib';
+import type { Result } from '../../lib/result';
 import type {
   Memory,
   MemoryStrategy,
@@ -16,7 +17,7 @@ import {
 } from '../../schema';
 import { DEFAULT_DELIVERY_TYPE, validateAddMemoryOptions } from '../commands/add/validate';
 import { getErrorMessage } from '../errors';
-import type { RemovalPreview, RemovalResult, SchemaChange } from '../operations/remove/types';
+import type { RemovalPreview, SchemaChange } from '../operations/remove/types';
 import { runCliCommand } from '../telemetry/cli-command-run.js';
 import { requireTTY } from '../tui/guards/tty';
 import { DEFAULT_EVENT_EXPIRY } from '../tui/screens/memory/types';
@@ -83,17 +84,17 @@ export class MemoryPrimitive extends BasePrimitive<AddMemoryOptions, RemovableMe
 
       return { success: true, memoryName: memory.name };
     } catch (err) {
-      return { success: false, error: getErrorMessage(err) };
+      return { success: false, error: toError(err) };
     }
   }
 
-  async remove(memoryName: string): Promise<RemovalResult> {
+  async remove(memoryName: string): Promise<Result> {
     try {
       const project = await this.readProjectSpec();
 
       const memoryIndex = project.memories.findIndex(m => m.name === memoryName);
       if (memoryIndex === -1) {
-        return { success: false, error: `Memory "${memoryName}" not found.` };
+        return { success: false, error: new ResourceNotFoundError(`Memory "${memoryName}" not found.`) };
       }
 
       project.memories.splice(memoryIndex, 1);
@@ -101,8 +102,7 @@ export class MemoryPrimitive extends BasePrimitive<AddMemoryOptions, RemovableMe
 
       return { success: true };
     } catch (err) {
-      const message = err instanceof Error ? err.message : 'Unknown error';
-      return { success: false, error: message };
+      return { success: false, error: toError(err) };
     }
   }
 
@@ -218,11 +218,11 @@ export class MemoryPrimitive extends BasePrimitive<AddMemoryOptions, RemovableMe
               });
 
               if (!result.success) {
-                throw new Error(result.error);
+                throw result.error;
               }
 
               if (cliOptions.json) {
-                console.log(JSON.stringify(result));
+                console.log(JSON.stringify(serializeResult(result)));
               } else {
                 console.log(`Added memory '${result.memoryName}'`);
               }

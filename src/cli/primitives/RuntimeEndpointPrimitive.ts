@@ -1,9 +1,17 @@
-import { findConfigRoot } from '../../lib';
+import {
+  ConflictError,
+  ResourceNotFoundError,
+  ValidationError,
+  findConfigRoot,
+  serializeResult,
+  toError,
+} from '../../lib';
+import type { Result } from '../../lib/result';
 import type { AgentCoreProjectSpec } from '../../schema';
 import { RuntimeEndpointSchema } from '../../schema';
 import type { ResourceType } from '../commands/remove/types';
 import { getErrorMessage } from '../errors';
-import type { RemovalPreview, RemovalResult, SchemaChange } from '../operations/remove/types';
+import type { RemovalPreview, SchemaChange } from '../operations/remove/types';
 import { runCliCommand, withCommandRunTelemetry } from '../telemetry/cli-command-run.js';
 import { BasePrimitive } from './BasePrimitive';
 import { SOURCE_CODE_NOTE } from './constants';
@@ -46,7 +54,7 @@ export class RuntimeEndpointPrimitive extends BasePrimitive<AddRuntimeEndpointOp
       // Find the parent runtime
       const runtime = project.runtimes.find(a => a.name === options.runtime);
       if (!runtime) {
-        return { success: false, error: `Runtime "${options.runtime}" not found.` };
+        return { success: false, error: new ResourceNotFoundError(`Runtime "${options.runtime}" not found.`) };
       }
 
       // Initialize endpoints dictionary if needed
@@ -56,14 +64,14 @@ export class RuntimeEndpointPrimitive extends BasePrimitive<AddRuntimeEndpointOp
       if (runtime.endpoints[options.endpoint]) {
         return {
           success: false,
-          error: `Endpoint "${options.endpoint}" already exists on runtime "${options.runtime}".`,
+          error: new ConflictError(`Endpoint "${options.endpoint}" already exists on runtime "${options.runtime}".`),
         };
       }
 
       // Validate version is a positive integer
       const version = options.version ?? 1;
       if (!Number.isInteger(version) || version < 1) {
-        return { success: false, error: `Version must be a positive integer (got ${version}).` };
+        return { success: false, error: new ValidationError(`Version must be a positive integer (got ${version}).`) };
       }
 
       // Check version against latest deployed version
@@ -75,7 +83,9 @@ export class RuntimeEndpointPrimitive extends BasePrimitive<AddRuntimeEndpointOp
             if (deployedRuntime?.runtimeVersion && version > deployedRuntime.runtimeVersion) {
               return {
                 success: false,
-                error: `Version ${version} exceeds latest deployed version ${deployedRuntime.runtimeVersion} for runtime "${options.runtime}".`,
+                error: new ValidationError(
+                  `Version ${version} exceeds latest deployed version ${deployedRuntime.runtimeVersion} for runtime "${options.runtime}".`
+                ),
               };
             }
           }
@@ -104,11 +114,11 @@ export class RuntimeEndpointPrimitive extends BasePrimitive<AddRuntimeEndpointOp
         version: config.version,
       };
     } catch (err) {
-      return { success: false, error: getErrorMessage(err) };
+      return { success: false, error: toError(err) };
     }
   }
 
-  async remove(name: string): Promise<RemovalResult> {
+  async remove(name: string): Promise<Result> {
     try {
       const project = await this.readProjectSpec();
 
@@ -119,7 +129,7 @@ export class RuntimeEndpointPrimitive extends BasePrimitive<AddRuntimeEndpointOp
         const endpointName = name.substring(slashIndex + 1);
         const runtime = project.runtimes.find(r => r.name === runtimeName);
         if (!runtime?.endpoints?.[endpointName]) {
-          return { success: false, error: `Runtime endpoint "${name}" not found.` };
+          return { success: false, error: new ResourceNotFoundError(`Runtime endpoint "${name}" not found.`) };
         }
         delete runtime.endpoints[endpointName];
         if (Object.keys(runtime.endpoints).length === 0) {
@@ -141,9 +151,9 @@ export class RuntimeEndpointPrimitive extends BasePrimitive<AddRuntimeEndpointOp
         }
       }
 
-      return { success: false, error: `Runtime endpoint "${name}" not found.` };
+      return { success: false, error: new ResourceNotFoundError(`Runtime endpoint "${name}" not found.`) };
     } catch (err) {
-      return { success: false, error: getErrorMessage(err) };
+      return { success: false, error: toError(err) };
     }
   }
 
@@ -263,11 +273,11 @@ export class RuntimeEndpointPrimitive extends BasePrimitive<AddRuntimeEndpointOp
             });
 
             if (!result.success) {
-              throw new Error(result.error);
+              throw result.error;
             }
 
             if (cliOptions.json) {
-              console.log(JSON.stringify(result));
+              console.log(JSON.stringify(serializeResult(result)));
             } else {
               console.log(`Added runtime endpoint '${cliOptions.endpoint}' to runtime '${cliOptions.runtime}'`);
             }
@@ -306,7 +316,7 @@ export class RuntimeEndpointPrimitive extends BasePrimitive<AddRuntimeEndpointOp
                 resourceName: cliOptions.name,
                 message: result.success ? `Removed runtime endpoint '${cliOptions.name}'` : undefined,
                 note: result.success ? SOURCE_CODE_NOTE : undefined,
-                error: !result.success ? result.error : undefined,
+                error: !result.success ? result.error.message : undefined,
               })
             );
             process.exit(result.success ? 0 : 1);

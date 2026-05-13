@@ -1,3 +1,4 @@
+import { toError } from '../../../lib';
 import type { AgentCoreProjectSpec } from '../../../schema';
 import { NAME_REGEX } from './constants';
 import { executeCdkImportPipeline } from './import-pipeline';
@@ -228,7 +229,7 @@ export async function executeResourceImport<TDetail, TSummary>(
       logger.finalize(false);
       return {
         success: false,
-        error: pipelineResult.error,
+        error: new Error(pipelineResult.error ?? 'Pipeline failed'),
         resourceType: descriptor.resourceType,
         resourceName: localName,
         logPath: logger.getRelativeLogPath(),
@@ -254,7 +255,7 @@ export async function executeResourceImport<TDetail, TSummary>(
     }
     return {
       success: false,
-      error: message,
+      error: toError(err),
       resourceType: descriptor.resourceType,
       resourceName: options.name ?? '',
       logPath: importCtx?.logger.getRelativeLogPath(),

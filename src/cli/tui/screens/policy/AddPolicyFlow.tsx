@@ -139,7 +139,7 @@ export function AddPolicyFlow({ isInteractive = true, onExit, onBack, onDev, onD
       () => policyEnginePrimitive.add({ name: engineName })
     );
     if (!result.success) {
-      setFlow({ name: 'error', message: result.error });
+      setFlow({ name: 'error', message: result.error.message });
       return;
     }
     setEngineNames(prev => [...prev, engineName]);
@@ -184,7 +184,7 @@ export function AddPolicyFlow({ isInteractive = true, onExit, onBack, onDev, onD
       setPolicyNames(prev => [...prev, config.name]);
       setFlow({ name: 'policy-success', policyName: config.name, engineName: config.engine });
     } else {
-      setFlow({ name: 'error', message: result.error });
+      setFlow({ name: 'error', message: result.error.message });
     }
   }, []);
 

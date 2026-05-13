@@ -82,7 +82,7 @@ primitives/
 ├── registry.ts                # Singleton instances + ALL_PRIMITIVES array
 ├── credential-utils.ts        # Shared credential env var name computation
 ├── constants.ts               # SOURCE_CODE_NOTE and other shared constants
-├── types.ts                   # AddResult, RemovableResource, RemovalResult, etc.
+├── types.ts                   # RemovableResource, AddScreenComponent, etc.
 └── index.ts                   # Barrel exports
 ```
 
@@ -92,8 +92,8 @@ Every primitive extends `BasePrimitive<TAddOptions, TRemovable>` and implements:
 
 - `kind` — resource identifier (`'agent'`, `'memory'`, `'identity'`, `'gateway'`, `'mcp-tool'`)
 - `label` — human-readable name (`'Agent'`, `'Memory'`, `'Identity'`)
-- `add(options)` — create a resource, returns `AddResult`
-- `remove(name)` — remove a resource, returns `RemovalResult`
+- `add(options)` — create a resource, returns `Result<T>`
+- `remove(name)` — remove a resource, returns `Result`
 - `previewRemove(name)` — preview what removal will do
 - `getRemovable()` — list resources available for removal
 - `registerCommands(addCmd, removeCmd)` — register CLI subcommands
@@ -119,7 +119,8 @@ BasePrimitive provides shared helpers:
 - **Absorb, don't wrap.** Each primitive owns its logic directly. Do not create facade files that delegate to
   primitives.
 - **No backward-compatibility shims.** This is a CLI, not a library. If the CLI functions the same, delete old files.
-- **Use `{ success, error? }` result format** throughout (never `{ ok, error }`). See `AddResult` and `RemovalResult`.
+- **Use the discriminated `Result<T, E>` union** from `src/lib/result.ts` throughout. See typed error classes in
+  `src/lib/errors/types.ts`.
 - **Dynamic imports for ink/React only.** TUI components (ink, react, screen components) must be dynamically imported
   inside Commander action handlers to prevent esbuild async module propagation issues. All other imports go at the top
   of the file. See the esbuild section below.

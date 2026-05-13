@@ -1,3 +1,5 @@
+import type { Result } from '../../../lib/result';
+
 export interface InvokeOptions {
   agentName?: string;
   targetName?: string;
@@ -22,12 +24,10 @@ export interface InvokeOptions {
   bearerToken?: string;
 }
 
-export interface InvokeResult {
-  success: boolean;
+export type InvokeResult = Result & {
+  logFilePath?: string;
   agentName?: string;
   targetName?: string;
   response?: string;
   sessionId?: string;
-  error?: string;
-  logFilePath?: string;
-}
+};

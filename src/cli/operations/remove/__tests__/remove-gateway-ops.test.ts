@@ -1,3 +1,4 @@
+import { ResourceNotFoundError } from '../../../../lib';
 import { GatewayPrimitive } from '../../../primitives/GatewayPrimitive.js';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
@@ -10,6 +11,15 @@ vi.mock('../../../../lib/index.js', () => ({
     readProjectSpec = mockReadProjectSpec;
     writeProjectSpec = mockWriteProjectSpec;
     configExists = mockConfigExists;
+  },
+  findConfigRoot: () => '/fake/root',
+  toError: (err: unknown) => (err instanceof Error ? err : new Error(String(err))),
+  serializeResult: (r: unknown) => r,
+  ResourceNotFoundError: class extends Error {
+    constructor(m: string) {
+      super(m);
+      this.name = 'ResourceNotFoundError';
+    }
   },
 }));
 
@@ -101,7 +111,7 @@ describe('remove', () => {
 
     const result = await primitive.remove('missing');
 
-    expect(result).toEqual({ success: false, error: 'Gateway "missing" not found.' });
+    expect(result).toEqual({ success: false, error: new ResourceNotFoundError('Gateway "missing" not found.') });
   });
 
   it('returns error on exception', async () => {
@@ -109,6 +119,6 @@ describe('remove', () => {
 
     const result = await primitive.remove('gw1');
 
-    expect(result).toEqual({ success: false, error: 'read fail' });
+    expect(result).toEqual({ success: false, error: new Error('read fail') });
   });
 });

@@ -41,7 +41,7 @@ const CreateAttrs = safeSchema({
   memory: Memory,
   protocol: Protocol,
   build: Build,
-  agent_type: z.enum(['create', 'import']),
+  agent_type: AgentType,
   network_mode: NetworkMode,
   has_agent: z.boolean(),
 });
@@ -100,7 +100,7 @@ const DeployAttrs = safeSchema({
   gateway_target_count: Count,
   policy_engine_count: Count,
   policy_count: Count,
-  has_diff: z.boolean(),
+  mode: z.enum(['deploy', 'dry-run', 'diff']),
 });
 
 const DevAttrs = safeSchema({
