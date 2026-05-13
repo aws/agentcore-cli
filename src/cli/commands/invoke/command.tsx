@@ -1,4 +1,4 @@
-import { type Result, serializeResult } from '../../../lib';
+import { type Result, ValidationError, serializeResult } from '../../../lib';
 import { getErrorMessage } from '../../errors';
 import { withCommandRunTelemetry } from '../../telemetry/cli-command-run.js';
 import { AuthType, Protocol, standardize } from '../../telemetry/schemas/common-shapes.js';
@@ -6,7 +6,7 @@ import { COMMAND_DESCRIPTIONS } from '../../tui/copy';
 import { requireProject, requireTTY } from '../../tui/guards';
 import { InvokeScreen } from '../../tui/screens/invoke';
 import { parseHeaderFlags } from '../shared/header-utils';
-import { handleInvoke, loadInvokeConfig } from './action';
+import { type InvokeContext, handleInvoke, loadInvokeConfig } from './action';
 import { resolvePrompt } from './resolve-prompt';
 import type { InvokeOptions, InvokeResult } from './types';
 import { validateInvokeOptions } from './validate';
@@ -36,16 +36,16 @@ function resolveProtocol(options: InvokeOptions, projectProtocol?: string): stri
   return 'http';
 }
 
-async function handleInvokeCLI(options: InvokeOptions): Promise<InvokeResult> {
+async function handleInvokeCLI(options: InvokeOptions, preloadedContext?: InvokeContext): Promise<InvokeResult> {
   const validation = validateInvokeOptions(options);
   if (!validation.valid) {
-    return { success: false, error: new Error(validation.error) };
+    return { success: false, error: new ValidationError(validation.error ?? 'Validation failed') };
   }
 
   let spinner: NodeJS.Timeout | undefined;
 
   try {
-    const context = await loadInvokeConfig();
+    const context = preloadedContext ?? (await loadInvokeConfig());
 
     // Show spinner for non-streaming, non-json, non-exec invocations
     if (!options.stream && !options.json && !options.exec) {
@@ -150,19 +150,14 @@ export const registerInvoke = (program: Command) => {
         try {
           requireProject();
 
-          // Parse custom headers
-          let headers: Record<string, string> | undefined;
-          if (cliOptions.header && cliOptions.header.length > 0) {
-            headers = parseHeaderFlags(cliOptions.header);
-          }
-
-          // Determine protocol from project config (best-effort for telemetry)
+          // Load config once for protocol resolution and to pass into handleInvokeCLI
+          let invokeContext: InvokeContext | undefined;
           let agentProtocol: string | undefined;
           try {
-            const { project } = await loadInvokeConfig();
+            invokeContext = await loadInvokeConfig();
             const agent = cliOptions.runtime
-              ? project.runtimes.find(a => a.name === cliOptions.runtime)
-              : project.runtimes[0];
+              ? invokeContext.project.runtimes.find(a => a.name === cliOptions.runtime)
+              : invokeContext.project.runtimes[0];
             agentProtocol = agent?.protocol;
           } catch {
             // Config load failure will be caught again inside handleInvokeCLI
@@ -189,43 +184,62 @@ export const registerInvoke = (program: Command) => {
             cliOptions.exec ||
             cliOptions.bearerToken
           ) {
-            const options: InvokeOptions = {
-              prompt: resolved.prompt,
-              agentName: cliOptions.runtime,
-              targetName: cliOptions.target ?? 'default',
-              sessionId: cliOptions.sessionId,
-              userId: cliOptions.userId,
-              json: cliOptions.json,
-              stream: cliOptions.stream,
-              tool: cliOptions.tool,
-              input: cliOptions.input,
-              exec: cliOptions.exec,
-              timeout: cliOptions.timeout,
-              headers,
-              bearerToken: cliOptions.bearerToken,
-            };
-
             const result = await withCommandRunTelemetry(
               'invoke',
               {
-                has_stream: options.stream ?? false,
-                has_session_id: !!options.sessionId,
-                auth_type: standardize(AuthType, options.bearerToken ? 'bearer_token' : 'sigv4'),
-                protocol: standardize(Protocol, resolveProtocol(options, agentProtocol)),
+                has_stream: cliOptions.stream ?? false,
+                has_session_id: !!cliOptions.sessionId,
+                auth_type: standardize(AuthType, cliOptions.bearerToken ? 'bearer_token' : 'sigv4'),
+                protocol: standardize(
+                  Protocol,
+                  resolveProtocol({ tool: cliOptions.tool } as InvokeOptions, agentProtocol)
+                ),
               },
               async (): Promise<InvokeResult> => {
                 if (!resolved.success) {
-                  return { success: false, error: new Error(resolved.error ?? 'Prompt resolution failed') };
+                  return { success: false, error: new ValidationError(resolved.error ?? 'Prompt resolution failed') };
                 }
-                return handleInvokeCLI(options);
+
+                // Parse custom headers
+                let headers: Record<string, string> | undefined;
+                if (cliOptions.header && cliOptions.header.length > 0) {
+                  headers = parseHeaderFlags(cliOptions.header);
+                }
+
+                const options: InvokeOptions = {
+                  prompt: resolved.prompt,
+                  agentName: cliOptions.runtime,
+                  targetName: cliOptions.target ?? 'default',
+                  sessionId: cliOptions.sessionId,
+                  userId: cliOptions.userId,
+                  json: cliOptions.json,
+                  stream: cliOptions.stream,
+                  tool: cliOptions.tool,
+                  input: cliOptions.input,
+                  exec: cliOptions.exec,
+                  timeout: cliOptions.timeout,
+                  headers,
+                  bearerToken: cliOptions.bearerToken,
+                };
+
+                return handleInvokeCLI(options, invokeContext);
               }
             );
 
-            printInvokeResult(result, options);
+            printInvokeResult(result, {
+              json: cliOptions.json,
+              stream: cliOptions.stream,
+            });
             process.exit(result.success ? 0 : 1);
           } else {
             // No CLI options - interactive TUI mode (headers still passed if provided)
             requireTTY();
+
+            // Parse custom headers for TUI mode
+            let headers: Record<string, string> | undefined;
+            if (cliOptions.header && cliOptions.header.length > 0) {
+              headers = parseHeaderFlags(cliOptions.header);
+            }
 
             const tuiResult = await withCommandRunTelemetry(
               'invoke',
