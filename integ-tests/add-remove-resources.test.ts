@@ -44,7 +44,7 @@ describe('integration: add and remove resources', () => {
       telemetry.assertMetricEmitted({ command: 'add.memory', exit_reason: 'success' });
     });
 
-    it('adds a memory with EPISODIC strategy and verifies reflectionNamespaces', async () => {
+    it('adds a memory with EPISODIC strategy and verifies reflectionNamespaceTemplates', async () => {
       const episodicMemName = `EpiMem${Date.now().toString().slice(-6)}`;
       const result = await runCLI(
         ['add', 'memory', '--name', episodicMemName, '--strategies', 'EPISODIC', '--json'],
@@ -56,19 +56,19 @@ describe('integration: add and remove resources', () => {
       const json = JSON.parse(result.stdout);
       expect(json.success).toBe(true);
 
-      // Verify EPISODIC in config with reflectionNamespaces
+      // Verify EPISODIC in config with reflectionNamespaceTemplates
       const config = await readProjectConfig(project.projectPath);
       const memories = config.memories as {
         name: string;
-        strategies: { type: string; reflectionNamespaces?: string[] }[];
+        strategies: { type: string; reflectionNamespaceTemplates?: string[] }[];
       }[];
       const mem = memories.find(m => m.name === episodicMemName);
       expect(mem, 'Memory should exist').toBeTruthy();
 
       const episodic = mem!.strategies.find(s => s.type === 'EPISODIC');
       expect(episodic, 'EPISODIC strategy should exist').toBeTruthy();
-      expect(episodic!.reflectionNamespaces, 'Should have reflectionNamespaces').toBeDefined();
-      expect(episodic!.reflectionNamespaces!.length).toBeGreaterThan(0);
+      expect(episodic!.reflectionNamespaceTemplates, 'Should have reflectionNamespaceTemplates').toBeDefined();
+      expect(episodic!.reflectionNamespaceTemplates!.length).toBeGreaterThan(0);
 
       telemetry.assertMetricEmitted({
         command: 'add.memory',

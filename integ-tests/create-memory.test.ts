@@ -80,7 +80,7 @@ describe.skipIf(!prereqs.npm || !prereqs.git)('integration: create with memory o
 
     // longAndShortTerm should have strategies defined
     const memory = memories![0]!;
-    const strategies = memory.strategies as { type: string; reflectionNamespaces?: string[] }[] | undefined;
+    const strategies = memory.strategies as { type: string; reflectionNamespaceTemplates?: string[] }[] | undefined;
     expect(strategies, 'memory should have strategies').toBeDefined();
     expect(strategies!.length).toBe(4);
 
@@ -91,10 +91,10 @@ describe.skipIf(!prereqs.npm || !prereqs.git)('integration: create with memory o
     expect(types).toContain('SUMMARIZATION');
     expect(types).toContain('EPISODIC');
 
-    // Verify EPISODIC has reflectionNamespaces
+    // Verify EPISODIC has reflectionNamespaceTemplates
     const episodic = strategies!.find(s => s.type === 'EPISODIC');
     expect(episodic, 'EPISODIC strategy should exist').toBeTruthy();
-    expect(episodic!.reflectionNamespaces, 'EPISODIC should have reflectionNamespaces').toBeDefined();
-    expect(episodic!.reflectionNamespaces!.length).toBeGreaterThan(0);
+    expect(episodic!.reflectionNamespaceTemplates, 'EPISODIC should have reflectionNamespaceTemplates').toBeDefined();
+    expect(episodic!.reflectionNamespaceTemplates!.length).toBeGreaterThan(0);
   });
 });

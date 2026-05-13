@@ -31,7 +31,7 @@ def main():
                 "semanticMemoryStrategy": {
                     "name": "bugbash_semantic",
                     "description": "Semantic strategy for bugbash testing",
-                    "namespaces": ["default"],
+                    "namespaceTemplates": ["default"],
                 }
             },
             {
@@ -68,7 +68,7 @@ def main():
     print(f"  eventExpiryDuration: 30")
     print(f"  executionRoleArn: {role_arn}")
     print("  strategies:")
-    print("    - type: SEMANTIC, name: bugbash_semantic, namespaces: [default]")
+    print("    - type: SEMANTIC, name: bugbash_semantic, namespaceTemplates: [default]")
     print("    - type: SUMMARIZATION, name: bugbash_summary")
     print("    - type: USER_PREFERENCE, name: bugbash_userpref")
     print("  tags: {env: bugbash, team: agentcore-cli}")
