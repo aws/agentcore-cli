@@ -148,7 +148,9 @@ export async function* invokeAguiStreaming(options: InvokeStreamingOptions): Asy
     }
   }
 
-  const finalError = new ConnectionError(lastError ?? new Error('Failed to connect to AGUI server after retries'));
+  const finalError = new ConnectionError(lastError?.message ?? 'Failed to connect to AGUI server after retries', {
+    cause: lastError,
+  });
   logger?.log?.('error', `Failed to connect after ${maxRetries} attempts: ${finalError.message}`);
   throw finalError;
 }

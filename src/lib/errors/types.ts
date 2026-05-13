@@ -22,16 +22,6 @@ export abstract class BaseError extends Error {
 }
 
 /**
- * Error indicating a network connection failure (e.g., server not reachable).
- */
-export class ConnectionError extends Error {
-  constructor(message: string, options?: ErrorOptions) {
-    super(message, options);
-    this.name = 'ConnectionError';
-  }
-}
-
-/**
  * Converts an unknown thrown value to an Error instance.
  * Use in catch blocks to ensure the error field is always an Error object.
  */
@@ -278,8 +268,8 @@ export class ServerError extends BaseError {
  * Error thrown when the connection to the dev server fails.
  */
 export class ConnectionError extends BaseError {
-  constructor(cause: Error, options?: BaseErrorOptions) {
-    super(cause.message, { defaultSource: 'client', cause, ...options });
+  constructor(message: string, options?: BaseErrorOptions) {
+    super(message, { defaultSource: 'client', ...options });
   }
 }
 

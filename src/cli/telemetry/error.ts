@@ -17,8 +17,8 @@ const SDK_ERROR_MAP: Record<string, { category: ErrorNameValue; source: ErrorSou
   UnauthorizedAccess: { category: 'AwsCredentialsError', source: 'user' },
   ValidationException: { category: 'ValidationError', source: 'user' },
   ResourceNotFoundException: { category: 'ResourceNotFoundError', source: 'user' },
-  ConflictException: { category: 'ConflictError', source: 'service' },
-  ResourceAlreadyExistsException: { category: 'ConflictError', source: 'service' },
+  ConflictException: { category: 'ConflictError', source: 'user' },
+  ResourceAlreadyExistsException: { category: 'ConflictError', source: 'user' },
 };
 
 export function classifyError(err: unknown): { category: ErrorNameValue; source: ErrorSource } {

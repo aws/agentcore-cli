@@ -1,7 +1,6 @@
 import type { AgentEnvSpec, NodeRuntime, RuntimeVersion } from '../../schema';
-import { NPM_INSTALL_HINT, getArtifactZipName } from '../constants';
+import { getArtifactZipName } from '../constants';
 import { PackagingError } from '../errors/types';
-import { runSubprocessCapture, runSubprocessCaptureSync } from '../utils/subprocess';
 import {
   createZipFromDir,
   createZipFromDirSync,

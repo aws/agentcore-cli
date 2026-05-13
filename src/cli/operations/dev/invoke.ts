@@ -196,7 +196,9 @@ export async function* invokeAgentStreaming(
   }
 
   // Log final failure after all retries exhausted with full details
-  const finalError = new ConnectionError(lastError ?? new Error('Failed to connect to dev server after retries'));
+  const finalError = new ConnectionError(lastError?.message ?? 'Failed to connect to dev server after retries', {
+    cause: lastError,
+  });
   logger?.log?.('error', `Failed to connect after ${maxRetries} attempts: ${finalError.message}`);
   throw finalError;
 }
@@ -304,7 +306,9 @@ export async function invokeAgent(portOrOptions: number | InvokeOptions, message
   }
 
   // Log final failure after all retries exhausted with full details
-  const finalError = new ConnectionError(lastError ?? new Error('Failed to connect to dev server after retries'));
+  const finalError = new ConnectionError(lastError?.message ?? 'Failed to connect to dev server after retries', {
+    cause: lastError,
+  });
   logger?.log?.('error', `Failed to connect after ${maxRetries} attempts: ${finalError.message}`);
   throw finalError;
 }
