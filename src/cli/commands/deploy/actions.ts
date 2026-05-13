@@ -43,7 +43,9 @@ import {
 } from '../../operations/deploy/post-deploy-config-bundles';
 import { setupHttpGateways } from '../../operations/deploy/post-deploy-http-gateways';
 import { enableOnlineEvalConfigs } from '../../operations/deploy/post-deploy-online-evals';
+import { toStackName } from '../import/import-utils';
 import type { DeployResult } from './types';
+import { StackSelectionStrategy } from '@aws-cdk/toolkit-lib';
 
 export interface ValidatedDeployOptions {
   target: string;
@@ -248,7 +250,13 @@ export async function handleDeploy(options: ValidatedDeployOptions): Promise<Dep
       logger.finalize(false);
       return { success: false, error: 'No stacks found to deploy', logPath: logger.getRelativeLogPath() };
     }
-    const stackName = stackNames[0]!;
+    const targetStackName = toStackName(context.projectSpec.name, target.name);
+    if (!stackNames.includes(targetStackName)) {
+      endStep('error', `Stack "${targetStackName}" not found in synthesized stacks`);
+      logger.finalize(false);
+      return { success: false, error: `Stack "${targetStackName}" not found`, logPath: logger.getRelativeLogPath() };
+    }
+    const stackName = targetStackName;
     endStep('success');
 
     // Check if bootstrap needed
@@ -272,7 +280,7 @@ export async function handleDeploy(options: ValidatedDeployOptions): Promise<Dep
 
     // Check stack deployability
     startStep('Check stack status');
-    const deployabilityCheck = await checkStackDeployability(target.region, stackNames);
+    const deployabilityCheck = await checkStackDeployability(target.region, [stackName]);
     if (!deployabilityCheck.canDeploy) {
       endStep('error', deployabilityCheck.message);
       logger.finalize(false);
@@ -311,7 +319,9 @@ export async function handleDeploy(options: ValidatedDeployOptions): Promise<Dep
         }
       });
       diffIoHost.setVerbose(true);
-      await toolkitWrapper.diff();
+      await toolkitWrapper.diff({
+        stacks: { strategy: StackSelectionStrategy.PATTERN_MUST_MATCH, patterns: [targetStackName] },
+      });
       if (!hasDiffContent) {
         console.log('No stack differences detected.');
       }
@@ -349,7 +359,9 @@ export async function handleDeploy(options: ValidatedDeployOptions): Promise<Dep
       switchableIoHost.setVerbose(true);
     }
 
-    await toolkitWrapper.deploy();
+    await toolkitWrapper.deploy({
+      stacks: { strategy: StackSelectionStrategy.PATTERN_MUST_MATCH, patterns: [targetStackName] },
+    });
 
     // Disable verbose output
     if (switchableIoHost) {
