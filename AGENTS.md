@@ -164,7 +164,7 @@ To add a new error:
 ```ts
 export class MyNewError extends BaseError {
   constructor(message: string, options?: BaseErrorOptions) {
-    super(message, 'user', options);
+    super(message, { defaultSource: 'user', ...options });
   }
 }
 ```
