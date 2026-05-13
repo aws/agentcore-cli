@@ -1571,3 +1571,111 @@ describe('validateAddAgentOptions - session storage mount path', () => {
     expect(result.valid).toBe(true);
   });
 });
+
+describe('validateAddAgentOptions - S3 Files access point', () => {
+  const baseOptions: AddAgentOptions = {
+    name: 'TestAgent',
+    type: 'byo',
+    language: 'Python',
+    framework: 'Strands',
+    modelProvider: 'Bedrock',
+    build: 'CodeZip',
+    codeLocation: './app/test/',
+  };
+
+  it('accepts valid S3 Files access point options', () => {
+    const result = validateAddAgentOptions({
+      ...baseOptions,
+      s3FilesAccessPointArn: 'arn:aws:s3files:us-east-1:123456789012:access-point/my-ap',
+      s3FilesMountPath: '/mnt/skills',
+    });
+    expect(result.valid).toBe(true);
+  });
+
+  it('rejects s3-files-access-point-arn without mount path', () => {
+    const result = validateAddAgentOptions({
+      ...baseOptions,
+      s3FilesAccessPointArn: 'arn:aws:s3files:us-east-1:123456789012:access-point/my-ap',
+    });
+    expect(result.valid).toBe(false);
+    expect(result.error).toContain('--s3-files-mount-path');
+  });
+
+  it('rejects s3-files-mount-path without ARN', () => {
+    const result = validateAddAgentOptions({
+      ...baseOptions,
+      s3FilesMountPath: '/mnt/skills',
+    });
+    expect(result.valid).toBe(false);
+    expect(result.error).toContain('--s3-files-access-point-arn');
+  });
+
+  it('rejects invalid ARN format', () => {
+    const result = validateAddAgentOptions({
+      ...baseOptions,
+      s3FilesAccessPointArn: 'not-an-arn',
+      s3FilesMountPath: '/mnt/skills',
+    });
+    expect(result.valid).toBe(false);
+    expect(result.error).toContain('--s3-files-access-point-arn');
+  });
+
+  it('rejects invalid mount path', () => {
+    const result = validateAddAgentOptions({
+      ...baseOptions,
+      s3FilesAccessPointArn: 'arn:aws:s3files:us-east-1:123456789012:access-point/my-ap',
+      s3FilesMountPath: '/data/skills',
+    });
+    expect(result.valid).toBe(false);
+    expect(result.error).toContain('--s3-files-mount-path');
+  });
+});
+
+describe('validateAddAgentOptions - EFS access point', () => {
+  const baseOptions: AddAgentOptions = {
+    name: 'TestAgent',
+    type: 'byo',
+    language: 'Python',
+    framework: 'Strands',
+    modelProvider: 'Bedrock',
+    build: 'CodeZip',
+    codeLocation: './app/test/',
+  };
+
+  it('accepts valid EFS access point options', () => {
+    const result = validateAddAgentOptions({
+      ...baseOptions,
+      efsAccessPointArn: 'arn:aws:elasticfilesystem:us-east-1:123456789012:access-point/fsap-0123456789abcdef0',
+      efsMountPath: '/mnt/shared',
+    });
+    expect(result.valid).toBe(true);
+  });
+
+  it('rejects efs-access-point-arn without mount path', () => {
+    const result = validateAddAgentOptions({
+      ...baseOptions,
+      efsAccessPointArn: 'arn:aws:elasticfilesystem:us-east-1:123456789012:access-point/fsap-0123456789abcdef0',
+    });
+    expect(result.valid).toBe(false);
+    expect(result.error).toContain('--efs-mount-path');
+  });
+
+  it('rejects efs-mount-path without ARN', () => {
+    const result = validateAddAgentOptions({
+      ...baseOptions,
+      efsMountPath: '/mnt/shared',
+    });
+    expect(result.valid).toBe(false);
+    expect(result.error).toContain('--efs-access-point-arn');
+  });
+
+  it('rejects invalid ARN format', () => {
+    const result = validateAddAgentOptions({
+      ...baseOptions,
+      efsAccessPointArn: 'not-an-arn',
+      efsMountPath: '/mnt/shared',
+    });
+    expect(result.valid).toBe(false);
+    expect(result.error).toContain('--efs-access-point-arn');
+  });
+});

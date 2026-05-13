@@ -19,7 +19,9 @@
     "managedBy": {
       "default": "CDK",
       "type": "string",
-      "enum": ["CDK"]
+      "enum": [
+        "CDK"
+      ]
     },
     "tags": {
       "type": "object",
@@ -53,7 +55,10 @@
           },
           "build": {
             "type": "string",
-            "enum": ["CodeZip", "Container"]
+            "enum": [
+              "CodeZip",
+              "Container"
+            ]
           },
           "entrypoint": {
             "type": "string",
@@ -74,11 +79,21 @@
             "anyOf": [
               {
                 "type": "string",
-                "enum": ["PYTHON_3_10", "PYTHON_3_11", "PYTHON_3_12", "PYTHON_3_13", "PYTHON_3_14"]
+                "enum": [
+                  "PYTHON_3_10",
+                  "PYTHON_3_11",
+                  "PYTHON_3_12",
+                  "PYTHON_3_13",
+                  "PYTHON_3_14"
+                ]
               },
               {
                 "type": "string",
-                "enum": ["NODE_18", "NODE_20", "NODE_22"]
+                "enum": [
+                  "NODE_18",
+                  "NODE_20",
+                  "NODE_22"
+                ]
               }
             ]
           },
@@ -97,13 +112,19 @@
                   "type": "string"
                 }
               },
-              "required": ["name", "value"],
+              "required": [
+                "name",
+                "value"
+              ],
               "additionalProperties": false
             }
           },
           "networkMode": {
             "type": "string",
-            "enum": ["PUBLIC", "VPC"]
+            "enum": [
+              "PUBLIC",
+              "VPC"
+            ]
           },
           "networkConfig": {
             "type": "object",
@@ -127,7 +148,10 @@
                 }
               }
             },
-            "required": ["subnets", "securityGroups"],
+            "required": [
+              "subnets",
+              "securityGroups"
+            ],
             "additionalProperties": false
           },
           "instrumentation": {
@@ -142,7 +166,12 @@
           },
           "protocol": {
             "type": "string",
-            "enum": ["HTTP", "MCP", "A2A", "AGUI"]
+            "enum": [
+              "HTTP",
+              "MCP",
+              "A2A",
+              "AGUI"
+            ]
           },
           "requestHeaderAllowlist": {
             "maxItems": 20,
@@ -156,7 +185,10 @@
           },
           "authorizerType": {
             "type": "string",
-            "enum": ["AWS_IAM", "CUSTOM_JWT"]
+            "enum": [
+              "AWS_IAM",
+              "CUSTOM_JWT"
+            ]
           },
           "authorizerConfiguration": {
             "type": "object",
@@ -203,14 +235,21 @@
                         },
                         "inboundTokenClaimValueType": {
                           "type": "string",
-                          "enum": ["STRING", "STRING_ARRAY"]
+                          "enum": [
+                            "STRING",
+                            "STRING_ARRAY"
+                          ]
                         },
                         "authorizingClaimMatchValue": {
                           "type": "object",
                           "properties": {
                             "claimMatchOperator": {
                               "type": "string",
-                              "enum": ["EQUALS", "CONTAINS", "CONTAINS_ANY"]
+                              "enum": [
+                                "EQUALS",
+                                "CONTAINS",
+                                "CONTAINS_ANY"
+                              ]
                             },
                             "claimMatchValue": {
                               "type": "object",
@@ -236,16 +275,25 @@
                               "additionalProperties": false
                             }
                           },
-                          "required": ["claimMatchOperator", "claimMatchValue"],
+                          "required": [
+                            "claimMatchOperator",
+                            "claimMatchValue"
+                          ],
                           "additionalProperties": false
                         }
                       },
-                      "required": ["inboundTokenClaimName", "inboundTokenClaimValueType", "authorizingClaimMatchValue"],
+                      "required": [
+                        "inboundTokenClaimName",
+                        "inboundTokenClaimValueType",
+                        "authorizingClaimMatchValue"
+                      ],
                       "additionalProperties": false
                     }
                   }
                 },
-                "required": ["discoveryUrl"],
+                "required": [
+                  "discoveryUrl"
+                ],
                 "additionalProperties": false
               }
             },
@@ -294,11 +342,48 @@
                       "pattern": "^\\/mnt\\/[^/]+$"
                     }
                   },
-                  "required": ["mountPath"],
+                  "required": [
+                    "mountPath"
+                  ],
+                  "additionalProperties": false
+                },
+                "s3FilesAccessPoint": {
+                  "type": "object",
+                  "properties": {
+                    "accessPointArn": {
+                      "type": "string",
+                      "pattern": "^arn:[^:]+:s3files:[^:]+:\\d{12}:access-point\\/[a-zA-Z0-9-]+$"
+                    },
+                    "mountPath": {
+                      "type": "string",
+                      "pattern": "^\\/mnt\\/[^/]+$"
+                    }
+                  },
+                  "required": [
+                    "accessPointArn",
+                    "mountPath"
+                  ],
+                  "additionalProperties": false
+                },
+                "efsAccessPoint": {
+                  "type": "object",
+                  "properties": {
+                    "accessPointArn": {
+                      "type": "string",
+                      "pattern": "^arn:[^:]+:elasticfilesystem:[^:]+:\\d{12}:access-point\\/fsap-[a-f0-9]+$"
+                    },
+                    "mountPath": {
+                      "type": "string",
+                      "pattern": "^\\/mnt\\/[^/]+$"
+                    }
+                  },
+                  "required": [
+                    "accessPointArn",
+                    "mountPath"
+                  ],
                   "additionalProperties": false
                 }
               },
-              "required": ["sessionStorage"],
               "additionalProperties": false
             }
           },
@@ -323,12 +408,19 @@
                   "maxLength": 200
                 }
               },
-              "required": ["version"],
+              "required": [
+                "version"
+              ],
               "additionalProperties": false
             }
           }
         },
-        "required": ["name", "build", "entrypoint", "codeLocation"],
+        "required": [
+          "name",
+          "build",
+          "entrypoint",
+          "codeLocation"
+        ],
         "additionalProperties": false
       }
     },
@@ -357,7 +449,12 @@
               "properties": {
                 "type": {
                   "type": "string",
-                  "enum": ["SEMANTIC", "SUMMARIZATION", "USER_PREFERENCE", "EPISODIC"]
+                  "enum": [
+                    "SEMANTIC",
+                    "SUMMARIZATION",
+                    "USER_PREFERENCE",
+                    "EPISODIC"
+                  ]
                 },
                 "name": {
                   "type": "string",
@@ -381,7 +478,9 @@
                   }
                 }
               },
-              "required": ["type"],
+              "required": [
+                "type"
+              ],
               "additionalProperties": false
             }
           },
@@ -433,28 +532,44 @@
                               },
                               "level": {
                                 "type": "string",
-                                "enum": ["FULL_CONTENT", "METADATA_ONLY"]
+                                "enum": [
+                                  "FULL_CONTENT",
+                                  "METADATA_ONLY"
+                                ]
                               }
                             },
-                            "required": ["type", "level"],
+                            "required": [
+                              "type",
+                              "level"
+                            ],
                             "additionalProperties": false
                           }
                         }
                       },
-                      "required": ["dataStreamArn", "contentConfigurations"],
+                      "required": [
+                        "dataStreamArn",
+                        "contentConfigurations"
+                      ],
                       "additionalProperties": false
                     }
                   },
-                  "required": ["kinesis"],
+                  "required": [
+                    "kinesis"
+                  ],
                   "additionalProperties": false
                 }
               }
             },
-            "required": ["resources"],
+            "required": [
+              "resources"
+            ],
             "additionalProperties": false
           }
         },
-        "required": ["name", "eventExpiryDuration"],
+        "required": [
+          "name",
+          "eventExpiryDuration"
+        ],
         "additionalProperties": false
       }
     },
@@ -477,7 +592,10 @@
                 "pattern": "^[a-zA-Z0-9\\-_]+$"
               }
             },
-            "required": ["authorizerType", "name"],
+            "required": [
+              "authorizerType",
+              "name"
+            ],
             "additionalProperties": false
           },
           {
@@ -512,10 +630,16 @@
               },
               "usage": {
                 "type": "string",
-                "enum": ["inbound", "outbound"]
+                "enum": [
+                  "inbound",
+                  "outbound"
+                ]
               }
             },
-            "required": ["authorizerType", "name"],
+            "required": [
+              "authorizerType",
+              "name"
+            ],
             "additionalProperties": false
           }
         ]
@@ -535,7 +659,11 @@
           },
           "level": {
             "type": "string",
-            "enum": ["SESSION", "TRACE", "TOOL_CALL"]
+            "enum": [
+              "SESSION",
+              "TRACE",
+              "TOOL_CALL"
+            ]
           },
           "description": {
             "type": "string"
@@ -576,7 +704,11 @@
                               "minLength": 1
                             }
                           },
-                          "required": ["value", "label", "definition"],
+                          "required": [
+                            "value",
+                            "label",
+                            "definition"
+                          ],
                           "additionalProperties": false
                         }
                       },
@@ -594,7 +726,10 @@
                               "minLength": 1
                             }
                           },
-                          "required": ["label", "definition"],
+                          "required": [
+                            "label",
+                            "definition"
+                          ],
                           "additionalProperties": false
                         }
                       }
@@ -602,7 +737,11 @@
                     "additionalProperties": false
                   }
                 },
-                "required": ["model", "instructions", "ratingScale"],
+                "required": [
+                  "model",
+                  "instructions",
+                  "ratingScale"
+                ],
                 "additionalProperties": false
               },
               "codeBased": {
@@ -634,7 +773,9 @@
                         }
                       }
                     },
-                    "required": ["codeLocation"],
+                    "required": [
+                      "codeLocation"
+                    ],
                     "additionalProperties": false
                   },
                   "external": {
@@ -646,7 +787,9 @@
                         "pattern": "^arn:aws[a-z-]*:lambda:[a-z0-9-]+:\\d{12}:function:.+$"
                       }
                     },
-                    "required": ["lambdaArn"],
+                    "required": [
+                      "lambdaArn"
+                    ],
                     "additionalProperties": false
                   }
                 },
@@ -654,6 +797,10 @@
               }
             },
             "additionalProperties": false
+          },
+          "kmsKeyArn": {
+            "type": "string",
+            "pattern": "^arn:[^:]+:kms:[a-zA-Z0-9-]*:[0-9]{12}:key\\/[a-zA-Z0-9-]{36}$"
           },
           "tags": {
             "type": "object",
@@ -670,7 +817,11 @@
             }
           }
         },
-        "required": ["name", "level", "config"],
+        "required": [
+          "name",
+          "level",
+          "config"
+        ],
         "additionalProperties": false
       }
     },
@@ -729,7 +880,12 @@
             }
           }
         },
-        "required": ["name", "agent", "evaluators", "samplingRate"],
+        "required": [
+          "name",
+          "agent",
+          "evaluators",
+          "samplingRate"
+        ],
         "additionalProperties": false
       }
     },
@@ -765,7 +921,14 @@
                 },
                 "targetType": {
                   "type": "string",
-                  "enum": ["lambda", "mcpServer", "openApiSchema", "smithyModel", "apiGateway", "lambdaFunctionArn"]
+                  "enum": [
+                    "lambda",
+                    "mcpServer",
+                    "openApiSchema",
+                    "smithyModel",
+                    "apiGateway",
+                    "lambdaFunctionArn"
+                  ]
                 },
                 "toolDefinitions": {
                   "type": "array",
@@ -792,7 +955,11 @@
                         ]
                       }
                     },
-                    "required": ["name", "description", "inputSchema"],
+                    "required": [
+                      "name",
+                      "description",
+                      "inputSchema"
+                    ],
                     "additionalProperties": false
                   }
                 },
@@ -810,7 +977,10 @@
                           "properties": {
                             "language": {
                               "type": "string",
-                              "enum": ["TypeScript", "Python"]
+                              "enum": [
+                                "TypeScript",
+                                "Python"
+                              ]
                             },
                             "path": {
                               "type": "string",
@@ -821,16 +991,30 @@
                               "minLength": 1
                             }
                           },
-                          "required": ["language", "path", "handler"],
+                          "required": [
+                            "language",
+                            "path",
+                            "handler"
+                          ],
                           "additionalProperties": false
                         },
                         "nodeVersion": {
                           "type": "string",
-                          "enum": ["NODE_18", "NODE_20", "NODE_22"]
+                          "enum": [
+                            "NODE_18",
+                            "NODE_20",
+                            "NODE_22"
+                          ]
                         },
                         "pythonVersion": {
                           "type": "string",
-                          "enum": ["PYTHON_3_10", "PYTHON_3_11", "PYTHON_3_12", "PYTHON_3_13", "PYTHON_3_14"]
+                          "enum": [
+                            "PYTHON_3_10",
+                            "PYTHON_3_11",
+                            "PYTHON_3_12",
+                            "PYTHON_3_13",
+                            "PYTHON_3_14"
+                          ]
                         },
                         "timeout": {
                           "type": "integer",
@@ -853,11 +1037,17 @@
                               "items": {}
                             }
                           },
-                          "required": ["Version", "Statement"],
+                          "required": [
+                            "Version",
+                            "Statement"
+                          ],
                           "additionalProperties": {}
                         }
                       },
-                      "required": ["host", "implementation"],
+                      "required": [
+                        "host",
+                        "implementation"
+                      ],
                       "additionalProperties": false
                     },
                     {
@@ -872,7 +1062,10 @@
                           "properties": {
                             "language": {
                               "type": "string",
-                              "enum": ["TypeScript", "Python"]
+                              "enum": [
+                                "TypeScript",
+                                "Python"
+                              ]
                             },
                             "path": {
                               "type": "string",
@@ -883,7 +1076,11 @@
                               "minLength": 1
                             }
                           },
-                          "required": ["language", "path", "handler"],
+                          "required": [
+                            "language",
+                            "path",
+                            "handler"
+                          ],
                           "additionalProperties": false
                         },
                         "runtime": {
@@ -895,7 +1092,13 @@
                             },
                             "pythonVersion": {
                               "type": "string",
-                              "enum": ["PYTHON_3_10", "PYTHON_3_11", "PYTHON_3_12", "PYTHON_3_13", "PYTHON_3_14"]
+                              "enum": [
+                                "PYTHON_3_10",
+                                "PYTHON_3_11",
+                                "PYTHON_3_12",
+                                "PYTHON_3_13",
+                                "PYTHON_3_14"
+                              ]
                             },
                             "name": {
                               "type": "string",
@@ -925,13 +1128,22 @@
                             "networkMode": {
                               "default": "PUBLIC",
                               "type": "string",
-                              "enum": ["PUBLIC", "VPC"]
+                              "enum": [
+                                "PUBLIC",
+                                "VPC"
+                              ]
                             },
                             "description": {
                               "type": "string"
                             }
                           },
-                          "required": ["artifact", "pythonVersion", "name", "entrypoint", "codeLocation"],
+                          "required": [
+                            "artifact",
+                            "pythonVersion",
+                            "name",
+                            "entrypoint",
+                            "codeLocation"
+                          ],
                           "additionalProperties": false
                         },
                         "iamPolicy": {
@@ -945,11 +1157,17 @@
                               "items": {}
                             }
                           },
-                          "required": ["Version", "Statement"],
+                          "required": [
+                            "Version",
+                            "Statement"
+                          ],
                           "additionalProperties": {}
                         }
                       },
-                      "required": ["host", "implementation"],
+                      "required": [
+                        "host",
+                        "implementation"
+                      ],
                       "additionalProperties": false
                     }
                   ]
@@ -964,7 +1182,11 @@
                     "type": {
                       "default": "NONE",
                       "type": "string",
-                      "enum": ["OAUTH", "API_KEY", "NONE"]
+                      "enum": [
+                        "OAUTH",
+                        "API_KEY",
+                        "NONE"
+                      ]
                     },
                     "credentialName": {
                       "type": "string",
@@ -1008,11 +1230,22 @@
                                 "type": "array",
                                 "items": {
                                   "type": "string",
-                                  "enum": ["GET", "POST", "PUT", "DELETE", "PATCH", "HEAD", "OPTIONS"]
+                                  "enum": [
+                                    "GET",
+                                    "POST",
+                                    "PUT",
+                                    "DELETE",
+                                    "PATCH",
+                                    "HEAD",
+                                    "OPTIONS"
+                                  ]
                                 }
                               }
                             },
-                            "required": ["filterPath", "methods"],
+                            "required": [
+                              "filterPath",
+                              "methods"
+                            ],
                             "additionalProperties": false
                           }
                         },
@@ -1031,22 +1264,40 @@
                               },
                               "method": {
                                 "type": "string",
-                                "enum": ["GET", "POST", "PUT", "DELETE", "PATCH", "HEAD", "OPTIONS"]
+                                "enum": [
+                                  "GET",
+                                  "POST",
+                                  "PUT",
+                                  "DELETE",
+                                  "PATCH",
+                                  "HEAD",
+                                  "OPTIONS"
+                                ]
                               },
                               "description": {
                                 "type": "string"
                               }
                             },
-                            "required": ["name", "path", "method"],
+                            "required": [
+                              "name",
+                              "path",
+                              "method"
+                            ],
                             "additionalProperties": false
                           }
                         }
                       },
-                      "required": ["toolFilters"],
+                      "required": [
+                        "toolFilters"
+                      ],
                       "additionalProperties": false
                     }
                   },
-                  "required": ["restApiId", "stage", "apiGatewayToolConfiguration"],
+                  "required": [
+                    "restApiId",
+                    "stage",
+                    "apiGatewayToolConfiguration"
+                  ],
                   "additionalProperties": false
                 },
                 "schemaSource": {
@@ -1062,11 +1313,15 @@
                               "minLength": 1
                             }
                           },
-                          "required": ["path"],
+                          "required": [
+                            "path"
+                          ],
                           "additionalProperties": false
                         }
                       },
-                      "required": ["inline"],
+                      "required": [
+                        "inline"
+                      ],
                       "additionalProperties": false
                     },
                     {
@@ -1084,11 +1339,15 @@
                               "type": "string"
                             }
                           },
-                          "required": ["uri"],
+                          "required": [
+                            "uri"
+                          ],
                           "additionalProperties": false
                         }
                       },
-                      "required": ["s3"],
+                      "required": [
+                        "s3"
+                      ],
                       "additionalProperties": false
                     }
                   ]
@@ -1106,18 +1365,28 @@
                       "minLength": 1
                     }
                   },
-                  "required": ["lambdaArn", "toolSchemaFile"],
+                  "required": [
+                    "lambdaArn",
+                    "toolSchemaFile"
+                  ],
                   "additionalProperties": false
                 }
               },
-              "required": ["name", "targetType"],
+              "required": [
+                "name",
+                "targetType"
+              ],
               "additionalProperties": false
             }
           },
           "authorizerType": {
             "default": "NONE",
             "type": "string",
-            "enum": ["NONE", "AWS_IAM", "CUSTOM_JWT"]
+            "enum": [
+              "NONE",
+              "AWS_IAM",
+              "CUSTOM_JWT"
+            ]
           },
           "authorizerConfiguration": {
             "type": "object",
@@ -1164,14 +1433,21 @@
                         },
                         "inboundTokenClaimValueType": {
                           "type": "string",
-                          "enum": ["STRING", "STRING_ARRAY"]
+                          "enum": [
+                            "STRING",
+                            "STRING_ARRAY"
+                          ]
                         },
                         "authorizingClaimMatchValue": {
                           "type": "object",
                           "properties": {
                             "claimMatchOperator": {
                               "type": "string",
-                              "enum": ["EQUALS", "CONTAINS", "CONTAINS_ANY"]
+                              "enum": [
+                                "EQUALS",
+                                "CONTAINS",
+                                "CONTAINS_ANY"
+                              ]
                             },
                             "claimMatchValue": {
                               "type": "object",
@@ -1197,16 +1473,25 @@
                               "additionalProperties": false
                             }
                           },
-                          "required": ["claimMatchOperator", "claimMatchValue"],
+                          "required": [
+                            "claimMatchOperator",
+                            "claimMatchValue"
+                          ],
                           "additionalProperties": false
                         }
                       },
-                      "required": ["inboundTokenClaimName", "inboundTokenClaimValueType", "authorizingClaimMatchValue"],
+                      "required": [
+                        "inboundTokenClaimName",
+                        "inboundTokenClaimValueType",
+                        "authorizingClaimMatchValue"
+                      ],
                       "additionalProperties": false
                     }
                   }
                 },
-                "required": ["discoveryUrl"],
+                "required": [
+                  "discoveryUrl"
+                ],
                 "additionalProperties": false
               }
             },
@@ -1219,7 +1504,10 @@
           "exceptionLevel": {
             "default": "NONE",
             "type": "string",
-            "enum": ["NONE", "DEBUG"]
+            "enum": [
+              "NONE",
+              "DEBUG"
+            ]
           },
           "policyEngineConfiguration": {
             "type": "object",
@@ -1230,10 +1518,16 @@
               },
               "mode": {
                 "type": "string",
-                "enum": ["LOG_ONLY", "ENFORCE"]
+                "enum": [
+                  "LOG_ONLY",
+                  "ENFORCE"
+                ]
               }
             },
-            "required": ["policyEngineName", "mode"],
+            "required": [
+              "policyEngineName",
+              "mode"
+            ],
             "additionalProperties": false
           },
           "executionRoleArn": {
@@ -1256,7 +1550,10 @@
             }
           }
         },
-        "required": ["name", "targets"],
+        "required": [
+          "name",
+          "targets"
+        ],
         "additionalProperties": false
       }
     },
@@ -1292,7 +1589,11 @@
                 ]
               }
             },
-            "required": ["name", "description", "inputSchema"],
+            "required": [
+              "name",
+              "description",
+              "inputSchema"
+            ],
             "additionalProperties": false
           },
           "compute": {
@@ -1307,7 +1608,10 @@
                 "properties": {
                   "language": {
                     "type": "string",
-                    "enum": ["TypeScript", "Python"]
+                    "enum": [
+                      "TypeScript",
+                      "Python"
+                    ]
                   },
                   "path": {
                     "type": "string",
@@ -1318,7 +1622,11 @@
                     "minLength": 1
                   }
                 },
-                "required": ["language", "path", "handler"],
+                "required": [
+                  "language",
+                  "path",
+                  "handler"
+                ],
                 "additionalProperties": false
               },
               "runtime": {
@@ -1330,7 +1638,13 @@
                   },
                   "pythonVersion": {
                     "type": "string",
-                    "enum": ["PYTHON_3_10", "PYTHON_3_11", "PYTHON_3_12", "PYTHON_3_13", "PYTHON_3_14"]
+                    "enum": [
+                      "PYTHON_3_10",
+                      "PYTHON_3_11",
+                      "PYTHON_3_12",
+                      "PYTHON_3_13",
+                      "PYTHON_3_14"
+                    ]
                   },
                   "name": {
                     "type": "string",
@@ -1360,13 +1674,22 @@
                   "networkMode": {
                     "default": "PUBLIC",
                     "type": "string",
-                    "enum": ["PUBLIC", "VPC"]
+                    "enum": [
+                      "PUBLIC",
+                      "VPC"
+                    ]
                   },
                   "description": {
                     "type": "string"
                   }
                 },
-                "required": ["artifact", "pythonVersion", "name", "entrypoint", "codeLocation"],
+                "required": [
+                  "artifact",
+                  "pythonVersion",
+                  "name",
+                  "entrypoint",
+                  "codeLocation"
+                ],
                 "additionalProperties": false
               },
               "iamPolicy": {
@@ -1380,11 +1703,17 @@
                     "items": {}
                   }
                 },
-                "required": ["Version", "Statement"],
+                "required": [
+                  "Version",
+                  "Statement"
+                ],
                 "additionalProperties": {}
               }
             },
-            "required": ["host", "implementation"],
+            "required": [
+              "host",
+              "implementation"
+            ],
             "additionalProperties": false
           },
           "bindings": {
@@ -1403,12 +1732,19 @@
                   "pattern": "^[A-Za-z_][A-Za-z0-9_]*$"
                 }
               },
-              "required": ["runtimeName", "envVarName"],
+              "required": [
+                "runtimeName",
+                "envVarName"
+              ],
               "additionalProperties": false
             }
           }
         },
-        "required": ["name", "toolDefinition", "compute"],
+        "required": [
+          "name",
+          "toolDefinition",
+          "compute"
+        ],
         "additionalProperties": false
       }
     },
@@ -1423,7 +1759,14 @@
           },
           "targetType": {
             "type": "string",
-            "enum": ["lambda", "mcpServer", "openApiSchema", "smithyModel", "apiGateway", "lambdaFunctionArn"]
+            "enum": [
+              "lambda",
+              "mcpServer",
+              "openApiSchema",
+              "smithyModel",
+              "apiGateway",
+              "lambdaFunctionArn"
+            ]
           },
           "toolDefinitions": {
             "type": "array",
@@ -1450,7 +1793,11 @@
                   ]
                 }
               },
-              "required": ["name", "description", "inputSchema"],
+              "required": [
+                "name",
+                "description",
+                "inputSchema"
+              ],
               "additionalProperties": false
             }
           },
@@ -1468,7 +1815,10 @@
                     "properties": {
                       "language": {
                         "type": "string",
-                        "enum": ["TypeScript", "Python"]
+                        "enum": [
+                          "TypeScript",
+                          "Python"
+                        ]
                       },
                       "path": {
                         "type": "string",
@@ -1479,16 +1829,30 @@
                         "minLength": 1
                       }
                     },
-                    "required": ["language", "path", "handler"],
+                    "required": [
+                      "language",
+                      "path",
+                      "handler"
+                    ],
                     "additionalProperties": false
                   },
                   "nodeVersion": {
                     "type": "string",
-                    "enum": ["NODE_18", "NODE_20", "NODE_22"]
+                    "enum": [
+                      "NODE_18",
+                      "NODE_20",
+                      "NODE_22"
+                    ]
                   },
                   "pythonVersion": {
                     "type": "string",
-                    "enum": ["PYTHON_3_10", "PYTHON_3_11", "PYTHON_3_12", "PYTHON_3_13", "PYTHON_3_14"]
+                    "enum": [
+                      "PYTHON_3_10",
+                      "PYTHON_3_11",
+                      "PYTHON_3_12",
+                      "PYTHON_3_13",
+                      "PYTHON_3_14"
+                    ]
                   },
                   "timeout": {
                     "type": "integer",
@@ -1511,11 +1875,17 @@
                         "items": {}
                       }
                     },
-                    "required": ["Version", "Statement"],
+                    "required": [
+                      "Version",
+                      "Statement"
+                    ],
                     "additionalProperties": {}
                   }
                 },
-                "required": ["host", "implementation"],
+                "required": [
+                  "host",
+                  "implementation"
+                ],
                 "additionalProperties": false
               },
               {
@@ -1530,7 +1900,10 @@
                     "properties": {
                       "language": {
                         "type": "string",
-                        "enum": ["TypeScript", "Python"]
+                        "enum": [
+                          "TypeScript",
+                          "Python"
+                        ]
                       },
                       "path": {
                         "type": "string",
@@ -1541,7 +1914,11 @@
                         "minLength": 1
                       }
                     },
-                    "required": ["language", "path", "handler"],
+                    "required": [
+                      "language",
+                      "path",
+                      "handler"
+                    ],
                     "additionalProperties": false
                   },
                   "runtime": {
@@ -1553,7 +1930,13 @@
                       },
                       "pythonVersion": {
                         "type": "string",
-                        "enum": ["PYTHON_3_10", "PYTHON_3_11", "PYTHON_3_12", "PYTHON_3_13", "PYTHON_3_14"]
+                        "enum": [
+                          "PYTHON_3_10",
+                          "PYTHON_3_11",
+                          "PYTHON_3_12",
+                          "PYTHON_3_13",
+                          "PYTHON_3_14"
+                        ]
                       },
                       "name": {
                         "type": "string",
@@ -1583,13 +1966,22 @@
                       "networkMode": {
                         "default": "PUBLIC",
                         "type": "string",
-                        "enum": ["PUBLIC", "VPC"]
+                        "enum": [
+                          "PUBLIC",
+                          "VPC"
+                        ]
                       },
                       "description": {
                         "type": "string"
                       }
                     },
-                    "required": ["artifact", "pythonVersion", "name", "entrypoint", "codeLocation"],
+                    "required": [
+                      "artifact",
+                      "pythonVersion",
+                      "name",
+                      "entrypoint",
+                      "codeLocation"
+                    ],
                     "additionalProperties": false
                   },
                   "iamPolicy": {
@@ -1603,11 +1995,17 @@
                         "items": {}
                       }
                     },
-                    "required": ["Version", "Statement"],
+                    "required": [
+                      "Version",
+                      "Statement"
+                    ],
                     "additionalProperties": {}
                   }
                 },
-                "required": ["host", "implementation"],
+                "required": [
+                  "host",
+                  "implementation"
+                ],
                 "additionalProperties": false
               }
             ]
@@ -1622,7 +2020,11 @@
               "type": {
                 "default": "NONE",
                 "type": "string",
-                "enum": ["OAUTH", "API_KEY", "NONE"]
+                "enum": [
+                  "OAUTH",
+                  "API_KEY",
+                  "NONE"
+                ]
               },
               "credentialName": {
                 "type": "string",
@@ -1666,11 +2068,22 @@
                           "type": "array",
                           "items": {
                             "type": "string",
-                            "enum": ["GET", "POST", "PUT", "DELETE", "PATCH", "HEAD", "OPTIONS"]
+                            "enum": [
+                              "GET",
+                              "POST",
+                              "PUT",
+                              "DELETE",
+                              "PATCH",
+                              "HEAD",
+                              "OPTIONS"
+                            ]
                           }
                         }
                       },
-                      "required": ["filterPath", "methods"],
+                      "required": [
+                        "filterPath",
+                        "methods"
+                      ],
                       "additionalProperties": false
                     }
                   },
@@ -1689,22 +2102,40 @@
                         },
                         "method": {
                           "type": "string",
-                          "enum": ["GET", "POST", "PUT", "DELETE", "PATCH", "HEAD", "OPTIONS"]
+                          "enum": [
+                            "GET",
+                            "POST",
+                            "PUT",
+                            "DELETE",
+                            "PATCH",
+                            "HEAD",
+                            "OPTIONS"
+                          ]
                         },
                         "description": {
                           "type": "string"
                         }
                       },
-                      "required": ["name", "path", "method"],
+                      "required": [
+                        "name",
+                        "path",
+                        "method"
+                      ],
                       "additionalProperties": false
                     }
                   }
                 },
-                "required": ["toolFilters"],
+                "required": [
+                  "toolFilters"
+                ],
                 "additionalProperties": false
               }
             },
-            "required": ["restApiId", "stage", "apiGatewayToolConfiguration"],
+            "required": [
+              "restApiId",
+              "stage",
+              "apiGatewayToolConfiguration"
+            ],
             "additionalProperties": false
           },
           "schemaSource": {
@@ -1720,11 +2151,15 @@
                         "minLength": 1
                       }
                     },
-                    "required": ["path"],
+                    "required": [
+                      "path"
+                    ],
                     "additionalProperties": false
                   }
                 },
-                "required": ["inline"],
+                "required": [
+                  "inline"
+                ],
                 "additionalProperties": false
               },
               {
@@ -1742,11 +2177,15 @@
                         "type": "string"
                       }
                     },
-                    "required": ["uri"],
+                    "required": [
+                      "uri"
+                    ],
                     "additionalProperties": false
                   }
                 },
-                "required": ["s3"],
+                "required": [
+                  "s3"
+                ],
                 "additionalProperties": false
               }
             ]
@@ -1764,11 +2203,17 @@
                 "minLength": 1
               }
             },
-            "required": ["lambdaArn", "toolSchemaFile"],
+            "required": [
+              "lambdaArn",
+              "toolSchemaFile"
+            ],
             "additionalProperties": false
           }
         },
-        "required": ["name", "targetType"],
+        "required": [
+          "name",
+          "targetType"
+        ],
         "additionalProperties": false
       }
     },
@@ -1833,15 +2278,23 @@
                 "validationMode": {
                   "default": "FAIL_ON_ANY_FINDINGS",
                   "type": "string",
-                  "enum": ["FAIL_ON_ANY_FINDINGS", "IGNORE_ALL_FINDINGS"]
+                  "enum": [
+                    "FAIL_ON_ANY_FINDINGS",
+                    "IGNORE_ALL_FINDINGS"
+                  ]
                 }
               },
-              "required": ["name", "statement"],
+              "required": [
+                "name",
+                "statement"
+              ],
               "additionalProperties": false
             }
           }
         },
-        "required": ["name"],
+        "required": [
+          "name"
+        ],
         "additionalProperties": false
       }
     },
@@ -1883,7 +2336,9 @@
                   "additionalProperties": {}
                 }
               },
-              "required": ["configuration"],
+              "required": [
+                "configuration"
+              ],
               "additionalProperties": false
             }
           },
@@ -1896,7 +2351,10 @@
             "maxLength": 500
           }
         },
-        "required": ["name", "components"],
+        "required": [
+          "name",
+          "components"
+        ],
         "additionalProperties": false
       }
     },
@@ -1920,7 +2378,10 @@
           "mode": {
             "default": "config-bundle",
             "type": "string",
-            "enum": ["config-bundle", "target-based"]
+            "enum": [
+              "config-bundle",
+              "target-based"
+            ]
           },
           "gatewayRef": {
             "type": "string",
@@ -1939,7 +2400,10 @@
               "properties": {
                 "name": {
                   "type": "string",
-                  "enum": ["C", "T1"]
+                  "enum": [
+                    "C",
+                    "T1"
+                  ]
                 },
                 "weight": {
                   "type": "integer",
@@ -1963,14 +2427,19 @@
                               "minLength": 1
                             }
                           },
-                          "required": ["bundleArn", "bundleVersion"],
+                          "required": [
+                            "bundleArn",
+                            "bundleVersion"
+                          ],
                           "additionalProperties": false
                         },
                         "target": {
                           "not": {}
                         }
                       },
-                      "required": ["configurationBundle"],
+                      "required": [
+                        "configurationBundle"
+                      ],
                       "additionalProperties": false
                     },
                     {
@@ -1988,17 +2457,25 @@
                               "maxLength": 100
                             }
                           },
-                          "required": ["targetName"],
+                          "required": [
+                            "targetName"
+                          ],
                           "additionalProperties": false
                         }
                       },
-                      "required": ["target"],
+                      "required": [
+                        "target"
+                      ],
                       "additionalProperties": false
                     }
                   ]
                 }
               },
-              "required": ["name", "weight", "variantConfiguration"],
+              "required": [
+                "name",
+                "weight",
+                "variantConfiguration"
+              ],
               "additionalProperties": false
             }
           },
@@ -2012,7 +2489,9 @@
                     "minLength": 1
                   }
                 },
-                "required": ["onlineEvaluationConfigArn"],
+                "required": [
+                  "onlineEvaluationConfigArn"
+                ],
                 "additionalProperties": false
               },
               {
@@ -2027,19 +2506,27 @@
                       "properties": {
                         "treatmentName": {
                           "type": "string",
-                          "enum": ["C", "T1"]
+                          "enum": [
+                            "C",
+                            "T1"
+                          ]
                         },
                         "onlineEvaluationConfigArn": {
                           "type": "string",
                           "minLength": 1
                         }
                       },
-                      "required": ["treatmentName", "onlineEvaluationConfigArn"],
+                      "required": [
+                        "treatmentName",
+                        "onlineEvaluationConfigArn"
+                      ],
                       "additionalProperties": false
                     }
                   }
                 },
-                "required": ["perVariantOnlineEvaluationConfig"],
+                "required": [
+                  "perVariantOnlineEvaluationConfig"
+                ],
                 "additionalProperties": false
               }
             ]
@@ -2057,7 +2544,9 @@
                 }
               }
             },
-            "required": ["targetPaths"],
+            "required": [
+              "targetPaths"
+            ],
             "additionalProperties": false
           },
           "trafficAllocationConfig": {
@@ -2071,11 +2560,15 @@
                     "minLength": 1
                   }
                 },
-                "required": ["headerName"],
+                "required": [
+                  "headerName"
+                ],
                 "additionalProperties": false
               }
             },
-            "required": ["routeOnHeader"],
+            "required": [
+              "routeOnHeader"
+            ],
             "additionalProperties": false
           },
           "maxDurationDays": {
@@ -2090,7 +2583,12 @@
             "type": "boolean"
           }
         },
-        "required": ["name", "gatewayRef", "variants", "evaluationConfig"],
+        "required": [
+          "name",
+          "gatewayRef",
+          "variants",
+          "evaluationConfig"
+        ],
         "additionalProperties": false
       }
     },
@@ -2138,17 +2636,26 @@
                   "minLength": 1
                 }
               },
-              "required": ["name", "runtimeRef"],
+              "required": [
+                "name",
+                "runtimeRef"
+              ],
               "additionalProperties": false
             }
           }
         },
-        "required": ["name", "runtimeRef"],
+        "required": [
+          "name",
+          "runtimeRef"
+        ],
         "additionalProperties": false
       }
     }
   },
-  "required": ["name", "version"],
+  "required": [
+    "name",
+    "version"
+  ],
   "additionalProperties": false,
   "definitions": {
     "__schema0": {
@@ -2156,7 +2663,14 @@
       "properties": {
         "type": {
           "type": "string",
-          "enum": ["string", "number", "object", "array", "boolean", "integer"]
+          "enum": [
+            "string",
+            "number",
+            "object",
+            "array",
+            "boolean",
+            "integer"
+          ]
         },
         "description": {
           "type": "string"
@@ -2184,7 +2698,9 @@
           }
         }
       },
-      "required": ["type"],
+      "required": [
+        "type"
+      ],
       "additionalProperties": false
     }
   }

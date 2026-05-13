@@ -277,6 +277,40 @@ export function validateAddAgentOptions(options: AddAgentOptions): ValidationRes
     }
   }
 
+  // Validate S3 Files access point options
+  if (options.s3FilesAccessPointArn || options.s3FilesMountPath) {
+    if (!options.s3FilesAccessPointArn) {
+      return { valid: false, error: '--s3-files-access-point-arn is required when --s3-files-mount-path is specified' };
+    }
+    if (!options.s3FilesMountPath) {
+      return { valid: false, error: '--s3-files-mount-path is required when --s3-files-access-point-arn is specified' };
+    }
+    if (!isValidArn(options.s3FilesAccessPointArn)) {
+      return { valid: false, error: `--s3-files-access-point-arn: ${ARN_VALIDATION_MESSAGE}` };
+    }
+    const mountPathResult = SessionStorageSchema.shape.mountPath.safeParse(options.s3FilesMountPath);
+    if (!mountPathResult.success) {
+      return { valid: false, error: `--s3-files-mount-path: ${mountPathResult.error.issues[0]?.message}` };
+    }
+  }
+
+  // Validate EFS access point options
+  if (options.efsAccessPointArn || options.efsMountPath) {
+    if (!options.efsAccessPointArn) {
+      return { valid: false, error: '--efs-access-point-arn is required when --efs-mount-path is specified' };
+    }
+    if (!options.efsMountPath) {
+      return { valid: false, error: '--efs-mount-path is required when --efs-access-point-arn is specified' };
+    }
+    if (!isValidArn(options.efsAccessPointArn)) {
+      return { valid: false, error: `--efs-access-point-arn: ${ARN_VALIDATION_MESSAGE}` };
+    }
+    const mountPathResult = SessionStorageSchema.shape.mountPath.safeParse(options.efsMountPath);
+    if (!mountPathResult.success) {
+      return { valid: false, error: `--efs-mount-path: ${mountPathResult.error.issues[0]?.message}` };
+    }
+  }
+
   // Validate VPC options
   const vpcResult = validateVpcOptions(options);
   if (!vpcResult.valid) {
