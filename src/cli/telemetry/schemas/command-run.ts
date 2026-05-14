@@ -5,7 +5,6 @@ import {
   AuthType,
   AuthorizerType,
   Build,
-  CommandGroup as CommandGroupSchema,
   Command as CommandSchema,
   Count,
   CredentialType,
@@ -34,7 +33,7 @@ import {
 import { z } from 'zod';
 
 export type Command = z.infer<typeof CommandSchema>;
-export type CommandGroup = z.infer<typeof CommandGroupSchema>;
+export type CommandGroup = { [C in Command]: C extends `${infer G}.${string}` ? G : C }[Command];
 
 const CreateAttrs = safeSchema({
   language: Language,
