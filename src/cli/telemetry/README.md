@@ -1,22 +1,5 @@
 # Telemetry
 
-## Architecture
-
-```
-ATTRIBUTES (common-shapes.ts)    METRICS registry (registry.ts)
-         │                                │
-         ▼                                ▼
-  COMMAND_SCHEMAS (command-run.ts)   TelemetryClient.emit()
-         │                                │
-         ▼                                ▼
-  withCommandRunTelemetry / runCliCommand  MetricSink (otel, filesystem, in-memory)
-```
-
-- `TelemetryClient` — generic emitter. Knows nothing about specific metrics.
-- `cli-command-run.ts` — command_run-specific logic (timing, error classification).
-- `schemas/registry.ts` — all metric definitions. `MetricName` type derived from here.
-- `schemas/common-shapes.ts` — all attribute definitions in `ATTRIBUTES` namespace.
-
 ## Adding a New Metric
 
 ### 1. Define attributes in `schemas/common-shapes.ts`
@@ -27,27 +10,30 @@ Skip if reusing existing attributes.
 export const ToolName = z.enum(['read_file', 'write_file', 'search']);
 ```
 
-Add to the `ATTRIBUTES` object:
+Add to the `ATTRIBUTES` object using the field name as the key:
 
 ```ts
 export const ATTRIBUTES = {
   // ...existing
-  ToolName,
+  tool_name: ToolName,
 } as const;
 ```
 
 ### 2. Register the metric in `schemas/registry.ts`
 
+Add an entry to `METRICS` and a corresponding `MetricAttrs` branch:
+
 ```ts
 export const METRICS = {
-  'cli.command_run': { ... },
-  'cli.mcp_tool_call': {
-    schema: safeSchema({
-      tool_name: ATTRIBUTES.ToolName,
-      success: z.boolean(),
-    }),
-  },
+  'cli.command_run': {},
+  'cli.mcp_tool_call': {},
 } as const;
+
+export type MetricAttrs<M extends MetricName> = M extends 'cli.command_run'
+  ? CommandRunAttrs
+  : M extends 'cli.mcp_tool_call'
+    ? { tool_name: z.infer<typeof ATTRIBUTES.tool_name>; success: boolean }
+    : never;
 ```
 
 ### 3. Emit it
@@ -56,24 +42,13 @@ export const METRICS = {
 client.emit('cli.mcp_tool_call', durationMs, { tool_name: 'read_file', success: true });
 ```
 
-Wrong metric name or missing/invalid attrs = compile error.
+Wrong metric name or missing attrs = compile error.
 
 ---
 
 ## Adding a New Command (to `cli.command_run`)
 
-### 1. Add the command name to `Command` enum in `schemas/common-shapes.ts`
-
-```ts
-export const Command = z.enum([
-  // ...existing
-  'add.widget',
-]);
-```
-
-If it introduces a new group, add to `CommandGroup` too.
-
-### 2. Define the command's attribute schema in `schemas/command-run.ts`
+### 1. Define the command's attribute schema in `schemas/command-run.ts`
 
 ```ts
 const AddWidgetAttrs = safeSchema({
@@ -88,21 +63,10 @@ Add to `COMMAND_SCHEMAS`:
 'add.widget': AddWidgetAttrs,
 ```
 
-Compile error if the key doesn't match the `Command` enum.
+The `Command` type and optional fields in `MetricAttrs<'cli.command_run'>` are derived automatically from
+`COMMAND_SCHEMAS`.
 
-### 3. Add the new attributes as optional fields in `schemas/registry.ts`
-
-```ts
-const CommandRunSchema = safeSchema({ ... }).extend({
-  // ...existing
-  widget_type: ATTRIBUTES.WidgetType.optional(),
-  count: z.number().optional(),
-});
-```
-
-This ensures `emit()` accepts the new fields with compile-time checking.
-
-### 4. Instrument the handler
+### 2. Instrument the handler
 
 Use `withCommandRunTelemetry`:
 
