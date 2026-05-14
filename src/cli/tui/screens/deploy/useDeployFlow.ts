@@ -747,7 +747,7 @@ export function useDeployFlow(options: DeployFlowOptions = {}): DeployFlowState 
 
     const attrs = context
       ? computeDeployAttrs(context.projectSpec, 'diff')
-      : { ...DEFAULT_DEPLOY_ATTRS, mode: 'diff' as const };
+      : { ...DEFAULT_DEPLOY_ATTRS, deploy_mode: 'diff' as const };
 
     const run = async (): Promise<{ success: true } | { success: false; error: Error }> => {
       setDiffStep(prev => ({ ...prev, status: 'running' }));
