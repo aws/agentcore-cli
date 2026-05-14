@@ -18,4 +18,4 @@ export {
   type CommandGroup,
   type CommandAttrs,
 } from './command-run.js';
-export { METRICS, type MetricName, type MetricAttrs, type Instrument } from './registry.js';
+export { METRICS, type MetricName, type MetricAttrs } from './registry.js';

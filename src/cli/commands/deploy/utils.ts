@@ -1,6 +1,8 @@
 import type { AgentCoreProjectSpec } from '../../../schema';
+import { DeployMode as DeployModeSchema } from '../../telemetry/schemas/common-shapes.js';
+import { z } from 'zod';
 
-export type DeployMode = 'deploy' | 'dry-run' | 'diff';
+export type DeployMode = z.infer<typeof DeployModeSchema>;
 
 export const DEFAULT_DEPLOY_ATTRS = {
   runtime_count: 0,
@@ -12,7 +14,7 @@ export const DEFAULT_DEPLOY_ATTRS = {
   gateway_target_count: 0,
   policy_engine_count: 0,
   policy_count: 0,
-  mode: 'deploy' as DeployMode,
+  deploy_mode: 'deploy' as DeployMode,
 };
 
 export function computeDeployAttrs(projectSpec: Partial<AgentCoreProjectSpec>, mode: DeployMode) {
@@ -28,6 +30,6 @@ export function computeDeployAttrs(projectSpec: Partial<AgentCoreProjectSpec>, m
     gateway_target_count: gateways.reduce((sum, g) => sum + (g.targets ?? []).length, 0),
     policy_engine_count: policyEngines.length,
     policy_count: policyEngines.reduce((sum, pe) => sum + (pe.policies ?? []).length, 0),
-    mode,
+    deploy_mode: mode,
   };
 }

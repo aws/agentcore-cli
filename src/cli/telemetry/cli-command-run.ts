@@ -7,9 +7,6 @@ import { COMMAND_SCHEMAS, type Command, type CommandAttrs, deriveCommandGroup } 
 import { type CommandResult, CommandResultSchema, resilientParse } from './schemas/common-shapes.js';
 import { performance } from 'perf_hooks';
 
-/** Return this from the trackCommandRun callback to record a cancellation. */
-const CANCELLED = Symbol('cancelled');
-
 async function getTelemetryClient() {
   try {
     return await TelemetryClientAccessor.get();
@@ -45,24 +42,20 @@ function recordCommandRun<C extends Command>(
 }
 
 /**
- * Return attrs on success, or CANCELLED on user cancellation.
+ * Return attrs on success
  * Unhandled throws are classified as failures and re-thrown.
  */
 async function trackCommandRun<C extends Command>(
   client: TelemetryClient,
   command: C,
-  fn: () => CommandAttrs<C> | typeof CANCELLED | Promise<CommandAttrs<C> | typeof CANCELLED>,
+  fn: () => CommandAttrs<C> | Promise<CommandAttrs<C>>,
   fallbackAttrs?: Partial<CommandAttrs<C>>
 ): Promise<void> {
   const start = performance.now();
   try {
     const result = await fn();
     const durationMs = Math.round(performance.now() - start);
-    if (result === CANCELLED) {
-      recordCommandRun(client, command, { exit_reason: 'cancel' }, {}, durationMs);
-    } else {
-      recordCommandRun(client, command, { exit_reason: 'success' }, result, durationMs);
-    }
+    recordCommandRun(client, command, { exit_reason: 'success' }, result, durationMs);
   } catch (err) {
     const failureResult: CommandResult & { exit_reason: 'failure' } = {
       exit_reason: 'failure',

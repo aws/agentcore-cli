@@ -7,7 +7,7 @@ import type { MetricSink } from './sinks/metric-sink.js';
 export class TelemetryClient {
   constructor(private readonly sink: MetricSink) {}
 
-  emit<M extends MetricName>(metricName: M, value: number, attrs: MetricAttrs<M> & Record<string, unknown>): void {
+  emit<M extends MetricName>(metricName: M, value: number, attrs: MetricAttrs<M>): void {
     try {
       const otelAttrs: Record<string, string | number> = {};
       for (const [k, v] of Object.entries(attrs)) {

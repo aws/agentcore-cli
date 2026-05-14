@@ -122,10 +122,7 @@ export const FailureResult = z.object({
 export const CommandResultSchema = z.discriminatedUnion('exit_reason', [SuccessResult, CancelResult, FailureResult]);
 export type CommandResult = z.infer<typeof CommandResultSchema>;
 
-// ---------------------------------------------------------------------------
-// ATTRIBUTES namespace — single source of truth for all attribute definitions.
-// New code should use ATTRIBUTES.X; existing named exports remain for compat.
-// ---------------------------------------------------------------------------
+export const DeployMode = z.enum(['deploy', 'dry-run', 'diff']);
 
 export const Command = z.enum([
   'create',
@@ -201,11 +198,11 @@ export const CommandGroup = z.enum([
   'telemetry',
 ]);
 
+/*
+  All attributes the CLI may attach to a metric. 
+*/
 export const ATTRIBUTES = {
-  // Primitives
   Count,
-
-  // Enums
   Action,
   AgentType,
   AttachMode,
@@ -215,6 +212,7 @@ export const ATTRIBUTES = {
   Command,
   CommandGroup,
   CredentialType,
+  DeployMode,
   ErrorCategory,
   EvaluatorType,
   ExitReason,

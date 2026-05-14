@@ -1,7 +1,8 @@
+import type { MetricName } from '../schemas/registry.js';
 import type { MetricSink } from './metric-sink.js';
 
 export interface RecordedMetric {
-  metric: string;
+  metric: MetricName;
   value: number;
   attrs: Record<string, string | number>;
 }
@@ -9,7 +10,7 @@ export interface RecordedMetric {
 export class InMemorySink implements MetricSink {
   readonly metrics: RecordedMetric[] = [];
 
-  record(metricName: string, value: number, attrs: Record<string, string | number>): void {
+  record(metricName: MetricName, value: number, attrs: Record<string, string | number>): void {
     this.metrics.push({ metric: metricName, value, attrs });
   }
 

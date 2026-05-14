@@ -1,4 +1,5 @@
 import type { ResourceAttributes } from '../schemas/common-attributes.js';
+import type { MetricName } from '../schemas/registry.js';
 import type { MetricSink } from './metric-sink.js';
 import type { Histogram, Meter } from '@opentelemetry/api';
 import { OTLPMetricExporter } from '@opentelemetry/exporter-metrics-otlp-http';
@@ -38,7 +39,7 @@ export class OtelMetricSink implements MetricSink {
     this.meter = this.meterProvider.getMeter('agentcore-cli');
   }
 
-  record(metricName: string, value: number, attrs: Record<string, string | number>): void {
+  record(metricName: MetricName, value: number, attrs: Record<string, string | number>): void {
     let histogram = this.histograms.get(metricName);
     if (!histogram) {
       histogram = this.meter.createHistogram(metricName, { description: metricName });

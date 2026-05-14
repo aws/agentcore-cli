@@ -1,3 +1,4 @@
+import type { MetricName } from '../schemas/registry.js';
 import type { MetricSink } from './metric-sink.js';
 import { appendFile, mkdir } from 'fs/promises';
 import { dirname } from 'path';
@@ -20,7 +21,7 @@ export class FileSystemSink implements MetricSink {
     this.log = config.log ?? (msg => console.log(msg));
   }
 
-  record(metricName: string, value: number, attrs: Record<string, string | number>): void {
+  record(metricName: MetricName, value: number, attrs: Record<string, string | number>): void {
     this.hasRecords = true;
     this.pendingWrite = this.pendingWrite.then(() =>
       this.appendEntry({ metric: metricName, value, attrs: { ...this.resource, ...attrs } })

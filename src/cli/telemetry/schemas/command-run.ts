@@ -9,6 +9,7 @@ import {
   Command as CommandSchema,
   Count,
   CredentialType,
+  DeployMode,
   EvaluatorType,
   FilterState,
   FilterType,
@@ -34,11 +35,6 @@ import { z } from 'zod';
 
 export type Command = z.infer<typeof CommandSchema>;
 export type CommandGroup = z.infer<typeof CommandGroupSchema>;
-
-// ---------------------------------------------------------------------------
-// Per-command attribute schemas
-// All schemas use safeSchema() which rejects z.string() at compile time.
-// ---------------------------------------------------------------------------
 
 const CreateAttrs = safeSchema({
   language: Language,
@@ -106,7 +102,7 @@ const DeployAttrs = safeSchema({
   gateway_target_count: Count,
   policy_engine_count: Count,
   policy_count: Count,
-  mode: z.enum(['deploy', 'dry-run', 'diff']),
+  deploy_mode: DeployMode,
 });
 
 const DevAttrs = safeSchema({
@@ -146,15 +142,12 @@ const PauseResumeOnlineEvalAttrs = safeSchema({ ref_type: RefType });
 
 const NoAttrs = safeSchema({});
 
-// ---------------------------------------------------------------------------
-// Command schema registry — single source of truth
-// ---------------------------------------------------------------------------
-
+/*
+  Mapping of commands to required attributes. 
+  This is chosen over discriminated unions to avoid complexity in the root-level definition. 
+*/
 export const COMMAND_SCHEMAS = {
-  // create
   create: CreateAttrs,
-
-  // add
   'add.agent': AddAgentAttrs,
   'add.memory': AddMemoryAttrs,
   'add.credential': AddCredentialAttrs,
@@ -165,33 +158,17 @@ export const COMMAND_SCHEMAS = {
   'add.policy-engine': AddPolicyEngineAttrs,
   'add.policy': AddPolicyAttrs,
   'add.runtime-endpoint': NoAttrs,
-
-  // deploy
   deploy: DeployAttrs,
-
-  // dev / invoke
   dev: DevAttrs,
   invoke: InvokeAttrs,
-
-  // status / logs
   status: StatusAttrs,
   logs: LogsAttrs,
   'logs.evals': LogsEvalsAttrs,
-
-  // run
   'run.eval': RunEvalAttrs,
-
-  // fetch
   'fetch.access': FetchAccessAttrs,
-
-  // update
   update: UpdateAttrs,
-
-  // pause / resume
   'pause.online-eval': PauseResumeOnlineEvalAttrs,
   'resume.online-eval': PauseResumeOnlineEvalAttrs,
-
-  // no command-specific attributes
   'traces.list': NoAttrs,
   'traces.get': NoAttrs,
   'evals.history': NoAttrs,

@@ -42,7 +42,6 @@ export const ATTRIBUTES = {
 export const METRICS = {
   'cli.command_run': { ... },
   'cli.mcp_tool_call': {
-    instrument: 'histogram',
     schema: safeSchema({
       tool_name: ATTRIBUTES.ToolName,
       success: z.boolean(),
@@ -91,7 +90,19 @@ Add to `COMMAND_SCHEMAS`:
 
 Compile error if the key doesn't match the `Command` enum.
 
-### 3. Instrument the handler
+### 3. Add the new attributes as optional fields in `schemas/registry.ts`
+
+```ts
+const CommandRunSchema = safeSchema({ ... }).extend({
+  // ...existing
+  widget_type: ATTRIBUTES.WidgetType.optional(),
+  count: z.number().optional(),
+});
+```
+
+This ensures `emit()` accepts the new fields with compile-time checking.
+
+### 4. Instrument the handler
 
 Use `withCommandRunTelemetry`:
 
