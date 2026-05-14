@@ -86,16 +86,26 @@ export const MemoryStrategySchema = z
     /** @deprecated Use `reflectionNamespaceTemplates` instead. */
     reflectionNamespaces: z.array(z.string()).optional(),
   })
-  .refine(strategy => !(strategy.namespaces !== undefined && strategy.namespaceTemplates !== undefined), {
+  .refine(strategy => !((strategy.namespaces?.length ?? 0) > 0 && (strategy.namespaceTemplates?.length ?? 0) > 0), {
     message:
       "'namespaces' and 'namespaceTemplates' are mutually exclusive. Prefer 'namespaceTemplates' ('namespaces' is deprecated).",
     path: ['namespaceTemplates'],
   })
   .refine(
-    strategy => !(strategy.reflectionNamespaces !== undefined && strategy.reflectionNamespaceTemplates !== undefined),
+    strategy =>
+      !((strategy.reflectionNamespaces?.length ?? 0) > 0 && (strategy.reflectionNamespaceTemplates?.length ?? 0) > 0),
     {
       message:
         "'reflectionNamespaces' and 'reflectionNamespaceTemplates' are mutually exclusive. Prefer 'reflectionNamespaceTemplates' ('reflectionNamespaces' is deprecated).",
+      path: ['reflectionNamespaceTemplates'],
+    }
+  )
+  .refine(
+    strategy =>
+      strategy.type === 'EPISODIC' ||
+      (strategy.reflectionNamespaceTemplates === undefined && strategy.reflectionNamespaces === undefined),
+    {
+      message: "'reflectionNamespaceTemplates' is only allowed on EPISODIC strategies",
       path: ['reflectionNamespaceTemplates'],
     }
   )
