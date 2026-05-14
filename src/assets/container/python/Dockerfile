@@ -1,6 +1,6 @@
 FROM public.ecr.aws/docker/library/python:3.12-slim
 
-COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /usr/local/bin/
+RUN pip install --no-cache-dir uv==0.11.14
 
 ARG UV_DEFAULT_INDEX
 ARG UV_INDEX

@@ -383,7 +383,8 @@ export async function handleImport(options: ImportOptions): Promise<ImportResult
               fs.writeFileSync(
                 destDockerfile,
                 [
-                  'FROM ghcr.io/astral-sh/uv:python3.12-bookworm-slim',
+                  'FROM public.ecr.aws/docker/library/python:3.12-slim',
+                  'RUN pip install --no-cache-dir uv==0.11.14',
                   'WORKDIR /app',
                   '',
                   'ENV UV_SYSTEM_PYTHON=1 \\',
