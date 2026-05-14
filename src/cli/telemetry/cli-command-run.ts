@@ -25,19 +25,23 @@ function recordCommandRun<C extends Command>(
   attrs: CommandAttrs<C> | Partial<CommandAttrs<C>>,
   durationMs: number
 ): void {
-  CommandResultSchema.parse(result);
+  try {
+    CommandResultSchema.parse(result);
 
-  const validatedAttrs =
-    Object.keys(attrs as Record<string, unknown>).length > 0
-      ? resilientParse(COMMAND_SCHEMAS[command], attrs as Record<string, unknown>)
-      : attrs;
+    const validatedAttrs =
+      Object.keys(attrs as Record<string, unknown>).length > 0
+        ? resilientParse(COMMAND_SCHEMAS[command], attrs as Record<string, unknown>)
+        : attrs;
 
-  client.emit('cli.command_run', durationMs, {
-    command_group: deriveCommandGroup(command),
-    command,
-    ...result,
-    ...validatedAttrs,
-  });
+    client.emit('cli.command_run', durationMs, {
+      command_group: deriveCommandGroup(command),
+      command,
+      ...result,
+      ...validatedAttrs,
+    });
+  } catch {
+    // Telemetry must never affect CLI behavior
+  }
 }
 
 /**
