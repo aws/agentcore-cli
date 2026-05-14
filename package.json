@@ -128,7 +128,7 @@
     "aws-cdk-lib": "^2.248.0",
     "constructs": "^10.4.4",
     "esbuild": "^0.28.0",
-    "eslint": "^9.39.4",
+    "eslint": "^10.3.0",
     "eslint-config-prettier": "^10.1.8",
     "eslint-import-resolver-typescript": "^4.4.4",
     "eslint-plugin-import": "^2.32.0",
