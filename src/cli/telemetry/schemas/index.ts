@@ -1,4 +1,5 @@
 export {
+  ATTRIBUTES,
   CommandResultSchema,
   Count,
   ErrorCategory,
@@ -10,4 +11,11 @@ export {
   type CommandResult,
 } from './common-shapes.js';
 export { ResourceAttributesSchema, type ResourceAttributes } from './common-attributes.js';
-export { COMMAND_SCHEMAS, deriveCommandGroup, type Command, type CommandAttrs } from './command-run.js';
+export {
+  COMMAND_SCHEMAS,
+  deriveCommandGroup,
+  type Command,
+  type CommandGroup,
+  type CommandAttrs,
+} from './command-run.js';
+export { METRICS, type MetricName, type MetricAttrs, type Instrument } from './registry.js';

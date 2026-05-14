@@ -5,6 +5,8 @@ import {
   AuthType,
   AuthorizerType,
   Build,
+  CommandGroup as CommandGroupSchema,
+  Command as CommandSchema,
   Count,
   CredentialType,
   EvaluatorType,
@@ -29,6 +31,9 @@ import {
   safeSchema,
 } from './common-shapes.js';
 import { z } from 'zod';
+
+export type Command = z.infer<typeof CommandSchema>;
+export type CommandGroup = z.infer<typeof CommandGroupSchema>;
 
 // ---------------------------------------------------------------------------
 // Per-command attribute schemas
@@ -213,33 +218,18 @@ export const COMMAND_SCHEMAS = {
   'telemetry.disable': NoAttrs,
   'telemetry.enable': NoAttrs,
   'telemetry.status': NoAttrs,
-} as const satisfies Record<string, z.ZodObject<z.ZodRawShape>>;
+} as const satisfies Record<Command, z.ZodObject<z.ZodRawShape>>;
 
 // ---------------------------------------------------------------------------
 // Derived types
 // ---------------------------------------------------------------------------
 
-export type Command = keyof typeof COMMAND_SCHEMAS;
 export type CommandAttrs<C extends Command> = z.infer<(typeof COMMAND_SCHEMAS)[C]>;
 
-/** Extract the command group prefix from a dotted command key (e.g. 'add' from 'add.agent'). */
-type CommandGroup = {
-  [C in Command]: C extends `${infer G}.${string}` ? G : C;
-}[Command];
-
-/**
- * Type-safe lookup of a subcommand under a command group.
- * Produces a compile-time error if `${G}.${S}` is not a registered command.
- *
- * @example
- * SubCommand<'remove', 'agent'>  // → 'remove.agent'
- * SubCommand<'add', 'memory'>    // → 'add.memory'
- * SubCommand<'remove', 'bogus'>  // → never (compile error at call site)
- */
 export type SubCommand<G extends CommandGroup, S extends string> = Extract<Command, `${G}.${S}`>;
 
 /** Derive command_group from command key (e.g. 'add.agent' → 'add') */
-export function deriveCommandGroup(command: Command): string {
+export function deriveCommandGroup(command: Command): CommandGroup {
   const dot = command.indexOf('.');
-  return dot === -1 ? command : command.slice(0, dot);
+  return (dot === -1 ? command : command.slice(0, dot)) as CommandGroup;
 }
