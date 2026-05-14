@@ -1,7 +1,6 @@
 import { useDevDeploy } from '../useDevDeploy.js';
 import { Text } from 'ink';
 import { render } from 'ink-testing-library';
-import React from 'react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 const mockHandleDeploy = vi.fn();

@@ -101,7 +101,10 @@ describe('remove', () => {
 
     const result = await primitive.remove('missing');
 
-    expect(result).toEqual({ success: false, error: 'Gateway "missing" not found.' });
+    expect(result).toEqual({
+      success: false,
+      error: expect.objectContaining({ message: 'Gateway "missing" not found.' }),
+    });
   });
 
   it('returns error on exception', async () => {
@@ -109,6 +112,9 @@ describe('remove', () => {
 
     const result = await primitive.remove('gw1');
 
-    expect(result).toEqual({ success: false, error: 'read fail' });
+    expect(result).toEqual({
+      success: false,
+      error: expect.objectContaining({ message: 'read fail' }),
+    });
   });
 });

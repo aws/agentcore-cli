@@ -84,7 +84,10 @@ describe('remove', () => {
 
     const result = await primitive.remove('Missing');
 
-    expect(result).toEqual({ success: false, error: 'Memory "Missing" not found.' });
+    expect(result).toEqual({
+      success: false,
+      error: expect.objectContaining({ message: 'Memory "Missing" not found.' }),
+    });
   });
 
   it('returns error on exception', async () => {
@@ -92,6 +95,9 @@ describe('remove', () => {
 
     const result = await primitive.remove('Mem1');
 
-    expect(result).toEqual({ success: false, error: 'read fail' });
+    expect(result).toEqual({
+      success: false,
+      error: expect.objectContaining({ message: 'read fail' }),
+    });
   });
 });

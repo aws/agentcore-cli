@@ -1,5 +1,5 @@
 import { setEnvVar } from '../../../lib';
-import type { AgentCoreProjectSpec, NetworkMode } from '../../../schema';
+import type { AgentCoreProjectSpec } from '../../../schema';
 import { DEFAULT_EPISODIC_REFLECTION_NAMESPACES, DEFAULT_STRATEGY_NAMESPACES } from '../../../schema';
 import { HarnessPrimitive } from '../HarnessPrimitive';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
@@ -161,7 +161,7 @@ describe('HarnessPrimitive', () => {
 
       expect(result.success).toBe(false);
       if (!result.success) {
-        expect(result.error).toContain('already exists');
+        expect(result.error.message).toContain('already exists');
       }
     });
 
@@ -234,7 +234,7 @@ describe('HarnessPrimitive', () => {
         name: 'testHarness',
         modelProvider: 'bedrock',
         modelId: 'anthropic.claude-3-5-sonnet-20240620-v1:0',
-        networkMode: 'VPC' as NetworkMode,
+        networkMode: 'VPC',
         subnets: ['subnet-123', 'subnet-456'],
         securityGroups: ['sg-789'],
       });
@@ -486,7 +486,7 @@ describe('HarnessPrimitive', () => {
       });
 
       expect(result.success).toBe(false);
-      expect(!result.success && result.error).toContain('Dockerfile not found at');
+      expect(!result.success && result.error.message).toContain('Dockerfile not found at');
     });
 
     it('includes authorizerType AWS_IAM in harness spec', async () => {
@@ -654,7 +654,7 @@ describe('HarnessPrimitive', () => {
 
       expect(result.success).toBe(false);
       if (!result.success) {
-        expect(result.error).toContain('not found');
+        expect(result.error.message).toContain('not found');
       }
     });
   });

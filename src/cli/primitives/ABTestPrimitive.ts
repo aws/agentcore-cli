@@ -479,7 +479,7 @@ Target-Based Mode (--mode target-based)
                 resourceType: this.kind,
                 resourceName: cliOptions.name,
                 message: result.success ? `Removed ${this.label.toLowerCase()} '${cliOptions.name}'` : undefined,
-                error: !result.success ? result.error : undefined,
+                error: !result.success ? getErrorMessage(result.error) : undefined,
               })
             );
             process.exit(result.success ? 0 : 1);

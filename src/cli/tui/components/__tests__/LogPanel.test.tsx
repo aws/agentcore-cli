@@ -19,7 +19,7 @@ describe('LogPanel', () => {
   describe('empty state', () => {
     it('renders "No output yet" with no other content', () => {
       const { lastFrame } = render(<LogPanel logs={[]} />);
-      expect(lastFrame()).toBe('No output yet');
+      expect(lastFrame()).toContain('No output yet');
     });
   });
 

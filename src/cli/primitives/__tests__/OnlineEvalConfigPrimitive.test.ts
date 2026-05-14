@@ -126,7 +126,10 @@ describe('OnlineEvalConfigPrimitive', () => {
       });
 
       expect(result).toEqual(
-        expect.objectContaining({ success: false, error: expect.stringContaining('already exists') })
+        expect.objectContaining({
+          success: false,
+          error: expect.objectContaining({ message: expect.stringContaining('already exists') }),
+        })
       );
     });
 
@@ -140,7 +143,9 @@ describe('OnlineEvalConfigPrimitive', () => {
         samplingRate: 10,
       });
 
-      expect(result).toEqual(expect.objectContaining({ success: false, error: 'no project' }));
+      expect(result).toEqual(
+        expect.objectContaining({ success: false, error: expect.objectContaining({ message: 'no project' }) })
+      );
     });
   });
 
@@ -169,8 +174,8 @@ describe('OnlineEvalConfigPrimitive', () => {
 
       expect(result.success).toBe(false);
       if (!result.success) {
-        expect(result.error).toContain('NonExistent');
-        expect(result.error).toContain('not found');
+        expect(result.error.message).toContain('NonExistent');
+        expect(result.error.message).toContain('not found');
       }
     });
 
@@ -181,7 +186,7 @@ describe('OnlineEvalConfigPrimitive', () => {
 
       expect(result.success).toBe(false);
       if (!result.success) {
-        expect(result.error).toBe('io error');
+        expect(result.error.message).toBe('io error');
       }
     });
   });

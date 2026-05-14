@@ -128,7 +128,7 @@ export abstract class BasePrimitive<
                 resourceName: cliOptions.name,
                 message: result.success ? `Removed ${this.label.toLowerCase()} '${cliOptions.name}'` : undefined,
                 note: result.success ? SOURCE_CODE_NOTE : undefined,
-                error: !result.success ? result.error : undefined,
+                error: !result.success ? getErrorMessage(result.error) : undefined,
               })
             );
             process.exit(result.success ? 0 : 1);

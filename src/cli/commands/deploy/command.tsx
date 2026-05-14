@@ -64,7 +64,13 @@ async function handleDeployCLI(options: DeployOptions): Promise<void> {
   // ALL output happens here, after telemetry
   if (!executeDeployResult.success) {
     if (options.json) {
-      console.log(JSON.stringify(executeDeployResult));
+      console.log(
+        JSON.stringify({
+          ...executeDeployResult.deployResult,
+          success: false,
+          error: executeDeployResult.error.message,
+        })
+      );
     } else {
       console.error(executeDeployResult.error.message);
       if (executeDeployResult.deployResult.logPath) {

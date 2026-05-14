@@ -327,7 +327,7 @@ export class PolicyEnginePrimitive extends BasePrimitive<AddPolicyEngineOptions,
                   resourceName: cliOptions.name,
                   message: result.success ? `Removed policy engine '${cliOptions.name}'` : undefined,
                   note: result.success ? SOURCE_CODE_NOTE : undefined,
-                  error: !result.success ? result.error : undefined,
+                  error: !result.success ? getErrorMessage(result.error) : undefined,
                 })
               );
             } else if (result.success) {

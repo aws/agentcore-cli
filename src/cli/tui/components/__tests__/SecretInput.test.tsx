@@ -12,6 +12,9 @@ function delay(ms = 50) {
   return new Promise(resolve => setTimeout(resolve, ms));
 }
 
+// eslint-disable-next-line no-control-regex
+const stripAnsi = (s: string) => s.replace(/\u001b\[[0-9;]*m/g, '');
+
 afterEach(() => vi.restoreAllMocks());
 
 describe('SecretInput', () => {
@@ -34,7 +37,7 @@ describe('SecretInput', () => {
       <SecretInput prompt="Key" placeholder="sk-..." onSubmit={vi.fn()} onCancel={vi.fn()} />
     );
 
-    expect(lastFrame()).toContain('sk-...');
+    expect(stripAnsi(lastFrame()!)).toContain('sk-...');
   });
 
   it('masks input with default * character', async () => {
