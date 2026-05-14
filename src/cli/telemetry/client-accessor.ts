@@ -3,6 +3,7 @@ import { TelemetryClient } from './client.js';
 import { resolveAuditFilePath, resolveResourceAttributes } from './config.js';
 import { FileSystemSink } from './sinks/filesystem-sink.js';
 import { CompositeSink } from './sinks/metric-sink.js';
+import { OtelMetricSink } from './sinks/otel-metric-sink.js';
 import { join } from 'path';
 
 /**
@@ -35,6 +36,7 @@ async function createClient(entrypoint: string, mode: 'cli' | 'tui' = 'cli'): Pr
 
   const sinks = [];
   const audit = process.env.AGENTCORE_TELEMETRY_AUDIT === '1' || config.telemetry?.audit === true;
+  const endpoint = process.env.AGENTCORE_TELEMETRY_ENDPOINT ?? config.telemetry?.endpoint;
 
   if (audit) {
     const filePath = resolveAuditFilePath(
@@ -43,6 +45,10 @@ async function createClient(entrypoint: string, mode: 'cli' | 'tui' = 'cli'): Pr
       resource['agentcore-cli.session_id']
     );
     sinks.push(new FileSystemSink({ filePath, resource }));
+  }
+
+  if (endpoint) {
+    sinks.push(new OtelMetricSink({ endpoint, resource }));
   }
 
   return new TelemetryClient(new CompositeSink(sinks));
