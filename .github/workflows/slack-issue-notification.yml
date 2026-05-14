@@ -4,12 +4,15 @@ on:
   issues:
     types: [opened]
 
+permissions:
+  contents: read
+
 jobs:
   notify-slack:
     runs-on: ubuntu-latest
     steps:
       - name: Send issue details to Slack
-        uses: slackapi/slack-github-action@v3.0.1
+        uses: slackapi/slack-github-action@af78098f536edbc4de71162a307590698245be95 # v3.0.1
         with:
           webhook: ${{ secrets.SLACK_WEBHOOK_URL }}
           webhook-type: webhook-trigger

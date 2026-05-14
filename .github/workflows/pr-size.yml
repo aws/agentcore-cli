@@ -6,6 +6,9 @@ on:
   pull_request_target:
     branches: [main]
 
+permissions:
+  contents: read
+
 jobs:
   label-size:
     runs-on: ubuntu-latest
@@ -13,7 +16,7 @@ jobs:
       pull-requests: write
     steps:
       - name: Calculate PR size and apply label
-        uses: actions/github-script@v8
+        uses: actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd # v8
         with:
           script: |
             const prNumber = context.payload.pull_request.number;
