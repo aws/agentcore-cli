@@ -1,6 +1,5 @@
 import { NetworkModeSchema } from '../../constants';
-import { NetworkConfigSchema } from '../agent-env';
-import { LifecycleConfigurationSchema } from '../agent-env';
+import { LifecycleConfigurationSchema, NetworkConfigSchema } from '../agent-env';
 import { AuthorizerConfigSchema, RuntimeAuthorizerTypeSchema } from '../auth';
 import { uniqueBy } from '../zod-util';
 import { TagsSchema } from './tags';
@@ -229,6 +228,7 @@ export const AllowedToolSchema = z
   .string()
   .min(1)
   .max(64)
+  // eslint-disable-next-line security/detect-unsafe-regex -- safe: input is bounded to 64 chars by .max(64)
   .regex(/^(\*|@?[^/]+(\/[^/]+)?)$/, 'Must be "*" or a tool name pattern (max 64 chars)');
 
 // ============================================================================

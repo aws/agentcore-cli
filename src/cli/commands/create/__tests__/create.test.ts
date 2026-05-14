@@ -47,6 +47,7 @@ describe('create command', () => {
 
       const json = JSON.parse(result.stdout);
       expect(json.success).toBe(true);
+      // eslint-disable-next-line security/detect-non-literal-regexp -- test assertion with safe variable
       expect(json.projectPath).toMatch(new RegExp(`/${projectName}$`));
       expect(await exists(join(json.projectPath, 'agentcore'))).toBeTruthy();
     });
@@ -187,6 +188,7 @@ describe('create command', () => {
 
       const json = JSON.parse(result.stdout);
       expect(json.success).toBe(true);
+      // eslint-disable-next-line security/detect-non-literal-regexp -- test assertion with safe variable
       expect(json.projectPath).toMatch(new RegExp(`/${projectName}$`));
       expect(json.agentName).toBe(agentName);
       expect(await exists(join(json.projectPath, 'app', agentName))).toBeTruthy();
@@ -210,6 +212,7 @@ describe('create command', () => {
 
       const json = JSON.parse(result.stdout);
       expect(json.success).toBe(true);
+      // eslint-disable-next-line security/detect-non-literal-regexp -- test assertion with safe variable
       expect(json.projectPath).toMatch(new RegExp(`/${projectName}$`));
       expect(await exists(join(json.projectPath, 'app', harnessName, 'harness.json'))).toBeTruthy();
 
@@ -282,6 +285,7 @@ describe('create command', () => {
 
       expect(result.exitCode).toBe(0);
       const json = JSON.parse(result.stdout);
+      // eslint-disable-next-line security/detect-non-literal-regexp -- test assertion with safe variable
       expect(json.projectPath).toMatch(new RegExp(`/${projectName}$`));
       expect(json.wouldCreate).toContain(`${json.projectPath}/app/${agentName}/`);
       expect(await exists(join(testDir, projectName)), 'Should not create directory').toBe(false);

@@ -7,7 +7,6 @@ import {
   listConfigurationBundles,
   updateConfigurationBundle,
 } from '../../aws/agentcore-config-bundles';
-import type { ComponentConfigurationMap } from '../../aws/agentcore-config-bundles';
 
 // ============================================================================
 // Types
@@ -99,7 +98,7 @@ export async function setupConfigBundles(options: SetupConfigBundlesOptions): Pr
               region,
               bundleId: existingBundle.bundleId,
               description: bundleSpec.description,
-              components: bundleSpec.components as ComponentConfigurationMap,
+              components: bundleSpec.components,
               parentVersionIds: [current.versionId],
               branchName: effectiveBranch,
               commitMessage: bundleSpec.commitMessage ?? `Update ${bundleSpec.name}`,
@@ -167,7 +166,7 @@ export async function setupConfigBundles(options: SetupConfigBundlesOptions): Pr
               region,
               bundleId: existingByName.bundleId,
               description: bundleSpec.description,
-              components: bundleSpec.components as ComponentConfigurationMap,
+              components: bundleSpec.components,
               parentVersionIds: [current.versionId],
               branchName: effectiveBranch,
               commitMessage: bundleSpec.commitMessage ?? `Update ${bundleSpec.name}`,
@@ -193,7 +192,7 @@ export async function setupConfigBundles(options: SetupConfigBundlesOptions): Pr
             region,
             bundleName: apiBundleName,
             description: bundleSpec.description,
-            components: bundleSpec.components as ComponentConfigurationMap,
+            components: bundleSpec.components,
             branchName: bundleSpec.branchName,
             commitMessage: bundleSpec.commitMessage ?? `Create ${bundleSpec.name}`,
           });

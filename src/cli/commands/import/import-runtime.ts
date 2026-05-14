@@ -57,7 +57,7 @@ function toAgentEnvSpec(
     spec.authorizerType = runtime.authorizerType as AgentEnvSpec['authorizerType'];
   }
   if (runtime.authorizerConfiguration) {
-    spec.authorizerConfiguration = runtime.authorizerConfiguration as AgentEnvSpec['authorizerConfiguration'];
+    spec.authorizerConfiguration = runtime.authorizerConfiguration;
   }
 
   if (runtime.environmentVariables && Object.keys(runtime.environmentVariables).length > 0) {

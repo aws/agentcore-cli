@@ -4,23 +4,23 @@ import { describe, expect, it } from 'vitest';
 
 describe('extractPythonVersion', () => {
   it('extracts 3.10 from PYTHON_3_10', () => {
-    expect(extractPythonVersion('PYTHON_3_10' as PythonRuntime)).toBe('3.10');
+    expect(extractPythonVersion('PYTHON_3_10')).toBe('3.10');
   });
 
   it('extracts 3.11 from PYTHON_3_11', () => {
-    expect(extractPythonVersion('PYTHON_3_11' as PythonRuntime)).toBe('3.11');
+    expect(extractPythonVersion('PYTHON_3_11')).toBe('3.11');
   });
 
   it('extracts 3.12 from PYTHON_3_12', () => {
-    expect(extractPythonVersion('PYTHON_3_12' as PythonRuntime)).toBe('3.12');
+    expect(extractPythonVersion('PYTHON_3_12')).toBe('3.12');
   });
 
   it('extracts 3.13 from PYTHON_3_13', () => {
-    expect(extractPythonVersion('PYTHON_3_13' as PythonRuntime)).toBe('3.13');
+    expect(extractPythonVersion('PYTHON_3_13')).toBe('3.13');
   });
 
   it('extracts 3.14 from PYTHON_3_14', () => {
-    expect(extractPythonVersion('PYTHON_3_14' as PythonRuntime)).toBe('3.14');
+    expect(extractPythonVersion('PYTHON_3_14')).toBe('3.14');
   });
 
   it('throws for unsupported runtime string', () => {

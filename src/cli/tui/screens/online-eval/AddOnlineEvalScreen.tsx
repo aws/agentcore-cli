@@ -71,7 +71,7 @@ export function AddOnlineEvalScreen({
 
   useEffect(() => {
     wizard.setSkipCheck(shouldSkipStep);
-  }, [shouldSkipStep]); // wizard.setSkipCheck is stable (useCallback with no deps)
+  }, [shouldSkipStep, wizard]);
 
   // Build endpoint picker items: DEFAULT (plain) + each endpoint
   const endpointItems: SelectableItem[] = useMemo(() => {

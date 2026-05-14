@@ -20,11 +20,11 @@ function parseSSELine(line: string): { content: string | null; error: string | n
       return { content: parsed, error: null };
     } else if (parsed && typeof parsed === 'object') {
       if ('error' in parsed) {
-        return { content: null, error: String((parsed as { error: unknown }).error) };
+        return { content: null, error: String(parsed.error) };
       }
       // Handle {"text": "..."} format from bedrock-agentcore runtime
       if ('text' in parsed) {
-        return { content: String((parsed as { text: unknown }).text), error: null };
+        return { content: String(parsed.text), error: null };
       }
     }
   } catch {
@@ -59,7 +59,7 @@ function extractResult(text: string): string {
   try {
     const parsed: unknown = JSON.parse(text);
     if (parsed && typeof parsed === 'object' && 'result' in parsed) {
-      const result = (parsed as { result: unknown }).result;
+      const result = parsed.result;
       return typeof result === 'string' ? result : JSON.stringify(result, null, 2);
     }
     return JSON.stringify(parsed, null, 2);

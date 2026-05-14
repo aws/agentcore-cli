@@ -235,7 +235,8 @@ export function AddABTestScreen({
 
   useEffect(() => {
     wizard.setSkipCheck(shouldSkipStep);
-  }, [shouldSkipStep]); // wizard.setSkipCheck is stable (useCallback with no deps)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [shouldSkipStep, wizard.setSkipCheck]);
 
   // Mode selection items
   const modeItems: SelectableItem[] = useMemo(

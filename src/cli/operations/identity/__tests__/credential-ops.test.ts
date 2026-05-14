@@ -86,14 +86,7 @@ describe('resolveCredentialStrategy', () => {
   });
 
   it('returns no credential when no API key', async () => {
-    const result = await primitive.resolveCredentialStrategy(
-      'Proj',
-      'Agent',
-      'Anthropic' as any,
-      undefined,
-      '/base',
-      []
-    );
+    const result = await primitive.resolveCredentialStrategy('Proj', 'Agent', 'Anthropic', undefined, '/base', []);
     expect(result.credentialName).toBe('');
   });
 
@@ -104,7 +97,7 @@ describe('resolveCredentialStrategy', () => {
     const result = await primitive.resolveCredentialStrategy(
       'Proj',
       'Agent',
-      'Anthropic' as any,
+      'Anthropic',
       'my-api-key',
       '/base',
       creds
@@ -115,14 +108,7 @@ describe('resolveCredentialStrategy', () => {
   });
 
   it('creates project-scoped credential when no existing', async () => {
-    const result = await primitive.resolveCredentialStrategy(
-      'Proj',
-      'Agent',
-      'Anthropic' as any,
-      'new-key',
-      '/base',
-      []
-    );
+    const result = await primitive.resolveCredentialStrategy('Proj', 'Agent', 'Anthropic', 'new-key', '/base', []);
 
     expect(result.reuse).toBe(false);
     expect(result.credentialName).toBe('ProjAnthropic');
@@ -133,14 +119,7 @@ describe('resolveCredentialStrategy', () => {
     mockGetEnvVar.mockResolvedValue('different-key');
     const creds = [{ name: 'ProjAnthropic', authorizerType: 'ApiKeyCredentialProvider' as const }];
 
-    const result = await primitive.resolveCredentialStrategy(
-      'Proj',
-      'Agent',
-      'Anthropic' as any,
-      'new-key',
-      '/base',
-      creds
-    );
+    const result = await primitive.resolveCredentialStrategy('Proj', 'Agent', 'Anthropic', 'new-key', '/base', creds);
 
     expect(result.reuse).toBe(false);
     expect(result.credentialName).toBe('ProjAgentAnthropic');

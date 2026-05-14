@@ -36,7 +36,7 @@ function mockCtx(overrides: Partial<RouteContext> = {}): RouteContext {
     setCorsHeaders: vi.fn(),
     readBody: vi.fn(),
     ...overrides,
-  } as unknown as RouteContext;
+  };
 }
 
 describe('handleMcpProxy', () => {

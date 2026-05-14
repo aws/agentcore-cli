@@ -135,7 +135,7 @@ export async function getBedrockAgentConfig(
       agentInfo.guardrailConfiguration = {
         guardrailId: guardrailResponse.guardrailId,
         guardrailVersion: guardrailResponse.version,
-      } as unknown as typeof agentInfo.guardrailConfiguration;
+      };
     } catch (err) {
       console.warn(`Warning: Failed to fetch guardrail details: ${err instanceof Error ? err.message : String(err)}`);
     }

@@ -229,6 +229,7 @@ async function handleAction(args: {
       let resolvedPattern: string | RegExp;
       if (isRegex) {
         try {
+          // eslint-disable-next-line security/detect-non-literal-regexp -- user-provided regex pattern is intentional
           resolvedPattern = new RegExp(pattern);
         } catch (err) {
           return errorResponse(
@@ -319,6 +320,7 @@ async function handleWaitFor(args: { sessionId: string; pattern: string; timeout
   let pattern: string | RegExp;
   if (isRegex) {
     try {
+      // eslint-disable-next-line security/detect-non-literal-regexp -- user-provided regex pattern is intentional
       pattern = new RegExp(patternStr);
     } catch (err) {
       return errorResponse(

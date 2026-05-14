@@ -116,7 +116,7 @@ export function parseSSELine(line: string): { content: string | null; error: str
     if (typeof parsed === 'string') {
       return { content: parsed, error: null };
     } else if (parsed && typeof parsed === 'object' && 'error' in parsed) {
-      return { content: null, error: String((parsed as { error: unknown }).error) };
+      return { content: null, error: String(parsed.error) };
     }
   } catch {
     return { content, error: null };
@@ -149,7 +149,7 @@ export function extractResult(text: string): string {
   try {
     const parsed: unknown = JSON.parse(text);
     if (parsed && typeof parsed === 'object' && 'result' in parsed) {
-      const result = (parsed as { result: unknown }).result;
+      const result = parsed.result;
       return typeof result === 'string' ? result : JSON.stringify(result, null, 2);
     }
     return typeof parsed === 'string' ? parsed : JSON.stringify(parsed, null, 2);

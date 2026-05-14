@@ -10,7 +10,6 @@ import type {
   AddGatewayTargetStep,
   ApiGatewayTargetConfig,
   GatewayTargetWizardState,
-  SchemaBasedTargetConfig,
 } from './types';
 import { API_GATEWAY_AUTH_OPTIONS, MCP_TOOL_STEP_LABELS, TARGET_TYPE_OPTIONS, getOutboundAuthOptions } from './types';
 import { useAddGatewayTargetWizard } from './useAddGatewayTargetWizard';
@@ -236,7 +235,7 @@ export function AddGatewayTargetScreen({
           name: c.name,
           gateway: c.gateway!,
           schemaSource: c.schemaSource!,
-          outboundAuth: c.outboundAuth as SchemaBasedTargetConfig['outboundAuth'],
+          outboundAuth: c.outboundAuth,
         });
       } else if (c.targetType === 'lambdaFunctionArn') {
         onComplete({

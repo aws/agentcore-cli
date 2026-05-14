@@ -208,7 +208,7 @@ async function resolveEvaluatorLevels(evaluatorIds: string[], region: string): P
     // Custom evaluator — fetch level from API
     try {
       const evaluator = await getEvaluator({ region, evaluatorId: id });
-      levels.set(id, (evaluator.level as EvaluatorLevel) ?? 'SESSION');
+      levels.set(id, evaluator.level ?? 'SESSION');
     } catch {
       // If we can't determine the level, default to SESSION (most permissive)
       levels.set(id, 'SESSION');

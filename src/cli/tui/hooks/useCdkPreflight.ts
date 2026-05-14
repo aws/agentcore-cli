@@ -770,7 +770,7 @@ export function useCdkPreflight(options: PreflightOptions): PreflightResult {
           setAllCredentials(deployedCredentials);
           const configIO = new ConfigIO();
           const target = context.awsTargets[0];
-          const existingState = await configIO.readDeployedState().catch(() => ({ targets: {} }) as DeployedState);
+          const existingState = await configIO.readDeployedState().catch((): DeployedState => ({ targets: {} }));
           const targetState = existingState.targets?.[target!.name] ?? { resources: {} };
           targetState.resources ??= {};
           targetState.resources.credentials = deployedCredentials;

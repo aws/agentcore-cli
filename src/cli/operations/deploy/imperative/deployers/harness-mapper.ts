@@ -249,7 +249,7 @@ function mapTools(tools: HarnessSpec['tools']): HarnessTool[] {
   return tools.map(tool => ({
     type: tool.type,
     name: tool.name,
-    ...(tool.config && { config: tool.config as unknown as Record<string, unknown> }),
+    ...(tool.config && { config: tool.config }),
   }));
 }
 

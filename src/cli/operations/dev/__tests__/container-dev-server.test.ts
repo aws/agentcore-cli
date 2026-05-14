@@ -87,7 +87,7 @@ const defaultConfig: DevConfig = {
   directory: '/project/app',
   hasConfig: true,
   isPython: true,
-  buildType: 'Container' as any,
+  buildType: 'Container',
   protocol: 'HTTP',
 };
 

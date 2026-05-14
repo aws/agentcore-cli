@@ -544,7 +544,7 @@ export async function getEvaluator(options: GetEvaluatorOptions): Promise<GetEva
     evaluatorId: response.evaluatorId,
     evaluatorArn: response.evaluatorArn ?? '',
     evaluatorName: response.evaluatorName ?? '',
-    level: (response.level ?? 'SESSION') as EvaluationLevel,
+    level: response.level ?? 'SESSION',
     status: response.status ?? 'UNKNOWN',
     description: response.description,
     evaluatorConfig,

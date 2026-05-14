@@ -1,4 +1,4 @@
-import type { AuthorizerConfig, CustomClaimValidation, RuntimeAuthorizerType } from '../../../schema';
+import type { AuthorizerConfig, CustomClaimValidation } from '../../../schema';
 import { ProtocolModeSchema } from '../../../schema';
 import { RUNTIME_TYPE_MAP } from './constants';
 import type {
@@ -149,7 +149,7 @@ function extractAuthorizerConfig(
   };
 
   return {
-    authorizerType: 'CUSTOM_JWT' as RuntimeAuthorizerType,
+    authorizerType: 'CUSTOM_JWT',
     authorizerConfiguration: { customJwtAuthorizer },
   };
 }
@@ -210,9 +210,7 @@ export function parseStarterToolkitYaml(filePath: string): ParsedStarterToolkitC
         build,
         runtimeVersion,
         language: (agentConfig.language as 'python' | 'typescript') ?? 'python',
-        sourcePath: agentConfig.source_path
-          ? path.resolve(yamlDir, String(agentConfig.source_path as string))
-          : undefined,
+        sourcePath: agentConfig.source_path ? path.resolve(yamlDir, agentConfig.source_path as string) : undefined,
         networkMode,
         networkConfig:
           networkMode === 'VPC' && networkModeConfig

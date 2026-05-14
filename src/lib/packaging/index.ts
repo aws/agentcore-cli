@@ -81,7 +81,7 @@ export async function packRuntime(spec: AgentEnvSpec, options?: PackageOptions):
 export function packCodeZipSync(config: CodeBundleConfig | AgentEnvSpec, options?: PackageOptions): ArtifactResult {
   const runtimeVersion = config.runtimeVersion ?? DEFAULT_PYTHON_VERSION;
   const packager = getCodeZipPackager(runtimeVersion);
-  return packager.packCodeZip(config as AgentEnvSpec, options);
+  return packager.packCodeZip(config, options);
 }
 
 export type {

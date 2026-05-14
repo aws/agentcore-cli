@@ -140,7 +140,7 @@ export function validateAddAgentOptions(options: AddAgentOptions): ValidationRes
     if (!options.memory) {
       return { valid: false, error: '--memory is required for import path' };
     }
-    if (!MEMORY_OPTIONS.includes(options.memory as (typeof MEMORY_OPTIONS)[number])) {
+    if (!MEMORY_OPTIONS.includes(options.memory)) {
       return {
         valid: false,
         error: `Invalid memory option: ${options.memory}. Use none, shortTerm, or longAndShortTerm`,
@@ -153,8 +153,8 @@ export function validateAddAgentOptions(options: AddAgentOptions): ValidationRes
     if (lcResult.maxLifetime !== undefined) options.maxLifetime = lcResult.maxLifetime;
 
     // Force import defaults
-    options.modelProvider = 'Bedrock' as typeof options.modelProvider;
-    options.language = 'Python' as typeof options.language;
+    options.modelProvider = 'Bedrock';
+    options.language = 'Python';
     return { valid: true };
   }
 
@@ -248,7 +248,7 @@ export function validateAddAgentOptions(options: AddAgentOptions): ValidationRes
       return { valid: false, error: '--memory is required for create path' };
     }
 
-    if (!MEMORY_OPTIONS.includes(options.memory as (typeof MEMORY_OPTIONS)[number])) {
+    if (!MEMORY_OPTIONS.includes(options.memory)) {
       return {
         valid: false,
         error: `Invalid memory option: ${options.memory}. Use none, shortTerm, or longAndShortTerm`,

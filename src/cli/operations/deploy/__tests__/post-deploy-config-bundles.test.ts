@@ -516,14 +516,14 @@ describe('resolveConfigBundleComponentKeys', () => {
       targets: {
         [targetName]: { resources },
       },
-    } as unknown as DeployedState;
+    };
   }
 
   it('returns projectSpec unchanged when target has no resources', () => {
     const spec = makeFullProjectSpec([
       { name: 'b1', components: { '{{runtime:my-rt}}': { configuration: { k: 'v' } } } } as any,
     ]);
-    const deployedState = { targets: {} } as unknown as DeployedState;
+    const deployedState = { targets: {} };
 
     const result = resolveConfigBundleComponentKeys(spec, deployedState, 'missing-target');
     expect(result).toBe(spec); // same reference — no transformation

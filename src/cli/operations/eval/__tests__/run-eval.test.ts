@@ -57,11 +57,7 @@ vi.mock('@aws-sdk/client-cloudwatch-logs', () => ({
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
-function makeDeployedContext({
-  agentName = 'my-agent',
-  runtimeId = 'rt-123',
-  evaluators = {} as Record<string, { evaluatorId: string }>,
-} = {}) {
+function makeDeployedContext({ agentName = 'my-agent', runtimeId = 'rt-123', evaluators = {} } = {}) {
   return {
     project: {
       runtimes: [{ name: agentName }],

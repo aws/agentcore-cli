@@ -112,7 +112,7 @@ export async function applyRecommendationToBundle(
   }
 
   // Update local bundle components to match the server's new version
-  bundle.components = newVersion.components as typeof bundle.components;
+  bundle.components = newVersion.components;
 
   // Update commit message from lineage metadata if available
   if (newVersion.lineageMetadata?.commitMessage) {

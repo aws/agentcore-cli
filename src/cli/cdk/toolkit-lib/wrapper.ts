@@ -142,7 +142,7 @@ export class CdkToolkitWrapper {
     const result = await withErrorContext('synth', () => toolkit.synth(source, { validateStacks: true }));
 
     // Store synth result - it may hold locks
-    this.synthResult = result as SynthResult;
+    this.synthResult = result;
 
     // Produce the assembly to get the directory and stack info
     const assembly = await result.produce();

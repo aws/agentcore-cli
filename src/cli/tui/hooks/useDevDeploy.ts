@@ -4,7 +4,7 @@ import type { DeployMessage } from '../../cdk/toolkit-lib';
 import { handleDeploy } from '../../commands/deploy/actions';
 import { getErrorMessage } from '../../errors';
 import { canSkipDeploy } from '../../operations/deploy/change-detection';
-import type { Step, StepStatus } from '../components/StepProgress';
+import type { Step } from '../components/StepProgress';
 import { useCallback, useEffect, useRef, useState } from 'react';
 
 export interface UseDevDeployOptions {
@@ -31,9 +31,9 @@ export function useDevDeploy({ skip, ready = true }: UseDevDeployOptions = {}): 
   const onProgress = useCallback((stepName: string, status: 'start' | 'success' | 'error') => {
     setSteps(prev => {
       if (status === 'start') {
-        return [...prev, { label: stepName, status: 'running' as StepStatus }];
+        return [...prev, { label: stepName, status: 'running' }];
       }
-      return prev.map(s => (s.label === stepName ? { ...s, status: status as StepStatus } : s));
+      return prev.map(s => (s.label === stepName ? { ...s, status: status } : s));
     });
   }, []);
 

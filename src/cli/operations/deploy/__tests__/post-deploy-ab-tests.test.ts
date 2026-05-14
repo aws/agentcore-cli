@@ -272,7 +272,7 @@ describe('setupABTests', () => {
               gatewayArn: 'arn:aws:bedrock-agentcore:us-east-1:123:httpgateway/httpgw-001',
             },
           },
-        } as unknown as DeployedResourceState,
+        },
       });
 
       expect(mockCreateABTest.mock.calls[0]![0].gatewayArn).toBe(

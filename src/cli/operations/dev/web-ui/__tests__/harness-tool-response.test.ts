@@ -64,14 +64,14 @@ function mockCtx(overrides: Partial<RouteContext> = {}): RouteContext {
         },
       ],
       uiPort: 8081,
-    } as RouteContext['options'],
+    },
     runningAgents: new Map(),
     startingAgents: new Map(),
     agentErrors: new Map(),
     setCorsHeaders: vi.fn(),
     readBody: vi.fn(),
     ...overrides,
-  } as unknown as RouteContext;
+  };
 }
 
 async function* fakeStream(events: HarnessStreamEvent[]): AsyncGenerator<HarnessStreamEvent> {

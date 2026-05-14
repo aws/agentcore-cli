@@ -175,16 +175,16 @@ export function AddAgentScreen({ existingAgentNames, onComplete, onExit }: AddAg
     codeLocation: '',
     entrypoint: DEFAULT_ENTRYPOINT,
     buildType: 'CodeZip' as BuildType,
-    dockerfile: '' as string,
+    dockerfile: '',
     modelProvider: 'Bedrock' as ModelProvider,
     apiKey: undefined as string | undefined,
     networkMode: 'PUBLIC' as NetworkMode,
-    subnets: '' as string,
-    securityGroups: '' as string,
-    requestHeaderAllowlist: '' as string,
-    idleTimeout: '' as string,
-    maxLifetime: '' as string,
-    sessionStorageMountPath: '' as string,
+    subnets: '',
+    securityGroups: '',
+    requestHeaderAllowlist: '',
+    idleTimeout: '',
+    maxLifetime: '',
+    sessionStorageMountPath: '',
     withConfigBundle: undefined as boolean | undefined,
   });
   const [byoAdvancedSettings, setByoAdvancedSettings] = useState<Set<AdvancedSettingId>>(new Set());
@@ -334,7 +334,6 @@ export function AddAgentScreen({ existingAgentNames, onComplete, onExit }: AddAg
   // ─────────────────────────────────────────────────────────────────────────────
 
   // BYO steps filtering (apiKey for Bedrock, advanced sub-steps based on multi-select, jwtConfig for CUSTOM_JWT)
-  const byoAdvancedActive = byoAdvancedSettings.size > 0;
   const byoSteps = useMemo(
     () =>
       computeByoSteps({
@@ -344,14 +343,7 @@ export function AddAgentScreen({ existingAgentNames, onComplete, onExit }: AddAg
         authorizerType: byoAuthorizerType,
         advancedSettings: byoAdvancedSettings,
       }),
-    [
-      byoConfig.buildType,
-      byoConfig.modelProvider,
-      byoConfig.networkMode,
-      byoAdvancedActive,
-      byoAdvancedSettings,
-      byoAuthorizerType,
-    ]
+    [byoConfig.buildType, byoConfig.modelProvider, byoConfig.networkMode, byoAdvancedSettings, byoAuthorizerType]
   );
 
   const byoCurrentIndex = byoSteps.indexOf(byoStep);
@@ -490,7 +482,7 @@ export function AddAgentScreen({ existingAgentNames, onComplete, onExit }: AddAg
         setByoConfig(c => ({
           ...c,
           dockerfile: '',
-          networkMode: 'PUBLIC' as NetworkMode,
+          networkMode: 'PUBLIC',
           subnets: '',
           securityGroups: '',
           requestHeaderAllowlist: '',

@@ -166,7 +166,7 @@ retriever_tool_${kbName} = retriever_${kbName}.as_tool(name="kb_${kbName}", desc
       const fileName = `langchain_collaborator_${collabName}`;
 
       // Recursively translate collaborator
-      const collabTranslator = new LangGraphTranslator(collaborator as unknown as BedrockAgentConfig, this.options, {
+      const collabTranslator = new LangGraphTranslator(collaborator, this.options, {
         name: collabName,
         instruction: collaborator.collaborationInstruction ?? '',
         relayHistory: collaborator.relayConversationHistory ?? 'DISABLED',

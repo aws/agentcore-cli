@@ -30,14 +30,14 @@ function mockCtx(overrides: Partial<RouteContext> = {}): RouteContext {
       agents: [],
       harnesses: [],
       uiPort: 8081,
-    } as RouteContext['options'],
+    },
     runningAgents: new Map(),
     startingAgents: new Map(),
     agentErrors: new Map(),
     setCorsHeaders: vi.fn(),
     readBody: vi.fn(),
     ...overrides,
-  } as unknown as RouteContext;
+  };
 }
 
 describe('handleStatus', () => {
@@ -68,7 +68,7 @@ describe('handleStatus', () => {
           },
         ],
         uiPort: 8081,
-      } as RouteContext['options'],
+      },
     });
     const res = mockRes();
 
@@ -94,7 +94,7 @@ describe('handleStatus', () => {
           { name: 'harness-2', harnessArn: 'arn:2', region: 'us-west-2' },
         ],
         uiPort: 8081,
-      } as RouteContext['options'],
+      },
       runningAgents: agents,
       agentErrors,
     });

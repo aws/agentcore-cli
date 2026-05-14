@@ -52,7 +52,6 @@ describe('toGatewayTargetSpec — apiGateway', () => {
     expect(result!.name).toBe('test_target');
     expect(result!.targetType).toBe('apiGateway');
 
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const apigw = (result as any).apiGateway;
     expect(apigw.restApiId).toBe('abc123');
     expect(apigw.stage).toBe('prod');
@@ -84,7 +83,6 @@ describe('toGatewayTargetSpec — apiGateway', () => {
     const onProgress = vi.fn();
     const result = toGatewayTargetSpec(detail, new Map(), onProgress);
 
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const apigw = (result as any).apiGateway;
     expect(apigw.apiGatewayToolConfiguration.toolOverrides).toEqual([
       { name: 'listPets', path: '/pets', method: 'GET', description: 'List all pets' },
@@ -110,7 +108,6 @@ describe('toGatewayTargetSpec — apiGateway', () => {
     const onProgress = vi.fn();
     const result = toGatewayTargetSpec(detail, new Map(), onProgress);
 
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const apigw = (result as any).apiGateway;
     expect(apigw.apiGatewayToolConfiguration.toolOverrides).toBeUndefined();
   });
@@ -176,7 +173,6 @@ describe('toGatewayTargetSpec — openApiSchema', () => {
     expect(result!.name).toBe('test_target');
     expect(result!.targetType).toBe('openApiSchema');
 
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const schemaSource = (result as any).schemaSource;
     expect(schemaSource.s3.uri).toBe('s3://my-bucket/schema.yaml');
     expect(schemaSource.s3.bucketOwnerAccountId).toBe('123456789012');
@@ -222,7 +218,6 @@ describe('toGatewayTargetSpec — smithyModel', () => {
     expect(result!.name).toBe('test_target');
     expect(result!.targetType).toBe('smithyModel');
 
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const schemaSource = (result as any).schemaSource;
     expect(schemaSource.s3.uri).toBe('s3://models-bucket/model.json');
     expect(schemaSource.s3.bucketOwnerAccountId).toBeUndefined();
@@ -269,7 +264,6 @@ describe('toGatewayTargetSpec — lambda', () => {
     expect(result!.name).toBe('test_target');
     expect(result!.targetType).toBe('lambdaFunctionArn');
 
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const lambdaConfig = (result as any).lambdaFunctionArn;
     expect(lambdaConfig.lambdaArn).toBe('arn:aws:lambda:us-west-2:123456789012:function:my-func');
     expect(lambdaConfig.toolSchemaFile).toBe('s3://schemas/tools.json');

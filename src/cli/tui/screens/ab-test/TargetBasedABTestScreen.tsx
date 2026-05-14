@@ -354,12 +354,14 @@ export function TargetBasedABTestScreen({
     if (wizard.config.controlTargetInfo && controlEvalItems.length === 1 && !wizard.config.controlOnlineEval) {
       wizard.setControlEval(controlEvalItems[0]!.id);
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [wizard.config.controlTargetInfo, controlEvalItems, wizard.config.controlOnlineEval, wizard.setControlEval]);
 
   useEffect(() => {
     if (wizard.config.treatmentTargetInfo && treatmentEvalItems.length === 1 && !wizard.config.treatmentOnlineEval) {
       wizard.setTreatmentEval(treatmentEvalItems[0]!.id);
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
     wizard.config.treatmentTargetInfo,
     treatmentEvalItems,

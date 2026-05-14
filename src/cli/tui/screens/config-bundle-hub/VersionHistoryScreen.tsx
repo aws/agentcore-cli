@@ -8,7 +8,7 @@ import { Panel, Screen } from '../../components';
 import type { BundleWithMeta } from './useConfigBundleHub';
 import { useVersionHistory } from './useConfigBundleHub';
 import { Box, Text, useInput } from 'ink';
-import React, { useMemo, useState } from 'react';
+import React, { useCallback, useMemo, useState } from 'react';
 
 function formatTimestamp(epochSeconds: string): string {
   const num = Number(epochSeconds);
@@ -48,6 +48,42 @@ export function VersionHistoryScreen({ bundle, region, onViewDiff, onExit }: Ver
     }
     return map;
   }, [versions]);
+
+  const loadDetail = useCallback(
+    async (versionId: string) => {
+      try {
+        const detail = await getConfigurationBundleVersion({
+          region,
+          bundleId: bundle.bundleId,
+          versionId,
+        });
+        const lines: string[] = [];
+        lines.push(`Version: ${detail.versionId}`);
+        if (detail.description) lines.push(`Description: ${detail.description}`);
+        if (detail.lineageMetadata?.branchName) lines.push(`Branch: ${detail.lineageMetadata.branchName}`);
+        if (detail.lineageMetadata?.commitMessage) lines.push(`Message: ${detail.lineageMetadata.commitMessage}`);
+        if (detail.lineageMetadata?.createdBy) {
+          const cb = detail.lineageMetadata.createdBy;
+          lines.push(`Created by: ${cb.name}${cb.arn ? ` (${cb.arn})` : ''}`);
+        }
+        if (detail.lineageMetadata?.parentVersionIds?.length) {
+          lines.push(`Parent: ${detail.lineageMetadata.parentVersionIds.map(id => id).join(', ')}`);
+        }
+        lines.push(`Created: ${formatTimestamp(detail.versionCreatedAt)}`);
+        lines.push('');
+        lines.push('Components:');
+        for (const [arn, comp] of Object.entries(detail.components)) {
+          lines.push(`  ${arn}`);
+          lines.push(`  ${JSON.stringify(comp.configuration, null, 2).split('\n').join('\n  ')}`);
+          lines.push('');
+        }
+        setDetailText(lines.join('\n'));
+      } catch (err) {
+        setDetailText(`Error loading version: ${err instanceof Error ? err.message : String(err)}`);
+      }
+    },
+    [region, bundle.bundleId]
+  );
 
   useInput(
     (input, key) => {
@@ -108,39 +144,6 @@ export function VersionHistoryScreen({ bundle, region, onViewDiff, onExit }: Ver
     },
     { isActive: !isLoading }
   );
-
-  async function loadDetail(versionId: string) {
-    try {
-      const detail = await getConfigurationBundleVersion({
-        region,
-        bundleId: bundle.bundleId,
-        versionId,
-      });
-      const lines: string[] = [];
-      lines.push(`Version: ${detail.versionId}`);
-      if (detail.description) lines.push(`Description: ${detail.description}`);
-      if (detail.lineageMetadata?.branchName) lines.push(`Branch: ${detail.lineageMetadata.branchName}`);
-      if (detail.lineageMetadata?.commitMessage) lines.push(`Message: ${detail.lineageMetadata.commitMessage}`);
-      if (detail.lineageMetadata?.createdBy) {
-        const cb = detail.lineageMetadata.createdBy;
-        lines.push(`Created by: ${cb.name}${cb.arn ? ` (${cb.arn})` : ''}`);
-      }
-      if (detail.lineageMetadata?.parentVersionIds?.length) {
-        lines.push(`Parent: ${detail.lineageMetadata.parentVersionIds.map(id => id).join(', ')}`);
-      }
-      lines.push(`Created: ${formatTimestamp(detail.versionCreatedAt)}`);
-      lines.push('');
-      lines.push('Components:');
-      for (const [arn, comp] of Object.entries(detail.components)) {
-        lines.push(`  ${arn}`);
-        lines.push(`  ${JSON.stringify(comp.configuration, null, 2).split('\n').join('\n  ')}`);
-        lines.push('');
-      }
-      setDetailText(lines.join('\n'));
-    } catch (err) {
-      setDetailText(`Error loading version: ${err instanceof Error ? err.message : String(err)}`);
-    }
-  }
 
   if (isLoading) {
     return (

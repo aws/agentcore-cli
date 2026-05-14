@@ -223,21 +223,26 @@ function AgentCoreGuidedEditorBody(props: {
   const agentIndex = Math.min(activeAgentIndex, Math.max(0, draft.runtimes.length - 1));
   const agentCount = draft.runtimes.length;
 
-  const { tabs, fieldErrors, runtimeArtifact, issues } = useMemo(() => {
+  const { tabs, fieldErrors, runtimeArtifact, issues } = useMemo((): {
+    tabs: TabDef[];
+    fieldErrors: FieldErrorMap;
+    runtimeArtifact: string;
+    issues: IssueEntry[];
+  } => {
     if (!draft || draft.runtimes.length === 0) {
       return {
-        tabs: [] as TabDef[],
-        fieldErrors: {} as FieldErrorMap,
+        tabs: [],
+        fieldErrors: {},
         runtimeArtifact: '',
-        issues: [] as IssueEntry[],
+        issues: [],
       };
     }
 
     const agent = draft.runtimes[agentIndex];
     if (!agent) {
       return {
-        tabs: [] as TabDef[],
-        fieldErrors: {} as FieldErrorMap,
+        tabs: [],
+        fieldErrors: {},
         runtimeArtifact: '',
         issues: [] as IssueEntry[],
       };
@@ -326,7 +331,7 @@ function AgentCoreGuidedEditorBody(props: {
                 {
                   id: 'runtime-python-version',
                   label: 'Python Version',
-                  type: 'enum' as FieldType,
+                  type: 'enum',
                   path: ['runtimes', agentIndex, 'runtime', 'pythonVersion'],
                   enumValues: PythonRuntimeSchema.options,
                 },
@@ -335,7 +340,7 @@ function AgentCoreGuidedEditorBody(props: {
                 {
                   id: 'runtime-image-uri',
                   label: 'Image Uri',
-                  type: 'string' as FieldType,
+                  type: 'string',
                   path: ['runtimes', agentIndex, 'runtime', 'imageUri'],
                 },
               ] as FieldDef[])),

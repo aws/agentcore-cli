@@ -241,7 +241,9 @@ ${separator}
             } else if (value === null || value === undefined) {
               stringValue = '';
             } else {
-              stringValue = String(value as string | number | boolean);
+              // value is a primitive here (object/null/undefined handled above)
+              // eslint-disable-next-line @typescript-eslint/no-base-to-string, @typescript-eslint/restrict-template-expressions
+              stringValue = `${value}`;
             }
             this.appendLine(`[${timestamp}] ERROR.${key}: ${stringValue}`);
             if (responseLog.error?.metadata) {

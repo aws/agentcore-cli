@@ -806,9 +806,7 @@ export function useDeployFlow(options: DeployFlowOptions = {}): DeployFlowState 
     shouldStartDeploy,
     persistDeployedState,
     switchableIoHost,
-    context?.isTeardownDeploy,
-    context?.awsTargets,
-    context?.projectSpec.runtimes,
+    context,
     diffMode,
   ]);
 
@@ -878,6 +876,7 @@ export function useDeployFlow(options: DeployFlowOptions = {}): DeployFlowState 
     skipPreflight,
     shouldStartDeploy,
     switchableIoHost,
+    context,
   ]);
 
   // Finalize logger and dispose toolkit when preflight fails

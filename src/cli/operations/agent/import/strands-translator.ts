@@ -143,7 +143,7 @@ def retrieve_${kbName}(query: str):
       const fileName = `strands_collaborator_${collabName}`;
 
       // Recursively translate collaborator
-      const collabTranslator = new StrandsTranslator(collaborator as unknown as BedrockAgentConfig, this.options, {
+      const collabTranslator = new StrandsTranslator(collaborator, this.options, {
         name: collabName,
         instruction: collaborator.collaborationInstruction ?? '',
         relayHistory: collaborator.relayConversationHistory ?? 'DISABLED',

@@ -41,7 +41,7 @@ function mockCtx(overrides: Partial<RouteContext['options']> = {}): RouteContext
     agentErrors: new Map(),
     setCorsHeaders: vi.fn(),
     readBody: vi.fn(),
-  } as RouteContext;
+  };
 }
 
 describe('handleListCloudWatchTraces', () => {

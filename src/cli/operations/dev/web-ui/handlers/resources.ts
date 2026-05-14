@@ -97,7 +97,7 @@ export async function handleResources(ctx: RouteContext, res: ServerResponse, or
           networkMode: '',
           protocol: '',
           envVars: [],
-          deploymentStatus: 'pending-removal' as ResourceDeploymentStatus,
+          deploymentStatus: 'pending-removal',
           deployed,
           invocationUrl:
             deployed.runtimeArn && targetRegion
@@ -137,7 +137,7 @@ export async function handleResources(ctx: RouteContext, res: ServerResponse, or
           name,
           model: '',
           tools: [],
-          deploymentStatus: 'pending-removal' as ResourceDeploymentStatus,
+          deploymentStatus: 'pending-removal',
           deployed: { harnessId: deployed.harnessId, harnessArn: deployed.harnessArn },
         });
       }
@@ -163,7 +163,7 @@ export async function handleResources(ctx: RouteContext, res: ServerResponse, or
           name,
           strategies: [],
           expiryDays: undefined,
-          deploymentStatus: 'pending-removal' as ResourceDeploymentStatus,
+          deploymentStatus: 'pending-removal',
           deployed,
         });
       }
@@ -184,7 +184,7 @@ export async function handleResources(ctx: RouteContext, res: ServerResponse, or
         credentials.push({
           name,
           type: '',
-          deploymentStatus: 'pending-removal' as ResourceDeploymentStatus,
+          deploymentStatus: 'pending-removal',
           deployed,
         });
       }
@@ -208,7 +208,7 @@ export async function handleResources(ctx: RouteContext, res: ServerResponse, or
         gateways.push({
           name,
           targets: [],
-          deploymentStatus: 'pending-removal' as ResourceDeploymentStatus,
+          deploymentStatus: 'pending-removal',
           deployed,
         });
       }
@@ -238,7 +238,7 @@ export async function handleResources(ctx: RouteContext, res: ServerResponse, or
           level: '',
           description: undefined,
           configType: 'llm-as-a-judge' as const,
-          deploymentStatus: 'pending-removal' as ResourceDeploymentStatus,
+          deploymentStatus: 'pending-removal',
           deployed,
         });
       }
@@ -265,7 +265,7 @@ export async function handleResources(ctx: RouteContext, res: ServerResponse, or
           evaluators: [],
           samplingRate: 0,
           description: undefined,
-          deploymentStatus: 'pending-removal' as ResourceDeploymentStatus,
+          deploymentStatus: 'pending-removal',
           deployed,
         });
       }
@@ -293,7 +293,7 @@ export async function handleResources(ctx: RouteContext, res: ServerResponse, or
           name,
           description: undefined,
           policies: [],
-          deploymentStatus: 'pending-removal' as ResourceDeploymentStatus,
+          deploymentStatus: 'pending-removal',
           deployed,
         });
       }

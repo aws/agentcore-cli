@@ -137,7 +137,7 @@ describe('ConfigValidationError', () => {
           path: ['field'],
           message: 'Expected string',
           expected: 'string',
-        } as any,
+        },
       ]);
       const err = new ConfigValidationError('/path', 'project', zodError);
       expect(err.message).toContain('field');

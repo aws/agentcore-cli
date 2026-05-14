@@ -116,11 +116,10 @@ describe('discoverDeployedTargets', () => {
 describe('destroyTarget', () => {
   afterEach(() => vi.clearAllMocks());
 
-  const makeTarget = (name: string, stackName: string): DeployedTarget =>
-    ({
-      target: { name, account: '123456789012', region: 'us-east-1' },
-      stack: { stackName, stackArn: `arn:aws:cf:us-east-1:123:stack/${stackName}/id`, targetName: name },
-    }) as DeployedTarget;
+  const makeTarget = (name: string, stackName: string): DeployedTarget => ({
+    target: { name, account: '123456789012', region: 'us-east-1' },
+    stack: { stackName, stackArn: `arn:aws:cf:us-east-1:123:stack/${stackName}/id`, targetName: name },
+  });
 
   it('throws when CDK project dir does not exist', async () => {
     mockExistsSync.mockReturnValue(false);

@@ -201,7 +201,7 @@ describe('ResourceGraph', () => {
     const mcp: AgentCoreMcpSpec = {
       agentCoreGateways: [],
       unassignedTargets: [],
-    } as unknown as AgentCoreMcpSpec;
+    };
 
     const { lastFrame } = render(<ResourceGraph project={baseProject} mcp={mcp} />);
 

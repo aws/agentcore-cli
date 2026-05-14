@@ -225,7 +225,7 @@ export async function handleDeploy(options: ValidatedDeployOptions): Promise<Dep
 
     // Write credential ARNs to deployed state before CDK synth so the template can read them
     if (Object.keys(deployedCredentials).length > 0) {
-      const existingPreSynthState = await configIO.readDeployedState().catch(() => ({ targets: {} }) as DeployedState);
+      const existingPreSynthState: DeployedState = await configIO.readDeployedState().catch(() => ({ targets: {} }));
       const targetState = existingPreSynthState.targets?.[target.name] ?? { resources: {} };
       targetState.resources ??= {};
       targetState.resources.credentials = deployedCredentials;
@@ -374,7 +374,7 @@ export async function handleDeploy(options: ValidatedDeployOptions): Promise<Dep
     if (context.isTeardownDeploy) {
       // Teardown imperative resources before CDK stack destroy
       const imperativeManager = createDeploymentManager();
-      const existingTeardownState = await configIO.readDeployedState().catch(() => ({ targets: {} }) as DeployedState);
+      const existingTeardownState: DeployedState = await configIO.readDeployedState().catch(() => ({ targets: {} }));
       const teardownContext = {
         projectSpec: context.projectSpec,
         target,
@@ -478,13 +478,10 @@ export async function handleDeploy(options: ValidatedDeployOptions): Promise<Dep
 
     // Parse gateway outputs
     const gatewaySpecs =
-      mcpSpec?.agentCoreGateways?.reduce(
-        (acc, gateway) => {
-          acc[gateway.name] = gateway;
-          return acc;
-        },
-        {} as Record<string, unknown>
-      ) ?? {};
+      mcpSpec?.agentCoreGateways?.reduce<Record<string, unknown>>((acc, gateway) => {
+        acc[gateway.name] = gateway;
+        return acc;
+      }, {}) ?? {};
     const gateways = parseGatewayOutputs(outputs, gatewaySpecs);
 
     endStep('success');
@@ -492,7 +489,7 @@ export async function handleDeploy(options: ValidatedDeployOptions): Promise<Dep
     // Post-CDK: deploy imperative resources (harness)
     let deployedHarnesses: Record<string, HarnessDeployedState> | undefined;
     const imperativeManager = createDeploymentManager();
-    const existingState = await configIO.readDeployedState().catch(() => ({ targets: {} }) as DeployedState);
+    const existingState: DeployedState = await configIO.readDeployedState().catch(() => ({ targets: {} }));
     const imperativeContext = {
       projectSpec: context.projectSpec,
       target,

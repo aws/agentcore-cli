@@ -3,7 +3,7 @@ import { HINTS } from '../../copy';
 import { useTextInput } from '../../hooks';
 import type { CommandMeta } from '../../utils/commands';
 import { Box, Text, useInput, useStdout } from 'ink';
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 function truncateDescription(desc: string, maxLen: number): string {
   if (desc.length <= maxLen) return desc;
@@ -208,25 +208,28 @@ export function HelpScreen(props: {
     excludeChars: ['/'],
   });
 
-  function filterCommand(cmd: CommandMeta): DisplayItem[] {
-    if (cmd.disabled) return [];
-    if (!query) return [{ command: cmd }];
+  const filterCommand = useCallback(
+    (cmd: CommandMeta): DisplayItem[] => {
+      if (cmd.disabled) return [];
+      if (!query) return [{ command: cmd }];
 
-    const q = query.toLowerCase();
-    const matchesCommand = cmd.id.toLowerCase().includes(q);
-    const matchingSubcommands = cmd.subcommands.filter(sub => sub.toLowerCase().includes(q));
+      const q = query.toLowerCase();
+      const matchesCommand = cmd.id.toLowerCase().includes(q);
+      const matchingSubcommands = cmd.subcommands.filter(sub => sub.toLowerCase().includes(q));
 
-    const results: DisplayItem[] = [];
-    if (matchesCommand) {
-      results.push({ command: cmd });
-    }
-    for (const sub of matchingSubcommands) {
-      if (!matchesCommand) {
-        results.push({ command: cmd, matchedSubcommand: sub });
+      const results: DisplayItem[] = [];
+      if (matchesCommand) {
+        results.push({ command: cmd });
       }
-    }
-    return results;
-  }
+      for (const sub of matchingSubcommands) {
+        if (!matchesCommand) {
+          results.push({ command: cmd, matchedSubcommand: sub });
+        }
+      }
+      return results;
+    },
+    [query]
+  );
 
   const interactiveItems = useMemo((): DisplayItem[] => {
     return commands.filter(cmd => !cmd.cliOnly).flatMap(filterCommand);

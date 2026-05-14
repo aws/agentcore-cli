@@ -141,7 +141,6 @@ describe('toGatewaySpec – authorizer type mapping', () => {
   it('missing authorizerType: defaults to NONE', () => {
     const gw = makeGateway();
     // Simulate undefined authorizerType by deleting after construction
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     delete (gw as any).authorizerType;
     const result = toGatewaySpec(gw, emptyTargets, 'my_gw');
 
