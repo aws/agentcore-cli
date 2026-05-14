@@ -7,8 +7,8 @@ import { COMMAND_SCHEMAS, type Command, type CommandAttrs, deriveCommandGroup } 
 import { type CommandResult, CommandResultSchema, resilientParse } from './schemas/common-shapes.js';
 import { performance } from 'perf_hooks';
 
-/** Return this from the withCommandRun callback to record a cancellation. */
-export const CANCELLED = Symbol('cancelled');
+/** Return this from the trackCommandRun callback to record a cancellation. */
+const CANCELLED = Symbol('cancelled');
 
 async function getTelemetryClient() {
   try {
@@ -32,7 +32,7 @@ function recordCommandRun<C extends Command>(
       ? resilientParse(COMMAND_SCHEMAS[command], attrs as Record<string, unknown>)
       : attrs;
 
-  client.emit('command_run', durationMs, {
+  client.emit('cli.command_run', durationMs, {
     command_group: deriveCommandGroup(command),
     command,
     ...result,
@@ -41,12 +41,10 @@ function recordCommandRun<C extends Command>(
 }
 
 /**
- * Wrap a command action with telemetry recording.
- *
  * Return attrs on success, or CANCELLED on user cancellation.
  * Unhandled throws are classified as failures and re-thrown.
  */
-export async function withCommandRun<C extends Command>(
+async function trackCommandRun<C extends Command>(
   client: TelemetryClient,
   command: C,
   fn: () => CommandAttrs<C> | typeof CANCELLED | Promise<CommandAttrs<C> | typeof CANCELLED>,
@@ -85,14 +83,14 @@ export async function withCommandRun<C extends Command>(
 export async function withCommandRunTelemetry<C extends Command, R extends Result>(
   command: C,
   attrs: CommandAttrs<C>,
-  fn: () => Promise<R>
+  fn: () => R | Promise<R>
 ): Promise<R> {
   const client = await getTelemetryClient();
   if (!client) return fn();
 
   let result: R | undefined;
   try {
-    await withCommandRun(
+    await trackCommandRun(
       client,
       command,
       async () => {
@@ -103,7 +101,7 @@ export async function withCommandRunTelemetry<C extends Command, R extends Resul
       attrs
     );
   } catch (e) {
-    // withCommandRun re-throws after recording failure telemetry.
+    // trackCommandRun re-throws after recording failure telemetry.
     // If result was set, fn() returned a failure result — return it directly.
     // If not, fn() itself threw — convert to a failure result so callers
     // that don't wrap in try/catch (e.g. TUI hooks) don't leak unhandled rejections.
@@ -132,7 +130,7 @@ export async function runCliCommand<C extends Command>(
       await fn();
       process.exit(0);
     }
-    await withCommandRun(client, command, fn, knownAttrs);
+    await trackCommandRun(client, command, fn, knownAttrs);
     process.exit(0);
   } catch (error) {
     if (json) {

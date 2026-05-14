@@ -2,7 +2,6 @@ export { resolveTelemetryPreference, resolveResourceAttributes, resolveAuditFile
 export type { TelemetryPreference } from './config.js';
 export { TelemetryClientAccessor } from './client-accessor.js';
 export { TelemetryClient } from './client.js';
-export { CANCELLED, withCommandRun } from './cli-command-run.js';
 export { type MetricSink, CompositeSink } from './sinks/metric-sink.js';
 export { OtelMetricSink, type OtelMetricSinkConfig } from './sinks/otel-metric-sink.js';
 export { FileSystemSink, type FileSystemSinkConfig } from './sinks/filesystem-sink.js';

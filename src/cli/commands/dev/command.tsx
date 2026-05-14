@@ -25,7 +25,7 @@ import {
   loadProjectConfig,
 } from '../../operations/dev';
 import { OtelCollector, startOtelCollector } from '../../operations/dev/otel';
-import { withCommandRun, withCommandRunTelemetry } from '../../telemetry/cli-command-run.js';
+import { withCommandRunTelemetry } from '../../telemetry/cli-command-run.js';
 import { TelemetryClientAccessor } from '../../telemetry/client-accessor.js';
 import { Protocol, standardize } from '../../telemetry/schemas/common-shapes.js';
 import { FatalError } from '../../tui/components';
@@ -479,20 +479,21 @@ export const registerDev = (program: Command) => {
         // Default: launch web UI in browser
         // NOTE: Do not copy this pattern. runBrowserMode blocks forever (internal
         // await new Promise(() => {})) so we cannot use withCommandRunTelemetry here.
-        // We emit telemetry eagerly before the blocking call. If startup fails, the
-        // error propagates to the outer catch. Prefer withCommandRunTelemetry for
-        // commands that return.
+        // We emit telemetry eagerly before the blocking call.
         {
           const client = await TelemetryClientAccessor.get().catch(() => undefined);
-          const devAttrs = {
-            action: 'server' as const,
-            ui_mode: 'browser' as const,
-            has_stream: false,
-            protocol: standardize(Protocol, (targetDevAgent?.protocol ?? 'http').toLowerCase()),
-            invoke_count: 0,
-          };
           if (client) {
-            await withCommandRun(client, 'dev', () => devAttrs);
+            client.emit('cli.command_run', 0, {
+              command_group: 'dev',
+              command: 'dev',
+              exit_reason: 'success',
+              action: 'server',
+              ui_mode: 'browser',
+              has_stream: false,
+              protocol: standardize(Protocol, (targetDevAgent?.protocol ?? 'http').toLowerCase()),
+              invoke_count: 0,
+            });
+            await client.flush();
           }
           await runBrowserMode({
             workingDir,
