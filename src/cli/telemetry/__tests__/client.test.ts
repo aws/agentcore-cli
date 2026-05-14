@@ -157,4 +157,26 @@ describe('withCommandRunTelemetry', () => {
     expect(result).toEqual({ success: true });
     expect(sink.metrics).toHaveLength(0);
   });
+
+  it('records failure and returns error result when callback throws', async () => {
+    type R = { success: true } | { success: false; error: Error };
+    const result = await withCommandRunTelemetry<'telemetry.disable', R>(
+      'telemetry.disable',
+      {},
+      async (): Promise<R> => {
+        throw new Error('network timeout');
+      }
+    );
+
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      expect(result.error.message).toBe('network timeout');
+    }
+    expect(sink.metrics).toHaveLength(1);
+    expect(sink.metrics[0]!.attrs).toMatchObject({
+      command: 'telemetry.disable',
+      exit_reason: 'failure',
+      error_name: 'UnknownError',
+    });
+  });
 });
