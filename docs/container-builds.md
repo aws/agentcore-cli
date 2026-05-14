@@ -40,7 +40,7 @@ app/MyAgent/
 ## Generated Dockerfile
 
 The template uses `public.ecr.aws/docker/library/python:3.12-slim` as the base image (with `uv` installed via
-`pip install uv==0.11.14`) with these design choices:
+`pip install uv`) with these design choices:
 
 - **Layer caching**: Dependencies (`pyproject.toml`) are installed before copying application code
 - **Non-root**: Runs as `bedrock_agentcore` (UID 1000)

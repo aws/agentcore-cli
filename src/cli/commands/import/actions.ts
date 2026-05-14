@@ -384,7 +384,7 @@ export async function handleImport(options: ImportOptions): Promise<ImportResult
                 destDockerfile,
                 [
                   'FROM public.ecr.aws/docker/library/python:3.12-slim-bookworm',
-                  'RUN pip install --no-cache-dir uv==0.11.14',
+                  'RUN pip install --no-cache-dir uv',
                   'WORKDIR /app',
                   '',
                   'ENV UV_SYSTEM_PYTHON=1 \\',
