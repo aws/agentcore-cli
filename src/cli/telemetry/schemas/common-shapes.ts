@@ -55,7 +55,7 @@ export const AuthorizerType = z.enum(['aws_iam', 'custom_jwt', 'none']);
 export const Build = z.enum(['codezip', 'container']);
 export const CredentialType = z.enum(['api-key', 'oauth']);
 export const EvaluatorType = z.enum(['llm-as-a-judge', 'code-based']);
-export const ExitReason = z.enum(['success', 'failure', 'cancel']);
+export const ExitReason = z.enum(['success', 'failure']);
 export const FilterState = z.enum(['deployed', 'local-only', 'pending-removal', 'none']);
 export const FilterType = z.enum([
   'agent',
@@ -113,13 +113,12 @@ export const ErrorCategory = z.enum([
 
 // Common result shapes — reusable across metrics
 export const SuccessResult = z.object({ exit_reason: z.literal('success') });
-export const CancelResult = z.object({ exit_reason: z.literal('cancel') });
 export const FailureResult = z.object({
   exit_reason: z.literal('failure'),
   error_name: ErrorCategory,
   is_user_error: z.boolean(),
 });
-export const CommandResultSchema = z.discriminatedUnion('exit_reason', [SuccessResult, CancelResult, FailureResult]);
+export const CommandResultSchema = z.discriminatedUnion('exit_reason', [SuccessResult, FailureResult]);
 export type CommandResult = z.infer<typeof CommandResultSchema>;
 
 export const DeployModeSchema = z.enum(['deploy', 'dry-run', 'diff']);
