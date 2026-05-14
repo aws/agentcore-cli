@@ -1,4 +1,4 @@
-import { type Result, findConfigRoot } from '../../lib';
+import { type Result, findConfigRoot, serializeResult } from '../../lib';
 import type { ABTest } from '../../schema/schemas/primitives/ab-test';
 import { ABTestSchema } from '../../schema/schemas/primitives/ab-test';
 import { getErrorMessage } from '../errors';
@@ -366,11 +366,11 @@ Target-Based Mode (--mode target-based)
               });
 
               if (cliOptions.json) {
-                console.log(JSON.stringify(result));
+                console.log(JSON.stringify(serializeResult(result)));
               } else if (result.success) {
                 console.log(`Added target-based AB test '${result.abTestName}'`);
               } else {
-                console.error(result.error);
+                console.error(result.error.message);
               }
               process.exit(result.success ? 0 : 1);
               return;
@@ -413,11 +413,11 @@ Target-Based Mode (--mode target-based)
             });
 
             if (cliOptions.json) {
-              console.log(JSON.stringify(result));
+              console.log(JSON.stringify(serializeResult(result)));
             } else if (result.success) {
               console.log(`Added AB test '${result.abTestName}'`);
             } else {
-              console.error(result.error);
+              console.error(result.error.message);
             }
             process.exit(result.success ? 0 : 1);
           } else {

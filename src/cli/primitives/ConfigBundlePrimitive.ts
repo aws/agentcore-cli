@@ -1,4 +1,4 @@
-import { type Result, findConfigRoot } from '../../lib';
+import { type Result, findConfigRoot, serializeResult } from '../../lib';
 import type { ConfigBundle } from '../../schema';
 import { ConfigBundleSchema } from '../../schema';
 import { getErrorMessage } from '../errors';
@@ -171,7 +171,7 @@ export class ConfigBundlePrimitive extends BasePrimitive<AddConfigBundleOptions,
               });
 
               if (cliOptions.json) {
-                console.log(JSON.stringify(result));
+                console.log(JSON.stringify(serializeResult(result)));
               } else if (result.success) {
                 console.log(`Added configuration bundle '${result.bundleName}'`);
               } else {
