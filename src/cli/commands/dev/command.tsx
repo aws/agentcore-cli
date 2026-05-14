@@ -25,7 +25,7 @@ import {
   loadProjectConfig,
 } from '../../operations/dev';
 import { OtelCollector, startOtelCollector } from '../../operations/dev/otel';
-import { withCommandRunTelemetry } from '../../telemetry/cli-command-run.js';
+import { withCommandRun, withCommandRunTelemetry } from '../../telemetry/cli-command-run.js';
 import { TelemetryClientAccessor } from '../../telemetry/client-accessor.js';
 import { Protocol, standardize } from '../../telemetry/schemas/common-shapes.js';
 import { FatalError } from '../../tui/components';
@@ -492,7 +492,7 @@ export const registerDev = (program: Command) => {
             invoke_count: 0,
           };
           if (client) {
-            await client.withCommandRun('dev', () => devAttrs);
+            await withCommandRun(client, 'dev', () => devAttrs);
           }
           await runBrowserMode({
             workingDir,

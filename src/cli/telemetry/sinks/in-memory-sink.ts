@@ -1,6 +1,7 @@
 import type { MetricSink } from './metric-sink.js';
 
 export interface RecordedMetric {
+  metric: string;
   value: number;
   attrs: Record<string, string | number>;
 }
@@ -8,8 +9,8 @@ export interface RecordedMetric {
 export class InMemorySink implements MetricSink {
   readonly metrics: RecordedMetric[] = [];
 
-  record(value: number, attrs: Record<string, string | number>): void {
-    this.metrics.push({ value, attrs });
+  record(metricName: string, value: number, attrs: Record<string, string | number>): void {
+    this.metrics.push({ metric: metricName, value, attrs });
   }
 
   // eslint-disable-next-line @typescript-eslint/no-empty-function

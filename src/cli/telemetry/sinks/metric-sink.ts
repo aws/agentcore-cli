@@ -2,7 +2,7 @@
  * A destination for metric data. Implementations handle transport (OTel, file, etc.).
  */
 export interface MetricSink {
-  record(value: number, attrs: Record<string, string | number>): void;
+  record(metricName: string, value: number, attrs: Record<string, string | number>): void;
   flush(timeoutMs?: number): Promise<void>;
   shutdown(): Promise<void>;
 }
@@ -14,10 +14,10 @@ export interface MetricSink {
 export class CompositeSink implements MetricSink {
   constructor(private readonly sinks: MetricSink[]) {}
 
-  record(value: number, attrs: Record<string, string | number>): void {
+  record(metricName: string, value: number, attrs: Record<string, string | number>): void {
     for (const sink of this.sinks) {
       try {
-        sink.record(value, attrs);
+        sink.record(metricName, value, attrs);
       } catch {
         // Individual sink failure must not affect others
       }

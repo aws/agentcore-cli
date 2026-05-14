@@ -1,15 +1,76 @@
 import type { Result } from '../../lib/result';
 import { getErrorMessage } from '../errors';
 import { TelemetryClientAccessor } from './client-accessor.js';
-import type { Command, CommandAttrs } from './schemas/command-run.js';
+import { TelemetryClient } from './client.js';
+import { classifyError, isUserError } from './error-classification.js';
+import { COMMAND_SCHEMAS, type Command, type CommandAttrs, deriveCommandGroup } from './schemas/command-run.js';
+import { type CommandResult, CommandResultSchema, resilientParse } from './schemas/common-shapes.js';
+import { performance } from 'perf_hooks';
 
-export type OperationResult = Result;
+/** Return this from the withCommandRun callback to record a cancellation. */
+export const CANCELLED = Symbol('cancelled');
 
 async function getTelemetryClient() {
   try {
     return await TelemetryClientAccessor.get();
   } catch {
     return undefined;
+  }
+}
+
+function recordCommandRun<C extends Command>(
+  client: TelemetryClient,
+  command: C,
+  result: CommandResult,
+  attrs: CommandAttrs<C> | Partial<CommandAttrs<C>>,
+  durationMs: number
+): void {
+  CommandResultSchema.parse(result);
+
+  const validatedAttrs =
+    Object.keys(attrs as Record<string, unknown>).length > 0
+      ? resilientParse(COMMAND_SCHEMAS[command], attrs as Record<string, unknown>)
+      : attrs;
+
+  client.emit('command_run', durationMs, {
+    command_group: deriveCommandGroup(command),
+    command,
+    ...result,
+    ...validatedAttrs,
+  });
+}
+
+/**
+ * Wrap a command action with telemetry recording.
+ *
+ * Return attrs on success, or CANCELLED on user cancellation.
+ * Unhandled throws are classified as failures and re-thrown.
+ */
+export async function withCommandRun<C extends Command>(
+  client: TelemetryClient,
+  command: C,
+  fn: () => CommandAttrs<C> | typeof CANCELLED | Promise<CommandAttrs<C> | typeof CANCELLED>,
+  fallbackAttrs?: Partial<CommandAttrs<C>>
+): Promise<void> {
+  const start = performance.now();
+  try {
+    const result = await fn();
+    const durationMs = Math.round(performance.now() - start);
+    if (result === CANCELLED) {
+      recordCommandRun(client, command, { exit_reason: 'cancel' }, {}, durationMs);
+    } else {
+      recordCommandRun(client, command, { exit_reason: 'success' }, result, durationMs);
+    }
+  } catch (err) {
+    const failureResult: CommandResult & { exit_reason: 'failure' } = {
+      exit_reason: 'failure',
+      error_name: classifyError(err),
+      is_user_error: isUserError(err),
+    };
+    recordCommandRun(client, command, failureResult, fallbackAttrs ?? {}, Math.round(performance.now() - start));
+    throw err;
+  } finally {
+    await client.flush();
   }
 }
 
@@ -21,7 +82,7 @@ async function getTelemetryClient() {
  * is returned to the caller. If the callback throws, telemetry is recorded and
  * the exception propagates. If telemetry is unavailable, the callback runs untracked.
  */
-export async function withCommandRunTelemetry<C extends Command, R extends OperationResult>(
+export async function withCommandRunTelemetry<C extends Command, R extends Result>(
   command: C,
   attrs: CommandAttrs<C>,
   fn: () => Promise<R>
@@ -31,7 +92,8 @@ export async function withCommandRunTelemetry<C extends Command, R extends Opera
 
   let result: R | undefined;
   try {
-    await client.withCommandRun(
+    await withCommandRun(
+      client,
       command,
       async () => {
         result = await fn();
@@ -70,7 +132,7 @@ export async function runCliCommand<C extends Command>(
       await fn();
       process.exit(0);
     }
-    await client.withCommandRun(command, fn, knownAttrs);
+    await withCommandRun(client, command, fn, knownAttrs);
     process.exit(0);
   } catch (error) {
     if (json) {

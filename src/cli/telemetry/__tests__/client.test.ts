@@ -1,226 +1,228 @@
 /* eslint-disable @typescript-eslint/require-await */
-import { CANCELLED, TelemetryClient } from '../client';
+import { CANCELLED, withCommandRun } from '../cli-command-run';
+import { TelemetryClient } from '../client';
 import { InMemorySink } from '../sinks/in-memory-sink';
 import { describe, expect, it } from 'vitest';
 
-describe('TelemetryClient', () => {
-  describe('withCommandRun', () => {
-    it('records success with returned attrs', async () => {
-      const sink = new InMemorySink();
-      const client = new TelemetryClient(sink);
+describe('withCommandRun', () => {
+  it('records success with returned attrs', async () => {
+    const sink = new InMemorySink();
+    const client = new TelemetryClient(sink);
 
-      await client.withCommandRun('update', async () => ({ check_only: true }));
+    await withCommandRun(client, 'update', async () => ({ check_only: true }));
 
-      expect(sink.metrics).toHaveLength(1);
-      expect(sink.metrics[0]!.attrs).toMatchObject({
-        command_group: 'update',
-        command: 'update',
-        exit_reason: 'success',
-        check_only: 'true',
-      });
+    expect(sink.metrics).toHaveLength(1);
+    expect(sink.metrics[0]!.metric).toBe('command_run');
+    expect(sink.metrics[0]!.attrs).toMatchObject({
+      command_group: 'update',
+      command: 'update',
+      exit_reason: 'success',
+      check_only: 'true',
     });
+  });
 
-    it('accepts sync callbacks', async () => {
-      const sink = new InMemorySink();
-      const client = new TelemetryClient(sink);
+  it('accepts sync callbacks', async () => {
+    const sink = new InMemorySink();
+    const client = new TelemetryClient(sink);
 
-      await client.withCommandRun('telemetry.disable', () => ({}));
+    await withCommandRun(client, 'telemetry.disable', () => ({}));
 
-      expect(sink.metrics).toHaveLength(1);
-      expect(sink.metrics[0]!.attrs).toMatchObject({ exit_reason: 'success' });
+    expect(sink.metrics).toHaveLength(1);
+    expect(sink.metrics[0]!.attrs).toMatchObject({ exit_reason: 'success' });
+  });
+
+  it('records failure and re-throws on error', async () => {
+    const sink = new InMemorySink();
+    const client = new TelemetryClient(sink);
+
+    await expect(
+      withCommandRun(client, 'deploy', async () => {
+        throw new Error('boom');
+      })
+    ).rejects.toThrow('boom');
+
+    expect(sink.metrics).toHaveLength(1);
+    expect(sink.metrics[0]!.attrs).toMatchObject({
+      command_group: 'deploy',
+      exit_reason: 'failure',
+      error_name: 'UnknownError',
     });
+  });
 
-    it('records failure and re-throws on error', async () => {
-      const sink = new InMemorySink();
-      const client = new TelemetryClient(sink);
+  it('classifies PackagingError subclasses', async () => {
+    const sink = new InMemorySink();
+    const client = new TelemetryClient(sink);
 
-      await expect(
-        client.withCommandRun('deploy', async () => {
-          throw new Error('boom');
-        })
-      ).rejects.toThrow('boom');
-
-      expect(sink.metrics).toHaveLength(1);
-      expect(sink.metrics[0]!.attrs).toMatchObject({
-        command_group: 'deploy',
-        exit_reason: 'failure',
-        error_name: 'UnknownError',
-      });
-    });
-
-    it('classifies PackagingError subclasses', async () => {
-      const sink = new InMemorySink();
-      const client = new TelemetryClient(sink);
-
-      class MissingDependencyError extends Error {
-        constructor() {
-          super('missing dep');
-          this.name = 'MissingDependencyError';
-        }
+    class MissingDependencyError extends Error {
+      constructor() {
+        super('missing dep');
+        this.name = 'MissingDependencyError';
       }
+    }
 
-      await expect(
-        client.withCommandRun('deploy', async () => {
-          throw new MissingDependencyError();
-        })
-      ).rejects.toThrow();
+    await expect(
+      withCommandRun(client, 'deploy', async () => {
+        throw new MissingDependencyError();
+      })
+    ).rejects.toThrow();
 
-      expect(sink.metrics[0]!.attrs).toMatchObject({
-        error_name: 'PackagingError',
-        is_user_error: 'false',
-      });
+    expect(sink.metrics[0]!.attrs).toMatchObject({
+      error_name: 'PackagingError',
+      is_user_error: 'false',
     });
+  });
 
-    it('marks credential errors as user errors', async () => {
-      const sink = new InMemorySink();
-      const client = new TelemetryClient(sink);
+  it('marks credential errors as user errors', async () => {
+    const sink = new InMemorySink();
+    const client = new TelemetryClient(sink);
 
-      class AwsCredentialsError extends Error {
-        constructor() {
-          super('creds expired');
-          this.name = 'AwsCredentialsError';
-        }
+    class AwsCredentialsError extends Error {
+      constructor() {
+        super('creds expired');
+        this.name = 'AwsCredentialsError';
       }
+    }
 
-      await expect(
-        client.withCommandRun('invoke', async () => {
-          throw new AwsCredentialsError();
-        })
-      ).rejects.toThrow();
+    await expect(
+      withCommandRun(client, 'invoke', async () => {
+        throw new AwsCredentialsError();
+      })
+    ).rejects.toThrow();
 
-      expect(sink.metrics[0]!.attrs).toMatchObject({
-        error_name: 'CredentialsError',
-        is_user_error: 'true',
-      });
+    expect(sink.metrics[0]!.attrs).toMatchObject({
+      error_name: 'CredentialsError',
+      is_user_error: 'true',
+    });
+  });
+
+  it('records duration as a non-negative integer', async () => {
+    const sink = new InMemorySink();
+    const client = new TelemetryClient(sink);
+
+    await withCommandRun(client, 'telemetry.disable', async () => {
+      await new Promise(r => globalThis.setTimeout(r, 5));
+      return {};
     });
 
-    it('records duration as a non-negative integer', async () => {
-      const sink = new InMemorySink();
-      const client = new TelemetryClient(sink);
+    expect(sink.metrics[0]!.value).toBeGreaterThanOrEqual(0);
+    expect(Number.isInteger(sink.metrics[0]!.value)).toBe(true);
+  });
 
-      await client.withCommandRun('telemetry.disable', async () => {
-        await new Promise(r => globalThis.setTimeout(r, 5));
-        return {};
-      });
+  it('converts boolean attrs to strings', async () => {
+    const sink = new InMemorySink();
+    const client = new TelemetryClient(sink);
 
-      expect(sink.metrics[0]!.value).toBeGreaterThanOrEqual(0);
-      expect(Number.isInteger(sink.metrics[0]!.value)).toBe(true);
+    await withCommandRun(client, 'update', async () => ({ check_only: true }));
+
+    expect(sink.metrics[0]!.attrs.check_only).toBe('true');
+  });
+
+  it('publishes metric with unknown defaults for incomplete success payloads', async () => {
+    const sink = new InMemorySink();
+    const client = new TelemetryClient(sink);
+
+    await withCommandRun(
+      client,
+      'create',
+      // @ts-expect-error — intentionally incomplete
+      async () => ({ language: 'python' })
+    );
+
+    expect(sink.metrics).toHaveLength(1);
+    expect(sink.metrics[0]!.attrs).toMatchObject({
+      exit_reason: 'success',
+      language: 'python',
+      framework: 'unknown',
+      model_provider: 'unknown',
     });
+  });
 
-    it('converts boolean attrs to strings', async () => {
-      const sink = new InMemorySink();
-      const client = new TelemetryClient(sink);
+  it('defaults invalid attrs to unknown while preserving valid ones', async () => {
+    const sink = new InMemorySink();
+    const client = new TelemetryClient(sink);
 
-      await client.withCommandRun('update', async () => ({ check_only: true }));
+    await withCommandRun(
+      client,
+      'create',
+      // @ts-expect-error — intentionally invalid enum value
+      async () => ({
+        language: 'rust', // invalid enum
+        framework: 'strands',
+        model_provider: 'bedrock',
+        memory: 'shortterm',
+        protocol: 'mcp',
+        build: 'codezip',
+        agent_type: 'create',
+        network_mode: 'public',
+        has_agent: true,
+      })
+    );
 
-      expect(sink.metrics[0]!.attrs.check_only).toBe('true');
+    expect(sink.metrics).toHaveLength(1);
+    expect(sink.metrics[0]!.attrs.language).toBe('unknown');
+    expect(sink.metrics[0]!.attrs.framework).toBe('strands');
+  });
+
+  it('records cancel when callback returns CANCELLED', async () => {
+    const sink = new InMemorySink();
+    const client = new TelemetryClient(sink);
+
+    await withCommandRun(client, 'deploy', () => CANCELLED);
+
+    expect(sink.metrics).toHaveLength(1);
+    expect(sink.metrics[0]!.attrs).toMatchObject({
+      command_group: 'deploy',
+      exit_reason: 'cancel',
     });
+  });
 
-    it('publishes metric with unknown defaults for incomplete success payloads', async () => {
-      const sink = new InMemorySink();
-      const client = new TelemetryClient(sink);
+  it('records fallbackAttrs on failure when provided', async () => {
+    const sink = new InMemorySink();
+    const client = new TelemetryClient(sink);
 
-      // Missing required attrs for 'create' — should still publish with 'unknown' defaults
-      await client.withCommandRun(
+    await expect(
+      withCommandRun(
+        client,
         'create',
-        // @ts-expect-error — intentionally incomplete
-        async () => ({ language: 'python' })
-      );
-
-      expect(sink.metrics).toHaveLength(1);
-      expect(sink.metrics[0]!.attrs).toMatchObject({
-        exit_reason: 'success',
-        language: 'python',
-        framework: 'unknown',
-        model_provider: 'unknown',
-      });
-    });
-
-    it('defaults invalid attrs to unknown while preserving valid ones', async () => {
-      const sink = new InMemorySink();
-      const client = new TelemetryClient(sink);
-
-      await client.withCommandRun(
-        'create',
-        // @ts-expect-error — intentionally invalid enum value
-        async () => ({
-          language: 'rust', // invalid enum
+        async () => {
+          throw new Error('validation failed');
+        },
+        {
+          language: 'python',
           framework: 'strands',
           model_provider: 'bedrock',
-          memory: 'shortterm',
-          protocol: 'mcp',
+          memory: 'none',
+          protocol: 'http',
           build: 'codezip',
           agent_type: 'create',
           network_mode: 'public',
           has_agent: true,
-        })
-      );
+        }
+      )
+    ).rejects.toThrow('validation failed');
 
-      expect(sink.metrics).toHaveLength(1);
-      expect(sink.metrics[0]!.attrs.language).toBe('unknown');
-      expect(sink.metrics[0]!.attrs.framework).toBe('strands');
+    expect(sink.metrics).toHaveLength(1);
+    expect(sink.metrics[0]!.attrs).toMatchObject({
+      exit_reason: 'failure',
+      error_name: 'UnknownError',
+      language: 'python',
+      framework: 'strands',
+      model_provider: 'bedrock',
+      has_agent: 'true',
     });
+  });
 
-    it('records cancel when callback returns CANCELLED', async () => {
-      const sink = new InMemorySink();
-      const client = new TelemetryClient(sink);
+  it('records empty attrs on failure when fallbackAttrs not provided', async () => {
+    const sink = new InMemorySink();
+    const client = new TelemetryClient(sink);
 
-      await client.withCommandRun('deploy', () => CANCELLED);
+    await expect(
+      withCommandRun(client, 'deploy', async () => {
+        throw new Error('boom');
+      })
+    ).rejects.toThrow('boom');
 
-      expect(sink.metrics).toHaveLength(1);
-      expect(sink.metrics[0]!.attrs).toMatchObject({
-        command_group: 'deploy',
-        exit_reason: 'cancel',
-      });
-    });
-
-    it('records fallbackAttrs on failure when provided', async () => {
-      const sink = new InMemorySink();
-      const client = new TelemetryClient(sink);
-
-      await expect(
-        client.withCommandRun(
-          'create',
-          async () => {
-            throw new Error('validation failed');
-          },
-          {
-            language: 'python',
-            framework: 'strands',
-            model_provider: 'bedrock',
-            memory: 'none',
-            protocol: 'http',
-            build: 'codezip',
-            agent_type: 'create',
-            network_mode: 'public',
-            has_agent: true,
-          }
-        )
-      ).rejects.toThrow('validation failed');
-
-      expect(sink.metrics).toHaveLength(1);
-      expect(sink.metrics[0]!.attrs).toMatchObject({
-        exit_reason: 'failure',
-        error_name: 'UnknownError',
-        language: 'python',
-        framework: 'strands',
-        model_provider: 'bedrock',
-        has_agent: 'true',
-      });
-    });
-
-    it('records empty attrs on failure when fallbackAttrs not provided', async () => {
-      const sink = new InMemorySink();
-      const client = new TelemetryClient(sink);
-
-      await expect(
-        client.withCommandRun('deploy', async () => {
-          throw new Error('boom');
-        })
-      ).rejects.toThrow('boom');
-
-      expect(sink.metrics).toHaveLength(1);
-      expect(sink.metrics[0]!.attrs.language).toBeUndefined();
-    });
+    expect(sink.metrics).toHaveLength(1);
+    expect(sink.metrics[0]!.attrs.language).toBeUndefined();
   });
 });
