@@ -1,8 +1,5 @@
 import type { AgentCoreProjectSpec } from '../../../schema';
-import { DeployMode as DeployModeSchema } from '../../telemetry/schemas/common-shapes.js';
-import { z } from 'zod';
-
-export type DeployMode = z.infer<typeof DeployModeSchema>;
+import type { DeployMode } from '../../telemetry/schemas/common-shapes';
 
 export const DEFAULT_DEPLOY_ATTRS = {
   runtime_count: 0,

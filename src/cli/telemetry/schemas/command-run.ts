@@ -5,10 +5,9 @@ import {
   AuthType,
   AuthorizerType,
   Build,
-  Command as CommandSchema,
   Count,
   CredentialType,
-  DeployMode,
+  DeployModeSchema,
   EvaluatorType,
   FilterState,
   FilterType,
@@ -31,9 +30,6 @@ import {
   safeSchema,
 } from './common-shapes.js';
 import { z } from 'zod';
-
-export type Command = z.infer<typeof CommandSchema>;
-export type CommandGroup = { [C in Command]: C extends `${infer G}.${string}` ? G : C }[Command];
 
 const CreateAttrs = safeSchema({
   language: Language,
@@ -101,7 +97,7 @@ const DeployAttrs = safeSchema({
   gateway_target_count: Count,
   policy_engine_count: Count,
   policy_count: Count,
-  deploy_mode: DeployMode,
+  deploy_mode: DeployModeSchema,
 });
 
 const DevAttrs = safeSchema({
@@ -194,12 +190,14 @@ export const COMMAND_SCHEMAS = {
   'telemetry.disable': NoAttrs,
   'telemetry.enable': NoAttrs,
   'telemetry.status': NoAttrs,
-} as const satisfies Record<Command, z.ZodObject<z.ZodRawShape>>;
+} as const satisfies Record<string, z.ZodObject<z.ZodRawShape>>;
 
 // ---------------------------------------------------------------------------
 // Derived types
 // ---------------------------------------------------------------------------
 
+export type Command = keyof typeof COMMAND_SCHEMAS;
+export type CommandGroup = { [C in Command]: C extends `${infer G}.${string}` ? G : C }[Command];
 export type CommandAttrs<C extends Command> = z.infer<(typeof COMMAND_SCHEMAS)[C]>;
 
 export type SubCommand<G extends CommandGroup, S extends string> = Extract<Command, `${G}.${S}`>;
