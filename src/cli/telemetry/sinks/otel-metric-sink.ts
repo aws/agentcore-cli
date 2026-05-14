@@ -22,6 +22,7 @@ export class OtelMetricSink implements MetricSink {
       headers: { 'X-Installation-Id': config.resource['agentcore-cli.installation_id'] },
       temporalityPreference: AggregationTemporality.DELTA,
     });
+
     this.meterProvider = new MeterProvider({
       resource,
       readers: [
