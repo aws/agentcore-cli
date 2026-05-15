@@ -15,6 +15,7 @@ import { FetchAccessScreen } from './screens/fetch-access';
 import { HelpScreen, HomeScreen } from './screens/home';
 import { ImportFlow } from './screens/import';
 import { InvokeScreen } from './screens/invoke';
+import { LogsScreen } from './screens/logs';
 import { OnlineEvalDashboard } from './screens/online-eval';
 import { PackageScreen } from './screens/package';
 import { RecommendationFlow, RecommendationHistoryScreen, RecommendationsHubScreen } from './screens/recommendation';
@@ -35,6 +36,7 @@ type Route =
   | { name: 'help'; initialQuery?: string }
   | { name: 'deploy' }
   | { name: 'invoke' }
+  | { name: 'logs' }
   | { name: 'create' }
   | { name: 'add' }
   | { name: 'status' }
@@ -103,6 +105,8 @@ function AppContent() {
       setRoute({ name: 'deploy' });
     } else if (id === 'invoke') {
       setRoute({ name: 'invoke' });
+    } else if (id === 'logs') {
+      setRoute({ name: 'logs' });
     } else if (id === 'status') {
       setRoute({ name: 'status' });
     } else if (id === 'create') {
@@ -181,6 +185,10 @@ function AppContent() {
 
   if (route.name === 'invoke') {
     return <InvokeScreen isInteractive={true} onExit={() => setRoute({ name: 'help' })} />;
+  }
+
+  if (route.name === 'logs') {
+    return <LogsScreen isInteractive={true} onExit={() => setRoute({ name: 'help' })} />;
   }
 
   if (route.name === 'status') {
