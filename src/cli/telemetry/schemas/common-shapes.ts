@@ -30,7 +30,7 @@ export function resilientParse(
  * Lowercase a CLI value and parse it through a Zod enum, returning the narrowed type.
  * The `as` cast on the failure branch is intentional: invalid values pass through to
  * recordCommandRun, where COMMAND_SCHEMAS[command].parse(attrs) validates the full
- * attr object in a try/catch — silently dropping the metric if any field is invalid.
+ * attr object with resilient parsing.
  * This ensures telemetry never crashes the CLI while keeping the happy-path type-safe.
  */
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
