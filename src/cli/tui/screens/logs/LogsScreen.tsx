@@ -13,13 +13,12 @@ interface LogsScreenProps {
 }
 
 type Phase = 'loading' | 'select-agent' | 'streaming' | 'error';
-type LevelFilter = 'all' | 'error' | 'warn' | 'info';
+type LevelFilter = 'all' | 'error' | 'warn';
 
 const FILTER_LABELS: Record<LevelFilter, string> = {
   all: 'All',
   error: 'Errors',
-  warn: 'Warnings+',
-  info: 'Info+',
+  warn: 'Warn+Errors',
 };
 
 function filterLogs(logs: LogEntry[], filter: LevelFilter): LogEntry[] {
@@ -119,9 +118,6 @@ export function LogsScreen({ onExit }: LogsScreenProps) {
         if (input === '3') {
           setLevelFilter('warn');
         }
-        if (input === '4') {
-          setLevelFilter('info');
-        }
       }
     },
     { isActive: !showFullScreen }
@@ -166,7 +162,7 @@ export function LogsScreen({ onExit }: LogsScreenProps) {
     );
   }
 
-  const helpText = '↑↓ scroll · f full-screen · 1 all · 2 errors · 3 warn+ · 4 info+ · Esc back';
+  const helpText = '↑↓ scroll · f full-screen · 1 all · 2 errors · 3 warn+ · Esc back';
 
   return (
     <Screen
@@ -202,7 +198,7 @@ export function LogsScreen({ onExit }: LogsScreenProps) {
         </Box>
       }
     >
-      <Box flexDirection="column" flexGrow={1}>
+      <Box flexDirection="column" height={maxLines + 2}>
         <LogPanel logs={filteredLogs} maxLines={maxLines} minimal={false} isActive={phase === 'streaming'} />
       </Box>
     </Screen>
