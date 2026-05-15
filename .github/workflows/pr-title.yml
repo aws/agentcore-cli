@@ -39,7 +39,8 @@ jobs:
             must start with a lowercase letter.
             Example: "feat: add deploy command"
           validateSingleCommit: false
-          # Skip validation for bot/dependency PRs
+          # Skip validation for bot/dependency/release PRs
           ignoreLabels: |
             bot
             dependencies
+            release

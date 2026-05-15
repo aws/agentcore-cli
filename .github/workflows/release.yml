@@ -185,6 +185,7 @@ jobs:
           gh pr create \
             --base "$BASE_BRANCH" \
             --head "$BRANCH_NAME" \
+            --label release \
             --title "Release v$NEW_VERSION" \
             --body "## Release v$NEW_VERSION
 
