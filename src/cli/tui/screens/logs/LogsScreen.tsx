@@ -132,11 +132,7 @@ export function LogsScreen({ onExit }: LogsScreenProps) {
     );
   }
 
-  const helpText = isStreaming
-    ? '↑↓ scroll · l full-screen · Esc back'
-    : streamError
-      ? 'Esc back'
-      : '↑↓ scroll · l full-screen · Esc back';
+  const helpText = isStreaming ? 'l full-screen · Esc back' : streamError ? 'Esc back' : 'l full-screen · Esc back';
 
   return (
     <Screen
