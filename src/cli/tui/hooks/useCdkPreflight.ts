@@ -1,7 +1,8 @@
 import { ConfigIO, SecureCredentials } from '../../../lib';
+import { AwsCredentialsError } from '../../../lib/errors/types';
 import type { DeployedState } from '../../../schema';
 import { applyTargetRegionToEnv } from '../../aws';
-import { AwsCredentialsError, validateAwsCredentials } from '../../aws/account';
+import { validateAwsCredentials } from '../../aws/account';
 import { type CdkToolkitWrapper, type SwitchableIoHost, createSwitchableIoHost } from '../../cdk/toolkit-lib';
 import { getErrorMessage, isExpiredTokenError, isNoCredentialsError } from '../../errors';
 import type { ExecLogger } from '../../logging';

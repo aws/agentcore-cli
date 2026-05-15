@@ -1,4 +1,11 @@
-import { DEFAULT_STRATEGY_NAMESPACES, MemoryStrategySchema, MemoryStrategyTypeSchema } from '../memory';
+import {
+  DEFAULT_EPISODIC_REFLECTION_NAMESPACES,
+  DEFAULT_EPISODIC_REFLECTION_NAMESPACE_TEMPLATES,
+  DEFAULT_STRATEGY_NAMESPACES,
+  DEFAULT_STRATEGY_NAMESPACE_TEMPLATES,
+  MemoryStrategySchema,
+  MemoryStrategyTypeSchema,
+} from '../memory';
 import { describe, expect, it } from 'vitest';
 
 describe('MemoryStrategyTypeSchema', () => {
@@ -26,9 +33,29 @@ describe('MemoryStrategySchema', () => {
       type: 'SEMANTIC',
       name: 'myStrategy',
       description: 'A description',
+      namespaceTemplates: ['/users/{actorId}/facts'],
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it('accepts deprecated namespaces field as backward-compat alias', () => {
+    const result = MemoryStrategySchema.safeParse({
+      type: 'SEMANTIC',
       namespaces: ['/users/{actorId}/facts'],
     });
     expect(result.success).toBe(true);
+  });
+
+  it('rejects strategy specifying both namespaces and namespaceTemplates', () => {
+    const result = MemoryStrategySchema.safeParse({
+      type: 'SEMANTIC',
+      namespaces: ['/users/{actorId}/facts'],
+      namespaceTemplates: ['/users/{actorId}/facts'],
+    });
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      expect(result.error.issues[0]?.message).toContain('mutually exclusive');
+    }
   });
 
   it('rejects strategy with CUSTOM type', () => {
@@ -46,7 +73,16 @@ describe('MemoryStrategySchema', () => {
     expect(result.success).toBe(false);
   });
 
-  it('accepts EPISODIC strategy with reflectionNamespaces', () => {
+  it('accepts EPISODIC strategy with reflectionNamespaceTemplates', () => {
+    const result = MemoryStrategySchema.safeParse({
+      type: 'EPISODIC',
+      namespaceTemplates: ['/episodes/{actorId}/{sessionId}'],
+      reflectionNamespaceTemplates: ['/episodes/{actorId}'],
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it('accepts EPISODIC strategy with deprecated reflectionNamespaces alias', () => {
     const result = MemoryStrategySchema.safeParse({
       type: 'EPISODIC',
       namespaces: ['/episodes/{actorId}/{sessionId}'],
@@ -55,29 +91,69 @@ describe('MemoryStrategySchema', () => {
     expect(result.success).toBe(true);
   });
 
-  it('rejects EPISODIC strategy without reflectionNamespaces', () => {
+  it('rejects EPISODIC strategy specifying both reflectionNamespaces and reflectionNamespaceTemplates', () => {
     const result = MemoryStrategySchema.safeParse({
       type: 'EPISODIC',
-      namespaces: ['/episodes/{actorId}/{sessionId}'],
+      namespaceTemplates: ['/episodes/{actorId}/{sessionId}'],
+      reflectionNamespaces: ['/episodes/{actorId}'],
+      reflectionNamespaceTemplates: ['/episodes/{actorId}'],
+    });
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      expect(result.error.issues.some(i => i.message.includes('mutually exclusive'))).toBe(true);
+    }
+  });
+
+  it('rejects EPISODIC strategy without reflectionNamespaceTemplates', () => {
+    const result = MemoryStrategySchema.safeParse({
+      type: 'EPISODIC',
+      namespaceTemplates: ['/episodes/{actorId}/{sessionId}'],
     });
     expect(result.success).toBe(false);
   });
 
-  it('rejects EPISODIC strategy with empty reflectionNamespaces', () => {
+  it('rejects EPISODIC strategy with empty reflectionNamespaceTemplates', () => {
     const result = MemoryStrategySchema.safeParse({
       type: 'EPISODIC',
-      namespaces: ['/episodes/{actorId}/{sessionId}'],
-      reflectionNamespaces: [],
+      namespaceTemplates: ['/episodes/{actorId}/{sessionId}'],
+      reflectionNamespaceTemplates: [],
     });
     expect(result.success).toBe(false);
   });
 
-  it('allows non-EPISODIC strategies without reflectionNamespaces', () => {
+  it('allows non-EPISODIC strategies without reflectionNamespaceTemplates', () => {
     const result = MemoryStrategySchema.safeParse({ type: 'SEMANTIC' });
     expect(result.success).toBe(true);
   });
 
-  it('rejects EPISODIC when reflectionNamespaces is not a prefix of namespaces', () => {
+  it('rejects EPISODIC when reflectionNamespaceTemplates is not a prefix of namespaceTemplates', () => {
+    const result = MemoryStrategySchema.safeParse({
+      type: 'EPISODIC',
+      namespaceTemplates: ['/episodes/{actorId}/{sessionId}'],
+      reflectionNamespaceTemplates: ['/reflections/{actorId}'],
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it('accepts EPISODIC when reflectionNamespaceTemplates is a prefix of namespaceTemplates', () => {
+    const result = MemoryStrategySchema.safeParse({
+      type: 'EPISODIC',
+      namespaceTemplates: ['/episodes/{actorId}/{sessionId}'],
+      reflectionNamespaceTemplates: ['/episodes/{actorId}'],
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it('accepts EPISODIC when reflectionNamespaceTemplates equals namespaceTemplates', () => {
+    const result = MemoryStrategySchema.safeParse({
+      type: 'EPISODIC',
+      namespaceTemplates: ['/episodes/{actorId}/{sessionId}'],
+      reflectionNamespaceTemplates: ['/episodes/{actorId}/{sessionId}'],
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it('evaluates prefix refinement using deprecated aliases when only they are provided', () => {
     const result = MemoryStrategySchema.safeParse({
       type: 'EPISODIC',
       namespaces: ['/episodes/{actorId}/{sessionId}'],
@@ -85,44 +161,34 @@ describe('MemoryStrategySchema', () => {
     });
     expect(result.success).toBe(false);
   });
-
-  it('accepts EPISODIC when reflectionNamespaces is a prefix of namespaces', () => {
-    const result = MemoryStrategySchema.safeParse({
-      type: 'EPISODIC',
-      namespaces: ['/episodes/{actorId}/{sessionId}'],
-      reflectionNamespaces: ['/episodes/{actorId}'],
-    });
-    expect(result.success).toBe(true);
-  });
-
-  it('accepts EPISODIC when reflectionNamespaces equals namespaces', () => {
-    const result = MemoryStrategySchema.safeParse({
-      type: 'EPISODIC',
-      namespaces: ['/episodes/{actorId}/{sessionId}'],
-      reflectionNamespaces: ['/episodes/{actorId}/{sessionId}'],
-    });
-    expect(result.success).toBe(true);
-  });
 });
 
-describe('DEFAULT_STRATEGY_NAMESPACES', () => {
-  it('has default namespaces for SEMANTIC', () => {
-    expect(DEFAULT_STRATEGY_NAMESPACES.SEMANTIC).toEqual(['/users/{actorId}/facts']);
+describe('DEFAULT_STRATEGY_NAMESPACE_TEMPLATES', () => {
+  it('has default templates for SEMANTIC', () => {
+    expect(DEFAULT_STRATEGY_NAMESPACE_TEMPLATES.SEMANTIC).toEqual(['/users/{actorId}/facts']);
   });
 
-  it('has default namespaces for USER_PREFERENCE', () => {
-    expect(DEFAULT_STRATEGY_NAMESPACES.USER_PREFERENCE).toEqual(['/users/{actorId}/preferences']);
+  it('has default templates for USER_PREFERENCE', () => {
+    expect(DEFAULT_STRATEGY_NAMESPACE_TEMPLATES.USER_PREFERENCE).toEqual(['/users/{actorId}/preferences']);
   });
 
-  it('has default namespaces for SUMMARIZATION', () => {
-    expect(DEFAULT_STRATEGY_NAMESPACES.SUMMARIZATION).toEqual(['/summaries/{actorId}/{sessionId}']);
+  it('has default templates for SUMMARIZATION', () => {
+    expect(DEFAULT_STRATEGY_NAMESPACE_TEMPLATES.SUMMARIZATION).toEqual(['/summaries/{actorId}/{sessionId}']);
   });
 
-  it('has default namespaces for EPISODIC', () => {
-    expect(DEFAULT_STRATEGY_NAMESPACES.EPISODIC).toEqual(['/episodes/{actorId}/{sessionId}']);
+  it('has default templates for EPISODIC', () => {
+    expect(DEFAULT_STRATEGY_NAMESPACE_TEMPLATES.EPISODIC).toEqual(['/episodes/{actorId}/{sessionId}']);
   });
 
-  it('does not have default namespaces for CUSTOM (removed)', () => {
-    expect(DEFAULT_STRATEGY_NAMESPACES).not.toHaveProperty('CUSTOM');
+  it('does not have default templates for CUSTOM (removed)', () => {
+    expect(DEFAULT_STRATEGY_NAMESPACE_TEMPLATES).not.toHaveProperty('CUSTOM');
+  });
+
+  it('deprecated alias DEFAULT_STRATEGY_NAMESPACES points to the same object', () => {
+    expect(DEFAULT_STRATEGY_NAMESPACES).toBe(DEFAULT_STRATEGY_NAMESPACE_TEMPLATES);
+  });
+
+  it('deprecated alias DEFAULT_EPISODIC_REFLECTION_NAMESPACES points to the same object', () => {
+    expect(DEFAULT_EPISODIC_REFLECTION_NAMESPACES).toBe(DEFAULT_EPISODIC_REFLECTION_NAMESPACE_TEMPLATES);
   });
 });

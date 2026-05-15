@@ -1,4 +1,6 @@
-FROM ghcr.io/astral-sh/uv:python3.12-bookworm-slim
+FROM public.ecr.aws/docker/library/python:3.12-slim-bookworm
+
+RUN pip install --no-cache-dir uv
 
 ARG UV_DEFAULT_INDEX
 ARG UV_INDEX

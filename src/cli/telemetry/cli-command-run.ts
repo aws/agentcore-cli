@@ -2,7 +2,7 @@ import type { Result } from '../../lib/result';
 import { getErrorMessage } from '../errors';
 import { TelemetryClientAccessor } from './client-accessor.js';
 import { TelemetryClient } from './client.js';
-import { classifyError, isUserError } from './error-classification.js';
+import { classifyError } from './error.js';
 import { COMMAND_SCHEMAS, type Command, type CommandAttrs, deriveCommandGroup } from './schemas/command-run.js';
 import { type CommandResult, CommandResultSchema, resilientParse } from './schemas/common-shapes.js';
 import { performance } from 'perf_hooks';
@@ -57,10 +57,11 @@ async function trackCommandRun<C extends Command>(
     const durationMs = Math.round(performance.now() - start);
     recordCommandRun(client, command, { exit_reason: 'success' }, result, durationMs);
   } catch (err) {
+    const { category, source } = classifyError(err);
     const failureResult: CommandResult & { exit_reason: 'failure' } = {
       exit_reason: 'failure',
-      error_name: classifyError(err),
-      is_user_error: isUserError(err),
+      error_name: category,
+      error_source: source,
     };
     recordCommandRun(client, command, failureResult, fallbackAttrs ?? {}, Math.round(performance.now() - start));
     throw err;

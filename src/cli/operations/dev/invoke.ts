@@ -1,10 +1,10 @@
+import { ConnectionError, ServerError } from '../../../lib/errors/types';
 import { invokeA2AStreaming } from './invoke-a2a';
 import { invokeAguiStreaming } from './invoke-agui';
-import { ConnectionError, type InvokeStreamingOptions, type SSELogger, ServerError } from './invoke-types';
+import { type InvokeStreamingOptions, type SSELogger } from './invoke-types';
 import { isConnectionError, sleep } from './utils';
 
-// Re-export shared types so existing consumers don't break
-export { ConnectionError, ServerError, type InvokeStreamingOptions, type SSELogger } from './invoke-types';
+export { type InvokeStreamingOptions, type SSELogger } from './invoke-types';
 
 /**
  * Parse a single SSE data line and extract the content.
@@ -196,7 +196,9 @@ export async function* invokeAgentStreaming(
   }
 
   // Log final failure after all retries exhausted with full details
-  const finalError = new ConnectionError(lastError ?? new Error('Failed to connect to dev server after retries'));
+  const finalError = new ConnectionError(lastError?.message ?? 'Failed to connect to dev server after retries', {
+    cause: lastError,
+  });
   logger?.log?.('error', `Failed to connect after ${maxRetries} attempts: ${finalError.message}`);
   throw finalError;
 }
@@ -304,7 +306,9 @@ export async function invokeAgent(portOrOptions: number | InvokeOptions, message
   }
 
   // Log final failure after all retries exhausted with full details
-  const finalError = new ConnectionError(lastError ?? new Error('Failed to connect to dev server after retries'));
+  const finalError = new ConnectionError(lastError?.message ?? 'Failed to connect to dev server after retries', {
+    cause: lastError,
+  });
   logger?.log?.('error', `Failed to connect after ${maxRetries} attempts: ${finalError.message}`);
   throw finalError;
 }

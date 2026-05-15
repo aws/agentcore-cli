@@ -1,15 +1,14 @@
 import { findConfigRoot } from '../../../lib';
+import { ConnectionError, ServerError } from '../../../lib/errors/types';
 import type { AgentCoreProjectSpec, ProtocolMode } from '../../../schema';
 import { detectContainerRuntime } from '../../external-requirements';
 import { DevLogger } from '../../logging/dev-logger';
 import {
   type A2AAgentCard,
-  ConnectionError,
   type DevConfig,
   DevServer,
   type LogLevel,
   type McpTool,
-  ServerError,
   callMcpTool,
   createDevServer,
   fetchA2AAgentCard,

@@ -148,6 +148,38 @@ See `docs/TESTING.md` for details.
 
 New features must include telemetry instrumentation. See `src/cli/telemetry/README.md` for how to add metrics.
 
+## Error Types
+
+Custom error types are encouraged — each distinct error class appears as its own category in telemetry, giving more
+granular failure data. All errors live in `src/lib/errors/types.ts`.
+
+To add a new error:
+
+1. Define a class in `src/lib/errors/types.ts` extending `BaseError` with a default `errorSource`:
+   - `'user'` — user-fixable (bad input, missing credentials, invalid config)
+   - `'client'` — our bug or unexpected local failure
+   - `'service'` — remote service issue (timeout, connection failure, server error)
+   - `'unknown'` — source cannot be determined
+
+```ts
+export class MyNewError extends BaseError {
+  constructor(message: string, options?: BaseErrorOptions) {
+    super(message, { defaultSource: 'user', ...options });
+  }
+}
+```
+
+Callers can override the source per throw site:
+
+```ts
+throw new MyNewError('not found', { errorSource: 'service', cause: originalErr });
+```
+
+2. Add `'MyNewError'` to the `ErrorName` enum in `src/cli/telemetry/schemas/common-shapes.ts`.
+
+That's it. The telemetry client reads `errorSource` and `name` directly from `BaseError` instances — no classification
+logic to update.
+
 ## Multi-Partition Support (GovCloud, China)
 
 The CLI supports multiple AWS partitions (commercial, GovCloud, China) through a central utility at

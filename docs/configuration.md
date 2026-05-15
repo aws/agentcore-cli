@@ -244,7 +244,7 @@ Strategy configuration:
   "type": "SEMANTIC",
   "name": "custom_semantic",
   "description": "Custom semantic memory",
-  "namespaces": ["/users/facts", "/users/preferences"]
+  "namespaceTemplates": ["/users/facts", "/users/preferences"]
 }
 ```
 

@@ -1,3 +1,4 @@
+import { AwsCredentialsError } from '../../lib/errors/types.js';
 import { getAwsLoginGuidance } from '../external-requirements/checks';
 import { GetCallerIdentityCommand, STSClient } from '@aws-sdk/client-sts';
 import { fromEnv, fromNodeProviderChain } from '@aws-sdk/credential-providers';
@@ -11,21 +12,6 @@ import type { AwsCredentialIdentityProvider } from '@smithy/types';
 export function getCredentialProvider(): AwsCredentialIdentityProvider {
   const hasEnvCreds = process.env.AWS_ACCESS_KEY_ID && process.env.AWS_SECRET_ACCESS_KEY;
   return hasEnvCreds ? fromEnv() : fromNodeProviderChain();
-}
-
-/**
- * Error thrown when AWS credentials are not configured or invalid.
- * Supports both a short message (for interactive mode) and detailed message (for CLI mode).
- */
-export class AwsCredentialsError extends Error {
-  /** Short message suitable for interactive mode where UI handles recovery */
-  readonly shortMessage: string;
-
-  constructor(shortMessage: string, detailedMessage?: string) {
-    super(detailedMessage ?? shortMessage);
-    this.name = 'AwsCredentialsError';
-    this.shortMessage = shortMessage;
-  }
 }
 
 /**

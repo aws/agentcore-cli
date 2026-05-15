@@ -46,10 +46,10 @@ describe('mapGenerateInputToMemories', () => {
     expect(types).toContain('EPISODIC');
   });
 
-  it('includes default namespaces for strategies', () => {
+  it('includes default namespace templates for strategies', () => {
     const result = mapGenerateInputToMemories('longAndShortTerm', 'Proj');
     const semantic = result[0]!.strategies.find(s => s.type === 'SEMANTIC');
-    expect(semantic?.namespaces).toEqual(['/users/{actorId}/facts']);
+    expect(semantic?.namespaceTemplates).toEqual(['/users/{actorId}/facts']);
   });
 
   it('uses project name in memory name', () => {

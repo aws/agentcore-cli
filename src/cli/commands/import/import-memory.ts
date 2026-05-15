@@ -42,14 +42,16 @@ function filterInternalNamespaces(namespaces: string[]): string[] {
 function toMemorySpec(memory: MemoryDetail, localName: string): Memory {
   const strategies: Memory['strategies'] = memory.strategies.map(s => {
     const mappedType = mapStrategyType(s.type);
-    const filteredNamespaces = s.namespaces ? filterInternalNamespaces(s.namespaces) : [];
+    const filteredTemplates = s.namespaceTemplates ? filterInternalNamespaces(s.namespaceTemplates) : [];
     return {
       type: mappedType as Memory['strategies'][number]['type'],
       ...(s.name && { name: s.name }),
       ...(s.description && { description: s.description }),
-      ...(filteredNamespaces.length > 0 && { namespaces: filteredNamespaces }),
-      ...(s.reflectionNamespaces &&
-        s.reflectionNamespaces.length > 0 && { reflectionNamespaces: s.reflectionNamespaces }),
+      ...(filteredTemplates.length > 0 && { namespaceTemplates: filteredTemplates }),
+      ...(s.reflectionNamespaceTemplates &&
+        s.reflectionNamespaceTemplates.length > 0 && {
+          reflectionNamespaceTemplates: s.reflectionNamespaceTemplates,
+        }),
     };
   });
 

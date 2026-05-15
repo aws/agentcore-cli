@@ -368,7 +368,19 @@
                 "description": {
                   "type": "string"
                 },
+                "namespaceTemplates": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                },
                 "namespaces": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                "reflectionNamespaceTemplates": {
                   "type": "array",
                   "items": {
                     "type": "string"
@@ -654,6 +666,10 @@
               }
             },
             "additionalProperties": false
+          },
+          "kmsKeyArn": {
+            "type": "string",
+            "pattern": "^arn:[^:]+:kms:[a-zA-Z0-9-]*:[0-9]{12}:key\\/[a-zA-Z0-9-]{36}$"
           },
           "tags": {
             "type": "object",

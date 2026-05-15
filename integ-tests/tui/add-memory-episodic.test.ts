@@ -3,7 +3,7 @@
  *
  * Drives the "Add Memory" wizard through the TUI to verify that when a user
  * selects the EPISODIC strategy, it is correctly persisted in agentcore.json
- * with both namespaces and reflectionNamespaces.
+ * with both namespaceTemplates and reflectionNamespaceTemplates.
  *
  * Exercises:
  *   - Navigation from HelpScreen -> Add Resource -> Memory
@@ -11,7 +11,7 @@
  *   - Expiry selection (default 30 days)
  *   - Strategy multi-select including EPISODIC
  *   - Confirm review screen
- *   - Verification that agentcore.json contains EPISODIC with reflectionNamespaces
+ *   - Verification that agentcore.json contains EPISODIC with reflectionNamespaceTemplates
  */
 import { TuiSession, WaitForTimeoutError } from '../../src/tui-harness/index.js';
 import { createMinimalProjectDir } from './helpers.js';
@@ -176,14 +176,14 @@ describe('Add Memory with EPISODIC Strategy', () => {
     expect(found).toBe(true);
   });
 
-  it('Step 9: agentcore.json contains EPISODIC with reflectionNamespaces', async () => {
+  it('Step 9: agentcore.json contains EPISODIC with reflectionNamespaceTemplates', async () => {
     const configPath = join(projectDir.dir, 'agentcore', 'agentcore.json');
     const raw = await readFileAsync(configPath, 'utf-8');
     const config = JSON.parse(raw);
 
     const memories = config.memories as {
       name: string;
-      strategies: { type: string; namespaces?: string[]; reflectionNamespaces?: string[] }[];
+      strategies: { type: string; namespaceTemplates?: string[]; reflectionNamespaceTemplates?: string[] }[];
     }[];
     expect(memories.length).toBeGreaterThan(0);
 
@@ -197,12 +197,12 @@ describe('Add Memory with EPISODIC Strategy', () => {
     expect(types).toContain('USER_PREFERENCE');
     expect(types).toContain('EPISODIC');
 
-    // Verify EPISODIC has namespaces AND reflectionNamespaces
+    // Verify EPISODIC has namespaceTemplates AND reflectionNamespaceTemplates
     const episodic = memory!.strategies.find(s => s.type === 'EPISODIC');
     expect(episodic, 'EPISODIC strategy should exist').toBeTruthy();
-    expect(episodic!.namespaces, 'EPISODIC should have namespaces').toBeDefined();
-    expect(episodic!.namespaces!.length).toBeGreaterThan(0);
-    expect(episodic!.reflectionNamespaces, 'EPISODIC should have reflectionNamespaces').toBeDefined();
-    expect(episodic!.reflectionNamespaces!.length).toBeGreaterThan(0);
+    expect(episodic!.namespaceTemplates, 'EPISODIC should have namespaceTemplates').toBeDefined();
+    expect(episodic!.namespaceTemplates!.length).toBeGreaterThan(0);
+    expect(episodic!.reflectionNamespaceTemplates, 'EPISODIC should have reflectionNamespaceTemplates').toBeDefined();
+    expect(episodic!.reflectionNamespaceTemplates!.length).toBeGreaterThan(0);
   });
 });

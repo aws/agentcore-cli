@@ -196,17 +196,19 @@ Each strategy can have optional configuration:
   "type": "SEMANTIC",
   "name": "custom_semantic",
   "description": "Custom semantic memory",
-  "namespaces": ["/users/facts", "/users/preferences"]
+  "namespaceTemplates": ["/users/facts", "/users/preferences"]
 }
 ```
 
-| Field                  | Required      | Description                                                                 |
-| ---------------------- | ------------- | --------------------------------------------------------------------------- |
-| `type`                 | Yes           | Strategy type                                                               |
-| `name`                 | No            | Custom name (defaults to `<memoryName>-<type>`)                             |
-| `description`          | No            | Strategy description                                                        |
-| `namespaces`           | No            | Array of namespace paths for scoping                                        |
-| `reflectionNamespaces` | EPISODIC only | Namespaces for cross-episode reflections (must be a prefix of `namespaces`) |
+| Field                          | Required      | Description                                                                                   |
+| ------------------------------ | ------------- | --------------------------------------------------------------------------------------------- |
+| `type`                         | Yes           | Strategy type                                                                                 |
+| `name`                         | No            | Custom name (defaults to `<memoryName>-<type>`)                                               |
+| `description`                  | No            | Strategy description                                                                          |
+| `namespaceTemplates`           | No            | Array of namespace templates for scoping                                                      |
+| `reflectionNamespaceTemplates` | EPISODIC only | Templates for cross-episode reflections (must be a prefix of `namespaceTemplates`)            |
+| `namespaces`                   | No            | **Deprecated alias for `namespaceTemplates`.** Accepted for backward compatibility.           |
+| `reflectionNamespaces`         | EPISODIC only | **Deprecated alias for `reflectionNamespaceTemplates`.** Accepted for backward compatibility. |
 
 ## Event Expiry
 

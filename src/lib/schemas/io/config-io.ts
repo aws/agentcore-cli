@@ -12,8 +12,8 @@ import {
   ConfigReadError,
   ConfigValidationError,
   ConfigWriteError,
+  NoProjectError,
 } from '../../errors';
-import { NoProjectError } from '../../errors';
 import { detectAwsAccount } from '../../utils';
 import { type PathConfig, PathResolver, findConfigRoot } from './path-resolver';
 import { loadSharedConfigFiles } from '@smithy/shared-ini-file-loader';

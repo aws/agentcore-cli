@@ -1,6 +1,6 @@
 import type { AgentEnvSpec, NodeRuntime, RuntimeVersion } from '../../schema';
 import { getArtifactZipName } from '../constants';
-import { PackagingError } from './errors';
+import { PackagingError } from '../errors/types';
 import {
   createZipFromDir,
   createZipFromDirSync,

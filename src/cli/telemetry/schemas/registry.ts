@@ -19,7 +19,7 @@ type CommandRunAttrs = {
   command_group: CommandGroup;
   exit_reason: z.infer<typeof ATTRIBUTES.exit_reason>;
   error_name?: z.infer<typeof ATTRIBUTES.error_name>;
-  is_user_error?: boolean;
+  error_source?: z.infer<typeof ATTRIBUTES.error_source>;
 } & MergedCommandAttrs;
 
 export const METRICS = {

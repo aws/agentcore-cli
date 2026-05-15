@@ -1,7 +1,7 @@
 import type { AgentEnvSpec } from '../../schema';
 import { CONTAINER_RUNTIMES, DOCKERFILE_NAME, ONE_GB, getDockerfilePath } from '../constants';
+import { PackagingError } from '../errors/types';
 import { getUvBuildArgs } from './build-args';
-import { PackagingError } from './errors';
 import { resolveCodeLocation } from './helpers';
 import type { ArtifactResult, PackageOptions, RuntimePackager } from './types/packaging';
 import { spawnSync } from 'child_process';

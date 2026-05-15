@@ -1,4 +1,9 @@
-import { GLOBAL_CONFIG_DIR, GLOBAL_CONFIG_FILE, updateGlobalConfig } from '../../../lib/schemas/io/global-config.js';
+import {
+  GLOBAL_CONFIG_DIR,
+  GLOBAL_CONFIG_FILE,
+  readGlobalConfig,
+  updateGlobalConfig,
+} from '../../../lib/schemas/io/global-config.js';
 import { resolveTelemetryPreference } from '../../telemetry/config.js';
 
 export async function handleTelemetryDisable(
@@ -20,7 +25,8 @@ export async function handleTelemetryEnable(
 }
 
 export async function handleTelemetryStatus(configFile = GLOBAL_CONFIG_FILE): Promise<void> {
-  const pref = await resolveTelemetryPreference(configFile);
+  const globalConfig = await readGlobalConfig(configFile);
+  const pref = await resolveTelemetryPreference(globalConfig);
 
   const status = pref.enabled ? 'Enabled' : 'Disabled';
   const sourceLabel =

@@ -1,4 +1,5 @@
 /* eslint-disable @typescript-eslint/require-await */
+import { AccessDeniedError, DependencyCheckError } from '../../../lib/errors/types';
 import { withCommandRunTelemetry } from '../cli-command-run';
 import { TelemetryClient } from '../client';
 import { TelemetryClientAccessor } from '../client-accessor';
@@ -45,41 +46,27 @@ describe('withCommandRunTelemetry', () => {
     });
   });
 
-  it('classifies PackagingError subclasses', async () => {
-    class MissingDependencyError extends Error {
-      constructor() {
-        super('missing dep');
-        this.name = 'MissingDependencyError';
-      }
-    }
-
+  it('classifies DependencyCheckError correctly', async () => {
     await withCommandRunTelemetry('deploy', {} as never, async () => ({
       success: false as const,
-      error: new MissingDependencyError(),
+      error: new DependencyCheckError(['missing docker']),
     }));
 
     expect(sink.metrics[0]!.attrs).toMatchObject({
-      error_name: 'PackagingError',
-      is_user_error: 'false',
+      error_name: 'DependencyCheckError',
+      error_source: 'user',
     });
   });
 
   it('marks credential errors as user errors', async () => {
-    class AwsCredentialsError extends Error {
-      constructor() {
-        super('creds expired');
-        this.name = 'AwsCredentialsError';
-      }
-    }
-
     await withCommandRunTelemetry('invoke', {} as never, async () => ({
       success: false as const,
-      error: new AwsCredentialsError(),
+      error: new AccessDeniedError('creds expired'),
     }));
 
     expect(sink.metrics[0]!.attrs).toMatchObject({
-      error_name: 'CredentialsError',
-      is_user_error: 'true',
+      error_name: 'AccessDeniedError',
+      error_source: 'user',
     });
   });
 
