@@ -198,7 +198,7 @@ export function LogsScreen({ onExit }: LogsScreenProps) {
         </Box>
       }
     >
-      <Box flexDirection="column" height={maxLines + 2}>
+      <Box flexDirection="column" height={maxLines + 2} overflow="hidden">
         <LogPanel logs={filteredLogs} maxLines={maxLines} minimal={false} isActive={phase === 'streaming'} />
       </Box>
     </Screen>
