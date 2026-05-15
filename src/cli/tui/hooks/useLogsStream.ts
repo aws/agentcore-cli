@@ -19,7 +19,10 @@ function detectLevel(message: string): LogEntry['level'] {
   if (lower.includes('"level":"warn"') || lower.includes('[warn]') || lower.startsWith('warn')) {
     return 'warn';
   }
-  return 'info';
+  if (lower.includes('"level":"info"') || lower.includes('[info]') || lower.startsWith('info')) {
+    return 'info';
+  }
+  return 'system';
 }
 
 export function useLogsStream(agentContext: AgentContext | undefined): UseLogsStreamResult {
