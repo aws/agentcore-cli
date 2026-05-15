@@ -1,10 +1,11 @@
 import type { AgentContext } from '../../../commands/logs/action';
 import { resolveAgentContext } from '../../../commands/logs/action';
 import { loadDeployedProjectConfig } from '../../../operations/resolve-agent';
-import { FullScreenLogView, Screen, SelectList } from '../../components';
+import { FullScreenLogView, LogPanel, Screen, SelectList } from '../../components';
+import type { LogEntry } from '../../components/LogPanel';
 import { useLogsStream } from '../../hooks/useLogsStream';
-import { Box, Text, useInput } from 'ink';
-import React, { useEffect, useState } from 'react';
+import { Box, Text, useInput, useStdout } from 'ink';
+import React, { useEffect, useMemo, useState } from 'react';
 
 interface LogsScreenProps {
   isInteractive: boolean;
@@ -12,6 +13,21 @@ interface LogsScreenProps {
 }
 
 type Phase = 'loading' | 'select-agent' | 'streaming' | 'error';
+type LevelFilter = 'all' | 'error' | 'warn' | 'info';
+
+const FILTER_LABELS: Record<LevelFilter, string> = {
+  all: 'All',
+  error: 'Errors',
+  warn: 'Warnings+',
+  info: 'Info+',
+};
+
+function filterLogs(logs: LogEntry[], filter: LevelFilter): LogEntry[] {
+  if (filter === 'all') return logs;
+  if (filter === 'error') return logs.filter(l => l.level === 'error');
+  if (filter === 'warn') return logs.filter(l => l.level === 'error' || l.level === 'warn');
+  return logs;
+}
 
 export function LogsScreen({ onExit }: LogsScreenProps) {
   const [phase, setPhase] = useState<Phase>('loading');
@@ -20,8 +36,14 @@ export function LogsScreen({ onExit }: LogsScreenProps) {
   const [selectedAgent, setSelectedAgent] = useState<AgentContext | undefined>();
   const [loadError, setLoadError] = useState<string | undefined>();
   const [showFullScreen, setShowFullScreen] = useState(false);
+  const [levelFilter, setLevelFilter] = useState<LevelFilter>('all');
+  const { stdout } = useStdout();
+  const terminalHeight = stdout?.rows ?? 24;
+  const maxLines = Math.max(5, terminalHeight - 14);
 
   const { logs, isStreaming, error: streamError } = useLogsStream(selectedAgent);
+
+  const filteredLogs = useMemo(() => filterLogs(logs, levelFilter), [logs, levelFilter]);
 
   useEffect(() => {
     const load = async () => {
@@ -85,8 +107,20 @@ export function LogsScreen({ onExit }: LogsScreenProps) {
       }
 
       if (phase === 'streaming' && !showFullScreen) {
-        if (input === 'l') {
+        if (input === 'f') {
           setShowFullScreen(true);
+        }
+        if (input === '1') {
+          setLevelFilter('all');
+        }
+        if (input === '2') {
+          setLevelFilter('error');
+        }
+        if (input === '3') {
+          setLevelFilter('warn');
+        }
+        if (input === '4') {
+          setLevelFilter('info');
         }
       }
     },
@@ -94,7 +128,7 @@ export function LogsScreen({ onExit }: LogsScreenProps) {
   );
 
   if (showFullScreen) {
-    return <FullScreenLogView logs={logs} onExit={() => setShowFullScreen(false)} />;
+    return <FullScreenLogView logs={filteredLogs} onExit={() => setShowFullScreen(false)} />;
   }
 
   if (phase === 'loading') {
@@ -132,22 +166,27 @@ export function LogsScreen({ onExit }: LogsScreenProps) {
     );
   }
 
-  const helpText = isStreaming ? 'l full-screen · Esc back' : streamError ? 'Esc back' : 'l full-screen · Esc back';
+  const helpText = '↑↓ scroll · f full-screen · 1 all · 2 errors · 3 warn+ · 4 info+ · Esc back';
 
   return (
     <Screen
       title="Logs"
       onExit={onExit}
       helpText={helpText}
+      exitEnabled={!showFullScreen}
       headerContent={
         <Box flexDirection="column">
           <Box>
             <Text>Agent: </Text>
             <Text color="green">{selectedAgent?.agentName}</Text>
-          </Box>
-          <Box>
-            <Text>Region: </Text>
+            <Text> Region: </Text>
             <Text color="cyan">{selectedAgent?.region}</Text>
+            <Text> Filter: </Text>
+            <Text bold>{FILTER_LABELS[levelFilter]}</Text>
+            <Text dimColor>
+              {' '}
+              ({filteredLogs.length}/{logs.length})
+            </Text>
           </Box>
           <Box>
             <Text>Status: </Text>
@@ -159,28 +198,12 @@ export function LogsScreen({ onExit }: LogsScreenProps) {
               <Text color="yellow">Disconnected</Text>
             )}
           </Box>
-          {streamError && (
-            <Box marginTop={1}>
-              <Text color="red">{streamError}</Text>
-            </Box>
-          )}
+          {streamError && <Text color="red">{streamError}</Text>}
         </Box>
       }
     >
       <Box flexDirection="column" flexGrow={1}>
-        {logs.length === 0 && isStreaming && <Text dimColor>Waiting for logs...</Text>}
-        {logs.length > 0 && (
-          <Box flexDirection="column">
-            {logs.slice(-20).map((log, idx) => (
-              <Text key={idx} color={log.level === 'error' ? 'red' : log.level === 'warn' ? 'yellow' : undefined}>
-                {log.message}
-              </Text>
-            ))}
-            {logs.length > 20 && (
-              <Text dimColor>Showing last 20 of {logs.length} entries. Press l for full-screen view.</Text>
-            )}
-          </Box>
-        )}
+        <LogPanel logs={filteredLogs} maxLines={maxLines} minimal={false} isActive={phase === 'streaming'} />
       </Box>
     </Screen>
   );
