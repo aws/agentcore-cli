@@ -78,4 +78,33 @@ describe('dev command', () => {
       expect(result.exitCode).toBe(1);
     });
   });
+
+  describe('--otel-endpoint', () => {
+    it('is documented in help', async () => {
+      const result = await runCLI(['dev', '--help'], process.cwd());
+
+      expect(result.exitCode).toBe(0);
+      expect(result.stdout.includes('--otel-endpoint'), 'Should show --otel-endpoint option').toBeTruthy();
+    });
+
+    it('help text mentions custom OTLP endpoint', async () => {
+      const result = await runCLI(['dev', '--help'], process.cwd());
+
+      expect(result.exitCode).toBe(0);
+      expect(
+        result.stdout.toLowerCase().includes('otlp') || result.stdout.toLowerCase().includes('endpoint'),
+        'Should describe the OTLP endpoint purpose'
+      ).toBeTruthy();
+    });
+
+    it('errors when combined with --no-traces', async () => {
+      const result = await runCLI(['dev', '--no-traces', '--otel-endpoint', 'http://localhost:4318'], process.cwd());
+
+      expect(result.exitCode).toBe(1);
+      expect(
+        result.stderr.toLowerCase().includes('mutually exclusive'),
+        `Should mention mutually exclusive flags, got: ${result.stderr}`
+      ).toBeTruthy();
+    });
+  });
 });

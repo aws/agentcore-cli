@@ -184,6 +184,10 @@ export const registerDev = (program: Command) => {
     )
     .option('-b, --no-browser', 'Use terminal TUI instead of web-based chat UI')
     .option('--no-traces', 'Disable local OTEL trace collection')
+    .option(
+      '--otel-endpoint <url>',
+      'Forward agent traces to a custom OTLP/HTTP endpoint instead of the local collector (e.g. http://localhost:4318)'
+    )
 
     .action(async (positionalPrompt: string | undefined, opts) => {
       try {
@@ -288,6 +292,15 @@ export const registerDev = (program: Command) => {
           return;
         }
 
+        // Reject conflicting telemetry flags before any project checks
+        if (opts.traces === false && opts.otelEndpoint) {
+          console.error('Error: --no-traces and --otel-endpoint are mutually exclusive.');
+          console.error(
+            'Use --otel-endpoint to forward traces to a custom backend, or --no-traces to disable telemetry entirely.'
+          );
+          process.exit(1);
+        }
+
         requireProject();
 
         const workingDir = getWorkingDirectory();
@@ -323,11 +336,20 @@ export const registerDev = (program: Command) => {
         let otelEnvVars: Record<string, string> = {};
         let collector: OtelCollector | undefined;
 
+        if (opts.traces === false && opts.otelEndpoint) {
+          console.error('Error: --no-traces and --otel-endpoint are mutually exclusive.');
+          console.error('Use --otel-endpoint to forward traces to a custom backend, or --no-traces to disable telemetry entirely.');
+          process.exit(1);
+        }
+
         if (opts.traces !== false) {
           const persistTracesDir = path.join(configRoot ?? workingDir, '.cli', 'traces');
-          const otelResult = await startOtelCollector(persistTracesDir);
+          const otelResult = await startOtelCollector(persistTracesDir, opts.otelEndpoint);
           collector = otelResult.collector;
           otelEnvVars = otelResult.otelEnvVars;
+          if (opts.otelEndpoint) {
+            console.log(`OTEL traces → ${opts.otelEndpoint}`);
+          }
         }
 
         // If --logs provided, run non-interactive mode

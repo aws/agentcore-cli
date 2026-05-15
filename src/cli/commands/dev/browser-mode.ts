@@ -108,7 +108,7 @@ export interface BrowserModeOptions {
  * Standalone entry point for launching browser dev mode from the TUI.
  * Handles all setup (project loading, OTEL collector, etc.) internally.
  */
-export async function launchBrowserDev(): Promise<void> {
+export async function launchBrowserDev(otelEndpoint?: string): Promise<void> {
   const workingDir = getWorkingDirectory();
   const project = await loadProjectConfig(workingDir);
 
@@ -119,7 +119,7 @@ export async function launchBrowserDev(): Promise<void> {
 
   const configRoot = findConfigRoot(workingDir);
   const persistTracesDir = path.join(configRoot ?? workingDir, '.cli', 'traces');
-  const { collector, otelEnvVars } = await startOtelCollector(persistTracesDir);
+  const { collector, otelEnvVars } = await startOtelCollector(persistTracesDir, otelEndpoint);
 
   await runBrowserMode({
     workingDir,
