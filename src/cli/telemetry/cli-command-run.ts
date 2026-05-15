@@ -75,7 +75,8 @@ async function trackCommandRun<C extends Command>(
  *
  * If the callback returns a failure result, telemetry is recorded and the result
  * is returned to the caller. If the callback throws, telemetry is recorded and
- * the exception propagates. If telemetry is unavailable, the callback runs untracked.
+ * the exception is converted to a result type such that callers do not need to handle result + try/catch.
+ * If telemetry is unavailable, the callback runs untracked.
  */
 export async function withCommandRunTelemetry<C extends Command, R extends Result>(
   command: C,
@@ -83,10 +84,10 @@ export async function withCommandRunTelemetry<C extends Command, R extends Resul
   fn: () => R | Promise<R>
 ): Promise<R> {
   const client = await getTelemetryClient();
-  if (!client) return fn();
 
   let result: R | undefined;
   try {
+    if (!client) return fn();
     await trackCommandRun(
       client,
       command,
