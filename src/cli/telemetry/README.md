@@ -21,13 +21,13 @@ export const ATTRIBUTES = {
 
 ### 2. Register the metric in `schemas/registry.ts`
 
-Add an entry to `METRICS` and a corresponding `MetricAttrs` branch:
+Add an entry to `METRICS` with a description, and a corresponding `MetricAttrs` branch:
 
 ```ts
 export const METRICS = {
-  'cli.command_run': {},
-  'cli.mcp_tool_call': {},
-} as const;
+  'cli.command_run': { description: 'CLI/TUI Command Execution' },
+  'cli.mcp_tool_call': { description: 'MCP tool invocation' },
+} as const satisfies MetricRegistry;
 
 export type MetricAttrs<M extends MetricName> = M extends 'cli.command_run'
   ? CommandRunAttrs

@@ -22,9 +22,16 @@ type CommandRunAttrs = {
   error_source?: z.infer<typeof ATTRIBUTES.error_source>;
 } & MergedCommandAttrs;
 
+interface MetricRegistryItem {
+  description?: string;
+}
+type MetricRegistry = Record<string, MetricRegistryItem>;
+
 export const METRICS = {
-  'cli.command_run': {},
-} as const;
+  'cli.command_run': {
+    description: 'CLI/TUI Command Execution',
+  },
+} as const satisfies MetricRegistry;
 
 export type MetricName = keyof typeof METRICS;
 export type MetricAttrs<M extends MetricName> = M extends 'cli.command_run' ? CommandRunAttrs : never;
