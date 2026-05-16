@@ -1,10 +1,35 @@
 import type { IndexedKey, IndexedKeyType } from '../../../schema';
-import { IndexedKeyTypeSchema } from '../../../schema';
+import {
+  INDEXED_KEY_NAME_PATTERN,
+  INDEXED_KEY_NAME_PATTERN_MESSAGE,
+  IndexedKeyTypeSchema,
+  MAX_INDEXED_KEYS,
+  MAX_INDEXED_KEY_NAME_LENGTH,
+} from '../../../schema';
 
-export const INDEXED_KEY_NAME_PATTERN = /^[a-zA-Z0-9\s._:/=+@-]+$/;
-export const MAX_INDEXED_KEYS = 10;
-export const MAX_KEY_NAME_LENGTH = 128;
+export { INDEXED_KEY_NAME_PATTERN, MAX_INDEXED_KEYS };
+export const MAX_KEY_NAME_LENGTH = MAX_INDEXED_KEY_NAME_LENGTH;
 export const VALID_INDEXED_KEY_TYPES: readonly IndexedKeyType[] = ['STRING', 'STRINGLIST', 'NUMBER'];
+
+/**
+ * Validate an indexed key name. Returns `true` when valid, or an error message.
+ * Shared between the schema-side regex (via constants) and TUI inline validation.
+ */
+export function validateIndexedKeyName(value: string, existingNames: readonly string[] = []): true | string {
+  if (!INDEXED_KEY_NAME_PATTERN.test(value)) {
+    return INDEXED_KEY_NAME_PATTERN_MESSAGE;
+  }
+  if (value.trim().length === 0) {
+    return 'Key cannot be only whitespace';
+  }
+  if (value.length > MAX_INDEXED_KEY_NAME_LENGTH) {
+    return `Maximum ${MAX_INDEXED_KEY_NAME_LENGTH} characters`;
+  }
+  if (existingNames.includes(value)) {
+    return 'Key already defined';
+  }
+  return true;
+}
 
 export interface IndexedKeyParseError {
   ok: false;

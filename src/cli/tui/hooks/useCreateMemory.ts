@@ -28,6 +28,7 @@ export function useCreateMemory() {
       const strategiesStr = config.strategies.map(s => s.type).join(',');
       const strategyList = strategiesStr ? strategiesStr.split(',').map(s => s.trim().toUpperCase()) : [];
       const indexedKey = config.indexedKeys?.map(k => `${k.key}:${k.type}`);
+      const indexedKeyCount = config.indexedKeys?.length ?? 0;
 
       const addResult = await withCommandRunTelemetry(
         'add.memory',
@@ -37,6 +38,8 @@ export function useCreateMemory() {
           strategy_summarization: strategyList.includes('SUMMARIZATION'),
           strategy_user_preference: strategyList.includes('USER_PREFERENCE'),
           strategy_episodic: strategyList.includes('EPISODIC'),
+          indexed_key_count: indexedKeyCount,
+          has_indexed_keys: indexedKeyCount > 0,
         },
         () =>
           memoryPrimitive.add({

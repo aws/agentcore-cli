@@ -250,12 +250,15 @@ export class MemoryPrimitive extends BasePrimitive<AddMemoryOptions, RemovableMe
                 .split(',')
                 .map(s => s.trim().toUpperCase())
                 .filter(Boolean);
+              const indexedKeyCount = cliOptions.indexedKey?.length ?? 0;
               return {
                 strategy_count: strategyList.length,
                 strategy_semantic: strategyList.includes('SEMANTIC'),
                 strategy_summarization: strategyList.includes('SUMMARIZATION'),
                 strategy_user_preference: strategyList.includes('USER_PREFERENCE'),
                 strategy_episodic: strategyList.includes('EPISODIC'),
+                indexed_key_count: indexedKeyCount,
+                has_indexed_keys: indexedKeyCount > 0,
               };
             });
           } else {

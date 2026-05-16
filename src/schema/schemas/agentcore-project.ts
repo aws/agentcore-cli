@@ -162,15 +162,18 @@ export type IndexedKeyType = z.infer<typeof IndexedKeyTypeSchema>;
  * Note: indexed keys are append-only on the AWS service side — once added to a Memory,
  * a key cannot be removed. Reducing the array on update will fail at deploy time.
  */
+export const INDEXED_KEY_NAME_PATTERN = /^[a-zA-Z0-9\s._:/=+@-]+$/;
+export const INDEXED_KEY_NAME_PATTERN_MESSAGE =
+  'Must contain only alphanumeric characters, whitespace, or the symbols . _ : / = + @ -';
+export const MAX_INDEXED_KEY_NAME_LENGTH = 128;
+export const MAX_INDEXED_KEYS = 10;
+
 export const IndexedKeySchema = z.object({
   key: z
     .string()
     .min(1)
-    .max(128)
-    .regex(
-      /^[a-zA-Z0-9\s._:/=+@-]+$/,
-      'Must contain only alphanumeric characters, whitespace, or the symbols . _ : / = + @ -'
-    )
+    .max(MAX_INDEXED_KEY_NAME_LENGTH)
+    .regex(INDEXED_KEY_NAME_PATTERN, INDEXED_KEY_NAME_PATTERN_MESSAGE)
     .refine(s => s.trim().length > 0, 'Key cannot be only whitespace'),
   type: IndexedKeyTypeSchema,
 });
@@ -193,7 +196,7 @@ export const MemorySchema = z
       ),
     indexedKeys: z
       .array(IndexedKeySchema)
-      .max(10)
+      .max(MAX_INDEXED_KEYS)
       .superRefine(
         uniqueBy(
           entry => entry.key,

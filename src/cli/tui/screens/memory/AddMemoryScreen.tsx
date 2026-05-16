@@ -1,6 +1,7 @@
 import type { IndexedKeyType, MemoryStrategyType } from '../../../../schema';
 import { AgentNameSchema, StreamContentLevelSchema } from '../../../../schema';
 import { ARN_VALIDATION_MESSAGE, isValidArn } from '../../../commands/shared/arn-utils';
+import { validateIndexedKeyName } from '../../../commands/shared/indexed-key-parser';
 import {
   ConfirmReview,
   Panel,
@@ -24,7 +25,7 @@ import {
 } from './types';
 import { useAddMemoryWizard } from './useAddMemoryWizard';
 import { Box, Text } from 'ink';
-import React, { useCallback, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 
 interface AddMemoryScreenProps {
   onComplete: (config: AddMemoryConfig) => void;
@@ -72,16 +73,20 @@ export function AddMemoryScreen({ onComplete, onExit, existingMemoryNames }: Add
   const isStrategiesStep = wizard.step === 'strategies';
   const isIndexedKeysStep = wizard.step === 'indexedKeys';
 
-  if (
-    isIndexedKeysStep &&
-    indexedKeysSubStep === 'prompt' &&
-    collectedKeys.length === 0 &&
-    wizard.config.indexedKeys &&
-    wizard.config.indexedKeys.length > 0
-  ) {
-    setCollectedKeys(wizard.config.indexedKeys);
-    setIndexedKeysSubStep('addAnother');
-  }
+  /* eslint-disable react-hooks/set-state-in-effect */
+  useEffect(() => {
+    if (
+      isIndexedKeysStep &&
+      indexedKeysSubStep === 'prompt' &&
+      collectedKeys.length === 0 &&
+      wizard.config.indexedKeys &&
+      wizard.config.indexedKeys.length > 0
+    ) {
+      setCollectedKeys(wizard.config.indexedKeys);
+      setIndexedKeysSubStep('addAnother');
+    }
+  }, [isIndexedKeysStep, indexedKeysSubStep, collectedKeys.length, wizard.config.indexedKeys]);
+  /* eslint-enable react-hooks/set-state-in-effect */
 
   const isStreamingStep = wizard.step === 'streaming';
   const isStreamArnStep = wizard.step === 'streamArn';
@@ -305,9 +310,10 @@ export function AddMemoryScreen({ onComplete, onExit, existingMemoryNames }: Add
             <TextInput
               key={`keyName-${collectedKeys.length}`}
               prompt="Metadata key name"
-              initialValue=""
+              initialValue={pendingKeyName}
               onSubmit={handleKeyNameSubmit}
               onCancel={() => {
+                setPendingKeyName('');
                 if (collectedKeys.length > 0) {
                   setIndexedKeysSubStep('addAnother');
                 } else {
@@ -315,21 +321,7 @@ export function AddMemoryScreen({ onComplete, onExit, existingMemoryNames }: Add
                   setIndexedKeysSubStep('prompt');
                 }
               }}
-              customValidation={value => {
-                if (!/^[a-zA-Z0-9\s._:/=+@-]+$/.test(value)) {
-                  return 'Must contain only alphanumeric characters, whitespace, or the symbols . _ : / = + @ -';
-                }
-                if (value.trim().length === 0) {
-                  return 'Key cannot be only whitespace';
-                }
-                if (value.length > 128) {
-                  return 'Maximum 128 characters';
-                }
-                if (existingKeyNames.includes(value)) {
-                  return 'Key already defined';
-                }
-                return true;
-              }}
+              customValidation={value => validateIndexedKeyName(value, existingKeyNames)}
             />
           </Box>
         )}
