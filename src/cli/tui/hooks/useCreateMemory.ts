@@ -9,6 +9,7 @@ interface CreateMemoryConfig {
   name: string;
   eventExpiryDuration: number;
   strategies: { type: string }[];
+  indexedKeys?: { key: string; type: string }[];
   streaming?: { dataStreamArn: string; contentLevel: string };
 }
 
@@ -26,6 +27,8 @@ export function useCreateMemory() {
     try {
       const strategiesStr = config.strategies.map(s => s.type).join(',');
       const strategyList = strategiesStr ? strategiesStr.split(',').map(s => s.trim().toUpperCase()) : [];
+      const indexedKey = config.indexedKeys?.map(k => `${k.key}:${k.type}`);
+
       const addResult = await withCommandRunTelemetry(
         'add.memory',
         {
@@ -42,6 +45,7 @@ export function useCreateMemory() {
             strategies: strategiesStr || undefined,
             dataStreamArn: config.streaming?.dataStreamArn,
             contentLevel: config.streaming?.contentLevel,
+            indexedKey,
           })
       );
       if (!addResult.success) {

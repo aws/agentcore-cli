@@ -1,4 +1,5 @@
 import type { Memory } from '../../../schema';
+import { IndexedKeyTypeSchema } from '../../../schema';
 import type { MemoryDetail, MemorySummary } from '../../aws/agentcore-control';
 import { getMemoryDetail, listAllMemories } from '../../aws/agentcore-control';
 import { withCommandRunTelemetry } from '../../telemetry/cli-command-run.js';
@@ -56,10 +57,26 @@ function toMemorySpec(memory: MemoryDetail, localName: string): Memory {
     };
   });
 
+  // Validate each indexed key's type against our enum. Drop
+  // entries whose type is not one we recognize with a warning
+  const indexedKeys: Memory['indexedKeys'] = memory.indexedKeys
+    ?.flatMap(k => {
+      const parsedType = IndexedKeyTypeSchema.safeParse(k.type);
+      if (!parsedType.success) {
+        console.warn(
+          `${ANSI.yellow}[warn]${ANSI.reset} Skipping indexed key "${k.key}" with unrecognised type "${k.type}".`
+        );
+        return [];
+      }
+      return [{ key: k.key, type: parsedType.data }];
+    })
+    .filter(Boolean);
+
   return {
     name: localName,
     eventExpiryDuration: Math.max(3, Math.min(365, memory.eventExpiryDuration)),
     strategies,
+    ...(indexedKeys && indexedKeys.length > 0 && { indexedKeys }),
     ...(memory.tags && Object.keys(memory.tags).length > 0 && { tags: memory.tags }),
     ...(memory.encryptionKeyArn && { encryptionKeyArn: memory.encryptionKeyArn }),
     ...(memory.executionRoleArn && { executionRoleArn: memory.executionRoleArn }),
