@@ -165,9 +165,16 @@ jobs:
           use_bedrock: 'true'
           prompt:
             '/security-review pull request #${{ steps.pr.outputs.number }} (base: ${{ steps.pr.outputs.base_ref }},
-            head: ${{ steps.pr.outputs.head_sha }}). For each finding, post an inline review comment on the exact file
-            and line where the issue lives (use a pull request review with line-level comments, not a single summary
-            comment). If you have no findings, post a single short top-level comment saying so.'
+            head: ${{ steps.pr.outputs.head_sha }}). Before reviewing, fetch the existing PR review comments and issue
+            comments via the GitHub API. If you (the same bot identity that posts these reviews) have already commented
+            on this PR, treat this as a re-review: for each of your prior findings, check the latest diff and explicitly
+            confirm whether it has been addressed, is still outstanding, or is no longer applicable, and skip re-posting
+            findings that are already resolved. Also read review comments left by other reviewers (humans or other bots)
+            and factor their context into your analysis — do not contradict an accepted resolution and do not duplicate
+            a finding another reviewer has already raised. For each new or still-outstanding finding, post an inline
+            review comment on the exact file and line where the issue lives (use a pull request review with line-level
+            comments, not a single summary comment). If you have no new findings, post a single short top-level comment
+            saying so, including a brief status of any prior findings (resolved / still outstanding).'
           claude_args: >-
             --model us.anthropic.claude-opus-4-7 --max-turns 20
 
