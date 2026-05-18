@@ -2,7 +2,7 @@ name: Claude Security Review
 
 on:
   pull_request_target:
-    types: [opened, reopened]
+    types: [opened, reopened, synchronize]
   pull_request_review:
     types: [submitted]
   workflow_dispatch:
