@@ -218,11 +218,11 @@ function categorizeCommits(gitLog: string): CategorizedChanges {
 
     const msg = trimmed.slice(2).trim();
 
-    if (msg.startsWith('feat:') || msg.startsWith('feature:')) {
+    if (/^(feat|feature)(\(.*?\))?:/.test(msg)) {
       result.features.push(msg);
-    } else if (msg.startsWith('fix:') || msg.startsWith('bugfix:')) {
+    } else if (/^(fix|bugfix)(\(.*?\))?:/.test(msg)) {
       result.fixes.push(msg);
-    } else if (msg.startsWith('docs:') || msg.startsWith('doc:')) {
+    } else if (/^docs?(\(.*?\))?:/.test(msg)) {
       result.docs.push(msg);
     } else {
       result.other.push(msg);
