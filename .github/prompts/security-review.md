@@ -210,25 +210,54 @@ WORKFLOW (executed in 3 steps):
 
 POSTING RESULTS — read this section CAREFULLY before posting anything:
 
-A. **Re-review awareness.** Before posting, fetch existing PR review comments and issue comments via the GitHub API
-(`GET /repos/{owner}/{repo}/issues/{number}/comments` and `GET /repos/{owner}/{repo}/pulls/{number}/comments`). If your
-own bot identity has already commented on this PR, treat this run as a re-review:
+You have access to two MCP tools provided by the `anthropics/claude-code-action` GitHub Action. These are the ONLY
+correct way to publish findings — do NOT call the GitHub REST API (`gh`, `octokit`, `curl`) and do NOT attempt to use
+`POST /pulls/{n}/reviews` directly. Direct REST calls are not available as tools in this environment.
+
+**Tool A — `mcp__github_inline_comment__create_inline_comment`.** Posts an inline review comment on a specific file and
+line. Each call buffers one comment; the action's post-step posts them all to the PR after this session ends. Call it
+once per finding.
+
+Parameters (all you need for almost every case):
+
+- `path` (string, required): repo-relative file path, e.g. `".github/workflows/pr-security-review.yml"`.
+- `line` (number, required for single-line findings): the diff line number (RIGHT side / new file) where the issue
+  lives.
+- `startLine` (number, optional): pair with `line` for a multi-line range (`startLine` ≤ `line`).
+- `body` (string, required): markdown comment body (see format below).
+- `side` (`"LEFT"` | `"RIGHT"`, default `"RIGHT"`): leave at default unless commenting on a deleted line.
+- Do NOT pass `confirmed`. Letting it default lets the action's classifier filter test/probe-style comments.
+
+**Tool B — `mcp__github_comment__update_claude_comment`.** Updates a single sticky top-level comment on the PR. Only
+parameter is `body` (string). Use this for the no-findings summary or the re-review status summary (see D below).
+
+A. **Re-review awareness.** Before posting, READ the existing PR comments included in the diff/git context above. If
+your own bot identity has already commented on this PR (look for review comments authored by the bot whose token is
+running this workflow), treat this run as a re-review:
 
 - For each of your prior findings, examine the current diff and explicitly determine whether the issue is now resolved,
   still outstanding, or no longer applicable.
 - Skip re-posting findings that are already resolved.
 - Skip re-posting findings that are still on a line you've already commented on (don't duplicate yourself).
 
-B. **Other reviewers.** Read review comments left by other reviewers (humans or other bots) on this PR. Factor their
-context into your analysis: do not contradict an accepted resolution, and do not duplicate a finding another reviewer
-has already raised. If a reviewer has already flagged the same issue, skip it.
+If you cannot directly read prior comments from the diff context, default to assuming this is a fresh review and post
+all current findings.
 
-C. **Inline review comments.** For each new or still-outstanding finding, post an **inline review comment on the exact
-file and line where the issue lives**. Use a pull request review with line-level comments
-(`POST /repos/{owner}/{repo}/pulls/{number}/reviews` with a `comments` array, each entry having `path`, `line`/`side`,
-and `body`). DO NOT post a single summary comment that lists all findings.
+B. **Other reviewers.** Where review comments left by other reviewers are visible in the context, factor them into your
+analysis: do not contradict an accepted resolution, and do not duplicate a finding another reviewer has already raised.
 
-Each inline comment body MUST follow this format:
+C. **Inline review comments.** For each new or still-outstanding finding, call
+`mcp__github_inline_comment__create_inline_comment` once with:
+
+```json
+{
+  "path": "<file path>",
+  "line": <line number on the new file>,
+  "body": "<comment body in the format below>"
+}
+```
+
+The `body` MUST follow this format exactly:
 
 ```
 **Severity:** <HIGH|MEDIUM>
@@ -242,11 +271,28 @@ Each inline comment body MUST follow this format:
 **Recommendation:** <concrete fix>
 ```
 
-D. **No-findings case.** If after filtering you have no new findings to post, post a single short top-level issue
-comment (`POST /repos/{owner}/{repo}/issues/{number}/comments`) saying the security review found no new issues, plus a
-brief status of any prior findings (resolved / still outstanding / no longer applicable).
+When suggesting a code fix, optionally include a GitHub suggestion block at the end of the body:
 
-E. **Review event type.** When submitting the review, use `event: COMMENT` (not `APPROVE` or `REQUEST_CHANGES`). The
-human reviewers own the merge gate; this bot is advisory.
+````
+```suggestion
+<replacement code spanning the entire startLine..line range>
+```
+````
+
+DO NOT post a single summary comment that lists all findings inline. Each finding gets its own `create_inline_comment`
+call.
+
+D. **Summary / no-findings case.** After all `create_inline_comment` calls (or if there are none), call
+`mcp__github_comment__update_claude_comment` ONCE with a short summary:
+
+- If you posted N inline findings, the body should be: `Security review complete. Posted N inline finding(s).` plus a
+  one-line status of any prior findings (resolved / still outstanding / no longer applicable) if this is a re-review.
+- If you posted zero inline findings, the body should be: `Security review complete. No new high-confidence findings.`
+  plus the same prior-findings status line if applicable.
+
+DO NOT post the full per-finding markdown into this summary comment — the inline comments carry the detail.
+
+E. **Tool ordering.** Call `create_inline_comment` for every finding first, then call `update_claude_comment` LAST. Do
+not interleave.
 
 START ANALYSIS now.

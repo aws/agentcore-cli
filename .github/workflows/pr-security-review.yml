@@ -8,7 +8,10 @@ on:
   workflow_dispatch:
     inputs:
       pr_number:
-        description: 'PR number to review'
+        description:
+          'PR number to review (note: workflow_dispatch will NOT post inline comments — the action only attaches the
+          inline-comment MCP server on PR-context events. Use this only for end-to-end smoke-testing the prompt
+          plumbing.)'
         required: true
         type: string
 
@@ -209,8 +212,13 @@ jobs:
           github_token: ${{ steps.app-token.outputs.token }}
           use_bedrock: 'true'
           prompt: ${{ steps.prompt.outputs.prompt }}
+          show_full_output: 'true'
+          # Allow-listing these MCP tool names is what tells the action to register
+          # the corresponding MCP servers (github_inline_comment + github_comment).
+          # See anthropics/claude-code-action src/mcp/install-mcp-server.ts.
           claude_args: >-
-            --model us.anthropic.claude-opus-4-7 --max-turns 30
+            --model us.anthropic.claude-opus-4-7 --max-turns 30 --allowedTools
+            mcp__github_inline_comment__create_inline_comment,mcp__github_comment__update_claude_comment
 
       - name: Remove claude-security-reviewing label
         if: always()
