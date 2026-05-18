@@ -2,7 +2,9 @@ name: Claude Security Review
 
 on:
   pull_request_target:
-    types: [opened, reopened, labeled]
+    types: [opened, reopened]
+  pull_request_review:
+    types: [submitted]
   workflow_dispatch:
     inputs:
       pr_number:
@@ -17,35 +19,36 @@ permissions:
   contents: read
 
 concurrency:
-  group: pr-security-review-${{ github.event.pull_request.number || inputs.pr_number }}
+  group:
+    pr-security-review-${{ github.event.pull_request.number || github.event.review.pull_request_url || inputs.pr_number
+    }}
   cancel-in-progress: true
 
 jobs:
   authorize:
     runs-on: ubuntu-latest
-    # On labeled events, only proceed when the label is exactly 'safe-to-review'.
-    # Other labels are ignored entirely so we don't run the auth API calls on every label change.
+    # On pull_request_review events, only proceed when the review state is 'approved'.
+    # Comment/changes-requested reviews are ignored to avoid running the workflow on every review.
     if: |
-      github.event_name != 'pull_request_target' ||
-      github.event.action != 'labeled' ||
-      github.event.label.name == 'safe-to-review'
+      github.event_name != 'pull_request_review' ||
+      github.event.review.state == 'approved'
     outputs:
       authorized: ${{ steps.auth.outputs.authorized || steps.dispatch-auth.outputs.authorized }}
     steps:
       - name: Check authorization
         id: auth
-        if: github.event_name == 'pull_request_target'
+        if: github.event_name == 'pull_request_target' || github.event_name == 'pull_request_review'
         uses: actions/github-script@v9
         with:
           script: |
-            // For 'labeled' events the gate is the maintainer who applied the label (sender),
-            // not the PR author. For other events the gate is the PR author.
-            const user = context.payload.action === 'labeled'
-              ? context.payload.sender.login
+            // pull_request_target: gate on the PR author (maintainer-authored PRs auto-run on open/reopen).
+            // pull_request_review: gate on the reviewer who approved (so a maintainer approving a community PR
+            //                      authorizes the security review).
+            const isApproval = context.eventName === 'pull_request_review';
+            const user = isApproval
+              ? context.payload.review.user.login
               : context.payload.pull_request.user.login;
-            const reason = context.payload.action === 'labeled'
-              ? `labeler ${user}`
-              : `PR author ${user}`;
+            const reason = isApproval ? `approver ${user}` : `PR author ${user}`;
             try {
               await github.rest.teams.getMembershipForUserInOrg({
                 org: context.repo.owner,
