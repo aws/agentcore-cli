@@ -2,7 +2,7 @@ name: Claude Security Review
 
 on:
   pull_request_target:
-    types: [opened, reopened, synchronize, labeled]
+    types: [opened, reopened, labeled]
   workflow_dispatch:
     inputs:
       pr_number:
@@ -84,17 +84,21 @@ jobs:
     needs: authorize
     if: needs.authorize.outputs.authorized == 'true'
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     env:
       AWS_REGION: us-west-2
     steps:
       - name: Resolve PR number
         id: pr
         uses: actions/github-script@v9
+        env:
+          PR_NUMBER_INPUT: ${{ inputs.pr_number }}
         with:
           script: |
-            const num = context.eventName === 'workflow_dispatch'
-              ? parseInt('${{ inputs.pr_number }}')
-              : context.payload.pull_request.number;
+            const num =
+              context.eventName === 'workflow_dispatch'
+                ? parseInt(process.env.PR_NUMBER_INPUT, 10)
+                : context.payload.pull_request.number;
             const { data: pr } = await github.rest.pulls.get({
               owner: context.repo.owner,
               repo: context.repo.repo,
@@ -106,9 +110,11 @@ jobs:
 
       - name: Add claude-security-reviewing label
         uses: actions/github-script@v9
+        env:
+          PR_NUMBER: ${{ steps.pr.outputs.number }}
         with:
           script: |
-            const prNumber = parseInt('${{ steps.pr.outputs.number }}');
+            const prNumber = parseInt(process.env.PR_NUMBER, 10);
             try {
               await github.rest.issues.getLabel({
                 owner: context.repo.owner,
@@ -156,18 +162,23 @@ jobs:
         uses: anthropics/claude-code-action@v1
         with:
           github_token: ${{ steps.app-token.outputs.token }}
-          use_bedrock: "true"
-          prompt: "/security-review pull request #${{ steps.pr.outputs.number }} (base: ${{ steps.pr.outputs.base_ref }}, head: ${{ steps.pr.outputs.head_sha }}). Post the findings as a single PR review comment on this PR."
+          use_bedrock: 'true'
+          prompt:
+            '/security-review pull request #${{ steps.pr.outputs.number }} (base: ${{ steps.pr.outputs.base_ref }},
+            head: ${{ steps.pr.outputs.head_sha }}). For each finding, post an inline review comment on the exact file
+            and line where the issue lives (use a pull request review with line-level comments, not a single summary
+            comment). If you have no findings, post a single short top-level comment saying so.'
           claude_args: >-
-            --model us.anthropic.claude-opus-4-7
-            --max-turns 20
+            --model us.anthropic.claude-opus-4-7 --max-turns 20
 
       - name: Remove claude-security-reviewing label
         if: always()
         uses: actions/github-script@v9
+        env:
+          PR_NUMBER: ${{ steps.pr.outputs.number }}
         with:
           script: |
-            const prNumber = parseInt('${{ steps.pr.outputs.number }}');
+            const prNumber = parseInt(process.env.PR_NUMBER, 10);
             try {
               await github.rest.issues.removeLabel({
                 owner: context.repo.owner,
