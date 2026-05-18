@@ -48,15 +48,15 @@ import { setupPythonProject } from '../operations/python';
 import type { RemovalPreview, SchemaChange } from '../operations/remove/types';
 import { runCliCommand } from '../telemetry/cli-command-run.js';
 import {
+  AgentFramework,
+  AgentLanguage,
+  AgentProtocol,
   AgentType,
   AuthorizerType,
-  Build,
-  Framework,
-  Language,
-  Memory,
+  MemoryType,
   ModelProvider as ModelProviderEnum,
   NetworkMode as NetworkModeEnum,
-  Protocol,
+  BuildType as TelemetryBuildType,
   standardize,
 } from '../telemetry/schemas/common-shapes.js';
 import { createRenderer } from '../templates';
@@ -364,15 +364,15 @@ export class AgentPrimitive extends BasePrimitive<AddAgentOptions, RemovableReso
             }
 
             return {
-              language: standardize(Language, cliOptions.language),
-              framework: standardize(Framework, cliOptions.framework),
+              agent_language: standardize(AgentLanguage, cliOptions.language),
+              agent_framework: standardize(AgentFramework, cliOptions.framework),
               model_provider: standardize(ModelProviderEnum, cliOptions.modelProvider),
               agent_type: standardize(AgentType, cliOptions.type ?? 'create'),
-              build: standardize(Build, cliOptions.build ?? 'CodeZip'),
-              protocol: standardize(Protocol, cliOptions.protocol ?? 'HTTP'),
+              build_type: standardize(TelemetryBuildType, cliOptions.build ?? 'CodeZip'),
+              agent_protocol: standardize(AgentProtocol, cliOptions.protocol ?? 'HTTP'),
               network_mode: standardize(NetworkModeEnum, cliOptions.networkMode ?? 'PUBLIC'),
               authorizer_type: standardize(AuthorizerType, cliOptions.authorizerType ?? 'NONE'),
-              memory: standardize(Memory, cliOptions.memory ?? 'none'),
+              memory_type: standardize(MemoryType, cliOptions.memory ?? 'none'),
             };
           });
         } else {

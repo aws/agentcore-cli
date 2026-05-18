@@ -19,7 +19,7 @@ afterEach(() => {
 
 describe('withCommandRunTelemetry', () => {
   it('records success with returned attrs', async () => {
-    await withCommandRunTelemetry('update', { check_only: true }, async () => ({ success: true }));
+    await withCommandRunTelemetry('update', { is_dry_run: true }, async () => ({ success: true }));
 
     expect(sink.metrics).toHaveLength(1);
     expect(sink.metrics[0]!.metric).toBe('cli.command_run');
@@ -27,7 +27,7 @@ describe('withCommandRunTelemetry', () => {
       command_group: 'update',
       command: 'update',
       exit_reason: 'success',
-      check_only: 'true',
+      is_dry_run: 'true',
     });
   });
 
@@ -81,21 +81,21 @@ describe('withCommandRunTelemetry', () => {
   });
 
   it('converts boolean attrs to strings', async () => {
-    await withCommandRunTelemetry('update', { check_only: true }, async () => ({ success: true }));
+    await withCommandRunTelemetry('update', { is_dry_run: true }, async () => ({ success: true }));
 
-    expect(sink.metrics[0]!.attrs.check_only).toBe('true');
+    expect(sink.metrics[0]!.attrs.is_dry_run).toBe('true');
   });
 
   it('defaults invalid attrs to unknown while preserving valid ones', async () => {
     await withCommandRunTelemetry(
       'create',
       {
-        language: 'rust' as never,
-        framework: 'strands',
+        agent_language: 'rust' as never,
+        agent_framework: 'strands',
         model_provider: 'bedrock',
-        memory: 'shortterm',
-        protocol: 'mcp',
-        build: 'codezip',
+        memory_type: 'shortterm',
+        agent_protocol: 'mcp',
+        build_type: 'codezip',
         agent_type: 'create',
         network_mode: 'public',
         has_agent: true,
@@ -104,20 +104,20 @@ describe('withCommandRunTelemetry', () => {
     );
 
     expect(sink.metrics).toHaveLength(1);
-    expect(sink.metrics[0]!.attrs.language).toBe('unknown');
-    expect(sink.metrics[0]!.attrs.framework).toBe('strands');
+    expect(sink.metrics[0]!.attrs.agent_language).toBe('unknown');
+    expect(sink.metrics[0]!.attrs.agent_framework).toBe('strands');
   });
 
   it('records fallbackAttrs on failure', async () => {
     await withCommandRunTelemetry(
       'create',
       {
-        language: 'python',
-        framework: 'strands',
+        agent_language: 'python',
+        agent_framework: 'strands',
         model_provider: 'bedrock',
-        memory: 'none',
-        protocol: 'http',
-        build: 'codezip',
+        memory_type: 'none',
+        agent_protocol: 'http',
+        build_type: 'codezip',
         agent_type: 'create',
         network_mode: 'public',
         has_agent: true,
@@ -129,8 +129,8 @@ describe('withCommandRunTelemetry', () => {
     expect(sink.metrics[0]!.attrs).toMatchObject({
       exit_reason: 'failure',
       error_name: 'UnknownError',
-      language: 'python',
-      framework: 'strands',
+      agent_language: 'python',
+      agent_framework: 'strands',
       model_provider: 'bedrock',
       has_agent: 'true',
     });

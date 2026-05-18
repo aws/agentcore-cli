@@ -1,7 +1,7 @@
 import { type Result, ValidationError, serializeResult } from '../../../lib';
 import { getErrorMessage } from '../../errors';
 import { withCommandRunTelemetry } from '../../telemetry/cli-command-run.js';
-import { AuthType, Protocol, standardize } from '../../telemetry/schemas/common-shapes.js';
+import { AgentProtocol, AuthType, standardize } from '../../telemetry/schemas/common-shapes.js';
 import { COMMAND_DESCRIPTIONS } from '../../tui/copy';
 import { requireProject, requireTTY } from '../../tui/guards';
 import { InvokeScreen } from '../../tui/screens/invoke';
@@ -190,8 +190,8 @@ export const registerInvoke = (program: Command) => {
                 has_stream: cliOptions.stream ?? false,
                 has_session_id: !!cliOptions.sessionId,
                 auth_type: standardize(AuthType, cliOptions.bearerToken ? 'bearer_token' : 'sigv4'),
-                protocol: standardize(
-                  Protocol,
+                agent_protocol: standardize(
+                  AgentProtocol,
                   resolveProtocol({ tool: cliOptions.tool } as InvokeOptions, agentProtocol)
                 ),
               },
@@ -247,7 +247,7 @@ export const registerInvoke = (program: Command) => {
                 has_stream: true,
                 has_session_id: !!cliOptions.sessionId,
                 auth_type: standardize(AuthType, cliOptions.bearerToken ? 'bearer_token' : 'sigv4'),
-                protocol: standardize(Protocol, resolveProtocol({}, agentProtocol)),
+                agent_protocol: standardize(AgentProtocol, resolveProtocol({}, agentProtocol)),
               },
               async (): Promise<Result> => {
                 const { waitUntilExit, unmount } = render(

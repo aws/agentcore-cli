@@ -25,14 +25,14 @@ import { credentialPrimitive } from '../../../primitives/registry';
 import { createDefaultProjectSpec } from '../../../project';
 import { withCommandRunTelemetry } from '../../../telemetry/cli-command-run.js';
 import {
+  AgentFramework,
+  AgentLanguage,
+  AgentProtocol,
   AgentType,
-  Build,
-  Framework,
-  Language,
-  Memory as MemoryEnum,
+  BuildType,
+  MemoryType as MemoryEnum,
   ModelProvider,
   NetworkMode,
-  Protocol,
   standardize,
 } from '../../../telemetry/schemas/common-shapes.js';
 import { CDKRenderer, createRenderer } from '../../../templates';
@@ -205,12 +205,12 @@ export function useCreateFlow(cwd: string): CreateFlowState {
     if (phase !== 'running') return;
 
     const attrs = {
-      language: standardize(Language, addAgentConfig?.language ?? 'Python'),
-      framework: standardize(Framework, addAgentConfig?.framework),
+      agent_language: standardize(AgentLanguage, addAgentConfig?.language ?? 'Python'),
+      agent_framework: standardize(AgentFramework, addAgentConfig?.framework),
       model_provider: standardize(ModelProvider, addAgentConfig?.modelProvider),
-      memory: standardize(MemoryEnum, addAgentConfig?.memory ?? 'none'),
-      protocol: standardize(Protocol, addAgentConfig?.protocol ?? 'HTTP'),
-      build: standardize(Build, addAgentConfig?.buildType ?? 'CodeZip'),
+      memory_type: standardize(MemoryEnum, addAgentConfig?.memory ?? 'none'),
+      agent_protocol: standardize(AgentProtocol, addAgentConfig?.protocol ?? 'HTTP'),
+      build_type: standardize(BuildType, addAgentConfig?.buildType ?? 'CodeZip'),
       agent_type: standardize(AgentType, addAgentConfig?.agentType ?? 'create'),
       network_mode: standardize(NetworkMode, addAgentConfig?.networkMode ?? 'PUBLIC'),
       has_agent: addAgentConfig !== null,

@@ -22,15 +22,15 @@ import { computeDefaultCredentialEnvVarName } from '../../../primitives/credenti
 import { credentialPrimitive } from '../../../primitives/registry';
 import { withCommandRunTelemetry } from '../../../telemetry/cli-command-run.js';
 import {
+  AgentFramework,
+  AgentLanguage,
+  AgentProtocol,
   AgentType as AgentTypeEnum,
   AuthorizerType as AuthorizerTypeEnum,
-  Build,
-  Framework,
-  Language,
-  Memory as MemoryEnum,
+  BuildType,
+  MemoryType as MemoryEnum,
   ModelProvider,
   NetworkMode,
-  Protocol,
   standardize,
 } from '../../../telemetry/schemas/common-shapes.js';
 import { createRenderer } from '../../../templates';
@@ -160,15 +160,15 @@ export function useAddAgent() {
       const result = await withCommandRunTelemetry(
         'add.agent',
         {
-          language: standardize(Language, config.language),
-          framework: standardize(Framework, config.framework),
+          agent_language: standardize(AgentLanguage, config.language),
+          agent_framework: standardize(AgentFramework, config.framework),
           model_provider: standardize(ModelProvider, config.modelProvider),
           agent_type: standardize(AgentTypeEnum, config.agentType),
-          build: standardize(Build, config.buildType),
-          protocol: standardize(Protocol, config.protocol ?? 'HTTP'),
+          build_type: standardize(BuildType, config.buildType),
+          agent_protocol: standardize(AgentProtocol, config.protocol ?? 'HTTP'),
           network_mode: standardize(NetworkMode, config.networkMode ?? 'PUBLIC'),
           authorizer_type: standardize(AuthorizerTypeEnum, config.authorizerType ?? 'NONE'),
-          memory: standardize(MemoryEnum, config.memory ?? 'none'),
+          memory_type: standardize(MemoryEnum, config.memory ?? 'none'),
         },
         () => addAgentInner(config)
       );

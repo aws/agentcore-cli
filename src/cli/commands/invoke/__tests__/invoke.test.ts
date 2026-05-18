@@ -87,7 +87,7 @@ describe('invoke command', () => {
       telemetry.assertMetricEmitted({
         command: 'invoke',
         exit_reason: 'failure',
-        protocol: 'http',
+        agent_protocol: 'http',
         auth_type: 'sigv4',
         has_session_id: false,
       });

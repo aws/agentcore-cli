@@ -1,58 +1,58 @@
 import {
-  Action,
+  AgentFramework,
+  AgentLanguage,
+  AgentProtocol,
   AgentType,
   AttachMode,
   AuthType,
   AuthorizerType,
-  Build,
+  BuildType,
   Count,
   CredentialType,
   DeployModeSchema,
+  DevAction,
+  EvaluatorLevel,
   EvaluatorType,
   FilterState,
   FilterType,
-  Framework,
   GatewayTargetHost,
   GatewayTargetType,
-  Language,
-  Level,
-  Memory,
+  MemoryType,
   ModelProvider,
   NetworkMode,
-  OutboundAuth,
+  OutboundAuthType,
+  PolicyAttrSourceType,
   PolicyEngineMode,
-  Protocol,
+  PolicyValidationMode,
   RefType,
   ResourceType,
-  SourceType,
   UiMode,
-  ValidationMode,
   safeSchema,
 } from './common-shapes.js';
 import { z } from 'zod';
 
 const CreateAttrs = safeSchema({
-  language: Language,
-  framework: Framework,
+  agent_language: AgentLanguage,
+  agent_framework: AgentFramework,
   model_provider: ModelProvider,
-  memory: Memory,
-  protocol: Protocol,
-  build: Build,
+  memory_type: MemoryType,
+  agent_protocol: AgentProtocol,
+  build_type: BuildType,
   agent_type: AgentType,
   network_mode: NetworkMode,
   has_agent: z.boolean(),
 });
 
 const AddAgentAttrs = safeSchema({
-  language: Language,
-  framework: Framework,
+  agent_language: AgentLanguage,
+  agent_framework: AgentFramework,
   model_provider: ModelProvider,
   agent_type: AgentType,
-  build: Build,
-  protocol: Protocol,
+  build_type: BuildType,
+  agent_protocol: AgentProtocol,
   network_mode: NetworkMode,
   authorizer_type: AuthorizerType,
-  memory: Memory,
+  memory_type: MemoryType,
 });
 
 const AddMemoryAttrs = safeSchema({
@@ -65,7 +65,7 @@ const AddMemoryAttrs = safeSchema({
 
 const AddCredentialAttrs = safeSchema({ credential_type: CredentialType });
 
-const AddEvaluatorAttrs = safeSchema({ evaluator_type: EvaluatorType, level: Level });
+const AddEvaluatorAttrs = safeSchema({ evaluator_type: EvaluatorType, evaluator_level: EvaluatorLevel });
 
 const AddOnlineEvalAttrs = safeSchema({ evaluator_count: Count, enable_on_create: z.boolean() });
 
@@ -78,14 +78,17 @@ const AddGatewayAttrs = safeSchema({
 });
 
 const AddGatewayTargetAttrs = safeSchema({
-  target_type: GatewayTargetType,
-  host: GatewayTargetHost,
-  outbound_auth: OutboundAuth,
+  gateway_target_type: GatewayTargetType,
+  gateway_target_host: GatewayTargetHost,
+  outbound_auth_type: OutboundAuthType,
 });
 
 const AddPolicyEngineAttrs = safeSchema({ attach_gateway_count: Count, attach_mode: AttachMode });
 
-const AddPolicyAttrs = safeSchema({ source_type: SourceType, validation_mode: ValidationMode });
+const AddPolicyAttrs = safeSchema({
+  policy_attr_source_type: PolicyAttrSourceType,
+  policy_validation_mode: PolicyValidationMode,
+});
 
 const DeployAttrs = safeSchema({
   runtime_count: Count,
@@ -101,10 +104,10 @@ const DeployAttrs = safeSchema({
 });
 
 const DevAttrs = safeSchema({
-  action: Action,
+  dev_action: DevAction,
   ui_mode: UiMode,
   has_stream: z.boolean(),
-  protocol: Protocol,
+  agent_protocol: AgentProtocol,
   invoke_count: Count,
 });
 
@@ -112,7 +115,7 @@ const InvokeAttrs = safeSchema({
   has_stream: z.boolean(),
   has_session_id: z.boolean(),
   auth_type: AuthType,
-  protocol: Protocol,
+  agent_protocol: AgentProtocol,
 });
 
 const StatusAttrs = safeSchema({ filter_type: FilterType, filter_state: FilterState });
@@ -131,7 +134,7 @@ const RunEvalAttrs = safeSchema({
 
 const FetchAccessAttrs = safeSchema({ resource_type: ResourceType });
 
-const UpdateAttrs = safeSchema({ check_only: z.boolean() });
+const UpdateAttrs = safeSchema({ is_dry_run: z.boolean() });
 
 const PauseResumeOnlineEvalAttrs = safeSchema({ ref_type: RefType });
 

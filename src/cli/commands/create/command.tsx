@@ -11,14 +11,14 @@ import { LIFECYCLE_TIMEOUT_MAX, LIFECYCLE_TIMEOUT_MIN } from '../../../schema';
 import { getErrorMessage } from '../../errors';
 import { runCliCommand } from '../../telemetry/cli-command-run.js';
 import {
+  AgentFramework,
+  AgentLanguage,
+  AgentProtocol,
   AgentType,
-  Build,
-  Framework,
-  Language,
-  Memory,
+  MemoryType,
   ModelProvider as ModelProviderEnum,
   NetworkMode as NetworkModeEnum,
-  Protocol,
+  BuildType as TelemetryBuildType,
   standardize,
 } from '../../telemetry/schemas/common-shapes.js';
 import { COMMAND_DESCRIPTIONS } from '../../tui/copy';
@@ -115,12 +115,12 @@ async function handleCreateCLI(options: CreateOptions): Promise<void> {
   }
 
   const knownAttrs = {
-    language: standardize(Language, options.language),
-    framework: standardize(Framework, options.framework),
+    agent_language: standardize(AgentLanguage, options.language),
+    agent_framework: standardize(AgentFramework, options.framework),
     model_provider: standardize(ModelProviderEnum, options.modelProvider),
-    memory: standardize(Memory, options.memory ?? 'none'),
-    protocol: standardize(Protocol, options.protocol ?? 'http'),
-    build: standardize(Build, options.build ?? 'codezip'),
+    memory_type: standardize(MemoryType, options.memory ?? 'none'),
+    agent_protocol: standardize(AgentProtocol, options.protocol ?? 'http'),
+    build_type: standardize(TelemetryBuildType, options.build ?? 'codezip'),
     agent_type: standardize(AgentType, options.type ?? 'create'),
     network_mode: standardize(NetworkModeEnum, options.networkMode ?? 'public'),
     has_agent: options.agent !== false,

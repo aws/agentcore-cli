@@ -27,7 +27,7 @@ import {
 import { OtelCollector, startOtelCollector } from '../../operations/dev/otel';
 import { withCommandRunTelemetry } from '../../telemetry/cli-command-run.js';
 import { TelemetryClientAccessor } from '../../telemetry/client-accessor.js';
-import { Protocol, standardize } from '../../telemetry/schemas/common-shapes.js';
+import { AgentProtocol, standardize } from '../../telemetry/schemas/common-shapes.js';
 import { FatalError } from '../../tui/components';
 import { LayoutProvider } from '../../tui/context';
 import { COMMAND_DESCRIPTIONS } from '../../tui/copy';
@@ -214,10 +214,10 @@ export const registerDev = (program: Command) => {
           const execResult = await withCommandRunTelemetry(
             'dev',
             {
-              action: 'exec' as const,
+              dev_action: 'exec' as const,
               ui_mode: 'terminal' as const,
               has_stream: false,
-              protocol: standardize(Protocol, (targetAgent?.protocol ?? 'http').toLowerCase()),
+              agent_protocol: standardize(AgentProtocol, (targetAgent?.protocol ?? 'http').toLowerCase()),
               invoke_count: 0,
             },
             async (): Promise<Result> => {
@@ -257,10 +257,10 @@ export const registerDev = (program: Command) => {
           const invokeResult = await withCommandRunTelemetry(
             'dev',
             {
-              action: 'invoke' as const,
+              dev_action: 'invoke' as const,
               ui_mode: 'terminal' as const,
               has_stream: opts.stream ?? false,
-              protocol: standardize(Protocol, protocol.toLowerCase()),
+              agent_protocol: standardize(AgentProtocol, protocol.toLowerCase()),
               invoke_count: 1,
             },
             async (): Promise<Result> => {
@@ -384,10 +384,10 @@ export const registerDev = (program: Command) => {
           const devResult = await withCommandRunTelemetry(
             'dev',
             {
-              action: 'server' as const,
+              dev_action: 'server' as const,
               ui_mode: 'terminal' as const,
               has_stream: false,
-              protocol: standardize(Protocol, (config.protocol ?? 'http').toLowerCase()),
+              agent_protocol: standardize(AgentProtocol, (config.protocol ?? 'http').toLowerCase()),
               invoke_count: 0,
             },
             async (): Promise<Result> => {
@@ -443,10 +443,10 @@ export const registerDev = (program: Command) => {
           const tuiResult = await withCommandRunTelemetry(
             'dev',
             {
-              action: 'server' as const,
+              dev_action: 'server' as const,
               ui_mode: 'terminal' as const,
               has_stream: false,
-              protocol: standardize(Protocol, (targetDevAgent?.protocol ?? 'http').toLowerCase()),
+              agent_protocol: standardize(AgentProtocol, (targetDevAgent?.protocol ?? 'http').toLowerCase()),
               invoke_count: 0,
             },
             async (): Promise<Result> => {
@@ -487,10 +487,10 @@ export const registerDev = (program: Command) => {
               command_group: 'dev',
               command: 'dev',
               exit_reason: 'success',
-              action: 'server',
+              dev_action: 'server',
               ui_mode: 'browser',
               has_stream: false,
-              protocol: standardize(Protocol, (targetDevAgent?.protocol ?? 'http').toLowerCase()),
+              agent_protocol: standardize(AgentProtocol, (targetDevAgent?.protocol ?? 'http').toLowerCase()),
               invoke_count: 0,
             });
             await client.flush();

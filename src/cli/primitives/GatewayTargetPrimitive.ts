@@ -27,7 +27,7 @@ import { runCliCommand, withCommandRunTelemetry } from '../telemetry/cli-command
 import {
   GATEWAY_TARGET_TYPE_MAP,
   GatewayTargetHost,
-  OutboundAuth,
+  OutboundAuthType,
   standardize,
 } from '../telemetry/schemas/common-shapes.js';
 import { getTemplateToolDefinitions, renderGatewayTargetTemplate } from '../templates/GatewayTargetRenderer';
@@ -337,14 +337,14 @@ export class GatewayTargetPrimitive extends BasePrimitive<AddGatewayTargetOption
           const cliType = cliOptions.type ?? '';
           const telemetryTargetType = GATEWAY_TARGET_TYPE_MAP[cliType] ?? ('unknown' as const);
           const telemetryOutboundAuth = standardize(
-            OutboundAuth,
+            OutboundAuthType,
             (cliOptions.outboundAuthType ?? 'none').replaceAll('_', '-')
           );
           const telemetryHost = standardize(GatewayTargetHost, cliOptions.host ?? 'lambda');
           const telemetryAttrs = {
-            target_type: telemetryTargetType,
-            host: telemetryHost,
-            outbound_auth: telemetryOutboundAuth,
+            gateway_target_type: telemetryTargetType,
+            gateway_target_host: telemetryHost,
+            outbound_auth_type: telemetryOutboundAuth,
           };
 
           // Handle API Gateway targets (no code generation)
