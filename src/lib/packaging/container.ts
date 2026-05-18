@@ -36,6 +36,9 @@ export class ContainerPackager implements RuntimePackager {
     const configBaseDir = options.artifactDir ?? options.projectRoot ?? process.cwd();
     const codeLocation = resolveCodeLocation(spec.codeLocation, configBaseDir);
     const dockerfilePath = getDockerfilePath(codeLocation, spec.dockerfile);
+    const buildContext = spec.buildContextPath
+      ? resolveCodeLocation(spec.buildContextPath, configBaseDir)
+      : codeLocation;
 
     // Preflight: Dockerfile must exist
     if (!existsSync(dockerfilePath)) {
@@ -59,9 +62,13 @@ export class ContainerPackager implements RuntimePackager {
 
     // Build locally
     const imageName = `agentcore-package-${agentName}`;
+    const buildArgFlags = Object.entries(spec.customDockerBuildArgs ?? {}).flatMap(([k, v]) => [
+      '--build-arg',
+      `${k}=${v}`,
+    ]);
     const buildResult = spawnSync(
       runtime,
-      ['build', '-t', imageName, '-f', dockerfilePath, ...getUvBuildArgs(), codeLocation],
+      ['build', '-t', imageName, '-f', dockerfilePath, ...getUvBuildArgs(), ...buildArgFlags, buildContext],
       {
         stdio: 'pipe',
       }

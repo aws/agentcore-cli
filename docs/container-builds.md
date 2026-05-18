@@ -68,6 +68,51 @@ All other fields work the same as CodeZip agents.
 > must also add a `Dockerfile` and `.dockerignore` to the agent's code directory. The easiest way is to create a
 > throwaway container agent with `agentcore add agent --build Container` and copy the generated files.
 
+### Advanced: Shared Dockerfile (monorepo)
+
+When multiple agents share the same build logic, you can point them all at a single `Dockerfile` using two optional
+fields:
+
+| Field                   | Description                                                                                         |
+| ----------------------- | --------------------------------------------------------------------------------------------------- |
+| `buildContextPath`      | Docker build context directory. Replaces `codeLocation` as the positional `docker build` argument.  |
+| `customDockerBuildArgs` | Key/value pairs forwarded as `--build-arg` flags, allowing a shared Dockerfile to branch per agent. |
+
+**Example — two agents, one Dockerfile at the project root:**
+
+```json
+{
+  "name": "agent-one",
+  "build": "Container",
+  "entrypoint": "main.py",
+  "codeLocation": "app/agent-one/",
+  "buildContextPath": ".",
+  "customDockerBuildArgs": { "AGENT_NAME": "agent-one" }
+},
+{
+  "name": "agent-two",
+  "build": "Container",
+  "entrypoint": "main.py",
+  "codeLocation": "app/agent-two/",
+  "buildContextPath": ".",
+  "customDockerBuildArgs": { "AGENT_NAME": "agent-two" }
+}
+```
+
+The shared `Dockerfile` can then branch on the build arg:
+
+```dockerfile
+ARG AGENT_NAME
+COPY app/${AGENT_NAME}/ ./app/
+```
+
+**When to use `buildContextPath`:** use it when your `Dockerfile` needs to `COPY` files that live outside of
+`codeLocation` (e.g. shared libraries at the project root). Without it, Docker only sees the `codeLocation` directory as
+its build context.
+
+**When to use `customDockerBuildArgs`:** use it to parameterise a shared `Dockerfile` so each agent produces a different
+image (different entry point, bundled code, etc.) without duplicating the file.
+
 ## Local Development
 
 ```bash

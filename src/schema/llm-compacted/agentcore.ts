@@ -68,6 +68,8 @@ interface AgentEnvSpec {
   entrypoint: string; // @regex ^[a-zA-Z0-9_][a-zA-Z0-9_/.-]*\.(py|ts|js)(:[a-zA-Z_][a-zA-Z0-9_]*)?$ e.g. "main.py:handler" or "index.ts"
   codeLocation: string; // Directory path
   dockerfile?: string; // Custom Dockerfile name for Container builds (default: 'Dockerfile'). Must be a filename, not a path.
+  buildContextPath?: string; // Docker build context directory for Container builds. Replaces codeLocation as the positional `docker build` argument.
+  customDockerBuildArgs?: Record<string, string>; // Key/value pairs forwarded as --build-arg flags. Container builds only.
   runtimeVersion?: RuntimeVersion;
   envVars?: EnvVar[];
   networkMode?: NetworkMode; // default 'PUBLIC'

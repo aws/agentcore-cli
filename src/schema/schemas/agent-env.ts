@@ -232,6 +232,18 @@ export const AgentEnvSpecSchema = z
       .max(255)
       .regex(/^[a-zA-Z0-9][a-zA-Z0-9._-]*$/, 'Must be a filename (no path separators or traversal)')
       .optional(),
+    /**
+     * Docker build context directory for Container builds.
+     * When set, this path is used as the positional argument to `docker build` instead of `codeLocation`.
+     * Useful when a single Dockerfile is shared across multiple agents in a monorepo.
+     */
+    buildContextPath: DirectoryPathSchema.optional(),
+    /**
+     * Custom build arguments passed to `docker build` as `--build-arg KEY=VALUE` flags.
+     * Useful for parameterising a shared Dockerfile per agent (e.g. `{ "AGENT_NAME": "myagent" }`).
+     * Container builds only.
+     */
+    customDockerBuildArgs: z.record(z.string().min(1), z.string()).optional(),
     runtimeVersion: RuntimeVersionSchemaFromConstants.optional(),
     /** Environment variables to set on the runtime */
     envVars: z.array(EnvVarSchema).optional(),
@@ -294,6 +306,20 @@ export const AgentEnvSpecSchema = z
         code: z.ZodIssueCode.custom,
         message: 'dockerfile is only allowed for Container builds',
         path: ['dockerfile'],
+      });
+    }
+    if (data.build !== 'Container' && data.buildContextPath) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: 'buildContextPath is only allowed for Container builds',
+        path: ['buildContextPath'],
+      });
+    }
+    if (data.build !== 'Container' && data.customDockerBuildArgs) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: 'customDockerBuildArgs is only allowed for Container builds',
+        path: ['customDockerBuildArgs'],
       });
     }
   });

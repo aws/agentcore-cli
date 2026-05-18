@@ -458,6 +458,96 @@ describe('AgentEnvSpecSchema - dockerfile', () => {
   });
 });
 
+describe('AgentEnvSpecSchema - buildContextPath', () => {
+  const validContainerAgent = {
+    name: 'ContainerAgent',
+    build: 'Container',
+    entrypoint: 'main.py',
+    codeLocation: './agents/container',
+  };
+
+  const validCodeZipAgent = {
+    name: 'CodeZipAgent',
+    build: 'CodeZip',
+    entrypoint: 'main.py:handler',
+    codeLocation: './agents/test',
+    runtimeVersion: 'PYTHON_3_12',
+  };
+
+  it('accepts Container agent with buildContextPath', () => {
+    const result = AgentEnvSpecSchema.safeParse({ ...validContainerAgent, buildContextPath: '.' });
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.buildContextPath).toBe('.');
+    }
+  });
+
+  it('accepts Container agent without buildContextPath (optional)', () => {
+    const result = AgentEnvSpecSchema.safeParse(validContainerAgent);
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.buildContextPath).toBeUndefined();
+    }
+  });
+
+  it('rejects buildContextPath on CodeZip builds', () => {
+    const result = AgentEnvSpecSchema.safeParse({ ...validCodeZipAgent, buildContextPath: '.' });
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      expect(result.error.issues.some(i => i.message.includes('only allowed for Container'))).toBe(true);
+    }
+  });
+});
+
+describe('AgentEnvSpecSchema - customDockerBuildArgs', () => {
+  const validContainerAgent = {
+    name: 'ContainerAgent',
+    build: 'Container',
+    entrypoint: 'main.py',
+    codeLocation: './agents/container',
+  };
+
+  const validCodeZipAgent = {
+    name: 'CodeZipAgent',
+    build: 'CodeZip',
+    entrypoint: 'main.py:handler',
+    codeLocation: './agents/test',
+    runtimeVersion: 'PYTHON_3_12',
+  };
+
+  it('accepts Container agent with customDockerBuildArgs', () => {
+    const result = AgentEnvSpecSchema.safeParse({
+      ...validContainerAgent,
+      customDockerBuildArgs: { AGENT_NAME: 'dummyagent', BUILD_ENV: 'prod' },
+    });
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.customDockerBuildArgs).toEqual({ AGENT_NAME: 'dummyagent', BUILD_ENV: 'prod' });
+    }
+  });
+
+  it('accepts Container agent without customDockerBuildArgs (optional)', () => {
+    const result = AgentEnvSpecSchema.safeParse(validContainerAgent);
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.customDockerBuildArgs).toBeUndefined();
+    }
+  });
+
+  it('rejects customDockerBuildArgs on CodeZip builds', () => {
+    const result = AgentEnvSpecSchema.safeParse({ ...validCodeZipAgent, customDockerBuildArgs: { KEY: 'val' } });
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      expect(result.error.issues.some(i => i.message.includes('only allowed for Container'))).toBe(true);
+    }
+  });
+
+  it('accepts empty customDockerBuildArgs object', () => {
+    const result = AgentEnvSpecSchema.safeParse({ ...validContainerAgent, customDockerBuildArgs: {} });
+    expect(result.success).toBe(true);
+  });
+});
+
 describe('AgentEnvSpecSchema - lifecycleConfiguration', () => {
   const validAgent = {
     name: 'TestAgent',

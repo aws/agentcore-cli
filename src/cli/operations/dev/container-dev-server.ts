@@ -78,8 +78,13 @@ export class ContainerDevServer extends DevServer {
 
     // 4. Build the container image, streaming output in real-time
     onLog('system', `Building container image: ${this.imageName}...`);
+    const buildContext = this.config.buildContextPath ?? this.config.directory;
+    const buildArgFlags = Object.entries(this.config.customDockerBuildArgs ?? {}).flatMap(([k, v]) => [
+      '--build-arg',
+      `${k}=${v}`,
+    ]);
     const exitCode = await this.streamBuild(
-      ['-t', this.imageName, '-f', dockerfilePath, ...getUvBuildArgs(), this.config.directory],
+      ['-t', this.imageName, '-f', dockerfilePath, ...getUvBuildArgs(), ...buildArgFlags, buildContext],
       onLog
     );
 

@@ -11,6 +11,10 @@ export interface DevConfig {
   buildType: BuildType;
   protocol: ProtocolMode;
   dockerfile?: string;
+  /** Resolved absolute path to use as the Docker build context. Defaults to `directory`. */
+  buildContextPath?: string;
+  /** Custom `--build-arg` key/value pairs forwarded to `docker build`. */
+  customDockerBuildArgs?: Record<string, string>;
 }
 
 interface DevSupportResult {
@@ -142,6 +146,11 @@ export function getDevConfig(
     buildType: targetAgent.build,
     protocol: targetAgent.protocol ?? 'HTTP',
     dockerfile: targetAgent.dockerfile,
+    buildContextPath:
+      configRoot && targetAgent.buildContextPath
+        ? resolveCodeDirectory(targetAgent.buildContextPath, configRoot)
+        : undefined,
+    customDockerBuildArgs: targetAgent.customDockerBuildArgs,
   };
 }
 

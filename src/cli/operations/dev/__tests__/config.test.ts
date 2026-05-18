@@ -438,6 +438,71 @@ describe('getDevConfig', () => {
     expect(config).not.toBeNull();
     expect(config?.dockerfile).toBe('Dockerfile.gpu');
   });
+
+  it('threads buildContextPath from Container agent spec to DevConfig (resolved absolute)', () => {
+    const project: AgentCoreProjectSpec = {
+      name: 'TestProject',
+      version: 1,
+      managedBy: 'CDK' as const,
+      runtimes: [
+        {
+          name: 'ContainerAgent',
+          build: 'Container',
+          runtimeVersion: 'PYTHON_3_12',
+          entrypoint: filePath('main.py'),
+          codeLocation: dirPath('./agents/container'),
+          protocol: 'HTTP',
+          buildContextPath: dirPath('.'),
+        },
+      ],
+      memories: [],
+      credentials: [],
+      evaluators: [],
+      onlineEvalConfigs: [],
+      agentCoreGateways: [],
+      policyEngines: [],
+      configBundles: [],
+      abTests: [],
+      httpGateways: [],
+    };
+
+    const config = getDevConfig(workingDir, project, '/test/project/agentcore');
+    expect(config).not.toBeNull();
+    // resolveCodeDirectory('.', '/test/project/agentcore') => dirname('/test/project/agentcore') + '/' + '.' => '/test/project'
+    expect(config?.buildContextPath).toBe('/test/project');
+  });
+
+  it('threads customDockerBuildArgs from Container agent spec to DevConfig', () => {
+    const project: AgentCoreProjectSpec = {
+      name: 'TestProject',
+      version: 1,
+      managedBy: 'CDK' as const,
+      runtimes: [
+        {
+          name: 'ContainerAgent',
+          build: 'Container',
+          runtimeVersion: 'PYTHON_3_12',
+          entrypoint: filePath('main.py'),
+          codeLocation: dirPath('./agents/container'),
+          protocol: 'HTTP',
+          customDockerBuildArgs: { AGENT_NAME: 'myagent' },
+        },
+      ],
+      memories: [],
+      credentials: [],
+      evaluators: [],
+      onlineEvalConfigs: [],
+      agentCoreGateways: [],
+      policyEngines: [],
+      configBundles: [],
+      abTests: [],
+      httpGateways: [],
+    };
+
+    const config = getDevConfig(workingDir, project, '/test/project/agentcore');
+    expect(config).not.toBeNull();
+    expect(config?.customDockerBuildArgs).toEqual({ AGENT_NAME: 'myagent' });
+  });
 });
 
 describe('getAgentPort', () => {
