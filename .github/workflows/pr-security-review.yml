@@ -1,0 +1,167 @@
+name: Claude Security Review
+
+on:
+  pull_request_target:
+    types: [opened, reopened, synchronize]
+  workflow_dispatch:
+    inputs:
+      pr_number:
+        description: 'PR number to review'
+        required: true
+        type: string
+
+permissions:
+  id-token: write
+  pull-requests: write
+  issues: write
+  contents: read
+
+concurrency:
+  group: pr-security-review-${{ github.event.pull_request.number || inputs.pr_number }}
+  cancel-in-progress: true
+
+jobs:
+  authorize:
+    runs-on: ubuntu-latest
+    outputs:
+      authorized: ${{ steps.auth.outputs.authorized || steps.dispatch-auth.outputs.authorized }}
+    steps:
+      - name: Check authorization
+        id: auth
+        if: github.event_name == 'pull_request_target'
+        uses: actions/github-script@v9
+        with:
+          script: |
+            const user = context.payload.pull_request.user.login;
+            try {
+              await github.rest.teams.getMembershipForUserInOrg({
+                org: context.repo.owner,
+                team_slug: 'agentcore-cli-devs',
+                username: user,
+              });
+              console.log(`${user} is a member of agentcore-cli-devs`);
+              core.setOutput('authorized', 'true');
+            } catch (teamError) {
+              try {
+                const { data } = await github.rest.repos.getCollaboratorPermissionLevel({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  username: user,
+                });
+                const hasWriteAccess = ['write', 'admin'].includes(data.permission);
+                if (hasWriteAccess) {
+                  console.log(`${user} has write access (${data.permission})`);
+                  core.setOutput('authorized', 'true');
+                } else {
+                  console.log(`${user} does not have write access (${data.permission}) — skipping review`);
+                  core.setOutput('authorized', 'false');
+                }
+              } catch (collabError) {
+                console.log(`${user} authorization check failed (${collabError.status}) — skipping review`);
+                core.setOutput('authorized', 'false');
+              }
+            }
+
+      - name: Auto-authorize workflow_dispatch
+        id: dispatch-auth
+        if: github.event_name == 'workflow_dispatch'
+        run: echo "authorized=true" >> "$GITHUB_OUTPUT"
+
+  security-review:
+    needs: authorize
+    if: needs.authorize.outputs.authorized == 'true'
+    runs-on: ubuntu-latest
+    env:
+      AWS_REGION: us-west-2
+    steps:
+      - name: Resolve PR number
+        id: pr
+        uses: actions/github-script@v9
+        with:
+          script: |
+            const num = context.eventName === 'workflow_dispatch'
+              ? parseInt('${{ inputs.pr_number }}')
+              : context.payload.pull_request.number;
+            const { data: pr } = await github.rest.pulls.get({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              pull_number: num,
+            });
+            core.setOutput('number', num);
+            core.setOutput('head_sha', pr.head.sha);
+            core.setOutput('base_ref', pr.base.ref);
+
+      - name: Add claude-security-reviewing label
+        uses: actions/github-script@v9
+        with:
+          script: |
+            const prNumber = parseInt('${{ steps.pr.outputs.number }}');
+            try {
+              await github.rest.issues.getLabel({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                name: 'claude-security-reviewing',
+              });
+            } catch (e) {
+              if (e.status === 404) {
+                await github.rest.issues.createLabel({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  name: 'claude-security-reviewing',
+                  color: 'D73A4A',
+                  description: 'Claude Code /security-review in progress',
+                });
+              }
+            }
+            await github.rest.issues.addLabels({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: prNumber,
+              labels: ['claude-security-reviewing'],
+            });
+
+      - name: Checkout PR head
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ steps.pr.outputs.head_sha }}
+          fetch-depth: 0
+
+      - name: Generate GitHub App token
+        id: app-token
+        uses: actions/create-github-app-token@v1
+        with:
+          app-id: ${{ vars.APP_ID }}
+          private-key: ${{ secrets.APP_PRIVATE_KEY }}
+
+      - name: Configure AWS credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@v6
+        with:
+          role-to-assume: ${{ secrets.BEDROCK_SECURITY_REVIEW_ROLE_ARN }}
+          aws-region: us-west-2
+
+      - name: Run Claude Code /security-review
+        uses: anthropics/claude-code-action@v1
+        with:
+          github_token: ${{ steps.app-token.outputs.token }}
+          use_bedrock: "true"
+          prompt: "/security-review pull request #${{ steps.pr.outputs.number }} (base: ${{ steps.pr.outputs.base_ref }}, head: ${{ steps.pr.outputs.head_sha }}). Post the findings as a single PR review comment on this PR."
+          claude_args: >-
+            --model us.anthropic.claude-opus-4-7
+            --max-turns 20
+
+      - name: Remove claude-security-reviewing label
+        if: always()
+        uses: actions/github-script@v9
+        with:
+          script: |
+            const prNumber = parseInt('${{ steps.pr.outputs.number }}');
+            try {
+              await github.rest.issues.removeLabel({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: prNumber,
+                name: 'claude-security-reviewing',
+              });
+            } catch (error) {
+              console.log('Label removal failed (may not exist):', error.message);
+            }
