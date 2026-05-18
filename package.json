@@ -64,7 +64,7 @@
     "test": "vitest run --project unit",
     "test:all": "vitest run",
     "test:watch": "vitest --project unit",
-    "test:integ": "vitest run --project integ",
+    "test:integ": "npm run build && vitest run --project integ",
     "test:unit": "vitest run --project unit --coverage",
     "test:e2e": "vitest run --project e2e",
     "test:update-snapshots": "vitest run --project unit --update",
