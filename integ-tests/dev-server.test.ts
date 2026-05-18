@@ -112,10 +112,10 @@ describe('integration: dev server', () => {
 
       telemetry.assertMetricEmitted({
         command: 'dev',
-        action: 'invoke',
+        dev_action: 'invoke',
         ui_mode: 'terminal',
         exit_reason: 'success',
-        protocol: 'http',
+        agent_protocol: 'http',
       });
 
       // Verify failure telemetry when invoking a non-running port
@@ -125,7 +125,7 @@ describe('integration: dev server', () => {
 
       telemetry.assertMetricEmitted({
         command: 'dev',
-        action: 'invoke',
+        dev_action: 'invoke',
         exit_reason: 'failure',
       });
 

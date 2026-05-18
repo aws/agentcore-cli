@@ -38,7 +38,7 @@ describe.skipIf(!prereqs.npm || !prereqs.git)('integration: create edge cases', 
       telemetry.assertMetricEmitted({
         command: 'create',
         exit_reason: 'failure',
-        language: 'python',
+        agent_language: 'python',
         has_agent: 'true',
       });
     });
@@ -142,8 +142,8 @@ describe.skipIf(!prereqs.npm || !prereqs.git)('integration: create edge cases', 
       telemetry.assertMetricEmitted({
         command: 'create',
         exit_reason: 'success',
-        language: 'python',
-        framework: 'strands',
+        agent_language: 'python',
+        agent_framework: 'strands',
         model_provider: 'bedrock',
         has_agent: 'true',
       });
