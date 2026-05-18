@@ -148,6 +148,36 @@ jobs:
           ref: ${{ steps.pr.outputs.head_sha }}
           fetch-depth: 0
 
+      - name: Build security review prompt
+        id: build-prompt
+        env:
+          PR_NUMBER: ${{ steps.pr.outputs.number }}
+          BASE_REF: ${{ steps.pr.outputs.base_ref }}
+          HEAD_SHA: ${{ steps.pr.outputs.head_sha }}
+        run: |
+          set -euo pipefail
+          # Ensure we have the base branch locally so origin/<base> resolves.
+          git fetch --no-tags origin "$BASE_REF"
+          BASE="origin/$BASE_REF"
+
+          export GIT_STATUS="$(git status)"
+          export FILES_MODIFIED="$(git diff --name-only "$BASE"...)"
+          export COMMITS="$(git log --no-decorate "$BASE"...)"
+          # Cap diff at ~512KB to keep the prompt under model context limits.
+          export DIFF_CONTENT="$(git diff "$BASE"... | head -c 524288)"
+
+          OUT="${RUNNER_TEMP}/security-review-prompt.md"
+          python3 - > "$OUT" <<'PY'
+          import os, sys
+          tpl = open(".github/prompts/security-review.md").read()
+          for k in ("PR_NUMBER","BASE_REF","HEAD_SHA","GIT_STATUS","FILES_MODIFIED","COMMITS","DIFF_CONTENT"):
+              tpl = tpl.replace("{{"+k+"}}", os.environ.get(k, ""))
+          sys.stdout.write(tpl)
+          PY
+
+          echo "prompt_file=$OUT" >> "$GITHUB_OUTPUT"
+          echo "Prompt size: $(wc -c < "$OUT") bytes"
+
       - name: Generate GitHub App token
         id: app-token
         uses: actions/create-github-app-token@v1
@@ -161,25 +191,26 @@ jobs:
           role-to-assume: ${{ secrets.BEDROCK_SECURITY_REVIEW_ROLE_ARN }}
           aws-region: us-west-2
 
-      - name: Run Claude Code /security-review
+      - name: Read prompt file
+        id: prompt
+        env:
+          PROMPT_FILE: ${{ steps.build-prompt.outputs.prompt_file }}
+        run: |
+          set -euo pipefail
+          {
+            echo "prompt<<__SECREVIEW_EOF__"
+            cat "$PROMPT_FILE"
+            echo "__SECREVIEW_EOF__"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Run Claude Code security review
         uses: anthropics/claude-code-action@v1
         with:
           github_token: ${{ steps.app-token.outputs.token }}
           use_bedrock: 'true'
-          prompt:
-            '/security-review pull request #${{ steps.pr.outputs.number }} (base: ${{ steps.pr.outputs.base_ref }},
-            head: ${{ steps.pr.outputs.head_sha }}). Before reviewing, fetch the existing PR review comments and issue
-            comments via the GitHub API. If you (the same bot identity that posts these reviews) have already commented
-            on this PR, treat this as a re-review: for each of your prior findings, check the latest diff and explicitly
-            confirm whether it has been addressed, is still outstanding, or is no longer applicable, and skip re-posting
-            findings that are already resolved. Also read review comments left by other reviewers (humans or other bots)
-            and factor their context into your analysis — do not contradict an accepted resolution and do not duplicate
-            a finding another reviewer has already raised. For each new or still-outstanding finding, post an inline
-            review comment on the exact file and line where the issue lives (use a pull request review with line-level
-            comments, not a single summary comment). If you have no new findings, post a single short top-level comment
-            saying so, including a brief status of any prior findings (resolved / still outstanding).'
+          prompt: ${{ steps.prompt.outputs.prompt }}
           claude_args: >-
-            --model us.anthropic.claude-opus-4-7 --max-turns 20
+            --model us.anthropic.claude-opus-4-7 --max-turns 30
 
       - name: Remove claude-security-reviewing label
         if: always()
