@@ -121,6 +121,15 @@ describe('COMMAND_SCHEMAS', () => {
     expect(COMMAND_SCHEMAS['telemetry.disable'].parse({})).toEqual({});
   });
 
+  it('import subcommand schemas accept empty object', () => {
+    expect(COMMAND_SCHEMAS.import.parse({})).toEqual({});
+    expect(COMMAND_SCHEMAS['import.runtime'].parse({})).toEqual({});
+    expect(COMMAND_SCHEMAS['import.memory'].parse({})).toEqual({});
+    expect(COMMAND_SCHEMAS['import.evaluator'].parse({})).toEqual({});
+    expect(COMMAND_SCHEMAS['import.online-eval'].parse({})).toEqual({});
+    expect(COMMAND_SCHEMAS['import.gateway'].parse({})).toEqual({});
+  });
+
   it('accepts valid dev invoke attrs', () => {
     const attrs = {
       dev_action: 'invoke',

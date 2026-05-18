@@ -1,6 +1,7 @@
 import type { Memory } from '../../../schema';
 import type { MemoryDetail, MemorySummary } from '../../aws/agentcore-control';
 import { getMemoryDetail, listAllMemories } from '../../aws/agentcore-control';
+import { withCommandRunTelemetry } from '../../telemetry/cli-command-run.js';
 import { ANSI } from './constants';
 import { parseAndValidateArn } from './import-utils';
 import { executeResourceImport } from './resource-import';
@@ -114,7 +115,7 @@ export function registerImportMemory(importCmd: Command): void {
     .option('--name <name>', 'Local name for the imported memory')
     .option('-y, --yes', 'Auto-confirm prompts')
     .action(async (cliOptions: ImportResourceOptions) => {
-      const result = await handleImportMemory(cliOptions);
+      const result = await withCommandRunTelemetry('import.memory', {}, () => handleImportMemory(cliOptions));
 
       if (result.success) {
         console.log('');

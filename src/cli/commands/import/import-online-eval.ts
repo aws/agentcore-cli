@@ -6,6 +6,7 @@ import {
   listAllOnlineEvaluationConfigs,
 } from '../../aws/agentcore-control';
 import { arnPrefix } from '../../aws/partition';
+import { withCommandRunTelemetry } from '../../telemetry/cli-command-run.js';
 import { ANSI } from './constants';
 import { failResult, findResourceInDeployedState, parseAndValidateArn } from './import-utils';
 import { executeResourceImport } from './resource-import';
@@ -200,7 +201,7 @@ export function registerImportOnlineEval(importCmd: Command): void {
     .option('--name <name>', 'Local name for the imported online eval config')
     .option('-y, --yes', 'Auto-confirm prompts')
     .action(async (cliOptions: ImportResourceOptions) => {
-      const result = await handleImportOnlineEval(cliOptions);
+      const result = await withCommandRunTelemetry('import.online-eval', {}, () => handleImportOnlineEval(cliOptions));
 
       if (result.success) {
         console.log('');

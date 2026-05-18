@@ -19,6 +19,7 @@ import {
   listAllGateways,
 } from '../../aws/agentcore-control';
 import { isAccessDeniedError } from '../../errors';
+import { withCommandRunTelemetry } from '../../telemetry/cli-command-run.js';
 import { ANSI } from './constants';
 import { executeCdkImportPipeline } from './import-pipeline';
 import {
@@ -667,7 +668,7 @@ export function registerImportGateway(importCmd: Command): void {
     .description('Import an existing AgentCore Gateway (with targets) from your AWS account')
     .option('--arn <gatewayArn>', 'Gateway ARN to import')
     .action(async (cliOptions: ImportResourceOptions) => {
-      const result = await handleImportGateway(cliOptions);
+      const result = await withCommandRunTelemetry('import.gateway', {}, () => handleImportGateway(cliOptions));
 
       if (result.success) {
         console.log('');

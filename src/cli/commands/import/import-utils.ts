@@ -1,4 +1,4 @@
-import { APP_DIR, ConfigIO, findConfigRoot } from '../../../lib';
+import { APP_DIR, ConfigIO, NoProjectError, ValidationError, findConfigRoot } from '../../../lib';
 import type { AwsDeploymentTarget } from '../../../schema';
 import { detectAccount, validateAwsCredentials } from '../../aws/account';
 import { ExecLogger } from '../../logging';
@@ -67,7 +67,7 @@ export function failResult(
   logger.finalize(false);
   return {
     success: false,
-    error: new Error(error),
+    error: new ValidationError(error),
     resourceType,
     resourceName,
     logPath: logger.getRelativeLogPath(),
@@ -91,7 +91,7 @@ export interface ProjectContext {
 export async function resolveProjectContext(): Promise<ProjectContext> {
   const configRoot = findConfigRoot(process.cwd());
   if (!configRoot) {
-    throw new Error(
+    throw new NoProjectError(
       'No agentcore project found in the current directory.\nRun `agentcore create <name>` first, then run import from inside the project.'
     );
   }
@@ -134,7 +134,7 @@ export async function resolveImportTarget(options: ResolveTargetOptions): Promis
       arn
     )
   ) {
-    throw new Error(
+    throw new ValidationError(
       `Not a valid ARN: "${arn}".\nExpected format: arn:<partition>:bedrock-agentcore:<region>:<account>:<runtime|memory|evaluator|online-evaluation-config|gateway>/<id>`
     );
   }
@@ -147,7 +147,7 @@ export async function resolveImportTarget(options: ResolveTargetOptions): Promis
     const arnRegion = arnRegionMatch?.[1];
     const envRegion = process.env.AWS_REGION ?? process.env.AWS_DEFAULT_REGION;
     if (arnRegion && envRegion && envRegion !== arnRegion) {
-      throw new Error(
+      throw new ValidationError(
         `Region mismatch: AWS_REGION is "${envRegion}" but the ARN is in "${arnRegion}". ` +
           `Either re-run with AWS_REGION=${arnRegion} or pass an ARN from ${envRegion}.`
       );
@@ -158,14 +158,14 @@ export async function resolveImportTarget(options: ResolveTargetOptions): Promis
 
   if (targets.length === 0) {
     if (!arn) {
-      throw new Error(
+      throw new ValidationError(
         'No deployment targets found in project.\nRun `agentcore deploy` first to set up a target, or use --arn so a target can be created automatically.'
       );
     }
 
     const arnMatch = /^arn:[^:]+:bedrock-agentcore:([^:]+):([^:]+):/.exec(arn);
     if (!arnMatch) {
-      throw new Error(
+      throw new ValidationError(
         'No deployment targets found in project and could not parse region/account from ARN.\nRun `agentcore deploy` first to set up a target, then re-run import.'
       );
     }
@@ -189,13 +189,13 @@ export async function resolveImportTarget(options: ResolveTargetOptions): Promis
     target = targets.find(t => t.name === targetName);
     if (!target) {
       const names = targets.map(t => `  - ${t.name} (${t.region}, ${t.account})`).join('\n');
-      throw new Error(`Target "${targetName}" not found. Available targets:\n${names}`);
+      throw new ValidationError(`Target "${targetName}" not found. Available targets:\n${names}`);
     }
   } else if (targets.length === 1) {
     target = targets[0]!;
   } else {
     const names = targets.map(t => `  - ${t.name} (${t.region}, ${t.account})`).join('\n');
-    throw new Error(`Multiple deployment targets found. Specify one with --target:\n${names}`);
+    throw new ValidationError(`Multiple deployment targets found. Specify one with --target:\n${names}`);
   }
 
   onProgress?.(`Using target: ${target.name} (${target.region}, ${target.account})`);
@@ -207,7 +207,7 @@ export async function resolveImportTarget(options: ResolveTargetOptions): Promis
   // Validate credentials match the target account
   const callerAccount = await detectAccount();
   if (callerAccount && target.account && callerAccount !== target.account) {
-    throw new Error(
+    throw new ValidationError(
       `Your AWS credentials are for account ${callerAccount}, but the target "${target.name}" is configured for account ${target.account}.\nEnsure your credentials match the deployment target.`
     );
   }
@@ -261,7 +261,7 @@ export function parseAndValidateArn(
   const match = ARN_PATTERN.exec(arn);
   const expectedArnType = RESOURCE_TYPE_CONFIG[expectedResourceType].arnType;
   if (!match) {
-    throw new Error(
+    throw new ValidationError(
       `Invalid ARN format: "${arn}". Expected format: arn:<partition>:bedrock-agentcore:<region>:<account>:${expectedArnType}/<id>`
     );
   }
@@ -269,17 +269,17 @@ export function parseAndValidateArn(
   const [, region, account, resourceType, resourceId] = match;
 
   if (resourceType !== expectedArnType) {
-    throw new Error(`ARN resource type "${resourceType}" does not match expected type "${expectedArnType}".`);
+    throw new ValidationError(`ARN resource type "${resourceType}" does not match expected type "${expectedArnType}".`);
   }
 
   if (region !== target.region) {
-    throw new Error(
+    throw new ValidationError(
       `ARN region "${region}" does not match target region "${target.region}". Use --target to select a different deployment target.`
     );
   }
 
   if (account !== target.account) {
-    throw new Error(
+    throw new ValidationError(
       `ARN account "${account}" does not match target account "${target.account}". Ensure the ARN belongs to the correct account.`
     );
   }
@@ -498,7 +498,7 @@ export async function copyAgentSource(options: CopyAgentSourceOptions): Promise<
       }
     }
   } else {
-    throw new Error(`Source path does not exist: ${sourcePath}`);
+    throw new ValidationError(`Source path does not exist: ${sourcePath}`);
   }
 
   // Container agents install dependencies inside the Docker image
