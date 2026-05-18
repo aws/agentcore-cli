@@ -106,12 +106,23 @@ jobs:
     env:
       AWS_REGION: us-west-2
     steps:
+      # Generate the GitHub App token first so every subsequent github-script step can
+      # use it. The default GITHUB_TOKEN is read-only on pull_request_target /
+      # pull_request_review events from forks, which makes label/comment writes 403.
+      - name: Generate GitHub App token
+        id: app-token
+        uses: actions/create-github-app-token@v1
+        with:
+          app-id: ${{ vars.APP_ID }}
+          private-key: ${{ secrets.APP_PRIVATE_KEY }}
+
       - name: Resolve PR number
         id: pr
         uses: actions/github-script@v9
         env:
           PR_NUMBER_INPUT: ${{ inputs.pr_number }}
         with:
+          github-token: ${{ steps.app-token.outputs.token }}
           script: |
             const num =
               context.eventName === 'workflow_dispatch'
@@ -131,6 +142,7 @@ jobs:
         env:
           PR_NUMBER: ${{ steps.pr.outputs.number }}
         with:
+          github-token: ${{ steps.app-token.outputs.token }}
           script: |
             const prNumber = parseInt(process.env.PR_NUMBER, 10);
             try {
@@ -192,13 +204,6 @@ jobs:
 
           echo "prompt_file=$OUT" >> "$GITHUB_OUTPUT"
           echo "Prompt size: $(wc -c < "$OUT") bytes"
-
-      - name: Generate GitHub App token
-        id: app-token
-        uses: actions/create-github-app-token@v1
-        with:
-          app-id: ${{ vars.APP_ID }}
-          private-key: ${{ secrets.APP_PRIVATE_KEY }}
 
       - name: Configure AWS credentials (OIDC)
         uses: aws-actions/configure-aws-credentials@v6
@@ -276,6 +281,7 @@ jobs:
         env:
           PR_NUMBER: ${{ steps.pr.outputs.number }}
         with:
+          github-token: ${{ steps.app-token.outputs.token }}
           script: |
             const prNumber = parseInt(process.env.PR_NUMBER, 10);
             try {
