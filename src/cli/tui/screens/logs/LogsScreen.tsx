@@ -1,18 +1,16 @@
-import type { AgentContext } from '../../../commands/logs/action';
-import { resolveAgentContext } from '../../../commands/logs/action';
-import { loadDeployedProjectConfig } from '../../../operations/resolve-agent';
 import { FullScreenLogView, LogPanel, Screen, SelectList } from '../../components';
 import type { LogEntry } from '../../components/LogPanel';
-import { useLogsStream } from '../../hooks/useLogsStream';
+import { HELP_TEXT } from '../../constants';
+import { useListNavigation } from '../../hooks/useListNavigation';
+import { useLogsFlow } from './useLogsFlow';
 import { Box, Text, useInput, useStdout } from 'ink';
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useMemo, useState } from 'react';
 
 interface LogsScreenProps {
   isInteractive: boolean;
   onExit: () => void;
 }
 
-type Phase = 'loading' | 'select-agent' | 'streaming' | 'error';
 type LevelFilter = 'all' | 'error' | 'warn';
 
 const FILTER_LABELS: Record<LevelFilter, string> = {
@@ -29,82 +27,24 @@ function filterLogs(logs: LogEntry[], filter: LevelFilter): LogEntry[] {
 }
 
 export function LogsScreen({ onExit }: LogsScreenProps) {
-  const [phase, setPhase] = useState<Phase>('loading');
-  const [agents, setAgents] = useState<AgentContext[]>([]);
-  const [selectedIndex, setSelectedIndex] = useState(0);
-  const [selectedAgent, setSelectedAgent] = useState<AgentContext | undefined>();
-  const [loadError, setLoadError] = useState<string | undefined>();
+  const { phase, agents, selectedAgent, loadError, selectAgent, logs, isStreaming, streamError } = useLogsFlow();
   const [showFullScreen, setShowFullScreen] = useState(false);
   const [levelFilter, setLevelFilter] = useState<LevelFilter>('all');
   const { stdout } = useStdout();
   const terminalHeight = stdout?.rows ?? 24;
   const maxLines = Math.max(5, terminalHeight - 14);
 
-  const { logs, isStreaming, error: streamError } = useLogsStream(selectedAgent);
-
   const filteredLogs = useMemo(() => filterLogs(logs, levelFilter), [logs, levelFilter]);
 
-  useEffect(() => {
-    const load = async () => {
-      try {
-        const context = await loadDeployedProjectConfig();
-        const runtimeNames = context.project.runtimes.map(r => r.name);
-
-        if (runtimeNames.length === 0) {
-          setLoadError('No runtimes defined in agentcore.json');
-          setPhase('error');
-          return;
-        }
-
-        const resolved: AgentContext[] = [];
-        for (const name of runtimeNames) {
-          const result = resolveAgentContext(context, { runtime: name });
-          if (result.success) {
-            resolved.push(result.agentContext);
-          }
-        }
-
-        if (resolved.length === 0) {
-          setLoadError('No deployed agents found. Run `agentcore deploy` first.');
-          setPhase('error');
-          return;
-        }
-
-        setAgents(resolved);
-
-        if (resolved.length === 1) {
-          setSelectedAgent(resolved[0]);
-          setPhase('streaming');
-        } else {
-          setPhase('select-agent');
-        }
-      } catch (err) {
-        setLoadError((err as Error).message ?? 'Failed to load project config');
-        setPhase('error');
-      }
-    };
-
-    void load();
-  }, []);
+  const { selectedIndex } = useListNavigation({
+    items: agents,
+    onSelect: agent => selectAgent(agent),
+    onExit,
+    isActive: phase === 'select-agent' && !showFullScreen,
+  });
 
   useInput(
-    (input, key) => {
-      if (phase === 'select-agent') {
-        if (key.upArrow || input === 'k') {
-          setSelectedIndex(prev => (prev - 1 + agents.length) % agents.length);
-        }
-        if (key.downArrow || input === 'j') {
-          setSelectedIndex(prev => (prev + 1) % agents.length);
-        }
-        if (key.return) {
-          const agent = agents[selectedIndex];
-          if (agent) {
-            setSelectedAgent(agent);
-            setPhase('streaming');
-          }
-        }
-      }
-
+    (input, _key) => {
       if (phase === 'streaming' && !showFullScreen) {
         if (input === 'f') {
           setShowFullScreen(true);
@@ -120,7 +60,7 @@ export function LogsScreen({ onExit }: LogsScreenProps) {
         }
       }
     },
-    { isActive: !showFullScreen }
+    { isActive: phase === 'streaming' && !showFullScreen }
   );
 
   if (showFullScreen) {
@@ -137,7 +77,7 @@ export function LogsScreen({ onExit }: LogsScreenProps) {
 
   if (phase === 'error') {
     return (
-      <Screen title="Logs" onExit={onExit} helpText="Esc back">
+      <Screen title="Logs" onExit={onExit} helpText={HELP_TEXT.BACK}>
         <Text color="red">{loadError}</Text>
       </Screen>
     );
@@ -151,7 +91,7 @@ export function LogsScreen({ onExit }: LogsScreenProps) {
     }));
 
     return (
-      <Screen title="Logs" onExit={onExit} helpText="↑↓ select · Enter confirm · Esc back">
+      <Screen title="Logs" onExit={onExit} helpText={HELP_TEXT.NAVIGATE_SELECT}>
         <Box flexDirection="column">
           <Text bold>Select an agent to stream logs:</Text>
           <Box marginTop={1}>
@@ -162,13 +102,11 @@ export function LogsScreen({ onExit }: LogsScreenProps) {
     );
   }
 
-  const helpText = '↑↓ scroll · f full-screen · 1 all · 2 errors · 3 warn+ · Esc back';
-
   return (
     <Screen
       title="Logs"
       onExit={onExit}
-      helpText={helpText}
+      helpText="f full-screen · 1 all · 2 errors · 3 warn+ · Esc back"
       exitEnabled={!showFullScreen}
       headerContent={
         <Box flexDirection="column">
