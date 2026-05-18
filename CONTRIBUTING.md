@@ -48,6 +48,13 @@ Looking at the existing issues is a great way to find something to contribute on
 default GitHub issue labels (enhancement/bug/duplicate/help wanted/invalid/question/wontfix), looking at any 'help
 wanted' issues is a great place to start.
 
+## Maintainer notes: triggering Claude security review on community PRs
+
+PRs from non-collaborators are skipped by the `Claude Security Review` workflow to avoid running automation against
+unreviewed code. Once a maintainer has manually reviewed a community PR and confirmed the diff is safe to send to the
+automated reviewer, apply the `safe-to-review` label to the PR. The workflow will run automatically. The label can also
+be re-applied (remove and add) to re-trigger a review after new commits land.
+
 ## Code of Conduct
 
 This project has adopted the [Amazon Open Source Code of Conduct](https://aws.github.io/code-of-conduct). For more
