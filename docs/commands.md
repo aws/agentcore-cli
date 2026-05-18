@@ -161,6 +161,81 @@ agentcore validate -d ./my-project
 | ------------------------ | ----------------- |
 | `-d, --directory <path>` | Project directory |
 
+### import
+
+Import existing AgentCore resources from your AWS account into the project, or migrate from a Bedrock AgentCore Starter
+Toolkit project.
+
+```bash
+# Import a runtime by ARN
+agentcore import runtime \
+  --arn arn:aws:bedrock-agentcore:us-east-1:123456789012:runtime/my-runtime \
+  --code ./app/MyAgent \
+  --entrypoint main.py \
+  --name MyAgent
+
+# Import a memory resource
+agentcore import memory --arn arn:aws:bedrock-agentcore:us-east-1:123456789012:memory/abc123 --name SharedMemory
+
+# Import an evaluator
+agentcore import evaluator --arn arn:aws:bedrock-agentcore:us-east-1:123456789012:evaluator/eval123 --name ResponseQuality
+
+# Import a gateway (with all its targets)
+agentcore import gateway --arn arn:aws:bedrock-agentcore:us-east-1:123456789012:gateway/gw123
+
+# Import from a Starter Toolkit project (auto-detects .bedrock_agentcore.yaml in cwd)
+agentcore import
+agentcore import --source ./path/to/.bedrock_agentcore.yaml -y
+```
+
+Top-level flags (apply when running `agentcore import` without a subcommand to migrate a Starter Toolkit project):
+
+| Flag                | Description                                              |
+| ------------------- | -------------------------------------------------------- |
+| `--source <path>`   | Path to the `.bedrock_agentcore.yaml` configuration file |
+| `--target <target>` | Deployment target name (only when project has multiple)  |
+| `-y, --yes`         | Auto-confirm prompts                                     |
+
+Subcommand: `import runtime`
+
+| Flag                  | Description                                                            |
+| --------------------- | ---------------------------------------------------------------------- |
+| `--arn <runtimeArn>`  | Runtime ARN to import                                                  |
+| `--code <path>`       | Path to directory containing the entrypoint (e.g. folder with main.py) |
+| `--entrypoint <file>` | Entrypoint file (auto-detected from runtime, e.g. `main.py`)           |
+| `--name <name>`       | Local name for the imported runtime                                    |
+| `-y, --yes`           | Auto-confirm prompts                                                   |
+
+Subcommand: `import memory`
+
+| Flag                | Description                        |
+| ------------------- | ---------------------------------- |
+| `--arn <memoryArn>` | Memory ARN to import               |
+| `--name <name>`     | Local name for the imported memory |
+| `-y, --yes`         | Auto-confirm prompts               |
+
+Subcommand: `import evaluator`
+
+| Flag                   | Description                           |
+| ---------------------- | ------------------------------------- |
+| `--arn <evaluatorArn>` | Evaluator ARN to import               |
+| `--name <name>`        | Local name for the imported evaluator |
+| `-y, --yes`            | Auto-confirm prompts                  |
+
+Subcommand: `import online-eval`
+
+| Flag                | Description                             |
+| ------------------- | --------------------------------------- |
+| `--arn <configArn>` | Online evaluation config ARN to import  |
+| `--name <name>`     | Local name for the imported online eval |
+| `-y, --yes`         | Auto-confirm prompts                    |
+
+Subcommand: `import gateway`
+
+| Flag                 | Description                              |
+| -------------------- | ---------------------------------------- |
+| `--arn <gatewayArn>` | Gateway ARN to import (with all targets) |
+
 ---
 
 ## Resource Management
@@ -485,6 +560,87 @@ agentcore add online-eval \
 | `--enable-on-create`         | Enable immediately after deploy               |
 | `--json`                     | JSON output                                   |
 
+### add policy-engine
+
+Add a Cedar policy engine to the project. Policy engines provide authorization for gateway requests using Cedar
+policies.
+
+```bash
+agentcore add policy-engine \
+  --name MyPolicyEngine \
+  --description "Authorization for production gateways" \
+  --attach-to-gateways MyGateway,OtherGateway \
+  --attach-mode ENFORCE
+```
+
+| Flag                              | Description                                                     |
+| --------------------------------- | --------------------------------------------------------------- |
+| `--name <name>`                   | Policy engine name                                              |
+| `--description <desc>`            | Policy engine description                                       |
+| `--encryption-key-arn <arn>`      | KMS encryption key ARN                                          |
+| `--attach-to-gateways <gateways>` | Comma-separated gateway names to attach this engine to          |
+| `--attach-mode <mode>`            | Enforcement mode for attached gateways: `LOG_ONLY` or `ENFORCE` |
+| `--json`                          | JSON output                                                     |
+
+### add policy
+
+Add a Cedar policy to a policy engine. Policies can be authored inline, loaded from a file, or generated from a natural
+language description.
+
+```bash
+# From a Cedar policy file
+agentcore add policy \
+  --name AdminAccess \
+  --engine MyPolicyEngine \
+  --source ./policies/admin.cedar
+
+# Inline statement
+agentcore add policy \
+  --name DenyDelete \
+  --engine MyPolicyEngine \
+  --statement 'forbid(principal, action == Action::"Delete", resource);'
+
+# Generate from natural language (uses a deployed gateway as context)
+agentcore add policy \
+  --name ReadOnlyForGuests \
+  --engine MyPolicyEngine \
+  --generate "Allow guests to read but never write or delete" \
+  --gateway MyGateway
+```
+
+| Flag                       | Description                                                          |
+| -------------------------- | -------------------------------------------------------------------- |
+| `--name <name>`            | Policy name                                                          |
+| `--engine <engine>`        | Policy engine name (must already exist)                              |
+| `--description <desc>`     | Policy description                                                   |
+| `--source <path>`          | Path to a Cedar policy file                                          |
+| `--statement <cedar>`      | Cedar policy statement (inline)                                      |
+| `-g, --generate <prompt>`  | Generate Cedar policy from natural language description              |
+| `--gateway <name>`         | Deployed gateway name for policy generation (used with `--generate`) |
+| `--validation-mode <mode>` | Validation mode: `FAIL_ON_ANY_FINDINGS` or `IGNORE_ALL_FINDINGS`     |
+| `--json`                   | JSON output                                                          |
+
+### add runtime-endpoint
+
+Add a named endpoint (version alias) to a deployed runtime. Endpoints let you address specific runtime versions by name
+(e.g. `prod`, `staging`).
+
+```bash
+agentcore add runtime-endpoint \
+  --runtime MyAgent \
+  --endpoint prod \
+  --version 3 \
+  --description "Production endpoint pinned to version 3"
+```
+
+| Flag                   | Description                            |
+| ---------------------- | -------------------------------------- |
+| `--runtime <name>`     | Runtime to add the endpoint to         |
+| `--endpoint <name>`    | Endpoint name (e.g. `prod`, `staging`) |
+| `--version <number>`   | Version number to alias (default: `1`) |
+| `--description <desc>` | Description of the endpoint            |
+| `--json`               | JSON output                            |
+
 ### remove
 
 Remove resources from project.
@@ -497,18 +653,22 @@ agentcore remove evaluator --name ResponseQuality
 agentcore remove online-eval --name QualityMonitor
 agentcore remove gateway --name MyGateway
 agentcore remove gateway-target --name WeatherTools
+agentcore remove policy-engine --name MyPolicyEngine
+agentcore remove policy --name AdminAccess --engine MyPolicyEngine
+agentcore remove runtime-endpoint --name prod
 
 # Reset everything
 agentcore remove all -y
 agentcore remove all --dry-run  # Preview
 ```
 
-| Flag            | Description               |
-| --------------- | ------------------------- |
-| `--name <name>` | Resource name             |
-| `-y, --yes`     | Skip confirmation         |
-| `--dry-run`     | Preview (remove all only) |
-| `--json`        | JSON output               |
+| Flag                | Description                                       |
+| ------------------- | ------------------------------------------------- |
+| `--name <name>`     | Resource name                                     |
+| `--engine <engine>` | Policy engine name (required for `remove policy`) |
+| `-y, --yes`         | Skip confirmation                                 |
+| `--dry-run`         | Preview (`remove all` only)                       |
+| `--json`            | JSON output                                       |
 
 ---
 
@@ -794,16 +954,32 @@ agentcore package -d ./my-project
 
 ### update
 
-Check for and install CLI updates.
+Check for and install CLI updates. Equivalent to `agentcore update cli`.
 
 ```bash
-agentcore update            # Check and install
-agentcore update --check    # Check only, don't install
+agentcore update                # Check and install
+agentcore update --check        # Check only, don't install
+agentcore update cli            # Same as `agentcore update`
+agentcore update cli --check    # Same as `agentcore update --check`
 ```
 
 | Flag          | Description                          |
 | ------------- | ------------------------------------ |
 | `-c, --check` | Check for updates without installing |
+
+### telemetry
+
+Manage anonymous usage analytics preferences. Telemetry is opt-in and used to improve the CLI.
+
+```bash
+agentcore telemetry status      # Show current preference and where it was set
+agentcore telemetry enable      # Opt in
+agentcore telemetry disable     # Opt out
+```
+
+`enable`, `disable`, and `status` take no flags beyond `-h, --help`.
+
+The preference is stored in your global CLI config and persists across projects.
 
 ### help
 
