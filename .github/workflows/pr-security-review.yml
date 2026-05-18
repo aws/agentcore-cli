@@ -2,7 +2,7 @@ name: Claude Security Review
 
 on:
   pull_request_target:
-    types: [opened, reopened, synchronize]
+    types: [opened, reopened, synchronize, labeled]
   pull_request_review:
     types: [submitted]
   workflow_dispatch:
@@ -30,11 +30,13 @@ concurrency:
 jobs:
   authorize:
     runs-on: ubuntu-latest
-    # On pull_request_review events, only proceed when the review state is 'approved'.
-    # Comment/changes-requested reviews are ignored to avoid running the workflow on every review.
+    # Filter event subtypes early:
+    # - pull_request_review: only the 'approved' state authorizes (comment/changes-requested are ignored).
+    # - pull_request_target labeled: only the 'safe-to-review' label triggers (other label changes are ignored).
     if: |
-      github.event_name != 'pull_request_review' ||
-      github.event.review.state == 'approved'
+      (github.event_name != 'pull_request_review' || github.event.review.state == 'approved') &&
+      (github.event_name != 'pull_request_target' || github.event.action != 'labeled' ||
+       github.event.label.name == 'safe-to-review')
     outputs:
       authorized: ${{ steps.auth.outputs.authorized || steps.dispatch-auth.outputs.authorized }}
     steps:
@@ -44,14 +46,24 @@ jobs:
         uses: actions/github-script@v9
         with:
           script: |
-            // pull_request_target: gate on the PR author (maintainer-authored PRs auto-run on open/reopen).
-            // pull_request_review: gate on the reviewer who approved (so a maintainer approving a community PR
-            //                      authorizes the security review).
+            // pull_request_target opened/reopened/synchronize: gate on the PR author.
+            // pull_request_target labeled (safe-to-review): gate on the labeler (sender).
+            // pull_request_review (approved): gate on the reviewer who approved.
             const isApproval = context.eventName === 'pull_request_review';
-            const user = isApproval
-              ? context.payload.review.user.login
-              : context.payload.pull_request.user.login;
-            const reason = isApproval ? `approver ${user}` : `PR author ${user}`;
+            const isLabel =
+              context.eventName === 'pull_request_target' && context.payload.action === 'labeled';
+            let user;
+            let reason;
+            if (isApproval) {
+              user = context.payload.review.user.login;
+              reason = `approver ${user}`;
+            } else if (isLabel) {
+              user = context.payload.sender.login;
+              reason = `labeler ${user}`;
+            } else {
+              user = context.payload.pull_request.user.login;
+              reason = `PR author ${user}`;
+            }
             try {
               await github.rest.teams.getMembershipForUserInOrg({
                 org: context.repo.owner,
