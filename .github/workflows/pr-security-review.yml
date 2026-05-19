@@ -3,8 +3,6 @@ name: Claude Security Review
 on:
   pull_request_target:
     types: [opened, reopened, synchronize, labeled]
-  pull_request_review:
-    types: [submitted]
   workflow_dispatch:
     inputs:
       pr_number:
@@ -22,48 +20,36 @@ permissions:
   contents: read
 
 concurrency:
-  group:
-    pr-security-review-${{ github.event.pull_request.number || github.event.review.pull_request_url || inputs.pr_number
-    }}
+  group: pr-security-review-${{ github.event.pull_request.number || inputs.pr_number }}
   cancel-in-progress: true
 
 jobs:
   authorize:
     runs-on: ubuntu-latest
-    # Filter event subtypes early:
-    # - pull_request_review: only the 'approved' state authorizes (comment/changes-requested are ignored).
-    # - pull_request_target labeled: only the 'safe-to-review' label triggers (other label changes are ignored).
+    # On 'labeled' events, only proceed when the label is exactly 'safe-to-review'.
+    # Other labels (e.g. size/m) are filtered out so we don't spawn API calls.
     if: |
-      (github.event_name != 'pull_request_review' || github.event.review.state == 'approved') &&
-      (github.event_name != 'pull_request_target' || github.event.action != 'labeled' ||
-       github.event.label.name == 'safe-to-review')
+      github.event_name != 'pull_request_target' ||
+      github.event.action != 'labeled' ||
+      github.event.label.name == 'safe-to-review'
     outputs:
       authorized: ${{ steps.auth.outputs.authorized || steps.dispatch-auth.outputs.authorized }}
     steps:
       - name: Check authorization
         id: auth
-        if: github.event_name == 'pull_request_target' || github.event_name == 'pull_request_review'
+        if: github.event_name == 'pull_request_target'
         uses: actions/github-script@v9
         with:
           script: |
-            // pull_request_target opened/reopened/synchronize: gate on the PR author.
-            // pull_request_target labeled (safe-to-review): gate on the labeler (sender).
-            // pull_request_review (approved): gate on the reviewer who approved.
-            const isApproval = context.eventName === 'pull_request_review';
-            const isLabel =
-              context.eventName === 'pull_request_target' && context.payload.action === 'labeled';
-            let user;
-            let reason;
-            if (isApproval) {
-              user = context.payload.review.user.login;
-              reason = `approver ${user}`;
-            } else if (isLabel) {
-              user = context.payload.sender.login;
-              reason = `labeler ${user}`;
-            } else {
-              user = context.payload.pull_request.user.login;
-              reason = `PR author ${user}`;
-            }
+            // pull_request_target opened/reopened/synchronize: gate on the PR author
+            //   (auto-runs on maintainer-authored PRs; community PRs need the label path below).
+            // pull_request_target labeled (safe-to-review): gate on the labeler (sender)
+            //   so a maintainer applying the label authorizes the run on a community PR.
+            const isLabel = context.payload.action === 'labeled';
+            const user = isLabel
+              ? context.payload.sender.login
+              : context.payload.pull_request.user.login;
+            const reason = isLabel ? `labeler ${user}` : `PR author ${user}`;
             try {
               await github.rest.teams.getMembershipForUserInOrg({
                 org: context.repo.owner,

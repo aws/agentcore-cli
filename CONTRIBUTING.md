@@ -50,18 +50,19 @@ wanted' issues is a great place to start.
 
 ## Maintainer notes: Claude security review on community PRs
 
-The `Claude Security Review` workflow runs automatically on maintainer-authored PRs (opened/reopened) and on community
-PRs once a maintainer either submits an **approving review** _or_ applies the **`safe-to-review`** label. PRs from
-non-collaborators are otherwise skipped — that explicit signal is the gate, so a maintainer must manually review the
-diff before the automated reviewer runs.
+The `Claude Security Review` workflow runs automatically on maintainer-authored PRs (opened/reopened/synchronize) and on
+community PRs once a maintainer applies the **`safe-to-review`** label. PRs from non-collaborators are otherwise skipped
+— the label is the gate, so a maintainer must manually review the diff before the automated reviewer runs.
 
-The label flow is convenient when you want to kick the security review without committing to an approval: drop the label
-on the PR and the workflow fires once. Removing and re-applying the label re-triggers the review.
+> **Why the label and not an approving review?** GitHub does not inject repo/org secrets into workflows triggered by
+> `pull_request_review` events when the PR head is a fork, regardless of the reviewer's access level. The Bedrock OIDC
+> role and GitHub App credentials this workflow needs are only available on `pull_request_target` events, so the label
+> path is the only one that works end-to-end for fork PRs.
 
-To re-run the review on a later commit, submit another approving review, re-apply the label, or trigger the
-`Claude Security Review` workflow manually from the Actions tab with the PR number. Note that manual dispatch can verify
-the analysis and prompt plumbing but cannot post inline comments — the action's inline-comment MCP server only attaches
-on PR-context events (`pull_request_target`, `pull_request_review`).
+To re-run the review on a later commit, remove and re-apply the label, or trigger the `Claude Security Review` workflow
+manually from the Actions tab with the PR number. Note that manual dispatch can verify the analysis and prompt plumbing
+but cannot post inline comments — the action's inline-comment MCP server only attaches on PR-context events
+(`pull_request_target`).
 
 ## Code of Conduct
 
