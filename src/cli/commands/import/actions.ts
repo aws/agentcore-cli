@@ -642,7 +642,7 @@ export async function handleImport(options: ImportOptions): Promise<ImportResult
       await rollbackConfig();
       logger.endStep('error', error);
       logger.finalize(false);
-      return { success: false, error: new ValidationError(error), logPath: logger.getRelativeLogPath() };
+      return { success: false, error: new Error(error), logPath: logger.getRelativeLogPath() };
     }
     logger.endStep('success');
 
