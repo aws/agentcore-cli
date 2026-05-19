@@ -95,4 +95,17 @@ describe('import command', () => {
       });
     });
   });
+
+  describe('import online-eval', () => {
+    it('emits failure telemetry for invalid ARN', async () => {
+      const result = await runCLI(['import', 'online-eval', '--arn', 'invalid-arn'], projectDir, {
+        env: telemetry.env,
+      });
+      expect(result.exitCode).toBe(1);
+      telemetry.assertMetricEmitted({
+        command: 'import.online-eval',
+        exit_reason: 'failure',
+      });
+    });
+  });
 });
