@@ -2,6 +2,36 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.14.1] - 2026-05-19
+
+### Added
+- feat(tui): add dedicated Logs screen for streaming runtime logs (#1274) (2f3040a6)
+- feat: upgrade agent inspector to 0.4.2 (#1305) (7fac9a35)
+- feat: upgrade agent inspector to 0.4.2 (36399dbf)
+- feat: expose ability to publish otel metrics to remote endpoint (#1244) (721c2a95)
+
+### Fixed
+- fix(templates): pin google-adk < 2.0.0 to prevent runtime init timeout (#1309) (397530ad)
+- fix: update PR tarball install instructions to use gh CLI (55f124ee)
+- fix: hoist TypeScript session-storage check before early returns, add test (040f4c1f)
+- fix: remove session storage option from TypeScript agent advanced config (0c6f0431)
+- fix(test): strip ANSI codes from Ink TUI test assertions (#1301) (ab4c19ec)
+- fix(templates): make Strands TypeScript template strict-typecheck clean (#1300) (9bada857)
+- fix: handle scoped conventional commits in changelog categorization (#1289) (fc135b0a)
+- fix: build CLI before running integration tests (#1286) (306c9e84)
+- fix: skip schema-check and pr-title validation on release PRs (#1272) (d92fac29)
+
+### Other Changes
+- Merge pull request #1307 from aws/fix-pr-tarball-install-instructions (e0c2d5bb)
+- Merge pull request #1306 from aws/remove-session-storage-typescript (f1f6719c)
+- ci(security-review): add safe-to-review label as alternate trigger (#1297) (4f89e0df)
+- ci(security-review): drop sticky comment, post workflow summary, re-enable synchronize (#1293) (fcbdf592)
+- ci: add Claude Code /security-review workflow on PRs (#1285) (ac6cf4a9)
+- refactor(telemetry): make attributes globally unique (#1246) (574375ba)
+- Merge pull request #1273 from notgitika/chore/remove-dead-tag-command (10294f1b)
+- refactor: centralize error types for consistent definition shapes (#1238) (5e1a24f3)
+- chore: remove dead tag command (1f21ad05)
+
 ## [0.14.0] - 2026-05-15
 
 ### Added
