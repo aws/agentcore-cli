@@ -1181,7 +1181,7 @@ dependencies = [
     "a2a-sdk >= 0.2.0, < 1.0.0",
     "aws-opentelemetry-distro",
     "bedrock-agentcore[a2a] >= 1.0.3",
-    "google-adk >= 1.0.0",
+    "google-adk >= 1.0.0, < 2.0.0",
     "google-genai >= 1.0.0",
 ]
 
@@ -2129,7 +2129,7 @@ dependencies = [
     "ag-ui-protocol >= 0.1.10",
     "bedrock-agentcore >= 1.0.3",
     "fastapi >= 0.115.12",
-    "google-adk >= 1.16.0",
+    "google-adk >= 1.16.0, < 2.0.0",
     "google-genai >= 1.0.0",
     "opentelemetry-distro",
     "opentelemetry-exporter-otlp",
@@ -3613,7 +3613,7 @@ requires-python = ">=3.10"
 dependencies = [
     "opentelemetry-distro",
     "opentelemetry-exporter-otlp",
-    "google-adk >= 1.17.0",
+    "google-adk >= 1.17.0, < 2.0.0",
     "bedrock-agentcore >= 1.0.3",
     "botocore[crt] >= 1.35.0",
     {{#if hasGateway}}{{#if (includes gatewayAuthTypes "AWS_IAM")}}"mcp-proxy-for-aws >= 1.1.0",
