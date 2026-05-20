@@ -7,7 +7,6 @@ describe('buildFeedbackPayload', () => {
       message: 'CLI ate my homework',
       cliVersion: '0.1.0-alpha.42',
       osDescriptor: 'darwin 25.3.0',
-      nodeVersion: 'v20.20.0',
       mode: 'cli',
     });
 
@@ -17,17 +16,19 @@ describe('buildFeedbackPayload', () => {
     expect(payload.locale).toBe('en_US');
     expect(payload.reference).toBe('agentcore-cli');
     expect(payload.location).toContain('agentcore-cli@0.1.0-alpha.42');
+    expect(payload.location).toContain('cli');
     expect(payload.customerResponses).toHaveLength(1);
     expect(payload.customerResponses[0]).toMatchObject({
       question: 'What feedback do you have for the AgentCore CLI',
       pii: false,
       response: { responseType: 'textArea', responseValue: 'CLI ate my homework' },
     });
+    // Aperture form template only registers `cli-version` and `os`. Other
+    // context (node version, mode) lives in `location` until the template
+    // adds those keys; sending unknown metadata keys is a hard 400.
     expect(payload.metadataList).toEqual([
       { key: 'cli-version', value: '0.1.0-alpha.42' },
       { key: 'os', value: 'darwin 25.3.0' },
-      { key: 'node-version', value: 'v20.20.0' },
-      { key: 'cli-mode', value: 'cli' },
     ]);
   });
 

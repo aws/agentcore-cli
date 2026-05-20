@@ -14,8 +14,6 @@ export const FEEDBACK_MESSAGE_QUESTION = 'What feedback do you have for the Agen
 export const FEEDBACK_ATTACHMENT_QUESTION = 'Attachments';
 export const METADATA_KEY_CLI_VERSION = 'cli-version';
 export const METADATA_KEY_OS = 'os';
-export const METADATA_KEY_NODE_VERSION = 'node-version';
-export const METADATA_KEY_CLI_MODE = 'cli-mode';
 
 export const FEEDBACK_REFERENCE = 'agentcore-cli';
 
