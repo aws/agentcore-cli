@@ -1,3 +1,4 @@
+import { toError } from '../../../../lib/errors/types';
 import { submitFeedback, validateFeedbackMessage, validateScreenshotPath } from '../../../operations/feedback';
 import type { FeedbackSubmissionResult } from '../../../operations/feedback';
 import { withCommandRunTelemetry } from '../../../telemetry/cli-command-run';
@@ -92,7 +93,7 @@ export function useFeedbackFlow(options: UseFeedbackFlowOptions = {}) {
           });
           return { success: true, submission };
         } catch (err) {
-          return { success: false, error: err instanceof Error ? err : new Error(String(err)) };
+          return { success: false, error: toError(err) };
         }
       }
     );

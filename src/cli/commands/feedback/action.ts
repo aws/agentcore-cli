@@ -1,3 +1,4 @@
+import { toError } from '../../../lib/errors/types';
 import { submitFeedback } from '../../operations/feedback';
 import type { FeedbackSubmissionResult } from '../../operations/feedback';
 import { promptForConsent } from './consent-prompt';
@@ -23,6 +24,6 @@ export async function handleFeedback(message: string, options: FeedbackOptions):
     });
     return { kind: 'submitted', result };
   } catch (err) {
-    return { kind: 'error', error: err instanceof Error ? err : new Error(String(err)) };
+    return { kind: 'error', error: toError(err) };
   }
 }

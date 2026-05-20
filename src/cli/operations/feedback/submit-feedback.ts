@@ -1,3 +1,4 @@
+import { ValidationError } from '../../../lib/errors/types';
 import { PACKAGE_VERSION } from '../../constants';
 import { fetchPresignedUrl, submitForm, uploadFileToS3 } from './aperture-client';
 import { buildFeedbackPayload, buildUserAgent } from './build-payload';
@@ -14,10 +15,15 @@ import * as fs from 'node:fs/promises';
 import * as os from 'node:os';
 import * as path from 'node:path';
 
-export class FeedbackValidationError extends Error {
+/**
+ * Thrown for any user-supplied input the feedback command refuses to send to
+ * Aperture (empty/oversized message, missing/oversized/wrong-type screenshot).
+ * Extends the shared `ValidationError` so telemetry classifies it as a user
+ * error rather than a service/client failure.
+ */
+export class FeedbackValidationError extends ValidationError {
   constructor(message: string) {
     super(message);
-    this.name = 'FeedbackValidationError';
   }
 }
 
