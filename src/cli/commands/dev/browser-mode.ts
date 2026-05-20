@@ -129,7 +129,9 @@ export async function launchBrowserDev(): Promise<void> {
     process.exit(1);
   }
 
-  await runCliDeploy();
+  if (hasHarnesses) {
+    await runCliDeploy();
+  }
 
   const configRoot = findConfigRoot(workingDir);
   const persistTracesDir = path.join(configRoot ?? workingDir, '.cli', 'traces');

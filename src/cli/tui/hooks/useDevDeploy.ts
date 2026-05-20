@@ -49,6 +49,19 @@ export function useDevDeploy({ skip, ready = true }: UseDevDeployOptions = {}): 
       try {
         const configIO = new ConfigIO();
 
+        // Only deploy if the project has harnesses (cloud-dependent resources).
+        // Plain agents (Strands, LangGraph, etc.) run locally and don't need deployment.
+        try {
+          const projectSpec = await configIO.readProjectSpec();
+          const hasHarnesses = (projectSpec.harnesses ?? []).length > 0;
+          if (!hasHarnesses) {
+            onProgress('Local agent — no deploy needed', 'success');
+            return;
+          }
+        } catch {
+          // If we can't read project spec, proceed with deploy as a safe default
+        }
+
         // Auto-populate aws-targets.json if empty
         try {
           const targets = await configIO.readAWSDeploymentTargets();

@@ -389,8 +389,8 @@ export const registerDev = (program: Command) => {
           // Get provider info from agent config
           const providerInfo = '(see agent code)';
 
-          // Deploy resources before starting dev server
-          if (!opts.skipDeploy) {
+          // Deploy resources before starting dev server (only when harnesses need it)
+          if (!opts.skipDeploy && hasHarnesses) {
             await runCliDeploy();
           }
 
