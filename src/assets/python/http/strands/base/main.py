@@ -173,17 +173,12 @@ def create_agent():
         hooks=[ConfigBundleHook()],
     )
 {{else}}
-_agent = None
-
-def get_or_create_agent():
-    global _agent
-    if _agent is None:
-        _agent = Agent(
-            model=load_model(),
-            system_prompt=DEFAULT_SYSTEM_PROMPT,
-            tools=tools
-        )
-    return _agent
+def create_agent():
+    return Agent(
+        model=load_model(),
+        system_prompt=DEFAULT_SYSTEM_PROMPT,
+        tools=tools
+    )
 {{/if}}
 {{/if}}
 
@@ -197,11 +192,7 @@ async def invoke(payload, context):
     user_id = getattr(context, 'user_id', 'default-user')
     agent = get_or_create_agent(session_id, user_id)
 {{else}}
-{{#if hasConfigBundle}}
     agent = create_agent()
-{{else}}
-    agent = get_or_create_agent()
-{{/if}}
 {{/if}}
 
     # Execute and format response
