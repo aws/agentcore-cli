@@ -955,6 +955,25 @@ agentcore package -d ./my-project
 | `-d, --directory <path>` | Project directory        |
 | `-r, --runtime <name>`   | Package specific runtime |
 
+### feedback
+
+Send feedback about the AgentCore CLI. The CLI displays the AWS Customer Agreement and prompts for consent before
+submitting; consent must be confirmed in an interactive terminal.
+
+```bash
+agentcore feedback "the dev server is slow on Linux"
+agentcore feedback "broken icon" --screenshot ~/Desktop/bug.png
+agentcore feedback "automation works" --json
+agentcore feedback                                       # launches the wizard
+```
+
+| Flag                  | Description                                                  |
+| --------------------- | ------------------------------------------------------------ |
+| `--screenshot <path>` | Path to a `.png`, `.jpg`, or `.jpeg` file (max 100MB)        |
+| `--json`              | Print result as JSON (`{success, id, timestamp, reference}`) |
+
+See [docs/feedback.md](feedback.md) for usage details.
+
 ### update
 
 Check for and install CLI updates. Equivalent to `agentcore update cli`.

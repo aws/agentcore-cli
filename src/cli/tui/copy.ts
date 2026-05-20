@@ -42,6 +42,7 @@ export const COMMAND_DESCRIPTIONS = {
   status: 'Show deployed resource details and status.',
   traces: 'View and download agent traces.',
   evals: 'View saved eval and batch eval results from past runs.',
+  feedback: 'Send feedback about the AgentCore CLI to the team.',
   fetch: 'Fetch access info for deployed resources.',
   pause: 'Pause a deployed resource (online eval config, A/B test).',
   resume: 'Resume a paused resource (online eval config, A/B test).',
