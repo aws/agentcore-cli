@@ -347,7 +347,7 @@ export class WebUIServer {
       await handleStart(ctx, req, res, origin);
     } else if (req.method === 'POST' && req.url === '/api/harness/tool-response') {
       await handleHarnessToolResponse(ctx, req, res, origin);
-    } else if (req.method === 'POST' && req.url === '/invocations') {
+    } else if (req.method === 'POST' && (req.url === '/invocations' || req.url?.startsWith('/invocations?'))) {
       await handleInvocations(ctx, req, res, origin);
     } else if (req.method === 'POST' && req.url === '/api/mcp') {
       await handleMcpProxy(ctx, req, res, origin);

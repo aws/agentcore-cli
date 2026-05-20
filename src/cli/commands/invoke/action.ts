@@ -15,13 +15,8 @@ import { invokeHarness } from '../../aws/agentcore-harness';
 import { isPreviewEnabled } from '../../feature-flags';
 import { InvokeLogger } from '../../logging';
 import { formatMcpToolList } from '../../operations/dev/utils';
-import {
-  canFetchHarnessToken,
-  canFetchRuntimeToken,
-  fetchHarnessToken,
-  fetchRuntimeToken,
-} from '../../operations/fetch-access';
-import { generateSessionId } from '../../operations/session';
+import { canFetchHarnessToken, fetchHarnessToken } from '../../operations/fetch-access';
+import { resolveInvokeTarget } from './resolve';
 import type { InvokeOptions, InvokeResult } from './types';
 import { randomUUID } from 'node:crypto';
 
@@ -48,43 +43,37 @@ export async function loadInvokeConfig(configIO: ConfigIO = new ConfigIO()): Pro
 export async function handleInvoke(context: InvokeContext, options: InvokeOptions = {}): Promise<InvokeResult> {
   const { project, deployedState, awsTargets } = context;
 
-  // Resolve target
-  const targetNames = Object.keys(deployedState.targets);
-  if (targetNames.length === 0) {
-    return {
-      success: false,
-      error: new ResourceNotFoundError('No deployed targets found. Run `agentcore deploy` first.'),
-    };
-  }
-
-  const selectedTargetName = options.targetName ?? targetNames[0]!;
-
-  if (options.targetName && !targetNames.includes(options.targetName)) {
-    return {
-      success: false,
-      error: new ResourceNotFoundError(
-        `Target '${options.targetName}' not found. Available: ${targetNames.join(', ')}`
-      ),
-    };
-  }
-
-  const targetState = deployedState.targets[selectedTargetName];
-  const targetConfig = awsTargets.find(t => t.name === selectedTargetName);
-
-  if (!targetConfig) {
-    return {
-      success: false,
-      error: new ResourceNotFoundError(`Target config '${selectedTargetName}' not found in aws-targets`),
-    };
-  }
-
-  // Preview: route to harness or runtime
+  // Preview: route to harness before runtime resolution
   if (isPreviewEnabled()) {
     const harnessEntries = project.harnesses ?? [];
     const isHarnessInvoke = options.harnessName != null || (harnessEntries.length > 0 && project.runtimes.length === 0);
 
     if (isHarnessInvoke) {
-      return handleHarnessInvoke(project, targetState, targetConfig, selectedTargetName, options);
+      const targetNames = Object.keys(deployedState.targets);
+      if (targetNames.length === 0) {
+        return {
+          success: false,
+          error: new ResourceNotFoundError('No deployed targets found. Run `agentcore deploy` first.'),
+        };
+      }
+      const selectedTarget = options.targetName ?? targetNames[0]!;
+      if (options.targetName && !targetNames.includes(options.targetName)) {
+        return {
+          success: false,
+          error: new ResourceNotFoundError(
+            `Target '${options.targetName}' not found. Available: ${targetNames.join(', ')}`
+          ),
+        };
+      }
+      const targetState = deployedState.targets[selectedTarget];
+      const targetConfig = awsTargets.find(t => t.name === selectedTarget);
+      if (!targetConfig) {
+        return {
+          success: false,
+          error: new ResourceNotFoundError(`Target config '${selectedTarget}' not found in aws-targets`),
+        };
+      }
+      return handleHarnessInvoke(project, targetState, targetConfig, selectedTarget, options);
     }
 
     if (harnessEntries.length > 0 && project.runtimes.length > 0 && !options.agentName) {
@@ -101,32 +90,26 @@ export async function handleInvoke(context: InvokeContext, options: InvokeOption
     }
   }
 
-  if (project.runtimes.length === 0) {
-    return { success: false, error: new ValidationError('No agents defined in configuration') };
+  const resolved = await resolveInvokeTarget({
+    project,
+    deployedState,
+    awsTargets,
+    agentName: options.agentName,
+    targetName: options.targetName,
+    bearerToken: options.bearerToken,
+    sessionId: options.sessionId,
+  });
+
+  if (!resolved.success) {
+    return { success: false, error: resolved.error };
   }
 
-  // Resolve agent
-  const agentNames = project.runtimes.map(a => a.name);
-
-  if (!options.agentName && project.runtimes.length > 1) {
-    return {
-      success: false,
-      error: new ValidationError(`Multiple runtimes found. Use --runtime to specify one: ${agentNames.join(', ')}`),
-    };
-  }
-
-  const agentSpec = options.agentName ? project.runtimes.find(a => a.name === options.agentName) : project.runtimes[0];
-
-  if (options.agentName && !agentSpec) {
-    return {
-      success: false,
-      error: new ResourceNotFoundError(`Agent '${options.agentName}' not found. Available: ${agentNames.join(', ')}`),
-    };
-  }
-
-  if (!agentSpec) {
-    return { success: false, error: new ValidationError('No agents defined in configuration') };
-  }
+  const { agentSpec, targetName: selectedTargetName, targetConfig, runtimeArn, baggage } = resolved;
+  options = {
+    ...options,
+    bearerToken: resolved.bearerToken ?? options.bearerToken,
+    sessionId: resolved.sessionId ?? options.sessionId,
+  };
 
   // Warn about VPC mode endpoint requirements
   if (agentSpec.networkMode === 'VPC') {
@@ -135,69 +118,11 @@ export async function handleInvoke(context: InvokeContext, options: InvokeOption
     );
   }
 
-  // Get the deployed state for this specific agent
-  const agentState = targetState?.resources?.runtimes?.[agentSpec.name];
-
-  if (!agentState) {
-    return {
-      success: false,
-      error: new ValidationError(`Agent '${agentSpec.name}' is not deployed to target '${selectedTargetName}'`),
-    };
-  }
-
-  // Build config bundle baggage if a bundle is associated with this agent
-  const deployedBundles = targetState?.resources?.configBundles ?? {};
-  let baggage: string | undefined;
-  const bundleSpec = project.configBundles?.find(b => {
-    const keys = Object.keys(b.components ?? {});
-    return keys.some(k => k === `{{runtime:${agentSpec.name}}}`);
-  });
-  if (bundleSpec) {
-    const bundleState = deployedBundles[bundleSpec.name];
-    if (bundleState?.bundleArn && bundleState?.versionId) {
-      baggage = `aws.agentcore.configbundle_arn=${encodeURIComponent(bundleState.bundleArn)},aws.agentcore.configbundle_version=${encodeURIComponent(bundleState.versionId)}`;
-    }
-  }
-
-  // Auto-fetch bearer token for CUSTOM_JWT agents when not provided
-  if (agentSpec.authorizerType === 'CUSTOM_JWT' && !options.bearerToken) {
-    const canFetch = await canFetchRuntimeToken(agentSpec.name);
-    if (canFetch) {
-      try {
-        const tokenResult = await fetchRuntimeToken(agentSpec.name, { deployTarget: selectedTargetName });
-        options = { ...options, bearerToken: tokenResult.token };
-      } catch (err) {
-        return {
-          success: false,
-          error: new ValidationError(
-            `CUSTOM_JWT agent requires a bearer token. Auto-fetch failed: ${err instanceof Error ? err.message : String(err)}\nProvide one manually with --bearer-token.`,
-            { cause: err }
-          ),
-        };
-      }
-    } else {
-      return {
-        success: false,
-        error: new ValidationError(
-          `Agent '${agentSpec.name}' is configured for CUSTOM_JWT but no bearer token is available.\nEither provide --bearer-token or re-add the agent with --client-id and --client-secret to enable auto-fetch.`
-        ),
-      };
-    }
-  }
-
-  // When invoking with a bearer token (OAuth/CUSTOM_JWT), AgentCore does not
-  // auto-generate a runtime session ID the way it does for SigV4 callers. Templates
-  // that wire up AgentCoreMemorySessionManager require a non-null session_id, so
-  // generate one here if the caller didn't pass --session-id.
-  if (options.bearerToken && !options.sessionId) {
-    options = { ...options, sessionId: generateSessionId() };
-  }
-
   // Exec mode: run shell command in runtime container
   if (options.exec) {
     const logger = new InvokeLogger({
       agentName: agentSpec.name,
-      runtimeArn: agentState.runtimeArn,
+      runtimeArn: runtimeArn,
       region: targetConfig.region,
       sessionId: options.sessionId,
     });
@@ -210,7 +135,7 @@ export async function handleInvoke(context: InvokeContext, options: InvokeOption
     try {
       const result = await executeBashCommand({
         region: targetConfig.region,
-        runtimeArn: agentState.runtimeArn,
+        runtimeArn: runtimeArn,
         command,
         sessionId: options.sessionId,
         timeout: options.timeout,
@@ -307,7 +232,7 @@ export async function handleInvoke(context: InvokeContext, options: InvokeOption
   if (agentSpec.protocol === 'MCP') {
     const mcpOpts = {
       region: targetConfig.region,
-      runtimeArn: agentState.runtimeArn,
+      runtimeArn: runtimeArn,
       userId: options.userId,
       headers: options.headers,
       bearerToken: options.bearerToken,
@@ -391,7 +316,7 @@ export async function handleInvoke(context: InvokeContext, options: InvokeOption
       const a2aResult = await invokeA2ARuntime(
         {
           region: targetConfig.region,
-          runtimeArn: agentState.runtimeArn,
+          runtimeArn: runtimeArn,
           userId: options.userId,
           sessionId: options.sessionId,
           headers: options.headers,
@@ -426,7 +351,7 @@ export async function handleInvoke(context: InvokeContext, options: InvokeOption
   if (agentSpec.protocol === 'AGUI') {
     const logger = new InvokeLogger({
       agentName: agentSpec.name,
-      runtimeArn: agentState.runtimeArn,
+      runtimeArn: runtimeArn,
       region: targetConfig.region,
     });
 
@@ -437,7 +362,7 @@ export async function handleInvoke(context: InvokeContext, options: InvokeOption
       const aguiResult = await invokeAguiRuntime(
         {
           region: targetConfig.region,
-          runtimeArn: agentState.runtimeArn,
+          runtimeArn: runtimeArn,
           sessionId: options.sessionId,
           userId: options.userId,
           logger,
@@ -495,7 +420,7 @@ export async function handleInvoke(context: InvokeContext, options: InvokeOption
   // Create logger for this invocation
   const logger = new InvokeLogger({
     agentName: agentSpec.name,
-    runtimeArn: agentState.runtimeArn,
+    runtimeArn: runtimeArn,
     region: targetConfig.region,
     sessionId: options.sessionId,
   });
@@ -508,7 +433,7 @@ export async function handleInvoke(context: InvokeContext, options: InvokeOption
     try {
       const result = await invokeAgentRuntimeStreaming({
         region: targetConfig.region,
-        runtimeArn: agentState.runtimeArn,
+        runtimeArn: runtimeArn,
         payload: options.prompt,
         sessionId: options.sessionId,
         userId: options.userId,
@@ -543,7 +468,7 @@ export async function handleInvoke(context: InvokeContext, options: InvokeOption
   // Non-streaming mode
   const response = await invokeAgentRuntime({
     region: targetConfig.region,
-    runtimeArn: agentState.runtimeArn,
+    runtimeArn: runtimeArn,
     payload: options.prompt,
     sessionId: options.sessionId,
     userId: options.userId,
