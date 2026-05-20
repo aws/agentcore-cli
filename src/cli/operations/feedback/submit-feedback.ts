@@ -6,11 +6,10 @@ import {
   APERTURE_FORM_CATEGORY,
   APERTURE_FORM_NAME,
   APERTURE_FORM_VERSION,
-  APERTURE_S3_REGION,
   MAX_SCREENSHOT_BYTES,
 } from './constants';
 import type { FeedbackSubmissionResult, SubmitFeedbackInput } from './types';
-import { createHash, randomUUID } from 'node:crypto';
+import { createHash } from 'node:crypto';
 import * as fs from 'node:fs/promises';
 import * as path from 'node:path';
 
@@ -26,20 +25,49 @@ function contentTypeForExtension(ext: string): string {
   return 'image/jpeg';
 }
 
-function validateMessage(message: string): void {
+export const FEEDBACK_MESSAGE_MAX_LENGTH = 1000;
+
+/**
+ * Synchronous message validator. Returns null when valid, an error message
+ * string otherwise. Reused by the TUI hook so users see errors at input time
+ * rather than after walking through consent.
+ */
+export function validateFeedbackMessage(message: string): string | null {
   const trimmed = message.trim();
   if (!trimmed) {
-    throw new FeedbackValidationError('Feedback message cannot be empty.');
+    return 'Feedback message cannot be empty.';
   }
-  if (trimmed.length > 1000) {
-    throw new FeedbackValidationError('Feedback message must be 1000 characters or fewer.');
+  if (trimmed.length > FEEDBACK_MESSAGE_MAX_LENGTH) {
+    return `Feedback message must be ${FEEDBACK_MESSAGE_MAX_LENGTH} characters or fewer.`;
+  }
+  return null;
+}
+
+function validateMessage(message: string): void {
+  const error = validateFeedbackMessage(message);
+  if (error) {
+    throw new FeedbackValidationError(error);
+  }
+}
+
+/**
+ * Async screenshot validator that reads, size-checks, and extension-checks the
+ * file. Returns null on success. Reused by the TUI hook so the user sees an
+ * error on the path-input screen rather than after consent.
+ */
+export async function validateScreenshotPath(filePath: string): Promise<string | null> {
+  try {
+    await loadAndValidateScreenshot(filePath);
+    return null;
+  } catch (err) {
+    if (err instanceof FeedbackValidationError) return err.message;
+    throw err;
   }
 }
 
 interface LoadedScreenshot {
   buffer: Uint8Array;
   fileName: string;
-  extension: string;
   contentType: string;
   sha256Base64: string;
   size: number;
@@ -67,19 +95,21 @@ async function loadAndValidateScreenshot(filePath: string): Promise<LoadedScreen
   return {
     buffer: new Uint8Array(buffer),
     fileName: path.basename(filePath),
-    extension: ext.replace(/^\./, ''),
     contentType: contentTypeForExtension(ext),
     sha256Base64: createHash('sha256').update(buffer).digest('base64'),
     size: buffer.byteLength,
   };
 }
 
-function buildAttachmentObjectKey(extension: string, now = new Date()): string {
-  const day = now.getUTCDate().toString().padStart(2, '0');
-  const month = (now.getUTCMonth() + 1).toString().padStart(2, '0');
-  const year = now.getUTCFullYear().toString();
-  const datePart = `${day}${month}${year}`;
-  return `${APERTURE_S3_REGION}/${APERTURE_FORM_CATEGORY}/${APERTURE_FORM_NAME}/${APERTURE_FORM_VERSION}/${datePart}/${randomUUID()}.${extension}`;
+/**
+ * The presigned URL's path is the actual S3 object key. The form payload
+ * must reference exactly that key — fabricating one client-side risks
+ * pointing at an object that doesn't exist if Aperture's bucket layout,
+ * region, or naming convention shifts.
+ */
+function objectKeyFromPresignedUrl(presignedUrl: string): string {
+  const url = new URL(presignedUrl);
+  return decodeURIComponent(url.pathname.replace(/^\/+/, ''));
 }
 
 export async function submitFeedback(input: SubmitFeedbackInput): Promise<FeedbackSubmissionResult> {
@@ -102,7 +132,7 @@ export async function submitFeedback(input: SubmitFeedbackInput): Promise<Feedba
       userAgent
     );
     await uploadFileToS3(presignedUrl, file.buffer, file.contentType, file.sha256Base64, userAgent);
-    screenshotReference = buildAttachmentObjectKey(file.extension);
+    screenshotReference = objectKeyFromPresignedUrl(presignedUrl);
   }
 
   const payload = buildFeedbackPayload({

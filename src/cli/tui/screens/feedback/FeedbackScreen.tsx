@@ -80,6 +80,7 @@ export function FeedbackScreen({ initialScreenshot, onExit }: FeedbackScreenProp
             onCancel={onExit}
             expandable
           />
+          {state.inputError && <Text color="red">{state.inputError}</Text>}
           <Text dimColor>Enter to continue · Esc to exit</Text>
         </Panel>
       </ScreenLayout>
@@ -107,9 +108,10 @@ export function FeedbackScreen({ initialScreenshot, onExit }: FeedbackScreenProp
           <PathInput
             initialValue={state.screenshotPath ?? ''}
             placeholder="Path to .png or .jpg"
-            onSubmit={value => setScreenshot(value.trim() || undefined)}
+            onSubmit={value => void setScreenshot(value.trim() || undefined)}
             onCancel={goBack}
           />
+          {state.inputError && <Text color="red">{state.inputError}</Text>}
           <Text dimColor>↑↓ navigate · → open dir · Enter select file · Esc to go back</Text>
         </Panel>
       </ScreenLayout>

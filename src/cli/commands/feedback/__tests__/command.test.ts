@@ -1,3 +1,6 @@
+import { TelemetryClient } from '../../../telemetry/client';
+import { TelemetryClientAccessor } from '../../../telemetry/client-accessor';
+import { InMemorySink } from '../../../telemetry/sinks/in-memory-sink';
 import { registerFeedback } from '../command';
 import { Command } from '@commander-js/extra-typings';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -34,6 +37,7 @@ const submittedOutcome = {
 
 describe('registerFeedback', () => {
   let program: Command;
+  let sink: InMemorySink;
   let mockExit: ReturnType<typeof vi.spyOn>;
   let mockLog: ReturnType<typeof vi.spyOn>;
   let mockError: ReturnType<typeof vi.spyOn>;
@@ -43,6 +47,9 @@ describe('registerFeedback', () => {
     program.exitOverride();
     registerFeedback(program);
 
+    sink = new InMemorySink();
+    vi.spyOn(TelemetryClientAccessor, 'get').mockResolvedValue(new TelemetryClient(sink));
+
     mockExit = vi.spyOn(process, 'exit').mockImplementation(() => {
       throw new Error('process.exit');
     });
@@ -51,9 +58,7 @@ describe('registerFeedback', () => {
   });
 
   afterEach(() => {
-    mockExit.mockRestore();
-    mockLog.mockRestore();
-    mockError.mockRestore();
+    vi.restoreAllMocks();
     vi.clearAllMocks();
   });
 
@@ -65,16 +70,26 @@ describe('registerFeedback', () => {
   it('emits success JSON when --json is supplied with a message', async () => {
     mockHandleFeedback.mockResolvedValue(submittedOutcome);
 
-    await program.parseAsync(['feedback', 'looks good', '--json'], { from: 'user' });
+    await expect(program.parseAsync(['feedback', 'looks good', '--json'], { from: 'user' })).rejects.toThrow(
+      'process.exit'
+    );
 
     expect(mockHandleFeedback).toHaveBeenCalledWith('looks good', expect.objectContaining({ json: true }));
-    expect(mockLog).toHaveBeenCalledTimes(1);
+    expect(mockExit).toHaveBeenCalledWith(0);
     const output = JSON.parse(mockLog.mock.calls[0]?.[0] as string);
     expect(output).toEqual({
       success: true,
       id: 'sub-1',
       timestamp: '2026-05-13T18:00:00Z',
       reference: 'S3',
+    });
+
+    expect(sink.metrics).toHaveLength(1);
+    expect(sink.metrics[0]!.attrs).toMatchObject({
+      command: 'feedback',
+      exit_reason: 'success',
+      mode: 'cli',
+      has_screenshot: 'false',
     });
   });
 
@@ -90,10 +105,10 @@ describe('registerFeedback', () => {
   it('prints a friendly cancellation message when the user declines consent', async () => {
     mockHandleFeedback.mockResolvedValue({ kind: 'declined' });
 
-    await program.parseAsync(['feedback', 'msg'], { from: 'user' });
+    await expect(program.parseAsync(['feedback', 'msg'], { from: 'user' })).rejects.toThrow('process.exit');
 
     expect(mockLog).toHaveBeenCalledWith(expect.stringContaining('Feedback cancelled.'));
-    expect(mockExit).not.toHaveBeenCalled();
+    expect(mockExit).toHaveBeenCalledWith(0);
   });
 
   it('reports submission errors with exit 1 in plain mode', async () => {
@@ -102,7 +117,15 @@ describe('registerFeedback', () => {
     await expect(program.parseAsync(['feedback', 'msg'], { from: 'user' })).rejects.toThrow('process.exit');
 
     expect(mockExit).toHaveBeenCalledWith(1);
-    expect(mockRender).toHaveBeenCalled();
+    expect(mockError).toHaveBeenCalledWith(expect.stringContaining('HTTP 500'));
+
+    expect(sink.metrics).toHaveLength(1);
+    expect(sink.metrics[0]!.attrs).toMatchObject({
+      command: 'feedback',
+      exit_reason: 'failure',
+      mode: 'cli',
+      has_screenshot: 'false',
+    });
   });
 
   it('emits a JSON error envelope on submission failure when --json is set', async () => {

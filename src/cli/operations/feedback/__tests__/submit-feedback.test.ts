@@ -74,7 +74,9 @@ describe('submitFeedback', () => {
     await fs.writeFile(screenshotPath, Buffer.from([0x89, 0x50, 0x4e, 0x47]));
 
     fetchMock
-      .mockResolvedValueOnce(new Response('https://s3.example/key?sig=x', { status: 200 }))
+      .mockResolvedValueOnce(
+        new Response('https://s3.example/us-east-1/AgentCore/CLI/0.1.0/13052026/abc-123.png?sig=x', { status: 200 })
+      )
       .mockResolvedValueOnce(emptyOk(200))
       .mockResolvedValueOnce(jsonResponse(successResponse));
 
@@ -101,7 +103,7 @@ describe('submitFeedback', () => {
     expect(presignBody.uploadFileSHA256).toHaveLength(44);
 
     const [uploadUrl, uploadInit] = callAt(1);
-    expect(uploadUrl).toBe('https://s3.example/key?sig=x');
+    expect(uploadUrl).toBe('https://s3.example/us-east-1/AgentCore/CLI/0.1.0/13052026/abc-123.png?sig=x');
     expect(uploadInit.method).toBe('PUT');
     expect(uploadInit.headers['content-type']).toBe('image/png');
     expect(uploadInit.headers['x-amz-checksum-algorithm']).toBe('SHA256');
@@ -116,10 +118,11 @@ describe('submitFeedback', () => {
       pii: true,
       response: { responseType: 'fileUpload' },
     });
-    // Object key shape: us-east-1/AgentCore/CLI/0.1.0/DDMMYYYY/<uuid>.png, wrapped in an array
+    // Reference must be the actual S3 key parsed from the presigned URL path,
+    // not a key fabricated client-side.
     const responseValue = submitBody.customerResponses[1].response.responseValue;
     expect(Array.isArray(responseValue)).toBe(true);
-    expect(responseValue[0]).toMatch(/^us-east-1\/AgentCore\/CLI\/0\.1\.0\/\d{8}\/[0-9a-f-]{36}\.png$/);
+    expect(responseValue[0]).toBe('us-east-1/AgentCore/CLI/0.1.0/13052026/abc-123.png');
 
     await fs.rm(tmp, { recursive: true, force: true });
   });

@@ -6,7 +6,6 @@ export const APERTURE_LOCALE = 'en_US';
 export const APERTURE_INGESTION_URL = 'https://ingestion.aperture-public-api.feedback.console.aws.dev/form';
 export const APERTURE_PRESIGNED_URL_ENDPOINT =
   'https://presignedurl.aperture-public-api.feedback.console.aws.dev/presignedurl';
-export const APERTURE_S3_REGION = 'us-east-1';
 
 export const MAX_SCREENSHOT_BYTES = 100 * 1024 * 1024;
 export const ALLOWED_SCREENSHOT_EXTENSIONS = ['.png', '.jpg', '.jpeg'] as const;

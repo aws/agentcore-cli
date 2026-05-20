@@ -1,4 +1,4 @@
-import { getErrorMessage } from '../../errors';
+import { runCliCommand } from '../../telemetry/cli-command-run.js';
 import { COMMAND_DESCRIPTIONS } from '../../tui/copy';
 import { requireTTY } from '../../tui/guards/tty';
 import { FeedbackScreen } from '../../tui/screens/feedback';
@@ -36,58 +36,46 @@ export const registerFeedback = (program: Command) => {
         return;
       }
 
-      let outcome;
-      try {
-        outcome = await handleFeedback(message, options);
-      } catch (error) {
-        const errMessage = getErrorMessage(error);
-        if (options.json) {
-          console.log(JSON.stringify({ success: false, error: errMessage }));
-        } else {
-          render(<Text color="red">Error: {errMessage}</Text>);
-        }
-        process.exit(1);
-        return;
-      }
+      const has_screenshot = !!options.screenshot;
+      const knownAttrs = { mode: 'cli' as const, has_screenshot };
 
-      if (outcome.kind === 'no-tty') {
-        const errorText = 'Feedback consent must be confirmed interactively. Re-run agentcore feedback in a TTY.';
-        if (options.json) {
-          console.log(JSON.stringify({ success: false, error: errorText }));
-        } else {
-          console.error(errorText);
-        }
-        process.exit(1);
-        return;
-      }
+      await runCliCommand(
+        'feedback',
+        !!options.json,
+        async () => {
+          const outcome = await handleFeedback(message, options);
 
-      if (outcome.kind === 'declined') {
-        if (options.json) {
-          console.log(JSON.stringify({ success: false, error: 'Feedback cancelled.' }));
-        } else {
-          console.log('Feedback cancelled. Nothing was submitted.');
-        }
-        return;
-      }
+          if (outcome.kind === 'no-tty') {
+            throw new Error('Feedback consent must be confirmed interactively. Re-run agentcore feedback in a TTY.');
+          }
+          if (outcome.kind === 'error') {
+            throw new Error(outcome.error);
+          }
+          if (outcome.kind === 'declined') {
+            if (options.json) {
+              console.log(JSON.stringify({ success: false, error: 'Feedback cancelled.' }));
+            } else {
+              console.log('Feedback cancelled. Nothing was submitted.');
+            }
+            return knownAttrs;
+          }
 
-      if (outcome.kind === 'error') {
-        if (options.json) {
-          console.log(JSON.stringify({ success: false, error: outcome.error }));
-        } else {
-          render(<Text color="red">Error: {outcome.error}</Text>);
-        }
-        process.exit(1);
-        return;
-      }
-
-      const result = outcome.result;
-      if (options.json) {
-        console.log(
-          JSON.stringify({ success: true, id: result.id, timestamp: result.timestamp, reference: result.reference })
-        );
-        return;
-      }
-
-      render(<Text color="green">Thank you. Your feedback has been submitted (id: {result.id}).</Text>);
+          const result = outcome.result;
+          if (options.json) {
+            console.log(
+              JSON.stringify({
+                success: true,
+                id: result.id,
+                timestamp: result.timestamp,
+                reference: result.reference,
+              })
+            );
+          } else {
+            render(<Text color="green">Thank you. Your feedback has been submitted (id: {result.id}).</Text>);
+          }
+          return knownAttrs;
+        },
+        knownAttrs
+      );
     });
 };

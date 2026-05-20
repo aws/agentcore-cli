@@ -18,6 +18,7 @@ import {
   GatewayTargetHost,
   GatewayTargetType,
   MemoryType,
+  Mode,
   ModelProvider,
   NetworkMode,
   OutboundAuthType,
@@ -138,6 +139,11 @@ const FetchAccessAttrs = safeSchema({ resource_type: ResourceType });
 
 const UpdateAttrs = safeSchema({ is_dry_run: z.boolean() });
 
+const FeedbackAttrs = safeSchema({
+  mode: Mode,
+  has_screenshot: z.boolean(),
+});
+
 const PauseResumeOnlineEvalAttrs = safeSchema({ ref_type: RefType });
 
 const NoAttrs = safeSchema({});
@@ -166,6 +172,7 @@ export const COMMAND_SCHEMAS = {
   'logs.evals': LogsEvalsAttrs,
   'run.eval': RunEvalAttrs,
   'fetch.access': FetchAccessAttrs,
+  feedback: FeedbackAttrs,
   update: UpdateAttrs,
   'pause.online-eval': PauseResumeOnlineEvalAttrs,
   'resume.online-eval': PauseResumeOnlineEvalAttrs,
