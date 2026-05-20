@@ -49,7 +49,7 @@ export const registerFeedback = (program: Command) => {
             throw new Error('Feedback consent must be confirmed interactively. Re-run agentcore feedback in a TTY.');
           }
           if (outcome.kind === 'error') {
-            throw new Error(outcome.error);
+            throw outcome.error;
           }
           if (outcome.kind === 'declined') {
             if (options.json) {

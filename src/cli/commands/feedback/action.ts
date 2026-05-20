@@ -7,7 +7,7 @@ export type FeedbackOutcome =
   | { kind: 'submitted'; result: FeedbackSubmissionResult }
   | { kind: 'declined' }
   | { kind: 'no-tty' }
-  | { kind: 'error'; error: string };
+  | { kind: 'error'; error: Error };
 
 export async function handleFeedback(message: string, options: FeedbackOptions): Promise<FeedbackOutcome> {
   const consent = await promptForConsent();
@@ -23,7 +23,6 @@ export async function handleFeedback(message: string, options: FeedbackOptions):
     });
     return { kind: 'submitted', result };
   } catch (err) {
-    const error = err instanceof Error ? err.message : String(err);
-    return { kind: 'error', error };
+    return { kind: 'error', error: err instanceof Error ? err : new Error(String(err)) };
   }
 }

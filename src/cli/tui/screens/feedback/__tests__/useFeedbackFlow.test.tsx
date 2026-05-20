@@ -43,7 +43,7 @@ const Harness = React.forwardRef<HarnessHandle, HarnessProps>((props, ref) => {
     <Text>
       phase:{flow.state.phase} message:{flow.state.message || '<empty>'} screenshot:
       {flow.state.screenshotPath ?? '<none>'} error:
-      {flow.state.error ?? '<none>'} inputError:{flow.state.inputError ?? '<none>'}
+      {flow.state.error?.message ?? '<none>'} inputError:{flow.state.inputError ?? '<none>'}
     </Text>
   );
 });
@@ -178,7 +178,7 @@ describe('useFeedbackFlow', () => {
     act(() => ref.current!.flow.confirmConsent());
     await flushAsync();
     expect(ref.current!.flow.state.phase).toBe('error');
-    expect(ref.current!.flow.state.error).toBe('HTTP 500');
+    expect(ref.current!.flow.state.error?.message).toBe('HTTP 500');
 
     act(() => ref.current!.flow.retry());
     await flushAsync();

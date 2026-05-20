@@ -17,8 +17,8 @@ export interface FeedbackState {
   message: string;
   screenshotPath?: string;
   result?: FeedbackSubmissionResult;
-  /** Submission failure detail, shown on the 'error' phase. */
-  error?: string;
+  /** Submission failure detail, shown on the 'error' phase. Preserved as Error so callers retain stack/cause. */
+  error?: Error;
   /** Inline validation error shown on the current input phase. */
   inputError?: string;
 }
@@ -110,7 +110,7 @@ export function useFeedbackFlow(options: UseFeedbackFlowOptions = {}) {
     if (result.success) {
       setState(prev => ({ ...prev, phase: 'success', result: result.submission }));
     } else {
-      setState(prev => ({ ...prev, phase: 'error', error: result.error.message }));
+      setState(prev => ({ ...prev, phase: 'error', error: result.error }));
     }
   }, [onSubmit, state.message, state.screenshotPath]);
 

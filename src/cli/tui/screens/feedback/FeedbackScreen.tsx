@@ -154,5 +154,7 @@ export function FeedbackScreen({ initialScreenshot, onExit }: FeedbackScreenProp
     );
   }
 
-  return <ErrorPrompt message="Failed to submit feedback." detail={state.error} onBack={retry} onExit={onExit} />;
+  return (
+    <ErrorPrompt message="Failed to submit feedback." detail={state.error?.message} onBack={retry} onExit={onExit} />
+  );
 }
