@@ -19,7 +19,6 @@ import {
 } from '../../../schema';
 import { ARN_VALIDATION_MESSAGE, isValidArn } from '../shared/arn-utils';
 import { validateHeaderAllowlist } from '../shared/header-utils';
-import { MAX_INDEXED_KEYS, parseIndexedKeyArg } from '../shared/indexed-key-parser';
 import { parseAndValidateLifecycleOptions } from '../shared/lifecycle-utils';
 import { validateVpcOptions } from '../shared/vpc-utils';
 import { validateJwtAuthorizerOptions } from './auth-options';
@@ -724,37 +723,6 @@ export function validateAddMemoryOptions(options: AddMemoryOptions): ValidationR
       if (!VALID_STRATEGIES.includes(strategy)) {
         return { valid: false, error: `Invalid strategy: ${strategy}. Must be one of: ${VALID_STRATEGIES.join(', ')}` };
       }
-    }
-  }
-
-  if (options.indexedKey && options.indexedKey.length > 0) {
-    const ltmStrategies = (options.strategies ?? '')
-      .split(',')
-      .map(s => s.trim().toUpperCase())
-      .filter(Boolean);
-    if (ltmStrategies.length === 0) {
-      return {
-        valid: false,
-        error:
-          '--indexed-key requires at least one long-term memory strategy (--strategies). Indexed keys filter long-term memory records on retrieval.',
-      };
-    }
-
-    if (options.indexedKey.length > MAX_INDEXED_KEYS) {
-      return { valid: false, error: `Maximum ${MAX_INDEXED_KEYS} indexed keys allowed` };
-    }
-
-    const seenKeys = new Set<string>();
-    for (const raw of options.indexedKey) {
-      const result = parseIndexedKeyArg(raw);
-      if (!result.ok) {
-        return { valid: false, error: result.error };
-      }
-      const { key } = result.value;
-      if (seenKeys.has(key)) {
-        return { valid: false, error: `Duplicate indexed key: "${key}"` };
-      }
-      seenKeys.add(key);
     }
   }
 

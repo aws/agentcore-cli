@@ -1,20 +1,12 @@
 import type { MemoryStrategyType, StreamContentLevel } from '../../../../schema';
-import type { AddMemoryConfig, AddMemoryIndexedKeyConfig, AddMemoryStep, AddMemoryStrategyConfig } from './types';
+import type { AddMemoryConfig, AddMemoryStep, AddMemoryStrategyConfig } from './types';
 import { DEFAULT_EVENT_EXPIRY } from './types';
 import { useCallback, useMemo, useState } from 'react';
 
-const BASE_STEPS = ['name', 'expiry', 'strategies'] as const;
-const INDEXED_KEYS_STEP = 'indexedKeys' as const;
-const STREAMING_STEP = 'streaming' as const;
-const STREAMING_DETAIL_STEPS = ['streamArn', 'contentLevel'] as const;
-const FIRST_STREAMING_DETAIL_STEP = STREAMING_DETAIL_STEPS[0];
+const BASE_STEPS = ['name', 'expiry', 'strategies', 'streaming'] as const;
+const STREAMING_STEPS = ['streamArn', 'contentLevel'] as const;
+const FIRST_STREAMING_STEP = STREAMING_STEPS[0];
 const CONFIRM_STEP = 'confirm' as const;
-
-const LTM_STRATEGY_TYPES: MemoryStrategyType[] = ['SEMANTIC', 'USER_PREFERENCE', 'SUMMARIZATION', 'EPISODIC'];
-
-function hasLtmStrategy(strategies: AddMemoryStrategyConfig[]): boolean {
-  return strategies.some(s => LTM_STRATEGY_TYPES.includes(s.type));
-}
 
 function getDefaultConfig(): AddMemoryConfig {
   return {
@@ -29,19 +21,10 @@ export function useAddMemoryWizard() {
   const [step, setStep] = useState<AddMemoryStep>('name');
   const [enableStreaming, setEnableStreaming] = useState(false);
 
-  const allSteps = useMemo(() => {
-    const steps: AddMemoryStep[] = [...BASE_STEPS];
-    if (hasLtmStrategy(config.strategies)) {
-      steps.push(INDEXED_KEYS_STEP);
-    }
-    steps.push(STREAMING_STEP);
-    if (enableStreaming) {
-      steps.push(...STREAMING_DETAIL_STEPS);
-    }
-    steps.push(CONFIRM_STEP);
-    return steps;
-  }, [enableStreaming, config.strategies]);
-
+  const allSteps = useMemo(
+    () => (enableStreaming ? [...BASE_STEPS, ...STREAMING_STEPS, CONFIRM_STEP] : [...BASE_STEPS, CONFIRM_STEP]),
+    [enableStreaming]
+  );
   const currentIndex = allSteps.indexOf(step);
 
   const goBack = useCallback(() => {
@@ -76,28 +59,22 @@ export function useAddMemoryWizard() {
     [nextStep]
   );
 
-  const setStrategyTypes = useCallback((types: MemoryStrategyType[]) => {
-    const strategies: AddMemoryStrategyConfig[] = types.map(type => ({ type }));
-    const hasLtm = types.some(t => LTM_STRATEGY_TYPES.includes(t));
-    // After setting strategies, we need to determine the next step.
-    // If LTM strategies were selected, next is indexedKeys; otherwise streaming.
-    setConfig(c => ({ ...c, strategies, ...(hasLtm ? {} : { indexedKeys: undefined }) }));
-    setStep(hasLtm ? INDEXED_KEYS_STEP : STREAMING_STEP);
-  }, []);
-
-  const setIndexedKeys = useCallback((indexedKeys: AddMemoryIndexedKeyConfig[]) => {
-    setConfig(c => ({ ...c, indexedKeys: indexedKeys.length > 0 ? indexedKeys : undefined }));
-    setStep(STREAMING_STEP);
-  }, []);
-
-  const clearIndexedKeys = useCallback(() => {
-    setConfig(c => ({ ...c, indexedKeys: undefined }));
-  }, []);
+  const setStrategyTypes = useCallback(
+    (types: MemoryStrategyType[]) => {
+      const strategies: AddMemoryStrategyConfig[] = types.map(type => ({ type }));
+      setConfig(c => ({ ...c, strategies }));
+      const next = nextStep('strategies');
+      if (next) setStep(next);
+    },
+    [nextStep]
+  );
 
   const setStreamingEnabled = useCallback((enabled: boolean) => {
     setEnableStreaming(enabled);
     if (enabled) {
-      setStep(FIRST_STREAMING_DETAIL_STEP);
+      // Can't use nextStep() here — allSteps hasn't updated yet since
+      // setEnableStreaming is queued. Hardcode the known next step.
+      setStep(FIRST_STREAMING_STEP);
     } else {
       setConfig(c => ({ ...c, streaming: undefined }));
       setStep(CONFIRM_STEP);
@@ -110,7 +87,7 @@ export function useAddMemoryWizard() {
         ...c,
         streaming: { dataStreamArn, contentLevel: c.streaming?.contentLevel ?? 'FULL_CONTENT' },
       }));
-      const next = nextStep(FIRST_STREAMING_DETAIL_STEP);
+      const next = nextStep(FIRST_STREAMING_STEP);
       if (next) setStep(next);
     },
     [nextStep]
@@ -148,8 +125,6 @@ export function useAddMemoryWizard() {
     setName,
     setExpiry,
     setStrategyTypes,
-    setIndexedKeys,
-    clearIndexedKeys,
     setStreamingEnabled,
     setStreamArn,
     setContentLevel,

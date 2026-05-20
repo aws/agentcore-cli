@@ -1,27 +1,14 @@
-import type { IndexedKeyType, MemoryStrategyType, StreamContentLevel } from '../../../../schema';
-import { IndexedKeyTypeSchema, MemoryStrategyTypeSchema } from '../../../../schema';
+import type { MemoryStrategyType, StreamContentLevel } from '../../../../schema';
+import { MemoryStrategyTypeSchema } from '../../../../schema';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Memory Flow Types
 // ─────────────────────────────────────────────────────────────────────────────
 
-export type AddMemoryStep =
-  | 'name'
-  | 'expiry'
-  | 'strategies'
-  | 'indexedKeys'
-  | 'streaming'
-  | 'streamArn'
-  | 'contentLevel'
-  | 'confirm';
+export type AddMemoryStep = 'name' | 'expiry' | 'strategies' | 'streaming' | 'streamArn' | 'contentLevel' | 'confirm';
 
 export interface AddMemoryStrategyConfig {
   type: MemoryStrategyType;
-}
-
-export interface AddMemoryIndexedKeyConfig {
-  key: string;
-  type: IndexedKeyType;
 }
 
 export interface AddMemoryStreamingConfig {
@@ -33,7 +20,6 @@ export interface AddMemoryConfig {
   name: string;
   eventExpiryDuration: number;
   strategies: AddMemoryStrategyConfig[];
-  indexedKeys?: AddMemoryIndexedKeyConfig[];
   streaming?: AddMemoryStreamingConfig;
 }
 
@@ -41,7 +27,6 @@ export const MEMORY_STEP_LABELS: Record<AddMemoryStep, string> = {
   name: 'Name',
   expiry: 'Expiry',
   strategies: 'Strategies',
-  indexedKeys: 'Indexed Keys',
   streaming: 'Streaming',
   streamArn: 'Stream ARN',
   contentLevel: 'Content Level',
@@ -85,17 +70,5 @@ export const CONTENT_LEVEL_OPTIONS = [
 // ─────────────────────────────────────────────────────────────────────────────
 // Defaults
 // ─────────────────────────────────────────────────────────────────────────────
-
-const INDEXED_KEY_TYPE_DESCRIPTIONS: Record<IndexedKeyType, string> = {
-  STRING: 'Single string value',
-  STRINGLIST: 'List of string values',
-  NUMBER: 'Numeric value',
-};
-
-export const INDEXED_KEY_TYPE_OPTIONS = IndexedKeyTypeSchema.options.map(type => ({
-  id: type,
-  title: type,
-  description: INDEXED_KEY_TYPE_DESCRIPTIONS[type],
-}));
 
 export const DEFAULT_EVENT_EXPIRY = 30;
