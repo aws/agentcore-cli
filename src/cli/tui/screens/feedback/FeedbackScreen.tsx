@@ -34,8 +34,7 @@ function indicatorStepFor(phase: FeedbackPhase): IndicatorStep {
   switch (phase) {
     case 'message':
       return 'message';
-    case 'screenshot-prompt':
-    case 'screenshot-path':
+    case 'screenshot':
       return 'screenshot';
     case 'consent':
       return 'consent';
@@ -49,17 +48,7 @@ function indicatorStepFor(phase: FeedbackPhase): IndicatorStep {
 
 export function FeedbackScreen({ initialScreenshot, onExit }: FeedbackScreenProps) {
   const flow = useFeedbackFlow({ initialScreenshot });
-  const {
-    state,
-    setMessage,
-    chooseAttachScreenshot,
-    skipScreenshot,
-    setScreenshot,
-    confirmConsent,
-    declineConsent,
-    goBack,
-    retry,
-  } = flow;
+  const { state, setMessage, skipScreenshot, setScreenshot, confirmConsent, declineConsent, goBack, retry } = flow;
 
   const header = (
     <Box marginBottom={1}>
@@ -87,32 +76,21 @@ export function FeedbackScreen({ initialScreenshot, onExit }: FeedbackScreenProp
     );
   }
 
-  if (state.phase === 'screenshot-prompt') {
+  if (state.phase === 'screenshot') {
     return (
-      <PromptScreen
-        helpText="Enter/Y attach · N skip · Esc back"
-        onConfirm={chooseAttachScreenshot}
-        onExit={skipScreenshot}
-      >
-        <Text bold>Attach a screenshot?</Text>
-        <Text dimColor>PNG or JPG, max 100MB. Optional.</Text>
-      </PromptScreen>
-    );
-  }
-
-  if (state.phase === 'screenshot-path') {
-    return (
-      <ScreenLayout onExit={goBack}>
+      <ScreenLayout onExit={skipScreenshot}>
         {header}
-        <Panel title="Select a screenshot (PNG/JPG, max 100MB)">
+        <Panel title="Attach a screenshot (optional, PNG/JPG, max 100MB)">
           <PathInput
             initialValue={state.screenshotPath ?? ''}
-            placeholder="Path to .png or .jpg"
+            placeholder="Path to .png or .jpg — leave empty and press Enter to skip"
             onSubmit={value => void setScreenshot(value.trim() || undefined)}
-            onCancel={goBack}
+            onCancel={skipScreenshot}
+            allowEmpty
+            emptyHelpText="No screenshot will be attached."
           />
           {state.inputError && <Text color="red">{state.inputError}</Text>}
-          <Text dimColor>↑↓ navigate · → open dir · Enter select file · Esc to go back</Text>
+          <Text dimColor>↑↓ navigate · → open dir · Enter select / skip · Esc skip</Text>
         </Panel>
       </ScreenLayout>
     );
@@ -124,6 +102,7 @@ export function FeedbackScreen({ initialScreenshot, onExit }: FeedbackScreenProp
         helpText="Enter/Y submit · Esc/N cancel"
         onConfirm={confirmConsent}
         onExit={declineConsent}
+        onBack={goBack}
         borderColor="yellow"
       >
         <Text bold>AWS Customer Agreement</Text>

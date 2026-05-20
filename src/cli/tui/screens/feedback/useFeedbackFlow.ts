@@ -3,14 +3,7 @@ import type { FeedbackSubmissionResult } from '../../../operations/feedback';
 import { withCommandRunTelemetry } from '../../../telemetry/cli-command-run';
 import { useCallback, useEffect, useRef, useState } from 'react';
 
-export type FeedbackPhase =
-  | 'message'
-  | 'screenshot-prompt'
-  | 'screenshot-path'
-  | 'consent'
-  | 'submitting'
-  | 'success'
-  | 'error';
+export type FeedbackPhase = 'message' | 'screenshot' | 'consent' | 'submitting' | 'success' | 'error';
 
 export interface FeedbackState {
   phase: FeedbackPhase;
@@ -55,19 +48,17 @@ export function useFeedbackFlow(options: UseFeedbackFlowOptions = {}) {
         setState(prev => ({ ...prev, message, inputError: validationError }));
         return;
       }
-      setState(prev => ({ ...prev, message, phase: 'screenshot-prompt', inputError: undefined }));
+      setState(prev => ({ ...prev, message, phase: 'screenshot', inputError: undefined }));
     },
     [validateMessage]
   );
 
-  const chooseAttachScreenshot = useCallback(() => {
-    setState(prev => ({ ...prev, phase: 'screenshot-path', inputError: undefined }));
-  }, []);
-
+  /** Skip the screenshot — used when the user presses Esc on the path picker. */
   const skipScreenshot = useCallback(() => {
     setState(prev => ({ ...prev, screenshotPath: undefined, phase: 'consent', inputError: undefined }));
   }, []);
 
+  /** Submit a screenshot path. Empty/undefined skips. Validation failures stay on the screenshot phase. */
   const setScreenshot = useCallback(
     async (screenshotPath: string | undefined) => {
       const normalized = screenshotPath && screenshotPath.length > 0 ? screenshotPath : undefined;
@@ -125,12 +116,10 @@ export function useFeedbackFlow(options: UseFeedbackFlowOptions = {}) {
   const goBack = useCallback(() => {
     setState(prev => {
       switch (prev.phase) {
-        case 'screenshot-prompt':
+        case 'screenshot':
           return { ...prev, phase: 'message', inputError: undefined };
-        case 'screenshot-path':
-          return { ...prev, phase: 'screenshot-prompt', inputError: undefined };
         case 'consent':
-          return { ...prev, phase: 'screenshot-prompt', inputError: undefined };
+          return { ...prev, phase: 'screenshot', inputError: undefined };
         case 'error':
           return { ...prev, phase: 'consent', error: undefined };
         default:
@@ -146,7 +135,6 @@ export function useFeedbackFlow(options: UseFeedbackFlowOptions = {}) {
   return {
     state,
     setMessage,
-    chooseAttachScreenshot,
     skipScreenshot,
     setScreenshot,
     confirmConsent,

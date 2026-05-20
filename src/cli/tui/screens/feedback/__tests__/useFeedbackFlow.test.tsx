@@ -80,10 +80,7 @@ describe('useFeedbackFlow', () => {
     });
 
     act(() => ref.current!.flow.setMessage('hello'));
-    expect(ref.current!.flow.state.phase).toBe('screenshot-prompt');
-
-    act(() => ref.current!.flow.chooseAttachScreenshot());
-    expect(ref.current!.flow.state.phase).toBe('screenshot-path');
+    expect(ref.current!.flow.state.phase).toBe('screenshot');
 
     await act(async () => {
       await ref.current!.flow.setScreenshot('/tmp/shot.png');
@@ -119,7 +116,7 @@ describe('useFeedbackFlow', () => {
     expect(ref.current!.flow.state.inputError).toBe('too short');
   });
 
-  it('keeps the user on screenshot-path and shows inputError for invalid screenshots', async () => {
+  it('keeps the user on the screenshot phase and shows inputError for invalid screenshots', async () => {
     const validateScreenshot = vi.fn(() => Promise.resolve('not a png' as string | null));
     const { ref } = setup({
       onSubmit: vi.fn(),
@@ -127,19 +124,18 @@ describe('useFeedbackFlow', () => {
       validateScreenshot,
     });
     act(() => ref.current!.flow.setMessage('hi'));
-    act(() => ref.current!.flow.chooseAttachScreenshot());
     await act(async () => {
       await ref.current!.flow.setScreenshot('/tmp/foo.gif');
     });
-    expect(ref.current!.flow.state.phase).toBe('screenshot-path');
+    expect(ref.current!.flow.state.phase).toBe('screenshot');
     expect(ref.current!.flow.state.inputError).toBe('not a png');
     expect(ref.current!.flow.state.screenshotPath).toBe('/tmp/foo.gif');
   });
 
-  it('skips screenshot via the prompt step', () => {
+  it('skips the screenshot via Esc (skipScreenshot)', () => {
     const { ref } = setup({ onSubmit: vi.fn(), validateMessage: stubValidateMessage });
     act(() => ref.current!.flow.setMessage('hi'));
-    expect(ref.current!.flow.state.phase).toBe('screenshot-prompt');
+    expect(ref.current!.flow.state.phase).toBe('screenshot');
 
     act(() => ref.current!.flow.skipScreenshot());
     expect(ref.current!.flow.state.phase).toBe('consent');
@@ -153,7 +149,6 @@ describe('useFeedbackFlow', () => {
       validateScreenshot: stubValidateScreenshot,
     });
     act(() => ref.current!.flow.setMessage('hi'));
-    act(() => ref.current!.flow.chooseAttachScreenshot());
     await act(async () => {
       await ref.current!.flow.setScreenshot(undefined);
     });
@@ -186,10 +181,10 @@ describe('useFeedbackFlow', () => {
     expect(onSubmit).toHaveBeenCalledTimes(2);
   });
 
-  it('goBack() steps from screenshot-prompt → message and from consent → screenshot-prompt', () => {
+  it('goBack() steps from screenshot → message and from consent → screenshot', () => {
     const { ref } = setup({ onSubmit: vi.fn(), validateMessage: stubValidateMessage });
     act(() => ref.current!.flow.setMessage('hi'));
-    expect(ref.current!.flow.state.phase).toBe('screenshot-prompt');
+    expect(ref.current!.flow.state.phase).toBe('screenshot');
     act(() => ref.current!.flow.goBack());
     expect(ref.current!.flow.state.phase).toBe('message');
 
@@ -197,15 +192,6 @@ describe('useFeedbackFlow', () => {
     act(() => ref.current!.flow.skipScreenshot());
     expect(ref.current!.flow.state.phase).toBe('consent');
     act(() => ref.current!.flow.goBack());
-    expect(ref.current!.flow.state.phase).toBe('screenshot-prompt');
-  });
-
-  it('goBack() steps from screenshot-path → screenshot-prompt', () => {
-    const { ref } = setup({ onSubmit: vi.fn(), validateMessage: stubValidateMessage });
-    act(() => ref.current!.flow.setMessage('hi'));
-    act(() => ref.current!.flow.chooseAttachScreenshot());
-    expect(ref.current!.flow.state.phase).toBe('screenshot-path');
-    act(() => ref.current!.flow.goBack());
-    expect(ref.current!.flow.state.phase).toBe('screenshot-prompt');
+    expect(ref.current!.flow.state.phase).toBe('screenshot');
   });
 });
