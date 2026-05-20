@@ -11,6 +11,7 @@ import {
 import type { FeedbackSubmissionResult, SubmitFeedbackInput } from './types';
 import { createHash } from 'node:crypto';
 import * as fs from 'node:fs/promises';
+import * as os from 'node:os';
 import * as path from 'node:path';
 
 export class FeedbackValidationError extends Error {
@@ -73,7 +74,36 @@ interface LoadedScreenshot {
   size: number;
 }
 
-async function loadAndValidateScreenshot(filePath: string): Promise<LoadedScreenshot> {
+/**
+ * Expand a leading `~` or `~/...` to the user's home directory. Node's fs APIs
+ * don't expand tildes — the shell normally does — so users who quote a path
+ * like `"~/Desktop/foo.png"` to preserve spaces hit ENOENT. This handles that.
+ */
+function expandTilde(filePath: string): string {
+  if (filePath === '~') return os.homedir();
+  if (filePath.startsWith('~/')) return path.join(os.homedir(), filePath.slice(2));
+  return filePath;
+}
+
+async function loadAndValidateScreenshot(rawFilePath: string): Promise<LoadedScreenshot> {
+  const filePath = expandTilde(rawFilePath);
+
+  // Stat the path first so we can give a precise error for directories or
+  // missing files, rather than letting the extension check mask them.
+  let stat: Awaited<ReturnType<typeof fs.stat>>;
+  try {
+    stat = await fs.stat(filePath);
+  } catch (err) {
+    const reason = err instanceof Error ? err.message : String(err);
+    throw new FeedbackValidationError(`Could not read screenshot at ${filePath}: ${reason}`);
+  }
+  if (stat.isDirectory()) {
+    throw new FeedbackValidationError(`Screenshot path is a directory, not a file: ${filePath}`);
+  }
+  if (!stat.isFile()) {
+    throw new FeedbackValidationError(`Screenshot path is not a regular file: ${filePath}`);
+  }
+
   const ext = path.extname(filePath).toLowerCase();
   if (!ALLOWED_SCREENSHOT_EXTENSIONS.includes(ext as (typeof ALLOWED_SCREENSHOT_EXTENSIONS)[number])) {
     throw new FeedbackValidationError(`Screenshot must be one of: ${ALLOWED_SCREENSHOT_EXTENSIONS.join(', ')}.`);

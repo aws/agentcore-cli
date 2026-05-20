@@ -147,6 +147,33 @@ describe('submitFeedback', () => {
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
+  it('rejects a directory with a directory-specific error, not the extension error', async () => {
+    const tmp = await fs.mkdtemp(path.join(os.tmpdir(), 'feedback-test-'));
+    await expect(submitFeedback({ message: 'msg', screenshot: { path: tmp } })).rejects.toThrow(
+      /is a directory, not a file/
+    );
+    expect(fetchMock).not.toHaveBeenCalled();
+    await fs.rm(tmp, { recursive: true, force: true });
+  });
+
+  it('expands a leading tilde so quoted paths like "~/file.png" resolve', async () => {
+    // Drop a real file in $HOME so tilde-expansion has somewhere to land
+    const fileName = `feedback-tilde-${Date.now()}.png`;
+    const realPath = path.join(os.homedir(), fileName);
+    await fs.writeFile(realPath, Buffer.from([0x89, 0x50, 0x4e, 0x47]));
+
+    fetchMock
+      .mockResolvedValueOnce(new Response('https://s3.example/key?sig=x', { status: 200 }))
+      .mockResolvedValueOnce(emptyOk(200))
+      .mockResolvedValueOnce(jsonResponse(successResponse));
+
+    const result = await submitFeedback({ message: 'tilde', screenshot: { path: `~/${fileName}` } });
+    expect(result.id).toBe('submission-123');
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+
+    await fs.rm(realPath, { force: true });
+  });
+
   it('maps Aperture 412 responses to a missing-headers error', async () => {
     fetchMock.mockResolvedValueOnce(new Response('missing headers', { status: 412 }));
 

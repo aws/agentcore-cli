@@ -24,7 +24,7 @@ export const registerFeedback = (program: Command) => {
           return;
         }
         requireTTY();
-        const { clear, unmount } = render(
+        const { clear, unmount, waitUntilExit } = render(
           <FeedbackScreen
             initialScreenshot={options.screenshot}
             onExit={() => {
@@ -33,7 +33,10 @@ export const registerFeedback = (program: Command) => {
             }}
           />
         );
-        return;
+        // Wait for the wizard to unmount, then exit. Without this Node sticks
+        // around because of Ink's stdin raw-mode listeners.
+        await waitUntilExit();
+        process.exit(0);
       }
 
       const has_screenshot = !!options.screenshot;

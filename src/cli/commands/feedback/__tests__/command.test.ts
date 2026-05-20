@@ -24,7 +24,11 @@ vi.mock('../../../tui/screens/feedback', () => ({
 vi.mock('ink', () => ({
   render: (...args: unknown[]) => {
     mockRender(...args);
-    return { clear: vi.fn(), unmount: vi.fn() };
+    return {
+      clear: vi.fn(),
+      unmount: vi.fn(),
+      waitUntilExit: () => Promise.resolve(),
+    };
   },
   Text: 'Text',
   Box: 'Box',
@@ -146,11 +150,14 @@ describe('registerFeedback', () => {
     expect(mockHandleFeedback).not.toHaveBeenCalled();
   });
 
-  it('hands off to the TUI when no message argument is provided', async () => {
-    await program.parseAsync(['feedback'], { from: 'user' });
+  it('hands off to the TUI when no message argument is provided, then exits cleanly', async () => {
+    await expect(program.parseAsync(['feedback'], { from: 'user' })).rejects.toThrow('process.exit');
 
     expect(mockRequireTTY).toHaveBeenCalled();
     expect(mockRender).toHaveBeenCalled();
     expect(mockHandleFeedback).not.toHaveBeenCalled();
+    // After the wizard unmounts we must terminate the Node process; otherwise
+    // Ink's stdin raw-mode listeners keep the process alive.
+    expect(mockExit).toHaveBeenCalledWith(0);
   });
 });
