@@ -52,7 +52,7 @@ await esbuild.build({
   minify: true,
   jsx: 'automatic',
   define: {
-    '__PREVIEW__': process.env.BUILD_PREVIEW === '1' ? 'true' : 'false',
+    __PREVIEW__: process.env.BUILD_PREVIEW === '1' ? 'true' : 'false',
   },
   // Inject require shim for ESM compatibility with CommonJS dependencies
   banner: {
