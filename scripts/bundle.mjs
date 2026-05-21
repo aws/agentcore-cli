@@ -158,7 +158,7 @@ const cliTarballPath = path.join(cliRoot, cliTarballName);
 
 if (fs.existsSync(cliTarballPath)) {
   log(`Done! Tarball: ${cliTarballPath}`);
-  log(`Install with: npm install ${cliTarballPath}`);
+  log(`Install with: npm install -g ${cliTarballPath}`);
   log('When you run agentcore create, the bundled CDK constructs will be installed automatically.');
 } else {
   log(`Done! Check ${cliRoot} for the .tgz file.`);
