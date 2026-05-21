@@ -319,8 +319,8 @@ describe('handleMcpProxy ?target=deployed', () => {
     });
   });
 
-  it('handles tools/list method', async () => {
-    const toolsResult = { tools: [{ name: 'get_weather', description: 'Get weather' }] };
+  it('handles tools/list method and excludes mcpSessionId from result', async () => {
+    const toolsResult = { tools: [{ name: 'get_weather', description: 'Get weather' }], mcpSessionId: 'internal-sess' };
     mockedMcpListTools.mockResolvedValue(toolsResult as any);
 
     const ctx = mockDeployedCtx(
@@ -333,10 +333,12 @@ describe('handleMcpProxy ?target=deployed', () => {
     await handleMcpProxy(ctx, req, res, undefined);
 
     expect(res._status).toBe(200);
-    expect(JSON.parse(res._body)).toEqual({
+    const parsed = JSON.parse(res._body);
+    expect(parsed).toEqual({
       success: true,
-      result: { jsonrpc: '2.0', result: toolsResult },
+      result: { jsonrpc: '2.0', result: { tools: toolsResult.tools } },
     });
+    expect(parsed.result.result).not.toHaveProperty('mcpSessionId');
     expect(mockedMcpListTools).toHaveBeenCalledWith(
       expect.objectContaining({
         region: 'us-east-1',

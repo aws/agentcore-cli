@@ -181,10 +181,10 @@ async function handleDeployedMcpProxy(
       res.writeHead(200, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify({ success: true, result: { jsonrpc: '2.0', result: {} }, sessionId: mcpSessionId }));
     } else if (method === 'tools/list') {
-      const result = await mcpListTools(mcpOpts);
+      const { tools } = await mcpListTools(mcpOpts);
       ctx.setCorsHeaders(res, origin);
       res.writeHead(200, { 'Content-Type': 'application/json' });
-      res.end(JSON.stringify({ success: true, result: { jsonrpc: '2.0', result } }));
+      res.end(JSON.stringify({ success: true, result: { jsonrpc: '2.0', result: { tools } } }));
     } else if (method === 'tools/call') {
       const params = (body as { params?: { name?: string; arguments?: Record<string, unknown> } }).params;
       if (!params?.name) {
