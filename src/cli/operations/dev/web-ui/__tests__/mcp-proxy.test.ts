@@ -226,9 +226,20 @@ describe('handleMcpProxy', () => {
 });
 
 describe('handleMcpProxy ?target=deployed', () => {
+  const resolvedSuccess = {
+    success: true as const,
+    agentSpec: { name: 'mcp-agent', protocol: 'MCP' } as any,
+    targetName: 'default',
+    targetConfig: { name: 'default', region: 'us-east-1', account: '123' } as any,
+    region: 'us-east-1',
+    runtimeArn: 'arn:aws:bedrock-agentcore:us-east-1:123:runtime/rt-1',
+    bearerToken: 'tok-1',
+  };
+
   beforeEach(() => {
     vi.clearAllMocks();
     mockConfigIO();
+    mockedResolve.mockResolvedValue(resolvedSuccess);
   });
 
   it('returns 404 when no configRoot', async () => {
@@ -265,10 +276,7 @@ describe('handleMcpProxy ?target=deployed', () => {
   });
 
   it('returns 400 when resolveInvokeTarget fails', async () => {
-    mockedResolve.mockResolvedValue({
-      success: false,
-      error: new Error('Agent not deployed'),
-    });
+    mockedResolve.mockResolvedValue({ success: false, error: new Error('Agent not deployed') });
 
     const ctx = mockDeployedCtx({}, JSON.stringify({ agentName: 'missing', body: { method: 'initialize' } }));
     const req = mockReq('/api/mcp?target=deployed');
@@ -295,15 +303,6 @@ describe('handleMcpProxy ?target=deployed', () => {
   });
 
   it('handles initialize method and returns sessionId', async () => {
-    mockedResolve.mockResolvedValue({
-      success: true,
-      agentSpec: { name: 'mcp-agent', protocol: 'MCP' } as any,
-      targetName: 'default',
-      targetConfig: { name: 'default', region: 'us-east-1', account: '123' } as any,
-      region: 'us-east-1',
-      runtimeArn: 'arn:aws:bedrock-agentcore:us-east-1:123:runtime/rt-1',
-      bearerToken: 'tok-1',
-    });
     mockedMcpInitSession.mockResolvedValue('mcp-session-abc');
 
     const ctx = mockDeployedCtx({}, JSON.stringify({ agentName: 'mcp-agent', body: { method: 'initialize' } }));
@@ -313,8 +312,7 @@ describe('handleMcpProxy ?target=deployed', () => {
     await handleMcpProxy(ctx, req, res, undefined);
 
     expect(res._status).toBe(200);
-    const parsed = JSON.parse(res._body);
-    expect(parsed).toEqual({
+    expect(JSON.parse(res._body)).toEqual({
       success: true,
       result: { jsonrpc: '2.0', result: {} },
       sessionId: 'mcp-session-abc',
@@ -322,15 +320,6 @@ describe('handleMcpProxy ?target=deployed', () => {
   });
 
   it('handles tools/list method', async () => {
-    mockedResolve.mockResolvedValue({
-      success: true,
-      agentSpec: { name: 'mcp-agent', protocol: 'MCP' } as any,
-      targetName: 'default',
-      targetConfig: { name: 'default', region: 'us-east-1', account: '123' } as any,
-      region: 'us-east-1',
-      runtimeArn: 'arn:aws:bedrock-agentcore:us-east-1:123:runtime/rt-1',
-      bearerToken: 'tok-1',
-    });
     const toolsResult = { tools: [{ name: 'get_weather', description: 'Get weather' }] };
     mockedMcpListTools.mockResolvedValue(toolsResult as any);
 
@@ -344,8 +333,7 @@ describe('handleMcpProxy ?target=deployed', () => {
     await handleMcpProxy(ctx, req, res, undefined);
 
     expect(res._status).toBe(200);
-    const parsed = JSON.parse(res._body);
-    expect(parsed).toEqual({
+    expect(JSON.parse(res._body)).toEqual({
       success: true,
       result: { jsonrpc: '2.0', result: toolsResult },
     });
@@ -360,15 +348,6 @@ describe('handleMcpProxy ?target=deployed', () => {
   });
 
   it('handles tools/call method', async () => {
-    mockedResolve.mockResolvedValue({
-      success: true,
-      agentSpec: { name: 'mcp-agent', protocol: 'MCP' } as any,
-      targetName: 'default',
-      targetConfig: { name: 'default', region: 'us-east-1', account: '123' } as any,
-      region: 'us-east-1',
-      runtimeArn: 'arn:aws:bedrock-agentcore:us-east-1:123:runtime/rt-1',
-      bearerToken: 'tok-1',
-    });
     mockedMcpCallTool.mockResolvedValue('sunny, 72F');
 
     const ctx = mockDeployedCtx(
@@ -385,8 +364,7 @@ describe('handleMcpProxy ?target=deployed', () => {
     await handleMcpProxy(ctx, req, res, undefined);
 
     expect(res._status).toBe(200);
-    const parsed = JSON.parse(res._body);
-    expect(parsed).toEqual({
+    expect(JSON.parse(res._body)).toEqual({
       success: true,
       result: { jsonrpc: '2.0', result: { content: [{ type: 'text', text: 'sunny, 72F' }] } },
     });
@@ -396,22 +374,9 @@ describe('handleMcpProxy ?target=deployed', () => {
   });
 
   it('returns 400 when tools/call is missing params.name', async () => {
-    mockedResolve.mockResolvedValue({
-      success: true,
-      agentSpec: { name: 'mcp-agent', protocol: 'MCP' } as any,
-      targetName: 'default',
-      targetConfig: { name: 'default', region: 'us-east-1', account: '123' } as any,
-      region: 'us-east-1',
-      runtimeArn: 'arn:aws:bedrock-agentcore:us-east-1:123:runtime/rt-1',
-      bearerToken: 'tok-1',
-    });
-
     const ctx = mockDeployedCtx(
       {},
-      JSON.stringify({
-        agentName: 'mcp-agent',
-        body: { method: 'tools/call', params: {} },
-      })
+      JSON.stringify({ agentName: 'mcp-agent', body: { method: 'tools/call', params: {} } })
     );
     const req = mockReq('/api/mcp?target=deployed');
     const res = mockRes();
@@ -423,16 +388,6 @@ describe('handleMcpProxy ?target=deployed', () => {
   });
 
   it('returns 400 for unsupported method', async () => {
-    mockedResolve.mockResolvedValue({
-      success: true,
-      agentSpec: { name: 'mcp-agent', protocol: 'MCP' } as any,
-      targetName: 'default',
-      targetConfig: { name: 'default', region: 'us-east-1', account: '123' } as any,
-      region: 'us-east-1',
-      runtimeArn: 'arn:aws:bedrock-agentcore:us-east-1:123:runtime/rt-1',
-      bearerToken: 'tok-1',
-    });
-
     const ctx = mockDeployedCtx({}, JSON.stringify({ agentName: 'mcp-agent', body: { method: 'resources/list' } }));
     const req = mockReq('/api/mcp?target=deployed');
     const res = mockRes();
@@ -444,15 +399,6 @@ describe('handleMcpProxy ?target=deployed', () => {
   });
 
   it('returns 502 when AWS SDK call throws', async () => {
-    mockedResolve.mockResolvedValue({
-      success: true,
-      agentSpec: { name: 'mcp-agent', protocol: 'MCP' } as any,
-      targetName: 'default',
-      targetConfig: { name: 'default', region: 'us-east-1', account: '123' } as any,
-      region: 'us-east-1',
-      runtimeArn: 'arn:aws:bedrock-agentcore:us-east-1:123:runtime/rt-1',
-      bearerToken: 'tok-1',
-    });
     mockedMcpListTools.mockRejectedValue(new Error('ThrottlingException'));
 
     const ctx = mockDeployedCtx({}, JSON.stringify({ agentName: 'mcp-agent', body: { method: 'tools/list' } }));
@@ -469,10 +415,7 @@ describe('handleMcpProxy ?target=deployed', () => {
   });
 
   it('passes targetName to resolveInvokeTarget', async () => {
-    mockedResolve.mockResolvedValue({
-      success: false,
-      error: new Error('not found'),
-    });
+    mockedResolve.mockResolvedValue({ success: false, error: new Error('not found') });
 
     const ctx = mockDeployedCtx(
       {},
