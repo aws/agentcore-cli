@@ -1,4 +1,4 @@
-name: Preview Tarball
+name: Prerelease Tarball
 
 on:
   push:
@@ -10,11 +10,11 @@ permissions:
   contents: write
 
 concurrency:
-  group: preview-tarball
+  group: prerelease-tarball
   cancel-in-progress: true
 
 jobs:
-  preview-tarball:
+  prerelease-tarball:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
@@ -42,7 +42,7 @@ jobs:
           # Create a new pre-release with the tarball
           gh release create "$TAG" \
             "${TARBALL_NAME}" \
-            --title "Preview (prerelease)" \
+            --title "Prerelease" \
             --notes "Auto-generated tarball from the latest commit on main." \
             --prerelease \
             --target "${{ github.sha }}"
