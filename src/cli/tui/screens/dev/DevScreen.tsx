@@ -185,11 +185,10 @@ export function DevScreen(props: DevScreenProps) {
 
       setAgentsLoaded(true);
 
-      // If onLaunchBrowser is set and we can auto-select, do it immediately
-      if (onLaunchBrowser && agents.length + harnesses.length === 1) {
-        const agentName = agents.length === 1 ? agents[0]?.name : undefined;
-        const harnessName = harnesses.length === 1 ? harnesses[0] : undefined;
-        queueMicrotask(() => onLaunchBrowser({ agentName, harnessName }));
+      // If onLaunchBrowser is set and only agents (no harnesses), auto-select immediately.
+      // Harness projects need deploy first — handled after deploy completes.
+      if (onLaunchBrowser && agents.length === 1 && harnesses.length === 0) {
+        queueMicrotask(() => onLaunchBrowser({ agentName: agents[0]?.name }));
       }
     };
     void load();
@@ -237,7 +236,19 @@ export function DevScreen(props: DevScreenProps) {
     error: deployError,
   } = useDevDeploy({ skip: props.skipDeploy, ready: mode === 'deploying' });
 
-  const effectiveMode = mode === 'deploying' && deployComplete && !deployError ? 'harness' : mode;
+  const hasTransitionedFromDeployRef = useRef(false);
+  useEffect(() => {
+    if (mode !== 'deploying' || !deployComplete || deployError || hasTransitionedFromDeployRef.current) return;
+    hasTransitionedFromDeployRef.current = true;
+    queueMicrotask(() => {
+      if (onLaunchBrowser) {
+        onLaunchBrowser({ harnessName: selectedHarness });
+      } else {
+        setMode('harness');
+      }
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mode, deployComplete, deployError]);
 
   // MCP: auto-list tools when server becomes ready, show hint in conversation
   const mcpFetchTriggeredRef = useRef(false);
@@ -517,7 +528,7 @@ export function DevScreen(props: DevScreenProps) {
   }
 
   // If harness mode (preview), render the InvokeScreen with the pre-selected harness
-  if (preview && effectiveMode === 'harness') {
+  if (preview && mode === 'harness') {
     return <InvokeScreen isInteractive={true} onExit={handleExit} title="Dev" initialHarnessName={selectedHarness} />;
   }
 
