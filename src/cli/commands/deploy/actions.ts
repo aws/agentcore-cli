@@ -36,7 +36,7 @@ import {
 } from '../../operations/deploy';
 import { computeProjectDeployHash } from '../../operations/deploy/change-detection';
 import { formatTargetStatus, getGatewayTargetStatuses } from '../../operations/deploy/gateway-status';
-import { createDeploymentManager } from '../../operations/deploy/imperative';
+import { type ImperativeDeployContext, createDeploymentManager } from '../../operations/deploy/imperative';
 import { deleteOrphanedABTests, setupABTests } from '../../operations/deploy/post-deploy-ab-tests';
 import {
   resolveConfigBundleComponentKeys,
@@ -380,7 +380,37 @@ export async function handleDeploy(options: ValidatedDeployOptions): Promise<Dep
     endStep('success');
 
     if (context.isTeardownDeploy) {
-      // After deploying the empty spec, destroy the stack entirely
+      if (isPreviewEnabled()) {
+        const imperativeManager = createDeploymentManager();
+        const existingTeardownState: DeployedState = await configIO
+          .readDeployedState()
+          .catch(() => ({ targets: {} }) as DeployedState);
+        const teardownContext: ImperativeDeployContext = {
+          projectSpec: context.projectSpec,
+          target,
+          configIO,
+          deployedState: existingTeardownState,
+          onProgress: (step: string, status: 'start' | 'done' | 'error') => {
+            logger.log(`${step}: ${status}`);
+          },
+        };
+
+        if (imperativeManager.hasDeployersForPhase('post-cdk', teardownContext)) {
+          startStep('Tear down imperative resources');
+          const imperativeTeardown = await imperativeManager.teardownAll(teardownContext);
+          if (!imperativeTeardown.success) {
+            endStep('error', imperativeTeardown.error);
+            logger.finalize(false);
+            return {
+              success: false,
+              error: new Error(`Imperative teardown failed: ${imperativeTeardown.error}`),
+              logPath: logger.getRelativeLogPath(),
+            };
+          }
+          endStep('success');
+        }
+      }
+
       startStep('Tear down stack');
       const teardown = await performStackTeardown(target.name);
       if (!teardown.success) {

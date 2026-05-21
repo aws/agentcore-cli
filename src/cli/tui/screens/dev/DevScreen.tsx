@@ -484,7 +484,7 @@ export function DevScreen(props: DevScreenProps) {
         }
       }
     },
-    { isActive: mode === 'chat' || mode === 'select-agent' }
+    { isActive: (mode === 'chat' || mode === 'select-agent') && !isExiting }
   );
 
   // Return null while loading (harness mode doesn't need dev server config)

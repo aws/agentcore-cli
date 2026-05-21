@@ -48,7 +48,9 @@ function formatConversation(
     // Skip empty assistant messages (placeholder before streaming starts)
     if (msg.role === 'assistant' && !msg.content) continue;
 
-    if (msg.role === 'user' && msg.isExec) {
+    if (msg.isHint) {
+      lines.push({ text: msg.content, color: 'gray' });
+    } else if (msg.role === 'user' && msg.isExec) {
       lines.push({ text: msg.content, color: 'magenta' });
     } else if (msg.role === 'user') {
       lines.push({ text: `> ${msg.content}`, color: 'blue' });
@@ -355,7 +357,7 @@ export function InvokeScreen({
         }
 
         // New session
-        if (input === 'n' && phase === 'ready') {
+        if (key.ctrl && input === 'n' && phase === 'ready') {
           newSession();
           setScrollOffset(0);
           setUserScrolled(false);
@@ -450,9 +452,9 @@ export function InvokeScreen({
           : phase === 'invoking'
             ? '↑↓ scroll'
             : messages.length > 0
-              ? `↑↓ scroll · Enter invoke · N new session · ${backOrQuit}`
+              ? `↑↓ scroll · Enter invoke · Ctrl+N new session · ${backOrQuit}`
               : isMcp
-                ? `Enter to call a tool · N new session · ${backOrQuit}`
+                ? `Enter to call a tool · Ctrl+N new session · ${backOrQuit}`
                 : `Enter to send a message · ${backOrQuit}`;
 
   const headerContent = (
@@ -551,14 +553,16 @@ export function InvokeScreen({
               </Text>
             ))}
             {/* Thinking indicator - shows while waiting for response to start */}
-            {showThinking && <GradientText text="Thinking..." />}
+            {showThinking && <GradientText text={isExecInput ? 'Loading...' : 'Thinking...'} />}
           </Box>
         )}
 
         {/* Scroll indicator */}
         {needsScroll && (
           <Text dimColor>
-            [{effectiveOffset + 1}-{Math.min(effectiveOffset + displayHeight, totalLines)} of {totalLines}]
+            {effectiveOffset > 0 ? '▲ ' : '  '}
+            ↑↓ scroll
+            {effectiveOffset < maxScroll ? ' ▼' : '  '}
           </Text>
         )}
 

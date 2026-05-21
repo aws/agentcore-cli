@@ -11,7 +11,7 @@ import {
 } from '../../operations/dev/web-ui';
 import type { HarnessInfo } from '../../operations/dev/web-ui/constants';
 import { listMemoryRecords, retrieveMemoryRecords } from '../../operations/memory';
-import { loadDeployedProjectConfig, resolveAgent } from '../../operations/resolve-agent';
+import { loadDeployedProjectConfig, resolveAgentOrHarness } from '../../operations/resolve-agent';
 import { fetchTraceRecords, listTraces } from '../../operations/traces';
 import { LayoutProvider } from '../../tui/context';
 import { runCliDeploy } from '../deploy/progress';
@@ -255,11 +255,11 @@ export async function runBrowserMode(opts: BrowserModeOptions): Promise<void> {
         ? (agentNameParam, startTime, endTime) => collector.listTraces(agentNameParam, startTime, endTime)
         : undefined,
       onGetTrace: collector ? (agentNameParam, traceId) => collector.getTraceSpans(agentNameParam, traceId) : undefined,
-      onListCloudWatchTraces: async (agentName, _harnessName, startTime, endTime) => {
+      onListCloudWatchTraces: async (agentName, harnessName, startTime, endTime) => {
         try {
           const configIO = new ConfigIO({ baseDir });
           const context = await loadDeployedProjectConfig(configIO);
-          const resolved = resolveAgent(context, { runtime: agentName });
+          const resolved = await resolveAgentOrHarness(context, { runtime: agentName, harness: harnessName });
           if (!resolved.success) return { success: false, error: resolved.error };
           const res = await listTraces({
             region: resolved.agent.region,
@@ -276,11 +276,11 @@ export async function runBrowserMode(opts: BrowserModeOptions): Promise<void> {
           };
         }
       },
-      onGetCloudWatchTrace: async (agentName, _harnessName, traceId, startTime, endTime) => {
+      onGetCloudWatchTrace: async (agentName, harnessName, traceId, startTime, endTime) => {
         try {
           const configIO = new ConfigIO({ baseDir });
           const context = await loadDeployedProjectConfig(configIO);
-          const resolved = resolveAgent(context, { runtime: agentName });
+          const resolved = await resolveAgentOrHarness(context, { runtime: agentName, harness: harnessName });
           if (!resolved.success) return { success: false, error: resolved.error };
           const res = await fetchTraceRecords({
             region: resolved.agent.region,
