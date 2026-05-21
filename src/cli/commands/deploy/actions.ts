@@ -34,6 +34,7 @@ import {
   synthesizeCdk,
   validateProject,
 } from '../../operations/deploy';
+import { computeProjectDeployHash } from '../../operations/deploy/change-detection';
 import { formatTargetStatus, getGatewayTargetStatuses } from '../../operations/deploy/gateway-status';
 import { createDeploymentManager } from '../../operations/deploy/imperative';
 import { deleteOrphanedABTests, setupABTests } from '../../operations/deploy/post-deploy-ab-tests';
@@ -510,6 +511,13 @@ export async function handleDeploy(options: ValidatedDeployOptions): Promise<Dep
       }
     }
 
+    let deployHash: string | undefined;
+    try {
+      deployHash = await computeProjectDeployHash(configIO);
+    } catch {
+      // hash computation is best-effort
+    }
+
     const existingState = await configIO.readDeployedState().catch(() => undefined);
     let deployedState = buildDeployedState({
       targetName: target.name,
@@ -527,6 +535,14 @@ export async function handleDeploy(options: ValidatedDeployOptions): Promise<Dep
       harnesses: deployedHarnesses,
       runtimeEndpoints,
     });
+
+    if (deployHash) {
+      const targetState = deployedState.targets[target.name];
+      if (targetState?.resources) {
+        targetState.resources.deployHash = deployHash;
+      }
+    }
+
     await configIO.writeDeployedState(deployedState);
 
     // Show gateway URLs and target sync status

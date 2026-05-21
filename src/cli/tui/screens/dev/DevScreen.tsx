@@ -1,7 +1,16 @@
 import type { AgentEnvSpec } from '../../../../schema';
 import { isPreviewEnabled } from '../../../feature-flags';
 import { getDevSupportedAgents, getEndpointUrl, loadProjectConfig } from '../../../operations/dev';
-import { GradientText, LogLink, Panel, Screen, SelectList, StepProgress, TextInput } from '../../components';
+import {
+  DeployStatus,
+  GradientText,
+  LogLink,
+  Panel,
+  Screen,
+  SelectList,
+  StepProgress,
+  TextInput,
+} from '../../components';
 import { useDevDeploy } from '../../hooks/useDevDeploy';
 import { type ConversationMessage, useDevServer } from '../../hooks/useDevServer';
 import { InvokeScreen } from '../invoke/InvokeScreen';
@@ -232,8 +241,10 @@ export function DevScreen(props: DevScreenProps) {
 
   const {
     steps: deploySteps,
+    deployMessages,
     isComplete: deployComplete,
     error: deployError,
+    logPath: deployLogPath,
   } = useDevDeploy({ skip: props.skipDeploy, ready: mode === 'deploying' });
 
   const hasTransitionedFromDeployRef = useRef(false);
@@ -510,19 +521,28 @@ export function DevScreen(props: DevScreenProps) {
   }
 
   if (mode === 'deploying') {
+    const hasStartedCfn = deployMessages.length > 0;
+    const displaySteps = hasStartedCfn ? deploySteps.filter(s => s.label !== 'Deploy to AWS') : deploySteps;
+
     return (
-      <Screen title="Dev Server" onExit={handleExit} helpText="Esc cancel">
-        <Panel title="Deploying Harness" fullWidth>
-          <Box flexDirection="column">
-            <StepProgress steps={deploySteps} />
-            {deployError && (
-              <Box flexDirection="column" marginTop={1}>
-                <Text color="red">Deploy failed: {deployError}</Text>
-                <Text dimColor>Press Esc to go back.</Text>
-              </Box>
-            )}
+      <Screen title="Dev" onExit={handleExit} helpText="Esc quit">
+        <Box flexDirection="column" paddingX={1}>
+          <Text bold>Deploying project resources...</Text>
+          <Box marginTop={1}>
+            <StepProgress steps={displaySteps} />
           </Box>
-        </Panel>
+          {hasStartedCfn && (
+            <Box marginTop={1}>
+              <DeployStatus messages={deployMessages} isComplete={deployComplete} hasError={!!deployError} />
+            </Box>
+          )}
+          {deployError && (
+            <Box marginTop={1}>
+              <Text color="yellow">Deploy failed: {deployError}</Text>
+            </Box>
+          )}
+          {deployLogPath && <LogLink filePath={deployLogPath} />}
+        </Box>
       </Screen>
     );
   }
