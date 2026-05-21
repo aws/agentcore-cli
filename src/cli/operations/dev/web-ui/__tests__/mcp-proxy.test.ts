@@ -4,7 +4,7 @@ import type { IncomingMessage, ServerResponse } from 'http';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 function mockReq(_body: string): IncomingMessage {
-  return {} as IncomingMessage;
+  return { url: '/api/mcp', headers: { host: 'localhost:8081' } } as unknown as IncomingMessage;
 }
 
 function mockRes(): ServerResponse & { _status: number; _headers: Record<string, string>; _body: string } {

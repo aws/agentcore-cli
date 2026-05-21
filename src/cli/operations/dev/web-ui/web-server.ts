@@ -349,7 +349,7 @@ export class WebUIServer {
       await handleHarnessToolResponse(ctx, req, res, origin);
     } else if (req.method === 'POST' && (req.url === '/invocations' || req.url?.startsWith('/invocations?'))) {
       await handleInvocations(ctx, req, res, origin);
-    } else if (req.method === 'POST' && req.url === '/api/mcp') {
+    } else if (req.method === 'POST' && (req.url === '/api/mcp' || req.url?.startsWith('/api/mcp?'))) {
       await handleMcpProxy(ctx, req, res, origin);
     } else if (req.method === 'GET' && req.url?.startsWith('/api/a2a/agent-card')) {
       await handleA2AAgentCard(ctx, req, res, origin);
