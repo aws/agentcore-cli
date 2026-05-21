@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.0.0-preview.9] - 2026-05-21
+
+### Other Changes
+- fix(import): escape triple-quotes in collaborationInstruction (#1329) (84c48700)
+
 ## [1.0.0-preview.8] - 2026-05-06
 
 ### Added
