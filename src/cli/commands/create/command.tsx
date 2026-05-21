@@ -345,10 +345,10 @@ async function handleCreateCLI(options: CreateOptions): Promise<void> {
 }
 
 export const registerCreate = (program: Command) => {
-  program
+  const createCmd = program
     .command('create')
     .description(COMMAND_DESCRIPTIONS.create)
-    .option('--name <name>', 'Resource name (agent or harness) [non-interactive]')
+    .option('--name <name>', 'Resource name [non-interactive]')
     .option(
       '--project-name <name>',
       'Project name (start with letter, alphanumeric only, max 23 chars) [non-interactive]'
@@ -390,147 +390,193 @@ export const registerCreate = (program: Command) => {
     .option('--skip-python-setup', 'Skip Python virtual environment setup [non-interactive]')
     .option('--skip-install', 'Skip all dependency installation (npm install, uv sync) [non-interactive]')
     .option('--dry-run', 'Preview what would be created without making changes [non-interactive]')
-    .option('--json', 'Output as JSON [non-interactive]')
-    .option('--model-id <id>', 'Model ID for harness [non-interactive] [preview]')
-    .option('--api-key-arn <arn>', 'API key ARN for non-Bedrock harness providers [non-interactive] [preview]')
-    .option('--no-harness-memory', 'Skip auto-creating memory for harness [non-interactive] [preview]')
-    .option('--max-iterations <n>', 'Max agent loop iterations (harness) [non-interactive] [preview]')
-    .option('--max-tokens <n>', 'Max tokens per iteration (harness) [non-interactive] [preview]')
-    .option('--timeout <seconds>', 'Max execution duration in seconds (harness) [non-interactive] [preview]')
-    .option(
-      '--truncation-strategy <strategy>',
-      'Truncation strategy: sliding_window or summarization (harness) [non-interactive] [preview]'
-    )
-    .option('--container <uri-or-path>', 'Container image URI or Dockerfile path (harness) [non-interactive] [preview]')
-    .action(async options => {
-      try {
-        if (isPreviewEnabled()) {
-          // Preview mode: fork between harness and agent paths
-          const hasAnyFlag = Boolean(
-            options.name ??
-            options.projectName ??
-            (options.agent === false ? true : null) ??
-            options.defaults ??
-            options.build ??
-            options.language ??
-            options.framework ??
-            options.modelProvider ??
-            options.apiKey ??
-            options.memory ??
-            options.protocol ??
-            options.type ??
-            options.agentId ??
-            options.agentAliasId ??
-            options.region ??
-            options.networkMode ??
-            options.subnets ??
-            options.securityGroups ??
-            options.idleTimeout ??
-            options.maxLifetime ??
-            options.outputDir ??
-            options.skipGit ??
-            options.skipPythonSetup ??
-            options.skipInstall ??
-            options.dryRun ??
-            options.json ??
-            options.modelId ??
-            options.apiKeyArn ??
-            (options.harnessMemory === false ? true : null) ??
-            options.maxIterations ??
-            options.maxTokens ??
-            options.timeout ??
-            options.truncationStrategy
-          );
+    .option('--json', 'Output as JSON [non-interactive]');
 
-          if (!hasAnyFlag) {
-            requireTTY();
-            handleCreateTUI();
-            return;
-          }
+  if (isPreviewEnabled()) {
+    createCmd
+      .option('--model-id <id>', 'Model ID for harness [non-interactive] [preview]')
+      .option('--api-key-arn <arn>', 'API key ARN for non-Bedrock harness providers [non-interactive] [preview]')
+      .option('--no-harness-memory', 'Skip auto-creating memory for harness [non-interactive] [preview]')
+      .option('--max-iterations <n>', 'Max agent loop iterations (harness) [non-interactive] [preview]')
+      .option('--max-tokens <n>', 'Max tokens per iteration (harness) [non-interactive] [preview]')
+      .option('--timeout <seconds>', 'Max execution duration in seconds (harness) [non-interactive] [preview]')
+      .option(
+        '--truncation-strategy <strategy>',
+        'Truncation strategy: sliding_window or summarization (harness) [non-interactive] [preview]'
+      )
+      .option(
+        '--container <uri-or-path>',
+        'Container image URI or Dockerfile path (harness) [non-interactive] [preview]'
+      );
+  }
 
-          const opts = options as CreateOptions;
+  createCmd.action(async (rawOptions: Record<string, unknown>) => {
+    const options = rawOptions as Record<string, unknown> & {
+      name?: string;
+      projectName?: string;
+      agent: boolean;
+      defaults?: true;
+      build?: string;
+      language?: string;
+      framework?: string;
+      modelProvider?: string;
+      apiKey?: string;
+      memory?: string;
+      protocol?: string;
+      type?: string;
+      agentId?: string;
+      agentAliasId?: string;
+      region?: string;
+      networkMode?: string;
+      subnets?: string;
+      securityGroups?: string;
+      idleTimeout?: string;
+      maxLifetime?: string;
+      sessionStorageMountPath?: string;
+      withConfigBundle?: true;
+      outputDir?: string;
+      skipGit?: true;
+      skipPythonSetup?: true;
+      skipInstall?: true;
+      dryRun?: true;
+      json?: true;
+      modelId?: string;
+      apiKeyArn?: string;
+      harnessMemory?: boolean;
+      maxIterations?: string;
+      maxTokens?: string;
+      timeout?: string;
+      truncationStrategy?: string;
+      container?: string;
+    };
+    try {
+      if (isPreviewEnabled()) {
+        // Preview mode: fork between harness and agent paths
+        const hasAnyFlag = Boolean(
+          options.name ??
+          options.projectName ??
+          (options.agent === false ? true : null) ??
+          options.defaults ??
+          options.build ??
+          options.language ??
+          options.framework ??
+          options.modelProvider ??
+          options.apiKey ??
+          options.memory ??
+          options.protocol ??
+          options.type ??
+          options.agentId ??
+          options.agentAliasId ??
+          options.region ??
+          options.networkMode ??
+          options.subnets ??
+          options.securityGroups ??
+          options.idleTimeout ??
+          options.maxLifetime ??
+          options.outputDir ??
+          options.skipGit ??
+          options.skipPythonSetup ??
+          options.skipInstall ??
+          options.dryRun ??
+          options.json ??
+          options.modelId ??
+          options.apiKeyArn ??
+          (options.harnessMemory === false ? true : null) ??
+          options.maxIterations ??
+          options.maxTokens ??
+          options.timeout ??
+          options.truncationStrategy
+        );
 
-          // Conflict detection: agent-path flags + harness-only flags
-          if (isAgentPath(opts) && hasHarnessOnlyFlags(opts)) {
-            const error =
-              'Cannot mix agent-path flags (--framework, --language, etc.) with harness-only flags (--model-id, --max-iterations, etc.)';
-            if (opts.json) {
-              console.log(JSON.stringify({ success: false, error }));
-            } else {
-              console.error(error);
-            }
-            process.exit(1);
-          }
-
-          // --no-agent: bare project (no harness, no agent)
-          if (opts.agent === false) {
-            opts.language = opts.language ?? 'Python';
-            await handleCreateCLI(opts);
-            return;
-          }
-
-          // Agent path: any agent-specific flag triggers it
-          if (isAgentPath(opts)) {
-            if (opts.defaults) {
-              opts.language = opts.language ?? 'Python';
-              opts.build = opts.build ?? 'CodeZip';
-              opts.framework = opts.framework ?? 'Strands';
-              opts.modelProvider = opts.modelProvider ?? 'Bedrock';
-              opts.memory = opts.memory ?? 'none';
-            }
-            opts.language = opts.language ?? 'Python';
-            await handleCreateCLI(opts);
-            return;
-          }
-
-          // Harness path (default in preview mode)
-          if (!opts.json && !opts.modelProvider && !hasHarnessOnlyFlags(opts)) {
-            console.log('Creating a harness project (pass --framework to create an agent project instead).');
-          }
-          await handleCreateHarnessCLI(opts);
-        } else {
-          // GA mode: original behavior
-          // Apply defaults if --defaults flag is set
-          if (options.defaults) {
-            options.language = options.language ?? 'Python';
-            options.build = options.build ?? 'CodeZip';
-            options.framework = options.framework ?? 'Strands';
-            options.modelProvider = options.modelProvider ?? 'Bedrock';
-            options.memory = options.memory ?? 'none';
-          }
-
-          // Any flag triggers non-interactive CLI mode
-          const hasAnyFlag = Boolean(
-            options.name ??
-            options.projectName ??
-            (options.agent === false ? true : null) ??
-            options.defaults ??
-            options.build ??
-            options.language ??
-            options.framework ??
-            options.modelProvider ??
-            options.apiKey ??
-            options.memory ??
-            options.outputDir ??
-            options.skipGit ??
-            options.skipPythonSetup ??
-            options.skipInstall ??
-            options.dryRun ??
-            options.json
-          );
-
-          if (hasAnyFlag) {
-            // Default language to Python (only supported option) for CLI mode
-            options.language = options.language ?? 'Python';
-            await handleCreateCLI(options as CreateOptions);
-          } else {
-            requireTTY();
-            handleCreateTUI();
-          }
+        if (!hasAnyFlag) {
+          requireTTY();
+          handleCreateTUI();
+          return;
         }
-      } catch (error) {
-        render(<Text color="red">Error: {getErrorMessage(error)}</Text>);
-        process.exit(1);
+
+        const opts = options as CreateOptions;
+
+        // Conflict detection: agent-path flags + harness-only flags
+        if (isAgentPath(opts) && hasHarnessOnlyFlags(opts)) {
+          const error =
+            'Cannot mix agent-path flags (--framework, --language, etc.) with harness-only flags (--model-id, --max-iterations, etc.)';
+          if (opts.json) {
+            console.log(JSON.stringify({ success: false, error }));
+          } else {
+            console.error(error);
+          }
+          process.exit(1);
+        }
+
+        // --no-agent: bare project (no harness, no agent)
+        if (opts.agent === false) {
+          opts.language = opts.language ?? 'Python';
+          await handleCreateCLI(opts);
+          return;
+        }
+
+        // Agent path: any agent-specific flag triggers it
+        if (isAgentPath(opts)) {
+          if (opts.defaults) {
+            opts.language = opts.language ?? 'Python';
+            opts.build = opts.build ?? 'CodeZip';
+            opts.framework = opts.framework ?? 'Strands';
+            opts.modelProvider = opts.modelProvider ?? 'Bedrock';
+            opts.memory = opts.memory ?? 'none';
+          }
+          opts.language = opts.language ?? 'Python';
+          await handleCreateCLI(opts);
+          return;
+        }
+
+        // Harness path (default in preview mode)
+        if (!opts.json && !opts.modelProvider && !hasHarnessOnlyFlags(opts)) {
+          console.log('Creating a harness project (pass --framework to create an agent project instead).');
+        }
+        await handleCreateHarnessCLI(opts);
+      } else {
+        // GA mode: original behavior
+        // Apply defaults if --defaults flag is set
+        if (options.defaults) {
+          options.language = options.language ?? 'Python';
+          options.build = options.build ?? 'CodeZip';
+          options.framework = options.framework ?? 'Strands';
+          options.modelProvider = options.modelProvider ?? 'Bedrock';
+          options.memory = options.memory ?? 'none';
+        }
+
+        // Any flag triggers non-interactive CLI mode
+        const hasAnyFlag = Boolean(
+          options.name ??
+          options.projectName ??
+          (options.agent === false ? true : null) ??
+          options.defaults ??
+          options.build ??
+          options.language ??
+          options.framework ??
+          options.modelProvider ??
+          options.apiKey ??
+          options.memory ??
+          options.outputDir ??
+          options.skipGit ??
+          options.skipPythonSetup ??
+          options.skipInstall ??
+          options.dryRun ??
+          options.json
+        );
+
+        if (hasAnyFlag) {
+          // Default language to Python (only supported option) for CLI mode
+          options.language = options.language ?? 'Python';
+          await handleCreateCLI(options as CreateOptions);
+        } else {
+          requireTTY();
+          handleCreateTUI();
+        }
       }
-    });
+    } catch (error) {
+      render(<Text color="red">Error: {getErrorMessage(error)}</Text>);
+      process.exit(1);
+    }
+  });
 };

@@ -70,6 +70,20 @@ describe.skipIf(!isPreviewBuild)('integration: harness add/remove lifecycle', ()
     const config = await readProjectConfig(project.projectPath);
     const found = config.harnesses?.find((h: { name: string }) => h.name === harnessName);
     expect(found, `Harness "${harnessName}" should be removed`).toBeFalsy();
+
+    const associatedMemory = (config.memories ?? []).find((m: { name: string }) => m.name === `${harnessName}Memory`);
+    expect(associatedMemory, 'Associated memory should be removed with harness').toBeFalsy();
+  });
+
+  it('re-adds harness after removal without duplicate memory error', async () => {
+    const result = await runCLI(['add', 'harness', '--name', harnessName, '--json'], project.projectPath);
+
+    expect(result.exitCode, `stdout: ${result.stdout}, stderr: ${result.stderr}`).toBe(0);
+    const json = JSON.parse(result.stdout);
+    expect(json.success).toBe(true);
+
+    // Clean up for next tests
+    await runCLI(['remove', 'harness', '--name', harnessName, '--json'], project.projectPath);
   });
 });
 

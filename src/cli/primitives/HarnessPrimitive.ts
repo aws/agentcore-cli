@@ -275,6 +275,12 @@ export class HarnessPrimitive extends BasePrimitive<AddHarnessOptions, Removable
       harnesses.splice(harnessIndex, 1);
       project.harnesses = harnesses;
 
+      // Remove the associated memory (convention: <harnessName>Memory)
+      const associatedMemoryName = `${harnessName}Memory`;
+      if (project.memories) {
+        project.memories = project.memories.filter(m => m.name !== associatedMemoryName);
+      }
+
       await this.writeProjectSpec(project, configIO);
 
       const pathResolver = configIO.getPathResolver();
@@ -297,13 +303,20 @@ export class HarnessPrimitive extends BasePrimitive<AddHarnessOptions, Removable
       throw new Error(`Harness "${harnessName}" not found.`);
     }
 
+    const associatedMemoryName = `${harnessName}Memory`;
+    const hasAssociatedMemory = (project.memories ?? []).some(m => m.name === associatedMemoryName);
+
     const summary: string[] = [`Removing harness: ${harnessName}`];
+    if (hasAssociatedMemory) {
+      summary.push(`Removing associated memory: ${associatedMemoryName}`);
+    }
     const directoriesToDelete: string[] = [`app/${harnessName}`];
     const schemaChanges: SchemaChange[] = [];
 
     const afterSpec = {
       ...project,
       harnesses: harnesses.filter(h => h.name !== harnessName),
+      ...(hasAssociatedMemory && { memories: (project.memories ?? []).filter(m => m.name !== associatedMemoryName) }),
     };
 
     schemaChanges.push({
