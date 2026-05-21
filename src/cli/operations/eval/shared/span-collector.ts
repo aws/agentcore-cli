@@ -83,9 +83,9 @@ export async function collectSpans(options: CollectSpansOptions): Promise<Collec
   onProgress?.(0, sessionIds.length, `Waiting for span ingestion (${SPAN_INGESTION_DELAY_MS / 1000}s)...`);
   await sleep(SPAN_INGESTION_DELAY_MS);
 
-  // Phase 2: Poll each session in parallel
+  // Phase 2: Poll each session in parallel — use allSettled so one failure doesn't abort the rest
   let collectedCount = 0;
-  const results = await Promise.all(
+  const settled = await Promise.allSettled(
     sessionIds.map(async sessionId => {
       const spans = await pollOneSession(sessionId, querySpans, options.region, options.logGroup, SPAN_POLL_TIMEOUT_MS);
       if (spans) {
@@ -98,9 +98,15 @@ export async function collectSpans(options: CollectSpansOptions): Promise<Collec
 
   const collected = new Map<string, DocumentType[]>();
   const timedOut: string[] = [];
-  for (const r of results) {
-    if (r.spans) collected.set(r.sessionId, r.spans);
-    else timedOut.push(r.sessionId);
+  for (const outcome of settled) {
+    if (outcome.status === 'fulfilled') {
+      const r = outcome.value;
+      if (r.spans) collected.set(r.sessionId, r.spans);
+      else timedOut.push(r.sessionId);
+    } else {
+      // Rejected sessions are treated as timed out
+      timedOut.push('unknown');
+    }
   }
 
   return { spans: collected, timedOut };

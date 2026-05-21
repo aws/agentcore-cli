@@ -57,9 +57,14 @@ export async function syncDatasets(options: SyncDatasetsOptions): Promise<SyncDa
         configBaseDir,
       });
 
+      // Re-read the file after push because pushDataset rewrites it with new exampleIds.
+      // The hash must reflect the actual on-disk content so subsequent deploys can skip unchanged datasets.
+      const postPushContent = await readFile(absolutePath, 'utf8');
+      const postPushHash = computeFileHash(postPushContent);
+
       updatedDatasets[dataset.name] = {
         ...state,
-        contentHash: currentHash,
+        contentHash: postPushHash,
       };
 
       results.push({

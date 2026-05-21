@@ -1,7 +1,7 @@
 /**
  * Publish dataset DRAFT as a new immutable version.
  */
-import { createDatasetVersion } from '../../aws/agentcore-datasets';
+import { createDatasetVersion, getDataset } from '../../aws/agentcore-datasets';
 import { waitForDatasetActive } from './wait';
 
 export interface PublishOptions {
@@ -27,7 +27,6 @@ export async function publishDataset(options: PublishOptions): Promise<PublishRe
   await waitForDatasetActive(region, datasetId);
 
   // Re-fetch to get final state after publish
-  const { getDataset } = await import('../../aws/agentcore-datasets');
   const info = await getDataset({ region, datasetId });
 
   return {

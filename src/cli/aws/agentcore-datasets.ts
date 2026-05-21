@@ -195,6 +195,7 @@ async function signedRequest(options: {
     method,
     headers: signedReq.headers as Record<string, string>,
     ...(body && { body }),
+    signal: AbortSignal.timeout(30_000),
   });
 
   if (!response.ok) {
