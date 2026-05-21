@@ -8,6 +8,7 @@ import {
   buildDeployedState,
   getStackOutputs,
   parseAgentOutputs,
+  parseDatasetOutputs,
   parseEvaluatorOutputs,
   parseGatewayOutputs,
   parseMemoryOutputs,
@@ -39,6 +40,7 @@ import {
   resolveConfigBundleComponentKeys,
   setupConfigBundles,
 } from '../../operations/deploy/post-deploy-config-bundles';
+import { syncDatasets } from '../../operations/deploy/post-deploy-datasets';
 import { setupHttpGateways } from '../../operations/deploy/post-deploy-http-gateways';
 import { enableOnlineEvalConfigs } from '../../operations/deploy/post-deploy-online-evals';
 import { toStackName } from '../import/import-utils';
@@ -463,6 +465,10 @@ export async function handleDeploy(options: ValidatedDeployOptions): Promise<Dep
       ) ?? {};
     const gateways = parseGatewayOutputs(outputs, gatewaySpecs);
 
+    // Parse dataset outputs
+    const datasetNames = (context.projectSpec.datasets ?? []).map(d => d.name);
+    const datasets = parseDatasetOutputs(outputs, datasetNames);
+
     const existingState = await configIO.readDeployedState().catch(() => undefined);
     let deployedState = buildDeployedState({
       targetName: target.name,
@@ -478,6 +484,7 @@ export async function handleDeploy(options: ValidatedDeployOptions): Promise<Dep
       policyEngines,
       policies,
       runtimeEndpoints,
+      datasets,
     });
     await configIO.writeDeployedState(deployedState);
 
@@ -499,10 +506,11 @@ export async function handleDeploy(options: ValidatedDeployOptions): Promise<Dep
 
     endStep('success');
 
+    const postDeployWarnings: string[] = [];
+
     // Post-deploy: Enable online eval configs that have enableOnCreate (CFN deploys them as DISABLED).
     // Only enable configs that are newly deployed — skip configs that already existed before this
     // deploy run, so we don't re-enable configs a customer intentionally disabled.
-    const postDeployWarnings: string[] = [];
     const onlineEvalFullSpecs = context.projectSpec.onlineEvalConfigs ?? [];
     const deployedOnlineEvalConfigs = deployedState.targets?.[target.name]?.resources?.onlineEvalConfigs ?? {};
     const previouslyDeployedOnlineEvals = existingState?.targets?.[target.name]?.resources?.onlineEvalConfigs ?? {};
@@ -519,6 +527,43 @@ export async function handleDeploy(options: ValidatedDeployOptions): Promise<Dep
         const errorMessages = errors.map(err => `"${err.configName}": ${err.error}`).join('; ');
         logger.log(`Online eval enable warnings: ${errorMessages}`, 'warn');
         postDeployWarnings.push(...errors.map(err => `Online eval "${err.configName}": ${err.error}`));
+      }
+    }
+
+    // Post-deploy: Sync dataset examples from local JSONL to service DRAFT.
+    // Uses a local content hash to skip unchanged files (hybrid approach).
+    const datasetSpecs = context.projectSpec.datasets ?? [];
+    const deployedDatasetsRecord = deployedState.targets?.[target.name]?.resources?.datasets ?? {};
+    if (datasetSpecs.length > 0 && Object.keys(deployedDatasetsRecord).length > 0) {
+      const datasetSyncResult = await syncDatasets({
+        region: target.region,
+        datasets: datasetSpecs,
+        deployedDatasets: deployedDatasetsRecord,
+        configBaseDir: configIO.getConfigRoot(),
+      });
+
+      // Update deployed state with new content hashes
+      if (datasetSyncResult.results.some(r => r.status === 'synced')) {
+        const updatedState = await configIO.readDeployedState().catch(() => deployedState);
+        const targetResources = updatedState.targets[target.name]?.resources;
+        if (targetResources) {
+          targetResources.datasets = datasetSyncResult.updatedDatasets;
+          await configIO.writeDeployedState(updatedState);
+          deployedState = updatedState;
+        }
+      }
+
+      if (datasetSyncResult.hasErrors) {
+        const errors = datasetSyncResult.results.filter(r => r.status === 'error');
+        const errorMessages = errors.map(err => `"${err.datasetName}": ${err.error}`).join('; ');
+        logger.log(`Dataset sync warnings: ${errorMessages}`, 'warn');
+        postDeployWarnings.push(...errors.map(err => `Dataset "${err.datasetName}": ${err.error}`));
+      }
+
+      for (const r of datasetSyncResult.results) {
+        if (r.status === 'synced') {
+          logger.log(`Dataset "${r.datasetName}": +${r.added} added, ~${r.updated} updated, -${r.deleted} deleted`);
+        }
       }
     }
 

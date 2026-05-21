@@ -11,6 +11,7 @@ const ADD_RESOURCES = [
   { id: 'gateway-target', title: 'Gateway Target', description: 'Extend agent capabilities' },
   { id: 'runtime-endpoint', title: 'Runtime Endpoint', description: 'Named endpoint for a runtime' },
   { id: 'policy', title: 'Policy', description: 'Cedar policies for gateway tools' },
+  { id: 'dataset', title: 'Dataset', description: 'Evaluation dataset for testing agents' },
   { id: 'config-bundle', title: 'Configuration Bundle [preview]', description: 'Versioned component configurations' },
   { id: 'ab-test', title: 'AB Test [preview]', description: 'Compare agent configurations with traffic splitting' },
 ] as const;

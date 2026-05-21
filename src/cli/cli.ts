@@ -4,6 +4,7 @@ import { registerAdd } from './commands/add';
 import { registerArchive } from './commands/archive';
 import { registerConfigBundle } from './commands/config-bundle';
 import { registerCreate } from './commands/create';
+import { registerDataset } from './commands/dataset';
 import { registerDeploy } from './commands/deploy';
 import { registerDev } from './commands/dev';
 import { registerEval } from './commands/eval';
@@ -201,6 +202,7 @@ export function registerCommands(program: Command) {
   registerUpdate(program);
   registerValidate(program);
   registerConfigBundle(program);
+  registerDataset(program);
   registerArchive(program);
 
   // Register primitive subcommands (add agent, remove agent, add memory, etc.)

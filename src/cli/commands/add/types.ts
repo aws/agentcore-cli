@@ -1,4 +1,5 @@
 import type {
+  DatasetSchemaType,
   GatewayAuthorizerType,
   ModelProvider,
   ProtocolMode,
@@ -99,6 +100,19 @@ export interface AddMemoryOptions {
   json?: boolean;
 }
 
+// Dataset types
+export interface AddDatasetOptions {
+  name: string;
+  schemaType: DatasetSchemaType;
+  description?: string;
+  json?: boolean;
+}
+
+export interface AddDatasetResult {
+  success: boolean;
+  datasetName?: string;
+  error?: string;
+}
 // Credential types (v2: credential, no owner/user concept)
 export interface AddCredentialOptions {
   name?: string;

@@ -11,6 +11,7 @@ import { AgentEnvSpecSchema } from './agent-env';
 import { AgentCoreGatewaySchema, AgentCoreGatewayTargetSchema, AgentCoreMcpRuntimeToolSchema } from './mcp';
 import { ABTestSchema } from './primitives/ab-test';
 import { ConfigBundleSchema } from './primitives/config-bundle';
+import { DatasetSchema } from './primitives/dataset';
 import {
   EvaluationLevelSchema,
   EvaluatorConfigSchema,
@@ -69,6 +70,9 @@ export type { Policy, PolicyEngine, ValidationMode } from './primitives/policy';
 export { PolicyEngineNameSchema, PolicyNameSchema, PolicySchema, ValidationModeSchema } from './primitives/policy';
 export { TagsSchema };
 export type { Tags } from './primitives/tags';
+export { DatasetSchema };
+export { DatasetNameSchema, DatasetSchemaTypeSchema } from './primitives/dataset';
+export type { Dataset, DatasetSchemaType } from './primitives/dataset';
 export type { ABTestMode, TargetRef, GatewayFilter, PerVariantOnlineEvaluationConfig } from './primitives/ab-test';
 export { ABTestModeSchema, TargetRefSchema, GatewayFilterSchema } from './primitives/ab-test';
 export type { HttpGatewayTarget } from './primitives/http-gateway';
@@ -368,6 +372,20 @@ export const AgentCoreProjectSpecSchema = z
           name => `Duplicate HTTP gateway name: ${name}`
         )
       ),
+
+    datasets: z
+      .array(DatasetSchema)
+      .optional()
+      .superRefine((val, ctx) => {
+        if (!val) return;
+        const seen = new Set<string>();
+        for (const dataset of val) {
+          if (seen.has(dataset.name)) {
+            ctx.addIssue({ code: z.ZodIssueCode.custom, message: `Duplicate dataset name: ${dataset.name}` });
+          }
+          seen.add(dataset.name);
+        }
+      }),
   })
   .strict()
   .superRefine((spec, ctx) => {

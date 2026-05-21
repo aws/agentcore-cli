@@ -5,6 +5,7 @@ const mockSearchLogs = vi.fn();
 
 vi.mock('../../../aws/cloudwatch', () => ({
   searchLogs: (...args: unknown[]) => mockSearchLogs(...args),
+  runtimeLogGroup: (runtimeId: string) => `/aws/bedrock-agentcore/runtimes/${runtimeId}-DEFAULT`,
 }));
 
 /**

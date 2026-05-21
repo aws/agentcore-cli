@@ -2,6 +2,8 @@ import { ConfigIO, findConfigRoot } from '../../../lib';
 import {
   AgentNameSchema,
   BuildTypeSchema,
+  DatasetNameSchema,
+  DatasetSchemaTypeSchema,
   GatewayAuthorizerTypeSchema,
   GatewayExceptionLevelSchema,
   GatewayNameSchema,
@@ -25,6 +27,7 @@ import { validateJwtAuthorizerOptions } from './auth-options';
 import type {
   AddAgentOptions,
   AddCredentialOptions,
+  AddDatasetOptions,
   AddGatewayOptions,
   AddGatewayTargetOptions,
   AddMemoryOptions,
@@ -775,6 +778,30 @@ export function validateAddMemoryOptions(options: AddMemoryOptions): ValidationR
             : 'Invalid --stream-delivery-resources: does not match the expected schema',
       };
     }
+  }
+
+  return { valid: true };
+}
+
+// Dataset validation
+export function validateAddDatasetOptions(options: AddDatasetOptions): ValidationResult {
+  if (!options.name) {
+    return { valid: false, error: '--name is required' };
+  }
+
+  const nameResult = DatasetNameSchema.safeParse(options.name);
+  if (!nameResult.success) {
+    return { valid: false, error: nameResult.error.issues[0]?.message ?? 'Invalid dataset name' };
+  }
+
+  if (!options.schemaType) {
+    return { valid: false, error: '--schema-type is required' };
+  }
+
+  const schemaTypeResult = DatasetSchemaTypeSchema.safeParse(options.schemaType);
+  if (!schemaTypeResult.success) {
+    const valid = DatasetSchemaTypeSchema.options.join(', ');
+    return { valid: false, error: `Invalid schema type: ${options.schemaType}. Valid options: ${valid}` };
   }
 
   return { valid: true };

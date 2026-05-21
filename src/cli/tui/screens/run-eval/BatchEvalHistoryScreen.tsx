@@ -102,6 +102,9 @@ function BatchEvalListView({
                 .join(', ');
             }
 
+            const datasetLabel =
+              rec.source === 'dataset' && rec.dataset ? ` [${rec.dataset.id}@${rec.dataset.version}]` : '';
+
             return (
               <Text key={rec.batchEvaluationId} wrap="truncate-end">
                 <Text color={selected ? 'cyan' : undefined}>{selected ? '>' : ' '} </Text>
@@ -109,6 +112,7 @@ function BatchEvalListView({
                 <Text color={statusColor(rec.status)}>{rec.status.padEnd(12)}</Text>
                 {scoreText && <Text>{scoreText.padEnd(10)}</Text>}
                 <Text dimColor>{rec.name}</Text>
+                {datasetLabel && <Text color="blue">{datasetLabel}</Text>}
               </Text>
             );
           })}
@@ -165,6 +169,11 @@ function BatchEvalDetailView({ record, onBack }: { record: BatchEvalRunRecord; o
         <Text>
           <Text bold>Evaluators:</Text> {record.evaluators.join(', ')}
         </Text>
+        {record.source === 'dataset' && record.dataset && (
+          <Text>
+            <Text bold>Dataset:</Text> {record.dataset.id} (version: {record.dataset.version})
+          </Text>
+        )}
         {record.startedAt && (
           <Text>
             <Text bold>Started:</Text> {new Date(record.startedAt).toLocaleString()}

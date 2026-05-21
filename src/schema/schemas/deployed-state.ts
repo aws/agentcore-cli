@@ -175,6 +175,18 @@ export const OnlineEvalDeployedStateSchema = z.object({
 export type OnlineEvalDeployedState = z.infer<typeof OnlineEvalDeployedStateSchema>;
 
 // ============================================================================
+// Dataset Deployed State
+// ============================================================================
+
+export const DatasetDeployedStateSchema = z.object({
+  datasetId: z.string().min(1),
+  datasetArn: z.string().min(1),
+  contentHash: z.string().optional(),
+});
+
+export type DatasetDeployedState = z.infer<typeof DatasetDeployedStateSchema>;
+
+// ============================================================================
 // Configuration Bundle Deployed State
 // ============================================================================
 
@@ -241,6 +253,7 @@ export const DeployedResourceStateSchema = z.object({
   credentials: z.record(z.string(), CredentialDeployedStateSchema).optional(),
   evaluators: z.record(z.string(), EvaluatorDeployedStateSchema).optional(),
   onlineEvalConfigs: z.record(z.string(), OnlineEvalDeployedStateSchema).optional(),
+  datasets: z.record(z.string(), DatasetDeployedStateSchema).optional(),
   configBundles: z.record(z.string(), ConfigBundleDeployedStateSchema).optional(),
   abTests: z.record(z.string(), ABTestDeployedStateSchema).optional(),
   httpGateways: z.record(z.string(), HttpGatewayDeployedStateSchema).optional(),

@@ -21,6 +21,7 @@ export function createDefaultProjectSpec(projectName: string): AgentCoreProjectS
     configBundles: [],
     abTests: [],
     httpGateways: [],
+    datasets: [],
     tags: {
       'agentcore:created-by': 'agentcore-cli',
       'agentcore:project-name': projectName,

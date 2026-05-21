@@ -13,6 +13,7 @@ export interface EvalEvaluatorResult {
 /** Per-session score from an evaluator */
 export interface EvalSessionScore {
   sessionId: string;
+  scenarioId?: string;
   traceId?: string;
   spanId?: string;
   value: number;
@@ -26,7 +27,7 @@ export interface EvalRunResult {
   timestamp: string;
   agent: string;
   evaluators: string[];
-  lookbackDays: number;
+  lookbackDays?: number;
   sessionCount: number;
   results: EvalEvaluatorResult[];
   referenceInputs?: {
@@ -34,6 +35,12 @@ export interface EvalRunResult {
     expectedTrajectory?: string[];
     expectedResponse?: string;
   };
+  /** Present when eval was run against a dataset */
+  source?: 'dataset' | 'traces';
+  /** Dataset name (when source === 'dataset') */
+  datasetName?: string;
+  /** Dataset details (when source === 'dataset') */
+  dataset?: { id: string; version: string };
 }
 
 /** Lightweight session info returned by session discovery */
@@ -71,6 +78,12 @@ export interface RunEvalOptions {
   expectedResponse?: string;
   days: number;
   output?: string;
+  /** Dataset name — invoke agent with dataset scenarios instead of historical traces */
+  dataset?: string;
+  /** Dataset version (omit for local file, or N/DRAFT) */
+  datasetVersion?: string;
+  /** Progress callback for dataset evaluation phases */
+  onProgress?: (phase: string, message: string) => void;
   json?: boolean;
 }
 

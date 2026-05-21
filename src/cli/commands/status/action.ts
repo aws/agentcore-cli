@@ -23,6 +23,7 @@ export interface ResourceStatusEntry {
     | 'policy'
     | 'config-bundle'
     | 'ab-test'
+    | 'dataset'
     | 'runtime-endpoint';
   name: string;
   deploymentState: ResourceDeploymentState;
@@ -238,6 +239,14 @@ export function computeResourceStatuses(
     getLocalDetail: item => item.description,
   });
 
+  const datasets = diffResourceSet({
+    resourceType: 'dataset',
+    localItems: project.datasets ?? [],
+    deployedRecord: resources?.datasets ?? {},
+    getIdentifier: deployed => deployed.datasetArn,
+    getLocalDetail: item => item.schemaType,
+  });
+
   const abTests = diffResourceSet({
     resourceType: 'ab-test',
     localItems: project.abTests ?? [],
@@ -296,6 +305,7 @@ export function computeResourceStatuses(
     ...onlineEvalConfigs,
     ...policyEngines,
     ...policies,
+    ...datasets,
     ...configBundles,
     ...abTests,
   ];

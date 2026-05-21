@@ -383,20 +383,6 @@ export function DeployScreen({
             </Box>
           )}
 
-          {allSuccess && postDeployWarnings.length > 0 && (
-            <Box flexDirection="column" marginTop={1}>
-              <Text color="yellow" bold>
-                Post-deploy warnings:
-              </Text>
-              {postDeployWarnings.map((w, i) => (
-                <Text key={i} color="yellow">
-                  {'  '}
-                  {w}
-                </Text>
-              ))}
-            </Box>
-          )}
-
           {allSuccess && deployNotes.length > 0 && (
             <Box flexDirection="column" marginTop={1}>
               {deployNotes.map((note, i) => (

@@ -2,14 +2,19 @@ import type { RunEvalConfig, RunEvalStep } from './types';
 import { DEFAULT_LOOKBACK_DAYS } from './types';
 import { useCallback, useState } from 'react';
 
-function getAllSteps(agentCount: number): RunEvalStep[] {
+export type EvalSourceMode = 'dataset' | 'traces';
+
+function getAllSteps(agentCount: number, source: EvalSourceMode): RunEvalStep[] {
   const steps: RunEvalStep[] = [];
   if (agentCount > 1) {
     steps.push('agent');
   }
-  steps.push('evaluators', 'days', 'sessions');
-  // groundTruth step is always in the array; setSessions skips it when multiple sessions selected
-  steps.push('groundTruth');
+  steps.push('evaluators');
+  if (source === 'traces') {
+    steps.push('days', 'sessions');
+    // groundTruth step is always in the array; setSessions skips it when multiple sessions selected
+    steps.push('groundTruth');
+  }
   steps.push('confirm');
   return steps;
 }
@@ -32,8 +37,8 @@ export interface GroundTruthData {
   expectedResponse: string;
 }
 
-export function useRunEvalWizard(agentCount: number) {
-  const allSteps = getAllSteps(agentCount);
+export function useRunEvalWizard(agentCount: number, source: EvalSourceMode = 'traces') {
+  const allSteps = getAllSteps(agentCount, source);
   const [config, setConfig] = useState<RunEvalConfig>(getDefaultConfig);
   const [step, setStep] = useState<RunEvalStep>(allSteps[0]!);
 

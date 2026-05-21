@@ -99,6 +99,7 @@
     "@smithy/shared-ini-file-loader": "^4.4.2",
     "commander": "^14.0.2",
     "dotenv": "^17.2.3",
+    "fast-json-stable-stringify": "^2.1.0",
     "fflate": "^0.8.2",
     "handlebars": "^4.7.8",
     "ink": "^6.6.0",

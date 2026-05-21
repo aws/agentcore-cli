@@ -83,7 +83,7 @@ export async function handleInvoke(context: InvokeContext, options: InvokeOption
       error: new ValidationError(`Multiple runtimes found. Use --runtime to specify one: ${agentNames.join(', ')}`),
     };
   }
-
+  
   const agentSpec = options.agentName ? project.runtimes.find(a => a.name === options.agentName) : project.runtimes[0];
 
   if (options.agentName && !agentSpec) {
