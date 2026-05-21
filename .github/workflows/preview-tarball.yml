@@ -1,0 +1,54 @@
+name: Preview Tarball
+
+on:
+  push:
+    branches: [main]
+  # Manually trigger to pull in the latest CDK constructs changes
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: preview-tarball
+  cancel-in-progress: true
+
+jobs:
+  preview-tarball:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '22.x'
+          cache: 'npm'
+      - uses: astral-sh/setup-uv@v7
+      - run: npm run bundle
+      - name: Get tarball info
+        id: tarball
+        run: |
+          TARBALL_NAME=$(ls *.tgz | head -1 | xargs basename)
+          echo "name=$TARBALL_NAME" >> $GITHUB_OUTPUT
+      - name: Generate GitHub App Token
+        id: app-token
+        uses: actions/create-github-app-token@v1
+        with:
+          app-id: ${{ vars.APP_ID }}
+          private-key: ${{ secrets.APP_PRIVATE_KEY }}
+      - name: Create or update prerelease
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          TARBALL_NAME: ${{ steps.tarball.outputs.name }}
+        run: |
+          TAG="prerelease"
+
+          # Delete existing release if it exists (to update the tarball)
+          gh release delete "$TAG" --yes --cleanup-tag 2>/dev/null || true
+
+          # Create a new pre-release with the tarball
+          gh release create "$TAG" \
+            "${TARBALL_NAME}" \
+            --title "Preview (prerelease)" \
+            --notes "Auto-generated tarball from the latest commit on main." \
+            --prerelease \
+            --target "${{ github.sha }}"
