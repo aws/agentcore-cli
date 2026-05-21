@@ -2,6 +2,27 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.14.2] - 2026-05-21
+
+### Added
+- feat: add support for LTM metadata (#1281) (44b5c2cf)
+- feat: instrument telemetry for import command (#1312) (2cc0a4cb)
+
+### Fixed
+- fix(import): escape triple-quotes in collaborationInstruction to prevent docstring injection (#1329) (ae1b932e)
+- fix(ci): use npm-shrinkwrap.json for node_modules cache key (#1325) (a6872ca5)
+- fix: ship npm-shrinkwrap.json to eliminate glob@10 deprecation warning on install (#1315) (4c5077c2)
+- fix: scope summaries retrieval to actor, not session, for cross-session memory (#1299) (1402057e)
+
+### Documentation
+- docs: sync CLI documentation with actual command surface (#1296) (5ae559ae)
+
+### Other Changes
+- Revert "feat: add support for LTM metadata (#1281)" (#1338) (2d8b9d7b)
+- ci(security-review): drop pull_request_review trigger (broken on fork PRs) (#1310) (43607fa1)
+- chore: replace CDK_REPO_TOKEN PAT with GitHub App token in e2e workflows (#1201) (fc675346)
+- chore(deps): bump ws from 8.20.0 to 8.20.1 (#1298) (52d3e847)
+
 ## [0.14.1] - 2026-05-19
 
 ### Added
