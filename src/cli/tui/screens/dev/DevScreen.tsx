@@ -1,13 +1,14 @@
 import type { AgentEnvSpec } from '../../../../schema';
 import { isPreviewEnabled } from '../../../feature-flags';
 import { getDevSupportedAgents, getEndpointUrl, loadProjectConfig } from '../../../operations/dev';
-import { GradientText, LogLink, Panel, Screen, SelectList, TextInput } from '../../components';
+import { GradientText, LogLink, Panel, Screen, SelectList, StepProgress, TextInput } from '../../components';
+import { useDevDeploy } from '../../hooks/useDevDeploy';
 import { type ConversationMessage, useDevServer } from '../../hooks/useDevServer';
 import { InvokeScreen } from '../invoke/InvokeScreen';
 import { Box, Text, useInput, useStdout } from 'ink';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
-type Mode = 'select-agent' | 'chat' | 'input' | 'harness';
+type Mode = 'select-agent' | 'chat' | 'input' | 'deploying' | 'harness';
 
 interface DevScreenProps {
   onBack: () => void;
@@ -177,6 +178,7 @@ export function DevScreen(props: DevScreenProps) {
         if (!onLaunchBrowser) setMode('chat');
       } else if (harnesses.length === 1 && agents.length === 0) {
         setSelectedHarness(harnesses[0]);
+        setMode('deploying');
       } else if (agents.length === 0 && harnesses.length === 0) {
         setNoAgentsError(true);
       }
@@ -228,6 +230,14 @@ export function DevScreen(props: DevScreenProps) {
     onReady: onServerReady,
     headers: props.headers,
   });
+
+  const {
+    steps: deploySteps,
+    isComplete: deployComplete,
+    error: deployError,
+  } = useDevDeploy({ skip: props.skipDeploy, ready: mode === 'deploying' });
+
+  const effectiveMode = mode === 'deploying' && deployComplete && !deployError ? 'harness' : mode;
 
   // MCP: auto-list tools when server becomes ready, show hint in conversation
   const mcpFetchTriggeredRef = useRef(false);
@@ -388,7 +398,7 @@ export function DevScreen(props: DevScreenProps) {
                 onLaunchBrowser({ harnessName });
               } else {
                 setSelectedHarness(harnessName);
-                setMode('harness');
+                setMode('deploying');
               }
             }
           }
@@ -458,7 +468,11 @@ export function DevScreen(props: DevScreenProps) {
   // Return null while loading (harness mode doesn't need dev server config)
   if (
     !agentsLoaded ||
-    (mode !== 'select-agent' && mode !== 'harness' && !noAgentsError && (!configLoaded || !config))
+    (mode !== 'select-agent' &&
+      mode !== 'deploying' &&
+      mode !== 'harness' &&
+      !noAgentsError &&
+      (!configLoaded || !config))
   ) {
     return null;
   }
@@ -484,8 +498,26 @@ export function DevScreen(props: DevScreenProps) {
     );
   }
 
+  if (mode === 'deploying') {
+    return (
+      <Screen title="Dev Server" onExit={handleExit} helpText="Esc cancel">
+        <Panel title="Deploying Harness" fullWidth>
+          <Box flexDirection="column">
+            <StepProgress steps={deploySteps} />
+            {deployError && (
+              <Box flexDirection="column" marginTop={1}>
+                <Text color="red">Deploy failed: {deployError}</Text>
+                <Text dimColor>Press Esc to go back.</Text>
+              </Box>
+            )}
+          </Box>
+        </Panel>
+      </Screen>
+    );
+  }
+
   // If harness mode (preview), render the InvokeScreen with the pre-selected harness
-  if (preview && mode === 'harness') {
+  if (preview && effectiveMode === 'harness') {
     return <InvokeScreen isInteractive={true} onExit={handleExit} title="Dev" initialHarnessName={selectedHarness} />;
   }
 
