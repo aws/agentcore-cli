@@ -1,4 +1,4 @@
-import { ResourceNotFoundError, findConfigRoot, serializeResult, toError } from '../../lib';
+import { ResourceNotFoundError, ValidationError, findConfigRoot, serializeResult, toError } from '../../lib';
 import type { Result } from '../../lib/result';
 import type {
   Memory,
@@ -204,7 +204,7 @@ export class MemoryPrimitive extends BasePrimitive<AddMemoryOptions, RemovableMe
               });
 
               if (!validation.valid) {
-                throw new Error(validation.error);
+                throw new ValidationError(validation.error!);
               }
 
               const result = await this.add({

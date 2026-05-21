@@ -2,6 +2,7 @@ import {
   APP_DIR,
   MCP_APP_SUBDIR,
   ResourceNotFoundError,
+  ValidationError,
   findConfigRoot,
   requireConfigRoot,
   serializeResult,
@@ -323,7 +324,7 @@ export class GatewayTargetPrimitive extends BasePrimitive<AddGatewayTargetOption
         await runCliCommand('add.gateway-target', !!cliOptions.json, async () => {
           const validation = await validateAddGatewayTargetOptions(cliOptions);
           if (!validation.valid) {
-            throw new Error(validation.error);
+            throw new ValidationError(validation.error!);
           }
 
           // Map CLI flag values to internal types
