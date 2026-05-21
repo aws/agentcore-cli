@@ -86,6 +86,19 @@ export async function handleInvoke(context: InvokeContext, options: InvokeOption
     if (isHarnessInvoke) {
       return handleHarnessInvoke(project, targetState, targetConfig, selectedTargetName, options);
     }
+
+    if (harnessEntries.length > 0 && project.runtimes.length > 0 && !options.agentName) {
+      const runtimeNames = project.runtimes.map(a => a.name);
+      const harnessNames = harnessEntries.map(h => h.name);
+      return {
+        success: false,
+        error: new ValidationError(
+          `Project has both runtimes and harnesses. Specify one:\n` +
+            `  --runtime: ${runtimeNames.join(', ')}\n` +
+            `  --harness: ${harnessNames.join(', ')}`
+        ),
+      };
+    }
   }
 
   if (project.runtimes.length === 0) {

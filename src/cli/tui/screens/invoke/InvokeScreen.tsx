@@ -48,14 +48,14 @@ function formatConversation(
     // Skip empty assistant messages (placeholder before streaming starts)
     if (msg.role === 'assistant' && !msg.content) continue;
 
-    if (msg.isHint) {
-      lines.push({ text: msg.content, color: 'gray' });
-    } else if (msg.role === 'user' && msg.isExec) {
+    if (msg.role === 'user' && msg.isExec) {
       lines.push({ text: msg.content, color: 'magenta' });
     } else if (msg.role === 'user') {
       lines.push({ text: `> ${msg.content}`, color: 'blue' });
     } else if (msg.isExec) {
       lines.push({ text: msg.content });
+    } else if (msg.isHint) {
+      lines.push({ text: msg.content, color: 'gray' });
     } else if (msg.parts && msg.parts.length > 0) {
       // Rich AGUI rendering: render each part with distinct visual treatment
       for (const part of msg.parts) {
