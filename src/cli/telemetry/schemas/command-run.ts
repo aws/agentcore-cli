@@ -182,6 +182,7 @@ export const COMMAND_SCHEMAS = {
   help: NoAttrs,
   'remove.all': NoAttrs,
   'remove.agent': NoAttrs,
+  'remove.harness': NoAttrs,
   'remove.memory': NoAttrs,
   'remove.credential': NoAttrs,
   'remove.evaluator': NoAttrs,

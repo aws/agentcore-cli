@@ -30,11 +30,21 @@ export const DISTRO_CONFIG = {
   },
 } as const;
 
+export function getNpmDistTag(): string {
+  return PACKAGE_VERSION.includes('-') ? 'preview' : 'latest';
+}
+
 /**
  * Get the current distribution configuration.
  */
 export function getDistroConfig() {
-  return DISTRO_CONFIG[DISTRO_MODE];
+  const base = DISTRO_CONFIG[DISTRO_MODE];
+  const distTag = getNpmDistTag();
+  return {
+    ...base,
+    distTag,
+    installCommand: base.installCommand.replace('@latest', `@${distTag}`),
+  };
 }
 
 /**

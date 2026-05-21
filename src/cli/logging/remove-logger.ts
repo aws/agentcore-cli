@@ -9,6 +9,7 @@ export interface RemoveLoggerOptions {
   /** Type of resource being removed */
   resourceType:
     | 'agent'
+    | 'harness'
     | 'memory'
     | 'credential'
     | 'gateway'

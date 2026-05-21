@@ -1,9 +1,16 @@
-import type { AgentCoreCliMcpDefs, AgentCoreProjectSpec, AwsDeploymentTarget, DeployedState } from '../../../schema';
+import type {
+  AgentCoreCliMcpDefs,
+  AgentCoreProjectSpec,
+  AwsDeploymentTarget,
+  DeployedState,
+  HarnessSpec,
+} from '../../../schema';
 import {
   AgentCoreCliMcpDefsSchema,
   AgentCoreProjectSpecSchema,
   AgentCoreRegionSchema,
   AwsDeploymentTargetsSchema,
+  HarnessSpecSchema,
   createValidatedDeployedStateSchema,
 } from '../../../schema';
 import {
@@ -229,6 +236,22 @@ export class ConfigIO {
   async writeMcpDefs(data: AgentCoreCliMcpDefs): Promise<void> {
     const filePath = this.pathResolver.getMcpDefsPath();
     await this.validateAndWrite(filePath, 'MCP Definitions', AgentCoreCliMcpDefsSchema, data);
+  }
+
+  /**
+   * Read and validate a harness specification file
+   */
+  async readHarnessSpec(harnessName: string): Promise<HarnessSpec> {
+    const filePath = this.pathResolver.getHarnessConfigPath(harnessName);
+    return this.readAndValidate(filePath, 'Harness Spec', HarnessSpecSchema);
+  }
+
+  /**
+   * Write and validate a harness specification file
+   */
+  async writeHarnessSpec(harnessName: string, data: HarnessSpec): Promise<void> {
+    const filePath = this.pathResolver.getHarnessConfigPath(harnessName);
+    await this.validateAndWrite(filePath, 'Harness Spec', HarnessSpecSchema, data);
   }
 
   /**

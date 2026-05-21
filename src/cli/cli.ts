@@ -1,6 +1,7 @@
 import { getOrCreateInstallationId } from '../lib/schemas/io/global-config';
 import { registerABTestCommand } from './commands/abtest';
 import { registerAdd } from './commands/add';
+import { registerAddTool } from './commands/add/tool-command';
 import { registerArchive } from './commands/archive';
 import { registerConfigBundle } from './commands/config-bundle';
 import { registerCreate } from './commands/create';
@@ -16,6 +17,7 @@ import { registerPackage } from './commands/package';
 import { registerPause, registerPromote } from './commands/pause';
 import { registerRecommendations } from './commands/recommendations';
 import { registerRemove } from './commands/remove';
+import { registerRemoveTool } from './commands/remove/tool-command';
 import { registerResume } from './commands/resume';
 import { registerRun } from './commands/run';
 import { registerStatus } from './commands/status';
@@ -25,6 +27,7 @@ import { registerTraces } from './commands/traces';
 import { registerUpdate } from './commands/update';
 import { registerValidate } from './commands/validate';
 import { PACKAGE_VERSION } from './constants';
+import { isPreviewEnabled } from './feature-flags';
 import { ALL_PRIMITIVES } from './primitives';
 import { TelemetryClientAccessor } from './telemetry';
 import { App } from './tui/App';
@@ -204,6 +207,12 @@ export function registerCommands(program: Command) {
   // Register primitive subcommands (add agent, remove agent, add memory, etc.)
   for (const primitive of ALL_PRIMITIVES) {
     primitive.registerCommands(addCmd, removeCmd);
+  }
+
+  // Register standalone add/remove subcommands (preview-only)
+  if (isPreviewEnabled()) {
+    registerAddTool(addCmd);
+    registerRemoveTool(removeCmd);
   }
 
   // Register AB test detail command

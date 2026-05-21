@@ -1,12 +1,13 @@
 import { type Result, ValidationError, serializeResult } from '../../../lib';
 import { getErrorMessage } from '../../errors';
+import { isPreviewEnabled } from '../../feature-flags';
 import { withCommandRunTelemetry } from '../../telemetry/cli-command-run.js';
 import { AgentProtocol, AuthType, standardize } from '../../telemetry/schemas/common-shapes.js';
 import { COMMAND_DESCRIPTIONS } from '../../tui/copy';
 import { requireProject, requireTTY } from '../../tui/guards';
 import { InvokeScreen } from '../../tui/screens/invoke';
 import { parseHeaderFlags } from '../shared/header-utils';
-import { type InvokeContext, handleInvoke, loadInvokeConfig } from './action';
+import { type InvokeContext, handleHarnessInvokeByArn, handleInvoke, loadInvokeConfig } from './action';
 import { resolvePrompt } from './resolve-prompt';
 import type { InvokeOptions, InvokeResult } from './types';
 import { validateInvokeOptions } from './validate';
@@ -45,10 +46,30 @@ async function handleInvokeCLI(options: InvokeOptions, preloadedContext?: Invoke
   let spinner: NodeJS.Timeout | undefined;
 
   try {
+    // Preview: direct harness invoke by ARN (no project required)
+    if (isPreviewEnabled() && options.harnessArn) {
+      const region = options.region ?? process.env.AWS_REGION ?? process.env.AWS_DEFAULT_REGION;
+      if (!region) {
+        const msg = '--region is required with --harness-arn (or set AWS_REGION)';
+        if (options.json) {
+          console.log(JSON.stringify({ success: false, error: msg }));
+        } else {
+          console.error(msg);
+        }
+        process.exit(1);
+      }
+      return handleHarnessInvokeByArn(options.harnessArn, region, options);
+    }
+
     const context = preloadedContext ?? (await loadInvokeConfig());
 
     // Show spinner for non-streaming, non-json, non-exec invocations
-    if (!options.stream && !options.json && !options.exec) {
+    // Harness invoke always streams directly to stdout, so skip spinner for harness
+    const isHarness =
+      isPreviewEnabled() &&
+      (options.harnessName != null ||
+        ((context.project.harnesses ?? []).length > 0 && context.project.runtimes.length === 0));
+    if (!options.stream && !options.json && !options.exec && !isHarness) {
       spinner = startSpinner('Invoking agent...');
     }
 
@@ -127,6 +148,30 @@ export const registerInvoke = (program: Command) => {
       [] as string[]
     )
     .option('--bearer-token <token>', 'Bearer token for CUSTOM_JWT auth (bypasses SigV4) [non-interactive]')
+    .option('--harness <name>', 'Select specific harness to invoke [non-interactive] [preview]')
+    .option('--harness-arn <arn>', 'Invoke a harness by ARN (no project required) [non-interactive] [preview]')
+    .option('--region <region>', 'AWS region (required with --harness-arn when no project) [non-interactive] [preview]')
+    .option('--verbose', 'Print verbose streaming JSON events (harness only) [non-interactive] [preview]')
+    .option('--model-id <id>', 'Override model for this invocation (harness only) [non-interactive] [preview]')
+    .option(
+      '--model-provider <provider>',
+      'Override model provider: bedrock, open_ai, gemini (harness only) [non-interactive] [preview]'
+    )
+    .option('--api-key-arn <arn>', 'Override API key ARN for open_ai/gemini (harness only) [non-interactive] [preview]')
+    .option('--tools <tools>', 'Override tools, comma-separated (harness only) [non-interactive] [preview]')
+    .option('--max-iterations <n>', 'Override max iterations (harness only) [non-interactive] [preview]', parseInt)
+    .option('--max-tokens <n>', 'Override max tokens (harness only) [non-interactive] [preview]', parseInt)
+    .option(
+      '--harness-timeout <seconds>',
+      'Override timeout seconds (harness only) [non-interactive] [preview]',
+      parseInt
+    )
+    .option('--system-prompt <text>', 'Override system prompt (harness only) [non-interactive] [preview]')
+    .option(
+      '--allowed-tools <tools>',
+      'Override allowed tools, comma-separated (harness only) [non-interactive] [preview]'
+    )
+    .option('--actor-id <id>', 'Override memory actor ID (harness only) [non-interactive] [preview]')
     .action(
       async (
         positionalPrompt: string | undefined,
@@ -145,10 +190,27 @@ export const registerInvoke = (program: Command) => {
           timeout?: number;
           header?: string[];
           bearerToken?: string;
+          harness?: string;
+          harnessArn?: string;
+          region?: string;
+          verbose?: boolean;
+          modelId?: string;
+          modelProvider?: string;
+          apiKeyArn?: string;
+          tools?: string;
+          maxIterations?: number;
+          maxTokens?: number;
+          harnessTimeout?: number;
+          systemPrompt?: string;
+          allowedTools?: string;
+          actorId?: string;
         }
       ) => {
         try {
-          requireProject();
+          // Skip requireProject when --harness-arn provided (preview mode)
+          if (!(isPreviewEnabled() && cliOptions.harnessArn)) {
+            requireProject();
+          }
 
           // Load config once for protocol resolution and to pass into handleInvokeCLI
           let invokeContext: InvokeContext | undefined;
@@ -182,7 +244,10 @@ export const registerInvoke = (program: Command) => {
             cliOptions.runtime ||
             cliOptions.tool ||
             cliOptions.exec ||
-            cliOptions.bearerToken
+            cliOptions.bearerToken ||
+            cliOptions.harness ||
+            cliOptions.harnessArn ||
+            cliOptions.verbose
           ) {
             const result = await withCommandRunTelemetry(
               'invoke',
@@ -220,6 +285,20 @@ export const registerInvoke = (program: Command) => {
                   timeout: cliOptions.timeout,
                   headers,
                   bearerToken: cliOptions.bearerToken,
+                  harnessName: cliOptions.harness,
+                  harnessArn: cliOptions.harnessArn,
+                  region: cliOptions.region,
+                  verbose: cliOptions.verbose,
+                  modelId: cliOptions.modelId,
+                  modelProvider: cliOptions.modelProvider,
+                  apiKeyArn: cliOptions.apiKeyArn,
+                  tools: cliOptions.tools,
+                  maxIterations: cliOptions.maxIterations,
+                  maxTokens: cliOptions.maxTokens,
+                  harnessTimeout: cliOptions.harnessTimeout,
+                  systemPrompt: cliOptions.systemPrompt,
+                  allowedTools: cliOptions.allowedTools,
+                  actorId: cliOptions.actorId,
                 };
 
                 return handleInvokeCLI(options, invokeContext);

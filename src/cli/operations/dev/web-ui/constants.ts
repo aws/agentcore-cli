@@ -16,3 +16,9 @@ export interface AgentError {
   message: string;
   timestamp: number;
 }
+
+export interface HarnessInfo {
+  name: string;
+  harnessArn: string;
+  region: string;
+}

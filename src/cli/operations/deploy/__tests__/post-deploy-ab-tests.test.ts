@@ -69,6 +69,7 @@ function makeProjectSpec(abTests: AgentCoreProjectSpec['abTests'] = []): AgentCo
     configBundles: [],
     httpGateways: [],
     abTests,
+    harnesses: [],
   };
 }
 

@@ -8,6 +8,7 @@ import {
 } from '../../../lib';
 import { getErrorMessage } from '../../errors';
 import { detectContainerRuntime } from '../../external-requirements';
+import { isPreviewEnabled } from '../../feature-flags';
 import { ExecLogger } from '../../logging';
 import {
   callMcpTool,
@@ -32,8 +33,9 @@ import { FatalError } from '../../tui/components';
 import { LayoutProvider } from '../../tui/context';
 import { COMMAND_DESCRIPTIONS } from '../../tui/copy';
 import { requireProject, requireTTY } from '../../tui/guards';
+import { runCliDeploy } from '../deploy/progress';
 import { parseHeaderFlags } from '../shared/header-utils';
-import { runBrowserMode } from './browser-mode';
+import { launchTuiDevScreenWithPicker, runBrowserMode } from './browser-mode';
 import type { Command } from '@commander-js/extra-typings';
 import { spawn } from 'child_process';
 import { render } from 'ink';
@@ -176,6 +178,7 @@ export const registerDev = (program: Command) => {
     .option('--exec', 'Execute a shell command in the running dev container (Container agents only) [non-interactive]')
     .option('--tool <name>', 'MCP tool name (used with "call-tool" prompt) [non-interactive]')
     .option('--input <json>', 'MCP tool arguments as JSON (used with --tool) [non-interactive]')
+    .option('--skip-deploy', 'Skip automatic resource deployment before starting dev server [preview]')
     .option(
       '-H, --header <header>',
       'Custom header to forward to the agent (format: "Name: Value", repeatable) [non-interactive]',
@@ -298,8 +301,13 @@ export const registerDev = (program: Command) => {
           process.exit(1);
         }
 
-        if (!project.runtimes || project.runtimes.length === 0) {
-          render(<FatalError message="No agents defined in project." suggestedCommand="agentcore add agent" />);
+        const hasRuntimes = project.runtimes && project.runtimes.length > 0;
+        const hasHarnesses = isPreviewEnabled() && project.harnesses && project.harnesses.length > 0;
+
+        if (!hasRuntimes && !hasHarnesses) {
+          render(
+            <FatalError message="No agents or harnesses defined in project." suggestedCommand="agentcore add agent" />
+          );
           process.exit(1);
         }
 
@@ -312,8 +320,10 @@ export const registerDev = (program: Command) => {
         }
 
         const supportedAgents = getDevSupportedAgents(project);
-        if (supportedAgents.length === 0) {
-          render(<FatalError message="No agents support dev mode. Dev mode requires an agent with an entrypoint." />);
+        if (supportedAgents.length === 0 && !hasHarnesses) {
+          render(
+            <FatalError message="No agents support dev mode. Dev mode requires an agent with an entrypoint or a harness." />
+          );
           process.exit(1);
         }
 
@@ -332,6 +342,22 @@ export const registerDev = (program: Command) => {
 
         // If --logs provided, run non-interactive mode
         if (opts.logs) {
+          // Preview: harness-only projects need deploy then print invoke instructions
+          if (isPreviewEnabled() && supportedAgents.length === 0 && hasHarnesses) {
+            if (!opts.skipDeploy) {
+              await runCliDeploy();
+            }
+            const harnessNames = (project.harnesses ?? []).map(h => h.name);
+            console.log('Harness dev runs against the deployed service (no local server).');
+            console.log(`If you changed the harness config, redeploy to pick up changes: agentcore deploy`);
+            console.log(`\nInvoke your harness:`);
+            for (const name of harnessNames) {
+              console.log(`  agentcore invoke --harness ${name} "your prompt"`);
+            }
+            console.log(`\nOr use the interactive TUI: agentcore dev`);
+            process.exit(0);
+          }
+
           // Require --agent if multiple agents
           if (project.runtimes.length > 1 && !opts.runtime) {
             const names = project.runtimes.map(a => a.name).join(', ');
@@ -368,6 +394,11 @@ export const registerDev = (program: Command) => {
 
           // Get provider info from agent config
           const providerInfo = '(see agent code)';
+
+          // Deploy resources before starting dev server (only when harnesses need it, preview mode)
+          if (isPreviewEnabled() && !opts.skipDeploy && hasHarnesses) {
+            await runCliDeploy();
+          }
 
           console.log(`Starting dev server...`);
           console.log(`Agent: ${config.agentName}`);
@@ -462,6 +493,7 @@ export const registerDev = (program: Command) => {
                     port={port}
                     agentName={opts.runtime}
                     headers={headers}
+                    skipDeploy={opts.skipDeploy}
                   />
                 </LayoutProvider>
               );
@@ -476,11 +508,46 @@ export const registerDev = (program: Command) => {
           process.exit(0);
         }
 
-        // Default: launch web UI in browser
-        // NOTE: Do not copy this pattern. runBrowserMode blocks forever (internal
-        // await new Promise(() => {})) so we cannot use withCommandRunTelemetry here.
-        // We emit telemetry eagerly before the blocking call.
-        {
+        // Preview: show TUI deploy progress, then launch Agent Inspector in the browser
+        if (isPreviewEnabled()) {
+          const pickerResult = await launchTuiDevScreenWithPicker(workingDir, {
+            skipDeploy: opts.skipDeploy,
+          });
+
+          if (pickerResult != null) {
+            const client = await TelemetryClientAccessor.get().catch(() => undefined);
+            const devAttrs = {
+              action: 'server' as const,
+              ui_mode: 'browser' as const,
+              has_stream: false,
+              agent_protocol: standardize(AgentProtocol, (targetDevAgent?.protocol ?? 'http').toLowerCase()),
+              invoke_count: 0,
+            };
+            if (client) {
+              client.emit('cli.command_run', 0, {
+                command_group: 'dev',
+                command: 'dev',
+                exit_reason: 'success',
+                dev_action: devAttrs.action,
+                ...devAttrs,
+              });
+              await client.flush();
+            }
+            await runBrowserMode({
+              workingDir,
+              project,
+              port,
+              agentName: pickerResult.agentName,
+              harnessName: pickerResult.harnessName,
+              otelEnvVars,
+              collector,
+            });
+          }
+        } else {
+          // GA: Default: launch web UI in browser
+          // NOTE: Do not copy this pattern. runBrowserMode blocks forever (internal
+          // await new Promise(() => {})) so we cannot use withCommandRunTelemetry here.
+          // We emit telemetry eagerly before the blocking call.
           const client = await TelemetryClientAccessor.get().catch(() => undefined);
           if (client) {
             client.emit('cli.command_run', 0, {

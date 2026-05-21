@@ -1,6 +1,6 @@
 import { ONE_DAY_MS } from '../lib/time-constants.js';
 import { compareVersions, fetchLatestVersion } from './commands/update/action.js';
-import { PACKAGE_VERSION } from './constants.js';
+import { PACKAGE_VERSION, getDistroConfig } from './constants.js';
 import { mkdir, readFile, writeFile } from 'fs/promises';
 import { homedir } from 'os';
 import { join } from 'path';
@@ -70,9 +70,10 @@ export function printUpdateNotification(result: UpdateCheckResult): void {
   const yellow = '\x1b[33m';
   const cyan = '\x1b[36m';
   const reset = '\x1b[0m';
+  const { installCommand } = getDistroConfig();
 
   process.stderr.write(
     `\n${yellow}Update available:${reset} ${PACKAGE_VERSION} → ${cyan}${result.latestVersion}${reset}\n` +
-      `Run ${cyan}\`npm install -g @aws/agentcore@latest\`${reset} to update.\n`
+      `Run ${cyan}\`${installCommand}\`${reset} to update.\n`
   );
 }

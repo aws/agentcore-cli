@@ -2,6 +2,7 @@ import type { Result } from '../../../lib/result';
 
 export type ResourceType =
   | 'agent'
+  | 'harness'
   | 'gateway'
   | 'gateway-target'
   | 'runtime-endpoint'

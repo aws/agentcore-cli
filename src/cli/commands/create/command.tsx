@@ -1,6 +1,7 @@
 import { getWorkingDirectory, serializeResult } from '../../../lib';
 import type {
   BuildType,
+  HarnessModelProvider,
   ModelProvider,
   NetworkMode,
   ProtocolMode,
@@ -9,6 +10,8 @@ import type {
 } from '../../../schema';
 import { LIFECYCLE_TIMEOUT_MAX, LIFECYCLE_TIMEOUT_MIN } from '../../../schema';
 import { getErrorMessage } from '../../errors';
+import { isPreviewEnabled } from '../../feature-flags';
+import { harnessPrimitive } from '../../primitives/registry';
 import { runCliCommand } from '../../telemetry/cli-command-run.js';
 import {
   AgentFramework,
@@ -26,6 +29,8 @@ import { requireTTY } from '../../tui/guards';
 import { CreateScreen } from '../../tui/screens/create';
 import { parseCommaSeparatedList } from '../shared/vpc-utils';
 import { type ProgressCallback, createProject, createProjectWithAgent, getDryRunInfo } from './action';
+import { createProjectWithHarness } from './harness-action';
+import { normalizeHarnessModelProvider, validateCreateHarnessOptions } from './harness-validate';
 import type { CreateOptions } from './types';
 import { validateCreateOptions } from './validate';
 import type { Command } from '@commander-js/extra-typings';
@@ -83,6 +88,136 @@ function printCreateSummary(
   console.log(`  ${cyan}cd ${projectName}${reset}`);
   console.log(`  ${cyan}agentcore${reset}`);
   console.log('');
+}
+
+/** Flags that trigger the agent/runtime path (preview mode) */
+const AGENT_PATH_FLAGS = ['framework', 'language', 'build', 'protocol', 'type', 'agentId', 'agentAliasId'] as const;
+
+/** Flags that are harness-only (preview mode) */
+const HARNESS_ONLY_FLAGS = [
+  'modelId',
+  'apiKeyArn',
+  'maxIterations',
+  'maxTokens',
+  'timeout',
+  'truncationStrategy',
+] as const;
+
+/** Determines if the agent path should be taken based on provided flags (preview mode) */
+function isAgentPath(options: CreateOptions): boolean {
+  return AGENT_PATH_FLAGS.some(flag => options[flag] !== undefined);
+}
+
+/** Determines if any harness-only flags are present (preview mode) */
+function hasHarnessOnlyFlags(options: CreateOptions): boolean {
+  return HARNESS_ONLY_FLAGS.some(flag => options[flag] !== undefined);
+}
+
+/** Print completion summary after successful harness create (preview mode) */
+function printCreateHarnessSummary(projectName: string, harnessName: string): void {
+  const green = '\x1b[32m';
+  const cyan = '\x1b[36m';
+  const dim = '\x1b[2m';
+  const reset = '\x1b[0m';
+
+  console.log('');
+
+  // Created summary
+  console.log(`${dim}Created:${reset}`);
+  console.log(`  ${projectName}/`);
+  console.log(`    agentcore/              ${dim}Config and CDK project${reset}`);
+  console.log(`    app/${harnessName}/  ${dim}Harness config${reset}`);
+  console.log('');
+
+  // Success and next steps
+  console.log(`${green}Harness project created successfully!${reset}`);
+  console.log('');
+  console.log('To continue:');
+  console.log(`  ${cyan}cd ${projectName}${reset}`);
+  console.log(`  ${cyan}agentcore deploy${reset}`);
+  console.log('');
+}
+
+/** Handle CLI mode for the harness path (preview mode) */
+async function handleCreateHarnessCLI(options: CreateOptions): Promise<void> {
+  const cwd = options.outputDir ?? getWorkingDirectory();
+  const name = options.name ?? options.projectName;
+  const projectName = options.projectName ?? name;
+
+  const validation = validateCreateHarnessOptions(
+    {
+      name,
+      projectName,
+      modelProvider: options.modelProvider,
+      modelId: options.modelId,
+      apiKeyArn: options.apiKeyArn,
+    },
+    cwd
+  );
+  if (!validation.valid) {
+    if (options.json) {
+      console.log(JSON.stringify({ success: false, error: validation.error }));
+    } else {
+      console.error(validation.error);
+    }
+    process.exit(1);
+  }
+
+  // Progress callback
+  const green = '\x1b[32m';
+  const reset = '\x1b[0m';
+  const onProgress: ProgressCallback | undefined = options.json
+    ? undefined
+    : (step, status) => {
+        if (status === 'done') console.log(`${green}[done]${reset}  ${step}`);
+        else if (status === 'error') console.log(`\x1b[31m[error]${reset} ${step}`);
+      };
+
+  const provider = (
+    options.modelProvider ? normalizeHarnessModelProvider(options.modelProvider) : 'bedrock'
+  ) as HarnessModelProvider;
+  const defaultModelIds: Record<string, string> = {
+    bedrock: 'global.anthropic.claude-sonnet-4-6',
+    open_ai: 'gpt-5',
+    gemini: 'gemini-2.5-flash',
+  };
+  const modelId = options.modelId ?? defaultModelIds[provider] ?? 'global.anthropic.claude-sonnet-4-6';
+
+  const containerOption = harnessPrimitive!.parseContainerFlag(options.container);
+
+  const result = await createProjectWithHarness({
+    name: name!,
+    projectName: projectName!,
+    cwd,
+    modelProvider: provider,
+    modelId,
+    apiKeyArn: options.apiKeyArn,
+    containerUri: containerOption.containerUri,
+    dockerfilePath: containerOption.dockerfilePath,
+    skipMemory: options.harnessMemory === false,
+    maxIterations: options.maxIterations ? Number(options.maxIterations) : undefined,
+    maxTokens: options.maxTokens ? Number(options.maxTokens) : undefined,
+    timeoutSeconds: options.timeout ? Number(options.timeout) : undefined,
+    truncationStrategy: options.truncationStrategy as 'sliding_window' | 'summarization' | undefined,
+    networkMode: options.networkMode as NetworkMode | undefined,
+    subnets: parseCommaSeparatedList(options.subnets),
+    securityGroups: parseCommaSeparatedList(options.securityGroups),
+    idleTimeout: options.idleTimeout ? Number(options.idleTimeout) : undefined,
+    maxLifetime: options.maxLifetime ? Number(options.maxLifetime) : undefined,
+    sessionStoragePath: options.sessionStorageMountPath,
+    skipGit: options.skipGit,
+    skipInstall: options.skipInstall,
+    onProgress,
+  });
+
+  if (options.json) {
+    console.log(JSON.stringify(result));
+  } else if (result.success) {
+    printCreateHarnessSummary(projectName!, name!);
+  } else {
+    console.error(result.error);
+  }
+  process.exit(result.success ? 0 : 1);
 }
 
 /** Handle CLI mode with progress output */
@@ -256,44 +391,142 @@ export const registerCreate = (program: Command) => {
     .option('--skip-install', 'Skip all dependency installation (npm install, uv sync) [non-interactive]')
     .option('--dry-run', 'Preview what would be created without making changes [non-interactive]')
     .option('--json', 'Output as JSON [non-interactive]')
+    .option('--model-id <id>', 'Model ID for harness [non-interactive] [preview]')
+    .option('--api-key-arn <arn>', 'API key ARN for non-Bedrock harness providers [non-interactive] [preview]')
+    .option('--no-harness-memory', 'Skip auto-creating memory for harness [non-interactive] [preview]')
+    .option('--max-iterations <n>', 'Max agent loop iterations (harness) [non-interactive] [preview]')
+    .option('--max-tokens <n>', 'Max tokens per iteration (harness) [non-interactive] [preview]')
+    .option('--timeout <seconds>', 'Max execution duration in seconds (harness) [non-interactive] [preview]')
+    .option(
+      '--truncation-strategy <strategy>',
+      'Truncation strategy: sliding_window or summarization (harness) [non-interactive] [preview]'
+    )
+    .option('--container <uri-or-path>', 'Container image URI or Dockerfile path (harness) [non-interactive] [preview]')
     .action(async options => {
       try {
-        // Apply defaults if --defaults flag is set
-        if (options.defaults) {
-          options.language = options.language ?? 'Python';
-          options.build = options.build ?? 'CodeZip';
-          options.framework = options.framework ?? 'Strands';
-          options.modelProvider = options.modelProvider ?? 'Bedrock';
-          options.memory = options.memory ?? 'none';
-        }
+        if (isPreviewEnabled()) {
+          // Preview mode: fork between harness and agent paths
+          const hasAnyFlag = Boolean(
+            options.name ??
+            options.projectName ??
+            (options.agent === false ? true : null) ??
+            options.defaults ??
+            options.build ??
+            options.language ??
+            options.framework ??
+            options.modelProvider ??
+            options.apiKey ??
+            options.memory ??
+            options.protocol ??
+            options.type ??
+            options.agentId ??
+            options.agentAliasId ??
+            options.region ??
+            options.networkMode ??
+            options.subnets ??
+            options.securityGroups ??
+            options.idleTimeout ??
+            options.maxLifetime ??
+            options.outputDir ??
+            options.skipGit ??
+            options.skipPythonSetup ??
+            options.skipInstall ??
+            options.dryRun ??
+            options.json ??
+            options.modelId ??
+            options.apiKeyArn ??
+            (options.harnessMemory === false ? true : null) ??
+            options.maxIterations ??
+            options.maxTokens ??
+            options.timeout ??
+            options.truncationStrategy
+          );
 
-        // Any flag triggers non-interactive CLI mode
-        const hasAnyFlag = Boolean(
-          options.name ??
-          options.projectName ??
-          (options.agent === false ? true : null) ??
-          options.defaults ??
-          options.build ??
-          options.language ??
-          options.framework ??
-          options.modelProvider ??
-          options.apiKey ??
-          options.memory ??
-          options.outputDir ??
-          options.skipGit ??
-          options.skipPythonSetup ??
-          options.skipInstall ??
-          options.dryRun ??
-          options.json
-        );
+          if (!hasAnyFlag) {
+            requireTTY();
+            handleCreateTUI();
+            return;
+          }
 
-        if (hasAnyFlag) {
-          // Default language to Python (only supported option) for CLI mode
-          options.language = options.language ?? 'Python';
-          await handleCreateCLI(options as CreateOptions);
+          const opts = options as CreateOptions;
+
+          // Conflict detection: agent-path flags + harness-only flags
+          if (isAgentPath(opts) && hasHarnessOnlyFlags(opts)) {
+            const error =
+              'Cannot mix agent-path flags (--framework, --language, etc.) with harness-only flags (--model-id, --max-iterations, etc.)';
+            if (opts.json) {
+              console.log(JSON.stringify({ success: false, error }));
+            } else {
+              console.error(error);
+            }
+            process.exit(1);
+          }
+
+          // --no-agent: bare project (no harness, no agent)
+          if (opts.agent === false) {
+            opts.language = opts.language ?? 'Python';
+            await handleCreateCLI(opts);
+            return;
+          }
+
+          // Agent path: any agent-specific flag triggers it
+          if (isAgentPath(opts)) {
+            if (opts.defaults) {
+              opts.language = opts.language ?? 'Python';
+              opts.build = opts.build ?? 'CodeZip';
+              opts.framework = opts.framework ?? 'Strands';
+              opts.modelProvider = opts.modelProvider ?? 'Bedrock';
+              opts.memory = opts.memory ?? 'none';
+            }
+            opts.language = opts.language ?? 'Python';
+            await handleCreateCLI(opts);
+            return;
+          }
+
+          // Harness path (default in preview mode)
+          if (!opts.json && !opts.modelProvider && !hasHarnessOnlyFlags(opts)) {
+            console.log('Creating a harness project (pass --framework to create an agent project instead).');
+          }
+          await handleCreateHarnessCLI(opts);
         } else {
-          requireTTY();
-          handleCreateTUI();
+          // GA mode: original behavior
+          // Apply defaults if --defaults flag is set
+          if (options.defaults) {
+            options.language = options.language ?? 'Python';
+            options.build = options.build ?? 'CodeZip';
+            options.framework = options.framework ?? 'Strands';
+            options.modelProvider = options.modelProvider ?? 'Bedrock';
+            options.memory = options.memory ?? 'none';
+          }
+
+          // Any flag triggers non-interactive CLI mode
+          const hasAnyFlag = Boolean(
+            options.name ??
+            options.projectName ??
+            (options.agent === false ? true : null) ??
+            options.defaults ??
+            options.build ??
+            options.language ??
+            options.framework ??
+            options.modelProvider ??
+            options.apiKey ??
+            options.memory ??
+            options.outputDir ??
+            options.skipGit ??
+            options.skipPythonSetup ??
+            options.skipInstall ??
+            options.dryRun ??
+            options.json
+          );
+
+          if (hasAnyFlag) {
+            // Default language to Python (only supported option) for CLI mode
+            options.language = options.language ?? 'Python';
+            await handleCreateCLI(options as CreateOptions);
+          } else {
+            requireTTY();
+            handleCreateTUI();
+          }
         }
       } catch (error) {
         render(<Text color="red">Error: {getErrorMessage(error)}</Text>);

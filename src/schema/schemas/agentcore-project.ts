@@ -17,6 +17,7 @@ import {
   EvaluatorNameSchema,
   KmsKeyArnSchema,
 } from './primitives/evaluator';
+import { HarnessNameSchema } from './primitives/harness';
 import { HttpGatewaySchema } from './primitives/http-gateway';
 import {
   DEFAULT_EPISODIC_REFLECTION_NAMESPACES,
@@ -73,6 +74,15 @@ export type { ABTestMode, TargetRef, GatewayFilter, PerVariantOnlineEvaluationCo
 export { ABTestModeSchema, TargetRefSchema, GatewayFilterSchema } from './primitives/ab-test';
 export type { HttpGatewayTarget } from './primitives/http-gateway';
 export { HttpGatewayTargetSchema } from './primitives/http-gateway';
+export type { HarnessGatewayOutboundAuth, HarnessModel, HarnessSpec, HarnessModelProvider } from './primitives/harness';
+export {
+  GatewayOAuthGrantTypeSchema,
+  HarnessGatewayOutboundAuthSchema,
+  HarnessNameSchema,
+  HarnessSpecSchema,
+  HarnessToolTypeSchema,
+  HarnessModelProviderSchema,
+} from './primitives/harness';
 
 // ============================================================================
 // ManagedBy Schema
@@ -232,6 +242,17 @@ export const EvaluatorSchema = z.object({
 export type Evaluator = z.infer<typeof EvaluatorSchema>;
 
 // ============================================================================
+// Harness Registry Schema
+// ============================================================================
+
+export const HarnessRegistryEntrySchema = z.object({
+  name: HarnessNameSchema,
+  path: z.string().min(1, 'Path to harness config directory is required'),
+});
+
+export type HarnessRegistryEntry = z.infer<typeof HarnessRegistryEntrySchema>;
+
+// ============================================================================
 // Project Schema (Top Level)
 // ============================================================================
 
@@ -366,6 +387,16 @@ export const AgentCoreProjectSpecSchema = z
         uniqueBy(
           gw => gw.name,
           name => `Duplicate HTTP gateway name: ${name}`
+        )
+      ),
+
+    harnesses: z
+      .array(HarnessRegistryEntrySchema)
+      .default([])
+      .superRefine(
+        uniqueBy(
+          harness => harness.name,
+          name => `Duplicate harness name: ${name}`
         )
       ),
   })

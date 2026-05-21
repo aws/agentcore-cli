@@ -1,5 +1,5 @@
 import { ConfigIO, ResourceNotFoundError, SecureCredentials, ValidationError, toError } from '../../../lib';
-import type { AgentCoreMcpSpec, DeployedState } from '../../../schema';
+import type { AgentCoreMcpSpec, DeployedState, HarnessDeployedState } from '../../../schema';
 import { applyTargetRegionToEnv } from '../../aws';
 import { validateAwsCredentials } from '../../aws/account';
 import { CdkToolkitWrapper, createSwitchableIoHost } from '../../cdk/toolkit-lib';
@@ -17,6 +17,7 @@ import {
   parseRuntimeEndpointOutputs,
 } from '../../cloudformation';
 import { getErrorMessage } from '../../errors';
+import { isPreviewEnabled } from '../../feature-flags';
 import { ExecLogger } from '../../logging';
 import {
   bootstrapEnvironment,
@@ -34,6 +35,7 @@ import {
   validateProject,
 } from '../../operations/deploy';
 import { formatTargetStatus, getGatewayTargetStatuses } from '../../operations/deploy/gateway-status';
+import { createDeploymentManager } from '../../operations/deploy/imperative';
 import { deleteOrphanedABTests, setupABTests } from '../../operations/deploy/post-deploy-ab-tests';
 import {
   resolveConfigBundleComponentKeys,
@@ -53,6 +55,7 @@ export interface ValidatedDeployOptions {
   diff?: boolean;
   onProgress?: (step: string, status: 'start' | 'success' | 'error') => void;
   onResourceEvent?: (message: string) => void;
+  onDeployMessage?: (message: string) => void;
 }
 
 const AGENT_NEXT_STEPS = ['agentcore invoke', 'agentcore status'];
@@ -463,6 +466,50 @@ export async function handleDeploy(options: ValidatedDeployOptions): Promise<Dep
       ) ?? {};
     const gateways = parseGatewayOutputs(outputs, gatewaySpecs);
 
+    endStep('success');
+
+    // Post-CDK: deploy imperative resources (harness) — preview mode only
+    let deployedHarnesses: Record<string, HarnessDeployedState> | undefined;
+    if (isPreviewEnabled()) {
+      const imperativeManager = createDeploymentManager();
+      const existingImperativeState: DeployedState = await configIO.readDeployedState().catch(() => ({ targets: {} }));
+      const imperativeContext = {
+        projectSpec: context.projectSpec,
+        target,
+        configIO,
+        deployedState: existingImperativeState,
+        cdkOutputs: outputs,
+        onProgress: (step: string, status: 'start' | 'done' | 'error') => {
+          logger.log(`${step}: ${status}`);
+        },
+      };
+
+      let harnessDeployError: string | undefined;
+      if (imperativeManager.hasDeployersForPhase('post-cdk', imperativeContext)) {
+        startStep('Deploy harnesses');
+        const postCdkResult = await imperativeManager.runPhase('post-cdk', imperativeContext);
+        const harnessResult = postCdkResult.results.get('harness');
+        if (harnessResult?.state) {
+          deployedHarnesses = harnessResult.state as Record<string, HarnessDeployedState>;
+        }
+        if (!postCdkResult.success) {
+          endStep('error', postCdkResult.error);
+          harnessDeployError = postCdkResult.error;
+        } else {
+          endStep('success');
+        }
+      }
+
+      if (harnessDeployError) {
+        logger.finalize(false);
+        return {
+          success: false,
+          error: new Error(`Harness deployment failed: ${harnessDeployError}`),
+          logPath: logger.getRelativeLogPath(),
+        };
+      }
+    }
+
     const existingState = await configIO.readDeployedState().catch(() => undefined);
     let deployedState = buildDeployedState({
       targetName: target.name,
@@ -477,6 +524,7 @@ export async function handleDeploy(options: ValidatedDeployOptions): Promise<Dep
       onlineEvalConfigs,
       policyEngines,
       policies,
+      harnesses: deployedHarnesses,
       runtimeEndpoints,
     });
     await configIO.writeDeployedState(deployedState);
@@ -655,7 +703,9 @@ export async function handleDeploy(options: ValidatedDeployOptions): Promise<Dep
     }
 
     // Post-deploy: Enable CloudWatch Transaction Search (non-blocking, silent)
-    const nextSteps = agentNames.length > 0 ? [...AGENT_NEXT_STEPS] : [...MEMORY_ONLY_NEXT_STEPS];
+    const hasHarnesses = isPreviewEnabled() && (context.projectSpec.harnesses ?? []).length > 0;
+    const hasInvokable = agentNames.length > 0 || hasHarnesses;
+    const nextSteps = hasInvokable ? [...AGENT_NEXT_STEPS] : [...MEMORY_ONLY_NEXT_STEPS];
     const notes: string[] = [];
     const hasPythonAgent =
       context.projectSpec.runtimes?.some(a => a.entrypoint?.endsWith('.py') || a.entrypoint?.includes('.py:')) ?? false;
