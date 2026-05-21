@@ -106,6 +106,15 @@ describe('global-config', () => {
       });
     });
 
+    it('does not overwrite malformed config', async () => {
+      await writeFile(tmp.configFile, '{ invalid json');
+
+      const ok = await updateGlobalConfig({ telemetry: { enabled: true } }, tmp.configDir, tmp.configFile);
+
+      expect(ok).toBe(false);
+      expect(await readFile(tmp.configFile, 'utf-8')).toBe('{ invalid json');
+    });
+
     it('returns false on write failures', async () => {
       const ok = await updateGlobalConfig(
         { telemetry: { enabled: true } },

@@ -52,7 +52,7 @@ export async function updateGlobalConfig(
   configFile = GLOBAL_CONFIG_FILE
 ): Promise<boolean> {
   try {
-    const existing = await readGlobalConfig(configFile);
+    const existing = await readGlobalConfigForUpdate(configFile);
     const merged: GlobalConfig = mergeConfig(existing, partial);
 
     await mkdir(configDir, { recursive: true });
@@ -60,6 +60,18 @@ export async function updateGlobalConfig(
     return true;
   } catch {
     return false;
+  }
+}
+
+async function readGlobalConfigForUpdate(configFile: string): Promise<GlobalConfig> {
+  try {
+    const data = await readFile(configFile, 'utf-8');
+    return GlobalConfigSchema.parse(JSON.parse(data));
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
+      return {};
+    }
+    throw error;
   }
 }
 
