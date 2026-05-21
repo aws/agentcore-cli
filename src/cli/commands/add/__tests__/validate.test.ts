@@ -1126,6 +1126,118 @@ describe('validate', () => {
       expect(result.valid).toBe(false);
       expect(result.error).toContain('does not match the expected schema');
     });
+
+    // Indexed keys: requires LTM strategy
+    it('rejects --indexed-key without any LTM strategy', () => {
+      const result = validateAddMemoryOptions({
+        ...validMemoryOptions,
+        strategies: undefined,
+        indexedKey: ['priority:NUMBER'],
+      });
+      expect(result.valid).toBe(false);
+      expect(result.error).toContain('requires at least one long-term memory strategy');
+    });
+
+    it('accepts --indexed-key with an LTM strategy', () => {
+      expect(
+        validateAddMemoryOptions({
+          ...validMemoryOptions,
+          strategies: 'SEMANTIC',
+          indexedKey: ['priority:NUMBER'],
+        })
+      ).toEqual({ valid: true });
+    });
+
+    it('rejects more than 10 indexed keys', () => {
+      const eleven = Array.from({ length: 11 }, (_, i) => `k${i}:STRING`);
+      const result = validateAddMemoryOptions({
+        ...validMemoryOptions,
+        strategies: 'SEMANTIC',
+        indexedKey: eleven,
+      });
+      expect(result.valid).toBe(false);
+      expect(result.error).toContain('Maximum 10 indexed keys');
+    });
+
+    it('accepts exactly 10 indexed keys (boundary)', () => {
+      const ten = Array.from({ length: 10 }, (_, i) => `k${i}:STRING`);
+      expect(validateAddMemoryOptions({ ...validMemoryOptions, strategies: 'SEMANTIC', indexedKey: ten })).toEqual({
+        valid: true,
+      });
+    });
+
+    it('rejects an empty key (":STRING")', () => {
+      const result = validateAddMemoryOptions({
+        ...validMemoryOptions,
+        strategies: 'SEMANTIC',
+        indexedKey: [':STRING'],
+      });
+      expect(result.valid).toBe(false);
+      expect(result.error).toContain('Key name cannot be empty');
+    });
+
+    it('rejects a key longer than 128 characters', () => {
+      const longKey = 'a'.repeat(129);
+      const result = validateAddMemoryOptions({
+        ...validMemoryOptions,
+        strategies: 'SEMANTIC',
+        indexedKey: [`${longKey}:STRING`],
+      });
+      expect(result.valid).toBe(false);
+      expect(result.error).toContain('exceeds maximum length');
+    });
+
+    it('rejects an invalid type token', () => {
+      const result = validateAddMemoryOptions({
+        ...validMemoryOptions,
+        strategies: 'SEMANTIC',
+        indexedKey: ['priority:INTEGER'],
+      });
+      expect(result.valid).toBe(false);
+      expect(result.error).toContain('Invalid type');
+    });
+
+    it('rejects duplicate keys', () => {
+      const result = validateAddMemoryOptions({
+        ...validMemoryOptions,
+        strategies: 'SEMANTIC',
+        indexedKey: ['priority:NUMBER', 'priority:STRING'],
+      });
+      expect(result.valid).toBe(false);
+      expect(result.error).toContain('Duplicate indexed key');
+    });
+
+    it('rejects whitespace-only key', () => {
+      const result = validateAddMemoryOptions({
+        ...validMemoryOptions,
+        strategies: 'SEMANTIC',
+        indexedKey: ['   :STRING'],
+      });
+      expect(result.valid).toBe(false);
+      expect(result.error).toContain('whitespace');
+    });
+
+    it('rejects malformed entry without colon', () => {
+      const result = validateAddMemoryOptions({
+        ...validMemoryOptions,
+        strategies: 'SEMANTIC',
+        indexedKey: ['priority'],
+      });
+      expect(result.valid).toBe(false);
+      expect(result.error).toContain('Expected key:TYPE');
+    });
+
+    it.each([
+      ['user.email:STRING'],
+      ['tag/v2:STRINGLIST'],
+      ['kebab-case:STRING'],
+      ['x-custom:STRING'],
+      ['has:colons:in:key:NUMBER'],
+    ])('accepts punctuation-rich key %s', raw => {
+      expect(validateAddMemoryOptions({ ...validMemoryOptions, strategies: 'SEMANTIC', indexedKey: [raw] })).toEqual({
+        valid: true,
+      });
+    });
   });
 
   describe('validateAddCredentialOptions', () => {

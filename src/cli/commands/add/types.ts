@@ -96,6 +96,7 @@ export interface AddMemoryOptions {
   dataStreamArn?: string;
   contentLevel?: string;
   streamDeliveryResources?: string;
+  indexedKey?: string[];
   json?: boolean;
 }
 

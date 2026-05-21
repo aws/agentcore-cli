@@ -1,6 +1,7 @@
 import { ResourceNotFoundError, ValidationError, findConfigRoot, serializeResult, toError } from '../../lib';
 import type { Result } from '../../lib/result';
 import type {
+  IndexedKey,
   Memory,
   MemoryStrategy,
   MemoryStrategyType,
@@ -16,6 +17,7 @@ import {
   StreamDeliveryResourcesSchema,
 } from '../../schema';
 import { DEFAULT_DELIVERY_TYPE, validateAddMemoryOptions } from '../commands/add/validate';
+import { parseIndexedKeyArg } from '../commands/shared/indexed-key-parser';
 import { getErrorMessage } from '../errors';
 import type { RemovalPreview, SchemaChange } from '../operations/remove/types';
 import { runCliCommand } from '../telemetry/cli-command-run.js';
@@ -39,6 +41,8 @@ export interface AddMemoryOptions {
   contentLevel?: string;
   // Raw JSON for advanced/multi-target configurations. Takes precedence over flat flags.
   streamDeliveryResources?: string;
+  // Repeatable flag values as "key:TYPE" strings
+  indexedKey?: string[];
 }
 
 /**
@@ -75,11 +79,14 @@ export class MemoryPrimitive extends BasePrimitive<AddMemoryOptions, RemovableMe
             })
           : undefined;
 
+      const indexedKeys = options.indexedKey ? this.parseIndexedKeys(options.indexedKey) : undefined;
+
       const memory = await this.createMemory({
         name: options.name,
         eventExpiryDuration: options.expiry ?? DEFAULT_EVENT_EXPIRY,
         strategies,
         streamDeliveryResources,
+        indexedKeys,
       });
 
       return { success: true, memoryName: memory.name };
@@ -172,6 +179,12 @@ export class MemoryPrimitive extends BasePrimitive<AddMemoryOptions, RemovableMe
         '--stream-delivery-resources <json>',
         'Stream delivery config as JSON string (advanced, overrides flat flags) [non-interactive]'
       )
+      .option(
+        '--indexed-key <key:type>',
+        'Indexed metadata key as key:TYPE (repeatable, max 10). TYPE is STRING, STRINGLIST, or NUMBER [non-interactive]',
+        (val: string, acc: string[]) => [...acc, val],
+        [] as string[]
+      )
       .option('--json', 'Output as JSON [non-interactive]')
       .action(
         async (cliOptions: {
@@ -182,6 +195,7 @@ export class MemoryPrimitive extends BasePrimitive<AddMemoryOptions, RemovableMe
           dataStreamArn?: string;
           streamContentLevel?: string;
           streamDeliveryResources?: string;
+          indexedKey?: string[];
           json?: boolean;
         }) => {
           if (!findConfigRoot()) {
@@ -193,6 +207,9 @@ export class MemoryPrimitive extends BasePrimitive<AddMemoryOptions, RemovableMe
             // CLI mode
             await runCliCommand('add.memory', !!cliOptions.json, async () => {
               const expiry = cliOptions.expiry ? parseInt(cliOptions.expiry, 10) : undefined;
+              const indexedKey =
+                cliOptions.indexedKey && cliOptions.indexedKey.length > 0 ? cliOptions.indexedKey : undefined;
+
               const validation = validateAddMemoryOptions({
                 name: cliOptions.name,
                 strategies: cliOptions.strategies,
@@ -201,6 +218,7 @@ export class MemoryPrimitive extends BasePrimitive<AddMemoryOptions, RemovableMe
                 dataStreamArn: cliOptions.dataStreamArn,
                 contentLevel: cliOptions.streamContentLevel,
                 streamDeliveryResources: cliOptions.streamDeliveryResources,
+                indexedKey,
               });
 
               if (!validation.valid) {
@@ -215,6 +233,7 @@ export class MemoryPrimitive extends BasePrimitive<AddMemoryOptions, RemovableMe
                 dataStreamArn: cliOptions.dataStreamArn,
                 contentLevel: cliOptions.streamContentLevel,
                 streamDeliveryResources: cliOptions.streamDeliveryResources,
+                indexedKey,
               });
 
               if (!result.success) {
@@ -231,12 +250,15 @@ export class MemoryPrimitive extends BasePrimitive<AddMemoryOptions, RemovableMe
                 .split(',')
                 .map(s => s.trim().toUpperCase())
                 .filter(Boolean);
+              const indexedKeyCount = cliOptions.indexedKey?.length ?? 0;
               return {
                 strategy_count: strategyList.length,
                 strategy_semantic: strategyList.includes('SEMANTIC'),
                 strategy_summarization: strategyList.includes('SUMMARIZATION'),
                 strategy_user_preference: strategyList.includes('USER_PREFERENCE'),
                 strategy_episodic: strategyList.includes('EPISODIC'),
+                indexed_key_count: indexedKeyCount,
+                has_indexed_keys: indexedKeyCount > 0,
               };
             });
           } else {
@@ -282,6 +304,7 @@ export class MemoryPrimitive extends BasePrimitive<AddMemoryOptions, RemovableMe
     eventExpiryDuration: number;
     strategies: { type: MemoryStrategyType }[];
     streamDeliveryResources?: StreamDeliveryResources;
+    indexedKeys?: IndexedKey[];
   }): Promise<Memory> {
     const project = await this.readProjectSpec();
 
@@ -301,6 +324,7 @@ export class MemoryPrimitive extends BasePrimitive<AddMemoryOptions, RemovableMe
       name: config.name,
       eventExpiryDuration: config.eventExpiryDuration,
       strategies,
+      ...(config.indexedKeys && config.indexedKeys.length > 0 && { indexedKeys: config.indexedKeys }),
       ...(config.streamDeliveryResources && { streamDeliveryResources: config.streamDeliveryResources }),
     };
 
@@ -340,5 +364,15 @@ export class MemoryPrimitive extends BasePrimitive<AddMemoryOptions, RemovableMe
       const detail = e instanceof z.ZodError ? `: ${e.issues.map(i => i.message).join(', ')}` : '';
       throw new Error(`Stream delivery config does not match the expected schema${detail}`);
     }
+  }
+
+  private parseIndexedKeys(rawKeys: string[]): IndexedKey[] {
+    return rawKeys.map(raw => {
+      const result = parseIndexedKeyArg(raw);
+      if (!result.ok) {
+        throw new Error(result.error);
+      }
+      return result.value;
+    });
   }
 }
