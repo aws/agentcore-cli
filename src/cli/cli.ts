@@ -28,7 +28,7 @@ import { registerValidate } from './commands/validate';
 import { PACKAGE_VERSION } from './constants';
 import { ALL_PRIMITIVES } from './primitives';
 import { TelemetryClientAccessor } from './telemetry';
-import { App } from './tui/App';
+import { App, type InitialRoute } from './tui/App';
 import { LayoutProvider } from './tui/context';
 import { COMMAND_DESCRIPTIONS } from './tui/copy';
 import { clearExitAction, getExitAction } from './tui/exit-action';
@@ -99,19 +99,47 @@ function printPostCommandNotices(isFirstRun: boolean, updateCheck: Promise<Updat
   });
 }
 
+export interface RenderTUIOptions {
+  /** Route to navigate to on launch. If omitted, shows the default home/help screen. */
+  initialRoute?: InitialRoute;
+  /** Promise that resolves with update check result. Used to print update notifications on exit. Default: Promise.resolve(null) */
+  updateCheck?: Promise<UpdateCheckResult | null>;
+  /** Whether this is the first time the CLI has been run. Shows telemetry notice on exit. Default: false */
+  isFirstRun?: boolean;
+  /** Control whether TUI is rendered inline or in alternate screen. Default: true */
+  enterAltScreen?: boolean;
+  /** Behavior when pressing escape/back. 'help' navigates to the help screen, 'exit' exits the app. Default: 'help' */
+  actionOnBack?: 'help' | 'exit';
+}
+
 /**
  * Render the TUI in alternate screen buffer mode.
+ * This is the entrypoint for TUI operations
  */
-function renderTUI(updateCheck: Promise<UpdateCheckResult | null>, isFirstRun: boolean) {
-  inAltScreen = true;
-  process.stdout.write(ENTER_ALT_SCREEN);
+export function renderTUI(options: RenderTUIOptions = {}) {
+  const {
+    initialRoute,
+    updateCheck = Promise.resolve(null),
+    isFirstRun = false,
+    enterAltScreen = true,
+    actionOnBack = 'help',
+  } = options;
+  TelemetryClientAccessor.init(initialRoute?.name ?? 'tui', 'tui');
+  if (enterAltScreen) {
+    inAltScreen = true;
+    process.stdout.write(ENTER_ALT_SCREEN);
+  }
 
-  const { waitUntilExit } = render(React.createElement(App));
+  const { waitUntilExit } = render(React.createElement(App, { initialRoute, actionOnBack }));
 
-  void waitUntilExit().then(async () => {
-    inAltScreen = false;
-    process.stdout.write(EXIT_ALT_SCREEN);
-    process.stdout.write(SHOW_CURSOR);
+  const done = waitUntilExit().then(async () => {
+    if (inAltScreen) {
+      inAltScreen = false;
+      process.stdout.write(EXIT_ALT_SCREEN);
+      process.stdout.write(SHOW_CURSOR);
+    }
+
+    await TelemetryClientAccessor.shutdown();
 
     // Check if the TUI requested a post-exit action (e.g., launch browser dev mode)
     const action = getExitAction();
@@ -132,6 +160,8 @@ function renderTUI(updateCheck: Promise<UpdateCheckResult | null>, isFirstRun: b
 
     await printPostCommandNotices(isFirstRun, updateCheck);
   });
+
+  return done;
 }
 
 function renderHelp(program: Command): void {
@@ -230,7 +260,7 @@ export const main = async (argv: string[]) => {
   // Show TUI for no arguments, commander handles --help via configureHelp()
   if (args.length === 0) {
     requireTTY();
-    renderTUI(updateCheck, isFirstRun);
+    await renderTUI({ updateCheck, isFirstRun });
     return;
   }
 

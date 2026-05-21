@@ -1,9 +1,9 @@
 import { ConfigIO, serializeResult } from '../../../lib';
+import { renderTUI } from '../../cli';
 import { getErrorMessage } from '../../errors';
 import { withCommandRunTelemetry } from '../../telemetry/cli-command-run.js';
 import { COMMAND_DESCRIPTIONS } from '../../tui/copy';
 import { requireProject, requireTTY } from '../../tui/guards';
-import { DeployScreen } from '../../tui/screens/deploy/DeployScreen';
 import { handleDeploy } from './actions';
 import type { DeployOptions, DeployResult } from './types';
 import { DEFAULT_DEPLOY_ATTRS, computeDeployAttrs } from './utils';
@@ -14,20 +14,9 @@ import React from 'react';
 
 const SPINNER_FRAMES = ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏'];
 
-function handleDeployTUI(options: { autoConfirm?: boolean; diffMode?: boolean } = {}): void {
+function handleDeployTUI(options: { autoConfirm?: boolean; diffMode?: boolean } = {}): Promise<void> {
   requireProject();
-
-  const { unmount } = render(
-    <DeployScreen
-      isInteractive={false}
-      autoConfirm={options.autoConfirm}
-      diffMode={options.diffMode}
-      onExit={() => {
-        unmount();
-        process.exit(0);
-      }}
-    />
-  );
+  return renderTUI({ initialRoute: { name: 'deploy' }, enterAltScreen: false, actionOnBack: 'exit' });
 }
 
 async function handleDeployCLI(options: DeployOptions): Promise<void> {
@@ -208,10 +197,10 @@ export const registerDeploy = (program: Command) => {
           } else if (cliOptions.diff) {
             // Diff-only: use TUI with diff mode
             requireTTY();
-            handleDeployTUI({ diffMode: true });
+            await handleDeployTUI({ diffMode: true });
           } else {
             requireTTY();
-            handleDeployTUI();
+            await handleDeployTUI();
           }
         } catch (error) {
           if (cliOptions.json) {

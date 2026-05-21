@@ -8,6 +8,7 @@ import type {
   TargetLanguage,
 } from '../../../schema';
 import { LIFECYCLE_TIMEOUT_MAX, LIFECYCLE_TIMEOUT_MIN } from '../../../schema';
+import { renderTUI } from '../../cli';
 import { getErrorMessage } from '../../errors';
 import { runCliCommand } from '../../telemetry/cli-command-run.js';
 import {
@@ -23,7 +24,6 @@ import {
 } from '../../telemetry/schemas/common-shapes.js';
 import { COMMAND_DESCRIPTIONS } from '../../tui/copy';
 import { requireTTY } from '../../tui/guards';
-import { CreateScreen } from '../../tui/screens/create';
 import { parseCommaSeparatedList } from '../shared/vpc-utils';
 import { type ProgressCallback, createProject, createProjectWithAgent, getDryRunInfo } from './action';
 import type { CreateOptions } from './types';
@@ -32,18 +32,8 @@ import type { Command } from '@commander-js/extra-typings';
 import { Text, render } from 'ink';
 
 /** Render CreateScreen for interactive TUI mode */
-function handleCreateTUI(): void {
-  const cwd = getWorkingDirectory();
-  const { unmount } = render(
-    <CreateScreen
-      cwd={cwd}
-      isInteractive={false}
-      onExit={() => {
-        unmount();
-        process.exit(0);
-      }}
-    />
-  );
+function handleCreateTUI(): Promise<void> {
+  return renderTUI({ initialRoute: { name: 'create' }, enterAltScreen: false, actionOnBack: 'exit' });
 }
 
 /** Print completion summary after successful create */
@@ -293,7 +283,7 @@ export const registerCreate = (program: Command) => {
           await handleCreateCLI(options as CreateOptions);
         } else {
           requireTTY();
-          handleCreateTUI();
+          await handleCreateTUI();
         }
       } catch (error) {
         render(<Text color="red">Error: {getErrorMessage(error)}</Text>);
