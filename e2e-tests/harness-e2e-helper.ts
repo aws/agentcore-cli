@@ -13,7 +13,9 @@ import { join } from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
 const hasAws = hasAwsCredentials();
-const baseCanRun = prereqs.npm && prereqs.git && hasAws;
+// Harness features are only available in preview builds (BUILD_PREVIEW=1).
+const isPreviewBuild = process.env.BUILD_PREVIEW === '1';
+const baseCanRun = prereqs.npm && prereqs.git && hasAws && isPreviewBuild;
 
 interface HarnessE2EConfig {
   modelProvider: 'bedrock' | 'open_ai' | 'gemini';
