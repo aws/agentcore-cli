@@ -1,4 +1,4 @@
-import { getWorkingDirectory, serializeResult } from '../../../lib';
+import { ValidationError, getWorkingDirectory, serializeResult } from '../../../lib';
 import type {
   BuildType,
   ModelProvider,
@@ -132,7 +132,7 @@ async function handleCreateCLI(options: CreateOptions): Promise<void> {
     async () => {
       const validation = validateCreateOptions(options, cwd);
       if (!validation.valid) {
-        throw new Error(validation.error);
+        throw new ValidationError(validation.error!);
       }
       const green = '\x1b[32m';
       const reset = '\x1b[0m';
