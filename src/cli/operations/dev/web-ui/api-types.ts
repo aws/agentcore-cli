@@ -117,6 +117,14 @@ export interface ResourcesResponse {
   onlineEvalConfigs: ResourceOnlineEvalConfig[];
   policyEngines: ResourcePolicyEngine[];
   unassignedTargets: ResourceUnassignedTarget[];
+  deploymentTargets: ResourceDeploymentTarget[];
+}
+
+/** Deployment target (from aws-targets) in the resources response */
+export interface ResourceDeploymentTarget {
+  name: string;
+  region: string;
+  description?: string;
 }
 
 /** Agent details in the resources response */
@@ -253,6 +261,7 @@ export interface StartResponse {
 /** Request body for POST /invocations */
 export interface InvocationRequest {
   agentName?: string;
+  targetName?: string;
   prompt?: string;
   sessionId?: string;
   userId?: string;

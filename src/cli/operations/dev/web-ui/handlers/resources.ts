@@ -6,6 +6,7 @@ import type {
   ResourceAgent,
   ResourceCredential,
   ResourceDeploymentStatus,
+  ResourceDeploymentTarget,
   ResourceEvaluator,
   ResourceGateway,
   ResourceHarness,
@@ -48,10 +49,16 @@ export async function handleResources(ctx: RouteContext, res: ServerResponse, or
 
     // Read AWS targets to resolve region for invocation URLs.
     let targetRegion: string | undefined;
+    let deploymentTargets: ResourceDeploymentTarget[] = [];
     try {
       const awsTargets = await configIO.readAWSDeploymentTargets();
       const firstTarget = firstTargetKey ? awsTargets.find(t => t.name === firstTargetKey) : awsTargets[0];
       targetRegion = firstTarget?.region;
+      deploymentTargets = awsTargets.map(t => ({
+        name: t.name,
+        region: t.region,
+        ...(t.description ? { description: t.description } : {}),
+      }));
     } catch {
       // aws-targets.json may not exist yet — region will be undefined
     }
@@ -320,6 +327,7 @@ export async function handleResources(ctx: RouteContext, res: ServerResponse, or
         onlineEvalConfigs,
         policyEngines,
         unassignedTargets,
+        deploymentTargets,
       })
     );
   } catch (err) {

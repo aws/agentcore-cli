@@ -374,17 +374,20 @@ async function handleDeployedInvocation(
 
   const rawBody = await ctx.readBody(req);
   let agentName: string | undefined;
+  let targetName: string | undefined;
   let prompt: string | undefined;
   let sessionId: string | undefined;
   let userId: string | undefined;
   try {
     const parsed = JSON.parse(rawBody) as {
       agentName?: string;
+      targetName?: string;
       prompt?: string;
       sessionId?: string;
       userId?: string;
     };
     agentName = parsed.agentName;
+    targetName = parsed.targetName;
     prompt = parsed.prompt;
     sessionId = parsed.sessionId;
     userId = parsed.userId;
@@ -427,6 +430,7 @@ async function handleDeployedInvocation(
     deployedState,
     awsTargets,
     agentName,
+    targetName,
     sessionId,
     configIO,
   });
@@ -519,10 +523,15 @@ async function handleDeployedHttpInvocation(
   }
   res.writeHead(200, headers);
 
-  for await (const chunk of result.stream) {
-    res.write(`data: ${JSON.stringify(chunk)}\n\n`);
+  try {
+    for await (const chunk of result.stream) {
+      res.write(`data: ${JSON.stringify(chunk)}\n\n`);
+    }
+  } catch (err) {
+    res.write(`data: ${JSON.stringify({ error: err instanceof Error ? err.message : String(err) })}\n\n`);
+  } finally {
+    res.end();
   }
-  res.end();
 }
 
 async function handleDeployedA2AInvocation(
@@ -552,10 +561,15 @@ async function handleDeployedA2AInvocation(
   }
   res.writeHead(200, headers);
 
-  for await (const chunk of result.stream) {
-    res.write(`data: ${JSON.stringify(chunk)}\n\n`);
+  try {
+    for await (const chunk of result.stream) {
+      res.write(`data: ${JSON.stringify(chunk)}\n\n`);
+    }
+  } catch (err) {
+    res.write(`data: ${JSON.stringify({ error: err instanceof Error ? err.message : String(err) })}\n\n`);
+  } finally {
+    res.end();
   }
-  res.end();
 }
 
 async function handleDeployedAguiInvocation(
@@ -587,9 +601,13 @@ async function handleDeployedAguiInvocation(
   }
   res.writeHead(200, headers);
 
-  // Pipe raw AGUI events through — frontend parses them directly
-  for await (const chunk of result.textStream) {
-    res.write(`data: ${JSON.stringify(chunk)}\n\n`);
+  try {
+    for await (const chunk of result.textStream) {
+      res.write(`data: ${JSON.stringify(chunk)}\n\n`);
+    }
+  } catch (err) {
+    res.write(`data: ${JSON.stringify({ error: err instanceof Error ? err.message : String(err) })}\n\n`);
+  } finally {
+    res.end();
   }
-  res.end();
 }
