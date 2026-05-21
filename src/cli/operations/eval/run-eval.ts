@@ -313,9 +313,7 @@ export async function handleRunEval(options: RunEvalOptions): Promise<RunEvalRes
     if (datasetResult.sessions.length === 0) {
       return {
         success: false,
-        error: new ResourceNotFoundError(
-          'No spans collected from dataset scenarios. All sessions may have timed out.'
-        ),
+        error: new ResourceNotFoundError('No spans collected from dataset scenarios. All sessions may have timed out.'),
       };
     }
 

@@ -161,7 +161,7 @@ export const registerStatus = (program: Command) => {
 
         // Fetch enriched dataset info when --type dataset is specified
         let datasetDetails: DatasetStatusResult[] = [];
-        if (cliOptions.type === 'dataset' && datasets.length > 0 && result.targetRegion) {
+        if (cliOptions.type === 'dataset' && datasets.length > 0 && result.targetRegion && result.targetName) {
           const deployedState = context.deployedState;
           const targetResources = deployedState.targets?.[result.targetName]?.resources;
           const deployedDatasets = targetResources?.datasets ?? {};

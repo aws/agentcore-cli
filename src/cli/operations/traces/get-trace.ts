@@ -1,7 +1,6 @@
 import { ResourceNotFoundError, ValidationError } from '../../../lib';
 import type { Result } from '../../../lib/result';
 import { runtimeLogGroup } from '../../aws/cloudwatch';
-import { DEFAULT_ENDPOINT_NAME } from '../../constants';
 import { runInsightsQuery } from './insights-query';
 import type {
   CloudWatchSpanRecord,

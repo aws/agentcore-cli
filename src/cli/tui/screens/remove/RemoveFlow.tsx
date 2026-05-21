@@ -480,7 +480,7 @@ export function RemoveFlow({
           if (removeResult.success) {
             setFlow({ name: 'dataset-success', datasetName });
           } else {
-            setFlow({ name: 'error', message: removeResult.error });
+            setFlow({ name: 'error', message: removeResult.error.message });
           }
         } else {
           setFlow({ name: 'confirm-dataset', datasetName, preview: result.preview });
@@ -801,7 +801,7 @@ export function RemoveFlow({
       if (result.success) {
         pendingResultRef.current = { name: 'dataset-success', datasetName, logFilePath: result.logFilePath };
       } else {
-        pendingResultRef.current = { name: 'error', message: result.error };
+        pendingResultRef.current = { name: 'error', message: result.error.message };
       }
       setResultReady(true);
     },

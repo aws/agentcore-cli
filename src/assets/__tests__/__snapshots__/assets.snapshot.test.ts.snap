@@ -386,6 +386,7 @@ test('AgentCoreStack synthesizes with empty spec', () => {
       agentCoreGateways: [],
       mcpRuntimeTools: [],
       unassignedTargets: [],
+      datasets: [],
     },
   });
   const template = Template.fromStack(stack);
@@ -448,6 +449,8 @@ exports[`Assets Directory Snapshots > File listing > should match the expected f
   "container/python/dockerignore.template",
   "container/typescript/Dockerfile",
   "container/typescript/dockerignore.template",
+  "datasets/predefined-v1.jsonl",
+  "datasets/simulated-v1.jsonl",
   "evaluators/python-lambda/execution-role-policy.json",
   "evaluators/python-lambda/lambda_function.py",
   "evaluators/python-lambda/pyproject.toml",

@@ -201,7 +201,7 @@ export async function runBatchEvaluationCommand(
       if (successfulResults.length === 0) {
         return {
           success: false,
-          error: 'All scenarios failed during invocation. No sessions to evaluate.',
+          error: new Error('All scenarios failed during invocation. No sessions to evaluate.'),
           results: [],
           logFilePath: logger?.logFilePath,
         };

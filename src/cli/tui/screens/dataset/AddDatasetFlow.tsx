@@ -48,7 +48,7 @@ export function AddDatasetFlow({ isInteractive = true, onExit, onBack, onDev, on
           });
           return;
         }
-        setFlow({ name: 'error', message: result.error });
+        setFlow({ name: 'error', message: result.error.message });
       });
   }, []);
 

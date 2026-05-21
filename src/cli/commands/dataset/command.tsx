@@ -7,7 +7,7 @@
 import { ConfigIO } from '../../../lib';
 import { getDataset } from '../../aws/agentcore-datasets';
 import { deleteDatasetVersion, publishDataset, pullDataset, resolveDataset } from '../../operations/dataset';
-import { cliCommandRun } from '../../telemetry/cli-command-run.js';
+import { runCliCommand } from '../../telemetry/cli-command-run.js';
 import { requireProject } from '../../tui/guards';
 import type { Command } from '@commander-js/extra-typings';
 import { Box, Text, render } from 'ink';
@@ -41,7 +41,7 @@ export function registerDataset(program: Command) {
     .action(async (cliOptions: { name?: string; version?: string; yes?: boolean; json?: boolean }) => {
       requireProject();
 
-      await cliCommandRun('dataset.download', !!cliOptions.json, async () => {
+      await runCliCommand('dataset.download', !!cliOptions.json, async () => {
         const resolved = await resolveDataset(cliOptions.name);
         const configIO = new ConfigIO();
         const configBaseDir = configIO.getConfigRoot();
@@ -94,7 +94,7 @@ export function registerDataset(program: Command) {
     .action(async (cliOptions: { name?: string; json?: boolean }) => {
       requireProject();
 
-      await cliCommandRun('dataset.publish-version', !!cliOptions.json, async () => {
+      await runCliCommand('dataset.publish-version', !!cliOptions.json, async () => {
         const resolved = await resolveDataset(cliOptions.name);
 
         // Check draftStatus before publishing
@@ -142,7 +142,7 @@ export function registerDataset(program: Command) {
     .action(async (versionId: string, cliOptions: { name?: string; json?: boolean }) => {
       requireProject();
 
-      await cliCommandRun('dataset.remove-version', !!cliOptions.json, async () => {
+      await runCliCommand('dataset.remove-version', !!cliOptions.json, async () => {
         const resolved = await resolveDataset(cliOptions.name);
 
         if (!cliOptions.json) {

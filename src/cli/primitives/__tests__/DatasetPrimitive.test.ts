@@ -79,9 +79,10 @@ describe('DatasetPrimitive', () => {
         schemaType: 'AGENTCORE_EVALUATION_PREDEFINED_V1',
       });
 
-      expect(result).toEqual(
-        expect.objectContaining({ success: false, error: expect.stringContaining('already exists') })
-      );
+      expect(result.success).toBe(false);
+      if (!result.success) {
+        expect(result.error.message).toContain('already exists');
+      }
     });
 
     it('returns error when readProjectSpec rejects', async () => {
@@ -92,7 +93,10 @@ describe('DatasetPrimitive', () => {
         schemaType: 'AGENTCORE_EVALUATION_PREDEFINED_V1',
       });
 
-      expect(result).toEqual(expect.objectContaining({ success: false, error: 'disk failure' }));
+      expect(result.success).toBe(false);
+      if (!result.success) {
+        expect(result.error.message).toBe('disk failure');
+      }
     });
   });
 
@@ -116,8 +120,8 @@ describe('DatasetPrimitive', () => {
 
       expect(result.success).toBe(false);
       if (!result.success) {
-        expect(result.error).toContain('NonExistent');
-        expect(result.error).toContain('not found');
+        expect(result.error.message).toContain('NonExistent');
+        expect(result.error.message).toContain('not found');
       }
     });
 
@@ -128,7 +132,7 @@ describe('DatasetPrimitive', () => {
 
       expect(result.success).toBe(false);
       if (!result.success) {
-        expect(result.error).toBe('io error');
+        expect(result.error.message).toBe('io error');
       }
     });
   });

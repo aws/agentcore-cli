@@ -1,11 +1,12 @@
 import { findConfigRoot } from '../../lib';
+import type { Result } from '../../lib/result';
 import type { DatasetSchemaType } from '../../schema';
 import { DatasetSchema } from '../../schema';
 import type { AddDatasetOptions } from '../commands/add/types';
 import { validateAddDatasetOptions } from '../commands/add/validate';
 import { getErrorMessage } from '../errors';
-import type { RemovalPreview, RemovalResult, SchemaChange } from '../operations/remove/types';
-import { cliCommandRun } from '../telemetry/cli-command-run.js';
+import type { RemovalPreview, SchemaChange } from '../operations/remove/types';
+import { runCliCommand } from '../telemetry/cli-command-run.js';
 import { getTemplatePath } from '../templates/templateRoot';
 import { requireTTY } from '../tui/guards/tty';
 import { BasePrimitive } from './BasePrimitive';
@@ -58,18 +59,18 @@ export class DatasetPrimitive extends BasePrimitive<AddDatasetOptions, Removable
 
       return { success: true, datasetName: dataset.name, location: `agentcore/${location}` };
     } catch (err) {
-      return { success: false, error: getErrorMessage(err) };
+      return { success: false, error: err instanceof Error ? err : new Error(getErrorMessage(err)) };
     }
   }
 
-  async remove(datasetName: string): Promise<RemovalResult> {
+  async remove(datasetName: string): Promise<Result> {
     try {
       const project = await this.readProjectSpec();
       const datasets = project.datasets ?? [];
 
       const datasetIndex = datasets.findIndex(d => d.name === datasetName);
       if (datasetIndex === -1) {
-        return { success: false, error: `Dataset "${datasetName}" not found.` };
+        return { success: false, error: new Error(`Dataset "${datasetName}" not found.`) };
       }
 
       datasets.splice(datasetIndex, 1);
@@ -78,8 +79,7 @@ export class DatasetPrimitive extends BasePrimitive<AddDatasetOptions, Removable
 
       return { success: true };
     } catch (err) {
-      const message = err instanceof Error ? err.message : 'Unknown error';
-      return { success: false, error: message };
+      return { success: false, error: err instanceof Error ? err : new Error('Unknown error') };
     }
   }
 
@@ -149,7 +149,7 @@ export class DatasetPrimitive extends BasePrimitive<AddDatasetOptions, Removable
 
         if (cliOptions.name || cliOptions.json) {
           // CLI mode
-          await cliCommandRun('add.dataset', !!cliOptions.json, async () => {
+          await runCliCommand('add.dataset', !!cliOptions.json, async () => {
             const validation = validateAddDatasetOptions({
               name: cliOptions.name ?? '',
               schemaType: (cliOptions.schemaType ?? '') as DatasetSchemaType,
@@ -167,7 +167,7 @@ export class DatasetPrimitive extends BasePrimitive<AddDatasetOptions, Removable
             });
 
             if (!result.success) {
-              throw new Error(result.error);
+              throw result.error;
             }
 
             if (cliOptions.json) {
