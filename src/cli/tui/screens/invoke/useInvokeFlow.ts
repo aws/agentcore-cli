@@ -1,4 +1,4 @@
-import { ConfigIO } from '../../../../lib';
+import { ConfigIO, ResourceNotFoundError } from '../../../../lib';
 import type {
   AgentCoreDeployedState,
   AwsDeploymentTarget,
@@ -25,6 +25,8 @@ import { InvokeLogger } from '../../../logging';
 import { formatMcpToolList } from '../../../operations/dev/utils';
 import { canFetchRuntimeToken, fetchRuntimeToken } from '../../../operations/fetch-access';
 import { generateSessionId } from '../../../operations/session';
+import { withCommandRunTelemetry } from '../../../telemetry/cli-command-run.js';
+import { AgentProtocol, AuthType, standardize } from '../../../telemetry/schemas/common-shapes.js';
 import { useCallback, useEffect, useRef, useState } from 'react';
 
 /** Structured message part for rich AGUI event rendering */
@@ -114,80 +116,91 @@ export function useInvokeFlow(options: InvokeFlowOptions = {}): InvokeFlowState 
   // Load config on mount
   useEffect(() => {
     const load = async () => {
-      try {
-        const configIO = new ConfigIO();
-        const project = await configIO.readProjectSpec();
-        const deployedState = await configIO.readDeployedState();
-        const awsTargets = await configIO.readAWSDeploymentTargets();
+      const result = await withCommandRunTelemetry(
+        'invoke',
+        {
+          has_stream: true,
+          has_session_id: !!initialSessionId,
+          auth_type: standardize(AuthType, initialBearerToken ? 'bearer_token' : 'sigv4'),
+          agent_protocol: standardize(AgentProtocol, 'unknown'),
+        },
+        async () => {
+          const configIO = new ConfigIO();
+          const project = await configIO.readProjectSpec();
+          const deployedState = await configIO.readDeployedState();
+          const awsTargets = await configIO.readAWSDeploymentTargets();
 
-        const targetNames = Object.keys(deployedState.targets);
-        if (targetNames.length === 0) {
-          setError('No deployed targets found. Run `agentcore deploy` first.');
-          setPhase('error');
-          return;
-        }
-
-        const targetName = targetNames[0]!;
-        const targetState = deployedState.targets[targetName];
-        const targetConfig = awsTargets.find(t => t.name === targetName);
-
-        if (!targetConfig) {
-          setError(`Target config '${targetName}' not found`);
-          setPhase('error');
-          return;
-        }
-
-        const runtimes: InvokeConfig['runtimes'] = [];
-        const deployedBundles = targetState?.resources?.configBundles ?? {};
-        for (const agent of project.runtimes) {
-          const state = targetState?.resources?.runtimes?.[agent.name];
-          if (!state) continue;
-
-          // Build config bundle baggage if a bundle is associated with this agent
-          let baggage: string | undefined;
-          const bundleSpec = project.configBundles?.find(b => {
-            const keys = Object.keys(b.components ?? {});
-            return keys.some(k => k === `{{runtime:${agent.name}}}`);
-          });
-          if (bundleSpec) {
-            const bundleState = deployedBundles[bundleSpec.name];
-            if (bundleState?.bundleArn && bundleState?.versionId) {
-              baggage = `aws.agentcore.configbundle_arn=${encodeURIComponent(bundleState.bundleArn)},aws.agentcore.configbundle_version=${encodeURIComponent(bundleState.versionId)}`;
-            }
+          const targetNames = Object.keys(deployedState.targets);
+          if (targetNames.length === 0) {
+            return {
+              success: false as const,
+              error: new ResourceNotFoundError('No deployed targets found. Run `agentcore deploy` first.'),
+            };
           }
 
-          const supportsTraces = agent.entrypoint?.endsWith('.py') || agent.entrypoint?.includes('.py:') || false;
-          runtimes.push({
-            name: agent.name,
-            state,
-            modelProvider: undefined,
-            networkMode: agent.networkMode,
-            protocol: agent.protocol,
-            authorizerType: agent.authorizerType,
-            baggage,
-            supportsTraces,
-          });
+          const targetName = targetNames[0]!;
+          const targetState = deployedState.targets[targetName];
+          const targetConfig = awsTargets.find(t => t.name === targetName);
+
+          if (!targetConfig) {
+            return { success: false as const, error: new ResourceNotFoundError(`Target config '${targetName}' not found`) };
+          }
+
+          const runtimes: InvokeConfig['runtimes'] = [];
+          const deployedBundles = targetState?.resources?.configBundles ?? {};
+          for (const agent of project.runtimes) {
+            const state = targetState?.resources?.runtimes?.[agent.name];
+            if (!state) continue;
+
+            // Build config bundle baggage if a bundle is associated with this agent
+            let baggage: string | undefined;
+            const bundleSpec = project.configBundles?.find(b => {
+              const keys = Object.keys(b.components ?? {});
+              return keys.some(k => k === `{{runtime:${agent.name}}}`);
+            });
+            if (bundleSpec) {
+              const bundleState = deployedBundles[bundleSpec.name];
+              if (bundleState?.bundleArn && bundleState?.versionId) {
+                baggage = `aws.agentcore.configbundle_arn=${encodeURIComponent(bundleState.bundleArn)},aws.agentcore.configbundle_version=${encodeURIComponent(bundleState.versionId)}`;
+              }
+            }
+
+            const supportsTraces = agent.entrypoint?.endsWith('.py') || agent.entrypoint?.includes('.py:') || false;
+            runtimes.push({
+              name: agent.name,
+              state,
+              modelProvider: undefined,
+              networkMode: agent.networkMode,
+              protocol: agent.protocol,
+              authorizerType: agent.authorizerType,
+              baggage,
+              supportsTraces,
+            });
+          }
+
+          if (runtimes.length === 0) {
+            return {
+              success: false as const,
+              error: new ResourceNotFoundError('No deployed agents found. Run `agentcore deploy` first.'),
+            };
+          }
+
+          setConfig({ runtimes, target: targetConfig, targetName, projectName: project.name });
+
+          // Initialize session ID - always generate fresh unless explicitly provided
+          if (initialSessionId) {
+            setSessionId(initialSessionId);
+          } else {
+            const newId = generateSessionId();
+            setSessionId(newId);
+          }
+
+          setPhase('ready');
+          return { success: true as const };
         }
-
-        if (runtimes.length === 0) {
-          setError('No deployed agents found. Run `agentcore deploy` first.');
-          setPhase('error');
-          return;
-        }
-
-        setConfig({ runtimes, target: targetConfig, targetName, projectName: project.name });
-
-        // Initialize session ID - always generate fresh unless explicitly provided
-        if (initialSessionId) {
-          setSessionId(initialSessionId);
-        } else {
-          const newId = generateSessionId();
-          setSessionId(newId);
-        }
-
-        setPhase('ready');
-      } catch (err) {
-        setError(getErrorMessage(err));
+      );
+      if (!result.success) {
+        setError(getErrorMessage(result.error));
         setPhase('error');
       }
     };
