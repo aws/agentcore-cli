@@ -381,51 +381,57 @@ export const registerDev = (program: Command) => {
           console.log(`Log: ${logger.getRelativeLogPath()}`);
           console.log(`Press Ctrl+C to stop\n`);
 
-          const devResult = await withCommandRunTelemetry(
-            'dev',
-            {
-              dev_action: 'server' as const,
-              ui_mode: 'terminal' as const,
-              has_stream: false,
-              agent_protocol: standardize(AgentProtocol, (config.protocol ?? 'http').toLowerCase()),
-              invoke_count: 0,
-            },
-            async (): Promise<Result> => {
-              await new Promise<void>((resolve, reject) => {
-                const devCallbacks = {
-                  onLog: (level: string, msg: string) => {
-                    const prefix = level === 'error' ? '❌' : level === 'warn' ? '⚠️' : '→';
-                    console.log(`${prefix} ${msg}`);
-                    logger.log(msg, level === 'error' ? 'error' : 'info');
-                  },
-                  onExit: (code: number | null) => {
-                    console.log(`\nServer exited with code ${code ?? 0}`);
-                    logger.finalize(code === 0);
-                    if (code !== 0 && code !== null) {
-                      reject(new Error(`Server exited with code ${code}`));
-                    } else {
-                      resolve();
-                    }
-                  },
-                };
-
-                const server = createDevServer(config, {
-                  port: actualPort,
-                  envVars: mergedEnvVars,
-                  callbacks: devCallbacks,
-                });
-                server.start().catch(reject);
-
-                process.once('SIGINT', () => {
-                  console.log('\nStopping server...');
-                  collector?.stop();
-                  server.kill();
-                });
+          // Emit telemetry eagerly before the blocking server loop.
+          // The global SIGINT handler calls process.exit(0) synchronously,
+          // which would prevent withCommandRunTelemetry from ever flushing.
+          {
+            const client = await TelemetryClientAccessor.get().catch(() => undefined);
+            if (client) {
+              client.emit('cli.command_run', 0, {
+                command_group: 'dev',
+                command: 'dev',
+                exit_reason: 'success',
+                dev_action: 'server',
+                ui_mode: 'terminal',
+                has_stream: false,
+                agent_protocol: standardize(AgentProtocol, (config.protocol ?? 'http').toLowerCase()),
+                invoke_count: 0,
               });
-              return { success: true as const };
+              await client.flush();
             }
-          );
-          if (!devResult.success) throw devResult.error;
+          }
+
+          await new Promise<void>((resolve, reject) => {
+            const devCallbacks = {
+              onLog: (level: string, msg: string) => {
+                const prefix = level === 'error' ? '❌' : level === 'warn' ? '⚠️' : '→';
+                console.log(`${prefix} ${msg}`);
+                logger.log(msg, level === 'error' ? 'error' : 'info');
+              },
+              onExit: (code: number | null) => {
+                console.log(`\nServer exited with code ${code ?? 0}`);
+                logger.finalize(code === 0);
+                if (code !== 0 && code !== null) {
+                  reject(new Error(`Server exited with code ${code}`));
+                } else {
+                  resolve();
+                }
+              },
+            };
+
+            const server = createDevServer(config, {
+              port: actualPort,
+              envVars: mergedEnvVars,
+              callbacks: devCallbacks,
+            });
+            server.start().catch(reject);
+
+            process.once('SIGINT', () => {
+              console.log('\nStopping server...');
+              collector?.stop();
+              server.kill();
+            });
+          });
           process.exit(0);
         }
 
