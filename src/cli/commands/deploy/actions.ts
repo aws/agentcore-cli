@@ -272,7 +272,7 @@ export async function handleDeploy(options: ValidatedDeployOptions): Promise<Dep
 
     // Synthesize CloudFormation templates
     startStep('Synthesize CloudFormation');
-    const switchableIoHost = options.verbose ? createSwitchableIoHost() : undefined;
+    const switchableIoHost = options.verbose || options.onDeployMessage ? createSwitchableIoHost() : undefined;
     const synthResult = await synthesizeCdk(
       context.cdkProject,
       switchableIoHost ? { ioHost: switchableIoHost.ioHost } : undefined
@@ -362,9 +362,10 @@ export async function handleDeploy(options: ValidatedDeployOptions): Promise<Dep
     startStep(deployStepName);
 
     // Enable verbose output for resource-level events
-    if (switchableIoHost && options.onResourceEvent) {
+    if (switchableIoHost && (options.onResourceEvent || options.onDeployMessage)) {
       switchableIoHost.setOnMessage(msg => {
-        options.onResourceEvent!(msg.message);
+        options.onResourceEvent?.(msg.message);
+        options.onDeployMessage?.(msg.message);
       });
       switchableIoHost.setVerbose(true);
     }
