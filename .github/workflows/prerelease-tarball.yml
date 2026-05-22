@@ -16,6 +16,7 @@ concurrency:
 jobs:
   prerelease-tarball:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v6
       - uses: actions/setup-node@v6
@@ -23,18 +24,27 @@ jobs:
           node-version: '20.x'
           cache: 'npm'
       - uses: astral-sh/setup-uv@v7
-      - run: npm run bundle
-      - name: Get tarball info
-        id: tarball
-        run: |
-          TARBALL_NAME=$(ls *.tgz | head -1 | xargs basename)
-          echo "name=$TARBALL_NAME" >> $GITHUB_OUTPUT
       - name: Generate GitHub App Token
         id: app-token
         uses: actions/create-github-app-token@v1
         with:
           app-id: ${{ vars.APP_ID }}
           private-key: ${{ secrets.APP_PRIVATE_KEY }}
+          owner: aws
+      - name: Clone CDK repo
+        run: |
+          git clone --depth 1 "https://x-access-token:${CDK_REPO_TOKEN}@github.com/${CDK_REPO}.git" /tmp/cdk-repo
+        env:
+          CDK_REPO_TOKEN: ${{ steps.app-token.outputs.token }}
+          CDK_REPO: ${{ secrets.CDK_REPO_NAME }}
+      - run: npm run bundle
+        env:
+          AGENTCORE_CDK_PATH: /tmp/cdk-repo
+      - name: Get tarball info
+        id: tarball
+        run: |
+          TARBALL_NAME=$(ls *.tgz | head -1 | xargs basename)
+          echo "name=$TARBALL_NAME" >> $GITHUB_OUTPUT
       - name: Create or update prerelease
         env:
           GH_TOKEN: ${{ steps.app-token.outputs.token }}
