@@ -66,7 +66,7 @@ const PROJECT_ROOT_EXEMPT_COMMANDS = new Set(['create', 'update']);
 
 export type RouteName = Route['name'];
 
-// cli-only requires a commandId field, so it cannot be used as an initial route via name alone.
+// Excluded: cli-only is a TUI-internal screen that tells users to use the CLI — we should never launch the TUI just to show that.
 export type InitialRoute = Exclude<Route, { name: 'cli-only' }>;
 
 function AppContent({
