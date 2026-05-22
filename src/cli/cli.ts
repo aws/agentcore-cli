@@ -136,36 +136,34 @@ export async function renderTUI(options: RenderTUIOptions = {}) {
 
   const { waitUntilExit } = render(React.createElement(App, { initialRoute, actionOnBack, isInteractive }));
 
-  const done = waitUntilExit().then(async () => {
-    if (inAltScreen) {
-      inAltScreen = false;
-      process.stdout.write(EXIT_ALT_SCREEN);
-      process.stdout.write(SHOW_CURSOR);
-    }
+  await waitUntilExit();
 
-    await TelemetryClientAccessor.shutdown();
+  if (inAltScreen) {
+    inAltScreen = false;
+    process.stdout.write(EXIT_ALT_SCREEN);
+    process.stdout.write(SHOW_CURSOR);
+  }
 
-    // Check if the TUI requested a post-exit action (e.g., launch browser dev mode)
-    const action = getExitAction();
-    clearExitAction();
+  await TelemetryClientAccessor.shutdown();
 
-    if (action?.type === 'dev') {
-      const { launchBrowserDev } = await import('./commands/dev/browser-mode');
-      await launchBrowserDev();
-      return;
-    }
+  // Check if the TUI requested a post-exit action (e.g., launch browser dev mode)
+  const action = getExitAction();
+  clearExitAction();
 
-    // Print any exit message set by screens (e.g., after successful project creation)
-    const exitMessage = getExitMessage();
-    if (exitMessage) {
-      console.log(exitMessage);
-      clearExitMessage();
-    }
+  if (action?.type === 'dev') {
+    const { launchBrowserDev } = await import('./commands/dev/browser-mode');
+    await launchBrowserDev();
+    return;
+  }
 
-    await printPostCommandNotices(isFirstRun, updateCheck);
-  });
+  // Print any exit message set by screens (e.g., after successful project creation)
+  const exitMessage = getExitMessage();
+  if (exitMessage) {
+    console.log(exitMessage);
+    clearExitMessage();
+  }
 
-  await done;
+  await printPostCommandNotices(isFirstRun, updateCheck);
 }
 
 function renderHelp(program: Command): void {
