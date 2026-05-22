@@ -34,7 +34,7 @@ import React, { useState } from 'react';
 type Route =
   | { name: 'home' }
   | { name: 'help'; initialQuery?: string }
-  | { name: 'deploy' }
+  | { name: 'deploy'; diffMode?: boolean }
   | { name: 'invoke'; sessionId?: string; userId?: string; headers?: Record<string, string>; bearerToken?: string }
   | { name: 'logs' }
   | { name: 'create' }
@@ -202,6 +202,7 @@ function AppContent({
     return (
       <DeployScreen
         isInteractive={isInteractive}
+        diffMode={route.diffMode}
         onExit={handleBack}
         onNavigate={command => setRoute({ name: command } as Route)}
       />

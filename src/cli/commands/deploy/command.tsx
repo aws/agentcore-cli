@@ -1,9 +1,9 @@
 import { ConfigIO, serializeResult } from '../../../lib';
 import { getErrorMessage } from '../../errors';
 import { withCommandRunTelemetry } from '../../telemetry/cli-command-run.js';
+import { renderTUI } from '../../tui';
 import { COMMAND_DESCRIPTIONS } from '../../tui/copy';
 import { requireProject, requireTTY } from '../../tui/guards';
-import { renderTUI } from '../../tui';
 import { handleDeploy } from './actions';
 import type { DeployOptions, DeployResult } from './types';
 import { DEFAULT_DEPLOY_ATTRS, computeDeployAttrs } from './utils';
@@ -14,10 +14,10 @@ import React from 'react';
 
 const SPINNER_FRAMES = ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏'];
 
-function handleDeployTUI(options: { autoConfirm?: boolean; diffMode?: boolean } = {}): Promise<void> {
+function handleDeployTUI(options: { diffMode?: boolean } = {}): Promise<void> {
   requireProject();
   return renderTUI({
-    initialRoute: { name: 'deploy' },
+    initialRoute: { name: 'deploy', diffMode: options.diffMode },
     enterAltScreen: false,
     actionOnBack: 'exit',
     isInteractive: false,
