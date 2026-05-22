@@ -1,9 +1,9 @@
 import { ConfigIO, serializeResult, toError } from '../../../lib';
-import { renderTUI } from '../../cli';
 import { getErrorMessage } from '../../errors';
 import { runCliCommand } from '../../telemetry/cli-command-run.js';
 import { COMMAND_DESCRIPTIONS } from '../../tui/copy';
 import { requireProject, requireTTY } from '../../tui/guards';
+import { renderTUI } from '../../tui';
 import type { RemoveAllOptions, RemoveResult } from './types';
 import { validateRemoveAllOptions } from './validate';
 import type { Command } from '@commander-js/extra-typings';

@@ -29,8 +29,7 @@ import { getCommandsForUI } from './utils/commands';
 import { useApp } from 'ink';
 import React, { useState } from 'react';
 
-// Capture cwd once at app initialization
-const cwd = getWorkingDirectory();
+// cwd is captured inside AppContent to avoid calling getWorkingDirectory at import time
 
 type Route =
   | { name: 'home' }
@@ -80,6 +79,7 @@ function AppContent({
   isInteractive?: boolean;
 }) {
   const { exit } = useApp();
+  const cwd = getWorkingDirectory();
   // Start on help screen if project exists (show commands), otherwise home (show Quick Start)
   const inProject = projectExists();
   const wrongDirProjectRoot = getProjectRootMismatch();

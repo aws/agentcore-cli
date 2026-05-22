@@ -8,7 +8,6 @@ import type {
   TargetLanguage,
 } from '../../../schema';
 import { LIFECYCLE_TIMEOUT_MAX, LIFECYCLE_TIMEOUT_MIN } from '../../../schema';
-import { renderTUI } from '../../cli';
 import { getErrorMessage } from '../../errors';
 import { runCliCommand } from '../../telemetry/cli-command-run.js';
 import {
@@ -24,6 +23,7 @@ import {
 } from '../../telemetry/schemas/common-shapes.js';
 import { COMMAND_DESCRIPTIONS } from '../../tui/copy';
 import { requireTTY } from '../../tui/guards';
+import { renderTUI } from '../../tui';
 import { parseCommaSeparatedList } from '../shared/vpc-utils';
 import { type ProgressCallback, createProject, createProjectWithAgent, getDryRunInfo } from './action';
 import type { CreateOptions } from './types';
