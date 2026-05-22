@@ -95,8 +95,11 @@ export function useDevDeploy({ skip, ready = true }: UseDevDeployOptions = {}): 
         const result = await handleDeploy({
           target: 'default',
           autoConfirm: true,
+          verbose: true,
           onProgress,
           onDeployMessage: (message: string) =>
+            onDeployMessage({ code: '', message, level: 'info', timestamp: new Date() }),
+          onResourceEvent: (message: string) =>
             onDeployMessage({ code: '', message, level: 'info', timestamp: new Date() }),
         });
 
