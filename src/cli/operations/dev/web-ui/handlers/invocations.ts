@@ -472,6 +472,7 @@ async function handleDeployedInvocation(
         sessionId,
         userId,
         bearerToken: resolved.bearerToken,
+        baggage: resolved.baggage,
       });
     }
   } catch (err) {
@@ -495,6 +496,7 @@ interface DeployedInvokeParams {
   sessionId?: string;
   userId?: string;
   bearerToken?: string;
+  baggage?: string;
 }
 
 async function handleDeployedHttpInvocation(
@@ -510,6 +512,7 @@ async function handleDeployedHttpInvocation(
     sessionId: params.sessionId,
     userId: params.userId,
     bearerToken: params.bearerToken,
+    baggage: params.baggage,
   });
 
   ctx.setCorsHeaders(res, origin);
