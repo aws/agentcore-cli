@@ -132,7 +132,7 @@ export abstract class BaseBedrockTranslator {
     this.isAcceptingRelays = collaboratorContext?.relayHistory === 'TO_COLLABORATOR';
     this.collaboratorDescriptions = this.collaborators.map(
       c =>
-        `{'agentName': '${BaseBedrockTranslator.escapePySingleQuote(c.agent?.agentName ?? '')}', 'collaboratorName': 'invoke_${sanitizePyIdentifier(c.collaboratorName ?? '')}', 'collaboratorInstruction': '${BaseBedrockTranslator.escapePySingleQuote(c.collaborationInstruction ?? '')}'}`
+        `{'agentName': '${BaseBedrockTranslator.escapePySingleQuote(c.agent?.agentName ?? '')}', 'collaboratorName': 'invoke_${sanitizePyIdentifier(c.collaboratorName ?? '')}', 'collaboratorInstruction': '${BaseBedrockTranslator.escapePyTripleQuote(c.collaborationInstruction ?? '')}'}`
     );
     this.collaboratorMap = new Map(this.collaborators.map(c => [c.collaboratorName ?? '', c]));
 

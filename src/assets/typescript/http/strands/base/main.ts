@@ -1,36 +1,31 @@
 import { BedrockAgentCoreApp } from 'bedrock-agentcore/runtime';
-import { Agent, tool } from '@strands-agents/sdk';
+import { Agent, McpClient, tool, type ToolList } from '@strands-agents/sdk';
+import { z } from 'zod';
 import { loadModel } from './model/load.js';
 import { getStreamableHttpMcpClient } from './mcp_client/client.js';
 
-// Define a collection of MCP clients
-const mcpClients = [getStreamableHttpMcpClient()].filter(Boolean);
+// Define a collection of MCP clients (filter out anything that failed to initialize)
+const mcpClients: McpClient[] = [getStreamableHttpMcpClient()].filter(
+  (client): client is McpClient => Boolean(client)
+);
 
 // Define a collection of tools used by the model
-const tools: unknown[] = [];
+const tools: ToolList = [];
 
-// Define a simple function tool
+// Define a simple function tool — the Zod schema gives us type inference and runtime validation for free
 const addNumbers = tool({
   name: 'add_numbers',
   description: 'Return the sum of two numbers',
-  inputSchema: {
-    type: 'object',
-    properties: {
-      a: { type: 'number' },
-      b: { type: 'number' },
-    },
-    required: ['a', 'b'],
-  },
-  callback: async ({ a, b }: { a: number; b: number }) => a + b,
+  inputSchema: z.object({
+    a: z.number(),
+    b: z.number(),
+  }),
+  callback: async ({ a, b }) => a + b,
 });
 tools.push(addNumbers);
 
-// Add MCP clients to tools if available
-for (const mcpClient of mcpClients) {
-  if (mcpClient) {
-    tools.push(mcpClient);
-  }
-}
+// Add MCP clients to tools
+tools.push(...mcpClients);
 
 const SYSTEM_PROMPT = `
 You are a helpful assistant. Use tools when appropriate.

@@ -1,6 +1,6 @@
 {
   "name": "@aws/agentcore",
-  "version": "0.14.0",
+  "version": "0.14.2",
   "description": "CLI for Amazon Bedrock AgentCore",
   "license": "Apache-2.0",
   "repository": {
@@ -41,6 +41,7 @@
   "files": [
     "dist",
     "scripts",
+    "npm-shrinkwrap.json",
     "!dist/mcp-harness"
   ],
   "scripts": {
@@ -78,7 +79,7 @@
     "@aws-sdk/client-bedrock": "^3.1012.0",
     "@aws-sdk/client-bedrock-agent": "^3.1012.0",
     "@aws-sdk/client-bedrock-agentcore": "^3.1020.0",
-    "@aws-sdk/client-bedrock-agentcore-control": "^3.1039.0",
+    "@aws-sdk/client-bedrock-agentcore-control": "^3.1048.0",
     "@aws-sdk/client-bedrock-runtime": "^3.893.0",
     "@aws-sdk/client-cloudformation": "^3.893.0",
     "@aws-sdk/client-cloudwatch-logs": "^3.893.0",
@@ -88,7 +89,7 @@
     "@aws-sdk/region-config-resolver": "^3.972.13",
     "@aws-sdk/client-xray": "^3.1003.0",
     "@aws-sdk/credential-providers": "^3.893.0",
-    "@aws/agent-inspector": "0.4.1",
+    "@aws/agent-inspector": "0.4.2",
     "@commander-js/extra-typings": "^14.0.0",
     "@opentelemetry/api": "^1.9.1",
     "@opentelemetry/exporter-metrics-otlp-http": "^0.215.0",
@@ -98,6 +99,7 @@
     "@smithy/shared-ini-file-loader": "^4.4.2",
     "commander": "^14.0.2",
     "dotenv": "^17.2.3",
+    "fast-json-stable-stringify": "^2.1.0",
     "fflate": "^0.8.2",
     "handlebars": "^4.7.8",
     "ink": "^6.6.0",
@@ -143,6 +145,7 @@
     "node-pty": "^1.1.0",
     "prettier": "^3.7.4",
     "secretlint": "^12.2.0",
+    "strip-ansi": "^7.2.0",
     "tsx": "^4.21.0",
     "typescript": "^5",
     "typescript-eslint": "^8.50.1",

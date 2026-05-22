@@ -506,6 +506,7 @@ describe('resolveConfigBundleComponentKeys', () => {
       policyEngines: [],
       configBundles,
       httpGateways: [],
+      datasets: [],
       abTests: [],
     };
   }

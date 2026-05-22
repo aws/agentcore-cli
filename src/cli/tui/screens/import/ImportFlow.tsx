@@ -12,8 +12,9 @@ import { HELP_TEXT } from '../../constants';
 import { ArnInputScreen } from './ArnInputScreen';
 import { CodePathScreen } from './CodePathScreen';
 import { ImportProgressScreen } from './ImportProgressScreen';
-import { ImportSelectScreen, type ImportType } from './ImportSelectScreen';
+import { ImportSelectScreen } from './ImportSelectScreen';
 import { YamlPathScreen } from './YamlPathScreen';
+import type { ImportType } from './types';
 import { Box, Text } from 'ink';
 import React, { useState } from 'react';
 

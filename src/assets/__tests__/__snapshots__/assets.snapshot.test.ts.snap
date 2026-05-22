@@ -386,6 +386,7 @@ test('AgentCoreStack synthesizes with empty spec', () => {
       agentCoreGateways: [],
       mcpRuntimeTools: [],
       unassignedTargets: [],
+      datasets: [],
     },
   });
   const template = Template.fromStack(stack);
@@ -448,6 +449,8 @@ exports[`Assets Directory Snapshots > File listing > should match the expected f
   "container/python/dockerignore.template",
   "container/typescript/Dockerfile",
   "container/typescript/dockerignore.template",
+  "datasets/predefined-v1.jsonl",
+  "datasets/simulated-v1.jsonl",
   "evaluators/python-lambda/execution-role-policy.json",
   "evaluators/python-lambda/lambda_function.py",
   "evaluators/python-lambda/pyproject.toml",
@@ -1181,7 +1184,7 @@ dependencies = [
     "a2a-sdk >= 0.2.0, < 1.0.0",
     "aws-opentelemetry-distro",
     "bedrock-agentcore[a2a] >= 1.0.3",
-    "google-adk >= 1.0.0",
+    "google-adk >= 1.0.0, < 2.0.0",
     "google-genai >= 1.0.0",
 ]
 
@@ -1930,7 +1933,7 @@ def get_memory_session_manager(session_id: Optional[str], actor_id: str) -> Opti
         f"/users/{actor_id}/preferences": RetrievalConfig(top_k=3, relevance_score=0.5),
 {{/if}}
 {{#if (includes memoryProviders.[0].strategies "SUMMARIZATION")}}
-        f"/summaries/{actor_id}/{session_id}": RetrievalConfig(top_k=3, relevance_score=0.5),
+        f"/summaries/{actor_id}": RetrievalConfig(top_k=3, relevance_score=0.5),
 {{/if}}
     }
 {{/if}}
@@ -2129,7 +2132,7 @@ dependencies = [
     "ag-ui-protocol >= 0.1.10",
     "bedrock-agentcore >= 1.0.3",
     "fastapi >= 0.115.12",
-    "google-adk >= 1.16.0",
+    "google-adk >= 1.16.0, < 2.0.0",
     "google-genai >= 1.0.0",
     "opentelemetry-distro",
     "opentelemetry-exporter-otlp",
@@ -2770,7 +2773,7 @@ def get_memory_session_manager(session_id: Optional[str], actor_id: str) -> Opti
         f"/users/{actor_id}/preferences": RetrievalConfig(top_k=3, relevance_score=0.5),
 {{/if}}
 {{#if (includes memoryProviders.[0].strategies "SUMMARIZATION")}}
-        f"/summaries/{actor_id}/{session_id}": RetrievalConfig(top_k=3, relevance_score=0.5),
+        f"/summaries/{actor_id}": RetrievalConfig(top_k=3, relevance_score=0.5),
 {{/if}}
     }
 {{/if}}
@@ -3613,7 +3616,7 @@ requires-python = ">=3.10"
 dependencies = [
     "opentelemetry-distro",
     "opentelemetry-exporter-otlp",
-    "google-adk >= 1.17.0",
+    "google-adk >= 1.17.0, < 2.0.0",
     "bedrock-agentcore >= 1.0.3",
     "botocore[crt] >= 1.35.0",
     {{#if hasGateway}}{{#if (includes gatewayAuthTypes "AWS_IAM")}}"mcp-proxy-for-aws >= 1.1.0",
@@ -5151,7 +5154,7 @@ def get_memory_session_manager(session_id: Optional[str], actor_id: str) -> Opti
         f"/users/{actor_id}/preferences": RetrievalConfig(top_k=3, relevance_score=0.5),
 {{/if}}
 {{#if (includes memoryProviders.[0].strategies "SUMMARIZATION")}}
-        f"/summaries/{actor_id}/{session_id}": RetrievalConfig(top_k=3, relevance_score=0.5),
+        f"/summaries/{actor_id}": RetrievalConfig(top_k=3, relevance_score=0.5),
 {{/if}}
     }
 {{/if}}
@@ -5693,38 +5696,33 @@ Thumbs.db
 
 exports[`Assets Directory Snapshots > TypeScript assets > typescript/typescript/http/strands/base/main.ts should match snapshot 1`] = `
 "import { BedrockAgentCoreApp } from 'bedrock-agentcore/runtime';
-import { Agent, tool } from '@strands-agents/sdk';
+import { Agent, McpClient, tool, type ToolList } from '@strands-agents/sdk';
+import { z } from 'zod';
 import { loadModel } from './model/load.js';
 import { getStreamableHttpMcpClient } from './mcp_client/client.js';
 
-// Define a collection of MCP clients
-const mcpClients = [getStreamableHttpMcpClient()].filter(Boolean);
+// Define a collection of MCP clients (filter out anything that failed to initialize)
+const mcpClients: McpClient[] = [getStreamableHttpMcpClient()].filter(
+  (client): client is McpClient => Boolean(client)
+);
 
 // Define a collection of tools used by the model
-const tools: unknown[] = [];
+const tools: ToolList = [];
 
-// Define a simple function tool
+// Define a simple function tool — the Zod schema gives us type inference and runtime validation for free
 const addNumbers = tool({
   name: 'add_numbers',
   description: 'Return the sum of two numbers',
-  inputSchema: {
-    type: 'object',
-    properties: {
-      a: { type: 'number' },
-      b: { type: 'number' },
-    },
-    required: ['a', 'b'],
-  },
-  callback: async ({ a, b }: { a: number; b: number }) => a + b,
+  inputSchema: z.object({
+    a: z.number(),
+    b: z.number(),
+  }),
+  callback: async ({ a, b }) => a + b,
 });
 tools.push(addNumbers);
 
-// Add MCP clients to tools if available
-for (const mcpClient of mcpClients) {
-  if (mcpClient) {
-    tools.push(mcpClient);
-  }
-}
+// Add MCP clients to tools
+tools.push(...mcpClients);
 
 const SYSTEM_PROMPT = \`
 You are a helpful assistant. Use tools when appropriate.
@@ -5912,7 +5910,8 @@ exports[`Assets Directory Snapshots > TypeScript assets > typescript/typescript/
     "@modelcontextprotocol/sdk": "^1.25.2",
     "@strands-agents/sdk": "1.0.0-rc.4",
     "bedrock-agentcore": "^0.2.4",
-    "tsx": "^4.19.0"
+    "tsx": "^4.19.0",
+    "zod": "^4.4.3"
   },
   "devDependencies": {
     "@types/node": "^22.0.0",

@@ -22,6 +22,7 @@ const ICONS = {
   policy: '▢',
   'config-bundle': '⬡',
   'ab-test': '⚗',
+  dataset: '▤',
   'runtime-endpoint': '◉',
 } as const;
 
@@ -132,6 +133,7 @@ export function ResourceGraph({ project, mcp, agentName, resourceStatuses }: Res
   const unassignedTargets = mcp?.unassignedTargets ?? [];
   const policyEngines = project.policyEngines ?? [];
   const configBundles = project.configBundles ?? [];
+  const datasets = project.datasets ?? [];
   const abTests = project.abTests ?? [];
 
   // Build lookup map and collect pending-removal resources in a single pass
@@ -323,6 +325,27 @@ export function ResourceGraph({ project, mcp, agentName, resourceStatuses }: Res
                 color="white"
                 name={bundle.name}
                 detail={rsEntry?.detail ?? bundle.description}
+                deploymentState={rsEntry?.deploymentState}
+                identifier={rsEntry?.identifier}
+              />
+            );
+          })}
+        </Box>
+      )}
+
+      {/* Datasets */}
+      {datasets.length > 0 && (
+        <Box flexDirection="column">
+          <SectionHeader>Datasets</SectionHeader>
+          {datasets.map(ds => {
+            const rsEntry = statusMap.get(`dataset:${ds.name}`);
+            return (
+              <ResourceRow
+                key={ds.name}
+                icon={ICONS.dataset}
+                color="cyan"
+                name={ds.name}
+                detail={rsEntry?.detail ?? ds.schemaType}
                 deploymentState={rsEntry?.deploymentState}
                 identifier={rsEntry?.identifier}
               />

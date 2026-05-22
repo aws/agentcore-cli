@@ -337,17 +337,17 @@ Required for all deployment operations (`deploy`, `status`, `diff`).
 
 ### Batch evaluation and recommendations
 
-| Action                                    | CLI Commands     | Purpose                        |
-| ----------------------------------------- | ---------------- | ------------------------------ |
-| `bedrock-agentcore:StartBatchEvaluation`  | `run batch-eval` | Start a batch evaluation job   |
-| `bedrock-agentcore:GetBatchEvaluation`    | `run batch-eval` | Poll batch evaluation status   |
-| `bedrock-agentcore:ListBatchEvaluations`  | `evals history`  | List past batch evaluations    |
-| `bedrock-agentcore:StopBatchEvaluation`   | `run batch-eval` | Stop an in-progress batch eval |
-| `bedrock-agentcore:DeleteBatchEvaluation` | `run batch-eval` | Delete a batch evaluation      |
-| `bedrock-agentcore:StartRecommendation`   | `run recommend`  | Start a recommendation job     |
-| `bedrock-agentcore:GetRecommendation`     | `run recommend`  | Poll recommendation status     |
-| `bedrock-agentcore:ListRecommendations`   | `run recommend`  | List past recommendations      |
-| `bedrock-agentcore:DeleteRecommendation`  | `run recommend`  | Stop/delete a recommendation   |
+| Action                                    | CLI Commands           | Purpose                        |
+| ----------------------------------------- | ---------------------- | ------------------------------ |
+| `bedrock-agentcore:StartBatchEvaluation`  | `run batch-evaluation` | Start a batch evaluation job   |
+| `bedrock-agentcore:GetBatchEvaluation`    | `run batch-evaluation` | Poll batch evaluation status   |
+| `bedrock-agentcore:ListBatchEvaluations`  | `evals history`        | List past batch evaluations    |
+| `bedrock-agentcore:StopBatchEvaluation`   | `run batch-evaluation` | Stop an in-progress batch eval |
+| `bedrock-agentcore:DeleteBatchEvaluation` | `run batch-evaluation` | Delete a batch evaluation      |
+| `bedrock-agentcore:StartRecommendation`   | `run recommendation`   | Start a recommendation job     |
+| `bedrock-agentcore:GetRecommendation`     | `run recommendation`   | Poll recommendation status     |
+| `bedrock-agentcore:ListRecommendations`   | `run recommendation`   | List past recommendations      |
+| `bedrock-agentcore:DeleteRecommendation`  | `run recommendation`   | Stop/delete a recommendation   |
 
 ### Identity and credential management
 
@@ -375,19 +375,19 @@ Required for all deployment operations (`deploy`, `status`, `diff`).
 
 ### Logging, traces, and observability
 
-| Action                          | CLI Commands                             | Purpose                                                    |
-| ------------------------------- | ---------------------------------------- | ---------------------------------------------------------- |
-| `logs:StartLiveTail`            | `logs`                                   | Stream agent logs in real-time                             |
-| `logs:FilterLogEvents`          | `logs`                                   | Search agent logs                                          |
-| `logs:StartQuery`               | `traces list`, `traces get`, `run evals` | Run CloudWatch Logs Insights queries                       |
-| `logs:GetQueryResults`          | `traces list`, `traces get`, `run evals` | Retrieve query results                                     |
-| `logs:DescribeResourcePolicies` | `deploy`                                 | Check for X-Ray log resource policy                        |
-| `logs:PutResourcePolicy`        | `deploy`                                 | Create resource policy for X-Ray trace access              |
-| `logs:DescribeLogGroups`        | `run batch-eval`, `run recommend`        | Discover runtime log groups for evaluation data sources    |
-| `logs:CreateLogGroup`           | `run batch-eval`                         | Create log group for batch evaluation results output       |
-| `logs:CreateLogStream`          | `run batch-eval`                         | Create log stream for batch evaluation results             |
-| `logs:PutLogEvents`             | `run batch-eval`                         | Write batch evaluation results to CloudWatch Logs          |
-| `logs:PutRetentionPolicy`       | `run batch-eval`                         | Set retention policy on batch evaluation results log group |
+| Action                          | CLI Commands                                 | Purpose                                                    |
+| ------------------------------- | -------------------------------------------- | ---------------------------------------------------------- |
+| `logs:StartLiveTail`            | `logs`                                       | Stream agent logs in real-time                             |
+| `logs:FilterLogEvents`          | `logs`                                       | Search agent logs                                          |
+| `logs:StartQuery`               | `traces list`, `traces get`, `run evals`     | Run CloudWatch Logs Insights queries                       |
+| `logs:GetQueryResults`          | `traces list`, `traces get`, `run evals`     | Retrieve query results                                     |
+| `logs:DescribeResourcePolicies` | `deploy`                                     | Check for X-Ray log resource policy                        |
+| `logs:PutResourcePolicy`        | `deploy`                                     | Create resource policy for X-Ray trace access              |
+| `logs:DescribeLogGroups`        | `run batch-evaluation`, `run recommendation` | Discover runtime log groups for evaluation data sources    |
+| `logs:CreateLogGroup`           | `run batch-evaluation`                       | Create log group for batch evaluation results output       |
+| `logs:CreateLogStream`          | `run batch-evaluation`                       | Create log stream for batch evaluation results             |
+| `logs:PutLogEvents`             | `run batch-evaluation`                       | Write batch evaluation results to CloudWatch Logs          |
+| `logs:PutRetentionPolicy`       | `run batch-evaluation`                       | Set retention policy on batch evaluation results log group |
 
 ### Transaction search setup
 

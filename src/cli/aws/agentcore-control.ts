@@ -371,6 +371,7 @@ export interface MemoryDetail {
     namespaceTemplates?: string[];
     reflectionNamespaceTemplates?: string[];
   }[];
+  indexedKeys?: { key: string; type: string }[];
   tags?: Record<string, string>;
   encryptionKeyArn?: string;
   executionRoleArn?: string;
@@ -408,6 +409,14 @@ export async function getMemoryDetail(options: GetMemoryOptions): Promise<Memory
 
   const tags = await fetchTags(client, memory.arn, 'memory');
 
+  const indexedKeys = memory.indexedKeys?.flatMap(k => {
+    if (!k.key || !k.type) {
+      console.warn(`Warning: Skipping malformed indexed key from API response: ${JSON.stringify(k)}`);
+      return [];
+    }
+    return [{ key: k.key, type: k.type }];
+  });
+
   return {
     memoryId: memory.id,
     memoryArn: memory.arn,
@@ -418,6 +427,7 @@ export async function getMemoryDetail(options: GetMemoryOptions): Promise<Memory
     tags,
     encryptionKeyArn: memory.encryptionKeyArn,
     executionRoleArn: memory.memoryExecutionRoleArn,
+    ...(indexedKeys && indexedKeys.length > 0 && { indexedKeys }),
     strategies: (memory.strategies ?? []).map(s => {
       if (!s.type) {
         throw new Error(`Memory ${options.memoryId} has a strategy with missing required field: type`);

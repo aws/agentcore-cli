@@ -1,3 +1,5 @@
+import { ValidationError } from '../../../lib';
+import { withCommandRunTelemetry } from '../../telemetry/cli-command-run.js';
 import { handleImport } from './actions';
 import { ANSI } from './constants';
 import { registerImportEvaluator } from './import-evaluator';
@@ -71,34 +73,36 @@ export const registerImport = (program: Command) => {
         return;
       }
 
-      // Validate source file exists
-      if (!fs.existsSync(cliOptions.source)) {
-        console.error(`\x1b[31m[error]${reset} Source file not found: ${cliOptions.source}`);
-        process.exit(1);
-      }
-
       const warnings: string[] = [];
 
-      const result = await handleImport({
-        source: cliOptions.source,
-        target: cliOptions.target,
-        yes: cliOptions.yes,
-        onProgress: (message: string) => {
-          // Collect warnings for end-of-output display
-          if (message.includes('Warning') || message.includes('\x1b[33m')) {
-            warnings.push(message);
-            return;
-          }
+      const result = await withCommandRunTelemetry('import', {}, async () => {
+        if (!fs.existsSync(cliOptions.source!)) {
+          return { success: false as const, error: new ValidationError(`Source file not found: ${cliOptions.source}`) };
+        }
 
-          // Skipped items shown dimmed
-          if (message.startsWith('Skipping')) {
-            console.log(`${dim}[skip]${reset}  ${message}`);
-            return;
-          }
+        const importResult = await handleImport({
+          source: cliOptions.source!,
+          target: cliOptions.target,
+          yes: cliOptions.yes,
+          onProgress: (message: string) => {
+            // Collect warnings for end-of-output display
+            if (message.includes('Warning') || message.includes('\x1b[33m')) {
+              warnings.push(message);
+              return;
+            }
 
-          // Normal progress steps shown as [done]
-          console.log(`${green}[done]${reset}  ${message}`);
-        },
+            // Skipped items shown dimmed
+            if (message.startsWith('Skipping')) {
+              console.log(`${dim}[skip]${reset}  ${message}`);
+              return;
+            }
+
+            // Normal progress steps shown as [done]
+            console.log(`${green}[done]${reset}  ${message}`);
+          },
+        });
+
+        return importResult;
       });
 
       if (result.success) {

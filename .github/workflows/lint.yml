@@ -29,7 +29,7 @@ jobs:
         uses: actions/cache/save@v5
         with:
           path: node_modules
-          key: node-modules-${{ hashFiles('package-lock.json') }}
+          key: node-modules-${{ hashFiles('npm-shrinkwrap.json') }}
 
   format:
     needs: setup
@@ -42,7 +42,7 @@ jobs:
       - uses: actions/cache/restore@v5
         with:
           path: node_modules
-          key: node-modules-${{ hashFiles('package-lock.json') }}
+          key: node-modules-${{ hashFiles('npm-shrinkwrap.json') }}
       - run: npm run format:check
 
   lint:
@@ -56,7 +56,7 @@ jobs:
       - uses: actions/cache/restore@v5
         with:
           path: node_modules
-          key: node-modules-${{ hashFiles('package-lock.json') }}
+          key: node-modules-${{ hashFiles('npm-shrinkwrap.json') }}
       - run: npm run lint
 
   security:
@@ -70,7 +70,7 @@ jobs:
       - uses: actions/cache/restore@v5
         with:
           path: node_modules
-          key: node-modules-${{ hashFiles('package-lock.json') }}
+          key: node-modules-${{ hashFiles('npm-shrinkwrap.json') }}
       - run: npm run security:audit
 
   secrets:
@@ -84,7 +84,7 @@ jobs:
       - uses: actions/cache/restore@v5
         with:
           path: node_modules
-          key: node-modules-${{ hashFiles('package-lock.json') }}
+          key: node-modules-${{ hashFiles('npm-shrinkwrap.json') }}
       - run: npm run secrets:check
 
   typecheck:
@@ -98,7 +98,7 @@ jobs:
       - uses: actions/cache/restore@v5
         with:
           path: node_modules
-          key: node-modules-${{ hashFiles('package-lock.json') }}
+          key: node-modules-${{ hashFiles('npm-shrinkwrap.json') }}
       - run: npm run typecheck
 
   schema-check:

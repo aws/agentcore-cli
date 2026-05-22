@@ -72,33 +72,36 @@ agentcore create \
   --memory none
 ```
 
-| Flag                       | Description                                                                                                    |
-| -------------------------- | -------------------------------------------------------------------------------------------------------------- |
-| `--name <name>`            | Project name (alphanumeric, starts with letter, max 23 chars)                                                  |
-| `--defaults`               | Use defaults (Python, Strands, Bedrock, no memory)                                                             |
-| `--no-agent`               | Skip agent creation                                                                                            |
-| `--type <type>`            | `create` (default) or `import`                                                                                 |
-| `--language <lang>`        | `Python` (default) or `TypeScript` (Strands-only; see [Frameworks](frameworks.md#supported-languages))         |
-| `--framework <fw>`         | `Strands`, `LangChain_LangGraph`, `GoogleADK`, `OpenAIAgents`, `VercelAI`                                      |
-| `--model-provider <p>`     | `Bedrock`, `Anthropic`, `OpenAI`, `Gemini`                                                                     |
-| `--build <type>`           | `CodeZip` (default) or `Container` (see [Container Builds](container-builds.md))                               |
-| `--api-key <key>`          | API key for non-Bedrock providers                                                                              |
-| `--memory <opt>`           | `none`, `shortTerm`, `longAndShortTerm` (see [Memory Shorthand Mapping](memory.md#--memory-shorthand-mapping)) |
-| `--protocol <protocol>`    | `HTTP` (default), `MCP`, `A2A`                                                                                 |
-| `--network-mode <mode>`    | `PUBLIC` (default) or `VPC`                                                                                    |
-| `--subnets <ids>`          | Comma-separated subnet IDs (required for VPC mode)                                                             |
-| `--security-groups <ids>`  | Comma-separated security group IDs (required for VPC mode)                                                     |
-| `--agent-id <id>`          | Bedrock Agent ID (import only)                                                                                 |
-| `--agent-alias-id <id>`    | Bedrock Agent Alias ID (import only)                                                                           |
-| `--region <region>`        | AWS region for Bedrock Agent (import only)                                                                     |
-| `--idle-timeout <seconds>` | Idle session timeout in seconds                                                                                |
-| `--max-lifetime <seconds>` | Max instance lifetime in seconds                                                                               |
-| `--output-dir <dir>`       | Output directory                                                                                               |
-| `--skip-git`               | Skip git initialization                                                                                        |
-| `--skip-python-setup`      | Skip venv setup                                                                                                |
-| `--skip-install`           | Skip all dependency installation (npm install, uv sync)                                                        |
-| `--dry-run`                | Preview without creating                                                                                       |
-| `--json`                   | JSON output                                                                                                    |
+| Flag                                  | Description                                                                                                    |
+| ------------------------------------- | -------------------------------------------------------------------------------------------------------------- |
+| `--name <name>`                       | Agent (resource) name; also used as project directory name when `--project-name` is omitted                    |
+| `--project-name <name>`               | Project directory name (alphanumeric, starts with letter, max 23 chars)                                        |
+| `--defaults`                          | Use defaults (Python, Strands, Bedrock, no memory)                                                             |
+| `--no-agent`                          | Skip agent creation                                                                                            |
+| `--type <type>`                       | `create` (default) or `import`                                                                                 |
+| `--language <lang>`                   | `Python` (default) or `TypeScript` (Strands-only; see [Frameworks](frameworks.md#supported-languages))         |
+| `--framework <fw>`                    | `Strands`, `LangChain_LangGraph`, `GoogleADK`, `OpenAIAgents`, `VercelAI`                                      |
+| `--model-provider <p>`                | `Bedrock`, `Anthropic`, `OpenAI`, `Gemini`                                                                     |
+| `--build <type>`                      | `CodeZip` (default) or `Container` (see [Container Builds](container-builds.md))                               |
+| `--api-key <key>`                     | API key for non-Bedrock providers                                                                              |
+| `--memory <opt>`                      | `none`, `shortTerm`, `longAndShortTerm` (see [Memory Shorthand Mapping](memory.md#--memory-shorthand-mapping)) |
+| `--protocol <protocol>`               | `HTTP` (default), `MCP`, `A2A`, `AGUI`                                                                         |
+| `--network-mode <mode>`               | `PUBLIC` (default) or `VPC`                                                                                    |
+| `--subnets <ids>`                     | Comma-separated subnet IDs (required for VPC mode)                                                             |
+| `--security-groups <ids>`             | Comma-separated security group IDs (required for VPC mode)                                                     |
+| `--agent-id <id>`                     | Bedrock Agent ID (import only)                                                                                 |
+| `--agent-alias-id <id>`               | Bedrock Agent Alias ID (import only)                                                                           |
+| `--region <region>`                   | AWS region for Bedrock Agent (import only)                                                                     |
+| `--idle-timeout <seconds>`            | Idle session timeout in seconds                                                                                |
+| `--max-lifetime <seconds>`            | Max instance lifetime in seconds                                                                               |
+| `--session-storage-mount-path <path>` | Absolute mount path for session filesystem storage under `/mnt` (e.g. `/mnt/data`)                             |
+| `--with-config-bundle`                | [preview] Create a config bundle wired into the generated agent template                                       |
+| `--output-dir <dir>`                  | Output directory                                                                                               |
+| `--skip-git`                          | Skip git initialization                                                                                        |
+| `--skip-python-setup`                 | Skip venv setup                                                                                                |
+| `--skip-install`                      | Skip all dependency installation (npm install, uv sync)                                                        |
+| `--dry-run`                           | Preview without creating                                                                                       |
+| `--json`                              | JSON output                                                                                                    |
 
 ### deploy
 
@@ -158,6 +161,84 @@ agentcore validate -d ./my-project
 | ------------------------ | ----------------- |
 | `-d, --directory <path>` | Project directory |
 
+### import
+
+Import existing AgentCore resources from your AWS account into the project, or migrate from a Bedrock AgentCore Starter
+Toolkit project.
+
+```bash
+# Import a runtime by ARN
+agentcore import runtime \
+  --arn arn:aws:bedrock-agentcore:us-east-1:123456789012:runtime/my-runtime \
+  --code ./app/MyAgent \
+  --entrypoint main.py \
+  --name MyAgent
+
+# Import a memory resource
+agentcore import memory --arn arn:aws:bedrock-agentcore:us-east-1:123456789012:memory/abc123 --name SharedMemory
+
+# Import an evaluator
+agentcore import evaluator --arn arn:aws:bedrock-agentcore:us-east-1:123456789012:evaluator/eval123 --name ResponseQuality
+
+# Import an online eval config
+agentcore import online-eval --arn arn:aws:bedrock-agentcore:us-east-1:123456789012:online-evaluation-config/oec123 --name QualityMonitor
+
+# Import a gateway (with all its targets)
+agentcore import gateway --arn arn:aws:bedrock-agentcore:us-east-1:123456789012:gateway/gw123
+
+# Import from a Starter Toolkit project (auto-detects .bedrock_agentcore.yaml in cwd)
+agentcore import
+agentcore import --source ./path/to/.bedrock_agentcore.yaml -y
+```
+
+Top-level flags (apply when running `agentcore import` without a subcommand to migrate a Starter Toolkit project):
+
+| Flag                | Description                                              |
+| ------------------- | -------------------------------------------------------- |
+| `--source <path>`   | Path to the `.bedrock_agentcore.yaml` configuration file |
+| `--target <target>` | Deployment target name (only when project has multiple)  |
+| `-y, --yes`         | Auto-confirm prompts                                     |
+
+Subcommand: `import runtime`
+
+| Flag                  | Description                                                            |
+| --------------------- | ---------------------------------------------------------------------- |
+| `--arn <runtimeArn>`  | Runtime ARN to import                                                  |
+| `--code <path>`       | Path to directory containing the entrypoint (e.g. folder with main.py) |
+| `--entrypoint <file>` | Entrypoint file (auto-detected from runtime, e.g. `main.py`)           |
+| `--name <name>`       | Local name for the imported runtime                                    |
+| `-y, --yes`           | Auto-confirm prompts                                                   |
+
+Subcommand: `import memory`
+
+| Flag                | Description                        |
+| ------------------- | ---------------------------------- |
+| `--arn <memoryArn>` | Memory ARN to import               |
+| `--name <name>`     | Local name for the imported memory |
+| `-y, --yes`         | Auto-confirm prompts               |
+
+Subcommand: `import evaluator`
+
+| Flag                   | Description                           |
+| ---------------------- | ------------------------------------- |
+| `--arn <evaluatorArn>` | Evaluator ARN to import               |
+| `--name <name>`        | Local name for the imported evaluator |
+| `-y, --yes`            | Auto-confirm prompts                  |
+
+Subcommand: `import online-eval`
+
+| Flag                | Description                             |
+| ------------------- | --------------------------------------- |
+| `--arn <configArn>` | Online evaluation config ARN to import  |
+| `--name <name>`     | Local name for the imported online eval |
+| `-y, --yes`         | Auto-confirm prompts                    |
+
+Subcommand: `import gateway`
+
+| Flag                 | Description                              |
+| -------------------- | ---------------------------------------- |
+| `--arn <gatewayArn>` | Gateway ARN to import (with all targets) |
+
 ---
 
 ## Resource Management
@@ -203,36 +284,39 @@ agentcore add agent \
   --memory none
 ```
 
-| Flag                        | Description                                                                                                                       |
-| --------------------------- | --------------------------------------------------------------------------------------------------------------------------------- |
-| `--name <name>`             | Agent name (alphanumeric + underscores, starts with letter, max 48 chars)                                                         |
-| `--type <type>`             | `create` (default), `byo`, or `import`                                                                                            |
-| `--build <type>`            | `CodeZip` (default) or `Container` (see [Container Builds](container-builds.md))                                                  |
-| `--language <lang>`         | `Python` (create); `Python`, `TypeScript`, `Other` (BYO)                                                                          |
-| `--framework <fw>`          | `Strands`, `LangChain_LangGraph`, `GoogleADK`, `OpenAIAgents`, `VercelAI`                                                         |
-| `--model-provider <p>`      | `Bedrock`, `Anthropic`, `OpenAI`, `Gemini`                                                                                        |
-| `--api-key <key>`           | API key for non-Bedrock providers                                                                                                 |
-| `--memory <opt>`            | `none`, `shortTerm`, `longAndShortTerm` (create and import; see [Memory Shorthand Mapping](memory.md#--memory-shorthand-mapping)) |
-| `--protocol <protocol>`     | `HTTP` (default), `MCP`, `A2A`                                                                                                    |
-| `--code-location <path>`    | Path to existing code (BYO only)                                                                                                  |
-| `--entrypoint <file>`       | Entry file relative to code-location (BYO, default: `main.py`)                                                                    |
-| `--network-mode <mode>`     | `PUBLIC` (default) or `VPC`                                                                                                       |
-| `--subnets <ids>`           | Comma-separated subnet IDs (required for VPC mode)                                                                                |
-| `--security-groups <ids>`   | Comma-separated security group IDs (required for VPC mode)                                                                        |
-| `--agent-id <id>`           | Bedrock Agent ID (import only)                                                                                                    |
-| `--agent-alias-id <id>`     | Bedrock Agent Alias ID (import only)                                                                                              |
-| `--region <region>`         | AWS region for Bedrock Agent (import only)                                                                                        |
-| `--authorizer-type <type>`  | Inbound auth: `AWS_IAM` or `CUSTOM_JWT`                                                                                           |
-| `--discovery-url <url>`     | OIDC discovery URL (for CUSTOM_JWT)                                                                                               |
-| `--allowed-audience <vals>` | Comma-separated allowed audiences (for CUSTOM_JWT)                                                                                |
-| `--allowed-clients <vals>`  | Comma-separated allowed client IDs (for CUSTOM_JWT)                                                                               |
-| `--allowed-scopes <scopes>` | Comma-separated allowed scopes (for CUSTOM_JWT)                                                                                   |
-| `--custom-claims <json>`    | Custom claim validations as JSON array (for CUSTOM_JWT)                                                                           |
-| `--client-id <id>`          | OAuth client ID for agent bearer token                                                                                            |
-| `--client-secret <secret>`  | OAuth client secret                                                                                                               |
-| `--idle-timeout <seconds>`  | Idle session timeout in seconds                                                                                                   |
-| `--max-lifetime <seconds>`  | Max instance lifetime in seconds                                                                                                  |
-| `--json`                    | JSON output                                                                                                                       |
+| Flag                                   | Description                                                                                                                                                                                                                                                                                          |
+| -------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `--name <name>`                        | Agent name (alphanumeric + underscores, starts with letter, max 48 chars)                                                                                                                                                                                                                            |
+| `--type <type>`                        | `create` (default), `byo`, or `import`                                                                                                                                                                                                                                                               |
+| `--build <type>`                       | `CodeZip` (default) or `Container` (see [Container Builds](container-builds.md))                                                                                                                                                                                                                     |
+| `--language <lang>`                    | `Python` (create); `Python`, `TypeScript`, `Other` (BYO)                                                                                                                                                                                                                                             |
+| `--framework <fw>`                     | `Strands`, `LangChain_LangGraph`, `GoogleADK`, `OpenAIAgents`, `VercelAI`                                                                                                                                                                                                                            |
+| `--model-provider <p>`                 | `Bedrock`, `Anthropic`, `OpenAI`, `Gemini`                                                                                                                                                                                                                                                           |
+| `--api-key <key>`                      | API key for non-Bedrock providers                                                                                                                                                                                                                                                                    |
+| `--memory <opt>`                       | `none`, `shortTerm`, `longAndShortTerm` (create and import; see [Memory Shorthand Mapping](memory.md#--memory-shorthand-mapping))                                                                                                                                                                    |
+| `--protocol <protocol>`                | `HTTP` (default), `MCP`, `A2A`, `AGUI`                                                                                                                                                                                                                                                               |
+| `--code-location <path>`               | Path to existing code (BYO only)                                                                                                                                                                                                                                                                     |
+| `--entrypoint <file>`                  | Entry file relative to code-location (BYO, default: `main.py`)                                                                                                                                                                                                                                       |
+| `--network-mode <mode>`                | `PUBLIC` (default) or `VPC`                                                                                                                                                                                                                                                                          |
+| `--subnets <ids>`                      | Comma-separated subnet IDs (required for VPC mode)                                                                                                                                                                                                                                                   |
+| `--security-groups <ids>`              | Comma-separated security group IDs (required for VPC mode)                                                                                                                                                                                                                                           |
+| `--agent-id <id>`                      | Bedrock Agent ID (import only)                                                                                                                                                                                                                                                                       |
+| `--agent-alias-id <id>`                | Bedrock Agent Alias ID (import only)                                                                                                                                                                                                                                                                 |
+| `--region <region>`                    | AWS region for Bedrock Agent (import only)                                                                                                                                                                                                                                                           |
+| `--authorizer-type <type>`             | Inbound auth: `AWS_IAM` or `CUSTOM_JWT`                                                                                                                                                                                                                                                              |
+| `--discovery-url <url>`                | OIDC discovery URL (for CUSTOM_JWT)                                                                                                                                                                                                                                                                  |
+| `--allowed-audience <vals>`            | Comma-separated allowed audiences (for CUSTOM_JWT)                                                                                                                                                                                                                                                   |
+| `--allowed-clients <vals>`             | Comma-separated allowed client IDs (for CUSTOM_JWT)                                                                                                                                                                                                                                                  |
+| `--allowed-scopes <scopes>`            | Comma-separated allowed scopes (for CUSTOM_JWT)                                                                                                                                                                                                                                                      |
+| `--custom-claims <json>`               | Custom claim validations as JSON array (for CUSTOM_JWT)                                                                                                                                                                                                                                              |
+| `--client-id <id>`                     | OAuth client ID for agent bearer token                                                                                                                                                                                                                                                               |
+| `--client-secret <secret>`             | OAuth client secret                                                                                                                                                                                                                                                                                  |
+| `--request-header-allowlist <headers>` | Comma-separated list of inbound header names to forward to the agent. `X-*` names (e.g. `X-Api-Key`, `X-Custom-Signature`) pass through unchanged; bare names without an `X-` prefix are auto-prefixed with the legacy `X-Amzn-Bedrock-AgentCore-Runtime-Custom-` prefix for backward compatibility. |
+| `--session-storage-mount-path <path>`  | Absolute mount path for session filesystem storage (e.g. `/mnt/session-storage`)                                                                                                                                                                                                                     |
+| `--with-config-bundle`                 | [preview] Wire a config bundle into the generated agent template                                                                                                                                                                                                                                     |
+| `--idle-timeout <seconds>`             | Idle session timeout in seconds                                                                                                                                                                                                                                                                      |
+| `--max-lifetime <seconds>`             | Max instance lifetime in seconds                                                                                                                                                                                                                                                                     |
+| `--json`                               | JSON output                                                                                                                                                                                                                                                                                          |
 
 ### add memory
 
@@ -421,26 +505,40 @@ agentcore add credential \
 
 ### add evaluator
 
-Add a custom LLM-as-a-Judge evaluator. See [Evaluations](evals.md) for full details.
+Add a custom evaluator. Two types are supported: `llm-as-a-judge` (default) and `code-based` (Lambda). See
+[Evaluations](evals.md) for full details.
 
 ```bash
+# LLM-as-a-Judge
 agentcore add evaluator \
   --name ResponseQuality \
   --level SESSION \
   --model us.anthropic.claude-sonnet-4-5-20250514-v1:0 \
   --instructions "Evaluate the response quality. Context: {context}" \
   --rating-scale 1-5-quality
+
+# Code-based (existing Lambda)
+agentcore add evaluator \
+  --name LatencyCheck \
+  --type code-based \
+  --level TRACE \
+  --lambda-arn arn:aws:lambda:us-east-1:123456789012:function:my-evaluator \
+  --timeout 60
 ```
 
-| Flag                      | Description                                                                |
-| ------------------------- | -------------------------------------------------------------------------- |
-| `--name <name>`           | Evaluator name                                                             |
-| `--level <level>`         | `SESSION`, `TRACE`, or `TOOL_CALL`                                         |
-| `--model <model>`         | Bedrock model ID for the LLM judge                                         |
-| `--instructions <text>`   | Evaluation prompt with placeholders (e.g. `{context}`)                     |
-| `--rating-scale <preset>` | `1-5-quality`, `1-3-simple`, `pass-fail`, `good-neutral-bad`, or custom    |
-| `--config <path>`         | Config JSON file (overrides `--model`, `--instructions`, `--rating-scale`) |
-| `--json`                  | JSON output                                                                |
+| Flag                      | Description                                                                   |
+| ------------------------- | ----------------------------------------------------------------------------- |
+| `--name <name>`           | Evaluator name                                                                |
+| `--type <type>`           | `llm-as-a-judge` (default) or `code-based`                                    |
+| `--level <level>`         | `SESSION`, `TRACE`, or `TOOL_CALL`                                            |
+| `--model <model>`         | [LLM] Bedrock model ID for the LLM judge                                      |
+| `--instructions <text>`   | [LLM] Evaluation prompt with placeholders (e.g. `{context}`)                  |
+| `--rating-scale <preset>` | [LLM] `1-5-quality`, `1-3-simple`, `pass-fail`, `good-neutral-bad`, or custom |
+| `--lambda-arn <arn>`      | [Code-based] Existing Lambda function ARN                                     |
+| `--timeout <seconds>`     | [Code-based] Lambda timeout in seconds (1–300)                                |
+| `--kms-key-arn <arn>`     | KMS key ARN for evaluator encryption (optional)                               |
+| `--config <path>`         | Config JSON file (overrides `--model`, `--instructions`, `--rating-scale`)    |
+| `--json`                  | JSON output                                                                   |
 
 ### add online-eval
 
@@ -461,8 +559,90 @@ agentcore add online-eval \
 | `-e, --evaluator <names...>` | Evaluator name(s), `Builtin.*` IDs, or ARNs   |
 | `--evaluator-arn <arns...>`  | Evaluator ARN(s)                              |
 | `--sampling-rate <rate>`     | Percentage of requests to evaluate (0.01–100) |
+| `--endpoint <name>`          | Runtime endpoint name to scope monitoring     |
 | `--enable-on-create`         | Enable immediately after deploy               |
 | `--json`                     | JSON output                                   |
+
+### add policy-engine
+
+Add a Cedar policy engine to the project. Policy engines provide authorization for gateway requests using Cedar
+policies.
+
+```bash
+agentcore add policy-engine \
+  --name MyPolicyEngine \
+  --description "Authorization for production gateways" \
+  --attach-to-gateways MyGateway,OtherGateway \
+  --attach-mode ENFORCE
+```
+
+| Flag                              | Description                                                     |
+| --------------------------------- | --------------------------------------------------------------- |
+| `--name <name>`                   | Policy engine name                                              |
+| `--description <desc>`            | Policy engine description                                       |
+| `--encryption-key-arn <arn>`      | KMS encryption key ARN                                          |
+| `--attach-to-gateways <gateways>` | Comma-separated gateway names to attach this engine to          |
+| `--attach-mode <mode>`            | Enforcement mode for attached gateways: `LOG_ONLY` or `ENFORCE` |
+| `--json`                          | JSON output                                                     |
+
+### add policy
+
+Add a Cedar policy to a policy engine. Policies can be authored inline, loaded from a file, or generated from a natural
+language description.
+
+```bash
+# From a Cedar policy file
+agentcore add policy \
+  --name AdminAccess \
+  --engine MyPolicyEngine \
+  --source ./policies/admin.cedar
+
+# Inline statement
+agentcore add policy \
+  --name DenyDelete \
+  --engine MyPolicyEngine \
+  --statement 'forbid(principal, action == Action::"Delete", resource);'
+
+# Generate from natural language (uses a deployed gateway as context)
+agentcore add policy \
+  --name ReadOnlyForGuests \
+  --engine MyPolicyEngine \
+  --generate "Allow guests to read but never write or delete" \
+  --gateway MyGateway
+```
+
+| Flag                       | Description                                                          |
+| -------------------------- | -------------------------------------------------------------------- |
+| `--name <name>`            | Policy name                                                          |
+| `--engine <engine>`        | Policy engine name (must already exist)                              |
+| `--description <desc>`     | Policy description                                                   |
+| `--source <path>`          | Path to a Cedar policy file                                          |
+| `--statement <cedar>`      | Cedar policy statement (inline)                                      |
+| `-g, --generate <prompt>`  | Generate Cedar policy from natural language description              |
+| `--gateway <name>`         | Deployed gateway name for policy generation (used with `--generate`) |
+| `--validation-mode <mode>` | Validation mode: `FAIL_ON_ANY_FINDINGS` or `IGNORE_ALL_FINDINGS`     |
+| `--json`                   | JSON output                                                          |
+
+### add runtime-endpoint
+
+Add a named endpoint (version alias) to a deployed runtime. Endpoints let you address specific runtime versions by name
+(e.g. `prod`, `staging`).
+
+```bash
+agentcore add runtime-endpoint \
+  --runtime MyAgent \
+  --endpoint prod \
+  --version 3 \
+  --description "Production endpoint pinned to version 3"
+```
+
+| Flag                   | Description                            |
+| ---------------------- | -------------------------------------- |
+| `--runtime <name>`     | Runtime to add the endpoint to         |
+| `--endpoint <name>`    | Endpoint name (e.g. `prod`, `staging`) |
+| `--version <number>`   | Version number to alias (default: `1`) |
+| `--description <desc>` | Description of the endpoint            |
+| `--json`               | JSON output                            |
 
 ### remove
 
@@ -476,18 +656,22 @@ agentcore remove evaluator --name ResponseQuality
 agentcore remove online-eval --name QualityMonitor
 agentcore remove gateway --name MyGateway
 agentcore remove gateway-target --name WeatherTools
+agentcore remove policy-engine --name MyPolicyEngine
+agentcore remove policy --name AdminAccess --engine MyPolicyEngine
+agentcore remove runtime-endpoint --name prod
 
 # Reset everything
 agentcore remove all -y
 agentcore remove all --dry-run  # Preview
 ```
 
-| Flag            | Description               |
-| --------------- | ------------------------- |
-| `--name <name>` | Resource name             |
-| `-y, --yes`     | Skip confirmation         |
-| `--dry-run`     | Preview (remove all only) |
-| `--json`        | JSON output               |
+| Flag                | Description                                       |
+| ------------------- | ------------------------------------------------- |
+| `--name <name>`     | Resource name                                     |
+| `--engine <engine>` | Policy engine name (required for `remove policy`) |
+| `-y, --yes`         | Skip confirmation                                 |
+| `--dry-run`         | Preview (`remove all` only)                       |
+| `--json`            | JSON output                                       |
 
 ---
 
@@ -520,6 +704,8 @@ agentcore dev call-tool --tool myTool --input '{"arg": "value"}'
 | `--input <json>`       | MCP tool arguments as JSON (with `--tool`)                            |
 | `-H, --header <h>`     | Custom header (`"Name: Value"`, repeatable)                           |
 | `--exec`               | Execute a shell command in the running dev container (Container only) |
+| `-b, --no-browser`     | Use terminal TUI instead of web-based chat UI                         |
+| `--no-traces`          | Disable local OTEL trace collection                                   |
 
 ### invoke
 
@@ -650,18 +836,22 @@ agentcore run eval \
   --region us-east-1
 ```
 
-| Flag                         | Description                                 |
-| ---------------------------- | ------------------------------------------- |
-| `-r, --runtime <name>`       | Runtime name from project                   |
-| `--runtime-arn <arn>`        | Runtime ARN (standalone mode)               |
-| `-e, --evaluator <names...>` | Evaluator name(s) or `Builtin.*` IDs        |
-| `--evaluator-arn <arns...>`  | Evaluator ARN(s) (use with `--runtime-arn`) |
-| `--region <region>`          | AWS region (required with `--runtime-arn`)  |
-| `-s, --session-id <id>`      | Evaluate a specific session                 |
-| `-t, --trace-id <id>`        | Evaluate a specific trace                   |
-| `--days <days>`              | Lookback window in days (default: 7)        |
-| `--output <path>`            | Custom output file path                     |
-| `--json`                     | JSON output                                 |
+| Flag                            | Description                                                                                                |
+| ------------------------------- | ---------------------------------------------------------------------------------------------------------- |
+| `-r, --runtime <name>`          | Runtime name from project                                                                                  |
+| `--runtime-arn <arn>`           | Runtime ARN (standalone mode)                                                                              |
+| `-e, --evaluator <names...>`    | Evaluator name(s) or `Builtin.*` IDs                                                                       |
+| `--evaluator-arn <arns...>`     | Evaluator ARN(s) (use with `--runtime-arn`)                                                                |
+| `--region <region>`             | AWS region (required with `--runtime-arn`)                                                                 |
+| `-s, --session-id <id>`         | Evaluate a specific session                                                                                |
+| `-t, --trace-id <id>`           | Evaluate a specific trace                                                                                  |
+| `--endpoint <name>`             | Runtime endpoint name (e.g. `PROMPT_V1`); defaults to `AGENTCORE_RUNTIME_ENDPOINT` env var, then `DEFAULT` |
+| `--days <days>`                 | Lookback window in days (default: 7)                                                                       |
+| `-A, --assertion <text...>`     | Ground truth assertion the agent response must satisfy (repeatable)                                        |
+| `--expected-trajectory <names>` | Ground truth: expected tool call names in order (comma-separated)                                          |
+| `--expected-response <text>`    | Ground truth: expected agent response text to compare against                                              |
+| `--output <path>`               | Custom output file path                                                                                    |
+| `--json`                        | JSON output                                                                                                |
 
 ### evals history
 
@@ -765,18 +955,52 @@ agentcore package -d ./my-project
 | `-d, --directory <path>` | Project directory        |
 | `-r, --runtime <name>`   | Package specific runtime |
 
-### update
+### feedback
 
-Check for and install CLI updates.
+Send feedback about the AgentCore CLI. The CLI displays the AWS Customer Agreement and prompts for consent before
+submitting; consent must be confirmed in an interactive terminal.
 
 ```bash
-agentcore update            # Check and install
-agentcore update --check    # Check only, don't install
+agentcore feedback "the dev server is slow on Linux"
+agentcore feedback "broken icon" --screenshot ~/Desktop/bug.png
+agentcore feedback "automation works" --json
+agentcore feedback                                       # launches the wizard
+```
+
+| Flag                  | Description                                                  |
+| --------------------- | ------------------------------------------------------------ |
+| `--screenshot <path>` | Path to a `.png`, `.jpg`, or `.jpeg` file (max 100MB)        |
+| `--json`              | Print result as JSON (`{success, id, timestamp, reference}`) |
+
+See [docs/feedback.md](feedback.md) for usage details.
+
+### update
+
+Check for and install CLI updates. Equivalent to `agentcore update cli`.
+
+```bash
+agentcore update                # Check and install
+agentcore update --check        # Check only, don't install
+agentcore update cli            # Same as `agentcore update`
+agentcore update cli --check    # Same as `agentcore update --check`
 ```
 
 | Flag          | Description                          |
 | ------------- | ------------------------------------ |
 | `-c, --check` | Check for updates without installing |
+
+### telemetry
+
+Manage anonymous usage analytics preferences. Telemetry is opt-in and used to improve the CLI.
+
+```bash
+agentcore telemetry status      # Show current preference and where it was set
+agentcore telemetry enable      # Opt in
+agentcore telemetry disable     # Opt out
+```
+
+`enable`, `disable`, and `status` take no flags beyond `-h, --help`. The preference is stored in your global CLI config
+and persists across projects.
 
 ### help
 

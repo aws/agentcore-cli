@@ -200,7 +200,7 @@ export async function handleImport(options: ImportOptions): Promise<ImportResult
           logger.finalize(false);
           return {
             success: false,
-            error: new Error(error),
+            error: new ValidationError(error),
             logPath: logger.getRelativeLogPath(),
           };
         }
@@ -224,7 +224,7 @@ export async function handleImport(options: ImportOptions): Promise<ImportResult
           logger.finalize(false);
           return {
             success: false,
-            error: new Error(error),
+            error: new ValidationError(error),
             logPath: logger.getRelativeLogPath(),
           };
         }
@@ -238,7 +238,7 @@ export async function handleImport(options: ImportOptions): Promise<ImportResult
         logger.finalize(false);
         return {
           success: false,
-          error: new Error(error),
+          error: new ValidationError(error),
           logPath: logger.getRelativeLogPath(),
         };
       }

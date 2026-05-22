@@ -42,6 +42,7 @@ export const COMMAND_DESCRIPTIONS = {
   status: 'Show deployed resource details and status.',
   traces: 'View and download agent traces.',
   evals: 'View saved eval and batch eval results from past runs.',
+  feedback: 'Send feedback about the AgentCore CLI to the team.',
   fetch: 'Fetch access info for deployed resources.',
   pause: 'Pause a deployed resource (online eval config, A/B test).',
   resume: 'Resume a paused resource (online eval config, A/B test).',
@@ -62,15 +63,6 @@ export const COMMAND_DESCRIPTIONS = {
  * These commands must run in the terminal, not in the TUI.
  */
 export const CLI_ONLY_EXAMPLES: Record<string, { description: string; examples: string[] }> = {
-  logs: {
-    description: 'Stream or search agent runtime logs. This command runs in the terminal.',
-    examples: [
-      'agentcore logs',
-      'agentcore logs --since 30m --level error',
-      'agentcore logs --runtime MyAgent --query "timeout"',
-      'agentcore logs evals --since 1h',
-    ],
-  },
   traces: {
     description: 'View and download agent traces. This command runs in the terminal.',
     examples: [

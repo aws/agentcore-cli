@@ -56,6 +56,7 @@ describe('requiresUv', () => {
       configBundles: [],
       abTests: [],
       httpGateways: [],
+      datasets: [],
     };
     expect(requiresUv(project)).toBe(true);
   });
@@ -84,6 +85,7 @@ describe('requiresUv', () => {
       configBundles: [],
       abTests: [],
       httpGateways: [],
+      datasets: [],
     };
     expect(requiresUv(project)).toBe(false);
   });
@@ -103,6 +105,7 @@ describe('requiresUv', () => {
       configBundles: [],
       abTests: [],
       httpGateways: [],
+      datasets: [],
     };
     expect(requiresUv(project)).toBe(false);
   });
@@ -133,6 +136,7 @@ describe('requiresContainerRuntime', () => {
       configBundles: [],
       abTests: [],
       httpGateways: [],
+      datasets: [],
     };
     expect(requiresContainerRuntime(project)).toBe(true);
   });
@@ -161,6 +165,7 @@ describe('requiresContainerRuntime', () => {
       configBundles: [],
       abTests: [],
       httpGateways: [],
+      datasets: [],
     };
     expect(requiresContainerRuntime(project)).toBe(false);
   });
@@ -180,6 +185,7 @@ describe('requiresContainerRuntime', () => {
       configBundles: [],
       abTests: [],
       httpGateways: [],
+      datasets: [],
     };
     expect(requiresContainerRuntime(project)).toBe(false);
   });
@@ -216,6 +222,7 @@ describe('requiresContainerRuntime', () => {
       configBundles: [],
       abTests: [],
       httpGateways: [],
+      datasets: [],
     };
     expect(requiresContainerRuntime(project)).toBe(true);
   });
@@ -286,6 +293,7 @@ describe('checkDependencyVersions', () => {
       configBundles: [],
       abTests: [],
       httpGateways: [],
+      datasets: [],
     };
 
     const result = await checkDependencyVersions(project);
@@ -309,6 +317,7 @@ describe('checkDependencyVersions', () => {
       configBundles: [],
       abTests: [],
       httpGateways: [],
+      datasets: [],
     };
 
     const result = await checkDependencyVersions(project);
@@ -340,6 +349,7 @@ describe('checkDependencyVersions', () => {
       configBundles: [],
       abTests: [],
       httpGateways: [],
+      datasets: [],
     };
 
     const result = await checkDependencyVersions(project);

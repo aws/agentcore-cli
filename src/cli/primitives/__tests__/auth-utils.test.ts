@@ -96,6 +96,7 @@ describe('createManagedOAuthCredential', () => {
     configBundles: [],
     abTests: [],
     httpGateways: [],
+    datasets: [],
   };
 
   const jwtConfig: JwtConfigOptions = {

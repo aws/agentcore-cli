@@ -1,6 +1,7 @@
 import { ApiKeySecretInput, SecretInput } from '../SecretInput.js';
 import { render } from 'ink-testing-library';
 import React from 'react';
+import stripAnsi from 'strip-ansi';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { z } from 'zod';
 
@@ -34,7 +35,7 @@ describe('SecretInput', () => {
       <SecretInput prompt="Key" placeholder="sk-..." onSubmit={vi.fn()} onCancel={vi.fn()} />
     );
 
-    expect(lastFrame()).toContain('sk-...');
+    expect(stripAnsi(lastFrame()!)).toContain('sk-...');
   });
 
   it('masks input with default * character', async () => {

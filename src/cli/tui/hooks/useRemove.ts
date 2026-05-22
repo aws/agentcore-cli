@@ -11,6 +11,7 @@ import {
   agentPrimitive,
   configBundlePrimitive,
   credentialPrimitive,
+  datasetPrimitive,
   evaluatorPrimitive,
   gatewayPrimitive,
   gatewayTargetPrimitive,
@@ -144,6 +145,11 @@ export function useRemovableEvaluators() {
   return { evaluators, ...rest };
 }
 
+export function useRemovableDatasets() {
+  const { items: datasets, ...rest } = useRemovableResources(() => datasetPrimitive.getRemovable());
+  return { datasets, ...rest };
+}
+
 export function useRemovableOnlineEvalConfigs() {
   const { items: onlineEvalConfigs, ...rest } = useRemovableResources(() => onlineEvalConfigPrimitive.getRemovable());
   return { onlineEvalConfigs, ...rest };
@@ -243,6 +249,10 @@ export function useRemovalPreview() {
     (name: string) => loadPreview(n => evaluatorPrimitive.previewRemove(n), name),
     [loadPreview]
   );
+  const loadDatasetPreview = useCallback(
+    (name: string) => loadPreview(n => datasetPrimitive.previewRemove(n), name),
+    [loadPreview]
+  );
   const loadOnlineEvalPreview = useCallback(
     (name: string) => loadPreview(n => onlineEvalConfigPrimitive.previewRemove(n), name),
     [loadPreview]
@@ -282,6 +292,7 @@ export function useRemovalPreview() {
     loadMemoryPreview,
     loadIdentityPreview,
     loadEvaluatorPreview,
+    loadDatasetPreview,
     loadOnlineEvalPreview,
     loadPolicyEnginePreview,
     loadPolicyPreview,
@@ -347,6 +358,14 @@ export function useRemoveEvaluator() {
   return useRemoveResource(
     (name: string) => evaluatorPrimitive.remove(name),
     'evaluator',
+    name => name
+  );
+}
+
+export function useRemoveDataset() {
+  return useRemoveResource(
+    (name: string) => datasetPrimitive.remove(name),
+    'dataset',
     name => name
   );
 }

@@ -135,12 +135,13 @@ agentcore invoke
 
 ### Utilities
 
-| Command        | Description                               |
-| -------------- | ----------------------------------------- |
-| `validate`     | Validate configuration files              |
-| `package`      | Package agent artifacts without deploying |
-| `fetch access` | Fetch access info for deployed resources  |
-| `update`       | Check for and install CLI updates         |
+| Command        | Description                                           |
+| -------------- | ----------------------------------------------------- |
+| `validate`     | Validate configuration files                          |
+| `package`      | Package agent artifacts without deploying             |
+| `fetch access` | Fetch access info for deployed resources              |
+| `feedback`     | Send feedback to the AgentCore team (with screenshot) |
+| `update`       | Check for and install CLI updates                     |
 
 ## Project Structure
 
@@ -191,10 +192,21 @@ Projects use JSON schema files in the `agentcore/` directory:
 - [Gateway](docs/gateway.md) - Gateway setup, targets, and authentication
 - [Memory](docs/memory.md) - Memory strategies and sharing
 - [Local Development](docs/local-development.md) - Dev server and debugging
+- [Feedback](docs/feedback.md) - Submit feedback from your terminal
 
 ## Feedback & Issues
 
-Found a bug or have a feature request? [Open an issue](https://github.com/aws/agentcore-cli/issues/new) on GitHub.
+Have a quick comment or suggestion? Send it from your terminal:
+
+```bash
+agentcore feedback "your message" --screenshot path/to/screenshot.png
+```
+
+The CLI will display the AWS Customer Agreement and prompt for consent before submitting. See
+[docs/feedback.md](docs/feedback.md) for usage details.
+
+For bugs, regressions, or feature requests that need discussion,
+[open an issue](https://github.com/aws/agentcore-cli/issues/new) on GitHub instead.
 
 ## Security
 

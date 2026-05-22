@@ -1,6 +1,21 @@
+import { DEFAULT_ENDPOINT_NAME } from '../constants';
 import { getCredentialProvider } from './account';
 import { arnPrefix } from './partition';
 import { CloudWatchLogsClient, FilterLogEventsCommand, StartLiveTailCommand } from '@aws-sdk/client-cloudwatch-logs';
+
+/**
+ * Resolve runtime endpoint: CLI flag → env var → DEFAULT.
+ */
+export function resolveEndpointName(optEndpoint?: string): string {
+  return optEndpoint ?? process.env.AGENTCORE_RUNTIME_ENDPOINT ?? DEFAULT_ENDPOINT_NAME;
+}
+
+/**
+ * CloudWatch log group path for an AgentCore runtime endpoint.
+ */
+export function runtimeLogGroup(runtimeId: string, endpoint?: string): string {
+  return `/aws/bedrock-agentcore/runtimes/${runtimeId}-${resolveEndpointName(endpoint)}`;
+}
 
 export interface LogEvent {
   timestamp: number;

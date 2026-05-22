@@ -126,9 +126,11 @@ export function GenerateWizardUI({
   const isSessionStorageMountPathStep = wizard.step === 'sessionStorageMountPath';
   const isConfirmStep = wizard.step === 'confirm';
 
-  // Advanced multi-select items — filter out dockerfile when not a Container build
+  // Advanced multi-select items — filter out options not applicable to current config
   const advancedItems: SelectableItem[] = ADVANCED_SETTING_OPTIONS.filter(
-    o => o.id !== 'dockerfile' || wizard.config.buildType === 'Container'
+    o =>
+      (o.id !== 'dockerfile' || wizard.config.buildType === 'Container') &&
+      (o.id !== 'filesystem' || wizard.config.language !== 'TypeScript')
   ).map(o => ({ id: o.id, title: o.title, description: o.description }));
 
   const handleSelect = (item: SelectableItem) => {

@@ -9,6 +9,7 @@ import type { AddAgentConfig } from '../agent/types';
 import { FRAMEWORK_OPTIONS } from '../agent/types';
 import { useAddAgent } from '../agent/useAddAgent';
 import { AddConfigBundleFlow } from '../config-bundle';
+import { AddDatasetFlow } from '../dataset';
 import { AddEvaluatorFlow } from '../evaluator';
 import { AddIdentityFlow } from '../identity';
 import { AddGatewayFlow, AddGatewayTargetFlow } from '../mcp';
@@ -33,6 +34,7 @@ type FlowState =
   | { name: 'evaluator-wizard' }
   | { name: 'online-eval-wizard' }
   | { name: 'policy-wizard' }
+  | { name: 'dataset-wizard' }
   | { name: 'config-bundle-wizard' }
   | { name: 'ab-test-wizard' }
   | { name: 'runtime-endpoint-wizard' }
@@ -187,6 +189,8 @@ function getInitialFlowState(resource?: AddResourceType): FlowState {
       return { name: 'policy-wizard' };
     case 'runtime-endpoint':
       return { name: 'runtime-endpoint-wizard' };
+    case 'dataset':
+      return { name: 'dataset-wizard' };
     case 'config-bundle':
       return { name: 'config-bundle-wizard' };
     case 'ab-test':
@@ -237,6 +241,9 @@ export function AddFlow(props: AddFlowProps) {
         break;
       case 'policy':
         setFlow({ name: 'policy-wizard' });
+        break;
+      case 'dataset':
+        setFlow({ name: 'dataset-wizard' });
         break;
       case 'config-bundle':
         setFlow({ name: 'config-bundle-wizard' });
@@ -471,6 +478,19 @@ export function AddFlow(props: AddFlowProps) {
   if (flow.name === 'policy-wizard') {
     return (
       <AddPolicyFlow
+        isInteractive={props.isInteractive}
+        onExit={props.onExit}
+        onBack={() => setFlow({ name: 'select' })}
+        onDev={props.onDev}
+        onDeploy={props.onDeploy}
+      />
+    );
+  }
+
+  // Dataset wizard
+  if (flow.name === 'dataset-wizard') {
+    return (
+      <AddDatasetFlow
         isInteractive={props.isInteractive}
         onExit={props.onExit}
         onBack={() => setFlow({ name: 'select' })}

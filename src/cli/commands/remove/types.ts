@@ -12,7 +12,8 @@ export type ResourceType =
   | 'policy-engine'
   | 'policy'
   | 'config-bundle'
-  | 'ab-test';
+  | 'ab-test'
+  | 'dataset';
 
 export interface RemoveOptions {
   resourceType: ResourceType;

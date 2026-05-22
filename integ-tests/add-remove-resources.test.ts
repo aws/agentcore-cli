@@ -197,6 +197,23 @@ describe('integration: add and remove resources', () => {
     });
   });
 
+  describe('add validation failure telemetry', () => {
+    it('emits ValidationError for add memory with missing --name', async () => {
+      telemetry.clearEntries();
+      const result = await runCLI(['add', 'memory', '--strategies', 'SEMANTIC', '--json'], project.projectPath, {
+        env: telemetry.env,
+      });
+
+      expect(result.exitCode).toBe(1);
+      telemetry.assertMetricEmitted({
+        command: 'add.memory',
+        exit_reason: 'failure',
+        error_name: 'ValidationError',
+        error_source: 'user',
+      });
+    });
+  });
+
   describe('remove all', () => {
     it('resets all schemas and emits telemetry', async () => {
       const result = await runCLI(['remove', 'all', '--yes', '--json'], project.projectPath, {

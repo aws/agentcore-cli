@@ -15,6 +15,7 @@ import type {
   SessionSpan,
 } from '../../aws/agentcore-recommendation';
 import { getRecommendation, startRecommendation } from '../../aws/agentcore-recommendation';
+import { runtimeLogGroup } from '../../aws/cloudwatch';
 import { arnPrefix } from '../../aws/partition';
 import { detectRegion } from '../../aws/region';
 import { ExecLogger } from '../../logging/exec-logger';
@@ -461,7 +462,7 @@ async function buildRecommendationConfig(opts: BuildConfigOptions): Promise<Reco
     agentTraces = { sessionSpans: allSpans };
   } else {
     // Lookback-based path — use cloudwatchLogs with time range
-    const runtimeLogGroupArn = `${arnPrefix(opts.region)}:logs:${opts.region}:${opts.accountId}:log-group:/aws/bedrock-agentcore/runtimes/${opts.runtimeId}-DEFAULT`;
+    const runtimeLogGroupArn = `${arnPrefix(opts.region)}:logs:${opts.region}:${opts.accountId}:log-group:${runtimeLogGroup(opts.runtimeId)}`;
     const spansLogGroupArn = `${arnPrefix(opts.region)}:logs:${opts.region}:${opts.accountId}:log-group:aws/spans`;
 
     // Derive service name: strip the random hash suffix from runtimeId

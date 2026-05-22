@@ -1,7 +1,6 @@
 import type { SelectableItem } from '../../components/SelectList';
 import { SelectScreen } from '../../components/SelectScreen';
-
-export type ImportType = 'runtime' | 'memory' | 'evaluator' | 'online-eval' | 'gateway' | 'starter-toolkit';
+import type { ImportType } from './types';
 
 interface ImportSelectItem extends SelectableItem {
   id: ImportType;

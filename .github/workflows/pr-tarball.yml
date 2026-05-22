@@ -90,5 +90,6 @@ jobs:
             ### How to install
 
             ```bash
-            npm install ${{ steps.release.outputs.url }}
+            gh release download pr-${{ github.event.pull_request.number }}-tarball --repo ${{ github.repository }} --pattern "*.tgz" --dir /tmp/pr-tarball
+            npm install -g /tmp/pr-tarball/${{ steps.tarball.outputs.name }}
             ```

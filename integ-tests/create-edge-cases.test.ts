@@ -38,6 +38,8 @@ describe.skipIf(!prereqs.npm || !prereqs.git)('integration: create edge cases', 
       telemetry.assertMetricEmitted({
         command: 'create',
         exit_reason: 'failure',
+        error_name: 'ValidationError',
+        error_source: 'user',
         agent_language: 'python',
         has_agent: 'true',
       });
