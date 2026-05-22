@@ -6,6 +6,7 @@ import {
   handleA2AAgentCard,
   handleGetCloudWatchTrace,
   handleGetTrace,
+  handleHarnessToolResponse,
   handleInvocations,
   handleListCloudWatchTraces,
   handleListMemoryRecords,
@@ -344,6 +345,8 @@ export class WebUIServer {
       await handleListCloudWatchTraces(ctx, req, res, origin);
     } else if (req.method === 'POST' && req.url === '/api/start') {
       await handleStart(ctx, req, res, origin);
+    } else if (req.method === 'POST' && req.url === '/api/harness/tool-response') {
+      await handleHarnessToolResponse(ctx, req, res, origin);
     } else if (req.method === 'POST' && req.url === '/invocations') {
       await handleInvocations(ctx, req, res, origin);
     } else if (req.method === 'POST' && req.url === '/api/mcp') {

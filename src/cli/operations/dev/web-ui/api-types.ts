@@ -456,6 +456,8 @@ export interface ResourceHarness {
   name: string;
   model: string;
   tools: string[];
+  deploymentStatus?: ResourceDeploymentStatus;
+  deployed?: DeployedHarnessState;
 }
 
 export interface DeployedHarnessState {

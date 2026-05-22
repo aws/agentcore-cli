@@ -416,12 +416,8 @@ export function DevScreen(props: DevScreenProps) {
             const harnessIdx = selectedAgentIndex - supportedAgents.length;
             const harnessName = availableHarnesses[harnessIdx];
             if (harnessName) {
-              if (onLaunchBrowser) {
-                onLaunchBrowser({ harnessName });
-              } else {
-                setSelectedHarness(harnessName);
-                setMode('deploying');
-              }
+              setSelectedHarness(harnessName);
+              setMode('deploying');
             }
           }
         }

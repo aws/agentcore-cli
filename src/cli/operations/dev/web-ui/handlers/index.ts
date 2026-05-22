@@ -8,3 +8,5 @@ export { handleListCloudWatchTraces, handleGetCloudWatchTrace } from './cloudwat
 export { handleListMemoryRecords, handleRetrieveMemoryRecords } from './memory';
 export { handleMcpProxy } from './mcp-proxy';
 export { handleA2AAgentCard } from './a2a-proxy';
+export { handleHarnessInvocation } from './harness-invocation';
+export { handleHarnessToolResponse } from './harness-tool-response';
