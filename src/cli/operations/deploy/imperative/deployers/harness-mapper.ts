@@ -5,7 +5,7 @@
  * into the corresponding API field. The top-level mapHarnessSpecToCreateOptions
  * orchestrates them and returns a complete CreateHarnessOptions object.
  */
-import type { DeployedResourceState, HarnessSpec } from '../../../../../schema';
+import type { DeployedResourceState, HarnessSpec, Memory } from '../../../../../schema';
 import type {
   CreateHarnessOptions,
   HarnessEnvironmentArtifact,
@@ -35,13 +35,16 @@ export interface MapHarnessOptions {
   projectName: string;
   deployedResources?: DeployedResourceState;
   cdkOutputs?: Record<string, string>;
+  /** The memory spec for the memory this harness references, used to derive retrievalConfig namespaces. */
+  memorySpec?: Memory;
 }
 
 /**
  * Transform a HarnessSpec into CreateHarnessOptions for the control plane API.
  */
 export async function mapHarnessSpecToCreateOptions(options: MapHarnessOptions): Promise<CreateHarnessOptions> {
-  const { harnessSpec, harnessDir, executionRoleArn, region, projectName, deployedResources, cdkOutputs } = options;
+  const { harnessSpec, harnessDir, executionRoleArn, region, projectName, deployedResources, cdkOutputs, memorySpec } =
+    options;
 
   const result: CreateHarnessOptions = {
     region,
@@ -77,7 +80,7 @@ export async function mapHarnessSpecToCreateOptions(options: MapHarnessOptions):
 
   // Memory
   if (harnessSpec.memory) {
-    result.memory = mapMemory(harnessSpec.memory, deployedResources, cdkOutputs);
+    result.memory = mapMemory(harnessSpec.memory, deployedResources, cdkOutputs, memorySpec);
   }
 
   // Truncation
@@ -268,7 +271,8 @@ function mapSkills(skills: string[]): HarnessSkill[] {
 function mapMemory(
   memory: NonNullable<HarnessSpec['memory']>,
   deployedResources?: DeployedResourceState,
-  cdkOutputs?: Record<string, string>
+  cdkOutputs?: Record<string, string>,
+  memorySpec?: Memory
 ): HarnessMemoryConfiguration | undefined {
   let arn: string | undefined;
 
@@ -295,12 +299,27 @@ function mapMemory(
     return undefined;
   }
 
+  // Build retrievalConfig from the memory's strategy namespaces so the harness
+  // runtime knows which namespaces to search at inference time.
+  const retrievalConfig = buildRetrievalConfig(memorySpec);
+
   return {
     agentCoreMemoryConfiguration: {
       arn,
       ...(memory.actorId && { actorId: memory.actorId }),
+      ...(retrievalConfig && { retrievalConfig }),
     },
   };
+}
+
+function buildRetrievalConfig(
+  memorySpec: Memory | undefined
+): Record<string, { topK?: number; relevanceScore?: number }> | undefined {
+  if (!memorySpec?.strategies?.length) return undefined;
+
+  const namespaces = memorySpec.strategies.flatMap(s => s.namespaces ?? []);
+
+  return namespaces.length > 0 ? Object.fromEntries(namespaces.map(ns => [ns, {}])) : undefined;
 }
 
 /**

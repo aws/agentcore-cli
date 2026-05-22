@@ -5,7 +5,7 @@
  * via the SigV4 API client. Harness role ARNs are resolved from CDK
  * stack outputs, and harness specs are read from disk (harness.json).
  */
-import type { HarnessDeployedState, HarnessSpec } from '../../../../../schema';
+import type { HarnessDeployedState, HarnessSpec, Memory } from '../../../../../schema';
 import { HarnessSpecSchema } from '../../../../../schema';
 import type {
   CreateHarnessResult,
@@ -32,10 +32,18 @@ const READY_POLL_MAX_ATTEMPTS = 40; // 2 minutes max
 
 type HarnessDeployedStateMap = Record<string, HarnessDeployedState>;
 
-async function computeHarnessHash(harnessDir: string, harnessSpec: HarnessSpec, roleArn: string): Promise<string> {
+async function computeHarnessHash(
+  harnessDir: string,
+  harnessSpec: HarnessSpec,
+  roleArn: string,
+  memorySpec?: Memory
+): Promise<string> {
   const hash = createHash('sha256');
   hash.update(JSON.stringify(harnessSpec));
   hash.update(roleArn);
+  if (memorySpec) {
+    hash.update(JSON.stringify(memorySpec));
+  }
   try {
     const promptContent = await readFile(join(harnessDir, 'system-prompt.md'), 'utf-8');
     hash.update(promptContent);
@@ -132,8 +140,9 @@ export class HarnessDeployer implements ImperativeDeployer<HarnessDeployedStateM
 
       const deployedResources = deployedState.targets?.[targetName]?.resources;
       const existingHarness = deployedHarnesses[entry.name];
+      const memorySpec = projectSpec.memories?.find(m => m.name === harnessSpec.memory?.name);
 
-      const configHash = await computeHarnessHash(harnessDir, harnessSpec, executionRoleArn);
+      const configHash = await computeHarnessHash(harnessDir, harnessSpec, executionRoleArn, memorySpec);
 
       if (existingHarness?.configHash === configHash) {
         resultState[entry.name] = existingHarness;
@@ -153,6 +162,7 @@ export class HarnessDeployer implements ImperativeDeployer<HarnessDeployedStateM
             projectName,
             deployedResources,
             cdkOutputs,
+            memorySpec,
           });
 
           // Memory uses { optionalValue: null } to explicitly clear it when removed from config,
@@ -206,6 +216,7 @@ export class HarnessDeployer implements ImperativeDeployer<HarnessDeployedStateM
             projectName,
             deployedResources,
             cdkOutputs,
+            memorySpec,
           });
 
           const createResult: CreateHarnessResult = await createWithRetry(createOptions);
