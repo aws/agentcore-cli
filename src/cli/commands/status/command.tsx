@@ -1,9 +1,9 @@
 import { ValidationError, serializeResult } from '../../../lib';
 import { getErrorMessage } from '../../errors';
-import { withCommandRunTelemetry } from '../../telemetry/cli-command-run.js';
-import { FilterState, FilterType, standardize } from '../../telemetry/schemas/common-shapes.js';
 import { getDatasetStatus } from '../../operations/dataset';
 import type { DatasetStatusResult } from '../../operations/dataset';
+import { withCommandRunTelemetry } from '../../telemetry/cli-command-run.js';
+import { FilterState, FilterType, standardize } from '../../telemetry/schemas/common-shapes.js';
 import { COMMAND_DESCRIPTIONS } from '../../tui/copy';
 import { requireProject } from '../../tui/guards';
 import type { ResourceStatusEntry } from './action';
@@ -175,7 +175,7 @@ export const registerStatus = (program: Command) => {
         // Fetch enriched dataset info when --type dataset is specified
         let datasetDetails: DatasetStatusResult[] = [];
         if (cliOptions.type === 'dataset' && datasets.length > 0 && result.targetRegion && result.targetName) {
-          const deployedState = context.deployedState;
+          const deployedState = result.deployedState;
           const targetResources = deployedState.targets?.[result.targetName]?.resources;
           const deployedDatasets = targetResources?.datasets ?? {};
 

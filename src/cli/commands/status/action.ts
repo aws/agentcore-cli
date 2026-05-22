@@ -37,6 +37,7 @@ export interface ResourceStatusEntry {
 export type ProjectStatusResult = Result<{
   targetRegion?: string;
   resources: ResourceStatusEntry[];
+  deployedState: DeployedState;
 }> & { projectName?: string; targetName?: string; logPath?: string; resources?: ResourceStatusEntry[] };
 
 export interface StatusContext {
@@ -490,6 +491,7 @@ export async function handleProjectStatus(
     targetName: selectedTargetName ?? '',
     targetRegion: targetConfig?.region,
     resources,
+    deployedState,
     logPath: logger.getRelativeLogPath(),
   };
 }
