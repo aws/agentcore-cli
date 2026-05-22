@@ -397,6 +397,27 @@
               "additionalProperties": false
             }
           },
+          "indexedKeys": {
+            "maxItems": 10,
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "key": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 128,
+                  "pattern": "^[a-zA-Z0-9\\s._:/=+@-]+$"
+                },
+                "type": {
+                  "type": "string",
+                  "enum": ["STRING", "STRINGLIST", "NUMBER"]
+                }
+              },
+              "required": ["key", "type"],
+              "additionalProperties": false
+            }
+          },
           "tags": {
             "type": "object",
             "propertyNames": {
@@ -2160,6 +2181,52 @@
           }
         },
         "required": ["name", "runtimeRef"],
+        "additionalProperties": false
+      }
+    },
+    "datasets": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 48,
+            "pattern": "^[a-zA-Z][a-zA-Z0-9_]{0,47}$"
+          },
+          "schemaType": {
+            "type": "string",
+            "enum": ["AGENTCORE_EVALUATION_PREDEFINED_V1", "AGENTCORE_EVALUATION_SIMULATED_V1"]
+          },
+          "description": {
+            "type": "string",
+            "maxLength": 200
+          },
+          "config": {
+            "type": "object",
+            "properties": {
+              "managed": {
+                "type": "object",
+                "properties": {
+                  "location": {
+                    "type": "string",
+                    "minLength": 1
+                  }
+                },
+                "required": ["location"],
+                "additionalProperties": false
+              }
+            },
+            "required": ["managed"],
+            "additionalProperties": false
+          },
+          "kmsKeyArn": {
+            "type": "string",
+            "pattern": "^arn:aws(-[a-z]+)*:kms:[a-zA-Z0-9-]*:[0-9]{12}:key\\/[a-zA-Z0-9-]{36}$"
+          }
+        },
+        "required": ["name", "schemaType", "config"],
         "additionalProperties": false
       }
     }
