@@ -1,4 +1,5 @@
 import { ConfigIO } from '../../../../lib';
+import type { AwsDeploymentTarget } from '../../../../schema';
 import type { CdkToolkitWrapper, DeployMessage, SwitchableIoHost } from '../../../cdk/toolkit-lib';
 import {
   buildDeployedState,
@@ -67,6 +68,12 @@ interface DeployFlowOptions {
   isInteractive?: boolean;
   /** Run CDK diff instead of deploy */
   diffMode?: boolean;
+  /**
+   * Subset of targets the user picked in the TUI target selector. When set,
+   * the preflight context's awsTargets is filtered to only these targets.
+   * See issue #1267.
+   */
+  selectedTargets?: AwsDeploymentTarget[];
 }
 
 interface DeployFlowState {
@@ -120,14 +127,14 @@ interface DeployFlowState {
 }
 
 export function useDeployFlow(options: DeployFlowOptions = {}): DeployFlowState {
-  const { preSynthesized, isInteractive = false, diffMode = false } = options;
+  const { preSynthesized, isInteractive = false, diffMode = false, selectedTargets } = options;
   const skipPreflight = !!preSynthesized;
 
   // Create logger once for the entire deploy flow
   const [logger] = useState(() => new ExecLogger({ command: 'deploy' }));
 
   // Always call the hook (React rules), but we won't use it when preSynthesized is provided
-  const preflight = useCdkPreflight({ logger, isInteractive });
+  const preflight = useCdkPreflight({ logger, isInteractive, selectedTargets });
 
   // Use pre-synthesized values when provided, otherwise use preflight values
   const cdkToolkitWrapper = preSynthesized?.cdkToolkitWrapper ?? preflight.cdkToolkitWrapper;

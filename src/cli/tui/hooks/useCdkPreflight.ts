@@ -1,6 +1,6 @@
 import { ConfigIO, SecureCredentials } from '../../../lib';
 import { AwsCredentialsError } from '../../../lib/errors/types';
-import type { DeployedState } from '../../../schema';
+import type { AwsDeploymentTarget, DeployedState } from '../../../schema';
 import { applyTargetRegionToEnv } from '../../aws';
 import { validateAwsCredentials } from '../../aws/account';
 import { type CdkToolkitWrapper, type SwitchableIoHost, createSwitchableIoHost } from '../../cdk/toolkit-lib';
@@ -52,6 +52,14 @@ export interface PreflightOptions {
   isInteractive?: boolean;
   /** Skip identity provider check (for plan command which only synthesizes) */
   skipIdentityCheck?: boolean;
+  /**
+   * Subset of targets the user picked in the TUI target selector. When provided,
+   * the preflight context's awsTargets is filtered to only these targets, so
+   * downstream deploy steps and the displayed Target header reflect what was
+   * actually selected. When omitted, all configured targets are used (CLI mode
+   * already filters via --target before reaching here).
+   */
+  selectedTargets?: AwsDeploymentTarget[];
 }
 
 export interface PreflightResult {
@@ -113,7 +121,7 @@ const IDENTITY_STEP: Step = { label: LABEL_API_KEY, status: 'pending' };
 const BOOTSTRAP_STEP: Step = { label: 'Bootstrap AWS environment', status: 'pending' };
 
 export function useCdkPreflight(options: PreflightOptions): PreflightResult {
-  const { logger, isInteractive = false, skipIdentityCheck = false } = options;
+  const { logger, isInteractive = false, skipIdentityCheck = false, selectedTargets } = options;
 
   // Create switchable ioHost - starts silent, can be flipped to verbose for deploy
   const switchableIoHost = useMemo(() => createSwitchableIoHost(), []);
@@ -301,6 +309,17 @@ export function useCdkPreflight(options: PreflightOptions): PreflightResult {
         let preflightContext: PreflightContext;
         try {
           preflightContext = await validateProject();
+          // Filter to only the targets the user picked in the TUI selector,
+          // if provided. Without this, the deploy header shows every target
+          // in aws-targets.json and downstream `awsTargets[0]` reads can
+          // resolve to a target the user did not select. See issue #1267.
+          if (selectedTargets && selectedTargets.length > 0) {
+            const selectedNames = new Set(selectedTargets.map(t => t.name));
+            preflightContext = {
+              ...preflightContext,
+              awsTargets: preflightContext.awsTargets.filter(t => selectedNames.has(t.name)),
+            };
+          }
           setContext(preflightContext);
           // Make aws-targets.json region authoritative for downstream SDK / CDK
           // toolkit-lib clients that bypass explicit region options. Restored on
@@ -530,7 +549,16 @@ export function useCdkPreflight(options: PreflightOptions): PreflightResult {
     return () => {
       process.off('unhandledRejection', handleUnhandledRejection);
     };
-  }, [phase, logger, switchableIoHost, isInteractive, skipIdentityCheck, teardownConfirmed, restoreRegionEnv]);
+  }, [
+    phase,
+    logger,
+    switchableIoHost,
+    isInteractive,
+    skipIdentityCheck,
+    teardownConfirmed,
+    restoreRegionEnv,
+    selectedTargets,
+  ]);
 
   // Handle identity-setup phase (after user provides credentials)
   useEffect(() => {

@@ -67,6 +67,19 @@ export function DeployScreen({
   // Load MCP spec for ResourceGraph
   const configIO = useMemo(() => new ConfigIO(), []);
 
+  // Resolve which targets the user picked in the AWS target selector. When the
+  // project has a single target, the selector skips the picker phase and pre-
+  // selects index 0; with multiple targets the user explicitly selects one (or
+  // several) and we pass that filter down so the deploy actually targets the
+  // right environments. See issue #1267.
+  const selectedTargets = useMemo(
+    () =>
+      awsConfig.selectedTargetIndices
+        .map(i => awsConfig.availableTargets[i])
+        .filter((t): t is NonNullable<typeof t> => t !== undefined),
+    [awsConfig.selectedTargetIndices, awsConfig.availableTargets]
+  );
+
   const {
     phase,
     steps,
@@ -97,7 +110,7 @@ export function DeployScreen({
     useEnvLocalCredentials,
     useManualCredentials,
     skipCredentials,
-  } = useDeployFlow({ preSynthesized, isInteractive, diffMode });
+  } = useDeployFlow({ preSynthesized, isInteractive, diffMode, selectedTargets });
   const allSuccess = !hasError && isComplete;
   const skipPreflight = !!preSynthesized;
 
