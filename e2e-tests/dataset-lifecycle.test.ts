@@ -373,8 +373,8 @@ describe.sequential('e2e: dataset lifecycle', () => {
       // Write simulated examples to the dataset file (must match SIMULATED_V1 schema)
       const datasetFile = join(projectPath, 'agentcore/datasets', `${simulatedDatasetName}.jsonl`);
       const examples = [
-        '{"scenario_id": "sim_booking", "input": "Book a flight", "actor_profile": {"traits": {"personality": "impatient"}, "context": "frequent flyer", "goal": "book cheapest flight"}}',
-        '{"scenario_id": "sim_cancel", "input": "Cancel reservation", "actor_profile": {"traits": {"personality": "polite"}, "context": "first time user", "goal": "get full refund"}}',
+        '{"scenario_id": "sim_booking", "input": "Book a flight", "max_turns": 5, "actor_profile": {"traits": {"personality": "impatient"}, "context": "frequent flyer", "goal": "book cheapest flight"}}',
+        '{"scenario_id": "sim_cancel", "input": "Cancel reservation", "max_turns": 5, "actor_profile": {"traits": {"personality": "polite"}, "context": "first time user", "goal": "get full refund"}}',
       ];
       await writeFile(datasetFile, examples.join('\n') + '\n', 'utf-8');
 
