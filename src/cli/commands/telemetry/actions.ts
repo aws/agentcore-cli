@@ -10,18 +10,18 @@ export async function handleTelemetryDisable(
   configDir = GLOBAL_CONFIG_DIR,
   configFile = GLOBAL_CONFIG_FILE
 ): Promise<boolean> {
-  const ok = await updateGlobalConfig({ telemetry: { enabled: false } }, configDir, configFile);
-  console.log(ok ? 'Telemetry has been disabled.' : `Warning: could not write config to ${configFile}`);
-  return ok;
+  const result = await updateGlobalConfig({ telemetry: { enabled: false } }, configDir, configFile);
+  console.log(result.success ? 'Telemetry has been disabled.' : `Warning: ${result.error.message}`);
+  return result.success;
 }
 
 export async function handleTelemetryEnable(
   configDir = GLOBAL_CONFIG_DIR,
   configFile = GLOBAL_CONFIG_FILE
 ): Promise<boolean> {
-  const ok = await updateGlobalConfig({ telemetry: { enabled: true } }, configDir, configFile);
-  console.log(ok ? 'Telemetry has been enabled.' : `Warning: could not write config to ${configFile}`);
-  return ok;
+  const result = await updateGlobalConfig({ telemetry: { enabled: true } }, configDir, configFile);
+  console.log(result.success ? 'Telemetry has been enabled.' : `Warning: ${result.error.message}`);
+  return result.success;
 }
 
 export async function handleTelemetryStatus(configFile = GLOBAL_CONFIG_FILE): Promise<void> {

@@ -82,9 +82,9 @@ describe('global-config', () => {
     it('creates directory and writes config when none exists', async () => {
       const fresh = createTempConfig('gc-fresh');
 
-      const ok = await updateGlobalConfig({ telemetry: { enabled: false } }, fresh.configDir, fresh.configFile);
+      const result = await updateGlobalConfig({ telemetry: { enabled: false } }, fresh.configDir, fresh.configFile);
 
-      expect(ok).toBe(true);
+      expect(result.success).toBe(true);
       const written = JSON.parse(await readFile(fresh.configFile, 'utf-8'));
       expect(written).toEqual({ telemetry: { enabled: false } });
 
@@ -106,23 +106,24 @@ describe('global-config', () => {
       });
     });
 
-    it('does not overwrite malformed config', async () => {
+    it('does not overwrite malformed config and reports why', async () => {
       await writeFile(tmp.configFile, '{ invalid json');
 
-      const ok = await updateGlobalConfig({ telemetry: { enabled: true } }, tmp.configDir, tmp.configFile);
+      const result = await updateGlobalConfig({ telemetry: { enabled: true } }, tmp.configDir, tmp.configFile);
 
-      expect(ok).toBe(false);
+      expect(result.success).toBe(false);
+      expect(result.success ? '' : result.error.message).toMatch(/malformed/);
       expect(await readFile(tmp.configFile, 'utf-8')).toBe('{ invalid json');
     });
 
-    it('returns false on write failures', async () => {
-      const ok = await updateGlobalConfig(
+    it('returns an error on write failures', async () => {
+      const result = await updateGlobalConfig(
         { telemetry: { enabled: true } },
         tmp.testDir + '/\0invalid',
         tmp.testDir + '/\0invalid/config.json'
       );
 
-      expect(ok).toBe(false);
+      expect(result.success).toBe(false);
     });
   });
 

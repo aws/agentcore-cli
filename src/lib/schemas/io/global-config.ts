@@ -1,9 +1,10 @@
 import { readFileSync } from 'fs';
-import { mkdir, readFile, writeFile } from 'fs/promises';
+import { mkdir, readFile, stat, writeFile } from 'fs/promises';
 import { randomUUID } from 'node:crypto';
 import { homedir } from 'os';
 import { join } from 'path';
 import { z } from 'zod';
+import { toError } from '../../errors/types.js';
 
 export const GLOBAL_CONFIG_DIR = process.env.AGENTCORE_CONFIG_DIR ?? join(homedir(), '.agentcore');
 export const GLOBAL_CONFIG_FILE = join(GLOBAL_CONFIG_DIR, 'config.json');
@@ -46,32 +47,70 @@ export function readGlobalConfigSync(configFile = GLOBAL_CONFIG_FILE): GlobalCon
   }
 }
 
+export type UpdateGlobalConfigResult = { success: true } | { success: false; error: Error };
+
 export async function updateGlobalConfig(
   partial: GlobalConfig,
   configDir = GLOBAL_CONFIG_DIR,
   configFile = GLOBAL_CONFIG_FILE
-): Promise<boolean> {
-  try {
-    const existing = await readGlobalConfigForUpdate(configFile);
-    const merged: GlobalConfig = mergeConfig(existing, partial);
+): Promise<UpdateGlobalConfigResult> {
+  // Read the existing config strictly: a missing file is fine (start fresh), but a
+  // malformed file must not be silently overwritten with merged-in defaults.
+  const existing = await loadConfigForUpdate(configFile);
+  if (!existing.success) {
+    return existing;
+  }
 
+  try {
+    const merged: GlobalConfig = mergeConfig(existing.config, partial);
     await mkdir(configDir, { recursive: true });
     await writeFile(configFile, JSON.stringify(merged, null, 2), 'utf-8');
-    return true;
-  } catch {
-    return false;
+    return { success: true };
+  } catch (error) {
+    return { success: false, error: new Error(`Failed to write config to ${configFile}: ${toError(error).message}`) };
   }
 }
 
-async function readGlobalConfigForUpdate(configFile: string): Promise<GlobalConfig> {
+type LoadConfigResult = { success: true; config: GlobalConfig } | { success: false; error: Error };
+
+/**
+ * Reads the existing global config for an update. Distinguishes a missing file
+ * (treated as an empty config) from a malformed one (read/parse/schema failure),
+ * so the caller can avoid clobbering a config it could not understand.
+ */
+async function loadConfigForUpdate(configFile: string): Promise<LoadConfigResult> {
+  const existingFile = await configFileExists(configFile);
+  if (!existingFile.success) {
+    return existingFile;
+  }
+  if (!existingFile.exists) {
+    return { success: true, config: {} };
+  }
+
   try {
     const data = await readFile(configFile, 'utf-8');
-    return GlobalConfigSchema.parse(JSON.parse(data));
+    return { success: true, config: GlobalConfigSchema.parse(JSON.parse(data)) };
   } catch (error) {
-    if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
-      return {};
+    const cause = toError(error);
+    return {
+      success: false,
+      error: new Error(`Config at ${configFile} is malformed: ${cause.message}`, { cause }),
+    };
+  }
+}
+
+type ConfigFileExistsResult = { success: true; exists: boolean } | { success: false; error: Error };
+
+async function configFileExists(path: string): Promise<ConfigFileExistsResult> {
+  try {
+    await stat(path);
+    return { success: true, exists: true };
+  } catch (error) {
+    const cause = toError(error);
+    if ((cause as NodeJS.ErrnoException).code === 'ENOENT') {
+      return { success: true, exists: false };
     }
-    throw error;
+    return { success: false, error: new Error(`Could not access config at ${path}: ${cause.message}`, { cause }) };
   }
 }
 
