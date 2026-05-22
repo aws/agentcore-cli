@@ -84,7 +84,12 @@ export const registerRemove = (program: Command): Command => {
           });
         } else {
           requireTTY();
-          await renderTUI({ initialRoute: { name: 'remove' }, enterAltScreen: false, actionOnBack: 'exit' });
+          await renderTUI({
+            initialRoute: { name: 'remove' },
+            enterAltScreen: false,
+            actionOnBack: 'exit',
+            isInteractive: false,
+          });
         }
       } catch (error) {
         if (cliOptions.json) {
@@ -114,7 +119,12 @@ export const registerRemove = (program: Command): Command => {
       requireProject();
       requireTTY();
 
-      await renderTUI({ initialRoute: { name: 'remove' }, enterAltScreen: false, actionOnBack: 'exit' });
+      await renderTUI({
+        initialRoute: { name: 'remove' },
+        enterAltScreen: false,
+        actionOnBack: 'exit',
+        isInteractive: false,
+      });
     })
     .showHelpAfterError()
     .showSuggestionAfterError();

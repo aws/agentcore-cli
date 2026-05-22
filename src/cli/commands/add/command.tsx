@@ -21,7 +21,12 @@ export function registerAdd(program: Command): Command {
     requireProject();
     requireTTY();
 
-    await renderTUI({ initialRoute: { name: 'add' }, enterAltScreen: false, actionOnBack: 'exit' });
+    await renderTUI({
+      initialRoute: { name: 'add' },
+      enterAltScreen: false,
+      actionOnBack: 'exit',
+      isInteractive: false,
+    });
   });
 
   // Subcommands (agent, memory, credential, gateway, gateway-target) are registered

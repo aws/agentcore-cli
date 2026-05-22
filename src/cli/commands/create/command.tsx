@@ -33,7 +33,12 @@ import { Text, render } from 'ink';
 
 /** Render CreateScreen for interactive TUI mode */
 function handleCreateTUI(): Promise<void> {
-  return renderTUI({ initialRoute: { name: 'create' }, enterAltScreen: false, actionOnBack: 'exit' });
+  return renderTUI({
+    initialRoute: { name: 'create' },
+    enterAltScreen: false,
+    actionOnBack: 'exit',
+    isInteractive: false,
+  });
 }
 
 /** Print completion summary after successful create */

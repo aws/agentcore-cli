@@ -250,6 +250,7 @@ export const registerInvoke = (program: Command) => {
               },
               enterAltScreen: false,
               actionOnBack: 'exit',
+              isInteractive: false,
             });
           }
         } catch (error) {

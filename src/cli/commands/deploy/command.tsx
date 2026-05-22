@@ -16,7 +16,12 @@ const SPINNER_FRAMES = ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', 
 
 function handleDeployTUI(options: { autoConfirm?: boolean; diffMode?: boolean } = {}): Promise<void> {
   requireProject();
-  return renderTUI({ initialRoute: { name: 'deploy' }, enterAltScreen: false, actionOnBack: 'exit' });
+  return renderTUI({
+    initialRoute: { name: 'deploy' },
+    enterAltScreen: false,
+    actionOnBack: 'exit',
+    isInteractive: false,
+  });
 }
 
 async function handleDeployCLI(options: DeployOptions): Promise<void> {

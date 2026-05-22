@@ -111,6 +111,8 @@ export interface RenderTUIOptions {
   enterAltScreen?: boolean;
   /** Behavior when pressing escape/back. 'help' navigates to the help screen, 'exit' exits the app. Default: 'help' */
   actionOnBack?: 'help' | 'exit';
+  /** Whether the TUI is running in full interactive mode. When false, screens auto-exit after success. Default: true */
+  isInteractive?: boolean;
 }
 
 /**
@@ -124,6 +126,7 @@ export function renderTUI(options: RenderTUIOptions = {}) {
     isFirstRun = false,
     enterAltScreen = true,
     actionOnBack = 'help',
+    isInteractive = true,
   } = options;
   TelemetryClientAccessor.init(initialRoute?.name ?? 'tui', 'tui');
   if (enterAltScreen) {
@@ -131,7 +134,7 @@ export function renderTUI(options: RenderTUIOptions = {}) {
     process.stdout.write(ENTER_ALT_SCREEN);
   }
 
-  const { waitUntilExit } = render(React.createElement(App, { initialRoute, actionOnBack }));
+  const { waitUntilExit } = render(React.createElement(App, { initialRoute, actionOnBack, isInteractive }));
 
   const done = waitUntilExit().then(async () => {
     if (inAltScreen) {

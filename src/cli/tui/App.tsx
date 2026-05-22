@@ -70,7 +70,15 @@ export type RouteName = Route['name'];
 // cli-only requires a commandId field, so it cannot be used as an initial route via name alone.
 export type InitialRoute = Exclude<Route, { name: 'cli-only' }>;
 
-function AppContent({ initialRoute, actionOnBack }: { initialRoute?: InitialRoute; actionOnBack?: 'help' | 'exit' }) {
+function AppContent({
+  initialRoute,
+  actionOnBack,
+  isInteractive = true,
+}: {
+  initialRoute?: InitialRoute;
+  actionOnBack?: 'help' | 'exit';
+  isInteractive?: boolean;
+}) {
   const { exit } = useApp();
   // Start on help screen if project exists (show commands), otherwise home (show Quick Start)
   const inProject = projectExists();
@@ -193,7 +201,7 @@ function AppContent({ initialRoute, actionOnBack }: { initialRoute?: InitialRout
   if (route.name === 'deploy') {
     return (
       <DeployScreen
-        isInteractive={true}
+        isInteractive={isInteractive}
         onExit={handleBack}
         onNavigate={command => setRoute({ name: command } as Route)}
       />
@@ -203,7 +211,7 @@ function AppContent({ initialRoute, actionOnBack }: { initialRoute?: InitialRout
   if (route.name === 'invoke') {
     return (
       <InvokeScreen
-        isInteractive={true}
+        isInteractive={isInteractive}
         onExit={handleBack}
         initialSessionId={route.sessionId}
         initialUserId={route.userId}
@@ -214,17 +222,17 @@ function AppContent({ initialRoute, actionOnBack }: { initialRoute?: InitialRout
   }
 
   if (route.name === 'logs') {
-    return <LogsScreen isInteractive={true} onExit={handleBack} />;
+    return <LogsScreen isInteractive={isInteractive} onExit={handleBack} />;
   }
 
   if (route.name === 'status') {
-    return <StatusScreen isInteractive={true} onExit={handleBack} />;
+    return <StatusScreen isInteractive={isInteractive} onExit={handleBack} />;
   }
 
   if (route.name === 'add') {
     return (
       <AddFlow
-        isInteractive={true}
+        isInteractive={isInteractive}
         onExit={handleBack}
         onDev={() => {
           setExitAction({ type: 'dev' });
@@ -238,7 +246,7 @@ function AppContent({ initialRoute, actionOnBack }: { initialRoute?: InitialRout
   if (route.name === 'remove') {
     return (
       <RemoveFlow
-        isInteractive={true}
+        isInteractive={isInteractive}
         onExit={handleBack}
         onNavigate={command => setRoute({ name: command } as Route)}
       />
@@ -249,7 +257,7 @@ function AppContent({ initialRoute, actionOnBack }: { initialRoute?: InitialRout
     return (
       <CreateScreen
         cwd={cwd}
-        isInteractive={true}
+        isInteractive={isInteractive}
         onExit={handleBack}
         onNavigate={({ command, workingDir }) => {
           process.chdir(workingDir);
@@ -326,23 +334,23 @@ function AppContent({ initialRoute, actionOnBack }: { initialRoute?: InitialRout
   }
 
   if (route.name === 'eval-runs') {
-    return <EvalScreen isInteractive={true} onExit={() => setRoute({ name: 'evals' })} />;
+    return <EvalScreen isInteractive={isInteractive} onExit={() => setRoute({ name: 'evals' })} />;
   }
 
   if (route.name === 'online-evals') {
-    return <OnlineEvalDashboard isInteractive={true} onExit={() => setRoute({ name: 'evals' })} />;
+    return <OnlineEvalDashboard isInteractive={isInteractive} onExit={() => setRoute({ name: 'evals' })} />;
   }
 
   if (route.name === 'fetch-access') {
-    return <FetchAccessScreen isInteractive={true} onExit={handleBack} />;
+    return <FetchAccessScreen isInteractive={isInteractive} onExit={handleBack} />;
   }
 
   if (route.name === 'validate') {
-    return <ValidateScreen isInteractive={true} onExit={handleBack} />;
+    return <ValidateScreen isInteractive={isInteractive} onExit={handleBack} />;
   }
 
   if (route.name === 'package') {
-    return <PackageScreen isInteractive={true} onExit={handleBack} />;
+    return <PackageScreen isInteractive={isInteractive} onExit={handleBack} />;
   }
 
   if (route.name === 'import') {
@@ -355,7 +363,7 @@ function AppContent({ initialRoute, actionOnBack }: { initialRoute?: InitialRout
   }
 
   if (route.name === 'update') {
-    return <UpdateScreen isInteractive={true} onExit={handleBack} />;
+    return <UpdateScreen isInteractive={isInteractive} onExit={handleBack} />;
   }
 
   if (route.name === 'config-bundle') {
@@ -387,10 +395,18 @@ function AppContent({ initialRoute, actionOnBack }: { initialRoute?: InitialRout
   return null;
 }
 
-export function App({ initialRoute, actionOnBack }: { initialRoute?: InitialRoute; actionOnBack?: 'help' | 'exit' }) {
+export function App({
+  initialRoute,
+  actionOnBack,
+  isInteractive = true,
+}: {
+  initialRoute?: InitialRoute;
+  actionOnBack?: 'help' | 'exit';
+  isInteractive?: boolean;
+}) {
   return (
     <LayoutProvider>
-      <AppContent initialRoute={initialRoute} actionOnBack={actionOnBack} />
+      <AppContent initialRoute={initialRoute} actionOnBack={actionOnBack} isInteractive={isInteractive} />
     </LayoutProvider>
   );
 }
