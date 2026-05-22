@@ -116,17 +116,22 @@ export function useInvokeFlow(options: InvokeFlowOptions = {}): InvokeFlowState 
   // Load config on mount
   useEffect(() => {
     const load = async () => {
+      const configIO = new ConfigIO();
+      const project = await configIO.readProjectSpec().catch(() => undefined);
+      const firstProtocol = project?.runtimes?.[0]?.protocol ?? 'unknown';
+
       const result = await withCommandRunTelemetry(
         'invoke',
         {
           has_stream: true,
           has_session_id: !!initialSessionId,
           auth_type: standardize(AuthType, initialBearerToken ? 'bearer_token' : 'sigv4'),
-          agent_protocol: standardize(AgentProtocol, 'unknown'),
+          agent_protocol: standardize(AgentProtocol, firstProtocol),
         },
         async () => {
-          const configIO = new ConfigIO();
-          const project = await configIO.readProjectSpec();
+          if (!project) {
+            return { success: false as const, error: new ResourceNotFoundError('No agentcore project found.') };
+          }
           const deployedState = await configIO.readDeployedState();
           const awsTargets = await configIO.readAWSDeploymentTargets();
 
@@ -143,7 +148,10 @@ export function useInvokeFlow(options: InvokeFlowOptions = {}): InvokeFlowState 
           const targetConfig = awsTargets.find(t => t.name === targetName);
 
           if (!targetConfig) {
-            return { success: false as const, error: new ResourceNotFoundError(`Target config '${targetName}' not found`) };
+            return {
+              success: false as const,
+              error: new ResourceNotFoundError(`Target config '${targetName}' not found`),
+            };
           }
 
           const runtimes: InvokeConfig['runtimes'] = [];
@@ -205,6 +213,7 @@ export function useInvokeFlow(options: InvokeFlowOptions = {}): InvokeFlowState 
       }
     };
     void load();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [initialSessionId]);
 
   const getMcpInvokeOptions = useCallback(() => {

@@ -27,8 +27,6 @@ export class TelemetryClientAccessor {
     this.clientPromise = createClient(entrypoint, mode);
   }
 
-
-
   static get(): Promise<TelemetryClient> {
     this.clientPromise ??= createClient('unknown');
     return this.clientPromise;

@@ -21,9 +21,9 @@ import {
   BuildType as TelemetryBuildType,
   standardize,
 } from '../../telemetry/schemas/common-shapes.js';
+import { renderTUI } from '../../tui';
 import { COMMAND_DESCRIPTIONS } from '../../tui/copy';
 import { requireTTY } from '../../tui/guards';
-import { renderTUI } from '../../tui';
 import { parseCommaSeparatedList } from '../shared/vpc-utils';
 import { type ProgressCallback, createProject, createProjectWithAgent, getDryRunInfo } from './action';
 import type { CreateOptions } from './types';

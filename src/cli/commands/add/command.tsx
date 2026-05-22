@@ -1,6 +1,6 @@
+import { renderTUI } from '../../tui';
 import { COMMAND_DESCRIPTIONS } from '../../tui/copy';
 import { requireProject, requireTTY } from '../../tui/guards';
-import { renderTUI } from '../../tui';
 import type { Command } from '@commander-js/extra-typings';
 
 export function registerAdd(program: Command): Command {
