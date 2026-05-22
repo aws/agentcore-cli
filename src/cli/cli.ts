@@ -119,7 +119,7 @@ export interface RenderTUIOptions {
  * Render the TUI in alternate screen buffer mode.
  * This is the entrypoint for TUI operations
  */
-export function renderTUI(options: RenderTUIOptions = {}) {
+export async function renderTUI(options: RenderTUIOptions = {}) {
   const {
     initialRoute,
     updateCheck = Promise.resolve(null),
@@ -128,7 +128,7 @@ export function renderTUI(options: RenderTUIOptions = {}) {
     actionOnBack = 'help',
     isInteractive = true,
   } = options;
-  TelemetryClientAccessor.init(initialRoute?.name ?? 'tui', 'tui');
+  await TelemetryClientAccessor.init(initialRoute?.name ?? 'tui', 'tui');
   if (enterAltScreen) {
     inAltScreen = true;
     process.stdout.write(ENTER_ALT_SCREEN);
@@ -165,7 +165,7 @@ export function renderTUI(options: RenderTUIOptions = {}) {
     await printPostCommandNotices(isFirstRun, updateCheck);
   });
 
-  return done;
+  await done;
 }
 
 function renderHelp(program: Command): void {
@@ -273,7 +273,7 @@ export const main = async (argv: string[]) => {
     printTelemetryNotice();
   }
 
-  TelemetryClientAccessor.init(args[0] ?? 'unknown');
+  await TelemetryClientAccessor.init(args[0] ?? 'unknown');
   try {
     await program.parseAsync(argv);
   } finally {
