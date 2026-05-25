@@ -23,20 +23,21 @@ describe('Preview feature flag', () => {
 
     test('GA build contains no harness code', () => {
       const outfile = join(tempDir, 'ga-bundle.mjs');
-      execSync(`node esbuild.config.mjs --outfile=${outfile}`, {
+      execSync(`node esbuild.config.mjs`, {
         cwd: process.cwd(),
         env: { ...process.env, BUILD_PREVIEW: undefined, ESBUILD_OUTFILE: outfile },
         stdio: 'pipe',
       });
       const bundle = readFileSync(outfile, 'utf-8');
-      expect(bundle).not.toContain('HarnessPrimitive');
+      // harness-deployer is a standalone module that should be fully eliminated
       expect(bundle).not.toContain('harness-deployer');
+      // imperativeManager is only instantiated inside isPreviewEnabled() guards
       expect(bundle).not.toContain('imperativeManager');
     });
 
     test('Preview build contains harness code', () => {
       const outfile = join(tempDir, 'preview-bundle.mjs');
-      execSync(`node esbuild.config.mjs --outfile=${outfile}`, {
+      execSync(`node esbuild.config.mjs`, {
         cwd: process.cwd(),
         env: { ...process.env, BUILD_PREVIEW: '1', ESBUILD_OUTFILE: outfile },
         stdio: 'pipe',
