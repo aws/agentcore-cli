@@ -1,5 +1,6 @@
 import {
   ConnectionError,
+  NoProjectError,
   ResourceNotFoundError,
   type Result,
   ValidationError,
@@ -28,7 +29,6 @@ import { OtelCollector, startOtelCollector } from '../../operations/dev/otel';
 import { withCommandRunTelemetry } from '../../telemetry/cli-command-run.js';
 import { TelemetryClientAccessor } from '../../telemetry/client-accessor.js';
 import { AgentProtocol, standardize } from '../../telemetry/schemas/common-shapes.js';
-import { FatalError } from '../../tui/components';
 import { LayoutProvider } from '../../tui/context';
 import { COMMAND_DESCRIPTIONS } from '../../tui/copy';
 import { requireProject, requireTTY } from '../../tui/guards';
@@ -198,17 +198,16 @@ export const registerDev = (program: Command) => {
         // Exec mode: run shell command in the dev container
         if (opts.exec) {
           if (!positionalPrompt) {
-            console.error('A command is required with --exec. Usage: agentcore dev --exec "whoami"');
-            process.exit(1);
+            throw new ValidationError('A command is required with --exec. Usage: agentcore dev --exec "whoami"');
           }
           const workingDir = getWorkingDirectory();
           const project = await loadProjectConfig(workingDir);
           const agentName = opts.runtime ?? project?.runtimes[0]?.name ?? 'unknown';
           const targetAgent = project?.runtimes.find(a => a.name === agentName);
           if (targetAgent?.build !== 'Container') {
-            console.error('Error: --exec is only supported for Container build agents.');
-            console.error('For CodeZip agents, use your terminal to run commands directly.');
-            process.exit(1);
+            throw new ValidationError(
+              '--exec is only supported for Container build agents. For CodeZip agents, use your terminal to run commands directly.'
+            );
           }
           const containerName = `agentcore-dev-${agentName}`.toLowerCase();
           const execResult = await withCommandRunTelemetry(
@@ -243,9 +242,9 @@ export const registerDev = (program: Command) => {
             targetAgent = invokeProject.runtimes.find(a => a.name === opts.runtime);
           } else if (invokeProject && invokeProject.runtimes.length > 1 && !opts.runtime) {
             const names = invokeProject.runtimes.map(a => a.name).join(', ');
-            console.error(`Error: Multiple runtimes found. Use --runtime to specify which one.`);
-            console.error(`Available: ${names}`);
-            process.exit(1);
+            throw new ValidationError(
+              `Multiple runtimes found. Use --runtime to specify which one. Available: ${names}`
+            );
           }
 
           const protocol = targetAgent?.protocol ?? 'HTTP';
@@ -294,13 +293,11 @@ export const registerDev = (program: Command) => {
         const project = await loadProjectConfig(workingDir);
 
         if (!project) {
-          render(<FatalError message="No agentcore project found." suggestedCommand="agentcore create" />);
-          process.exit(1);
+          throw new NoProjectError();
         }
 
         if (!project.runtimes || project.runtimes.length === 0) {
-          render(<FatalError message="No agents defined in project." suggestedCommand="agentcore add agent" />);
-          process.exit(1);
+          throw new ValidationError('No agents defined in project. Run `agentcore add agent` to fix this.');
         }
 
         // Warn about VPC mode limitations in local dev
@@ -313,8 +310,7 @@ export const registerDev = (program: Command) => {
 
         const supportedAgents = getDevSupportedAgents(project);
         if (supportedAgents.length === 0) {
-          render(<FatalError message="No agents support dev mode. Dev mode requires an agent with an entrypoint." />);
-          process.exit(1);
+          throw new ValidationError('No agents support dev mode. Dev mode requires an agent with an entrypoint.');
         }
 
         // Start local OTEL collector so agent traces are captured in dev mode.
@@ -335,9 +331,9 @@ export const registerDev = (program: Command) => {
           // Require --agent if multiple agents
           if (project.runtimes.length > 1 && !opts.runtime) {
             const names = project.runtimes.map(a => a.name).join(', ');
-            console.error(`Error: Multiple runtimes found. Use --runtime to specify which one.`);
-            console.error(`Available: ${names}`);
-            process.exit(1);
+            throw new ValidationError(
+              `Multiple runtimes found. Use --runtime to specify which one. Available: ${names}`
+            );
           }
 
           const agentName = opts.runtime ?? project.runtimes[0]?.name;
@@ -346,8 +342,7 @@ export const registerDev = (program: Command) => {
           const config = getDevConfig(workingDir, project, configRoot ?? undefined, agentName);
 
           if (!config) {
-            console.error('Error: No dev-supported agents found.');
-            process.exit(1);
+            throw new ValidationError('No dev-supported agents found.');
           }
 
           // Create logger for log file path
@@ -359,8 +354,9 @@ export const registerDev = (program: Command) => {
           const fixedPort = isA2A ? 9000 : isMcp ? 8000 : getAgentPort(project, config.agentName, port);
           const actualPort = await findAvailablePort(fixedPort);
           if ((isA2A || isMcp) && actualPort !== fixedPort) {
-            console.error(`Error: Port ${fixedPort} is in use. ${config.protocol} agents require port ${fixedPort}.`);
-            process.exit(1);
+            throw new ValidationError(
+              `Port ${fixedPort} is in use. ${config.protocol} agents require port ${fixedPort}.`
+            );
           }
           if (actualPort !== fixedPort) {
             console.log(`Port ${fixedPort} in use, using ${actualPort}`);
