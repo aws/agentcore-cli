@@ -78,37 +78,41 @@ async function trackCommandRun<C extends Command>(
  * is returned to the caller. If the callback throws, telemetry is recorded and
  * the exception is converted to a result type such that callers do not need to handle result + try/catch.
  * If telemetry is unavailable, the callback runs untracked.
+ *
+ * The callback may return `_telemetryAttrs` to override or supplement the upfront `attrs`.
+ * Returned attrs are merged with the upfront attrs (returned takes priority).
+ * On throw, only the upfront attrs are used since the callback never produced a value.
  */
 export async function withCommandRunTelemetry<C extends Command, R extends Result>(
   command: C,
   attrs: CommandAttrs<C>,
-  fn: () => R | Promise<R>
+  fn: () => (R & { _telemetryAttrs?: CommandAttrs<C> }) | Promise<R & { _telemetryAttrs?: CommandAttrs<C> }>
 ): Promise<R> {
   const client = await getTelemetryClient();
-
-  let result: R | undefined;
+  const start = performance.now();
   try {
-    if (!client) return fn();
-    await trackCommandRun(
-      client,
-      command,
-      async () => {
-        result = await fn();
-        if (!result.success) throw result.error;
-        return attrs;
-      },
-      attrs
-    );
-  } catch (e) {
-    // trackCommandRun re-throws after recording failure telemetry.
-    // If result was set, fn() returned a failure result — return it directly.
-    // If not, fn() itself threw — convert to a failure result so callers
-    // that don't wrap in try/catch (e.g. TUI hooks) don't leak unhandled rejections.
-    if (!result) {
-      return { success: false, error: e instanceof Error ? e : new Error(getErrorMessage(e)) } as R;
+    const result = await fn();
+    if (client) {
+      const merged = result._telemetryAttrs ? { ...attrs, ...result._telemetryAttrs } : attrs;
+      const durationMs = Math.round(performance.now() - start);
+      if (!result.success) {
+        const { category, source } = classifyError(result.error);
+        recordCommandRun(client, command, { exit_reason: 'failure', error_name: category, error_source: source }, merged, durationMs);
+      } else {
+        recordCommandRun(client, command, { exit_reason: 'success' }, merged, durationMs);
+      }
     }
+    const { _telemetryAttrs, ...cleanResult } = result;
+    return cleanResult as R;
+  } catch (e) {
+    if (client) {
+      const { category, source } = classifyError(e);
+      recordCommandRun(client, command, { exit_reason: 'failure', error_name: category, error_source: source }, attrs, Math.round(performance.now() - start));
+    }
+    return { success: false, error: e instanceof Error ? e : new Error(getErrorMessage(e)) } as R;
+  } finally {
+    await client?.flush();
   }
-  return result!;
 }
 
 /**

@@ -166,4 +166,113 @@ describe('withCommandRunTelemetry', () => {
       error_name: 'UnknownError',
     });
   });
+
+  describe('_telemetryAttrs', () => {
+    it('returned _telemetryAttrs override upfront attrs on success', async () => {
+      await withCommandRunTelemetry(
+        'dev',
+        {
+          dev_action: 'server',
+          ui_mode: 'terminal',
+          has_stream: false,
+          agent_protocol: 'http',
+          invoke_count: 0,
+        },
+        async () => ({
+          success: true as const,
+          _telemetryAttrs: {
+            dev_action: 'invoke',
+            ui_mode: 'browser',
+            has_stream: true,
+            agent_protocol: 'a2a',
+            invoke_count: 5,
+          },
+        })
+      );
+
+      expect(sink.metrics).toHaveLength(1);
+      expect(sink.metrics[0]!.attrs).toMatchObject({
+        dev_action: 'invoke',
+        ui_mode: 'browser',
+        has_stream: 'true',
+        agent_protocol: 'a2a',
+        invoke_count: 5,
+      });
+    });
+
+    it('returned _telemetryAttrs override upfront attrs on failure result', async () => {
+      await withCommandRunTelemetry(
+        'dev',
+        {
+          dev_action: 'server',
+          ui_mode: 'terminal',
+          has_stream: false,
+          agent_protocol: 'http',
+          invoke_count: 0,
+        },
+        async () => ({
+          success: false as const,
+          error: new Error('port in use'),
+          _telemetryAttrs: {
+            dev_action: 'server',
+            ui_mode: 'terminal',
+            has_stream: false,
+            agent_protocol: 'mcp',
+            invoke_count: 0,
+          },
+        })
+      );
+
+      expect(sink.metrics).toHaveLength(1);
+      expect(sink.metrics[0]!.attrs).toMatchObject({
+        exit_reason: 'failure',
+        agent_protocol: 'mcp',
+      });
+    });
+
+    it('falls back to upfront attrs when _telemetryAttrs is not returned', async () => {
+      await withCommandRunTelemetry(
+        'dev',
+        {
+          dev_action: 'server',
+          ui_mode: 'terminal',
+          has_stream: false,
+          agent_protocol: 'http',
+          invoke_count: 0,
+        },
+        async () => ({ success: true as const })
+      );
+
+      expect(sink.metrics).toHaveLength(1);
+      expect(sink.metrics[0]!.attrs).toMatchObject({
+        agent_protocol: 'http',
+        dev_action: 'server',
+      });
+    });
+
+    it('does not leak _telemetryAttrs to the caller', async () => {
+      const result = await withCommandRunTelemetry(
+        'dev',
+        {
+          dev_action: 'server',
+          ui_mode: 'terminal',
+          has_stream: false,
+          agent_protocol: 'http',
+          invoke_count: 0,
+        },
+        async () => ({
+          success: true as const,
+          _telemetryAttrs: {
+            dev_action: 'server',
+            ui_mode: 'terminal',
+            has_stream: false,
+            agent_protocol: 'mcp',
+            invoke_count: 0,
+          },
+        })
+      );
+
+      expect('_telemetryAttrs' in result).toBe(false);
+    });
+  });
 });
