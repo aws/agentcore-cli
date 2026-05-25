@@ -2,7 +2,6 @@ import {
   ConnectionError,
   NoProjectError,
   ResourceNotFoundError,
-  type Result,
   ValidationError,
   findConfigRoot,
   getWorkingDirectory,
@@ -27,11 +26,10 @@ import {
 } from '../../operations/dev';
 import { OtelCollector, startOtelCollector } from '../../operations/dev/otel';
 import { withCommandRunTelemetry } from '../../telemetry/cli-command-run.js';
-import { TelemetryClientAccessor } from '../../telemetry/client-accessor.js';
 import { AgentProtocol, standardize } from '../../telemetry/schemas/common-shapes.js';
 import { LayoutProvider } from '../../tui/context';
 import { COMMAND_DESCRIPTIONS } from '../../tui/copy';
-import { requireProject, requireTTY } from '../../tui/guards';
+import { requireTTY } from '../../tui/guards';
 import { parseHeaderFlags } from '../shared/header-utils';
 import { runBrowserMode } from './browser-mode';
 import type { Command } from '@commander-js/extra-typings';
@@ -197,73 +195,80 @@ export const registerDev = (program: Command) => {
 
         // Exec mode: run shell command in the dev container
         if (opts.exec) {
-          if (!positionalPrompt) {
-            throw new ValidationError('A command is required with --exec. Usage: agentcore dev --exec "whoami"');
-          }
-          const workingDir = getWorkingDirectory();
-          const project = await loadProjectConfig(workingDir);
-          const agentName = opts.runtime ?? project?.runtimes[0]?.name ?? 'unknown';
-          const targetAgent = project?.runtimes.find(a => a.name === agentName);
-          if (targetAgent?.build !== 'Container') {
-            throw new ValidationError(
-              '--exec is only supported for Container build agents. For CodeZip agents, use your terminal to run commands directly.'
-            );
-          }
-          const containerName = `agentcore-dev-${agentName}`.toLowerCase();
           const execResult = await withCommandRunTelemetry(
             'dev',
             {
               dev_action: 'exec' as const,
               ui_mode: 'terminal' as const,
               has_stream: false,
-              agent_protocol: standardize(AgentProtocol, (targetAgent?.protocol ?? 'http').toLowerCase()),
+              agent_protocol: 'http' as const,
               invoke_count: 0,
             },
-            async (): Promise<Result> => {
+            async () => {
+              if (!positionalPrompt) {
+                throw new ValidationError('A command is required with --exec. Usage: agentcore dev --exec "whoami"');
+              }
+              const workingDir = getWorkingDirectory();
+              const project = await loadProjectConfig(workingDir);
+              const agentName = opts.runtime ?? project?.runtimes[0]?.name ?? 'unknown';
+              const targetAgent = project?.runtimes.find(a => a.name === agentName);
+              if (targetAgent?.build !== 'Container') {
+                throw new ValidationError(
+                  '--exec is only supported for Container build agents. For CodeZip agents, use your terminal to run commands directly.'
+                );
+              }
+              const containerName = `agentcore-dev-${agentName}`.toLowerCase();
               await execInContainer(positionalPrompt, containerName);
-              return { success: true };
+              return {
+                success: true as const,
+                _telemetryAttrs: {
+                  dev_action: 'exec' as const,
+                  ui_mode: 'terminal' as const,
+                  has_stream: false,
+                  agent_protocol: standardize(AgentProtocol, (targetAgent?.protocol ?? 'http').toLowerCase()),
+                  invoke_count: 0,
+                },
+              };
             }
           );
-          if (!execResult.success) throw execResult.error;
+          // TODO: Remove cast once withCommandRunTelemetry's return type is narrowed
+          if (!execResult.success) throw (execResult as unknown as { error: Error }).error;
           return;
         }
 
         // If a prompt is provided, invoke a running dev server
         const invokePrompt = positionalPrompt;
         if (invokePrompt !== undefined) {
-          const workingDir = getWorkingDirectory();
-          const invokeProject = await loadProjectConfig(workingDir);
-
-          // Determine which agent/port to invoke
-          let invokePort = port;
-          let targetAgent = invokeProject?.runtimes[0];
-          if (opts.runtime && invokeProject) {
-            invokePort = getAgentPort(invokeProject, opts.runtime, port);
-            targetAgent = invokeProject.runtimes.find(a => a.name === opts.runtime);
-          } else if (invokeProject && invokeProject.runtimes.length > 1 && !opts.runtime) {
-            const names = invokeProject.runtimes.map(a => a.name).join(', ');
-            throw new ValidationError(
-              `Multiple runtimes found. Use --runtime to specify which one. Available: ${names}`
-            );
-          }
-
-          const protocol = targetAgent?.protocol ?? 'HTTP';
-
-          // Override port for protocols with fixed framework ports
-          if (protocol === 'A2A') invokePort = 9000;
-          else if (protocol === 'MCP') invokePort = 8000;
-
           const invokeResult = await withCommandRunTelemetry(
             'dev',
             {
               dev_action: 'invoke' as const,
               ui_mode: 'terminal' as const,
               has_stream: opts.stream ?? false,
-              agent_protocol: standardize(AgentProtocol, protocol.toLowerCase()),
+              agent_protocol: 'http' as const,
               invoke_count: 1,
             },
-            async (): Promise<Result> => {
-              // Protocol-aware dispatch
+            async () => {
+              const workingDir = getWorkingDirectory();
+              const invokeProject = await loadProjectConfig(workingDir);
+
+              let invokePort = port;
+              let targetAgent = invokeProject?.runtimes[0];
+              if (opts.runtime && invokeProject) {
+                invokePort = getAgentPort(invokeProject, opts.runtime, port);
+                targetAgent = invokeProject.runtimes.find(a => a.name === opts.runtime);
+              } else if (invokeProject && invokeProject.runtimes.length > 1 && !opts.runtime) {
+                const names = invokeProject.runtimes.map(a => a.name).join(', ');
+                throw new ValidationError(
+                  `Multiple runtimes found. Use --runtime to specify which one. Available: ${names}`
+                );
+              }
+
+              const protocol = targetAgent?.protocol ?? 'HTTP';
+
+              if (protocol === 'A2A') invokePort = 9000;
+              else if (protocol === 'MCP') invokePort = 8000;
+
               if (protocol === 'MCP') {
                 await handleMcpInvoke(invokePort, invokePrompt, opts.tool, opts.input, headers);
               } else if (protocol === 'A2A') {
@@ -280,114 +285,116 @@ export const registerDev = (program: Command) => {
               } else {
                 await invokeDevServer(invokePort, invokePrompt, opts.stream ?? false, headers);
               }
-              return { success: true };
+
+              return {
+                success: true as const,
+                _telemetryAttrs: {
+                  dev_action: 'invoke' as const,
+                  ui_mode: 'terminal' as const,
+                  has_stream: opts.stream ?? false,
+                  agent_protocol: standardize(AgentProtocol, protocol.toLowerCase()),
+                  invoke_count: 1,
+                },
+              };
             }
           );
-          if (!invokeResult.success) throw invokeResult.error;
+          // TODO: Remove cast once withCommandRunTelemetry's return type is narrowed
+          if (!invokeResult.success) throw (invokeResult as unknown as { error: Error }).error;
           return;
         }
 
-        requireProject();
-
         const workingDir = getWorkingDirectory();
-        const project = await loadProjectConfig(workingDir);
 
-        if (!project) {
-          throw new NoProjectError();
-        }
+        const serverResult = await withCommandRunTelemetry(
+          'dev',
+          {
+            dev_action: 'server' as const,
+            ui_mode: 'terminal' as const,
+            has_stream: false,
+            agent_protocol: 'http' as const,
+            invoke_count: 0,
+          },
+          async () => {
+            const project = await loadProjectConfig(workingDir);
+            if (!project) {
+              throw new NoProjectError();
+            }
+            if (!project.runtimes || project.runtimes.length === 0) {
+              throw new ValidationError('No agents defined in project. Run `agentcore add agent` to fix this.');
+            }
 
-        if (!project.runtimes || project.runtimes.length === 0) {
-          throw new ValidationError('No agents defined in project. Run `agentcore add agent` to fix this.');
-        }
+            const targetDevAgent = opts.runtime
+              ? project.runtimes.find(a => a.name === opts.runtime)
+              : project.runtimes[0];
+            if (targetDevAgent?.networkMode === 'VPC') {
+              console.log(
+                '\x1b[33mWarning: This agent uses VPC network mode. Local dev server runs outside your VPC. Network behavior may differ from deployed environment.\x1b[0m\n'
+              );
+            }
 
-        // Warn about VPC mode limitations in local dev
-        const targetDevAgent = opts.runtime ? project.runtimes.find(a => a.name === opts.runtime) : project.runtimes[0];
-        if (targetDevAgent?.networkMode === 'VPC') {
-          console.log(
-            '\x1b[33mWarning: This agent uses VPC network mode. Local dev server runs outside your VPC. Network behavior may differ from deployed environment.\x1b[0m\n'
-          );
-        }
+            const supportedAgents = getDevSupportedAgents(project);
+            if (supportedAgents.length === 0) {
+              throw new ValidationError('No agents support dev mode. Dev mode requires an agent with an entrypoint.');
+            }
 
-        const supportedAgents = getDevSupportedAgents(project);
-        if (supportedAgents.length === 0) {
-          throw new ValidationError('No agents support dev mode. Dev mode requires an agent with an entrypoint.');
-        }
+            const configRoot = findConfigRoot(workingDir);
+            let otelEnvVars: Record<string, string> = {};
+            let collector: OtelCollector | undefined;
 
-        // Start local OTEL collector so agent traces are captured in dev mode.
-        // Persists traces to .cli/traces/ so they survive dev server restarts.
-        const configRoot = findConfigRoot(workingDir);
-        let otelEnvVars: Record<string, string> = {};
-        let collector: OtelCollector | undefined;
+            if (opts.traces !== false) {
+              const persistTracesDir = path.join(configRoot ?? workingDir, '.cli', 'traces');
+              const otelResult = await startOtelCollector(persistTracesDir);
+              collector = otelResult.collector;
+              otelEnvVars = otelResult.otelEnvVars;
+            }
 
-        if (opts.traces !== false) {
-          const persistTracesDir = path.join(configRoot ?? workingDir, '.cli', 'traces');
-          const otelResult = await startOtelCollector(persistTracesDir);
-          collector = otelResult.collector;
-          otelEnvVars = otelResult.otelEnvVars;
-        }
+            // --logs: non-interactive server mode
+            if (opts.logs) {
+              if (project.runtimes.length > 1 && !opts.runtime) {
+                const names = project.runtimes.map(a => a.name).join(', ');
+                throw new ValidationError(
+                  `Multiple runtimes found. Use --runtime to specify which one. Available: ${names}`
+                );
+              }
 
-        // If --logs provided, run non-interactive mode
-        if (opts.logs) {
-          // Require --agent if multiple agents
-          if (project.runtimes.length > 1 && !opts.runtime) {
-            const names = project.runtimes.map(a => a.name).join(', ');
-            throw new ValidationError(
-              `Multiple runtimes found. Use --runtime to specify which one. Available: ${names}`
-            );
-          }
+              const agentName = opts.runtime ?? project.runtimes[0]?.name;
+              const { envVars } = await loadDevEnv(workingDir);
+              const mergedEnvVars = { ...envVars, ...otelEnvVars };
+              const config = getDevConfig(workingDir, project, configRoot ?? undefined, agentName);
 
-          const agentName = opts.runtime ?? project.runtimes[0]?.name;
-          const { envVars } = await loadDevEnv(workingDir);
-          const mergedEnvVars = { ...envVars, ...otelEnvVars };
-          const config = getDevConfig(workingDir, project, configRoot ?? undefined, agentName);
+              if (!config) {
+                throw new ValidationError('No dev-supported agents found.');
+              }
 
-          if (!config) {
-            throw new ValidationError('No dev-supported agents found.');
-          }
+              const isA2A = config.protocol === 'A2A';
+              const isMcp = config.protocol === 'MCP';
+              const fixedPort = isA2A ? 9000 : isMcp ? 8000 : getAgentPort(project, config.agentName, port);
+              const actualPort = await findAvailablePort(fixedPort);
+              if ((isA2A || isMcp) && actualPort !== fixedPort) {
+                throw new ValidationError(
+                  `Port ${fixedPort} is in use. ${config.protocol} agents require port ${fixedPort}.`
+                );
+              }
 
-          // Create logger for log file path
-          const logger = new ExecLogger({ command: 'dev' });
+              const logger = new ExecLogger({ command: 'dev' });
 
-          // Calculate port: A2A/MCP use fixed framework ports, HTTP uses configurable port
-          const isA2A = config.protocol === 'A2A';
-          const isMcp = config.protocol === 'MCP';
-          const fixedPort = isA2A ? 9000 : isMcp ? 8000 : getAgentPort(project, config.agentName, port);
-          const actualPort = await findAvailablePort(fixedPort);
-          if ((isA2A || isMcp) && actualPort !== fixedPort) {
-            throw new ValidationError(
-              `Port ${fixedPort} is in use. ${config.protocol} agents require port ${fixedPort}.`
-            );
-          }
-          if (actualPort !== fixedPort) {
-            console.log(`Port ${fixedPort} in use, using ${actualPort}`);
-          }
+              if (actualPort !== fixedPort) {
+                console.log(`Port ${fixedPort} in use, using ${actualPort}`);
+              }
 
-          // Get provider info from agent config
-          const providerInfo = '(see agent code)';
+              console.log(`Starting dev server...`);
+              console.log(`Agent: ${config.agentName}`);
+              if (config.protocol !== 'MCP') {
+                console.log(`Provider: (see agent code)`);
+              }
+              if (config.protocol !== 'HTTP') {
+                console.log(`Protocol: ${config.protocol}`);
+              }
+              console.log(`Server: ${getEndpointUrl(actualPort, config.protocol)}`);
+              console.log(`Log: ${logger.getRelativeLogPath()}`);
+              console.log(`Press Ctrl+C to stop\n`);
 
-          console.log(`Starting dev server...`);
-          console.log(`Agent: ${config.agentName}`);
-          if (config.protocol !== 'MCP') {
-            console.log(`Provider: ${providerInfo}`);
-          }
-          if (config.protocol !== 'HTTP') {
-            console.log(`Protocol: ${config.protocol}`);
-          }
-          console.log(`Server: ${getEndpointUrl(actualPort, config.protocol)}`);
-          console.log(`Log: ${logger.getRelativeLogPath()}`);
-          console.log(`Press Ctrl+C to stop\n`);
-
-          const devResult = await withCommandRunTelemetry(
-            'dev',
-            {
-              dev_action: 'server' as const,
-              ui_mode: 'terminal' as const,
-              has_stream: false,
-              agent_protocol: standardize(AgentProtocol, (config.protocol ?? 'http').toLowerCase()),
-              invoke_count: 0,
-            },
-            async (): Promise<Result> => {
-              await new Promise<void>((resolve, reject) => {
+              const serverPromise = new Promise<void>((resolve, reject) => {
                 const devCallbacks = {
                   onLog: (level: string, msg: string) => {
                     const prefix = level === 'error' ? '❌' : level === 'warn' ? '⚠️' : '→';
@@ -418,34 +425,30 @@ export const registerDev = (program: Command) => {
                   server.kill();
                 });
               });
-              return { success: true as const };
+
+              return {
+                success: true as const,
+                blockingPromise: serverPromise,
+                _telemetryAttrs: {
+                  dev_action: 'server' as const,
+                  ui_mode: 'terminal' as const,
+                  has_stream: false,
+                  agent_protocol: standardize(AgentProtocol, config.protocol.toLowerCase()),
+                  invoke_count: 0,
+                },
+              };
             }
-          );
-          if (!devResult.success) throw devResult.error;
-          process.exit(0);
-        }
 
-        // If --no-browser provided, launch terminal TUI mode
-        if (!opts.browser) {
-          requireTTY();
-          // Enter alternate screen buffer for fullscreen mode
-          process.stdout.write(ENTER_ALT_SCREEN);
+            // --no-browser: terminal TUI mode
+            if (!opts.browser) {
+              requireTTY();
+              process.stdout.write(ENTER_ALT_SCREEN);
 
-          const exitAltScreen = () => {
-            process.stdout.write(EXIT_ALT_SCREEN);
-            process.stdout.write(SHOW_CURSOR);
-          };
+              const exitAltScreen = () => {
+                process.stdout.write(EXIT_ALT_SCREEN);
+                process.stdout.write(SHOW_CURSOR);
+              };
 
-          const tuiResult = await withCommandRunTelemetry(
-            'dev',
-            {
-              dev_action: 'server' as const,
-              ui_mode: 'terminal' as const,
-              has_stream: false,
-              agent_protocol: standardize(AgentProtocol, (targetDevAgent?.protocol ?? 'http').toLowerCase()),
-              invoke_count: 0,
-            },
-            async (): Promise<Result> => {
               const { DevScreen } = await import('../../tui/screens/dev/DevScreen');
               const { unmount, waitUntilExit } = render(
                 <LayoutProvider>
@@ -462,44 +465,47 @@ export const registerDev = (program: Command) => {
                 </LayoutProvider>
               );
 
-              await waitUntilExit();
-              exitAltScreen();
-              return { success: true };
+              return {
+                success: true as const,
+                blockingPromise: waitUntilExit().finally(() => {
+                  exitAltScreen();
+                  collector?.stop();
+                }),
+                _telemetryAttrs: {
+                  dev_action: 'server' as const,
+                  ui_mode: 'terminal' as const,
+                  has_stream: false,
+                  agent_protocol: standardize(AgentProtocol, (targetDevAgent?.protocol ?? 'http').toLowerCase()),
+                  invoke_count: 0,
+                },
+              };
             }
-          );
-          if (!tuiResult.success) throw tuiResult.error;
-          collector?.stop();
-          process.exit(0);
-        }
 
-        // Default: launch web UI in browser
-        // NOTE: Do not copy this pattern. runBrowserMode blocks forever (internal
-        // await new Promise(() => {})) so we cannot use withCommandRunTelemetry here.
-        // We emit telemetry eagerly before the blocking call.
-        {
-          const client = await TelemetryClientAccessor.get().catch(() => undefined);
-          if (client) {
-            client.emit('cli.command_run', 0, {
-              command_group: 'dev',
-              command: 'dev',
-              exit_reason: 'success',
-              dev_action: 'server',
-              ui_mode: 'browser',
-              has_stream: false,
-              agent_protocol: standardize(AgentProtocol, (targetDevAgent?.protocol ?? 'http').toLowerCase()),
-              invoke_count: 0,
-            });
-            await client.flush();
+            // Default: browser mode (blocks forever)
+            return {
+              success: true as const,
+              blockingPromise: runBrowserMode({
+                workingDir,
+                project,
+                port,
+                agentName: opts.runtime,
+                otelEnvVars,
+                collector,
+              }),
+              _telemetryAttrs: {
+                dev_action: 'server' as const,
+                ui_mode: 'browser' as const,
+                has_stream: false,
+                agent_protocol: standardize(AgentProtocol, (targetDevAgent?.protocol ?? 'http').toLowerCase()),
+                invoke_count: 0,
+              },
+            };
           }
-          await runBrowserMode({
-            workingDir,
-            project,
-            port,
-            agentName: opts.runtime,
-            otelEnvVars,
-            collector,
-          });
-        }
+        );
+        // TODO: Remove cast once withCommandRunTelemetry's return type is narrowed
+        if (!serverResult.success) throw (serverResult as unknown as { error: Error }).error;
+        if ('blockingPromise' in serverResult) await serverResult.blockingPromise;
+        process.exit(0);
       } catch (error) {
         console.error(`Error: ${getErrorMessage(error)}`);
         process.exit(1);
