@@ -2,6 +2,8 @@ import { ConfigIO, findConfigRoot } from '../../../lib';
 import {
   AgentNameSchema,
   BuildTypeSchema,
+  DatasetNameSchema,
+  DatasetSchemaTypeSchema,
   GatewayAuthorizerTypeSchema,
   GatewayExceptionLevelSchema,
   GatewayNameSchema,
@@ -19,12 +21,14 @@ import {
 } from '../../../schema';
 import { ARN_VALIDATION_MESSAGE, isValidArn } from '../shared/arn-utils';
 import { validateHeaderAllowlist } from '../shared/header-utils';
+import { MAX_INDEXED_KEYS, parseIndexedKeyArg } from '../shared/indexed-key-parser';
 import { parseAndValidateLifecycleOptions } from '../shared/lifecycle-utils';
 import { validateVpcOptions } from '../shared/vpc-utils';
 import { validateJwtAuthorizerOptions } from './auth-options';
 import type {
   AddAgentOptions,
   AddCredentialOptions,
+  AddDatasetOptions,
   AddGatewayOptions,
   AddGatewayTargetOptions,
   AddHarnessCliOptions,
@@ -727,6 +731,37 @@ export function validateAddMemoryOptions(options: AddMemoryOptions): ValidationR
     }
   }
 
+  if (options.indexedKey && options.indexedKey.length > 0) {
+    const ltmStrategies = (options.strategies ?? '')
+      .split(',')
+      .map(s => s.trim().toUpperCase())
+      .filter(Boolean);
+    if (ltmStrategies.length === 0) {
+      return {
+        valid: false,
+        error:
+          '--indexed-key requires at least one long-term memory strategy (--strategies). Indexed keys filter long-term memory records on retrieval.',
+      };
+    }
+
+    if (options.indexedKey.length > MAX_INDEXED_KEYS) {
+      return { valid: false, error: `Maximum ${MAX_INDEXED_KEYS} indexed keys allowed` };
+    }
+
+    const seenKeys = new Set<string>();
+    for (const raw of options.indexedKey) {
+      const result = parseIndexedKeyArg(raw);
+      if (!result.ok) {
+        return { valid: false, error: result.error };
+      }
+      const { key } = result.value;
+      if (seenKeys.has(key)) {
+        return { valid: false, error: `Duplicate indexed key: "${key}"` };
+      }
+      seenKeys.add(key);
+    }
+  }
+
   if (options.streamDeliveryResources && (options.dataStreamArn || options.contentLevel || options.deliveryType)) {
     return {
       valid: false,
@@ -776,6 +811,30 @@ export function validateAddMemoryOptions(options: AddMemoryOptions): ValidationR
             : 'Invalid --stream-delivery-resources: does not match the expected schema',
       };
     }
+  }
+
+  return { valid: true };
+}
+
+// Dataset validation
+export function validateAddDatasetOptions(options: AddDatasetOptions): ValidationResult {
+  if (!options.name) {
+    return { valid: false, error: '--name is required' };
+  }
+
+  const nameResult = DatasetNameSchema.safeParse(options.name);
+  if (!nameResult.success) {
+    return { valid: false, error: nameResult.error.issues[0]?.message ?? 'Invalid dataset name' };
+  }
+
+  if (!options.schemaType) {
+    return { valid: false, error: '--schema-type is required' };
+  }
+
+  const schemaTypeResult = DatasetSchemaTypeSchema.safeParse(options.schemaType);
+  if (!schemaTypeResult.success) {
+    const valid = DatasetSchemaTypeSchema.options.join(', ');
+    return { valid: false, error: `Invalid schema type: ${options.schemaType}. Valid options: ${valid}` };
   }
 
   return { valid: true };

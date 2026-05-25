@@ -50,6 +50,7 @@ await esbuild.build({
   platform: 'node',
   format: 'esm',
   minify: true,
+  keepNames: true,
   jsx: 'automatic',
   define: {
     __PREVIEW__: process.env.BUILD_PREVIEW === '1' ? 'true' : 'false',

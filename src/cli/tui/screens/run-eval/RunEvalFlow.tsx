@@ -16,10 +16,13 @@ import type { AgentItem, RunEvalConfig, RunEvalFlowData } from './types';
 import { Box, Text } from 'ink';
 import React, { useCallback, useEffect, useState } from 'react';
 
+type EvalSource = 'dataset' | 'traces';
+
 type FlowState =
   | { name: 'loading' }
-  | { name: 'wizard'; data: RunEvalFlowData }
-  | { name: 'running'; config: RunEvalConfig }
+  | { name: 'source-picker'; data: RunEvalFlowData }
+  | { name: 'wizard'; data: RunEvalFlowData; source: EvalSource; dataset?: string; datasetVersion?: string }
+  | { name: 'running'; config: RunEvalConfig; progressMessage?: string }
   | { name: 'results'; result: RunEvalResult; run: EvalRunResult; filePath: string }
   | { name: 'creds-error'; message: string }
   | { name: 'error'; message: string };
@@ -108,7 +111,7 @@ export function RunEvalFlow({ onExit, onViewRuns }: RunEvalFlowProps) {
           return;
         }
 
-        setFlow({ name: 'wizard', data: { agents, evaluators } });
+        setFlow({ name: 'source-picker', data: { agents, evaluators } });
       } catch (err) {
         if (!cancelled) setFlow({ name: 'error', message: getErrorMessage(err) });
       }
@@ -119,9 +122,20 @@ export function RunEvalFlow({ onExit, onViewRuns }: RunEvalFlowProps) {
     };
   }, [flow.name]);
 
-  const handleRunComplete = useCallback((config: RunEvalConfig) => {
-    setFlow({ name: 'running', config });
-  }, []);
+  const handleRunComplete = useCallback(
+    (config: RunEvalConfig) => {
+      // Inject dataset info from source-picker selection
+      if (flow.name === 'wizard' && flow.source === 'dataset') {
+        config = { ...config, dataset: flow.dataset, datasetVersion: flow.datasetVersion };
+      }
+      const isDataset = flow.name === 'wizard' && flow.source === 'dataset';
+      const progressMessage = isDataset
+        ? 'Running dataset evaluation: loading scenarios → invoking agent → collecting spans → evaluating...'
+        : undefined;
+      setFlow({ name: 'running', config, progressMessage });
+    },
+    [flow]
+  );
 
   // Execute the eval when we enter 'running' state
   useEffect(() => {
@@ -141,6 +155,14 @@ export function RunEvalFlow({ onExit, onViewRuns }: RunEvalFlowProps) {
           assertions: config.assertions.length > 0 ? config.assertions : undefined,
           expectedTrajectory: config.expectedTrajectory.length > 0 ? config.expectedTrajectory : undefined,
           expectedResponse: config.expectedResponse || undefined,
+          dataset: config.dataset,
+          datasetVersion: config.datasetVersion,
+          onProgress: config.dataset
+            ? (_phase, message) => {
+                if (!cancelled)
+                  setFlow(prev => (prev.name === 'running' ? { ...prev, progressMessage: message } : prev));
+              }
+            : undefined,
         });
 
         if (cancelled) return;
@@ -173,11 +195,28 @@ export function RunEvalFlow({ onExit, onViewRuns }: RunEvalFlowProps) {
     return <ErrorPrompt message="AWS credentials required" detail={flow.message} onBack={onExit} onExit={onExit} />;
   }
 
+  if (flow.name === 'source-picker') {
+    return (
+      <EvalSourcePicker
+        data={flow.data}
+        onSelect={(source, dataset, datasetVersion) => {
+          if (source === 'traces') {
+            setFlow({ name: 'wizard', data: flow.data, source: 'traces' });
+          } else {
+            setFlow({ name: 'wizard', data: flow.data, source: 'dataset', dataset, datasetVersion });
+          }
+        }}
+        onExit={onExit}
+      />
+    );
+  }
+
   if (flow.name === 'wizard') {
     return (
       <RunEvalScreen
         agents={flow.data.agents}
         evaluatorItems={flow.data.evaluators}
+        source={flow.source}
         onComplete={handleRunComplete}
         onExit={onExit}
       />
@@ -185,9 +224,10 @@ export function RunEvalFlow({ onExit, onViewRuns }: RunEvalFlowProps) {
   }
 
   if (flow.name === 'running') {
+    const message = flow.progressMessage ?? 'Running evaluation... this may take a few minutes';
     return (
       <Screen title="Run On-demand Evaluation" onExit={onExit}>
-        <GradientText text="Running evaluation... this may take a few minutes" />
+        <GradientText text={message} />
       </Screen>
     );
   }
@@ -211,6 +251,202 @@ export function RunEvalFlow({ onExit, onViewRuns }: RunEvalFlowProps) {
       onBack={() => setFlow({ name: 'loading' })}
       onExit={onExit}
     />
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Evaluation source picker
+// ─────────────────────────────────────────────────────────────────────────────
+
+interface EvalSourcePickerProps {
+  data: RunEvalFlowData;
+  onSelect: (source: EvalSource, dataset?: string, datasetVersion?: string) => void;
+  onExit: () => void;
+}
+
+function EvalSourcePicker({ data: _data, onSelect, onExit }: EvalSourcePickerProps) {
+  const [step, setStep] = useState<'source' | 'dataset' | 'version'>('source');
+  const [datasets, setDatasets] = useState<string[]>([]);
+  const [selectedDataset, setSelectedDataset] = useState<string>('');
+  const [versionItems, setVersionItems] = useState<{ id: string; title: string; description: string }[]>([]);
+  const [loadingVersions, setLoadingVersions] = useState(false);
+
+  // Load dataset names from project config
+  useEffect(() => {
+    void (async () => {
+      try {
+        const { ConfigIO } = await import('../../../../lib');
+        const configIO = new ConfigIO();
+        const spec = await configIO.readProjectSpec();
+        setDatasets((spec.datasets ?? []).map(d => d.name));
+      } catch {
+        // No datasets available
+      }
+    })();
+  }, []);
+
+  // Load versions when a dataset is selected
+  useEffect(() => {
+    if (step !== 'version' || !selectedDataset) return;
+    let cancelled = false;
+    setLoadingVersions(true);
+
+    void (async () => {
+      try {
+        const { resolveDataset } = await import('../../../operations/dataset/resolve-dataset');
+        const { listDatasetVersions } = await import('../../../aws/agentcore-datasets');
+        const resolved = await resolveDataset(selectedDataset);
+        const result = await listDatasetVersions({ region: resolved.region, datasetId: resolved.datasetId });
+
+        if (cancelled) return;
+
+        const items: { id: string; title: string; description: string }[] = [
+          { id: 'local', title: 'Local file', description: 'fastest iteration, no push required' },
+          { id: 'DRAFT', title: 'DRAFT', description: 'latest pushed content' },
+        ];
+        for (const v of result.versions.sort((a, b) => b.createdAt - a.createdAt)) {
+          const date = new Date(v.createdAt * 1000).toLocaleDateString([], {
+            month: 'short',
+            day: 'numeric',
+            year: 'numeric',
+          });
+          items.push({
+            id: v.datasetVersion,
+            title: `Version ${v.datasetVersion}`,
+            description: `${v.exampleCount} examples · ${date}`,
+          });
+        }
+        setVersionItems(items);
+      } catch {
+        // If versions can't be loaded (not deployed yet), just offer local + DRAFT
+        setVersionItems([
+          { id: 'local', title: 'Local file', description: 'fastest iteration, no push required' },
+          { id: 'DRAFT', title: 'DRAFT', description: 'latest pushed content' },
+        ]);
+      } finally {
+        if (!cancelled) setLoadingVersions(false);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [step, selectedDataset]);
+
+  const sourceItems = [
+    { id: 'dataset', title: 'Dataset', description: 'Invoke agent with dataset scenarios' },
+    { id: 'traces', title: 'Historical traces', description: 'Evaluate existing sessions' },
+  ];
+
+  const datasetItems = datasets.map(name => ({
+    id: name,
+    title: name,
+  }));
+
+  const handleDatasetSelected = useCallback(
+    (name: string) => {
+      setSelectedDataset(name);
+      setStep('version');
+    },
+    [setSelectedDataset, setStep]
+  );
+
+  const sourceNav = useListNavigation({
+    items: sourceItems,
+    onSelect: (item: { id: string }) => {
+      if (item.id === 'traces') {
+        onSelect('traces');
+      } else {
+        if (datasets.length === 1) {
+          handleDatasetSelected(datasets[0]!);
+        } else if (datasets.length > 1) {
+          setStep('dataset');
+        } else {
+          onSelect('dataset');
+        }
+      }
+    },
+    onExit,
+    isActive: step === 'source',
+  });
+
+  const datasetNav = useListNavigation({
+    items: datasetItems,
+    onSelect: (item: { id: string }) => {
+      handleDatasetSelected(item.id);
+    },
+    onExit: () => setStep('source'),
+    isActive: step === 'dataset',
+  });
+
+  const versionNav = useListNavigation({
+    items: versionItems,
+    onSelect: (item: { id: string }) => {
+      const version = item.id === 'local' ? undefined : item.id;
+      onSelect('dataset', selectedDataset, version);
+    },
+    onExit: () => (datasets.length > 1 ? setStep('dataset') : setStep('source')),
+    isActive: step === 'version' && !loadingVersions,
+  });
+
+  if (step === 'version') {
+    return (
+      <Screen
+        title="Run On-demand Evaluation"
+        onExit={() => (datasets.length > 1 ? setStep('dataset') : setStep('source'))}
+      >
+        <Box flexDirection="column">
+          <Text bold>Select version for {selectedDataset}:</Text>
+          {loadingVersions ? (
+            <GradientText text="Loading versions..." />
+          ) : (
+            <>
+              {versionItems.map((item, i) => (
+                <Text key={item.id}>
+                  {i === versionNav.selectedIndex ? <Text color="cyan">❯ </Text> : '  '}
+                  <Text color={i === versionNav.selectedIndex ? 'cyan' : undefined}>{item.title}</Text>
+                  <Text dimColor> — {item.description}</Text>
+                </Text>
+              ))}
+              <Text dimColor>{'\n'}↑↓ Enter select · Esc back</Text>
+            </>
+          )}
+        </Box>
+      </Screen>
+    );
+  }
+
+  if (step === 'dataset') {
+    return (
+      <Screen title="Run On-demand Evaluation" onExit={() => setStep('source')}>
+        <Box flexDirection="column">
+          <Text bold>Select dataset:</Text>
+          {datasetItems.map((item, i) => (
+            <Text key={item.id}>
+              {i === datasetNav.selectedIndex ? <Text color="cyan">❯ </Text> : '  '}
+              <Text color={i === datasetNav.selectedIndex ? 'cyan' : undefined}>{item.title}</Text>
+            </Text>
+          ))}
+          <Text dimColor>{'\n'}↑↓ Enter select · Esc back</Text>
+        </Box>
+      </Screen>
+    );
+  }
+
+  return (
+    <Screen title="Run On-demand Evaluation" onExit={onExit}>
+      <Box flexDirection="column">
+        <Text bold>Evaluation source:</Text>
+        {sourceItems.map((item, i) => (
+          <Text key={item.id}>
+            {i === sourceNav.selectedIndex ? <Text color="cyan">❯ </Text> : '  '}
+            <Text color={i === sourceNav.selectedIndex ? 'cyan' : undefined}>{item.title}</Text>
+            <Text dimColor> — {item.description}</Text>
+          </Text>
+        ))}
+        <Text dimColor>{'\n'}↑↓ Enter select · Esc back</Text>
+      </Box>
+    </Screen>
   );
 }
 
@@ -253,8 +489,18 @@ function ResultsView({ run, filePath, onRunAnother, onViewRuns, onExit }: Result
             <Text bold>Agent:</Text> {run.agent}
             {'  '}
             <Text bold>Sessions:</Text> {run.sessionCount}
-            {'  '}
-            <Text bold>Lookback:</Text> {run.lookbackDays}d
+            {run.lookbackDays != null && (
+              <>
+                {'  '}
+                <Text bold>Lookback:</Text> {run.lookbackDays}d
+              </>
+            )}
+            {run.datasetName && (
+              <>
+                {'  '}
+                <Text bold>Dataset:</Text> {run.datasetName}
+              </>
+            )}
           </Text>
           {run.referenceInputs && (
             <Text dimColor>

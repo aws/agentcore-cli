@@ -1,4 +1,4 @@
-import { ResourceNotFoundError, findConfigRoot, serializeResult, toError } from '../../lib';
+import { ResourceNotFoundError, ValidationError, findConfigRoot, serializeResult, toError } from '../../lib';
 import type { Result } from '../../lib/result';
 import type {
   AgentCoreGateway,
@@ -191,7 +191,7 @@ export class GatewayPrimitive extends BasePrimitive<AddGatewayOptions, Removable
         await runCliCommand('add.gateway', !!cliOptions.json, async () => {
           const validation = validateAddGatewayOptions(cliOptions);
           if (!validation.valid) {
-            throw new Error(validation.error);
+            throw new ValidationError(validation.error!);
           }
 
           // Parse custom claims JSON if provided (already validated)

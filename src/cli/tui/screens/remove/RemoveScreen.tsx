@@ -17,6 +17,7 @@ export type RemoveResourceType =
   | 'config-bundle'
   | 'ab-test'
   | 'runtime-endpoint'
+  | 'dataset'
   | 'all';
 
 const REMOVE_RESOURCES: { id: RemoveResourceType; title: string; description: string }[] = [
@@ -35,6 +36,7 @@ const REMOVE_RESOURCES: { id: RemoveResourceType; title: string; description: st
   { id: 'config-bundle', title: 'Configuration Bundle [preview]', description: 'Remove a configuration bundle' },
   { id: 'ab-test', title: 'AB Test [preview]', description: 'Remove an A/B test' },
   { id: 'runtime-endpoint', title: 'Runtime Endpoint', description: 'Remove a runtime endpoint' },
+  { id: 'dataset', title: 'Dataset', description: 'Remove a dataset' },
   { id: 'all', title: 'All', description: 'Reset entire agentcore project' },
 ];
 
@@ -67,6 +69,8 @@ interface RemoveScreenProps {
   abTestCount: number;
   /** Number of runtime endpoints available for removal */
   runtimeEndpointCount: number;
+  /** Number of datasets available for removal */
+  datasetCount: number;
 }
 
 export function RemoveScreen({
@@ -85,6 +89,7 @@ export function RemoveScreen({
   configBundleCount,
   abTestCount,
   runtimeEndpointCount,
+  datasetCount,
 }: RemoveScreenProps) {
   const items: SelectableItem[] = useMemo(() => {
     return REMOVE_RESOURCES.map(r => {
@@ -170,6 +175,12 @@ export function RemoveScreen({
             description = 'No runtime endpoints to remove';
           }
           break;
+        case 'dataset':
+          if (datasetCount === 0) {
+            disabled = true;
+            description = 'No datasets to remove';
+          }
+          break;
         case 'all':
           // 'all' is always available
           break;
@@ -191,6 +202,7 @@ export function RemoveScreen({
     configBundleCount,
     abTestCount,
     runtimeEndpointCount,
+    datasetCount,
   ]);
 
   const isDisabled = (item: SelectableItem) => item.disabled ?? false;

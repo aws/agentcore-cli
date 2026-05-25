@@ -68,6 +68,8 @@ export interface InvokeAgentRuntimeOptions {
   bearerToken?: string;
   /** W3C baggage header value (e.g. config bundle ref for runtime) */
   baggage?: string;
+  /** Runtime endpoint qualifier (e.g. DEFAULT, PROMPT_V1). Defaults to DEFAULT. */
+  endpoint?: string;
 }
 
 export interface InvokeAgentRuntimeResult {
@@ -154,9 +156,10 @@ export function extractResult(text: string): string {
 /**
  * Build the invoke URL for a runtime ARN.
  */
-function buildInvokeUrl(region: string, runtimeArn: string): string {
+function buildInvokeUrl(region: string, runtimeArn: string, endpoint?: string): string {
   const escapedArn = encodeURIComponent(runtimeArn);
-  return `https://${serviceEndpoint('bedrock-agentcore', region)}/runtimes/${escapedArn}/invocations?qualifier=DEFAULT`;
+  const qualifier = endpoint ?? 'DEFAULT';
+  return `https://${serviceEndpoint('bedrock-agentcore', region)}/runtimes/${escapedArn}/invocations?qualifier=${qualifier}`;
 }
 
 /**
@@ -192,7 +195,7 @@ export function buildBearerInvokeHeaders(
  * Used when the runtime has CUSTOM_JWT authorizer configured.
  */
 async function invokeWithBearerTokenStreaming(options: InvokeAgentRuntimeOptions): Promise<StreamingInvokeResult> {
-  const url = buildInvokeUrl(options.region, options.runtimeArn);
+  const url = buildInvokeUrl(options.region, options.runtimeArn, options.endpoint);
   const headers = buildBearerInvokeHeaders(options, 'application/json, text/event-stream');
 
   const res = await fetch(url, {
@@ -278,7 +281,7 @@ async function invokeWithBearerTokenStreaming(options: InvokeAgentRuntimeOptions
  * Invoke an AgentCore Runtime using bearer token auth (non-streaming).
  */
 async function invokeWithBearerToken(options: InvokeAgentRuntimeOptions): Promise<InvokeAgentRuntimeResult> {
-  const url = buildInvokeUrl(options.region, options.runtimeArn);
+  const url = buildInvokeUrl(options.region, options.runtimeArn, options.endpoint);
   const headers = buildBearerInvokeHeaders(options, 'application/json');
 
   const res = await fetch(url, {

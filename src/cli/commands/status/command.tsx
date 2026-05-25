@@ -1,5 +1,7 @@
 import { serializeResult } from '../../../lib';
 import { getErrorMessage } from '../../errors';
+import { getDatasetStatus } from '../../operations/dataset';
+import type { DatasetStatusResult } from '../../operations/dataset';
 import { COMMAND_DESCRIPTIONS } from '../../tui/copy';
 import { requireProject } from '../../tui/guards';
 import type { ResourceStatusEntry } from './action';
@@ -20,6 +22,7 @@ const VALID_RESOURCE_TYPES = [
   'policy',
   'config-bundle',
   'ab-test',
+  'dataset',
 ] as const;
 const VALID_STATES = ['deployed', 'local-only', 'pending-removal'] as const;
 
@@ -62,7 +65,7 @@ export const registerStatus = (program: Command) => {
     .option('--target <name>', 'Select deployment target')
     .option(
       '--type <type>',
-      'Filter by resource type (agent, runtime-endpoint, memory, credential, gateway, evaluator, online-eval, policy-engine, policy, config-bundle, ab-test)'
+      'Filter by resource type (agent, runtime-endpoint, memory, credential, gateway, evaluator, online-eval, policy-engine, policy, config-bundle, ab-test, dataset)'
     )
     .option('--state <state>', 'Filter by deployment state (deployed, local-only, pending-removal)')
     .option('--runtime <name>', 'Filter to a specific runtime')
@@ -153,7 +156,27 @@ export const registerStatus = (program: Command) => {
         const policies = filtered.filter(r => r.resourceType === 'policy');
         const configBundles = filtered.filter(r => r.resourceType === 'config-bundle');
         const abTests = filtered.filter(r => r.resourceType === 'ab-test');
+        const datasets = filtered.filter(r => r.resourceType === 'dataset');
         // TODO: Add http-gateway resource type when diffResourceSet for HTTP gateways is added to action.ts
+
+        // Fetch enriched dataset info when --type dataset is specified
+        let datasetDetails: DatasetStatusResult[] = [];
+        if (cliOptions.type === 'dataset' && datasets.length > 0 && result.targetRegion && result.targetName) {
+          const deployedState = context.deployedState;
+          const targetResources = deployedState.targets?.[result.targetName]?.resources;
+          const deployedDatasets = targetResources?.datasets ?? {};
+
+          const detailPromises = datasets
+            .filter(d => d.deploymentState === 'deployed' && deployedDatasets[d.name])
+            .map(d =>
+              getDatasetStatus({
+                region: result.targetRegion!,
+                datasetId: deployedDatasets[d.name]!.datasetId,
+                name: d.name,
+              }).catch(() => null)
+            );
+          datasetDetails = (await Promise.all(detailPromises)).filter((d): d is DatasetStatusResult => d !== null);
+        }
 
         render(
           <Box flexDirection="column">
@@ -289,6 +312,57 @@ export const registerStatus = (program: Command) => {
                     )}
                   </Box>
                 ))}
+              </Box>
+            )}
+
+            {datasets.length > 0 && (
+              <Box flexDirection="column" marginTop={1}>
+                <Text bold>Datasets</Text>
+                {datasets.map(entry => (
+                  <ResourceEntry key={`${entry.resourceType}-${entry.name}`} entry={entry} />
+                ))}
+                {datasetDetails.length > 0 &&
+                  datasetDetails.map(d => (
+                    <Box key={d.datasetId} flexDirection="column" marginTop={1} marginLeft={2}>
+                      <Text bold>{d.name}</Text>
+                      <Text dimColor> Schema: {d.schemaType}</Text>
+                      <Text>
+                        {' '}
+                        DRAFT: {d.draftExampleCount} examples{' '}
+                        <Text color={d.draftStatus === 'MODIFIED' ? 'yellow' : 'green'}>({d.draftStatus})</Text>
+                        {' · Updated: '}
+                        {new Date(d.updatedAt * 1000).toLocaleDateString([], {
+                          month: 'short',
+                          day: 'numeric',
+                          year: 'numeric',
+                        })}
+                      </Text>
+                      {d.versions.length > 0 ? (
+                        <Box flexDirection="column">
+                          <Text dimColor> Versions:</Text>
+                          {d.versions.map((v, i) => (
+                            <Text key={v.datasetVersion} dimColor={i > 0}>
+                              {'   '}v{v.datasetVersion}
+                              {i === 0 ? ' (latest)' : ''} —{' '}
+                              {v.failureReason ? (
+                                <Text color="red">FAILED: {v.failureReason}</Text>
+                              ) : (
+                                <>{v.exampleCount} examples</>
+                              )}
+                              {' · Created: '}
+                              {new Date(v.createdAt * 1000).toLocaleDateString([], {
+                                month: 'short',
+                                day: 'numeric',
+                                year: 'numeric',
+                              })}
+                            </Text>
+                          ))}
+                        </Box>
+                      ) : (
+                        <Text dimColor> No published versions</Text>
+                      )}
+                    </Box>
+                  ))}
               </Box>
             )}
 

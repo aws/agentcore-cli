@@ -18,6 +18,7 @@ import {
   GatewayTargetHost,
   GatewayTargetType,
   MemoryType,
+  Mode,
   ModelProvider,
   NetworkMode,
   OutboundAuthType,
@@ -61,6 +62,8 @@ const AddMemoryAttrs = safeSchema({
   strategy_summarization: z.boolean(),
   strategy_user_preference: z.boolean(),
   strategy_episodic: z.boolean(),
+  indexed_key_count: Count,
+  has_indexed_keys: z.boolean(),
 });
 
 const AddCredentialAttrs = safeSchema({ credential_type: CredentialType });
@@ -136,6 +139,11 @@ const FetchAccessAttrs = safeSchema({ resource_type: ResourceType });
 
 const UpdateAttrs = safeSchema({ is_dry_run: z.boolean() });
 
+const FeedbackAttrs = safeSchema({
+  mode: Mode,
+  has_screenshot: z.boolean(),
+});
+
 const PauseResumeOnlineEvalAttrs = safeSchema({ ref_type: RefType });
 
 const NoAttrs = safeSchema({});
@@ -148,6 +156,7 @@ export const COMMAND_SCHEMAS = {
   create: CreateAttrs,
   'add.agent': AddAgentAttrs,
   'add.memory': AddMemoryAttrs,
+  'add.dataset': NoAttrs,
   'add.credential': AddCredentialAttrs,
   'add.evaluator': AddEvaluatorAttrs,
   'add.online-eval': AddOnlineEvalAttrs,
@@ -164,6 +173,7 @@ export const COMMAND_SCHEMAS = {
   'logs.evals': LogsEvalsAttrs,
   'run.eval': RunEvalAttrs,
   'fetch.access': FetchAccessAttrs,
+  feedback: FeedbackAttrs,
   update: UpdateAttrs,
   'pause.online-eval': PauseResumeOnlineEvalAttrs,
   'resume.online-eval': PauseResumeOnlineEvalAttrs,
@@ -184,6 +194,7 @@ export const COMMAND_SCHEMAS = {
   'remove.agent': NoAttrs,
   'remove.harness': NoAttrs,
   'remove.memory': NoAttrs,
+  'remove.dataset': NoAttrs,
   'remove.credential': NoAttrs,
   'remove.evaluator': NoAttrs,
   'remove.online-eval': NoAttrs,
@@ -194,6 +205,9 @@ export const COMMAND_SCHEMAS = {
   'remove.runtime-endpoint': NoAttrs,
   'remove.config-bundle': NoAttrs,
   'remove.ab-test': NoAttrs,
+  'dataset.download': NoAttrs,
+  'dataset.publish-version': NoAttrs,
+  'dataset.remove-version': NoAttrs,
   'telemetry.disable': NoAttrs,
   'telemetry.enable': NoAttrs,
   'telemetry.status': NoAttrs,

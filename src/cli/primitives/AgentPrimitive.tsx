@@ -4,6 +4,7 @@ import {
   ConflictError,
   NoProjectError,
   ResourceNotFoundError,
+  ValidationError,
   findConfigRoot,
   serializeResult,
   setEnvVar,
@@ -301,7 +302,7 @@ export class AgentPrimitive extends BasePrimitive<AddAgentOptions, RemovableReso
           await runCliCommand('add.agent', !!cliOptions.json, async () => {
             const validation = validateAddAgentOptions(cliOptions);
             if (!validation.valid) {
-              throw new Error(validation.error);
+              throw new ValidationError(validation.error!);
             }
 
             // Parse custom claims JSON if provided (already validated by validateAddAgentOptions)

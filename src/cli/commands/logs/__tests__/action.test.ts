@@ -64,6 +64,7 @@ describe('resolveAgentContext', () => {
       abTests: [],
       httpGateways: [],
       harnesses: [],
+      datasets: [],
     },
     deployedState: {
       targets: {
@@ -129,6 +130,7 @@ describe('resolveAgentContext', () => {
         abTests: [],
         httpGateways: [],
         harnesses: [],
+        datasets: [],
       },
     });
     const result = resolveAgentContext(context, {});
@@ -174,6 +176,7 @@ describe('resolveAgentContext', () => {
         abTests: [],
         httpGateways: [],
         harnesses: [],
+        datasets: [],
       },
       deployedState: {
         targets: {
@@ -229,6 +232,7 @@ describe('resolveAgentContext', () => {
         abTests: [],
         httpGateways: [],
         harnesses: [],
+        datasets: [],
       },
     });
     const result = resolveAgentContext(context, {});

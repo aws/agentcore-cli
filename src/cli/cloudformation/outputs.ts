@@ -1,5 +1,6 @@
 import type {
   AgentCoreDeployedState,
+  DatasetDeployedState,
   DeployedState,
   EvaluatorDeployedState,
   MemoryDeployedState,
@@ -375,6 +376,37 @@ export function parseRuntimeEndpointOutputs(
   return endpoints;
 }
 
+/**
+ * Parse stack outputs into deployed state for datasets.
+ *
+ * Output key pattern: ApplicationDataset{PascalName}(Id|Arn)Output{Hash}
+ */
+export function parseDatasetOutputs(
+  outputs: StackOutputs,
+  datasetNames: string[]
+): Record<string, DatasetDeployedState> {
+  const datasets: Record<string, DatasetDeployedState> = {};
+  const outputKeys = Object.keys(outputs);
+
+  for (const datasetName of datasetNames) {
+    const pascal = toPascalId('Dataset', datasetName);
+    const idPrefix = `Application${pascal}IdOutput`;
+    const arnPrefix = `Application${pascal}ArnOutput`;
+
+    const idKey = outputKeys.find(k => k.startsWith(idPrefix));
+    const arnKey = outputKeys.find(k => k.startsWith(arnPrefix));
+
+    if (idKey && arnKey) {
+      datasets[datasetName] = {
+        datasetId: outputs[idKey]!,
+        datasetArn: outputs[arnKey]!,
+      };
+    }
+  }
+
+  return datasets;
+}
+
 export interface BuildDeployedStateOptions {
   targetName: string;
   stackName: string;
@@ -401,6 +433,7 @@ export interface BuildDeployedStateOptions {
       configHash?: string;
     }
   >;
+  datasets?: Record<string, DatasetDeployedState>;
 }
 
 /**
@@ -422,6 +455,7 @@ export function buildDeployedState(opts: BuildDeployedStateOptions): DeployedSta
     policies,
     runtimeEndpoints,
     harnesses,
+    datasets,
   } = opts;
   const targetState: TargetDeployedState = {
     resources: {
@@ -459,6 +493,10 @@ export function buildDeployedState(opts: BuildDeployedStateOptions): DeployedSta
   // Add runtime endpoint state if endpoints exist
   if (runtimeEndpoints && Object.keys(runtimeEndpoints).length > 0) {
     targetState.resources!.runtimeEndpoints = runtimeEndpoints;
+  }
+
+  if (datasets && Object.keys(datasets).length > 0) {
+    targetState.resources!.datasets = datasets;
   }
 
   // Carry forward config bundles from existing state (managed post-deploy, not via CFN outputs)

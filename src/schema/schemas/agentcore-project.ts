@@ -11,6 +11,7 @@ import { AgentEnvSpecSchema } from './agent-env';
 import { AgentCoreGatewaySchema, AgentCoreGatewayTargetSchema, AgentCoreMcpRuntimeToolSchema } from './mcp';
 import { ABTestSchema } from './primitives/ab-test';
 import { ConfigBundleSchema } from './primitives/config-bundle';
+import { DatasetSchema } from './primitives/dataset';
 import {
   EvaluationLevelSchema,
   EvaluatorConfigSchema,
@@ -70,6 +71,9 @@ export type { Policy, PolicyEngine, ValidationMode } from './primitives/policy';
 export { PolicyEngineNameSchema, PolicyNameSchema, PolicySchema, ValidationModeSchema } from './primitives/policy';
 export { TagsSchema };
 export type { Tags } from './primitives/tags';
+export { DatasetSchema };
+export { DatasetNameSchema, DatasetSchemaTypeSchema } from './primitives/dataset';
+export type { Dataset, DatasetSchemaType } from './primitives/dataset';
 export type { ABTestMode, TargetRef, GatewayFilter, PerVariantOnlineEvaluationConfig } from './primitives/ab-test';
 export { ABTestModeSchema, TargetRefSchema, GatewayFilterSchema } from './primitives/ab-test';
 export type { HttpGatewayTarget } from './primitives/http-gateway';
@@ -159,25 +163,77 @@ export const StreamDeliveryResourcesSchema = z.object({
 
 export type StreamDeliveryResources = z.infer<typeof StreamDeliveryResourcesSchema>;
 
-export const MemorySchema = z.object({
-  name: MemoryNameSchema,
-  eventExpiryDuration: z.number().int().min(3).max(365),
-  // Strategies array can be empty for short-term memory (just base memory with expiration)
-  // Long-term memory includes strategies like SEMANTIC, SUMMARIZATION, USER_PREFERENCE
-  strategies: z
-    .array(MemoryStrategySchema)
-    .default([])
-    .superRefine(
-      uniqueBy(
-        strategy => strategy.type,
-        type => `Duplicate memory strategy type: ${type}`
-      )
-    ),
-  tags: TagsSchema.optional(),
-  encryptionKeyArn: z.string().optional(),
-  executionRoleArn: z.string().optional(),
-  streamDeliveryResources: StreamDeliveryResourcesSchema.optional(),
+export const IndexedKeyTypeSchema = z.enum(['STRING', 'STRINGLIST', 'NUMBER']);
+export type IndexedKeyType = z.infer<typeof IndexedKeyTypeSchema>;
+
+/**
+ * Indexed metadata key declaration on a Memory.
+ * Indexed keys enable filtering memory records on retrieval by attached metadata.
+ *
+ * Key pattern matches the AgentCore Control API: alphanumeric characters, whitespace,
+ * and the symbols `. _ : / = + @ -` (max 128 chars).
+ *
+ * Note: indexed keys are append-only on the AWS service side — once added to a Memory,
+ * a key cannot be removed. Reducing the array on update will fail at deploy time.
+ */
+export const INDEXED_KEY_NAME_PATTERN = /^[a-zA-Z0-9\s._:/=+@-]+$/;
+export const INDEXED_KEY_NAME_PATTERN_MESSAGE =
+  'Must contain only alphanumeric characters, whitespace, or the symbols . _ : / = + @ -';
+export const MAX_INDEXED_KEY_NAME_LENGTH = 128;
+export const MAX_INDEXED_KEYS = 10;
+
+export const IndexedKeySchema = z.object({
+  key: z
+    .string()
+    .min(1)
+    .max(MAX_INDEXED_KEY_NAME_LENGTH)
+    .regex(INDEXED_KEY_NAME_PATTERN, INDEXED_KEY_NAME_PATTERN_MESSAGE)
+    .refine(s => s.trim().length > 0, 'Key cannot be only whitespace'),
+  type: IndexedKeyTypeSchema,
 });
+export type IndexedKey = z.infer<typeof IndexedKeySchema>;
+
+export const MemorySchema = z
+  .object({
+    name: MemoryNameSchema,
+    eventExpiryDuration: z.number().int().min(3).max(365),
+    // Strategies array can be empty for short-term memory (just base memory with expiration)
+    // Long-term memory includes strategies like SEMANTIC, SUMMARIZATION, USER_PREFERENCE
+    strategies: z
+      .array(MemoryStrategySchema)
+      .default([])
+      .superRefine(
+        uniqueBy(
+          strategy => strategy.type,
+          type => `Duplicate memory strategy type: ${type}`
+        )
+      ),
+    indexedKeys: z
+      .array(IndexedKeySchema)
+      .max(MAX_INDEXED_KEYS)
+      .superRefine(
+        uniqueBy(
+          entry => entry.key,
+          key => `Duplicate indexed key: ${key}`
+        )
+      )
+      .optional(),
+    tags: TagsSchema.optional(),
+    encryptionKeyArn: z.string().optional(),
+    executionRoleArn: z.string().optional(),
+    streamDeliveryResources: StreamDeliveryResourcesSchema.optional(),
+  })
+  .superRefine((memory, ctx) => {
+    // Indexed keys filter long-term memory records on retrieval; they have no
+    // meaning on a short-term-only memory (no strategies => no LTM records).
+    if (memory.indexedKeys && memory.indexedKeys.length > 0 && memory.strategies.length === 0) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['indexedKeys'],
+        message: 'indexedKeys requires at least one memory strategy (long-term memory)',
+      });
+    }
+  });
 
 export type Memory = z.infer<typeof MemorySchema>;
 
@@ -399,6 +455,20 @@ export const AgentCoreProjectSpecSchema = z
           name => `Duplicate harness name: ${name}`
         )
       ),
+
+    datasets: z
+      .array(DatasetSchema)
+      .optional()
+      .superRefine((val, ctx) => {
+        if (!val) return;
+        const seen = new Set<string>();
+        for (const dataset of val) {
+          if (seen.has(dataset.name)) {
+            ctx.addIssue({ code: z.ZodIssueCode.custom, message: `Duplicate dataset name: ${dataset.name}` });
+          }
+          seen.add(dataset.name);
+        }
+      }),
   })
   .strict()
   .superRefine((spec, ctx) => {

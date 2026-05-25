@@ -1,0 +1,1 @@
+export { registerFeedback } from './command';

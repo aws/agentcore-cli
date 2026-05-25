@@ -6,7 +6,7 @@ import {
   StartPolicyGenerationCommand,
   waitUntilPolicyGenerationCompleted,
 } from '@aws-sdk/client-bedrock-agentcore-control';
-import { WaiterState } from '@smithy/util-waiter';
+import { WaiterState } from '@smithy/core/client';
 
 export interface StartPolicyGenerationOptions {
   policyEngineId: string;
@@ -68,6 +68,7 @@ export async function getPolicyGeneration(options: GetPolicyGenerationOptions): 
     { policyGenerationId: options.generationId, policyEngineId: options.policyEngineId }
   );
 
+  // eslint-disable-next-line @typescript-eslint/no-unsafe-enum-comparison
   if (waiterResult.state !== WaiterState.SUCCESS) {
     throw new Error(
       `Policy generation did not complete within the timeout period (state: ${waiterResult.state}). ` +

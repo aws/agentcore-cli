@@ -87,11 +87,20 @@ export async function validateProject(): Promise<PreflightContext> {
   const hasEvaluators = projectSpec.evaluators && projectSpec.evaluators.length > 0;
   const hasPolicyEngines = projectSpec.policyEngines && projectSpec.policyEngines.length > 0;
   const hasHarnesses = projectSpec.harnesses && projectSpec.harnesses.length > 0;
+  const hasDatasets = projectSpec.datasets && projectSpec.datasets.length > 0;
 
   // Check for gateways in agentcore.json
   const hasGateways = projectSpec.agentCoreGateways && projectSpec.agentCoreGateways.length > 0;
 
-  if (!hasAgents && !hasGateways && !hasMemories && !hasEvaluators && !hasPolicyEngines && !hasHarnesses) {
+  if (
+    !hasAgents &&
+    !hasGateways &&
+    !hasMemories &&
+    !hasEvaluators &&
+    !hasPolicyEngines &&
+    !hasHarnesses &&
+    !hasDatasets
+  ) {
     let hasExistingStack = false;
     try {
       const deployedState = await configIO.readDeployedState();

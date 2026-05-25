@@ -14,7 +14,8 @@ export type AddResourceType =
   | 'runtime-endpoint'
   | 'policy'
   | 'config-bundle'
-  | 'ab-test';
+  | 'ab-test'
+  | 'dataset';
 
 const BASE_ADD_RESOURCES: { id: AddResourceType; title: string; description: string }[] = [
   { id: 'agent', title: 'Agent', description: 'Deploy an HTTP, MCP, A2A, or AG-UI agent' },
@@ -26,6 +27,7 @@ const BASE_ADD_RESOURCES: { id: AddResourceType; title: string; description: str
   { id: 'gateway-target', title: 'Gateway Target', description: 'Extend agent capabilities' },
   { id: 'runtime-endpoint', title: 'Runtime Endpoint', description: 'Named endpoint for a runtime' },
   { id: 'policy', title: 'Policy', description: 'Cedar policies for gateway tools' },
+  { id: 'dataset', title: 'Dataset', description: 'Evaluation dataset for testing agents' },
   { id: 'config-bundle', title: 'Configuration Bundle [preview]', description: 'Versioned component configurations' },
   { id: 'ab-test', title: 'AB Test [preview]', description: 'Compare agent configurations with traffic splitting' },
 ];

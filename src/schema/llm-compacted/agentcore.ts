@@ -28,6 +28,16 @@ interface AgentCoreProjectSpec {
   abTests: ABTest[]; // Unique by name — A/B test experiments
   /** @internal Auto-managed by AB test creation. Do not configure directly. */
   httpGateways: HttpGateway[]; // Unique by name — HTTP gateways bound to a runtime
+  datasets: DatasetSpec[]; // Unique by name — datasets for Dataset Management
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// DATASET
+// ─────────────────────────────────────────────────────────────────────────────
+
+interface DatasetSpec {
+  name: string; // @regex ^[a-zA-Z][a-zA-Z0-9_]{0,47}$ @max 48
+  description?: string;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

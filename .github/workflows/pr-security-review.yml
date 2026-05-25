@@ -167,6 +167,19 @@ jobs:
           # the base branch locally too. fetch-depth: 0 grabs the full history.
           fetch-depth: 0
 
+      - name: Set origin/HEAD for /security-review skill
+        env:
+          BASE_REF: ${{ steps.pr.outputs.base_ref }}
+        run: |
+          set -euo pipefail
+          # actions/checkout doesn't set up the remote's symbolic HEAD ref, so
+          # `git diff origin/HEAD...` (the first command the bundled
+          # /security-review skill runs) fails with "ambiguous argument
+          # 'origin/HEAD...': unknown revision". Point origin/HEAD at the PR's
+          # base branch so the skill resolves the diff against the right ref.
+          git remote set-head origin "$BASE_REF"
+          git symbolic-ref refs/remotes/origin/HEAD
+
       - name: Configure AWS credentials (OIDC)
         uses: aws-actions/configure-aws-credentials@v6
         with:

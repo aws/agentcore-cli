@@ -20,7 +20,8 @@ export interface RemoveLoggerOptions {
     | 'policy-engine'
     | 'policy'
     | 'config-bundle'
-    | 'ab-test';
+    | 'ab-test'
+    | 'dataset';
   /** Name of the resource being removed */
   resourceName: string;
 }

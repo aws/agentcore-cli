@@ -25,6 +25,7 @@ describe('getDevConfig', () => {
       abTests: [],
       httpGateways: [],
       harnesses: [],
+      datasets: [],
     };
 
     const config = getDevConfig(workingDir, project);
@@ -57,6 +58,7 @@ describe('getDevConfig', () => {
       abTests: [],
       httpGateways: [],
       harnesses: [],
+      datasets: [],
     };
 
     const config = getDevConfig(workingDir, project);
@@ -88,6 +90,7 @@ describe('getDevConfig', () => {
       abTests: [],
       httpGateways: [],
       harnesses: [],
+      datasets: [],
     };
 
     const config = getDevConfig(workingDir, project, '/test/project/agentcore');
@@ -125,6 +128,7 @@ describe('getDevConfig', () => {
       abTests: [],
       httpGateways: [],
       harnesses: [],
+      datasets: [],
     };
 
     expect(() => getDevConfig(workingDir, project, undefined, 'NonExistentAgent')).toThrow(
@@ -157,6 +161,7 @@ describe('getDevConfig', () => {
       abTests: [],
       httpGateways: [],
       harnesses: [],
+      datasets: [],
     };
 
     const config = getDevConfig(workingDir, project, undefined, 'TsAgent');
@@ -190,6 +195,7 @@ describe('getDevConfig', () => {
       abTests: [],
       httpGateways: [],
       harnesses: [],
+      datasets: [],
     };
 
     const config = getDevConfig(workingDir, project, '/test/project/agentcore');
@@ -223,6 +229,7 @@ describe('getDevConfig', () => {
       abTests: [],
       httpGateways: [],
       harnesses: [],
+      datasets: [],
     };
 
     // No configRoot provided
@@ -256,6 +263,7 @@ describe('getDevConfig', () => {
       abTests: [],
       httpGateways: [],
       harnesses: [],
+      datasets: [],
     };
 
     const config = getDevConfig(workingDir, project, '/test/project/agentcore');
@@ -289,6 +297,7 @@ describe('getDevConfig', () => {
       abTests: [],
       httpGateways: [],
       harnesses: [],
+      datasets: [],
     };
 
     const config = getDevConfig(workingDir, project, '/test/project/agentcore');
@@ -321,6 +330,7 @@ describe('getDevConfig', () => {
       abTests: [],
       httpGateways: [],
       harnesses: [],
+      datasets: [],
     };
 
     const config = getDevConfig(workingDir, project, '/test/project/agentcore');
@@ -353,6 +363,7 @@ describe('getDevConfig', () => {
       abTests: [],
       httpGateways: [],
       harnesses: [],
+      datasets: [],
     };
 
     const config = getDevConfig(workingDir, project, '/test/project/agentcore');
@@ -385,6 +396,7 @@ describe('getDevConfig', () => {
       abTests: [],
       httpGateways: [],
       harnesses: [],
+      datasets: [],
     };
 
     const config = getDevConfig(workingDir, project, '/test/project/agentcore');
@@ -417,6 +429,7 @@ describe('getDevConfig', () => {
       abTests: [],
       httpGateways: [],
       harnesses: [],
+      datasets: [],
     };
 
     const config = getDevConfig(workingDir, project, '/test/project/agentcore');
@@ -450,6 +463,7 @@ describe('getDevConfig', () => {
       abTests: [],
       httpGateways: [],
       harnesses: [],
+      datasets: [],
     };
 
     const config = getDevConfig(workingDir, project, '/test/project/agentcore');
@@ -496,6 +510,7 @@ describe('getAgentPort', () => {
       abTests: [],
       httpGateways: [],
       harnesses: [],
+      datasets: [],
     };
 
     expect(getAgentPort(project, 'Agent1', 8080)).toBe(8080);
@@ -518,6 +533,7 @@ describe('getAgentPort', () => {
       abTests: [],
       httpGateways: [],
       harnesses: [],
+      datasets: [],
     };
 
     expect(getAgentPort(project, 'NonExistent', 9000)).toBe(9000);
@@ -545,6 +561,7 @@ describe('getDevSupportedAgents', () => {
       abTests: [],
       httpGateways: [],
       harnesses: [],
+      datasets: [],
     };
 
     expect(getDevSupportedAgents(project)).toEqual([]);
@@ -575,6 +592,7 @@ describe('getDevSupportedAgents', () => {
       abTests: [],
       httpGateways: [],
       harnesses: [],
+      datasets: [],
     };
 
     const supported = getDevSupportedAgents(project);
@@ -646,6 +664,7 @@ describe('getDevSupportedAgents', () => {
       abTests: [],
       httpGateways: [],
       harnesses: [],
+      datasets: [],
     };
 
     const supported = getDevSupportedAgents(project);
@@ -686,6 +705,7 @@ describe('getDevSupportedAgents', () => {
       abTests: [],
       httpGateways: [],
       harnesses: [],
+      datasets: [],
     };
 
     const supported = getDevSupportedAgents(project);

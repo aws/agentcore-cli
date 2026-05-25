@@ -57,6 +57,7 @@ describe('requiresUv', () => {
       abTests: [],
       httpGateways: [],
       harnesses: [],
+      datasets: [],
     };
     expect(requiresUv(project)).toBe(true);
   });
@@ -86,6 +87,7 @@ describe('requiresUv', () => {
       abTests: [],
       httpGateways: [],
       harnesses: [],
+      datasets: [],
     };
     expect(requiresUv(project)).toBe(false);
   });
@@ -106,6 +108,7 @@ describe('requiresUv', () => {
       abTests: [],
       httpGateways: [],
       harnesses: [],
+      datasets: [],
     };
     expect(requiresUv(project)).toBe(false);
   });
@@ -137,6 +140,7 @@ describe('requiresContainerRuntime', () => {
       abTests: [],
       httpGateways: [],
       harnesses: [],
+      datasets: [],
     };
     expect(requiresContainerRuntime(project)).toBe(true);
   });
@@ -166,6 +170,7 @@ describe('requiresContainerRuntime', () => {
       abTests: [],
       httpGateways: [],
       harnesses: [],
+      datasets: [],
     };
     expect(requiresContainerRuntime(project)).toBe(false);
   });
@@ -186,6 +191,7 @@ describe('requiresContainerRuntime', () => {
       abTests: [],
       httpGateways: [],
       harnesses: [],
+      datasets: [],
     };
     expect(requiresContainerRuntime(project)).toBe(false);
   });
@@ -223,6 +229,7 @@ describe('requiresContainerRuntime', () => {
       abTests: [],
       httpGateways: [],
       harnesses: [],
+      datasets: [],
     };
     expect(requiresContainerRuntime(project)).toBe(true);
   });
@@ -294,6 +301,7 @@ describe('checkDependencyVersions', () => {
       abTests: [],
       httpGateways: [],
       harnesses: [],
+      datasets: [],
     };
 
     const result = await checkDependencyVersions(project);
@@ -318,6 +326,7 @@ describe('checkDependencyVersions', () => {
       abTests: [],
       httpGateways: [],
       harnesses: [],
+      datasets: [],
     };
 
     const result = await checkDependencyVersions(project);
@@ -350,6 +359,7 @@ describe('checkDependencyVersions', () => {
       abTests: [],
       httpGateways: [],
       harnesses: [],
+      datasets: [],
     };
 
     const result = await checkDependencyVersions(project);

@@ -1,6 +1,6 @@
 import { ResourceNotFoundError, ValidationError } from '../../../lib';
 import type { Result } from '../../../lib/result';
-import { DEFAULT_ENDPOINT_NAME } from '../../constants';
+import { runtimeLogGroup } from '../../aws/cloudwatch';
 import { runInsightsQuery } from './insights-query';
 import type {
   CloudWatchSpanRecord,
@@ -15,10 +15,6 @@ import path from 'node:path';
 
 const SPANS_LOG_GROUP = 'aws/spans';
 const TRACE_ID_PATTERN = /^[a-fA-F0-9-]+$/;
-
-function runtimeLogGroup(runtimeId: string): string {
-  return `/aws/bedrock-agentcore/runtimes/${runtimeId}-${DEFAULT_ENDPOINT_NAME}`;
-}
 
 async function fetchSpans(
   region: string,

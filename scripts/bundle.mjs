@@ -160,6 +160,9 @@ if (!fs.existsSync(cliTarballPath)) {
   console.error(`ERROR: Expected GA tarball at ${cliTarballPath} but not found.`);
   process.exit(1);
 }
+log(`Done! GA Tarball: ${cliTarballPath}`);
+log(`Install with: npm install -g ${cliTarballPath}`);
+log('When you run agentcore create, the bundled CDK constructs will be installed automatically.');
 
 const gaTarballPath = cliTarballPath;
 

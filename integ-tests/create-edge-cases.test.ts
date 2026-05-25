@@ -1,4 +1,3 @@
-/* eslint-disable security/detect-non-literal-fs-filename */
 import { exists, prereqs, runCLI } from '../src/test-utils/index.js';
 import { createTelemetryHelper } from '../src/test-utils/telemetry-helper.js';
 import { randomUUID } from 'node:crypto';
@@ -38,6 +37,8 @@ describe.skipIf(!prereqs.npm || !prereqs.git)('integration: create edge cases', 
       telemetry.assertMetricEmitted({
         command: 'create',
         exit_reason: 'failure',
+        error_name: 'ValidationError',
+        error_source: 'user',
         agent_language: 'python',
         has_agent: 'true',
       });

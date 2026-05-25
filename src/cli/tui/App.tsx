@@ -9,6 +9,7 @@ import { AddFlow } from './screens/add/AddFlow';
 import { CliOnlyScreen } from './screens/cli-only';
 import { ConfigBundleFlow } from './screens/config-bundle-hub';
 import { CreateScreen } from './screens/create';
+import { DatasetFlow } from './screens/dataset-hub';
 import { DeployScreen } from './screens/deploy/DeployScreen';
 import { EvalHubScreen, EvalScreen } from './screens/eval';
 import { FetchAccessScreen } from './screens/fetch-access';
@@ -56,6 +57,7 @@ type Route =
   | { name: 'package' }
   | { name: 'update' }
   | { name: 'config-bundle' }
+  | { name: 'dataset' }
   | { name: 'import' }
   | { name: 'ab-test' }
   | { name: 'cli-only'; commandId: string };
@@ -141,6 +143,8 @@ function AppContent() {
       setRoute({ name: 'update' });
     } else if (id === 'config-bundle') {
       setRoute({ name: 'config-bundle' });
+    } else if (id === 'dataset') {
+      setRoute({ name: 'dataset' });
     } else if (id === 'ab-test') {
       setRoute({ name: 'ab-test' });
     }
@@ -334,6 +338,10 @@ function AppContent() {
 
   if (route.name === 'config-bundle') {
     return <ConfigBundleFlow onExit={() => setRoute({ name: 'help' })} />;
+  }
+
+  if (route.name === 'dataset') {
+    return <DatasetFlow onExit={() => setRoute({ name: 'help' })} />;
   }
 
   if (route.name === 'ab-test') {

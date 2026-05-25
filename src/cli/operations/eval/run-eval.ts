@@ -1,27 +1,26 @@
-import { ResourceNotFoundError, ValidationError } from '../../../lib';
+import { ConfigIO, ResourceNotFoundError, ValidationError } from '../../../lib';
 import type { Result } from '../../../lib/result';
 import { getCredentialProvider } from '../../aws';
-import { evaluate } from '../../aws/agentcore';
 import type { EvaluationReferenceInput } from '../../aws/agentcore';
 import { getEvaluator } from '../../aws/agentcore-control';
-import { DEFAULT_ENDPOINT_NAME } from '../../constants';
+import { runtimeLogGroup } from '../../aws/cloudwatch';
+import { resolveAgentContext } from '../invoke/resolve-agent-context';
 import type { DeployedProjectConfig } from '../resolve-agent';
 import { loadDeployedProjectConfig, resolveAgent } from '../resolve-agent';
+import { runDatasetScenariosAndCollectSpans } from './shared/dataset-session-provider';
+import { runEvaluatorsOverSessions } from './shared/evaluator-runner';
+import {
+  SPANS_LOG_GROUP,
+  executeQuery,
+  extractTraceIds,
+  fetchSessionSpans,
+  sanitizeQueryValue,
+} from './shared/span-collector';
 import { generateFilename, saveEvalRun } from './storage';
-import type { EvalEvaluatorResult, EvalRunResult, EvalSessionScore, RunEvalOptions, SessionInfo } from './types';
-import { CloudWatchLogsClient, GetQueryResultsCommand, StartQueryCommand } from '@aws-sdk/client-cloudwatch-logs';
-import type { ResultField } from '@aws-sdk/client-cloudwatch-logs';
-import type { DocumentType } from '@smithy/types';
+import type { EvalRunResult, RunEvalOptions, SessionInfo } from './types';
+import { CloudWatchLogsClient } from '@aws-sdk/client-cloudwatch-logs';
 import { writeFileSync } from 'fs';
 import { join } from 'path';
-
-const SPANS_LOG_GROUP = 'aws/spans';
-
-const SUPPORTED_SCOPES = new Set([
-  'strands.telemetry.tracer',
-  'opentelemetry.instrumentation.langchain',
-  'openinference.instrumentation.langchain',
-]);
 
 interface ResolvedEvalContext {
   agentLabel: string;
@@ -96,16 +95,13 @@ function resolveFromArn(options: RunEvalOptions): ResolveResult {
     return { success: false, error: 'No evaluators specified. Use -e/--evaluator with Builtin.* or --evaluator-arn.' };
   }
 
-  const endpointName = options.endpoint ?? process.env.AGENTCORE_RUNTIME_ENDPOINT ?? DEFAULT_ENDPOINT_NAME;
-  const runtimeLogGroup = `/aws/bedrock-agentcore/runtimes/${runtimeId}-${endpointName}`;
-
   return {
     success: true,
     ctx: {
       agentLabel: runtimeId,
       region,
       runtimeId,
-      runtimeLogGroup,
+      runtimeLogGroup: runtimeLogGroup(runtimeId, options.endpoint),
       evaluatorIds,
       evaluatorLabels,
     },
@@ -122,8 +118,6 @@ function resolveFromProject(context: DeployedProjectConfig, options: RunEvalOpti
   }
 
   const { agent } = agentResult;
-  const endpointName = options.endpoint ?? process.env.AGENTCORE_RUNTIME_ENDPOINT ?? DEFAULT_ENDPOINT_NAME;
-  const runtimeLogGroup = `/aws/bedrock-agentcore/runtimes/${agent.runtimeId}-${endpointName}`;
 
   // Resolve evaluator names to IDs
   const evaluatorIds: string[] = [];
@@ -165,7 +159,7 @@ function resolveFromProject(context: DeployedProjectConfig, options: RunEvalOpti
       agentLabel: agent.agentName,
       region: agent.region,
       runtimeId: agent.runtimeId,
-      runtimeLogGroup,
+      runtimeLogGroup: runtimeLogGroup(agent.runtimeId, options.endpoint),
       evaluatorIds,
       evaluatorLabels,
     },
@@ -220,154 +214,6 @@ async function resolveEvaluatorLevels(evaluatorIds: string[], region: string): P
   return levels;
 }
 
-/**
- * Extract distinct trace IDs from session spans.
- */
-function extractTraceIds(spans: DocumentType[]): string[] {
-  const traceIds = new Set<string>();
-  for (const span of spans) {
-    const traceId = (span as Record<string, unknown>).traceId as string | undefined;
-    if (traceId) {
-      traceIds.add(traceId);
-    }
-  }
-  return [...traceIds];
-}
-
-/**
- * Extract span IDs that represent tool calls from session spans.
- */
-function extractToolCallSpanIds(spans: DocumentType[]): string[] {
-  const spanIds: string[] = [];
-  for (const span of spans) {
-    const doc = span as Record<string, unknown>;
-    const spanId = doc.spanId as string | undefined;
-    if (!spanId) continue;
-
-    // Tool call spans must have a tool name attribute — kind=CLIENT alone is too broad
-    const attrs = doc.attributes as Record<string, unknown> | undefined;
-    if (attrs?.['gen_ai.tool.name'] ?? attrs?.['tool.name']) {
-      spanIds.push(spanId);
-    }
-  }
-  return spanIds;
-}
-
-const EVALUATE_TARGET_BATCH_SIZE = 10;
-
-interface TargetIdBatch {
-  traceIds?: string[];
-  spanIds?: string[];
-}
-
-/**
- * Batch targetTraceIds / targetSpanIds into chunks of EVALUATE_TARGET_BATCH_SIZE.
- * The Evaluate API limits these arrays to 10 items per call.
- * For SESSION-level evaluators (both undefined), returns a single batch with no IDs.
- */
-function batchTargetIds(traceIds?: string[], spanIds?: string[]): TargetIdBatch[] {
-  if (spanIds) {
-    return chunk(spanIds, EVALUATE_TARGET_BATCH_SIZE).map(batch => ({ spanIds: batch }));
-  }
-  if (traceIds) {
-    return chunk(traceIds, EVALUATE_TARGET_BATCH_SIZE).map(batch => ({ traceIds: batch }));
-  }
-  // SESSION level — single call with no target IDs
-  return [{}];
-}
-
-function chunk<T>(arr: T[], size: number): T[][] {
-  const batches: T[][] = [];
-  for (let i = 0; i < arr.length; i += size) {
-    batches.push(arr.slice(i, i + size));
-  }
-  return batches;
-}
-
-/**
- * Execute a CloudWatch Logs Insights query and wait for results.
- */
-async function executeQuery(
-  client: CloudWatchLogsClient,
-  logGroupName: string,
-  queryString: string,
-  startTimeSec: number,
-  endTimeSec: number
-): Promise<ResultField[][]> {
-  const startQuery = await client.send(
-    new StartQueryCommand({
-      logGroupName,
-      startTime: startTimeSec,
-      endTime: endTimeSec,
-      queryString,
-    })
-  );
-
-  if (!startQuery.queryId) {
-    throw new Error('Failed to start CloudWatch Logs Insights query');
-  }
-
-  for (let i = 0; i < 60; i++) {
-    await new Promise(resolve => setTimeout(resolve, 1000));
-
-    const queryResults = await client.send(new GetQueryResultsCommand({ queryId: startQuery.queryId }));
-    const status = queryResults.status ?? 'Unknown';
-
-    if (status === 'Failed' || status === 'Cancelled') {
-      throw new Error(`CloudWatch query ${status.toLowerCase()}`);
-    }
-
-    if (status === 'Complete') {
-      return queryResults.results ?? [];
-    }
-  }
-
-  throw new Error('CloudWatch query timed out after 60 seconds');
-}
-
-/**
- * Extract parsed @message documents from CloudWatch Insights results.
- */
-function extractMessages(rows: ResultField[][]): Record<string, unknown>[] {
-  const docs: Record<string, unknown>[] = [];
-  for (const row of rows) {
-    const messageField = row.find(f => f.field === '@message');
-    if (messageField?.value) {
-      try {
-        docs.push(JSON.parse(messageField.value) as Record<string, unknown>);
-      } catch {
-        // Skip non-JSON log lines
-      }
-    }
-  }
-  return docs;
-}
-
-/**
- * Check if a document is relevant for evaluation:
- * - Has a supported instrumentation scope, OR
- * - Is a log record with conversation data (body.input / body.output)
- */
-function isRelevantForEval(doc: Record<string, unknown>): boolean {
-  const scope = doc.scope as Record<string, unknown> | undefined;
-  const scopeName = scope?.name as string | undefined;
-  if (scopeName && SUPPORTED_SCOPES.has(scopeName)) {
-    return true;
-  }
-
-  const body = doc.body;
-  if (body && typeof body === 'object' && ('input' in body || 'output' in body)) {
-    return true;
-  }
-
-  return false;
-}
-
-/** Sanitize a value for use in CloudWatch Insights query strings by removing single quotes. */
-function sanitizeQueryValue(value: string): string {
-  return value.replace(/'/g, '');
-}
-
 const MAX_DISCOVERED_SESSIONS = 50;
 
 export interface DiscoverSessionsOptions {
@@ -413,146 +259,6 @@ export async function discoverSessions(opts: DiscoverSessionsOptions): Promise<S
   return sessions;
 }
 
-interface SessionSpans {
-  sessionId: string;
-  spans: DocumentType[];
-}
-
-interface FetchSpansOptions {
-  runtimeId: string;
-  runtimeLogGroup: string;
-  region: string;
-  lookbackDays: number;
-  sessionId?: string;
-  traceId?: string;
-}
-
-/**
- * Fetch OTel spans from the `aws/spans` log group and runtime logs from the agent's
- * log group, then group them by session.
- *
- * The Evaluate API requires spans from a single session per call.
- */
-async function fetchSessionSpans(opts: FetchSpansOptions): Promise<SessionSpans[]> {
-  const { runtimeId, runtimeLogGroup, region, lookbackDays } = opts;
-  const endTimeMs = Date.now();
-  const startTimeMs = endTimeMs - lookbackDays * 24 * 60 * 60 * 1000;
-  const startTimeSec = Math.floor(startTimeMs / 1000);
-  const endTimeSec = Math.floor(endTimeMs / 1000);
-
-  const client = new CloudWatchLogsClient({
-    credentials: getCredentialProvider(),
-    region,
-  });
-
-  // 1. Query proper OTel spans from the aws/spans log group
-  let spanQuery = `fields @message, attributes.session.id as sessionId, traceId
-     | parse resource.attributes.cloud.resource_id "runtime/*/" as parsedAgentId
-     | filter parsedAgentId = '${sanitizeQueryValue(runtimeId)}'
-     | filter ispresent(scope.name)`;
-
-  if (opts.sessionId) {
-    spanQuery += `\n     | filter attributes.session.id = '${sanitizeQueryValue(opts.sessionId)}'`;
-  }
-  if (opts.traceId) {
-    spanQuery += `\n     | filter traceId = '${sanitizeQueryValue(opts.traceId)}'`;
-  }
-
-  spanQuery += `\n     | sort startTimeUnixNano asc\n     | limit 10000`;
-
-  const spanRows = await executeQuery(client, SPANS_LOG_GROUP, spanQuery, startTimeSec, endTimeSec);
-
-  // Group spans by session and collect trace IDs
-  const sessionMap = new Map<string, DocumentType[]>();
-  const traceIds = new Set<string>();
-
-  for (const row of spanRows) {
-    const messageField = row.find(f => f.field === '@message');
-    const sessionField = row.find(f => f.field === 'sessionId');
-    const traceField = row.find(f => f.field === 'traceId');
-
-    if (!messageField?.value) continue;
-
-    let doc: Record<string, unknown>;
-    try {
-      doc = JSON.parse(messageField.value) as Record<string, unknown>;
-    } catch {
-      continue;
-    }
-
-    const sessionId = sessionField?.value ?? 'unknown';
-    if (!sessionMap.has(sessionId)) {
-      sessionMap.set(sessionId, []);
-    }
-    sessionMap.get(sessionId)!.push(doc as DocumentType);
-
-    if (traceField?.value) {
-      traceIds.add(traceField.value);
-    }
-  }
-
-  if (sessionMap.size === 0) {
-    return [];
-  }
-
-  // 2. Query runtime logs from the agent's log group for the trace IDs found
-  if (traceIds.size > 0) {
-    const traceFilter = [...traceIds].map(t => `'${sanitizeQueryValue(t)}'`).join(', ');
-    let logRows: ResultField[][] = [];
-    try {
-      logRows = await executeQuery(
-        client,
-        runtimeLogGroup,
-        `fields @message, traceId
-         | filter traceId in [${traceFilter}]
-         | sort @timestamp asc
-         | limit 10000`,
-        startTimeSec,
-        endTimeSec
-      );
-    } catch {
-      // Runtime log group may not exist yet; continue with spans only
-    }
-
-    const logDocs = extractMessages(logRows);
-
-    // Match runtime logs to sessions via traceId
-    // Build traceId → sessionId mapping from spans
-    const traceToSession = new Map<string, string>();
-    for (const row of spanRows) {
-      const traceField = row.find(f => f.field === 'traceId');
-      const sessionField = row.find(f => f.field === 'sessionId');
-      if (traceField?.value && sessionField?.value) {
-        traceToSession.set(traceField.value, sessionField.value);
-      }
-    }
-
-    for (const logDoc of logDocs) {
-      if (!isRelevantForEval(logDoc)) continue;
-
-      const logTraceId = logDoc.traceId as string | undefined;
-      const sessionId = logTraceId ? (traceToSession.get(logTraceId) ?? 'unknown') : 'unknown';
-      if (!sessionMap.has(sessionId)) {
-        sessionMap.set(sessionId, []);
-      }
-      sessionMap.get(sessionId)!.push(logDoc as DocumentType);
-    }
-  }
-
-  // 3. Build session list — aws/spans docs are already scoped by runtimeId (step 1),
-  //    and runtime log docs were filtered through isRelevantForEval (step 2).
-  //    We keep all docs so the Evaluate API has full trace context for resolving
-  //    template variables like {context} and {assistant_turn}.
-  const sessions: SessionSpans[] = [];
-  for (const [sessionId, docs] of sessionMap) {
-    if (docs.length > 0) {
-      sessions.push({ sessionId, spans: docs });
-    }
-  }
-
-  return sessions;
-}
-
 export type RunEvalResult = Result<{ run: EvalRunResult; filePath: string }>;
 
 export async function handleRunEval(options: RunEvalOptions): Promise<RunEvalResult> {
@@ -571,7 +277,97 @@ export async function handleRunEval(options: RunEvalOptions): Promise<RunEvalRes
 
   const { ctx } = resolution;
 
-  // Fetch spans grouped by session
+  // Dataset mode: invoke agent with scenarios, collect spans, build ground truth
+  if (options.dataset) {
+    const configIO = new ConfigIO();
+    const project = await configIO.readProjectSpec();
+    const deployedState = await configIO.readDeployedState();
+    const awsTargets = await configIO.readAWSDeploymentTargets();
+
+    const agentContext = await resolveAgentContext({
+      project,
+      deployedState,
+      awsTargets,
+      agentName: options.agent,
+      endpoint: options.endpoint,
+    });
+
+    const datasetResult = await runDatasetScenariosAndCollectSpans({
+      agentContext,
+      datasetName: options.dataset,
+      version: options.datasetVersion,
+      configBaseDir: configIO.getConfigRoot(),
+      querySpans: async (region, logGroup, sessionId) => {
+        const result = await fetchSessionSpans({
+          runtimeId: agentContext.runtimeId,
+          runtimeLogGroup: logGroup,
+          region,
+          lookbackDays: 1,
+          sessionId,
+        });
+        return result.length > 0 ? result[0]!.spans : [];
+      },
+      onProgress: options.onProgress,
+    });
+
+    if (datasetResult.sessions.length === 0) {
+      return {
+        success: false,
+        error: new ResourceNotFoundError('No spans collected from dataset scenarios. All sessions may have timed out.'),
+      };
+    }
+
+    // Resolve evaluator levels
+    const evaluatorLevels = await resolveEvaluatorLevels(ctx.evaluatorIds, ctx.region);
+
+    // Group dataset-generated ref inputs by sessionId
+    const refInputsBySession = new Map<string, EvaluationReferenceInput[]>();
+    for (const ref of datasetResult.referenceInputs) {
+      const sid = ref.context.spanContext.sessionId;
+      const list = refInputsBySession.get(sid) ?? [];
+      list.push(ref);
+      refInputsBySession.set(sid, list);
+    }
+
+    // Tag sessions with scenarioId
+    const scenarioBySession = new Map(datasetResult.scenarioResults.map(r => [r.sessionId, r.scenarioId]));
+    const sessions = datasetResult.sessions.map(s => ({
+      sessionId: s.sessionId,
+      spans: s.spans,
+      scenarioId: scenarioBySession.get(s.sessionId),
+    }));
+
+    const results = await runEvaluatorsOverSessions({
+      region: ctx.region,
+      evaluatorIds: ctx.evaluatorIds,
+      evaluatorLabels: ctx.evaluatorLabels,
+      evaluatorLevels,
+      sessions,
+      refInputsBySession,
+    });
+
+    // Build and save result
+    const timestamp = new Date().toISOString();
+    const run: EvalRunResult = {
+      timestamp,
+      agent: ctx.agentLabel,
+      evaluators: ctx.evaluatorLabels,
+      sessionCount: sessions.length,
+      results,
+      source: 'dataset',
+      datasetName: options.dataset,
+      dataset: {
+        id: options.dataset,
+        version: options.datasetVersion ?? 'LOCAL',
+      },
+    };
+
+    const filePath = options.output ?? saveEvalRun(run);
+
+    return { success: true, run, filePath };
+  }
+
+  // Historical trace mode (existing behavior)
   let sessions = await fetchSessionSpans({
     runtimeId: ctx.runtimeId,
     runtimeLogGroup: ctx.runtimeLogGroup,
@@ -658,75 +454,19 @@ export async function handleRunEval(options: RunEvalOptions): Promise<RunEvalRes
     }
   }
 
-  // Run each evaluator against each session with level-appropriate targeting
-  const results: EvalEvaluatorResult[] = [];
+  // Historical mode: one set of ref inputs applies to the single targeted session
+  const refInputsBySession = evaluationReferenceInputs
+    ? new Map([[sessions[0]!.sessionId, evaluationReferenceInputs]])
+    : undefined;
 
-  for (let i = 0; i < ctx.evaluatorIds.length; i++) {
-    const evaluatorId = ctx.evaluatorIds[i]!;
-    const evaluatorName = ctx.evaluatorLabels[i] ?? evaluatorId;
-    const level = evaluatorLevels.get(evaluatorId) ?? 'SESSION';
-
-    const sessionScores: EvalSessionScore[] = [];
-    let totalInputTokens = 0;
-    let totalOutputTokens = 0;
-    let totalTokens = 0;
-
-    for (const session of sessions) {
-      // Build evaluation target based on evaluator level
-      let targetTraceIds: string[] | undefined;
-      let targetSpanIds: string[] | undefined;
-
-      if (level === 'TRACE') {
-        targetTraceIds = extractTraceIds(session.spans);
-        if (targetTraceIds.length === 0) continue;
-      } else if (level === 'TOOL_CALL') {
-        targetSpanIds = extractToolCallSpanIds(session.spans);
-        if (targetSpanIds.length === 0) continue;
-      }
-
-      // The Evaluate API limits targetSpanIds and targetTraceIds to 10 per call.
-      // Batch into chunks and merge results.
-      const batches = batchTargetIds(targetTraceIds, targetSpanIds);
-
-      for (const batch of batches) {
-        const response = await evaluate({
-          region: ctx.region,
-          evaluatorId,
-          sessionSpans: session.spans,
-          targetTraceIds: batch.traceIds,
-          targetSpanIds: batch.spanIds,
-          evaluationReferenceInputs,
-        });
-
-        for (const r of response.evaluationResults) {
-          sessionScores.push({
-            sessionId: r.context?.sessionId ?? session.sessionId,
-            traceId: r.context?.traceId,
-            spanId: r.context?.spanId,
-            value: r.value ?? 0,
-            label: r.label,
-            explanation: r.explanation,
-            errorMessage: r.errorMessage,
-          });
-
-          totalInputTokens += r.tokenUsage?.inputTokens ?? 0;
-          totalOutputTokens += r.tokenUsage?.outputTokens ?? 0;
-          totalTokens += r.tokenUsage?.totalTokens ?? 0;
-        }
-      }
-    }
-
-    const validScores = sessionScores.filter(s => !s.errorMessage);
-    const aggregateScore =
-      validScores.length > 0 ? validScores.reduce((sum, s) => sum + s.value, 0) / validScores.length : 0;
-
-    results.push({
-      evaluator: evaluatorName,
-      aggregateScore,
-      sessionScores,
-      tokenUsage: { inputTokens: totalInputTokens, outputTokens: totalOutputTokens, totalTokens },
-    });
-  }
+  const results = await runEvaluatorsOverSessions({
+    region: ctx.region,
+    evaluatorIds: ctx.evaluatorIds,
+    evaluatorLabels: ctx.evaluatorLabels,
+    evaluatorLevels,
+    sessions,
+    refInputsBySession,
+  });
 
   // Build run result
   const timestamp = new Date().toISOString();

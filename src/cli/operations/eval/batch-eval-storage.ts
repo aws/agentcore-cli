@@ -15,6 +15,8 @@ export interface BatchEvalRunRecord {
   evaluators: string[];
   results: BatchEvaluationResult[];
   evaluationResults?: EvaluationResults;
+  source?: string;
+  dataset?: { id: string; version: string };
 }
 
 function getResultsDir(): string {
@@ -25,9 +27,21 @@ function getResultsDir(): string {
   return join(configRoot, '.cli', BATCH_EVAL_RESULTS_DIR);
 }
 
-export function saveBatchEvalRun(result: RunBatchEvaluationCommandResult): string {
+export interface SaveBatchEvalRunOptions {
+  result: RunBatchEvaluationCommandResult;
+  source?: string;
+  dataset?: { id: string; version: string };
+}
+
+export function saveBatchEvalRun(resultOrOptions: RunBatchEvaluationCommandResult | SaveBatchEvalRunOptions): string {
   const dir = getResultsDir();
   mkdirSync(dir, { recursive: true });
+
+  // Support both the legacy signature and the new options object
+  const isOptionsObj = 'result' in resultOrOptions;
+  const result = isOptionsObj ? resultOrOptions.result : resultOrOptions;
+  const source = isOptionsObj ? resultOrOptions.source : undefined;
+  const dataset = isOptionsObj ? resultOrOptions.dataset : undefined;
 
   const id = result.batchEvaluationId ?? 'unknown';
   const filePath = join(dir, `${id}.json`);
@@ -41,6 +55,8 @@ export function saveBatchEvalRun(result: RunBatchEvaluationCommandResult): strin
     evaluators: result.results.map(r => r.evaluatorId),
     results: result.results,
     evaluationResults: result.evaluationResults,
+    ...(source ? { source } : {}),
+    ...(dataset ? { dataset } : {}),
   };
 
   writeFileSync(filePath, JSON.stringify(record, null, 2));

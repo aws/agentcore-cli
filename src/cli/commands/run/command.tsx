@@ -36,7 +36,10 @@ function formatRunOutput(result: Awaited<ReturnType<typeof handleRunEval>>): voi
     hour: '2-digit',
     minute: '2-digit',
   });
-  console.log(`\nAgent: ${run.agent} | ${date} | Sessions: ${run.sessionCount} | Lookback: ${run.lookbackDays}d`);
+  const lookbackStr = run.source === 'dataset' ? '' : ` | Lookback: ${run.lookbackDays}d`;
+  const datasetStr =
+    run.source === 'dataset' && run.dataset ? ` | Dataset: ${run.dataset.id}@${run.dataset.version}` : '';
+  console.log(`\nAgent: ${run.agent} | ${date} | Sessions: ${run.sessionCount}${lookbackStr}${datasetStr}`);
 
   if (run.referenceInputs) {
     const parts: string[] = [];
@@ -91,6 +94,8 @@ export const registerRun = (program: Command) => {
     .option('--expected-trajectory <names>', 'Ground truth: expected tool call names in order (comma-separated)')
     .option('--expected-response <text>', 'Ground truth: expected agent response text to compare against')
     .option('--output <path>', 'Custom output file path for results')
+    .option('--dataset <name>', 'Dataset name — invoke agent with dataset scenarios instead of historical traces')
+    .option('--dataset-version <version>', 'Dataset version to use (omit for local file, or N/DRAFT)')
     .option('--json', 'Output as JSON')
     .action(
       async (cliOptions: {
@@ -107,6 +112,8 @@ export const registerRun = (program: Command) => {
         expectedResponse?: string;
         days: string;
         output?: string;
+        dataset?: string;
+        datasetVersion?: string;
         json?: boolean;
       }) => {
         const isArnMode = !!(cliOptions.runtimeArn && cliOptions.evaluatorArn);
@@ -140,6 +147,8 @@ export const registerRun = (program: Command) => {
           expectedResponse: cliOptions.expectedResponse,
           days: parseInt(cliOptions.days, 10),
           output: cliOptions.output,
+          dataset: cliOptions.dataset,
+          datasetVersion: cliOptions.datasetVersion,
           json: cliOptions.json,
         };
 
@@ -180,6 +189,12 @@ export const registerRun = (program: Command) => {
       'JSON file with session metadata and ground truth (assertions, expected trajectory, turns)'
     )
     .option('--region <region>', 'AWS region (auto-detected if omitted)')
+    .option(
+      '--endpoint <name>',
+      'Runtime endpoint name (e.g. PROMPT_V1). Defaults to AGENTCORE_RUNTIME_ENDPOINT env var, then DEFAULT'
+    )
+    .option('--dataset <name>', 'Dataset name — invoke agent with dataset scenarios before batch evaluation')
+    .option('--dataset-version <version>', 'Dataset version to use (omit for local file, or N/DRAFT)')
     .option('--json', 'Output as JSON')
     .action(
       async (cliOptions: {
@@ -190,6 +205,9 @@ export const registerRun = (program: Command) => {
         sessionIds?: string[];
         groundTruth?: string;
         region?: string;
+        endpoint?: string;
+        dataset?: string;
+        datasetVersion?: string;
         json?: boolean;
       }) => {
         requireProject();
@@ -218,9 +236,12 @@ export const registerRun = (program: Command) => {
             evaluators: cliOptions.evaluator,
             name: cliOptions.name,
             region: cliOptions.region,
+            endpoint: cliOptions.endpoint,
             sessionIds: cliOptions.sessionIds,
             lookbackDays: lookbackDays && !isNaN(lookbackDays) ? lookbackDays : undefined,
             sessionMetadata,
+            dataset: cliOptions.dataset,
+            datasetVersion: cliOptions.datasetVersion,
             onProgress: cliOptions.json
               ? undefined
               : (_status, message) => {
@@ -231,7 +252,16 @@ export const registerRun = (program: Command) => {
           // Save results locally
           if (result.success) {
             try {
-              const filePath = saveBatchEvalRun(result);
+              const datasetInfo = cliOptions.dataset
+                ? {
+                    source: 'dataset',
+                    dataset: {
+                      id: cliOptions.dataset,
+                      version: cliOptions.datasetVersion ?? 'LOCAL',
+                    },
+                  }
+                : {};
+              const filePath = saveBatchEvalRun({ result, ...datasetInfo });
               if (!cliOptions.json) {
                 console.log(`\nResults saved to: ${filePath}`);
               }

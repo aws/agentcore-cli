@@ -4,6 +4,7 @@ import { AgentPrimitive } from './AgentPrimitive';
 import type { BasePrimitive } from './BasePrimitive';
 import { ConfigBundlePrimitive } from './ConfigBundlePrimitive';
 import { CredentialPrimitive } from './CredentialPrimitive';
+import { DatasetPrimitive } from './DatasetPrimitive';
 import { EvaluatorPrimitive } from './EvaluatorPrimitive';
 import { GatewayPrimitive } from './GatewayPrimitive';
 import { GatewayTargetPrimitive } from './GatewayTargetPrimitive';
@@ -21,6 +22,7 @@ import type { RemovableResource } from './types';
 export const agentPrimitive = new AgentPrimitive();
 export const harnessPrimitive = isPreviewEnabled() ? new HarnessPrimitive() : undefined;
 export const memoryPrimitive = new MemoryPrimitive();
+export const datasetPrimitive = new DatasetPrimitive();
 export const credentialPrimitive = new CredentialPrimitive();
 export const evaluatorPrimitive = new EvaluatorPrimitive();
 export const onlineEvalConfigPrimitive = new OnlineEvalConfigPrimitive();
@@ -39,6 +41,7 @@ export const ALL_PRIMITIVES: BasePrimitive<unknown, RemovableResource>[] = [
   agentPrimitive,
   ...(harnessPrimitive ? [harnessPrimitive] : []),
   memoryPrimitive,
+  datasetPrimitive,
   credentialPrimitive,
   evaluatorPrimitive,
   onlineEvalConfigPrimitive,
