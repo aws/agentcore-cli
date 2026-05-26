@@ -14,14 +14,18 @@ export function registerTelemetry(program: Command) {
     .command('disable')
     .description('Disable anonymous usage analytics')
     .action(async () => {
-      await handleTelemetryDisable();
+      if (!(await handleTelemetryDisable())) {
+        process.exitCode = 1;
+      }
     });
 
   telemetry
     .command('enable')
     .description('Enable anonymous usage analytics')
     .action(async () => {
-      await handleTelemetryEnable();
+      if (!(await handleTelemetryEnable())) {
+        process.exitCode = 1;
+      }
     });
 
   telemetry

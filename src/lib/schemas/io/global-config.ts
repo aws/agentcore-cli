@@ -1,10 +1,11 @@
+import { toError } from '../../errors/types.js';
+import type { Result } from '../../result.js';
 import { readFileSync } from 'fs';
 import { mkdir, readFile, stat, writeFile } from 'fs/promises';
 import { randomUUID } from 'node:crypto';
 import { homedir } from 'os';
 import { join } from 'path';
 import { z } from 'zod';
-import { toError } from '../../errors/types.js';
 
 export const GLOBAL_CONFIG_DIR = process.env.AGENTCORE_CONFIG_DIR ?? join(homedir(), '.agentcore');
 export const GLOBAL_CONFIG_FILE = join(GLOBAL_CONFIG_DIR, 'config.json');
@@ -47,7 +48,8 @@ export function readGlobalConfigSync(configFile = GLOBAL_CONFIG_FILE): GlobalCon
   }
 }
 
-export type UpdateGlobalConfigResult = { success: true } | { success: false; error: Error };
+export type UpdateGlobalConfigResult = Result;
+export type InstallationIdResult = Result<{ id: string; created: boolean }>;
 
 export async function updateGlobalConfig(
   partial: GlobalConfig,
@@ -129,18 +131,27 @@ function mergeConfig(target: GlobalConfig, source: GlobalConfig): GlobalConfig {
  * `created: true` means this is the first run (ID was just generated).
  *
  * Note: concurrent first-run invocations may each generate a different ID;
- * the last write wins. This is acceptable — the ID only needs to be stable
+ * the last write wins. This is acceptable - the ID only needs to be stable
  * after the first successful write, and CLI invocations are typically sequential.
  */
 export async function getOrCreateInstallationId(
   configDir = GLOBAL_CONFIG_DIR,
   configFile = GLOBAL_CONFIG_FILE
-): Promise<{ id: string; created: boolean }> {
-  const config = await readGlobalConfig(configFile);
-  if (config.installationId) {
-    return { id: config.installationId, created: false };
+): Promise<InstallationIdResult> {
+  const existing = await loadConfigForUpdate(configFile);
+  if (!existing.success) {
+    return existing;
   }
+
+  if (existing.config.installationId) {
+    return { success: true, id: existing.config.installationId, created: false };
+  }
+
   const id = randomUUID();
-  await updateGlobalConfig({ installationId: id }, configDir, configFile);
-  return { id, created: true };
+  const updateResult = await updateGlobalConfig({ installationId: id }, configDir, configFile);
+  if (!updateResult.success) {
+    return updateResult;
+  }
+
+  return { success: true, id, created: true };
 }

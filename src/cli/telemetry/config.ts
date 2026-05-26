@@ -44,15 +44,19 @@ export async function resolveTelemetryPreference(config?: GlobalConfig): Promise
 
 /**
  * Resolve and validate resource attributes for the current session.
- * Called once at startup — the returned object is reused for every metric in the session.
+ * Called once at startup - the returned object is reused for every metric in the session.
  * Throws if any attribute fails validation (prevents PII leakage).
  */
 export async function resolveResourceAttributes(mode: 'cli' | 'tui'): Promise<ResourceAttributes> {
-  const { id } = await getOrCreateInstallationId();
+  const installation = await getOrCreateInstallationId();
+  if (!installation.success) {
+    throw installation.error;
+  }
+
   return ResourceAttributesSchema.parse({
     'service.name': 'agentcore-cli',
     'service.version': PACKAGE_VERSION,
-    'agentcore-cli.installation_id': id,
+    'agentcore-cli.installation_id': installation.id,
     'agentcore-cli.session_id': randomUUID(),
     'agentcore-cli.mode': mode,
     'os.type': os.type(),

@@ -131,6 +131,8 @@ describe('global-config', () => {
     it('generates installationId on first run and returns created: true', async () => {
       const result = await getOrCreateInstallationId(tmp.configDir, tmp.configFile);
 
+      expect(result.success).toBe(true);
+      if (!result.success) throw result.error;
       expect(result.created).toBe(true);
       expect(result.id).toMatch(/^[0-9a-f-]{36}$/);
       const config = await readGlobalConfig(tmp.configFile);
@@ -142,7 +144,18 @@ describe('global-config', () => {
 
       const result = await getOrCreateInstallationId(tmp.configDir, tmp.configFile);
 
-      expect(result).toEqual({ id: 'existing-id', created: false });
+      expect(result).toEqual({ success: true, id: 'existing-id', created: false });
+    });
+
+    it('returns malformed config errors without generating an id', async () => {
+      await writeFile(tmp.configFile, '{ invalid json');
+
+      const result = await getOrCreateInstallationId(tmp.configDir, tmp.configFile);
+
+      expect(result.success).toBe(false);
+      if (result.success) throw new Error('expected failure');
+      expect(result.error.message).toMatch(/malformed/);
+      expect(await readFile(tmp.configFile, 'utf-8')).toBe('{ invalid json');
     });
   });
 });

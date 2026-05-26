@@ -215,7 +215,11 @@ export const main = async (argv: string[]) => {
   setupGlobalCleanup();
 
   // Generate installationId on first run and show telemetry notice
-  const { created: isFirstRun } = await getOrCreateInstallationId();
+  const installation = await getOrCreateInstallationId();
+  if (!installation.success) {
+    throw installation.error;
+  }
+  const { created: isFirstRun } = installation;
 
   const program = createProgram();
 

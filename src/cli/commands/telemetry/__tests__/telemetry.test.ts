@@ -1,7 +1,7 @@
 import { readGlobalConfig } from '../../../../lib/schemas/io/global-config';
 import { createTempConfig } from '../../../__tests__/helpers/temp-config';
 import { handleTelemetryDisable, handleTelemetryEnable, handleTelemetryStatus } from '../actions';
-import { chmod, mkdir, rm, writeFile } from 'fs/promises';
+import { writeFile } from 'fs/promises';
 import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const tmp = createTempConfig('actions');
@@ -27,15 +27,9 @@ describe('telemetry actions', () => {
     });
 
     it('returns false when config write fails', async () => {
-      await rm(tmp.testDir, { recursive: true, force: true });
-      await mkdir(tmp.testDir, { recursive: true });
-      await chmod(tmp.testDir, 0o444);
-
-      const ok = await handleTelemetryDisable(tmp.configDir, tmp.configFile);
+      const ok = await handleTelemetryDisable(tmp.testDir + '/\0invalid', tmp.testDir + '/\0invalid/config.json');
 
       expect(ok).toBe(false);
-
-      await chmod(tmp.testDir, 0o755);
     });
   });
 
