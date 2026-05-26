@@ -201,7 +201,7 @@ export const registerDev = (program: Command) => {
               dev_action: 'exec' as const,
               ui_mode: 'terminal' as const,
               has_stream: false,
-              agent_protocol: 'http' as const,
+              agent_protocol: standardize(AgentProtocol, 'unknown'),
               invoke_count: 0,
             },
             async () => {
@@ -245,7 +245,7 @@ export const registerDev = (program: Command) => {
               dev_action: 'invoke' as const,
               ui_mode: 'terminal' as const,
               has_stream: opts.stream ?? false,
-              agent_protocol: 'http' as const,
+              agent_protocol: standardize(AgentProtocol, 'unknown'),
               invoke_count: 1,
             },
             async () => {
@@ -311,7 +311,7 @@ export const registerDev = (program: Command) => {
             dev_action: 'server' as const,
             ui_mode: 'terminal' as const,
             has_stream: false,
-            agent_protocol: 'http' as const,
+            agent_protocol: standardize(AgentProtocol, 'unknown'),
             invoke_count: 0,
           },
           async () => {
