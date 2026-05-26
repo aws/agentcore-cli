@@ -120,6 +120,69 @@ describe('add/remove dataset', () => {
     expect(dataset.description).toBe('Test scenarios for billing');
   });
 
+  it('adds dataset with --kms-key-arn and persists to agentcore.json', async () => {
+    const result = await runCLI(
+      [
+        'add',
+        'dataset',
+        '--name',
+        'KmsDataset',
+        '--schema-type',
+        'AGENTCORE_EVALUATION_PREDEFINED_V1',
+        '--kms-key-arn',
+        'arn:aws:kms:us-east-1:123456789012:key/12345678-1234-1234-1234-123456789012',
+        '--json',
+      ],
+      projectDir
+    );
+
+    expect(result.exitCode, `stdout: ${result.stdout}, stderr: ${result.stderr}`).toBe(0);
+    const json = parseJsonOutput(result.stdout) as { success: boolean; datasetName: string };
+    expect(json.success).toBe(true);
+    expect(json.datasetName).toBe('KmsDataset');
+
+    const spec = JSON.parse(await readFile(join(projectDir, 'agentcore/agentcore.json'), 'utf-8'));
+    const dataset = spec.datasets.find((d: { name: string }) => d.name === 'KmsDataset');
+    expect(dataset.kmsKeyArn).toBe('arn:aws:kms:us-east-1:123456789012:key/12345678-1234-1234-1234-123456789012');
+  });
+
+  it('rejects invalid --kms-key-arn', async () => {
+    const result = await runCLI(
+      [
+        'add',
+        'dataset',
+        '--name',
+        'BadKms',
+        '--schema-type',
+        'AGENTCORE_EVALUATION_PREDEFINED_V1',
+        '--kms-key-arn',
+        'not-a-valid-arn',
+        '--json',
+      ],
+      projectDir
+    );
+
+    expect(result.exitCode).toBe(1);
+    const json = parseJsonOutput(result.stdout) as { success: boolean; error: string };
+    expect(json.success).toBe(false);
+    expect(json.error).toContain('kms-key-arn');
+  });
+
+  it('omits kmsKeyArn from agentcore.json when not provided', async () => {
+    const result = await runCLI(
+      ['add', 'dataset', '--name', 'NoKms', '--schema-type', 'AGENTCORE_EVALUATION_PREDEFINED_V1', '--json'],
+      projectDir
+    );
+
+    expect(result.exitCode).toBe(0);
+
+    const spec = JSON.parse(await readFile(join(projectDir, 'agentcore/agentcore.json'), 'utf-8'));
+    const dataset = spec.datasets.find((d: { name: string }) => d.name === 'NoKms');
+    expect(dataset).toBeTruthy();
+    expect(dataset.kmsKeyArn).toBeUndefined();
+    expect('kmsKeyArn' in dataset).toBe(false);
+  });
+
   it('removes a dataset', async () => {
     const result = await runCLI(['remove', 'dataset', '--name', 'MyPredefined', '--json'], projectDir);
 
