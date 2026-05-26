@@ -101,7 +101,7 @@ export function AddDatasetScreen({ onComplete, onExit, existingDatasetNames }: A
           <TextInput
             key="name"
             prompt="Dataset name"
-            initialValue={generateUniqueName('MyDataset', existingDatasetNames)}
+            initialValue={name || generateUniqueName('MyDataset', existingDatasetNames)}
             onSubmit={(value: string) => {
               setName(value);
               setStep('schema-type');
