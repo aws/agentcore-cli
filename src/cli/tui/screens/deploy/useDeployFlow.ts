@@ -12,6 +12,7 @@ import {
   parsePolicyEngineOutputs,
   parsePolicyOutputs,
 } from '../../../cloudformation';
+import { checkStackStatus } from '../../../cloudformation/stack-status';
 import { DEFAULT_DEPLOY_ATTRS, computeDeployAttrs } from '../../../commands/deploy/utils.js';
 import { getErrorMessage, isChangesetInProgressError, isExpiredTokenError } from '../../../errors';
 import { ExecLogger } from '../../../logging';
@@ -606,33 +607,46 @@ export function useDeployFlow(options: DeployFlowOptions = {}): DeployFlowState 
     const attrs = context ? computeDeployAttrs(context.projectSpec, 'deploy') : { ...DEFAULT_DEPLOY_ATTRS };
 
     const run = async (): Promise<{ success: true } | { success: false; error: Error }> => {
-      // Run diff before deploy to capture pre-deploy differences
+      // Run diff before deploy to capture pre-deploy differences.
+      // Skip diff for new stacks — there's nothing to compare against, and CDK's diff
+      // creates a temporary changeset that leaves a ghost stack which races with deploy.
       if (!isDiffRunningRef.current) {
         isDiffRunningRef.current = true;
         setIsDiffLoading(true);
         setPreDeployDiffStep(prev => ({ ...prev, status: 'running' }));
         logger.startStep('Computing diff changes...');
-        switchableIoHost?.setOnRawMessage((code, _level, message, data) => {
-          logger.logDiff(code, message);
-          if (code === 'CDK_TOOLKIT_I4002') {
-            setDiffSummaries(prev => [...prev, parseStackDiff(data, message)]);
-          } else if (code === 'CDK_TOOLKIT_I4001') {
-            setNumStacksWithChanges(parseDiffResult(data).numStacksWithChanges);
+
+        const target = context?.awsTargets[0];
+        const currentStackName = stackNames?.[0];
+        const stackStatus = target && currentStackName ? await checkStackStatus(target.region, currentStackName) : null;
+        const isNewStack = stackStatus ? !stackStatus.exists : false;
+
+        if (isNewStack) {
+          logger.log('New stack — skipping diff (nothing to compare against)');
+        } else {
+          switchableIoHost?.setOnRawMessage((code, _level, message, data) => {
+            logger.logDiff(code, message);
+            if (code === 'CDK_TOOLKIT_I4002') {
+              setDiffSummaries(prev => [...prev, parseStackDiff(data, message)]);
+            } else if (code === 'CDK_TOOLKIT_I4001') {
+              setNumStacksWithChanges(parseDiffResult(data).numStacksWithChanges);
+            }
+          });
+          switchableIoHost?.setVerbose(true);
+          try {
+            await cdkToolkitWrapper.diff();
+          } catch {
+            // Diff failure is non-fatal — deploy will proceed
+          } finally {
+            switchableIoHost?.setVerbose(false);
+            switchableIoHost?.setOnRawMessage(null);
           }
-        });
-        switchableIoHost?.setVerbose(true);
-        try {
-          await cdkToolkitWrapper.diff();
-        } catch {
-          // Diff failure is non-fatal — deploy will proceed
-        } finally {
-          switchableIoHost?.setVerbose(false);
-          switchableIoHost?.setOnRawMessage(null);
-          isDiffRunningRef.current = false;
-          setIsDiffLoading(false);
-          logger.endStep('success');
-          setPreDeployDiffStep(prev => ({ ...prev, status: 'success' }));
         }
+
+        isDiffRunningRef.current = false;
+        setIsDiffLoading(false);
+        logger.endStep('success');
+        setPreDeployDiffStep(prev => ({ ...prev, status: 'success' }));
       }
 
       setPublishAssetsStep(prev => ({ ...prev, status: 'running' }));
