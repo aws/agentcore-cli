@@ -27,7 +27,6 @@ export {
   type GetPolicyGenerationResult,
 } from './policy-generation';
 export { AgentCoreApiClient, AgentCoreApiError, type ApiClientOptions, type ApiPlane } from './api-client';
-export { pollUntilTerminal, PollTimeoutError, PollFailureError, type PollOptions } from './poll';
 export {
   createHarness,
   getHarness,

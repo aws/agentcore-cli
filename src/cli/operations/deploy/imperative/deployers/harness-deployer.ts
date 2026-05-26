@@ -196,6 +196,9 @@ export class HarnessDeployer implements ImperativeDeployer<HarnessDeployedStateM
 
           const updateResult: UpdateHarnessResult = await updateHarness(updateOptions);
           const finalHarness = await waitForReady(region, updateResult.harness);
+          if (finalHarness.status === 'FAILED') {
+            throw new Error(`Harness "${entry.name}" entered FAILED state`);
+          }
           resultState[entry.name] = {
             harnessId: finalHarness.harnessId,
             harnessArn: finalHarness.arn,
@@ -221,6 +224,9 @@ export class HarnessDeployer implements ImperativeDeployer<HarnessDeployedStateM
 
           const createResult: CreateHarnessResult = await createWithRetry(createOptions);
           const finalHarness = await waitForReady(region, createResult.harness);
+          if (finalHarness.status === 'FAILED') {
+            throw new Error(`Harness "${entry.name}" entered FAILED state`);
+          }
           resultState[entry.name] = {
             harnessId: finalHarness.harnessId,
             harnessArn: finalHarness.arn,

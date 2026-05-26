@@ -168,11 +168,7 @@ const gaTarballPath = cliTarballPath;
 
 // Step 6: Rebuild CLI with BUILD_PREVIEW=1
 log('Rebuilding CLI with BUILD_PREVIEW=1 for preview tarball...');
-run('npm', ['run', 'build'], { cwd: cliRoot, env: { ...process.env, BUILD_PREVIEW: '1' } });
-
-// Copy CDK tarball into dist/assets/ again (rebuild wipes dist/)
-fs.copyFileSync(cdkTarballSrc, bundledTarballDest);
-log(`Placed CDK tarball at ${bundledTarballDest}`);
+run('npm', ['run', 'build:cli'], { cwd: cliRoot, env: { ...process.env, BUILD_PREVIEW: '1' } });
 
 // Step 7: Bump version to preview variant
 function bumpPreviewVersion(pkgDir) {
