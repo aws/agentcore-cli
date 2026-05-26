@@ -43,22 +43,38 @@ jobs:
       - name: Get tarball info
         id: tarball
         run: |
-          TARBALL_NAME=$(ls *.tgz | head -1 | xargs basename)
-          echo "name=$TARBALL_NAME" >> $GITHUB_OUTPUT
+          GA_TARBALL=$(ls *-[0-9]*[0-9].tgz 2>/dev/null | grep -v preview | head -1 | xargs basename)
+          PREVIEW_TARBALL=$(ls *preview*.tgz | head -1 | xargs basename)
+          echo "ga_name=$GA_TARBALL" >> $GITHUB_OUTPUT
+          echo "preview_name=$PREVIEW_TARBALL" >> $GITHUB_OUTPUT
+          echo "GA tarball: $GA_TARBALL"
+          echo "Preview tarball: $PREVIEW_TARBALL"
       - name: Create or update prerelease
         env:
           GH_TOKEN: ${{ steps.app-token.outputs.token }}
-          TARBALL_NAME: ${{ steps.tarball.outputs.name }}
+          GA_TARBALL: ${{ steps.tarball.outputs.ga_name }}
+          PREVIEW_TARBALL: ${{ steps.tarball.outputs.preview_name }}
         run: |
           TAG="prerelease"
 
-          # Delete existing release if it exists (to update the tarball)
+          # Delete existing release if it exists (to update the tarballs)
           gh release delete "$TAG" --yes --cleanup-tag 2>/dev/null || true
 
-          # Create a new pre-release with the tarball
+          # Create a new pre-release with both tarballs
           gh release create "$TAG" \
-            "${TARBALL_NAME}" \
+            "${GA_TARBALL}" \
+            "${PREVIEW_TARBALL}" \
             --title "Prerelease" \
-            --notes "Auto-generated tarball from the latest commit on main." \
+            --notes "Auto-generated tarballs from the latest commit on main.
+
+          **GA build** (no harness features):
+          \`\`\`
+          npm install -g https://github.com/aws/agentcore-cli/releases/download/prerelease/${GA_TARBALL}
+          \`\`\`
+
+          **Preview build** (harness features enabled):
+          \`\`\`
+          npm install -g https://github.com/aws/agentcore-cli/releases/download/prerelease/${PREVIEW_TARBALL}
+          \`\`\`" \
             --prerelease \
             --target "${{ github.sha }}"
