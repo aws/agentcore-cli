@@ -88,7 +88,7 @@ describe('integration: dev server', () => {
   });
 
   it.skipIf(!hasNpm || !hasGit || !hasUv)(
-    'starts dev server and responds to health check',
+    'starts dev server, responds to health check, and emits telemetry',
     async () => {
       expect(projectPath, 'Project should have been created').toBeTruthy();
 
@@ -98,11 +98,20 @@ describe('integration: dev server', () => {
       devProcess = spawn('node', [cliPath, 'dev', '--port', String(port), '--logs'], {
         cwd: projectPath,
         stdio: 'pipe',
-        env: { ...process.env, INIT_CWD: undefined },
+        env: { ...process.env, INIT_CWD: undefined, ...telemetry.env },
       });
 
       const serverReady = await waitForServer(port, 20000);
       expect(serverReady, 'Dev server should respond to ping within 20s').toBeTruthy();
+
+      // Verify telemetry was emitted for the server startup (before blocking)
+      telemetry.assertMetricEmitted({
+        command: 'dev',
+        dev_action: 'server',
+        ui_mode: 'terminal',
+        exit_reason: 'success',
+      });
+      telemetry.clearEntries();
 
       // Invoke the running server and verify telemetry
       const invokeResult = await runCLI(['dev', 'hello', '--port', String(port)], projectPath, {
@@ -134,5 +143,28 @@ describe('integration: dev server', () => {
       devProcess = null;
     },
     30000
+  );
+
+  it.skipIf(!hasNpm || !hasGit || !hasUv)(
+    'exits with error when runtime not found and emits failure telemetry',
+    async () => {
+      expect(projectPath, 'Project should have been created').toBeTruthy();
+
+      telemetry.clearEntries();
+      const result = await runCLI(['dev', '--logs', '--runtime', 'nonexistent-agent'], projectPath, {
+        env: telemetry.env,
+      });
+
+      expect(result.exitCode).toBe(1);
+      expect(result.stderr).toContain('nonexistent-agent');
+      expect(result.stderr).toContain('not found');
+
+      telemetry.assertMetricEmitted({
+        command: 'dev',
+        dev_action: 'server',
+        exit_reason: 'failure',
+      });
+    },
+    15000
   );
 });

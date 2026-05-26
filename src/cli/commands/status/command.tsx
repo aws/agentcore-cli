@@ -1,7 +1,9 @@
-import { serializeResult } from '../../../lib';
+import { ValidationError, serializeResult } from '../../../lib';
 import { getErrorMessage } from '../../errors';
 import { getDatasetStatus } from '../../operations/dataset';
 import type { DatasetStatusResult } from '../../operations/dataset';
+import { withCommandRunTelemetry } from '../../telemetry/cli-command-run.js';
+import { FilterState, FilterType, standardize } from '../../telemetry/schemas/common-shapes.js';
 import { COMMAND_DESCRIPTIONS } from '../../tui/copy';
 import { requireProject } from '../../tui/guards';
 import type { ResourceStatusEntry } from './action';
@@ -73,48 +75,58 @@ export const registerStatus = (program: Command) => {
     .action(async (cliOptions: StatusCliOptions) => {
       requireProject();
 
+      const telemetryAttrs = {
+        filter_type: standardize(FilterType, cliOptions.type ?? 'none'),
+        filter_state: standardize(FilterState, cliOptions.state ?? 'none'),
+      };
+
       // Validate --type
       if (cliOptions.type && !(VALID_RESOURCE_TYPES as readonly string[]).includes(cliOptions.type)) {
-        render(
-          <Text color="red">
-            Invalid resource type &apos;{cliOptions.type}&apos;. Valid types: {VALID_RESOURCE_TYPES.join(', ')}
-          </Text>
-        );
+        const msg = `Invalid resource type '${cliOptions.type}'. Valid types: ${VALID_RESOURCE_TYPES.join(', ')}`;
+        await withCommandRunTelemetry('status', telemetryAttrs, () => ({
+          success: false as const,
+          error: new ValidationError(msg),
+        }));
+        render(<Text color="red">{msg}</Text>);
         return;
       }
 
       // Validate --state
       if (cliOptions.state && !(VALID_STATES as readonly string[]).includes(cliOptions.state)) {
-        render(
-          <Text color="red">
-            Invalid state &apos;{cliOptions.state}&apos;. Valid states: {VALID_STATES.join(', ')}
-          </Text>
-        );
+        const msg = `Invalid state '${cliOptions.state}'. Valid states: ${VALID_STATES.join(', ')}`;
+        await withCommandRunTelemetry('status', telemetryAttrs, () => ({
+          success: false as const,
+          error: new ValidationError(msg),
+        }));
+        render(<Text color="red">{msg}</Text>);
         return;
       }
 
       try {
-        const context = await loadStatusConfig();
-
         // Direct runtime lookup by ID
         if (cliOptions.runtimeId) {
-          const result = await handleRuntimeLookup(context, {
-            agentRuntimeId: cliOptions.runtimeId,
-            targetName: cliOptions.target,
+          const result = await withCommandRunTelemetry('status', telemetryAttrs, async () => {
+            const context = await loadStatusConfig();
+            return handleRuntimeLookup(context, {
+              agentRuntimeId: cliOptions.runtimeId!,
+              targetName: cliOptions.target,
+            });
           });
+
+          if (!result.success) {
+            if (cliOptions.json) {
+              console.log(JSON.stringify(serializeResult(result), null, 2));
+            } else {
+              render(<Text color="red">{result.error.message}</Text>);
+            }
+            process.exit(1);
+          }
 
           if (cliOptions.json) {
             console.log(JSON.stringify(serializeResult(result), null, 2));
             return;
           }
-
-          if (!result.success) {
-            render(<Text color="red">{result.error.message}</Text>);
-            return;
-          }
-
           const runtimeStatus = result.runtimeStatus ? `Runtime status: ${result.runtimeStatus}` : '';
-
           render(
             <Text>
               AgentCore Status - {result.runtimeId} (target: {result.targetName})
@@ -125,22 +137,23 @@ export const registerStatus = (program: Command) => {
         }
 
         // Default path: show all resource types with deployment state
-        const result = await handleProjectStatus(context, {
-          targetName: cliOptions.target,
+        const result = await withCommandRunTelemetry('status', telemetryAttrs, async () => {
+          const context = await loadStatusConfig();
+          return handleProjectStatus(context, { targetName: cliOptions.target });
         });
 
-        if (cliOptions.json) {
-          if (result.success) {
-            const filtered = filterResources(result.resources, cliOptions);
-            console.log(JSON.stringify({ ...result, resources: filtered }, null, 2));
-          } else {
+        if (!result.success) {
+          if (cliOptions.json) {
             console.log(JSON.stringify(serializeResult(result), null, 2));
+          } else {
+            render(<Text color="red">{result.error.message}</Text>);
           }
-          return;
+          process.exit(1);
         }
 
-        if (!result.success) {
-          render(<Text color="red">{result.error.message}</Text>);
+        if (cliOptions.json) {
+          const filtered = filterResources(result.resources, cliOptions);
+          console.log(JSON.stringify({ ...serializeResult(result), resources: filtered }, null, 2));
           return;
         }
 
@@ -162,7 +175,7 @@ export const registerStatus = (program: Command) => {
         // Fetch enriched dataset info when --type dataset is specified
         let datasetDetails: DatasetStatusResult[] = [];
         if (cliOptions.type === 'dataset' && datasets.length > 0 && result.targetRegion && result.targetName) {
-          const deployedState = context.deployedState;
+          const deployedState = result.deployedState;
           const targetResources = deployedState.targets?.[result.targetName]?.resources;
           const deployedDatasets = targetResources?.datasets ?? {};
 

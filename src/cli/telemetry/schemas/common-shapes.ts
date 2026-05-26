@@ -57,6 +57,7 @@ export const ExitReason = z.enum(['success', 'failure']);
 export const FilterState = z.enum(['deployed', 'local-only', 'pending-removal', 'none']);
 export const FilterType = z.enum([
   'agent',
+  'runtime-endpoint',
   'memory',
   'credential',
   'gateway',
@@ -64,6 +65,8 @@ export const FilterType = z.enum([
   'online-eval',
   'policy-engine',
   'policy',
+  'config-bundle',
+  'ab-test',
   'none',
 ]);
 export const AgentFramework = z.enum(['strands', 'langchain_langgraph', 'googleadk', 'openaiagents']);
