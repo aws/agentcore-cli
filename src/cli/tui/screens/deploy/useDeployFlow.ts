@@ -607,21 +607,28 @@ export function useDeployFlow(options: DeployFlowOptions = {}): DeployFlowState 
     const attrs = context ? computeDeployAttrs(context.projectSpec, 'deploy') : { ...DEFAULT_DEPLOY_ATTRS };
 
     const run = async (): Promise<{ success: true } | { success: false; error: Error }> => {
-      // Run diff before deploy to capture pre-deploy differences.
-      // Skip diff for new stacks — there's nothing to compare against, and CDK's diff
-      // creates a temporary changeset that leaves a ghost stack which races with deploy.
+      // Run diff before deploy to capture pre-deploy differences
       if (!isDiffRunningRef.current) {
         isDiffRunningRef.current = true;
         setIsDiffLoading(true);
         setPreDeployDiffStep(prev => ({ ...prev, status: 'running' }));
         logger.startStep('Computing diff changes...');
 
-        const target = context?.awsTargets[0];
-        const currentStackName = stackNames?.[0];
-        const stackStatus = target && currentStackName ? await checkStackStatus(target.region, currentStackName) : null;
-        const isNewStack = stackStatus ? !stackStatus.exists : false;
+        // Skip diff for new stacks — there's nothing to compare against, and CDK's diff
+        // creates a temporary changeset that leaves a ghost stack which races with deploy.
+        let skipDiff = false;
+        try {
+          const target = context?.awsTargets[0];
+          const currentStackName = stackNames?.[0];
+          if (target && currentStackName) {
+            const status = await checkStackStatus(target.region, currentStackName);
+            skipDiff = !status.exists;
+          }
+        } catch {
+          // Status check failed — fall through to diff (tolerate old race)
+        }
 
-        if (isNewStack) {
+        if (skipDiff) {
           logger.log('New stack — skipping diff (nothing to compare against)');
         } else {
           switchableIoHost?.setOnRawMessage((code, _level, message, data) => {
