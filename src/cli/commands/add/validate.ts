@@ -17,6 +17,7 @@ import {
   TargetLanguageSchema,
   getSupportedFrameworksForProtocol,
   getSupportedModelProviders,
+  isValidKmsKeyArn,
   matchEnumValue,
 } from '../../../schema';
 import { ARN_VALIDATION_MESSAGE, isValidArn } from '../shared/arn-utils';
@@ -834,6 +835,14 @@ export function validateAddDatasetOptions(options: AddDatasetOptions): Validatio
   if (!schemaTypeResult.success) {
     const valid = DatasetSchemaTypeSchema.options.join(', ');
     return { valid: false, error: `Invalid schema type: ${options.schemaType}. Valid options: ${valid}` };
+  }
+
+  if (options.kmsKeyArn && !isValidKmsKeyArn(options.kmsKeyArn)) {
+    return {
+      valid: false,
+      error:
+        '--kms-key-arn must be a valid KMS key ARN (e.g. arn:aws:kms:us-east-1:123456789012:key/12345678-1234-1234-1234-123456789012)',
+    };
   }
 
   return { valid: true };
