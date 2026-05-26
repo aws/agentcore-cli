@@ -3,6 +3,7 @@ import { registerABTestCommand } from './commands/abtest';
 import { registerAdd } from './commands/add';
 import { registerAddTool } from './commands/add/tool-command';
 import { registerArchive } from './commands/archive';
+import { registerConfig } from './commands/config';
 import { registerConfigBundle } from './commands/config-bundle';
 import { registerCreate } from './commands/create';
 import { registerDataset } from './commands/dataset';
@@ -112,6 +113,7 @@ export function registerCommands(program: Command) {
   registerUpdate(program);
   registerValidate(program);
   registerConfigBundle(program);
+  registerConfig(program);
   registerDataset(program);
   registerArchive(program);
 

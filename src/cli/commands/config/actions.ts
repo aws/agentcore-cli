@@ -1,0 +1,71 @@
+import { readGlobalConfig, updateGlobalConfig, validateGlobalConfig } from '../../../lib/schemas/io/global-config.js';
+import { deepMerge } from '../../../lib/utils/object.js';
+import type { ConfigResult } from './types.js';
+
+export async function handleConfigList(): Promise<ConfigResult> {
+  const config = await readGlobalConfig();
+  return { success: true, message: JSON.stringify(config, null, 2) };
+}
+
+export async function handleConfigGet(key: string): Promise<ConfigResult> {
+  const config = await readGlobalConfig();
+  const value = getByPath(config, key);
+  if (value === undefined) {
+    return { success: false, error: new Error(`Key "${key}" is not set.`) };
+  }
+  const message = JSON.stringify(value, null, 2);
+  return { success: true, message };
+}
+
+export async function handleConfigSet(key: string, raw: string): Promise<ConfigResult> {
+  const value = parseValue(raw);
+  const existing = await readGlobalConfig();
+  const partial = buildNestedObject(key, value);
+  const merged = deepMerge(existing, partial);
+
+  const validation = validateGlobalConfig(merged);
+  if (!validation.success) {
+    return { success: false, error: new Error(`Invalid value "${raw}" for key "${key}".`) };
+  }
+
+  const ok = await updateGlobalConfig(partial);
+  if (!ok) {
+    return { success: false, error: new Error(`Could not write config.`) };
+  }
+  return { success: true, message: `Set ${key} = ${raw}` };
+}
+
+function parseValue(raw: string): unknown {
+  try {
+    return JSON.parse(raw);
+  } catch {
+    return raw;
+  }
+}
+
+function isRecord(val: unknown): val is Record<string, unknown> {
+  return typeof val === 'object' && val !== null && !Array.isArray(val);
+}
+
+function getByPath(obj: Record<string, unknown>, path: string): unknown {
+  let current: unknown = obj;
+  for (const part of path.split('.')) {
+    if (!isRecord(current)) return undefined;
+    current = current[part];
+  }
+  return current;
+}
+
+function buildNestedObject(path: string, value: unknown): Record<string, unknown> {
+  const parts = path.split('.');
+  const leaf = parts.pop();
+  if (!leaf) return {};
+  const result: Record<string, unknown> = {};
+  const inner = parts.reduce<Record<string, unknown>>((acc, part) => {
+    const next: Record<string, unknown> = {};
+    acc[part] = next;
+    return next;
+  }, result);
+  inner[leaf] = value;
+  return result;
+}

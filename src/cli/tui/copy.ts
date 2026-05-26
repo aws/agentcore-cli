@@ -56,6 +56,7 @@ export const COMMAND_DESCRIPTIONS = {
   validate: 'Validate agentcore/ config files.',
   'config-bundle': '[preview] Manage configuration bundle versions and diffs.',
   archive: '[preview] Archive (delete) a batch evaluation or recommendation on the service and clear local history.',
+  config: 'Adjust global configuration settings such as telemetry opt-out status',
 } as const;
 
 /**

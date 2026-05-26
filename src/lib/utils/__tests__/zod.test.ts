@@ -1,5 +1,6 @@
-import { validateAgentSchema, validateProjectSchema } from '../zod.js';
+import { validateAgentSchema, validateProjectSchema, withCatchAll } from '../zod.js';
 import { describe, expect, it } from 'vitest';
+import { z } from 'zod';
 
 describe('validateAgentSchema', () => {
   const validAgent = {
@@ -77,5 +78,53 @@ describe('validateProjectSchema', () => {
         runtimes: [agent, agent],
       })
     ).toThrow('Invalid AgentCoreProjectSpec');
+  });
+});
+
+describe('withCatchAll', () => {
+  it('wraps top-level fields with catch', () => {
+    const strict = z.object({ name: z.string(), age: z.number() });
+    const lenient = withCatchAll(strict);
+
+    const result = lenient.parse({ name: 'valid', age: 'not a number' });
+    expect(result.name).toBe('valid');
+    expect(result.age).toBeUndefined();
+  });
+
+  it('wraps nested object fields with catch', () => {
+    const strict = z.object({
+      settings: z.object({
+        enabled: z.boolean(),
+        name: z.string(),
+      }),
+    });
+    const lenient = withCatchAll(strict);
+
+    const result = lenient.parse({ settings: { enabled: 'bad', name: 'good' } });
+    expect(result.settings.enabled).toBeUndefined();
+    expect(result.settings.name).toBe('good');
+  });
+
+  it('handles optional fields', () => {
+    const strict = z.object({ value: z.string().optional() });
+    const lenient = withCatchAll(strict);
+
+    const result = lenient.parse({});
+    expect(result.value).toBeUndefined();
+  });
+
+  it('preserves unknown keys via loose', () => {
+    const strict = z.object({ known: z.string() });
+    const lenient = withCatchAll(strict);
+
+    const result = lenient.parse({ known: 'hello', extra: 'world' }) as Record<string, unknown>;
+    expect(result.known).toBe('hello');
+    expect(result.extra).toBe('world');
+  });
+
+  it('passes through primitive schemas unchanged', () => {
+    const schema = z.string();
+    const result = withCatchAll(schema);
+    expect(result.parse('hello')).toBe('hello');
   });
 });
