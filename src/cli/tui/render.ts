@@ -57,7 +57,11 @@ export async function renderTUI(options: RenderTUIOptions = {}) {
     process.stdout.write(SHOW_CURSOR);
   }
 
-  await TelemetryClientAccessor.shutdown();
+  // Flush telemetry before blocking process
+  const telemetryClient = await TelemetryClientAccessor.get();
+  if (telemetryClient) {
+    await telemetryClient.flush();
+  }
 
   // Check if the TUI requested a post-exit action (e.g., launch browser dev mode)
   const action = getExitAction();
