@@ -30,7 +30,6 @@ import { withCommandRunTelemetry } from '../../telemetry/cli-command-run.js';
 import { AgentProtocol, standardize } from '../../telemetry/schemas/common-shapes.js';
 import { LayoutProvider } from '../../tui/context';
 import { COMMAND_DESCRIPTIONS } from '../../tui/copy';
-
 import { requireProject, requireTTY } from '../../tui/guards';
 import { runCliDeploy } from '../deploy/progress';
 import { parseHeaderFlags } from '../shared/header-utils';
@@ -295,6 +294,8 @@ export const registerDev = (program: Command) => {
           return;
         }
 
+        requireProject();
+
         const workingDir = getWorkingDirectory();
 
         const serverResult = await withCommandRunTelemetry(
@@ -311,19 +312,16 @@ export const registerDev = (program: Command) => {
             if (!project) {
               throw new NoProjectError();
             }
-            if (!project.runtimes || project.runtimes.length === 0) {
-              throw new ValidationError('No agents defined in project. Run `agentcore add agent` to fix this.');
+
+            const hasRuntimes = project.runtimes && project.runtimes.length > 0;
+            const hasHarnesses = isPreviewEnabled() && project.harnesses && project.harnesses.length > 0;
+
+            if (!hasRuntimes && !hasHarnesses) {
+              throw new ValidationError(
+                'No agents or harnesses defined in project. Run `agentcore add agent` to fix this.'
+              );
             }
 
-        const hasRuntimes = project.runtimes && project.runtimes.length > 0;
-        const hasHarnesses = isPreviewEnabled() && project.harnesses && project.harnesses.length > 0;
-
-        if (!hasRuntimes && !hasHarnesses) {
-          render(
-            <FatalError message="No agents or harnesses defined in project." suggestedCommand="agentcore add agent" />
-          );
-          process.exit(1);
-        }
             const targetDevAgent = opts.runtime
               ? project.runtimes.find(a => a.name === opts.runtime)
               : project.runtimes[0];
@@ -334,17 +332,12 @@ export const registerDev = (program: Command) => {
             }
 
             const supportedAgents = getDevSupportedAgents(project);
-            if (supportedAgents.length === 0) {
-              throw new ValidationError('No agents support dev mode. Dev mode requires an agent with an entrypoint.');
+            if (supportedAgents.length === 0 && !hasHarnesses) {
+              throw new ValidationError(
+                'No agents support dev mode. Dev mode requires an agent with an entrypoint or a harness.'
+              );
             }
 
-        const supportedAgents = getDevSupportedAgents(project);
-        if (supportedAgents.length === 0 && !hasHarnesses) {
-          render(
-            <FatalError message="No agents support dev mode. Dev mode requires an agent with an entrypoint or a harness." />
-          );
-          process.exit(1);
-        }
             const configRoot = findConfigRoot(workingDir);
             let otelEnvVars: Record<string, string> = {};
             let collector: OtelCollector | undefined;
@@ -356,24 +349,23 @@ export const registerDev = (program: Command) => {
               otelEnvVars = otelResult.otelEnvVars;
             }
 
-
-        // If --logs provided, run non-interactive mode
-        if (opts.logs) {
-          // Preview: harness-only projects need deploy then print invoke instructions
-          if (isPreviewEnabled() && supportedAgents.length === 0 && hasHarnesses) {
-            if (!opts.skipDeploy) {
-              await runCliDeploy();
-            }
-            const harnessNames = (project.harnesses ?? []).map(h => h.name);
-            console.log('Harness dev runs against the deployed service (no local server).');
-            console.log(`If you changed the harness config, redeploy to pick up changes: agentcore deploy`);
-            console.log(`\nInvoke your harness:`);
-            for (const name of harnessNames) {
-              console.log(`  agentcore invoke --harness ${name} "your prompt"`);
-            }
-            console.log(`\nOr use the interactive TUI: agentcore dev`);
-            process.exit(0);
-          }
+            // --logs: non-interactive server mode
+            if (opts.logs) {
+              // Preview: harness-only projects need deploy then print invoke instructions
+              if (isPreviewEnabled() && supportedAgents.length === 0 && hasHarnesses) {
+                if (!opts.skipDeploy) {
+                  await runCliDeploy();
+                }
+                const harnessNames = (project.harnesses ?? []).map(h => h.name);
+                console.log('Harness dev runs against the deployed service (no local server).');
+                console.log(`If you changed the harness config, redeploy to pick up changes: agentcore deploy`);
+                console.log(`\nInvoke your harness:`);
+                for (const name of harnessNames) {
+                  console.log(`  agentcore invoke --harness ${name} "your prompt"`);
+                }
+                console.log(`\nOr use the interactive TUI: agentcore dev`);
+                return { success: true as const, blockingPromise: Promise.resolve() };
+              }
 
               if (project.runtimes.length > 1 && !opts.runtime) {
                 const names = project.runtimes.map(a => a.name).join(', ');
@@ -405,22 +397,11 @@ export const registerDev = (program: Command) => {
                 );
               }
 
-          // Deploy resources before starting dev server (only when harnesses need it, preview mode)
-          if (isPreviewEnabled() && !opts.skipDeploy && hasHarnesses) {
-            await runCliDeploy();
-          }
+              // Deploy resources before starting dev server (preview mode with harnesses)
+              if (isPreviewEnabled() && !opts.skipDeploy && hasHarnesses) {
+                await runCliDeploy();
+              }
 
-          console.log(`Starting dev server...`);
-          console.log(`Agent: ${config.agentName}`);
-          if (config.protocol !== 'MCP') {
-            console.log(`Provider: ${providerInfo}`);
-          }
-          if (config.protocol !== 'HTTP') {
-            console.log(`Protocol: ${config.protocol}`);
-          }
-          console.log(`Server: ${getEndpointUrl(actualPort, config.protocol)}`);
-          console.log(`Log: ${logger.getRelativeLogPath()}`);
-          console.log(`Press Ctrl+C to stop\n`);
               const logger = new ExecLogger({ command: 'dev' });
 
               if (actualPort !== fixedPort) {
@@ -513,42 +494,30 @@ export const registerDev = (program: Command) => {
               };
             }
 
-        // Preview: show TUI deploy progress, then launch Agent Inspector in the browser
-        if (isPreviewEnabled()) {
-          const pickerResult = await launchTuiDevScreenWithPicker(workingDir, {
-            skipDeploy: opts.skipDeploy,
-          });
-
-          if (pickerResult != null) {
-            const client = await TelemetryClientAccessor.get().catch(() => undefined);
-            const devAttrs = {
-              action: 'server' as const,
-              ui_mode: 'browser' as const,
-              has_stream: false,
-              agent_protocol: standardize(AgentProtocol, (targetDevAgent?.protocol ?? 'http').toLowerCase()),
-              invoke_count: 0,
-            };
-            if (client) {
-              client.emit('cli.command_run', 0, {
-                command_group: 'dev',
-                command: 'dev',
-                exit_reason: 'success',
-                dev_action: devAttrs.action,
-                ...devAttrs,
+            // Preview: show TUI deploy progress, then launch Agent Inspector in the browser
+            if (isPreviewEnabled()) {
+              const pickerResult = await launchTuiDevScreenWithPicker(workingDir, {
+                skipDeploy: opts.skipDeploy,
               });
-              await client.flush();
+
+              if (pickerResult != null) {
+                recorder.set({ ui_mode: 'browser' as const });
+                return {
+                  success: true as const,
+                  blockingPromise: runBrowserMode({
+                    workingDir,
+                    project,
+                    port,
+                    agentName: pickerResult.agentName,
+                    harnessName: pickerResult.harnessName,
+                    otelEnvVars,
+                    collector,
+                  }),
+                };
+              }
+              return { success: true as const, blockingPromise: Promise.resolve() };
             }
-            await runBrowserMode({
-              workingDir,
-              project,
-              port,
-              agentName: pickerResult.agentName,
-              harnessName: pickerResult.harnessName,
-              otelEnvVars,
-              collector,
-            });
-          }
-        } else {
+
             // Default: browser mode (blocks forever)
             recorder.set({ ui_mode: 'browser' as const });
             return {
