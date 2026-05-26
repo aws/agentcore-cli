@@ -1,4 +1,4 @@
-import { getWorkingDirectory, serializeResult } from '../../../lib';
+import { ValidationError, getWorkingDirectory, serializeResult } from '../../../lib';
 import type {
   BuildType,
   ModelProvider,
@@ -11,14 +11,14 @@ import { LIFECYCLE_TIMEOUT_MAX, LIFECYCLE_TIMEOUT_MIN } from '../../../schema';
 import { getErrorMessage } from '../../errors';
 import { runCliCommand } from '../../telemetry/cli-command-run.js';
 import {
+  AgentFramework,
+  AgentLanguage,
+  AgentProtocol,
   AgentType,
-  Build,
-  Framework,
-  Language,
-  Memory,
+  MemoryType,
   ModelProvider as ModelProviderEnum,
   NetworkMode as NetworkModeEnum,
-  Protocol,
+  BuildType as TelemetryBuildType,
   standardize,
 } from '../../telemetry/schemas/common-shapes.js';
 import { COMMAND_DESCRIPTIONS } from '../../tui/copy';
@@ -115,12 +115,12 @@ async function handleCreateCLI(options: CreateOptions): Promise<void> {
   }
 
   const knownAttrs = {
-    language: standardize(Language, options.language),
-    framework: standardize(Framework, options.framework),
+    agent_language: standardize(AgentLanguage, options.language),
+    agent_framework: standardize(AgentFramework, options.framework),
     model_provider: standardize(ModelProviderEnum, options.modelProvider),
-    memory: standardize(Memory, options.memory ?? 'none'),
-    protocol: standardize(Protocol, options.protocol ?? 'http'),
-    build: standardize(Build, options.build ?? 'codezip'),
+    memory_type: standardize(MemoryType, options.memory ?? 'none'),
+    agent_protocol: standardize(AgentProtocol, options.protocol ?? 'http'),
+    build_type: standardize(TelemetryBuildType, options.build ?? 'codezip'),
     agent_type: standardize(AgentType, options.type ?? 'create'),
     network_mode: standardize(NetworkModeEnum, options.networkMode ?? 'public'),
     has_agent: options.agent !== false,
@@ -132,7 +132,7 @@ async function handleCreateCLI(options: CreateOptions): Promise<void> {
     async () => {
       const validation = validateCreateOptions(options, cwd);
       if (!validation.valid) {
-        throw new Error(validation.error);
+        throw new ValidationError(validation.error!);
       }
       const green = '\x1b[32m';
       const reset = '\x1b[0m';
@@ -221,10 +221,10 @@ export const registerCreate = (program: Command) => {
     .option('--no-agent', 'Skip agent creation [non-interactive]')
     .option('--defaults', 'Use defaults (Python, Strands, Bedrock, no memory) [non-interactive]')
     .option('--build <type>', 'Build type: CodeZip or Container (default: CodeZip) [non-interactive]')
-    .option('--language <language>', 'Target language (default: Python) [non-interactive]')
+    .option('--language <language>', 'Target language: Python or TypeScript (default: Python) [non-interactive]')
     .option(
       '--framework <framework>',
-      'Agent framework (Strands, LangChain_LangGraph, GoogleADK, OpenAIAgents) [non-interactive]'
+      'Agent framework (Strands, LangChain_LangGraph, GoogleADK, OpenAIAgents, VercelAI) [non-interactive]'
     )
     .option('--model-provider <provider>', 'Model provider (Bedrock, Anthropic, OpenAI, Gemini) [non-interactive]')
     .option('--api-key <key>', 'API key for non-Bedrock providers [non-interactive]')

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Run E2E tests locally, replicating the GitHub Actions e2e-tests.yml workflow.
+# Run E2E tests locally in the CI account, replicating the GitHub Actions e2e-tests.yml workflow.
 #
 # Required env vars:
 #   E2E_ROLE_ARN    — IAM role ARN to assume (grants access to the test account)

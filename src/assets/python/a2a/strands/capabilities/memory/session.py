@@ -25,7 +25,7 @@ def get_memory_session_manager(session_id: Optional[str], actor_id: str) -> Opti
         f"/users/{actor_id}/preferences": RetrievalConfig(top_k=3, relevance_score=0.5),
 {{/if}}
 {{#if (includes memoryProviders.[0].strategies "SUMMARIZATION")}}
-        f"/summaries/{actor_id}/{session_id}": RetrievalConfig(top_k=3, relevance_score=0.5),
+        f"/summaries/{actor_id}": RetrievalConfig(top_k=3, relevance_score=0.5),
 {{/if}}
     }
 {{/if}}

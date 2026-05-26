@@ -1,8 +1,8 @@
 import type { RuntimeVersion } from '../../schema';
 import { CONFIG_DIR } from '../constants';
+import { ArtifactSizeError, MissingDependencyError, MissingProjectFileError } from '../errors/types';
 import { isWindows } from '../utils/platform';
 import { checkSubprocess, checkSubprocessSync, runSubprocess } from '../utils/subprocess';
-import { ArtifactSizeError, MissingDependencyError, MissingProjectFileError } from './errors';
 import type { PackageOptions } from './types/packaging';
 import type { Zippable } from 'fflate';
 import { zipSync } from 'fflate';
@@ -270,6 +270,79 @@ export function resolveProjectPathsSync(options: PackageOptions = {}, agentName?
     projectRoot,
     srcDir,
     pyprojectPath,
+    artifactDir,
+    buildDir,
+    stagingDir,
+    artifactsDir,
+  };
+}
+
+/**
+ * Resolve filesystem paths for a Node.js/TypeScript agent project during packaging.
+ *
+ * Locates the nearest package.json (equivalent of pyproject.toml for Python agents),
+ * then derives:
+ * - projectRoot: directory containing package.json
+ * - srcDir: source directory (defaults to projectRoot)
+ * - artifactDir: where CDK config and build outputs live (agentcore/ directory)
+ * - buildDir/stagingDir: per-agent temp directories used during CodeZip packaging
+ *
+ * Note: `pyprojectPath` in the return type is reused from the Python ResolvedPaths
+ * interface — for Node projects it points to package.json.
+ */
+export async function resolveNodeProjectPaths(
+  options: PackageOptions = {},
+  agentName?: string
+): Promise<ResolvedPaths> {
+  const startDir = options.projectRoot ? resolve(options.projectRoot) : process.cwd();
+  const candidatePackageJson = await findUp('package.json', startDir);
+
+  if (!candidatePackageJson || !(await pathExists(candidatePackageJson))) {
+    throw new MissingProjectFileError(join(startDir, 'package.json'));
+  }
+
+  const projectRoot = options.projectRoot ? resolve(options.projectRoot) : dirname(candidatePackageJson);
+  const srcDir = resolve(projectRoot, options.srcDir ?? '.');
+  const artifactDir = resolve(options.artifactDir ?? join(projectRoot, CONFIG_DIR));
+
+  const name = agentName ?? 'default';
+  const buildDir = join(artifactDir, name);
+  const stagingDir = join(buildDir, 'staging');
+  const artifactsDir = artifactDir;
+
+  return {
+    projectRoot,
+    srcDir,
+    pyprojectPath: candidatePackageJson,
+    artifactDir,
+    buildDir,
+    stagingDir,
+    artifactsDir,
+  };
+}
+
+/** Synchronous version of resolveNodeProjectPaths — used in contexts where async is not available. */
+export function resolveNodeProjectPathsSync(options: PackageOptions = {}, agentName?: string): ResolvedPaths {
+  const startDir = options.projectRoot ? resolve(options.projectRoot) : process.cwd();
+  const candidatePackageJson = findUpSync('package.json', startDir);
+
+  if (!candidatePackageJson || !pathExistsSync(candidatePackageJson)) {
+    throw new MissingProjectFileError(join(startDir, 'package.json'));
+  }
+
+  const projectRoot = options.projectRoot ? resolve(options.projectRoot) : dirname(candidatePackageJson);
+  const srcDir = resolve(projectRoot, options.srcDir ?? '.');
+  const artifactDir = resolve(options.artifactDir ?? join(projectRoot, CONFIG_DIR));
+
+  const name = agentName ?? 'default';
+  const buildDir = join(artifactDir, name);
+  const stagingDir = join(buildDir, 'staging');
+  const artifactsDir = artifactDir;
+
+  return {
+    projectRoot,
+    srcDir,
+    pyprojectPath: candidatePackageJson,
     artifactDir,
     buildDir,
     stagingDir,

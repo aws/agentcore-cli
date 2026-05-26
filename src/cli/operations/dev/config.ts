@@ -29,27 +29,13 @@ function isPythonAgent(agent: AgentEnvSpec): boolean {
  * Checks if dev mode is supported for the given agent.
  *
  * Requirements:
- * - Agent must target Python (TypeScript support not yet implemented)
- * - CodeZip agents must have entrypoint
+ * - Agent must have an entrypoint
  */
 function isDevSupported(agent: AgentEnvSpec): DevSupportResult {
   if (!agent.entrypoint) {
     return {
       supported: false,
       reason: `Agent "${agent.name}" is missing entrypoint.`,
-    };
-  }
-
-  // Container agents are supported for dev mode (requires local container runtime)
-  if (agent.build === 'Container') {
-    return { supported: true };
-  }
-
-  // Currently only Python is supported for CodeZip dev mode
-  if (!isPythonAgent(agent)) {
-    return {
-      supported: false,
-      reason: `Dev mode only supports Python agents. Agent "${agent.name}" does not appear to be a Python agent.`,
     };
   }
 

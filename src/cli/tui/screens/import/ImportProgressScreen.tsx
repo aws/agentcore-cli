@@ -1,11 +1,13 @@
 import type { ImportResourceResult, ImportResult } from '../../../commands/import/types';
 import { IMPORTABLE_RESOURCES } from '../../../commands/import/types';
+import { withCommandRunTelemetry } from '../../../telemetry/cli-command-run.js';
 import { Panel } from '../../components/Panel';
 import { Screen } from '../../components/Screen';
 import { type Step, StepProgress } from '../../components/StepProgress';
 import { HELP_TEXT } from '../../constants';
-import type { ImportType } from './ImportSelectScreen';
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import type { ImportType } from './types.js';
+import { toTelemetryCommand } from './utils.js';
+import { useCallback, useEffect, useRef, useState } from 'react';
 
 interface ImportProgressScreenProps {
   importType: ImportType;
@@ -41,44 +43,38 @@ export function ImportProgressScreen({
     started.current = true;
 
     const run = async () => {
-      if ((IMPORTABLE_RESOURCES as readonly string[]).includes(importType)) {
-        const handler =
-          importType === 'runtime'
-            ? (await import('../../../commands/import/import-runtime')).handleImportRuntime
-            : importType === 'memory'
-              ? (await import('../../../commands/import/import-memory')).handleImportMemory
-              : importType === 'evaluator'
-                ? (await import('../../../commands/import/import-evaluator')).handleImportEvaluator
-                : importType === 'gateway'
-                  ? (await import('../../../commands/import/import-gateway')).handleImportGateway
-                  : (await import('../../../commands/import/import-online-eval')).handleImportOnlineEval;
+      const telemetryResult = await withCommandRunTelemetry(
+        toTelemetryCommand(importType),
+        {},
+        async (): Promise<ImportResourceResult | ImportResult> => {
+          if ((IMPORTABLE_RESOURCES as readonly string[]).includes(importType)) {
+            const handler =
+              importType === 'runtime'
+                ? (await import('../../../commands/import/import-runtime')).handleImportRuntime
+                : importType === 'memory'
+                  ? (await import('../../../commands/import/import-memory')).handleImportMemory
+                  : importType === 'evaluator'
+                    ? (await import('../../../commands/import/import-evaluator')).handleImportEvaluator
+                    : importType === 'gateway'
+                      ? (await import('../../../commands/import/import-gateway')).handleImportGateway
+                      : (await import('../../../commands/import/import-online-eval')).handleImportOnlineEval;
 
-        const result = await handler({ arn, code, onProgress });
-        if (result.success) {
-          setSteps(prev => prev.map(s => (s.status === 'running' ? { ...s, status: 'success' } : s)));
-          onSuccess(result);
-        } else {
-          setSteps(prev =>
-            prev.map(s => (s.status === 'running' ? { ...s, status: 'error', error: result.error.message } : s))
-          );
-          onError(result.error.message ?? 'Import failed');
+            return handler({ arn, code, onProgress });
+          } else {
+            const { handleImport } = await import('../../../commands/import/actions');
+            return handleImport({ source: yamlPath!, onProgress });
+          }
         }
+      );
+
+      if (telemetryResult.success) {
+        setSteps(prev => prev.map(s => (s.status === 'running' ? { ...s, status: 'success' } : s)));
+        onSuccess(telemetryResult);
       } else {
-        // Starter toolkit
-        const { handleImport } = await import('../../../commands/import/actions');
-        const result = await handleImport({
-          source: yamlPath!,
-          onProgress,
-        });
-        if (result.success) {
-          setSteps(prev => prev.map(s => (s.status === 'running' ? { ...s, status: 'success' } : s)));
-          onSuccess(result);
-        } else {
-          setSteps(prev =>
-            prev.map(s => (s.status === 'running' ? { ...s, status: 'error', error: result.error.message } : s))
-          );
-          onError(result.error.message ?? 'Import failed');
-        }
+        setSteps(prev =>
+          prev.map(s => (s.status === 'running' ? { ...s, status: 'error', error: telemetryResult.error.message } : s))
+        );
+        onError(telemetryResult.error.message ?? 'Import failed');
       }
     };
 

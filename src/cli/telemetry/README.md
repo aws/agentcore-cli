@@ -1,121 +1,97 @@
-# Adding New Telemetry Metrics
+# Telemetry
 
-## Overview
+## Adding a New Metric
 
-Every CLI command emits a `command_run` metric with a command key, exit reason, and command-specific attributes. This
-guide shows how to add telemetry to a new command.
+### 1. Define attributes in `schemas/common-shapes.ts`
 
-## Step 1: Register the command in `schemas/command-run.ts`
-
-Add an entry to `COMMAND_SCHEMAS`:
+Skip if reusing existing attributes.
 
 ```ts
-// No attributes:
-'remove.widget': NoAttrs,
+export const ToolName = z.enum(['read_file', 'write_file', 'search']);
+```
 
-// With attributes:
-'add.widget': safeSchema({
-  widget_type: WidgetType,   // z.enum(), z.boolean(), z.number(), or z.literal() only
+Add to the `ATTRIBUTES` object using the field name as the key:
+
+```ts
+export const ATTRIBUTES = {
+  // ...existing
+  tool_name: ToolName,
+} as const;
+```
+
+### 2. Register the metric in `schemas/registry.ts`
+
+Add an entry to `METRICS` with a description, and a corresponding `MetricAttrs` branch:
+
+```ts
+export const METRICS = {
+  'cli.command_run': { description: 'CLI/TUI Command Execution' },
+  'cli.mcp_tool_call': { description: 'MCP tool invocation' },
+} as const satisfies MetricRegistry;
+
+export type MetricAttrs<M extends MetricName> = M extends 'cli.command_run'
+  ? CommandRunAttrs
+  : M extends 'cli.mcp_tool_call'
+    ? { tool_name: z.infer<typeof ATTRIBUTES.tool_name>; success: boolean }
+    : never;
+```
+
+### 3. Emit it
+
+```ts
+client.emit('cli.mcp_tool_call', durationMs, { tool_name: 'read_file', success: true });
+```
+
+Wrong metric name or missing attrs = compile error.
+
+---
+
+## Adding a New Command (to `cli.command_run`)
+
+### 1. Define the command's attribute schema in `schemas/command-run.ts`
+
+```ts
+const AddWidgetAttrs = safeSchema({
+  widget_type: WidgetType,
   count: Count,
-}),
+});
 ```
 
-`safeSchema` enforces allowed field types at compile time. No `z.string()` fields.
-
-## Step 2: Add enums to `schemas/common-shapes.ts`
+Add to `COMMAND_SCHEMAS`:
 
 ```ts
-export const WidgetType = z.enum(['basic', 'advanced']);
+'add.widget': AddWidgetAttrs,
 ```
 
-Use `standardize()` to normalize input before recording:
+The `Command` type and optional fields in `MetricAttrs<'cli.command_run'>` are derived automatically from
+`COMMAND_SCHEMAS`.
 
-```ts
-import { WidgetType, standardize } from '../telemetry/schemas/common-shapes.js';
+### 2. Instrument the handler
 
-const type = standardize(WidgetType, userInput);
-```
-
-## Step 3: Instrument the command handler
-
-Use **`withCommandRunTelemetry`** — the primary helper for recording telemetry:
-
-```ts
-import { withCommandRunTelemetry } from '../telemetry/cli-command-run.js';
-
-const result = await withCommandRunTelemetry('remove.gateway', {}, () => this.remove(name));
-```
-
-**Signature:**
-
-```ts
-async function withCommandRunTelemetry<C extends Command, R extends OperationResult>(
-  command: C,
-  attrs: CommandAttrs<C>,
-  fn: () => Promise<R>
-): Promise<R>;
-```
-
-- `command` — the registered command key (e.g. `'add.widget'`)
-- `attrs` — attribute object matching the schema registered in Step 1
-- `fn` — async callback returning `Result<T>` (from `src/lib/result.ts`)
-
-**Behavior:**
-
-- On success: records `attrs` with `exit_reason: 'success'`, returns the result.
-- On failure/throw: records `attrs` with `exit_reason: 'failure'`, returns `{ success: false, error }`.
-- If telemetry is unavailable: runs `fn()` untracked.
-
-Since `attrs` are passed upfront, they are always recorded — even on failure.
-
-**Example with attributes:**
+Use `withCommandRunTelemetry`:
 
 ```ts
 const result = await withCommandRunTelemetry(
   'add.widget',
-  { widget_type: standardize(WidgetType, config.type), count: config.items.length },
+  { widget_type: standardize(WidgetType, input), count: items.length },
   () => widgetPrimitive.add(config)
 );
-
-if (!result.success) {
-  console.error(result.error);
-  process.exit(1);
-}
 ```
 
-### `runCliCommand` (alternative for top-level CLI handlers)
-
-For CLI handlers that own `process.exit`, use `runCliCommand` instead. The callback throws on failure and returns attrs
-on success:
+Or `runCliCommand` for top-level CLI handlers that own `process.exit`:
 
 ```ts
-await runCliCommand('add.widget', !!options.json, async () => {
-  const result = await widgetPrimitive.add(options);
-  if (!result.success) throw new Error(result.error);
-  return { widget_type: standardize(WidgetType, options.type), count: options.items.length };
+await runCliCommand('add.widget', !!opts.json, async () => {
+  await widgetPrimitive.add(opts);
+  return { widget_type: standardize(WidgetType, opts.type), count: opts.items.length };
 });
 ```
 
-To record attrs on failure, pass `knownAttrs` as the fourth argument:
+---
 
-```ts
-const knownAttrs = { widget_type: standardize(WidgetType, options.type), count: options.items.length };
-await runCliCommand(
-  'add.widget',
-  !!options.json,
-  async () => {
-    const result = await widgetPrimitive.add(options);
-    if (!result.success) throw new Error(result.error);
-    return knownAttrs;
-  },
-  knownAttrs
-);
-```
+## Key Rules
 
-## Key Points
-
-- Telemetry never crashes the CLI — `standardize()` falls back gracefully, `resilientParse` defaults invalid fields to
-  `'unknown'`.
-- Prefer `withCommandRunTelemetry` for new code — it returns the `Result` for the caller to handle output and control
-  flow.
-- Use `runCliCommand` only when the handler owns `process.exit` and prints its own output.
+- `safeSchema` only allows `z.enum()`, `z.boolean()`, `z.number()`, `z.literal()`. No `z.string()`.
+- `standardize(schema, value)` lowercases and validates enum values. Invalid values fall through gracefully.
+- `resilientParse` validates each field independently — one bad field defaults to `'unknown'`, never drops the metric.
+- Telemetry never crashes the CLI.

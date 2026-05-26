@@ -68,6 +68,35 @@ function ensurePythonVenv(
 }
 
 /**
+ * Ensures Node dependencies are installed. Runs the appropriate package manager
+ * install if `node_modules` is missing. Detects pnpm/yarn via lockfile, else npm.
+ */
+function ensureNodeDeps(cwd: string, onLog: (level: LogLevel, message: string) => void): boolean {
+  if (existsSync(join(cwd, 'node_modules'))) {
+    return true;
+  }
+
+  let cmd = 'npm';
+  let args = ['install'];
+  if (existsSync(join(cwd, 'pnpm-lock.yaml'))) {
+    cmd = 'pnpm';
+    args = ['install'];
+  } else if (existsSync(join(cwd, 'yarn.lock'))) {
+    cmd = 'yarn';
+    args = ['install'];
+  }
+
+  onLog('system', 'Installing Node dependencies...');
+  const result = spawnSync(cmd, args, { cwd, stdio: 'pipe' });
+  if (result.status !== 0) {
+    onLog('error', `Failed to install Node dependencies: ${result.stderr?.toString() || 'unknown error'}`);
+    return false;
+  }
+  onLog('system', 'Node dependencies ready');
+  return true;
+}
+
+/**
  * Locate the directory containing OpenTelemetry's auto-instrumentation sitecustomize.py.
  * When this directory is prepended to PYTHONPATH, Python will execute sitecustomize.py
  * on startup, which bootstraps OTEL auto-instrumentation in every process.
@@ -99,7 +128,7 @@ export class CodeZipDevServer extends DevServer {
     return Promise.resolve(
       this.config.isPython
         ? ensurePythonVenv(this.config.directory, this.options.callbacks.onLog, this.config.protocol)
-        : true
+        : ensureNodeDeps(this.config.directory, this.options.callbacks.onLog)
     );
   }
 
@@ -118,9 +147,11 @@ export class CodeZipDevServer extends DevServer {
     }
 
     if (!isPython) {
+      // TS entrypoint is already a file path like "main.ts" — pass it straight to tsx.
+      const entryFile = module.split(':')[0] ?? module;
       return {
         cmd: 'npx',
-        args: ['tsx', 'watch', (module.split(':')[0] ?? module).replace(/\./g, '/') + '.ts'],
+        args: ['tsx', 'watch', entryFile],
         cwd: directory,
         env,
       };

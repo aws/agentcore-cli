@@ -28,6 +28,16 @@ interface AgentCoreProjectSpec {
   abTests: ABTest[]; // Unique by name — A/B test experiments
   /** @internal Auto-managed by AB test creation. Do not configure directly. */
   httpGateways: HttpGateway[]; // Unique by name — HTTP gateways bound to a runtime
+  datasets: DatasetSpec[]; // Unique by name — datasets for Dataset Management
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// DATASET
+// ─────────────────────────────────────────────────────────────────────────────
+
+interface DatasetSpec {
+  name: string; // @regex ^[a-zA-Z][a-zA-Z0-9_]{0,47}$ @max 48
+  description?: string;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -103,8 +113,12 @@ interface MemoryStrategy {
   type: MemoryStrategyType;
   name?: string; // @regex ^[a-zA-Z][a-zA-Z0-9_]{0,47}$ @max 48
   description?: string;
+  namespaceTemplates?: string[];
+  reflectionNamespaceTemplates?: string[]; // EPISODIC only: templates for cross-episode reflections
+  /** @deprecated Use namespaceTemplates instead. */
   namespaces?: string[];
-  reflectionNamespaces?: string[]; // EPISODIC only: namespaces for cross-episode reflections
+  /** @deprecated Use reflectionNamespaceTemplates instead. */
+  reflectionNamespaces?: string[];
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

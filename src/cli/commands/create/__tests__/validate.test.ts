@@ -125,13 +125,27 @@ describe('validateCreateOptions', () => {
     expect(result.error).toContain('Invalid language');
   });
 
-  it('returns invalid for TypeScript language', () => {
+  it('accepts TypeScript with Strands framework', () => {
     const result = validateCreateOptions(
       { name: 'TestProj4', language: 'TypeScript', framework: 'Strands', modelProvider: 'Bedrock', memory: 'none' },
       testDir
     );
+    expect(result.valid).toBe(true);
+  });
+
+  it('rejects TypeScript with a non-Strands framework', () => {
+    const result = validateCreateOptions(
+      {
+        name: 'TestProj4b',
+        language: 'TypeScript',
+        framework: 'LangChain_LangGraph',
+        modelProvider: 'Bedrock',
+        memory: 'none',
+      },
+      testDir
+    );
     expect(result.valid).toBe(false);
-    expect(result.error).toContain('TypeScript is not yet supported');
+    expect(result.error).toContain('is not yet available for TypeScript');
   });
 
   it('returns invalid for invalid framework', () => {

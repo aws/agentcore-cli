@@ -12,7 +12,7 @@
  * Without log records the mapper produces "zero trajectories".
  */
 import type { SessionSpan } from '../../aws/agentcore-recommendation';
-import { searchLogs } from '../../aws/cloudwatch';
+import { runtimeLogGroup, searchLogs } from '../../aws/cloudwatch';
 
 export interface FetchSessionSpansOptions {
   /** AWS region */
@@ -47,7 +47,7 @@ const SPANS_LOG_GROUP = 'aws/spans';
 export async function fetchSessionSpans(options: FetchSessionSpansOptions): Promise<FetchSessionSpansResult> {
   const { region, runtimeId, sessionId, lookbackDays = 7, onProgress } = options;
 
-  const runtimeLogGroup = `/aws/bedrock-agentcore/runtimes/${runtimeId}-DEFAULT`;
+  const runtimeLogGroupName = runtimeLogGroup(runtimeId);
   const endTimeMs = Date.now();
   const startTimeMs = endTimeMs - lookbackDays * 24 * 60 * 60 * 1000;
 
@@ -62,7 +62,7 @@ export async function fetchSessionSpans(options: FetchSessionSpansOptions): Prom
       filterPattern: `"session.id" "${sessionId}"`,
     }),
     collectLogEvents({
-      logGroupName: runtimeLogGroup,
+      logGroupName: runtimeLogGroupName,
       region,
       startTimeMs,
       endTimeMs,

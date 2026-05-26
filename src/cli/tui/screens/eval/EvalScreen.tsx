@@ -280,14 +280,23 @@ function RunDetailView({ run, onBack, maxHeight }: { run: EvalRunResult; onBack:
           <Text bold>Agent:</Text> {run.agent}
           {'  '}
           <Text bold>Date:</Text> {formatFullDate(run.timestamp)}
-          {'  '}
-          <Text bold>Lookback:</Text> {run.lookbackDays}d
+          {run.source !== 'dataset' && (
+            <>
+              {'  '}
+              <Text bold>Lookback:</Text> {run.lookbackDays}d
+            </>
+          )}
         </Text>
         <Text>
           <Text bold>Sessions:</Text> {run.sessionCount}
           {'  '}
           <Text bold>Evaluators:</Text> {run.evaluators.map(shortEvalName).join(', ')}
         </Text>
+        {run.source === 'dataset' && run.dataset && (
+          <Text>
+            <Text bold>Dataset:</Text> {run.dataset.id} (version: {run.dataset.version})
+          </Text>
+        )}
       </Box>
       <Text color="gray">{'─'.repeat(60)}</Text>
       {run.results.map((result, i) => (

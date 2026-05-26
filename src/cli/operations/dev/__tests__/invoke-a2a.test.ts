@@ -1,4 +1,4 @@
-import { ServerError } from '../invoke';
+import { ServerError } from '../../../../lib/errors/types';
 import { invokeA2AStreaming } from '../invoke-a2a';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 

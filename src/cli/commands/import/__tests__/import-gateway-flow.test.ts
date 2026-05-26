@@ -63,6 +63,13 @@ vi.mock('../../../../lib', () => ({
       this.name = 'NoProjectError';
     }
   },
+  ValidationError: class ValidationError extends Error {
+    constructor(msg: string) {
+      super(msg);
+      this.name = 'ValidationError';
+    }
+  },
+  toError: (err: unknown) => (err instanceof Error ? err : new Error(String(err))),
   findConfigRoot: (...args: unknown[]) => mockFindConfigRoot(...args),
 }));
 

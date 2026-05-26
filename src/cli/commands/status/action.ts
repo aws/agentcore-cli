@@ -23,6 +23,7 @@ export interface ResourceStatusEntry {
     | 'policy'
     | 'config-bundle'
     | 'ab-test'
+    | 'dataset'
     | 'runtime-endpoint';
   name: string;
   deploymentState: ResourceDeploymentState;
@@ -36,6 +37,7 @@ export interface ResourceStatusEntry {
 export type ProjectStatusResult = Result<{
   targetRegion?: string;
   resources: ResourceStatusEntry[];
+  deployedState: DeployedState;
 }> & { projectName?: string; targetName?: string; logPath?: string; resources?: ResourceStatusEntry[] };
 
 export interface StatusContext {
@@ -238,6 +240,14 @@ export function computeResourceStatuses(
     getLocalDetail: item => item.description,
   });
 
+  const datasets = diffResourceSet({
+    resourceType: 'dataset',
+    localItems: project.datasets ?? [],
+    deployedRecord: resources?.datasets ?? {},
+    getIdentifier: deployed => deployed.datasetArn,
+    getLocalDetail: item => item.schemaType,
+  });
+
   const abTests = diffResourceSet({
     resourceType: 'ab-test',
     localItems: project.abTests ?? [],
@@ -296,6 +306,7 @@ export function computeResourceStatuses(
     ...onlineEvalConfigs,
     ...policyEngines,
     ...policies,
+    ...datasets,
     ...configBundles,
     ...abTests,
   ];
@@ -480,6 +491,7 @@ export async function handleProjectStatus(
     targetName: selectedTargetName ?? '',
     targetRegion: targetConfig?.region,
     resources,
+    deployedState,
     logPath: logger.getRelativeLogPath(),
   };
 }

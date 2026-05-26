@@ -2,6 +2,7 @@ import type { LogEntry } from '../LogPanel.js';
 import { LogPanel } from '../LogPanel.js';
 import { render } from 'ink-testing-library';
 import React from 'react';
+import stripAnsi from 'strip-ansi';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 const UP_ARROW = '\x1B[A';
@@ -19,7 +20,7 @@ describe('LogPanel', () => {
   describe('empty state', () => {
     it('renders "No output yet" with no other content', () => {
       const { lastFrame } = render(<LogPanel logs={[]} />);
-      expect(lastFrame()).toBe('No output yet');
+      expect(stripAnsi(lastFrame()!)).toBe('No output yet');
     });
   });
 

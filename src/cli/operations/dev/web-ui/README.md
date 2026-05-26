@@ -209,9 +209,13 @@ Response:
 { "success": true, "spans": [...] }
 ```
 
-### `GET /api/memory?memoryName=xxx&namespace=yyy[&strategyId=zzz]`
+### `GET /api/memory?memoryName=xxx&(namespace=yyy|namespacePath=yyy)[&strategyId=zzz]`
 
-Lists memory records for a given memory and namespace. Requires a deployed memory with `onListMemoryRecords` handler.
+Lists memory records for a given memory, filtered by either an exact namespace or a namespace path prefix. Requires a
+deployed memory with `onListMemoryRecords` handler.
+
+Exactly one of `namespace` (exact match) or `namespacePath` (hierarchical path prefix) must be provided. Supplying both
+returns HTTP 400.
 
 Response:
 
@@ -223,10 +227,18 @@ Response:
 
 Performs semantic search across memory records. Requires a deployed memory with `onRetrieveMemoryRecords` handler.
 
+Exactly one of `namespace` or `namespacePath` must be provided in the request body.
+
 Request:
 
 ```json
-{ "memoryName": "MyMemory", "namespace": "/users/123/facts", "searchQuery": "preferences", "strategyId": "optional" }
+{ "memoryName": "MyMemory", "namespacePath": "/users/123/", "searchQuery": "preferences", "strategyId": "optional" }
+```
+
+Or with exact-match semantics:
+
+```json
+{ "memoryName": "MyMemory", "namespace": "/users/123/facts", "searchQuery": "preferences" }
 ```
 
 Response:

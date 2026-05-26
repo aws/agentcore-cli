@@ -20,6 +20,7 @@ describe('detectContainerRuntime', () => {
     mockCheckSubprocess.mockResolvedValue(true);
     mockRunSubprocessCapture.mockImplementation((_bin: string, args: string[]) => {
       if (args[0] === '--version') return Promise.resolve({ code: 0, stdout: 'Docker version 24.0.0\n', stderr: '' });
+      if (args[0] === 'build') return Promise.resolve({ code: 0, stdout: '', stderr: '' });
       return Promise.resolve({ code: 1, stdout: '', stderr: '' });
     });
 
@@ -36,6 +37,7 @@ describe('detectContainerRuntime', () => {
     mockRunSubprocessCapture.mockImplementation((bin: string, args: string[]) => {
       if (bin === 'podman' && args[0] === '--version')
         return Promise.resolve({ code: 0, stdout: 'podman version 4.5.0\n', stderr: '' });
+      if (bin === 'podman' && args[0] === 'build') return Promise.resolve({ code: 0, stdout: '', stderr: '' });
       return Promise.resolve({ code: 1, stdout: '', stderr: '' });
     });
 
@@ -57,6 +59,7 @@ describe('detectContainerRuntime', () => {
       if (bin === 'docker' && args[0] === '--version') return Promise.resolve({ code: 1, stdout: '', stderr: 'error' });
       if (bin === 'podman' && args[0] === '--version')
         return Promise.resolve({ code: 0, stdout: 'podman version 4.5.0\n', stderr: '' });
+      if (bin === 'podman' && args[0] === 'build') return Promise.resolve({ code: 0, stdout: '', stderr: '' });
       // finch --version also fails
       if (bin === 'finch' && args[0] === '--version') return Promise.resolve({ code: 1, stdout: '', stderr: 'error' });
       return Promise.resolve({ code: 1, stdout: '', stderr: '' });
@@ -71,6 +74,7 @@ describe('detectContainerRuntime', () => {
     mockRunSubprocessCapture.mockImplementation((_bin: string, args: string[]) => {
       if (args[0] === '--version')
         return Promise.resolve({ code: 0, stdout: 'Docker version 24.0.0\nExtra info line\n', stderr: '' });
+      if (args[0] === 'build') return Promise.resolve({ code: 0, stdout: '', stderr: '' });
       return Promise.resolve({ code: 1, stdout: '', stderr: '' });
     });
 
@@ -82,6 +86,7 @@ describe('detectContainerRuntime', () => {
     mockCheckSubprocess.mockResolvedValue(true);
     mockRunSubprocessCapture.mockImplementation((_bin: string, args: string[]) => {
       if (args[0] === '--version') return Promise.resolve({ code: 0, stdout: '', stderr: '' });
+      if (args[0] === 'build') return Promise.resolve({ code: 0, stdout: '', stderr: '' });
       return Promise.resolve({ code: 1, stdout: '', stderr: '' });
     });
 
@@ -90,20 +95,30 @@ describe('detectContainerRuntime', () => {
     expect(result.runtime?.version).toBe('');
   });
 
-  it('does not call docker info to check daemon status', async () => {
+  it('skips runtime when build --help check fails with non-zero exit', async () => {
     mockCheckSubprocess.mockResolvedValue(true);
     mockRunSubprocessCapture.mockImplementation((_bin: string, args: string[]) => {
-      if (args[0] === '--version') return Promise.resolve({ code: 0, stdout: 'Docker version 24.0.0\n', stderr: '' });
+      if (args[0] === '--version') return Promise.resolve({ code: 0, stdout: '1.0.0\n', stderr: '' });
+      if (args[0] === 'build') return Promise.resolve({ code: 1, stdout: '', stderr: 'unknown command "build"' });
       return Promise.resolve({ code: 1, stdout: '', stderr: '' });
     });
 
-    await detectContainerRuntime();
+    const result = await detectContainerRuntime();
+    expect(result.runtime).toBeNull();
+  });
 
-    // Verify 'info' was never called — this is the key behavioral change
-    const infoCalls = mockRunSubprocessCapture.mock.calls.filter(
-      (call: unknown[]) => (call[1] as string[])[0] === 'info'
-    );
-    expect(infoCalls).toHaveLength(0);
+  it('skips runtime when build --help exits 0 but stderr indicates unknown command (shim/wrapper)', async () => {
+    mockCheckSubprocess.mockResolvedValue(true);
+    mockRunSubprocessCapture.mockImplementation((_bin: string, args: string[]) => {
+      // Shim exits 0 for everything but prints error to stderr
+      if (args[0] === '--version') return Promise.resolve({ code: 0, stdout: '1.0.0\n', stderr: '' });
+      if (args[0] === 'build')
+        return Promise.resolve({ code: 0, stdout: '', stderr: 'Error: unknown command "build" for "ada"' });
+      return Promise.resolve({ code: 0, stdout: '', stderr: '' });
+    });
+
+    const result = await detectContainerRuntime();
+    expect(result.runtime).toBeNull();
   });
 });
 
@@ -112,6 +127,7 @@ describe('requireContainerRuntime', () => {
     mockCheckSubprocess.mockResolvedValue(true);
     mockRunSubprocessCapture.mockImplementation((_bin: string, args: string[]) => {
       if (args[0] === '--version') return Promise.resolve({ code: 0, stdout: 'Docker version 24.0.0\n', stderr: '' });
+      if (args[0] === 'build') return Promise.resolve({ code: 0, stdout: '', stderr: '' });
       return Promise.resolve({ code: 1, stdout: '', stderr: '' });
     });
 

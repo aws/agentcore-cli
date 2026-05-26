@@ -1,4 +1,5 @@
-import { PollExhaustedError, PollTimeoutError, isThrottlingError, poll } from '../../../lib/utils/polling';
+import { PollExhaustedError, PollTimeoutError } from '../../../lib/errors/types';
+import { isThrottlingError, poll } from '../../../lib/utils/polling';
 import { getCredentialProvider } from '../../aws/account';
 import type { CfnTemplate } from './template-utils';
 import { buildImportTemplate } from './template-utils';

@@ -1,7 +1,9 @@
 import { CodeZipDevServer } from '../codezip-dev-server';
 import type { DevConfig } from '../config';
 import type { DevServerCallbacks, DevServerOptions } from '../dev-server';
+import { spawnSync } from 'child_process';
 import { EventEmitter } from 'events';
+import { existsSync } from 'fs';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const mockSpawn = vi.fn();
@@ -13,6 +15,9 @@ vi.mock('child_process', () => ({
 vi.mock('fs', () => ({
   existsSync: vi.fn(() => true),
 }));
+
+const mockSpawnSync = vi.mocked(spawnSync);
+const mockExistsSync = vi.mocked(existsSync);
 
 vi.mock('../../../../lib/utils/platform', () => ({
   getVenvExecutable: (venvPath: string, executable: string) => `${venvPath}/bin/${executable}`,
@@ -119,6 +124,82 @@ describe('CodeZipDevServer spawn config', () => {
     expect(env.PORT).toBe('8080');
     expect(env.LOCAL_DEV).toBe('1');
     expect(env.MY_KEY).toBe('secret');
+  });
+
+  it('TypeScript HTTP: uses npx tsx watch with the entry file', async () => {
+    const config: DevConfig = {
+      agentName: 'TsAgent',
+      module: 'main.ts',
+      directory: '/project/app',
+      hasConfig: true,
+      isPython: false,
+      buildType: 'CodeZip',
+      protocol: 'HTTP',
+    };
+
+    const server = new CodeZipDevServer(config, defaultOptions);
+    await server.start();
+
+    expect(mockSpawn).toHaveBeenCalledWith(
+      'npx',
+      ['tsx', 'watch', 'main.ts'],
+      expect.objectContaining({ cwd: '/project/app' })
+    );
+    const env = mockSpawn.mock.calls[0]![2].env;
+    expect(env.PORT).toBe('8080');
+    expect(env.LOCAL_DEV).toBe('1');
+  });
+
+  it('TypeScript: installs node dependencies when node_modules missing', async () => {
+    mockExistsSync.mockImplementation((p: unknown) => {
+      const s = String(p);
+      if (s.endsWith('node_modules')) return false;
+      if (s.endsWith('pnpm-lock.yaml')) return false;
+      if (s.endsWith('yarn.lock')) return false;
+      return true;
+    });
+    mockSpawnSync.mockClear();
+    mockSpawnSync.mockReturnValue({
+      status: 0,
+      stdout: Buffer.from(''),
+      stderr: Buffer.from(''),
+    } as any);
+
+    const config: DevConfig = {
+      agentName: 'TsAgent',
+      module: 'main.ts',
+      directory: '/project/app',
+      hasConfig: true,
+      isPython: false,
+      buildType: 'CodeZip',
+      protocol: 'HTTP',
+    };
+
+    const server = new CodeZipDevServer(config, defaultOptions);
+    await server.start();
+
+    expect(mockSpawnSync).toHaveBeenCalledWith('npm', ['install'], expect.objectContaining({ cwd: '/project/app' }));
+    mockExistsSync.mockImplementation(() => true);
+  });
+
+  it('TypeScript: skips install when node_modules exists', async () => {
+    mockExistsSync.mockImplementation(() => true);
+    mockSpawnSync.mockClear();
+
+    const config: DevConfig = {
+      agentName: 'TsAgent',
+      module: 'main.ts',
+      directory: '/project/app',
+      hasConfig: true,
+      isPython: false,
+      buildType: 'CodeZip',
+      protocol: 'HTTP',
+    };
+
+    const server = new CodeZipDevServer(config, defaultOptions);
+    await server.start();
+
+    expect(mockSpawnSync).not.toHaveBeenCalledWith('npm', ['install'], expect.anything());
   });
 
   it('MCP: extracts file from module:function entrypoint', async () => {

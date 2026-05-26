@@ -106,7 +106,7 @@ export const STEP_LABELS: Record<GenerateStep, string> = {
 
 export const LANGUAGE_OPTIONS = [
   { id: 'Python', title: 'Python' },
-  { id: 'TypeScript', title: 'TypeScript (coming soon)', disabled: true },
+  { id: 'TypeScript', title: 'TypeScript' },
 ] as const;
 
 export const BUILD_TYPE_OPTIONS = [
@@ -121,19 +121,36 @@ export const PROTOCOL_OPTIONS = [
   { id: 'AGUI', title: 'AG-UI', description: 'Stream rich agent events to frontends' },
 ] as const;
 
+/**
+ * Get protocol options filtered by target language.
+ * TypeScript only supports HTTP.
+ */
+export function getProtocolOptionsForLanguage(language?: TargetLanguage) {
+  if (language === 'TypeScript') {
+    return PROTOCOL_OPTIONS.filter(option => option.id === 'HTTP');
+  }
+  return [...PROTOCOL_OPTIONS];
+}
+
 export const SDK_OPTIONS = [
   { id: 'Strands', title: 'Strands Agents SDK', description: 'AWS native agent framework' },
   { id: 'LangChain_LangGraph', title: 'LangChain + LangGraph', description: 'Popular open-source frameworks' },
   { id: 'GoogleADK', title: 'Google ADK', description: 'Google Agent Development Kit' },
   { id: 'OpenAIAgents', title: 'OpenAI Agents', description: 'OpenAI native agent SDK' },
+  { id: 'VercelAI', title: 'Vercel AI SDK', description: 'Vercel AI SDK for TypeScript agents' },
 ] as const;
 
 /**
- * Get SDK options filtered by protocol compatibility.
+ * Get SDK options filtered by protocol compatibility and target language.
+ * TypeScript currently only supports Strands.
  */
-export function getSDKOptionsForProtocol(protocol: ProtocolMode) {
+export function getSDKOptionsForProtocol(protocol: ProtocolMode, language?: TargetLanguage) {
   const supportedFrameworks = PROTOCOL_FRAMEWORK_MATRIX[protocol];
-  return SDK_OPTIONS.filter(option => supportedFrameworks.includes(option.id));
+  const byProtocol = SDK_OPTIONS.filter(option => supportedFrameworks.includes(option.id));
+  if (language === 'TypeScript') {
+    return byProtocol.filter(option => option.id === 'Strands' || option.id === 'VercelAI');
+  }
+  return byProtocol;
 }
 
 export const MODEL_PROVIDER_OPTIONS = [

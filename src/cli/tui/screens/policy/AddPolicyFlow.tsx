@@ -1,6 +1,6 @@
 import { policyEnginePrimitive, policyPrimitive } from '../../../primitives/registry';
 import { withCommandRunTelemetry } from '../../../telemetry/cli-command-run.js';
-import { AttachMode, ValidationMode, standardize } from '../../../telemetry/schemas/common-shapes.js';
+import { AttachMode, PolicyValidationMode, standardize } from '../../../telemetry/schemas/common-shapes.js';
 import {
   ErrorPrompt,
   Panel,
@@ -167,8 +167,12 @@ export function AddPolicyFlow({ isInteractive = true, onExit, onBack, onDev, onD
     const result = await withCommandRunTelemetry(
       'add.policy',
       {
-        source_type: config.sourceFile ? 'file' : config.sourceMethod === 'generate' ? 'generate' : 'statement',
-        validation_mode: standardize(ValidationMode, config.validationMode ?? 'FAIL_ON_ANY_FINDINGS'),
+        policy_attr_source_type: config.sourceFile
+          ? 'file'
+          : config.sourceMethod === 'generate'
+            ? 'generate'
+            : 'statement',
+        policy_validation_mode: standardize(PolicyValidationMode, config.validationMode ?? 'FAIL_ON_ANY_FINDINGS'),
       },
       () =>
         policyPrimitive.add({

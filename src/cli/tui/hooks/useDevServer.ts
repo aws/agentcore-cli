@@ -1,15 +1,14 @@
 import { findConfigRoot } from '../../../lib';
+import { ConnectionError, ServerError } from '../../../lib/errors/types';
 import type { AgentCoreProjectSpec, ProtocolMode } from '../../../schema';
 import { detectContainerRuntime } from '../../external-requirements';
 import { DevLogger } from '../../logging/dev-logger';
 import {
   type A2AAgentCard,
-  ConnectionError,
   type DevConfig,
   DevServer,
   type LogLevel,
   type McpTool,
-  ServerError,
   callMcpTool,
   createDevServer,
   fetchA2AAgentCard,
@@ -195,7 +194,9 @@ export function useDevServer(options: {
           // Detect when server is actually ready (only once)
           if (
             !serverReady &&
-            (message.includes('Application startup complete') || message.includes('Uvicorn running'))
+            (message.includes('Application startup complete') ||
+              message.includes('Uvicorn running') ||
+              message.includes('Server listening'))
           ) {
             serverReady = true;
             setStatus('running');

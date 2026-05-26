@@ -9,12 +9,14 @@ import { AddFlow } from './screens/add/AddFlow';
 import { CliOnlyScreen } from './screens/cli-only';
 import { ConfigBundleFlow } from './screens/config-bundle-hub';
 import { CreateScreen } from './screens/create';
+import { DatasetFlow } from './screens/dataset-hub';
 import { DeployScreen } from './screens/deploy/DeployScreen';
 import { EvalHubScreen, EvalScreen } from './screens/eval';
 import { FetchAccessScreen } from './screens/fetch-access';
 import { HelpScreen, HomeScreen } from './screens/home';
 import { ImportFlow } from './screens/import';
 import { InvokeScreen } from './screens/invoke';
+import { LogsScreen } from './screens/logs';
 import { OnlineEvalDashboard } from './screens/online-eval';
 import { PackageScreen } from './screens/package';
 import { RecommendationFlow, RecommendationHistoryScreen, RecommendationsHubScreen } from './screens/recommendation';
@@ -35,6 +37,7 @@ type Route =
   | { name: 'help'; initialQuery?: string }
   | { name: 'deploy' }
   | { name: 'invoke' }
+  | { name: 'logs' }
   | { name: 'create' }
   | { name: 'add' }
   | { name: 'status' }
@@ -54,6 +57,7 @@ type Route =
   | { name: 'package' }
   | { name: 'update' }
   | { name: 'config-bundle' }
+  | { name: 'dataset' }
   | { name: 'import' }
   | { name: 'ab-test' }
   | { name: 'cli-only'; commandId: string };
@@ -103,6 +107,8 @@ function AppContent() {
       setRoute({ name: 'deploy' });
     } else if (id === 'invoke') {
       setRoute({ name: 'invoke' });
+    } else if (id === 'logs') {
+      setRoute({ name: 'logs' });
     } else if (id === 'status') {
       setRoute({ name: 'status' });
     } else if (id === 'create') {
@@ -137,6 +143,8 @@ function AppContent() {
       setRoute({ name: 'update' });
     } else if (id === 'config-bundle') {
       setRoute({ name: 'config-bundle' });
+    } else if (id === 'dataset') {
+      setRoute({ name: 'dataset' });
     } else if (id === 'ab-test') {
       setRoute({ name: 'ab-test' });
     }
@@ -181,6 +189,10 @@ function AppContent() {
 
   if (route.name === 'invoke') {
     return <InvokeScreen isInteractive={true} onExit={() => setRoute({ name: 'help' })} />;
+  }
+
+  if (route.name === 'logs') {
+    return <LogsScreen isInteractive={true} onExit={() => setRoute({ name: 'help' })} />;
   }
 
   if (route.name === 'status') {
@@ -326,6 +338,10 @@ function AppContent() {
 
   if (route.name === 'config-bundle') {
     return <ConfigBundleFlow onExit={() => setRoute({ name: 'help' })} />;
+  }
+
+  if (route.name === 'dataset') {
+    return <DatasetFlow onExit={() => setRoute({ name: 'help' })} />;
   }
 
   if (route.name === 'ab-test') {

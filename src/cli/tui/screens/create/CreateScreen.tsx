@@ -312,11 +312,6 @@ export function CreateScreen({ cwd, isInteractive, onExit, onNavigate }: CreateS
 
       {phase === 'create-prompt' && (
         <>
-          <Box marginBottom={1}>
-            <Text>
-              Project: <Text color={STATUS_COLORS.success}>{flow.projectName}</Text>
-            </Text>
-          </Box>
           <Box flexDirection="column">
             <Text>Would you like to add an agent now?</Text>
             <Box marginTop={1}>

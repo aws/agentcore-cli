@@ -1,7 +1,7 @@
 import type { EvaluatorConfig } from '../../../schema';
 import { evaluatorPrimitive } from '../../primitives/registry';
 import { withCommandRunTelemetry } from '../../telemetry/cli-command-run.js';
-import { Level, standardize } from '../../telemetry/schemas/common-shapes.js';
+import { EvaluatorLevel, standardize } from '../../telemetry/schemas/common-shapes.js';
 import { useCallback, useEffect, useState } from 'react';
 
 interface CreateEvaluatorConfig {
@@ -23,7 +23,7 @@ export function useCreateEvaluator() {
         'add.evaluator',
         {
           evaluator_type: config.config.codeBased ? 'code-based' : 'llm-as-a-judge',
-          level: standardize(Level, config.level),
+          evaluator_level: standardize(EvaluatorLevel, config.level),
         },
         () =>
           evaluatorPrimitive.add({

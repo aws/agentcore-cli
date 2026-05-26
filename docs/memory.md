@@ -196,17 +196,56 @@ Each strategy can have optional configuration:
   "type": "SEMANTIC",
   "name": "custom_semantic",
   "description": "Custom semantic memory",
-  "namespaces": ["/users/facts", "/users/preferences"]
+  "namespaceTemplates": ["/users/facts", "/users/preferences"]
 }
 ```
 
-| Field                  | Required      | Description                                                                 |
-| ---------------------- | ------------- | --------------------------------------------------------------------------- |
-| `type`                 | Yes           | Strategy type                                                               |
-| `name`                 | No            | Custom name (defaults to `<memoryName>-<type>`)                             |
-| `description`          | No            | Strategy description                                                        |
-| `namespaces`           | No            | Array of namespace paths for scoping                                        |
-| `reflectionNamespaces` | EPISODIC only | Namespaces for cross-episode reflections (must be a prefix of `namespaces`) |
+| Field                          | Required      | Description                                                                                   |
+| ------------------------------ | ------------- | --------------------------------------------------------------------------------------------- |
+| `type`                         | Yes           | Strategy type                                                                                 |
+| `name`                         | No            | Custom name (defaults to `<memoryName>-<type>`)                                               |
+| `description`                  | No            | Strategy description                                                                          |
+| `namespaceTemplates`           | No            | Array of namespace templates for scoping                                                      |
+| `reflectionNamespaceTemplates` | EPISODIC only | Templates for cross-episode reflections (must be a prefix of `namespaceTemplates`)            |
+| `namespaces`                   | No            | **Deprecated alias for `namespaceTemplates`.** Accepted for backward compatibility.           |
+| `reflectionNamespaces`         | EPISODIC only | **Deprecated alias for `reflectionNamespaceTemplates`.** Accepted for backward compatibility. |
+
+## Indexed Metadata Keys
+
+Indexed keys declare metadata fields on a memory that can be used to filter long-term memory records on retrieval. Up to
+10 keys per memory.
+
+```bash
+agentcore add memory \
+  --name SupportMemory \
+  --strategies SEMANTIC \
+  --indexed-key priority:NUMBER \
+  --indexed-key agent_type:STRING \
+  --indexed-key tags:STRINGLIST
+```
+
+In `agentcore.json`:
+
+```json
+{
+  "name": "SupportMemory",
+  "strategies": [{ "type": "SEMANTIC" }],
+  "indexedKeys": [
+    { "key": "priority", "type": "NUMBER" },
+    { "key": "agent_type", "type": "STRING" },
+    { "key": "tags", "type": "STRINGLIST" }
+  ]
+}
+```
+
+| Type         | Description           |
+| ------------ | --------------------- |
+| `STRING`     | Single string value   |
+| `STRINGLIST` | List of string values |
+| `NUMBER`     | Numeric value         |
+
+Indexed keys require at least one long-term memory strategy. They can only be added to an existing memory — once
+declared, an indexed key cannot be removed.
 
 ## Event Expiry
 

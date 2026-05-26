@@ -1,4 +1,5 @@
-import { AwsCredentialsError, detectAccount, getCredentialProvider, validateAwsCredentials } from '../account.js';
+import { AwsCredentialsError } from '../../../lib/errors/types.js';
+import { detectAccount, getCredentialProvider, validateAwsCredentials } from '../account.js';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const { mockSend } = vi.hoisted(() => ({

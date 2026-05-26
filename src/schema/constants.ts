@@ -4,7 +4,7 @@ import { z } from 'zod';
 // Feature Constants (shared across all schemas)
 // ============================================================================
 
-export const SDKFrameworkSchema = z.enum(['Strands', 'LangChain_LangGraph', 'GoogleADK', 'OpenAIAgents']);
+export const SDKFrameworkSchema = z.enum(['Strands', 'LangChain_LangGraph', 'GoogleADK', 'OpenAIAgents', 'VercelAI']);
 export type SDKFramework = z.infer<typeof SDKFrameworkSchema>;
 
 export const TargetLanguageSchema = z.enum(['Python', 'TypeScript', 'Other']);
@@ -47,6 +47,7 @@ export const SDK_MODEL_PROVIDER_MATRIX: Record<SDKFramework, readonly ModelProvi
   LangChain_LangGraph: ['Bedrock', 'Anthropic', 'OpenAI', 'Gemini'] as const,
   GoogleADK: ['Gemini'] as const,
   OpenAIAgents: ['OpenAI'] as const,
+  VercelAI: ['Bedrock', 'Anthropic', 'OpenAI', 'Gemini'] as const,
 };
 
 /**
@@ -105,6 +106,8 @@ export const RESERVED_PROJECT_NAMES: readonly string[] = [
   'aguilanggraph',
   'aguiadk',
   'aguiprotocol',
+  'vercelai',
+  'aisdk',
   // Common utilities
   'httpx',
   'pytest',
@@ -152,9 +155,24 @@ export const DEFAULT_PYTHON_VERSION: PythonRuntime = 'PYTHON_3_14';
 export const NodeRuntimeSchema = z.enum(['NODE_18', 'NODE_20', 'NODE_22']);
 export type NodeRuntime = z.infer<typeof NodeRuntimeSchema>;
 
+/** Default Node.js runtime version for new TypeScript agents */
+export const DEFAULT_NODE_VERSION: NodeRuntime = 'NODE_22';
+
 /** Combined runtime version schema supporting both Python and Node/TypeScript runtimes */
 export const RuntimeVersionSchema = z.union([PythonRuntimeSchema, NodeRuntimeSchema]);
 export type RuntimeVersion = z.infer<typeof RuntimeVersionSchema>;
+
+/** Default entrypoint filename for each target language (create path). */
+export const DEFAULT_ENTRYPOINT_BY_LANGUAGE: Record<'Python' | 'TypeScript', string> = {
+  Python: 'main.py',
+  TypeScript: 'main.js',
+};
+
+/** Default runtime version for each target language (create path). */
+export const DEFAULT_RUNTIME_BY_LANGUAGE: Record<'Python' | 'TypeScript', RuntimeVersion> = {
+  Python: DEFAULT_PYTHON_VERSION,
+  TypeScript: DEFAULT_NODE_VERSION,
+};
 
 export const NetworkModeSchema = z.enum(['PUBLIC', 'VPC']);
 export type NetworkMode = z.infer<typeof NetworkModeSchema>;
@@ -171,7 +189,7 @@ export type ProtocolMode = z.infer<typeof ProtocolModeSchema>;
  * MCP is a standalone tool server with no framework.
  */
 export const PROTOCOL_FRAMEWORK_MATRIX: Record<ProtocolMode, readonly SDKFramework[]> = {
-  HTTP: ['Strands', 'LangChain_LangGraph', 'GoogleADK', 'OpenAIAgents'] as const,
+  HTTP: ['Strands', 'LangChain_LangGraph', 'GoogleADK', 'OpenAIAgents', 'VercelAI'] as const,
   MCP: [] as const,
   A2A: ['Strands', 'GoogleADK', 'LangChain_LangGraph'] as const,
   AGUI: ['Strands', 'LangChain_LangGraph', 'GoogleADK'] as const,

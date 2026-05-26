@@ -24,7 +24,7 @@ describe('computeDeployAttrs', () => {
       gateway_target_count: 3,
       policy_engine_count: 2,
       policy_count: 3,
-      mode: 'diff',
+      deploy_mode: 'diff',
     });
   });
 
@@ -39,7 +39,7 @@ describe('computeDeployAttrs', () => {
       gateway_target_count: 0,
       policy_engine_count: 0,
       policy_count: 0,
-      mode: 'deploy',
+      deploy_mode: 'deploy',
     });
   });
 
@@ -49,6 +49,6 @@ describe('computeDeployAttrs', () => {
 
     expect(attrs.runtime_count).toBe(1);
     expect(attrs.memory_count).toBe(0);
-    expect(attrs.mode).toBe('dry-run');
+    expect(attrs.deploy_mode).toBe('dry-run');
   });
 });

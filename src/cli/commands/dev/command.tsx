@@ -1,4 +1,11 @@
-import { findConfigRoot, getWorkingDirectory } from '../../../lib';
+import {
+  ConnectionError,
+  ResourceNotFoundError,
+  type Result,
+  ValidationError,
+  findConfigRoot,
+  getWorkingDirectory,
+} from '../../../lib';
 import { getErrorMessage } from '../../errors';
 import { detectContainerRuntime } from '../../external-requirements';
 import { ExecLogger } from '../../logging';
@@ -18,6 +25,9 @@ import {
   loadProjectConfig,
 } from '../../operations/dev';
 import { OtelCollector, startOtelCollector } from '../../operations/dev/otel';
+import { withCommandRunTelemetry } from '../../telemetry/cli-command-run.js';
+import { TelemetryClientAccessor } from '../../telemetry/client-accessor.js';
+import { AgentProtocol, standardize } from '../../telemetry/schemas/common-shapes.js';
 import { FatalError } from '../../tui/components';
 import { LayoutProvider } from '../../tui/context';
 import { COMMAND_DESCRIPTIONS } from '../../tui/copy';
@@ -26,7 +36,7 @@ import { parseHeaderFlags } from '../shared/header-utils';
 import { runBrowserMode } from './browser-mode';
 import type { Command } from '@commander-js/extra-typings';
 import { spawn } from 'child_process';
-import { Text, render } from 'ink';
+import { render } from 'ink';
 import path from 'node:path';
 import React from 'react';
 
@@ -43,7 +53,6 @@ async function invokeDevServer(
 ): Promise<void> {
   try {
     if (stream) {
-      // Stream response to stdout
       for await (const chunk of invokeAgentStreaming({ port, message: prompt, headers })) {
         process.stdout.write(chunk);
       }
@@ -53,13 +62,11 @@ async function invokeDevServer(
       console.log(response);
     }
   } catch (err) {
-    if (isConnectionRefused(err)) {
-      console.error(`Error: Dev server not running on port ${port}`);
-      console.error('Start it with: agentcore dev --logs');
-    } else {
-      console.error(`Error: ${err instanceof Error ? err.message : String(err)}`);
-    }
-    process.exit(1);
+    throw isConnectionRefused(err)
+      ? new ConnectionError(`Dev server not running on port ${port}. Start it with: agentcore dev --logs`, {
+          cause: err,
+        })
+      : err;
   }
 }
 
@@ -70,13 +77,11 @@ async function invokeA2ADevServer(port: number, prompt: string, headers?: Record
     }
     process.stdout.write('\n');
   } catch (err) {
-    if (isConnectionRefused(err)) {
-      console.error(`Error: Dev server not running on port ${port}`);
-      console.error('Start it with: agentcore dev --logs');
-    } else {
-      console.error(`Error: ${err instanceof Error ? err.message : String(err)}`);
-    }
-    process.exit(1);
+    throw isConnectionRefused(err)
+      ? new ConnectionError(`Dev server not running on port ${port}. Start it with: agentcore dev --logs`, {
+          cause: err,
+        })
+      : err;
   }
 }
 
@@ -109,47 +114,39 @@ async function handleMcpInvoke(
       }
     } else if (invokeValue === 'call-tool') {
       if (!toolName) {
-        console.error('Error: --tool is required with call-tool');
-        console.error('Usage: agentcore dev call-tool --tool <name> --input \'{"arg": "value"}\'');
-        process.exit(1);
+        throw new ValidationError(
+          '--tool is required with call-tool. Usage: agentcore dev call-tool --tool <name> --input \'{"arg": "value"}\''
+        );
       }
-      // Initialize session first, then call tool with the session ID
       const { sessionId } = await listMcpTools(port, undefined, headers);
       let args: Record<string, unknown> = {};
       if (input) {
         try {
           args = JSON.parse(input) as Record<string, unknown>;
         } catch {
-          console.error(`Error: Invalid JSON for --input: ${input}`);
-          console.error('Expected format: --input \'{"key": "value"}\'');
-          process.exit(1);
+          throw new ValidationError(`Invalid JSON for --input: ${input}. Expected format: --input '{"key": "value"}'`);
         }
       }
       const result = await callMcpTool(port, toolName, args, sessionId, undefined, headers);
       console.log(result);
     } else {
-      console.error(`Error: Unknown MCP invoke command "${invokeValue}"`);
-      console.error('Usage:');
-      console.error('  agentcore dev list-tools');
-      console.error('  agentcore dev call-tool --tool <name> --input \'{"arg": "value"}\'');
-      process.exit(1);
+      throw new ValidationError(
+        `Unknown MCP invoke command "${invokeValue}". Usage: agentcore dev list-tools | agentcore dev call-tool --tool <name>`
+      );
     }
   } catch (err) {
-    if (isConnectionRefused(err)) {
-      console.error(`Error: Dev server not running on port ${port}`);
-      console.error('Start it with: agentcore dev --logs');
-    } else {
-      console.error(`Error: ${err instanceof Error ? err.message : String(err)}`);
-    }
-    process.exit(1);
+    throw isConnectionRefused(err)
+      ? new ConnectionError(`Dev server not running on port ${port}. Start it with: agentcore dev --logs`, {
+          cause: err,
+        })
+      : err;
   }
 }
 
 async function execInContainer(command: string, containerName: string): Promise<void> {
   const detection = await detectContainerRuntime();
   if (!detection.runtime) {
-    console.error('Error: No container runtime found (docker, podman, or finch required)');
-    process.exit(1);
+    throw new ResourceNotFoundError('No container runtime found (docker, podman, or finch required)');
   }
   return new Promise((resolve, reject) => {
     const child = spawn(detection.runtime!.binary, ['exec', containerName, 'bash', '-c', command], {
@@ -158,9 +155,10 @@ async function execInContainer(command: string, containerName: string): Promise<
     child.on('error', reject);
     child.on('close', code => {
       if (code !== 0 && code !== null) {
-        process.exit(code);
+        reject(new Error(`Container exec exited with code ${code}`));
+      } else {
+        resolve();
       }
-      resolve();
     });
   });
 }
@@ -213,7 +211,21 @@ export const registerDev = (program: Command) => {
             process.exit(1);
           }
           const containerName = `agentcore-dev-${agentName}`.toLowerCase();
-          await execInContainer(positionalPrompt, containerName);
+          const execResult = await withCommandRunTelemetry(
+            'dev',
+            {
+              dev_action: 'exec' as const,
+              ui_mode: 'terminal' as const,
+              has_stream: false,
+              agent_protocol: standardize(AgentProtocol, (targetAgent?.protocol ?? 'http').toLowerCase()),
+              invoke_count: 0,
+            },
+            async (): Promise<Result> => {
+              await execInContainer(positionalPrompt, containerName);
+              return { success: true };
+            }
+          );
+          if (!execResult.success) throw execResult.error;
           return;
         }
 
@@ -242,19 +254,37 @@ export const registerDev = (program: Command) => {
           if (protocol === 'A2A') invokePort = 9000;
           else if (protocol === 'MCP') invokePort = 8000;
 
-          // Protocol-aware dispatch
-          if (protocol === 'MCP') {
-            await handleMcpInvoke(invokePort, invokePrompt, opts.tool, opts.input, headers);
-          } else if (protocol === 'A2A') {
-            await invokeA2ADevServer(invokePort, invokePrompt, headers);
-          } else if (protocol === 'AGUI') {
-            for await (const chunk of invokeForProtocol('AGUI', { port: invokePort, message: invokePrompt, headers })) {
-              process.stdout.write(chunk);
+          const invokeResult = await withCommandRunTelemetry(
+            'dev',
+            {
+              dev_action: 'invoke' as const,
+              ui_mode: 'terminal' as const,
+              has_stream: opts.stream ?? false,
+              agent_protocol: standardize(AgentProtocol, protocol.toLowerCase()),
+              invoke_count: 1,
+            },
+            async (): Promise<Result> => {
+              // Protocol-aware dispatch
+              if (protocol === 'MCP') {
+                await handleMcpInvoke(invokePort, invokePrompt, opts.tool, opts.input, headers);
+              } else if (protocol === 'A2A') {
+                await invokeA2ADevServer(invokePort, invokePrompt, headers);
+              } else if (protocol === 'AGUI') {
+                for await (const chunk of invokeForProtocol('AGUI', {
+                  port: invokePort,
+                  message: invokePrompt,
+                  headers,
+                })) {
+                  process.stdout.write(chunk);
+                }
+                process.stdout.write('\n');
+              } else {
+                await invokeDevServer(invokePort, invokePrompt, opts.stream ?? false, headers);
+              }
+              return { success: true };
             }
-            process.stdout.write('\n');
-          } else {
-            await invokeDevServer(invokePort, invokePrompt, opts.stream ?? false, headers);
-          }
+          );
+          if (!invokeResult.success) throw invokeResult.error;
           return;
         }
 
@@ -283,9 +313,7 @@ export const registerDev = (program: Command) => {
 
         const supportedAgents = getDevSupportedAgents(project);
         if (supportedAgents.length === 0) {
-          render(
-            <FatalError message="No agents support dev mode. Dev mode requires Python agents with an entrypoint." />
-          );
+          render(<FatalError message="No agents support dev mode. Dev mode requires an agent with an entrypoint." />);
           process.exit(1);
         }
 
@@ -353,32 +381,52 @@ export const registerDev = (program: Command) => {
           console.log(`Log: ${logger.getRelativeLogPath()}`);
           console.log(`Press Ctrl+C to stop\n`);
 
-          const devCallbacks = {
-            onLog: (level: string, msg: string) => {
-              const prefix = level === 'error' ? '❌' : level === 'warn' ? '⚠️' : '→';
-              console.log(`${prefix} ${msg}`);
-              logger.log(msg, level === 'error' ? 'error' : 'info');
+          const devResult = await withCommandRunTelemetry(
+            'dev',
+            {
+              dev_action: 'server' as const,
+              ui_mode: 'terminal' as const,
+              has_stream: false,
+              agent_protocol: standardize(AgentProtocol, (config.protocol ?? 'http').toLowerCase()),
+              invoke_count: 0,
             },
-            onExit: (code: number | null) => {
-              console.log(`\nServer exited with code ${code ?? 0}`);
-              logger.finalize(code === 0);
-              process.exit(code ?? 0);
-            },
-          };
+            async (): Promise<Result> => {
+              await new Promise<void>((resolve, reject) => {
+                const devCallbacks = {
+                  onLog: (level: string, msg: string) => {
+                    const prefix = level === 'error' ? '❌' : level === 'warn' ? '⚠️' : '→';
+                    console.log(`${prefix} ${msg}`);
+                    logger.log(msg, level === 'error' ? 'error' : 'info');
+                  },
+                  onExit: (code: number | null) => {
+                    console.log(`\nServer exited with code ${code ?? 0}`);
+                    logger.finalize(code === 0);
+                    if (code !== 0 && code !== null) {
+                      reject(new Error(`Server exited with code ${code}`));
+                    } else {
+                      resolve();
+                    }
+                  },
+                };
 
-          const server = createDevServer(config, { port: actualPort, envVars: mergedEnvVars, callbacks: devCallbacks });
-          await server.start();
+                const server = createDevServer(config, {
+                  port: actualPort,
+                  envVars: mergedEnvVars,
+                  callbacks: devCallbacks,
+                });
+                server.start().catch(reject);
 
-          // Handle Ctrl+C — use server.kill() for proper container cleanup
-          process.on('SIGINT', () => {
-            console.log('\nStopping server...');
-            collector?.stop();
-            server.kill();
-          });
-
-          // Keep process alive
-          // eslint-disable-next-line @typescript-eslint/no-empty-function
-          await new Promise(() => {});
+                process.once('SIGINT', () => {
+                  console.log('\nStopping server...');
+                  collector?.stop();
+                  server.kill();
+                });
+              });
+              return { success: true as const };
+            }
+          );
+          if (!devResult.success) throw devResult.error;
+          process.exit(0);
         }
 
         // If --no-browser provided, launch terminal TUI mode
@@ -392,39 +440,72 @@ export const registerDev = (program: Command) => {
             process.stdout.write(SHOW_CURSOR);
           };
 
-          const { DevScreen } = await import('../../tui/screens/dev/DevScreen');
-          const { unmount, waitUntilExit } = render(
-            <LayoutProvider>
-              <DevScreen
-                onBack={() => {
-                  exitAltScreen();
-                  unmount();
-                  process.exit(0);
-                }}
-                workingDir={workingDir}
-                port={port}
-                agentName={opts.runtime}
-                headers={headers}
-              />
-            </LayoutProvider>
-          );
+          const tuiResult = await withCommandRunTelemetry(
+            'dev',
+            {
+              dev_action: 'server' as const,
+              ui_mode: 'terminal' as const,
+              has_stream: false,
+              agent_protocol: standardize(AgentProtocol, (targetDevAgent?.protocol ?? 'http').toLowerCase()),
+              invoke_count: 0,
+            },
+            async (): Promise<Result> => {
+              const { DevScreen } = await import('../../tui/screens/dev/DevScreen');
+              const { unmount, waitUntilExit } = render(
+                <LayoutProvider>
+                  <DevScreen
+                    onBack={() => {
+                      exitAltScreen();
+                      unmount();
+                    }}
+                    workingDir={workingDir}
+                    port={port}
+                    agentName={opts.runtime}
+                    headers={headers}
+                  />
+                </LayoutProvider>
+              );
 
-          await waitUntilExit();
-          exitAltScreen();
-          return;
+              await waitUntilExit();
+              exitAltScreen();
+              return { success: true };
+            }
+          );
+          if (!tuiResult.success) throw tuiResult.error;
+          collector?.stop();
+          process.exit(0);
         }
 
         // Default: launch web UI in browser
-        await runBrowserMode({
-          workingDir,
-          project,
-          port,
-          agentName: opts.runtime,
-          otelEnvVars,
-          collector,
-        });
+        // NOTE: Do not copy this pattern. runBrowserMode blocks forever (internal
+        // await new Promise(() => {})) so we cannot use withCommandRunTelemetry here.
+        // We emit telemetry eagerly before the blocking call.
+        {
+          const client = await TelemetryClientAccessor.get().catch(() => undefined);
+          if (client) {
+            client.emit('cli.command_run', 0, {
+              command_group: 'dev',
+              command: 'dev',
+              exit_reason: 'success',
+              dev_action: 'server',
+              ui_mode: 'browser',
+              has_stream: false,
+              agent_protocol: standardize(AgentProtocol, (targetDevAgent?.protocol ?? 'http').toLowerCase()),
+              invoke_count: 0,
+            });
+            await client.flush();
+          }
+          await runBrowserMode({
+            workingDir,
+            project,
+            port,
+            agentName: opts.runtime,
+            otelEnvVars,
+            collector,
+          });
+        }
       } catch (error) {
-        render(<Text color="red">Error: {getErrorMessage(error)}</Text>);
+        console.error(`Error: ${getErrorMessage(error)}`);
         process.exit(1);
       }
     });

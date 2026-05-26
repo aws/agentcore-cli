@@ -10,7 +10,7 @@ import {
 import type { DeployedState } from '../../../../schema';
 import { getErrorMessage } from '../../../errors';
 import { CreateLogger } from '../../../logging';
-import { initGitRepo, setupPythonProject, writeEnvFile, writeGitignore } from '../../../operations';
+import { initGitRepo, setupNodeProject, setupPythonProject, writeEnvFile, writeGitignore } from '../../../operations';
 import { createConfigBundleForAgent } from '../../../operations/agent/config-bundle-defaults';
 import {
   mapGenerateConfigToRenderConfig,
@@ -25,14 +25,14 @@ import { credentialPrimitive } from '../../../primitives/registry';
 import { createDefaultProjectSpec } from '../../../project';
 import { withCommandRunTelemetry } from '../../../telemetry/cli-command-run.js';
 import {
+  AgentFramework,
+  AgentLanguage,
+  AgentProtocol,
   AgentType,
-  Build,
-  Framework,
-  Language,
-  Memory as MemoryEnum,
+  BuildType,
+  MemoryType as MemoryEnum,
   ModelProvider,
   NetworkMode,
-  Protocol,
   standardize,
 } from '../../../telemetry/schemas/common-shapes.js';
 import { CDKRenderer, createRenderer } from '../../../templates';
@@ -82,6 +82,9 @@ function getCreateSteps(projectName: string, agentConfig: AddAgentConfig | null)
     steps.push({ label: 'Add agent to project', status: 'pending' });
     if (agentConfig.language === 'Python' && agentConfig.agentType === 'create') {
       steps.push({ label: 'Set up Python environment', status: 'pending' });
+    }
+    if (agentConfig.language === 'TypeScript' && agentConfig.agentType === 'create') {
+      steps.push({ label: 'Set up Node environment', status: 'pending' });
     }
   }
 
@@ -202,12 +205,12 @@ export function useCreateFlow(cwd: string): CreateFlowState {
     if (phase !== 'running') return;
 
     const attrs = {
-      language: standardize(Language, addAgentConfig?.language ?? 'Python'),
-      framework: standardize(Framework, addAgentConfig?.framework),
+      agent_language: standardize(AgentLanguage, addAgentConfig?.language ?? 'Python'),
+      agent_framework: standardize(AgentFramework, addAgentConfig?.framework),
       model_provider: standardize(ModelProvider, addAgentConfig?.modelProvider),
-      memory: standardize(MemoryEnum, addAgentConfig?.memory ?? 'none'),
-      protocol: standardize(Protocol, addAgentConfig?.protocol ?? 'HTTP'),
-      build: standardize(Build, addAgentConfig?.buildType ?? 'CodeZip'),
+      memory_type: standardize(MemoryEnum, addAgentConfig?.memory ?? 'none'),
+      agent_protocol: standardize(AgentProtocol, addAgentConfig?.protocol ?? 'HTTP'),
+      build_type: standardize(BuildType, addAgentConfig?.buildType ?? 'CodeZip'),
       agent_type: standardize(AgentType, addAgentConfig?.agentType ?? 'create'),
       network_mode: standardize(NetworkMode, addAgentConfig?.networkMode ?? 'PUBLIC'),
       has_agent: addAgentConfig !== null,
@@ -486,6 +489,36 @@ export function useCreateFlow(cwd: string): CreateFlowState {
                 status: 'warn',
                 warn: 'Failed to set up Python environment. Run "uv sync" manually to see the error.',
               });
+            }
+            stepIndex++;
+          }
+
+          // Step: Set up Node environment (if TypeScript and create path)
+          if (addAgentConfig.language === 'TypeScript' && addAgentConfig.agentType === 'create') {
+            logger.startStep('Set up Node environment');
+            updateStep(stepIndex, { status: 'running' });
+            const agentDir = join(projectRoot, APP_DIR, addAgentConfig.name);
+            logger.logSubStep(`Agent directory: ${agentDir}`);
+            logger.logSubStep('Running npm install...');
+            const result = await setupNodeProject({ projectDir: agentDir });
+
+            if (result.status === 'success') {
+              logger.endStep('success');
+              updateStep(stepIndex, { status: 'success' });
+            } else {
+              const firstLine = (result.error ?? '').split('\n').find(l => l.trim().length > 0) ?? '';
+              const shortReason = firstLine.replace(/^npm (error|warn) /i, '').slice(0, 160);
+              const warnMsg =
+                result.status === 'npm_not_found'
+                  ? 'npm not found on PATH. Install Node.js 20+ from https://nodejs.org/ and rerun `npm install` in the agent directory.'
+                  : `npm install failed${shortReason ? `: ${shortReason}` : ''}. Run \`npm install\` in ${agentDir} to see the full error.`;
+              if (result.error) {
+                for (const line of result.error.split('\n')) {
+                  if (line.trim().length > 0) logger.logSubStep(line);
+                }
+              }
+              logger.endStep('warn', warnMsg);
+              updateStep(stepIndex, { status: 'warn', warn: warnMsg });
             }
             stepIndex++;
           }

@@ -1,32 +1,29 @@
-import { createTempConfig } from '../../__tests__/helpers/temp-config';
-import { resolveTelemetryPreference } from '../config';
-import { writeFile } from 'fs/promises';
-import { join } from 'node:path';
-import { afterAll, afterEach, beforeEach, describe, expect, it } from 'vitest';
-
-const tmp = createTempConfig('resolve');
+import {
+  resolveAuditEnabled,
+  resolveTelemetryEndpoint,
+  resolveTelemetryPreference,
+  validateEndpointUrl,
+} from '../config';
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
 describe('resolveTelemetryPreference', () => {
   const originalEnv = process.env;
 
-  beforeEach(async () => {
+  beforeEach(() => {
     process.env = { ...originalEnv };
     delete process.env.AGENTCORE_TELEMETRY_DISABLED;
-    await tmp.setup();
   });
 
   afterEach(() => {
     process.env = originalEnv;
   });
 
-  afterAll(() => tmp.cleanup());
-
   describe('AGENTCORE_TELEMETRY_DISABLED env var', () => {
     it('disables telemetry for any non-false/non-0 value', async () => {
       for (const val of ['true', 'TRUE', '1', 'yes']) {
         process.env.AGENTCORE_TELEMETRY_DISABLED = val;
 
-        const result = await resolveTelemetryPreference(tmp.configFile);
+        const result = await resolveTelemetryPreference();
 
         expect(result).toMatchObject({ enabled: false, source: 'environment' });
         expect(result.envVar).toEqual({ name: 'AGENTCORE_TELEMETRY_DISABLED', value: val });
@@ -37,7 +34,7 @@ describe('resolveTelemetryPreference', () => {
       for (const val of ['false', '0']) {
         process.env.AGENTCORE_TELEMETRY_DISABLED = val;
 
-        const result = await resolveTelemetryPreference(tmp.configFile);
+        const result = await resolveTelemetryPreference();
 
         expect(result).toMatchObject({ enabled: true, source: 'environment' });
         expect(result.envVar).toEqual({ name: 'AGENTCORE_TELEMETRY_DISABLED', value: val });
@@ -46,18 +43,15 @@ describe('resolveTelemetryPreference', () => {
   });
 
   describe('global config', () => {
-    it('uses config file when no env vars set', async () => {
-      await writeFile(tmp.configFile, JSON.stringify({ telemetry: { enabled: false } }));
-
-      const result = await resolveTelemetryPreference(tmp.configFile);
+    it('uses config when telemetry.enabled is false', async () => {
+      const result = await resolveTelemetryPreference({ telemetry: { enabled: false } });
 
       expect(result).toEqual({ enabled: false, source: 'global-config' });
     });
 
     it('ignores non-boolean enabled values in config', async () => {
-      await writeFile(tmp.configFile, JSON.stringify({ telemetry: { enabled: 'false' } }));
-
-      const result = await resolveTelemetryPreference(tmp.configFile);
+      // @ts-expect-error — intentionally invalid
+      const result = await resolveTelemetryPreference({ telemetry: { enabled: 'false' } });
 
       expect(result).toEqual({ enabled: true, source: 'default' });
     });
@@ -65,9 +59,106 @@ describe('resolveTelemetryPreference', () => {
 
   describe('default', () => {
     it('defaults to enabled when no env vars or config', async () => {
-      const result = await resolveTelemetryPreference(join(tmp.testDir, 'nonexistent.json'));
+      const result = await resolveTelemetryPreference({});
 
       expect(result).toEqual({ enabled: true, source: 'default' });
     });
+  });
+});
+
+describe('validateEndpointUrl', () => {
+  it('returns success with normalized URL for valid https endpoint', () => {
+    const result = validateEndpointUrl('https://telemetry.example.com/v1/');
+    expect(result).toEqual({ success: true, url: 'https://telemetry.example.com/v1' });
+  });
+
+  it('returns success for http endpoint', () => {
+    const result = validateEndpointUrl('http://localhost:4318');
+    expect(result).toEqual({ success: true, url: 'http://localhost:4318' });
+  });
+
+  it('strips trailing slashes', () => {
+    const result = validateEndpointUrl('https://example.com/');
+    expect(result).toEqual({ success: true, url: 'https://example.com' });
+  });
+
+  it('returns failure for non-http protocol', () => {
+    const result = validateEndpointUrl('file:///etc/passwd');
+    expect(result.success).toBe(false);
+    expect(!result.success && result.error.message).toContain('Unsupported protocol');
+  });
+
+  it('returns failure for malformed URL', () => {
+    const result = validateEndpointUrl('not-a-url');
+    expect(result.success).toBe(false);
+    expect(!result.success && result.error.message).toContain('Invalid URL');
+  });
+});
+
+describe('resolveTelemetryEndpoint', () => {
+  const originalEnv = process.env;
+
+  beforeEach(() => {
+    process.env = { ...originalEnv };
+    delete process.env.AGENTCORE_TELEMETRY_ENDPOINT;
+  });
+
+  afterEach(() => {
+    process.env = originalEnv;
+  });
+
+  it('returns endpoint from env var', async () => {
+    process.env.AGENTCORE_TELEMETRY_ENDPOINT = 'https://env.example.com';
+
+    const result = await resolveTelemetryEndpoint({});
+
+    expect(result).toEqual({ success: true, url: 'https://env.example.com' });
+  });
+
+  it('falls back to config endpoint', async () => {
+    const result = await resolveTelemetryEndpoint({ telemetry: { endpoint: 'https://config.example.com' } });
+
+    expect(result).toEqual({ success: true, url: 'https://config.example.com' });
+  });
+
+  it('returns failure when no endpoint configured', async () => {
+    const result = await resolveTelemetryEndpoint({});
+
+    expect(result.success).toBe(false);
+  });
+
+  it('returns failure for invalid env endpoint', async () => {
+    process.env.AGENTCORE_TELEMETRY_ENDPOINT = 'not-a-url';
+
+    const result = await resolveTelemetryEndpoint({});
+
+    expect(result.success).toBe(false);
+  });
+});
+
+describe('resolveAuditEnabled', () => {
+  const originalEnv = process.env;
+
+  beforeEach(() => {
+    process.env = { ...originalEnv };
+    delete process.env.AGENTCORE_TELEMETRY_AUDIT;
+  });
+
+  afterEach(() => {
+    process.env = originalEnv;
+  });
+
+  it('returns true when env var is "1"', async () => {
+    process.env.AGENTCORE_TELEMETRY_AUDIT = '1';
+
+    expect(await resolveAuditEnabled({})).toBe(true);
+  });
+
+  it('returns true when config audit is true', async () => {
+    expect(await resolveAuditEnabled({ telemetry: { audit: true } })).toBe(true);
+  });
+
+  it('returns false when neither env nor config enables audit', async () => {
+    expect(await resolveAuditEnabled({})).toBe(false);
   });
 });

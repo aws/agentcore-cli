@@ -200,7 +200,7 @@ export async function handleImport(options: ImportOptions): Promise<ImportResult
           logger.finalize(false);
           return {
             success: false,
-            error: new Error(error),
+            error: new ValidationError(error),
             logPath: logger.getRelativeLogPath(),
           };
         }
@@ -224,7 +224,7 @@ export async function handleImport(options: ImportOptions): Promise<ImportResult
           logger.finalize(false);
           return {
             success: false,
-            error: new Error(error),
+            error: new ValidationError(error),
             logPath: logger.getRelativeLogPath(),
           };
         }
@@ -238,7 +238,7 @@ export async function handleImport(options: ImportOptions): Promise<ImportResult
         logger.finalize(false);
         return {
           success: false,
-          error: new Error(error),
+          error: new ValidationError(error),
           logPath: logger.getRelativeLogPath(),
         };
       }
@@ -383,7 +383,8 @@ export async function handleImport(options: ImportOptions): Promise<ImportResult
               fs.writeFileSync(
                 destDockerfile,
                 [
-                  'FROM ghcr.io/astral-sh/uv:python3.12-bookworm-slim',
+                  'FROM public.ecr.aws/docker/library/python:3.12-slim-bookworm',
+                  'RUN pip install --no-cache-dir uv',
                   'WORKDIR /app',
                   '',
                   'ENV UV_SYSTEM_PYTHON=1 \\',

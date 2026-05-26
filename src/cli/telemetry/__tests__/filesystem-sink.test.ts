@@ -28,12 +28,13 @@ describe('FileSystemSink', () => {
 
   it('writes each record as a JSONL line on disk', async () => {
     const sink = createSink();
-    sink.record(42, { command_group: 'deploy', command: 'deploy', exit_reason: 'success' });
+    sink.record('cli.command_run', 42, { command_group: 'deploy', command: 'deploy', exit_reason: 'success' });
     await sink.flush();
 
     const entries = await readJsonl(join(outputDir, 'test-session.json'));
     expect(entries).toHaveLength(1);
     expect(entries[0]).toMatchObject({
+      metric: 'cli.command_run',
       value: 42,
       attrs: { command_group: 'deploy', command: 'deploy', exit_reason: 'success' },
     });
@@ -41,8 +42,8 @@ describe('FileSystemSink', () => {
 
   it('appends multiple records as separate lines', async () => {
     const sink = createSink();
-    sink.record(10, { command_group: 'add', command: 'add.agent' });
-    sink.record(20, { command_group: 'add', command: 'add.memory' });
+    sink.record('cli.command_run', 10, { command_group: 'add', command: 'add.agent' });
+    sink.record('cli.command_run', 20, { command_group: 'add', command: 'add.memory' });
     await sink.flush();
 
     const entries = await readJsonl(join(outputDir, 'test-session.json'));
@@ -55,7 +56,7 @@ describe('FileSystemSink', () => {
     const nested = join(tmp.testDir, 'deep', 'nested', 'telemetry');
     const filePath = join(nested, 'test.json');
     const sink = new FileSystemSink({ filePath });
-    sink.record(1, { command_group: 'status', command: 'status' });
+    sink.record('cli.command_run', 1, { command_group: 'status', command: 'status' });
     await sink.flush();
 
     const entries = await readJsonl(filePath);
@@ -70,7 +71,7 @@ describe('FileSystemSink', () => {
   it('shutdown logs audit message when records were written', async () => {
     const logged: string[] = [];
     const sink = createSink({ log: msg => logged.push(msg) });
-    sink.record(99, { command_group: 'invoke', command: 'invoke' });
+    sink.record('cli.command_run', 99, { command_group: 'invoke', command: 'invoke' });
     await sink.shutdown();
 
     expect(logged).toHaveLength(1);

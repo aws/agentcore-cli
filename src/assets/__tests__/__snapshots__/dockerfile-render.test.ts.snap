@@ -1,7 +1,9 @@
 // Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
 
 exports[`Dockerfile enableOtel rendering > renders opentelemetry-instrument CMD when enableOtel is true > Dockerfile-enableOtel-true 1`] = `
-"FROM ghcr.io/astral-sh/uv:python3.12-bookworm-slim
+"FROM public.ecr.aws/docker/library/python:3.12-slim-bookworm
+
+RUN pip install --no-cache-dir uv
 
 ARG UV_DEFAULT_INDEX
 ARG UV_INDEX
@@ -39,7 +41,9 @@ CMD ["opentelemetry-instrument", "python", "-m", "main"]
 `;
 
 exports[`Dockerfile enableOtel rendering > renders plain python CMD when enableOtel is false > Dockerfile-enableOtel-false 1`] = `
-"FROM ghcr.io/astral-sh/uv:python3.12-bookworm-slim
+"FROM public.ecr.aws/docker/library/python:3.12-slim-bookworm
+
+RUN pip install --no-cache-dir uv
 
 ARG UV_DEFAULT_INDEX
 ARG UV_INDEX

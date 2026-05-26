@@ -427,7 +427,7 @@ export function DevScreen(props: DevScreenProps) {
       <Screen title="Dev Server" onExit={props.onBack} helpText="Esc quit">
         <Box flexDirection="column">
           <Text color="red">No agents defined in project.</Text>
-          <Text>Dev mode requires at least one Python agent with an entrypoint.</Text>
+          <Text>Dev mode requires at least one agent with an entrypoint.</Text>
           <Text>
             Run <Text color="blue">agentcore add agent</Text> to create one.
           </Text>

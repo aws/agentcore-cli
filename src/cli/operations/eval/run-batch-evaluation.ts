@@ -16,8 +16,11 @@ import type {
   GetBatchEvaluationResult,
   SessionMetadataEntry,
 } from '../../aws/agentcore-batch-evaluation';
-import { detectRegion } from '../../aws/region';
+import { resolveEndpointName, runtimeLogGroup } from '../../aws/cloudwatch';
+import { getRegion } from '../../commands/shared/region-utils';
 import { ExecLogger } from '../../logging/exec-logger';
+import { resolveAgentContext } from '../invoke/resolve-agent-context';
+import { runDatasetScenarios } from './shared/dataset-session-provider';
 import { CloudWatchLogsClient, GetLogEventsCommand } from '@aws-sdk/client-cloudwatch-logs';
 
 // ============================================================================
@@ -45,6 +48,12 @@ export interface RunBatchEvaluationOptions {
   onProgress?: (status: string, message: string) => void;
   /** Called once the batch evaluation has been created, with ID and region for cancellation */
   onStarted?: (info: { batchEvaluationId: string; region: string }) => void;
+  /** Dataset name — invoke agent with dataset scenarios before batch evaluation */
+  dataset?: string;
+  /** Dataset version (omit for local file, or N/DRAFT) */
+  datasetVersion?: string;
+  /** Runtime endpoint name (e.g. PROMPT_V1). Defaults to DEFAULT. */
+  endpoint?: string;
 }
 
 export interface BatchEvaluationResult {
@@ -71,6 +80,9 @@ export type RunBatchEvaluationCommandResult = Result & {
 // ============================================================================
 
 const DEFAULT_POLL_INTERVAL_MS = 10_000;
+
+/** Delay before submitting batch eval to allow CloudWatch span ingestion. Matches SDK default. */
+const BATCH_INGESTION_DELAY_MS = 180_000;
 const TERMINAL_STATUSES = new Set(['COMPLETED', 'COMPLETED_WITH_ERRORS', 'FAILED', 'STOPPED', 'CANCELLED']);
 
 // ============================================================================
@@ -99,10 +111,7 @@ export async function runBatchEvaluationCommand(
       configIO.resolveAWSDeploymentTargets(),
     ]);
 
-    // Use the deployed target region (from aws-targets) rather than generic detectRegion()
-    const targetRegion = awsTargets.length > 0 ? awsTargets[0]!.region : undefined;
-    const { region: detectedRegion } = await detectRegion();
-    const region = options.region ?? targetRegion ?? detectedRegion;
+    const region = await getRegion(options.region);
     const stage = process.env.AGENTCORE_STAGE?.toLowerCase() ?? 'prod';
     logger?.log(`Region: ${region}, Stage: ${stage}`);
     logger?.endStep('success');
@@ -120,12 +129,13 @@ export async function runBatchEvaluationCommand(
 
     const runtimeId = agentState.runtimeId;
     // Service name in CW logs uses project_agent format without the CDK hash suffix
-    const serviceName = `${projectSpec.name}_${agent}.DEFAULT`;
-    const runtimeLogGroup = `/aws/bedrock-agentcore/runtimes/${runtimeId}-DEFAULT`;
+    const endpointName = resolveEndpointName(options.endpoint);
+    const serviceName = `${projectSpec.name}_${agent}.${endpointName}`;
+    const runtimeLogGroupName = runtimeLogGroup(runtimeId, options.endpoint);
 
     logger?.log(`Agent: ${agent} (runtime: ${runtimeId})`);
     logger?.log(`Service name: ${serviceName}`);
-    logger?.log(`Log group: ${runtimeLogGroup}`);
+    logger?.log(`Log group: ${runtimeLogGroupName}`);
     logger?.endStep('success');
 
     // 2b. Resolve evaluator names to deployed IDs
@@ -165,11 +175,80 @@ export async function runBatchEvaluationCommand(
 
     onProgress?.('starting', `Starting batch evaluation "${evalName}"...`);
 
+    // Dataset mode: invoke agent with scenarios first, then use those sessionIds
+    let datasetSessionIds: string[] = [];
+    let datasetMetadata: SessionMetadataEntry[] = [];
+    if (options.dataset) {
+      const agentContext = await resolveAgentContext({
+        project: projectSpec,
+        deployedState,
+        awsTargets,
+        agentName: agent,
+        endpoint: options.endpoint,
+      });
+
+      onProgress?.('invoking', `Invoking agent with dataset "${options.dataset}"...`);
+
+      const datasetResult = await runDatasetScenarios({
+        agentContext,
+        datasetName: options.dataset,
+        version: options.datasetVersion,
+        configBaseDir: configIO.getConfigRoot(),
+        onProgress: (phase, msg) => onProgress?.(phase, msg),
+      });
+
+      const successfulResults = datasetResult.scenarioResults.filter(r => r.status === 'success');
+      if (successfulResults.length === 0) {
+        return {
+          success: false,
+          error: new Error('All scenarios failed during invocation. No sessions to evaluate.'),
+          results: [],
+          logFilePath: logger?.logFilePath,
+        };
+      }
+
+      datasetSessionIds = successfulResults.map(r => r.sessionId);
+
+      // Build sessionMetadata with ground truth from dataset
+      datasetMetadata = successfulResults.map(r => {
+        const scenario = datasetResult.scenarios.find(s => s.scenario_id === r.scenarioId);
+        return {
+          sessionId: r.sessionId,
+          testScenarioId: r.scenarioId,
+          groundTruth: scenario
+            ? {
+                inline: {
+                  ...(scenario.assertions ? { assertions: scenario.assertions.map(a => ({ text: a })) } : {}),
+                  ...(scenario.expected_trajectory
+                    ? { expectedTrajectory: { toolNames: scenario.expected_trajectory } }
+                    : {}),
+                  ...(scenario.turns.some(t => t.expectedResponse)
+                    ? {
+                        turns: scenario.turns.map(t => ({
+                          input: { prompt: t.input },
+                          ...(t.expectedResponse ? { expectedResponse: { text: t.expectedResponse } } : {}),
+                        })),
+                      }
+                    : {}),
+                },
+              }
+            : undefined,
+        };
+      }) as SessionMetadataEntry[];
+
+      onProgress?.('invoking', `✓ ${successfulResults.length} sessions ready for batch evaluation`);
+
+      // Wait for CloudWatch span ingestion before submitting — the batch service
+      // queries CloudWatch server-side, so we can't poll. Match SDK default (180s).
+      onProgress?.('ingesting', 'Waiting 180s for CloudWatch span ingestion...');
+      await sleep(BATCH_INGESTION_DELAY_MS);
+    }
+
     // Build optional filter config for CloudWatch filtering
     // API requires either sessionIds OR timeRange, not both — sessionIds takes precedence
     // Merge explicit sessionIds with any sessionIds from sessionMetadata (deduplicated)
     const metadataSessionIds = options.sessionMetadata?.map(m => m.sessionId).filter(Boolean) ?? [];
-    const explicitSessionIds = options.sessionIds ?? [];
+    const explicitSessionIds = [...(options.sessionIds ?? []), ...datasetSessionIds];
     const effectiveSessionIds = [...new Set([...explicitSessionIds, ...metadataSessionIds])];
     const hasSessionIds = effectiveSessionIds.length > 0;
 
@@ -185,6 +264,9 @@ export async function runBatchEvaluationCommand(
       return undefined;
     })();
 
+    // Merge dataset metadata with any explicit sessionMetadata
+    const allSessionMetadata = [...(options.sessionMetadata ?? []), ...datasetMetadata];
+
     const startPayload = {
       region,
       name: evalName,
@@ -192,13 +274,11 @@ export async function runBatchEvaluationCommand(
       dataSourceConfig: {
         cloudWatchLogs: {
           serviceNames: [serviceName],
-          logGroupNames: [runtimeLogGroup],
+          logGroupNames: [runtimeLogGroupName],
           ...(filterConfig ? { filterConfig } : {}),
         },
       },
-      ...(options.sessionMetadata && options.sessionMetadata.length > 0
-        ? { evaluationMetadata: { sessionMetadata: options.sessionMetadata } }
-        : {}),
+      ...(allSessionMetadata.length > 0 ? { evaluationMetadata: { sessionMetadata: allSessionMetadata } } : {}),
       clientToken: generateClientToken(),
     };
 

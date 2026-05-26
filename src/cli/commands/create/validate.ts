@@ -113,6 +113,14 @@ export function validateCreateOptions(options: CreateOptions, cwd?: string): Val
     }
   }
 
+  // TypeScript only supports HTTP today; MCP and A2A templates have not been authored yet
+  if (protocol !== 'HTTP' && options.language === 'TypeScript') {
+    return {
+      valid: false,
+      error: `${protocol} protocol is not yet supported for TypeScript. Use --protocol HTTP or --language Python.`,
+    };
+  }
+
   // MCP protocol: only name, language, and build type required
   if (protocol === 'MCP') {
     if (options.framework) {
@@ -161,7 +169,7 @@ export function validateCreateOptions(options: CreateOptions, cwd?: string): Val
     // Validate language
     const langResult = TargetLanguageSchema.safeParse(options.language);
     if (!langResult.success) {
-      return { valid: false, error: `Invalid language: ${options.language}. Use Python` };
+      return { valid: false, error: `Invalid language: ${options.language}. Use Python or TypeScript` };
     }
 
     // Validate framework
@@ -184,9 +192,12 @@ export function validateCreateOptions(options: CreateOptions, cwd?: string): Val
       return { valid: false, error: `Invalid model provider: ${options.modelProvider}` };
     }
 
-    // Validate language is supported
-    if (options.language === 'TypeScript') {
-      return { valid: false, error: 'TypeScript is not yet supported. Currently supported: Python' };
+    // TypeScript supports Strands and Vercel AI only
+    if (options.language === 'TypeScript' && fwResult.data !== 'Strands' && fwResult.data !== 'VercelAI') {
+      return {
+        valid: false,
+        error: `Framework ${options.framework} is not yet available for TypeScript. Only Strands and Vercel AI SDK are supported.`,
+      };
     }
 
     // Validate framework/model compatibility

@@ -4,6 +4,7 @@ import {
   ConflictError,
   NoProjectError,
   ResourceNotFoundError,
+  ValidationError,
   findConfigRoot,
   serializeResult,
   setEnvVar,
@@ -48,15 +49,15 @@ import { setupPythonProject } from '../operations/python';
 import type { RemovalPreview, SchemaChange } from '../operations/remove/types';
 import { runCliCommand } from '../telemetry/cli-command-run.js';
 import {
+  AgentFramework,
+  AgentLanguage,
+  AgentProtocol,
   AgentType,
   AuthorizerType,
-  Build,
-  Framework,
-  Language,
-  Memory,
+  MemoryType,
   ModelProvider as ModelProviderEnum,
   NetworkMode as NetworkModeEnum,
-  Protocol,
+  BuildType as TelemetryBuildType,
   standardize,
 } from '../telemetry/schemas/common-shapes.js';
 import { createRenderer } from '../templates';
@@ -243,7 +244,10 @@ export class AgentPrimitive extends BasePrimitive<AddAgentOptions, RemovableReso
       .option('--type <type>', 'Agent type: create, byo, or import [non-interactive]', 'create')
       .option('--build <type>', 'Build type: CodeZip or Container (default: CodeZip) [non-interactive]')
       .option('--language <lang>', 'Language: Python (create), or Python/TypeScript/Other (BYO) [non-interactive]')
-      .option('--framework <fw>', 'Framework: Strands, LangChain_LangGraph, GoogleADK, OpenAIAgents [non-interactive]')
+      .option(
+        '--framework <fw>',
+        'Framework: Strands, LangChain_LangGraph, GoogleADK, OpenAIAgents, VercelAI [non-interactive]'
+      )
       .option('--model-provider <provider>', 'Model provider: Bedrock, Anthropic, OpenAI, Gemini [non-interactive]')
       .option('--api-key <key>', 'API key for non-Bedrock providers [non-interactive]')
       .option('--memory <mem>', 'Memory: none, shortTerm, longAndShortTerm (create path only) [non-interactive]')
@@ -266,7 +270,7 @@ export class AgentPrimitive extends BasePrimitive<AddAgentOptions, RemovableReso
       .option('--client-secret <secret>', 'OAuth client secret [non-interactive]')
       .option(
         '--request-header-allowlist <headers>',
-        'Comma-separated list of custom header names to allow (auto-prefixed with X-Amzn-Bedrock-AgentCore-Runtime-Custom-) [non-interactive]'
+        'Comma-separated list of header names to allow. X-prefixed names (e.g. Authorization, X-Api-Key, X-Custom-Signature) pass through unchanged; bare names without X- prefix are auto-prefixed with X-Amzn-Bedrock-AgentCore-Runtime-Custom- for backward compatibility. [non-interactive]'
       )
       .option(
         '--idle-timeout <seconds>',
@@ -298,7 +302,7 @@ export class AgentPrimitive extends BasePrimitive<AddAgentOptions, RemovableReso
           await runCliCommand('add.agent', !!cliOptions.json, async () => {
             const validation = validateAddAgentOptions(cliOptions);
             if (!validation.valid) {
-              throw new Error(validation.error);
+              throw new ValidationError(validation.error!);
             }
 
             // Parse custom claims JSON if provided (already validated by validateAddAgentOptions)
@@ -361,15 +365,15 @@ export class AgentPrimitive extends BasePrimitive<AddAgentOptions, RemovableReso
             }
 
             return {
-              language: standardize(Language, cliOptions.language),
-              framework: standardize(Framework, cliOptions.framework),
+              agent_language: standardize(AgentLanguage, cliOptions.language),
+              agent_framework: standardize(AgentFramework, cliOptions.framework),
               model_provider: standardize(ModelProviderEnum, cliOptions.modelProvider),
               agent_type: standardize(AgentType, cliOptions.type ?? 'create'),
-              build: standardize(Build, cliOptions.build ?? 'CodeZip'),
-              protocol: standardize(Protocol, cliOptions.protocol ?? 'HTTP'),
+              build_type: standardize(TelemetryBuildType, cliOptions.build ?? 'CodeZip'),
+              agent_protocol: standardize(AgentProtocol, cliOptions.protocol ?? 'HTTP'),
               network_mode: standardize(NetworkModeEnum, cliOptions.networkMode ?? 'PUBLIC'),
               authorizer_type: standardize(AuthorizerType, cliOptions.authorizerType ?? 'NONE'),
-              memory: standardize(Memory, cliOptions.memory ?? 'none'),
+              memory_type: standardize(MemoryType, cliOptions.memory ?? 'none'),
             };
           });
         } else {

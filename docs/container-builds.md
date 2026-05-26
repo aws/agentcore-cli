@@ -39,7 +39,8 @@ app/MyAgent/
 
 ## Generated Dockerfile
 
-The template uses `ghcr.io/astral-sh/uv:python3.12-bookworm-slim` as the base image with these design choices:
+The template uses `public.ecr.aws/docker/library/python:3.12-slim` as the base image (with `uv` installed via
+`pip install uv`) with these design choices:
 
 - **Layer caching**: Dependencies (`pyproject.toml`) are installed before copying application code
 - **Non-root**: Runs as `bedrock_agentcore` (UID 1000)
@@ -47,6 +48,28 @@ The template uses `ghcr.io/astral-sh/uv:python3.12-bookworm-slim` as the base im
 - **Fast installs**: Uses `uv pip install` for dependency resolution
 
 You can customize the Dockerfile freely — add system packages, change the base image, or use multi-stage builds.
+
+### TypeScript Dockerfile
+
+For TypeScript agents, the generated `Dockerfile` uses `public.ecr.aws/docker/library/node:22-slim`:
+
+- **Layer caching**: `package.json` (+ `package-lock.json` if present) is copied first, then `npm ci --omit=dev` runs
+  (falls back to `npm install` when no lockfile is present)
+- **Non-root**: Runs as `bedrock_agentcore` (UID 1000), matching the Python image
+- **Entrypoint**: `npx tsx main.ts` — no compile step, so dev and container runtime share the same entry shape
+- **Ports**: Exposes 8080 / 8000 / 9000 to match the HTTP / MCP / A2A contract
+
+Example `agentcore.json` for a TypeScript container agent:
+
+```json
+{
+  "name": "MyTsAgent",
+  "build": "Container",
+  "entrypoint": "main.ts",
+  "codeLocation": "app/MyTsAgent/",
+  "runtimeVersion": "NODE_22"
+}
+```
 
 ## Configuration
 

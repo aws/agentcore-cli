@@ -20,11 +20,8 @@ export interface DetectionResult {
 
 /**
  * Detect available container runtime.
- * Checks docker, podman, finch in order; returns the first that is installed.
- * Does not probe the daemon (e.g., `docker info`) — that would require socket
- * access and can trigger OS password prompts on systems where the user is not
- * in the docker group. Actual daemon availability is validated when the runtime
- * is used (build, run, etc.).
+ * Checks docker, podman, finch in order; returns the first that is installed
+ * and capable of running container operations.
  */
 export async function detectContainerRuntime(): Promise<DetectionResult> {
   for (const runtime of CONTAINER_RUNTIMES) {
@@ -35,6 +32,14 @@ export async function detectContainerRuntime(): Promise<DetectionResult> {
     // Verify with --version
     const result = await runSubprocessCapture(runtime, ['--version']);
     if (result.code !== 0) continue;
+
+    // Validate the binary actually supports container operations.
+    // Some environments have shims (e.g., toolbox wrappers) that respond to
+    // --version but don't support build/run commands. These shims may exit 0
+    // even on failure, so also check stderr for error indicators.
+    const buildCheck = await runSubprocessCapture(runtime, ['build', '--help']);
+    if (buildCheck.code !== 0) continue;
+    if (buildCheck.stderr && /unknown command|not found/i.test(buildCheck.stderr)) continue;
 
     const version = result.stdout.trim().split('\n')[0] ?? 'unknown';
     return { runtime: { runtime, binary: runtime, version } };

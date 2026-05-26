@@ -1,7 +1,7 @@
 import { ResourceNotFoundError, ValidationError } from '../../../lib';
 import type { Result } from '../../../lib/result';
 import { parseTimeString } from '../../../lib/utils';
-import { searchLogs, streamLogs } from '../../aws/cloudwatch';
+import { runtimeLogGroup, searchLogs, streamLogs } from '../../aws/cloudwatch';
 import { DEFAULT_ENDPOINT_NAME } from '../../constants';
 import type { DeployedProjectConfig } from '../../operations/resolve-agent';
 import { loadDeployedProjectConfig, resolveAgent } from '../../operations/resolve-agent';
@@ -53,7 +53,7 @@ export function resolveAgentContext(
   }
   const { agent } = result;
   const endpointName = DEFAULT_ENDPOINT_NAME;
-  const logGroupName = `/aws/bedrock-agentcore/runtimes/${agent.runtimeId}-${endpointName}`;
+  const logGroupName = runtimeLogGroup(agent.runtimeId);
   return {
     success: true,
     agentContext: {

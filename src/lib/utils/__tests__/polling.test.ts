@@ -1,4 +1,5 @@
-import { PollExhaustedError, PollTimeoutError, isThrottlingError, poll } from '../polling.js';
+import { PollExhaustedError, PollTimeoutError } from '../../errors/types.js';
+import { isThrottlingError, poll } from '../polling.js';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 /* eslint-disable @typescript-eslint/require-await */

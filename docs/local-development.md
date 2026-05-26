@@ -42,6 +42,16 @@ The dev server automatically:
 2. Runs `uv sync` to install dependencies from `pyproject.toml`
 3. Starts uvicorn with your agent
 
+### TypeScript Agents
+
+TypeScript agents (Strands-only) use Node 22 and `tsx` for the dev loop:
+
+1. Runs `npm install` on first scaffold to populate `node_modules/` from `package.json`
+2. Starts the agent with `npx tsx watch main.ts` — file changes reload automatically
+3. No compile step is required; `tsx` executes `.ts` sources directly
+
+Set `AGENTCORE_SKIP_INSTALL=1` to skip `npm install` if you want to manage dependencies yourself.
+
 ### API Keys
 
 For non-Bedrock providers, add keys to `agentcore/.env.local`:

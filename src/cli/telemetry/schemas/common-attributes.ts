@@ -9,11 +9,6 @@ const MAX_ATTR_LENGTH = 64;
 /**
  * Resource attributes attached to every metric datapoint.
  * Set once per session, not per-event.
- *
- * Constraints are intentionally strict to prevent PII leakage:
- * - IDs must be UUID format (no user-chosen strings)
- * - Version strings are pattern-constrained
- * - All free-text fields are length-bounded
  */
 export const ResourceAttributesSchema = z.object({
   'service.name': z.literal('agentcore-cli'),

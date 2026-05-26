@@ -5,7 +5,7 @@ import { EvaluationLevelSchema, EvaluatorSchema, isValidKmsKeyArn } from '../../
 import { getErrorMessage } from '../errors';
 import type { RemovalPreview, SchemaChange } from '../operations/remove/types';
 import { runCliCommand } from '../telemetry/cli-command-run.js';
-import { EvaluatorType, Level, standardize } from '../telemetry/schemas/common-shapes.js';
+import { EvaluatorLevel, EvaluatorType, standardize } from '../telemetry/schemas/common-shapes.js';
 import { renderCodeBasedEvaluatorTemplate } from '../templates/EvaluatorRenderer';
 import { requireTTY } from '../tui/guards/tty';
 import {
@@ -329,7 +329,7 @@ export class EvaluatorPrimitive extends BasePrimitive<AddEvaluatorOptions, Remov
 
               return {
                 evaluator_type: standardize(EvaluatorType, evalType),
-                level: standardize(Level, levelResult.data),
+                evaluator_level: standardize(EvaluatorLevel, levelResult.data),
               };
             });
           } else {

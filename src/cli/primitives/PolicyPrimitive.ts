@@ -7,7 +7,7 @@ import { getPolicyGeneration, startPolicyGeneration } from '../aws/policy-genera
 import { getErrorMessage } from '../errors';
 import type { RemovalPreview, SchemaChange } from '../operations/remove/types';
 import { runCliCommand, withCommandRunTelemetry } from '../telemetry/cli-command-run.js';
-import { ValidationMode, standardize } from '../telemetry/schemas/common-shapes.js';
+import { PolicyValidationMode, standardize } from '../telemetry/schemas/common-shapes.js';
 import { requireTTY } from '../tui/guards/tty';
 import { BasePrimitive } from './BasePrimitive';
 import { SOURCE_CODE_NOTE } from './constants';
@@ -357,8 +357,11 @@ export class PolicyPrimitive extends BasePrimitive<AddPolicyOptions, RemovablePo
                   ? 'generate'
                   : 'statement';
               return {
-                source_type: sourceType,
-                validation_mode: standardize(ValidationMode, cliOptions.validationMode ?? 'FAIL_ON_ANY_FINDINGS'),
+                policy_attr_source_type: sourceType,
+                policy_validation_mode: standardize(
+                  PolicyValidationMode,
+                  cliOptions.validationMode ?? 'FAIL_ON_ANY_FINDINGS'
+                ),
               };
             });
           } else {

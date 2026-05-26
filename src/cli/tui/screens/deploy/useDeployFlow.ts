@@ -4,6 +4,7 @@ import {
   buildDeployedState,
   getStackOutputs,
   parseAgentOutputs,
+  parseDatasetOutputs,
   parseEvaluatorOutputs,
   parseGatewayOutputs,
   parseMemoryOutputs,
@@ -21,6 +22,7 @@ import {
   resolveConfigBundleComponentKeys,
   setupConfigBundles,
 } from '../../../operations/deploy/post-deploy-config-bundles';
+import { syncDatasets } from '../../../operations/deploy/post-deploy-datasets';
 import { setupHttpGateways } from '../../../operations/deploy/post-deploy-http-gateways';
 import { enableOnlineEvalConfigs } from '../../../operations/deploy/post-deploy-online-evals';
 import { withCommandRunTelemetry } from '../../../telemetry/cli-command-run.js';
@@ -309,6 +311,10 @@ export function useDeployFlow(options: DeployFlowOptions = {}): DeployFlowState 
     );
     const policies = parsePolicyOutputs(outputs, policySpecs);
 
+    // Parse dataset outputs
+    const datasetNames = (ctx.projectSpec.datasets ?? []).map((d: { name: string }) => d.name);
+    const datasets = parseDatasetOutputs(outputs, datasetNames);
+
     // Expose outputs to UI
     setStackOutputs(outputs);
 
@@ -326,8 +332,53 @@ export function useDeployFlow(options: DeployFlowOptions = {}): DeployFlowState 
       credentials: Object.keys(allCredentials).length > 0 ? allCredentials : undefined,
       policyEngines,
       policies,
+      datasets,
     });
     await configIO.writeDeployedState(deployedState);
+
+    // Post-deploy: Sync dataset examples from local JSONL to service DRAFT.
+    const datasetSpecs = ctx.projectSpec.datasets ?? [];
+    const deployedDatasetsRecord = deployedState.targets?.[target.name]?.resources?.datasets ?? {};
+    if (datasetSpecs.length > 0 && Object.keys(deployedDatasetsRecord).length > 0) {
+      try {
+        const datasetSyncResult = await syncDatasets({
+          region: target.region,
+          datasets: datasetSpecs,
+          deployedDatasets: deployedDatasetsRecord,
+          configBaseDir: configIO.getConfigRoot(),
+        });
+
+        if (datasetSyncResult.results.some(r => r.status === 'synced')) {
+          const updatedState = await configIO.readDeployedState().catch(() => deployedState);
+          const targetResources = updatedState.targets[target.name]?.resources;
+          if (targetResources) {
+            targetResources.datasets = datasetSyncResult.updatedDatasets;
+            await configIO.writeDeployedState(updatedState);
+            deployedState = updatedState;
+          }
+        }
+
+        if (datasetSyncResult.hasErrors) {
+          const errors = datasetSyncResult.results.filter(r => r.status === 'error');
+          for (const err of errors) {
+            logger.log(`Dataset "${err.datasetName}" sync error: ${err.error}`, 'warn');
+          }
+          setPostDeployHasError(true);
+          setPostDeployWarnings(prev => [...prev, ...errors.map(err => `Dataset "${err.datasetName}": ${err.error}`)]);
+        }
+
+        for (const r of datasetSyncResult.results) {
+          if (r.status === 'synced') {
+            logger.log(`Dataset "${r.datasetName}": +${r.added} added, ~${r.updated} updated, -${r.deleted} deleted`);
+          }
+        }
+      } catch (err: unknown) {
+        const message = err instanceof Error ? err.message : String(err);
+        logger.log(`Dataset sync failed: ${message}`, 'warn');
+        setPostDeployHasError(true);
+        setPostDeployWarnings(prev => [...prev, `Dataset sync failed: ${message}`]);
+      }
+    }
 
     // Post-deploy: Enable online eval configs that have enableOnCreate (CFN deploys them as DISABLED).
     // Only enable configs that are newly deployed — skip configs that already existed before this
@@ -644,7 +695,12 @@ export function useDeployFlow(options: DeployFlowOptions = {}): DeployFlowState 
           const targetRegion = context?.awsTargets[0]?.region;
           const targetAccount = context?.awsTargets[0]?.account;
           const hasGateways = (context?.projectSpec.agentCoreGateways?.length ?? 0) > 0;
-          if ((agentNames.length > 0 || hasGateways) && targetRegion && targetAccount) {
+          const hasPythonAgent =
+            context?.projectSpec.runtimes?.some(
+              (a: { entrypoint?: string }) =>
+                (a.entrypoint?.endsWith('.py') ?? false) || (a.entrypoint?.includes('.py:') ?? false)
+            ) ?? false;
+          if ((agentNames.length > 0 || hasGateways) && hasPythonAgent && targetRegion && targetAccount) {
             try {
               const tsResult = await setupTransactionSearch({
                 region: targetRegion,
@@ -742,7 +798,7 @@ export function useDeployFlow(options: DeployFlowOptions = {}): DeployFlowState 
 
     const attrs = context
       ? computeDeployAttrs(context.projectSpec, 'diff')
-      : { ...DEFAULT_DEPLOY_ATTRS, mode: 'diff' as const };
+      : { ...DEFAULT_DEPLOY_ATTRS, deploy_mode: 'diff' as const };
 
     const run = async (): Promise<{ success: true } | { success: false; error: Error }> => {
       setDiffStep(prev => ({ ...prev, status: 'running' }));

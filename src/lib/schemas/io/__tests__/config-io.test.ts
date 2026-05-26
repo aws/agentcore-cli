@@ -1,5 +1,5 @@
 import { NoProjectError } from '../../../errors';
-import { ConfigNotFoundError, ConfigParseError, ConfigValidationError } from '../../../errors/config.js';
+import { ConfigNotFoundError, ConfigParseError, ConfigValidationError } from '../../../errors/types.js';
 import { ConfigIO } from '../config-io.js';
 import { randomUUID } from 'node:crypto';
 import { existsSync, mkdirSync, writeFileSync } from 'node:fs';

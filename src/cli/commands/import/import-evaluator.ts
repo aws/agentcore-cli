@@ -6,6 +6,7 @@ import {
   listAllEvaluators,
   listAllOnlineEvaluationConfigs,
 } from '../../aws/agentcore-control';
+import { withCommandRunTelemetry } from '../../telemetry/cli-command-run.js';
 import { ANSI } from './constants';
 import { failResult, parseAndValidateArn } from './import-utils';
 import { executeResourceImport } from './resource-import';
@@ -143,7 +144,7 @@ export function registerImportEvaluator(importCmd: Command): void {
     .option('--name <name>', 'Local name for the imported evaluator')
     .option('-y, --yes', 'Auto-confirm prompts')
     .action(async (cliOptions: ImportResourceOptions) => {
-      const result = await handleImportEvaluator(cliOptions);
+      const result = await withCommandRunTelemetry('import.evaluator', {}, () => handleImportEvaluator(cliOptions));
 
       if (result.success) {
         console.log('');

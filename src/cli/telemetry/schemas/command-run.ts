@@ -1,61 +1,59 @@
 import {
-  Action,
+  AgentFramework,
+  AgentLanguage,
+  AgentProtocol,
   AgentType,
   AttachMode,
   AuthType,
   AuthorizerType,
-  Build,
+  BuildType,
   Count,
   CredentialType,
+  DeployModeSchema,
+  DevAction,
+  EvaluatorLevel,
   EvaluatorType,
   FilterState,
   FilterType,
-  Framework,
   GatewayTargetHost,
   GatewayTargetType,
-  Language,
-  Level,
-  Memory,
+  MemoryType,
+  Mode,
   ModelProvider,
   NetworkMode,
-  OutboundAuth,
+  OutboundAuthType,
+  PolicyAttrSourceType,
   PolicyEngineMode,
-  Protocol,
+  PolicyValidationMode,
   RefType,
   ResourceType,
-  SourceType,
-  ValidationMode,
+  UiMode,
   safeSchema,
 } from './common-shapes.js';
 import { z } from 'zod';
 
-// ---------------------------------------------------------------------------
-// Per-command attribute schemas
-// All schemas use safeSchema() which rejects z.string() at compile time.
-// ---------------------------------------------------------------------------
-
 const CreateAttrs = safeSchema({
-  language: Language,
-  framework: Framework,
+  agent_language: AgentLanguage,
+  agent_framework: AgentFramework,
   model_provider: ModelProvider,
-  memory: Memory,
-  protocol: Protocol,
-  build: Build,
+  memory_type: MemoryType,
+  agent_protocol: AgentProtocol,
+  build_type: BuildType,
   agent_type: AgentType,
   network_mode: NetworkMode,
   has_agent: z.boolean(),
 });
 
 const AddAgentAttrs = safeSchema({
-  language: Language,
-  framework: Framework,
+  agent_language: AgentLanguage,
+  agent_framework: AgentFramework,
   model_provider: ModelProvider,
   agent_type: AgentType,
-  build: Build,
-  protocol: Protocol,
+  build_type: BuildType,
+  agent_protocol: AgentProtocol,
   network_mode: NetworkMode,
   authorizer_type: AuthorizerType,
-  memory: Memory,
+  memory_type: MemoryType,
 });
 
 const AddMemoryAttrs = safeSchema({
@@ -64,11 +62,13 @@ const AddMemoryAttrs = safeSchema({
   strategy_summarization: z.boolean(),
   strategy_user_preference: z.boolean(),
   strategy_episodic: z.boolean(),
+  indexed_key_count: Count,
+  has_indexed_keys: z.boolean(),
 });
 
 const AddCredentialAttrs = safeSchema({ credential_type: CredentialType });
 
-const AddEvaluatorAttrs = safeSchema({ evaluator_type: EvaluatorType, level: Level });
+const AddEvaluatorAttrs = safeSchema({ evaluator_type: EvaluatorType, evaluator_level: EvaluatorLevel });
 
 const AddOnlineEvalAttrs = safeSchema({ evaluator_count: Count, enable_on_create: z.boolean() });
 
@@ -81,14 +81,17 @@ const AddGatewayAttrs = safeSchema({
 });
 
 const AddGatewayTargetAttrs = safeSchema({
-  target_type: GatewayTargetType,
-  host: GatewayTargetHost,
-  outbound_auth: OutboundAuth,
+  gateway_target_type: GatewayTargetType,
+  gateway_target_host: GatewayTargetHost,
+  outbound_auth_type: OutboundAuthType,
 });
 
 const AddPolicyEngineAttrs = safeSchema({ attach_gateway_count: Count, attach_mode: AttachMode });
 
-const AddPolicyAttrs = safeSchema({ source_type: SourceType, validation_mode: ValidationMode });
+const AddPolicyAttrs = safeSchema({
+  policy_attr_source_type: PolicyAttrSourceType,
+  policy_validation_mode: PolicyValidationMode,
+});
 
 const DeployAttrs = safeSchema({
   runtime_count: Count,
@@ -100,13 +103,14 @@ const DeployAttrs = safeSchema({
   gateway_target_count: Count,
   policy_engine_count: Count,
   policy_count: Count,
-  mode: z.enum(['deploy', 'dry-run', 'diff']),
+  deploy_mode: DeployModeSchema,
 });
 
 const DevAttrs = safeSchema({
-  action: Action,
+  dev_action: DevAction,
+  ui_mode: UiMode,
   has_stream: z.boolean(),
-  protocol: Protocol,
+  agent_protocol: AgentProtocol,
   invoke_count: Count,
 });
 
@@ -114,7 +118,7 @@ const InvokeAttrs = safeSchema({
   has_stream: z.boolean(),
   has_session_id: z.boolean(),
   auth_type: AuthType,
-  protocol: Protocol,
+  agent_protocol: AgentProtocol,
 });
 
 const StatusAttrs = safeSchema({ filter_type: FilterType, filter_state: FilterState });
@@ -133,23 +137,26 @@ const RunEvalAttrs = safeSchema({
 
 const FetchAccessAttrs = safeSchema({ resource_type: ResourceType });
 
-const UpdateAttrs = safeSchema({ check_only: z.boolean() });
+const UpdateAttrs = safeSchema({ is_dry_run: z.boolean() });
+
+const FeedbackAttrs = safeSchema({
+  mode: Mode,
+  has_screenshot: z.boolean(),
+});
 
 const PauseResumeOnlineEvalAttrs = safeSchema({ ref_type: RefType });
 
 const NoAttrs = safeSchema({});
 
-// ---------------------------------------------------------------------------
-// Command schema registry — single source of truth
-// ---------------------------------------------------------------------------
-
+/*
+  Mapping of commands to required attributes. 
+  This is chosen over discriminated unions to avoid complexity in the root-level definition. 
+*/
 export const COMMAND_SCHEMAS = {
-  // create
   create: CreateAttrs,
-
-  // add
   'add.agent': AddAgentAttrs,
   'add.memory': AddMemoryAttrs,
+  'add.dataset': NoAttrs,
   'add.credential': AddCredentialAttrs,
   'add.evaluator': AddEvaluatorAttrs,
   'add.online-eval': AddOnlineEvalAttrs,
@@ -158,39 +165,27 @@ export const COMMAND_SCHEMAS = {
   'add.policy-engine': AddPolicyEngineAttrs,
   'add.policy': AddPolicyAttrs,
   'add.runtime-endpoint': NoAttrs,
-
-  // deploy
   deploy: DeployAttrs,
-
-  // dev / invoke
   dev: DevAttrs,
   invoke: InvokeAttrs,
-
-  // status / logs
   status: StatusAttrs,
   logs: LogsAttrs,
   'logs.evals': LogsEvalsAttrs,
-
-  // run
   'run.eval': RunEvalAttrs,
-
-  // fetch
   'fetch.access': FetchAccessAttrs,
-
-  // update
+  feedback: FeedbackAttrs,
   update: UpdateAttrs,
-
-  // pause / resume
   'pause.online-eval': PauseResumeOnlineEvalAttrs,
   'resume.online-eval': PauseResumeOnlineEvalAttrs,
-
-  // no command-specific attributes
   'traces.list': NoAttrs,
   'traces.get': NoAttrs,
   'evals.history': NoAttrs,
   import: NoAttrs,
   'import.runtime': NoAttrs,
   'import.memory': NoAttrs,
+  'import.evaluator': NoAttrs,
+  'import.online-eval': NoAttrs,
+  'import.gateway': NoAttrs,
   package: NoAttrs,
   validate: NoAttrs,
   'help.modes': NoAttrs,
@@ -198,6 +193,7 @@ export const COMMAND_SCHEMAS = {
   'remove.all': NoAttrs,
   'remove.agent': NoAttrs,
   'remove.memory': NoAttrs,
+  'remove.dataset': NoAttrs,
   'remove.credential': NoAttrs,
   'remove.evaluator': NoAttrs,
   'remove.online-eval': NoAttrs,
@@ -208,6 +204,9 @@ export const COMMAND_SCHEMAS = {
   'remove.runtime-endpoint': NoAttrs,
   'remove.config-bundle': NoAttrs,
   'remove.ab-test': NoAttrs,
+  'dataset.download': NoAttrs,
+  'dataset.publish-version': NoAttrs,
+  'dataset.remove-version': NoAttrs,
   'telemetry.disable': NoAttrs,
   'telemetry.enable': NoAttrs,
   'telemetry.status': NoAttrs,
@@ -218,26 +217,13 @@ export const COMMAND_SCHEMAS = {
 // ---------------------------------------------------------------------------
 
 export type Command = keyof typeof COMMAND_SCHEMAS;
+export type CommandGroup = { [C in Command]: C extends `${infer G}.${string}` ? G : C }[Command];
 export type CommandAttrs<C extends Command> = z.infer<(typeof COMMAND_SCHEMAS)[C]>;
 
-/** Extract the command group prefix from a dotted command key (e.g. 'add' from 'add.agent'). */
-type CommandGroup = {
-  [C in Command]: C extends `${infer G}.${string}` ? G : C;
-}[Command];
-
-/**
- * Type-safe lookup of a subcommand under a command group.
- * Produces a compile-time error if `${G}.${S}` is not a registered command.
- *
- * @example
- * SubCommand<'remove', 'agent'>  // → 'remove.agent'
- * SubCommand<'add', 'memory'>    // → 'add.memory'
- * SubCommand<'remove', 'bogus'>  // → never (compile error at call site)
- */
 export type SubCommand<G extends CommandGroup, S extends string> = Extract<Command, `${G}.${S}`>;
 
 /** Derive command_group from command key (e.g. 'add.agent' → 'add') */
-export function deriveCommandGroup(command: Command): string {
+export function deriveCommandGroup(command: Command): CommandGroup {
   const dot = command.indexOf('.');
-  return dot === -1 ? command : command.slice(0, dot);
+  return (dot === -1 ? command : command.slice(0, dot)) as CommandGroup;
 }

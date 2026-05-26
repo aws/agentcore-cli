@@ -138,20 +138,20 @@ describe('add memory command', () => {
       const memory = projectSpec.memories.find((m: { name: string }) => m.name === memoryName);
 
       const semantic = memory?.strategies?.find((s: { type: string }) => s.type === 'SEMANTIC');
-      expect(semantic?.namespaces).toEqual(['/users/{actorId}/facts']);
+      expect(semantic?.namespaceTemplates).toEqual(['/users/{actorId}/facts']);
 
       const userPref = memory?.strategies?.find((s: { type: string }) => s.type === 'USER_PREFERENCE');
-      expect(userPref?.namespaces).toEqual(['/users/{actorId}/preferences']);
+      expect(userPref?.namespaceTemplates).toEqual(['/users/{actorId}/preferences']);
 
       const summarization = memory?.strategies?.find((s: { type: string }) => s.type === 'SUMMARIZATION');
-      expect(summarization?.namespaces).toEqual(['/summaries/{actorId}/{sessionId}']);
+      expect(summarization?.namespaceTemplates).toEqual(['/summaries/{actorId}/{sessionId}']);
 
       const episodic = memory?.strategies?.find((s: { type: string }) => s.type === 'EPISODIC');
-      expect(episodic?.namespaces).toEqual(['/episodes/{actorId}/{sessionId}']);
-      expect(episodic?.reflectionNamespaces).toEqual(['/episodes/{actorId}']);
+      expect(episodic?.namespaceTemplates).toEqual(['/episodes/{actorId}/{sessionId}']);
+      expect(episodic?.reflectionNamespaceTemplates).toEqual(['/episodes/{actorId}']);
     });
 
-    it('creates memory with EPISODIC strategy including default namespaces and reflectionNamespaces', async () => {
+    it('creates memory with EPISODIC strategy including default namespaceTemplates and reflectionNamespaceTemplates', async () => {
       const memoryName = `epi${Date.now()}`;
       const result = await runCLI(
         ['add', 'memory', '--name', memoryName, '--strategies', 'EPISODIC', '--json'],
@@ -162,8 +162,8 @@ describe('add memory command', () => {
       const memory = projectSpec.memories.find((m: { name: string }) => m.name === memoryName);
       const episodic = memory?.strategies?.find((s: { type: string }) => s.type === 'EPISODIC');
       expect(episodic).toBeTruthy();
-      expect(episodic?.namespaces).toEqual(['/episodes/{actorId}/{sessionId}']);
-      expect(episodic?.reflectionNamespaces).toEqual(['/episodes/{actorId}']);
+      expect(episodic?.namespaceTemplates).toEqual(['/episodes/{actorId}/{sessionId}']);
+      expect(episodic?.reflectionNamespaceTemplates).toEqual(['/episodes/{actorId}']);
     });
   });
 });

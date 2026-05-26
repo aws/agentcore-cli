@@ -32,11 +32,26 @@ describe('normalizeHeaderName', () => {
     );
   });
 
-  it('auto-prefixes a bare suffix like "MyHeader"', () => {
+  it('passes through X- prefixed headers unchanged', () => {
+    expect(normalizeHeaderName('X-Api-Key')).toBe('X-Api-Key');
+    expect(normalizeHeaderName('X-Custom-Signature')).toBe('X-Custom-Signature');
+    expect(normalizeHeaderName('X-Request-Id')).toBe('X-Request-Id');
+  });
+
+  it('canonicalizes Runtime-Custom- prefix casing but preserves suffix as-typed', () => {
+    expect(normalizeHeaderName('x-amzn-bedrock-agentcore-runtime-custom-myheader')).toBe(
+      'X-Amzn-Bedrock-AgentCore-Runtime-Custom-myheader'
+    );
+    expect(normalizeHeaderName('X-AMZN-BEDROCK-AGENTCORE-RUNTIME-CUSTOM-MyHeader')).toBe(
+      'X-Amzn-Bedrock-AgentCore-Runtime-Custom-MyHeader'
+    );
+  });
+
+  it('auto-prefixes a bare suffix like "MyHeader" (no X- prefix, backward compat)', () => {
     expect(normalizeHeaderName('MyHeader')).toBe('X-Amzn-Bedrock-AgentCore-Runtime-Custom-MyHeader');
   });
 
-  it('auto-prefixes suffix with hyphens like "My-Custom-Header"', () => {
+  it('auto-prefixes suffix with hyphens like "My-Custom-Header" (no X- prefix)', () => {
     expect(normalizeHeaderName('My-Custom-Header')).toBe('X-Amzn-Bedrock-AgentCore-Runtime-Custom-My-Custom-Header');
   });
 });
@@ -59,6 +74,11 @@ describe('parseAndNormalizeHeaders', () => {
     ]);
   });
 
+  it('passes through X- prefixed headers without auto-prefixing', () => {
+    const result = parseAndNormalizeHeaders('X-Api-Key, X-Custom-Signature, authorization');
+    expect(result).toEqual(['X-Api-Key', 'X-Custom-Signature', 'Authorization']);
+  });
+
   it('deduplicates after normalization', () => {
     const result = parseAndNormalizeHeaders('MyHeader, X-Amzn-Bedrock-AgentCore-Runtime-Custom-MyHeader');
     expect(result).toEqual(['X-Amzn-Bedrock-AgentCore-Runtime-Custom-MyHeader']);
@@ -69,13 +89,14 @@ describe('parseAndNormalizeHeaders', () => {
     expect(result).toEqual(['Authorization']);
   });
 
+  it('deduplicates case-insensitively for X- headers', () => {
+    const result = parseAndNormalizeHeaders('X-Api-Key, x-api-key');
+    expect(result).toEqual(['X-Api-Key']);
+  });
+
   it('trims whitespace around values', () => {
-    const result = parseAndNormalizeHeaders('  MyHeader  ,  authorization  ,  Another-Header  ');
-    expect(result).toEqual([
-      'X-Amzn-Bedrock-AgentCore-Runtime-Custom-MyHeader',
-      'Authorization',
-      'X-Amzn-Bedrock-AgentCore-Runtime-Custom-Another-Header',
-    ]);
+    const result = parseAndNormalizeHeaders('  MyHeader  ,  authorization  ,  X-Api-Key  ');
+    expect(result).toEqual(['X-Amzn-Bedrock-AgentCore-Runtime-Custom-MyHeader', 'Authorization', 'X-Api-Key']);
   });
 });
 
@@ -98,10 +119,35 @@ describe('validateHeaderAllowlist', () => {
     expect(validateHeaderAllowlist('authorization')).toEqual({ success: true });
   });
 
+  it('returns success for X- prefixed headers from AWS docs', () => {
+    expect(validateHeaderAllowlist('X-Api-Key')).toEqual({ success: true });
+    expect(validateHeaderAllowlist('X-Custom-Signature')).toEqual({ success: true });
+  });
+
   it('returns success for mixed valid headers', () => {
-    expect(validateHeaderAllowlist('Authorization, MyHeader, X-Amzn-Bedrock-AgentCore-Runtime-Custom-Another')).toEqual(
+    expect(validateHeaderAllowlist('Authorization, X-Api-Key, X-Amzn-Bedrock-AgentCore-Runtime-Custom-UserId')).toEqual(
       { success: true }
     );
+  });
+
+  it('returns success for headers with underscores', () => {
+    expect(validateHeaderAllowlist('X-My_Custom_Header')).toEqual({ success: true });
+  });
+
+  it('returns error for x-amz- prefixed headers', () => {
+    const result = validateHeaderAllowlist('x-amz-security-token');
+    expect(result.success).toBe(false);
+    expect(result.error).toContain('reserved for AWS request signing');
+  });
+
+  it('returns error for x-amzn- prefixed headers (not Runtime-Custom-)', () => {
+    const result = validateHeaderAllowlist('x-amzn-trace-id');
+    expect(result.success).toBe(false);
+    expect(result.error).toContain('x-amzn-');
+  });
+
+  it('returns success for X-Amzn-Bedrock-AgentCore-Runtime-Custom- headers', () => {
+    expect(validateHeaderAllowlist('X-Amzn-Bedrock-AgentCore-Runtime-Custom-UserId')).toEqual({ success: true });
   });
 
   it('returns error when exceeding max 20 headers', () => {
@@ -119,13 +165,19 @@ describe('validateHeaderAllowlist', () => {
   it('returns error for header names containing whitespace', () => {
     const result = validateHeaderAllowlist('My Header');
     expect(result.success).toBe(false);
-    expect(result.error).toContain('Invalid header name');
+    expect(result.error).toContain('must contain only');
   });
 
   it('returns error for header names with special characters', () => {
     const result = validateHeaderAllowlist('My@Header');
     expect(result.success).toBe(false);
-    expect(result.error).toContain('Invalid header name');
+    expect(result.error).toContain('must contain only');
+  });
+
+  it('returns error for header with dots', () => {
+    const result = validateHeaderAllowlist('My.Header');
+    expect(result.success).toBe(false);
+    expect(result.error).toContain('must contain only');
   });
 });
 
@@ -134,6 +186,13 @@ describe('parseHeaderFlag', () => {
     expect(parseHeaderFlag('MyHeader: some-value')).toEqual({
       name: 'X-Amzn-Bedrock-AgentCore-Runtime-Custom-MyHeader',
       value: 'some-value',
+    });
+  });
+
+  it('parses X- prefixed header without auto-prefixing', () => {
+    expect(parseHeaderFlag('X-Api-Key: my-key')).toEqual({
+      name: 'X-Api-Key',
+      value: 'my-key',
     });
   });
 
@@ -180,6 +239,14 @@ describe('parseHeaderFlags', () => {
     expect(result).toEqual({
       'X-Amzn-Bedrock-AgentCore-Runtime-Custom-MyHeader': 'value1',
       Authorization: 'Bearer token',
+    });
+  });
+
+  it('parses X- prefixed headers without prefixing', () => {
+    const result = parseHeaderFlags(['X-Api-Key: key123', 'X-Custom-Signature: sha256=abc']);
+    expect(result).toEqual({
+      'X-Api-Key': 'key123',
+      'X-Custom-Signature': 'sha256=abc',
     });
   });
 

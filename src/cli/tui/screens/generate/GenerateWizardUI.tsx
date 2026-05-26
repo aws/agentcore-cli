@@ -32,6 +32,7 @@ import {
   PROTOCOL_OPTIONS,
   STEP_LABELS,
   getModelProviderOptionsForSdk,
+  getProtocolOptionsForLanguage,
   getSDKOptionsForProtocol,
 } from './types';
 import type { useGenerateWizard } from './useGenerateWizard';
@@ -77,14 +78,17 @@ export function GenerateWizardUI({
         return LANGUAGE_OPTIONS.map(o => ({
           id: o.id,
           title: o.title,
-          disabled: 'disabled' in o ? o.disabled : undefined,
         }));
       case 'buildType':
         return BUILD_TYPE_OPTIONS.map(o => ({ id: o.id, title: o.title, description: o.description }));
       case 'protocol':
-        return PROTOCOL_OPTIONS.map(o => ({ id: o.id, title: o.title, description: o.description }));
+        return getProtocolOptionsForLanguage(wizard.config.language).map(o => ({
+          id: o.id,
+          title: o.title,
+          description: o.description,
+        }));
       case 'sdk':
-        return getSDKOptionsForProtocol(wizard.config.protocol).map(o => ({
+        return getSDKOptionsForProtocol(wizard.config.protocol, wizard.config.language).map(o => ({
           id: o.id,
           title: o.title,
           description: o.description,
@@ -122,9 +126,11 @@ export function GenerateWizardUI({
   const isSessionStorageMountPathStep = wizard.step === 'sessionStorageMountPath';
   const isConfirmStep = wizard.step === 'confirm';
 
-  // Advanced multi-select items — filter out dockerfile when not a Container build
+  // Advanced multi-select items — filter out options not applicable to current config
   const advancedItems: SelectableItem[] = ADVANCED_SETTING_OPTIONS.filter(
-    o => o.id !== 'dockerfile' || wizard.config.buildType === 'Container'
+    o =>
+      (o.id !== 'dockerfile' || wizard.config.buildType === 'Container') &&
+      (o.id !== 'filesystem' || wizard.config.language !== 'TypeScript')
   ).map(o => ({ id: o.id, title: o.title, description: o.description }));
 
   const handleSelect = (item: SelectableItem) => {
@@ -307,8 +313,8 @@ export function GenerateWizardUI({
           />
           <Box marginTop={1}>
             <Text dimColor>
-              Enter header suffixes or full names. We auto-prefix with X-Amzn-Bedrock-AgentCore-Runtime-Custom- if
-              needed. &apos;Authorization&apos; is also accepted.
+              Enter header names (e.g. Authorization, X-Api-Key, X-Custom-Signature). Bare names without X- prefix are
+              auto-prefixed with X-Amzn-Bedrock-AgentCore-Runtime-Custom- for backward compatibility.
             </Text>
           </Box>
         </Box>

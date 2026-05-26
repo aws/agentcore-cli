@@ -6,7 +6,7 @@ import type { ImportedFeatures } from './base-translator';
 
 const BASE_DEPS = [
   'aws-opentelemetry-distro',
-  'bedrock-agentcore >= 1.0.3',
+  'bedrock-agentcore >= 1.9.1',
   'botocore[crt] >= 1.35.0',
   'boto3>=1.38.0',
 ];
@@ -22,7 +22,7 @@ const LANGGRAPH_DEPS = [
   'tiktoken==0.11.0',
 ];
 
-const MEMORY_DEPS = ['bedrock-agentcore[memory] >= 1.0.3'];
+const MEMORY_DEPS = ['bedrock-agentcore[memory] >= 1.9.1'];
 
 export function generatePyprojectToml(agentName: string, framework: SDKFramework, features: ImportedFeatures): string {
   const deps = [...BASE_DEPS];

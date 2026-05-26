@@ -112,7 +112,7 @@ export async function handleResources(ctx: RouteContext, res: ServerResponse, or
       name: m.name,
       strategies: m.strategies.map(s => ({
         type: s.type,
-        namespaces: s.namespaces ?? [],
+        namespaceTemplates: s.namespaceTemplates ?? s.namespaces ?? [],
       })),
       expiryDays: m.eventExpiryDuration,
       deploymentStatus: statusByTypeAndName.get(`memory:${m.name}`),

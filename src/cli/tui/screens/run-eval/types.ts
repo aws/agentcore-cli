@@ -10,6 +10,8 @@ export interface RunEvalConfig {
   assertions: string[];
   expectedTrajectory: string[];
   expectedResponse: string;
+  dataset?: string;
+  datasetVersion?: string;
 }
 
 export const RUN_EVAL_STEP_LABELS: Record<RunEvalStep, string> = {

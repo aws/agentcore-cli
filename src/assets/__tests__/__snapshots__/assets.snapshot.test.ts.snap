@@ -387,6 +387,7 @@ test('AgentCoreStack synthesizes with empty spec', () => {
       agentCoreGateways: [],
       mcpRuntimeTools: [],
       unassignedTargets: [],
+      datasets: [],
     },
   });
   const template = Template.fromStack(stack);
@@ -447,6 +448,10 @@ exports[`Assets Directory Snapshots > File listing > should match the expected f
   "cdk/tsconfig.json",
   "container/python/Dockerfile",
   "container/python/dockerignore.template",
+  "container/typescript/Dockerfile",
+  "container/typescript/dockerignore.template",
+  "datasets/predefined-v1.jsonl",
+  "datasets/simulated-v1.jsonl",
   "evaluators/python-lambda/execution-role-policy.json",
   "evaluators/python-lambda/lambda_function.py",
   "evaluators/python-lambda/pyproject.toml",
@@ -543,6 +548,19 @@ exports[`Assets Directory Snapshots > File listing > should match the expected f
   "python/mcp/standalone/base/main.py",
   "python/mcp/standalone/base/pyproject.toml",
   "typescript/.gitkeep",
+  "typescript/http/strands/base/README.md",
+  "typescript/http/strands/base/gitignore.template",
+  "typescript/http/strands/base/main.ts",
+  "typescript/http/strands/base/mcp_client/client.ts",
+  "typescript/http/strands/base/model/load.ts",
+  "typescript/http/strands/base/package.json",
+  "typescript/http/strands/base/tsconfig.json",
+  "typescript/http/vercelai/base/README.md",
+  "typescript/http/vercelai/base/gitignore.template",
+  "typescript/http/vercelai/base/main.ts",
+  "typescript/http/vercelai/base/model/load.ts",
+  "typescript/http/vercelai/base/package.json",
+  "typescript/http/vercelai/base/tsconfig.json",
 ]
 `;
 
@@ -1167,7 +1185,7 @@ dependencies = [
     "a2a-sdk >= 0.2.0, < 1.0.0",
     "aws-opentelemetry-distro",
     "bedrock-agentcore[a2a] >= 1.0.3",
-    "google-adk >= 1.0.0",
+    "google-adk >= 1.0.0, < 2.0.0",
     "google-genai >= 1.0.0",
 ]
 
@@ -1871,7 +1889,7 @@ dependencies = [
     {{#if (eq modelProvider "Anthropic")}}"anthropic >= 0.30.0",
     {{/if}}"a2a-sdk[all] >= 0.2.0, < 1.0.0",
     "aws-opentelemetry-distro",
-    "bedrock-agentcore[a2a] >= 1.0.3",
+    "bedrock-agentcore[a2a] >= 1.9.1",
     "botocore[crt] >= 1.35.0",
     {{#if (eq modelProvider "Gemini")}}"google-genai >= 1.0.0",
     {{/if}}{{#if (eq modelProvider "OpenAI")}}"openai >= 1.0.0",
@@ -1916,7 +1934,7 @@ def get_memory_session_manager(session_id: Optional[str], actor_id: str) -> Opti
         f"/users/{actor_id}/preferences": RetrievalConfig(top_k=3, relevance_score=0.5),
 {{/if}}
 {{#if (includes memoryProviders.[0].strategies "SUMMARIZATION")}}
-        f"/summaries/{actor_id}/{session_id}": RetrievalConfig(top_k=3, relevance_score=0.5),
+        f"/summaries/{actor_id}": RetrievalConfig(top_k=3, relevance_score=0.5),
 {{/if}}
     }
 {{/if}}
@@ -2115,7 +2133,7 @@ dependencies = [
     "ag-ui-protocol >= 0.1.10",
     "bedrock-agentcore >= 1.0.3",
     "fastapi >= 0.115.12",
-    "google-adk >= 1.16.0",
+    "google-adk >= 1.16.0, < 2.0.0",
     "google-genai >= 1.0.0",
     "opentelemetry-distro",
     "opentelemetry-exporter-otlp",
@@ -2708,7 +2726,7 @@ dependencies = [
     {{/if}}"ag-ui-strands >= 0.1.7",
     "ag-ui-protocol >= 0.1.10",
     "aws-opentelemetry-distro",
-    "bedrock-agentcore >= 1.0.3",
+    "bedrock-agentcore >= 1.9.1",
     "botocore[crt] >= 1.35.0",
     "fastapi >= 0.115.12",
     {{#if (eq modelProvider "Gemini")}}"google-genai >= 1.0.0",
@@ -2756,7 +2774,7 @@ def get_memory_session_manager(session_id: Optional[str], actor_id: str) -> Opti
         f"/users/{actor_id}/preferences": RetrievalConfig(top_k=3, relevance_score=0.5),
 {{/if}}
 {{#if (includes memoryProviders.[0].strategies "SUMMARIZATION")}}
-        f"/summaries/{actor_id}/{session_id}": RetrievalConfig(top_k=3, relevance_score=0.5),
+        f"/summaries/{actor_id}": RetrievalConfig(top_k=3, relevance_score=0.5),
 {{/if}}
     }
 {{/if}}
@@ -3599,7 +3617,7 @@ requires-python = ">=3.10"
 dependencies = [
     "opentelemetry-distro",
     "opentelemetry-exporter-otlp",
-    "google-adk >= 1.17.0",
+    "google-adk >= 1.17.0, < 2.0.0",
     "bedrock-agentcore >= 1.0.3",
     "botocore[crt] >= 1.35.0",
     {{#if hasGateway}}{{#if (includes gatewayAuthTypes "AWS_IAM")}}"mcp-proxy-for-aws >= 1.1.0",
@@ -5089,7 +5107,7 @@ requires-python = ">=3.10"
 dependencies = [
     {{#if (eq modelProvider "Anthropic")}}"anthropic >= 0.30.0",
     {{/if}}"aws-opentelemetry-distro",
-    "bedrock-agentcore >= 1.0.3",
+    "bedrock-agentcore >= 1.9.1",
     "botocore[crt] >= 1.35.0",
     {{#if (eq modelProvider "Gemini")}}"google-genai >= 1.0.0",
     {{/if}}"mcp >= 1.19.0",
@@ -5137,7 +5155,7 @@ def get_memory_session_manager(session_id: Optional[str], actor_id: str) -> Opti
         f"/users/{actor_id}/preferences": RetrievalConfig(top_k=3, relevance_score=0.5),
 {{/if}}
 {{#if (includes memoryProviders.[0].strategies "SUMMARIZATION")}}
-        f"/summaries/{actor_id}/{session_id}": RetrievalConfig(top_k=3, relevance_score=0.5),
+        f"/summaries/{actor_id}": RetrievalConfig(top_k=3, relevance_score=0.5),
 {{/if}}
     }
 {{/if}}
@@ -5609,3 +5627,607 @@ When modifying JSON config files:
 `;
 
 exports[`Assets Directory Snapshots > TypeScript assets > typescript/typescript/.gitkeep should match snapshot 1`] = `""`;
+
+exports[`Assets Directory Snapshots > TypeScript assets > typescript/typescript/http/strands/base/README.md should match snapshot 1`] = `
+"This is a project generated by the AgentCore CLI!
+
+# Layout
+
+The generated application code lives at the agent root directory. At the root, there is a \`.gitignore\` file, an
+\`agentcore/\` folder which represents the configurations and state associated with this project. Other \`agentcore\`
+commands like \`deploy\`, \`dev\`, and \`invoke\` rely on the configuration stored here.
+
+## Agent Root
+
+The main entrypoint to your app is defined in \`main.ts\`. Using the AgentCore SDK \`BedrockAgentCoreApp\`, this file
+defines an HTTP server that streams tokens from your chosen Agent framework SDK.
+
+\`model/load.ts\` instantiates your chosen model provider.
+
+## Environment Variables
+
+| Variable | Required | Description |
+| --- | --- | --- |
+{{#if hasIdentity}}| \`{{identityProviders.[0].envVarName}}\` | Yes | {{modelProvider}} API key (local) or Identity provider name (deployed) |
+{{/if}}| \`LOCAL_DEV\` | No | Set to \`1\` to use \`.env.local\` instead of AgentCore Identity |
+
+# Developing locally
+
+If installation was successful, \`node_modules/\` is already populated with dependencies.
+
+\`agentcore dev\` will start a local server using \`npx tsx watch main.ts\` for hot reload. The port is logged to the terminal (default \`8080\`).
+
+In a new terminal, you can invoke that server with:
+
+\`agentcore invoke --dev "What can you do"\`
+
+# Deployment
+
+After providing credentials, \`agentcore deploy\` will deploy your project into Amazon Bedrock AgentCore.
+
+Use \`agentcore invoke\` to invoke your deployed agent.
+"
+`;
+
+exports[`Assets Directory Snapshots > TypeScript assets > typescript/typescript/http/strands/base/gitignore.template should match snapshot 1`] = `
+"# Environment variables
+.env
+.env.*
+
+# Node
+node_modules/
+dist/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+"
+`;
+
+exports[`Assets Directory Snapshots > TypeScript assets > typescript/typescript/http/strands/base/main.ts should match snapshot 1`] = `
+"import { BedrockAgentCoreApp } from 'bedrock-agentcore/runtime';
+import { Agent, McpClient, tool, type ToolList } from '@strands-agents/sdk';
+import { z } from 'zod';
+import { loadModel } from './model/load.js';
+import { getStreamableHttpMcpClient } from './mcp_client/client.js';
+
+// Define a collection of MCP clients (filter out anything that failed to initialize)
+const mcpClients: McpClient[] = [getStreamableHttpMcpClient()].filter(
+  (client): client is McpClient => Boolean(client)
+);
+
+// Define a collection of tools used by the model
+const tools: ToolList = [];
+
+// Define a simple function tool — the Zod schema gives us type inference and runtime validation for free
+const addNumbers = tool({
+  name: 'add_numbers',
+  description: 'Return the sum of two numbers',
+  inputSchema: z.object({
+    a: z.number(),
+    b: z.number(),
+  }),
+  callback: async ({ a, b }) => a + b,
+});
+tools.push(addNumbers);
+
+// Add MCP clients to tools
+tools.push(...mcpClients);
+
+const SYSTEM_PROMPT = \`
+You are a helpful assistant. Use tools when appropriate.
+\`;
+
+let cachedAgent: Agent | null = null;
+
+async function getOrCreateAgent(): Promise<Agent> {
+  if (!cachedAgent) {
+    const model = await loadModel();
+    cachedAgent = new Agent({
+      model,
+      systemPrompt: SYSTEM_PROMPT,
+      tools,
+    });
+  }
+  return cachedAgent;
+}
+
+const app = new BedrockAgentCoreApp({
+  invocationHandler: {
+    async *process(payload: any, context: any) {
+      const agent = await getOrCreateAgent();
+
+      for await (const event of agent.stream(payload.prompt ?? '')) {
+        if (
+          event.type === 'modelStreamUpdateEvent' &&
+          event.event?.type === 'modelContentBlockDeltaEvent' &&
+          event.event.delta?.type === 'textDelta'
+        ) {
+          yield { data: event.event.delta.text };
+        }
+      }
+    },
+  },
+});
+
+app.run({ port: parseInt(process.env.PORT ?? '8080') });
+"
+`;
+
+exports[`Assets Directory Snapshots > TypeScript assets > typescript/typescript/http/strands/base/mcp_client/client.ts should match snapshot 1`] = `
+"import { McpClient } from '@strands-agents/sdk';
+import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js';
+
+// ExaAI provides information about code through web searches, crawling and code context searches through their platform. Requires no authentication
+const EXAMPLE_MCP_ENDPOINT = 'https://mcp.exa.ai/mcp';
+
+export function getStreamableHttpMcpClient(): McpClient {
+  // to use an MCP server that supports bearer authentication, add a headers() callback to requestInit
+  const transport = new StreamableHTTPClientTransport(new URL(EXAMPLE_MCP_ENDPOINT));
+  return new McpClient({ transport });
+}
+"
+`;
+
+exports[`Assets Directory Snapshots > TypeScript assets > typescript/typescript/http/strands/base/model/load.ts should match snapshot 1`] = `
+"{{#if (eq modelProvider "Bedrock")}}
+import { BedrockModel } from '@strands-agents/sdk/models/bedrock';
+
+export function loadModel(): BedrockModel {
+  return new BedrockModel({ modelId: 'global.anthropic.claude-sonnet-4-5-20250929-v1:0' });
+}
+{{/if}}
+{{#if (eq modelProvider "Anthropic")}}
+import { AnthropicModel } from '@strands-agents/sdk/models/anthropic';
+import { withApiKey } from 'bedrock-agentcore/identity';
+
+const IDENTITY_PROVIDER_NAME = '{{identityProviders.[0].name}}';
+const IDENTITY_ENV_VAR = '{{identityProviders.[0].envVarName}}';
+
+async function getApiKey(): Promise<string> {
+  if (process.env.LOCAL_DEV === '1') {
+    const apiKey = process.env[IDENTITY_ENV_VAR] ?? process.env.ANTHROPIC_API_KEY;
+    if (!apiKey) {
+      throw new Error(\`\${IDENTITY_ENV_VAR} or ANTHROPIC_API_KEY not found. Add your key to agentcore/.env.local\`);
+    }
+    return apiKey;
+  }
+  return withApiKey({ providerName: IDENTITY_PROVIDER_NAME })(async (apiKey: string) => apiKey)();
+}
+
+let _model: AnthropicModel | undefined;
+
+export async function loadModel(): Promise<AnthropicModel> {
+  if (!_model) {
+    const apiKey = await getApiKey();
+    _model = new AnthropicModel({
+      apiKey,
+      modelId: 'claude-sonnet-4-5-20250929',
+      maxTokens: 5000,
+    });
+  }
+  return _model;
+}
+{{/if}}
+{{#if (eq modelProvider "OpenAI")}}
+import { OpenAIModel } from '@strands-agents/sdk/models/openai';
+import { withApiKey } from 'bedrock-agentcore/identity';
+
+const IDENTITY_PROVIDER_NAME = '{{identityProviders.[0].name}}';
+const IDENTITY_ENV_VAR = '{{identityProviders.[0].envVarName}}';
+
+async function getApiKey(): Promise<string> {
+  if (process.env.LOCAL_DEV === '1') {
+    const apiKey = process.env[IDENTITY_ENV_VAR] ?? process.env.OPENAI_API_KEY;
+    if (!apiKey) {
+      throw new Error(\`\${IDENTITY_ENV_VAR} or OPENAI_API_KEY not found. Add your key to agentcore/.env.local\`);
+    }
+    return apiKey;
+  }
+  return withApiKey({ providerName: IDENTITY_PROVIDER_NAME })(async (apiKey: string) => apiKey)();
+}
+
+let _model: OpenAIModel | undefined;
+
+export async function loadModel(): Promise<OpenAIModel> {
+  if (!_model) {
+    const apiKey = await getApiKey();
+    _model = new OpenAIModel({
+      api: 'chat',
+      apiKey,
+      modelId: 'gpt-4.1',
+    });
+  }
+  return _model;
+}
+{{/if}}
+{{#if (eq modelProvider "Gemini")}}
+import { GoogleModel } from '@strands-agents/sdk/models/google';
+import { withApiKey } from 'bedrock-agentcore/identity';
+
+const IDENTITY_PROVIDER_NAME = '{{identityProviders.[0].name}}';
+const IDENTITY_ENV_VAR = '{{identityProviders.[0].envVarName}}';
+
+async function getApiKey(): Promise<string> {
+  if (process.env.LOCAL_DEV === '1') {
+    const apiKey = process.env[IDENTITY_ENV_VAR] ?? process.env.GEMINI_API_KEY;
+    if (!apiKey) {
+      throw new Error(\`\${IDENTITY_ENV_VAR} or GEMINI_API_KEY not found. Add your key to agentcore/.env.local\`);
+    }
+    return apiKey;
+  }
+  return withApiKey({ providerName: IDENTITY_PROVIDER_NAME })(async (apiKey: string) => apiKey)();
+}
+
+let _model: GoogleModel | undefined;
+
+export async function loadModel(): Promise<GoogleModel> {
+  if (!_model) {
+    const apiKey = await getApiKey();
+    _model = new GoogleModel({
+      apiKey,
+      modelId: 'gemini-2.5-flash',
+    });
+  }
+  return _model;
+}
+{{/if}}
+"
+`;
+
+exports[`Assets Directory Snapshots > TypeScript assets > typescript/typescript/http/strands/base/package.json should match snapshot 1`] = `
+"{
+  "name": "{{name}}",
+  "version": "0.1.0",
+  "description": "AgentCore Runtime Application using Strands TypeScript SDK",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "tsc",
+    "start": "node dist/main.js",
+    "dev": "tsx watch main.ts"
+  },
+  "dependencies": {
+    {{#if (eq modelProvider "Anthropic")}}
+    "@anthropic-ai/sdk": "^0.71.2",
+    {{/if}}
+    {{#if (eq modelProvider "OpenAI")}}
+    "openai": "^6.7.0",
+    {{/if}}
+    {{#if (eq modelProvider "Gemini")}}
+    "@google/genai": "^1.40.0",
+    {{/if}}
+    "@modelcontextprotocol/sdk": "^1.25.2",
+    "@strands-agents/sdk": "1.0.0-rc.4",
+    "bedrock-agentcore": "^0.2.4",
+    "tsx": "^4.19.0",
+    "zod": "^4.4.3"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "typescript": "^5.6.0"
+  },
+  "overrides": {
+    "bedrock-agentcore": {
+      "@strands-agents/sdk": "$@strands-agents/sdk"
+    }
+  }
+}
+"
+`;
+
+exports[`Assets Directory Snapshots > TypeScript assets > typescript/typescript/http/strands/base/tsconfig.json should match snapshot 1`] = `
+"{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
+    "strict": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "forceConsistentCasingInFileNames": true,
+    "resolveJsonModule": true,
+    "declaration": false,
+    "sourceMap": true,
+    "outDir": "dist",
+    "rootDir": ".",
+    "types": ["node"]
+  },
+  "include": ["**/*.ts"],
+  "exclude": ["node_modules", "dist"]
+}
+"
+`;
+
+exports[`Assets Directory Snapshots > TypeScript assets > typescript/typescript/http/vercelai/base/README.md should match snapshot 1`] = `
+"This is a project generated by the AgentCore CLI!
+
+# Layout
+
+The generated application code lives at the agent root directory. At the root, there is a \`.gitignore\` file, an
+\`agentcore/\` folder which represents the configurations and state associated with this project. Other \`agentcore\`
+commands like \`deploy\`, \`dev\`, and \`invoke\` rely on the configuration stored here.
+
+## Agent Root
+
+The main entrypoint to your app is defined in \`main.ts\`. Using the AgentCore SDK \`BedrockAgentCoreApp\`, this file
+defines an HTTP app that streams tokens using the Vercel AI SDK's \`streamText\` API.
+
+\`model/load.ts\` instantiates your chosen model provider.
+
+## Environment Variables
+
+| Variable | Required | Description |
+| --- | --- | --- |
+{{#if hasIdentity}}| \`{{identityProviders.[0].envVarName}}\` | Yes | {{modelProvider}} API key (local) or Identity provider name (deployed) |
+{{/if}}| \`LOCAL_DEV\` | No | Set to \`1\` to use \`.env.local\` instead of AgentCore Identity |
+
+# Developing locally
+
+If installation was successful, \`node_modules/\` is already populated with dependencies.
+
+\`agentcore dev\` will start a local server using \`npx tsx watch main.ts\` for hot reload. The port is logged to the terminal (default \`8080\`).
+
+In a new terminal, you can invoke that server with:
+
+\`agentcore invoke --dev "What can you do"\`
+
+# Deployment
+
+After providing credentials, \`agentcore deploy\` will deploy your project into Amazon Bedrock AgentCore.
+
+Use \`agentcore invoke\` to invoke your deployed agent.
+"
+`;
+
+exports[`Assets Directory Snapshots > TypeScript assets > typescript/typescript/http/vercelai/base/gitignore.template should match snapshot 1`] = `
+"# Environment variables
+.env
+.env.*
+
+# Node
+node_modules/
+dist/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+"
+`;
+
+exports[`Assets Directory Snapshots > TypeScript assets > typescript/typescript/http/vercelai/base/main.ts should match snapshot 1`] = `
+"import { BedrockAgentCoreApp } from 'bedrock-agentcore/runtime';
+import { streamText } from 'ai';
+import { loadModel } from './model/load.js';
+
+const SYSTEM_PROMPT = \`You are a helpful assistant.\`;
+
+const app = new BedrockAgentCoreApp({
+  invocationHandler: {
+    async *process(payload: any, context: any) {
+      const model = await loadModel();
+      const result = streamText({
+        model,
+        system: SYSTEM_PROMPT,
+        prompt: payload.prompt ?? '',
+      });
+
+      for await (const chunk of result.textStream) {
+        yield { data: chunk };
+      }
+    },
+  },
+});
+
+app.run({ port: parseInt(process.env.PORT ?? '8080') });
+"
+`;
+
+exports[`Assets Directory Snapshots > TypeScript assets > typescript/typescript/http/vercelai/base/model/load.ts should match snapshot 1`] = `
+"{{#if (eq modelProvider "Bedrock")}}
+import { createAmazonBedrock } from '@ai-sdk/amazon-bedrock';
+import { fromNodeProviderChain } from '@aws-sdk/credential-providers';
+
+const provider = fromNodeProviderChain();
+
+const bedrock = createAmazonBedrock({
+  region: process.env.AWS_REGION ?? 'us-east-1',
+  credentialProvider: async () => {
+    const creds = await provider();
+    return {
+      accessKeyId: creds.accessKeyId,
+      secretAccessKey: creds.secretAccessKey,
+      sessionToken: creds.sessionToken,
+    };
+  },
+});
+
+export function loadModel() {
+  return bedrock('us.anthropic.claude-sonnet-4-5-20250929-v1:0');
+}
+{{/if}}
+{{#if (eq modelProvider "Anthropic")}}
+import { createAnthropic } from '@ai-sdk/anthropic';
+import { withApiKey } from 'bedrock-agentcore/identity';
+
+const IDENTITY_PROVIDER_NAME = '{{identityProviders.[0].name}}';
+const IDENTITY_ENV_VAR = '{{identityProviders.[0].envVarName}}';
+
+async function getApiKey(): Promise<string> {
+  if (process.env.LOCAL_DEV === '1') {
+    const apiKey = process.env[IDENTITY_ENV_VAR] ?? process.env.ANTHROPIC_API_KEY;
+    if (!apiKey) {
+      throw new Error(\`\${IDENTITY_ENV_VAR} or ANTHROPIC_API_KEY not found. Add your key to agentcore/.env.local\`);
+    }
+    return apiKey;
+  }
+  return withApiKey({ providerName: IDENTITY_PROVIDER_NAME })(async (apiKey: string) => apiKey)();
+}
+
+let _anthropic: ReturnType<typeof createAnthropic> | undefined;
+
+async function getProvider() {
+  if (!_anthropic) {
+    const apiKey = await getApiKey();
+    _anthropic = createAnthropic({ apiKey });
+  }
+  return _anthropic;
+}
+
+export async function loadModel() {
+  const anthropic = await getProvider();
+  return anthropic('claude-sonnet-4-5-20250929');
+}
+{{/if}}
+{{#if (eq modelProvider "OpenAI")}}
+import { createOpenAI } from '@ai-sdk/openai';
+import { withApiKey } from 'bedrock-agentcore/identity';
+
+const IDENTITY_PROVIDER_NAME = '{{identityProviders.[0].name}}';
+const IDENTITY_ENV_VAR = '{{identityProviders.[0].envVarName}}';
+
+async function getApiKey(): Promise<string> {
+  if (process.env.LOCAL_DEV === '1') {
+    const apiKey = process.env[IDENTITY_ENV_VAR] ?? process.env.OPENAI_API_KEY;
+    if (!apiKey) {
+      throw new Error(\`\${IDENTITY_ENV_VAR} or OPENAI_API_KEY not found. Add your key to agentcore/.env.local\`);
+    }
+    return apiKey;
+  }
+  return withApiKey({ providerName: IDENTITY_PROVIDER_NAME })(async (apiKey: string) => apiKey)();
+}
+
+let _openai: ReturnType<typeof createOpenAI> | undefined;
+
+async function getProvider() {
+  if (!_openai) {
+    const apiKey = await getApiKey();
+    _openai = createOpenAI({ apiKey });
+  }
+  return _openai;
+}
+
+export async function loadModel() {
+  const openai = await getProvider();
+  return openai('gpt-4.1');
+}
+{{/if}}
+{{#if (eq modelProvider "Gemini")}}
+import { createGoogleGenerativeAI } from '@ai-sdk/google';
+import { withApiKey } from 'bedrock-agentcore/identity';
+
+const IDENTITY_PROVIDER_NAME = '{{identityProviders.[0].name}}';
+const IDENTITY_ENV_VAR = '{{identityProviders.[0].envVarName}}';
+
+async function getApiKey(): Promise<string> {
+  if (process.env.LOCAL_DEV === '1') {
+    const apiKey = process.env[IDENTITY_ENV_VAR] ?? process.env.GEMINI_API_KEY;
+    if (!apiKey) {
+      throw new Error(\`\${IDENTITY_ENV_VAR} or GEMINI_API_KEY not found. Add your key to agentcore/.env.local\`);
+    }
+    return apiKey;
+  }
+  return withApiKey({ providerName: IDENTITY_PROVIDER_NAME })(async (apiKey: string) => apiKey)();
+}
+
+let _google: ReturnType<typeof createGoogleGenerativeAI> | undefined;
+
+async function getProvider() {
+  if (!_google) {
+    const apiKey = await getApiKey();
+    _google = createGoogleGenerativeAI({ apiKey });
+  }
+  return _google;
+}
+
+export async function loadModel() {
+  const google = await getProvider();
+  return google('gemini-2.5-flash');
+}
+{{/if}}
+"
+`;
+
+exports[`Assets Directory Snapshots > TypeScript assets > typescript/typescript/http/vercelai/base/package.json should match snapshot 1`] = `
+"{
+  "name": "{{name}}",
+  "version": "0.1.0",
+  "description": "AgentCore Runtime Application using Vercel AI SDK",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "tsc",
+    "start": "node dist/main.js",
+    "dev": "tsx watch main.ts"
+  },
+  "dependencies": {
+    "ai": "^6.0.0",
+    {{#if (eq modelProvider "Bedrock")}}
+    "@ai-sdk/amazon-bedrock": "^4.0.0",
+    "@aws-sdk/credential-providers": "^3.0.0",
+    {{/if}}
+    {{#if (eq modelProvider "Anthropic")}}
+    "@ai-sdk/anthropic": "^3.0.0",
+    {{/if}}
+    {{#if (eq modelProvider "OpenAI")}}
+    "@ai-sdk/openai": "^3.0.0",
+    {{/if}}
+    {{#if (eq modelProvider "Gemini")}}
+    "@ai-sdk/google": "^3.0.0",
+    {{/if}}
+    "bedrock-agentcore": "^0.2.4",
+    "tsx": "^4.19.0",
+    "zod": "^3.24.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "typescript": "^5.6.0"
+  }
+}
+"
+`;
+
+exports[`Assets Directory Snapshots > TypeScript assets > typescript/typescript/http/vercelai/base/tsconfig.json should match snapshot 1`] = `
+"{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
+    "strict": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "forceConsistentCasingInFileNames": true,
+    "resolveJsonModule": true,
+    "declaration": false,
+    "sourceMap": true,
+    "outDir": "dist",
+    "rootDir": ".",
+    "types": ["node"]
+  },
+  "include": ["**/*.ts"],
+  "exclude": ["node_modules", "dist"]
+}
+"
+`;

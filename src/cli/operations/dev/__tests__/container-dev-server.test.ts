@@ -215,8 +215,8 @@ describe('ContainerDevServer', () => {
       const server = new ContainerDevServer(defaultConfig, defaultOptions);
       await server.start();
 
-      // spawnSync only called once for rm (build uses async spawn)
-      expect(mockSpawnSync).toHaveBeenCalledTimes(1);
+      // rm call uses spawnSync (build uses async spawn); resolveHostCredentials may also call spawnSync
+      expect(mockSpawnSync).toHaveBeenCalledWith('docker', expect.arrayContaining(['rm', '-f']), expect.anything());
       // First spawn call is the build
       const buildCall = mockSpawn.mock.calls[0]!;
       const buildArgs = buildCall[1] as string[];
@@ -377,7 +377,24 @@ describe('ContainerDevServer', () => {
       expect(spawnArgs).toContain('AWS_SESSION_TOKEN=FwoGZXIvYXdzEBY');
       expect(spawnArgs).toContain('AWS_REGION=us-east-1');
       expect(spawnArgs).toContain('AWS_DEFAULT_REGION=us-west-2');
+      expect(spawnArgs).not.toContain('AWS_PROFILE=dev-profile');
+    });
+
+    it('forwards AWS_PROFILE when no explicit credentials are set', async () => {
+      delete process.env.AWS_ACCESS_KEY_ID;
+      delete process.env.AWS_SECRET_ACCESS_KEY;
+      delete process.env.AWS_SESSION_TOKEN;
+      process.env.AWS_REGION = 'us-east-1';
+      process.env.AWS_PROFILE = 'dev-profile';
+
+      mockSuccessfulPrepare();
+
+      const server = new ContainerDevServer(defaultConfig, defaultOptions);
+      await server.start();
+
+      const spawnArgs = getSpawnArgs();
       expect(spawnArgs).toContain('AWS_PROFILE=dev-profile');
+      expect(spawnArgs).toContain('AWS_REGION=us-east-1');
     });
 
     it('does not include AWS env vars when not set', async () => {

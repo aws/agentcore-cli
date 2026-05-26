@@ -24,6 +24,7 @@ describe('RemoveScreen', () => {
         configBundleCount={1}
         abTestCount={0}
         runtimeEndpointCount={1}
+        datasetCount={0}
       />
     );
 
@@ -57,6 +58,7 @@ describe('RemoveScreen', () => {
         configBundleCount={0}
         abTestCount={0}
         runtimeEndpointCount={0}
+        datasetCount={0}
       />
     );
 
@@ -86,6 +88,7 @@ describe('RemoveScreen', () => {
         configBundleCount={0}
         abTestCount={2}
         runtimeEndpointCount={0}
+        datasetCount={0}
       />
     );
 
@@ -113,6 +116,7 @@ describe('RemoveScreen', () => {
         configBundleCount={0}
         abTestCount={0}
         runtimeEndpointCount={0}
+        datasetCount={0}
       />
     );
 

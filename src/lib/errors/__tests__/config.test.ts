@@ -5,7 +5,7 @@ import {
   ConfigReadError,
   ConfigValidationError,
   ConfigWriteError,
-} from '../config.js';
+} from '../types.js';
 import { describe, expect, it } from 'vitest';
 import { ZodError, ZodIssueCode, z } from 'zod';
 

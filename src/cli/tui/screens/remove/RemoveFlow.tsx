@@ -4,6 +4,7 @@ import {
   useRemovableABTests,
   useRemovableAgents,
   useRemovableConfigBundles,
+  useRemovableDatasets,
   useRemovableEvaluators,
   useRemovableGatewayTargets,
   useRemovableGateways,
@@ -17,6 +18,7 @@ import {
   useRemoveABTest,
   useRemoveAgent,
   useRemoveConfigBundle,
+  useRemoveDataset,
   useRemoveEvaluator,
   useRemoveGateway,
   useRemoveGatewayTarget,
@@ -32,6 +34,7 @@ import { RemoveAgentScreen } from './RemoveAgentScreen';
 import { RemoveAllScreen } from './RemoveAllScreen';
 import { RemoveConfigBundleScreen } from './RemoveConfigBundleScreen';
 import { RemoveConfirmScreen } from './RemoveConfirmScreen';
+import { RemoveDatasetScreen } from './RemoveDatasetScreen';
 import { RemoveEvaluatorScreen } from './RemoveEvaluatorScreen';
 import { RemoveGatewayScreen } from './RemoveGatewayScreen';
 import { RemoveGatewayTargetScreen } from './RemoveGatewayTargetScreen';
@@ -56,6 +59,7 @@ type FlowState =
   | { name: 'select-memory' }
   | { name: 'select-identity' }
   | { name: 'select-evaluator' }
+  | { name: 'select-dataset' }
   | { name: 'select-online-eval' }
   | { name: 'select-policy-engine' }
   | { name: 'select-policy' }
@@ -68,6 +72,7 @@ type FlowState =
   | { name: 'confirm-memory'; memoryName: string; preview: RemovalPreview }
   | { name: 'confirm-identity'; identityName: string; preview: RemovalPreview }
   | { name: 'confirm-evaluator'; evaluatorName: string; preview: RemovalPreview }
+  | { name: 'confirm-dataset'; datasetName: string; preview: RemovalPreview }
   | { name: 'confirm-online-eval'; configName: string; preview: RemovalPreview }
   | { name: 'confirm-policy-engine'; engineName: string; preview: RemovalPreview }
   | { name: 'confirm-policy'; compositeKey: string; policyName: string; preview: RemovalPreview }
@@ -81,6 +86,7 @@ type FlowState =
   | { name: 'memory-success'; memoryName: string; logFilePath?: string }
   | { name: 'identity-success'; identityName: string; logFilePath?: string }
   | { name: 'evaluator-success'; evaluatorName: string; logFilePath?: string }
+  | { name: 'dataset-success'; datasetName: string; logFilePath?: string }
   | { name: 'online-eval-success'; configName: string; logFilePath?: string }
   | { name: 'policy-engine-success'; engineName: string; logFilePath?: string }
   | { name: 'policy-success'; policyName: string; logFilePath?: string }
@@ -111,7 +117,8 @@ interface RemoveFlowProps {
     | 'policy-engine'
     | 'policy'
     | 'config-bundle'
-    | 'ab-test';
+    | 'ab-test'
+    | 'dataset';
   /** Initial resource name to auto-select (for CLI --name flag) */
   initialResourceName?: string;
 }
@@ -139,6 +146,8 @@ export function RemoveFlow({
         return { name: 'select-identity' };
       case 'evaluator':
         return { name: 'select-evaluator' };
+      case 'dataset':
+        return { name: 'select-dataset' };
       case 'online-eval':
         return { name: 'select-online-eval' };
       case 'policy-engine':
@@ -164,6 +173,7 @@ export function RemoveFlow({
   const { memories, isLoading: isLoadingMemories, refresh: refreshMemories } = useRemovableMemories();
   const { identities, isLoading: isLoadingIdentities, refresh: refreshIdentities } = useRemovableIdentities();
   const { evaluators, isLoading: isLoadingEvaluators, refresh: refreshEvaluators } = useRemovableEvaluators();
+  const { datasets, isLoading: isLoadingDatasets, refresh: refreshDatasets } = useRemovableDatasets();
   const {
     onlineEvalConfigs,
     isLoading: isLoadingOnlineEvals,
@@ -195,6 +205,7 @@ export function RemoveFlow({
     isLoadingMemories ||
     isLoadingIdentities ||
     isLoadingEvaluators ||
+    isLoadingDatasets ||
     isLoadingOnlineEvals ||
     isLoadingPolicyEngines ||
     isLoadingPolicies ||
@@ -209,6 +220,7 @@ export function RemoveFlow({
     loadMemoryPreview,
     loadIdentityPreview,
     loadEvaluatorPreview,
+    loadDatasetPreview,
     loadOnlineEvalPreview,
     loadPolicyEnginePreview,
     loadPolicyPreview,
@@ -225,6 +237,7 @@ export function RemoveFlow({
   const { remove: removeMemoryOp, reset: resetRemoveMemory } = useRemoveMemory();
   const { remove: removeIdentityOp, reset: resetRemoveIdentity } = useRemoveIdentity();
   const { remove: removeEvaluatorOp, reset: resetRemoveEvaluator } = useRemoveEvaluator();
+  const { remove: removeDatasetOp, reset: resetRemoveDataset } = useRemoveDataset();
   const { remove: removeOnlineEvalOp, reset: resetRemoveOnlineEval } = useRemoveOnlineEvalConfig();
   const { remove: removePolicyEngineOp, reset: resetRemovePolicyEngine } = useRemovePolicyEngine();
   const { remove: removePolicyOp, reset: resetRemovePolicy } = useRemovePolicy();
@@ -258,6 +271,7 @@ export function RemoveFlow({
         'memory-success',
         'identity-success',
         'evaluator-success',
+        'dataset-success',
         'online-eval-success',
         'policy-engine-success',
         'policy-success',
@@ -293,6 +307,9 @@ export function RemoveFlow({
         break;
       case 'evaluator':
         setFlow({ name: 'select-evaluator' });
+        break;
+      case 'dataset':
+        setFlow({ name: 'select-dataset' });
         break;
       case 'online-eval':
         setFlow({ name: 'select-online-eval' });
@@ -451,6 +468,28 @@ export function RemoveFlow({
       }
     },
     [loadEvaluatorPreview, force, removeEvaluatorOp]
+  );
+
+  const handleSelectDataset = useCallback(
+    async (datasetName: string) => {
+      const result = await loadDatasetPreview(datasetName);
+      if (result.ok) {
+        if (force) {
+          setFlow({ name: 'loading', message: `Removing dataset ${datasetName}...` });
+          const removeResult = await removeDatasetOp(datasetName, result.preview);
+          if (removeResult.success) {
+            setFlow({ name: 'dataset-success', datasetName });
+          } else {
+            setFlow({ name: 'error', message: removeResult.error.message });
+          }
+        } else {
+          setFlow({ name: 'confirm-dataset', datasetName, preview: result.preview });
+        }
+      } else {
+        setFlow({ name: 'error', message: result.error });
+      }
+    },
+    [loadDatasetPreview, force, removeDatasetOp]
   );
 
   const handleSelectOnlineEval = useCallback(
@@ -633,6 +672,9 @@ export function RemoveFlow({
         case 'runtime-endpoint':
           void handleSelectRuntimeEndpoint(initialResourceName);
           break;
+        case 'dataset':
+          void handleSelectDataset(initialResourceName);
+          break;
       }
     }, 0);
   }, [
@@ -644,6 +686,7 @@ export function RemoveFlow({
     handleSelectMemory,
     handleSelectIdentity,
     handleSelectEvaluator,
+    handleSelectDataset,
     handleSelectOnlineEval,
     handleSelectPolicyEngine,
     handleSelectPolicy,
@@ -747,6 +790,22 @@ export function RemoveFlow({
       setResultReady(true);
     },
     [removeEvaluatorOp]
+  );
+
+  const handleConfirmDataset = useCallback(
+    async (datasetName: string, preview: RemovalPreview) => {
+      pendingResultRef.current = null;
+      setResultReady(false);
+      setFlow({ name: 'loading', message: `Removing dataset ${datasetName}...` });
+      const result = await removeDatasetOp(datasetName, preview);
+      if (result.success) {
+        pendingResultRef.current = { name: 'dataset-success', datasetName, logFilePath: result.logFilePath };
+      } else {
+        pendingResultRef.current = { name: 'error', message: result.error.message };
+      }
+      setResultReady(true);
+    },
+    [removeDatasetOp]
   );
 
   const handleConfirmOnlineEval = useCallback(
@@ -853,6 +912,7 @@ export function RemoveFlow({
     resetRemoveMemory();
     resetRemoveIdentity();
     resetRemoveEvaluator();
+    resetRemoveDataset();
     resetRemoveOnlineEval();
     resetRemovePolicyEngine();
     resetRemovePolicy();
@@ -867,6 +927,7 @@ export function RemoveFlow({
     resetRemoveMemory,
     resetRemoveIdentity,
     resetRemoveEvaluator,
+    resetRemoveDataset,
     resetRemoveOnlineEval,
     resetRemovePolicyEngine,
     resetRemovePolicy,
@@ -883,6 +944,7 @@ export function RemoveFlow({
       refreshMemories(),
       refreshIdentities(),
       refreshEvaluators(),
+      refreshDatasets(),
       refreshOnlineEvals(),
       refreshPolicyEngines(),
       refreshPolicies(),
@@ -896,6 +958,7 @@ export function RemoveFlow({
     refreshMemories,
     refreshIdentities,
     refreshEvaluators,
+    refreshDatasets,
     refreshOnlineEvals,
     refreshPolicyEngines,
     refreshPolicies,
@@ -924,6 +987,7 @@ export function RemoveFlow({
         configBundleCount={configBundles.length}
         abTestCount={abTests.length}
         runtimeEndpointCount={runtimeEndpoints.length}
+        datasetCount={datasets.length}
       />
     );
   }
@@ -1014,6 +1078,19 @@ export function RemoveFlow({
       <RemoveEvaluatorScreen
         evaluators={evaluators}
         onSelect={(name: string) => void handleSelectEvaluator(name)}
+        onExit={() => setFlow({ name: 'select' })}
+      />
+    );
+  }
+
+  if (flow.name === 'select-dataset') {
+    if (initialResourceName && isLoading) {
+      return null;
+    }
+    return (
+      <RemoveDatasetScreen
+        datasets={datasets}
+        onSelect={(name: string) => void handleSelectDataset(name)}
         onExit={() => setFlow({ name: 'select' })}
       />
     );
@@ -1160,6 +1237,17 @@ export function RemoveFlow({
         preview={flow.preview}
         onConfirm={() => void handleConfirmEvaluator(flow.evaluatorName, flow.preview)}
         onCancel={() => setFlow({ name: 'select-evaluator' })}
+      />
+    );
+  }
+
+  if (flow.name === 'confirm-dataset') {
+    return (
+      <RemoveConfirmScreen
+        title={`Remove Dataset: ${flow.datasetName}`}
+        preview={flow.preview}
+        onConfirm={() => void handleConfirmDataset(flow.datasetName, flow.preview)}
+        onCancel={() => setFlow({ name: 'select-dataset' })}
       />
     );
   }
@@ -1317,6 +1405,22 @@ export function RemoveFlow({
         isInteractive={isInteractive}
         message={`Removed evaluator: ${flow.evaluatorName}`}
         detail="Evaluator removed from agentcore.json. Deploy with `agentcore deploy` to apply changes."
+        logFilePath={flow.logFilePath}
+        onRemoveAnother={() => {
+          resetAll();
+          void refreshAll().then(() => setFlow({ name: 'select' }));
+        }}
+        onExit={onExit}
+      />
+    );
+  }
+
+  if (flow.name === 'dataset-success') {
+    return (
+      <RemoveSuccessScreen
+        isInteractive={isInteractive}
+        message={`Removed dataset: ${flow.datasetName}`}
+        detail="Dataset removed from agentcore.json. Deploy with `agentcore deploy` to apply changes. (Local JSONL is left on disk.)"
         logFilePath={flow.logFilePath}
         onRemoveAnother={() => {
           resetAll();

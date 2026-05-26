@@ -12,10 +12,10 @@ describe('CommandResultSchema', () => {
   it('accepts failure with required error fields', () => {
     const result = CommandResultSchema.parse({
       exit_reason: 'failure',
-      error_name: 'PackagingError',
-      is_user_error: false,
+      error_name: 'DependencyCheckError',
+      error_source: 'user',
     });
-    expect(result).toMatchObject({ exit_reason: 'failure', error_name: 'PackagingError' });
+    expect(result).toMatchObject({ exit_reason: 'failure', error_name: 'DependencyCheckError' });
   });
 
   it('rejects failure missing error_name', () => {
@@ -47,7 +47,7 @@ describe('COMMAND_SCHEMAS', () => {
       gateway_target_count: 3,
       policy_engine_count: 0,
       policy_count: 0,
-      mode: 'diff',
+      deploy_mode: 'diff',
     };
     expect(COMMAND_SCHEMAS.deploy.parse(attrs)).toEqual(attrs);
   });
@@ -64,7 +64,7 @@ describe('COMMAND_SCHEMAS', () => {
         gateway_target_count: 0,
         policy_engine_count: 0,
         policy_count: 0,
-        mode: 'deploy',
+        deploy_mode: 'deploy',
       })
     ).toThrow();
   });
@@ -81,19 +81,19 @@ describe('COMMAND_SCHEMAS', () => {
         gateway_target_count: 0,
         policy_engine_count: 0,
         policy_count: 0,
-        mode: 'deploy',
+        deploy_mode: 'deploy',
       })
     ).toThrow();
   });
 
   it('accepts valid create attrs', () => {
     const attrs = {
-      language: 'python',
-      framework: 'strands',
+      agent_language: 'python',
+      agent_framework: 'strands',
       model_provider: 'bedrock',
-      memory: 'shortterm',
-      protocol: 'mcp',
-      build: 'codezip',
+      memory_type: 'shortterm',
+      agent_protocol: 'mcp',
+      build_type: 'codezip',
       agent_type: 'create',
       network_mode: 'public',
       has_agent: true,
@@ -104,12 +104,12 @@ describe('COMMAND_SCHEMAS', () => {
   it('rejects create attrs with invalid enum value', () => {
     expect(() =>
       COMMAND_SCHEMAS.create.parse({
-        language: 'rust',
-        framework: 'strands',
+        agent_language: 'rust',
+        agent_framework: 'strands',
         model_provider: 'bedrock',
-        memory: 'shortterm',
-        protocol: 'mcp',
-        build: 'codezip',
+        memory_type: 'shortterm',
+        agent_protocol: 'mcp',
+        build_type: 'codezip',
         agent_type: 'create',
         network_mode: 'public',
         has_agent: true,
@@ -119,6 +119,72 @@ describe('COMMAND_SCHEMAS', () => {
 
   it('no-attrs commands accept empty object', () => {
     expect(COMMAND_SCHEMAS['telemetry.disable'].parse({})).toEqual({});
+  });
+
+  it('import subcommand schemas accept empty object', () => {
+    expect(COMMAND_SCHEMAS.import.parse({})).toEqual({});
+    expect(COMMAND_SCHEMAS['import.runtime'].parse({})).toEqual({});
+    expect(COMMAND_SCHEMAS['import.memory'].parse({})).toEqual({});
+    expect(COMMAND_SCHEMAS['import.evaluator'].parse({})).toEqual({});
+    expect(COMMAND_SCHEMAS['import.online-eval'].parse({})).toEqual({});
+    expect(COMMAND_SCHEMAS['import.gateway'].parse({})).toEqual({});
+  });
+
+  it('accepts valid dev invoke attrs', () => {
+    const attrs = {
+      dev_action: 'invoke',
+      ui_mode: 'terminal',
+      has_stream: true,
+      agent_protocol: 'http',
+      invoke_count: 1,
+    };
+    expect(COMMAND_SCHEMAS.dev.parse(attrs)).toEqual(attrs);
+  });
+
+  it('accepts valid dev server browser attrs', () => {
+    const attrs = {
+      dev_action: 'server',
+      ui_mode: 'browser',
+      has_stream: false,
+      agent_protocol: 'mcp',
+      invoke_count: 12,
+    };
+    expect(COMMAND_SCHEMAS.dev.parse(attrs)).toEqual(attrs);
+  });
+
+  it('accepts dev exec attrs', () => {
+    const attrs = {
+      dev_action: 'exec',
+      ui_mode: 'terminal',
+      has_stream: false,
+      agent_protocol: 'http',
+      invoke_count: 1,
+    };
+    expect(COMMAND_SCHEMAS.dev.parse(attrs)).toEqual(attrs);
+  });
+
+  it('rejects dev attrs with invalid action', () => {
+    expect(() =>
+      COMMAND_SCHEMAS.dev.parse({
+        dev_action: 'unknown',
+        ui_mode: 'terminal',
+        has_stream: false,
+        agent_protocol: 'http',
+        invoke_count: 0,
+      })
+    ).toThrow();
+  });
+
+  it('rejects dev attrs with invalid ui_mode', () => {
+    expect(() =>
+      COMMAND_SCHEMAS.dev.parse({
+        dev_action: 'server',
+        ui_mode: 'headless',
+        has_stream: false,
+        agent_protocol: 'http',
+        invoke_count: 0,
+      })
+    ).toThrow();
   });
 });
 
@@ -139,8 +205,8 @@ describe('type safety', () => {
     expectTypeOf<CommandAttrs<'deploy'>>().toHaveProperty('runtime_count');
   });
 
-  it('CommandAttrs<create> requires language', () => {
-    expectTypeOf<CommandAttrs<'create'>>().toHaveProperty('language');
+  it('CommandAttrs<create> requires agent_language', () => {
+    expectTypeOf<CommandAttrs<'create'>>().toHaveProperty('agent_language');
   });
 
   it('CommandAttrs<telemetry.disable> is empty', () => {
@@ -174,12 +240,12 @@ describe('type safety', () => {
 describe('resilientParse', () => {
   it('passes valid attrs through unchanged', () => {
     const attrs = {
-      language: 'python',
-      framework: 'strands',
+      agent_language: 'python',
+      agent_framework: 'strands',
       model_provider: 'bedrock',
-      memory: 'shortterm',
-      protocol: 'mcp',
-      build: 'codezip',
+      memory_type: 'shortterm',
+      agent_protocol: 'mcp',
+      build_type: 'codezip',
       agent_type: 'create',
       network_mode: 'public',
       has_agent: true,
@@ -189,25 +255,25 @@ describe('resilientParse', () => {
 
   it('defaults a single invalid enum field to unknown', () => {
     const attrs = {
-      language: 'rust', // invalid
-      framework: 'strands',
+      agent_language: 'rust', // invalid
+      agent_framework: 'strands',
       model_provider: 'bedrock',
-      memory: 'shortterm',
-      protocol: 'mcp',
-      build: 'codezip',
+      memory_type: 'shortterm',
+      agent_protocol: 'mcp',
+      build_type: 'codezip',
       agent_type: 'create',
       network_mode: 'public',
       has_agent: true,
     };
     const result = resilientParse(COMMAND_SCHEMAS.create, attrs);
-    expect(result.language).toBe('unknown');
-    expect(result.framework).toBe('strands');
+    expect(result.agent_language).toBe('unknown');
+    expect(result.agent_framework).toBe('strands');
   });
 
   it('defaults missing required fields to unknown', () => {
-    const result = resilientParse(COMMAND_SCHEMAS.create, { language: 'python' });
-    expect(result.language).toBe('python');
-    expect(result.framework).toBe('unknown');
+    const result = resilientParse(COMMAND_SCHEMAS.create, { agent_language: 'python' });
+    expect(result.agent_language).toBe('python');
+    expect(result.agent_framework).toBe('unknown');
     expect(result.model_provider).toBe('unknown');
   });
 

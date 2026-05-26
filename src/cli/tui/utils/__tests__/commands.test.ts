@@ -49,9 +49,9 @@ describe('getCommandsForUI', () => {
     expect(pkg!.cliOnly).toBe(false);
   });
 
-  it('marks logs, traces, pause, resume as cliOnly', () => {
+  it('marks traces, pause, resume as cliOnly', () => {
     const cmds = getCommandsForUI(program);
-    for (const name of ['logs', 'traces', 'pause', 'resume']) {
+    for (const name of ['traces', 'pause', 'resume']) {
       const cmd = cmds.find(c => c.id === name);
       expect(cmd, `${name} should be in results`).toBeDefined();
       expect(cmd!.cliOnly, `${name} should be cliOnly`).toBe(true);

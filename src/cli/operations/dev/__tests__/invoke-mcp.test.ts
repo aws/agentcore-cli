@@ -1,4 +1,4 @@
-import { ServerError } from '../invoke';
+import { ServerError } from '../../../../lib/errors/types';
 import { callMcpTool, listMcpTools } from '../invoke-mcp';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 

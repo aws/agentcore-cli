@@ -91,29 +91,24 @@ async function doStartAgent(
   const agentIndex = ctx.options.agents.findIndex(a => a.name === agentName);
   const { onLog } = ctx.options;
 
-  // A2A agents use a fixed framework port (9000) that can't be overridden via env vars —
-  // serve_a2a() accepts port as a function parameter, not from the environment.
-  // MCP agents (FastMCP) also use a fixed port: FastMCP.__init__ passes port=8000 as a
-  // pydantic BaseSettings init kwarg, which takes priority over the FASTMCP_PORT env var
-  // we set. So MCP agents always bind to 8000 regardless of environment configuration.
+  // Several frameworks bind to a fixed port that ignores the PORT env var:
+  //  - A2A: serve_a2a() accepts port as a function parameter, not from env → 9000
+  //  - MCP (FastMCP): pydantic BaseSettings init kwarg overrides env → 8000
+  // TS HTTP agents read PORT env var so we can assign any available port.
+  // For Python HTTP agents, uvicorn takes --port as a CLI arg so we can assign any port.
   const isA2A = config.protocol === 'A2A';
   const isMCP = config.protocol === 'MCP';
-  const targetPort = isA2A ? 9000 : isMCP ? 8000 : ctx.options.uiPort + 1 + (agentIndex >= 0 ? agentIndex : 0);
+  const fixedPort = isA2A ? 9000 : isMCP ? 8000 : undefined;
+  const isTsHttp = !config.isPython && config.protocol === 'HTTP';
+  const targetPort = fixedPort ?? ctx.options.uiPort + 1 + (agentIndex >= 0 ? agentIndex : 0);
   const agentPort = await findAvailablePort(targetPort);
-  if (isA2A && agentPort !== 9000) {
+  if (fixedPort && agentPort !== fixedPort) {
+    const reason = isA2A ? 'A2A agents require port 9000.' : 'MCP agents require port 8000 (FastMCP default).';
     return {
       success: false,
       name: agentName,
       port: 0,
-      error: `Port 9000 is in use. A2A agents require port 9000.`,
-    };
-  }
-  if (isMCP && agentPort !== 8000) {
-    return {
-      success: false,
-      name: agentName,
-      port: 0,
-      error: `Port 8000 is in use. MCP agents require port 8000 (FastMCP default).`,
+      error: `Port ${fixedPort} is in use. ${reason}`,
     };
   }
   if (agentPort !== targetPort) {
@@ -150,7 +145,11 @@ async function doStartAgent(
   };
 
   const baseEnvVars = ctx.options.getEnvVars ? await ctx.options.getEnvVars() : (ctx.options.envVars ?? {});
-  const agentEnvVars = { ...baseEnvVars, OTEL_SERVICE_NAME: agentName };
+  const agentEnvVars = {
+    ...baseEnvVars,
+    OTEL_SERVICE_NAME: agentName,
+    ...(isTsHttp ? { PORT: String(agentPort) } : {}),
+  };
 
   const agentServer = createDevServer(config, {
     port: agentPort,

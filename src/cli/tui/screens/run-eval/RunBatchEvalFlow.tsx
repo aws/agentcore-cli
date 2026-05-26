@@ -55,6 +55,8 @@ interface BatchEvalConfig {
   groundTruthFile: string;
   sessionMetadata?: SessionMetadataEntry[];
   name: string;
+  dataset?: string;
+  datasetVersion?: string;
 }
 
 const STEP_LABELS: Record<BatchEvalStep, string> = {
@@ -67,9 +69,19 @@ const STEP_LABELS: Record<BatchEvalStep, string> = {
   confirm: 'Confirm',
 };
 
+type EvalSource = 'dataset' | 'traces';
+
 type FlowState =
   | { name: 'loading' }
-  | { name: 'wizard'; agents: AgentItem[]; evaluators: EvaluatorItem[] }
+  | { name: 'source-picker'; agents: AgentItem[]; evaluators: EvaluatorItem[] }
+  | {
+      name: 'wizard';
+      agents: AgentItem[];
+      evaluators: EvaluatorItem[];
+      source: EvalSource;
+      dataset?: string;
+      datasetVersion?: string;
+    }
   | {
       name: 'running';
       config: BatchEvalConfig;
@@ -176,7 +188,7 @@ export function RunBatchEvalFlow({ onExit }: RunBatchEvalFlowProps) {
           return;
         }
 
-        setFlow({ name: 'wizard', agents, evaluators });
+        setFlow({ name: 'source-picker', agents, evaluators });
       } catch (err) {
         if (!cancelled) setFlow({ name: 'error', message: getErrorMessage(err) });
       }
@@ -187,15 +199,30 @@ export function RunBatchEvalFlow({ onExit }: RunBatchEvalFlowProps) {
     };
   }, [flow.name]);
 
-  const handleWizardComplete = useCallback((config: BatchEvalConfig) => {
-    stoppingRef.current = false;
-    const initialSteps: Step[] = [
-      { label: 'Starting batch evaluation...', status: 'running' },
-      { label: 'Polling for results', status: 'pending' },
-      { label: 'Fetching scores', status: 'pending' },
-    ];
-    setFlow({ name: 'running', config, steps: initialSteps, elapsed: 0 });
-  }, []);
+  const handleWizardComplete = useCallback(
+    (config: BatchEvalConfig) => {
+      // Inject dataset info from source-picker selection
+      if (flow.name === 'wizard' && flow.source === 'dataset') {
+        config = { ...config, dataset: flow.dataset, datasetVersion: flow.datasetVersion };
+      }
+      stoppingRef.current = false;
+      const isDataset = flow.name === 'wizard' && flow.source === 'dataset';
+      const initialSteps: Step[] = isDataset
+        ? [
+            { label: 'Running dataset scenarios...', status: 'running' },
+            { label: 'Starting batch evaluation', status: 'pending' },
+            { label: 'Polling for results', status: 'pending' },
+            { label: 'Fetching scores', status: 'pending' },
+          ]
+        : [
+            { label: 'Starting batch evaluation...', status: 'running' },
+            { label: 'Polling for results', status: 'pending' },
+            { label: 'Fetching scores', status: 'pending' },
+          ];
+      setFlow({ name: 'running', config, steps: initialSteps, elapsed: 0 });
+    },
+    [flow]
+  );
 
   // Execute batch evaluation
   useEffect(() => {
@@ -223,6 +250,8 @@ export function RunBatchEvalFlow({ onExit }: RunBatchEvalFlowProps) {
           sessionIds: config.sessionIds.length > 0 ? config.sessionIds : undefined,
           lookbackDays: config.days,
           sessionMetadata: config.sessionMetadata,
+          dataset: config.dataset,
+          datasetVersion: config.datasetVersion,
           onProgress: (status, _message) => {
             if (cancelled) return;
             setFlow(prev => {
@@ -250,7 +279,13 @@ export function RunBatchEvalFlow({ onExit }: RunBatchEvalFlowProps) {
         let savedFilePath: string | undefined;
         if (result.success) {
           try {
-            savedFilePath = saveBatchEvalRun(result);
+            const datasetInfo = config.dataset
+              ? {
+                  source: 'dataset' as const,
+                  dataset: { id: config.dataset, version: config.datasetVersion ?? 'LOCAL' },
+                }
+              : {};
+            savedFilePath = saveBatchEvalRun({ result, ...datasetInfo });
           } catch {
             // Non-fatal
           }
@@ -317,11 +352,37 @@ export function RunBatchEvalFlow({ onExit }: RunBatchEvalFlowProps) {
     return <ErrorPrompt message="AWS credentials required" detail={flow.message} onBack={onExit} onExit={onExit} />;
   }
 
+  if (flow.name === 'source-picker') {
+    return (
+      <BatchEvalSourcePicker
+        agents={flow.agents}
+        evaluators={flow.evaluators}
+        onSelect={(source, dataset, datasetVersion) => {
+          if (source === 'traces') {
+            setFlow({ name: 'wizard', agents: flow.agents, evaluators: flow.evaluators, source: 'traces' });
+          } else {
+            setFlow({
+              name: 'wizard',
+              agents: flow.agents,
+              evaluators: flow.evaluators,
+              source: 'dataset',
+              dataset,
+              datasetVersion,
+            });
+          }
+        }}
+        onExit={onExit}
+      />
+    );
+  }
+
   if (flow.name === 'wizard') {
     return (
       <BatchEvalWizard
         agents={flow.agents}
         evaluators={flow.evaluators}
+        source={flow.source}
+        dataset={flow.dataset}
         onComplete={handleWizardComplete}
         onExit={onExit}
       />
@@ -381,19 +442,30 @@ export function RunBatchEvalFlow({ onExit }: RunBatchEvalFlowProps) {
 interface BatchEvalWizardProps {
   agents: AgentItem[];
   evaluators: EvaluatorItem[];
+  source?: EvalSource;
+  dataset?: string;
   onComplete: (config: BatchEvalConfig) => void;
   onExit: () => void;
 }
 
-function BatchEvalWizard({ agents, evaluators: rawEvaluators, onComplete, onExit }: BatchEvalWizardProps) {
+function BatchEvalWizard({
+  agents,
+  evaluators: rawEvaluators,
+  source,
+  dataset,
+  onComplete,
+  onExit,
+}: BatchEvalWizardProps) {
   const skipAgent = agents.length <= 1;
-  const allSteps = useMemo<BatchEvalStep[]>(
-    () =>
-      skipAgent
-        ? ['evaluators', 'days', 'sessions', 'ground-truth', 'name', 'confirm']
-        : ['agent', 'evaluators', 'days', 'sessions', 'ground-truth', 'name', 'confirm'],
-    [skipAgent]
-  );
+  const isDatasetMode = source === 'dataset';
+  const allSteps = useMemo<BatchEvalStep[]>(() => {
+    if (isDatasetMode) {
+      return skipAgent ? ['evaluators', 'name', 'confirm'] : ['agent', 'evaluators', 'name', 'confirm'];
+    }
+    return skipAgent
+      ? ['evaluators', 'days', 'sessions', 'ground-truth', 'name', 'confirm']
+      : ['agent', 'evaluators', 'days', 'sessions', 'ground-truth', 'name', 'confirm'];
+  }, [skipAgent, isDatasetMode]);
 
   const [step, setStep] = useState<BatchEvalStep>(allSteps[0]!);
   const [config, setConfig] = useState<BatchEvalConfig>({
@@ -796,19 +868,239 @@ function BatchEvalWizard({ agents, evaluators: rawEvaluators, onComplete, onExit
             fields={[
               { label: 'Agent', value: config.agent },
               { label: 'Evaluators', value: config.evaluatorNames.join(', ') },
-              { label: 'Lookback', value: `${config.days} day${config.days !== 1 ? 's' : ''}` },
-              {
-                label: 'Sessions',
-                value: `${config.sessionIds.length} selected`,
-              },
-              ...(config.sessionMetadata
-                ? [{ label: 'Ground Truth', value: `${config.sessionMetadata.length} session(s) with ground truth` }]
-                : []),
+              ...(isDatasetMode
+                ? [{ label: 'Source', value: `Dataset: ${dataset ?? 'default'}` }]
+                : [
+                    { label: 'Lookback', value: `${config.days} day${config.days !== 1 ? 's' : ''}` },
+                    {
+                      label: 'Sessions',
+                      value: `${config.sessionIds.length} selected`,
+                    },
+                    ...(config.sessionMetadata
+                      ? [
+                          {
+                            label: 'Ground Truth',
+                            value: `${config.sessionMetadata.length} session(s) with ground truth`,
+                          },
+                        ]
+                      : []),
+                  ]),
               ...(config.name ? [{ label: 'Name', value: config.name }] : []),
             ]}
           />
         )}
       </Panel>
+    </Screen>
+  );
+}
+
+// ============================================================================
+// Source Picker
+// ============================================================================
+
+interface BatchEvalSourcePickerProps {
+  agents: AgentItem[];
+  evaluators: EvaluatorItem[];
+  onSelect: (source: EvalSource, dataset?: string, datasetVersion?: string) => void;
+  onExit: () => void;
+}
+
+function BatchEvalSourcePicker({
+  agents: _agents,
+  evaluators: _evaluators,
+  onSelect,
+  onExit,
+}: BatchEvalSourcePickerProps) {
+  const [step, setStep] = useState<'source' | 'dataset' | 'version'>('source');
+  const [datasets, setDatasets] = useState<{ name: string; schemaType: string }[]>([]);
+  const [selectedDataset, setSelectedDataset] = useState<string>('');
+  const [versionItems, setVersionItems] = useState<{ id: string; title: string; description: string }[]>([]);
+  const [loadingVersions, setLoadingVersions] = useState(false);
+
+  // Load dataset names from project config
+  useEffect(() => {
+    void (async () => {
+      try {
+        const { ConfigIO } = await import('../../../../lib');
+        const configIO = new ConfigIO();
+        const spec = await configIO.readProjectSpec();
+        setDatasets(
+          (spec.datasets ?? []).map((d: { name: string; schemaType: string }) => ({
+            name: d.name,
+            schemaType: d.schemaType,
+          }))
+        );
+      } catch {
+        // No datasets available
+      }
+    })();
+  }, []);
+
+  // Load versions when a dataset is selected
+  useEffect(() => {
+    if (step !== 'version' || !selectedDataset) return;
+    let cancelled = false;
+    setLoadingVersions(true);
+
+    void (async () => {
+      try {
+        const { resolveDataset } = await import('../../../operations/dataset/resolve-dataset');
+        const { listDatasetVersions } = await import('../../../aws/agentcore-datasets');
+        const resolved = await resolveDataset(selectedDataset);
+        const result = await listDatasetVersions({ region: resolved.region, datasetId: resolved.datasetId });
+
+        if (cancelled) return;
+
+        const items: { id: string; title: string; description: string }[] = [
+          { id: 'local', title: 'Local file', description: 'fastest iteration, no push required' },
+          { id: 'DRAFT', title: 'DRAFT', description: 'latest pushed content' },
+        ];
+        for (const v of result.versions.sort((a, b) => b.createdAt - a.createdAt)) {
+          const date = new Date(v.createdAt * 1000).toLocaleDateString([], {
+            month: 'short',
+            day: 'numeric',
+            year: 'numeric',
+          });
+          items.push({
+            id: v.datasetVersion,
+            title: `Version ${v.datasetVersion}`,
+            description: `${v.exampleCount} examples · ${date}`,
+          });
+        }
+        setVersionItems(items);
+      } catch {
+        // If versions can't be loaded (not deployed yet), just offer local
+        setVersionItems([{ id: 'local', title: 'Local file', description: 'fastest iteration, no push required' }]);
+      } finally {
+        if (!cancelled) setLoadingVersions(false);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [step, selectedDataset]);
+
+  const sourceItems = [
+    { id: 'dataset', title: 'Dataset', description: 'Invoke agent with dataset scenarios' },
+    { id: 'traces', title: 'Historical traces', description: 'Evaluate existing sessions' },
+  ];
+
+  const SCHEMA_LABELS: Record<string, string> = {
+    AGENTCORE_EVALUATION_PREDEFINED_V1: 'Predefined Turns',
+    AGENTCORE_EVALUATION_SIMULATED_V1: 'Actor Simulator',
+  };
+
+  const datasetItems = datasets.map(d => ({
+    id: d.name,
+    title: d.name,
+    description: SCHEMA_LABELS[d.schemaType] ?? d.schemaType,
+  }));
+
+  const handleDatasetSelected = useCallback(
+    (name: string) => {
+      setSelectedDataset(name);
+      setStep('version');
+    },
+    [setSelectedDataset, setStep]
+  );
+
+  const sourceNav = useListNavigation({
+    items: sourceItems,
+    onSelect: (item: { id: string }) => {
+      if (item.id === 'traces') {
+        onSelect('traces');
+      } else {
+        if (datasets.length === 1) {
+          handleDatasetSelected(datasets[0]!.name);
+        } else if (datasets.length > 1) {
+          setStep('dataset');
+        } else {
+          onSelect('dataset');
+        }
+      }
+    },
+    onExit,
+    isActive: step === 'source',
+  });
+
+  const datasetNav = useListNavigation({
+    items: datasetItems,
+    onSelect: (item: { id: string }) => {
+      handleDatasetSelected(item.id);
+    },
+    onExit: () => setStep('source'),
+    isActive: step === 'dataset',
+  });
+
+  const versionNav = useListNavigation({
+    items: versionItems,
+    onSelect: (item: { id: string }) => {
+      const version = item.id === 'local' ? undefined : item.id;
+      onSelect('dataset', selectedDataset, version);
+    },
+    onExit: () => (datasets.length > 1 ? setStep('dataset') : setStep('source')),
+    isActive: step === 'version' && !loadingVersions,
+  });
+
+  if (step === 'version') {
+    return (
+      <Screen
+        title="Run Batch Evaluation [preview]"
+        onExit={() => (datasets.length > 1 ? setStep('dataset') : setStep('source'))}
+      >
+        <Box flexDirection="column">
+          <Text bold>Select version for {selectedDataset}:</Text>
+          {loadingVersions ? (
+            <GradientText text="Loading versions..." />
+          ) : (
+            <>
+              {versionItems.map((item, i) => (
+                <Text key={item.id}>
+                  {i === versionNav.selectedIndex ? <Text color="cyan">❯ </Text> : '  '}
+                  <Text color={i === versionNav.selectedIndex ? 'cyan' : undefined}>{item.title}</Text>
+                  <Text dimColor> — {item.description}</Text>
+                </Text>
+              ))}
+              <Text dimColor>{'\n'}↑↓ Enter select · Esc back</Text>
+            </>
+          )}
+        </Box>
+      </Screen>
+    );
+  }
+
+  if (step === 'dataset') {
+    return (
+      <Screen title="Run Batch Evaluation [preview]" onExit={() => setStep('source')}>
+        <Box flexDirection="column">
+          <Text bold>Select dataset:</Text>
+          {datasetItems.map((item, i) => (
+            <Text key={item.id}>
+              {i === datasetNav.selectedIndex ? <Text color="cyan">❯ </Text> : '  '}
+              <Text color={i === datasetNav.selectedIndex ? 'cyan' : undefined}>{item.title}</Text>
+              {item.description && <Text dimColor> — {item.description}</Text>}
+            </Text>
+          ))}
+          <Text dimColor>{'\n'}↑↓ Enter select · Esc back</Text>
+        </Box>
+      </Screen>
+    );
+  }
+
+  return (
+    <Screen title="Run Batch Evaluation [preview]" onExit={onExit}>
+      <Box flexDirection="column">
+        <Text bold>Evaluation source:</Text>
+        {sourceItems.map((item, i) => (
+          <Text key={item.id}>
+            {i === sourceNav.selectedIndex ? <Text color="cyan">❯ </Text> : '  '}
+            <Text color={i === sourceNav.selectedIndex ? 'cyan' : undefined}>{item.title}</Text>
+            <Text dimColor> — {item.description}</Text>
+          </Text>
+        ))}
+        <Text dimColor>{'\n'}↑↓ Enter select · Esc back</Text>
+      </Box>
     </Screen>
   );
 }

@@ -4,7 +4,7 @@ import {
   MissingProjectFileError,
   PackagingError,
   UnsupportedLanguageError,
-} from '../errors.js';
+} from '../../errors/types.js';
 import { describe, expect, it } from 'vitest';
 
 describe('PackagingError', () => {

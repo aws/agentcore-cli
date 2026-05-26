@@ -1,4 +1,5 @@
-import { ConnectionError, type InvokeStreamingOptions, type SSELogger, ServerError } from './invoke-types';
+import { ConnectionError, ServerError } from '../../../lib/errors/types';
+import { type InvokeStreamingOptions, type SSELogger } from './invoke-types';
 import { isConnectionError, sleep } from './utils';
 import { randomUUID } from 'crypto';
 
@@ -153,7 +154,9 @@ export async function* invokeA2AStreaming(options: InvokeStreamingOptions): Asyn
     }
   }
 
-  const finalError = new ConnectionError(lastError ?? new Error('Failed to connect to A2A server after retries'));
+  const finalError = new ConnectionError(lastError?.message ?? 'Failed to connect to A2A server after retries', {
+    cause: lastError,
+  });
   logger?.log?.('error', `Failed to connect after ${maxRetries} attempts: ${finalError.message}`);
   throw finalError;
 }

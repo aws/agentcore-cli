@@ -28,6 +28,10 @@ interface E2EConfig {
   requiredEnvVar?: string;
   build?: string;
   memory?: string;
+  /** Language for the agent project. Defaults to 'Python'. */
+  language?: 'Python' | 'TypeScript';
+  /** Skip logs and traces tests. */
+  skipObservability?: boolean;
   /** Lifecycle configuration to pass via --idle-timeout / --max-lifetime flags. */
   lifecycleConfig?: {
     idleTimeout?: number;
@@ -37,7 +41,8 @@ interface E2EConfig {
 
 export function createE2ESuite(cfg: E2EConfig) {
   const hasApiKey = !cfg.requiredEnvVar || !!process.env[cfg.requiredEnvVar];
-  const canRun = baseCanRun && hasApiKey;
+  const needsUv = cfg.language !== 'TypeScript';
+  const canRun = prereqs.npm && prereqs.git && hasAws && hasApiKey && (!needsUv || prereqs.uv);
 
   describe.sequential(`e2e: ${cfg.framework}/${cfg.modelProvider} — create → deploy → invoke`, () => {
     let testDir: string;
@@ -58,7 +63,7 @@ export function createE2ESuite(cfg: E2EConfig) {
         '--name',
         agentName,
         '--language',
-        'Python',
+        cfg.language ?? 'Python',
         '--framework',
         cfg.framework,
         '--model-provider',
@@ -221,7 +226,7 @@ export function createE2ESuite(cfg: E2EConfig) {
       120000
     );
 
-    it.skipIf(!canRun)(
+    it.skipIf(!canRun || !!cfg.skipObservability)(
       'logs returns entries from the invocation',
       async () => {
         await retry(
@@ -250,7 +255,7 @@ export function createE2ESuite(cfg: E2EConfig) {
       120000
     );
 
-    it.skipIf(!canRun)(
+    it.skipIf(!canRun || !!cfg.skipObservability)(
       'logs supports level filtering',
       async () => {
         // --level error should succeed even if no error-level logs exist
@@ -261,7 +266,7 @@ export function createE2ESuite(cfg: E2EConfig) {
       120000
     );
 
-    it.skipIf(!canRun)(
+    it.skipIf(!canRun || !!cfg.skipObservability)(
       'traces list succeeds after invocation',
       async () => {
         // traces list has no --json flag — verify exit code and non-empty output

@@ -365,7 +365,7 @@ export function InvokeScreen({
 
   const agent = config.runtimes[selectedAgent];
   const traceUrl =
-    mode !== 'select-agent' && agent
+    mode !== 'select-agent' && agent?.supportsTraces
       ? buildTraceConsoleUrl({
           region: config.target.region,
           accountId: config.target.account,

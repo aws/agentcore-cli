@@ -36,9 +36,12 @@ describe('dev command', () => {
   });
 
   describe('positional prompt invoke', () => {
+    // Use a port that is very unlikely to have a server running
+    const unusedPort = '19876';
+
     it('exits with helpful error when no server running and no project found', async () => {
       // With no dev server running, invoke path shows connection error
-      const result = await runCLI(['dev', 'Hello agent'], process.cwd());
+      const result = await runCLI(['dev', 'Hello agent', '--port', unusedPort], process.cwd());
 
       expect(result.exitCode).toBe(1);
       const output = result.stderr.toLowerCase();
@@ -51,7 +54,7 @@ describe('dev command', () => {
     it('does not go through requireProject guard when invoking', async () => {
       // Invoke path uses loadProjectConfig (soft check), not requireProject()
       // The error should mention the dev server, not the generic project guard message
-      const result = await runCLI(['dev', 'test prompt'], process.cwd());
+      const result = await runCLI(['dev', 'test prompt', '--port', unusedPort], process.cwd());
 
       expect(result.exitCode).toBe(1);
       const output = result.stderr.toLowerCase();

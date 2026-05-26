@@ -98,7 +98,7 @@ describe('add agent command', () => {
       expect(json.error.includes('Invalid framework'), `Error: ${json.error}`).toBeTruthy();
     });
 
-    it('rejects TypeScript for create path', async () => {
+    it('rejects TypeScript with a non-Strands framework', async () => {
       const result = await runCLI(
         [
           'add',
@@ -108,7 +108,7 @@ describe('add agent command', () => {
           '--language',
           'TypeScript',
           '--framework',
-          'Strands',
+          'LangChain_LangGraph',
           '--model-provider',
           'Bedrock',
           '--memory',
@@ -121,7 +121,7 @@ describe('add agent command', () => {
       expect(result.exitCode).toBe(1);
       const json = JSON.parse(result.stdout);
       expect(json.success).toBe(false);
-      expect(json.error.includes('Python'), `Error should mention Python: ${json.error}`).toBeTruthy();
+      expect(json.error.includes('Strands'), `Error should mention Strands: ${json.error}`).toBeTruthy();
     });
 
     it('validates framework/model compatibility', async () => {

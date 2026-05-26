@@ -1,0 +1,37 @@
+{
+  "name": "{{name}}",
+  "version": "0.1.0",
+  "description": "AgentCore Runtime Application using Strands TypeScript SDK",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "tsc",
+    "start": "node dist/main.js",
+    "dev": "tsx watch main.ts"
+  },
+  "dependencies": {
+    {{#if (eq modelProvider "Anthropic")}}
+    "@anthropic-ai/sdk": "^0.71.2",
+    {{/if}}
+    {{#if (eq modelProvider "OpenAI")}}
+    "openai": "^6.7.0",
+    {{/if}}
+    {{#if (eq modelProvider "Gemini")}}
+    "@google/genai": "^1.40.0",
+    {{/if}}
+    "@modelcontextprotocol/sdk": "^1.25.2",
+    "@strands-agents/sdk": "1.0.0-rc.4",
+    "bedrock-agentcore": "^0.2.4",
+    "tsx": "^4.19.0",
+    "zod": "^4.4.3"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "typescript": "^5.6.0"
+  },
+  "overrides": {
+    "bedrock-agentcore": {
+      "@strands-agents/sdk": "$@strands-agents/sdk"
+    }
+  }
+}

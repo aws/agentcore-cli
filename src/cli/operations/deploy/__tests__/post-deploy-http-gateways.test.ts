@@ -81,6 +81,7 @@ function makeProjectSpec(httpGateways: AgentCoreProjectSpec['httpGateways'] = []
     configBundles: [],
     abTests: [],
     httpGateways,
+    datasets: [],
   };
 }
 

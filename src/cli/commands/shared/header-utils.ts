@@ -1,18 +1,22 @@
 import {
   HEADER_ALLOWLIST_PREFIX as HEADER_ALLOWLIST_PREFIX_FROM_SCHEMA,
+  HEADER_NAME_PATTERN as HEADER_NAME_PATTERN_FROM_SCHEMA,
   MAX_HEADER_ALLOWLIST_SIZE as MAX_HEADER_ALLOWLIST_SIZE_FROM_SCHEMA,
+  checkAllowlistHeader,
 } from '../../../schema/schemas/agent-env';
 
 export const HEADER_ALLOWLIST_PREFIX = HEADER_ALLOWLIST_PREFIX_FROM_SCHEMA;
+export const HEADER_NAME_PATTERN = HEADER_NAME_PATTERN_FROM_SCHEMA;
 export const MAX_HEADER_ALLOWLIST_SIZE = MAX_HEADER_ALLOWLIST_SIZE_FROM_SCHEMA;
-
-const HEADER_NAME_PATTERN = /^[A-Za-z0-9-]+$/;
 
 /**
  * Normalize a header name according to AgentCore Runtime rules:
  * - "Authorization" (case-insensitive) -> "Authorization"
- * - Headers already starting with the prefix (case-insensitive) -> canonical prefix + original suffix
- * - Other headers -> prepend the prefix
+ * - Headers starting with X-Amzn-Bedrock-AgentCore-Runtime-Custom- (case-insensitive) ->
+ *   canonical prefix casing + original suffix
+ * - Any other X- prefixed header (e.g. X-Api-Key, X-Custom-Signature) -> pass through unchanged
+ * - Bare suffixes without X- prefix (e.g. MyHeader) -> auto-prefix with Runtime-Custom- for
+ *   backward compatibility
  */
 export function normalizeHeaderName(input: string): string {
   if (input.toLowerCase() === 'authorization') {
@@ -21,11 +25,15 @@ export function normalizeHeaderName(input: string): string {
   if (input.toLowerCase().startsWith(HEADER_ALLOWLIST_PREFIX.toLowerCase())) {
     return `${HEADER_ALLOWLIST_PREFIX}${input.slice(HEADER_ALLOWLIST_PREFIX.length)}`;
   }
+  if (/^x-/i.test(input)) {
+    return input;
+  }
   return `${HEADER_ALLOWLIST_PREFIX}${input}`;
 }
 
 /**
  * Parse a comma-separated string of header names, normalize each, and deduplicate.
+ * Deduplication is case-insensitive per AWS docs.
  * Returns an array of normalized header names.
  */
 export function parseAndNormalizeHeaders(input: string): string[] {
@@ -35,7 +43,16 @@ export function parseAndNormalizeHeaders(input: string): string[] {
     .filter(Boolean)
     .map(normalizeHeaderName);
 
-  return Array.from(new Set(headers));
+  const seen = new Set<string>();
+  const result: string[] = [];
+  for (const header of headers) {
+    const lower = header.toLowerCase();
+    if (!seen.has(lower)) {
+      seen.add(lower);
+      result.push(header);
+    }
+  }
+  return result;
 }
 
 /**
@@ -52,20 +69,18 @@ export function validateHeaderAllowlist(value: string): { success: boolean; erro
     .split(',')
     .map(s => s.trim())
     .filter(Boolean);
+
   for (const name of rawNames) {
-    if (!HEADER_NAME_PATTERN.test(name)) {
-      return {
-        success: false,
-        error: `Invalid header name "${name}". Header names may only contain letters, numbers, and hyphens.`,
-      };
+    const error = checkAllowlistHeader(name);
+    if (error) {
+      return { success: false, error };
     }
   }
 
-  const headers = parseAndNormalizeHeaders(value);
-  if (headers.length > MAX_HEADER_ALLOWLIST_SIZE) {
+  if (rawNames.length > MAX_HEADER_ALLOWLIST_SIZE) {
     return {
       success: false,
-      error: `Header allowlist cannot exceed ${MAX_HEADER_ALLOWLIST_SIZE} headers. Provided: ${headers.length}`,
+      error: `Header allowlist cannot exceed ${MAX_HEADER_ALLOWLIST_SIZE} headers. Provided: ${rawNames.length}`,
     };
   }
 

@@ -2,6 +2,7 @@ import type { DeployMessage } from '../../../cdk/toolkit-lib/index.js';
 import { DeployStatus } from '../DeployStatus.js';
 import { render } from 'ink-testing-library';
 import React from 'react';
+import stripAnsi from 'strip-ansi';
 import { describe, expect, it } from 'vitest';
 
 function makeMsg(
@@ -28,7 +29,7 @@ describe('DeployStatus', () => {
     it('shows "Deploying to AWS" when not complete', () => {
       const { lastFrame } = render(<DeployStatus messages={[]} isComplete={false} hasError={false} />);
 
-      expect(lastFrame()).toContain('Deploying to AWS');
+      expect(stripAnsi(lastFrame()!)).toContain('Deploying to AWS');
     });
 
     it('shows success message when complete without error', () => {
@@ -90,7 +91,7 @@ describe('DeployStatus', () => {
       const { lastFrame } = render(<DeployStatus messages={messages} isComplete={false} hasError={false} />);
 
       // Should show deploying text but no resource lines
-      expect(lastFrame()).toContain('Deploying to AWS');
+      expect(stripAnsi(lastFrame()!)).toContain('Deploying to AWS');
       expect(lastFrame()).not.toContain('Some general info');
     });
 

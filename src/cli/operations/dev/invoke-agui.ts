@@ -1,6 +1,7 @@
+import { ConnectionError, ServerError } from '../../../lib/errors/types';
 import { parseAguiSSEStream } from '../../aws/agui-parser';
 import { AguiEventType } from '../../aws/agui-types';
-import { ConnectionError, type InvokeStreamingOptions, ServerError } from './invoke-types';
+import { type InvokeStreamingOptions } from './invoke-types';
 import { isConnectionError, sleep } from './utils';
 import { randomUUID } from 'crypto';
 
@@ -147,7 +148,9 @@ export async function* invokeAguiStreaming(options: InvokeStreamingOptions): Asy
     }
   }
 
-  const finalError = new ConnectionError(lastError ?? new Error('Failed to connect to AGUI server after retries'));
+  const finalError = new ConnectionError(lastError?.message ?? 'Failed to connect to AGUI server after retries', {
+    cause: lastError,
+  });
   logger?.log?.('error', `Failed to connect after ${maxRetries} attempts: ${finalError.message}`);
   throw finalError;
 }

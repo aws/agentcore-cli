@@ -18,7 +18,7 @@ import type {
   TargetLanguage,
 } from '../../../schema';
 import { checkCreateDependencies } from '../../external-requirements';
-import { initGitRepo, setupPythonProject, writeEnvFile, writeGitignore } from '../../operations';
+import { initGitRepo, setupNodeProject, setupPythonProject, writeEnvFile, writeGitignore } from '../../operations';
 import { createConfigBundleForAgent } from '../../operations/agent/config-bundle-defaults';
 import {
   mapGenerateConfigToRenderConfig,
@@ -327,6 +327,24 @@ export async function createProjectWithAgent(options: CreateWithAgentOptions): P
       onProgress?.('Set up Python environment', 'done');
     }
 
+    // Set up Node environment if needed (unless skipped)
+    if (language === 'TypeScript' && !skipInstall) {
+      onProgress?.('Set up Node environment', 'start');
+      const agentDir = join(projectRoot, APP_DIR, name);
+      const nodeResult = await setupNodeProject({ projectDir: agentDir });
+      if (nodeResult.status === 'success') {
+        onProgress?.('Set up Node environment', 'done');
+      } else {
+        const firstLine = (nodeResult.error ?? '').split('\n').find(l => l.trim().length > 0) ?? '';
+        const warn =
+          nodeResult.status === 'npm_not_found'
+            ? 'npm not found on PATH. Install Node.js 20+ and run `npm install` in the agent directory.'
+            : `npm install failed${firstLine ? `: ${firstLine.replace(/^npm (error|warn) /i, '').slice(0, 160)}` : ''}. Run \`npm install\` in ${agentDir} to retry and see the full error.`;
+        depWarnings.push(warn);
+        onProgress?.('Set up Node environment', 'done');
+      }
+    }
+
     return {
       success: true,
       projectPath: projectRoot,
@@ -361,6 +379,13 @@ export function getDryRunInfo(options: {
     wouldCreate.push(`${projectRoot}/app/${name}/`);
     wouldCreate.push(`${projectRoot}/app/${name}/main.py`);
     wouldCreate.push(`${projectRoot}/app/${name}/pyproject.toml`);
+  } else if (language === 'TypeScript') {
+    wouldCreate.push(`${projectRoot}/app/${name}/`);
+    wouldCreate.push(`${projectRoot}/app/${name}/main.ts`);
+    wouldCreate.push(`${projectRoot}/app/${name}/package.json`);
+    wouldCreate.push(`${projectRoot}/app/${name}/tsconfig.json`);
+    wouldCreate.push(`${projectRoot}/app/${name}/model/load.ts`);
+    wouldCreate.push(`${projectRoot}/app/${name}/mcp_client/client.ts`);
   }
 
   return {

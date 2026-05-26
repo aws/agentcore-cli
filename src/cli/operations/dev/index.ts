@@ -11,7 +11,7 @@ export {
 
 export { getDevConfig, getDevSupportedAgents, getAgentPort, loadProjectConfig, type DevConfig } from './config';
 
-export { ConnectionError, ServerError, invokeAgent, invokeAgentStreaming, invokeForProtocol } from './invoke';
+export { invokeAgent, invokeAgentStreaming, invokeForProtocol } from './invoke';
 
 export { invokeA2AStreaming, fetchA2AAgentCard, type A2AAgentCard } from './invoke-a2a';
 

@@ -53,7 +53,7 @@ export function useGenerateWizard(options?: UseGenerateWizardOptions) {
       if (config.modelProvider === 'Bedrock') {
         filtered = filtered.filter(s => s !== 'apiKey');
       }
-      if (sdkSelected && config.sdk === 'Strands') {
+      if (sdkSelected && config.sdk === 'Strands' && config.language !== 'TypeScript') {
         const advancedIndex = filtered.indexOf('advanced');
         filtered = [...filtered.slice(0, advancedIndex), 'memory', ...filtered.slice(advancedIndex)];
       }
@@ -102,6 +102,7 @@ export function useGenerateWizard(options?: UseGenerateWizardOptions) {
     config.buildType,
     config.modelProvider,
     config.sdk,
+    config.language,
     config.protocol,
     config.networkMode,
     config.authorizerType,
@@ -126,7 +127,7 @@ export function useGenerateWizard(options?: UseGenerateWizardOptions) {
   }, []);
 
   const setLanguage = useCallback((language: GenerateConfig['language']) => {
-    setConfig(c => ({ ...c, language }));
+    setConfig(c => ({ ...c, language, memory: language === 'TypeScript' ? 'none' : c.memory }));
     setStep('buildType');
   }, []);
 
@@ -164,34 +165,34 @@ export function useGenerateWizard(options?: UseGenerateWizardOptions) {
       // Non-Bedrock providers need API key step
       if (modelProvider !== 'Bedrock') {
         setStep('apiKey');
-      } else if (config.sdk === 'Strands') {
+      } else if (config.sdk === 'Strands' && config.language !== 'TypeScript') {
         setStep('memory');
       } else {
         setStep('advanced');
       }
     },
-    [config.sdk]
+    [config.sdk, config.language]
   );
 
   const setApiKey = useCallback(
     (apiKey: string | undefined) => {
       setConfig(c => ({ ...c, apiKey }));
-      if (config.sdk === 'Strands') {
+      if (config.sdk === 'Strands' && config.language !== 'TypeScript') {
         setStep('memory');
       } else {
         setStep('advanced');
       }
     },
-    [config.sdk]
+    [config.sdk, config.language]
   );
 
   const skipApiKey = useCallback(() => {
-    if (config.sdk === 'Strands') {
+    if (config.sdk === 'Strands' && config.language !== 'TypeScript') {
       setStep('memory');
     } else {
       setStep('advanced');
     }
-  }, [config.sdk]);
+  }, [config.sdk, config.language]);
 
   const setMemory = useCallback((memory: MemoryOption) => {
     setConfig(c => ({ ...c, memory }));

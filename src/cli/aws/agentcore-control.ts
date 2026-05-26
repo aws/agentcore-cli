@@ -368,9 +368,10 @@ export interface MemoryDetail {
     type: string;
     name?: string;
     description?: string;
-    namespaces?: string[];
-    reflectionNamespaces?: string[];
+    namespaceTemplates?: string[];
+    reflectionNamespaceTemplates?: string[];
   }[];
+  indexedKeys?: { key: string; type: string }[];
   tags?: Record<string, string>;
   encryptionKeyArn?: string;
   executionRoleArn?: string;
@@ -408,6 +409,14 @@ export async function getMemoryDetail(options: GetMemoryOptions): Promise<Memory
 
   const tags = await fetchTags(client, memory.arn, 'memory');
 
+  const indexedKeys = memory.indexedKeys?.flatMap(k => {
+    if (!k.key || !k.type) {
+      console.warn(`Warning: Skipping malformed indexed key from API response: ${JSON.stringify(k)}`);
+      return [];
+    }
+    return [{ key: k.key, type: k.type }];
+  });
+
   return {
     memoryId: memory.id,
     memoryArn: memory.arn,
@@ -418,17 +427,22 @@ export async function getMemoryDetail(options: GetMemoryOptions): Promise<Memory
     tags,
     encryptionKeyArn: memory.encryptionKeyArn,
     executionRoleArn: memory.memoryExecutionRoleArn,
+    ...(indexedKeys && indexedKeys.length > 0 && { indexedKeys }),
     strategies: (memory.strategies ?? []).map(s => {
       if (!s.type) {
         throw new Error(`Memory ${options.memoryId} has a strategy with missing required field: type`);
       }
-      const episodicNamespaces = s.configuration?.reflection?.episodicReflectionConfiguration?.namespaces;
+      // Prefer the new `namespaceTemplates` field; fall back to the deprecated `namespaces` field.
+      const namespaceTemplates = s.namespaceTemplates ?? s.namespaces;
+      const reflectionConfig = s.configuration?.reflection?.episodicReflectionConfiguration;
+      const reflectionTemplates = reflectionConfig?.namespaceTemplates ?? reflectionConfig?.namespaces;
       return {
         type: s.type,
         name: s.name,
         description: s.description,
-        namespaces: s.namespaces,
-        ...(episodicNamespaces && episodicNamespaces.length > 0 && { reflectionNamespaces: episodicNamespaces }),
+        ...(namespaceTemplates && namespaceTemplates.length > 0 && { namespaceTemplates }),
+        ...(reflectionTemplates &&
+          reflectionTemplates.length > 0 && { reflectionNamespaceTemplates: reflectionTemplates }),
       };
     }),
   };
