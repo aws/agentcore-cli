@@ -167,8 +167,8 @@ describe('withCommandRunTelemetry', () => {
     });
   });
 
-  describe('_telemetryAttrs', () => {
-    it('returned _telemetryAttrs override upfront attrs on success', async () => {
+  describe('AttributeRecorder', () => {
+    it('recorder.set() overrides initial attributes on success', async () => {
       await withCommandRunTelemetry(
         'dev',
         {
@@ -178,16 +178,16 @@ describe('withCommandRunTelemetry', () => {
           agent_protocol: 'http',
           invoke_count: 0,
         },
-        async () => ({
-          success: true as const,
-          _telemetryAttrs: {
+        async recorder => {
+          recorder.set({
             dev_action: 'invoke',
             ui_mode: 'browser',
             has_stream: true,
             agent_protocol: 'a2a',
             invoke_count: 5,
-          } as const,
-        })
+          });
+          return { success: true as const };
+        }
       );
 
       expect(sink.metrics).toHaveLength(1);
@@ -200,7 +200,7 @@ describe('withCommandRunTelemetry', () => {
       });
     });
 
-    it('returned _telemetryAttrs override upfront attrs on failure result', async () => {
+    it('recorder.set() overrides initial attributes on failure result', async () => {
       await withCommandRunTelemetry(
         'dev',
         {
@@ -210,17 +210,12 @@ describe('withCommandRunTelemetry', () => {
           agent_protocol: 'http',
           invoke_count: 0,
         },
-        async () => ({
-          success: false as const,
-          error: new Error('port in use'),
-          _telemetryAttrs: {
-            dev_action: 'server',
-            ui_mode: 'terminal',
-            has_stream: false,
+        async recorder => {
+          recorder.set({
             agent_protocol: 'mcp',
-            invoke_count: 0,
-          } as const,
-        })
+          });
+          return { success: false as const, error: new Error('port in use') };
+        }
       );
 
       expect(sink.metrics).toHaveLength(1);
@@ -230,7 +225,7 @@ describe('withCommandRunTelemetry', () => {
       });
     });
 
-    it('falls back to upfront attrs when _telemetryAttrs is not returned', async () => {
+    it('uses initial attributes when recorder.set() is never called', async () => {
       await withCommandRunTelemetry(
         'dev',
         {
@@ -250,32 +245,7 @@ describe('withCommandRunTelemetry', () => {
       });
     });
 
-    it('does not leak _telemetryAttrs to the caller', async () => {
-      const result = await withCommandRunTelemetry(
-        'dev',
-        {
-          dev_action: 'server',
-          ui_mode: 'terminal',
-          has_stream: false,
-          agent_protocol: 'http',
-          invoke_count: 0,
-        },
-        async () => ({
-          success: true as const,
-          _telemetryAttrs: {
-            dev_action: 'server',
-            ui_mode: 'terminal',
-            has_stream: false,
-            agent_protocol: 'mcp',
-            invoke_count: 0,
-          } as const,
-        })
-      );
-
-      expect('_telemetryAttrs' in result).toBe(false);
-    });
-
-    it('partially returned _telemetryAttrs merge with upfront attrs preserving non-overlapping keys', async () => {
+    it('partial recorder.set() merges with initial attributes preserving non-overlapping keys', async () => {
       await withCommandRunTelemetry(
         'dev',
         {
@@ -285,12 +255,12 @@ describe('withCommandRunTelemetry', () => {
           agent_protocol: 'http',
           invoke_count: 0,
         },
-        async () => ({
-          success: true as const,
-          _telemetryAttrs: {
+        async recorder => {
+          recorder.set({
             agent_protocol: 'mcp',
-          } as const,
-        })
+          });
+          return { success: true as const };
+        }
       );
 
       expect(sink.metrics).toHaveLength(1);
@@ -300,6 +270,29 @@ describe('withCommandRunTelemetry', () => {
         has_stream: 'false',
         agent_protocol: 'mcp',
         invoke_count: 0,
+      });
+    });
+
+    it('recorder.set() called before throw is preserved in telemetry', async () => {
+      await withCommandRunTelemetry(
+        'dev',
+        {
+          dev_action: 'server',
+          ui_mode: 'terminal',
+          has_stream: false,
+          agent_protocol: 'http',
+          invoke_count: 0,
+        },
+        async recorder => {
+          recorder.set({ agent_protocol: 'a2a' });
+          throw new Error('crash');
+        }
+      );
+
+      expect(sink.metrics).toHaveLength(1);
+      expect(sink.metrics[0]!.attrs).toMatchObject({
+        exit_reason: 'failure',
+        agent_protocol: 'a2a',
       });
     });
   });

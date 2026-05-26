@@ -1,11 +1,14 @@
 import type { Result } from '../../lib/result';
 import { getErrorMessage } from '../errors';
+import { type AttributeRecorder, createAttributeRecorder } from './attribute-recorder.js';
 import { TelemetryClientAccessor } from './client-accessor.js';
 import { TelemetryClient } from './client.js';
 import { classifyError } from './error.js';
 import { COMMAND_SCHEMAS, type Command, type CommandAttrs, deriveCommandGroup } from './schemas/command-run.js';
 import { type CommandResult, CommandResultSchema, resilientParse } from './schemas/common-shapes.js';
 import { performance } from 'perf_hooks';
+
+export type { AttributeRecorder } from './attribute-recorder.js';
 
 async function getTelemetryClient() {
   try {
@@ -79,23 +82,22 @@ async function trackCommandRun<C extends Command>(
  * the exception is converted to a result type such that callers do not need to handle result + try/catch.
  * If telemetry is unavailable, the callback runs untracked.
  *
- * The callback may return `_telemetryAttrs` to override or supplement the upfront `attrs`.
- * Returned attrs are merged with the upfront attrs (returned takes priority).
- * On throw, only the upfront attrs are used since the callback never produced a value.
+ * The callback receives an AttributeRecorder to dynamically set or override attributes.
+ * Initial attributes are seeded into the recorder; the callback may call recorder.set()
+ * to override or supplement them at any point during execution.
  */
 export async function withCommandRunTelemetry<C extends Command, R extends Result>(
   command: C,
-  attrs: CommandAttrs<C>,
-  fn: () =>
-    | (R & { _telemetryAttrs?: Partial<CommandAttrs<C>> })
-    | Promise<R & { _telemetryAttrs?: Partial<CommandAttrs<C>> }>
+  attributes: CommandAttrs<C>,
+  fn: (recorder: AttributeRecorder<CommandAttrs<C>>) => R | Promise<R>
 ): Promise<R> {
   const client = await getTelemetryClient();
+  const recorder = createAttributeRecorder<CommandAttrs<C>>();
+  recorder.set(attributes);
   const start = performance.now();
   try {
-    const result = await fn();
+    const result = await fn(recorder);
     if (client) {
-      const merged = result._telemetryAttrs ? { ...attrs, ...result._telemetryAttrs } : attrs;
       const durationMs = Math.round(performance.now() - start);
       if (!result.success) {
         const { category, source } = classifyError(result.error);
@@ -103,15 +105,14 @@ export async function withCommandRunTelemetry<C extends Command, R extends Resul
           client,
           command,
           { exit_reason: 'failure', error_name: category, error_source: source },
-          merged,
+          recorder.get(),
           durationMs
         );
       } else {
-        recordCommandRun(client, command, { exit_reason: 'success' }, merged, durationMs);
+        recordCommandRun(client, command, { exit_reason: 'success' }, recorder.get(), durationMs);
       }
     }
-    const { _telemetryAttrs, ...cleanResult } = result;
-    return cleanResult as R;
+    return result;
   } catch (e) {
     if (client) {
       const { category, source } = classifyError(e);
@@ -119,7 +120,7 @@ export async function withCommandRunTelemetry<C extends Command, R extends Resul
         client,
         command,
         { exit_reason: 'failure', error_name: category, error_source: source },
-        attrs,
+        recorder.get(),
         Math.round(performance.now() - start)
       );
     }

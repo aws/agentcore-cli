@@ -204,7 +204,7 @@ export const registerDev = (program: Command) => {
               agent_protocol: standardize(AgentProtocol, 'unknown'),
               invoke_count: 0,
             },
-            async () => {
+            async recorder => {
               if (!positionalPrompt) {
                 throw new ValidationError('A command is required with --exec. Usage: agentcore dev --exec "whoami"');
               }
@@ -217,18 +217,12 @@ export const registerDev = (program: Command) => {
                   '--exec is only supported for Container build agents. For CodeZip agents, use your terminal to run commands directly.'
                 );
               }
+              recorder.set({
+                agent_protocol: standardize(AgentProtocol, (targetAgent?.protocol ?? 'http').toLowerCase()),
+              });
               const containerName = `agentcore-dev-${agentName}`.toLowerCase();
               await execInContainer(positionalPrompt, containerName);
-              return {
-                success: true as const,
-                _telemetryAttrs: {
-                  dev_action: 'exec' as const,
-                  ui_mode: 'terminal' as const,
-                  has_stream: false,
-                  agent_protocol: standardize(AgentProtocol, (targetAgent?.protocol ?? 'http').toLowerCase()),
-                  invoke_count: 0,
-                },
-              };
+              return { success: true as const };
             }
           );
           // TODO: Remove cast once withCommandRunTelemetry's return type is narrowed
@@ -248,7 +242,7 @@ export const registerDev = (program: Command) => {
               agent_protocol: standardize(AgentProtocol, 'unknown'),
               invoke_count: 1,
             },
-            async () => {
+            async recorder => {
               const workingDir = getWorkingDirectory();
               const invokeProject = await loadProjectConfig(workingDir);
 
@@ -265,6 +259,9 @@ export const registerDev = (program: Command) => {
               }
 
               const protocol = targetAgent?.protocol ?? 'HTTP';
+              recorder.set({
+                agent_protocol: standardize(AgentProtocol, protocol.toLowerCase()),
+              });
 
               if (protocol === 'A2A') invokePort = 9000;
               else if (protocol === 'MCP') invokePort = 8000;
@@ -286,16 +283,7 @@ export const registerDev = (program: Command) => {
                 await invokeDevServer(invokePort, invokePrompt, opts.stream ?? false, headers);
               }
 
-              return {
-                success: true as const,
-                _telemetryAttrs: {
-                  dev_action: 'invoke' as const,
-                  ui_mode: 'terminal' as const,
-                  has_stream: opts.stream ?? false,
-                  agent_protocol: standardize(AgentProtocol, protocol.toLowerCase()),
-                  invoke_count: 1,
-                },
-              };
+              return { success: true as const };
             }
           );
           // TODO: Remove cast once withCommandRunTelemetry's return type is narrowed
@@ -314,7 +302,7 @@ export const registerDev = (program: Command) => {
             agent_protocol: standardize(AgentProtocol, 'unknown'),
             invoke_count: 0,
           },
-          async () => {
+          async recorder => {
             const project = await loadProjectConfig(workingDir);
             if (!project) {
               throw new NoProjectError();
@@ -365,6 +353,10 @@ export const registerDev = (program: Command) => {
               if (!config) {
                 throw new ValidationError('No dev-supported agents found.');
               }
+
+              recorder.set({
+                agent_protocol: standardize(AgentProtocol, config.protocol.toLowerCase()),
+              });
 
               const isA2A = config.protocol === 'A2A';
               const isMcp = config.protocol === 'MCP';
@@ -426,18 +418,11 @@ export const registerDev = (program: Command) => {
                 });
               });
 
-              return {
-                success: true as const,
-                blockingPromise: serverPromise,
-                _telemetryAttrs: {
-                  dev_action: 'server' as const,
-                  ui_mode: 'terminal' as const,
-                  has_stream: false,
-                  agent_protocol: standardize(AgentProtocol, config.protocol.toLowerCase()),
-                  invoke_count: 0,
-                },
-              };
+              return { success: true as const, blockingPromise: serverPromise };
             }
+            recorder.set({
+              agent_protocol: standardize(AgentProtocol, (targetDevAgent?.protocol ?? 'http').toLowerCase()),
+            });
 
             // --no-browser: terminal TUI mode
             if (!opts.browser) {
@@ -471,17 +456,11 @@ export const registerDev = (program: Command) => {
                   exitAltScreen();
                   collector?.stop();
                 }),
-                _telemetryAttrs: {
-                  dev_action: 'server' as const,
-                  ui_mode: 'terminal' as const,
-                  has_stream: false,
-                  agent_protocol: standardize(AgentProtocol, (targetDevAgent?.protocol ?? 'http').toLowerCase()),
-                  invoke_count: 0,
-                },
               };
             }
 
             // Default: browser mode (blocks forever)
+            recorder.set({ ui_mode: 'browser' as const });
             return {
               success: true as const,
               blockingPromise: runBrowserMode({
@@ -492,13 +471,6 @@ export const registerDev = (program: Command) => {
                 otelEnvVars,
                 collector,
               }),
-              _telemetryAttrs: {
-                dev_action: 'server' as const,
-                ui_mode: 'browser' as const,
-                has_stream: false,
-                agent_protocol: standardize(AgentProtocol, (targetDevAgent?.protocol ?? 'http').toLowerCase()),
-                invoke_count: 0,
-              },
             };
           }
         );
