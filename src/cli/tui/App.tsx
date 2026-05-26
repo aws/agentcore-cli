@@ -40,7 +40,7 @@ type Route =
   | { name: 'create' }
   | { name: 'add' }
   | { name: 'status' }
-  | { name: 'remove' }
+  | { name: 'remove'; screen?: 'all' }
   | { name: 'run' }
   | { name: 'run-eval'; from?: 'run' | 'evals' }
   | { name: 'run-batch-eval'; from?: 'run' | 'evals' }
@@ -250,6 +250,7 @@ function AppContent({
         isInteractive={isInteractive}
         onExit={handleBack}
         onNavigate={command => setRoute({ name: command } as Route)}
+        initialResourceType={route.screen}
       />
     );
   }

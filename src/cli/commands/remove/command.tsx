@@ -85,7 +85,7 @@ export const registerRemove = (program: Command): Command => {
         } else {
           requireTTY();
           await renderTUI({
-            initialRoute: { name: 'remove' },
+            initialRoute: { name: 'remove', screen: 'all' },
             enterAltScreen: false,
             actionOnBack: 'exit',
             isInteractive: false,
