@@ -1,10 +1,18 @@
-name: Release Both (Main + Preview)
+name: Release
 
 on:
   workflow_dispatch:
     inputs:
+      release_target:
+        description: 'What to release'
+        required: true
+        type: choice
+        options:
+          - both
+          - main-only
+          - preview-only
       main_bump_type:
-        description: 'Main branch version bump'
+        description: 'Main version bump (ignored for preview-only)'
         required: true
         type: choice
         options:
@@ -12,7 +20,7 @@ on:
           - minor
           - major
       preview_bump_type:
-        description: 'Preview version bump type'
+        description: 'Preview version bump (ignored for main-only)'
         required: true
         type: choice
         options:
@@ -45,9 +53,10 @@ jobs:
     name: Prepare Release
     runs-on: ubuntu-latest
     outputs:
-      main_version: ${{ steps.bump-main.outputs.version }}
+      main_version: ${{ steps.bump-main.outputs.version || steps.current-main.outputs.version }}
       preview_version: ${{ steps.bump-preview.outputs.version }}
       branch: ${{ steps.create-pr.outputs.branch }}
+      release_target: ${{ github.event.inputs.release_target }}
 
     steps:
       - name: Checkout main
@@ -72,6 +81,7 @@ jobs:
 
       - name: Bump main version
         id: bump-main
+        if: inputs.release_target != 'preview-only'
         env:
           BUMP_TYPE: ${{ github.event.inputs.main_bump_type }}
           CHANGELOG_INPUT: ${{ github.event.inputs.main_changelog }}
@@ -86,8 +96,15 @@ jobs:
           echo "version=$NEW_VERSION" >> $GITHUB_OUTPUT
           echo "📦 Main version: $NEW_VERSION"
 
+      - name: Output current main version (preview-only)
+        id: current-main
+        if: inputs.release_target == 'preview-only'
+        run: |
+          echo "version=$(node -p "require('./package.json').version")" >> $GITHUB_OUTPUT
+
       - name: Bump preview version
         id: bump-preview
+        if: inputs.release_target != 'main-only'
         env:
           BUMP_TYPE: ${{ github.event.inputs.preview_bump_type }}
         run: |
@@ -135,10 +152,24 @@ jobs:
         id: create-pr
         env:
           GH_TOKEN: ${{ steps.app-token.outputs.token }}
-          MAIN_VERSION: ${{ steps.bump-main.outputs.version }}
+          MAIN_VERSION: ${{ steps.bump-main.outputs.version || steps.current-main.outputs.version }}
           PREVIEW_VERSION: ${{ steps.bump-preview.outputs.version }}
+          RELEASE_TARGET: ${{ github.event.inputs.release_target }}
         run: |
-          BRANCH_NAME="release/v${MAIN_VERSION}+preview.${PREVIEW_VERSION}"
+          # Build branch name based on what we're releasing
+          if [ "$RELEASE_TARGET" = "main-only" ]; then
+            BRANCH_NAME="release/v${MAIN_VERSION}"
+            TITLE="Release v$MAIN_VERSION"
+            COMMIT_MSG="chore: bump main to $MAIN_VERSION"
+          elif [ "$RELEASE_TARGET" = "preview-only" ]; then
+            BRANCH_NAME="release/preview-v${PREVIEW_VERSION}"
+            TITLE="Release preview v$PREVIEW_VERSION"
+            COMMIT_MSG="chore: bump preview to $PREVIEW_VERSION"
+          else
+            BRANCH_NAME="release/v${MAIN_VERSION}+preview.${PREVIEW_VERSION}"
+            TITLE="Release v$MAIN_VERSION + preview v$PREVIEW_VERSION"
+            COMMIT_MSG="chore: bump main to $MAIN_VERSION, preview to $PREVIEW_VERSION"
+          fi
           echo "branch=$BRANCH_NAME" >> $GITHUB_OUTPUT
 
           git ls-remote --exit-code --heads origin "$BRANCH_NAME" && git push origin --delete "$BRANCH_NAME" || true
@@ -146,27 +177,35 @@ jobs:
 
           git checkout -b "$BRANCH_NAME"
           git add -A
-          git commit -m "chore: bump main to $MAIN_VERSION, preview to $PREVIEW_VERSION"
+          git commit -m "$COMMIT_MSG"
           git push origin "$BRANCH_NAME"
 
-          gh pr create \
-            --base main \
-            --head "$BRANCH_NAME" \
-            --label release \
-            --title "Release v$MAIN_VERSION + preview v$PREVIEW_VERSION" \
-            --body "## Release v$MAIN_VERSION + Preview v$PREVIEW_VERSION
-
-          This PR bumps both versions for a coordinated release.
+          # Build PR body
+          BODY="## $TITLE
 
           | Package | Version | npm Tag |
-          |---------|---------|---------|
-          | @aws/agentcore | $MAIN_VERSION | latest |
-          | @aws/agentcore | $PREVIEW_VERSION | preview |
+          |---------|---------|---------|"
+          if [ "$RELEASE_TARGET" != "preview-only" ]; then
+            BODY="$BODY
+          | @aws/agentcore | $MAIN_VERSION | latest |"
+          fi
+          if [ "$RELEASE_TARGET" != "main-only" ]; then
+            BODY="$BODY
+          | @aws/agentcore | $PREVIEW_VERSION | preview |"
+          fi
+          BODY="$BODY
 
           ### Checklist
           - [ ] Review CHANGELOG.md
           - [ ] All CI checks passing
           - [ ] Merge this PR before approving the publish step"
+
+          gh pr create \
+            --base main \
+            --head "$BRANCH_NAME" \
+            --label release \
+            --title "$TITLE" \
+            --body "$BODY"
 
   # ═══════════════════════════════════════════════════════════════════
   # Step 2 — Build and test both variants
@@ -174,6 +213,7 @@ jobs:
   test-main:
     name: Test Main Build
     needs: prepare-release
+    if: inputs.release_target != 'preview-only'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
@@ -196,6 +236,7 @@ jobs:
   test-preview:
     name: Test Preview Build
     needs: prepare-release
+    if: inputs.release_target != 'main-only'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
@@ -224,6 +265,7 @@ jobs:
   release-approval:
     name: Release Approval
     needs: [test-main, test-preview, prepare-release]
+    if: always() && !failure() && !cancelled()
     runs-on: ubuntu-latest
     environment:
       name: npm-publish-approval
@@ -260,6 +302,7 @@ jobs:
           fetch-depth: 0
 
       - name: Verify main version
+        if: needs.prepare-release.outputs.release_target != 'preview-only'
         env:
           EXPECTED: ${{ needs.prepare-release.outputs.main_version }}
         run: |
@@ -273,6 +316,7 @@ jobs:
           echo "✅ Main version verified: $ACTUAL"
 
       - name: Verify preview version
+        if: needs.prepare-release.outputs.release_target != 'main-only'
         env:
           EXPECTED: ${{ needs.prepare-release.outputs.preview_version }}
         run: |
@@ -290,6 +334,7 @@ jobs:
   publish-main:
     name: Publish Main (@latest)
     needs: [prepare-release, verify-merge]
+    if: inputs.release_target != 'preview-only'
     runs-on: ubuntu-latest
     environment:
       name: npm-publish
@@ -346,6 +391,7 @@ jobs:
   publish-preview:
     name: Publish Preview (@preview)
     needs: [prepare-release, verify-merge]
+    if: inputs.release_target != 'main-only'
     runs-on: ubuntu-latest
     environment:
       name: npm-publish
@@ -418,7 +464,7 @@ jobs:
   summary:
     name: Release Summary
     needs: [prepare-release, publish-main, publish-preview]
-    if: always()
+    if: always() && !cancelled()
     runs-on: ubuntu-latest
     steps:
       - name: Summary
