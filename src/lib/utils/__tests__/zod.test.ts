@@ -1,4 +1,4 @@
-import { validateAgentSchema, validateProjectSchema, withCatchAll } from '../zod.js';
+import { resilientParse, validateAgentSchema, validateProjectSchema } from '../zod.js';
 import { describe, expect, it } from 'vitest';
 import { z } from 'zod';
 
@@ -81,50 +81,62 @@ describe('validateProjectSchema', () => {
   });
 });
 
-describe('withCatchAll', () => {
-  it('wraps top-level fields with catch', () => {
-    const strict = z.object({ name: z.string(), age: z.number() });
-    const lenient = withCatchAll(strict);
+describe('resilientParse', () => {
+  it('passes valid fields through unchanged', () => {
+    const schema = z.object({ name: z.string(), age: z.number() });
+    const result = resilientParse(schema, { name: 'valid', age: 42 });
+    expect(result.name).toBe('valid');
+    expect(result.age).toBe(42);
+  });
 
-    const result = lenient.parse({ name: 'valid', age: 'not a number' });
+  it('defaults invalid fields to undefined', () => {
+    const schema = z.object({ name: z.string(), age: z.number() });
+    const result = resilientParse(schema, { name: 'valid', age: 'not a number' });
     expect(result.name).toBe('valid');
     expect(result.age).toBeUndefined();
   });
 
-  it('wraps nested object fields with catch', () => {
-    const strict = z.object({
+  it('recursively parses nested objects', () => {
+    const schema = z.object({
       settings: z.object({
         enabled: z.boolean(),
         name: z.string(),
       }),
     });
-    const lenient = withCatchAll(strict);
-
-    const result = lenient.parse({ settings: { enabled: 'bad', name: 'good' } });
-    expect(result.settings.enabled).toBeUndefined();
-    expect(result.settings.name).toBe('good');
+    const result = resilientParse(schema, { settings: { enabled: 'bad', name: 'good' } });
+    expect(result.settings).toEqual({ name: 'good' });
   });
 
-  it('handles optional fields', () => {
-    const strict = z.object({ value: z.string().optional() });
-    const lenient = withCatchAll(strict);
-
-    const result = lenient.parse({});
-    expect(result.value).toBeUndefined();
+  it('skips keys not present in data', () => {
+    const schema = z.object({ name: z.string(), age: z.number() });
+    const result = resilientParse(schema, { name: 'valid' });
+    expect(result).toEqual({ name: 'valid' });
+    expect('age' in result).toBe(false);
   });
 
-  it('preserves unknown keys via loose', () => {
-    const strict = z.object({ known: z.string() });
-    const lenient = withCatchAll(strict);
-
-    const result = lenient.parse({ known: 'hello', extra: 'world' }) as Record<string, unknown>;
+  it('preserves unknown keys', () => {
+    const schema = z.object({ known: z.string() });
+    const result = resilientParse(schema, { known: 'hello', extra: 'world' });
     expect(result.known).toBe('hello');
-    expect(result.extra).toBe('world');
+    expect((result as Record<string, unknown>).extra).toBe('world');
   });
 
-  it('passes through primitive schemas unchanged', () => {
-    const schema = z.string();
-    const result = withCatchAll(schema);
-    expect(result.parse('hello')).toBe('hello');
+  it('recursively parses nested objects wrapped in ZodOptional', () => {
+    const schema = z.object({
+      settings: z
+        .object({
+          enabled: z.boolean(),
+          name: z.string(),
+        })
+        .optional(),
+    });
+    const result = resilientParse(schema, { settings: { enabled: 'bad', name: 'good' } });
+    expect(result.settings).toEqual({ name: 'good' });
+  });
+
+  it('supports custom fallback value', () => {
+    const schema = z.object({ name: z.string() });
+    const result = resilientParse(schema, { name: 123 }, { fallback: 'unknown' });
+    expect(result.name).toBe('unknown');
   });
 });

@@ -1,11 +1,12 @@
 import type { Result } from '../../lib/result';
+import { resilientParse } from '../../lib/utils/zod.js';
 import { getErrorMessage } from '../errors';
 import { type AttributeRecorder, createAttributeRecorder } from './attribute-recorder.js';
 import { TelemetryClientAccessor } from './client-accessor.js';
 import { TelemetryClient } from './client.js';
 import { classifyError } from './error.js';
 import { COMMAND_SCHEMAS, type Command, type CommandAttrs, deriveCommandGroup } from './schemas/command-run.js';
-import { type CommandResult, CommandResultSchema, resilientParse } from './schemas/common-shapes.js';
+import { type CommandResult, CommandResultSchema } from './schemas/common-shapes.js';
 import { performance } from 'perf_hooks';
 
 export type { AttributeRecorder } from './attribute-recorder.js';
@@ -30,7 +31,11 @@ function recordCommandRun<C extends Command>(
 
     const validatedAttrs =
       Object.keys(attrs as Record<string, unknown>).length > 0
-        ? resilientParse(COMMAND_SCHEMAS[command], attrs as Record<string, unknown>)
+        ? resilientParse(COMMAND_SCHEMAS[command], attrs as Record<string, unknown>, {
+            fallback: 'unknown',
+            fillMissing: true,
+            keepUnknown: false,
+          })
         : attrs;
 
     client.emit('cli.command_run', durationMs, {
