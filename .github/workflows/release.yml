@@ -257,6 +257,8 @@ jobs:
         run: npm run typecheck
 
       - name: Build package
+        env:
+          BUILD_PREVIEW: ${{ needs.prepare-release.outputs.dist_tag == 'preview' && '1' || '' }}
         run: npm run build
 
       - name: Run tests
@@ -374,6 +376,8 @@ jobs:
         run: npm ci
 
       - name: Build package
+        env:
+          BUILD_PREVIEW: ${{ needs.prepare-release.outputs.dist_tag == 'preview' && '1' || '' }}
         run: npm run build
 
       - name: Publish to npm (using OIDC trusted publishing)
