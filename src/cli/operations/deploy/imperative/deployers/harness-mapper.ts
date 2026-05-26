@@ -317,7 +317,10 @@ function buildRetrievalConfig(
 ): Record<string, { topK?: number; relevanceScore?: number }> | undefined {
   if (!memorySpec?.strategies?.length) return undefined;
 
-  const namespaces = memorySpec.strategies.flatMap(s => s.namespaces ?? []);
+  const namespaces = memorySpec.strategies.flatMap(s => [
+    ...(s.namespaces ?? []),
+    ...(s.type === 'EPISODIC' ? (s.reflectionNamespaces ?? []) : []),
+  ]);
 
   return namespaces.length > 0 ? Object.fromEntries(namespaces.map(ns => [ns, {}])) : undefined;
 }

@@ -1,5 +1,5 @@
 import type { ConfigIO } from '../../../../../../lib';
-import type { AgentCoreProjectSpec, AwsDeploymentTarget, DeployedState } from '../../../../../../schema';
+import type { AgentCoreProjectSpec, AwsDeploymentTarget, DeployedState, Memory } from '../../../../../../schema';
 import * as harnessApi from '../../../../../aws/agentcore-harness';
 import type { ImperativeDeployContext } from '../../types';
 import { HarnessDeployer } from '../harness-deployer';
@@ -35,6 +35,7 @@ const CONFIG_ROOT = '/project/agentcore';
 
 function createContext(overrides?: {
   harnesses?: AgentCoreProjectSpec['harnesses'];
+  memories?: Memory[];
   deployedHarnesses?: DeployedState['targets'][string]['resources'];
   cdkOutputs?: Record<string, string>;
 }): ImperativeDeployContext {
@@ -43,7 +44,7 @@ function createContext(overrides?: {
     version: 1,
     managedBy: 'CDK' as const,
     runtimes: [],
-    memories: [],
+    memories: overrides?.memories ?? [],
     credentials: [],
     evaluators: [],
     onlineEvalConfigs: [],
@@ -658,6 +659,72 @@ describe('HarnessDeployer', () => {
         ([path]) => typeof path === 'string' && path.includes('Dockerfile')
       );
       expect(dockerfileCallArgs).toBeUndefined();
+    });
+
+    it('triggers update when memory strategy namespaces change', async () => {
+      const HARNESS_SPEC_WITH_MEMORY_JSON = JSON.stringify({
+        name: 'my_harness',
+        model: { provider: 'bedrock', modelId: 'anthropic.claude-3-sonnet-20240229-v1:0' },
+        tools: [],
+        skills: [],
+        memory: { name: 'my_memory' },
+      });
+
+      const memoryV1: Memory = {
+        name: 'my_memory',
+        eventExpiryDuration: 30,
+        strategies: [{ type: 'SEMANTIC', namespaces: ['/users/{actorId}/v1'] }],
+      };
+
+      // First deploy — capture hash for memoryV1
+      const ctxV1 = createContext({
+        harnesses: [{ name: 'my_harness', path: 'harnesses/my_harness' }],
+        memories: [memoryV1],
+        cdkOutputs: CDK_OUTPUTS,
+      });
+
+      mockedReadFile.mockResolvedValueOnce(HARNESS_SPEC_WITH_MEMORY_JSON).mockRejectedValueOnce(new Error('ENOENT'));
+      mockedMapHarness.mockResolvedValueOnce({ region: REGION, harnessName: 'my_harness', executionRoleArn: ROLE_ARN });
+      mockedCreateHarness.mockResolvedValueOnce({ harness: READY_HARNESS });
+
+      const result1 = await deployer.deploy(ctxV1);
+      const hashV1 = result1.state!.my_harness!.configHash;
+
+      vi.clearAllMocks();
+
+      // Second deploy — only the namespace in memoryV1 changes, harness.json is identical
+      const memoryV2: Memory = {
+        name: 'my_memory',
+        eventExpiryDuration: 30,
+        strategies: [{ type: 'SEMANTIC', namespaces: ['/users/{actorId}/v2'] }],
+      };
+
+      const ctxV2 = createContext({
+        harnesses: [{ name: 'my_harness', path: 'harnesses/my_harness' }],
+        memories: [memoryV2],
+        deployedHarnesses: {
+          harnesses: {
+            my_harness: {
+              harnessId: 'h-new',
+              harnessArn: READY_HARNESS.arn,
+              roleArn: ROLE_ARN,
+              status: 'READY',
+              configHash: hashV1,
+            },
+          },
+        },
+        cdkOutputs: CDK_OUTPUTS,
+      });
+
+      mockedReadFile.mockResolvedValueOnce(HARNESS_SPEC_WITH_MEMORY_JSON).mockRejectedValueOnce(new Error('ENOENT'));
+      mockedMapHarness.mockResolvedValueOnce({ region: REGION, harnessName: 'my_harness', executionRoleArn: ROLE_ARN });
+      mockedUpdateHarness.mockResolvedValueOnce({ harness: READY_HARNESS });
+
+      const result2 = await deployer.deploy(ctxV2);
+
+      expect(result2.state!.my_harness!.configHash).not.toBe(hashV1);
+      expect(mockedUpdateHarness).toHaveBeenCalled();
+      expect(result2.notes).toContain('Updated harness "my_harness"');
     });
   });
 

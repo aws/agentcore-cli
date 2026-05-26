@@ -447,12 +447,74 @@ describe('mapHarnessSpecToCreateOptions', () => {
             '/users/{actorId}/preferences': {},
             '/summaries/{actorId}/{sessionId}': {},
             '/episodes/{actorId}/{sessionId}': {},
+            '/episodes/{actorId}': {},
           },
         },
       });
     });
 
-    it('omits retrievalConfig when strategies have no explicit namespaces', async () => {
+    it('includes EPISODIC reflectionNamespaces in retrievalConfig', async () => {
+      const deployedResources: DeployedResourceState = {
+        memories: {
+          my_memory: {
+            memoryId: 'mem-123',
+            memoryArn: 'arn:aws:bedrock-agentcore:us-east-1:123456789012:memory/mem-123',
+          },
+        },
+      };
+      const memorySpec: Memory = {
+        name: 'my_memory',
+        eventExpiryDuration: 30,
+        strategies: [
+          {
+            type: 'EPISODIC',
+            namespaces: ['/episodes/{actorId}/{sessionId}'],
+            reflectionNamespaces: ['/episodes/{actorId}'],
+          },
+        ],
+      };
+
+      const spec = minimalSpec({ memory: { name: 'my_memory' } });
+      const result = await mapHarnessSpecToCreateOptions({
+        ...BASE_OPTIONS,
+        harnessSpec: spec,
+        deployedResources,
+        memorySpec,
+      });
+
+      expect(result.memory?.agentCoreMemoryConfiguration.retrievalConfig).toEqual({
+        '/episodes/{actorId}/{sessionId}': {},
+        '/episodes/{actorId}': {},
+      });
+    });
+
+    it('omits retrievalConfig when strategies have no namespaces or reflectionNamespaces', async () => {
+      const deployedResources: DeployedResourceState = {
+        memories: {
+          my_memory: {
+            memoryId: 'mem-123',
+            memoryArn: 'arn:aws:bedrock-agentcore:us-east-1:123456789012:memory/mem-123',
+          },
+        },
+      };
+      const memorySpec: Memory = {
+        name: 'my_memory',
+        eventExpiryDuration: 30,
+        strategies: [{ type: 'SEMANTIC' }, { type: 'SUMMARIZATION' }],
+      };
+
+      const spec = minimalSpec({ memory: { name: 'my_memory' } });
+      const result = await mapHarnessSpecToCreateOptions({
+        ...BASE_OPTIONS,
+        harnessSpec: spec,
+        deployedResources,
+        memorySpec,
+      });
+
+      expect(result.memory?.agentCoreMemoryConfiguration.retrievalConfig).toBeUndefined();
+    });
+
+    it('includes EPISODIC reflectionNamespaces in retrievalConfig even without namespaces', async () => {
       const deployedResources: DeployedResourceState = {
         memories: {
           my_memory: {
@@ -481,7 +543,9 @@ describe('mapHarnessSpecToCreateOptions', () => {
         memorySpec,
       });
 
-      expect(result.memory?.agentCoreMemoryConfiguration.retrievalConfig).toBeUndefined();
+      expect(result.memory?.agentCoreMemoryConfiguration.retrievalConfig).toEqual({
+        '/episodes/{actorId}': {},
+      });
     });
 
     it('omits retrievalConfig when memorySpec not provided', async () => {
