@@ -166,4 +166,134 @@ describe('withCommandRunTelemetry', () => {
       error_name: 'UnknownError',
     });
   });
+
+  describe('AttributeRecorder', () => {
+    it('recorder.set() overrides initial attributes on success', async () => {
+      await withCommandRunTelemetry(
+        'dev',
+        {
+          dev_action: 'server',
+          ui_mode: 'terminal',
+          has_stream: false,
+          agent_protocol: 'http',
+          invoke_count: 0,
+        },
+        async recorder => {
+          recorder.set({
+            dev_action: 'invoke',
+            ui_mode: 'browser',
+            has_stream: true,
+            agent_protocol: 'a2a',
+            invoke_count: 5,
+          });
+          return { success: true as const };
+        }
+      );
+
+      expect(sink.metrics).toHaveLength(1);
+      expect(sink.metrics[0]!.attrs).toMatchObject({
+        dev_action: 'invoke',
+        ui_mode: 'browser',
+        has_stream: 'true',
+        agent_protocol: 'a2a',
+        invoke_count: 5,
+      });
+    });
+
+    it('recorder.set() overrides initial attributes on failure result', async () => {
+      await withCommandRunTelemetry(
+        'dev',
+        {
+          dev_action: 'server',
+          ui_mode: 'terminal',
+          has_stream: false,
+          agent_protocol: 'http',
+          invoke_count: 0,
+        },
+        async recorder => {
+          recorder.set({
+            agent_protocol: 'mcp',
+          });
+          return { success: false as const, error: new Error('port in use') };
+        }
+      );
+
+      expect(sink.metrics).toHaveLength(1);
+      expect(sink.metrics[0]!.attrs).toMatchObject({
+        exit_reason: 'failure',
+        agent_protocol: 'mcp',
+      });
+    });
+
+    it('uses initial attributes when recorder.set() is never called', async () => {
+      await withCommandRunTelemetry(
+        'dev',
+        {
+          dev_action: 'server',
+          ui_mode: 'terminal',
+          has_stream: false,
+          agent_protocol: 'http',
+          invoke_count: 0,
+        },
+        async () => ({ success: true as const })
+      );
+
+      expect(sink.metrics).toHaveLength(1);
+      expect(sink.metrics[0]!.attrs).toMatchObject({
+        agent_protocol: 'http',
+        dev_action: 'server',
+      });
+    });
+
+    it('partial recorder.set() merges with initial attributes preserving non-overlapping keys', async () => {
+      await withCommandRunTelemetry(
+        'dev',
+        {
+          dev_action: 'server',
+          ui_mode: 'terminal',
+          has_stream: false,
+          agent_protocol: 'http',
+          invoke_count: 0,
+        },
+        async recorder => {
+          recorder.set({
+            agent_protocol: 'mcp',
+          });
+          return { success: true as const };
+        }
+      );
+
+      expect(sink.metrics).toHaveLength(1);
+      expect(sink.metrics[0]!.attrs).toMatchObject({
+        dev_action: 'server',
+        ui_mode: 'terminal',
+        has_stream: 'false',
+        agent_protocol: 'mcp',
+        invoke_count: 0,
+      });
+    });
+
+    it('recorder.set() called before throw is preserved in telemetry', async () => {
+      await withCommandRunTelemetry(
+        'dev',
+        {
+          dev_action: 'server',
+          ui_mode: 'terminal',
+          has_stream: false,
+          agent_protocol: 'http',
+          invoke_count: 0,
+        },
+        async recorder => {
+          recorder.set({ agent_protocol: 'a2a' });
+          throw new Error('crash');
+        }
+      );
+
+      expect(sink.metrics).toHaveLength(1);
+      expect(sink.metrics[0]!.attrs).toMatchObject({
+        exit_reason: 'failure',
+        agent_protocol: 'a2a',
+      });
+    });
+  });
 });

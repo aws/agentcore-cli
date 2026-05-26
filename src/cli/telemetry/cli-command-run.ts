@@ -1,11 +1,14 @@
 import type { Result } from '../../lib/result';
 import { getErrorMessage } from '../errors';
+import { type AttributeRecorder, createAttributeRecorder } from './attribute-recorder.js';
 import { TelemetryClientAccessor } from './client-accessor.js';
 import { TelemetryClient } from './client.js';
 import { classifyError } from './error.js';
 import { COMMAND_SCHEMAS, type Command, type CommandAttrs, deriveCommandGroup } from './schemas/command-run.js';
 import { type CommandResult, CommandResultSchema, resilientParse } from './schemas/common-shapes.js';
 import { performance } from 'perf_hooks';
+
+export type { AttributeRecorder } from './attribute-recorder.js';
 
 async function getTelemetryClient() {
   try {
@@ -78,37 +81,53 @@ async function trackCommandRun<C extends Command>(
  * is returned to the caller. If the callback throws, telemetry is recorded and
  * the exception is converted to a result type such that callers do not need to handle result + try/catch.
  * If telemetry is unavailable, the callback runs untracked.
+ *
+ * The callback receives an AttributeRecorder to dynamically set or override attributes.
+ * Initial attributes are seeded into the recorder; the callback may call recorder.set()
+ * to override or supplement them at any point during execution.
  */
 export async function withCommandRunTelemetry<C extends Command, R extends Result>(
   command: C,
-  attrs: CommandAttrs<C>,
-  fn: () => R | Promise<R>
+  attributes: CommandAttrs<C>,
+  fn: (recorder: AttributeRecorder<CommandAttrs<C>>) => R | Promise<R>
 ): Promise<R> {
   const client = await getTelemetryClient();
-
-  let result: R | undefined;
+  const recorder = createAttributeRecorder<CommandAttrs<C>>();
+  recorder.set(attributes);
+  const start = performance.now();
   try {
-    if (!client) return fn();
-    await trackCommandRun(
-      client,
-      command,
-      async () => {
-        result = await fn();
-        if (!result.success) throw result.error;
-        return attrs;
-      },
-      attrs
-    );
-  } catch (e) {
-    // trackCommandRun re-throws after recording failure telemetry.
-    // If result was set, fn() returned a failure result — return it directly.
-    // If not, fn() itself threw — convert to a failure result so callers
-    // that don't wrap in try/catch (e.g. TUI hooks) don't leak unhandled rejections.
-    if (!result) {
-      return { success: false, error: e instanceof Error ? e : new Error(getErrorMessage(e)) } as R;
+    const result = await fn(recorder);
+    if (client) {
+      const durationMs = Math.round(performance.now() - start);
+      if (!result.success) {
+        const { category, source } = classifyError(result.error);
+        recordCommandRun(
+          client,
+          command,
+          { exit_reason: 'failure', error_name: category, error_source: source },
+          recorder.get(),
+          durationMs
+        );
+      } else {
+        recordCommandRun(client, command, { exit_reason: 'success' }, recorder.get(), durationMs);
+      }
     }
+    return result;
+  } catch (e) {
+    if (client) {
+      const { category, source } = classifyError(e);
+      recordCommandRun(
+        client,
+        command,
+        { exit_reason: 'failure', error_name: category, error_source: source },
+        recorder.get(),
+        Math.round(performance.now() - start)
+      );
+    }
+    return { success: false, error: e instanceof Error ? e : new Error(getErrorMessage(e)) } as R;
+  } finally {
+    await client?.flush();
   }
-  return result!;
 }
 
 /**
