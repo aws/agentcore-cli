@@ -12,4 +12,4 @@ export {
 export { parseTimeString } from './time-parser';
 export { parseJsonRpcResponse } from './json-rpc';
 export { poll, isThrottlingError } from './polling';
-export { validateAgentSchema, validateProjectSchema, withCatchAll } from './zod';
+export { validateAgentSchema, validateProjectSchema, resilientParse, type ResilientParseOptions } from './zod';

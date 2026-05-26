@@ -2,23 +2,62 @@ import type { AgentCoreProjectSpec, AgentEnvSpec } from '../../schema';
 import { AgentCoreProjectSpecSchema, AgentEnvSpecSchema } from '../../schema';
 import { z } from 'zod';
 
+export interface ResilientParseOptions {
+  /** Value to use when a field fails validation. Default: undefined */
+  fallback?: string | number | boolean;
+  /** Include schema keys not present in data, set to fallback value. Default: false */
+  fillMissing?: boolean;
+  /** Preserve keys in data not defined in the schema. Default: true */
+  keepUnknown?: boolean;
+}
+
 /**
- * Recursively wraps all fields in a Zod schema with `.catch(undefined)` and
- * adds `.loose()` to objects, making parsing lenient — invalid fields
- * are silently dropped and unknown keys are preserved.
+ * Recursively parse data against a Zod object schema, field by field.
+ * Invalid fields fall back to a default value rather than throwing.
+ * Nested ZodObjects (including those wrapped in ZodOptional/ZodNullable/ZodDefault) are parsed recursively.
+ *
+ * Note: when keepUnknown is true (default), extra keys are preserved in the result.
+ * If the result is later validated against a .strict() schema, those keys will cause errors.
+ * This is intentional for read-path leniency; use validateGlobalConfig for write-path strictness.
  */
-export function withCatchAll<T extends z.ZodType>(schema: T): T {
-  if (schema instanceof z.ZodObject) {
-    const shape: Record<string, z.ZodType> = schema.shape;
-    const newShape = Object.fromEntries(
-      Object.entries(shape).map(([key, field]) => [key, withCatchAll(field).catch(undefined)])
-    );
-    return z.object(newShape).loose() as unknown as T;
+export function resilientParse<T extends z.ZodObject<z.ZodRawShape>>(
+  schema: T,
+  data: Record<string, unknown>,
+  options: ResilientParseOptions = {}
+): Partial<z.infer<T>> {
+  if (data == null || typeof data !== 'object' || Array.isArray(data)) return {} as Partial<z.infer<T>>;
+  const { fallback, fillMissing = false, keepUnknown = true } = options;
+  const result: Record<string, unknown> = {};
+  for (const [key, field] of Object.entries(schema.shape)) {
+    if (!(key in data)) {
+      if (fillMissing) result[key] = fallback;
+      continue;
+    }
+    const value = data[key];
+    const inner = unwrapZodType(field as z.ZodType);
+    if (inner instanceof z.ZodObject && value != null && typeof value === 'object' && !Array.isArray(value)) {
+      result[key] = resilientParse(inner, value as Record<string, unknown>, options);
+    } else {
+      const parsed = (field as z.ZodType).safeParse(value);
+      result[key] = parsed.success ? parsed.data : fallback;
+    }
   }
-  if (schema instanceof z.ZodOptional) {
-    return z.optional(withCatchAll(schema.unwrap() as z.ZodType)) as unknown as T;
+  if (keepUnknown) {
+    for (const key of Object.keys(data)) {
+      if (!(key in schema.shape)) {
+        result[key] = data[key];
+      }
+    }
   }
-  return schema;
+  return result as Partial<z.infer<T>>;
+}
+
+/** Unwrap ZodOptional, ZodNullable, and ZodDefault to get the inner type. */
+function unwrapZodType(field: z.ZodType): z.ZodType {
+  while (field instanceof z.ZodOptional || field instanceof z.ZodNullable || field instanceof z.ZodDefault) {
+    field = field.unwrap() as z.ZodType;
+  }
+  return field;
 }
 
 /**

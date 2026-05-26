@@ -1,4 +1,4 @@
-import { withCatchAll } from '../../utils/zod.js';
+import { resilientParse } from '../../utils/zod.js';
 import { readFileSync } from 'fs';
 import { mkdir, readFile, writeFile } from 'fs/promises';
 import { randomUUID } from 'node:crypto';
@@ -27,8 +27,6 @@ const GlobalConfigSchemaStrict = z
   })
   .strict();
 
-const GlobalConfigSchema = withCatchAll(GlobalConfigSchemaStrict);
-
 export type GlobalConfig = z.infer<typeof GlobalConfigSchemaStrict>;
 
 export function validateGlobalConfig(data: unknown): { success: boolean; error?: z.ZodError } {
@@ -38,7 +36,7 @@ export function validateGlobalConfig(data: unknown): { success: boolean; error?:
 export async function readGlobalConfig(configFile = GLOBAL_CONFIG_FILE): Promise<GlobalConfig> {
   try {
     const data = await readFile(configFile, 'utf-8');
-    return GlobalConfigSchema.parse(JSON.parse(data));
+    return resilientParse(GlobalConfigSchemaStrict, JSON.parse(data) as Record<string, unknown>);
   } catch {
     return {};
   }
@@ -47,7 +45,7 @@ export async function readGlobalConfig(configFile = GLOBAL_CONFIG_FILE): Promise
 export function readGlobalConfigSync(configFile = GLOBAL_CONFIG_FILE): GlobalConfig {
   try {
     const data = readFileSync(configFile, 'utf-8');
-    return GlobalConfigSchema.parse(JSON.parse(data));
+    return resilientParse(GlobalConfigSchemaStrict, JSON.parse(data) as Record<string, unknown>);
   } catch {
     return {};
   }
