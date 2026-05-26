@@ -1,6 +1,6 @@
 import { readGlobalConfig, updateGlobalConfig, validateGlobalConfig } from '../../../lib/schemas/io/global-config.js';
-import { deepMerge } from '../../../lib/utils/object.js';
 import type { ConfigResult } from './types.js';
+import { ValidationError } from '@/lib/index.js';
 
 export async function handleConfigList(): Promise<ConfigResult> {
   const config = await readGlobalConfig();
@@ -19,13 +19,11 @@ export async function handleConfigGet(key: string): Promise<ConfigResult> {
 
 export async function handleConfigSet(key: string, raw: string): Promise<ConfigResult> {
   const value = parseValue(raw);
-  const existing = await readGlobalConfig();
   const partial = buildNestedObject(key, value);
-  const merged = deepMerge(existing, partial);
+  const validation = validateGlobalConfig(partial);
 
-  const validation = validateGlobalConfig(merged);
   if (!validation.success) {
-    return { success: false, error: new Error(`Invalid value "${raw}" for key "${key}".`) };
+    return { success: false, error: new ValidationError(`Invalid value "${raw}" for key "${key}".`) };
   }
 
   const ok = await updateGlobalConfig(partial);
