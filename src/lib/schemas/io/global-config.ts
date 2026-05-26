@@ -1,3 +1,4 @@
+import { withCatchAll } from '../../utils/zod.js';
 import { readFileSync } from 'fs';
 import { mkdir, readFile, writeFile } from 'fs/promises';
 import { randomUUID } from 'node:crypto';
@@ -8,25 +9,31 @@ import { z } from 'zod';
 export const GLOBAL_CONFIG_DIR = process.env.AGENTCORE_CONFIG_DIR ?? join(homedir(), '.agentcore');
 export const GLOBAL_CONFIG_FILE = join(GLOBAL_CONFIG_DIR, 'config.json');
 
-const GlobalConfigSchema = z
+const GlobalConfigSchemaStrict = z
   .object({
-    installationId: z.string().optional().catch(undefined),
-    uvDefaultIndex: z.string().optional().catch(undefined),
-    uvIndex: z.string().optional().catch(undefined),
-    disableTransactionSearch: z.boolean().optional().catch(undefined),
-    transactionSearchIndexPercentage: z.number().int().min(0).max(100).optional().catch(undefined),
+    installationId: z.string().optional(),
+    uvDefaultIndex: z.string().optional(),
+    uvIndex: z.string().optional(),
+    disableTransactionSearch: z.boolean().optional(),
+    transactionSearchIndexPercentage: z.number().int().min(0).max(100).optional(),
     telemetry: z
       .object({
-        enabled: z.boolean().optional().catch(undefined),
-        endpoint: z.string().optional().catch(undefined),
-        audit: z.boolean().optional().catch(undefined),
+        enabled: z.boolean().optional(),
+        endpoint: z.string().optional(),
+        audit: z.boolean().optional(),
       })
-      .optional()
-      .catch(undefined),
+      .strict()
+      .optional(),
   })
-  .passthrough();
+  .strict();
 
-export type GlobalConfig = z.infer<typeof GlobalConfigSchema>;
+const GlobalConfigSchema = withCatchAll(GlobalConfigSchemaStrict);
+
+export type GlobalConfig = z.infer<typeof GlobalConfigSchemaStrict>;
+
+export function validateGlobalConfig(data: unknown): { success: boolean; error?: z.ZodError } {
+  return GlobalConfigSchemaStrict.safeParse(data);
+}
 
 export async function readGlobalConfig(configFile = GLOBAL_CONFIG_FILE): Promise<GlobalConfig> {
   try {
