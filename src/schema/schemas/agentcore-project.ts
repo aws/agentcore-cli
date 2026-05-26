@@ -70,7 +70,13 @@ export type { ABTestMode, TargetRef, GatewayFilter, PerVariantOnlineEvaluationCo
 export { ABTestModeSchema, TargetRefSchema, GatewayFilterSchema } from './primitives/ab-test';
 export type { HttpGatewayTarget } from './primitives/http-gateway';
 export { HttpGatewayTargetSchema } from './primitives/http-gateway';
-export type { HarnessGatewayOutboundAuth, HarnessModel, HarnessSpec, HarnessModelProvider } from './primitives/harness';
+export type {
+  HarnessGatewayOutboundAuth,
+  HarnessMemoryRef,
+  HarnessModel,
+  HarnessSpec,
+  HarnessModelProvider,
+} from './primitives/harness';
 export {
   GatewayOAuthGrantTypeSchema,
   HarnessGatewayOutboundAuthSchema,

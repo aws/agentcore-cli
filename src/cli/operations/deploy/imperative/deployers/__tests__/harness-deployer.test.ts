@@ -536,6 +536,74 @@ describe('HarnessDeployer', () => {
     });
   });
 
+  describe('memorySpec resolution', () => {
+    const ROLE_ARN = 'arn:aws:iam::123456789012:role/HarnessRole';
+    const MEMORY_ARN = 'arn:aws:bedrock-agentcore:us-east-1:123456789012:memory/mem-123';
+    const CDK_OUTPUTS = { ApplicationHarnessMyHarnessRoleArnOutput123: ROLE_ARN };
+    const READY_HARNESS = {
+      harnessId: 'h-new',
+      harnessName: 'my_harness',
+      arn: 'arn:aws:bedrock-agentcore:us-east-1:123456789012:harness/h-new',
+      status: 'READY' as const,
+      executionRoleArn: ROLE_ARN,
+      createdAt: '2024-01-01T00:00:00Z',
+      updatedAt: '2024-01-01T00:00:00Z',
+    };
+
+    const HARNESS_SPEC_WITH_MEMORY_ARN_JSON = JSON.stringify({
+      name: 'my_harness',
+      model: { provider: 'bedrock', modelId: 'anthropic.claude-3-sonnet-20240229-v1:0' },
+      tools: [],
+      skills: [],
+      memory: { arn: MEMORY_ARN },
+    });
+
+    it('resolves memorySpec by deployed ARN when memory.name is absent', async () => {
+      const memory: Memory = {
+        name: 'my_memory',
+        eventExpiryDuration: 30,
+        strategies: [{ type: 'SEMANTIC', namespaces: ['/users/{actorId}/facts'] }],
+      };
+
+      const ctx = createContext({
+        harnesses: [{ name: 'my_harness', path: 'harnesses/my_harness' }],
+        memories: [memory],
+        deployedHarnesses: {
+          memories: { my_memory: { memoryId: 'mem-123', memoryArn: MEMORY_ARN } },
+        },
+        cdkOutputs: CDK_OUTPUTS,
+      });
+
+      mockedReadFile
+        .mockResolvedValueOnce(HARNESS_SPEC_WITH_MEMORY_ARN_JSON)
+        .mockRejectedValueOnce(new Error('ENOENT'));
+      mockedMapHarness.mockResolvedValueOnce({ region: REGION, harnessName: 'my_harness', executionRoleArn: ROLE_ARN });
+      mockedCreateHarness.mockResolvedValueOnce({ harness: READY_HARNESS });
+
+      await deployer.deploy(ctx);
+
+      expect(mockedMapHarness).toHaveBeenCalledWith(expect.objectContaining({ memorySpec: memory }));
+    });
+
+    it('returns undefined memorySpec for a fully external ARN not in deployedResources', async () => {
+      const ctx = createContext({
+        harnesses: [{ name: 'my_harness', path: 'harnesses/my_harness' }],
+        memories: [],
+        cdkOutputs: CDK_OUTPUTS,
+      });
+
+      mockedReadFile
+        .mockResolvedValueOnce(HARNESS_SPEC_WITH_MEMORY_ARN_JSON)
+        .mockRejectedValueOnce(new Error('ENOENT'));
+      mockedMapHarness.mockResolvedValueOnce({ region: REGION, harnessName: 'my_harness', executionRoleArn: ROLE_ARN });
+      mockedCreateHarness.mockResolvedValueOnce({ harness: READY_HARNESS });
+
+      await deployer.deploy(ctx);
+
+      expect(mockedMapHarness).toHaveBeenCalledWith(expect.objectContaining({ memorySpec: undefined }));
+    });
+  });
+
   describe('configHash', () => {
     const ROLE_ARN = 'arn:aws:iam::123456789012:role/HarnessRole';
     const CDK_OUTPUTS = { ApplicationHarnessMyHarnessRoleArnOutput123: ROLE_ARN };
