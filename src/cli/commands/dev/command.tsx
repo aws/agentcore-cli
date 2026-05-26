@@ -504,7 +504,7 @@ export const registerDev = (program: Command) => {
         );
         // TODO: Remove cast once withCommandRunTelemetry's return type is narrowed
         if (!serverResult.success) throw (serverResult as unknown as { error: Error }).error;
-        if ('blockingPromise' in serverResult) await serverResult.blockingPromise;
+        await serverResult.blockingPromise;
         process.exit(0);
       } catch (error) {
         console.error(`Error: ${getErrorMessage(error)}`);
