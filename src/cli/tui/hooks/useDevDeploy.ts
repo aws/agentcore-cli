@@ -97,10 +97,7 @@ export function useDevDeploy({ skip, ready = true }: UseDevDeployOptions = {}): 
           autoConfirm: true,
           verbose: true,
           onProgress,
-          onDeployMessage: (message: string) =>
-            onDeployMessage({ code: '', message, level: 'info', timestamp: new Date() }),
-          onResourceEvent: (message: string) =>
-            onDeployMessage({ code: '', message, level: 'info', timestamp: new Date() }),
+          onDeployMessage,
         });
 
         if (result.logPath) {
@@ -108,7 +105,7 @@ export function useDevDeploy({ skip, ready = true }: UseDevDeployOptions = {}): 
         }
 
         if (!result.success) {
-          setError(result.error instanceof Error ? result.error.message : String(result.error));
+          setError(getErrorMessage(result.error));
         }
       } catch (err) {
         setError(getErrorMessage(err));

@@ -3,7 +3,7 @@ import type { AgentCoreMcpSpec, DeployedState, HarnessDeployedState } from '../.
 import { applyTargetRegionToEnv } from '../../aws';
 import { validateAwsCredentials } from '../../aws/account';
 import { CdkToolkitWrapper, createSwitchableIoHost } from '../../cdk/toolkit-lib';
-import type { SwitchableIoHost } from '../../cdk/toolkit-lib';
+import type { DeployMessage, SwitchableIoHost } from '../../cdk/toolkit-lib';
 import {
   buildDeployedState,
   getStackOutputs,
@@ -58,7 +58,7 @@ export interface ValidatedDeployOptions {
   diff?: boolean;
   onProgress?: (step: string, status: 'start' | 'success' | 'error') => void;
   onResourceEvent?: (message: string) => void;
-  onDeployMessage?: (message: string) => void;
+  onDeployMessage?: (message: DeployMessage) => void;
 }
 
 const AGENT_NEXT_STEPS = ['agentcore invoke', 'agentcore status'];
@@ -367,7 +367,7 @@ export async function handleDeploy(options: ValidatedDeployOptions): Promise<Dep
     if (switchableIoHost && (options.onResourceEvent || options.onDeployMessage)) {
       switchableIoHost.setOnMessage(msg => {
         options.onResourceEvent?.(msg.message);
-        options.onDeployMessage?.(msg.message);
+        options.onDeployMessage?.(msg);
       });
       switchableIoHost.setVerbose(true);
     }
