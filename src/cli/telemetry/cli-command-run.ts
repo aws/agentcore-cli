@@ -86,7 +86,9 @@ async function trackCommandRun<C extends Command>(
 export async function withCommandRunTelemetry<C extends Command, R extends Result>(
   command: C,
   attrs: CommandAttrs<C>,
-  fn: () => (R & { _telemetryAttrs?: CommandAttrs<C> }) | Promise<R & { _telemetryAttrs?: CommandAttrs<C> }>
+  fn: () =>
+    | (R & { _telemetryAttrs?: Partial<CommandAttrs<C>> })
+    | Promise<R & { _telemetryAttrs?: Partial<CommandAttrs<C>> }>
 ): Promise<R> {
   const client = await getTelemetryClient();
   const start = performance.now();
@@ -97,7 +99,13 @@ export async function withCommandRunTelemetry<C extends Command, R extends Resul
       const durationMs = Math.round(performance.now() - start);
       if (!result.success) {
         const { category, source } = classifyError(result.error);
-        recordCommandRun(client, command, { exit_reason: 'failure', error_name: category, error_source: source }, merged, durationMs);
+        recordCommandRun(
+          client,
+          command,
+          { exit_reason: 'failure', error_name: category, error_source: source },
+          merged,
+          durationMs
+        );
       } else {
         recordCommandRun(client, command, { exit_reason: 'success' }, merged, durationMs);
       }
@@ -107,7 +115,13 @@ export async function withCommandRunTelemetry<C extends Command, R extends Resul
   } catch (e) {
     if (client) {
       const { category, source } = classifyError(e);
-      recordCommandRun(client, command, { exit_reason: 'failure', error_name: category, error_source: source }, attrs, Math.round(performance.now() - start));
+      recordCommandRun(
+        client,
+        command,
+        { exit_reason: 'failure', error_name: category, error_source: source },
+        attrs,
+        Math.round(performance.now() - start)
+      );
     }
     return { success: false, error: e instanceof Error ? e : new Error(getErrorMessage(e)) } as R;
   } finally {

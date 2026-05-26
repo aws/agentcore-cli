@@ -186,7 +186,7 @@ describe('withCommandRunTelemetry', () => {
             has_stream: true,
             agent_protocol: 'a2a',
             invoke_count: 5,
-          },
+          } as const,
         })
       );
 
@@ -219,7 +219,7 @@ describe('withCommandRunTelemetry', () => {
             has_stream: false,
             agent_protocol: 'mcp',
             invoke_count: 0,
-          },
+          } as const,
         })
       );
 
@@ -268,11 +268,39 @@ describe('withCommandRunTelemetry', () => {
             has_stream: false,
             agent_protocol: 'mcp',
             invoke_count: 0,
-          },
+          } as const,
         })
       );
 
       expect('_telemetryAttrs' in result).toBe(false);
+    });
+
+    it('partially returned _telemetryAttrs merge with upfront attrs preserving non-overlapping keys', async () => {
+      await withCommandRunTelemetry(
+        'dev',
+        {
+          dev_action: 'server',
+          ui_mode: 'terminal',
+          has_stream: false,
+          agent_protocol: 'http',
+          invoke_count: 0,
+        },
+        async () => ({
+          success: true as const,
+          _telemetryAttrs: {
+            agent_protocol: 'mcp',
+          } as const,
+        })
+      );
+
+      expect(sink.metrics).toHaveLength(1);
+      expect(sink.metrics[0]!.attrs).toMatchObject({
+        dev_action: 'server',
+        ui_mode: 'terminal',
+        has_stream: 'false',
+        agent_protocol: 'mcp',
+        invoke_count: 0,
+      });
     });
   });
 });
