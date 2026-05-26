@@ -1,3 +1,4 @@
+import type { DeployedResourceState, Memory } from '../../../../../../schema';
 import type { MapHarnessOptions } from '../harness-mapper';
 import { mapHarnessSpecToCreateOptions } from '../harness-mapper';
 import { describe, expect, it, vi } from 'vitest';
@@ -238,6 +239,196 @@ describe('mapHarnessSpecToCreateOptions', () => {
         } as any,
       });
       await expect(mapHarnessSpecToCreateOptions(opts)).rejects.toThrow('not in deployed state');
+    });
+
+    it('includes retrievalConfig derived from memory strategy namespaces', async () => {
+      const deployedResources: DeployedResourceState = {
+        memories: {
+          my_memory: {
+            memoryId: 'mem-123',
+            memoryArn: 'arn:aws:bedrock-agentcore:us-east-1:123456789012:memory/mem-123',
+          },
+        },
+      };
+      const memorySpec: Memory = {
+        name: 'my_memory',
+        eventExpiryDuration: 30,
+        strategies: [
+          { type: 'SEMANTIC', namespaces: ['/users/{actorId}/facts'] },
+          { type: 'USER_PREFERENCE', namespaces: ['/users/{actorId}/preferences'] },
+          { type: 'SUMMARIZATION', namespaces: ['/summaries/{actorId}/{sessionId}'] },
+          {
+            type: 'EPISODIC',
+            namespaces: ['/episodes/{actorId}/{sessionId}'],
+            reflectionNamespaces: ['/episodes/{actorId}'],
+          },
+        ],
+      };
+
+      const result = await mapHarnessSpecToCreateOptions(
+        baseOptions({
+          harnessSpec: {
+            name: 'h',
+            model: { provider: 'bedrock', modelId: 'claude' },
+            tools: [],
+            skills: [],
+            memory: { name: 'my_memory' },
+          } as any,
+          deployedResources,
+          memorySpec,
+        })
+      );
+
+      expect(result.memory).toEqual({
+        agentCoreMemoryConfiguration: {
+          arn: 'arn:aws:bedrock-agentcore:us-east-1:123456789012:memory/mem-123',
+          retrievalConfig: {
+            '/users/{actorId}/facts': {},
+            '/users/{actorId}/preferences': {},
+            '/summaries/{actorId}/{sessionId}': {},
+            '/episodes/{actorId}/{sessionId}': {},
+            '/episodes/{actorId}': {},
+          },
+        },
+      });
+    });
+
+    it('includes EPISODIC reflectionNamespaces in retrievalConfig even without namespaces', async () => {
+      const deployedResources: DeployedResourceState = {
+        memories: {
+          my_memory: {
+            memoryId: 'mem-123',
+            memoryArn: 'arn:aws:bedrock-agentcore:us-east-1:123456789012:memory/mem-123',
+          },
+        },
+      };
+      const memorySpec: Memory = {
+        name: 'my_memory',
+        eventExpiryDuration: 30,
+        strategies: [
+          { type: 'SEMANTIC' },
+          {
+            type: 'EPISODIC',
+            reflectionNamespaces: ['/episodes/{actorId}'],
+          },
+        ],
+      };
+
+      const result = await mapHarnessSpecToCreateOptions(
+        baseOptions({
+          harnessSpec: {
+            name: 'h',
+            model: { provider: 'bedrock', modelId: 'claude' },
+            tools: [],
+            skills: [],
+            memory: { name: 'my_memory' },
+          } as any,
+          deployedResources,
+          memorySpec,
+        })
+      );
+
+      expect(result.memory?.agentCoreMemoryConfiguration.retrievalConfig).toEqual({
+        '/episodes/{actorId}': {},
+      });
+    });
+
+    it('omits retrievalConfig when strategies have no namespaces or reflectionNamespaces', async () => {
+      const deployedResources: DeployedResourceState = {
+        memories: {
+          my_memory: {
+            memoryId: 'mem-123',
+            memoryArn: 'arn:aws:bedrock-agentcore:us-east-1:123456789012:memory/mem-123',
+          },
+        },
+      };
+      const memorySpec: Memory = {
+        name: 'my_memory',
+        eventExpiryDuration: 30,
+        strategies: [{ type: 'SEMANTIC' }, { type: 'SUMMARIZATION' }],
+      };
+
+      const result = await mapHarnessSpecToCreateOptions(
+        baseOptions({
+          harnessSpec: {
+            name: 'h',
+            model: { provider: 'bedrock', modelId: 'claude' },
+            tools: [],
+            skills: [],
+            memory: { name: 'my_memory' },
+          } as any,
+          deployedResources,
+          memorySpec,
+        })
+      );
+
+      expect(result.memory?.agentCoreMemoryConfiguration.retrievalConfig).toBeUndefined();
+    });
+
+    it('omits retrievalConfig when memorySpec not provided', async () => {
+      const deployedResources: DeployedResourceState = {
+        memories: {
+          my_memory: {
+            memoryId: 'mem-123',
+            memoryArn: 'arn:aws:bedrock-agentcore:us-east-1:123456789012:memory/mem-123',
+          },
+        },
+      };
+
+      const result = await mapHarnessSpecToCreateOptions(
+        baseOptions({
+          harnessSpec: {
+            name: 'h',
+            model: { provider: 'bedrock', modelId: 'claude' },
+            tools: [],
+            skills: [],
+            memory: { name: 'my_memory' },
+          } as any,
+          deployedResources,
+        })
+      );
+
+      expect(result.memory?.agentCoreMemoryConfiguration.retrievalConfig).toBeUndefined();
+    });
+
+    it('includes both actorId and retrievalConfig when both are set', async () => {
+      const deployedResources: DeployedResourceState = {
+        memories: {
+          my_memory: {
+            memoryId: 'mem-123',
+            memoryArn: 'arn:aws:bedrock-agentcore:us-east-1:123456789012:memory/mem-123',
+          },
+        },
+      };
+      const memorySpec: Memory = {
+        name: 'my_memory',
+        eventExpiryDuration: 30,
+        strategies: [{ type: 'SEMANTIC', namespaces: ['/users/{actorId}/facts'] }],
+      };
+
+      const result = await mapHarnessSpecToCreateOptions(
+        baseOptions({
+          harnessSpec: {
+            name: 'h',
+            model: { provider: 'bedrock', modelId: 'claude' },
+            tools: [],
+            skills: [],
+            memory: { name: 'my_memory', actorId: 'alice' },
+          } as any,
+          deployedResources,
+          memorySpec,
+        })
+      );
+
+      expect(result.memory).toEqual({
+        agentCoreMemoryConfiguration: {
+          arn: 'arn:aws:bedrock-agentcore:us-east-1:123456789012:memory/mem-123',
+          actorId: 'alice',
+          retrievalConfig: {
+            '/users/{actorId}/facts': {},
+          },
+        },
+      });
     });
   });
 
