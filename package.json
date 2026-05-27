@@ -51,6 +51,7 @@
     "build:lib": "tsc -p tsconfig.build.json",
     "build:cli": "node esbuild.config.mjs",
     "build:assets": "node scripts/copy-assets.mjs",
+    "build:preview": "BUILD_PREVIEW=1 node esbuild.config.mjs",
     "build:harness": "BUILD_HARNESS=1 node esbuild.config.mjs",
     "cli": "npx tsx src/cli/index.ts",
     "typecheck": "tsc --noEmit",

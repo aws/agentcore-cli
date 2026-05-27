@@ -1,5 +1,6 @@
 import { ConfigIO, findConfigRoot, getWorkingDirectory } from '../../../lib';
 import type { AgentCoreProjectSpec } from '../../../schema';
+import { isPreviewEnabled } from '../../feature-flags';
 import { getDevConfig, getDevSupportedAgents, loadDevEnv, loadProjectConfig } from '../../operations/dev';
 import { type OtelCollector, startOtelCollector } from '../../operations/dev/otel';
 import {
@@ -8,10 +9,15 @@ import {
   type RetrieveMemoryRecordsHandler,
   runWebUI,
 } from '../../operations/dev/web-ui';
+import type { HarnessInfo } from '../../operations/dev/web-ui/constants';
 import { listMemoryRecords, retrieveMemoryRecords } from '../../operations/memory';
-import { loadDeployedProjectConfig, resolveAgent } from '../../operations/resolve-agent';
+import { loadDeployedProjectConfig, resolveAgentOrHarness } from '../../operations/resolve-agent';
 import { fetchTraceRecords, listTraces } from '../../operations/traces';
+import { LayoutProvider } from '../../tui/context';
+import { runCliDeploy } from '../deploy/progress';
+import { render } from 'ink';
 import path from 'node:path';
+import React from 'react';
 
 interface DeployedHandlers {
   onListMemoryRecords?: ListMemoryRecordsHandler;
@@ -98,6 +104,7 @@ export interface BrowserModeOptions {
   project: AgentCoreProjectSpec;
   port: number;
   agentName?: string;
+  harnessName?: string;
   /** OTEL env vars to pass to dev servers (set by the dev command when collector is active) */
   otelEnvVars?: Record<string, string>;
   /** OTEL collector instance for local trace collection */
@@ -112,9 +119,21 @@ export async function launchBrowserDev(): Promise<void> {
   const workingDir = getWorkingDirectory();
   const project = await loadProjectConfig(workingDir);
 
-  if (!project?.runtimes || project.runtimes.length === 0) {
-    console.error('Error: No agents defined in project.');
+  if (!project) {
+    console.error('Error: No agents or harnesses defined in project.');
     process.exit(1);
+  }
+
+  const hasRuntimes = project.runtimes.length > 0;
+  const hasHarnesses = isPreviewEnabled() && (project.harnesses ?? []).length > 0;
+
+  if (!hasRuntimes && !hasHarnesses) {
+    console.error('Error: No agents or harnesses defined in project.');
+    process.exit(1);
+  }
+
+  if (hasHarnesses) {
+    await runCliDeploy();
   }
 
   const configRoot = findConfigRoot(workingDir);
@@ -131,14 +150,15 @@ export async function launchBrowserDev(): Promise<void> {
 }
 
 export async function runBrowserMode(opts: BrowserModeOptions): Promise<void> {
-  const { workingDir, project, agentName, otelEnvVars = {}, collector } = opts;
+  const { workingDir, project, agentName, harnessName, otelEnvVars = {}, collector } = opts;
 
   const configRoot = findConfigRoot(workingDir);
   const { envVars } = await loadDevEnv(workingDir);
 
   const supportedAgents = getDevSupportedAgents(project);
+  const projectHasHarnesses = isPreviewEnabled() && (project.harnesses ?? []).length > 0;
 
-  if (supportedAgents.length === 0) {
+  if (supportedAgents.length === 0 && !projectHasHarnesses) {
     console.error('Error: No dev-supported agents found.');
     process.exit(1);
   }
@@ -165,13 +185,52 @@ export async function runBrowserMode(opts: BrowserModeOptions): Promise<void> {
   // Handlers re-resolve on each call so newly deployed memories are picked up.
   const baseDir = configRoot ?? workingDir;
 
+  // Discover deployed harnesses from project config + deployed state (preview mode)
+  const harnessInfoList: HarnessInfo[] = [];
+  if (isPreviewEnabled()) {
+    try {
+      const configIO = new ConfigIO({ baseDir });
+      if (configIO.configExists('state') && configIO.configExists('awsTargets')) {
+        const deployedState = await configIO.readDeployedState();
+        const awsTargets = await configIO.readAWSDeploymentTargets();
+        const targetName = Object.keys(deployedState.targets)[0];
+        if (targetName) {
+          const targetState = deployedState.targets[targetName];
+          const targetConfig = awsTargets.find(t => t.name === targetName);
+          if (targetConfig) {
+            for (const harness of project.harnesses ?? []) {
+              const state = targetState?.resources?.harnesses?.[harness.name];
+              if (state) {
+                harnessInfoList.push({
+                  name: harness.name,
+                  harnessArn: state.harnessArn,
+                  region: targetConfig.region,
+                });
+              }
+            }
+            if (harnessInfoList.length > 0) {
+              onLog(
+                'info',
+                `Found ${harnessInfoList.length} deployed harness(es): ${harnessInfoList.map(h => h.name).join(', ')}`
+              );
+            }
+          }
+        }
+      }
+    } catch {
+      // Harness discovery is best-effort — local dev works without it
+    }
+  }
+
   await runWebUI({
     logLabel: 'dev',
     onLog,
     serverOptions: {
       mode: 'dev',
       agents: agentInfoList,
+      harnesses: harnessInfoList,
       selectedAgent: agentName,
+      selectedHarness: harnessName,
       envVars: mergedEnvVars,
       getEnvVars: async () => {
         const { envVars: freshEnvVars } = await loadDevEnv(workingDir);
@@ -196,11 +255,11 @@ export async function runBrowserMode(opts: BrowserModeOptions): Promise<void> {
         ? (agentNameParam, startTime, endTime) => collector.listTraces(agentNameParam, startTime, endTime)
         : undefined,
       onGetTrace: collector ? (agentNameParam, traceId) => collector.getTraceSpans(agentNameParam, traceId) : undefined,
-      onListCloudWatchTraces: async (agentName, _harnessName, startTime, endTime) => {
+      onListCloudWatchTraces: async (agentName, harnessName, startTime, endTime) => {
         try {
           const configIO = new ConfigIO({ baseDir });
           const context = await loadDeployedProjectConfig(configIO);
-          const resolved = resolveAgent(context, { runtime: agentName });
+          const resolved = await resolveAgentOrHarness(context, { runtime: agentName, harness: harnessName });
           if (!resolved.success) return { success: false, error: resolved.error };
           const res = await listTraces({
             region: resolved.agent.region,
@@ -217,11 +276,11 @@ export async function runBrowserMode(opts: BrowserModeOptions): Promise<void> {
           };
         }
       },
-      onGetCloudWatchTrace: async (agentName, _harnessName, traceId, startTime, endTime) => {
+      onGetCloudWatchTrace: async (agentName, harnessName, traceId, startTime, endTime) => {
         try {
           const configIO = new ConfigIO({ baseDir });
           const context = await loadDeployedProjectConfig(configIO);
-          const resolved = resolveAgent(context, { runtime: agentName });
+          const resolved = await resolveAgentOrHarness(context, { runtime: agentName, harness: harnessName });
           if (!resolved.success) return { success: false, error: resolved.error };
           const res = await fetchTraceRecords({
             region: resolved.agent.region,
@@ -251,4 +310,52 @@ export async function runBrowserMode(opts: BrowserModeOptions): Promise<void> {
       },
     },
   });
+}
+
+const ENTER_ALT_SCREEN = '\x1B[?1049h\x1B[H';
+const EXIT_ALT_SCREEN = '\x1B[?1049l';
+const SHOW_CURSOR = '\x1B[?25h';
+
+interface TuiPickerResult {
+  agentName?: string;
+  harnessName?: string;
+}
+
+export async function launchTuiDevScreenWithPicker(
+  workingDir: string,
+  options?: { skipDeploy?: boolean }
+): Promise<TuiPickerResult | undefined> {
+  process.stdout.write(ENTER_ALT_SCREEN);
+
+  const exitAltScreen = () => {
+    process.stdout.write(EXIT_ALT_SCREEN);
+    process.stdout.write(SHOW_CURSOR);
+  };
+
+  let pickerResult: TuiPickerResult | undefined;
+  const { DevScreen } = await import('../../tui/screens/dev/DevScreen');
+  const { unmount, waitUntilExit } = render(
+    React.createElement(
+      LayoutProvider,
+      null,
+      React.createElement(DevScreen, {
+        onBack: () => {
+          exitAltScreen();
+          unmount();
+          process.exit(0);
+        },
+        workingDir,
+        skipDeploy: options?.skipDeploy,
+        onLaunchBrowser: (selection?: { agentName?: string; harnessName?: string }) => {
+          pickerResult = selection ?? {};
+          exitAltScreen();
+          unmount();
+        },
+      })
+    )
+  );
+
+  await waitUntilExit();
+  exitAltScreen();
+  return pickerResult;
 }

@@ -1,12 +1,13 @@
 import { ValidationError, serializeResult } from '../../../lib';
 import { getErrorMessage } from '../../errors';
+import { isPreviewEnabled } from '../../feature-flags';
 import { withCommandRunTelemetry } from '../../telemetry/cli-command-run.js';
 import { AgentProtocol, AuthType, standardize } from '../../telemetry/schemas/common-shapes.js';
 import { renderTUI } from '../../tui';
 import { COMMAND_DESCRIPTIONS } from '../../tui/copy';
 import { requireProject, requireTTY } from '../../tui/guards';
 import { parseHeaderFlags } from '../shared/header-utils';
-import { type InvokeContext, handleInvoke, loadInvokeConfig } from './action';
+import { type InvokeContext, handleHarnessInvokeByArn, handleInvoke, loadInvokeConfig } from './action';
 import { resolvePrompt } from './resolve-prompt';
 import type { InvokeOptions, InvokeResult } from './types';
 import { validateInvokeOptions } from './validate';
@@ -44,10 +45,30 @@ async function handleInvokeCLI(options: InvokeOptions, preloadedContext?: Invoke
   let spinner: NodeJS.Timeout | undefined;
 
   try {
+    // Preview: direct harness invoke by ARN (no project required)
+    if (isPreviewEnabled() && options.harnessArn) {
+      const region = options.region ?? process.env.AWS_REGION ?? process.env.AWS_DEFAULT_REGION;
+      if (!region) {
+        const msg = '--region is required with --harness-arn (or set AWS_REGION)';
+        if (options.json) {
+          console.log(JSON.stringify({ success: false, error: msg }));
+        } else {
+          console.error(msg);
+        }
+        process.exit(1);
+      }
+      return handleHarnessInvokeByArn(options.harnessArn, region, options);
+    }
+
     const context = preloadedContext ?? (await loadInvokeConfig());
 
     // Show spinner for non-streaming, non-json, non-exec invocations
-    if (!options.stream && !options.json && !options.exec) {
+    // Harness invoke always streams directly to stdout, so skip spinner for harness
+    const isHarness =
+      isPreviewEnabled() &&
+      (options.harnessName != null ||
+        ((context.project.harnesses ?? []).length > 0 && context.project.runtimes.length === 0));
+    if (!options.stream && !options.json && !options.exec && !isHarness) {
       spinner = startSpinner('Invoking agent...');
     }
 
@@ -96,7 +117,7 @@ function printInvokeResult(result: InvokeResult, options: InvokeOptions): void {
 }
 
 export const registerInvoke = (program: Command) => {
-  program
+  const invokeCmd = program
     .command('invoke')
     .alias('i')
     .description(COMMAND_DESCRIPTIONS.invoke)
@@ -125,142 +146,211 @@ export const registerInvoke = (program: Command) => {
       (val: string, prev: string[]) => [...prev, val],
       [] as string[]
     )
-    .option('--bearer-token <token>', 'Bearer token for CUSTOM_JWT auth (bypasses SigV4) [non-interactive]')
-    .action(
-      async (
-        positionalPrompt: string | undefined,
-        cliOptions: {
-          prompt?: string;
-          promptFile?: string;
-          runtime?: string;
-          target?: string;
-          sessionId?: string;
-          userId?: string;
-          json?: boolean;
-          stream?: boolean;
-          tool?: string;
-          input?: string;
-          exec?: boolean;
-          timeout?: number;
-          header?: string[];
-          bearerToken?: string;
-        }
-      ) => {
-        try {
+    .option('--bearer-token <token>', 'Bearer token for CUSTOM_JWT auth (bypasses SigV4) [non-interactive]');
+
+  if (isPreviewEnabled()) {
+    invokeCmd
+      .option('--harness <name>', 'Select specific harness to invoke [non-interactive] [preview]')
+      .option('--harness-arn <arn>', 'Invoke a harness by ARN (no project required) [non-interactive] [preview]')
+      .option(
+        '--region <region>',
+        'AWS region (required with --harness-arn when no project) [non-interactive] [preview]'
+      )
+      .option('--verbose', 'Print verbose streaming JSON events (harness only) [non-interactive] [preview]')
+      .option('--model-id <id>', 'Override model for this invocation (harness only) [non-interactive] [preview]')
+      .option(
+        '--model-provider <provider>',
+        'Override model provider: bedrock, open_ai, gemini (harness only) [non-interactive] [preview]'
+      )
+      .option(
+        '--api-key-arn <arn>',
+        'Override API key ARN for open_ai/gemini (harness only) [non-interactive] [preview]'
+      )
+      .option('--tools <tools>', 'Override tools, comma-separated (harness only) [non-interactive] [preview]')
+      .option('--max-iterations <n>', 'Override max iterations (harness only) [non-interactive] [preview]', parseInt)
+      .option('--max-tokens <n>', 'Override max tokens (harness only) [non-interactive] [preview]', parseInt)
+      .option(
+        '--harness-timeout <seconds>',
+        'Override timeout seconds (harness only) [non-interactive] [preview]',
+        parseInt
+      )
+      .option('--system-prompt <text>', 'Override system prompt (harness only) [non-interactive] [preview]')
+      .option(
+        '--allowed-tools <tools>',
+        'Override allowed tools, comma-separated (harness only) [non-interactive] [preview]'
+      )
+      .option('--actor-id <id>', 'Override memory actor ID (harness only) [non-interactive] [preview]');
+  }
+
+  invokeCmd.action(
+    async (
+      positionalPrompt: string | undefined,
+      cliOptions: {
+        prompt?: string;
+        promptFile?: string;
+        runtime?: string;
+        target?: string;
+        sessionId?: string;
+        userId?: string;
+        json?: boolean;
+        stream?: boolean;
+        tool?: string;
+        input?: string;
+        exec?: boolean;
+        timeout?: number;
+        header?: string[];
+        bearerToken?: string;
+        harness?: string;
+        harnessArn?: string;
+        region?: string;
+        verbose?: boolean;
+        modelId?: string;
+        modelProvider?: string;
+        apiKeyArn?: string;
+        tools?: string;
+        maxIterations?: number;
+        maxTokens?: number;
+        harnessTimeout?: number;
+        systemPrompt?: string;
+        allowedTools?: string;
+        actorId?: string;
+      }
+    ) => {
+      try {
+        // Skip requireProject when --harness-arn provided (preview mode)
+        if (!(isPreviewEnabled() && cliOptions.harnessArn)) {
           requireProject();
+        }
 
-          // Load config once for protocol resolution and to pass into handleInvokeCLI
-          let invokeContext: InvokeContext | undefined;
-          let agentProtocol: string | undefined;
-          try {
-            invokeContext = await loadInvokeConfig();
-            const agent = cliOptions.runtime
-              ? invokeContext.project.runtimes.find(a => a.name === cliOptions.runtime)
-              : invokeContext.project.runtimes[0];
-            agentProtocol = agent?.protocol;
-          } catch {
-            // Config load failure will be caught again inside handleInvokeCLI
-          }
+        // Load config once for protocol resolution and to pass into handleInvokeCLI
+        let invokeContext: InvokeContext | undefined;
+        let agentProtocol: string | undefined;
+        try {
+          invokeContext = await loadInvokeConfig();
+          const agent = cliOptions.runtime
+            ? invokeContext.project.runtimes.find(a => a.name === cliOptions.runtime)
+            : invokeContext.project.runtimes[0];
+          agentProtocol = agent?.protocol;
+        } catch {
+          // Config load failure will be caught again inside handleInvokeCLI
+        }
 
-          // Resolve prompt from flag / positional / --prompt-file / stdin
-          const resolved = await resolvePrompt({
-            flag: cliOptions.prompt,
-            positional: positionalPrompt,
-            file: cliOptions.promptFile,
-            stdinPiped: !process.stdin.isTTY,
-          });
+        // Resolve prompt from flag / positional / --prompt-file / stdin
+        const resolved = await resolvePrompt({
+          flag: cliOptions.prompt,
+          positional: positionalPrompt,
+          file: cliOptions.promptFile,
+          stdinPiped: !process.stdin.isTTY,
+        });
 
-          // CLI mode if any CLI-specific options provided, prompt resolved, or prompt resolution failed
-          // (follows deploy command pattern)
-          if (
-            !resolved.success ||
-            resolved.prompt !== undefined ||
-            cliOptions.json ||
-            cliOptions.target ||
-            cliOptions.stream ||
-            cliOptions.runtime ||
-            cliOptions.tool ||
-            cliOptions.exec ||
-            cliOptions.bearerToken
-          ) {
-            const result = await withCommandRunTelemetry(
-              'invoke',
-              {
-                has_stream: cliOptions.stream ?? false,
-                has_session_id: !!cliOptions.sessionId,
-                auth_type: standardize(AuthType, cliOptions.bearerToken ? 'bearer_token' : 'sigv4'),
-                agent_protocol: standardize(
-                  AgentProtocol,
-                  resolveProtocol({ tool: cliOptions.tool } as InvokeOptions, agentProtocol)
-                ),
-              },
-              async (): Promise<InvokeResult> => {
-                if (!resolved.success) {
-                  return { success: false, error: new ValidationError(resolved.error ?? 'Prompt resolution failed') };
-                }
-
-                // Parse custom headers
-                let headers: Record<string, string> | undefined;
-                if (cliOptions.header && cliOptions.header.length > 0) {
-                  headers = parseHeaderFlags(cliOptions.header);
-                }
-
-                const options: InvokeOptions = {
-                  prompt: resolved.prompt,
-                  agentName: cliOptions.runtime,
-                  targetName: cliOptions.target ?? 'default',
-                  sessionId: cliOptions.sessionId,
-                  userId: cliOptions.userId,
-                  json: cliOptions.json,
-                  stream: cliOptions.stream,
-                  tool: cliOptions.tool,
-                  input: cliOptions.input,
-                  exec: cliOptions.exec,
-                  timeout: cliOptions.timeout,
-                  headers,
-                  bearerToken: cliOptions.bearerToken,
-                };
-
-                return handleInvokeCLI(options, invokeContext);
+        // CLI mode if any CLI-specific options provided, prompt resolved, or prompt resolution failed
+        // (follows deploy command pattern)
+        if (
+          !resolved.success ||
+          resolved.prompt !== undefined ||
+          cliOptions.json ||
+          cliOptions.target ||
+          cliOptions.stream ||
+          cliOptions.runtime ||
+          cliOptions.tool ||
+          cliOptions.exec ||
+          cliOptions.bearerToken ||
+          cliOptions.harness ||
+          cliOptions.harnessArn ||
+          cliOptions.verbose
+        ) {
+          const result = await withCommandRunTelemetry(
+            'invoke',
+            {
+              has_stream: cliOptions.stream ?? false,
+              has_session_id: !!cliOptions.sessionId,
+              auth_type: standardize(AuthType, cliOptions.bearerToken ? 'bearer_token' : 'sigv4'),
+              agent_protocol: standardize(
+                AgentProtocol,
+                resolveProtocol({ tool: cliOptions.tool } as InvokeOptions, agentProtocol)
+              ),
+            },
+            async (): Promise<InvokeResult> => {
+              if (!resolved.success) {
+                return { success: false, error: new ValidationError(resolved.error ?? 'Prompt resolution failed') };
               }
-            );
 
-            printInvokeResult(result, {
-              json: cliOptions.json,
-              stream: cliOptions.stream,
-            });
-            process.exit(result.success ? 0 : 1);
-          } else {
-            // No CLI options - interactive TUI mode (headers still passed if provided)
-            requireTTY();
+              // Parse custom headers
+              let headers: Record<string, string> | undefined;
+              if (cliOptions.header && cliOptions.header.length > 0) {
+                headers = parseHeaderFlags(cliOptions.header);
+              }
 
-            // Parse custom headers for TUI mode
-            let headers: Record<string, string> | undefined;
-            if (cliOptions.header && cliOptions.header.length > 0) {
-              headers = parseHeaderFlags(cliOptions.header);
-            }
-
-            await renderTUI({
-              initialRoute: {
-                name: 'invoke',
+              const options: InvokeOptions = {
+                prompt: resolved.prompt,
+                agentName: cliOptions.runtime,
+                targetName: cliOptions.target ?? 'default',
                 sessionId: cliOptions.sessionId,
                 userId: cliOptions.userId,
+                json: cliOptions.json,
+                stream: cliOptions.stream,
+                tool: cliOptions.tool,
+                input: cliOptions.input,
+                exec: cliOptions.exec,
+                timeout: cliOptions.timeout,
                 headers,
                 bearerToken: cliOptions.bearerToken,
-              },
-              enterAltScreen: false,
-              actionOnBack: 'exit',
-              isInteractive: false,
-            });
+                harnessName: cliOptions.harness,
+                harnessArn: cliOptions.harnessArn,
+                region: cliOptions.region,
+                verbose: cliOptions.verbose,
+                modelId: cliOptions.modelId,
+                modelProvider: cliOptions.modelProvider,
+                apiKeyArn: cliOptions.apiKeyArn,
+                tools: cliOptions.tools,
+                maxIterations: cliOptions.maxIterations,
+                maxTokens: cliOptions.maxTokens,
+                harnessTimeout: cliOptions.harnessTimeout,
+                systemPrompt: cliOptions.systemPrompt,
+                allowedTools: cliOptions.allowedTools,
+                actorId: cliOptions.actorId,
+              };
+
+              return handleInvokeCLI(options, invokeContext);
+            }
+          );
+
+          printInvokeResult(result, {
+            json: cliOptions.json,
+            stream: cliOptions.stream,
+          });
+          process.exit(result.success ? 0 : 1);
+        } else {
+          // No CLI options - interactive TUI mode (headers still passed if provided)
+          requireTTY();
+
+          // Parse custom headers for TUI mode
+          let headers: Record<string, string> | undefined;
+          if (cliOptions.header && cliOptions.header.length > 0) {
+            headers = parseHeaderFlags(cliOptions.header);
           }
-        } catch (error) {
-          if (cliOptions.json) {
-            console.log(JSON.stringify({ success: false, error: getErrorMessage(error) }));
-          } else {
-            render(<Text color="red">Error: {getErrorMessage(error)}</Text>);
-          }
-          process.exit(1);
+
+          await renderTUI({
+            initialRoute: {
+              name: 'invoke',
+              sessionId: cliOptions.sessionId,
+              userId: cliOptions.userId,
+              headers,
+              bearerToken: cliOptions.bearerToken,
+            },
+            enterAltScreen: false,
+            actionOnBack: 'exit',
+            isInteractive: false,
+          });
         }
+      } catch (error) {
+        if (cliOptions.json) {
+          console.log(JSON.stringify({ success: false, error: getErrorMessage(error) }));
+        } else {
+          render(<Text color="red">Error: {getErrorMessage(error)}</Text>);
+        }
+        process.exit(1);
       }
-    );
+    }
+  );
 };

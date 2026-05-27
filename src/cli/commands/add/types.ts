@@ -88,6 +88,44 @@ export interface AddGatewayTargetOptions {
   json?: boolean;
 }
 
+// Harness types
+export interface AddHarnessCliOptions {
+  name?: string;
+  modelProvider?: string;
+  modelId?: string;
+  apiKeyArn?: string;
+  container?: string;
+  memory?: boolean;
+  maxIterations?: number;
+  maxTokens?: number;
+  timeout?: number;
+  truncationStrategy?: string;
+  networkMode?: string;
+  subnets?: string;
+  securityGroups?: string;
+  idleTimeout?: number;
+  maxLifetime?: number;
+  sessionStorage?: string;
+  withInvokeScript?: boolean;
+  systemPrompt?: string;
+  tools?: string;
+  mcpName?: string;
+  mcpUrl?: string;
+  gatewayArn?: string;
+  gatewayOutboundAuth?: string;
+  gatewayProviderArn?: string;
+  gatewayScopes?: string;
+  authorizerType?: RuntimeAuthorizerType;
+  discoveryUrl?: string;
+  allowedAudience?: string;
+  allowedClients?: string;
+  allowedScopes?: string;
+  customClaims?: string;
+  clientId?: string;
+  clientSecret?: string;
+  json?: boolean;
+}
+
 // Memory types (v2: no owner/user concept)
 export interface AddMemoryOptions {
   name?: string;

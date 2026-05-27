@@ -8,6 +8,7 @@ import {
 } from '../../../lib';
 import { getErrorMessage } from '../../errors';
 import { detectContainerRuntime } from '../../external-requirements';
+import { isPreviewEnabled } from '../../feature-flags';
 import { ExecLogger } from '../../logging';
 import {
   callMcpTool,
@@ -29,9 +30,10 @@ import { withCommandRunTelemetry } from '../../telemetry/cli-command-run.js';
 import { AgentProtocol, standardize } from '../../telemetry/schemas/common-shapes.js';
 import { LayoutProvider } from '../../tui/context';
 import { COMMAND_DESCRIPTIONS } from '../../tui/copy';
-import { requireTTY } from '../../tui/guards';
+import { requireProject, requireTTY } from '../../tui/guards';
+import { runCliDeploy } from '../deploy/progress';
 import { parseHeaderFlags } from '../shared/header-utils';
-import { runBrowserMode } from './browser-mode';
+import { launchTuiDevScreenWithPicker, runBrowserMode } from './browser-mode';
 import type { Command } from '@commander-js/extra-typings';
 import { spawn } from 'child_process';
 import { render } from 'ink';
@@ -174,6 +176,7 @@ export const registerDev = (program: Command) => {
     .option('--exec', 'Execute a shell command in the running dev container (Container agents only) [non-interactive]')
     .option('--tool <name>', 'MCP tool name (used with "call-tool" prompt) [non-interactive]')
     .option('--input <json>', 'MCP tool arguments as JSON (used with --tool) [non-interactive]')
+    .option('--skip-deploy', 'Skip automatic resource deployment before starting dev server [preview]')
     .option(
       '-H, --header <header>',
       'Custom header to forward to the agent (format: "Name: Value", repeatable) [non-interactive]',
@@ -291,6 +294,8 @@ export const registerDev = (program: Command) => {
           return;
         }
 
+        requireProject();
+
         const workingDir = getWorkingDirectory();
 
         const serverResult = await withCommandRunTelemetry(
@@ -307,8 +312,14 @@ export const registerDev = (program: Command) => {
             if (!project) {
               throw new NoProjectError();
             }
-            if (!project.runtimes || project.runtimes.length === 0) {
-              throw new ValidationError('No agents defined in project. Run `agentcore add agent` to fix this.');
+
+            const hasRuntimes = project.runtimes && project.runtimes.length > 0;
+            const hasHarnesses = isPreviewEnabled() && project.harnesses && project.harnesses.length > 0;
+
+            if (!hasRuntimes && !hasHarnesses) {
+              throw new ValidationError(
+                'No agents or harnesses defined in project. Run `agentcore add agent` to fix this.'
+              );
             }
 
             const targetDevAgent = opts.runtime
@@ -321,8 +332,10 @@ export const registerDev = (program: Command) => {
             }
 
             const supportedAgents = getDevSupportedAgents(project);
-            if (supportedAgents.length === 0) {
-              throw new ValidationError('No agents support dev mode. Dev mode requires an agent with an entrypoint.');
+            if (supportedAgents.length === 0 && !hasHarnesses) {
+              throw new ValidationError(
+                'No agents support dev mode. Dev mode requires an agent with an entrypoint or a harness.'
+              );
             }
 
             const configRoot = findConfigRoot(workingDir);
@@ -338,6 +351,22 @@ export const registerDev = (program: Command) => {
 
             // --logs: non-interactive server mode
             if (opts.logs) {
+              // Preview: harness-only projects need deploy then print invoke instructions
+              if (isPreviewEnabled() && supportedAgents.length === 0 && hasHarnesses) {
+                if (!opts.skipDeploy) {
+                  await runCliDeploy();
+                }
+                const harnessNames = (project.harnesses ?? []).map(h => h.name);
+                console.log('Harness dev runs against the deployed service (no local server).');
+                console.log(`If you changed the harness config, redeploy to pick up changes: agentcore deploy`);
+                console.log(`\nInvoke your harness:`);
+                for (const name of harnessNames) {
+                  console.log(`  agentcore invoke --harness ${name} "your prompt"`);
+                }
+                console.log(`\nOr use the interactive TUI: agentcore dev`);
+                return { success: true as const, blockingPromise: Promise.resolve() };
+              }
+
               if (project.runtimes.length > 1 && !opts.runtime) {
                 const names = project.runtimes.map(a => a.name).join(', ');
                 throw new ValidationError(
@@ -366,6 +395,11 @@ export const registerDev = (program: Command) => {
                 throw new ValidationError(
                   `Port ${fixedPort} is in use. ${config.protocol} agents require port ${fixedPort}.`
                 );
+              }
+
+              // Deploy resources before starting dev server (preview mode with harnesses)
+              if (isPreviewEnabled() && !opts.skipDeploy && hasHarnesses) {
+                await runCliDeploy();
               }
 
               const logger = new ExecLogger({ command: 'dev' });
@@ -446,6 +480,7 @@ export const registerDev = (program: Command) => {
                     port={port}
                     agentName={opts.runtime}
                     headers={headers}
+                    skipDeploy={opts.skipDeploy}
                   />
                 </LayoutProvider>
               );
@@ -457,6 +492,30 @@ export const registerDev = (program: Command) => {
                   collector?.stop();
                 }),
               };
+            }
+
+            // Preview: show TUI deploy progress, then launch Agent Inspector in the browser
+            if (isPreviewEnabled()) {
+              const pickerResult = await launchTuiDevScreenWithPicker(workingDir, {
+                skipDeploy: opts.skipDeploy,
+              });
+
+              if (pickerResult != null) {
+                recorder.set({ ui_mode: 'browser' as const });
+                return {
+                  success: true as const,
+                  blockingPromise: runBrowserMode({
+                    workingDir,
+                    project,
+                    port,
+                    agentName: pickerResult.agentName,
+                    harnessName: pickerResult.harnessName,
+                    otelEnvVars,
+                    collector,
+                  }),
+                };
+              }
+              return { success: true as const, blockingPromise: Promise.resolve() };
             }
 
             // Default: browser mode (blocks forever)

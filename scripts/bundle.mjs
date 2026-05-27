@@ -156,10 +156,53 @@ try {
 const cliTarballName = `aws-agentcore-${cliVersionInfo.bumpedVersion}.tgz`;
 const cliTarballPath = path.join(cliRoot, cliTarballName);
 
-if (fs.existsSync(cliTarballPath)) {
-  log(`Done! Tarball: ${cliTarballPath}`);
-  log(`Install with: npm install -g ${cliTarballPath}`);
-  log('When you run agentcore create, the bundled CDK constructs will be installed automatically.');
-} else {
-  log(`Done! Check ${cliRoot} for the .tgz file.`);
+if (!fs.existsSync(cliTarballPath)) {
+  console.error(`ERROR: Expected GA tarball at ${cliTarballPath} but not found.`);
+  process.exit(1);
 }
+log(`Done! GA Tarball: ${cliTarballPath}`);
+log(`Install with: npm install -g ${cliTarballPath}`);
+log('When you run agentcore create, the bundled CDK constructs will be installed automatically.');
+
+const gaTarballPath = cliTarballPath;
+
+// Step 6: Rebuild CLI with BUILD_PREVIEW=1
+log('Rebuilding CLI with BUILD_PREVIEW=1 for preview tarball...');
+run('npm', ['run', 'build:cli'], { cwd: cliRoot, env: { ...process.env, BUILD_PREVIEW: '1' } });
+
+// Step 7: Bump version to preview variant
+function bumpPreviewVersion(pkgDir) {
+  const pkgJsonPath = path.join(pkgDir, 'package.json');
+  const pkg = JSON.parse(fs.readFileSync(pkgJsonPath, 'utf8'));
+  const originalVersion = pkg.version;
+  const baseVersion = originalVersion.split('-')[0];
+  pkg.version = `${baseVersion}-preview-${timestamp}`;
+  fs.writeFileSync(pkgJsonPath, JSON.stringify(pkg, null, 2) + '\n');
+  log(`Bumped ${pkg.name} version: ${originalVersion} -> ${pkg.version}`);
+  return { pkgJsonPath, originalVersion, bumpedVersion: pkg.version };
+}
+
+const previewVersionInfo = bumpPreviewVersion(cliRoot);
+
+// Step 8: Pack preview tarball
+try {
+  log('Packing CLI preview tarball...');
+  run('npm', ['pack'], { cwd: cliRoot });
+} finally {
+  restoreVersion(previewVersionInfo);
+}
+
+const previewTarballName = `aws-agentcore-${previewVersionInfo.bumpedVersion}.tgz`;
+const previewTarballPath = path.join(cliRoot, previewTarballName);
+
+if (!fs.existsSync(previewTarballPath)) {
+  console.error(`ERROR: Expected preview tarball at ${previewTarballPath} but not found.`);
+  process.exit(1);
+}
+
+// Final output
+log(`GA tarball:      ${gaTarballPath}`);
+log(`Preview tarball: ${previewTarballPath}`);
+log(`Install GA:      npm install -g ${gaTarballPath}`);
+log(`Install Preview: npm install -g ${previewTarballPath}`);
+log('When you run agentcore create, the bundled CDK constructs will be installed automatically.');

@@ -8,6 +8,7 @@
  * TODO: Extract these types into a shared package so both repos import
  * from a single source of truth instead of manually duplicating.
  */
+import type { HarnessModelConfiguration, HarnessTool } from '../../../aws/agentcore-harness';
 import type { CloudWatchSpanRecord, CloudWatchTraceRecord } from '../../traces/types';
 
 // ---------------------------------------------------------------------------
@@ -422,4 +423,44 @@ export interface A2AAgentCard {
 export interface A2AAgentCardResponse {
   success: true;
   card: A2AAgentCard;
+}
+
+// ---------------------------------------------------------------------------
+// Harness invocation types
+// ---------------------------------------------------------------------------
+
+export interface HarnessInvocationOverrides {
+  model?: HarnessModelConfiguration;
+  systemPrompt?: string;
+  skills?: { path: string }[];
+  actorId?: string;
+  maxIterations?: number;
+  maxTokens?: number;
+  timeoutSeconds?: number;
+  allowedTools?: string[];
+  tools?: HarnessTool[];
+}
+
+export interface HarnessToolResponseRequest {
+  harnessName: string;
+  sessionId: string;
+  messages: { role: string; content: Record<string, unknown>[] }[];
+  harnessOverrides?: HarnessInvocationOverrides;
+}
+
+export interface StatusHarness {
+  name: string;
+}
+
+export interface ResourceHarness {
+  name: string;
+  model: string;
+  tools: string[];
+  deploymentStatus?: ResourceDeploymentStatus;
+  deployed?: DeployedHarnessState;
+}
+
+export interface DeployedHarnessState {
+  harnessId: string;
+  harnessArn: string;
 }

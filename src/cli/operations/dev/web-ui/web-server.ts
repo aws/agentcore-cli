@@ -1,11 +1,12 @@
 import type { DevConfig } from '../config';
 import type { DevServer } from '../server';
-import { type AgentError, type AgentInfo, WEB_UI_LOCAL_URL } from './constants';
+import { type AgentError, type AgentInfo, type HarnessInfo, WEB_UI_LOCAL_URL } from './constants';
 import {
   type RouteContext,
   handleA2AAgentCard,
   handleGetCloudWatchTrace,
   handleGetTrace,
+  handleHarnessToolResponse,
   handleInvocations,
   handleListCloudWatchTraces,
   handleListMemoryRecords,
@@ -145,6 +146,8 @@ export interface WebUIOptions {
   uiPort: number;
   /** Available agents (metadata only — servers are started on demand) */
   agents: AgentInfo[];
+  /** Deployed harnesses available for invocation (metadata only — no local server needed) */
+  harnesses?: HarnessInfo[];
   /** Dev config factory — called when an agent needs to be started. Required for dev mode, unused when onStart is provided. */
   getDevConfig?: (agentName: string) => DevConfig | null | Promise<DevConfig | null>;
   /** Env vars to pass to started agent servers */
@@ -173,6 +176,8 @@ export interface WebUIOptions {
   onRetrieveMemoryRecords?: RetrieveMemoryRecordsHandler;
   /** Agent to pre-select in the UI dropdown (set when --runtime is specified) */
   selectedAgent?: string;
+  /** Harness to pre-select in the UI */
+  selectedHarness?: string;
   /** Callback to reload the agents list from config. When provided, the server watches agentcore.json and calls this on change. */
   reloadAgents?: () => Promise<AgentInfo[]>;
 }
@@ -340,6 +345,8 @@ export class WebUIServer {
       await handleListCloudWatchTraces(ctx, req, res, origin);
     } else if (req.method === 'POST' && req.url === '/api/start') {
       await handleStart(ctx, req, res, origin);
+    } else if (req.method === 'POST' && req.url === '/api/harness/tool-response') {
+      await handleHarnessToolResponse(ctx, req, res, origin);
     } else if (req.method === 'POST' && req.url === '/invocations') {
       await handleInvocations(ctx, req, res, origin);
     } else if (req.method === 'POST' && req.url === '/api/mcp') {

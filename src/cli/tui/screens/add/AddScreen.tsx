@@ -1,7 +1,23 @@
+import { isPreviewEnabled } from '../../../feature-flags';
 import type { SelectableItem } from '../../components';
 import { SelectScreen } from '../../components';
 
-const ADD_RESOURCES = [
+export type AddResourceType =
+  | 'harness'
+  | 'agent'
+  | 'memory'
+  | 'credential'
+  | 'evaluator'
+  | 'online-eval'
+  | 'gateway'
+  | 'gateway-target'
+  | 'runtime-endpoint'
+  | 'policy'
+  | 'config-bundle'
+  | 'ab-test'
+  | 'dataset';
+
+const BASE_ADD_RESOURCES: { id: AddResourceType; title: string; description: string }[] = [
   { id: 'agent', title: 'Agent', description: 'Deploy an HTTP, MCP, A2A, or AG-UI agent' },
   { id: 'memory', title: 'Memory', description: 'Persistent context storage' },
   { id: 'credential', title: 'Credential', description: 'API key credential providers' },
@@ -14,15 +30,20 @@ const ADD_RESOURCES = [
   { id: 'dataset', title: 'Dataset', description: 'Evaluation dataset for testing agents' },
   { id: 'config-bundle', title: 'Configuration Bundle [preview]', description: 'Versioned component configurations' },
   { id: 'ab-test', title: 'AB Test [preview]', description: 'Compare agent configurations with traffic splitting' },
-] as const;
+];
+
+const ADD_RESOURCES: { id: AddResourceType; title: string; description: string }[] = [
+  ...(isPreviewEnabled()
+    ? [{ id: 'harness' as const, title: 'Harness', description: 'Managed config-based agent loop, no code required' }]
+    : []),
+  ...BASE_ADD_RESOURCES,
+];
 
 const ADD_RESOURCE_ITEMS: SelectableItem[] = ADD_RESOURCES.map(r => ({
   ...r,
-  disabled: Boolean('disabled' in r && r.disabled),
+  disabled: false,
   description: r.description,
 }));
-
-export type AddResourceType = (typeof ADD_RESOURCES)[number]['id'];
 
 interface AddScreenProps {
   onSelect: (resourceType: AddResourceType) => void;

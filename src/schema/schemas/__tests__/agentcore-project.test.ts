@@ -2,6 +2,7 @@ import {
   AgentCoreProjectSpecSchema,
   CredentialNameSchema,
   CredentialSchema,
+  HarnessRegistryEntrySchema,
   MemoryNameSchema,
   MemorySchema,
   ProjectNameSchema,
@@ -378,6 +379,18 @@ describe('CredentialSchema', () => {
   });
 });
 
+describe('HarnessRegistryEntrySchema', () => {
+  it('accepts valid entry', () => {
+    const result = HarnessRegistryEntrySchema.safeParse({ name: 'myHarness', path: './harnesses/myHarness' });
+    expect(result.success).toBe(true);
+  });
+
+  it('rejects name starting with digit', () => {
+    const result = HarnessRegistryEntrySchema.safeParse({ name: '1harness', path: './harnesses/1harness' });
+    expect(result.success).toBe(false);
+  });
+});
+
 describe('AgentCoreProjectSpecSchema', () => {
   const minimalProject = {
     name: 'TestProject',
@@ -520,6 +533,50 @@ describe('AgentCoreProjectSpecSchema', () => {
     const result = AgentCoreProjectSpecSchema.safeParse({
       name: 'Test',
       version: 1.5,
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it('accepts project with harnesses array', () => {
+    const result = AgentCoreProjectSpecSchema.safeParse({
+      ...minimalProject,
+      harnesses: [{ name: 'myHarness', path: './harnesses/myHarness' }],
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it('harnesses is undefined when not provided', () => {
+    const result = AgentCoreProjectSpecSchema.safeParse(minimalProject);
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.harnesses).toEqual([]);
+    }
+  });
+
+  it('rejects duplicate harness names', () => {
+    const harness = { name: 'myHarness', path: './harnesses/myHarness' };
+    const result = AgentCoreProjectSpecSchema.safeParse({
+      ...minimalProject,
+      harnesses: [harness, harness],
+    });
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      expect(result.error.issues.some(i => i.message.includes('Duplicate harness name'))).toBe(true);
+    }
+  });
+
+  it('rejects harness with empty name', () => {
+    const result = AgentCoreProjectSpecSchema.safeParse({
+      ...minimalProject,
+      harnesses: [{ name: '', path: './harnesses/empty' }],
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it('rejects harness with empty path', () => {
+    const result = AgentCoreProjectSpecSchema.safeParse({
+      ...minimalProject,
+      harnesses: [{ name: 'myHarness', path: '' }],
     });
     expect(result.success).toBe(false);
   });

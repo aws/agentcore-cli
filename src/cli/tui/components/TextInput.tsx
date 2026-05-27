@@ -13,6 +13,8 @@ interface TextInputProps {
   onCancel: () => void;
   placeholder?: string;
   initialValue?: string;
+  /** Dimmed description displayed below the prompt */
+  description?: string;
   /** Zod string schema for validation - error message is extracted from schema */
   schema?: ZodString;
   /** Custom validation beyond schema - both validate function and error message are required together */
@@ -60,6 +62,7 @@ export function TextInput({
   onCancel,
   placeholder,
   initialValue = '',
+  description,
   schema,
   customValidation,
   allowEmpty = false,
@@ -114,6 +117,7 @@ export function TextInput({
     return (
       <Box flexDirection="column">
         {prompt && <Text>{prompt}</Text>}
+        {description && <Text dimColor>{description}</Text>}
         <Text wrap="wrap">
           {!hideArrow && <Text color="cyan">&gt; </Text>}
           <Text>{beforeCursorFull}</Text>
@@ -177,6 +181,7 @@ export function TextInput({
   return (
     <Box flexDirection="column">
       {prompt && <Text>{prompt}</Text>}
+      {description && <Text dimColor>{description}</Text>}
       <Text wrap="truncate-end">
         {!hideArrow && <Text color="cyan">&gt; </Text>}
         {showEllipsisBefore && <Text dimColor>…</Text>}

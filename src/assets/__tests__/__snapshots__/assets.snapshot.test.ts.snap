@@ -99,6 +99,42 @@ async function main() {
     throw new Error('No deployment targets configured. Please define targets in agentcore/aws-targets.json');
   }
 
+  // Read harness configs for role creation.
+  const projectRoot = path.resolve(configRoot, '..');
+  const harnessConfigs: {
+    name: string;
+    executionRoleArn?: string;
+    memoryName?: string;
+    containerUri?: string;
+    hasDockerfile?: boolean;
+    dockerfile?: string;
+    codeLocation?: string;
+    tools?: { type: string; name: string }[];
+    apiKeyArn?: string;
+  }[] = [];
+  for (const entry of specAny.harnesses ?? []) {
+    const harnessDir = path.resolve(projectRoot, entry.path);
+    const harnessPath = path.resolve(harnessDir, 'harness.json');
+    try {
+      const harnessSpec = JSON.parse(fs.readFileSync(harnessPath, 'utf-8'));
+      harnessConfigs.push({
+        name: entry.name,
+        executionRoleArn: harnessSpec.executionRoleArn,
+        memoryName: harnessSpec.memory?.name,
+        containerUri: harnessSpec.containerUri,
+        hasDockerfile: !!harnessSpec.dockerfile,
+        dockerfile: harnessSpec.dockerfile,
+        codeLocation: harnessSpec.dockerfile ? harnessDir : undefined,
+        tools: harnessSpec.tools,
+        apiKeyArn: harnessSpec.model?.apiKeyArn,
+      });
+    } catch (err) {
+      throw new Error(
+        \`Could not read harness.json for "\${entry.name}" at \${harnessPath}: \${err instanceof Error ? err.message : err}\`
+      );
+    }
+  }
+
   const app = new App();
 
   for (const target of targets) {
@@ -118,6 +154,7 @@ async function main() {
       spec,
       mcpSpec,
       credentials,
+      harnesses: harnessConfigs.length > 0 ? harnessConfigs : undefined,
       env,
       description: \`AgentCore stack for \${spec.name} deployed to \${target.name} (\${target.region})\`,
       tags: {
@@ -265,6 +302,18 @@ exports[`Assets Directory Snapshots > CDK assets > cdk/cdk/lib/cdk-stack.ts shou
 import { CfnOutput, Stack, type StackProps } from 'aws-cdk-lib';
 import { Construct } from 'constructs';
 
+export interface HarnessConfig {
+  name: string;
+  executionRoleArn?: string;
+  memoryName?: string;
+  containerUri?: string;
+  hasDockerfile?: boolean;
+  dockerfile?: string;
+  codeLocation?: string;
+  tools?: { type: string; name: string }[];
+  apiKeyArn?: string;
+}
+
 export interface AgentCoreStackProps extends StackProps {
   /**
    * The AgentCore project specification containing agents, memories, and credentials.
@@ -278,6 +327,10 @@ export interface AgentCoreStackProps extends StackProps {
    * Credential provider ARNs from deployed state, keyed by credential name.
    */
   credentials?: Record<string, { credentialProviderArn: string; clientSecretArn?: string }>;
+  /**
+   * Harness role configurations.
+   */
+  harnesses?: HarnessConfig[];
 }
 
 /**
@@ -293,12 +346,15 @@ export class AgentCoreStack extends Stack {
   constructor(scope: Construct, id: string, props: AgentCoreStackProps) {
     super(scope, id, props);
 
-    const { spec, mcpSpec, credentials } = props;
+    const { spec, mcpSpec, credentials, harnesses } = props;
 
-    // Create AgentCoreApplication with all agents
-    this.application = new AgentCoreApplication(this, 'Application', {
-      spec,
-    });
+    // Create AgentCoreApplication with all agents and harness roles
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const appProps: Record<string, unknown> = { spec };
+    if (harnesses?.length) {
+      appProps.harnesses = harnesses;
+    }
+    this.application = new AgentCoreApplication(this, 'Application', appProps as any);
 
     // Create AgentCoreMcp if there are gateways configured
     if (mcpSpec?.agentCoreGateways && mcpSpec.agentCoreGateways.length > 0) {
@@ -454,6 +510,7 @@ exports[`Assets Directory Snapshots > File listing > should match the expected f
   "evaluators/python-lambda/execution-role-policy.json",
   "evaluators/python-lambda/lambda_function.py",
   "evaluators/python-lambda/pyproject.toml",
+  "harness/invoke.py.template",
   "mcp/python-lambda/README.md",
   "mcp/python-lambda/handler.py",
   "mcp/python-lambda/pyproject.toml",

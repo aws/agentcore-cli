@@ -1,3 +1,4 @@
+import { isPreviewEnabled } from '../feature-flags';
 import { ABTestPrimitive } from './ABTestPrimitive';
 import { AgentPrimitive } from './AgentPrimitive';
 import type { BasePrimitive } from './BasePrimitive';
@@ -7,6 +8,7 @@ import { DatasetPrimitive } from './DatasetPrimitive';
 import { EvaluatorPrimitive } from './EvaluatorPrimitive';
 import { GatewayPrimitive } from './GatewayPrimitive';
 import { GatewayTargetPrimitive } from './GatewayTargetPrimitive';
+import { HarnessPrimitive } from './HarnessPrimitive';
 import { MemoryPrimitive } from './MemoryPrimitive';
 import { OnlineEvalConfigPrimitive } from './OnlineEvalConfigPrimitive';
 import { PolicyEnginePrimitive } from './PolicyEnginePrimitive';
@@ -18,6 +20,7 @@ import type { RemovableResource } from './types';
  * Singleton instances of all primitives.
  */
 export const agentPrimitive = new AgentPrimitive();
+export const harnessPrimitive = isPreviewEnabled() ? new HarnessPrimitive() : undefined;
 export const memoryPrimitive = new MemoryPrimitive();
 export const datasetPrimitive = new DatasetPrimitive();
 export const credentialPrimitive = new CredentialPrimitive();
@@ -36,6 +39,7 @@ export const runtimeEndpointPrimitive = new RuntimeEndpointPrimitive();
  */
 export const ALL_PRIMITIVES: BasePrimitive<unknown, RemovableResource>[] = [
   agentPrimitive,
+  ...(harnessPrimitive ? [harnessPrimitive] : []),
   memoryPrimitive,
   datasetPrimitive,
   credentialPrimitive,

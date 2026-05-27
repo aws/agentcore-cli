@@ -8,6 +8,7 @@ import type {
   ResourceDeploymentStatus,
   ResourceEvaluator,
   ResourceGateway,
+  ResourceHarness,
   ResourceMemory,
   ResourceOnlineEvalConfig,
   ResourcePolicyEngine,
@@ -102,6 +103,42 @@ export async function handleResources(ctx: RouteContext, res: ServerResponse, or
             deployed.runtimeArn && targetRegion
               ? buildRuntimeInvocationUrl(targetRegion, deployed.runtimeArn)
               : undefined,
+        });
+      }
+    }
+
+    // Build harnesses from local config
+    const localHarnessNames = new Set((project.harnesses ?? []).map(h => h.name));
+    const harnesses: ResourceHarness[] = [];
+    for (const h of project.harnesses ?? []) {
+      let model = '';
+      let tools: string[] = [];
+      try {
+        const spec = await configIO.readHarnessSpec(h.name);
+        model = `${spec.model.provider}/${spec.model.modelId}`;
+        tools = spec.tools.map(t => t.name);
+      } catch {
+        // harness spec may be unreadable — show what we can
+      }
+      const deployed = targetResources?.harnesses?.[h.name];
+      harnesses.push({
+        name: h.name,
+        model,
+        tools,
+        deploymentStatus: statusByTypeAndName.get(`harness:${h.name}`),
+        deployed: deployed ? { harnessId: deployed.harnessId, harnessArn: deployed.harnessArn } : undefined,
+      });
+    }
+
+    // Add pending-removal harnesses
+    for (const [name, deployed] of Object.entries(targetResources?.harnesses ?? {})) {
+      if (!localHarnessNames.has(name)) {
+        harnesses.push({
+          name,
+          model: '',
+          tools: [],
+          deploymentStatus: 'pending-removal' as ResourceDeploymentStatus,
+          deployed: { harnessId: deployed.harnessId, harnessArn: deployed.harnessArn },
         });
       }
     }
@@ -274,6 +311,7 @@ export async function handleResources(ctx: RouteContext, res: ServerResponse, or
         success: true,
         project: project.name,
         agents,
+        harnesses,
         memories,
         credentials,
         gateways,

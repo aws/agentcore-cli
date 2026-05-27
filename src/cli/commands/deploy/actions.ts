@@ -1,9 +1,9 @@
 import { ConfigIO, ResourceNotFoundError, SecureCredentials, ValidationError, toError } from '../../../lib';
-import type { AgentCoreMcpSpec, DeployedState } from '../../../schema';
+import type { AgentCoreMcpSpec, DeployedState, HarnessDeployedState } from '../../../schema';
 import { applyTargetRegionToEnv } from '../../aws';
 import { validateAwsCredentials } from '../../aws/account';
 import { CdkToolkitWrapper, createSwitchableIoHost } from '../../cdk/toolkit-lib';
-import type { SwitchableIoHost } from '../../cdk/toolkit-lib';
+import type { DeployMessage, SwitchableIoHost } from '../../cdk/toolkit-lib';
 import {
   buildDeployedState,
   getStackOutputs,
@@ -18,6 +18,7 @@ import {
   parseRuntimeEndpointOutputs,
 } from '../../cloudformation';
 import { getErrorMessage } from '../../errors';
+import { isPreviewEnabled } from '../../feature-flags';
 import { ExecLogger } from '../../logging';
 import {
   bootstrapEnvironment,
@@ -34,7 +35,9 @@ import {
   synthesizeCdk,
   validateProject,
 } from '../../operations/deploy';
+import { computeProjectDeployHash } from '../../operations/deploy/change-detection';
 import { formatTargetStatus, getGatewayTargetStatuses } from '../../operations/deploy/gateway-status';
+import { type ImperativeDeployContext, createDeploymentManager } from '../../operations/deploy/imperative';
 import { deleteOrphanedABTests, setupABTests } from '../../operations/deploy/post-deploy-ab-tests';
 import {
   resolveConfigBundleComponentKeys,
@@ -55,6 +58,7 @@ export interface ValidatedDeployOptions {
   diff?: boolean;
   onProgress?: (step: string, status: 'start' | 'success' | 'error') => void;
   onResourceEvent?: (message: string) => void;
+  onDeployMessage?: (message: DeployMessage) => void;
 }
 
 const AGENT_NEXT_STEPS = ['agentcore invoke', 'agentcore status'];
@@ -270,7 +274,7 @@ export async function handleDeploy(options: ValidatedDeployOptions): Promise<Dep
 
     // Synthesize CloudFormation templates
     startStep('Synthesize CloudFormation');
-    const switchableIoHost = options.verbose ? createSwitchableIoHost() : undefined;
+    const switchableIoHost = options.verbose || options.onDeployMessage ? createSwitchableIoHost() : undefined;
     const synthResult = await synthesizeCdk(
       context.cdkProject,
       switchableIoHost ? { ioHost: switchableIoHost.ioHost } : undefined
@@ -360,9 +364,10 @@ export async function handleDeploy(options: ValidatedDeployOptions): Promise<Dep
     startStep(deployStepName);
 
     // Enable verbose output for resource-level events
-    if (switchableIoHost && options.onResourceEvent) {
+    if (switchableIoHost && (options.onResourceEvent || options.onDeployMessage)) {
       switchableIoHost.setOnMessage(msg => {
-        options.onResourceEvent!(msg.message);
+        options.onResourceEvent?.(msg.message);
+        options.onDeployMessage?.(msg);
       });
       switchableIoHost.setVerbose(true);
     }
@@ -378,7 +383,37 @@ export async function handleDeploy(options: ValidatedDeployOptions): Promise<Dep
     endStep('success');
 
     if (context.isTeardownDeploy) {
-      // After deploying the empty spec, destroy the stack entirely
+      if (isPreviewEnabled()) {
+        const imperativeManager = createDeploymentManager();
+        const existingTeardownState: DeployedState = await configIO
+          .readDeployedState()
+          .catch(() => ({ targets: {} }) as DeployedState);
+        const teardownContext: ImperativeDeployContext = {
+          projectSpec: context.projectSpec,
+          target,
+          configIO,
+          deployedState: existingTeardownState,
+          onProgress: (step: string, status: 'start' | 'done' | 'error') => {
+            logger.log(`${step}: ${status}`);
+          },
+        };
+
+        if (imperativeManager.hasDeployersForPhase('post-cdk', teardownContext)) {
+          startStep('Tear down imperative resources');
+          const imperativeTeardown = await imperativeManager.teardownAll(teardownContext);
+          if (!imperativeTeardown.success) {
+            endStep('error', imperativeTeardown.error);
+            logger.finalize(false);
+            return {
+              success: false,
+              error: new Error(`Imperative teardown failed: ${imperativeTeardown.error}`),
+              logPath: logger.getRelativeLogPath(),
+            };
+          }
+          endStep('success');
+        }
+      }
+
       startStep('Tear down stack');
       const teardown = await performStackTeardown(target.name);
       if (!teardown.success) {
@@ -469,6 +504,57 @@ export async function handleDeploy(options: ValidatedDeployOptions): Promise<Dep
     const datasetNames = (context.projectSpec.datasets ?? []).map(d => d.name);
     const datasets = parseDatasetOutputs(outputs, datasetNames);
 
+    endStep('success');
+
+    // Post-CDK: deploy imperative resources (harness) — preview mode only
+    let deployedHarnesses: Record<string, HarnessDeployedState> | undefined;
+    if (isPreviewEnabled()) {
+      const imperativeManager = createDeploymentManager();
+      const existingImperativeState: DeployedState = await configIO.readDeployedState().catch(() => ({ targets: {} }));
+      const imperativeContext = {
+        projectSpec: context.projectSpec,
+        target,
+        configIO,
+        deployedState: existingImperativeState,
+        cdkOutputs: outputs,
+        onProgress: (step: string, status: 'start' | 'done' | 'error') => {
+          logger.log(`${step}: ${status}`);
+        },
+      };
+
+      let harnessDeployError: string | undefined;
+      if (imperativeManager.hasDeployersForPhase('post-cdk', imperativeContext)) {
+        startStep('Deploy harnesses');
+        const postCdkResult = await imperativeManager.runPhase('post-cdk', imperativeContext);
+        const harnessResult = postCdkResult.results.get('harness');
+        if (harnessResult?.state) {
+          deployedHarnesses = harnessResult.state as Record<string, HarnessDeployedState>;
+        }
+        if (!postCdkResult.success) {
+          endStep('error', postCdkResult.error);
+          harnessDeployError = postCdkResult.error;
+        } else {
+          endStep('success');
+        }
+      }
+
+      if (harnessDeployError) {
+        logger.finalize(false);
+        return {
+          success: false,
+          error: new Error(`Harness deployment failed: ${harnessDeployError}`),
+          logPath: logger.getRelativeLogPath(),
+        };
+      }
+    }
+
+    let deployHash: string | undefined;
+    try {
+      deployHash = await computeProjectDeployHash(configIO);
+    } catch {
+      // hash computation is best-effort
+    }
+
     const existingState = await configIO.readDeployedState().catch(() => undefined);
     let deployedState = buildDeployedState({
       targetName: target.name,
@@ -483,9 +569,18 @@ export async function handleDeploy(options: ValidatedDeployOptions): Promise<Dep
       onlineEvalConfigs,
       policyEngines,
       policies,
+      harnesses: deployedHarnesses,
       runtimeEndpoints,
       datasets,
     });
+
+    if (deployHash) {
+      const targetState = deployedState.targets[target.name];
+      if (targetState?.resources) {
+        targetState.resources.deployHash = deployHash;
+      }
+    }
+
     await configIO.writeDeployedState(deployedState);
 
     // Show gateway URLs and target sync status
@@ -700,7 +795,9 @@ export async function handleDeploy(options: ValidatedDeployOptions): Promise<Dep
     }
 
     // Post-deploy: Enable CloudWatch Transaction Search (non-blocking, silent)
-    const nextSteps = agentNames.length > 0 ? [...AGENT_NEXT_STEPS] : [...MEMORY_ONLY_NEXT_STEPS];
+    const hasHarnesses = isPreviewEnabled() && (context.projectSpec.harnesses ?? []).length > 0;
+    const hasInvokable = agentNames.length > 0 || hasHarnesses;
+    const nextSteps = hasInvokable ? [...AGENT_NEXT_STEPS] : [...MEMORY_ONLY_NEXT_STEPS];
     const notes: string[] = [];
     const hasPythonAgent =
       context.projectSpec.runtimes?.some(a => a.entrypoint?.endsWith('.py') || a.entrypoint?.includes('.py:')) ?? false;

@@ -1,4 +1,5 @@
 import { extractSSEEventText, extractTaskText, isStatusUpdateEvent } from '../../invoke-a2a';
+import { handleHarnessInvocation } from './harness-invocation';
 import type { RouteContext } from './route-context';
 import { randomUUID } from 'node:crypto';
 import { type IncomingMessage, type ServerResponse, request as httpRequest } from 'node:http';
@@ -16,6 +17,16 @@ export async function handleInvocations(
   origin?: string
 ): Promise<void> {
   const body = await ctx.readBody(req);
+
+  // Route to harness handler if harnessName is present
+  try {
+    const parsedBody = JSON.parse(body) as Record<string, unknown>;
+    if (parsedBody.harnessName) {
+      return handleHarnessInvocation(ctx, parsedBody, res, origin);
+    }
+  } catch {
+    // fall through to agent routing
+  }
 
   let agentPort: number | undefined;
   let agentName: string | undefined;

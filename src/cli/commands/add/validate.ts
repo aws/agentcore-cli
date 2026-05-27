@@ -31,6 +31,7 @@ import type {
   AddDatasetOptions,
   AddGatewayOptions,
   AddGatewayTargetOptions,
+  AddHarnessCliOptions,
   AddMemoryOptions,
 } from './types';
 import { existsSync, readFileSync } from 'fs';
@@ -867,6 +868,82 @@ export function validateAddCredentialOptions(options: AddCredentialOptions): Val
 
   if (!options.apiKey) {
     return { valid: false, error: '--api-key is required' };
+  }
+
+  return { valid: true };
+}
+
+const VALID_HARNESS_TOOLS = [
+  'agentcore_browser',
+  'agentcore_code_interpreter',
+  'remote_mcp',
+  'agentcore_gateway',
+] as const;
+
+const VALID_GATEWAY_OUTBOUND_AUTH = ['awsIam', 'none', 'oauth'] as const;
+
+export function validateAddHarnessOptions(options: AddHarnessCliOptions): ValidationResult {
+  if (options.tools) {
+    const toolNames = options.tools.split(',').map(s => s.trim());
+    for (const tool of toolNames) {
+      if (!VALID_HARNESS_TOOLS.includes(tool as (typeof VALID_HARNESS_TOOLS)[number])) {
+        return {
+          valid: false,
+          error: `Unknown tool '${tool}'. Valid tools: ${VALID_HARNESS_TOOLS.join(', ')}`,
+        };
+      }
+    }
+
+    if (toolNames.includes('remote_mcp')) {
+      if (!options.mcpName) {
+        return { valid: false, error: '--mcp-name is required when --tools includes remote_mcp' };
+      }
+      if (!options.mcpUrl) {
+        return { valid: false, error: '--mcp-url is required when --tools includes remote_mcp' };
+      }
+    }
+
+    if (toolNames.includes('agentcore_gateway')) {
+      if (!options.gatewayArn) {
+        return { valid: false, error: '--gateway-arn is required when --tools includes agentcore_gateway' };
+      }
+    }
+  }
+
+  if (options.gatewayOutboundAuth) {
+    if (
+      !VALID_GATEWAY_OUTBOUND_AUTH.includes(options.gatewayOutboundAuth as (typeof VALID_GATEWAY_OUTBOUND_AUTH)[number])
+    ) {
+      return {
+        valid: false,
+        error: `Invalid --gateway-outbound-auth '${options.gatewayOutboundAuth}'. Use: ${VALID_GATEWAY_OUTBOUND_AUTH.join(', ')}`,
+      };
+    }
+
+    if (options.gatewayOutboundAuth === 'oauth') {
+      if (!options.gatewayProviderArn) {
+        return { valid: false, error: '--gateway-provider-arn is required when --gateway-outbound-auth is oauth' };
+      }
+      if (!options.gatewayScopes) {
+        return { valid: false, error: '--gateway-scopes is required when --gateway-outbound-auth is oauth' };
+      }
+    }
+  }
+
+  if (options.authorizerType) {
+    const authResult = RuntimeAuthorizerTypeSchema.safeParse(options.authorizerType);
+    if (!authResult.success) {
+      return { valid: false, error: 'Invalid authorizer type. Use AWS_IAM or CUSTOM_JWT' };
+    }
+
+    if (options.authorizerType === 'CUSTOM_JWT') {
+      const jwtResult = validateJwtAuthorizerOptions(options);
+      if (!jwtResult.valid) return jwtResult;
+    }
+  }
+
+  if (options.clientId && options.authorizerType !== 'CUSTOM_JWT') {
+    return { valid: false, error: 'OAuth client credentials are only valid with CUSTOM_JWT authorizer' };
   }
 
   return { valid: true };

@@ -409,7 +409,8 @@ export async function getMemoryDetail(options: GetMemoryOptions): Promise<Memory
 
   const tags = await fetchTags(client, memory.arn, 'memory');
 
-  const indexedKeys = memory.indexedKeys?.flatMap(k => {
+  const rawKeys = memory.indexedKeys;
+  const indexedKeys = rawKeys?.flatMap(k => {
     if (!k.key || !k.type) {
       console.warn(`Warning: Skipping malformed indexed key from API response: ${JSON.stringify(k)}`);
       return [];

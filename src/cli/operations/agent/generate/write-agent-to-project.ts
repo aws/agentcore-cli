@@ -74,6 +74,7 @@ export async function writeAgentToProject(config: GenerateConfig, options?: Writ
       configBundles: [],
       abTests: [],
       httpGateways: [],
+      harnesses: [],
       datasets: [],
     };
 
