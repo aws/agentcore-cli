@@ -385,6 +385,7 @@ export function AddEvaluatorScreen({ onComplete, onExit, existingEvaluatorNames 
             key="kms-key-arn"
             prompt="KMS key ARN for encryption (optional, press Enter to skip)"
             initialValue=""
+            allowEmpty
             onSubmit={wizard.setKmsKeyArn}
             onCancel={() => wizard.goBack()}
             customValidation={value =>
