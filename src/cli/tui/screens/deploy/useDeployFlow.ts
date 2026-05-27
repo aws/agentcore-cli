@@ -16,6 +16,7 @@ import { DEFAULT_DEPLOY_ATTRS, computeDeployAttrs } from '../../../commands/depl
 import { getErrorMessage, isChangesetInProgressError, isExpiredTokenError } from '../../../errors';
 import { ExecLogger } from '../../../logging';
 import { performStackTeardown, setupTransactionSearch } from '../../../operations/deploy';
+import { computeProjectDeployHash } from '../../../operations/deploy/change-detection';
 import { getGatewayTargetStatuses } from '../../../operations/deploy/gateway-status';
 import { deleteOrphanedABTests, setupABTests } from '../../../operations/deploy/post-deploy-ab-tests';
 import {
@@ -334,6 +335,17 @@ export function useDeployFlow(options: DeployFlowOptions = {}): DeployFlowState 
       policies,
       datasets,
     });
+
+    try {
+      const deployHash = await computeProjectDeployHash(configIO);
+      const targetState = deployedState.targets[target.name];
+      if (targetState?.resources) {
+        targetState.resources.deployHash = deployHash;
+      }
+    } catch {
+      // hash computation is best-effort
+    }
+
     await configIO.writeDeployedState(deployedState);
 
     // Post-deploy: Sync dataset examples from local JSONL to service DRAFT.
