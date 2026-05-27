@@ -67,10 +67,7 @@ export const registerStatus = (program: Command) => {
     .description(COMMAND_DESCRIPTIONS.status)
     .option('--runtime-id <id>', 'Look up a specific runtime by ID')
     .option('--target <name>', 'Select deployment target')
-    .option(
-      '--type <type>',
-      'Filter by resource type (agent, runtime-endpoint, memory, credential, gateway, evaluator, online-eval, policy-engine, policy, config-bundle, ab-test, dataset)'
-    )
+    .option('--type <type>', `Filter by resource type (${VALID_RESOURCE_TYPES.join(', ')})`)
     .option('--state <state>', 'Filter by deployment state (deployed, local-only, pending-removal)')
     .option('--runtime <name>', 'Filter to a specific runtime')
     .option('--json', 'Output as JSON')
@@ -172,6 +169,7 @@ export const registerStatus = (program: Command) => {
         const configBundles = filtered.filter(r => r.resourceType === 'config-bundle');
         const abTests = filtered.filter(r => r.resourceType === 'ab-test');
         const datasets = filtered.filter(r => r.resourceType === 'dataset');
+        const harnesses = filtered.filter(r => r.resourceType === 'harness');
         // TODO: Add http-gateway resource type when diffResourceSet for HTTP gateways is added to action.ts
 
         // Fetch enriched dataset info when --type dataset is specified
@@ -383,14 +381,12 @@ export const registerStatus = (program: Command) => {
 
             {/* TODO: Add HTTP Gateways render section when diffResourceSet is added to action.ts */}
 
-            {filtered.filter(r => r.resourceType === 'harness').length > 0 && (
+            {harnesses.length > 0 && (
               <Box flexDirection="column" marginTop={1}>
                 <Text bold>Harnesses</Text>
-                {filtered
-                  .filter(r => r.resourceType === 'harness')
-                  .map(entry => (
-                    <ResourceEntry key={`${entry.resourceType}-${entry.name}`} entry={entry} />
-                  ))}
+                {harnesses.map(entry => (
+                  <ResourceEntry key={`${entry.resourceType}-${entry.name}`} entry={entry} />
+                ))}
               </Box>
             )}
 

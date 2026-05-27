@@ -18,8 +18,9 @@ vi.mock('../../../aws/agentcore-control', () => ({
   getOnlineEvaluationConfig: (...args: unknown[]) => mockGetOnlineEvaluationConfig(...args),
 }));
 
+const mockIsPreviewEnabled = vi.fn(() => true);
 vi.mock('../../../feature-flags', () => ({
-  isPreviewEnabled: () => true,
+  isPreviewEnabled: () => mockIsPreviewEnabled(),
 }));
 
 vi.mock('../../../logging', () => {
@@ -469,6 +470,31 @@ describe('computeResourceStatuses', () => {
     expect(harnessEntry).toBeDefined();
     expect(harnessEntry!.deploymentState).toBe('pending-removal');
     expect(harnessEntry!.identifier).toBe('arn:aws:bedrock:us-east-1:123456789:harness/h-456');
+  });
+
+  it('does not include harnesses when preview is disabled', () => {
+    mockIsPreviewEnabled.mockReturnValueOnce(false);
+
+    const project = {
+      ...baseProject,
+      harnesses: [{ name: 'my-harness', path: 'harnesses/my-harness' }],
+    } as unknown as AgentCoreProjectSpec;
+
+    const resources: DeployedResourceState = {
+      harnesses: {
+        'my-harness': {
+          harnessId: 'h-123',
+          harnessArn: 'arn:aws:bedrock:us-east-1:123456789:harness/h-123',
+          roleArn: 'arn:aws:iam::123456789:role/test',
+          status: 'ACTIVE',
+        },
+      },
+    };
+
+    const result = computeResourceStatuses(project, resources);
+    const harnessEntries = result.filter(r => r.resourceType === 'harness');
+
+    expect(harnessEntries).toHaveLength(0);
   });
 
   it('handles mixed deployed and local-only resources', () => {
