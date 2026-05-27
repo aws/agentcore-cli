@@ -1,4 +1,5 @@
 import { ConfigIO } from '../../../../lib';
+import type { DeployedState, HarnessDeployedState } from '../../../../schema';
 import type { CdkToolkitWrapper, DeployMessage, SwitchableIoHost } from '../../../cdk/toolkit-lib';
 import {
   buildDeployedState,
@@ -14,9 +15,11 @@ import {
 } from '../../../cloudformation';
 import { DEFAULT_DEPLOY_ATTRS, computeDeployAttrs } from '../../../commands/deploy/utils.js';
 import { getErrorMessage, isChangesetInProgressError, isExpiredTokenError } from '../../../errors';
+import { isPreviewEnabled } from '../../../feature-flags';
 import { ExecLogger } from '../../../logging';
 import { performStackTeardown, setupTransactionSearch } from '../../../operations/deploy';
 import { getGatewayTargetStatuses } from '../../../operations/deploy/gateway-status';
+import { createDeploymentManager } from '../../../operations/deploy/imperative';
 import { deleteOrphanedABTests, setupABTests } from '../../../operations/deploy/post-deploy-ab-tests';
 import {
   resolveConfigBundleComponentKeys,
@@ -319,6 +322,38 @@ export function useDeployFlow(options: DeployFlowOptions = {}): DeployFlowState 
     setStackOutputs(outputs);
 
     const existingState = await configIO.readDeployedState().catch(() => undefined);
+
+    // Post-CDK: deploy imperative resources (harness) — preview mode only
+    let deployedHarnesses: Record<string, HarnessDeployedState> | undefined;
+    if (isPreviewEnabled()) {
+      const imperativeManager = createDeploymentManager();
+      const imperativeDeployedState: DeployedState = existingState ?? { targets: {} };
+      const imperativeContext = {
+        projectSpec: ctx.projectSpec,
+        target,
+        configIO,
+        deployedState: imperativeDeployedState,
+        cdkOutputs: outputs,
+        onProgress: (step: string, status: 'start' | 'done' | 'error') => {
+          logger.log(`${step}: ${status}`);
+        },
+      };
+
+      if (imperativeManager.hasDeployersForPhase('post-cdk', imperativeContext)) {
+        logger.startStep('Deploy harnesses');
+        const postCdkResult = await imperativeManager.runPhase('post-cdk', imperativeContext);
+        const harnessResult = postCdkResult.results.get('harness');
+        if (harnessResult?.state) {
+          deployedHarnesses = harnessResult.state as Record<string, HarnessDeployedState>;
+        }
+        if (!postCdkResult.success) {
+          logger.endStep('error', postCdkResult.error);
+          throw new Error(`Harness deployment failed: ${postCdkResult.error}`);
+        }
+        logger.endStep('success');
+      }
+    }
+
     let deployedState = buildDeployedState({
       targetName: target.name,
       stackName: currentStackName,
@@ -333,6 +368,7 @@ export function useDeployFlow(options: DeployFlowOptions = {}): DeployFlowState 
       policyEngines,
       policies,
       datasets,
+      harnesses: deployedHarnesses,
     });
     await configIO.writeDeployedState(deployedState);
 
@@ -673,6 +709,37 @@ export function useDeployFlow(options: DeployFlowOptions = {}): DeployFlowState 
         await cdkToolkitWrapper.deploy();
 
         if (context?.isTeardownDeploy) {
+          // Teardown imperative resources (harnesses) before destroying the stack
+          if (isPreviewEnabled()) {
+            const teardownTarget = context.awsTargets[0];
+            if (teardownTarget) {
+              const imperativeManager = createDeploymentManager();
+              const teardownConfigIO = new ConfigIO();
+              const existingTeardownState = await teardownConfigIO
+                .readDeployedState()
+                .catch(() => ({ targets: {} }) as DeployedState);
+              const teardownContext = {
+                projectSpec: context.projectSpec,
+                target: teardownTarget,
+                configIO: teardownConfigIO,
+                deployedState: existingTeardownState,
+                onProgress: (step: string, status: 'start' | 'done' | 'error') => {
+                  logger.log(`${step}: ${status}`);
+                },
+              };
+
+              if (imperativeManager.hasDeployersForPhase('post-cdk', teardownContext)) {
+                logger.startStep('Tear down imperative resources');
+                const teardownResult = await imperativeManager.teardownAll(teardownContext);
+                if (!teardownResult.success) {
+                  logger.endStep('error', teardownResult.error);
+                  throw new Error(`Imperative teardown failed: ${teardownResult.error}`);
+                }
+                logger.endStep('success');
+              }
+            }
+          }
+
           // After deploying the empty spec, destroy the stack entirely
           const targetName = context.awsTargets[0]?.name;
           if (targetName) {
