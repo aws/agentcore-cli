@@ -1,5 +1,6 @@
 import { ConfigIO, findConfigRoot, getWorkingDirectory } from '../../../lib';
 import type { AgentCoreProjectSpec } from '../../../schema';
+import { ANSI } from '../../constants';
 import { isPreviewEnabled } from '../../feature-flags';
 import { getDevConfig, getDevSupportedAgents, loadDevEnv, loadProjectConfig } from '../../operations/dev';
 import { type OtelCollector, startOtelCollector } from '../../operations/dev/otel';
@@ -312,9 +313,7 @@ export async function runBrowserMode(opts: BrowserModeOptions): Promise<void> {
   });
 }
 
-const ENTER_ALT_SCREEN = '\x1B[?1049h\x1B[H';
-const EXIT_ALT_SCREEN = '\x1B[?1049l';
-const SHOW_CURSOR = '\x1B[?25h';
+const { enterAltScreen: ENTER_ALT_SCREEN, exitAltScreen: EXIT_ALT_SCREEN, showCursor: SHOW_CURSOR } = ANSI;
 
 interface TuiPickerResult {
   agentName?: string;

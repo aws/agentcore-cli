@@ -9,6 +9,7 @@ import type {
 } from '../../../schema';
 import { validateAwsCredentials } from '../../aws/account';
 import { arnPrefix } from '../../aws/partition';
+import { ANSI } from '../../constants';
 import { ExecLogger } from '../../logging';
 import { setupPythonProject } from '../../operations/python/setup';
 import { executeCdkImportPipeline } from './import-pipeline';
@@ -315,8 +316,8 @@ export async function handleImport(options: ImportOptions): Promise<ImportResult
         const cdkEnvVar = `MEMORY_${mem.name.toUpperCase().replace(/[.-]/g, '_')}_ID`;
         const warnMsg =
           `Warning: Memory "${mem.name}" env var must be updated in your agent code:\n` +
-          `  \x1b[31m- MEMORY_ID = os.getenv("BEDROCK_AGENTCORE_MEMORY_ID")\x1b[0m\n` +
-          `  \x1b[32m+ MEMORY_ID = os.getenv("${cdkEnvVar}")\x1b[0m`;
+          `  ${ANSI.red}- MEMORY_ID = os.getenv("BEDROCK_AGENTCORE_MEMORY_ID")${ANSI.reset}\n` +
+          `  ${ANSI.green}+ MEMORY_ID = os.getenv("${cdkEnvVar}")${ANSI.reset}`;
         logger.log(`Memory "${mem.name}" env var must be updated: use ${cdkEnvVar}`, 'warn');
         onProgress?.(warnMsg);
       }

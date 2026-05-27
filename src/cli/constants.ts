@@ -68,3 +68,33 @@ export const SCHEMA_VERSION = 1;
  * Default runtime endpoint name used in log group paths and console URLs.
  */
 export const DEFAULT_ENDPOINT_NAME = 'DEFAULT';
+
+/**
+ * Color gating: emit ANSI codes only when both streams are attached to a terminal.
+ * Uses AND so that redirecting either stream (e.g. `2> log.txt`) disables colors,
+ * preventing escape codes from leaking into files.
+ * - FORCE_COLOR: override to enable colors regardless of TTY (e.g. in CI/tests).
+ * - NO_COLOR: standard (no-color.org) override to strip all color output.
+ */
+const stylingEnabled =
+  !!process.env.FORCE_COLOR || (!process.env.NO_COLOR && !!process.stdout.isTTY && !!process.stderr.isTTY);
+const style = (code: string) => (stylingEnabled ? code : '');
+
+/** ANSI escape codes for console output. Auto-disabled when piped or NO_COLOR is set. */
+export const ANSI = {
+  red: style('\x1b[31m'),
+  green: style('\x1b[32m'),
+  yellow: style('\x1b[33m'),
+  cyan: style('\x1b[36m'),
+  dim: style('\x1b[2m'),
+  reset: style('\x1b[0m'),
+  // Terminal control sequences (always active — only used when TTY is confirmed)
+  clearLine: '\x1b[K',
+  enterAltScreen: '\x1b[?1049h\x1b[H',
+  exitAltScreen: '\x1b[?1049l',
+  showCursor: '\x1b[?25h',
+  // TUI gradient colors
+  brightYellow: style('\x1b[38;2;255;255;0m'),
+  mutedYellow: style('\x1b[38;2;255;255;85m'),
+  darkYellow: style('\x1b[38;2;218;218;0m'),
+} as const;

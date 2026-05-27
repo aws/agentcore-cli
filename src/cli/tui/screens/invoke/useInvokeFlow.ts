@@ -22,6 +22,7 @@ import {
   mcpListTools,
 } from '../../../aws';
 import { invokeHarness } from '../../../aws/agentcore-harness';
+import { ANSI } from '../../../constants';
 import { getErrorMessage } from '../../../errors';
 import { isPreviewEnabled } from '../../../feature-flags';
 import { InvokeLogger } from '../../../logging';
@@ -379,7 +380,7 @@ export function useInvokeFlow(options: InvokeFlowOptions = {}): InvokeFlowState 
                 const serverName = event.start.toolUse.serverName;
                 const label = serverName ? `${serverName}/${pendingToolName}` : pendingToolName;
                 logger?.logInfo(`Tool call: ${pendingToolName} (id: ${pendingToolUseId})`);
-                streamingContentRef.current += `\n\x1b[2m${label}`;
+                streamingContentRef.current += `\n${ANSI.dim}${label}`;
                 const currentContent = streamingContentRef.current;
                 setMessages(prev => {
                   const updated = [...prev];
@@ -391,7 +392,7 @@ export function useInvokeFlow(options: InvokeFlowOptions = {}): InvokeFlowState 
                 });
               } else if (event.start.type === 'toolResult') {
                 const status = event.start.toolResult.status;
-                const icon = status === 'error' ? ' \x1b[31m[error]\x1b[0m' : ' [ok]\x1b[0m';
+                const icon = status === 'error' ? ` ${ANSI.red}[error]${ANSI.reset}` : ` [ok]${ANSI.reset}`;
                 logger?.logInfo(`Tool result (${pendingToolName}): status=${status ?? 'success'}`);
                 streamingContentRef.current += `${icon}\n`;
                 const currentContent = streamingContentRef.current;
@@ -438,7 +439,7 @@ export function useInvokeFlow(options: InvokeFlowOptions = {}): InvokeFlowState 
 
         if (lastMetadata) {
           const latency = (lastMetadata.latencyMs / 1000).toFixed(1);
-          streamingContentRef.current += `\n\x1b[2m${lastMetadata.inputTokens} in / ${lastMetadata.outputTokens} out / ${latency}s\x1b[0m`;
+          streamingContentRef.current += `\n${ANSI.dim}${lastMetadata.inputTokens} in / ${lastMetadata.outputTokens} out / ${latency}s${ANSI.reset}`;
           const currentContent = streamingContentRef.current;
           setMessages(prev => {
             const updated = [...prev];
