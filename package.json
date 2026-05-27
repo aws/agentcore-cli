@@ -54,11 +54,11 @@
     "build:preview": "BUILD_PREVIEW=1 node esbuild.config.mjs",
     "build:harness": "BUILD_HARNESS=1 node esbuild.config.mjs",
     "cli": "npx tsx src/cli/index.ts",
-    "typecheck": "tsc --noEmit",
-    "lint": "eslint src/",
-    "lint:fix": "eslint src/ --fix",
-    "format": "prettier --write .",
-    "format:check": "prettier --check .",
+    "typecheck": "tsc --noEmit --incremental",
+    "lint": "eslint --cache src/",
+    "lint:fix": "eslint --cache src/ --fix",
+    "format": "prettier --cache --write .",
+    "format:check": "prettier --cache --check .",
     "secrets:check": "secretlint '**/*'",
     "security:audit": "npm audit --audit-level=high --omit=dev",
     "clean": "node -e \"require('fs').rmSync('dist', {recursive: true, force: true})\"",
@@ -169,10 +169,10 @@
   },
   "lint-staged": {
     "*.{ts,tsx}": [
-      "eslint --max-warnings=10"
+      "eslint --cache --max-warnings=10"
     ],
     "*.{ts,tsx,js,jsx,json,md,css,html,yml,yaml}": [
-      "prettier --check"
+      "prettier --cache --check"
     ],
     "*": [
       "secretlint"
