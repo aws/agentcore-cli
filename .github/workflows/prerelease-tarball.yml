@@ -17,6 +17,8 @@ jobs:
   prerelease-tarball:
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    env:
+      TARBALL_BASE: agentcore-cli-prerelease
     steps:
       - uses: actions/checkout@v6
       - uses: actions/setup-node@v6
@@ -37,23 +39,23 @@ jobs:
         env:
           CDK_REPO_TOKEN: ${{ steps.app-token.outputs.token }}
           CDK_REPO: ${{ secrets.CDK_REPO_NAME }}
+      - name: Compute version suffix
+        id: version
+        run: |
+          CLI_SHA=$(git rev-parse --short=5 HEAD)
+          CDK_SHA=$(git -C /tmp/cdk-repo rev-parse --short=5 HEAD)
+          SUFFIX="${CLI_SHA}-${CDK_SHA}"
+          echo "suffix=$SUFFIX" >> $GITHUB_OUTPUT
+          echo "Version suffix: $SUFFIX"
       - run: npm run bundle
         env:
           AGENTCORE_CDK_PATH: /tmp/cdk-repo
-      - name: Get tarball info
-        id: tarball
-        run: |
-          GA_TARBALL=$(ls *-[0-9]*[0-9].tgz 2>/dev/null | grep -v preview | head -1 | xargs basename)
-          PREVIEW_TARBALL=$(ls *preview*.tgz | head -1 | xargs basename)
-          echo "ga_name=$GA_TARBALL" >> $GITHUB_OUTPUT
-          echo "preview_name=$PREVIEW_TARBALL" >> $GITHUB_OUTPUT
-          echo "GA tarball: $GA_TARBALL"
-          echo "Preview tarball: $PREVIEW_TARBALL"
+          AGENTCORE_TARBALL_OUTPUT: ${{ env.TARBALL_BASE }}
+          AGENTCORE_TARBALL_VERSION_SUFFIX: ${{ steps.version.outputs.suffix }}
       - name: Create or update prerelease
         env:
           GH_TOKEN: ${{ steps.app-token.outputs.token }}
-          GA_TARBALL: ${{ steps.tarball.outputs.ga_name }}
-          PREVIEW_TARBALL: ${{ steps.tarball.outputs.preview_name }}
+          VERSION_SUFFIX: ${{ steps.version.outputs.suffix }}
         run: |
           TAG="prerelease"
 
@@ -62,19 +64,21 @@ jobs:
 
           # Create a new pre-release with both tarballs
           gh release create "$TAG" \
-            "${GA_TARBALL}" \
-            "${PREVIEW_TARBALL}" \
+            "${TARBALL_BASE}.tgz" \
+            "${TARBALL_BASE}-preview.tgz" \
             --title "Prerelease" \
             --notes "Auto-generated tarballs from the latest commit on main.
 
+          Version: \`${VERSION_SUFFIX}\` (cli-cdk)
+
           **GA build** (no harness features):
           \`\`\`
-          npm install -g https://github.com/aws/agentcore-cli/releases/download/prerelease/${GA_TARBALL}
+          npm install -g https://github.com/aws/agentcore-cli/releases/download/prerelease/${TARBALL_BASE}.tgz
           \`\`\`
 
           **Preview build** (harness features enabled):
           \`\`\`
-          npm install -g https://github.com/aws/agentcore-cli/releases/download/prerelease/${PREVIEW_TARBALL}
+          npm install -g https://github.com/aws/agentcore-cli/releases/download/prerelease/${TARBALL_BASE}-preview.tgz
           \`\`\`" \
             --prerelease \
             --target "${{ github.sha }}"

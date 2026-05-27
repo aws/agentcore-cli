@@ -14,7 +14,12 @@
  *   npm run bundle
  *
  * Environment variables:
- *   AGENTCORE_CDK_PATH — absolute path to the agentcore-l3-cdk-constructs repo
+ *   AGENTCORE_CDK_PATH              — path to the agentcore-l3-cdk-constructs repo.
+ *                                     Falls back to ../agentcore-l3-cdk-constructs, then clones from GitHub.
+ *   AGENTCORE_TARBALL_OUTPUT        — output path (without .tgz) for the GA tarball.
+ *                                     Preview tarball gets '-preview' appended. Relative to cwd.
+ *   AGENTCORE_TARBALL_VERSION_SUFFIX — version prerelease suffix (e.g. "abc12-def34").
+ *                                     Defaults to a timestamp if not set.
  */
 import { execFileSync } from 'node:child_process';
 import * as fs from 'node:fs';
@@ -83,7 +88,12 @@ log('Starting bundle process...');
 
 const now = new Date();
 const timestamp = now.toISOString().replace(/[-:T]/g, '').slice(0, 14);
-log(`Bundle timestamp: ${timestamp}`);
+const versionSuffix = process.env.AGENTCORE_TARBALL_VERSION_SUFFIX || timestamp;
+if (!/^[\w.-]+$/.test(versionSuffix)) {
+  console.error(`ERROR: Invalid version suffix: ${versionSuffix}`);
+  process.exit(1);
+}
+log(`Bundle version suffix: ${versionSuffix}`);
 
 // Helper to bump a package version with a unique e2e timestamp tag.
 // Saves the original version so it can be restored after packing.
@@ -93,7 +103,7 @@ function bumpVersion(pkgDir) {
   const originalVersion = pkg.version;
   const baseVersion = originalVersion.split('-')[0];
   const prerelease = originalVersion.includes('-') ? originalVersion.split('-').slice(1).join('-') : '';
-  const tag = prerelease ? `${prerelease}-${timestamp}` : timestamp;
+  const tag = prerelease ? `${prerelease}-${versionSuffix}` : versionSuffix;
   pkg.version = `${baseVersion}-${tag}`;
   fs.writeFileSync(pkgJsonPath, JSON.stringify(pkg, null, 2) + '\n');
   log(`Bumped ${pkg.name} version: ${originalVersion} -> ${pkg.version}`);
@@ -104,6 +114,18 @@ function restoreVersion({ pkgJsonPath, originalVersion }) {
   const pkg = JSON.parse(fs.readFileSync(pkgJsonPath, 'utf8'));
   pkg.version = originalVersion;
   fs.writeFileSync(pkgJsonPath, JSON.stringify(pkg, null, 2) + '\n');
+}
+
+/**
+ * If AGENTCORE_TARBALL_OUTPUT is set, return a resolved path using it as base.
+ * Appends '-preview' suffix for preview builds. Always appends .tgz.
+ */
+function resolveTarballPath(tarballPath, { preview = false } = {}) {
+  const envPath = process.env.AGENTCORE_TARBALL_OUTPUT;
+  if (!envPath) return tarballPath;
+  const suffix = preview ? '-preview' : '';
+  const base = envPath.replace(/\.tgz$/, '');
+  return path.resolve(`${base}${suffix}.tgz`);
 }
 
 // Step 1: Resolve and build CDK constructs
@@ -160,11 +182,16 @@ if (!fs.existsSync(cliTarballPath)) {
   console.error(`ERROR: Expected GA tarball at ${cliTarballPath} but not found.`);
   process.exit(1);
 }
-log(`Done! GA Tarball: ${cliTarballPath}`);
-log(`Install with: npm install -g ${cliTarballPath}`);
-log('When you run agentcore create, the bundled CDK constructs will be installed automatically.');
 
-const gaTarballPath = cliTarballPath;
+const gaTarballPath = resolveTarballPath(cliTarballPath);
+if (gaTarballPath !== cliTarballPath) {
+  fs.mkdirSync(path.dirname(gaTarballPath), { recursive: true });
+  fs.renameSync(cliTarballPath, gaTarballPath);
+  log(`Renamed tarball to: ${gaTarballPath}`);
+}
+log(`Done! GA Tarball: ${gaTarballPath}`);
+log(`Install with: npm install -g ${gaTarballPath}`);
+log('When you run agentcore create, the bundled CDK constructs will be installed automatically.');
 
 // Step 6: Rebuild CLI with BUILD_PREVIEW=1
 log('Rebuilding CLI with BUILD_PREVIEW=1 for preview tarball...');
@@ -176,7 +203,7 @@ function bumpPreviewVersion(pkgDir) {
   const pkg = JSON.parse(fs.readFileSync(pkgJsonPath, 'utf8'));
   const originalVersion = pkg.version;
   const baseVersion = originalVersion.split('-')[0];
-  pkg.version = `${baseVersion}-preview-${timestamp}`;
+  pkg.version = `${baseVersion}-preview-${versionSuffix}`;
   fs.writeFileSync(pkgJsonPath, JSON.stringify(pkg, null, 2) + '\n');
   log(`Bumped ${pkg.name} version: ${originalVersion} -> ${pkg.version}`);
   return { pkgJsonPath, originalVersion, bumpedVersion: pkg.version };
@@ -200,9 +227,16 @@ if (!fs.existsSync(previewTarballPath)) {
   process.exit(1);
 }
 
+const finalPreviewPath = resolveTarballPath(previewTarballPath, { preview: true });
+if (finalPreviewPath !== previewTarballPath) {
+  fs.mkdirSync(path.dirname(finalPreviewPath), { recursive: true });
+  fs.renameSync(previewTarballPath, finalPreviewPath);
+  log(`Renamed tarball to: ${finalPreviewPath}`);
+}
+
 // Final output
 log(`GA tarball:      ${gaTarballPath}`);
-log(`Preview tarball: ${previewTarballPath}`);
+log(`Preview tarball: ${finalPreviewPath}`);
 log(`Install GA:      npm install -g ${gaTarballPath}`);
-log(`Install Preview: npm install -g ${previewTarballPath}`);
+log(`Install Preview: npm install -g ${finalPreviewPath}`);
 log('When you run agentcore create, the bundled CDK constructs will be installed automatically.');
