@@ -1,5 +1,6 @@
 import { ValidationError, serializeResult } from '../../../lib';
 import { getErrorMessage } from '../../errors';
+import { isPreviewEnabled } from '../../feature-flags';
 import { getDatasetStatus } from '../../operations/dataset';
 import type { DatasetStatusResult } from '../../operations/dataset';
 import { withCommandRunTelemetry } from '../../telemetry/cli-command-run.js';
@@ -25,6 +26,7 @@ const VALID_RESOURCE_TYPES = [
   'config-bundle',
   'ab-test',
   'dataset',
+  ...(isPreviewEnabled() ? (['harness'] as const) : []),
 ] as const;
 const VALID_STATES = ['deployed', 'local-only', 'pending-removal'] as const;
 
@@ -380,6 +382,17 @@ export const registerStatus = (program: Command) => {
             )}
 
             {/* TODO: Add HTTP Gateways render section when diffResourceSet is added to action.ts */}
+
+            {filtered.filter(r => r.resourceType === 'harness').length > 0 && (
+              <Box flexDirection="column" marginTop={1}>
+                <Text bold>Harnesses</Text>
+                {filtered
+                  .filter(r => r.resourceType === 'harness')
+                  .map(entry => (
+                    <ResourceEntry key={`${entry.resourceType}-${entry.name}`} entry={entry} />
+                  ))}
+              </Box>
+            )}
 
             {filtered.length === 0 && <Text dimColor>No resources match the given filters.</Text>}
           </Box>

@@ -18,6 +18,10 @@ vi.mock('../../../aws/agentcore-control', () => ({
   getOnlineEvaluationConfig: (...args: unknown[]) => mockGetOnlineEvaluationConfig(...args),
 }));
 
+vi.mock('../../../feature-flags', () => ({
+  isPreviewEnabled: () => true,
+}));
+
 vi.mock('../../../logging', () => {
   return {
     ExecLogger: class {
@@ -407,6 +411,64 @@ describe('computeResourceStatuses', () => {
 
     expect(configEntry).toBeDefined();
     expect(configEntry!.deploymentState).toBe('pending-removal');
+  });
+
+  it('marks harness as deployed when in both local and deployed state', () => {
+    const project = {
+      ...baseProject,
+      harnesses: [{ name: 'my-harness', path: 'harnesses/my-harness' }],
+    } as unknown as AgentCoreProjectSpec;
+
+    const resources: DeployedResourceState = {
+      harnesses: {
+        'my-harness': {
+          harnessId: 'h-123',
+          harnessArn: 'arn:aws:bedrock:us-east-1:123456789:harness/h-123',
+          roleArn: 'arn:aws:iam::123456789:role/test',
+          status: 'ACTIVE',
+        },
+      },
+    };
+
+    const result = computeResourceStatuses(project, resources);
+    const harnessEntry = result.find(r => r.resourceType === 'harness' && r.name === 'my-harness');
+
+    expect(harnessEntry).toBeDefined();
+    expect(harnessEntry!.deploymentState).toBe('deployed');
+    expect(harnessEntry!.identifier).toBe('arn:aws:bedrock:us-east-1:123456789:harness/h-123');
+  });
+
+  it('marks harness as local-only when not in deployed state', () => {
+    const project = {
+      ...baseProject,
+      harnesses: [{ name: 'my-harness', path: 'harnesses/my-harness' }],
+    } as unknown as AgentCoreProjectSpec;
+
+    const result = computeResourceStatuses(project, undefined);
+    const harnessEntry = result.find(r => r.resourceType === 'harness' && r.name === 'my-harness');
+
+    expect(harnessEntry).toBeDefined();
+    expect(harnessEntry!.deploymentState).toBe('local-only');
+  });
+
+  it('marks harness as pending-removal when in deployed state but not in local schema', () => {
+    const resources: DeployedResourceState = {
+      harnesses: {
+        'removed-harness': {
+          harnessId: 'h-456',
+          harnessArn: 'arn:aws:bedrock:us-east-1:123456789:harness/h-456',
+          roleArn: 'arn:aws:iam::123456789:role/test',
+          status: 'ACTIVE',
+        },
+      },
+    };
+
+    const result = computeResourceStatuses(baseProject, resources);
+    const harnessEntry = result.find(r => r.resourceType === 'harness' && r.name === 'removed-harness');
+
+    expect(harnessEntry).toBeDefined();
+    expect(harnessEntry!.deploymentState).toBe('pending-removal');
+    expect(harnessEntry!.identifier).toBe('arn:aws:bedrock:us-east-1:123456789:harness/h-456');
   });
 
   it('handles mixed deployed and local-only resources', () => {
