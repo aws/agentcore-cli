@@ -1,3 +1,4 @@
+import { getHarness } from '../src/cli/aws/agentcore-harness.js';
 import { hasAwsCredentials, parseJsonOutput, prereqs, retry, spawnAndCollect } from '../src/test-utils/index.js';
 import {
   cleanupStaleCredentialProviders,
@@ -7,7 +8,7 @@ import {
   writeAwsTargets,
 } from './e2e-helper.js';
 import { randomUUID } from 'node:crypto';
-import { mkdir, rm } from 'node:fs/promises';
+import { mkdir, readFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
@@ -30,10 +31,11 @@ export function createHarnessE2ESuite(cfg: HarnessE2EConfig) {
   const providerLabel =
     cfg.modelProvider === 'open_ai' ? 'OpenAI' : cfg.modelProvider === 'gemini' ? 'Gemini' : 'Bedrock';
 
-  describe.sequential(`e2e: harness/${providerLabel} — create → deploy → invoke`, () => {
+  describe.sequential(`e2e: harness/${providerLabel} — create → deploy → invoke → teardown`, () => {
     let testDir: string;
     let projectPath: string;
     let harnessName: string;
+    let harnessId: string;
 
     beforeAll(async () => {
       if (!canRun) return;
@@ -76,7 +78,8 @@ export function createHarnessE2ESuite(cfg: HarnessE2EConfig) {
 
     afterAll(async () => {
       if (projectPath && hasAws) {
-        await teardownE2EProject(projectPath, harnessName, cfg.modelProvider);
+        // Teardown is tested as a step; this is a safety net in case earlier steps fail
+        await teardownE2EProject(projectPath, harnessName, cfg.modelProvider).catch((_: unknown) => undefined);
       }
       if (testDir) await rm(testDir, { recursive: true, force: true, maxRetries: 3, retryDelay: 1000 });
     }, 600000);
@@ -158,6 +161,62 @@ export function createHarnessE2ESuite(cfg: HarnessE2EConfig) {
         expect(harness, `Harness "${harnessName}" should appear in status`).toBeDefined();
         expect(harness!.deploymentState).toBe('deployed');
         expect(harness!.identifier, 'Deployed harness should have a harnessArn').toBeTruthy();
+
+        // Capture harnessId for teardown verification
+        const statePath = join(projectPath, 'agentcore', '.cli', 'deployed-state.json');
+        const stateJson = JSON.parse(await readFile(statePath, 'utf-8')) as {
+          targets?: { default?: { resources?: { harnesses?: Record<string, { harnessId: string }> } } };
+        };
+        const harnessEntry = stateJson.targets?.default?.resources?.harnesses?.[harnessName];
+        if (harnessEntry) {
+          harnessId = harnessEntry.harnessId;
+        }
+      },
+      120000
+    );
+
+    it.skipIf(!canRun)(
+      'remove all and deploy tears down harness',
+      async () => {
+        const removeResult = await runAgentCoreCLI(['remove', 'all', '--yes', '--json'], projectPath);
+        expect(removeResult.exitCode, `Remove all failed: ${removeResult.stderr}`).toBe(0);
+
+        const removeJson = parseJsonOutput(removeResult.stdout) as { success: boolean };
+        expect(removeJson.success).toBe(true);
+
+        const deployResult = await runAgentCoreCLI(['deploy', '--yes', '--json'], projectPath);
+        expect(deployResult.exitCode, `Teardown deploy failed: ${deployResult.stderr}`).toBe(0);
+
+        const deployJson = parseJsonOutput(deployResult.stdout) as { success: boolean };
+        expect(deployJson.success).toBe(true);
+      },
+      600000
+    );
+
+    it.skipIf(!canRun)(
+      'verifies harness is deleted from AWS',
+      async () => {
+        expect(harnessId, 'harnessId should have been captured').toBeTruthy();
+
+        const region = process.env.AWS_REGION ?? 'us-east-1';
+        await retry(
+          async () => {
+            try {
+              const result = await getHarness({ region, harnessId });
+              expect(['DELETING', 'DELETED'], `Expected DELETING or DELETED, got ${result.harness.status}`).toContain(
+                result.harness.status
+              );
+            } catch (err: unknown) {
+              const message = err instanceof Error ? err.message : String(err);
+              expect(
+                message.includes('not found') || message.includes('ResourceNotFoundException'),
+                `Expected ResourceNotFound, got: ${message}`
+              ).toBe(true);
+            }
+          },
+          5,
+          10000
+        );
       },
       120000
     );
