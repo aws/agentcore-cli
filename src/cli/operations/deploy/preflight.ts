@@ -6,7 +6,7 @@ import { CdkToolkitWrapper, createCdkToolkitWrapper, silentIoHost } from '../../
 import { checkBootstrapStatus, checkStacksStatus, formatCdkEnvironment } from '../../cloudformation';
 import { cleanupStaleLockFiles } from '../../tui/utils';
 import type { IIoHost } from '@aws-cdk/toolkit-lib';
-import { existsSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import * as path from 'node:path';
 
 export interface PreflightContext {
@@ -198,11 +198,31 @@ export function validateContainerAgents(projectSpec: AgentCoreProjectSpec, confi
         errors.push(
           `Agent "${agent.name}": ${agent.dockerfile ?? DOCKERFILE_NAME} not found at ${dockerfilePath}. Container agents require a Dockerfile.`
         );
+      } else {
+        warnDeprecatedBaseImage(dockerfilePath, agent.name);
       }
     }
   }
   if (errors.length > 0) {
     throw new Error(errors.join('\n'));
+  }
+}
+
+const DEPRECATED_BASE_IMAGES = ['slim-bookworm'];
+
+function warnDeprecatedBaseImage(dockerfilePath: string, agentName: string): void {
+  try {
+    const content = readFileSync(dockerfilePath, 'utf-8');
+    for (const image of DEPRECATED_BASE_IMAGES) {
+      if (content.includes(image)) {
+        console.warn(
+          `Warning: Agent "${agentName}" Dockerfile uses a base image containing "${image}" which is affected by ` +
+            `CVE-2026-42010 (GnuTLS authentication bypass). Update the FROM line to use python:3.12-slim-trixie.`
+        );
+      }
+    }
+  } catch {
+    // Non-fatal — if we can't read the file, the existing validation will handle it
   }
 }
 
