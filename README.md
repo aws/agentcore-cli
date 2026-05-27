@@ -192,6 +192,11 @@ Projects use JSON schema files in the `agentcore/` directory:
 - [Memory](docs/memory.md) - Memory strategies and sharing
 - [Local Development](docs/local-development.md) - Dev server and debugging
 
+## Examples
+
+See the [AgentCore Samples](https://github.com/awslabs/agentcore-samples) repository for end-to-end examples using the
+CLI, including multi-agent workflows, MCP gateway targets, and framework integrations.
+
 ## Feedback & Issues
 
 Found a bug or have a feature request? [Open an issue](https://github.com/aws/agentcore-cli/issues/new) on GitHub.
