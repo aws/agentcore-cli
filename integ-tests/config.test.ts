@@ -39,7 +39,7 @@ describe('config command', () => {
   it('gets a value', async () => {
     const result = await run(['config', 'uvIndex']);
     expect(result.exitCode).toBe(0);
-    expect(result.stdout.trim()).toBe('https://example.com');
+    expect(result.stdout.trim()).toBe('"https://example.com"');
   });
 
   it('sets a nested value with dot notation', async () => {
@@ -51,7 +51,7 @@ describe('config command', () => {
   it('gets a nested value with dot notation', async () => {
     const result = await run(['config', 'telemetry.endpoint']);
     expect(result.exitCode).toBe(0);
-    expect(result.stdout.trim()).toBe('https://metrics.example.com');
+    expect(result.stdout.trim()).toBe('"https://metrics.example.com"');
   });
 
   it('gets an object value as JSON', async () => {
