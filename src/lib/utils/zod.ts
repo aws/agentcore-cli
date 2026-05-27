@@ -14,11 +14,8 @@ export interface ResilientParseOptions {
 /**
  * Recursively parse data against a Zod object schema, field by field.
  * Invalid fields fall back to a default value rather than throwing.
- * Nested ZodObjects (including those wrapped in ZodOptional/ZodNullable/ZodDefault) are parsed recursively.
+ * Nested ZodObjects are parsed recursively.
  *
- * Note: when keepUnknown is true (default), extra keys are preserved in the result.
- * If the result is later validated against a .strict() schema, those keys will cause errors.
- * This is intentional for read-path leniency; use validateGlobalConfig for write-path strictness.
  */
 export function resilientParse<T extends z.ZodObject<z.ZodRawShape>>(
   schema: T,
