@@ -9,6 +9,7 @@ import type {
   TargetLanguage,
 } from '../../../schema';
 import { LIFECYCLE_TIMEOUT_MAX, LIFECYCLE_TIMEOUT_MIN } from '../../../schema';
+import { ANSI } from '../../constants';
 import { getErrorMessage } from '../../errors';
 import { isPreviewEnabled } from '../../feature-flags';
 import { harnessPrimitive } from '../../primitives/registry';
@@ -158,13 +159,11 @@ async function handleCreateHarnessCLI(options: CreateOptions): Promise<void> {
       }
 
       // Progress callback
-      const green = '\x1b[32m';
-      const reset = '\x1b[0m';
       const onProgress: ProgressCallback | undefined = options.json
         ? undefined
         : (step, status) => {
-            if (status === 'done') console.log(`${green}[done]${reset}  ${step}`);
-            else if (status === 'error') console.log(`\x1b[31m[error]${reset} ${step}`);
+            if (status === 'done') console.log(`${ANSI.green}[done]${ANSI.reset}  ${step}`);
+            else if (status === 'error') console.log(`${ANSI.red}[error]${ANSI.reset} ${step}`);
           };
 
       const provider = (
