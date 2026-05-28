@@ -37,12 +37,12 @@ const CreateAttrs = safeSchema({
   agent_environment: AgentEnvironment,
   agent_language: AgentLanguage.optional(),
   agent_framework: AgentFramework.optional(),
-  model_provider: ModelProvider.optional(),
-  memory_type: MemoryType.optional(),
+  model_provider: ModelProvider,
+  memory_type: MemoryType,
   agent_protocol: AgentProtocol.optional(),
-  build_type: BuildType.optional(),
+  build_type: BuildType,
   agent_type: AgentType.optional(),
-  network_mode: NetworkMode.optional(),
+  network_mode: NetworkMode,
   has_agent: z.boolean(),
 });
 

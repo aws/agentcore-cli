@@ -264,17 +264,33 @@ export function useCreateFlow(cwd: string): CreateFlowState {
     const attrs = {
       agent_environment: standardize(AgentEnvironment, isHarness ? 'harness' : 'runtime'),
       has_agent: true,
+      model_provider: standardize(
+        ModelProvider,
+        isHarness ? addHarnessConfig?.modelProvider : addAgentConfig?.modelProvider
+      ),
+      memory_type: standardize(
+        MemoryEnum,
+        isHarness ? (addHarnessConfig?.skipMemory ? 'none' : 'shortterm') : (addAgentConfig?.memory ?? 'none')
+      ),
+      build_type: standardize(
+        BuildType,
+        isHarness
+          ? addHarnessConfig?.containerMode && addHarnessConfig.containerMode !== 'none'
+            ? 'container'
+            : 'codezip'
+          : (addAgentConfig?.buildType ?? 'CodeZip')
+      ),
+      network_mode: standardize(
+        NetworkMode,
+        isHarness ? (addHarnessConfig?.networkMode ?? 'PUBLIC') : (addAgentConfig?.networkMode ?? 'PUBLIC')
+      ),
       ...(isHarness
         ? {}
         : {
             agent_language: standardize(AgentLanguage, addAgentConfig?.language ?? 'Python'),
             agent_framework: standardize(AgentFramework, addAgentConfig?.framework),
-            model_provider: standardize(ModelProvider, addAgentConfig?.modelProvider),
-            memory_type: standardize(MemoryEnum, addAgentConfig?.memory ?? 'none'),
             agent_protocol: standardize(AgentProtocol, addAgentConfig?.protocol ?? 'HTTP'),
-            build_type: standardize(BuildType, addAgentConfig?.buildType ?? 'CodeZip'),
             agent_type: standardize(AgentType, addAgentConfig?.agentType ?? 'create'),
-            network_mode: standardize(NetworkMode, addAgentConfig?.networkMode ?? 'PUBLIC'),
           }),
     };
 

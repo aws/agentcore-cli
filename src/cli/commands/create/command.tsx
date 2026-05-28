@@ -142,7 +142,14 @@ async function handleCreateHarnessCLI(options: CreateOptions): Promise<void> {
 
   const result = await withCommandRunTelemetry(
     'create',
-    { agent_environment: 'harness' as const, has_agent: true },
+    {
+      agent_environment: 'harness' as const,
+      has_agent: true,
+      model_provider: standardize(ModelProviderEnum, options.modelProvider ?? 'bedrock'),
+      memory_type: standardize(MemoryType, options.harnessMemory === false ? 'none' : 'shortterm'),
+      build_type: standardize(TelemetryBuildType, options.container ? 'container' : 'codezip'),
+      network_mode: standardize(NetworkModeEnum, options.networkMode ?? 'public'),
+    },
     async () => {
       const validation = validateCreateHarnessOptions(
         {
