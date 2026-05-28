@@ -196,3 +196,38 @@ describe.skipIf(!prereqs.npm || !prereqs.git)('integration: create edge cases', 
     });
   });
 });
+
+const isPreviewBuild = process.env.BUILD_PREVIEW === '1';
+
+describe.skipIf(!isPreviewBuild || !prereqs.npm || !prereqs.git)('integration: create harness project', () => {
+  let testDir: string;
+  const telemetry = createTelemetryHelper();
+
+  beforeAll(async () => {
+    testDir = join(tmpdir(), `agentcore-integ-create-harness-${randomUUID()}`);
+    await mkdir(testDir, { recursive: true });
+  });
+
+  afterAll(async () => {
+    telemetry.destroy();
+    await rm(testDir, { recursive: true, force: true });
+  });
+
+  it('creates a harness project with defaults', async () => {
+    const name = `Hrn${Date.now().toString().slice(-6)}`;
+    const result = await runCLI(['create', '--name', name, '--model-provider', 'bedrock', '--json'], testDir, {
+      env: telemetry.env,
+    });
+
+    expect(result.exitCode, `stderr: ${result.stderr}`).toBe(0);
+    const json = JSON.parse(result.stdout);
+    expect(json.success).toBe(true);
+
+    telemetry.assertMetricEmitted({
+      command: 'create',
+      exit_reason: 'success',
+      agent_environment: 'harness',
+      has_agent: 'false',
+    });
+  });
+});

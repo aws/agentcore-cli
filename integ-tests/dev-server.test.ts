@@ -172,3 +172,43 @@ describe('integration: dev server', () => {
     15000
   );
 });
+
+const isPreviewBuild = process.env.BUILD_PREVIEW === '1';
+
+describe.skipIf(!isPreviewBuild || !hasNpm || !hasGit || !hasUv)('integration: dev with harness-only project', () => {
+  const telemetry = createTelemetryHelper();
+  let projectPath: string;
+
+  beforeAll(async () => {
+    const dir = join(tmpdir(), `agentcore-dev-harness-${Date.now()}`);
+    await mkdir(dir, { recursive: true });
+
+    // Create a harness-only project
+    const createResult = await runCLI(
+      ['create', '--name', 'DevHarness', '--model-provider', 'bedrock', '--json'],
+      dir,
+      { env: telemetry.env }
+    );
+    const json = JSON.parse(createResult.stdout);
+    projectPath = json.projectPath;
+  });
+
+  afterAll(async () => {
+    telemetry.destroy();
+    if (projectPath) await rm(projectPath, { recursive: true, force: true });
+  });
+
+  it('dev --logs on harness-only project succeeds without a local server', async () => {
+    telemetry.clearEntries();
+    const result = await runCLI(['dev', '--logs', '--skip-deploy'], projectPath, { env: telemetry.env });
+
+    expect(result.exitCode).toBe(0);
+
+    telemetry.assertMetricEmitted({
+      command: 'dev',
+      dev_action: 'server',
+      agent_environment: 'harness',
+      exit_reason: 'success',
+    });
+  });
+});
