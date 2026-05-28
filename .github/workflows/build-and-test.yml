@@ -9,6 +9,9 @@ on:
 permissions:
   contents: read
 
+env:
+  AGENTCORE_TELEMETRY_DISABLED: '1'
+
 # Cancel in-progress runs for PRs; never cancel runs on main (merges should not abort each other)
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
