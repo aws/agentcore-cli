@@ -263,7 +263,8 @@ export function useCreateFlow(cwd: string): CreateFlowState {
     const isHarness = addHarnessConfig !== null;
     const attrs = {
       agent_environment: standardize(AgentEnvironment, isHarness ? 'harness' : 'runtime'),
-      has_agent: true,
+      // true when either an agent or harness config is set (non-null/non-undefined)
+      has_agent: Boolean(addAgentConfig) || Boolean(addHarnessConfig),
       model_provider: standardize(
         ModelProvider,
         isHarness ? addHarnessConfig?.modelProvider : addAgentConfig?.modelProvider
