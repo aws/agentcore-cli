@@ -1,7 +1,7 @@
 import { ValidationError } from '../../../lib';
+import { ANSI } from '../../constants';
 import { withCommandRunTelemetry } from '../../telemetry/cli-command-run.js';
 import { handleImport } from './actions';
-import { ANSI } from './constants';
 import { registerImportEvaluator } from './import-evaluator';
 import { registerImportGateway } from './import-gateway';
 import { registerImportMemory } from './import-memory';
@@ -10,7 +10,7 @@ import { registerImportRuntime } from './import-runtime';
 import type { Command } from '@commander-js/extra-typings';
 import * as fs from 'node:fs';
 
-const { green, yellow, cyan, dim, reset } = ANSI;
+const { red, green, yellow, cyan, dim, reset } = ANSI;
 
 export const registerImport = (program: Command) => {
   const importCmd = program
@@ -86,7 +86,7 @@ export const registerImport = (program: Command) => {
           yes: cliOptions.yes,
           onProgress: (message: string) => {
             // Collect warnings for end-of-output display
-            if (message.includes('Warning') || message.includes('\x1b[33m')) {
+            if (message.startsWith('Warning')) {
               warnings.push(message);
               return;
             }
@@ -144,7 +144,7 @@ export const registerImport = (program: Command) => {
           console.log(`Log: ${result.logPath}`);
         }
       } else {
-        console.error(`\n\x1b[31m[error]${reset} Import failed: ${result.error.message}`);
+        console.error(`\n${red}[error]${reset} Import failed: ${result.error.message}`);
         if (result.logPath) {
           console.error(`Log: ${result.logPath}`);
         }

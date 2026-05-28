@@ -1,9 +1,30 @@
+import { isPreviewEnabled } from '../../../feature-flags';
 import type { SelectableItem } from '../../components';
 import { SelectScreen } from '../../components';
 import { useMemo } from 'react';
 
-const REMOVE_RESOURCES = [
+export type RemoveResourceType =
+  | 'agent'
+  | 'harness'
+  | 'memory'
+  | 'credential'
+  | 'evaluator'
+  | 'online-eval'
+  | 'policy-engine'
+  | 'policy'
+  | 'gateway'
+  | 'gateway-target'
+  | 'config-bundle'
+  | 'ab-test'
+  | 'runtime-endpoint'
+  | 'dataset'
+  | 'all';
+
+const REMOVE_RESOURCES: { id: RemoveResourceType; title: string; description: string }[] = [
   { id: 'agent', title: 'Agent', description: 'Remove an agent from the project' },
+  ...(isPreviewEnabled()
+    ? [{ id: 'harness' as const, title: 'Harness', description: 'Remove a harness from the project' }]
+    : []),
   { id: 'memory', title: 'Memory', description: 'Remove a memory provider' },
   { id: 'credential', title: 'Credential', description: 'Remove a credential' },
   { id: 'evaluator', title: 'Evaluator', description: 'Remove a custom evaluator' },
@@ -17,15 +38,15 @@ const REMOVE_RESOURCES = [
   { id: 'runtime-endpoint', title: 'Runtime Endpoint', description: 'Remove a runtime endpoint' },
   { id: 'dataset', title: 'Dataset', description: 'Remove a dataset' },
   { id: 'all', title: 'All', description: 'Reset entire agentcore project' },
-] as const;
-
-export type RemoveResourceType = (typeof REMOVE_RESOURCES)[number]['id'];
+];
 
 interface RemoveScreenProps {
   onSelect: (resourceType: RemoveResourceType) => void;
   onExit: () => void;
   /** Number of agents available for removal */
   agentCount: number;
+  /** Number of harnesses available for removal */
+  harnessCount: number;
   /** Number of gateways available for removal */
   gatewayCount: number;
   /** Number of gateway targets available for removal */
@@ -56,6 +77,7 @@ export function RemoveScreen({
   onSelect,
   onExit,
   agentCount,
+  harnessCount,
   gatewayCount,
   mcpToolCount,
   memoryCount,
@@ -79,6 +101,12 @@ export function RemoveScreen({
           if (agentCount === 0) {
             disabled = true;
             description = 'No agents to remove';
+          }
+          break;
+        case 'harness':
+          if (harnessCount === 0) {
+            disabled = true;
+            description = 'No harnesses to remove';
           }
           break;
         case 'gateway':
@@ -162,6 +190,7 @@ export function RemoveScreen({
     });
   }, [
     agentCount,
+    harnessCount,
     gatewayCount,
     mcpToolCount,
     memoryCount,

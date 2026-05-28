@@ -71,5 +71,32 @@ export {
   ValidationModeSchema,
 } from './policy';
 
+export type {
+  HarnessGatewayOutboundAuth,
+  HarnessMemoryRef,
+  HarnessModel,
+  HarnessModelProvider,
+  HarnessSpec,
+  HarnessTool,
+  HarnessToolType,
+  HarnessTruncationConfig,
+} from './harness';
+export {
+  AllowedToolSchema,
+  GatewayOAuthGrantTypeSchema,
+  HarnessGatewayOutboundAuthSchema,
+  HarnessMemoryRefSchema,
+  HarnessModelProviderSchema,
+  HarnessModelSchema,
+  HarnessNameSchema,
+  HarnessSpecSchema,
+  HarnessToolConfigSchema,
+  HarnessToolNameSchema,
+  HarnessToolSchema,
+  HarnessToolTypeSchema,
+  HarnessTruncationConfigSchema,
+  HarnessTruncationStrategySchema,
+} from './harness';
+
 export type { HttpGateway } from './http-gateway';
 export { HttpGatewayNameSchema, HttpGatewaySchema } from './http-gateway';

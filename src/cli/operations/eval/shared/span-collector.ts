@@ -154,6 +154,28 @@ export function sanitizeQueryValue(value: string): string {
 }
 
 /**
+ * Execute a CloudWatch Logs Insights query, returning [] if the log group does not exist.
+ */
+export async function executeQueryGraceful(
+  client: CloudWatchLogsClient,
+  logGroupName: string,
+  queryString: string,
+  startTimeSec: number,
+  endTimeSec: number
+): Promise<ResultField[][]> {
+  try {
+    return await executeQuery(client, logGroupName, queryString, startTimeSec, endTimeSec);
+  } catch (err) {
+    const errName = (err as { name?: string })?.name;
+    const msg = err instanceof Error ? err.message : String(err);
+    if (errName === 'ResourceNotFoundException' || msg.includes('does not exist')) {
+      return [];
+    }
+    throw err;
+  }
+}
+
+/**
  * Execute a CloudWatch Logs Insights query and wait for results.
  */
 export async function executeQuery(
@@ -264,11 +286,11 @@ export async function fetchSessionSpans(opts: FetchSpansOptions): Promise<Sessio
     region,
   });
 
-  // 1. Query proper OTel spans from the aws/spans log group
+  // 1. Query proper OTel spans from both log groups
   let spanQuery = `fields @message, attributes.session.id as sessionId, traceId
      | parse resource.attributes.cloud.resource_id "runtime/*/" as parsedAgentId
      | filter parsedAgentId = '${sanitizeQueryValue(runtimeId)}'
-     | filter ispresent(scope.name)`;
+     | filter ispresent(scope.name) and ispresent(kind)`;
 
   if (opts.sessionId) {
     spanQuery += `\n     | filter attributes.session.id = '${sanitizeQueryValue(opts.sessionId)}'`;
@@ -279,13 +301,17 @@ export async function fetchSessionSpans(opts: FetchSpansOptions): Promise<Sessio
 
   spanQuery += `\n     | sort startTimeUnixNano asc\n     | limit 10000`;
 
-  const spanRows = await executeQuery(client, SPANS_LOG_GROUP, spanQuery, startTimeSec, endTimeSec);
+  const [sharedSpanRows, runtimeSpanRows] = await Promise.all([
+    executeQueryGraceful(client, SPANS_LOG_GROUP, spanQuery, startTimeSec, endTimeSec),
+    executeQueryGraceful(client, runtimeLogGroup, spanQuery, startTimeSec, endTimeSec),
+  ]);
+  const allSpanRows = [...sharedSpanRows, ...runtimeSpanRows];
 
   // Group spans by session and collect trace IDs
   const sessionMap = new Map<string, DocumentType[]>();
   const traceIds = new Set<string>();
 
-  for (const row of spanRows) {
+  for (const row of allSpanRows) {
     const messageField = row.find(f => f.field === '@message');
     const sessionField = row.find(f => f.field === 'sessionId');
     const traceField = row.find(f => f.field === 'traceId');
@@ -338,7 +364,7 @@ export async function fetchSessionSpans(opts: FetchSpansOptions): Promise<Sessio
     // Match runtime logs to sessions via traceId
     // Build traceId → sessionId mapping from spans
     const traceToSession = new Map<string, string>();
-    for (const row of spanRows) {
+    for (const row of allSpanRows) {
       const traceField = row.find(f => f.field === 'traceId');
       const sessionField = row.find(f => f.field === 'sessionId');
       if (traceField?.value && sessionField?.value) {

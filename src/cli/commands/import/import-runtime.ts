@@ -1,8 +1,8 @@
 import type { AgentEnvSpec } from '../../../schema';
 import type { AgentRuntimeDetail, AgentRuntimeSummary } from '../../aws/agentcore-control';
 import { getAgentRuntimeDetail, listAllAgentRuntimes } from '../../aws/agentcore-control';
+import { ANSI } from '../../constants';
 import { withCommandRunTelemetry } from '../../telemetry/cli-command-run.js';
-import { ANSI } from './constants';
 import { copyAgentSource, failResult, parseAndValidateArn } from './import-utils';
 import { executeResourceImport } from './resource-import';
 import type { ImportResourceResult, ResourceImportDescriptor, RuntimeImportOptions } from './types';

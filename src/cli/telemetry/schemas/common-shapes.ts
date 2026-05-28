@@ -67,6 +67,8 @@ export const FilterType = z.enum([
   'policy',
   'config-bundle',
   'ab-test',
+  'dataset',
+  'harness',
   'none',
 ]);
 export const AgentFramework = z.enum(['strands', 'langchain_langgraph', 'googleadk', 'openaiagents']);

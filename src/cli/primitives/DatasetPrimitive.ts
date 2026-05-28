@@ -45,6 +45,7 @@ export class DatasetPrimitive extends BasePrimitive<AddDatasetOptions, Removable
         name: options.name,
         schemaType: options.schemaType,
         ...(options.description && { description: options.description }),
+        ...(options.kmsKeyArn && { kmsKeyArn: options.kmsKeyArn }),
         config: {
           managed: { location },
         },
@@ -140,70 +141,81 @@ export class DatasetPrimitive extends BasePrimitive<AddDatasetOptions, Removable
         'Dataset schema type: AGENTCORE_EVALUATION_PREDEFINED_V1 | AGENTCORE_EVALUATION_SIMULATED_V1 [non-interactive]'
       )
       .option('--description <description>', 'Dataset description [non-interactive]')
+      .option('--kms-key-arn <arn>', 'KMS key ARN for dataset encryption (optional) [non-interactive]')
       .option('--json', 'Output as JSON [non-interactive]')
-      .action(async (cliOptions: { name?: string; schemaType?: string; description?: string; json?: boolean }) => {
-        if (!findConfigRoot()) {
-          console.error('No agentcore project found. Run `agentcore create` first.');
-          process.exit(1);
-        }
-
-        if (cliOptions.name || cliOptions.json) {
-          // CLI mode
-          await runCliCommand('add.dataset', !!cliOptions.json, async () => {
-            const validation = validateAddDatasetOptions({
-              name: cliOptions.name ?? '',
-              schemaType: (cliOptions.schemaType ?? '') as DatasetSchemaType,
-              description: cliOptions.description,
-            });
-
-            if (!validation.valid) {
-              throw new Error(validation.error);
-            }
-
-            const result = await this.add({
-              name: cliOptions.name!,
-              schemaType: cliOptions.schemaType! as DatasetSchemaType,
-              description: cliOptions.description,
-            });
-
-            if (!result.success) {
-              throw result.error;
-            }
-
-            if (cliOptions.json) {
-              console.log(JSON.stringify(result));
-            } else {
-              console.log(`Added dataset '${result.datasetName}'`);
-              console.log(`  File: ${result.location}`);
-            }
-
-            return {};
-          });
-        } else {
-          try {
-            // TUI fallback — dynamic imports to avoid pulling ink (async) into registry
-            requireTTY();
-            const [{ render }, { default: React }, { AddFlow }] = await Promise.all([
-              import('ink'),
-              import('react'),
-              import('../tui/screens/add/AddFlow'),
-            ]);
-            const { unmount } = render(
-              React.createElement(AddFlow, {
-                isInteractive: false,
-                initialResource: 'dataset',
-                onExit: () => {
-                  unmount();
-                  process.exit(0);
-                },
-              })
-            );
-          } catch (error) {
-            console.error(getErrorMessage(error));
+      .action(
+        async (cliOptions: {
+          name?: string;
+          schemaType?: string;
+          description?: string;
+          kmsKeyArn?: string;
+          json?: boolean;
+        }) => {
+          if (!findConfigRoot()) {
+            console.error('No agentcore project found. Run `agentcore create` first.');
             process.exit(1);
           }
+
+          if (cliOptions.name || cliOptions.json) {
+            // CLI mode
+            await runCliCommand('add.dataset', !!cliOptions.json, async () => {
+              const validation = validateAddDatasetOptions({
+                name: cliOptions.name ?? '',
+                schemaType: (cliOptions.schemaType ?? '') as DatasetSchemaType,
+                description: cliOptions.description,
+                kmsKeyArn: cliOptions.kmsKeyArn,
+              });
+
+              if (!validation.valid) {
+                throw new Error(validation.error);
+              }
+
+              const result = await this.add({
+                name: cliOptions.name!,
+                schemaType: cliOptions.schemaType! as DatasetSchemaType,
+                description: cliOptions.description,
+                kmsKeyArn: cliOptions.kmsKeyArn,
+              });
+
+              if (!result.success) {
+                throw result.error;
+              }
+
+              if (cliOptions.json) {
+                console.log(JSON.stringify(result));
+              } else {
+                console.log(`Added dataset '${result.datasetName}'`);
+                console.log(`  File: ${result.location}`);
+              }
+
+              return {};
+            });
+          } else {
+            try {
+              // TUI fallback — dynamic imports to avoid pulling ink (async) into registry
+              requireTTY();
+              const [{ render }, { default: React }, { AddFlow }] = await Promise.all([
+                import('ink'),
+                import('react'),
+                import('../tui/screens/add/AddFlow'),
+              ]);
+              const { unmount } = render(
+                React.createElement(AddFlow, {
+                  isInteractive: false,
+                  initialResource: 'dataset',
+                  onExit: () => {
+                    unmount();
+                    process.exit(0);
+                  },
+                })
+              );
+            } catch (error) {
+              console.error(getErrorMessage(error));
+              process.exit(1);
+            }
+          }
         }
-      });
+      );
 
     this.registerRemoveSubcommand(removeCmd);
   }

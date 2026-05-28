@@ -15,6 +15,7 @@ import {
   evaluatorPrimitive,
   gatewayPrimitive,
   gatewayTargetPrimitive,
+  harnessPrimitive,
   memoryPrimitive,
   onlineEvalConfigPrimitive,
   policyEnginePrimitive,
@@ -116,6 +117,13 @@ export function useRemovableAgents() {
     agentPrimitive.getRemovable().then(r => r.map(a => a.name))
   );
   return { agents, ...rest };
+}
+
+export function useRemovableHarnesses() {
+  const { items: harnesses, ...rest } = useRemovableResources(() =>
+    harnessPrimitive ? harnessPrimitive.getRemovable().then(r => r.map(h => h.name)) : Promise.resolve([])
+  );
+  return { harnesses, ...rest };
 }
 
 export function useRemovableGateways() {
@@ -229,6 +237,10 @@ export function useRemovalPreview() {
     (name: string) => loadPreview(n => agentPrimitive.previewRemove(n), name),
     [loadPreview]
   );
+  const loadHarnessPreview = useCallback(
+    (name: string) => loadPreview(n => harnessPrimitive!.previewRemove(n), name),
+    [loadPreview]
+  );
   const loadGatewayPreview = useCallback(
     (name: string) => loadPreview(n => gatewayPrimitive.previewRemove(n), name),
     [loadPreview]
@@ -287,6 +299,7 @@ export function useRemovalPreview() {
   return {
     ...state,
     loadAgentPreview,
+    loadHarnessPreview,
     loadGatewayPreview,
     loadGatewayTargetPreview,
     loadMemoryPreview,
@@ -318,6 +331,14 @@ export function useRemoveAgent() {
   return useRemoveResource(
     (name: string) => agentPrimitive.remove(name),
     'agent',
+    name => name
+  );
+}
+
+export function useRemoveHarness() {
+  return useRemoveResource(
+    (name: string) => harnessPrimitive!.remove(name),
+    'harness',
     name => name
   );
 }

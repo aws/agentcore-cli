@@ -1,4 +1,3 @@
-/* eslint-disable security/detect-non-literal-fs-filename */
 import { exists, prereqs, runCLI } from '../src/test-utils/index.js';
 import { createTelemetryHelper } from '../src/test-utils/telemetry-helper.js';
 import { randomUUID } from 'node:crypto';

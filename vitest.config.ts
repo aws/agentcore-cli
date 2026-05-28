@@ -26,6 +26,9 @@ const textLoaderPlugin = {
 };
 
 export default defineConfig({
+  define: {
+    __PREVIEW__: process.env.BUILD_PREVIEW === '1' ? 'true' : 'false',
+  },
   resolve: {
     alias: {
       '@': path.resolve(__dirname, './src'),

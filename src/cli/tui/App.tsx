@@ -29,19 +29,18 @@ import { getCommandsForUI } from './utils/commands';
 import { useApp } from 'ink';
 import React, { useState } from 'react';
 
-// Capture cwd once at app initialization
-const cwd = getWorkingDirectory();
+// cwd is captured inside AppContent to avoid calling getWorkingDirectory at import time
 
 type Route =
   | { name: 'home' }
   | { name: 'help'; initialQuery?: string }
-  | { name: 'deploy' }
-  | { name: 'invoke' }
+  | { name: 'deploy'; diffMode?: boolean }
+  | { name: 'invoke'; sessionId?: string; userId?: string; headers?: Record<string, string>; bearerToken?: string }
   | { name: 'logs' }
   | { name: 'create' }
   | { name: 'add' }
   | { name: 'status' }
-  | { name: 'remove' }
+  | { name: 'remove'; screen?: 'all' }
   | { name: 'run' }
   | { name: 'run-eval'; from?: 'run' | 'evals' }
   | { name: 'run-batch-eval'; from?: 'run' | 'evals' }
@@ -65,14 +64,36 @@ type Route =
 // Commands that don't require being at the project root
 const PROJECT_ROOT_EXEMPT_COMMANDS = new Set(['create', 'update']);
 
-function AppContent() {
+export type RouteName = Route['name'];
+
+// Excluded: cli-only is a TUI-internal screen that tells users to use the CLI — we should never launch the TUI just to show that.
+export type InitialRoute = Exclude<Route, { name: 'cli-only' }>;
+
+function AppContent({
+  initialRoute,
+  actionOnBack,
+  isInteractive = true,
+}: {
+  initialRoute?: InitialRoute;
+  actionOnBack?: 'help' | 'exit';
+  isInteractive?: boolean;
+}) {
   const { exit } = useApp();
+  const cwd = getWorkingDirectory();
   // Start on help screen if project exists (show commands), otherwise home (show Quick Start)
   const inProject = projectExists();
   const wrongDirProjectRoot = getProjectRootMismatch();
-  const initialRoute: Route = inProject ? { name: 'help' } : { name: 'home' };
-  const [route, setRoute] = useState<Route>(initialRoute);
+  const defaultRoute: Route = inProject ? { name: 'help' } : { name: 'home' };
+  const [route, setRoute] = useState<Route>(initialRoute ?? defaultRoute);
   const [helpNotice, setHelpNotice] = useState<React.ReactNode | null>(null);
+
+  const handleBack = () => {
+    if (actionOnBack === 'exit') {
+      exit();
+    } else {
+      setRoute({ name: 'help' });
+    }
+  };
 
   // Get commands from commander program (hide 'create' when in project)
   const program = createProgram();
@@ -180,30 +201,40 @@ function AppContent() {
   if (route.name === 'deploy') {
     return (
       <DeployScreen
-        isInteractive={true}
-        onExit={() => setRoute({ name: 'help' })}
+        isInteractive={isInteractive}
+        diffMode={route.diffMode}
+        onExit={handleBack}
         onNavigate={command => setRoute({ name: command } as Route)}
       />
     );
   }
 
   if (route.name === 'invoke') {
-    return <InvokeScreen isInteractive={true} onExit={() => setRoute({ name: 'help' })} />;
+    return (
+      <InvokeScreen
+        isInteractive={isInteractive}
+        onExit={handleBack}
+        initialSessionId={route.sessionId}
+        initialUserId={route.userId}
+        initialHeaders={route.headers}
+        initialBearerToken={route.bearerToken}
+      />
+    );
   }
 
   if (route.name === 'logs') {
-    return <LogsScreen isInteractive={true} onExit={() => setRoute({ name: 'help' })} />;
+    return <LogsScreen isInteractive={isInteractive} onExit={handleBack} />;
   }
 
   if (route.name === 'status') {
-    return <StatusScreen isInteractive={true} onExit={() => setRoute({ name: 'help' })} />;
+    return <StatusScreen isInteractive={isInteractive} onExit={handleBack} />;
   }
 
   if (route.name === 'add') {
     return (
       <AddFlow
-        isInteractive={true}
-        onExit={() => setRoute({ name: 'help' })}
+        isInteractive={isInteractive}
+        onExit={handleBack}
         onDev={() => {
           setExitAction({ type: 'dev' });
           exit();
@@ -216,9 +247,10 @@ function AppContent() {
   if (route.name === 'remove') {
     return (
       <RemoveFlow
-        isInteractive={true}
-        onExit={() => setRoute({ name: 'help' })}
+        isInteractive={isInteractive}
+        onExit={handleBack}
         onNavigate={command => setRoute({ name: command } as Route)}
+        initialResourceType={route.screen}
       />
     );
   }
@@ -227,8 +259,8 @@ function AppContent() {
     return (
       <CreateScreen
         cwd={cwd}
-        isInteractive={true}
-        onExit={() => setRoute({ name: 'help' })}
+        isInteractive={isInteractive}
+        onExit={handleBack}
         onNavigate={({ command, workingDir }) => {
           process.chdir(workingDir);
           setRoute({ name: command } as Route);
@@ -243,7 +275,7 @@ function AppContent() {
         onRunEval={() => setRoute({ name: 'run-eval', from: 'run' })}
         onRunBatchEval={() => setRoute({ name: 'run-batch-eval', from: 'run' })}
         onRunRecommendation={() => setRoute({ name: 'recommend', from: 'run' })}
-        onExit={() => setRoute({ name: 'help' })}
+        onExit={handleBack}
       />
     );
   }
@@ -258,7 +290,7 @@ function AppContent() {
           if (view === 'batch-eval-history') setRoute({ name: 'batch-eval-history' });
           if (view === 'online-dashboard') setRoute({ name: 'online-evals' });
         }}
-        onExit={() => setRoute({ name: 'help' })}
+        onExit={handleBack}
       />
     );
   }
@@ -289,7 +321,7 @@ function AppContent() {
           if (view === 'run-recommendation') setRoute({ name: 'recommend', from: 'recommendations-hub' });
           if (view === 'recommendation-history') setRoute({ name: 'recommendation-history' });
         }}
-        onExit={() => setRoute({ name: 'help' })}
+        onExit={handleBack}
       />
     );
   }
@@ -304,23 +336,23 @@ function AppContent() {
   }
 
   if (route.name === 'eval-runs') {
-    return <EvalScreen isInteractive={true} onExit={() => setRoute({ name: 'evals' })} />;
+    return <EvalScreen isInteractive={isInteractive} onExit={() => setRoute({ name: 'evals' })} />;
   }
 
   if (route.name === 'online-evals') {
-    return <OnlineEvalDashboard isInteractive={true} onExit={() => setRoute({ name: 'evals' })} />;
+    return <OnlineEvalDashboard isInteractive={isInteractive} onExit={() => setRoute({ name: 'evals' })} />;
   }
 
   if (route.name === 'fetch-access') {
-    return <FetchAccessScreen isInteractive={true} onExit={() => setRoute({ name: 'help' })} />;
+    return <FetchAccessScreen isInteractive={isInteractive} onExit={handleBack} />;
   }
 
   if (route.name === 'validate') {
-    return <ValidateScreen isInteractive={true} onExit={() => setRoute({ name: 'help' })} />;
+    return <ValidateScreen isInteractive={isInteractive} onExit={handleBack} />;
   }
 
   if (route.name === 'package') {
-    return <PackageScreen isInteractive={true} onExit={() => setRoute({ name: 'help' })} />;
+    return <PackageScreen isInteractive={isInteractive} onExit={handleBack} />;
   }
 
   if (route.name === 'import') {
@@ -333,11 +365,11 @@ function AppContent() {
   }
 
   if (route.name === 'update') {
-    return <UpdateScreen isInteractive={true} onExit={() => setRoute({ name: 'help' })} />;
+    return <UpdateScreen isInteractive={isInteractive} onExit={handleBack} />;
   }
 
   if (route.name === 'config-bundle') {
-    return <ConfigBundleFlow onExit={() => setRoute({ name: 'help' })} />;
+    return <ConfigBundleFlow onExit={handleBack} />;
   }
 
   if (route.name === 'dataset') {
@@ -345,7 +377,7 @@ function AppContent() {
   }
 
   if (route.name === 'ab-test') {
-    return <ABTestPickerScreen onExit={() => setRoute({ name: 'help' })} />;
+    return <ABTestPickerScreen onExit={handleBack} />;
   }
 
   if (route.name === 'cli-only') {
@@ -356,7 +388,7 @@ function AppContent() {
           title={route.commandId}
           description={info.description}
           examples={info.examples}
-          onExit={() => setRoute({ name: 'help' })}
+          onExit={handleBack}
         />
       );
     }
@@ -365,10 +397,18 @@ function AppContent() {
   return null;
 }
 
-export function App() {
+export function App({
+  initialRoute,
+  actionOnBack,
+  isInteractive = true,
+}: {
+  initialRoute?: InitialRoute;
+  actionOnBack?: 'help' | 'exit';
+  isInteractive?: boolean;
+}) {
   return (
     <LayoutProvider>
-      <AppContent />
+      <AppContent initialRoute={initialRoute} actionOnBack={actionOnBack} isInteractive={isInteractive} />
     </LayoutProvider>
   );
 }

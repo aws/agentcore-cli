@@ -673,6 +673,7 @@ async function getOrCreateABTestRole(options: CreateABTestRoleOptions): Promise<
         ],
         Resource: [
           `${arnPrefix(region)}:logs:*:${accountId}:log-group:/aws/bedrock-agentcore/evaluations/*`,
+          `${arnPrefix(region)}:logs:*:${accountId}:log-group:/aws/bedrock-agentcore/runtimes/*`,
           `${arnPrefix(region)}:logs:*:${accountId}:log-group:aws/spans`,
           `${arnPrefix(region)}:logs:*:${accountId}:log-group:aws/spans:*`,
         ],

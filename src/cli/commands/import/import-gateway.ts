@@ -18,9 +18,9 @@ import {
   listAllGatewayTargets,
   listAllGateways,
 } from '../../aws/agentcore-control';
+import { ANSI } from '../../constants';
 import { isAccessDeniedError } from '../../errors';
 import { withCommandRunTelemetry } from '../../telemetry/cli-command-run.js';
-import { ANSI } from './constants';
 import { executeCdkImportPipeline } from './import-pipeline';
 import {
   failResult,

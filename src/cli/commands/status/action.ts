@@ -5,6 +5,7 @@ import { getAgentRuntimeStatus } from '../../aws';
 import { getEvaluator, getOnlineEvaluationConfig } from '../../aws/agentcore-control';
 import { dnsSuffix } from '../../aws/partition';
 import { getErrorMessage } from '../../errors';
+import { isPreviewEnabled } from '../../feature-flags';
 import { ExecLogger } from '../../logging';
 import type { ResourceDeploymentState } from './constants';
 import { buildRuntimeInvocationUrl } from './constants';
@@ -24,6 +25,7 @@ export interface ResourceStatusEntry {
     | 'config-bundle'
     | 'ab-test'
     | 'dataset'
+    | 'harness'
     | 'runtime-endpoint';
   name: string;
   deploymentState: ResourceDeploymentState;
@@ -296,6 +298,16 @@ export function computeResourceStatuses(
     getParentName: item => item.agentName,
   });
 
+  const harnesses = isPreviewEnabled()
+    ? diffResourceSet({
+        resourceType: 'harness',
+        localItems: project.harnesses ?? [],
+        deployedRecord: resources?.harnesses ?? {},
+        getIdentifier: deployed => deployed.harnessArn,
+        getLocalDetail: () => undefined,
+      })
+    : [];
+
   return [
     ...agents,
     ...runtimeEndpoints,
@@ -309,6 +321,7 @@ export function computeResourceStatuses(
     ...datasets,
     ...configBundles,
     ...abTests,
+    ...harnesses,
   ];
 }
 

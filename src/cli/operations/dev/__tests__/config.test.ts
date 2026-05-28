@@ -24,6 +24,7 @@ describe('getDevConfig', () => {
       configBundles: [],
       abTests: [],
       httpGateways: [],
+      harnesses: [],
       datasets: [],
     };
 
@@ -56,6 +57,7 @@ describe('getDevConfig', () => {
       configBundles: [],
       abTests: [],
       httpGateways: [],
+      harnesses: [],
       datasets: [],
     };
 
@@ -87,6 +89,7 @@ describe('getDevConfig', () => {
       configBundles: [],
       abTests: [],
       httpGateways: [],
+      harnesses: [],
       datasets: [],
     };
 
@@ -124,6 +127,7 @@ describe('getDevConfig', () => {
       configBundles: [],
       abTests: [],
       httpGateways: [],
+      harnesses: [],
       datasets: [],
     };
 
@@ -156,6 +160,7 @@ describe('getDevConfig', () => {
       configBundles: [],
       abTests: [],
       httpGateways: [],
+      harnesses: [],
       datasets: [],
     };
 
@@ -189,6 +194,7 @@ describe('getDevConfig', () => {
       configBundles: [],
       abTests: [],
       httpGateways: [],
+      harnesses: [],
       datasets: [],
     };
 
@@ -222,6 +228,7 @@ describe('getDevConfig', () => {
       configBundles: [],
       abTests: [],
       httpGateways: [],
+      harnesses: [],
       datasets: [],
     };
 
@@ -255,6 +262,7 @@ describe('getDevConfig', () => {
       configBundles: [],
       abTests: [],
       httpGateways: [],
+      harnesses: [],
       datasets: [],
     };
 
@@ -288,6 +296,7 @@ describe('getDevConfig', () => {
       configBundles: [],
       abTests: [],
       httpGateways: [],
+      harnesses: [],
       datasets: [],
     };
 
@@ -320,6 +329,7 @@ describe('getDevConfig', () => {
       configBundles: [],
       abTests: [],
       httpGateways: [],
+      harnesses: [],
       datasets: [],
     };
 
@@ -352,6 +362,7 @@ describe('getDevConfig', () => {
       configBundles: [],
       abTests: [],
       httpGateways: [],
+      harnesses: [],
       datasets: [],
     };
 
@@ -384,6 +395,7 @@ describe('getDevConfig', () => {
       configBundles: [],
       abTests: [],
       httpGateways: [],
+      harnesses: [],
       datasets: [],
     };
 
@@ -416,6 +428,7 @@ describe('getDevConfig', () => {
       configBundles: [],
       abTests: [],
       httpGateways: [],
+      harnesses: [],
       datasets: [],
     };
 
@@ -449,6 +462,7 @@ describe('getDevConfig', () => {
       configBundles: [],
       abTests: [],
       httpGateways: [],
+      harnesses: [],
       datasets: [],
     };
 
@@ -495,6 +509,7 @@ describe('getAgentPort', () => {
       configBundles: [],
       abTests: [],
       httpGateways: [],
+      harnesses: [],
       datasets: [],
     };
 
@@ -517,6 +532,7 @@ describe('getAgentPort', () => {
       configBundles: [],
       abTests: [],
       httpGateways: [],
+      harnesses: [],
       datasets: [],
     };
 
@@ -544,6 +560,7 @@ describe('getDevSupportedAgents', () => {
       configBundles: [],
       abTests: [],
       httpGateways: [],
+      harnesses: [],
       datasets: [],
     };
 
@@ -574,6 +591,7 @@ describe('getDevSupportedAgents', () => {
       configBundles: [],
       abTests: [],
       httpGateways: [],
+      harnesses: [],
       datasets: [],
     };
 
@@ -614,6 +632,7 @@ describe('getDevSupportedAgents', () => {
       configBundles: [],
       abTests: [],
       httpGateways: [],
+      harnesses: [],
     };
 
     const supported = getDevSupportedAgents(project);
@@ -644,6 +663,7 @@ describe('getDevSupportedAgents', () => {
       configBundles: [],
       abTests: [],
       httpGateways: [],
+      harnesses: [],
       datasets: [],
     };
 
@@ -684,6 +704,7 @@ describe('getDevSupportedAgents', () => {
       configBundles: [],
       abTests: [],
       httpGateways: [],
+      harnesses: [],
       datasets: [],
     };
 

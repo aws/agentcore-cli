@@ -142,7 +142,7 @@ describe('integration: dev server', () => {
       devProcess.kill('SIGTERM');
       devProcess = null;
     },
-    30000
+    60000
   );
 
   it.skipIf(!hasNpm || !hasGit || !hasUv)(

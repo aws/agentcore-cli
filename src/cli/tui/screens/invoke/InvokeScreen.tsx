@@ -1,3 +1,4 @@
+import { isPreviewEnabled } from '../../../feature-flags';
 import { buildTraceConsoleUrl } from '../../../operations/traces';
 import { GradientText, LogLink, Panel, Screen, SelectList, TextInput } from '../../components';
 import { setExitMessage } from '../../exit-message';
@@ -9,12 +10,16 @@ interface InvokeScreenProps {
   /** Whether running in interactive TUI mode (from App.tsx) vs CLI mode */
   isInteractive: boolean;
   onExit: () => void;
+  /** Override the screen title (defaults to "AgentCore Invoke") */
+  title?: string;
   initialPrompt?: string;
   initialSessionId?: string;
   initialUserId?: string;
   /** Custom headers to forward to the agent runtime on every invocation */
   initialHeaders?: Record<string, string>;
   initialBearerToken?: string;
+  /** Pre-select a harness by name, skipping the agent selection screen (preview) */
+  initialHarnessName?: string;
 }
 
 type Mode = 'select-agent' | 'chat' | 'input' | 'token-input';
@@ -49,6 +54,8 @@ function formatConversation(
       lines.push({ text: `> ${msg.content}`, color: 'blue' });
     } else if (msg.isExec) {
       lines.push({ text: msg.content });
+    } else if (msg.isHint) {
+      lines.push({ text: msg.content, color: 'gray' });
     } else if (msg.parts && msg.parts.length > 0) {
       // Rich AGUI rendering: render each part with distinct visual treatment
       for (const part of msg.parts) {
@@ -133,12 +140,15 @@ function wrapColoredLines(lines: ColoredLine[], maxWidth: number): ColoredLine[]
 export function InvokeScreen({
   isInteractive: _isInteractive,
   onExit,
+  title: screenTitle = 'AgentCore Invoke',
   initialPrompt,
   initialSessionId,
   initialUserId,
   initialHeaders,
   initialBearerToken,
+  initialHarnessName,
 }: InvokeScreenProps) {
+  const preview = isPreviewEnabled();
   const {
     phase,
     config,
@@ -158,8 +168,14 @@ export function InvokeScreen({
     execCommand,
     newSession,
     fetchMcpTools,
-  } = useInvokeFlow({ initialSessionId, initialUserId, headers: initialHeaders, initialBearerToken });
-  const [mode, setMode] = useState<Mode>('select-agent');
+  } = useInvokeFlow({
+    initialSessionId,
+    initialUserId,
+    headers: initialHeaders,
+    initialBearerToken,
+    initialHarnessName,
+  });
+  const [mode, setMode] = useState<Mode>(initialHarnessName ? 'input' : 'select-agent');
   const [isExecInput, setIsExecInput] = useState(false);
   const [execInputEmpty, setExecInputEmpty] = useState(true);
   const [scrollOffset, setScrollOffset] = useState(0);
@@ -177,16 +193,21 @@ export function InvokeScreen({
   }, [sessionId, messages.length]);
 
   // Compute auth type early so hooks can reference it
-  const currentAgent = config?.runtimes[selectedAgent];
-  const isCustomJwt = currentAgent?.authorizerType === 'CUSTOM_JWT';
+  const totalInvokables = (config?.runtimes.length ?? 0) + (preview ? (config?.harnesses.length ?? 0) : 0);
+  const runtimeCount = config?.runtimes.length ?? 0;
+  const currentAgent = selectedAgent < runtimeCount ? config?.runtimes[selectedAgent] : undefined;
+  const currentHarness =
+    preview && selectedAgent >= runtimeCount ? config?.harnesses[selectedAgent - runtimeCount] : undefined;
+  const isCustomJwt = (currentAgent?.authorizerType ?? currentHarness?.authorizerType) === 'CUSTOM_JWT';
 
-  // Handle initial prompt - skip agent selection if only one agent
+  // Handle initial prompt - skip agent selection if only one invokable
   useEffect(() => {
     if (config && phase === 'ready') {
-      if (config.runtimes.length === 1 && mode === 'select-agent') {
+      if (totalInvokables === 1 && mode === 'select-agent') {
         const agent = config.runtimes[0];
-        const needsTokenScreen = agent?.authorizerType === 'CUSTOM_JWT' && !bearerToken && !initialBearerToken;
-        // Defer setState to avoid cascading renders within effect
+        const harness = config.runtimes.length === 0 ? config.harnesses[0] : undefined;
+        const authType = agent?.authorizerType ?? harness?.authorizerType;
+        const needsTokenScreen = authType === 'CUSTOM_JWT' && !bearerToken && !initialBearerToken;
         queueMicrotask(() => {
           setMode(needsTokenScreen ? 'token-input' : 'input');
         });
@@ -195,7 +216,22 @@ export function InvokeScreen({
         }
       }
     }
-  }, [config, phase, initialPrompt, messages.length, invoke, mode, bearerToken, initialBearerToken]);
+  }, [config, phase, initialPrompt, messages.length, invoke, mode, bearerToken, initialBearerToken, totalInvokables]);
+
+  // When entering via initialHarnessName (dev mode), redirect to token-input once config loads
+  useEffect(() => {
+    if (
+      initialHarnessName &&
+      config &&
+      phase === 'ready' &&
+      mode === 'input' &&
+      isCustomJwt &&
+      !bearerToken &&
+      !initialBearerToken
+    ) {
+      queueMicrotask(() => setMode('token-input'));
+    }
+  }, [initialHarnessName, config, phase, mode, isCustomJwt, bearerToken, initialBearerToken]);
 
   // Auto-exit when prompt was provided upfront and response completes
   useEffect(() => {
@@ -282,11 +318,16 @@ export function InvokeScreen({
           onExit();
           return;
         }
-        if (key.upArrow) selectAgent((selectedAgent - 1 + config.runtimes.length) % config.runtimes.length);
-        if (key.downArrow) selectAgent((selectedAgent + 1) % config.runtimes.length);
+        if (key.upArrow) selectAgent((selectedAgent - 1 + totalInvokables) % totalInvokables);
+        if (key.downArrow) selectAgent((selectedAgent + 1) % totalInvokables);
         if (key.return) {
           const chosen = config.runtimes[selectedAgent];
-          const needsTokenScreen = chosen?.authorizerType === 'CUSTOM_JWT' && !bearerToken && !initialBearerToken;
+          const chosenHarness =
+            preview && selectedAgent >= config.runtimes.length
+              ? config.harnesses[selectedAgent - config.runtimes.length]
+              : undefined;
+          const authType = chosen?.authorizerType ?? chosenHarness?.authorizerType;
+          const needsTokenScreen = authType === 'CUSTOM_JWT' && !bearerToken && !initialBearerToken;
           setMode(needsTokenScreen ? 'token-input' : 'input');
         }
         return;
@@ -299,7 +340,7 @@ export function InvokeScreen({
             justCancelledRef.current = false;
             return;
           }
-          if (config.runtimes.length > 1) {
+          if (totalInvokables > 1) {
             setMode('select-agent');
             return;
           }
@@ -316,7 +357,7 @@ export function InvokeScreen({
         }
 
         // New session
-        if (input === 'n' && phase === 'ready') {
+        if (key.ctrl && input === 'n' && phase === 'ready') {
           newSession();
           setScrollOffset(0);
           setUserScrolled(false);
@@ -352,7 +393,7 @@ export function InvokeScreen({
   // Error state - show error in main screen
   if (phase === 'error') {
     return (
-      <Screen title="AgentCore Invoke" onExit={onExit}>
+      <Screen title={screenTitle} onExit={onExit}>
         <Text color="red">{error}</Text>
       </Screen>
     );
@@ -363,7 +404,10 @@ export function InvokeScreen({
     return null;
   }
 
-  const agent = config.runtimes[selectedAgent];
+  const isHarnessSelected = preview && selectedAgent >= config.runtimes.length;
+  const agent = isHarnessSelected ? undefined : config.runtimes[selectedAgent];
+  const selectedHarness = isHarnessSelected ? config.harnesses[selectedAgent - config.runtimes.length] : undefined;
+  const selectedName = agent?.name ?? selectedHarness?.name;
   const traceUrl =
     mode !== 'select-agent' && agent?.supportsTraces
       ? buildTraceConsoleUrl({
@@ -373,18 +417,27 @@ export function InvokeScreen({
           agentName: agent.name,
         })
       : undefined;
-  const agentProtocol = agent?.protocol ?? 'HTTP';
+  const agentProtocol = isHarnessSelected ? undefined : (agent?.protocol ?? 'HTTP');
 
-  const agentItems = config.runtimes.map((a, i) => ({
-    id: String(i),
-    title: a.name,
-    description: `${a.protocol && a.protocol !== 'HTTP' ? `${a.protocol} · ` : ''}Runtime: ${a.state.runtimeId}`,
-  }));
+  const agentItems = [
+    ...config.runtimes.map((a, i) => ({
+      id: String(i),
+      title: a.name,
+      description: `${a.protocol && a.protocol !== 'HTTP' ? `${a.protocol} · ` : ''}Agent`,
+    })),
+    ...(preview
+      ? config.harnesses.map((h, i) => ({
+          id: String(config.runtimes.length + i),
+          title: h.name,
+          description: 'Harness',
+        }))
+      : []),
+  ];
 
-  const isMcp = agentProtocol === 'MCP';
+  const isMcp = !isHarnessSelected && agentProtocol === 'MCP';
 
   // Dynamic help text
-  const backOrQuit = config.runtimes.length > 1 ? 'Esc back' : 'Esc quit';
+  const backOrQuit = totalInvokables > 1 ? 'Esc back' : 'Esc quit';
   const helpText =
     mode === 'select-agent'
       ? '↑↓ select · Enter confirm · Esc quit'
@@ -399,9 +452,9 @@ export function InvokeScreen({
           : phase === 'invoking'
             ? '↑↓ scroll'
             : messages.length > 0
-              ? `↑↓ scroll · Enter invoke · N new session · ${backOrQuit}`
+              ? `↑↓ scroll · Enter invoke · Ctrl+N new session · ${backOrQuit}`
               : isMcp
-                ? `Enter to call a tool · N new session · ${backOrQuit}`
+                ? `Enter to call a tool · Ctrl+N new session · ${backOrQuit}`
                 : `Enter to send a message · ${backOrQuit}`;
 
   const headerContent = (
@@ -412,11 +465,11 @@ export function InvokeScreen({
       </Box>
       {mode !== 'select-agent' && (
         <Box>
-          <Text>Agent: </Text>
-          <Text color="cyan">{agent?.name}</Text>
+          <Text>{isHarnessSelected ? 'Harness: ' : 'Agent: '}</Text>
+          <Text color="cyan">{selectedName}</Text>
         </Box>
       )}
-      {mode !== 'select-agent' && agentProtocol !== 'HTTP' && (
+      {mode !== 'select-agent' && !isHarnessSelected && agentProtocol && agentProtocol !== 'HTTP' && (
         <Box>
           <Text>Protocol: </Text>
           <Text color="cyan">{agentProtocol}</Text>
@@ -453,10 +506,13 @@ export function InvokeScreen({
         </Text>
       )}
       {traceUrl && <Text dimColor>Note: Traces may take 2-3 minutes to appear in CloudWatch</Text>}
-      {mode !== 'select-agent' && agent?.networkMode === 'VPC' && (
+      {mode !== 'select-agent' && !isHarnessSelected && agent?.networkMode === 'VPC' && (
         <Text color="yellow">
           This agent uses VPC network mode. Ensure your VPC endpoints are configured for invocation.
         </Text>
+      )}
+      {mode !== 'select-agent' && isHarnessSelected && screenTitle === 'Dev' && (
+        <Text color="yellow">If you changed the harness config, redeploy to pick up changes: agentcore deploy</Text>
       )}
     </Box>
   );
@@ -464,7 +520,7 @@ export function InvokeScreen({
   // Agent selection mode
   if (mode === 'select-agent') {
     return (
-      <Screen title="AgentCore Invoke" onExit={onExit} helpText={helpText} headerContent={headerContent}>
+      <Screen title={screenTitle} onExit={onExit} helpText={helpText} headerContent={headerContent}>
         <Panel title="Select Agent" fullWidth>
           <SelectList items={agentItems} selectedIndex={selectedAgent} />
         </Panel>
@@ -481,7 +537,7 @@ export function InvokeScreen({
 
   return (
     <Screen
-      title="AgentCore Invoke"
+      title={screenTitle}
       onExit={onExit}
       helpText={helpText}
       headerContent={headerContent}
@@ -497,14 +553,16 @@ export function InvokeScreen({
               </Text>
             ))}
             {/* Thinking indicator - shows while waiting for response to start */}
-            {showThinking && <GradientText text="Thinking..." />}
+            {showThinking && <GradientText text={isExecInput ? 'Loading...' : 'Thinking...'} />}
           </Box>
         )}
 
         {/* Scroll indicator */}
         {needsScroll && (
           <Text dimColor>
-            [{effectiveOffset + 1}-{Math.min(effectiveOffset + displayHeight, totalLines)} of {totalLines}]
+            {effectiveOffset > 0 ? '▲ ' : '  '}
+            ↑↓ scroll
+            {effectiveOffset < maxScroll ? ' ▼' : '  '}
           </Text>
         )}
 

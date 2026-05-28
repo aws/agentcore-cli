@@ -85,6 +85,42 @@ describe('DatasetPrimitive', () => {
       }
     });
 
+    it('adds dataset with kmsKeyArn and persists to spec', async () => {
+      mockReadProjectSpec.mockResolvedValue(makeProject());
+      mockWriteProjectSpec.mockResolvedValue(undefined);
+      mockMkdir.mockResolvedValue(undefined);
+      mockCopyFile.mockResolvedValue(undefined);
+
+      const result = await primitive.add({
+        name: 'KmsDataset',
+        schemaType: 'AGENTCORE_EVALUATION_PREDEFINED_V1',
+        kmsKeyArn: 'arn:aws:kms:us-east-1:123456789012:key/12345678-1234-1234-1234-123456789012',
+      });
+
+      expect(result.success).toBe(true);
+
+      const writtenSpec = mockWriteProjectSpec.mock.calls[0]![0];
+      expect(writtenSpec.datasets[0].kmsKeyArn).toBe(
+        'arn:aws:kms:us-east-1:123456789012:key/12345678-1234-1234-1234-123456789012'
+      );
+    });
+
+    it('omits kmsKeyArn from spec when not provided', async () => {
+      mockReadProjectSpec.mockResolvedValue(makeProject());
+      mockWriteProjectSpec.mockResolvedValue(undefined);
+      mockMkdir.mockResolvedValue(undefined);
+      mockCopyFile.mockResolvedValue(undefined);
+
+      await primitive.add({
+        name: 'PlainDataset',
+        schemaType: 'AGENTCORE_EVALUATION_PREDEFINED_V1',
+      });
+
+      const writtenSpec = mockWriteProjectSpec.mock.calls[0]![0];
+      expect(writtenSpec.datasets[0].kmsKeyArn).toBeUndefined();
+      expect('kmsKeyArn' in writtenSpec.datasets[0]).toBe(false);
+    });
+
     it('returns error when readProjectSpec rejects', async () => {
       mockReadProjectSpec.mockRejectedValue(new Error('disk failure'));
 

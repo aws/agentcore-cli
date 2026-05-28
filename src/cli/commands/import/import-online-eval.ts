@@ -6,8 +6,8 @@ import {
   listAllOnlineEvaluationConfigs,
 } from '../../aws/agentcore-control';
 import { arnPrefix } from '../../aws/partition';
+import { ANSI } from '../../constants';
 import { withCommandRunTelemetry } from '../../telemetry/cli-command-run.js';
-import { ANSI } from './constants';
 import { failResult, findResourceInDeployedState, parseAndValidateArn } from './import-utils';
 import { executeResourceImport } from './resource-import';
 import type { ImportResourceOptions, ImportResourceResult, ResourceImportDescriptor } from './types';
