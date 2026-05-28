@@ -146,7 +146,7 @@ async function handleCreateHarnessCLI(options: CreateOptions): Promise<void> {
       agent_environment: 'harness' as const,
       has_agent: true,
       model_provider: standardize(ModelProviderEnum, options.modelProvider ?? 'bedrock'),
-      memory_type: standardize(MemoryType, options.harnessMemory === false ? 'none' : 'shortterm'),
+      memory_type: standardize(MemoryType, options.harnessMemory === false ? 'none' : 'longandshortterm'),
       build_type: standardize(TelemetryBuildType, options.container ? 'container' : 'codezip'),
       network_mode: standardize(NetworkModeEnum, options.networkMode ?? 'public'),
     },

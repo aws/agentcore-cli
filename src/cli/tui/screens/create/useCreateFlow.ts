@@ -271,7 +271,7 @@ export function useCreateFlow(cwd: string): CreateFlowState {
       ),
       memory_type: standardize(
         MemoryEnum,
-        isHarness ? (addHarnessConfig?.skipMemory ? 'none' : 'shortterm') : (addAgentConfig?.memory ?? 'none')
+        isHarness ? (addHarnessConfig?.skipMemory ? 'none' : 'longandshortterm') : (addAgentConfig?.memory ?? 'none')
       ),
       build_type: standardize(
         BuildType,
