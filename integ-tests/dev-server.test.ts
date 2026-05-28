@@ -109,6 +109,7 @@ describe('integration: dev server', () => {
         command: 'dev',
         dev_action: 'server',
         ui_mode: 'terminal',
+        agent_environment: 'runtime',
         exit_reason: 'success',
       });
       telemetry.clearEntries();
@@ -123,6 +124,7 @@ describe('integration: dev server', () => {
         command: 'dev',
         dev_action: 'invoke',
         ui_mode: 'terminal',
+        agent_environment: 'runtime',
         exit_reason: 'success',
         agent_protocol: 'http',
       });
@@ -135,6 +137,7 @@ describe('integration: dev server', () => {
       telemetry.assertMetricEmitted({
         command: 'dev',
         dev_action: 'invoke',
+        agent_environment: 'runtime',
         exit_reason: 'failure',
       });
 
@@ -162,6 +165,7 @@ describe('integration: dev server', () => {
       telemetry.assertMetricEmitted({
         command: 'dev',
         dev_action: 'server',
+        agent_environment: 'runtime',
         exit_reason: 'failure',
       });
     },
