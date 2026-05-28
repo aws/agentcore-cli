@@ -27,6 +27,52 @@ const vpcOptions = {
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
+// apiFormat validation
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('validateCreateHarnessOptions - apiFormat', () => {
+  it('accepts valid apiFormat for bedrock provider', () => {
+    const result = validateCreateHarnessOptions({ ...baseOptions, apiFormat: 'responses' }, makeCwd());
+    expect(result.valid).toBe(true);
+  });
+
+  it('accepts chat_completions format', () => {
+    const result = validateCreateHarnessOptions({ ...baseOptions, apiFormat: 'chat_completions' }, makeCwd());
+    expect(result.valid).toBe(true);
+  });
+
+  it('accepts converse_stream format', () => {
+    const result = validateCreateHarnessOptions({ ...baseOptions, apiFormat: 'converse_stream' }, makeCwd());
+    expect(result.valid).toBe(true);
+  });
+
+  it('rejects invalid apiFormat value', () => {
+    const result = validateCreateHarnessOptions({ ...baseOptions, apiFormat: 'invalid_format' }, makeCwd());
+    expect(result.valid).toBe(false);
+    expect(result.error).toContain('Invalid API format');
+  });
+
+  it('rejects apiFormat for non-bedrock provider', () => {
+    const result = validateCreateHarnessOptions(
+      {
+        ...baseOptions,
+        modelProvider: 'open_ai',
+        apiKeyArn: 'arn:aws:secretsmanager:us-east-1:123:secret:key',
+        apiFormat: 'responses',
+      },
+      makeCwd()
+    );
+    expect(result.valid).toBe(false);
+    expect(result.error).toContain('only supported for the bedrock provider');
+  });
+
+  it('passes when apiFormat is not specified', () => {
+    const result = validateCreateHarnessOptions(baseOptions, makeCwd());
+    expect(result.valid).toBe(true);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
 // EFS access point validation
 // ─────────────────────────────────────────────────────────────────────────────
 

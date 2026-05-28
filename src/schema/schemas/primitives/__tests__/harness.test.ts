@@ -691,4 +691,52 @@ describe('HarnessSpecSchema', () => {
     });
     expect(result.success).toBe(true);
   });
+
+  it('accepts bedrock model with apiFormat responses', () => {
+    const result = HarnessSpecSchema.safeParse({
+      ...minimalHarness,
+      model: { provider: 'bedrock', modelId: 'openai.gpt-oss-120b', apiFormat: 'responses' },
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it('accepts bedrock model with apiFormat chat_completions', () => {
+    const result = HarnessSpecSchema.safeParse({
+      ...minimalHarness,
+      model: { provider: 'bedrock', modelId: 'openai.gpt-oss-120b', apiFormat: 'chat_completions' },
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it('accepts bedrock model with apiFormat converse_stream', () => {
+    const result = HarnessSpecSchema.safeParse({
+      ...minimalHarness,
+      model: { provider: 'bedrock', modelId: 'anthropic.claude-v2', apiFormat: 'converse_stream' },
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it('rejects apiFormat for non-bedrock providers', () => {
+    const result = HarnessSpecSchema.safeParse({
+      ...minimalHarness,
+      model: {
+        provider: 'open_ai',
+        modelId: 'gpt-4o',
+        apiKeyArn: 'arn:aws:secretsmanager:us-east-1:123:secret:key',
+        apiFormat: 'responses',
+      },
+    });
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      expect(result.error.issues.some(i => i.message.includes('apiFormat is only supported'))).toBe(true);
+    }
+  });
+
+  it('rejects invalid apiFormat value', () => {
+    const result = HarnessSpecSchema.safeParse({
+      ...minimalHarness,
+      model: { provider: 'bedrock', modelId: 'anthropic.claude-v2', apiFormat: 'invalid_format' },
+    });
+    expect(result.success).toBe(false);
+  });
 });
