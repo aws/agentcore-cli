@@ -126,6 +126,7 @@ export const ErrorName = z.enum([
   'ServerError',
   'TimeoutError',
   'UnsupportedLanguageError',
+  'UserCancellationError',
   'ValidationError',
   'UnknownError',
 ]);

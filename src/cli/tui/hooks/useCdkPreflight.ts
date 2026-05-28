@@ -1,5 +1,5 @@
 import { ConfigIO, SecureCredentials, toError } from '../../../lib';
-import { AwsCredentialsError } from '../../../lib/errors/types';
+import { AwsCredentialsError, UserCancellationError } from '../../../lib/errors/types';
 import type { DeployedState } from '../../../schema';
 import { applyTargetRegionToEnv } from '../../aws';
 import { validateAwsCredentials } from '../../aws/account';
@@ -240,7 +240,7 @@ export function useCdkPreflight(options: PreflightOptions): PreflightResult {
   }, []);
 
   const cancelTeardown = useCallback(() => {
-    failPreflight(new Error('Teardown cancelled'));
+    failPreflight(new UserCancellationError());
     restoreRegionEnv();
   }, [restoreRegionEnv]);
 
