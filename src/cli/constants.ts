@@ -68,3 +68,8 @@ export const SCHEMA_VERSION = 1;
  * Default runtime endpoint name used in log group paths and console URLs.
  */
 export const DEFAULT_ENDPOINT_NAME = 'DEFAULT';
+
+/**
+ * Base image for generated Python Dockerfiles.
+ */
+export const PYTHON_BASE_IMAGE = 'public.ecr.aws/docker/library/python:3.12-slim-trixie';

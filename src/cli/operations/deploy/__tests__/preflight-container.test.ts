@@ -165,4 +165,19 @@ describe('validateContainerAgents', () => {
 
     warnSpy.mockRestore();
   });
+
+  it('does not warn when bookworm appears in a non-FROM line', () => {
+    mockedExistsSync.mockReturnValue(true);
+    mockedReadFileSync.mockReturnValue(
+      'FROM public.ecr.aws/docker/library/python:3.12-slim-trixie\n# migrated from slim-bookworm\nRUN pip install uv'
+    );
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+
+    const spec = makeSpec([{ name: 'my-agent', build: 'Container', codeLocation: dir('agents/my-agent') }]);
+
+    expect(() => validateContainerAgents(spec, CONFIG_ROOT)).not.toThrow();
+    expect(warnSpy).not.toHaveBeenCalled();
+
+    warnSpy.mockRestore();
+  });
 });

@@ -9,6 +9,7 @@ import type {
 } from '../../../schema';
 import { validateAwsCredentials } from '../../aws/account';
 import { arnPrefix } from '../../aws/partition';
+import { PYTHON_BASE_IMAGE } from '../../constants';
 import { ExecLogger } from '../../logging';
 import { setupPythonProject } from '../../operations/python/setup';
 import { executeCdkImportPipeline } from './import-pipeline';
@@ -383,7 +384,7 @@ export async function handleImport(options: ImportOptions): Promise<ImportResult
               fs.writeFileSync(
                 destDockerfile,
                 [
-                  'FROM public.ecr.aws/docker/library/python:3.12-slim-trixie',
+                  `FROM ${PYTHON_BASE_IMAGE}`,
                   'RUN pip install --no-cache-dir uv',
                   'WORKDIR /app',
                   '',

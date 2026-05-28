@@ -213,12 +213,15 @@ const DEPRECATED_BASE_IMAGES = ['slim-bookworm'];
 function warnDeprecatedBaseImage(dockerfilePath: string, agentName: string): void {
   try {
     const content = readFileSync(dockerfilePath, 'utf-8');
-    for (const image of DEPRECATED_BASE_IMAGES) {
-      if (content.includes(image)) {
-        console.warn(
-          `Warning: Agent "${agentName}" Dockerfile uses a base image containing "${image}" which is affected by ` +
-            `CVE-2026-42010 (GnuTLS authentication bypass). Update the FROM line to use python:3.12-slim-trixie.`
-        );
+    for (const line of content.split('\n')) {
+      if (!/^\s*FROM\s+/i.test(line)) continue;
+      for (const image of DEPRECATED_BASE_IMAGES) {
+        if (line.includes(image)) {
+          console.warn(
+            `Warning: Agent "${agentName}" Dockerfile uses a base image containing "${image}" which is affected by ` +
+              `CVE-2026-42010 (GnuTLS authentication bypass). Update the FROM line to use a Trixie-based variant.`
+          );
+        }
       }
     }
   } catch {
