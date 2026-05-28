@@ -1,8 +1,9 @@
-import type { HarnessModelProvider, NetworkMode, RuntimeAuthorizerType } from '../../../../schema';
+import type { BedrockApiFormat, HarnessModelProvider, NetworkMode, RuntimeAuthorizerType } from '../../../../schema';
+import { isPreviewEnabled } from '../../../feature-flags';
 import type { JwtConfig } from '../../components/jwt-config';
 import { HARNESS_FILESYSTEM_STEP_NAMES, useFilesystemMountState } from '../../hooks/useFilesystemMountState';
 import type { AddHarnessConfig, AddHarnessStep, AdvancedSetting, ContainerMode } from './types';
-import { DEFAULT_MODEL_IDS } from './types';
+import { DEFAULT_BEDROCK_MANTLE_MODEL_ID, DEFAULT_MODEL_IDS } from './types';
 import { useCallback, useMemo, useState } from 'react';
 
 const ADVANCED_SETTING_ORDER: AdvancedSetting[] = [
@@ -56,6 +57,10 @@ export function useAddHarnessWizard() {
 
   const allSteps = useMemo(() => {
     const steps: AddHarnessStep[] = ['name', 'model-provider'];
+
+    if (config.modelProvider === 'bedrock' && isPreviewEnabled()) {
+      steps.push('api-format');
+    }
 
     if (config.modelProvider !== 'bedrock') {
       steps.push('api-key-arn');
@@ -249,12 +254,24 @@ export function useAddHarnessWizard() {
   );
 
   const setModelProvider = useCallback((modelProvider: HarnessModelProvider) => {
-    setConfig(c => ({ ...c, modelProvider, modelId: DEFAULT_MODEL_IDS[modelProvider] }));
-    if (modelProvider !== 'bedrock') {
+    setConfig(c => ({ ...c, modelProvider, modelId: DEFAULT_MODEL_IDS[modelProvider], apiFormat: undefined }));
+    if (modelProvider === 'bedrock' && isPreviewEnabled()) {
+      setStep('api-format');
+    } else if (modelProvider !== 'bedrock') {
       setStep('api-key-arn');
     } else {
       setStep('container');
     }
+  }, []);
+
+  const setApiFormat = useCallback((apiFormat: BedrockApiFormat) => {
+    const isMantle = apiFormat !== 'converse_stream';
+    setConfig(c => ({
+      ...c,
+      apiFormat: isMantle ? apiFormat : undefined,
+      modelId: isMantle ? DEFAULT_BEDROCK_MANTLE_MODEL_ID : DEFAULT_MODEL_IDS.bedrock,
+    }));
+    setStep('container');
   }, []);
 
   const setApiKeyArn = useCallback(
@@ -532,6 +549,7 @@ export function useAddHarnessWizard() {
     goBack,
     setName,
     setModelProvider,
+    setApiFormat,
     setApiKeyArn,
     setContainerMode,
     setContainerUri,

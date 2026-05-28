@@ -68,6 +68,7 @@ async function main() {
     apiKeyArn?: string;
     efsAccessPoints?: { accessPointArn: string; mountPath: string }[];
     s3AccessPoints?: { accessPointArn: string; mountPath: string }[];
+    apiFormat?: 'converse_stream' | 'responses' | 'chat_completions';
   }[] = [];
   for (const entry of specAny.harnesses ?? []) {
     const harnessDir = path.resolve(projectRoot, entry.path);
@@ -86,6 +87,7 @@ async function main() {
         apiKeyArn: harnessSpec.model?.apiKeyArn,
         efsAccessPoints: harnessSpec.efsAccessPoints,
         s3AccessPoints: harnessSpec.s3AccessPoints,
+        apiFormat: harnessSpec.model?.apiFormat,
       });
     } catch (err) {
       throw new Error(

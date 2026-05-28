@@ -1,5 +1,6 @@
 import { APP_DIR, ConfigIO, type Result, findConfigRoot } from '../../lib';
 import type {
+  BedrockApiFormat,
   HarnessGatewayOutboundAuth,
   HarnessModelProvider,
   HarnessSpec,
@@ -27,6 +28,7 @@ export interface AddHarnessOptions {
   name: string;
   modelProvider: HarnessModelProvider;
   modelId: string;
+  apiFormat?: BedrockApiFormat;
   apiKeyArn?: string;
   systemPrompt?: string;
   skipMemory?: boolean;
@@ -151,6 +153,7 @@ export class HarnessPrimitive extends BasePrimitive<AddHarnessOptions, Removable
         model: {
           provider: options.modelProvider,
           modelId: options.modelId,
+          ...(options.apiFormat && { apiFormat: options.apiFormat }),
           ...(options.apiKeyArn && { apiKeyArn: options.apiKeyArn }),
         },
         tools,
@@ -349,6 +352,7 @@ export class HarnessPrimitive extends BasePrimitive<AddHarnessOptions, Removable
       .option('--name <name>', 'Harness name (start with letter, alphanumeric + underscores, max 48 chars)')
       .option('--model-provider <provider>', 'Model provider: bedrock, open_ai, gemini')
       .option('--model-id <id>', 'Model ID (e.g., anthropic.claude-3-5-sonnet-20240620-v1:0)')
+      .option('--api-format <format>', 'API format for Bedrock: converse_stream, responses, chat_completions')
       .option('--api-key-arn <arn>', 'API key ARN for non-Bedrock providers')
       .option('--container <uri-or-path>', 'Container image URI or path to a Dockerfile')
       .option('--no-memory', 'Skip auto-creating memory')
@@ -394,6 +398,7 @@ export class HarnessPrimitive extends BasePrimitive<AddHarnessOptions, Removable
           name?: string;
           modelProvider?: string;
           modelId?: string;
+          apiFormat?: string;
           apiKeyArn?: string;
           container?: string;
           memory?: boolean;
@@ -458,9 +463,13 @@ export class HarnessPrimitive extends BasePrimitive<AddHarnessOptions, Removable
                 process.exit(1);
               }
 
-              const { DEFAULT_MODEL_IDS } = await import('../tui/screens/harness/types');
+              const { DEFAULT_BEDROCK_MANTLE_MODEL_ID, DEFAULT_MODEL_IDS } =
+                await import('../tui/screens/harness/types');
               const provider = (cliOptions.modelProvider ?? 'bedrock') as HarnessModelProvider;
-              const modelId = cliOptions.modelId ?? DEFAULT_MODEL_IDS[provider];
+              const isMantleFormat =
+                cliOptions.apiFormat === 'responses' || cliOptions.apiFormat === 'chat_completions';
+              const modelId =
+                cliOptions.modelId ?? (isMantleFormat ? DEFAULT_BEDROCK_MANTLE_MODEL_ID : DEFAULT_MODEL_IDS[provider]);
 
               const containerOption = this.parseContainerFlag(cliOptions.container);
 
@@ -468,6 +477,7 @@ export class HarnessPrimitive extends BasePrimitive<AddHarnessOptions, Removable
                 name: cliOptions.name,
                 modelProvider: provider,
                 modelId,
+                apiFormat: cliOptions.apiFormat as BedrockApiFormat | undefined,
                 apiKeyArn: cliOptions.apiKeyArn,
                 containerUri: containerOption.containerUri,
                 dockerfilePath: containerOption.dockerfilePath,

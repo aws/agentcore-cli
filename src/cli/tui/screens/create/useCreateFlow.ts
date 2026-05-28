@@ -650,6 +650,7 @@ export function useCreateFlow(cwd: string): CreateFlowState {
                 name: addHarnessConfig.name,
                 modelProvider: addHarnessConfig.modelProvider,
                 modelId: addHarnessConfig.modelId,
+                apiFormat: addHarnessConfig.apiFormat,
                 apiKeyArn: addHarnessConfig.apiKeyArn,
                 skipMemory: addHarnessConfig.skipMemory,
                 containerUri: addHarnessConfig.containerUri,

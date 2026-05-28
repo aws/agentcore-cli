@@ -13,6 +13,7 @@ export interface CreateHarnessCliOptions {
   projectName?: string;
   modelProvider?: string;
   modelId?: string;
+  apiFormat?: string;
   apiKeyArn?: string;
   container?: string;
   noMemory?: boolean;
@@ -100,6 +101,19 @@ export function validateCreateHarnessOptions(options: CreateHarnessCliOptions, c
 
   if (options.modelProvider !== 'bedrock' && !options.apiKeyArn) {
     return { valid: false, error: `--api-key-arn is required for ${options.modelProvider} provider` };
+  }
+
+  if (options.apiFormat) {
+    const validFormats = ['converse_stream', 'responses', 'chat_completions'];
+    if (!validFormats.includes(options.apiFormat)) {
+      return {
+        valid: false,
+        error: `Invalid API format: ${options.apiFormat}. Use converse_stream, responses, or chat_completions`,
+      };
+    }
+    if (options.modelProvider !== 'bedrock') {
+      return { valid: false, error: '--api-format is only supported for the bedrock provider' };
+    }
   }
 
   // Validate EFS access point ARN/path pairs

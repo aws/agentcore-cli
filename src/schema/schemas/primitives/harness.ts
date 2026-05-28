@@ -30,11 +30,15 @@ export const HarnessNameSchema = z
 export const HarnessModelProviderSchema = z.enum(['bedrock', 'open_ai', 'gemini']);
 export type HarnessModelProvider = z.infer<typeof HarnessModelProviderSchema>;
 
+export const BedrockApiFormatSchema = z.enum(['converse_stream', 'responses', 'chat_completions']);
+export type BedrockApiFormat = z.infer<typeof BedrockApiFormatSchema>;
+
 export const HarnessModelSchema = z
   .object({
     provider: HarnessModelProviderSchema,
     modelId: z.string().min(1, 'Model ID is required'),
     apiKeyArn: z.string().optional(),
+    apiFormat: BedrockApiFormatSchema.optional(),
     temperature: z.number().min(0).max(2).optional(),
     topP: z.number().min(0).max(1).optional(),
     topK: z.number().min(0).max(1).optional(),
@@ -46,6 +50,13 @@ export const HarnessModelSchema = z
         code: z.ZodIssueCode.custom,
         message: 'topK is only supported for the "gemini" provider',
         path: ['topK'],
+      });
+    }
+    if (model.apiFormat !== undefined && model.provider !== 'bedrock') {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: 'apiFormat is only supported for the "bedrock" provider',
+        path: ['apiFormat'],
       });
     }
   });

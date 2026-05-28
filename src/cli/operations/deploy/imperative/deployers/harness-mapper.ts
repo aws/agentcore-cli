@@ -153,13 +153,14 @@ export async function mapHarnessSpecToCreateOptions(options: MapHarnessOptions):
 // ============================================================================
 
 function mapModel(model: HarnessSpec['model']): HarnessModelConfiguration {
-  const { provider, modelId, apiKeyArn, temperature, topP, topK, maxTokens } = model;
+  const { provider, modelId, apiKeyArn, apiFormat, temperature, topP, topK, maxTokens } = model;
 
   switch (provider) {
     case 'bedrock':
       return {
         bedrockModelConfig: {
           modelId,
+          ...(apiFormat && apiFormat !== 'converse_stream' && { apiFormat }),
           ...(temperature !== undefined && { temperature }),
           ...(topP !== undefined && { topP }),
           ...(maxTokens !== undefined && { maxTokens }),

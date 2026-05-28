@@ -50,6 +50,7 @@ export function AddHarnessFlow({ isInteractive = true, onExit, onBack, onDev, on
         name: config.name,
         modelProvider: config.modelProvider,
         modelId: config.modelId,
+        apiFormat: config.apiFormat,
         apiKeyArn: config.apiKeyArn,
         skipMemory: config.skipMemory,
         containerUri: config.containerUri,

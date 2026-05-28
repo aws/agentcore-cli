@@ -79,19 +79,21 @@ export { ABTestModeSchema, TargetRefSchema, GatewayFilterSchema } from './primit
 export type { HttpGatewayTarget } from './primitives/http-gateway';
 export { HttpGatewayTargetSchema } from './primitives/http-gateway';
 export type {
+  BedrockApiFormat,
   HarnessGatewayOutboundAuth,
   HarnessMemoryRef,
   HarnessModel,
-  HarnessSpec,
   HarnessModelProvider,
+  HarnessSpec,
 } from './primitives/harness';
 export {
+  BedrockApiFormatSchema,
   GatewayOAuthGrantTypeSchema,
   HarnessGatewayOutboundAuthSchema,
+  HarnessModelProviderSchema,
   HarnessNameSchema,
   HarnessSpecSchema,
   HarnessToolTypeSchema,
-  HarnessModelProviderSchema,
 } from './primitives/harness';
 
 // ============================================================================

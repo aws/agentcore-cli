@@ -72,6 +72,7 @@ export {
 } from './policy';
 
 export type {
+  BedrockApiFormat,
   HarnessGatewayOutboundAuth,
   HarnessMemoryRef,
   HarnessModel,
@@ -83,6 +84,7 @@ export type {
 } from './harness';
 export {
   AllowedToolSchema,
+  BedrockApiFormatSchema,
   GatewayOAuthGrantTypeSchema,
   HarnessGatewayOutboundAuthSchema,
   HarnessMemoryRefSchema,

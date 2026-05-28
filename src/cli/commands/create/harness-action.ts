@@ -1,5 +1,5 @@
 import { CONFIG_DIR } from '../../../lib';
-import type { HarnessModelProvider, NetworkMode } from '../../../schema';
+import type { BedrockApiFormat, HarnessModelProvider, NetworkMode } from '../../../schema';
 import { harnessPrimitive } from '../../primitives/registry';
 import { type ProgressCallback, createProject } from './action';
 import type { CreateResult } from './types';
@@ -12,6 +12,7 @@ export interface CreateHarnessProjectOptions {
   cwd: string;
   modelProvider: HarnessModelProvider;
   modelId: string;
+  apiFormat?: BedrockApiFormat;
   apiKeyArn?: string;
   skipMemory?: boolean;
   containerUri?: string;
@@ -59,6 +60,7 @@ export async function createProjectWithHarness(options: CreateHarnessProjectOpti
       name: options.name,
       modelProvider: options.modelProvider,
       modelId: options.modelId,
+      apiFormat: options.apiFormat,
       apiKeyArn: options.apiKeyArn,
       containerUri: options.containerUri,
       dockerfilePath: options.dockerfilePath,

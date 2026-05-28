@@ -1,4 +1,4 @@
-import type { HarnessModelProvider, NetworkMode, RuntimeAuthorizerType } from '../../../../schema';
+import type { BedrockApiFormat, HarnessModelProvider, NetworkMode, RuntimeAuthorizerType } from '../../../../schema';
 import type { JwtConfig } from '../../components/jwt-config';
 
 export type ContainerMode = 'none' | 'uri' | 'dockerfile';
@@ -6,6 +6,7 @@ export type ContainerMode = 'none' | 'uri' | 'dockerfile';
 export type AddHarnessStep =
   | 'name'
   | 'model-provider'
+  | 'api-format'
   | 'api-key-arn'
   | 'container'
   | 'container-uri'
@@ -43,6 +44,7 @@ export interface AddHarnessConfig {
   name: string;
   modelProvider: HarnessModelProvider;
   modelId: string;
+  apiFormat?: BedrockApiFormat;
   apiKeyArn?: string;
   skipMemory?: boolean;
   containerMode?: ContainerMode;
@@ -74,6 +76,7 @@ export interface AddHarnessConfig {
 export const HARNESS_STEP_LABELS: Record<AddHarnessStep, string> = {
   name: 'Name',
   'model-provider': 'Model provider',
+  'api-format': 'API format',
   'api-key-arn': 'API key ARN',
   container: 'Custom environment',
   'container-uri': 'Container URI',
@@ -114,6 +117,8 @@ export const DEFAULT_MODEL_IDS: Record<HarnessModelProvider, string> = {
   gemini: 'gemini-2.5-flash',
 };
 
+export const DEFAULT_BEDROCK_MANTLE_MODEL_ID = 'openai.gpt-oss-120b';
+
 export const MODEL_PROVIDER_OPTIONS = [
   { id: 'bedrock' as const, title: 'Amazon Bedrock', description: `Default: ${DEFAULT_MODEL_IDS.bedrock}` },
   {
@@ -125,6 +130,24 @@ export const MODEL_PROVIDER_OPTIONS = [
     id: 'gemini' as const,
     title: 'Google Gemini',
     description: `Default: ${DEFAULT_MODEL_IDS.gemini} (requires API key ARN)`,
+  },
+] as const;
+
+export const API_FORMAT_OPTIONS = [
+  {
+    id: 'converse_stream' as const,
+    title: 'Converse Stream',
+    description: 'Standard Bedrock Converse API (default)',
+  },
+  {
+    id: 'responses' as const,
+    title: 'Responses',
+    description: 'OpenAI Responses API via Bedrock Mantle',
+  },
+  {
+    id: 'chat_completions' as const,
+    title: 'Chat Completions',
+    description: 'OpenAI Chat Completions API via Bedrock Mantle',
   },
 ] as const;
 
