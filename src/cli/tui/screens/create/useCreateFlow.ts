@@ -26,6 +26,7 @@ import { credentialPrimitive } from '../../../primitives/registry';
 import { createDefaultProjectSpec } from '../../../project';
 import { withCommandRunTelemetry } from '../../../telemetry/cli-command-run.js';
 import {
+  AgentEnvironment,
   AgentFramework,
   AgentLanguage,
   AgentProtocol,
@@ -260,6 +261,7 @@ export function useCreateFlow(cwd: string): CreateFlowState {
     if (phase !== 'running') return;
 
     const attrs = {
+      agent_environment: standardize(AgentEnvironment, addHarnessConfig ? 'harness' : 'runtime'),
       agent_language: standardize(AgentLanguage, addAgentConfig?.language ?? 'Python'),
       agent_framework: standardize(AgentFramework, addAgentConfig?.framework),
       model_provider: standardize(ModelProvider, addAgentConfig?.modelProvider),

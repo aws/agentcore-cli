@@ -3,7 +3,8 @@ import { z } from 'zod';
 // Type-safe schema builder: rejects z.string() at compile time.
 // Only z.enum(), z.boolean(), z.number(), and z.literal() are allowed as field types.
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-type SafeField = z.ZodEnum<any> | z.ZodBoolean | z.ZodNumber | z.ZodLiteral<any>;
+type BaseSafeField = z.ZodEnum<any> | z.ZodBoolean | z.ZodNumber | z.ZodLiteral<any>;
+type SafeField = BaseSafeField | z.ZodOptional<BaseSafeField>;
 export function safeSchema<T extends Record<string, SafeField>>(shape: T) {
   return z.object(shape);
 }
@@ -71,6 +72,7 @@ export const FilterType = z.enum([
   'harness',
   'none',
 ]);
+export const AgentEnvironment = z.enum(['harness', 'runtime']);
 export const AgentFramework = z.enum(['strands', 'langchain_langgraph', 'googleadk', 'openaiagents']);
 export const GatewayTargetHost = z.enum(['lambda', 'agentcoreruntime']);
 export const GatewayTargetType = z.enum([
@@ -152,6 +154,7 @@ export type DeployMode = z.infer<typeof DeployModeSchema>;
   Keys are the field names as they appear in emitted metrics.
 */
 export const ATTRIBUTES = {
+  agent_environment: AgentEnvironment,
   dev_action: DevAction,
   agent_type: AgentType,
   attach_gateway_count: Count,

@@ -201,6 +201,7 @@ export const registerDev = (program: Command) => {
           const execResult = await withCommandRunTelemetry(
             'dev',
             {
+              agent_environment: 'runtime' as const,
               dev_action: 'exec' as const,
               ui_mode: 'terminal' as const,
               has_stream: false,
@@ -239,6 +240,7 @@ export const registerDev = (program: Command) => {
           const invokeResult = await withCommandRunTelemetry(
             'dev',
             {
+              agent_environment: 'runtime' as const,
               dev_action: 'invoke' as const,
               ui_mode: 'terminal' as const,
               has_stream: opts.stream ?? false,
@@ -301,6 +303,7 @@ export const registerDev = (program: Command) => {
         const serverResult = await withCommandRunTelemetry(
           'dev',
           {
+            agent_environment: 'runtime' as const,
             dev_action: 'server' as const,
             ui_mode: 'terminal' as const,
             has_stream: false,
@@ -353,6 +356,7 @@ export const registerDev = (program: Command) => {
             if (opts.logs) {
               // Preview: harness-only projects need deploy then print invoke instructions
               if (isPreviewEnabled() && supportedAgents.length === 0 && hasHarnesses) {
+                recorder.set({ agent_environment: 'harness' as const });
                 if (!opts.skipDeploy) {
                   await runCliDeploy();
                 }

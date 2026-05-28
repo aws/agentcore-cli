@@ -39,6 +39,7 @@ describe('COMMAND_SCHEMAS', () => {
   it('accepts valid deploy attrs', () => {
     const attrs = {
       runtime_count: 2,
+      harness_count: 1,
       memory_count: 1,
       credential_count: 0,
       evaluator_count: 0,
@@ -56,6 +57,7 @@ describe('COMMAND_SCHEMAS', () => {
     expect(() =>
       COMMAND_SCHEMAS.deploy.parse({
         runtime_count: -1,
+        harness_count: 0,
         memory_count: 0,
         credential_count: 0,
         evaluator_count: 0,
@@ -73,6 +75,7 @@ describe('COMMAND_SCHEMAS', () => {
     expect(() =>
       COMMAND_SCHEMAS.deploy.parse({
         runtime_count: 1.5,
+        harness_count: 0,
         memory_count: 0,
         credential_count: 0,
         evaluator_count: 0,
@@ -88,6 +91,7 @@ describe('COMMAND_SCHEMAS', () => {
 
   it('accepts valid create attrs', () => {
     const attrs = {
+      agent_environment: 'runtime',
       agent_language: 'python',
       agent_framework: 'strands',
       model_provider: 'bedrock',
@@ -104,6 +108,7 @@ describe('COMMAND_SCHEMAS', () => {
   it('rejects create attrs with invalid enum value', () => {
     expect(() =>
       COMMAND_SCHEMAS.create.parse({
+        agent_environment: 'runtime',
         agent_language: 'rust',
         agent_framework: 'strands',
         model_provider: 'bedrock',
@@ -132,6 +137,7 @@ describe('COMMAND_SCHEMAS', () => {
 
   it('accepts valid dev invoke attrs', () => {
     const attrs = {
+      agent_environment: 'runtime',
       dev_action: 'invoke',
       ui_mode: 'terminal',
       has_stream: true,
@@ -143,6 +149,7 @@ describe('COMMAND_SCHEMAS', () => {
 
   it('accepts valid dev server browser attrs', () => {
     const attrs = {
+      agent_environment: 'runtime',
       dev_action: 'server',
       ui_mode: 'browser',
       has_stream: false,
@@ -154,6 +161,7 @@ describe('COMMAND_SCHEMAS', () => {
 
   it('accepts dev exec attrs', () => {
     const attrs = {
+      agent_environment: 'runtime',
       dev_action: 'exec',
       ui_mode: 'terminal',
       has_stream: false,
@@ -166,6 +174,7 @@ describe('COMMAND_SCHEMAS', () => {
   it('rejects dev attrs with invalid action', () => {
     expect(() =>
       COMMAND_SCHEMAS.dev.parse({
+        agent_environment: 'runtime',
         dev_action: 'unknown',
         ui_mode: 'terminal',
         has_stream: false,
@@ -178,6 +187,7 @@ describe('COMMAND_SCHEMAS', () => {
   it('rejects dev attrs with invalid ui_mode', () => {
     expect(() =>
       COMMAND_SCHEMAS.dev.parse({
+        agent_environment: 'runtime',
         dev_action: 'server',
         ui_mode: 'headless',
         has_stream: false,
@@ -216,11 +226,12 @@ describe('type safety', () => {
   it('no command schema contains arbitrary string fields', () => {
     for (const [cmd, schema] of Object.entries(COMMAND_SCHEMAS)) {
       for (const [field, zodType] of Object.entries(schema.shape)) {
+        const inner = zodType instanceof z.ZodOptional ? zodType.unwrap() : zodType;
         const safe =
-          zodType instanceof z.ZodEnum ||
-          zodType instanceof z.ZodBoolean ||
-          zodType instanceof z.ZodNumber ||
-          zodType instanceof z.ZodLiteral;
+          inner instanceof z.ZodEnum ||
+          inner instanceof z.ZodBoolean ||
+          inner instanceof z.ZodNumber ||
+          inner instanceof z.ZodLiteral;
         expect(safe, `${cmd}.${field} is an unsafe type`).toBe(true);
       }
     }
@@ -240,6 +251,7 @@ describe('type safety', () => {
 describe('resilientParse', () => {
   it('passes valid attrs through unchanged', () => {
     const attrs = {
+      agent_environment: 'runtime',
       agent_language: 'python',
       agent_framework: 'strands',
       model_provider: 'bedrock',
@@ -273,14 +285,14 @@ describe('resilientParse', () => {
   it('defaults missing required fields to unknown', () => {
     const result = resilientParse(COMMAND_SCHEMAS.create, { agent_language: 'python' });
     expect(result.agent_language).toBe('python');
-    expect(result.agent_framework).toBe('unknown');
-    expect(result.model_provider).toBe('unknown');
+    expect(result.agent_environment).toBe('unknown');
+    expect(result.has_agent).toBe('unknown');
   });
 
   it('defaults all fields to unknown when all are invalid', () => {
     const result = resilientParse(COMMAND_SCHEMAS.create, {});
     for (const value of Object.values(result)) {
-      expect(value).toBe('unknown');
+      expect(value === 'unknown' || value === undefined).toBe(true);
     }
   });
 

@@ -22,6 +22,7 @@ import {
   mcpListTools,
 } from '../../../aws';
 import { invokeHarness } from '../../../aws/agentcore-harness';
+import { computeInvokeAttrs } from '../../../commands/invoke/utils';
 import { ANSI } from '../../../constants';
 import { getErrorMessage } from '../../../errors';
 import { isPreviewEnabled } from '../../../feature-flags';
@@ -35,7 +36,6 @@ import {
 } from '../../../operations/fetch-access';
 import { generateSessionId } from '../../../operations/session';
 import { withCommandRunTelemetry } from '../../../telemetry/cli-command-run.js';
-import { AgentProtocol, AuthType, standardize } from '../../../telemetry/schemas/common-shapes.js';
 import { useCallback, useEffect, useRef, useState } from 'react';
 
 /** Structured message part for rich AGUI event rendering */
@@ -138,12 +138,16 @@ export function useInvokeFlow(options: InvokeFlowOptions = {}): InvokeFlowState 
 
       const result = await withCommandRunTelemetry(
         'invoke',
-        {
-          has_stream: true,
-          has_session_id: !!initialSessionId,
-          auth_type: standardize(AuthType, initialBearerToken ? 'bearer_token' : 'sigv4'),
-          agent_protocol: standardize(AgentProtocol, firstProtocol),
-        },
+        computeInvokeAttrs({
+          preview: isPreviewEnabled(),
+          harnessName: initialHarnessName,
+          harnessCount: project?.harnesses?.length ?? 0,
+          runtimeCount: project?.runtimes.length ?? 0,
+          stream: true,
+          hasSessionId: !!initialSessionId,
+          bearerToken: initialBearerToken,
+          agentProtocol: firstProtocol,
+        }),
         async () => {
           if (!project) {
             return { success: false as const, error: new ResourceNotFoundError('No agentcore project found.') };

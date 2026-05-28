@@ -16,6 +16,7 @@ describe('computeDeployAttrs', () => {
 
     expect(computeDeployAttrs(projectSpec, 'diff')).toEqual({
       runtime_count: 2,
+      harness_count: 0,
       memory_count: 1,
       credential_count: 3,
       evaluator_count: 1,
@@ -31,6 +32,7 @@ describe('computeDeployAttrs', () => {
   it('returns zeros for empty spec', () => {
     expect(computeDeployAttrs({}, 'deploy')).toEqual({
       runtime_count: 0,
+      harness_count: 0,
       memory_count: 0,
       credential_count: 0,
       evaluator_count: 0,

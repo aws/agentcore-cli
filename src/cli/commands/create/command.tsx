@@ -245,6 +245,7 @@ async function handleCreateCLI(options: CreateOptions): Promise<void> {
   }
 
   const knownAttrs = {
+    agent_environment: 'runtime' as const,
     agent_language: standardize(AgentLanguage, options.language),
     agent_framework: standardize(AgentFramework, options.framework),
     model_provider: standardize(ModelProviderEnum, options.modelProvider),

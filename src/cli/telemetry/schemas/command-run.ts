@@ -1,4 +1,5 @@
 import {
+  AgentEnvironment,
   AgentFramework,
   AgentLanguage,
   AgentProtocol,
@@ -33,14 +34,15 @@ import {
 import { z } from 'zod';
 
 const CreateAttrs = safeSchema({
-  agent_language: AgentLanguage,
-  agent_framework: AgentFramework,
-  model_provider: ModelProvider,
-  memory_type: MemoryType,
-  agent_protocol: AgentProtocol,
-  build_type: BuildType,
-  agent_type: AgentType,
-  network_mode: NetworkMode,
+  agent_environment: AgentEnvironment,
+  agent_language: AgentLanguage.optional(),
+  agent_framework: AgentFramework.optional(),
+  model_provider: ModelProvider.optional(),
+  memory_type: MemoryType.optional(),
+  agent_protocol: AgentProtocol.optional(),
+  build_type: BuildType.optional(),
+  agent_type: AgentType.optional(),
+  network_mode: NetworkMode.optional(),
   has_agent: z.boolean(),
 });
 
@@ -95,6 +97,7 @@ const AddPolicyAttrs = safeSchema({
 
 const DeployAttrs = safeSchema({
   runtime_count: Count,
+  harness_count: Count,
   memory_count: Count,
   credential_count: Count,
   evaluator_count: Count,
@@ -107,18 +110,20 @@ const DeployAttrs = safeSchema({
 });
 
 const DevAttrs = safeSchema({
+  agent_environment: AgentEnvironment,
   dev_action: DevAction,
   ui_mode: UiMode,
   has_stream: z.boolean(),
-  agent_protocol: AgentProtocol,
+  agent_protocol: AgentProtocol.optional(),
   invoke_count: Count,
 });
 
 const InvokeAttrs = safeSchema({
+  agent_environment: AgentEnvironment,
   has_stream: z.boolean(),
   has_session_id: z.boolean(),
   auth_type: AuthType,
-  agent_protocol: AgentProtocol,
+  agent_protocol: AgentProtocol.optional(),
 });
 
 const StatusAttrs = safeSchema({ filter_type: FilterType, filter_state: FilterState });
