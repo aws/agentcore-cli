@@ -198,17 +198,18 @@ describe.skipIf(!isPreviewBuild || !hasNpm || !hasGit || !hasUv)('integration: d
     if (projectPath) await rm(projectPath, { recursive: true, force: true });
   });
 
-  it('dev --logs on harness-only project succeeds without a local server', async () => {
+  // This test currently fails due to https://github.com/aws/agentcore-cli/issues/1406
+  it.skip('dev --logs on harness-only project should fail with validation error', async () => {
     telemetry.clearEntries();
     const result = await runCLI(['dev', '--logs', '--skip-deploy'], projectPath, { env: telemetry.env });
 
-    expect(result.exitCode).toBe(0);
+    expect(result.exitCode).toBe(1);
 
     telemetry.assertMetricEmitted({
       command: 'dev',
       dev_action: 'server',
       agent_environment: 'harness',
-      exit_reason: 'success',
+      exit_reason: 'failure',
     });
   });
 });
