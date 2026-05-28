@@ -5,8 +5,9 @@
  * via the SigV4 API client. Harness role ARNs are resolved from CDK
  * stack outputs, and harness specs are read from disk (harness.json).
  */
-import type { HarnessDeployedState, HarnessSpec, Memory } from '../../../../../schema';
+import type { HarnessDeployedState, HarnessMemoryRef, HarnessSpec, Memory } from '../../../../../schema';
 import { HarnessSpecSchema } from '../../../../../schema';
+import type { DeployedResourceState } from '../../../../../schema/schemas/deployed-state';
 import type {
   CreateHarnessResult,
   Harness,
@@ -59,6 +60,20 @@ async function computeHarnessHash(
     }
   }
   return hash.digest('hex').slice(0, 16);
+}
+
+function resolveMemorySpec(
+  memories: Memory[] | undefined,
+  memoryRef: HarnessMemoryRef | undefined,
+  deployedResources: DeployedResourceState | undefined
+): Memory | undefined {
+  if (!memoryRef) return undefined;
+  if (memoryRef.name) return memories?.find(m => m.name === memoryRef.name);
+  if (memoryRef.arn && deployedResources?.memories) {
+    const entry = Object.entries(deployedResources.memories).find(([, v]) => v.memoryArn === memoryRef.arn);
+    if (entry) return memories?.find(m => m.name === entry[0]);
+  }
+  return undefined;
 }
 
 // ============================================================================
@@ -140,7 +155,7 @@ export class HarnessDeployer implements ImperativeDeployer<HarnessDeployedStateM
 
       const deployedResources = deployedState.targets?.[targetName]?.resources;
       const existingHarness = deployedHarnesses[entry.name];
-      const memorySpec = projectSpec.memories?.find(m => m.name === harnessSpec.memory?.name);
+      const memorySpec = resolveMemorySpec(projectSpec.memories, harnessSpec.memory, deployedResources);
 
       const configHash = await computeHarnessHash(harnessDir, harnessSpec, executionRoleArn, memorySpec);
 
