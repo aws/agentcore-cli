@@ -273,14 +273,7 @@ export function useCreateFlow(cwd: string): CreateFlowState {
         MemoryEnum,
         isHarness ? (addHarnessConfig?.skipMemory ? 'none' : 'longandshortterm') : (addAgentConfig?.memory ?? 'none')
       ),
-      build_type: standardize(
-        BuildType,
-        isHarness
-          ? addHarnessConfig?.containerMode && addHarnessConfig.containerMode !== 'none'
-            ? 'container'
-            : 'codezip'
-          : (addAgentConfig?.buildType ?? 'CodeZip')
-      ),
+      build_type: isHarness ? undefined : standardize(BuildType, addAgentConfig?.buildType ?? 'CodeZip'),
       network_mode: standardize(
         NetworkMode,
         isHarness ? (addHarnessConfig?.networkMode ?? 'PUBLIC') : (addAgentConfig?.networkMode ?? 'PUBLIC')
