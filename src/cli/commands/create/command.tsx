@@ -141,7 +141,7 @@ async function handleCreateHarnessCLI(options: CreateOptions): Promise<void> {
 
   const result = await withCommandRunTelemetry(
     'create',
-    { agent_environment: 'harness' as const, has_agent: false },
+    { agent_environment: 'harness' as const, has_agent: true },
     async () => {
       const validation = validateCreateHarnessOptions(
         {
@@ -207,11 +207,11 @@ async function handleCreateHarnessCLI(options: CreateOptions): Promise<void> {
   );
 
   if (options.json) {
-    console.log(JSON.stringify(result));
+    console.log(JSON.stringify(serializeResult(result)));
   } else if (result.success) {
     printCreateHarnessSummary(projectName!, name!);
   } else {
-    console.error((result as { error?: Error }).error?.message ?? 'Create failed');
+    console.error(result.error instanceof Error ? result.error.message : 'Create failed');
   }
   process.exit(result.success ? 0 : 1);
 }

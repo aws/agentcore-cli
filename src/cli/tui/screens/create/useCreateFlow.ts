@@ -260,17 +260,22 @@ export function useCreateFlow(cwd: string): CreateFlowState {
   useEffect(() => {
     if (phase !== 'running') return;
 
+    const isHarness = addHarnessConfig !== null;
     const attrs = {
-      agent_environment: standardize(AgentEnvironment, addHarnessConfig ? 'harness' : 'runtime'),
-      agent_language: standardize(AgentLanguage, addAgentConfig?.language ?? 'Python'),
-      agent_framework: standardize(AgentFramework, addAgentConfig?.framework),
-      model_provider: standardize(ModelProvider, addAgentConfig?.modelProvider),
-      memory_type: standardize(MemoryEnum, addAgentConfig?.memory ?? 'none'),
-      agent_protocol: standardize(AgentProtocol, addAgentConfig?.protocol ?? 'HTTP'),
-      build_type: standardize(BuildType, addAgentConfig?.buildType ?? 'CodeZip'),
-      agent_type: standardize(AgentType, addAgentConfig?.agentType ?? 'create'),
-      network_mode: standardize(NetworkMode, addAgentConfig?.networkMode ?? 'PUBLIC'),
-      has_agent: addAgentConfig !== null,
+      agent_environment: standardize(AgentEnvironment, isHarness ? 'harness' : 'runtime'),
+      has_agent: true,
+      ...(isHarness
+        ? {}
+        : {
+            agent_language: standardize(AgentLanguage, addAgentConfig?.language ?? 'Python'),
+            agent_framework: standardize(AgentFramework, addAgentConfig?.framework),
+            model_provider: standardize(ModelProvider, addAgentConfig?.modelProvider),
+            memory_type: standardize(MemoryEnum, addAgentConfig?.memory ?? 'none'),
+            agent_protocol: standardize(AgentProtocol, addAgentConfig?.protocol ?? 'HTTP'),
+            build_type: standardize(BuildType, addAgentConfig?.buildType ?? 'CodeZip'),
+            agent_type: standardize(AgentType, addAgentConfig?.agentType ?? 'create'),
+            network_mode: standardize(NetworkMode, addAgentConfig?.networkMode ?? 'PUBLIC'),
+          }),
     };
 
     const run = async (): Promise<{ success: true } | { success: false; error: Error }> => {

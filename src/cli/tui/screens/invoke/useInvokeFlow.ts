@@ -142,7 +142,7 @@ export function useInvokeFlow(options: InvokeFlowOptions = {}): InvokeFlowState 
           preview: isPreviewEnabled(),
           harnessName: initialHarnessName,
           harnessCount: project?.harnesses?.length ?? 0,
-          runtimeCount: project?.runtimes.length ?? 0,
+          runtimeCount: project?.runtimes?.length ?? 0,
           stream: true,
           hasSessionId: !!initialSessionId,
           bearerToken: initialBearerToken,

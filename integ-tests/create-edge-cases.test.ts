@@ -227,7 +227,7 @@ describe.skipIf(!isPreviewBuild || !prereqs.npm || !prereqs.git)('integration: c
       command: 'create',
       exit_reason: 'success',
       agent_environment: 'harness',
-      has_agent: 'false',
+      has_agent: 'true',
     });
   });
 });
