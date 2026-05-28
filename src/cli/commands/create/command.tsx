@@ -17,7 +17,7 @@ import {
   AgentFramework,
   AgentLanguage,
   AgentProtocol,
-  AgentType,
+  AgentSource,
   MemoryType,
   ModelProvider as ModelProviderEnum,
   NetworkMode as NetworkModeEnum,
@@ -251,7 +251,7 @@ async function handleCreateCLI(options: CreateOptions): Promise<void> {
     memory_type: standardize(MemoryType, options.memory ?? 'none'),
     agent_protocol: standardize(AgentProtocol, options.protocol ?? 'http'),
     build_type: standardize(TelemetryBuildType, options.build ?? 'codezip'),
-    agent_type: standardize(AgentType, options.type ?? 'create'),
+    agent_source: standardize(AgentSource, options.type ?? 'create'),
     network_mode: standardize(NetworkModeEnum, options.networkMode ?? 'public'),
     has_agent: options.agent !== false,
   };

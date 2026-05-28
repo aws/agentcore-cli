@@ -46,7 +46,7 @@ export const Count = z.number().int().nonnegative();
 
 export const DevAction = z.enum(['server', 'invoke', 'exec']);
 export const UiMode = z.enum(['browser', 'terminal']);
-export const AgentType = z.enum(['create', 'byo', 'import']);
+export const AgentSource = z.enum(['create', 'byo', 'import']);
 export const AttachMode = z.enum(['log_only', 'enforce']);
 export const AuthType = z.enum(['sigv4', 'bearer_token']);
 export const AuthorizerType = z.enum(['aws_iam', 'custom_jwt', 'none']);
@@ -153,7 +153,7 @@ export type DeployMode = z.infer<typeof DeployModeSchema>;
 */
 export const ATTRIBUTES = {
   dev_action: DevAction,
-  agent_type: AgentType,
+  agent_source: AgentSource,
   attach_gateway_count: Count,
   attach_mode: AttachMode,
   auth_type: AuthType,
