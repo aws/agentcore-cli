@@ -203,10 +203,9 @@ export function createHarnessE2ESuite(cfg: HarnessE2EConfig) {
           async () => {
             try {
               const result = await getHarness({ region, harnessId });
-              expect(
-                ['DELETING', 'DELETED', 'DELETE_FAILED'],
-                `Expected DELETING, DELETED, or DELETE_FAILED, got ${result.harness.status}`
-              ).toContain(result.harness.status);
+              expect(['DELETING', 'DELETED'], `Expected DELETING or DELETED, got ${result.harness.status}`).toContain(
+                result.harness.status
+              );
             } catch (err: unknown) {
               const message = err instanceof Error ? err.message : String(err);
               expect(
