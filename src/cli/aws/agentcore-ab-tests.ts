@@ -5,7 +5,7 @@
  * with direct HTTP requests and SigV4 signing.
  */
 import { getCredentialProvider } from './account';
-import { dnsSuffix } from './partition';
+import { dataPlaneEndpoint } from './stage-endpoint';
 import { Sha256 } from '@aws-crypto/sha256-js';
 import { defaultProvider } from '@aws-sdk/credential-provider-node';
 import { HttpRequest } from '@smithy/protocol-http';
@@ -198,13 +198,6 @@ export interface ListABTestsResult {
 // HTTP signing helpers
 // ============================================================================
 
-function getDataPlaneEndpoint(region: string): string {
-  const stage = process.env.AGENTCORE_STAGE?.toLowerCase();
-  if (stage === 'beta') return `https://beta.${region}.elcapdp.genesis-primitives.aws.dev`;
-  if (stage === 'gamma') return `https://gamma.${region}.elcapdp.genesis-primitives.aws.dev`;
-  return `https://bedrock-agentcore.${region}.${dnsSuffix(region)}`;
-}
-
 async function signedRequestToEndpoint(
   endpoint: string,
   options: {
@@ -263,7 +256,7 @@ async function signedRequestToEndpoint(
 
 /** Data plane request — used for GetABTest (includes results/metrics). */
 async function dpRequest(options: { region: string; method: string; path: string; body?: string }): Promise<unknown> {
-  return signedRequestToEndpoint(getDataPlaneEndpoint(options.region), options);
+  return signedRequestToEndpoint(dataPlaneEndpoint(options.region), options);
 }
 
 // ============================================================================

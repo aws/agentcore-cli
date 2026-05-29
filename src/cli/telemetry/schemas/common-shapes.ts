@@ -124,6 +124,7 @@ export const ErrorName = z.enum([
   'PollTimeoutError',
   'ResourceNotFoundError',
   'ServerError',
+  'ShellKickedError',
   'TimeoutError',
   'UnsupportedLanguageError',
   'ValidationError',
@@ -131,6 +132,16 @@ export const ErrorName = z.enum([
 ]);
 
 export const ErrorSource = z.enum(['user', 'client', 'service', 'unknown']);
+
+export const ErrorCategory = z.enum([
+  'ConfigError',
+  'CredentialsError',
+  'PackagingError',
+  'ProjectError',
+  'ServiceError',
+  'ConnectionError',
+  'UnknownError',
+]);
 
 // Common result shapes — reusable across metrics
 export const SuccessResult = z.object({ exit_reason: z.literal('success') });

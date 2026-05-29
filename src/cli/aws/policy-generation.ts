@@ -6,7 +6,7 @@ import {
   StartPolicyGenerationCommand,
   waitUntilPolicyGenerationCompleted,
 } from '@aws-sdk/client-bedrock-agentcore-control';
-import { WaiterState } from '@smithy/core/client';
+import { WaiterState } from '@smithy/util-waiter';
 
 export interface StartPolicyGenerationOptions {
   policyEngineId: string;

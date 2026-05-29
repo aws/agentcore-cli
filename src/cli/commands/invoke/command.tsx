@@ -5,6 +5,7 @@ import { AgentProtocol, AuthType, standardize } from '../../telemetry/schemas/co
 import { COMMAND_DESCRIPTIONS } from '../../tui/copy';
 import { requireProject, requireTTY } from '../../tui/guards';
 import { InvokeScreen } from '../../tui/screens/invoke';
+import { handleShellSession, loadExecContext } from '../exec/action';
 import { parseHeaderFlags } from '../shared/header-utils';
 import { type InvokeContext, handleInvoke, loadInvokeConfig } from './action';
 import { resolvePrompt } from './resolve-prompt';
@@ -96,6 +97,77 @@ function printInvokeResult(result: InvokeResult, options: InvokeOptions): void {
   }
 }
 
+interface InvokeTUIOptions {
+  sessionId?: string;
+  userId?: string;
+  headers?: Record<string, string>;
+  bearerToken?: string;
+  isResume?: boolean;
+}
+
+/** Mount InvokeScreen in a loop. When the user presses 's', unmount Ink, run a PTY shell, then remount. */
+async function runInvokeTUI(options: InvokeTUIOptions): Promise<void> {
+  let resumeSessionId = options.sessionId;
+  let isResume = options.isResume ?? false;
+  while (true) {
+    const execRequest = await waitForInvokeOrExec({ ...options, sessionId: resumeSessionId, isResume });
+    if (!execRequest) break; // user exited normally
+
+    resumeSessionId = execRequest.sessionId;
+    isResume = true; // subsequent mounts after a PTY detour are always resumes
+
+    // PTY detour — Ink unmounted before handleShellSession so raw mode works.
+    // Clear the screen so Ink's rendered content doesn't bleed into the PTY viewport.
+    try {
+      process.stdout.write('\x1b[2J\x1b[H');
+      const ctx = await loadExecContext({ runtimeArn: execRequest.runtimeArn, region: execRequest.region });
+      await handleShellSession(ctx, {
+        runtimeArn: execRequest.runtimeArn,
+        sessionId: execRequest.sessionId,
+      });
+    } catch (err) {
+      process.stderr.write(`\n[shell error: ${getErrorMessage(err)}]\n`);
+    }
+    // Clear PTY output so Ink remounts on a clean screen.
+    process.stdout.write('\x1b[2J\x1b[H');
+    // Loop: remount InvokeScreen so user can continue chatting
+  }
+}
+
+interface ExecRequest {
+  runtimeArn: string;
+  region: string;
+  sessionId?: string;
+}
+
+function waitForInvokeOrExec(options: InvokeTUIOptions): Promise<ExecRequest | null> {
+  return new Promise<ExecRequest | null>(resolve => {
+    let execPending: ExecRequest | null = null;
+
+    const { waitUntilExit, unmount } = render(
+      <InvokeScreen
+        isInteractive={true}
+        onExit={() => {
+          unmount();
+        }}
+        initialSessionId={options.sessionId}
+        isResume={options.isResume}
+        initialUserId={options.userId}
+        initialHeaders={options.headers}
+        initialBearerToken={options.bearerToken}
+        onExec={result => {
+          execPending = { runtimeArn: result.runtimeArn, region: result.region, sessionId: result.sessionId };
+          unmount();
+        }}
+      />
+    );
+
+    void waitUntilExit().then(() => {
+      resolve(execPending);
+    });
+  });
+}
+
 export const registerInvoke = (program: Command) => {
   program
     .command('invoke')
@@ -118,7 +190,10 @@ export const registerInvoke = (program: Command) => {
     .option('--stream', 'Stream response in real-time (TUI streams by default) [non-interactive]')
     .option('--tool <name>', 'MCP tool name (use with "call-tool" prompt) [non-interactive]')
     .option('--input <json>', 'MCP tool arguments as JSON (use with --tool) [non-interactive]')
-    .option('--exec', 'Execute a shell command in the runtime container [non-interactive]')
+    .option(
+      '--exec',
+      'Execute a shell command in the runtime container (use `agentcore exec` instead) [non-interactive]'
+    )
     .option('--timeout <seconds>', 'Timeout in seconds for --exec commands [non-interactive]', parseInt)
     .option(
       '-H, --header <header>',
@@ -230,7 +305,7 @@ export const registerInvoke = (program: Command) => {
               json: cliOptions.json,
               stream: cliOptions.stream,
             });
-            process.exit(result.success ? 0 : 1);
+            process.exit(result.exitCode ?? (result.success ? 0 : 1));
           } else {
             // No CLI options - interactive TUI mode (headers still passed if provided)
             requireTTY();
@@ -250,17 +325,12 @@ export const registerInvoke = (program: Command) => {
                 agent_protocol: standardize(AgentProtocol, resolveProtocol({}, agentProtocol)),
               },
               async (): Promise<Result> => {
-                const { waitUntilExit, unmount } = render(
-                  <InvokeScreen
-                    isInteractive={true}
-                    onExit={() => unmount()}
-                    initialSessionId={cliOptions.sessionId}
-                    initialUserId={cliOptions.userId}
-                    initialHeaders={headers}
-                    initialBearerToken={cliOptions.bearerToken}
-                  />
-                );
-                await waitUntilExit();
+                await runInvokeTUI({
+                  sessionId: cliOptions.sessionId,
+                  userId: cliOptions.userId,
+                  headers,
+                  bearerToken: cliOptions.bearerToken,
+                });
                 return { success: true };
               }
             );

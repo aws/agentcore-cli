@@ -2,6 +2,7 @@ import { parseJsonRpcResponse } from '../../lib/utils/json-rpc';
 import { getCredentialProvider } from './account';
 import { parseAguiSSEStream } from './agui-parser';
 import { serviceEndpoint } from './partition';
+import { dataPlaneEndpoint } from './stage-endpoint';
 import {
   BedrockAgentCoreClient,
   EvaluateCommand,
@@ -27,6 +28,7 @@ function createAgentCoreClient(region: string, headers?: Record<string, string>)
   const client = new BedrockAgentCoreClient({
     region,
     credentials: getCredentialProvider(),
+    endpoint: dataPlaneEndpoint(region),
   });
 
   if (headers && Object.keys(headers).length > 0) {

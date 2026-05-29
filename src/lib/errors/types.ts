@@ -290,3 +290,12 @@ export class PollExhaustedError extends BaseError {
     super(`Polling exhausted after ${maxAttempts} attempts`, { defaultSource: 'service', ...options });
   }
 }
+
+export class ShellKickedError extends BaseError {
+  constructor(options?: BaseErrorOptions) {
+    super('Shell session was taken over by another client (close code 4000)', {
+      defaultSource: 'service',
+      ...options,
+    });
+  }
+}

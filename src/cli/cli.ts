@@ -8,6 +8,9 @@ import { registerDataset } from './commands/dataset';
 import { registerDeploy } from './commands/deploy';
 import { registerDev } from './commands/dev';
 import { registerEval } from './commands/eval';
+import { registerExec } from './commands/exec';
+import { handleShellSession, loadExecContext } from './commands/exec/action';
+import { runExecLoop } from './commands/exec/command';
 import { registerFeedback } from './commands/feedback';
 import { registerFetch } from './commands/fetch';
 import { registerHelp } from './commands/help';
@@ -27,9 +30,10 @@ import { registerTraces } from './commands/traces';
 import { registerUpdate } from './commands/update';
 import { registerValidate } from './commands/validate';
 import { PACKAGE_VERSION } from './constants';
+import { getErrorMessage } from './errors';
 import { ALL_PRIMITIVES } from './primitives';
 import { TelemetryClientAccessor } from './telemetry';
-import { App } from './tui/App';
+import { App, setPendingResumeSessionId } from './tui/App';
 import { LayoutProvider } from './tui/context';
 import { COMMAND_DESCRIPTIONS } from './tui/copy';
 import { clearExitAction, getExitAction } from './tui/exit-action';
@@ -124,6 +128,33 @@ function renderTUI(updateCheck: Promise<UpdateCheckResult | null>, isFirstRun: b
       return;
     }
 
+    if (action?.type === 'exec') {
+      try {
+        await runExecLoop();
+      } catch (err) {
+        process.stderr.write(`\n[exec failed: ${getErrorMessage(err)}]\n`);
+      }
+      // Re-enter the TUI so the user lands back on the command list / home screen.
+      renderTUI(updateCheck, isFirstRun);
+      return;
+    }
+
+    if (action?.type === 'exec-shell') {
+      try {
+        process.stdout.write('\x1b[2J\x1b[H');
+        const ctx = await loadExecContext({ runtimeArn: action.runtimeArn, region: action.region });
+        await handleShellSession(ctx, { runtimeArn: action.runtimeArn, sessionId: action.sessionId });
+      } catch (err) {
+        process.stderr.write(`\n[shell failed: ${getErrorMessage(err)}]\n`);
+      }
+      // Clear PTY output so Ink remounts on a clean screen.
+      process.stdout.write('\x1b[2J\x1b[H');
+      // Re-enter the TUI on the invoke screen, resuming the same session.
+      setPendingResumeSessionId(action.sessionId);
+      renderTUI(updateCheck, isFirstRun);
+      return;
+    }
+
     // Print any exit message set by screens (e.g., after successful project creation)
     const exitMessage = getExitMessage();
     if (exitMessage) {
@@ -180,6 +211,7 @@ export function registerCommands(program: Command) {
   const addCmd = registerAdd(program);
   registerDev(program);
   registerDeploy(program);
+  registerExec(program);
   registerCreate(program);
   registerEval(program);
   registerFeedback(program);

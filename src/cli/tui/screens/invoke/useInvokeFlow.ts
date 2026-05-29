@@ -56,6 +56,8 @@ export interface InvokeFlowOptions {
   /** Custom headers to forward to the agent runtime on every invocation */
   headers?: Record<string, string>;
   initialBearerToken?: string;
+  /** Show [session resumed] hint on load — true only when remounting after a PTY detour. */
+  isResume?: boolean;
 }
 
 export type TokenFetchState = 'idle' | 'fetching' | 'fetched' | 'error';
@@ -86,7 +88,7 @@ export interface InvokeFlowState {
 }
 
 export function useInvokeFlow(options: InvokeFlowOptions = {}): InvokeFlowState {
-  const { initialSessionId, initialUserId, headers, initialBearerToken } = options;
+  const { initialSessionId, initialUserId, headers, initialBearerToken, isResume } = options;
   const [phase, setPhase] = useState<'loading' | 'ready' | 'invoking' | 'error'>('loading');
   const [config, setConfig] = useState<InvokeConfig | null>(null);
   const [selectedAgent, setSelectedAgent] = useState(0);
@@ -180,6 +182,9 @@ export function useInvokeFlow(options: InvokeFlowOptions = {}): InvokeFlowState 
         // Initialize session ID - always generate fresh unless explicitly provided
         if (initialSessionId) {
           setSessionId(initialSessionId);
+          if (isResume) {
+            setMessages([{ role: 'assistant', content: '[session resumed]', isHint: true }]);
+          }
         } else {
           const newId = generateSessionId();
           setSessionId(newId);

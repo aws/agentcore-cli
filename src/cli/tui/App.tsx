@@ -32,11 +32,17 @@ import React, { useState } from 'react';
 // Capture cwd once at app initialization
 const cwd = getWorkingDirectory();
 
+// Session to resume on next TUI mount after a PTY exit (set by cli.ts, consumed once on mount)
+let pendingResumeSessionId: string | undefined;
+export function setPendingResumeSessionId(sessionId: string | undefined): void {
+  pendingResumeSessionId = sessionId;
+}
+
 type Route =
   | { name: 'home' }
   | { name: 'help'; initialQuery?: string }
   | { name: 'deploy' }
-  | { name: 'invoke' }
+  | { name: 'invoke'; resumeSessionId?: string }
   | { name: 'logs' }
   | { name: 'create' }
   | { name: 'add' }
@@ -70,8 +76,14 @@ function AppContent() {
   // Start on help screen if project exists (show commands), otherwise home (show Quick Start)
   const inProject = projectExists();
   const wrongDirProjectRoot = getProjectRootMismatch();
-  const initialRoute: Route = inProject ? { name: 'help' } : { name: 'home' };
-  const [route, setRoute] = useState<Route>(initialRoute);
+  // If a PTY exit left a session to resume, land directly on invoke screen with that session.
+  // Consume and clear inside the useState initialiser (runs once on mount, not on re-render).
+  const [route, setRoute] = useState<Route>(() => {
+    const resumeId = pendingResumeSessionId;
+    pendingResumeSessionId = undefined;
+    if (resumeId) return { name: 'invoke', resumeSessionId: resumeId };
+    return inProject ? { name: 'help' } : { name: 'home' };
+  });
   const [helpNotice, setHelpNotice] = useState<React.ReactNode | null>(null);
 
   // Get commands from commander program (hide 'create' when in project)
@@ -101,6 +113,10 @@ function AppContent() {
 
     if (id === 'dev') {
       setExitAction({ type: 'dev' });
+      exit();
+      return;
+    } else if (id === 'exec') {
+      setExitAction({ type: 'exec' });
       exit();
       return;
     } else if (id === 'deploy') {
@@ -188,7 +204,23 @@ function AppContent() {
   }
 
   if (route.name === 'invoke') {
-    return <InvokeScreen isInteractive={true} onExit={() => setRoute({ name: 'help' })} />;
+    return (
+      <InvokeScreen
+        isInteractive={true}
+        initialSessionId={route.resumeSessionId}
+        isResume={Boolean(route.resumeSessionId)}
+        onExit={() => setRoute({ name: 'help' })}
+        onExec={result => {
+          setExitAction({
+            type: 'exec-shell',
+            runtimeArn: result.runtimeArn,
+            region: result.region,
+            sessionId: result.sessionId,
+          });
+          exit();
+        }}
+      />
+    );
   }
 
   if (route.name === 'logs') {

@@ -15,6 +15,10 @@ interface InvokeScreenProps {
   /** Custom headers to forward to the agent runtime on every invocation */
   initialHeaders?: Record<string, string>;
   initialBearerToken?: string;
+  /** Called when the user presses 's' to open an interactive shell for the current agent. */
+  onExec?: (result: { runtimeArn: string; region: string; sessionId?: string }) => void;
+  /** True when remounting after a PTY detour — shows [session resumed] hint. False for direct --session-id invocations. */
+  isResume?: boolean;
 }
 
 type Mode = 'select-agent' | 'chat' | 'input' | 'token-input';
@@ -138,6 +142,8 @@ export function InvokeScreen({
   initialUserId,
   initialHeaders,
   initialBearerToken,
+  onExec,
+  isResume,
 }: InvokeScreenProps) {
   const {
     phase,
@@ -158,7 +164,7 @@ export function InvokeScreen({
     execCommand,
     newSession,
     fetchMcpTools,
-  } = useInvokeFlow({ initialSessionId, initialUserId, headers: initialHeaders, initialBearerToken });
+  } = useInvokeFlow({ initialSessionId, initialUserId, headers: initialHeaders, initialBearerToken, isResume });
   const [mode, setMode] = useState<Mode>('select-agent');
   const [isExecInput, setIsExecInput] = useState(false);
   const [execInputEmpty, setExecInputEmpty] = useState(true);
@@ -272,6 +278,8 @@ export function InvokeScreen({
     [needsScroll, maxScroll]
   );
 
+  const agent = config?.runtimes[selectedAgent];
+
   useInput(
     (input, key) => {
       if (phase === 'loading' || phase === 'error' || !config) return;
@@ -323,6 +331,15 @@ export function InvokeScreen({
           return;
         }
 
+        // Open interactive shell for the current agent
+        if (input === 's' && phase === 'ready' && onExec) {
+          const currentRuntimeArn = agent?.state.runtimeArn;
+          if (currentRuntimeArn && config) {
+            onExec({ runtimeArn: currentRuntimeArn, region: config.target.region, sessionId: sessionId ?? undefined });
+          }
+          return;
+        }
+
         // Scroll controls
         if (key.upArrow) scrollUp(1);
         else if (key.downArrow) scrollDown(1);
@@ -363,7 +380,6 @@ export function InvokeScreen({
     return null;
   }
 
-  const agent = config.runtimes[selectedAgent];
   const traceUrl =
     mode !== 'select-agent' && agent?.supportsTraces
       ? buildTraceConsoleUrl({
@@ -399,10 +415,10 @@ export function InvokeScreen({
           : phase === 'invoking'
             ? '↑↓ scroll'
             : messages.length > 0
-              ? `↑↓ scroll · Enter invoke · N new session · ${backOrQuit}`
+              ? `↑↓ scroll · Enter invoke · N new session${onExec ? ' · S shell' : ''} · ${backOrQuit}`
               : isMcp
-                ? `Enter to call a tool · N new session · ${backOrQuit}`
-                : `Enter to send a message · ${backOrQuit}`;
+                ? `Enter to call a tool · N new session${onExec ? ' · S shell' : ''} · ${backOrQuit}`
+                : `Enter to send a message${onExec ? ' · S shell' : ''} · ${backOrQuit}`;
 
   const headerContent = (
     <Box flexDirection="column">
