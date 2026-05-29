@@ -6,11 +6,12 @@ export function printTelemetryNotice(): void {
   process.stderr.write(
     [
       '',
-      `${yellow}The AgentCore CLI will soon begin collecting aggregated, anonymous usage`,
+      `${yellow}The AgentCore CLI collects aggregated, anonymous usage`,
       'analytics to help improve the tool.',
       'To opt out:          agentcore telemetry disable',
-      `To learn more:       agentcore telemetry --help${reset}`,
-      '',
+      `To audit:            agentcore config telemetry.audit true`,
+      `To learn more:       agentcore telemetry --help`,
+      `${reset}`,
       '',
     ].join('\n')
   );
