@@ -1,3 +1,4 @@
+import { withCommandRunTelemetry } from '../../telemetry/cli-command-run.js';
 import { COMMAND_DESCRIPTIONS } from '../../tui/copy';
 import { handleValidate } from './action';
 import type { Command } from '@commander-js/extra-typings';
@@ -9,8 +10,7 @@ export const registerValidate = (program: Command) => {
     .option('-d, --directory <path>', 'Project directory containing agentcore config')
     .description(COMMAND_DESCRIPTIONS.validate)
     .action(async options => {
-      const result = await handleValidate(options);
-
+      const result = await withCommandRunTelemetry('validate', {}, async () => handleValidate(options));
       if (result.success) {
         render(<Text color="green">Valid</Text>);
         process.exit(0);

@@ -8,6 +8,7 @@ import { dnsSuffix } from '../../../aws/partition';
 import { getErrorMessage } from '../../../errors';
 import { GradientText, Screen } from '../../components';
 import { CloudWatchLogsClient, FilterLogEventsCommand } from '@aws-sdk/client-cloudwatch-logs';
+import type { FilterLogEventsCommandInput, FilteredLogEvent } from '@aws-sdk/client-cloudwatch-logs';
 import { Box, Text, useInput } from 'ink';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 
@@ -123,12 +124,13 @@ async function runDebugChecks(test: GetABTestResult, region: string): Promise<De
     results.push({ label: 'Gateway Role', status: 'fail', detail: getErrorMessage(err) });
   }
 
-  // 5. Runtime spans — check for experiment metadata per variant in aws/spans
+  // 5. Runtime spans — check for experiment metadata per variant in aws/spans and runtime log group
   //    service.name in spans follows the pattern: {projectName}_{agentName}.{endpoint}
   //    We derive the service name prefix from the deployed state runtimeId (strip random suffix).
   const twoHoursAgo = Date.now() - 2 * 60 * 60 * 1000;
   const variantNames = test.variants.map(v => v.name);
   let serviceNamePrefix: string | undefined;
+  let runtimeId: string | undefined;
   try {
     const configIO = new ConfigIO();
     const deployedState = await configIO.readDeployedState();
@@ -136,8 +138,8 @@ async function runDebugChecks(test: GetABTestResult, region: string): Promise<De
       const runtimes = target.resources?.runtimes ?? {};
       const firstRuntime = Object.values(runtimes)[0];
       if (firstRuntime?.runtimeId) {
-        // runtimeId is "{projectName}_{agentName}-{randomSuffix}", strip the suffix
-        serviceNamePrefix = firstRuntime.runtimeId.replace(/-[^-]+$/, '');
+        runtimeId = firstRuntime.runtimeId;
+        serviceNamePrefix = runtimeId.replace(/-[^-]+$/, '');
         break;
       }
     }
@@ -145,35 +147,47 @@ async function runDebugChecks(test: GetABTestResult, region: string): Promise<De
     // Fall back to abTestArn-only filtering if deployed state isn't readable
   }
 
+  const runtimeLogGroupName = runtimeId ? `/aws/bedrock-agentcore/runtimes/${runtimeId}-DEFAULT` : undefined;
+  const logGroupsToQuery = ['aws/spans'];
+  if (runtimeLogGroupName) {
+    logGroupsToQuery.push(runtimeLogGroupName);
+  }
+
+  const queryAllGroups = (params: Omit<FilterLogEventsCommandInput, 'logGroupName'>) =>
+    Promise.all(
+      logGroupsToQuery.map(lg =>
+        logsClient
+          .send(new FilterLogEventsCommand({ ...params, logGroupName: lg }))
+          .catch(() => ({ events: [] as FilteredLogEvent[] }))
+      )
+    );
+
   try {
     const baseFilter = serviceNamePrefix ? `"${serviceNamePrefix}"` : '"gen_ai_agent"';
-    const [allRuntimeSpans, ...variantSpanResults] = await Promise.all([
-      logsClient.send(
-        new FilterLogEventsCommand({
-          logGroupName: 'aws/spans',
-          startTime: twoHoursAgo,
-          filterPattern: baseFilter,
-          limit: 1,
-        })
-      ),
-      ...variantNames.map(name =>
-        logsClient.send(
-          new FilterLogEventsCommand({
-            logGroupName: 'aws/spans',
-            startTime: twoHoursAgo,
-            filterPattern: `"${test.abTestArn}" "${name}"`,
-            limit: 50,
-          })
-        )
-      ),
-    ]);
 
-    const hasRuntimeSpans = (allRuntimeSpans.events?.length ?? 0) > 0;
-    const totalExperimentSpans = variantSpanResults.reduce((sum, r) => sum + (r.events?.length ?? 0), 0);
+    const runtimeSpanResults = await queryAllGroups({
+      startTime: twoHoursAgo,
+      filterPattern: baseFilter,
+      limit: 1,
+    });
+    const hasRuntimeSpans = runtimeSpanResults.some(r => (r.events?.length ?? 0) > 0);
+
+    const variantSpanCounts = await Promise.all(
+      variantNames.map(async name => {
+        const results = await queryAllGroups({
+          startTime: twoHoursAgo,
+          filterPattern: `"${test.abTestArn}" "${name}"`,
+          limit: 50,
+        });
+        return results.reduce((sum, r) => sum + (r.events?.length ?? 0), 0);
+      })
+    );
+
+    const totalExperimentSpans = variantSpanCounts.reduce((sum, count) => sum + count, 0);
 
     for (let i = 0; i < variantNames.length; i++) {
       const name = variantNames[i];
-      const count = variantSpanResults[i]?.events?.length ?? 0;
+      const count = variantSpanCounts[i] ?? 0;
       const label = `Runtime Experiment Spans — ${name} (2h)`;
 
       if (count > 0) {

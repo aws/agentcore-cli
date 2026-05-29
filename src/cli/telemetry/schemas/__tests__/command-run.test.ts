@@ -98,7 +98,7 @@ describe('COMMAND_SCHEMAS', () => {
       memory_type: 'shortterm',
       agent_protocol: 'mcp',
       build_type: 'codezip',
-      agent_type: 'create',
+      agent_source: 'create',
       network_mode: 'public',
       has_agent: true,
     };
@@ -115,7 +115,7 @@ describe('COMMAND_SCHEMAS', () => {
         memory_type: 'shortterm',
         agent_protocol: 'mcp',
         build_type: 'codezip',
-        agent_type: 'create',
+        agent_source: 'create',
         network_mode: 'public',
         has_agent: true,
       })
@@ -258,7 +258,7 @@ describe('resilientParse', () => {
       memory_type: 'shortterm',
       agent_protocol: 'mcp',
       build_type: 'codezip',
-      agent_type: 'create',
+      agent_source: 'create',
       network_mode: 'public',
       has_agent: true,
     };
@@ -273,7 +273,7 @@ describe('resilientParse', () => {
       memory_type: 'shortterm',
       agent_protocol: 'mcp',
       build_type: 'codezip',
-      agent_type: 'create',
+      agent_source: 'create',
       network_mode: 'public',
       has_agent: true,
     };

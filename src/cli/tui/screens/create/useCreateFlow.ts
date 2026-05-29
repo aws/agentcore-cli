@@ -30,7 +30,7 @@ import {
   AgentFramework,
   AgentLanguage,
   AgentProtocol,
-  AgentType,
+  AgentSource,
   BuildType,
   MemoryType as MemoryEnum,
   ModelProvider,
@@ -284,7 +284,7 @@ export function useCreateFlow(cwd: string): CreateFlowState {
             agent_language: standardize(AgentLanguage, addAgentConfig?.language ?? 'Python'),
             agent_framework: standardize(AgentFramework, addAgentConfig?.framework),
             agent_protocol: standardize(AgentProtocol, addAgentConfig?.protocol ?? 'HTTP'),
-            agent_type: standardize(AgentType, addAgentConfig?.agentType ?? 'create'),
+            agent_type: standardize(AgentSource, addAgentConfig?.agentType ?? 'create'),
           }),
     };
 

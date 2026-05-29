@@ -18,6 +18,7 @@ const TRACE_ID_PATTERN = /^[a-fA-F0-9-]+$/;
 
 async function fetchSpans(
   region: string,
+  runtimeId: string,
   traceId: string,
   startTime?: number,
   endTime?: number
@@ -29,12 +30,7 @@ async function fetchSpans(
     };
   }
 
-  const result = await runInsightsQuery({
-    region,
-    logGroupName: SPANS_LOG_GROUP,
-    startTime,
-    endTime,
-    queryString: `fields traceId, spanId, parentSpanId, name, kind,
+  const queryString = `fields traceId, spanId, parentSpanId, name, kind,
   startTimeUnixNano, endTimeUnixNano, durationNano,
   status.code as statusCode,
   resource.attributes.service.name as serviceName,
@@ -45,13 +41,28 @@ async function fetchSpans(
   attributes.session.id as sessionId
 | filter ispresent(traceId) and ispresent(resource.attributes.service.name)
 | filter resource.attributes.aws.service.type = "gen_ai_agent"
+| filter ispresent(kind)
 | filter traceId = '${traceId}'
-| sort startTimeUnixNano asc`,
-  });
+| sort startTimeUnixNano asc`;
 
-  if (!result.success) return { success: false, error: result.error };
+  const queryOpts = { region, queryString, startTime, endTime };
+  const results = await Promise.all([
+    runInsightsQuery({ ...queryOpts, logGroupName: SPANS_LOG_GROUP }),
+    runInsightsQuery({ ...queryOpts, logGroupName: runtimeLogGroup(runtimeId) }),
+  ]);
 
-  const spans: CloudWatchSpanRecord[] = result.rows
+  const allRows: Record<string, string>[] = [];
+  for (const result of results) {
+    if (result.success) {
+      allRows.push(...result.rows);
+    } else if (result.error instanceof ResourceNotFoundError) {
+      continue;
+    } else {
+      return { success: false, error: result.error };
+    }
+  }
+
+  const spans: CloudWatchSpanRecord[] = allRows
     .filter(row => row.traceId && row.spanId)
     .map(row => ({
       traceId: row.traceId!,
@@ -100,7 +111,9 @@ export async function fetchTraceRecords(options: FetchTraceRecordsOptions): Prom
 | sort @timestamp asc
 | limit 10000`,
     }),
-    includeSpans ? fetchSpans(region, traceId, options.startTime, options.endTime) : Promise.resolve(undefined),
+    includeSpans
+      ? fetchSpans(region, runtimeId, traceId, options.startTime, options.endTime)
+      : Promise.resolve(undefined),
   ]);
 
   if (!recordsResult.success) {

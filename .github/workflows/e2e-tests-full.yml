@@ -10,6 +10,9 @@ on:
   push:
     branches: [main]
 
+env:
+  AGENTCORE_TELEMETRY_DISABLED: '1'
+
 concurrency:
   group: e2e-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: false

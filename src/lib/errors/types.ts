@@ -290,3 +290,12 @@ export class PollExhaustedError extends BaseError {
     super(`Polling exhausted after ${maxAttempts} attempts`, { defaultSource: 'service', ...options });
   }
 }
+
+/**
+ * Error indicating user cancellation interuption
+ */
+export class UserCancellationError extends BaseError {
+  constructor(options?: BaseErrorOptions) {
+    super(`User cancelled`, { defaultSource: 'user', ...options });
+  }
+}

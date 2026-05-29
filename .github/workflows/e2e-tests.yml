@@ -50,6 +50,8 @@ jobs:
     runs-on: ubuntu-latest
     environment: e2e-testing
     timeout-minutes: 30
+    env:
+      AGENTCORE_TELEMETRY_DISABLED: '1'
     steps:
       - uses: actions/checkout@v6
         with:

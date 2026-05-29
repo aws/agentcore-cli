@@ -9,7 +9,10 @@ const tmp = createTempConfig('actions');
 describe('telemetry actions', () => {
   const originalEnv = process.env;
 
-  beforeEach(() => tmp.setup());
+  beforeEach(async () => {
+    await tmp.setup();
+    delete process.env.AGENTCORE_TELEMETRY_DISABLED;
+  });
 
   afterEach(() => {
     process.env = originalEnv;
