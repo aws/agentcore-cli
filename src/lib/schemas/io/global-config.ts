@@ -120,7 +120,6 @@ export async function getOrCreateInstallationId(
   const id = randomUUID();
   const written = await updateGlobalConfig({ installationId: id }, configDir, configFile);
   if (!written) {
-    // TODO: swap to config validation error once error definition is generalized.
     return { success: false, error: new Error(`Failed to persist installation id to ${configFile}`) };
   }
   return { success: true, id, created: true };

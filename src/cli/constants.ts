@@ -69,6 +69,8 @@ export const SCHEMA_VERSION = 1;
  */
 export const DEFAULT_ENDPOINT_NAME = 'DEFAULT';
 
+export const TELEMETRY_ENDPOINT = 'https://telemetry.agentcore.aws.dev';
+
 /**
  * Color gating: emit ANSI codes only when both streams are attached to a terminal.
  * Uses AND so that redirecting either stream (e.g. `2> log.txt`) disables colors,

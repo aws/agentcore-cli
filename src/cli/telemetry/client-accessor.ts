@@ -56,7 +56,7 @@ async function createClient(entrypoint: string, mode: 'cli' | 'tui' = 'cli'): Pr
   const { resource } = resourceResult;
   const { config } = unwrapResult(configResult, { config: {} });
 
-  const [{ enabled }, endpointResult, audit] = await Promise.all([
+  const [{ enabled }, endpoint, audit] = await Promise.all([
     resolveTelemetryPreference(config),
     resolveTelemetryEndpoint(config),
     resolveAuditEnabled(config),
@@ -73,8 +73,14 @@ async function createClient(entrypoint: string, mode: 'cli' | 'tui' = 'cli'): Pr
     sinks.push(new FileSystemSink({ filePath, resource }));
   }
 
-  if (endpointResult.success && enabled) {
-    sinks.push(new OtelMetricSink({ endpoint: endpointResult.url, resource }));
+  if (enabled) {
+    try {
+      sinks.push(new OtelMetricSink({ endpoint, resource }));
+    } catch {
+      // Invalid endpoint URL (e.g. an unreplaced build placeholder, or a typo
+      // in the user's config that survived validation). Telemetry is best-effort
+      // — silently skip the network sink rather than crashing the CLI at startup.
+    }
   }
 
   return new TelemetryClient(new CompositeSink(sinks));

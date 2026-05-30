@@ -1,3 +1,4 @@
+import { TELEMETRY_ENDPOINT } from '../../constants';
 import {
   resolveAuditEnabled,
   resolveTelemetryEndpoint,
@@ -107,32 +108,46 @@ describe('resolveTelemetryEndpoint', () => {
     process.env = originalEnv;
   });
 
-  it('returns endpoint from env var', async () => {
+  it('returns endpoint from env var when valid', async () => {
     process.env.AGENTCORE_TELEMETRY_ENDPOINT = 'https://env.example.com';
 
     const result = await resolveTelemetryEndpoint({});
 
-    expect(result).toEqual({ success: true, url: 'https://env.example.com' });
+    expect(result).toBe('https://env.example.com');
   });
 
-  it('falls back to config endpoint', async () => {
+  it('falls back to config endpoint when env is unset', async () => {
     const result = await resolveTelemetryEndpoint({ telemetry: { endpoint: 'https://config.example.com' } });
 
-    expect(result).toEqual({ success: true, url: 'https://config.example.com' });
+    expect(result).toBe('https://config.example.com');
   });
 
-  it('returns failure when no endpoint configured', async () => {
+  it('prefers env over config', async () => {
+    process.env.AGENTCORE_TELEMETRY_ENDPOINT = 'https://env.example.com';
+
+    const result = await resolveTelemetryEndpoint({ telemetry: { endpoint: 'https://config.example.com' } });
+
+    expect(result).toBe('https://env.example.com');
+  });
+
+  it('falls back to the built-in default when nothing is configured', async () => {
     const result = await resolveTelemetryEndpoint({});
 
-    expect(result.success).toBe(false);
+    expect(result).toBe(TELEMETRY_ENDPOINT);
   });
 
-  it('returns failure for invalid env endpoint', async () => {
+  it('falls back to the built-in default when env override is invalid', async () => {
     process.env.AGENTCORE_TELEMETRY_ENDPOINT = 'not-a-url';
 
     const result = await resolveTelemetryEndpoint({});
 
-    expect(result.success).toBe(false);
+    expect(result).toBe(TELEMETRY_ENDPOINT);
+  });
+
+  it('falls back to the built-in default when config override is invalid', async () => {
+    const result = await resolveTelemetryEndpoint({ telemetry: { endpoint: 'not-a-url' } });
+
+    expect(result).toBe(TELEMETRY_ENDPOINT);
   });
 });
 

@@ -1,6 +1,6 @@
 import { type Result, unwrapResult } from '../../lib/result.js';
 import { type GlobalConfig, getOrCreateInstallationId, readGlobalConfig } from '../../lib/schemas/io/global-config.js';
-import { PACKAGE_VERSION } from '../constants.js';
+import { PACKAGE_VERSION, TELEMETRY_ENDPOINT } from '../constants.js';
 import { type ResourceAttributes, ResourceAttributesSchema } from './schemas/common-attributes.js';
 import { randomUUID } from 'crypto';
 import os from 'os';
@@ -100,18 +100,22 @@ export function validateEndpointUrl(endpoint: string): Result<{ url: string }> {
 }
 
 /**
- * Resolve the telemetry endpoint from env var or global config.
- * Returns a failure Result if no endpoint is configured or the value is invalid.
+ * Resolve the telemetry endpoint. Always returns a usable string.
+ * Precedence: AGENTCORE_TELEMETRY_ENDPOINT env var > config.telemetry.endpoint > built-in default.
+ * Invalid overrides (env or config) are silently skipped — telemetry is best-effort,
+ * a typo in the user's config shouldn't disable it.
  */
-export async function resolveTelemetryEndpoint(config?: GlobalConfig): Promise<Result<{ url: string }>> {
+export async function resolveTelemetryEndpoint(config?: GlobalConfig): Promise<string> {
   const envEndpoint = process.env.AGENTCORE_TELEMETRY_ENDPOINT;
   if (envEndpoint) {
-    return validateEndpointUrl(envEndpoint);
+    const validated = validateEndpointUrl(envEndpoint);
+    if (validated.success) return validated.url;
   }
   const resolved = config ?? unwrapResult(await readGlobalConfig(), { config: {} }).config;
   const configEndpoint = resolved.telemetry?.endpoint;
   if (configEndpoint) {
-    return validateEndpointUrl(configEndpoint);
+    const validated = validateEndpointUrl(configEndpoint);
+    if (validated.success) return validated.url;
   }
-  return { success: false, error: new Error('No telemetry endpoint found.') };
+  return TELEMETRY_ENDPOINT;
 }
