@@ -73,7 +73,14 @@ export const FilterType = z.enum([
   'none',
 ]);
 export const AgentEnvironment = z.enum(['harness', 'runtime']);
-export const AgentFramework = z.enum(['strands', 'langchain_langgraph', 'googleadk', 'openaiagents']);
+export const AgentFramework = z.enum([
+  'strands',
+  'langchain_langgraph',
+  'googleadk',
+  'openaiagents',
+  'vercelai',
+  'mastra',
+]);
 export const GatewayTargetHost = z.enum(['lambda', 'agentcoreruntime']);
 export const GatewayTargetType = z.enum([
   'mcp-server',

@@ -7,7 +7,12 @@ import type {
   SDKFramework,
   TargetLanguage,
 } from '../../../../schema';
-import { DEFAULT_MODEL_IDS, PROTOCOL_FRAMEWORK_MATRIX, getSupportedModelProviders } from '../../../../schema';
+import {
+  DEFAULT_MODEL_IDS,
+  PROTOCOL_FRAMEWORK_MATRIX,
+  getSupportedModelProviders,
+  isTypeScriptSDKFramework,
+} from '../../../../schema';
 import type { JwtConfigOptions } from '../../../primitives/auth-utils';
 
 export type GenerateStep =
@@ -138,17 +143,18 @@ export const SDK_OPTIONS = [
   { id: 'GoogleADK', title: 'Google ADK', description: 'Google Agent Development Kit' },
   { id: 'OpenAIAgents', title: 'OpenAI Agents', description: 'OpenAI native agent SDK' },
   { id: 'VercelAI', title: 'Vercel AI SDK', description: 'Vercel AI SDK for TypeScript agents' },
+  { id: 'Mastra', title: 'Mastra', description: 'TypeScript agent framework' },
 ] as const;
 
 /**
  * Get SDK options filtered by protocol compatibility and target language.
- * TypeScript currently only supports Strands.
+ * TypeScript currently supports a subset of HTTP SDK frameworks.
  */
 export function getSDKOptionsForProtocol(protocol: ProtocolMode, language?: TargetLanguage) {
   const supportedFrameworks = PROTOCOL_FRAMEWORK_MATRIX[protocol];
   const byProtocol = SDK_OPTIONS.filter(option => supportedFrameworks.includes(option.id));
   if (language === 'TypeScript') {
-    return byProtocol.filter(option => option.id === 'Strands' || option.id === 'VercelAI');
+    return byProtocol.filter(option => isTypeScriptSDKFramework(option.id));
   }
   return byProtocol;
 }

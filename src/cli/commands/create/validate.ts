@@ -9,6 +9,7 @@ import {
   TargetLanguageSchema,
   getSupportedFrameworksForProtocol,
   getSupportedModelProviders,
+  isTypeScriptSDKFramework,
   matchEnumValue,
 } from '../../../schema';
 import type { ProtocolMode } from '../../../schema';
@@ -192,11 +193,10 @@ export function validateCreateOptions(options: CreateOptions, cwd?: string): Val
       return { valid: false, error: `Invalid model provider: ${options.modelProvider}` };
     }
 
-    // TypeScript supports Strands and Vercel AI only
-    if (options.language === 'TypeScript' && fwResult.data !== 'Strands' && fwResult.data !== 'VercelAI') {
+    if (options.language === 'TypeScript' && !isTypeScriptSDKFramework(fwResult.data)) {
       return {
         valid: false,
-        error: `Framework ${options.framework} is not yet available for TypeScript. Only Strands and Vercel AI SDK are supported.`,
+        error: `Framework ${options.framework} is not yet available for TypeScript. Only Strands, Vercel AI SDK, and Mastra are supported.`,
       };
     }
 

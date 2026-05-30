@@ -4,8 +4,22 @@ import { z } from 'zod';
 // Feature Constants (shared across all schemas)
 // ============================================================================
 
-export const SDKFrameworkSchema = z.enum(['Strands', 'LangChain_LangGraph', 'GoogleADK', 'OpenAIAgents', 'VercelAI']);
+export const SDKFrameworkSchema = z.enum([
+  'Strands',
+  'LangChain_LangGraph',
+  'GoogleADK',
+  'OpenAIAgents',
+  'VercelAI',
+  'Mastra',
+]);
 export type SDKFramework = z.infer<typeof SDKFrameworkSchema>;
+
+export const TYPESCRIPT_SDK_FRAMEWORKS = ['Strands', 'VercelAI', 'Mastra'] as const satisfies readonly SDKFramework[];
+export type TypeScriptSDKFramework = (typeof TYPESCRIPT_SDK_FRAMEWORKS)[number];
+
+export function isTypeScriptSDKFramework(framework: SDKFramework): framework is TypeScriptSDKFramework {
+  return TYPESCRIPT_SDK_FRAMEWORKS.includes(framework as TypeScriptSDKFramework);
+}
 
 export const TargetLanguageSchema = z.enum(['Python', 'TypeScript', 'Other']);
 export type TargetLanguage = z.infer<typeof TargetLanguageSchema>;
@@ -48,6 +62,7 @@ export const SDK_MODEL_PROVIDER_MATRIX: Record<SDKFramework, readonly ModelProvi
   GoogleADK: ['Gemini'] as const,
   OpenAIAgents: ['OpenAI'] as const,
   VercelAI: ['Bedrock', 'Anthropic', 'OpenAI', 'Gemini'] as const,
+  Mastra: ['Bedrock', 'Anthropic', 'OpenAI', 'Gemini'] as const,
 };
 
 /**
@@ -108,6 +123,8 @@ export const RESERVED_PROJECT_NAMES: readonly string[] = [
   'aguiprotocol',
   'vercelai',
   'aisdk',
+  'mastra',
+  'mastracore',
   // Common utilities
   'httpx',
   'pytest',
@@ -189,7 +206,7 @@ export type ProtocolMode = z.infer<typeof ProtocolModeSchema>;
  * MCP is a standalone tool server with no framework.
  */
 export const PROTOCOL_FRAMEWORK_MATRIX: Record<ProtocolMode, readonly SDKFramework[]> = {
-  HTTP: ['Strands', 'LangChain_LangGraph', 'GoogleADK', 'OpenAIAgents', 'VercelAI'] as const,
+  HTTP: ['Strands', 'LangChain_LangGraph', 'GoogleADK', 'OpenAIAgents', 'VercelAI', 'Mastra'] as const,
   MCP: [] as const,
   A2A: ['Strands', 'GoogleADK', 'LangChain_LangGraph'] as const,
   AGUI: ['Strands', 'LangChain_LangGraph', 'GoogleADK'] as const,

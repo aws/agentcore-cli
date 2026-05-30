@@ -35,6 +35,7 @@ describe('matchEnumValue', () => {
     expect(matchEnumValue(SDKFrameworkSchema, 'langchain_langgraph')).toBe('LangChain_LangGraph');
     expect(matchEnumValue(SDKFrameworkSchema, 'openaiagents')).toBe('OpenAIAgents');
     expect(matchEnumValue(SDKFrameworkSchema, 'googleadk')).toBe('GoogleADK');
+    expect(matchEnumValue(SDKFrameworkSchema, 'mastra')).toBe('Mastra');
   });
 });
 
@@ -42,6 +43,7 @@ describe('SDKFrameworkSchema', () => {
   it('accepts valid frameworks and rejects invalid', () => {
     expect(SDKFrameworkSchema.safeParse('Strands').success).toBe(true);
     expect(SDKFrameworkSchema.safeParse('OpenAIAgents').success).toBe(true);
+    expect(SDKFrameworkSchema.safeParse('Mastra').success).toBe(true);
     expect(SDKFrameworkSchema.safeParse('AutoGen').success).toBe(false);
     expect(SDKFrameworkSchema.safeParse('strands').success).toBe(false); // case-sensitive
   });
@@ -94,6 +96,10 @@ describe('getSupportedModelProviders', () => {
   it('returns only OpenAI for OpenAIAgents', () => {
     expect(getSupportedModelProviders('OpenAIAgents')).toEqual(['OpenAI']);
   });
+
+  it('returns all 4 providers for Mastra', () => {
+    expect(getSupportedModelProviders('Mastra')).toEqual(['Bedrock', 'Anthropic', 'OpenAI', 'Gemini']);
+  });
 });
 
 describe('isModelProviderSupported', () => {
@@ -142,7 +148,7 @@ describe('PROTOCOL_FRAMEWORK_MATRIX', () => {
 
   it('HTTP supports all visible frameworks', () => {
     expect(PROTOCOL_FRAMEWORK_MATRIX.HTTP).toEqual(
-      expect.arrayContaining(['Strands', 'LangChain_LangGraph', 'GoogleADK', 'OpenAIAgents'])
+      expect.arrayContaining(['Strands', 'LangChain_LangGraph', 'GoogleADK', 'OpenAIAgents', 'Mastra'])
     );
   });
 
@@ -186,6 +192,11 @@ describe('isFrameworkSupportedForProtocol', () => {
 
   it('returns false for OpenAIAgents + A2A', () => {
     expect(isFrameworkSupportedForProtocol('A2A', 'OpenAIAgents')).toBe(false);
+  });
+
+  it('returns true for Mastra + HTTP and false for Mastra + A2A', () => {
+    expect(isFrameworkSupportedForProtocol('HTTP', 'Mastra')).toBe(true);
+    expect(isFrameworkSupportedForProtocol('A2A', 'Mastra')).toBe(false);
   });
 
   it('returns false for any framework + MCP', () => {

@@ -1,9 +1,27 @@
 import { useDevDeploy } from '../useDevDeploy.js';
 import { Text } from 'ink';
 import { render } from 'ink-testing-library';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-const mockHandleDeploy = vi.fn();
+const { mockCanSkipDeploy, mockConfigIOInstance, mockHandleDeploy } = vi.hoisted(() => ({
+  mockCanSkipDeploy: vi.fn(),
+  mockConfigIOInstance: {
+    readAWSDeploymentTargets: vi.fn(),
+    readProjectSpec: vi.fn(),
+    writeAWSDeploymentTargets: vi.fn(),
+  },
+  mockHandleDeploy: vi.fn(),
+}));
+
+vi.mock('../../../../lib/index.js', () => ({
+  ConfigIO: vi.fn(function () {
+    return mockConfigIOInstance;
+  }),
+}));
+
+vi.mock('../../../operations/deploy/change-detection.js', () => ({
+  canSkipDeploy: mockCanSkipDeploy,
+}));
 
 vi.mock('../../../commands/deploy/actions.js', () => ({
   handleDeploy: (...args: unknown[]) => mockHandleDeploy(...args),
@@ -21,6 +39,17 @@ function Harness({ skip }: { skip?: boolean }) {
 describe('useDevDeploy', () => {
   afterEach(() => {
     vi.clearAllMocks();
+  });
+
+  beforeEach(() => {
+    mockCanSkipDeploy.mockResolvedValue(false);
+    mockConfigIOInstance.readAWSDeploymentTargets.mockResolvedValue([
+      { name: 'default', account: '123456789012', region: 'us-east-1' },
+    ]);
+    mockConfigIOInstance.readProjectSpec.mockResolvedValue({
+      harnesses: [{ name: 'test-harness', path: 'app/test-harness' }],
+      runtimes: [],
+    });
   });
 
   it('calls handleDeploy on mount', async () => {

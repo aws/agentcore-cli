@@ -52,6 +52,16 @@ describe('BaseRenderer', () => {
     expect(renderer.getTemplateDirPublic()).toBe('/templates/python/a2a/strands');
   });
 
+  it('getTemplateDir supports Mastra TypeScript HTTP templates', () => {
+    const renderer = new TestRenderer(
+      { targetLanguage: 'TypeScript', name: 'MyAgent', hasMemory: false, protocol: 'HTTP' },
+      'mastra',
+      '/templates'
+    );
+
+    expect(renderer.getTemplateDirPublic()).toBe('/templates/typescript/http/mastra');
+  });
+
   it('getTemplateDir uses explicit protocol over config', () => {
     const renderer = new TestRenderer(
       { targetLanguage: 'Python', name: 'MyAgent', hasMemory: false, protocol: 'A2A' },

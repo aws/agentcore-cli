@@ -604,6 +604,12 @@ exports[`Assets Directory Snapshots > File listing > should match the expected f
   "python/mcp/standalone/base/main.py",
   "python/mcp/standalone/base/pyproject.toml",
   "typescript/.gitkeep",
+  "typescript/http/mastra/base/README.md",
+  "typescript/http/mastra/base/gitignore.template",
+  "typescript/http/mastra/base/main.ts",
+  "typescript/http/mastra/base/model/load.ts",
+  "typescript/http/mastra/base/package.json",
+  "typescript/http/mastra/base/tsconfig.json",
   "typescript/http/strands/base/README.md",
   "typescript/http/strands/base/gitignore.template",
   "typescript/http/strands/base/main.ts",
@@ -5683,6 +5689,281 @@ When modifying JSON config files:
 `;
 
 exports[`Assets Directory Snapshots > TypeScript assets > typescript/typescript/.gitkeep should match snapshot 1`] = `""`;
+
+exports[`Assets Directory Snapshots > TypeScript assets > typescript/typescript/http/mastra/base/README.md should match snapshot 1`] = `
+"# {{name}}
+
+Mastra agent running on Amazon Bedrock AgentCore Runtime.
+
+## Development
+
+\`\`\`bash
+npm install
+npm run dev
+\`\`\`
+
+## Build
+
+\`\`\`bash
+npm run build
+npm start
+\`\`\`
+"
+`;
+
+exports[`Assets Directory Snapshots > TypeScript assets > typescript/typescript/http/mastra/base/gitignore.template should match snapshot 1`] = `
+"node_modules/
+dist/
+.env
+.env.local
+"
+`;
+
+exports[`Assets Directory Snapshots > TypeScript assets > typescript/typescript/http/mastra/base/main.ts should match snapshot 1`] = `
+"import { BedrockAgentCoreApp } from 'bedrock-agentcore/runtime';
+import { Agent } from '@mastra/core/agent';
+import { loadModel } from './model/load.js';
+
+const SYSTEM_PROMPT = \`You are a helpful assistant.\`;
+
+let cachedAgent: Agent | null = null;
+
+async function getOrCreateAgent(): Promise<Agent> {
+  if (!cachedAgent) {
+    const model = await loadModel();
+    cachedAgent = new Agent({
+      id: '{{name}}',
+      name: '{{name}}',
+      instructions: SYSTEM_PROMPT,
+      model,
+    });
+  }
+  return cachedAgent;
+}
+
+const app = new BedrockAgentCoreApp({
+  invocationHandler: {
+    async *process(payload: any, context: any) {
+      const agent = await getOrCreateAgent();
+      const stream = await agent.stream(payload.prompt ?? '');
+
+      for await (const chunk of stream.fullStream) {
+        if (chunk.type === 'text-delta') {
+          yield { data: chunk.payload.text };
+        }
+      }
+    },
+  },
+});
+
+app.run({ port: parseInt(process.env.PORT ?? '8080') });
+"
+`;
+
+exports[`Assets Directory Snapshots > TypeScript assets > typescript/typescript/http/mastra/base/model/load.ts should match snapshot 1`] = `
+"{{#if (eq modelProvider "Bedrock")}}
+import { createAmazonBedrock } from '@ai-sdk/amazon-bedrock';
+import { fromNodeProviderChain } from '@aws-sdk/credential-providers';
+
+const provider = fromNodeProviderChain();
+const bedrockRegion = process.env.AWS_REGION ?? 'us-east-1';
+
+const bedrock = createAmazonBedrock({
+  region: bedrockRegion,
+  credentialProvider: async () => {
+    const creds = await provider();
+    return {
+      accessKeyId: creds.accessKeyId,
+      secretAccessKey: creds.secretAccessKey,
+      sessionToken: creds.sessionToken,
+    };
+  },
+});
+
+function getDefaultBedrockModelId(region: string): string {
+  if (region === 'ap-northeast-1') {
+    return 'jp.anthropic.claude-sonnet-4-5-20250929-v1:0';
+  }
+  if (region.startsWith('eu-')) {
+    return 'eu.anthropic.claude-sonnet-4-5-20250929-v1:0';
+  }
+  if (region === 'ap-southeast-2') {
+    return 'au.anthropic.claude-sonnet-4-5-20250929-v1:0';
+  }
+  if (region.startsWith('us-')) {
+    return 'us.anthropic.claude-sonnet-4-5-20250929-v1:0';
+  }
+  return 'global.anthropic.claude-sonnet-4-5-20250929-v1:0';
+}
+
+export function loadModel() {
+  return bedrock(process.env.BEDROCK_MODEL_ID ?? getDefaultBedrockModelId(bedrockRegion));
+}
+{{/if}}
+{{#if (eq modelProvider "Anthropic")}}
+import { createAnthropic } from '@ai-sdk/anthropic';
+import { withApiKey } from 'bedrock-agentcore/identity';
+
+const IDENTITY_PROVIDER_NAME = '{{identityProviders.[0].name}}';
+const IDENTITY_ENV_VAR = '{{identityProviders.[0].envVarName}}';
+
+async function getApiKey(): Promise<string> {
+  if (process.env.LOCAL_DEV === '1') {
+    const apiKey = process.env[IDENTITY_ENV_VAR] ?? process.env.ANTHROPIC_API_KEY;
+    if (!apiKey) {
+      throw new Error(\`\${IDENTITY_ENV_VAR} or ANTHROPIC_API_KEY not found. Add your key to agentcore/.env.local\`);
+    }
+    return apiKey;
+  }
+  return withApiKey({ providerName: IDENTITY_PROVIDER_NAME })(async (apiKey: string) => apiKey)();
+}
+
+let _anthropic: ReturnType<typeof createAnthropic> | undefined;
+
+async function getProvider() {
+  if (!_anthropic) {
+    const apiKey = await getApiKey();
+    _anthropic = createAnthropic({ apiKey });
+  }
+  return _anthropic;
+}
+
+export async function loadModel() {
+  const anthropic = await getProvider();
+  return anthropic('claude-sonnet-4-5-20250929');
+}
+{{/if}}
+{{#if (eq modelProvider "OpenAI")}}
+import { createOpenAI } from '@ai-sdk/openai';
+import { withApiKey } from 'bedrock-agentcore/identity';
+
+const IDENTITY_PROVIDER_NAME = '{{identityProviders.[0].name}}';
+const IDENTITY_ENV_VAR = '{{identityProviders.[0].envVarName}}';
+
+async function getApiKey(): Promise<string> {
+  if (process.env.LOCAL_DEV === '1') {
+    const apiKey = process.env[IDENTITY_ENV_VAR] ?? process.env.OPENAI_API_KEY;
+    if (!apiKey) {
+      throw new Error(\`\${IDENTITY_ENV_VAR} or OPENAI_API_KEY not found. Add your key to agentcore/.env.local\`);
+    }
+    return apiKey;
+  }
+  return withApiKey({ providerName: IDENTITY_PROVIDER_NAME })(async (apiKey: string) => apiKey)();
+}
+
+let _openai: ReturnType<typeof createOpenAI> | undefined;
+
+async function getProvider() {
+  if (!_openai) {
+    const apiKey = await getApiKey();
+    _openai = createOpenAI({ apiKey });
+  }
+  return _openai;
+}
+
+export async function loadModel() {
+  const openai = await getProvider();
+  return openai('gpt-4.1');
+}
+{{/if}}
+{{#if (eq modelProvider "Gemini")}}
+import { createGoogleGenerativeAI } from '@ai-sdk/google';
+import { withApiKey } from 'bedrock-agentcore/identity';
+
+const IDENTITY_PROVIDER_NAME = '{{identityProviders.[0].name}}';
+const IDENTITY_ENV_VAR = '{{identityProviders.[0].envVarName}}';
+
+async function getApiKey(): Promise<string> {
+  if (process.env.LOCAL_DEV === '1') {
+    const apiKey = process.env[IDENTITY_ENV_VAR] ?? process.env.GEMINI_API_KEY;
+    if (!apiKey) {
+      throw new Error(\`\${IDENTITY_ENV_VAR} or GEMINI_API_KEY not found. Add your key to agentcore/.env.local\`);
+    }
+    return apiKey;
+  }
+  return withApiKey({ providerName: IDENTITY_PROVIDER_NAME })(async (apiKey: string) => apiKey)();
+}
+
+let _google: ReturnType<typeof createGoogleGenerativeAI> | undefined;
+
+async function getProvider() {
+  if (!_google) {
+    const apiKey = await getApiKey();
+    _google = createGoogleGenerativeAI({ apiKey });
+  }
+  return _google;
+}
+
+export async function loadModel() {
+  const google = await getProvider();
+  return google('gemini-2.5-flash');
+}
+{{/if}}
+"
+`;
+
+exports[`Assets Directory Snapshots > TypeScript assets > typescript/typescript/http/mastra/base/package.json should match snapshot 1`] = `
+"{
+  "name": "{{name}}",
+  "version": "0.1.0",
+  "description": "AgentCore Runtime Application using Mastra",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "tsc",
+    "start": "node dist/main.js",
+    "dev": "tsx watch main.ts"
+  },
+  "dependencies": {
+    "@mastra/core": "^1.37.1",
+    "ai": "^6.0.0",
+    {{#if (eq modelProvider "Bedrock")}}
+    "@ai-sdk/amazon-bedrock": "^4.0.0",
+    "@aws-sdk/credential-providers": "^3.0.0",
+    {{/if}}
+    {{#if (eq modelProvider "Anthropic")}}
+    "@ai-sdk/anthropic": "^3.0.0",
+    {{/if}}
+    {{#if (eq modelProvider "OpenAI")}}
+    "@ai-sdk/openai": "^3.0.0",
+    {{/if}}
+    {{#if (eq modelProvider "Gemini")}}
+    "@ai-sdk/google": "^3.0.0",
+    {{/if}}
+    "bedrock-agentcore": "^0.2.4",
+    "tsx": "^4.19.0",
+    "zod": "^4.4.3"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "typescript": "^5.6.0"
+  }
+}
+"
+`;
+
+exports[`Assets Directory Snapshots > TypeScript assets > typescript/typescript/http/mastra/base/tsconfig.json should match snapshot 1`] = `
+"{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
+    "strict": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "forceConsistentCasingInFileNames": true,
+    "resolveJsonModule": true,
+    "declaration": false,
+    "sourceMap": true,
+    "outDir": "dist",
+    "rootDir": ".",
+    "types": ["node"]
+  },
+  "include": ["**/*.ts"],
+  "exclude": ["node_modules", "dist"]
+}
+"
+`;
 
 exports[`Assets Directory Snapshots > TypeScript assets > typescript/typescript/http/strands/base/README.md should match snapshot 1`] = `
 "This is a project generated by the AgentCore CLI!
