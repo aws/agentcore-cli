@@ -1,3 +1,4 @@
+import { unwrapResult } from '../../lib/result.js';
 import { GLOBAL_CONFIG_DIR, readGlobalConfig } from '../../lib/schemas/io/global-config.js';
 import { TelemetryClient } from './client.js';
 import {
@@ -46,7 +47,14 @@ export class TelemetryClientAccessor {
 }
 
 async function createClient(entrypoint: string, mode: 'cli' | 'tui' = 'cli'): Promise<TelemetryClient> {
-  const [resource, config] = await Promise.all([resolveResourceAttributes(mode), readGlobalConfig()]);
+  const [resourceResult, configResult] = await Promise.all([resolveResourceAttributes(mode), readGlobalConfig()]);
+  if (!resourceResult.success) {
+    // Could not resolve a stable installation id — disable telemetry rather than
+    // emit metrics with an unstable id that breaks attribution across sessions.
+    return new TelemetryClient(new CompositeSink([]));
+  }
+  const { resource } = resourceResult;
+  const { config } = unwrapResult(configResult, { config: {} });
 
   const [{ enabled }, endpointResult, audit] = await Promise.all([
     resolveTelemetryPreference(config),

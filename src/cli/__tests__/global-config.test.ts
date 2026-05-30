@@ -6,6 +6,7 @@ import {
 } from '../../lib/schemas/io/global-config';
 import { createTempConfig } from './helpers/temp-config';
 import { readFile, writeFile } from 'fs/promises';
+import assert from 'node:assert';
 import { afterAll, beforeEach, describe, expect, it } from 'vitest';
 
 const tmp = createTempConfig('gc');
@@ -15,19 +16,35 @@ describe('global-config', () => {
   afterAll(() => tmp.cleanup());
 
   describe('readGlobalConfig', () => {
-    it('returns parsed config when file exists', async () => {
+    it('returns success with parsed config when file exists', async () => {
       await writeFile(tmp.configFile, JSON.stringify({ telemetry: { enabled: false } }));
 
-      const config = await readGlobalConfig(tmp.configFile);
+      const result = await readGlobalConfig(tmp.configFile);
 
-      expect(config).toEqual({ telemetry: { enabled: false } });
+      expect(result).toEqual({ success: true, config: { telemetry: { enabled: false } } });
     });
 
-    it('returns empty object when file is missing or invalid', async () => {
-      expect(await readGlobalConfig(tmp.testDir + '/nonexistent.json')).toEqual({});
+    it('returns success with empty config when file is missing', async () => {
+      const result = await readGlobalConfig(tmp.testDir + '/nonexistent.json');
 
+      expect(result).toEqual({ success: true, config: {} });
+    });
+
+    it('returns failure when file is malformed JSON', async () => {
       await writeFile(tmp.configFile, 'not json');
-      expect(await readGlobalConfig(tmp.configFile)).toEqual({});
+
+      const result = await readGlobalConfig(tmp.configFile);
+
+      assert(!result.success);
+      expect(result.error).toBeInstanceOf(Error);
+    });
+
+    it('returns failure when JSON is valid but not an object', async () => {
+      await writeFile(tmp.configFile, '"a string"');
+
+      const result = await readGlobalConfig(tmp.configFile);
+
+      assert(!result.success);
     });
 
     it('drops invalid fields while preserving valid ones', async () => {
@@ -40,9 +57,10 @@ describe('global-config', () => {
         })
       );
 
-      const config = await readGlobalConfig(tmp.configFile);
+      const result = await readGlobalConfig(tmp.configFile);
 
-      expect(config).toEqual({
+      assert(result.success);
+      expect(result.config).toEqual({
         transactionSearchIndexPercentage: undefined,
         uvIndex: 'https://valid.url',
         telemetry: { enabled: undefined, endpoint: 'https://example.com' },
@@ -57,9 +75,10 @@ describe('global-config', () => {
       };
       await writeFile(tmp.configFile, JSON.stringify(full));
 
-      const config = await readGlobalConfig(tmp.configFile);
+      const result = await readGlobalConfig(tmp.configFile);
 
-      expect(config).toEqual(full);
+      assert(result.success);
+      expect(result.config).toEqual(full);
     });
   });
 
@@ -115,16 +134,29 @@ describe('global-config', () => {
 
       expect(ok).toBe(false);
     });
+
+    it('does not overwrite when existing file is malformed JSON', async () => {
+      const corrupt = '{ this is not valid json';
+      await writeFile(tmp.configFile, corrupt);
+
+      const ok = await updateGlobalConfig({ telemetry: { enabled: false } }, tmp.configDir, tmp.configFile);
+
+      expect(ok).toBe(false);
+      const onDisk = await readFile(tmp.configFile, 'utf-8');
+      expect(onDisk).toBe(corrupt);
+    });
   });
 
   describe('getOrCreateInstallationId', () => {
     it('generates installationId on first run and returns created: true', async () => {
       const result = await getOrCreateInstallationId(tmp.configDir, tmp.configFile);
 
+      assert(result.success);
       expect(result.created).toBe(true);
       expect(result.id).toMatch(/^[0-9a-f-]{36}$/);
-      const config = await readGlobalConfig(tmp.configFile);
-      expect(config.installationId).toBe(result.id);
+      const read = await readGlobalConfig(tmp.configFile);
+      assert(read.success);
+      expect(read.config.installationId).toBe(result.id);
     });
 
     it('returns existing id with created: false', async () => {
@@ -132,7 +164,26 @@ describe('global-config', () => {
 
       const result = await getOrCreateInstallationId(tmp.configDir, tmp.configFile);
 
-      expect(result).toEqual({ id: 'existing-id', created: false });
+      expect(result).toEqual({ success: true, id: 'existing-id', created: false });
+    });
+
+    it('returns failure when existing config is unreadable', async () => {
+      await writeFile(tmp.configFile, '{ malformed json');
+
+      const result = await getOrCreateInstallationId(tmp.configDir, tmp.configFile);
+
+      assert(!result.success);
+      expect(result.error).toBeInstanceOf(Error);
+    });
+
+    it('returns failure when the new id cannot be persisted', async () => {
+      const result = await getOrCreateInstallationId(
+        tmp.testDir + '/\0invalid',
+        tmp.testDir + '/\0invalid/config.json'
+      );
+
+      assert(!result.success);
+      expect(result.error).toBeInstanceOf(Error);
     });
   });
 });

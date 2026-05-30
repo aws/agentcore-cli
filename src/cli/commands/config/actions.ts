@@ -3,13 +3,15 @@ import type { ConfigResult } from './types.js';
 import { ValidationError } from '@/lib/index.js';
 
 export async function handleConfigList(): Promise<ConfigResult> {
-  const config = await readGlobalConfig();
-  return { success: true, message: JSON.stringify(config, null, 2) };
+  const read = await readGlobalConfig();
+  if (!read.success) return read;
+  return { success: true, message: JSON.stringify(read.config, null, 2) };
 }
 
 export async function handleConfigGet(key: string): Promise<ConfigResult> {
-  const config = await readGlobalConfig();
-  const value = getByPath(config, key);
+  const read = await readGlobalConfig();
+  if (!read.success) return read;
+  const value = getByPath(read.config, key);
   if (value === undefined) {
     return { success: false, error: new Error(`Key "${key}" is not set.`) };
   }

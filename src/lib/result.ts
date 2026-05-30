@@ -28,3 +28,28 @@ export function serializeResult<T extends Record<string, unknown>>(
   }
   return result;
 }
+
+/**
+ * Extracts the data portion of a Result's success branch (everything except the
+ * `success` discriminant).
+ */
+type UnwrappedData<R extends Result> = Omit<Extract<R, { success: true }>, 'success'>;
+
+/**
+ * Unwrap a Result to its data portion.
+ * - On success: returns the data (Result minus the `success: true` discriminant).
+ * - On failure: throws the contained error, or returns `defaultValue` if provided.
+ */
+export function unwrapResult<R extends Result>(result: R): UnwrappedData<R>;
+export function unwrapResult<R extends Result>(result: R, defaultValue: UnwrappedData<R>): UnwrappedData<R>;
+export function unwrapResult<R extends Result>(result: R, defaultValue?: UnwrappedData<R>): UnwrappedData<R> {
+  if (result.success) {
+    const { success: _success, ...data } = result;
+    // TS treats destructured object as generic R type and does not respect type narrowing above. Known issue: https://github.com/microsoft/TypeScript/issues/46680
+    return data as UnwrappedData<R>;
+  }
+  if (defaultValue !== undefined) {
+    return defaultValue;
+  }
+  throw result.error;
+}

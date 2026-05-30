@@ -136,8 +136,10 @@ export const main = async (argv: string[]) => {
   // Register global cleanup handlers once at startup
   setupAltScreenCleanup();
 
-  // Generate installationId on first run and show telemetry notice
-  const { created: isFirstRun } = await getOrCreateInstallationId();
+  // Generate installationId on first run and show telemetry notice. If we
+  // could not persist the id, suppress the notice so it doesn't fire every run.
+  const installationIdResult = await getOrCreateInstallationId();
+  const isFirstRun = installationIdResult.success && installationIdResult.created;
 
   const program = createProgram();
 

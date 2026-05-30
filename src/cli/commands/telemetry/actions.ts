@@ -1,3 +1,4 @@
+import { unwrapResult } from '../../../lib/result.js';
 import {
   GLOBAL_CONFIG_DIR,
   GLOBAL_CONFIG_FILE,
@@ -25,7 +26,7 @@ export async function handleTelemetryEnable(
 }
 
 export async function handleTelemetryStatus(configFile = GLOBAL_CONFIG_FILE): Promise<void> {
-  const globalConfig = await readGlobalConfig(configFile);
+  const { config: globalConfig } = unwrapResult(await readGlobalConfig(configFile), { config: {} });
   const pref = await resolveTelemetryPreference(globalConfig);
 
   const status = pref.enabled ? 'Enabled' : 'Disabled';
