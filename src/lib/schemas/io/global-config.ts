@@ -42,7 +42,7 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 
 export async function readGlobalConfig(configFile = GLOBAL_CONFIG_FILE): Promise<Result<{ config: GlobalConfig }>> {
   // Distinguish "file does not exist" (a normal first-run state) from "file
-  // exists but cannot be read or parsed""
+  // exists but cannot be read or parsed"
   try {
     await access(configFile, fsConstants.F_OK);
   } catch {
