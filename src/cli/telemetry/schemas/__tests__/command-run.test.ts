@@ -124,7 +124,7 @@ describe('COMMAND_SCHEMAS', () => {
   });
 
   it('no-attrs commands accept empty object', () => {
-    expect(COMMAND_SCHEMAS['telemetry.disable'].parse({})).toEqual({});
+    expect(COMMAND_SCHEMAS['telemetry.status'].parse({})).toEqual({});
   });
 
   it('import subcommand schemas accept empty object', () => {
@@ -205,7 +205,7 @@ describe('deriveCommandGroup', () => {
     ['add.agent', 'add'],
     ['logs.evals', 'logs'],
     ['remove.gateway-target', 'remove'],
-    ['telemetry.disable', 'telemetry'],
+    ['telemetry.status', 'telemetry'],
   ] as const)('%s → %s', (command, expected) => {
     expect(deriveCommandGroup(command)).toBe(expected);
   });
@@ -221,7 +221,7 @@ describe('type safety', () => {
   });
 
   it('CommandAttrs<telemetry.disable> is empty', () => {
-    expectTypeOf<CommandAttrs<'telemetry.disable'>>().toEqualTypeOf<Record<string, never>>();
+    expectTypeOf<CommandAttrs<'telemetry.status'>>().toEqualTypeOf<Record<string, never>>();
   });
 
   it('no command schema contains arbitrary string fields', () => {
@@ -300,6 +300,6 @@ describe('resilientParse', () => {
   });
 
   it('returns empty object for no-attrs schemas', () => {
-    expect(resilientParse(COMMAND_SCHEMAS['telemetry.disable'], {}, TELEMETRY_OPTS)).toEqual({});
+    expect(resilientParse(COMMAND_SCHEMAS['telemetry.status'], {}, TELEMETRY_OPTS)).toEqual({});
   });
 });

@@ -22,7 +22,7 @@ function readConfig() {
 describe('config command', () => {
   afterAll(() => rm(testConfigDir, { recursive: true, force: true }));
 
-  it('lists config with only installationId when fresh', async () => {
+  it('lists config with installationId when fresh', async () => {
     const result = await run(['config']);
     expect(result.exitCode).toBe(0);
     const parsed = JSON.parse(result.stdout);
