@@ -214,8 +214,6 @@ export const COMMAND_SCHEMAS = {
   'dataset.publish-version': NoAttrs,
   'dataset.remove-version': NoAttrs,
   'telemetry.disable': NoAttrs,
-  'telemetry.enable': NoAttrs,
-  'telemetry.status': NoAttrs,
 } as const satisfies Record<string, z.ZodObject<z.ZodRawShape>>;
 
 // ---------------------------------------------------------------------------
