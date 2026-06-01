@@ -77,9 +77,11 @@ async function createClient(entrypoint: string, mode: 'cli' | 'tui' = 'cli'): Pr
     try {
       sinks.push(new OtelMetricSink({ endpoint, resource }));
     } catch {
-      // Invalid endpoint URL (e.g. an unreplaced build placeholder, or a typo
-      // in the user's config that survived validation). Telemetry is best-effort
-      // — silently skip the network sink rather than crashing the CLI at startup.
+      // `endpoint` is validated by construction (env > config > TELEMETRY_ENDPOINT
+      // constant, with invalid env/config values falling through), so this catch
+      // is defensive against future regressions in the OTLP exporter or Node's URL
+      // parser. Telemetry is best-effort — silently skip the network sink rather
+      // than crashing the CLI at startup.
     }
   }
 
