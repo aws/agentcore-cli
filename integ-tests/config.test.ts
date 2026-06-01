@@ -130,4 +130,13 @@ describe('config command', () => {
       expect(result.stderr).toContain(`Error: Unable to parse config file at ${corruptFile}`);
     });
   });
+
+  describe('installationId validation', () => {
+    it('rejects setting installationId to a non-UUID value', async () => {
+      const result = await run(['config', 'installationId', 'my-custom-id']);
+
+      expect(result.exitCode).toBe(1);
+      expect(result.stderr).toContain('Invalid value');
+    });
+  });
 });

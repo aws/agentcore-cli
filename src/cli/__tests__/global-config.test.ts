@@ -69,7 +69,7 @@ describe('global-config', () => {
 
     it('preserves unknown fields via passthrough', async () => {
       const full = {
-        installationId: 'abc-123',
+        installationId: 'f47ac10b-58cc-4372-a567-0e02b2c3d479',
         telemetry: { enabled: true, endpoint: 'https://example.com', audit: false },
         futureField: 'hello',
       };
@@ -111,16 +111,17 @@ describe('global-config', () => {
     });
 
     it('deep-merges telemetry sub-object with existing config', async () => {
+      const validUuid = 'f47ac10b-58cc-4372-a567-0e02b2c3d479';
       await writeFile(
         tmp.configFile,
-        JSON.stringify({ installationId: 'keep-me', telemetry: { enabled: true, endpoint: 'https://x.com' } })
+        JSON.stringify({ installationId: validUuid, telemetry: { enabled: true, endpoint: 'https://x.com' } })
       );
 
       await updateGlobalConfig({ telemetry: { enabled: false } }, tmp.configDir, tmp.configFile);
 
       const written = JSON.parse(await readFile(tmp.configFile, 'utf-8'));
       expect(written).toEqual({
-        installationId: 'keep-me',
+        installationId: validUuid,
         telemetry: { enabled: false, endpoint: 'https://x.com' },
       });
     });
@@ -160,11 +161,36 @@ describe('global-config', () => {
     });
 
     it('returns existing id with created: false', async () => {
-      await writeFile(tmp.configFile, JSON.stringify({ installationId: 'existing-id' }));
+      const validUuid = 'f47ac10b-58cc-4372-a567-0e02b2c3d479';
+      await writeFile(tmp.configFile, JSON.stringify({ installationId: validUuid }));
 
       const result = await getOrCreateInstallationId(tmp.configDir, tmp.configFile);
 
-      expect(result).toEqual({ success: true, id: 'existing-id', created: false });
+      expect(result).toEqual({ success: true, id: validUuid, created: false });
+    });
+
+    it('regenerates id when existing value is not a valid UUID', async () => {
+      await writeFile(tmp.configFile, JSON.stringify({ installationId: 'my-custom-id' }));
+
+      const result = await getOrCreateInstallationId(tmp.configDir, tmp.configFile);
+
+      assert(result.success);
+      expect(result.created).toBe(true);
+      expect(result.id).toMatch(/^[0-9a-f-]{36}$/);
+      expect(result.id).not.toBe('my-custom-id');
+      const read = await readGlobalConfig(tmp.configFile);
+      assert(read.success);
+      expect(read.config.installationId).toBe(result.id);
+    });
+
+    it('regenerates id when existing value is an empty string', async () => {
+      await writeFile(tmp.configFile, JSON.stringify({ installationId: '' }));
+
+      const result = await getOrCreateInstallationId(tmp.configDir, tmp.configFile);
+
+      assert(result.success);
+      expect(result.created).toBe(true);
+      expect(result.id).toMatch(/^[0-9a-f-]{36}$/);
     });
 
     it('returns failure when existing config is unreadable', async () => {

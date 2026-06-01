@@ -14,7 +14,7 @@ export const GLOBAL_CONFIG_FILE = join(GLOBAL_CONFIG_DIR, 'config.json');
 
 const GlobalConfigSchemaStrict = z
   .object({
-    installationId: z.string().optional(),
+    installationId: z.string().uuid().optional(),
     uvDefaultIndex: z.string().optional(),
     uvIndex: z.string().optional(),
     disableTransactionSearch: z.boolean().optional(),
@@ -99,7 +99,11 @@ function mergeConfig(target: GlobalConfig, source: GlobalConfig): GlobalConfig {
 }
 
 /**
- * Returns the installationId, generating one if it doesn't exist yet.
+ * Returns the installationId, generating one if it doesn't exist yet or if the
+ * persisted value is not a valid UUID. (`installationId` is declared as
+ * `z.string().uuid()` in the schema, so a malformed value is dropped to
+ * `undefined` by `resilientParse` and we fall through to regeneration here.)
+ *
  * `success: true` means the id is in your hands AND persisted on disk
  * (either it was already present, or we just wrote it).
  * `created: true` is only set when this call wrote a freshly generated id.
