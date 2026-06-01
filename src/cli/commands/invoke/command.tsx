@@ -49,7 +49,7 @@ async function handleInvokeCLI(options: InvokeOptions, preloadedContext?: Invoke
     if (isPreviewEnabled() && options.harnessArn) {
       const region = options.region ?? process.env.AWS_REGION ?? process.env.AWS_DEFAULT_REGION;
       if (!region) {
-        const msg = '--region is required with --harness-arn (or set AWS_REGION)';
+        const msg = redactSensitiveText('--region is required with --harness-arn (or set AWS_REGION)');
         if (options.json) {
           console.log(JSON.stringify({ success: false, error: msg }));
         } else {
@@ -87,11 +87,11 @@ async function handleInvokeCLI(options: InvokeOptions, preloadedContext?: Invoke
   }
 }
 
-function redactSensitiveText(value: string): string {
+export function redactSensitiveText(value: string): string {
   return value
     .replace(/(bearer\s+)[a-z0-9\-._~+/]+=*/gi, '$1[REDACTED]')
-    .replace(/(client[_-]?secret\s*[:=]\s*)([^,\s]+)/gi, '$1[REDACTED]')
-    .replace(/(token\s*[:=]\s*)([^,\s]+)/gi, '$1[REDACTED]');
+    .replace(/(client[_-]?secret["']?\s*[:=]\s*["']?)([^"',\s}]+)/gi, '$1[REDACTED]')
+    .replace(/((?:access[_-]?)?token["']?\s*[:=]\s*["']?)([^"',\s}]+)/gi, '$1[REDACTED]');
 }
 
 function printInvokeResult(result: InvokeResult, options: InvokeOptions): void {
@@ -352,10 +352,11 @@ export const registerInvoke = (program: Command) => {
           });
         }
       } catch (error) {
+        const msg = redactSensitiveText(getErrorMessage(error));
         if (cliOptions.json) {
-          console.log(JSON.stringify({ success: false, error: getErrorMessage(error) }));
+          console.log(JSON.stringify({ success: false, error: msg }));
         } else {
-          render(<Text color="red">Error: {getErrorMessage(error)}</Text>);
+          render(<Text color="red">Error: {msg}</Text>);
         }
         process.exit(1);
       }
