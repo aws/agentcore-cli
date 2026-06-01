@@ -83,8 +83,8 @@ async function trackCommandRun<C extends Command>(
  * Use in TUI hooks and CLI paths where the caller handles output and control flow.
  *
  * If the callback returns a failure result, telemetry is recorded and the result
- * is returned to the caller. If the callback throws, telemetry is recorded and
- * the exception is converted to a result type such that callers do not need to handle result + try/catch.
+ * is returned to the caller. If the callback throws, telemetry is recorded before
+ * rethrowing the exception.
  * If telemetry is unavailable, the callback runs untracked.
  *
  * The callback receives an AttributeRecorder to dynamically set or override attributes.
@@ -129,7 +129,7 @@ export async function withCommandRunTelemetry<C extends Command, R extends Resul
         Math.round(performance.now() - start)
       );
     }
-    return { success: false, error: e instanceof Error ? e : new Error(getErrorMessage(e)) } as R;
+    throw e;
   } finally {
     await client?.flush();
   }

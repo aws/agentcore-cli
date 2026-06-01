@@ -6,6 +6,7 @@ import {
   findConfigRoot,
   getWorkingDirectory,
 } from '../../../lib';
+import { buildFailureResult } from '../../../lib/result.js';
 import { getErrorMessage } from '../../errors';
 import { detectContainerRuntime } from '../../external-requirements';
 import { isPreviewEnabled } from '../../feature-flags';
@@ -210,15 +211,19 @@ export const registerDev = (program: Command) => {
             },
             async recorder => {
               if (!positionalPrompt) {
-                throw new ValidationError('A command is required with --exec. Usage: agentcore dev --exec "whoami"');
+                return buildFailureResult(
+                  new ValidationError('A command is required with --exec. Usage: agentcore dev --exec "whoami"')
+                );
               }
               const workingDir = getWorkingDirectory();
               const project = await loadProjectConfig(workingDir);
               const agentName = opts.runtime ?? project?.runtimes[0]?.name ?? 'unknown';
               const targetAgent = project?.runtimes.find(a => a.name === agentName);
               if (targetAgent?.build !== 'Container') {
-                throw new ValidationError(
-                  '--exec is only supported for Container build agents. For CodeZip agents, use your terminal to run commands directly.'
+                return buildFailureResult(
+                  new ValidationError(
+                    '--exec is only supported for Container build agents. For CodeZip agents, use your terminal to run commands directly.'
+                  )
                 );
               }
               recorder.set({
@@ -229,8 +234,7 @@ export const registerDev = (program: Command) => {
               return { success: true as const };
             }
           );
-          // TODO: Remove cast once withCommandRunTelemetry's return type is narrowed
-          if (!execResult.success) throw (execResult as unknown as { error: Error }).error;
+          if (!execResult.success) throw execResult.error;
           return;
         }
 
