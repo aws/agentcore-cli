@@ -178,9 +178,50 @@ export const SessionStorageSchema = z.object({
 });
 export type SessionStorage = z.infer<typeof SessionStorageSchema>;
 
-export const FilesystemConfigurationSchema = z.object({
-  sessionStorage: SessionStorageSchema,
+/**
+ * S3 Files access point configuration for BYO filesystem.
+ * Mounts an S3 Files access point into the runtime at the specified path.
+ */
+export const S3FilesAccessPointSchema = z.object({
+  /** ARN of the S3 Files access point. */
+  accessPointArn: z
+    .string()
+    .regex(/^arn:[^:]+:s3files:[^:]+:\d{12}:access-point\/[a-zA-Z0-9-]+$/, 'Must be a valid S3 Files access point ARN'),
+  /** Absolute mount path under /mnt with exactly one subdirectory level (e.g. /mnt/skills). */
+  mountPath: z
+    .string()
+    .regex(/^\/mnt\/[^/]+$/, 'Must be a path under /mnt with exactly one subdirectory (e.g. /mnt/skills)'),
 });
+export type S3FilesAccessPoint = z.infer<typeof S3FilesAccessPointSchema>;
+
+/**
+ * EFS access point configuration for BYO filesystem.
+ * Mounts an EFS access point into the runtime at the specified path.
+ */
+export const EfsAccessPointSchema = z.object({
+  /** ARN of the EFS access point. */
+  accessPointArn: z
+    .string()
+    .regex(
+      /^arn:[^:]+:elasticfilesystem:[^:]+:\d{12}:access-point\/fsap-[a-f0-9]+$/,
+      'Must be a valid EFS access point ARN'
+    ),
+  /** Absolute mount path under /mnt with exactly one subdirectory level (e.g. /mnt/shared). */
+  mountPath: z
+    .string()
+    .regex(/^\/mnt\/[^/]+$/, 'Must be a path under /mnt with exactly one subdirectory (e.g. /mnt/shared)'),
+});
+export type EfsAccessPoint = z.infer<typeof EfsAccessPointSchema>;
+
+export const FilesystemConfigurationSchema = z
+  .object({
+    sessionStorage: SessionStorageSchema.optional(),
+    s3FilesAccessPoint: S3FilesAccessPointSchema.optional(),
+    efsAccessPoint: EfsAccessPointSchema.optional(),
+  })
+  .refine(data => data.sessionStorage || data.s3FilesAccessPoint || data.efsAccessPoint, {
+    message: 'At least one of sessionStorage, s3FilesAccessPoint, or efsAccessPoint must be specified',
+  });
 export type FilesystemConfiguration = z.infer<typeof FilesystemConfigurationSchema>;
 
 /** Minimum allowed value for lifecycle timeout fields (seconds). */

@@ -17,6 +17,7 @@ import type {
   CustomClaimValidation,
   DirectoryPath,
   FilePath,
+  FilesystemConfiguration,
   ModelProvider,
   NetworkMode,
   ProtocolMode,
@@ -102,6 +103,10 @@ export interface AddAgentOptions extends VpcOptions {
   idleTimeout?: number;
   maxLifetime?: number;
   sessionStorageMountPath?: string;
+  s3FilesAccessPointArn?: string;
+  s3FilesMountPath?: string;
+  efsAccessPointArn?: string;
+  efsMountPath?: string;
   withConfigBundle?: boolean;
 }
 
@@ -125,6 +130,39 @@ export class AgentPrimitive extends BasePrimitive<AddAgentOptions, RemovableReso
       ...(options.idleTimeout !== undefined && { idleRuntimeSessionTimeout: options.idleTimeout }),
       ...(options.maxLifetime !== undefined && { maxLifetime: options.maxLifetime }),
     };
+  }
+
+  /** Build filesystemConfigurations array from flat options. Returns spread-ready object or empty object. */
+  private buildFilesystemConfigurations(options: {
+    sessionStorageMountPath?: string;
+    s3FilesAccessPointArn?: string;
+    s3FilesMountPath?: string;
+    efsAccessPointArn?: string;
+    efsMountPath?: string;
+  }): { filesystemConfigurations: FilesystemConfiguration[] } | Record<string, never> {
+    const configs: FilesystemConfiguration[] = [];
+
+    if (options.sessionStorageMountPath) {
+      configs.push({ sessionStorage: { mountPath: options.sessionStorageMountPath } });
+    }
+    if (options.s3FilesAccessPointArn && options.s3FilesMountPath) {
+      configs.push({
+        s3FilesAccessPoint: {
+          accessPointArn: options.s3FilesAccessPointArn,
+          mountPath: options.s3FilesMountPath,
+        },
+      });
+    }
+    if (options.efsAccessPointArn && options.efsMountPath) {
+      configs.push({
+        efsAccessPoint: {
+          accessPointArn: options.efsAccessPointArn,
+          mountPath: options.efsMountPath,
+        },
+      });
+    }
+
+    return configs.length > 0 ? { filesystemConfigurations: configs } : {};
   }
 
   async add(options: AddAgentOptions): Promise<AddResult<{ agentName: string; agentPath?: string }>> {
@@ -285,6 +323,22 @@ export class AgentPrimitive extends BasePrimitive<AddAgentOptions, RemovableReso
         'Absolute mount path for session filesystem storage (e.g. /mnt/session-storage) [non-interactive]'
       )
       .option(
+        '--s3-files-access-point-arn <arn>',
+        'ARN of an S3 Files access point to mount (requires VPC mode) [non-interactive]'
+      )
+      .option(
+        '--s3-files-mount-path <path>',
+        'Mount path for S3 Files access point (e.g. /mnt/skills) [non-interactive]'
+      )
+      .option(
+        '--efs-access-point-arn <arn>',
+        'ARN of an EFS access point to mount (requires VPC mode) [non-interactive]'
+      )
+      .option(
+        '--efs-mount-path <path>',
+        'Mount path for EFS access point (e.g. /mnt/shared) [non-interactive]'
+      )
+      .option(
         '--with-config-bundle',
         'Create a config bundle wired into the agent template [preview] [non-interactive]'
       )
@@ -345,6 +399,10 @@ export class AgentPrimitive extends BasePrimitive<AddAgentOptions, RemovableReso
               idleTimeout: cliOptions.idleTimeout ? Number(cliOptions.idleTimeout) : undefined,
               maxLifetime: cliOptions.maxLifetime ? Number(cliOptions.maxLifetime) : undefined,
               sessionStorageMountPath: cliOptions.sessionStorageMountPath,
+              s3FilesAccessPointArn: cliOptions.s3FilesAccessPointArn,
+              s3FilesMountPath: cliOptions.s3FilesMountPath,
+              efsAccessPointArn: cliOptions.efsAccessPointArn,
+              efsMountPath: cliOptions.efsMountPath,
               withConfigBundle: cliOptions.withConfigBundle,
             });
 
@@ -614,9 +672,7 @@ export class AgentPrimitive extends BasePrimitive<AddAgentOptions, RemovableReso
       ...(authorizerType && { authorizerType }),
       ...(authorizerConfiguration && { authorizerConfiguration }),
       ...(lifecycleConfiguration && { lifecycleConfiguration }),
-      ...(options.sessionStorageMountPath && {
-        filesystemConfigurations: [{ sessionStorage: { mountPath: options.sessionStorageMountPath } }],
-      }),
+      ...this.buildFilesystemConfigurations(options),
     };
 
     project.runtimes.push(agent);

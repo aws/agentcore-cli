@@ -624,3 +624,114 @@ describe('AgentEnvSpecSchema - endpoints', () => {
     }
   });
 });
+
+describe('FilesystemConfigurationSchema - BYO filesystems', () => {
+  const validAgent = {
+    name: 'TestAgent',
+    build: 'CodeZip',
+    entrypoint: 'main.py',
+    codeLocation: 'app/TestAgent/',
+    runtimeVersion: 'PYTHON_3_12',
+    networkMode: 'VPC',
+    networkConfig: { subnets: ['subnet-12345678'], securityGroups: ['sg-12345678'] },
+  };
+
+  it('accepts s3FilesAccessPoint configuration', () => {
+    const result = AgentEnvSpecSchema.safeParse({
+      ...validAgent,
+      filesystemConfigurations: [
+        {
+          s3FilesAccessPoint: {
+            accessPointArn: 'arn:aws:s3files:us-east-1:123456789012:access-point/my-ap',
+            mountPath: '/mnt/skills',
+          },
+        },
+      ],
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it('accepts efsAccessPoint configuration', () => {
+    const result = AgentEnvSpecSchema.safeParse({
+      ...validAgent,
+      filesystemConfigurations: [
+        {
+          efsAccessPoint: {
+            accessPointArn: 'arn:aws:elasticfilesystem:us-east-1:123456789012:access-point/fsap-0123456789abcdef0',
+            mountPath: '/mnt/shared',
+          },
+        },
+      ],
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it('accepts mixed filesystem configurations', () => {
+    const result = AgentEnvSpecSchema.safeParse({
+      ...validAgent,
+      filesystemConfigurations: [
+        { sessionStorage: { mountPath: '/mnt/session' } },
+        {
+          s3FilesAccessPoint: {
+            accessPointArn: 'arn:aws:s3files:eu-central-1:123456789012:access-point/skills-ap',
+            mountPath: '/mnt/skills',
+          },
+        },
+      ],
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it('rejects s3FilesAccessPoint with invalid ARN', () => {
+    const result = AgentEnvSpecSchema.safeParse({
+      ...validAgent,
+      filesystemConfigurations: [
+        {
+          s3FilesAccessPoint: {
+            accessPointArn: 'arn:aws:s3:us-east-1:123456789012:bucket/my-bucket',
+            mountPath: '/mnt/skills',
+          },
+        },
+      ],
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it('rejects efsAccessPoint with invalid ARN', () => {
+    const result = AgentEnvSpecSchema.safeParse({
+      ...validAgent,
+      filesystemConfigurations: [
+        {
+          efsAccessPoint: {
+            accessPointArn: 'arn:aws:efs:us-east-1:123456789012:file-system/fs-12345',
+            mountPath: '/mnt/shared',
+          },
+        },
+      ],
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it('rejects filesystem config with no type specified', () => {
+    const result = AgentEnvSpecSchema.safeParse({
+      ...validAgent,
+      filesystemConfigurations: [{}],
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it('rejects s3FilesAccessPoint with invalid mount path', () => {
+    const result = AgentEnvSpecSchema.safeParse({
+      ...validAgent,
+      filesystemConfigurations: [
+        {
+          s3FilesAccessPoint: {
+            accessPointArn: 'arn:aws:s3files:us-east-1:123456789012:access-point/my-ap',
+            mountPath: '/data/skills',
+          },
+        },
+      ],
+    });
+    expect(result.success).toBe(false);
+  });
+});
