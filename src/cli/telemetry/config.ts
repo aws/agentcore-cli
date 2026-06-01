@@ -45,10 +45,6 @@ export async function resolveTelemetryPreference(config?: GlobalConfig): Promise
 /**
  * Resolve and validate resource attributes for the current session.
  * Called once at startup — the returned object is reused for every metric in the session.
- *
- * Returns failure if the installation id cannot be persisted, so the caller
- * can disable telemetry rather than emit metrics tagged with an unstable id.
- * Throws if any attribute fails schema validation (prevents PII leakage).
  */
 export async function resolveResourceAttributes(
   mode: 'cli' | 'tui'
@@ -102,8 +98,6 @@ export function validateEndpointUrl(endpoint: string): Result<{ url: string }> {
 /**
  * Resolve the telemetry endpoint. Always returns a usable string.
  * Precedence: AGENTCORE_TELEMETRY_ENDPOINT env var > config.telemetry.endpoint > built-in default.
- * Invalid overrides (env or config) are silently skipped — telemetry is best-effort,
- * a typo in the user's config shouldn't disable it.
  */
 export async function resolveTelemetryEndpoint(config?: GlobalConfig): Promise<string> {
   const envEndpoint = process.env.AGENTCORE_TELEMETRY_ENDPOINT;

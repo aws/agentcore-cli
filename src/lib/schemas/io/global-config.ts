@@ -42,8 +42,7 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 
 export async function readGlobalConfig(configFile = GLOBAL_CONFIG_FILE): Promise<Result<{ config: GlobalConfig }>> {
   // Distinguish "file does not exist" (a normal first-run state) from "file
-  // exists but cannot be read or parsed" (a real error the caller may want to
-  // surface). access(F_OK) is the canonical async existence check.
+  // exists but cannot be read or parsed""
   try {
     await access(configFile, fsConstants.F_OK);
   } catch {
@@ -100,13 +99,7 @@ function mergeConfig(target: GlobalConfig, source: GlobalConfig): GlobalConfig {
 
 /**
  * Returns the installationId, generating one if it doesn't exist yet or if the
- * persisted value is not a valid UUID. (`installationId` is declared as
- * `z.string().uuid()` in the schema, so a malformed value is dropped to
- * `undefined` by `resilientParse` and we fall through to regeneration here.)
- *
- * `success: true` means the id is in your hands AND persisted on disk
- * (either it was already present, or we just wrote it).
- * `created: true` is only set when this call wrote a freshly generated id.
+ * persisted value is not a valid UUID.
  *
  * Note: concurrent first-run invocations may each generate a different id;
  * the last write wins. The id only needs to be stable after the first

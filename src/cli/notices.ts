@@ -1,11 +1,8 @@
-import { resolveTelemetryPreference } from './telemetry/config';
 import { ANSI } from './constants';
+import { resolveTelemetryPreference } from './telemetry/config';
 import { type UpdateCheckResult, printUpdateNotification } from './update-notifier';
 
 export async function printTelemetryNotice(): Promise<void> {
-  // Don't claim "the CLI collects analytics" if the user has already opted out
-  // (via env var or global config). Showing the notice would directly contradict
-  // their choice and is misleading.
   const pref = await resolveTelemetryPreference();
   if (!pref.enabled) return;
 
