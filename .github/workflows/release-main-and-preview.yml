@@ -1,4 +1,4 @@
-name: Release
+name: Release Main and Preview
 
 on:
   workflow_dispatch:
@@ -208,64 +208,11 @@ jobs:
             --body "$BODY"
 
   # ═══════════════════════════════════════════════════════════════════
-  # Step 2 — Build and test both variants
-  # ═══════════════════════════════════════════════════════════════════
-  test-main:
-    name: Test Main Build
-    needs: prepare-release
-    if: inputs.release_target != 'preview-only'
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v6
-        with:
-          ref: ${{ needs.prepare-release.outputs.branch }}
-      - uses: actions/setup-node@v6
-        with:
-          node-version: 20.x
-      - name: Configure git
-        run: |
-          git config --global user.name "github-actions[bot]"
-          git config --global user.email "github-actions[bot]@users.noreply.github.com"
-      - run: curl -LsSf https://astral.sh/uv/install.sh | sh
-      - run: npm ci
-      - run: npm run lint
-      - run: npm run typecheck
-      - run: npm run build
-      - run: npm run test:unit
-
-  test-preview:
-    name: Test Preview Build
-    needs: prepare-release
-    if: inputs.release_target != 'main-only'
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v6
-        with:
-          ref: ${{ needs.prepare-release.outputs.branch }}
-      - uses: actions/setup-node@v6
-        with:
-          node-version: 20.x
-      - name: Configure git
-        run: |
-          git config --global user.name "github-actions[bot]"
-          git config --global user.email "github-actions[bot]@users.noreply.github.com"
-      - run: curl -LsSf https://astral.sh/uv/install.sh | sh
-      - run: npm ci
-      - run: npm run lint
-      - run: npm run typecheck
-      - name: Build package
-        env:
-          BUILD_PREVIEW: '1'
-        run: npm run build
-      - run: npm run test:unit
-
-  # ═══════════════════════════════════════════════════════════════════
-  # Step 3 — Manual approval gate
+  # Step 2 — Manual approval gate
   # ═══════════════════════════════════════════════════════════════════
   release-approval:
     name: Release Approval
-    needs: [test-main, test-preview, prepare-release]
-    if: always() && !failure() && !cancelled()
+    needs: [prepare-release]
     runs-on: ubuntu-latest
     environment:
       name: npm-publish-approval
@@ -275,19 +222,18 @@ jobs:
           MAIN_VERSION: ${{ needs.prepare-release.outputs.main_version }}
           PREVIEW_VERSION: ${{ needs.prepare-release.outputs.preview_version }}
         run: |
-          echo "✅ Both builds and tests passed"
-          echo ""
           echo "📦 Main version:    $MAIN_VERSION (npm tag: latest)"
           echo "📦 Preview version: $PREVIEW_VERSION (npm tag: preview)"
           echo ""
           echo "⚠️  MANUAL APPROVAL REQUIRED"
           echo ""
           echo "Before approving:"
-          echo "1. Merge the release PR to main"
-          echo "2. Verify the PR is merged"
+          echo "1. Verify PR CI checks are passing"
+          echo "2. Merge the release PR to main"
+          echo "3. Verify the PR is merged"
 
   # ═══════════════════════════════════════════════════════════════════
-  # Step 4 — Verify PR merged
+  # Step 3 — Verify PR merged
   # ═══════════════════════════════════════════════════════════════════
   verify-merge:
     name: Verify PR Merged
@@ -329,7 +275,7 @@ jobs:
           echo "✅ Preview version verified: $ACTUAL"
 
   # ═══════════════════════════════════════════════════════════════════
-  # Step 5a — Publish main to npm (tag: latest)
+  # Step 4a — Publish main to npm (tag: latest)
   # ═══════════════════════════════════════════════════════════════════
   publish-main:
     name: Publish Main (@latest)
@@ -386,7 +332,7 @@ jobs:
             ```
 
   # ═══════════════════════════════════════════════════════════════════
-  # Step 5b — Publish preview to npm (tag: preview)
+  # Step 4b — Publish preview to npm (tag: preview)
   # ═══════════════════════════════════════════════════════════════════
   publish-preview:
     name: Publish Preview (@preview)

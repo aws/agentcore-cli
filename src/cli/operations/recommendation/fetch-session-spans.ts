@@ -51,9 +51,8 @@ export async function fetchSessionSpans(options: FetchSessionSpansOptions): Prom
   const endTimeMs = Date.now();
   const startTimeMs = endTimeMs - lookbackDays * 24 * 60 * 60 * 1000;
 
-  // Fetch span records and log records in parallel
-  onProgress?.('Fetching span records from aws/spans...');
-  const [spanRecords, logRecords] = await Promise.all([
+  onProgress?.('Fetching span records from aws/spans and runtime log group...');
+  const [sharedSpanRecords, runtimeSpanRecords, logRecords] = await Promise.all([
     collectLogEvents({
       logGroupName: SPANS_LOG_GROUP,
       region,
@@ -66,16 +65,22 @@ export async function fetchSessionSpans(options: FetchSessionSpansOptions): Prom
       region,
       startTimeMs,
       endTimeMs,
-      // Filter for log records that contain body with input messages
+      filterPattern: `"session.id" "${sessionId}"`,
+    }),
+    collectLogEvents({
+      logGroupName: runtimeLogGroupName,
+      region,
+      startTimeMs,
+      endTimeMs,
       filterPattern: `"body" "input"`,
     }),
   ]);
 
-  onProgress?.(`Found ${spanRecords.length} span records, ${logRecords.length} log record candidates`);
+  const allSpanRecords = [...sharedSpanRecords, ...runtimeSpanRecords];
+  onProgress?.(`Found ${allSpanRecords.length} span records, ${logRecords.length} log record candidates`);
 
-  // Parse span records — these are already OTEL spans with attributes.session.id
   const spans: SessionSpan[] = [];
-  for (const event of spanRecords) {
+  for (const event of allSpanRecords) {
     try {
       const parsed = JSON.parse(event.message) as SessionSpan;
       spans.push(parsed);

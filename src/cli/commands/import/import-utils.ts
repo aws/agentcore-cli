@@ -1,10 +1,10 @@
 import { APP_DIR, ConfigIO, NoProjectError, ValidationError, findConfigRoot } from '../../../lib';
 import type { AwsDeploymentTarget } from '../../../schema';
 import { detectAccount, validateAwsCredentials } from '../../aws/account';
+import { ANSI } from '../../constants';
 import { ExecLogger } from '../../logging';
 import { setupPythonProject } from '../../operations/python/setup';
 import { getTemplatePath } from '../../templates/templateRoot';
-import { ANSI } from './constants';
 import type { ImportResourceOptions, ImportResourceResult, ImportableResourceType } from './types';
 import * as fs from 'node:fs';
 import * as path from 'node:path';

@@ -1,3 +1,4 @@
+import { ANSI } from '../constants';
 import { printPostCommandNotices } from '../notices';
 import { TelemetryClientAccessor } from '../telemetry';
 import { type UpdateCheckResult } from '../update-notifier';
@@ -7,9 +8,7 @@ import { clearExitMessage, getExitMessage } from './exit-message';
 import { render } from 'ink';
 import React from 'react';
 
-const ENTER_ALT_SCREEN = '\x1B[?1049h\x1B[H';
-const EXIT_ALT_SCREEN = '\x1B[?1049l';
-const SHOW_CURSOR = '\x1B[?25h';
+const { enterAltScreen: ENTER_ALT_SCREEN, exitAltScreen: EXIT_ALT_SCREEN, showCursor: SHOW_CURSOR } = ANSI;
 
 let inAltScreen = false;
 

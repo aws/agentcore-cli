@@ -2,7 +2,6 @@ import { ValidationError, serializeResult } from '../../../lib';
 import { getErrorMessage } from '../../errors';
 import { isPreviewEnabled } from '../../feature-flags';
 import { withCommandRunTelemetry } from '../../telemetry/cli-command-run.js';
-import { AgentProtocol, AuthType, standardize } from '../../telemetry/schemas/common-shapes.js';
 import { renderTUI } from '../../tui';
 import { COMMAND_DESCRIPTIONS } from '../../tui/copy';
 import { requireProject, requireTTY } from '../../tui/guards';
@@ -10,6 +9,7 @@ import { parseHeaderFlags } from '../shared/header-utils';
 import { type InvokeContext, handleHarnessInvokeByArn, handleInvoke, loadInvokeConfig } from './action';
 import { resolvePrompt } from './resolve-prompt';
 import type { InvokeOptions, InvokeResult } from './types';
+import { computeInvokeAttrs } from './utils';
 import { validateInvokeOptions } from './validate';
 import type { Command } from '@commander-js/extra-typings';
 import { Text, render } from 'ink';
@@ -28,12 +28,6 @@ function startSpinner(message: string): NodeJS.Timeout {
 function stopSpinner(spinner: NodeJS.Timeout): void {
   clearInterval(spinner);
   process.stderr.write('\r\x1b[K'); // Clear line
-}
-
-function resolveProtocol(options: InvokeOptions, projectProtocol?: string): string {
-  if (projectProtocol) return projectProtocol.toLowerCase();
-  if (options.tool) return 'mcp';
-  return 'http';
 }
 
 async function handleInvokeCLI(options: InvokeOptions, preloadedContext?: InvokeContext): Promise<InvokeResult> {
@@ -174,6 +168,7 @@ export const registerInvoke = (program: Command) => {
         'Override timeout seconds (harness only) [non-interactive] [preview]',
         parseInt
       )
+      .option('--skills <paths>', 'Skills to use, comma-separated paths (harness only) [non-interactive] [preview]')
       .option('--system-prompt <text>', 'Override system prompt (harness only) [non-interactive] [preview]')
       .option(
         '--allowed-tools <tools>',
@@ -211,6 +206,7 @@ export const registerInvoke = (program: Command) => {
         maxIterations?: number;
         maxTokens?: number;
         harnessTimeout?: number;
+        skills?: string;
         systemPrompt?: string;
         allowedTools?: string;
         actorId?: string;
@@ -261,15 +257,17 @@ export const registerInvoke = (program: Command) => {
         ) {
           const result = await withCommandRunTelemetry(
             'invoke',
-            {
-              has_stream: cliOptions.stream ?? false,
-              has_session_id: !!cliOptions.sessionId,
-              auth_type: standardize(AuthType, cliOptions.bearerToken ? 'bearer_token' : 'sigv4'),
-              agent_protocol: standardize(
-                AgentProtocol,
-                resolveProtocol({ tool: cliOptions.tool } as InvokeOptions, agentProtocol)
-              ),
-            },
+            computeInvokeAttrs({
+              preview: isPreviewEnabled(),
+              harnessName: cliOptions.harness,
+              harnessArn: cliOptions.harnessArn,
+              harnessCount: invokeContext?.project.harnesses?.length ?? 0,
+              runtimeCount: invokeContext?.project.runtimes.length ?? 0,
+              stream: cliOptions.stream ?? false,
+              hasSessionId: !!cliOptions.sessionId,
+              bearerToken: cliOptions.bearerToken,
+              agentProtocol: agentProtocol ?? (cliOptions.tool ? 'mcp' : undefined),
+            }),
             async (): Promise<InvokeResult> => {
               if (!resolved.success) {
                 return { success: false, error: new ValidationError(resolved.error ?? 'Prompt resolution failed') };
@@ -306,6 +304,7 @@ export const registerInvoke = (program: Command) => {
                 maxIterations: cliOptions.maxIterations,
                 maxTokens: cliOptions.maxTokens,
                 harnessTimeout: cliOptions.harnessTimeout,
+                skills: cliOptions.skills,
                 systemPrompt: cliOptions.systemPrompt,
                 allowedTools: cliOptions.allowedTools,
                 actorId: cliOptions.actorId,

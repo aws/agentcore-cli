@@ -9,15 +9,16 @@ import type {
   TargetLanguage,
 } from '../../../schema';
 import { LIFECYCLE_TIMEOUT_MAX, LIFECYCLE_TIMEOUT_MIN } from '../../../schema';
+import { ANSI } from '../../constants';
 import { getErrorMessage } from '../../errors';
 import { isPreviewEnabled } from '../../feature-flags';
 import { harnessPrimitive } from '../../primitives/registry';
-import { runCliCommand } from '../../telemetry/cli-command-run.js';
+import { runCliCommand, withCommandRunTelemetry } from '../../telemetry/cli-command-run.js';
 import {
   AgentFramework,
   AgentLanguage,
   AgentProtocol,
-  AgentType,
+  AgentSource,
   MemoryType,
   ModelProvider as ModelProviderEnum,
   NetworkMode as NetworkModeEnum,
@@ -139,78 +140,83 @@ async function handleCreateHarnessCLI(options: CreateOptions): Promise<void> {
   const name = options.name ?? options.projectName;
   const projectName = options.projectName ?? name;
 
-  const validation = validateCreateHarnessOptions(
+  const result = await withCommandRunTelemetry(
+    'create',
     {
-      name,
-      projectName,
-      modelProvider: options.modelProvider,
-      modelId: options.modelId,
-      apiKeyArn: options.apiKeyArn,
+      agent_environment: 'harness' as const,
+      has_agent: true,
+      model_provider: standardize(ModelProviderEnum, options.modelProvider ?? 'bedrock'),
+      memory_type: standardize(MemoryType, options.harnessMemory === false ? 'none' : 'longandshortterm'),
+      network_mode: standardize(NetworkModeEnum, options.networkMode ?? 'public'),
     },
-    cwd
-  );
-  if (!validation.valid) {
-    if (options.json) {
-      console.log(JSON.stringify({ success: false, error: validation.error }));
-    } else {
-      console.error(validation.error);
-    }
-    process.exit(1);
-  }
+    async () => {
+      const validation = validateCreateHarnessOptions(
+        {
+          name,
+          projectName,
+          modelProvider: options.modelProvider,
+          modelId: options.modelId,
+          apiKeyArn: options.apiKeyArn,
+        },
+        cwd
+      );
+      if (!validation.valid) {
+        return { success: false as const, error: new ValidationError(validation.error!) };
+      }
 
-  // Progress callback
-  const green = '\x1b[32m';
-  const reset = '\x1b[0m';
-  const onProgress: ProgressCallback | undefined = options.json
-    ? undefined
-    : (step, status) => {
-        if (status === 'done') console.log(`${green}[done]${reset}  ${step}`);
-        else if (status === 'error') console.log(`\x1b[31m[error]${reset} ${step}`);
+      // Progress callback
+      const onProgress: ProgressCallback | undefined = options.json
+        ? undefined
+        : (step, status) => {
+            if (status === 'done') console.log(`${ANSI.green}[done]${ANSI.reset}  ${step}`);
+            else if (status === 'error') console.log(`${ANSI.red}[error]${ANSI.reset} ${step}`);
+          };
+
+      const provider = (
+        options.modelProvider ? normalizeHarnessModelProvider(options.modelProvider) : 'bedrock'
+      ) as HarnessModelProvider;
+      const defaultModelIds: Record<string, string> = {
+        bedrock: 'global.anthropic.claude-sonnet-4-6',
+        open_ai: 'gpt-5',
+        gemini: 'gemini-2.5-flash',
       };
+      const modelId = options.modelId ?? defaultModelIds[provider] ?? 'global.anthropic.claude-sonnet-4-6';
 
-  const provider = (
-    options.modelProvider ? normalizeHarnessModelProvider(options.modelProvider) : 'bedrock'
-  ) as HarnessModelProvider;
-  const defaultModelIds: Record<string, string> = {
-    bedrock: 'global.anthropic.claude-sonnet-4-6',
-    open_ai: 'gpt-5',
-    gemini: 'gemini-2.5-flash',
-  };
-  const modelId = options.modelId ?? defaultModelIds[provider] ?? 'global.anthropic.claude-sonnet-4-6';
+      const containerOption = harnessPrimitive!.parseContainerFlag(options.container);
 
-  const containerOption = harnessPrimitive!.parseContainerFlag(options.container);
-
-  const result = await createProjectWithHarness({
-    name: name!,
-    projectName: projectName!,
-    cwd,
-    modelProvider: provider,
-    modelId,
-    apiKeyArn: options.apiKeyArn,
-    containerUri: containerOption.containerUri,
-    dockerfilePath: containerOption.dockerfilePath,
-    skipMemory: options.harnessMemory === false,
-    maxIterations: options.maxIterations ? Number(options.maxIterations) : undefined,
-    maxTokens: options.maxTokens ? Number(options.maxTokens) : undefined,
-    timeoutSeconds: options.timeout ? Number(options.timeout) : undefined,
-    truncationStrategy: options.truncationStrategy as 'sliding_window' | 'summarization' | undefined,
-    networkMode: options.networkMode as NetworkMode | undefined,
-    subnets: parseCommaSeparatedList(options.subnets),
-    securityGroups: parseCommaSeparatedList(options.securityGroups),
-    idleTimeout: options.idleTimeout ? Number(options.idleTimeout) : undefined,
-    maxLifetime: options.maxLifetime ? Number(options.maxLifetime) : undefined,
-    sessionStoragePath: options.sessionStorageMountPath,
-    skipGit: options.skipGit,
-    skipInstall: options.skipInstall,
-    onProgress,
-  });
+      return createProjectWithHarness({
+        name: name!,
+        projectName: projectName!,
+        cwd,
+        modelProvider: provider,
+        modelId,
+        apiKeyArn: options.apiKeyArn,
+        containerUri: containerOption.containerUri,
+        dockerfilePath: containerOption.dockerfilePath,
+        skipMemory: options.harnessMemory === false,
+        maxIterations: options.maxIterations ? Number(options.maxIterations) : undefined,
+        maxTokens: options.maxTokens ? Number(options.maxTokens) : undefined,
+        timeoutSeconds: options.timeout ? Number(options.timeout) : undefined,
+        truncationStrategy: options.truncationStrategy as 'sliding_window' | 'summarization' | undefined,
+        networkMode: options.networkMode as NetworkMode | undefined,
+        subnets: parseCommaSeparatedList(options.subnets),
+        securityGroups: parseCommaSeparatedList(options.securityGroups),
+        idleTimeout: options.idleTimeout ? Number(options.idleTimeout) : undefined,
+        maxLifetime: options.maxLifetime ? Number(options.maxLifetime) : undefined,
+        sessionStoragePath: options.sessionStorageMountPath,
+        skipGit: options.skipGit,
+        skipInstall: options.skipInstall,
+        onProgress,
+      });
+    }
+  );
 
   if (options.json) {
-    console.log(JSON.stringify(result));
+    console.log(JSON.stringify(serializeResult(result)));
   } else if (result.success) {
     printCreateHarnessSummary(projectName!, name!);
   } else {
-    console.error(result.error);
+    console.error(result.error instanceof Error ? result.error.message : 'Create failed');
   }
   process.exit(result.success ? 0 : 1);
 }
@@ -245,13 +251,14 @@ async function handleCreateCLI(options: CreateOptions): Promise<void> {
   }
 
   const knownAttrs = {
+    agent_environment: 'runtime' as const,
     agent_language: standardize(AgentLanguage, options.language),
     agent_framework: standardize(AgentFramework, options.framework),
     model_provider: standardize(ModelProviderEnum, options.modelProvider),
     memory_type: standardize(MemoryType, options.memory ?? 'none'),
     agent_protocol: standardize(AgentProtocol, options.protocol ?? 'http'),
     build_type: standardize(TelemetryBuildType, options.build ?? 'codezip'),
-    agent_type: standardize(AgentType, options.type ?? 'create'),
+    agent_source: standardize(AgentSource, options.type ?? 'create'),
     network_mode: standardize(NetworkModeEnum, options.networkMode ?? 'public'),
     has_agent: options.agent !== false,
   };

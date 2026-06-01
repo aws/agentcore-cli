@@ -1,5 +1,6 @@
 import { ConfigIO } from '../../../lib';
 import { detectAwsContext } from '../../aws/aws-context';
+import { ANSI } from '../../constants';
 import { getErrorMessage } from '../../errors';
 import { canSkipDeploy } from '../../operations/deploy/change-detection';
 import { handleDeploy } from './actions';
@@ -18,7 +19,7 @@ export function createSpinnerProgress(): SpinnerProgress {
     if (spinner) {
       clearInterval(spinner);
       spinner = undefined;
-      process.stdout.write('\r\x1b[K');
+      process.stdout.write(`\r${ANSI.clearLine}`);
     }
   };
 
@@ -91,7 +92,7 @@ export async function runCliDeploy(): Promise<void> {
       }
       console.log('');
     } else {
-      console.warn(`\x1b[33mDeploy failed: ${result.error}. Starting dev server anyway...\x1b[0m`);
+      console.warn(`${ANSI.yellow}Deploy failed: ${result.error}. Starting dev server anyway...${ANSI.reset}`);
       if (result.logPath) {
         console.warn(`Deploy log: ${result.logPath}`);
       }
@@ -99,6 +100,8 @@ export async function runCliDeploy(): Promise<void> {
     }
   } catch (deployErr) {
     cleanup();
-    console.warn(`\x1b[33mDeploy failed: ${getErrorMessage(deployErr)}. Starting dev server anyway...\x1b[0m\n`);
+    console.warn(
+      `${ANSI.yellow}Deploy failed: ${getErrorMessage(deployErr)}. Starting dev server anyway...${ANSI.reset}\n`
+    );
   }
 }

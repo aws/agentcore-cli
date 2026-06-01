@@ -1,6 +1,6 @@
 import { ONE_DAY_MS } from '../lib/time-constants.js';
 import { compareVersions, fetchLatestVersion } from './commands/update/action.js';
-import { PACKAGE_VERSION, getDistroConfig } from './constants.js';
+import { ANSI, PACKAGE_VERSION, getDistroConfig } from './constants.js';
 import { mkdir, readFile, writeFile } from 'fs/promises';
 import { homedir } from 'os';
 import { join } from 'path';
@@ -67,9 +67,7 @@ export async function checkForUpdate(): Promise<UpdateCheckResult | null> {
 }
 
 export function printUpdateNotification(result: UpdateCheckResult): void {
-  const yellow = '\x1b[33m';
-  const cyan = '\x1b[36m';
-  const reset = '\x1b[0m';
+  const { yellow, cyan, reset } = ANSI;
   const { installCommand } = getDistroConfig();
 
   process.stderr.write(

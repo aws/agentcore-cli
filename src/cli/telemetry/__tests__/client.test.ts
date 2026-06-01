@@ -90,13 +90,14 @@ describe('withCommandRunTelemetry', () => {
     await withCommandRunTelemetry(
       'create',
       {
+        agent_environment: 'runtime',
         agent_language: 'rust' as never,
         agent_framework: 'strands',
         model_provider: 'bedrock',
         memory_type: 'shortterm',
         agent_protocol: 'mcp',
         build_type: 'codezip',
-        agent_type: 'create',
+        agent_source: 'create',
         network_mode: 'public',
         has_agent: true,
       },
@@ -112,13 +113,14 @@ describe('withCommandRunTelemetry', () => {
     await withCommandRunTelemetry(
       'create',
       {
+        agent_environment: 'runtime',
         agent_language: 'python',
         agent_framework: 'strands',
         model_provider: 'bedrock',
         memory_type: 'none',
         agent_protocol: 'http',
         build_type: 'codezip',
-        agent_type: 'create',
+        agent_source: 'create',
         network_mode: 'public',
         has_agent: true,
       },
@@ -172,6 +174,7 @@ describe('withCommandRunTelemetry', () => {
       await withCommandRunTelemetry(
         'dev',
         {
+          agent_environment: 'runtime',
           dev_action: 'server',
           ui_mode: 'terminal',
           has_stream: false,
@@ -204,6 +207,7 @@ describe('withCommandRunTelemetry', () => {
       await withCommandRunTelemetry(
         'dev',
         {
+          agent_environment: 'runtime',
           dev_action: 'server',
           ui_mode: 'terminal',
           has_stream: false,
@@ -229,6 +233,7 @@ describe('withCommandRunTelemetry', () => {
       await withCommandRunTelemetry(
         'dev',
         {
+          agent_environment: 'runtime',
           dev_action: 'server',
           ui_mode: 'terminal',
           has_stream: false,
@@ -249,6 +254,7 @@ describe('withCommandRunTelemetry', () => {
       await withCommandRunTelemetry(
         'dev',
         {
+          agent_environment: 'runtime',
           dev_action: 'server',
           ui_mode: 'terminal',
           has_stream: false,
@@ -277,6 +283,7 @@ describe('withCommandRunTelemetry', () => {
       await withCommandRunTelemetry(
         'dev',
         {
+          agent_environment: 'runtime',
           dev_action: 'server',
           ui_mode: 'terminal',
           has_stream: false,

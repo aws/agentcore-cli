@@ -1,5 +1,5 @@
-import { ConfigIO, SecureCredentials } from '../../../lib';
-import { AwsCredentialsError } from '../../../lib/errors/types';
+import { ConfigIO, SecureCredentials, toError } from '../../../lib';
+import { AwsCredentialsError, UserCancellationError } from '../../../lib/errors/types';
 import type { DeployedState } from '../../../schema';
 import { applyTargetRegionToEnv } from '../../aws';
 import { validateAwsCredentials } from '../../aws/account';
@@ -66,6 +66,8 @@ export interface PreflightResult {
   hasTokenExpiredError: boolean;
   /** True if preflight failed due to missing AWS credentials (not configured) */
   hasCredentialsError: boolean;
+  /** The error that caused preflight to fail, if any */
+  lastError?: Error;
   /** Missing credentials that need to be provided */
   missingCredentials: MissingCredential[];
   /** KMS key ARN used for identity token vault encryption */
@@ -134,6 +136,7 @@ export function useCdkPreflight(options: PreflightOptions): PreflightResult {
     Record<string, { credentialProviderArn: string; clientSecretArn?: string; callbackUrl?: string }>
   >({});
   const [teardownConfirmed, setTeardownConfirmed] = useState(false);
+  const lastErrorRef = useRef<Error | undefined>(undefined);
 
   // Guard against concurrent runs (React StrictMode, re-renders, etc.)
   const isRunningRef = useRef(false);
@@ -155,6 +158,12 @@ export function useCdkPreflight(options: PreflightOptions): PreflightResult {
 
   const resetSteps = () => {
     setSteps(BASE_PREFLIGHT_STEPS.map(s => ({ ...s, status: 'pending' as const })));
+  };
+
+  const failPreflight = (err: unknown) => {
+    lastErrorRef.current = toError(err);
+    setPhase('error');
+    isRunningRef.current = false;
   };
 
   // Dispose wrapper and clear ref
@@ -231,8 +240,7 @@ export function useCdkPreflight(options: PreflightOptions): PreflightResult {
   }, []);
 
   const cancelTeardown = useCallback(() => {
-    setPhase('error');
-    isRunningRef.current = false;
+    failPreflight(new UserCancellationError());
     restoreRegionEnv();
   }, [restoreRegionEnv]);
 
@@ -269,6 +277,7 @@ export function useCdkPreflight(options: PreflightOptions): PreflightResult {
     if (phase !== 'running') return;
     if (isRunningRef.current) return;
     isRunningRef.current = true;
+    lastErrorRef.current = undefined;
 
     const handleUnhandledRejection = (reason: unknown) => {
       const error = formatError(reason);
@@ -287,8 +296,7 @@ export function useCdkPreflight(options: PreflightOptions): PreflightResult {
         }
         return prev;
       });
-      setPhase('error');
-      isRunningRef.current = false;
+      failPreflight(reason);
     };
 
     process.on('unhandledRejection', handleUnhandledRejection);
@@ -329,8 +337,7 @@ export function useCdkPreflight(options: PreflightOptions): PreflightResult {
             userMessage = getErrorMessage(err);
           }
           updateStep(STEP_VALIDATE, { status: 'error', error: userMessage });
-          setPhase('error');
-          isRunningRef.current = false;
+          failPreflight(err);
           return;
         }
 
@@ -354,8 +361,7 @@ export function useCdkPreflight(options: PreflightOptions): PreflightResult {
             const userMessage =
               isInteractive && err instanceof AwsCredentialsError ? err.shortMessage : getErrorMessage(err);
             updateStep(STEP_VALIDATE, { status: 'error', error: userMessage });
-            setPhase('error');
-            isRunningRef.current = false;
+            failPreflight(err);
             return;
           }
         }
@@ -369,8 +375,7 @@ export function useCdkPreflight(options: PreflightOptions): PreflightResult {
             const errorMsg = depsResult.errors.join('\n');
             logger.endStep('error', errorMsg);
             updateStep(STEP_DEPS, { status: 'error', error: errorMsg });
-            setPhase('error');
-            isRunningRef.current = false;
+            failPreflight(new Error(errorMsg));
             return;
           }
           // Log version info
@@ -386,8 +391,7 @@ export function useCdkPreflight(options: PreflightOptions): PreflightResult {
           const errorMsg = formatError(err);
           logger.endStep('error', errorMsg);
           updateStep(STEP_DEPS, { status: 'error', error: logger.getFailureMessage('Check dependencies') });
-          setPhase('error');
-          isRunningRef.current = false;
+          failPreflight(err);
           return;
         }
 
@@ -402,8 +406,7 @@ export function useCdkPreflight(options: PreflightOptions): PreflightResult {
           const errorMsg = formatError(err);
           logger.endStep('error', errorMsg);
           updateStep(STEP_BUILD, { status: 'error', error: logger.getFailureMessage('Build CDK project') });
-          setPhase('error');
-          isRunningRef.current = false;
+          failPreflight(err);
           return;
         }
 
@@ -450,8 +453,7 @@ export function useCdkPreflight(options: PreflightOptions): PreflightResult {
             status: 'error',
             error: logger.getFailureMessage('Synthesize CloudFormation'),
           });
-          setPhase('error');
-          isRunningRef.current = false;
+          failPreflight(err);
           return;
         }
 
@@ -466,8 +468,7 @@ export function useCdkPreflight(options: PreflightOptions): PreflightResult {
               const errorMsg = stackStatus.message ?? `Stack ${stackStatus.blockingStack} is not in a deployable state`;
               logger.endStep('error', errorMsg);
               updateStepByLabel(LABEL_STACK_STATUS, { status: 'error', error: errorMsg });
-              setPhase('error');
-              isRunningRef.current = false;
+              failPreflight(new Error(errorMsg));
               return;
             }
             logger.endStep('success');
@@ -482,8 +483,7 @@ export function useCdkPreflight(options: PreflightOptions): PreflightResult {
               status: 'error',
               error: logger.getFailureMessage('Check stack status'),
             });
-            setPhase('error');
-            isRunningRef.current = false;
+            failPreflight(err);
             return;
           }
         } else {
@@ -520,8 +520,7 @@ export function useCdkPreflight(options: PreflightOptions): PreflightResult {
           }
           return prev;
         });
-        setPhase('error');
-        isRunningRef.current = false;
+        failPreflight(err);
       }
     };
 
@@ -566,8 +565,7 @@ export function useCdkPreflight(options: PreflightOptions): PreflightResult {
             status: 'error',
             error: logger.getFailureMessage('Synthesize CloudFormation'),
           });
-          setPhase('error');
-          isRunningRef.current = false;
+          failPreflight(err);
           return;
         }
 
@@ -582,8 +580,7 @@ export function useCdkPreflight(options: PreflightOptions): PreflightResult {
               const errorMsg = stackStatus.message ?? `Stack ${stackStatus.blockingStack} is not in a deployable state`;
               logger.endStep('error', errorMsg);
               updateStepByLabel(LABEL_STACK_STATUS, { status: 'error', error: errorMsg });
-              setPhase('error');
-              isRunningRef.current = false;
+              failPreflight(new Error(errorMsg));
               return;
             }
             logger.endStep('success');
@@ -598,8 +595,7 @@ export function useCdkPreflight(options: PreflightOptions): PreflightResult {
               status: 'error',
               error: logger.getFailureMessage('Check stack status'),
             });
-            setPhase('error');
-            isRunningRef.current = false;
+            failPreflight(err);
             return;
           }
         } else {
@@ -647,8 +643,7 @@ export function useCdkPreflight(options: PreflightOptions): PreflightResult {
         } else if (hasOAuth) {
           updateStepByLabel(LABEL_OAUTH, { status: 'error', error: errorMsg });
         }
-        setPhase('error');
-        isRunningRef.current = false;
+        failPreflight(new Error(errorMsg));
         return;
       }
 
@@ -697,8 +692,7 @@ export function useCdkPreflight(options: PreflightOptions): PreflightResult {
           if (identityResult.hasErrors) {
             logger.endStep('error', 'Some API key providers failed to set up');
             updateStepByLabel(LABEL_API_KEY, { status: 'error', error: 'Some API key providers failed' });
-            setPhase('error');
-            isRunningRef.current = false;
+            failPreflight(new Error('Some API key providers failed to set up'));
             return;
           }
 
@@ -741,8 +735,7 @@ export function useCdkPreflight(options: PreflightOptions): PreflightResult {
           if (oauthResult.hasErrors) {
             logger.endStep('error', 'Some OAuth providers failed to set up');
             updateStepByLabel(LABEL_OAUTH, { status: 'error', error: 'Some OAuth providers failed' });
-            setPhase('error');
-            isRunningRef.current = false;
+            failPreflight(new Error('Some OAuth providers failed to set up'));
             return;
           }
 
@@ -807,8 +800,7 @@ export function useCdkPreflight(options: PreflightOptions): PreflightResult {
             status: 'error',
             error: logger.getFailureMessage('Synthesize CloudFormation'),
           });
-          setPhase('error');
-          isRunningRef.current = false;
+          failPreflight(err);
           return;
         }
 
@@ -822,8 +814,7 @@ export function useCdkPreflight(options: PreflightOptions): PreflightResult {
               const errorMsg = stackStatus.message ?? `Stack ${stackStatus.blockingStack} is not in a deployable state`;
               logger.endStep('error', errorMsg);
               updateStepByLabel(LABEL_STACK_STATUS, { status: 'error', error: errorMsg });
-              setPhase('error');
-              isRunningRef.current = false;
+              failPreflight(new Error(errorMsg));
               return;
             }
             logger.endStep('success');
@@ -838,8 +829,7 @@ export function useCdkPreflight(options: PreflightOptions): PreflightResult {
               status: 'error',
               error: logger.getFailureMessage('Check stack status'),
             });
-            setPhase('error');
-            isRunningRef.current = false;
+            failPreflight(err);
             return;
           }
         } else {
@@ -872,8 +862,7 @@ export function useCdkPreflight(options: PreflightOptions): PreflightResult {
               : s
           )
         );
-        setPhase('error');
-        isRunningRef.current = false;
+        failPreflight(err);
       }
     };
 
@@ -908,8 +897,7 @@ export function useCdkPreflight(options: PreflightOptions): PreflightResult {
               : s
           )
         );
-        setPhase('error');
-        isRunningRef.current = false;
+        failPreflight(err);
       }
     };
 
@@ -925,6 +913,7 @@ export function useCdkPreflight(options: PreflightOptions): PreflightResult {
     switchableIoHost,
     hasTokenExpiredError,
     hasCredentialsError,
+    lastError: lastErrorRef.current,
     missingCredentials,
     identityKmsKeyArn,
     allCredentials,

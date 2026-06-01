@@ -7,15 +7,16 @@ Run `agentcore` without arguments to launch the interactive TUI. Flags marked `[
 
 ## Command Aliases
 
-| Command   | Alias |
-| --------- | ----- |
-| `deploy`  | `dp`  |
-| `dev`     | `d`   |
-| `invoke`  | `i`   |
-| `status`  | `s`   |
-| `logs`    | `l`   |
-| `traces`  | `t`   |
-| `package` | `pkg` |
+| Command         | Alias |
+| --------------- | ----- |
+| `deploy`        | `dp`  |
+| `dev`           | `d`   |
+| `invoke`        | `i`   |
+| `status`        | `s`   |
+| `logs`          | `l`   |
+| `traces`        | `t`   |
+| `package`       | `pkg` |
+| `config-bundle` | `cb`  |
 
 ---
 
@@ -644,6 +645,82 @@ agentcore add runtime-endpoint \
 | `--description <desc>` | Description of the endpoint            |
 | `--json`               | JSON output                            |
 
+### add dataset
+
+Add a dataset to the project. Datasets are used to drive batch evaluations and recommendations with a curated set of
+inputs.
+
+```bash
+agentcore add dataset \
+  --name MyDataset \
+  --schema-type AGENTCORE_EVALUATION_PREDEFINED_V1 \
+  --description "Customer support smoke tests"
+```
+
+| Flag                          | Description                                                                 |
+| ----------------------------- | --------------------------------------------------------------------------- |
+| `--name <name>`               | Dataset name                                                                |
+| `--schema-type <schemaType>`  | `AGENTCORE_EVALUATION_PREDEFINED_V1` or `AGENTCORE_EVALUATION_SIMULATED_V1` |
+| `--description <description>` | Dataset description                                                         |
+| `--kms-key-arn <arn>`         | KMS key ARN for dataset encryption (optional)                               |
+| `--json`                      | JSON output                                                                 |
+
+### add config-bundle
+
+[preview] Add a configuration bundle. Config bundles snapshot system prompts, tool descriptions, and runtime config so
+they can be versioned and used as A/B test arms.
+
+```bash
+agentcore add config-bundle \
+  --name MyBundle \
+  --components-file ./bundle-components.json \
+  --commit-message "Initial bundle"
+```
+
+| Flag                       | Description                                                                                                                   |
+| -------------------------- | ----------------------------------------------------------------------------------------------------------------------------- |
+| `--name <name>`            | Bundle name                                                                                                                   |
+| `--description <text>`     | Bundle description                                                                                                            |
+| `--components <json>`      | Components map as inline JSON. Keys are ARNs or placeholders: `{{runtime:<name>}}`, `{{gateway:<name>}}`. Resolved at deploy. |
+| `--components-file <path>` | Path to a components JSON file (same format as `--components`)                                                                |
+| `--branch <name>`          | Branch name for versioning                                                                                                    |
+| `--commit-message <text>`  | Commit message for this version                                                                                               |
+| `--json`                   | JSON output                                                                                                                   |
+
+### add ab-test
+
+[preview] Add an A/B test. Two modes: `config-bundle` (default; split traffic between two bundle versions) and
+`target-based` (split traffic between two HTTP gateway targets).
+
+```bash
+agentcore add ab-test \
+  --name PromptComparison \
+  --runtime MyAgent \
+  --control-bundle ProdBundle --control-version 5 \
+  --treatment-bundle ExperimentalBundle --treatment-version 2 \
+  --control-weight 80 --treatment-weight 20 \
+  --enable
+```
+
+| Flag                        | Description                                               |
+| --------------------------- | --------------------------------------------------------- |
+| `--mode <mode>`             | `config-bundle` (default) or `target-based`               |
+| `--name <name>`             | AB test name                                              |
+| `--description <text>`      | AB test description                                       |
+| `--role-arn <arn>`          | IAM role ARN (auto-created if omitted)                    |
+| `--control-weight <n>`      | Traffic weight for control (1–100)                        |
+| `--treatment-weight <n>`    | Traffic weight for treatment (1–100)                      |
+| `--gateway <name>`          | HTTP gateway name                                         |
+| `--enable`                  | Enable the AB test on creation                            |
+| `--runtime <name>`          | (config-bundle mode) Runtime agent to A/B test            |
+| `--control-bundle <name>`   | (config-bundle mode) Control config bundle name or ARN    |
+| `--control-version <id>`    | (config-bundle mode) Control config bundle version        |
+| `--treatment-bundle <name>` | (config-bundle mode) Treatment config bundle name or ARN  |
+| `--treatment-version <id>`  | (config-bundle mode) Treatment config bundle version      |
+| `--online-eval <name>`      | (config-bundle mode) Online evaluation config name or ARN |
+| `--traffic-header <name>`   | (config-bundle mode) Header name for traffic routing      |
+| `--json`                    | JSON output                                               |
+
 ### remove
 
 Remove resources from project.
@@ -659,6 +736,9 @@ agentcore remove gateway-target --name WeatherTools
 agentcore remove policy-engine --name MyPolicyEngine
 agentcore remove policy --name AdminAccess --engine MyPolicyEngine
 agentcore remove runtime-endpoint --name prod
+agentcore remove dataset --name MyDataset
+agentcore remove config-bundle --name MyBundle
+agentcore remove ab-test --name PromptComparison
 
 # Reset everything
 agentcore remove all -y
@@ -853,6 +933,107 @@ agentcore run eval \
 | `--output <path>`               | Custom output file path                                                                                    |
 | `--json`                        | JSON output                                                                                                |
 
+### run batch-evaluation
+
+[preview] Run evaluators in batch across all agent sessions found in CloudWatch.
+
+```bash
+# Single evaluator across recent sessions
+agentcore run batch-evaluation -r MyAgent -e Builtin.Correctness
+
+# Multiple evaluators with a custom run name
+agentcore run batch-evaluation \
+  -r MyAgent \
+  -e Builtin.Correctness Builtin.Faithfulness \
+  -n "weekly-check" \
+  --json
+
+# Drive batch evaluation with a dataset
+agentcore run batch-evaluation \
+  -r MyAgent \
+  -e Builtin.Completeness \
+  --dataset MyDataset --dataset-version DRAFT
+```
+
+| Flag                          | Description                                                                                            |
+| ----------------------------- | ------------------------------------------------------------------------------------------------------ |
+| `-r, --runtime <name>`        | Runtime name from project config                                                                       |
+| `-e, --evaluator <ids...>`    | Evaluator name(s) — `Builtin.*` IDs                                                                    |
+| `-n, --name <name>`           | Name for the batch evaluation (auto-generated if omitted)                                              |
+| `-d, --lookback-days <days>`  | Lookback window in days                                                                                |
+| `-s, --session-ids <ids...>`  | Specific session IDs to evaluate                                                                       |
+| `-g, --ground-truth <path>`   | JSON file with session metadata and ground truth (assertions, expected trajectory, turns)              |
+| `--region <region>`           | AWS region (auto-detected if omitted)                                                                  |
+| `--endpoint <name>`           | Runtime endpoint name (e.g. `PROMPT_V1`); defaults to `AGENTCORE_RUNTIME_ENDPOINT` env, then `DEFAULT` |
+| `--dataset <name>`            | Dataset name — invoke agent with dataset scenarios before batch evaluation                             |
+| `--dataset-version <version>` | Dataset version (omit for local file, or `N`/`DRAFT`)                                                  |
+| `--json`                      | JSON output                                                                                            |
+
+### run recommendation
+
+[preview] Optimize a system prompt or tool descriptions using agent traces as the signal.
+
+```bash
+# Optimize a system prompt from an inline string
+agentcore run recommendation \
+  -t system-prompt \
+  -r MyAgent \
+  -e Builtin.Correctness \
+  --inline "You are a helpful assistant"
+
+# Optimize a system prompt from a file
+agentcore run recommendation \
+  -t system-prompt \
+  -r MyAgent \
+  -e Builtin.Correctness \
+  --prompt-file ./prompt.txt
+
+# Optimize tool descriptions
+agentcore run recommendation \
+  -t tool-description \
+  -r MyAgent \
+  --tools "search:Searches the web" --tools "calc:Does math"
+
+# Optimize from a deployed config bundle
+agentcore run recommendation \
+  -t system-prompt \
+  -r MyAgent \
+  -e Builtin.Correctness \
+  --bundle-name MyBundle
+```
+
+| Flag                               | Description                                                                                                                    |
+| ---------------------------------- | ------------------------------------------------------------------------------------------------------------------------------ |
+| `-t, --type <type>`                | What to optimize: `system-prompt` or `tool-description` (default: `system-prompt`)                                             |
+| `-r, --runtime <name>`             | Runtime name from project config                                                                                               |
+| `-e, --evaluator <name>`           | Evaluator name — required for `system-prompt` (exactly one)                                                                    |
+| `--prompt-file <path>`             | Load the current system prompt from a file                                                                                     |
+| `--inline <content>`               | Provide the current system prompt or tool descriptions inline                                                                  |
+| `--bundle-name <name>`             | Read current content from a deployed config bundle                                                                             |
+| `--bundle-version <version>`       | Config bundle version (with `--bundle-name`)                                                                                   |
+| `--system-prompt-json-path <path>` | Field name under `configuration` in the bundle (e.g. `systemPrompt`). Resolved automatically. Use dot notation only.           |
+| `--tool-desc-json-path <pair...>`  | Tool name:field pairs for tool descriptions in a config bundle (e.g. `--tool-desc-json-path "search:searchDesc"`). Repeatable. |
+| `--tools <pair...>`                | Tool name:description pairs (repeatable, e.g. `--tools "search:Searches the web"`)                                             |
+| `--spans-file <path>`              | JSON file with OTEL session spans (use instead of CloudWatch traces)                                                           |
+| `--lookback <days>`                | How far back to search for traces in CloudWatch, in days (default: `7`)                                                        |
+| `-s, --session-id <ids...>`        | Limit trace collection to specific session IDs                                                                                 |
+| `-n, --run <name>`                 | Run name prefix for the recommendation                                                                                         |
+| `--region <region>`                | AWS region                                                                                                                     |
+| `--json`                           | JSON output                                                                                                                    |
+
+### recommendations history
+
+[preview] Show past recommendation runs saved locally.
+
+```bash
+agentcore recommendations history
+agentcore recommendations history --json
+```
+
+| Flag     | Description |
+| -------- | ----------- |
+| `--json` | JSON output |
+
 ### evals history
 
 View past on-demand eval run results.
@@ -917,6 +1098,170 @@ agentcore logs evals --follow --json
 | `-n, --limit <count>`  | Maximum log lines                             |
 | `-f, --follow`         | Stream in real-time                           |
 | `--json`               | JSON Lines output                             |
+
+---
+
+## Lifecycle & A/B Testing
+
+### stop
+
+Stop a running batch evaluation or a deployed A/B test.
+
+```bash
+# Stop a running batch evaluation
+agentcore stop batch-evaluation -i <batch-eval-id>
+agentcore stop batch-evaluation -i <batch-eval-id> --json
+
+# Stop a deployed A/B test (permanent)
+agentcore stop ab-test PromptComparison
+```
+
+#### `stop batch-evaluation`
+
+| Flag                | Description                           |
+| ------------------- | ------------------------------------- |
+| `-i, --id <id>`     | Batch evaluation ID to stop           |
+| `--region <region>` | AWS region (auto-detected if omitted) |
+| `--json`            | JSON output                           |
+
+#### `stop ab-test`
+
+| Argument / Flag     | Description  |
+| ------------------- | ------------ |
+| `<name>`            | AB test name |
+| `--region <region>` | AWS region   |
+| `--json`            | JSON output  |
+
+### archive
+
+[preview] Archive (delete) a batch evaluation or recommendation on the service and clear local history. Irreversible.
+
+```bash
+# Archive a batch evaluation
+agentcore archive batch-evaluation -i <batch-eval-id>
+agentcore archive batch-evaluation -i <batch-eval-id> --region us-west-2 --json
+
+# Archive a recommendation
+agentcore archive recommendation -i <recommendation-id>
+```
+
+Both `archive batch-evaluation` and `archive recommendation` accept the same flags:
+
+| Flag                | Description                                  |
+| ------------------- | -------------------------------------------- |
+| `-i, --id <id>`     | ID of the batch evaluation or recommendation |
+| `--region <region>` | AWS region (auto-detected if omitted)        |
+| `--json`            | JSON output                                  |
+
+### ab-test
+
+[preview] View A/B test details and results.
+
+```bash
+agentcore ab-test PromptComparison
+agentcore ab-test PromptComparison --json
+```
+
+| Argument / Flag     | Description  |
+| ------------------- | ------------ |
+| `<name>`            | AB test name |
+| `--region <region>` | AWS region   |
+| `--json`            | JSON output  |
+
+### config-bundle
+
+[preview] Manage configuration bundles. Use the bundle name from `agentcore.json`, not the bundle ID. Aliased as `cb`.
+
+```bash
+# List version history
+agentcore config-bundle versions --bundle MyBundle
+agentcore cb versions --bundle MyBundle --latest-per-branch --json
+
+# Diff two versions
+agentcore config-bundle diff --bundle MyBundle --from <versionId> --to <versionId>
+
+# Create a new branch from an existing version
+agentcore config-bundle create-branch \
+  --bundle MyBundle \
+  --branch experimental \
+  --from <parentVersionId> \
+  --commit-message "Branch off prod for experiments"
+```
+
+#### `config-bundle versions`
+
+| Flag                  | Description                                            |
+| --------------------- | ------------------------------------------------------ |
+| `--bundle <name>`     | Bundle name as defined in `agentcore.json`             |
+| `--branch <name>`     | Filter by branch name                                  |
+| `--latest-per-branch` | Show only the latest version per branch                |
+| `--created-by <name>` | Filter by creator name (e.g. `user`, `recommendation`) |
+| `--region <region>`   | AWS region override                                    |
+| `--json`              | JSON output                                            |
+
+#### `config-bundle diff`
+
+| Flag                | Description                                   |
+| ------------------- | --------------------------------------------- |
+| `--bundle <name>`   | Bundle name                                   |
+| `--from <id>`       | Source version ID (from `cb versions --json`) |
+| `--to <id>`         | Target version ID (from `cb versions --json`) |
+| `--region <region>` | AWS region override                           |
+| `--json`            | JSON output                                   |
+
+#### `config-bundle create-branch`
+
+| Flag                      | Description                                           |
+| ------------------------- | ----------------------------------------------------- |
+| `--bundle <name>`         | Bundle name                                           |
+| `--branch <name>`         | Name for the new branch                               |
+| `--from <versionId>`      | Parent version ID to branch from (defaults to latest) |
+| `--commit-message <text>` | Commit message for the branch point                   |
+| `--region <region>`       | AWS region override                                   |
+| `--json`                  | JSON output                                           |
+
+### dataset
+
+Manage dataset content and versions. Use `add dataset` / `remove dataset` to create or delete dataset resources in the
+project.
+
+```bash
+# Pull DRAFT contents to a local file
+agentcore dataset download --name MyDataset
+
+# Pull a specific version
+agentcore dataset download --name MyDataset --version 3 --yes --json
+
+# Promote DRAFT to a new immutable version
+agentcore dataset publish-version --name MyDataset --json
+
+# Delete a published version
+agentcore dataset remove-version 2 --name MyDataset
+```
+
+#### `dataset download`
+
+| Flag                  | Description                        |
+| --------------------- | ---------------------------------- |
+| `--name <name>`       | Dataset name                       |
+| `--version <version>` | Version to pull (default: `DRAFT`) |
+| `--yes`               | Skip overwrite confirmation        |
+| `--json`              | JSON output                        |
+
+#### `dataset publish-version`
+
+| Flag            | Description  |
+| --------------- | ------------ |
+| `--name <name>` | Dataset name |
+| `--json`        | JSON output  |
+
+#### `dataset remove-version`
+
+| Argument / Flag | Description              |
+| --------------- | ------------------------ |
+| `<version-id>`  | Version number to remove |
+| `--name <name>` | Dataset name             |
+| `--json`        | JSON output              |
 
 ---
 

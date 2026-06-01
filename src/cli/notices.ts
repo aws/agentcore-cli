@@ -1,8 +1,8 @@
+import { ANSI } from './constants';
 import { type UpdateCheckResult, printUpdateNotification } from './update-notifier';
 
 export function printTelemetryNotice(): void {
-  const yellow = '\x1b[33m';
-  const reset = '\x1b[0m';
+  const { yellow, reset } = ANSI;
   process.stderr.write(
     [
       '',

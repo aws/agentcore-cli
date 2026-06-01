@@ -6,8 +6,8 @@ import {
   listAllEvaluators,
   listAllOnlineEvaluationConfigs,
 } from '../../aws/agentcore-control';
+import { ANSI } from '../../constants';
 import { withCommandRunTelemetry } from '../../telemetry/cli-command-run.js';
-import { ANSI } from './constants';
 import { failResult, parseAndValidateArn } from './import-utils';
 import { executeResourceImport } from './resource-import';
 import type { ImportResourceOptions, ImportResourceResult, ResourceImportDescriptor } from './types';

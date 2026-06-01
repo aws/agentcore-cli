@@ -3,7 +3,8 @@ import { z } from 'zod';
 // Type-safe schema builder: rejects z.string() at compile time.
 // Only z.enum(), z.boolean(), z.number(), and z.literal() are allowed as field types.
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-type SafeField = z.ZodEnum<any> | z.ZodBoolean | z.ZodNumber | z.ZodLiteral<any>;
+type BaseSafeField = z.ZodEnum<any> | z.ZodBoolean | z.ZodNumber | z.ZodLiteral<any>;
+type SafeField = BaseSafeField | z.ZodOptional<BaseSafeField>;
 export function safeSchema<T extends Record<string, SafeField>>(shape: T) {
   return z.object(shape);
 }
@@ -46,7 +47,7 @@ export const Count = z.number().int().nonnegative();
 
 export const DevAction = z.enum(['server', 'invoke', 'exec']);
 export const UiMode = z.enum(['browser', 'terminal']);
-export const AgentType = z.enum(['create', 'byo', 'import']);
+export const AgentSource = z.enum(['create', 'byo', 'import']);
 export const AttachMode = z.enum(['log_only', 'enforce']);
 export const AuthType = z.enum(['sigv4', 'bearer_token']);
 export const AuthorizerType = z.enum(['aws_iam', 'custom_jwt', 'none']);
@@ -67,8 +68,11 @@ export const FilterType = z.enum([
   'policy',
   'config-bundle',
   'ab-test',
+  'dataset',
+  'harness',
   'none',
 ]);
+export const AgentEnvironment = z.enum(['harness', 'runtime']);
 export const AgentFramework = z.enum(['strands', 'langchain_langgraph', 'googleadk', 'openaiagents']);
 export const GatewayTargetHost = z.enum(['lambda', 'agentcoreruntime']);
 export const GatewayTargetType = z.enum([
@@ -126,6 +130,7 @@ export const ErrorName = z.enum([
   'ServerError',
   'TimeoutError',
   'UnsupportedLanguageError',
+  'UserCancellationError',
   'ValidationError',
   'UnknownError',
 ]);
@@ -150,8 +155,9 @@ export type DeployMode = z.infer<typeof DeployModeSchema>;
   Keys are the field names as they appear in emitted metrics.
 */
 export const ATTRIBUTES = {
+  agent_environment: AgentEnvironment,
   dev_action: DevAction,
-  agent_type: AgentType,
+  agent_source: AgentSource,
   attach_gateway_count: Count,
   attach_mode: AttachMode,
   auth_type: AuthType,

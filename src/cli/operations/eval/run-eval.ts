@@ -11,7 +11,7 @@ import { runDatasetScenariosAndCollectSpans } from './shared/dataset-session-pro
 import { runEvaluatorsOverSessions } from './shared/evaluator-runner';
 import {
   SPANS_LOG_GROUP,
-  executeQuery,
+  executeQueryGraceful,
   extractTraceIds,
   fetchSessionSpans,
   sanitizeQueryValue,
@@ -240,11 +240,17 @@ export async function discoverSessions(opts: DiscoverSessionsOptions): Promise<S
   const query = `fields attributes.session.id as sessionId
      | parse resource.attributes.cloud.resource_id "runtime/*/" as parsedAgentId
      | filter parsedAgentId = '${sanitizeQueryValue(opts.runtimeId)}'
+     | filter ispresent(kind)
      | stats count(*) as spanCount, min(@timestamp) as firstSeen by sessionId
      | sort firstSeen desc
      | limit ${MAX_DISCOVERED_SESSIONS}`;
 
-  const rows = await executeQuery(client, SPANS_LOG_GROUP, query, startTimeSec, endTimeSec);
+  const runtimeLogGroupName = runtimeLogGroup(opts.runtimeId);
+  const [spansRows, runtimeRows] = await Promise.all([
+    executeQueryGraceful(client, SPANS_LOG_GROUP, query, startTimeSec, endTimeSec),
+    executeQueryGraceful(client, runtimeLogGroupName, query, startTimeSec, endTimeSec),
+  ]);
+  const rows = [...spansRows, ...runtimeRows];
 
   const sessions: SessionInfo[] = [];
   for (const row of rows) {
