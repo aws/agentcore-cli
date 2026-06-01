@@ -70,7 +70,7 @@ export async function resolveResourceAttributes(
 }
 
 export function resolveAuditFilePath(outputDir: string, entrypoint: string, sessionId: string): string {
-  return join(outputDir, `${entrypoint}-${sessionId}.json`);
+  return join(outputDir, `${entrypoint}-${sessionId}.jsonl`);
 }
 
 /**
