@@ -28,6 +28,7 @@ dependencies = [
 {{/if}}
 {{#if (eq modelProvider "Gemini")}}
     "langchain-google-genai >= 3.0.3",
+    "google-genai >= 1.0.0, < 2.0.0",
 {{/if}}
     {{#if hasGateway}}{{#if (includes gatewayAuthTypes "AWS_IAM")}}"mcp-proxy-for-aws >= 1.1.0",
     {{/if}}{{/if}}

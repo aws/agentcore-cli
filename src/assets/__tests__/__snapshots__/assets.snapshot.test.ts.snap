@@ -1242,7 +1242,7 @@ dependencies = [
     "aws-opentelemetry-distro",
     "bedrock-agentcore[a2a] >= 1.0.3",
     "google-adk >= 1.0.0, < 2.0.0",
-    "google-genai >= 1.0.0",
+    "google-genai >= 1.0.0, < 2.0.0",
 ]
 
 [tool.hatch.build.targets.wheel]
@@ -1603,6 +1603,7 @@ dependencies = [
     {{#if (eq modelProvider "Anthropic")}}"langchain-anthropic >= 0.3.0",
     {{/if}}{{#if (eq modelProvider "Bedrock")}}"langchain-aws >= 0.2.0",
     {{/if}}{{#if (eq modelProvider "Gemini")}}"langchain-google-genai >= 2.0.0",
+    "google-genai >= 1.0.0, < 2.0.0",
     {{/if}}{{#if (eq modelProvider "OpenAI")}}"langchain-openai >= 0.2.0",
     {{/if}}"aws-opentelemetry-distro",
     "opentelemetry-instrumentation-langchain >= 0.59.0",
@@ -2190,7 +2191,7 @@ dependencies = [
     "bedrock-agentcore >= 1.0.3",
     "fastapi >= 0.115.12",
     "google-adk >= 1.16.0, < 2.0.0",
-    "google-genai >= 1.0.0",
+    "google-genai >= 1.0.0, < 2.0.0",
     "opentelemetry-distro",
     "opentelemetry-exporter-otlp",
     "uvicorn >= 0.34.3",
@@ -2499,6 +2500,7 @@ dependencies = [
     {{#if (eq modelProvider "Anthropic")}}"langchain-anthropic >= 0.3.0",
     {{/if}}{{#if (eq modelProvider "Bedrock")}}"langchain-aws >= 0.2.0",
     {{/if}}{{#if (eq modelProvider "Gemini")}}"langchain-google-genai >= 2.0.0",
+    "google-genai >= 1.0.0, < 2.0.0",
     {{/if}}{{#if (eq modelProvider "OpenAI")}}"langchain-openai >= 0.2.0",
     {{/if}}"aws-opentelemetry-distro",
     "opentelemetry-instrumentation-langchain >= 0.59.0",
@@ -3674,6 +3676,7 @@ dependencies = [
     "opentelemetry-distro",
     "opentelemetry-exporter-otlp",
     "google-adk >= 1.17.0, < 2.0.0",
+    "google-genai >= 1.0.0, < 2.0.0",
     "bedrock-agentcore >= 1.0.3",
     "botocore[crt] >= 1.35.0",
     {{#if hasGateway}}{{#if (includes gatewayAuthTypes "AWS_IAM")}}"mcp-proxy-for-aws >= 1.1.0",
@@ -4202,6 +4205,7 @@ dependencies = [
 {{/if}}
 {{#if (eq modelProvider "Gemini")}}
     "langchain-google-genai >= 3.0.3",
+    "google-genai >= 1.0.0, < 2.0.0",
 {{/if}}
     {{#if hasGateway}}{{#if (includes gatewayAuthTypes "AWS_IAM")}}"mcp-proxy-for-aws >= 1.1.0",
     {{/if}}{{/if}}
