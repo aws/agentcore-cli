@@ -208,19 +208,19 @@ export function validateContainerAgents(projectSpec: AgentCoreProjectSpec, confi
   }
 }
 
-const DEPRECATED_BASE_IMAGES = ['slim-bookworm'];
+const DEPRECATED_BASE_IMAGES: Record<string, string> = {
+  'slim-bookworm':
+    'Affected by CVE-2026-42010 (GnuTLS authentication bypass). Update the FROM line to use a Trixie-based variant.',
+};
 
 function warnDeprecatedBaseImage(dockerfilePath: string, agentName: string): void {
   try {
     const content = readFileSync(dockerfilePath, 'utf-8');
     for (const line of content.split('\n')) {
       if (!/^\s*FROM\s+/i.test(line)) continue;
-      for (const image of DEPRECATED_BASE_IMAGES) {
+      for (const [image, message] of Object.entries(DEPRECATED_BASE_IMAGES)) {
         if (line.includes(image)) {
-          console.warn(
-            `Warning: Agent "${agentName}" Dockerfile uses a base image containing "${image}" which is affected by ` +
-              `CVE-2026-42010 (GnuTLS authentication bypass). Update the FROM line to use a Trixie-based variant.`
-          );
+          console.warn(`Warning: Agent "${agentName}" Dockerfile uses a base image containing "${image}". ${message}`);
         }
       }
     }
