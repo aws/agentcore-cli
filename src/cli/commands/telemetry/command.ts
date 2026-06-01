@@ -23,10 +23,7 @@ Audit Mode:
   Run: agentcore config telemetry.audit true
   Events are written to ~/.agentcore/telemetry/.
 
-  For more information on what exactly is captured, see the schemas, which
-  include all attributes and metrics captured:
-    https://github.com/aws/agentcore-cli/tree/main/src/cli/telemetry/schemas
-`
+  For more information, see https://github.com/aws/agentcore-cli/blob/main/docs/telemetry.md`
   );
 
   telemetry
