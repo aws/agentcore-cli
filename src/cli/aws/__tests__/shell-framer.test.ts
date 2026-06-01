@@ -21,7 +21,7 @@ describe('ShellFramer.decode', () => {
   });
 
   it('decodes a STATUS frame and exposes json()', () => {
-    const status = { kind: 'Status', status: 'Success', metadata: { commandSessionId: 'abc' } };
+    const status = { kind: 'Status', status: 'Success', metadata: { shellId: 'abc' } };
     const raw = Buffer.concat([Buffer.from([ShellChannel.STATUS]), Buffer.from(JSON.stringify(status))]);
     const frame = framer.decode(raw);
     expect(frame.channel).toBe(ShellChannel.STATUS);
@@ -139,11 +139,11 @@ describe('ShellFramer.encodeClose', () => {
 });
 
 describe('parseStatusFrame', () => {
-  it('identifies a confirmation frame with commandSessionId', () => {
+  it('identifies a confirmation frame with shellId', () => {
     const payload = JSON.stringify({
       kind: 'Status',
       apiVersion: 'v1',
-      metadata: { commandSessionId: 'my-shell', reconnected: false },
+      metadata: { shellId: 'my-shell', reconnected: false },
       status: 'Success',
     });
     const raw = Buffer.concat([Buffer.from([ShellChannel.STATUS]), Buffer.from(payload)]);
@@ -159,7 +159,7 @@ describe('parseStatusFrame', () => {
   it('sets reconnected=true when metadata says so', () => {
     const payload = JSON.stringify({
       kind: 'Status',
-      metadata: { commandSessionId: 'old-shell', reconnected: true },
+      metadata: { shellId: 'old-shell', reconnected: true },
       status: 'Success',
     });
     const raw = Buffer.concat([Buffer.from([ShellChannel.STATUS]), Buffer.from(payload)]);
@@ -229,7 +229,7 @@ describe('parseStatusFrame', () => {
     const payload = JSON.stringify({
       kind: 'Status',
       apiVersion: 'v1',
-      metadata: { commandSessionId: 'my-shell', reconnected: true, bytesDropped: 1024 },
+      metadata: { shellId: 'my-shell', reconnected: true, bytesDropped: 1024 },
       status: 'Success',
     });
     const raw = Buffer.concat([Buffer.from([ShellChannel.STATUS]), Buffer.from(payload)]);
@@ -244,7 +244,7 @@ describe('parseStatusFrame', () => {
     const payload = JSON.stringify({
       kind: 'Status',
       apiVersion: 'v1',
-      metadata: { commandSessionId: 'my-shell', reconnected: false },
+      metadata: { shellId: 'my-shell', reconnected: false },
       status: 'Success',
     });
     const raw = Buffer.concat([Buffer.from([ShellChannel.STATUS]), Buffer.from(payload)]);

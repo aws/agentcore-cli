@@ -32,12 +32,14 @@ const wsState = vi.hoisted(() => {
     messageHandler: undefined as ((data: Buffer) => void) | undefined,
     closeHandler: undefined as ((code: number) => void) | undefined,
     errorHandler: undefined as ((err: Error) => void) | undefined,
+    upgradeHandler: undefined as ((response: { headers: Record<string, string> }) => void) | undefined,
     terminateCalled: false,
     reset() {
       this.calls = [];
       this.messageHandler = undefined;
       this.closeHandler = undefined;
       this.errorHandler = undefined;
+      this.upgradeHandler = undefined;
       this.terminateCalled = false;
     },
   };
@@ -52,6 +54,8 @@ vi.mock('ws', () => ({
       if (event === 'message') wsState.messageHandler = handler as (data: Buffer) => void;
       if (event === 'close') wsState.closeHandler = handler as (code: number) => void;
       if (event === 'error') wsState.errorHandler = handler as (err: Error) => void;
+      if (event === 'upgrade')
+        wsState.upgradeHandler = handler as (response: { headers: Record<string, string> }) => void;
     }
     terminate() {
       wsState.terminateCalled = true;
@@ -95,15 +99,14 @@ describe('buildShellUrl', () => {
     expect(url.hostname).toBe('gamma.us-east-1.elcapdp.genesis-primitives.aws.dev');
   });
 
-  it('includes commandSessionId query param when shellId provided', () => {
+  it('includes shellId query param when shellId provided', () => {
     const url = buildShellUrl('us-east-1', 'arn:aws:bedrock-agentcore:us-east-1:123:runtime/r', 'my-shell');
-    // wire param name is commandSessionId (unchanged from API)
-    expect(url.searchParams.get('commandSessionId')).toBe('my-shell');
+    expect(url.searchParams.get('shellId')).toBe('my-shell');
   });
 
-  it('omits commandSessionId when shellId is absent', () => {
+  it('omits shellId when shellId is absent', () => {
     const url = buildShellUrl('us-east-1', 'arn:aws:bedrock-agentcore:us-east-1:123:runtime/r');
-    expect(url.searchParams.has('commandSessionId')).toBe(false);
+    expect(url.searchParams.has('shellId')).toBe(false);
   });
 
   it('URL-encodes the runtimeArn in the path', () => {
@@ -122,7 +125,7 @@ describe('connectShell', () => {
     const payload = JSON.stringify({
       kind: 'Status',
       apiVersion: 'v1',
-      metadata: { commandSessionId: shellId, reconnected },
+      metadata: { shellId, reconnected },
       status: 'Success',
     });
     return Buffer.concat([Buffer.from([ShellChannel.STATUS]), Buffer.from(payload)]);
@@ -132,7 +135,37 @@ describe('connectShell', () => {
     wsState.reset();
   });
 
-  it('resolves with shellId from STATUS confirmation frame (wire field: commandSessionId)', async () => {
+  it('resolves with shellId from X-Amzn-Bedrock-AgentCore-Shell-Id 101 header (primary)', async () => {
+    const connectPromise = connectShell({
+      region: 'us-east-1',
+      runtimeArn: 'arn:aws:bedrock-agentcore:us-east-1:123:runtime/r',
+    });
+
+    await new Promise(r => setTimeout(r, 0));
+    // Header fires first (101 upgrade), then STATUS frame arrives
+    wsState.upgradeHandler?.({ headers: { 'x-amzn-bedrock-agentcore-shell-id': 'header-shell-id' } });
+    wsState.messageHandler?.(makeConfirmationFrame('frame-shell-id'));
+
+    const conn = await connectPromise;
+    // Header takes precedence over STATUS frame
+    expect(conn.shellId).toBe('header-shell-id');
+  });
+
+  it('falls back to shellId from STATUS frame when header is absent', async () => {
+    const connectPromise = connectShell({
+      region: 'us-east-1',
+      runtimeArn: 'arn:aws:bedrock-agentcore:us-east-1:123:runtime/r',
+    });
+
+    await new Promise(r => setTimeout(r, 0));
+    // No upgrade event fired — STATUS frame is the only source
+    wsState.messageHandler?.(makeConfirmationFrame('frame-shell-id'));
+
+    const conn = await connectPromise;
+    expect(conn.shellId).toBe('frame-shell-id');
+  });
+
+  it('resolves with shellId from STATUS confirmation frame', async () => {
     const connectPromise = connectShell({
       region: 'us-east-1',
       runtimeArn: 'arn:aws:bedrock-agentcore:us-east-1:123:runtime/r',
@@ -143,7 +176,7 @@ describe('connectShell', () => {
     wsState.messageHandler?.(makeConfirmationFrame('server-assigned-id'));
 
     const conn = await connectPromise;
-    expect(conn.shellId).toBe('server-assigned-id'); // stored as shellId
+    expect(conn.shellId).toBe('server-assigned-id');
     expect(conn.reconnected).toBe(false);
   });
 
@@ -228,7 +261,7 @@ describe('connectShell', () => {
     expect(wsState.calls).toHaveLength(1);
   });
 
-  it('passes shellId as commandSessionId query param on reconnect', async () => {
+  it('passes shellId as shellId query param on reconnect', async () => {
     const connectPromise = connectShell({
       region: 'us-east-1',
       runtimeArn: 'arn:aws:bedrock-agentcore:us-east-1:123:runtime/r',
@@ -242,8 +275,7 @@ describe('connectShell', () => {
     expect(conn.shellId).toBe('reconnect-id');
     expect(conn.reconnected).toBe(true);
 
-    // Verify the URL passed to WebSocket had commandSessionId=reconnect-id (wire param name)
-    expect(wsState.calls[0]).toContain('commandSessionId=reconnect-id');
+    expect(wsState.calls[0]).toContain('shellId=reconnect-id');
   });
 });
 
@@ -293,7 +325,7 @@ describe('connectShell confirmationTimeoutMs', () => {
     const payload = JSON.stringify({
       kind: 'Status',
       apiVersion: 'v1',
-      metadata: { commandSessionId: 'fast-shell', reconnected: false },
+      metadata: { shellId: 'fast-shell', reconnected: false },
       status: 'Success',
     });
     wsState.messageHandler?.(Buffer.concat([Buffer.from([ShellChannel.STATUS]), Buffer.from(payload)]));
@@ -357,7 +389,7 @@ describe('connectShell error translation', () => {
     const payload = JSON.stringify({
       kind: 'Status',
       apiVersion: 'v1',
-      metadata: { commandSessionId: shellId, reconnected },
+      metadata: { shellId, reconnected },
       status: 'Success',
     });
     return Buffer.concat([Buffer.from([ShellChannel.STATUS]), Buffer.from(payload)]);
@@ -425,7 +457,7 @@ describe('connectShell reconnect callbacks', () => {
     const payload = JSON.stringify({
       kind: 'Status',
       apiVersion: 'v1',
-      metadata: { commandSessionId: shellId, reconnected },
+      metadata: { shellId, reconnected },
       status: 'Success',
     });
     return Buffer.concat([Buffer.from([ShellChannel.STATUS]), Buffer.from(payload)]);

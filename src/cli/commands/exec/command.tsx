@@ -32,7 +32,7 @@ export const registerExec = (program: Command) => {
     .option('--it', 'Open an interactive PTY shell session')
     .option('--runtime <arn>', 'Target runtime ARN (skips agent picker)')
     .option('--session-id <id>', 'Pin to a specific runtime session / VM')
-    .option('--shell-id <id>', 'Reconnect to an existing shell (maps to commandSessionId at the wire boundary)')
+    .option('--shell-id <id>', 'Reconnect to an existing shell')
     .option('--region <region>', 'AWS region')
     .option('--profile <profile>', 'AWS profile')
     .option('--bearer-token <token>', 'Bearer token for CUSTOM_JWT authentication (skips SigV4)')

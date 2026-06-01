@@ -33,7 +33,7 @@ export interface ConnectShellOptions {
   runtimeArn: string;
   /** Routes the WebSocket to a specific VM */
   sessionId?: string;
-  /** Reconnect to an existing shell. Maps to `commandSessionId` query param at the wire boundary. */
+  /** Reconnect to an existing shell. Maps to `shellId` query param at the wire boundary. */
   shellId?: string;
   /** Extra headers merged into the signed upgrade request */
   headers?: Record<string, string>;
@@ -47,7 +47,7 @@ export interface ConnectShellOptions {
 
 export interface ShellConnection {
   ws: WebSocket;
-  /** The server-assigned shell identifier (from wire `commandSessionId`). */
+  /** The server-assigned shell identifier (from wire `shellId`). */
   shellId: string;
   sessionId?: string;
   reconnected: boolean;
@@ -60,17 +60,16 @@ export interface ShellConnection {
 // ---------------------------------------------------------------------------
 
 /** Build the wss:// URL for the shell endpoint.
- *  `shellId` maps to the `commandSessionId` query param at the wire level.
  *  Respects AGENTCORE_STAGE=beta|gamma for pre-release environments.
  */
 export function buildShellUrl(region: string, runtimeArn: string, shellId?: string): URL {
   // dataPlaneEndpoint returns https://...; strip scheme to get the bare hostname for wss://
   const host = dataPlaneEndpoint(region).replace(/^https?:\/\//, '');
   const encoded = encodeURIComponent(runtimeArn);
-  const url = new URL(`wss://${host}/runtimes/${encoded}/ws/commands`);
+  const url = new URL(`wss://${host}/runtimes/${encoded}/ws/shells`);
   url.searchParams.set('qualifier', 'DEFAULT');
   if (shellId) {
-    url.searchParams.set('commandSessionId', shellId); // wire param name unchanged
+    url.searchParams.set('shellId', shellId);
   }
   return url;
 }
@@ -164,6 +163,8 @@ async function openWebSocket(options: ConnectShellOptions): Promise<ShellConnect
   return new Promise<ShellConnection>((resolve, reject) => {
     const framer = new ShellFramer();
     let settled = false;
+    // Shell ID from the 101 response header — preferred over the STATUS frame per spec.
+    let shellIdFromHeader: string | undefined;
 
     const fail = (err: Error) => {
       if (!settled) {
@@ -179,6 +180,15 @@ async function openWebSocket(options: ConnectShellOptions): Promise<ShellConnect
       () => fail(new Error(`Timed out waiting for shell confirmation (${confirmationTimeoutMs / 1000}s)`)),
       confirmationTimeoutMs
     );
+
+    // Read shellId from the 101 Switching Protocols response headers (primary source).
+    // The STATUS frame (0x03) is the fallback for browser clients that cannot read headers.
+    ws.on('upgrade', (response: { headers: Record<string, string | string[] | undefined> }) => {
+      const raw = response.headers['x-amzn-bedrock-agentcore-shell-id'];
+      if (raw) {
+        shellIdFromHeader = Array.isArray(raw) ? raw[0] : raw;
+      }
+    });
 
     ws.on('error', fail);
 
@@ -209,7 +219,8 @@ async function openWebSocket(options: ConnectShellOptions): Promise<ShellConnect
         clearTimeout(confirmationTimer);
         const conn: ShellConnection = {
           ws,
-          shellId: parsed.shellId, // wire `commandSessionId` stored as shellId
+          // Header is primary; STATUS frame is fallback for browser clients.
+          shellId: shellIdFromHeader ?? parsed.shellId,
           sessionId: options.sessionId,
           reconnected: parsed.reconnected,
         };

@@ -97,7 +97,7 @@ interface MetaV1Status {
   kind?: string;
   apiVersion?: string;
   metadata?: {
-    commandSessionId?: string; // wire field name — stored as shellId internally
+    shellId?: string;
     reconnected?: boolean;
     bytesDropped?: number;
   };
@@ -114,7 +114,7 @@ export type StatusFrameResult =
   | { type: 'unknown' };
 
 /** Parse a STATUS channel frame into a typed result.
- *  Confirmation frames have metadata.commandSessionId; termination frames have empty metadata.
+ *  Confirmation frames have metadata.shellId; termination frames have empty metadata.
  */
 export function parseStatusFrame(frame: ShellFrame): StatusFrameResult {
   let status: MetaV1Status;
@@ -124,11 +124,11 @@ export function parseStatusFrame(frame: ShellFrame): StatusFrameResult {
     return { type: 'unknown' };
   }
 
-  const commandSessionId = status.metadata?.commandSessionId;
-  if (commandSessionId) {
+  const shellId = status.metadata?.shellId;
+  if (shellId) {
     const result: StatusFrameResult & { type: 'confirmation' } = {
       type: 'confirmation',
-      shellId: commandSessionId, // wire field name; stored as shellId
+      shellId,
       reconnected: status.metadata?.reconnected ?? false,
     };
     if (status.metadata?.bytesDropped !== undefined) {

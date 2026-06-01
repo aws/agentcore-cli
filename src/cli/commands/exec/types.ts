@@ -5,7 +5,7 @@ export interface ExecOptions {
   runtimeArn?: string;
   /** Routes the connection to a specific VM (from --session-id). */
   sessionId?: string;
-  /** Reconnect to an existing shell (from --shell-id). Maps to `commandSessionId` at the wire boundary. */
+  /** Reconnect to an existing shell (from --shell-id). Maps to `shellId` query param at the wire boundary. */
   shellId?: string;
   /** Interactive PTY session (from --it flag). */
   interactive?: boolean;
@@ -28,7 +28,7 @@ export interface ExecOptions {
 export type ExecResult = Result & {
   /** Runtime session ID — include in reconnect hint. */
   sessionId?: string;
-  /** Shell ID (wire `commandSessionId`) — include in reconnect hint. */
+  /** Shell ID — include in reconnect hint. */
   shellId?: string;
   /** Exit code of the shell process (null = server closed without STATUS frame). */
   exitCode?: number | null;
