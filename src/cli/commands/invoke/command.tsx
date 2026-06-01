@@ -174,6 +174,7 @@ export const registerInvoke = (program: Command) => {
         'Override timeout seconds (harness only) [non-interactive] [preview]',
         parseInt
       )
+      .option('--skills <paths>', 'Skills to use, comma-separated paths (harness only) [non-interactive] [preview]')
       .option('--system-prompt <text>', 'Override system prompt (harness only) [non-interactive] [preview]')
       .option(
         '--allowed-tools <tools>',
@@ -211,6 +212,7 @@ export const registerInvoke = (program: Command) => {
         maxIterations?: number;
         maxTokens?: number;
         harnessTimeout?: number;
+        skills?: string;
         systemPrompt?: string;
         allowedTools?: string;
         actorId?: string;
@@ -306,6 +308,7 @@ export const registerInvoke = (program: Command) => {
                 maxIterations: cliOptions.maxIterations,
                 maxTokens: cliOptions.maxTokens,
                 harnessTimeout: cliOptions.harnessTimeout,
+                skills: cliOptions.skills,
                 systemPrompt: cliOptions.systemPrompt,
                 allowedTools: cliOptions.allowedTools,
                 actorId: cliOptions.actorId,

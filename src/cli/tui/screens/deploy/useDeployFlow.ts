@@ -646,8 +646,20 @@ export function useDeployFlow(options: DeployFlowOptions = {}): DeployFlowState 
   // Start deploy when preflight completes OR when shouldStartDeploy is set
   useEffect(() => {
     if (diffMode) return; // Diff mode uses its own effect
-    const shouldStart = skipPreflight ? shouldStartDeploy : preflight.phase === 'complete';
+    const preflightDone = preflight.phase === 'complete' || preflight.phase === 'error';
+    const shouldStart = skipPreflight ? shouldStartDeploy : preflightDone;
     if (!shouldStart) return;
+
+    // Preflight failed — emit telemetry and bail
+    if (preflight.phase === 'error') {
+      const error = preflight.lastError ?? new Error('Preflight failed');
+      const attrs = context ? computeDeployAttrs(context.projectSpec, 'deploy') : { ...DEFAULT_DEPLOY_ATTRS };
+      withCommandRunTelemetry('deploy', attrs, () => ({ success: false as const, error })).catch(() => {
+        /* telemetry is best-effort */
+      });
+      return;
+    }
+
     if (deployStep.status !== 'pending') return;
     if (!cdkToolkitWrapper) return;
 
@@ -851,6 +863,7 @@ export function useDeployFlow(options: DeployFlowOptions = {}): DeployFlowState 
     };
 
     void withCommandRunTelemetry('deploy', attrs, run);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- preflight.lastError and context are read only on error path
   }, [
     preflight.phase,
     cdkToolkitWrapper,
@@ -870,8 +883,22 @@ export function useDeployFlow(options: DeployFlowOptions = {}): DeployFlowState 
   // Start diff when preflight completes (diff mode only)
   useEffect(() => {
     if (!diffMode) return;
-    const shouldStart = skipPreflight ? shouldStartDeploy : preflight.phase === 'complete';
+    const preflightDone = preflight.phase === 'complete' || preflight.phase === 'error';
+    const shouldStart = skipPreflight ? shouldStartDeploy : preflightDone;
     if (!shouldStart) return;
+
+    // Preflight failed — emit telemetry and bail
+    if (preflight.phase === 'error') {
+      const error = preflight.lastError ?? new Error('Preflight failed');
+      const attrs = context
+        ? computeDeployAttrs(context.projectSpec, 'diff')
+        : { ...DEFAULT_DEPLOY_ATTRS, deploy_mode: 'diff' as const };
+      withCommandRunTelemetry('deploy', attrs, () => ({ success: false as const, error })).catch(() => {
+        /* telemetry is best-effort */
+      });
+      return;
+    }
+
     if (diffStep.status !== 'pending') return;
     if (!cdkToolkitWrapper) return;
 
@@ -924,6 +951,7 @@ export function useDeployFlow(options: DeployFlowOptions = {}): DeployFlowState 
     };
 
     void withCommandRunTelemetry('deploy', attrs, run);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- preflight.lastError and context are read only on error path
   }, [
     diffMode,
     preflight.phase,

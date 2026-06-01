@@ -2,6 +2,25 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.16.0] - 2026-05-28
+* feat: instrument telemetry for status command by @Hweinstock in https://github.com/aws/agentcore-cli/pull/1317
+* fix(telemetry): emit dev command telemetry before blocking by @Hweinstock in https://github.com/aws/agentcore-cli/pull/1375
+* feat: compile-time feature flag for preview/GA consolidation by @jesseturner21 in https://github.com/aws/agentcore-cli/pull/1341
+* fix(ci): upload both GA and preview tarballs in prerelease workflow by @jesseturner21 in https://github.com/aws/agentcore-cli/pull/1386
+* feat(scripts): extend bundle to support injectable output and version suffix by @Hweinstock in https://github.com/aws/agentcore-cli/pull/1389
+* fix(ci): use cache for eslint/prettier/typecheck to speed up dev cycle by @Hweinstock in https://github.com/aws/agentcore-cli/pull/1390
+* fix(dataset): tui back-navigation bugs + kmsKeyArn support by @jariy17 in https://github.com/aws/agentcore-cli/pull/1379
+* fix: create global entrypoint for tui by @Hweinstock in https://github.com/aws/agentcore-cli/pull/1365
+* fix: centralize ANSI codes and disable colors in non-TTY output by @Hweinstock in https://github.com/aws/agentcore-cli/pull/1399
+* docs: Link to agentcore-samples repository in README by @notgitika in https://github.com/aws/agentcore-cli/pull/1400
+* fix: allow skipping optional KMS key ARN in evaluator wizard by @notgitika in https://github.com/aws/agentcore-cli/pull/1402
+* fix(status): show harnesses in agentcore status output by @jesseturner21 in https://github.com/aws/agentcore-cli/pull/1396
+* fix(deploy): add harness teardown to TUI deploy flow by @jesseturner21 in https://github.com/aws/agentcore-cli/pull/1394
+* feat: check for spans in agent log group by @avi-alpert in https://github.com/aws/agentcore-cli/pull/1404
+* fix(dev): skip redundant deploy when TUI deploy already succeeded by @jesseturner21 in https://github.com/aws/agentcore-cli/pull/1395
+* fix(harness): resolve memorySpec by deployed ARN for arn-only memory refs by @jesseturner21 in https://github.com/aws/agentcore-cli/pull/1407
+* chore: simplify release-main-and-preview workflow by @jesseturner21 in https://github.com/aws/agentcore-cli/pull/1415
+
 ## [0.15.0] - 2026-05-22
 
 ## [0.14.2] - 2026-05-21
