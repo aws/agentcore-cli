@@ -1,5 +1,5 @@
 import { spawnAndCollect } from '../src/test-utils/cli-runner.js';
-import { mkdtempSync, readFileSync } from 'node:fs';
+import { mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import { rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -97,5 +97,37 @@ describe('config command', () => {
     const parsed = JSON.parse(result.stdout);
     expect(parsed.uvIndex).toBe('https://example.com');
     expect(parsed.telemetry.endpoint).toBe('https://metrics.example.com');
+  });
+
+  describe('corrupt config file', () => {
+    const corruptDir = mkdtempSync(join(tmpdir(), 'agentcore-config-corrupt-'));
+    const corruptFile = join(corruptDir, 'config.json');
+
+    afterAll(() => rm(corruptDir, { recursive: true, force: true }));
+
+    function runCorrupt(args: string[]) {
+      return spawnAndCollect('node', [cliPath, ...args], tmpdir(), {
+        AGENTCORE_SKIP_INSTALL: '1',
+        AGENTCORE_CONFIG_DIR: corruptDir,
+      });
+    }
+
+    it('exits non-zero with a clear error when listing a corrupt config', async () => {
+      writeFileSync(corruptFile, '{ this is not valid json');
+
+      const result = await runCorrupt(['config']);
+
+      expect(result.exitCode).toBe(1);
+      expect(result.stderr).toMatch(/JSON|Unexpected/);
+    });
+
+    it('exits non-zero with a clear error when getting a key from a non-object config', async () => {
+      writeFileSync(corruptFile, '"a string"');
+
+      const result = await runCorrupt(['config', 'telemetry.enabled']);
+
+      expect(result.exitCode).toBe(1);
+      expect(result.stderr).toContain('not a JSON object');
+    });
   });
 });
