@@ -1,8 +1,6 @@
-import { readGlobalConfig } from '../../../../lib/schemas/io/global-config';
 import { createTempConfig } from '../../../__tests__/helpers/temp-config';
-import { handleTelemetryDisable, handleTelemetryEnable, handleTelemetryStatus } from '../actions';
-import { chmod, mkdir, rm, writeFile } from 'fs/promises';
-import assert from 'node:assert';
+import { handleTelemetryStatus } from '../actions';
+import { writeFile } from 'fs/promises';
 import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const tmp = createTempConfig('actions');
@@ -20,40 +18,6 @@ describe('telemetry actions', () => {
   });
 
   afterAll(() => tmp.cleanup());
-
-  describe('handleTelemetryDisable', () => {
-    it('writes disabled to config and returns true', async () => {
-      const ok = await handleTelemetryDisable(tmp.configDir, tmp.configFile);
-
-      expect(ok).toBe(true);
-      const result = await readGlobalConfig(tmp.configFile);
-      assert(result.success);
-      expect(result.config.telemetry?.enabled).toBe(false);
-    });
-
-    it('returns false when config write fails', async () => {
-      await rm(tmp.testDir, { recursive: true, force: true });
-      await mkdir(tmp.testDir, { recursive: true });
-      await chmod(tmp.testDir, 0o444);
-
-      const ok = await handleTelemetryDisable(tmp.configDir, tmp.configFile);
-
-      expect(ok).toBe(false);
-
-      await chmod(tmp.testDir, 0o755);
-    });
-  });
-
-  describe('handleTelemetryEnable', () => {
-    it('writes enabled to config and returns true', async () => {
-      const ok = await handleTelemetryEnable(tmp.configDir, tmp.configFile);
-
-      expect(ok).toBe(true);
-      const result = await readGlobalConfig(tmp.configFile);
-      assert(result.success);
-      expect(result.config.telemetry?.enabled).toBe(true);
-    });
-  });
 
   describe('handleTelemetryStatus', () => {
     it('reports default source when no config exists', async () => {

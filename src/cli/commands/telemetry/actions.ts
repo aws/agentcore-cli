@@ -1,29 +1,6 @@
 import { unwrapResult } from '../../../lib/result.js';
-import {
-  GLOBAL_CONFIG_DIR,
-  GLOBAL_CONFIG_FILE,
-  readGlobalConfig,
-  updateGlobalConfig,
-} from '../../../lib/schemas/io/global-config.js';
+import { GLOBAL_CONFIG_FILE, readGlobalConfig } from '../../../lib/schemas/io/global-config.js';
 import { resolveTelemetryPreference } from '../../telemetry/config.js';
-
-export async function handleTelemetryDisable(
-  configDir = GLOBAL_CONFIG_DIR,
-  configFile = GLOBAL_CONFIG_FILE
-): Promise<boolean> {
-  const ok = await updateGlobalConfig({ telemetry: { enabled: false } }, configDir, configFile);
-  console.log(ok ? 'Telemetry has been disabled.' : `Warning: could not write config to ${configFile}`);
-  return ok;
-}
-
-export async function handleTelemetryEnable(
-  configDir = GLOBAL_CONFIG_DIR,
-  configFile = GLOBAL_CONFIG_FILE
-): Promise<boolean> {
-  const ok = await updateGlobalConfig({ telemetry: { enabled: true } }, configDir, configFile);
-  console.log(ok ? 'Telemetry has been enabled.' : `Warning: could not write config to ${configFile}`);
-  return ok;
-}
 
 export async function handleTelemetryStatus(configFile = GLOBAL_CONFIG_FILE): Promise<void> {
   const { config: globalConfig } = unwrapResult(await readGlobalConfig(configFile), { config: {} });

@@ -1339,13 +1339,13 @@ agentcore update cli --check    # Same as `agentcore update --check`
 Manage anonymous usage analytics preferences. Telemetry is opt-in and used to improve the CLI.
 
 ```bash
-agentcore telemetry status      # Show current preference and where it was set
-agentcore telemetry enable      # Opt in
-agentcore telemetry disable     # Opt out
+agentcore telemetry status                  # Show current preference and where it was set
+agentcore config telemetry.enabled true     # Opt in
+agentcore config telemetry.enabled false    # Opt out
 ```
 
-`enable`, `disable`, and `status` take no flags beyond `-h, --help`. The preference is stored in your global CLI config
-and persists across projects.
+`status` takes no flags beyond `-h, --help`. The preference is stored in your global CLI config and persists across
+projects.
 
 ### help
 
