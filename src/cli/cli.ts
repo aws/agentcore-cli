@@ -157,7 +157,7 @@ export const main = async (argv: string[]) => {
   }
 
   if (isFirstRun) {
-    printTelemetryNotice();
+    await printTelemetryNotice();
   }
 
   await TelemetryClientAccessor.init(args[0] ?? 'unknown');

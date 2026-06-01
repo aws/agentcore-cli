@@ -11,7 +11,7 @@ interface TempConfig {
   /** Read and parse config.json. Returns {} if the file does not exist. */
   read: () => Promise<Record<string, unknown>>;
   /** Run the CLI with this temp dir as AGENTCORE_CONFIG_DIR. */
-  runCLI: (args: string[]) => ReturnType<typeof runCLI>;
+  runCLI: (args: string[], extraEnv?: Record<string, string>) => ReturnType<typeof runCLI>;
 }
 
 async function makeTempConfig(): Promise<TempConfig> {
@@ -28,7 +28,8 @@ async function makeTempConfig(): Promise<TempConfig> {
         return {};
       }
     },
-    runCLI: args => runCLI(args, process.cwd(), { env: { AGENTCORE_CONFIG_DIR: configDir } }),
+    runCLI: (args, extraEnv = {}) =>
+      runCLI(args, process.cwd(), { env: { AGENTCORE_CONFIG_DIR: configDir, ...extraEnv } }),
   };
 }
 
@@ -46,4 +47,27 @@ describe('integration: global config', () => {
     await rm(tmp.configDir, { recursive: true, force: true });
   });
 
+  describe('telemetry notice', () => {
+    const NOTICE_TEXT = 'The AgentCore CLI collects';
+
+    it('shows the notice on first run when telemetry is enabled', async () => {
+      const result = await tmp.runCLI(['--help']);
+      expect(result.exitCode).toBe(0);
+      expect(result.stderr).toContain(NOTICE_TEXT);
+    });
+
+    it('suppresses the notice when telemetry is disabled via env var', async () => {
+      const result = await tmp.runCLI(['--help'], { AGENTCORE_TELEMETRY_DISABLED: '1' });
+      expect(result.exitCode).toBe(0);
+      expect(result.stderr).not.toContain(NOTICE_TEXT);
+    });
+
+    it('suppresses the notice when telemetry.enabled is false in config', async () => {
+      await writeFile(tmp.configFile, JSON.stringify({ telemetry: { enabled: false } }));
+
+      const result = await tmp.runCLI(['--help']);
+      expect(result.exitCode).toBe(0);
+      expect(result.stderr).not.toContain(NOTICE_TEXT);
+    });
+  });
 });

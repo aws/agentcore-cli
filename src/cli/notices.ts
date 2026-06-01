@@ -1,7 +1,14 @@
+import { resolveTelemetryPreference } from './telemetry/config';
 import { ANSI } from './constants';
 import { type UpdateCheckResult, printUpdateNotification } from './update-notifier';
 
-export function printTelemetryNotice(): void {
+export async function printTelemetryNotice(): Promise<void> {
+  // Don't claim "the CLI collects analytics" if the user has already opted out
+  // (via env var or global config). Showing the notice would directly contradict
+  // their choice and is misleading.
+  const pref = await resolveTelemetryPreference();
+  if (!pref.enabled) return;
+
   const { yellow, reset } = ANSI;
   process.stderr.write(
     [
@@ -17,16 +24,15 @@ export function printTelemetryNotice(): void {
   );
 }
 
-export function printPostCommandNotices(
+export async function printPostCommandNotices(
   isFirstRun: boolean,
   updateCheck: Promise<UpdateCheckResult | null>
 ): Promise<void> {
   if (isFirstRun) {
-    printTelemetryNotice();
+    await printTelemetryNotice();
   }
-  return updateCheck.then(result => {
-    if (result?.updateAvailable) {
-      printUpdateNotification(result);
-    }
-  });
+  const result = await updateCheck;
+  if (result?.updateAvailable) {
+    printUpdateNotification(result);
+  }
 }
