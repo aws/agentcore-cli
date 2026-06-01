@@ -295,7 +295,7 @@ describe('resilientParse', () => {
   it('defaults all fields to unknown when all are invalid', () => {
     const result = resilientParse(COMMAND_SCHEMAS.create, {}, TELEMETRY_OPTS);
     for (const value of Object.values(result)) {
-      expect(value === 'unknown' || value === undefined).toBe(true);
+      expect((value as string) === 'unknown' || value === undefined).toBe(true);
     }
   });
 
