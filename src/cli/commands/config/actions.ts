@@ -1,16 +1,25 @@
-import { readGlobalConfig, updateGlobalConfig, validateGlobalConfig } from '../../../lib/schemas/io/global-config.js';
+import {
+  GLOBAL_CONFIG_FILE,
+  readGlobalConfig,
+  updateGlobalConfig,
+  validateGlobalConfig,
+} from '../../../lib/schemas/io/global-config.js';
 import type { ConfigResult } from './types.js';
 import { ValidationError } from '@/lib/index.js';
 
 export async function handleConfigList(): Promise<ConfigResult> {
   const read = await readGlobalConfig();
-  if (!read.success) return read;
+  if (!read.success) {
+    return { success: false, error: new Error(`Error: Unable to parse config file at ${GLOBAL_CONFIG_FILE}`) };
+  }
   return { success: true, message: JSON.stringify(read.config, null, 2) };
 }
 
 export async function handleConfigGet(key: string): Promise<ConfigResult> {
   const read = await readGlobalConfig();
-  if (!read.success) return read;
+  if (!read.success) {
+    return { success: false, error: new Error(`Error: Unable to parse config file at ${GLOBAL_CONFIG_FILE}`) };
+  }
   const value = getByPath(read.config, key);
   if (value === undefined) {
     return { success: false, error: new Error(`Key "${key}" is not set.`) };
@@ -30,7 +39,7 @@ export async function handleConfigSet(key: string, raw: string): Promise<ConfigR
 
   const ok = await updateGlobalConfig(partial);
   if (!ok) {
-    return { success: false, error: new Error(`Could not write config.`) };
+    return { success: false, error: new Error(`Error: Unable to write config file at ${GLOBAL_CONFIG_FILE}`) };
   }
   return { success: true, message: `Set ${key} = ${raw}` };
 }

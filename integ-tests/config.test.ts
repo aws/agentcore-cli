@@ -118,7 +118,7 @@ describe('config command', () => {
       const result = await runCorrupt(['config']);
 
       expect(result.exitCode).toBe(1);
-      expect(result.stderr).toMatch(/JSON|Unexpected/);
+      expect(result.stderr).toContain(`Error: Unable to parse config file at ${corruptFile}`);
     });
 
     it('exits non-zero with a clear error when getting a key from a non-object config', async () => {
@@ -127,7 +127,7 @@ describe('config command', () => {
       const result = await runCorrupt(['config', 'telemetry.enabled']);
 
       expect(result.exitCode).toBe(1);
-      expect(result.stderr).toContain('not a JSON object');
+      expect(result.stderr).toContain(`Error: Unable to parse config file at ${corruptFile}`);
     });
   });
 });
