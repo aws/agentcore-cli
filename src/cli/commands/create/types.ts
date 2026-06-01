@@ -27,6 +27,15 @@ export interface CreateOptions extends VpcOptions {
   skipInstall?: boolean;
   dryRun?: boolean;
   json?: boolean;
+  // Harness-specific (preview only)
+  modelId?: string;
+  apiKeyArn?: string;
+  container?: string;
+  harnessMemory?: boolean;
+  maxIterations?: string;
+  maxTokens?: string;
+  timeout?: string;
+  truncationStrategy?: string;
 }
 
 export type CreateResult = Result<{

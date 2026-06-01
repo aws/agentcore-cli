@@ -5,6 +5,7 @@ import {
   DeployedResourceStateSchema,
   DeployedStateSchema,
   GatewayDeployedStateSchema,
+  HarnessDeployedStateSchema,
   McpDeployedStateSchema,
   McpLambdaDeployedStateSchema,
   McpRuntimeDeployedStateSchema,
@@ -298,6 +299,39 @@ describe('DeployedStateSchema', () => {
 
   it('accepts empty targets', () => {
     const result = DeployedStateSchema.safeParse({ targets: {} });
+    expect(result.success).toBe(true);
+  });
+});
+
+describe('HarnessDeployedStateSchema', () => {
+  it('accepts valid harness deployed state', () => {
+    const result = HarnessDeployedStateSchema.safeParse({
+      harnessId: 'abc123',
+      harnessArn: 'arn:aws:bedrock-agentcore:us-west-2:123:harness/abc123',
+      roleArn: 'arn:aws:iam::123456789012:role/HarnessRole',
+      status: 'READY',
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it('rejects empty harnessId', () => {
+    const result = HarnessDeployedStateSchema.safeParse({
+      harnessId: '',
+      harnessArn: 'arn:aws:test',
+      roleArn: 'arn:aws:test',
+      status: 'READY',
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it('accepts optional memoryArn', () => {
+    const result = HarnessDeployedStateSchema.safeParse({
+      harnessId: 'abc123',
+      harnessArn: 'arn:aws:bedrock-agentcore:us-west-2:123:harness/abc123',
+      roleArn: 'arn:aws:iam::123456789012:role/HarnessRole',
+      status: 'READY',
+      memoryArn: 'arn:aws:bedrock-agentcore:us-west-2:123:memory/def456',
+    });
     expect(result.success).toBe(true);
   });
 });

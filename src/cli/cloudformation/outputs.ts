@@ -421,6 +421,18 @@ export interface BuildDeployedStateOptions {
   policyEngines?: Record<string, PolicyEngineDeployedState>;
   policies?: Record<string, PolicyDeployedState>;
   runtimeEndpoints?: Record<string, RuntimeEndpointDeployedState>;
+  harnesses?: Record<
+    string,
+    {
+      harnessId: string;
+      harnessArn: string;
+      roleArn: string;
+      status: string;
+      agentRuntimeArn?: string;
+      memoryArn?: string;
+      configHash?: string;
+    }
+  >;
   datasets?: Record<string, DatasetDeployedState>;
 }
 
@@ -442,6 +454,7 @@ export function buildDeployedState(opts: BuildDeployedStateOptions): DeployedSta
     policyEngines,
     policies,
     runtimeEndpoints,
+    harnesses,
     datasets,
   } = opts;
   const targetState: TargetDeployedState = {
@@ -502,6 +515,11 @@ export function buildDeployedState(opts: BuildDeployedStateOptions): DeployedSta
   const existingHttpGateways = existingState?.targets?.[targetName]?.resources?.httpGateways;
   if (existingHttpGateways && Object.keys(existingHttpGateways).length > 0) {
     targetState.resources!.httpGateways = existingHttpGateways;
+  }
+
+  // Add harness state if harnesses exist
+  if (harnesses && Object.keys(harnesses).length > 0) {
+    targetState.resources!.harnesses = harnesses;
   }
 
   return {

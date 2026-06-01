@@ -299,3 +299,12 @@ export class ShellKickedError extends BaseError {
     });
   }
 }
+
+/**
+ * Error indicating user cancellation interuption
+ */
+export class UserCancellationError extends BaseError {
+  constructor(options?: BaseErrorOptions) {
+    super(`User cancelled`, { defaultSource: 'user', ...options });
+  }
+}

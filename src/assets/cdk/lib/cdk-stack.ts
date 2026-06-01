@@ -7,6 +7,18 @@ import {
 import { CfnOutput, Stack, type StackProps } from 'aws-cdk-lib';
 import { Construct } from 'constructs';
 
+export interface HarnessConfig {
+  name: string;
+  executionRoleArn?: string;
+  memoryName?: string;
+  containerUri?: string;
+  hasDockerfile?: boolean;
+  dockerfile?: string;
+  codeLocation?: string;
+  tools?: { type: string; name: string }[];
+  apiKeyArn?: string;
+}
+
 export interface AgentCoreStackProps extends StackProps {
   /**
    * The AgentCore project specification containing agents, memories, and credentials.
@@ -20,6 +32,10 @@ export interface AgentCoreStackProps extends StackProps {
    * Credential provider ARNs from deployed state, keyed by credential name.
    */
   credentials?: Record<string, { credentialProviderArn: string; clientSecretArn?: string }>;
+  /**
+   * Harness role configurations.
+   */
+  harnesses?: HarnessConfig[];
 }
 
 /**
@@ -35,12 +51,15 @@ export class AgentCoreStack extends Stack {
   constructor(scope: Construct, id: string, props: AgentCoreStackProps) {
     super(scope, id, props);
 
-    const { spec, mcpSpec, credentials } = props;
+    const { spec, mcpSpec, credentials, harnesses } = props;
 
-    // Create AgentCoreApplication with all agents
-    this.application = new AgentCoreApplication(this, 'Application', {
-      spec,
-    });
+    // Create AgentCoreApplication with all agents and harness roles
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const appProps: Record<string, unknown> = { spec };
+    if (harnesses?.length) {
+      appProps.harnesses = harnesses;
+    }
+    this.application = new AgentCoreApplication(this, 'Application', appProps as any);
 
     // Create AgentCoreMcp if there are gateways configured
     if (mcpSpec?.agentCoreGateways && mcpSpec.agentCoreGateways.length > 0) {

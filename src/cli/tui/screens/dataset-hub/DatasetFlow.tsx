@@ -54,6 +54,7 @@ interface DatasetFlowProps {
 
 export function DatasetFlow({ onExit }: DatasetFlowProps) {
   const [flow, setFlow] = useState<FlowState>({ name: 'loading' });
+  const [loadedDatasets, setLoadedDatasets] = useState<ResolvedDatasetInfo[]>([]);
 
   // Load datasets on mount
   useEffect(() => {
@@ -100,6 +101,7 @@ export function DatasetFlow({ onExit }: DatasetFlowProps) {
           return;
         }
 
+        setLoadedDatasets(resolved);
         setFlow({ name: 'hub', datasets: resolved });
       } catch (err) {
         setFlow({ name: 'error', message: err instanceof Error ? err.message : String(err) });
@@ -194,7 +196,7 @@ export function DatasetFlow({ onExit }: DatasetFlowProps) {
       <VersionPickerScreen
         versions={flow.versions}
         onSelect={version => setFlow({ name: 'confirm-pull', dataset: flow.dataset, version })}
-        onExit={() => setFlow({ name: 'hub', datasets: [] })}
+        onExit={() => setFlow({ name: 'hub', datasets: loadedDatasets })}
       />
     );
   }
@@ -206,7 +208,7 @@ export function DatasetFlow({ onExit }: DatasetFlowProps) {
         location={flow.dataset.location}
         versionLabel={versionLabel}
         onConfirm={() => void executeAction('download', flow.dataset, flow.version)}
-        onCancel={() => setFlow({ name: 'hub', datasets: [] })}
+        onCancel={() => setFlow({ name: 'hub', datasets: loadedDatasets })}
       />
     );
   }
@@ -224,7 +226,7 @@ export function DatasetFlow({ onExit }: DatasetFlowProps) {
       <DeleteVersionPickerScreen
         versions={flow.versions}
         onSelect={version => setFlow({ name: 'confirm-delete', dataset: flow.dataset, version })}
-        onExit={() => setFlow({ name: 'hub', datasets: [] })}
+        onExit={() => setFlow({ name: 'hub', datasets: loadedDatasets })}
       />
     );
   }
@@ -235,7 +237,7 @@ export function DatasetFlow({ onExit }: DatasetFlowProps) {
         datasetName={flow.dataset.name}
         version={flow.version}
         onConfirm={() => void executeAction('confirm-delete', flow.dataset, flow.version)}
-        onCancel={() => setFlow({ name: 'hub', datasets: [] })}
+        onCancel={() => setFlow({ name: 'hub', datasets: loadedDatasets })}
       />
     );
   }

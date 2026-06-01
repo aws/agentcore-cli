@@ -20,7 +20,10 @@ import { join } from 'path';
 export class TelemetryClientAccessor {
   private static clientPromise: Promise<TelemetryClient> | undefined;
 
-  static init(entrypoint: string, mode: 'cli' | 'tui' = 'cli'): void {
+  static async init(entrypoint: string, mode: 'cli' | 'tui' = 'cli'): Promise<void> {
+    if (this.clientPromise) {
+      await this.shutdown();
+    }
     this.clientPromise = createClient(entrypoint, mode);
   }
 
@@ -37,6 +40,7 @@ export class TelemetryClientAccessor {
       } catch {
         // Telemetry is best-effort — don't propagate init or shutdown failures
       }
+      this.clientPromise = undefined;
     }
   }
 }

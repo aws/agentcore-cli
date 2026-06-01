@@ -54,6 +54,42 @@ async function main() {
     throw new Error('No deployment targets configured. Please define targets in agentcore/aws-targets.json');
   }
 
+  // Read harness configs for role creation.
+  const projectRoot = path.resolve(configRoot, '..');
+  const harnessConfigs: {
+    name: string;
+    executionRoleArn?: string;
+    memoryName?: string;
+    containerUri?: string;
+    hasDockerfile?: boolean;
+    dockerfile?: string;
+    codeLocation?: string;
+    tools?: { type: string; name: string }[];
+    apiKeyArn?: string;
+  }[] = [];
+  for (const entry of specAny.harnesses ?? []) {
+    const harnessDir = path.resolve(projectRoot, entry.path);
+    const harnessPath = path.resolve(harnessDir, 'harness.json');
+    try {
+      const harnessSpec = JSON.parse(fs.readFileSync(harnessPath, 'utf-8'));
+      harnessConfigs.push({
+        name: entry.name,
+        executionRoleArn: harnessSpec.executionRoleArn,
+        memoryName: harnessSpec.memory?.name,
+        containerUri: harnessSpec.containerUri,
+        hasDockerfile: !!harnessSpec.dockerfile,
+        dockerfile: harnessSpec.dockerfile,
+        codeLocation: harnessSpec.dockerfile ? harnessDir : undefined,
+        tools: harnessSpec.tools,
+        apiKeyArn: harnessSpec.model?.apiKeyArn,
+      });
+    } catch (err) {
+      throw new Error(
+        `Could not read harness.json for "${entry.name}" at ${harnessPath}: ${err instanceof Error ? err.message : err}`
+      );
+    }
+  }
+
   const app = new App();
 
   for (const target of targets) {
@@ -73,6 +109,7 @@ async function main() {
       spec,
       mcpSpec,
       credentials,
+      harnesses: harnessConfigs.length > 0 ? harnessConfigs : undefined,
       env,
       description: `AgentCore stack for ${spec.name} deployed to ${target.name} (${target.region})`,
       tags: {

@@ -63,6 +63,7 @@ describe('resolveAgentContext', () => {
       configBundles: [],
       abTests: [],
       httpGateways: [],
+      harnesses: [],
       datasets: [],
     },
     deployedState: {
@@ -128,6 +129,7 @@ describe('resolveAgentContext', () => {
         configBundles: [],
         abTests: [],
         httpGateways: [],
+        harnesses: [],
         datasets: [],
       },
     });
@@ -173,6 +175,7 @@ describe('resolveAgentContext', () => {
         configBundles: [],
         abTests: [],
         httpGateways: [],
+        harnesses: [],
         datasets: [],
       },
       deployedState: {
@@ -228,6 +231,7 @@ describe('resolveAgentContext', () => {
         configBundles: [],
         abTests: [],
         httpGateways: [],
+        harnesses: [],
         datasets: [],
       },
     });

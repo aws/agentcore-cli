@@ -54,6 +54,17 @@ function makeLogRecord(traceId: string, spanId: string, sessionId: string) {
   };
 }
 
+function mockThreeCalls(
+  sharedSpans: { timestamp: number; message: string }[],
+  runtimeSpans: { timestamp: number; message: string }[],
+  logRecords: { timestamp: number; message: string }[]
+) {
+  mockSearchLogs
+    .mockReturnValueOnce(fakeLogStream(sharedSpans))
+    .mockReturnValueOnce(fakeLogStream(runtimeSpans))
+    .mockReturnValueOnce(fakeLogStream(logRecords));
+}
+
 describe('fetchSessionSpans', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -63,8 +74,7 @@ describe('fetchSessionSpans', () => {
     const spanEvents = [makeSpanRecord('trace1', 'span1'), makeSpanRecord('trace1', 'span2')];
     const logEvents = [makeLogRecord('trace1', 'span3', SESSION_ID)];
 
-    // First call = aws/spans, second call = runtime log group
-    mockSearchLogs.mockReturnValueOnce(fakeLogStream(spanEvents)).mockReturnValueOnce(fakeLogStream(logEvents));
+    mockThreeCalls(spanEvents, [], logEvents);
 
     const result = await fetchSessionSpans({
       region: 'us-east-1',
@@ -84,7 +94,10 @@ describe('fetchSessionSpans', () => {
       makeLogRecord('trace1', 'span3', 'other-session-id'),
     ];
 
-    mockSearchLogs.mockReturnValueOnce(fakeLogStream(spanEvents)).mockReturnValueOnce(fakeLogStream(logEvents));
+    mockSearchLogs
+      .mockReturnValueOnce(fakeLogStream(spanEvents))
+      .mockReturnValueOnce(fakeLogStream([]))
+      .mockReturnValueOnce(fakeLogStream(logEvents));
 
     const result = await fetchSessionSpans({
       region: 'us-east-1',
@@ -97,7 +110,7 @@ describe('fetchSessionSpans', () => {
   });
 
   it('returns empty spans when no records found', async () => {
-    mockSearchLogs.mockReturnValueOnce(fakeLogStream([])).mockReturnValueOnce(fakeLogStream([]));
+    mockThreeCalls([], [], []);
 
     const result = await fetchSessionSpans({
       region: 'us-east-1',
@@ -111,9 +124,11 @@ describe('fetchSessionSpans', () => {
   });
 
   it('handles ResourceNotFoundException gracefully (log group does not exist)', async () => {
-    // Spans log group works, runtime log group does not exist
     mockSearchLogs
       .mockReturnValueOnce(fakeLogStream([makeSpanRecord('t1', 's1')]))
+      .mockReturnValueOnce(
+        fakeErrorStream(new Error('ResourceNotFoundException: The specified log group does not exist'))
+      )
       .mockReturnValueOnce(
         fakeErrorStream(new Error('ResourceNotFoundException: The specified log group does not exist'))
       );
@@ -133,6 +148,7 @@ describe('fetchSessionSpans', () => {
   it('rethrows non-ResourceNotFoundException errors', async () => {
     mockSearchLogs
       .mockReturnValueOnce(fakeLogStream([]))
+      .mockReturnValueOnce(fakeLogStream([]))
       .mockReturnValueOnce(fakeErrorStream(new Error('AccessDeniedException: Not authorized')));
 
     await expect(
@@ -147,7 +163,7 @@ describe('fetchSessionSpans', () => {
   it('skips unparseable log messages', async () => {
     const spanEvents = [{ timestamp: Date.now(), message: 'not-valid-json' }, makeSpanRecord('trace1', 'span1')];
 
-    mockSearchLogs.mockReturnValueOnce(fakeLogStream(spanEvents)).mockReturnValueOnce(fakeLogStream([]));
+    mockThreeCalls(spanEvents, [], []);
 
     const result = await fetchSessionSpans({
       region: 'us-east-1',
@@ -159,7 +175,7 @@ describe('fetchSessionSpans', () => {
   });
 
   it('uses correct log group names', async () => {
-    mockSearchLogs.mockReturnValueOnce(fakeLogStream([])).mockReturnValueOnce(fakeLogStream([]));
+    mockThreeCalls([], [], []);
 
     await fetchSessionSpans({
       region: 'us-east-1',
@@ -168,23 +184,26 @@ describe('fetchSessionSpans', () => {
       lookbackDays: 3,
     });
 
-    expect(mockSearchLogs).toHaveBeenCalledTimes(2);
+    expect(mockSearchLogs).toHaveBeenCalledTimes(3);
 
-    // First call: aws/spans
+    // First call: aws/spans (span records)
     const spanCall = mockSearchLogs.mock.calls[0]![0];
     expect(spanCall.logGroupName).toBe('aws/spans');
     expect(spanCall.filterPattern).toContain(SESSION_ID);
 
-    // Second call: runtime log group
-    const logCall = mockSearchLogs.mock.calls[1]![0];
+    // Second call: runtime log group (span records)
+    const runtimeSpanCall = mockSearchLogs.mock.calls[1]![0];
+    expect(runtimeSpanCall.logGroupName).toBe('/aws/bedrock-agentcore/runtimes/myproject_MyAgent-QMd093Gl4O-DEFAULT');
+    expect(runtimeSpanCall.filterPattern).toContain(SESSION_ID);
+
+    // Third call: runtime log group (log records)
+    const logCall = mockSearchLogs.mock.calls[2]![0];
     expect(logCall.logGroupName).toBe('/aws/bedrock-agentcore/runtimes/myproject_MyAgent-QMd093Gl4O-DEFAULT');
     expect(logCall.filterPattern).toContain('"body" "input"');
   });
 
   it('calls onProgress callback', async () => {
-    mockSearchLogs
-      .mockReturnValueOnce(fakeLogStream([makeSpanRecord('t1', 's1')]))
-      .mockReturnValueOnce(fakeLogStream([]));
+    mockThreeCalls([makeSpanRecord('t1', 's1')], [], []);
 
     const progress: string[] = [];
     await fetchSessionSpans({
@@ -212,7 +231,7 @@ describe('fetchSessionSpans', () => {
       }),
     };
 
-    mockSearchLogs.mockReturnValueOnce(fakeLogStream([])).mockReturnValueOnce(fakeLogStream([logEvent]));
+    mockThreeCalls([], [], [logEvent]);
 
     const result = await fetchSessionSpans({
       region: 'us-east-1',

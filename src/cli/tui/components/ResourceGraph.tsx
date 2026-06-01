@@ -23,6 +23,7 @@ const ICONS = {
   'config-bundle': '⬡',
   'ab-test': '⚗',
   dataset: '▤',
+  harness: '⬢',
   'runtime-endpoint': '◉',
 } as const;
 

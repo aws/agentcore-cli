@@ -384,7 +384,7 @@ export function RunBatchEvalFlow({ onExit }: RunBatchEvalFlowProps) {
         source={flow.source}
         dataset={flow.dataset}
         onComplete={handleWizardComplete}
-        onExit={onExit}
+        onExit={() => setFlow({ name: 'source-picker', agents: flow.agents, evaluators: flow.evaluators })}
       />
     );
   }

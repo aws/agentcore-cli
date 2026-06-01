@@ -2,6 +2,11 @@ import type { Result } from '../../../lib/result';
 
 export interface InvokeOptions {
   agentName?: string;
+  harnessName?: string;
+  /** Direct harness ARN — bypasses project config and deployed state resolution */
+  harnessArn?: string;
+  /** AWS region (used with --harness-arn) */
+  region?: string;
   targetName?: string;
   prompt?: string;
   /** Path to a file containing the prompt (alternative to --prompt / positional) */
@@ -22,6 +27,30 @@ export interface InvokeOptions {
   headers?: Record<string, string>;
   /** Bearer token for CUSTOM_JWT auth (bypasses SigV4) */
   bearerToken?: string;
+  /** Print verbose streaming JSON events instead of formatted text (harness only) */
+  verbose?: boolean;
+  /** Override model ID for this invocation (harness only) */
+  modelId?: string;
+  /** Override model provider for this invocation (harness only): bedrock, open_ai, gemini */
+  modelProvider?: string;
+  /** Override API key ARN for this invocation (harness only, open_ai/gemini) */
+  apiKeyArn?: string;
+  /** Override tools for this invocation (harness only, comma-separated) */
+  tools?: string;
+  /** Override max iterations (harness only) */
+  maxIterations?: number;
+  /** Override timeout seconds (harness only) */
+  harnessTimeout?: number;
+  /** Override max tokens (harness only) */
+  maxTokens?: number;
+  /** Skills to use (harness only, comma-separated paths) */
+  skills?: string;
+  /** Override system prompt (harness only) */
+  systemPrompt?: string;
+  /** Override allowed tools (harness only, comma-separated) */
+  allowedTools?: string;
+  /** Override memory actor ID (harness only) */
+  actorId?: string;
 }
 
 export type InvokeResult = Result & {

@@ -36,7 +36,12 @@ export function AddDatasetFlow({ isInteractive = true, onExit, onBack, onDev, on
 
   const handleCreateComplete = useCallback((config: AddDatasetConfig) => {
     void datasetPrimitive
-      .add({ name: config.name, schemaType: config.schemaType, description: config.description })
+      .add({
+        name: config.name,
+        schemaType: config.schemaType,
+        description: config.description,
+        kmsKeyArn: config.kmsKeyArn,
+      })
       .then(result => {
         if (result.success) {
           setFlow({

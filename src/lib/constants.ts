@@ -10,6 +10,9 @@ export const CONFIG_DIR = 'agentcore';
 export const APP_DIR = 'app';
 export const MCP_APP_SUBDIR = 'mcp';
 
+// Harnesses directory
+export const HARNESS_DIR = 'harnesses';
+
 // CLI system subdirectory (inside CONFIG_DIR)
 export const CLI_SYSTEM_DIR = '.cli';
 export const CLI_LOGS_DIR = 'logs';

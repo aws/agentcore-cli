@@ -60,7 +60,8 @@ jobs:
             git merge --abort
 
             # Check if a sync PR already exists
-            existing_pr=$(gh pr list --base "main" --search "Merge public/main" --state open --json number --jq '.[0].number' 2>/dev/null || echo "")
+            existing_pr=$(gh pr list --base "main" --state open --json number,headRefName \
+              --jq '[.[] | select(.headRefName | startswith("sync-conflict-main-"))][0].number' 2>/dev/null || echo "")
 
             if [ -n "$existing_pr" ]; then
               echo "ℹ️  PR #$existing_pr already exists, skipping"
@@ -160,7 +161,8 @@ jobs:
             git merge --abort
 
             # Check if a sync PR already exists
-            existing_pr=$(gh pr list --base "preview" --search "Merge public/preview" --state open --json number --jq '.[0].number' 2>/dev/null || echo "")
+            existing_pr=$(gh pr list --base "preview" --state open --json number,headRefName \
+              --jq '[.[] | select(.headRefName | startswith("sync-conflict-preview-"))][0].number' 2>/dev/null || echo "")
 
             if [ -n "$existing_pr" ]; then
               echo "ℹ️  PR #$existing_pr already exists, skipping"

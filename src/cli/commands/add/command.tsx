@@ -1,9 +1,7 @@
+import { renderTUI } from '../../tui';
 import { COMMAND_DESCRIPTIONS } from '../../tui/copy';
 import { requireProject, requireTTY } from '../../tui/guards';
-import { AddFlow } from '../../tui/screens/add/AddFlow';
 import type { Command } from '@commander-js/extra-typings';
-import { render } from 'ink';
-import React from 'react';
 
 export function registerAdd(program: Command): Command {
   const addCmd = program
@@ -13,7 +11,7 @@ export function registerAdd(program: Command): Command {
     .showSuggestionAfterError();
 
   // Catch-all argument for invalid subcommands - Commander matches subcommands first
-  addCmd.argument('[subcommand]').action((subcommand: string | undefined, _options, cmd) => {
+  addCmd.argument('[subcommand]').action(async (subcommand: string | undefined, _options, cmd) => {
     if (subcommand) {
       console.error(`error: '${subcommand}' is not a valid subcommand.`);
       cmd.outputHelp();
@@ -23,15 +21,12 @@ export function registerAdd(program: Command): Command {
     requireProject();
     requireTTY();
 
-    const { clear, unmount } = render(
-      <AddFlow
-        isInteractive={false}
-        onExit={() => {
-          clear();
-          unmount();
-        }}
-      />
-    );
+    await renderTUI({
+      initialRoute: { name: 'add' },
+      enterAltScreen: false,
+      actionOnBack: 'exit',
+      isInteractive: false,
+    });
   });
 
   // Subcommands (agent, memory, credential, gateway, gateway-target) are registered
