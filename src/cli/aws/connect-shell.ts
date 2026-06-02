@@ -143,13 +143,18 @@ async function openWebSocket(options: ConnectShellOptions): Promise<ShellConnect
 
   let ws: WebSocket;
   if (bearerToken) {
-    // CUSTOM_JWT: browsers cannot set Upgrade headers, so the token is passed as the second
-    // WebSocket subprotocol. SigV4 signing is skipped entirely.
+    // CUSTOM_JWT: bearer token embedded via base64UrlBearerAuthorization subprotocol scheme.
+    // The token is base64url-encoded (no padding) and sent as:
+    //   Sec-WebSocket-Protocol: base64UrlBearerAuthorization.<encoded>, base64UrlBearerAuthorization
+    // SigV4 signing is skipped entirely.
+    const encoded = Buffer.from(bearerToken).toString('base64url');
     const extraHeaders: Record<string, string> = { ...(options.headers ?? {}) };
     if (sessionId) {
       extraHeaders['X-Amzn-Bedrock-AgentCore-Runtime-Session-Id'] = sessionId;
     }
-    ws = new WebSocket(url.toString(), ['aws-agentcore', bearerToken], { headers: extraHeaders });
+    ws = new WebSocket(url.toString(), [`base64UrlBearerAuthorization.${encoded}`, 'base64UrlBearerAuthorization'], {
+      headers: extraHeaders,
+    });
   } else {
     // Default: SigV4-signed upgrade headers
     const extraHeaders: Record<string, string> = { ...(options.headers ?? {}) };

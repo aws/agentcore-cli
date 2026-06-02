@@ -97,7 +97,7 @@ export async function renderTUI(options: RenderTUIOptions = {}) {
     // Re-enter the TUI on the invoke screen, resuming the same session.
     await renderTUI({
       ...options,
-      initialRoute: { name: 'invoke', sessionId: action.sessionId },
+      initialRoute: { name: 'invoke', sessionId: action.sessionId, isResume: true },
     });
     return;
   }
@@ -118,6 +118,7 @@ export async function renderTUI(options: RenderTUIOptions = {}) {
  */
 export function setupAltScreenCleanup() {
   const cleanup = () => {
+    if (!process.stdout.isTTY) return;
     if (inAltScreen) {
       process.stdout.write(EXIT_ALT_SCREEN);
     }

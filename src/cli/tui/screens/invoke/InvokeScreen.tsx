@@ -468,10 +468,10 @@ export function InvokeScreen({
           : phase === 'invoking'
             ? '↑↓ scroll'
             : messages.length > 0
-              ? `↑↓ scroll · Enter invoke · Ctrl+N new session${onExec ? ' · S shell' : ''} · ${backOrQuit}`
+              ? `↑↓ scroll · Enter invoke · Ctrl+N new session${onExec && !isHarnessSelected ? ' · S shell' : ''} · ${backOrQuit}`
               : isMcp
-                ? `Enter to call a tool · Ctrl+N new session${onExec ? ' · S shell' : ''} · ${backOrQuit}`
-                : `Enter to send a message${onExec ? ' · S shell' : ''} · ${backOrQuit}`;
+                ? `Enter to call a tool · Ctrl+N new session${onExec && !isHarnessSelected ? ' · S shell' : ''} · ${backOrQuit}`
+                : `Enter to send a message${onExec && !isHarnessSelected ? ' · S shell' : ''} · ${backOrQuit}`;
 
   const headerContent = (
     <Box flexDirection="column">

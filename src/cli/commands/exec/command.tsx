@@ -1,3 +1,4 @@
+import { findConfigRoot } from '../../../lib';
 import { getErrorMessage } from '../../errors';
 import { withCommandRunTelemetry } from '../../telemetry/cli-command-run.js';
 import { COMMAND_DESCRIPTIONS } from '../../tui/copy';
@@ -59,7 +60,16 @@ export const registerExec = (program: Command) => {
           // Skip project check when --runtime is provided: the user has an explicit ARN and
           // doesn't need an agentcore.json in the working directory.
           if (!cliOptions.runtime) {
-            requireProject();
+            if (cliOptions.json) {
+              // requireProject() renders Ink and calls process.exit — bypass it in JSON mode
+              // so we can emit a machine-readable error instead.
+              if (!findConfigRoot()) {
+                console.log(JSON.stringify({ success: false, error: 'No agentcore project found.' }));
+                process.exit(1);
+              }
+            } else {
+              requireProject();
+            }
           }
 
           if (cliOptions.it && cliOptions.json) {
@@ -218,6 +228,8 @@ export async function runExecLoop(options: ExecOptions = {}): Promise<void> {
       break;
     }
 
+    // Clear PTY output so Ink picker remounts on a clean screen.
+    process.stdout.write('\x1b[2J\x1b[H');
     // Manual pick: loop back to picker (error already printed inline by handleShellSession)
   }
 }
