@@ -22,6 +22,7 @@ interface HarnessE2EConfig {
   modelProvider: 'bedrock' | 'open_ai' | 'gemini';
   requiredEnvVar?: string;
   skipMemory?: boolean;
+  skipInvoke?: boolean;
 }
 
 export function createHarnessE2ESuite(cfg: HarnessE2EConfig) {
@@ -110,7 +111,7 @@ export function createHarnessE2ESuite(cfg: HarnessE2EConfig) {
       600000
     );
 
-    it.skipIf(!canRun)(
+    it.skipIf(!canRun || !!cfg.skipInvoke)(
       'invokes the deployed harness',
       async () => {
         expect(projectPath, 'Project should have been created').toBeTruthy();

@@ -32,6 +32,7 @@ interface E2EConfig {
   language?: 'Python' | 'TypeScript';
   /** Skip logs and traces tests. */
   skipObservability?: boolean;
+  skipInvoke?: boolean;
   /** Lifecycle configuration to pass via --idle-timeout / --max-lifetime flags. */
   lifecycleConfig?: {
     idleTimeout?: number;
@@ -138,7 +139,7 @@ export function createE2ESuite(cfg: E2EConfig) {
       deployTimeout
     );
 
-    it.skipIf(!canRun)(
+    it.skipIf(!canRun || !!cfg.skipInvoke)(
       'invokes the deployed agent',
       async () => {
         expect(projectPath, 'Project should have been created').toBeTruthy();
@@ -226,7 +227,7 @@ export function createE2ESuite(cfg: E2EConfig) {
       120000
     );
 
-    it.skipIf(!canRun || !!cfg.skipObservability)(
+    it.skipIf(!canRun || !!cfg.skipObservability || !!cfg.skipInvoke)(
       'logs returns entries from the invocation',
       async () => {
         await retry(
