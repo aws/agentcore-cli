@@ -6,6 +6,10 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 const mockSpawn = vi.fn();
 vi.mock('child_process', () => ({
   spawn: (...args: unknown[]) => mockSpawn(...args),
+  execSync: vi.fn(),
+}));
+vi.mock('../../../../lib/utils/platform', () => ({
+  isWindows: false,
 }));
 
 function createMockChildProcess() {
