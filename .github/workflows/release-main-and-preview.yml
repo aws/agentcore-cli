@@ -45,6 +45,9 @@ permissions:
   contents: write
   pull-requests: write
 
+env:
+  AGENTCORE_TELEMETRY_DISABLED: '1'
+
 jobs:
   # ═══════════════════════════════════════════════════════════════════
   # Step 1 — Prepare release (bump both versions, single PR)
