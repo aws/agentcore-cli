@@ -1,5 +1,6 @@
+import { isWindows } from '../../../lib/utils/platform';
 import type { DevConfig } from './config';
-import { type ChildProcess, spawn } from 'child_process';
+import { type ChildProcess, execSync, spawn } from 'child_process';
 
 export type LogLevel = 'info' | 'warn' | 'error' | 'system';
 
@@ -72,7 +73,7 @@ export abstract class DevServer {
       cwd: spawnConfig.cwd,
       env: spawnConfig.env,
       stdio: ['ignore', 'pipe', 'pipe'],
-      detached: true,
+      detached: !isWindows,
     });
 
     this.attachHandlers();
@@ -96,7 +97,11 @@ export abstract class DevServer {
       return;
     }
     try {
-      process.kill(-pid, signal);
+      if (isWindows) {
+        execSync(`taskkill /pid ${pid} /T /F`, { stdio: 'ignore' });
+      } else {
+        process.kill(-pid, signal);
+      }
     } catch {
       this.child!.kill(signal);
     }

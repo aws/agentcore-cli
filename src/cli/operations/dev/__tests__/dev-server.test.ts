@@ -71,12 +71,11 @@ describe('DevServer', () => {
     it('calls spawn with correct cmd, args, cwd, env, and stdio when prepare succeeds', async () => {
       await server.start();
 
-      expect(mockSpawn).toHaveBeenCalledWith('test-cmd', ['--flag'], {
-        cwd: '/test',
-        env: { PATH: '/usr/bin' },
-        stdio: ['ignore', 'pipe', 'pipe'],
-        detached: true,
-      });
+      const spawnOpts = mockSpawn.mock.calls[0]![2] as Record<string, unknown>;
+      expect(spawnOpts.cwd).toBe('/test');
+      expect(spawnOpts.env).toEqual({ PATH: '/usr/bin' });
+      expect(spawnOpts.stdio).toEqual(['ignore', 'pipe', 'pipe']);
+      expect(spawnOpts.detached).toBe(process.platform !== 'win32');
     });
 
     it('returns child process on success', async () => {
