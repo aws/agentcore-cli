@@ -75,6 +75,7 @@ describe('DevServer', () => {
         cwd: '/test',
         env: { PATH: '/usr/bin' },
         stdio: ['ignore', 'pipe', 'pipe'],
+        detached: true,
       });
     });
 
@@ -114,11 +115,24 @@ describe('DevServer', () => {
       expect(mockChild.kill).not.toHaveBeenCalled();
     });
 
-    it('sends SIGTERM first', async () => {
+    it('sends SIGTERM to child when pid is not available', async () => {
       await server.start();
 
       server.kill();
       expect(mockChild.kill).toHaveBeenCalledWith('SIGTERM');
+    });
+
+    it('sends SIGTERM to process group when pid is available', async () => {
+      mockChild.pid = 12345;
+      const processKillSpy = vi.spyOn(process, 'kill').mockImplementation(() => true);
+
+      await server.start();
+      server.kill();
+
+      expect(processKillSpy).toHaveBeenCalledWith(-12345, 'SIGTERM');
+      expect(mockChild.kill).not.toHaveBeenCalled();
+
+      processKillSpy.mockRestore();
     });
 
     it('sends SIGKILL after 2s if not killed', async () => {

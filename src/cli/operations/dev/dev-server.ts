@@ -72,20 +72,34 @@ export abstract class DevServer {
       cwd: spawnConfig.cwd,
       env: spawnConfig.env,
       stdio: ['ignore', 'pipe', 'pipe'],
+      detached: true,
     });
 
     this.attachHandlers();
     return this.child;
   }
 
-  /** Kill the dev server process. Sends SIGTERM, then SIGKILL after 2 seconds. */
+  /** Kill the dev server process tree. Sends SIGTERM to the process group, then SIGKILL after 2 seconds. */
   kill(): void {
     if (!this.child || this.child.killed) return;
-    this.child.kill('SIGTERM');
+    this.signalProcessTree('SIGTERM');
     const killTimer = setTimeout(() => {
-      if (this.child && !this.child.killed) this.child.kill('SIGKILL');
+      if (this.child && !this.child.killed) this.signalProcessTree('SIGKILL');
     }, 2000);
     killTimer.unref();
+  }
+
+  private signalProcessTree(signal: NodeJS.Signals): void {
+    const pid = this.child?.pid;
+    if (!pid) {
+      this.child!.kill(signal);
+      return;
+    }
+    try {
+      process.kill(-pid, signal);
+    } catch {
+      this.child!.kill(signal);
+    }
   }
 
   /** Mode-specific setup (e.g., venv creation, container image build). Returns false to abort. */

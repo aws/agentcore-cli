@@ -24,6 +24,7 @@ import {
   listMcpTools,
   loadDevEnv,
   loadProjectConfig,
+  onShutdownSignal,
 } from '../../operations/dev';
 import { OtelCollector, startOtelCollector } from '../../operations/dev/otel';
 import { withCommandRunTelemetry } from '../../telemetry/cli-command-run.js';
@@ -449,7 +450,7 @@ export const registerDev = (program: Command) => {
                 });
                 server.start().catch(reject);
 
-                process.once('SIGINT', () => {
+                onShutdownSignal(() => {
                   console.log('\nStopping server...');
                   collector?.stop();
                   server.kill();
@@ -488,6 +489,11 @@ export const registerDev = (program: Command) => {
                   />
                 </LayoutProvider>
               );
+
+              process.once('SIGTERM', () => {
+                exitAltScreen();
+                unmount();
+              });
 
               return {
                 success: true as const,

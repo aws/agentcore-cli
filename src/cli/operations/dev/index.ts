@@ -19,6 +19,6 @@ export { listMcpTools, callMcpTool, type McpTool, type McpToolsResult } from './
 
 export { invokeAguiStreaming } from './invoke-agui';
 
-export { getEndpointUrl, formatMcpToolList } from './utils';
+export { getEndpointUrl, formatMcpToolList, onShutdownSignal } from './utils';
 
 export { loadDevEnv, type DevEnv } from './load-dev-env';

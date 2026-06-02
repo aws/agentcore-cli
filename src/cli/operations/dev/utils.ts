@@ -110,6 +110,11 @@ export function convertEntrypointToModule(entrypoint: string): string {
   return `${path}:app`;
 }
 
+export function onShutdownSignal(handler: () => void): void {
+  process.once('SIGINT', handler);
+  process.once('SIGTERM', handler);
+}
+
 export function openBrowser(url: string): void {
   const isWindows = process.platform === 'win32';
   const cmd = isWindows ? 'cmd' : process.platform === 'darwin' ? 'open' : 'xdg-open';
