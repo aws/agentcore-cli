@@ -2,6 +2,8 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.17.0] - 2026-06-02
+
 ## [0.16.0] - 2026-05-28
 * feat: instrument telemetry for status command by @Hweinstock in https://github.com/aws/agentcore-cli/pull/1317
 * fix(telemetry): emit dev command telemetry before blocking by @Hweinstock in https://github.com/aws/agentcore-cli/pull/1375
