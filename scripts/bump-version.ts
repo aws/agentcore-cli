@@ -183,7 +183,7 @@ function getGitLog(sinceTag?: string): string {
     } else {
       // Try to get the last tag
       try {
-        const lastTag = execSync('git describe --tags --abbrev=0', { encoding: 'utf-8' }).trim();
+        const lastTag = execSync("git describe --tags --abbrev=0 --match 'v*'", { encoding: 'utf-8' }).trim();
         cmd += ` ${lastTag}..HEAD`;
       } catch {
         // No tags exist, get last 20 commits
