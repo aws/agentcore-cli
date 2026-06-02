@@ -2,6 +2,32 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.17.0] - 2026-06-02
+
+### Added
+- feat(workflows): add closed-PR comment redirect (#1328) (a84cee4f)
+- feat: add invoke APIs for agent inspector (#1326) (14da3f9b)
+- feat: launch telemetry (#1430) (0e866052)
+- feat(telemetry): support agent_environment for runtime/harness distinction (#1405) (72574bd6)
+- feat: wire telemetry for validate command (#1423) (e3009801)
+
+### Fixed
+- fix(scripts): filter non-version tags in changelog auto-generation (#1444) (38f71440)
+- fix(ci): disable telemetry in release workflow to fix test failures (#1442) (dbe34ac1)
+- fix(e2e): skip Gemini invoke and logs tests (#1434) (a2bd0a79)
+- fix: pin google-genai < 2.0.0 in Gemini agent templates (#1433) (b4f5daa5)
+- fix: Patch CVE-2026-42010 GnuTLS auth bypass in Python Dockerfile (#1397) (5a0fb0b3)
+- fix(telemetry): track preflight error for telemetry (#1403) (13a03912)
+- fix: restore --skills invoke override for harness (preview regression) (#1418) (285b0107)
+
+### Documentation
+- docs(commands): document missing commands and subcommands (#1425) (0a321df1)
+
+### Other Changes
+- refactor(telemetry): rename AgentType to AgentSource to remove ambiguity (#1422) (15d14389)
+- ci: disable telemetry in e2e and integ test workflows (#1421) (eaa4bcf9)
+- chore: remove sync-preview job from sync-from-public workflow (#1416) (d2192fce)
+
 ## [0.16.0] - 2026-05-28
 * feat: instrument telemetry for status command by @Hweinstock in https://github.com/aws/agentcore-cli/pull/1317
 * fix(telemetry): emit dev command telemetry before blocking by @Hweinstock in https://github.com/aws/agentcore-cli/pull/1375
