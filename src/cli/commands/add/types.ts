@@ -97,6 +97,7 @@ export interface AddHarnessCliOptions {
   name?: string;
   modelProvider?: string;
   modelId?: string;
+  apiFormat?: string;
   apiKeyArn?: string;
   container?: string;
   memory?: boolean;

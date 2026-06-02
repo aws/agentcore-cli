@@ -1,6 +1,7 @@
 import { ConfigIO, findConfigRoot } from '../../../lib';
 import {
   AgentNameSchema,
+  BedrockApiFormatSchema,
   BuildTypeSchema,
   DatasetNameSchema,
   DatasetSchemaTypeSchema,
@@ -892,6 +893,20 @@ const VALID_HARNESS_TOOLS = [
 const VALID_GATEWAY_OUTBOUND_AUTH = ['awsIam', 'none', 'oauth'] as const;
 
 export function validateAddHarnessOptions(options: AddHarnessCliOptions): ValidationResult {
+  if (options.apiFormat) {
+    const validFormats = BedrockApiFormatSchema.options;
+    if (!validFormats.includes(options.apiFormat as (typeof validFormats)[number])) {
+      return {
+        valid: false,
+        error: `Invalid API format: ${options.apiFormat}. Use ${validFormats.join(', ')}`,
+      };
+    }
+    const provider = options.modelProvider ?? 'bedrock';
+    if (provider !== 'bedrock') {
+      return { valid: false, error: '--api-format is only supported for the bedrock provider' };
+    }
+  }
+
   if (options.tools) {
     const toolNames = options.tools.split(',').map(s => s.trim());
     for (const tool of toolNames) {

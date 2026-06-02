@@ -1,4 +1,4 @@
-import { MAX_EFS_MOUNTS, MAX_S3_MOUNTS } from '../../../schema';
+import { BedrockApiFormatSchema, MAX_EFS_MOUNTS, MAX_S3_MOUNTS } from '../../../schema';
 import { HarnessNameSchema, ProjectNameSchema } from '../../../schema';
 import {
   validateAccessPointMounts,
@@ -104,11 +104,11 @@ export function validateCreateHarnessOptions(options: CreateHarnessCliOptions, c
   }
 
   if (options.apiFormat) {
-    const validFormats = ['converse_stream', 'responses', 'chat_completions'];
-    if (!validFormats.includes(options.apiFormat)) {
+    const validFormats = BedrockApiFormatSchema.options;
+    if (!validFormats.includes(options.apiFormat as (typeof validFormats)[number])) {
       return {
         valid: false,
-        error: `Invalid API format: ${options.apiFormat}. Use converse_stream, responses, or chat_completions`,
+        error: `Invalid API format: ${options.apiFormat}. Use ${validFormats.join(', ')}`,
       };
     }
     if (options.modelProvider !== 'bedrock') {
