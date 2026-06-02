@@ -8,6 +8,11 @@ import {
   setEnvVar,
 } from '../../../../lib';
 import type { AgentEnvSpec, DirectoryPath, FilePath } from '../../../../schema';
+import { getCredentialProvider } from '../../../aws/account';
+import {
+  buildFilesystemConfigurations,
+  validateFilesystemMountsConfiguration,
+} from '../../../commands/shared/filesystem-utils';
 import { type PythonSetupResult, setupPythonProject } from '../../../operations';
 import { createConfigBundleForAgent } from '../../../operations/agent/config-bundle-defaults';
 import {
@@ -36,6 +41,7 @@ import {
 import { createRenderer } from '../../../templates';
 import type { GenerateConfig } from '../generate/types';
 import type { AddAgentConfig } from './types';
+import { DescribeSubnetsCommand, EC2Client } from '@aws-sdk/client-ec2';
 import { copyFileSync, existsSync, mkdirSync } from 'fs';
 import { basename, dirname, join, resolve } from 'path';
 import { useCallback, useState } from 'react';
@@ -111,9 +117,7 @@ export function mapByoConfigToAgent(config: AddAgentConfig): AgentEnvSpec {
           },
         }
       : {}),
-    ...(config.sessionStorageMountPath && {
-      filesystemConfigurations: [{ sessionStorage: { mountPath: config.sessionStorageMountPath } }],
-    }),
+    ...buildFilesystemConfigurations(config.sessionStorageMountPath, config.efsAccessPoints, config.s3AccessPoints),
   };
 }
 
@@ -139,6 +143,8 @@ function mapAddAgentConfigToGenerateConfig(config: AddAgentConfig): GenerateConf
     idleRuntimeSessionTimeout: config.idleRuntimeSessionTimeout,
     maxLifetime: config.maxLifetime,
     sessionStorageMountPath: config.sessionStorageMountPath,
+    efsAccessPoints: config.efsAccessPoints,
+    s3AccessPoints: config.s3AccessPoints,
     withConfigBundle: config.withConfigBundle,
   };
 }
@@ -169,6 +175,8 @@ export function useAddAgent() {
           network_mode: standardize(NetworkMode, config.networkMode ?? 'PUBLIC'),
           authorizer_type: standardize(AuthorizerTypeEnum, config.authorizerType ?? 'NONE'),
           memory_type: standardize(MemoryEnum, config.memory ?? 'none'),
+          efs_mount_count: (config.efsAccessPoints ?? []).length,
+          s3_mount_count: (config.s3AccessPoints ?? []).length,
         },
         () => addAgentInner(config)
       );
@@ -206,6 +214,36 @@ async function addAgentInner(config: AddAgentConfig): Promise<AddAgentInnerResul
   const existingAgent = project.runtimes.find(agent => agent.name === config.name);
   if (existingAgent) {
     return { success: false, error: new AgentAlreadyExistsError(config.name) };
+  }
+
+  // Async filesystem validation (Level 1–3) for create and byo paths
+  const efsMounts = config.efsAccessPoints ?? [];
+  const s3FilesMounts = config.s3AccessPoints ?? [];
+  if ((efsMounts.length > 0 || s3FilesMounts.length > 0) && config.agentType !== 'import') {
+    const targets = await configIO.resolveAWSDeploymentTargets();
+    const awsRegion = targets[0]?.region ?? process.env.AWS_REGION ?? process.env.AWS_DEFAULT_REGION ?? 'us-east-1';
+    let agentVpcId: string | undefined;
+    const subnetIds = config.subnets ?? [];
+    if (subnetIds.length > 0) {
+      try {
+        const ec2 = new EC2Client({ region: awsRegion, credentials: getCredentialProvider() });
+        const subnetResp = await ec2.send(new DescribeSubnetsCommand({ SubnetIds: subnetIds }));
+        agentVpcId = subnetResp.Subnets?.[0]?.VpcId;
+      } catch {
+        // non-fatal: Level 2 topology checks are skipped when VPC ID cannot be resolved
+      }
+    }
+    const fsValidation = await validateFilesystemMountsConfiguration({
+      efsMounts,
+      s3FilesMounts,
+      agentVpcId,
+      agentSubnetIds: subnetIds,
+      agentSecurityGroupIds: config.securityGroups ?? [],
+      region: awsRegion,
+    });
+    if (!fsValidation.success) {
+      return { success: false, error: new Error(fsValidation.error) };
+    }
   }
 
   let outcome: AddAgentCreateResult | AddAgentByoResult | AddAgentError;
@@ -347,6 +385,8 @@ async function handleImportPath(
     idleTimeout: config.idleRuntimeSessionTimeout,
     maxLifetime: config.maxLifetime,
     sessionStorageMountPath: config.sessionStorageMountPath,
+    efsAccessPoints: config.efsAccessPoints,
+    s3AccessPoints: config.s3AccessPoints,
   });
 
   if (!result.success) {

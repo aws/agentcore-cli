@@ -15,6 +15,7 @@ import {
   DEFAULT_RUNTIME_BY_LANGUAGE,
   DEFAULT_STRATEGY_NAMESPACE_TEMPLATES,
 } from '../../../../schema';
+import { buildFilesystemConfigurations } from '../../../commands/shared/filesystem-utils';
 import { GatewayPrimitive } from '../../../primitives/GatewayPrimitive';
 import { buildAuthorizerConfigFromJwtConfig } from '../../../primitives/auth-utils';
 import {
@@ -154,9 +155,7 @@ export function mapGenerateConfigToAgent(config: GenerateConfig): AgentEnvSpec {
           },
         }
       : {}),
-    ...(config.sessionStorageMountPath && {
-      filesystemConfigurations: [{ sessionStorage: { mountPath: config.sessionStorageMountPath } }],
-    }),
+    ...buildFilesystemConfigurations(config.sessionStorageMountPath, config.efsAccessPoints, config.s3AccessPoints),
     ...(protocol === 'MCP' && { instrumentation: { enableOtel: false } }),
   };
 }
@@ -292,6 +291,9 @@ export async function mapGenerateConfigToRenderConfig(
     protocol: config.protocol,
     dockerfile: config.dockerfile,
     sessionStorageMountPath: config.sessionStorageMountPath,
+    efsMounts: (config.efsAccessPoints ?? []).map(ap => ({ mountPath: ap.mountPath })),
+    s3Mounts: (config.s3AccessPoints ?? []).map(ap => ({ mountPath: ap.mountPath })),
+    needsOs: !!config.sessionStorageMountPath || !!config.efsAccessPoints?.length || !!config.s3AccessPoints?.length,
     enableOtel,
     hasConfigBundle: config.withConfigBundle,
   };

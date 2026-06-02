@@ -17,6 +17,8 @@ export interface HarnessConfig {
   codeLocation?: string;
   tools?: { type: string; name: string }[];
   apiKeyArn?: string;
+  efsAccessPoints?: { accessPointArn: string; mountPath: string }[];
+  s3AccessPoints?: { accessPointArn: string; mountPath: string }[];
 }
 
 export interface AgentCoreStackProps extends StackProps {

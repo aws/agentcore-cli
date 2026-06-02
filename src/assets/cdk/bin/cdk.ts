@@ -66,6 +66,8 @@ async function main() {
     codeLocation?: string;
     tools?: { type: string; name: string }[];
     apiKeyArn?: string;
+    efsAccessPoints?: { accessPointArn: string; mountPath: string }[];
+    s3AccessPoints?: { accessPointArn: string; mountPath: string }[];
   }[] = [];
   for (const entry of specAny.harnesses ?? []) {
     const harnessDir = path.resolve(projectRoot, entry.path);
@@ -82,6 +84,8 @@ async function main() {
         codeLocation: harnessSpec.dockerfile ? harnessDir : undefined,
         tools: harnessSpec.tools,
         apiKeyArn: harnessSpec.model?.apiKeyArn,
+        efsAccessPoints: harnessSpec.efsAccessPoints,
+        s3AccessPoints: harnessSpec.s3AccessPoints,
       });
     } catch (err) {
       throw new Error(

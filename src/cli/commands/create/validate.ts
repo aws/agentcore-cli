@@ -1,6 +1,8 @@
 import {
   AgentNameSchema,
   BuildTypeSchema,
+  MAX_EFS_MOUNTS,
+  MAX_S3_MOUNTS,
   ModelProviderSchema,
   ProjectNameSchema,
   ProtocolModeSchema,
@@ -12,6 +14,12 @@ import {
   matchEnumValue,
 } from '../../../schema';
 import type { ProtocolMode } from '../../../schema';
+import {
+  validateAccessPointMounts,
+  validateEfsAccessPointArn,
+  validateS3FilesAccessPointArn,
+  zipAccessPointPairs,
+} from '../shared/filesystem-utils';
 import { parseAndValidateLifecycleOptions } from '../shared/lifecycle-utils';
 import { validateVpcOptions } from '../shared/vpc-utils';
 import type { CreateOptions } from './types';
@@ -227,11 +235,64 @@ export function validateCreateOptions(options: CreateOptions, cwd?: string): Val
   if (lifecycleResult.idleTimeout !== undefined) options.idleTimeout = lifecycleResult.idleTimeout;
   if (lifecycleResult.maxLifetime !== undefined) options.maxLifetime = lifecycleResult.maxLifetime;
 
+  // Filesystem mounts are not supported for TypeScript agents (no needsOs template blocks)
+  if (options.language === 'TypeScript') {
+    if (options.sessionStorageMountPath) {
+      return { valid: false, error: '--session-storage-mount-path is not supported for TypeScript agents' };
+    }
+    if ((options.efsAccessPointArn ?? []).length > 0 || (options.efsMountPath ?? []).length > 0) {
+      return { valid: false, error: '--efs-access-point-arn is not supported for TypeScript agents' };
+    }
+    if ((options.s3AccessPointArn ?? []).length > 0 || (options.s3MountPath ?? []).length > 0) {
+      return { valid: false, error: '--s3-access-point-arn is not supported for TypeScript agents' };
+    }
+  }
+
   // Validate session storage mount path
   if (options.sessionStorageMountPath) {
     const mountPathResult = SessionStorageSchema.shape.mountPath.safeParse(options.sessionStorageMountPath);
     if (!mountPathResult.success) {
       return { valid: false, error: `--session-storage-mount-path: ${mountPathResult.error.issues[0]?.message}` };
+    }
+  }
+
+  // Validate EFS access point ARN/path pairs
+  const efsArns = options.efsAccessPointArn ?? [];
+  const efsPaths = options.efsMountPath ?? [];
+  if (efsArns.length > 0 || efsPaths.length > 0) {
+    const efsPairsResult = zipAccessPointPairs(efsArns, efsPaths, 'EFS');
+    if (!efsPairsResult.success) return { valid: false, error: efsPairsResult.error };
+    const efsValidation = validateAccessPointMounts(efsPairsResult.mounts, validateEfsAccessPointArn);
+    if (!efsValidation.success) return { valid: false, error: efsValidation.error };
+    if (efsArns.length > MAX_EFS_MOUNTS) {
+      return { valid: false, error: `Maximum ${MAX_EFS_MOUNTS} EFS mounts allowed (got ${efsArns.length})` };
+    }
+    if (options.networkMode !== 'VPC') {
+      return {
+        valid: false,
+        error:
+          'EFS filesystem mounts require VPC network mode. Add --network-mode VPC --subnets <ids> --security-groups <ids>.',
+      };
+    }
+  }
+
+  // Validate S3 Files access point ARN/path pairs
+  const s3Arns = options.s3AccessPointArn ?? [];
+  const s3Paths = options.s3MountPath ?? [];
+  if (s3Arns.length > 0 || s3Paths.length > 0) {
+    const s3PairsResult = zipAccessPointPairs(s3Arns, s3Paths, 'S3 Files');
+    if (!s3PairsResult.success) return { valid: false, error: s3PairsResult.error };
+    const s3Validation = validateAccessPointMounts(s3PairsResult.mounts, validateS3FilesAccessPointArn);
+    if (!s3Validation.success) return { valid: false, error: s3Validation.error };
+    if (s3Arns.length > MAX_S3_MOUNTS) {
+      return { valid: false, error: `Maximum ${MAX_S3_MOUNTS} S3 Files mounts allowed (got ${s3Arns.length})` };
+    }
+    if (options.networkMode !== 'VPC') {
+      return {
+        valid: false,
+        error:
+          'S3 Files filesystem mounts require VPC network mode. Add --network-mode VPC --subnets <ids> --security-groups <ids>.',
+      };
     }
   }
 

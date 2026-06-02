@@ -38,6 +38,10 @@ export interface AddAgentOptions extends VpcOptions {
   idleTimeout?: number | string;
   maxLifetime?: number | string;
   sessionStorageMountPath?: string;
+  efsAccessPointArn?: string[];
+  efsMountPath?: string[];
+  s3AccessPointArn?: string[];
+  s3MountPath?: string[];
   withConfigBundle?: boolean;
   json?: boolean;
 }

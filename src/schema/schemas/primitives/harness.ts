@@ -1,5 +1,10 @@
 import { NetworkModeSchema } from '../../constants';
-import { LifecycleConfigurationSchema, NetworkConfigSchema } from '../agent-env';
+import {
+  EfsAccessPointConfigSchema,
+  LifecycleConfigurationSchema,
+  NetworkConfigSchema,
+  S3FilesAccessPointConfigSchema,
+} from '../agent-env';
 import { AuthorizerConfigSchema, RuntimeAuthorizerTypeSchema } from '../auth';
 import { uniqueBy } from '../zod-util';
 import { TagsSchema } from './tags';
@@ -267,6 +272,8 @@ export const HarnessSpecSchema = z
       .min(1)
       .refine(val => val.startsWith('/mnt/'), { message: 'sessionStoragePath must be an absolute path under /mnt/' })
       .optional(),
+    efsAccessPoints: z.array(EfsAccessPointConfigSchema).max(2).optional(),
+    s3AccessPoints: z.array(S3FilesAccessPointConfigSchema).max(2).optional(),
     environmentVariables: z.record(z.string(), z.string()).optional(),
     /** Authorizer type for inbound requests. Defaults to AWS_IAM. */
     authorizerType: RuntimeAuthorizerTypeSchema.optional(),
@@ -294,6 +301,24 @@ export const HarnessSpecSchema = z
         code: z.ZodIssueCode.custom,
         message: 'networkConfig is only allowed when networkMode is VPC',
         path: ['networkConfig'],
+      });
+    }
+    if ((data.efsAccessPoints?.length || data.s3AccessPoints?.length) && data.networkMode !== 'VPC') {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: 'efsAccessPoints and s3AccessPoints require networkMode: VPC',
+        path: ['efsAccessPoints'],
+      });
+    }
+    const mountPaths: string[] = [];
+    if (data.sessionStoragePath) mountPaths.push(data.sessionStoragePath.replace(/\/$/, ''));
+    for (const ap of data.efsAccessPoints ?? []) mountPaths.push(ap.mountPath.replace(/\/$/, ''));
+    for (const ap of data.s3AccessPoints ?? []) mountPaths.push(ap.mountPath.replace(/\/$/, ''));
+    if (new Set(mountPaths).size !== mountPaths.length) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: 'Filesystem mount paths must be unique',
+        path: ['efsAccessPoints'],
       });
     }
     if (data.authorizerType === 'CUSTOM_JWT' && !data.authorizerConfiguration?.customJwtAuthorizer) {

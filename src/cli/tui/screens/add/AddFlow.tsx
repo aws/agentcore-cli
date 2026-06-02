@@ -274,30 +274,37 @@ export function AddFlow(props: AddFlowProps) {
         projectPath: '',
         config,
         loading: true,
-        loadingMessage: 'Creating agent...',
+        loadingMessage:
+          config.efsAccessPoints?.length || config.s3AccessPoints?.length
+            ? 'Validating filesystem mounts...'
+            : 'Creating agent...',
       });
-      void addAgent(config).then(result => {
-        if (result.ok) {
-          if (result.type === 'create') {
-            setFlow({
-              name: 'agent-create-success',
-              agentName: result.agentName,
-              projectName: result.projectName,
-              projectPath: result.projectPath,
-              config,
-            });
+      void addAgent(config)
+        .then(result => {
+          if (result.ok) {
+            if (result.type === 'create') {
+              setFlow({
+                name: 'agent-create-success',
+                agentName: result.agentName,
+                projectName: result.projectName,
+                projectPath: result.projectPath,
+                config,
+              });
+            } else {
+              setFlow({
+                name: 'agent-byo-success',
+                agentName: result.agentName,
+                projectName: result.projectName,
+                config,
+              });
+            }
           } else {
-            setFlow({
-              name: 'agent-byo-success',
-              agentName: result.agentName,
-              projectName: result.projectName,
-              config,
-            });
+            setFlow({ name: 'error', message: result.error });
           }
-        } else {
-          setFlow({ name: 'error', message: result.error });
-        }
-      });
+        })
+        .catch((err: unknown) => {
+          setFlow({ name: 'error', message: err instanceof Error ? err.message : String(err) });
+        });
     },
     [addAgent]
   );

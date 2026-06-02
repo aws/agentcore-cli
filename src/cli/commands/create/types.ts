@@ -20,6 +20,10 @@ export interface CreateOptions extends VpcOptions {
   idleTimeout?: number | string;
   maxLifetime?: number | string;
   sessionStorageMountPath?: string;
+  efsAccessPointArn?: string[];
+  efsMountPath?: string[];
+  s3AccessPointArn?: string[];
+  s3MountPath?: string[];
   withConfigBundle?: boolean;
   outputDir?: string;
   skipGit?: boolean;

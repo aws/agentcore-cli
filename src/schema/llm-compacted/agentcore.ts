@@ -72,6 +72,26 @@ type ABTestVariantName = 'C' | 'T1';
 
 type ProtocolMode = 'HTTP' | 'MCP' | 'A2A' | 'AGUI';
 
+interface SessionStorage {
+  mountPath: string; // /mnt/<name> @min 6 @max 200
+}
+
+interface EfsAccessPointConfig {
+  accessPointArn: string; // arn:aws[-a-z]*:elasticfilesystem:{region}:{account}:access-point/fsap-{8-40 hex}
+  mountPath: string; // /mnt/<name> @min 6 @max 200
+}
+
+interface S3FilesAccessPointConfig {
+  accessPointArn: string; // arn:aws[-a-z]*:s3files:{region}:{account}:file-system/fs-{id}/access-point/fsap-{id}
+  mountPath: string; // /mnt/<name> @min 6 @max 200
+}
+
+// Exactly one key present per entry
+type FilesystemConfiguration =
+  | { sessionStorage: SessionStorage }
+  | { efsAccessPoint: EfsAccessPointConfig }
+  | { s3FilesAccessPoint: S3FilesAccessPointConfig };
+
 interface AgentEnvSpec {
   name: string; // @regex ^[a-zA-Z][a-zA-Z0-9_]{0,47}$ @max 48
   build: BuildType;
@@ -85,6 +105,7 @@ interface AgentEnvSpec {
   instrumentation?: Instrumentation; // OTel settings
   protocol?: ProtocolMode; // default 'HTTP'
   tags?: Record<string, string>;
+  filesystemConfigurations?: FilesystemConfiguration[]; // max 5 total, max 1 sessionStorage, max 2 efsAccessPoint, max 2 s3FilesAccessPoint; efsAccessPoint/s3FilesAccessPoint require networkMode: VPC
 }
 
 interface Instrumentation {

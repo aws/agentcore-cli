@@ -1,5 +1,6 @@
 import type { HarnessModelProvider, NetworkMode, RuntimeAuthorizerType } from '../../../../schema';
 import type { JwtConfig } from '../../components/jwt-config';
+import { HARNESS_FILESYSTEM_STEP_NAMES, useFilesystemMountState } from '../../hooks/useFilesystemMountState';
 import type { AddHarnessConfig, AddHarnessStep, AdvancedSetting, ContainerMode } from './types';
 import { DEFAULT_MODEL_IDS } from './types';
 import { useCallback, useMemo, useState } from 'react';
@@ -113,6 +114,8 @@ export function useAddHarnessWizard() {
 
     if (advancedSettings.includes('session-storage')) {
       steps.push('session-storage-path');
+      steps.push('efs-arn', 'efs-mount-path', 'efs-add-another');
+      steps.push('s3-arn', 's3-mount-path', 's3-add-another');
     }
 
     steps.push('confirm');
@@ -130,11 +133,103 @@ export function useAddHarnessWizard() {
 
   const currentIndex = allSteps.indexOf(step);
 
+  const goToNextHarnessStep = useCallback(
+    (afterStep: string) => {
+      const idx = allSteps.indexOf(afterStep as AddHarnessStep);
+      const next = idx >= 0 ? allSteps[idx + 1] : undefined;
+      if (next) setStep(next);
+    },
+    [allSteps]
+  );
+
+  const {
+    pendingEfsArn,
+    pendingS3Arn,
+    editingEfsIndex,
+    editingS3Index,
+    submitEfsArn,
+    submitEfsMountPath,
+    submitEfsAddAnother,
+    submitS3Arn,
+    submitS3MountPath,
+    submitS3AddAnother,
+    resetFilesystemState,
+  } = useFilesystemMountState({
+    currentStep: step,
+    efsMounts: config.efsAccessPoints ?? [],
+    s3Mounts: config.s3AccessPoints ?? [],
+    setEfsMounts: updater => setConfig(c => ({ ...c, efsAccessPoints: updater(c.efsAccessPoints ?? []) })),
+    setS3Mounts: updater => setConfig(c => ({ ...c, s3AccessPoints: updater(c.s3AccessPoints ?? []) })),
+    goToNextStep: goToNextHarnessStep,
+    setStep: setStep as (step: string) => void,
+    stepNames: HARNESS_FILESYSTEM_STEP_NAMES,
+  });
+
   const goBack = useCallback(() => {
+    // EFS/S3 back navigation handled by the filesystem hook's auto-redirect effects.
+    // For efs-mount-path and s3-mount-path, route based on editing state before reset.
+    if (step === 'efs-mount-path') {
+      resetFilesystemState();
+      setStep(editingEfsIndex >= 0 ? 'efs-add-another' : 'efs-arn');
+      return;
+    }
+    if (step === 's3-mount-path') {
+      resetFilesystemState();
+      setStep(editingS3Index >= 0 ? 's3-add-another' : 's3-arn');
+      return;
+    }
+    if (step === 'efs-arn') {
+      if (editingEfsIndex >= 0) {
+        resetFilesystemState();
+        setStep('efs-add-another');
+      } else if ((config.efsAccessPoints?.length ?? 0) > 0) {
+        setStep('efs-add-another');
+      } else {
+        const idx = allSteps.indexOf('efs-arn');
+        const prev = allSteps[idx - 1];
+        if (prev) setStep(prev);
+      }
+      return;
+    }
+    if (step === 'efs-add-another') {
+      const idx = allSteps.indexOf('efs-arn');
+      const prev = allSteps[idx - 1];
+      if (prev) setStep(prev);
+      return;
+    }
+    if (step === 's3-arn') {
+      if (editingS3Index >= 0) {
+        resetFilesystemState();
+        setStep('s3-add-another');
+      } else if ((config.s3AccessPoints?.length ?? 0) > 0) {
+        setStep('s3-add-another');
+      } else if ((config.efsAccessPoints?.length ?? 0) > 0) {
+        setStep('efs-add-another');
+      } else {
+        setStep('efs-arn');
+      }
+      return;
+    }
+    if (step === 's3-add-another') {
+      if ((config.efsAccessPoints?.length ?? 0) > 0) {
+        setStep('efs-add-another');
+      } else {
+        setStep('efs-arn');
+      }
+      return;
+    }
     const idx = allSteps.indexOf(step);
     const prevStep = allSteps[idx - 1];
     if (prevStep) setStep(prevStep);
-  }, [allSteps, step]);
+  }, [
+    allSteps,
+    step,
+    editingEfsIndex,
+    editingS3Index,
+    config.efsAccessPoints,
+    config.s3AccessPoints,
+    resetFilesystemState,
+  ]);
 
   const nextStep = useCallback(
     (currentStep: AddHarnessStep): AddHarnessStep | undefined => {
@@ -200,11 +295,23 @@ export function useAddHarnessWizard() {
     [nextStep]
   );
 
-  const setAdvancedSettings = useCallback((settings: AdvancedSetting[]) => {
-    setAdvancedSettingsState(settings);
-    const firstAdvancedStep = getFirstAdvancedStep(settings);
-    setStep(firstAdvancedStep ?? 'confirm');
-  }, []);
+  const setAdvancedSettings = useCallback(
+    (settings: AdvancedSetting[]) => {
+      setAdvancedSettingsState(settings);
+      if (!settings.includes('session-storage')) {
+        setConfig(c => ({
+          ...c,
+          sessionStoragePath: undefined,
+          efsAccessPoints: undefined,
+          s3AccessPoints: undefined,
+        }));
+        resetFilesystemState();
+      }
+      const firstAdvancedStep = getFirstAdvancedStep(settings);
+      setStep(firstAdvancedStep ?? 'confirm');
+    },
+    [resetFilesystemState]
+  );
 
   const setSelectedTools = useCallback(
     (selectedTools: string[]) => {
@@ -413,7 +520,8 @@ export function useAddHarnessWizard() {
     setConfig(getDefaultConfig());
     setStep('name');
     setAdvancedSettingsState([]);
-  }, []);
+    resetFilesystemState();
+  }, [resetFilesystemState]);
 
   return {
     config,
@@ -449,6 +557,16 @@ export function useAddHarnessWizard() {
     setTimeoutSeconds,
     setTruncationStrategy,
     setSessionStoragePath,
+    pendingEfsArn,
+    pendingS3Arn,
+    editingEfsIndex,
+    editingS3Index,
+    submitEfsArn,
+    submitEfsMountPath,
+    submitEfsAddAnother,
+    submitS3Arn,
+    submitS3MountPath,
+    submitS3AddAnother,
     reset,
   };
 }

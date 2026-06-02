@@ -18,6 +18,7 @@ import type {
   HarnessTruncationConfiguration,
 } from '../../../../aws/agentcore-harness';
 import { toPascalId } from '../../../../cloudformation/logical-ids';
+import { buildFilesystemConfigurations } from '../../../../commands/shared/filesystem-utils';
 import { readFile, stat } from 'fs/promises';
 import { join } from 'path';
 
@@ -397,9 +398,9 @@ function mapEnvironmentArtifact(containerUri: string): HarnessEnvironmentArtifac
 function mapEnvironmentProvider(spec: HarnessSpec): HarnessEnvironmentProvider | undefined {
   const hasNetwork = !!spec.networkConfig;
   const hasLifecycle = !!spec.lifecycleConfig;
-  const hasSessionStorage = !!spec.sessionStoragePath;
+  const hasFilesystem = !!spec.sessionStoragePath || !!spec.efsAccessPoints?.length || !!spec.s3AccessPoints?.length;
 
-  if (!hasNetwork && !hasLifecycle && !hasSessionStorage) {
+  if (!hasNetwork && !hasLifecycle && !hasFilesystem) {
     return undefined;
   }
 
@@ -419,8 +420,9 @@ function mapEnvironmentProvider(spec: HarnessSpec): HarnessEnvironmentProvider |
     agentCoreRuntimeEnvironment.lifecycleConfiguration = spec.lifecycleConfig;
   }
 
-  if (spec.sessionStoragePath) {
-    agentCoreRuntimeEnvironment.filesystemConfigurations = [{ sessionStorage: { mountPath: spec.sessionStoragePath } }];
+  const fsConfig = buildFilesystemConfigurations(spec.sessionStoragePath, spec.efsAccessPoints, spec.s3AccessPoints);
+  if ('filesystemConfigurations' in fsConfig) {
+    agentCoreRuntimeEnvironment.filesystemConfigurations = fsConfig.filesystemConfigurations;
   }
 
   return {

@@ -1,4 +1,11 @@
+import { MAX_EFS_MOUNTS, MAX_S3_MOUNTS } from '../../../schema';
 import { HarnessNameSchema, ProjectNameSchema } from '../../../schema';
+import {
+  validateAccessPointMounts,
+  validateEfsAccessPointArn,
+  validateS3FilesAccessPointArn,
+  zipAccessPointPairs,
+} from '../shared/filesystem-utils';
 import { validateFolderNotExists } from './validate';
 
 export interface CreateHarnessCliOptions {
@@ -16,6 +23,11 @@ export interface CreateHarnessCliOptions {
   networkMode?: string;
   subnets?: string;
   securityGroups?: string;
+  sessionStorageMountPath?: string;
+  efsAccessPointArn?: string[];
+  efsMountPath?: string[];
+  s3AccessPointArn?: string[];
+  s3MountPath?: string[];
   idleTimeout?: string;
   maxLifetime?: string;
   outputDir?: string;
@@ -88,6 +100,46 @@ export function validateCreateHarnessOptions(options: CreateHarnessCliOptions, c
 
   if (options.modelProvider !== 'bedrock' && !options.apiKeyArn) {
     return { valid: false, error: `--api-key-arn is required for ${options.modelProvider} provider` };
+  }
+
+  // Validate EFS access point ARN/path pairs
+  const efsArns = options.efsAccessPointArn ?? [];
+  const efsPaths = options.efsMountPath ?? [];
+  if (efsArns.length > 0 || efsPaths.length > 0) {
+    const efsPairsResult = zipAccessPointPairs(efsArns, efsPaths, 'EFS');
+    if (!efsPairsResult.success) return { valid: false, error: efsPairsResult.error };
+    const efsValidation = validateAccessPointMounts(efsPairsResult.mounts, validateEfsAccessPointArn);
+    if (!efsValidation.success) return { valid: false, error: efsValidation.error };
+    if (efsArns.length > MAX_EFS_MOUNTS) {
+      return { valid: false, error: `Maximum ${MAX_EFS_MOUNTS} EFS mounts allowed (got ${efsArns.length})` };
+    }
+    if (options.networkMode !== 'VPC') {
+      return {
+        valid: false,
+        error:
+          'EFS filesystem mounts require VPC network mode. Add --network-mode VPC --subnets <ids> --security-groups <ids>.',
+      };
+    }
+  }
+
+  // Validate S3 Files access point ARN/path pairs
+  const s3Arns = options.s3AccessPointArn ?? [];
+  const s3Paths = options.s3MountPath ?? [];
+  if (s3Arns.length > 0 || s3Paths.length > 0) {
+    const s3PairsResult = zipAccessPointPairs(s3Arns, s3Paths, 'S3 Files');
+    if (!s3PairsResult.success) return { valid: false, error: s3PairsResult.error };
+    const s3Validation = validateAccessPointMounts(s3PairsResult.mounts, validateS3FilesAccessPointArn);
+    if (!s3Validation.success) return { valid: false, error: s3Validation.error };
+    if (s3Arns.length > MAX_S3_MOUNTS) {
+      return { valid: false, error: `Maximum ${MAX_S3_MOUNTS} S3 Files mounts allowed (got ${s3Arns.length})` };
+    }
+    if (options.networkMode !== 'VPC') {
+      return {
+        valid: false,
+        error:
+          'S3 Files filesystem mounts require VPC network mode. Add --network-mode VPC --subnets <ids> --security-groups <ids>.',
+      };
+    }
   }
 
   return { valid: true };

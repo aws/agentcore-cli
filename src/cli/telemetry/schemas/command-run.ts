@@ -56,6 +56,8 @@ const AddAgentAttrs = safeSchema({
   network_mode: NetworkMode,
   authorizer_type: AuthorizerType,
   memory_type: MemoryType,
+  efs_mount_count: Count,
+  s3_mount_count: Count,
 });
 
 const AddMemoryAttrs = safeSchema({

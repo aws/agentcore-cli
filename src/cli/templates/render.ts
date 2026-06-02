@@ -11,6 +11,14 @@ Handlebars.registerHelper('includes', (array: unknown[], value: unknown) => {
 Handlebars.registerHelper('snakeCase', (str: string) => {
   return str.replace(/[^a-zA-Z0-9]/g, '_').toLowerCase();
 });
+// Converts a mount path to a Python identifier slug, e.g. /mnt/my-tools -> mnt_my_tools
+Handlebars.registerHelper('pathSlug', (str: string) => {
+  return str
+    .replace(/[^a-zA-Z0-9]/g, '_')
+    .replace(/^_+/, '')
+    .replace(/_+/g, '_')
+    .toLowerCase();
+});
 
 /**
  * Renames template files to their actual names.

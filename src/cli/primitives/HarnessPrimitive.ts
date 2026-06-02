@@ -42,6 +42,8 @@ export interface AddHarnessOptions {
   idleTimeout?: number;
   maxLifetime?: number;
   sessionStoragePath?: string;
+  efsAccessPoints?: { accessPointArn: string; mountPath: string }[];
+  s3AccessPoints?: { accessPointArn: string; mountPath: string }[];
   withInvokeScript?: boolean;
   selectedTools?: string[];
   mcpName?: string;
@@ -172,6 +174,8 @@ export class HarnessPrimitive extends BasePrimitive<AddHarnessOptions, Removable
           }),
         ...(this.buildLifecycleConfig(options) && { lifecycleConfig: this.buildLifecycleConfig(options) }),
         ...(options.sessionStoragePath && { sessionStoragePath: options.sessionStoragePath }),
+        ...(options.efsAccessPoints?.length && { efsAccessPoints: options.efsAccessPoints }),
+        ...(options.s3AccessPoints?.length && { s3AccessPoints: options.s3AccessPoints }),
         ...(options.authorizerType && { authorizerType: options.authorizerType }),
         ...(options.authorizerType === 'CUSTOM_JWT' && options.jwtConfig
           ? { authorizerConfiguration: buildAuthorizerConfigFromJwtConfig(options.jwtConfig) }

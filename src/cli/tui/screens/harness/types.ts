@@ -31,6 +31,12 @@ export type AddHarnessStep =
   | 'timeout'
   | 'truncation-strategy'
   | 'session-storage-path'
+  | 'efs-arn'
+  | 'efs-mount-path'
+  | 'efs-add-another'
+  | 's3-arn'
+  | 's3-mount-path'
+  | 's3-add-another'
   | 'confirm';
 
 export interface AddHarnessConfig {
@@ -52,6 +58,8 @@ export interface AddHarnessConfig {
   idleTimeout?: number;
   maxLifetime?: number;
   sessionStoragePath?: string;
+  efsAccessPoints?: { accessPointArn: string; mountPath: string }[];
+  s3AccessPoints?: { accessPointArn: string; mountPath: string }[];
   authorizerType?: RuntimeAuthorizerType;
   jwtConfig?: JwtConfig;
   selectedTools?: string[];
@@ -91,6 +99,12 @@ export const HARNESS_STEP_LABELS: Record<AddHarnessStep, string> = {
   timeout: 'Timeout',
   'truncation-strategy': 'Truncation',
   'session-storage-path': 'Session storage path',
+  'efs-arn': 'EFS ARN',
+  'efs-mount-path': 'EFS Path',
+  'efs-add-another': 'Add EFS',
+  's3-arn': 'S3 Files ARN',
+  's3-mount-path': 'S3 Files Path',
+  's3-add-another': 'Add S3 Files',
   confirm: 'Confirm',
 };
 
@@ -126,7 +140,11 @@ export const ADVANCED_SETTING_OPTIONS = [
   { id: 'lifecycle', title: 'Lifecycle', description: 'Set idle timeout and max session lifetime' },
   { id: 'execution', title: 'Execution limits', description: 'Cap iterations, tokens, and per-turn timeout' },
   { id: 'truncation', title: 'Truncation', description: 'Choose how context is managed when it exceeds limits' },
-  { id: 'session-storage', title: 'Session Storage', description: 'Mount persistent storage for session data' },
+  {
+    id: 'session-storage',
+    title: 'Filesystem Storage',
+    description: 'Mount session storage, EFS, or S3 Files persistent storage (requires VPC)',
+  },
 ] as const;
 
 export type AdvancedSetting = (typeof ADVANCED_SETTING_OPTIONS)[number]['id'];

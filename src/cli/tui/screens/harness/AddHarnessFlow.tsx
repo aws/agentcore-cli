@@ -64,6 +64,8 @@ export function AddHarnessFlow({ isInteractive = true, onExit, onBack, onDev, on
         idleTimeout: config.idleTimeout,
         maxLifetime: config.maxLifetime,
         sessionStoragePath: config.sessionStoragePath,
+        efsAccessPoints: config.efsAccessPoints,
+        s3AccessPoints: config.s3AccessPoints,
         selectedTools: config.selectedTools,
         mcpName: config.mcpName,
         mcpUrl: config.mcpUrl,

@@ -26,6 +26,8 @@ export interface CreateHarnessProjectOptions {
   idleTimeout?: number;
   maxLifetime?: number;
   sessionStoragePath?: string;
+  efsAccessPoints?: { accessPointArn: string; mountPath: string }[];
+  s3AccessPoints?: { accessPointArn: string; mountPath: string }[];
   skipGit?: boolean;
   skipInstall?: boolean;
   onProgress?: ProgressCallback;
@@ -71,6 +73,8 @@ export async function createProjectWithHarness(options: CreateHarnessProjectOpti
       idleTimeout: options.idleTimeout,
       maxLifetime: options.maxLifetime,
       sessionStoragePath: options.sessionStoragePath,
+      efsAccessPoints: options.efsAccessPoints,
+      s3AccessPoints: options.s3AccessPoints,
       configBaseDir,
     });
 

@@ -541,6 +541,93 @@ describe('mapHarnessSpecToCreateOptions', () => {
       });
     });
 
+    it('maps efsAccessPoints to filesystemConfigurations', async () => {
+      const opts = baseOptions({
+        harnessSpec: {
+          name: 'h',
+          model: { provider: 'bedrock', modelId: 'claude' },
+          tools: [],
+          skills: [],
+          networkMode: 'VPC',
+          networkConfig: { subnets: ['subnet-abc'], securityGroups: ['sg-abc'] },
+          efsAccessPoints: [
+            {
+              accessPointArn: 'arn:aws:elasticfilesystem:us-east-1:123456789012:access-point/fsap-0123456789abcdef0',
+              mountPath: '/mnt/efs',
+            },
+          ],
+        } as any,
+      });
+      const result = await mapHarnessSpecToCreateOptions(opts);
+      expect(result.environment?.agentCoreRuntimeEnvironment?.filesystemConfigurations).toContainEqual({
+        efsAccessPoint: {
+          accessPointArn: 'arn:aws:elasticfilesystem:us-east-1:123456789012:access-point/fsap-0123456789abcdef0',
+          mountPath: '/mnt/efs',
+        },
+      });
+    });
+
+    it('maps s3AccessPoints to filesystemConfigurations', async () => {
+      const opts = baseOptions({
+        harnessSpec: {
+          name: 'h',
+          model: { provider: 'bedrock', modelId: 'claude' },
+          tools: [],
+          skills: [],
+          networkMode: 'VPC',
+          networkConfig: { subnets: ['subnet-abc'], securityGroups: ['sg-abc'] },
+          s3AccessPoints: [
+            {
+              accessPointArn:
+                'arn:aws:s3files:us-east-1:123456789012:file-system/fs-12345678901234567/access-point/fsap-12345678901234567',
+              mountPath: '/mnt/s3',
+            },
+          ],
+        } as any,
+      });
+      const result = await mapHarnessSpecToCreateOptions(opts);
+      expect(result.environment?.agentCoreRuntimeEnvironment?.filesystemConfigurations).toContainEqual({
+        s3FilesAccessPoint: {
+          accessPointArn:
+            'arn:aws:s3files:us-east-1:123456789012:file-system/fs-12345678901234567/access-point/fsap-12345678901234567',
+          mountPath: '/mnt/s3',
+        },
+      });
+    });
+
+    it('maps all three filesystem types together', async () => {
+      const opts = baseOptions({
+        harnessSpec: {
+          name: 'h',
+          model: { provider: 'bedrock', modelId: 'claude' },
+          tools: [],
+          skills: [],
+          networkMode: 'VPC',
+          networkConfig: { subnets: ['subnet-abc'], securityGroups: ['sg-abc'] },
+          sessionStoragePath: '/mnt/session',
+          efsAccessPoints: [
+            {
+              accessPointArn: 'arn:aws:elasticfilesystem:us-east-1:123456789012:access-point/fsap-0123456789abcdef0',
+              mountPath: '/mnt/efs',
+            },
+          ],
+          s3AccessPoints: [
+            {
+              accessPointArn:
+                'arn:aws:s3files:us-east-1:123456789012:file-system/fs-12345678901234567/access-point/fsap-12345678901234567',
+              mountPath: '/mnt/s3',
+            },
+          ],
+        } as any,
+      });
+      const result = await mapHarnessSpecToCreateOptions(opts);
+      const fcs = result.environment?.agentCoreRuntimeEnvironment?.filesystemConfigurations as unknown[];
+      expect(fcs).toHaveLength(3);
+      expect(fcs[0]).toEqual({ sessionStorage: { mountPath: '/mnt/session' } });
+      expect(fcs[1]).toMatchObject({ efsAccessPoint: { mountPath: '/mnt/efs' } });
+      expect(fcs[2]).toMatchObject({ s3FilesAccessPoint: { mountPath: '/mnt/s3' } });
+    });
+
     it('returns no environment when no network/lifecycle/storage', async () => {
       const result = await mapHarnessSpecToCreateOptions(baseOptions());
       expect(result.environment).toBeUndefined();
