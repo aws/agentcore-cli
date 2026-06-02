@@ -56,7 +56,7 @@ export function unwrapResult<R extends Result>(result: R, defaultValue?: Unwrapp
   throw result.error;
 }
 
-export function buildFailureResult<E extends Error>(e: E): FailureResult<E> {
+export function failureResult<E extends Error>(e: E): FailureResult<E> {
   return {
     success: false,
     error: e,

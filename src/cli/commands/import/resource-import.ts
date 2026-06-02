@@ -142,7 +142,11 @@ export async function executeResourceImport<TDetail, TSummary>(
     logger.startStep('Update project config');
     configSnapshot = JSON.parse(JSON.stringify(projectSpec)) as AgentCoreProjectSpec;
     const addResult = descriptor.addToProjectSpec(detail, localName, projectSpec);
-    if (addResult && !addResult.success) return addResult;
+    if (addResult && !addResult.success) {
+      logger.endStep('error', addResult.error.message);
+      logger.finalize(false);
+      return { ...addResult, logPath: logger.getRelativeLogPath() };
+    }
     await ctx.configIO.writeProjectSpec(projectSpec);
     configWritten = true;
     onProgress(`Added ${descriptor.displayName} "${localName}" to agentcore.json`);

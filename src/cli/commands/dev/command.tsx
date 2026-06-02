@@ -6,7 +6,7 @@ import {
   findConfigRoot,
   getWorkingDirectory,
 } from '../../../lib';
-import { buildFailureResult } from '../../../lib/result.js';
+import { failureResult } from '../../../lib/result.js';
 import { getErrorMessage } from '../../errors';
 import { detectContainerRuntime } from '../../external-requirements';
 import { isPreviewEnabled } from '../../feature-flags';
@@ -211,7 +211,7 @@ export const registerDev = (program: Command) => {
             },
             async recorder => {
               if (!positionalPrompt) {
-                return buildFailureResult(
+                return failureResult(
                   new ValidationError('A command is required with --exec. Usage: agentcore dev --exec "whoami"')
                 );
               }
@@ -220,7 +220,7 @@ export const registerDev = (program: Command) => {
               const agentName = opts.runtime ?? project?.runtimes[0]?.name ?? 'unknown';
               const targetAgent = project?.runtimes.find(a => a.name === agentName);
               if (targetAgent?.build !== 'Container') {
-                return buildFailureResult(
+                return failureResult(
                   new ValidationError(
                     '--exec is only supported for Container build agents. For CodeZip agents, use your terminal to run commands directly.'
                   )

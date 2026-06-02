@@ -10,7 +10,7 @@
  */
 import type { GatewayTargetDetail } from '../../../aws/agentcore-control';
 import { toGatewayTargetSpec } from '../import-gateway';
-import { describe, expect, it, vi } from 'vitest';
+import { assert, describe, expect, it, vi } from 'vitest';
 
 /** Helper to build a minimal GatewayTargetDetail with only the fields under test. */
 function baseDetail(overrides: Partial<GatewayTargetDetail> = {}): GatewayTargetDetail {
@@ -48,12 +48,12 @@ describe('toGatewayTargetSpec — apiGateway', () => {
     const onProgress = vi.fn();
     const result = toGatewayTargetSpec(detail, new Map(), onProgress);
 
-    expect(result).toBeDefined();
-    expect(result!.name).toBe('test_target');
-    expect(result!.targetType).toBe('apiGateway');
+    assert(result.success);
+    expect(result.target!.name).toBe('test_target');
+    expect(result.target!.targetType).toBe('apiGateway');
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const apigw = (result as any).apiGateway;
+    const apigw = (result.target as any).apiGateway;
     expect(apigw.restApiId).toBe('abc123');
     expect(apigw.stage).toBe('prod');
     expect(apigw.apiGatewayToolConfiguration.toolFilters).toEqual([
@@ -84,8 +84,9 @@ describe('toGatewayTargetSpec — apiGateway', () => {
     const onProgress = vi.fn();
     const result = toGatewayTargetSpec(detail, new Map(), onProgress);
 
+    assert(result.success);
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const apigw = (result as any).apiGateway;
+    const apigw = (result.target as any).apiGateway;
     expect(apigw.apiGatewayToolConfiguration.toolOverrides).toEqual([
       { name: 'listPets', path: '/pets', method: 'GET', description: 'List all pets' },
       { name: 'createPet', path: '/pets', method: 'POST' },
@@ -110,8 +111,9 @@ describe('toGatewayTargetSpec — apiGateway', () => {
     const onProgress = vi.fn();
     const result = toGatewayTargetSpec(detail, new Map(), onProgress);
 
+    assert(result.success);
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const apigw = (result as any).apiGateway;
+    const apigw = (result.target as any).apiGateway;
     expect(apigw.apiGatewayToolConfiguration.toolOverrides).toBeUndefined();
   });
 
@@ -144,8 +146,8 @@ describe('toGatewayTargetSpec — apiGateway', () => {
     const onProgress = vi.fn();
     const result = toGatewayTargetSpec(detail, credentials, onProgress);
 
-    expect(result).toBeDefined();
-    expect(result!.outboundAuth).toEqual({
+    assert(result.success);
+    expect(result.target!.outboundAuth).toEqual({
       type: 'OAUTH',
       credentialName: 'my_oauth_cred',
       scopes: ['read', 'write'],
@@ -172,12 +174,12 @@ describe('toGatewayTargetSpec — openApiSchema', () => {
     const onProgress = vi.fn();
     const result = toGatewayTargetSpec(detail, new Map(), onProgress);
 
-    expect(result).toBeDefined();
-    expect(result!.name).toBe('test_target');
-    expect(result!.targetType).toBe('openApiSchema');
+    assert(result.success);
+    expect(result.target!.name).toBe('test_target');
+    expect(result.target!.targetType).toBe('openApiSchema');
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const schemaSource = (result as any).schemaSource;
+    const schemaSource = (result.target as any).schemaSource;
     expect(schemaSource.s3.uri).toBe('s3://my-bucket/schema.yaml');
     expect(schemaSource.s3.bucketOwnerAccountId).toBe('123456789012');
   });
@@ -194,7 +196,8 @@ describe('toGatewayTargetSpec — openApiSchema', () => {
     const onProgress = vi.fn();
     const result = toGatewayTargetSpec(detail, new Map(), onProgress);
 
-    expect(result).toBeUndefined();
+    assert(result.success);
+    expect(result.target).toBeUndefined();
     expect(onProgress).toHaveBeenCalledWith(expect.stringContaining('(openApiSchema) has no S3 URI, skipping'));
   });
 });
@@ -218,12 +221,12 @@ describe('toGatewayTargetSpec — smithyModel', () => {
     const onProgress = vi.fn();
     const result = toGatewayTargetSpec(detail, new Map(), onProgress);
 
-    expect(result).toBeDefined();
-    expect(result!.name).toBe('test_target');
-    expect(result!.targetType).toBe('smithyModel');
+    assert(result.success);
+    expect(result.target!.name).toBe('test_target');
+    expect(result.target!.targetType).toBe('smithyModel');
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const schemaSource = (result as any).schemaSource;
+    const schemaSource = (result.target as any).schemaSource;
     expect(schemaSource.s3.uri).toBe('s3://models-bucket/model.json');
     expect(schemaSource.s3.bucketOwnerAccountId).toBeUndefined();
   });
@@ -240,7 +243,8 @@ describe('toGatewayTargetSpec — smithyModel', () => {
     const onProgress = vi.fn();
     const result = toGatewayTargetSpec(detail, new Map(), onProgress);
 
-    expect(result).toBeUndefined();
+    assert(result.success);
+    expect(result.target).toBeUndefined();
     expect(onProgress).toHaveBeenCalledWith(expect.stringContaining('(smithyModel) has no S3 URI, skipping'));
   });
 });
@@ -265,12 +269,12 @@ describe('toGatewayTargetSpec — lambda', () => {
     const onProgress = vi.fn();
     const result = toGatewayTargetSpec(detail, new Map(), onProgress);
 
-    expect(result).toBeDefined();
-    expect(result!.name).toBe('test_target');
-    expect(result!.targetType).toBe('lambdaFunctionArn');
+    assert(result.success);
+    expect(result.target!.name).toBe('test_target');
+    expect(result.target!.targetType).toBe('lambdaFunctionArn');
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const lambdaConfig = (result as any).lambdaFunctionArn;
+    const lambdaConfig = (result.target as any).lambdaFunctionArn;
     expect(lambdaConfig.lambdaArn).toBe('arn:aws:lambda:us-west-2:123456789012:function:my-func');
     expect(lambdaConfig.toolSchemaFile).toBe('s3://schemas/tools.json');
   });
@@ -290,7 +294,8 @@ describe('toGatewayTargetSpec — lambda', () => {
     const onProgress = vi.fn();
     const result = toGatewayTargetSpec(detail, new Map(), onProgress);
 
-    expect(result).toBeUndefined();
+    assert(result.success);
+    expect(result.target).toBeUndefined();
     expect(onProgress).toHaveBeenCalledWith(expect.stringContaining('(lambda) has no ARN, skipping'));
   });
 
@@ -309,7 +314,8 @@ describe('toGatewayTargetSpec — lambda', () => {
     const onProgress = vi.fn();
     const result = toGatewayTargetSpec(detail, new Map(), onProgress);
 
-    expect(result).toBeUndefined();
+    assert(result.success);
+    expect(result.target).toBeUndefined();
     expect(onProgress).toHaveBeenCalledWith(
       expect.stringContaining('has inline tool schema, which cannot be imported')
     );
@@ -349,7 +355,8 @@ describe('toGatewayTargetSpec — unrecognized target type', () => {
     const onProgress = vi.fn();
     const result = toGatewayTargetSpec(detail, new Map(), onProgress);
 
-    expect(result).toBeUndefined();
+    assert(result.success);
+    expect(result.target).toBeUndefined();
     expect(onProgress).toHaveBeenCalledWith(expect.stringContaining('unrecognized target type'));
   });
 });

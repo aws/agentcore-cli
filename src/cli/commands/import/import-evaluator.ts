@@ -1,5 +1,5 @@
 import { ValidationError } from '../../../lib';
-import { type Result, buildFailureResult } from '../../../lib/result';
+import { type Result, failureResult } from '../../../lib/result';
 import type { Evaluator } from '../../../schema';
 import type { EvaluatorSummary, GetEvaluatorResult } from '../../aws/agentcore-control';
 import {
@@ -42,7 +42,7 @@ export function toEvaluatorSpec(detail: GetEvaluatorResult, localName: string): 
       },
     };
   } else {
-    return buildFailureResult(
+    return failureResult(
       new ValidationError(
         `Evaluator "${detail.evaluatorName}" has no recognizable config. ` +
           'Only LLM-as-a-Judge and code-based evaluators can be imported.'
