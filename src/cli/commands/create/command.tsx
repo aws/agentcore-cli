@@ -9,7 +9,6 @@ import type {
   TargetLanguage,
 } from '../../../schema';
 import { LIFECYCLE_TIMEOUT_MAX, LIFECYCLE_TIMEOUT_MIN } from '../../../schema';
-import { getCredentialProvider } from '../../aws/account';
 import { ANSI } from '../../constants';
 import { getErrorMessage } from '../../errors';
 import { isPreviewEnabled } from '../../feature-flags';
@@ -29,14 +28,13 @@ import {
 import { renderTUI } from '../../tui';
 import { COMMAND_DESCRIPTIONS } from '../../tui/copy';
 import { requireTTY } from '../../tui/guards';
-import { validateFilesystemMountsConfiguration, zipAccessPointPairs } from '../shared/filesystem-utils';
+import { resolveAndValidateFilesystemMounts } from '../shared/filesystem-utils';
 import { parseCommaSeparatedList } from '../shared/vpc-utils';
 import { type ProgressCallback, createProject, createProjectWithAgent, getDryRunInfo } from './action';
 import { createProjectWithHarness } from './harness-action';
 import { normalizeHarnessModelProvider, validateCreateHarnessOptions } from './harness-validate';
 import type { CreateOptions } from './types';
 import { validateCreateOptions } from './validate';
-import { DescribeSubnetsCommand, EC2Client } from '@aws-sdk/client-ec2';
 import type { Command } from '@commander-js/extra-typings';
 import { Text, render } from 'ink';
 
@@ -192,35 +190,10 @@ async function handleCreateHarnessCLI(options: CreateOptions): Promise<void> {
 
       const containerOption = harnessPrimitive!.parseContainerFlag(options.container);
 
-      const harnessEfsPairs = zipAccessPointPairs(options.efsAccessPointArn ?? [], options.efsMountPath ?? [], 'EFS');
-      if (!harnessEfsPairs.success) throw new Error(harnessEfsPairs.error);
-      const harnessS3Pairs = zipAccessPointPairs(options.s3AccessPointArn ?? [], options.s3MountPath ?? [], 'S3 Files');
-      if (!harnessS3Pairs.success) throw new Error(harnessS3Pairs.error);
-
-      if (harnessEfsPairs.mounts.length > 0 || harnessS3Pairs.mounts.length > 0) {
-        const awsRegion = options.region ?? process.env.AWS_REGION ?? process.env.AWS_DEFAULT_REGION ?? 'us-east-1';
-        const subnets = parseCommaSeparatedList(options.subnets);
-        const securityGroups = parseCommaSeparatedList(options.securityGroups);
-        let agentVpcId: string | undefined;
-        if (subnets && subnets.length > 0) {
-          try {
-            const ec2 = new EC2Client({ region: awsRegion, credentials: getCredentialProvider() });
-            const subnetResp = await ec2.send(new DescribeSubnetsCommand({ SubnetIds: subnets }));
-            agentVpcId = subnetResp.Subnets?.[0]?.VpcId;
-          } catch {
-            // non-fatal: Level 2 topology checks are skipped when VPC ID cannot be resolved
-          }
-        }
-        const fsValidation = await validateFilesystemMountsConfiguration({
-          efsMounts: harnessEfsPairs.mounts,
-          s3FilesMounts: harnessS3Pairs.mounts,
-          agentVpcId,
-          agentSubnetIds: subnets,
-          agentSecurityGroupIds: securityGroups,
-          region: awsRegion,
-        });
-        if (!fsValidation.success) throw new Error(fsValidation.error);
-      }
+      const { efsMounts: harnessEfsMounts, s3Mounts: harnessS3Mounts } = await resolveAndValidateFilesystemMounts(
+        options,
+        parseCommaSeparatedList
+      );
 
       return createProjectWithHarness({
         name: name!,
@@ -242,8 +215,8 @@ async function handleCreateHarnessCLI(options: CreateOptions): Promise<void> {
         idleTimeout: options.idleTimeout ? Number(options.idleTimeout) : undefined,
         maxLifetime: options.maxLifetime ? Number(options.maxLifetime) : undefined,
         sessionStoragePath: options.sessionStorageMountPath,
-        efsAccessPoints: harnessEfsPairs.mounts,
-        s3AccessPoints: harnessS3Pairs.mounts,
+        efsAccessPoints: harnessEfsMounts,
+        s3AccessPoints: harnessS3Mounts,
         skipGit: options.skipGit,
         skipInstall: options.skipInstall,
         onProgress,
@@ -329,37 +302,11 @@ async function handleCreateCLI(options: CreateOptions): Promise<void> {
       // Commander.js --no-agent sets agent=false, not noAgent=true
       const skipAgent = options.agent === false;
 
-      // Build EFS and S3 mount pairs (sync validation already ran in validateCreateOptions)
-      const efsPairsResult = zipAccessPointPairs(options.efsAccessPointArn ?? [], options.efsMountPath ?? [], 'EFS');
-      if (!efsPairsResult.success) throw new Error(efsPairsResult.error);
-      const s3PairsResult = zipAccessPointPairs(options.s3AccessPointArn ?? [], options.s3MountPath ?? [], 'S3 Files');
-      if (!s3PairsResult.success) throw new Error(s3PairsResult.error);
-
-      // Run async filesystem validation (Level 1–3)
-      if (efsPairsResult.mounts.length > 0 || s3PairsResult.mounts.length > 0) {
-        const awsRegion = options.region ?? process.env.AWS_REGION ?? process.env.AWS_DEFAULT_REGION ?? 'us-east-1';
-        const subnets = parseCommaSeparatedList(options.subnets);
-        const securityGroups = parseCommaSeparatedList(options.securityGroups);
-        let agentVpcId: string | undefined;
-        if (subnets && subnets.length > 0) {
-          try {
-            const ec2 = new EC2Client({ region: awsRegion, credentials: getCredentialProvider() });
-            const subnetResp = await ec2.send(new DescribeSubnetsCommand({ SubnetIds: subnets }));
-            agentVpcId = subnetResp.Subnets?.[0]?.VpcId;
-          } catch {
-            // non-fatal: Level 2 topology checks are skipped when VPC ID cannot be resolved
-          }
-        }
-        const fsValidation = await validateFilesystemMountsConfiguration({
-          efsMounts: efsPairsResult.mounts,
-          s3FilesMounts: s3PairsResult.mounts,
-          agentVpcId,
-          agentSubnetIds: subnets,
-          agentSecurityGroupIds: securityGroups,
-          region: awsRegion,
-        });
-        if (!fsValidation.success) throw new Error(fsValidation.error);
-      }
+      // Build EFS/S3 mount pairs, resolve VPC, and run async filesystem validation (Levels 1–3)
+      const { efsMounts: efsPairsMounts, s3Mounts: s3PairsMounts } = await resolveAndValidateFilesystemMounts(
+        options,
+        parseCommaSeparatedList
+      );
 
       const result = skipAgent
         ? await createProject({
@@ -390,8 +337,8 @@ async function handleCreateCLI(options: CreateOptions): Promise<void> {
             idleTimeout: options.idleTimeout ? Number(options.idleTimeout) : undefined,
             maxLifetime: options.maxLifetime ? Number(options.maxLifetime) : undefined,
             sessionStorageMountPath: options.sessionStorageMountPath,
-            efsAccessPoints: efsPairsResult.mounts,
-            s3AccessPoints: s3PairsResult.mounts,
+            efsAccessPoints: efsPairsMounts,
+            s3AccessPoints: s3PairsMounts,
             withConfigBundle: options.withConfigBundle,
             skipGit: options.skipGit,
             skipInstall: options.skipInstall,

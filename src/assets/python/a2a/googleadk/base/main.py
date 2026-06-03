@@ -28,7 +28,7 @@ _MOUNT_PATHS = [
 
 def _safe_resolve(path: str) -> str:
     resolved = os.path.realpath(path)
-    if not any(resolved.startswith(os.path.realpath(m)) for m in _MOUNT_PATHS):
+    if not any(resolved == os.path.realpath(m) or resolved.startswith(os.path.realpath(m) + os.sep) for m in _MOUNT_PATHS):
         raise ValueError(f"Path '{path}' is not within any configured mount ({', '.join(_MOUNT_PATHS)})")
     return resolved
 

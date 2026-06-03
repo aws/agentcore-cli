@@ -380,6 +380,61 @@ async function validateMountTargetInboundFromAgentSg(
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// CLI options helper
+// ─────────────────────────────────────────────────────────────────────────────
+
+export interface FilesystemCliOptions {
+  efsAccessPointArn?: string[];
+  efsMountPath?: string[];
+  s3AccessPointArn?: string[];
+  s3MountPath?: string[];
+  subnets?: string;
+  securityGroups?: string;
+  region?: string;
+}
+
+/**
+ * Zip CLI flag pairs, resolve VPC ID from subnets, and run async filesystem validation (Levels 1–3).
+ * Throws on any failure. Returns resolved EFS and S3 mount arrays on success.
+ */
+export async function resolveAndValidateFilesystemMounts(
+  options: FilesystemCliOptions,
+  parseCommaSeparatedList: (val: string | undefined) => string[] | undefined
+): Promise<{ efsMounts: AccessPointMount[]; s3Mounts: AccessPointMount[] }> {
+  const efsPairsResult = zipAccessPointPairs(options.efsAccessPointArn ?? [], options.efsMountPath ?? [], 'EFS');
+  if (!efsPairsResult.success) throw new Error(efsPairsResult.error);
+  const s3PairsResult = zipAccessPointPairs(options.s3AccessPointArn ?? [], options.s3MountPath ?? [], 'S3 Files');
+  if (!s3PairsResult.success) throw new Error(s3PairsResult.error);
+
+  if (efsPairsResult.mounts.length > 0 || s3PairsResult.mounts.length > 0) {
+    const awsRegion = options.region ?? process.env.AWS_REGION ?? process.env.AWS_DEFAULT_REGION ?? 'us-east-1';
+    const subnets = parseCommaSeparatedList(options.subnets);
+    const securityGroups = parseCommaSeparatedList(options.securityGroups);
+    let agentVpcId: string | undefined;
+    if (subnets && subnets.length > 0) {
+      try {
+        const ec2 = new EC2Client({ region: awsRegion, credentials: getCredentialProvider() });
+        const subnetResp = await ec2.send(new DescribeSubnetsCommand({ SubnetIds: subnets }));
+        agentVpcId = subnetResp.Subnets?.[0]?.VpcId;
+      } catch {
+        // non-fatal: Level 2 topology checks are skipped when VPC ID cannot be resolved
+      }
+    }
+    const fsValidation = await validateFilesystemMountsConfiguration({
+      efsMounts: efsPairsResult.mounts,
+      s3FilesMounts: s3PairsResult.mounts,
+      agentVpcId,
+      agentSubnetIds: subnets,
+      agentSecurityGroupIds: securityGroups,
+      region: awsRegion,
+    });
+    if (!fsValidation.success) throw new Error(fsValidation.error);
+  }
+
+  return { efsMounts: efsPairsResult.mounts, s3Mounts: s3PairsResult.mounts };
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // Orchestrator
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -401,7 +456,11 @@ export interface FilesystemValidationOptions {
 
 /**
  * Orchestrate full async filesystem validation (Levels 1–3).
- * Returns on first error. Skips topology and inbound SG checks when agent VPC/SG info is absent.
+ * Returns on first error. Each level is skipped if prerequisite data is unavailable (graceful degradation).
+ *
+ * L1: verify access point exists and agent SGs allow NFS egress (port 2049)
+ * L2: confirm mount target shares agent's VPC and has a subnet in a matching AZ
+ * L3: check mount target SGs permit inbound 2049 from agent SGs
  */
 export async function validateFilesystemMountsConfiguration(opts: FilesystemValidationOptions): Promise<SyncResult> {
   const {

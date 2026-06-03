@@ -1,11 +1,39 @@
 import {
+  buildFilesystemConfigurations,
+  resolveAndValidateFilesystemMounts,
   validateAccessPointMounts,
   validateBYOMountPath,
   validateEfsAccessPointArn,
   validateS3FilesAccessPointArn,
   zipAccessPointPairs,
 } from '../filesystem-utils';
-import { describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+
+vi.mock('../../aws/account', () => ({ getCredentialProvider: () => ({}) }));
+vi.mock('@aws-sdk/client-ec2', () => ({
+  EC2Client: vi.fn().mockImplementation(() => ({
+    send: vi.fn().mockResolvedValue({ Subnets: [{ VpcId: 'vpc-123' }] }),
+  })),
+  DescribeSubnetsCommand: vi.fn(),
+}));
+const mockEfsSend = vi.hoisted(() => vi.fn().mockResolvedValue({ AccessPoints: [] }));
+const mockS3Send = vi.hoisted(() => vi.fn().mockResolvedValue({ mountTargets: [] }));
+
+vi.mock('@aws-sdk/client-efs', () => ({
+  EFSClient: class {
+    send = mockEfsSend;
+  },
+  DescribeAccessPointsCommand: vi.fn(),
+  DescribeMountTargetsCommand: vi.fn(),
+  DescribeMountTargetSecurityGroupsCommand: vi.fn(),
+}));
+vi.mock('@aws-sdk/client-s3files', () => ({
+  S3FilesClient: class {
+    send = mockS3Send;
+  },
+  ListMountTargetsCommand: vi.fn(),
+  GetMountTargetCommand: vi.fn(),
+}));
 
 // ─────────────────────────────────────────────────────────────────────────────
 // validateEfsAccessPointArn
@@ -258,5 +286,119 @@ describe('validateAccessPointMounts', () => {
       validateS3FilesAccessPointArn
     );
     expect(result).toEqual({ success: true });
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// buildFilesystemConfigurations
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('buildFilesystemConfigurations', () => {
+  it('returns empty object when no mounts', () => {
+    expect(buildFilesystemConfigurations()).toEqual({});
+  });
+
+  it('returns sessionStorage entry', () => {
+    const result = buildFilesystemConfigurations('/mnt/data');
+    expect(result).toEqual({ filesystemConfigurations: [{ sessionStorage: { mountPath: '/mnt/data' } }] });
+  });
+
+  it('strips trailing slash from sessionStorageMountPath', () => {
+    const result = buildFilesystemConfigurations('/mnt/data/');
+    expect(result).toEqual({ filesystemConfigurations: [{ sessionStorage: { mountPath: '/mnt/data' } }] });
+  });
+
+  it('strips trailing slash from EFS mount path', () => {
+    const result = buildFilesystemConfigurations(undefined, [
+      { accessPointArn: 'arn:aws:efs:::access-point/fsap-1', mountPath: '/mnt/efs/' },
+    ]);
+    expect(result).toEqual({
+      filesystemConfigurations: [
+        { efsAccessPoint: { accessPointArn: 'arn:aws:efs:::access-point/fsap-1', mountPath: '/mnt/efs' } },
+      ],
+    });
+  });
+
+  it('returns all three union types in order', () => {
+    const result = buildFilesystemConfigurations(
+      '/mnt/session',
+      [{ accessPointArn: 'arn:efs', mountPath: '/mnt/efs' }],
+      [{ accessPointArn: 'arn:s3', mountPath: '/mnt/s3' }]
+    );
+    expect(result).toEqual({
+      filesystemConfigurations: [
+        { sessionStorage: { mountPath: '/mnt/session' } },
+        { efsAccessPoint: { accessPointArn: 'arn:efs', mountPath: '/mnt/efs' } },
+        { s3FilesAccessPoint: { accessPointArn: 'arn:s3', mountPath: '/mnt/s3' } },
+      ],
+    });
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// resolveAndValidateFilesystemMounts
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('resolveAndValidateFilesystemMounts', () => {
+  const parseComma = (v: string | undefined) => (v ? v.split(',') : undefined);
+  const EFS_ARN = 'arn:aws:elasticfilesystem:us-east-1:123456789012:access-point/fsap-0123456789abcdef0';
+  const S3_ARN =
+    'arn:aws:s3files:us-east-1:123456789012:file-system/fs-12345678901234567/access-point/fsap-12345678901234567';
+
+  beforeEach(() => {
+    mockEfsSend.mockReset().mockResolvedValue({ AccessPoints: [] });
+    mockS3Send.mockReset().mockResolvedValue({ mountTargets: [] });
+  });
+
+  it('returns empty mounts when no ARNs provided', async () => {
+    const result = await resolveAndValidateFilesystemMounts({}, parseComma);
+    expect(result).toEqual({ efsMounts: [], s3Mounts: [] });
+  });
+
+  it('throws when EFS ARN/path counts mismatch', async () => {
+    await expect(
+      resolveAndValidateFilesystemMounts({ efsAccessPointArn: ['arn1', 'arn2'], efsMountPath: ['/mnt/a'] }, parseComma)
+    ).rejects.toThrow('--efs-access-point-arn');
+  });
+
+  it('throws when S3 ARN/path counts mismatch', async () => {
+    await expect(
+      resolveAndValidateFilesystemMounts({ s3AccessPointArn: ['arn1'], s3MountPath: ['/mnt/a', '/mnt/b'] }, parseComma)
+    ).rejects.toThrow('--s3-access-point-arn');
+  });
+
+  it('throws when EFS access point does not exist', async () => {
+    // mockEfsSend returns { AccessPoints: [] } by default — simulates not found
+    await expect(
+      resolveAndValidateFilesystemMounts({ efsAccessPointArn: [EFS_ARN], efsMountPath: ['/mnt/efs'] }, parseComma)
+    ).rejects.toThrow('not found');
+  });
+
+  it('returns paired EFS mounts when access point exists', async () => {
+    mockEfsSend.mockResolvedValue({ AccessPoints: [{ AccessPointId: 'fsap-0123456789abcdef0' }] });
+
+    const result = await resolveAndValidateFilesystemMounts(
+      { efsAccessPointArn: [EFS_ARN], efsMountPath: ['/mnt/efs'] },
+      parseComma
+    );
+    expect(result.efsMounts).toEqual([{ accessPointArn: EFS_ARN, mountPath: '/mnt/efs' }]);
+    expect(result.s3Mounts).toEqual([]);
+  });
+
+  it('returns both EFS and S3 mounts when both are provided and valid', async () => {
+    mockEfsSend.mockResolvedValue({ AccessPoints: [{ AccessPointId: 'fsap-0123456789abcdef0' }] });
+    mockS3Send.mockResolvedValue({ mountTargets: [{ mountTargetId: 'mt-123' }] });
+
+    const result = await resolveAndValidateFilesystemMounts(
+      {
+        efsAccessPointArn: [EFS_ARN],
+        efsMountPath: ['/mnt/efs'],
+        s3AccessPointArn: [S3_ARN],
+        s3MountPath: ['/mnt/s3'],
+      },
+      parseComma
+    );
+    expect(result.efsMounts).toHaveLength(1);
+    expect(result.s3Mounts).toHaveLength(1);
   });
 });
