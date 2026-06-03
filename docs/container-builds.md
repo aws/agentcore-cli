@@ -122,5 +122,5 @@ deployment handles the build remotely.
 | No container runtime found | Install Docker, Podman, or Finch                                                                                                       |
 | Runtime not ready          | Docker: start Docker Desktop / `sudo systemctl start docker`. Podman: `podman machine start`. Finch: `finch vm init && finch vm start` |
 | Dockerfile not found       | Ensure `Dockerfile` exists in the agent's `codeLocation` directory                                                                     |
-| Image exceeds 1 GB         | Use multi-stage builds, minimize packages, review `.dockerignore`                                                                      |
+| Image exceeds 2 GB         | Use multi-stage builds, minimize packages, review `.dockerignore`                                                                      |
 | Build fails                | Check `pyproject.toml` is valid; verify network access for dependency installation                                                     |
