@@ -1,6 +1,6 @@
 import { CONFIG_DIR } from '../../../lib';
 import { CDK_APP_ENTRY, CDK_PROJECT_DIR } from '../../constants';
-import { getErrorMessage, isChangesetInProgressError } from '../../errors';
+import { isChangesetInProgressError } from '../../errors';
 import type { CdkToolkitWrapperOptions, DeployOptions, DestroyOptions, DiffOptions, ListOptions } from './types';
 import {
   BaseCredentials,
@@ -36,18 +36,10 @@ async function withErrorContext<T>(context: string, operation: () => Promise<T>)
   try {
     return await operation();
   } catch (err) {
-    const message = getErrorMessage(err);
-    const stack = err instanceof Error ? err.stack : undefined;
-    const cause = err instanceof Error ? err.cause : undefined;
-
-    const error = new Error(`CDK ${context} failed: ${message}`);
-    if (stack) {
-      error.stack = `CDK ${context} failed: ${message}\n\nOriginal stack:\n${stack}`;
+    if (err instanceof Error) {
+      err.message = `CDK ${context} failed: ${err.message}`;
     }
-    if (cause) {
-      error.cause = cause;
-    }
-    throw error;
+    throw err;
   }
 }
 
