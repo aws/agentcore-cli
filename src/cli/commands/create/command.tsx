@@ -9,8 +9,7 @@ import type {
   TargetLanguage,
 } from '../../../schema';
 import { LIFECYCLE_TIMEOUT_MAX, LIFECYCLE_TIMEOUT_MIN } from '../../../schema';
-import { ANSI } from '../../constants';
-import { COMMAND_DESCRIPTIONS } from '../../constants';
+import { ANSI, COMMAND_DESCRIPTIONS } from '../../constants';
 import { getErrorMessage } from '../../errors';
 import { isPreviewEnabled } from '../../feature-flags';
 import { harnessPrimitive } from '../../primitives/registry';
