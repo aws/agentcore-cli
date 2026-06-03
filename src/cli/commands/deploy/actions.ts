@@ -155,7 +155,7 @@ export async function handleDeploy(options: ValidatedDeployOptions): Promise<Dep
       logger.finalize(false);
       return {
         success: false,
-        error: new Error(
+        error: new ValidationError(
           'This will delete all deployed resources and the CloudFormation stack. Run with --yes to confirm teardown.'
         ),
         logPath: logger.getRelativeLogPath(),
