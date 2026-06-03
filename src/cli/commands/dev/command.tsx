@@ -6,8 +6,8 @@ import {
   findConfigRoot,
   getWorkingDirectory,
 } from '../../../lib';
-import { COMMAND_DESCRIPTIONS } from '../../constants';
 import { failureResult } from '../../../lib/result.js';
+import { COMMAND_DESCRIPTIONS } from '../../constants';
 import { getErrorMessage } from '../../errors';
 import { detectContainerRuntime } from '../../external-requirements';
 import { isPreviewEnabled } from '../../feature-flags';
