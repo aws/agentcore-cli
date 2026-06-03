@@ -1,11 +1,11 @@
 import { ValidationError, serializeResult } from '../../../lib';
+import { COMMAND_DESCRIPTIONS } from '../../constants';
 import { getErrorMessage } from '../../errors';
 import { isPreviewEnabled } from '../../feature-flags';
 import { getDatasetStatus } from '../../operations/dataset';
 import type { DatasetStatusResult } from '../../operations/dataset';
 import { withCommandRunTelemetry } from '../../telemetry/cli-command-run.js';
 import { FilterState, FilterType, standardize } from '../../telemetry/schemas/common-shapes.js';
-import { COMMAND_DESCRIPTIONS } from '../../tui/copy';
 import { requireProject } from '../../tui/guards';
 import type { ResourceStatusEntry } from './action';
 import { handleProjectStatus, handleRuntimeLookup, loadStatusConfig } from './action';

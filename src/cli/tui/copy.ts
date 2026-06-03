@@ -25,41 +25,6 @@ export const QUICK_START = {
 } as const;
 
 /**
- * Command descriptions used in CLI help and TUI.
- */
-export const COMMAND_DESCRIPTIONS = {
-  /** Main program description */
-  program: 'Build and deploy Agentic AI applications on AgentCore',
-  /** Command descriptions */
-  add: 'Add resources to project config.',
-  create: 'Create a new AgentCore project',
-  deploy: 'Deploy project infrastructure to AWS via CDK.',
-  dev: 'Launch local dev server, or invoke an agent locally.',
-  invoke: 'Invoke a deployed agent endpoint.',
-  logs: 'Stream or search agent runtime logs.',
-  package: 'Package agent artifacts without deploying.',
-  remove: 'Remove resources from project config.',
-  status: 'Show deployed resource details and status.',
-  traces: 'View and download agent traces.',
-  evals: 'View saved eval and batch eval results from past runs.',
-  feedback: 'Send feedback about the AgentCore CLI to the team.',
-  fetch: 'Fetch access info for deployed resources.',
-  pause: 'Pause a deployed resource (online eval config, A/B test).',
-  resume: 'Resume a paused resource (online eval config, A/B test).',
-  recommend: '[preview] Run optimization recommendations for system prompts and tool descriptions.',
-  recommendations: '[preview] View recommendation history from past runs.',
-  run: 'Run evaluations, batch evaluations, or optimization recommendations.',
-  stop: 'Stop a running batch evaluation or A/B test.',
-  import: 'Import a runtime, memory, or starter toolkit into this project. [experimental]',
-  telemetry: 'Manage anonymous usage analytics preferences.',
-  update: 'Check for and install CLI updates',
-  validate: 'Validate agentcore/ config files.',
-  'config-bundle': '[preview] Manage configuration bundle versions and diffs.',
-  archive: '[preview] Archive (delete) a batch evaluation or recommendation on the service and clear local history.',
-  config: 'Adjust global configuration settings such as telemetry opt-out status',
-} as const;
-
-/**
  * CLI-only command examples and usage information.
  * These commands must run in the terminal, not in the TUI.
  */

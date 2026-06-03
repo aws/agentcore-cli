@@ -1,5 +1,5 @@
+import { COMMAND_DESCRIPTIONS } from '../../constants';
 import { runCliCommand } from '../../telemetry/cli-command-run.js';
-import { COMMAND_DESCRIPTIONS } from '../../tui/copy';
 import { requireTTY } from '../../tui/guards/tty';
 import { FeedbackScreen } from '../../tui/screens/feedback';
 import { handleFeedback } from './action';

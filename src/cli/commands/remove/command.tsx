@@ -1,8 +1,8 @@
 import { ConfigIO, serializeResult, toError } from '../../../lib';
+import { COMMAND_DESCRIPTIONS } from '../../constants';
 import { getErrorMessage } from '../../errors';
 import { runCliCommand } from '../../telemetry/cli-command-run.js';
 import { renderTUI } from '../../tui';
-import { COMMAND_DESCRIPTIONS } from '../../tui/copy';
 import { requireProject, requireTTY } from '../../tui/guards';
 import type { RemoveAllOptions, RemoveResult } from './types';
 import { validateRemoveAllOptions } from './validate';

@@ -1,7 +1,7 @@
+import { COMMAND_DESCRIPTIONS } from '../../constants';
 import { getErrorMessage } from '../../errors';
 import { handleLogsEval } from '../../operations/eval';
 import type { LogsEvalOptions } from '../../operations/eval';
-import { COMMAND_DESCRIPTIONS } from '../../tui/copy';
 import { requireProject } from '../../tui/guards';
 import { handleLogs } from './action';
 import type { LogsOptions } from './types';

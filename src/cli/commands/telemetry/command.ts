@@ -1,4 +1,4 @@
-import { COMMAND_DESCRIPTIONS } from '../../tui/copy.js';
+import { COMMAND_DESCRIPTIONS } from '../../constants.js';
 import { handleTelemetryStatus } from './actions.js';
 import type { Command } from '@commander-js/extra-typings';
 

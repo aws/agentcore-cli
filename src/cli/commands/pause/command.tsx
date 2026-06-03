@@ -1,10 +1,10 @@
 import { ConfigIO, serializeResult } from '../../../lib';
 import { listABTests, updateABTest } from '../../aws/agentcore-ab-tests';
 import { stopBatchEvaluation } from '../../aws/agentcore-batch-evaluation';
+import { COMMAND_DESCRIPTIONS } from '../../constants';
 import { getErrorMessage } from '../../errors';
 import { handlePauseResume } from '../../operations/eval';
 import type { OnlineEvalActionOptions } from '../../operations/eval';
-import { COMMAND_DESCRIPTIONS } from '../../tui/copy';
 import { requireProject } from '../../tui/guards';
 import { getRegion } from '../shared/region-utils';
 import { waitForRunningThenStop } from './promote-utils';

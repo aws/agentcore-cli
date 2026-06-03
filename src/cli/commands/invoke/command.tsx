@@ -1,9 +1,9 @@
 import { ValidationError, serializeResult } from '../../../lib';
+import { COMMAND_DESCRIPTIONS } from '../../constants';
 import { getErrorMessage } from '../../errors';
 import { isPreviewEnabled } from '../../feature-flags';
 import { withCommandRunTelemetry } from '../../telemetry/cli-command-run.js';
 import { renderTUI } from '../../tui';
-import { COMMAND_DESCRIPTIONS } from '../../tui/copy';
 import { requireProject, requireTTY } from '../../tui/guards';
 import { parseHeaderFlags } from '../shared/header-utils';
 import { type InvokeContext, handleHarnessInvokeByArn, handleInvoke, loadInvokeConfig } from './action';

@@ -1,4 +1,4 @@
-import { COMMAND_DESCRIPTIONS } from '../../tui/copy.js';
+import { COMMAND_DESCRIPTIONS } from '../../constants.js';
 import { handleConfigGet, handleConfigList, handleConfigSet } from './actions.js';
 import type { ConfigResult } from './types.js';
 import type { Command } from '@commander-js/extra-typings';
