@@ -336,20 +336,9 @@ export const registerDev = (program: Command) => {
         // If --logs provided, run non-interactive mode
         if (opts.logs) {
           if (supportedAgents.length === 0 && hasHarnesses) {
-            // Harnesses run in the cloud — no local server to tail.
-            // Deploy if needed, then print the config change warning and invoke instructions.
-            if (!opts.skipDeploy) {
-              await runCliDeploy();
-            }
-            const harnessNames = (project.harnesses ?? []).map(h => h.name);
-            console.log('Harness dev runs against the deployed service (no local server).');
-            console.log(`If you changed the harness config, redeploy to pick up changes: agentcore deploy`);
-            console.log(`\nInvoke your harness:`);
-            for (const name of harnessNames) {
-              console.log(`  agentcore invoke --harness ${name} "your prompt"`);
-            }
-            console.log(`\nOr use the interactive TUI: agentcore dev`);
-            process.exit(0);
+            throw new ValidationError(
+              'Harness projects do not support local dev. Use `agentcore invoke --harness <name>` instead.'
+            );
           }
 
           // Require --agent if multiple agents
