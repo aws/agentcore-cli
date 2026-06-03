@@ -14,7 +14,7 @@ import { toEvaluatorSpec } from '../import-evaluator';
 import { buildImportTemplate, findLogicalIdByProperty, findLogicalIdsByType } from '../template-utils';
 import type { CfnTemplate } from '../template-utils';
 import type { ResourceToImport } from '../types';
-import { describe, expect, it } from 'vitest';
+import { assert, describe, expect, it } from 'vitest';
 
 // ============================================================================
 // toEvaluatorSpec Conversion Tests
@@ -46,19 +46,20 @@ describe('toEvaluatorSpec', () => {
 
     const result = toEvaluatorSpec(detail, 'my_evaluator');
 
-    expect(result.name).toBe('my_evaluator');
-    expect(result.level).toBe('SESSION');
-    expect(result.description).toBe('Test evaluator');
-    expect(result.config.llmAsAJudge).toBeDefined();
-    expect(result.config.llmAsAJudge!.model).toBe('anthropic.claude-3-5-sonnet-20241022-v2:0');
-    expect(result.config.llmAsAJudge!.instructions).toBe('Evaluate the response quality');
-    expect(result.config.llmAsAJudge!.ratingScale.numerical).toHaveLength(2);
-    expect(result.config.llmAsAJudge!.ratingScale.numerical![0]).toEqual({
+    assert(result.success);
+    expect(result.evaluator.name).toBe('my_evaluator');
+    expect(result.evaluator.level).toBe('SESSION');
+    expect(result.evaluator.description).toBe('Test evaluator');
+    expect(result.evaluator.config.llmAsAJudge).toBeDefined();
+    expect(result.evaluator.config.llmAsAJudge!.model).toBe('anthropic.claude-3-5-sonnet-20241022-v2:0');
+    expect(result.evaluator.config.llmAsAJudge!.instructions).toBe('Evaluate the response quality');
+    expect(result.evaluator.config.llmAsAJudge!.ratingScale.numerical).toHaveLength(2);
+    expect(result.evaluator.config.llmAsAJudge!.ratingScale.numerical![0]).toEqual({
       value: 1,
       label: 'Poor',
       definition: 'Low quality response',
     });
-    expect(result.tags).toEqual({ env: 'test' });
+    expect(result.evaluator.tags).toEqual({ env: 'test' });
   });
 
   it('maps LLM-as-a-Judge evaluator with categorical rating scale', () => {
@@ -84,16 +85,17 @@ describe('toEvaluatorSpec', () => {
 
     const result = toEvaluatorSpec(detail, 'categorical_eval');
 
-    expect(result.level).toBe('TRACE');
-    expect(result.config.llmAsAJudge).toBeDefined();
-    expect(result.config.llmAsAJudge!.ratingScale.categorical).toHaveLength(2);
-    expect(result.config.llmAsAJudge!.ratingScale.categorical![0]).toEqual({
+    assert(result.success);
+    expect(result.evaluator.level).toBe('TRACE');
+    expect(result.evaluator.config.llmAsAJudge).toBeDefined();
+    expect(result.evaluator.config.llmAsAJudge!.ratingScale.categorical).toHaveLength(2);
+    expect(result.evaluator.config.llmAsAJudge!.ratingScale.categorical![0]).toEqual({
       label: 'Pass',
       definition: 'Response meets criteria',
     });
     // No description or tags
-    expect(result.description).toBeUndefined();
-    expect(result.tags).toBeUndefined();
+    expect(result.evaluator.description).toBeUndefined();
+    expect(result.evaluator.tags).toBeUndefined();
   });
 
   it('maps code-based evaluator as external with Lambda ARN', () => {
@@ -112,14 +114,15 @@ describe('toEvaluatorSpec', () => {
 
     const result = toEvaluatorSpec(detail, 'code_eval');
 
-    expect(result.name).toBe('code_eval');
-    expect(result.level).toBe('TOOL_CALL');
-    expect(result.config.codeBased).toBeDefined();
-    expect(result.config.codeBased!.external).toBeDefined();
-    expect(result.config.codeBased!.external!.lambdaArn).toBe(
+    assert(result.success);
+    expect(result.evaluator.name).toBe('code_eval');
+    expect(result.evaluator.level).toBe('TOOL_CALL');
+    expect(result.evaluator.config.codeBased).toBeDefined();
+    expect(result.evaluator.config.codeBased!.external).toBeDefined();
+    expect(result.evaluator.config.codeBased!.external!.lambdaArn).toBe(
       'arn:aws:lambda:us-west-2:123456789012:function:my-eval-function'
     );
-    expect(result.config.llmAsAJudge).toBeUndefined();
+    expect(result.evaluator.config.llmAsAJudge).toBeUndefined();
   });
 
   it('uses provided local name instead of evaluator name from AWS', () => {
@@ -140,10 +143,11 @@ describe('toEvaluatorSpec', () => {
 
     const result = toEvaluatorSpec(detail, 'custom_local_name');
 
-    expect(result.name).toBe('custom_local_name');
+    assert(result.success);
+    expect(result.evaluator.name).toBe('custom_local_name');
   });
 
-  it('throws when evaluator has no recognizable config', () => {
+  it('returns failure when evaluator has no recognizable config', () => {
     const detail: GetEvaluatorResult = {
       evaluatorId: 'eval-no-config',
       evaluatorArn: 'arn:aws:bedrock-agentcore:us-west-2:123456789012:evaluator/eval-no-config',
@@ -152,10 +156,12 @@ describe('toEvaluatorSpec', () => {
       status: 'ACTIVE',
     };
 
-    expect(() => toEvaluatorSpec(detail, 'broken_eval')).toThrow('Evaluator "broken_eval" has no recognizable config');
+    const result = toEvaluatorSpec(detail, 'broken_eval');
+    assert(!result.success);
+    expect(result.error.message).toContain('Evaluator "broken_eval" has no recognizable config');
   });
 
-  it('throws when evaluatorConfig is empty object', () => {
+  it('returns failure when evaluatorConfig is empty object', () => {
     const detail: GetEvaluatorResult = {
       evaluatorId: 'eval-empty',
       evaluatorArn: 'arn:aws:bedrock-agentcore:us-west-2:123456789012:evaluator/eval-empty',
@@ -165,7 +171,9 @@ describe('toEvaluatorSpec', () => {
       evaluatorConfig: {},
     };
 
-    expect(() => toEvaluatorSpec(detail, 'empty_config_eval')).toThrow('has no recognizable config');
+    const result = toEvaluatorSpec(detail, 'empty_config_eval');
+    assert(!result.success);
+    expect(result.error.message).toContain('has no recognizable config');
   });
 
   it('omits description when not present', () => {
@@ -186,7 +194,8 @@ describe('toEvaluatorSpec', () => {
 
     const result = toEvaluatorSpec(detail, 'no_desc_eval');
 
-    expect(result.description).toBeUndefined();
+    assert(result.success);
+    expect(result.evaluator.description).toBeUndefined();
   });
 
   it('omits tags when empty', () => {
@@ -208,7 +217,8 @@ describe('toEvaluatorSpec', () => {
 
     const result = toEvaluatorSpec(detail, 'empty_tags_eval');
 
-    expect(result.tags).toBeUndefined();
+    assert(result.success);
+    expect(result.evaluator.tags).toBeUndefined();
   });
 
   it('forwards kmsKeyArn when present', () => {
@@ -230,7 +240,10 @@ describe('toEvaluatorSpec', () => {
 
     const result = toEvaluatorSpec(detail, 'kms_eval');
 
-    expect(result.kmsKeyArn).toBe('arn:aws:kms:us-west-2:123456789012:key/12345678-1234-1234-1234-123456789012');
+    assert(result.success);
+    expect(result.evaluator.kmsKeyArn).toBe(
+      'arn:aws:kms:us-west-2:123456789012:key/12345678-1234-1234-1234-123456789012'
+    );
   });
 
   it('omits kmsKeyArn when not present', () => {
@@ -251,7 +264,8 @@ describe('toEvaluatorSpec', () => {
 
     const result = toEvaluatorSpec(detail, 'no_kms_eval');
 
-    expect(result.kmsKeyArn).toBeUndefined();
+    assert(result.success);
+    expect(result.evaluator.kmsKeyArn).toBeUndefined();
   });
 });
 

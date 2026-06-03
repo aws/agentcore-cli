@@ -1,4 +1,5 @@
-import { toError } from '../../../lib';
+import { ValidationError, toError } from '../../../lib';
+import { type Result, failureResult } from '../../../lib/result.js';
 import type {
   AgentCoreGateway,
   AgentCoreGatewayTarget,
@@ -45,22 +46,27 @@ function toGatewayTargetSpec(
   detail: GatewayTargetDetail,
   credentials: Map<string, string>,
   onProgress: (msg: string) => void
-): AgentCoreGatewayTarget | undefined {
+): Result<{ target: AgentCoreGatewayTarget | undefined }> {
   const mcp = detail.targetConfiguration?.mcp;
   if (!mcp) {
     onProgress(`Warning: Target "${detail.name}" has no MCP configuration, skipping`);
-    return undefined;
+    return { success: true, target: undefined };
   }
 
-  const outboundAuth = resolveOutboundAuth(detail, credentials, onProgress);
+  const authResult = resolveOutboundAuth(detail, credentials, onProgress);
+  if (!authResult.success) return authResult;
+  const outboundAuth = authResult.auth;
 
   // MCP Server (external endpoint)
   if (mcp.mcpServer) {
     return {
-      name: detail.name,
-      targetType: 'mcpServer',
-      endpoint: mcp.mcpServer.endpoint,
-      ...(outboundAuth && { outboundAuth }),
+      success: true,
+      target: {
+        name: detail.name,
+        targetType: 'mcpServer',
+        endpoint: mcp.mcpServer.endpoint,
+        ...(outboundAuth && { outboundAuth }),
+      },
     };
   }
 
@@ -92,7 +98,7 @@ function toGatewayTargetSpec(
       ...(outboundAuth && { outboundAuth }),
     };
     /* eslint-enable @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-assignment */
-    return target;
+    return { success: true, target };
   }
 
   // OpenAPI Schema
@@ -100,19 +106,22 @@ function toGatewayTargetSpec(
     const schema = mcp.openApiSchema;
     if (schema.s3?.uri) {
       return {
-        name: detail.name,
-        targetType: 'openApiSchema',
-        schemaSource: {
-          s3: {
-            uri: schema.s3.uri,
-            ...(schema.s3.bucketOwnerAccountId && { bucketOwnerAccountId: schema.s3.bucketOwnerAccountId }),
+        success: true,
+        target: {
+          name: detail.name,
+          targetType: 'openApiSchema',
+          schemaSource: {
+            s3: {
+              uri: schema.s3.uri,
+              ...(schema.s3.bucketOwnerAccountId && { bucketOwnerAccountId: schema.s3.bucketOwnerAccountId }),
+            },
           },
+          ...(outboundAuth && { outboundAuth }),
         },
-        ...(outboundAuth && { outboundAuth }),
       };
     }
     onProgress(`Warning: Target "${detail.name}" (openApiSchema) has no S3 URI, skipping`);
-    return undefined;
+    return { success: true, target: undefined };
   }
 
   // Smithy Model
@@ -120,19 +129,22 @@ function toGatewayTargetSpec(
     const schema = mcp.smithyModel;
     if (schema.s3?.uri) {
       return {
-        name: detail.name,
-        targetType: 'smithyModel',
-        schemaSource: {
-          s3: {
-            uri: schema.s3.uri,
-            ...(schema.s3.bucketOwnerAccountId && { bucketOwnerAccountId: schema.s3.bucketOwnerAccountId }),
+        success: true,
+        target: {
+          name: detail.name,
+          targetType: 'smithyModel',
+          schemaSource: {
+            s3: {
+              uri: schema.s3.uri,
+              ...(schema.s3.bucketOwnerAccountId && { bucketOwnerAccountId: schema.s3.bucketOwnerAccountId }),
+            },
           },
+          ...(outboundAuth && { outboundAuth }),
         },
-        ...(outboundAuth && { outboundAuth }),
       };
     }
     onProgress(`Warning: Target "${detail.name}" (smithyModel) has no S3 URI, skipping`);
-    return undefined;
+    return { success: true, target: undefined };
   }
 
   // Lambda (compute-backed) → map to lambdaFunctionArn
@@ -140,7 +152,7 @@ function toGatewayTargetSpec(
     const lambdaArn = mcp.lambda.lambdaArn;
     if (!lambdaArn) {
       onProgress(`Warning: Target "${detail.name}" (lambda) has no ARN, skipping`);
-      return undefined;
+      return { success: true, target: undefined };
     }
 
     // Extract tool schema S3 URI if available
@@ -152,23 +164,26 @@ function toGatewayTargetSpec(
     if (s3Uri) {
       onProgress(`Mapping compute-backed Lambda target "${detail.name}" to lambdaFunctionArn type`);
       return {
-        name: detail.name,
-        targetType: 'lambdaFunctionArn',
-        lambdaFunctionArn: {
-          lambdaArn,
-          toolSchemaFile: s3Uri,
+        success: true,
+        target: {
+          name: detail.name,
+          targetType: 'lambdaFunctionArn',
+          lambdaFunctionArn: {
+            lambdaArn,
+            toolSchemaFile: s3Uri,
+          },
+          ...(outboundAuth && { outboundAuth }),
         },
-        ...(outboundAuth && { outboundAuth }),
       };
     }
 
     // Lambda without S3 schema — can't import as lambdaFunctionArn since toolSchemaFile is required
     onProgress(`Warning: Target "${detail.name}" (lambda) has inline tool schema, which cannot be imported. Skipping.`);
-    return undefined;
+    return { success: true, target: undefined };
   }
 
   onProgress(`Warning: Target "${detail.name}" has an unrecognized target type, skipping`);
-  return undefined;
+  return { success: true, target: undefined };
 }
 
 /**
@@ -178,9 +193,9 @@ function resolveOutboundAuth(
   detail: GatewayTargetDetail,
   credentials: Map<string, string>,
   _onProgress: (msg: string) => void
-): OutboundAuth | undefined {
+): Result<{ auth: OutboundAuth | undefined }> {
   const configs = detail.credentialProviderConfigurations;
-  if (!configs || configs.length === 0) return undefined;
+  if (!configs || configs.length === 0) return { success: true, auth: undefined };
 
   for (const config of configs) {
     if (config.credentialProviderType === 'OAUTH' && config.credentialProvider?.oauthCredentialProvider) {
@@ -188,16 +203,21 @@ function resolveOutboundAuth(
       const credentialName = credentials.get(providerArn);
       if (credentialName) {
         return {
-          type: 'OAUTH',
-          credentialName,
-          ...(config.credentialProvider.oauthCredentialProvider.scopes?.length && {
-            scopes: config.credentialProvider.oauthCredentialProvider.scopes,
-          }),
+          success: true,
+          auth: {
+            type: 'OAUTH',
+            credentialName,
+            ...(config.credentialProvider.oauthCredentialProvider.scopes?.length && {
+              scopes: config.credentialProvider.oauthCredentialProvider.scopes,
+            }),
+          },
         };
       }
-      throw new Error(
-        `Target "${detail.name}" uses an OAuth credential provider not found in this project's deployed state. ` +
-          'Import the credential first with `agentcore add credential` and re-run.'
+      return failureResult(
+        new ValidationError(
+          `Target "${detail.name}" uses an OAuth credential provider not found in this project's deployed state. ` +
+            'Import the credential first with `agentcore add credential` and re-run.'
+        )
       );
     }
 
@@ -205,18 +225,20 @@ function resolveOutboundAuth(
       const providerArn = config.credentialProvider.apiKeyCredentialProvider.providerArn;
       const credentialName = credentials.get(providerArn);
       if (credentialName) {
-        return { type: 'API_KEY', credentialName };
+        return { success: true, auth: { type: 'API_KEY', credentialName } };
       }
-      throw new Error(
-        `Target "${detail.name}" uses an API Key credential provider not found in this project's deployed state. ` +
-          'Import the credential first with `agentcore add credential` and re-run.'
+      return failureResult(
+        new ValidationError(
+          `Target "${detail.name}" uses an API Key credential provider not found in this project's deployed state. ` +
+            'Import the credential first with `agentcore add credential` and re-run.'
+        )
       );
     }
 
     // GATEWAY_IAM_ROLE — no outbound auth needed
   }
 
-  return undefined;
+  return { success: true, auth: undefined };
 }
 
 /**
@@ -470,9 +492,17 @@ export async function handleImportGateway(options: ImportResourceOptions): Promi
     const mappedTargets: AgentCoreGatewayTarget[] = [];
     for (const td of targetDetails) {
       const mapped = toGatewayTargetSpec(td, credentialArnMap, onProgress);
-      if (mapped) {
-        mappedTargets.push(mapped);
+      if (!mapped.success) {
+        logger.endStep('error', mapped.error.message);
+        logger.finalize(false);
+        return {
+          ...mapped,
+          resourceType: 'gateway' as const,
+          resourceName: td.name,
+          logPath: logger.getRelativeLogPath(),
+        };
       }
+      if (mapped.target) mappedTargets.push(mapped.target);
     }
 
     const gatewaySpec = toGatewaySpec(gatewayDetail, mappedTargets, localName);

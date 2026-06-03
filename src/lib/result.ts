@@ -1,3 +1,5 @@
+// eslint-disable-next-line @typescript-eslint/consistent-type-definitions -- discriminated union member; interface would allow declaration merging which breaks type narrowing
+type FailureResult<E extends Error> = { success: false; error: E };
 /**
  * Discriminated union for fallible operations, inspired by Rust's Result<T, E>.
  *
@@ -12,7 +14,7 @@
 // eslint-disable-next-line @typescript-eslint/no-empty-object-type
 export type Result<T extends Record<string, unknown> = {}, E extends Error = Error> =
   | ({ success: true } & T)
-  | { success: false; error: E };
+  | FailureResult<E>;
 
 /**
  * Converts a Result object to a JSON-serializable form.
@@ -52,4 +54,11 @@ export function unwrapResult<R extends Result>(result: R, defaultValue?: Unwrapp
     return defaultValue;
   }
   throw result.error;
+}
+
+export function failureResult<E extends Error>(e: E): FailureResult<E> {
+  return {
+    success: false,
+    error: e,
+  };
 }

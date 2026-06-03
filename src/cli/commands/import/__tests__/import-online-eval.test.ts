@@ -12,7 +12,7 @@ import { extractAgentName, toOnlineEvalConfigSpec } from '../import-online-eval'
 import { buildImportTemplate, findLogicalIdByProperty, findLogicalIdsByType } from '../template-utils';
 import type { CfnTemplate } from '../template-utils';
 import type { ResourceToImport } from '../types';
-import { describe, expect, it } from 'vitest';
+import { assert, describe, expect, it } from 'vitest';
 
 // ============================================================================
 // extractAgentName Tests
@@ -64,12 +64,13 @@ describe('toOnlineEvalConfigSpec', () => {
 
     const result = toOnlineEvalConfigSpec(detail, 'QualityMonitor', 'my_agent', ['my_evaluator']);
 
-    expect(result.name).toBe('QualityMonitor');
-    expect(result.agent).toBe('my_agent');
-    expect(result.evaluators).toEqual(['my_evaluator']);
-    expect(result.samplingRate).toBe(50);
-    expect(result.description).toBe('Monitor agent quality');
-    expect(result.enableOnCreate).toBe(true);
+    assert(result.success);
+    expect(result.config.name).toBe('QualityMonitor');
+    expect(result.config.agent).toBe('my_agent');
+    expect(result.config.evaluators).toEqual(['my_evaluator']);
+    expect(result.config.samplingRate).toBe(50);
+    expect(result.config.description).toBe('Monitor agent quality');
+    expect(result.config.enableOnCreate).toBe(true);
   });
 
   it('omits enableOnCreate when execution status is DISABLED', () => {
@@ -86,7 +87,8 @@ describe('toOnlineEvalConfigSpec', () => {
 
     const result = toOnlineEvalConfigSpec(detail, 'DisabledConfig', 'agent', ['eval_one']);
 
-    expect(result.enableOnCreate).toBeUndefined();
+    assert(result.success);
+    expect(result.config.enableOnCreate).toBeUndefined();
   });
 
   it('omits description when not present', () => {
@@ -103,10 +105,11 @@ describe('toOnlineEvalConfigSpec', () => {
 
     const result = toOnlineEvalConfigSpec(detail, 'NoDesc', 'agent', ['eval_one']);
 
-    expect(result.description).toBeUndefined();
+    assert(result.success);
+    expect(result.config.description).toBeUndefined();
   });
 
-  it('throws when sampling percentage is missing', () => {
+  it('returns failure when sampling percentage is missing', () => {
     const detail: GetOnlineEvalConfigResult = {
       configId: 'oec-no-sampling',
       configArn: 'arn:aws:bedrock-agentcore:us-west-2:123456789012:online-evaluation-config/oec-no-sampling',
@@ -117,9 +120,9 @@ describe('toOnlineEvalConfigSpec', () => {
       evaluatorIds: ['eval-1'],
     };
 
-    expect(() => toOnlineEvalConfigSpec(detail, 'NoSampling', 'agent', ['eval_one'])).toThrow(
-      'has no sampling configuration'
-    );
+    const result = toOnlineEvalConfigSpec(detail, 'NoSampling', 'agent', ['eval_one']);
+    assert(!result.success);
+    expect(result.error.message).toContain('has no sampling configuration');
   });
 
   it('supports multiple evaluator references', () => {
@@ -139,9 +142,10 @@ describe('toOnlineEvalConfigSpec', () => {
       'arn:aws:bedrock-agentcore:us-west-2:123456789012:evaluator/eval-2',
     ]);
 
-    expect(result.evaluators).toHaveLength(2);
-    expect(result.evaluators[0]).toBe('local_eval');
-    expect(result.evaluators[1]).toMatch(/^arn:/);
+    assert(result.success);
+    expect(result.config.evaluators).toHaveLength(2);
+    expect(result.config.evaluators[0]).toBe('local_eval');
+    expect(result.config.evaluators[1]).toMatch(/^arn:/);
   });
 });
 
