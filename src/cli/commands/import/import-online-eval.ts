@@ -98,6 +98,7 @@ function createOnlineEvalDescriptor(): ResourceImportDescriptor<GetOnlineEvalCon
       if (!result.success)
         return { success: false, error: result.error, resourceType: 'online-eval' as const, resourceName: localName };
       (spec.onlineEvalConfigs ??= []).push(result.config);
+      return { success: true, resourceType: 'online-eval', resourceName: localName };
     },
 
     cfnResourceType: 'AWS::BedrockAgentCore::OnlineEvaluationConfig',

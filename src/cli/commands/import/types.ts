@@ -202,12 +202,7 @@ export interface ResourceImportDescriptor<TDetail, TSummary> {
    * Convert the AWS detail to local spec and add it to the project spec.
    * Called after beforeConfigWrite — descriptor factories may rely on state set during that hook.
    */
-  // TODO: update all implementations to return result, then narrow down return type
-  addToProjectSpec: (
-    detail: TDetail,
-    localName: string,
-    projectSpec: AgentCoreProjectSpec
-  ) => ImportResourceResult | void;
+  addToProjectSpec: (detail: TDetail, localName: string, projectSpec: AgentCoreProjectSpec) => ImportResourceResult;
 
   // ---- CFN template matching ----
 

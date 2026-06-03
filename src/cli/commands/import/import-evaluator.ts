@@ -88,6 +88,7 @@ const evaluatorDescriptor: ResourceImportDescriptor<GetEvaluatorResult, Evaluato
     if (!result.success)
       return { success: false, error: result.error, resourceType: 'evaluator' as const, resourceName: localName };
     (spec.evaluators ??= []).push(result.evaluator);
+    return { success: true, resourceType: 'evaluator', resourceName: localName };
   },
 
   cfnResourceType: 'AWS::BedrockAgentCore::Evaluator',

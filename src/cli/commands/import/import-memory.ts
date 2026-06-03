@@ -105,6 +105,7 @@ const memoryDescriptor: ResourceImportDescriptor<MemoryDetail, MemorySummary> = 
   getExistingNames: spec => (spec.memories ?? []).map(m => m.name),
   addToProjectSpec: (detail, localName, spec) => {
     (spec.memories ??= []).push(toMemorySpec(detail, localName));
+    return { success: true, resourceType: 'memory', resourceName: localName };
   },
 
   cfnResourceType: 'AWS::BedrockAgentCore::Memory',
