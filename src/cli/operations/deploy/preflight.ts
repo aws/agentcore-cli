@@ -145,7 +145,7 @@ function validateRuntimeNames(projectSpec: AgentCoreProjectSpec): void {
     if (agentName) {
       const combinedName = `${projectName}_${agentName}`;
       if (combinedName.length > MAX_RUNTIME_NAME_LENGTH) {
-        throw new Error(
+        throw new ValidationError(
           `Runtime name too long: "${combinedName}" (${combinedName.length} chars). ` +
             `AWS limits runtime names to ${MAX_RUNTIME_NAME_LENGTH} characters. ` +
             `Shorten the project name or agent name in agentcore.json.`
