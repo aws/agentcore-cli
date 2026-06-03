@@ -1,4 +1,5 @@
 import { ConfigIO, DOCKERFILE_NAME, getDockerfilePath, requireConfigRoot, resolveCodeLocation } from '../../../lib';
+import { ValidationError } from '../../../lib/errors/types';
 import type { AgentCoreProjectSpec, AwsDeploymentTarget } from '../../../schema';
 import { validateAwsCredentials } from '../../aws/account';
 import { LocalCdkProject } from '../../cdk/local-cdk-project';
@@ -109,7 +110,7 @@ export async function validateProject(): Promise<PreflightContext> {
       // No deployed state file — no existing stack
     }
     if (!hasExistingStack) {
-      throw new Error(
+      throw new ValidationError(
         'No resources defined in project. Add at least one resource (agent, memory, evaluator, or gateway) before deploying.'
       );
     }
