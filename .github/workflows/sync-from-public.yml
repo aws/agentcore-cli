@@ -15,12 +15,12 @@ jobs:
     steps:
       - name: Generate GitHub App Token
         id: app-token
-        uses: actions/create-github-app-token@v3
+        uses: actions/create-github-app-token@v1
         with:
           app-id: ${{ vars.APP_ID }}
           private-key: ${{ secrets.APP_PRIVATE_KEY }}
 
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v4
         with:
           fetch-depth: 0
           token: ${{ steps.app-token.outputs.token }}
@@ -37,8 +37,7 @@ jobs:
 
       - name: Sync main with public/main
         run: |
-          git checkout main
-          git reset --hard origin/main
+          git checkout -B main origin/main
 
           # Check if public/main is already merged
           if git merge-base --is-ancestor public/main HEAD; then
@@ -60,8 +59,7 @@ jobs:
             git merge --abort
 
             # Check if a sync PR already exists
-            existing_pr=$(gh pr list --base "main" --state open --json number,headRefName \
-              --jq '[.[] | select(.headRefName | startswith("sync-conflict-main-"))][0].number' 2>/dev/null || echo "")
+            existing_pr=$(gh pr list --base "main" --search "Merge public/main" --state open --json number --jq '.[0].number' 2>/dev/null || echo "")
 
             if [ -n "$existing_pr" ]; then
               echo "ℹ️  PR #$existing_pr already exists, skipping"
