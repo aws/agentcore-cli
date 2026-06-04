@@ -28,6 +28,7 @@ All notable changes to this project will be documented in this file.
 - ci: disable telemetry in e2e and integ test workflows (#1421) (eaa4bcf9)
 - chore: remove sync-preview job from sync-from-public workflow (#1416) (d2192fce)
 
+
 ## [0.16.0] - 2026-05-28
 * feat: instrument telemetry for status command by @Hweinstock in https://github.com/aws/agentcore-cli/pull/1317
 * fix(telemetry): emit dev command telemetry before blocking by @Hweinstock in https://github.com/aws/agentcore-cli/pull/1375

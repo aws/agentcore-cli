@@ -1,4 +1,5 @@
 import { ANSI } from '../constants';
+import { getErrorMessage } from '../errors';
 import { printPostCommandNotices } from '../notices';
 import { TelemetryClientAccessor } from '../telemetry';
 import { type UpdateCheckResult } from '../update-notifier';
@@ -72,6 +73,35 @@ export async function renderTUI(options: RenderTUIOptions = {}) {
     return;
   }
 
+  if (action?.type === 'exec') {
+    const { runExecLoop } = await import('../commands/exec/command');
+    try {
+      await runExecLoop();
+    } catch (err) {
+      process.stderr.write(`\n[exec failed: ${getErrorMessage(err)}]\n`);
+    }
+    await renderTUI({ ...options, initialRoute: undefined });
+    return;
+  }
+
+  if (action?.type === 'exec-shell') {
+    const { handleShellSession, loadExecContext } = await import('../commands/exec/action');
+    try {
+      process.stdout.write('\x1b[2J\x1b[H');
+      const ctx = await loadExecContext({ runtimeArn: action.runtimeArn, region: action.region });
+      await handleShellSession(ctx, { runtimeArn: action.runtimeArn, sessionId: action.sessionId });
+    } catch (err) {
+      process.stderr.write(`\n[shell failed: ${getErrorMessage(err)}]\n`);
+    }
+    process.stdout.write('\x1b[2J\x1b[H');
+    // Re-enter the TUI on the invoke screen, resuming the same session.
+    await renderTUI({
+      ...options,
+      initialRoute: { name: 'invoke', sessionId: action.sessionId, isResume: true },
+    });
+    return;
+  }
+
   // Print any exit message set by screens (e.g., after successful project creation)
   const exitMessage = getExitMessage();
   if (exitMessage) {
@@ -88,6 +118,7 @@ export async function renderTUI(options: RenderTUIOptions = {}) {
  */
 export function setupAltScreenCleanup() {
   const cleanup = () => {
+    if (!process.stdout.isTTY) return;
     if (inAltScreen) {
       process.stdout.write(EXIT_ALT_SCREEN);
     }

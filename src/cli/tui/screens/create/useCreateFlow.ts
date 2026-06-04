@@ -263,32 +263,17 @@ export function useCreateFlow(cwd: string): CreateFlowState {
   useEffect(() => {
     if (phase !== 'running') return;
 
-    const isHarness = addHarnessConfig !== null;
     const attrs = {
-      agent_environment: standardize(AgentEnvironment, isHarness ? 'harness' : 'runtime'),
-      // true when either an agent or harness config is set (non-null/non-undefined)
-      has_agent: Boolean(addAgentConfig) || Boolean(addHarnessConfig),
-      model_provider: standardize(
-        ModelProvider,
-        isHarness ? addHarnessConfig?.modelProvider : addAgentConfig?.modelProvider
-      ),
-      memory_type: standardize(
-        MemoryEnum,
-        isHarness ? (addHarnessConfig?.skipMemory ? 'none' : 'longandshortterm') : (addAgentConfig?.memory ?? 'none')
-      ),
-      build_type: isHarness ? undefined : standardize(BuildType, addAgentConfig?.buildType ?? 'CodeZip'),
-      network_mode: standardize(
-        NetworkMode,
-        isHarness ? (addHarnessConfig?.networkMode ?? 'PUBLIC') : (addAgentConfig?.networkMode ?? 'PUBLIC')
-      ),
-      ...(isHarness
-        ? {}
-        : {
-            agent_language: standardize(AgentLanguage, addAgentConfig?.language ?? 'Python'),
-            agent_framework: standardize(AgentFramework, addAgentConfig?.framework),
-            agent_protocol: standardize(AgentProtocol, addAgentConfig?.protocol ?? 'HTTP'),
-            agent_type: standardize(AgentSource, addAgentConfig?.agentType ?? 'create'),
-          }),
+      agent_environment: standardize(AgentEnvironment, 'runtime'),
+      agent_language: standardize(AgentLanguage, addAgentConfig?.language ?? 'Python'),
+      agent_framework: standardize(AgentFramework, addAgentConfig?.framework),
+      model_provider: standardize(ModelProvider, addAgentConfig?.modelProvider),
+      memory_type: standardize(MemoryEnum, addAgentConfig?.memory ?? 'none'),
+      agent_protocol: standardize(AgentProtocol, addAgentConfig?.protocol ?? 'HTTP'),
+      build_type: standardize(BuildType, addAgentConfig?.buildType ?? 'CodeZip'),
+      agent_source: standardize(AgentSource, addAgentConfig?.agentType ?? 'create'),
+      network_mode: standardize(NetworkMode, addAgentConfig?.networkMode ?? 'PUBLIC'),
+      has_agent: addAgentConfig !== null,
     };
 
     const run = async (): Promise<{ success: true } | { success: false; error: Error }> => {

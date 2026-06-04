@@ -4,7 +4,11 @@
  * when a screen needs to hand off to a non-TUI mode (e.g., browser dev).
  */
 
-export type ExitAction = { type: 'dev' } | null;
+export type ExitAction =
+  | { type: 'dev' }
+  | { type: 'exec' }
+  | { type: 'exec-shell'; runtimeArn: string; region: string; sessionId?: string }
+  | null;
 
 let exitAction: ExitAction = null;
 

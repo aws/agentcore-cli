@@ -10,6 +10,7 @@ import { registerDataset } from './commands/dataset';
 import { registerDeploy } from './commands/deploy';
 import { registerDev } from './commands/dev';
 import { registerEval } from './commands/eval';
+import { registerExec } from './commands/exec';
 import { registerFeedback } from './commands/feedback';
 import { registerFetch } from './commands/fetch';
 import { registerHelp } from './commands/help';
@@ -90,6 +91,7 @@ export function registerCommands(program: Command) {
   const addCmd = registerAdd(program);
   registerDev(program);
   registerDeploy(program);
+  registerExec(program);
   registerCreate(program);
   registerEval(program);
   registerFeedback(program);

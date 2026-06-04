@@ -128,6 +128,19 @@ const InvokeAttrs = safeSchema({
   agent_protocol: AgentProtocol.optional(),
 });
 
+const ExecAttrs = safeSchema({
+  interactive: z.boolean(),
+  has_runtime: z.boolean(),
+  has_shell_id: z.boolean(),
+  has_session_id: z.boolean(),
+  is_one_shot: z.boolean(),
+  auth_type: AuthType,
+  is_reconnect: z.boolean(),
+  exit_code: Count,
+  reconnect_attempts: Count,
+  was_kicked: z.boolean(),
+});
+
 const StatusAttrs = safeSchema({ filter_type: FilterType, filter_state: FilterState });
 
 const LogsAttrs = safeSchema({ has_query: z.boolean(), has_level_filter: z.boolean() });
@@ -173,8 +186,13 @@ export const COMMAND_SCHEMAS = {
   'add.policy': AddPolicyAttrs,
   'add.runtime-endpoint': NoAttrs,
   deploy: DeployAttrs,
+
+  // dev / invoke / exec
   dev: DevAttrs,
   invoke: InvokeAttrs,
+  exec: ExecAttrs,
+
+  // status / logs
   status: StatusAttrs,
   logs: LogsAttrs,
   'logs.evals': LogsEvalsAttrs,

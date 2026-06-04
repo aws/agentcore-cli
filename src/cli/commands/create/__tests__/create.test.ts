@@ -194,6 +194,44 @@ describe('create command', () => {
       expect(projectSpec.name).toBe(projectName);
       expect(projectSpec.runtimes[0].name).toBe(agentName);
     });
+
+    it('uses --project-name for project and --name for agent resource', async () => {
+      const projectName = `AgentProj${Date.now().toString().slice(-6)}`;
+      const agentName = `AgentResource${randomUUID().replace(/-/g, '').slice(0, 16)}`;
+      const result = await runCLI(
+        [
+          'create',
+          '--project-name',
+          projectName,
+          '--name',
+          agentName,
+          '--language',
+          'Python',
+          '--framework',
+          'Strands',
+          '--model-provider',
+          'Bedrock',
+          '--memory',
+          'none',
+          '--skip-git',
+          '--skip-install',
+          '--json',
+        ],
+        testDir
+      );
+
+      expect(result.exitCode, `stdout: ${result.stdout}, stderr: ${result.stderr}`).toBe(0);
+
+      const json = JSON.parse(result.stdout);
+      expect(json.success).toBe(true);
+      expect(json.projectPath).toMatch(new RegExp(`/${projectName}$`));
+      expect(json.agentName).toBe(agentName);
+      expect(await exists(join(json.projectPath, 'app', agentName))).toBeTruthy();
+
+      const projectSpec = JSON.parse(await readFile(join(json.projectPath, 'agentcore/agentcore.json'), 'utf-8'));
+      expect(projectSpec.name).toBe(projectName);
+      expect(projectSpec.runtimes[0].name).toBe(agentName);
+    });
   });
 
   describe('--defaults', () => {

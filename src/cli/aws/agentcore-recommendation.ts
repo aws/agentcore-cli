@@ -16,7 +16,7 @@
  * DeleteRecommendation (stop-via-delete pattern).
  */
 import { getCredentialProvider } from './account';
-import { dnsSuffix } from './partition';
+import { dataPlaneEndpoint } from './stage-endpoint';
 import { Sha256 } from '@aws-crypto/sha256-js';
 import { defaultProvider } from '@aws-sdk/credential-provider-node';
 import { HttpRequest } from '@smithy/protocol-http';
@@ -216,19 +216,6 @@ export interface DeleteRecommendationResult {
 // HTTP signing helper
 // ============================================================================
 
-/**
- * Resolve the DP endpoint for the Recommendation API.
- *
- * TEMPORARY: All Recommendation endpoints are on the Data Plane.
- * Set AGENTCORE_STAGE=beta|gamma to target pre-release environments.
- */
-function getDataPlaneEndpoint(region: string): string {
-  const stage = process.env.AGENTCORE_STAGE?.toLowerCase();
-  if (stage === 'beta') return `https://beta.${region}.elcapdp.genesis-primitives.aws.dev`;
-  if (stage === 'gamma') return `https://gamma.${region}.elcapdp.genesis-primitives.aws.dev`;
-  return `https://bedrock-agentcore.${region}.${dnsSuffix(region)}`;
-}
-
 async function signedRequest(options: {
   region: string;
   method: string;
@@ -236,7 +223,8 @@ async function signedRequest(options: {
   body?: string;
 }): Promise<{ data: unknown; status: number; requestId?: string }> {
   const { region, method, path, body } = options;
-  const endpoint = getDataPlaneEndpoint(region);
+  // TEMPORARY: All Recommendation endpoints are on the Data Plane.
+  const endpoint = dataPlaneEndpoint(region);
   const url = new URL(path, endpoint);
 
   const query: Record<string, string> = {};

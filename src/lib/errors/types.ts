@@ -291,6 +291,15 @@ export class PollExhaustedError extends BaseError {
   }
 }
 
+export class ShellKickedError extends BaseError {
+  constructor(options?: BaseErrorOptions) {
+    super('Shell session was taken over by another client (close code 4000)', {
+      defaultSource: 'service',
+      ...options,
+    });
+  }
+}
+
 /**
  * Error indicating user cancellation interuption
  */

@@ -59,4 +59,5 @@ export type InvokeResult = Result & {
   targetName?: string;
   response?: string;
   sessionId?: string;
+  exitCode?: number;
 };

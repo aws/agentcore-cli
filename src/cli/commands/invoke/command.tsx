@@ -132,7 +132,10 @@ export const registerInvoke = (program: Command) => {
     .option('--stream', 'Stream response in real-time (TUI streams by default) [non-interactive]')
     .option('--tool <name>', 'MCP tool name (use with "call-tool" prompt) [non-interactive]')
     .option('--input <json>', 'MCP tool arguments as JSON (use with --tool) [non-interactive]')
-    .option('--exec', 'Execute a shell command in the runtime container [non-interactive]')
+    .option(
+      '--exec',
+      'Execute a shell command in the runtime container (use `agentcore exec` instead) [non-interactive]'
+    )
     .option('--timeout <seconds>', 'Timeout in seconds for --exec commands [non-interactive]', parseInt)
     .option(
       '-H, --header <header>',
@@ -318,7 +321,7 @@ export const registerInvoke = (program: Command) => {
             json: cliOptions.json,
             stream: cliOptions.stream,
           });
-          process.exit(result.success ? 0 : 1);
+          process.exit(result.exitCode ?? (result.success ? 0 : 1));
         } else {
           // No CLI options - interactive TUI mode (headers still passed if provided)
           requireTTY();

@@ -35,7 +35,14 @@ type Route =
   | { name: 'home' }
   | { name: 'help'; initialQuery?: string }
   | { name: 'deploy'; diffMode?: boolean }
-  | { name: 'invoke'; sessionId?: string; userId?: string; headers?: Record<string, string>; bearerToken?: string }
+  | {
+      name: 'invoke';
+      sessionId?: string;
+      userId?: string;
+      headers?: Record<string, string>;
+      bearerToken?: string;
+      isResume?: boolean;
+    }
   | { name: 'logs' }
   | { name: 'create' }
   | { name: 'add' }
@@ -122,6 +129,10 @@ function AppContent({
 
     if (id === 'dev') {
       setExitAction({ type: 'dev' });
+      exit();
+      return;
+    } else if (id === 'exec') {
+      setExitAction({ type: 'exec' });
       exit();
       return;
     } else if (id === 'deploy') {
@@ -215,9 +226,19 @@ function AppContent({
         isInteractive={isInteractive}
         onExit={handleBack}
         initialSessionId={route.sessionId}
+        isResume={route.isResume}
         initialUserId={route.userId}
         initialHeaders={route.headers}
         initialBearerToken={route.bearerToken}
+        onExec={result => {
+          setExitAction({
+            type: 'exec-shell',
+            runtimeArn: result.runtimeArn,
+            region: result.region,
+            sessionId: result.sessionId,
+          });
+          exit();
+        }}
       />
     );
   }

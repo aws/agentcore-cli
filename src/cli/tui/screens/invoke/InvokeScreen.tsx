@@ -18,6 +18,10 @@ interface InvokeScreenProps {
   /** Custom headers to forward to the agent runtime on every invocation */
   initialHeaders?: Record<string, string>;
   initialBearerToken?: string;
+  /** Called when the user presses 's' to open an interactive shell for the current agent. */
+  onExec?: (result: { runtimeArn: string; region: string; sessionId?: string }) => void;
+  /** True when remounting after a PTY detour — shows [session resumed] hint. False for direct --session-id invocations. */
+  isResume?: boolean;
   /** Pre-select a harness by name, skipping the agent selection screen (preview) */
   initialHarnessName?: string;
 }
@@ -146,6 +150,8 @@ export function InvokeScreen({
   initialUserId,
   initialHeaders,
   initialBearerToken,
+  onExec,
+  isResume,
   initialHarnessName,
 }: InvokeScreenProps) {
   const preview = isPreviewEnabled();
@@ -173,6 +179,7 @@ export function InvokeScreen({
     initialUserId,
     headers: initialHeaders,
     initialBearerToken,
+    isResume,
     initialHarnessName,
   });
   const [mode, setMode] = useState<Mode>(initialHarnessName ? 'input' : 'select-agent');
@@ -364,6 +371,15 @@ export function InvokeScreen({
           return;
         }
 
+        // Open interactive shell for the current agent
+        if (input === 's' && phase === 'ready' && onExec) {
+          const currentRuntimeArn = config?.runtimes[selectedAgent]?.state.runtimeArn;
+          if (currentRuntimeArn && config) {
+            onExec({ runtimeArn: currentRuntimeArn, region: config.target.region, sessionId: sessionId ?? undefined });
+          }
+          return;
+        }
+
         // Scroll controls
         if (key.upArrow) scrollUp(1);
         else if (key.downArrow) scrollDown(1);
@@ -452,10 +468,10 @@ export function InvokeScreen({
           : phase === 'invoking'
             ? '↑↓ scroll'
             : messages.length > 0
-              ? `↑↓ scroll · Enter invoke · Ctrl+N new session · ${backOrQuit}`
+              ? `↑↓ scroll · Enter invoke · Ctrl+N new session${onExec && !isHarnessSelected ? ' · S shell' : ''} · ${backOrQuit}`
               : isMcp
-                ? `Enter to call a tool · Ctrl+N new session · ${backOrQuit}`
-                : `Enter to send a message · ${backOrQuit}`;
+                ? `Enter to call a tool · Ctrl+N new session${onExec && !isHarnessSelected ? ' · S shell' : ''} · ${backOrQuit}`
+                : `Enter to send a message${onExec && !isHarnessSelected ? ' · S shell' : ''} · ${backOrQuit}`;
 
   const headerContent = (
     <Box flexDirection="column">

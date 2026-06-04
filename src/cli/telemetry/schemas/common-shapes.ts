@@ -110,6 +110,7 @@ export const ErrorName = z.enum([
   'PollTimeoutError',
   'ResourceNotFoundError',
   'ServerError',
+  'ShellKickedError',
   'TimeoutError',
   'UnsupportedLanguageError',
   'UserCancellationError',

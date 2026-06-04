@@ -180,6 +180,7 @@ export async function handleInvoke(context: InvokeContext, options: InvokeOption
         if (exitCode === 0) {
           return {
             success: true,
+            exitCode,
             agentName: agentSpec.name,
             targetName: selectedTargetName,
             response: JSON.stringify({ stdout, stderr, exitCode, status }),
@@ -188,6 +189,7 @@ export async function handleInvoke(context: InvokeContext, options: InvokeOption
         }
         return {
           success: false,
+          exitCode,
           error: new Error(`Command exited with code ${exitCode}`),
           agentName: agentSpec.name,
           targetName: selectedTargetName,
@@ -209,6 +211,7 @@ export async function handleInvoke(context: InvokeContext, options: InvokeOption
       if (exitCode !== 0) {
         return {
           success: false,
+          exitCode,
           error: new Error(`Command exited with code ${exitCode}${status === 'TIMED_OUT' ? ' (timed out)' : ''}`),
           agentName: agentSpec.name,
           targetName: selectedTargetName,
@@ -219,6 +222,7 @@ export async function handleInvoke(context: InvokeContext, options: InvokeOption
 
       return {
         success: true,
+        exitCode,
         agentName: agentSpec.name,
         targetName: selectedTargetName,
         logFilePath: logger.logFilePath,
