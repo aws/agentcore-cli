@@ -20,13 +20,13 @@ const baseCanRun = prereqs.npm && prereqs.git && hasAws && isPreviewBuild;
 
 interface HarnessE2EConfig {
   modelProvider: 'bedrock' | 'open_ai' | 'gemini';
-  requiredEnvVar?: string;
+  apiKeyEnvVar?: string;
   skipMemory?: boolean;
   skipInvoke?: boolean;
 }
 
 export function createHarnessE2ESuite(cfg: HarnessE2EConfig) {
-  const hasRequiredVar = !cfg.requiredEnvVar || !!process.env[cfg.requiredEnvVar];
+  const hasRequiredVar = !cfg.apiKeyEnvVar || !!process.env[cfg.apiKeyEnvVar];
   const canRun = baseCanRun && hasRequiredVar;
 
   const providerLabel =
@@ -59,8 +59,8 @@ export function createHarnessE2ESuite(cfg: HarnessE2EConfig) {
         '--skip-git',
       ];
 
-      if (cfg.requiredEnvVar && process.env[cfg.requiredEnvVar]) {
-        createArgs.push('--api-key-arn', process.env[cfg.requiredEnvVar]!);
+      if (cfg.apiKeyEnvVar && process.env[cfg.apiKeyEnvVar]) {
+        createArgs.push('--api-key-arn', process.env[cfg.apiKeyEnvVar]!);
       }
 
       if (cfg.skipMemory) {

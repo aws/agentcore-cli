@@ -25,7 +25,10 @@ const baseCanRun = prereqs.npm && prereqs.git && prereqs.uv && hasAws;
 interface E2EConfig {
   framework: string;
   modelProvider: string;
-  requiredEnvVar?: string;
+  /** Env var holding the API key — must be set for the suite to run, and its value is passed as --api-key. */
+  apiKeyEnvVar?: string;
+  /** Additional env vars that must all be set for the suite to run. */
+  requiredEnvVars?: string[];
   build?: string;
   memory?: string;
   /** Language for the agent project. Defaults to 'Python'. */
@@ -38,12 +41,27 @@ interface E2EConfig {
     idleTimeout?: number;
     maxLifetime?: number;
   };
+  /** Custom prompt for the invoke test. Defaults to 'Say hello'. */
+  invokePrompt?: string;
+  /** Optional assertion on the invoke response string. */
+  invokeResponseCheck?: (response: string) => void;
+  /** EFS access point mounts. Requires VPC network mode. */
+  efsAccessPoints?: { accessPointArn: string; mountPath: string }[];
+  /** S3 Files access point mounts. Requires VPC network mode. */
+  s3AccessPoints?: { accessPointArn: string; mountPath: string }[];
+  /** VPC network mode config. Required when using filesystem mounts. */
+  networkConfig?: {
+    networkMode: 'VPC';
+    subnets: string;
+    securityGroups: string;
+  };
 }
 
 export function createE2ESuite(cfg: E2EConfig) {
-  const hasApiKey = !cfg.requiredEnvVar || !!process.env[cfg.requiredEnvVar];
+  const hasRequiredEnvVars =
+    (!cfg.apiKeyEnvVar || !!process.env[cfg.apiKeyEnvVar]) && (cfg.requiredEnvVars ?? []).every(v => !!process.env[v]);
   const needsUv = cfg.language !== 'TypeScript';
-  const canRun = prereqs.npm && prereqs.git && hasAws && hasApiKey && (!needsUv || prereqs.uv);
+  const canRun = prereqs.npm && prereqs.git && hasAws && hasRequiredEnvVars && (!needsUv || prereqs.uv);
 
   describe.sequential(`e2e: ${cfg.framework}/${cfg.modelProvider} — create → deploy → invoke`, () => {
     let testDir: string;
@@ -86,9 +104,25 @@ export function createE2ESuite(cfg: E2EConfig) {
       }
 
       // Pass API key so the credential is registered in the project and .env.local
-      const apiKey = cfg.requiredEnvVar ? process.env[cfg.requiredEnvVar] : undefined;
+      const apiKey = cfg.apiKeyEnvVar ? process.env[cfg.apiKeyEnvVar] : undefined;
       if (apiKey) {
         createArgs.push('--api-key', apiKey);
+      }
+
+      if (cfg.networkConfig) {
+        createArgs.push('--network-mode', cfg.networkConfig.networkMode);
+        createArgs.push('--subnets', cfg.networkConfig.subnets);
+        createArgs.push('--security-groups', cfg.networkConfig.securityGroups);
+      }
+
+      for (const ap of cfg.efsAccessPoints ?? []) {
+        createArgs.push('--efs-access-point-arn', ap.accessPointArn);
+        createArgs.push('--efs-mount-path', ap.mountPath);
+      }
+
+      for (const ap of cfg.s3AccessPoints ?? []) {
+        createArgs.push('--s3-access-point-arn', ap.accessPointArn);
+        createArgs.push('--s3-mount-path', ap.mountPath);
       }
 
       const result = await runAgentCoreCLI(createArgs, testDir);
@@ -148,7 +182,7 @@ export function createE2ESuite(cfg: E2EConfig) {
         await retry(
           async () => {
             const result = await runAgentCoreCLI(
-              ['invoke', '--prompt', 'Say hello', '--runtime', agentName, '--json'],
+              ['invoke', '--prompt', cfg.invokePrompt ?? 'Say hello', '--runtime', agentName, '--json'],
               projectPath
             );
 
@@ -159,8 +193,11 @@ export function createE2ESuite(cfg: E2EConfig) {
 
             expect(result.exitCode, `Invoke failed: ${result.stderr}`).toBe(0);
 
-            const json = parseJsonOutput(result.stdout) as { success: boolean };
+            const json = parseJsonOutput(result.stdout) as { success: boolean; response?: string };
             expect(json.success, 'Invoke should report success').toBe(true);
+            if (cfg.invokeResponseCheck && json.response) {
+              cfg.invokeResponseCheck(json.response);
+            }
           },
           3,
           15000

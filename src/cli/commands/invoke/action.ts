@@ -113,7 +113,7 @@ export async function handleInvoke(context: InvokeContext, options: InvokeOption
   };
 
   // Warn about VPC mode endpoint requirements
-  if (agentSpec.networkMode === 'VPC') {
+  if (agentSpec.networkMode === 'VPC' && !options.json) {
     console.log(
       `${ANSI.yellow}Warning: This agent uses VPC network mode. Ensure your VPC endpoints are configured for invocation.${ANSI.reset}`
     );

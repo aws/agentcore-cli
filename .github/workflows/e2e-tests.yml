@@ -149,6 +149,10 @@ jobs:
           ANTHROPIC_API_KEY: ${{ env.E2E_ANTHROPIC_API_KEY }}
           OPENAI_API_KEY: ${{ env.E2E_OPENAI_API_KEY }}
           GEMINI_API_KEY: ${{ env.E2E_GEMINI_API_KEY }}
+          E2E_EFS_ACCESS_POINT_ARN: ${{ env.E2E_EFS_ACCESS_POINT_ARN }}
+          E2E_S3_ACCESS_POINT_ARN: ${{ env.E2E_S3_ACCESS_POINT_ARN }}
+          E2E_FILESYSTEM_SUBNET_ID: ${{ env.E2E_FILESYSTEM_SUBNET_ID }}
+          E2E_FILESYSTEM_SECURITY_GROUP_ID: ${{ env.E2E_FILESYSTEM_SECURITY_GROUP_ID }}
         run: npx vitest run --project e2e e2e-tests/strands-bedrock.test.ts ${{ steps.changed.outputs.ga_extra }}
 
       - name: Install preview CLI globally
@@ -161,5 +165,9 @@ jobs:
           ANTHROPIC_API_KEY: ${{ env.E2E_ANTHROPIC_API_KEY }}
           OPENAI_API_KEY: ${{ env.E2E_OPENAI_API_KEY }}
           GEMINI_API_KEY: ${{ env.E2E_GEMINI_API_KEY }}
+          E2E_EFS_ACCESS_POINT_ARN: ${{ env.E2E_EFS_ACCESS_POINT_ARN }}
+          E2E_S3_ACCESS_POINT_ARN: ${{ env.E2E_S3_ACCESS_POINT_ARN }}
+          E2E_FILESYSTEM_SUBNET_ID: ${{ env.E2E_FILESYSTEM_SUBNET_ID }}
+          E2E_FILESYSTEM_SECURITY_GROUP_ID: ${{ env.E2E_FILESYSTEM_SECURITY_GROUP_ID }}
           BUILD_PREVIEW: '1'
         run: npx vitest run --project e2e e2e-tests/harness-bedrock.test.ts ${{ steps.changed.outputs.harness_extra }}
