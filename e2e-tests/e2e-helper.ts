@@ -195,8 +195,9 @@ export function createE2ESuite(cfg: E2EConfig) {
 
             const json = parseJsonOutput(result.stdout) as { success: boolean; response?: string };
             expect(json.success, 'Invoke should report success').toBe(true);
-            if (cfg.invokeResponseCheck && json.response) {
-              cfg.invokeResponseCheck(json.response);
+            if (cfg.invokeResponseCheck) {
+              expect(json.response, 'Invoke should return a non-empty response').toBeTruthy();
+              cfg.invokeResponseCheck(json.response!);
             }
           },
           3,
