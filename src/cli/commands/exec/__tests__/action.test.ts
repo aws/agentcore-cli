@@ -718,6 +718,89 @@ describe('loadExecContext with targetName', () => {
 });
 
 // ---------------------------------------------------------------------------
+// loadExecContext — --runtime as ARN vs name
+// ---------------------------------------------------------------------------
+
+describe('loadExecContext --runtime as ARN or name', () => {
+  const TWO_AGENT_CONFIG = {
+    readAWSDeploymentTargets: vi.fn().mockResolvedValue([{ name: 'default', region: 'us-east-1' }]),
+    readDeployedState: vi.fn().mockResolvedValue({
+      targets: {
+        default: {
+          resources: {
+            runtimes: {
+              AgentA: { runtimeArn: 'arn:aws:bedrock-agentcore:us-east-1:123:runtime/AgentA' },
+              AgentB: { runtimeArn: 'arn:aws:bedrock-agentcore:us-east-1:123:runtime/AgentB' },
+            },
+          },
+        },
+      },
+    }),
+  } as unknown as ConfigIO;
+
+  const ONE_AGENT_CONFIG = {
+    readAWSDeploymentTargets: vi.fn().mockResolvedValue([{ name: 'default', region: 'us-east-1' }]),
+    readDeployedState: vi.fn().mockResolvedValue({
+      targets: {
+        default: {
+          resources: {
+            runtimes: {
+              AgentA: { runtimeArn: 'arn:aws:bedrock-agentcore:us-east-1:123:runtime/AgentA' },
+            },
+          },
+        },
+      },
+    }),
+  } as unknown as ConfigIO;
+
+  it('short-circuits when --runtime is a full ARN and --region is provided', async () => {
+    const ctx = await loadExecContext(
+      { runtimeArn: 'arn:aws:bedrock-agentcore:us-east-1:123:runtime/X', region: 'us-west-2' },
+      TWO_AGENT_CONFIG
+    );
+    // Region from CLI flag, not config
+    expect(ctx.region).toBe('us-west-2');
+    expect(ctx.runtimeArn).toBe('arn:aws:bedrock-agentcore:us-east-1:123:runtime/X');
+    // Config should not be read at all
+    expect(
+      (TWO_AGENT_CONFIG as unknown as { readAWSDeploymentTargets: ReturnType<typeof vi.fn> }).readAWSDeploymentTargets
+    ).not.toHaveBeenCalled();
+  });
+
+  it('resolves region from config when --runtime is a full ARN but --region is omitted', async () => {
+    const ctx = await loadExecContext(
+      { runtimeArn: 'arn:aws:bedrock-agentcore:us-east-1:123:runtime/X' },
+      TWO_AGENT_CONFIG
+    );
+    expect(ctx.region).toBe('us-east-1'); // from config
+    expect(ctx.runtimeArn).toBe('arn:aws:bedrock-agentcore:us-east-1:123:runtime/X');
+  });
+
+  it('resolves runtimeArn when --runtime is an agent name', async () => {
+    const ctx = await loadExecContext({ runtimeArn: 'AgentB' }, TWO_AGENT_CONFIG);
+    expect(ctx.runtimeArn).toBe('arn:aws:bedrock-agentcore:us-east-1:123:runtime/AgentB');
+    expect(ctx.region).toBe('us-east-1');
+  });
+
+  it('throws with available agents listed when --runtime name is not found', async () => {
+    await expect(loadExecContext({ runtimeArn: 'AgentC' }, TWO_AGENT_CONFIG)).rejects.toThrow(
+      /AgentC.*AgentA.*AgentB|AgentC.*AgentB.*AgentA/
+    );
+  });
+
+  it('throws when no --runtime and multiple agents are deployed', async () => {
+    await expect(loadExecContext({}, TWO_AGENT_CONFIG)).rejects.toThrow(
+      /Multiple agents.*AgentA.*AgentB|Multiple agents.*AgentB.*AgentA/
+    );
+  });
+
+  it('auto-selects when no --runtime and exactly one agent is deployed', async () => {
+    const ctx = await loadExecContext({}, ONE_AGENT_CONFIG);
+    expect(ctx.runtimeArn).toBe('arn:aws:bedrock-agentcore:us-east-1:123:runtime/AgentA');
+  });
+});
+
+// ---------------------------------------------------------------------------
 // handleExecOneShot — --json buffering
 // ---------------------------------------------------------------------------
 

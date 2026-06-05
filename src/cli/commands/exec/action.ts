@@ -16,10 +16,12 @@ export interface ExecContext {
   runtimeArn: string;
 }
 
-/** Resolve region + runtimeArn from options and/or agentcore.json deployed state. */
+/** Resolve region + runtimeArn from options and/or agentcore.json deployed state.
+ *  --runtime accepts either a full ARN (arn:...) or an agent name from deployed state.
+ */
 export async function loadExecContext(options: ExecOptions, configIO: ConfigIO = new ConfigIO()): Promise<ExecContext> {
-  // Short-circuit: if both are explicitly provided, no need to read deployed state
-  if (options.runtimeArn && options.region) {
+  // Short-circuit: explicit ARN + region — no need to read deployed state
+  if (options.runtimeArn?.startsWith('arn:') && options.region) {
     return { region: options.region, runtimeArn: options.runtimeArn };
   }
 
@@ -49,6 +51,29 @@ export async function loadExecContext(options: ExecOptions, configIO: ConfigIO =
     throw new Error(`No deployed runtimes found in target '${targetName}'.`);
   }
 
+  // --runtime <arn> with no --region: ARN provided but region must come from config
+  if (options.runtimeArn?.startsWith('arn:')) {
+    return { region: options.region ?? targetConfig.region, runtimeArn: options.runtimeArn };
+  }
+
+  // --runtime <name>: look up by agent name in deployed state
+  if (options.runtimeArn) {
+    const agentState = targetState?.resources?.runtimes?.[options.runtimeArn];
+    if (!agentState?.runtimeArn) {
+      throw new Error(
+        `Agent '${options.runtimeArn}' not found in target '${targetName}'. Available agents: ${runtimeKeys.join(', ')}`
+      );
+    }
+    return { region: options.region ?? targetConfig.region, runtimeArn: agentState.runtimeArn };
+  }
+
+  // No --runtime: error if ambiguous, auto-select if only one agent deployed
+  if (runtimeKeys.length > 1) {
+    throw new Error(
+      `Multiple agents deployed in target '${targetName}'. Specify one with --runtime <name>: ${runtimeKeys.join(', ')}`
+    );
+  }
+
   const agentState = targetState?.resources?.runtimes?.[runtimeKeys[0]!];
   if (!agentState?.runtimeArn) {
     throw new Error('Could not determine runtime ARN from deployed state.');
@@ -56,7 +81,7 @@ export async function loadExecContext(options: ExecOptions, configIO: ConfigIO =
 
   return {
     region: options.region ?? targetConfig.region,
-    runtimeArn: options.runtimeArn ?? agentState.runtimeArn,
+    runtimeArn: agentState.runtimeArn,
   };
 }
 

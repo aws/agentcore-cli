@@ -31,7 +31,7 @@ export const registerExec = (program: Command) => {
     .description(COMMAND_DESCRIPTIONS.exec)
     .argument('[command...]', 'Command to execute (one-shot mode, non-interactive)')
     .option('--it', 'Open an interactive PTY shell session')
-    .option('--runtime <arn>', 'Target runtime ARN (skips agent picker)')
+    .option('--runtime <name|arn>', 'Target agent name or runtime ARN (skips agent picker)')
     .option('--session-id <id>', 'Pin to a specific runtime session / VM')
     .option('--shell-id <id>', 'Reconnect to an existing shell')
     .option('--region <region>', 'AWS region')
@@ -55,9 +55,10 @@ export const registerExec = (program: Command) => {
         }
       ) => {
         try {
-          // Skip project check when --runtime is provided: the user has an explicit ARN and
-          // doesn't need an agentcore.json in the working directory.
-          if (!cliOptions.runtime) {
+          // Skip project check only when --runtime is a full ARN: the user has all the
+          // information they need without an agentcore.json in the working directory.
+          // A name-based --runtime still requires the project to resolve the ARN.
+          if (!cliOptions.runtime?.startsWith('arn:')) {
             if (cliOptions.json) {
               // requireProject() renders Ink and calls process.exit — bypass it in JSON mode
               // so we can emit a machine-readable error instead.
