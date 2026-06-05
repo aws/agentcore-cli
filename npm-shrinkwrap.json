@@ -10,7 +10,7 @@
       "hasInstallScript": true,
       "license": "Apache-2.0",
       "dependencies": {
-        "@aws-cdk/toolkit-lib": "^1.16.0",
+        "@aws-cdk/toolkit-lib": "^1.28.0",
         "@aws-sdk/client-application-signals": "^3.1003.0",
         "@aws-sdk/client-bedrock": "^3.1012.0",
         "@aws-sdk/client-bedrock-agent": "^3.1012.0",
@@ -370,14 +370,14 @@
       }
     },
     "node_modules/@aws-cdk/toolkit-lib": {
-      "version": "1.24.0",
-      "resolved": "https://registry.npmjs.org/@aws-cdk/toolkit-lib/-/toolkit-lib-1.24.0.tgz",
-      "integrity": "sha512-tgtH0CJ8/N/CpT1/ebOBfUpxdAMSRsP9LTAjWfa+E0clX4Vuvx0w1J1bGYwtvKY9nQUbFIO4QfgNEHz8hVlMUA==",
+      "version": "1.28.0",
+      "resolved": "https://registry.npmjs.org/@aws-cdk/toolkit-lib/-/toolkit-lib-1.28.0.tgz",
+      "integrity": "sha512-L1binntiOh/+stWOVcQF1rrEpnsW5F+IM23vTXEdRfzg18FBhAWK6GsDHUnmR2G0ziQCfOJ+HK1UBfBx2gSo/w==",
       "license": "Apache-2.0",
       "dependencies": {
         "@aws-cdk/cdk-assets-lib": "^1",
-        "@aws-cdk/cloud-assembly-api": "2.2.2",
-        "@aws-cdk/cloud-assembly-schema": ">=53.18.0",
+        "@aws-cdk/cloud-assembly-api": "2.2.5",
+        "@aws-cdk/cloud-assembly-schema": ">=54.2.0",
         "@aws-cdk/cloudformation-diff": "^2",
         "@aws-cdk/cx-api": "^2",
         "@aws-sdk/client-appsync": "^3",
@@ -408,7 +408,7 @@
         "@smithy/util-retry": "^4",
         "@smithy/util-waiter": "^4",
         "archiver": "^7.0.1",
-        "cdk-from-cfn": "^0.295.0",
+        "cdk-from-cfn": "^0.302.0",
         "chalk": "^4",
         "chokidar": "^4",
         "fast-deep-equal": "^3.1.3",
@@ -416,9 +416,8 @@
         "fs-extra": "^11",
         "p-limit": "^3",
         "picomatch": "^4",
-        "semver": "^7.7.4",
+        "semver": "^7.8.1",
         "split2": "^4.2.0",
-        "uuid": "^11.1.0",
         "wrap-ansi": "^7",
         "yaml": "^1"
       },
@@ -430,32 +429,45 @@
       }
     },
     "node_modules/@aws-cdk/toolkit-lib/node_modules/@aws-cdk/cloud-assembly-api": {
-      "version": "2.2.2",
-      "resolved": "https://registry.npmjs.org/@aws-cdk/cloud-assembly-api/-/cloud-assembly-api-2.2.2.tgz",
-      "integrity": "sha512-iiypKqfpHMqQ9z6Nwxx42Ha4NCevLVDQ8sphIbqHxSJE5kDe/DCzvh8b2HtlAshWjo44HMhYdfKNLR96S3T4sA==",
-      "bundleDependencies": ["jsonschema", "semver"],
+      "version": "2.2.5",
+      "resolved": "https://registry.npmjs.org/@aws-cdk/cloud-assembly-api/-/cloud-assembly-api-2.2.5.tgz",
+      "integrity": "sha512-RrjdgAgOjc0rMSGhMmIq1IKRI2lSYEK5XLu+863pQjecxNaNQkrQCyI62Z3JClFnQnjBeFSfDoY78apS9Aa9tA==",
       "license": "Apache-2.0",
       "dependencies": {
-        "jsonschema": "~1.4.1",
-        "semver": "^7.7.4"
+        "jsonschema": "^1.5.0",
+        "semver": "^7.8.0"
       },
       "engines": {
         "node": ">= 18.0.0"
       },
       "peerDependencies": {
-        "@aws-cdk/cloud-assembly-schema": ">=53.15.0"
+        "@aws-cdk/cloud-assembly-schema": ">=53.28.0"
       }
     },
-    "node_modules/@aws-cdk/toolkit-lib/node_modules/@aws-cdk/cloud-assembly-api/node_modules/jsonschema": {
-      "version": "1.4.1",
+    "node_modules/@aws-cdk/toolkit-lib/node_modules/@aws-cdk/cloud-assembly-schema": {
+      "version": "54.2.0",
+      "resolved": "https://registry.npmjs.org/@aws-cdk/cloud-assembly-schema/-/cloud-assembly-schema-54.2.0.tgz",
+      "integrity": "sha512-u3lFXmiXSBozxGBmKTCVD/2mTDsaXzLZH3KYiIQKcB+zPldXOeE5TnooBgKV9ih2jVTo8ML0HpkhfAq2eiv0eQ==",
+      "bundleDependencies": ["jsonschema", "semver"],
+      "license": "Apache-2.0",
+      "dependencies": {
+        "jsonschema": "^1.5.0",
+        "semver": "^7.8.1"
+      },
+      "engines": {
+        "node": ">= 18.0.0"
+      }
+    },
+    "node_modules/@aws-cdk/toolkit-lib/node_modules/@aws-cdk/cloud-assembly-schema/node_modules/jsonschema": {
+      "version": "1.5.0",
       "inBundle": true,
       "license": "MIT",
       "engines": {
         "node": "*"
       }
     },
-    "node_modules/@aws-cdk/toolkit-lib/node_modules/@aws-cdk/cloud-assembly-api/node_modules/semver": {
-      "version": "7.7.4",
+    "node_modules/@aws-cdk/toolkit-lib/node_modules/@aws-cdk/cloud-assembly-schema/node_modules/semver": {
+      "version": "7.8.1",
       "inBundle": true,
       "license": "ISC",
       "bin": {
@@ -7715,9 +7727,9 @@
       }
     },
     "node_modules/cdk-from-cfn": {
-      "version": "0.295.0",
-      "resolved": "https://registry.npmjs.org/cdk-from-cfn/-/cdk-from-cfn-0.295.0.tgz",
-      "integrity": "sha512-HNQu3TfNTHZNlxh/o0XxhMMSt3uDFDtMxxO2wZGvZpHwvjZLLFSCHooMbMGj75vtyqNmqKxQdR9WQSTcW3oIpg==",
+      "version": "0.302.0",
+      "resolved": "https://registry.npmjs.org/cdk-from-cfn/-/cdk-from-cfn-0.302.0.tgz",
+      "integrity": "sha512-jbwwzl9yXhCpuOacrQ/jDXnsEnWE7n5UqhfnCdpGOvLhy2FqWlbk1Wd7mDwNsT/QfL3AYZqIyjYSsSLxYVjPlA==",
       "license": "MIT OR Apache-2.0"
     },
     "node_modules/chai": {
@@ -11049,6 +11061,15 @@
         "graceful-fs": "^4.1.6"
       }
     },
+    "node_modules/jsonschema": {
+      "version": "1.5.0",
+      "resolved": "https://registry.npmjs.org/jsonschema/-/jsonschema-1.5.0.tgz",
+      "integrity": "sha512-K+A9hhqbn0f3pJX17Q/7H6yQfD/5OXgdrR5UE12gMXCiN9D5Xq2o5mddV2QEcX/bjla99ASsAAQUyMCCRWAEhw==",
+      "license": "MIT",
+      "engines": {
+        "node": "*"
+      }
+    },
     "node_modules/jsx-ast-utils": {
       "version": "3.3.5",
       "resolved": "https://registry.npmjs.org/jsx-ast-utils/-/jsx-ast-utils-3.3.5.tgz",
@@ -14156,9 +14177,9 @@
       }
     },
     "node_modules/semver": {
-      "version": "7.7.4",
-      "resolved": "https://registry.npmjs.org/semver/-/semver-7.7.4.tgz",
-      "integrity": "sha512-vFKC2IEtQnVhpT78h1Yp8wzwrf8CM+MzKMHGJZfBtzhZNycRFnXsHk6E5TxIkkMsgNS7mdX3AGB7x2QM2di4lA==",
+      "version": "7.8.2",
+      "resolved": "https://registry.npmjs.org/semver/-/semver-7.8.2.tgz",
+      "integrity": "sha512-c8jsqUZm3omBOI66G90z1Dyw5z622G8oLG+omfsHBJf3CWQTlOcwOjvOG6wtiNfW6anKm/eA39LMwMtMez2TiQ==",
       "license": "ISC",
       "bin": {
         "semver": "bin/semver.js"
@@ -15994,16 +16015,6 @@
       "resolved": "https://registry.npmjs.org/util-deprecate/-/util-deprecate-1.0.2.tgz",
       "integrity": "sha512-EPD5q1uXyFxJpCrLnCc1nHnq3gOa6DZBocAIiI2TaSCA7VCJ1UJDMagCzIkXNsUYfD1daK//LTEQ8xiIbrHtcw==",
       "license": "MIT"
-    },
-    "node_modules/uuid": {
-      "version": "11.1.1",
-      "resolved": "https://registry.npmjs.org/uuid/-/uuid-11.1.1.tgz",
-      "integrity": "sha512-vIYxrBCC/N/K+Js3qSN88go7kIfNPssr/hHCesKCQNAjmgvYS2oqr69kIufEG+O4+PfezOH4EbIeHCfFov8ZgQ==",
-      "funding": ["https://github.com/sponsors/broofa", "https://github.com/sponsors/ctavan"],
-      "license": "MIT",
-      "bin": {
-        "uuid": "dist/esm/bin/uuid"
-      }
     },
     "node_modules/validate-npm-package-license": {
       "version": "3.0.4",
