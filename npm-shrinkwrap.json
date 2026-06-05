@@ -10,6 +10,7 @@
       "hasInstallScript": true,
       "license": "Apache-2.0",
       "dependencies": {
+        "@aws-cdk/cdk-assets-lib": "^1.4.10",
         "@aws-cdk/toolkit-lib": "^1.28.0",
         "@aws-sdk/client-application-signals": "^3.1003.0",
         "@aws-sdk/client-bedrock": "^3.1012.0",
@@ -174,14 +175,13 @@
       }
     },
     "node_modules/@aws-cdk/cdk-assets-lib": {
-      "version": "1.4.2",
-      "resolved": "https://registry.npmjs.org/@aws-cdk/cdk-assets-lib/-/cdk-assets-lib-1.4.2.tgz",
-      "integrity": "sha512-RFDITy2nC9LPckAVymApxtLl9wzI0arUh/2h9d2LAjl2zeiVASr89WpRK/bA1RhHw3ElypEMa052DIAzt3RimA==",
+      "version": "1.4.10",
+      "resolved": "https://registry.npmjs.org/@aws-cdk/cdk-assets-lib/-/cdk-assets-lib-1.4.10.tgz",
+      "integrity": "sha512-LOJP992WcTV2GW5zazqx38QVKZFMiPMwMZVjdWj4K7NszlgMR9MWUHbj674UEBJ01ucmoi24qvLQwzfu90N95A==",
       "license": "Apache-2.0",
       "dependencies": {
-        "@aws-cdk/cloud-assembly-api": "2.2.1",
-        "@aws-cdk/cloud-assembly-schema": ">=53.8.0",
-        "@aws-cdk/cx-api": "^2",
+        "@aws-cdk/cloud-assembly-api": "2.2.5",
+        "@aws-cdk/cloud-assembly-schema": ">=54.2.0",
         "@aws-sdk/client-ecr": "^3",
         "@aws-sdk/client-s3": "^3",
         "@aws-sdk/client-secrets-manager": "^3",
@@ -193,10 +193,43 @@
         "archiver": "^7.0.1",
         "fast-glob": "^3.3.3",
         "mime": "^2",
-        "picomatch": "^4.0.3"
+        "picomatch": "^4.0.4"
       },
       "engines": {
         "node": ">= 18.0.0"
+      }
+    },
+    "node_modules/@aws-cdk/cdk-assets-lib/node_modules/@aws-cdk/cloud-assembly-schema": {
+      "version": "54.2.0",
+      "resolved": "https://registry.npmjs.org/@aws-cdk/cloud-assembly-schema/-/cloud-assembly-schema-54.2.0.tgz",
+      "integrity": "sha512-u3lFXmiXSBozxGBmKTCVD/2mTDsaXzLZH3KYiIQKcB+zPldXOeE5TnooBgKV9ih2jVTo8ML0HpkhfAq2eiv0eQ==",
+      "bundleDependencies": ["jsonschema", "semver"],
+      "license": "Apache-2.0",
+      "dependencies": {
+        "jsonschema": "^1.5.0",
+        "semver": "^7.8.1"
+      },
+      "engines": {
+        "node": ">= 18.0.0"
+      }
+    },
+    "node_modules/@aws-cdk/cdk-assets-lib/node_modules/@aws-cdk/cloud-assembly-schema/node_modules/jsonschema": {
+      "version": "1.5.0",
+      "inBundle": true,
+      "license": "MIT",
+      "engines": {
+        "node": "*"
+      }
+    },
+    "node_modules/@aws-cdk/cdk-assets-lib/node_modules/@aws-cdk/cloud-assembly-schema/node_modules/semver": {
+      "version": "7.8.1",
+      "inBundle": true,
+      "license": "ISC",
+      "bin": {
+        "semver": "bin/semver.js"
+      },
+      "engines": {
+        "node": ">=10"
       }
     },
     "node_modules/@aws-cdk/cli-plugin-contract": {
@@ -210,39 +243,19 @@
       }
     },
     "node_modules/@aws-cdk/cloud-assembly-api": {
-      "version": "2.2.1",
-      "resolved": "https://registry.npmjs.org/@aws-cdk/cloud-assembly-api/-/cloud-assembly-api-2.2.1.tgz",
-      "integrity": "sha512-24ARpDQzF39UTickUgDH6RIs5otPG4aaKJZ93XUSNwiPSR9T+h7gXSF982+NZVYK+7SetQaqrVbm4lcF6dmXWw==",
-      "bundleDependencies": ["jsonschema", "semver"],
+      "version": "2.2.5",
+      "resolved": "https://registry.npmjs.org/@aws-cdk/cloud-assembly-api/-/cloud-assembly-api-2.2.5.tgz",
+      "integrity": "sha512-RrjdgAgOjc0rMSGhMmIq1IKRI2lSYEK5XLu+863pQjecxNaNQkrQCyI62Z3JClFnQnjBeFSfDoY78apS9Aa9tA==",
       "license": "Apache-2.0",
       "dependencies": {
-        "jsonschema": "~1.4.1",
-        "semver": "^7.7.4"
+        "jsonschema": "^1.5.0",
+        "semver": "^7.8.0"
       },
       "engines": {
         "node": ">= 18.0.0"
       },
       "peerDependencies": {
-        "@aws-cdk/cloud-assembly-schema": ">=53.8.0"
-      }
-    },
-    "node_modules/@aws-cdk/cloud-assembly-api/node_modules/jsonschema": {
-      "version": "1.4.1",
-      "inBundle": true,
-      "license": "MIT",
-      "engines": {
-        "node": "*"
-      }
-    },
-    "node_modules/@aws-cdk/cloud-assembly-api/node_modules/semver": {
-      "version": "7.7.4",
-      "inBundle": true,
-      "license": "ISC",
-      "bin": {
-        "semver": "bin/semver.js"
-      },
-      "engines": {
-        "node": ">=10"
+        "@aws-cdk/cloud-assembly-schema": ">=53.28.0"
       }
     },
     "node_modules/@aws-cdk/cloud-assembly-schema": {
@@ -428,22 +441,6 @@
       },
       "peerDependencies": {
         "@aws-cdk/cli-plugin-contract": "^2"
-      }
-    },
-    "node_modules/@aws-cdk/toolkit-lib/node_modules/@aws-cdk/cloud-assembly-api": {
-      "version": "2.2.5",
-      "resolved": "https://registry.npmjs.org/@aws-cdk/cloud-assembly-api/-/cloud-assembly-api-2.2.5.tgz",
-      "integrity": "sha512-RrjdgAgOjc0rMSGhMmIq1IKRI2lSYEK5XLu+863pQjecxNaNQkrQCyI62Z3JClFnQnjBeFSfDoY78apS9Aa9tA==",
-      "license": "Apache-2.0",
-      "dependencies": {
-        "jsonschema": "^1.5.0",
-        "semver": "^7.8.0"
-      },
-      "engines": {
-        "node": ">= 18.0.0"
-      },
-      "peerDependencies": {
-        "@aws-cdk/cloud-assembly-schema": ">=53.28.0"
       }
     },
     "node_modules/@aws-cdk/toolkit-lib/node_modules/@aws-cdk/cloud-assembly-schema": {

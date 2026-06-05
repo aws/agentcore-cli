@@ -75,6 +75,7 @@
     "bundle": "node scripts/bundle.mjs"
   },
   "dependencies": {
+    "@aws-cdk/cdk-assets-lib": "^1.4.10",
     "@aws-cdk/toolkit-lib": "^1.28.0",
     "@aws-sdk/client-application-signals": "^3.1003.0",
     "@aws-sdk/client-bedrock": "^3.1012.0",
