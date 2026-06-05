@@ -2,6 +2,7 @@ import { COMMAND_DESCRIPTIONS } from '../../constants';
 import { getErrorMessage } from '../../errors';
 import { handleLogsEval } from '../../operations/eval';
 import type { LogsEvalOptions } from '../../operations/eval';
+import { withCommandRunTelemetry } from '../../telemetry/cli-command-run.js';
 import { requireProject } from '../../tui/guards';
 import { handleLogs } from './action';
 import type { LogsOptions } from './types';
@@ -31,7 +32,11 @@ export const registerLogs = (program: Command) => {
       requireProject();
 
       try {
-        const result = await handleLogs(cliOptions);
+        const result = await withCommandRunTelemetry(
+          'logs',
+          { has_query: !!cliOptions.query, has_level_filter: !!cliOptions.level },
+          () => handleLogs(cliOptions)
+        );
 
         if (!result.success) {
           render(<Text color="red">{result.error.message}</Text>);
@@ -56,7 +61,9 @@ export const registerLogs = (program: Command) => {
       requireProject();
 
       try {
-        const result = await handleLogsEval(cliOptions);
+        const result = await withCommandRunTelemetry('logs.evals', { has_follow: !!cliOptions.follow }, () =>
+          handleLogsEval(cliOptions)
+        );
 
         if (!result.success) {
           render(<Text color="red">{result.error.message}</Text>);
