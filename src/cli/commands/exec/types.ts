@@ -11,7 +11,6 @@ export interface ExecOptions {
   interactive?: boolean;
   /** Positional args — the bash command for one-shot mode. */
   command?: string[];
-  profile?: string;
   region?: string;
   /** Bearer token for CUSTOM_JWT auth (from --bearer-token). When set, skips SigV4 and authenticates via WebSocket subprotocol. */
   bearerToken?: string;

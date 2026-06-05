@@ -35,7 +35,6 @@ export const registerExec = (program: Command) => {
     .option('--session-id <id>', 'Pin to a specific runtime session / VM')
     .option('--shell-id <id>', 'Reconnect to an existing shell')
     .option('--region <region>', 'AWS region')
-    .option('--profile <profile>', 'AWS profile')
     .option('--bearer-token <token>', 'Bearer token for CUSTOM_JWT authentication (skips SigV4)')
     .option('--target <name>', 'Deployment target name (from agentcore.json)')
     .option('--timeout <seconds>', 'Timeout in seconds for one-shot commands', v => parseInt(v, 10))
@@ -49,7 +48,6 @@ export const registerExec = (program: Command) => {
           sessionId?: string;
           shellId?: string;
           region?: string;
-          profile?: string;
           bearerToken?: string;
           target?: string;
           timeout?: number;
@@ -109,7 +107,6 @@ export const registerExec = (program: Command) => {
             interactive: cliOptions.it,
             command: commandArgs.length > 0 ? commandArgs : undefined,
             region: cliOptions.region,
-            profile: cliOptions.profile,
             bearerToken: cliOptions.bearerToken,
             targetName: cliOptions.target,
             timeout: cliOptions.timeout,
