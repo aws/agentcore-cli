@@ -16,6 +16,7 @@ export const COMMAND_DESCRIPTIONS = {
   create: 'Create a new AgentCore project',
   deploy: 'Deploy project infrastructure to AWS via CDK.',
   dev: 'Launch local dev server, or invoke an agent locally.',
+  exec: 'Open an interactive shell or run a one-shot command in a deployed agent container.',
   invoke: 'Invoke a deployed agent endpoint.',
   logs: 'Stream or search agent runtime logs.',
   package: 'Package agent artifacts without deploying.',

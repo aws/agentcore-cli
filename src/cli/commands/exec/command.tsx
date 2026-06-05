@@ -1,7 +1,7 @@
 import { findConfigRoot } from '../../../lib';
+import { COMMAND_DESCRIPTIONS } from '../../constants';
 import { getErrorMessage } from '../../errors';
 import { withCommandRunTelemetry } from '../../telemetry/cli-command-run.js';
-import { COMMAND_DESCRIPTIONS } from '../../tui/copy';
 import { requireProject, requireTTY } from '../../tui/guards';
 import { ExecScreen } from '../../tui/screens/exec';
 import { handleExecOneShot, handleShellSession, loadExecContext, runInteractiveShell } from './action';
