@@ -37,7 +37,7 @@ export interface ConnectShellOptions {
   shellId?: string;
   /** Extra headers merged into the signed upgrade request */
   headers?: Record<string, string>;
-  /** When provided, enables auto-reconnect on unexpected disconnects */
+  /** When provided, retries the initial WebSocket handshake on failure */
   reconnect?: ShellReconnectOptions;
   /** Bearer token for CUSTOM_JWT auth. When set, authenticates via WebSocket subprotocol instead of SigV4. */
   bearerToken?: string;
@@ -296,7 +296,9 @@ function sleep(ms: number): Promise<void> {
 }
 
 /**
- * Open a shell WebSocket with optional auto-reconnect on unexpected disconnects.
+ * Open a shell WebSocket, retrying the initial handshake on failure.
+ * Once the connection is established this function returns — mid-session reconnect
+ * is not handled here; that is the caller's responsibility.
  * Throws `ShellKickedError` when the server sends close code 4000 — callers must not retry.
  */
 export async function connectShell(options: ConnectShellOptions): Promise<ShellConnection> {

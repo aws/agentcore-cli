@@ -15,16 +15,6 @@ vi.mock('../account', () => ({
   }),
 }));
 
-vi.mock('@smithy/signature-v4', () => ({
-  SignatureV4: class {
-    sign(req: { headers: Record<string, string> }) {
-      return Promise.resolve({ ...req, headers: { ...req.headers, Authorization: 'AWS4-HMAC-SHA256 ...' } });
-    }
-  },
-}));
-
-vi.mock('@aws-crypto/sha256-js', () => ({ Sha256: vi.fn() }));
-
 // Hoisted so the vi.mock('ws') factory can reference them
 const wsState = vi.hoisted(() => {
   return {
