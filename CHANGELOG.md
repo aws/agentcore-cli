@@ -2,6 +2,31 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.18.0] - 2026-06-05
+
+### Added
+- feat: add agentcore exec command with interactive shell and one-shot support (#1464) (259654b6)
+- feat: add BYO filesystem e2e test and supporting infrastructure (#1461) (dd255e3e)
+- feat: upgrade agent-inspector to v0.5.0 (#1458) (d14504ff)
+- feat: add EFS and S3 filesystem mount support (#1436) (64b9b636)
+
+### Fixed
+- fix(ci): pass filesystem env vars to e2e-tests-full vitest step (#1470) (a4c75ec8)
+- fix(deploy): bump aws-cdk-lib to ^2.258.0 to unblock e2e workspace resolution (#1469) (b4a7620c)
+- fix(deploy): bump @aws-cdk/cdk-assets-lib to read schema 54 asset manifests (#1468) (b071a9f9)
+- fix(deploy): bump @aws-cdk/toolkit-lib to read cloud-assembly schema 54 (#1465) (c42c5b4e)
+- fix(logs): wire up cli telemetry and model user errors (#1460) (5b98e76e)
+- fix(deploy): preserve error typing through CDK wrapper and preflight (#1459) (31269050)
+- fix(telemetry): re-throw exceptions in withCommandRunTelemetry (#1437) (15618b6f)
+- fix: agentcore dev orphaned processes (#1438) (c9d78ea2)
+
+### Documentation
+- docs: add documentation for telemetry (#1432) (65ba4850)
+
+### Other Changes
+- refactor: move command descriptions out of TUI module (#1451) (5e035d05)
+- Update image size limit from 1 GB to 2 GB (#1452) (77c3de39)
+
 ## [0.17.0] - 2026-06-02
 
 ### Added
