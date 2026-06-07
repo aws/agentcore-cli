@@ -45,6 +45,7 @@ export interface AddHarnessOptions {
   efsAccessPoints?: { accessPointArn: string; mountPath: string }[];
   s3AccessPoints?: { accessPointArn: string; mountPath: string }[];
   withInvokeScript?: boolean;
+  dockerfileBaseDir?: string;
   selectedTools?: string[];
   mcpName?: string;
   mcpUrl?: string;
@@ -85,9 +86,10 @@ export class HarnessPrimitive extends BasePrimitive<AddHarnessOptions, Removable
       let dockerfile: string | undefined;
       if (options.dockerfilePath) {
         const projectRoot = dirname(configBaseDir);
+        const dockerfileBaseDir = options.dockerfileBaseDir ?? projectRoot;
         const srcPath = isAbsolute(options.dockerfilePath)
           ? options.dockerfilePath
-          : resolve(projectRoot, options.dockerfilePath);
+          : resolve(dockerfileBaseDir, options.dockerfilePath);
         try {
           await access(srcPath);
         } catch {

@@ -654,6 +654,7 @@ export function useCreateFlow(cwd: string): CreateFlowState {
                 skipMemory: addHarnessConfig.skipMemory,
                 containerUri: addHarnessConfig.containerUri,
                 dockerfilePath: addHarnessConfig.dockerfilePath,
+                dockerfileBaseDir: cwd,
                 maxIterations: addHarnessConfig.maxIterations,
                 maxTokens: addHarnessConfig.maxTokens,
                 timeoutSeconds: addHarnessConfig.timeoutSeconds,

@@ -136,7 +136,8 @@ function printCreateHarnessSummary(projectName: string, harnessName: string): vo
 
 /** Handle CLI mode for the harness path (preview mode) */
 async function handleCreateHarnessCLI(options: CreateOptions): Promise<void> {
-  const cwd = options.outputDir ?? getWorkingDirectory();
+  const commandCwd = getWorkingDirectory();
+  const cwd = options.outputDir ?? commandCwd;
   const name = options.name ?? options.projectName;
   const projectName = options.projectName ?? name;
 
@@ -203,6 +204,7 @@ async function handleCreateHarnessCLI(options: CreateOptions): Promise<void> {
         apiKeyArn: options.apiKeyArn,
         containerUri: containerOption.containerUri,
         dockerfilePath: containerOption.dockerfilePath,
+        dockerfileBaseDir: commandCwd,
         skipMemory: options.harnessMemory === false,
         maxIterations: options.maxIterations ? Number(options.maxIterations) : undefined,
         maxTokens: options.maxTokens ? Number(options.maxTokens) : undefined,

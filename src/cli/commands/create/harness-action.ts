@@ -16,6 +16,7 @@ export interface CreateHarnessProjectOptions {
   skipMemory?: boolean;
   containerUri?: string;
   dockerfilePath?: string;
+  dockerfileBaseDir?: string;
   maxIterations?: number;
   maxTokens?: number;
   timeoutSeconds?: number;
@@ -62,6 +63,7 @@ export async function createProjectWithHarness(options: CreateHarnessProjectOpti
       apiKeyArn: options.apiKeyArn,
       containerUri: options.containerUri,
       dockerfilePath: options.dockerfilePath,
+      dockerfileBaseDir: options.dockerfileBaseDir ?? options.cwd,
       skipMemory: options.skipMemory,
       maxIterations: options.maxIterations,
       maxTokens: options.maxTokens,
