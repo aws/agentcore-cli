@@ -25,6 +25,7 @@ import {
   buildCdkProject,
   checkBootstrapNeeded,
   checkStackDeployability,
+  ensureDefaultDeploymentTarget,
   getAllCredentials,
   hasIdentityApiProviders,
   hasIdentityOAuthProviders,
@@ -117,8 +118,13 @@ export async function handleDeploy(options: ValidatedDeployOptions): Promise<Dep
   try {
     const configIO = new ConfigIO();
 
-    // Load targets and find the specified one
+    // Load targets and find the specified one.
+    // Freshly-created projects have an empty aws-targets.json (populated at deploy
+    // time). The interactive flow prompts for the target; for non-interactive
+    // deploys (`--yes`/`--json`/`--target`) auto-populate a default from the
+    // detected AWS context so deploy doesn't fail with "target not found".
     startStep('Load deployment target');
+    await ensureDefaultDeploymentTarget(configIO);
     const targets = await configIO.resolveAWSDeploymentTargets();
     const target = targets.find(t => t.name === options.target);
     if (!target) {

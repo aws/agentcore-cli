@@ -60,6 +60,9 @@ export {
   type OnlineEvalEnableResult,
 } from './post-deploy-online-evals';
 
+// Auto-populate a default deployment target for non-interactive deploys
+export { ensureDefaultDeploymentTarget } from './ensure-target';
+
 // Post-deploy config bundles
 export {
   setupConfigBundles,
