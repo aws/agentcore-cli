@@ -73,8 +73,14 @@ SECRET_JSON=$(aws secretsmanager get-secret-value \
 # Mirror the GitHub workflow: parse-json-secrets maps keys to E2E_<KEY> then
 # the workflow maps them to the bare names the tests expect.
 export ANTHROPIC_API_KEY=$(echo "$SECRET_JSON" | jq -r '.ANTHROPIC_API_KEY // empty')
-export OPENAI_API_KEY=$(echo "$SECRET_JSON"    | jq -r '.OPENAI_API_KEY // empty')
-export GEMINI_API_KEY=$(echo "$SECRET_JSON"    | jq -r '.GEMINI_API_KEY // empty')
+export OPENAI_API_KEY=$(echo "$SECRET_JSON" | jq -r '.OPENAI_API_KEY // empty')
+export GEMINI_API_KEY=$(echo "$SECRET_JSON" | jq -r '.GEMINI_API_KEY // empty')
+
+# Filesystem (BYO EFS / S3 Files) test inputs — required by strands-bedrock-byo-filesystem.test.ts.
+export E2E_EFS_ACCESS_POINT_ARN=$(echo "$SECRET_JSON" | jq -r '.EFS_ACCESS_POINT_ARN // empty')
+export E2E_S3_ACCESS_POINT_ARN=$(echo "$SECRET_JSON" | jq -r '.S3_ACCESS_POINT_ARN // empty')
+export E2E_FILESYSTEM_SUBNET_ID=$(echo "$SECRET_JSON" | jq -r '.FILESYSTEM_SUBNET_ID // empty')
+export E2E_FILESYSTEM_SECURITY_GROUP_ID=$(echo "$SECRET_JSON" | jq -r '.FILESYSTEM_SECURITY_GROUP_ID // empty')
 
 echo "✅ Secrets loaded (keys present: $(echo "$SECRET_JSON" | jq -r 'keys | join(", ")')"
 
@@ -84,7 +90,7 @@ echo "✅ AWS_ACCOUNT_ID=$AWS_ACCOUNT_ID  AWS_REGION=$AWS_REGION"
 
 echo "=== Configuring git (required for agentcore create) ==="
 git config --global user.email "ci@local" 2>/dev/null || true
-git config --global user.name "Local E2E"  2>/dev/null || true
+git config --global user.name "Local E2E" 2>/dev/null || true
 
 cd "$REPO_ROOT"
 
