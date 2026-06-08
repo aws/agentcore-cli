@@ -255,7 +255,8 @@ jobs:
           # `execution_file` step output (a JSON array of stream events; the
           # final element is the result envelope). We fall back to the known
           # path under RUNNER_TEMP if for some reason the output is missing.
-          OUTPUT_JSON: ${{ steps.review.outputs.execution_file || format('{0}/claude-execution-output.json', runner.temp) }}
+          OUTPUT_JSON:
+            ${{ steps.review.outputs.execution_file || format('{0}/claude-execution-output.json', runner.temp) }}
         run: |
           set -euo pipefail
           if [ ! -s "$OUTPUT_JSON" ]; then
