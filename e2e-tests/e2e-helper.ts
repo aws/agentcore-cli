@@ -127,7 +127,7 @@ export function createE2ESuite(cfg: E2EConfig) {
 
       const result = await runAgentCoreCLI(createArgs, testDir);
 
-      expect(result.exitCode, `Create failed: ${result.stderr}`).toBe(0);
+      expect(result.exitCode, `Create failed: stderr=${result.stderr}\n\nstdout=${result.stdout}`).toBe(0);
       const json = parseJsonOutput(result.stdout) as { projectPath: string };
       projectPath = json.projectPath;
 
