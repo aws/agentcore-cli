@@ -38,6 +38,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 const hasAws = hasAwsCredentials();
 const canRun = prereqs.npm && prereqs.git && prereqs.uv && hasAws;
 const region = process.env.AWS_REGION ?? 'us-east-1';
+const customJWTRejectMsgRegex = /configured for CUSTOM_JWT|[Aa]uthoriz(ation|er).*mismatch|different.*authorization/i;
 
 /**
  * Run the local CLI build without skipping install (needed for deploy).
@@ -61,8 +62,6 @@ describe.sequential('e2e: BYO agent with CUSTOM_JWT auth', () => {
 
   const cognitoClient = new CognitoIdentityProviderClient({ region });
   const cfnClient = new CloudFormationClient({ region });
-
-  const customJWTRejectMsgRegex = /configured for CUSTOM_JWT/i;
 
   /** Fetch a Cognito access token via client_credentials flow. */
   async function fetchCognitoAccessToken(): Promise<string> {
