@@ -5,8 +5,6 @@ on:
       aws_region:
         description: 'AWS region for deployment'
         default: 'us-east-1'
-  schedule:
-    - cron: '0 14 * * 1' # Every Monday at 9 AM EST (14:00 UTC)
   push:
     branches: [main]
 

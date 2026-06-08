@@ -19,6 +19,11 @@ jobs:
     permissions:
       issues: write
     steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '20.x'
+
       - name: Generate GitHub App Token
         id: app-token
         uses: actions/create-github-app-token@v1
@@ -26,54 +31,18 @@ jobs:
           app-id: ${{ vars.APP_ID }}
           private-key: ${{ secrets.APP_PRIVATE_KEY }}
 
-      - uses: actions/github-script@v9
-        with:
-          github-token: ${{ steps.app-token.outputs.token }}
-          script: |
-            try {
-              const workflowName = context.payload.workflow_run.name;
-
-              if (!/^[A-Za-z0-9 _()\-]+$/.test(workflowName)) {
-                core.setFailed(`Unexpected characters in workflow name: ${workflowName}`);
-                return;
-              }
-
-              const sha = context.payload.workflow_run.head_sha;
-              const runUrl = context.payload.workflow_run.html_url;
-              const branch = context.payload.workflow_run.head_branch;
-              const title = `CI Failure: ${workflowName}`;
-
-              const { data } = await github.rest.search.issuesAndPullRequests({
-                q: `repo:${context.repo.owner}/${context.repo.repo} is:issue is:open in:title "${title}"`
-              });
-
-              if (data.items.some(i => i.title === title)) {
-                core.info(`Issue already exists for "${title}"`);
-                return;
-              }
-
-              // Fallback: check recent issues in case search index is stale
-              const { data: recent } = await github.rest.issues.listForRepo({
-                owner: context.repo.owner,
-                repo: context.repo.repo,
-                state: 'open',
-                sort: 'created',
-                direction: 'desc',
-                per_page: 30
-              });
-
-              if (recent.some(i => i.title === title)) {
-                core.info(`Issue already exists for "${title}" (found via fallback)`);
-                return;
-              }
-
-              await github.rest.issues.create({
-                owner: context.repo.owner,
-                repo: context.repo.repo,
-                title,
-                labels: ['high-severity', 'ci'],
-                body: `## CI Failure\n\n- **Workflow:** ${workflowName}\n- **Branch:** ${branch}\n- **Commit:** ${sha}\n- **Run:** ${runUrl}\n\nPlease investigate this failure.`
-              });
-            } catch (error) {
-              core.setFailed(`Failed to create CI failure issue: ${error.message || error}`);
-            }
+      - name: Create CI failure issue
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          WORKFLOW_NAME: ${{ github.event.workflow_run.name }}
+          HEAD_BRANCH: ${{ github.event.workflow_run.head_branch }}
+          HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
+          RUN_URL: ${{ github.event.workflow_run.html_url }}
+        run: |
+          npx -y tsx .github/scripts/create-failure-issue.ts \
+            --title-prefix "CI Failure" \
+            --name "$WORKFLOW_NAME" \
+            --branch "$HEAD_BRANCH" \
+            --commit "$HEAD_SHA" \
+            --run-url "$RUN_URL" \
+            --labels "high-severity,ci"

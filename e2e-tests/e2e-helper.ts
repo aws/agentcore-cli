@@ -76,7 +76,7 @@ export function createE2ESuite(cfg: E2EConfig) {
       testDir = join(tmpdir(), `agentcore-e2e-${randomUUID()}`);
       await mkdir(testDir, { recursive: true });
 
-      agentName = `E2e${cfg.framework.slice(0, 4)}${cfg.modelProvider.slice(0, 4)}${String(Date.now()).slice(-8)}`;
+      agentName = `E2e${cfg.framework.slice(0, 4)}${cfg.modelProvider.slice(0, 4)}${randomUUID().replace(/-/g, '').slice(0, 8)}`;
       const createArgs = [
         'create',
         '--name',
