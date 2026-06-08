@@ -98,6 +98,7 @@ export {
   HarnessNameSchema,
   HarnessSpecSchema,
   HarnessToolTypeSchema,
+  validateApiFormat,
 } from './primitives/harness';
 
 // ============================================================================

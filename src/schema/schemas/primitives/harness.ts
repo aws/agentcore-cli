@@ -59,17 +59,16 @@ export const HarnessModelSchema = z
       });
     }
     if (model.apiFormat !== undefined) {
-      if (model.provider === 'gemini') {
+      if (model.provider !== 'bedrock' && model.provider !== 'open_ai') {
         ctx.addIssue({
           code: z.ZodIssueCode.custom,
-          message: 'apiFormat is not supported for the "gemini" provider',
+          message: '--api-format is only supported for bedrock and open_ai providers',
           path: ['apiFormat'],
         });
       } else if (model.provider === 'open_ai' && model.apiFormat === 'converse_stream') {
         ctx.addIssue({
           code: z.ZodIssueCode.custom,
-          message:
-            'converse_stream is not a valid API format for the "open_ai" provider. Use responses or chat_completions',
+          message: `Invalid API format for open_ai: ${model.apiFormat}. Use ${OpenAiApiFormatSchema.options.join(', ')}`,
           path: ['apiFormat'],
         });
       }
@@ -77,6 +76,21 @@ export const HarnessModelSchema = z
   });
 
 export type HarnessModel = z.infer<typeof HarnessModelSchema>;
+
+export function validateApiFormat(
+  apiFormat: string,
+  provider: string
+): { valid: true } | { valid: false; error: string } {
+  const allFormats = HarnessApiFormatSchema.options as readonly string[];
+  if (!allFormats.includes(apiFormat)) {
+    return { valid: false, error: `Invalid API format: ${apiFormat}. Use ${allFormats.join(', ')}` };
+  }
+  const result = HarnessModelSchema.safeParse({ provider, modelId: 'placeholder', apiFormat });
+  if (result.success) return { valid: true };
+  const apiFormatIssue = result.error.issues.find(i => i.path.includes('apiFormat'));
+  if (apiFormatIssue) return { valid: false, error: apiFormatIssue.message };
+  return { valid: true };
+}
 
 // ============================================================================
 // Tool Configuration
