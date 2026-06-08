@@ -31,6 +31,20 @@
       "Resource": "*"
     },
     {
+      "Sid": "FilesystemNetworkValidation",
+      "Effect": "Allow",
+      "Action": [
+        "ec2:DescribeSecurityGroups",
+        "ec2:DescribeSubnets",
+        "elasticfilesystem:DescribeAccessPoints",
+        "elasticfilesystem:DescribeMountTargets",
+        "elasticfilesystem:DescribeMountTargetSecurityGroups",
+        "s3files:ListMountTargets",
+        "s3files:GetMountTarget"
+      ],
+      "Resource": "*"
+    },
+    {
       "Sid": "AgentInvocation",
       "Effect": "Allow",
       "Action": [

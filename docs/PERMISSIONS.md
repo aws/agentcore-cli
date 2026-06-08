@@ -37,6 +37,8 @@ Attach this to every IAM user or role that will run AgentCore CLI commands. The 
 
 - `sts:AssumeRole` on the four CDK bootstrap roles (deploy, file-publishing, image-publishing, lookup)
 - `sts:GetCallerIdentity`, `cloudformation:DescribeStacks`, `tag:GetResources` for basic operations
+- `ec2:DescribeSecurityGroups` and `ec2:DescribeSubnets` for validating VPC network configuration when deploying agents
+  with EFS or S3 filesystem mounts (optional, see [Scoping down by feature](#scoping-down-by-feature))
 - `bedrock-agentcore:Invoke*`, `bedrock-agentcore:Get*`, `bedrock-agentcore:List*` for invoking agents and checking
   status
 - Credential provider and token vault actions for `deploy` when the project uses identity features
@@ -167,6 +169,7 @@ safely removed:
 | Container builds (CodeZip only) | _(no change)_                                                        | `EcrContainerBuilds`, `CodeBuildContainerBuilds`                                                       |
 | MCP Lambda compute              | _(no change)_                                                        | `LambdaMcpAndCustomResources` (keep if using container builds, which need Lambda for custom resources) |
 | Agent import from Bedrock       | `BedrockAgentImport`                                                 | _(no change)_                                                                                          |
+| Filesystem mounts (EFS/S3)      | `FilesystemNetworkValidation`                                        | _(no change)_                                                                                          |
 | AI-assisted code generation     | `BedrockModelInvocation`                                             | _(no change)_                                                                                          |
 | Identity/credential providers   | `IdentityCredentialManagement`, `TokenVaultKmsKeyCreation`           | `SecretsManagerForCredentials`                                                                         |
 | Policy engine                   | `PolicyGeneration`                                                   | Remove `*PolicyEngine*` and `*Policy` actions from `BedrockAgentCoreResources`                         |
@@ -308,6 +311,22 @@ Required for all deployment operations (`deploy`, `status`, `diff`).
 | `sts:GetCallerIdentity`         | All                                  | Validate AWS credentials, resolve account ID       |
 | `cloudformation:DescribeStacks` | `deploy`, `status`                   | Check bootstrap status, stack status, read outputs |
 | `tag:GetResources`              | `status`, `deploy`, `invoke`, `logs` | Discover deployed stacks by project tags           |
+
+### Filesystem network validation
+
+Required only when deploying an agent with EFS or S3 filesystem mounts and a VPC network configuration. The CLI runs a
+preflight check that the agent's subnets and security groups are correctly set up for NFS (port 2049) before deploying.
+These EC2 and EFS `Describe*` actions do not support resource-level scoping, so `Resource` must be `*`.
+
+| Action                                                | CLI Commands       | Purpose                                                            |
+| ----------------------------------------------------- | ------------------ | ------------------------------------------------------------------ |
+| `ec2:DescribeSecurityGroups`                          | `create`, `deploy` | Validate agent/mount-target security groups allow NFS (port 2049)  |
+| `ec2:DescribeSubnets`                                 | `create`, `deploy` | Validate mount-target subnets are in the agent's VPC and AZs       |
+| `elasticfilesystem:DescribeAccessPoints`              | `create`, `deploy` | Resolve the EFS access point and its file system                   |
+| `elasticfilesystem:DescribeMountTargets`              | `create`, `deploy` | Find the EFS mount targets to validate against the agent's subnets |
+| `elasticfilesystem:DescribeMountTargetSecurityGroups` | `create`, `deploy` | Check mount-target security groups allow NFS from the agent        |
+| `s3files:ListMountTargets`                            | `create`, `deploy` | List the S3 Files access point's mount targets                     |
+| `s3files:GetMountTarget`                              | `create`, `deploy` | Inspect an S3 Files mount target's subnet/network configuration    |
 
 ### Agent invocation
 
