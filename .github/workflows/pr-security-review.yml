@@ -167,18 +167,38 @@ jobs:
           # the base branch locally too. fetch-depth: 0 grabs the full history.
           fetch-depth: 0
 
-      - name: Set origin/HEAD for /security-review skill
+      - name: Prepare base ref for /security-review skill
         env:
           BASE_REF: ${{ steps.pr.outputs.base_ref }}
         run: |
           set -euo pipefail
-          # actions/checkout doesn't set up the remote's symbolic HEAD ref, so
-          # `git diff origin/HEAD...` (the first command the bundled
-          # /security-review skill runs) fails with "ambiguous argument
-          # 'origin/HEAD...': unknown revision". Point origin/HEAD at the PR's
-          # base branch so the skill resolves the diff against the right ref.
+          # The bundled /security-review skill's SessionStart hook runs
+          # `git diff --name-only origin/HEAD...` as its first command. Two
+          # things have to be true for that to succeed:
+          #   1. origin/HEAD has to be a valid ref. actions/checkout doesn't
+          #      set up the remote's symbolic HEAD, so we point it at the PR's
+          #      base branch.
+          #   2. The PR head and origin/<base> have to share a merge base in
+          #      the local clone. actions/checkout@v6 with `ref: <head_sha>`
+          #      fetches the head's history but on fork PRs may NOT fetch
+          #      origin/<base> into the clone — leaving `git diff origin/HEAD...`
+          #      to fail with "no merge base", which silently bombs the skill
+          #      (num_turns=0, model never invoked) and would otherwise look
+          #      like a clean review with zero findings.
+          # Fetching origin/<base> explicitly closes that gap.
+          git fetch --no-tags origin "+refs/heads/$BASE_REF:refs/remotes/origin/$BASE_REF"
           git remote set-head origin "$BASE_REF"
           git symbolic-ref refs/remotes/origin/HEAD
+
+          # Sanity: ensure the merge base actually resolves before we hand off
+          # to the skill. If it doesn't, fail loudly here rather than letting
+          # the skill silently bail.
+          if ! git merge-base "origin/$BASE_REF" HEAD >/dev/null; then
+            echo "::error::No merge base between HEAD and origin/$BASE_REF — /security-review cannot compute a diff."
+            exit 1
+          fi
+          echo "Merge base: $(git merge-base "origin/$BASE_REF" HEAD)"
+          echo "Files changed: $(git diff --name-only "origin/$BASE_REF...HEAD" | wc -l)"
 
       - name: Configure AWS credentials (OIDC)
         uses: aws-actions/configure-aws-credentials@v6
@@ -213,6 +233,49 @@ jobs:
             --model us.anthropic.claude-opus-4-7 --max-turns 30 --allowedTools
             mcp__github_inline_comment__create_inline_comment
 
+      - name: Verify model actually ran
+        id: model-ran
+        # The action exits 0 even when the model was never invoked (e.g. a
+        # SessionStart hook errored before the first turn). Treating that as
+        # success would let the workflow falsely report "no high-confidence
+        # findings" — that's exactly what happened on PR #1474, where the
+        # `/security-review` skill's first `git diff origin/HEAD...` hit a
+        # "no merge base" error, the SDK still returned `subtype: success`
+        # with `num_turns: 0` and zero tokens, and the buffer was empty.
+        #
+        # The action writes its full SDK transcript to
+        # ${RUNNER_TEMP}/claude-execution-output.json. We pull the final
+        # result envelope and require that the model actually took turns and
+        # spent tokens. If it didn't, mark the run as not-actually-completed
+        # so the summary comment uses the failure branch instead of pretending
+        # there were no findings.
+        if: steps.review.conclusion == 'success' || steps.review.conclusion == 'failure'
+        env:
+          # The action exposes its full SDK transcript path as the
+          # `execution_file` step output (a JSON array of stream events; the
+          # final element is the result envelope). We fall back to the known
+          # path under RUNNER_TEMP if for some reason the output is missing.
+          OUTPUT_JSON: ${{ steps.review.outputs.execution_file || format('{0}/claude-execution-output.json', runner.temp) }}
+        run: |
+          set -euo pipefail
+          if [ ! -s "$OUTPUT_JSON" ]; then
+            echo "::warning::No claude-execution-output.json found at $OUTPUT_JSON; cannot verify the model ran."
+            echo "ran=unknown" >> "$GITHUB_OUTPUT"
+            echo "num_turns=0" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          NUM_TURNS=$(jq -r '.[-1].num_turns // 0' "$OUTPUT_JSON")
+          IS_ERROR=$(jq -r '.[-1].is_error // false' "$OUTPUT_JSON")
+          OUTPUT_TOKENS=$(jq -r '.[-1].usage.output_tokens // 0' "$OUTPUT_JSON")
+          echo "num_turns=$NUM_TURNS, is_error=$IS_ERROR, output_tokens=$OUTPUT_TOKENS"
+          echo "num_turns=$NUM_TURNS" >> "$GITHUB_OUTPUT"
+          if [ "$IS_ERROR" = "true" ] || [ "$NUM_TURNS" = "0" ] || [ "$OUTPUT_TOKENS" = "0" ]; then
+            echo "::error::Claude Code SDK reported success but the model never ran productively (num_turns=$NUM_TURNS, output_tokens=$OUTPUT_TOKENS, is_error=$IS_ERROR). The /security-review skill likely bailed before analysis (e.g. SessionStart hook error). Refusing to report 'no findings'."
+            echo "ran=false" >> "$GITHUB_OUTPUT"
+            exit 1
+          fi
+          echo "ran=true" >> "$GITHUB_OUTPUT"
+
       - name: Count buffered findings
         id: findings
         # Only count if the review step actually ran (success or failure - both produce
@@ -240,6 +303,8 @@ jobs:
           PR_NUMBER: ${{ steps.pr.outputs.number }}
           FINDING_COUNT: ${{ steps.findings.outputs.count }}
           REVIEW_CONCLUSION: ${{ steps.review.conclusion }}
+          MODEL_RAN: ${{ steps.model-ran.outputs.ran }}
+          NUM_TURNS: ${{ steps.model-ran.outputs.num_turns }}
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
         with:
           github-token: ${{ steps.app-token.outputs.token }}
@@ -247,10 +312,17 @@ jobs:
             const prNumber = parseInt(process.env.PR_NUMBER, 10);
             const count = parseInt(process.env.FINDING_COUNT || '0', 10);
             const conclusion = process.env.REVIEW_CONCLUSION || 'skipped';
+            const modelRan = process.env.MODEL_RAN || 'unknown';
+            const numTurns = process.env.NUM_TURNS || '0';
             const runUrl = process.env.RUN_URL;
 
             let body;
-            if (conclusion === 'success') {
+            if (modelRan === 'false') {
+              // Action exited 0 but the model never actually ran productively (e.g. the
+              // /security-review skill's SessionStart hook errored before the first turn).
+              // Reporting "no findings" here would be a lie — the diff was never analyzed.
+              body = `**Claude Security Review:** the review did not actually analyze this PR (model took ${numTurns} turn${numTurns === '1' ? '' : 's'} — the skill likely failed during setup). See the [run](${runUrl}) for details; a later push or re-run is needed for a real review.`;
+            } else if (conclusion === 'success') {
               body =
                 count > 0
                   ? `**Claude Security Review:** posted ${count} inline finding${count === 1 ? '' : 's'} on this PR. ([run](${runUrl}))`
