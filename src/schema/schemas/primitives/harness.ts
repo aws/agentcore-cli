@@ -85,10 +85,18 @@ export function validateApiFormat(
   if (!allFormats.includes(apiFormat)) {
     return { valid: false, error: `Invalid API format: ${apiFormat}. Use ${allFormats.join(', ')}` };
   }
+  if (provider !== 'bedrock' && provider !== 'open_ai') {
+    return { valid: false, error: '--api-format is only supported for bedrock and open_ai providers' };
+  }
   const result = HarnessModelSchema.safeParse({ provider, modelId: 'placeholder', apiFormat });
   if (result.success) return { valid: true };
   const apiFormatIssue = result.error.issues.find(i => i.path.includes('apiFormat'));
-  if (apiFormatIssue) return { valid: false, error: apiFormatIssue.message };
+  if (apiFormatIssue) {
+    return {
+      valid: false,
+      error: `Invalid API format for ${provider}: ${apiFormat}. Use ${(provider === 'open_ai' ? OpenAiApiFormatSchema : BedrockApiFormatSchema).options.join(', ')}`,
+    };
+  }
   return { valid: true };
 }
 

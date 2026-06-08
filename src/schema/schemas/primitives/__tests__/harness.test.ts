@@ -754,7 +754,7 @@ describe('HarnessSpecSchema', () => {
     });
     expect(result.success).toBe(false);
     if (!result.success) {
-      expect(result.error.issues.some(i => i.message.includes('converse_stream is not a valid API format'))).toBe(true);
+      expect(result.error.issues.some(i => i.message.includes('Invalid API format for open_ai'))).toBe(true);
     }
   });
 
@@ -770,7 +770,7 @@ describe('HarnessSpecSchema', () => {
     });
     expect(result.success).toBe(false);
     if (!result.success) {
-      expect(result.error.issues.some(i => i.message.includes('not supported for the "gemini" provider'))).toBe(true);
+      expect(result.error.issues.some(i => i.message.includes('only supported for bedrock and open_ai'))).toBe(true);
     }
   });
 
