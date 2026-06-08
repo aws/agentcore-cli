@@ -33,12 +33,18 @@ export type HarnessModelProvider = z.infer<typeof HarnessModelProviderSchema>;
 export const BedrockApiFormatSchema = z.enum(['converse_stream', 'responses', 'chat_completions']);
 export type BedrockApiFormat = z.infer<typeof BedrockApiFormatSchema>;
 
+export const OpenAiApiFormatSchema = z.enum(['responses', 'chat_completions']);
+export type OpenAiApiFormat = z.infer<typeof OpenAiApiFormatSchema>;
+
+export const HarnessApiFormatSchema = z.enum(['converse_stream', 'responses', 'chat_completions']);
+export type HarnessApiFormat = z.infer<typeof HarnessApiFormatSchema>;
+
 export const HarnessModelSchema = z
   .object({
     provider: HarnessModelProviderSchema,
     modelId: z.string().min(1, 'Model ID is required'),
     apiKeyArn: z.string().optional(),
-    apiFormat: BedrockApiFormatSchema.optional(),
+    apiFormat: HarnessApiFormatSchema.optional(),
     temperature: z.number().min(0).max(2).optional(),
     topP: z.number().min(0).max(1).optional(),
     topK: z.number().min(0).max(1).optional(),
@@ -52,12 +58,21 @@ export const HarnessModelSchema = z
         path: ['topK'],
       });
     }
-    if (model.apiFormat !== undefined && model.provider !== 'bedrock') {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        message: 'apiFormat is only supported for the "bedrock" provider',
-        path: ['apiFormat'],
-      });
+    if (model.apiFormat !== undefined) {
+      if (model.provider === 'gemini') {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: 'apiFormat is not supported for the "gemini" provider',
+          path: ['apiFormat'],
+        });
+      } else if (model.provider === 'open_ai' && model.apiFormat === 'converse_stream') {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message:
+            'converse_stream is not a valid API format for the "open_ai" provider. Use responses or chat_completions',
+          path: ['apiFormat'],
+        });
+      }
     }
   });
 

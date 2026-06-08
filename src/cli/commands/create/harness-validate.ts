@@ -1,4 +1,10 @@
-import { BedrockApiFormatSchema, MAX_EFS_MOUNTS, MAX_S3_MOUNTS } from '../../../schema';
+import {
+  BedrockApiFormatSchema,
+  HarnessApiFormatSchema,
+  MAX_EFS_MOUNTS,
+  MAX_S3_MOUNTS,
+  OpenAiApiFormatSchema,
+} from '../../../schema';
 import { HarnessNameSchema, ProjectNameSchema } from '../../../schema';
 import {
   validateAccessPointMounts,
@@ -104,15 +110,31 @@ export function validateCreateHarnessOptions(options: CreateHarnessCliOptions, c
   }
 
   if (options.apiFormat) {
-    const validFormats = BedrockApiFormatSchema.options;
-    if (!validFormats.includes(options.apiFormat as (typeof validFormats)[number])) {
+    const allFormats = HarnessApiFormatSchema.options;
+    if (!allFormats.includes(options.apiFormat as (typeof allFormats)[number])) {
       return {
         valid: false,
-        error: `Invalid API format: ${options.apiFormat}. Use ${validFormats.join(', ')}`,
+        error: `Invalid API format: ${options.apiFormat}. Use ${allFormats.join(', ')}`,
       };
     }
-    if (options.modelProvider !== 'bedrock') {
-      return { valid: false, error: '--api-format is only supported for the bedrock provider' };
+    if (options.modelProvider === 'bedrock') {
+      const bedrockFormats = BedrockApiFormatSchema.options;
+      if (!bedrockFormats.includes(options.apiFormat as (typeof bedrockFormats)[number])) {
+        return {
+          valid: false,
+          error: `Invalid API format for bedrock: ${options.apiFormat}. Use ${bedrockFormats.join(', ')}`,
+        };
+      }
+    } else if (options.modelProvider === 'open_ai') {
+      const openAiFormats = OpenAiApiFormatSchema.options;
+      if (!openAiFormats.includes(options.apiFormat as (typeof openAiFormats)[number])) {
+        return {
+          valid: false,
+          error: `Invalid API format for open_ai: ${options.apiFormat}. Use ${openAiFormats.join(', ')}`,
+        };
+      }
+    } else {
+      return { valid: false, error: '--api-format is only supported for bedrock and open_ai providers' };
     }
   }
 

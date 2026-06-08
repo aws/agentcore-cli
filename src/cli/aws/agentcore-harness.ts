@@ -28,6 +28,7 @@ export interface BedrockModelConfig {
 export interface OpenAiModelConfig {
   modelId: string;
   apiKeyArn?: string;
+  apiFormat?: 'responses' | 'chat_completions';
   temperature?: number;
   topP?: number;
   maxTokens?: number;

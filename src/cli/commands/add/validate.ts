@@ -8,7 +8,9 @@ import {
   GatewayAuthorizerTypeSchema,
   GatewayExceptionLevelSchema,
   GatewayNameSchema,
+  HarnessApiFormatSchema,
   ModelProviderSchema,
+  OpenAiApiFormatSchema,
   ProtocolModeSchema,
   RuntimeAuthorizerTypeSchema,
   SDKFrameworkSchema,
@@ -894,16 +896,32 @@ const VALID_GATEWAY_OUTBOUND_AUTH = ['awsIam', 'none', 'oauth'] as const;
 
 export function validateAddHarnessOptions(options: AddHarnessCliOptions): ValidationResult {
   if (options.apiFormat) {
-    const validFormats = BedrockApiFormatSchema.options;
-    if (!validFormats.includes(options.apiFormat as (typeof validFormats)[number])) {
+    const allFormats = HarnessApiFormatSchema.options;
+    if (!allFormats.includes(options.apiFormat as (typeof allFormats)[number])) {
       return {
         valid: false,
-        error: `Invalid API format: ${options.apiFormat}. Use ${validFormats.join(', ')}`,
+        error: `Invalid API format: ${options.apiFormat}. Use ${allFormats.join(', ')}`,
       };
     }
     const provider = options.modelProvider ?? 'bedrock';
-    if (provider !== 'bedrock') {
-      return { valid: false, error: '--api-format is only supported for the bedrock provider' };
+    if (provider === 'bedrock') {
+      const bedrockFormats = BedrockApiFormatSchema.options;
+      if (!bedrockFormats.includes(options.apiFormat as (typeof bedrockFormats)[number])) {
+        return {
+          valid: false,
+          error: `Invalid API format for bedrock: ${options.apiFormat}. Use ${bedrockFormats.join(', ')}`,
+        };
+      }
+    } else if (provider === 'open_ai') {
+      const openAiFormats = OpenAiApiFormatSchema.options;
+      if (!openAiFormats.includes(options.apiFormat as (typeof openAiFormats)[number])) {
+        return {
+          valid: false,
+          error: `Invalid API format for open_ai: ${options.apiFormat}. Use ${openAiFormats.join(', ')}`,
+        };
+      }
+    } else {
+      return { valid: false, error: '--api-format is only supported for bedrock and open_ai providers' };
     }
   }
 

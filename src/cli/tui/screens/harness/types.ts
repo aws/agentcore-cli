@@ -1,4 +1,4 @@
-import type { BedrockApiFormat, HarnessModelProvider, NetworkMode, RuntimeAuthorizerType } from '../../../../schema';
+import type { HarnessApiFormat, HarnessModelProvider, NetworkMode, RuntimeAuthorizerType } from '../../../../schema';
 import type { JwtConfig } from '../../components/jwt-config';
 
 export type ContainerMode = 'none' | 'uri' | 'dockerfile';
@@ -44,7 +44,7 @@ export interface AddHarnessConfig {
   name: string;
   modelProvider: HarnessModelProvider;
   modelId: string;
-  apiFormat?: BedrockApiFormat;
+  apiFormat?: HarnessApiFormat;
   apiKeyArn?: string;
   skipMemory?: boolean;
   containerMode?: ContainerMode;
@@ -133,7 +133,7 @@ export const MODEL_PROVIDER_OPTIONS = [
   },
 ] as const;
 
-export const API_FORMAT_OPTIONS = [
+export const BEDROCK_API_FORMAT_OPTIONS = [
   {
     id: 'converse_stream' as const,
     title: 'Converse Stream',
@@ -150,6 +150,21 @@ export const API_FORMAT_OPTIONS = [
     description: 'OpenAI Chat Completions API via Bedrock Mantle',
   },
 ] as const;
+
+export const OPENAI_API_FORMAT_OPTIONS = [
+  {
+    id: 'responses' as const,
+    title: 'Responses',
+    description: 'OpenAI Responses API (default)',
+  },
+  {
+    id: 'chat_completions' as const,
+    title: 'Chat Completions',
+    description: 'OpenAI Chat Completions API',
+  },
+] as const;
+
+export const API_FORMAT_OPTIONS = BEDROCK_API_FORMAT_OPTIONS;
 
 export const TRUNCATION_STRATEGY_OPTIONS = [
   { id: 'sliding_window' as const, title: 'Sliding window', description: 'Keep most recent messages' },

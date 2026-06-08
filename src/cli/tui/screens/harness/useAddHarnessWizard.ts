@@ -1,4 +1,4 @@
-import type { BedrockApiFormat, HarnessModelProvider, NetworkMode, RuntimeAuthorizerType } from '../../../../schema';
+import type { HarnessApiFormat, HarnessModelProvider, NetworkMode, RuntimeAuthorizerType } from '../../../../schema';
 import { isPreviewEnabled } from '../../../feature-flags';
 import type { JwtConfig } from '../../components/jwt-config';
 import { HARNESS_FILESYSTEM_STEP_NAMES, useFilesystemMountState } from '../../hooks/useFilesystemMountState';
@@ -58,7 +58,7 @@ export function useAddHarnessWizard() {
   const allSteps = useMemo(() => {
     const steps: AddHarnessStep[] = ['name', 'model-provider'];
 
-    if (config.modelProvider === 'bedrock' && isPreviewEnabled()) {
+    if ((config.modelProvider === 'bedrock' || config.modelProvider === 'open_ai') && isPreviewEnabled()) {
       steps.push('api-format');
     }
 
@@ -264,13 +264,18 @@ export function useAddHarnessWizard() {
     }
   }, []);
 
-  const setApiFormat = useCallback((apiFormat: BedrockApiFormat) => {
-    const isMantle = apiFormat !== 'converse_stream';
-    setConfig(c => ({
-      ...c,
-      apiFormat: isMantle ? apiFormat : undefined,
-      modelId: isMantle ? DEFAULT_BEDROCK_MANTLE_MODEL_ID : DEFAULT_MODEL_IDS.bedrock,
-    }));
+  const setApiFormat = useCallback((apiFormat: HarnessApiFormat) => {
+    setConfig(c => {
+      if (c.modelProvider === 'bedrock') {
+        const isMantle = apiFormat !== 'converse_stream';
+        return {
+          ...c,
+          apiFormat: isMantle ? apiFormat : undefined,
+          modelId: isMantle ? DEFAULT_BEDROCK_MANTLE_MODEL_ID : DEFAULT_MODEL_IDS.bedrock,
+        };
+      }
+      return { ...c, apiFormat };
+    });
     setStep('container');
   }, []);
 

@@ -171,6 +171,7 @@ function mapModel(model: HarnessSpec['model']): HarnessModelConfiguration {
         openAiModelConfig: {
           modelId,
           ...(apiKeyArn && { apiKeyArn }),
+          ...(apiFormat && apiFormat !== 'responses' && { apiFormat: apiFormat as 'responses' | 'chat_completions' }),
           ...(temperature !== undefined && { temperature }),
           ...(topP !== undefined && { topP }),
           ...(maxTokens !== undefined && { maxTokens }),

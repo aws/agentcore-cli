@@ -80,14 +80,18 @@ export type { HttpGatewayTarget } from './primitives/http-gateway';
 export { HttpGatewayTargetSchema } from './primitives/http-gateway';
 export type {
   BedrockApiFormat,
+  HarnessApiFormat,
   HarnessGatewayOutboundAuth,
   HarnessMemoryRef,
   HarnessModel,
   HarnessModelProvider,
   HarnessSpec,
+  OpenAiApiFormat,
 } from './primitives/harness';
 export {
   BedrockApiFormatSchema,
+  HarnessApiFormatSchema,
+  OpenAiApiFormatSchema,
   GatewayOAuthGrantTypeSchema,
   HarnessGatewayOutboundAuthSchema,
   HarnessModelProviderSchema,

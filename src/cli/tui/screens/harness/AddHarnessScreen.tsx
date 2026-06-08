@@ -1,5 +1,5 @@
 import type { HarnessModelProvider, RuntimeAuthorizerType } from '../../../../schema';
-import { BedrockApiFormatSchema, MAX_EFS_MOUNTS, MAX_S3_MOUNTS, NetworkModeSchema } from '../../../../schema';
+import { HarnessApiFormatSchema, MAX_EFS_MOUNTS, MAX_S3_MOUNTS, NetworkModeSchema } from '../../../../schema';
 import { HarnessNameSchema, HarnessTruncationStrategySchema } from '../../../../schema/schemas/primitives/harness';
 import { ARN_VALIDATION_MESSAGE, isValidArn } from '../../../commands/shared/arn-utils';
 import {
@@ -27,14 +27,15 @@ import { buildMountListItems } from '../agent/buildMountListItems';
 import type { AddHarnessConfig, AdvancedSetting, ContainerMode } from './types';
 import {
   ADVANCED_SETTING_OPTIONS,
-  API_FORMAT_OPTIONS,
   AUTHORIZER_TYPE_OPTIONS,
+  BEDROCK_API_FORMAT_OPTIONS,
   CONTAINER_MODE_OPTIONS,
   GATEWAY_OUTBOUND_AUTH_OPTIONS,
   HARNESS_STEP_LABELS,
   MEMORY_OPTIONS,
   MODEL_PROVIDER_OPTIONS,
   NETWORK_MODE_OPTIONS,
+  OPENAI_API_FORMAT_OPTIONS,
   TOOL_SELECT_OPTIONS,
   TRUNCATION_STRATEGY_OPTIONS,
 } from './types';
@@ -62,8 +63,13 @@ export function AddHarnessScreen({ existingHarnessNames, onComplete, onExit }: A
   );
 
   const apiFormatItems: SelectableItem[] = useMemo(
-    () => API_FORMAT_OPTIONS.map(opt => ({ id: opt.id, title: opt.title, description: opt.description })),
-    []
+    () =>
+      (wizard.config.modelProvider === 'open_ai' ? OPENAI_API_FORMAT_OPTIONS : BEDROCK_API_FORMAT_OPTIONS).map(opt => ({
+        id: opt.id,
+        title: opt.title,
+        description: opt.description,
+      })),
+    [wizard.config.modelProvider]
   );
 
   const containerModeItems: SelectableItem[] = useMemo(
@@ -151,7 +157,7 @@ export function AddHarnessScreen({ existingHarnessNames, onComplete, onExit }: A
 
   const apiFormatNav = useListNavigation({
     items: apiFormatItems,
-    onSelect: item => wizard.setApiFormat(BedrockApiFormatSchema.parse(item.id)),
+    onSelect: item => wizard.setApiFormat(HarnessApiFormatSchema.parse(item.id)),
     onExit: () => wizard.goBack(),
     isActive: isApiFormatStep,
   });

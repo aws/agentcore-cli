@@ -73,6 +73,7 @@ export {
 
 export type {
   BedrockApiFormat,
+  HarnessApiFormat,
   HarnessGatewayOutboundAuth,
   HarnessMemoryRef,
   HarnessModel,
@@ -81,10 +82,13 @@ export type {
   HarnessTool,
   HarnessToolType,
   HarnessTruncationConfig,
+  OpenAiApiFormat,
 } from './harness';
 export {
   AllowedToolSchema,
   BedrockApiFormatSchema,
+  HarnessApiFormatSchema,
+  OpenAiApiFormatSchema,
   GatewayOAuthGrantTypeSchema,
   HarnessGatewayOutboundAuthSchema,
   HarnessMemoryRefSchema,
