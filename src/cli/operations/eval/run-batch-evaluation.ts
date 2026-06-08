@@ -54,6 +54,8 @@ export interface RunBatchEvaluationOptions {
   datasetVersion?: string;
   /** Runtime endpoint name (e.g. PROMPT_V1). Defaults to DEFAULT. */
   endpoint?: string;
+  /** KMS key ARN for encrypting batch evaluation results */
+  kmsKeyArn?: string;
 }
 
 export interface BatchEvaluationResult {
@@ -279,6 +281,7 @@ export async function runBatchEvaluationCommand(
         },
       },
       ...(allSessionMetadata.length > 0 ? { evaluationMetadata: { sessionMetadata: allSessionMetadata } } : {}),
+      ...(options.kmsKeyArn ? { kmsKeyArn: options.kmsKeyArn } : {}),
       clientToken: generateClientToken(),
     };
 

@@ -1,3 +1,4 @@
+import { isValidKmsKeyArn } from '../../../../schema';
 import { detectRegion } from '../../../aws/region';
 import type { SessionInfo } from '../../../operations/eval';
 import { discoverSessions } from '../../../operations/eval';
@@ -130,6 +131,7 @@ export function RecommendationScreen({
   const isTraceSourceStep = wizard.step === 'traceSource';
   const isDaysStep = wizard.step === 'days';
   const isSessionsStep = wizard.step === 'sessions';
+  const isKmsKeyArnStep = wizard.step === 'kms-key-arn';
   const isConfirmStep = wizard.step === 'confirm';
 
   const isSystemPrompt = wizard.config.type === 'SYSTEM_PROMPT_RECOMMENDATION';
@@ -404,6 +406,10 @@ export function RecommendationScreen({
     confirmFields.push({ label: 'Tools', value: wizard.config.tools || '(none)' });
   }
 
+  if (wizard.config.kmsKeyArn) {
+    confirmFields.push({ label: 'KMS Key ARN', value: wizard.config.kmsKeyArn });
+  }
+
   // ── Render ────────────────────────────────────────────────────────────────
 
   return (
@@ -589,6 +595,24 @@ export function RecommendationScreen({
             items={sessionItems}
             cursorIndex={sessionsNav.cursorIndex}
             selectedIds={sessionsNav.selectedIds}
+          />
+        )}
+
+        {isKmsKeyArnStep && (
+          <TextInput
+            key="kms-key-arn"
+            prompt="KMS key ARN for encryption (optional, press Enter to skip)"
+            initialValue=""
+            allowEmpty
+            onSubmit={wizard.setKmsKeyArn}
+            onCancel={() => wizard.goBack()}
+            customValidation={value => {
+              if (!value) return true;
+              if (!isValidKmsKeyArn(value)) {
+                return 'Invalid KMS key ARN (e.g. arn:aws:kms:us-east-1:123456789012:key/12345678-1234-1234-1234-123456789012)';
+              }
+              return true;
+            }}
           />
         )}
 

@@ -99,6 +99,7 @@ export interface StartBatchEvaluationOptions {
   evaluationMetadata?: EvaluationMetadata;
   description?: string;
   clientToken?: string;
+  kmsKeyArn?: string;
 }
 
 export interface StartBatchEvaluationResult {
@@ -159,6 +160,7 @@ export interface GetBatchEvaluationResult {
   evaluationResults?: EvaluationResults;
   errorDetails?: string[];
   description?: string;
+  kmsKeyArn?: string;
 }
 
 export interface BatchEvaluationResultEntry {
@@ -295,6 +297,9 @@ export async function startBatchEvaluation(options: StartBatchEvaluationOptions)
   if (options.clientToken) {
     body.clientToken = options.clientToken;
   }
+  if (options.kmsKeyArn) {
+    body.kmsKeyArn = options.kmsKeyArn;
+  }
 
   const { data } = await signedRequest({
     region: options.region,
@@ -337,6 +342,7 @@ export async function getBatchEvaluation(options: GetBatchEvaluationOptions): Pr
     evaluationResults: raw.evaluationResults as EvaluationResults | undefined,
     errorDetails: raw.errorDetails as string[] | undefined,
     description: raw.description as string | undefined,
+    kmsKeyArn: raw.kmsKeyArn as string | undefined,
   };
 }
 
