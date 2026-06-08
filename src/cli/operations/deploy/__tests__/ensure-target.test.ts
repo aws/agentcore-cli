@@ -1,4 +1,4 @@
-import type { ConfigIO } from '../../../../lib';
+import { type ConfigIO, ConfigNotFoundError } from '../../../../lib';
 import { ensureDefaultDeploymentTarget } from '../ensure-target.js';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -50,15 +50,24 @@ describe('ensureDefaultDeploymentTarget', () => {
     expect(mockDetectAwsContext).not.toHaveBeenCalled();
   });
 
-  it('treats an unreadable/missing targets file as empty and populates it', async () => {
+  it('treats a missing targets file (ConfigNotFoundError) as empty and populates it', async () => {
     const { configIO, writes } = makeConfigIO({
-      read: () => Promise.reject(new Error('ENOENT: aws-targets.json not found')),
+      read: () => Promise.reject(new ConfigNotFoundError('aws-targets.json', 'AWS Targets')),
     });
 
     const wrote = await ensureDefaultDeploymentTarget(configIO);
 
     expect(wrote).toBe(true);
     expect(writes[0]).toEqual([{ name: 'default', account: '123456789012', region: 'us-east-1' }]);
+  });
+
+  it('surfaces a non-not-found read error instead of overwriting the file', async () => {
+    const { configIO, writes } = makeConfigIO({
+      read: () => Promise.reject(new Error('Unexpected end of JSON input')),
+    });
+
+    await expect(ensureDefaultDeploymentTarget(configIO)).rejects.toThrow('Unexpected end of JSON input');
+    expect(writes).toHaveLength(0);
   });
 
   it('does not write when the AWS account cannot be detected', async () => {
