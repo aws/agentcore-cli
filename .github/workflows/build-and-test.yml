@@ -37,7 +37,7 @@ jobs:
           cache: 'npm'
       - name: Configure git for tests
         run: |
-          git config --global user.email "bedrock-agentcore-npm+ci@amazon.com"
+          git config --global user.email "ci@amazon.com"
           git config --global user.name "CI"
       - name: Install uv
         uses: astral-sh/setup-uv@v7
@@ -71,7 +71,7 @@ jobs:
       matrix:
         node-version:
           ${{ github.event_name == 'pull_request' && fromJSON('["20.x"]') || fromJSON('["20.x", "22.x", "24.x"]') }}
-        shard: [1/2, 2/2]
+        shard: [1/4, 2/4, 3/4, 4/4]
 
     steps:
       - uses: actions/checkout@v6
@@ -82,7 +82,7 @@ jobs:
           cache: 'npm'
       - name: Configure git for tests
         run: |
-          git config --global user.email "bedrock-agentcore-npm+ci@amazon.com"
+          git config --global user.email "ci@amazon.com"
           git config --global user.name "CI"
       - name: Install uv
         uses: astral-sh/setup-uv@v7
@@ -111,7 +111,7 @@ jobs:
           cache: 'npm'
       - name: Configure git for tests
         run: |
-          git config --global user.email "bedrock-agentcore-npm+ci@amazon.com"
+          git config --global user.email "ci@amazon.com"
           git config --global user.name "CI"
       - name: Install uv
         uses: astral-sh/setup-uv@v7
