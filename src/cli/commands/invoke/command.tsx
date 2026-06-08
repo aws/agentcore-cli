@@ -49,7 +49,7 @@ async function handleInvokeCLI(options: InvokeOptions, preloadedContext?: Invoke
     if (isPreviewEnabled() && options.harnessArn) {
       const region = options.region ?? process.env.AWS_REGION ?? process.env.AWS_DEFAULT_REGION;
       if (!region) {
-        const msg = redactSensitiveText('--region is required with --harness-arn (or set AWS_REGION)');
+        const msg = '--region is required with --harness-arn (or set AWS_REGION)';
         if (options.json) {
           console.log(JSON.stringify({ success: false, error: msg }));
         } else {

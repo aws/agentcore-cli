@@ -409,8 +409,10 @@ export async function getMemoryDetail(options: GetMemoryOptions): Promise<Memory
 
   const tags = await fetchTags(client, memory.arn, 'memory');
 
-  const rawKeys = memory.indexedKeys;
-  const indexedKeys = rawKeys?.flatMap(k => {
+  const rawKeys = (memory as unknown as Record<string, unknown>).indexedKeys as
+    | { key?: string; type?: string }[]
+    | undefined;
+  const indexedKeys = rawKeys?.flatMap((k: { key?: string; type?: string }) => {
     if (!k.key || !k.type) {
       console.warn(`Warning: Skipping malformed indexed key from API response: ${JSON.stringify(k)}`);
       return [];
@@ -561,7 +563,7 @@ export async function getEvaluator(options: GetEvaluatorOptions): Promise<GetEva
     status: response.status ?? 'UNKNOWN',
     description: response.description,
     evaluatorConfig,
-    kmsKeyArn: response.kmsKeyArn,
+    kmsKeyArn: (response as unknown as Record<string, unknown>).kmsKeyArn as string | undefined,
     tags,
   };
 }
