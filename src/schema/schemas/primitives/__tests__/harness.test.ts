@@ -716,7 +716,7 @@ describe('HarnessSpecSchema', () => {
     expect(result.success).toBe(true);
   });
 
-  it('rejects apiFormat for non-bedrock providers', () => {
+  it('accepts apiFormat responses for open_ai provider', () => {
     const result = HarnessSpecSchema.safeParse({
       ...minimalHarness,
       model: {
@@ -726,9 +726,51 @@ describe('HarnessSpecSchema', () => {
         apiFormat: 'responses',
       },
     });
+    expect(result.success).toBe(true);
+  });
+
+  it('accepts apiFormat chat_completions for open_ai provider', () => {
+    const result = HarnessSpecSchema.safeParse({
+      ...minimalHarness,
+      model: {
+        provider: 'open_ai',
+        modelId: 'gpt-4o',
+        apiKeyArn: 'arn:aws:secretsmanager:us-east-1:123:secret:key',
+        apiFormat: 'chat_completions',
+      },
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it('rejects converse_stream for open_ai provider', () => {
+    const result = HarnessSpecSchema.safeParse({
+      ...minimalHarness,
+      model: {
+        provider: 'open_ai',
+        modelId: 'gpt-4o',
+        apiKeyArn: 'arn:aws:secretsmanager:us-east-1:123:secret:key',
+        apiFormat: 'converse_stream',
+      },
+    });
     expect(result.success).toBe(false);
     if (!result.success) {
-      expect(result.error.issues.some(i => i.message.includes('apiFormat is only supported'))).toBe(true);
+      expect(result.error.issues.some(i => i.message.includes('converse_stream is not a valid API format'))).toBe(true);
+    }
+  });
+
+  it('rejects apiFormat for gemini provider', () => {
+    const result = HarnessSpecSchema.safeParse({
+      ...minimalHarness,
+      model: {
+        provider: 'gemini',
+        modelId: 'gemini-2.5-flash',
+        apiKeyArn: 'arn:aws:secretsmanager:us-east-1:123:secret:key',
+        apiFormat: 'responses',
+      },
+    });
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      expect(result.error.issues.some(i => i.message.includes('not supported for the "gemini" provider'))).toBe(true);
     }
   });
 
