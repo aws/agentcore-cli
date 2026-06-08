@@ -82,10 +82,16 @@ async function handleInvokeCLI(options: InvokeOptions, preloadedContext?: Invoke
 }
 
 export function redactSensitiveText(value: string): string {
-  return value
-    .replace(/(bearer\s+)[a-z0-9\-._~+/]+=*/gi, '$1[REDACTED]')
-    .replace(/(client[_-]?secret["']?\s*[:=]\s*["']?)([^"',\s}]+)/gi, '$1[REDACTED]')
-    .replace(/((?:access[_-]?)?token["']?\s*[:=]\s*["']?)([^"',\s}]+)/gi, '$1[REDACTED]');
+  return (
+    value
+      // AgentCore inbound bearer tokens are always CUSTOM_JWT/OIDC JWTs, and a JWT always begins
+      // with `eyJ` (base64url of `{"`, the start of its header/payload JSON). Matching by shape
+      // redacts the token wherever it appears and never touches prose like "bearer token".
+      // See https://stackoverflow.com/a/74181595 (why JWTs start with `eyJ`).
+      .replace(/eyJ[A-Za-z0-9_-]+\.eyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+/g, '[REDACTED]')
+      .replace(/(client[_-]?secret["']?\s*[:=]\s*["']?)([^"',\s}]+)/gi, '$1[REDACTED]')
+      .replace(/((?:access[_-]?)?token["']?\s*[:=]\s*["']?)([^"',\s}]+)/gi, '$1[REDACTED]')
+  );
 }
 
 function printInvokeResult(result: InvokeResult, options: InvokeOptions): void {
