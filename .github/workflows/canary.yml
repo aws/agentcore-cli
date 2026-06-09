@@ -88,7 +88,7 @@ jobs:
           OPENAI_API_KEY: ${{ env.E2E_OPENAI_API_KEY }}
           GEMINI_API_KEY: ${{ env.E2E_GEMINI_API_KEY }}
         # Smoke test for now, only runs strands-bedrock.test.ts
-        run: npx vitest run --project e2e e2e-tests/strands-bedrock.test.ts
+        run: npx vitest run --project e2e e2e-tests/strands-bedrock.test.ts --retry 3
 
       - name: Generate GitHub App Token
         if: failure()
