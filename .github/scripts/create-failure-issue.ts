@@ -19,7 +19,7 @@
 
 const GITHUB_API_BASE_URL = 'https://api.github.com';
 
-interface CreateIssueArg {
+interface CreateIssueArgs {
   titlePrefix: string;
   name: string;
   branch: string;
@@ -29,7 +29,7 @@ interface CreateIssueArg {
   detail?: string;
 }
 
-function parseArgs(argv: string[]): CreateIssueArg {
+function parseArgs(argv: string[]): CreateIssueArgs {
   const map = new Map<string, string>();
   for (let i = 0; i < argv.length; i++) {
     const arg = argv[i];
