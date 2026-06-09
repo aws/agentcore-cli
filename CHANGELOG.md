@@ -2,6 +2,28 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.19.0] - 2026-06-09
+
+### Added
+- feat(payments): add AgentCore Payments as first-class CLI resource (#1261) (44693333)
+- feat: add Bedrock Mantle API format support for harness (#1412) (78d1d58a)
+
+### Fixed
+- fix(ci): avoid formatting lock file (#1489) (d34b823f)
+- fix(invoke): adjust redaction regex to allow words following bearer (#1480) (a9b01608)
+- fix(deploy): auto-populate default target on non-interactive deploy (#1478) (96be0034)
+- fix(e2e): address failing byo e2e tests.  (#1476) (5d108679)
+- fix: redact sensitive tokens from invoke CLI output (#1419) (88fff673)
+
+### Documentation
+- docs(permissions): update permissions role to include new permissions for BYOF (#1483) (9c41832e)
+
+### Other Changes
+- chore(ci): add longer timeout and retries for deploying memory (#1491) (23947adb)
+- chore(deps-dev): bump @vitest/coverage-v8 from 4.1.6 to 4.1.8 (#1332) (a2119e87)
+- chore(deps): bump fflate from 0.8.2 to 0.8.3 (#1335) (f0bc9dec)
+- chore: update e2e test script to include new paramters (#1477) (04bf884f)
+
 ## [0.18.0] - 2026-06-05
 
 ### Added

@@ -604,6 +604,27 @@
             },
             "required": ["authorizerType", "name"],
             "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "authorizerType": {
+                "type": "string",
+                "const": "PaymentCredentialProvider"
+              },
+              "name": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 128,
+                "pattern": "^[a-zA-Z0-9\\-_]+$"
+              },
+              "provider": {
+                "type": "string",
+                "enum": ["CoinbaseCDP", "StripePrivy"]
+              }
+            },
+            "required": ["authorizerType", "name", "provider"],
+            "additionalProperties": false
           }
         ]
       }
@@ -2302,6 +2323,112 @@
           }
         },
         "required": ["name", "schemaType", "config"],
+        "additionalProperties": false
+      }
+    },
+    "payments": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 48,
+            "pattern": "^[a-zA-Z][a-zA-Z0-9]{0,47}$"
+          },
+          "authorizerType": {
+            "default": "AWS_IAM",
+            "type": "string",
+            "enum": ["AWS_IAM", "CUSTOM_JWT"]
+          },
+          "authorizerConfiguration": {
+            "type": "object",
+            "properties": {
+              "customJWTAuthorizer": {
+                "type": "object",
+                "properties": {
+                  "discoveryUrl": {
+                    "type": "string",
+                    "format": "uri"
+                  },
+                  "allowedClients": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  },
+                  "allowedAudience": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  },
+                  "allowedScopes": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  }
+                },
+                "required": ["discoveryUrl"],
+                "additionalProperties": false
+              }
+            },
+            "required": ["customJWTAuthorizer"],
+            "additionalProperties": false
+          },
+          "connectors": {
+            "default": [],
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "name": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 48,
+                  "pattern": "^[a-zA-Z][a-zA-Z0-9_]{0,47}$"
+                },
+                "provider": {
+                  "default": "CoinbaseCDP",
+                  "type": "string",
+                  "enum": ["CoinbaseCDP", "StripePrivy"]
+                },
+                "credentialName": {
+                  "type": "string",
+                  "minLength": 1
+                }
+              },
+              "required": ["name", "credentialName"],
+              "additionalProperties": false
+            }
+          },
+          "description": {
+            "type": "string"
+          },
+          "autoPayment": {
+            "default": true,
+            "type": "boolean"
+          },
+          "defaultSpendLimit": {
+            "default": "10.00",
+            "type": "string"
+          },
+          "paymentToolAllowlist": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "networkPreferences": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        "required": ["name"],
         "additionalProperties": false
       }
     }
