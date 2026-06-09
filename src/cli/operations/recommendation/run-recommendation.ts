@@ -210,7 +210,6 @@ export async function runRecommendationCommand(
       name: recommendationName,
       type: options.type,
       recommendationConfig,
-      ...(options.kmsKeyArn ? { kmsKeyArn: options.kmsKeyArn } : {}),
     };
     logger?.log(`Request payload:\n${JSON.stringify(startPayload, null, 2)}`);
 

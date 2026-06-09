@@ -195,7 +195,6 @@ export const registerRun = (program: Command) => {
     )
     .option('--dataset <name>', 'Dataset name — invoke agent with dataset scenarios before batch evaluation')
     .option('--dataset-version <version>', 'Dataset version to use (omit for local file, or N/DRAFT)')
-    .option('--kms-key <arn>', 'KMS key ARN for encrypting batch evaluation results')
     .option('--json', 'Output as JSON')
     .action(
       async (cliOptions: {
@@ -209,7 +208,6 @@ export const registerRun = (program: Command) => {
         endpoint?: string;
         dataset?: string;
         datasetVersion?: string;
-        kmsKey?: string;
         json?: boolean;
       }) => {
         requireProject();
@@ -244,7 +242,6 @@ export const registerRun = (program: Command) => {
             sessionMetadata,
             dataset: cliOptions.dataset,
             datasetVersion: cliOptions.datasetVersion,
-            kmsKeyArn: cliOptions.kmsKey,
             onProgress: cliOptions.json
               ? undefined
               : (_status, message) => {
@@ -323,7 +320,6 @@ export const registerRun = (program: Command) => {
     .option('-s, --session-id <ids...>', 'Limit trace collection to specific session IDs')
     .option('-n, --run <name>', 'Run name prefix for the recommendation')
     .option('--region <region>', 'AWS region')
-    .option('--kms-key <arn>', 'KMS key ARN for encrypting recommendation results')
     .option('--json', 'Output as JSON')
     .action(
       async (cliOptions: {
@@ -342,7 +338,6 @@ export const registerRun = (program: Command) => {
         sessionId?: string[];
         run?: string;
         region?: string;
-        kmsKey?: string;
         json?: boolean;
       }) => {
         requireProject();
@@ -426,7 +421,6 @@ export const registerRun = (program: Command) => {
             spansFile: cliOptions.spansFile,
             recommendationName: cliOptions.run,
             region: cliOptions.region,
-            kmsKeyArn: cliOptions.kmsKey,
             inputSource,
             traceSource,
             onProgress: cliOptions.json

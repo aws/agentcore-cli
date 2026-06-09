@@ -164,7 +164,6 @@ export function RecommendationFlow({ onExit }: RecommendationFlowProps) {
           traceSource: config.traceSource,
           lookbackDays: config.days,
           sessionIds: config.sessionIds.length > 0 ? config.sessionIds : undefined,
-          kmsKeyArn: config.kmsKeyArn || undefined,
           onProgress: (status, _message) => {
             if (cancelled) return;
             const hasFetchStep = config.traceSource === 'sessions';

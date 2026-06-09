@@ -47,8 +47,6 @@ export interface RunRecommendationCommandOptions {
   region?: string;
   /** Optional recommendation name */
   recommendationName?: string;
-  /** KMS key ARN for encrypting recommendation results */
-  kmsKeyArn?: string;
   /** Poll interval in ms */
   pollIntervalMs?: number;
   /** Max polling duration in ms before timing out */
