@@ -8,6 +8,8 @@ import {
   apiKeyProviderExists,
   createApiKeyProvider,
   createOAuth2Provider,
+  getApiKeyProvider,
+  getOAuth2Provider,
   oAuth2ProviderExists,
   setTokenVaultKmsKey,
   updateApiKeyProvider,
@@ -22,7 +24,7 @@ import { CreateKeyCommand, KMSClient } from '@aws-sdk/client-kms';
 
 export interface ApiKeyProviderSetupResult {
   providerName: string;
-  status: 'created' | 'updated' | 'exists' | 'skipped' | 'error';
+  status: 'created' | 'updated' | 'exists' | 'linked' | 'skipped' | 'error';
   credentialProviderArn?: string;
   error?: string;
 }
@@ -64,9 +66,19 @@ export async function setupApiKeyProviders(options: SetupApiKeyProvidersOptions)
 
   const client = new BedrockAgentCoreControlClient({ region, credentials });
 
-  // Configure KMS encryption for token vault if enabled
+  const apiKeyCredentials = projectSpec.credentials.filter(
+    credential => credential.authorizerType === 'ApiKeyCredentialProvider'
+  );
+
+  // Configure KMS encryption only when this deploy will write API key secrets.
   let kmsKeyArn: string | undefined;
-  if (enableKmsEncryption) {
+  const hasApiKeyCredentialValue =
+    apiKeyCredentials.length === 0 ||
+    apiKeyCredentials.some(credential => {
+      const envVarName = computeDefaultCredentialEnvVarName(credential.name);
+      return Boolean(allCredentials.get(envVarName));
+    });
+  if (enableKmsEncryption && hasApiKeyCredentialValue) {
     const kmsResult = await setupTokenVaultKms(region, credentials, projectSpec);
     if (!kmsResult.success) {
       return {
@@ -84,11 +96,9 @@ export async function setupApiKeyProviders(options: SetupApiKeyProvidersOptions)
   }
 
   // Set up each credential in the project
-  for (const credential of projectSpec.credentials) {
-    if (credential.authorizerType === 'ApiKeyCredentialProvider') {
-      const result = await setupApiKeyCredentialProvider(client, credential, allCredentials);
-      results.push(result);
-    }
+  for (const credential of apiKeyCredentials) {
+    const result = await setupApiKeyCredentialProvider(client, credential, allCredentials);
+    results.push(result);
   }
 
   return {
@@ -152,10 +162,21 @@ async function setupApiKeyCredentialProvider(
   const apiKey = credentials.get(envVarName);
 
   if (!apiKey) {
+    const existingProvider = await getApiKeyProvider(client, credential.name);
+    if (existingProvider.success && existingProvider.credentialProviderArn) {
+      return {
+        providerName: credential.name,
+        status: 'linked',
+        credentialProviderArn: existingProvider.credentialProviderArn,
+      };
+    }
+
     return {
       providerName: credential.name,
-      status: 'skipped',
-      error: `No ${envVarName} found in agentcore/.env.local`,
+      status: 'error',
+      error:
+        `No ${envVarName} found in agentcore/.env.local and no existing AgentCore Identity ` +
+        `API key credential provider named "${credential.name}" was found.`,
     };
   }
 
@@ -263,7 +284,7 @@ export function getAllCredentials(projectSpec: AgentCoreProjectSpec): MissingCre
 
 export interface OAuth2ProviderSetupResult {
   providerName: string;
-  status: 'created' | 'updated' | 'skipped' | 'error';
+  status: 'created' | 'updated' | 'linked' | 'skipped' | 'error';
   error?: string;
   credentialProviderArn?: string;
   clientSecretArn?: string;
@@ -334,10 +355,23 @@ async function setupSingleOAuth2Provider(
   const clientSecret = credentials.get(clientSecretEnvVar);
 
   if (!clientId || !clientSecret) {
+    const existingProvider = await getOAuth2Provider(client, credential.name);
+    if (existingProvider.success && existingProvider.result) {
+      return {
+        providerName: credential.name,
+        status: 'linked',
+        credentialProviderArn: existingProvider.result.credentialProviderArn,
+        clientSecretArn: existingProvider.result.clientSecretArn,
+        callbackUrl: existingProvider.result.callbackUrl,
+      };
+    }
+
     return {
       providerName: credential.name,
-      status: 'skipped',
-      error: `Missing ${clientIdEnvVar} or ${clientSecretEnvVar} in agentcore/.env.local`,
+      status: 'error',
+      error:
+        `Missing ${clientIdEnvVar} or ${clientSecretEnvVar} in agentcore/.env.local and no existing ` +
+        `AgentCore Identity OAuth2 credential provider named "${credential.name}" was found.`,
     };
   }
 

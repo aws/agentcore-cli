@@ -1,6 +1,7 @@
 export {
   apiKeyProviderExists,
   createApiKeyProvider,
+  getApiKeyProvider,
   setTokenVaultKmsKey,
   updateApiKeyProvider,
 } from './api-key-credential-provider';

@@ -288,7 +288,10 @@ Strategy configuration:
 | `usage`          | No       | `"inbound"` or `"outbound"`                            |
 
 The actual secrets (API keys, client IDs, client secrets) are stored in `.env.local` for local development and in
-AgentCore Identity service for deployed environments.
+AgentCore Identity service for deployed environments. During deploy, the CLI creates or updates matching AgentCore
+Identity credential providers from `agentcore/.env.local`. If no local secret is present, deploy attempts to link an
+existing AgentCore Identity credential provider with the same credential name and records its ARN in
+`.cli/deployed-state.json`.
 
 ---
 
