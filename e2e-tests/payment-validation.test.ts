@@ -8,7 +8,7 @@
 import { parseJsonOutput, prereqs } from '../src/test-utils/index.js';
 import { runAgentCoreCLI } from './e2e-helper.js';
 import { randomUUID } from 'node:crypto';
-import { mkdir, readFile, rm } from 'node:fs/promises';
+import { mkdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
@@ -77,16 +77,38 @@ describe.sequential('e2e: payments — validation, config, and remove lifecycle'
   });
 
   it.skipIf(!canRun)('agentcore.json accepts paymentToolAllowlist and networkPreferences', async () => {
+    // validate requires every manager to have at least one connector, so attach one to cfgMgr first.
+    const connResult = await runAgentCoreCLI(
+      [
+        'add',
+        'payment-connector',
+        '--manager',
+        'cfgMgr',
+        '--name',
+        'cfgConn',
+        '--provider',
+        'CoinbaseCDP',
+        '--api-key-id',
+        'key-id',
+        '--api-key-secret',
+        'key-secret',
+        '--wallet-secret',
+        'wallet-secret',
+        '--json',
+      ],
+      projectPath
+    );
+    expect(connResult.exitCode).toBe(0);
+
     const configPath = join(projectPath, 'agentcore', 'agentcore.json');
     const config = JSON.parse(await readFile(configPath, 'utf-8'));
     const mgr = config.payments.find((p: Record<string, unknown>) => p.name === 'cfgMgr');
     mgr.paymentToolAllowlist = ['http_request', 'fetch_url'];
     mgr.networkPreferences = ['eip155:84532'];
-    const { writeFile: wf } = await import('node:fs/promises');
-    await wf(configPath, JSON.stringify(config, null, 2));
+    await writeFile(configPath, JSON.stringify(config, null, 2));
 
     const valResult = await runAgentCoreCLI(['validate'], projectPath);
-    expect(valResult.exitCode).toBe(0);
+    expect(valResult.exitCode, `validate failed: ${valResult.stdout} ${valResult.stderr}`).toBe(0);
   });
 
   // ── Validation: whitespace credentials ────────────────────────────────────
