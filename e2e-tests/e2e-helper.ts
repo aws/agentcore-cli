@@ -143,9 +143,10 @@ export function createE2ESuite(cfg: E2EConfig) {
     }, 600000);
 
     // Container builds go through CodeBuild which is slower and more prone to transient failures.
+    // Memory deployment time can be flaky and take at least 3-5 minutes.
     const isContainerBuild = cfg.build === 'Container';
-    const deployRetries = isContainerBuild ? 3 : 1;
-    const deployTimeout = isContainerBuild ? 900000 : 600000;
+    const deployRetries = isContainerBuild || cfg.memory ? 3 : 1;
+    const deployTimeout = isContainerBuild || cfg.memory ? 900000 : 600000;
 
     it.skipIf(!canRun)(
       'deploys to AWS successfully',
