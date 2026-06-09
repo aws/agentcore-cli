@@ -1,4 +1,5 @@
 CHANGELOG.md
+npm-shrinkwrap.json
 src/assets/**/*.md
 .github/scripts/prompts/
 src/assets/**/*.ts
