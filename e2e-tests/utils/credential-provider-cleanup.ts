@@ -14,23 +14,26 @@ export async function deleteCredentialProvider(
     await client.send(new DeleteApiKeyCredentialProviderCommand({ name }));
     logger.info(`Deleted credential provider: ${name}`);
   } catch (error) {
-    const code = (error as { name?: string }).name ?? 'Unknown';
-    logger.warn(`Failed to delete credential provider ${name}: [${code}]`);
+    const err = error as Error;
+    logger.warn(`Failed to delete credential provider ${name}: ${err.name}:${err.message}`);
   }
 }
 
 export async function cleanupStaleCredentialProviders(
   client: BedrockAgentCoreControlClient,
   logger: Logger,
-  maxAgeMs: number = 30 * 60 * 1000
+  options: {
+    minAgeMs: number;
+    prefix: string;
+  }
 ): Promise<void> {
-  const cutoff = new Date(Date.now() - maxAgeMs);
+  const cutoff = new Date(Date.now() - options.minAgeMs);
 
   let nextToken: string | undefined;
   do {
     const response = await client.send(new ListApiKeyCredentialProvidersCommand({ nextToken }));
     const providers = response.credentialProviders ?? [];
-    const stale = providers.filter(p => p.name?.startsWith('E2e') && p.createdTime && p.createdTime < cutoff);
+    const stale = providers.filter(p => p.name?.startsWith(options.prefix) && p.createdTime && p.createdTime < cutoff);
 
     await Promise.all(stale.map(p => deleteCredentialProvider(client, logger, p.name!)));
 

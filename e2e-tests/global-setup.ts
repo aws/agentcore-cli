@@ -36,7 +36,10 @@ export default async function setup(_project: TestProject): Promise<() => void> 
   const bedrockCPClient = new BedrockAgentCoreControlClient({ region: region, maxAttempts: 10 });
 
   try {
-    await cleanupStaleCredentialProviders(bedrockCPClient, logger.child('credential-provider-cleanup'));
+    await cleanupStaleCredentialProviders(bedrockCPClient, logger.child('credential-provider-cleanup'), {
+      minAgeMs: 30 * 60 * 1000,
+      prefix: 'E2e',
+    });
   } catch (e) {
     logger.error(String(e));
     logger.warn(`failed to clean up all credential providers`);
