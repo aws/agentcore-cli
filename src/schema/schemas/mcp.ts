@@ -29,11 +29,27 @@ export type GatewayTargetType = z.infer<typeof GatewayTargetTypeSchema>;
 export const OutboundAuthTypeSchema = z.enum(['OAUTH', 'API_KEY', 'NONE']);
 export type OutboundAuthType = z.infer<typeof OutboundAuthTypeSchema>;
 
+/**
+ * API key placement on the outbound request (maps to CFN
+ * CfnGatewayTarget.apiKeyCredentialProvider). All fields optional; the CDK
+ * applies defaults (HEADER / x-api-key) when absent so existing targets are
+ * unchanged. Only meaningful when OutboundAuth.type is 'API_KEY'.
+ */
+export const ApiKeyOutboundConfigSchema = z
+  .object({
+    location: z.enum(['HEADER', 'QUERY_PARAMETER']).optional(),
+    parameterName: z.string().min(1).max(64).optional(),
+    prefix: z.string().min(1).max(64).optional(),
+  })
+  .strict();
+export type ApiKeyOutboundConfig = z.infer<typeof ApiKeyOutboundConfigSchema>;
+
 export const OutboundAuthSchema = z
   .object({
     type: OutboundAuthTypeSchema.default('NONE'),
     credentialName: z.string().min(1).optional(),
     scopes: z.array(z.string()).optional(),
+    apiKey: ApiKeyOutboundConfigSchema.optional(),
   })
   .strict();
 
@@ -57,7 +73,7 @@ export const TARGET_TYPE_AUTH_CONFIG: Record<
   openApiSchema: { authRequired: true, validAuthTypes: ['OAUTH', 'API_KEY'], iamRoleFallback: false },
   smithyModel: { authRequired: false, validAuthTypes: [], iamRoleFallback: true },
   apiGateway: { authRequired: false, validAuthTypes: ['API_KEY', 'NONE'], iamRoleFallback: true },
-  mcpServer: { authRequired: false, validAuthTypes: ['OAUTH', 'NONE'], iamRoleFallback: false },
+  mcpServer: { authRequired: false, validAuthTypes: ['OAUTH', 'API_KEY', 'NONE'], iamRoleFallback: false },
   lambda: { authRequired: false, validAuthTypes: ['OAUTH', 'NONE'], iamRoleFallback: true },
   lambdaFunctionArn: { authRequired: false, validAuthTypes: ['OAUTH', 'NONE'], iamRoleFallback: true },
 };
@@ -541,6 +557,13 @@ export const AgentCoreGatewayTargetSchema = z
         code: z.ZodIssueCode.custom,
         message: `${data.outboundAuth.type} outbound auth requires a credentialName.`,
         path: ['outboundAuth', 'credentialName'],
+      });
+    }
+    if (data.outboundAuth?.apiKey && data.outboundAuth.type !== 'API_KEY') {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: 'apiKey placement is only valid when outboundAuth.type is API_KEY',
+        path: ['outboundAuth', 'apiKey'],
       });
     }
   });

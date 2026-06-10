@@ -47,6 +47,8 @@ interface OutboundAuth {
   type: 'OAUTH' | 'API_KEY' | 'NONE';
   credentialName?: string;
   scopes?: string[];
+  /** API key placement (only when type === 'API_KEY'). Optional; CDK defaults to HEADER / x-api-key. */
+  apiKey?: { location?: 'HEADER' | 'QUERY_PARAMETER'; parameterName?: string; prefix?: string };
 }
 
 interface ApiGatewayConfig {

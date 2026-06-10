@@ -1055,3 +1055,49 @@ describe('CustomClaimValidationSchema', () => {
     expect(result.success).toBe(false);
   });
 });
+
+describe('OutboundAuth apiKey placement', () => {
+  it('allows mcpServer + API_KEY (previously rejected)', () => {
+    const r = AgentCoreGatewayTargetSchema.safeParse({
+      name: 'myTarget',
+      targetType: 'mcpServer',
+      endpoint: 'https://example.com/mcp',
+      outboundAuth: { type: 'API_KEY', credentialName: 'my-key' },
+    });
+    expect(r.success).toBe(true);
+  });
+
+  it('allows custom placement on API_KEY', () => {
+    const r = AgentCoreGatewayTargetSchema.safeParse({
+      name: 'myTarget',
+      targetType: 'mcpServer',
+      endpoint: 'https://example.com/mcp',
+      outboundAuth: {
+        type: 'API_KEY',
+        credentialName: 'my-key',
+        apiKey: { location: 'HEADER', parameterName: 'Authorization', prefix: 'Bearer' },
+      },
+    });
+    expect(r.success).toBe(true);
+  });
+
+  it('rejects apiKey placement on a non-API_KEY auth type', () => {
+    const r = AgentCoreGatewayTargetSchema.safeParse({
+      name: 'myTarget',
+      targetType: 'mcpServer',
+      endpoint: 'https://example.com/mcp',
+      outboundAuth: { type: 'OAUTH', credentialName: 'oauth', apiKey: { location: 'HEADER' } },
+    });
+    expect(r.success).toBe(false);
+  });
+
+  it('still validates an old API_KEY target with no apiKey block (backwards compat)', () => {
+    const r = AgentCoreGatewayTargetSchema.safeParse({
+      name: 'myTarget',
+      targetType: 'openApiSchema',
+      schemaSource: { inline: { path: 'spec.json' } },
+      outboundAuth: { type: 'API_KEY', credentialName: 'my-key' },
+    });
+    expect(r.success).toBe(true);
+  });
+});
