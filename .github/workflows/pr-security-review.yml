@@ -318,10 +318,12 @@ jobs:
             const runUrl = process.env.RUN_URL;
 
             let body;
-            if (modelRan === 'false') {
-              // Action exited 0 but the model never actually ran productively (e.g. the
-              // /security-review skill's SessionStart hook errored before the first turn).
-              // Reporting "no findings" here would be a lie — the diff was never analyzed.
+            if (modelRan !== 'true') {
+              // Two cases land here, both unsafe to report as "no findings":
+              //   - 'false': SDK exited 0 but transcript shows the model never ran productively
+              //     (e.g. /security-review's SessionStart hook errored before the first turn).
+              //   - 'unknown': claude-execution-output.json was missing, so we couldn't verify
+              //     the model ran at all. Treat as not-verified rather than silently green.
               body = `**Claude Security Review:** the review did not actually analyze this PR (model took ${numTurns} turn${numTurns === '1' ? '' : 's'} — the skill likely failed during setup). See the [run](${runUrl}) for details; a later push or re-run is needed for a real review.`;
             } else if (conclusion === 'success') {
               body =
