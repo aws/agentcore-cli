@@ -119,10 +119,12 @@ export async function handleResources(ctx: RouteContext, res: ServerResponse, or
     const harnesses: ResourceHarness[] = [];
     for (const h of project.harnesses ?? []) {
       let model = '';
+      let modelConfig: ResourceHarness['modelConfig'];
       let tools: string[] = [];
       try {
         const spec = await configIO.readHarnessSpec(h.name);
         model = `${spec.model.provider}/${spec.model.modelId}`;
+        modelConfig = spec.model;
         tools = spec.tools.map(t => t.name);
       } catch {
         // harness spec may be unreadable — show what we can
@@ -131,6 +133,7 @@ export async function handleResources(ctx: RouteContext, res: ServerResponse, or
       harnesses.push({
         name: h.name,
         model,
+        modelConfig,
         tools,
         deploymentStatus: statusByTypeAndName.get(`harness:${h.name}`),
         deployed: deployed ? { harnessId: deployed.harnessId, harnessArn: deployed.harnessArn } : undefined,
