@@ -1087,6 +1087,26 @@
                       "items": {
                         "type": "string"
                       }
+                    },
+                    "apiKey": {
+                      "type": "object",
+                      "properties": {
+                        "location": {
+                          "type": "string",
+                          "enum": ["HEADER", "QUERY_PARAMETER"]
+                        },
+                        "parameterName": {
+                          "type": "string",
+                          "minLength": 1,
+                          "maxLength": 64
+                        },
+                        "prefix": {
+                          "type": "string",
+                          "minLength": 1,
+                          "maxLength": 64
+                        }
+                      },
+                      "additionalProperties": false
                     }
                   },
                   "additionalProperties": false
@@ -1745,6 +1765,26 @@
                 "items": {
                   "type": "string"
                 }
+              },
+              "apiKey": {
+                "type": "object",
+                "properties": {
+                  "location": {
+                    "type": "string",
+                    "enum": ["HEADER", "QUERY_PARAMETER"]
+                  },
+                  "parameterName": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 64
+                  },
+                  "prefix": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 64
+                  }
+                },
+                "additionalProperties": false
               }
             },
             "additionalProperties": false
