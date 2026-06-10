@@ -122,6 +122,50 @@ describe('ResourceGraph', () => {
     expect(lastFrame()).toContain('target-a');
   });
 
+  it('renders payments section with manager and connectors', () => {
+    const project = {
+      ...baseProject,
+      payments: [
+        {
+          name: 'my-manager',
+          authorizerType: 'AWS_IAM',
+          autoPayment: true,
+          defaultSpendLimit: '10.00',
+          connectors: [{ name: 'my-cdp-conn', provider: 'CoinbaseCDP', credentialName: 'my-manager-my-cdp-conn-cdp' }],
+        },
+      ],
+    } as unknown as AgentCoreProjectSpec;
+
+    const { lastFrame } = render(<ResourceGraph project={project} />);
+
+    expect(lastFrame()).toContain('Payments');
+    expect(lastFrame()).toContain('my-manager');
+    expect(lastFrame()).toContain('my-cdp-conn');
+    expect(lastFrame()).toContain('CoinbaseCDP');
+  });
+
+  it('renders payment manager deployment badge from resourceStatuses', () => {
+    const project = {
+      ...baseProject,
+      payments: [{ name: 'my-manager', authorizerType: 'AWS_IAM', autoPayment: true, connectors: [] }],
+    } as unknown as AgentCoreProjectSpec;
+
+    const resourceStatuses: ResourceStatusEntry[] = [
+      {
+        resourceType: 'payment',
+        name: 'my-manager',
+        deploymentState: 'deployed',
+        detail: 'AWS_IAM — auto-pay on (1 connector(s))',
+        identifier: 'arn:aws:bedrock-agentcore:us-east-1:123:payment-manager/my-manager-abc',
+      },
+    ];
+
+    const { lastFrame } = render(<ResourceGraph project={project} resourceStatuses={resourceStatuses} />);
+
+    expect(lastFrame()).toContain('Payments');
+    expect(lastFrame()).toContain('my-manager');
+  });
+
   it('renders MCP gateway with deployment badge when resourceStatuses provided', () => {
     const mcp: AgentCoreMcpSpec = {
       agentCoreGateways: [

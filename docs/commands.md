@@ -7,15 +7,16 @@ Run `agentcore` without arguments to launch the interactive TUI. Flags marked `[
 
 ## Command Aliases
 
-| Command   | Alias |
-| --------- | ----- |
-| `deploy`  | `dp`  |
-| `dev`     | `d`   |
-| `invoke`  | `i`   |
-| `status`  | `s`   |
-| `logs`    | `l`   |
-| `traces`  | `t`   |
-| `package` | `pkg` |
+| Command         | Alias |
+| --------------- | ----- |
+| `deploy`        | `dp`  |
+| `dev`           | `d`   |
+| `invoke`        | `i`   |
+| `status`        | `s`   |
+| `logs`          | `l`   |
+| `traces`        | `t`   |
+| `package`       | `pkg` |
+| `config-bundle` | `cb`  |
 
 ---
 
@@ -139,14 +140,14 @@ agentcore status --runtime-id abc123
 agentcore status --json
 ```
 
-| Flag                | Description                                                                                                                |
-| ------------------- | -------------------------------------------------------------------------------------------------------------------------- |
-| `--runtime-id <id>` | Look up a specific runtime by ID                                                                                           |
-| `--target <name>`   | Select deployment target                                                                                                   |
-| `--type <type>`     | Filter by resource type: `agent`, `memory`, `credential`, `gateway`, `evaluator`, `online-eval`, `policy-engine`, `policy` |
-| `--state <state>`   | Filter by deployment state: `deployed`, `local-only`, `pending-removal`                                                    |
-| `--runtime <name>`  | Filter to a specific runtime                                                                                               |
-| `--json`            | JSON output                                                                                                                |
+| Flag                | Description                                                                                                                           |
+| ------------------- | ------------------------------------------------------------------------------------------------------------------------------------- |
+| `--runtime-id <id>` | Look up a specific runtime by ID                                                                                                      |
+| `--target <name>`   | Select deployment target                                                                                                              |
+| `--type <type>`     | Filter by resource type: `agent`, `memory`, `credential`, `gateway`, `evaluator`, `online-eval`, `payment`, `policy-engine`, `policy` |
+| `--state <state>`   | Filter by deployment state: `deployed`, `local-only`, `pending-removal`                                                               |
+| `--runtime <name>`  | Filter to a specific runtime                                                                                                          |
+| `--json`            | JSON output                                                                                                                           |
 
 ### validate
 
@@ -472,6 +473,84 @@ agentcore add gateway-target \
 > `open-api-schema` requires `--outbound-auth` (`oauth` or `api-key`). `api-gateway` supports `api-key` or `none`.
 > `mcp-server` supports `oauth` or `none`.
 
+### add payment-manager
+
+Add a payment manager to the project. See [Payments](payments.md) for full usage guide.
+
+```bash
+# Minimal (defaults: AWS_IAM, auto-payment enabled)
+agentcore add payment-manager --name MyManager
+
+# With CUSTOM_JWT authorization
+agentcore add payment-manager \
+  --name MyManager \
+  --authorizer-type CUSTOM_JWT \
+  --discovery-url https://cognito-idp.us-east-1.amazonaws.com/us-east-1_XXXXX/.well-known/openid-configuration \
+  --allowed-clients "client-id-1,client-id-2"
+
+# With advanced options
+agentcore add payment-manager \
+  --name MyManager \
+  --auto-payment true \
+  --default-spend-limit 25.00 \
+  --tool-allowlist "web_search,fetch_url" \
+  --network-preferences "eip155:84532"
+```
+
+| Flag                               | Description                                                                                               |
+| ---------------------------------- | --------------------------------------------------------------------------------------------------------- |
+| `--name <name>`                    | Manager name (required in non-interactive mode)                                                           |
+| `--authorizer-type <type>`         | `AWS_IAM` (default) or `CUSTOM_JWT`                                                                       |
+| `--discovery-url <url>`            | OIDC discovery URL (required for CUSTOM_JWT)                                                              |
+| `--allowed-clients <clients>`      | Comma-separated client IDs (CUSTOM_JWT only)                                                              |
+| `--allowed-audience <audience>`    | Comma-separated allowed audiences (CUSTOM_JWT only)                                                       |
+| `--allowed-scopes <scopes>`        | Comma-separated allowed scopes (CUSTOM_JWT only)                                                          |
+| `--auto-payment [value]`           | Enable automatic payment: `true` (default) or `false`                                                     |
+| `--default-spend-limit <amount>`   | Spend cap (USD) for `invoke --auto-session` sessions ONLY; not a deployed-agent budget (default: `10.00`) |
+| `--tool-allowlist <tools>`         | Comma-separated tool names eligible for payment                                                           |
+| `--network-preferences <networks>` | Comma-separated network IDs (e.g., `eip155:84532`)                                                        |
+| `--description <desc>`             | Human-readable description                                                                                |
+| `--json`                           | JSON output                                                                                               |
+
+### add payment-connector
+
+Add a payment connector to an existing payment manager. See [Payments](payments.md) for credential details.
+
+```bash
+# CoinbaseCDP provider
+agentcore add payment-connector \
+  --manager MyManager \
+  --name MyCDPConnector \
+  --provider CoinbaseCDP \
+  --api-key-id your-api-key-id \
+  --api-key-secret your-api-key-secret \
+  --wallet-secret your-wallet-secret
+
+# StripePrivy provider
+agentcore add payment-connector \
+  --manager MyManager \
+  --name MyStripeConnector \
+  --provider StripePrivy \
+  --app-id your-app-id \
+  --app-secret your-app-secret \
+  --authorization-private-key your-private-key \
+  --authorization-id your-auth-id
+```
+
+| Flag                                | Description                                |
+| ----------------------------------- | ------------------------------------------ |
+| `--manager <name>`                  | Parent payment manager (required)          |
+| `--name <name>`                     | Connector name (required)                  |
+| `--provider <provider>`             | `CoinbaseCDP` (default) or `StripePrivy`   |
+| `--api-key-id <id>`                 | Coinbase CDP API Key ID                    |
+| `--api-key-secret <secret>`         | Coinbase CDP API Key Secret                |
+| `--wallet-secret <secret>`          | Coinbase CDP Wallet Secret                 |
+| `--app-id <id>`                     | Privy App ID (StripePrivy)                 |
+| `--app-secret <secret>`             | Privy App Secret (StripePrivy)             |
+| `--authorization-private-key <key>` | ECDSA P-256 private key (StripePrivy)      |
+| `--authorization-id <id>`           | Authorization key identifier (StripePrivy) |
+| `--json`                            | JSON output                                |
+
 ### add credential
 
 Add a credential to the project. Supports API key and OAuth credential types.
@@ -644,6 +723,82 @@ agentcore add runtime-endpoint \
 | `--description <desc>` | Description of the endpoint            |
 | `--json`               | JSON output                            |
 
+### add dataset
+
+Add a dataset to the project. Datasets are used to drive batch evaluations and recommendations with a curated set of
+inputs.
+
+```bash
+agentcore add dataset \
+  --name MyDataset \
+  --schema-type AGENTCORE_EVALUATION_PREDEFINED_V1 \
+  --description "Customer support smoke tests"
+```
+
+| Flag                          | Description                                                                 |
+| ----------------------------- | --------------------------------------------------------------------------- |
+| `--name <name>`               | Dataset name                                                                |
+| `--schema-type <schemaType>`  | `AGENTCORE_EVALUATION_PREDEFINED_V1` or `AGENTCORE_EVALUATION_SIMULATED_V1` |
+| `--description <description>` | Dataset description                                                         |
+| `--kms-key-arn <arn>`         | KMS key ARN for dataset encryption (optional)                               |
+| `--json`                      | JSON output                                                                 |
+
+### add config-bundle
+
+[preview] Add a configuration bundle. Config bundles snapshot system prompts, tool descriptions, and runtime config so
+they can be versioned and used as A/B test arms.
+
+```bash
+agentcore add config-bundle \
+  --name MyBundle \
+  --components-file ./bundle-components.json \
+  --commit-message "Initial bundle"
+```
+
+| Flag                       | Description                                                                                                                   |
+| -------------------------- | ----------------------------------------------------------------------------------------------------------------------------- |
+| `--name <name>`            | Bundle name                                                                                                                   |
+| `--description <text>`     | Bundle description                                                                                                            |
+| `--components <json>`      | Components map as inline JSON. Keys are ARNs or placeholders: `{{runtime:<name>}}`, `{{gateway:<name>}}`. Resolved at deploy. |
+| `--components-file <path>` | Path to a components JSON file (same format as `--components`)                                                                |
+| `--branch <name>`          | Branch name for versioning                                                                                                    |
+| `--commit-message <text>`  | Commit message for this version                                                                                               |
+| `--json`                   | JSON output                                                                                                                   |
+
+### add ab-test
+
+[preview] Add an A/B test. Two modes: `config-bundle` (default; split traffic between two bundle versions) and
+`target-based` (split traffic between two HTTP gateway targets).
+
+```bash
+agentcore add ab-test \
+  --name PromptComparison \
+  --runtime MyAgent \
+  --control-bundle ProdBundle --control-version 5 \
+  --treatment-bundle ExperimentalBundle --treatment-version 2 \
+  --control-weight 80 --treatment-weight 20 \
+  --enable
+```
+
+| Flag                        | Description                                               |
+| --------------------------- | --------------------------------------------------------- |
+| `--mode <mode>`             | `config-bundle` (default) or `target-based`               |
+| `--name <name>`             | AB test name                                              |
+| `--description <text>`      | AB test description                                       |
+| `--role-arn <arn>`          | IAM role ARN (auto-created if omitted)                    |
+| `--control-weight <n>`      | Traffic weight for control (1–100)                        |
+| `--treatment-weight <n>`    | Traffic weight for treatment (1–100)                      |
+| `--gateway <name>`          | HTTP gateway name                                         |
+| `--enable`                  | Enable the AB test on creation                            |
+| `--runtime <name>`          | (config-bundle mode) Runtime agent to A/B test            |
+| `--control-bundle <name>`   | (config-bundle mode) Control config bundle name or ARN    |
+| `--control-version <id>`    | (config-bundle mode) Control config bundle version        |
+| `--treatment-bundle <name>` | (config-bundle mode) Treatment config bundle name or ARN  |
+| `--treatment-version <id>`  | (config-bundle mode) Treatment config bundle version      |
+| `--online-eval <name>`      | (config-bundle mode) Online evaluation config name or ARN |
+| `--traffic-header <name>`   | (config-bundle mode) Header name for traffic routing      |
+| `--json`                    | JSON output                                               |
+
 ### remove
 
 Remove resources from project.
@@ -659,19 +814,25 @@ agentcore remove gateway-target --name WeatherTools
 agentcore remove policy-engine --name MyPolicyEngine
 agentcore remove policy --name AdminAccess --engine MyPolicyEngine
 agentcore remove runtime-endpoint --name prod
+agentcore remove dataset --name MyDataset
+agentcore remove config-bundle --name MyBundle
+agentcore remove ab-test --name PromptComparison
+agentcore remove payment-manager --name MyManager -y
+agentcore remove payment-connector --name MyCDPConnector --manager MyManager -y
 
 # Reset everything
 agentcore remove all -y
 agentcore remove all --dry-run  # Preview
 ```
 
-| Flag                | Description                                       |
-| ------------------- | ------------------------------------------------- |
-| `--name <name>`     | Resource name                                     |
-| `--engine <engine>` | Policy engine name (required for `remove policy`) |
-| `-y, --yes`         | Skip confirmation                                 |
-| `--dry-run`         | Preview (`remove all` only)                       |
-| `--json`            | JSON output                                       |
+| Flag                | Description                                               |
+| ------------------- | --------------------------------------------------------- |
+| `--name <name>`     | Resource name                                             |
+| `--engine <engine>` | Policy engine name (required for `remove policy`)         |
+| `--manager <name>`  | Parent payment manager (required for `payment-connector`) |
+| `-y, --yes`         | Skip confirmation                                         |
+| `--dry-run`         | Preview (`remove all` only)                               |
+| `--json`            | JSON output                                               |
 
 ---
 
@@ -735,23 +896,27 @@ agentcore invoke --exec "cat /etc/os-release" --json
 The prompt can come from four sources, resolved in this precedence order: `--prompt` > positional > `--prompt-file` >
 piped stdin. `--prompt-file` combined with piped stdin content returns a collision error — pick one.
 
-| Flag                   | Description                                                      |
-| ---------------------- | ---------------------------------------------------------------- |
-| `[prompt]`             | Prompt text (positional argument)                                |
-| `--prompt <text>`      | Prompt text (flag, takes precedence over positional)             |
-| `--prompt-file <path>` | Read the prompt from a file (useful for long / structured input) |
-| `--runtime <name>`     | Specific runtime                                                 |
-| `--target <name>`      | Deployment target                                                |
-| `--session-id <id>`    | Continue a specific session                                      |
-| `--user-id <id>`       | User ID for runtime invocation (default: `default-user`)         |
-| `--stream`             | Stream response in real-time                                     |
-| `--tool <name>`        | MCP tool name (use with `call-tool` prompt)                      |
-| `--input <json>`       | MCP tool arguments as JSON (use with `--tool`)                   |
-| `-H, --header <h>`     | Custom header (`"Name: Value"`, repeatable)                      |
-| `--bearer-token <t>`   | Bearer token for CUSTOM_JWT auth                                 |
-| `--exec`               | Execute a shell command in the runtime container                 |
-| `--timeout <seconds>`  | Timeout in seconds for `--exec` commands                         |
-| `--json`               | JSON output                                                      |
+| Flag                           | Description                                                           |
+| ------------------------------ | --------------------------------------------------------------------- |
+| `[prompt]`                     | Prompt text (positional argument)                                     |
+| `--prompt <text>`              | Prompt text (flag, takes precedence over positional)                  |
+| `--prompt-file <path>`         | Read the prompt from a file (useful for long / structured input)      |
+| `--runtime <name>`             | Specific runtime                                                      |
+| `--target <name>`              | Deployment target                                                     |
+| `--session-id <id>`            | Continue a specific session                                           |
+| `--user-id <id>`               | User ID for runtime invocation (default: `default-user`)              |
+| `--stream`                     | Stream response in real-time                                          |
+| `--tool <name>`                | MCP tool name (use with `call-tool` prompt)                           |
+| `--input <json>`               | MCP tool arguments as JSON (use with `--tool`)                        |
+| `-H, --header <h>`             | Custom header (`"Name: Value"`, repeatable)                           |
+| `--bearer-token <t>`           | Bearer token for CUSTOM_JWT auth                                      |
+| `--payment-instrument-id <id>` | Payment instrument ID for x402 payments                               |
+| `--payment-session-id <id>`    | Payment session ID for budget tracking                                |
+| `--auto-session`               | Auto-create/reuse a payment session for testing                       |
+| `--payment-user-id <id>`       | End-user (wallet owner) to scope payments to; defaults to `--user-id` |
+| `--exec`                       | Execute a shell command in the runtime container                      |
+| `--timeout <seconds>`          | Timeout in seconds for `--exec` commands                              |
+| `--json`                       | JSON output                                                           |
 
 Piped stdin is auto-detected: when no prompt is supplied and stdin is not a TTY, the prompt is read from stdin.
 
@@ -853,6 +1018,107 @@ agentcore run eval \
 | `--output <path>`               | Custom output file path                                                                                    |
 | `--json`                        | JSON output                                                                                                |
 
+### run batch-evaluation
+
+[preview] Run evaluators in batch across all agent sessions found in CloudWatch.
+
+```bash
+# Single evaluator across recent sessions
+agentcore run batch-evaluation -r MyAgent -e Builtin.Correctness
+
+# Multiple evaluators with a custom run name
+agentcore run batch-evaluation \
+  -r MyAgent \
+  -e Builtin.Correctness Builtin.Faithfulness \
+  -n "weekly-check" \
+  --json
+
+# Drive batch evaluation with a dataset
+agentcore run batch-evaluation \
+  -r MyAgent \
+  -e Builtin.Completeness \
+  --dataset MyDataset --dataset-version DRAFT
+```
+
+| Flag                          | Description                                                                                            |
+| ----------------------------- | ------------------------------------------------------------------------------------------------------ |
+| `-r, --runtime <name>`        | Runtime name from project config                                                                       |
+| `-e, --evaluator <ids...>`    | Evaluator name(s) — `Builtin.*` IDs                                                                    |
+| `-n, --name <name>`           | Name for the batch evaluation (auto-generated if omitted)                                              |
+| `-d, --lookback-days <days>`  | Lookback window in days                                                                                |
+| `-s, --session-ids <ids...>`  | Specific session IDs to evaluate                                                                       |
+| `-g, --ground-truth <path>`   | JSON file with session metadata and ground truth (assertions, expected trajectory, turns)              |
+| `--region <region>`           | AWS region (auto-detected if omitted)                                                                  |
+| `--endpoint <name>`           | Runtime endpoint name (e.g. `PROMPT_V1`); defaults to `AGENTCORE_RUNTIME_ENDPOINT` env, then `DEFAULT` |
+| `--dataset <name>`            | Dataset name — invoke agent with dataset scenarios before batch evaluation                             |
+| `--dataset-version <version>` | Dataset version (omit for local file, or `N`/`DRAFT`)                                                  |
+| `--json`                      | JSON output                                                                                            |
+
+### run recommendation
+
+[preview] Optimize a system prompt or tool descriptions using agent traces as the signal.
+
+```bash
+# Optimize a system prompt from an inline string
+agentcore run recommendation \
+  -t system-prompt \
+  -r MyAgent \
+  -e Builtin.Correctness \
+  --inline "You are a helpful assistant"
+
+# Optimize a system prompt from a file
+agentcore run recommendation \
+  -t system-prompt \
+  -r MyAgent \
+  -e Builtin.Correctness \
+  --prompt-file ./prompt.txt
+
+# Optimize tool descriptions
+agentcore run recommendation \
+  -t tool-description \
+  -r MyAgent \
+  --tools "search:Searches the web" --tools "calc:Does math"
+
+# Optimize from a deployed config bundle
+agentcore run recommendation \
+  -t system-prompt \
+  -r MyAgent \
+  -e Builtin.Correctness \
+  --bundle-name MyBundle
+```
+
+| Flag                               | Description                                                                                                                    |
+| ---------------------------------- | ------------------------------------------------------------------------------------------------------------------------------ |
+| `-t, --type <type>`                | What to optimize: `system-prompt` or `tool-description` (default: `system-prompt`)                                             |
+| `-r, --runtime <name>`             | Runtime name from project config                                                                                               |
+| `-e, --evaluator <name>`           | Evaluator name — required for `system-prompt` (exactly one)                                                                    |
+| `--prompt-file <path>`             | Load the current system prompt from a file                                                                                     |
+| `--inline <content>`               | Provide the current system prompt or tool descriptions inline                                                                  |
+| `--bundle-name <name>`             | Read current content from a deployed config bundle                                                                             |
+| `--bundle-version <version>`       | Config bundle version (with `--bundle-name`)                                                                                   |
+| `--system-prompt-json-path <path>` | Field name under `configuration` in the bundle (e.g. `systemPrompt`). Resolved automatically. Use dot notation only.           |
+| `--tool-desc-json-path <pair...>`  | Tool name:field pairs for tool descriptions in a config bundle (e.g. `--tool-desc-json-path "search:searchDesc"`). Repeatable. |
+| `--tools <pair...>`                | Tool name:description pairs (repeatable, e.g. `--tools "search:Searches the web"`)                                             |
+| `--spans-file <path>`              | JSON file with OTEL session spans (use instead of CloudWatch traces)                                                           |
+| `--lookback <days>`                | How far back to search for traces in CloudWatch, in days (default: `7`)                                                        |
+| `-s, --session-id <ids...>`        | Limit trace collection to specific session IDs                                                                                 |
+| `-n, --run <name>`                 | Run name prefix for the recommendation                                                                                         |
+| `--region <region>`                | AWS region                                                                                                                     |
+| `--json`                           | JSON output                                                                                                                    |
+
+### recommendations history
+
+[preview] Show past recommendation runs saved locally.
+
+```bash
+agentcore recommendations history
+agentcore recommendations history --json
+```
+
+| Flag     | Description |
+| -------- | ----------- |
+| `--json` | JSON output |
+
 ### evals history
 
 View past on-demand eval run results.
@@ -917,6 +1183,170 @@ agentcore logs evals --follow --json
 | `-n, --limit <count>`  | Maximum log lines                             |
 | `-f, --follow`         | Stream in real-time                           |
 | `--json`               | JSON Lines output                             |
+
+---
+
+## Lifecycle & A/B Testing
+
+### stop
+
+Stop a running batch evaluation or a deployed A/B test.
+
+```bash
+# Stop a running batch evaluation
+agentcore stop batch-evaluation -i <batch-eval-id>
+agentcore stop batch-evaluation -i <batch-eval-id> --json
+
+# Stop a deployed A/B test (permanent)
+agentcore stop ab-test PromptComparison
+```
+
+#### `stop batch-evaluation`
+
+| Flag                | Description                           |
+| ------------------- | ------------------------------------- |
+| `-i, --id <id>`     | Batch evaluation ID to stop           |
+| `--region <region>` | AWS region (auto-detected if omitted) |
+| `--json`            | JSON output                           |
+
+#### `stop ab-test`
+
+| Argument / Flag     | Description  |
+| ------------------- | ------------ |
+| `<name>`            | AB test name |
+| `--region <region>` | AWS region   |
+| `--json`            | JSON output  |
+
+### archive
+
+[preview] Archive (delete) a batch evaluation or recommendation on the service and clear local history. Irreversible.
+
+```bash
+# Archive a batch evaluation
+agentcore archive batch-evaluation -i <batch-eval-id>
+agentcore archive batch-evaluation -i <batch-eval-id> --region us-west-2 --json
+
+# Archive a recommendation
+agentcore archive recommendation -i <recommendation-id>
+```
+
+Both `archive batch-evaluation` and `archive recommendation` accept the same flags:
+
+| Flag                | Description                                  |
+| ------------------- | -------------------------------------------- |
+| `-i, --id <id>`     | ID of the batch evaluation or recommendation |
+| `--region <region>` | AWS region (auto-detected if omitted)        |
+| `--json`            | JSON output                                  |
+
+### ab-test
+
+[preview] View A/B test details and results.
+
+```bash
+agentcore ab-test PromptComparison
+agentcore ab-test PromptComparison --json
+```
+
+| Argument / Flag     | Description  |
+| ------------------- | ------------ |
+| `<name>`            | AB test name |
+| `--region <region>` | AWS region   |
+| `--json`            | JSON output  |
+
+### config-bundle
+
+[preview] Manage configuration bundles. Use the bundle name from `agentcore.json`, not the bundle ID. Aliased as `cb`.
+
+```bash
+# List version history
+agentcore config-bundle versions --bundle MyBundle
+agentcore cb versions --bundle MyBundle --latest-per-branch --json
+
+# Diff two versions
+agentcore config-bundle diff --bundle MyBundle --from <versionId> --to <versionId>
+
+# Create a new branch from an existing version
+agentcore config-bundle create-branch \
+  --bundle MyBundle \
+  --branch experimental \
+  --from <parentVersionId> \
+  --commit-message "Branch off prod for experiments"
+```
+
+#### `config-bundle versions`
+
+| Flag                  | Description                                            |
+| --------------------- | ------------------------------------------------------ |
+| `--bundle <name>`     | Bundle name as defined in `agentcore.json`             |
+| `--branch <name>`     | Filter by branch name                                  |
+| `--latest-per-branch` | Show only the latest version per branch                |
+| `--created-by <name>` | Filter by creator name (e.g. `user`, `recommendation`) |
+| `--region <region>`   | AWS region override                                    |
+| `--json`              | JSON output                                            |
+
+#### `config-bundle diff`
+
+| Flag                | Description                                   |
+| ------------------- | --------------------------------------------- |
+| `--bundle <name>`   | Bundle name                                   |
+| `--from <id>`       | Source version ID (from `cb versions --json`) |
+| `--to <id>`         | Target version ID (from `cb versions --json`) |
+| `--region <region>` | AWS region override                           |
+| `--json`            | JSON output                                   |
+
+#### `config-bundle create-branch`
+
+| Flag                      | Description                                           |
+| ------------------------- | ----------------------------------------------------- |
+| `--bundle <name>`         | Bundle name                                           |
+| `--branch <name>`         | Name for the new branch                               |
+| `--from <versionId>`      | Parent version ID to branch from (defaults to latest) |
+| `--commit-message <text>` | Commit message for the branch point                   |
+| `--region <region>`       | AWS region override                                   |
+| `--json`                  | JSON output                                           |
+
+### dataset
+
+Manage dataset content and versions. Use `add dataset` / `remove dataset` to create or delete dataset resources in the
+project.
+
+```bash
+# Pull DRAFT contents to a local file
+agentcore dataset download --name MyDataset
+
+# Pull a specific version
+agentcore dataset download --name MyDataset --version 3 --yes --json
+
+# Promote DRAFT to a new immutable version
+agentcore dataset publish-version --name MyDataset --json
+
+# Delete a published version
+agentcore dataset remove-version 2 --name MyDataset
+```
+
+#### `dataset download`
+
+| Flag                  | Description                        |
+| --------------------- | ---------------------------------- |
+| `--name <name>`       | Dataset name                       |
+| `--version <version>` | Version to pull (default: `DRAFT`) |
+| `--yes`               | Skip overwrite confirmation        |
+| `--json`              | JSON output                        |
+
+#### `dataset publish-version`
+
+| Flag            | Description  |
+| --------------- | ------------ |
+| `--name <name>` | Dataset name |
+| `--json`        | JSON output  |
+
+#### `dataset remove-version`
+
+| Argument / Flag | Description              |
+| --------------- | ------------------------ |
+| `<version-id>`  | Version number to remove |
+| `--name <name>` | Dataset name             |
+| `--json`        | JSON output              |
 
 ---
 
@@ -994,13 +1424,13 @@ agentcore update cli --check    # Same as `agentcore update --check`
 Manage anonymous usage analytics preferences. Telemetry is opt-in and used to improve the CLI.
 
 ```bash
-agentcore telemetry status      # Show current preference and where it was set
-agentcore telemetry enable      # Opt in
-agentcore telemetry disable     # Opt out
+agentcore telemetry status                  # Show current preference and where it was set
+agentcore config telemetry.enabled true     # Opt in
+agentcore config telemetry.enabled false    # Opt out
 ```
 
-`enable`, `disable`, and `status` take no flags beyond `-h, --help`. The preference is stored in your global CLI config
-and persists across projects.
+`status` takes no flags beyond `-h, --help`. The preference is stored in your global CLI config and persists across
+projects.
 
 ### help
 

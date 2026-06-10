@@ -10,6 +10,7 @@ import {
   parseGatewayOutputs,
   parseMemoryOutputs,
   parseOnlineEvalOutputs,
+  parsePaymentOutputs,
   parsePolicyEngineOutputs,
   parsePolicyOutputs,
 } from '../../../cloudformation';
@@ -17,7 +18,11 @@ import { DEFAULT_DEPLOY_ATTRS, computeDeployAttrs } from '../../../commands/depl
 import { getErrorMessage, isChangesetInProgressError, isExpiredTokenError } from '../../../errors';
 import { isPreviewEnabled } from '../../../feature-flags';
 import { ExecLogger } from '../../../logging';
-import { performStackTeardown, setupTransactionSearch } from '../../../operations/deploy';
+import {
+  cleanupPaymentCredentialProviders,
+  performStackTeardown,
+  setupTransactionSearch,
+} from '../../../operations/deploy';
 import { computeProjectDeployHash } from '../../../operations/deploy/change-detection';
 import { getGatewayTargetStatuses } from '../../../operations/deploy/gateway-status';
 import { createDeploymentManager } from '../../../operations/deploy/imperative';
@@ -322,6 +327,30 @@ export function useDeployFlow(options: DeployFlowOptions = {}): DeployFlowState 
     // Expose outputs to UI
     setStackOutputs(outputs);
 
+    // Parse payment outputs from CFN stack
+    const paymentSpecs = (ctx.projectSpec.payments ?? []).map(
+      (p: {
+        name: string;
+        authorizerType?: 'AWS_IAM' | 'CUSTOM_JWT';
+        autoPayment?: boolean;
+        paymentToolAllowlist?: string[];
+        networkPreferences?: string[];
+        connectors: { name: string; credentialName: string }[];
+      }) => ({
+        name: p.name,
+        authorizerType: p.authorizerType,
+        autoPayment: p.autoPayment,
+        paymentToolAllowlist: p.paymentToolAllowlist,
+        networkPreferences: p.networkPreferences,
+        connectors: p.connectors.map(c => ({
+          name: c.name,
+          credentialProviderArn: allCredentials[c.credentialName]?.credentialProviderArn ?? '',
+          credentialProviderName: c.credentialName,
+        })),
+      })
+    );
+    const payments = paymentSpecs.length > 0 ? parsePaymentOutputs(outputs, paymentSpecs) : undefined;
+
     const existingState = await configIO.readDeployedState().catch(() => undefined);
 
     // Post-CDK: deploy imperative resources (harness) — preview mode only
@@ -370,6 +399,7 @@ export function useDeployFlow(options: DeployFlowOptions = {}): DeployFlowState 
       policies,
       datasets,
       harnesses: deployedHarnesses,
+      payments,
     });
 
     try {
@@ -764,9 +794,22 @@ export function useDeployFlow(options: DeployFlowOptions = {}): DeployFlowState 
             }
           }
 
-          // After deploying the empty spec, destroy the stack entirely
+          // After deploying the empty spec, destroy the stack entirely.
+          // Clean up imperative payment credential providers before stack teardown.
           const targetName = context.awsTargets[0]?.name;
           if (targetName) {
+            try {
+              const configIO = new ConfigIO();
+              const deployedState = await configIO.readDeployedState();
+              const existingPayments = deployedState?.targets?.[targetName]?.resources?.payments;
+              if (existingPayments && Object.keys(existingPayments).length > 0) {
+                const target = context.awsTargets[0]!;
+                await cleanupPaymentCredentialProviders({ region: target.region, payments: existingPayments });
+              }
+            } catch {
+              // Best-effort: continue with teardown even if credential cleanup fails
+            }
+
             const teardown = await performStackTeardown(targetName);
             if (!teardown.success) {
               throw new Error(`Stack teardown failed: ${teardown.error.message}`);

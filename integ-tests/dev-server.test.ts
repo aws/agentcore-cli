@@ -109,6 +109,7 @@ describe('integration: dev server', () => {
         command: 'dev',
         dev_action: 'server',
         ui_mode: 'terminal',
+        agent_environment: 'runtime',
         exit_reason: 'success',
       });
       telemetry.clearEntries();
@@ -123,6 +124,7 @@ describe('integration: dev server', () => {
         command: 'dev',
         dev_action: 'invoke',
         ui_mode: 'terminal',
+        agent_environment: 'runtime',
         exit_reason: 'success',
         agent_protocol: 'http',
       });
@@ -135,6 +137,7 @@ describe('integration: dev server', () => {
       telemetry.assertMetricEmitted({
         command: 'dev',
         dev_action: 'invoke',
+        agent_environment: 'runtime',
         exit_reason: 'failure',
       });
 
@@ -162,9 +165,51 @@ describe('integration: dev server', () => {
       telemetry.assertMetricEmitted({
         command: 'dev',
         dev_action: 'server',
+        agent_environment: 'runtime',
         exit_reason: 'failure',
       });
     },
     15000
   );
+});
+
+const isPreviewBuild = process.env.BUILD_PREVIEW === '1';
+
+describe.skipIf(!isPreviewBuild || !hasNpm || !hasGit || !hasUv)('integration: dev with harness-only project', () => {
+  const telemetry = createTelemetryHelper();
+  let projectPath: string;
+
+  beforeAll(async () => {
+    const dir = join(tmpdir(), `agentcore-dev-harness-${Date.now()}`);
+    await mkdir(dir, { recursive: true });
+
+    // Create a harness-only project
+    const createResult = await runCLI(
+      ['create', '--name', 'DevHarness', '--model-provider', 'bedrock', '--json'],
+      dir,
+      { env: telemetry.env }
+    );
+    const json = JSON.parse(createResult.stdout);
+    projectPath = json.projectPath;
+  });
+
+  afterAll(async () => {
+    telemetry.destroy();
+    if (projectPath) await rm(projectPath, { recursive: true, force: true });
+  });
+
+  // This test currently fails due to https://github.com/aws/agentcore-cli/issues/1406
+  it.skip('dev --logs on harness-only project should fail with validation error', async () => {
+    telemetry.clearEntries();
+    const result = await runCLI(['dev', '--logs', '--skip-deploy'], projectPath, { env: telemetry.env });
+
+    expect(result.exitCode).toBe(1);
+
+    telemetry.assertMetricEmitted({
+      command: 'dev',
+      dev_action: 'server',
+      agent_environment: 'harness',
+      exit_reason: 'failure',
+    });
+  });
 });

@@ -1,6 +1,10 @@
+import { ConfigIO } from '../../../../../lib';
+import { invokeA2ARuntime, invokeAgentRuntimeStreaming, invokeAguiRuntime } from '../../../../aws/agentcore';
+import { buildAguiRunInput } from '../../../../aws/agui-types';
+import { resolveInvokeTarget } from '../../../../commands/invoke/resolve';
 import { extractSSEEventText, extractTaskText, isStatusUpdateEvent } from '../../invoke-a2a';
 import { handleHarnessInvocation } from './harness-invocation';
-import type { RouteContext } from './route-context';
+import { type RouteContext, parseRequestUrl } from './route-context';
 import { randomUUID } from 'node:crypto';
 import { type IncomingMessage, type ServerResponse, request as httpRequest } from 'node:http';
 
@@ -9,6 +13,7 @@ let a2aRequestId = 1;
 /**
  * POST /invocations — proxy to the selected agent.
  * Body must include agentName to route to the correct running agent.
+ * When ?target=deployed is set, invokes the deployed runtime via the AWS SDK.
  */
 export async function handleInvocations(
   ctx: RouteContext,
@@ -16,6 +21,11 @@ export async function handleInvocations(
   res: ServerResponse,
   origin?: string
 ): Promise<void> {
+  const { param } = parseRequestUrl(req);
+  if (param('target') === 'deployed') {
+    return handleDeployedInvocation(ctx, req, res, origin);
+  }
+
   const body = await ctx.readBody(req);
 
   // Route to harness handler if harnessName is present
@@ -341,4 +351,266 @@ async function handleAguiInvocation(
     proxyReq.write(aguiBody);
     proxyReq.end();
   });
+}
+
+/**
+ * Invoke a deployed agent runtime via the AWS SDK.
+ * Reuses the same SSE response format as local invocations so the frontend
+ * can parse both paths identically.
+ */
+async function handleDeployedInvocation(
+  ctx: RouteContext,
+  req: IncomingMessage,
+  res: ServerResponse,
+  origin?: string
+): Promise<void> {
+  const { configRoot } = ctx.options;
+  if (!configRoot) {
+    ctx.setCorsHeaders(res, origin);
+    res.writeHead(404, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({ success: false, error: 'No agentcore project found' }));
+    return;
+  }
+
+  const rawBody = await ctx.readBody(req);
+  let agentName: string | undefined;
+  let targetName: string | undefined;
+  let prompt: string | undefined;
+  let sessionId: string | undefined;
+  let userId: string | undefined;
+  try {
+    const parsed = JSON.parse(rawBody) as {
+      agentName?: string;
+      targetName?: string;
+      prompt?: string;
+      sessionId?: string;
+      userId?: string;
+    };
+    agentName = parsed.agentName;
+    targetName = parsed.targetName;
+    prompt = parsed.prompt;
+    sessionId = parsed.sessionId;
+    userId = parsed.userId;
+  } catch {
+    ctx.setCorsHeaders(res, origin);
+    res.writeHead(400, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({ success: false, error: 'Invalid JSON body' }));
+    return;
+  }
+
+  if (!prompt) {
+    ctx.setCorsHeaders(res, origin);
+    res.writeHead(400, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({ success: false, error: 'prompt is required' }));
+    return;
+  }
+
+  const configIO = new ConfigIO({ baseDir: configRoot });
+  let project;
+  let deployedState;
+  let awsTargets;
+  try {
+    project = await configIO.readProjectSpec();
+    deployedState = await configIO.readDeployedState();
+    awsTargets = await configIO.readAWSDeploymentTargets();
+  } catch (err) {
+    ctx.setCorsHeaders(res, origin);
+    res.writeHead(500, { 'Content-Type': 'application/json' });
+    res.end(
+      JSON.stringify({
+        success: false,
+        error: `Failed to load config: ${err instanceof Error ? err.message : String(err)}`,
+      })
+    );
+    return;
+  }
+
+  const resolved = await resolveInvokeTarget({
+    project,
+    deployedState,
+    awsTargets,
+    agentName,
+    targetName,
+    sessionId,
+    configIO,
+  });
+
+  if (!resolved.success) {
+    ctx.setCorsHeaders(res, origin);
+    res.writeHead(400, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({ success: false, error: resolved.error.message }));
+    return;
+  }
+
+  sessionId ??= resolved.sessionId ?? randomUUID();
+
+  try {
+    const protocol = resolved.agentSpec.protocol ?? 'HTTP';
+
+    if (protocol === 'A2A') {
+      await handleDeployedA2AInvocation(ctx, res, origin, {
+        region: resolved.region,
+        runtimeArn: resolved.runtimeArn,
+        prompt,
+        sessionId,
+        userId,
+      });
+    } else if (protocol === 'AGUI') {
+      await handleDeployedAguiInvocation(ctx, res, origin, {
+        region: resolved.region,
+        runtimeArn: resolved.runtimeArn,
+        prompt,
+        sessionId,
+        userId,
+        bearerToken: resolved.bearerToken,
+      });
+    } else {
+      await handleDeployedHttpInvocation(ctx, res, origin, {
+        region: resolved.region,
+        runtimeArn: resolved.runtimeArn,
+        prompt,
+        sessionId,
+        userId,
+        bearerToken: resolved.bearerToken,
+        baggage: resolved.baggage,
+      });
+    }
+  } catch (err) {
+    if (!res.headersSent) {
+      ctx.setCorsHeaders(res, origin);
+      res.writeHead(502, { 'Content-Type': 'application/json' });
+      res.end(
+        JSON.stringify({
+          success: false,
+          error: `Invoke failed: ${err instanceof Error ? err.message : String(err)}`,
+        })
+      );
+    }
+  }
+}
+
+interface DeployedInvokeParams {
+  region: string;
+  runtimeArn: string;
+  prompt: string;
+  sessionId?: string;
+  userId?: string;
+  bearerToken?: string;
+  baggage?: string;
+}
+
+async function handleDeployedHttpInvocation(
+  ctx: RouteContext,
+  res: ServerResponse,
+  origin: string | undefined,
+  params: DeployedInvokeParams
+): Promise<void> {
+  const result = await invokeAgentRuntimeStreaming({
+    region: params.region,
+    runtimeArn: params.runtimeArn,
+    payload: params.prompt,
+    sessionId: params.sessionId,
+    userId: params.userId,
+    bearerToken: params.bearerToken,
+    baggage: params.baggage,
+  });
+
+  ctx.setCorsHeaders(res, origin);
+  const headers: Record<string, string> = {
+    'Content-Type': 'text/event-stream',
+    'Cache-Control': 'no-cache',
+    Connection: 'keep-alive',
+  };
+  if (result.sessionId) {
+    headers['x-session-id'] = result.sessionId;
+  }
+  res.writeHead(200, headers);
+
+  try {
+    for await (const chunk of result.stream) {
+      res.write(`data: ${JSON.stringify(chunk)}\n\n`);
+    }
+  } catch (err) {
+    res.write(`data: ${JSON.stringify({ error: err instanceof Error ? err.message : String(err) })}\n\n`);
+  } finally {
+    res.end();
+  }
+}
+
+async function handleDeployedA2AInvocation(
+  ctx: RouteContext,
+  res: ServerResponse,
+  origin: string | undefined,
+  params: DeployedInvokeParams
+): Promise<void> {
+  const result = await invokeA2ARuntime(
+    {
+      region: params.region,
+      runtimeArn: params.runtimeArn,
+      userId: params.userId,
+      sessionId: params.sessionId,
+    },
+    params.prompt
+  );
+
+  ctx.setCorsHeaders(res, origin);
+  const headers: Record<string, string> = {
+    'Content-Type': 'text/event-stream',
+    'Cache-Control': 'no-cache',
+    Connection: 'keep-alive',
+  };
+  if (result.sessionId) {
+    headers['x-session-id'] = result.sessionId;
+  }
+  res.writeHead(200, headers);
+
+  try {
+    for await (const chunk of result.stream) {
+      res.write(`data: ${JSON.stringify(chunk)}\n\n`);
+    }
+  } catch (err) {
+    res.write(`data: ${JSON.stringify({ error: err instanceof Error ? err.message : String(err) })}\n\n`);
+  } finally {
+    res.end();
+  }
+}
+
+async function handleDeployedAguiInvocation(
+  ctx: RouteContext,
+  res: ServerResponse,
+  origin: string | undefined,
+  params: DeployedInvokeParams
+): Promise<void> {
+  const input = buildAguiRunInput(params.prompt, params.sessionId);
+  const result = await invokeAguiRuntime(
+    {
+      region: params.region,
+      runtimeArn: params.runtimeArn,
+      sessionId: params.sessionId,
+      userId: params.userId,
+      bearerToken: params.bearerToken,
+    },
+    input
+  );
+
+  ctx.setCorsHeaders(res, origin);
+  const headers: Record<string, string> = {
+    'Content-Type': 'text/event-stream',
+    'Cache-Control': 'no-cache',
+    Connection: 'keep-alive',
+  };
+  if (result.sessionId) {
+    headers['x-session-id'] = result.sessionId;
+  }
+  res.writeHead(200, headers);
+
+  try {
+    for await (const chunk of result.textStream) {
+      res.write(`data: ${JSON.stringify(chunk)}\n\n`);
+    }
+  } catch (err) {
+    res.write(`data: ${JSON.stringify({ error: err instanceof Error ? err.message : String(err) })}\n\n`);
+  } finally {
+    res.end();
+  }
 }

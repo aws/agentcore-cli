@@ -13,7 +13,7 @@ dependencies = [
     "aws-opentelemetry-distro",
     "bedrock-agentcore[a2a] >= 1.0.3",
     "google-adk >= 1.0.0, < 2.0.0",
-    "google-genai >= 1.0.0",
+    "google-genai >= 1.0.0, < 2.0.0",
 ]
 
 [tool.hatch.build.targets.wheel]

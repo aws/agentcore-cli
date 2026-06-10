@@ -15,6 +15,7 @@ import {
   type McpToolDef,
   buildAguiRunInput,
   executeBashCommand,
+  getOrCreatePaymentSession,
   invokeA2ARuntime,
   invokeAgentRuntimeStreaming,
   invokeAguiRuntime,
@@ -22,6 +23,7 @@ import {
   mcpListTools,
 } from '../../../aws';
 import { invokeHarness } from '../../../aws/agentcore-harness';
+import { computeInvokeAttrs } from '../../../commands/invoke/utils';
 import { ANSI } from '../../../constants';
 import { getErrorMessage } from '../../../errors';
 import { isPreviewEnabled } from '../../../feature-flags';
@@ -35,7 +37,6 @@ import {
 } from '../../../operations/fetch-access';
 import { generateSessionId } from '../../../operations/session';
 import { withCommandRunTelemetry } from '../../../telemetry/cli-command-run.js';
-import { AgentProtocol, AuthType, standardize } from '../../../telemetry/schemas/common-shapes.js';
 import { useCallback, useEffect, useRef, useState } from 'react';
 
 /** Structured message part for rich AGUI event rendering */
@@ -72,8 +73,18 @@ export interface InvokeFlowOptions {
   /** Custom headers to forward to the agent runtime on every invocation */
   headers?: Record<string, string>;
   initialBearerToken?: string;
+  /** Show [session resumed] hint on load — true only when remounting after a PTY detour. */
+  isResume?: boolean;
   /** Pre-select a harness by name, skipping the agent selection screen (preview) */
   initialHarnessName?: string;
+  /** Payment instrument ID (wallet) forwarded on every invocation when payments are used */
+  initialPaymentInstrumentId?: string;
+  /** Payment session ID (budget) forwarded on every invocation when payments are used */
+  initialPaymentSessionId?: string;
+  /** Payments end-user identity (wallet owner) forwarded as the body user_id on every invocation */
+  initialPaymentUserId?: string;
+  /** When true, auto-create/reuse a payment session once at TUI start, reused on every turn */
+  initialAutoSession?: boolean;
 }
 
 export type TokenFetchState = 'idle' | 'fetching' | 'fetched' | 'error';
@@ -93,6 +104,10 @@ export interface InvokeFlowState {
   tokenExpiresIn: number | undefined;
   mcpTools: McpToolDef[];
   mcpToolsFetched: boolean;
+  /** True when a payment instrument/session/user identity is in effect for this session */
+  paymentsActive: boolean;
+  /** The payments end-user identity in effect (wallet owner), if any */
+  paymentUserId?: string;
   selectAgent: (index: number) => void;
   setUserId: (id: string) => void;
   setBearerToken: (token: string) => void;
@@ -104,7 +119,24 @@ export interface InvokeFlowState {
 }
 
 export function useInvokeFlow(options: InvokeFlowOptions = {}): InvokeFlowState {
-  const { initialSessionId, initialUserId, headers, initialBearerToken, initialHarnessName } = options;
+  const {
+    initialSessionId,
+    initialUserId,
+    headers,
+    initialBearerToken,
+    isResume,
+    initialHarnessName,
+    initialPaymentInstrumentId,
+    initialPaymentSessionId,
+    initialPaymentUserId,
+    initialAutoSession,
+  } = options;
+  // Payment context is established once at session start and reused on every turn.
+  const paymentsActive =
+    Boolean(initialPaymentInstrumentId) ||
+    Boolean(initialPaymentSessionId) ||
+    Boolean(initialPaymentUserId) ||
+    Boolean(initialAutoSession);
   const [phase, setPhase] = useState<'loading' | 'ready' | 'invoking' | 'error'>('loading');
   const [config, setConfig] = useState<InvokeConfig | null>(null);
   const [selectedAgent, setSelectedAgent] = useState(0);
@@ -119,6 +151,12 @@ export function useInvokeFlow(options: InvokeFlowOptions = {}): InvokeFlowState 
   const [tokenFetchState, setTokenFetchState] = useState<TokenFetchState>('idle');
   const [tokenFetchError, setTokenFetchError] = useState<string | null>(null);
   const [tokenExpiresIn, setTokenExpiresIn] = useState<number | undefined>(undefined);
+
+  // Payment session id actually used on each turn. Seeded from --payment-session-id;
+  // when --auto-session is set it is minted once during load() and reused thereafter.
+  // A ref (not state) because it is only read inside invoke()'s async closure — never
+  // rendered — so it must reflect the minted value immediately, without a render lag.
+  const resolvedPaymentSessionIdRef = useRef<string | undefined>(initialPaymentSessionId);
 
   // MCP state
   const [mcpTools, setMcpTools] = useState<McpToolDef[]>([]);
@@ -138,12 +176,16 @@ export function useInvokeFlow(options: InvokeFlowOptions = {}): InvokeFlowState 
 
       const result = await withCommandRunTelemetry(
         'invoke',
-        {
-          has_stream: true,
-          has_session_id: !!initialSessionId,
-          auth_type: standardize(AuthType, initialBearerToken ? 'bearer_token' : 'sigv4'),
-          agent_protocol: standardize(AgentProtocol, firstProtocol),
-        },
+        computeInvokeAttrs({
+          preview: isPreviewEnabled(),
+          harnessName: initialHarnessName,
+          harnessCount: project?.harnesses?.length ?? 0,
+          runtimeCount: project?.runtimes?.length ?? 0,
+          stream: true,
+          hasSessionId: !!initialSessionId,
+          bearerToken: initialBearerToken,
+          agentProtocol: firstProtocol,
+        }),
         async () => {
           if (!project) {
             return { success: false as const, error: new ResourceNotFoundError('No agentcore project found.') };
@@ -237,9 +279,47 @@ export function useInvokeFlow(options: InvokeFlowOptions = {}): InvokeFlowState 
           // Initialize session ID - always generate fresh unless explicitly provided
           if (initialSessionId) {
             setSessionId(initialSessionId);
+            if (isResume) {
+              setMessages([{ role: 'assistant', content: '[session resumed]', isHint: true }]);
+            }
           } else {
             const newId = generateSessionId();
             setSessionId(newId);
+          }
+
+          // --auto-session: mint (or reuse) a payment session ONCE at TUI start,
+          // scoped to the same identity the agent will pay as, and reuse it on every
+          // turn. Mirrors the CLI path in commands/invoke/action.ts. The mutual
+          // exclusion with --payment-session-id is enforced before render in command.tsx.
+          if (initialAutoSession && !initialPaymentSessionId) {
+            const payments = targetState?.resources?.payments;
+            const firstManager = payments ? Object.values(payments)[0] : undefined;
+            if (!firstManager?.managerArn) {
+              return {
+                success: false as const,
+                error: new ResourceNotFoundError(
+                  '--auto-session requires a deployed payment manager. Run `agentcore deploy` first.'
+                ),
+              };
+            }
+            const paymentSpec = project.payments?.find(p => p.name === Object.keys(payments!)[0]);
+            try {
+              resolvedPaymentSessionIdRef.current = await getOrCreatePaymentSession({
+                region: targetConfig.region,
+                userId: initialPaymentUserId ?? DEFAULT_RUNTIME_USER_ID,
+                managerArn: firstManager.managerArn,
+                defaultSpendLimit: paymentSpec?.defaultSpendLimit,
+              });
+            } catch (err) {
+              // Surface as a TUI error screen rather than letting the rejection
+              // escape to the global handler and hard-exit. Mirrors action.ts.
+              return {
+                success: false as const,
+                error: new Error(
+                  `--auto-session failed to create payment session: ${err instanceof Error ? err.message : String(err)}`
+                ),
+              };
+            }
           }
 
           setPhase('ready');
@@ -720,6 +800,11 @@ export function useInvokeFlow(options: InvokeFlowOptions = {}): InvokeFlowState 
               headers,
               bearerToken: bearerToken || undefined,
               baggage: agent.baggage,
+              paymentInstrumentId: initialPaymentInstrumentId,
+              // Use the resolved session id (auto-minted at load() when --auto-session
+              // is set) so the same session is reused on every turn.
+              paymentSessionId: resolvedPaymentSessionIdRef.current,
+              paymentUserId: initialPaymentUserId,
             });
 
         if (result.sessionId) {
@@ -769,6 +854,8 @@ export function useInvokeFlow(options: InvokeFlowOptions = {}): InvokeFlowState 
       fetchMcpTools,
       getMcpInvokeOptions,
       streamHarnessInvoke,
+      initialPaymentInstrumentId,
+      initialPaymentUserId,
     ]
   );
 
@@ -901,6 +988,8 @@ export function useInvokeFlow(options: InvokeFlowOptions = {}): InvokeFlowState 
     tokenExpiresIn,
     mcpTools,
     mcpToolsFetched,
+    paymentsActive,
+    paymentUserId: initialPaymentUserId,
     selectAgent: setSelectedAgent,
     setUserId,
     setBearerToken,

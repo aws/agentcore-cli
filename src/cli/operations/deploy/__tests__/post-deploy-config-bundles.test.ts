@@ -509,6 +509,7 @@ describe('resolveConfigBundleComponentKeys', () => {
       datasets: [],
       abTests: [],
       harnesses: [],
+      payments: [],
     };
   }
 

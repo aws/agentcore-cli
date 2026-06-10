@@ -1,5 +1,5 @@
+import { COMMAND_DESCRIPTIONS } from '../../constants';
 import { getErrorMessage } from '../../errors';
-import { COMMAND_DESCRIPTIONS } from '../../tui/copy';
 import { requireProject } from '../../tui/guards';
 import { handleFetchAccess } from './action';
 import type { FetchAccessResult } from './action';

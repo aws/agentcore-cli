@@ -1,11 +1,18 @@
-import type { ModelProvider, NetworkMode, RuntimeAuthorizerType } from '../../../../schema';
+import type { NetworkMode, RuntimeAuthorizerType } from '../../../../schema';
 import {
   DEFAULT_MODEL_IDS,
   LIFECYCLE_TIMEOUT_MAX,
   LIFECYCLE_TIMEOUT_MIN,
+  MAX_EFS_MOUNTS,
+  MAX_S3_MOUNTS,
   ProjectNameSchema,
   SessionStorageSchema,
 } from '../../../../schema';
+import {
+  validateBYOMountPath,
+  validateEfsAccessPointArn,
+  validateS3FilesAccessPointArn,
+} from '../../../commands/shared/filesystem-utils';
 import { parseAndNormalizeHeaders, validateHeaderAllowlist } from '../../../commands/shared/header-utils';
 import { validateSecurityGroupIds, validateSubnetIds } from '../../../commands/shared/vpc-utils';
 import { computeDefaultCredentialEnvVarName } from '../../../primitives/credential-utils';
@@ -21,7 +28,7 @@ import {
 import type { SelectableItem } from '../../components';
 import { JwtConfigInput, useJwtConfigFlow } from '../../components/jwt-config';
 import { useListNavigation, useMultiSelectNavigation } from '../../hooks';
-import { RUNTIME_AUTHORIZER_TYPE_OPTIONS } from '../agent/types';
+import { RUNTIME_AUTHORIZER_TYPE_OPTIONS, getProviderInfo } from '../agent/types';
 import type { AdvancedSettingId, BuildType, GenerateConfig, GenerateStep, MemoryOption, ProtocolMode } from './types';
 import {
   ADVANCED_SETTING_OPTIONS,
@@ -38,20 +45,6 @@ import {
 import type { useGenerateWizard } from './useGenerateWizard';
 import { Box, Text, useInput } from 'ink';
 import { basename } from 'path';
-
-// Helper to get provider display name and env var name from ModelProvider
-function getProviderInfo(provider: ModelProvider): { name: string; envVarName: string } {
-  switch (provider) {
-    case 'OpenAI':
-      return { name: 'OpenAI', envVarName: 'OPENAI_API_KEY' };
-    case 'Anthropic':
-      return { name: 'Anthropic', envVarName: 'ANTHROPIC_API_KEY' };
-    case 'Gemini':
-      return { name: 'Google Gemini', envVarName: 'GEMINI_API_KEY' };
-    case 'Bedrock':
-      return { name: 'Amazon Bedrock', envVarName: '' };
-  }
-}
 
 interface GenerateWizardUIProps {
   wizard: ReturnType<typeof useGenerateWizard>;
@@ -124,6 +117,12 @@ export function GenerateWizardUI({
   const isIdleTimeoutStep = wizard.step === 'idleTimeout';
   const isMaxLifetimeStep = wizard.step === 'maxLifetime';
   const isSessionStorageMountPathStep = wizard.step === 'sessionStorageMountPath';
+  const isEfsArnStep = wizard.step === 'efsArn';
+  const isEfsMountPathStep = wizard.step === 'efsMountPath';
+  const isEfsAddAnotherStep = wizard.step === 'efsAddAnother';
+  const isS3ArnStep = wizard.step === 's3Arn';
+  const isS3MountPathStep = wizard.step === 's3MountPath';
+  const isS3AddAnotherStep = wizard.step === 's3AddAnother';
   const isConfirmStep = wizard.step === 'confirm';
 
   // Advanced multi-select items — filter out options not applicable to current config
@@ -178,6 +177,50 @@ export function GenerateWizardUI({
     onExit: onBack,
     isActive: isActive && isAdvancedStep,
     requireSelection: false,
+  });
+
+  const efsAddAnotherItems = [
+    ...(wizard.config.efsAccessPoints ?? []).flatMap((m, i) => [
+      {
+        id: `edit:${i}`,
+        title: `Edit EFS mount ${i + 1}: ${m.mountPath}`,
+        description: m.accessPointArn.slice(-30),
+      },
+      { id: `remove:${i}`, title: `Remove EFS mount ${i + 1}: ${m.mountPath}` },
+    ]),
+    ...((wizard.config.efsAccessPoints?.length ?? 0) < MAX_EFS_MOUNTS
+      ? [{ id: 'add', title: 'Add another EFS mount', spaceBefore: true }]
+      : []),
+    { id: 'done', title: 'Continue', spaceBefore: (wizard.config.efsAccessPoints?.length ?? 0) >= MAX_EFS_MOUNTS },
+  ];
+  const efsAddAnotherNav = useListNavigation({
+    items: efsAddAnotherItems,
+    onSelect: item => wizard.submitEfsAddAnother(item.id),
+    onExit: onBack,
+    isActive: isActive && isEfsAddAnotherStep,
+    resetKey: wizard.step,
+  });
+
+  const s3AddAnotherItems = [
+    ...(wizard.config.s3AccessPoints ?? []).flatMap((m, i) => [
+      {
+        id: `edit:${i}`,
+        title: `Edit S3 Files mount ${i + 1}: ${m.mountPath}`,
+        description: m.accessPointArn.slice(-30),
+      },
+      { id: `remove:${i}`, title: `Remove S3 Files mount ${i + 1}: ${m.mountPath}` },
+    ]),
+    ...((wizard.config.s3AccessPoints?.length ?? 0) < MAX_S3_MOUNTS
+      ? [{ id: 'add', title: 'Add another S3 Files mount', spaceBefore: true }]
+      : []),
+    { id: 'done', title: 'Continue', spaceBefore: (wizard.config.s3AccessPoints?.length ?? 0) >= MAX_S3_MOUNTS },
+  ];
+  const s3AddAnotherNav = useListNavigation({
+    items: s3AddAnotherItems,
+    onSelect: item => wizard.submitS3AddAnother(item.id),
+    onExit: onBack,
+    isActive: isActive && isS3AddAnotherStep,
+    resetKey: wizard.step,
   });
 
   // JWT config flow for CUSTOM_JWT authorizer
@@ -410,6 +453,94 @@ export function GenerateWizardUI({
         />
       )}
 
+      {isEfsArnStep && (
+        <>
+          {wizard.config.networkMode !== 'VPC' && (
+            <Text color="yellow">⚠ EFS mounts require VPC network mode. Press Enter to skip or Esc to go back.</Text>
+          )}
+          <TextInput
+            prompt={
+              wizard.editingEfsIndex >= 0
+                ? `Edit EFS access point ARN (mount ${wizard.editingEfsIndex + 1}/${MAX_EFS_MOUNTS}):`
+                : `EFS access point ARN ${(wizard.config.efsAccessPoints ?? []).length + 1}/${MAX_EFS_MOUNTS} (press Enter to skip):`
+            }
+            initialValue={wizard.editingEfsIndex >= 0 ? wizard.pendingEfsArn : ''}
+            allowEmpty={wizard.editingEfsIndex < 0}
+            customValidation={value => {
+              if (!value && wizard.editingEfsIndex < 0) return true;
+              if (wizard.config.networkMode !== 'VPC') return 'EFS mounts require VPC network mode';
+              const r = validateEfsAccessPointArn(value);
+              return r === true ? true : r;
+            }}
+            onSubmit={wizard.submitEfsArn}
+            onCancel={onBack}
+          />
+        </>
+      )}
+
+      {isEfsMountPathStep && (
+        <TextInput
+          prompt={`EFS mount path for ...${wizard.pendingEfsArn.slice(-30)} (e.g. /mnt/efs-data):`}
+          initialValue={
+            wizard.editingEfsIndex >= 0
+              ? (wizard.config.efsAccessPoints?.[wizard.editingEfsIndex]?.mountPath ?? '')
+              : ''
+          }
+          customValidation={value => {
+            const r = validateBYOMountPath(value);
+            return r === true ? true : r;
+          }}
+          onSubmit={wizard.submitEfsMountPath}
+          onCancel={onBack}
+        />
+      )}
+
+      {isEfsAddAnotherStep && <SelectList items={efsAddAnotherItems} selectedIndex={efsAddAnotherNav.selectedIndex} />}
+
+      {isS3ArnStep && (
+        <>
+          {wizard.config.networkMode !== 'VPC' && (
+            <Text color="yellow">
+              ⚠ S3 Files mounts require VPC network mode. Press Enter to skip or Esc to go back.
+            </Text>
+          )}
+          <TextInput
+            prompt={
+              wizard.editingS3Index >= 0
+                ? `Edit S3 Files access point ARN (mount ${wizard.editingS3Index + 1}/${MAX_S3_MOUNTS}):`
+                : `S3 Files access point ARN ${(wizard.config.s3AccessPoints ?? []).length + 1}/${MAX_S3_MOUNTS} (press Enter to skip):`
+            }
+            initialValue={wizard.editingS3Index >= 0 ? wizard.pendingS3Arn : ''}
+            allowEmpty={wizard.editingS3Index < 0}
+            customValidation={value => {
+              if (!value && wizard.editingS3Index < 0) return true;
+              if (wizard.config.networkMode !== 'VPC') return 'S3 Files mounts require VPC network mode';
+              const r = validateS3FilesAccessPointArn(value);
+              return r === true ? true : r;
+            }}
+            onSubmit={wizard.submitS3Arn}
+            onCancel={onBack}
+          />
+        </>
+      )}
+
+      {isS3MountPathStep && (
+        <TextInput
+          prompt={`S3 Files mount path for ...${wizard.pendingS3Arn.slice(-30)} (e.g. /mnt/s3-data):`}
+          initialValue={
+            wizard.editingS3Index >= 0 ? (wizard.config.s3AccessPoints?.[wizard.editingS3Index]?.mountPath ?? '') : ''
+          }
+          customValidation={value => {
+            const r = validateBYOMountPath(value);
+            return r === true ? true : r;
+          }}
+          onSubmit={wizard.submitS3MountPath}
+          onCancel={onBack}
+        />
+      )}
+
+      {isS3AddAnotherStep && <SelectList items={s3AddAnotherItems} selectedIndex={s3AddAnotherNav.selectedIndex} />}
+
       {isConfirmStep && <ConfirmView config={wizard.config} credentialProjectName={credentialProjectName} />}
     </Panel>
   );
@@ -429,9 +560,14 @@ export function getWizardHelpText(step: GenerateStep): string {
     step === 'requestHeaderAllowlist' ||
     step === 'idleTimeout' ||
     step === 'maxLifetime' ||
-    step === 'sessionStorageMountPath'
+    step === 'sessionStorageMountPath' ||
+    step === 'efsArn' ||
+    step === 'efsMountPath' ||
+    step === 's3Arn' ||
+    step === 's3MountPath'
   )
     return 'Enter submit · Esc cancel';
+  if (step === 'efsAddAnother' || step === 's3AddAnother') return '↑↓ navigate · Enter select · Esc back';
   if (step === 'apiKey') return 'Enter submit · Tab show/hide · Esc back';
   if (step === 'jwtConfig') return 'Enter submit · Esc back';
   if (step === 'advanced') return 'Space toggle · Enter confirm · Esc back';
@@ -583,6 +719,22 @@ function ConfirmView({ config, credentialProjectName }: { config: GenerateConfig
             <Text>{config.sessionStorageMountPath}</Text>
           </Text>
         )}
+        {(config.efsAccessPoints ?? []).map((m, i) => (
+          <Text key={i}>
+            <Text dimColor>EFS Mount {i + 1}: </Text>
+            <Text>
+              {m.accessPointArn.slice(-30)} → {m.mountPath}
+            </Text>
+          </Text>
+        ))}
+        {(config.s3AccessPoints ?? []).map((m, i) => (
+          <Text key={i}>
+            <Text dimColor>S3 Files Mount {i + 1}: </Text>
+            <Text>
+              {m.accessPointArn.slice(-30)} → {m.mountPath}
+            </Text>
+          </Text>
+        ))}
         {config.withConfigBundle && (
           <Text>
             <Text dimColor>Config Bundle: </Text>

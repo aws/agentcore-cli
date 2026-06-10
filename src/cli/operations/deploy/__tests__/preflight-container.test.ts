@@ -1,10 +1,11 @@
 import type { AgentCoreProjectSpec, DirectoryPath } from '../../../../schema';
 import { validateContainerAgents } from '../preflight.js';
-import { existsSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 vi.mock('node:fs', () => ({
   existsSync: vi.fn(),
+  readFileSync: vi.fn(),
 }));
 
 vi.mock('../../../../lib', () => ({
@@ -26,6 +27,7 @@ vi.mock('../../../../lib', () => ({
 }));
 
 const mockedExistsSync = vi.mocked(existsSync);
+const mockedReadFileSync = vi.mocked(readFileSync);
 
 const CONFIG_ROOT = '/project/agentcore';
 
@@ -44,6 +46,11 @@ describe('validateContainerAgents', () => {
     vi.clearAllMocks();
   });
 
+  // Default readFileSync to return a safe Dockerfile so the warning check doesn't fail on unrelated tests
+  function mockValidDockerfile(): void {
+    mockedReadFileSync.mockReturnValue('FROM public.ecr.aws/docker/library/python:3.12-slim-trixie\n');
+  }
+
   it('does nothing when there are no Container agents', () => {
     const spec = makeSpec([{ name: 'zip-agent', build: 'CodeZip', codeLocation: dir('agents/zip-agent') }]);
 
@@ -53,6 +60,7 @@ describe('validateContainerAgents', () => {
 
   it('does nothing when Container agent has a valid Dockerfile', () => {
     mockedExistsSync.mockReturnValue(true);
+    mockValidDockerfile();
 
     const spec = makeSpec([
       { name: 'container-agent', build: 'Container', codeLocation: dir('agents/container-agent') },
@@ -72,6 +80,7 @@ describe('validateContainerAgents', () => {
 
   it('only validates Container agents and skips CodeZip agents', () => {
     mockedExistsSync.mockReturnValue(true);
+    mockValidDockerfile();
 
     const spec = makeSpec([
       { name: 'zip-agent', build: 'CodeZip', codeLocation: dir('agents/zip-agent') },
@@ -104,6 +113,7 @@ describe('validateContainerAgents', () => {
 
   it('checks for custom dockerfile name when specified', () => {
     mockedExistsSync.mockReturnValue(true);
+    mockValidDockerfile();
 
     const spec = makeSpec([
       { name: 'gpu-agent', build: 'Container', codeLocation: dir('agents/gpu'), dockerfile: 'Dockerfile.gpu' },
@@ -123,5 +133,51 @@ describe('validateContainerAgents', () => {
     ]);
 
     expect(() => validateContainerAgents(spec, CONFIG_ROOT)).toThrow(/Dockerfile\.gpu not found/);
+  });
+
+  it('warns when Dockerfile uses deprecated bookworm base image', () => {
+    mockedExistsSync.mockReturnValue(true);
+    mockedReadFileSync.mockReturnValue(
+      'FROM public.ecr.aws/docker/library/python:3.12-slim-bookworm\nRUN pip install uv'
+    );
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+
+    const spec = makeSpec([{ name: 'my-agent', build: 'Container', codeLocation: dir('agents/my-agent') }]);
+
+    expect(() => validateContainerAgents(spec, CONFIG_ROOT)).not.toThrow();
+    expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining('CVE-2026-42010'));
+    expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining('my-agent'));
+
+    warnSpy.mockRestore();
+  });
+
+  it('does not warn when Dockerfile uses trixie base image', () => {
+    mockedExistsSync.mockReturnValue(true);
+    mockedReadFileSync.mockReturnValue(
+      'FROM public.ecr.aws/docker/library/python:3.12-slim-trixie\nRUN pip install uv'
+    );
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+
+    const spec = makeSpec([{ name: 'my-agent', build: 'Container', codeLocation: dir('agents/my-agent') }]);
+
+    expect(() => validateContainerAgents(spec, CONFIG_ROOT)).not.toThrow();
+    expect(warnSpy).not.toHaveBeenCalled();
+
+    warnSpy.mockRestore();
+  });
+
+  it('does not warn when bookworm appears in a non-FROM line', () => {
+    mockedExistsSync.mockReturnValue(true);
+    mockedReadFileSync.mockReturnValue(
+      'FROM public.ecr.aws/docker/library/python:3.12-slim-trixie\n# migrated from slim-bookworm\nRUN pip install uv'
+    );
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+
+    const spec = makeSpec([{ name: 'my-agent', build: 'Container', codeLocation: dir('agents/my-agent') }]);
+
+    expect(() => validateContainerAgents(spec, CONFIG_ROOT)).not.toThrow();
+    expect(warnSpy).not.toHaveBeenCalled();
+
+    warnSpy.mockRestore();
   });
 });

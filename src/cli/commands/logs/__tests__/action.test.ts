@@ -65,6 +65,7 @@ describe('resolveAgentContext', () => {
       httpGateways: [],
       harnesses: [],
       datasets: [],
+      payments: [],
     },
     deployedState: {
       targets: {
@@ -131,6 +132,7 @@ describe('resolveAgentContext', () => {
         httpGateways: [],
         harnesses: [],
         datasets: [],
+        payments: [],
       },
     });
     const result = resolveAgentContext(context, {});
@@ -177,6 +179,7 @@ describe('resolveAgentContext', () => {
         httpGateways: [],
         harnesses: [],
         datasets: [],
+        payments: [],
       },
       deployedState: {
         targets: {
@@ -233,6 +236,7 @@ describe('resolveAgentContext', () => {
         httpGateways: [],
         harnesses: [],
         datasets: [],
+        payments: [],
       },
     });
     const result = resolveAgentContext(context, {});

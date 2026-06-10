@@ -16,6 +16,8 @@ test('AgentCoreStack synthesizes with empty spec', () => {
       onlineEvalConfigs: [],
       configBundles: [],
       policyEngines: [],
+      payments: [],
+      configBundles: [],
       agentCoreGateways: [],
       mcpRuntimeTools: [],
       unassignedTargets: [],

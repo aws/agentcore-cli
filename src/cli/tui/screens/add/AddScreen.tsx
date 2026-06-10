@@ -15,7 +15,9 @@ export type AddResourceType =
   | 'policy'
   | 'config-bundle'
   | 'ab-test'
-  | 'dataset';
+  | 'dataset'
+  | 'payment-manager'
+  | 'payment-connector';
 
 const BASE_ADD_RESOURCES: { id: AddResourceType; title: string; description: string }[] = [
   { id: 'agent', title: 'Agent', description: 'Deploy an HTTP, MCP, A2A, or AG-UI agent' },
@@ -30,6 +32,12 @@ const BASE_ADD_RESOURCES: { id: AddResourceType; title: string; description: str
   { id: 'dataset', title: 'Dataset', description: 'Evaluation dataset for testing agents' },
   { id: 'config-bundle', title: 'Configuration Bundle [preview]', description: 'Versioned component configurations' },
   { id: 'ab-test', title: 'AB Test [preview]', description: 'Compare agent configurations with traffic splitting' },
+  { id: 'payment-manager', title: 'Payment Manager', description: 'x402 crypto microtransactions config' },
+  {
+    id: 'payment-connector',
+    title: 'Payment Connector',
+    description: 'Link payment provider credentials to a manager',
+  },
 ];
 
 const ADD_RESOURCES: { id: AddResourceType; title: string; description: string }[] = [

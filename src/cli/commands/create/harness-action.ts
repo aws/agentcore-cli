@@ -1,5 +1,5 @@
 import { CONFIG_DIR } from '../../../lib';
-import type { HarnessModelProvider, NetworkMode } from '../../../schema';
+import type { HarnessApiFormat, HarnessModelProvider, NetworkMode } from '../../../schema';
 import { harnessPrimitive } from '../../primitives/registry';
 import { type ProgressCallback, createProject } from './action';
 import type { CreateResult } from './types';
@@ -12,6 +12,7 @@ export interface CreateHarnessProjectOptions {
   cwd: string;
   modelProvider: HarnessModelProvider;
   modelId: string;
+  apiFormat?: HarnessApiFormat;
   apiKeyArn?: string;
   skipMemory?: boolean;
   containerUri?: string;
@@ -26,6 +27,8 @@ export interface CreateHarnessProjectOptions {
   idleTimeout?: number;
   maxLifetime?: number;
   sessionStoragePath?: string;
+  efsAccessPoints?: { accessPointArn: string; mountPath: string }[];
+  s3AccessPoints?: { accessPointArn: string; mountPath: string }[];
   skipGit?: boolean;
   skipInstall?: boolean;
   onProgress?: ProgressCallback;
@@ -57,6 +60,7 @@ export async function createProjectWithHarness(options: CreateHarnessProjectOpti
       name: options.name,
       modelProvider: options.modelProvider,
       modelId: options.modelId,
+      apiFormat: options.apiFormat,
       apiKeyArn: options.apiKeyArn,
       containerUri: options.containerUri,
       dockerfilePath: options.dockerfilePath,
@@ -71,6 +75,8 @@ export async function createProjectWithHarness(options: CreateHarnessProjectOpti
       idleTimeout: options.idleTimeout,
       maxLifetime: options.maxLifetime,
       sessionStoragePath: options.sessionStoragePath,
+      efsAccessPoints: options.efsAccessPoints,
+      s3AccessPoints: options.s3AccessPoints,
       configBaseDir,
     });
 

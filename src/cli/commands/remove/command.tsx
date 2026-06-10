@@ -1,17 +1,37 @@
-import { ConfigIO, serializeResult, toError } from '../../../lib';
+import { ConfigIO, removeEnvVars, serializeResult, toError } from '../../../lib';
+import { COMMAND_DESCRIPTIONS } from '../../constants';
 import { getErrorMessage } from '../../errors';
+import {
+  computePaymentCredentialEnvVarNames,
+  computeStripePrivyCredentialEnvVarNames,
+} from '../../primitives/credential-utils';
 import { runCliCommand } from '../../telemetry/cli-command-run.js';
 import { renderTUI } from '../../tui';
-import { COMMAND_DESCRIPTIONS } from '../../tui/copy';
 import { requireProject, requireTTY } from '../../tui/guards';
 import type { RemoveAllOptions, RemoveResult } from './types';
 import { validateRemoveAllOptions } from './validate';
 import type { Command } from '@commander-js/extra-typings';
 import { Text, render } from 'ink';
 
-async function handleRemoveAll(_options: RemoveAllOptions): Promise<RemoveResult> {
+async function handleRemoveAll(options: RemoveAllOptions): Promise<RemoveResult> {
   try {
     const configIO = new ConfigIO();
+
+    if (options.dryRun) {
+      const current = await configIO.readProjectSpec();
+      const items: string[] = [];
+      for (const r of current.runtimes ?? []) items.push(`runtime: ${r.name}`);
+      for (const m of current.memories ?? []) items.push(`memory: ${m.name}`);
+      for (const c of current.credentials ?? []) items.push(`credential: ${c.name}`);
+      for (const p of current.payments ?? []) items.push(`payment-manager: ${p.name}`);
+      for (const e of current.evaluators ?? []) items.push(`evaluator: ${e.name}`);
+      for (const g of current.agentCoreGateways ?? []) items.push(`gateway: ${g.name}`);
+      for (const pe of current.policyEngines ?? []) items.push(`policy-engine: ${pe.name}`);
+      return {
+        success: true,
+        message: items.length > 0 ? `Would remove: ${items.join(', ')}` : 'Nothing to remove',
+      };
+    }
 
     // Get current project name to preserve it
     let projectName = 'Project';
@@ -22,11 +42,35 @@ async function handleRemoveAll(_options: RemoveAllOptions): Promise<RemoveResult
       // Use default if can't read
     }
 
-    // Reset agentcore.json (keep project name, clear all resources including gateways)
+    // Clean up payment credential env vars from .env.local before resetting
+    try {
+      const current = await configIO.readProjectSpec();
+      for (const payment of current.payments ?? []) {
+        for (const connector of payment.connectors) {
+          const provider = connector.provider ?? 'CoinbaseCDP';
+          if (provider === 'StripePrivy') {
+            const vars = computeStripePrivyCredentialEnvVarNames(connector.credentialName);
+            await removeEnvVars([vars.appId, vars.appSecret, vars.authorizationPrivateKey, vars.authorizationId]);
+          } else {
+            const vars = computePaymentCredentialEnvVarNames(connector.credentialName);
+            await removeEnvVars([vars.apiKeyId, vars.apiKeySecret, vars.walletSecret]);
+          }
+        }
+      }
+    } catch {
+      // Best-effort: continue with reset even if env cleanup fails
+    }
+
+    // Reset agentcore.json (keep project name + tags, clear all resources)
     await configIO.writeProjectSpec({
+      $schema: 'https://schema.agentcore.aws.dev/v1/agentcore.json',
       name: projectName,
       version: 1,
       managedBy: 'CDK' as const,
+      tags: {
+        'agentcore:created-by': 'agentcore-cli',
+        'agentcore:project-name': projectName,
+      },
       runtimes: [],
       memories: [],
       credentials: [],
@@ -39,6 +83,7 @@ async function handleRemoveAll(_options: RemoveAllOptions): Promise<RemoveResult
       httpGateways: [],
       harnesses: [],
       datasets: [],
+      payments: [],
     });
 
     // Preserve aws-targets.json and deployed-state.json so that
@@ -59,7 +104,12 @@ async function handleRemoveAllCLI(options: RemoveAllOptions): Promise<void> {
   await runCliCommand('remove.all', !!options.json, async () => {
     const result = await handleRemoveAll(options);
     if (!result.success) throw result.error;
-    console.log(JSON.stringify(serializeResult(result)));
+    if (options.json) {
+      console.log(JSON.stringify(serializeResult(result)));
+    } else {
+      console.log(result.message ?? 'All schemas reset to empty state');
+      if (result.note) console.log(result.note);
+    }
     return {};
   });
 }

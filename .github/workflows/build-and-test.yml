@@ -9,6 +9,9 @@ on:
 permissions:
   contents: read
 
+env:
+  AGENTCORE_TELEMETRY_DISABLED: '1'
+
 # Cancel in-progress runs for PRs; never cancel runs on main (merges should not abort each other)
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -34,13 +37,12 @@ jobs:
           cache: 'npm'
       - name: Configure git for tests
         run: |
-          git config --global user.email "bedrock-agentcore-npm+ci@amazon.com"
+          git config --global user.email "ci@amazon.com"
           git config --global user.name "CI"
       - name: Install uv
         uses: astral-sh/setup-uv@v7
       - run: npm ci
       - run: npm run build --if-present
-      - run: npm run test:integ
       - name: Pack tarball
         if: matrix.node-version == '20.x'
         run: npm pack
@@ -59,6 +61,35 @@ jobs:
         with:
           name: tarball
           path: '*.tgz'
+
+  integ-test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    strategy:
+      fail-fast: false
+      matrix:
+        node-version:
+          ${{ github.event_name == 'pull_request' && fromJSON('["20.x"]') || fromJSON('["20.x", "22.x", "24.x"]') }}
+        shard: [1/4, 2/4, 3/4, 4/4]
+
+    steps:
+      - uses: actions/checkout@v6
+      - name: Use Node.js ${{ matrix.node-version }}
+        uses: actions/setup-node@v6
+        with:
+          node-version: ${{ matrix.node-version }}
+          cache: 'npm'
+      - name: Configure git for tests
+        run: |
+          git config --global user.email "ci@amazon.com"
+          git config --global user.name "CI"
+      - name: Install uv
+        uses: astral-sh/setup-uv@v7
+      - run: npm ci
+      - run: npm run build --if-present
+      - name: Run integration tests (shard ${{ matrix.shard }})
+        run: npx vitest run --project integ --shard=${{ matrix.shard }}
 
   unit-test:
     runs-on: ubuntu-latest
@@ -80,7 +111,7 @@ jobs:
           cache: 'npm'
       - name: Configure git for tests
         run: |
-          git config --global user.email "bedrock-agentcore-npm+ci@amazon.com"
+          git config --global user.email "ci@amazon.com"
           git config --global user.name "CI"
       - name: Install uv
         uses: astral-sh/setup-uv@v7

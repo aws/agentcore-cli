@@ -1,8 +1,8 @@
 import { deleteBatchEvaluation } from '../../aws/agentcore-batch-evaluation';
 import { deleteRecommendation } from '../../aws/agentcore-recommendation';
+import { COMMAND_DESCRIPTIONS } from '../../constants';
 import { getErrorMessage } from '../../errors';
 import { deleteLocalBatchEvalRun, deleteLocalRecommendationRun } from '../../operations/archive/archive-storage';
-import { COMMAND_DESCRIPTIONS } from '../../tui/copy';
 import { requireProject } from '../../tui/guards';
 import { getRegion } from '../shared/region-utils';
 import type { Command } from '@commander-js/extra-typings';

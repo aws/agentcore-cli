@@ -1,5 +1,6 @@
 import { serializeResult } from '../../../lib';
 import type { RecommendationType } from '../../aws/agentcore-recommendation';
+import { COMMAND_DESCRIPTIONS } from '../../constants';
 import { getErrorMessage } from '../../errors';
 import { handleRunEval } from '../../operations/eval';
 import type { RunEvalOptions } from '../../operations/eval';
@@ -14,7 +15,6 @@ import {
   runRecommendationCommand,
   saveRecommendationRun,
 } from '../../operations/recommendation';
-import { COMMAND_DESCRIPTIONS } from '../../tui/copy';
 import { requireProject } from '../../tui/guards';
 import type { Command } from '@commander-js/extra-typings';
 import { Text, render } from 'ink';

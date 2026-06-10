@@ -71,6 +71,7 @@ function makeProjectSpec(abTests: AgentCoreProjectSpec['abTests'] = []): AgentCo
     datasets: [],
     abTests,
     harnesses: [],
+    payments: [],
   };
 }
 

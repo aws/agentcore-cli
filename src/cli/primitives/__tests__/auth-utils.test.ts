@@ -98,6 +98,7 @@ describe('createManagedOAuthCredential', () => {
     httpGateways: [],
     harnesses: [],
     datasets: [],
+    payments: [],
   };
 
   const jwtConfig: JwtConfigOptions = {

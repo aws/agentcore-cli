@@ -112,6 +112,7 @@ function createRuntimeDescriptor(
     getExistingNames: spec => spec.runtimes.map(r => r.name),
     addToProjectSpec: (detail, localName, spec) => {
       spec.runtimes.push(toAgentEnvSpec(detail, localName, resolvedCodeLocation, resolvedEntrypoint));
+      return { success: true, resourceType: 'runtime', resourceName: localName };
     },
 
     cfnResourceType: 'AWS::BedrockAgentCore::Runtime',

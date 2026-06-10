@@ -1,3 +1,5 @@
+import { ValidationError } from '../../../lib';
+import { type Result, failureResult } from '../../../lib/result';
 import type { OnlineEvalConfig } from '../../../schema';
 import type { GetOnlineEvalConfigResult, OnlineEvalConfigSummary } from '../../aws/agentcore-control';
 import {
@@ -33,18 +35,23 @@ export function toOnlineEvalConfigSpec(
   localName: string,
   agentName: string,
   evaluatorArns: string[]
-): OnlineEvalConfig {
+): Result<{ config: OnlineEvalConfig }> {
   if (detail.samplingPercentage == null) {
-    throw new Error(`Online eval config "${detail.configName}" has no sampling configuration. Cannot import.`);
+    return failureResult(
+      new ValidationError(`Online eval config "${detail.configName}" has no sampling configuration. Cannot import.`)
+    );
   }
 
   return {
-    name: localName,
-    agent: agentName,
-    evaluators: evaluatorArns,
-    samplingRate: detail.samplingPercentage,
-    ...(detail.description && { description: detail.description }),
-    ...(detail.executionStatus === 'ENABLED' && { enableOnCreate: true }),
+    success: true,
+    config: {
+      name: localName,
+      agent: agentName,
+      evaluators: evaluatorArns,
+      samplingRate: detail.samplingPercentage,
+      ...(detail.description && { description: detail.description }),
+      ...(detail.executionStatus === 'ENABLED' && { enableOnCreate: true }),
+    },
   };
 }
 
@@ -87,9 +94,11 @@ function createOnlineEvalDescriptor(): ResourceImportDescriptor<GetOnlineEvalCon
 
     getExistingNames: spec => (spec.onlineEvalConfigs ?? []).map(c => c.name),
     addToProjectSpec: (detail, localName, spec) => {
-      (spec.onlineEvalConfigs ??= []).push(
-        toOnlineEvalConfigSpec(detail, localName, resolvedAgentName, resolvedEvaluatorArns)
-      );
+      const result = toOnlineEvalConfigSpec(detail, localName, resolvedAgentName, resolvedEvaluatorArns);
+      if (!result.success)
+        return { success: false, error: result.error, resourceType: 'online-eval' as const, resourceName: localName };
+      (spec.onlineEvalConfigs ??= []).push(result.config);
+      return { success: true, resourceType: 'online-eval', resourceName: localName };
     },
 
     cfnResourceType: 'AWS::BedrockAgentCore::OnlineEvaluationConfig',

@@ -8,6 +8,8 @@ import {
   setSessionProjectRoot,
 } from '../../../../lib';
 import type { DeployedState } from '../../../../schema';
+import { getCredentialProvider } from '../../../aws/account';
+import { validateFilesystemMountsConfiguration } from '../../../commands/shared/filesystem-utils';
 import { getErrorMessage } from '../../../errors';
 import { isPreviewEnabled } from '../../../feature-flags';
 import { CreateLogger } from '../../../logging';
@@ -26,6 +28,7 @@ import { credentialPrimitive } from '../../../primitives/registry';
 import { createDefaultProjectSpec } from '../../../project';
 import { withCommandRunTelemetry } from '../../../telemetry/cli-command-run.js';
 import {
+  AgentEnvironment,
   AgentFramework,
   AgentLanguage,
   AgentProtocol,
@@ -43,6 +46,7 @@ import { mapByoConfigToAgent } from '../agent';
 import type { AddAgentConfig } from '../agent/types';
 import type { GenerateConfig } from '../generate/types';
 import type { AddHarnessConfig } from '../harness/types';
+import { DescribeSubnetsCommand, EC2Client } from '@aws-sdk/client-ec2';
 import { mkdir } from 'fs/promises';
 import { basename, join } from 'path';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
@@ -259,16 +263,32 @@ export function useCreateFlow(cwd: string): CreateFlowState {
   useEffect(() => {
     if (phase !== 'running') return;
 
+    const isHarness = addHarnessConfig !== null;
     const attrs = {
-      agent_language: standardize(AgentLanguage, addAgentConfig?.language ?? 'Python'),
-      agent_framework: standardize(AgentFramework, addAgentConfig?.framework),
-      model_provider: standardize(ModelProvider, addAgentConfig?.modelProvider),
-      memory_type: standardize(MemoryEnum, addAgentConfig?.memory ?? 'none'),
-      agent_protocol: standardize(AgentProtocol, addAgentConfig?.protocol ?? 'HTTP'),
-      build_type: standardize(BuildType, addAgentConfig?.buildType ?? 'CodeZip'),
-      agent_source: standardize(AgentSource, addAgentConfig?.agentType ?? 'create'),
-      network_mode: standardize(NetworkMode, addAgentConfig?.networkMode ?? 'PUBLIC'),
-      has_agent: addAgentConfig !== null,
+      agent_environment: standardize(AgentEnvironment, isHarness ? 'harness' : 'runtime'),
+      // true when either an agent or harness config is set (non-null/non-undefined)
+      has_agent: Boolean(addAgentConfig) || Boolean(addHarnessConfig),
+      model_provider: standardize(
+        ModelProvider,
+        isHarness ? addHarnessConfig?.modelProvider : addAgentConfig?.modelProvider
+      ),
+      memory_type: standardize(
+        MemoryEnum,
+        isHarness ? (addHarnessConfig?.skipMemory ? 'none' : 'longandshortterm') : (addAgentConfig?.memory ?? 'none')
+      ),
+      build_type: isHarness ? undefined : standardize(BuildType, addAgentConfig?.buildType ?? 'CodeZip'),
+      network_mode: standardize(
+        NetworkMode,
+        isHarness ? (addHarnessConfig?.networkMode ?? 'PUBLIC') : (addAgentConfig?.networkMode ?? 'PUBLIC')
+      ),
+      ...(isHarness
+        ? {}
+        : {
+            agent_language: standardize(AgentLanguage, addAgentConfig?.language ?? 'Python'),
+            agent_framework: standardize(AgentFramework, addAgentConfig?.framework),
+            agent_protocol: standardize(AgentProtocol, addAgentConfig?.protocol ?? 'HTTP'),
+            agent_type: standardize(AgentSource, addAgentConfig?.agentType ?? 'create'),
+          }),
     };
 
     const run = async (): Promise<{ success: true } | { success: false; error: Error }> => {
@@ -346,7 +366,40 @@ export function useCreateFlow(cwd: string): CreateFlowState {
               logger.logSubStep(`Adding agent: ${addAgentConfig.name}`);
               logger.logSubStep(`Type: ${addAgentConfig.agentType}, Language: ${addAgentConfig.language}`);
 
+              // Validate EFS/S3 filesystem mounts before writing anything (shared by create and BYO paths)
+              const validateFilesystemMounts = async () => {
+                const efsMounts = addAgentConfig.efsAccessPoints ?? [];
+                const s3FilesMounts = addAgentConfig.s3AccessPoints ?? [];
+                if (efsMounts.length === 0 && s3FilesMounts.length === 0) return;
+                const awsRegion = process.env.AWS_REGION ?? process.env.AWS_DEFAULT_REGION ?? 'us-east-1';
+                const subnetIds = addAgentConfig.subnets ?? [];
+                let agentVpcId: string | undefined;
+                if (subnetIds.length > 0) {
+                  try {
+                    const ec2 = new EC2Client({ region: awsRegion, credentials: getCredentialProvider() });
+                    const subnetResp = await ec2.send(new DescribeSubnetsCommand({ SubnetIds: subnetIds }));
+                    agentVpcId = subnetResp.Subnets?.[0]?.VpcId;
+                  } catch {
+                    // non-fatal: Level 2 topology checks are skipped when VPC ID cannot be resolved
+                  }
+                }
+                logger.logSubStep('Validating filesystem mounts...');
+                const fsValidation = await validateFilesystemMountsConfiguration({
+                  efsMounts,
+                  s3FilesMounts,
+                  agentVpcId,
+                  agentSubnetIds: subnetIds,
+                  agentSecurityGroupIds: addAgentConfig.securityGroups ?? [],
+                  region: awsRegion,
+                });
+                if (!fsValidation.success) {
+                  throw new Error(fsValidation.error);
+                }
+              };
+
               if (addAgentConfig.agentType === 'create') {
+                await validateFilesystemMounts();
+
                 // Create path: generate agent from template
                 const generateConfig: GenerateConfig = {
                   projectName: addAgentConfig.name,
@@ -367,6 +420,8 @@ export function useCreateFlow(cwd: string): CreateFlowState {
                   idleRuntimeSessionTimeout: addAgentConfig.idleRuntimeSessionTimeout,
                   maxLifetime: addAgentConfig.maxLifetime,
                   sessionStorageMountPath: addAgentConfig.sessionStorageMountPath,
+                  efsAccessPoints: addAgentConfig.efsAccessPoints,
+                  s3AccessPoints: addAgentConfig.s3AccessPoints,
                   withConfigBundle: addAgentConfig.withConfigBundle,
                 };
 
@@ -451,6 +506,8 @@ export function useCreateFlow(cwd: string): CreateFlowState {
                   idleTimeout: addAgentConfig.idleRuntimeSessionTimeout,
                   maxLifetime: addAgentConfig.maxLifetime,
                   sessionStorageMountPath: addAgentConfig.sessionStorageMountPath,
+                  efsAccessPoints: addAgentConfig.efsAccessPoints,
+                  s3AccessPoints: addAgentConfig.s3AccessPoints,
                 });
                 if (!importResult.success) {
                   throw new Error(importResult.error?.message ?? 'Import failed');
@@ -458,6 +515,8 @@ export function useCreateFlow(cwd: string): CreateFlowState {
               } else {
                 // BYO path: just write config to project (no file generation)
                 logger.logSubStep('Writing BYO agent config to project...');
+
+                await validateFilesystemMounts();
 
                 // Create the agent code directory so users know where to put their code
                 const codeDir = join(projectRoot, addAgentConfig.codeLocation.replace(/\/$/, ''));
@@ -591,6 +650,7 @@ export function useCreateFlow(cwd: string): CreateFlowState {
                 name: addHarnessConfig.name,
                 modelProvider: addHarnessConfig.modelProvider,
                 modelId: addHarnessConfig.modelId,
+                apiFormat: addHarnessConfig.apiFormat,
                 apiKeyArn: addHarnessConfig.apiKeyArn,
                 skipMemory: addHarnessConfig.skipMemory,
                 containerUri: addHarnessConfig.containerUri,
@@ -605,6 +665,8 @@ export function useCreateFlow(cwd: string): CreateFlowState {
                 idleTimeout: addHarnessConfig.idleTimeout,
                 maxLifetime: addHarnessConfig.maxLifetime,
                 sessionStoragePath: addHarnessConfig.sessionStoragePath,
+                efsAccessPoints: addHarnessConfig.efsAccessPoints,
+                s3AccessPoints: addHarnessConfig.s3AccessPoints,
                 selectedTools: addHarnessConfig.selectedTools,
                 mcpName: addHarnessConfig.mcpName,
                 mcpUrl: addHarnessConfig.mcpUrl,

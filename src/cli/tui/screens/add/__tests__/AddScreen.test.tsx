@@ -13,4 +13,14 @@ describe('AddScreen', () => {
     expect(lastFrame()).toContain('Gateway');
     expect(lastFrame()).toContain('Gateway Target');
   });
+
+  it('payment manager and connector are separate top-level options', () => {
+    const onSelect = vi.fn();
+    const onExit = vi.fn();
+
+    const { lastFrame } = render(<AddScreen onSelect={onSelect} onExit={onExit} />);
+
+    expect(lastFrame()).toContain('Payment Manager');
+    expect(lastFrame()).toContain('Payment Connector');
+  });
 });

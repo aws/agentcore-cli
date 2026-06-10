@@ -1,6 +1,6 @@
 import { stopBatchEvaluation } from '../../aws/agentcore-batch-evaluation';
+import { COMMAND_DESCRIPTIONS } from '../../constants';
 import { getErrorMessage } from '../../errors';
-import { COMMAND_DESCRIPTIONS } from '../../tui/copy';
 import { getRegion } from '../shared/region-utils';
 import type { Command } from '@commander-js/extra-typings';
 import { Text, render } from 'ink';

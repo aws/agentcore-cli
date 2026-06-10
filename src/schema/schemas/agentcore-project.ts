@@ -29,6 +29,16 @@ import {
   MemoryStrategyTypeSchema,
 } from './primitives/memory';
 import { OnlineEvalConfigSchema } from './primitives/online-eval-config';
+import {
+  DEFAULT_AUTO_PAYMENT,
+  DEFAULT_SPEND_LIMIT,
+  PaymentAuthorizerTypeSchema,
+  PaymentConnectorNameSchema,
+  PaymentConnectorSchema,
+  PaymentManagerNameSchema,
+  PaymentManagerSchema,
+  PaymentProviderSchema,
+} from './primitives/payment';
 import { PolicyEngineSchema } from './primitives/policy';
 import { TagsSchema } from './primitives/tags';
 import { uniqueBy } from './zod-util';
@@ -79,20 +89,38 @@ export { ABTestModeSchema, TargetRefSchema, GatewayFilterSchema } from './primit
 export type { HttpGatewayTarget } from './primitives/http-gateway';
 export { HttpGatewayTargetSchema } from './primitives/http-gateway';
 export type {
+  BedrockApiFormat,
+  HarnessApiFormat,
   HarnessGatewayOutboundAuth,
   HarnessMemoryRef,
   HarnessModel,
-  HarnessSpec,
   HarnessModelProvider,
+  HarnessSpec,
+  OpenAiApiFormat,
 } from './primitives/harness';
 export {
+  BedrockApiFormatSchema,
+  HarnessApiFormatSchema,
+  OpenAiApiFormatSchema,
   GatewayOAuthGrantTypeSchema,
   HarnessGatewayOutboundAuthSchema,
+  HarnessModelProviderSchema,
   HarnessNameSchema,
   HarnessSpecSchema,
   HarnessToolTypeSchema,
-  HarnessModelProviderSchema,
+  validateApiFormat,
 } from './primitives/harness';
+export {
+  DEFAULT_AUTO_PAYMENT,
+  DEFAULT_SPEND_LIMIT,
+  PaymentManagerSchema,
+  PaymentManagerNameSchema,
+  PaymentConnectorSchema,
+  PaymentConnectorNameSchema,
+  PaymentProviderSchema,
+  PaymentAuthorizerTypeSchema,
+};
+export type { PaymentManager, PaymentConnector, PaymentProvider, PaymentAuthorizerType } from './primitives/payment';
 
 // ============================================================================
 // ManagedBy Schema
@@ -254,7 +282,11 @@ export const CredentialNameSchema = z
   .max(128, 'Credential name must be 128 characters or less')
   .regex(/^[a-zA-Z0-9\-_]+$/, 'Must contain only alphanumeric characters, hyphens, and underscores (1-128 chars)');
 
-export const CredentialTypeSchema = z.enum(['ApiKeyCredentialProvider', 'OAuthCredentialProvider']);
+export const CredentialTypeSchema = z.enum([
+  'ApiKeyCredentialProvider',
+  'OAuthCredentialProvider',
+  'PaymentCredentialProvider',
+]);
 export type CredentialType = z.infer<typeof CredentialTypeSchema>;
 
 export const ApiKeyCredentialSchema = z.object({
@@ -281,7 +313,19 @@ export const OAuthCredentialSchema = z.object({
 
 export type OAuthCredential = z.infer<typeof OAuthCredentialSchema>;
 
-export const CredentialSchema = z.discriminatedUnion('authorizerType', [ApiKeyCredentialSchema, OAuthCredentialSchema]);
+export const PaymentCredentialSchema = z.object({
+  authorizerType: z.literal('PaymentCredentialProvider'),
+  name: CredentialNameSchema,
+  provider: PaymentProviderSchema,
+});
+
+export type PaymentCredential = z.infer<typeof PaymentCredentialSchema>;
+
+export const CredentialSchema = z.discriminatedUnion('authorizerType', [
+  ApiKeyCredentialSchema,
+  OAuthCredentialSchema,
+  PaymentCredentialSchema,
+]);
 
 export type Credential = z.infer<typeof CredentialSchema>;
 
@@ -475,6 +519,17 @@ export const AgentCoreProjectSpecSchema = z
           seen.add(dataset.name);
         }
       }),
+
+    payments: z
+      .array(PaymentManagerSchema)
+      .optional()
+      .superRefine((items, ctx) => {
+        if (!items) return;
+        uniqueBy(
+          (manager: { name: string }) => manager.name,
+          (name: string) => `Duplicate payment manager name: ${name}`
+        )(items, ctx);
+      }),
   })
   .strict()
   .superRefine((spec, ctx) => {
@@ -562,6 +617,28 @@ export const AgentCoreProjectSpecSchema = z
           ctx.addIssue({
             code: z.ZodIssueCode.custom,
             message: `HTTP gateway "${gw.name}" target "${target.name}" references qualifier "${target.qualifier}" which is not an endpoint on runtime "${target.runtimeRef}"`,
+          });
+        }
+      }
+    }
+
+    // Validate payment connector credential references
+    for (const payment of spec.payments ?? []) {
+      const paymentIndex = (spec.payments ?? []).indexOf(payment);
+      for (const connector of payment.connectors) {
+        const connectorIndex = payment.connectors.indexOf(connector);
+        const credential = spec.credentials.find(c => c.name === connector.credentialName);
+        if (!credential) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            message: `Payment connector "${connector.name}" in manager "${payment.name}" references credential "${connector.credentialName}" which does not exist in credentials[]`,
+            path: ['payments', paymentIndex, 'connectors', connectorIndex, 'credentialName'],
+          });
+        } else if (credential.authorizerType !== 'PaymentCredentialProvider') {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            message: `Payment connector "${connector.name}" in manager "${payment.name}" references credential "${connector.credentialName}" which is a ${credential.authorizerType}, not a PaymentCredentialProvider`,
+            path: ['payments', paymentIndex, 'connectors', connectorIndex, 'credentialName'],
           });
         }
       }

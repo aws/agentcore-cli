@@ -2,6 +2,7 @@ import { parseJsonRpcResponse } from '../../lib/utils/json-rpc';
 import { getCredentialProvider } from './account';
 import { parseAguiSSEStream } from './agui-parser';
 import { serviceEndpoint } from './partition';
+import { dataPlaneEndpoint } from './stage-endpoint';
 import {
   BedrockAgentCoreClient,
   EvaluateCommand,
@@ -27,6 +28,7 @@ function createAgentCoreClient(region: string, headers?: Record<string, string>)
   const client = new BedrockAgentCoreClient({
     region,
     credentials: getCredentialProvider(),
+    endpoint: dataPlaneEndpoint(region),
   });
 
   if (headers && Object.keys(headers).length > 0) {
@@ -70,6 +72,18 @@ export interface InvokeAgentRuntimeOptions {
   baggage?: string;
   /** Runtime endpoint qualifier (e.g. DEFAULT, PROMPT_V1). Defaults to DEFAULT. */
   endpoint?: string;
+  /** Payment instrument ID for x402 payments */
+  paymentInstrumentId?: string;
+  /** Payment session ID for budget tracking */
+  paymentSessionId?: string;
+  /**
+   * Payments end-user identity, written into the invoke body as `user_id`.
+   * The agent scopes the payment instrument/session/budget to this value
+   * (the wallet owner). Distinct from `userId`, which is the runtime/Identity
+   * header (X-Amzn-Bedrock-AgentCore-Runtime-User-Id) used for OAuth token
+   * scoping and is NOT visible to the agent's payment plugin.
+   */
+  paymentUserId?: string;
 }
 
 export interface InvokeAgentRuntimeResult {
@@ -149,6 +163,28 @@ export function extractResult(text: string): string {
   }
 }
 
+/**
+ * Build the JSON payload body for an invoke request.
+ * Includes payment context fields only when provided.
+ */
+export function buildInvokePayload(options: InvokeAgentRuntimeOptions): string {
+  const body: Record<string, string> = { prompt: options.payload };
+  // The agent reads `payload.user_id` to scope the payment wallet/budget
+  // (main.py: payload.get("user_id") or context.user_id or "default-user").
+  // Only set it when resolved; when omitted the agent applies its own
+  // "default-user" fallback, so we never bake that magic value into the wire.
+  if (options.paymentUserId) {
+    body.user_id = options.paymentUserId;
+  }
+  if (options.paymentInstrumentId) {
+    body.payment_instrument_id = options.paymentInstrumentId;
+  }
+  if (options.paymentSessionId) {
+    body.payment_session_id = options.paymentSessionId;
+  }
+  return JSON.stringify(body);
+}
+
 // ---------------------------------------------------------------------------
 // Bearer token (CUSTOM_JWT) thin HTTP client
 // ---------------------------------------------------------------------------
@@ -201,7 +237,7 @@ async function invokeWithBearerTokenStreaming(options: InvokeAgentRuntimeOptions
   const res = await fetch(url, {
     method: 'POST',
     headers,
-    body: JSON.stringify({ prompt: options.payload }),
+    body: buildInvokePayload(options),
   });
 
   if (!res.ok) {
@@ -287,7 +323,7 @@ async function invokeWithBearerToken(options: InvokeAgentRuntimeOptions): Promis
   const res = await fetch(url, {
     method: 'POST',
     headers,
-    body: JSON.stringify({ prompt: options.payload }),
+    body: buildInvokePayload(options),
   });
 
   if (!res.ok) {
@@ -319,7 +355,7 @@ export async function invokeAgentRuntimeStreaming(options: InvokeAgentRuntimeOpt
 
   const command = new InvokeAgentRuntimeCommand({
     agentRuntimeArn: options.runtimeArn,
-    payload: new TextEncoder().encode(JSON.stringify({ prompt: options.payload })),
+    payload: new TextEncoder().encode(buildInvokePayload(options)),
     contentType: 'application/json',
     accept: 'application/json, text/event-stream',
     runtimeSessionId: options.sessionId,
@@ -415,7 +451,7 @@ export async function invokeAgentRuntime(options: InvokeAgentRuntimeOptions): Pr
 
   const command = new InvokeAgentRuntimeCommand({
     agentRuntimeArn: options.runtimeArn,
-    payload: new TextEncoder().encode(JSON.stringify({ prompt: options.payload })),
+    payload: new TextEncoder().encode(buildInvokePayload(options)),
     contentType: 'application/json',
     accept: 'application/json, text/event-stream',
     runtimeSessionId: options.sessionId,

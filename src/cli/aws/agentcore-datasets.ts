@@ -23,7 +23,7 @@
  * 4. Keep the same exported function signatures so callers don't change
  */
 import { getCredentialProvider } from './account';
-import { dnsSuffix } from './partition';
+import { controlPlaneEndpoint } from './stage-endpoint';
 import { Sha256 } from '@aws-crypto/sha256-js';
 import { defaultProvider } from '@aws-sdk/credential-provider-node';
 import { HttpRequest } from '@smithy/protocol-http';
@@ -146,13 +146,6 @@ export interface ListDatasetExamplesResult {
 // HTTP signing helper
 // ============================================================================
 
-function getControlPlaneEndpoint(region: string): string {
-  const stage = process.env.AGENTCORE_STAGE?.toLowerCase();
-  if (stage === 'beta') return `https://beta.${region}.elcapcp.genesis-primitives.aws.dev`;
-  if (stage === 'gamma') return `https://gamma.${region}.elcapcp.genesis-primitives.aws.dev`;
-  return `https://bedrock-agentcore-control.${region}.${dnsSuffix(region)}`;
-}
-
 async function signedRequest(options: {
   region: string;
   method: string;
@@ -160,7 +153,7 @@ async function signedRequest(options: {
   body?: string;
 }): Promise<unknown> {
   const { region, method, path, body } = options;
-  const endpoint = getControlPlaneEndpoint(region);
+  const endpoint = controlPlaneEndpoint(region);
   const url = new URL(path, endpoint);
 
   const query: Record<string, string> = {};

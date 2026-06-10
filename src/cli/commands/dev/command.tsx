@@ -6,6 +6,8 @@ import {
   findConfigRoot,
   getWorkingDirectory,
 } from '../../../lib';
+import { failureResult } from '../../../lib/result.js';
+import { COMMAND_DESCRIPTIONS } from '../../constants';
 import { getErrorMessage } from '../../errors';
 import { detectContainerRuntime } from '../../external-requirements';
 import { isPreviewEnabled } from '../../feature-flags';
@@ -24,12 +26,12 @@ import {
   listMcpTools,
   loadDevEnv,
   loadProjectConfig,
+  onShutdownSignal,
 } from '../../operations/dev';
 import { OtelCollector, startOtelCollector } from '../../operations/dev/otel';
 import { withCommandRunTelemetry } from '../../telemetry/cli-command-run.js';
 import { AgentProtocol, standardize } from '../../telemetry/schemas/common-shapes.js';
 import { LayoutProvider } from '../../tui/context';
-import { COMMAND_DESCRIPTIONS } from '../../tui/copy';
 import { requireProject, requireTTY } from '../../tui/guards';
 import { runCliDeploy } from '../deploy/progress';
 import { parseHeaderFlags } from '../shared/header-utils';
@@ -201,6 +203,7 @@ export const registerDev = (program: Command) => {
           const execResult = await withCommandRunTelemetry(
             'dev',
             {
+              agent_environment: 'runtime' as const,
               dev_action: 'exec' as const,
               ui_mode: 'terminal' as const,
               has_stream: false,
@@ -209,15 +212,19 @@ export const registerDev = (program: Command) => {
             },
             async recorder => {
               if (!positionalPrompt) {
-                throw new ValidationError('A command is required with --exec. Usage: agentcore dev --exec "whoami"');
+                return failureResult(
+                  new ValidationError('A command is required with --exec. Usage: agentcore dev --exec "whoami"')
+                );
               }
               const workingDir = getWorkingDirectory();
               const project = await loadProjectConfig(workingDir);
               const agentName = opts.runtime ?? project?.runtimes[0]?.name ?? 'unknown';
               const targetAgent = project?.runtimes.find(a => a.name === agentName);
               if (targetAgent?.build !== 'Container') {
-                throw new ValidationError(
-                  '--exec is only supported for Container build agents. For CodeZip agents, use your terminal to run commands directly.'
+                return failureResult(
+                  new ValidationError(
+                    '--exec is only supported for Container build agents. For CodeZip agents, use your terminal to run commands directly.'
+                  )
                 );
               }
               recorder.set({
@@ -228,8 +235,7 @@ export const registerDev = (program: Command) => {
               return { success: true as const };
             }
           );
-          // TODO: Remove cast once withCommandRunTelemetry's return type is narrowed
-          if (!execResult.success) throw (execResult as unknown as { error: Error }).error;
+          if (!execResult.success) throw execResult.error;
           return;
         }
 
@@ -239,6 +245,7 @@ export const registerDev = (program: Command) => {
           const invokeResult = await withCommandRunTelemetry(
             'dev',
             {
+              agent_environment: 'runtime' as const,
               dev_action: 'invoke' as const,
               ui_mode: 'terminal' as const,
               has_stream: opts.stream ?? false,
@@ -301,6 +308,7 @@ export const registerDev = (program: Command) => {
         const serverResult = await withCommandRunTelemetry(
           'dev',
           {
+            agent_environment: 'runtime' as const,
             dev_action: 'server' as const,
             ui_mode: 'terminal' as const,
             has_stream: false,
@@ -353,6 +361,7 @@ export const registerDev = (program: Command) => {
             if (opts.logs) {
               // Preview: harness-only projects need deploy then print invoke instructions
               if (isPreviewEnabled() && supportedAgents.length === 0 && hasHarnesses) {
+                recorder.set({ agent_environment: 'harness' as const });
                 if (!opts.skipDeploy) {
                   await runCliDeploy();
                 }
@@ -375,7 +384,8 @@ export const registerDev = (program: Command) => {
               }
 
               const agentName = opts.runtime ?? project.runtimes[0]?.name;
-              const { envVars } = await loadDevEnv(workingDir);
+              const selectedRuntime = project.runtimes.find(r => r.name === agentName);
+              const { envVars } = await loadDevEnv(workingDir, selectedRuntime);
               const mergedEnvVars = { ...envVars, ...otelEnvVars };
               const config = getDevConfig(workingDir, project, configRoot ?? undefined, agentName);
 
@@ -445,7 +455,7 @@ export const registerDev = (program: Command) => {
                 });
                 server.start().catch(reject);
 
-                process.once('SIGINT', () => {
+                onShutdownSignal(() => {
                   console.log('\nStopping server...');
                   collector?.stop();
                   server.kill();
@@ -484,6 +494,11 @@ export const registerDev = (program: Command) => {
                   />
                 </LayoutProvider>
               );
+
+              process.once('SIGTERM', () => {
+                exitAltScreen();
+                unmount();
+              });
 
               return {
                 success: true as const,

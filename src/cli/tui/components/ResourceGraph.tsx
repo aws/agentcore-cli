@@ -25,6 +25,7 @@ const ICONS = {
   dataset: '▤',
   harness: '⬢',
   'runtime-endpoint': '◉',
+  payment: '₿',
 } as const;
 
 interface ResourceGraphProps {
@@ -136,6 +137,7 @@ export function ResourceGraph({ project, mcp, agentName, resourceStatuses }: Res
   const configBundles = project.configBundles ?? [];
   const datasets = project.datasets ?? [];
   const abTests = project.abTests ?? [];
+  const payments = project.payments ?? [];
 
   // Build lookup map and collect pending-removal resources in a single pass
   const { statusMap, pendingRemovals } = useMemo(() => {
@@ -168,6 +170,7 @@ export function ResourceGraph({ project, mcp, agentName, resourceStatuses }: Res
     policyEngines.length > 0 ||
     mcpRuntimeTools.length > 0 ||
     unassignedTargets.length > 0 ||
+    payments.length > 0 ||
     pendingRemovals.length > 0;
 
   return (
@@ -372,6 +375,36 @@ export function ResourceGraph({ project, mcp, agentName, resourceStatuses }: Res
                 identifier={rsEntry?.identifier}
                 invocationUrl={rsEntry?.invocationUrl}
               />
+            );
+          })}
+        </Box>
+      )}
+
+      {/* Payments — manager (parent) with its connectors (children) */}
+      {payments.length > 0 && (
+        <Box flexDirection="column">
+          <SectionHeader>Payments</SectionHeader>
+          {payments.map(manager => {
+            const rsEntry = statusMap.get(`payment:${manager.name}`);
+            const localDetail = `${manager.authorizerType} — auto-pay ${manager.autoPayment ? 'on' : 'off'}`;
+            return (
+              <Box key={manager.name} flexDirection="column">
+                <ResourceRow
+                  icon={ICONS.payment}
+                  color="green"
+                  name={manager.name}
+                  detail={rsEntry?.detail ?? localDetail}
+                  deploymentState={rsEntry?.deploymentState}
+                  identifier={rsEntry?.identifier}
+                />
+                {manager.connectors.map(connector => (
+                  <Text key={connector.name}>
+                    {'    '}
+                    <Text color="cyan">{ICONS.tool}</Text> {connector.name}
+                    <Text color="gray"> [{connector.provider}]</Text>
+                  </Text>
+                ))}
+              </Box>
             );
           })}
         </Box>

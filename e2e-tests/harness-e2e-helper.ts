@@ -1,12 +1,7 @@
 import { getHarness } from '../src/cli/aws/agentcore-harness.js';
 import { hasAwsCredentials, parseJsonOutput, prereqs, retry, spawnAndCollect } from '../src/test-utils/index.js';
-import {
-  cleanupStaleCredentialProviders,
-  installCdkTarball,
-  runAgentCoreCLI,
-  teardownE2EProject,
-  writeAwsTargets,
-} from './e2e-helper.js';
+import { installCdkTarball, runAgentCoreCLI, teardownE2EProject, writeAwsTargets } from './e2e-helper.js';
+import { getLogger } from './utils/logger.js';
 import { randomUUID } from 'node:crypto';
 import { mkdir, readFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
@@ -20,16 +15,28 @@ const baseCanRun = prereqs.npm && prereqs.git && hasAws && isPreviewBuild;
 
 interface HarnessE2EConfig {
   modelProvider: 'bedrock' | 'open_ai' | 'gemini';
-  requiredEnvVar?: string;
+  /** Env var holding the API key ARN — its value is passed as --api-key-arn. */
+  apiKeyArnEnvVar?: string;
   skipMemory?: boolean;
+  skipInvoke?: boolean;
 }
 
 export function createHarnessE2ESuite(cfg: HarnessE2EConfig) {
-  const hasRequiredVar = !cfg.requiredEnvVar || !!process.env[cfg.requiredEnvVar];
+  const hasRequiredVar = !cfg.apiKeyArnEnvVar || !!process.env[cfg.apiKeyArnEnvVar];
   const canRun = baseCanRun && hasRequiredVar;
 
   const providerLabel =
     cfg.modelProvider === 'open_ai' ? 'OpenAI' : cfg.modelProvider === 'gemini' ? 'Gemini' : 'Bedrock';
+
+  // note: this is created outside of beforeAll since beforeAll is skipped if all tests are skipped.
+  const logger = getLogger(`harness-${providerLabel.toLowerCase()}`);
+  if (!canRun) {
+    logger.warn(
+      `tests are skipped due to insufficient conditions. ` +
+        `npm=${prereqs.npm}, git=${prereqs.git}, hasAws=${hasAws}, ` +
+        `isPreviewBuild=${isPreviewBuild}, hasRequiredVar=${hasRequiredVar}`
+    );
+  }
 
   describe.sequential(`e2e: harness/${providerLabel} — create → deploy → invoke → teardown`, () => {
     let testDir: string;
@@ -39,8 +46,6 @@ export function createHarnessE2ESuite(cfg: HarnessE2EConfig) {
 
     beforeAll(async () => {
       if (!canRun) return;
-
-      await cleanupStaleCredentialProviders();
 
       testDir = join(tmpdir(), `agentcore-e2e-harness-${randomUUID()}`);
       await mkdir(testDir, { recursive: true });
@@ -58,8 +63,8 @@ export function createHarnessE2ESuite(cfg: HarnessE2EConfig) {
         '--skip-git',
       ];
 
-      if (cfg.requiredEnvVar && process.env[cfg.requiredEnvVar]) {
-        createArgs.push('--api-key-arn', process.env[cfg.requiredEnvVar]!);
+      if (cfg.apiKeyArnEnvVar && process.env[cfg.apiKeyArnEnvVar]) {
+        createArgs.push('--api-key-arn', process.env[cfg.apiKeyArnEnvVar]!);
       }
 
       if (cfg.skipMemory) {
@@ -93,12 +98,7 @@ export function createHarnessE2ESuite(cfg: HarnessE2EConfig) {
           async () => {
             const result = await runAgentCoreCLI(['deploy', '--yes', '--json'], projectPath);
 
-            if (result.exitCode !== 0) {
-              console.log('Deploy stdout:', result.stdout);
-              console.log('Deploy stderr:', result.stderr);
-            }
-
-            expect(result.exitCode, `Deploy failed (stderr: ${result.stderr}, stdout: ${result.stdout})`).toBe(0);
+            expect(result.exitCode, `Deploy failed stderr=${result.stderr}, stdout=${result.stdout}`).toBe(0);
 
             const json = parseJsonOutput(result.stdout) as { success: boolean };
             expect(json.success, 'Deploy should report success').toBe(true);
@@ -110,7 +110,7 @@ export function createHarnessE2ESuite(cfg: HarnessE2EConfig) {
       600000
     );
 
-    it.skipIf(!canRun)(
+    it.skipIf(!canRun || !!cfg.skipInvoke)(
       'invokes the deployed harness',
       async () => {
         expect(projectPath, 'Project should have been created').toBeTruthy();
@@ -122,12 +122,7 @@ export function createHarnessE2ESuite(cfg: HarnessE2EConfig) {
               projectPath
             );
 
-            if (result.exitCode !== 0) {
-              console.log('Invoke stdout:', result.stdout);
-              console.log('Invoke stderr:', result.stderr);
-            }
-
-            expect(result.exitCode, `Invoke failed: ${result.stderr}`).toBe(0);
+            expect(result.exitCode, `Invoke failed: stderr=${result.stderr}, stdout=${result.stdout}`).toBe(0);
 
             const json = parseJsonOutput(result.stdout) as { success: boolean };
             expect(json.success, 'Invoke should report success').toBe(true);

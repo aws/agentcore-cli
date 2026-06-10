@@ -221,11 +221,8 @@ export type ConfigBundleDeployedState = z.infer<typeof ConfigBundleDeployedState
 export const ABTestDeployedStateSchema = z.object({
   abTestId: z.string().min(1),
   abTestArn: z.string().min(1),
-  /** IAM role ARN used by this AB test. */
   roleArn: z.string().min(1).optional(),
-  /** Whether the CLI auto-created this role (true = CLI should delete on cleanup). */
   roleCreatedByCli: z.boolean().optional(),
-  /** SHA-256 hash of the AB test configuration for change detection. */
   configHash: z.string().optional(),
 });
 
@@ -258,6 +255,36 @@ export const RuntimeEndpointDeployedStateSchema = z.object({
 export type RuntimeEndpointDeployedState = z.infer<typeof RuntimeEndpointDeployedStateSchema>;
 
 // ============================================================================
+// Payment Connector Deployed State
+// ============================================================================
+
+export const PaymentConnectorDeployedStateSchema = z.object({
+  connectorId: z.string().min(1),
+  credentialProviderArn: z.string().min(1),
+  credentialProviderName: z.string().optional(),
+});
+
+export type PaymentConnectorDeployedState = z.infer<typeof PaymentConnectorDeployedStateSchema>;
+
+// ============================================================================
+// Payment Deployed State
+// ============================================================================
+
+export const PaymentDeployedStateSchema = z.object({
+  managerId: z.string().min(1),
+  managerArn: z.string().min(1),
+  connectors: z.record(z.string(), PaymentConnectorDeployedStateSchema).default({}),
+  processPaymentRoleArn: z.string().min(1),
+  resourceRetrievalRoleArn: z.string().min(1),
+  authorizerType: z.enum(['AWS_IAM', 'CUSTOM_JWT']).optional(),
+  autoPayment: z.boolean().optional(),
+  paymentToolAllowlist: z.array(z.string()).optional(),
+  networkPreferences: z.array(z.string()).optional(),
+});
+
+export type PaymentDeployedState = z.infer<typeof PaymentDeployedStateSchema>;
+
+// ============================================================================
 // Deployed Resource State
 // ============================================================================
 
@@ -277,6 +304,7 @@ export const DeployedResourceStateSchema = z.object({
   policies: z.record(z.string(), PolicyDeployedStateSchema).optional(),
   harnesses: z.record(z.string(), HarnessDeployedStateSchema).optional(),
   runtimeEndpoints: z.record(z.string(), RuntimeEndpointDeployedStateSchema).optional(),
+  payments: z.record(z.string(), PaymentDeployedStateSchema).optional(),
   stackName: z.string().optional(),
   identityKmsKeyArn: z.string().optional(),
   deployHash: z.string().optional(),

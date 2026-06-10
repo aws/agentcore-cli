@@ -18,6 +18,7 @@ import type {
   HarnessTruncationConfiguration,
 } from '../../../../aws/agentcore-harness';
 import { toPascalId } from '../../../../cloudformation/logical-ids';
+import { buildFilesystemConfigurations } from '../../../../commands/shared/filesystem-utils';
 import { readFile, stat } from 'fs/promises';
 import { join } from 'path';
 
@@ -152,13 +153,14 @@ export async function mapHarnessSpecToCreateOptions(options: MapHarnessOptions):
 // ============================================================================
 
 function mapModel(model: HarnessSpec['model']): HarnessModelConfiguration {
-  const { provider, modelId, apiKeyArn, temperature, topP, topK, maxTokens } = model;
+  const { provider, modelId, apiKeyArn, apiFormat, temperature, topP, topK, maxTokens } = model;
 
   switch (provider) {
     case 'bedrock':
       return {
         bedrockModelConfig: {
           modelId,
+          ...(apiFormat && apiFormat !== 'converse_stream' && { apiFormat }),
           ...(temperature !== undefined && { temperature }),
           ...(topP !== undefined && { topP }),
           ...(maxTokens !== undefined && { maxTokens }),
@@ -169,6 +171,7 @@ function mapModel(model: HarnessSpec['model']): HarnessModelConfiguration {
         openAiModelConfig: {
           modelId,
           ...(apiKeyArn && { apiKeyArn }),
+          ...(apiFormat && apiFormat !== 'responses' && { apiFormat: apiFormat as 'responses' | 'chat_completions' }),
           ...(temperature !== undefined && { temperature }),
           ...(topP !== undefined && { topP }),
           ...(maxTokens !== undefined && { maxTokens }),
@@ -397,9 +400,9 @@ function mapEnvironmentArtifact(containerUri: string): HarnessEnvironmentArtifac
 function mapEnvironmentProvider(spec: HarnessSpec): HarnessEnvironmentProvider | undefined {
   const hasNetwork = !!spec.networkConfig;
   const hasLifecycle = !!spec.lifecycleConfig;
-  const hasSessionStorage = !!spec.sessionStoragePath;
+  const hasFilesystem = !!spec.sessionStoragePath || !!spec.efsAccessPoints?.length || !!spec.s3AccessPoints?.length;
 
-  if (!hasNetwork && !hasLifecycle && !hasSessionStorage) {
+  if (!hasNetwork && !hasLifecycle && !hasFilesystem) {
     return undefined;
   }
 
@@ -419,8 +422,9 @@ function mapEnvironmentProvider(spec: HarnessSpec): HarnessEnvironmentProvider |
     agentCoreRuntimeEnvironment.lifecycleConfiguration = spec.lifecycleConfig;
   }
 
-  if (spec.sessionStoragePath) {
-    agentCoreRuntimeEnvironment.filesystemConfigurations = [{ sessionStorage: { mountPath: spec.sessionStoragePath } }];
+  const fsConfig = buildFilesystemConfigurations(spec.sessionStoragePath, spec.efsAccessPoints, spec.s3AccessPoints);
+  if ('filesystemConfigurations' in fsConfig) {
+    agentCoreRuntimeEnvironment.filesystemConfigurations = fsConfig.filesystemConfigurations;
   }
 
   return {

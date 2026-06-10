@@ -89,6 +89,13 @@ export function useRemoveFlow({ force, dryRun }: RemoveFlowOptions): RemoveFlowS
             items.push(`${totalPolicies} polic${totalPolicies > 1 ? 'ies' : 'y'}`);
           }
         }
+        if (projectSpec.payments && projectSpec.payments.length > 0) {
+          items.push(`${projectSpec.payments.length} payment manager${projectSpec.payments.length > 1 ? 's' : ''}`);
+          const totalConnectors = projectSpec.payments.reduce((sum, p) => sum + p.connectors.length, 0);
+          if (totalConnectors > 0) {
+            items.push(`${totalConnectors} payment connector${totalConnectors > 1 ? 's' : ''}`);
+          }
+        }
       } catch {
         // Project exists but has issues - still allow reset
         items.push('AgentCore project (corrupted or incomplete)');

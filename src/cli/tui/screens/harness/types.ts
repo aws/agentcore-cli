@@ -1,4 +1,4 @@
-import type { HarnessModelProvider, NetworkMode, RuntimeAuthorizerType } from '../../../../schema';
+import type { HarnessApiFormat, HarnessModelProvider, NetworkMode, RuntimeAuthorizerType } from '../../../../schema';
 import type { JwtConfig } from '../../components/jwt-config';
 
 export type ContainerMode = 'none' | 'uri' | 'dockerfile';
@@ -6,6 +6,7 @@ export type ContainerMode = 'none' | 'uri' | 'dockerfile';
 export type AddHarnessStep =
   | 'name'
   | 'model-provider'
+  | 'api-format'
   | 'api-key-arn'
   | 'container'
   | 'container-uri'
@@ -31,12 +32,19 @@ export type AddHarnessStep =
   | 'timeout'
   | 'truncation-strategy'
   | 'session-storage-path'
+  | 'efs-arn'
+  | 'efs-mount-path'
+  | 'efs-add-another'
+  | 's3-arn'
+  | 's3-mount-path'
+  | 's3-add-another'
   | 'confirm';
 
 export interface AddHarnessConfig {
   name: string;
   modelProvider: HarnessModelProvider;
   modelId: string;
+  apiFormat?: HarnessApiFormat;
   apiKeyArn?: string;
   skipMemory?: boolean;
   containerMode?: ContainerMode;
@@ -52,6 +60,8 @@ export interface AddHarnessConfig {
   idleTimeout?: number;
   maxLifetime?: number;
   sessionStoragePath?: string;
+  efsAccessPoints?: { accessPointArn: string; mountPath: string }[];
+  s3AccessPoints?: { accessPointArn: string; mountPath: string }[];
   authorizerType?: RuntimeAuthorizerType;
   jwtConfig?: JwtConfig;
   selectedTools?: string[];
@@ -66,6 +76,7 @@ export interface AddHarnessConfig {
 export const HARNESS_STEP_LABELS: Record<AddHarnessStep, string> = {
   name: 'Name',
   'model-provider': 'Model provider',
+  'api-format': 'API format',
   'api-key-arn': 'API key ARN',
   container: 'Custom environment',
   'container-uri': 'Container URI',
@@ -91,6 +102,12 @@ export const HARNESS_STEP_LABELS: Record<AddHarnessStep, string> = {
   timeout: 'Timeout',
   'truncation-strategy': 'Truncation',
   'session-storage-path': 'Session storage path',
+  'efs-arn': 'EFS ARN',
+  'efs-mount-path': 'EFS Path',
+  'efs-add-another': 'Add EFS',
+  's3-arn': 'S3 Files ARN',
+  's3-mount-path': 'S3 Files Path',
+  's3-add-another': 'Add S3 Files',
   confirm: 'Confirm',
 };
 
@@ -99,6 +116,8 @@ export const DEFAULT_MODEL_IDS: Record<HarnessModelProvider, string> = {
   open_ai: 'gpt-5',
   gemini: 'gemini-2.5-flash',
 };
+
+export const DEFAULT_BEDROCK_MANTLE_MODEL_ID = 'openai.gpt-oss-120b';
 
 export const MODEL_PROVIDER_OPTIONS = [
   { id: 'bedrock' as const, title: 'Amazon Bedrock', description: `Default: ${DEFAULT_MODEL_IDS.bedrock}` },
@@ -114,6 +133,39 @@ export const MODEL_PROVIDER_OPTIONS = [
   },
 ] as const;
 
+export const BEDROCK_API_FORMAT_OPTIONS = [
+  {
+    id: 'converse_stream' as const,
+    title: 'Converse Stream',
+    description: 'Standard Bedrock Converse API (default)',
+  },
+  {
+    id: 'responses' as const,
+    title: 'Responses',
+    description: 'OpenAI Responses API via Bedrock Mantle',
+  },
+  {
+    id: 'chat_completions' as const,
+    title: 'Chat Completions',
+    description: 'OpenAI Chat Completions API via Bedrock Mantle',
+  },
+] as const;
+
+export const OPENAI_API_FORMAT_OPTIONS = [
+  {
+    id: 'responses' as const,
+    title: 'Responses',
+    description: 'OpenAI Responses API (default)',
+  },
+  {
+    id: 'chat_completions' as const,
+    title: 'Chat Completions',
+    description: 'OpenAI Chat Completions API',
+  },
+] as const;
+
+export const API_FORMAT_OPTIONS = BEDROCK_API_FORMAT_OPTIONS;
+
 export const TRUNCATION_STRATEGY_OPTIONS = [
   { id: 'sliding_window' as const, title: 'Sliding window', description: 'Keep most recent messages' },
   { id: 'summarization' as const, title: 'Summarization', description: 'Compress older context' },
@@ -126,7 +178,11 @@ export const ADVANCED_SETTING_OPTIONS = [
   { id: 'lifecycle', title: 'Lifecycle', description: 'Set idle timeout and max session lifetime' },
   { id: 'execution', title: 'Execution limits', description: 'Cap iterations, tokens, and per-turn timeout' },
   { id: 'truncation', title: 'Truncation', description: 'Choose how context is managed when it exceeds limits' },
-  { id: 'session-storage', title: 'Session Storage', description: 'Mount persistent storage for session data' },
+  {
+    id: 'session-storage',
+    title: 'Filesystem Storage',
+    description: 'Mount session storage, EFS, or S3 Files persistent storage (requires VPC)',
+  },
 ] as const;
 
 export type AdvancedSetting = (typeof ADVANCED_SETTING_OPTIONS)[number]['id'];

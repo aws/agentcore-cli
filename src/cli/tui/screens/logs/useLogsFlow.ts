@@ -1,3 +1,4 @@
+import { ValidationError, toError } from '../../../../lib';
 import type { AgentContext } from '../../../commands/logs/action';
 import { resolveAgentContext } from '../../../commands/logs/action';
 import { loadDeployedProjectConfig } from '../../../operations/resolve-agent';
@@ -30,11 +31,16 @@ export function useLogsFlow(): UseLogsFlowResult {
   useEffect(() => {
     const load = async () => {
       const result = await withCommandRunTelemetry('logs', { has_query: false, has_level_filter: false }, async () => {
-        const context = await loadDeployedProjectConfig();
+        let context;
+        try {
+          context = await loadDeployedProjectConfig();
+        } catch (err) {
+          return { success: false as const, error: toError(err) };
+        }
         const runtimeNames = context.project.runtimes.map(r => r.name);
 
         if (runtimeNames.length === 0) {
-          return { success: false as const, error: new Error('No runtimes defined in agentcore.json') };
+          return { success: false as const, error: new ValidationError('No runtimes defined in agentcore.json') };
         }
 
         const resolved: AgentContext[] = [];
@@ -48,7 +54,7 @@ export function useLogsFlow(): UseLogsFlowResult {
         if (resolved.length === 0) {
           return {
             success: false as const,
-            error: new Error('No deployed agents found. Run `agentcore deploy` first.'),
+            error: new ValidationError('No deployed agents found. Run `agentcore deploy` first.'),
           };
         }
 

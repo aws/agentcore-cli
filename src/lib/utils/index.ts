@@ -1,6 +1,6 @@
 export { detectAwsAccount } from './aws-account';
 export { SecureCredentials } from './credentials';
-export { getEnvPath, readEnvFile, writeEnvFile, getEnvVar, setEnvVar } from './env';
+export { getEnvPath, readEnvFile, writeEnvFile, getEnvVar, setEnvVar, removeEnvVars } from './env';
 export { isWindows } from './platform';
 export {
   runSubprocess,
@@ -12,4 +12,4 @@ export {
 export { parseTimeString } from './time-parser';
 export { parseJsonRpcResponse } from './json-rpc';
 export { poll, isThrottlingError } from './polling';
-export { validateAgentSchema, validateProjectSchema } from './zod';
+export { validateAgentSchema, validateProjectSchema, resilientParse, type ResilientParseOptions } from './zod';

@@ -61,3 +61,25 @@ export async function writeEnvFile(updates: Record<string, string>, configRoot?:
 export async function setEnvVar(key: string, value: string, configRoot?: string): Promise<void> {
   await writeEnvFile({ [key]: value }, configRoot);
 }
+
+/**
+ * Remove keys from agentcore/.env.local.
+ */
+export async function removeEnvVars(keys: string[], configRoot?: string): Promise<void> {
+  const path = getEnvPath(configRoot);
+  const current = await readEnvFile(configRoot);
+  for (const key of keys) {
+    delete current[key];
+  }
+  const entries = Object.entries(current);
+  const content =
+    entries.length > 0
+      ? entries
+          .map(
+            ([k, v]) =>
+              `${k}="${String(v).replace(/\\/g, '\\\\').replace(/"/g, '\\"').replace(/\n/g, '\\n').replace(/\r/g, '\\r')}"`
+          )
+          .join('\n') + '\n'
+      : '';
+  await writeFile(path, content);
+}

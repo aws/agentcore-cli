@@ -3,17 +3,23 @@
 #
 # Required env vars:
 #   E2E_ROLE_ARN    — IAM role ARN to assume (grants access to the test account)
-#   E2E_SECRET_ARN  — Secrets Manager ARN containing ANTHROPIC_API_KEY, OPENAI_API_KEY, GEMINI_API_KEY
+#   E2E_SECRET_ARN  — Secrets Manager ARN containing ANTHROPIC_API_KEY, OPENAI_API_KEY, GEMINI_API_KEY,
+#                     and (for payments tests) CDP_API_KEY_ID, CDP_API_KEY_SECRET, CDP_WALLET_SECRET
 #
 # Optional env vars:
 #   AWS_REGION      — defaults to us-east-1
+#   BUILD_PREVIEW   — set to 1 to build a preview CLI and run the harness e2e tests
+#                     (e2e-tests/harness-*.test.ts). Harness features are gated to preview
+#                     builds; without this they self-skip. The var is read at build time
+#                     (esbuild bakes __PREVIEW__=true) and at test runtime (skip gate).
 #
 # Usage:
 #   export E2E_ROLE_ARN=arn:aws:iam::<account>:role/<role>
 #   export E2E_SECRET_ARN=arn:aws:secretsmanager:<region>:<account>:secret:<name>
-#   ./scripts/run-e2e-local.sh                          # runs strands-bedrock.test.ts (CI default)
-#   ./scripts/run-e2e-local.sh --all                    # runs the full e2e suite
-#   ./scripts/run-e2e-local.sh e2e-tests/foo.test.ts    # runs a specific test file
+#   ./scripts/run-e2e-local.sh                                  # runs strands-bedrock.test.ts (CI default)
+#   ./scripts/run-e2e-local.sh --all                            # runs the full e2e suite
+#   ./scripts/run-e2e-local.sh e2e-tests/foo.test.ts            # runs a specific test file
+#   BUILD_PREVIEW=1 ./scripts/run-e2e-local.sh e2e-tests/harness-bedrock.test.ts  # runs harness tests
 #
 # Prerequisites: aws CLI, node >=20.19, npm, git, uv, jq
 
@@ -73,8 +79,19 @@ SECRET_JSON=$(aws secretsmanager get-secret-value \
 # Mirror the GitHub workflow: parse-json-secrets maps keys to E2E_<KEY> then
 # the workflow maps them to the bare names the tests expect.
 export ANTHROPIC_API_KEY=$(echo "$SECRET_JSON" | jq -r '.ANTHROPIC_API_KEY // empty')
-export OPENAI_API_KEY=$(echo "$SECRET_JSON"    | jq -r '.OPENAI_API_KEY // empty')
-export GEMINI_API_KEY=$(echo "$SECRET_JSON"    | jq -r '.GEMINI_API_KEY // empty')
+export OPENAI_API_KEY=$(echo "$SECRET_JSON" | jq -r '.OPENAI_API_KEY // empty')
+export GEMINI_API_KEY=$(echo "$SECRET_JSON" | jq -r '.GEMINI_API_KEY // empty')
+
+# Filesystem (BYO EFS / S3 Files) test inputs — required by strands-bedrock-byo-filesystem.test.ts.
+export E2E_EFS_ACCESS_POINT_ARN=$(echo "$SECRET_JSON" | jq -r '.EFS_ACCESS_POINT_ARN // empty')
+export E2E_S3_ACCESS_POINT_ARN=$(echo "$SECRET_JSON" | jq -r '.S3_ACCESS_POINT_ARN // empty')
+export E2E_FILESYSTEM_SUBNET_ID=$(echo "$SECRET_JSON" | jq -r '.FILESYSTEM_SUBNET_ID // empty')
+export E2E_FILESYSTEM_SECURITY_GROUP_ID=$(echo "$SECRET_JSON" | jq -r '.FILESYSTEM_SECURITY_GROUP_ID // empty')
+
+# Payments (CDP) test inputs — required by payment-strands-bedrock.test.ts.
+export CDP_API_KEY_ID=$(echo "$SECRET_JSON" | jq -r '.CDP_API_KEY_ID // empty')
+export CDP_API_KEY_SECRET=$(echo "$SECRET_JSON" | jq -r '.CDP_API_KEY_SECRET // empty')
+export CDP_WALLET_SECRET=$(echo "$SECRET_JSON" | jq -r '.CDP_WALLET_SECRET // empty')
 
 echo "✅ Secrets loaded (keys present: $(echo "$SECRET_JSON" | jq -r 'keys | join(", ")')"
 
@@ -82,11 +99,21 @@ echo "=== Setting AWS account env var ==="
 export AWS_ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
 echo "✅ AWS_ACCOUNT_ID=$AWS_ACCOUNT_ID  AWS_REGION=$AWS_REGION"
 
-echo "=== Configuring git (required for agentcore create) ==="
-git config --global user.email "ci@local" 2>/dev/null || true
-git config --global user.name "Local E2E"  2>/dev/null || true
-
 cd "$REPO_ROOT"
+
+echo "=== Verifying git is configured (required for agentcore create) ==="
+git_email="$(git config --global user.email || true)"
+git_name="$(git config --global user.name || true)"
+
+if [ -z "$git_email" ] || [ -z "$git_name" ]; then
+  echo "ERROR: git is not configured. 'agentcore create' requires a global git identity." >&2
+  echo "Set it with:" >&2
+  echo "  git config --global user.email \"you@example.com\"" >&2
+  echo "  git config --global user.name \"Your Name\"" >&2
+  exit 1
+fi
+
+echo "git configured as: $git_name <$git_email>"
 
 echo "=== Installing dependencies ==="
 npm ci

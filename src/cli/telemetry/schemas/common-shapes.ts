@@ -3,27 +3,10 @@ import { z } from 'zod';
 // Type-safe schema builder: rejects z.string() at compile time.
 // Only z.enum(), z.boolean(), z.number(), and z.literal() are allowed as field types.
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-type SafeField = z.ZodEnum<any> | z.ZodBoolean | z.ZodNumber | z.ZodLiteral<any>;
+type BaseSafeField = z.ZodEnum<any> | z.ZodBoolean | z.ZodNumber | z.ZodLiteral<any>;
+type SafeField = BaseSafeField | z.ZodOptional<BaseSafeField>;
 export function safeSchema<T extends Record<string, SafeField>>(shape: T) {
   return z.object(shape);
-}
-
-/**
- * Validate each field in a schema individually, defaulting to 'unknown' on failure.
- * This ensures a single invalid attribute never blocks the entire metric from being published.
- * Keys in attrs not present in the schema are omitted from the result.
- */
-export function resilientParse(
-  schema: z.ZodObject<z.ZodRawShape>,
-  attrs: Record<string, unknown>
-): Record<string, unknown> {
-  const result: Record<string, unknown> = {};
-  for (const key of Object.keys(schema.shape)) {
-    const field = schema.shape[key] as z.ZodType;
-    const parsed = field.safeParse(attrs[key]);
-    result[key] = parsed.success ? parsed.data : 'unknown';
-  }
-  return result;
 }
 
 /**
@@ -71,6 +54,7 @@ export const FilterType = z.enum([
   'harness',
   'none',
 ]);
+export const AgentEnvironment = z.enum(['harness', 'runtime']);
 export const AgentFramework = z.enum(['strands', 'langchain_langgraph', 'googleadk', 'openaiagents']);
 export const GatewayTargetHost = z.enum(['lambda', 'agentcoreruntime']);
 export const GatewayTargetType = z.enum([
@@ -126,6 +110,7 @@ export const ErrorName = z.enum([
   'PollTimeoutError',
   'ResourceNotFoundError',
   'ServerError',
+  'ShellKickedError',
   'TimeoutError',
   'UnsupportedLanguageError',
   'UserCancellationError',
@@ -153,6 +138,7 @@ export type DeployMode = z.infer<typeof DeployModeSchema>;
   Keys are the field names as they appear in emitted metrics.
 */
 export const ATTRIBUTES = {
+  agent_environment: AgentEnvironment,
   dev_action: DevAction,
   agent_source: AgentSource,
   attach_gateway_count: Count,

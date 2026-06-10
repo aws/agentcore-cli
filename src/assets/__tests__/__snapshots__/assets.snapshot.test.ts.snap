@@ -73,12 +73,14 @@ async function main() {
   const spec = await configIO.readProjectSpec();
   const targets = await configIO.readAWSDeploymentTargets();
 
-  // Extract MCP configuration from project spec.
-  // Gateway fields are stored in agentcore.json but may not yet be on the
-  // AgentCoreProjectSpec type from @aws/agentcore-cdk, so we read them
-  // dynamically and cast the resulting object.
+  // The vended CDK project compiles against the published @aws/agentcore-cdk
+  // schema type, which may lag the CLI's own AgentCoreProjectSpec (e.g. payments,
+  // harnesses, gateway fields). Cast once so those fields are reachable.
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const specAny = spec as any;
+
+  // Extract MCP configuration from project spec.
+  // Gateway fields are stored in agentcore.json but may not yet be on the
   const mcpSpec = specAny.agentCoreGateways?.length
     ? {
         agentCoreGateways: specAny.agentCoreGateways,
@@ -111,6 +113,9 @@ async function main() {
     codeLocation?: string;
     tools?: { type: string; name: string }[];
     apiKeyArn?: string;
+    efsAccessPoints?: { accessPointArn: string; mountPath: string }[];
+    s3AccessPoints?: { accessPointArn: string; mountPath: string }[];
+    apiFormat?: 'converse_stream' | 'responses' | 'chat_completions';
   }[] = [];
   for (const entry of specAny.harnesses ?? []) {
     const harnessDir = path.resolve(projectRoot, entry.path);
@@ -127,6 +132,9 @@ async function main() {
         codeLocation: harnessSpec.dockerfile ? harnessDir : undefined,
         tools: harnessSpec.tools,
         apiKeyArn: harnessSpec.model?.apiKeyArn,
+        efsAccessPoints: harnessSpec.efsAccessPoints,
+        s3AccessPoints: harnessSpec.s3AccessPoints,
+        apiFormat: harnessSpec.model?.apiFormat,
       });
     } catch (err) {
       throw new Error(
@@ -150,11 +158,51 @@ async function main() {
       | Record<string, { credentialProviderArn: string; clientSecretArn?: string }>
       | undefined;
 
+    // Payment credential provider ARNs live in the same credentials map as identity credentials
+    const paymentCredentials = credentials;
+
+    const paymentSpec = specAny.payments?.length
+      ? specAny.payments.map(
+          (p: {
+            name: string;
+            description?: string;
+            authorizerType: 'AWS_IAM' | 'CUSTOM_JWT';
+            authorizerConfiguration?: unknown;
+            autoPayment?: boolean;
+            paymentToolAllowlist?: string[];
+            networkPreferences?: string[];
+            connectors: { name: string; provider?: string; credentialName: string }[];
+          }) => ({
+            name: p.name,
+            description: p.description,
+            authorizerType: p.authorizerType,
+            authorizerConfiguration: p.authorizerConfiguration,
+            autoPayment: p.autoPayment,
+            paymentToolAllowlist: p.paymentToolAllowlist,
+            networkPreferences: p.networkPreferences,
+            connectors: p.connectors.map(c => {
+              const credentialProviderArn = paymentCredentials?.[c.credentialName]?.credentialProviderArn;
+              if (!credentialProviderArn) {
+                // Fail fast with an actionable message rather than passing an empty
+                // ARN that fails opaquely server-side at CreatePaymentConnector.
+                throw new Error(
+                  \`Payment connector "\${c.name}" on manager "\${p.name}" references credential \` +
+                    \`"\${c.credentialName}", but no deployed credential provider was found for it. \` +
+                    \`Run \\\`agentcore deploy\\\` so the credential provider is created first.\`
+                );
+              }
+              return { name: c.name, provider: c.provider, credentialProviderArn };
+            }),
+          })
+        )
+      : undefined;
+
     new AgentCoreStack(app, stackName, {
       spec,
       mcpSpec,
       credentials,
       harnesses: harnessConfigs.length > 0 ? harnessConfigs : undefined,
+      paymentSpec,
       env,
       description: \`AgentCore stack for \${spec.name} deployed to \${target.name} (\${target.region})\`,
       tags: {
@@ -169,7 +217,7 @@ async function main() {
 
 main().catch((error: unknown) => {
   console.error('AgentCore CDK synthesis failed:', error instanceof Error ? error.message : error);
-  process.exitCode = 1;
+  process.exit(1);
 });
 "
 `;
@@ -296,10 +344,14 @@ exports[`Assets Directory Snapshots > CDK assets > cdk/cdk/lib/cdk-stack.ts shou
 "import {
   AgentCoreApplication,
   AgentCoreMcp,
+  AgentCorePaymentManager,
+  AgentCorePaymentConnector,
   type AgentCoreProjectSpec,
   type AgentCoreMcpSpec,
+  type CustomJWTAuthorizerConfig,
 } from '@aws/agentcore-cdk';
 import { CfnOutput, Stack, type StackProps } from 'aws-cdk-lib';
+import * as iam from 'aws-cdk-lib/aws-iam';
 import { Construct } from 'constructs';
 
 export interface HarnessConfig {
@@ -312,6 +364,25 @@ export interface HarnessConfig {
   codeLocation?: string;
   tools?: { type: string; name: string }[];
   apiKeyArn?: string;
+  efsAccessPoints?: { accessPointArn: string; mountPath: string }[];
+  s3AccessPoints?: { accessPointArn: string; mountPath: string }[];
+}
+
+export interface PaymentConnectorSpec {
+  name: string;
+  provider: 'CoinbaseCDP' | 'StripePrivy';
+  credentialProviderArn: string;
+}
+
+export interface PaymentSpec {
+  name: string;
+  description?: string;
+  authorizerType: 'AWS_IAM' | 'CUSTOM_JWT';
+  authorizerConfiguration?: { customJWTAuthorizer: CustomJWTAuthorizerConfig };
+  autoPayment?: boolean;
+  paymentToolAllowlist?: string[];
+  networkPreferences?: string[];
+  connectors: PaymentConnectorSpec[];
 }
 
 export interface AgentCoreStackProps extends StackProps {
@@ -331,6 +402,30 @@ export interface AgentCoreStackProps extends StackProps {
    * Harness role configurations.
    */
   harnesses?: HarnessConfig[];
+  /**
+   * Payment specifications with resolved credential provider ARNs.
+   */
+  paymentSpec?: PaymentSpec[];
+}
+
+function toCdkId(name: string): string {
+  return name.replace(/_/g, '');
+}
+
+/**
+ * Decide whether a deployed runtime should receive payment env vars + IAM grants.
+ * Payments today only ships a runtime shim for Python HTTP runtimes; injecting
+ * AGENTCORE_PAYMENT_* env vars into TypeScript / MCP / A2A / AGUI runtimes
+ * would surface env vars they cannot consume and would dilute least-privilege
+ * IAM grants for runtimes that never call ProcessPayment.
+ */
+function isPaymentEligibleAgent(agent: { entrypoint?: string; protocol?: string }): boolean {
+  if (agent.protocol && agent.protocol !== 'HTTP') {
+    return false;
+  }
+  const entrypoint = typeof agent.entrypoint === 'string' ? agent.entrypoint : '';
+  const entrypointFile = entrypoint.split(':')[0] ?? '';
+  return entrypointFile.endsWith('.py');
 }
 
 /**
@@ -346,7 +441,7 @@ export class AgentCoreStack extends Stack {
   constructor(scope: Construct, id: string, props: AgentCoreStackProps) {
     super(scope, id, props);
 
-    const { spec, mcpSpec, credentials, harnesses } = props;
+    const { spec, mcpSpec, credentials, harnesses, paymentSpec } = props;
 
     // Create AgentCoreApplication with all agents and harness roles
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -365,6 +460,122 @@ export class AgentCoreStack extends Stack {
         credentials,
         projectTags: spec.tags,
       });
+    }
+
+    // Create payment infrastructure via CFN constructs
+    if (paymentSpec && paymentSpec.length > 0) {
+      for (const payment of paymentSpec) {
+        const mgrId = toCdkId(payment.name);
+        const manager = new AgentCorePaymentManager(this, \`Payment\${mgrId}\`, {
+          projectName: spec.name,
+          name: payment.name,
+          authorizerType: payment.authorizerType,
+          description: payment.description,
+          authorizerConfiguration: payment.authorizerConfiguration,
+          tags: spec.tags,
+        });
+
+        const prefix = \`AGENTCORE_PAYMENT_\${payment.name.toUpperCase().replace(/-/g, '_')}\`;
+
+        // Wire env vars from construct output tokens into eligible agent environments only.
+        // See isPaymentEligibleAgent — non-Python or non-HTTP runtimes have no shim that
+        // can consume these env vars, and giving them sts:AssumeRole on the
+        // ProcessPaymentRole would broaden the privilege surface unnecessarily.
+        for (const env of this.application.environments.values()) {
+          if (!isPaymentEligibleAgent(env.agent)) {
+            continue;
+          }
+          env.runtime.addEnvironmentVariable(\`\${prefix}_MANAGER_ARN\`, manager.paymentManagerArn);
+          env.runtime.addEnvironmentVariable(\`\${prefix}_PROCESS_PAYMENT_ROLE_ARN\`, manager.processPaymentRoleArn);
+
+          // Grant runtime execution role permission to assume the ProcessPaymentRole.
+          // The ProcessPaymentRole's trust policy allows AccountRootPrincipal, but the
+          // caller still needs sts:AssumeRole on its own role to perform the assumption.
+          env.runtime.role.addToPrincipalPolicy(
+            new iam.PolicyStatement({
+              actions: ['sts:AssumeRole'],
+              resources: [manager.processPaymentRoleArn],
+            })
+          );
+
+          // Grant payment data-plane actions directly to the runtime role.
+          //
+          // NOTE: This deviates from the canonical role model in the AgentCore Payments
+          // beta guide, which assigns Get/List/Create instrument+session actions to a
+          // separate ManagementRole and limits the agent's role to ProcessPayment only.
+          // The current SDK plugin (AgentCorePaymentsPlugin.generate_payment_header)
+          // calls GetPaymentInstrument internally during the 402 auto-pay path, so the
+          // runtime role needs read access. CreatePaymentSession is included so
+          // \`agentcore invoke --auto-session\` works without a separate ManagementRole
+          // call. Tighten this if the SDK is updated to accept pre-fetched instrument
+          // details and split create-session into a backend-only flow.
+          env.runtime.role.addToPrincipalPolicy(
+            new iam.PolicyStatement({
+              actions: [
+                'bedrock-agentcore:GetPaymentInstrument',
+                'bedrock-agentcore:ListPaymentInstruments',
+                'bedrock-agentcore:GetPaymentInstrumentBalance',
+                'bedrock-agentcore:GetPaymentSession',
+                'bedrock-agentcore:ListPaymentSessions',
+                'bedrock-agentcore:CreatePaymentSession',
+                'bedrock-agentcore:ProcessPayment',
+              ],
+              resources: [manager.paymentManagerArn, \`\${manager.paymentManagerArn}/*\`],
+            })
+          );
+
+          if (payment.autoPayment !== undefined) {
+            env.runtime.addEnvironmentVariable(\`\${prefix}_AUTO_PAYMENT\`, String(payment.autoPayment));
+          }
+          if (payment.paymentToolAllowlist) {
+            env.runtime.addEnvironmentVariable(\`\${prefix}_TOOL_ALLOWLIST\`, payment.paymentToolAllowlist.join(','));
+          }
+          if (payment.networkPreferences) {
+            env.runtime.addEnvironmentVariable(\`\${prefix}_NETWORK_PREFERENCES\`, payment.networkPreferences.join(','));
+          }
+          if (payment.authorizerType === 'CUSTOM_JWT') {
+            env.runtime.addEnvironmentVariable(\`\${prefix}_AUTH_MODE\`, 'bearer');
+          }
+        }
+
+        // Create connectors for this manager
+        for (const connector of payment.connectors) {
+          const connId = toCdkId(connector.name);
+          const conn = new AgentCorePaymentConnector(this, \`Payment\${mgrId}\${connId}\`, {
+            projectName: spec.name,
+            paymentManager: manager,
+            connectorName: connector.name,
+            connectorType: connector.provider,
+            credentialProviderArn: connector.credentialProviderArn,
+          });
+
+          // Wire first connector's ID as env var (eligible agents only)
+          if (connector === payment.connectors[0]) {
+            for (const env of this.application.environments.values()) {
+              if (!isPaymentEligibleAgent(env.agent)) continue;
+              env.runtime.addEnvironmentVariable(\`\${prefix}_CONNECTOR_ID\`, conn.paymentConnectorId);
+            }
+          }
+
+          new CfnOutput(this, \`Payment\${mgrId}\${connId}ConnectorId\`, {
+            value: conn.paymentConnectorId,
+          });
+        }
+
+        // CFN Outputs for post-deploy state parsing
+        new CfnOutput(this, \`Payment\${mgrId}ManagerArn\`, {
+          value: manager.paymentManagerArn,
+        });
+        new CfnOutput(this, \`Payment\${mgrId}ManagerId\`, {
+          value: manager.paymentManagerId,
+        });
+        new CfnOutput(this, \`Payment\${mgrId}ProcessPaymentRoleArn\`, {
+          value: manager.processPaymentRoleArn,
+        });
+        new CfnOutput(this, \`Payment\${mgrId}ResourceRetrievalRoleArn\`, {
+          value: manager.resourceRetrievalRoleArn,
+        });
+      }
     }
 
     // Stack-level output
@@ -408,7 +619,7 @@ exports[`Assets Directory Snapshots > CDK assets > cdk/cdk/package.json should m
     "@types/node": "^24.10.1",
     "jest": "^29.7.0",
     "ts-jest": "^29.2.5",
-    "aws-cdk": "2.1100.1",
+    "aws-cdk": "2.1126.0",
     "prettier": "^3.4.2",
     "typescript": "~5.9.3"
   },
@@ -440,6 +651,8 @@ test('AgentCoreStack synthesizes with empty spec', () => {
       onlineEvalConfigs: [],
       configBundles: [],
       policyEngines: [],
+      payments: [],
+      configBundles: [],
       agentCoreGateways: [],
       mcpRuntimeTools: [],
       unassignedTargets: [],
@@ -600,6 +813,8 @@ exports[`Assets Directory Snapshots > File listing > should match the expected f
   "python/http/strands/base/pyproject.toml",
   "python/http/strands/capabilities/memory/__init__.py",
   "python/http/strands/capabilities/memory/session.py",
+  "python/http/strands/capabilities/payments/__init__.py",
+  "python/http/strands/capabilities/payments/payments.py",
   "python/mcp/standalone/base/README.md",
   "python/mcp/standalone/base/gitignore.template",
   "python/mcp/standalone/base/main.py",
@@ -1064,7 +1279,9 @@ Thumbs.db
 `;
 
 exports[`Assets Directory Snapshots > Python framework assets > python/python/a2a/googleadk/base/main.py should match snapshot 1`] = `
-"import os
+"{{#if needsOs}}
+import os
+{{/if}}
 from google.adk.agents import Agent
 from google.adk.a2a.executor.a2a_agent_executor import A2aAgentExecutor
 from google.adk.runners import Runner
@@ -1083,18 +1300,21 @@ def add_numbers(a: int, b: int) -> int:
 
 tools = [add_numbers]
 
-{{#if sessionStorageMountPath}}
-SESSION_STORAGE_PATH = "{{sessionStorageMountPath}}"
+{{#if needsOs}}
+_MOUNT_PATHS = [
+    {{#if sessionStorageMountPath}}"{{sessionStorageMountPath}}",{{/if}}
+    {{#each efsMounts}}"{{mountPath}}",{{/each}}
+    {{#each s3Mounts}}"{{mountPath}}",{{/each}}
+]
 
 def _safe_resolve(path: str) -> str:
-    """Resolve path safely within the storage boundary."""
-    resolved = os.path.realpath(os.path.join(SESSION_STORAGE_PATH, path.lstrip("/")))
-    if not resolved.startswith(os.path.realpath(SESSION_STORAGE_PATH)):
-        raise ValueError(f"Path '{path}' is outside the storage boundary")
+    resolved = os.path.realpath(path)
+    if not any(resolved == os.path.realpath(m) or resolved.startswith(os.path.realpath(m) + os.sep) for m in _MOUNT_PATHS):
+        raise ValueError(f"Path '{path}' is not within any configured mount ({', '.join(_MOUNT_PATHS)})")
     return resolved
 
 def file_read(path: str) -> str:
-    """Read a file from persistent storage. The path is relative to the storage root."""
+    """Read a file from a mounted filesystem. Use the absolute path (e.g. /mnt/tools/data.txt)."""
     try:
         full_path = _safe_resolve(path)
         with open(full_path) as f:
@@ -1105,7 +1325,7 @@ def file_read(path: str) -> str:
         return f"Error reading '{path}': {e.strerror}"
 
 def file_write(path: str, content: str) -> str:
-    """Write content to a file in persistent storage. The path is relative to the storage root."""
+    """Write a file to a mounted filesystem. Use the absolute path (e.g. /mnt/tools/data.txt)."""
     try:
         full_path = _safe_resolve(path)
         parent = os.path.dirname(full_path)
@@ -1119,25 +1339,28 @@ def file_write(path: str, content: str) -> str:
     except OSError as e:
         return f"Error writing '{path}': {e.strerror}"
 
-def list_files(directory: str = "") -> str:
-    """List files in persistent storage. The directory is relative to the storage root."""
+def list_files(path: str) -> str:
+    """List files in a mounted filesystem directory. Use the absolute path (e.g. /mnt/tools)."""
     try:
-        target = _safe_resolve(directory)
-        entries = os.listdir(target)
+        full_path = _safe_resolve(path)
+        entries = os.listdir(full_path)
         return "\\n".join(entries) if entries else "(empty directory)"
     except ValueError as e:
         return str(e)
     except OSError as e:
-        return f"Error listing '{directory}': {e.strerror}"
+        return f"Error listing '{path}': {e.strerror}"
 
 tools.extend([file_read, file_write, list_files])
 {{/if}}
 
 AGENT_INSTRUCTION = """
 You are a helpful assistant. Use tools when appropriate.
-{{#if sessionStorageMountPath}}
-You have persistent storage at {{sessionStorageMountPath}}. Use file tools to read and write files. Data persists across sessions.
-{{/if}}
+{{#if needsOs}}
+You have access to the following mounted filesystems. Use file_read, file_write, and list_files with full absolute paths:
+{{#if sessionStorageMountPath}}- {{sessionStorageMountPath}}: ephemeral session storage (lost when session ends)
+{{/if}}{{#each efsMounts}}- {{mountPath}}: EFS persistent storage (persists across sessions and agent restarts)
+{{/each}}{{#each s3Mounts}}- {{mountPath}}: S3 Files persistent storage (durable, backed by S3)
+{{/each}}{{/if}}
 """
 
 agent = Agent(
@@ -1243,7 +1466,7 @@ dependencies = [
     "aws-opentelemetry-distro",
     "bedrock-agentcore[a2a] >= 1.0.3",
     "google-adk >= 1.0.0, < 2.0.0",
-    "google-genai >= 1.0.0",
+    "google-genai >= 1.0.0, < 2.0.0",
 ]
 
 [tool.hatch.build.targets.wheel]
@@ -1323,7 +1546,9 @@ Thumbs.db
 `;
 
 exports[`Assets Directory Snapshots > Python framework assets > python/python/a2a/langchain_langgraph/base/main.py should match snapshot 1`] = `
-"import os
+"{{#if needsOs}}
+import os
+{{/if}}
 from langchain_core.tools import tool
 from langgraph.prebuilt import create_react_agent
 from opentelemetry.instrumentation.langchain import LangchainInstrumentor
@@ -1346,19 +1571,22 @@ def add_numbers(a: int, b: int) -> int:
 
 tools = [add_numbers]
 
-{{#if sessionStorageMountPath}}
-SESSION_STORAGE_PATH = "{{sessionStorageMountPath}}"
+{{#if needsOs}}
+_MOUNT_PATHS = [
+    {{#if sessionStorageMountPath}}"{{sessionStorageMountPath}}",{{/if}}
+    {{#each efsMounts}}"{{mountPath}}",{{/each}}
+    {{#each s3Mounts}}"{{mountPath}}",{{/each}}
+]
 
 def _safe_resolve(path: str) -> str:
-    """Resolve path safely within the storage boundary."""
-    resolved = os.path.realpath(os.path.join(SESSION_STORAGE_PATH, path.lstrip("/")))
-    if not resolved.startswith(os.path.realpath(SESSION_STORAGE_PATH)):
-        raise ValueError(f"Path '{path}' is outside the storage boundary")
+    resolved = os.path.realpath(path)
+    if not any(resolved == os.path.realpath(m) or resolved.startswith(os.path.realpath(m) + os.sep) for m in _MOUNT_PATHS):
+        raise ValueError(f"Path '{path}' is not within any configured mount ({', '.join(_MOUNT_PATHS)})")
     return resolved
 
 @tool
 def file_read(path: str) -> str:
-    """Read a file from persistent storage. The path is relative to the storage root."""
+    """Read a file from a mounted filesystem. Use the absolute path (e.g. /mnt/tools/data.txt)."""
     try:
         full_path = _safe_resolve(path)
         with open(full_path) as f:
@@ -1370,7 +1598,7 @@ def file_read(path: str) -> str:
 
 @tool
 def file_write(path: str, content: str) -> str:
-    """Write content to a file in persistent storage. The path is relative to the storage root."""
+    """Write a file to a mounted filesystem. Use the absolute path (e.g. /mnt/tools/data.txt)."""
     try:
         full_path = _safe_resolve(path)
         parent = os.path.dirname(full_path)
@@ -1385,25 +1613,28 @@ def file_write(path: str, content: str) -> str:
         return f"Error writing '{path}': {e.strerror}"
 
 @tool
-def list_files(directory: str = "") -> str:
-    """List files in persistent storage. The directory is relative to the storage root."""
+def list_files(path: str) -> str:
+    """List files in a mounted filesystem directory. Use the absolute path (e.g. /mnt/tools)."""
     try:
-        target = _safe_resolve(directory)
-        entries = os.listdir(target)
+        full_path = _safe_resolve(path)
+        entries = os.listdir(full_path)
         return "\\n".join(entries) if entries else "(empty directory)"
     except ValueError as e:
         return str(e)
     except OSError as e:
-        return f"Error listing '{directory}': {e.strerror}"
+        return f"Error listing '{path}': {e.strerror}"
 
 tools.extend([file_read, file_write, list_files])
 {{/if}}
 
 SYSTEM_PROMPT = """
 You are a helpful assistant. Use tools when appropriate.
-{{#if sessionStorageMountPath}}
-You have persistent storage at {{sessionStorageMountPath}}. Use file tools to read and write files. Data persists across sessions.
-{{/if}}
+{{#if needsOs}}
+You have access to the following mounted filesystems. Use file_read, file_write, and list_files with full absolute paths:
+{{#if sessionStorageMountPath}}- {{sessionStorageMountPath}}: ephemeral session storage (lost when session ends)
+{{/if}}{{#each efsMounts}}- {{mountPath}}: EFS persistent storage (persists across sessions and agent restarts)
+{{/each}}{{#each s3Mounts}}- {{mountPath}}: S3 Files persistent storage (durable, backed by S3)
+{{/each}}{{/if}}
 """
 
 model = load_model()
@@ -1604,10 +1835,11 @@ dependencies = [
     {{#if (eq modelProvider "Anthropic")}}"langchain-anthropic >= 0.3.0",
     {{/if}}{{#if (eq modelProvider "Bedrock")}}"langchain-aws >= 0.2.0",
     {{/if}}{{#if (eq modelProvider "Gemini")}}"langchain-google-genai >= 2.0.0",
+    "google-genai >= 1.0.0, < 2.0.0",
     {{/if}}{{#if (eq modelProvider "OpenAI")}}"langchain-openai >= 0.2.0",
     {{/if}}"aws-opentelemetry-distro",
     "opentelemetry-instrumentation-langchain >= 0.59.0",
-    "bedrock-agentcore[a2a] >= 1.0.3",
+    "bedrock-agentcore[a2a] >= 1.8.0",
     "botocore[crt] >= 1.35.0",
     "langgraph >= 0.2.0",
 ]
@@ -1696,7 +1928,7 @@ from model.load import load_model
 {{#if hasMemory}}
 from memory.session import get_memory_session_manager
 {{/if}}
-{{#if sessionStorageMountPath}}
+{{#if needsOs}}
 import os
 {{/if}}
 
@@ -1709,19 +1941,22 @@ def add_numbers(a: int, b: int) -> int:
 
 tools = [add_numbers]
 
-{{#if sessionStorageMountPath}}
-SESSION_STORAGE_PATH = "{{sessionStorageMountPath}}"
+{{#if needsOs}}
+_MOUNT_PATHS = [
+    {{#if sessionStorageMountPath}}"{{sessionStorageMountPath}}",{{/if}}
+    {{#each efsMounts}}"{{mountPath}}",{{/each}}
+    {{#each s3Mounts}}"{{mountPath}}",{{/each}}
+]
 
 def _safe_resolve(path: str) -> str:
-    """Resolve path safely within the storage boundary."""
-    resolved = os.path.realpath(os.path.join(SESSION_STORAGE_PATH, path.lstrip("/")))
-    if not resolved.startswith(os.path.realpath(SESSION_STORAGE_PATH)):
-        raise ValueError(f"Path '{path}' is outside the storage boundary")
+    resolved = os.path.realpath(path)
+    if not any(resolved == os.path.realpath(m) or resolved.startswith(os.path.realpath(m) + os.sep) for m in _MOUNT_PATHS):
+        raise ValueError(f"Path '{path}' is not within any configured mount ({', '.join(_MOUNT_PATHS)})")
     return resolved
 
 @tool
 def file_read(path: str) -> str:
-    """Read a file from persistent storage. The path is relative to the storage root."""
+    """Read a file from a mounted filesystem. Use the absolute path (e.g. /mnt/tools/data.txt)."""
     try:
         full_path = _safe_resolve(path)
         with open(full_path) as f:
@@ -1733,7 +1968,7 @@ def file_read(path: str) -> str:
 
 @tool
 def file_write(path: str, content: str) -> str:
-    """Write content to a file in persistent storage. The path is relative to the storage root."""
+    """Write a file to a mounted filesystem. Use the absolute path (e.g. /mnt/tools/data.txt)."""
     try:
         full_path = _safe_resolve(path)
         parent = os.path.dirname(full_path)
@@ -1748,25 +1983,28 @@ def file_write(path: str, content: str) -> str:
         return f"Error writing '{path}': {e.strerror}"
 
 @tool
-def list_files(directory: str = "") -> str:
-    """List files in persistent storage. The directory is relative to the storage root."""
+def list_files(path: str) -> str:
+    """List files in a mounted filesystem directory. Use the absolute path (e.g. /mnt/tools)."""
     try:
-        target = _safe_resolve(directory)
-        entries = os.listdir(target)
+        full_path = _safe_resolve(path)
+        entries = os.listdir(full_path)
         return "\\n".join(entries) if entries else "(empty directory)"
     except ValueError as e:
         return str(e)
     except OSError as e:
-        return f"Error listing '{directory}': {e.strerror}"
+        return f"Error listing '{path}': {e.strerror}"
 
 tools.extend([file_read, file_write, list_files])
 {{/if}}
 
 SYSTEM_PROMPT = """
 You are a helpful assistant. Use tools when appropriate.
-{{#if sessionStorageMountPath}}
-You have persistent storage at {{sessionStorageMountPath}}. Use file tools to read and write files. Data persists across sessions.
-{{/if}}
+{{#if needsOs}}
+You have access to the following mounted filesystems. Use file_read, file_write, and list_files with full absolute paths:
+{{#if sessionStorageMountPath}}- {{sessionStorageMountPath}}: ephemeral session storage (lost when session ends)
+{{/if}}{{#each efsMounts}}- {{mountPath}}: EFS persistent storage (persists across sessions and agent restarts)
+{{/each}}{{#each s3Mounts}}- {{mountPath}}: S3 Files persistent storage (durable, backed by S3)
+{{/each}}{{/if}}
 """
 
 {{#if hasMemory}}
@@ -2093,16 +2331,76 @@ exports[`Assets Directory Snapshots > Python framework assets > python/python/ag
 "import os
 import uvicorn
 from google.adk.agents import LlmAgent
+from google.adk.tools import FunctionTool
 from ag_ui_adk import ADKAgent, AGUIToolset, create_adk_app
 from model.load import load_model
 
 load_model()
 
+{{#if needsOs}}
+_MOUNT_PATHS = [
+    {{#if sessionStorageMountPath}}"{{sessionStorageMountPath}}",{{/if}}
+    {{#each efsMounts}}"{{mountPath}}",{{/each}}
+    {{#each s3Mounts}}"{{mountPath}}",{{/each}}
+]
+
+def _safe_resolve(path: str) -> str:
+    resolved = os.path.realpath(path)
+    if not any(resolved == os.path.realpath(m) or resolved.startswith(os.path.realpath(m) + os.sep) for m in _MOUNT_PATHS):
+        raise ValueError(f"Path '{path}' is not within any configured mount ({', '.join(_MOUNT_PATHS)})")
+    return resolved
+
+def file_read(path: str) -> str:
+    """Read a file from a mounted filesystem. Use the absolute path (e.g. /mnt/tools/data.txt)."""
+    try:
+        full_path = _safe_resolve(path)
+        with open(full_path) as f:
+            return f.read()
+    except ValueError as e:
+        return str(e)
+    except OSError as e:
+        return f"Error reading '{path}': {e.strerror}"
+
+def file_write(path: str, content: str) -> str:
+    """Write a file to a mounted filesystem. Use the absolute path (e.g. /mnt/tools/data.txt)."""
+    try:
+        full_path = _safe_resolve(path)
+        parent = os.path.dirname(full_path)
+        if parent:
+            os.makedirs(parent, exist_ok=True)
+        with open(full_path, "w") as f:
+            f.write(content)
+        return f"Written to {path}"
+    except ValueError as e:
+        return str(e)
+    except OSError as e:
+        return f"Error writing '{path}': {e.strerror}"
+
+def list_files(path: str) -> str:
+    """List files in a mounted filesystem directory. Use the absolute path (e.g. /mnt/tools)."""
+    try:
+        full_path = _safe_resolve(path)
+        entries = os.listdir(full_path)
+        return "\\n".join(entries) if entries else "(empty directory)"
+    except ValueError as e:
+        return str(e)
+    except OSError as e:
+        return f"Error listing '{path}': {e.strerror}"
+
+_fs_tools = [FunctionTool(file_read), FunctionTool(file_write), FunctionTool(list_files)]
+{{/if}}
+
 agent = LlmAgent(
     name="{{ name }}",
     model="gemini-2.5-flash",
-    instruction="You are a helpful assistant.",
-    tools=[AGUIToolset()],
+    instruction="""You are a helpful assistant.
+{{#if needsOs}}
+You have access to the following mounted filesystems. Use file_read, file_write, and list_files with full absolute paths:
+{{#if sessionStorageMountPath}}- {{sessionStorageMountPath}}: ephemeral session storage (lost when session ends)
+{{/if}}{{#each efsMounts}}- {{mountPath}}: EFS persistent storage (persists across sessions and agent restarts)
+{{/each}}{{#each s3Mounts}}- {{mountPath}}: S3 Files persistent storage (durable, backed by S3)
+{{/each}}{{/if}}""",
+    tools=[AGUIToolset(), {{#if needsOs}}*_fs_tools{{/if}}],
 )
 
 adk_agent = ADKAgent(
@@ -2188,10 +2486,10 @@ requires-python = ">=3.10"
 dependencies = [
     "ag-ui-adk >= 0.6.0",
     "ag-ui-protocol >= 0.1.10",
-    "bedrock-agentcore >= 1.0.3",
+    "bedrock-agentcore >= 1.8.0",
     "fastapi >= 0.115.12",
     "google-adk >= 1.16.0, < 2.0.0",
-    "google-genai >= 1.0.0",
+    "google-genai >= 1.0.0, < 2.0.0",
     "opentelemetry-distro",
     "opentelemetry-exporter-otlp",
     "uvicorn >= 0.34.3",
@@ -2301,6 +2599,62 @@ def add_numbers(a: int, b: int) -> int:
 
 
 backend_tools = [add_numbers]
+
+{{#if needsOs}}
+_MOUNT_PATHS = [
+    {{#if sessionStorageMountPath}}"{{sessionStorageMountPath}}",{{/if}}
+    {{#each efsMounts}}"{{mountPath}}",{{/each}}
+    {{#each s3Mounts}}"{{mountPath}}",{{/each}}
+]
+
+def _safe_resolve(path: str) -> str:
+    resolved = os.path.realpath(path)
+    if not any(resolved == os.path.realpath(m) or resolved.startswith(os.path.realpath(m) + os.sep) for m in _MOUNT_PATHS):
+        raise ValueError(f"Path '{path}' is not within any configured mount ({', '.join(_MOUNT_PATHS)})")
+    return resolved
+
+@tool
+def file_read(path: str) -> str:
+    """Read a file from a mounted filesystem. Use the absolute path (e.g. /mnt/tools/data.txt)."""
+    try:
+        full_path = _safe_resolve(path)
+        with open(full_path) as f:
+            return f.read()
+    except ValueError as e:
+        return str(e)
+    except OSError as e:
+        return f"Error reading '{path}': {e.strerror}"
+
+@tool
+def file_write(path: str, content: str) -> str:
+    """Write a file to a mounted filesystem. Use the absolute path (e.g. /mnt/tools/data.txt)."""
+    try:
+        full_path = _safe_resolve(path)
+        parent = os.path.dirname(full_path)
+        if parent:
+            os.makedirs(parent, exist_ok=True)
+        with open(full_path, "w") as f:
+            f.write(content)
+        return f"Written to {path}"
+    except ValueError as e:
+        return str(e)
+    except OSError as e:
+        return f"Error writing '{path}': {e.strerror}"
+
+@tool
+def list_files(path: str) -> str:
+    """List files in a mounted filesystem directory. Use the absolute path (e.g. /mnt/tools)."""
+    try:
+        full_path = _safe_resolve(path)
+        entries = os.listdir(full_path)
+        return "\\n".join(entries) if entries else "(empty directory)"
+    except ValueError as e:
+        return str(e)
+    except OSError as e:
+        return f"Error listing '{path}': {e.strerror}"
+
+backend_tools.extend([file_read, file_write, list_files])
+{{/if}}
 model = load_model()
 
 
@@ -2500,10 +2854,11 @@ dependencies = [
     {{#if (eq modelProvider "Anthropic")}}"langchain-anthropic >= 0.3.0",
     {{/if}}{{#if (eq modelProvider "Bedrock")}}"langchain-aws >= 0.2.0",
     {{/if}}{{#if (eq modelProvider "Gemini")}}"langchain-google-genai >= 2.0.0",
+    "google-genai >= 1.0.0, < 2.0.0",
     {{/if}}{{#if (eq modelProvider "OpenAI")}}"langchain-openai >= 0.2.0",
     {{/if}}"aws-opentelemetry-distro",
     "opentelemetry-instrumentation-langchain >= 0.59.0",
-    "bedrock-agentcore >= 1.0.3",
+    "bedrock-agentcore >= 1.8.0",
     "botocore[crt] >= 1.35.0",
     "langgraph >= 0.3.25",
     "langchain >= 0.3.0",
@@ -2612,9 +2967,71 @@ def add_numbers(a: int, b: int) -> int:
 
 tools = [add_numbers]
 
+{{#if needsOs}}
+_MOUNT_PATHS = [
+    {{#if sessionStorageMountPath}}"{{sessionStorageMountPath}}",{{/if}}
+    {{#each efsMounts}}"{{mountPath}}",{{/each}}
+    {{#each s3Mounts}}"{{mountPath}}",{{/each}}
+]
+
+def _safe_resolve(path: str) -> str:
+    resolved = os.path.realpath(path)
+    if not any(resolved == os.path.realpath(m) or resolved.startswith(os.path.realpath(m) + os.sep) for m in _MOUNT_PATHS):
+        raise ValueError(f"Path '{path}' is not within any configured mount ({', '.join(_MOUNT_PATHS)})")
+    return resolved
+
+@tool
+def file_read(path: str) -> str:
+    """Read a file from a mounted filesystem. Use the absolute path (e.g. /mnt/tools/data.txt)."""
+    try:
+        full_path = _safe_resolve(path)
+        with open(full_path) as f:
+            return f.read()
+    except ValueError as e:
+        return str(e)
+    except OSError as e:
+        return f"Error reading '{path}': {e.strerror}"
+
+@tool
+def file_write(path: str, content: str) -> str:
+    """Write a file to a mounted filesystem. Use the absolute path (e.g. /mnt/tools/data.txt)."""
+    try:
+        full_path = _safe_resolve(path)
+        parent = os.path.dirname(full_path)
+        if parent:
+            os.makedirs(parent, exist_ok=True)
+        with open(full_path, "w") as f:
+            f.write(content)
+        return f"Written to {path}"
+    except ValueError as e:
+        return str(e)
+    except OSError as e:
+        return f"Error writing '{path}': {e.strerror}"
+
+@tool
+def list_files(path: str) -> str:
+    """List files in a mounted filesystem directory. Use the absolute path (e.g. /mnt/tools)."""
+    try:
+        full_path = _safe_resolve(path)
+        entries = os.listdir(full_path)
+        return "\\n".join(entries) if entries else "(empty directory)"
+    except ValueError as e:
+        return str(e)
+    except OSError as e:
+        return f"Error listing '{path}': {e.strerror}"
+
+tools.extend([file_read, file_write, list_files])
+{{/if}}
+
 agent = Agent(
     model=load_model(),
-    system_prompt="You are a helpful assistant. Use tools when appropriate.",
+    system_prompt="""You are a helpful assistant. Use tools when appropriate.
+{{#if needsOs}}
+You have access to the following mounted filesystems. Use file_read, file_write, and list_files with full absolute paths:
+{{#if sessionStorageMountPath}}- {{sessionStorageMountPath}}: ephemeral session storage (lost when session ends)
+{{/if}}{{#each efsMounts}}- {{mountPath}}: EFS persistent storage (persists across sessions and agent restarts)
+{{/each}}{{#each s3Mounts}}- {{mountPath}}: S3 Files persistent storage (durable, backed by S3)
+{{/each}}{{/if}}""",
     tools=tools,
 )
 
@@ -2939,7 +3356,9 @@ Thumbs.db
 `;
 
 exports[`Assets Directory Snapshots > Python framework assets > python/python/http/autogen/base/main.py should match snapshot 1`] = `
-"import os
+"{{#if needsOs}}
+import os
+{{/if}}
 from autogen_agentchat.agents import AssistantAgent
 from autogen_core.tools import FunctionTool
 from bedrock_agentcore.runtime import BedrockAgentCoreApp
@@ -2963,18 +3382,21 @@ add_numbers_tool = FunctionTool(
 # Define a collection of tools used by the model
 tools = [add_numbers_tool]
 
-{{#if sessionStorageMountPath}}
-SESSION_STORAGE_PATH = "{{sessionStorageMountPath}}"
+{{#if needsOs}}
+_MOUNT_PATHS = [
+    {{#if sessionStorageMountPath}}"{{sessionStorageMountPath}}",{{/if}}
+    {{#each efsMounts}}"{{mountPath}}",{{/each}}
+    {{#each s3Mounts}}"{{mountPath}}",{{/each}}
+]
 
 def _safe_resolve(path: str) -> str:
-    """Resolve path safely within the storage boundary."""
-    resolved = os.path.realpath(os.path.join(SESSION_STORAGE_PATH, path.lstrip("/")))
-    if not resolved.startswith(os.path.realpath(SESSION_STORAGE_PATH)):
-        raise ValueError(f"Path '{path}' is outside the storage boundary")
+    resolved = os.path.realpath(path)
+    if not any(resolved == os.path.realpath(m) or resolved.startswith(os.path.realpath(m) + os.sep) for m in _MOUNT_PATHS):
+        raise ValueError(f"Path '{path}' is not within any configured mount ({', '.join(_MOUNT_PATHS)})")
     return resolved
 
 def file_read(path: str) -> str:
-    """Read a file from persistent storage. The path is relative to the storage root."""
+    """Read a file from a mounted filesystem. Use the absolute path (e.g. /mnt/tools/data.txt)."""
     try:
         full_path = _safe_resolve(path)
         with open(full_path) as f:
@@ -2985,7 +3407,7 @@ def file_read(path: str) -> str:
         return f"Error reading '{path}': {e.strerror}"
 
 def file_write(path: str, content: str) -> str:
-    """Write content to a file in persistent storage. The path is relative to the storage root."""
+    """Write a file to a mounted filesystem. Use the absolute path (e.g. /mnt/tools/data.txt)."""
     try:
         full_path = _safe_resolve(path)
         parent = os.path.dirname(full_path)
@@ -2999,29 +3421,32 @@ def file_write(path: str, content: str) -> str:
     except OSError as e:
         return f"Error writing '{path}': {e.strerror}"
 
-def list_files(directory: str = "") -> str:
-    """List files in persistent storage. The directory is relative to the storage root."""
+def list_files(path: str) -> str:
+    """List files in a mounted filesystem directory. Use the absolute path (e.g. /mnt/tools)."""
     try:
-        target = _safe_resolve(directory)
-        entries = os.listdir(target)
+        full_path = _safe_resolve(path)
+        entries = os.listdir(full_path)
         return "\\n".join(entries) if entries else "(empty directory)"
     except ValueError as e:
         return str(e)
     except OSError as e:
-        return f"Error listing '{directory}': {e.strerror}"
+        return f"Error listing '{path}': {e.strerror}"
 
 tools.extend([
-    FunctionTool(file_read, description="Read a file from persistent storage. The path is relative to the storage root."),
-    FunctionTool(file_write, description="Write content to a file in persistent storage. The path is relative to the storage root."),
-    FunctionTool(list_files, description="List files in persistent storage. The directory is relative to the storage root."),
+    FunctionTool(file_read, description="Read a file from a mounted filesystem. Use the absolute path (e.g. /mnt/tools/data.txt)."),
+    FunctionTool(file_write, description="Write a file to a mounted filesystem. Use the absolute path (e.g. /mnt/tools/data.txt)."),
+    FunctionTool(list_files, description="List files in a mounted filesystem directory. Use the absolute path (e.g. /mnt/tools)."),
 ])
 {{/if}}
 
 SYSTEM_MESSAGE = """
 You are a helpful assistant. Use tools when appropriate.
-{{#if sessionStorageMountPath}}
-You have persistent storage at {{sessionStorageMountPath}}. Use file tools to read and write files. Data persists across sessions.
-{{/if}}
+{{#if needsOs}}
+You have access to the following mounted filesystems. Use file_read, file_write, and list_files with full absolute paths:
+{{#if sessionStorageMountPath}}- {{sessionStorageMountPath}}: ephemeral session storage (lost when session ends)
+{{/if}}{{#each efsMounts}}- {{mountPath}}: EFS persistent storage (persists across sessions and agent restarts)
+{{/each}}{{#each s3Mounts}}- {{mountPath}}: S3 Files persistent storage (durable, backed by S3)
+{{/each}}{{/if}}
 """
 
 @app.entrypoint
@@ -3252,7 +3677,7 @@ dependencies = [
     "autogen-ext[mcp] >= 0.7.5",
     "opentelemetry-distro",
     "opentelemetry-exporter-otlp",
-    "bedrock-agentcore >= 1.0.3",
+    "bedrock-agentcore >= 1.8.0",
     "botocore[crt] >= 1.35.0",
     "tiktoken",
 {{#if (eq modelProvider "Bedrock")}}
@@ -3363,7 +3788,9 @@ Thumbs.db
 `;
 
 exports[`Assets Directory Snapshots > Python framework assets > python/python/http/googleadk/base/main.py should match snapshot 1`] = `
-"import os
+"{{#if needsOs}}
+import os
+{{/if}}
 from google.adk.agents import Agent
 from google.adk.runners import Runner
 from google.adk.sessions import InMemorySessionService
@@ -3394,18 +3821,21 @@ def add_numbers(a: int, b: int) -> int:
 # Define a collection of tools used by the model
 tools = [add_numbers]
 
-{{#if sessionStorageMountPath}}
-SESSION_STORAGE_PATH = "{{sessionStorageMountPath}}"
+{{#if needsOs}}
+_MOUNT_PATHS = [
+    {{#if sessionStorageMountPath}}"{{sessionStorageMountPath}}",{{/if}}
+    {{#each efsMounts}}"{{mountPath}}",{{/each}}
+    {{#each s3Mounts}}"{{mountPath}}",{{/each}}
+]
 
 def _safe_resolve(path: str) -> str:
-    """Resolve path safely within the storage boundary."""
-    resolved = os.path.realpath(os.path.join(SESSION_STORAGE_PATH, path.lstrip("/")))
-    if not resolved.startswith(os.path.realpath(SESSION_STORAGE_PATH)):
-        raise ValueError(f"Path '{path}' is outside the storage boundary")
+    resolved = os.path.realpath(path)
+    if not any(resolved == os.path.realpath(m) or resolved.startswith(os.path.realpath(m) + os.sep) for m in _MOUNT_PATHS):
+        raise ValueError(f"Path '{path}' is not within any configured mount ({', '.join(_MOUNT_PATHS)})")
     return resolved
 
 def file_read(path: str) -> str:
-    """Read a file from persistent storage. The path is relative to the storage root."""
+    """Read a file from a mounted filesystem. Use the absolute path (e.g. /mnt/tools/data.txt)."""
     try:
         full_path = _safe_resolve(path)
         with open(full_path) as f:
@@ -3416,7 +3846,7 @@ def file_read(path: str) -> str:
         return f"Error reading '{path}': {e.strerror}"
 
 def file_write(path: str, content: str) -> str:
-    """Write content to a file in persistent storage. The path is relative to the storage root."""
+    """Write a file to a mounted filesystem. Use the absolute path (e.g. /mnt/tools/data.txt)."""
     try:
         full_path = _safe_resolve(path)
         parent = os.path.dirname(full_path)
@@ -3430,25 +3860,28 @@ def file_write(path: str, content: str) -> str:
     except OSError as e:
         return f"Error writing '{path}': {e.strerror}"
 
-def list_files(directory: str = "") -> str:
-    """List files in persistent storage. The directory is relative to the storage root."""
+def list_files(path: str) -> str:
+    """List files in a mounted filesystem directory. Use the absolute path (e.g. /mnt/tools)."""
     try:
-        target = _safe_resolve(directory)
-        entries = os.listdir(target)
+        full_path = _safe_resolve(path)
+        entries = os.listdir(full_path)
         return "\\n".join(entries) if entries else "(empty directory)"
     except ValueError as e:
         return str(e)
     except OSError as e:
-        return f"Error listing '{directory}': {e.strerror}"
+        return f"Error listing '{path}': {e.strerror}"
 
 tools.extend([file_read, file_write, list_files])
 {{/if}}
 
 AGENT_INSTRUCTION = """
 I can answer your questions using the knowledge I have!
-{{#if sessionStorageMountPath}}
-You have persistent storage at {{sessionStorageMountPath}}. Use file tools to read and write files. Data persists across sessions.
-{{/if}}
+{{#if needsOs}}
+You have access to the following mounted filesystems. Use file_read, file_write, and list_files with full absolute paths:
+{{#if sessionStorageMountPath}}- {{sessionStorageMountPath}}: ephemeral session storage (lost when session ends)
+{{/if}}{{#each efsMounts}}- {{mountPath}}: EFS persistent storage (persists across sessions and agent restarts)
+{{/each}}{{#each s3Mounts}}- {{mountPath}}: S3 Files persistent storage (durable, backed by S3)
+{{/each}}{{/if}}
 """
 
 # Get MCP Toolset
@@ -3675,6 +4108,7 @@ dependencies = [
     "opentelemetry-distro",
     "opentelemetry-exporter-otlp",
     "google-adk >= 1.17.0, < 2.0.0",
+    "google-genai >= 1.0.0, < 2.0.0",
     "bedrock-agentcore >= 1.0.3",
     "botocore[crt] >= 1.35.0",
     {{#if hasGateway}}{{#if (includes gatewayAuthTypes "AWS_IAM")}}"mcp-proxy-for-aws >= 1.1.0",
@@ -3775,7 +4209,9 @@ Thumbs.db
 `;
 
 exports[`Assets Directory Snapshots > Python framework assets > python/python/http/langchain_langgraph/base/main.py should match snapshot 1`] = `
-"import os
+"{{#if needsOs}}
+import os
+{{/if}}
 from typing import Any
 
 from langchain_core.messages import HumanMessage{{#if hasConfigBundle}}, SystemMessage{{/if}}
@@ -3810,9 +4246,12 @@ def get_or_create_model():
 
 DEFAULT_SYSTEM_PROMPT = """
 You are a helpful assistant. Use tools when appropriate.
-{{#if sessionStorageMountPath}}
-You have persistent storage at {{sessionStorageMountPath}}. Use file tools to read and write files. Data persists across sessions.
-{{/if}}
+{{#if needsOs}}
+You have access to the following mounted filesystems. Use file_read, file_write, and list_files with full absolute paths:
+{{#if sessionStorageMountPath}}- {{sessionStorageMountPath}}: ephemeral session storage (lost when session ends)
+{{/if}}{{#each efsMounts}}- {{mountPath}}: EFS persistent storage (persists across sessions and agent restarts)
+{{/each}}{{#each s3Mounts}}- {{mountPath}}: S3 Files persistent storage (durable, backed by S3)
+{{/each}}{{/if}}
 """
 
 
@@ -3826,19 +4265,22 @@ def add_numbers(a: int, b: int) -> int:
 # Define a collection of tools used by the model
 tools = [add_numbers]
 
-{{#if sessionStorageMountPath}}
-SESSION_STORAGE_PATH = "{{sessionStorageMountPath}}"
+{{#if needsOs}}
+_MOUNT_PATHS = [
+    {{#if sessionStorageMountPath}}"{{sessionStorageMountPath}}",{{/if}}
+    {{#each efsMounts}}"{{mountPath}}",{{/each}}
+    {{#each s3Mounts}}"{{mountPath}}",{{/each}}
+]
 
 def _safe_resolve(path: str) -> str:
-    """Resolve path safely within the storage boundary."""
-    resolved = os.path.realpath(os.path.join(SESSION_STORAGE_PATH, path.lstrip("/")))
-    if not resolved.startswith(os.path.realpath(SESSION_STORAGE_PATH)):
-        raise ValueError(f"Path '{path}' is outside the storage boundary")
+    resolved = os.path.realpath(path)
+    if not any(resolved == os.path.realpath(m) or resolved.startswith(os.path.realpath(m) + os.sep) for m in _MOUNT_PATHS):
+        raise ValueError(f"Path '{path}' is not within any configured mount ({', '.join(_MOUNT_PATHS)})")
     return resolved
 
 @tool
 def file_read(path: str) -> str:
-    """Read a file from persistent storage. The path is relative to the storage root."""
+    """Read a file from a mounted filesystem. Use the absolute path (e.g. /mnt/tools/data.txt)."""
     try:
         full_path = _safe_resolve(path)
         with open(full_path) as f:
@@ -3850,7 +4292,7 @@ def file_read(path: str) -> str:
 
 @tool
 def file_write(path: str, content: str) -> str:
-    """Write content to a file in persistent storage. The path is relative to the storage root."""
+    """Write a file to a mounted filesystem. Use the absolute path (e.g. /mnt/tools/data.txt)."""
     try:
         full_path = _safe_resolve(path)
         parent = os.path.dirname(full_path)
@@ -3865,16 +4307,16 @@ def file_write(path: str, content: str) -> str:
         return f"Error writing '{path}': {e.strerror}"
 
 @tool
-def list_files(directory: str = "") -> str:
-    """List files in persistent storage. The directory is relative to the storage root."""
+def list_files(path: str) -> str:
+    """List files in a mounted filesystem directory. Use the absolute path (e.g. /mnt/tools)."""
     try:
-        target = _safe_resolve(directory)
-        entries = os.listdir(target)
+        full_path = _safe_resolve(path)
+        entries = os.listdir(full_path)
         return "\\n".join(entries) if entries else "(empty directory)"
     except ValueError as e:
         return str(e)
     except OSError as e:
-        return f"Error listing '{directory}': {e.strerror}"
+        return f"Error listing '{path}': {e.strerror}"
 
 tools.extend([file_read, file_write, list_files])
 {{/if}}
@@ -4190,7 +4632,7 @@ dependencies = [
     "mcp >= 1.19.0",
     "langchain-mcp-adapters >= 0.1.11",
     "langchain >= 1.0.3",
-    "bedrock-agentcore >= 1.0.3",
+    "bedrock-agentcore >= 1.8.0",
     "botocore[crt] >= 1.35.0",
 {{#if (eq modelProvider "Bedrock")}}
     "langchain-aws >= 1.0.0",
@@ -4203,6 +4645,7 @@ dependencies = [
 {{/if}}
 {{#if (eq modelProvider "Gemini")}}
     "langchain-google-genai >= 3.0.3",
+    "google-genai >= 1.0.0, < 2.0.0",
 {{/if}}
     {{#if hasGateway}}{{#if (includes gatewayAuthTypes "AWS_IAM")}}"mcp-proxy-for-aws >= 1.1.0",
     {{/if}}{{/if}}
@@ -4302,7 +4745,9 @@ Thumbs.db
 `;
 
 exports[`Assets Directory Snapshots > Python framework assets > python/python/http/openaiagents/base/main.py should match snapshot 1`] = `
-"import os
+"{{#if needsOs}}
+import os
+{{/if}}
 from agents import Agent, Runner, function_tool
 from bedrock_agentcore.runtime import BedrockAgentCoreApp
 from model.load import load_model
@@ -4341,19 +4786,22 @@ def add_numbers(a: int, b: int) -> int:
 
 tools = [add_numbers]
 
-{{#if sessionStorageMountPath}}
-SESSION_STORAGE_PATH = "{{sessionStorageMountPath}}"
+{{#if needsOs}}
+_MOUNT_PATHS = [
+    {{#if sessionStorageMountPath}}"{{sessionStorageMountPath}}",{{/if}}
+    {{#each efsMounts}}"{{mountPath}}",{{/each}}
+    {{#each s3Mounts}}"{{mountPath}}",{{/each}}
+]
 
 def _safe_resolve(path: str) -> str:
-    """Resolve path safely within the storage boundary."""
-    resolved = os.path.realpath(os.path.join(SESSION_STORAGE_PATH, path.lstrip("/")))
-    if not resolved.startswith(os.path.realpath(SESSION_STORAGE_PATH)):
-        raise ValueError(f"Path '{path}' is outside the storage boundary")
+    resolved = os.path.realpath(path)
+    if not any(resolved == os.path.realpath(m) or resolved.startswith(os.path.realpath(m) + os.sep) for m in _MOUNT_PATHS):
+        raise ValueError(f"Path '{path}' is not within any configured mount ({', '.join(_MOUNT_PATHS)})")
     return resolved
 
 @function_tool
 def file_read(path: str) -> str:
-    """Read a file from persistent storage. The path is relative to the storage root."""
+    """Read a file from a mounted filesystem. Use the absolute path (e.g. /mnt/tools/data.txt)."""
     try:
         full_path = _safe_resolve(path)
         with open(full_path) as f:
@@ -4365,7 +4813,7 @@ def file_read(path: str) -> str:
 
 @function_tool
 def file_write(path: str, content: str) -> str:
-    """Write content to a file in persistent storage. The path is relative to the storage root."""
+    """Write a file to a mounted filesystem. Use the absolute path (e.g. /mnt/tools/data.txt)."""
     try:
         full_path = _safe_resolve(path)
         parent = os.path.dirname(full_path)
@@ -4380,25 +4828,28 @@ def file_write(path: str, content: str) -> str:
         return f"Error writing '{path}': {e.strerror}"
 
 @function_tool
-def list_files(directory: str = "") -> str:
-    """List files in persistent storage. The directory is relative to the storage root."""
+def list_files(path: str) -> str:
+    """List files in a mounted filesystem directory. Use the absolute path (e.g. /mnt/tools)."""
     try:
-        target = _safe_resolve(directory)
-        entries = os.listdir(target)
+        full_path = _safe_resolve(path)
+        entries = os.listdir(full_path)
         return "\\n".join(entries) if entries else "(empty directory)"
     except ValueError as e:
         return str(e)
     except OSError as e:
-        return f"Error listing '{directory}': {e.strerror}"
+        return f"Error listing '{path}': {e.strerror}"
 
 tools.extend([file_read, file_write, list_files])
 {{/if}}
 
 INSTRUCTIONS = """
 You are a helpful assistant. Use tools when appropriate.
-{{#if sessionStorageMountPath}}
-You have persistent storage at {{sessionStorageMountPath}}. Use file tools to read and write files. Data persists across sessions.
-{{/if}}
+{{#if needsOs}}
+You have access to the following mounted filesystems. Use file_read, file_write, and list_files with full absolute paths:
+{{#if sessionStorageMountPath}}- {{sessionStorageMountPath}}: ephemeral session storage (lost when session ends)
+{{/if}}{{#each efsMounts}}- {{mountPath}}: EFS persistent storage (persists across sessions and agent restarts)
+{{/each}}{{#each s3Mounts}}- {{mountPath}}: S3 Files persistent storage (durable, backed by S3)
+{{/each}}{{/if}}
 """
 
 # Define the agent execution
@@ -4617,7 +5068,7 @@ requires-python = ">=3.10"
 dependencies = [
     "aws-opentelemetry-distro",
     "openai-agents >= 0.4.2",
-    "bedrock-agentcore >= 1.0.3",
+    "bedrock-agentcore >= 1.8.0",
     "botocore[crt] >= 1.35.0",
     {{#if hasGateway}}{{#if (includes gatewayAuthTypes "AWS_IAM")}}"mcp-proxy-for-aws >= 1.1.0",
     {{/if}}{{/if}}
@@ -4733,8 +5184,11 @@ from mcp_client.client import get_streamable_http_mcp_client
 {{#if hasMemory}}
 from memory.session import get_memory_session_manager
 {{/if}}
-{{#if sessionStorageMountPath}}
+{{#if needsOs}}
 import os
+{{/if}}
+{{#if hasPayment}}
+from capabilities.payments.payments import create_payments_plugin, PAYMENT_SYSTEM_PROMPT
 {{/if}}
 
 app = BedrockAgentCoreApp()
@@ -4749,9 +5203,12 @@ mcp_clients = [get_streamable_http_mcp_client()]
 
 DEFAULT_SYSTEM_PROMPT = """
 You are a helpful assistant. Use tools when appropriate.
-{{#if sessionStorageMountPath}}
-You have persistent storage at {{sessionStorageMountPath}}. Use file tools to read and write files. Data persists across sessions.
-{{/if}}
+{{#if needsOs}}
+You have access to the following mounted filesystems. Use file_read, file_write, and list_files with full absolute paths:
+{{#if sessionStorageMountPath}}- {{sessionStorageMountPath}}: ephemeral session storage (lost when session ends)
+{{/if}}{{#each efsMounts}}- {{mountPath}}: EFS persistent storage (persists across sessions and agent restarts)
+{{/each}}{{#each s3Mounts}}- {{mountPath}}: S3 Files persistent storage (durable, backed by S3)
+{{/each}}{{/if}}
 """
 
 {{#if hasConfigBundle}}
@@ -4772,19 +5229,22 @@ def add_numbers(a: int, b: int) -> int:
     return a+b
 tools.append(add_numbers)
 
-{{#if sessionStorageMountPath}}
-SESSION_STORAGE_PATH = "{{sessionStorageMountPath}}"
+{{#if needsOs}}
+_MOUNT_PATHS = [
+    {{#if sessionStorageMountPath}}"{{sessionStorageMountPath}}",{{/if}}
+    {{#each efsMounts}}"{{mountPath}}",{{/each}}
+    {{#each s3Mounts}}"{{mountPath}}",{{/each}}
+]
 
 def _safe_resolve(path: str) -> str:
-    """Resolve path safely within the storage boundary."""
-    resolved = os.path.realpath(os.path.join(SESSION_STORAGE_PATH, path.lstrip("/")))
-    if not resolved.startswith(os.path.realpath(SESSION_STORAGE_PATH)):
-        raise ValueError(f"Path '{path}' is outside the storage boundary")
+    resolved = os.path.realpath(path)
+    if not any(resolved == os.path.realpath(m) or resolved.startswith(os.path.realpath(m) + os.sep) for m in _MOUNT_PATHS):
+        raise ValueError(f"Path '{path}' is not within any configured mount ({', '.join(_MOUNT_PATHS)})")
     return resolved
 
 @tool
 def file_read(path: str) -> str:
-    """Read a file from persistent storage. The path is relative to the storage root."""
+    """Read a file from a mounted filesystem. Use the absolute path (e.g. /mnt/tools/data.txt)."""
     try:
         full_path = _safe_resolve(path)
         with open(full_path) as f:
@@ -4796,7 +5256,7 @@ def file_read(path: str) -> str:
 
 @tool
 def file_write(path: str, content: str) -> str:
-    """Write content to a file in persistent storage. The path is relative to the storage root."""
+    """Write a file to a mounted filesystem. Use the absolute path (e.g. /mnt/tools/data.txt)."""
     try:
         full_path = _safe_resolve(path)
         parent = os.path.dirname(full_path)
@@ -4811,16 +5271,16 @@ def file_write(path: str, content: str) -> str:
         return f"Error writing '{path}': {e.strerror}"
 
 @tool
-def list_files(directory: str = "") -> str:
-    """List files in persistent storage. The directory is relative to the storage root."""
+def list_files(path: str) -> str:
+    """List files in a mounted filesystem directory. Use the absolute path (e.g. /mnt/tools)."""
     try:
-        target = _safe_resolve(directory)
-        entries = os.listdir(target)
+        full_path = _safe_resolve(path)
+        entries = os.listdir(full_path)
         return "\\n".join(entries) if entries else "(empty directory)"
     except ValueError as e:
         return str(e)
     except OSError as e:
-        return f"Error listing '{directory}': {e.strerror}"
+        return f"Error listing '{path}': {e.strerror}"
 
 tools.extend([file_read, file_write, list_files])
 {{/if}}
@@ -4865,12 +5325,12 @@ class ConfigBundleHook(HookProvider):
 {{/if}}
 
 {{#if hasMemory}}
+{{#unless hasPayment}}
 def agent_factory():
     cache = {}
     def get_or_create_agent(session_id, user_id):
         key = f"{session_id}/{user_id}"
         if key not in cache:
-            # Create an agent for the given session_id and user_id
             cache[key] = Agent(
                 model=load_model(),
                 session_manager=get_memory_session_manager(session_id, user_id),
@@ -4881,6 +5341,7 @@ def agent_factory():
         return cache[key]
     return get_or_create_agent
 get_or_create_agent = agent_factory()
+{{/unless}}
 {{else}}
 {{#if hasConfigBundle}}
 def create_agent():
@@ -4891,6 +5352,7 @@ def create_agent():
         hooks=[ConfigBundleHook()],
     )
 {{else}}
+{{#unless hasPayment}}
 _agent = None
 
 def get_or_create_agent():
@@ -4899,9 +5361,10 @@ def get_or_create_agent():
         _agent = Agent(
             model=load_model(),
             system_prompt=DEFAULT_SYSTEM_PROMPT,
-            tools=tools
+            tools=tools,
         )
     return _agent
+{{/unless}}
 {{/if}}
 {{/if}}
 
@@ -4910,15 +5373,46 @@ def get_or_create_agent():
 async def invoke(payload, context):
     log.info("Invoking Agent.....")
 
+{{#if hasPayment}}
+    user_id = payload.get("user_id") or getattr(context, "user_id", "default-user")
+    instrument_id = payload.get("payment_instrument_id")
+    session_id = payload.get("payment_session_id")
+    payments_plugin = create_payments_plugin(user_id, instrument_id, session_id)
+    plugins = [payments_plugin] if payments_plugin else []
+{{/if}}
+
 {{#if hasMemory}}
+{{#if hasPayment}}
+    mem_session_id = getattr(context, 'session_id', 'default-session')
+    mem_user_id = getattr(context, 'user_id', 'default-user')
+    agent = Agent(
+        model=load_model(),
+        session_manager=get_memory_session_manager(mem_session_id, mem_user_id),
+        system_prompt=DEFAULT_SYSTEM_PROMPT + PAYMENT_SYSTEM_PROMPT,
+        tools=tools,
+        plugins=plugins,{{#if hasConfigBundle}}
+        hooks=[ConfigBundleHook()],{{/if}}
+    )
+{{else}}
     session_id = getattr(context, 'session_id', 'default-session')
     user_id = getattr(context, 'user_id', 'default-user')
     agent = get_or_create_agent(session_id, user_id)
+{{/if}}
+{{else}}
+{{#if hasPayment}}
+    agent = Agent(
+        model=load_model(),
+        system_prompt=DEFAULT_SYSTEM_PROMPT + PAYMENT_SYSTEM_PROMPT,
+        tools=tools,
+        plugins=plugins,{{#if hasConfigBundle}}
+        hooks=[ConfigBundleHook()],{{/if}}
+    )
 {{else}}
 {{#if hasConfigBundle}}
     agent = create_agent()
 {{else}}
     agent = get_or_create_agent()
+{{/if}}
 {{/if}}
 {{/if}}
 
@@ -5232,6 +5726,160 @@ def get_memory_session_manager(session_id: Optional[str], actor_id: str) -> Opti
 "
 `;
 
+exports[`Assets Directory Snapshots > Python framework assets > python/python/http/strands/capabilities/payments/__init__.py should match snapshot 1`] = `
+""""Payment capabilities for Strands agents."""
+from .payments import create_payments_plugin
+
+__all__ = ["create_payments_plugin"]
+"
+`;
+
+exports[`Assets Directory Snapshots > Python framework assets > python/python/http/strands/capabilities/payments/payments.py should match snapshot 1`] = `
+""""Payment capability -- auto-generated by agentcore CLI.
+
+Configures AgentCorePaymentsPlugin for Strands agents.
+Manager config is auto-discovered from AGENTCORE_PAYMENT_*
+environment variables set at deploy time.
+
+Uses a per-invocation factory pattern so each request gets its own
+plugin instance with the correct user_id, instrument_id, and session_id.
+This prevents concurrency bugs where one user's payment context
+could leak to another user's request.
+
+Uses the official SDK plugin which handles:
+- x402 v1 (body-based) and v2 (header-based) payment detection
+- Automatic 402 response interception and payment processing
+- Retry limiting (max 3 payment retries per tool use)
+- Error management and logging
+"""
+import os
+import logging
+
+import boto3
+from bedrock_agentcore.payments.integrations.strands import AgentCorePaymentsPlugin
+from bedrock_agentcore.payments.integrations.config import AgentCorePaymentsPluginConfig
+
+logger = logging.getLogger(__name__)
+
+PAYMENT_SYSTEM_PROMPT = """
+You have payment capabilities via the x402 protocol:
+- Use http_request to call HTTP endpoints. 402 Payment Required responses are settled automatically by the plugin and the call is retried.
+- Use get_payment_session to check your remaining budget before expensive operations
+- Use get_payment_instrument_balance to check wallet USDC balance
+- Use list_payment_instruments to see available payment instruments
+- If budget is low, inform the user before proceeding with paid requests
+"""
+
+_manager_arn = None
+_connector_id = None
+_process_payment_role_arn = None
+_name_segment = None
+_region = None
+_auth_mode = None
+_manager_count = 0
+for key, value in os.environ.items():
+    if key.startswith("AGENTCORE_PAYMENT_") and key.endswith("_MANAGER_ARN"):
+        if _manager_arn is None:
+            _manager_arn = value
+            _name_segment = key[len("AGENTCORE_PAYMENT_"):-len("_MANAGER_ARN")]
+        _manager_count += 1
+if _manager_count > 1:
+    logger.warning(
+        "Multiple payment managers detected in environment. Using the first one found. "
+        "Remove extra AGENTCORE_PAYMENT_*_MANAGER_ARN env vars to eliminate ambiguity."
+    )
+_region = os.getenv("AWS_REGION")
+
+_prefix = f"AGENTCORE_PAYMENT_{_name_segment}_" if _name_segment else "AGENTCORE_PAYMENT_"
+_auth_mode = os.getenv(f"{_prefix}AUTH_MODE", "sigv4")
+_connector_id = os.getenv(f"{_prefix}CONNECTOR_ID")
+_process_payment_role_arn = os.getenv(f"{_prefix}PROCESS_PAYMENT_ROLE_ARN")
+_auto_payment = os.getenv(f"{_prefix}AUTO_PAYMENT", "true").lower() == "true"
+_allowlist_raw = os.getenv(f"{_prefix}TOOL_ALLOWLIST")
+_allowlist = _allowlist_raw.split(",") if _allowlist_raw else None
+_network_prefs_raw = os.getenv(f"{_prefix}NETWORK_PREFERENCES")
+_network_prefs = _network_prefs_raw.split(",") if _network_prefs_raw else None
+
+if not _manager_arn:
+    logger.warning("No payment manager config found in environment")
+if not _connector_id:
+    logger.warning("No payment connector config found in environment")
+
+
+def _assume_role_session(role_arn):
+    """Assume an IAM role and return a boto3 session with temporary credentials."""
+    sts = boto3.client("sts", region_name=_region)
+    creds = sts.assume_role(
+        RoleArn=role_arn,
+        RoleSessionName="agentcore-payment-plugin",
+    )["Credentials"]
+    return boto3.Session(
+        aws_access_key_id=creds["AccessKeyId"],
+        aws_secret_access_key=creds["SecretAccessKey"],
+        aws_session_token=creds["SessionToken"],
+        region_name=_region,
+    )
+
+
+def create_payments_plugin(user_id, instrument_id=None, session_id=None):
+    """Create a fresh plugin instance per invocation.
+
+    Args:
+        user_id: From invocation context (required for SigV4, derived from JWT for bearer)
+        instrument_id: From invocation payload (created by app backend per user)
+        session_id: From invocation payload (created by app backend per conversation)
+
+    Returns:
+        AgentCorePaymentsPlugin instance, or None if no manager is configured.
+    """
+    if not _manager_arn:
+        return None
+
+    config_kwargs = {
+        "payment_manager_arn": _manager_arn,
+        "region": _region,
+        "payment_instrument_id": instrument_id,
+        "payment_session_id": session_id,
+        "payment_connector_id": _connector_id,
+    }
+
+    config_kwargs["auto_payment"] = _auto_payment
+    if _allowlist:
+        config_kwargs["payment_tool_allowlist"] = _allowlist
+    if _network_prefs:
+        config_kwargs["network_preferences_config"] = _network_prefs
+
+    if _process_payment_role_arn:
+        # Only pass boto3_session if SDK supports it (added in bedrock-agentcore >= 1.11).
+        # Older SDKs use the runtime role's default credentials and can still call ProcessPayment
+        # if the runtime role has been granted permission directly.
+        import inspect
+        if "boto3_session" in inspect.signature(AgentCorePaymentsPluginConfig).parameters:
+            config_kwargs["boto3_session"] = _assume_role_session(_process_payment_role_arn)
+        else:
+            logger.warning(
+                "PROCESS_PAYMENT_ROLE_ARN set but bedrock-agentcore SDK does not support boto3_session. "
+                "Upgrade to bedrock-agentcore>=1.11 to enable cross-role payment processing."
+            )
+
+    if _auth_mode == "bearer":
+        bearer_token = os.getenv("AGENTCORE_BEARER_TOKEN")
+        if bearer_token:
+            config_kwargs["bearer_token"] = bearer_token
+        else:
+            logger.warning(
+                "Bearer auth mode configured but AGENTCORE_BEARER_TOKEN not set. "
+                "Falling back to SigV4. Set AGENTCORE_BEARER_TOKEN or pass bearer_token in invoke context."
+            )
+            config_kwargs["user_id"] = user_id or "default-user"
+    else:
+        config_kwargs["user_id"] = user_id or "default-user"
+
+    config = AgentCorePaymentsPluginConfig(**config_kwargs)
+    return AgentCorePaymentsPlugin(config=config)
+"
+`;
+
 exports[`Assets Directory Snapshots > Python framework assets > python/python/mcp/standalone/base/README.md should match snapshot 1`] = `
 "# {{ name }}
 
@@ -5318,9 +5966,67 @@ Thumbs.db
 `;
 
 exports[`Assets Directory Snapshots > Python framework assets > python/python/mcp/standalone/base/main.py should match snapshot 1`] = `
-"from mcp.server.fastmcp import FastMCP
+"{{#if needsOs}}
+import os
+{{/if}}
+from mcp.server.fastmcp import FastMCP
 
 mcp = FastMCP("{{ name }}", host="0.0.0.0", stateless_http=True)
+
+{{#if needsOs}}
+_MOUNT_PATHS = [
+    {{#if sessionStorageMountPath}}"{{sessionStorageMountPath}}",{{/if}}
+    {{#each efsMounts}}"{{mountPath}}",{{/each}}
+    {{#each s3Mounts}}"{{mountPath}}",{{/each}}
+]
+
+def _safe_resolve(path: str) -> str:
+    resolved = os.path.realpath(path)
+    if not any(resolved == os.path.realpath(m) or resolved.startswith(os.path.realpath(m) + os.sep) for m in _MOUNT_PATHS):
+        raise ValueError(f"Path '{path}' is not within any configured mount ({', '.join(_MOUNT_PATHS)})")
+    return resolved
+
+@mcp.tool()
+def file_read(path: str) -> str:
+    """Read a file from a mounted filesystem. Use the absolute path (e.g. /mnt/tools/data.txt)."""
+    try:
+        full_path = _safe_resolve(path)
+        with open(full_path) as f:
+            return f.read()
+    except ValueError as e:
+        return str(e)
+    except OSError as e:
+        return f"Error reading '{path}': {e.strerror}"
+
+@mcp.tool()
+def file_write(path: str, content: str) -> str:
+    """Write a file to a mounted filesystem. Use the absolute path (e.g. /mnt/tools/data.txt)."""
+    try:
+        full_path = _safe_resolve(path)
+        parent = os.path.dirname(full_path)
+        if parent:
+            os.makedirs(parent, exist_ok=True)
+        with open(full_path, "w") as f:
+            f.write(content)
+        return f"Written to {path}"
+    except ValueError as e:
+        return str(e)
+    except OSError as e:
+        return f"Error writing '{path}': {e.strerror}"
+
+@mcp.tool()
+def list_files(path: str) -> str:
+    """List files in a mounted filesystem directory. Use the absolute path (e.g. /mnt/tools)."""
+    try:
+        full_path = _safe_resolve(path)
+        entries = os.listdir(full_path)
+        return "\\n".join(entries) if entries else "(empty directory)"
+    except ValueError as e:
+        return str(e)
+    except OSError as e:
+        return f"Error listing '{path}': {e.strerror}"
+
+{{/if}}
 
 
 @mcp.tool()

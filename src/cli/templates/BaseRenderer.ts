@@ -1,7 +1,7 @@
 import { APP_DIR } from '../../lib';
 import { copyAndRenderDir } from './render';
 import type { AgentRenderConfig } from './types';
-import { existsSync } from 'node:fs';
+import { existsSync, mkdirSync, writeFileSync } from 'node:fs';
 import * as path from 'node:path';
 
 export interface RendererContext {
@@ -30,6 +30,10 @@ export abstract class BaseRenderer {
 
   protected shouldRenderMemory(): boolean {
     return this.config.hasMemory;
+  }
+
+  protected shouldRenderPayment(): boolean {
+    return this.config.hasPayment;
   }
 
   protected getTemplateDir(): string {
@@ -62,6 +66,18 @@ export abstract class BaseRenderer {
       if (existsSync(memoryCapabilityDir)) {
         const memoryTargetDir = path.join(projectDir, 'memory');
         await copyAndRenderDir(memoryCapabilityDir, memoryTargetDir, templateData);
+      }
+    }
+
+    if (this.shouldRenderPayment()) {
+      const paymentCapabilityDir = path.join(templateDir, 'capabilities', 'payments');
+      if (existsSync(paymentCapabilityDir)) {
+        const capabilitiesDir = path.join(projectDir, 'capabilities');
+        mkdirSync(capabilitiesDir, { recursive: true });
+        const capInitPath = path.join(capabilitiesDir, '__init__.py');
+        if (!existsSync(capInitPath)) writeFileSync(capInitPath, '');
+        const paymentTargetDir = path.join(capabilitiesDir, 'payments');
+        await copyAndRenderDir(paymentCapabilityDir, paymentTargetDir, templateData);
       }
     }
 

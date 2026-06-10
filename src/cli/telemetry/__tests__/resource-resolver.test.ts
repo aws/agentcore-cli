@@ -1,5 +1,6 @@
 import { resolveResourceAttributes } from '../config';
 import { ResourceAttributesSchema } from '../schemas/common-attributes';
+import assert from 'node:assert';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
 const ORIGINAL_ENV = process.env.AGENTCORE_CONFIG_DIR;
@@ -18,33 +19,40 @@ describe('resolveResourceAttributes', () => {
   });
 
   it('returns attributes that pass schema validation', async () => {
-    const attrs = await resolveResourceAttributes('cli');
-    expect(() => ResourceAttributesSchema.parse(attrs)).not.toThrow();
+    const result = await resolveResourceAttributes('cli');
+    assert(result.success);
+    expect(() => ResourceAttributesSchema.parse(result.resource)).not.toThrow();
   });
 
   it('sets service.name to agentcore-cli', async () => {
-    const attrs = await resolveResourceAttributes('cli');
-    expect(attrs['service.name']).toBe('agentcore-cli');
+    const result = await resolveResourceAttributes('cli');
+    assert(result.success);
+    expect(result.resource['service.name']).toBe('agentcore-cli');
   });
 
   it('generates unique session_id per call', async () => {
     const a = await resolveResourceAttributes('cli');
     const b = await resolveResourceAttributes('cli');
-    expect(a['agentcore-cli.session_id']).not.toBe(b['agentcore-cli.session_id']);
+    assert(a.success);
+    assert(b.success);
+    expect(a.resource['agentcore-cli.session_id']).not.toBe(b.resource['agentcore-cli.session_id']);
   });
 
   it('reflects the mode parameter', async () => {
     const cli = await resolveResourceAttributes('cli');
     const tui = await resolveResourceAttributes('tui');
-    expect(cli['agentcore-cli.mode']).toBe('cli');
-    expect(tui['agentcore-cli.mode']).toBe('tui');
+    assert(cli.success);
+    assert(tui.success);
+    expect(cli.resource['agentcore-cli.mode']).toBe('cli');
+    expect(tui.resource['agentcore-cli.mode']).toBe('tui');
   });
 
   it('populates os and node fields', async () => {
-    const attrs = await resolveResourceAttributes('cli');
-    expect(attrs['os.type']).toBeTruthy();
-    expect(attrs['os.version']).toBeTruthy();
-    expect(attrs['host.arch']).toBeTruthy();
-    expect(attrs['node.version']).toMatch(/^v\d+/);
+    const result = await resolveResourceAttributes('cli');
+    assert(result.success);
+    expect(result.resource['os.type']).toBeTruthy();
+    expect(result.resource['os.version']).toBeTruthy();
+    expect(result.resource['host.arch']).toBeTruthy();
+    expect(result.resource['node.version']).toMatch(/^v\d+/);
   });
 });

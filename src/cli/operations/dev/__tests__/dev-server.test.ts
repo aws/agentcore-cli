@@ -6,6 +6,10 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 const mockSpawn = vi.fn();
 vi.mock('child_process', () => ({
   spawn: (...args: unknown[]) => mockSpawn(...args),
+  execSync: vi.fn(),
+}));
+vi.mock('../../../../lib/utils/platform', () => ({
+  isWindows: false,
 }));
 
 function createMockChildProcess() {
@@ -71,11 +75,11 @@ describe('DevServer', () => {
     it('calls spawn with correct cmd, args, cwd, env, and stdio when prepare succeeds', async () => {
       await server.start();
 
-      expect(mockSpawn).toHaveBeenCalledWith('test-cmd', ['--flag'], {
-        cwd: '/test',
-        env: { PATH: '/usr/bin' },
-        stdio: ['ignore', 'pipe', 'pipe'],
-      });
+      const spawnOpts = mockSpawn.mock.calls[0]![2] as Record<string, unknown>;
+      expect(spawnOpts.cwd).toBe('/test');
+      expect(spawnOpts.env).toEqual({ PATH: '/usr/bin' });
+      expect(spawnOpts.stdio).toEqual(['ignore', 'pipe', 'pipe']);
+      expect(spawnOpts.detached).toBe(process.platform !== 'win32');
     });
 
     it('returns child process on success', async () => {
@@ -114,11 +118,24 @@ describe('DevServer', () => {
       expect(mockChild.kill).not.toHaveBeenCalled();
     });
 
-    it('sends SIGTERM first', async () => {
+    it('sends SIGTERM to child when pid is not available', async () => {
       await server.start();
 
       server.kill();
       expect(mockChild.kill).toHaveBeenCalledWith('SIGTERM');
+    });
+
+    it('sends SIGTERM to process group when pid is available', async () => {
+      mockChild.pid = 12345;
+      const processKillSpy = vi.spyOn(process, 'kill').mockImplementation(() => true);
+
+      await server.start();
+      server.kill();
+
+      expect(processKillSpy).toHaveBeenCalledWith(-12345, 'SIGTERM');
+      expect(mockChild.kill).not.toHaveBeenCalled();
+
+      processKillSpy.mockRestore();
     });
 
     it('sends SIGKILL after 2s if not killed', async () => {

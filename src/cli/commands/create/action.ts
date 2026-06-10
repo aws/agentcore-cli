@@ -11,9 +11,11 @@ import {
 import type {
   BuildType,
   DeployedState,
+  EfsAccessPointConfig,
   ModelProvider,
   NetworkMode,
   ProtocolMode,
+  S3FilesAccessPointConfig,
   SDKFramework,
   TargetLanguage,
 } from '../../../schema';
@@ -148,6 +150,8 @@ export interface CreateWithAgentOptions {
   idleTimeout?: number;
   maxLifetime?: number;
   sessionStorageMountPath?: string;
+  efsAccessPoints?: EfsAccessPointConfig[];
+  s3AccessPoints?: S3FilesAccessPointConfig[];
   withConfigBundle?: boolean;
   skipGit?: boolean;
   skipInstall?: boolean;
@@ -174,6 +178,8 @@ export async function createProjectWithAgent(options: CreateWithAgentOptions): P
     idleTimeout,
     maxLifetime: maxLifetimeOpt,
     sessionStorageMountPath,
+    efsAccessPoints,
+    s3AccessPoints,
     withConfigBundle,
     skipGit,
     skipInstall,
@@ -224,6 +230,8 @@ export async function createProjectWithAgent(options: CreateWithAgentOptions): P
         bedrockAgentId: options.agentId,
         bedrockAliasId: options.agentAliasId,
         configBaseDir,
+        efsAccessPoints,
+        s3AccessPoints,
       });
       if (!importResult.success) {
         onProgress?.('Import agent from Bedrock', 'error');
@@ -272,6 +280,8 @@ export async function createProjectWithAgent(options: CreateWithAgentOptions): P
       ...(idleTimeout !== undefined && { idleRuntimeSessionTimeout: idleTimeout }),
       ...(maxLifetimeOpt !== undefined && { maxLifetime: maxLifetimeOpt }),
       ...(sessionStorageMountPath && { sessionStorageMountPath }),
+      ...(efsAccessPoints?.length && { efsAccessPoints }),
+      ...(s3AccessPoints?.length && { s3AccessPoints }),
       ...(withConfigBundle && { withConfigBundle }),
     };
 

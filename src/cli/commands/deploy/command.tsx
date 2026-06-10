@@ -1,8 +1,8 @@
 import { ConfigIO, serializeResult } from '../../../lib';
+import { COMMAND_DESCRIPTIONS } from '../../constants';
 import { getErrorMessage } from '../../errors';
 import { withCommandRunTelemetry } from '../../telemetry/cli-command-run.js';
 import { renderTUI } from '../../tui';
-import { COMMAND_DESCRIPTIONS } from '../../tui/copy';
 import { requireProject, requireTTY } from '../../tui/guards';
 import { handleDeploy } from './actions';
 import type { DeployOptions, DeployResult } from './types';

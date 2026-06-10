@@ -19,6 +19,7 @@ export type HarnessStatus = 'CREATING' | 'READY' | 'UPDATING' | 'DELETING' | 'DE
 
 export interface BedrockModelConfig {
   modelId: string;
+  apiFormat?: 'converse_stream' | 'responses' | 'chat_completions';
   temperature?: number;
   topP?: number;
   maxTokens?: number;
@@ -27,6 +28,7 @@ export interface BedrockModelConfig {
 export interface OpenAiModelConfig {
   modelId: string;
   apiKeyArn?: string;
+  apiFormat?: 'responses' | 'chat_completions';
   temperature?: number;
   topP?: number;
   maxTokens?: number;

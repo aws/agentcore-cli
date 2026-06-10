@@ -23,9 +23,99 @@ import {
   synthesizeCdk,
   validateProject,
 } from '../../operations/deploy';
+import {
+  hasPaymentCredentialProviders,
+  setupPaymentCredentialProviders,
+} from '../../operations/deploy/pre-deploy-identity';
 import type { Step } from '../components';
 import * as path from 'node:path';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+
+const LABEL_PAYMENTS = 'Creating payment infrastructure';
+
+interface RunPaymentSetupOptions {
+  projectSpec: PreflightContext['projectSpec'];
+  awsTargets: PreflightContext['awsTargets'];
+  runtimeCredentials?: SecureCredentials;
+  logger: ExecLogger;
+  setSteps: React.Dispatch<React.SetStateAction<Step[]>>;
+  updateStepByLabel: (label: string, update: Partial<Step>) => void;
+  setPhase: (phase: PreflightPhase) => void;
+  isRunningRef: React.MutableRefObject<boolean>;
+  setAllCredentials: React.Dispatch<
+    React.SetStateAction<
+      Record<string, { credentialProviderArn: string; clientSecretArn?: string; callbackUrl?: string }>
+    >
+  >;
+}
+
+async function runPaymentPreDeploy(opts: RunPaymentSetupOptions): Promise<boolean> {
+  const {
+    projectSpec,
+    awsTargets,
+    runtimeCredentials,
+    logger,
+    setSteps,
+    updateStepByLabel,
+    setPhase,
+    isRunningRef,
+    setAllCredentials,
+  } = opts;
+
+  if (!hasPaymentCredentialProviders(projectSpec)) return true;
+
+  setSteps(prev => {
+    const synthIndex = prev.findIndex(s => s.label === LABEL_SYNTH);
+    return [...prev.slice(0, synthIndex), { label: LABEL_PAYMENTS, status: 'running' }, ...prev.slice(synthIndex)];
+  });
+  logger.startStep('Setting up payment credentials...');
+
+  const target = awsTargets[0]!;
+  const paymentConfigIO = new ConfigIO();
+
+  const paymentResult = await setupPaymentCredentialProviders({
+    projectSpec,
+    configBaseDir: paymentConfigIO.getConfigRoot(),
+    region: target.region,
+    runtimeCredentials: runtimeCredentials ?? undefined,
+  });
+
+  if (paymentResult.hasErrors) {
+    const errorMsg = paymentResult.errors.join('; ');
+    logger.endStep('error', errorMsg);
+    updateStepByLabel(LABEL_PAYMENTS, { status: 'error', error: `Payment setup failed: ${errorMsg}` });
+    setPhase('error');
+    isRunningRef.current = false;
+    return false;
+  }
+
+  // Merge payment credential provider ARNs into deployed credentials (same path as identity)
+  const existingState = await paymentConfigIO.readDeployedState().catch(() => ({ targets: {} }) as DeployedState);
+  const targetState = existingState.targets?.[target.name] ?? { resources: {} };
+  targetState.resources ??= {};
+  const existingCreds = targetState.resources.credentials ?? {};
+  for (const [name, result] of Object.entries(paymentResult.credentialProviders)) {
+    existingCreds[name] = { credentialProviderArn: result.credentialProviderArn };
+  }
+  targetState.resources.credentials = existingCreds;
+  await paymentConfigIO.writeDeployedState({
+    ...existingState,
+    targets: { ...existingState.targets, [target.name]: targetState },
+  });
+
+  // Update in-memory credentials so useDeployFlow.persistDeployedState has correct ARNs
+  setAllCredentials(prev => {
+    const updated = { ...prev };
+    for (const [name, result] of Object.entries(paymentResult.credentialProviders)) {
+      updated[name] = { credentialProviderArn: result.credentialProviderArn };
+    }
+    return updated;
+  });
+
+  logger.endStep('success');
+  updateStepByLabel(LABEL_PAYMENTS, { status: 'success' });
+  return true;
+}
 
 type PreflightPhase =
   | 'idle'
@@ -427,6 +517,19 @@ export function useCdkPreflight(options: PreflightOptions): PreflightResult {
           return;
         }
 
+        // Set up payment resources (no-identity-providers path)
+        const paymentOk = await runPaymentPreDeploy({
+          projectSpec: preflightContext.projectSpec,
+          awsTargets: preflightContext.awsTargets,
+          logger,
+          setSteps,
+          updateStepByLabel,
+          setPhase,
+          isRunningRef,
+          setAllCredentials,
+        });
+        if (!paymentOk) return;
+
         // Step: Synthesize CloudFormation
         updateStepByLabel(LABEL_SYNTH, { status: 'running' });
         logger.startStep('Synthesize CloudFormation');
@@ -538,10 +641,24 @@ export function useCdkPreflight(options: PreflightOptions): PreflightResult {
     isRunningRef.current = true;
 
     const runIdentitySetup = async () => {
-      // If user chose to skip, go directly to synth
+      // If user chose to skip, still run payment setup then go to synth
       if (skipIdentitySetup) {
         logger.log('Skipping identity provider setup (user choice)');
         setSkipIdentitySetup(false); // Reset for next run
+
+        // Set up payment resources even when identity is skipped
+        const paymentOkSkip = await runPaymentPreDeploy({
+          projectSpec: context.projectSpec,
+          awsTargets: context.awsTargets,
+          runtimeCredentials: runtimeCredentials ?? undefined,
+          logger,
+          setSteps,
+          updateStepByLabel,
+          setPhase,
+          isRunningRef,
+          setAllCredentials,
+        });
+        if (!paymentOkSkip) return;
 
         // Synthesize CloudFormation
         updateStepByLabel(LABEL_SYNTH, { status: 'running' });
@@ -774,6 +891,20 @@ export function useCdkPreflight(options: PreflightOptions): PreflightResult {
             targets: { ...existingState.targets, [target!.name]: targetState },
           });
         }
+
+        // Set up payment resources (before CDK synth so ARNs are in deployed state)
+        const paymentOkIdentity = await runPaymentPreDeploy({
+          projectSpec: context.projectSpec,
+          awsTargets: context.awsTargets,
+          runtimeCredentials: runtimeCredentials ?? undefined,
+          logger,
+          setSteps,
+          updateStepByLabel,
+          setPhase,
+          isRunningRef,
+          setAllCredentials,
+        });
+        if (!paymentOkIdentity) return;
 
         // Clear runtime credentials
         setRuntimeCredentials(null);

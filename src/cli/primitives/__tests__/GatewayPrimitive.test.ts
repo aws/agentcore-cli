@@ -18,6 +18,7 @@ const defaultProject: AgentCoreProjectSpec = {
   httpGateways: [],
   harnesses: [],
   datasets: [],
+  payments: [],
 };
 
 const { mockConfigExists, mockReadProjectSpec, mockWriteProjectSpec } = vi.hoisted(() => ({

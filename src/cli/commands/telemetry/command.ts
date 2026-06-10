@@ -1,5 +1,5 @@
-import { COMMAND_DESCRIPTIONS } from '../../tui/copy.js';
-import { handleTelemetryDisable, handleTelemetryEnable, handleTelemetryStatus } from './actions.js';
+import { COMMAND_DESCRIPTIONS } from '../../constants.js';
+import { handleTelemetryStatus } from './actions.js';
 import type { Command } from '@commander-js/extra-typings';
 
 export function registerTelemetry(program: Command) {
@@ -10,19 +10,21 @@ export function registerTelemetry(program: Command) {
       telemetry.outputHelp();
     });
 
-  telemetry
-    .command('disable')
-    .description('Disable anonymous usage analytics')
-    .action(async () => {
-      await handleTelemetryDisable();
-    });
+  telemetry.addHelpText(
+    'after',
+    `
+Manage Telemetry Preferences:
+  Opt in:   agentcore config telemetry.enabled true
+  Opt out:  agentcore config telemetry.enabled false
+  Status:   agentcore telemetry status
 
-  telemetry
-    .command('enable')
-    .description('Enable anonymous usage analytics')
-    .action(async () => {
-      await handleTelemetryEnable();
-    });
+Audit Mode:
+  Enable audit mode to also log every telemetry event locally.
+  Run: agentcore config telemetry.audit true
+  Events are written to ~/.agentcore/telemetry/.
+
+  For more information, see https://github.com/aws/agentcore-cli/blob/main/docs/telemetry.md`
+  );
 
   telemetry
     .command('status')

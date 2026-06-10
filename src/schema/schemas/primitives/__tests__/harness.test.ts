@@ -691,4 +691,94 @@ describe('HarnessSpecSchema', () => {
     });
     expect(result.success).toBe(true);
   });
+
+  it('accepts bedrock model with apiFormat responses', () => {
+    const result = HarnessSpecSchema.safeParse({
+      ...minimalHarness,
+      model: { provider: 'bedrock', modelId: 'openai.gpt-oss-120b', apiFormat: 'responses' },
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it('accepts bedrock model with apiFormat chat_completions', () => {
+    const result = HarnessSpecSchema.safeParse({
+      ...minimalHarness,
+      model: { provider: 'bedrock', modelId: 'openai.gpt-oss-120b', apiFormat: 'chat_completions' },
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it('accepts bedrock model with apiFormat converse_stream', () => {
+    const result = HarnessSpecSchema.safeParse({
+      ...minimalHarness,
+      model: { provider: 'bedrock', modelId: 'anthropic.claude-v2', apiFormat: 'converse_stream' },
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it('accepts apiFormat responses for open_ai provider', () => {
+    const result = HarnessSpecSchema.safeParse({
+      ...minimalHarness,
+      model: {
+        provider: 'open_ai',
+        modelId: 'gpt-4o',
+        apiKeyArn: 'arn:aws:secretsmanager:us-east-1:123:secret:key',
+        apiFormat: 'responses',
+      },
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it('accepts apiFormat chat_completions for open_ai provider', () => {
+    const result = HarnessSpecSchema.safeParse({
+      ...minimalHarness,
+      model: {
+        provider: 'open_ai',
+        modelId: 'gpt-4o',
+        apiKeyArn: 'arn:aws:secretsmanager:us-east-1:123:secret:key',
+        apiFormat: 'chat_completions',
+      },
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it('rejects converse_stream for open_ai provider', () => {
+    const result = HarnessSpecSchema.safeParse({
+      ...minimalHarness,
+      model: {
+        provider: 'open_ai',
+        modelId: 'gpt-4o',
+        apiKeyArn: 'arn:aws:secretsmanager:us-east-1:123:secret:key',
+        apiFormat: 'converse_stream',
+      },
+    });
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      expect(result.error.issues.some(i => i.message.includes('Invalid API format for open_ai'))).toBe(true);
+    }
+  });
+
+  it('rejects apiFormat for gemini provider', () => {
+    const result = HarnessSpecSchema.safeParse({
+      ...minimalHarness,
+      model: {
+        provider: 'gemini',
+        modelId: 'gemini-2.5-flash',
+        apiKeyArn: 'arn:aws:secretsmanager:us-east-1:123:secret:key',
+        apiFormat: 'responses',
+      },
+    });
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      expect(result.error.issues.some(i => i.message.includes('only supported for bedrock and open_ai'))).toBe(true);
+    }
+  });
+
+  it('rejects invalid apiFormat value', () => {
+    const result = HarnessSpecSchema.safeParse({
+      ...minimalHarness,
+      model: { provider: 'bedrock', modelId: 'anthropic.claude-v2', apiFormat: 'invalid_format' },
+    });
+    expect(result.success).toBe(false);
+  });
 });

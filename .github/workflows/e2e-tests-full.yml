@@ -5,10 +5,11 @@ on:
       aws_region:
         description: 'AWS region for deployment'
         default: 'us-east-1'
-  schedule:
-    - cron: '0 14 * * 1' # Every Monday at 9 AM EST (14:00 UTC)
   push:
     branches: [main]
+
+env:
+  AGENTCORE_TELEMETRY_DISABLED: '1'
 
 concurrency:
   group: e2e-${{ github.event.pull_request.number || github.ref }}
@@ -26,8 +27,8 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        cdk-source: [npm, main]
-        shard: ['1/6', '2/6', '3/6', '4/6', '5/6', '6/6']
+        cli-build: [preview, ga]
+        shard: ['1/5', '2/5', '3/5', '4/5', '5/5']
     steps:
       - uses: actions/checkout@v6
         with:
@@ -56,9 +57,11 @@ jobs:
             E2E,${{ secrets.E2E_SECRET_ARN }}
           parse-json-secrets: true
       - run: npm ci
-      - run: npm run build
+      - name: Build CLI (${{ matrix.cli-build }})
+        run: npm run build
+        env:
+          BUILD_PREVIEW: ${{ matrix.cli-build == 'preview' && '1' || '0' }}
       - name: Generate GitHub App Token
-        if: matrix.cdk-source == 'main'
         id: app-token
         uses: actions/create-github-app-token@v3
         with:
@@ -66,7 +69,6 @@ jobs:
           private-key: ${{ secrets.APP_PRIVATE_KEY }}
           owner: aws
       - name: Build CDK package from main
-        if: matrix.cdk-source == 'main'
         run: |
           git clone --depth 1 "https://x-access-token:${CDK_REPO_TOKEN}@github.com/${CDK_REPO}.git" /tmp/cdk-repo
           cd /tmp/cdk-repo
@@ -79,14 +81,23 @@ jobs:
           CDK_REPO: ${{ secrets.CDK_REPO_NAME }}
       - name: Install CLI globally
         run: npm install -g "$(npm pack | tail -1)"
-      - name: Run E2E tests (${{ matrix.cdk-source }}, shard ${{ matrix.shard }})
+      - name: Run E2E tests (${{ matrix.cli-build }}, shard ${{ matrix.shard }})
         env:
           AWS_ACCOUNT_ID: ${{ steps.aws.outputs.account_id }}
           AWS_REGION: ${{ inputs.aws_region || 'us-east-1' }}
           ANTHROPIC_API_KEY: ${{ env.E2E_ANTHROPIC_API_KEY }}
           OPENAI_API_KEY: ${{ env.E2E_OPENAI_API_KEY }}
           GEMINI_API_KEY: ${{ env.E2E_GEMINI_API_KEY }}
+          E2E_EFS_ACCESS_POINT_ARN: ${{ env.E2E_EFS_ACCESS_POINT_ARN }}
+          E2E_S3_ACCESS_POINT_ARN: ${{ env.E2E_S3_ACCESS_POINT_ARN }}
+          E2E_FILESYSTEM_SUBNET_ID: ${{ env.E2E_FILESYSTEM_SUBNET_ID }}
+          E2E_FILESYSTEM_SECURITY_GROUP_ID: ${{ env.E2E_FILESYSTEM_SECURITY_GROUP_ID }}
           CDK_TARBALL: ${{ env.CDK_TARBALL }}
+          CDP_API_KEY_ID: ${{ env.E2E_CDP_API_KEY_ID }}
+          CDP_API_KEY_SECRET: ${{ env.E2E_CDP_API_KEY_SECRET }}
+          CDP_WALLET_SECRET: ${{ env.E2E_CDP_WALLET_SECRET }}
+          BUILD_PREVIEW: ${{ matrix.cli-build == 'preview' && '1' || '0' }}
+
         run: npx vitest run --project e2e --shard=${{ matrix.shard }}
   browser-tests:
     runs-on: ubuntu-latest

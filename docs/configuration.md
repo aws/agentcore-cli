@@ -38,6 +38,7 @@ Main project configuration using a **flat resource model**. Agents, memories, an
   ],
   "memories": [],
   "credentials": [],
+  "payments": [],
   "evaluators": [],
   "onlineEvalConfigs": [],
   "agentCoreGateways": [],
@@ -57,6 +58,7 @@ Main project configuration using a **flat resource model**. Agents, memories, an
 | `credentials`       | Yes      | Array of credential providers (API key or OAuth)            |
 | `evaluators`        | Yes      | Array of custom evaluator definitions                       |
 | `onlineEvalConfigs` | Yes      | Array of online eval configurations                         |
+| `payments`          | No       | Array of payment manager configurations                     |
 | `policyEngines`     | No       | Array of policy engine configurations                       |
 | `agentCoreGateways` | No       | Array of gateway definitions                                |
 | `mcpRuntimeTools`   | No       | Array of MCP runtime tool definitions                       |
@@ -482,6 +484,86 @@ implementations.
 
 ---
 
+## Payment Manager Resource
+
+Payment managers define how agents handle x402 microtransactions. Each manager has one or more connectors that provide
+wallet credentials. See [Payments](payments.md) for the full usage guide.
+
+```json
+{
+  "payments": [
+    {
+      "name": "MyManager",
+      "authorizerType": "AWS_IAM",
+      "autoPayment": true,
+      "defaultSpendLimit": "10.00",
+      "paymentToolAllowlist": ["web_search", "fetch_url"],
+      "networkPreferences": ["eip155:84532"],
+      "description": "Production payment manager",
+      "connectors": [
+        {
+          "name": "MyCDPConnector",
+          "provider": "CoinbaseCDP",
+          "credentialName": "my-cdp-creds"
+        }
+      ]
+    }
+  ]
+}
+```
+
+### Payment Manager Fields
+
+| Field                     | Required | Description                                                                                              |
+| ------------------------- | -------- | -------------------------------------------------------------------------------------------------------- |
+| `name`                    | Yes      | Manager name (alphanumeric + underscore, max 48, starts with letter)                                     |
+| `authorizerType`          | No       | `"AWS_IAM"` (default) or `"CUSTOM_JWT"`                                                                  |
+| `authorizerConfiguration` | Cond.    | Required when `authorizerType` is `"CUSTOM_JWT"` (see below)                                             |
+| `connectors`              | Yes      | Array of payment connector objects                                                                       |
+| `autoPayment`             | No       | Enable automatic payment (default: `true`)                                                               |
+| `defaultSpendLimit`       | No       | Spend cap (USD) for `invoke --auto-session` sessions only; not a deployed-agent budget (e.g., `"10.00"`) |
+| `paymentToolAllowlist`    | No       | Array of tool names eligible for payment                                                                 |
+| `networkPreferences`      | No       | Array of network identifiers (e.g., `"eip155:84532"`)                                                    |
+| `description`             | No       | Human-readable description                                                                               |
+
+### Authorizer Configuration (CUSTOM_JWT)
+
+```json
+{
+  "authorizerConfiguration": {
+    "customJWTAuthorizer": {
+      "discoveryUrl": "https://cognito-idp.us-east-1.amazonaws.com/us-east-1_XXXXX/.well-known/openid-configuration",
+      "allowedClients": ["client-id-1"],
+      "allowedAudience": ["https://api.example.com"],
+      "allowedScopes": ["payments:read", "payments:write"]
+    }
+  }
+}
+```
+
+| Field             | Required | Description                 |
+| ----------------- | -------- | --------------------------- |
+| `discoveryUrl`    | Yes      | OIDC discovery URL          |
+| `allowedClients`  | No       | Array of allowed client IDs |
+| `allowedAudience` | No       | Array of allowed audiences  |
+| `allowedScopes`   | No       | Array of allowed scopes     |
+
+### Payment Connector
+
+| Field            | Required | Description                                        |
+| ---------------- | -------- | -------------------------------------------------- |
+| `name`           | Yes      | Connector name (alphanumeric + underscore, max 48) |
+| `provider`       | No       | `"CoinbaseCDP"` (default) or `"StripePrivy"`       |
+| `credentialName` | Yes      | Name of the credential (maps to `.env.local` vars) |
+
+### Payment Credential Provider
+
+Payment connectors use a `PaymentCredentialProvider` credential type, distinct from `ApiKeyCredentialProvider` and
+`OAuthCredentialProvider`. The credential is automatically created during `agentcore deploy` from values in
+`.env.local`. You do not need to add it to the `credentials` array manually.
+
+---
+
 ## aws-targets.json
 
 Deployment target
@@ -524,6 +606,19 @@ AGENTCORE_CREDENTIAL_{projectName}GEMINI=...
 # OAuth credentials
 AGENTCORE_CREDENTIAL_{projectName}{credentialName}_CLIENT_ID=my-client-id
 AGENTCORE_CREDENTIAL_{projectName}{credentialName}_CLIENT_SECRET=my-client-secret
+
+# Payment credentials - CoinbaseCDP (3 variables per connector)
+AGENTCORE_CREDENTIAL_{CREDENTIAL_NAME}_API_KEY_ID=your-api-key-id
+AGENTCORE_CREDENTIAL_{CREDENTIAL_NAME}_API_KEY_SECRET=your-api-key-secret
+AGENTCORE_CREDENTIAL_{CREDENTIAL_NAME}_WALLET_SECRET=your-wallet-secret
+
+# Payment credentials - StripePrivy (4 variables per connector)
+AGENTCORE_CREDENTIAL_{CREDENTIAL_NAME}_APP_ID=your-app-id
+AGENTCORE_CREDENTIAL_{CREDENTIAL_NAME}_APP_SECRET=your-app-secret
+AGENTCORE_CREDENTIAL_{CREDENTIAL_NAME}_AUTHORIZATION_PRIVATE_KEY=your-private-key
+AGENTCORE_CREDENTIAL_{CREDENTIAL_NAME}_AUTHORIZATION_ID=your-auth-id
 ```
 
-Environment variable names should match the credential names in your configuration.
+Environment variable names should match the credential names in your configuration. For payment credentials,
+`{CREDENTIAL_NAME}` is the connector's `credentialName` uppercased with hyphens replaced by underscores (e.g.,
+`my-cdp-creds` becomes `MY_CDP_CREDS`). See [Payments](payments.md#credential-storage) for details.

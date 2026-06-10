@@ -1,12 +1,18 @@
 import type { HarnessModelProvider, RuntimeAuthorizerType } from '../../../../schema';
-import { NetworkModeSchema } from '../../../../schema';
+import { HarnessApiFormatSchema, MAX_EFS_MOUNTS, MAX_S3_MOUNTS, NetworkModeSchema } from '../../../../schema';
 import { HarnessNameSchema, HarnessTruncationStrategySchema } from '../../../../schema/schemas/primitives/harness';
 import { ARN_VALIDATION_MESSAGE, isValidArn } from '../../../commands/shared/arn-utils';
+import {
+  validateBYOMountPath,
+  validateEfsAccessPointArn,
+  validateS3FilesAccessPointArn,
+} from '../../../commands/shared/filesystem-utils';
 import { computeManagedOAuthCredentialName } from '../../../primitives/credential-utils';
 import {
   ConfirmReview,
   Panel,
   Screen,
+  SelectList,
   StepIndicator,
   TextInput,
   WizardMultiSelect,
@@ -17,20 +23,24 @@ import { JwtConfigInput, useJwtConfigFlow } from '../../components/jwt-config';
 import { HELP_TEXT } from '../../constants';
 import { useListNavigation, useMultiSelectNavigation } from '../../hooks';
 import { generateUniqueName } from '../../utils';
+import { buildMountListItems } from '../agent/buildMountListItems';
 import type { AddHarnessConfig, AdvancedSetting, ContainerMode } from './types';
 import {
   ADVANCED_SETTING_OPTIONS,
   AUTHORIZER_TYPE_OPTIONS,
+  BEDROCK_API_FORMAT_OPTIONS,
   CONTAINER_MODE_OPTIONS,
   GATEWAY_OUTBOUND_AUTH_OPTIONS,
   HARNESS_STEP_LABELS,
   MEMORY_OPTIONS,
   MODEL_PROVIDER_OPTIONS,
   NETWORK_MODE_OPTIONS,
+  OPENAI_API_FORMAT_OPTIONS,
   TOOL_SELECT_OPTIONS,
   TRUNCATION_STRATEGY_OPTIONS,
 } from './types';
 import { useAddHarnessWizard } from './useAddHarnessWizard';
+import { Text } from 'ink';
 import React, { useMemo } from 'react';
 
 interface AddHarnessScreenProps {
@@ -50,6 +60,16 @@ export function AddHarnessScreen({ existingHarnessNames, onComplete, onExit }: A
   const modelProviderItems: SelectableItem[] = useMemo(
     () => MODEL_PROVIDER_OPTIONS.map(opt => ({ id: opt.id, title: opt.title, description: opt.description })),
     []
+  );
+
+  const apiFormatItems: SelectableItem[] = useMemo(
+    () =>
+      (wizard.config.modelProvider === 'open_ai' ? OPENAI_API_FORMAT_OPTIONS : BEDROCK_API_FORMAT_OPTIONS).map(opt => ({
+        id: opt.id,
+        title: opt.title,
+        description: opt.description,
+      })),
+    [wizard.config.modelProvider]
   );
 
   const containerModeItems: SelectableItem[] = useMemo(
@@ -94,6 +114,7 @@ export function AddHarnessScreen({ existingHarnessNames, onComplete, onExit }: A
 
   const isNameStep = wizard.step === 'name';
   const isModelProviderStep = wizard.step === 'model-provider';
+  const isApiFormatStep = wizard.step === 'api-format';
   const isApiKeyArnStep = wizard.step === 'api-key-arn';
   const isContainerStep = wizard.step === 'container';
   const isContainerUriStep = wizard.step === 'container-uri';
@@ -119,6 +140,12 @@ export function AddHarnessScreen({ existingHarnessNames, onComplete, onExit }: A
   const isTimeoutStep = wizard.step === 'timeout';
   const isTruncationStrategyStep = wizard.step === 'truncation-strategy';
   const isSessionStoragePathStep = wizard.step === 'session-storage-path';
+  const isEfsArnStep = wizard.step === 'efs-arn';
+  const isEfsMountPathStep = wizard.step === 'efs-mount-path';
+  const isEfsAddAnotherStep = wizard.step === 'efs-add-another';
+  const isS3ArnStep = wizard.step === 's3-arn';
+  const isS3MountPathStep = wizard.step === 's3-mount-path';
+  const isS3AddAnotherStep = wizard.step === 's3-add-another';
   const isConfirmStep = wizard.step === 'confirm';
 
   const modelProviderNav = useListNavigation({
@@ -126,6 +153,13 @@ export function AddHarnessScreen({ existingHarnessNames, onComplete, onExit }: A
     onSelect: item => wizard.setModelProvider(item.id as HarnessModelProvider),
     onExit: () => wizard.goBack(),
     isActive: isModelProviderStep,
+  });
+
+  const apiFormatNav = useListNavigation({
+    items: apiFormatItems,
+    onSelect: item => wizard.setApiFormat(HarnessApiFormatSchema.parse(item.id)),
+    onExit: () => wizard.goBack(),
+    isActive: isApiFormatStep,
   });
 
   const containerModeNav = useListNavigation({
@@ -206,6 +240,7 @@ export function AddHarnessScreen({ existingHarnessNames, onComplete, onExit }: A
     : isAdvancedStep || isToolsSelectStep
       ? 'Space toggle · Enter confirm · Esc back'
       : isModelProviderStep ||
+          isApiFormatStep ||
           isMemoryStep ||
           isContainerStep ||
           isNetworkModeStep ||
@@ -225,6 +260,10 @@ export function AddHarnessScreen({ existingHarnessNames, onComplete, onExit }: A
       { label: 'Model Provider', value: wizard.config.modelProvider },
       { label: 'Model ID', value: wizard.config.modelId },
     ];
+
+    if (wizard.config.apiFormat) {
+      fields.push({ label: 'API Format', value: wizard.config.apiFormat });
+    }
 
     if (wizard.config.apiKeyArn) {
       fields.push({ label: 'API Key ARN', value: wizard.config.apiKeyArn });
@@ -339,8 +378,40 @@ export function AddHarnessScreen({ existingHarnessNames, onComplete, onExit }: A
       fields.push({ label: 'Session Storage', value: wizard.config.sessionStoragePath });
     }
 
+    for (const [i, m] of (wizard.config.efsAccessPoints ?? []).entries()) {
+      fields.push({ label: `EFS Mount ${i + 1}`, value: `${m.accessPointArn.slice(-20)} → ${m.mountPath}` });
+    }
+
+    for (const [i, m] of (wizard.config.s3AccessPoints ?? []).entries()) {
+      fields.push({ label: `S3 Files Mount ${i + 1}`, value: `${m.accessPointArn.slice(-20)} → ${m.mountPath}` });
+    }
+
     return fields;
   }, [wizard.config]);
+
+  const efsAddAnotherItems = useMemo(
+    () => buildMountListItems(wizard.config.efsAccessPoints ?? [], 'EFS', MAX_EFS_MOUNTS),
+    [wizard.config.efsAccessPoints]
+  );
+
+  const efsAddAnotherNav = useListNavigation({
+    items: efsAddAnotherItems,
+    onSelect: item => wizard.submitEfsAddAnother(item.id),
+    onExit: () => wizard.goBack(),
+    isActive: isEfsAddAnotherStep,
+  });
+
+  const s3AddAnotherItems = useMemo(
+    () => buildMountListItems(wizard.config.s3AccessPoints ?? [], 'S3 Files', MAX_S3_MOUNTS),
+    [wizard.config.s3AccessPoints]
+  );
+
+  const s3AddAnotherNav = useListNavigation({
+    items: s3AddAnotherItems,
+    onSelect: item => wizard.submitS3AddAnother(item.id),
+    onExit: () => wizard.goBack(),
+    isActive: isS3AddAnotherStep,
+  });
 
   return (
     <Screen
@@ -369,6 +440,15 @@ export function AddHarnessScreen({ existingHarnessNames, onComplete, onExit }: A
             description="Choose where to run your models"
             items={modelProviderItems}
             selectedIndex={modelProviderNav.selectedIndex}
+          />
+        )}
+
+        {isApiFormatStep && (
+          <WizardSelect
+            title="Select API format"
+            description="Choose the API format for model invocation (Responses and ChatCompletions use Bedrock Mantle)"
+            items={apiFormatItems}
+            selectedIndex={apiFormatNav.selectedIndex}
           />
         )}
 
@@ -677,6 +757,100 @@ export function AddHarnessScreen({ existingHarnessNames, onComplete, onExit }: A
             customValidation={value => (value.startsWith('/') ? true : 'Must be an absolute path')}
           />
         )}
+
+        {isEfsArnStep && (
+          <>
+            {wizard.config.networkMode !== 'VPC' && (
+              <Text color="yellow">⚠ EFS mounts require VPC network mode. Press Enter to skip or Esc to go back.</Text>
+            )}
+            <TextInput
+              key="efs-arn"
+              prompt={
+                wizard.editingEfsIndex >= 0
+                  ? `Edit EFS access point ARN (mount ${wizard.editingEfsIndex + 1}/${MAX_EFS_MOUNTS}):`
+                  : `EFS access point ARN ${(wizard.config.efsAccessPoints?.length ?? 0) + 1}/${MAX_EFS_MOUNTS} (press Enter to skip):`
+              }
+              initialValue={wizard.editingEfsIndex >= 0 ? wizard.pendingEfsArn : ''}
+              allowEmpty={wizard.editingEfsIndex < 0}
+              customValidation={value => {
+                if (!value && wizard.editingEfsIndex < 0) return true;
+                if (wizard.config.networkMode !== 'VPC') return 'EFS mounts require VPC network mode';
+                const r = validateEfsAccessPointArn(value);
+                return r === true ? true : r;
+              }}
+              onSubmit={wizard.submitEfsArn}
+              onCancel={() => wizard.goBack()}
+            />
+          </>
+        )}
+
+        {isEfsMountPathStep && (
+          <TextInput
+            key="efs-mount-path"
+            prompt={`EFS mount path for ...${wizard.pendingEfsArn.slice(-20)} (e.g. /mnt/efs-data):`}
+            initialValue={
+              wizard.editingEfsIndex >= 0
+                ? (wizard.config.efsAccessPoints?.[wizard.editingEfsIndex]?.mountPath ?? '')
+                : ''
+            }
+            customValidation={value => {
+              const r = validateBYOMountPath(value);
+              return r === true ? true : r;
+            }}
+            onSubmit={wizard.submitEfsMountPath}
+            onCancel={() => wizard.goBack()}
+          />
+        )}
+
+        {isEfsAddAnotherStep && (
+          <SelectList items={efsAddAnotherItems} selectedIndex={efsAddAnotherNav.selectedIndex} />
+        )}
+
+        {isS3ArnStep && (
+          <>
+            {wizard.config.networkMode !== 'VPC' && (
+              <Text color="yellow">
+                ⚠ S3 Files mounts require VPC network mode. Press Enter to skip or Esc to go back.
+              </Text>
+            )}
+            <TextInput
+              key="s3-arn"
+              prompt={
+                wizard.editingS3Index >= 0
+                  ? `Edit S3 Files access point ARN (mount ${wizard.editingS3Index + 1}/${MAX_S3_MOUNTS}):`
+                  : `S3 Files access point ARN ${(wizard.config.s3AccessPoints?.length ?? 0) + 1}/${MAX_S3_MOUNTS} (press Enter to skip):`
+              }
+              initialValue={wizard.editingS3Index >= 0 ? wizard.pendingS3Arn : ''}
+              allowEmpty={wizard.editingS3Index < 0}
+              customValidation={value => {
+                if (!value && wizard.editingS3Index < 0) return true;
+                if (wizard.config.networkMode !== 'VPC') return 'S3 Files mounts require VPC network mode';
+                const r = validateS3FilesAccessPointArn(value);
+                return r === true ? true : r;
+              }}
+              onSubmit={wizard.submitS3Arn}
+              onCancel={() => wizard.goBack()}
+            />
+          </>
+        )}
+
+        {isS3MountPathStep && (
+          <TextInput
+            key="s3-mount-path"
+            prompt={`S3 Files mount path for ...${wizard.pendingS3Arn.slice(-20)} (e.g. /mnt/s3-data):`}
+            initialValue={
+              wizard.editingS3Index >= 0 ? (wizard.config.s3AccessPoints?.[wizard.editingS3Index]?.mountPath ?? '') : ''
+            }
+            customValidation={value => {
+              const r = validateBYOMountPath(value);
+              return r === true ? true : r;
+            }}
+            onSubmit={wizard.submitS3MountPath}
+            onCancel={() => wizard.goBack()}
+          />
+        )}
+
+        {isS3AddAnotherStep && <SelectList items={s3AddAnotherItems} selectedIndex={s3AddAnotherNav.selectedIndex} />}
 
         {isConfirmStep && <ConfirmReview fields={confirmFields} />}
       </Panel>

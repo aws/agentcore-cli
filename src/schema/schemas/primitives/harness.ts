@@ -1,5 +1,10 @@
 import { NetworkModeSchema } from '../../constants';
-import { LifecycleConfigurationSchema, NetworkConfigSchema } from '../agent-env';
+import {
+  EfsAccessPointConfigSchema,
+  LifecycleConfigurationSchema,
+  NetworkConfigSchema,
+  S3FilesAccessPointConfigSchema,
+} from '../agent-env';
 import { AuthorizerConfigSchema, RuntimeAuthorizerTypeSchema } from '../auth';
 import { uniqueBy } from '../zod-util';
 import { TagsSchema } from './tags';
@@ -25,11 +30,21 @@ export const HarnessNameSchema = z
 export const HarnessModelProviderSchema = z.enum(['bedrock', 'open_ai', 'gemini']);
 export type HarnessModelProvider = z.infer<typeof HarnessModelProviderSchema>;
 
+export const BedrockApiFormatSchema = z.enum(['converse_stream', 'responses', 'chat_completions']);
+export type BedrockApiFormat = z.infer<typeof BedrockApiFormatSchema>;
+
+export const OpenAiApiFormatSchema = z.enum(['responses', 'chat_completions']);
+export type OpenAiApiFormat = z.infer<typeof OpenAiApiFormatSchema>;
+
+export const HarnessApiFormatSchema = z.enum(['converse_stream', 'responses', 'chat_completions']);
+export type HarnessApiFormat = z.infer<typeof HarnessApiFormatSchema>;
+
 export const HarnessModelSchema = z
   .object({
     provider: HarnessModelProviderSchema,
     modelId: z.string().min(1, 'Model ID is required'),
     apiKeyArn: z.string().optional(),
+    apiFormat: HarnessApiFormatSchema.optional(),
     temperature: z.number().min(0).max(2).optional(),
     topP: z.number().min(0).max(1).optional(),
     topK: z.number().min(0).max(1).optional(),
@@ -43,9 +58,47 @@ export const HarnessModelSchema = z
         path: ['topK'],
       });
     }
+    if (model.apiFormat !== undefined) {
+      if (model.provider !== 'bedrock' && model.provider !== 'open_ai') {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: '--api-format is only supported for bedrock and open_ai providers',
+          path: ['apiFormat'],
+        });
+      } else if (model.provider === 'open_ai' && model.apiFormat === 'converse_stream') {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: `Invalid API format for open_ai: ${model.apiFormat}. Use ${OpenAiApiFormatSchema.options.join(', ')}`,
+          path: ['apiFormat'],
+        });
+      }
+    }
   });
 
 export type HarnessModel = z.infer<typeof HarnessModelSchema>;
+
+export function validateApiFormat(
+  apiFormat: string,
+  provider: string
+): { valid: true } | { valid: false; error: string } {
+  const allFormats = HarnessApiFormatSchema.options as readonly string[];
+  if (!allFormats.includes(apiFormat)) {
+    return { valid: false, error: `Invalid API format: ${apiFormat}. Use ${allFormats.join(', ')}` };
+  }
+  if (provider !== 'bedrock' && provider !== 'open_ai') {
+    return { valid: false, error: '--api-format is only supported for bedrock and open_ai providers' };
+  }
+  const result = HarnessModelSchema.safeParse({ provider, modelId: 'placeholder', apiFormat });
+  if (result.success) return { valid: true };
+  const apiFormatIssue = result.error.issues.find(i => i.path.includes('apiFormat'));
+  if (apiFormatIssue) {
+    return {
+      valid: false,
+      error: `Invalid API format for ${provider}: ${apiFormat}. Use ${(provider === 'open_ai' ? OpenAiApiFormatSchema : BedrockApiFormatSchema).options.join(', ')}`,
+    };
+  }
+  return { valid: true };
+}
 
 // ============================================================================
 // Tool Configuration
@@ -267,6 +320,8 @@ export const HarnessSpecSchema = z
       .min(1)
       .refine(val => val.startsWith('/mnt/'), { message: 'sessionStoragePath must be an absolute path under /mnt/' })
       .optional(),
+    efsAccessPoints: z.array(EfsAccessPointConfigSchema).max(2).optional(),
+    s3AccessPoints: z.array(S3FilesAccessPointConfigSchema).max(2).optional(),
     environmentVariables: z.record(z.string(), z.string()).optional(),
     /** Authorizer type for inbound requests. Defaults to AWS_IAM. */
     authorizerType: RuntimeAuthorizerTypeSchema.optional(),
@@ -294,6 +349,24 @@ export const HarnessSpecSchema = z
         code: z.ZodIssueCode.custom,
         message: 'networkConfig is only allowed when networkMode is VPC',
         path: ['networkConfig'],
+      });
+    }
+    if ((data.efsAccessPoints?.length || data.s3AccessPoints?.length) && data.networkMode !== 'VPC') {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: 'efsAccessPoints and s3AccessPoints require networkMode: VPC',
+        path: ['efsAccessPoints'],
+      });
+    }
+    const mountPaths: string[] = [];
+    if (data.sessionStoragePath) mountPaths.push(data.sessionStoragePath.replace(/\/$/, ''));
+    for (const ap of data.efsAccessPoints ?? []) mountPaths.push(ap.mountPath.replace(/\/$/, ''));
+    for (const ap of data.s3AccessPoints ?? []) mountPaths.push(ap.mountPath.replace(/\/$/, ''));
+    if (new Set(mountPaths).size !== mountPaths.length) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: 'Filesystem mount paths must be unique',
+        path: ['efsAccessPoints'],
       });
     }
     if (data.authorizerType === 'CUSTOM_JWT' && !data.authorizerConfiguration?.customJwtAuthorizer) {

@@ -1,6 +1,7 @@
+import { resilientParse } from '../../../../lib/utils/zod';
 import { COMMAND_SCHEMAS, type Command, type CommandAttrs, deriveCommandGroup } from '../command-run';
 import { ResourceAttributesSchema } from '../common-attributes';
-import { CommandResultSchema, resilientParse } from '../common-shapes';
+import { CommandResultSchema } from '../common-shapes';
 import { describe, expect, expectTypeOf, it } from 'vitest';
 import { z } from 'zod';
 
@@ -39,6 +40,7 @@ describe('COMMAND_SCHEMAS', () => {
   it('accepts valid deploy attrs', () => {
     const attrs = {
       runtime_count: 2,
+      harness_count: 1,
       memory_count: 1,
       credential_count: 0,
       evaluator_count: 0,
@@ -56,6 +58,7 @@ describe('COMMAND_SCHEMAS', () => {
     expect(() =>
       COMMAND_SCHEMAS.deploy.parse({
         runtime_count: -1,
+        harness_count: 0,
         memory_count: 0,
         credential_count: 0,
         evaluator_count: 0,
@@ -73,6 +76,7 @@ describe('COMMAND_SCHEMAS', () => {
     expect(() =>
       COMMAND_SCHEMAS.deploy.parse({
         runtime_count: 1.5,
+        harness_count: 0,
         memory_count: 0,
         credential_count: 0,
         evaluator_count: 0,
@@ -88,6 +92,7 @@ describe('COMMAND_SCHEMAS', () => {
 
   it('accepts valid create attrs', () => {
     const attrs = {
+      agent_environment: 'runtime',
       agent_language: 'python',
       agent_framework: 'strands',
       model_provider: 'bedrock',
@@ -104,6 +109,7 @@ describe('COMMAND_SCHEMAS', () => {
   it('rejects create attrs with invalid enum value', () => {
     expect(() =>
       COMMAND_SCHEMAS.create.parse({
+        agent_environment: 'runtime',
         agent_language: 'rust',
         agent_framework: 'strands',
         model_provider: 'bedrock',
@@ -118,7 +124,7 @@ describe('COMMAND_SCHEMAS', () => {
   });
 
   it('no-attrs commands accept empty object', () => {
-    expect(COMMAND_SCHEMAS['telemetry.disable'].parse({})).toEqual({});
+    expect(COMMAND_SCHEMAS['telemetry.status'].parse({})).toEqual({});
   });
 
   it('import subcommand schemas accept empty object', () => {
@@ -132,6 +138,7 @@ describe('COMMAND_SCHEMAS', () => {
 
   it('accepts valid dev invoke attrs', () => {
     const attrs = {
+      agent_environment: 'runtime',
       dev_action: 'invoke',
       ui_mode: 'terminal',
       has_stream: true,
@@ -143,6 +150,7 @@ describe('COMMAND_SCHEMAS', () => {
 
   it('accepts valid dev server browser attrs', () => {
     const attrs = {
+      agent_environment: 'runtime',
       dev_action: 'server',
       ui_mode: 'browser',
       has_stream: false,
@@ -154,6 +162,7 @@ describe('COMMAND_SCHEMAS', () => {
 
   it('accepts dev exec attrs', () => {
     const attrs = {
+      agent_environment: 'runtime',
       dev_action: 'exec',
       ui_mode: 'terminal',
       has_stream: false,
@@ -166,6 +175,7 @@ describe('COMMAND_SCHEMAS', () => {
   it('rejects dev attrs with invalid action', () => {
     expect(() =>
       COMMAND_SCHEMAS.dev.parse({
+        agent_environment: 'runtime',
         dev_action: 'unknown',
         ui_mode: 'terminal',
         has_stream: false,
@@ -178,6 +188,7 @@ describe('COMMAND_SCHEMAS', () => {
   it('rejects dev attrs with invalid ui_mode', () => {
     expect(() =>
       COMMAND_SCHEMAS.dev.parse({
+        agent_environment: 'runtime',
         dev_action: 'server',
         ui_mode: 'headless',
         has_stream: false,
@@ -194,7 +205,7 @@ describe('deriveCommandGroup', () => {
     ['add.agent', 'add'],
     ['logs.evals', 'logs'],
     ['remove.gateway-target', 'remove'],
-    ['telemetry.disable', 'telemetry'],
+    ['telemetry.status', 'telemetry'],
   ] as const)('%s → %s', (command, expected) => {
     expect(deriveCommandGroup(command)).toBe(expected);
   });
@@ -210,17 +221,18 @@ describe('type safety', () => {
   });
 
   it('CommandAttrs<telemetry.disable> is empty', () => {
-    expectTypeOf<CommandAttrs<'telemetry.disable'>>().toEqualTypeOf<Record<string, never>>();
+    expectTypeOf<CommandAttrs<'telemetry.status'>>().toEqualTypeOf<Record<string, never>>();
   });
 
   it('no command schema contains arbitrary string fields', () => {
     for (const [cmd, schema] of Object.entries(COMMAND_SCHEMAS)) {
       for (const [field, zodType] of Object.entries(schema.shape)) {
+        const inner = zodType instanceof z.ZodOptional ? zodType.unwrap() : zodType;
         const safe =
-          zodType instanceof z.ZodEnum ||
-          zodType instanceof z.ZodBoolean ||
-          zodType instanceof z.ZodNumber ||
-          zodType instanceof z.ZodLiteral;
+          inner instanceof z.ZodEnum ||
+          inner instanceof z.ZodBoolean ||
+          inner instanceof z.ZodNumber ||
+          inner instanceof z.ZodLiteral;
         expect(safe, `${cmd}.${field} is an unsafe type`).toBe(true);
       }
     }
@@ -237,9 +249,12 @@ describe('type safety', () => {
   });
 });
 
+const TELEMETRY_OPTS = { fallback: 'unknown', fillMissing: true, keepUnknown: false } as const;
+
 describe('resilientParse', () => {
   it('passes valid attrs through unchanged', () => {
     const attrs = {
+      agent_environment: 'runtime',
       agent_language: 'python',
       agent_framework: 'strands',
       model_provider: 'bedrock',
@@ -250,7 +265,7 @@ describe('resilientParse', () => {
       network_mode: 'public',
       has_agent: true,
     };
-    expect(resilientParse(COMMAND_SCHEMAS.create, attrs)).toEqual(attrs);
+    expect(resilientParse(COMMAND_SCHEMAS.create, attrs, TELEMETRY_OPTS)).toEqual(attrs);
   });
 
   it('defaults a single invalid enum field to unknown', () => {
@@ -265,26 +280,26 @@ describe('resilientParse', () => {
       network_mode: 'public',
       has_agent: true,
     };
-    const result = resilientParse(COMMAND_SCHEMAS.create, attrs);
+    const result = resilientParse(COMMAND_SCHEMAS.create, attrs, TELEMETRY_OPTS);
     expect(result.agent_language).toBe('unknown');
     expect(result.agent_framework).toBe('strands');
   });
 
   it('defaults missing required fields to unknown', () => {
-    const result = resilientParse(COMMAND_SCHEMAS.create, { agent_language: 'python' });
+    const result = resilientParse(COMMAND_SCHEMAS.create, { agent_language: 'python' }, TELEMETRY_OPTS);
     expect(result.agent_language).toBe('python');
-    expect(result.agent_framework).toBe('unknown');
-    expect(result.model_provider).toBe('unknown');
+    expect(result.agent_environment).toBe('unknown');
+    expect(result.has_agent).toBe('unknown');
   });
 
   it('defaults all fields to unknown when all are invalid', () => {
-    const result = resilientParse(COMMAND_SCHEMAS.create, {});
+    const result = resilientParse(COMMAND_SCHEMAS.create, {}, TELEMETRY_OPTS);
     for (const value of Object.values(result)) {
-      expect(value).toBe('unknown');
+      expect((value as string) === 'unknown' || value === undefined).toBe(true);
     }
   });
 
   it('returns empty object for no-attrs schemas', () => {
-    expect(resilientParse(COMMAND_SCHEMAS['telemetry.disable'], {})).toEqual({});
+    expect(resilientParse(COMMAND_SCHEMAS['telemetry.status'], {}, TELEMETRY_OPTS)).toEqual({});
   });
 });

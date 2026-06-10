@@ -174,13 +174,75 @@ export const SessionStorageSchema = z.object({
   /** Absolute mount path under /mnt with exactly one subdirectory level (e.g. /mnt/data). */
   mountPath: z
     .string()
-    .regex(/^\/mnt\/[^/]+$/, 'Must be a path under /mnt with exactly one subdirectory (e.g. /mnt/data)'),
+    .min(6)
+    .max(200)
+    .regex(/^\/mnt\/[a-zA-Z0-9._-]+\/?$/, 'Must be a path under /mnt with exactly one subdirectory (e.g. /mnt/data)'),
 });
 export type SessionStorage = z.infer<typeof SessionStorageSchema>;
 
-export const FilesystemConfigurationSchema = z.object({
-  sessionStorage: SessionStorageSchema,
+export const EFS_ACCESS_POINT_ARN_PATTERN =
+  /^arn:aws[-a-z]*:elasticfilesystem:[a-z][a-z0-9-]*:[0-9]{12}:access-point\/fsap-[0-9a-f]{8,40}$/;
+
+export const S3_FILES_ACCESS_POINT_ARN_PATTERN =
+  /^arn:aws[-a-z]*:s3files:[a-z][a-z0-9-]*:[0-9]{12}:file-system\/fs-[0-9a-f]{17,40}\/access-point\/fsap-[0-9a-f]{17,40}$/;
+
+/** EFS access point mount configuration. Requires VPC network mode. */
+export const EfsAccessPointConfigSchema = z.object({
+  /** ARN of an EFS access point. */
+  accessPointArn: z
+    .string()
+    .regex(
+      EFS_ACCESS_POINT_ARN_PATTERN,
+      'Must be an EFS access point ARN (arn:aws[-a-z]*:elasticfilesystem:{region}:{account}:access-point/fsap-{id})'
+    ),
+  /** Absolute mount path under /mnt (e.g. /mnt/tools). */
+  mountPath: z
+    .string()
+    .min(6)
+    .max(200)
+    .regex(/^\/mnt\/[a-zA-Z0-9._-]+\/?$/, 'Must be a path under /mnt with exactly one subdirectory (e.g. /mnt/tools)'),
 });
+export type EfsAccessPointConfig = z.infer<typeof EfsAccessPointConfigSchema>;
+
+/** S3 Files access point mount configuration. Requires VPC network mode. */
+export const S3FilesAccessPointConfigSchema = z.object({
+  /** ARN of an S3 Files access point. */
+  accessPointArn: z
+    .string()
+    .regex(
+      S3_FILES_ACCESS_POINT_ARN_PATTERN,
+      'Must be an S3 Files access point ARN (arn:aws[-a-z]*:s3files:{region}:{account}:file-system/fs-{id}/access-point/fsap-{id})'
+    ),
+  /** Absolute mount path under /mnt (e.g. /mnt/datasets). */
+  mountPath: z
+    .string()
+    .min(6)
+    .max(200)
+    .regex(
+      /^\/mnt\/[a-zA-Z0-9._-]+\/?$/,
+      'Must be a path under /mnt with exactly one subdirectory (e.g. /mnt/datasets)'
+    ),
+});
+export type S3FilesAccessPointConfig = z.infer<typeof S3FilesAccessPointConfigSchema>;
+
+/** Maximum number of EFS access point mounts per runtime. */
+export const MAX_EFS_MOUNTS = 2;
+/** Maximum number of S3 Files access point mounts per runtime. */
+export const MAX_S3_MOUNTS = 2;
+
+/**
+ * Filesystem configuration — union of three mount types.
+ * Exactly one key must be present per entry.
+ *
+ * Service limits per runtime: max 5 total, max 1 sessionStorage,
+ * max MAX_EFS_MOUNTS efsAccessPoint, max MAX_S3_MOUNTS s3FilesAccessPoint.
+ * efsAccessPoint and s3FilesAccessPoint require networkMode: VPC.
+ */
+export const FilesystemConfigurationSchema = z.union([
+  z.strictObject({ sessionStorage: SessionStorageSchema }),
+  z.strictObject({ efsAccessPoint: EfsAccessPointConfigSchema }),
+  z.strictObject({ s3FilesAccessPoint: S3FilesAccessPointConfigSchema }),
+]);
 export type FilesystemConfiguration = z.infer<typeof FilesystemConfigurationSchema>;
 
 /** Minimum allowed value for lifecycle timeout fields (seconds). */
@@ -319,6 +381,66 @@ export const AgentEnvSpecSchema = z
         message: 'dockerfile is only allowed for Container builds',
         path: ['dockerfile'],
       });
+    }
+    const fcs = data.filesystemConfigurations ?? [];
+    if (fcs.length > 0) {
+      const efsCount = fcs.filter(fc => 'efsAccessPoint' in fc).length;
+      const s3Count = fcs.filter(fc => 's3FilesAccessPoint' in fc).length;
+      const ssCount = fcs.filter(fc => 'sessionStorage' in fc).length;
+
+      if (fcs.length > 5) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: 'Maximum 5 filesystem configurations allowed',
+          path: ['filesystemConfigurations'],
+        });
+      }
+      if (efsCount > MAX_EFS_MOUNTS) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: `Maximum ${MAX_EFS_MOUNTS} efsAccessPoint configurations allowed`,
+          path: ['filesystemConfigurations'],
+        });
+      }
+      if (s3Count > MAX_S3_MOUNTS) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: `Maximum ${MAX_S3_MOUNTS} s3FilesAccessPoint configurations allowed`,
+          path: ['filesystemConfigurations'],
+        });
+      }
+      if (ssCount > 1) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: 'Maximum 1 sessionStorage configuration allowed',
+          path: ['filesystemConfigurations'],
+        });
+      }
+
+      const hasByo = efsCount > 0 || s3Count > 0;
+      if (hasByo && data.networkMode !== 'VPC') {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: 'efsAccessPoint and s3FilesAccessPoint filesystem mounts require networkMode: VPC',
+          path: ['filesystemConfigurations'],
+        });
+      }
+
+      const mountPaths = fcs.map(fc =>
+        ('sessionStorage' in fc
+          ? fc.sessionStorage.mountPath
+          : 'efsAccessPoint' in fc
+            ? fc.efsAccessPoint.mountPath
+            : fc.s3FilesAccessPoint.mountPath
+        ).replace(/\/$/, '')
+      );
+      if (new Set(mountPaths).size !== mountPaths.length) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: 'Filesystem mount paths must be unique',
+          path: ['filesystemConfigurations'],
+        });
+      }
     }
   });
 

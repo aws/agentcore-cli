@@ -3,6 +3,7 @@ import type { Result } from '../../../lib/result';
 import type { AgentCoreProjectSpec, AwsDeploymentTargets, DeployedResourceState, DeployedState } from '../../../schema';
 import { getAgentRuntimeStatus } from '../../aws';
 import { getEvaluator, getOnlineEvaluationConfig } from '../../aws/agentcore-control';
+import { getPaymentManager } from '../../aws/agentcore-payments';
 import { dnsSuffix } from '../../aws/partition';
 import { getErrorMessage } from '../../errors';
 import { isPreviewEnabled } from '../../feature-flags';
@@ -26,7 +27,8 @@ export interface ResourceStatusEntry {
     | 'ab-test'
     | 'dataset'
     | 'harness'
-    | 'runtime-endpoint';
+    | 'runtime-endpoint'
+    | 'payment';
   name: string;
   deploymentState: ResourceDeploymentState;
   identifier?: string;
@@ -308,6 +310,15 @@ export function computeResourceStatuses(
       })
     : [];
 
+  const payments = diffResourceSet({
+    resourceType: 'payment',
+    localItems: project.payments ?? [],
+    deployedRecord: resources?.payments ?? {},
+    getIdentifier: deployed => deployed.managerArn,
+    getLocalDetail: item =>
+      `${item.authorizerType} — auto-pay ${item.autoPayment ? 'on' : 'off'} (${item.connectors.length} connector(s))`,
+  });
+
   return [
     ...agents,
     ...runtimeEndpoints,
@@ -322,6 +333,7 @@ export function computeResourceStatuses(
     ...configBundles,
     ...abTests,
     ...harnesses,
+    ...payments,
   ];
 }
 
@@ -494,6 +506,46 @@ export async function handleProjectStatus(
 
       const hasOnlineEvalErrors = resources.some(r => r.resourceType === 'online-eval' && r.error);
       logger.endStep(hasOnlineEvalErrors ? 'error' : 'success');
+    }
+
+    // Enrich deployed payment managers with live status
+    const paymentStates = targetResources?.payments ?? {};
+    const deployedPayments = resources.filter(
+      e => e.resourceType === 'payment' && e.deploymentState === 'deployed' && paymentStates[e.name]
+    );
+
+    if (deployedPayments.length > 0) {
+      logger.startStep(
+        `Fetch payment status (${deployedPayments.length} manager${deployedPayments.length !== 1 ? 's' : ''})`
+      );
+
+      await Promise.all(
+        resources.map(async (entry, i) => {
+          if (entry.resourceType !== 'payment' || entry.deploymentState !== 'deployed') return;
+
+          const paymentState = paymentStates[entry.name];
+          if (!paymentState) return;
+
+          const connectorCount = Object.keys(paymentState.connectors ?? {}).length;
+
+          try {
+            const managerDetail = await getPaymentManager({
+              region: targetConfig.region,
+              paymentManagerId: paymentState.managerId,
+            });
+            const status = managerDetail?.status ?? 'unknown';
+            resources[i] = { ...entry, detail: `${status} — ${connectorCount} connector(s)` };
+            logger.log(`  ${entry.name}: ${status} (${paymentState.managerId})`);
+          } catch (error) {
+            const errorMsg = getErrorMessage(error);
+            resources[i] = { ...entry, detail: `unknown — ${connectorCount} connector(s)`, error: errorMsg };
+            logger.log(`  ${entry.name}: unknown (fetch failed) - ${errorMsg}`, 'error');
+          }
+        })
+      );
+
+      const hasPaymentErrors = resources.some(r => r.resourceType === 'payment' && r.error);
+      logger.endStep(hasPaymentErrors ? 'error' : 'success');
     }
   }
 

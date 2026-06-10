@@ -1,8 +1,8 @@
 import { ConfigIO } from '../../../lib';
-import { detectAwsContext } from '../../aws/aws-context';
 import type { DeployMessage } from '../../cdk/toolkit-lib';
 import { handleDeploy } from '../../commands/deploy/actions';
 import { getErrorMessage } from '../../errors';
+import { ensureDefaultDeploymentTarget } from '../../operations/deploy';
 import { canSkipDeploy } from '../../operations/deploy/change-detection';
 import type { Step } from '../components/StepProgress';
 import { useCallback, useEffect, useRef, useState } from 'react';
@@ -62,29 +62,9 @@ export function useDevDeploy({ skip, ready = true }: UseDevDeployOptions = {}): 
           // If we can't read project spec, proceed with deploy as a safe default
         }
 
-        // Auto-populate aws-targets.json if empty
-        try {
-          const targets = await configIO.readAWSDeploymentTargets();
-          if (targets.length === 0) {
-            const ctx = await detectAwsContext();
-            if (ctx.accountId) {
-              await configIO.writeAWSDeploymentTargets([
-                { name: 'default', account: ctx.accountId, region: ctx.region },
-              ]);
-            }
-          }
-        } catch {
-          try {
-            const ctx = await detectAwsContext();
-            if (ctx.accountId) {
-              await configIO.writeAWSDeploymentTargets([
-                { name: 'default', account: ctx.accountId, region: ctx.region },
-              ]);
-            }
-          } catch {
-            // Can't detect — let handleDeploy fail with a clear error
-          }
-        }
+        // Auto-populate aws-targets.json if empty (best-effort). handleDeploy also
+        // does this, but we run it here first so canSkipDeploy sees a populated target.
+        await ensureDefaultDeploymentTarget(configIO);
 
         const noChanges = await canSkipDeploy(configIO);
         if (noChanges) {

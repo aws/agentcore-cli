@@ -11,6 +11,8 @@ import { GatewayTargetPrimitive } from './GatewayTargetPrimitive';
 import { HarnessPrimitive } from './HarnessPrimitive';
 import { MemoryPrimitive } from './MemoryPrimitive';
 import { OnlineEvalConfigPrimitive } from './OnlineEvalConfigPrimitive';
+import { PaymentConnectorPrimitive } from './PaymentConnectorPrimitive';
+import { PaymentManagerPrimitive } from './PaymentManagerPrimitive';
 import { PolicyEnginePrimitive } from './PolicyEnginePrimitive';
 import { PolicyPrimitive } from './PolicyPrimitive';
 import { RuntimeEndpointPrimitive } from './RuntimeEndpointPrimitive';
@@ -33,6 +35,8 @@ export const policyPrimitive = new PolicyPrimitive();
 export const configBundlePrimitive = new ConfigBundlePrimitive();
 export const abTestPrimitive = new ABTestPrimitive();
 export const runtimeEndpointPrimitive = new RuntimeEndpointPrimitive();
+export const paymentManagerPrimitive = new PaymentManagerPrimitive();
+export const paymentConnectorPrimitive = new PaymentConnectorPrimitive();
 
 /**
  * All primitives in display order.
@@ -52,6 +56,8 @@ export const ALL_PRIMITIVES: BasePrimitive<unknown, RemovableResource>[] = [
   configBundlePrimitive,
   abTestPrimitive,
   runtimeEndpointPrimitive,
+  paymentManagerPrimitive,
+  paymentConnectorPrimitive,
 ];
 
 /**

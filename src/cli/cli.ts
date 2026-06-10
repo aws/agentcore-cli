@@ -3,12 +3,14 @@ import { registerABTestCommand } from './commands/abtest';
 import { registerAdd } from './commands/add';
 import { registerAddTool } from './commands/add/tool-command';
 import { registerArchive } from './commands/archive';
+import { registerConfig } from './commands/config';
 import { registerConfigBundle } from './commands/config-bundle';
 import { registerCreate } from './commands/create';
 import { registerDataset } from './commands/dataset';
 import { registerDeploy } from './commands/deploy';
 import { registerDev } from './commands/dev';
 import { registerEval } from './commands/eval';
+import { registerExec } from './commands/exec';
 import { registerFeedback } from './commands/feedback';
 import { registerFetch } from './commands/fetch';
 import { registerHelp } from './commands/help';
@@ -28,14 +30,13 @@ import { registerTelemetry } from './commands/telemetry';
 import { registerTraces } from './commands/traces';
 import { registerUpdate } from './commands/update';
 import { registerValidate } from './commands/validate';
-import { PACKAGE_VERSION } from './constants';
+import { COMMAND_DESCRIPTIONS, PACKAGE_VERSION } from './constants';
 import { isPreviewEnabled } from './feature-flags';
 import { printPostCommandNotices, printTelemetryNotice } from './notices';
 import { ALL_PRIMITIVES } from './primitives';
 import { TelemetryClientAccessor } from './telemetry';
 import { renderTUI, setupAltScreenCleanup } from './tui';
 import { LayoutProvider } from './tui/context';
-import { COMMAND_DESCRIPTIONS } from './tui/copy';
 import { clearExitMessage, getExitMessage } from './tui/exit-message';
 import { requireTTY } from './tui/guards';
 import { CommandListScreen } from './tui/screens/home';
@@ -90,6 +91,7 @@ export function registerCommands(program: Command) {
   const addCmd = registerAdd(program);
   registerDev(program);
   registerDeploy(program);
+  registerExec(program);
   registerCreate(program);
   registerEval(program);
   registerFeedback(program);
@@ -112,6 +114,7 @@ export function registerCommands(program: Command) {
   registerUpdate(program);
   registerValidate(program);
   registerConfigBundle(program);
+  registerConfig(program);
   registerDataset(program);
   registerArchive(program);
 
@@ -134,8 +137,10 @@ export const main = async (argv: string[]) => {
   // Register global cleanup handlers once at startup
   setupAltScreenCleanup();
 
-  // Generate installationId on first run and show telemetry notice
-  const { created: isFirstRun } = await getOrCreateInstallationId();
+  // Generate installationId on first run and show telemetry notice. If we
+  // could not persist the id, suppress the notice so it doesn't fire every run.
+  const installationIdResult = await getOrCreateInstallationId();
+  const isFirstRun = installationIdResult.success && installationIdResult.created;
 
   const program = createProgram();
 
@@ -153,7 +158,7 @@ export const main = async (argv: string[]) => {
   }
 
   if (isFirstRun) {
-    printTelemetryNotice();
+    await printTelemetryNotice();
   }
 
   await TelemetryClientAccessor.init(args[0] ?? 'unknown');

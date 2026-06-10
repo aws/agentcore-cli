@@ -53,6 +53,50 @@ interface ResolvedPaths {
 
 const EXCLUDED_ENTRIES = new Set(['.git', '.venv', '__pycache__', '.pytest_cache', '.DS_Store', 'node_modules']);
 
+/**
+ * True for any .env / .env.local / .env.* file — per-environment secret files
+ * customers expect to stay local. Excluded at every packaging stage and depth.
+ */
+function isEnvSecretEntry(entryName: string): boolean {
+  // .env.* (e.g. .env.production, .env.development) is the same family.
+  return entryName === '.env' || entryName === '.env.local' || entryName.startsWith('.env.');
+}
+
+/**
+ * Decide whether a directory entry should be skipped at the COPY stage (when
+ * staging the source tree into the artifact dir). Excludes:
+ *   - the build-tooling artefacts in EXCLUDED_ENTRIES (.git / .venv / etc.)
+ *   - the project agentcore/ config directory ONLY when it sits at the
+ *     root of the package source (an in-tree dependency that ships its own
+ *     agentcore/ sub-module — see issue #843 — must still be packaged).
+ *   - any .env / .env.local / .env.* file at any depth.
+ *
+ * The .env bucket closes a footgun where a project with `--code-location .`
+ * (BYO at project root) would otherwise have `agentcore/.env.local` staged
+ * — but is depth-aware to avoid breaking legitimate dependency code.
+ */
+function shouldExcludeEntry(entryName: string, source: string, rootDir: string): boolean {
+  if (EXCLUDED_ENTRIES.has(entryName)) return true;
+  if (entryName === CONFIG_DIR && resolve(source) === resolve(rootDir)) return true;
+  if (isEnvSecretEntry(entryName)) return true;
+  return false;
+}
+
+/**
+ * Decide whether a directory entry should be skipped at the ZIP stage. The zip
+ * runs against the staging directory (not the project root), where the
+ * project's own agentcore/ config dir is already absent — so a top-level
+ * `agentcore/` here is a real Python package (e.g. an installed dependency)
+ * and MUST be included (issue #1408 / PR #1424). Unlike the copy stage, we
+ * therefore do NOT skip CONFIG_DIR; we only drop build artefacts and .env
+ * secret files.
+ */
+function isZipExcludedEntry(entryName: string): boolean {
+  if (EXCLUDED_ENTRIES.has(entryName)) return true;
+  if (isEnvSecretEntry(entryName)) return true;
+  return false;
+}
+
 export const MAX_ZIP_SIZE_BYTES = 250 * 1024 * 1024;
 
 /**
@@ -145,10 +189,7 @@ async function copyEntry(source: string, destination: string, rootDir: string): 
     await mkdir(destination, { recursive: true });
     const entries = await readdir(source);
     for (const entry of entries) {
-      if (EXCLUDED_ENTRIES.has(entry)) {
-        continue;
-      }
-      if (entry === CONFIG_DIR && resolve(source) === resolve(rootDir)) {
+      if (shouldExcludeEntry(entry, source, rootDir)) {
         continue;
       }
       await copyEntry(join(source, entry), join(destination, entry), rootDir);
@@ -192,24 +233,23 @@ export async function createZipFromDir(sourceDir: string, outputZip: string): Pr
   await rm(outputZip, { force: true });
   await mkdir(dirname(outputZip), { recursive: true });
 
-  const files = await collectFiles(sourceDir, sourceDir);
+  const files = await collectFiles(sourceDir);
   const zipped = zipSync(files);
   await writeFile(outputZip, zipped);
 }
 
-async function collectFiles(directory: string, rootDir: string, basePath = ''): Promise<Zippable> {
+async function collectFiles(directory: string, basePath = ''): Promise<Zippable> {
   const result: Zippable = {};
   const entries = await readdir(directory, { withFileTypes: true });
 
   for (const entry of entries) {
-    if (EXCLUDED_ENTRIES.has(entry.name)) continue;
-    if (entry.name === CONFIG_DIR && resolve(directory) === resolve(rootDir)) continue;
+    if (isZipExcludedEntry(entry.name)) continue;
 
     const fullPath = join(directory, entry.name);
     const zipPath = basePath ? `${basePath}/${entry.name}` : entry.name;
 
     if (entry.isDirectory()) {
-      Object.assign(result, await collectFiles(fullPath, rootDir, zipPath));
+      Object.assign(result, await collectFiles(fullPath, zipPath));
     } else if (entry.isFile()) {
       result[zipPath] = [await readFile(fullPath), { level: 6 }];
     }
@@ -361,10 +401,7 @@ function copyEntrySync(source: string, destination: string, rootDir: string): vo
     mkdirSync(destination, { recursive: true });
     const entries = readdirSync(source);
     for (const entry of entries) {
-      if (EXCLUDED_ENTRIES.has(entry)) {
-        continue;
-      }
-      if (entry === CONFIG_DIR && resolve(source) === resolve(rootDir)) {
+      if (shouldExcludeEntry(entry, source, rootDir)) {
         continue;
       }
       copyEntrySync(join(source, entry), join(destination, entry), rootDir);
@@ -398,19 +435,18 @@ export function ensureBinaryAvailableSync(binary: string, installHint?: string):
   throw new MissingDependencyError(binary, installHint);
 }
 
-function collectFilesSync(directory: string, rootDir: string, basePath = ''): Zippable {
+function collectFilesSync(directory: string, basePath = ''): Zippable {
   const result: Zippable = {};
   const entries = readdirSync(directory, { withFileTypes: true });
 
   for (const entry of entries) {
-    if (EXCLUDED_ENTRIES.has(entry.name)) continue;
-    if (entry.name === CONFIG_DIR && resolve(directory) === resolve(rootDir)) continue;
+    if (isZipExcludedEntry(entry.name)) continue;
 
     const fullPath = join(directory, entry.name);
     const zipPath = basePath ? `${basePath}/${entry.name}` : entry.name;
 
     if (entry.isDirectory()) {
-      Object.assign(result, collectFilesSync(fullPath, rootDir, zipPath));
+      Object.assign(result, collectFilesSync(fullPath, zipPath));
     } else if (entry.isFile()) {
       result[zipPath] = [readFileSync(fullPath), { level: 6 }];
     }
@@ -422,7 +458,7 @@ export function createZipFromDirSync(sourceDir: string, outputZip: string): void
   rmSync(outputZip, { force: true });
   mkdirSync(dirname(outputZip), { recursive: true });
 
-  const files = collectFilesSync(sourceDir, sourceDir);
+  const files = collectFilesSync(sourceDir);
   const zipped = zipSync(files);
   writeFileSync(outputZip, zipped);
 }

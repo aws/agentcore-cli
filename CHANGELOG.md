@@ -2,6 +2,79 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.19.0] - 2026-06-09
+
+### Added
+- feat(payments): add AgentCore Payments as first-class CLI resource (#1261) (44693333)
+- feat: add Bedrock Mantle API format support for harness (#1412) (78d1d58a)
+
+### Fixed
+- fix(ci): avoid formatting lock file (#1489) (d34b823f)
+- fix(invoke): adjust redaction regex to allow words following bearer (#1480) (a9b01608)
+- fix(deploy): auto-populate default target on non-interactive deploy (#1478) (96be0034)
+- fix(e2e): address failing byo e2e tests.  (#1476) (5d108679)
+- fix: redact sensitive tokens from invoke CLI output (#1419) (88fff673)
+
+### Documentation
+- docs(permissions): update permissions role to include new permissions for BYOF (#1483) (9c41832e)
+
+### Other Changes
+- chore(ci): add longer timeout and retries for deploying memory (#1491) (23947adb)
+- chore(deps-dev): bump @vitest/coverage-v8 from 4.1.6 to 4.1.8 (#1332) (a2119e87)
+- chore(deps): bump fflate from 0.8.2 to 0.8.3 (#1335) (f0bc9dec)
+- chore: update e2e test script to include new paramters (#1477) (04bf884f)
+
+## [0.18.0] - 2026-06-05
+
+### Added
+- feat: add agentcore exec command with interactive shell and one-shot support (#1464) (259654b6)
+- feat: add BYO filesystem e2e test and supporting infrastructure (#1461) (dd255e3e)
+- feat: upgrade agent-inspector to v0.5.0 (#1458) (d14504ff)
+- feat: add EFS and S3 filesystem mount support (#1436) (64b9b636)
+
+### Fixed
+- fix(ci): pass filesystem env vars to e2e-tests-full vitest step (#1470) (a4c75ec8)
+- fix(deploy): bump aws-cdk-lib to ^2.258.0 to unblock e2e workspace resolution (#1469) (b4a7620c)
+- fix(deploy): bump @aws-cdk/cdk-assets-lib to read schema 54 asset manifests (#1468) (b071a9f9)
+- fix(deploy): bump @aws-cdk/toolkit-lib to read cloud-assembly schema 54 (#1465) (c42c5b4e)
+- fix(logs): wire up cli telemetry and model user errors (#1460) (5b98e76e)
+- fix(deploy): preserve error typing through CDK wrapper and preflight (#1459) (31269050)
+- fix(telemetry): re-throw exceptions in withCommandRunTelemetry (#1437) (15618b6f)
+- fix: agentcore dev orphaned processes (#1438) (c9d78ea2)
+
+### Documentation
+- docs: add documentation for telemetry (#1432) (65ba4850)
+
+### Other Changes
+- refactor: move command descriptions out of TUI module (#1451) (5e035d05)
+- Update image size limit from 1 GB to 2 GB (#1452) (77c3de39)
+
+## [0.17.0] - 2026-06-02
+
+### Added
+- feat(workflows): add closed-PR comment redirect (#1328) (a84cee4f)
+- feat: add invoke APIs for agent inspector (#1326) (14da3f9b)
+- feat: launch telemetry (#1430) (0e866052)
+- feat(telemetry): support agent_environment for runtime/harness distinction (#1405) (72574bd6)
+- feat: wire telemetry for validate command (#1423) (e3009801)
+
+### Fixed
+- fix(scripts): filter non-version tags in changelog auto-generation (#1444) (38f71440)
+- fix(ci): disable telemetry in release workflow to fix test failures (#1442) (dbe34ac1)
+- fix(e2e): skip Gemini invoke and logs tests (#1434) (a2bd0a79)
+- fix: pin google-genai < 2.0.0 in Gemini agent templates (#1433) (b4f5daa5)
+- fix: Patch CVE-2026-42010 GnuTLS auth bypass in Python Dockerfile (#1397) (5a0fb0b3)
+- fix(telemetry): track preflight error for telemetry (#1403) (13a03912)
+- fix: restore --skills invoke override for harness (preview regression) (#1418) (285b0107)
+
+### Documentation
+- docs(commands): document missing commands and subcommands (#1425) (0a321df1)
+
+### Other Changes
+- refactor(telemetry): rename AgentType to AgentSource to remove ambiguity (#1422) (15d14389)
+- ci: disable telemetry in e2e and integ test workflows (#1421) (eaa4bcf9)
+- chore: remove sync-preview job from sync-from-public workflow (#1416) (d2192fce)
+
 ## [0.16.0] - 2026-05-28
 * feat: instrument telemetry for status command by @Hweinstock in https://github.com/aws/agentcore-cli/pull/1317
 * fix(telemetry): emit dev command telemetry before blocking by @Hweinstock in https://github.com/aws/agentcore-cli/pull/1375

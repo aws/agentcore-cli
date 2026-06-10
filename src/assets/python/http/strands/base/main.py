@@ -15,8 +15,11 @@ from mcp_client.client import get_streamable_http_mcp_client
 {{#if hasMemory}}
 from memory.session import get_memory_session_manager
 {{/if}}
-{{#if sessionStorageMountPath}}
+{{#if needsOs}}
 import os
+{{/if}}
+{{#if hasPayment}}
+from capabilities.payments.payments import create_payments_plugin, PAYMENT_SYSTEM_PROMPT
 {{/if}}
 
 app = BedrockAgentCoreApp()
@@ -31,9 +34,12 @@ mcp_clients = [get_streamable_http_mcp_client()]
 
 DEFAULT_SYSTEM_PROMPT = """
 You are a helpful assistant. Use tools when appropriate.
-{{#if sessionStorageMountPath}}
-You have persistent storage at {{sessionStorageMountPath}}. Use file tools to read and write files. Data persists across sessions.
-{{/if}}
+{{#if needsOs}}
+You have access to the following mounted filesystems. Use file_read, file_write, and list_files with full absolute paths:
+{{#if sessionStorageMountPath}}- {{sessionStorageMountPath}}: ephemeral session storage (lost when session ends)
+{{/if}}{{#each efsMounts}}- {{mountPath}}: EFS persistent storage (persists across sessions and agent restarts)
+{{/each}}{{#each s3Mounts}}- {{mountPath}}: S3 Files persistent storage (durable, backed by S3)
+{{/each}}{{/if}}
 """
 
 {{#if hasConfigBundle}}
@@ -54,19 +60,22 @@ def add_numbers(a: int, b: int) -> int:
     return a+b
 tools.append(add_numbers)
 
-{{#if sessionStorageMountPath}}
-SESSION_STORAGE_PATH = "{{sessionStorageMountPath}}"
+{{#if needsOs}}
+_MOUNT_PATHS = [
+    {{#if sessionStorageMountPath}}"{{sessionStorageMountPath}}",{{/if}}
+    {{#each efsMounts}}"{{mountPath}}",{{/each}}
+    {{#each s3Mounts}}"{{mountPath}}",{{/each}}
+]
 
 def _safe_resolve(path: str) -> str:
-    """Resolve path safely within the storage boundary."""
-    resolved = os.path.realpath(os.path.join(SESSION_STORAGE_PATH, path.lstrip("/")))
-    if not resolved.startswith(os.path.realpath(SESSION_STORAGE_PATH)):
-        raise ValueError(f"Path '{path}' is outside the storage boundary")
+    resolved = os.path.realpath(path)
+    if not any(resolved == os.path.realpath(m) or resolved.startswith(os.path.realpath(m) + os.sep) for m in _MOUNT_PATHS):
+        raise ValueError(f"Path '{path}' is not within any configured mount ({', '.join(_MOUNT_PATHS)})")
     return resolved
 
 @tool
 def file_read(path: str) -> str:
-    """Read a file from persistent storage. The path is relative to the storage root."""
+    """Read a file from a mounted filesystem. Use the absolute path (e.g. /mnt/tools/data.txt)."""
     try:
         full_path = _safe_resolve(path)
         with open(full_path) as f:
@@ -78,7 +87,7 @@ def file_read(path: str) -> str:
 
 @tool
 def file_write(path: str, content: str) -> str:
-    """Write content to a file in persistent storage. The path is relative to the storage root."""
+    """Write a file to a mounted filesystem. Use the absolute path (e.g. /mnt/tools/data.txt)."""
     try:
         full_path = _safe_resolve(path)
         parent = os.path.dirname(full_path)
@@ -93,16 +102,16 @@ def file_write(path: str, content: str) -> str:
         return f"Error writing '{path}': {e.strerror}"
 
 @tool
-def list_files(directory: str = "") -> str:
-    """List files in persistent storage. The directory is relative to the storage root."""
+def list_files(path: str) -> str:
+    """List files in a mounted filesystem directory. Use the absolute path (e.g. /mnt/tools)."""
     try:
-        target = _safe_resolve(directory)
-        entries = os.listdir(target)
+        full_path = _safe_resolve(path)
+        entries = os.listdir(full_path)
         return "\n".join(entries) if entries else "(empty directory)"
     except ValueError as e:
         return str(e)
     except OSError as e:
-        return f"Error listing '{directory}': {e.strerror}"
+        return f"Error listing '{path}': {e.strerror}"
 
 tools.extend([file_read, file_write, list_files])
 {{/if}}
@@ -147,12 +156,12 @@ class ConfigBundleHook(HookProvider):
 {{/if}}
 
 {{#if hasMemory}}
+{{#unless hasPayment}}
 def agent_factory():
     cache = {}
     def get_or_create_agent(session_id, user_id):
         key = f"{session_id}/{user_id}"
         if key not in cache:
-            # Create an agent for the given session_id and user_id
             cache[key] = Agent(
                 model=load_model(),
                 session_manager=get_memory_session_manager(session_id, user_id),
@@ -163,6 +172,7 @@ def agent_factory():
         return cache[key]
     return get_or_create_agent
 get_or_create_agent = agent_factory()
+{{/unless}}
 {{else}}
 {{#if hasConfigBundle}}
 def create_agent():
@@ -173,6 +183,7 @@ def create_agent():
         hooks=[ConfigBundleHook()],
     )
 {{else}}
+{{#unless hasPayment}}
 _agent = None
 
 def get_or_create_agent():
@@ -181,9 +192,10 @@ def get_or_create_agent():
         _agent = Agent(
             model=load_model(),
             system_prompt=DEFAULT_SYSTEM_PROMPT,
-            tools=tools
+            tools=tools,
         )
     return _agent
+{{/unless}}
 {{/if}}
 {{/if}}
 
@@ -192,15 +204,46 @@ def get_or_create_agent():
 async def invoke(payload, context):
     log.info("Invoking Agent.....")
 
+{{#if hasPayment}}
+    user_id = payload.get("user_id") or getattr(context, "user_id", "default-user")
+    instrument_id = payload.get("payment_instrument_id")
+    session_id = payload.get("payment_session_id")
+    payments_plugin = create_payments_plugin(user_id, instrument_id, session_id)
+    plugins = [payments_plugin] if payments_plugin else []
+{{/if}}
+
 {{#if hasMemory}}
+{{#if hasPayment}}
+    mem_session_id = getattr(context, 'session_id', 'default-session')
+    mem_user_id = getattr(context, 'user_id', 'default-user')
+    agent = Agent(
+        model=load_model(),
+        session_manager=get_memory_session_manager(mem_session_id, mem_user_id),
+        system_prompt=DEFAULT_SYSTEM_PROMPT + PAYMENT_SYSTEM_PROMPT,
+        tools=tools,
+        plugins=plugins,{{#if hasConfigBundle}}
+        hooks=[ConfigBundleHook()],{{/if}}
+    )
+{{else}}
     session_id = getattr(context, 'session_id', 'default-session')
     user_id = getattr(context, 'user_id', 'default-user')
     agent = get_or_create_agent(session_id, user_id)
+{{/if}}
+{{else}}
+{{#if hasPayment}}
+    agent = Agent(
+        model=load_model(),
+        system_prompt=DEFAULT_SYSTEM_PROMPT + PAYMENT_SYSTEM_PROMPT,
+        tools=tools,
+        plugins=plugins,{{#if hasConfigBundle}}
+        hooks=[ConfigBundleHook()],{{/if}}
+    )
 {{else}}
 {{#if hasConfigBundle}}
     agent = create_agent()
 {{else}}
     agent = get_or_create_agent()
+{{/if}}
 {{/if}}
 {{/if}}
 

@@ -172,6 +172,12 @@ export interface CdkToolkitWrapperOptions {
    * Optional AWS profile to use.
    */
   profile?: string;
+
+  /**
+   * Default AWS region for CDK operations.
+   * Without this, the toolkit falls back to AWS_REGION env var or us-east-1.
+   */
+  region?: string;
 }
 
 export interface StackSelectionOptions {

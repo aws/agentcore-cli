@@ -1,4 +1,4 @@
-FROM public.ecr.aws/docker/library/python:3.12-slim-bookworm
+FROM public.ecr.aws/docker/library/python:3.12-slim-trixie
 
 RUN pip install --no-cache-dir uv
 

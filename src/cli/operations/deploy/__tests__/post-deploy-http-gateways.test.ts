@@ -83,6 +83,7 @@ function makeProjectSpec(httpGateways: AgentCoreProjectSpec['httpGateways'] = []
     httpGateways,
     harnesses: [],
     datasets: [],
+    payments: [],
   };
 }
 

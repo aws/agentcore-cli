@@ -177,4 +177,97 @@ describe('invoke command', () => {
       });
     });
   });
+
+  // --------------------------------------------------------------------------
+  // Mode routing for payments flags.
+  //
+  // The spawned CLI has no TTY (cli-runner uses stdio: ['ignore','pipe','pipe']).
+  // That gives us two distinguishable observable signatures:
+  //   - CLI mode (forced)  -> reaches the action/validation layer; with --json
+  //                           it prints structured JSON to stdout.
+  //   - TUI mode (routed)  -> hits requireTTY(), printing the plain-text
+  //                           "requires an interactive terminal" error (NOT JSON).
+  //
+  // This lets us assert the routing change without an interactive harness.
+  // --------------------------------------------------------------------------
+  describe('payments mode routing', () => {
+    it('--auto-session + a prompt runs one-shot CLI (reaches action layer, not the TUI guard)', async () => {
+      // A resolved prompt forces CLI mode; --auto-session then mints a session in the
+      // action layer. The mutual-exclusion check there is action-layer proof that we
+      // did NOT route to the interactive TUI.
+      const result = await runCLI(
+        ['invoke', 'hi', '--auto-session', '--payment-session-id', 's1', '--json'],
+        projectDir,
+        { env: telemetry.env }
+      );
+      expect(result.exitCode).toBe(1);
+      const json = JSON.parse(result.stdout);
+      expect(json.success).toBe(false);
+      expect(
+        json.error.includes('mutually exclusive'),
+        `Expected action-layer mutual-exclusion error, got: ${json.error}`
+      ).toBeTruthy();
+      expect(result.stderr).not.toContain('requires an interactive terminal');
+    });
+
+    it('--auto-session WITH --json stays on the CLI path (--json forces CLI)', async () => {
+      // --json is in the CLI-forcing condition, so --auto-session + --json emits
+      // structured JSON rather than routing to the TUI.
+      const result = await runCLI(['invoke', '--auto-session', '--json'], projectDir, { env: telemetry.env });
+      expect(result.exitCode).toBe(1);
+      const json = JSON.parse(result.stdout);
+      expect(json.success).toBe(false);
+      expect(result.stderr).not.toContain('requires an interactive terminal');
+    });
+
+    it('--auto-session alone (no prompt/json) routes to the interactive TUI', async () => {
+      // NEW behavior: --auto-session no longer forces CLI mode on its own. With no
+      // prompt and no --json it routes to the TUI -> requireTTY() fires (no TTY in
+      // the spawned process), proving it did NOT take the one-shot CLI path.
+      const result = await runCLI(['invoke', '--auto-session'], projectDir, { env: telemetry.env });
+      expect(result.exitCode).toBe(1);
+      expect(result.stderr).toContain('requires an interactive terminal');
+      expect(result.stdout).not.toContain('"success"');
+    });
+
+    it('--auto-session + --payment-session-id (no prompt) is rejected before the TUI renders', async () => {
+      // Mutual exclusion is enforced at the command boundary before renderTUI, so the
+      // user gets a plain-text error, not the TUI guard and not a half-rendered screen.
+      const result = await runCLI(['invoke', '--auto-session', '--payment-session-id', 's1'], projectDir, {
+        env: telemetry.env,
+      });
+      expect(result.exitCode).toBe(1);
+      expect(result.stderr).toContain('mutually exclusive');
+      expect(result.stderr).not.toContain('requires an interactive terminal');
+    });
+
+    it('a payment flag alone (no prompt/json) routes to the interactive TUI', async () => {
+      // NEW behavior: explicit payment flags no longer force CLI mode on their own,
+      // so this routes to the TUI -> requireTTY() fires (the spawned process has no
+      // TTY). All three payment flags share this one mode-decision branch.
+      const result = await runCLI(['invoke', '--payment-instrument-id', 'pi-1'], projectDir, { env: telemetry.env });
+      expect(result.exitCode).toBe(1);
+      expect(result.stderr).toContain('requires an interactive terminal');
+      // It did NOT take the CLI/JSON path.
+      expect(result.stdout).not.toContain('"success"');
+    });
+
+    it('regression: --session-id alone (no prompt/json) still routes to the TUI', async () => {
+      const result = await runCLI(['invoke', '--session-id', 's1'], projectDir, { env: telemetry.env });
+      expect(result.exitCode).toBe(1);
+      expect(result.stderr).toContain('requires an interactive terminal');
+    });
+
+    it('a payment flag WITH --json is forced into CLI mode (does not route to TUI)', async () => {
+      // --json is in the CLI-forcing condition, so even a payment flag + --json
+      // stays on the CLI path and emits structured JSON.
+      const result = await runCLI(['invoke', 'hi', '--payment-instrument-id', 'pi-1', '--json'], projectDir, {
+        env: telemetry.env,
+      });
+      expect(result.exitCode).toBe(1);
+      const json = JSON.parse(result.stdout);
+      expect(json.success).toBe(false);
+      expect(result.stderr).not.toContain('requires an interactive terminal');
+    });
+  });
 });

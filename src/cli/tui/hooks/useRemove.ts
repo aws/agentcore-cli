@@ -18,6 +18,8 @@ import {
   harnessPrimitive,
   memoryPrimitive,
   onlineEvalConfigPrimitive,
+  paymentConnectorPrimitive,
+  paymentManagerPrimitive,
   policyEnginePrimitive,
   policyPrimitive,
   runtimeEndpointPrimitive,
@@ -196,6 +198,16 @@ export function useRemovableRuntimeEndpoints() {
     runtimeEndpointPrimitive.getRemovable()
   );
   return { endpoints, ...rest };
+}
+
+export function useRemovablePaymentManagers() {
+  const { items: paymentManagers, ...rest } = useRemovableResources(() => paymentManagerPrimitive.getRemovable());
+  return { paymentManagers, ...rest };
+}
+
+export function useRemovablePaymentConnectors() {
+  const { items: paymentConnectors, ...rest } = useRemovableResources(() => paymentConnectorPrimitive.getRemovable());
+  return { paymentConnectors, ...rest };
 }
 
 // ============================================================================

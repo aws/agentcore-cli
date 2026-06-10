@@ -63,6 +63,7 @@ export async function destroyTarget(options: DestroyTargetOptions): Promise<void
   const toolkit = new CdkToolkitWrapper({
     projectDir: cdkProjectDir,
     ioHost: silentIoHost,
+    region: target.target.region,
   });
 
   // aws-targets.json is authoritative for the destroy region; promote it onto

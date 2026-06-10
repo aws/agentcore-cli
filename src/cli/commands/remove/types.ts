@@ -14,7 +14,9 @@ export type ResourceType =
   | 'policy'
   | 'config-bundle'
   | 'ab-test'
-  | 'dataset';
+  | 'dataset'
+  | 'payment-manager'
+  | 'payment-connector';
 
 export interface RemoveOptions {
   resourceType: ResourceType;

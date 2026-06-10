@@ -5,6 +5,7 @@ export { registerDeploy } from './deploy';
 export { registerDev } from './dev';
 export { registerCreate } from './create';
 export { registerEval } from './eval';
+export { registerExec } from './exec';
 export { registerFetch } from './fetch';
 export { registerInvoke } from './invoke';
 export { registerPackage } from './package';

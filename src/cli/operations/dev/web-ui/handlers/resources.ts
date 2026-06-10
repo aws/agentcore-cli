@@ -6,6 +6,7 @@ import type {
   ResourceAgent,
   ResourceCredential,
   ResourceDeploymentStatus,
+  ResourceDeploymentTarget,
   ResourceEvaluator,
   ResourceGateway,
   ResourceHarness,
@@ -48,10 +49,16 @@ export async function handleResources(ctx: RouteContext, res: ServerResponse, or
 
     // Read AWS targets to resolve region for invocation URLs.
     let targetRegion: string | undefined;
+    let deploymentTargets: ResourceDeploymentTarget[] = [];
     try {
       const awsTargets = await configIO.readAWSDeploymentTargets();
       const firstTarget = firstTargetKey ? awsTargets.find(t => t.name === firstTargetKey) : awsTargets[0];
       targetRegion = firstTarget?.region;
+      deploymentTargets = awsTargets.map(t => ({
+        name: t.name,
+        region: t.region,
+        ...(t.description ? { description: t.description } : {}),
+      }));
     } catch {
       // aws-targets.json may not exist yet — region will be undefined
     }
@@ -112,10 +119,12 @@ export async function handleResources(ctx: RouteContext, res: ServerResponse, or
     const harnesses: ResourceHarness[] = [];
     for (const h of project.harnesses ?? []) {
       let model = '';
+      let modelConfig: ResourceHarness['modelConfig'];
       let tools: string[] = [];
       try {
         const spec = await configIO.readHarnessSpec(h.name);
         model = `${spec.model.provider}/${spec.model.modelId}`;
+        modelConfig = spec.model;
         tools = spec.tools.map(t => t.name);
       } catch {
         // harness spec may be unreadable — show what we can
@@ -124,6 +133,7 @@ export async function handleResources(ctx: RouteContext, res: ServerResponse, or
       harnesses.push({
         name: h.name,
         model,
+        modelConfig,
         tools,
         deploymentStatus: statusByTypeAndName.get(`harness:${h.name}`),
         deployed: deployed ? { harnessId: deployed.harnessId, harnessArn: deployed.harnessArn } : undefined,
@@ -320,6 +330,7 @@ export async function handleResources(ctx: RouteContext, res: ServerResponse, or
         onlineEvalConfigs,
         policyEngines,
         unassignedTargets,
+        deploymentTargets,
       })
     );
   } catch (err) {

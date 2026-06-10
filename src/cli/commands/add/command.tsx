@@ -1,5 +1,5 @@
+import { COMMAND_DESCRIPTIONS } from '../../constants';
 import { renderTUI } from '../../tui';
-import { COMMAND_DESCRIPTIONS } from '../../tui/copy';
 import { requireProject, requireTTY } from '../../tui/guards';
 import type { Command } from '@commander-js/extra-typings';
 

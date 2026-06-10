@@ -15,6 +15,7 @@ import {
   DEFAULT_RUNTIME_BY_LANGUAGE,
   DEFAULT_STRATEGY_NAMESPACE_TEMPLATES,
 } from '../../../../schema';
+import { buildFilesystemConfigurations } from '../../../commands/shared/filesystem-utils';
 import { GatewayPrimitive } from '../../../primitives/GatewayPrimitive';
 import { buildAuthorizerConfigFromJwtConfig } from '../../../primitives/auth-utils';
 import {
@@ -154,9 +155,7 @@ export function mapGenerateConfigToAgent(config: GenerateConfig): AgentEnvSpec {
           },
         }
       : {}),
-    ...(config.sessionStorageMountPath && {
-      filesystemConfigurations: [{ sessionStorage: { mountPath: config.sessionStorageMountPath } }],
-    }),
+    ...buildFilesystemConfigurations(config.sessionStorageMountPath, config.efsAccessPoints, config.s3AccessPoints),
     ...(protocol === 'MCP' && { instrumentation: { enableOtel: false } }),
   };
 }
@@ -280,6 +279,14 @@ export async function mapGenerateConfigToRenderConfig(
     hasMemory: isMcp || config.language === 'TypeScript' ? false : config.memory !== 'none',
     hasIdentity: isMcp ? false : identityProviders.length > 0,
     hasGateway: gatewayProviders.length > 0,
+    hasPayment: await (async () => {
+      try {
+        const spec = await new ConfigIO().readProjectSpec();
+        return (spec.payments ?? []).length > 0;
+      } catch {
+        return false;
+      }
+    })(),
     isVpc: config.networkMode === 'VPC',
     buildType: config.buildType,
     memoryProviders:
@@ -292,6 +299,9 @@ export async function mapGenerateConfigToRenderConfig(
     protocol: config.protocol,
     dockerfile: config.dockerfile,
     sessionStorageMountPath: config.sessionStorageMountPath,
+    efsMounts: (config.efsAccessPoints ?? []).map(ap => ({ mountPath: ap.mountPath })),
+    s3Mounts: (config.s3AccessPoints ?? []).map(ap => ({ mountPath: ap.mountPath })),
+    needsOs: !!config.sessionStorageMountPath || !!config.efsAccessPoints?.length || !!config.s3AccessPoints?.length,
     enableOtel,
     hasConfigBundle: config.withConfigBundle,
   };

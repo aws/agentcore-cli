@@ -38,6 +38,10 @@ export interface AddAgentOptions extends VpcOptions {
   idleTimeout?: number | string;
   maxLifetime?: number | string;
   sessionStorageMountPath?: string;
+  efsAccessPointArn?: string[];
+  efsMountPath?: string[];
+  s3AccessPointArn?: string[];
+  s3MountPath?: string[];
   withConfigBundle?: boolean;
   json?: boolean;
 }
@@ -93,6 +97,7 @@ export interface AddHarnessCliOptions {
   name?: string;
   modelProvider?: string;
   modelId?: string;
+  apiFormat?: string;
   apiKeyArn?: string;
   container?: string;
   memory?: boolean;

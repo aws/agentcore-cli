@@ -1,0 +1,116 @@
+name: Canary
+
+on:
+  # Run once an hour
+  schedule:
+    - cron: '0 * * * *'
+  workflow_dispatch:
+    inputs:
+      aws_region:
+        description: 'AWS region for deployment'
+        default: 'us-east-1'
+
+# Serialize canary runs so overlapping scheduled runs don't pile up. Matrix
+# jobs within a single run still execute in parallel.
+concurrency:
+  group: canary
+  cancel-in-progress: false
+
+permissions:
+  id-token: write
+  contents: read
+  issues: write
+
+env:
+  AGENTCORE_TELEMETRY_DISABLED: '1'
+  PRERELEASE_BASE_URL: https://github.com/aws/agentcore-cli/releases/download/prerelease
+
+jobs:
+  canary:
+    runs-on: ubuntu-latest
+    environment: e2e-testing
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        variant: [Released, Prerelease]
+        build: [GA, Preview]
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '20.x'
+          cache: 'npm'
+      - name: Configure git
+        run: |
+          git config --global user.email "ci@amazon.com"
+          git config --global user.name "CI"
+      - uses: astral-sh/setup-uv@v7
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v6
+        with:
+          role-to-assume: ${{ secrets.E2E_AWS_ROLE_ARN }}
+          aws-region: ${{ inputs.aws_region || 'us-east-1' }}
+      - name: Get AWS Account ID
+        id: aws
+        run: echo "account_id=$(aws sts get-caller-identity --query Account --output text)" >> "$GITHUB_OUTPUT"
+      - name: Get API keys from Secrets Manager
+        uses: aws-actions/aws-secretsmanager-get-secrets@v2
+        with:
+          secret-ids: |
+            E2E,${{ secrets.E2E_SECRET_ARN }}
+          parse-json-secrets: true
+
+      - run: npm ci
+
+      # Resolve the install spec for this matrix cell, then install the
+      # published CLI globally (it already bundles the CDK constructs).
+      - name: Install agentcore CLI (${{ matrix.variant }} / ${{ matrix.build }})
+        id: install
+        run: |
+          case "${{ matrix.variant }}/${{ matrix.build }}" in
+            "Released/GA")        SPEC="@aws/agentcore" ;;
+            "Released/Preview")   SPEC="@aws/agentcore@preview" ;;
+            "Prerelease/GA")      SPEC="${PRERELEASE_BASE_URL}/agentcore-cli-prerelease.tgz" ;;
+            "Prerelease/Preview") SPEC="${PRERELEASE_BASE_URL}/agentcore-cli-prerelease-preview.tgz" ;;
+            *) echo "Unknown variant/build combination" >&2; exit 1 ;;
+          esac
+          echo "Installing: $SPEC"
+          echo "spec=$SPEC" >> "$GITHUB_OUTPUT"
+          npm install -g "$SPEC"
+          echo "agentcore version: $(agentcore --version || echo unknown)"
+
+      - name: Run canary smoke test
+        env:
+          AWS_ACCOUNT_ID: ${{ steps.aws.outputs.account_id }}
+          AWS_REGION: ${{ inputs.aws_region || 'us-east-1' }}
+          ANTHROPIC_API_KEY: ${{ env.E2E_ANTHROPIC_API_KEY }}
+          OPENAI_API_KEY: ${{ env.E2E_OPENAI_API_KEY }}
+          GEMINI_API_KEY: ${{ env.E2E_GEMINI_API_KEY }}
+        # Smoke test for now, only runs strands-bedrock.test.ts
+        run: npx vitest run --project e2e e2e-tests/strands-bedrock.test.ts --retry 3
+
+      - name: Generate GitHub App Token
+        if: failure()
+        id: app-token
+        uses: actions/create-github-app-token@v1
+        with:
+          app-id: ${{ vars.APP_ID }}
+          private-key: ${{ secrets.APP_PRIVATE_KEY }}
+
+      - name: Create canary failure issue
+        if: failure()
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          VARIANT_NAME: ${{ matrix.variant }}/${{ matrix.build }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          INSTALL_SPEC: ${{ steps.install.outputs.spec }}
+        run: |
+          npx -y tsx .github/scripts/create-failure-issue.ts \
+            --title-prefix "Canary Failure" \
+            --name "$VARIANT_NAME" \
+            --branch "${{ github.ref_name }}" \
+            --commit "${{ github.sha }}" \
+            --run-url "$RUN_URL" \
+            --labels "high-severity,ci" \
+            --detail "strands-bedrock smoke test; installed from ${INSTALL_SPEC:-unknown}"

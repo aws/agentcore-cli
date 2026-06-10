@@ -217,16 +217,13 @@ describe('ConfigValidationError', () => {
       expect(err.message).toContain('invalid "type" value');
     });
 
-    it('crashes on invalid_union with nested errors missing path (known bug)', () => {
-      // z.union produces invalid_union issues where nested errors lack `path`.
-      // formatPath(issue.path) crashes because path is undefined.
+    it('handles invalid_union by surfacing a nested error message', () => {
       const schema = z.union([z.string(), z.number()]);
       const result = schema.safeParse(true);
       expect(result.success).toBe(false);
       if (!result.success) {
-        expect(() => new ConfigValidationError('/path', 'project', result.error)).toThrow(
-          /Cannot read properties of undefined/
-        );
+        const err = new ConfigValidationError('/path', 'project', result.error);
+        expect(err.message).toContain('expected "string"');
       }
     });
 

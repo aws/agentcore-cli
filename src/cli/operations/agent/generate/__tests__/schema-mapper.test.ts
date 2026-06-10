@@ -455,3 +455,137 @@ describe('mapByoConfigToAgent - lifecycleConfiguration', () => {
     expect(result.lifecycleConfiguration).toBeUndefined();
   });
 });
+
+// ─────────────────────────────────────────────────────────────────────────────
+// mapGenerateConfigToAgent - filesystem configurations
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('mapGenerateConfigToAgent - filesystem configurations', () => {
+  const fsBase: GenerateConfig = {
+    projectName: 'FsAgent',
+    buildType: 'CodeZip',
+    protocol: 'HTTP',
+    sdk: 'Strands',
+    modelProvider: 'Bedrock',
+    memory: 'none',
+    language: 'Python',
+    networkMode: 'VPC',
+    subnets: ['subnet-abc'],
+    securityGroups: ['sg-abc'],
+  };
+
+  const EFS_ARN = 'arn:aws:elasticfilesystem:us-east-1:123456789012:access-point/fsap-0123456789abcdef0';
+  const S3_ARN =
+    'arn:aws:s3files:us-east-1:123456789012:file-system/fs-12345678901234567/access-point/fsap-12345678901234567';
+
+  it('omits filesystemConfigurations when none configured', () => {
+    const result = mapGenerateConfigToAgent(fsBase);
+    expect(result.filesystemConfigurations).toBeUndefined();
+  });
+
+  it('writes sessionStorage entry', () => {
+    const result = mapGenerateConfigToAgent({ ...fsBase, sessionStorageMountPath: '/mnt/data' });
+    expect(result.filesystemConfigurations).toContainEqual({ sessionStorage: { mountPath: '/mnt/data' } });
+  });
+
+  it('writes efsAccessPoint entry', () => {
+    const result = mapGenerateConfigToAgent({
+      ...fsBase,
+      efsAccessPoints: [{ accessPointArn: EFS_ARN, mountPath: '/mnt/efs' }],
+    });
+    expect(result.filesystemConfigurations).toContainEqual({
+      efsAccessPoint: { accessPointArn: EFS_ARN, mountPath: '/mnt/efs' },
+    });
+  });
+
+  it('writes s3FilesAccessPoint entry', () => {
+    const result = mapGenerateConfigToAgent({
+      ...fsBase,
+      s3AccessPoints: [{ accessPointArn: S3_ARN, mountPath: '/mnt/s3' }],
+    });
+    expect(result.filesystemConfigurations).toContainEqual({
+      s3FilesAccessPoint: { accessPointArn: S3_ARN, mountPath: '/mnt/s3' },
+    });
+  });
+
+  it('writes all three union variants together', () => {
+    const result = mapGenerateConfigToAgent({
+      ...fsBase,
+      sessionStorageMountPath: '/mnt/data',
+      efsAccessPoints: [{ accessPointArn: EFS_ARN, mountPath: '/mnt/efs' }],
+      s3AccessPoints: [{ accessPointArn: S3_ARN, mountPath: '/mnt/s3' }],
+    });
+    expect(result.filesystemConfigurations).toHaveLength(3);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// mapGenerateConfigToRenderConfig - needsOs / efsMounts / s3Mounts
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('mapGenerateConfigToRenderConfig - needsOs', () => {
+  const base: GenerateConfig = {
+    projectName: 'RenderAgent',
+    buildType: 'CodeZip',
+    protocol: 'HTTP',
+    sdk: 'Strands',
+    modelProvider: 'Bedrock',
+    memory: 'none',
+    language: 'Python',
+  };
+
+  const EFS_ARN = 'arn:aws:elasticfilesystem:us-east-1:123456789012:access-point/fsap-0123456789abcdef0';
+  const S3_ARN =
+    'arn:aws:s3files:us-east-1:123456789012:file-system/fs-12345678901234567/access-point/fsap-12345678901234567';
+
+  it('needsOs is false when no filesystem config', async () => {
+    const result = await mapGenerateConfigToRenderConfig(base, []);
+    expect(result.needsOs).toBe(false);
+  });
+
+  it('needsOs is true when sessionStorageMountPath is set', async () => {
+    const result = await mapGenerateConfigToRenderConfig({ ...base, sessionStorageMountPath: '/mnt/data' }, []);
+    expect(result.needsOs).toBe(true);
+  });
+
+  it('needsOs is true when only S3 mounts (no EFS)', async () => {
+    const result = await mapGenerateConfigToRenderConfig(
+      { ...base, s3AccessPoints: [{ accessPointArn: S3_ARN, mountPath: '/mnt/s3' }] },
+      []
+    );
+    expect(result.needsOs).toBe(true);
+  });
+
+  it('needsOs is true when only EFS mounts (no session storage)', async () => {
+    const result = await mapGenerateConfigToRenderConfig(
+      { ...base, efsAccessPoints: [{ accessPointArn: EFS_ARN, mountPath: '/mnt/efs' }] },
+      []
+    );
+    expect(result.needsOs).toBe(true);
+  });
+
+  it('efsMounts contains only mountPath (not ARN)', async () => {
+    const result = await mapGenerateConfigToRenderConfig(
+      { ...base, efsAccessPoints: [{ accessPointArn: EFS_ARN, mountPath: '/mnt/efs' }] },
+      []
+    );
+    expect(result.efsMounts).toEqual([{ mountPath: '/mnt/efs' }]);
+  });
+
+  it('s3Mounts contains only mountPath (not ARN)', async () => {
+    const result = await mapGenerateConfigToRenderConfig(
+      { ...base, s3AccessPoints: [{ accessPointArn: S3_ARN, mountPath: '/mnt/s3' }] },
+      []
+    );
+    expect(result.s3Mounts).toEqual([{ mountPath: '/mnt/s3' }]);
+  });
+
+  it('TypeScript agents have hasMemory=false and empty memoryProviders', async () => {
+    const result = await mapGenerateConfigToRenderConfig(
+      { ...base, language: 'TypeScript', memory: 'longAndShortTerm' as const },
+      []
+    );
+    expect(result.hasMemory).toBe(false);
+    expect(result.memoryProviders).toEqual([]);
+  });
+});

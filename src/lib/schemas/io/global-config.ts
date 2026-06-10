@@ -1,6 +1,10 @@
+import { toError } from '../../errors/types';
+import type { Result } from '../../result';
+import { resilientParse } from '../../utils/zod.js';
 import { readFileSync } from 'fs';
-import { mkdir, readFile, writeFile } from 'fs/promises';
+import { access, mkdir, readFile, writeFile } from 'fs/promises';
 import { randomUUID } from 'node:crypto';
+import { constants as fsConstants } from 'node:fs';
 import { homedir } from 'os';
 import { join } from 'path';
 import { z } from 'zod';
@@ -8,39 +12,57 @@ import { z } from 'zod';
 export const GLOBAL_CONFIG_DIR = process.env.AGENTCORE_CONFIG_DIR ?? join(homedir(), '.agentcore');
 export const GLOBAL_CONFIG_FILE = join(GLOBAL_CONFIG_DIR, 'config.json');
 
-const GlobalConfigSchema = z
+const GlobalConfigSchemaStrict = z
   .object({
-    installationId: z.string().optional().catch(undefined),
-    uvDefaultIndex: z.string().optional().catch(undefined),
-    uvIndex: z.string().optional().catch(undefined),
-    disableTransactionSearch: z.boolean().optional().catch(undefined),
-    transactionSearchIndexPercentage: z.number().int().min(0).max(100).optional().catch(undefined),
+    installationId: z.string().uuid().optional(),
+    uvDefaultIndex: z.string().optional(),
+    uvIndex: z.string().optional(),
+    disableTransactionSearch: z.boolean().optional(),
+    transactionSearchIndexPercentage: z.number().int().min(0).max(100).optional(),
     telemetry: z
       .object({
-        enabled: z.boolean().optional().catch(undefined),
-        endpoint: z.string().optional().catch(undefined),
-        audit: z.boolean().optional().catch(undefined),
+        enabled: z.boolean().optional(),
+        endpoint: z.string().optional(),
+        audit: z.boolean().optional(),
       })
-      .optional()
-      .catch(undefined),
+      .strict()
+      .optional(),
   })
-  .passthrough();
+  .strict();
 
-export type GlobalConfig = z.infer<typeof GlobalConfigSchema>;
+export type GlobalConfig = z.infer<typeof GlobalConfigSchemaStrict>;
 
-export async function readGlobalConfig(configFile = GLOBAL_CONFIG_FILE): Promise<GlobalConfig> {
+export function validateGlobalConfig(data: unknown): { success: boolean; error?: z.ZodError } {
+  return GlobalConfigSchemaStrict.safeParse(data);
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+export async function readGlobalConfig(configFile = GLOBAL_CONFIG_FILE): Promise<Result<{ config: GlobalConfig }>> {
+  // Distinguish "file does not exist" (a normal first-run state) from "file
+  // exists but cannot be read or parsed"
   try {
-    const data = await readFile(configFile, 'utf-8');
-    return GlobalConfigSchema.parse(JSON.parse(data));
+    await access(configFile, fsConstants.F_OK);
   } catch {
-    return {};
+    return { success: true, config: {} };
+  }
+  try {
+    const parsed: unknown = JSON.parse(await readFile(configFile, 'utf-8'));
+    if (!isRecord(parsed)) {
+      return { success: false, error: new Error(`Config at ${configFile} is not a JSON object.`) };
+    }
+    return { success: true, config: resilientParse(GlobalConfigSchemaStrict, parsed) };
+  } catch (err) {
+    return { success: false, error: toError(err) };
   }
 }
 
 export function readGlobalConfigSync(configFile = GLOBAL_CONFIG_FILE): GlobalConfig {
   try {
     const data = readFileSync(configFile, 'utf-8');
-    return GlobalConfigSchema.parse(JSON.parse(data));
+    return resilientParse(GlobalConfigSchemaStrict, JSON.parse(data) as Record<string, unknown>);
   } catch {
     return {};
   }
@@ -51,10 +73,12 @@ export async function updateGlobalConfig(
   configDir = GLOBAL_CONFIG_DIR,
   configFile = GLOBAL_CONFIG_FILE
 ): Promise<boolean> {
+  const existing = await readGlobalConfig(configFile);
+  if (!existing.success) {
+    return false;
+  }
   try {
-    const existing = await readGlobalConfig(configFile);
-    const merged: GlobalConfig = mergeConfig(existing, partial);
-
+    const merged: GlobalConfig = mergeConfig(existing.config, partial);
     await mkdir(configDir, { recursive: true });
     await writeFile(configFile, JSON.stringify(merged, null, 2), 'utf-8');
     return true;
@@ -74,22 +98,26 @@ function mergeConfig(target: GlobalConfig, source: GlobalConfig): GlobalConfig {
 }
 
 /**
- * Returns the installationId, generating one if it doesn't exist yet.
- * `created: true` means this is the first run (ID was just generated).
+ * Returns the installationId, generating one if it doesn't exist yet or if the
+ * persisted value is not a valid UUID.
  *
- * Note: concurrent first-run invocations may each generate a different ID;
- * the last write wins. This is acceptable — the ID only needs to be stable
- * after the first successful write, and CLI invocations are typically sequential.
+ * Note: concurrent first-run invocations may each generate a different id;
+ * the last write wins. The id only needs to be stable after the first
+ * successful write, and CLI invocations are typically sequential.
  */
 export async function getOrCreateInstallationId(
   configDir = GLOBAL_CONFIG_DIR,
   configFile = GLOBAL_CONFIG_FILE
-): Promise<{ id: string; created: boolean }> {
-  const config = await readGlobalConfig(configFile);
-  if (config.installationId) {
-    return { id: config.installationId, created: false };
+): Promise<Result<{ id: string; created: boolean }>> {
+  const read = await readGlobalConfig(configFile);
+  if (!read.success) return read;
+  if (read.config.installationId) {
+    return { success: true, id: read.config.installationId, created: false };
   }
   const id = randomUUID();
-  await updateGlobalConfig({ installationId: id }, configDir, configFile);
-  return { id, created: true };
+  const written = await updateGlobalConfig({ installationId: id }, configDir, configFile);
+  if (!written) {
+    return { success: false, error: new Error(`Failed to persist installation id to ${configFile}`) };
+  }
+  return { success: true, id, created: true };
 }

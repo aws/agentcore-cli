@@ -8,6 +8,7 @@
  * TODO: Extract these types into a shared package so both repos import
  * from a single source of truth instead of manually duplicating.
  */
+import type { HarnessModel } from '../../../../schema';
 import type { HarnessModelConfiguration, HarnessTool } from '../../../aws/agentcore-harness';
 import type { CloudWatchSpanRecord, CloudWatchTraceRecord } from '../../traces/types';
 
@@ -117,6 +118,14 @@ export interface ResourcesResponse {
   onlineEvalConfigs: ResourceOnlineEvalConfig[];
   policyEngines: ResourcePolicyEngine[];
   unassignedTargets: ResourceUnassignedTarget[];
+  deploymentTargets: ResourceDeploymentTarget[];
+}
+
+/** Deployment target (from aws-targets) in the resources response */
+export interface ResourceDeploymentTarget {
+  name: string;
+  region: string;
+  description?: string;
 }
 
 /** Agent details in the resources response */
@@ -253,6 +262,7 @@ export interface StartResponse {
 /** Request body for POST /invocations */
 export interface InvocationRequest {
   agentName?: string;
+  targetName?: string;
   prompt?: string;
   sessionId?: string;
   userId?: string;
@@ -454,7 +464,9 @@ export interface StatusHarness {
 
 export interface ResourceHarness {
   name: string;
+  /** @deprecated Use modelConfig instead. */
   model: string;
+  modelConfig?: HarnessModel;
   tools: string[];
   deploymentStatus?: ResourceDeploymentStatus;
   deployed?: DeployedHarnessState;

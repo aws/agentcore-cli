@@ -1,15 +1,15 @@
 import { ValidationError, serializeResult } from '../../../lib';
+import { COMMAND_DESCRIPTIONS } from '../../constants';
 import { getErrorMessage } from '../../errors';
 import { isPreviewEnabled } from '../../feature-flags';
 import { withCommandRunTelemetry } from '../../telemetry/cli-command-run.js';
-import { AgentProtocol, AuthType, standardize } from '../../telemetry/schemas/common-shapes.js';
 import { renderTUI } from '../../tui';
-import { COMMAND_DESCRIPTIONS } from '../../tui/copy';
 import { requireProject, requireTTY } from '../../tui/guards';
 import { parseHeaderFlags } from '../shared/header-utils';
 import { type InvokeContext, handleHarnessInvokeByArn, handleInvoke, loadInvokeConfig } from './action';
 import { resolvePrompt } from './resolve-prompt';
 import type { InvokeOptions, InvokeResult } from './types';
+import { computeInvokeAttrs } from './utils';
 import { validateInvokeOptions } from './validate';
 import type { Command } from '@commander-js/extra-typings';
 import { Text, render } from 'ink';
@@ -28,12 +28,6 @@ function startSpinner(message: string): NodeJS.Timeout {
 function stopSpinner(spinner: NodeJS.Timeout): void {
   clearInterval(spinner);
   process.stderr.write('\r\x1b[K'); // Clear line
-}
-
-function resolveProtocol(options: InvokeOptions, projectProtocol?: string): string {
-  if (projectProtocol) return projectProtocol.toLowerCase();
-  if (options.tool) return 'mcp';
-  return 'http';
 }
 
 async function handleInvokeCLI(options: InvokeOptions, preloadedContext?: InvokeContext): Promise<InvokeResult> {
@@ -87,11 +81,26 @@ async function handleInvokeCLI(options: InvokeOptions, preloadedContext?: Invoke
   }
 }
 
+export function redactSensitiveText(value: string): string {
+  return (
+    value
+      // AgentCore inbound bearer tokens are always CUSTOM_JWT/OIDC JWTs, and a JWT always begins
+      // with `eyJ` (base64url of `{"`, the start of its header/payload JSON). Matching by shape
+      // redacts the token wherever it appears and never touches prose like "bearer token".
+      // See https://stackoverflow.com/a/74181595 (why JWTs start with `eyJ`).
+      .replace(/eyJ[A-Za-z0-9_-]+\.eyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+/g, '[REDACTED]')
+      .replace(/(client[_-]?secret["']?\s*[:=]\s*["']?)([^"',\s}]+)/gi, '$1[REDACTED]')
+      .replace(/((?:access[_-]?)?token["']?\s*[:=]\s*["']?)([^"',\s}]+)/gi, '$1[REDACTED]')
+  );
+}
+
 function printInvokeResult(result: InvokeResult, options: InvokeOptions): void {
   if (options.json) {
-    console.log(JSON.stringify(serializeResult(result)));
+    const serialized = serializeResult(result);
+    if (typeof serialized.response === 'string') serialized.response = redactSensitiveText(serialized.response);
+    if (typeof serialized.error === 'string') serialized.error = redactSensitiveText(serialized.error);
+    console.log(JSON.stringify(serialized));
   } else if (options.stream) {
-    // Streaming already wrote to stdout, just show session and log path
     if (result.sessionId) {
       console.error(`\nSession: ${result.sessionId}`);
       console.error(`To resume: agentcore invoke --session-id ${result.sessionId}`);
@@ -100,11 +109,10 @@ function printInvokeResult(result: InvokeResult, options: InvokeOptions): void {
       console.error(`Log: ${result.logFilePath}`);
     }
   } else {
-    // Non-streaming, non-json: print provider info and response or error
     if (result.success && result.response) {
-      console.log(result.response);
+      console.log(redactSensitiveText(result.response));
     } else if (!result.success && result.error) {
-      console.error(result.error.message);
+      console.error(redactSensitiveText(result.error.message));
     }
     if (result.sessionId) {
       console.error(`\nSession: ${result.sessionId}`);
@@ -138,7 +146,10 @@ export const registerInvoke = (program: Command) => {
     .option('--stream', 'Stream response in real-time (TUI streams by default) [non-interactive]')
     .option('--tool <name>', 'MCP tool name (use with "call-tool" prompt) [non-interactive]')
     .option('--input <json>', 'MCP tool arguments as JSON (use with --tool) [non-interactive]')
-    .option('--exec', 'Execute a shell command in the runtime container [non-interactive]')
+    .option(
+      '--exec',
+      'Execute a shell command in the runtime container (use `agentcore exec` instead) [non-interactive]'
+    )
     .option('--timeout <seconds>', 'Timeout in seconds for --exec commands [non-interactive]', parseInt)
     .option(
       '-H, --header <header>',
@@ -146,7 +157,14 @@ export const registerInvoke = (program: Command) => {
       (val: string, prev: string[]) => [...prev, val],
       [] as string[]
     )
-    .option('--bearer-token <token>', 'Bearer token for CUSTOM_JWT auth (bypasses SigV4) [non-interactive]');
+    .option('--bearer-token <token>', 'Bearer token for CUSTOM_JWT auth (bypasses SigV4) [non-interactive]')
+    .option('--payment-instrument-id <id>', 'Payment instrument ID for x402 payments [non-interactive]')
+    .option('--payment-session-id <id>', 'Payment session ID for budget tracking [non-interactive]')
+    .option('--auto-session', 'Auto-create/reuse a payment session for testing [non-interactive]')
+    .option(
+      '--payment-user-id <id>',
+      'End-user identity (wallet owner) for payments; scopes the instrument/session/budget. Defaults to --user-id when omitted.'
+    );
 
   if (isPreviewEnabled()) {
     invokeCmd
@@ -183,6 +201,98 @@ export const registerInvoke = (program: Command) => {
       .option('--actor-id <id>', 'Override memory actor ID (harness only) [non-interactive] [preview]');
   }
 
+  // Group the long flag list into labelled sections (mirrors `add ab-test`).
+  // Core flags (prompt/prompt-file/runtime/target/session-id/user-id) stay in the
+  // default "Options:" block; everything else is hidden there and re-listed under a
+  // section heading below. Preview/harness sections are only emitted when registered.
+  const hiddenFromDefaultHelp = new Set<string>([
+    // Payments
+    '--payment-user-id',
+    '--payment-instrument-id',
+    '--payment-session-id',
+    '--auto-session',
+    // Output
+    '--json',
+    '--stream',
+    // MCP & advanced
+    '--tool',
+    '--input',
+    '--exec',
+    '--timeout',
+    '--header',
+    '--bearer-token',
+    // Harness + model overrides (preview)
+    '--harness',
+    '--harness-arn',
+    '--region',
+    '--verbose',
+    '--model-id',
+    '--model-provider',
+    '--api-key-arn',
+    '--tools',
+    '--max-iterations',
+    '--max-tokens',
+    '--harness-timeout',
+    '--skills',
+    '--system-prompt',
+    '--allowed-tools',
+    '--actor-id',
+  ]);
+  for (const opt of invokeCmd.options) {
+    if (hiddenFromDefaultHelp.has(opt.long ?? '')) {
+      opt.hidden = true;
+    }
+  }
+
+  invokeCmd.addHelpText(
+    'after',
+    `
+Payments [non-interactive]
+  --payment-user-id <id>           End-user/wallet-owner identity (defaults to --user-id)
+  --payment-instrument-id <id>     Payment instrument (wallet) ID
+  --payment-session-id <id>        Payment session ID for budget tracking
+  --auto-session                   Auto-create/reuse a payment session for testing
+
+Output [non-interactive]
+  --json                           Output as JSON
+  --stream                         Stream response in real-time
+
+MCP & Advanced [non-interactive]
+  --tool <name>                    MCP tool name (use with "call-tool" prompt)
+  --input <json>                   MCP tool arguments as JSON (use with --tool)
+  --exec                           Execute a shell command in the runtime container
+  --timeout <seconds>              Timeout in seconds for --exec commands
+  -H, --header <header>            Custom header "Name: Value" (repeatable)
+  --bearer-token <token>           Bearer token for CUSTOM_JWT auth (bypasses SigV4)
+`
+  );
+
+  if (isPreviewEnabled()) {
+    invokeCmd.addHelpText(
+      'after',
+      `
+Harness [non-interactive] [preview]
+  --harness <name>                 Select specific harness to invoke
+  --harness-arn <arn>              Invoke a harness by ARN (no project required)
+  --region <region>                AWS region (required with --harness-arn)
+  --verbose                        Print verbose streaming JSON events
+
+Model & Runtime Overrides (harness only) [non-interactive] [preview]
+  --model-id <id>                  Override model
+  --model-provider <provider>      bedrock, open_ai, or gemini
+  --api-key-arn <arn>              API key ARN for open_ai/gemini
+  --tools <tools>                  Override tools (comma-separated)
+  --allowed-tools <tools>          Override allowed tools (comma-separated)
+  --skills <paths>                 Skills (comma-separated paths)
+  --system-prompt <text>           Override system prompt
+  --actor-id <id>                  Override memory actor ID
+  --max-iterations <n>             Override max iterations
+  --max-tokens <n>                 Override max tokens
+  --harness-timeout <seconds>      Override timeout seconds
+`
+    );
+  }
+
   invokeCmd.action(
     async (
       positionalPrompt: string | undefined,
@@ -216,6 +326,10 @@ export const registerInvoke = (program: Command) => {
         systemPrompt?: string;
         allowedTools?: string;
         actorId?: string;
+        paymentInstrumentId?: string;
+        paymentSessionId?: string;
+        autoSession?: boolean;
+        paymentUserId?: string;
       }
     ) => {
       try {
@@ -260,18 +374,25 @@ export const registerInvoke = (program: Command) => {
           cliOptions.harness ||
           cliOptions.harnessArn ||
           cliOptions.verbose
+          // Payment params (--auto-session / --payment-instrument-id /
+          // --payment-session-id / --payment-user-id) do NOT force CLI mode on
+          // their own — with a prompt they run one-shot (resolved.prompt above),
+          // without a prompt they carry into the interactive TUI. --auto-session
+          // mints/reuses a session at TUI start; see useInvokeFlow.
         ) {
           const result = await withCommandRunTelemetry(
             'invoke',
-            {
-              has_stream: cliOptions.stream ?? false,
-              has_session_id: !!cliOptions.sessionId,
-              auth_type: standardize(AuthType, cliOptions.bearerToken ? 'bearer_token' : 'sigv4'),
-              agent_protocol: standardize(
-                AgentProtocol,
-                resolveProtocol({ tool: cliOptions.tool } as InvokeOptions, agentProtocol)
-              ),
-            },
+            computeInvokeAttrs({
+              preview: isPreviewEnabled(),
+              harnessName: cliOptions.harness,
+              harnessArn: cliOptions.harnessArn,
+              harnessCount: invokeContext?.project.harnesses?.length ?? 0,
+              runtimeCount: invokeContext?.project.runtimes.length ?? 0,
+              stream: cliOptions.stream ?? false,
+              hasSessionId: !!cliOptions.sessionId,
+              bearerToken: cliOptions.bearerToken,
+              agentProtocol: agentProtocol ?? (cliOptions.tool ? 'mcp' : undefined),
+            }),
             async (): Promise<InvokeResult> => {
               if (!resolved.success) {
                 return { success: false, error: new ValidationError(resolved.error ?? 'Prompt resolution failed') };
@@ -312,6 +433,10 @@ export const registerInvoke = (program: Command) => {
                 systemPrompt: cliOptions.systemPrompt,
                 allowedTools: cliOptions.allowedTools,
                 actorId: cliOptions.actorId,
+                paymentInstrumentId: cliOptions.paymentInstrumentId,
+                paymentSessionId: cliOptions.paymentSessionId,
+                autoSession: cliOptions.autoSession,
+                paymentUserId: cliOptions.paymentUserId,
               };
 
               return handleInvokeCLI(options, invokeContext);
@@ -322,9 +447,23 @@ export const registerInvoke = (program: Command) => {
             json: cliOptions.json,
             stream: cliOptions.stream,
           });
-          process.exit(result.success ? 0 : 1);
+          process.exit(result.exitCode ?? (result.success ? 0 : 1));
         } else {
           // No CLI options - interactive TUI mode (headers still passed if provided)
+
+          // Validate flag combinations BEFORE the TTY check: a conflicting
+          // --auto-session + --payment-session-id is wrong regardless of terminal,
+          // and the flag-conflict message is clearer than the TTY guard. Single
+          // source of truth: validateInvokeOptions.
+          const validation = validateInvokeOptions({
+            autoSession: cliOptions.autoSession,
+            paymentSessionId: cliOptions.paymentSessionId,
+          });
+          if (!validation.valid) {
+            console.error(validation.error);
+            process.exit(1);
+          }
+
           requireTTY();
 
           // Parse custom headers for TUI mode
@@ -340,6 +479,12 @@ export const registerInvoke = (program: Command) => {
               userId: cliOptions.userId,
               headers,
               bearerToken: cliOptions.bearerToken,
+              paymentInstrumentId: cliOptions.paymentInstrumentId,
+              paymentSessionId: cliOptions.paymentSessionId,
+              autoSession: cliOptions.autoSession,
+              // Default the payments wallet-owner identity to --user-id when
+              // --payment-user-id is omitted (same fallback as the command path).
+              paymentUserId: cliOptions.paymentUserId ?? cliOptions.userId,
             },
             enterAltScreen: false,
             actionOnBack: 'exit',
@@ -347,10 +492,11 @@ export const registerInvoke = (program: Command) => {
           });
         }
       } catch (error) {
+        const msg = redactSensitiveText(getErrorMessage(error));
         if (cliOptions.json) {
-          console.log(JSON.stringify({ success: false, error: getErrorMessage(error) }));
+          console.log(JSON.stringify({ success: false, error: msg }));
         } else {
-          render(<Text color="red">Error: {getErrorMessage(error)}</Text>);
+          render(<Text color="red">Error: {msg}</Text>);
         }
         process.exit(1);
       }

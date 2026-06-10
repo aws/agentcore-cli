@@ -71,7 +71,7 @@ describe('withCommandRunTelemetry', () => {
   });
 
   it('records duration as a non-negative integer', async () => {
-    await withCommandRunTelemetry('telemetry.disable', {}, async () => {
+    await withCommandRunTelemetry('telemetry.status', {}, async () => {
       await new Promise(r => globalThis.setTimeout(r, 5));
       return { success: true as const };
     });
@@ -90,6 +90,7 @@ describe('withCommandRunTelemetry', () => {
     await withCommandRunTelemetry(
       'create',
       {
+        agent_environment: 'runtime',
         agent_language: 'rust' as never,
         agent_framework: 'strands',
         model_provider: 'bedrock',
@@ -112,6 +113,7 @@ describe('withCommandRunTelemetry', () => {
     await withCommandRunTelemetry(
       'create',
       {
+        agent_environment: 'runtime',
         agent_language: 'python',
         agent_framework: 'strands',
         model_provider: 'bedrock',
@@ -145,23 +147,17 @@ describe('withCommandRunTelemetry', () => {
     expect(sink.metrics).toHaveLength(0);
   });
 
-  it('records failure and returns error result when callback throws', async () => {
+  it('records failure and re-throws when callback throws', async () => {
     type R = { success: true } | { success: false; error: Error };
-    const result = await withCommandRunTelemetry<'telemetry.disable', R>(
-      'telemetry.disable',
-      {},
-      async (): Promise<R> => {
+    await expect(
+      withCommandRunTelemetry<'telemetry.status', R>('telemetry.status', {}, async (): Promise<R> => {
         throw new Error('network timeout');
-      }
-    );
+      })
+    ).rejects.toThrow('network timeout');
 
-    expect(result.success).toBe(false);
-    if (!result.success) {
-      expect(result.error.message).toBe('network timeout');
-    }
     expect(sink.metrics).toHaveLength(1);
     expect(sink.metrics[0]!.attrs).toMatchObject({
-      command: 'telemetry.disable',
+      command: 'telemetry.status',
       exit_reason: 'failure',
       error_name: 'UnknownError',
     });
@@ -172,6 +168,7 @@ describe('withCommandRunTelemetry', () => {
       await withCommandRunTelemetry(
         'dev',
         {
+          agent_environment: 'runtime',
           dev_action: 'server',
           ui_mode: 'terminal',
           has_stream: false,
@@ -204,6 +201,7 @@ describe('withCommandRunTelemetry', () => {
       await withCommandRunTelemetry(
         'dev',
         {
+          agent_environment: 'runtime',
           dev_action: 'server',
           ui_mode: 'terminal',
           has_stream: false,
@@ -229,6 +227,7 @@ describe('withCommandRunTelemetry', () => {
       await withCommandRunTelemetry(
         'dev',
         {
+          agent_environment: 'runtime',
           dev_action: 'server',
           ui_mode: 'terminal',
           has_stream: false,
@@ -249,6 +248,7 @@ describe('withCommandRunTelemetry', () => {
       await withCommandRunTelemetry(
         'dev',
         {
+          agent_environment: 'runtime',
           dev_action: 'server',
           ui_mode: 'terminal',
           has_stream: false,
@@ -274,20 +274,23 @@ describe('withCommandRunTelemetry', () => {
     });
 
     it('recorder.set() called before throw is preserved in telemetry', async () => {
-      await withCommandRunTelemetry(
-        'dev',
-        {
-          dev_action: 'server',
-          ui_mode: 'terminal',
-          has_stream: false,
-          agent_protocol: 'http',
-          invoke_count: 0,
-        },
-        async recorder => {
-          recorder.set({ agent_protocol: 'a2a' });
-          throw new Error('crash');
-        }
-      );
+      await expect(
+        withCommandRunTelemetry(
+          'dev',
+          {
+            agent_environment: 'runtime',
+            dev_action: 'server',
+            ui_mode: 'terminal',
+            has_stream: false,
+            agent_protocol: 'http',
+            invoke_count: 0,
+          },
+          async recorder => {
+            recorder.set({ agent_protocol: 'a2a' });
+            throw new Error('crash');
+          }
+        )
+      ).rejects.toThrow('crash');
 
       expect(sink.metrics).toHaveLength(1);
       expect(sink.metrics[0]!.attrs).toMatchObject({

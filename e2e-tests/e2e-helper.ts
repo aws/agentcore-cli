@@ -6,12 +6,9 @@ import {
   retry,
   spawnAndCollect,
 } from '../src/test-utils/index.js';
-import {
-  BedrockAgentCoreControlClient,
-  DeleteApiKeyCredentialProviderCommand,
-  GetAgentRuntimeCommand,
-  ListApiKeyCredentialProvidersCommand,
-} from '@aws-sdk/client-bedrock-agentcore-control';
+import { deleteCredentialProvider } from './utils/credential-provider-cleanup.js';
+import { getLogger } from './utils/logger.js';
+import { BedrockAgentCoreControlClient, GetAgentRuntimeCommand } from '@aws-sdk/client-bedrock-agentcore-control';
 import { execSync } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
 import { mkdir, readFile, rm, writeFile } from 'node:fs/promises';
@@ -25,24 +22,43 @@ const baseCanRun = prereqs.npm && prereqs.git && prereqs.uv && hasAws;
 interface E2EConfig {
   framework: string;
   modelProvider: string;
-  requiredEnvVar?: string;
+  /** Env var holding the API key — must be set for the suite to run, and its value is passed as --api-key. */
+  apiKeyEnvVar?: string;
+  /** Additional env vars that must all be set for the suite to run. */
+  requiredEnvVars?: string[];
   build?: string;
   memory?: string;
   /** Language for the agent project. Defaults to 'Python'. */
   language?: 'Python' | 'TypeScript';
   /** Skip logs and traces tests. */
   skipObservability?: boolean;
+  skipInvoke?: boolean;
   /** Lifecycle configuration to pass via --idle-timeout / --max-lifetime flags. */
   lifecycleConfig?: {
     idleTimeout?: number;
     maxLifetime?: number;
   };
+  /** Custom prompt for the invoke test. Defaults to 'Say hello'. */
+  invokePrompt?: string;
+  /** Optional assertion on the invoke response string. */
+  invokeResponseCheck?: (response: string) => void;
+  /** EFS access point mounts. Requires VPC network mode. */
+  efsAccessPoints?: { accessPointArn: string; mountPath: string }[];
+  /** S3 Files access point mounts. Requires VPC network mode. */
+  s3AccessPoints?: { accessPointArn: string; mountPath: string }[];
+  /** VPC network mode config. Required when using filesystem mounts. */
+  networkConfig?: {
+    networkMode: 'VPC';
+    subnets: string;
+    securityGroups: string;
+  };
 }
 
 export function createE2ESuite(cfg: E2EConfig) {
-  const hasApiKey = !cfg.requiredEnvVar || !!process.env[cfg.requiredEnvVar];
+  const hasRequiredEnvVars =
+    (!cfg.apiKeyEnvVar || !!process.env[cfg.apiKeyEnvVar]) && (cfg.requiredEnvVars ?? []).every(v => !!process.env[v]);
   const needsUv = cfg.language !== 'TypeScript';
-  const canRun = prereqs.npm && prereqs.git && hasAws && hasApiKey && (!needsUv || prereqs.uv);
+  const canRun = prereqs.npm && prereqs.git && hasAws && hasRequiredEnvVars && (!needsUv || prereqs.uv);
 
   describe.sequential(`e2e: ${cfg.framework}/${cfg.modelProvider} — create → deploy → invoke`, () => {
     let testDir: string;
@@ -52,12 +68,10 @@ export function createE2ESuite(cfg: E2EConfig) {
     beforeAll(async () => {
       if (!canRun) return;
 
-      await cleanupStaleCredentialProviders();
-
       testDir = join(tmpdir(), `agentcore-e2e-${randomUUID()}`);
       await mkdir(testDir, { recursive: true });
 
-      agentName = `E2e${cfg.framework.slice(0, 4)}${cfg.modelProvider.slice(0, 4)}${String(Date.now()).slice(-8)}`;
+      agentName = `E2e${cfg.framework.slice(0, 4)}${cfg.modelProvider.slice(0, 4)}${randomUUID().replace(/-/g, '').slice(0, 8)}`;
       const createArgs = [
         'create',
         '--name',
@@ -85,14 +99,30 @@ export function createE2ESuite(cfg: E2EConfig) {
       }
 
       // Pass API key so the credential is registered in the project and .env.local
-      const apiKey = cfg.requiredEnvVar ? process.env[cfg.requiredEnvVar] : undefined;
+      const apiKey = cfg.apiKeyEnvVar ? process.env[cfg.apiKeyEnvVar] : undefined;
       if (apiKey) {
         createArgs.push('--api-key', apiKey);
       }
 
+      if (cfg.networkConfig) {
+        createArgs.push('--network-mode', cfg.networkConfig.networkMode);
+        createArgs.push('--subnets', cfg.networkConfig.subnets);
+        createArgs.push('--security-groups', cfg.networkConfig.securityGroups);
+      }
+
+      for (const ap of cfg.efsAccessPoints ?? []) {
+        createArgs.push('--efs-access-point-arn', ap.accessPointArn);
+        createArgs.push('--efs-mount-path', ap.mountPath);
+      }
+
+      for (const ap of cfg.s3AccessPoints ?? []) {
+        createArgs.push('--s3-access-point-arn', ap.accessPointArn);
+        createArgs.push('--s3-mount-path', ap.mountPath);
+      }
+
       const result = await runAgentCoreCLI(createArgs, testDir);
 
-      expect(result.exitCode, `Create failed: ${result.stderr}`).toBe(0);
+      expect(result.exitCode, `Create failed: stderr=${result.stderr}\n\nstdout=${result.stdout}`).toBe(0);
       const json = parseJsonOutput(result.stdout) as { projectPath: string };
       projectPath = json.projectPath;
 
@@ -108,9 +138,10 @@ export function createE2ESuite(cfg: E2EConfig) {
     }, 600000);
 
     // Container builds go through CodeBuild which is slower and more prone to transient failures.
+    // Memory deployment time can be flaky and take at least 3-5 minutes.
     const isContainerBuild = cfg.build === 'Container';
-    const deployRetries = isContainerBuild ? 3 : 1;
-    const deployTimeout = isContainerBuild ? 900000 : 600000;
+    const deployRetries = isContainerBuild || cfg.memory ? 3 : 1;
+    const deployTimeout = isContainerBuild || cfg.memory ? 900000 : 600000;
 
     it.skipIf(!canRun)(
       'deploys to AWS successfully',
@@ -138,7 +169,7 @@ export function createE2ESuite(cfg: E2EConfig) {
       deployTimeout
     );
 
-    it.skipIf(!canRun)(
+    it.skipIf(!canRun || !!cfg.skipInvoke)(
       'invokes the deployed agent',
       async () => {
         expect(projectPath, 'Project should have been created').toBeTruthy();
@@ -147,7 +178,7 @@ export function createE2ESuite(cfg: E2EConfig) {
         await retry(
           async () => {
             const result = await runAgentCoreCLI(
-              ['invoke', '--prompt', 'Say hello', '--runtime', agentName, '--json'],
+              ['invoke', '--prompt', cfg.invokePrompt ?? 'Say hello', '--runtime', agentName, '--json'],
               projectPath
             );
 
@@ -158,8 +189,12 @@ export function createE2ESuite(cfg: E2EConfig) {
 
             expect(result.exitCode, `Invoke failed: ${result.stderr}`).toBe(0);
 
-            const json = parseJsonOutput(result.stdout) as { success: boolean };
+            const json = parseJsonOutput(result.stdout) as { success: boolean; response?: string };
             expect(json.success, 'Invoke should report success').toBe(true);
+            if (cfg.invokeResponseCheck) {
+              expect(json.response, 'Invoke should return a non-empty response').toBeTruthy();
+              cfg.invokeResponseCheck(json.response!);
+            }
           },
           3,
           15000
@@ -226,7 +261,7 @@ export function createE2ESuite(cfg: E2EConfig) {
       120000
     );
 
-    it.skipIf(!canRun || !!cfg.skipObservability)(
+    it.skipIf(!canRun || !!cfg.skipObservability || !!cfg.skipInvoke)(
       'logs returns entries from the invocation',
       async () => {
         await retry(
@@ -337,38 +372,6 @@ export function installCdkTarball(projectPath: string): void {
   }
 }
 
-async function deleteCredentialProvider(client: BedrockAgentCoreControlClient, name: string): Promise<void> {
-  try {
-    await client.send(new DeleteApiKeyCredentialProviderCommand({ name }));
-    console.log(`Deleted credential provider: ${name}`);
-  } catch (error) {
-    const code = (error as { name?: string }).name ?? 'Unknown';
-    console.warn(`Failed to delete credential provider ${name}: [${code}]`);
-  }
-}
-
-/**
- * Delete stale E2e* credential providers older than the given max age.
- * Runs in beforeAll to prevent accumulation from previous runs that
- * crashed or timed out before their afterAll teardown could execute.
- */
-export async function cleanupStaleCredentialProviders(maxAgeMs: number = 30 * 60 * 1000): Promise<void> {
-  const region = process.env.AWS_REGION ?? 'us-east-1';
-  const client = new BedrockAgentCoreControlClient({ region });
-  const cutoff = new Date(Date.now() - maxAgeMs);
-
-  let nextToken: string | undefined;
-  do {
-    const response = await client.send(new ListApiKeyCredentialProvidersCommand({ nextToken }));
-    const providers = response.credentialProviders ?? [];
-    const stale = providers.filter(p => p.name?.startsWith('E2e') && p.createdTime && p.createdTime < cutoff);
-
-    await Promise.all(stale.map(p => deleteCredentialProvider(client, p.name!)));
-
-    nextToken = response.nextToken;
-  } while (nextToken);
-}
-
 export async function teardownE2EProject(projectPath: string, agentName: string, modelProvider: string): Promise<void> {
   await spawnAndCollect('agentcore', ['remove', 'all', '--json'], projectPath);
   const result = await spawnAndCollect('agentcore', ['deploy', '--yes', '--json'], projectPath);
@@ -379,7 +382,7 @@ export async function teardownE2EProject(projectPath: string, agentName: string,
   if (modelProvider !== 'Bedrock' && agentName) {
     const region = process.env.AWS_REGION ?? 'us-east-1';
     const client = new BedrockAgentCoreControlClient({ region });
-    await deleteCredentialProvider(client, `${agentName}${modelProvider}`);
+    await deleteCredentialProvider(client, getLogger('teardown-e2e'), `${agentName}${modelProvider}`);
   }
 }
 

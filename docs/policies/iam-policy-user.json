@@ -31,6 +31,20 @@
       "Resource": "*"
     },
     {
+      "Sid": "FilesystemNetworkValidation",
+      "Effect": "Allow",
+      "Action": [
+        "ec2:DescribeSecurityGroups",
+        "ec2:DescribeSubnets",
+        "elasticfilesystem:DescribeAccessPoints",
+        "elasticfilesystem:DescribeMountTargets",
+        "elasticfilesystem:DescribeMountTargetSecurityGroups",
+        "s3files:ListMountTargets",
+        "s3files:GetMountTarget"
+      ],
+      "Resource": "*"
+    },
+    {
       "Sid": "AgentInvocation",
       "Effect": "Allow",
       "Action": [
@@ -72,6 +86,33 @@
         "bedrock-agentcore:SetTokenVaultCMK"
       ],
       "Resource": "*"
+    },
+    {
+      "Sid": "PaymentCredentialManagement",
+      "Effect": "Allow",
+      "Action": [
+        "bedrock-agentcore:GetPaymentCredentialProvider",
+        "bedrock-agentcore:CreatePaymentCredentialProvider",
+        "bedrock-agentcore:UpdatePaymentCredentialProvider",
+        "bedrock-agentcore:DeletePaymentCredentialProvider",
+        "bedrock-agentcore:GetPaymentManager",
+        "bedrock-agentcore:ListPaymentSessions",
+        "bedrock-agentcore:CreatePaymentSession"
+      ],
+      "Resource": "*"
+    },
+    {
+      "Sid": "PaymentCredentialSecrets",
+      "Effect": "Allow",
+      "Action": [
+        "secretsmanager:CreateSecret",
+        "secretsmanager:PutSecretValue",
+        "secretsmanager:GetSecretValue",
+        "secretsmanager:DescribeSecret",
+        "secretsmanager:TagResource",
+        "secretsmanager:DeleteSecret"
+      ],
+      "Resource": "arn:aws:secretsmanager:*:ACCOUNT_ID:secret:bedrock-agentcore-identity!default/payment/*"
     },
     {
       "Sid": "PolicyGeneration",

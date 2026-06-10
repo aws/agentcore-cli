@@ -5,6 +5,7 @@ import type {
   EvaluatorDeployedState,
   MemoryDeployedState,
   OnlineEvalDeployedState,
+  PaymentDeployedState,
   PolicyDeployedState,
   PolicyEngineDeployedState,
   RuntimeEndpointDeployedState,
@@ -407,6 +408,73 @@ export function parseDatasetOutputs(
   return datasets;
 }
 
+/**
+ * Strip underscores from a name to produce a valid CDK logical ID segment.
+ * Must match the toCdkId() function in the vended cdk-stack.ts.
+ */
+function toPaymentCdkId(name: string): string {
+  return name.replace(/_/g, '');
+}
+
+/**
+ * Parse payment-related CfnOutputs from a deployed stack.
+ * Output keys follow the pattern: Payment{name}ManagerArn, Payment{name}ManagerId, etc.
+ * Names have underscores stripped to produce valid CDK logical IDs.
+ */
+export function parsePaymentOutputs(
+  outputs: StackOutputs,
+  paymentSpecs: {
+    name: string;
+    authorizerType?: 'AWS_IAM' | 'CUSTOM_JWT';
+    autoPayment?: boolean;
+    paymentToolAllowlist?: string[];
+    networkPreferences?: string[];
+    connectors: { name: string; credentialProviderArn: string; credentialProviderName?: string }[];
+  }[]
+): Record<string, PaymentDeployedState> {
+  const payments: Record<string, PaymentDeployedState> = {};
+
+  for (const spec of paymentSpecs) {
+    const mgrId = toPaymentCdkId(spec.name);
+    const managerArn = outputs[`Payment${mgrId}ManagerArn`];
+    const managerId = outputs[`Payment${mgrId}ManagerId`];
+    const processPaymentRoleArn = outputs[`Payment${mgrId}ProcessPaymentRoleArn`];
+    const resourceRetrievalRoleArn = outputs[`Payment${mgrId}ResourceRetrievalRoleArn`];
+
+    if (!managerArn || !managerId || !processPaymentRoleArn || !resourceRetrievalRoleArn) continue;
+
+    const connectors: Record<
+      string,
+      { connectorId: string; credentialProviderArn: string; credentialProviderName?: string }
+    > = {};
+    for (const conn of spec.connectors) {
+      const connId = toPaymentCdkId(conn.name);
+      const connectorId = outputs[`Payment${mgrId}${connId}ConnectorId`];
+      if (connectorId) {
+        connectors[conn.name] = {
+          connectorId,
+          credentialProviderArn: conn.credentialProviderArn,
+          credentialProviderName: conn.credentialProviderName,
+        };
+      }
+    }
+
+    payments[spec.name] = {
+      managerId,
+      managerArn,
+      connectors,
+      processPaymentRoleArn,
+      resourceRetrievalRoleArn,
+      ...(spec.authorizerType && { authorizerType: spec.authorizerType }),
+      ...(spec.autoPayment !== undefined && { autoPayment: spec.autoPayment }),
+      ...(spec.paymentToolAllowlist && { paymentToolAllowlist: spec.paymentToolAllowlist }),
+      ...(spec.networkPreferences && { networkPreferences: spec.networkPreferences }),
+    };
+  }
+
+  return payments;
+}
+
 export interface BuildDeployedStateOptions {
   targetName: string;
   stackName: string;
@@ -434,6 +502,7 @@ export interface BuildDeployedStateOptions {
     }
   >;
   datasets?: Record<string, DatasetDeployedState>;
+  payments?: Record<string, PaymentDeployedState>;
 }
 
 /**
@@ -456,6 +525,7 @@ export function buildDeployedState(opts: BuildDeployedStateOptions): DeployedSta
     runtimeEndpoints,
     harnesses,
     datasets,
+    payments,
   } = opts;
   const targetState: TargetDeployedState = {
     resources: {
@@ -520,6 +590,11 @@ export function buildDeployedState(opts: BuildDeployedStateOptions): DeployedSta
   // Add harness state if harnesses exist
   if (harnesses && Object.keys(harnesses).length > 0) {
     targetState.resources!.harnesses = harnesses;
+  }
+
+  // Add payment state from CFN outputs (or preserve credential provider state)
+  if (payments && Object.keys(payments).length > 0) {
+    targetState.resources!.payments = payments;
   }
 
   return {

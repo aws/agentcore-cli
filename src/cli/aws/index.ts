@@ -55,6 +55,14 @@ export {
   type InvokeHarnessOptions,
 } from './agentcore-harness';
 export {
+  createPaymentCredentialProvider,
+  updatePaymentCredentialProvider,
+  getPaymentCredentialProvider,
+  deletePaymentCredentialProvider,
+  getPaymentManager,
+  getOrCreatePaymentSession,
+} from './agentcore-payments';
+export {
   DEFAULT_RUNTIME_USER_ID,
   executeBashCommand,
   invokeA2ARuntime,

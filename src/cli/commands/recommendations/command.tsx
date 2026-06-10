@@ -1,6 +1,6 @@
+import { COMMAND_DESCRIPTIONS } from '../../constants';
 import { getErrorMessage } from '../../errors';
 import { listAllRecommendations } from '../../operations/recommendation';
-import { COMMAND_DESCRIPTIONS } from '../../tui/copy';
 import { requireProject } from '../../tui/guards';
 import type { Command } from '@commander-js/extra-typings';
 import { Text, render } from 'ink';

@@ -26,6 +26,7 @@ describe('RemoveScreen', () => {
         abTestCount={0}
         runtimeEndpointCount={1}
         datasetCount={0}
+        paymentCount={1}
       />
     );
 
@@ -61,6 +62,7 @@ describe('RemoveScreen', () => {
         abTestCount={0}
         runtimeEndpointCount={0}
         datasetCount={0}
+        paymentCount={0}
       />
     );
 
@@ -92,6 +94,7 @@ describe('RemoveScreen', () => {
         abTestCount={2}
         runtimeEndpointCount={0}
         datasetCount={0}
+        paymentCount={0}
       />
     );
 
@@ -121,6 +124,7 @@ describe('RemoveScreen', () => {
         abTestCount={0}
         runtimeEndpointCount={0}
         datasetCount={0}
+        paymentCount={0}
       />
     );
 

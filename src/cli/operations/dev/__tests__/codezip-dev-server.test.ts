@@ -21,6 +21,7 @@ const mockExistsSync = vi.mocked(existsSync);
 
 vi.mock('../../../../lib/utils/platform', () => ({
   getVenvExecutable: (venvPath: string, executable: string) => `${venvPath}/bin/${executable}`,
+  isWindows: false,
 }));
 
 function createMockChildProcess() {

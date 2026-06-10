@@ -1,5 +1,6 @@
 import type { RemovableGatewayTarget, RemovalPreview } from '../../../operations/remove';
-import { ErrorPrompt, Panel, Screen } from '../../components';
+import { paymentManagerPrimitive } from '../../../primitives/registry';
+import { ErrorPrompt, Panel, Screen, SelectScreen } from '../../components';
 import {
   useRemovableABTests,
   useRemovableAgents,
@@ -12,6 +13,7 @@ import {
   useRemovableIdentities,
   useRemovableMemories,
   useRemovableOnlineEvalConfigs,
+  useRemovablePaymentManagers,
   useRemovablePolicies,
   useRemovablePolicyEngines,
   useRemovableRuntimeEndpoints,
@@ -70,6 +72,7 @@ type FlowState =
   | { name: 'select-config-bundle' }
   | { name: 'select-ab-test' }
   | { name: 'select-runtime-endpoint' }
+  | { name: 'select-payment' }
   | { name: 'confirm-agent'; agentName: string; preview: RemovalPreview }
   | { name: 'confirm-gateway'; gatewayName: string; preview: RemovalPreview }
   | { name: 'confirm-gateway-target'; tool: RemovableGatewayTarget; preview: RemovalPreview }
@@ -83,6 +86,7 @@ type FlowState =
   | { name: 'confirm-config-bundle'; bundleName: string; preview: RemovalPreview }
   | { name: 'confirm-ab-test'; testName: string; preview: RemovalPreview }
   | { name: 'confirm-runtime-endpoint'; endpointName: string; preview: RemovalPreview }
+  | { name: 'confirm-payment'; managerName: string; preview: RemovalPreview }
   | { name: 'loading'; message: string }
   | { name: 'harness-success'; harnessName: string; logFilePath?: string }
   | { name: 'agent-success'; agentName: string; logFilePath?: string }
@@ -98,6 +102,7 @@ type FlowState =
   | { name: 'config-bundle-success'; bundleName: string; logFilePath?: string }
   | { name: 'ab-test-success'; testName: string; logFilePath?: string }
   | { name: 'runtime-endpoint-success'; endpointName: string; logFilePath?: string }
+  | { name: 'payment-success'; managerName: string }
   | { name: 'remove-all' }
   | { name: 'error'; message: string };
 
@@ -125,6 +130,9 @@ interface RemoveFlowProps {
     | 'config-bundle'
     | 'ab-test'
     | 'dataset'
+    | 'payment'
+    | 'payment-manager'
+    | 'payment-connector'
     | 'all';
   /** Initial resource name to auto-select (for CLI --name flag) */
   initialResourceName?: string;
@@ -169,6 +177,10 @@ export function RemoveFlow({
         return { name: 'select-ab-test' };
       case 'runtime-endpoint':
         return { name: 'select-runtime-endpoint' };
+      case 'payment':
+      case 'payment-manager':
+      case 'payment-connector':
+        return { name: 'select-payment' };
       case 'all':
         return { name: 'remove-all' };
       default:
@@ -208,6 +220,7 @@ export function RemoveFlow({
     isLoading: isLoadingRuntimeEndpoints,
     refresh: refreshRuntimeEndpoints,
   } = useRemovableRuntimeEndpoints();
+  const { paymentManagers, isLoading: isLoadingPayments, refresh: refreshPayments } = useRemovablePaymentManagers();
 
   // Check if any data is still loading
   const isLoading =
@@ -223,7 +236,8 @@ export function RemoveFlow({
     isLoadingPolicyEngines ||
     isLoadingPolicies ||
     isLoadingConfigBundles ||
-    isLoadingRuntimeEndpoints;
+    isLoadingRuntimeEndpoints ||
+    isLoadingPayments;
 
   // Preview hook
   const {
@@ -294,6 +308,7 @@ export function RemoveFlow({
         'config-bundle-success',
         'ab-test-success',
         'runtime-endpoint-success',
+        'payment-success',
       ];
       if (successStates.includes(flow.name)) {
         onExit();
@@ -347,6 +362,9 @@ export function RemoveFlow({
         break;
       case 'runtime-endpoint':
         setFlow({ name: 'select-runtime-endpoint' });
+        break;
+      case 'payment':
+        setFlow({ name: 'select-payment' });
         break;
       case 'all':
         setFlow({ name: 'remove-all' });
@@ -668,6 +686,28 @@ export function RemoveFlow({
     [loadRuntimeEndpointPreview, force, removeRuntimeEndpointOp]
   );
 
+  const handleSelectPaymentManager = useCallback(
+    async (managerName: string) => {
+      try {
+        const preview = await paymentManagerPrimitive.previewRemove(managerName);
+        if (force) {
+          setFlow({ name: 'loading', message: `Removing payment manager ${managerName}...` });
+          const removeResult = await paymentManagerPrimitive.remove(managerName);
+          if (removeResult.success) {
+            setFlow({ name: 'payment-success', managerName });
+          } else {
+            setFlow({ name: 'error', message: removeResult.error?.message ?? 'Failed to remove payment manager' });
+          }
+        } else {
+          setFlow({ name: 'confirm-payment', managerName, preview });
+        }
+      } catch (err) {
+        setFlow({ name: 'error', message: err instanceof Error ? err.message : String(err) });
+      }
+    },
+    [force]
+  );
+
   // Auto-select resource when initialResourceName is provided and data is loaded
   useEffect(() => {
     if (!initialResourceName || isLoading || hasTriggeredInitialSelection.current) {
@@ -716,6 +756,10 @@ export function RemoveFlow({
         case 'dataset':
           void handleSelectDataset(initialResourceName);
           break;
+        case 'payment':
+        case 'payment-manager':
+          void handleSelectPaymentManager(initialResourceName);
+          break;
       }
     }, 0);
   }, [
@@ -734,6 +778,7 @@ export function RemoveFlow({
     handleSelectConfigBundle,
     handleSelectABTest,
     handleSelectRuntimeEndpoint,
+    handleSelectPaymentManager,
   ]);
 
   // Confirm handlers - pass preview for logging
@@ -1010,6 +1055,7 @@ export function RemoveFlow({
       refreshPolicies(),
       refreshConfigBundles(),
       refreshRuntimeEndpoints(),
+      refreshPayments(),
     ]);
   }, [
     refreshAgents,
@@ -1025,6 +1071,7 @@ export function RemoveFlow({
     refreshPolicies,
     refreshConfigBundles,
     refreshRuntimeEndpoints,
+    refreshPayments,
   ]);
 
   // Select screen - wait for data to load to avoid arrow position issues
@@ -1050,6 +1097,7 @@ export function RemoveFlow({
         abTestCount={abTests.length}
         runtimeEndpointCount={runtimeEndpoints.length}
         datasetCount={datasets.length}
+        paymentCount={paymentManagers.length}
       />
     );
   }
@@ -1249,6 +1297,28 @@ export function RemoveFlow({
     );
   }
 
+  if (flow.name === 'select-payment') {
+    if (isLoading) return null;
+    if (paymentManagers.length === 0) {
+      return (
+        <Screen title="Remove Payment" onExit={() => setFlow({ name: 'select' })}>
+          <Panel>
+            <Text dimColor>No payment managers to remove.</Text>
+          </Panel>
+        </Screen>
+      );
+    }
+    const items = paymentManagers.map(m => ({ id: m.name, title: m.name, description: 'Payment manager' }));
+    return (
+      <SelectScreen
+        title="Select Payment Manager to Remove"
+        items={items}
+        onSelect={item => void handleSelectPaymentManager(item.id)}
+        onExit={() => setFlow({ name: 'select' })}
+      />
+    );
+  }
+
   // Confirmation screens
   if (flow.name === 'confirm-agent') {
     return (
@@ -1400,6 +1470,27 @@ export function RemoveFlow({
         preview={flow.preview}
         onConfirm={() => void handleConfirmRuntimeEndpoint(flow.endpointName, flow.preview)}
         onCancel={() => setFlow({ name: 'select-runtime-endpoint' })}
+      />
+    );
+  }
+
+  if (flow.name === 'confirm-payment') {
+    return (
+      <RemoveConfirmScreen
+        title={`Remove Payment Manager: ${flow.managerName}`}
+        preview={flow.preview}
+        onConfirm={() => {
+          void (async () => {
+            setFlow({ name: 'loading', message: `Removing payment manager ${flow.managerName}...` });
+            const result = await paymentManagerPrimitive.remove(flow.managerName);
+            if (result.success) {
+              setFlow({ name: 'payment-success', managerName: flow.managerName });
+            } else {
+              setFlow({ name: 'error', message: result.error?.message ?? 'Failed to remove payment manager' });
+            }
+          })();
+        }}
+        onCancel={() => setFlow({ name: 'select-payment' })}
       />
     );
   }
@@ -1620,6 +1711,21 @@ export function RemoveFlow({
         message={`Removed runtime endpoint: ${flow.endpointName}`}
         detail="Runtime endpoint removed from agentcore.json. Deploy with `agentcore deploy` to apply changes."
         logFilePath={flow.logFilePath}
+        onRemoveAnother={() => {
+          resetAll();
+          void refreshAll().then(() => setFlow({ name: 'select' }));
+        }}
+        onExit={onExit}
+      />
+    );
+  }
+
+  if (flow.name === 'payment-success') {
+    return (
+      <RemoveSuccessScreen
+        isInteractive={isInteractive}
+        message={`Removed payment manager: ${flow.managerName}`}
+        detail="Payment manager and connectors removed. Deploy with `agentcore deploy` to tear down AWS resources."
         onRemoveAnother={() => {
           resetAll();
           void refreshAll().then(() => setFlow({ name: 'select' }));

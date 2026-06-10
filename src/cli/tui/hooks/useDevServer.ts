@@ -110,7 +110,8 @@ export function useDevServer(options: {
 
       // Load env vars from deployed state + agentcore/.env
       if (root) {
-        const devEnv = await loadDevEnv(options.workingDir);
+        const selectedRuntime = options.agentName ? cfg?.runtimes.find(r => r.name === options.agentName) : undefined;
+        const devEnv = await loadDevEnv(options.workingDir, selectedRuntime);
         setEnvVars(devEnv.envVars);
 
         // Show warning only when some configured memories aren't deployed yet

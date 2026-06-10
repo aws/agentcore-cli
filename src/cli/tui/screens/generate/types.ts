@@ -1,9 +1,11 @@
 import type {
   BuildType,
+  EfsAccessPointConfig,
   ModelProvider,
   NetworkMode,
   ProtocolMode,
   RuntimeAuthorizerType,
+  S3FilesAccessPointConfig,
   SDKFramework,
   TargetLanguage,
 } from '../../../../schema';
@@ -30,6 +32,12 @@ export type GenerateStep =
   | 'idleTimeout'
   | 'maxLifetime'
   | 'sessionStorageMountPath'
+  | 'efsArn'
+  | 'efsMountPath'
+  | 'efsAddAnother'
+  | 's3Arn'
+  | 's3MountPath'
+  | 's3AddAnother'
   | 'confirm';
 
 export type MemoryOption = 'none' | 'shortTerm' | 'longAndShortTerm';
@@ -64,6 +72,10 @@ export interface GenerateConfig {
   maxLifetime?: number;
   /** Mount path for session filesystem storage (e.g. /mnt/session-storage) */
   sessionStorageMountPath?: string;
+  /** EFS access point mounts configured for this agent */
+  efsAccessPoints?: EfsAccessPointConfig[];
+  /** S3 Files access point mounts configured for this agent */
+  s3AccessPoints?: S3FilesAccessPointConfig[];
   /** When true, create a config bundle wired into the agent template */
   withConfigBundle?: boolean;
 }
@@ -101,6 +113,12 @@ export const STEP_LABELS: Record<GenerateStep, string> = {
   idleTimeout: 'Idle Timeout',
   maxLifetime: 'Max Lifetime',
   sessionStorageMountPath: 'Session Storage',
+  efsArn: 'EFS ARN',
+  efsMountPath: 'EFS Path',
+  efsAddAnother: 'Add EFS',
+  s3Arn: 'S3 Files ARN',
+  s3MountPath: 'S3 Files Path',
+  s3AddAnother: 'Add S3 Files',
   confirm: 'Confirm',
 };
 
@@ -192,7 +210,7 @@ export const ADVANCED_SETTING_OPTIONS = [
   { id: 'headers', title: 'Request header allowlist', description: 'Allow custom headers through to your agent' },
   { id: 'auth', title: 'Custom auth (JWT)', description: 'OIDC-based token validation for inbound requests' },
   { id: 'lifecycle', title: 'Lifecycle timeouts', description: 'Idle timeout & max instance lifetime' },
-  { id: 'filesystem', title: 'Session filesystem storage', description: 'Persist files across session stop/resume' },
+  { id: 'filesystem', title: 'Filesystem mounts', description: 'Session storage, EFS, and S3 Files mounts' },
   {
     id: 'configBundle',
     title: 'Config bundle [preview]',

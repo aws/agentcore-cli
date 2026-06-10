@@ -9,7 +9,7 @@ const tmp = createTempConfig('fs-sink');
 const outputDir = join(tmp.configDir, 'telemetry');
 
 function createSink(opts: { dir?: string; log?: (msg: string) => void } = {}) {
-  const filePath = join(opts.dir ?? outputDir, 'test-session.json');
+  const filePath = join(opts.dir ?? outputDir, 'test-session.jsonl');
   return new FileSystemSink({ filePath, log: opts.log });
 }
 
@@ -31,7 +31,7 @@ describe('FileSystemSink', () => {
     sink.record('cli.command_run', 42, { command_group: 'deploy', command: 'deploy', exit_reason: 'success' });
     await sink.flush();
 
-    const entries = await readJsonl(join(outputDir, 'test-session.json'));
+    const entries = await readJsonl(join(outputDir, 'test-session.jsonl'));
     expect(entries).toHaveLength(1);
     expect(entries[0]).toMatchObject({
       metric: 'cli.command_run',
@@ -46,7 +46,7 @@ describe('FileSystemSink', () => {
     sink.record('cli.command_run', 20, { command_group: 'add', command: 'add.memory' });
     await sink.flush();
 
-    const entries = await readJsonl(join(outputDir, 'test-session.json'));
+    const entries = await readJsonl(join(outputDir, 'test-session.jsonl'));
     expect(entries).toHaveLength(2);
     expect(entries[0]).toMatchObject({ value: 10 });
     expect(entries[1]).toMatchObject({ value: 20 });
@@ -54,7 +54,7 @@ describe('FileSystemSink', () => {
 
   it('creates output directory if it does not exist', async () => {
     const nested = join(tmp.testDir, 'deep', 'nested', 'telemetry');
-    const filePath = join(nested, 'test.json');
+    const filePath = join(nested, 'test.jsonl');
     const sink = new FileSystemSink({ filePath });
     sink.record('cli.command_run', 1, { command_group: 'status', command: 'status' });
     await sink.flush();
@@ -76,7 +76,7 @@ describe('FileSystemSink', () => {
 
     expect(logged).toHaveLength(1);
     expect(logged[0]).toContain('[audit mode]');
-    expect(logged[0]).toContain('test-session.json');
+    expect(logged[0]).toContain('test-session.jsonl');
   });
 
   it('shutdown does not log when no records were written', async () => {
@@ -89,8 +89,8 @@ describe('FileSystemSink', () => {
 });
 
 describe('resolveAuditFilePath', () => {
-  it('joins outputDir, entrypoint, and sessionId into a JSON file path', () => {
+  it('joins outputDir, entrypoint, and sessionId into a JSONL file path', () => {
     const path = resolveAuditFilePath('/home/user/.agentcore/telemetry', 'deploy', 'abc-123');
-    expect(path).toBe('/home/user/.agentcore/telemetry/deploy-abc-123.json');
+    expect(path).toBe('/home/user/.agentcore/telemetry/deploy-abc-123.jsonl');
   });
 });

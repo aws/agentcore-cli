@@ -19,6 +19,7 @@ import {
   getSupportedModelProviders,
   isValidKmsKeyArn,
   matchEnumValue,
+  validateApiFormat,
 } from '../../../schema';
 import { ARN_VALIDATION_MESSAGE, isValidArn } from '../shared/arn-utils';
 import { validateHeaderAllowlist } from '../shared/header-utils';
@@ -892,6 +893,14 @@ const VALID_HARNESS_TOOLS = [
 const VALID_GATEWAY_OUTBOUND_AUTH = ['awsIam', 'none', 'oauth'] as const;
 
 export function validateAddHarnessOptions(options: AddHarnessCliOptions): ValidationResult {
+  if (options.apiFormat) {
+    const provider = options.modelProvider ?? 'bedrock';
+    const formatResult = validateApiFormat(options.apiFormat, provider);
+    if (!formatResult.valid) {
+      return { valid: false, error: formatResult.error };
+    }
+  }
+
   if (options.tools) {
     const toolNames = options.tools.split(',').map(s => s.trim());
     for (const tool of toolNames) {

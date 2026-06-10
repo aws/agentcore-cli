@@ -18,8 +18,20 @@ interface InvokeScreenProps {
   /** Custom headers to forward to the agent runtime on every invocation */
   initialHeaders?: Record<string, string>;
   initialBearerToken?: string;
+  /** Called when the user presses 's' to open an interactive shell for the current agent. */
+  onExec?: (result: { runtimeArn: string; region: string; sessionId?: string }) => void;
+  /** True when remounting after a PTY detour — shows [session resumed] hint. False for direct --session-id invocations. */
+  isResume?: boolean;
   /** Pre-select a harness by name, skipping the agent selection screen (preview) */
   initialHarnessName?: string;
+  /** Payment instrument ID (wallet) forwarded on every turn when invoking with payments */
+  initialPaymentInstrumentId?: string;
+  /** Payment session ID (budget) forwarded on every turn when invoking with payments */
+  initialPaymentSessionId?: string;
+  /** Payments end-user identity (wallet owner) forwarded as body user_id on every turn */
+  initialPaymentUserId?: string;
+  /** When true, auto-create/reuse a payment session at TUI start, reused across turns */
+  initialAutoSession?: boolean;
 }
 
 type Mode = 'select-agent' | 'chat' | 'input' | 'token-input';
@@ -146,7 +158,13 @@ export function InvokeScreen({
   initialUserId,
   initialHeaders,
   initialBearerToken,
+  onExec,
+  isResume,
   initialHarnessName,
+  initialPaymentInstrumentId,
+  initialPaymentSessionId,
+  initialPaymentUserId,
+  initialAutoSession,
 }: InvokeScreenProps) {
   const preview = isPreviewEnabled();
   const {
@@ -161,6 +179,8 @@ export function InvokeScreen({
     bearerToken,
     tokenFetchState,
     mcpToolsFetched,
+    paymentsActive,
+    paymentUserId,
     selectAgent,
     setBearerToken,
     fetchBearerToken,
@@ -173,7 +193,12 @@ export function InvokeScreen({
     initialUserId,
     headers: initialHeaders,
     initialBearerToken,
+    isResume,
     initialHarnessName,
+    initialPaymentInstrumentId,
+    initialPaymentSessionId,
+    initialPaymentUserId,
+    initialAutoSession,
   });
   const [mode, setMode] = useState<Mode>(initialHarnessName ? 'input' : 'select-agent');
   const [isExecInput, setIsExecInput] = useState(false);
@@ -364,6 +389,15 @@ export function InvokeScreen({
           return;
         }
 
+        // Open interactive shell for the current agent
+        if (input === 's' && phase === 'ready' && onExec) {
+          const currentRuntimeArn = config?.runtimes[selectedAgent]?.state.runtimeArn;
+          if (currentRuntimeArn && config) {
+            onExec({ runtimeArn: currentRuntimeArn, region: config.target.region, sessionId: sessionId ?? undefined });
+          }
+          return;
+        }
+
         // Scroll controls
         if (key.upArrow) scrollUp(1);
         else if (key.downArrow) scrollDown(1);
@@ -452,10 +486,10 @@ export function InvokeScreen({
           : phase === 'invoking'
             ? '↑↓ scroll'
             : messages.length > 0
-              ? `↑↓ scroll · Enter invoke · Ctrl+N new session · ${backOrQuit}`
+              ? `↑↓ scroll · Enter invoke · Ctrl+N new session${onExec && !isHarnessSelected ? ' · S shell' : ''} · ${backOrQuit}`
               : isMcp
-                ? `Enter to call a tool · Ctrl+N new session · ${backOrQuit}`
-                : `Enter to send a message · ${backOrQuit}`;
+                ? `Enter to call a tool · Ctrl+N new session${onExec && !isHarnessSelected ? ' · S shell' : ''} · ${backOrQuit}`
+                : `Enter to send a message${onExec && !isHarnessSelected ? ' · S shell' : ''} · ${backOrQuit}`;
 
   const headerContent = (
     <Box flexDirection="column">
@@ -489,6 +523,13 @@ export function InvokeScreen({
         <Box>
           <Text>User: </Text>
           <Text color="white">{userId}</Text>
+        </Box>
+      )}
+      {mode !== 'select-agent' && paymentsActive && (
+        <Box>
+          <Text>Payments: </Text>
+          <Text color="green">active</Text>
+          <Text color="gray"> (wallet owner: {paymentUserId ?? 'default-user'})</Text>
         </Box>
       )}
       {mode !== 'select-agent' && isCustomJwt && (

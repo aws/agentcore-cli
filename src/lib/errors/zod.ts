@@ -78,7 +78,7 @@ function formatZodIssue(issue: ZodIssueExt): string {
         return `${path}: invalid "${issue.discriminator}" value`;
       }
       // Pick the most actionable error from union failures (one fix, not all branches)
-      const unionErrors = issue.unionErrors?.flatMap(e => e.issues) ?? issue.errors ?? [];
+      const unionErrors = issue.unionErrors?.flatMap(e => e.issues) ?? issue.errors?.flat() ?? [];
       for (const err of unionErrors) {
         if (err.code === 'invalid_enum_value' || err.code === 'invalid_value') {
           return formatZodIssue(err);

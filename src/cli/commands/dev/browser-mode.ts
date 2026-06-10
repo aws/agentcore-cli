@@ -154,6 +154,11 @@ export async function runBrowserMode(opts: BrowserModeOptions): Promise<void> {
   const { workingDir, project, agentName, harnessName, otelEnvVars = {}, collector } = opts;
 
   const configRoot = findConfigRoot(workingDir);
+  // Browser mode serves multiple agents; we don't know which agent will be
+  // launched until the user picks one in the web UI. Pass no runtime so
+  // payment env vars are emitted for any deployed manager and the spawned
+  // agent decides whether to consume them. Single-agent CLI dev correctly
+  // narrows by runtime via loadDevEnv(workingDir, runtime) elsewhere.
   const { envVars } = await loadDevEnv(workingDir);
 
   const supportedAgents = getDevSupportedAgents(project);

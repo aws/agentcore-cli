@@ -1,3 +1,4 @@
+import { unwrapResult } from '../../lib/result.js';
 import { GLOBAL_CONFIG_DIR, readGlobalConfig } from '../../lib/schemas/io/global-config.js';
 import { TelemetryClient } from './client.js';
 import {
@@ -46,9 +47,16 @@ export class TelemetryClientAccessor {
 }
 
 async function createClient(entrypoint: string, mode: 'cli' | 'tui' = 'cli'): Promise<TelemetryClient> {
-  const [resource, config] = await Promise.all([resolveResourceAttributes(mode), readGlobalConfig()]);
+  const [resourceResult, configResult] = await Promise.all([resolveResourceAttributes(mode), readGlobalConfig()]);
+  if (!resourceResult.success) {
+    // Could not resolve a stable installation id — disable telemetry rather than
+    // emit metrics with an unstable id that breaks attribution across sessions.
+    return new TelemetryClient(new CompositeSink([]));
+  }
+  const { resource } = resourceResult;
+  const { config } = unwrapResult(configResult, { config: {} });
 
-  const [{ enabled }, endpointResult, audit] = await Promise.all([
+  const [{ enabled }, endpoint, audit] = await Promise.all([
     resolveTelemetryPreference(config),
     resolveTelemetryEndpoint(config),
     resolveAuditEnabled(config),
@@ -65,8 +73,12 @@ async function createClient(entrypoint: string, mode: 'cli' | 'tui' = 'cli'): Pr
     sinks.push(new FileSystemSink({ filePath, resource }));
   }
 
-  if (endpointResult.success && enabled) {
-    sinks.push(new OtelMetricSink({ endpoint: endpointResult.url, resource }));
+  if (enabled) {
+    try {
+      sinks.push(new OtelMetricSink({ endpoint, resource }));
+    } catch {
+      // Telemetry is best-effort — skip the network sink rather than crash.
+    }
   }
 
   return new TelemetryClient(new CompositeSink(sinks));

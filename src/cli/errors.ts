@@ -108,6 +108,34 @@ export function isExpiredTokenError(err: unknown): boolean {
 }
 
 /**
+ * Checks if an error indicates a service quota or resource limit has been exceeded.
+ */
+export function isQuotaExceededError(err: unknown): boolean {
+  if (!err || typeof err !== 'object') {
+    return false;
+  }
+
+  const error = err as Record<string, unknown>;
+
+  if (
+    error.code === 'ServiceQuotaExceededException' ||
+    error.code === 'LimitExceededException' ||
+    error.code === 'TooManyRequestsException'
+  ) {
+    return true;
+  }
+
+  const message = getErrorMessage(err).toLowerCase();
+  return (
+    message.includes('quota exceeded') ||
+    message.includes('limit exceeded') ||
+    message.includes('too many') ||
+    message.includes('maximum number') ||
+    message.includes('maxmanagers')
+  );
+}
+
+/**
  * Checks if an error indicates the CloudFormation stack is in a transitional state.
  * These errors occur when trying to deploy to a stack that is currently being updated.
  */

@@ -52,6 +52,7 @@ export interface AgentRenderConfig {
   hasMemory: boolean;
   hasIdentity: boolean;
   hasGateway: boolean;
+  hasPayment: boolean;
   /** Whether agent is deployed in VPC mode (affects example MCP endpoints) */
   isVpc: boolean;
   /** Build type: CodeZip (default) or Container */
@@ -70,6 +71,12 @@ export interface AgentRenderConfig {
   dockerfile?: string;
   /** Session storage mount path — when set, file read/write tools are included */
   sessionStorageMountPath?: string;
+  /** EFS access point mounts — one set of read/write/list tools generated per mount */
+  efsMounts?: { mountPath: string }[];
+  /** S3 Files access point mounts — one set of read/write/list tools generated per mount */
+  s3Mounts?: { mountPath: string }[];
+  /** True when any filesystem mount is configured — drives `import os` in templates */
+  needsOs?: boolean;
   /** Whether to wrap entrypoint with opentelemetry-instrument. Defaults to true. */
   enableOtel?: boolean;
   /** Whether a config bundle is wired into the agent template */

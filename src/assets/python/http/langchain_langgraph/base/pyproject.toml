@@ -15,7 +15,7 @@ dependencies = [
     "mcp >= 1.19.0",
     "langchain-mcp-adapters >= 0.1.11",
     "langchain >= 1.0.3",
-    "bedrock-agentcore >= 1.0.3",
+    "bedrock-agentcore >= 1.8.0",
     "botocore[crt] >= 1.35.0",
 {{#if (eq modelProvider "Bedrock")}}
     "langchain-aws >= 1.0.0",
@@ -28,6 +28,7 @@ dependencies = [
 {{/if}}
 {{#if (eq modelProvider "Gemini")}}
     "langchain-google-genai >= 3.0.3",
+    "google-genai >= 1.0.0, < 2.0.0",
 {{/if}}
     {{#if hasGateway}}{{#if (includes gatewayAuthTypes "AWS_IAM")}}"mcp-proxy-for-aws >= 1.1.0",
     {{/if}}{{/if}}

@@ -58,6 +58,7 @@ describe('requiresUv', () => {
       httpGateways: [],
       harnesses: [],
       datasets: [],
+      payments: [],
     };
     expect(requiresUv(project)).toBe(true);
   });
@@ -88,6 +89,7 @@ describe('requiresUv', () => {
       httpGateways: [],
       harnesses: [],
       datasets: [],
+      payments: [],
     };
     expect(requiresUv(project)).toBe(false);
   });
@@ -109,6 +111,7 @@ describe('requiresUv', () => {
       httpGateways: [],
       harnesses: [],
       datasets: [],
+      payments: [],
     };
     expect(requiresUv(project)).toBe(false);
   });
@@ -141,6 +144,7 @@ describe('requiresContainerRuntime', () => {
       httpGateways: [],
       harnesses: [],
       datasets: [],
+      payments: [],
     };
     expect(requiresContainerRuntime(project)).toBe(true);
   });
@@ -171,6 +175,7 @@ describe('requiresContainerRuntime', () => {
       httpGateways: [],
       harnesses: [],
       datasets: [],
+      payments: [],
     };
     expect(requiresContainerRuntime(project)).toBe(false);
   });
@@ -192,6 +197,7 @@ describe('requiresContainerRuntime', () => {
       httpGateways: [],
       harnesses: [],
       datasets: [],
+      payments: [],
     };
     expect(requiresContainerRuntime(project)).toBe(false);
   });
@@ -230,6 +236,7 @@ describe('requiresContainerRuntime', () => {
       httpGateways: [],
       harnesses: [],
       datasets: [],
+      payments: [],
     };
     expect(requiresContainerRuntime(project)).toBe(true);
   });
@@ -302,6 +309,7 @@ describe('checkDependencyVersions', () => {
       httpGateways: [],
       harnesses: [],
       datasets: [],
+      payments: [],
     };
 
     const result = await checkDependencyVersions(project);
@@ -327,6 +335,7 @@ describe('checkDependencyVersions', () => {
       httpGateways: [],
       harnesses: [],
       datasets: [],
+      payments: [],
     };
 
     const result = await checkDependencyVersions(project);
@@ -360,6 +369,7 @@ describe('checkDependencyVersions', () => {
       httpGateways: [],
       harnesses: [],
       datasets: [],
+      payments: [],
     };
 
     const result = await checkDependencyVersions(project);

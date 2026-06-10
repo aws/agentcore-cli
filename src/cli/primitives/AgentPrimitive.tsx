@@ -31,8 +31,17 @@ import {
   LIFECYCLE_TIMEOUT_MAX,
   LIFECYCLE_TIMEOUT_MIN,
 } from '../../schema';
+import { getCredentialProvider } from '../aws/account';
 import type { AddAgentOptions as CLIAddAgentOptions } from '../commands/add/types';
 import { validateAddAgentOptions } from '../commands/add/validate';
+import {
+  buildFilesystemConfigurations,
+  validateAccessPointMounts,
+  validateEfsAccessPointArn,
+  validateFilesystemMountsConfiguration,
+  validateS3FilesAccessPointArn,
+  zipAccessPointPairs,
+} from '../commands/shared/filesystem-utils';
 import { parseAndNormalizeHeaders } from '../commands/shared/header-utils';
 import type { VpcOptions } from '../commands/shared/vpc-utils';
 import { VPC_ENDPOINT_WARNING, parseCommaSeparatedList } from '../commands/shared/vpc-utils';
@@ -68,6 +77,7 @@ import { CredentialPrimitive } from './CredentialPrimitive';
 import { buildAuthorizerConfigFromJwtConfig, createManagedOAuthCredential } from './auth-utils';
 import { computeDefaultCredentialEnvVarName } from './credential-utils';
 import type { AddResult, AddScreenComponent, RemovableResource } from './types';
+import { DescribeSubnetsCommand, EC2Client } from '@aws-sdk/client-ec2';
 import type { Command } from '@commander-js/extra-typings';
 import { mkdirSync } from 'fs';
 import { dirname, join } from 'path';
@@ -102,6 +112,10 @@ export interface AddAgentOptions extends VpcOptions {
   idleTimeout?: number;
   maxLifetime?: number;
   sessionStorageMountPath?: string;
+  efsAccessPointArns?: string[];
+  efsMountPaths?: string[];
+  s3AccessPointArns?: string[];
+  s3MountPaths?: string[];
   withConfigBundle?: boolean;
 }
 
@@ -285,6 +299,30 @@ export class AgentPrimitive extends BasePrimitive<AddAgentOptions, RemovableReso
         'Absolute mount path for session filesystem storage (e.g. /mnt/session-storage) [non-interactive]'
       )
       .option(
+        '--efs-access-point-arn <arn>',
+        'EFS access point ARN (repeatable, paired with --efs-mount-path) [non-interactive]',
+        (val: string, prev: string[]) => [...prev, val],
+        [] as string[]
+      )
+      .option(
+        '--efs-mount-path <path>',
+        'EFS mount path (e.g. /mnt/tools, paired with --efs-access-point-arn) [non-interactive]',
+        (val: string, prev: string[]) => [...prev, val],
+        [] as string[]
+      )
+      .option(
+        '--s3-access-point-arn <arn>',
+        'S3 Files access point ARN (repeatable, paired with --s3-mount-path) [non-interactive]',
+        (val: string, prev: string[]) => [...prev, val],
+        [] as string[]
+      )
+      .option(
+        '--s3-mount-path <path>',
+        'S3 Files mount path (e.g. /mnt/datasets, paired with --s3-access-point-arn) [non-interactive]',
+        (val: string, prev: string[]) => [...prev, val],
+        [] as string[]
+      )
+      .option(
         '--with-config-bundle',
         'Create a config bundle wired into the agent template [preview] [non-interactive]'
       )
@@ -303,6 +341,64 @@ export class AgentPrimitive extends BasePrimitive<AddAgentOptions, RemovableReso
             const validation = validateAddAgentOptions(cliOptions);
             if (!validation.valid) {
               throw new ValidationError(validation.error!);
+            }
+
+            const efsArns = cliOptions.efsAccessPointArn ?? [];
+            const efsPaths = cliOptions.efsMountPath ?? [];
+            const s3Arns = cliOptions.s3AccessPointArn ?? [];
+            const s3Paths = cliOptions.s3MountPath ?? [];
+
+            const efsPairsResult = zipAccessPointPairs(efsArns, efsPaths, 'EFS');
+            if (!efsPairsResult.success) throw new Error(efsPairsResult.error);
+
+            const s3PairsResult = zipAccessPointPairs(s3Arns, s3Paths, 'S3 Files');
+            if (!s3PairsResult.success) throw new Error(s3PairsResult.error);
+
+            const efsValidation = validateAccessPointMounts(efsPairsResult.mounts, validateEfsAccessPointArn);
+            if (!efsValidation.success) throw new Error(efsValidation.error);
+
+            const s3Validation = validateAccessPointMounts(s3PairsResult.mounts, validateS3FilesAccessPointArn);
+            if (!s3Validation.success) throw new Error(s3Validation.error);
+
+            const hasByoFs = efsArns.length > 0 || s3Arns.length > 0;
+            if (hasByoFs && cliOptions.networkMode !== 'VPC') {
+              throw new Error(
+                'EFS and S3 Files filesystem mounts require VPC network mode. Add --network-mode VPC --subnets <ids> --security-groups <ids>.'
+              );
+            }
+
+            // Async filesystem validation (Level 1–3): skip when no BYO FS mounts
+            if (hasByoFs) {
+              const agentSubnetIds = parseCommaSeparatedList(cliOptions.subnets);
+              const agentSgIds = parseCommaSeparatedList(cliOptions.securityGroups);
+              const configRoot = findConfigRoot();
+              const targets = configRoot
+                ? await new ConfigIO({ baseDir: configRoot }).resolveAWSDeploymentTargets()
+                : [];
+              const awsRegion =
+                targets[0]?.region ?? process.env.AWS_REGION ?? process.env.AWS_DEFAULT_REGION ?? 'us-east-1';
+
+              // Resolve agent VPC ID from first subnet (non-fatal: skip Level 2 if unavailable)
+              let agentVpcId: string | undefined;
+              if (agentSubnetIds && agentSubnetIds.length > 0) {
+                try {
+                  const ec2 = new EC2Client({ region: awsRegion, credentials: getCredentialProvider() });
+                  const subnetResp = await ec2.send(new DescribeSubnetsCommand({ SubnetIds: agentSubnetIds }));
+                  agentVpcId = subnetResp.Subnets?.[0]?.VpcId;
+                } catch {
+                  // skip
+                }
+              }
+
+              const fsValidation = await validateFilesystemMountsConfiguration({
+                efsMounts: efsPairsResult.mounts,
+                s3FilesMounts: s3PairsResult.mounts,
+                agentVpcId,
+                agentSubnetIds: agentSubnetIds ?? [],
+                agentSecurityGroupIds: agentSgIds ?? [],
+                region: awsRegion,
+              });
+              if (!fsValidation.success) throw new Error(fsValidation.error);
             }
 
             // Parse custom claims JSON if provided (already validated by validateAddAgentOptions)
@@ -345,6 +441,10 @@ export class AgentPrimitive extends BasePrimitive<AddAgentOptions, RemovableReso
               idleTimeout: cliOptions.idleTimeout ? Number(cliOptions.idleTimeout) : undefined,
               maxLifetime: cliOptions.maxLifetime ? Number(cliOptions.maxLifetime) : undefined,
               sessionStorageMountPath: cliOptions.sessionStorageMountPath,
+              efsAccessPointArns: efsArns,
+              efsMountPaths: efsPaths,
+              s3AccessPointArns: s3Arns,
+              s3MountPaths: s3Paths,
               withConfigBundle: cliOptions.withConfigBundle,
             });
 
@@ -374,6 +474,8 @@ export class AgentPrimitive extends BasePrimitive<AddAgentOptions, RemovableReso
               network_mode: standardize(NetworkModeEnum, cliOptions.networkMode ?? 'PUBLIC'),
               authorizer_type: standardize(AuthorizerType, cliOptions.authorizerType ?? 'NONE'),
               memory_type: standardize(MemoryType, cliOptions.memory ?? 'none'),
+              efs_mount_count: efsArns.length,
+              s3_mount_count: s3Arns.length,
             };
           });
         } else {
@@ -462,6 +564,14 @@ export class AgentPrimitive extends BasePrimitive<AddAgentOptions, RemovableReso
       idleRuntimeSessionTimeout: options.idleTimeout,
       maxLifetime: options.maxLifetime,
       sessionStorageMountPath: options.sessionStorageMountPath,
+      efsAccessPoints: (options.efsAccessPointArns ?? []).map((arn, i) => ({
+        accessPointArn: arn,
+        mountPath: (options.efsMountPaths ?? [])[i] ?? '',
+      })),
+      s3AccessPoints: (options.s3AccessPointArns ?? []).map((arn, i) => ({
+        accessPointArn: arn,
+        mountPath: (options.s3MountPaths ?? [])[i] ?? '',
+      })),
       withConfigBundle: options.withConfigBundle,
     };
 
@@ -538,6 +648,14 @@ export class AgentPrimitive extends BasePrimitive<AddAgentOptions, RemovableReso
       idleTimeout: options.idleTimeout,
       maxLifetime: options.maxLifetime,
       sessionStorageMountPath: options.sessionStorageMountPath,
+      efsAccessPoints: (options.efsAccessPointArns ?? []).map((arn, i) => ({
+        accessPointArn: arn,
+        mountPath: (options.efsMountPaths ?? [])[i] ?? '',
+      })),
+      s3AccessPoints: (options.s3AccessPointArns ?? []).map((arn, i) => ({
+        accessPointArn: arn,
+        mountPath: (options.s3MountPaths ?? [])[i] ?? '',
+      })),
     });
   }
 
@@ -614,9 +732,17 @@ export class AgentPrimitive extends BasePrimitive<AddAgentOptions, RemovableReso
       ...(authorizerType && { authorizerType }),
       ...(authorizerConfiguration && { authorizerConfiguration }),
       ...(lifecycleConfiguration && { lifecycleConfiguration }),
-      ...(options.sessionStorageMountPath && {
-        filesystemConfigurations: [{ sessionStorage: { mountPath: options.sessionStorageMountPath } }],
-      }),
+      ...buildFilesystemConfigurations(
+        options.sessionStorageMountPath,
+        (options.efsAccessPointArns ?? []).map((arn, i) => ({
+          accessPointArn: arn,
+          mountPath: (options.efsMountPaths ?? [])[i] ?? '',
+        })),
+        (options.s3AccessPointArns ?? []).map((arn, i) => ({
+          accessPointArn: arn,
+          mountPath: (options.s3MountPaths ?? [])[i] ?? '',
+        }))
+      ),
     };
 
     project.runtimes.push(agent);

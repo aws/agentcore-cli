@@ -1,6 +1,6 @@
+import { COMMAND_DESCRIPTIONS } from '../../constants';
 import { getErrorMessage } from '../../errors';
 import { loadDeployedProjectConfig } from '../../operations/resolve-agent';
-import { COMMAND_DESCRIPTIONS } from '../../tui/copy';
 import { requireProject } from '../../tui/guards';
 import { handleTracesGet, handleTracesList } from './action';
 import type { TracesGetOptions, TracesListOptions } from './types';
