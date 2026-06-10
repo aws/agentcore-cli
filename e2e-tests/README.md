@@ -120,5 +120,5 @@ Feature lifecycle tests: describe what the test exercises end-to-end
 - E2E tests create real AWS resources and **will incur costs**
 - Always include `teardownE2EProject()` in `afterAll` — never skip cleanup
 - Use unique agent names (timestamp suffix) to avoid conflicts with parallel runs
-- Stale credential providers older than 30 minutes are cleaned up automatically in `beforeAll` via
+- Stale credential providers older than 30 minutes are cleaned up automatically in the Vitest `globalSetup` hook via
   `cleanupStaleCredentialProviders()`

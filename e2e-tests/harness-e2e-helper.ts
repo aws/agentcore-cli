@@ -1,12 +1,6 @@
 import { getHarness } from '../src/cli/aws/agentcore-harness.js';
 import { hasAwsCredentials, parseJsonOutput, prereqs, retry, spawnAndCollect } from '../src/test-utils/index.js';
-import {
-  cleanupStaleCredentialProviders,
-  installCdkTarball,
-  runAgentCoreCLI,
-  teardownE2EProject,
-  writeAwsTargets,
-} from './e2e-helper.js';
+import { installCdkTarball, runAgentCoreCLI, teardownE2EProject, writeAwsTargets } from './e2e-helper.js';
 import { randomUUID } from 'node:crypto';
 import { mkdir, readFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
@@ -40,8 +34,6 @@ export function createHarnessE2ESuite(cfg: HarnessE2EConfig) {
 
     beforeAll(async () => {
       if (!canRun) return;
-
-      await cleanupStaleCredentialProviders();
 
       testDir = join(tmpdir(), `agentcore-e2e-harness-${randomUUID()}`);
       await mkdir(testDir, { recursive: true });
