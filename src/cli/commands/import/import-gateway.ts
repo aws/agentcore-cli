@@ -21,6 +21,7 @@ import {
 } from '../../aws/agentcore-control';
 import { ANSI } from '../../constants';
 import { isAccessDeniedError } from '../../errors';
+import { buildApiKeyPlacement } from '../../primitives/api-key-placement';
 import { withCommandRunTelemetry } from '../../telemetry/cli-command-run.js';
 import { executeCdkImportPipeline } from './import-pipeline';
 import {
@@ -222,10 +223,15 @@ function resolveOutboundAuth(
     }
 
     if (config.credentialProviderType === 'API_KEY' && config.credentialProvider?.apiKeyCredentialProvider) {
-      const providerArn = config.credentialProvider.apiKeyCredentialProvider.providerArn;
-      const credentialName = credentials.get(providerArn);
+      const akp = config.credentialProvider.apiKeyCredentialProvider;
+      const credentialName = credentials.get(akp.providerArn);
       if (credentialName) {
-        return { success: true, auth: { type: 'API_KEY', credentialName } };
+        const apiKey = buildApiKeyPlacement({
+          location: akp.credentialLocation,
+          parameterName: akp.credentialParameterName,
+          prefix: akp.credentialPrefix,
+        });
+        return { success: true, auth: { type: 'API_KEY', credentialName, ...(apiKey && { apiKey }) } };
       }
       return failureResult(
         new ValidationError(

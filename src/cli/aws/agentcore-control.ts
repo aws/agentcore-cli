@@ -1004,7 +1004,12 @@ export interface GatewayTargetDetail {
     credentialProviderType: string;
     credentialProvider?: {
       oauthCredentialProvider?: { providerArn: string; scopes?: string[] };
-      apiKeyCredentialProvider?: { providerArn: string };
+      apiKeyCredentialProvider?: {
+        providerArn: string;
+        credentialLocation?: string;
+        credentialParameterName?: string;
+        credentialPrefix?: string;
+      };
     };
   }[];
 }
@@ -1146,7 +1151,12 @@ export async function getGatewayTargetDetail(options: {
               }
             : undefined,
           apiKeyCredentialProvider: c.credentialProvider.apiKeyCredentialProvider
-            ? { providerArn: c.credentialProvider.apiKeyCredentialProvider.providerArn ?? '' }
+            ? {
+                providerArn: c.credentialProvider.apiKeyCredentialProvider.providerArn ?? '',
+                credentialLocation: c.credentialProvider.apiKeyCredentialProvider.credentialLocation,
+                credentialParameterName: c.credentialProvider.apiKeyCredentialProvider.credentialParameterName,
+                credentialPrefix: c.credentialProvider.apiKeyCredentialProvider.credentialPrefix,
+              }
             : undefined,
         }
       : undefined,

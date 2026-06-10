@@ -123,6 +123,57 @@ describe('toGatewayTargetSpec — mcpServer targets', () => {
     });
   });
 
+  it('preserves custom API key placement on import', () => {
+    const providerArn = 'arn:aws:bedrock:us-east-1:123456789012:credential-provider/my-apikey';
+    const detail = makeDetail({
+      targetConfiguration: { mcp: { mcpServer: { endpoint: 'https://example.com/mcp' } } },
+      credentialProviderConfigurations: [
+        {
+          credentialProviderType: 'API_KEY',
+          credentialProvider: {
+            apiKeyCredentialProvider: {
+              providerArn,
+              credentialLocation: 'QUERY_PARAMETER',
+              credentialParameterName: 'api_key',
+              credentialPrefix: 'Token',
+            },
+          },
+        },
+      ],
+    });
+    const credentials = new Map<string, string>([[providerArn, 'my-api-key-cred']]);
+    const result = toGatewayTargetSpec(detail, credentials, vi.fn());
+    assert(result.success);
+    expect(result.target?.outboundAuth).toEqual({
+      type: 'API_KEY',
+      credentialName: 'my-api-key-cred',
+      apiKey: { location: 'QUERY_PARAMETER', parameterName: 'api_key', prefix: 'Token' },
+    });
+  });
+
+  it('omits apiKey block when imported placement equals defaults', () => {
+    const providerArn = 'arn:aws:bedrock:us-east-1:123456789012:credential-provider/my-apikey';
+    const detail = makeDetail({
+      targetConfiguration: { mcp: { mcpServer: { endpoint: 'https://example.com/mcp' } } },
+      credentialProviderConfigurations: [
+        {
+          credentialProviderType: 'API_KEY',
+          credentialProvider: {
+            apiKeyCredentialProvider: {
+              providerArn,
+              credentialLocation: 'HEADER',
+              credentialParameterName: 'x-api-key',
+            },
+          },
+        },
+      ],
+    });
+    const credentials = new Map<string, string>([[providerArn, 'my-api-key-cred']]);
+    const result = toGatewayTargetSpec(detail, credentials, vi.fn());
+    assert(result.success);
+    expect(result.target?.outboundAuth).toEqual({ type: 'API_KEY', credentialName: 'my-api-key-cred' });
+  });
+
   it('returns failure when OAuth credential not found in project', () => {
     const providerArn = 'arn:aws:bedrock:us-east-1:123456789012:credential-provider/missing-oauth';
     const detail = makeDetail({
