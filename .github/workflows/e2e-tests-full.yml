@@ -28,7 +28,7 @@ jobs:
       fail-fast: false
       matrix:
         cli-build: [preview, ga]
-        shard: ['1/6', '2/6', '3/6', '4/6', '5/6', '6/6']
+        shard: ['1/5', '2/5', '3/5', '4/5', '5/5']
     steps:
       - uses: actions/checkout@v6
         with:
