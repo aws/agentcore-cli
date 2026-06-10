@@ -88,11 +88,21 @@ echo "=== Setting AWS account env var ==="
 export AWS_ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
 echo "✅ AWS_ACCOUNT_ID=$AWS_ACCOUNT_ID  AWS_REGION=$AWS_REGION"
 
-echo "=== Configuring git (required for agentcore create) ==="
-git config --global user.email "ci@local" 2>/dev/null || true
-git config --global user.name "Local E2E" 2>/dev/null || true
-
 cd "$REPO_ROOT"
+
+echo "=== Verifying git is configured (required for agentcore create) ==="
+git_email="$(git config --global user.email || true)"
+git_name="$(git config --global user.name || true)"
+
+if [ -z "$git_email" ] || [ -z "$git_name" ]; then
+  echo "ERROR: git is not configured. 'agentcore create' requires a global git identity." >&2
+  echo "Set it with:" >&2
+  echo "  git config --global user.email \"you@example.com\"" >&2
+  echo "  git config --global user.name \"Your Name\"" >&2
+  exit 1
+fi
+
+echo "git configured as: $git_name <$git_email>"
 
 echo "=== Installing dependencies ==="
 npm ci
