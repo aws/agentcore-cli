@@ -1,7 +1,8 @@
-import type { ApiGatewayHttpMethod, GatewayTargetType } from '../../../../schema';
+import type { ApiGatewayHttpMethod, ApiKeyOutboundConfig, GatewayTargetType } from '../../../../schema';
 import { ToolNameSchema } from '../../../../schema';
 import { ConfirmReview, Panel, Screen, StepIndicator, TextInput, WizardSelect } from '../../components';
 import type { SelectableItem } from '../../components';
+import { ApiKeyPlacementInput } from '../../components/api-key-placement';
 import { HELP_TEXT } from '../../constants';
 import { useListNavigation } from '../../hooks';
 import { generateUniqueName } from '../../utils';
@@ -67,6 +68,13 @@ export function AddGatewayTargetScreen({
   const [pendingCredType, setPendingCredType] = useState<'OAUTH' | 'API_KEY' | null>(null);
   const [filterPath, setFilterPathLocal] = useState<string | null>(null);
 
+  // When an API_KEY credential is chosen, capture it here and mount the placement
+  // sub-form before finalizing the auth selection. null = no placement step active.
+  const [awaitingApiKeyPlacement, setAwaitingApiKeyPlacement] = useState<{
+    type: 'API_KEY';
+    credentialName: string;
+  } | null>(null);
+
   // ── Step flags ──
   const isGatewayStep = wizard.step === 'gateway';
   const isOutboundAuthStep = wizard.step === 'outbound-auth';
@@ -117,7 +125,7 @@ export function AddGatewayTargetScreen({
   // ── Auth completion callbacks ──
   // Shared handler that routes to the correct wizard setter based on the active step.
   const completeAuth = useCallback(
-    (auth?: { type: 'OAUTH' | 'API_KEY' | 'NONE'; credentialName?: string }) => {
+    (auth?: { type: 'OAUTH' | 'API_KEY' | 'NONE'; credentialName?: string; apiKey?: ApiKeyOutboundConfig }) => {
       if (isApiGatewayAuthStep) {
         wizard.setApiGatewayAuth(auth as ApiGatewayTargetConfig['outboundAuth']);
       } else {
@@ -208,11 +216,11 @@ export function AddGatewayTargetScreen({
       if (item.id === 'create-new') {
         onCreateCredential({ ...wizard.config, outboundAuth: { type: 'API_KEY' } });
       } else {
-        completeAuth({ type: 'API_KEY', credentialName: item.id });
+        setAwaitingApiKeyPlacement({ type: 'API_KEY', credentialName: item.id });
       }
     },
     onExit: () => setPendingCredType(null),
-    isActive: isAuthStep && pendingCredType === 'API_KEY',
+    isActive: isAuthStep && pendingCredType === 'API_KEY' && !awaitingApiKeyPlacement,
   });
 
   // Confirm step
@@ -333,12 +341,27 @@ export function AddGatewayTargetScreen({
           />
         )}
 
-        {isAuthStep && pendingCredType === 'API_KEY' && (
+        {isAuthStep && pendingCredType === 'API_KEY' && !awaitingApiKeyPlacement && (
           <WizardSelect
             title="Select API key credential"
             description="Choose an API key credential for authentication"
             items={apiKeyCredItems}
             selectedIndex={apiKeyCredNav.selectedIndex}
+          />
+        )}
+
+        {/* API key placement sub-form — mounted after a credential is selected. */}
+        {isAuthStep && awaitingApiKeyPlacement && (
+          <ApiKeyPlacementInput
+            onComplete={(placement: ApiKeyOutboundConfig | undefined) => {
+              completeAuth({
+                type: 'API_KEY',
+                credentialName: awaitingApiKeyPlacement.credentialName,
+                ...(placement && { apiKey: placement }),
+              });
+              setAwaitingApiKeyPlacement(null);
+            }}
+            onBack={() => setAwaitingApiKeyPlacement(null)}
           />
         )}
 
@@ -527,6 +550,21 @@ export function AddGatewayTargetScreen({
                 ? [
                     { label: 'Auth Type', value: wizard.config.outboundAuth.type },
                     { label: 'Credential', value: wizard.config.outboundAuth.credentialName ?? 'None' },
+                    ...(wizard.config.outboundAuth.apiKey
+                      ? [
+                          {
+                            label: 'API Key Location',
+                            value: wizard.config.outboundAuth.apiKey.location ?? 'HEADER',
+                          },
+                          {
+                            label: 'API Key Param',
+                            value: wizard.config.outboundAuth.apiKey.parameterName ?? 'x-api-key',
+                          },
+                          ...(wizard.config.outboundAuth.apiKey.prefix
+                            ? [{ label: 'API Key Prefix', value: wizard.config.outboundAuth.apiKey.prefix }]
+                            : []),
+                        ]
+                      : []),
                   ]
                 : wizard.config.targetType === 'apiGateway'
                   ? [{ label: 'Auth Type', value: 'IAM (default)' }]

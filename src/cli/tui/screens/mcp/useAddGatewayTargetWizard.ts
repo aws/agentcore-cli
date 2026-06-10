@@ -1,5 +1,11 @@
 import { APP_DIR, MCP_APP_SUBDIR } from '../../../../lib';
-import type { ApiGatewayHttpMethod, GatewayTargetType, SchemaSource, ToolDefinition } from '../../../../schema';
+import type {
+  ApiGatewayHttpMethod,
+  ApiKeyOutboundConfig,
+  GatewayTargetType,
+  SchemaSource,
+  ToolDefinition,
+} from '../../../../schema';
 import type { AddGatewayTargetStep, GatewayTargetWizardState } from './types';
 import { useCallback, useMemo, useState } from 'react';
 
@@ -137,7 +143,7 @@ export function useAddGatewayTargetWizard(
   );
 
   const setOutboundAuth = useCallback(
-    (outboundAuth: { type: 'OAUTH' | 'API_KEY' | 'NONE'; credentialName?: string }) => {
+    (outboundAuth: { type: 'OAUTH' | 'API_KEY' | 'NONE'; credentialName?: string; apiKey?: ApiKeyOutboundConfig }) => {
       setConfig(c => ({
         ...c,
         outboundAuth,
@@ -177,7 +183,7 @@ export function useAddGatewayTargetWizard(
   );
 
   const setApiGatewayAuth = useCallback(
-    (outboundAuth?: { type: 'API_KEY' | 'NONE'; credentialName?: string }) => {
+    (outboundAuth?: { type: 'API_KEY' | 'NONE'; credentialName?: string; apiKey?: ApiKeyOutboundConfig }) => {
       setConfig(c => ({ ...c, outboundAuth }));
       goToNextStep();
     },
