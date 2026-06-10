@@ -4,5 +4,4 @@ createE2ESuite({
   framework: 'LangChain_LangGraph',
   modelProvider: 'Gemini',
   apiKeyEnvVar: 'GEMINI_API_KEY',
-  skipInvoke: true,
 });
