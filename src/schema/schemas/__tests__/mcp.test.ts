@@ -9,6 +9,7 @@ import {
   AgentCoreGatewayTargetSchema,
   AgentCoreMcpRuntimeToolSchema,
   ApiGatewayConfigSchema,
+  ApiKeyOutboundConfigSchema,
   GatewayExceptionLevelSchema,
   GatewayTargetTypeSchema,
   LambdaFunctionArnConfigSchema,
@@ -1089,6 +1090,10 @@ describe('OutboundAuth apiKey placement', () => {
       outboundAuth: { type: 'OAUTH', credentialName: 'oauth', apiKey: { location: 'HEADER' } },
     });
     expect(r.success).toBe(false);
+    if (!r.success) {
+      const issue = r.error.issues.find(i => i.path.join('.') === 'outboundAuth.apiKey');
+      expect(issue?.message).toBe('apiKey placement is only valid when outboundAuth.type is API_KEY');
+    }
   });
 
   it('still validates an old API_KEY target with no apiKey block (backwards compat)', () => {
@@ -1099,5 +1104,33 @@ describe('OutboundAuth apiKey placement', () => {
       outboundAuth: { type: 'API_KEY', credentialName: 'my-key' },
     });
     expect(r.success).toBe(true);
+  });
+});
+
+describe('ApiKeyOutboundConfigSchema', () => {
+  it('accepts a full placement block', () => {
+    expect(
+      ApiKeyOutboundConfigSchema.safeParse({ location: 'HEADER', parameterName: 'Authorization', prefix: 'Bearer' })
+        .success
+    ).toBe(true);
+  });
+  it('accepts an empty object (all optional)', () => {
+    expect(ApiKeyOutboundConfigSchema.safeParse({}).success).toBe(true);
+  });
+  it('rejects an unknown location', () => {
+    expect(ApiKeyOutboundConfigSchema.safeParse({ location: 'BODY' }).success).toBe(false);
+  });
+  it('rejects unknown keys (strict)', () => {
+    expect(ApiKeyOutboundConfigSchema.safeParse({ foo: 'bar' }).success).toBe(false);
+  });
+  it('rejects parameterName over 64 chars', () => {
+    expect(ApiKeyOutboundConfigSchema.safeParse({ parameterName: 'x'.repeat(65) }).success).toBe(false);
+  });
+  it('rejects prefix over 64 chars', () => {
+    expect(ApiKeyOutboundConfigSchema.safeParse({ prefix: 'x'.repeat(65) }).success).toBe(false);
+  });
+  it('rejects empty parameterName and empty prefix', () => {
+    expect(ApiKeyOutboundConfigSchema.safeParse({ parameterName: '' }).success).toBe(false);
+    expect(ApiKeyOutboundConfigSchema.safeParse({ prefix: '' }).success).toBe(false);
   });
 });
