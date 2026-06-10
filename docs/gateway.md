@@ -50,7 +50,7 @@ agentcore add gateway-target \
   --gateway my-gateway
 ```
 
-Supports outbound auth: `oauth` or `none`.
+Supports outbound auth: `oauth`, `api-key`, or `none`.
 
 ### API Gateway REST API (`api-gateway`)
 
@@ -152,7 +152,7 @@ Controls how the gateway authenticates with upstream targets. Configured per tar
 | --------- | ------------------------------ | --------------------------------------------- |
 | `none`    | No outbound authentication     | mcp-server, api-gateway                       |
 | `oauth`   | OAuth2 client credentials flow | mcp-server, open-api-schema                   |
-| `api-key` | API key passed to upstream     | api-gateway, open-api-schema                  |
+| `api-key` | API key passed to upstream     | mcp-server, api-gateway, open-api-schema      |
 | IAM role  | Automatic IAM role auth        | smithy-model, lambda-function-arn (exclusive) |
 
 #### OAuth Outbound Auth
@@ -187,6 +187,27 @@ agentcore add gateway-target \
   --outbound-auth oauth \
   --credential-name MyOAuthProvider
 ```
+
+#### API Key Placement
+
+By default the gateway sends the API key as an `x-api-key` header. Customize placement with:
+
+```bash
+agentcore add gateway-target \
+  --type mcp-server \
+  --name secure-tools \
+  --endpoint https://api.example.com/mcp \
+  --gateway my-gateway \
+  --outbound-auth api-key \
+  --credential-name MyApiKey \
+  --api-key-location HEADER \
+  --api-key-parameter-name Authorization \
+  --api-key-prefix Bearer
+```
+
+This sends `Authorization: Bearer <key>`. `--api-key-location` accepts `HEADER` or `QUERY_PARAMETER`. All three flags
+are optional; omitting them keeps the `x-api-key` header default. MCP server, API Gateway, and OpenAPI schema targets
+support API key outbound auth.
 
 ## Adding a Gateway to an Existing Project
 
