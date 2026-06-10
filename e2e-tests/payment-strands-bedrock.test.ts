@@ -11,6 +11,7 @@
  */
 import { hasAwsCredentials, parseJsonOutput, prereqs, retry } from '../src/test-utils/index.js';
 import { installCdkTarball, runAgentCoreCLI, teardownE2EProject, writeAwsTargets } from './e2e-helper.js';
+import { type Logger, getLogger } from './utils/logger.js';
 import { randomUUID } from 'node:crypto';
 import { mkdir, readFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
@@ -25,12 +26,16 @@ describe.sequential('e2e: payments — create → add payment → deploy → sta
   let testDir: string;
   let projectPath: string;
   let agentName: string;
+  let logger: Logger;
   const managerName = 'E2ePayMgr';
   const connectorName = 'E2ePayConn';
 
   beforeAll(async () => {
-    if (!canRun) return;
-
+    logger = getLogger('payments-strands-bedrock');
+    if (!canRun) {
+      logger.warn(`tests are skipped due to insufficient conditions. hasCdpCreds=${hasCdpCreds}, hasAws=${hasAws}`);
+      return;
+    }
     testDir = join(tmpdir(), `agentcore-e2e-pay-${randomUUID()}`);
     await mkdir(testDir, { recursive: true });
 
@@ -146,8 +151,8 @@ describe.sequential('e2e: payments — create → add payment → deploy → sta
           const result = await runAgentCoreCLI(['deploy', '--yes', '--json'], projectPath);
 
           if (result.exitCode !== 0) {
-            console.log('Deploy stdout:', result.stdout);
-            console.log('Deploy stderr:', result.stderr);
+            logger.error(`deploy stdout=${result.stdout}`);
+            logger.error(`deploy stderr=${result.stderr}`);
           }
 
           expect(result.exitCode, `Deploy failed: ${result.stderr}`).toBe(0);

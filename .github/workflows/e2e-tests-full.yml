@@ -92,6 +92,10 @@ jobs:
           E2E_FILESYSTEM_SUBNET_ID: ${{ env.E2E_FILESYSTEM_SUBNET_ID }}
           E2E_FILESYSTEM_SECURITY_GROUP_ID: ${{ env.E2E_FILESYSTEM_SECURITY_GROUP_ID }}
           CDK_TARBALL: ${{ env.CDK_TARBALL }}
+          CDP_API_KEY_ID: ${{ env.E2E_CDP_API_KEY_ID }}
+          CDP_API_KEY_SECRET: ${{ env.E2E_CDP_API_KEY_SECRET }}
+          CDP_WALLET_SECRET: ${{ env.E2E_CDP_WALLET_SECRET }}
+
         run: npx vitest run --project e2e --shard=${{ matrix.shard }}
   browser-tests:
     runs-on: ubuntu-latest
