@@ -111,6 +111,11 @@ describe('Multi-gateway tool-name collision fix', () => {
       expect(out).toContain('tool_name_prefix="orders_gw"');
       expect(out).toContain('tool_name_prefix="public"');
     });
+
+    it('pins google-adk to a tool_name_prefix-capable floor under the 2.x ceiling', async () => {
+      const out = await renderAsset('googleadk/base/pyproject.toml', { ...TWO_IAM_GATEWAYS, name: 'a' });
+      expect(out).toContain('google-adk >= 1.35.0, < 2.0.0');
+    });
   });
 
   describe('LangChain / LangGraph', () => {
