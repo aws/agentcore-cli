@@ -1,6 +1,7 @@
 import { getHarness } from '../src/cli/aws/agentcore-harness.js';
 import { hasAwsCredentials, parseJsonOutput, prereqs, retry, spawnAndCollect } from '../src/test-utils/index.js';
 import { installCdkTarball, runAgentCoreCLI, teardownE2EProject, writeAwsTargets } from './e2e-helper.js';
+import { getLogger } from './utils/logger.js';
 import { randomUUID } from 'node:crypto';
 import { mkdir, readFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
@@ -25,6 +26,17 @@ export function createHarnessE2ESuite(cfg: HarnessE2EConfig) {
 
   const providerLabel =
     cfg.modelProvider === 'open_ai' ? 'OpenAI' : cfg.modelProvider === 'gemini' ? 'Gemini' : 'Bedrock';
+
+  // Logged at collection time (not in beforeAll, which Vitest skips when every test in the
+  // suite is skipped) so the skip reason is always surfaced.
+  const logger = getLogger(`harness-${providerLabel.toLowerCase()}`);
+  if (!canRun) {
+    logger.warn(
+      `tests are skipped due to insufficient conditions. ` +
+        `npm=${prereqs.npm}, git=${prereqs.git}, hasAws=${hasAws}, ` +
+        `isPreviewBuild=${isPreviewBuild}, hasRequiredVar=${hasRequiredVar}`
+    );
+  }
 
   describe.sequential(`e2e: harness/${providerLabel} — create → deploy → invoke → teardown`, () => {
     let testDir: string;
