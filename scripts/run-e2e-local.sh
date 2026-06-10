@@ -3,7 +3,8 @@
 #
 # Required env vars:
 #   E2E_ROLE_ARN    — IAM role ARN to assume (grants access to the test account)
-#   E2E_SECRET_ARN  — Secrets Manager ARN containing ANTHROPIC_API_KEY, OPENAI_API_KEY, GEMINI_API_KEY
+#   E2E_SECRET_ARN  — Secrets Manager ARN containing ANTHROPIC_API_KEY, OPENAI_API_KEY, GEMINI_API_KEY,
+#                     and (for payments tests) CDP_API_KEY_ID, CDP_API_KEY_SECRET, CDP_WALLET_SECRET
 #
 # Optional env vars:
 #   AWS_REGION      — defaults to us-east-1
@@ -81,6 +82,11 @@ export E2E_EFS_ACCESS_POINT_ARN=$(echo "$SECRET_JSON" | jq -r '.EFS_ACCESS_POINT
 export E2E_S3_ACCESS_POINT_ARN=$(echo "$SECRET_JSON" | jq -r '.S3_ACCESS_POINT_ARN // empty')
 export E2E_FILESYSTEM_SUBNET_ID=$(echo "$SECRET_JSON" | jq -r '.FILESYSTEM_SUBNET_ID // empty')
 export E2E_FILESYSTEM_SECURITY_GROUP_ID=$(echo "$SECRET_JSON" | jq -r '.FILESYSTEM_SECURITY_GROUP_ID // empty')
+
+# Payments (CDP) test inputs — required by payment-strands-bedrock.test.ts.
+export CDP_API_KEY_ID=$(echo "$SECRET_JSON" | jq -r '.CDP_API_KEY_ID // empty')
+export CDP_API_KEY_SECRET=$(echo "$SECRET_JSON" | jq -r '.CDP_API_KEY_SECRET // empty')
+export CDP_WALLET_SECRET=$(echo "$SECRET_JSON" | jq -r '.CDP_WALLET_SECRET // empty')
 
 echo "✅ Secrets loaded (keys present: $(echo "$SECRET_JSON" | jq -r 'keys | join(", ")')"
 
