@@ -42,6 +42,8 @@ Attach this to every IAM user or role that will run AgentCore CLI commands. The 
 - `bedrock-agentcore:Invoke*`, `bedrock-agentcore:Get*`, `bedrock-agentcore:List*` for invoking agents and checking
   status
 - Credential provider and token vault actions for `deploy` when the project uses identity features
+- Payment credential provider and payment session actions for `deploy`, `status`, and `invoke` when the project uses
+  payment connectors
 - CloudWatch Logs, X-Ray, and Application Signals actions for `logs`, `traces`, and observability setup
 - Bedrock actions for agent import and AI-assisted code generation (optional, see
   [Scoping down by feature](#scoping-down-by-feature))
@@ -172,6 +174,7 @@ safely removed:
 | Filesystem mounts (EFS/S3)      | `FilesystemNetworkValidation`                                        | _(no change)_                                                                                          |
 | AI-assisted code generation     | `BedrockModelInvocation`                                             | _(no change)_                                                                                          |
 | Identity/credential providers   | `IdentityCredentialManagement`, `TokenVaultKmsKeyCreation`           | `SecretsManagerForCredentials`                                                                         |
+| Payment connectors              | `PaymentCredentialManagement`, `PaymentCredentialSecrets`            | _(no change)_                                                                                          |
 | Policy engine                   | `PolicyGeneration`                                                   | Remove `*PolicyEngine*` and `*Policy` actions from `BedrockAgentCoreResources`                         |
 | Online evaluations              | Remove `UpdateOnlineEvaluationConfig` from `AgentCoreResourceStatus` | Remove `*OnlineEvaluationConfig*` actions from `BedrockAgentCoreResources`                             |
 
@@ -383,6 +386,36 @@ These EC2 and EFS `Describe*` actions do not support resource-level scoping, so 
 | `bedrock-agentcore:SetTokenVaultCMK`               | `deploy`     | Configure KMS encryption for token vault  |
 | `kms:CreateKey`                                    | `deploy`     | Create KMS key for token vault encryption |
 | `kms:TagResource`                                  | `deploy`     | Tag the created KMS key                   |
+
+### Payment credential management
+
+Required only when the project defines payment managers and connectors (the `payments` block in the project spec). The
+CLI calls the Payment control-plane and data-plane APIs directly with the developer's credentials; both are signed under
+the `bedrock-agentcore` service.
+
+| Action                                              | CLI Commands | Purpose                                                              |
+| --------------------------------------------------- | ------------ | -------------------------------------------------------------------- |
+| `bedrock-agentcore:GetPaymentCredentialProvider`    | `deploy`     | Check if a payment credential provider already exists                |
+| `bedrock-agentcore:CreatePaymentCredentialProvider` | `deploy`     | Create a payment credential provider from connector secrets          |
+| `bedrock-agentcore:UpdatePaymentCredentialProvider` | `deploy`     | Update a payment credential provider with new secret values          |
+| `bedrock-agentcore:DeletePaymentCredentialProvider` | `deploy`     | Remove a payment credential provider when a connector is removed     |
+| `bedrock-agentcore:GetPaymentManager`               | `status`     | Look up payment manager status                                       |
+| `bedrock-agentcore:ListPaymentSessions`             | `invoke`     | Find an existing active payment session before creating a new one    |
+| `bedrock-agentcore:CreatePaymentSession`            | `invoke`     | Create a payment session with a default budget for `invoke` auto-pay |
+
+Creating or updating a payment credential provider also writes the connector secrets into a service-managed Secrets
+Manager secret (named `bedrock-agentcore-identity!default/payment/*`). Unlike API key and OAuth2 providers, the Payment
+API performs these Secrets Manager operations with the **caller's** credentials, so the developer policy must allow them
+directly. These actions are scoped to the managed payment secret prefix.
+
+| Action                          | CLI Commands | Purpose                                                         |
+| ------------------------------- | ------------ | --------------------------------------------------------------- |
+| `secretsmanager:CreateSecret`   | `deploy`     | Create the managed secret backing a new payment credential      |
+| `secretsmanager:PutSecretValue` | `deploy`     | Write updated connector secret values when a credential changes |
+| `secretsmanager:GetSecretValue` | `deploy`     | Read the managed secret during provider create/update           |
+| `secretsmanager:DescribeSecret` | `deploy`     | Inspect the managed secret metadata                             |
+| `secretsmanager:TagResource`    | `deploy`     | Tag the managed secret on creation                              |
+| `secretsmanager:DeleteSecret`   | `deploy`     | Remove the managed secret when a payment connector is removed   |
 
 ### Policy generation
 

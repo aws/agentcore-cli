@@ -88,6 +88,33 @@
       "Resource": "*"
     },
     {
+      "Sid": "PaymentCredentialManagement",
+      "Effect": "Allow",
+      "Action": [
+        "bedrock-agentcore:GetPaymentCredentialProvider",
+        "bedrock-agentcore:CreatePaymentCredentialProvider",
+        "bedrock-agentcore:UpdatePaymentCredentialProvider",
+        "bedrock-agentcore:DeletePaymentCredentialProvider",
+        "bedrock-agentcore:GetPaymentManager",
+        "bedrock-agentcore:ListPaymentSessions",
+        "bedrock-agentcore:CreatePaymentSession"
+      ],
+      "Resource": "*"
+    },
+    {
+      "Sid": "PaymentCredentialSecrets",
+      "Effect": "Allow",
+      "Action": [
+        "secretsmanager:CreateSecret",
+        "secretsmanager:PutSecretValue",
+        "secretsmanager:GetSecretValue",
+        "secretsmanager:DescribeSecret",
+        "secretsmanager:TagResource",
+        "secretsmanager:DeleteSecret"
+      ],
+      "Resource": "arn:aws:secretsmanager:*:ACCOUNT_ID:secret:bedrock-agentcore-identity!default/payment/*"
+    },
+    {
       "Sid": "PolicyGeneration",
       "Effect": "Allow",
       "Action": [

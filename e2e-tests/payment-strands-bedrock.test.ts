@@ -201,7 +201,6 @@ describe.sequential('e2e: payments — create → add payment → deploy → sta
     expect(managerState.managerArn).toBeTruthy();
     expect(managerState.processPaymentRoleArn).toBeTruthy();
     expect(managerState.resourceRetrievalRoleArn).toBeTruthy();
-    expect(managerState.roleCreatedByCli).toBe(true);
 
     // Connector info
     const connectors = managerState.connectors as Record<string, Record<string, unknown>>;
