@@ -4631,9 +4631,8 @@ dependencies = [
     "opentelemetry-instrumentation-langchain >= 0.59.0",
     "langgraph >= 1.0.2",
     "mcp >= 1.19.0",
-    {{#if hasGateway}}"langchain-mcp-adapters >= 0.2.0",
-    {{else}}"langchain-mcp-adapters >= 0.1.11",
-    {{/if}}"langchain >= 1.0.3",
+    "langchain-mcp-adapters >= 0.2.0",
+    "langchain >= 1.0.3",
     "bedrock-agentcore >= 1.8.0",
     "botocore[crt] >= 1.35.0",
 {{#if (eq modelProvider "Bedrock")}}
@@ -5079,9 +5078,7 @@ readme = "README.md"
 requires-python = ">=3.10"
 dependencies = [
     "aws-opentelemetry-distro",
-    {{#if hasGateway}}"openai-agents >= 0.16.0",
-    {{else}}"openai-agents >= 0.4.2",
-    {{/if}}
+    "openai-agents >= 0.16.0",
     "bedrock-agentcore >= 1.8.0",
     "botocore[crt] >= 1.35.0",
     {{#if hasGateway}}{{#if (includes gatewayAuthTypes "AWS_IAM")}}"mcp-proxy-for-aws >= 1.1.0",
@@ -5677,9 +5674,7 @@ dependencies = [
     {{#if (eq modelProvider "Gemini")}}"google-genai >= 1.0.0",
     {{/if}}"mcp >= 1.19.0",
     {{#if (eq modelProvider "OpenAI")}}"openai >= 1.0.0",
-    {{/if}}{{#if hasGateway}}"strands-agents >= 1.15.0",
-    {{else}}"strands-agents >= 1.13.0",
-    {{/if}}
+    {{/if}}"strands-agents >= 1.15.0",
     {{#if hasGateway}}{{#if (includes gatewayAuthTypes "AWS_IAM")}}"mcp-proxy-for-aws >= 1.1.0",
     {{/if}}{{/if}}
 ]

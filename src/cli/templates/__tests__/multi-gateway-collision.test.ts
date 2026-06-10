@@ -83,7 +83,7 @@ describe('Multi-gateway tool-name collision fix', () => {
       expect(out).toContain('prefix="public"');
     });
 
-    it('bumps the strands-agents floor to >= 1.15.0 only when a gateway exists', async () => {
+    it('pins the gateway-capable strands-agents floor unconditionally', async () => {
       const withGw = await renderAsset('strands/base/pyproject.toml', {
         ...TWO_IAM_GATEWAYS,
         name: 'a',
@@ -95,7 +95,8 @@ describe('Multi-gateway tool-name collision fix', () => {
         modelProvider: 'Bedrock',
       });
       expect(withGw).toContain('strands-agents >= 1.15.0');
-      expect(noGw).toContain('strands-agents >= 1.13.0');
+      expect(noGw).toContain('strands-agents >= 1.15.0');
+      expect(noGw).not.toContain('1.13.0');
     });
   });
 
@@ -126,7 +127,7 @@ describe('Multi-gateway tool-name collision fix', () => {
       expect(out).toContain('MultiServerMCPClient(servers, tool_name_prefix=True)');
     });
 
-    it('bumps langchain-mcp-adapters floor to >= 0.2.0 only when a gateway exists', async () => {
+    it('pins the gateway-capable langchain-mcp-adapters floor unconditionally', async () => {
       const withGw = await renderAsset('langchain_langgraph/base/pyproject.toml', {
         ...TWO_IAM_GATEWAYS,
         modelProvider: 'Bedrock',
@@ -136,7 +137,8 @@ describe('Multi-gateway tool-name collision fix', () => {
         modelProvider: 'Bedrock',
       });
       expect(withGw).toContain('langchain-mcp-adapters >= 0.2.0');
-      expect(noGw).toContain('langchain-mcp-adapters >= 0.1.11');
+      expect(noGw).toContain('langchain-mcp-adapters >= 0.2.0');
+      expect(noGw).not.toContain('0.1.11');
     });
   });
 
@@ -153,11 +155,12 @@ describe('Multi-gateway tool-name collision fix', () => {
       expect(out).not.toContain('AsyncExitStack');
     });
 
-    it('bumps the openai-agents floor to >= 0.16.0 only when a gateway exists', async () => {
+    it('pins the gateway-capable openai-agents floor unconditionally', async () => {
       const withGw = await renderAsset('openaiagents/base/pyproject.toml', { ...TWO_IAM_GATEWAYS, name: 'a' });
       const noGw = await renderAsset('openaiagents/base/pyproject.toml', { hasGateway: false, name: 'a' });
       expect(withGw).toContain('openai-agents >= 0.16.0');
-      expect(noGw).toContain('openai-agents >= 0.4.2');
+      expect(noGw).toContain('openai-agents >= 0.16.0');
+      expect(noGw).not.toContain('0.4.2');
     });
   });
 
