@@ -564,3 +564,82 @@ describe('integration: schema-based target validation errors', () => {
     expect(result.exitCode).not.toBe(0);
   });
 });
+
+describe('integration: mcpServer target with API key placement', () => {
+  let project: TestProject;
+  const gatewayName = 'SecureMcpGateway';
+  const targetName = 'secureTools';
+  const credentialName = 'MyApiKey';
+
+  beforeAll(async () => {
+    project = await createTestProject({ noAgent: true });
+  });
+
+  afterAll(async () => {
+    await project.cleanup();
+  });
+
+  it('adds a gateway', async () => {
+    const result = await runCLI(['add', 'gateway', '--name', gatewayName, '--json'], project.projectPath);
+
+    expect(result.exitCode, `stdout: ${result.stdout}, stderr: ${result.stderr}`).toBe(0);
+    const json = JSON.parse(result.stdout);
+    expect(json.success).toBe(true);
+  });
+
+  it('adds an api-key credential', async () => {
+    const result = await runCLI(
+      ['add', 'credential', '--type', 'api-key', '--name', credentialName, '--api-key', 'secret123', '--json'],
+      project.projectPath
+    );
+    expect(result.exitCode, `stdout: ${result.stdout}, stderr: ${result.stderr}`).toBe(0);
+  });
+
+  it('adds an mcpServer target with custom placement', async () => {
+    const result = await runCLI(
+      [
+        'add',
+        'gateway-target',
+        '--type',
+        'mcp-server',
+        '--name',
+        targetName,
+        '--endpoint',
+        'https://api.example.com/mcp',
+        '--gateway',
+        gatewayName,
+        '--outbound-auth',
+        'api-key',
+        '--credential-name',
+        credentialName,
+        '--api-key-parameter-name',
+        'Authorization',
+        '--api-key-prefix',
+        'Bearer',
+        '--json',
+      ],
+      project.projectPath
+    );
+
+    expect(result.exitCode, `stdout: ${result.stdout}, stderr: ${result.stderr}`).toBe(0);
+    const json = JSON.parse(result.stdout);
+    expect(json.success).toBe(true);
+
+    const mcpSpec = await readProjectConfig(project.projectPath);
+    const target = mcpSpec.agentCoreGateways
+      ?.flatMap((g: { targets?: { name: string }[] }) => g.targets ?? [])
+      .find((t: { name: string }) => t.name === targetName);
+    expect(target, `Target "${targetName}" should be in gateway targets`).toBeTruthy();
+    // HEADER is the default location so the helper omits it from the written config.
+    expect(target.outboundAuth).toEqual({
+      type: 'API_KEY',
+      credentialName,
+      apiKey: { parameterName: 'Authorization', prefix: 'Bearer' },
+    });
+  });
+
+  it('validate passes', async () => {
+    const result = await runCLI(['validate', '--json'], project.projectPath);
+    expect(result.exitCode, `stdout: ${result.stdout}, stderr: ${result.stderr}`).toBe(0);
+  });
+});
