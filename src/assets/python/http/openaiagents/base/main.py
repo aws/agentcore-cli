@@ -1,6 +1,9 @@
 {{#if needsOs}}
 import os
 {{/if}}
+{{#if hasGateway}}
+from contextlib import AsyncExitStack
+{{/if}}
 from agents import Agent, Runner, function_tool
 from bedrock_agentcore.runtime import BedrockAgentCoreApp
 from model.load import load_model
@@ -111,15 +114,22 @@ async def main(query):
     try:
         {{#if hasGateway}}
         if mcp_servers:
-            agent = Agent(
-                name="{{ name }}",
-                model="gpt-4.1",
-                instructions=INSTRUCTIONS,
-                mcp_servers=mcp_servers,
-                tools=tools
-            )
-            result = await Runner.run(agent, query)
-            return result
+            # Connect every gateway server before the run; include_server_in_tool_names
+            # namespaces each server's tools so multiple gateways exposing the same tool
+            # (e.g. x_amz_bedrock_agentcore_search) don't collide.
+            async with AsyncExitStack() as stack:
+                for server in mcp_servers:
+                    await stack.enter_async_context(server)
+                agent = Agent(
+                    name="{{ name }}",
+                    model="gpt-4.1",
+                    instructions=INSTRUCTIONS,
+                    mcp_servers=mcp_servers,
+                    tools=tools,
+                    mcp_config={"include_server_in_tool_names": True},
+                )
+                result = await Runner.run(agent, query)
+                return result
         else:
             agent = Agent(
                 name="{{ name }}",

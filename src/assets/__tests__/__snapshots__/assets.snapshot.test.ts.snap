@@ -4000,20 +4000,20 @@ def get_all_gateway_mcp_toolsets() -> list[MCPToolset]:
     {{#each gatewayProviders}}
     url = os.environ.get("{{envVarName}}")
     if url:
-        {{#if (eq authType "AWS_IAM")}}
+{{#if (eq authType "AWS_IAM")}}
         session = create_aws_session()
         auth = SigV4HTTPXAuth(session.get_credentials(), "bedrock-agentcore", session.region_name)
-        toolsets.append(MCPToolset(connection_params=StreamableHTTPConnectionParams(
+        toolsets.append(MCPToolset(tool_name_prefix="{{snakeCase name}}", connection_params=StreamableHTTPConnectionParams(
             url=url,
             httpx_client_factory=lambda **kwargs: httpx.AsyncClient(auth=auth, **kwargs)
         )))
-        {{else if (eq authType "CUSTOM_JWT")}}
+{{else if (eq authType "CUSTOM_JWT")}}
         token = _get_bearer_token_{{snakeCase name}}()
         headers = {"Authorization": f"Bearer {token}"} if token else None
-        toolsets.append(MCPToolset(connection_params=StreamableHTTPConnectionParams(url=url, headers=headers)))
-        {{else}}
-        toolsets.append(MCPToolset(connection_params=StreamableHTTPConnectionParams(url=url)))
-        {{/if}}
+        toolsets.append(MCPToolset(tool_name_prefix="{{snakeCase name}}", connection_params=StreamableHTTPConnectionParams(url=url, headers=headers)))
+{{else}}
+        toolsets.append(MCPToolset(tool_name_prefix="{{snakeCase name}}", connection_params=StreamableHTTPConnectionParams(url=url)))
+{{/if}}
     else:
         logger.warning("{{envVarName}} not set — {{name}} gateway tools unavailable")
     {{/each}}
@@ -4435,23 +4435,25 @@ def get_all_gateway_mcp_client() -> MultiServerMCPClient | None:
     {{#each gatewayProviders}}
     url = os.environ.get("{{envVarName}}")
     if url:
-        {{#if (eq authType "AWS_IAM")}}
+{{#if (eq authType "AWS_IAM")}}
         session = create_aws_session()
         auth = SigV4HTTPXAuth(session.get_credentials(), "bedrock-agentcore", session.region_name)
-        servers["{{name}}"] = {"transport": "streamable_http", "url": url, "auth": auth}
-        {{else if (eq authType "CUSTOM_JWT")}}
+        servers["{{snakeCase name}}"] = {"transport": "streamable_http", "url": url, "auth": auth}
+{{else if (eq authType "CUSTOM_JWT")}}
         token = _get_bearer_token_{{snakeCase name}}()
         headers = {"Authorization": f"Bearer {token}"} if token else None
-        servers["{{name}}"] = {"transport": "streamable_http", "url": url, "headers": headers}
-        {{else}}
-        servers["{{name}}"] = {"transport": "streamable_http", "url": url}
-        {{/if}}
+        servers["{{snakeCase name}}"] = {"transport": "streamable_http", "url": url, "headers": headers}
+{{else}}
+        servers["{{snakeCase name}}"] = {"transport": "streamable_http", "url": url}
+{{/if}}
     else:
         logger.warning("{{envVarName}} not set — {{name}} gateway tools unavailable")
     {{/each}}
     if not servers:
         return None
-    return MultiServerMCPClient(servers)
+    # tool_name_prefix namespaces each gateway's tools by server key so multiple
+    # gateways exposing the same tool (e.g. x_amz_bedrock_agentcore_search) don't collide.
+    return MultiServerMCPClient(servers, tool_name_prefix=True)
 {{else}}
 {{#if isVpc}}
 # VPC mode: external MCP endpoints are not reachable without a NAT gateway.
@@ -4629,8 +4631,9 @@ dependencies = [
     "opentelemetry-instrumentation-langchain >= 0.59.0",
     "langgraph >= 1.0.2",
     "mcp >= 1.19.0",
-    "langchain-mcp-adapters >= 0.1.11",
-    "langchain >= 1.0.3",
+    {{#if hasGateway}}"langchain-mcp-adapters >= 0.2.0",
+    {{else}}"langchain-mcp-adapters >= 0.1.11",
+    {{/if}}"langchain >= 1.0.3",
     "bedrock-agentcore >= 1.8.0",
     "botocore[crt] >= 1.35.0",
 {{#if (eq modelProvider "Bedrock")}}
@@ -4747,6 +4750,9 @@ exports[`Assets Directory Snapshots > Python framework assets > python/python/ht
 "{{#if needsOs}}
 import os
 {{/if}}
+{{#if hasGateway}}
+from contextlib import AsyncExitStack
+{{/if}}
 from agents import Agent, Runner, function_tool
 from bedrock_agentcore.runtime import BedrockAgentCoreApp
 from model.load import load_model
@@ -4857,15 +4863,22 @@ async def main(query):
     try:
         {{#if hasGateway}}
         if mcp_servers:
-            agent = Agent(
-                name="{{ name }}",
-                model="gpt-4.1",
-                instructions=INSTRUCTIONS,
-                mcp_servers=mcp_servers,
-                tools=tools
-            )
-            result = await Runner.run(agent, query)
-            return result
+            # Connect every gateway server before the run; include_server_in_tool_names
+            # namespaces each server's tools so multiple gateways exposing the same tool
+            # (e.g. x_amz_bedrock_agentcore_search) don't collide.
+            async with AsyncExitStack() as stack:
+                for server in mcp_servers:
+                    await stack.enter_async_context(server)
+                agent = Agent(
+                    name="{{ name }}",
+                    model="gpt-4.1",
+                    instructions=INSTRUCTIONS,
+                    mcp_servers=mcp_servers,
+                    tools=tools,
+                    mcp_config={"include_server_in_tool_names": True},
+                )
+                result = await Runner.run(agent, query)
+                return result
         else:
             agent = Agent(
                 name="{{ name }}",
@@ -4965,20 +4978,20 @@ def get_all_gateway_mcp_servers() -> list[MCPServerStreamableHttp]:
     {{#each gatewayProviders}}
     url = os.environ.get("{{envVarName}}")
     if url:
-        {{#if (eq authType "AWS_IAM")}}
+{{#if (eq authType "AWS_IAM")}}
         session = create_aws_session()
         auth = SigV4HTTPXAuth(session.get_credentials(), "bedrock-agentcore", session.region_name)
         servers.append(MCPServerStreamableHttp(
             name="{{name}}",
             params={"url": url, "httpx_client_factory": lambda **kwargs: httpx.AsyncClient(auth=auth, **kwargs)}
         ))
-        {{else if (eq authType "CUSTOM_JWT")}}
+{{else if (eq authType "CUSTOM_JWT")}}
         token = _get_bearer_token_{{snakeCase name}}()
         headers = {"Authorization": f"Bearer {token}"} if token else {}
         servers.append(MCPServerStreamableHttp(name="{{name}}", params={"url": url, "headers": headers}))
-        {{else}}
+{{else}}
         servers.append(MCPServerStreamableHttp(name="{{name}}", params={"url": url}))
-        {{/if}}
+{{/if}}
     else:
         logger.warning("{{envVarName}} not set — {{name}} gateway tools unavailable")
     {{/each}}
@@ -5066,7 +5079,9 @@ readme = "README.md"
 requires-python = ">=3.10"
 dependencies = [
     "aws-opentelemetry-distro",
-    "openai-agents >= 0.4.2",
+    {{#if hasGateway}}"openai-agents >= 0.16.0",
+    {{else}}"openai-agents >= 0.4.2",
+    {{/if}}
     "bedrock-agentcore >= 1.8.0",
     "botocore[crt] >= 1.35.0",
     {{#if hasGateway}}{{#if (includes gatewayAuthTypes "AWS_IAM")}}"mcp-proxy-for-aws >= 1.1.0",
@@ -5471,13 +5486,13 @@ def get_{{snakeCase name}}_mcp_client() -> MCPClient | None:
         logger.warning("{{envVarName}} not set — {{name}} gateway tools unavailable")
         return None
     {{#if (eq authType "AWS_IAM")}}
-    return MCPClient(lambda: aws_iam_streamablehttp_client(url, aws_service="bedrock-agentcore", aws_region=os.environ.get("AWS_REGION", os.environ.get("AWS_DEFAULT_REGION"))))
+    return MCPClient(lambda: aws_iam_streamablehttp_client(url, aws_service="bedrock-agentcore", aws_region=os.environ.get("AWS_REGION", os.environ.get("AWS_DEFAULT_REGION"))), prefix="{{snakeCase name}}")
     {{else if (eq authType "CUSTOM_JWT")}}
     token = _get_bearer_token_{{snakeCase name}}()
     headers = {"Authorization": f"Bearer {token}"} if token else {}
-    return MCPClient(lambda: streamablehttp_client(url, headers=headers))
+    return MCPClient(lambda: streamablehttp_client(url, headers=headers), prefix="{{snakeCase name}}")
     {{else}}
-    return MCPClient(lambda: streamablehttp_client(url))
+    return MCPClient(lambda: streamablehttp_client(url), prefix="{{snakeCase name}}")
     {{/if}}
 
 {{/each}}
@@ -5662,7 +5677,9 @@ dependencies = [
     {{#if (eq modelProvider "Gemini")}}"google-genai >= 1.0.0",
     {{/if}}"mcp >= 1.19.0",
     {{#if (eq modelProvider "OpenAI")}}"openai >= 1.0.0",
-    {{/if}}"strands-agents >= 1.13.0",
+    {{/if}}{{#if hasGateway}}"strands-agents >= 1.15.0",
+    {{else}}"strands-agents >= 1.13.0",
+    {{/if}}
     {{#if hasGateway}}{{#if (includes gatewayAuthTypes "AWS_IAM")}}"mcp-proxy-for-aws >= 1.1.0",
     {{/if}}{{/if}}
 ]
