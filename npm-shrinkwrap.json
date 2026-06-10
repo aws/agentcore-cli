@@ -1,12 +1,12 @@
 {
   "name": "@aws/agentcore",
-  "version": "0.18.0",
+  "version": "0.19.0",
   "lockfileVersion": 3,
   "requires": true,
   "packages": {
     "": {
       "name": "@aws/agentcore",
-      "version": "0.18.0",
+      "version": "0.19.0",
       "hasInstallScript": true,
       "license": "Apache-2.0",
       "dependencies": {
@@ -7119,9 +7119,9 @@
       }
     },
     "node_modules/aws-cdk-lib": {
-      "version": "2.258.0",
-      "resolved": "https://registry.npmjs.org/aws-cdk-lib/-/aws-cdk-lib-2.258.0.tgz",
-      "integrity": "sha512-OfFfg30ikBRJ3dimlzsWhPIrj6qug1p2XYsdB38CtMtcur7SufzoUczgI6kWjbQkOVcQgYzhzN29DErV0yZG7A==",
+      "version": "2.258.1",
+      "resolved": "https://registry.npmjs.org/aws-cdk-lib/-/aws-cdk-lib-2.258.1.tgz",
+      "integrity": "sha512-isYgP0GASgTY99J3753iN6SLP05wEuinToE+p+Yat0d5Xi55iOtd5HFzBBklOb77FO5R3pikY6r9qaRSZUAwWA==",
       "bundleDependencies": [
         "@balena/dockerignore",
         "@aws-cdk/cloud-assembly-api",
