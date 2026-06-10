@@ -47,7 +47,7 @@ export default async function setup(_project: TestProject): Promise<() => void> 
     bedrockCPClient.destroy();
   }
 
-  logger.info(`setup finished in ${Date.now() - startTime / 1000} seconds`);
+  logger.info(`setup finished in ${(Date.now() - startTime) / 1000} seconds`);
 
   return function teardown(): void {
     // one time cleanup runs here.
