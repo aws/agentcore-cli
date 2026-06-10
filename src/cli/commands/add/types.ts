@@ -89,6 +89,9 @@ export interface AddGatewayTargetOptions {
   toolFilterMethods?: string;
   schema?: string;
   schemaS3Account?: string;
+  apiKeyLocation?: string;
+  apiKeyParameterName?: string;
+  apiKeyPrefix?: string;
   json?: boolean;
 }
 

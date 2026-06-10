@@ -1707,3 +1707,53 @@ describe('validateAddAgentOptions - session storage mount path', () => {
     expect(result.error).toBe('--session-storage-mount-path is not supported for TypeScript agents');
   });
 });
+
+describe('validateAddGatewayTargetOptions — api key placement', () => {
+  beforeEach(() => {
+    mockReadProjectSpec.mockResolvedValue({
+      agentCoreGateways: [{ name: 'gw' }],
+      credentials: [{ name: 'k', type: 'ApiKey' }],
+    });
+  });
+
+  it('accepts api-key placement flags with api-key auth', async () => {
+    const r = await validateAddGatewayTargetOptions({
+      name: 't',
+      type: 'mcp-server',
+      gateway: 'gw',
+      endpoint: 'https://e.com/mcp',
+      outboundAuthType: 'API_KEY',
+      credentialName: 'k',
+      apiKeyLocation: 'HEADER',
+      apiKeyParameterName: 'Authorization',
+      apiKeyPrefix: 'Bearer',
+    } as any);
+    expect(r.valid).toBe(true);
+  });
+
+  it('rejects api-key placement flags when auth type is not api-key', async () => {
+    const r = await validateAddGatewayTargetOptions({
+      name: 't',
+      type: 'mcp-server',
+      gateway: 'gw',
+      endpoint: 'https://e.com/mcp',
+      outboundAuthType: 'OAUTH',
+      credentialName: 'k',
+      apiKeyLocation: 'HEADER',
+    } as any);
+    expect(r.valid).toBe(false);
+  });
+
+  it('rejects an invalid api-key location', async () => {
+    const r = await validateAddGatewayTargetOptions({
+      name: 't',
+      type: 'mcp-server',
+      gateway: 'gw',
+      endpoint: 'https://e.com/mcp',
+      outboundAuthType: 'API_KEY',
+      credentialName: 'k',
+      apiKeyLocation: 'BODY',
+    } as any);
+    expect(r.valid).toBe(false);
+  });
+});

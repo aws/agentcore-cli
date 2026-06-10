@@ -1,5 +1,6 @@
 import type {
   ApiGatewayHttpMethod,
+  ApiKeyOutboundConfig,
   CustomClaimValidation,
   GatewayAuthorizerType,
   GatewayExceptionLevel,
@@ -116,6 +117,7 @@ export interface GatewayTargetWizardState {
     type: 'OAUTH' | 'API_KEY' | 'NONE';
     credentialName?: string;
     scopes?: string[];
+    apiKey?: ApiKeyOutboundConfig;
   };
   restApiId?: string;
   stage?: string;
@@ -142,6 +144,7 @@ export interface McpServerTargetConfig {
     type: 'OAUTH' | 'API_KEY' | 'NONE';
     credentialName?: string;
     scopes?: string[];
+    apiKey?: ApiKeyOutboundConfig;
   };
 }
 
@@ -155,6 +158,7 @@ export interface ApiGatewayTargetConfig {
   outboundAuth?: {
     type: 'API_KEY' | 'NONE';
     credentialName?: string;
+    apiKey?: ApiKeyOutboundConfig;
   };
 }
 
@@ -167,6 +171,7 @@ export interface SchemaBasedTargetConfig {
     type: 'OAUTH' | 'API_KEY' | 'NONE';
     credentialName?: string;
     scopes?: string[];
+    apiKey?: ApiKeyOutboundConfig;
   };
 }
 

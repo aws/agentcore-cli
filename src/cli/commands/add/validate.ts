@@ -485,6 +485,32 @@ export async function validateAddGatewayTargetOptions(options: AddGatewayTargetO
     if (options.toolSchemaFile) {
       return { valid: false, error: '--tool-schema-file is not applicable for api-gateway type' };
     }
+    const hasPlacementApiGw = !!(options.apiKeyLocation ?? options.apiKeyParameterName ?? options.apiKeyPrefix);
+    if (hasPlacementApiGw) {
+      const apiGwNormalizedAuth = options.outboundAuthType?.toUpperCase().replace('-', '_');
+      if (apiGwNormalizedAuth !== 'API_KEY') {
+        return {
+          valid: false,
+          error: 'API key placement flags (--api-key-*) require --outbound-auth api-key',
+        };
+      }
+      if (
+        options.apiKeyLocation &&
+        options.apiKeyLocation !== 'HEADER' &&
+        options.apiKeyLocation !== 'QUERY_PARAMETER'
+      ) {
+        return { valid: false, error: '--api-key-location must be HEADER or QUERY_PARAMETER' };
+      }
+      if (
+        options.apiKeyParameterName &&
+        (options.apiKeyParameterName.length < 1 || options.apiKeyParameterName.length > 64)
+      ) {
+        return { valid: false, error: '--api-key-parameter-name must be 1-64 characters' };
+      }
+      if (options.apiKeyPrefix && (options.apiKeyPrefix.length < 1 || options.apiKeyPrefix.length > 64)) {
+        return { valid: false, error: '--api-key-prefix must be 1-64 characters' };
+      }
+    }
     options.language = 'Other';
     return { valid: true };
   }
@@ -608,6 +634,26 @@ export async function validateAddGatewayTargetOptions(options: AddGatewayTargetO
       if (!credentialValidation.valid) {
         return credentialValidation;
       }
+    }
+  }
+
+  // API key placement validation (mcpServer and schema-based targets)
+  const hasPlacement = !!(options.apiKeyLocation ?? options.apiKeyParameterName ?? options.apiKeyPrefix);
+  if (hasPlacement) {
+    if (options.outboundAuthType !== 'API_KEY') {
+      return { valid: false, error: 'API key placement flags (--api-key-*) require --outbound-auth api-key' };
+    }
+    if (options.apiKeyLocation && options.apiKeyLocation !== 'HEADER' && options.apiKeyLocation !== 'QUERY_PARAMETER') {
+      return { valid: false, error: '--api-key-location must be HEADER or QUERY_PARAMETER' };
+    }
+    if (
+      options.apiKeyParameterName &&
+      (options.apiKeyParameterName.length < 1 || options.apiKeyParameterName.length > 64)
+    ) {
+      return { valid: false, error: '--api-key-parameter-name must be 1-64 characters' };
+    }
+    if (options.apiKeyPrefix && (options.apiKeyPrefix.length < 1 || options.apiKeyPrefix.length > 64)) {
+      return { valid: false, error: '--api-key-prefix must be 1-64 characters' };
     }
   }
 

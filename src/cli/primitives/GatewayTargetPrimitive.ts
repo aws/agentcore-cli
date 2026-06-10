@@ -42,6 +42,7 @@ import type {
 } from '../tui/screens/mcp/types';
 import { DEFAULT_HANDLER, DEFAULT_NODE_VERSION, DEFAULT_PYTHON_VERSION } from '../tui/screens/mcp/types';
 import { BasePrimitive } from './BasePrimitive';
+import { buildApiKeyPlacement } from './api-key-placement';
 import { SOURCE_CODE_NOTE } from './constants';
 import type { AddResult, AddScreenComponent } from './types';
 import type { Command } from '@commander-js/extra-typings';
@@ -291,6 +292,15 @@ export class GatewayTargetPrimitive extends BasePrimitive<AddGatewayTargetOption
         'OAuth discovery URL — creates credential inline (for oauth auth) [non-interactive]'
       )
       .option('--oauth-scopes <scopes>', 'OAuth scopes, comma-separated (for oauth auth) [non-interactive]')
+      .option(
+        '--api-key-location <location>',
+        'API key location: HEADER or QUERY_PARAMETER (for api-key auth) [non-interactive]'
+      )
+      .option(
+        '--api-key-parameter-name <name>',
+        'API key header/query parameter name, e.g. Authorization (for api-key auth) [non-interactive]'
+      )
+      .option('--api-key-prefix <prefix>', 'API key value prefix, e.g. Bearer (for api-key auth) [non-interactive]')
       .option('--rest-api-id <id>', 'REST API ID (for api-gateway type) [non-interactive]')
       .option('--stage <stage>', 'Deployment stage (for api-gateway type) [non-interactive]')
       .option('--tool-filter-path <path>', 'Tool filter path pattern, e.g. /pets/* [non-interactive]')
@@ -367,14 +377,26 @@ export class GatewayTargetPrimitive extends BasePrimitive<AddGatewayTargetOption
                   ]
                 : undefined,
               ...(cliOptions.outboundAuthType
-                ? {
-                    outboundAuth: {
-                      type: (outboundAuthMap[cliOptions.outboundAuthType.toLowerCase()] ?? 'NONE') as
-                        | 'API_KEY'
-                        | 'NONE',
-                      credentialName: cliOptions.credentialName,
-                    },
-                  }
+                ? (() => {
+                    const resolvedType = (outboundAuthMap[cliOptions.outboundAuthType.toLowerCase()] ?? 'NONE') as
+                      | 'API_KEY'
+                      | 'NONE';
+                    const placement =
+                      resolvedType === 'API_KEY'
+                        ? buildApiKeyPlacement({
+                            location: cliOptions.apiKeyLocation,
+                            parameterName: cliOptions.apiKeyParameterName,
+                            prefix: cliOptions.apiKeyPrefix,
+                          })
+                        : undefined;
+                    return {
+                      outboundAuth: {
+                        type: resolvedType,
+                        credentialName: cliOptions.credentialName,
+                        ...(placement && { apiKey: placement }),
+                      },
+                    };
+                  })()
                 : {}),
             };
             const result = await this.createApiGatewayTarget(config);
@@ -405,12 +427,24 @@ export class GatewayTargetPrimitive extends BasePrimitive<AddGatewayTargetOption
               schemaSource,
               gateway: cliOptions.gateway!,
               ...(cliOptions.outboundAuthType
-                ? {
-                    outboundAuth: {
-                      type: outboundAuthMap[cliOptions.outboundAuthType.toLowerCase()] ?? 'NONE',
-                      credentialName: cliOptions.credentialName,
-                    },
-                  }
+                ? (() => {
+                    const resolvedType = outboundAuthMap[cliOptions.outboundAuthType.toLowerCase()] ?? 'NONE';
+                    const placement =
+                      resolvedType === 'API_KEY'
+                        ? buildApiKeyPlacement({
+                            location: cliOptions.apiKeyLocation,
+                            parameterName: cliOptions.apiKeyParameterName,
+                            prefix: cliOptions.apiKeyPrefix,
+                          })
+                        : undefined;
+                    return {
+                      outboundAuth: {
+                        type: resolvedType,
+                        credentialName: cliOptions.credentialName,
+                        ...(placement && { apiKey: placement }),
+                      },
+                    };
+                  })()
                 : {}),
             };
             const result = await this.createSchemaBasedGatewayTarget(config);
@@ -456,12 +490,24 @@ export class GatewayTargetPrimitive extends BasePrimitive<AddGatewayTargetOption
                 inputSchema: { type: 'object' },
               },
               ...(cliOptions.outboundAuthType
-                ? {
-                    outboundAuth: {
-                      type: outboundAuthMap[cliOptions.outboundAuthType.toLowerCase()] ?? 'NONE',
-                      credentialName: cliOptions.credentialName,
-                    },
-                  }
+                ? (() => {
+                    const resolvedType = outboundAuthMap[cliOptions.outboundAuthType.toLowerCase()] ?? 'NONE';
+                    const placement =
+                      resolvedType === 'API_KEY'
+                        ? buildApiKeyPlacement({
+                            location: cliOptions.apiKeyLocation,
+                            parameterName: cliOptions.apiKeyParameterName,
+                            prefix: cliOptions.apiKeyPrefix,
+                          })
+                        : undefined;
+                    return {
+                      outboundAuth: {
+                        type: resolvedType,
+                        credentialName: cliOptions.credentialName,
+                        ...(placement && { apiKey: placement }),
+                      },
+                    };
+                  })()
                 : {}),
             };
             const result = await this.createExternalGatewayTarget(config);
