@@ -27,8 +27,7 @@ export function createHarnessE2ESuite(cfg: HarnessE2EConfig) {
   const providerLabel =
     cfg.modelProvider === 'open_ai' ? 'OpenAI' : cfg.modelProvider === 'gemini' ? 'Gemini' : 'Bedrock';
 
-  // Logged at collection time (not in beforeAll, which Vitest skips when every test in the
-  // suite is skipped) so the skip reason is always surfaced.
+  // note: this is created outside of beforeAll since beforeAll is skipped if all tests are skipped.
   const logger = getLogger(`harness-${providerLabel.toLowerCase()}`);
   if (!canRun) {
     logger.warn(
@@ -98,12 +97,7 @@ export function createHarnessE2ESuite(cfg: HarnessE2EConfig) {
           async () => {
             const result = await runAgentCoreCLI(['deploy', '--yes', '--json'], projectPath);
 
-            if (result.exitCode !== 0) {
-              console.log('Deploy stdout:', result.stdout);
-              console.log('Deploy stderr:', result.stderr);
-            }
-
-            expect(result.exitCode, `Deploy failed (stderr: ${result.stderr}, stdout: ${result.stdout})`).toBe(0);
+            expect(result.exitCode, `Deploy failed stderr=${result.stderr}, stdout=${result.stdout}`).toBe(0);
 
             const json = parseJsonOutput(result.stdout) as { success: boolean };
             expect(json.success, 'Deploy should report success').toBe(true);
@@ -127,12 +121,7 @@ export function createHarnessE2ESuite(cfg: HarnessE2EConfig) {
               projectPath
             );
 
-            if (result.exitCode !== 0) {
-              console.log('Invoke stdout:', result.stdout);
-              console.log('Invoke stderr:', result.stderr);
-            }
-
-            expect(result.exitCode, `Invoke failed: ${result.stderr}`).toBe(0);
+            expect(result.exitCode, `Invoke failed: stderr=${result.stderr}, stdout=${result.stdout}`).toBe(0);
 
             const json = parseJsonOutput(result.stdout) as { success: boolean };
             expect(json.success, 'Invoke should report success').toBe(true);
