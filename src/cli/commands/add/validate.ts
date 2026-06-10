@@ -468,7 +468,7 @@ export async function validateAddGatewayTargetOptions(options: AddGatewayTargetO
     }
     if (options.outboundAuthType) {
       const apiGwAuth = TARGET_TYPE_AUTH_CONFIG.apiGateway;
-      const normalizedAuth = options.outboundAuthType.toUpperCase().replace('-', '_');
+      const normalizedAuth = options.outboundAuthType.toUpperCase().replaceAll('-', '_');
       if (!apiGwAuth.validAuthTypes.includes(normalizedAuth as 'OAUTH' | 'API_KEY' | 'NONE')) {
         return { valid: false, error: `${options.outboundAuthType} is not supported for api-gateway type` };
       }
@@ -487,7 +487,7 @@ export async function validateAddGatewayTargetOptions(options: AddGatewayTargetO
     }
     const hasPlacementApiGw = !!(options.apiKeyLocation ?? options.apiKeyParameterName ?? options.apiKeyPrefix);
     if (hasPlacementApiGw) {
-      const apiGwNormalizedAuth = options.outboundAuthType?.toUpperCase().replace('-', '_');
+      const apiGwNormalizedAuth = options.outboundAuthType?.toUpperCase().replaceAll('-', '_');
       if (apiGwNormalizedAuth !== 'API_KEY') {
         return {
           valid: false,
@@ -501,13 +501,10 @@ export async function validateAddGatewayTargetOptions(options: AddGatewayTargetO
       ) {
         return { valid: false, error: '--api-key-location must be HEADER or QUERY_PARAMETER' };
       }
-      if (
-        options.apiKeyParameterName &&
-        (options.apiKeyParameterName.length < 1 || options.apiKeyParameterName.length > 64)
-      ) {
+      if (options.apiKeyParameterName && options.apiKeyParameterName.length > 64) {
         return { valid: false, error: '--api-key-parameter-name must be 1-64 characters' };
       }
-      if (options.apiKeyPrefix && (options.apiKeyPrefix.length < 1 || options.apiKeyPrefix.length > 64)) {
+      if (options.apiKeyPrefix && options.apiKeyPrefix.length > 64) {
         return { valid: false, error: '--api-key-prefix must be 1-64 characters' };
       }
     }
@@ -640,19 +637,17 @@ export async function validateAddGatewayTargetOptions(options: AddGatewayTargetO
   // API key placement validation (mcpServer and schema-based targets)
   const hasPlacement = !!(options.apiKeyLocation ?? options.apiKeyParameterName ?? options.apiKeyPrefix);
   if (hasPlacement) {
-    if (options.outboundAuthType !== 'API_KEY') {
+    const normalizedPlacementAuth = options.outboundAuthType?.toUpperCase().replaceAll('-', '_');
+    if (normalizedPlacementAuth !== 'API_KEY') {
       return { valid: false, error: 'API key placement flags (--api-key-*) require --outbound-auth api-key' };
     }
     if (options.apiKeyLocation && options.apiKeyLocation !== 'HEADER' && options.apiKeyLocation !== 'QUERY_PARAMETER') {
       return { valid: false, error: '--api-key-location must be HEADER or QUERY_PARAMETER' };
     }
-    if (
-      options.apiKeyParameterName &&
-      (options.apiKeyParameterName.length < 1 || options.apiKeyParameterName.length > 64)
-    ) {
+    if (options.apiKeyParameterName && options.apiKeyParameterName.length > 64) {
       return { valid: false, error: '--api-key-parameter-name must be 1-64 characters' };
     }
-    if (options.apiKeyPrefix && (options.apiKeyPrefix.length < 1 || options.apiKeyPrefix.length > 64)) {
+    if (options.apiKeyPrefix && options.apiKeyPrefix.length > 64) {
       return { valid: false, error: '--api-key-prefix must be 1-64 characters' };
     }
   }

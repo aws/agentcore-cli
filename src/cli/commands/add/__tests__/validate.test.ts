@@ -1756,4 +1756,18 @@ describe('validateAddGatewayTargetOptions — api key placement', () => {
     } as any);
     expect(r.valid).toBe(false);
   });
+
+  it('accepts placement with the hyphenated --outbound-auth api-key form (mcpServer)', async () => {
+    const r = await validateAddGatewayTargetOptions({
+      type: 'mcp-server',
+      name: 't',
+      gateway: 'gw',
+      endpoint: 'https://e.com/mcp',
+      outboundAuthType: 'api-key',
+      credentialName: 'k',
+      apiKeyParameterName: 'Authorization',
+      apiKeyPrefix: 'Bearer',
+    } as any);
+    expect(r.valid).toBe(true);
+  });
 });

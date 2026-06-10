@@ -15,6 +15,7 @@ import type {
   AgentCoreMcpSpec,
   AgentCoreProjectSpec,
   ApiGatewayHttpMethod,
+  ApiKeyOutboundConfig,
   DirectoryPath,
   FilePath,
 } from '../../schema';
@@ -69,6 +70,45 @@ function extractMcpSpec(project: AgentCoreProjectSpec): AgentCoreMcpSpec {
     agentCoreGateways: project.agentCoreGateways,
     mcpRuntimeTools: project.mcpRuntimeTools,
     unassignedTargets: project.unassignedTargets,
+  };
+}
+
+const CLI_OUTBOUND_AUTH_MAP: Record<string, 'OAUTH' | 'API_KEY' | 'NONE'> = {
+  oauth: 'OAUTH',
+  'api-key': 'API_KEY',
+  api_key: 'API_KEY',
+  none: 'NONE',
+};
+
+/**
+ * Build the `outboundAuth` config fragment for a CLI-driven gateway target,
+ * including the optional API key placement block when auth resolves to API_KEY.
+ * Returns an empty object when no outbound auth type was provided so it can be
+ * spread directly into any target config.
+ */
+function buildOutboundAuthForCli(cliOptions: CLIAddGatewayTargetOptions): {
+  outboundAuth?: {
+    type: 'OAUTH' | 'API_KEY' | 'NONE';
+    credentialName?: string;
+    apiKey?: ApiKeyOutboundConfig;
+  };
+} {
+  if (!cliOptions.outboundAuthType) return {};
+  const resolvedType = CLI_OUTBOUND_AUTH_MAP[cliOptions.outboundAuthType.toLowerCase()] ?? 'NONE';
+  const placement =
+    resolvedType === 'API_KEY'
+      ? buildApiKeyPlacement({
+          location: cliOptions.apiKeyLocation,
+          parameterName: cliOptions.apiKeyParameterName,
+          prefix: cliOptions.apiKeyPrefix,
+        })
+      : undefined;
+  return {
+    outboundAuth: {
+      type: resolvedType,
+      credentialName: cliOptions.credentialName,
+      ...(placement && { apiKey: placement }),
+    },
   };
 }
 
@@ -337,14 +377,6 @@ export class GatewayTargetPrimitive extends BasePrimitive<AddGatewayTargetOption
             throw new ValidationError(validation.error!);
           }
 
-          // Map CLI flag values to internal types
-          const outboundAuthMap: Record<string, 'OAUTH' | 'API_KEY' | 'NONE'> = {
-            oauth: 'OAUTH',
-            'api-key': 'API_KEY',
-            api_key: 'API_KEY',
-            none: 'NONE',
-          };
-
           const cliType = cliOptions.type ?? '';
           const telemetryTargetType = GATEWAY_TARGET_TYPE_MAP[cliType] ?? ('unknown' as const);
           const telemetryOutboundAuth = standardize(
@@ -376,28 +408,9 @@ export class GatewayTargetPrimitive extends BasePrimitive<AddGatewayTargetOption
                     },
                   ]
                 : undefined,
-              ...(cliOptions.outboundAuthType
-                ? (() => {
-                    const resolvedType = (outboundAuthMap[cliOptions.outboundAuthType.toLowerCase()] ?? 'NONE') as
-                      | 'API_KEY'
-                      | 'NONE';
-                    const placement =
-                      resolvedType === 'API_KEY'
-                        ? buildApiKeyPlacement({
-                            location: cliOptions.apiKeyLocation,
-                            parameterName: cliOptions.apiKeyParameterName,
-                            prefix: cliOptions.apiKeyPrefix,
-                          })
-                        : undefined;
-                    return {
-                      outboundAuth: {
-                        type: resolvedType,
-                        credentialName: cliOptions.credentialName,
-                        ...(placement && { apiKey: placement }),
-                      },
-                    };
-                  })()
-                : {}),
+              // apiGateway only ever resolves to API_KEY | NONE (OAUTH is rejected in validation),
+              // so the helper's wider OAUTH | API_KEY | NONE type is narrowed here.
+              ...(buildOutboundAuthForCli(cliOptions) as Pick<ApiGatewayTargetConfig, 'outboundAuth'>),
             };
             const result = await this.createApiGatewayTarget(config);
             const output = { success: true, toolName: result.toolName };
@@ -426,26 +439,7 @@ export class GatewayTargetPrimitive extends BasePrimitive<AddGatewayTargetOption
               targetType: cliOptions.type,
               schemaSource,
               gateway: cliOptions.gateway!,
-              ...(cliOptions.outboundAuthType
-                ? (() => {
-                    const resolvedType = outboundAuthMap[cliOptions.outboundAuthType.toLowerCase()] ?? 'NONE';
-                    const placement =
-                      resolvedType === 'API_KEY'
-                        ? buildApiKeyPlacement({
-                            location: cliOptions.apiKeyLocation,
-                            parameterName: cliOptions.apiKeyParameterName,
-                            prefix: cliOptions.apiKeyPrefix,
-                          })
-                        : undefined;
-                    return {
-                      outboundAuth: {
-                        type: resolvedType,
-                        credentialName: cliOptions.credentialName,
-                        ...(placement && { apiKey: placement }),
-                      },
-                    };
-                  })()
-                : {}),
+              ...buildOutboundAuthForCli(cliOptions),
             };
             const result = await this.createSchemaBasedGatewayTarget(config);
             const output = { success: true, toolName: result.toolName };
@@ -489,26 +483,7 @@ export class GatewayTargetPrimitive extends BasePrimitive<AddGatewayTargetOption
                 description: cliOptions.description ?? `Tool for ${cliOptions.name!}`,
                 inputSchema: { type: 'object' },
               },
-              ...(cliOptions.outboundAuthType
-                ? (() => {
-                    const resolvedType = outboundAuthMap[cliOptions.outboundAuthType.toLowerCase()] ?? 'NONE';
-                    const placement =
-                      resolvedType === 'API_KEY'
-                        ? buildApiKeyPlacement({
-                            location: cliOptions.apiKeyLocation,
-                            parameterName: cliOptions.apiKeyParameterName,
-                            prefix: cliOptions.apiKeyPrefix,
-                          })
-                        : undefined;
-                    return {
-                      outboundAuth: {
-                        type: resolvedType,
-                        credentialName: cliOptions.credentialName,
-                        ...(placement && { apiKey: placement }),
-                      },
-                    };
-                  })()
-                : {}),
+              ...buildOutboundAuthForCli(cliOptions),
             };
             const result = await this.createExternalGatewayTarget(config);
             const output = {
