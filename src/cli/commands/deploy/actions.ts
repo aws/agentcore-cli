@@ -228,14 +228,13 @@ export async function handleDeploy(options: ValidatedDeployOptions): Promise<Dep
       });
       if (identityResult.hasErrors) {
         const errorResult = identityResult.results.find(r => r.status === 'error' && r.error);
-        const errorMsg =
-          errorResult?.error && typeof errorResult.error === 'string' ? errorResult.error : 'Identity setup failed';
+        const errorMsg = errorResult?.error?.message ?? 'Identity setup failed';
         endStep('error', errorMsg);
         logger.finalize(false);
         //
         return {
           success: false,
-          error: errorResult?.error ?? new Error('unknown error ocurred when setting up api key providers'),
+          error: errorResult?.error ?? new Error('unknown error occurred when setting up api key providers'),
           logPath: logger.getRelativeLogPath(),
         };
       }
@@ -302,7 +301,7 @@ export async function handleDeploy(options: ValidatedDeployOptions): Promise<Dep
       });
 
       if (paymentPreDeployResult.hasErrors) {
-        const errorMsgs = paymentPreDeployResult.errors.join('; ');
+        const errorMsgs = paymentPreDeployResult.errors.map(e => e.message).join('; ');
         endStep('error', errorMsgs);
         logger.log(`Payment credential setup errors: ${errorMsgs}`, 'error');
         logger.finalize(false);
