@@ -102,6 +102,7 @@ export const ErrorName = z.enum([
   'ConnectionError',
   'DependencyCheckError',
   'GitInitError',
+  'MissingCredentialsError',
   'MissingDependencyError',
   'MissingProjectFileError',
   'NoProjectError',

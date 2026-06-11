@@ -19,6 +19,14 @@ const SDK_ERROR_MAP: Record<string, { category: ErrorNameValue; source: ErrorSou
   ResourceNotFoundException: { category: 'ResourceNotFoundError', source: 'user' },
   ConflictException: { category: 'ConflictError', source: 'user' },
   ResourceAlreadyExistsException: { category: 'ConflictError', source: 'user' },
+  EntityAlreadyExistsException: { category: 'ConflictError', source: 'user' },
+  ThrottlingException: { category: 'TimeoutError', source: 'service' },
+  TooManyRequestsException: { category: 'TimeoutError', source: 'service' },
+  ServiceQuotaExceededException: { category: 'ValidationError', source: 'service' },
+  LimitExceededException: { category: 'ValidationError', source: 'service' },
+  SessionTimeoutException: { category: 'TimeoutError', source: 'service' },
+  InternalServerException: { category: 'ServerError', source: 'service' },
+  InternalFailure: { category: 'ServerError', source: 'service' },
 };
 
 export function classifyError(err: unknown): { category: ErrorNameValue; source: ErrorSource } {
