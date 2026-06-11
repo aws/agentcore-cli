@@ -268,9 +268,12 @@ export async function handleDeploy(options: ValidatedDeployOptions): Promise<Dep
         const errorMsg = 'OAuth credential setup failed. Check the log for details.';
         endStep('error', errorMsg);
         logger.finalize(false);
+
+        const error = errorResult?.error ?? new Error('unknown error occurred when setting up oauth providers');
+        error.message = errorMsg;
         return {
           success: false,
-          error: errorResult?.error ?? new Error('unknown error occurred when setting up oauth providers'),
+          error: error,
           logPath: logger.getRelativeLogPath(),
         };
       }

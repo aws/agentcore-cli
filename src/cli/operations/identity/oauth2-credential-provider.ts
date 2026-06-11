@@ -38,8 +38,8 @@ function extractResult(response: {
   credentialProviderArn?: string;
   clientSecretArn?: { secretArn?: string };
   callbackUrl?: string;
-}): OAuth2ProviderResult | undefined {
-  if (!response.credentialProviderArn) return undefined;
+}): OAuth2ProviderResult {
+  if (!response.credentialProviderArn) return err(new ServiceError('missing credentialProviderArn in response'));
   return ok({
     credentialProviderArn: response.credentialProviderArn,
     clientSecretArn: response.clientSecretArn?.secretArn,
@@ -99,13 +99,10 @@ export async function createOAuth2Provider(
   try {
     const response = await client.send(new CreateOauth2CredentialProviderCommand(buildOAuth2Config(params)));
     let result = extractResult(response);
-    if (!result) {
+    if (!result.success) {
       // Create response may not include credentialProviderArn — fetch it
       const getResult = await getOAuth2Provider(client, params.name);
       result = getResult;
-    }
-    if (!result) {
-      return err(new ServiceError('No credential provider ARN in response'));
     }
     return result;
   } catch (error) {
@@ -128,11 +125,7 @@ export async function getOAuth2Provider(
 ): Promise<OAuth2ProviderResult> {
   try {
     const response = await client.send(new GetOauth2CredentialProviderCommand({ name }));
-    const result = extractResult(response);
-    if (!result) {
-      return err(new ServiceError('No credential provider ARN in response'));
-    }
-    return result;
+    return extractResult(response);
   } catch (error) {
     return err(toError(error));
   }
@@ -148,12 +141,9 @@ export async function updateOAuth2Provider(
   try {
     const response = await client.send(new UpdateOauth2CredentialProviderCommand(buildOAuth2Config(params)));
     let result = extractResult(response);
-    if (!result) {
+    if (!result.success) {
       const getResult = await getOAuth2Provider(client, params.name);
       result = getResult;
-    }
-    if (!result) {
-      return err(new ServiceError('No credential provider ARN in response'));
     }
     return result;
   } catch (error) {
