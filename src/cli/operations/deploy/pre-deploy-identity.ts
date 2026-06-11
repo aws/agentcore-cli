@@ -1,4 +1,4 @@
-import { MissingCredentialsError, SecureCredentials, readEnvFile } from '../../../lib';
+import { AwsCredentialsError, MissingCredentialsError, SecureCredentials, readEnvFile, toError } from '../../../lib';
 import type { AgentCoreProjectSpec, Credential } from '../../../schema';
 import { getCredentialProvider } from '../../aws';
 import {
@@ -37,7 +37,7 @@ export interface ApiKeyProviderSetupResult {
   providerName: string;
   status: 'created' | 'updated' | 'exists' | 'skipped' | 'error';
   credentialProviderArn?: string;
-  error?: string;
+  error?: Error;
 }
 
 export interface PreDeployIdentityResult {
@@ -87,7 +87,7 @@ export async function setupApiKeyProviders(options: SetupApiKeyProvidersOptions)
           {
             providerName: 'TokenVault',
             status: 'error',
-            error: `Failed to configure KMS: ${kmsResult.error}`,
+            error: new Error(`Failed to configure KMS: ${kmsResult.error}`),
           },
         ],
         hasErrors: true,
@@ -118,7 +118,7 @@ async function setupTokenVaultKms(
   region: string,
   credentials: ReturnType<typeof getCredentialProvider>,
   projectSpec: AgentCoreProjectSpec
-): Promise<{ success: boolean; keyArn?: string; error?: string }> {
+): Promise<Result<{ keyArn?: string }>> {
   try {
     const controlClient = new BedrockAgentCoreControlClient({ region, credentials });
 
@@ -129,7 +129,7 @@ async function setupTokenVaultKms(
         vaultResponse.kmsConfiguration?.keyType === 'CustomerManagedKey' &&
         vaultResponse.kmsConfiguration.kmsKeyArn
       ) {
-        return { success: true, keyArn: vaultResponse.kmsConfiguration.kmsKeyArn };
+        return ok({ keyArn: vaultResponse.kmsConfiguration.kmsKeyArn });
       }
     } catch {
       // Vault may not exist yet or access denied — fall through to create key
@@ -145,17 +145,14 @@ async function setupTokenVaultKms(
     );
     const keyArn = response.KeyMetadata?.Arn;
     if (!keyArn) {
-      return { success: false, error: 'Failed to create KMS key' };
+      return err(new Error('Failed to create KMS key'));
     }
 
     const result = await setTokenVaultKmsKey(controlClient, keyArn);
-    if (!result.success) {
-      return { success: false, error: result.error };
-    }
-
-    return { success: true, keyArn };
+    if (!result.success) return result;
+    return ok({ keyArn });
   } catch (error) {
-    return { success: false, error: error instanceof Error ? error.message : String(error) };
+    return err(toError(error));
   }
 }
 
@@ -171,7 +168,7 @@ async function setupApiKeyCredentialProvider(
     return {
       providerName: credential.name,
       status: 'skipped',
-      error: `No ${envVarName} found in agentcore/.env.local`,
+      error: new Error(`No ${envVarName} found in agentcore/.env.local`),
     };
   }
 
@@ -183,8 +180,8 @@ async function setupApiKeyCredentialProvider(
       return {
         providerName: credential.name,
         status: updateResult.success ? 'updated' : 'error',
-        credentialProviderArn: updateResult.credentialProviderArn,
-        error: updateResult.error,
+        credentialProviderArn: updateResult.success ? updateResult.credentialProviderArn : undefined,
+        error: updateResult.success ? undefined : updateResult.error,
       };
     }
 
@@ -192,22 +189,23 @@ async function setupApiKeyCredentialProvider(
     return {
       providerName: credential.name,
       status: createResult.success ? 'created' : 'error',
-      credentialProviderArn: createResult.credentialProviderArn,
-      error: createResult.error,
+      credentialProviderArn: createResult.success ? createResult.credentialProviderArn : undefined,
+      error: createResult.success ? undefined : createResult.error,
     };
   } catch (error) {
     // Provide clearer error message for AWS credentials issues
-    let errorMessage: string;
     if (isNoCredentialsError(error)) {
-      errorMessage = `AWS credentials not found. ${await getAwsLoginGuidance()}`;
-    } else {
-      errorMessage = error instanceof Error ? error.message : String(error);
+      return {
+        providerName: credential.name,
+        status: 'error',
+        error: new AwsCredentialsError(`AWS credentials not found. ${await getAwsLoginGuidance()}`),
+      };
     }
 
     return {
       providerName: credential.name,
       status: 'error',
-      error: errorMessage,
+      error: error as Error,
     };
   }
 }
