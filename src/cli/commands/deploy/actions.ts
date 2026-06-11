@@ -231,7 +231,7 @@ export async function handleDeploy(options: ValidatedDeployOptions): Promise<Dep
         const errorMsg = errorResult?.error?.message ?? 'Identity setup failed';
         endStep('error', errorMsg);
         logger.finalize(false);
-        //
+
         return {
           success: false,
           error: errorResult?.error ?? new Error('unknown error occurred when setting up api key providers'),
