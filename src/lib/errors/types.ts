@@ -281,7 +281,7 @@ export class DevServerConnectionError extends BaseError {
 }
 
 /**
- * Error indicating an AWS service returned an internal failure.
+ * Error indicating an AWS service gave back a 5xx or malforned response.
  */
 export class ServiceError extends BaseError {
   constructor(message: string, options?: BaseErrorOptions) {

@@ -5,7 +5,7 @@
  * as CDK constructs. These operations run as a pre-deploy step outside the
  * main CDK synthesis/deploy path.
  */
-import { type Result, toError } from '@/lib';
+import { type Result, ServiceError, toError } from '@/lib';
 import { err, ok } from '@/lib/result';
 import {
   BedrockAgentCoreControlClient,
@@ -105,7 +105,7 @@ export async function createOAuth2Provider(
       result = getResult;
     }
     if (!result) {
-      return err(new Error('No credential provider ARN in response'));
+      return err(new ServiceError('No credential provider ARN in response'));
     }
     return result;
   } catch (error) {
@@ -130,7 +130,7 @@ export async function getOAuth2Provider(
     const response = await client.send(new GetOauth2CredentialProviderCommand({ name }));
     const result = extractResult(response);
     if (!result) {
-      return err(new Error('No credential provider ARN in response'));
+      return err(new ServiceError('No credential provider ARN in response'));
     }
     return result;
   } catch (error) {
@@ -153,7 +153,7 @@ export async function updateOAuth2Provider(
       result = getResult;
     }
     if (!result) {
-      return err(new Error('No credential provider ARN in response'));
+      return err(new ServiceError('No credential provider ARN in response'));
     }
     return result;
   } catch (error) {

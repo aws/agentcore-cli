@@ -235,7 +235,7 @@ export async function handleDeploy(options: ValidatedDeployOptions): Promise<Dep
         //
         return {
           success: false,
-          error: errorResult?.error ?? new Error('unknown error ocurred'),
+          error: errorResult?.error ?? new Error('unknown error ocurred when setting up api key providers'),
           logPath: logger.getRelativeLogPath(),
         };
       }
@@ -271,7 +271,7 @@ export async function handleDeploy(options: ValidatedDeployOptions): Promise<Dep
         logger.finalize(false);
         return {
           success: false,
-          error: errorResult?.error ?? new Error('unknown error'),
+          error: errorResult?.error ?? new Error('unknown error occurred when setting up oauth providers'),
           logPath: logger.getRelativeLogPath(),
         };
       }
@@ -308,7 +308,7 @@ export async function handleDeploy(options: ValidatedDeployOptions): Promise<Dep
         logger.finalize(false);
         return {
           success: false,
-          error: paymentPreDeployResult.errors[0] ?? new Error('Payment preflight steps failed for deploy'),
+          error: paymentPreDeployResult.errors[0] ?? new Error('payment deploy preflight steps failed'),
           logPath: logger.getRelativeLogPath(),
         };
       }

@@ -94,7 +94,7 @@ export async function setupApiKeyProviders(options: SetupApiKeyProvidersOptions)
           {
             providerName: 'TokenVault',
             status: 'error',
-            error: new Error(`Failed to configure KMS: ${kmsResult.error}`),
+            error: kmsResult.error,
           },
         ],
         hasErrors: true,
@@ -212,7 +212,7 @@ async function setupApiKeyCredentialProvider(
     return {
       providerName: credential.name,
       status: 'error',
-      error: error as Error,
+      error: toError(error),
     };
   }
 }
