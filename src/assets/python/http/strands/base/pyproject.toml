@@ -16,7 +16,7 @@ dependencies = [
     {{#if (eq modelProvider "Gemini")}}"google-genai >= 1.0.0",
     {{/if}}"mcp >= 1.19.0",
     {{#if (eq modelProvider "OpenAI")}}"openai >= 1.0.0",
-    {{/if}}"strands-agents >= 1.13.0",
+    {{/if}}"strands-agents >= 1.15.0",
     {{#if hasGateway}}{{#if (includes gatewayAuthTypes "AWS_IAM")}}"mcp-proxy-for-aws >= 1.1.0",
     {{/if}}{{/if}}
 ]
