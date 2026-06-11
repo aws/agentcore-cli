@@ -227,12 +227,17 @@ export async function handleDeploy(options: ValidatedDeployOptions): Promise<Dep
         enableKmsEncryption: true,
       });
       if (identityResult.hasErrors) {
-        const errorResult = identityResult.results.find(r => r.status === 'error');
+        const errorResult = identityResult.results.find(r => r.status === 'error' && r.error);
         const errorMsg =
           errorResult?.error && typeof errorResult.error === 'string' ? errorResult.error : 'Identity setup failed';
         endStep('error', errorMsg);
         logger.finalize(false);
-        return { success: false, error: new Error(errorMsg), logPath: logger.getRelativeLogPath() };
+        //
+        return {
+          success: false,
+          error: errorResult?.error ?? new Error('unknown error ocurred'),
+          logPath: logger.getRelativeLogPath(),
+        };
       }
       identityKmsKeyArn = identityResult.kmsKeyArn;
 
@@ -259,12 +264,16 @@ export async function handleDeploy(options: ValidatedDeployOptions): Promise<Dep
       });
       if (oauthResult.hasErrors) {
         // Log detailed error internally, return sanitized message to avoid leaking OAuth details
-        const errorResult = oauthResult.results.find(r => r.status === 'error');
+        const errorResult = oauthResult.results.find(r => r.status === 'error' && r.error);
         logger.log(`OAuth setup error: ${errorResult?.error ?? 'unknown'}`, 'error');
         const errorMsg = 'OAuth credential setup failed. Check the log for details.';
         endStep('error', errorMsg);
         logger.finalize(false);
-        return { success: false, error: new Error(errorMsg), logPath: logger.getRelativeLogPath() };
+        return {
+          success: false,
+          error: errorResult?.error ?? new Error('unknown error'),
+          logPath: logger.getRelativeLogPath(),
+        };
       }
 
       // Collect OAuth credential ARNs for deployed state
@@ -362,7 +371,7 @@ export async function handleDeploy(options: ValidatedDeployOptions): Promise<Dep
         logger.finalize(false);
         return {
           success: false,
-          error: new Error('AWS environment needs bootstrapping. Run with --yes to auto-bootstrap.'),
+          error: new ValidationError('AWS environment needs bootstrapping. Run with --yes to auto-bootstrap.'),
           logPath: logger.getRelativeLogPath(),
         };
       }

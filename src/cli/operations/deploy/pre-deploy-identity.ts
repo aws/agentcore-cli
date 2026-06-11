@@ -1,4 +1,11 @@
-import { AwsCredentialsError, MissingCredentialsError, SecureCredentials, readEnvFile, toError } from '../../../lib';
+import {
+  AwsCredentialsError,
+  MissingCredentialsError,
+  SecureCredentials,
+  ValidationError,
+  readEnvFile,
+  toError,
+} from '../../../lib';
 import type { AgentCoreProjectSpec, Credential } from '../../../schema';
 import { getCredentialProvider } from '../../aws';
 import {
@@ -323,7 +330,7 @@ export function assertEnvFileExists(projectSpec: AgentCoreProjectSpec, configBas
 export interface OAuth2ProviderSetupResult {
   providerName: string;
   status: 'created' | 'updated' | 'skipped' | 'error';
-  error?: string;
+  error?: Error;
   credentialProviderArn?: string;
   clientSecretArn?: string;
   callbackUrl?: string;
@@ -382,7 +389,7 @@ async function setupSingleOAuth2Provider(
   credentials: SecureCredentials
 ): Promise<OAuth2ProviderSetupResult> {
   if (credential.authorizerType !== 'OAuthCredentialProvider') {
-    return { providerName: credential.name, status: 'error', error: 'Invalid credential type' };
+    return { providerName: credential.name, status: 'error', error: new ValidationError('Invalid credential type') };
   }
 
   const nameKey = credential.name.toUpperCase().replace(/-/g, '_');
@@ -396,7 +403,7 @@ async function setupSingleOAuth2Provider(
     return {
       providerName: credential.name,
       status: 'skipped',
-      error: `Missing ${clientIdEnvVar} or ${clientSecretEnvVar} in agentcore/.env.local`,
+      error: new MissingCredentialsError(`Missing ${clientIdEnvVar} or ${clientSecretEnvVar} in agentcore/.env.local`),
     };
   }
 
@@ -406,7 +413,9 @@ async function setupSingleOAuth2Provider(
     return {
       providerName: credential.name,
       status: 'skipped',
-      error: `No discoveryUrl configured for "${credential.name}". Provider already exists in Identity service — credentials in .env.local will be ignored.`,
+      error: new MissingCredentialsError(
+        `No discoveryUrl configured for "${credential.name}". Provider already exists in Identity service — credentials in .env.local will be ignored.`
+      ),
     };
   }
 
@@ -426,10 +435,10 @@ async function setupSingleOAuth2Provider(
       return {
         providerName: credential.name,
         status: updateResult.success ? 'updated' : 'error',
-        error: updateResult.error,
-        credentialProviderArn: updateResult.result?.credentialProviderArn,
-        clientSecretArn: updateResult.result?.clientSecretArn,
-        callbackUrl: updateResult.result?.callbackUrl,
+        error: updateResult.success ? undefined : updateResult.error,
+        credentialProviderArn: updateResult.success ? updateResult.credentialProviderArn : undefined,
+        clientSecretArn: updateResult.success ? updateResult.clientSecretArn : undefined,
+        callbackUrl: updateResult.success ? updateResult.callbackUrl : undefined,
       };
     }
 
@@ -437,19 +446,17 @@ async function setupSingleOAuth2Provider(
     return {
       providerName: credential.name,
       status: createResult.success ? 'created' : 'error',
-      error: createResult.error,
-      credentialProviderArn: createResult.result?.credentialProviderArn,
-      clientSecretArn: createResult.result?.clientSecretArn,
-      callbackUrl: createResult.result?.callbackUrl,
+      error: createResult.success ? undefined : createResult.error,
+      credentialProviderArn: createResult.success ? createResult.credentialProviderArn : undefined,
+      clientSecretArn: createResult.success ? createResult.clientSecretArn : undefined,
+      callbackUrl: createResult.success ? createResult.callbackUrl : undefined,
     };
-  } catch (error) {
-    let errorMessage: string;
-    if (isNoCredentialsError(error)) {
-      errorMessage = 'AWS credentials not found. Run `aws sso login` or set AWS_ACCESS_KEY_ID/AWS_SECRET_ACCESS_KEY.';
-    } else {
-      errorMessage = error instanceof Error ? error.message : String(error);
+  } catch (e) {
+    const err = toError(e);
+    if (isNoCredentialsError(e)) {
+      err.message = 'AWS credentials not found. Run `aws sso login` or set AWS_ACCESS_KEY_ID/AWS_SECRET_ACCESS_KEY.';
     }
-    return { providerName: credential.name, status: 'error', error: errorMessage };
+    return { providerName: credential.name, status: 'error', error: err };
   }
 }
 
