@@ -140,7 +140,9 @@ describe('createOAuth2Provider', () => {
     const result = await createOAuth2Provider(makeMockClient(), mockParams);
 
     expect(result.success).toBe(false);
-    expect((result as { success: false; error: Error }).error.message).toBe('No credential provider ARN in response');
+    expect((result as { success: false; error: Error }).error.message).toBe(
+      'missing credentialProviderArn in response'
+    );
   });
 });
 
@@ -180,7 +182,9 @@ describe('getOAuth2Provider', () => {
     const result = await getOAuth2Provider(makeMockClient(), 'test-provider');
 
     expect(result.success).toBe(false);
-    expect((result as { success: false; error: Error }).error.message).toBe('No credential provider ARN in response');
+    expect((result as { success: false; error: Error }).error.message).toBe(
+      'missing credentialProviderArn in response'
+    );
   });
 });
 
