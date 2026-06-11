@@ -101,6 +101,15 @@ export class AwsCredentialsError extends BaseError {
 }
 
 /**
+ * Error thrown when non-AWS credentials are missing but required.. (ex. API Keys)
+ */
+export class MissingCredentialsError extends BaseError {
+  constructor(message: string, options?: BaseErrorOptions) {
+    super(message, { defaultSource: 'user', ...options });
+  }
+}
+
+/**
  * Error indicating a packaging operation failed.
  */
 export class PackagingError extends BaseError {

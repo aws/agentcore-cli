@@ -1,4 +1,4 @@
-import { SecureCredentials, readEnvFile } from '../../../lib';
+import { MissingCredentialsError, SecureCredentials, readEnvFile } from '../../../lib';
 import type { AgentCoreProjectSpec, Credential } from '../../../schema';
 import { getCredentialProvider } from '../../aws';
 import {
@@ -23,6 +23,7 @@ import {
   updateApiKeyProvider,
   updateOAuth2Provider,
 } from '../identity';
+import { type Result, err, ok } from '@/lib/result';
 import { BedrockAgentCoreControlClient, GetTokenVaultCommand } from '@aws-sdk/client-bedrock-agentcore-control';
 import { CreateKeyCommand, KMSClient } from '@aws-sdk/client-kms';
 import { existsSync } from 'fs';
@@ -302,15 +303,19 @@ export function getAllCredentials(projectSpec: AgentCoreProjectSpec): MissingCre
  * so the user can populate the file in one shot rather than discovering missing vars
  * one at a time across separate setup steps.
  */
-export function assertEnvFileExists(projectSpec: AgentCoreProjectSpec, configBaseDir: string): string | null {
+export function assertEnvFileExists(projectSpec: AgentCoreProjectSpec, configBaseDir: string): Result {
   const allCredentials = getAllCredentials(projectSpec);
-  if (allCredentials.length === 0) return null;
+  if (allCredentials.length === 0) return ok();
 
   const envFilePath = join(configBaseDir, '.env.local');
-  if (existsSync(envFilePath)) return null;
+  if (existsSync(envFilePath)) return ok();
 
   const varList = allCredentials.map(c => `  ${c.envVarName}`).join('\n');
-  return `agentcore/.env.local not found. Credentials require environment variables.\n\nRequired variables:\n${varList}\n\nTo fix: create agentcore/.env.local with the variables above, or re-run the relevant 'agentcore add' command to enter credentials interactively.`;
+  return err(
+    new MissingCredentialsError(
+      `agentcore/.env.local not found. Credentials require environment variables.\n\nRequired variables:\n${varList}\n\nTo fix: create agentcore/.env.local with the variables above, or re-run the relevant 'agentcore add' command to enter credentials interactively.`
+    )
+  );
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

@@ -192,10 +192,10 @@ export async function handleDeploy(options: ValidatedDeployOptions): Promise<Dep
 
     // Unified .env.local existence check across ApiKey, OAuth2, and Payment credentials.
     // Lists every required env var upfront so the user can populate the file in one shot.
-    const envFileError = assertEnvFileExists(context.projectSpec, configIO.getConfigRoot());
-    if (envFileError) {
+    const envFileAssertionResult = assertEnvFileExists(context.projectSpec, configIO.getConfigRoot());
+    if (!envFileAssertionResult.success) {
       logger.finalize(false);
-      return { success: false, error: new Error(envFileError), logPath: logger.getRelativeLogPath() };
+      return { success: false, error: envFileAssertionResult.error, logPath: logger.getRelativeLogPath() };
     }
 
     // Read runtime credentials from process.env (enables non-interactive deploy with -y)
