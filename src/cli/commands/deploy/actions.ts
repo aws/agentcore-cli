@@ -308,7 +308,7 @@ export async function handleDeploy(options: ValidatedDeployOptions): Promise<Dep
         logger.finalize(false);
         return {
           success: false,
-          error: new Error(`Payment setup failed: ${errorMsgs}`),
+          error: paymentPreDeployResult.errors[0] ?? new Error('Payment preflight steps failed for deploy'),
           logPath: logger.getRelativeLogPath(),
         };
       }
@@ -501,7 +501,7 @@ export async function handleDeploy(options: ValidatedDeployOptions): Promise<Dep
         logger.finalize(false);
         return {
           success: false,
-          error: new Error(`Stack teardown failed: ${teardownError}`),
+          error: teardown.error,
           logPath: logger.getRelativeLogPath(),
         };
       }

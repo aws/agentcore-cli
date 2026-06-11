@@ -472,7 +472,7 @@ export interface PaymentCredentialProviderResult {
 export interface PaymentCredentialProvidersResult {
   credentialProviders: Record<string, PaymentCredentialProviderResult>;
   hasErrors: boolean;
-  errors: string[];
+  errors: Error[];
 }
 
 export interface SetupPaymentCredentialProvidersOptions {
@@ -518,7 +518,9 @@ export async function setupPaymentCredentialProviders(
         if (!credential) {
           result.hasErrors = true;
           result.errors.push(
-            `Payment manager "${payment.name}" connector "${connector.name}" references credential "${credentialName}" which is not a PaymentCredentialProvider`
+            new ValidationError(
+              `Payment manager "${payment.name}" connector "${connector.name}" references credential "${credentialName}" which is not a PaymentCredentialProvider`
+            )
           );
           continue;
         }
@@ -534,17 +536,15 @@ export async function setupPaymentCredentialProviders(
           credentialProviderArn,
           credentialProviderName: credentialName,
         };
-      } catch (error) {
-        let errorMessage: string;
+      } catch (e) {
+        const error = toError(e);
         if (isNoCredentialsError(error)) {
-          errorMessage = `AWS credentials not found. ${await getAwsLoginGuidance()}`;
+          error.message = `AWS credentials not found. ${await getAwsLoginGuidance()}`;
         } else if (isQuotaExceededError(error)) {
-          errorMessage = `Service quota exceeded. Delete unused credential providers, or request a limit increase via the AWS Service Quotas console.`;
-        } else {
-          errorMessage = error instanceof Error ? error.message : String(error);
+          error.message = `Service quota exceeded. Delete unused credential providers, or request a limit increase via the AWS Service Quotas console.`;
         }
         result.hasErrors = true;
-        result.errors.push(`Credential provider for "${connector.name}": ${errorMessage}`);
+        result.errors.push(error);
       }
     }
   }
@@ -608,7 +608,7 @@ async function createOrUpdatePaymentCredentialProvider(
         !authorizationPrivateKey && envVarNames.authorizationPrivateKey,
         !authorizationId && envVarNames.authorizationId,
       ].filter(Boolean);
-      throw new Error(
+      throw new MissingCredentialsError(
         `Missing StripePrivy credentials for connector "${connector.name}" in agentcore/.env.local: ${missing.join(', ')}`
       );
     }
@@ -634,7 +634,7 @@ async function createOrUpdatePaymentCredentialProvider(
         !apiKeySecret && envVarNames.apiKeySecret,
         !walletSecret && envVarNames.walletSecret,
       ].filter(Boolean);
-      throw new Error(
+      throw new MissingCredentialsError(
         `Missing CDP credentials for connector "${connector.name}" in agentcore/.env.local: ${missing.join(', ')}`
       );
     }
