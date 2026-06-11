@@ -290,6 +290,24 @@ export class ServiceError extends BaseError {
 }
 
 /**
+ * Error indicating a request was throttled or rate-limited.
+ */
+export class ThrottlingError extends BaseError {
+  constructor(message: string, options?: BaseErrorOptions) {
+    super(message, { defaultSource: 'service', ...options });
+  }
+}
+
+/**
+ * Error indicating a service quota or limit was exceeded.
+ */
+export class ServiceQuotaError extends BaseError {
+  constructor(message: string, options?: BaseErrorOptions) {
+    super(message, { defaultSource: 'service', ...options });
+  }
+}
+
+/**
  * Error indicating polling timed out.
  */
 export class PollTimeoutError extends BaseError {
