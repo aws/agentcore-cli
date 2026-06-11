@@ -2,6 +2,7 @@ import {
   AwsCredentialsError,
   MissingCredentialsError,
   SecureCredentials,
+  ServiceQuotaError,
   ValidationError,
   readEnvFile,
   toError,
@@ -205,7 +206,9 @@ async function setupApiKeyCredentialProvider(
       return {
         providerName: credential.name,
         status: 'error',
-        error: new AwsCredentialsError(`AWS credentials not found. ${await getAwsLoginGuidance()}`),
+        error: new AwsCredentialsError(`AWS credentials not found. ${await getAwsLoginGuidance()}`, undefined, {
+          cause: error,
+        }),
       };
     }
 
@@ -452,11 +455,19 @@ async function setupSingleOAuth2Provider(
       callbackUrl: createResult.success ? createResult.callbackUrl : undefined,
     };
   } catch (e) {
-    const err = toError(e);
-    if (isNoCredentialsError(e)) {
-      err.message = 'AWS credentials not found. Run `aws sso login` or set AWS_ACCESS_KEY_ID/AWS_SECRET_ACCESS_KEY.';
+    const error = toError(e);
+    if (isNoCredentialsError(error)) {
+      return {
+        providerName: credential.name,
+        status: 'error',
+        error: new AwsCredentialsError(
+          'AWS credentials not found.Run`aws sso login` or set AWS_ACCESS_KEY_ID / AWS_SECRET_ACCESS_KEY.',
+          undefined,
+          { cause: error }
+        ),
+      };
     }
-    return { providerName: credential.name, status: 'error', error: err };
+    return { providerName: credential.name, status: 'error', error: error };
   }
 }
 
@@ -537,14 +548,23 @@ export async function setupPaymentCredentialProviders(
           credentialProviderName: credentialName,
         };
       } catch (e) {
+        result.hasErrors = true;
         const error = toError(e);
         if (isNoCredentialsError(error)) {
-          error.message = `AWS credentials not found. ${await getAwsLoginGuidance()}`;
+          result.errors.push(
+            new AwsCredentialsError(`AWS credentials not found. ${await getAwsLoginGuidance()}`, undefined, {
+              cause: error,
+            })
+          );
         } else if (isQuotaExceededError(error)) {
-          error.message = `Service quota exceeded. Delete unused credential providers, or request a limit increase via the AWS Service Quotas console.`;
+          result.errors.push(
+            new ServiceQuotaError(
+              `Service quota exceeded. Delete unused credential providers, or request a limit increase via the AWS Service Quotas console.`
+            )
+          );
+        } else {
+          result.errors.push(error);
         }
-        result.hasErrors = true;
-        result.errors.push(error);
       }
     }
   }
