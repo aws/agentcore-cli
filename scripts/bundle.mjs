@@ -16,6 +16,9 @@
  * Environment variables:
  *   AGENTCORE_CDK_PATH              — path to the agentcore-l3-cdk-constructs repo.
  *                                     Falls back to ../agentcore-l3-cdk-constructs, then clones from GitHub.
+ *   AGENTCORE_INSPECTOR_PATH         — path to the agent-inspector repo.
+ *                                     Falls back to ../agent-inspector. If found, builds and bundles
+ *                                     the local version instead of the npm-installed one.
  *   AGENTCORE_TARBALL_OUTPUT        — output path (without .tgz) for the GA tarball.
  *                                     Preview tarball gets '-preview' appended. Relative to cwd.
  *   AGENTCORE_TARBALL_VERSION_SUFFIX — version prerelease suffix (e.g. "abc12-def34").
@@ -78,6 +81,31 @@ function resolveCdkPath() {
   }
 
   return cloneDir;
+}
+
+/**
+ * Resolve a local agent-inspector repo path. Priority:
+ * 1. AGENTCORE_INSPECTOR_PATH env var
+ * 2. Sibling directory ../agent-inspector
+ * 3. null (use npm-installed version)
+ */
+function resolveInspectorPath() {
+  if (process.env.AGENTCORE_INSPECTOR_PATH) {
+    const p = path.resolve(process.env.AGENTCORE_INSPECTOR_PATH);
+    if (fs.existsSync(path.join(p, 'package.json'))) {
+      log(`Using agent-inspector from AGENTCORE_INSPECTOR_PATH: ${p}`);
+      return p;
+    }
+    console.warn(`  WARNING: AGENTCORE_INSPECTOR_PATH=${p} does not contain package.json, ignoring.`);
+  }
+
+  const sibling = path.resolve(cliRoot, '..', 'agent-inspector');
+  if (fs.existsSync(path.join(sibling, 'package.json'))) {
+    log(`Using agent-inspector from sibling directory: ${sibling}`);
+    return sibling;
+  }
+
+  return null;
 }
 
 // ---------------------------------------------------------------------------
@@ -160,6 +188,29 @@ run('npm', ['install'], { cwd: cliRoot });
 
 log('Building CLI...');
 run('npm', ['run', 'build'], { cwd: cliRoot });
+
+// Step 3.5: If local agent-inspector is available, build and overwrite dist/agent-inspector/
+const inspectorPath = resolveInspectorPath();
+if (inspectorPath) {
+  log('Installing agent-inspector dependencies...');
+  run('npm', ['install'], { cwd: inspectorPath });
+
+  log('Building agent-inspector...');
+  run('npm', ['run', 'build'], { cwd: inspectorPath });
+
+  const inspectorDistAssets = path.join(inspectorPath, 'dist-assets');
+  if (!fs.existsSync(inspectorDistAssets)) {
+    console.error(`ERROR: agent-inspector build did not produce dist-assets/ at ${inspectorDistAssets}`);
+    process.exit(1);
+  }
+
+  const inspectorDest = path.join(cliRoot, 'dist', 'agent-inspector');
+  if (fs.existsSync(inspectorDest)) {
+    fs.rmSync(inspectorDest, { recursive: true });
+  }
+  fs.cpSync(inspectorDistAssets, inspectorDest, { recursive: true });
+  log(`Replaced dist/agent-inspector/ with local build from ${inspectorPath}`);
+}
 
 // Step 4: Copy CDK tarball into dist/assets/ so CDKRenderer can detect it
 const bundledTarballDest = path.join(cliRoot, 'dist', 'assets', 'bundled-agentcore-cdk.tgz');
