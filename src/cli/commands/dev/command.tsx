@@ -1,5 +1,5 @@
 import {
-  ConnectionError,
+  DevServerConnectionError,
   NoProjectError,
   ResourceNotFoundError,
   ValidationError,
@@ -65,7 +65,7 @@ async function invokeDevServer(
     }
   } catch (err) {
     throw isConnectionRefused(err)
-      ? new ConnectionError(`Dev server not running on port ${port}. Start it with: agentcore dev --logs`, {
+      ? new DevServerConnectionError(`Dev server not running on port ${port}. Start it with: agentcore dev --logs`, {
           cause: err,
         })
       : err;
@@ -80,7 +80,7 @@ async function invokeA2ADevServer(port: number, prompt: string, headers?: Record
     process.stdout.write('\n');
   } catch (err) {
     throw isConnectionRefused(err)
-      ? new ConnectionError(`Dev server not running on port ${port}. Start it with: agentcore dev --logs`, {
+      ? new DevServerConnectionError(`Dev server not running on port ${port}. Start it with: agentcore dev --logs`, {
           cause: err,
         })
       : err;
@@ -89,8 +89,8 @@ async function invokeA2ADevServer(port: number, prompt: string, headers?: Record
 
 function isConnectionRefused(err: unknown): boolean {
   if (!(err instanceof Error)) return false;
-  // ConnectionError from invoke.ts wraps fetch failures after retries
-  if (err.name === 'ConnectionError') return true;
+  // DevServerConnectionError from invoke.ts wraps fetch failures after retries
+  if (err.name === 'DevServerConnectionError') return true;
   const msg = err.message + (err.cause instanceof Error ? err.cause.message : '');
   return msg.includes('ECONNREFUSED') || msg.includes('fetch failed');
 }
@@ -138,7 +138,7 @@ async function handleMcpInvoke(
     }
   } catch (err) {
     throw isConnectionRefused(err)
-      ? new ConnectionError(`Dev server not running on port ${port}. Start it with: agentcore dev --logs`, {
+      ? new DevServerConnectionError(`Dev server not running on port ${port}. Start it with: agentcore dev --logs`, {
           cause: err,
         })
       : err;

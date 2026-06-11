@@ -1,4 +1,4 @@
-import { ServerError } from '../../../../lib/errors/types';
+import { DevServerError } from '../../../../lib/errors/types';
 import { callMcpTool, listMcpTools } from '../invoke-mcp';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -79,14 +79,14 @@ describe('listMcpTools', () => {
     expect(mockFetch).toHaveBeenCalledTimes(4);
   });
 
-  it('throws ServerError on HTTP error', async () => {
+  it('throws DevServerError on HTTP error', async () => {
     mockFetch.mockResolvedValueOnce({
       ok: false,
       status: 500,
       text: () => 'Internal Server Error',
     });
 
-    await expect(listMcpTools(8080)).rejects.toThrow(ServerError);
+    await expect(listMcpTools(8080)).rejects.toThrow(DevServerError);
   });
 });
 
