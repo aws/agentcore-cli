@@ -274,22 +274,30 @@ export function AddGatewayTargetScreen({
   });
 
   // ── Render ──
-  const helpText = isConfirmStep
-    ? HELP_TEXT.CONFIRM_CANCEL
-    : isTextStep ||
-        isRestApiIdStep ||
-        isStageStep ||
-        isToolFiltersStep ||
-        isSchemaSourceStep ||
-        isLambdaArnStep ||
-        isToolSchemaStep
-      ? HELP_TEXT.TEXT_INPUT
-      : HELP_TEXT.NAVIGATE_SELECT;
+  const helpText = awaitingApiKeyPlacement
+    ? HELP_TEXT.MULTI_SELECT
+    : isConfirmStep
+      ? HELP_TEXT.CONFIRM_CANCEL
+      : isTextStep ||
+          isRestApiIdStep ||
+          isStageStep ||
+          isToolFiltersStep ||
+          isSchemaSourceStep ||
+          isLambdaArnStep ||
+          isToolSchemaStep
+        ? HELP_TEXT.TEXT_INPUT
+        : HELP_TEXT.NAVIGATE_SELECT;
 
   const headerContent = <StepIndicator steps={wizard.steps} currentStep={wizard.step} labels={MCP_TOOL_STEP_LABELS} />;
 
   return (
-    <Screen title="Add Gateway Target" onExit={onExit} helpText={helpText} headerContent={headerContent}>
+    <Screen
+      title="Add Gateway Target"
+      onExit={onExit}
+      helpText={helpText}
+      headerContent={headerContent}
+      exitEnabled={false}
+    >
       <Panel>
         {isTargetTypeStep && (
           <WizardSelect

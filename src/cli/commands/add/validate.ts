@@ -550,6 +550,12 @@ export async function validateAddGatewayTargetOptions(options: AddGatewayTargetO
     if (options.oauthClientId || options.oauthClientSecret || options.oauthDiscoveryUrl || options.oauthScopes) {
       return { valid: false, error: 'OAuth options are not applicable for lambda-function-arn type' };
     }
+    if (options.apiKeyLocation || options.apiKeyParameterName || options.apiKeyPrefix) {
+      return {
+        valid: false,
+        error: 'API key placement flags (--api-key-*) are not applicable for lambda-function-arn type',
+      };
+    }
 
     const configRoot = findConfigRoot();
     const projectRoot = configRoot ? dirname(configRoot) : process.cwd();

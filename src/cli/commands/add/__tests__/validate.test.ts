@@ -1770,4 +1770,17 @@ describe('validateAddGatewayTargetOptions — api key placement', () => {
     } as any);
     expect(r.valid).toBe(true);
   });
+
+  it('rejects api-key placement flags on lambda-function-arn type', async () => {
+    const r = await validateAddGatewayTargetOptions({
+      type: 'lambda-function-arn',
+      name: 't',
+      gateway: 'gw',
+      lambdaArn: 'arn:aws:lambda:us-east-1:123456789012:function:f',
+      toolSchemaFile: 'tools.json',
+      apiKeyLocation: 'HEADER',
+    } as any);
+    expect(r.valid).toBe(false);
+    expect(r.error).toContain('lambda-function-arn');
+  });
 });
