@@ -630,7 +630,7 @@ describe('resolveGatewayProviders', () => {
     expect(renderConfig.gatewayProviders).toHaveLength(0);
   });
 
-  it('resolves same-project gateway via deployed state and emits IAM note', () => {
+  it('resolves same-project gateway via deployed state without IAM note', () => {
     const ctx = baseContext(
       { tools: [gatewayTool] },
       {
@@ -651,7 +651,7 @@ describe('resolveGatewayProviders', () => {
     expect(renderConfig.hasGateway).toBe(true);
     expect(renderConfig.gatewayProviders?.at(0)!.name).toBe('MyGateway');
     expect(renderConfig.gatewayProviders?.at(0)!.authType).toBe('AWS_IAM');
-    expect(noteCategories(ctx)).toContain(GATEWAY_IAM_POLICY_NOTE_CATEGORY);
+    expect(noteCategories(ctx)).not.toContain(GATEWAY_IAM_POLICY_NOTE_CATEGORY);
   });
 
   it('resolves same-project CUSTOM_JWT gateway with discoveryUrl and scopes', () => {

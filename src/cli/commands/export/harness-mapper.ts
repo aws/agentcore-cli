@@ -355,7 +355,7 @@ function resolveMemoryProviders(spec: HarnessSpec, context: ResolvedHarnessConte
       message:
         `The harness memory was referenced by ARN (${memArn}) and could not be matched to a ` +
         'same-project memory. A MEMORY_ARN env var will be used. Ensure the runtime IAM execution role ' +
-        'has bedrock-agentcore:GetMemory and bedrock-agentcore:PutMemory on the above ARN.',
+        'has bedrock-agentcore:GetMemory and bedrock-agentcore:InvokeMemory on the above ARN.',
     });
     return {
       providers: [{ name: 'ExternalMemory', envVarName: 'MEMORY_ARN', strategies: [] }],
@@ -417,24 +417,8 @@ function resolveGatewayProviders(
       }
 
       providers.push(provider);
-
-      if (authType === 'AWS_IAM') {
-        context.exportNotes.push({
-          category: GATEWAY_IAM_POLICY_NOTE_CATEGORY,
-          message:
-            `Gateway "${gatewayName}" (ARN: ${gatewayArn}) uses AWS_IAM auth. ` +
-            `The exported runtime execution role is not automatically granted permission to invoke it.\n\n` +
-            `Add the following to agentcore/cdk/lib/cdk-stack.ts after \`this.application\` is created,\n` +
-            `replacing "YourAgentName" with the name of the exported agent (e.g. "${context.targetAgentName ?? 'MyHarnessAgent'}"):\n\n` +
-            `  const agentEnv = this.application.environments.get('${context.targetAgentName ?? 'YourAgentName'}');\n` +
-            `  agentEnv?.runtime.role.addToPrincipalPolicy(\n` +
-            `    new iam.PolicyStatement({\n` +
-            `      actions: ['bedrock-agentcore:InvokeGateway'],\n` +
-            `      resources: ['${gatewayArn}'],\n` +
-            `    })\n` +
-            `  );`,
-        });
-      }
+      // Same-project gateway: AgentCoreMcp.wireGatewayUrlsToAgents() auto-grants InvokeGateway
+      // to all runtime environments — no manual IAM step needed.
     } else {
       // External gateway — derive URL from ARN
       const hardcodedUrl = deriveGatewayUrl(gatewayArn);
