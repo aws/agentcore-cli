@@ -6,6 +6,7 @@ import {
   BaseCredentials,
   BootstrapEnvironments,
   BootstrapStackParameters,
+  DiffMethod,
   type ICloudAssemblySource,
   Toolkit,
 } from '@aws-cdk/toolkit-lib';
@@ -286,7 +287,9 @@ export class CdkToolkitWrapper {
   async diff(options: DiffOptions = {}) {
     const { toolkit } = this.ensureInitialized();
     const source = await this.getSourceForOperation();
-    return withErrorContext('diff', () => toolkit.diff(source, { stacks: options.stacks }));
+    return withErrorContext('diff', () =>
+      toolkit.diff(source, { stacks: options.stacks, method: DiffMethod.TemplateOnly() })
+    );
   }
 
   /**

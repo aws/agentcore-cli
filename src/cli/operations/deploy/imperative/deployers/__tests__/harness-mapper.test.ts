@@ -267,17 +267,68 @@ describe('mapHarnessSpecToCreateOptions', () => {
   });
 
   describe('skills mapping', () => {
-    it('maps skills as path objects', async () => {
+    it('maps path skills', async () => {
       const opts = baseOptions({
         harnessSpec: {
           name: 'h',
           model: { provider: 'bedrock', modelId: 'claude' },
           tools: [],
-          skills: ['path/to/skill1', 'path/to/skill2'],
+          skills: [{ path: 'path/to/skill1' }, { path: 'path/to/skill2' }],
         } as any,
       });
       const result = await mapHarnessSpecToCreateOptions(opts);
       expect(result.skills).toEqual([{ path: 'path/to/skill1' }, { path: 'path/to/skill2' }]);
+    });
+
+    it('maps s3 skills', async () => {
+      const opts = baseOptions({
+        harnessSpec: {
+          name: 'h',
+          model: { provider: 'bedrock', modelId: 'claude' },
+          tools: [],
+          skills: [{ s3: { uri: 's3://my-bucket/skills/calc' } }],
+        } as any,
+      });
+      const result = await mapHarnessSpecToCreateOptions(opts);
+      expect(result.skills).toEqual([{ s3: { uri: 's3://my-bucket/skills/calc' } }]);
+    });
+
+    it('maps git skills with optional auth', async () => {
+      const opts = baseOptions({
+        harnessSpec: {
+          name: 'h',
+          model: { provider: 'bedrock', modelId: 'claude' },
+          tools: [],
+          skills: [
+            { git: { url: 'https://github.com/owner/repo', path: 'skills/greet' } },
+            {
+              git: {
+                url: 'https://github.com/owner/private',
+                auth: {
+                  credentialArn:
+                    'arn:aws:bedrock-agentcore:us-east-1:123:token-vault/default/apikeycredentialprovider/my-pat',
+                  username: 'oauth2',
+                },
+              },
+            },
+          ],
+        } as any,
+      });
+      const result = await mapHarnessSpecToCreateOptions(opts);
+      expect(result.skills).toEqual([
+        { git: { url: 'https://github.com/owner/repo', path: 'skills/greet', auth: undefined } },
+        {
+          git: {
+            url: 'https://github.com/owner/private',
+            path: undefined,
+            auth: {
+              credentialArn:
+                'arn:aws:bedrock-agentcore:us-east-1:123:token-vault/default/apikeycredentialprovider/my-pat',
+              username: 'oauth2',
+            },
+          },
+        },
+      ]);
     });
   });
 

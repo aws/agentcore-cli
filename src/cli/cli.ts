@@ -11,6 +11,7 @@ import { registerDeploy } from './commands/deploy';
 import { registerDev } from './commands/dev';
 import { registerEval } from './commands/eval';
 import { registerExec } from './commands/exec';
+import { registerExport } from './commands/export';
 import { registerFeedback } from './commands/feedback';
 import { registerFetch } from './commands/fetch';
 import { registerHelp } from './commands/help';
@@ -117,6 +118,10 @@ export function registerCommands(program: Command) {
   registerConfig(program);
   registerDataset(program);
   registerArchive(program);
+  // Register export command (preview-only)
+  if (isPreviewEnabled()) {
+    registerExport(program);
+  }
 
   // Register primitive subcommands (add agent, remove agent, add memory, etc.)
   for (const primitive of ALL_PRIMITIVES) {

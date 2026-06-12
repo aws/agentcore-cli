@@ -474,12 +474,55 @@ describe('HarnessSpecSchema', () => {
     }
   });
 
-  it('accepts harness with skills as string paths', () => {
+  it('accepts harness with path skills', () => {
     const result = HarnessSpecSchema.safeParse({
       ...minimalHarness,
-      skills: ['./skills/research', '.agents/skills/xlsx'],
+      skills: [{ path: './skills/research' }, { path: '.agents/skills/xlsx' }],
     });
     expect(result.success).toBe(true);
+  });
+
+  it('accepts harness with s3 skills', () => {
+    const result = HarnessSpecSchema.safeParse({
+      ...minimalHarness,
+      skills: [{ s3: { uri: 's3://my-bucket/skills/calc' } }],
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it('rejects s3 skill URI without path component', () => {
+    const result = HarnessSpecSchema.safeParse({
+      ...minimalHarness,
+      skills: [{ s3: { uri: 's3://mybucket' } }],
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it('accepts harness with git skills (public and private)', () => {
+    const result = HarnessSpecSchema.safeParse({
+      ...minimalHarness,
+      skills: [
+        { git: { url: 'https://github.com/owner/repo', path: 'skills/greet' } },
+        {
+          git: {
+            url: 'https://github.com/owner/private',
+            auth: {
+              credentialArn:
+                'arn:aws:bedrock-agentcore:us-east-1:123456789012:token-vault/default/apikeycredentialprovider/my-pat',
+            },
+          },
+        },
+      ],
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it('rejects git skill with non-https URL', () => {
+    const result = HarnessSpecSchema.safeParse({
+      ...minimalHarness,
+      skills: [{ git: { url: 'git@github.com:owner/repo' } }],
+    });
+    expect(result.success).toBe(false);
   });
 
   it('accepts harness with allowedTools', () => {
@@ -678,7 +721,7 @@ describe('HarnessSpecSchema', () => {
           },
         },
       ],
-      skills: ['./skills/research'],
+      skills: [{ path: './skills/research' }],
       allowedTools: ['*'],
       memory: { name: 'research_memory' },
       maxIterations: 75,

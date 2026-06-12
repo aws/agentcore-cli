@@ -19,6 +19,7 @@ import type {
   SDKFramework,
   TargetLanguage,
 } from '../../../schema';
+import { detectAwsContext } from '../../aws';
 import { checkCreateDependencies } from '../../external-requirements';
 import { initGitRepo, setupNodeProject, setupPythonProject, writeEnvFile, writeGitignore } from '../../operations';
 import { createConfigBundleForAgent } from '../../operations/agent/config-bundle-defaults';
@@ -93,7 +94,11 @@ export async function createProject(options: CreateProjectOptions): Promise<Crea
     await writeGitignore(configBaseDir);
     await writeEnvFile(configBaseDir);
     await configIO.writeProjectSpec(createDefaultProjectSpec(name));
-    await configIO.writeAWSDeploymentTargets([]);
+    const awsContext = await detectAwsContext().catch(() => null);
+    const defaultTarget = awsContext?.accountId
+      ? [{ name: 'default', account: awsContext.accountId, region: awsContext.region }]
+      : [];
+    await configIO.writeAWSDeploymentTargets(defaultTarget);
     await configIO.writeDeployedState(createDefaultDeployedState());
 
     // Create CDK project

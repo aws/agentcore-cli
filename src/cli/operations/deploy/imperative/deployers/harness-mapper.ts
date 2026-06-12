@@ -6,6 +6,7 @@
  * orchestrates them and returns a complete CreateHarnessOptions object.
  */
 import type { DeployedResourceState, HarnessSpec, Memory } from '../../../../../schema';
+import type { HarnessSkill as HarnessSkillSpec } from '../../../../../schema/schemas/primitives/harness';
 import type {
   CreateHarnessOptions,
   HarnessEnvironmentArtifact,
@@ -263,8 +264,12 @@ function mapTools(tools: HarnessSpec['tools']): HarnessTool[] {
 // Skills Mapping
 // ============================================================================
 
-function mapSkills(skills: string[]): HarnessSkill[] {
-  return skills.map(path => ({ path }));
+function mapSkills(skills: HarnessSkillSpec[]): HarnessSkill[] {
+  return skills.map(skill => {
+    if ('path' in skill) return { path: skill.path };
+    if ('s3' in skill) return { s3: { uri: skill.s3.uri } };
+    return { git: { url: skill.git.url, path: skill.git.path, auth: skill.git.auth } };
+  });
 }
 
 // ============================================================================

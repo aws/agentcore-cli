@@ -308,3 +308,9 @@ export class UserCancellationError extends BaseError {
     super(`User cancelled`, { defaultSource: 'user', ...options });
   }
 }
+
+export class ExportHarnessError extends BaseError {
+  constructor(message: string, options?: BaseErrorOptions) {
+    super(message, { defaultSource: 'client', ...options });
+  }
+}

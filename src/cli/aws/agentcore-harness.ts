@@ -59,9 +59,22 @@ export interface HarnessTool {
   config?: Record<string, unknown>;
 }
 
-export interface HarnessSkill {
-  path: string;
+export interface HarnessSkillGitAuth {
+  credentialArn: string;
+  username?: string;
 }
+
+export interface HarnessSkillGitSource {
+  url: string;
+  path?: string;
+  auth?: HarnessSkillGitAuth;
+}
+
+export interface HarnessSkillS3Source {
+  uri: string;
+}
+
+export type HarnessSkill = { path: string } | { s3: HarnessSkillS3Source } | { git: HarnessSkillGitSource };
 
 export interface HarnessAgentCoreMemoryConfiguration {
   arn: string;

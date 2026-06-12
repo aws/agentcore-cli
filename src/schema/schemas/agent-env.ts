@@ -333,6 +333,8 @@ export const AgentEnvSpecSchema = z
     requestHeaderAllowlist: RequestHeaderAllowlistSchema.optional(),
     /** ARN of an existing IAM execution role to use instead of creating a new one. */
     executionRoleArn: z.string().optional(),
+    /** ECR repository ARN of the base image used in the Dockerfile FROM. When set, CDK grants CodeBuild pull access to this repo. */
+    baseImageEcrArn: z.string().optional(),
     /** Authorizer type for inbound requests. Defaults to AWS_IAM. */
     authorizerType: RuntimeAuthorizerTypeSchema.optional(),
     /** Authorizer configuration. Required when authorizerType is CUSTOM_JWT. */

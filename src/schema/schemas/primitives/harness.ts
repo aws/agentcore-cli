@@ -274,6 +274,42 @@ export const HarnessTruncationConfigSchema = z.object({
 export type HarnessTruncationConfig = z.infer<typeof HarnessTruncationConfigSchema>;
 
 // ============================================================================
+// Skills
+// ============================================================================
+
+export const HarnessSkillGitAuthSchema = z.object({
+  credentialArn: z.string().min(1),
+  username: z.string().min(1).optional(),
+});
+
+export const HarnessSkillGitSourceSchema = z.object({
+  url: z
+    .string()
+    .min(8)
+    .regex(/^https:\/\//, 'git skill URL must start with https://'),
+  path: z.string().min(1).optional(),
+  auth: HarnessSkillGitAuthSchema.optional(),
+});
+
+export const HarnessSkillS3SourceSchema = z.object({
+  uri: z
+    .string()
+    .min(5)
+    .regex(/^s3:\/\/[^/]+\//, 'S3 skill URI must be in the format s3://bucket/prefix'),
+});
+
+export const HarnessSkillSchema = z.union([
+  z.object({ path: z.string().min(1) }),
+  z.object({ s3: HarnessSkillS3SourceSchema }),
+  z.object({ git: HarnessSkillGitSourceSchema }),
+]);
+
+export type HarnessSkillGitAuth = z.infer<typeof HarnessSkillGitAuthSchema>;
+export type HarnessSkillGitSource = z.infer<typeof HarnessSkillGitSourceSchema>;
+export type HarnessSkillS3Source = z.infer<typeof HarnessSkillS3SourceSchema>;
+export type HarnessSkill = z.infer<typeof HarnessSkillSchema>;
+
+// ============================================================================
 // Allowed Tools
 // ============================================================================
 
@@ -302,7 +338,7 @@ export const HarnessSpecSchema = z
           name => `Duplicate tool name: ${name}`
         )
       ),
-    skills: z.array(z.string().min(1)).default([]),
+    skills: z.array(HarnessSkillSchema).default([]),
     allowedTools: z.array(AllowedToolSchema).optional(),
     memory: HarnessMemoryRefSchema.optional(),
     maxIterations: z.number().int().min(1).optional(),
