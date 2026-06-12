@@ -293,8 +293,14 @@ function resolveIdentityProvider(spec: HarnessSpec, context: ResolvedHarnessCont
     };
   }
 
-  // Create a new credential entry
-  const credentialName = `${context.projectSpec.name}${resolveModelProvider(spec.model.provider)}`;
+  // Extract the credential provider name from a token-vault ARN if possible, otherwise
+  // synthesize one from the project name + provider. This ensures the deployed credential
+  // entry references the same provider that was used in the harness.
+  // ARN format: arn:aws:bedrock-agentcore:<region>:<account>:token-vault/<vault>/apikeycredentialprovider/<name>
+  const arnNameMatch = /\/apikeycredentialprovider\/([^/]+)$/.exec(apiKeyArn);
+  const credentialName = arnNameMatch
+    ? arnNameMatch[1]!
+    : `${context.projectSpec.name}${resolveModelProvider(spec.model.provider)}`;
   const credentialEntry: Credential = {
     authorizerType: 'ApiKeyCredentialProvider',
     name: credentialName,
