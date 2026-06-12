@@ -30,7 +30,7 @@ def _get_bearer_token_{{snakeCase name}}(*, access_token: str):
 def get_{{snakeCase name}}_mcp_client() -> MCPClient | None:
     """Returns an MCP Client connected to the {{name}} gateway."""
     {{#if hardcodedUrl}}
-    url = "{{hardcodedUrl}}"
+    url = {{safeJson hardcodedUrl}}
     {{else}}
     url = os.environ.get("{{envVarName}}")
     if not url:
@@ -74,12 +74,12 @@ def _get_{{snakeCase ../name}}_{{snakeCase headerKey}}_key(api_key: str) -> str:
 {{/if}}
 def get_{{snakeCase name}}_mcp_client() -> MCPClient | None:
     """Returns an MCP Client for the {{name}} remote MCP server."""
-    url = "{{url}}"
+    url = {{safeJson url}}
     {{#if headerCredentials}}
     if os.getenv("LOCAL_DEV") == "1":
-        headers = { {{#each headerCredentials}}"{{headerKey}}": os.environ.get("{{envVarName}}", ""){{#unless @last}}, {{/unless}}{{/each}} }
+        headers = { {{#each headerCredentials}}{{safeJson headerKey}}: os.environ.get("{{envVarName}}", ""){{#unless @last}}, {{/unless}}{{/each}} }
     else:
-        headers = { {{#each headerCredentials}}"{{headerKey}}": _get_{{snakeCase ../name}}_{{snakeCase headerKey}}_key(){{#unless @last}}, {{/unless}}{{/each}} }
+        headers = { {{#each headerCredentials}}{{safeJson headerKey}}: _get_{{snakeCase ../name}}_{{snakeCase headerKey}}_key(){{#unless @last}}, {{/unless}}{{/each}} }
     return MCPClient(lambda: streamablehttp_client(url, headers=headers))
     {{else}}
     return MCPClient(lambda: streamablehttp_client(url))

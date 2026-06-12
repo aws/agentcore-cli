@@ -511,15 +511,15 @@ async def invoke(payload, context):
     plugins = [payments_plugin] if payments_plugin else []
 {{/if}}
 {{#if hasSkillsFetcher}}
-    skill_paths = [{{#each pathSkills}}"{{this}}"{{#unless @last}}, {{/unless}}{{/each}}]
+    skill_paths = [{{#each pathSkills}}{{safeJson this}}{{#unless @last}}, {{/unless}}{{/each}}]
     {{#if s3Skills}}
-    s3_skill_sources = [{{#each s3Skills}}"{{this}}"{{#unless @last}}, {{/unless}}{{/each}}]
+    s3_skill_sources = [{{#each s3Skills}}{{safeJson this}}{{#unless @last}}, {{/unless}}{{/each}}]
     skill_paths.extend(await asyncio.to_thread(resolve_s3_skills, s3_skill_sources, None))
     {{/if}}
     {{#if gitSkills}}
     git_skill_sources = [
         {{#each gitSkills}}
-        dict(url="{{this.url}}"{{#if this.path}}, path="{{this.path}}"{{/if}}{{#if this.credentialArn}}, credentialArn="{{this.credentialArn}}"{{#if this.username}}, username="{{this.username}}"{{/if}}{{/if}}),
+        dict(url={{safeJson this.url}}{{#if this.path}}, path={{safeJson this.path}}{{/if}}{{#if this.credentialArn}}, credentialArn={{safeJson this.credentialArn}}{{#if this.username}}, username={{safeJson this.username}}{{/if}}{{/if}}),
         {{/each}}
     ]
     skill_paths.extend(await asyncio.to_thread(resolve_git_skills, git_skill_sources, None))

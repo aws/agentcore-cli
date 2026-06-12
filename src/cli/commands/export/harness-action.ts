@@ -1,7 +1,8 @@
 import { AgentAlreadyExistsError, ConfigIO, setEnvVar } from '../../../lib';
-import { ValidationError } from '../../../lib/errors/types';
+import { ExportHarnessError, ValidationError } from '../../../lib/errors/types';
 import { AgentNameSchema } from '../../../schema';
 import type { AgentEnvSpec, BuildType, Credential } from '../../../schema';
+import { getErrorMessage } from '../../errors';
 import type { AttributeRecorder } from '../../telemetry/cli-command-run.js';
 import { withCommandRunTelemetry } from '../../telemetry/cli-command-run.js';
 import type { CommandAttrs } from '../../telemetry/schemas/command-run.js';
@@ -117,8 +118,20 @@ export async function handleExportHarness(
 
       // 5. Render Strands agent code
       log('Rendering agent code');
-      const renderer = new StrandsRenderer(renderConfig);
-      await renderer.render({ outputDir: context.projectRoot });
+      try {
+        const renderer = new StrandsRenderer(renderConfig);
+        await renderer.render({ outputDir: context.projectRoot });
+      } catch (err) {
+        return {
+          success: false as const,
+          error: new ExportHarnessError(
+            `Failed to render agent code for "${targetAgentName}": ${getErrorMessage(err)}`,
+            {
+              cause: err instanceof Error ? err : undefined,
+            }
+          ),
+        };
+      }
 
       // 5b. Generate uv.lock for Container builds (required by the Dockerfile's uv sync step)
       if (renderConfig.buildType === 'Container') {

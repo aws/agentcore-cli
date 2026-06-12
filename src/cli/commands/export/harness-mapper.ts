@@ -118,8 +118,8 @@ export function mapHarnessToExportConfig(
       message:
         `The harness used a pre-built container image as its execution environment (${spec.containerUri}). ` +
         'The generated Dockerfile extends that image directly (FROM <containerUri>) and layers the Strands ' +
-        'agent code on top. If your base image does not include Python 3.12+, add an install step before ' +
-        '`pip install -e .`.',
+        'agent code on top. If your base image does not include Python 3.12+ or uv, add an install step ' +
+        'before the `uv sync` steps.',
     });
   }
 
@@ -141,10 +141,6 @@ export function mapHarnessToExportConfig(
     gatewayAuthTypes: [...new Set(gatewayResult.providers.map(g => g.authType))],
     protocol: 'HTTP',
     dockerfile: resolveDockerfileName(spec, buildType),
-    sessionStorageMountPath: spec.sessionStoragePath,
-    efsMounts: (spec.efsAccessPoints ?? []).map(ap => ({ accessPointArn: ap.accessPointArn, mountPath: ap.mountPath })),
-    s3Mounts: (spec.s3AccessPoints ?? []).map(ap => ({ accessPointArn: ap.accessPointArn, mountPath: ap.mountPath })),
-    needsOs: !!spec.sessionStoragePath || !!spec.efsAccessPoints?.length || !!spec.s3AccessPoints?.length,
     enableOtel: true,
     hasConfigBundle: false,
     hasPayment: false,
@@ -155,33 +151,14 @@ export function mapHarnessToExportConfig(
     // Truncation — consumed by main.py template
     truncationStrategy: spec.truncation?.strategy,
     truncationConfig: resolveTruncationConfig(spec.truncation),
-    // Inline tools — consumed by main.py template
-    inlineFunctionTools: resolveInlineFunctionTools(spec, allowedToolPatterns),
     // Remote MCP tools — consumed by mcp_client template
     remoteMcpTools: mcpResolution.tools,
-    // Skills
-    pathSkills: spec.skills.filter(isPathSkill).map(s => ('path' in s ? s.path : '')),
-    s3Skills: spec.skills.filter(isS3Skill).map(s => ('s3' in s ? s.s3.uri : '')),
-    gitSkills: spec.skills.filter(isGitSkill).map(s => {
-      const g = 'git' in s ? s.git : { url: '', path: undefined, auth: undefined };
-      return { url: g.url, path: g.path, credentialArn: g.auth?.credentialArn, username: g.auth?.username };
-    }),
-    hasSkillsFetcher,
-    hasFetchedSkills: spec.skills.some(s => isS3Skill(s) || isGitSkill(s)),
-    // Whether any agentcore_browser / code_interpreter tools are present (after allowedTools filter).
-    // Browser requires a Container build (Playwright driver can't spawn subprocesses in CodeZip Lambda sandbox).
-    hasBrowser: isToolIncluded('agentcore_browser', spec, allowedToolPatterns) && buildType === 'Container',
-    browserIdentifier: extractToolIdentifier(spec, 'agentcore_browser', 'agentCoreBrowser', 'browserArn'),
-    hasCodeInterpreter: isToolIncluded('agentcore_code_interpreter', spec, allowedToolPatterns),
-    codeInterpreterIdentifier: extractToolIdentifier(
-      spec,
-      'agentcore_code_interpreter',
-      'agentCoreCodeInterpreter',
-      'codeInterpreterArn'
-    ),
-    // Builtin tools — always available in the Harness runtime, included unless filtered out by allowedTools
-    hasShell: isBuiltinIncluded('shell', allowedToolPatterns),
-    hasFileOperations: isBuiltinIncluded('file_operations', allowedToolPatterns),
+    // Filesystem mounts (session storage, EFS, S3) — consumed by main.py/CDK templates
+    ...buildFilesystemRenderConfig(spec),
+    // Skills (path/s3/git) — consumed by main.py + skills/fetcher.py templates
+    ...buildSkillsRenderConfig(spec, hasSkillsFetcher),
+    // Inline + builtin + browser/code-interpreter tools (after allowedTools filter)
+    ...buildToolsRenderConfig(spec, allowedToolPatterns, buildType),
     hasExecutionLimits,
     isExportHarness: true,
     bedrockModelId: spec.model.provider === 'bedrock' ? spec.model.modelId : undefined,
@@ -197,6 +174,80 @@ export function mapHarnessToExportConfig(
     agentEnvSpec,
     credentialEntry: identityResult.credentialEntry,
     mcpCredentialEntries: mcpResolution.credentialEntries,
+  };
+}
+
+// ============================================================================
+// RenderConfig sub-builders
+// ============================================================================
+
+/** Filesystem mounts (session storage, EFS, S3) consumed by main.py and CDK templates. */
+function buildFilesystemRenderConfig(
+  spec: HarnessSpec
+): Pick<AgentRenderConfig, 'sessionStorageMountPath' | 'efsMounts' | 's3Mounts' | 'needsOs'> {
+  const efsMounts = (spec.efsAccessPoints ?? []).map(ap => ({
+    accessPointArn: ap.accessPointArn,
+    mountPath: ap.mountPath,
+  }));
+  const s3Mounts = (spec.s3AccessPoints ?? []).map(ap => ({
+    accessPointArn: ap.accessPointArn,
+    mountPath: ap.mountPath,
+  }));
+  return {
+    sessionStorageMountPath: spec.sessionStoragePath,
+    efsMounts,
+    s3Mounts,
+    needsOs: !!spec.sessionStoragePath || efsMounts.length > 0 || s3Mounts.length > 0,
+  };
+}
+
+/** Path/S3/git skills consumed by main.py and skills/fetcher.py templates. */
+function buildSkillsRenderConfig(
+  spec: HarnessSpec,
+  hasSkillsFetcher: boolean
+): Pick<AgentRenderConfig, 'pathSkills' | 's3Skills' | 'gitSkills' | 'hasSkillsFetcher' | 'hasFetchedSkills'> {
+  return {
+    pathSkills: spec.skills.filter(isPathSkill).map(s => ('path' in s ? s.path : '')),
+    s3Skills: spec.skills.filter(isS3Skill).map(s => ('s3' in s ? s.s3.uri : '')),
+    gitSkills: spec.skills.filter(isGitSkill).map(s => {
+      const g = 'git' in s ? s.git : { url: '', path: undefined, auth: undefined };
+      return { url: g.url, path: g.path, credentialArn: g.auth?.credentialArn, username: g.auth?.username };
+    }),
+    hasSkillsFetcher,
+    hasFetchedSkills: spec.skills.some(s => isS3Skill(s) || isGitSkill(s)),
+  };
+}
+
+/** Inline, builtin, and browser/code-interpreter tools (after allowedTools filter). */
+function buildToolsRenderConfig(
+  spec: HarnessSpec,
+  allowedToolPatterns: string[],
+  buildType: BuildType
+): Pick<
+  AgentRenderConfig,
+  | 'inlineFunctionTools'
+  | 'hasBrowser'
+  | 'browserIdentifier'
+  | 'hasCodeInterpreter'
+  | 'codeInterpreterIdentifier'
+  | 'hasShell'
+  | 'hasFileOperations'
+> {
+  return {
+    inlineFunctionTools: resolveInlineFunctionTools(spec, allowedToolPatterns),
+    // Browser requires a Container build (Playwright driver can't spawn subprocesses in CodeZip Lambda sandbox).
+    hasBrowser: isToolIncluded('agentcore_browser', spec, allowedToolPatterns) && buildType === 'Container',
+    browserIdentifier: extractToolIdentifier(spec, 'agentcore_browser', 'agentCoreBrowser', 'browserArn'),
+    hasCodeInterpreter: isToolIncluded('agentcore_code_interpreter', spec, allowedToolPatterns),
+    codeInterpreterIdentifier: extractToolIdentifier(
+      spec,
+      'agentcore_code_interpreter',
+      'agentCoreCodeInterpreter',
+      'codeInterpreterArn'
+    ),
+    // Builtin tools — always available in the Harness runtime, included unless filtered out by allowedTools
+    hasShell: isBuiltinIncluded('shell', allowedToolPatterns),
+    hasFileOperations: isBuiltinIncluded('file_operations', allowedToolPatterns),
   };
 }
 
