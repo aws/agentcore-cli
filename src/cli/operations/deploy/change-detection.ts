@@ -25,6 +25,19 @@ export async function computeProjectDeployHash(configIO: ConfigIO): Promise<stri
     try {
       const harnessJson = await readFile(join(harnessDir, 'harness.json'), 'utf-8');
       hash.update(harnessJson);
+      try {
+        const harnessSpec = JSON.parse(harnessJson) as { dockerfile?: unknown };
+        if (typeof harnessSpec.dockerfile === 'string' && harnessSpec.dockerfile.length > 0) {
+          try {
+            const dockerfileContent = await readFile(join(harnessDir, harnessSpec.dockerfile), 'utf-8');
+            hash.update(dockerfileContent);
+          } catch {
+            // Dockerfile missing — preflight validates existence before deploy.
+          }
+        }
+      } catch {
+        // Invalid harness.json is still represented by the raw content above.
+      }
     } catch {
       // harness.json missing — hash will differ from last deploy
     }

@@ -1,14 +1,34 @@
 import { canSkipDeploy, computeProjectDeployHash } from '../change-detection';
-import { describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+
+const mockFiles = vi.hoisted(() => ({
+  dockerfile: 'FROM public.ecr.aws/lambda/nodejs:20\n',
+  harnessJson: JSON.stringify({
+    name: 'h1',
+    dockerfile: 'Dockerfile',
+    model: { provider: 'bedrock', modelId: 'anthropic.claude-3' },
+  }),
+  prompt: 'You are a helpful assistant.',
+}));
 
 vi.mock('node:fs/promises', () => ({
   readFile: vi.fn().mockImplementation((path: string) => {
-    if (path.includes('harness.json'))
-      return Promise.resolve('{"name":"h1","model":{"provider":"bedrock","modelId":"anthropic.claude-3"}}');
-    if (path.includes('system-prompt.md')) return Promise.resolve('You are a helpful assistant.');
+    if (path.includes('harness.json')) return Promise.resolve(mockFiles.harnessJson);
+    if (path.includes('system-prompt.md')) return Promise.resolve(mockFiles.prompt);
+    if (path.includes('Dockerfile')) return Promise.resolve(mockFiles.dockerfile);
     return Promise.reject(Object.assign(new Error('ENOENT'), { code: 'ENOENT' }));
   }),
 }));
+
+beforeEach(() => {
+  mockFiles.dockerfile = 'FROM public.ecr.aws/lambda/nodejs:20\n';
+  mockFiles.harnessJson = JSON.stringify({
+    name: 'h1',
+    dockerfile: 'Dockerfile',
+    model: { provider: 'bedrock', modelId: 'anthropic.claude-3' },
+  });
+  mockFiles.prompt = 'You are a helpful assistant.';
+});
 
 function mockConfigIO(opts: {
   runtimes?: any[];
@@ -50,6 +70,18 @@ describe('computeProjectDeployHash', () => {
     const io2 = mockConfigIO({ awsTargets: [{ name: 'prod', region: 'us-west-2', account: '222' }] });
     const hash1 = await computeProjectDeployHash(io1);
     const hash2 = await computeProjectDeployHash(io2);
+    expect(hash1).not.toBe(hash2);
+  });
+
+  it('returns different hash when harness Dockerfile content changes', async () => {
+    const io = mockConfigIO({});
+
+    mockFiles.dockerfile = 'FROM public.ecr.aws/lambda/nodejs:20\nRUN echo first\n';
+    const hash1 = await computeProjectDeployHash(io);
+
+    mockFiles.dockerfile = 'FROM public.ecr.aws/lambda/nodejs:20\nRUN echo second\n';
+    const hash2 = await computeProjectDeployHash(io);
+
     expect(hash1).not.toBe(hash2);
   });
 });
