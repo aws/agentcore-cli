@@ -347,6 +347,26 @@ jobs:
           role-to-assume: ${{ secrets.BEDROCK_SECURITY_REVIEW_ROLE_ARN }}
           aws-region: us-west-2
 
+      - name: Load prompt into env
+        id: load-prompt
+        if: steps.diff.outputs.bytes != '0'
+        # The action only accepts `prompt:` (a string), not a file path —
+        # passing prompt_file silently no-ops, leaves the action with no
+        # trigger, and skips the run with "No trigger found". Read the
+        # built prompt into an environment variable so we can pass it
+        # inline below. Using GITHUB_ENV with a randomized heredoc
+        # sentinel is the standard Actions idiom for multi-line values.
+        env:
+          PROMPT_FILE: ${{ runner.temp }}/prompt/prompt.md
+        run: |
+          set -euo pipefail
+          DELIM="EOF_$(uuidgen)"
+          {
+            echo "PROMPT_BODY<<$DELIM"
+            cat "$PROMPT_FILE"
+            echo "$DELIM"
+          } >> "$GITHUB_ENV"
+
       - name: Run Claude Code
         id: review
         if: steps.diff.outputs.bytes != '0'
@@ -354,7 +374,7 @@ jobs:
         with:
           github_token: ${{ steps.app-token.outputs.token }}
           use_bedrock: 'true'
-          prompt_file: ${{ runner.temp }}/prompt/prompt.md
+          prompt: ${{ env.PROMPT_BODY }}
           show_full_output: 'true'
           # Read/Grep/Glob let the model explore the repo for context
           # (existing sanitization patterns, threat model, callers of a
