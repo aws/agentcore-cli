@@ -233,6 +233,7 @@ interface ManagedCodeBasedConfig {
   codeLocation: string;
   entrypoint: string; // default 'lambda_function.handler'
   timeoutSeconds: number; // @min 1 @max 300 (default 60)
+  memorySizeMb?: number; // @min 128 @max 10240
   additionalPolicies?: string[];
 }
 

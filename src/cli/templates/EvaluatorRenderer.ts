@@ -10,3 +10,14 @@ export async function renderCodeBasedEvaluatorTemplate(evaluatorName: string, ou
   const templateDir = getTemplatePath('evaluators', 'python-lambda');
   await copyAndRenderDir(templateDir, outputDir, { Name: evaluatorName });
 }
+
+export interface DeepEvalTemplateData {
+  Name: string;
+  MetricClass: string;
+  MetricParams: string;
+}
+
+export async function renderDeepEvalEvaluatorTemplate(data: DeepEvalTemplateData, outputDir: string): Promise<void> {
+  const templateDir = getTemplatePath('evaluators', 'deepeval-lambda');
+  await copyAndRenderDir(templateDir, outputDir, data);
+}

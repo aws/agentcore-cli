@@ -1,5 +1,5 @@
 import type { EvaluatorConfig } from '../../../schema';
-import { EvaluatorPrimitive } from '../EvaluatorPrimitive.js';
+import { EvaluatorPrimitive, jsonToKwargs, jsonToPythonValue } from '../EvaluatorPrimitive.js';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 const mockReadProjectSpec = vi.fn();
@@ -25,6 +25,14 @@ vi.mock('../../../lib/index.js', () => ({
       this.name = 'ConflictError';
     }
   },
+}));
+
+const mockRenderCodeBased = vi.fn().mockResolvedValue(undefined);
+const mockRenderDeepEval = vi.fn().mockResolvedValue(undefined);
+
+vi.mock('../../templates/EvaluatorRenderer', () => ({
+  renderCodeBasedEvaluatorTemplate: (...args: unknown[]) => mockRenderCodeBased(...args),
+  renderDeepEvalEvaluatorTemplate: (...args: unknown[]) => mockRenderDeepEval(...args),
 }));
 
 const validConfig: EvaluatorConfig = {
@@ -255,5 +263,226 @@ describe('EvaluatorPrimitive', () => {
 
       expect(await primitive.getAllNames()).toEqual([]);
     });
+  });
+
+  describe('buildDeepEvalConfig', () => {
+    it('returns managed code-based config with deepeval defaults', () => {
+      // eslint-disable-next-line @typescript-eslint/dot-notation
+      const config = primitive['buildDeepEvalConfig']('my_eval');
+
+      expect(config).toEqual({
+        codeBased: {
+          managed: {
+            codeLocation: 'app/my_eval/',
+            entrypoint: 'lambda_function.handler',
+            timeoutSeconds: 300,
+            memorySizeMb: 1024,
+            additionalPolicies: ['execution-role-policy.json'],
+          },
+        },
+      });
+    });
+
+    it('respects custom timeout', () => {
+      // eslint-disable-next-line @typescript-eslint/dot-notation
+      const config = primitive['buildDeepEvalConfig']('my_eval', '120');
+
+      expect(config.codeBased!.managed!.timeoutSeconds).toBe(120);
+    });
+
+    it('respects custom memory', () => {
+      // eslint-disable-next-line @typescript-eslint/dot-notation
+      const config = primitive['buildDeepEvalConfig']('my_eval', undefined, '2048');
+
+      expect(config.codeBased!.managed!.memorySizeMb).toBe(2048);
+    });
+
+    it('respects both custom timeout and memory', () => {
+      // eslint-disable-next-line @typescript-eslint/dot-notation
+      const config = primitive['buildDeepEvalConfig']('my_eval', '60', '512');
+
+      expect(config.codeBased!.managed!.timeoutSeconds).toBe(60);
+      expect(config.codeBased!.managed!.memorySizeMb).toBe(512);
+    });
+
+    it('sets codeLocation based on evaluator name', () => {
+      // eslint-disable-next-line @typescript-eslint/dot-notation
+      const config = primitive['buildDeepEvalConfig']('relevancy_check');
+
+      expect(config.codeBased!.managed!.codeLocation).toBe('app/relevancy_check/');
+    });
+  });
+
+  describe('add with thirdParty (deepeval)', () => {
+    const deepEvalConfig: EvaluatorConfig = {
+      codeBased: {
+        managed: {
+          codeLocation: 'app/deep_eval/',
+          entrypoint: 'lambda_function.handler',
+          timeoutSeconds: 300,
+          memorySizeMb: 1024,
+          additionalPolicies: ['execution-role-policy.json'],
+        },
+      },
+    };
+
+    it('calls renderDeepEvalEvaluatorTemplate when thirdParty.library is deepeval', async () => {
+      mockReadProjectSpec.mockResolvedValue(makeProject());
+      mockWriteProjectSpec.mockResolvedValue(undefined);
+
+      const result = await primitive.add({
+        name: 'deep_eval',
+        level: 'SESSION',
+        config: deepEvalConfig,
+        thirdParty: {
+          library: 'deepeval',
+          metricClass: 'AnswerRelevancyMetric',
+          metricParams: 'threshold=0.7',
+        },
+      });
+
+      expect(result.success).toBe(true);
+      expect(result).toHaveProperty('codePath', 'app/deep_eval/');
+      expect(mockRenderDeepEval).toHaveBeenCalledOnce();
+      expect(mockRenderDeepEval).toHaveBeenCalledWith(
+        { Name: 'deep_eval', MetricClass: 'AnswerRelevancyMetric', MetricParams: 'threshold=0.7' },
+        expect.stringContaining('app/deep_eval')
+      );
+      expect(mockRenderCodeBased).not.toHaveBeenCalled();
+    });
+
+    it('passes empty string for MetricParams when not provided', async () => {
+      mockReadProjectSpec.mockResolvedValue(makeProject());
+      mockWriteProjectSpec.mockResolvedValue(undefined);
+
+      await primitive.add({
+        name: 'deep_eval',
+        level: 'SESSION',
+        config: deepEvalConfig,
+        thirdParty: {
+          library: 'deepeval',
+          metricClass: 'HallucinationMetric',
+        },
+      });
+
+      expect(mockRenderDeepEval).toHaveBeenCalledWith(
+        { Name: 'deep_eval', MetricClass: 'HallucinationMetric', MetricParams: '' },
+        expect.any(String)
+      );
+    });
+
+    it('calls renderCodeBasedEvaluatorTemplate when thirdParty is not set', async () => {
+      mockReadProjectSpec.mockResolvedValue(makeProject());
+      mockWriteProjectSpec.mockResolvedValue(undefined);
+
+      const managedConfig: EvaluatorConfig = {
+        codeBased: {
+          managed: {
+            codeLocation: 'app/plain_eval/',
+            entrypoint: 'lambda_function.handler',
+            timeoutSeconds: 60,
+            additionalPolicies: ['execution-role-policy.json'],
+          },
+        },
+      };
+
+      await primitive.add({
+        name: 'plain_eval',
+        level: 'SESSION',
+        config: managedConfig,
+      });
+
+      expect(mockRenderCodeBased).toHaveBeenCalledOnce();
+      expect(mockRenderCodeBased).toHaveBeenCalledWith('plain_eval', expect.stringContaining('app/plain_eval'));
+      expect(mockRenderDeepEval).not.toHaveBeenCalled();
+    });
+  });
+});
+
+describe('jsonToPythonValue', () => {
+  it('converts null to None', () => {
+    expect(jsonToPythonValue(null)).toBe('None');
+  });
+
+  it('converts true to True', () => {
+    expect(jsonToPythonValue(true)).toBe('True');
+  });
+
+  it('converts false to False', () => {
+    expect(jsonToPythonValue(false)).toBe('False');
+  });
+
+  it('converts integers', () => {
+    expect(jsonToPythonValue(42)).toBe('42');
+  });
+
+  it('converts floats', () => {
+    expect(jsonToPythonValue(0.7)).toBe('0.7');
+  });
+
+  it('converts strings with quotes', () => {
+    expect(jsonToPythonValue('gpt-4')).toBe('"gpt-4"');
+  });
+
+  it('converts arrays', () => {
+    expect(jsonToPythonValue([1, 'two', true])).toBe('[1, "two", True]');
+  });
+
+  it('converts nested objects to Python dicts', () => {
+    expect(jsonToPythonValue({ key: 'value', n: 3 })).toBe('{"key": "value", "n": 3}');
+  });
+
+  it('handles empty arrays', () => {
+    expect(jsonToPythonValue([])).toBe('[]');
+  });
+
+  it('handles empty objects', () => {
+    expect(jsonToPythonValue({})).toBe('{}');
+  });
+});
+
+describe('jsonToKwargs', () => {
+  it('converts simple number parameter', () => {
+    expect(jsonToKwargs('{"threshold": 0.7}')).toBe('threshold=0.7');
+  });
+
+  it('converts simple string parameter', () => {
+    expect(jsonToKwargs('{"model": "gpt-4"}')).toBe('model="gpt-4"');
+  });
+
+  it('converts multiple parameters', () => {
+    const result = jsonToKwargs('{"threshold": 0.7, "model": "gpt-4"}');
+    expect(result).toBe('threshold=0.7, model="gpt-4"');
+  });
+
+  it('converts boolean parameters', () => {
+    expect(jsonToKwargs('{"verbose": true, "strict": false}')).toBe('verbose=True, strict=False');
+  });
+
+  it('converts null parameters', () => {
+    expect(jsonToKwargs('{"callback": null}')).toBe('callback=None');
+  });
+
+  it('converts array parameters', () => {
+    expect(jsonToKwargs('{"tools": ["search", "calculate"]}')).toBe('tools=["search", "calculate"]');
+  });
+
+  it('converts nested object parameters', () => {
+    const result = jsonToKwargs('{"config": {"temperature": 0.5}}');
+    expect(result).toBe('config={"temperature": 0.5}');
+  });
+
+  it('handles mixed types', () => {
+    const input = '{"threshold": 0.7, "model": "gpt-4", "verbose": true, "tags": ["eval"], "fallback": null}';
+    const result = jsonToKwargs(input);
+    expect(result).toBe('threshold=0.7, model="gpt-4", verbose=True, tags=["eval"], fallback=None');
+  });
+
+  it('throws on invalid JSON', () => {
+    expect(() => jsonToKwargs('not json')).toThrow();
+  });
+
+  it('returns empty string for empty object', () => {
+    expect(jsonToKwargs('{}')).toBe('');
   });
 });
