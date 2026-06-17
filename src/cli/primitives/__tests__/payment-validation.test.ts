@@ -1,4 +1,21 @@
+import {
+  stripWalletAuthPrefix,
+  validateApiKeySecret,
+  validateAuthorizationPrivateKey,
+  validateWalletSecret,
+} from '../payment-validation';
+import { generateKeyPairSync } from 'node:crypto';
 import { describe, expect, it } from 'vitest';
+
+// Realistic base64-encoded private keys for each curve, matching what the
+// payment APIs expect. Computed once so the byte-length bands are exercised
+// against real key sizes rather than arbitrary buffers.
+const ed25519Pkcs8 = generateKeyPairSync('ed25519')
+  .privateKey.export({ type: 'pkcs8', format: 'der' })
+  .toString('base64'); // ~48 bytes
+const p256Pkcs8 = generateKeyPairSync('ec', { namedCurve: 'P-256' })
+  .privateKey.export({ type: 'pkcs8', format: 'der' })
+  .toString('base64'); // ~138 bytes
 
 describe('autoPayment CLI parsing', () => {
   function parseAutoPayment(value: string | boolean | undefined): boolean | undefined {
@@ -49,44 +66,73 @@ describe('defaultSpendLimit validation', () => {
   it('accepts empty string as 0 (Number("") === 0)', () => expect(validateSpendLimit('')).toEqual({ valid: true }));
 });
 
-describe('base64 key validation', () => {
-  const BASE64_REGEX = /^[A-Za-z0-9+/]+=*$/;
-
-  function validateBase64Key(key: string): { valid: boolean; error?: string } {
-    const trimmed = key.trim();
-    if (!BASE64_REGEX.test(trimmed)) return { valid: false, error: 'not base64' };
-    const decoded = Buffer.from(trimmed, 'base64');
-    if (decoded.length < 100 || decoded.length > 200) return { valid: false, error: 'unexpected length' };
-    return { valid: true };
-  }
-
-  it('rejects non-base64 characters', () => {
-    expect(validateBase64Key('not-base64!').valid).toBe(false);
+describe('validateApiKeySecret (CoinbaseCDP — Ed25519)', () => {
+  it('accepts a base64-encoded Ed25519 PKCS8 key (~48 bytes)', () => {
+    expect(validateApiKeySecret(ed25519Pkcs8)).toBe(true);
   });
 
-  it('rejects too-short decoded key (< 100 bytes)', () => {
-    expect(validateBase64Key('dGVzdA==').valid).toBe(false);
+  it('accepts a 64-byte Coinbase seed+pubkey secret', () => {
+    expect(validateApiKeySecret(Buffer.alloc(64, 0x41).toString('base64'))).toBe(true);
   });
 
-  it('rejects too-long decoded key (> 200 bytes)', () => {
-    const buf = Buffer.alloc(201, 0x42);
-    expect(validateBase64Key(buf.toString('base64')).valid).toBe(false);
+  it('accepts a raw 32-byte Ed25519 seed', () => {
+    expect(validateApiKeySecret(Buffer.alloc(32, 0x41).toString('base64'))).toBe(true);
   });
 
-  it('accepts decoded key of exactly 100 bytes', () => {
-    const buf = Buffer.alloc(100, 0x41);
-    expect(validateBase64Key(buf.toString('base64')).valid).toBe(true);
+  it('rejects non-base64 input', () => {
+    expect(validateApiKeySecret('not base64!')).toContain('Ed25519');
   });
 
-  it('accepts decoded key of exactly 200 bytes', () => {
-    const buf = Buffer.alloc(200, 0x41);
-    expect(validateBase64Key(buf.toString('base64')).valid).toBe(true);
+  it('rejects a P-256 key (wrong curve — too long for Ed25519)', () => {
+    const result = validateApiKeySecret(p256Pkcs8);
+    expect(result).not.toBe(true);
+    expect(result).toContain('length');
   });
 
-  it('accepts a valid ~138 byte key', () => {
-    const key =
-      'RkFLRV9TVFJJUEVfUFJJVllfVEVTVF9LRVlfQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQQ==';
-    expect(validateBase64Key(key).valid).toBe(true);
+  it('rejects a too-short key', () => {
+    expect(validateApiKeySecret(Buffer.alloc(16, 0x41).toString('base64'))).not.toBe(true);
+  });
+});
+
+describe('validateWalletSecret (CoinbaseCDP — EC P-256)', () => {
+  it('accepts a base64-encoded P-256 PKCS8 key (~138 bytes)', () => {
+    expect(validateWalletSecret(p256Pkcs8)).toBe(true);
+  });
+
+  it('rejects non-base64 input', () => {
+    expect(validateWalletSecret('nope!')).toContain('P-256');
+  });
+
+  it('rejects an Ed25519 key (wrong curve — too short for P-256)', () => {
+    expect(validateWalletSecret(ed25519Pkcs8)).not.toBe(true);
+  });
+});
+
+describe('validateAuthorizationPrivateKey (StripePrivy — EC P-256)', () => {
+  it('accepts a base64-encoded P-256 PKCS8 key', () => {
+    expect(validateAuthorizationPrivateKey(p256Pkcs8)).toBe(true);
+  });
+
+  it('accepts a key with the wallet-auth: prefix', () => {
+    expect(validateAuthorizationPrivateKey(`wallet-auth:${p256Pkcs8}`)).toBe(true);
+  });
+
+  it('rejects non-base64 input', () => {
+    expect(validateAuthorizationPrivateKey('not-base64!')).toContain('base64');
+  });
+
+  it('rejects a key of the wrong length', () => {
+    expect(validateAuthorizationPrivateKey('dGVzdA==')).toContain('length');
+  });
+});
+
+describe('stripWalletAuthPrefix', () => {
+  it('strips the wallet-auth: prefix', () => {
+    expect(stripWalletAuthPrefix('wallet-auth:ABC')).toBe('ABC');
+  });
+
+  it('trims and leaves an unprefixed value', () => {
+    expect(stripWalletAuthPrefix('  ABC  ')).toBe('ABC');
   });
 });
 

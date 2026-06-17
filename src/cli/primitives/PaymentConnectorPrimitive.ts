@@ -8,6 +8,12 @@ import { requireTTY } from '../tui/guards/tty';
 import { BasePrimitive } from './BasePrimitive';
 import { SOURCE_CODE_NOTE } from './constants';
 import { computePaymentCredentialEnvVarNames, computeStripePrivyCredentialEnvVarNames } from './credential-utils';
+import {
+  stripWalletAuthPrefix,
+  validateApiKeySecret,
+  validateAuthorizationPrivateKey,
+  validateWalletSecret,
+} from './payment-validation';
 import type { AddResult, AddScreenComponent, RemovableResource } from './types';
 import type { Command } from '@commander-js/extra-typings';
 
@@ -418,35 +424,27 @@ export class PaymentConnectorPrimitive extends BasePrimitive<AddPaymentConnector
                 process.exit(1);
               }
 
-              // Validate StripePrivy authorizationPrivateKey format (base64-encoded EC P-256 key)
+              // Validate the cryptographic secret fields client-side so a
+              // wrong-format key is caught here instead of failing at deploy.
+              const failValidation = (error: string): never => {
+                if (cliOptions.json) {
+                  console.log(JSON.stringify({ success: false, error }));
+                } else {
+                  console.error(error);
+                }
+                process.exit(1);
+              };
+
               if (provider === 'StripePrivy') {
                 // AWS docs ship the key with a `wallet-auth:` prefix — strip it transparently.
-                let trimmedKey = cliOptions.authorizationPrivateKey!.trim();
-                if (trimmedKey.startsWith('wallet-auth:')) {
-                  trimmedKey = trimmedKey.slice('wallet-auth:'.length);
-                  cliOptions.authorizationPrivateKey = trimmedKey;
-                }
-                const BASE64_REGEX = /^[A-Za-z0-9+/]+=*$/;
-                if (!BASE64_REGEX.test(trimmedKey)) {
-                  const error = 'authorizationPrivateKey must be base64-encoded';
-                  if (cliOptions.json) {
-                    console.log(JSON.stringify({ success: false, error }));
-                  } else {
-                    console.error(error);
-                  }
-                  process.exit(1);
-                }
-                const decoded = Buffer.from(trimmedKey, 'base64');
-                if (decoded.length < 100 || decoded.length > 200) {
-                  const error =
-                    'authorizationPrivateKey must be a base64-encoded EC P-256 private key (unexpected length)';
-                  if (cliOptions.json) {
-                    console.log(JSON.stringify({ success: false, error }));
-                  } else {
-                    console.error(error);
-                  }
-                  process.exit(1);
-                }
+                cliOptions.authorizationPrivateKey = stripWalletAuthPrefix(cliOptions.authorizationPrivateKey!);
+                const keyResult = validateAuthorizationPrivateKey(cliOptions.authorizationPrivateKey);
+                if (keyResult !== true) failValidation(keyResult);
+              } else {
+                const apiKeySecretResult = validateApiKeySecret(cliOptions.apiKeySecret!);
+                if (apiKeySecretResult !== true) failValidation(apiKeySecretResult);
+                const walletSecretResult = validateWalletSecret(cliOptions.walletSecret!);
+                if (walletSecretResult !== true) failValidation(walletSecretResult);
               }
 
               let result: Awaited<ReturnType<typeof this.add>>;

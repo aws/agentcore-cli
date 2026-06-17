@@ -1,8 +1,20 @@
 import { createTestProject, readProjectConfig, runCLI } from '../src/test-utils/index.js';
 import type { TestProject } from '../src/test-utils/index.js';
+import { generateKeyPairSync } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+
+// The CLI now validates CDP secret formats at add time: apiKeySecret must be a
+// base64-encoded Ed25519 private key and walletSecret a base64-encoded EC P-256
+// private key. Use real keys so these lifecycle tests exercise add/remove rather
+// than tripping the format check.
+const CDP_API_KEY_SECRET = generateKeyPairSync('ed25519')
+  .privateKey.export({ type: 'pkcs8', format: 'der' })
+  .toString('base64');
+const CDP_WALLET_SECRET = generateKeyPairSync('ec', { namedCurve: 'P-256' })
+  .privateKey.export({ type: 'pkcs8', format: 'der' })
+  .toString('base64');
 
 describe('integration: add and remove payment managers and connectors', () => {
   let project: TestProject;
@@ -154,9 +166,9 @@ describe('integration: add and remove payment managers and connectors', () => {
           '--api-key-id',
           'test-key-id',
           '--api-key-secret',
-          'test-key-secret',
+          CDP_API_KEY_SECRET,
           '--wallet-secret',
-          'test-wallet-secret',
+          CDP_WALLET_SECRET,
           '--json',
         ],
         project.projectPath
@@ -202,9 +214,9 @@ describe('integration: add and remove payment managers and connectors', () => {
           '--api-key-id',
           'test-key-id-2',
           '--api-key-secret',
-          'test-key-secret-2',
+          CDP_API_KEY_SECRET,
           '--wallet-secret',
-          'test-wallet-secret-2',
+          CDP_WALLET_SECRET,
           '--json',
         ],
         project.projectPath
@@ -232,9 +244,9 @@ describe('integration: add and remove payment managers and connectors', () => {
           '--api-key-id',
           'x',
           '--api-key-secret',
-          'y',
+          CDP_API_KEY_SECRET,
           '--wallet-secret',
-          'z',
+          CDP_WALLET_SECRET,
           '--json',
         ],
         project.projectPath
@@ -260,9 +272,9 @@ describe('integration: add and remove payment managers and connectors', () => {
           '--api-key-id',
           'x',
           '--api-key-secret',
-          'y',
+          CDP_API_KEY_SECRET,
           '--wallet-secret',
-          'z',
+          CDP_WALLET_SECRET,
           '--json',
         ],
         project.projectPath
@@ -464,9 +476,9 @@ describe('integration: add and remove payment managers and connectors', () => {
           '--api-key-id',
           'x',
           '--api-key-secret',
-          'y',
+          CDP_API_KEY_SECRET,
           '--wallet-secret',
-          'z',
+          CDP_WALLET_SECRET,
           '--json',
         ],
         project.projectPath
@@ -486,9 +498,9 @@ describe('integration: add and remove payment managers and connectors', () => {
           '--api-key-id',
           'x',
           '--api-key-secret',
-          'y',
+          CDP_API_KEY_SECRET,
           '--wallet-secret',
-          'z',
+          CDP_WALLET_SECRET,
         ],
         project.projectPath
       );
