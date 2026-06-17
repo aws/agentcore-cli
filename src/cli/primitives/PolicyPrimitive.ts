@@ -5,7 +5,6 @@ import { EnforcementModeSchema, PolicySchema, ValidationModeSchema } from '../..
 import { detectRegion } from '../aws';
 import { getPolicyGeneration, startPolicyGeneration } from '../aws/policy-generation';
 import { getErrorMessage } from '../errors';
-import { isGatedFeaturesEnabled } from '../feature-flags';
 import type { RemovalPreview, SchemaChange } from '../operations/remove/types';
 import { runCliCommand, withCommandRunTelemetry } from '../telemetry/cli-command-run.js';
 import { PolicyValidationMode, standardize } from '../telemetry/schemas/common-shapes.js';
@@ -14,7 +13,6 @@ import { type PolicyEffect, authorizationPhaseForEffect, defaultDataPathForEffec
 import { BasePrimitive } from './BasePrimitive';
 import { SOURCE_CODE_NOTE } from './constants';
 import type { AddResult, AddScreenComponent, RemovableResource } from './types';
-import { Option } from '@commander-js/extra-typings';
 import type { Command } from '@commander-js/extra-typings';
 import { existsSync, readFileSync } from 'fs';
 
@@ -287,9 +285,6 @@ export class PolicyPrimitive extends BasePrimitive<AddPolicyOptions, RemovablePo
   }
 
   registerCommands(addCmd: Command, removeCmd: Command): void {
-    // Hide gated options from `--help` unless ENABLE_GATED_FEATURES is set.
-    const gate = <T extends Option>(option: T): T => (isGatedFeaturesEnabled() ? option : option.hideHelp());
-
     addCmd
       .command('policy')
       .description('Add a policy to a policy engine')
@@ -300,34 +295,19 @@ export class PolicyPrimitive extends BasePrimitive<AddPolicyOptions, RemovablePo
       .option('--statement <cedar>', 'Policy statement [non-interactive]')
       .option('-g, --generate <prompt>', 'Generate policy from natural language description [non-interactive]')
       .option('--gateway <name>', 'Deployed gateway name for policy generation [non-interactive]')
-      // Guardrail form flags are gated behind ENABLE_GATED_FEATURES: hidden from help when off.
-      .addOption(gate(new Option('--target <name>', 'Gateway target name for Cedar action scope [non-interactive]')))
-      .addOption(
-        gate(
-          new Option(
-            '--form-category <type>',
-            'Guardrail category: contentFilter, promptAttack, or sensitiveInformation [non-interactive]'
-          )
-        )
+      .option('--target <name>', 'Gateway target name for Cedar action scope [non-interactive]')
+      .option(
+        '--form-category <type>',
+        'Guardrail category: contentFilter, promptAttack, or sensitiveInformation [non-interactive]'
       )
-      .addOption(
-        gate(new Option('--form-filters <list>', 'Comma-separated filters for the chosen category [non-interactive]'))
+      .option('--form-filters <list>', 'Comma-separated filters for the chosen category [non-interactive]')
+      .option(
+        '--form-effect <effect>',
+        'Policy effect: forbid, permit, or suppressOutput (default: forbid) [non-interactive]'
       )
-      .addOption(
-        gate(
-          new Option(
-            '--form-effect <effect>',
-            'Policy effect: forbid, permit, or suppressOutput (default: forbid) [non-interactive]'
-          )
-        )
-      )
-      .addOption(
-        gate(
-          new Option(
-            '--form-data-path <path>',
-            'Data path to evaluate, e.g. context.input.prompt (default: context.input.prompt) [non-interactive]'
-          )
-        )
+      .option(
+        '--form-data-path <path>',
+        'Data path to evaluate, e.g. context.input.prompt (default: context.input.prompt) [non-interactive]'
       )
       .option(
         '--validation-mode <mode>',
@@ -376,11 +356,6 @@ export class PolicyPrimitive extends BasePrimitive<AddPolicyOptions, RemovablePo
               }
               if (!cliOptions.engine) {
                 throw new Error('--engine is required');
-              }
-
-              // Guardrail form path is gated behind ENABLE_GATED_FEATURES.
-              if (cliOptions.formCategory && !isGatedFeaturesEnabled()) {
-                throw new ValidationError('Guardrail policy form is not yet available.');
               }
 
               // Validate mutual exclusion of source flags

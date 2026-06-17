@@ -1,7 +1,6 @@
 import { PolicyNameSchema } from '../../../../schema';
 import { detectRegion } from '../../../aws';
 import { getPolicyGeneration, startPolicyGeneration } from '../../../aws/policy-generation';
-import { isGatedFeaturesEnabled } from '../../../feature-flags';
 import { policyEnginePrimitive } from '../../../primitives/registry';
 import {
   ConfirmReview,
@@ -76,13 +75,11 @@ export function AddPolicyScreen({
     () =>
       POLICY_SOURCE_METHOD_OPTIONS.map(opt => {
         const isGenerate = opt.id === 'generate';
-        // Guardrail form is gated behind ENABLE_GATED_FEATURES.
-        const gated = opt.id === 'form' && !isGatedFeaturesEnabled();
-        const disabled = gated || (isGenerate && !isEngineDeployed);
+        const disabled = isGenerate && !isEngineDeployed;
         return {
           id: opt.id,
           title: opt.title,
-          description: gated ? 'Coming soon' : disabled ? 'Deploy engine first' : opt.description,
+          description: disabled ? 'Deploy engine first' : opt.description,
           disabled,
         };
       }),
