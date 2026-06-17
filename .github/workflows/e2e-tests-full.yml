@@ -78,16 +78,9 @@ jobs:
           elif [ "${{ github.ref_name }}" != "main" ]; then
             CDK_BRANCH="main"
             REPO_URL="https://x-access-token:${CDK_REPO_TOKEN}@github.com/${CDK_REPO}.git"
-            # Check if a branch exists on the CDK repo with the same 
+            # Check if a branch exists on the CDK repo with the same name
             if git ls-remote --exit-code --heads "$REPO_URL" "${{ github.ref_name }}" > /dev/null 2>&1; then
               CDK_BRANCH="${{ github.ref_name }}"
-            else
-              # Check if a branch exists with _ subbed for -. (legacy support for summit branch) 
-              ALT="${{ github.ref_name }}"
-              ALT="${ALT//_/-}"
-              if git ls-remote --exit-code --heads "$REPO_URL" "$ALT" > /dev/null 2>&1; then
-                CDK_BRANCH="$ALT"
-              fi
             fi
           else
             CDK_BRANCH="main"
