@@ -348,9 +348,19 @@ export function AddPaymentFlow({
         ]
       : [];
 
-    const warningFields = !flow.connectorConfig
-      ? [{ label: '⚠ Warning', value: 'No connector — deploy will fail until you add one' }]
-      : [];
+    const warningFields = [
+      ...(flow.managerConfig.autoPayment
+        ? [
+            {
+              label: '⚠ Warning',
+              value: `Auto-payment ENABLED — agent settles 402s automatically up to $${flow.managerConfig.defaultSpendLimit}/session with no human approval`,
+            },
+          ]
+        : []),
+      ...(!flow.connectorConfig
+        ? [{ label: '⚠ Warning', value: 'No connector — deploy will fail until you add one' }]
+        : []),
+    ];
 
     const allFields = [...managerFields, ...connectorFields, ...warningFields];
 

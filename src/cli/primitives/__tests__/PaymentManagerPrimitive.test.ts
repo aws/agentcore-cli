@@ -208,28 +208,25 @@ describe('PaymentManagerPrimitive', () => {
       }
     });
 
-    it('warns on stderr when auto-payment is enabled (default)', async () => {
+    it('returns an auto-payment warning when enabled (default)', async () => {
       mockReadProjectSpec.mockResolvedValue(makeProject({ runtimes: [] }));
-      const stderr = vi.spyOn(process.stderr, 'write').mockReturnValue(true);
 
       const result = await primitive.add({ name: 'mgr1', authorizerType: 'AWS_IAM' });
 
       expect(result.success).toBe(true);
-      const out = stderr.mock.calls.map(c => String(c[0])).join('');
-      expect(out).toMatch(/auto-payment is enabled/i);
-      expect(out).toContain('--auto-payment false');
-      stderr.mockRestore();
+      if (!result.success) throw new Error('expected success');
+      expect(result.autoPaymentWarning).toMatch(/auto-payment is enabled/i);
+      expect(result.autoPaymentWarning).toContain('--auto-payment false');
     });
 
-    it('does not warn when auto-payment is explicitly disabled', async () => {
+    it('returns no auto-payment warning when explicitly disabled', async () => {
       mockReadProjectSpec.mockResolvedValue(makeProject({ runtimes: [] }));
-      const stderr = vi.spyOn(process.stderr, 'write').mockReturnValue(true);
 
-      await primitive.add({ name: 'mgr2', authorizerType: 'AWS_IAM', autoPayment: false });
+      const result = await primitive.add({ name: 'mgr2', authorizerType: 'AWS_IAM', autoPayment: false });
 
-      const out = stderr.mock.calls.map(c => String(c[0])).join('');
-      expect(out).not.toMatch(/auto-payment is enabled/i);
-      stderr.mockRestore();
+      expect(result.success).toBe(true);
+      if (!result.success) throw new Error('expected success');
+      expect(result.autoPaymentWarning).toBeUndefined();
     });
   });
 
