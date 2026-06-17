@@ -52,7 +52,7 @@ const ADD_RESOURCES: { id: AddResourceType; title: string; description: string }
 ];
 
 const ADD_RESOURCE_ITEMS: SelectableItem[] = ADD_RESOURCES.map(r => {
-  const gated = r.id === 'knowledge-base' && !isGatedFeaturesEnabled();
+  const gated = (r.id === 'knowledge-base' || r.id === 'web-search') && !isGatedFeaturesEnabled();
   return {
     ...r,
     disabled: gated,

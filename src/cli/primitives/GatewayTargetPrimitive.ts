@@ -283,9 +283,12 @@ export class GatewayTargetPrimitive extends BasePrimitive<AddGatewayTargetOption
   }
 
   registerCommands(addCmd: Command, removeCmd: Command): void {
+    // Hide gated options from `--help` unless ENABLE_GATED_FEATURES is set.
+    const gate = <T extends Option>(option: T): T => (isGatedFeaturesEnabled() ? option : option.hideHelp());
+
     const typeDescription = isGatedFeaturesEnabled()
       ? 'Target type (required): mcp-server, api-gateway, open-api-schema, smithy-model, lambda-function-arn, http-runtime, connector, passthrough, web-search [non-interactive]'
-      : 'Target type (required): mcp-server, api-gateway, open-api-schema, smithy-model, lambda-function-arn, http-runtime, connector, web-search [non-interactive]';
+      : 'Target type (required): mcp-server, api-gateway, open-api-schema, smithy-model, lambda-function-arn, http-runtime, connector [non-interactive]';
 
     // Reject repeated use of --exclude-domains. Domains must be passed as a
     // single comma-separated value.
@@ -315,10 +318,13 @@ export class GatewayTargetPrimitive extends BasePrimitive<AddGatewayTargetOption
         (val: string, acc: string[]) => [...acc, val],
         [] as string[]
       )
-      .option(
-        '--exclude-domains <list>',
-        'Comma-separated domains to exclude from results (for --type web-search only) [non-interactive]',
-        excludeDomainsCoercer
+      .addOption(
+        gate(
+          new Option(
+            '--exclude-domains <list>',
+            'Comma-separated domains to exclude from results (for --type web-search only) [non-interactive]'
+          ).argParser(excludeDomainsCoercer)
+        )
       )
       .option('--endpoint <endpoint>', 'Server endpoint URL (for mcp-server type) [non-interactive]')
       .option('--language <lang>', 'Language of target code: Python, TypeScript, Other [non-interactive]')
@@ -613,6 +619,9 @@ ${
 
           // Handle Amazon Web Search targets (managed-service backed via gateway IAM role)
           if (cliOptions.type === 'webSearch') {
+            if (!isGatedFeaturesEnabled()) {
+              throw new ValidationError('Web search target type is not yet available.');
+            }
             const excludeDomains =
               typeof cliOptions.excludeDomains === 'string'
                 ? cliOptions.excludeDomains
@@ -902,13 +911,17 @@ ${
     // Top-level shortcuts: agentcore add web-search / remove web-search
     // ──────────────────────────────────────────────────────────────────
     addCmd
-      .command('web-search')
+      .command('web-search', { hidden: !isGatedFeaturesEnabled() })
       .description('Wire the Amazon Web Search managed connector to a gateway as a target.')
       .option('--name <name>', 'Target name (default: web-search) [non-interactive]')
       .option('--gateway <name>', 'Gateway to attach this target to [non-interactive]')
       .option('--exclude-domains <list>', 'Comma-separated domains to exclude from results [non-interactive]')
       .option('--json', 'Output as JSON [non-interactive]')
       .action(async (cliOptions: { name?: string; gateway?: string; excludeDomains?: string; json?: boolean }) => {
+        if (!isGatedFeaturesEnabled()) {
+          console.error('Error: Web search target type is not yet available.');
+          process.exit(1);
+        }
         if (!findConfigRoot()) {
           console.error('No agentcore project found. Run `agentcore create` first.');
           process.exit(1);
@@ -996,13 +1009,17 @@ ${
       });
 
     removeCmd
-      .command('web-search')
+      .command('web-search', { hidden: !isGatedFeaturesEnabled() })
       .description('Remove an Amazon Web Search gateway target from the project')
       .option('--name <name>', 'Name of the web-search target to remove [non-interactive]')
       .option('-y, --yes', 'Skip confirmation prompt [non-interactive]')
       .option('--json', 'Output as JSON [non-interactive]')
       .action(async (cliOptions: { name?: string; yes?: boolean; json?: boolean }) => {
         try {
+          if (!isGatedFeaturesEnabled()) {
+            console.error('Web search target type is not yet available.');
+            process.exit(1);
+          }
           if (!findConfigRoot()) {
             console.error('No agentcore project found. Run `agentcore create` first.');
             process.exit(1);

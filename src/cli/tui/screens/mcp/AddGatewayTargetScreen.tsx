@@ -155,7 +155,7 @@ export function AddGatewayTargetScreen({
   const targetTypeItems: SelectableItem[] = useMemo(
     () =>
       TARGET_TYPE_OPTIONS.map(o => {
-        const gated = o.id === 'passthrough' && !isGatedFeaturesEnabled();
+        const gated = (o.id === 'passthrough' || o.id === 'webSearch') && !isGatedFeaturesEnabled();
         return {
           id: o.id,
           title: o.title,
