@@ -2,6 +2,12 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.20.1] - 2026-06-17
+
+### Other Changes
+- Revert "chore: ungate web-search commands (#1558)" (#1567) (b0961814)
+- test(e2e): fix shard 4/5 stale paths and missing --wait (#1560) (abccd4fe)
+
 ## [0.20.0] - 2026-06-17
 
 ### Added
