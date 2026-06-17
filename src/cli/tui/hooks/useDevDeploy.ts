@@ -18,6 +18,8 @@ export interface UseDevDeployResult {
   isComplete: boolean;
   error: string | undefined;
   logPath: string | undefined;
+  /** Managed-memory heads-up surfaced by handleDeploy (null when not applicable) */
+  managedMemoryNotice: string | null;
 }
 
 export function useDevDeploy({ skip, ready = true }: UseDevDeployOptions = {}): UseDevDeployResult {
@@ -26,6 +28,7 @@ export function useDevDeploy({ skip, ready = true }: UseDevDeployOptions = {}): 
   const [deployDone, setDeployDone] = useState(false);
   const [error, setError] = useState<string | undefined>();
   const [logPath, setLogPath] = useState<string | undefined>();
+  const [managedMemoryNotice, setManagedMemoryNotice] = useState<string | null>(null);
   const hasStarted = useRef(false);
 
   const onProgress = useCallback((stepName: string, status: 'start' | 'success' | 'error') => {
@@ -39,6 +42,10 @@ export function useDevDeploy({ skip, ready = true }: UseDevDeployOptions = {}): 
 
   const onDeployMessage = useCallback((msg: DeployMessage) => {
     setDeployMessages(prev => [...prev, msg]);
+  }, []);
+
+  const onNotice = useCallback((message: string) => {
+    setManagedMemoryNotice(message);
   }, []);
 
   useEffect(() => {
@@ -78,6 +85,7 @@ export function useDevDeploy({ skip, ready = true }: UseDevDeployOptions = {}): 
           verbose: true,
           onProgress,
           onDeployMessage,
+          onNotice,
         });
 
         if (result.logPath) {
@@ -95,10 +103,10 @@ export function useDevDeploy({ skip, ready = true }: UseDevDeployOptions = {}): 
     };
 
     void run();
-  }, [skip, ready, onProgress, onDeployMessage]);
+  }, [skip, ready, onProgress, onDeployMessage, onNotice]);
 
   // eslint-disable-next-line @typescript-eslint/prefer-nullish-coalescing -- skip is boolean, not nullable; || is the correct operator here
   const isComplete = skip || deployDone;
 
-  return { steps, deployMessages, isComplete, error, logPath };
+  return { steps, deployMessages, isComplete, error, logPath, managedMemoryNotice };
 }
