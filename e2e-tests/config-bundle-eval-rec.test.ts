@@ -491,6 +491,7 @@ describe.sequential('e2e: config bundles, batch evaluation, and recommendations'
             'You are a helpful assistant for testing.',
             '--lookback',
             '1',
+            '--wait',
             '--json',
           ]);
 
