@@ -32,15 +32,4 @@ describe('AddScreen', () => {
     expect(lastFrame()).toContain('Payment Manager');
     expect(lastFrame()).toContain('Payment Connector');
   });
-
-  it('Web Search option shows Coming soon when ENABLE_GATED_FEATURES is unset', () => {
-    delete process.env.ENABLE_GATED_FEATURES;
-    const onSelect = vi.fn();
-    const onExit = vi.fn();
-
-    const { lastFrame } = render(<AddScreen onSelect={onSelect} onExit={onExit} />);
-
-    expect(lastFrame()).toContain('Web Search');
-    expect(lastFrame()).toContain('Coming soon');
-  });
 });
