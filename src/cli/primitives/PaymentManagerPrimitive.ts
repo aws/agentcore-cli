@@ -8,6 +8,7 @@ import {
   PaymentManagerSchema,
 } from '../../schema';
 import type { RemoveResult } from '../commands/remove/types';
+import { ANSI } from '../constants';
 import { getErrorMessage } from '../errors';
 import type { RemovalPreview, SchemaChange } from '../operations/remove/types';
 import { getTemplatePath } from '../templates/templateRoot';
@@ -187,6 +188,17 @@ export class PaymentManagerPrimitive extends BasePrimitive<AddPaymentManagerOpti
             skippedRuntimes.push(runtime.name);
           }
         }
+      }
+
+      const effectiveAutoPayment = options.autoPayment ?? DEFAULT_AUTO_PAYMENT;
+      if (effectiveAutoPayment) {
+        const limit = options.defaultSpendLimit ?? DEFAULT_SPEND_LIMIT;
+        process.stderr.write(
+          `${ANSI.yellow}Warning: auto-payment is ENABLED for manager "${options.name}". ` +
+            `Agents will automatically settle 402 Payment Required responses up to the per-session ` +
+            `spend limit ($${limit}) with no human approval. Re-run with --auto-payment false to ` +
+            `require manual approval.${ANSI.reset}\n`
+        );
       }
 
       return { success: true, managerName: options.name, skippedRuntimes };
