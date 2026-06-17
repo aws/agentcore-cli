@@ -41,6 +41,24 @@ describe('parseSSELine', () => {
     expect(result.error).toBeNull();
   });
 
+  it('extracts text delta from ConverseStream-shaped events', () => {
+    const result = parseSSELine('data: {"event": {"contentBlockDelta": {"delta": {"text": "Hello"}}}}');
+    expect(result.content).toBe('Hello');
+    expect(result.error).toBeNull();
+  });
+
+  it('preserves whitespace-only text deltas', () => {
+    const result = parseSSELine('data: {"event": {"contentBlockDelta": {"delta": {"text": " "}}}}');
+    expect(result.content).toBe(' ');
+    expect(result.error).toBeNull();
+  });
+
+  it('returns null for ConverseStream events without a text delta', () => {
+    const result = parseSSELine('data: {"event": {"messageStop": {"stopReason": "end_turn"}}}');
+    expect(result.content).toBeNull();
+    expect(result.error).toBeNull();
+  });
+
   it('handles empty data field', () => {
     const result = parseSSELine('data: ');
     expect(result.content).toBe('');

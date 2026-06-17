@@ -15,6 +15,7 @@
  * StartRecommendation, poll via GetRecommendation, and stop via
  * DeleteRecommendation (stop-via-delete pattern).
  */
+import { JobNotFoundError } from '../../lib';
 import { getCredentialProvider } from './account';
 import { dataPlaneEndpoint } from './stage-endpoint';
 import { Sha256 } from '@aws-crypto/sha256-js';
@@ -54,7 +55,7 @@ export interface SessionSpan {
   spanId: string;
 }
 
-/** Agent trace source — inline spans or CloudWatch Logs. */
+/** Agent trace source — inline spans, CloudWatch Logs, or batch evaluation. */
 export interface AgentTracesSource {
   sessionSpans?: SessionSpan[];
   cloudwatchLogs?: {
@@ -64,6 +65,9 @@ export interface AgentTracesSource {
     endTime: string;
     limit?: number;
     sessionIds?: string[];
+  };
+  batchEvaluation?: {
+    batchEvaluationArn: string;
   };
 }
 
@@ -112,6 +116,7 @@ export interface RecommendationResultConfigurationBundle {
 export interface SystemPromptRecommendationResult {
   recommendedSystemPrompt?: string;
   configurationBundle?: RecommendationResultConfigurationBundle;
+  explanation?: string;
   errorCode?: string;
   errorMessage?: string;
 }
@@ -119,6 +124,7 @@ export interface SystemPromptRecommendationResult {
 export interface ToolDescriptionRecommendationToolResult {
   toolName: string;
   recommendedToolDescription: string;
+  explanation?: string;
 }
 
 export interface ToolDescriptionRecommendationResult {
@@ -265,7 +271,11 @@ async function signedRequest(options: {
 
   if (!response.ok) {
     const errorBody = await response.text();
-    throw new Error(`Recommendation API error (${response.status}): ${errorBody} [requestId: ${requestId}]`);
+    const message = `Recommendation API error (${response.status}): ${errorBody} [requestId: ${requestId}]`;
+    if (response.status === 404) {
+      throw new JobNotFoundError(message, { errorSource: 'service' });
+    }
+    throw new Error(message);
   }
 
   if (response.status === 204) return { data: {}, status: 204, requestId };

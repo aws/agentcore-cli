@@ -55,14 +55,6 @@ export {
 // Post-deploy observability setup
 export { setupTransactionSearch } from './post-deploy-observability';
 
-// Post-deploy HTTP gateways
-export {
-  setupHttpGateways,
-  type SetupHttpGatewaysOptions,
-  type SetupHttpGatewaysResult,
-  type HttpGatewaySetupResult,
-} from './post-deploy-http-gateways';
-
 // Post-deploy online eval enablement
 export {
   enableOnlineEvalConfigs,
@@ -73,13 +65,12 @@ export {
 
 export { ensureDefaultDeploymentTarget } from './ensure-target';
 
-// Post-deploy config bundles
+// Managed-memory heads-up (shared by the CLI command + TUI deploy flow + add harness)
 export {
-  setupConfigBundles,
-  type SetupConfigBundlesOptions,
-  type SetupConfigBundlesResult,
-  type ConfigBundleSetupResult,
-} from './post-deploy-config-bundles';
+  MANAGED_MEMORY_DEPLOY_NOTICE,
+  MANAGED_MEMORY_ADD_NOTICE,
+  hasManagedMemoryHarness,
+} from './managed-memory-notice';
 
 // Re-export external requirements for convenience
 export {

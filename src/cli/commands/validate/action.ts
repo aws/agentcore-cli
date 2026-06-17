@@ -10,6 +10,7 @@ import {
   readEnvFile,
 } from '../../../lib';
 import type { Result } from '../../../lib/result';
+import { validateHarnessSpecs } from '../../operations/deploy/preflight';
 import {
   computePaymentCredentialEnvVarNames,
   computeStripePrivyCredentialEnvVarNames,
@@ -179,6 +180,17 @@ export async function handleValidate(options: ValidateOptions): Promise<Result> 
     } catch (err) {
       return { success: false, error: new Error(formatError(err, '.cli/state.json'), { cause: err }) };
     }
+  }
+
+  // Validate each per-harness harness.json against HarnessSpecSchema. `validate` previously only
+  // checked agentcore.json, so a malformed harness spec (bad model provider, missing
+  // executionRoleArn, an out-of-CFN-bounds field) passed "validate" yet failed at deploy synth.
+  // Reuse the deploy-preflight helper so `validate` and `deploy` aggregate the SAME way (report
+  // every broken harness at once, not one-per-rerun).
+  try {
+    await validateHarnessSpecs(projectSpec, configRoot);
+  } catch (err) {
+    return { success: false, error: err instanceof Error ? err : new Error(String(err)) };
   }
 
   return { success: true };

@@ -27,6 +27,7 @@ function makeProject(overrides: Partial<AgentCoreProjectSpec> = {}): AgentCorePr
     managedBy: 'CDK' as const,
     runtimes: [],
     memories: [],
+    knowledgeBases: [],
     credentials: [],
     evaluators: [],
     onlineEvalConfigs: [],
@@ -36,6 +37,7 @@ function makeProject(overrides: Partial<AgentCoreProjectSpec> = {}): AgentCorePr
     abTests: [],
     httpGateways: [],
     harnesses: [],
+    datasets: [],
     payments: [],
     ...overrides,
   };

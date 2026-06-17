@@ -19,7 +19,7 @@ import {
   KmsKeyArnSchema,
 } from './primitives/evaluator';
 import { HarnessNameSchema } from './primitives/harness';
-import { HttpGatewaySchema } from './primitives/http-gateway';
+import { KnowledgeBaseSchema } from './primitives/knowledge-base';
 import {
   DEFAULT_EPISODIC_REFLECTION_NAMESPACES,
   DEFAULT_EPISODIC_REFLECTION_NAMESPACE_TEMPLATES,
@@ -77,8 +77,15 @@ export { ConfigBundleSchema };
 export type { ComponentConfiguration, ComponentConfigurationMap, ConfigBundle } from './primitives/config-bundle';
 export { ConfigBundleNameSchema, ComponentConfigurationMapSchema } from './primitives/config-bundle';
 export { PolicyEngineSchema };
-export type { Policy, PolicyEngine, ValidationMode } from './primitives/policy';
-export { PolicyEngineNameSchema, PolicyNameSchema, PolicySchema, ValidationModeSchema } from './primitives/policy';
+export type { AuthorizationPhase, EnforcementMode, Policy, PolicyEngine, ValidationMode } from './primitives/policy';
+export {
+  AuthorizationPhaseSchema,
+  EnforcementModeSchema,
+  PolicyEngineNameSchema,
+  PolicyNameSchema,
+  PolicySchema,
+  ValidationModeSchema,
+} from './primitives/policy';
 export { TagsSchema };
 export type { Tags } from './primitives/tags';
 export { DatasetSchema };
@@ -86,8 +93,6 @@ export { DatasetNameSchema, DatasetSchemaTypeSchema } from './primitives/dataset
 export type { Dataset, DatasetSchemaType } from './primitives/dataset';
 export type { ABTestMode, TargetRef, GatewayFilter, PerVariantOnlineEvaluationConfig } from './primitives/ab-test';
 export { ABTestModeSchema, TargetRefSchema, GatewayFilterSchema } from './primitives/ab-test';
-export type { HttpGatewayTarget } from './primitives/http-gateway';
-export { HttpGatewayTargetSchema } from './primitives/http-gateway';
 export type {
   BedrockApiFormat,
   HarnessApiFormat,
@@ -96,6 +101,7 @@ export type {
   HarnessModel,
   HarnessModelProvider,
   HarnessSpec,
+  ManagedMemoryStrategy,
   OpenAiApiFormat,
 } from './primitives/harness';
 export {
@@ -108,8 +114,24 @@ export {
   HarnessNameSchema,
   HarnessSpecSchema,
   HarnessToolTypeSchema,
+  ManagedMemoryStrategySchema,
   validateApiFormat,
 } from './primitives/harness';
+export type {
+  KnowledgeBase,
+  DataSource,
+  S3DataSource,
+  ConnectorDataSourceType,
+  ConnectorFileDataSource,
+} from './primitives/knowledge-base';
+export {
+  KnowledgeBaseNameSchema,
+  KnowledgeBaseSchema,
+  S3DataSourceSchema,
+  DataSourceSchema,
+  ConnectorDataSourceTypeSchema,
+  ConnectorFileDataSourceSchema,
+} from './primitives/knowledge-base';
 export {
   DEFAULT_AUTO_PAYMENT,
   DEFAULT_SPEND_LIMIT,
@@ -393,6 +415,16 @@ export const AgentCoreProjectSpecSchema = z
         )
       ),
 
+    knowledgeBases: z
+      .array(KnowledgeBaseSchema)
+      .default([])
+      .superRefine(
+        uniqueBy(
+          kb => kb.name,
+          name => `Duplicate knowledge base name: ${name}`
+        )
+      ),
+
     credentials: z
       .array(CredentialSchema)
       .default([])
@@ -486,16 +518,6 @@ export const AgentCoreProjectSpecSchema = z
         )
       ),
 
-    httpGateways: z
-      .array(HttpGatewaySchema)
-      .default([])
-      .superRefine(
-        uniqueBy(
-          gw => gw.name,
-          name => `Duplicate HTTP gateway name: ${name}`
-        )
-      ),
-
     harnesses: z
       .array(HarnessRegistryEntrySchema)
       .default([])
@@ -520,6 +542,14 @@ export const AgentCoreProjectSpecSchema = z
         }
       }),
 
+    httpGateways: z
+      .array(z.unknown())
+      .max(
+        0,
+        '"httpGateways" is deprecated. Migrate to agentCoreGateways with protocolType: "None", or use "agentcore import gateway".'
+      )
+      .optional(),
+
     payments: z
       .array(PaymentManagerSchema)
       .optional()
@@ -537,8 +567,8 @@ export const AgentCoreProjectSpecSchema = z
     const evaluatorNames = new Set(spec.evaluators.map(e => e.name));
 
     for (const config of spec.onlineEvalConfigs) {
-      // Validate agent reference
-      if (!agentNames.has(config.agent)) {
+      // Validate agent reference (only when agent is specified — custom log groups don't need one)
+      if (config.agent && !agentNames.has(config.agent)) {
         ctx.addIssue({
           code: z.ZodIssueCode.custom,
           message: `Online eval config "${config.name}" references unknown agent "${config.agent}"`,
@@ -546,7 +576,7 @@ export const AgentCoreProjectSpecSchema = z
       }
 
       // Validate evaluator references
-      for (const evalName of config.evaluators) {
+      for (const evalName of config.evaluators ?? []) {
         // Skip built-in evaluators and ARN references (externally managed)
         if (evalName.startsWith(BUILTIN_EVALUATOR_PREFIX) || evalName.startsWith(ARN_PREFIX)) continue;
         if (!evaluatorNames.has(evalName)) {
@@ -558,14 +588,28 @@ export const AgentCoreProjectSpecSchema = z
       }
     }
 
-    // Validate HTTP gateway runtimeRef references
-    for (const gw of spec.httpGateways ?? []) {
-      const runtimeExists = spec.runtimes.some(r => r.name === gw.runtimeRef);
-      if (!runtimeExists) {
-        ctx.addIssue({
-          code: z.ZodIssueCode.custom,
-          message: `HTTP gateway "${gw.name}" references unknown runtime "${gw.runtimeRef}"`,
-        });
+    // Validate httpRuntime target runtime references
+    for (const gw of spec.agentCoreGateways ?? []) {
+      for (const target of gw.targets) {
+        if (target.targetType === 'httpRuntime') {
+          if (target.httpRuntime?.runtime) {
+            const runtimeExists = spec.runtimes.some(r => r.name === target.httpRuntime!.runtime);
+            if (!runtimeExists) {
+              ctx.addIssue({
+                code: z.ZodIssueCode.custom,
+                message: `Gateway "${gw.name}" target "${target.name}" references unknown runtime "${target.httpRuntime.runtime}". Check spec.runtimes.`,
+              });
+            } else if (target.httpRuntime.runtimeEndpoint && target.httpRuntime.runtimeEndpoint !== 'DEFAULT') {
+              const runtime = spec.runtimes.find(r => r.name === target.httpRuntime!.runtime);
+              if (runtime && !runtime.endpoints?.[target.httpRuntime.runtimeEndpoint]) {
+                ctx.addIssue({
+                  code: z.ZodIssueCode.custom,
+                  message: `Gateway "${gw.name}" target "${target.name}" references endpoint "${target.httpRuntime.runtimeEndpoint}" which does not exist on runtime "${target.httpRuntime.runtime}".`,
+                });
+              }
+            }
+          }
+        }
       }
     }
 
@@ -576,17 +620,17 @@ export const AgentCoreProjectSpecSchema = z
         const match = /^\{\{gateway:(.+)\}\}$/.exec(gwField);
         if (match) {
           const gwName = match[1];
-          const gwExists = (spec.httpGateways ?? []).some(gw => gw.name === gwName);
+          const gwExists = (spec.agentCoreGateways ?? []).some(gw => gw.name === gwName);
           if (!gwExists) {
             ctx.addIssue({
               code: z.ZodIssueCode.custom,
-              message: `AB test "${test.name}" references gateway "${gwName}" which does not exist in httpGateways`,
+              message: `AB test "${test.name}" references gateway "${gwName}" which does not exist in agentCoreGateways`,
             });
           }
 
           // For target-based AB tests, validate target names exist in the gateway's targets array
           if (test.mode === 'target-based') {
-            const gw = (spec.httpGateways ?? []).find(g => g.name === gwName);
+            const gw = (spec.agentCoreGateways ?? []).find(g => g.name === gwName);
             if (gw) {
               const gwTargetNames = new Set((gw.targets ?? []).map(t => t.name));
               for (const variant of test.variants) {
@@ -604,20 +648,43 @@ export const AgentCoreProjectSpecSchema = z
       }
     }
 
-    // Validate HTTP gateway target runtimeRef and qualifier references
-    for (const gw of spec.httpGateways ?? []) {
-      for (const target of gw.targets ?? []) {
-        const runtime = spec.runtimes.find(r => r.name === target.runtimeRef);
-        if (!runtime) {
+    // Connector gateway target KB reference: a project KB name (entry in
+    // knowledgeBases[]) or a literal 10-char KB ID (an external KB this
+    // project does not own). Real KB IDs match ^[A-Z0-9]{10}$; KB names
+    // start with a letter and may include dashes/underscores. The two
+    // formats can never collide.
+    const knowledgeBaseNames = new Set((spec.knowledgeBases ?? []).map(kb => kb.name));
+    const REAL_KB_ID_PATTERN = /^[A-Z0-9]{10}$/;
+    const validateKbReference = (target: { name: string }, value: string, fieldLabel: string): void => {
+      const looksLikeRealId = REAL_KB_ID_PATTERN.test(value);
+      if (looksLikeRealId) {
+        if (knowledgeBaseNames.has(value)) {
           ctx.addIssue({
             code: z.ZodIssueCode.custom,
-            message: `HTTP gateway "${gw.name}" target "${target.name}" references unknown runtime "${target.runtimeRef}"`,
+            message: `Connector target "${target.name}" ${fieldLabel} "${value}" looks like a literal KB ID but also matches a knowledgeBases[] entry. Rename the knowledge base or reference it by its project name instead.`,
           });
-        } else if (target.qualifier && target.qualifier !== 'DEFAULT' && !runtime.endpoints?.[target.qualifier]) {
+        }
+      } else {
+        if (!knowledgeBaseNames.has(value)) {
           ctx.addIssue({
             code: z.ZodIssueCode.custom,
-            message: `HTTP gateway "${gw.name}" target "${target.name}" references qualifier "${target.qualifier}" which is not an endpoint on runtime "${target.runtimeRef}"`,
+            message: `Connector target "${target.name}" ${fieldLabel} "${value}" does not match any knowledgeBases[] entry. To wire an external KB that this project does not own, use its 10-character KB ID.`,
           });
+        }
+      }
+    };
+
+    for (const gateway of spec.agentCoreGateways ?? []) {
+      for (const target of gateway.targets ?? []) {
+        if (target.targetType !== 'connector') continue;
+        if (target.connectorId !== 'bedrock-knowledge-bases' && target.connectorId !== 'bedrock-agentic-retrieve') {
+          continue;
+        }
+        if (target.knowledgeBaseId) {
+          validateKbReference(target, target.knowledgeBaseId, 'knowledgeBaseId');
+        }
+        for (const value of target.knowledgeBaseIds ?? []) {
+          validateKbReference(target, value, 'knowledgeBaseIds[]');
         }
       }
     }

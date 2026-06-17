@@ -1,5 +1,10 @@
-import { MAX_EFS_MOUNTS, MAX_S3_MOUNTS, validateApiFormat } from '../../../schema';
-import { HarnessNameSchema, ProjectNameSchema } from '../../../schema';
+import {
+  HarnessNameSchema,
+  MAX_EFS_MOUNTS,
+  MAX_S3_MOUNTS,
+  ProjectNameSchema,
+  validateApiFormat,
+} from '../../../schema';
 import {
   validateAccessPointMounts,
   validateEfsAccessPointArn,
@@ -53,6 +58,9 @@ const MODEL_PROVIDER_MAPPING: Record<string, string> = {
   Anthropic: 'bedrock',
   gemini: 'gemini',
   Gemini: 'gemini',
+  lite_llm: 'lite_llm',
+  litellm: 'lite_llm',
+  LiteLLM: 'lite_llm',
 };
 
 export function normalizeHarnessModelProvider(raw: string): string | undefined {
@@ -85,7 +93,7 @@ export function validateCreateHarnessOptions(options: CreateHarnessCliOptions, c
     if (!normalized) {
       return {
         valid: false,
-        error: `Invalid model provider: ${options.modelProvider}. Use bedrock, open_ai, or gemini`,
+        error: `Invalid model provider: ${options.modelProvider}. Use bedrock, open_ai, gemini, or lite_llm`,
       };
     }
     options.modelProvider = normalized;
@@ -96,10 +104,12 @@ export function validateCreateHarnessOptions(options: CreateHarnessCliOptions, c
     bedrock: 'global.anthropic.claude-sonnet-4-6',
     open_ai: 'gpt-5',
     gemini: 'gemini-2.5-flash',
+    lite_llm: 'anthropic/claude-sonnet-4-5',
   };
   options.modelId ??= defaultModelIds[options.modelProvider] ?? 'global.anthropic.claude-sonnet-4-6';
 
-  if (options.modelProvider !== 'bedrock' && !options.apiKeyArn) {
+  // open_ai and gemini require an API key; bedrock uses AWS credentials and lite_llm's key is optional.
+  if (options.modelProvider !== 'bedrock' && options.modelProvider !== 'lite_llm' && !options.apiKeyArn) {
     return { valid: false, error: `--api-key-arn is required for ${options.modelProvider} provider` };
   }
 

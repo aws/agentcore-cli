@@ -1,5 +1,6 @@
 import type { EvaluationLevel } from '../../schema/schemas/primitives/evaluator';
 import { getCredentialProvider } from './account';
+import { controlPlaneEndpoint } from './stage-endpoint';
 import {
   BedrockAgentCoreControlClient,
   GetAgentRuntimeCommand,
@@ -20,13 +21,17 @@ import {
 
 /**
  * Create a shared BedrockAgentCoreControlClient for the given region.
+ * Respects AGENTCORE_STAGE env var for pre-release endpoint override.
  * Callers should create one client and reuse it across related operations
  * to benefit from connection pooling and credential caching.
  */
 export function createControlClient(region: string): BedrockAgentCoreControlClient {
+  const stage = process.env.AGENTCORE_STAGE?.toLowerCase();
+  const endpointOverride = stage === 'beta' || stage === 'gamma' ? controlPlaneEndpoint(region) : undefined;
   return new BedrockAgentCoreControlClient({
     region,
     credentials: getCredentialProvider(),
+    ...(endpointOverride ? { endpoint: endpointOverride } : {}),
   });
 }
 
@@ -842,6 +847,7 @@ export interface GatewayDetail {
       }[];
     };
   };
+  protocolType?: string;
   protocolConfiguration?: {
     mcp?: { searchType?: string };
   };
@@ -948,6 +954,9 @@ export async function getGatewayDetail(options: { region: string; gatewayId: str
 
   const tags = await fetchTags(client, response.gatewayArn, 'gateway');
 
+  // Service returns protocolType 'MCP' or null. Null = non-MCP gateway.
+  const protocolType = response.protocolType === 'MCP' ? 'MCP' : 'None';
+
   return {
     gatewayId: response.gatewayId ?? '',
     gatewayArn: response.gatewayArn ?? '',
@@ -957,13 +966,14 @@ export async function getGatewayDetail(options: { region: string; gatewayId: str
     description: response.description,
     authorizerType: response.authorizerType ?? 'NONE',
     roleArn: response.roleArn,
-    authorizerConfiguration,
-    protocolConfiguration,
+    authorizerConfiguration: authorizerConfiguration,
+    protocolType: protocolType,
+    protocolConfiguration: protocolConfiguration,
     exceptionLevel: response.exceptionLevel,
     policyEngineConfiguration: response.policyEngineConfiguration
       ? { arn: response.policyEngineConfiguration.arn ?? '', mode: response.policyEngineConfiguration.mode ?? '' }
       : undefined,
-    tags,
+    tags: tags,
   };
 }
 
@@ -998,6 +1008,10 @@ export interface GatewayTargetDetail {
       openApiSchema?: { s3?: { uri: string; bucketOwnerAccountId?: string }; inlinePayload?: string };
       smithyModel?: { s3?: { uri: string; bucketOwnerAccountId?: string }; inlinePayload?: string };
       lambda?: { lambdaArn: string; toolSchema?: any };
+    };
+    http?: {
+      agentcoreRuntime?: { runtimeArn: string; qualifier?: string };
+      runtimeTargetConfiguration?: { runtimeArn: string; qualifier?: string };
     };
   };
   credentialProviderConfigurations?: {
@@ -1129,6 +1143,24 @@ export async function getGatewayTargetDetail(options: {
       targetConfiguration.mcp!.lambda = {
         lambdaArn: mcp.lambda.lambdaArn ?? '',
         toolSchema: mcp.lambda.toolSchema,
+      };
+    }
+  }
+
+  if (response.targetConfiguration && 'http' in response.targetConfiguration) {
+    const http = (response.targetConfiguration as any).http;
+    targetConfiguration ??= {};
+    targetConfiguration.http = {};
+    if (http?.agentcoreRuntime) {
+      targetConfiguration.http.agentcoreRuntime = {
+        runtimeArn: http.agentcoreRuntime.arn ?? http.agentcoreRuntime.runtimeArn ?? '',
+        qualifier: http.agentcoreRuntime.qualifier,
+      };
+    }
+    if (http?.runtimeTargetConfiguration) {
+      targetConfiguration.http.runtimeTargetConfiguration = {
+        runtimeArn: http.runtimeTargetConfiguration.arn ?? http.runtimeTargetConfiguration.runtimeArn ?? '',
+        qualifier: http.runtimeTargetConfiguration.qualifier,
       };
     }
   }

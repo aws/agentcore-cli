@@ -4,9 +4,9 @@ on:
   push:
     branches: ['main']
   pull_request:
-    branches: ['main']
+    branches: ['main', 'feat/**']
   pull_request_target:
-    branches: ['main']
+    branches: ['main', 'feat/**']
 
 # Cancel in-progress runs for PRs; never cancel runs on main (merges should not abort each other)
 concurrency:

@@ -1,5 +1,4 @@
-import { ValidationError, toError } from '../../../lib';
-import { type Result, failureResult } from '../../../lib/result.js';
+import { toError } from '../../../lib';
 import type {
   AgentCoreGateway,
   AgentCoreGatewayTarget,
@@ -45,28 +44,50 @@ import type { Command } from '@commander-js/extra-typings';
 function toGatewayTargetSpec(
   detail: GatewayTargetDetail,
   credentials: Map<string, string>,
-  onProgress: (msg: string) => void
-): Result<{ target: AgentCoreGatewayTarget | undefined }> {
-  const mcp = detail.targetConfiguration?.mcp;
-  if (!mcp) {
-    onProgress(`Warning: Target "${detail.name}" has no MCP configuration, skipping`);
-    return { success: true, target: undefined };
+  onProgress: (msg: string) => void,
+  runtimeArnToName?: Map<string, string>
+): AgentCoreGatewayTarget | undefined {
+  // Handle HTTP runtime targets
+  const http = detail.targetConfiguration?.http;
+  if (http) {
+    const runtimeConfig = http.agentcoreRuntime ?? http.runtimeTargetConfiguration;
+    if (runtimeConfig) {
+      const managedName = runtimeArnToName?.get(runtimeConfig.runtimeArn);
+      if (!managedName) {
+        onProgress(
+          `Error: Target "${detail.name}" references runtime "${runtimeConfig.runtimeArn}" which is not managed by this project. ` +
+            `Import the runtime first: agentcore import runtime --arn ${runtimeConfig.runtimeArn}`
+        );
+        return undefined;
+      }
+      return {
+        name: detail.name,
+        targetType: 'httpRuntime',
+        httpRuntime: {
+          runtime: managedName,
+          ...(runtimeConfig.qualifier && { runtimeEndpoint: runtimeConfig.qualifier }),
+        },
+      };
+    }
+    onProgress(`Warning: Target "${detail.name}" has HTTP configuration but no runtime, skipping`);
+    return undefined;
   }
 
-  const authResult = resolveOutboundAuth(detail, credentials, onProgress);
-  if (!authResult.success) return authResult;
-  const outboundAuth = authResult.auth;
+  const mcp = detail.targetConfiguration?.mcp;
+  if (!mcp) {
+    onProgress(`Warning: Target "${detail.name}" has no MCP or HTTP configuration, skipping`);
+    return undefined;
+  }
+
+  const outboundAuth = resolveOutboundAuth(detail, credentials, onProgress);
 
   // MCP Server (external endpoint)
   if (mcp.mcpServer) {
     return {
-      success: true,
-      target: {
-        name: detail.name,
-        targetType: 'mcpServer',
-        endpoint: mcp.mcpServer.endpoint,
-        ...(outboundAuth && { outboundAuth }),
-      },
+      name: detail.name,
+      targetType: 'mcpServer',
+      endpoint: mcp.mcpServer.endpoint,
+      ...(outboundAuth && { outboundAuth }),
     };
   }
 
@@ -98,7 +119,7 @@ function toGatewayTargetSpec(
       ...(outboundAuth && { outboundAuth }),
     };
     /* eslint-enable @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-assignment */
-    return { success: true, target };
+    return target;
   }
 
   // OpenAPI Schema
@@ -106,22 +127,19 @@ function toGatewayTargetSpec(
     const schema = mcp.openApiSchema;
     if (schema.s3?.uri) {
       return {
-        success: true,
-        target: {
-          name: detail.name,
-          targetType: 'openApiSchema',
-          schemaSource: {
-            s3: {
-              uri: schema.s3.uri,
-              ...(schema.s3.bucketOwnerAccountId && { bucketOwnerAccountId: schema.s3.bucketOwnerAccountId }),
-            },
+        name: detail.name,
+        targetType: 'openApiSchema',
+        schemaSource: {
+          s3: {
+            uri: schema.s3.uri,
+            ...(schema.s3.bucketOwnerAccountId && { bucketOwnerAccountId: schema.s3.bucketOwnerAccountId }),
           },
-          ...(outboundAuth && { outboundAuth }),
         },
+        ...(outboundAuth && { outboundAuth }),
       };
     }
     onProgress(`Warning: Target "${detail.name}" (openApiSchema) has no S3 URI, skipping`);
-    return { success: true, target: undefined };
+    return undefined;
   }
 
   // Smithy Model
@@ -129,22 +147,19 @@ function toGatewayTargetSpec(
     const schema = mcp.smithyModel;
     if (schema.s3?.uri) {
       return {
-        success: true,
-        target: {
-          name: detail.name,
-          targetType: 'smithyModel',
-          schemaSource: {
-            s3: {
-              uri: schema.s3.uri,
-              ...(schema.s3.bucketOwnerAccountId && { bucketOwnerAccountId: schema.s3.bucketOwnerAccountId }),
-            },
+        name: detail.name,
+        targetType: 'smithyModel',
+        schemaSource: {
+          s3: {
+            uri: schema.s3.uri,
+            ...(schema.s3.bucketOwnerAccountId && { bucketOwnerAccountId: schema.s3.bucketOwnerAccountId }),
           },
-          ...(outboundAuth && { outboundAuth }),
         },
+        ...(outboundAuth && { outboundAuth }),
       };
     }
     onProgress(`Warning: Target "${detail.name}" (smithyModel) has no S3 URI, skipping`);
-    return { success: true, target: undefined };
+    return undefined;
   }
 
   // Lambda (compute-backed) → map to lambdaFunctionArn
@@ -152,7 +167,7 @@ function toGatewayTargetSpec(
     const lambdaArn = mcp.lambda.lambdaArn;
     if (!lambdaArn) {
       onProgress(`Warning: Target "${detail.name}" (lambda) has no ARN, skipping`);
-      return { success: true, target: undefined };
+      return undefined;
     }
 
     // Extract tool schema S3 URI if available
@@ -164,26 +179,23 @@ function toGatewayTargetSpec(
     if (s3Uri) {
       onProgress(`Mapping compute-backed Lambda target "${detail.name}" to lambdaFunctionArn type`);
       return {
-        success: true,
-        target: {
-          name: detail.name,
-          targetType: 'lambdaFunctionArn',
-          lambdaFunctionArn: {
-            lambdaArn,
-            toolSchemaFile: s3Uri,
-          },
-          ...(outboundAuth && { outboundAuth }),
+        name: detail.name,
+        targetType: 'lambdaFunctionArn',
+        lambdaFunctionArn: {
+          lambdaArn,
+          toolSchemaFile: s3Uri,
         },
+        ...(outboundAuth && { outboundAuth }),
       };
     }
 
     // Lambda without S3 schema — can't import as lambdaFunctionArn since toolSchemaFile is required
     onProgress(`Warning: Target "${detail.name}" (lambda) has inline tool schema, which cannot be imported. Skipping.`);
-    return { success: true, target: undefined };
+    return undefined;
   }
 
   onProgress(`Warning: Target "${detail.name}" has an unrecognized target type, skipping`);
-  return { success: true, target: undefined };
+  return undefined;
 }
 
 /**
@@ -193,9 +205,9 @@ function resolveOutboundAuth(
   detail: GatewayTargetDetail,
   credentials: Map<string, string>,
   _onProgress: (msg: string) => void
-): Result<{ auth: OutboundAuth | undefined }> {
+): OutboundAuth | undefined {
   const configs = detail.credentialProviderConfigurations;
-  if (!configs || configs.length === 0) return { success: true, auth: undefined };
+  if (!configs || configs.length === 0) return undefined;
 
   for (const config of configs) {
     if (config.credentialProviderType === 'OAUTH' && config.credentialProvider?.oauthCredentialProvider) {
@@ -203,21 +215,16 @@ function resolveOutboundAuth(
       const credentialName = credentials.get(providerArn);
       if (credentialName) {
         return {
-          success: true,
-          auth: {
-            type: 'OAUTH',
-            credentialName,
-            ...(config.credentialProvider.oauthCredentialProvider.scopes?.length && {
-              scopes: config.credentialProvider.oauthCredentialProvider.scopes,
-            }),
-          },
+          type: 'OAUTH',
+          credentialName,
+          ...(config.credentialProvider.oauthCredentialProvider.scopes?.length && {
+            scopes: config.credentialProvider.oauthCredentialProvider.scopes,
+          }),
         };
       }
-      return failureResult(
-        new ValidationError(
-          `Target "${detail.name}" uses an OAuth credential provider not found in this project's deployed state. ` +
-            'Import the credential first with `agentcore add credential` and re-run.'
-        )
+      throw new Error(
+        `Target "${detail.name}" uses an OAuth credential provider not found in this project's deployed state. ` +
+          'Import the credential first with `agentcore add credential` and re-run.'
       );
     }
 
@@ -225,31 +232,30 @@ function resolveOutboundAuth(
       const providerArn = config.credentialProvider.apiKeyCredentialProvider.providerArn;
       const credentialName = credentials.get(providerArn);
       if (credentialName) {
-        return { success: true, auth: { type: 'API_KEY', credentialName } };
+        return { type: 'API_KEY', credentialName };
       }
-      return failureResult(
-        new ValidationError(
-          `Target "${detail.name}" uses an API Key credential provider not found in this project's deployed state. ` +
-            'Import the credential first with `agentcore add credential` and re-run.'
-        )
+      throw new Error(
+        `Target "${detail.name}" uses an API Key credential provider not found in this project's deployed state. ` +
+          'Import the credential first with `agentcore add credential` and re-run.'
       );
     }
 
     // GATEWAY_IAM_ROLE — no outbound auth needed
   }
 
-  return { success: true, auth: undefined };
+  return undefined;
 }
 
 /**
  * Map GetGateway + GetGatewayTarget[] responses to CLI AgentCoreGateway schema.
  * @internal
  */
-export function toGatewaySpec(
-  gateway: GatewayDetail,
-  targets: AgentCoreGatewayTarget[],
-  localName: string
-): AgentCoreGateway {
+export function toGatewaySpec(options: {
+  gateway: GatewayDetail;
+  targets: AgentCoreGatewayTarget[];
+  localName: string;
+}): AgentCoreGateway {
+  const { gateway, targets, localName } = options;
   const authorizerType = (gateway.authorizerType ?? 'NONE') as GatewayAuthorizerType;
 
   let authorizerConfiguration: AuthorizerConfig | undefined;
@@ -287,6 +293,9 @@ export function toGatewaySpec(
     };
   }
 
+  // Service returns protocolType 'MCP' or null. Null = non-MCP gateway.
+  const protocolType = gateway.protocolType === 'MCP' ? 'MCP' : 'None';
+
   const enableSemanticSearch = gateway.protocolConfiguration?.mcp?.searchType === 'SEMANTIC';
   const exceptionLevel: GatewayExceptionLevel = gateway.exceptionLevel === 'DEBUG' ? 'DEBUG' : 'NONE';
 
@@ -304,6 +313,7 @@ export function toGatewaySpec(
   return {
     name: localName,
     resourceName: gateway.name,
+    ...(protocolType === 'None' && { protocolType: 'None' as const }),
     ...(gateway.description && { description: gateway.description }),
     targets,
     authorizerType,
@@ -489,23 +499,47 @@ export async function handleImportGateway(options: ImportResourceOptions): Promi
     logger.startStep('Map gateway to project schema');
     const credentialArnMap = await buildCredentialArnMap(ctx.configIO, targetName);
 
-    const mappedTargets: AgentCoreGatewayTarget[] = [];
-    for (const td of targetDetails) {
-      const mapped = toGatewayTargetSpec(td, credentialArnMap, onProgress);
-      if (!mapped.success) {
-        logger.endStep('error', mapped.error.message);
-        logger.finalize(false);
-        return {
-          ...mapped,
-          resourceType: 'gateway' as const,
-          resourceName: td.name,
-          logPath: logger.getRelativeLogPath(),
-        };
+    // Build reverse lookup: runtime ARN → local name (for managed target detection)
+    const runtimeArnToName = new Map<string, string>();
+    try {
+      const state = await ctx.configIO.readDeployedState();
+      const deployedTarget = state?.targets?.[targetName];
+      if (deployedTarget?.resources?.runtimes) {
+        for (const [name, rt] of Object.entries(deployedTarget.resources.runtimes)) {
+          runtimeArnToName.set(rt.runtimeArn, name);
+        }
       }
-      if (mapped.target) mappedTargets.push(mapped.target);
+    } catch {
+      // No deployed state — httpRuntime targets without a matching runtime will be skipped
     }
 
-    const gatewaySpec = toGatewaySpec(gatewayDetail, mappedTargets, localName);
+    const mappedTargets: AgentCoreGatewayTarget[] = [];
+    const unmanagedRuntimeArns: string[] = [];
+    for (const td of targetDetails) {
+      const http = td.targetConfiguration?.http;
+      const runtimeConfig = http?.agentcoreRuntime ?? http?.runtimeTargetConfiguration;
+      if (http && runtimeConfig && !runtimeArnToName.has(runtimeConfig.runtimeArn)) {
+        unmanagedRuntimeArns.push(runtimeConfig.runtimeArn);
+      }
+      const mapped = toGatewayTargetSpec(td, credentialArnMap, onProgress, runtimeArnToName);
+      if (mapped) {
+        mappedTargets.push(mapped);
+      }
+    }
+
+    if (unmanagedRuntimeArns.length > 0) {
+      const arns = [...new Set(unmanagedRuntimeArns)];
+      const importCmds = arns.map(arn => `  agentcore import runtime --arn ${arn}`).join('\n');
+      return failResult(
+        logger,
+        `Gateway has ${unmanagedRuntimeArns.length} httpRuntime target(s) referencing runtimes not managed by this project.\n` +
+          `Import the runtime(s) first:\n${importCmds}\n\nThen retry: agentcore import gateway --arn ${options.arn ?? gatewayDetail.gatewayArn}`,
+        'gateway',
+        localName
+      );
+    }
+
+    const gatewaySpec = toGatewaySpec({ gateway: gatewayDetail, targets: mappedTargets, localName });
     onProgress(`Mapped gateway with ${mappedTargets.length} target(s)`);
     if (mappedTargets.length < targetDetails.length) {
       onProgress(

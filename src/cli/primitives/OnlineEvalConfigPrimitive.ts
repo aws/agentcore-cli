@@ -17,6 +17,8 @@ export interface AddOnlineEvalConfigOptions {
   samplingRate: number;
   enableOnCreate?: boolean;
   endpoint?: string;
+  logGroupNames?: string[];
+  serviceNames?: string[];
 }
 
 export type RemovableOnlineEvalConfig = RemovableResource;
@@ -65,10 +67,13 @@ export class OnlineEvalConfigPrimitive extends BasePrimitive<AddOnlineEvalConfig
       throw new Error(`Online eval config "${configName}" not found.`);
     }
 
-    const summary: string[] = [
-      `Removing online eval config: ${configName}`,
-      `Uses evaluators: ${config.evaluators.join(', ')}`,
-    ];
+    const summary: string[] = [`Removing online eval config: ${configName}`];
+    if (config.evaluators && config.evaluators.length > 0) {
+      summary.push(`Uses evaluators: ${config.evaluators.join(', ')}`);
+    }
+    if (config.insights && config.insights.length > 0) {
+      summary.push(`Uses insights: ${config.insights.join(', ')}`);
+    }
     const schemaChanges: SchemaChange[] = [];
 
     const afterSpec = {
@@ -113,6 +118,11 @@ export class OnlineEvalConfigPrimitive extends BasePrimitive<AddOnlineEvalConfig
       .option('--evaluator-arn <arns...>', 'Evaluator ARN(s) [non-interactive]')
       .option('--sampling-rate <rate>', 'Sampling percentage (0.01-100) [non-interactive]')
       .option('--endpoint <name>', 'Runtime endpoint name to scope monitoring [non-interactive]')
+      .option(
+        '--log-group-name <names...>',
+        'CloudWatch log group name(s) for custom data sources (1-5) [non-interactive]'
+      )
+      .option('--service-name <names...>', 'Service name(s) to filter traces for custom data sources [non-interactive]')
       .option('--enable-on-create', 'Enable evaluation immediately after deploy [non-interactive]')
       .option('--json', 'Output as JSON [non-interactive]')
       .action(
@@ -123,6 +133,8 @@ export class OnlineEvalConfigPrimitive extends BasePrimitive<AddOnlineEvalConfig
           evaluatorArn?: string[];
           samplingRate?: string;
           endpoint?: string;
+          logGroupName?: string[];
+          serviceName?: string[];
           enableOnCreate?: boolean;
           json?: boolean;
         }) => {
@@ -136,10 +148,31 @@ export class OnlineEvalConfigPrimitive extends BasePrimitive<AddOnlineEvalConfig
             const allEvaluators = [...(cliOptions.evaluator ?? []), ...(cliOptions.evaluatorArn ?? [])];
 
             await runCliCommand('add.online-eval', !!cliOptions.json, async () => {
-              if (!cliOptions.name || !cliOptions.runtime || allEvaluators.length === 0 || !cliOptions.samplingRate) {
+              // Mutual exclusivity: --runtime and --log-group-name cannot be used together
+              if (cliOptions.runtime && cliOptions.logGroupName) {
                 throw new Error(
-                  '--name, --runtime, --evaluator (and/or --evaluator-arn), and --sampling-rate are all required in non-interactive mode'
+                  'Error: --runtime and --log-group-name are mutually exclusive. Use --runtime (+ optional --endpoint) for AgentCore agents, or --log-group-name/--service-name for custom data sources.'
                 );
+              }
+
+              // Validate required fields based on source mode
+              if (cliOptions.logGroupName) {
+                // Custom data source mode
+                if (!cliOptions.name || allEvaluators.length === 0 || !cliOptions.samplingRate) {
+                  throw new Error(
+                    '--name, --log-group-name, --evaluator (and/or --evaluator-arn), and --sampling-rate are all required in non-interactive mode'
+                  );
+                }
+                if (cliOptions.logGroupName.length > 5) {
+                  throw new Error('--log-group-name accepts at most 5 log group names');
+                }
+              } else {
+                // AgentCore runtime mode
+                if (!cliOptions.name || !cliOptions.runtime || allEvaluators.length === 0 || !cliOptions.samplingRate) {
+                  throw new Error(
+                    '--name, --runtime, --evaluator (and/or --evaluator-arn), and --sampling-rate are all required in non-interactive mode'
+                  );
+                }
               }
 
               // Sampling rate as a percentage of requests to evaluate (0.01% to 100%)
@@ -152,11 +185,13 @@ export class OnlineEvalConfigPrimitive extends BasePrimitive<AddOnlineEvalConfig
 
               const result = await this.add({
                 name: cliOptions.name,
-                agent: cliOptions.runtime,
+                agent: cliOptions.runtime ?? '',
                 evaluators: allEvaluators,
                 samplingRate,
                 enableOnCreate: cliOptions.enableOnCreate,
                 endpoint: cliOptions.endpoint,
+                logGroupNames: cliOptions.logGroupName,
+                serviceNames: cliOptions.serviceName,
               });
 
               if (!result.success) {
@@ -215,7 +250,7 @@ export class OnlineEvalConfigPrimitive extends BasePrimitive<AddOnlineEvalConfig
     this.checkDuplicate(project.onlineEvalConfigs, options.name, 'Online eval config');
 
     // Validate that the endpoint exists on the specified runtime if provided
-    if (options.endpoint) {
+    if (options.endpoint && options.agent) {
       const runtime = project.runtimes.find(r => r.name === options.agent);
       if (!runtime) {
         throw new Error(`Runtime "${options.agent}" not found in project.`);
@@ -231,11 +266,13 @@ export class OnlineEvalConfigPrimitive extends BasePrimitive<AddOnlineEvalConfig
 
     const config: OnlineEvalConfig = {
       name: options.name,
-      agent: options.agent,
+      ...(options.agent ? { agent: options.agent } : {}),
       evaluators: options.evaluators,
       samplingRate: options.samplingRate,
       ...(options.enableOnCreate !== undefined && { enableOnCreate: options.enableOnCreate }),
       ...(options.endpoint && { endpoint: options.endpoint }),
+      ...(options.logGroupNames && { logGroupNames: options.logGroupNames }),
+      ...(options.serviceNames && { serviceNames: options.serviceNames }),
     };
 
     project.onlineEvalConfigs.push(config);

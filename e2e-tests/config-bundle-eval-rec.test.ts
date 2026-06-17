@@ -224,7 +224,7 @@ describe.sequential('e2e: config bundles, batch evaluation, and recommendations'
   it.skipIf(!canRun)(
     'config-bundle versions lists the deployed version',
     async () => {
-      const result = await run(['config-bundle', 'versions', '--bundle', bundleName, '--json']);
+      const result = await run(['config-bundle', 'versions', '--name', bundleName, '--json']);
 
       expect(result.exitCode, `cb versions failed: ${result.stderr}`).toBe(0);
       const json = parseJsonOutput(result.stdout) as {
@@ -243,7 +243,7 @@ describe.sequential('e2e: config bundles, batch evaluation, and recommendations'
   it.skipIf(!canRun)(
     'config-bundle versions supports --branch filter',
     async () => {
-      const result = await run(['config-bundle', 'versions', '--bundle', bundleName, '--branch', 'mainline', '--json']);
+      const result = await run(['config-bundle', 'versions', '--name', bundleName, '--branch', 'mainline', '--json']);
 
       expect(result.exitCode, `cb versions --branch failed: ${result.stderr}`).toBe(0);
       const json = parseJsonOutput(result.stdout) as {
@@ -302,7 +302,7 @@ describe.sequential('e2e: config bundles, batch evaluation, and recommendations'
   it.skipIf(!canRun)(
     'config-bundle versions shows both versions after update',
     async () => {
-      const result = await run(['config-bundle', 'versions', '--bundle', bundleName, '--json']);
+      const result = await run(['config-bundle', 'versions', '--name', bundleName, '--json']);
 
       expect(result.exitCode, `cb versions failed: ${result.stderr}`).toBe(0);
       const json = parseJsonOutput(result.stdout) as {
@@ -318,7 +318,7 @@ describe.sequential('e2e: config bundles, batch evaluation, and recommendations'
     'config-bundle diff shows changes between versions',
     async () => {
       // Get the latest two versions
-      const versionsResult = await run(['config-bundle', 'versions', '--bundle', bundleName, '--json']);
+      const versionsResult = await run(['config-bundle', 'versions', '--name', bundleName, '--json']);
       const versionsJson = parseJsonOutput(versionsResult.stdout) as {
         versions: { versionId: string }[];
       };
@@ -330,7 +330,7 @@ describe.sequential('e2e: config bundles, batch evaluation, and recommendations'
       const result = await run([
         'config-bundle',
         'diff',
-        '--bundle',
+        '--name',
         bundleName,
         '--from',
         oldestVersion,
@@ -375,7 +375,7 @@ describe.sequential('e2e: config bundles, batch evaluation, and recommendations'
           );
           const json = parseJsonOutput(result.stdout) as Record<string, unknown>;
           expect(json).toHaveProperty('success', true);
-          expect(json).toHaveProperty('batchEvaluationId');
+          expect(json).toHaveProperty('id');
           expect(json.status).toBeDefined();
           expect(json.status).not.toBe('FAILED');
         },
@@ -497,7 +497,7 @@ describe.sequential('e2e: config bundles, batch evaluation, and recommendations'
           expect(result.exitCode, `recommendation failed (stdout: ${result.stdout}, stderr: ${result.stderr})`).toBe(0);
           const json = parseJsonOutput(result.stdout) as Record<string, unknown>;
           expect(json).toHaveProperty('success', true);
-          expect(json).toHaveProperty('recommendationId');
+          expect(json).toHaveProperty('id');
           expect(json.result).toBeDefined();
           expect(json.result).not.toBe('');
           expect(json.result).not.toBeNull();
@@ -534,7 +534,7 @@ describe.sequential('e2e: config bundles, batch evaluation, and recommendations'
           expect(result.exitCode, `recommendation from file failed: ${result.stdout}`).toBe(0);
           const json = parseJsonOutput(result.stdout) as Record<string, unknown>;
           expect(json).toHaveProperty('success', true);
-          expect(json).toHaveProperty('recommendationId');
+          expect(json).toHaveProperty('id');
         },
         6,
         30000
@@ -565,7 +565,7 @@ describe.sequential('e2e: config bundles, batch evaluation, and recommendations'
           expect(result.exitCode, `tool-desc recommendation failed: ${result.stdout}`).toBe(0);
           const json = parseJsonOutput(result.stdout) as Record<string, unknown>;
           expect(json).toHaveProperty('success', true);
-          expect(json).toHaveProperty('recommendationId');
+          expect(json).toHaveProperty('id');
         },
         6,
         30000
@@ -578,7 +578,7 @@ describe.sequential('e2e: config bundles, batch evaluation, and recommendations'
     'runs recommendation with config bundle source via CLI',
     async () => {
       // Get the latest version ID for the bundle
-      const versionsResult = await run(['config-bundle', 'versions', '--bundle', bundleName, '--json']);
+      const versionsResult = await run(['config-bundle', 'versions', '--name', bundleName, '--json']);
       const versionsJson = parseJsonOutput(versionsResult.stdout) as {
         versions: { versionId: string }[];
       };
@@ -607,7 +607,7 @@ describe.sequential('e2e: config bundles, batch evaluation, and recommendations'
           expect(result.exitCode, `bundle recommendation failed: ${result.stdout}`).toBe(0);
           const json = parseJsonOutput(result.stdout) as Record<string, unknown>;
           expect(json).toHaveProperty('success', true);
-          expect(json).toHaveProperty('recommendationId');
+          expect(json).toHaveProperty('id');
         },
         6,
         30000

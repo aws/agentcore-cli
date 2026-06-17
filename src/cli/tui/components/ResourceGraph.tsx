@@ -21,10 +21,10 @@ const ICONS = {
   'policy-engine': '▣',
   policy: '▢',
   'config-bundle': '⬡',
-  'ab-test': '⚗',
   dataset: '▤',
   harness: '⬢',
   'runtime-endpoint': '◉',
+  'knowledge-base': '✚',
   payment: '₿',
 } as const;
 
@@ -127,6 +127,7 @@ export function ResourceGraph({ project, mcp, agentName, resourceStatuses }: Res
   const allAgents = project.runtimes ?? [];
   const agents = agentName ? allAgents.filter(a => a.name === agentName) : allAgents;
   const memories = project.memories ?? [];
+  const knowledgeBases = project.knowledgeBases ?? [];
   const credentials = project.credentials ?? [];
   const evaluators = project.evaluators ?? [];
   const onlineEvalConfigs = project.onlineEvalConfigs ?? [];
@@ -136,8 +137,8 @@ export function ResourceGraph({ project, mcp, agentName, resourceStatuses }: Res
   const policyEngines = project.policyEngines ?? [];
   const configBundles = project.configBundles ?? [];
   const datasets = project.datasets ?? [];
-  const abTests = project.abTests ?? [];
   const payments = project.payments ?? [];
+  const harnesses = project.harnesses ?? [];
 
   // Build lookup map and collect pending-removal resources in a single pass
   const { statusMap, pendingRemovals } = useMemo(() => {
@@ -163,6 +164,7 @@ export function ResourceGraph({ project, mcp, agentName, resourceStatuses }: Res
   const hasContent =
     agents.length > 0 ||
     memories.length > 0 ||
+    knowledgeBases.length > 0 ||
     credentials.length > 0 ||
     evaluators.length > 0 ||
     onlineEvalConfigs.length > 0 ||
@@ -171,6 +173,7 @@ export function ResourceGraph({ project, mcp, agentName, resourceStatuses }: Res
     mcpRuntimeTools.length > 0 ||
     unassignedTargets.length > 0 ||
     payments.length > 0 ||
+    harnesses.length > 0 ||
     pendingRemovals.length > 0;
 
   return (
@@ -246,6 +249,31 @@ export function ResourceGraph({ project, mcp, agentName, resourceStatuses }: Res
         </Box>
       )}
 
+      {/* Knowledge Bases */}
+      {knowledgeBases.length > 0 && (
+        <Box flexDirection="column">
+          <SectionHeader>Knowledge Bases</SectionHeader>
+          {knowledgeBases.map(kb => {
+            const rsEntry = statusMap.get(`knowledge-base:${kb.name}`);
+            const dsCount = kb.dataSources.length;
+            const fallbackDetail = `${dsCount} data source${dsCount === 1 ? '' : 's'}`;
+            return (
+              <ResourceRow
+                key={kb.name}
+                icon={ICONS['knowledge-base']}
+                color="blue"
+                name={kb.name}
+                detail={rsEntry?.detail ?? fallbackDetail}
+                status={rsEntry?.error ? 'error' : undefined}
+                statusColor={rsEntry?.error ? 'red' : undefined}
+                deploymentState={rsEntry?.deploymentState}
+                identifier={rsEntry?.identifier}
+              />
+            );
+          })}
+        </Box>
+      )}
+
       {/* Credentials */}
       {credentials.length > 0 && (
         <Box flexDirection="column">
@@ -298,7 +326,7 @@ export function ResourceGraph({ project, mcp, agentName, resourceStatuses }: Res
           <SectionHeader>Online Eval Configs</SectionHeader>
           {onlineEvalConfigs.map(config => {
             const rsEntry = statusMap.get(`online-eval:${config.name}`);
-            const defaultDetail = `${config.evaluators.length} evaluator${config.evaluators.length !== 1 ? 's' : ''} — ${config.samplingRate}% sampling`;
+            const defaultDetail = `${(config.evaluators ?? []).length} evaluator${(config.evaluators ?? []).length !== 1 ? 's' : ''} — ${config.samplingRate}% sampling`;
             return (
               <ResourceRow
                 key={config.name}
@@ -358,22 +386,21 @@ export function ResourceGraph({ project, mcp, agentName, resourceStatuses }: Res
         </Box>
       )}
 
-      {/* AB Tests */}
-      {abTests.length > 0 && (
+      {/* Harnesses */}
+      {harnesses.length > 0 && (
         <Box flexDirection="column">
-          <SectionHeader>AB Tests</SectionHeader>
-          {abTests.map(test => {
-            const rsEntry = statusMap.get(`ab-test:${test.name}`);
+          <SectionHeader>Harnesses</SectionHeader>
+          {harnesses.map(harness => {
+            const rsEntry = statusMap.get(`harness:${harness.name}`);
             return (
               <ResourceRow
-                key={test.name}
-                icon={ICONS['ab-test']}
-                color="white"
-                name={test.name}
-                detail={rsEntry?.detail ?? test.description}
+                key={harness.name}
+                icon={ICONS.harness}
+                color="cyan"
+                name={harness.name}
+                detail={rsEntry?.detail ?? harness.path}
                 deploymentState={rsEntry?.deploymentState}
                 identifier={rsEntry?.identifier}
-                invocationUrl={rsEntry?.invocationUrl}
               />
             );
           })}
@@ -536,13 +563,14 @@ export function ResourceGraph({ project, mcp, agentName, resourceStatuses }: Res
         <Text>
           <Text color="green">{ICONS.agent}</Text> agent{'  '}
           <Text color="blue">{ICONS.memory}</Text> memory{'  '}
+          <Text color="blue">{ICONS['knowledge-base']}</Text> knowledge base{'  '}
           <Text color="yellow">{ICONS.credential}</Text> credential{'  '}
           <Text color="cyan">{ICONS.evaluator}</Text> evaluator{'  '}
           <Text color="magenta">{ICONS['online-eval']}</Text> online-eval{'  '}
           <Text color="magenta">{ICONS.gateway}</Text> gateway{'  '}
           <Text color="red">{ICONS['policy-engine']}</Text> policy engine{'  '}
           <Text color="white">{ICONS['config-bundle']}</Text> config bundle{'  '}
-          <Text color="white">{ICONS['ab-test']}</Text> ab test
+          <Text color="cyan">{ICONS.harness}</Text> harness
         </Text>
       </Box>
     </Box>

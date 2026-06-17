@@ -1,4 +1,3 @@
-export { ABTestPrimitive } from './ABTestPrimitive';
 export { BasePrimitive } from './BasePrimitive';
 export { DatasetPrimitive } from './DatasetPrimitive';
 export type { AddDatasetOptions } from '../commands/add/types';
@@ -25,7 +24,6 @@ export {
   gatewayPrimitive,
   gatewayTargetPrimitive,
   configBundlePrimitive,
-  abTestPrimitive,
   runtimeEndpointPrimitive,
   getPrimitive,
 } from './registry';

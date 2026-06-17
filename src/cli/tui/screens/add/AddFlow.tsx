@@ -3,7 +3,6 @@ import { VPC_ENDPOINT_WARNING } from '../../../commands/shared/vpc-utils';
 import { computeDefaultCredentialEnvVarName } from '../../../primitives/credential-utils';
 import { ErrorPrompt } from '../../components';
 import { useAvailableAgents } from '../../hooks/useCreateMcp';
-import { AddABTestFlow } from '../ab-test';
 import { AddAgentFlow } from '../agent/AddAgentFlow';
 import type { AddAgentConfig } from '../agent/types';
 import { FRAMEWORK_OPTIONS } from '../agent/types';
@@ -13,12 +12,15 @@ import { AddDatasetFlow } from '../dataset';
 import { AddEvaluatorFlow } from '../evaluator';
 import { AddHarnessFlow } from '../harness/AddHarnessFlow';
 import { AddIdentityFlow } from '../identity';
+import { AddKnowledgeBaseFlow } from '../knowledge-base';
 import { AddGatewayFlow, AddGatewayTargetFlow } from '../mcp';
 import { AddMemoryFlow } from '../memory/AddMemoryFlow';
 import { AddOnlineEvalFlow } from '../online-eval';
+import { AddOnlineInsightsFlow } from '../online-insights';
 import { AddPaymentFlow } from '../payment';
 import { AddPolicyFlow } from '../policy';
 import { AddRuntimeEndpointFlow } from '../runtime-endpoint';
+import { AddWebSearchFlow } from '../web-search';
 import type { AddResourceType } from './AddScreen';
 import { AddScreen } from './AddScreen';
 import { AddSuccessScreen } from './AddSuccessScreen';
@@ -33,13 +35,15 @@ type FlowState =
   | { name: 'gateway-wizard' }
   | { name: 'tool-wizard' }
   | { name: 'memory-wizard' }
+  | { name: 'knowledge-base-wizard' }
+  | { name: 'web-search-wizard' }
   | { name: 'identity-wizard' }
   | { name: 'evaluator-wizard' }
   | { name: 'online-eval-wizard' }
+  | { name: 'online-insights-wizard' }
   | { name: 'policy-wizard' }
   | { name: 'dataset-wizard' }
   | { name: 'config-bundle-wizard' }
-  | { name: 'ab-test-wizard' }
   | { name: 'runtime-endpoint-wizard' }
   | { name: 'payment-manager-wizard' }
   | { name: 'payment-connector-wizard' }
@@ -186,12 +190,18 @@ function getInitialFlowState(resource?: AddResourceType): FlowState {
       return { name: 'tool-wizard' };
     case 'memory':
       return { name: 'memory-wizard' };
+    case 'knowledge-base':
+      return { name: 'knowledge-base-wizard' };
+    case 'web-search':
+      return { name: 'web-search-wizard' };
     case 'credential':
       return { name: 'identity-wizard' };
     case 'evaluator':
       return { name: 'evaluator-wizard' };
     case 'online-eval':
       return { name: 'online-eval-wizard' };
+    case 'online-insights':
+      return { name: 'online-insights-wizard' };
     case 'policy':
       return { name: 'policy-wizard' };
     case 'runtime-endpoint':
@@ -200,8 +210,6 @@ function getInitialFlowState(resource?: AddResourceType): FlowState {
       return { name: 'dataset-wizard' };
     case 'config-bundle':
       return { name: 'config-bundle-wizard' };
-    case 'ab-test':
-      return { name: 'ab-test-wizard' };
     case 'payment-manager':
       return { name: 'payment-manager-wizard' };
     case 'payment-connector':
@@ -244,6 +252,12 @@ export function AddFlow(props: AddFlowProps) {
       case 'memory':
         setFlow({ name: 'memory-wizard' });
         break;
+      case 'knowledge-base':
+        setFlow({ name: 'knowledge-base-wizard' });
+        break;
+      case 'web-search':
+        setFlow({ name: 'web-search-wizard' });
+        break;
       case 'credential':
         setFlow({ name: 'identity-wizard' });
         break;
@@ -253,6 +267,9 @@ export function AddFlow(props: AddFlowProps) {
       case 'online-eval':
         setFlow({ name: 'online-eval-wizard' });
         break;
+      case 'online-insights':
+        setFlow({ name: 'online-insights-wizard' });
+        break;
       case 'policy':
         setFlow({ name: 'policy-wizard' });
         break;
@@ -261,9 +278,6 @@ export function AddFlow(props: AddFlowProps) {
         break;
       case 'config-bundle':
         setFlow({ name: 'config-bundle-wizard' });
-        break;
-      case 'ab-test':
-        setFlow({ name: 'ab-test-wizard' });
         break;
       case 'runtime-endpoint':
         setFlow({ name: 'runtime-endpoint-wizard' });
@@ -474,6 +488,32 @@ export function AddFlow(props: AddFlowProps) {
     );
   }
 
+  // Knowledge base wizard
+  if (flow.name === 'knowledge-base-wizard') {
+    return (
+      <AddKnowledgeBaseFlow
+        isInteractive={props.isInteractive}
+        onBack={() => setFlow({ name: 'select' })}
+        onExit={props.onExit}
+        onDev={props.onDev}
+        onDeploy={props.onDeploy}
+      />
+    );
+  }
+
+  // Web search wizard
+  if (flow.name === 'web-search-wizard') {
+    return (
+      <AddWebSearchFlow
+        isInteractive={props.isInteractive}
+        onBack={() => setFlow({ name: 'select' })}
+        onExit={props.onExit}
+        onDev={props.onDev}
+        onDeploy={props.onDeploy}
+      />
+    );
+  }
+
   // Identity wizard - now uses AddIdentityFlow with mode selection
   if (flow.name === 'identity-wizard') {
     return (
@@ -513,6 +553,19 @@ export function AddFlow(props: AddFlowProps) {
     );
   }
 
+  // Online insights wizard
+  if (flow.name === 'online-insights-wizard') {
+    return (
+      <AddOnlineInsightsFlow
+        isInteractive={props.isInteractive}
+        onExit={props.onExit}
+        onBack={() => setFlow({ name: 'select' })}
+        onDev={props.onDev}
+        onDeploy={props.onDeploy}
+      />
+    );
+  }
+
   // Policy wizard - picker for policy engine vs policy, then wizard
   if (flow.name === 'policy-wizard') {
     return (
@@ -543,19 +596,6 @@ export function AddFlow(props: AddFlowProps) {
   if (flow.name === 'config-bundle-wizard') {
     return (
       <AddConfigBundleFlow
-        isInteractive={props.isInteractive}
-        onExit={props.onExit}
-        onBack={() => setFlow({ name: 'select' })}
-        onDev={props.onDev}
-        onDeploy={props.onDeploy}
-      />
-    );
-  }
-
-  // AB test wizard
-  if (flow.name === 'ab-test-wizard') {
-    return (
-      <AddABTestFlow
         isInteractive={props.isInteractive}
         onExit={props.onExit}
         onBack={() => setFlow({ name: 'select' })}

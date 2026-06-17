@@ -20,13 +20,15 @@ describe('TextInput', () => {
     expect(lastFrame()).toContain('Enter name:');
   });
 
-  it('renders placeholder when value is empty', () => {
+  it('renders the full placeholder (including its first char) when value is empty', () => {
     const { lastFrame } = render(
       <TextInput prompt="Name" placeholder="my-agent" onSubmit={vi.fn()} onCancel={vi.fn()} />
     );
 
-    // Placeholder shows all chars after cursor position (slice(1))
-    expect(lastFrame()).toContain('y-agent');
+    // The first placeholder char sits under the cursor, the rest renders dim — together
+    // the full placeholder must be visible (regression guard for the slice(1) truncation bug
+    // that rendered "my-agent" as "y-agent").
+    expect(lastFrame()).toContain('my-agent');
   });
 
   it('renders initial value', () => {

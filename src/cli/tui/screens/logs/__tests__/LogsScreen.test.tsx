@@ -16,6 +16,15 @@ vi.mock('../../../../operations/resolve-agent.js', () => ({
   loadDeployedProjectConfig: mockLoadDeployedProjectConfig,
 }));
 
+// useLogsFlow wraps its load in withCommandRunTelemetry, whose real implementation
+// awaits getTelemetryClient()/flush() and never settles in tests — leaving the screen
+// stuck in the 'loading' phase. Pass through to the inner fn so the load resolves.
+vi.mock('../../../../telemetry/cli-command-run.js', () => ({
+  withCommandRunTelemetry: vi.fn((_command: string, _attrs: unknown, fn: (recorder: unknown) => unknown) =>
+    fn({ set: vi.fn(), get: vi.fn(() => ({})) })
+  ),
+}));
+
 vi.mock('../../../../aws/cloudwatch.js', () => ({
   // eslint-disable-next-line require-yield
   async *streamLogs() {

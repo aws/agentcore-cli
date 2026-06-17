@@ -1,0 +1,14 @@
+{
+  "type": "SHAREPOINT",
+  "version": "1",
+  "connectionConfiguration": {
+    "tenantId": "00000000-0000-0000-0000-000000000000",
+    "authType": "OAUTH2_APP",
+    "secretArn": "arn:aws:secretsmanager:us-west-2:111122223333:secret:sharepoint-creds"
+  },
+  "dataEntityConfiguration": {
+    "siteUrls": ["https://your-tenant.sharepoint.com/sites/your-site"],
+    "crawlFiles": true,
+    "crawlPages": true
+  }
+}

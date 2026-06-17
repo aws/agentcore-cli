@@ -1,6 +1,7 @@
 // ---------------------------------------------------------------------------
 // Telemetry attribute correctness
 // ---------------------------------------------------------------------------
+import { ANSI } from '../../../constants.js';
 import { withCommandRunTelemetry } from '../../../telemetry/cli-command-run.js';
 import { handleExecOneShot, handleShellSession } from '../action.js';
 import { registerExec } from '../command.js';
@@ -547,5 +548,65 @@ describe('exec runExecLoop fatal error handling', () => {
     await expect(program.parseAsync(['exec', '--it'], { from: 'user' })).rejects.toThrow('process.exit(1)');
 
     expect(mockExit).toHaveBeenCalledWith(1);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Picker renders in the alternate screen (regression: exec used to drop out of
+// fullscreen and leave static frames behind in the normal buffer)
+// ---------------------------------------------------------------------------
+
+describe('exec picker alternate-screen handling', () => {
+  let mockExit: ReturnType<typeof vi.spyOn>;
+  let writeSpy: ReturnType<typeof vi.spyOn>;
+  let writes: string[];
+
+  beforeEach(() => {
+    mockExit = vi.spyOn(process, 'exit').mockImplementation((_code?: string | number | null) => {
+      throw new Error(`process.exit(${_code})`);
+    });
+    writes = [];
+    writeSpy = vi.spyOn(process.stdout, 'write').mockImplementation((chunk: string | Uint8Array) => {
+      writes.push(typeof chunk === 'string' ? chunk : chunk.toString());
+      return true;
+    });
+  });
+
+  afterEach(() => {
+    mockExit.mockRestore();
+    writeSpy.mockRestore();
+    vi.clearAllMocks();
+  });
+
+  it('enters the alt screen for the picker and restores the normal buffer + cursor on select', async () => {
+    vi.mocked(handleShellSession).mockResolvedValue({ success: true });
+
+    const { ExecScreen } = await import('../../../tui/screens/exec/index.js');
+    vi.mocked(ExecScreen).mockImplementation((_props: unknown) => null as unknown as React.ReactElement);
+
+    // Render the picker, then immediately auto-select so the loop runs once and exits.
+    const { render } = await import('ink');
+    vi.mocked(render).mockImplementation((_element: unknown) => {
+      const props = (_element as { props: { onSelect: (r: { runtimeArn: string; autoSelected: boolean }) => void } })
+        .props;
+      void Promise.resolve().then(() =>
+        props.onSelect({ runtimeArn: 'arn:aws:bedrock-agentcore:us-east-1:123:runtime/r', autoSelected: true })
+      );
+      return { unmount: vi.fn(), rerender: vi.fn(), clear: vi.fn(), cleanup: vi.fn(), waitUntilExit: vi.fn() };
+    });
+
+    const program = new Command();
+    program.exitOverride();
+    registerExec(program);
+
+    // The command calls process.exit when the picker loop finishes; the exact code
+    // is irrelevant here — we only care that the picker entered/restored the alt screen.
+    await expect(program.parseAsync(['exec', '--it'], { from: 'user' })).rejects.toThrow(/process\.exit/);
+
+    // Entered the alt screen, then restored the normal buffer + cursor afterwards.
+    expect(writes).toContain(ANSI.enterAltScreen);
+    expect(writes.some(w => w.includes(ANSI.exitAltScreen))).toBe(true);
+    expect(writes.some(w => w.includes(ANSI.showCursor))).toBe(true);
+    expect(writes.indexOf(ANSI.enterAltScreen)).toBeLessThan(writes.findIndex(w => w.includes(ANSI.exitAltScreen)));
   });
 });

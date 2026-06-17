@@ -1,3 +1,4 @@
+import { TagsSchema } from './primitives/tags';
 import { z } from 'zod';
 
 // ============================================================================
@@ -32,6 +33,9 @@ const OidcDiscoveryUrlSchema = z
 
 // API-documented patterns (from ClaimMatchValueType and CustomClaimValidationType)
 const MATCH_VALUE_PATTERN = /^[A-Za-z0-9_.-]+$/;
+// OAuth scope token: printable ASCII excluding space (0x20) and double-quote (0x22).
+// Mirrors CFN CustomJWTAuthorizerConfiguration.AllowedScopes.items pattern byte-for-byte.
+const ALLOWED_SCOPE_PATTERN = /^[\x21\x23-\x5B\x5D-\x7E]+$/;
 const CLAIM_NAME_PATTERN = /^[A-Za-z0-9_.:-]+$/;
 // Server-side reserved claim names (not regex-documented; API rejects these at deploy time)
 const RESERVED_CLAIM_NAMES = ['client_id'];
@@ -83,6 +87,94 @@ export const CustomClaimValidationSchema = z
   .strict();
 export type CustomClaimValidation = z.infer<typeof CustomClaimValidationSchema>;
 
+// ── PrivateLink Inbound — private endpoint for reaching the OIDC discovery URL ──
+//
+// Nested inside CustomJWTAuthorizerConfiguration ("PrivateLink inbound" GA-parity feature):
+// when a JWT IdP's discovery/JWKS endpoint is privately hosted, this tells the harness how to
+// reach it over a private network. Two mutually-exclusive arms. Patterns match the
+// AWS::BedrockAgentCore::Harness CFN spec byte-for-byte.
+
+// VPC Lattice resource-config id, or its full ARN. Exported so the TUI validators reuse the
+// schema regex (single source of truth) instead of hand-rolled checks that drift from it.
+export const LATTICE_RESOURCE_CONFIG_PATTERN =
+  /^((rcfg-[0-9a-z]{17})|(arn:[a-z0-9-]+:vpc-lattice:[a-zA-Z0-9-]+:\d{12}:resourceconfiguration\/rcfg-[0-9a-z]{17}))$/;
+export const VPC_ID_PATTERN = /^vpc-(([0-9a-z]{8})|([0-9a-z]{17}))$/;
+export const SUBNET_ID_PATTERN = /^subnet-[0-9a-zA-Z]{8,17}$/;
+export const SECURITY_GROUP_ID_PATTERN = /^sg-(([0-9a-z]{8})|([0-9a-z]{17}))$/;
+
+export const EndpointIpAddressTypeSchema = z.enum(['IPV4', 'IPV6']);
+export type EndpointIpAddressType = z.infer<typeof EndpointIpAddressTypeSchema>;
+
+/** Reach the discovery endpoint via a self-managed VPC Lattice resource configuration. */
+export const SelfManagedLatticeResourceSchema = z
+  .object({
+    resourceConfigurationIdentifier: z
+      .string()
+      .min(20)
+      .max(2048)
+      .regex(LATTICE_RESOURCE_CONFIG_PATTERN, 'Must be a VPC Lattice resource-config id (rcfg-...) or its ARN'),
+  })
+  .strict();
+export type SelfManagedLatticeResource = z.infer<typeof SelfManagedLatticeResourceSchema>;
+
+/** Reach the discovery endpoint via a service-managed VPC interface endpoint. */
+export const ManagedVpcResourceSchema = z
+  .object({
+    vpcIdentifier: z.string().regex(VPC_ID_PATTERN, 'Must be a VPC id (vpc-...)'),
+    subnetIds: z.array(z.string().regex(SUBNET_ID_PATTERN, 'Must be a subnet id (subnet-...)')).min(1),
+    endpointIpAddressType: EndpointIpAddressTypeSchema,
+    securityGroupIds: z
+      .array(z.string().regex(SECURITY_GROUP_ID_PATTERN, 'Must be a security group id (sg-...)'))
+      .max(5)
+      .optional(),
+    tags: TagsSchema.optional(),
+    routingDomain: z.string().min(3).max(255).optional(),
+  })
+  .strict();
+export type ManagedVpcResource = z.infer<typeof ManagedVpcResourceSchema>;
+
+/**
+ * A private endpoint: exactly one of selfManagedLatticeResource or managedVpcResource.
+ * The CFN spec dropped `oneOf` (contract-test antipattern) and enforces exactly-one structurally;
+ * we mirror that with a superRefine rather than a discriminated union.
+ */
+export const PrivateEndpointSchema = z
+  .object({
+    selfManagedLatticeResource: SelfManagedLatticeResourceSchema.optional(),
+    managedVpcResource: ManagedVpcResourceSchema.optional(),
+  })
+  .strict()
+  .superRefine((data, ctx) => {
+    const count = [data.selfManagedLatticeResource, data.managedVpcResource].filter(v => v !== undefined).length;
+    if (count !== 1) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: 'A private endpoint must set exactly one of selfManagedLatticeResource or managedVpcResource',
+      });
+    }
+  });
+export type PrivateEndpoint = z.infer<typeof PrivateEndpointSchema>;
+
+/** Maps a specific domain to its own private endpoint (overrides the discovery-URL endpoint for that domain). */
+export const PrivateEndpointOverrideSchema = z
+  .object({
+    domain: z.string().min(1).max(253),
+    privateEndpoint: PrivateEndpointSchema,
+  })
+  .strict();
+export type PrivateEndpointOverride = z.infer<typeof PrivateEndpointOverrideSchema>;
+
+/**
+ * Which arm a PrivateEndpoint uses. The nested exactly-one-of refine guarantees a single arm,
+ * so this is read at the authorizer level to enforce the service's "all endpoints same kind" rule.
+ */
+type PrivateEndpointArm = 'selfManagedLatticeResource' | 'managedVpcResource' | undefined;
+function privateEndpointArm(pe: PrivateEndpoint): PrivateEndpointArm {
+  if (pe.selfManagedLatticeResource) return 'selfManagedLatticeResource';
+  if (pe.managedVpcResource) return 'managedVpcResource';
+  return undefined;
+}
+
 // ── Custom JWT Authorizer Configuration ──
 
 /**
@@ -100,10 +192,22 @@ export const CustomJwtAuthorizerConfigSchema = z
     allowedAudience: z.array(z.string().min(1)).optional(),
     /** List of allowed client IDs */
     allowedClients: z.array(z.string().min(1)).optional(),
-    /** List of allowed scopes */
-    allowedScopes: z.array(z.string().min(1)).optional(),
+    /** List of allowed scopes (printable ASCII, no space/quote; ≤255 chars each — CFN parity) */
+    allowedScopes: z
+      .array(
+        z
+          .string()
+          .min(1)
+          .max(255)
+          .regex(ALLOWED_SCOPE_PATTERN, 'Scope must be printable ASCII with no spaces or quotes')
+      )
+      .optional(),
     /** Custom claim validations */
     customClaims: z.array(CustomClaimValidationSchema).min(1).optional(),
+    /** PrivateLink inbound: how to reach the OIDC discovery endpoint over a private network. */
+    privateEndpoint: PrivateEndpointSchema.optional(),
+    /** Per-domain private-endpoint overrides (≤5). */
+    privateEndpointOverrides: z.array(PrivateEndpointOverrideSchema).max(5).optional(),
   })
   .strict()
   .superRefine((data, ctx) => {
@@ -116,6 +220,46 @@ export const CustomJwtAuthorizerConfigSchema = z
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
         message: 'At least one of allowedAudience, allowedClients, allowedScopes, or customClaims must be provided',
+      });
+    }
+
+    // PrivateEndpointOverrides coupling rules — mirror the AgentCore Identity service's deploy-time
+    // validation so the user fails fast here instead of mid-deploy.
+    const overrides = data.privateEndpointOverrides ?? [];
+    if (overrides.length > 0) {
+      // 1. Overrides require a base privateEndpoint.
+      if (!data.privateEndpoint) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: 'privateEndpointOverrides can only be used when privateEndpoint is also set',
+          path: ['privateEndpointOverrides'],
+        });
+      } else {
+        // 2. The base endpoint and every override must use the same arm (all self-managed or all service-managed).
+        const baseArm = privateEndpointArm(data.privateEndpoint);
+        overrides.forEach((o, i) => {
+          if (privateEndpointArm(o.privateEndpoint) !== baseArm) {
+            ctx.addIssue({
+              code: z.ZodIssueCode.custom,
+              message:
+                'privateEndpoint and privateEndpointOverrides must all be the same kind — either all selfManagedLatticeResource or all managedVpcResource',
+              path: ['privateEndpointOverrides', i, 'privateEndpoint'],
+            });
+          }
+        });
+      }
+
+      // 3. Override domains must be unique.
+      const seen = new Set<string>();
+      overrides.forEach((o, i) => {
+        if (seen.has(o.domain)) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            message: `Duplicate privateEndpointOverride domain: ${o.domain}`,
+            path: ['privateEndpointOverrides', i, 'domain'],
+          });
+        }
+        seen.add(o.domain);
       });
     }
   });

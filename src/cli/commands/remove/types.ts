@@ -10,11 +10,12 @@ export type ResourceType =
   | 'credential'
   | 'evaluator'
   | 'online-eval'
+  | 'online-insights'
   | 'policy-engine'
   | 'policy'
   | 'config-bundle'
-  | 'ab-test'
   | 'dataset'
+  | 'knowledge-base'
   | 'payment-manager'
   | 'payment-connector';
 

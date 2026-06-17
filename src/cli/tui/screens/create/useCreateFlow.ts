@@ -671,6 +671,7 @@ export function useCreateFlow(cwd: string): CreateFlowState {
                 mcpName: addHarnessConfig.mcpName,
                 mcpUrl: addHarnessConfig.mcpUrl,
                 gatewayArn: addHarnessConfig.gatewayArn,
+                skills: addHarnessConfig.skills,
                 authorizerType: addHarnessConfig.authorizerType,
                 jwtConfig: addHarnessConfig.jwtConfig
                   ? {

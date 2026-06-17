@@ -13,6 +13,7 @@ export function createDefaultProjectSpec(projectName: string): AgentCoreProjectS
     managedBy: 'CDK' as const,
     runtimes: [],
     memories: [],
+    knowledgeBases: [],
     credentials: [],
     evaluators: [],
     onlineEvalConfigs: [],
@@ -21,7 +22,6 @@ export function createDefaultProjectSpec(projectName: string): AgentCoreProjectS
     harnesses: [],
     configBundles: [],
     abTests: [],
-    httpGateways: [],
     datasets: [],
     payments: [],
     tags: {

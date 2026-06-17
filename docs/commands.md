@@ -96,7 +96,7 @@ agentcore create \
 | `--idle-timeout <seconds>`            | Idle session timeout in seconds                                                                                |
 | `--max-lifetime <seconds>`            | Max instance lifetime in seconds                                                                               |
 | `--session-storage-mount-path <path>` | Absolute mount path for session filesystem storage under `/mnt` (e.g. `/mnt/data`)                             |
-| `--with-config-bundle`                | [preview] Create a config bundle wired into the generated agent template                                       |
+| `--with-config-bundle`                | Create a config bundle wired into the generated agent template                                                 |
 | `--output-dir <dir>`                  | Output directory                                                                                               |
 | `--skip-git`                          | Skip git initialization                                                                                        |
 | `--skip-python-setup`                 | Skip venv setup                                                                                                |
@@ -314,7 +314,7 @@ agentcore add agent \
 | `--client-secret <secret>`             | OAuth client secret                                                                                                                                                                                                                                                                                  |
 | `--request-header-allowlist <headers>` | Comma-separated list of inbound header names to forward to the agent. `X-*` names (e.g. `X-Api-Key`, `X-Custom-Signature`) pass through unchanged; bare names without an `X-` prefix are auto-prefixed with the legacy `X-Amzn-Bedrock-AgentCore-Runtime-Custom-` prefix for backward compatibility. |
 | `--session-storage-mount-path <path>`  | Absolute mount path for session filesystem storage (e.g. `/mnt/session-storage`)                                                                                                                                                                                                                     |
-| `--with-config-bundle`                 | [preview] Wire a config bundle into the generated agent template                                                                                                                                                                                                                                     |
+| `--with-config-bundle`                 | Wire a config bundle into the generated agent template                                                                                                                                                                                                                                               |
 | `--idle-timeout <seconds>`             | Idle session timeout in seconds                                                                                                                                                                                                                                                                      |
 | `--max-lifetime <seconds>`             | Max instance lifetime in seconds                                                                                                                                                                                                                                                                     |
 | `--json`                               | JSON output                                                                                                                                                                                                                                                                                          |
@@ -745,8 +745,8 @@ agentcore add dataset \
 
 ### add config-bundle
 
-[preview] Add a configuration bundle. Config bundles snapshot system prompts, tool descriptions, and runtime config so
-they can be versioned and used as A/B test arms.
+Add a configuration bundle. Config bundles snapshot system prompts, tool descriptions, and runtime config so they can be
+versioned and used as A/B test arms.
 
 ```bash
 agentcore add config-bundle \
@@ -765,40 +765,6 @@ agentcore add config-bundle \
 | `--commit-message <text>`  | Commit message for this version                                                                                               |
 | `--json`                   | JSON output                                                                                                                   |
 
-### add ab-test
-
-[preview] Add an A/B test. Two modes: `config-bundle` (default; split traffic between two bundle versions) and
-`target-based` (split traffic between two HTTP gateway targets).
-
-```bash
-agentcore add ab-test \
-  --name PromptComparison \
-  --runtime MyAgent \
-  --control-bundle ProdBundle --control-version 5 \
-  --treatment-bundle ExperimentalBundle --treatment-version 2 \
-  --control-weight 80 --treatment-weight 20 \
-  --enable
-```
-
-| Flag                        | Description                                               |
-| --------------------------- | --------------------------------------------------------- |
-| `--mode <mode>`             | `config-bundle` (default) or `target-based`               |
-| `--name <name>`             | AB test name                                              |
-| `--description <text>`      | AB test description                                       |
-| `--role-arn <arn>`          | IAM role ARN (auto-created if omitted)                    |
-| `--control-weight <n>`      | Traffic weight for control (1–100)                        |
-| `--treatment-weight <n>`    | Traffic weight for treatment (1–100)                      |
-| `--gateway <name>`          | HTTP gateway name                                         |
-| `--enable`                  | Enable the AB test on creation                            |
-| `--runtime <name>`          | (config-bundle mode) Runtime agent to A/B test            |
-| `--control-bundle <name>`   | (config-bundle mode) Control config bundle name or ARN    |
-| `--control-version <id>`    | (config-bundle mode) Control config bundle version        |
-| `--treatment-bundle <name>` | (config-bundle mode) Treatment config bundle name or ARN  |
-| `--treatment-version <id>`  | (config-bundle mode) Treatment config bundle version      |
-| `--online-eval <name>`      | (config-bundle mode) Online evaluation config name or ARN |
-| `--traffic-header <name>`   | (config-bundle mode) Header name for traffic routing      |
-| `--json`                    | JSON output                                               |
-
 ### remove
 
 Remove resources from project.
@@ -816,7 +782,6 @@ agentcore remove policy --name AdminAccess --engine MyPolicyEngine
 agentcore remove runtime-endpoint --name prod
 agentcore remove dataset --name MyDataset
 agentcore remove config-bundle --name MyBundle
-agentcore remove ab-test --name PromptComparison
 agentcore remove payment-manager --name MyManager -y
 agentcore remove payment-connector --name MyCDPConnector --manager MyManager -y
 
@@ -1020,7 +985,7 @@ agentcore run eval \
 
 ### run batch-evaluation
 
-[preview] Run evaluators in batch across all agent sessions found in CloudWatch.
+Run evaluators in batch across all agent sessions found in CloudWatch.
 
 ```bash
 # Single evaluator across recent sessions
@@ -1044,6 +1009,7 @@ agentcore run batch-evaluation \
 | ----------------------------- | ------------------------------------------------------------------------------------------------------ |
 | `-r, --runtime <name>`        | Runtime name from project config                                                                       |
 | `-e, --evaluator <ids...>`    | Evaluator name(s) — `Builtin.*` IDs                                                                    |
+| `--evaluator-arn <arns...>`   | Evaluator ARN(s) — use instead of `-e` when referencing evaluators by ARN                              |
 | `-n, --name <name>`           | Name for the batch evaluation (auto-generated if omitted)                                              |
 | `-d, --lookback-days <days>`  | Lookback window in days                                                                                |
 | `-s, --session-ids <ids...>`  | Specific session IDs to evaluate                                                                       |
@@ -1052,11 +1018,12 @@ agentcore run batch-evaluation \
 | `--endpoint <name>`           | Runtime endpoint name (e.g. `PROMPT_V1`); defaults to `AGENTCORE_RUNTIME_ENDPOINT` env, then `DEFAULT` |
 | `--dataset <name>`            | Dataset name — invoke agent with dataset scenarios before batch evaluation                             |
 | `--dataset-version <version>` | Dataset version (omit for local file, or `N`/`DRAFT`)                                                  |
+| `--kms-key <arn>`             | KMS key ARN for encrypting batch evaluation results (default: AWS-managed key)                         |
 | `--json`                      | JSON output                                                                                            |
 
 ### run recommendation
 
-[preview] Optimize a system prompt or tool descriptions using agent traces as the signal.
+Optimize a system prompt or tool descriptions using agent traces as the signal.
 
 ```bash
 # Optimize a system prompt from an inline string
@@ -1104,11 +1071,12 @@ agentcore run recommendation \
 | `-s, --session-id <ids...>`        | Limit trace collection to specific session IDs                                                                                 |
 | `-n, --run <name>`                 | Run name prefix for the recommendation                                                                                         |
 | `--region <region>`                | AWS region                                                                                                                     |
+| `--kms-key <arn>`                  | KMS key ARN for encrypting recommendation results (default: AWS-managed key)                                                   |
 | `--json`                           | JSON output                                                                                                                    |
 
 ### recommendations history
 
-[preview] Show past recommendation runs saved locally.
+Show past recommendation runs saved locally.
 
 ```bash
 agentcore recommendations history
@@ -1118,6 +1086,51 @@ agentcore recommendations history --json
 | Flag     | Description |
 | -------- | ----------- |
 | `--json` | JSON output |
+
+### run ab-test
+
+Start an A/B test comparing two config-bundle versions or two gateway targets through a gateway. A fire-and-forget job —
+manage it afterward with `view` / `pause` / `resume` / `stop` / `promote` / `archive ab-test`. The gateway (and its
+targets / config bundles) must already be deployed. See [docs/ab-tests.md](ab-tests.md).
+
+```bash
+# config-bundle mode (default): two versions of one bundle
+agentcore run ab-test -n PromptTest -g MyGateway -r MyAgent \
+  --control-bundle MyBundle --control-version <v1> \
+  --treatment-bundle MyBundle --treatment-version <v2> \
+  --online-eval MyEvalConfig
+
+# target-based mode: two gateway targets
+agentcore run ab-test -n TargetTest -g MyGateway --mode target-based -r MyAgent \
+  --control-target prodTarget --treatment-target stagingTarget \
+  --control-online-eval ctrlEval --treatment-online-eval treatEval
+```
+
+| Flag                             | Description                                                  |
+| -------------------------------- | ------------------------------------------------------------ |
+| `-n, --name <name>`              | A/B test name (letters/digits/`_`/`-`, max 48)               |
+| `-g, --gateway <name>`           | Gateway name (must already be deployed)                      |
+| `-m, --mode <mode>`              | `config-bundle` (default) or `target-based`                  |
+| `-r, --runtime <name>`           | Runtime name (recorded as the agent)                         |
+| `--control-weight <n>`           | Control traffic weight 0–100 (default 50)                    |
+| `--treatment-weight <n>`         | Treatment traffic weight 0–100 (default 50)                  |
+| `--max-duration-days <days>`     | Auto-stop after this many days                               |
+| `--role-arn <arn>`               | Execution role ARN (auto-created if omitted)                 |
+| `--disable-on-create`            | Create without starting (default: enabled)                   |
+| `--gateway-filter <path>`        | Restrict to a single gateway target path (both modes)        |
+| `--wait`                         | Block until terminal state                                   |
+| `--region <region>`              | AWS region                                                   |
+| `--json`                         | JSON output                                                  |
+| `--control-bundle <name>`        | (config-bundle) Control bundle name or ARN                   |
+| `--control-version <version>`    | (config-bundle) Control bundle version (or `LATEST`)         |
+| `--treatment-bundle <name>`      | (config-bundle) Treatment bundle name or ARN                 |
+| `--treatment-version <version>`  | (config-bundle) Treatment bundle version (or `LATEST`)       |
+| `--online-eval <name>`           | (config-bundle) Shared online eval config name or ARN        |
+| `--traffic-header <name>`        | (config-bundle) Route traffic on this header                 |
+| `--control-target <name>`        | (target-based) Control gateway-target name                   |
+| `--treatment-target <name>`      | (target-based) Treatment gateway-target name                 |
+| `--control-online-eval <name>`   | (target-based) Online eval for control endpoint (required)   |
+| `--treatment-online-eval <name>` | (target-based) Online eval for treatment endpoint (required) |
 
 ### evals history
 
@@ -1197,8 +1210,8 @@ Stop a running batch evaluation or a deployed A/B test.
 agentcore stop batch-evaluation -i <batch-eval-id>
 agentcore stop batch-evaluation -i <batch-eval-id> --json
 
-# Stop a deployed A/B test (permanent)
-agentcore stop ab-test PromptComparison
+# Stop a running A/B test (terminal)
+agentcore stop ab-test -i <ab-test-id>
 ```
 
 #### `stop batch-evaluation`
@@ -1211,15 +1224,15 @@ agentcore stop ab-test PromptComparison
 
 #### `stop ab-test`
 
-| Argument / Flag     | Description  |
-| ------------------- | ------------ |
-| `<name>`            | AB test name |
-| `--region <region>` | AWS region   |
-| `--json`            | JSON output  |
+| Flag                | Description                           |
+| ------------------- | ------------------------------------- |
+| `-i, --id <id>`     | A/B test ID to stop                   |
+| `--region <region>` | AWS region (auto-detected if omitted) |
+| `--json`            | JSON output                           |
 
 ### archive
 
-[preview] Archive (delete) a batch evaluation or recommendation on the service and clear local history. Irreversible.
+Archive (delete) a batch evaluation, recommendation, or A/B test on the service and clear local history. Irreversible.
 
 ```bash
 # Archive a batch evaluation
@@ -1228,46 +1241,64 @@ agentcore archive batch-evaluation -i <batch-eval-id> --region us-west-2 --json
 
 # Archive a recommendation
 agentcore archive recommendation -i <recommendation-id>
+
+# Archive an A/B test
+agentcore archive ab-test -i <ab-test-id>
 ```
 
-Both `archive batch-evaluation` and `archive recommendation` accept the same flags:
+`archive batch-evaluation`, `archive recommendation`, and `archive ab-test` accept the same flags:
 
-| Flag                | Description                                  |
-| ------------------- | -------------------------------------------- |
-| `-i, --id <id>`     | ID of the batch evaluation or recommendation |
-| `--region <region>` | AWS region (auto-detected if omitted)        |
-| `--json`            | JSON output                                  |
+| Flag                | Description                                             |
+| ------------------- | ------------------------------------------------------- |
+| `-i, --id <id>`     | ID of the batch evaluation, recommendation, or A/B test |
+| `--region <region>` | AWS region (auto-detected if omitted)                   |
+| `--json`            | JSON output                                             |
 
-### ab-test
+### view
 
-[preview] View A/B test details and results.
+View job history and details. Works for all four job types — `recommendation`, `batch-evaluation`, `ab-test`, and
+`insights`. With no `[id]` it lists every job of that type; with an `[id]` it shows that job's detail (status, inputs,
+and results). Without `--json` the command launches the interactive TUI; with `--json` it prints a machine-readable
+record (the `ab-test` detail also includes `invocationUrl`).
 
 ```bash
-agentcore ab-test PromptComparison
-agentcore ab-test PromptComparison --json
+# List all jobs of a type
+agentcore view recommendation
+agentcore view batch-evaluation
+agentcore view ab-test
+agentcore view insights
+
+# Detail for one job (JSON is non-interactive)
+agentcore view recommendation <id> --json
+agentcore view batch-evaluation <id> --json
+agentcore view ab-test <id> --json     # JSON includes invocationUrl + results
 ```
 
-| Argument / Flag     | Description  |
-| ------------------- | ------------ |
-| `<name>`            | AB test name |
-| `--region <region>` | AWS region   |
-| `--json`            | JSON output  |
+Each `view <type>` subcommand accepts the same argument and flags:
+
+| Argument / Flag     | Description                                |
+| ------------------- | ------------------------------------------ |
+| `[id]`              | Job ID (omit to list all jobs of the type) |
+| `--region <region>` | AWS region (auto-detected if omitted)      |
+| `--json`            | JSON output (non-interactive)              |
+
+A/B tests are also paused/resumed/promoted by ID — see [docs/ab-tests.md](ab-tests.md) for the full lifecycle.
 
 ### config-bundle
 
-[preview] Manage configuration bundles. Use the bundle name from `agentcore.json`, not the bundle ID. Aliased as `cb`.
+Manage configuration bundles. Use the bundle name from `agentcore.json`, not the bundle ID. Aliased as `cb`.
 
 ```bash
 # List version history
-agentcore config-bundle versions --bundle MyBundle
-agentcore cb versions --bundle MyBundle --latest-per-branch --json
+agentcore config-bundle versions --name MyBundle
+agentcore cb versions --name MyBundle --latest-per-branch --json
 
 # Diff two versions
-agentcore config-bundle diff --bundle MyBundle --from <versionId> --to <versionId>
+agentcore config-bundle diff --name MyBundle --from <versionId> --to <versionId>
 
 # Create a new branch from an existing version
 agentcore config-bundle create-branch \
-  --bundle MyBundle \
+  --name MyBundle \
   --branch experimental \
   --from <parentVersionId> \
   --commit-message "Branch off prod for experiments"
@@ -1277,7 +1308,7 @@ agentcore config-bundle create-branch \
 
 | Flag                  | Description                                            |
 | --------------------- | ------------------------------------------------------ |
-| `--bundle <name>`     | Bundle name as defined in `agentcore.json`             |
+| `--name <name>`       | Bundle name as defined in `agentcore.json`             |
 | `--branch <name>`     | Filter by branch name                                  |
 | `--latest-per-branch` | Show only the latest version per branch                |
 | `--created-by <name>` | Filter by creator name (e.g. `user`, `recommendation`) |
@@ -1288,7 +1319,7 @@ agentcore config-bundle create-branch \
 
 | Flag                | Description                                   |
 | ------------------- | --------------------------------------------- |
-| `--bundle <name>`   | Bundle name                                   |
+| `--name <name>`     | Bundle name                                   |
 | `--from <id>`       | Source version ID (from `cb versions --json`) |
 | `--to <id>`         | Target version ID (from `cb versions --json`) |
 | `--region <region>` | AWS region override                           |
@@ -1298,7 +1329,7 @@ agentcore config-bundle create-branch \
 
 | Flag                      | Description                                           |
 | ------------------------- | ----------------------------------------------------- |
-| `--bundle <name>`         | Bundle name                                           |
+| `--name <name>`           | Bundle name                                           |
 | `--branch <name>`         | Name for the new branch                               |
 | `--from <versionId>`      | Parent version ID to branch from (defaults to latest) |
 | `--commit-message <text>` | Commit message for the branch point                   |

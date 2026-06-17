@@ -29,6 +29,7 @@ import type { Command } from '@commander-js/extra-typings';
 export interface AddGatewayOptions {
   name: string;
   description?: string;
+  protocolType?: 'MCP' | 'None';
   authorizerType: GatewayAuthorizerType;
   discoveryUrl?: string;
   allowedAudience?: string;
@@ -139,6 +140,52 @@ export class GatewayPrimitive extends BasePrimitive<AddGatewayOptions, Removable
   }
 
   /**
+   * Get names of gateways that have protocolType MCP.
+   */
+  async getMcpGatewayNames(): Promise<string[]> {
+    try {
+      const project = await this.readProjectSpec();
+      return project.agentCoreGateways.filter(g => g.protocolType !== 'None').map(g => g.name);
+    } catch {
+      return [];
+    }
+  }
+
+  /**
+   * Get runtime names from the project spec.
+   * All runtimes in spec.runtimes are CDK-managed (deployed by the generated CDK stack),
+   * so no filtering is needed here.
+   */
+  async getRuntimeNames(): Promise<string[]> {
+    try {
+      const project = await this.readProjectSpec();
+      return project.runtimes.map(r => r.name);
+    } catch {
+      return [];
+    }
+  }
+
+  /**
+   * Get endpoints for a specific runtime from the project spec.
+   * Returns an array of { name, version } entries from the runtime's endpoints dictionary.
+   */
+  async getRuntimeEndpoints(runtimeName: string): Promise<{ name: string; version: number }[]> {
+    try {
+      const project = await this.readProjectSpec();
+      const runtime = project.runtimes.find(r => r.name === runtimeName);
+      if (!runtime?.endpoints) {
+        return [];
+      }
+      return Object.entries(runtime.endpoints).map(([name, ep]) => ({
+        name,
+        version: ep.version,
+      }));
+    } catch {
+      return [];
+    }
+  }
+
+  /**
    * Get list of unassigned targets from agentcore.json.
    */
   async getUnassignedTargets(): Promise<AgentCoreGatewayTarget[]> {
@@ -164,6 +211,7 @@ export class GatewayPrimitive extends BasePrimitive<AddGatewayOptions, Removable
       .description('Add an API gateway that routes requests to agent targets')
       .option('--name <name>', 'Gateway name [non-interactive]')
       .option('--description <desc>', 'Gateway description [non-interactive]')
+      .option('--protocol-type <type>', 'Protocol type: MCP or None (default: None) [non-interactive]')
       .option('--runtimes <runtimes>', 'Comma-separated runtime names to expose through this gateway [non-interactive]')
       .option('--authorizer-type <type>', 'Authorizer type: NONE, AWS_IAM, or CUSTOM_JWT [non-interactive]')
       .option('--discovery-url <url>', 'OIDC discovery URL (for CUSTOM_JWT) [non-interactive]')
@@ -202,6 +250,7 @@ export class GatewayPrimitive extends BasePrimitive<AddGatewayOptions, Removable
           const result = await this.add({
             name: cliOptions.name!,
             description: cliOptions.description,
+            protocolType: cliOptions.protocolType as 'MCP' | 'None' | undefined,
             authorizerType: cliOptions.authorizerType ?? 'NONE',
             discoveryUrl: cliOptions.discoveryUrl,
             allowedAudience: cliOptions.allowedAudience,
@@ -227,18 +276,17 @@ export class GatewayPrimitive extends BasePrimitive<AddGatewayOptions, Removable
             console.log(`Added gateway '${result.gatewayName}'`);
           }
 
-          const runtimeCount = cliOptions.runtimes
-            ? cliOptions.runtimes
-                .split(',')
-                .map(s => s.trim())
-                .filter(Boolean).length
-            : 0;
           return {
             authorizer_type: standardize(AuthorizerType, cliOptions.authorizerType ?? 'NONE'),
             has_policy_engine: !!cliOptions.policyEngine,
             policy_engine_mode: standardize(PolicyEngineMode, cliOptions.policyEngineMode ?? 'log_only'),
             semantic_search: cliOptions.semanticSearch !== false,
-            runtime_count: runtimeCount,
+            runtime_count: cliOptions.runtimes
+              ? cliOptions.runtimes
+                  .split(',')
+                  .map(s => s.trim())
+                  .filter(Boolean).length
+              : 0,
           };
         });
       });
@@ -317,6 +365,7 @@ export class GatewayPrimitive extends BasePrimitive<AddGatewayOptions, Removable
     const config: AddGatewayConfig = {
       name: options.name,
       description: options.description ?? `Gateway for ${options.name}`,
+      protocolType: options.protocolType,
       authorizerType: options.authorizerType,
       jwtConfig: undefined,
       enableSemanticSearch: options.enableSemanticSearch ?? true,
@@ -388,6 +437,7 @@ export class GatewayPrimitive extends BasePrimitive<AddGatewayOptions, Removable
 
     const gateway: AgentCoreGateway = {
       name: config.name,
+      protocolType: config.protocolType ?? 'None',
       description: config.description,
       targets: movedTargets,
       authorizerType: config.authorizerType,

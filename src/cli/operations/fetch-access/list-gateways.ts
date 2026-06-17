@@ -30,15 +30,15 @@ export async function listGateways(
     });
   }
 
-  // Include HTTP gateways (auto-created for A/B testing)
-  const deployedHttpGateways = target.resources?.httpGateways ?? {};
-  for (const httpGateway of projectSpec.httpGateways ?? []) {
-    const deployed = deployedHttpGateways[httpGateway.name];
+  // Include HTTP gateways (deployed via CFN under resources.gateways)
+  const deployedHttpGateways = target.resources?.gateways ?? {};
+  for (const gateway of projectSpec.agentCoreGateways.filter(g => g.protocolType === 'None')) {
+    const deployed = deployedHttpGateways[gateway.name];
     if (!deployed?.gatewayArn) continue;
 
     gateways.push({
-      name: httpGateway.name,
-      authType: 'AWS_IAM',
+      name: gateway.name,
+      authType: gateway.authorizerType ?? 'NONE',
     });
   }
 

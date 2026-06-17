@@ -1,6 +1,7 @@
 import { ConfigIO } from '../../../lib';
 import type { HarnessGatewayOutboundAuth, HarnessSpec } from '../../../schema';
 import type { HarnessToolType } from '../../../schema/schemas/primitives/harness';
+import { readFileSync } from 'fs';
 
 export interface AddToolOptions {
   harness: string;
@@ -15,6 +16,10 @@ export interface AddToolOptions {
   providerArn?: string;
   scopes?: string;
   grantType?: string;
+  /** inline_function: tool description shown to the model. */
+  description?: string;
+  /** inline_function: JSON Schema for the tool input, as a JSON string or @path/to/file.json. */
+  inputSchema?: string;
   json?: boolean;
 }
 
@@ -55,6 +60,39 @@ export async function handleAddTool(options: AddToolOptions): Promise<AddToolRes
 
   if (toolType === 'agentcore_gateway' && !options.gatewayArn && !options.gateway) {
     return { success: false, error: '--gateway-arn or --gateway is required for agentcore_gateway tools' };
+  }
+
+  // inline_function: description + input-schema are required and exclusive to this type.
+  if ((options.description !== undefined || options.inputSchema !== undefined) && toolType !== 'inline_function') {
+    return { success: false, error: '--description and --input-schema are only valid for inline_function tools' };
+  }
+  let inlineInputSchema: Record<string, unknown> | undefined;
+  if (toolType === 'inline_function') {
+    if (!options.description) {
+      return { success: false, error: '--description is required for inline_function tools' };
+    }
+    if (!options.inputSchema) {
+      return { success: false, error: '--input-schema is required for inline_function tools' };
+    }
+    let rawSchema = options.inputSchema;
+    if (rawSchema.startsWith('@')) {
+      const path = rawSchema.slice(1);
+      try {
+        rawSchema = readFileSync(path, 'utf-8');
+      } catch {
+        return { success: false, error: `Could not read --input-schema file: ${path}` };
+      }
+    }
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(rawSchema);
+    } catch {
+      return { success: false, error: '--input-schema is not valid JSON' };
+    }
+    if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) {
+      return { success: false, error: '--input-schema must be a JSON object (a JSON Schema for the tool input)' };
+    }
+    inlineInputSchema = parsed as Record<string, unknown>;
   }
 
   let outboundAuth: HarnessGatewayOutboundAuth | undefined;
@@ -167,6 +205,8 @@ export async function handleAddTool(options: AddToolOptions): Promise<AddToolRes
         ...(outboundAuth && { outboundAuth }),
       },
     };
+  } else if (toolType === 'inline_function') {
+    toolEntry.config = { inlineFunction: { description: options.description!, inputSchema: inlineInputSchema! } };
   }
 
   harnessSpec.tools.push(toolEntry);

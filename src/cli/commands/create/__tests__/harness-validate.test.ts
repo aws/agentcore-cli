@@ -113,6 +113,30 @@ describe('validateCreateHarnessOptions - apiFormat', () => {
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
+// lite_llm provider
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('validateCreateHarnessOptions - lite_llm', () => {
+  it('accepts lite_llm without an API key ARN (key is optional)', () => {
+    const result = validateCreateHarnessOptions({ ...baseOptions, modelProvider: 'lite_llm' }, makeCwd());
+    expect(result.valid).toBe(true);
+  });
+
+  it('normalizes the litellm alias to lite_llm', () => {
+    const options = { ...baseOptions, modelProvider: 'litellm' };
+    const result = validateCreateHarnessOptions(options, makeCwd());
+    expect(result.valid).toBe(true);
+    expect(options.modelProvider).toBe('lite_llm');
+  });
+
+  it('still requires an API key ARN for open_ai', () => {
+    const result = validateCreateHarnessOptions({ ...baseOptions, modelProvider: 'open_ai' }, makeCwd());
+    expect(result.valid).toBe(false);
+    expect(result.error).toContain('--api-key-arn is required');
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
 // EFS access point validation
 // ─────────────────────────────────────────────────────────────────────────────
 

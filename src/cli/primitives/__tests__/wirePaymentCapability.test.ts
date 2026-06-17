@@ -83,6 +83,7 @@ function makeProject(codeLocation: string, runtimeOverrides: Record<string, unkn
       },
     ],
     memories: [],
+    knowledgeBases: [],
     credentials: [],
     evaluators: [],
     onlineEvalConfigs: [],
@@ -92,6 +93,7 @@ function makeProject(codeLocation: string, runtimeOverrides: Record<string, unkn
     abTests: [],
     httpGateways: [],
     harnesses: [],
+    datasets: [],
     payments: [],
   };
 }

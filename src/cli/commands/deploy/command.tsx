@@ -105,6 +105,18 @@ async function executeDeploy(options: DeployOptions): Promise<DeployResult> {
       }
     : undefined;
 
+  // One-shot user-facing notices (e.g. the managed-memory heads-up before the slow CFN apply).
+  // Always shown, independent of --progress/--verbose. Clear any active spinner line first so the
+  // multi-line notice prints cleanly, then resume the spinner frame on the next onProgress tick.
+  const onNotice = (message: string) => {
+    if (spinner) {
+      clearInterval(spinner);
+      spinner = undefined;
+      process.stdout.write('\r\x1b[K');
+    }
+    console.log(`\n${message}\n`);
+  };
+
   const result = await handleDeploy({
     target: options.target!,
     autoConfirm: options.yes,
@@ -113,6 +125,7 @@ async function executeDeploy(options: DeployOptions): Promise<DeployResult> {
     diff: options.diff,
     onProgress,
     onResourceEvent,
+    onNotice,
   });
 
   if (spinner) {
@@ -198,6 +211,7 @@ export const registerDeploy = (program: Command) => {
               target: cliOptions.target ?? 'default',
               progress: !cliOptions.json,
             };
+
             await handleDeployCLI(options as DeployOptions);
           } else if (cliOptions.diff) {
             // Diff-only: use TUI with diff mode

@@ -6,6 +6,7 @@ export { RemoveFlow } from './RemoveFlow';
 export { RemoveGatewayScreen } from './RemoveGatewayScreen';
 export { RemoveIdentityScreen } from './RemoveIdentityScreen';
 export { RemoveGatewayTargetScreen } from './RemoveGatewayTargetScreen';
+export { RemoveKnowledgeBaseScreen } from './RemoveKnowledgeBaseScreen';
 export { RemoveMemoryScreen } from './RemoveMemoryScreen';
 export { RemoveOnlineEvalScreen } from './RemoveOnlineEvalScreen';
 export { RemovePolicyEngineScreen } from './RemovePolicyEngineScreen';

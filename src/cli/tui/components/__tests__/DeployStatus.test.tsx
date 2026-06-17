@@ -154,6 +154,21 @@ describe('DeployStatus', () => {
       // Should show the latest progress
       expect(lastFrame()).toContain('7/10');
     });
+
+    it('clamps when CDK reports completed greater than total without throwing', () => {
+      // CDK toolkit can briefly report completed > total during graph expansion.
+      // Before the clamp, this asked String.repeat for a negative count and crashed
+      // the deploy TUI with "Invalid count value: -10".
+      const messages = [makeMsg('overflow', 'CDK_TOOLKIT_I5502', { completed: 50, total: 30 })];
+
+      expect(() => render(<DeployStatus messages={messages} isComplete={false} hasError={false} />)).not.toThrow();
+    });
+
+    it('clamps when CDK reports a negative completed count', () => {
+      const messages = [makeMsg('underflow', 'CDK_TOOLKIT_I5502', { completed: -5, total: 10 })];
+
+      expect(() => render(<DeployStatus messages={messages} isComplete={false} hasError={false} />)).not.toThrow();
+    });
   });
 
   describe('warning state (post-deploy errors)', () => {

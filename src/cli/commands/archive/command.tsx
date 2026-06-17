@@ -1,61 +1,31 @@
-import { deleteBatchEvaluation } from '../../aws/agentcore-batch-evaluation';
-import { deleteRecommendation } from '../../aws/agentcore-recommendation';
-import { COMMAND_DESCRIPTIONS } from '../../constants';
-import { getErrorMessage } from '../../errors';
-import { deleteLocalBatchEvalRun, deleteLocalRecommendationRun } from '../../operations/archive/archive-storage';
+import { ConfigIO } from '../../../lib';
+import { createJobEngine } from '../../operations/jobs';
+import type { JobType } from '../../operations/jobs';
+import { runCliCommand } from '../../telemetry/cli-command-run';
+import { COMMAND_DESCRIPTIONS } from '../../tui/copy';
 import { requireProject } from '../../tui/guards';
-import { getRegion } from '../shared/region-utils';
 import type { Command } from '@commander-js/extra-typings';
-import { Text, render } from 'ink';
-import React from 'react';
 
-async function executeArchive<T extends { status: string }>(
+/** Archive a job: delete it from the service and remove the local .cli record via the engine. */
+function executeArchive(
+  jobType: JobType,
   cliOptions: { id: string; region?: string; json?: boolean },
-  config: {
-    serviceDelete: (id: string, region: string) => Promise<T>;
-    localDelete: (id: string) => boolean;
-    getId: (result: T) => string;
-    successMessage: string;
-  }
-): Promise<void> {
+  label: string
+): Promise<never> {
   requireProject();
-  try {
-    const region = await getRegion(cliOptions.region);
-    const result = await config.serviceDelete(cliOptions.id, region);
-
-    let localCliHistoryDeleted = false;
-    let localDeleteWarning: string | undefined;
-    try {
-      localCliHistoryDeleted = config.localDelete(cliOptions.id);
-    } catch (err) {
-      localDeleteWarning = getErrorMessage(err);
+  return runCliCommand('archive.job', !!cliOptions.json, async () => {
+    const engine = createJobEngine(new ConfigIO());
+    const result = await engine.archive(jobType, cliOptions.id);
+    if (!result.success) {
+      throw result.error;
     }
-
     if (cliOptions.json) {
-      console.log(
-        JSON.stringify({
-          success: true,
-          ...result,
-          localCliHistoryDeleted,
-          ...(localDeleteWarning && { localDeleteWarning }),
-        })
-      );
+      console.log(JSON.stringify({ success: true, id: cliOptions.id }));
     } else {
-      console.log(`\n${config.successMessage}`);
-      console.log(`ID: ${config.getId(result)}`);
-      console.log(`Status: ${result.status}`);
-      if (localCliHistoryDeleted) console.log(`Local history cleared.`);
-      if (localDeleteWarning) console.log(`Warning: could not clear local history: ${localDeleteWarning}`);
-      console.log('');
+      console.log(`\n✓ ${label} ${cliOptions.id} archived.\n`);
     }
-  } catch (error) {
-    if (cliOptions.json) {
-      console.log(JSON.stringify({ success: false, error: getErrorMessage(error) }));
-    } else {
-      render(<Text color="red">Error: {getErrorMessage(error)}</Text>);
-    }
-    process.exit(1);
-  }
+    return { job_type: jobType };
+  });
 }
 
 export const registerArchive = (program: Command) => {
@@ -63,31 +33,41 @@ export const registerArchive = (program: Command) => {
 
   archiveCmd
     .command('batch-evaluation')
-    .description('[preview] Archive (delete) a batch evaluation on the service and clear local history')
+    .description('Archive a batch evaluation job record on the service and clear local history')
     .requiredOption('-i, --id <id>', 'Batch evaluation ID to archive')
     .option('--region <region>', 'AWS region (auto-detected if omitted)')
     .option('--json', 'Output as JSON')
     .action((cliOptions: { id: string; region?: string; json?: boolean }) =>
-      executeArchive(cliOptions, {
-        serviceDelete: (id, region) => deleteBatchEvaluation({ region, batchEvaluationId: id }),
-        localDelete: deleteLocalBatchEvalRun,
-        getId: result => result.batchEvaluationId,
-        successMessage: 'Batch evaluation archived successfully',
-      })
+      executeArchive('batch-evaluation', cliOptions, 'Batch evaluation')
     );
 
   archiveCmd
     .command('recommendation')
-    .description('[preview] Archive (delete) a recommendation on the service and clear local history')
+    .description('Archive a recommendation job record on the service and clear local history')
     .requiredOption('-i, --id <id>', 'Recommendation ID to archive')
     .option('--region <region>', 'AWS region (auto-detected if omitted)')
     .option('--json', 'Output as JSON')
     .action((cliOptions: { id: string; region?: string; json?: boolean }) =>
-      executeArchive(cliOptions, {
-        serviceDelete: (id, region) => deleteRecommendation({ region, recommendationId: id }),
-        localDelete: deleteLocalRecommendationRun,
-        getId: result => result.recommendationId,
-        successMessage: 'Recommendation archived successfully',
-      })
+      executeArchive('recommendation', cliOptions, 'Recommendation')
+    );
+
+  archiveCmd
+    .command('ab-test')
+    .description('Archive (delete) an A/B test on the service and clear local history')
+    .requiredOption('-i, --id <id>', 'A/B test ID to archive')
+    .option('--region <region>', 'AWS region (auto-detected if omitted)')
+    .option('--json', 'Output as JSON')
+    .action((cliOptions: { id: string; region?: string; json?: boolean }) =>
+      executeArchive('ab-test', cliOptions, 'A/B test')
+    );
+
+  archiveCmd
+    .command('insights')
+    .description('[preview] Archive an insights job record on the service and clear local history')
+    .requiredOption('-i, --id <id>', 'Insights job ID to archive')
+    .option('--region <region>', 'AWS region (auto-detected if omitted)')
+    .option('--json', 'Output as JSON')
+    .action((cliOptions: { id: string; region?: string; json?: boolean }) =>
+      executeArchive('insights', cliOptions, 'Insights job')
     );
 };

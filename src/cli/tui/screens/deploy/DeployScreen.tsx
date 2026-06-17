@@ -76,6 +76,7 @@ export function DeployScreen({
     diffSummaries,
     numStacksWithChanges,
     deployNotes,
+    managedMemoryNotice,
     postDeployWarnings,
     postDeployHasError,
     isDiffLoading,
@@ -333,6 +334,14 @@ export function DeployScreen({
       ) : (
         <>
           <StepProgress steps={displaySteps} />
+
+          {/* Managed-memory heads-up: shown while the slow CFN apply runs (not gated on success).
+              Styled as a plain dim "Note:" to match the transaction-search note convention below. */}
+          {managedMemoryNotice && !isComplete && (
+            <Box marginTop={1} flexDirection="column">
+              <Text dimColor>Note: {managedMemoryNotice}</Text>
+            </Box>
+          )}
 
           {/* Toggleable ResourceGraph view */}
           {showResourceGraph && context && (

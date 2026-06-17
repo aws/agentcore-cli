@@ -30,8 +30,7 @@ export async function fetchGatewayToken(
     );
   }
 
-  const deployedGateways = target.resources?.mcp?.gateways ?? {};
-  const deployedGateway = deployedGateways[gatewayName];
+  const deployedGateway = target.resources?.gateways?.[gatewayName] ?? target.resources?.mcp?.gateways?.[gatewayName];
   if (!deployedGateway?.gatewayUrl) {
     throw new Error(
       `Gateway '${gatewayName}' does not have a deployed URL. Run \`agentcore deploy\` to deploy the gateway.`

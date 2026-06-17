@@ -37,7 +37,8 @@ export const SchemaDefinitionSchema: z.ZodType<SchemaDefinition> = z.object({
 
 /**
  * Tool name validation for CLI input.
- * Allows alphanumeric characters, hyphens, and underscores.
+ * Allows alphanumeric characters and hyphens. Underscores are not permitted
+ * for gateway targets.
  * This is a general-purpose schema for tool names that works for both
  * MCP runtime tools (direct) and gateway target tools.
  */
@@ -46,8 +47,8 @@ export const ToolNameSchema = z
   .min(1, 'Tool name is required')
   .max(128, 'Tool name must be at most 128 characters')
   .regex(
-    /^[a-zA-Z][a-zA-Z0-9_-]*$/,
-    'Tool name must start with a letter and contain only alphanumeric characters, hyphens, or underscores'
+    /^[a-zA-Z][a-zA-Z0-9-]*$/,
+    'Tool name must start with a letter and contain only alphanumeric characters or hyphens'
   );
 
 /**

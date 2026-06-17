@@ -3,10 +3,10 @@ import type { Result } from '../../../lib/result';
 import type { AwsDeploymentTarget } from '../../../schema';
 import { withTargetRegion } from '../../aws';
 import { deleteConfigurationBundle } from '../../aws/agentcore-config-bundles';
+import { deleteHarness, isHarnessNotFoundError } from '../../aws/agentcore-harness';
 import { CdkToolkitWrapper, silentIoHost } from '../../cdk/toolkit-lib';
 import { type DiscoveredStack, findStack } from '../../cloudformation/stack-discovery';
-import { deleteOrphanedABTests } from './post-deploy-ab-tests';
-import { deleteOrphanedHttpGateways } from './post-deploy-http-gateways';
+import { findOrphanHarnesses } from '../harness/orphan';
 import { StackSelectionStrategy } from '@aws-cdk/toolkit-lib';
 import { existsSync } from 'fs';
 import { join } from 'path';
@@ -120,7 +120,29 @@ export async function performStackTeardown(targetName: string): Promise<Result> 
     const deployedState = await configIO.readDeployedState();
     const resources = deployedState.targets?.[targetName]?.resources;
 
-    if (resources?.httpGateways || resources?.configBundles || resources?.abTests) {
+    // Delete imperative-build orphan harnesses. CloudFormation never created them so the stack
+    // destroy below won't touch them, and teardown removes the deployed-state they're recorded in —
+    // so a post-teardown `remove harness --discard` could no longer find them, leaving them running
+    // and billing forever. Teardown means "remove everything", so delete them here (using the
+    // recorded id+region, never re-resolving by name). 404 = already gone (success); other errors
+    // warn but don't abort the teardown.
+    for (const orphan of findOrphanHarnesses(deployedState, undefined).filter(o => o.targetName === targetName)) {
+      try {
+        await deleteHarness({ region: orphan.region, harnessId: orphan.harnessId });
+        console.log(`Deleted preview-build harness "${orphan.name}"`);
+      } catch (err) {
+        if (isHarnessNotFoundError(err)) {
+          // Already gone — nothing to do.
+        } else {
+          console.warn(
+            `Warning: Could not delete preview-build harness "${orphan.name}" (${orphan.harnessId}) in ` +
+              `${orphan.region}: ${err instanceof Error ? err.message : String(err)}. Delete it manually to stop incurring cost.`
+          );
+        }
+      }
+    }
+
+    if (resources?.configBundles) {
       let region = deployedTarget?.target.region;
       if (!region) {
         try {
@@ -135,39 +157,6 @@ export async function performStackTeardown(targetName: string): Promise<Result> 
         console.warn('Warning: Could not determine region for resource cleanup — resources may need manual deletion');
       }
       if (region) {
-        const projectSpec = await configIO.readProjectSpec();
-        const emptySpec = { ...projectSpec, abTests: [], httpGateways: [] };
-
-        if (resources.abTests) {
-          const abResult = await deleteOrphanedABTests({
-            region,
-            projectSpec: emptySpec,
-            existingABTests: resources.abTests,
-          });
-          for (const r of abResult.results) {
-            if (r.status === 'deleted') {
-              console.log(`Deleted AB test "${r.testName}"`);
-            } else if (r.error) {
-              console.warn(`Warning: Failed to delete AB test "${r.testName}": ${r.error}`);
-            }
-          }
-        }
-
-        if (resources.httpGateways) {
-          const gwResult = await deleteOrphanedHttpGateways({
-            region,
-            projectSpec: emptySpec,
-            existingHttpGateways: resources.httpGateways,
-          });
-          for (const r of gwResult.results) {
-            if (r.status === 'deleted') {
-              console.log(`Deleted HTTP gateway "${r.gatewayName}"`);
-            } else if (r.error) {
-              console.warn(`Warning: Failed to delete HTTP gateway "${r.gatewayName}": ${r.error}`);
-            }
-          }
-        }
-
         for (const [bundleName, bundleState] of Object.entries(resources.configBundles ?? {})) {
           try {
             await deleteConfigurationBundle({ region, bundleId: bundleState.bundleId });

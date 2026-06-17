@@ -1,12 +1,4 @@
-import {
-  createHarness,
-  deleteHarness,
-  getHarness,
-  invokeHarness,
-  listAllHarnesses,
-  listHarnesses,
-  updateHarness,
-} from '../agentcore-harness.js';
+import { deleteHarness, getHarness, invokeHarness } from '../agentcore-harness.js';
 import { EventStreamCodec } from '@smithy/eventstream-codec';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -38,56 +30,6 @@ describe('Harness control plane operations', () => {
     vi.clearAllMocks();
   });
 
-  describe('createHarness', () => {
-    it('sends POST /harnesses with correct body', async () => {
-      const harness = { harnessId: 'h-123', harnessName: 'test', status: 'CREATING' };
-      mockRequest.mockResolvedValue({ harness });
-
-      const result = await createHarness({
-        region: 'us-west-2',
-        harnessName: 'test',
-        executionRoleArn: 'arn:aws:iam::123:role/TestRole',
-        model: { bedrockModelConfig: { modelId: 'us.anthropic.claude-sonnet-4-6-20250514-v1:0' } },
-        systemPrompt: [{ text: 'You are helpful.' }],
-        tools: [{ type: 'agentcore_browser', name: 'browser' }],
-        maxIterations: 75,
-      });
-
-      expect(result.harness.harnessId).toBe('h-123');
-      expect(mockRequest).toHaveBeenCalledWith(
-        expect.objectContaining({
-          method: 'POST',
-          path: '/harnesses',
-          body: expect.objectContaining({
-            harnessName: 'test',
-            executionRoleArn: 'arn:aws:iam::123:role/TestRole',
-            clientToken: expect.any(String),
-            model: { bedrockModelConfig: { modelId: 'us.anthropic.claude-sonnet-4-6-20250514-v1:0' } },
-            systemPrompt: [{ text: 'You are helpful.' }],
-            tools: [{ type: 'agentcore_browser', name: 'browser' }],
-            maxIterations: 75,
-          }),
-        })
-      );
-    });
-
-    it('omits optional fields when not provided', async () => {
-      mockRequest.mockResolvedValue({ harness: { harnessId: 'h-1' } });
-
-      await createHarness({
-        region: 'us-west-2',
-        harnessName: 'minimal',
-        executionRoleArn: 'arn:aws:iam::123:role/R',
-      });
-
-      const body = mockRequest.mock.calls[0]![0].body;
-      expect(body.model).toBeUndefined();
-      expect(body.tools).toBeUndefined();
-      expect(body.memory).toBeUndefined();
-      expect(body.maxIterations).toBeUndefined();
-    });
-  });
-
   describe('getHarness', () => {
     it('sends GET /harnesses/{harnessId}', async () => {
       const harness = { harnessId: 'h-123', status: 'READY' };
@@ -105,46 +47,6 @@ describe('Harness control plane operations', () => {
     });
   });
 
-  describe('updateHarness', () => {
-    it('sends PATCH /harnesses/{harnessId}', async () => {
-      mockRequest.mockResolvedValue({ harness: { harnessId: 'h-123', status: 'UPDATING' } });
-
-      await updateHarness({
-        region: 'us-west-2',
-        harnessId: 'h-123',
-        model: { bedrockModelConfig: { modelId: 'new-model' } },
-        maxTokens: 4096,
-      });
-
-      expect(mockRequest).toHaveBeenCalledWith(
-        expect.objectContaining({
-          method: 'PATCH',
-          path: '/harnesses/h-123',
-          body: expect.objectContaining({
-            clientToken: expect.any(String),
-            model: { bedrockModelConfig: { modelId: 'new-model' } },
-            maxTokens: 4096,
-          }),
-        })
-      );
-    });
-
-    it('passes nullable wrapper fields for memory and environmentArtifact', async () => {
-      mockRequest.mockResolvedValue({ harness: { harnessId: 'h-123' } });
-
-      await updateHarness({
-        region: 'us-west-2',
-        harnessId: 'h-123',
-        memory: { optionalValue: null },
-        environmentArtifact: { optionalValue: null },
-      });
-
-      const body = mockRequest.mock.calls[0]![0].body;
-      expect(body.memory).toEqual({ optionalValue: null });
-      expect(body.environmentArtifact).toEqual({ optionalValue: null });
-    });
-  });
-
   describe('deleteHarness', () => {
     it('sends DELETE /harnesses/{harnessId} with clientToken query param', async () => {
       mockRequest.mockResolvedValue({ harness: { harnessId: 'h-123', status: 'DELETING' } });
@@ -158,47 +60,6 @@ describe('Harness control plane operations', () => {
           query: { clientToken: expect.any(String) },
         })
       );
-    });
-  });
-
-  describe('listHarnesses', () => {
-    it('sends GET /harnesses with query params', async () => {
-      mockRequest.mockResolvedValue({
-        harnesses: [{ harnessId: 'h-1', harnessName: 'one' }],
-        nextToken: undefined,
-      });
-
-      const result = await listHarnesses({ region: 'us-west-2', maxResults: 10 });
-
-      expect(result.harnesses).toHaveLength(1);
-      expect(mockRequest).toHaveBeenCalledWith(
-        expect.objectContaining({
-          method: 'GET',
-          path: '/harnesses',
-          query: { maxResults: '10' },
-        })
-      );
-    });
-  });
-
-  describe('listAllHarnesses', () => {
-    it('auto-paginates across multiple pages', async () => {
-      mockRequest
-        .mockResolvedValueOnce({
-          harnesses: [{ harnessId: 'h-1' }],
-          nextToken: 'tok-1',
-        })
-        .mockResolvedValueOnce({
-          harnesses: [{ harnessId: 'h-2' }],
-          nextToken: undefined,
-        });
-
-      const all = await listAllHarnesses('us-west-2');
-
-      expect(all).toHaveLength(2);
-      expect(all[0]!.harnessId).toBe('h-1');
-      expect(all[1]!.harnessId).toBe('h-2');
-      expect(mockRequest).toHaveBeenCalledTimes(2);
     });
   });
 });

@@ -284,76 +284,22 @@
           "filesystemConfigurations": {
             "type": "array",
             "items": {
-              "anyOf": [
-                {
+              "type": "object",
+              "properties": {
+                "sessionStorage": {
                   "type": "object",
                   "properties": {
-                    "sessionStorage": {
-                      "type": "object",
-                      "properties": {
-                        "mountPath": {
-                          "type": "string",
-                          "minLength": 6,
-                          "maxLength": 200,
-                          "pattern": "^\\/mnt\\/[a-zA-Z0-9._-]+\\/?$"
-                        }
-                      },
-                      "required": ["mountPath"],
-                      "additionalProperties": false
+                    "mountPath": {
+                      "type": "string",
+                      "pattern": "^\\/mnt\\/[^/]+$"
                     }
                   },
-                  "required": ["sessionStorage"],
-                  "additionalProperties": false
-                },
-                {
-                  "type": "object",
-                  "properties": {
-                    "efsAccessPoint": {
-                      "type": "object",
-                      "properties": {
-                        "accessPointArn": {
-                          "type": "string",
-                          "pattern": "^arn:aws[-a-z]*:elasticfilesystem:[a-z][a-z0-9-]*:[0-9]{12}:access-point\\/fsap-[0-9a-f]{8,40}$"
-                        },
-                        "mountPath": {
-                          "type": "string",
-                          "minLength": 6,
-                          "maxLength": 200,
-                          "pattern": "^\\/mnt\\/[a-zA-Z0-9._-]+\\/?$"
-                        }
-                      },
-                      "required": ["accessPointArn", "mountPath"],
-                      "additionalProperties": false
-                    }
-                  },
-                  "required": ["efsAccessPoint"],
-                  "additionalProperties": false
-                },
-                {
-                  "type": "object",
-                  "properties": {
-                    "s3FilesAccessPoint": {
-                      "type": "object",
-                      "properties": {
-                        "accessPointArn": {
-                          "type": "string",
-                          "pattern": "^arn:aws[-a-z]*:s3files:[a-z][a-z0-9-]*:[0-9]{12}:file-system\\/fs-[0-9a-f]{17,40}\\/access-point\\/fsap-[0-9a-f]{17,40}$"
-                        },
-                        "mountPath": {
-                          "type": "string",
-                          "minLength": 6,
-                          "maxLength": 200,
-                          "pattern": "^\\/mnt\\/[a-zA-Z0-9._-]+\\/?$"
-                        }
-                      },
-                      "required": ["accessPointArn", "mountPath"],
-                      "additionalProperties": false
-                    }
-                  },
-                  "required": ["s3FilesAccessPoint"],
+                  "required": ["mountPath"],
                   "additionalProperties": false
                 }
-              ]
+              },
+              "required": ["sessionStorage"],
+              "additionalProperties": false
             }
           },
           "endpoints": {
@@ -603,27 +549,6 @@
               }
             },
             "required": ["authorizerType", "name"],
-            "additionalProperties": false
-          },
-          {
-            "type": "object",
-            "properties": {
-              "authorizerType": {
-                "type": "string",
-                "const": "PaymentCredentialProvider"
-              },
-              "name": {
-                "type": "string",
-                "minLength": 1,
-                "maxLength": 128,
-                "pattern": "^[a-zA-Z0-9\\-_]+$"
-              },
-              "provider": {
-                "type": "string",
-                "enum": ["CoinbaseCDP", "StripePrivy"]
-              }
-            },
-            "required": ["authorizerType", "name", "provider"],
             "additionalProperties": false
           }
         ]
@@ -2323,112 +2248,6 @@
           }
         },
         "required": ["name", "schemaType", "config"],
-        "additionalProperties": false
-      }
-    },
-    "payments": {
-      "type": "array",
-      "items": {
-        "type": "object",
-        "properties": {
-          "name": {
-            "type": "string",
-            "minLength": 1,
-            "maxLength": 48,
-            "pattern": "^[a-zA-Z][a-zA-Z0-9]{0,47}$"
-          },
-          "authorizerType": {
-            "default": "AWS_IAM",
-            "type": "string",
-            "enum": ["AWS_IAM", "CUSTOM_JWT"]
-          },
-          "authorizerConfiguration": {
-            "type": "object",
-            "properties": {
-              "customJWTAuthorizer": {
-                "type": "object",
-                "properties": {
-                  "discoveryUrl": {
-                    "type": "string",
-                    "format": "uri"
-                  },
-                  "allowedClients": {
-                    "type": "array",
-                    "items": {
-                      "type": "string"
-                    }
-                  },
-                  "allowedAudience": {
-                    "type": "array",
-                    "items": {
-                      "type": "string"
-                    }
-                  },
-                  "allowedScopes": {
-                    "type": "array",
-                    "items": {
-                      "type": "string"
-                    }
-                  }
-                },
-                "required": ["discoveryUrl"],
-                "additionalProperties": false
-              }
-            },
-            "required": ["customJWTAuthorizer"],
-            "additionalProperties": false
-          },
-          "connectors": {
-            "default": [],
-            "type": "array",
-            "items": {
-              "type": "object",
-              "properties": {
-                "name": {
-                  "type": "string",
-                  "minLength": 1,
-                  "maxLength": 48,
-                  "pattern": "^[a-zA-Z][a-zA-Z0-9_]{0,47}$"
-                },
-                "provider": {
-                  "default": "CoinbaseCDP",
-                  "type": "string",
-                  "enum": ["CoinbaseCDP", "StripePrivy"]
-                },
-                "credentialName": {
-                  "type": "string",
-                  "minLength": 1
-                }
-              },
-              "required": ["name", "credentialName"],
-              "additionalProperties": false
-            }
-          },
-          "description": {
-            "type": "string"
-          },
-          "autoPayment": {
-            "default": true,
-            "type": "boolean"
-          },
-          "defaultSpendLimit": {
-            "default": "10.00",
-            "type": "string"
-          },
-          "paymentToolAllowlist": {
-            "type": "array",
-            "items": {
-              "type": "string"
-            }
-          },
-          "networkPreferences": {
-            "type": "array",
-            "items": {
-              "type": "string"
-            }
-          }
-        },
-        "required": ["name"],
         "additionalProperties": false
       }
     }

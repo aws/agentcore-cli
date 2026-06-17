@@ -8,6 +8,7 @@
 #
 # Optional env vars:
 #   AWS_REGION      — defaults to us-east-1
+#   CDK_REPO_PATH   — local path to CDK constructs repo; if set, builds and uses it as CDK_TARBALL
 #   BUILD_PREVIEW   — set to 1 to build a preview CLI and run the harness e2e tests
 #                     (e2e-tests/harness-*.test.ts). Harness features are gated to preview
 #                     builds; without this they self-skip. The var is read at build time
@@ -127,6 +128,16 @@ npm install -g "$TARBALL"
 echo "✅ Installed: $(agentcore --version)"
 
 echo "=== Running E2E tests ==="
+if [[ -n "${CDK_REPO_PATH:-}" ]]; then
+  echo "=== Building CDK constructs from $CDK_REPO_PATH ==="
+  pushd "$CDK_REPO_PATH" > /dev/null
+  npm ci
+  npm run build
+  CDK_TARBALL_NAME=$(npm pack | tail -1)
+  export CDK_TARBALL="$CDK_REPO_PATH/$CDK_TARBALL_NAME"
+  popd > /dev/null
+  echo "✅ CDK_TARBALL=$CDK_TARBALL"
+fi
 if [[ "$RUN_ALL" == "true" ]]; then
   echo "Running full e2e suite"
   npx vitest run --project e2e

@@ -1,11 +1,12 @@
 import {
   buildDeployedState,
   parseGatewayOutputs,
+  parseHarnessOutputs,
   parseMemoryOutputs,
   parsePolicyEngineOutputs,
   parsePolicyOutputs,
 } from '../outputs';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 
 describe('buildDeployedState', () => {
   it('persists identityKmsKeyArn when provided', () => {
@@ -292,6 +293,34 @@ describe('parseMemoryOutputs', () => {
   });
 });
 
+describe('parseHarnessOutputs', () => {
+  const completeOutputs = (name: string, extra: Record<string, string> = {}) => ({
+    [`ApplicationHarness${name}IdOutputAAA`]: `h-${name}`,
+    [`ApplicationHarness${name}ArnOutputBBB`]: `arn:aws:bedrock-agentcore:us-east-1:1:harness/h-${name}`,
+    [`ApplicationHarness${name}StatusOutputCCC`]: 'READY',
+    [`ApplicationHarness${name}RoleRoleArnOutputDDD`]: 'arn:aws:iam::1:role/r',
+    ...extra,
+  });
+
+  it('captures harnessVersion from the Version output', () => {
+    const outputs = completeOutputs('Support', { ApplicationHarnessSupportVersionOutputEEE: '3' });
+    const result = parseHarnessOutputs(outputs, ['Support'], vi.fn());
+    expect(result.Support?.harnessVersion).toBe(3);
+  });
+
+  it('leaves harnessVersion unset when no Version output is present (legacy stack)', () => {
+    const result = parseHarnessOutputs(completeOutputs('Support'), ['Support'], vi.fn());
+    expect(result.Support).toBeDefined();
+    expect(result.Support?.harnessVersion).toBeUndefined();
+  });
+
+  it('ignores a non-numeric Version output', () => {
+    const outputs = completeOutputs('Support', { ApplicationHarnessSupportVersionOutputEEE: 'not-a-number' });
+    const result = parseHarnessOutputs(outputs, ['Support'], vi.fn());
+    expect(result.Support?.harnessVersion).toBeUndefined();
+  });
+});
+
 describe('parsePolicyEngineOutputs', () => {
   it('extracts policy engine outputs matching pattern', () => {
     const outputs = {
@@ -504,32 +533,21 @@ describe('buildDeployedState carry-forward', () => {
     });
   });
 
-  it('carries forward httpGateways from existing state', () => {
-    const existingState = {
-      targets: {
-        default: {
-          resources: {
-            stackName: 'TestStack',
-            httpGateways: {
-              MyHttpGw: {
-                gatewayId: 'hgw-456',
-                gatewayArn: 'arn:aws:bedrock:us-east-1:123456789012:http-gateway/hgw-456',
-              },
-            },
-          },
-        },
-      },
-    };
-
+  it('populates resources.gateways from httpGateways parameter', () => {
     const result = buildDeployedState({
       targetName: 'default',
       stackName: 'TestStack',
       agents: {},
       gateways: {},
-      existingState,
+      httpGateways: {
+        MyHttpGw: {
+          gatewayId: 'hgw-456',
+          gatewayArn: 'arn:aws:bedrock:us-east-1:123456789012:http-gateway/hgw-456',
+        },
+      },
     });
 
-    expect(result.targets.default!.resources?.httpGateways).toEqual({
+    expect(result.targets.default!.resources?.gateways).toEqual({
       MyHttpGw: {
         gatewayId: 'hgw-456',
         gatewayArn: 'arn:aws:bedrock:us-east-1:123456789012:http-gateway/hgw-456',
@@ -560,26 +578,15 @@ describe('buildDeployedState carry-forward', () => {
     expect(result.targets.default!.resources?.abTests).toBeUndefined();
   });
 
-  it('does not carry forward empty httpGateways', () => {
-    const existingState = {
-      targets: {
-        default: {
-          resources: {
-            stackName: 'TestStack',
-            httpGateways: {},
-          },
-        },
-      },
-    };
-
+  it('does not populate resources.gateways when httpGateways param is empty', () => {
     const result = buildDeployedState({
       targetName: 'default',
       stackName: 'TestStack',
       agents: {},
       gateways: {},
-      existingState,
+      httpGateways: {},
     });
 
-    expect(result.targets.default!.resources?.httpGateways).toBeUndefined();
+    expect(result.targets.default!.resources?.gateways).toBeUndefined();
   });
 });

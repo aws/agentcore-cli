@@ -19,6 +19,34 @@ Handlebars.registerHelper('pathSlug', (str: string) => {
     .replace(/_+/g, '_')
     .toLowerCase();
 });
+// Emits a value as JSON-safe Python literal (string or dict).
+// Wraps result in Handlebars.SafeString to prevent double-escaping.
+Handlebars.registerHelper('safeJson', (value: unknown) => {
+  return new Handlebars.SafeString(JSON.stringify(value));
+});
+// Emits a value as a Python string literal containing its JSON text, for use with json.loads().
+// Unlike safeJson, this is safe for arbitrary objects: JSON booleans/null inside the value stay
+// inside the string (true/false/null) and are parsed by json.loads at runtime, rather than being
+// inlined as bare Python tokens (which would be NameErrors). Double-encoding guarantees a valid
+// Python string literal because JSON's escape set is a subset of Python's.
+Handlebars.registerHelper('pyJsonStr', (value: unknown) => {
+  return new Handlebars.SafeString(JSON.stringify(JSON.stringify(value)));
+});
+// Escapes triple-double-quotes so the value is safe to embed in a Python """...""" string.
+Handlebars.registerHelper('escapePyStr', (value: unknown) => {
+  const s = typeof value === 'string' ? value : '';
+  return new Handlebars.SafeString(s.replace(/\\/g, '\\\\').replace(/"""/g, '\\"\\"\\"'));
+});
+Handlebars.registerHelper('some', (array: unknown[], key: string) => {
+  if (!Array.isArray(array)) return false;
+  return array.some(
+    item => item !== null && typeof item === 'object' && key in item && !!(item as Record<string, unknown>)[key]
+  );
+});
+Handlebars.registerHelper('or', (...args: unknown[]) => {
+  // Last arg is the Handlebars options object — exclude it
+  return args.slice(0, -1).some(Boolean);
+});
 
 /**
  * Renames template files to their actual names.

@@ -111,7 +111,6 @@ Framework/model combination tests: `{framework}-{model}.test.ts`
 
 Feature lifecycle tests: describe what the test exercises end-to-end
 
-- `ab-test-target-based.test.ts`
 - `dev-lifecycle.test.ts`
 - `evals-lifecycle.test.ts`
 

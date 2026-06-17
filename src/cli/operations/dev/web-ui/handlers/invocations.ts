@@ -3,6 +3,7 @@ import { invokeA2ARuntime, invokeAgentRuntimeStreaming, invokeAguiRuntime } from
 import { buildAguiRunInput } from '../../../../aws/agui-types';
 import { resolveInvokeTarget } from '../../../../commands/invoke/resolve';
 import { extractSSEEventText, extractTaskText, isStatusUpdateEvent } from '../../invoke-a2a';
+import { pipeSSETransformed } from '../../sse-transform';
 import { handleHarnessInvocation } from './harness-invocation';
 import { type RouteContext, parseRequestUrl } from './route-context';
 import { randomUUID } from 'node:crypto';
@@ -112,9 +113,14 @@ export async function handleInvocations(
           responseHeaders['x-session-id'] = sessionId;
         }
         res.writeHead(agentRes.statusCode ?? 200, responseHeaders);
-        agentRes.pipe(res);
-        agentRes.on('end', resolve);
-        agentRes.on('error', reject);
+
+        if (contentType.includes('text/event-stream')) {
+          pipeSSETransformed(agentRes, res).then(resolve, reject);
+        } else {
+          agentRes.pipe(res);
+          agentRes.on('end', resolve);
+          agentRes.on('error', reject);
+        }
       }
     );
 

@@ -3,11 +3,11 @@ import type { ResourceType } from '../../commands/remove/types';
 import { RemoveLogger } from '../../logging';
 import type { RemovableGatewayTarget, RemovalPreview } from '../../operations/remove';
 import type { RemovableCredential } from '../../primitives/CredentialPrimitive';
+import type { RemovableKnowledgeBase } from '../../primitives/KnowledgeBasePrimitive';
 import type { RemovableMemory } from '../../primitives/MemoryPrimitive';
 import type { RemovablePolicyResource } from '../../primitives/PolicyPrimitive';
 import type { RemovableRuntimeEndpoint } from '../../primitives/RuntimeEndpointPrimitive';
 import {
-  abTestPrimitive,
   agentPrimitive,
   configBundlePrimitive,
   credentialPrimitive,
@@ -16,6 +16,7 @@ import {
   gatewayPrimitive,
   gatewayTargetPrimitive,
   harnessPrimitive,
+  knowledgeBasePrimitive,
   memoryPrimitive,
   onlineEvalConfigPrimitive,
   paymentConnectorPrimitive,
@@ -33,6 +34,7 @@ export type {
   RemovableMemory,
   RemovableCredential as RemovableIdentity,
   RemovableGatewayTarget,
+  RemovableKnowledgeBase,
   RemovablePolicyResource,
   RemovableRuntimeEndpoint,
 };
@@ -160,6 +162,11 @@ export function useRemovableDatasets() {
   return { datasets, ...rest };
 }
 
+export function useRemovableKnowledgeBases() {
+  const { items: knowledgeBases, ...rest } = useRemovableResources(() => knowledgeBasePrimitive.getRemovable());
+  return { knowledgeBases, ...rest };
+}
+
 export function useRemovableOnlineEvalConfigs() {
   const { items: onlineEvalConfigs, ...rest } = useRemovableResources(() => onlineEvalConfigPrimitive.getRemovable());
   return { onlineEvalConfigs, ...rest };
@@ -178,19 +185,6 @@ export function useRemovablePolicies() {
 export function useRemovableConfigBundles() {
   const { items: configBundles, ...rest } = useRemovableResources(() => configBundlePrimitive.getRemovable());
   return { configBundles, ...rest };
-}
-
-export function useRemovableABTests() {
-  const { items: abTests, ...rest } = useRemovableResources(() => abTestPrimitive.getRemovable());
-  return { abTests, ...rest };
-}
-
-export function useRemoveABTest() {
-  return useRemoveResource(
-    (name: string) => abTestPrimitive.remove(name),
-    'ab-test',
-    name => name
-  );
 }
 
 export function useRemovableRuntimeEndpoints() {
@@ -277,6 +271,10 @@ export function useRemovalPreview() {
     (name: string) => loadPreview(n => datasetPrimitive.previewRemove(n), name),
     [loadPreview]
   );
+  const loadKnowledgeBasePreview = useCallback(
+    (name: string) => loadPreview(n => knowledgeBasePrimitive.previewRemove(n), name),
+    [loadPreview]
+  );
   const loadOnlineEvalPreview = useCallback(
     (name: string) => loadPreview(n => onlineEvalConfigPrimitive.previewRemove(n), name),
     [loadPreview]
@@ -291,11 +289,6 @@ export function useRemovalPreview() {
   );
   const loadConfigBundlePreview = useCallback(
     (name: string) => loadPreview(n => configBundlePrimitive.previewRemove(n), name),
-    [loadPreview]
-  );
-
-  const loadABTestPreview = useCallback(
-    (name: string) => loadPreview(n => abTestPrimitive.previewRemove(n), name),
     [loadPreview]
   );
 
@@ -318,11 +311,11 @@ export function useRemovalPreview() {
     loadIdentityPreview,
     loadEvaluatorPreview,
     loadDatasetPreview,
+    loadKnowledgeBasePreview,
     loadOnlineEvalPreview,
     loadPolicyEnginePreview,
     loadPolicyPreview,
     loadConfigBundlePreview,
-    loadABTestPreview,
     loadRuntimeEndpointPreview,
     reset,
   };
@@ -399,6 +392,14 @@ export function useRemoveDataset() {
   return useRemoveResource(
     (name: string) => datasetPrimitive.remove(name),
     'dataset',
+    name => name
+  );
+}
+
+export function useRemoveKnowledgeBase() {
+  return useRemoveResource(
+    (name: string) => knowledgeBasePrimitive.remove(name),
+    'knowledge-base',
     name => name
   );
 }

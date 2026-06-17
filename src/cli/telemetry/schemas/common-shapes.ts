@@ -35,6 +35,7 @@ export const AuthType = z.enum(['sigv4', 'bearer_token']);
 export const AuthorizerType = z.enum(['aws_iam', 'custom_jwt', 'none']);
 export const BuildType = z.enum(['codezip', 'container']);
 export const CredentialType = z.enum(['api-key', 'oauth']);
+export const SkillSourceType = z.enum(['path', 's3', 'git', 'aws_skills']);
 export const EvaluatorType = z.enum(['llm-as-a-judge', 'code-based']);
 export const ExitReason = z.enum(['success', 'failure']);
 export const FilterState = z.enum(['deployed', 'local-only', 'pending-removal', 'none']);
@@ -49,7 +50,6 @@ export const FilterType = z.enum([
   'policy-engine',
   'policy',
   'config-bundle',
-  'ab-test',
   'dataset',
   'harness',
   'none',
@@ -63,6 +63,9 @@ export const GatewayTargetType = z.enum([
   'open-api-schema',
   'smithy-model',
   'lambda-function-arn',
+  'http-runtime',
+  'passthrough',
+  'web-search',
   'unknown',
 ]);
 
@@ -73,23 +76,32 @@ export const GATEWAY_TARGET_TYPE_MAP: Record<string, z.infer<typeof GatewayTarge
   smithyModel: 'smithy-model',
   lambdaFunctionArn: 'lambda-function-arn',
   mcpServer: 'mcp-server',
+  httpRuntime: 'http-runtime',
+  passthrough: 'passthrough',
+  webSearch: 'web-search',
 };
 export const AgentLanguage = z.enum(['python', 'typescript', 'other']);
 export const EvaluatorLevel = z.enum(['session', 'trace', 'tool_call']);
 export const MemoryType = z.enum(['none', 'shortterm', 'longandshortterm']);
 export const Mode = z.enum(['cli', 'tui']);
-export const ModelProvider = z.enum(['bedrock', 'anthropic', 'openai', 'gemini']);
+export const ModelProvider = z.enum(['bedrock', 'anthropic', 'openai', 'gemini', 'lite_llm']);
 export const NetworkMode = z.enum(['public', 'vpc']);
 export const OutboundAuthType = z.enum(['oauth', 'api-key', 'none']);
 export const PolicyEngineMode = z.enum(['log_only', 'enforce']);
 export const AgentProtocol = z.enum(['http', 'mcp', 'a2a', 'agui']);
 export const RefType = z.enum(['arn', 'name']);
 export const ResourceType = z.enum(['gateway', 'agent']);
-export const PolicyAttrSourceType = z.enum(['file', 'statement', 'generate']);
+export const JobType = z.enum(['recommendation', 'batch-evaluation', 'ab-test', 'insights']);
+export const RecommendationKind = z.enum(['system-prompt', 'tool-description']);
+export const RecommendationInputSource = z.enum(['config-bundle', 'inline', 'file']);
+export const RecommendationTraceSource = z.enum(['cloudwatch', 'sessions', 'spans-file']);
+export const BatchEvalSource = z.enum(['traces', 'dataset']);
+export const PolicyAttrSourceType = z.enum(['file', 'statement', 'generate', 'form']);
 export const PolicyValidationMode = z.enum(['fail_on_any_findings', 'ignore_all_findings']);
 
 export const ErrorName = z.enum([
   'AccessDeniedError',
+  'ExportHarnessError',
   'AgentAlreadyExistsError',
   'ArtifactSizeError',
   'AwsCredentialsError',
@@ -102,6 +114,8 @@ export const ErrorName = z.enum([
   'ConnectionError',
   'DependencyCheckError',
   'GitInitError',
+  'IngestionError',
+  'JobNotFoundError',
   'MissingDependencyError',
   'MissingProjectFileError',
   'NoProjectError',
@@ -187,6 +201,12 @@ export const ATTRIBUTES = {
   agent_protocol: AgentProtocol,
   ref_type: RefType,
   resource_type: ResourceType,
+  job_type: JobType,
+  recommendation_kind: RecommendationKind,
+  recommendation_input_source: RecommendationInputSource,
+  recommendation_trace_source: RecommendationTraceSource,
+  batch_eval_source: BatchEvalSource,
+  has_wait: z.boolean(),
   runtime_count: Count,
   semantic_search: z.boolean(),
   policy_attr_source_type: PolicyAttrSourceType,
@@ -196,6 +216,7 @@ export const ATTRIBUTES = {
   strategy_summarization: z.boolean(),
   strategy_user_preference: z.boolean(),
   gateway_target_type: GatewayTargetType,
+  skill_source_type: SkillSourceType,
   ui_mode: UiMode,
   policy_validation_mode: PolicyValidationMode,
 } as const;

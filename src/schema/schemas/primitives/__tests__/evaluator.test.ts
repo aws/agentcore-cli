@@ -5,6 +5,7 @@ import {
   EvaluatorNameSchema,
   NumericalRatingSchema,
   RatingScaleSchema,
+  isValidKmsKeyArn,
 } from '../evaluator';
 import { describe, expect, it } from 'vitest';
 
@@ -153,5 +154,47 @@ describe('EvaluatorConfigSchema', () => {
 
   it('rejects missing llmAsAJudge key', () => {
     expect(EvaluatorConfigSchema.safeParse({}).success).toBe(false);
+  });
+});
+
+describe('isValidKmsKeyArn', () => {
+  it('accepts valid commercial KMS key ARN', () => {
+    expect(isValidKmsKeyArn('arn:aws:kms:us-east-1:123456789012:key/12345678-1234-1234-1234-123456789012')).toBe(true);
+  });
+
+  it('accepts valid GovCloud KMS key ARN', () => {
+    expect(
+      isValidKmsKeyArn('arn:aws-us-gov:kms:us-gov-west-1:123456789012:key/12345678-1234-1234-1234-123456789012')
+    ).toBe(true);
+  });
+
+  it('accepts valid China partition KMS key ARN', () => {
+    expect(isValidKmsKeyArn('arn:aws-cn:kms:cn-north-1:123456789012:key/12345678-1234-1234-1234-123456789012')).toBe(
+      true
+    );
+  });
+
+  it('rejects ARN with wrong service', () => {
+    expect(isValidKmsKeyArn('arn:aws:s3:us-east-1:123456789012:key/12345678-1234-1234-1234-123456789012')).toBe(false);
+  });
+
+  it('rejects ARN with alias instead of key', () => {
+    expect(isValidKmsKeyArn('arn:aws:kms:us-east-1:123456789012:alias/my-key')).toBe(false);
+  });
+
+  it('rejects ARN with invalid account ID length', () => {
+    expect(isValidKmsKeyArn('arn:aws:kms:us-east-1:12345:key/12345678-1234-1234-1234-123456789012')).toBe(false);
+  });
+
+  it('rejects ARN with invalid key UUID format', () => {
+    expect(isValidKmsKeyArn('arn:aws:kms:us-east-1:123456789012:key/not-a-valid-uuid')).toBe(false);
+  });
+
+  it('rejects empty string', () => {
+    expect(isValidKmsKeyArn('')).toBe(false);
+  });
+
+  it('rejects random string', () => {
+    expect(isValidKmsKeyArn('not-an-arn-at-all')).toBe(false);
   });
 });

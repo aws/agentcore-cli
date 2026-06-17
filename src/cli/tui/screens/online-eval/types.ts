@@ -4,17 +4,24 @@
 
 export type AddOnlineEvalStep =
   | 'name'
+  | 'source'
   | 'agent'
   | 'endpoint'
+  | 'logGroupNames'
+  | 'serviceName'
   | 'evaluators'
   | 'samplingRate'
   | 'enableOnCreate'
   | 'confirm';
 
+export type OnlineEvalSource = 'agentcore-runtime' | 'cloudwatch-logs';
+
 export interface AddOnlineEvalConfig {
   name: string;
   agent: string;
   endpoint?: string;
+  logGroupNames?: string[];
+  serviceNames?: string[];
   evaluators: string[];
   samplingRate: number;
   enableOnCreate: boolean;
@@ -29,8 +36,11 @@ export interface RuntimeEndpointEntry {
 
 export const ONLINE_EVAL_STEP_LABELS: Record<AddOnlineEvalStep, string> = {
   name: 'Name',
+  source: 'Source',
   agent: 'Agent',
   endpoint: 'Endpoint',
+  logGroupNames: 'Log Groups',
+  serviceName: 'Services',
   evaluators: 'Evaluators',
   samplingRate: 'Rate',
   enableOnCreate: 'Enable',

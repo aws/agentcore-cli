@@ -259,7 +259,7 @@ export function CreateScreen({ cwd, isInteractive, onExit, onNavigate }: CreateS
   const preview = isPreviewEnabled();
 
   // Completion state for next steps
-  const allSuccess = !flow.hasError && flow.isComplete;
+  const allSuccess = !flow.hasError && flow.isComplete && flow.phase === 'complete';
 
   // Handle exit - if successful, exit app completely and print completion screen
   const handleExit = useCallback(() => {

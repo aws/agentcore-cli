@@ -6,7 +6,7 @@ import {
   _resolveOutboundAuth as resolveOutboundAuth,
   _toGatewayTargetSpec as toGatewayTargetSpec,
 } from '../import-gateway';
-import { assert, describe, expect, it, vi } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 
 // ============================================================================
 // Helpers
@@ -39,13 +39,12 @@ describe('toGatewayTargetSpec — mcpServer targets', () => {
 
     const result = toGatewayTargetSpec(detail, credentials, onProgress);
 
-    assert(result.success);
-    expect(result.target).toEqual({
+    expect(result).toEqual({
       name: 'my-mcp-target',
       targetType: 'mcpServer',
       endpoint: 'https://example.com/mcp',
     });
-    expect(result.target).not.toHaveProperty('outboundAuth');
+    expect(result).not.toHaveProperty('outboundAuth');
     expect(onProgress).not.toHaveBeenCalled();
   });
 
@@ -74,8 +73,7 @@ describe('toGatewayTargetSpec — mcpServer targets', () => {
 
     const result = toGatewayTargetSpec(detail, credentials, onProgress);
 
-    assert(result.success);
-    expect(result.target).toEqual({
+    expect(result).toEqual({
       name: 'my-mcp-target',
       targetType: 'mcpServer',
       endpoint: 'https://example.com/mcp',
@@ -111,8 +109,7 @@ describe('toGatewayTargetSpec — mcpServer targets', () => {
 
     const result = toGatewayTargetSpec(detail, credentials, onProgress);
 
-    assert(result.success);
-    expect(result.target).toEqual({
+    expect(result).toEqual({
       name: 'my-mcp-target',
       targetType: 'mcpServer',
       endpoint: 'https://example.com/mcp',
@@ -123,7 +120,7 @@ describe('toGatewayTargetSpec — mcpServer targets', () => {
     });
   });
 
-  it('returns failure when OAuth credential not found in project', () => {
+  it('throws when OAuth credential not found in project', () => {
     const providerArn = 'arn:aws:bedrock:us-east-1:123456789012:credential-provider/missing-oauth';
     const detail = makeDetail({
       targetConfiguration: {
@@ -146,12 +143,12 @@ describe('toGatewayTargetSpec — mcpServer targets', () => {
     const credentials = new Map<string, string>();
     const onProgress = vi.fn();
 
-    const result = toGatewayTargetSpec(detail, credentials, onProgress);
-    assert(!result.success);
-    expect(result.error.message).toContain('uses an OAuth credential provider not found');
+    expect(() => toGatewayTargetSpec(detail, credentials, onProgress)).toThrow(
+      'uses an OAuth credential provider not found'
+    );
   });
 
-  it('returns failure when API_KEY credential not found in project', () => {
+  it('throws when API_KEY credential not found in project', () => {
     const providerArn = 'arn:aws:bedrock:us-east-1:123456789012:credential-provider/missing-apikey';
     const detail = makeDetail({
       targetConfiguration: {
@@ -173,9 +170,9 @@ describe('toGatewayTargetSpec — mcpServer targets', () => {
     const credentials = new Map<string, string>();
     const onProgress = vi.fn();
 
-    const result = toGatewayTargetSpec(detail, credentials, onProgress);
-    assert(!result.success);
-    expect(result.error.message).toContain('uses an API Key credential provider not found');
+    expect(() => toGatewayTargetSpec(detail, credentials, onProgress)).toThrow(
+      'uses an API Key credential provider not found'
+    );
   });
 
   it('returns undefined and warns when target has no MCP configuration', () => {
@@ -187,9 +184,8 @@ describe('toGatewayTargetSpec — mcpServer targets', () => {
 
     const result = toGatewayTargetSpec(detail, credentials, onProgress);
 
-    assert(result.success);
-    expect(result.target).toBeUndefined();
-    expect(onProgress).toHaveBeenCalledWith(expect.stringContaining('no MCP configuration'));
+    expect(result).toBeUndefined();
+    expect(onProgress).toHaveBeenCalledWith(expect.stringContaining('no MCP or HTTP configuration'));
   });
 });
 
@@ -218,8 +214,7 @@ describe('resolveOutboundAuth — scopes handling', () => {
 
     const result = resolveOutboundAuth(detail, credentials, onProgress);
 
-    assert(result.success);
-    expect(result.auth).toEqual({
+    expect(result).toEqual({
       type: 'OAUTH',
       credentialName: 'scoped-cred',
       scopes: ['openid', 'profile', 'email'],
@@ -246,11 +241,10 @@ describe('resolveOutboundAuth — scopes handling', () => {
 
     const result = resolveOutboundAuth(detail, credentials, onProgress);
 
-    assert(result.success);
-    expect(result.auth).toEqual({
+    expect(result).toEqual({
       type: 'OAUTH',
       credentialName: 'no-scope-cred',
     });
-    expect(result.auth).not.toHaveProperty('scopes');
+    expect(result).not.toHaveProperty('scopes');
   });
 });

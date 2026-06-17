@@ -80,6 +80,15 @@ export class ResourceNotFoundError extends BaseError {
 }
 
 /**
+ * Error indicating a job (recommendation / batch evaluation) was not found locally or on the service.
+ */
+export class JobNotFoundError extends BaseError {
+  constructor(message: string, options?: BaseErrorOptions) {
+    super(message, { defaultSource: 'user', ...options });
+  }
+}
+
+/**
  * Error indicating invalid input or configuration values.
  */
 export class ValidationError extends BaseError {
@@ -291,6 +300,18 @@ export class PollExhaustedError extends BaseError {
   }
 }
 
+/**
+ * Thrown when starting or driving a Bedrock Knowledge Base ingestion job
+ * fails. Default source is 'service' because most ingestion failures are
+ * AWS-side (validation, throttling, KB not ready). Pre-flight failures from
+ * the CLI side (KB not deployed, no data sources recorded) override to 'user'.
+ */
+export class IngestionError extends BaseError {
+  constructor(message: string, options?: BaseErrorOptions) {
+    super(message, { defaultSource: 'service', ...options });
+  }
+}
+
 export class ShellKickedError extends BaseError {
   constructor(options?: BaseErrorOptions) {
     super('Shell session was taken over by another client (close code 4000)', {
@@ -306,5 +327,11 @@ export class ShellKickedError extends BaseError {
 export class UserCancellationError extends BaseError {
   constructor(options?: BaseErrorOptions) {
     super(`User cancelled`, { defaultSource: 'user', ...options });
+  }
+}
+
+export class ExportHarnessError extends BaseError {
+  constructor(message: string, options?: BaseErrorOptions) {
+    super(message, { defaultSource: 'client', ...options });
   }
 }

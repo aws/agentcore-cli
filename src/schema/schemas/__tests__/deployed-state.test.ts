@@ -6,6 +6,7 @@ import {
   DeployedStateSchema,
   GatewayDeployedStateSchema,
   HarnessDeployedStateSchema,
+  KnowledgeBaseDeployedStateSchema,
   McpDeployedStateSchema,
   McpLambdaDeployedStateSchema,
   McpRuntimeDeployedStateSchema,
@@ -106,6 +107,40 @@ describe('MemoryDeployedStateSchema', () => {
 
   it('rejects missing required fields', () => {
     expect(MemoryDeployedStateSchema.safeParse({ memoryId: 'mem-123' }).success).toBe(false);
+  });
+});
+
+describe('KnowledgeBaseDeployedStateSchema', () => {
+  it('accepts valid KB state with no sourcesHash', () => {
+    expect(
+      KnowledgeBaseDeployedStateSchema.safeParse({
+        knowledgeBaseId: 'KB1',
+        knowledgeBaseArn: 'arn:aws:bedrock:us-east-1:123:knowledge-base/KB1',
+        dataSources: [],
+      }).success
+    ).toBe(true);
+  });
+
+  it('accepts valid KB state with sourcesHash', () => {
+    expect(
+      KnowledgeBaseDeployedStateSchema.safeParse({
+        knowledgeBaseId: 'KB1',
+        knowledgeBaseArn: 'arn:aws:bedrock:us-east-1:123:knowledge-base/KB1',
+        dataSources: [{ dataSourceId: 'DS1', uri: 's3://b/d/' }],
+        sourcesHash: 'a'.repeat(64),
+      }).success
+    ).toBe(true);
+  });
+
+  it('rejects empty sourcesHash', () => {
+    expect(
+      KnowledgeBaseDeployedStateSchema.safeParse({
+        knowledgeBaseId: 'KB1',
+        knowledgeBaseArn: 'arn:aws:bedrock:us-east-1:123:knowledge-base/KB1',
+        dataSources: [],
+        sourcesHash: '',
+      }).success
+    ).toBe(false);
   });
 });
 
@@ -333,6 +368,40 @@ describe('HarnessDeployedStateSchema', () => {
       memoryArn: 'arn:aws:bedrock-agentcore:us-west-2:123:memory/def456',
     });
     expect(result.success).toBe(true);
+  });
+
+  it('accepts a harness deployed-state with harnessVersion', () => {
+    const result = HarnessDeployedStateSchema.safeParse({
+      harnessId: 'abc123',
+      harnessArn: 'arn:aws:bedrock-agentcore:us-west-2:123:harness/abc123',
+      roleArn: 'arn:aws:iam::123456789012:role/HarnessRole',
+      status: 'READY',
+      harnessVersion: 3,
+    });
+    expect(result.success).toBe(true);
+    if (result.success) expect(result.data.harnessVersion).toBe(3);
+  });
+
+  it('accepts a harness deployed-state without harnessVersion (backwards compatible)', () => {
+    const result = HarnessDeployedStateSchema.safeParse({
+      harnessId: 'abc123',
+      harnessArn: 'arn:aws:bedrock-agentcore:us-west-2:123:harness/abc123',
+      roleArn: 'arn:aws:iam::123456789012:role/HarnessRole',
+      status: 'READY',
+    });
+    expect(result.success).toBe(true);
+    if (result.success) expect(result.data.harnessVersion).toBeUndefined();
+  });
+
+  it('rejects a harnessVersion of 0 (must be >= 1)', () => {
+    const result = HarnessDeployedStateSchema.safeParse({
+      harnessId: 'abc123',
+      harnessArn: 'arn:aws:bedrock-agentcore:us-west-2:123:harness/abc123',
+      roleArn: 'arn:aws:iam::123456789012:role/HarnessRole',
+      status: 'READY',
+      harnessVersion: 0,
+    });
+    expect(result.success).toBe(false);
   });
 });
 

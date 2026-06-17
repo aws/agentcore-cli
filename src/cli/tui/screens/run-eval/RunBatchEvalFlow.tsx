@@ -1,17 +1,16 @@
+import { ConfigIO } from '../../../../lib';
+import { isValidKmsKeyArn } from '../../../../schema';
 import { validateAwsCredentials } from '../../../aws/account';
-import { stopBatchEvaluation } from '../../../aws/agentcore-batch-evaluation';
 import type { SessionMetadataEntry } from '../../../aws/agentcore-batch-evaluation';
 import { listEvaluators } from '../../../aws/agentcore-control';
 import { detectRegion } from '../../../aws/region';
 import { getErrorMessage } from '../../../errors';
 import type { SessionInfo } from '../../../operations/eval';
 import { discoverSessions } from '../../../operations/eval';
-import { saveBatchEvalRun } from '../../../operations/eval/batch-eval-storage';
-import { runBatchEvaluationCommand } from '../../../operations/eval/run-batch-evaluation';
-import type {
-  BatchEvaluationResult,
-  RunBatchEvaluationCommandResult,
-} from '../../../operations/eval/run-batch-evaluation';
+import { runDatasetScenarios } from '../../../operations/eval/shared/dataset-session-provider';
+import { resolveAgentContext } from '../../../operations/invoke/resolve-agent-context';
+import { createJobEngine } from '../../../operations/jobs';
+import type { BatchEvaluationJobRecord } from '../../../operations/jobs';
 import { loadDeployedProjectConfig, resolveAgent } from '../../../operations/resolve-agent';
 import {
   ConfirmReview,
@@ -21,19 +20,18 @@ import {
   PathInput,
   Screen,
   StepIndicator,
-  StepProgress,
   TextInput,
   WizardMultiSelect,
   WizardSelect,
 } from '../../components';
-import type { SelectableItem, Step } from '../../components';
+import type { SelectableItem } from '../../components';
 import { HELP_TEXT } from '../../constants';
 import { useListNavigation, useMultiSelectNavigation } from '../../hooks';
 import type { EvaluatorItem } from '../online-eval/types';
 import { GroundTruthForm } from './GroundTruthForm';
 import type { AgentItem } from './types';
 import type { GroundTruthData } from './useRunEvalWizard';
-import { Box, Text, useInput } from 'ink';
+import { Box, Text } from 'ink';
 import { readFileSync } from 'node:fs';
 import { resolve as resolvePath } from 'node:path';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
@@ -44,7 +42,21 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
 const DEFAULT_LOOKBACK_DAYS = 7;
 
-type BatchEvalStep = 'agent' | 'evaluators' | 'days' | 'sessions' | 'ground-truth' | 'name' | 'confirm';
+/** Delay before submitting batch eval to allow CloudWatch span ingestion. Matches SDK default. */
+const BATCH_INGESTION_DELAY_MS = 180_000;
+
+// 'source' is a breadcrumb-only step (the source-picker) — it is NOT part of the wizard's
+// navigable steps, only shown in the StepIndicator so the picker and wizard share one header.
+type BatchEvalStep =
+  | 'source'
+  | 'agent'
+  | 'evaluators'
+  | 'days'
+  | 'sessions'
+  | 'ground-truth'
+  | 'kms-key-arn'
+  | 'name'
+  | 'confirm';
 
 interface BatchEvalConfig {
   agent: string;
@@ -54,17 +66,20 @@ interface BatchEvalConfig {
   sessionIds: string[];
   groundTruthFile: string;
   sessionMetadata?: SessionMetadataEntry[];
+  kmsKeyArn: string;
   name: string;
   dataset?: string;
   datasetVersion?: string;
 }
 
 const STEP_LABELS: Record<BatchEvalStep, string> = {
+  source: 'Source',
   agent: 'Agent',
   evaluators: 'Evaluators',
   days: 'Lookback',
   sessions: 'Sessions',
   'ground-truth': 'Ground Truth',
+  'kms-key-arn': 'KMS Key',
   name: 'Name',
   confirm: 'Confirm',
 };
@@ -82,17 +97,12 @@ type FlowState =
       dataset?: string;
       datasetVersion?: string;
     }
-  | {
-      name: 'running';
-      config: BatchEvalConfig;
-      steps: Step[];
-      elapsed: number;
-      batchEvaluationId?: string;
-      region?: string;
-    }
-  | { name: 'results'; result: RunBatchEvaluationCommandResult; savedFilePath?: string }
+  // Dataset mode only: blocking Phase-1 invocation of dataset scenarios before engine.start.
+  | { name: 'phase1'; config: BatchEvalConfig; message: string }
+  | { name: 'starting'; config: BatchEvalConfig }
+  | { name: 'started'; record: BatchEvaluationJobRecord; config: BatchEvalConfig }
   | { name: 'creds-error'; message: string }
-  | { name: 'error'; message: string; logFilePath?: string };
+  | { name: 'error'; message: string };
 
 // ============================================================================
 // Flow Component
@@ -100,29 +110,13 @@ type FlowState =
 
 interface RunBatchEvalFlowProps {
   onExit: () => void;
+  /** Navigate to the Batch Eval Jobs screen (falls back to onExit when not provided). */
+  onViewJobs?: () => void;
 }
 
-export function RunBatchEvalFlow({ onExit }: RunBatchEvalFlowProps) {
+export function RunBatchEvalFlow({ onExit, onViewJobs }: RunBatchEvalFlowProps) {
+  const engine = useMemo(() => createJobEngine(new ConfigIO()), []);
   const [flow, setFlow] = useState<FlowState>({ name: 'loading' });
-  const stoppingRef = useRef(false);
-
-  // Handle Esc to stop a running batch evaluation
-  useInput((_input, key) => {
-    if (flow.name !== 'running' || !flow.batchEvaluationId || !flow.region || stoppingRef.current) return;
-    if (key.escape) {
-      stoppingRef.current = true;
-      void stopBatchEvaluation({ region: flow.region, batchEvaluationId: flow.batchEvaluationId }).catch(() => {
-        // Best-effort — the poll loop will pick up the final status
-      });
-      setFlow(prev => {
-        if (prev.name !== 'running') return prev;
-        const steps = prev.steps.map(s =>
-          s.status === 'running' ? { ...s, status: 'error' as const, error: 'Stopping...' } : s
-        );
-        return { ...prev, steps };
-      });
-    }
-  });
 
   // Load agents and evaluators
   useEffect(() => {
@@ -201,148 +195,160 @@ export function RunBatchEvalFlow({ onExit }: RunBatchEvalFlowProps) {
 
   const handleWizardComplete = useCallback(
     (config: BatchEvalConfig) => {
-      // Inject dataset info from source-picker selection
-      if (flow.name === 'wizard' && flow.source === 'dataset') {
-        config = { ...config, dataset: flow.dataset, datasetVersion: flow.datasetVersion };
-      }
-      stoppingRef.current = false;
+      // Dataset mode needs a blocking pre-start phase ('phase1': invoke scenarios + ~180s ingestion
+      // wait) to produce the sessionIds before starting. Historical-traces mode already has its
+      // sessions (collected in the wizard), so it skips straight to 'starting'. That asymmetry is
+      // intentional — only dataset mode has pre-start work.
       const isDataset = flow.name === 'wizard' && flow.source === 'dataset';
-      const initialSteps: Step[] = isDataset
-        ? [
-            { label: 'Running dataset scenarios...', status: 'running' },
-            { label: 'Starting batch evaluation', status: 'pending' },
-            { label: 'Polling for results', status: 'pending' },
-            { label: 'Fetching scores', status: 'pending' },
-          ]
-        : [
-            { label: 'Starting batch evaluation...', status: 'running' },
-            { label: 'Polling for results', status: 'pending' },
-            { label: 'Fetching scores', status: 'pending' },
-          ];
-      setFlow({ name: 'running', config, steps: initialSteps, elapsed: 0 });
+      if (isDataset && flow.name === 'wizard') {
+        // Inject dataset info from source-picker selection
+        const datasetConfig = { ...config, dataset: flow.dataset, datasetVersion: flow.datasetVersion };
+        setFlow({
+          name: 'phase1',
+          config: datasetConfig,
+          message: `Loading dataset "${flow.dataset ?? 'default'}"...`,
+        });
+      } else {
+        setFlow({ name: 'starting', config });
+      }
     },
     [flow]
   );
 
-  // Execute batch evaluation
+  // Phase 1 (dataset mode only): invoke dataset scenarios, build ground-truth metadata, then start.
   useEffect(() => {
-    if (flow.name !== 'running') return;
+    if (flow.name !== 'phase1') return;
     let cancelled = false;
 
     const { config } = flow;
-    const startTime = Date.now();
-
-    const timer = setInterval(() => {
-      if (!cancelled) {
-        setFlow(prev => {
-          if (prev.name !== 'running') return prev;
-          return { ...prev, elapsed: Math.floor((Date.now() - startTime) / 1000) };
-        });
-      }
-    }, 1000);
 
     void (async () => {
       try {
-        const result = await runBatchEvaluationCommand({
+        const configIO = new ConfigIO();
+        const [projectSpec, deployedState, awsTargets] = await Promise.all([
+          configIO.readProjectSpec(),
+          configIO.readDeployedState(),
+          configIO.resolveAWSDeploymentTargets(),
+        ]);
+
+        const agentContext = await resolveAgentContext({
+          project: projectSpec,
+          deployedState,
+          awsTargets,
+          agentName: config.agent,
+        });
+
+        if (cancelled) return;
+
+        const datasetResult = await runDatasetScenarios({
+          agentContext,
+          datasetName: config.dataset!,
+          version: config.datasetVersion,
+          configBaseDir: configIO.getConfigRoot(),
+          onProgress: (_phase, msg) => {
+            if (!cancelled) setFlow(prev => (prev.name === 'phase1' ? { ...prev, message: msg } : prev));
+          },
+        });
+
+        if (cancelled) return;
+
+        const successfulResults = datasetResult.scenarioResults.filter(r => r.status === 'success');
+        if (successfulResults.length === 0) {
+          setFlow({ name: 'error', message: 'All scenarios failed during invocation. No sessions to evaluate.' });
+          return;
+        }
+
+        const sessionIds = successfulResults.map(r => r.sessionId);
+
+        // Build sessionMetadata with ground truth from dataset scenarios
+        const sessionMetadata: SessionMetadataEntry[] = successfulResults.map(r => {
+          const scenario = datasetResult.scenarios.find(s => s.scenario_id === r.scenarioId);
+          return {
+            sessionId: r.sessionId,
+            testScenarioId: r.scenarioId,
+            groundTruth: scenario
+              ? {
+                  inline: {
+                    ...(scenario.assertions ? { assertions: scenario.assertions.map(a => ({ text: a })) } : {}),
+                    ...(scenario.expected_trajectory
+                      ? { expectedTrajectory: { toolNames: scenario.expected_trajectory } }
+                      : {}),
+                    ...(scenario.turns.some(t => t.expectedResponse)
+                      ? {
+                          turns: scenario.turns.map(t => ({
+                            input: { prompt: t.input },
+                            ...(t.expectedResponse ? { expectedResponse: { text: t.expectedResponse } } : {}),
+                          })),
+                        }
+                      : {}),
+                  },
+                }
+              : undefined,
+          };
+        }) as SessionMetadataEntry[];
+
+        setFlow(prev =>
+          prev.name === 'phase1' ? { ...prev, message: 'Waiting 180s for CloudWatch span ingestion...' } : prev
+        );
+
+        // Wait for CloudWatch span ingestion before submitting — the batch service
+        // queries CloudWatch server-side, so we can't poll. Match SDK default (180s).
+        await sleep(BATCH_INGESTION_DELAY_MS);
+        if (cancelled) return;
+
+        setFlow({ name: 'starting', config: { ...config, sessionIds, sessionMetadata } });
+      } catch (err) {
+        if (!cancelled) setFlow({ name: 'error', message: getErrorMessage(err) });
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [flow.name]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Fire-and-forget: start the batch evaluation job, then show the Started confirmation screen.
+  useEffect(() => {
+    if (flow.name !== 'starting') return;
+    let cancelled = false;
+
+    const { config } = flow;
+
+    void (async () => {
+      try {
+        const result = await engine.start('batch-evaluation', {
           agent: config.agent,
           evaluators: config.evaluators,
           name: config.name || undefined,
           sessionIds: config.sessionIds.length > 0 ? config.sessionIds : undefined,
           lookbackDays: config.days,
           sessionMetadata: config.sessionMetadata,
-          dataset: config.dataset,
-          datasetVersion: config.datasetVersion,
-          onProgress: (status, _message) => {
-            if (cancelled) return;
-            setFlow(prev => {
-              if (prev.name !== 'running') return prev;
-              const steps = [...prev.steps];
-              if (status === 'running') {
-                steps[0] = { ...steps[0]!, status: 'success' };
-                steps[1] = { ...steps[1]!, status: 'running' };
-              }
-              return { ...prev, steps };
-            });
-          },
-          onStarted: info => {
-            setFlow(prev => {
-              if (prev.name !== 'running') return prev;
-              return { ...prev, batchEvaluationId: info.batchEvaluationId, region: info.region };
-            });
-          },
+          source: config.dataset ? 'dataset' : 'traces',
+          dataset: config.dataset ? { id: config.dataset, version: config.datasetVersion ?? 'LOCAL' } : undefined,
+          kmsKeyArn: config.kmsKeyArn || undefined,
         });
 
-        clearInterval(timer);
         if (cancelled) return;
 
-        // Save results locally
-        let savedFilePath: string | undefined;
-        if (result.success) {
-          try {
-            const datasetInfo = config.dataset
-              ? {
-                  source: 'dataset' as const,
-                  dataset: { id: config.dataset, version: config.datasetVersion ?? 'LOCAL' },
-                }
-              : {};
-            savedFilePath = saveBatchEvalRun({ result, ...datasetInfo });
-          } catch {
-            // Non-fatal
-          }
-        }
-
         if (!result.success) {
-          setFlow(prev => {
-            if (prev.name !== 'running') return prev;
-            const steps = prev.steps.map(s =>
-              s.status === 'running' ? { ...s, status: 'error' as const, error: result.error.message } : s
-            );
-            return { ...prev, steps };
-          });
-          await new Promise(resolve => setTimeout(resolve, 2000));
-          if (cancelled) return;
-          setFlow({
-            name: 'error',
-            message: result.error?.message ?? 'Batch evaluation failed',
-            logFilePath: result.logFilePath,
-          });
+          setFlow({ name: 'error', message: result.error.message });
           return;
         }
 
-        // Mark all steps success
-        setFlow(prev => {
-          if (prev.name !== 'running') return prev;
-          const steps = prev.steps.map(s => ({ ...s, status: 'success' as const }));
-          return { ...prev, steps };
-        });
-
-        setFlow({ name: 'results', result, savedFilePath });
+        setFlow({ name: 'started', record: result.record, config });
       } catch (err) {
-        clearInterval(timer);
-        if (!cancelled) {
-          const errorMsg = getErrorMessage(err);
-          setFlow(prev => {
-            if (prev.name !== 'running') return prev;
-            const steps = prev.steps.map(s =>
-              s.status === 'running' ? { ...s, status: 'error' as const, error: errorMsg } : s
-            );
-            return { ...prev, steps };
-          });
-          await new Promise(resolve => setTimeout(resolve, 2000));
-          setFlow({ name: 'error', message: errorMsg });
-        }
+        if (!cancelled) setFlow({ name: 'error', message: getErrorMessage(err) });
       }
     })();
 
     return () => {
       cancelled = true;
-      clearInterval(timer);
     };
   }, [flow.name]); // eslint-disable-line react-hooks/exhaustive-deps
 
   if (flow.name === 'loading') {
     return (
-      <Screen title="Run Batch Evaluation [preview]" onExit={onExit}>
+      <Screen title="Run Batch Evaluation" onExit={onExit}>
         <GradientText text="Loading agents and evaluators..." />
       </Screen>
     );
@@ -389,37 +395,34 @@ export function RunBatchEvalFlow({ onExit }: RunBatchEvalFlowProps) {
     );
   }
 
-  if (flow.name === 'running') {
-    const minutes = Math.floor(flow.elapsed / 60);
-    const seconds = flow.elapsed % 60;
-    const timeStr = minutes > 0 ? `${minutes}m ${seconds}s` : `${seconds}s`;
-
+  if (flow.name === 'phase1') {
     return (
-      <Screen title="Run Batch Evaluation [preview]" onExit={onExit}>
+      <Screen title="Run Batch Evaluation" onExit={onExit}>
         <Panel>
-          <Box flexDirection="column" gap={1}>
-            <Text>
-              <Text bold>Agent:</Text> {flow.config.agent}
-              {'  '}
-              <Text bold>Evaluators:</Text> {flow.config.evaluatorNames.join(', ')}
-              {'  '}
-              <Text dimColor>({timeStr})</Text>
-            </Text>
-            <StepProgress steps={flow.steps} />
-            <Text dimColor>This may take a few minutes...</Text>
-            {flow.batchEvaluationId && <Text dimColor>Press Esc to stop the evaluation</Text>}
+          <Box flexDirection="column">
+            <Text bold>Phase 1: invoking dataset scenarios...</Text>
+            <GradientText text={flow.message} />
           </Box>
         </Panel>
       </Screen>
     );
   }
 
-  if (flow.name === 'results') {
+  if (flow.name === 'starting') {
     return (
-      <ResultsView
-        result={flow.result}
-        savedFilePath={flow.savedFilePath}
+      <Screen title="Run Batch Evaluation" onExit={onExit}>
+        <GradientText text="Starting batch evaluation..." />
+      </Screen>
+    );
+  }
+
+  if (flow.name === 'started') {
+    return (
+      <StartedView
+        record={flow.record}
+        config={flow.config}
         onRunAnother={() => setFlow({ name: 'loading' })}
+        onViewJobs={onViewJobs}
         onExit={onExit}
       />
     );
@@ -428,10 +431,76 @@ export function RunBatchEvalFlow({ onExit }: RunBatchEvalFlowProps) {
   return (
     <ErrorPrompt
       message="Batch evaluation failed"
-      detail={flow.logFilePath ? `${flow.message}\n\nLog: ${flow.logFilePath}` : flow.message}
+      detail={flow.message}
       onBack={() => setFlow({ name: 'loading' })}
       onExit={onExit}
     />
+  );
+}
+
+// ============================================================================
+// Started confirmation view
+// ============================================================================
+
+interface StartedViewProps {
+  record: BatchEvaluationJobRecord;
+  config: BatchEvalConfig;
+  onRunAnother: () => void;
+  onViewJobs?: () => void;
+  onExit: () => void;
+}
+
+function StartedView({ record, config, onRunAnother, onViewJobs, onExit }: StartedViewProps) {
+  const actions = [
+    { id: 'jobs', title: 'View jobs' },
+    { id: 'another', title: 'Run another' },
+    { id: 'back', title: 'Back' },
+  ];
+
+  const nav = useListNavigation({
+    items: actions,
+    onSelect: item => {
+      if (item.id === 'jobs') (onViewJobs ?? onExit)();
+      else if (item.id === 'another') onRunAnother();
+      else onExit();
+    },
+    onExit,
+    isActive: true,
+  });
+
+  return (
+    <Screen title="Batch Evaluation Started" onExit={onExit} helpText={HELP_TEXT.NAVIGATE_SELECT} exitEnabled={false}>
+      <Panel fullWidth>
+        <Box flexDirection="column">
+          <Text color="green">
+            ✓ {record.id} ({record.status})
+          </Text>
+          <Text>
+            <Text bold>Agent:</Text> {config.agent}
+            {'  '}
+            <Text bold>Evaluators:</Text> {config.evaluatorNames.join(', ')}
+          </Text>
+
+          <Box marginTop={1}>
+            <Text dimColor>When it completes, view it in Batch Eval Jobs.</Text>
+          </Box>
+
+          <Box marginTop={1} flexDirection="column">
+            {actions.map((action, idx) => {
+              const selected = idx === nav.selectedIndex;
+              return (
+                <Text key={action.id}>
+                  <Text color={selected ? 'cyan' : undefined}>{selected ? '❯' : ' '} </Text>
+                  <Text color={selected ? 'cyan' : undefined} bold={selected}>
+                    {action.title}
+                  </Text>
+                </Text>
+              );
+            })}
+          </Box>
+        </Box>
+      </Panel>
+    </Screen>
   );
 }
 
@@ -460,11 +529,13 @@ function BatchEvalWizard({
   const isDatasetMode = source === 'dataset';
   const allSteps = useMemo<BatchEvalStep[]>(() => {
     if (isDatasetMode) {
-      return skipAgent ? ['evaluators', 'name', 'confirm'] : ['agent', 'evaluators', 'name', 'confirm'];
+      return skipAgent
+        ? ['evaluators', 'kms-key-arn', 'name', 'confirm']
+        : ['agent', 'evaluators', 'kms-key-arn', 'name', 'confirm'];
     }
     return skipAgent
-      ? ['evaluators', 'days', 'sessions', 'ground-truth', 'name', 'confirm']
-      : ['agent', 'evaluators', 'days', 'sessions', 'ground-truth', 'name', 'confirm'];
+      ? ['evaluators', 'days', 'sessions', 'ground-truth', 'kms-key-arn', 'name', 'confirm']
+      : ['agent', 'evaluators', 'days', 'sessions', 'ground-truth', 'kms-key-arn', 'name', 'confirm'];
   }, [skipAgent, isDatasetMode]);
 
   const [step, setStep] = useState<BatchEvalStep>(allSteps[0]!);
@@ -476,6 +547,7 @@ function BatchEvalWizard({
     sessionIds: [],
     groundTruthFile: '',
     sessionMetadata: undefined,
+    kmsKeyArn: '',
     name: '',
   });
 
@@ -523,6 +595,7 @@ function BatchEvalWizard({
   const isDaysStep = step === 'days';
   const isSessionsStep = step === 'sessions';
   const isGroundTruthStep = step === 'ground-truth';
+  const isKmsKeyArnStep = step === 'kms-key-arn';
   const isNameStep = step === 'name';
   const isConfirmStep = step === 'confirm';
 
@@ -704,10 +777,13 @@ function BatchEvalWizard({
               ? HELP_TEXT.TEXT_INPUT
               : HELP_TEXT.CONFIRM_CANCEL;
 
-  const headerContent = <StepIndicator steps={allSteps} currentStep={step} labels={STEP_LABELS} />;
+  // Prepend the breadcrumb-only 'source' step so the wizard header matches the source-picker's
+  // (it renders as a completed step here). 'source' is intentionally absent from navigable allSteps.
+  const displaySteps = useMemo<BatchEvalStep[]>(() => ['source', ...allSteps], [allSteps]);
+  const headerContent = <StepIndicator steps={displaySteps} currentStep={step} labels={STEP_LABELS} />;
 
   return (
-    <Screen title="Run Batch Evaluation [preview]" onExit={goBack} helpText={helpText} headerContent={headerContent}>
+    <Screen title="Run Batch Evaluation" onExit={goBack} helpText={helpText} headerContent={headerContent}>
       <Panel>
         {isAgentStep && (
           <WizardSelect
@@ -846,6 +922,27 @@ function BatchEvalWizard({
           />
         )}
 
+        {isKmsKeyArnStep && (
+          <TextInput
+            key="kms-key-arn"
+            prompt="KMS key ARN for encryption (optional, press Enter to skip)"
+            initialValue=""
+            allowEmpty
+            onSubmit={value => {
+              setConfig(c => ({ ...c, kmsKeyArn: value }));
+              goNext();
+            }}
+            onCancel={() => goBack()}
+            customValidation={value => {
+              if (!value) return true;
+              if (!isValidKmsKeyArn(value)) {
+                return 'Invalid KMS key ARN (e.g. arn:aws:kms:us-east-1:123456789012:key/12345678-1234-1234-1234-123456789012)';
+              }
+              return true;
+            }}
+          />
+        )}
+
         {isNameStep && (
           <Box flexDirection="column">
             <Text dimColor>Optional — leave blank for auto-generated name.</Text>
@@ -885,6 +982,7 @@ function BatchEvalWizard({
                         ]
                       : []),
                   ]),
+              ...(config.kmsKeyArn ? [{ label: 'KMS Key ARN', value: config.kmsKeyArn }] : []),
               ...(config.name ? [{ label: 'Name', value: config.name }] : []),
             ]}
           />
@@ -921,7 +1019,6 @@ function BatchEvalSourcePicker({
   useEffect(() => {
     void (async () => {
       try {
-        const { ConfigIO } = await import('../../../../lib');
         const configIO = new ConfigIO();
         const spec = await configIO.readProjectSpec();
         setDatasets(
@@ -1043,218 +1140,85 @@ function BatchEvalSourcePicker({
     isActive: step === 'version' && !loadingVersions,
   });
 
+  // Breadcrumb-only header so the picker shares the wizard's chrome (border + step indicator).
+  // 'source' is the active step; the remaining steps are a representative preview (the actual
+  // step list is finalized once a mode is chosen and the wizard takes over).
+  const pickerSteps: BatchEvalStep[] = ['source', 'evaluators', 'name', 'confirm'];
+  const pickerHeader = <StepIndicator steps={pickerSteps} currentStep="source" labels={STEP_LABELS} />;
+
   if (step === 'version') {
     return (
       <Screen
-        title="Run Batch Evaluation [preview]"
+        title="Run Batch Evaluation"
         onExit={() => (datasets.length > 1 ? setStep('dataset') : setStep('source'))}
+        headerContent={pickerHeader}
       >
-        <Box flexDirection="column">
-          <Text bold>Select version for {selectedDataset}:</Text>
-          {loadingVersions ? (
-            <GradientText text="Loading versions..." />
-          ) : (
-            <>
-              {versionItems.map((item, i) => (
-                <Text key={item.id}>
-                  {i === versionNav.selectedIndex ? <Text color="cyan">❯ </Text> : '  '}
-                  <Text color={i === versionNav.selectedIndex ? 'cyan' : undefined}>{item.title}</Text>
-                  <Text dimColor> — {item.description}</Text>
-                </Text>
-              ))}
-              <Text dimColor>{'\n'}↑↓ Enter select · Esc back</Text>
-            </>
-          )}
-        </Box>
+        <Panel>
+          <Box flexDirection="column">
+            <Text bold>Select version for {selectedDataset}:</Text>
+            {loadingVersions ? (
+              <GradientText text="Loading versions..." />
+            ) : (
+              <>
+                {versionItems.map((item, i) => (
+                  <Text key={item.id}>
+                    {i === versionNav.selectedIndex ? <Text color="cyan">❯ </Text> : '  '}
+                    <Text color={i === versionNav.selectedIndex ? 'cyan' : undefined}>{item.title}</Text>
+                    <Text dimColor> — {item.description}</Text>
+                  </Text>
+                ))}
+                <Text dimColor>{'\n'}↑↓ Enter select · Esc back</Text>
+              </>
+            )}
+          </Box>
+        </Panel>
       </Screen>
     );
   }
 
   if (step === 'dataset') {
     return (
-      <Screen title="Run Batch Evaluation [preview]" onExit={() => setStep('source')}>
-        <Box flexDirection="column">
-          <Text bold>Select dataset:</Text>
-          {datasetItems.map((item, i) => (
-            <Text key={item.id}>
-              {i === datasetNav.selectedIndex ? <Text color="cyan">❯ </Text> : '  '}
-              <Text color={i === datasetNav.selectedIndex ? 'cyan' : undefined}>{item.title}</Text>
-              {item.description && <Text dimColor> — {item.description}</Text>}
-            </Text>
-          ))}
-          <Text dimColor>{'\n'}↑↓ Enter select · Esc back</Text>
-        </Box>
+      <Screen title="Run Batch Evaluation" onExit={() => setStep('source')} headerContent={pickerHeader}>
+        <Panel>
+          <Box flexDirection="column">
+            <Text bold>Select dataset:</Text>
+            {datasetItems.map((item, i) => (
+              <Text key={item.id}>
+                {i === datasetNav.selectedIndex ? <Text color="cyan">❯ </Text> : '  '}
+                <Text color={i === datasetNav.selectedIndex ? 'cyan' : undefined}>{item.title}</Text>
+                {item.description && <Text dimColor> — {item.description}</Text>}
+              </Text>
+            ))}
+            <Text dimColor>{'\n'}↑↓ Enter select · Esc back</Text>
+          </Box>
+        </Panel>
       </Screen>
     );
   }
 
   return (
-    <Screen title="Run Batch Evaluation [preview]" onExit={onExit}>
-      <Box flexDirection="column">
-        <Text bold>Evaluation source:</Text>
-        {sourceItems.map((item, i) => (
-          <Text key={item.id}>
-            {i === sourceNav.selectedIndex ? <Text color="cyan">❯ </Text> : '  '}
-            <Text color={i === sourceNav.selectedIndex ? 'cyan' : undefined}>{item.title}</Text>
-            <Text dimColor> — {item.description}</Text>
-          </Text>
-        ))}
-        <Text dimColor>{'\n'}↑↓ Enter select · Esc back</Text>
-      </Box>
-    </Screen>
-  );
-}
-
-// ============================================================================
-// Results View
-// ============================================================================
-
-function scoreColor(score: number): string {
-  if (score >= 0.8) return 'green';
-  if (score >= 0.5) return 'yellow';
-  return 'red';
-}
-
-interface ResultsViewProps {
-  result: RunBatchEvaluationCommandResult;
-  savedFilePath?: string;
-  onRunAnother: () => void;
-  onExit: () => void;
-}
-
-function ResultsView({ result, savedFilePath, onRunAnother, onExit }: ResultsViewProps) {
-  const actions = [
-    { id: 'another', title: 'Run another batch evaluation' },
-    { id: 'back', title: 'Back' },
-  ];
-
-  const nav = useListNavigation({
-    items: actions,
-    onSelect: item => {
-      if (item.id === 'another') onRunAnother();
-      else onExit();
-    },
-    onExit,
-    isActive: true,
-  });
-
-  const evalRes = result.evaluationResults;
-  const summaries = evalRes?.evaluatorSummaries;
-
-  // Fall back to local grouping when API summaries aren't available
-  const byEvaluator = useMemo(() => {
-    if (summaries && summaries.length > 0) return null;
-    const map = new Map<string, BatchEvaluationResult[]>();
-    for (const r of result.results) {
-      const group = map.get(r.evaluatorId) ?? [];
-      group.push(r);
-      map.set(r.evaluatorId, group);
-    }
-    return map;
-  }, [result.results, summaries]);
-
-  return (
-    <Screen
-      title="Batch Evaluation Complete [preview]"
-      onExit={onExit}
-      helpText={HELP_TEXT.NAVIGATE_SELECT}
-      exitEnabled={false}
-    >
-      <Panel fullWidth>
+    <Screen title="Run Batch Evaluation" onExit={onExit} headerContent={pickerHeader}>
+      <Panel>
         <Box flexDirection="column">
-          <Text color="green">✓ Batch evaluation complete</Text>
-          <Text>
-            <Text bold>ID:</Text> {result.batchEvaluationId}
-            {'  '}
-            <Text bold>Status:</Text> {result.status}
-          </Text>
-          {result.name && (
-            <Text>
-              <Text bold>Name:</Text> {result.name}
+          <Text bold>Evaluation source:</Text>
+          {sourceItems.map((item, i) => (
+            <Text key={item.id}>
+              {i === sourceNav.selectedIndex ? <Text color="cyan">❯ </Text> : '  '}
+              <Text color={i === sourceNav.selectedIndex ? 'cyan' : undefined}>{item.title}</Text>
+              <Text dimColor> — {item.description}</Text>
             </Text>
-          )}
-
-          {evalRes?.totalNumberOfSessions != null && (
-            <Text>
-              <Text bold>Sessions:</Text> {evalRes.totalNumberOfSessions} total
-              {evalRes.numberOfSessionsCompleted != null && (
-                <Text>, {evalRes.numberOfSessionsCompleted} completed</Text>
-              )}
-              {evalRes.numberOfSessionsFailed ? (
-                <Text color="red">, {evalRes.numberOfSessionsFailed} failed</Text>
-              ) : null}
-            </Text>
-          )}
-
-          {summaries && summaries.length > 0 ? (
-            <Box marginTop={1} flexDirection="column">
-              <Text dimColor>Scores range from 0 (worst) to 1 (best).</Text>
-              {summaries.map(s => {
-                const avg = s.statistics?.averageScore;
-                const avgStr = avg != null ? avg.toFixed(2) : 'N/A';
-                const color = avg != null ? scoreColor(avg) : undefined;
-                return (
-                  <Text key={s.evaluatorId}>
-                    {'  '}
-                    <Text bold>{s.evaluatorId}</Text>
-                    {'  '}
-                    <Text color={color}>{avgStr}</Text>
-                    {s.totalFailed ? <Text color="red"> ({s.totalFailed} failed)</Text> : null}
-                    {s.totalEvaluated != null && <Text dimColor> [{s.totalEvaluated} evaluated]</Text>}
-                  </Text>
-                );
-              })}
-            </Box>
-          ) : byEvaluator && byEvaluator.size > 0 ? (
-            <Box marginTop={1} flexDirection="column">
-              <Text dimColor>Scores range from 0 (worst) to 1 (best).</Text>
-              {[...byEvaluator.entries()].map(([evalId, evalResults]) => {
-                const scores = evalResults.filter(r => !r.error).map(r => r.score!);
-                const avg = scores.length > 0 ? scores.reduce((a, b) => a + b, 0) / scores.length : 0;
-                const errors = evalResults.filter(r => r.error).length;
-                return (
-                  <Text key={evalId}>
-                    {'  '}
-                    <Text bold>{evalId}</Text>
-                    {'  '}
-                    <Text color={scoreColor(avg)}>{avg.toFixed(2)}</Text>
-                    {errors > 0 && <Text color="red"> ({errors} errors)</Text>}
-                  </Text>
-                );
-              })}
-            </Box>
-          ) : (
-            <Box marginTop={1}>
-              <Text dimColor>No evaluation results returned.</Text>
-            </Box>
-          )}
-
-          {savedFilePath && (
-            <Box marginTop={1}>
-              <Text dimColor>Results saved to: {savedFilePath}</Text>
-            </Box>
-          )}
-          {result.logFilePath && (
-            <Box marginTop={1}>
-              <Text dimColor>Log: {result.logFilePath}</Text>
-            </Box>
-          )}
-
-          <Box marginTop={1} flexDirection="column">
-            {actions.map((action, idx) => {
-              const selected = idx === nav.selectedIndex;
-              return (
-                <Text key={action.id}>
-                  <Text color={selected ? 'cyan' : undefined}>{selected ? '❯' : ' '} </Text>
-                  <Text color={selected ? 'cyan' : undefined} bold={selected}>
-                    {action.title}
-                  </Text>
-                </Text>
-              );
-            })}
-          </Box>
+          ))}
+          <Text dimColor>{'\n'}↑↓ Enter select · Esc back</Text>
         </Box>
       </Panel>
     </Screen>
   );
+}
+
+// ============================================================================
+// Helpers
+// ============================================================================
+
+function sleep(ms: number): Promise<void> {
+  return new Promise(resolve => setTimeout(resolve, ms));
 }

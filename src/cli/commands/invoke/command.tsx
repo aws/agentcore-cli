@@ -2,6 +2,7 @@ import { ValidationError, serializeResult } from '../../../lib';
 import { COMMAND_DESCRIPTIONS } from '../../constants';
 import { getErrorMessage } from '../../errors';
 import { isPreviewEnabled } from '../../feature-flags';
+import { ADDITIONAL_PARAMS_JSON_ERROR } from '../../primitives/constants';
 import { withCommandRunTelemetry } from '../../telemetry/cli-command-run.js';
 import { renderTUI } from '../../tui';
 import { requireProject, requireTTY } from '../../tui/guards';
@@ -139,6 +140,8 @@ export const registerInvoke = (program: Command) => {
       'Read the prompt from a file (for long or structured payloads that exceed shell arg limits) [non-interactive]'
     )
     .option('--runtime <name>', 'Select specific runtime [non-interactive]')
+    .option('--gateway <name>', 'Invoke through a gateway [non-interactive]')
+    .option('--gateway-target-name <name>', 'HTTP runtime target on the gateway [non-interactive]')
     .option('--target <name>', 'Select deployment target [non-interactive]')
     .option('--session-id <id>', 'Use specific session ID for conversation continuity')
     .option('--user-id <id>', 'User ID for runtime invocation (default: "default-user")')
@@ -168,37 +171,32 @@ export const registerInvoke = (program: Command) => {
 
   if (isPreviewEnabled()) {
     invokeCmd
-      .option('--harness <name>', 'Select specific harness to invoke [non-interactive] [preview]')
-      .option('--harness-arn <arn>', 'Invoke a harness by ARN (no project required) [non-interactive] [preview]')
-      .option(
-        '--region <region>',
-        'AWS region (required with --harness-arn when no project) [non-interactive] [preview]'
-      )
-      .option('--verbose', 'Print verbose streaming JSON events (harness only) [non-interactive] [preview]')
-      .option('--model-id <id>', 'Override model for this invocation (harness only) [non-interactive] [preview]')
+      .option('--harness <name>', 'Select specific harness to invoke [non-interactive]')
+      .option('--harness-arn <arn>', 'Invoke a harness by ARN (no project required) [non-interactive]')
+      .option('--region <region>', 'AWS region (required with --harness-arn when no project) [non-interactive]')
+      .option('--verbose', 'Print verbose streaming JSON events (harness only) [non-interactive]')
+      .option('--model-id <id>', 'Override model for this invocation (harness only) [non-interactive]')
       .option(
         '--model-provider <provider>',
-        'Override model provider: bedrock, open_ai, gemini (harness only) [non-interactive] [preview]'
+        'Override model provider: bedrock, open_ai, gemini, lite_llm (harness only) [non-interactive]'
       )
+      .option('--api-key-arn <arn>', 'Override API key ARN for open_ai/gemini (harness only) [non-interactive]')
+      .option('--api-base <url>', 'Override LiteLLM API base URL (harness only, lite_llm) [non-interactive]')
       .option(
-        '--api-key-arn <arn>',
-        'Override API key ARN for open_ai/gemini (harness only) [non-interactive] [preview]'
+        '--additional-params <json>',
+        'Override LiteLLM additional params as a JSON object (harness only, lite_llm) [non-interactive]'
       )
-      .option('--tools <tools>', 'Override tools, comma-separated (harness only) [non-interactive] [preview]')
-      .option('--max-iterations <n>', 'Override max iterations (harness only) [non-interactive] [preview]', parseInt)
-      .option('--max-tokens <n>', 'Override max tokens (harness only) [non-interactive] [preview]', parseInt)
+      .option('--tools <tools>', 'Override tools, comma-separated (harness only) [non-interactive]')
+      .option('--max-iterations <n>', 'Override max iterations (harness only) [non-interactive]', parseInt)
+      .option('--max-tokens <n>', 'Override max tokens (harness only) [non-interactive]', parseInt)
+      .option('--harness-timeout <seconds>', 'Override timeout seconds (harness only) [non-interactive]', parseInt)
       .option(
-        '--harness-timeout <seconds>',
-        'Override timeout seconds (harness only) [non-interactive] [preview]',
-        parseInt
+        '--skills <sources>',
+        'Skills override, comma-separated (path, s3://uri, or https://git-url). Git auth not supported here — configure via agentcore add skill [non-interactive]'
       )
-      .option('--skills <paths>', 'Skills to use, comma-separated paths (harness only) [non-interactive] [preview]')
-      .option('--system-prompt <text>', 'Override system prompt (harness only) [non-interactive] [preview]')
-      .option(
-        '--allowed-tools <tools>',
-        'Override allowed tools, comma-separated (harness only) [non-interactive] [preview]'
-      )
-      .option('--actor-id <id>', 'Override memory actor ID (harness only) [non-interactive] [preview]');
+      .option('--system-prompt <text>', 'Override system prompt (harness only) [non-interactive]')
+      .option('--allowed-tools <tools>', 'Override allowed tools, comma-separated (harness only) [non-interactive]')
+      .option('--actor-id <id>', 'Override memory actor ID (harness only) [non-interactive]');
   }
 
   // Group the long flag list into labelled sections (mirrors `add ab-test`).
@@ -271,13 +269,13 @@ MCP & Advanced [non-interactive]
     invokeCmd.addHelpText(
       'after',
       `
-Harness [non-interactive] [preview]
+Harness [non-interactive]
   --harness <name>                 Select specific harness to invoke
   --harness-arn <arn>              Invoke a harness by ARN (no project required)
   --region <region>                AWS region (required with --harness-arn)
   --verbose                        Print verbose streaming JSON events
 
-Model & Runtime Overrides (harness only) [non-interactive] [preview]
+Model & Runtime Overrides (harness only) [non-interactive]
   --model-id <id>                  Override model
   --model-provider <provider>      bedrock, open_ai, or gemini
   --api-key-arn <arn>              API key ARN for open_ai/gemini
@@ -300,6 +298,8 @@ Model & Runtime Overrides (harness only) [non-interactive] [preview]
         prompt?: string;
         promptFile?: string;
         runtime?: string;
+        gateway?: string;
+        gatewayTargetName?: string;
         target?: string;
         sessionId?: string;
         userId?: string;
@@ -318,6 +318,8 @@ Model & Runtime Overrides (harness only) [non-interactive] [preview]
         modelId?: string;
         modelProvider?: string;
         apiKeyArn?: string;
+        apiBase?: string;
+        additionalParams?: string;
         tools?: string;
         maxIterations?: number;
         maxTokens?: number;
@@ -366,8 +368,10 @@ Model & Runtime Overrides (harness only) [non-interactive] [preview]
           resolved.prompt !== undefined ||
           cliOptions.json ||
           cliOptions.target ||
+          cliOptions.gatewayTargetName ||
           cliOptions.stream ||
           cliOptions.runtime ||
+          cliOptions.gateway ||
           cliOptions.tool ||
           cliOptions.exec ||
           cliOptions.bearerToken ||
@@ -404,9 +408,25 @@ Model & Runtime Overrides (harness only) [non-interactive] [preview]
                 headers = parseHeaderFlags(cliOptions.header);
               }
 
+              let additionalParams: Record<string, unknown> | undefined;
+              if (cliOptions.additionalParams) {
+                try {
+                  additionalParams = JSON.parse(cliOptions.additionalParams) as Record<string, unknown>;
+                } catch {
+                  if (cliOptions.json) {
+                    console.log(JSON.stringify({ success: false, error: ADDITIONAL_PARAMS_JSON_ERROR }));
+                  } else {
+                    console.error(ADDITIONAL_PARAMS_JSON_ERROR);
+                  }
+                  process.exit(1);
+                }
+              }
+
               const options: InvokeOptions = {
                 prompt: resolved.prompt,
                 agentName: cliOptions.runtime,
+                gateway: cliOptions.gateway,
+                gatewayTarget: cliOptions.gatewayTargetName,
                 targetName: cliOptions.target ?? 'default',
                 sessionId: cliOptions.sessionId,
                 userId: cliOptions.userId,
@@ -425,6 +445,8 @@ Model & Runtime Overrides (harness only) [non-interactive] [preview]
                 modelId: cliOptions.modelId,
                 modelProvider: cliOptions.modelProvider,
                 apiKeyArn: cliOptions.apiKeyArn,
+                apiBase: cliOptions.apiBase,
+                additionalParams,
                 tools: cliOptions.tools,
                 maxIterations: cliOptions.maxIterations,
                 maxTokens: cliOptions.maxTokens,

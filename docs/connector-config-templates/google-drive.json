@@ -1,0 +1,12 @@
+{
+  "type": "GOOGLEDRIVE",
+  "version": "1",
+  "connectionConfiguration": {
+    "authType": "SERVICE_ACCOUNT",
+    "secretArn": "arn:aws:secretsmanager:us-west-2:111122223333:secret:gdrive-creds"
+  },
+  "dataEntityConfiguration": {
+    "crawlMyDrive": true,
+    "crawlSharedDrives": false
+  }
+}
