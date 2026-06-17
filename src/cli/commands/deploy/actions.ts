@@ -768,6 +768,19 @@ export async function handleDeploy(options: ValidatedDeployOptions): Promise<Dep
 
     const postDeployWarnings: string[] = [];
 
+    // Auto-payment is a money-movement default; surface its posture per manager
+    // so an unattended-spend configuration is never silent at deploy time.
+    for (const manager of context.projectSpec.payments ?? []) {
+      if (manager.autoPayment !== false) {
+        const limit = manager.defaultSpendLimit ?? '10.00';
+        postDeployWarnings.push(
+          `Payment manager "${manager.name}": auto-payment is ENABLED — the agent will settle ` +
+            `402 responses automatically up to the per-session spend limit ($${limit}) with no ` +
+            `human approval. Set --auto-payment false on the manager to require manual approval.`
+        );
+      }
+    }
+
     // Post-deploy: Enable online eval configs that have enableOnCreate (CFN deploys them as DISABLED).
     // Only enable configs that are newly deployed — skip configs that already existed before this
     // deploy run, so we don't re-enable configs a customer intentionally disabled.
