@@ -4,7 +4,7 @@ import type { OtlpAttribute, OtlpAttributeValue, OtlpResource, OtlpResourceLog, 
 // Trace metadata extraction (from raw OTLP data)
 // ---------------------------------------------------------------------------
 
-export interface TraceMeta {
+interface TraceMeta {
   traceId?: string;
   firstSeen: number;
   lastSeen: number;
@@ -197,7 +197,7 @@ function normalizeSpanKind(kind: number | string | undefined): number {
 // ---------------------------------------------------------------------------
 
 /** Convert nanosecond timestamp (string) to milliseconds. */
-export function nanoToMs(nano: string | undefined): number {
+function nanoToMs(nano: string | undefined): number {
   if (!nano) return 0;
   return Math.floor(Number(nano) / 1_000_000);
 }
@@ -206,7 +206,7 @@ export function nanoToMs(nano: string | undefined): number {
  * Convert a value that may be base64 (from protobuf JSON roundtrip) or
  * already a hex string into a hex string.
  */
-export function hexFromB64OrString(val: string | undefined): string {
+function hexFromB64OrString(val: string | undefined): string {
   if (!val) return '';
   // Already hex (32 chars for traceId, 16 for spanId)
   if (/^[0-9a-f]+$/i.test(val) && (val.length === 32 || val.length === 16)) return val.toLowerCase();
@@ -239,7 +239,7 @@ function getAttrValue(attrs: OtlpAttribute[] | Record<string, unknown> | undefin
  * Flatten OTLP attributes to a plain Record<string, unknown>.
  * Handles both OTLP key/value array format and already-flat records.
  */
-export function flattenAttributes(
+function flattenAttributes(
   attrs: OtlpAttribute[] | Record<string, unknown> | undefined
 ): Record<string, unknown> | undefined {
   if (!attrs) return undefined;
@@ -263,7 +263,7 @@ export function flattenAttributes(
 }
 
 /** Extract a usable value from an OTLP AnyValue. */
-export function extractAnyValue(val: unknown): unknown {
+function extractAnyValue(val: unknown): unknown {
   if (!val || typeof val !== 'object') return val;
   const v = val as Record<string, unknown>;
   if (v.stringValue !== undefined) return v.stringValue;

@@ -11,13 +11,9 @@ export {
 export {
   checkNodeVersion,
   checkUvVersion,
-  checkAwsCliVersion,
-  checkNpmCacheOwnership,
   getAwsLoginGuidance,
   formatVersionError,
-  formatNpmCacheError,
   requiresUv,
-  requiresContainerRuntime,
   checkDependencyVersions,
   checkCreateDependencies,
   type VersionCheckResult,

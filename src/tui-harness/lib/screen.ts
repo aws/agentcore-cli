@@ -87,28 +87,6 @@ export function getBufferType(terminal: Terminal): 'normal' | 'alternate' {
 }
 
 // ---------------------------------------------------------------------------
-// Formatting
-// ---------------------------------------------------------------------------
-
-/**
- * Format an array of lines with right-aligned, 1-indexed line numbers.
- *
- * Example output for a 3-line array:
- * ```
- *   1 | first line
- *   2 | second line
- *   3 | third line
- * ```
- *
- * @param lines - The lines to number.
- * @returns A single string with newline-separated numbered lines.
- */
-export function formatNumbered(lines: string[]): string {
-  const width = String(lines.length).length;
-  return lines.map((line, i) => `${String(i + 1).padStart(width)} | ${line}`).join('\n');
-}
-
-// ---------------------------------------------------------------------------
 // Composite snapshot
 // ---------------------------------------------------------------------------
 

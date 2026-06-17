@@ -514,7 +514,6 @@ export const HarnessSkillSchema = z.union([
   HarnessSkillAwsSkillsSourceSchema,
 ]);
 
-export type HarnessSkillInput = z.input<typeof HarnessSkillSchema>;
 export type HarnessSkill = z.output<typeof HarnessSkillSchema>;
 
 // ============================================================================

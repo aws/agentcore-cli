@@ -21,20 +21,13 @@ const require = createRequire(import.meta.url);
  * Whether node-pty is available and its native addon loaded successfully.
  *
  * When `true`, it is safe to `import * as pty from 'node-pty'` and use
- * the PTY APIs. When `false`, check {@link unavailableReason} for details.
+ * the PTY APIs. When `false`, node-pty could not be loaded.
  */
 export let isAvailable = false;
-
-/**
- * Human-readable reason why node-pty is not available.
- *
- * Empty string when {@link isAvailable} is `true`.
- */
-export let unavailableReason = '';
 
 try {
   require('node-pty');
   isAvailable = true;
-} catch (err) {
-  unavailableReason = `node-pty not available: ${(err as Error).message}`;
+} catch {
+  // node-pty unavailable; isAvailable stays false
 }

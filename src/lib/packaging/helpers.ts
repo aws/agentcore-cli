@@ -2,7 +2,7 @@ import type { RuntimeVersion } from '../../schema';
 import { CONFIG_DIR } from '../constants';
 import { ArtifactSizeError, MissingDependencyError, MissingProjectFileError } from '../errors/types';
 import { isWindows } from '../utils/platform';
-import { checkSubprocess, checkSubprocessSync, runSubprocess } from '../utils/subprocess';
+import { checkSubprocess, checkSubprocessSync } from '../utils/subprocess';
 import type { PackageOptions } from './types/packaging';
 import type { Zippable } from 'fflate';
 import { zipSync } from 'fflate';
@@ -223,10 +223,6 @@ export async function ensureBinaryAvailable(binary: string, installHint?: string
   }
 
   throw new MissingDependencyError(binary, installHint);
-}
-
-export async function runCommand(command: string, args: string[], cwd?: string): Promise<void> {
-  await runSubprocess(command, args, { cwd });
 }
 
 export async function createZipFromDir(sourceDir: string, outputZip: string): Promise<void> {

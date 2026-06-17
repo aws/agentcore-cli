@@ -178,12 +178,6 @@ export class PolicyEnginePrimitive extends BasePrimitive<AddPolicyEngineOptions,
     }
   }
 
-  async getDeployedGatewayArn(): Promise<string | null> {
-    const gateways = await this.getDeployedGateways();
-    const firstArn = Object.values(gateways)[0];
-    return firstArn ?? null;
-  }
-
   /**
    * Get deployed gateways, excluding MCP protocol gateways.
    * Guardrails policies only apply to HTTP (protocolType: "None") gateways.

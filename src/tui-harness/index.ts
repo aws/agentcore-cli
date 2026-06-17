@@ -21,7 +21,7 @@ export { SPECIAL_KEY_VALUES, WaitForTimeoutError, LaunchError } from './lib/type
 export { KEY_MAP, resolveKey } from './lib/key-map.js';
 
 // --- Availability ---
-export { isAvailable, unavailableReason } from './lib/availability.js';
+export { isAvailable } from './lib/availability.js';
 
 // --- Session management (for test cleanup) ---
 export { closeAll } from './lib/session-manager.js';

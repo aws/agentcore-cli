@@ -29,7 +29,7 @@ export const IAM_PROPAGATION_DELAY_MS = 15_000;
 // ============================================================================
 
 /** Generate a project-scoped role name: AgentCore-{ProjectName}-ABTest{TestName}-{Hash} (max 64 chars). */
-export function generateRoleName(projectName: string, testName: string): string {
+function generateRoleName(projectName: string, testName: string): string {
   // Deterministic hash so retries produce the same role name (avoids orphaned roles).
   const hash = createHash('sha256').update(`${projectName}:${testName}`).digest('hex').slice(0, 8);
   const base = `AgentCore-${projectName}-ABTest${testName}`;
@@ -37,7 +37,7 @@ export function generateRoleName(projectName: string, testName: string): string 
 }
 
 /** Extract role name from ARN: arn:aws:iam::123456789012:role/RoleName → RoleName. */
-export function roleNameFromArn(roleArn: string): string {
+function roleNameFromArn(roleArn: string): string {
   const parts = roleArn.split('/');
   return parts[parts.length - 1] ?? roleArn;
 }

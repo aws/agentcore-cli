@@ -195,11 +195,6 @@ export interface AddDatasetOptions {
   json?: boolean;
 }
 
-export interface AddDatasetResult {
-  success: boolean;
-  datasetName?: string;
-  error?: string;
-}
 // Credential types (v2: credential, no owner/user concept)
 export interface AddCredentialOptions {
   name?: string;
@@ -211,6 +206,3 @@ export interface AddCredentialOptions {
   scopes?: string;
   json?: boolean;
 }
-
-/** @deprecated Use AddCredentialOptions */
-export type AddIdentityOptions = AddCredentialOptions;

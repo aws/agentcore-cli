@@ -21,6 +21,7 @@ import stableStringify from 'fast-json-stable-stringify';
 import { randomUUID } from 'node:crypto';
 import { readFile, writeFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
+import { setTimeout as sleep } from 'node:timers/promises';
 
 /** Maximum examples per API call (service limit). */
 const API_BATCH_LIMIT = 1000;
@@ -177,10 +178,6 @@ async function batchOperation<T, R>(options: {
   }
 
   return results;
-}
-
-function sleep(ms: number): Promise<void> {
-  return new Promise(resolve => setTimeout(resolve, ms));
 }
 
 /**

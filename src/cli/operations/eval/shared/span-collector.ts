@@ -178,7 +178,7 @@ export async function executeQueryGraceful(
 /**
  * Execute a CloudWatch Logs Insights query and wait for results.
  */
-export async function executeQuery(
+async function executeQuery(
   client: CloudWatchLogsClient,
   logGroupName: string,
   queryString: string,

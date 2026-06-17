@@ -2,19 +2,6 @@
 export const NAME_REGEX = /^[a-zA-Z][a-zA-Z0-9_]{0,47}$/;
 
 /**
- * CloudFormation resource type to identifier key mapping for IMPORT.
- */
-export const CFN_RESOURCE_IDENTIFIERS: Record<string, string[]> = {
-  'AWS::BedrockAgentCore::Runtime': ['AgentRuntimeId'],
-  'AWS::BedrockAgentCore::Memory': ['MemoryId'],
-  'AWS::BedrockAgentCore::Gateway': ['GatewayIdentifier'],
-  'AWS::BedrockAgentCore::GatewayTarget': ['GatewayIdentifier', 'TargetId'],
-  'AWS::BedrockAgentCore::Evaluator': ['EvaluatorId'],
-  'AWS::BedrockAgentCore::OnlineEvaluationConfig': ['OnlineEvaluationConfigId'],
-  'AWS::BedrockAgentCore::Harness': ['HarnessId'],
-};
-
-/**
  * CloudFormation resource types that are primary (importable) resources.
  * Everything else is a companion resource.
  */

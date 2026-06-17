@@ -2,8 +2,6 @@ import type { Result } from '../../lib/result';
 import type { RemovalPreview } from '../operations/remove/types';
 import type { ComponentType } from 'react';
 
-export type { Result };
-
 /** @deprecated Use Result<T> directly */
 export type AddResult<T extends Record<string, unknown> = Record<string, unknown>> = Result<T>;
 

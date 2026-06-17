@@ -62,7 +62,6 @@ export {
   mcpCallTool,
   parseSSE,
   extractResult,
-  stopRuntimeSession,
   type ExecuteBashOptions,
   type ExecuteBashResult,
   type ExecuteBashStreamEvent,
@@ -72,8 +71,6 @@ export {
   type McpToolDef,
   type McpListToolsResult,
   type StreamingInvokeResult,
-  type StopRuntimeSessionOptions,
-  type StopRuntimeSessionResult,
 } from './agentcore';
 export {
   startRecommendation,

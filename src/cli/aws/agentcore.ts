@@ -8,7 +8,6 @@ import {
   EvaluateCommand,
   InvokeAgentRuntimeCommand,
   InvokeAgentRuntimeCommandCommand,
-  StopRuntimeSessionCommand,
 } from '@aws-sdk/client-bedrock-agentcore';
 import type { HttpRequest } from '@smithy/protocol-http';
 import type { DocumentType } from '@smithy/types';
@@ -94,17 +93,6 @@ export interface InvokeAgentRuntimeResult {
 export interface StreamingInvokeResult {
   stream: AsyncGenerator<string, void, unknown>;
   sessionId: string | undefined;
-}
-
-export interface StopRuntimeSessionOptions {
-  region: string;
-  runtimeArn: string;
-  sessionId: string;
-}
-
-export interface StopRuntimeSessionResult {
-  sessionId: string | undefined;
-  statusCode: number | undefined;
 }
 
 /**
@@ -1115,28 +1103,6 @@ export async function invokeAguiRuntime(
     stream: eventStream,
     textStream,
     sessionId,
-  };
-}
-
-/**
- * Stop a runtime session.
- */
-export async function stopRuntimeSession(options: StopRuntimeSessionOptions): Promise<StopRuntimeSessionResult> {
-  const client = new BedrockAgentCoreClient({
-    region: options.region,
-    credentials: getCredentialProvider(),
-  });
-
-  const command = new StopRuntimeSessionCommand({
-    agentRuntimeArn: options.runtimeArn,
-    runtimeSessionId: options.sessionId,
-  });
-
-  const response = await client.send(command);
-
-  return {
-    sessionId: response.runtimeSessionId,
-    statusCode: response.statusCode,
   };
 }
 

@@ -15,6 +15,7 @@ import { getRegion } from '../../commands/shared/region-utils';
 import { ExecLogger } from '../../logging/exec-logger';
 import { saveInsightsRun, updateInsightsRun } from './insights-storage';
 import type { InsightsRunRecord, RunInsightsOptions, RunInsightsResult } from './types';
+import { setTimeout as sleep } from 'node:timers/promises';
 
 // ============================================================================
 // Constants
@@ -224,8 +225,4 @@ function buildFilterConfig(options: RunInsightsOptions): CloudWatchFilterConfig 
   const endTime = options.endTime ?? new Date().toISOString();
   const startTime = options.startTime ?? new Date(Date.now() - lookbackDays * 24 * 60 * 60 * 1000).toISOString();
   return { timeRange: { startTime, endTime } };
-}
-
-function sleep(ms: number): Promise<void> {
-  return new Promise(resolve => setTimeout(resolve, ms));
 }

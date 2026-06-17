@@ -108,25 +108,6 @@ export function unregister(sessionId: string): void {
 }
 
 /**
- * Look up a session by its unique identifier.
- *
- * @param sessionId - The session ID to look up.
- * @returns The managed session, or undefined if no session with that ID is registered.
- */
-export function get(sessionId: string): ManagedSession | undefined {
-  return sessions.get(sessionId);
-}
-
-/**
- * Return metadata for all currently registered sessions.
- *
- * @returns An array of {@link SessionInfo} objects, one per registered session.
- */
-export function listAll(): SessionInfo[] {
-  return Array.from(sessions.values()).map(s => s.info);
-}
-
-/**
  * Close all registered sessions and clear the registry.
  *
  * Each session's `close()` method is called concurrently. Errors from

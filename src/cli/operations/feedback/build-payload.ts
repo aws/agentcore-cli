@@ -21,11 +21,11 @@ interface BuildPayloadInput {
   osDescriptor?: string;
 }
 
-export function buildOsDescriptor(): string {
+function buildOsDescriptor(): string {
   return `${process.platform} ${os.release()}`;
 }
 
-export function buildLocationDescriptor(cliVersion: string, mode: FeedbackMode): string {
+function buildLocationDescriptor(cliVersion: string, mode: FeedbackMode): string {
   return `agentcore-cli@${cliVersion} (${process.platform}; node ${process.version}; ${mode})`;
 }
 

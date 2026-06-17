@@ -75,13 +75,6 @@ export class CdkToolkitWrapper {
   }
 
   /**
-   * Get the path to the CDK project directory.
-   */
-  getProjectDir(): string {
-    return this.projectDir;
-  }
-
-  /**
    * Get the CDK app command for this project.
    * Points to the compiled JS file in dist/ (requires tsc build first).
    */

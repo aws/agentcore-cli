@@ -354,9 +354,4 @@ export class RuntimeEndpointPrimitive extends BasePrimitive<AddRuntimeEndpointOp
   addScreen(): AddScreenComponent {
     return null;
   }
-
-  /**
-   * Stub for future cross-reference validation.
-   * Checks if any gateway targets reference a given runtime endpoint.
-   */
 }
